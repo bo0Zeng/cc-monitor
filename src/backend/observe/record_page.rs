@@ -79,16 +79,25 @@ pub(crate) struct Reader<'a> {
     face: &'a RecordFace,
     typed: TypedTimes,
     summary_only: bool,
+    /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::agents::record::Record::stamp`]）。
+    tz: crate::common::time::Tz,
 }
 
 impl<'a> Reader<'a> {
     /// `lead` ＝ 这一页起点之前那一段原始字节（[`QUEUE_LOOKBACK_BYTES`] 以内；从文件头读 ⇒ 空），`lead_at` 是它在文件里的起点。
     /// 只拿来配打字时刻：不出成品、不占号；开头那半截行（从行中间起的）解析不出，自然跳过。
-    pub(crate) fn new(face: &'a RecordFace, lead_at: u64, lead: &[u8], summary_only: bool) -> Self {
+    pub(crate) fn new(
+        face: &'a RecordFace,
+        lead_at: u64,
+        lead: &[u8],
+        summary_only: bool,
+        tz: crate::common::time::Tz,
+    ) -> Self {
         let mut r = Self {
             face,
             typed: TypedTimes::default(),
             summary_only,
+            tz,
         };
         for (body, start) in split_starts(lead_at, lead) {
             r.interpret(body, start); // 只为喂打字时刻表：成品不要
@@ -102,7 +111,9 @@ impl<'a> Reader<'a> {
         match (self.face.parse)(&String::from_utf8_lossy(body), start) {
             Ok(Some(mut t)) => {
                 self.typed.pass(&mut t);
-                let mut record = serde_json::to_value(t.record?).ok()?;
+                let mut rec = t.record?;
+                rec.stamp(&self.tz);
+                let mut record = serde_json::to_value(rec).ok()?;
                 if self.summary_only {
                     fold_body(&mut record);
                 }

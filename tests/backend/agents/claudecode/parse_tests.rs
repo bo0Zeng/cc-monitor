@@ -337,11 +337,12 @@ fn f63_real_data_ledger() {
     assert_eq!(leaked, 0, "Unknown 泄漏到 parse_line 出口 = 后处理有洞");
 }
 
-/// 成品里每条带时刻的记录旁边有一格 `timeText`：这台本地钟的 `HH:MM`（界面照抄、不换算）。没时刻 / 解不出 ⇒ 不上线。
+/// 钟面 `timeText` 不在解析那一层写（同一份记录可能推给几个时区不同的看的人）：解析出来的一条都不带它；
+/// 出口那一下按看的那一台的时区写（[`crate::agents::record::Record::stamp`]）。没时刻 / 解不出 ⇒ 不上线。
 #[test]
-fn every_timed_record_carries_its_clock_face() {
+fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
     let ts = "2026-10-07T20:30:15.123Z";
-    let want = crate::common::time::iso_hm_here(ts).expect("解得出");
+    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
     let lines = [
         format!(
             r#"{{"type":"user","uuid":"u1","timestamp":"{ts}","message":{{"role":"user","content":"hi"}}}}"#
@@ -349,20 +350,38 @@ fn every_timed_record_carries_its_clock_face() {
         format!(
             r#"{{"type":"assistant","uuid":"a1","timestamp":"{ts}","message":{{"role":"assistant","content":[]}}}}"#
         ),
-        format!(r#"{{"type":"system","subtype":"x","timestamp":"{ts}"}}"#),
-        format!(r#"{{"type":"attachment","uuid":"t1","timestamp":"{ts}"}}"#),
-        format!(
-            r#"{{"type":"queue-operation","operation":"remove","content":"x","timestamp":"{ts}"}}"#
-        ),
-        format!(r#"{{"type":"p15-neutral-unknown","uuid":"k1","timestamp":"{ts}"}}"#),
+        format!(r#"{{"type":"system","subtype":"api_error","timestamp":"{ts}"}}"#),
     ];
     for l in &lines {
         let m = serde_json::to_value(parse_line(l).unwrap().unwrap()).unwrap();
-        assert_eq!(m["timeText"], want.as_str(), "{l}");
+        assert!(m.get("timeText").is_none(), "解析那一层不写钟面：{l}");
+        let mut r = super::translated(l, 0)
+            .unwrap()
+            .unwrap()
+            .record
+            .expect("进界面的一条");
+        assert!(r.time_text.is_none(), "{l}");
+        r.stamp(&sh);
+        assert_eq!(
+            r.time_text.as_ref().map(|w| w.0.as_str()),
+            Some("04:30"),
+            "{l}"
+        );
+        r.stamp(&crate::Tz::default());
+        assert_eq!(
+            r.time_text.as_ref().map(|w| w.0.as_str()),
+            Some("20:30"),
+            "{l}"
+        );
     }
-    let m = |l: &str| serde_json::to_value(parse_line(l).unwrap().unwrap()).unwrap();
-    let bare = m(r#"{"type":"queue-operation","operation":"enqueue"}"#);
-    assert!(bare.get("timeText").is_none(), "没时刻 ⇒ 不上线");
-    let bad = m(r#"{"type":"attachment","uuid":"t2","timestamp":"soon"}"#);
-    assert!(bad.get("timeText").is_none(), "解不出 ⇒ 不上线");
+    let mut bad = super::translated(
+        r#"{"type":"user","uuid":"t2","timestamp":"soon","message":{"role":"user","content":"x"}}"#,
+        0,
+    )
+    .unwrap()
+    .unwrap()
+    .record
+    .unwrap();
+    bad.stamp(&sh);
+    assert!(bad.time_text.is_none(), "解不出 ⇒ 不上线");
 }

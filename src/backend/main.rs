@@ -24,6 +24,7 @@
 //    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
 // ⚠ 用 glob 而不是逐项列 —— 本拍是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
+use cc_monitor_backend::control::cli_control;
 use cc_monitor_backend::faces::read_face;
 use cc_monitor_backend::stream::{inbound, listen, tap, wire};
 use cc_monitor_backend::*;
@@ -130,6 +131,8 @@ async fn main() {
     let agent_home = resolve_agent_home();
 
     if is_query_mode(&args) {
+        // 看的那一台的时区（`--tz`，剥流旗标那一步剥出来的）：一次性回包里的「几点」按它写。
+        let z = &wants.tz;
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
@@ -169,8 +172,8 @@ async fn main() {
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
-            Some(f) if control::cli_control::handles(f) => control::cli_control::run(&args).await,
-            _ => observe::history_query::run(&agent_home, &args),
+            Some(f) if cli_control::handles(f) => cli_control::run(&args, z).await,
+            _ => observe::history_query::run(&agent_home, &args, z),
         };
         std::process::exit(code);
     }
@@ -385,6 +388,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     // bounded frame channel.
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = observe::runs::RunBook::shared();
+    let tz = wants.tz.clone();
     let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -408,7 +412,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     let stop = inbound::shutdown_listener();
     // 这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
     let tap_rx = tap::attach(book);
-    let writer = writer_task(stdout, rx, reply_rx, tap_rx);
+    let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz);
     tokio::pin!(writer);
     let signalled = tokio::select! {
         _ = &mut writer => {
@@ -694,8 +698,11 @@ async fn serve_listening(
     let _poke_task = spawn_sigusr1_task();
 
     let (mut idle_rx, mut idle_poke) = {
-        let (rx, poke) =
-            observe::watcher::spawn(agent_home.clone(), defaults, std::sync::Arc::default());
+        let (rx, poke) = observe::watcher::spawn(
+            agent_home.clone(),
+            defaults.clone(),
+            std::sync::Arc::default(),
+        );
         (Some(rx), Some(poke))
     };
 
@@ -736,11 +743,9 @@ async fn serve_listening(
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
                 let book = observe::runs::RunBook::shared();
-                let (rx, poke) = observe::watcher::spawn(
-                    agent_home.clone(),
-                    flags.unwrap_or(defaults),
-                    book.clone(),
-                );
+                let wants = flags.unwrap_or_else(|| defaults.clone());
+                let tz = wants.tz.clone();
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -756,7 +761,7 @@ async fn serve_listening(
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx, tap_rx) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {
@@ -795,7 +800,7 @@ async fn serve_listening(
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 let (rx, poke) = observe::watcher::spawn(
                     agent_home.clone(),
-                    defaults,
+                    defaults.clone(),
                     std::sync::Arc::default(),
                 );
                 idle_rx = Some(rx);
@@ -828,11 +833,14 @@ async fn serve_listening(
 ///
 /// `reply_rx` 永远不会返回 `None`（`main` 自己留着一个 sender 到进程结束），
 /// 所以这个 select 不会退化成 `None` 忙转。
+///
+/// `tz` ＝ 这条流看的那一台的时区（起流的 `--tz` / attach 行的 `tz`）：出方向的每一帧写出去之前按它写钟面（[`Frame::stamp`]）。
 async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
     mut tap_rx: impl tap::TapSource,
+    tz: cc_monitor_backend::Tz,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -858,7 +866,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                 biased;
                 Some(f) = reply_rx.recv() => { burst += 1; f }
                 f = rx.recv() => match f {
-                    Some(f) => { burst = 0; f }
+                    Some(mut f) => { burst = 0; f.stamp(&tz); f }
                     None => return, // 出方向通道关了 = 寿终
                 },
                 Some(f) = tap_rx.next() => f,
@@ -868,7 +876,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
             tokio::select! {
                 biased;
                 f = rx.recv() => match f {
-                    Some(f) => f,
+                    Some(mut f) => { f.stamp(&tz); f }
                     None => return,
                 },
                 Some(f) = reply_rx.recv() => f,

@@ -105,8 +105,9 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
 fn every_member_has_its_own_arm_and_strangers_do_not() {
     let home = scratch("arms");
     for n in FAMILY {
-        let (r, diag) =
-            crate::common::contract::tests::diag(|| answer_at(&home, n, &serde_json::json!({})));
+        let (r, diag) = crate::common::contract::tests::diag(|| {
+            answer_at(&home, n, &serde_json::json!({}), &Default::default())
+        });
         if r.is_err() {
             assert!(
                 !diag.contains("has no command"),
@@ -115,7 +116,12 @@ fn every_member_has_its_own_arm_and_strangers_do_not() {
         }
     }
     let (r, diag) = crate::common::contract::tests::diag(|| {
-        answer_at(&home, "history-nope", &serde_json::json!({}))
+        answer_at(
+            &home,
+            "history-nope",
+            &serde_json::json!({}),
+            &Default::default(),
+        )
     });
     match r {
         Err((c, _)) => {
@@ -200,7 +206,7 @@ fn the_frame_read_keeps_the_projects_fence() {
     let outside = home.join("outside.jsonl");
     std::fs::write(&outside, "{}\n").unwrap();
     let args = serde_json::json!({"path": outside.to_string_lossy()});
-    match answer_at(&home, "history-read", &args) {
+    match answer_at(&home, "history-read", &args, &Default::default()) {
         Err((c, _)) => assert_eq!(c, "refused"),
         Ok(v) => panic!("围栏外的文件被读了：{v}"),
     }
@@ -220,6 +226,7 @@ fn the_tail_plan_matches_an_independent_count() {
         &home,
         "history-tail",
         &serde_json::json!({"path": path, "n": 5}),
+        &Default::default(),
     )
     .unwrap();
     // 独立算：完整行的起点
@@ -285,6 +292,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &home,
         "history-index",
         &serde_json::json!({"path": path, "offset": 0}),
+        &Default::default(),
     )
     .unwrap();
     assert_eq!(keys(&v), ["end", "from", "rows"], "骨架索引的成品形状变了");
@@ -314,6 +322,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &home,
         "history-user-inputs",
         &serde_json::json!({"path": path}),
+        &Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -334,6 +343,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &home,
         "history-user-inputs",
         &serde_json::json!({"path": path, "from": body.len() as u64 + 1}),
+        &Default::default(),
     )
     .unwrap_err();
     assert_eq!(e.0, "failed");
@@ -345,7 +355,8 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
             answer_at(
                 &home,
                 cmd,
-                &serde_json::json!({"path": outside.to_string_lossy()})
+                &serde_json::json!({"path": outside.to_string_lossy()}),
+                &Default::default()
             )
             .is_err(),
             "`{cmd}` 读了围栏外的文件"
@@ -409,13 +420,19 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
             "hits",
             middle(&|o| {
                 crate::observe::history_query::find_in_session_into(
-                    &home, &path, "zqx", false, 500, o,
+                    &home,
+                    &path,
+                    "zqx",
+                    false,
+                    500,
+                    &Default::default(),
+                    o,
                 )
             }),
         ),
     ];
     for (cmd, args, key, cli) in cases {
-        let v = answer_at(&home, cmd, &args).unwrap();
+        let v = answer_at(&home, cmd, &args, &Default::default()).unwrap();
         assert!(
             !cli.is_empty(),
             "`{cmd}` 的 CLI 臂中段是空的 —— 夹具没打到，本条会空真"
@@ -450,6 +467,7 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
         &home,
         "history-find",
         &serde_json::json!({"path": path, "query": "zqxneedle"}),
+        &Default::default(),
     )
     .unwrap();
     let mut keys: Vec<&String> = v.as_object().unwrap().keys().collect();
@@ -468,9 +486,14 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
         "命中集合与夹具里的 `hit-*` 不相等"
     );
     assert_eq!(
-        answer_at(&home, "history-find", &serde_json::json!({"path": path}))
-            .unwrap_err()
-            .0,
+        answer_at(
+            &home,
+            "history-find",
+            &serde_json::json!({"path": path}),
+            &Default::default()
+        )
+        .unwrap_err()
+        .0,
         "bad_args",
         "缺 query 该是 bad_args"
     );
@@ -479,7 +502,8 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
     assert!(answer_at(
         &home,
         "history-find",
-        &serde_json::json!({"path": outside.to_string_lossy(), "query": "x"})
+        &serde_json::json!({"path": outside.to_string_lossy(), "query": "x"}),
+        &Default::default()
     )
     .is_err());
     let _ = std::fs::remove_dir_all(&home);
@@ -572,11 +596,11 @@ fn the_three_products_match_the_cross_language_golden() {
     let home = scratch("c4b-golden");
     let path = golden_session(&home);
     let got = serde_json::json!({
-        "history-index": answer_at(&home, "history-index", &serde_json::json!({"path": path, "offset": 0})).unwrap(),
-        "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0})).unwrap(),
-        "history-find": answer_at(&home, "history-find", &serde_json::json!({"path": path, "query": "zqx", "include_tools": false, "limit": 500})).unwrap(),
-        "history-facts": answer_at(&home, "history-facts", &serde_json::json!({"path": golden_facts_session(&home)})).unwrap(),
-        "history-turns": answer_at(&home, "history-turns", &serde_json::json!({"path": golden_turns_session(&home), "from": 0})).unwrap(),
+        "history-index": answer_at(&home, "history-index", &serde_json::json!({"path": path, "offset": 0}), &Default::default()).unwrap(),
+        "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0}), &Default::default()).unwrap(),
+        "history-find": answer_at(&home, "history-find", &serde_json::json!({"path": path, "query": "zqx", "include_tools": false, "limit": 500}), &Default::default()).unwrap(),
+        "history-facts": answer_at(&home, "history-facts", &serde_json::json!({"path": golden_facts_session(&home)}), &Default::default()).unwrap(),
+        "history-turns": answer_at(&home, "history-turns", &serde_json::json!({"path": golden_turns_session(&home), "from": 0}), &Default::default()).unwrap(),
     });
     let want: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/session-reads.golden.json"))
@@ -623,7 +647,13 @@ fn facts_name_every_live_process_writing_the_session() {
         c
     };
     let writers = || {
-        answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap()["writers"]
+        answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap()["writers"]
             .clone()
     };
     let (mut a, mut b) = (spawn(), spawn());
@@ -681,7 +711,13 @@ fn facts_say_what_the_session_is_waiting_for() {
         std::fs::write(pids.join(format!("{}.json", c.id())), body).unwrap();
     };
     let needs = || {
-        answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap()["needs"]
+        answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap()["needs"]
             .clone()
     };
     pidfile("waiting");
@@ -720,7 +756,8 @@ fn facts_say_what_the_session_is_waiting_for() {
 fn history_facts_applies_the_limits_it_is_given() {
     let home = scratch("facts-limits");
     let path = golden_facts_session(&home);
-    let ask = |args: serde_json::Value| answer_at(&home, "history-facts", &args);
+    let ask =
+        |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
     let v = ask(serde_json::json!({ "path": path, "limits": {"M-G": 100} })).unwrap();
     assert_eq!(
         (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone()),
@@ -752,8 +789,15 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
     let item = ("anthropic-beta", "context-1m");
     crate::observe::relay_marks::note("rf-wide", &[(item, true)]);
     crate::observe::relay_marks::note("rf-std", &[(item, false)]);
-    let ask =
-        |p: &str| answer_at(&home, "history-facts", &serde_json::json!({ "path": p })).unwrap();
+    let ask = |p: &str| {
+        answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": p }),
+            &Default::default(),
+        )
+        .unwrap()
+    };
     let got: Vec<(serde_json::Value, serde_json::Value)> = paths
         .iter()
         .map(|p| {
@@ -779,7 +823,8 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
 fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() {
     let home = scratch("facts");
     let path = golden_facts_session(&home);
-    let ask = |args: serde_json::Value| answer_at(&home, "history-facts", &args);
+    let ask =
+        |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
     let first = ask(serde_json::json!({ "path": path })).unwrap();
     let wire: serde_json::Value =
         serde_json::from_str(&first.to_string()).expect("应答过一遍 JSON 文本");
@@ -847,7 +892,14 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
 fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
     let home = scratch("record");
     session(&home, "-p", "aaaa-1111", 1, false);
-    let ask = |sid: &str| answer_at(&home, "history-record", &serde_json::json!({ "sid": sid }));
+    let ask = |sid: &str| {
+        answer_at(
+            &home,
+            "history-record",
+            &serde_json::json!({ "sid": sid }),
+            &Default::default(),
+        )
+    };
     let root = home.join("projects").to_string_lossy().into_owned();
     assert_eq!(
         ask("aaaa-1111").unwrap(),
@@ -865,7 +917,12 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
     }
     // 缺 `sid` 也是 bad_args。
     assert!(matches!(
-        answer_at(&home, "history-record", &serde_json::json!({})),
+        answer_at(
+            &home,
+            "history-record",
+            &serde_json::json!({}),
+            &Default::default()
+        ),
         Err(("bad_args", _))
     ));
     std::fs::remove_dir_all(&home).ok();
@@ -882,7 +939,8 @@ fn gp1_history_record_looks_in_the_account_root_it_is_given() {
     let home = scratch("record-gp1-home");
     let acct = scratch("record-gp1-acct");
     session(&acct, "-p", "cccc-3333", 1, false);
-    let ask = |args: serde_json::Value| answer_at(&home, "history-record", &args);
+    let ask =
+        |args: serde_json::Value| answer_at(&home, "history-record", &args, &Default::default());
     let home_root = home.join("projects").to_string_lossy().into_owned();
     let acct_root = acct.join("projects").to_string_lossy().into_owned();
     let acct_dir = acct.to_string_lossy().into_owned();
@@ -1052,15 +1110,23 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
         &home,
         "history-tail",
         &serde_json::json!({"path": path, "n": 2}),
+        &Default::default(),
     )
     .unwrap();
     let index = answer_at(
         &home,
         "history-index",
         &serde_json::json!({"path": path, "offset": 0}),
+        &Default::default(),
     )
     .unwrap();
-    let lines = answer_at(&home, "history-lines", &serde_json::json!({"path": path})).unwrap();
+    let lines = answer_at(
+        &home,
+        "history-lines",
+        &serde_json::json!({"path": path}),
+        &Default::default(),
+    )
+    .unwrap();
     let mut keys: Vec<&String> = lines.as_object().unwrap().keys().collect();
     keys.sort();
     assert_eq!(keys, ["eof", "from", "lines", "next"], "成品形状变了");
@@ -1086,6 +1152,7 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
         &home,
         "history-lines",
         &serde_json::json!({"path": outside.to_string_lossy()}),
+        &Default::default(),
     ) {
         Err((c, _)) => assert_eq!(c, "refused"),
         Ok(v) => panic!("围栏外的文件被读了：{v}"),
@@ -1151,7 +1218,7 @@ fn the_account_pair_refuses_missing_or_mistyped_arguments() {
             serde_json::json!({"configDir": 3, "cwd": "/w"}),
         ),
     ] {
-        match answer_at(&home, cmd, &args) {
+        match answer_at(&home, cmd, &args, &Default::default()) {
             Err((c, _)) => assert_eq!(c, "bad_args", "{cmd} {args}"),
             Ok(v) => panic!("{cmd} {args} 被答了：{v}"),
         }
@@ -1190,13 +1257,24 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
     );
     // 帧面那一臂：没被交路径的进程（判据进程就是）⇒ `path: null`，`maxBytes` 形状不对 ⇒ `bad_args`。
     assert_eq!(
-        answer_at(&home, "backend-log", &serde_json::json!({})).unwrap()["path"],
+        answer_at(
+            &home,
+            "backend-log",
+            &serde_json::json!({}),
+            &Default::default()
+        )
+        .unwrap()["path"],
         Value::Null
     );
     assert_eq!(
-        answer_at(&home, "backend-log", &serde_json::json!({"maxBytes": "x"}))
-            .unwrap_err()
-            .0,
+        answer_at(
+            &home,
+            "backend-log",
+            &serde_json::json!({"maxBytes": "x"}),
+            &Default::default()
+        )
+        .unwrap_err()
+        .0,
         "bad_args"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -1248,14 +1326,14 @@ fn the_record_products_match_the_cross_language_golden() {
     let p = golden_record_session(&home);
     let path = p.to_string_lossy().into_owned();
     let got = serde_json::json!({
-        "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path})).unwrap(),
-        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true})).unwrap(),
-        "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1})).unwrap(),
-        "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path})).unwrap(),
+        "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
+        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true}), &Default::default()).unwrap(),
+        "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1}), &Default::default()).unwrap(),
+        "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
         "history-run": answer_at(
             &home,
             "history-run",
-            &serde_json::json!({"parent": path, "run": "a1"}),
+            &serde_json::json!({"parent": path, "run": "a1"}), &Default::default(),
         )
         .unwrap(),
     });
@@ -1294,7 +1372,8 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
         ),
     )
     .unwrap();
-    let ask = |args: Value| answer_at(&home, "history-search", &args).expect("搜索");
+    let ask =
+        |args: Value| answer_at(&home, "history-search", &args, &Default::default()).expect("搜索");
     let v = ask(json!({ "query": "订单" }));
     assert_eq!(v["unreadable"], json!(0), "读不动几份没交回：{v}");
     assert!(v["skipped"].is_array(), "内容搜索不覆盖的那几家没交回：{v}");
@@ -1330,12 +1409,13 @@ fn find_hits_carry_their_time_text() {
         &home,
         "history-find",
         &serde_json::json!({"path": p.to_string_lossy(), "query": "zqxneedle"}),
+        &Default::default(),
     )
     .unwrap();
     let ms = crate::common::time::parse_iso8601_ms(ts).unwrap();
     assert_eq!(
         v["hits"][0]["tsText"],
-        crate::common::time::hit_text_here(ms).as_str()
+        crate::common::time::hit_text(ms, &crate::Tz::default()).as_str()
     );
     assert!(v["hits"][0]["tsText"]
         .as_str()
@@ -1389,7 +1469,7 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
             if let Some(b) = summary_only {
                 args[&"summaryOnly".to_string()] = serde_json::json!(b);
             }
-            answer_at(&home, cmd, &args)
+            answer_at(&home, cmd, &args, &Default::default())
                 .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"))
         };
         let full = ask(None);
@@ -1512,8 +1592,20 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
     let mut dead = kids.pop().unwrap();
     let _ = dead.kill();
     let _ = dead.wait();
-    let list = answer_at(&home, "sessions-needs", &serde_json::json!({})).expect("答了");
-    let facts = answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap();
+    let list = answer_at(
+        &home,
+        "sessions-needs",
+        &serde_json::json!({}),
+        &Default::default(),
+    )
+    .expect("答了");
+    let facts = answer_at(
+        &home,
+        "history-facts",
+        &serde_json::json!({ "path": path }),
+        &Default::default(),
+    )
+    .unwrap();
     for mut c in kids {
         let _ = c.kill();
         let _ = c.wait();

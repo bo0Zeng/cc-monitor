@@ -23,6 +23,7 @@
 //! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]（所有命令通用）：
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
+//! · 时区：[`crate::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ UTC。
 //! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
@@ -148,9 +149,12 @@ fn probe() -> i32 {
 }
 
 /// CLI 控制面的一次性入口。返回进程退出码。
-pub async fn run(args: &[String]) -> i32 {
+///
+/// `tz` ＝ 看的那一台的时区（[`crate::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
+pub async fn run(args: &[String], tz: &crate::Tz) -> i32 {
     run_io(
         args,
+        tz,
         std::io::stdin(),
         STDIN_QUIET,
         &mut std::io::stdout(),
@@ -162,6 +166,7 @@ pub async fn run(args: &[String]) -> i32 {
 /// [`run`] 的本体：stdin / stdout / stderr 是入参（测试喂替身，逐字比两个口的应答）。
 pub(crate) async fn run_io<R: Read + Send + 'static>(
     args: &[String],
+    tz: &crate::Tz,
     stdin: R,
     quiet: Duration,
     out: &mut dyn Write,
@@ -225,6 +230,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         cmd: spec.name.to_string(),
         args: cli_args.clone(),
         within_ms,
+        tz: tz.clone(),
         // 与帧面同一处换算：发起方期限从收到起算、减余量换成截止时刻。
         until: crate::stream::inbound::until_of(within_ms),
     };

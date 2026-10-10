@@ -156,7 +156,8 @@ pub(crate) fn return_with(
 
 fn give_back(args: &Value) -> Answer {
     let ws = str_arg(args, "workspace")?;
-    let doc = crate::faces::plan_face::read_fresh(ws)?;
+    // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
+    let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
     let send = |a: &Value| crate::control::terminals::input_for_inbound(a);
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(ws, sl, id, r)

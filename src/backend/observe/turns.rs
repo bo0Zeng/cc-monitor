@@ -28,7 +28,7 @@ pub(crate) struct TurnRow {
     /// 起：你那句的时刻；止：这一轮最后一条主线记录的时刻（还没有回应 ⇒ 同起）。
     pub(crate) start: String,
     pub(crate) end: String,
-    /// 起止各自在这台本地钟上的钟面 `HH:MM`（收这一轮时由 [`crate::common::time::iso_hm_here`] 写；解不出 ⇒ 空串）。界面照抄、不换算。
+    /// 起止各自在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
     #[serde(rename = "startText")]
     pub(crate) start_text: String,
     #[serde(rename = "endText")]
@@ -112,12 +112,20 @@ struct Open {
     stop: Option<String>,
 }
 
+impl TurnRow {
+    /// 答的那一下按看的那一台的时区写起止的钟面与带钟面的右端那一截（扫出来的那一份进了索引缓存、不带钟面：几个看的人时区可能不同）。
+    /// 在 [`dress_live`] 之前调（还在跑的那一轮的右端由它按钟面改写）。
+    pub(crate) fn stamp(&mut self, tz: &crate::common::time::Tz) {
+        let face = |t: &str| crate::common::time::iso_hm(t, tz).unwrap_or_default();
+        self.start_text = face(&self.start);
+        self.end_text = face(&self.end);
+        self.span = done_span(self);
+    }
+}
+
 impl Open {
-    /// 收这一轮：钟面 · 收场通知分后台任务与子 agent · 结尾 · 回复头 · 过程行的字与右端那一截。
+    /// 收这一轮：收场通知分后台任务与子 agent · 结尾 · 回复头 · 过程行的字与右端那一截。
     fn close(mut self) -> TurnRow {
-        let face = |t: &str| crate::common::time::iso_hm_here(t).unwrap_or_default();
-        self.row.start_text = face(&self.row.start);
-        self.row.end_text = face(&self.row.end);
         for (task, failed) in &self.notices {
             let agent = task.as_ref().is_some_and(|t| self.agent_runs.contains(t));
             if !agent {
@@ -132,7 +140,7 @@ impl Open {
         }
         self.row.reply = reply_head(&self.reply_text);
         self.row.parts = self.parts();
-        self.row.span = done_span(&self.row);
+        // 右端那一截带钟面 ⇒ 答的那一下随钟面一起写（[`TurnRow::stamp`]）。
         self.row
     }
 

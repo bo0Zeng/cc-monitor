@@ -98,12 +98,13 @@ pub(crate) type Answer = Result<Value, (&'static str, String)>;
 
 /// 帧面入口：命令名从 `r.cmd` 来（与 `files::answer_wire` 同一形 —— 「登记的名字」与
 /// 「真正跑的那条」在类型上是同一个值）。
-pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
-    answer_at(&crate::observe::history_query::agent_home(), cmd, args)
+pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
+    answer_at(&crate::observe::history_query::agent_home(), cmd, args, tz)
 }
 
 /// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
-pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
+/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的钟面 · 命中时刻 · 行尾时刻都按它写。
+pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     use crate::observe::{accounts_query, history_query, search_query};
     match cmd {
         // 这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。
@@ -130,7 +131,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 LINE_CAP_BYTES,
             )?;
             let rows = crate::observe::record_page::run_rows(
-                &mut reader(&face, &target, from, false),
+                &mut reader(&face, &target, from, false, tz),
                 from,
                 &page.bytes,
             );
@@ -151,7 +152,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             Ok(json!({ "faces": faces }))
         }
         // 各台 `history-search` 的会话行合一份（纯计算，不看家目录）。
-        "history-search-merge" => search_query::answer_merge(args),
+        "history-search-merge" => search_query::answer_merge(args, tz),
         // 读不动几份（`unreadable`）· 内容搜索不覆盖、这台上又有会话的那几家（`skipped`，对用户的叫法）一并回给界面说。
         "history-search" => {
             let query = str_arg(args, "query")?;
@@ -247,7 +248,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             )?;
             Ok(json!({
                 "rows": crate::observe::record_page::rows_of(
-                    &mut reader(&face, &target, offset, summary_only),
+                    &mut reader(&face, &target, offset, summary_only, tz),
                     offset,
                     &page.bytes,
                 ),
@@ -288,7 +289,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 ));
             }
             let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
-                &mut reader(&face, &target, offset, summary_only),
+                &mut reader(&face, &target, offset, summary_only, tz),
                 &target,
                 seq,
                 offset,
@@ -319,7 +320,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             )?;
             let first = page.starts.first().copied().unwrap_or(0);
             let (lines, _) = crate::observe::record_page::record_lines(
-                &mut reader(&face, &target, first, summary_only),
+                &mut reader(&face, &target, first, summary_only, tz),
                 &target,
                 page.from,
                 page.lines
@@ -394,6 +395,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 .map_err(|e| ("failed", format!("stream failed: {e}")))?;
                 (out, end)
             };
+            // 钟面按看的那一台的时区写（先于下面那一步：还在跑的那一轮的右端按钟面改写）。
+            turns.iter_mut().for_each(|t| t.stamp(tz));
             // 还没收尾的最后一轮：「现在在做哪一步 / 在等你什么」按这台此刻的会话事实拼进过程行（判定同 `history-facts`）。
             if let Some(last) = turns.last_mut().filter(|t| !t.done) {
                 let sid = std::path::Path::new(path)
@@ -431,14 +434,14 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             // 先走 SX1 常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
             let scanned =
                 match search_query::find_indexed(home, &target, query, include_tools, page, |h| {
-                    hits.push(h)
+                    hits.push(&search_query::with_hit_text(h, tz))
                 }) {
                     Some(r) => r,
                     None => {
                         let r = history_query::open_session_at(home, path, 0)
                             .map_err(|e| ("failed", e))?;
                         search_query::scan_session_find(r, query, include_tools, page, |h| {
-                            hits.push(h)
+                            hits.push(&search_query::with_hit_text(h, tz))
                         })
                     }
                 };
@@ -589,9 +592,10 @@ fn reader<'a>(
     target: &std::path::Path,
     offset: u64,
     summary_only: bool,
+    tz: &crate::Tz,
 ) -> crate::observe::record_page::Reader<'a> {
     let (lead_at, lead) = crate::observe::record_page::lead_of(target, offset);
-    crate::observe::record_page::Reader::new(face, lead_at, &lead, summary_only)
+    crate::observe::record_page::Reader::new(face, lead_at, &lead, summary_only, tz.clone())
 }
 
 /// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。

@@ -360,9 +360,14 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "同上一格：自家目录里新建的目录给的那个权限位（与 `ensure_private_dir` 同一个值）",
     ),
     (
-        "common::time::mtime_texts_here",
+        "common::time::Tz",
         Kind::Common,
-        "列目录 · 问元数据 · 查找回的修改时间旁边那两格（列里那一格 · 完整那一格）按这台本地钟写好，文件窗口照抄",
+        "看的那一台的时区：修改时间那两格按请求带来的它写",
+    ),
+    (
+        "common::time::mtime_texts_now",
+        Kind::Common,
+        "列目录 · 问元数据 · 查找回的修改时间旁边那两格（列里那一格 · 完整那一格）按看的那一台的时区写好，文件窗口照抄",
     ),
     (
         "TARGETS",

@@ -155,7 +155,9 @@ fn every_kind_matches_the_golden_full_and_minimal() {
     let got: String = CASES
         .iter()
         .map(|(name, raw)| {
-            let r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
+            // 金样是线上那一形：出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
+            let mut r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
+            r.stamp(&crate::Tz::default());
             format!(
                 "{}\n",
                 serde_json::to_string(&serde_json::json!({ "case": name, "record": r })).unwrap()

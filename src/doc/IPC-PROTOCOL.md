@@ -29,6 +29,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `--tail-only` | 不重放历史：各文件从当前行数起只尾随新行；历史由客户端另取（`history-read` / `--read-session-tail`） |
 | `--with-pid` | `session_added` 带 `pid`（只本机那条流发；默认关，关时字节与加它之前一字不差） |
 | `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
+| `--tz <IANA 名>` | 看的那一台的时区（如 `Asia/Shanghai`）：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。常驻那条连接在 attach 行旁边带同名一格 `tz`（不进 `flags`）。见 §4「时刻按谁的钟」 |
 
 ## 3. hello：先读它，再说话
 
@@ -45,7 +46,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ## 4. 入方向：请求 · 应答 · 取消
 
 ```text
-→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000}          一行一个；args 缺 ＝ null；within_ms 可缺
+→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai"}   一行一个；args 缺 ＝ null；within_ms · tz 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
 ← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
@@ -54,6 +55,11 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 - **`id`** 由客户端发号、后端只回显（不解析、不校验）。monitor 的发法是 `<连接 nonce>-<单调序号>`，重连不撞号。同一个 `id` 的命令还在跑 ⇒ `duplicate_id`。
 - **`within_ms`**：发起方愿意等多久。后端从收到这一行起减 2 秒余量换成截止时刻，阻塞档命令里装总期限的各处都收紧到它（到点回 `child_timed_out`，见 §CLI 面「期限」那一条）。不是正整数 ⇒ 当没带。
+- **`tz`（时刻按谁的钟）**：看的那一台（桌面 · 手机）的时区，IANA 名。回包里写成字的时刻（`…Text` · `timeText` · `tsText` · `startText` · `mtime_text` · 今天 / 昨天那几格）**一律按它写**，不按答话那台后端自己的钟；远端那一跳（这台替看的人问另一台）回来的原始时刻也由这台按它写。
+  不是串 · 时区库里没有这个名 · 没带 ⇒ **UTC**（不拒）。偏移按**那一刻**算（夏令时跟着那一刻，冬天看夏天的记录照样对）；时区库随后端二进制带，各平台同一份。
+  为什么是 IANA 名而不是偏移：偏移只说得准「此刻」，历史页 · 记录里的时刻一跨夏令时就差一小时；看的那一台本来就叫得出自己的名（`Intl` · `ZoneId` · 系统设置），给名不多花一个字节的心思。
+  原始时刻（`at` · `resetsAt` · `tsMs` · `mtime_secs` …）照旧是数，要它跟着走的「已经多久」由出口按此刻自己走字（见 §7 的时长约定）。
+  两处**不**按它：复制详情（`detail`）里那一行时刻是答话那台的钟、带偏移（`2026-10-10 05:12:33 -07:00`，与那台的日志对得上）；轮换规则「按时段的上限」按那台后端的钟判（规则在没人看的时候也要判）。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
@@ -97,7 +103,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `session_added` `sid` `path` `cwd` `name` `lines` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
   `session_status` `sid` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
   `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
-  请求信封 `id` `cmd` `args` `within_ms`（可缺）。
+  请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）。
 - 成品面：`line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）—— 通用记录的公共格、五类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。冻结的就是格目录里 `frozen` 的那几件成品（`record` · `read_row`）：格只许加，新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
@@ -155,6 +161,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
     同一个上限管整行；Windows 整行 ≤ 32767 个字符。超过系统那一道，后端根本起不来，调用方看到的是 shell / sshd 那一层的错（如 `Argument list too long`），不是下面的信封 ⇒ 更大的载荷走 stdin。
   - 两个都给（`--args-b64` 与 `--stdin-line`）· `--args-b64` 缺值 / 给两次 · 不收入参的命令带 `--args-b64` ⇒ `bad_args`；base64 坏 / 解出来不是 UTF-8 / 不是 JSON ⇒ `bad_request`；
     超上限（哪一个口都一样）⇒ `args_too_large`，拒收、不截断。
+- **时区**：`--tz <IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里写成字的时刻按看的那一台的时区写；缺值 · 认不得 · 没带 ⇒ UTC。
+  另认一个词 `local`：看的人就在答话这一台上（终端里敲的 `ccm -- --<命令> --text`、本机脚本）⇒ 按这台系统的钟（帧面信封的 `tz` 同样认它）。
 - **期限**：`--within-ms <毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义：减 2 秒余量换成截止时刻，装总期限的命令都收紧到它，到点回的码与帧面相同（`child_timed_out`）。
   哪几条装总期限、上限多少，协议参考里逐条写（「总期限上限 N 秒」）；没写的那几条不装，带了期限对它不起作用。到点只回 `child_timed_out` 这一个码，三条例外不整条失败：`aliases-read` · `powershell-policy-set` 落在成品的 `policy.error`，`ssh-config-import` 交已解析的那几个。
   缺值 · 给两次 ⇒ `bad_args`；值不是正整数 ⇒ 当没带（同帧面那一格）。

@@ -232,10 +232,12 @@ struct RequestLine<'a> {
     cmd: &'a str,
     args: &'a serde_json::Value,
     within_ms: u64,
+    tz: &'a str,
 }
 
 /// 🔴 **真序列化一次**：这条命令发到后端时那一行有多少字节（**不含**行尾 `\n` ——
-/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]），发起方期限那一格按最长的数位算。
+/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]），发起方期限那一格按最长的数位算，
+/// 时区那一格按最长的名算（[`host_core::TZ_ROOM`]；比它长的那一台不带这一格）。
 pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
     let id = "0".repeat(REQUEST_ID_ROOM);
     serde_json::to_vec(&RequestLine {
@@ -243,6 +245,7 @@ pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
         cmd,
         args,
         within_ms: u64::MAX,
+        tz: &"Z".repeat(host_core::TZ_ROOM),
     })
     .map_or(usize::MAX, |v| v.len())
 }

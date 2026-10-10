@@ -1916,6 +1916,50 @@ fn the_shapes_the_second_frontend_reads_stay_put() {
     }
 }
 
+/// 请求信封的 `tz`（看的那一台的时区）：认得的 IANA 名 ⇒ 那个时区；缺 · 认不得 · 不是串 ⇒ UTC（不拒，同 `within_ms` 的宽读）。
+/// 推出去的帧在写出去那一下按这条流的时区写钟面（[`Frame::stamp`]）：`line.record.timeText`。
+#[test]
+fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
+    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let tz_of = |line: &str| serde_json::from_str::<Request>(line).expect("信封认得").tz;
+    assert_eq!(tz_of(r#"{"id":"1","cmd":"ping","tz":"Asia/Shanghai"}"#), sh);
+    for line in [
+        r#"{"id":"1","cmd":"ping"}"#,
+        r#"{"id":"1","cmd":"ping","tz":"Nowhere/Atlantis"}"#,
+        r#"{"id":"1","cmd":"ping","tz":480}"#,
+        r#"{"id":"1","cmd":"ping","tz":null}"#,
+    ] {
+        assert_eq!(tz_of(line), crate::Tz::default(), "{line}");
+    }
+    let rec = crate::agents::claudecode::parse::translated(
+        r#"{"type":"user","uuid":"u","timestamp":"2026-10-07T20:30:00.000Z","message":{"role":"user","content":"hi"}}"#,
+        0,
+    )
+    .unwrap()
+    .unwrap()
+    .record;
+    let mut f = Frame::Line {
+        session_id: "s".into(),
+        path: "/p".into(),
+        seq: 0,
+        record: rec,
+        cwd: None,
+        byte_offset: 0,
+        rid: None,
+        raw: None,
+    };
+    assert!(
+        !to_line(&f).unwrap().contains("timeText"),
+        "产帧那一层不写钟面"
+    );
+    f.stamp(&sh);
+    assert!(
+        to_line(&f).unwrap().contains(r#""timeText":"04:30""#),
+        "{}",
+        to_line(&f).unwrap()
+    );
+}
+
 /// `line.raw`：没索要的客户端字节一个不变（不带这一格）；索要了才带、是那一行原文。
 #[test]
 fn line_raw_is_only_there_when_asked() {
@@ -2109,7 +2153,7 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
         let code = match *flag {
             "--search" => crate::observe::search_query::run(&home, args),
             "--fork-session" => crate::control::fork_write::run(&home, args),
-            _ => crate::observe::history_query::run(&home, args),
+            _ => crate::observe::history_query::run(&home, args, &Default::default()),
         };
         assert_eq!(code, 0, "{flag} 照原来的叫法跑不通了：{args:?}");
     }

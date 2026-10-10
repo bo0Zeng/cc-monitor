@@ -15,12 +15,13 @@ use serde_json::{json, Value};
 pub(crate) type Answer = Result<Value, (&'static str, String)>;
 
 /// 帧面入口：命令名从 `r.cmd` 来（与 `read_face::answer` 同一形）。
-pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
-    answer_at(&crate::observe::history_query::agent_home(), cmd, args)
+pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
+    answer_at(&crate::observe::history_query::agent_home(), cmd, args, tz)
 }
 
 /// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
-fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
+/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的时刻字按它写。
+fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     match cmd {
         "tasks-list" => {
             let sid = args.get("sid").and_then(Value::as_str).ok_or_else(|| {
@@ -91,12 +92,10 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 look.homes.iter().map(|(_, h)| h.clone()).collect();
             let failed = crate::observe::accounts_query::live_mcp_failed(&homes);
             let now_s = i64::try_from(look.now_ms / 1000).unwrap_or(i64::MAX);
-            let tz_min =
-                crate::platform::local_tz::offset_secs(look.now_ms / 1000).unwrap_or(0) / 60;
             let say = McpSay {
                 failed: &failed,
                 now_s,
-                tz_min,
+                tz: tz.clone(),
                 login_command: crate::agents::mcp_login_command(kind).unwrap_or(""),
             };
             capped(mcp_reply(&read, &say))
@@ -153,12 +152,12 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// [`mcp_reply`] 写字要的：这台活会话里说连不上的那几个 · 此刻（unix 秒）与时区偏移（分钟，东正）· 登录那一步复制的那条命令（那一家的）。
+/// [`mcp_reply`] 写字要的：这台活会话里说连不上的那几个 · 此刻（unix 秒）与看的那一台的时区 · 登录那一步复制的那条命令（那一家的）。
 #[derive(Default)]
 pub(crate) struct McpSay<'a> {
     pub failed: &'a [crate::observe::accounts_query::LiveMcpFailed],
     pub now_s: i64,
-    pub tz_min: i64,
+    pub tz: crate::Tz,
     pub login_command: &'static str,
 }
 
@@ -167,7 +166,7 @@ pub(crate) struct McpSay<'a> {
 /// `mark`（小标画哪一种：连不上压过需登录；停用的不连 ⇒ 不标连不上）。
 pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> Value {
     use crate::agents::McpStatus;
-    let time = |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), say.now_s, say.tz_min);
+    let time = |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), say.now_s, &say.tz);
     let entries: Vec<Value> = r
         .entries
         .iter()

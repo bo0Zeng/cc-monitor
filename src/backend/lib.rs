@@ -2200,7 +2200,7 @@ pub const STREAM_FLAGS: &[&str] = &[
 ];
 
 /// 一条流的客户端索要了什么（流模式旗标剥出来的那几位）。全关 ＝ 默认：没索要的客户端收到的字节不变。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct StreamWants {
     /// `--with-bg`：放行 bg 会话。
     pub with_bg: bool,
@@ -2210,7 +2210,18 @@ pub struct StreamWants {
     pub with_pid: bool,
     /// `--with-raw`：`line` 带 `raw`。
     pub with_raw: bool,
+    /// [`TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
+    /// 一次性 CLI 面的回包同样按它写。缺 · 认不得 ⇒ UTC。
+    pub tz: Tz,
 }
+
+/// **看的人那一台的时区**：`--tz <IANA 名>`（任意位置；流模式与一次性 CLI 面同一个旗标）与帧面请求信封的 `tz` 同名同义：
+/// 回包与推送里「几点」「今天 / 昨天」按它写，不按这台后端的钟。缺 · 缺值 · 认不得 ⇒ UTC（不拒）。
+/// 常驻那条连接的 attach 行带同名一格 `tz`（[`stream::listen::attach_flags`]）。
+pub const TZ_FLAG: &str = "--tz";
+
+/// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
+pub use common::time::Tz;
 
 /// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
 ///
@@ -2272,6 +2283,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     STDIN_LINE_FLAG,
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
     TEXT_FLAG,
+    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 [`split_stream_flags`]）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    TZ_FLAG,
     "--until",
     // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
     WITHIN_MS_FLAG,
@@ -2287,8 +2300,15 @@ pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, StreamWants) {
         tail_only: has("--tail-only"),
         with_pid: has("--with-pid"),
         with_raw: has("--with-raw"),
+        tz: Default::default(),
     };
     args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
+    let mut wants = wants;
+    if let Some(i) = args.iter().position(|a| a == TZ_FLAG) {
+        let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
+        args.drain(i..i + 1 + usize::from(v.is_some()));
+        wants.tz = v.as_deref().and_then(Tz::named).unwrap_or_default();
+    }
     (args, wants)
 }
 

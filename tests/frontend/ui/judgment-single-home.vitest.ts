@@ -767,6 +767,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     center_in_work_area: NONE,
     // 本机时区偏移 · 这一份编给的系统与架构（文件窗口画修改时间 · monitor 写「复制详情」的时刻与「本机」那一行）；TS 侧零孪生。
     local_offset_at: NONE,
+    // 看的这一台的时区名（请求信封与起流的 `tz`，后端按它写「几点」）· 信封里给它留的位子；TS 侧零孪生（界面不碰时区，壳代它交）。
+    viewer_tz: NONE,
+    TZ_ROOM: NONE,
     OS: NONE,
     ARCH: NONE,
   },

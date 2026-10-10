@@ -153,14 +153,14 @@ const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_A
 
 /// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
 /// 此刻发得出去的号、最早回来的那个。
-/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）、每号添好几行（`faces/quota_rows.rs`）
+/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按请求带来的看的那一台的时区）、每号添好几行（`faces/quota_rows.rs`）
 /// 与开窗那一判（`warm`：quota-warm 照它发一句 / 睡到几点）。
-pub(crate) fn answer_quota_read() -> Answer {
+pub(crate) fn answer_quota_read(tz: &crate::Tz) -> Answer {
     let now = crate::accounts::quota::now_unix();
     let mut v = wire::<_, Fail>(&quota_read_with(&Ctx::here(), now))?;
-    crate::common::time::with_texts_here(&mut v, now);
+    crate::common::time::with_texts_now(&mut v, now, tz);
     crate::faces::quota_rows::with_rows(&mut v);
-    crate::faces::quota_rows::with_warm(&mut v);
+    crate::faces::quota_rows::with_warm(&mut v, tz);
     Ok(v)
 }
 
@@ -780,8 +780,8 @@ pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
 /// `{rule}`（这台的一条规则）· `{sid}`（这个会话此刻生效的那一份，从它此刻的号起）；`span`：`6h` · `12h`（缺省）· `24h` · `7d`。
 /// 回 `{errors, now, plan, lanes, effective}`：用量只按此刻的算（以后涨多快没根据，不预测），结论只在重置 · 时段起止时变。
 /// 形状不对（`rotation_from` 整份拒）⇒ `bad_args`；规则 / 会话不在 ⇒ `no_such_rule` / `bad_args`。
-pub(crate) fn answer_plan(args: &Value) -> Answer {
-    answer_plan_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_plan(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_plan_with(&Ctx::here(), args, crate::accounts::quota::now_unix(), tz)
 }
 
 /// 预览的视窗（秒）。
@@ -935,7 +935,8 @@ fn warm_of(ctx: &Ctx) -> std::collections::BTreeMap<String, Vec<u64>> {
     out
 }
 
-pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+/// `tz` ＝ 看的那一台的时区：每段起止的字（`fromText` · `toText`）按它写。
+pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64, tz: &crate::Tz) -> Answer {
     let view = view_secs(args)?;
     let (from, until) = match view {
         Some((before, after)) => (now.saturating_sub(before), now + after),
@@ -1027,12 +1028,11 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         now,
         until,
     );
-    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
     let text = |t: u64| {
         crate::common::time::fmt_at(
             i64::try_from(t).unwrap_or(i64::MAX),
             i64::try_from(now).unwrap_or(i64::MAX),
-            tz_min,
+            tz,
         )
     };
     let seg = |from: u64, to: u64, account: &Option<String>, why: &Option<SwitchWhy>| json!({"from": from, "fromText": text(from), "to": to, "toText": text(to), "account": account, "why": why});
@@ -1112,7 +1112,8 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             (a.clone(), Value::Object(m))
         })
         .collect();
-    let grid = view.map(|(before, _)| grid_of(before, from, until, tz_min * 60, &text));
+    let off = tz.offset_secs(i64::try_from(now).unwrap_or(i64::MAX));
+    let grid = view.map(|(before, _)| grid_of(before, from, until, off, &text));
     let head = (view.is_some() && !machine).then(|| head_of(ctx, &agent, &view_obj, now, &text));
     let past = match (view, &asked) {
         (Some(_), Asked::Session(sid)) => Some(
@@ -1177,7 +1178,7 @@ pub(crate) struct Plan {
     past: Option<Vec<Value>>,
 }
 
-/// 时间轴的刻度：按这台本地钟对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
+/// 时间轴的刻度：按看的那一台的时区对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
 /// 轴上写字的那几格另带 `label`（6h 每小时 · 24h 每 3h：`HH:MM`；7d 每天零点：`MM-DD`）。
 fn grid_of(before: u64, from: u64, until: u64, off: i64, text: &dyn Fn(u64) -> String) -> Value {
     let (step, major): (i64, i64) = match before {
@@ -1306,10 +1307,10 @@ fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, Fail> {
 
 /// `rotation-session-read`：一批会话各自的那一份（`{sids}`）；这台没见过的照实标 `absent`，不整批失败。
 /// 出口那一下给每个时刻添好显示的字（同 [`answer_quota_read`]）。
-pub(crate) fn answer_session_read(args: &Value) -> Answer {
+pub(crate) fn answer_session_read(args: &Value, tz: &crate::Tz) -> Answer {
     let now = crate::accounts::quota::now_unix();
     let mut v = answer_session_read_with(&Ctx::here(), args, now)?;
-    crate::common::time::with_texts_here(&mut v, now);
+    crate::common::time::with_texts_now(&mut v, now, tz);
     Ok(v)
 }
 

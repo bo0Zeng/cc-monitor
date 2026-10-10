@@ -510,10 +510,8 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
             .map_or_else(|| crate::agents::line_id(start), str::to_string),
-        time_text: at
-            .as_deref()
-            .and_then(crate::common::time::iso_hm_here)
-            .map(crate::common::cells::Words),
+        // 钟面按看的那一台的时区，出口那一下写（[`Record::stamp`]）。
+        time_text: None,
         at,
         body,
     })

@@ -61,7 +61,7 @@ pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> serde_json::Value {
 }
 
 /// 查询模式入口。返回进程退出码。
-pub fn run(agent_home: &Path, args: &[String]) -> i32 {
+pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
     let result = match args.first().map(String::as_str) {
         Some("--list-projects") => {
             return match list_projects_to(agent_home, &mut std::io::stdout().lock()) {
@@ -108,7 +108,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
         },
         // 会话内查找（口径与 `--search` 同一份，内核住 `observe::search_query`）。
         Some("--find-in-session") => match parse_find_args(&args[1..]) {
-            Ok(a) => find_in_session(agent_home, &a),
+            Ok(a) => find_in_session(agent_home, &a, tz),
             Err(e) => Err(e),
         },
         Some(other) => Err(format!("unknown argument: {other}")),
@@ -1028,7 +1028,7 @@ pub(crate) fn parse_find_args(rest: &[String]) -> Result<FindArgs<'_>, String> {
 
 /// `--find-in-session`：在**一份**会话里找（路径守卫与 `--read-session` 同一套）。形状见
 /// [`crate::observe::search_query::write_session_find`] 的头注。
-fn find_in_session(agent_home: &Path, a: &FindArgs<'_>) -> Result<(), String> {
+fn find_in_session(agent_home: &Path, a: &FindArgs<'_>, tz: &crate::Tz) -> Result<(), String> {
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     find_in_session_into(
@@ -1037,6 +1037,7 @@ fn find_in_session(agent_home: &Path, a: &FindArgs<'_>) -> Result<(), String> {
         a.query,
         a.include_tools,
         a.limit,
+        tz,
         &mut out,
     )?;
     out.flush().map_err(|e| format!("stream failed: {e}"))?;
@@ -1051,6 +1052,7 @@ pub(crate) fn find_in_session_into(
     query: &str,
     include_tools: bool,
     limit: usize,
+    tz: &crate::Tz,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
     crate::observe::search_query::write_session_find(
@@ -1058,6 +1060,7 @@ pub(crate) fn find_in_session_into(
         query,
         include_tools,
         limit,
+        tz,
         &mut out,
     )
     .map_err(|e| format!("stream failed: {e}"))?;

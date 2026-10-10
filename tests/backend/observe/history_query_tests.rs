@@ -340,7 +340,10 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
     assert!(out.is_empty(), "没有记录树却列出了东西");
     // 平铺清单当零个项目（不失败）；CLI 照旧出声 rc=2（S6-Z3），话是人话。
     assert_eq!(sessions_by_dir(&tmp), Ok(None));
-    assert_eq!(run(&tmp, &["--list-projects".to_string()]), 2);
+    assert_eq!(
+        run(&tmp, &["--list-projects".to_string()], &Default::default()),
+        2
+    );
     // CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
     assert_eq!(
         list_projects_to(&tmp, &mut out).map_err(|(code, _)| code),

@@ -2549,6 +2549,7 @@ fn read_then_save_then_save_again_chains_on_the_digests_the_backend_hands_out() 
     let read = crate::files::answer_wire(
         "files-read-text",
         &serde_json::json!({"path": path.to_str().unwrap(), "max_bytes": 1024}),
+        &Default::default(),
     )
     .expect("读");
     let sha = read["sha256"]

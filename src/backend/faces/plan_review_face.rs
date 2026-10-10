@@ -52,7 +52,7 @@ fn last(ws: &str) -> Result<Value, Fail> {
 
 /// 认可改了之后：这个工作区此刻要你看的数，推一帧 `plan_changed`（别的窗口跟着改数）。
 fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
-    let doc = crate::faces::plan_face::annotated(last(ws)?);
+    let doc = crate::faces::plan_face::marked(last(ws)?);
     let n = doc.get("needCount").and_then(Value::as_u64).unwrap_or(0);
     if let Some((rev, n)) = crate::faces::plan_face::seen_of(&doc) {
         // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有。

@@ -963,7 +963,8 @@ fn the_trigger_line_is_checked_per_window() {
         ]
     );
     r["cap"] = json!({"*": {"5h": 90}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
+    let got =
+        answer_plan_with(&ctx, &json!({"rotation": r}), now(), &Default::default()).expect("ok");
     assert_eq!(
         got["effective"]["b"]["5h"],
         json!({"v": 90, "layer": "trigger", "w": "5h", "below": {"v": 90, "layer": "trigger", "w": "5h"}}),
@@ -1194,20 +1195,31 @@ fn a_draft_is_checked_cell_by_cell_without_writing() {
     let before = ctx.hop.store.now();
     let mut r = rot_json(&["b"]);
     r["cap"] = json!({"b": {"*": [{"at": "22:00-03:00", "n": 0}, {"at": "02:00-04:00", "n": 50}]}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
+    let got =
+        answer_plan_with(&ctx, &json!({"rotation": r}), now(), &Default::default()).expect("ok");
     assert_eq!(
         got["errors"],
         json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0, "said": copy_core::copy_text("rot.capErr.overlap", &[("i", "1")])}])
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("ok")
-            ["errors"],
+        answer_plan_with(
+            &ctx,
+            &json!({"rotation": rot_json(&["b"])}),
+            now(),
+            &Default::default()
+        )
+        .expect("ok")["errors"],
         json!([])
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}), now())
-            .expect_err("形状")
-            .code,
+        answer_plan_with(
+            &ctx,
+            &json!({"rotation": {"order": 3}}),
+            now(),
+            &Default::default()
+        )
+        .expect_err("形状")
+        .code,
         "bad_args"
     );
     assert_eq!(ctx.hop.store.now(), before, "一个字节不写");
@@ -1221,7 +1233,13 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
     let ctx = home.ctx();
     let t = now();
     let draft = json!({"order": ["b", {"start": true}], "enabled": ["b"], "atLimit": "continue", "cap": {"b": {"*": 0}}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": draft, "span": "6h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"rotation": draft, "span": "6h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     let end = t + 6 * 3600;
     assert_eq!(got["errors"], json!([]));
     assert_eq!(
@@ -1264,21 +1282,26 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
     // 规则：默认那条（只有起始账号）⇒ 一整段起始账号。
     let rules = answer_rules_read_with(&ctx).expect("read");
     let id = rules["defaultRule"].as_str().expect("id");
-    let got = answer_plan_with(&ctx, &json!({"rule": id}), t).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"rule": id}), t, &Default::default()).expect("ok");
     assert_eq!(got["plan"].as_array().expect("plan").len(), 1);
     assert_eq!(got["plan"][0]["to"], json!(t + 12 * 3600), "缺省 12h");
     // 会话：从它此刻的号起。
     home.saw(&ctx, "s-1");
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t, &Default::default()).expect("ok");
     assert_eq!(got["plan"][0]["account"], "a");
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rule": id, "span": "3h"}), t)
-            .expect_err("视窗")
-            .code,
+        answer_plan_with(
+            &ctx,
+            &json!({"rule": id, "span": "3h"}),
+            t,
+            &Default::default()
+        )
+        .expect_err("视窗")
+        .code,
         "bad_args"
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t)
+        answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t, &Default::default())
             .expect_err("不在")
             .code,
         "no_such_rule"
@@ -1327,7 +1350,13 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         },
     );
     seen(&ctx, "b", 0.63, None);
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "24h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"sid": "s-1", "view": "24h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert_eq!(got["from"], json!(t - 6 * 3600), "{got}");
     assert_eq!(got["until"], json!(t + 18 * 3600));
     assert!(got["fromText"].is_string());
@@ -1380,7 +1409,13 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         labels.iter().all(|l| l.len() == 5 && l.ends_with(":00")),
         "{labels:?}"
     );
-    let week = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "7d"}), t).expect("ok");
+    let week = answer_plan_with(
+        &ctx,
+        &json!({"sid": "s-1", "view": "7d"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert_eq!(week["until"], json!(t + 6 * 86_400));
     let last = week["plan"]
         .as_array()
@@ -1407,13 +1442,18 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         .expect("b");
     assert_eq!(lane_b["pct"], json!(63));
     // 不带 view ＝ 编辑器那一问：照旧从此刻起、没有 past。
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t, &Default::default()).expect("ok");
     assert_eq!(got["from"], json!(t));
     assert!(got.get("past").is_none(), "{got}");
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "12h"}), t)
-            .expect_err("视窗")
-            .code,
+        answer_plan_with(
+            &ctx,
+            &json!({"sid": "s-1", "view": "12h"}),
+            t,
+            &Default::default()
+        )
+        .expect_err("视窗")
+        .code,
         "bad_args"
     );
 }
@@ -1428,7 +1468,13 @@ fn the_timeline_head_says_when_the_earliest_one_comes_back() {
     home.saw(&ctx, "s-1");
     seen(&ctx, "a", 0.0, Some(t + 7200));
     seen(&ctx, "b", 0.0, Some(t + 3600));
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "6h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"sid": "s-1", "view": "6h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert_eq!(got["from"], json!(t - 2 * 3600), "{got}");
     assert_eq!(got["until"], json!(t + 4 * 3600));
     assert_eq!(got["head"]["blocked"]["account"], "b", "{got}");
@@ -1454,7 +1500,13 @@ fn the_machine_timeline_lists_every_account_and_who_uses_it() {
         json!({"pid": std::process::id(), "next": [{"account": "b", "at": t + 1800}]}).to_string(),
     )
     .expect("warm");
-    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"machine": true, "view": "24h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     let lanes = got["lanes"].as_array().expect("lanes");
     assert_eq!(
         lanes
@@ -1489,7 +1541,13 @@ fn the_machine_timeline_lists_every_account_and_who_uses_it() {
         json!({"pid": u32::MAX - 7, "next": [{"account": "b", "at": t + 1800}]}).to_string(),
     )
     .expect("warm");
-    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"machine": true, "view": "24h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert!(
         got["lanes"]
             .as_array()
@@ -1577,7 +1635,8 @@ fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
         ),
         (
             "rotation-plan",
-            answer_plan_with(&ctx, &json!({"machine": true}), now()).expect("plan"),
+            answer_plan_with(&ctx, &json!({"machine": true}), now(), &Default::default())
+                .expect("plan"),
         ),
     ];
     for (cmd, v) in &reads {
@@ -1658,13 +1717,13 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
     let resets = t + 5 * 3600;
     seen_at(&ctx, "b", 0.40, t - 900, resets);
     let ask = json!({"sid": "s-1", "view": "24h"});
-    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let got = answer_plan_with(&ctx, &ask, t, &Default::default()).expect("ok");
     assert!(
         got["head"].get("est").is_none(),
         "只有一次采样就给了估：{got}"
     );
     seen_at(&ctx, "b", 0.46, t - 300, resets);
-    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let got = answer_plan_with(&ctx, &ask, t, &Default::default()).expect("ok");
     // 600 秒涨 6 点 ⇒ 到 90% 还差 44 点 ＝ 4400 秒。
     let est = &got["head"]["est"];
     assert_eq!(
@@ -1675,7 +1734,7 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
     assert!(est["atText"].is_string());
     r["cap"] = json!({"b": {"5h": 70}});
     answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
-    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let got = answer_plan_with(&ctx, &ask, t, &Default::default()).expect("ok");
     let est = &got["head"]["est"];
     assert_eq!(
         (est["at"].clone(), est["pct"].clone()),
@@ -1683,7 +1742,7 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
         "到的应是封顶：{got}"
     );
     assert!(
-        answer_plan_with(&ctx, &ask, t + 1_800).expect("ok")["head"]
+        answer_plan_with(&ctx, &ask, t + 1_800, &Default::default()).expect("ok")["head"]
             .get("est")
             .is_none(),
         "涨在 30 分钟以前还给估"
