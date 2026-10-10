@@ -47,6 +47,8 @@ pub(crate) struct OpenBatch {
 }
 
 impl OpenBatch {
+    /// 这一批什么都没有（耳朵不交空批；只在有耳朵的平台上用得到）。
+    #[cfg(target_os = "linux")]
     pub(crate) fn is_empty(&self) -> bool {
         self.opened.is_empty() && self.closed.is_empty() && !self.overflowed
     }
