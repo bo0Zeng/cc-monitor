@@ -560,7 +560,7 @@ pub fn spawn_retrying_etxtbsy<T>(
 ///   **本模块生产段一个 `thread::sleep` 都不许有**；
 /// - `rust_timer_registry::every_periodic_wake_in_the_rust_tree_is_registered`：
 ///   monitor Rust 树里**每一处** `sleep` 都要在那张登记表里有一条，
-///   而那张表住 `src/rust_timer_registry.rs`。
+///   而那张表住 `tests/frontend/shell/rust_timer_registry.rs`。
 ///
 /// ⇒ 加一句退避 = 同时动那两处，其中第二处是**第三个文件**。**如实记为没做到，交回 PM 裁。**
 /// ⚠ **别读大**：没有退避买到的仍然是真的（重试本身要花几百微秒一趟、次数上限是真的、

@@ -304,11 +304,15 @@ describe("P2s backend 开关区", () => {
       { channel: true, pid: 7 },
     ];
     s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!.click();
-    await new Promise((r) => setTimeout(r, 400));
-    expect(
-      s.element.querySelector(".backend-row-state")?.textContent,
-      "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
-    ).toContain(copyText("backend.status.connected"));
+    // 等到画上「已连接」为止（按条件等，不按墙钟歇）；上限只防挂死。
+    await vi.waitFor(
+      () =>
+        expect(
+          s.element.querySelector(".backend-row-state")?.textContent,
+          "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
+        ).toContain(copyText("backend.status.connected")),
+      { timeout: 10_000, interval: 20 },
+    );
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
@@ -575,9 +579,12 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
     s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!.click();
-    await new Promise((r) => setTimeout(r, 400));
-    const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
-    expect(col.querySelectorAll("[data-health-extra]").length).toBe(1);
+    // 等起完那一趟画完（两次 channel:false 都读过）再数；按条件等，上限只防挂死。
+    await vi.waitFor(() => expect(statusQueue.length).toBe(0), { timeout: 10_000, interval: 20 });
+    await vi.waitFor(
+      () => expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1),
+      { timeout: 10_000, interval: 20 },
+    );
   });
 
   it("★★ 〔PB1 · P3〕金样每一形：后端给什么就画什么 —— 一句 · 状态 · ⓘ 在不在 · [详情] 在不在，逐格相等", async () => {
