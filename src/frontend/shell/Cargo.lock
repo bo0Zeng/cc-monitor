@@ -3349,6 +3349,7 @@ dependencies = [
  "creds-core",
  "deploy-contract",
  "dirs 5.0.1",
+ "embed-resource",
  "filewin-contract",
  "futures",
  "gtk",

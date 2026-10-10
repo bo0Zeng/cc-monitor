@@ -8,7 +8,42 @@ fn main() {
     embed_native_backend(&mut carried);
     emit_embedded_id(&carried);
     embed_native_filewin();
-    tauri_build::build()
+    manifest_for_every_artifact();
+    // 清单不交给 Tauri 编（它那份资源只进 `[[bin]]`）；图标与版本信息仍由它编。出错照 `tauri_build::build()` 原样说、退出。
+    let tauri_attrs = tauri_build::Attributes::new()
+        .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+    if let Err(e) = tauri_build::try_build(tauri_attrs) {
+        println!("{e:#}");
+        std::process::exit(1);
+    }
+}
+
+/// Windows 进程清单（`windows/app.manifest`）编成资源、交给本包的**每一个**链接产物 —— 两个程序，**也包括测试程序**。
+///
+/// Tauri 自己编的那份资源只链进 `[[bin]]`（`embed-resource` 的 `rustc-link-arg-bins`），lib 的测试程序于是没有清单；
+/// 而 Tauri 的 Windows 运行时按名字引入 comctl32 的 `TaskDialogIndirect` · `SetWindowSubclass` 一族（只有通用控件 v6 按名字导出），
+/// 测试一碰到它（`chan::host::plan_open` 经 `raise_main` 拉主窗那一下，测试走生产句柄 `InboundBackends` 就够得到），
+/// 链接器就把它留进导入表，那份测试程序在 Windows 上第一行代码之前就死（`0xc0000139`）。清单只有这一份，程序与测试程序同一份。
+/// 判据：`tests/frontend/shell/lib_app_manifest_tests.rs`（测试程序在 Windows 上读回自己的清单）。
+fn manifest_for_every_artifact() {
+    let dir =
+        std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let manifest = dir.join("windows").join("app.manifest");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
+    let rc = out.join("app-manifest.rc");
+    // `1` ＝ CREATEPROCESS_MANIFEST_RESOURCE_ID，`24` ＝ RT_MANIFEST。rc 的字符串里反斜杠要成对。
+    let path = manifest.display().to_string().replace('\\', "\\\\");
+    std::fs::write(&rc, format!("1 24 \"{path}\"\n")).expect("写不出清单的 .rc");
+    if let Err(e) =
+        embed_resource::compile_for_everything(&rc, embed_resource::NONE).manifest_required()
+    {
+        println!("cargo:warning=清单没编成资源：{e}");
+        std::process::exit(1);
+    }
 }
 
 /// 🔴 **本文件不读后端源码。** monitor 的「我这一版」只有一个值：手上那份内嵌后端字节自报的 id
