@@ -29,11 +29,11 @@ class ResidentLinkTest {
             val d = FakeDuplex()
             d.push("""{"kind":"hello","v":1,"build_id":"${EmbeddedBuild.ID}"}""")
             d.push("""{"attach":"ok"}""")
-            val got = link(d).open(backgroundScope, "n1", ResidentLink.Timeouts(1_000)) {}
+            val got = link(d).open(backgroundScope, "n1", "Asia/Shanghai", ResidentLink.Timeouts(1_000)) {}
             runCurrent()
             assertTrue("应当接上：$got", got is LinkOutcome.Up)
             assertEquals("门槛 · 起常驻，只这两次一次性调用", 2, asked.size)
-            assertEquals("流上只写了 attach 那一行", listOf("""{"attach":true,"flags":["--tail-only"]}"""), drain(d))
+            assertEquals("流上只写了 attach 那一行", listOf("""{"attach":true,"flags":["--tail-only"],"tz":"Asia/Shanghai"}"""), drain(d))
         }
 
     @Test
@@ -42,7 +42,7 @@ class ResidentLinkTest {
             val d = FakeDuplex()
             d.push("""{"kind":"hello","v":1,"build_id":"other"}""")
             d.push("""{"attach":"ok"}""")
-            val got = link(d).open(backgroundScope, "n1", ResidentLink.Timeouts(1_000)) {}
+            val got = link(d).open(backgroundScope, "n1", "Asia/Shanghai", ResidentLink.Timeouts(1_000)) {}
             assertEquals(LinkOutcome.HelloDiffers("other"), got)
             assertTrue("不接 ⇒ 关流", d.closed)
         }
