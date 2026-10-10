@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -560,6 +560,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "ARCHITECTURE §2.9「会走的钟」：桌面秒级走的那几处只留一个时长读口，与 Rust 那一份对同一份金样",
   },
+  J29: {
+    what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
+    homes: ["acct-core::account_selectable", "acct-core::effective_default"],
+    // 从前三处判、口径不一：命令行 `plan.rs::default_name` 只认标了的（没标 ⇒ 起成不指定号）；起会话跟随
+    //   `launch_account.rs` 与界面 `accounts.ts::effectiveDefault` 回落第一个；可选两处各写一遍（界面那份不看号目录写没写）。
+    //   ⇒ 清单成品逐号写 `selectable`、`meta` 写 `effectiveDefault`，起会话与界面只读；命令行调同一个函数。金样 `tests/__fixtures__/account-default.golden.json`。
+    status: "zero",
+    defs: ["isSelectable", "effectiveDefault", "currentWorkingAccount"],
+    needles: [
+      { text: ".find((a) => a.isDefault) ??", count: 0 },
+      { text: 'a.mode === "isolated" && a.authReady', count: 0 },
+    ],
+    rustGone: ["src/backend/control/ccm/plan.rs::default_name"],
+    rustNeedles: [{ file: "src/backend/control/launch_account.rs", text: '.find(|a| a.is_default)', count: 0 }],
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -587,6 +602,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     AUTH_KIND_SUBSCRIPTION: NONE,
     auth_kind_with_apikey_table: NONE,
     auth_ready: "J1",
+    account_selectable: "J29",
+    effective_default: "J29",
     CREDENTIALS_NAME: NONE,
     is_deceptive_char: "J2",
     SUPPORTED_SCHEMA: NONE,

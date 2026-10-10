@@ -942,7 +942,7 @@ fn the_account_table_has_exactly_one_source() {
     .expect("造夹具");
     let t = AccountTable::load(&m);
     assert_eq!(t.accounts.len(), 1);
-    assert_eq!(t.default_name(), Some("z"));
+    assert_eq!(t.effective_default().map(|a| a.name.as_str()), Some("z"));
     assert_eq!(t.config_dir_of("z"), Some(d.clone()));
     // manifest 不在 ⇒ **空表**，不是失败（那台机器就是没有账号库）
     assert!(AccountTable::load("/nonexistent/accounts.json")
@@ -999,7 +999,7 @@ fn a_manifest_with_a_utf8_bom_is_read_not_silently_eaten() {
         "带 BOM 的账号库被吃掉了 —— 实得 {} 个号",
         t.accounts.len()
     );
-    assert_eq!(t.default_name(), Some("work"));
+    assert_eq!(t.effective_default().map(|a| a.name.as_str()), Some("work"));
     assert_eq!(t.config_dir_of("work"), Some(d.clone()));
     // 而且**不许**被报成「解析不动」：它解析得动，只是带了 BOM。
     assert!(
@@ -2426,4 +2426,59 @@ fn the_direct_path_clears_the_session_id_variables_even_without_nested_markers()
         "重复了：{with:?}"
     );
     assert_eq!(with[0], "X_NESTED");
+}
+
+/// ★★ 命令行不带 `--account`（裸终端、没继承号）落的号 == 金样的默认号（`tests/__fixtures__/account-default.golden.json`，
+/// 与清单成品 `meta.effectiveDefault` · 界面同读）：一个都没标 ⇒ 第一个（从前这一路不回落、起成了不指定号）；
+/// 默认号是账号 0 ⇒ 不指定号；清单空 ⇒ 不指定号。
+#[test]
+fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../__fixtures__/account-default.golden.json"
+    ))
+    .unwrap();
+    let a: Vec<String> = ["--cwd", "/p"].iter().map(|s| s.to_string()).collect();
+    let o = match parse(&a).expect("解析得动") {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    for case in golden["cases"].as_array().unwrap() {
+        let what = case["what"].as_str().unwrap();
+        let root = tempdir();
+        let accounts: Vec<Account> = case["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| {
+                let name = a["name"].as_str().unwrap().to_string();
+                let dir = a["hasDir"]
+                    .as_bool()
+                    .unwrap()
+                    .then(|| format!("{root}/{name}"));
+                if let (Some(d), true) = (&dir, a["exists"].as_bool().unwrap()) {
+                    std::fs::create_dir_all(d).unwrap();
+                }
+                Account {
+                    name,
+                    config_dir: dir,
+                    is_default: a["isDefault"].as_bool().unwrap(),
+                }
+            })
+            .collect();
+        let want = case["effectiveDefault"].as_str().and_then(|d| {
+            let row = case["accounts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["name"] == d)?;
+            row["hasDir"]
+                .as_bool()
+                .unwrap()
+                .then(|| (format!("{root}/{d}"), d.to_string()))
+        });
+        let got = resolve_account(&o, &env(), &AccountTable::from_accounts(accounts))
+            .unwrap_or_else(|Die(m)| panic!("{what}：{m}"));
+        assert_eq!(got, want.unwrap_or_default(), "{what}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

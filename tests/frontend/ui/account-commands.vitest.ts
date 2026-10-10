@@ -19,6 +19,7 @@ function acct(p: Partial<Account>): Account {
     loggedIn: true,
     authKind: "subscription",
     authReady: true,
+    selectable: true,
     ...p,
   };
 }
@@ -59,7 +60,7 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
   it("不可选账号不出现在命令里", () => {
     const i = input({
       snapshot: {
-        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false, authReady: false })],
+        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false, authReady: false, selectable: false })],
         defaultName: "wei",
       },
     });

@@ -377,7 +377,7 @@ describe("规则编辑器 · 每格改完即存", () => {
     await openNight(el);
     saveRule.mockResolvedValueOnce({
       state: "refused",
-      errors: [{ cell: "cap.*.5h", code: "range" }],
+      errors: [{ cell: "cap.*.5h", code: "range", said: "0–99" }],
     });
     const cell = (w: string) =>
       editor()!.querySelector<HTMLInputElement>(`[data-rot-line-num="${w}"]`)!;
@@ -465,7 +465,7 @@ describe("规则编辑器 · 每格改完即存", () => {
     ed.querySelector<HTMLButtonElement>("[data-ed-name]")!.click();
     renameRule.mockResolvedValueOnce({
       state: "refused",
-      errors: [{ cell: "name", code: "dup" }],
+      errors: [{ cell: "name", code: "dup", said: copyText("rot.save.dup") }],
     });
     const inp = editor()!.querySelector<HTMLInputElement>("[data-ed-rename]")!;
     inp.value = "日常";

@@ -109,10 +109,12 @@ impl Rig {
         let mint =
             |_: batch::NameBase| -> Result<String, batch::CmdErr> { Ok("minted".to_string()) };
         let library = || {
-            la::Library::of_product(&json!({ "meta": {"enabled": true}, "accounts": [{
-                "name": "work", "configDir": "/h/.cc/work", "isDefault": false, "mode": "isolated",
-                "exists": true, "authReady": true,
-            }]}))
+            la::Library::of_product(
+                &json!({ "meta": {"enabled": true, "effectiveDefault": "work"}, "accounts": [{
+                    "name": "work", "configDir": "/h/.cc/work", "isDefault": false, "mode": "isolated",
+                    "exists": true, "authReady": true, "selectable": true,
+                }]}),
+            )
         };
         let facts = la::Facts {
             has_accounts: true,

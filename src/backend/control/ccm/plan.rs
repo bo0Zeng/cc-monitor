@@ -448,12 +448,9 @@ impl AccountTable {
             .join(" ")
     }
 
-    /// `isDefault: true` 的第一个。
-    fn default_name(&self) -> Option<&str> {
-        self.accounts
-            .iter()
-            .find(|a| a.is_default)
-            .map(|a| a.name.as_str())
+    /// 这台的默认号（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，与清单成品 `meta.effectiveDefault` 同一条。
+    fn effective_default(&self) -> Option<&Account> {
+        acct_core::effective_default(&self.accounts, |a| a.is_default)
     }
 }
 
@@ -849,7 +846,12 @@ pub(crate) fn resolve_account(
         // 调用方已经选好号 ⇒ **尊重它**，不覆盖（`R08`：真机复现过的静默换号）。
         return Ok((String::new(), String::new()));
     }
-    let Some(def) = table.default_name().map(|s| s.to_string()) else {
+    // 没有默认号 · 默认号是账号 0（清单里没写号目录）⇒ 不指定号。
+    let Some(def) = table
+        .effective_default()
+        .filter(|a| a.config_dir.is_some())
+        .map(|a| a.name.clone())
+    else {
         return Ok((String::new(), String::new()));
     };
     match table.config_dir_of(&def) {

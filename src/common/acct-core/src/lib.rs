@@ -99,6 +99,31 @@ pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
     }
 }
 
+// ---------------------------------------------------------------- 能不能选 · 默认号是谁
+
+/// 「这个号能拿来起会话、能被选为默认」。这是这条判定的唯一住址：清单成品逐号写 `selectable`（后端 `observe/accounts_query.rs`），
+/// 起会话的判定（`control/launch_account.rs`）与界面都只读那一格。
+/// 四条都要：隔离模式（`in-place` 是逃生口、账号 0 是 `bare`）· 鉴权那一维就绪（[`auth_ready`]）· 号目录在 · 清单里写了号目录（账号 0 不经选号）。
+/// 跨三处的金样：`tests/__fixtures__/account-default.golden.json`。
+pub fn account_selectable(
+    mode: &str,
+    auth_ready: bool,
+    exists: bool,
+    has_config_dir: bool,
+) -> bool {
+    mode == "isolated" && auth_ready && exists && has_config_dir
+}
+
+/// **这台的默认号**：清单里标了默认（`isDefault`）的第一个；一个都没标 ⇒ 清单里第一个；清单空 ⇒ 没有。
+/// 这是这条判定的唯一住址：清单成品的 `meta.effectiveDefault`（起会话跟随读它）· 命令行不带 `--account` 时（`control/ccm/plan.rs`）都调它；
+/// 界面只读 `meta.effectiveDefault`。只说「默认号是谁」，不说它能不能用（那一格是 [`account_selectable`]）。
+pub fn effective_default<T>(accounts: &[T], is_default: impl Fn(&T) -> bool) -> Option<&T> {
+    accounts
+        .iter()
+        .find(|a| is_default(a))
+        .or_else(|| accounts.first())
+}
+
 /// 跨生产者对拍夹具的**一格**：喂什么、该出什么。
 ///
 /// 字段分两半：`manifest_auth_kind` / `credentials_present` 是**输入**，
