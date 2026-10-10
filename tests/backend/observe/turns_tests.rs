@@ -591,3 +591,39 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     dress_live(&mut done, Some(&needs), true);
     assert_eq!(done, before, "收尾了的轮不动");
 }
+
+/// ★ 排队插话落成了人话：中断之后那句排队的话又作为你的一句落进记录（下一句的原文与它一字不差）⇒ 排队那一条记进这一轮的
+/// `landed`（界面不再单独出它，只露人话那一条）；还在排队、人话还没落 ⇒ 不记（插话卡照常露着）；下一句说的不是它 ⇒ 也不记。
+#[test]
+fn a_queued_line_that_lands_as_your_next_sentence_is_marked_landed() {
+    let t = "2026-10-07T08:00:00Z";
+    let queued = |s: &str| serde_json::json!({"type":"queue-operation","operation":"remove","timestamp":t,"content":s});
+    let head = [
+        user("u1", t, "q"),
+        said("a1", t, calls("t1")),
+        user("x1", t, "[Request interrupted by user]"),
+        queued("用 functools"),
+    ];
+    let body = body_of(&head);
+    let at = |k: usize| {
+        head[..k]
+            .iter()
+            .map(|l| l.to_string().len() as u64 + 1)
+            .sum::<u64>()
+    };
+    let qid = crate::agents::line_id(at(3));
+
+    // 人话还没落：插话卡照常露着
+    let rows = scan(&body, 0);
+    assert!(rows[0].landed.is_empty(), "还在排队");
+
+    // 落了（同一段文字）：记进排队那一条所在的那一轮
+    let landed = format!("{body}{}\n", user("u2", t, "用 functools"));
+    let rows = scan(&landed, 0);
+    assert_eq!(rows[0].landed, [qid.clone()]);
+    assert!(rows[1].landed.is_empty());
+
+    // 下一句说的不是它：不记
+    let other = format!("{body}{}\n", user("u2", t, "别的"));
+    assert!(scan(&other, 0)[0].landed.is_empty());
+}

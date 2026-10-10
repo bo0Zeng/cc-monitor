@@ -365,6 +365,8 @@ export interface TurnSummary {
   done: boolean;
   /** 此刻：没在跑 · 在跑 · 在等你（后端按这台的会话事实判）。 */
   phase: TurnPhase;
+  /** 这一轮里落成了人话的排队插话（排队那一条的记录 id）：界面不再单独出它（同一句不上屏两次）。 */
+  landed: string[];
   /** 过程段（后端划好，文件序）：一段一行，跟在 `after` 那张卡后面；空 ⇒ 这一轮不折。 */
   folds: TurnFoldRow[];
 }
@@ -393,7 +395,7 @@ export interface TurnSpan {
   to: number | null;
 }
 
-const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "fails", "folds", "peers", "phase", "reply", "retries", "said", "shown", "start", "startText", "thinking", "tools", "uuid"] as const;
+const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "fails", "folds", "landed", "peers", "phase", "reply", "retries", "said", "shown", "start", "startText", "thinking", "tools", "uuid"] as const;
 const PHASES: readonly string[] = ["idle", "running", "awaiting"];
 const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn"] satisfies readonly Tone[];
 const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
@@ -433,6 +435,8 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       !PHASES.includes(t.phase) ||
       !Array.isArray(t.shown) ||
       !t.shown.every(isStr) ||
+      !Array.isArray(t.landed) ||
+      !t.landed.every(isStr) ||
       !Array.isArray(t.folds) ||
       !t.folds.every(isFold)
     ) {
@@ -454,6 +458,7 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       peers: t.peers as number,
       fails: t.fails as number,
       shown: [...(t.shown as string[])],
+      landed: [...(t.landed as string[])],
       reply: t.reply as string,
       done: t.done,
       phase: t.phase as TurnPhase,

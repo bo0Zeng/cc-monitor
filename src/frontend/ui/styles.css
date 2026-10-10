@@ -1623,6 +1623,11 @@
   display: none;
 }
 
+/* 排队插话已经落成了人话（后端 `history-turns` 的 landed）：同一句不上屏两次。 */
+.queued-landed {
+  display: none;
+}
+
 /* === 轮次刻度：正文区右缘 16px 一列，每轮一格 3px 短线；当前那一轮 --accent 加长，在等你的那一轮琥珀。
    挂在 #message-stream 上、不随流滚；切 tab 翻 visibility（子树就几十格，翻继承属性的代价可以忽略；大的那棵 .stream 走 content-visibility）。 */
 .turn-rail {

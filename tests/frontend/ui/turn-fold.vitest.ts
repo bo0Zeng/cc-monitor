@@ -11,7 +11,7 @@ import { placeFloat } from "../../../src/frontend/ui/kit/place";
 /** 轮次刻度的悬停卡：左侧、竖直居中、间距 6（`tooltip.ts` 的 PLACEMENT 表）。 */
 const placeCardLeft = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "left", align: "center", gap: 6 }, tip, view);
 import type { TurnFoldRow, TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
-import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
+import { markCardId, renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -34,6 +34,7 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
   peers: 0,
   fails: 0,
   shown: [],
+  landed: [],
   reply: "",
   done: true,
   phase: "idle",
@@ -445,6 +446,27 @@ describe("按段折叠", () => {
     await f.refresh();
     expect([hidden(a), hidden(g)]).toEqual([false, true]);
     expect(a.nextElementSibling?.classList.contains(PROC_LINE_CLASS)).toBe(true);
+  });
+});
+
+describe("排队插话落成了人话", () => {
+  it("★ 后端说它落了（landed）⇒ 插话卡不再单独出，只露人话那一条；还在排队 ⇒ 照常露着", async () => {
+    const q = card("card-user-queued");
+    q.dataset.queuedId = "@40";
+    const { fold: f } = rig([card("card-user", "u1"), card("card-assistant", "a1"), q], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, shown: ["a1"], folds: [] })] },
+      { available: true, from: 0, end: 20, turns: [turn("u1", 0, { shown: ["a1"], folds: [], landed: ["@40"] }), turn("u2", 15, { folds: [] })] },
+    ]);
+    await f.refresh();
+    expect(q.classList.contains("queued-landed")).toBe(false);
+    await f.refresh();
+    expect(q.classList.contains("queued-landed")).toBe(true);
+  });
+
+  it("排队卡带上它的记录 id（`data-queued-id`，不进 `data-id`：它不在链上）", () => {
+    const el = document.createElement("div");
+    markCardId(el, { t: "queued", id: "@40" } as never);
+    expect([el.dataset.queuedId, el.getAttribute("data-id")]).toEqual(["@40", null]);
   });
 });
 

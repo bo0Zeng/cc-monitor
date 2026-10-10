@@ -380,9 +380,15 @@ function markMemberUuids(record: LineRecord, ctx: RenderContext, result: ReturnT
 
 /**
  * 给卡的 root 写 data-id（记录的 `id`）：BranchFolder 按它认主线外清单里的那几条，轮次 / 跳转 / 查找按它找卡。
- * 重试细条与认不出的那一行也要写：回退掉的那一段里夹着它时，不写会把折叠段劈成两段。排队那一句不写（它不在哪一轮的链上）。
+ * 重试细条与认不出的那一行也要写：回退掉的那一段里夹着它时，不写会把折叠段劈成两段。排队那一句不写 `data-id`（它不在哪一轮的链上），
+ * 写 `data-queued-id`。
  */
 export function markCardId(el: HTMLElement, rec: LineRecord): void {
+  // 排队那一句：只记它自己的记录 id（后端说它落成了人话 ⇒ 按它藏，`turn-fold.ts`），不进 `data-id`。
+  if (rec.t === "queued") {
+    el.dataset.queuedId = rec.id;
+    return;
+  }
   if (rec.t !== "said" && rec.t !== "reply" && rec.t !== "retry" && rec.t !== "unread") return;
   el.setAttribute("data-id", rec.id);
 }

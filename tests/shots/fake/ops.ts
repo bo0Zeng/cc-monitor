@@ -238,10 +238,10 @@ export function defaultOps(): Record<string, OpHandler> {
       type T = {
         at: number; uuid: string; start: string; end: string; startText: string; endText: string; said: string;
         tools: number; thinking: number; agents: number; background: number; retries: number; peers: number; fails: number;
-        shown: string[]; reply: string; done: boolean; phase: string; folds: Fold[];
+        shown: string[]; landed: string[]; reply: string; done: boolean; phase: string; folds: Fold[];
       };
       type Item = { id: string; at: string; shown: boolean; tools: number; thinking: number; agents: number; retries: number; peers: number; fails: number; compacts: number; notices: { task: string | null; failed: boolean }[] };
-      type Acc = { items: Item[]; stop: number | null; runs: string[]; reply: string[]; pending: { id: string; name: string; what: string | null }[]; tail: boolean; tailStart: string };
+      type Acc = { items: Item[]; stop: number | null; runs: string[]; reply: string[]; pending: { id: string; name: string; what: string | null }[]; tail: boolean; tailStart: string; queued: [string, string][] };
       const turns: T[] = [];
       const accs: Acc[] = [];
       let cur: T | null = null;
@@ -321,15 +321,18 @@ export function defaultOps(): Record<string, OpHandler> {
         if (head && isSaid(r)) {
           if (cur && acc) {
             cur.done = true;
+            // 排队插话落成了这一句（原文一字不差）⇒ 记进排队那一条所在的那一轮（同后端 `TurnScan::line`）。
+            const text = r.who.text.trim();
+            cur.landed = acc.queued.filter(([, q]) => q === text).map(([id]) => id);
             close(cur, acc);
           }
           const said = sp!.kind === "slashCommand" ? `${(sp as { name: string }).name} ${(sp as { args?: string }).args ?? ""}`.trim() : r.who.text;
           const when = r.at ?? "";
           cur = {
             at: at[i].o, uuid: r.id, start: when, end: when, startText: hm(Date.parse(when)), endText: hm(Date.parse(when)), said: said.split("\n")[0].slice(0, 50),
-            tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, shown: [], reply: "", done: false, phase: "idle", folds: [],
+            tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, shown: [], landed: [], reply: "", done: false, phase: "idle", folds: [],
           };
-          acc = { items: [], stop: null, runs: [], reply: [], pending: [], tail: false, tailStart: "" };
+          acc = { items: [], stop: null, runs: [], reply: [], pending: [], tail: false, tailStart: "", queued: [] };
           turns.push(cur);
           accs.push(acc);
           return;
@@ -342,6 +345,7 @@ export function defaultOps(): Record<string, OpHandler> {
           it.retries++;
           return;
         }
+        if (r.t === "queued" && r.who.speaker.kind === "human") acc.queued.push([r.id, r.who.text.trim()]);
         if (!isSaid(r) && !isReply(r)) return;
         cur.end = r.at ?? cur.end;
         cur.endText = hm(Date.parse(cur.end));

@@ -112,6 +112,8 @@ export class TurnFold {
   private turns: TurnSummary[] = [];
   /** 边界：每一轮的开头 ＋ 露着的那几条（uuid）。 */
   private bounds = new Set<string>();
+  /** 落成了人话的排队插话（排队卡的记录 id，后端 `landed`）。 */
+  private landed = new Set<string>();
   /** 段的 `after` ⇒ 那一段。 */
   private byAfter = new Map<string, FoldRef>();
   private lines = new Map<string, HTMLButtonElement>();
@@ -195,6 +197,7 @@ export class TurnFold {
       this.failures = 0;
       this.turns = [...this.turns.filter((t) => t.at < res.from), ...res.turns];
       this.bounds = new Set(this.turns.flatMap((t) => [t.uuid, ...t.shown]));
+      this.landed = new Set(this.turns.flatMap((t) => t.landed));
       this.byAfter = new Map(this.turns.flatMap((turn) => turn.folds.map((fold): [string, FoldRef] => [fold.after, { key: fold.after, turn, fold }])));
       this.apply();
       this.onTurns?.();
@@ -239,6 +242,9 @@ export class TurnFold {
     const spans = this.foldSpans();
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
+      // 排队插话已经落成了人话（后端判）：不再单独出。
+      const queued = el.dataset.queuedId;
+      if (queued !== undefined && el.classList.contains("queued-landed") !== this.landed.has(queued)) el.classList.toggle("queued-landed");
       const uuid = el.getAttribute("data-id");
       if (uuid !== null && (this.bounds.has(uuid) || this.byAfter.has(uuid))) {
         cur = this.byAfter.get(uuid) ?? null;

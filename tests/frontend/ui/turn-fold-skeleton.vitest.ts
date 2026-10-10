@@ -74,6 +74,7 @@ const turn = (k: number): TurnSummary => ({
   peers: 0,
   fails: 0,
   shown: [`u${k * PER_TURN + ENDING_AT}`],
+  landed: [],
   reply: "",
   done: true,
   phase: "idle",

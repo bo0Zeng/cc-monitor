@@ -59,6 +59,9 @@ pub(crate) struct TurnRow {
     pub(crate) phase: Phase,
     /// 过程段（文件序）：一段一行，界面把那一行插在 `after` 那张卡后面、把这一段的卡收进去。空 ⇒ 这一轮什么都不折。
     pub(crate) folds: Vec<Fold>,
+    /// 这一轮里落成了人话的排队插话（排队那一条的记录 id）：下一句你说的原文与它一字不差 ⇒ 那句话已经作为你的一句进了记录，
+    /// 界面不再单独出排队那一条（同一句不上屏两次）；还在排队 / 下一句不是它 ⇒ 不在这里（照常露着）。
+    pub(crate) landed: Vec<String>,
     /// 最后一段过程是这一轮的尾巴（后面没有露着的了）：还在跑时「现在：…」「等你批准：…」写在它上面。
     #[serde(skip)]
     pub(crate) tail_fold: bool,
@@ -239,6 +242,8 @@ struct Open {
     items: Vec<Item>,
     /// 停下这一轮的那一条（中断标记 / 报错卡，`items` 的下标）；后面又有 assistant 记录 ⇒ 作废。
     stop: Option<usize>,
+    /// 这一轮里的排队插话（记录 id · 原文），等下一句你说的来对。
+    queued: Vec<(String, String)>,
 }
 
 impl TurnRow {
@@ -684,6 +689,13 @@ impl TurnScan {
                 .unwrap_or("");
             let closed = self.open.take().map(|mut t| {
                 t.row.done = true;
+                let said = speech.trim();
+                t.row.landed = t
+                    .queued
+                    .iter()
+                    .filter(|(_, q)| q == said)
+                    .map(|(id, _)| id.clone())
+                    .collect();
                 t.close()
             });
             self.open = Some(Open {
@@ -701,6 +713,12 @@ impl TurnScan {
         }
         if crate::agents::run_of_record(self.tree, v).is_some() {
             return None;
+        }
+        if let (Some(q), Some(t)) = (
+            crate::agents::queued_text_of(self.tree, v),
+            self.open.as_mut(),
+        ) {
+            t.queued.push((crate::agents::line_id(at), q));
         }
         if let Some(t) = self.open.as_mut() {
             feed(self.tree, t, v);
