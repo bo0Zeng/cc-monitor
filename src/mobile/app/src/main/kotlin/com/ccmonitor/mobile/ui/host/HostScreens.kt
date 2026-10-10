@@ -466,10 +466,7 @@ fun HostEditorScreen(
                 Text(p.displayName, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        // Claude 那一档填的是「这台机器上用哪个账号」：不选就不给起新对话（`ChatLaunchContext.hasChosenAccount`，
-        // 聊天屏当场显示 `ChatRoute.NO_ACCOUNT_CHOSEN`，而不是跑成没登录的默认账号再回 `api_error`）。
-        // 标签不写「必填」：保存按钮不校验它，「设置」里的应用级默认也能满足那道门。
-        // Codex 服务器落只读档（对话总览），账号门只对 Claude 档生效（`ChatLaunchContext.accountChosenFor`）。
+        // 这一格只给终端屏的「Claude 阅读」找记录用；聊天屏起会话跟随那台核心的默认号，不读它。
         OutlinedTextField(
             claudeDir,
             { claudeDir = it },
@@ -478,15 +475,6 @@ fun HostEditorScreen(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (gatedByAccount) {
-            Text(
-                "起新对话前必须选一个账号：填在这里，或在「设置」里填应用级默认。" +
-                    "填绝对路径（波浪号不会展开）；多账号的机器上每个账号一个目录。" +
-                    "两处都空着时新界面不给起对话——那时跑的是这台机器默认的账号，它未必登录着。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
 
         // 开关即 useTmux；文案不说「连接」「tmux」。
         SwitchRow("打开就直接进那台上的工作区", useTmux) { useTmux = it }

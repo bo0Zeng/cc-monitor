@@ -19,7 +19,7 @@ import java.io.File
  * |---|---|---|
  * | ① | 枚举我们会发出去的每一条 tmux 命令（真实返回值），其中每一次写选项都带 `-t`、不带 `-g`/`-s`、不碰服务器级选项；不出现 `bind`/`source-file`/`kill-server` 这类整台机器的动作 | 全部 `set -g` ⇒ 红 |
  * | ② | 显示设置只落在要进的那个会话上（目标逐字等于 `'=<名>:'`）| 落到别的目标上 ⇒ 红 |
- * | ③ | 聊天托管（`atermpipe-*`）与后台新建一个选项都不写 | 起管道时又顺手设显示选项 ⇒ 红 |
+ * | ③ | 后台新建一个选项都不写 | 后台新建时又顺手设显示选项 ⇒ 红 |
  * | ④ | 全部生产源码的字面里没有 `set -g`/`set-option -g`/`setw -g`… | 有人在没被①枚举到的新路径里写 `-g` ⇒ 红 |
  *
  * ### 判别力边界
@@ -71,13 +71,10 @@ class TmuxScopedOptionsTest {
         }
     }
 
-    /** ③：聊天托管与后台新建一个选项都不写。 */
+    /** ③：后台新建一个选项都不写。 */
     @Test
-    fun theChatPipeAndDetachedCreationsWriteNoOptionsAtAll() {
-        val pipe = PipeLauncher.startCommand(TmuxBackend, sid, null) ?: error("前提：合法 sid 必须给出管道命令")
-        assertTrue("前提：管道那条真的会建会话：\n$pipe", pipe.contains("new-session -d -s "))
+    fun theDetachedCreationsWriteNoOptionsAtAll() {
         for ((who, cmd) in mapOf(
-            "聊天管道（atermpipe-*）" to pipe,
             "管理器·后台新建" to TmuxBackend.newDetachedCommand("work"),
             "管理器·后台 cc" to TmuxBackend.newDetachedRunningCommand("work", "claude"),
         )) {
@@ -141,7 +138,7 @@ class TmuxScopedOptionsTest {
 
     // ---- 枚举 ---------------------------------------------------------------
 
-    /** 我们会发往远端的每一条 tmux 命令（经 [SessionBackend] 与上行网关、管道启动器的真实返回值）。 */
+    /** 我们会发往远端的每一条 tmux 命令（经 [SessionBackend] 的真实返回值）。 */
     private fun everyTmuxCommandWeBuild(): Map<String, String> =
         buildMap {
             val b: SessionBackend = TmuxBackend
@@ -157,15 +154,11 @@ class TmuxScopedOptionsTest {
             put("kill", b.killCommand("work"))
             put("newDetached", b.newDetachedCommand("work"))
             put("newDetachedRunning", b.newDetachedRunningCommand("work", "claude"))
-            put("startOnce", b.startOnceCommand("atermpipe-x", "echo hi"))
             put("sessionCwd", b.sessionCwdCommand("work"))
             put("sendModel", b.sendModelCommand("work", "opus"))
             put("capture", b.captureCommand("work"))
             put("foregroundProbe", b.foregroundProbeCommand("work"))
             put("paneChildProbe", b.paneChildProbeCommand("work"))
-            put("uplink ours", TmuxCommands.buildSendCommand("cc-abc12345", "hi") ?: error("前提"))
-            put("uplink foreign", TmuxCommands.buildSendCommand("someone-elses", "hi") ?: error("前提"))
-            put("pipe start", PipeLauncher.startCommand(b, sid, null) ?: error("前提"))
         }
 
     // ---- 解析 ---------------------------------------------------------------
