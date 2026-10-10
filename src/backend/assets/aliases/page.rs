@@ -691,7 +691,7 @@ fn text_after(text: Option<&str>, changes: &[Change]) -> Result<String, String> 
     profile::apply_changes(text.or(Some("")), changes)
 }
 
-/// `profiles-resolve {name, edit?, at?}` → `{chain, rows, line, lineError, problem}`。`edit`：按表单那一刻算（未存）；
+/// `profiles-resolve {name, edit?, at?}` → `{chain, rows, line, lineShort, lineError, problem}`（`lineShort` ＝ 「等于」那一格的短形，[`crate::control::ccm::plan::render_short`]）。`edit`：按表单那一刻算（未存）；
 /// `at`：假设在这个目录敲（缺省家目录）。
 pub(crate) fn answer_resolve(d: &dyn Door, args: &Value) -> Answer {
     let name = args
@@ -728,23 +728,25 @@ pub(crate) fn answer_resolve(d: &dyn Door, args: &Value) -> Answer {
         .map(str::trim)
         .unwrap_or(name);
     if let Some(e) = problem_text {
-        return Ok(json!({"chain": [], "rows": [], "line": null, "lineError": null, "problem": e}));
+        return Ok(
+            json!({"chain": [], "rows": [], "line": null, "lineShort": null, "lineError": null, "problem": e}),
+        );
     }
     match profile::resolve(&book, target, &[]) {
         Ok(r) => {
             let rows = rows_of(&book, &r.chain, &r.origins);
-            let (line, line_error) =
+            let (line, line_short, line_error) =
                 match crate::control::ccm::preview_resolved(r.parsed, &store.home, at) {
-                    Ok(l) => (Some(l), None),
-                    Err(e) => (None, Some(e)),
+                    Ok((l, short)) => (Some(l), Some(short), None),
+                    Err(e) => (None, None, Some(e)),
                 };
             Ok(
-                json!({"chain": r.chain, "rows": rows, "line": line, "lineError": line_error, "problem": null}),
+                json!({"chain": r.chain, "rows": rows, "line": line, "lineShort": line_short, "lineError": line_error, "problem": null}),
             )
         }
-        Err(e) => {
-            Ok(json!({"chain": [], "rows": [], "line": null, "lineError": null, "problem": e}))
-        }
+        Err(e) => Ok(
+            json!({"chain": [], "rows": [], "line": null, "lineShort": null, "lineError": null, "problem": e}),
+        ),
     }
 }
 
