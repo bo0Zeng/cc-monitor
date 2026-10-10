@@ -28,7 +28,7 @@ const ROT = {
   atLimit: "continue",
   wait: 40,
   cap: { "*": { "5h": 90 } },
-  stint: { "*": 2 },
+  stint: { "*": { "*": 2 } },
 };
 
 /** 夜间的轮换（抢回 · work 只兜底、17:00–02:00 停用 · lab 单独的线）。 */
@@ -57,7 +57,7 @@ const SAVER_ROT = {
   atLimit: "continue",
   wait: 40,
   cap: { "*": { "5h": 80, "7d": 95 } },
-  stint: { "*": 10 },
+  stint: { "*": { "*": 10 } },
 };
 
 const THREE: R[] = [
