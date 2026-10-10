@@ -7,6 +7,7 @@
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
 //! - `plan-cell-view {workspace, slice, id}`：一格的 `agent_view`（上一次读好的那一份里的）。
 //! - `plan-command {workspace, cmd: continue|pause|view}`：以人的身份代敲 pb 的用户命令（写盘的是 pb）。
+//! - `plan-files {dir}`：文件窗口反查（[`crate::plan::owners`]）：这个目录落在哪一片的仓库里、每份文件归哪一格。
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `plan_changed`。
 
@@ -204,6 +205,7 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
                 .ok_or_else(|| Fail::new("no_view", copy_text("bePlan.face.noView", &[])))
         }
         "plan-command" => command(args),
+        "plan-files" => files(args),
         other => Err(Fail::new(
             "bad_args",
             crate::common::contract::malformed(&format!("unknown command `{other}`")),
@@ -227,6 +229,33 @@ fn command(args: &Value) -> Answer {
     crate::plan::command::run(&entry, Path::new(ws), cmd)
         .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
         .and_then(wired::<wire::PlanCmdReply>)
+}
+
+/// `plan-files {dir}`：文件窗口反查（稿 06）。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
+/// 不为文件窗口走到的每个目录起一次 pb；目录在最深的那个工作区里才算。不在任何一片的仓库里 ⇒ `slice: null`（文件窗口什么都不多）。
+fn files(args: &Value) -> Answer {
+    let dir = args
+        .get("dir")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("missing `dir` (a string)"))?;
+    let b = book::book();
+    let ws = b
+        .workspaces()
+        .into_iter()
+        .filter(|w| {
+            let w = w.trim_end_matches('/');
+            dir.strip_prefix(w)
+                .is_some_and(|r| r.is_empty() || r.starts_with('/'))
+        })
+        .max_by_key(String::len);
+    let doc = ws.and_then(|w| b.last(w.as_str())).map(annotated);
+    let out = match doc {
+        Some(d) => crate::plan::owners::of_dir(&d, dir),
+        None => {
+            json!({"workspace": null, "slice": null, "unreadable": null, "entries": [], "unowned": null})
+        }
+    };
+    wired::<wire::PlanFiles>(out)
 }
 
 fn list(args: &Value) -> Answer {

@@ -134,6 +134,15 @@ pub struct Head {
     pub mtime_text: Option<String>,
     pub edit: bool,
     pub download: bool,
+    /// 计划反查（稿 06）：这一份归的那一格（`(片名, 那一格)`）；目录不在任何一片里 · 没人声明 ⇒ `None`。
+    pub owner: Option<(String, super::plan::Owner)>,
+}
+
+/// 那一栏里这一份归哪一格（反查结果跟着列目录异步到，所以每次 [`Preview::follow`] 都现查一次）。
+fn owner_of(pane: &FileWindow, name: &str) -> Option<(String, super::plan::Owner)> {
+    let plan = pane.listing.plan.lock().unwrap();
+    let d = plan.as_ref()?;
+    d.owner(name).map(|o| (d.slice.clone(), o.clone()))
 }
 
 /// 预览头上点了哪一颗（做事落回焦点那一栏）。
@@ -141,6 +150,8 @@ pub struct Head {
 pub enum PreviewAct {
     Edit,
     Download,
+    /// 「归属」那一块上的［在计划里看］。
+    OpenInPlan,
 }
 
 impl Default for Preview {
@@ -159,6 +170,81 @@ impl Default for Preview {
             head: None,
         }
     }
+}
+
+/// 预览头「归属」那一块（稿 06 第 1 张）：左边一道状态色（做完绿 · 其余灰）；状态图标 ＋ 标题 ·［在计划里看］；
+/// 一行「{片} · 块「…」· 签 …」；被两格声明 ⇒ 一行红字；对账「坏」⇒ 一行 pb 给的原因。回值 ＝ 点了［在计划里看］。
+fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
+    let p = super::theme::palette(ui.ctx());
+    let m = super::theme::metrics(ui.ctx());
+    let tint = match o.status {
+        super::plan::Status::Done => p.success,
+        _ => p.text2,
+    };
+    let mut clicked = false;
+    let r = egui::Frame::new()
+        .fill(p.card)
+        .corner_radius(m.radius_m)
+        .inner_margin(egui::Margin {
+            left: 12,
+            right: 10,
+            top: 8,
+            bottom: 8,
+        })
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(super::plan::status_icon(o.status)).color(tint));
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&o.title).color(p.text).strong())
+                        .truncate(),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let b = ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(super::plan::open_label()).color(p.accent),
+                        )
+                        .sense(egui::Sense::click()),
+                    );
+                    if b.clicked() {
+                        clicked = true;
+                    }
+                    b.on_hover_cursor(egui::CursorIcon::PointingHand);
+                });
+            });
+            ui.label(
+                egui::RichText::new(super::plan::owner_line(slice, o))
+                    .color(p.text2)
+                    .small(),
+            );
+            if !o.dup.is_empty() {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} {}",
+                        egui_phosphor::regular::WARNING,
+                        super::plan::dup_text(o)
+                    ))
+                    .color(p.error)
+                    .small(),
+                );
+            }
+            if let Some(why) = &o.broken {
+                ui.label(egui::RichText::new(why).color(p.warn).small());
+            }
+        });
+    // 左边那一道状态色。
+    let band = r.response.rect;
+    ui.painter().rect_filled(
+        egui::Rect::from_min_max(band.min, egui::pos2(band.left() + 3.0, band.bottom())),
+        egui::CornerRadius {
+            nw: m.radius_m as u8,
+            sw: m.radius_m as u8,
+            ne: 0,
+            se: 0,
+        },
+        tint,
+    );
+    clicked
 }
 
 /// 什么都没选时那一句。
@@ -185,6 +271,9 @@ impl Preview {
 
     /// 🔴 **每帧调一次**：先收到货，再看「要的是谁」变没变，最后决定发不发。
     pub fn follow(&mut self, pane: &FileWindow, ctx: Option<egui::Context>) {
+        if let Some(h) = self.head.as_mut() {
+            h.owner = owner_of(pane, &h.name);
+        }
         // ① 收货：是要的那一份才摆出来，不是就丢掉（光标已经挪走了）。
         let arrived = self.slot.lock().unwrap().take();
         if let Some((path, r)) = arrived {
@@ -272,6 +361,7 @@ impl Preview {
                 mtime_text: r.mtime_text.clone(),
                 edit: can.contains(&super::select::Action::Edit),
                 download: can.contains(&super::select::Action::Download),
+                owner: owner_of(pane, &r.name),
             });
         }
         if r.opens_as_dir() {
@@ -442,6 +532,12 @@ impl Preview {
                 }
                 ui.label(egui::RichText::new(meta).color(p.text2).small());
                 ui.add_space(6.0);
+                if let Some((slice, o)) = &h.owner {
+                    if owner_block(ui, slice, o) {
+                        act = Some(PreviewAct::OpenInPlan);
+                    }
+                    ui.add_space(6.0);
+                }
             }
             None => {
                 ui.strong(&copy_text("rsFilewinPreview.ui.title", &[]));

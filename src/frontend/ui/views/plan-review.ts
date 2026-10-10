@@ -8,7 +8,7 @@ import { formDialog } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { writeClipboard } from "../clipboard";
 import { copyText } from "../copy-table";
-import { returnCell, PlanMiss, type PlanCell, type PlanNeed, type PlanSlice, type PlanWho } from "../plan-reads";
+import { returnCell, PlanMiss, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
 import { blockRoots, cellIndex } from "./plan-model";
 import s from "./plan-review.module.css";
 
@@ -56,14 +56,16 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
     const p = slice.progress;
     body.push(copyText("plan.review.topDoneWhat", { phase: blk?.phase ?? "", done: p?.done ?? 0, of: (p?.done ?? 0) + (p?.open ?? 0) }));
     acts.push(ackBtn());
-    if (root) acts.push(button({ label: copyText("plan.review.return"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, root) }));
+    // 顶块在 pb 里与格同样可寻址（`project`）⇒ 退回它 ＝ 送给顶块接手（后端拼那一行、判落地）。
+    const top = topTarget(slice, need);
+    if (top) acts.push(button({ label: copyText("plan.review.return"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, top) }));
   } else if (need.kind === "red") {
     const red = need.red !== undefined ? slice.check.red[need.red] : undefined;
     title.append(copyText("plan.review.red", { rule: red?.rule ?? "", block: (root?.title ?? need.block) ?? "" }));
     if (red?.what) body.push(red.what);
     if (red?.fix) body.push(copyText("plan.review.redFix", { fix: red.fix }));
     acts.push(ackBtn());
-    if (root) acts.push(button({ label: copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, root) }));
+    if (root) acts.push(button({ label: copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, cellTarget(slice, root)) }));
   } else if (need.kind === "ask") {
     title.append(copyText("plan.review.ask"));
     if (blk?.owner) title.appendChild(host.who(blk.owner));
@@ -115,9 +117,8 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
   return bar;
 }
 
-/** 退回过的那一格：已退回（等它改）/ 已落地。没退回过 ⇒ `null`。 */
-export function returnedBar(host: ReviewHost, cell: PlanCell): HTMLElement | null {
-  const r = cell.returned;
+/** 退回过的那一格（或顶块：片上的 `returned`）：已退回（等它改）/ 已落地。没退回过 ⇒ `null`。 */
+export function returnedBar(host: ReviewHost, r: PlanReturned | null): HTMLElement | null {
   if (!r) return null;
   const bar = document.createElement("div");
   bar.className = `${s.rvBar} plan-returned`;
@@ -130,19 +131,54 @@ export function returnedBar(host: ReviewHost, cell: PlanCell): HTMLElement | nul
   return bar;
 }
 
-/** 退回框（做完了的格 ⇒「退回」；没做完 ⇒「说给负责的」，同一个框）。 */
-export function openReturn(host: ReviewHost, slice: PlanSlice, cell: PlanCell): void {
-  const done = cell.statusCode === "done";
-  // 管这一格的那一块：从它自己往上找第一个块根格。
+/**
+ * 退回 / 说给负责的那一个对象：一格，或顶块（`project`）。`signer` 那一项：`null` ＝ pb 还没给；`false` ＝ 这一个没有签它的（顶块）。
+ */
+export interface ReturnTarget {
+  id: string;
+  title: string;
+  done: boolean;
+  /** 在长它的那一块叫什么（顶块 ⇒「顶块」）。 */
+  blockTitle: string;
+  owner: PlanWho | null;
+  signer: PlanWho | null | false;
+}
+
+/** 一格的退回对象：管它的那一块从它自己往上找第一个块根格。 */
+export function cellTarget(slice: PlanSlice, cell: PlanCell): ReturnTarget {
   const roots = blockRoots(slice);
   const byId = cellIndex(slice);
   let up: PlanCell | undefined = cell;
   while (up && !roots.has(up.id)) up = up.parent ? byId.get(up.parent) : undefined;
   const blk = up ? (roots.get(up.id) ?? null) : (slice.blocks.find((b) => b.id === "project") ?? null);
-  const blkTitle = up ? (up.title ?? up.id) : copyText("plan.head.top");
-  const owner = blk?.owner ?? cell.owner;
+  return {
+    id: cell.id,
+    title: cell.title ?? cell.id,
+    done: cell.statusCode === "done",
+    blockTitle: up ? (up.title ?? up.id) : copyText("plan.head.top"),
+    owner: blk?.owner ?? cell.owner,
+    signer: cell.signer,
+  };
+}
+
+/**
+ * 顶块那一条的退回对象（编号就是那一块的 id、标题是片名、送给顶块接手；没有签它的）。顶块不在表里 ⇒ `null`。
+ * 那一条只在顶块走到看全局时出、按钮是［退回…］⇒ 框也叫「退回」（`done`）。
+ */
+export function topTarget(slice: PlanSlice, need: PlanNeed): ReturnTarget | null {
+  const blk = slice.blocks.find((b) => b.id === need.block);
+  if (!blk) return null;
+  return { id: blk.id, title: slice.name, done: true, blockTitle: copyText("plan.head.top"), owner: blk.owner, signer: false };
+}
+
+/** 退回框（做完了 ⇒「退回」；没做完 ⇒「说给负责的」，同一个框）。 */
+export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarget): void {
+  const done = cell.done;
+  const blkTitle = cell.blockTitle;
+  const owner = cell.owner;
+  const signer = cell.signer === false ? null : cell.signer;
   const canSend = (w: PlanWho | null): boolean => w !== null && w.sid !== null && w.alive && w.activity !== "needs_you";
-  let to: "owner" | "signer" = !canSend(owner) && canSend(cell.signer) ? "signer" : "owner";
+  let to: "owner" | "signer" = !canSend(owner) && canSend(signer) ? "signer" : "owner";
   const box = document.createElement("div");
   box.className = s.rvForm;
 
@@ -189,7 +225,8 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: PlanCell): 
     if (r.disabled) lab.dataset.unavailable = "true";
     return lab;
   };
-  opts.append(option("owner", owner), option("signer", cell.signer));
+  opts.append(option("owner", owner));
+  if (cell.signer !== false) opts.append(option("signer", signer));
   // 默认那一项送不了、开框时已改选上一级 ⇒ 说一句（之后人自己改选不再说）。
   const switched: HTMLElement[] = [];
   if (to === "signer") {
@@ -210,7 +247,7 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: PlanCell): 
   const line = document.createElement("div");
   line.className = `${s.rvLine} plan-return-line`;
   // 送出的那一行由后端拼（`bePlan.return.line`，同一条文案）；框里跟着输入预览同一条，送出后以后端回的为准。
-  const preview = (): string => copyText("bePlan.return.line", { id: cell.id, title: cell.title ?? "", text: ta.value.split(/\s+/).filter(Boolean).join(" ") });
+  const preview = (): string => copyText("bePlan.return.line", { id: cell.id, title: cell.title, text: ta.value.split(/\s+/).filter(Boolean).join(" ") });
   const sync = (): void => {
     line.textContent = preview();
     h.refresh();
@@ -218,7 +255,7 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: PlanCell): 
   box.append(whatHead, ta, toHead, opts, ...switched, lineHead, line);
 
   const h = formDialog({
-    title: done ? copyText("plan.return.title", { title: cell.title ?? cell.id }) : copyText("plan.return.titleSend", { title: cell.title ?? cell.id }),
+    title: done ? copyText("plan.return.title", { title: cell.title }) : copyText("plan.return.titleSend", { title: cell.title }),
     action: done ? copyText("plan.return.send") : copyText("plan.return.sendTell"),
     body: box,
     wide: true,

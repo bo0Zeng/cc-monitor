@@ -450,6 +450,45 @@
     font-weight: 600;
   }
 
+  .pvH1Meta {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  /* 签收流头上那一格「按标题找」：同页头那一格的样子，窄一点。 */
+  .pvSignFind {
+    display: flex;
+    flex: 0 1 170px;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 110px;
+    height: 26px;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text-2);
+  }
+
+  .pvSignFind:focus-within {
+    border-color: var(--field-border-focus);
+  }
+
+  .pvSignFind input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-small);
+  }
+
+  .pvSignFind input::placeholder {
+    color: var(--field-placeholder);
+  }
+
   .pvMeta {
     display: flex;
     flex-wrap: wrap;

@@ -425,6 +425,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "plan-ack"
                 | "plan-unack"
                 | "plan-return"
+                // 文件窗口反查：读认可那份小文件（同步文件 I/O；不起 pb）。
+                | "plan-files"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
@@ -669,6 +671,8 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-ack",
         "plan-unack",
         "plan-return",
+        // 文件窗口反查：阻塞（读认可那份小文件）。
+        "plan-files",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
@@ -1379,6 +1383,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
     const TERMINALS: &str = include_str!("../../__fixtures__/terminals.golden.json");
     const TMUX_CONTROL: &str = include_str!("../../__fixtures__/tmux-control.golden.json");
+    // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
+    const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
     #[allow(clippy::type_complexity)]
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
@@ -1556,6 +1562,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("resync", RESYNC, "/reply", &[], &[]),
         ("history-list", HISTORY_LIST, "", &[], &[]),
+        ("plan-files", PLAN_FILES, "", &[], &[]),
         (
             "forward-list",
             FORWARD_LIST,
