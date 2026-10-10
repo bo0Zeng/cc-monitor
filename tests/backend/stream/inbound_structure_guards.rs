@@ -1500,6 +1500,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-ack",
         "plan-cell-view",
         "plan-command",
+        "plan-files",
         "plan-list",
         "plan-read",
         "plan-return",
