@@ -454,6 +454,7 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
 ///   **哪天 `build` 会 panic 了，这一格就得换成守卫，而本条看不见那一天。**
 #[test]
 fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
+    let _lock = resident_lock();
     let fx = make_tree("rebuild-mutex", 3, 4, 8);
 
     // ── 阴性对照：**没人在跑的时候它必须能跑** ──────────────────
@@ -869,4 +870,127 @@ fn location_is_the_parent_relative_to_the_search_start() {
     assert_eq!(location_of(b"/a.rs", Some(b"/")), b"");
     assert_eq!(location_of(b"/etc/a.rs", Some(b"/")), b"etc");
     assert_eq!(location_of(b"/h/u/p/a.rs", None), b"/h/u/p");
+}
+
+// ══════════════════════ 碰常驻状态只有一道门 ══════════════════════
+
+/// 一个 `#[test]` 块里会不会写常驻那两份（索引 · 浏览名单）。
+///
+/// 写它们的口：`rebuild_once` · `set_browsing` 直调；或经这一族的入口（`files::answer` / `answer_wire`）
+/// 调 `files.index.rebuild` / `files.browse` —— 能力名写成字面量以外的东西（循环变量、拼出来的）
+/// 就当它可能是那两条（「每条能力真调一次」那一形）。
+/// `files/` 底下的判据 `use super::*`，入口是裸名 `answer(` / `answer_wire(`；别处要带 `files::`。
+fn touches_resident_state(chunk: &str, bare_entry: bool) -> bool {
+    // 针拼出来：本文件自己的源码不该被当成一处调用。
+    let writers = [concat!("rebuild", "_once("), concat!("set_", "browsing(")];
+    if writers.iter().any(|w| chunk.contains(w)) {
+        return true;
+    }
+    let touching = [
+        "files.index.rebuild",
+        "files-index-rebuild",
+        "files.browse",
+        "files-browse",
+    ];
+    let mut entries = vec![
+        concat!("files::", "answer("),
+        concat!("files::", "answer_wire("),
+    ];
+    if bare_entry {
+        entries.push(concat!(" ", "answer("));
+        entries.push(concat!("(", "answer("));
+        entries.push(concat!(" ", "answer_wire("));
+        entries.push(concat!("(", "answer_wire("));
+    }
+    entries.iter().any(|e| {
+        chunk.match_indices(e).any(|(at, _)| {
+            // 定义（`fn answer(`，合成夹具里的那种）不是调用。
+            if chunk[..at].trim_end().ends_with("fn") {
+                return false;
+            }
+            let first = chunk[at + e.len()..].trim_start();
+            match first.strip_prefix('"') {
+                Some(lit) => touching.iter().any(|t| lit.starts_with(&format!("{t}\""))),
+                None => true,
+            }
+        })
+    })
+}
+
+fn takes_the_lock(chunk: &str) -> bool {
+    chunk.contains(concat!("resident", "_lock()"))
+}
+
+/// ★ 后端测试树里，凡是会写常驻那两份的 `#[test]` 块，都拿 [`resident_lock`] —— 碰这份进程级状态只有这一道门。
+///
+/// 起因（mg41 CI 现红）：`a_query_against_a_missing_index_says_so_instead_of_saying_no_hits` 拿锁、清空、查，
+/// 查到的却是一份索引 —— 同一进程里 `inbound_structure_guards::the_files_read_family_is_online_exactly_as_it_is_declared`
+/// 用空入参把每一条读能力真调一次，`files-index-rebuild` 不给 `path` 就重走家目录、把常驻那一份装上，而它没拿这把锁。
+/// 单跑、本机跑都绿：要两条恰好并发、而那一趟重走恰好落在「清空」与「查」之间。
+///
+/// 量法：按 `#[test]` 切块（先剥注释再切），块里有写口（[`touches_resident_state`]）⇒ 块里得有 `resident_lock()`。
+#[test]
+fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
+    let root = crate::guard_support::tests_root();
+    let mut touching = 0usize;
+    let mut unlocked: Vec<String> = Vec::new();
+    for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let bare = rel.starts_with("files/");
+        let stripped = guard_core::strip_comment_lines(&src);
+        // 第一块是第一条 `#[test]` 之前的那段（工具函数），不是判据。
+        for chunk in guard_core::test_attr_chunks(&stripped).into_iter().skip(1) {
+            if !touches_resident_state(&chunk, bare) {
+                continue;
+            }
+            touching += 1;
+            if !takes_the_lock(&chunk) {
+                let name = chunk
+                    .split("fn ")
+                    .nth(1)
+                    .and_then(|s| s.split('(').next())
+                    .unwrap_or("?")
+                    .trim()
+                    .to_string();
+                unlocked.push(format!("{rel}::{name}"));
+            }
+        }
+    }
+    assert!(
+        touching >= 10,
+        "只认出 {touching} 条会写常驻状态的判据 —— 切块或认法坏了，本条在空转"
+    );
+    assert!(
+        unlocked.is_empty(),
+        "这几条判据会写常驻索引 / 浏览名单，却没拿 `resident_lock()`：{unlocked:?}\n\
+         它们与拿了锁的那几条并发时，会在别人「清空」与「查」之间把状态换掉（间歇红，单跑绿）。"
+    );
+    // 反向自检：这把尺子认得出那一形，也认得出拿了锁的、只碰别的能力的。
+    let loop_call =
+        "fn x() {\n    for n in names { let _ = crate::files::answer_wire(&n, &a, &t); }\n}";
+    assert!(
+        touches_resident_state(loop_call, false),
+        "能力名是变量的那一形没认出来"
+    );
+    assert!(!takes_the_lock(loop_call));
+    assert!(touches_resident_state(
+        "    let v = answer(\"files.index.rebuild\", &a, &t);",
+        true
+    ));
+    assert!(!touches_resident_state(
+        "    let v = answer(\"files.ls\", &a, &t);",
+        true
+    ));
+    assert!(!touches_resident_state(
+        "    let v = answer(\"files.ls\", &a, &t);",
+        false
+    ));
+    assert!(
+        !touches_resident_state("pub fn answer(name: &str) -> u32 {", true),
+        "把函数定义当成了一处调用"
+    );
 }
