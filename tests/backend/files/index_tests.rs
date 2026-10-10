@@ -935,12 +935,11 @@ fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
     let mut touching = 0usize;
     let mut unlocked: Vec<String> = Vec::new();
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let bare = rel.starts_with("files/");
+        let inner = path.strip_prefix(&root).unwrap_or(&path);
+        let rel = inner.to_string_lossy().replace('\\', "/");
+        // 第一段目录是 `files` ⇒ 这一族自己的判据（按路径段比，不按串前缀）。
+        let bare =
+            inner.components().next() == Some(std::path::Component::Normal("files".as_ref()));
         let stripped = guard_core::strip_comment_lines(&src);
         // 第一块是第一条 `#[test]` 之前的那段（工具函数），不是判据。
         for chunk in guard_core::test_attr_chunks(&stripped).into_iter().skip(1) {
