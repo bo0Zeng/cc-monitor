@@ -122,6 +122,13 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
     }
 }
 
+/// 本平台有没有常驻后端（脱离当前进程单独跑 · 听这台家里的套接字）：有 ⇒ `None`；没有 ⇒ 那一句话。
+/// `--resident-ensure`（回 `unsupported`）与带常驻开关的流模式（`main.rs::claim_then_log`，退 [`crate::stream::listen::EXIT_BAD_LISTEN_CONFIG`]）
+/// 都在建任何目录之前先问它 —— 同一句话、同一处判（判本身住平台层 `platform::child::cannot_detach`）。
+pub fn unsupported_here() -> Option<String> {
+    crate::platform::child::cannot_detach()
+}
+
 /// `--resident-attach`：小中继。连这台的套接字，两向原样对拷，任一边断就退（退出码 0）；
 /// 连不上 ⇒ stdout 一行拒绝（理由闭集，`listen::refusal_line`）、退出 2。
 pub async fn attach() -> i32 {
@@ -163,6 +170,10 @@ pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
 
 /// `--resident-ensure` 的入口：宿主层环境 = 中转口 · stderr 诊断文件（凭据与历史注解住家里，那台后端按家自己推）。
 pub fn ensure(args: &[String]) -> i32 {
+    // 本平台没有常驻 ⇒ 先说，一个目录都不建（诊断文件那层目录也不建）。
+    if let Some(why) = unsupported_here() {
+        return fail("unsupported", why);
+    }
     let hosted = vec![
         // 中转口与这台 `ccm` 起会话时找的是同一个口（同一个函数：这台环境里交了就用交的，否则默认口）。
         (

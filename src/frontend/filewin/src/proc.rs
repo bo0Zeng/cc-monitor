@@ -131,6 +131,20 @@ pub fn child_main() -> i32 {
             )
         }
     };
+    let code = run_on(&rt, req);
+    // 🔴 **收尾放运行时用 `shutdown_background`，不用 drop。**
+    //    通道的读半边是 `tokio::io::stdin()`：它在运行时的**阻塞线程**上卡在读 stdin，而父进程（monitor 的路由器）
+    //    要等本进程的 stdout 收到 EOF 才放那根管子 —— 本进程不退，stdin 就永远不关。
+    //    普通的 drop 要等每条阻塞线程收工 ⇒ 两边互等，关一扇窗就留一个进程（Win11 真机与 Linux 同形）。
+    //    `shutdown_background` 不等阻塞线程；接着 `[[bin]]` 那一行 `process::exit` 把它们一起带走。
+    //    放在这里（而不是只放在关窗那一支）：「第一屏列不出来」那一支同样已经起了通道、同样会卡。
+    rt.shutdown_background();
+    code
+}
+
+/// [`child_main`] 拿到运行时之后的那一段：起通道 → 列第一屏 → 说就绪 → 开窗、等它关。回退出码。
+/// 运行时由调用方放（理由住 [`child_main`] 收尾那一段）。
+fn run_on(rt: &tokio::runtime::Runtime, req: filewin_contract::OpenRequest) -> i32 {
     // 通道就是自己的 stdin / stdout（`D11`：没有退路 —— 不许「连不上就退回 SFTP 自己列」）。
     let line = {
         let _in_rt = rt.enter();

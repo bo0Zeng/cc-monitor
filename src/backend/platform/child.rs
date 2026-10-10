@@ -451,7 +451,7 @@ impl Child {
         }
     }
 
-    /// 脱离起（自成进程组，stdio 全空），不等；回它的 pid。非 unix：`Io(Unsupported)`。
+    /// 脱离起（自成进程组，stdio 全空），不等；回它的 pid。本平台不能脱离（[`cannot_detach`]）：`Io(Unsupported)`，带那一句。
     pub(crate) fn detach(self) -> Result<u32, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
@@ -467,6 +467,12 @@ impl Child {
     pub(crate) fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         os::exec_replace(self.command(), started)
     }
+}
+
+/// 本平台能不能「脱离当前进程单独跑」（常驻后端的前提）：能 ⇒ `None`；不能 ⇒ 那一句话（Windows）。
+/// 判只住这一处：[`Child::detach`] 与常驻那两个入口（`--resident-ensure` · 带常驻开关的流模式，经 `control::resident::unsupported_here`）都问它。
+pub(crate) fn cannot_detach() -> Option<String> {
+    os::cannot_detach()
 }
 
 /// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退）。
@@ -530,7 +536,11 @@ fn read_all(r: Option<impl Read>) -> Vec<u8> {
 }
 
 fn is_own(k: &OsStr) -> bool {
-    OWN_ENVS.iter().any(|o| OsStr::new(o) == k)
+    k.to_str().is_some_and(|k| {
+        OWN_ENVS
+            .iter()
+            .any(|o| crate::platform::child_env::same_name(o, k))
+    })
 }
 
 fn is_internal_name(k: &str) -> bool {
@@ -579,6 +589,10 @@ mod os {
     pub(super) fn detach(cmd: &mut Command) -> Result<(), ChildFail> {
         cmd.process_group(0);
         Ok(())
+    }
+
+    pub(super) fn cannot_detach() -> Option<String> {
+        None
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
@@ -662,8 +676,12 @@ mod os {
     pub(super) fn detach(_cmd: &mut Command) -> Result<(), ChildFail> {
         Err(ChildFail::Io(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            copy_core::copy_text("beDetach.detach.notUnix", &[]),
+            cannot_detach().unwrap_or_default(),
         )))
+    }
+
+    pub(super) fn cannot_detach() -> Option<String> {
+        Some(copy_core::copy_text("beDetach.detach.notUnix", &[]))
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
