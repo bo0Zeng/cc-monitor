@@ -197,8 +197,8 @@ const UNCLEAR_WHY: ReadonlySet<string> = new Set<UnclearWhy>(["noWriter", "untra
 export type StepWait = "running" | "awaiting" | "unclear";
 const STEP_WAIT: ReadonlySet<string> = new Set<StepWait>(["running", "awaiting", "unclear"]);
 
-/** 「需要你」的种类：批准一步 · 回答一问 · 批准计划 · 判不出（只说在等你）。 */
-export type NeedsKind = "approve" | "answer" | "plan" | "unknown";
+/** 「需手动」的种类（后端 `facts_query::NeedsKind` 判好）：批准一步 · 回答一问 · 批准计划 · 放行联网 · 批准协作请求 · 确认会话目标 · 在对话框里选 · 判不出。 */
+export type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 
 /** 「需要你」的成品（后端 `facts_query::Needs`）。 */
 export interface Needs {
@@ -217,7 +217,7 @@ export interface Needs {
   tone: string;
 }
 
-const NEEDS_KIND: ReadonlySet<string> = new Set(["approve", "answer", "plan", "unknown"]);
+const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
 export type FactsResult =

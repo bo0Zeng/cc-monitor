@@ -71,22 +71,26 @@ fn token_path(data_home: &Path) -> PathBuf {
 }
 
 /// 一次性子命令的错误出口：stderr 一行 `{code,message}`、退出 2（协议 v1 §3）—— 与 CLI 控制面同一份信封。
-fn fail(code: &str, message: String) -> i32 {
-    super::cli_control::emit_err(code, message)
+/// 两条子命令在复制详情「命令」那一项里的名字。
+const ENSURE: &str = "resident-ensure";
+const STOP: &str = "resident-stop";
+
+fn fail(cmd: &str, code: &str, message: String) -> i32 {
+    super::cli_control::emit_err(cmd, code, message)
 }
 
 /// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
 /// （本层不许伸手进 `relay/`，`layering_guard`）。
 pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
     let (Some(home), Some(dh)) = (home(), data_home()) else {
-        return fail("no_home", copy_text("beResident.home.missing", &[]));
+        return fail(ENSURE, "no_home", copy_text("beResident.home.missing", &[]));
     };
     let port = relay_route_core::listen_port_for(&dh);
     let token_path = token_path(&dh);
     if args.iter().any(|a| a == "--replace") {
         // 旧的不先让出口，新的必然绑不上 ⇒ 与「停」同一个停法（等它真退了再起）。
         if let Err(e) = stop_owner(&dh, port, STOP_GRACE_MS) {
-            return fail("replace_failed", e);
+            return fail(ENSURE, "replace_failed", e);
         }
     } else if someone_listening(port) {
         // 口上已有人 ⇒ 不再起（起了也绑不上）；它认的是它起来时写下的那一把，读盘上那一份。
@@ -98,13 +102,14 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
                 );
                 0
             }
-            Err(e) => fail("no_token", e),
+            Err(e) => fail(ENSURE, "no_token", e),
         };
     }
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
             return fail(
+                ENSURE,
                 "spawn_failed",
                 copy_text("beResident.spawn.noSelf", &[("e", &e.to_string())]),
             )
@@ -119,7 +124,7 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
             );
             0
         }
-        Err((code, e)) => fail(code, e),
+        Err((code, e)) => fail(ENSURE, code, e),
     }
 }
 
@@ -149,11 +154,11 @@ pub fn ensure(args: &[String]) -> i32 {
 /// `--resident-stop [--grace <秒>]`。
 pub fn run_stop(args: &[String]) -> i32 {
     let Some(dh) = data_home() else {
-        return fail("no_home", copy_text("beResident.home.missing", &[]));
+        return fail(STOP, "no_home", copy_text("beResident.home.missing", &[]));
     };
     let grace_ms = match parse_grace(args) {
         Ok(g) => g,
-        Err(e) => return fail("bad_args", e),
+        Err(e) => return fail(STOP, "bad_args", e),
     };
     match stop_owner(&dh, relay_route_core::listen_port_for(&dh), grace_ms) {
         Ok(end) => {
@@ -163,7 +168,7 @@ pub fn run_stop(args: &[String]) -> i32 {
             );
             0
         }
-        Err(e) => fail("stop_failed", e),
+        Err(e) => fail(STOP, "stop_failed", e),
     }
 }
 

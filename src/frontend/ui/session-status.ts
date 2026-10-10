@@ -20,6 +20,8 @@ const ACTIVITY_FACE: Record<SessionActivity, { dot: ActivityDot; light: Activity
   working: { dot: "running", light: "" },
   needs_you: { dot: "needs-you", light: "act-waiting" },
   idle: { dot: "idle", light: "act-idle" },
+  // 一轮停了、后台命令还在跑：这一态的样子还没出稿 ⇒ 先照空闲画（不另造一种点）。
+  background_work: { dot: "idle", light: "act-idle" },
 };
 
 /** 活动态 ⇒ 点 · 灯（标签栏 · 状态点 · 总览只从这里取）。 */

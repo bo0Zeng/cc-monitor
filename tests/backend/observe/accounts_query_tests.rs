@@ -2185,7 +2185,8 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
         ("s-busy".to_string(), d(A::Working, None)),
         ("s-idle".to_string(), d(A::Idle, None)),
         (ask.to_string(), d(A::NeedsYou, Some(K::Approve))),
-        ("s-norecord".to_string(), d(A::NeedsYou, Some(K::Unknown))),
+        // 记录找不到：说不出是哪一步，但那台说的是批准框 ⇒ 仍是批准（只是不挂哪一步）。
+        ("s-norecord".to_string(), d(A::NeedsYou, Some(K::Approve))),
     ]
     .into_iter()
     .collect();

@@ -11841,6 +11841,13 @@
       "args": [],
       "limited": ["Claude Code"]
     },
+    "rsDriftLedger.consequence.unknownWaitingFor": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动的种类按判不出显示 · Claude Code 或已加新的等待类型",
+      "args": [],
+      "limited": ["Claude Code"]
+    },
     "rsDriftLedger.consequence.knownTypeParse": {
       "kind": "body",
       "role": "说明",
@@ -17484,6 +17491,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行",
+      "args": []
+    },
+    "beSession.needs.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认",
+      "args": []
+    },
+    "beSession.needs.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
       "args": []
     },
     "beSession.needs.unknown": {
@@ -24271,6 +24302,30 @@
       "zh": "计划 · 等批准",
       "args": []
     },
+    "needs.bar.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行 · 联网",
+      "args": []
+    },
+    "needs.bar.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准 · 协作请求",
+      "args": []
+    },
+    "needs.bar.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认 · 会话目标",
+      "args": []
+    },
+    "needs.bar.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
+      "args": []
+    },
     "needs.bar.unknown": {
       "kind": "body",
       "role": "片段",
@@ -24348,6 +24403,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "等批准",
+      "args": []
+    },
+    "tabBar.needsKind.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行",
+      "args": []
+    },
+    "tabBar.needsKind.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "tabBar.needsKind.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认",
+      "args": []
+    },
+    "tabBar.needsKind.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
       "args": []
     },
     "tabBar.needsKind.unknown": {

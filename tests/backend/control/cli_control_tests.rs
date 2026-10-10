@@ -849,3 +849,206 @@ fn the_commands_released_from_ui_only_are_on_the_cli() {
         assert!(spec_for(&flag_of(name)).is_some(), "{name} 没上 CLI 面");
     }
 }
+
+/// 帧面跑一条命令，取它那一帧应答（JSON）。`within_ms` 照帧面信封那一格原样带。
+fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> serde_json::Value {
+    let mut req = serde_json::json!({"id": "x", "cmd": cmd, "args": args});
+    if let Some(ms) = within_ms {
+        req["within_ms"] = ms.into();
+    }
+    let line = format!("{req}\n");
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async move {
+        let (tx, mut rx) =
+            tokio::sync::mpsc::channel(crate::stream::inbound::REPLY_CHANNEL_CAPACITY);
+        crate::stream::inbound::spawn(
+            std::io::Cursor::new(line.into_bytes()),
+            tx,
+            crate::stream::wire::HelloFlushed::for_tests(),
+        )
+        .await
+        .unwrap();
+        let mut got = None;
+        while let Some(f) = rx.recv().await {
+            let v = serde_json::to_value(&f).unwrap();
+            if v["kind"] == "reply" && v["id"] == "x" {
+                got = Some(v);
+            }
+        }
+        got.expect("帧面没回应答")
+    })
+}
+
+/// CLI 面跑同一条（入参走 argv 口），取 stderr 那一行信封。
+fn cli_failure(cmd: &str, args: &serde_json::Value, extra: &[&str]) -> (i32, String) {
+    let mut argv = vec![
+        flag_of(cmd),
+        crate::ARGS_B64_FLAG.to_string(),
+        crate::stream::wire::b64_encode(args.to_string().as_bytes()),
+    ];
+    argv.extend(extra.iter().map(|s| s.to_string()));
+    let (rc, out, err) = run_cli(&argv, std::io::empty());
+    assert!(out.is_empty(), "{cmd} 失败时 stdout 该是空的：{out}");
+    (rc, err)
+}
+
+/// 复制详情首行是出错那一刻的时刻（两个面各自取钟）：比之前抹成同一个值，别的行逐字比。
+fn clockless(detail: &str) -> String {
+    let at = format!("{}：", copy_core::copy_text("detail.label.at", &[]));
+    detail
+        .lines()
+        .map(|l| if l.starts_with(&at) { at.as_str() } else { l })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 失败那一份里给人和程序读的四格（`detail` 抹掉时刻）。
+fn failure_face(v: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "code": v["code"],
+        "message": v["message"],
+        "detail": v["detail"].as_str().map(clockless),
+        "data": v.get("data").cloned().unwrap_or(serde_json::Value::Null),
+    })
+}
+
+/// ★ **同一个失败，帧面与 CLI 面说的一字不差**：`code` · `message` · `detail`（复制详情）· `data` 出自同一份失败载体。
+/// 挑的三形：有「码 → 句」表的（句子换成表里那句、处理器原话进详情）· 带系统原话的 · 普通的。
+#[test]
+fn a_failure_reads_the_same_on_the_frame_face_and_the_cli_face() {
+    let base = std::env::temp_dir().join(format!("ccm-cliface-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let file = base.join("f.txt");
+    std::fs::write(&file, b"x").unwrap();
+    let cases = [
+        ("kill", serde_json::json!({})),
+        (
+            "files-ls",
+            serde_json::json!({"path": file.to_str().unwrap()}),
+        ),
+        (
+            "history-facts",
+            serde_json::json!({"path": "/nonexistent/cliface/a.jsonl"}),
+        ),
+    ];
+    for (cmd, args) in &cases {
+        let frame = frame_reply(cmd, args, None);
+        assert_eq!(frame["ok"], false, "{cmd} 在帧面没失败：{frame}");
+        let (rc, err) = cli_failure(cmd, args, &[]);
+        assert_eq!(rc, 2, "{cmd}：{err}");
+        let cli: serde_json::Value = serde_json::from_str(err.trim())
+            .unwrap_or_else(|e| panic!("{cmd} 的 stderr 不是一行 JSON（{e}）：{err:?}"));
+        assert!(
+            cli["detail"].as_str().is_some_and(|d| !d.trim().is_empty()),
+            "{cmd} 的 CLI 信封没带复制详情：{cli}"
+        );
+        assert_eq!(
+            failure_face(&cli),
+            failure_face(&frame),
+            "{cmd}：CLI 面与帧面对同一个失败说得不一样"
+        );
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// CLI 入口自己拒的（用法错 · 入参坏）也带复制详情：「命令」那一项是这条子命令的名字，「码」那一项是那个码。
+#[test]
+fn a_refusal_at_the_cli_door_carries_a_detail_too() {
+    let (rc, _out, err) = run_cli(&strs(&["--ping", "--args-b64", "e30="]), std::io::empty());
+    assert_eq!(rc, 2);
+    let v: serde_json::Value = serde_json::from_str(err.trim()).unwrap();
+    assert_eq!(v["code"], "bad_args", "{v}");
+    let detail = v["detail"]
+        .as_str()
+        .unwrap_or_else(|| panic!("没带 detail：{v}"));
+    let label = |k: &str| copy_core::copy_text(k, &[]);
+    assert!(
+        detail.contains(&format!("{}：ping", label("detail.label.command"))),
+        "{detail}"
+    );
+    assert!(
+        detail.contains(&format!("{}：bad_args", label("detail.label.code"))),
+        "{detail}"
+    );
+}
+
+/// `--text`（给人看那一形）的失败：stderr 是那一句 ＋ 下面原样接复制详情（同界面［复制详情］复制出去的那一段），不是 JSON；退出码照旧 2。
+#[test]
+fn the_text_form_of_a_failure_is_the_sentence_over_its_detail() {
+    let (rc, _out, err) = run_cli(
+        &strs(&["--quota-read", "--args-b64", "e30="]),
+        std::io::empty(),
+    );
+    let json: serde_json::Value = serde_json::from_str(err.trim()).unwrap();
+    let (rc_t, out_t, err_t) = run_cli(
+        &strs(&["--quota-read", "--text", "--args-b64", "e30="]),
+        std::io::empty(),
+    );
+    assert_eq!((rc, rc_t), (2, 2));
+    assert!(out_t.is_empty(), "{out_t}");
+    assert!(
+        serde_json::from_str::<serde_json::Value>(err_t.trim()).is_err(),
+        "--text 的失败不该还是 JSON：{err_t}"
+    );
+    let (said, detail) = err_t
+        .trim_end()
+        .split_once('\n')
+        .unwrap_or_else(|| panic!("没有详情那几行：{err_t:?}"));
+    assert_eq!(said, json["message"].as_str().unwrap());
+    assert_eq!(
+        clockless(detail),
+        clockless(json["detail"].as_str().unwrap())
+    );
+}
+
+/// ★ CLI 面的 `--within-ms` 与帧面信封的 `within_ms` 同名同义：同一个期限、同一条命令，到点回的是同一份失败（码 · 句 · 详情）。
+/// 1 ms 不够余量 ⇒ 总期限此刻就到 ⇒ 第一发子进程不起、直接回超时（两个面都不碰 tmux）。
+#[test]
+fn the_cli_deadline_times_out_exactly_like_the_frame_one() {
+    let args = serde_json::json!({});
+    let frame = frame_reply("terminals-list", &args, Some(1));
+    assert_eq!(
+        frame["code"],
+        crate::platform::child::TIMED_OUT,
+        "帧面没按期限超时：{frame}"
+    );
+    let (rc, err) = cli_failure("terminals-list", &args, &[crate::WITHIN_MS_FLAG, "1"]);
+    assert_eq!(rc, 2, "{err}");
+    let cli: serde_json::Value = serde_json::from_str(err.trim())
+        .unwrap_or_else(|e| panic!("stderr 不是一行 JSON（{e}）：{err:?}"));
+    assert_eq!(failure_face(&cli), failure_face(&frame));
+}
+
+/// `--within-ms` 的用法：缺值 · 给两次 ⇒ `bad_args`（同 `--args-b64`）；值不是正整数 ⇒ 当没带（同帧面那一格的宽读），命令照常答。
+#[test]
+fn the_cli_deadline_option_refuses_like_the_other_options_and_reads_like_the_frame() {
+    for argv in [
+        vec!["--ping", crate::WITHIN_MS_FLAG],
+        vec![
+            "--ping",
+            crate::WITHIN_MS_FLAG,
+            "5000",
+            crate::WITHIN_MS_FLAG,
+            "5000",
+        ],
+    ] {
+        let (rc, _out, err) = run_cli(&strs(&argv), std::io::empty());
+        assert_eq!(
+            (rc, err_code(&err)),
+            (2, "bad_args".to_string()),
+            "{argv:?}"
+        );
+    }
+    for v in ["0", "-1", "1.5", "soon", "5000"] {
+        let (rc, out, err) = run_cli(
+            &strs(&["--ping", crate::WITHIN_MS_FLAG, v]),
+            std::io::empty(),
+        );
+        assert_eq!(rc, 0, "{v}：{err}");
+        assert!(!out.trim().is_empty(), "{v}");
+    }
+}

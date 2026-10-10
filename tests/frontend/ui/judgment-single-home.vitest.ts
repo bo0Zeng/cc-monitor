@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -540,6 +540,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "复制详情条带 §5「合流 ×N 复制出全部段」—— 两个前端各拼自己那几段，排法同一条",
   },
+  J27: {
+    what: "一件失败复制出去的整段（那一句 ＋ 下面原样接详情；详情空白 ⇒ 只剩那一句）",
+    homes: ["copy-core::one"],
+    // 认可的双读口（同 J26）：界面拼［复制详情］复制出去的那一段，后端拼 CLI `--text` 失败那一形，排法一条规则，各对同一份金样。
+    status: "mirror",
+    defs: ["detailBody"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/detail-many.golden.json",
+      tests: ["tests/common/copy-core/detail_tests.rs", "tests/frontend/ui/kit/detail.vitest.ts"],
+    },
+    why: "复制详情条带「首行永远就是屏上那句」—— CLI 面的失败给人看那一形与界面复制出去的那一段是同一段字",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -608,6 +621,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     with_raw: NONE,
     wrap: NONE,
     many: "J26",
+    one: "J27",
     // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
     parse: NONE,
     value: NONE,

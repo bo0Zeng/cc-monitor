@@ -4,4 +4,4 @@
  * 一条活会话此刻在干什么（后端 `session_added.activity` · `session_status.activity`，那台后端的适配层翻好的）。
  * 原样交给界面（`ui_contract::SessionActivityPayload`）；缺席 ＝ 说不清。
  */
-export type SessionActivity = "working" | "needs_you" | "idle";
+export type SessionActivity = "working" | "needs_you" | "idle" | "background_work";

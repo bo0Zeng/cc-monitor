@@ -33,6 +33,14 @@ export function needsHeadline(n: Needs): { label: string; code: string | null } 
       return { label: copyText("needs.bar.answer"), code: n.what };
     case "plan":
       return { label: copyText("needs.bar.plan"), code: null };
+    case "network":
+      return { label: copyText("needs.bar.network"), code: n.what };
+    case "worker":
+      return { label: copyText("needs.bar.worker"), code: null };
+    case "goal":
+      return { label: copyText("needs.bar.goal"), code: null };
+    case "choose":
+      return { label: copyText("needs.bar.choose"), code: null };
     case "unknown":
       return { label: copyText("needs.bar.unknown"), code: null };
   }
@@ -81,8 +89,9 @@ export class NeedsBar {
     l1.append(document.createTextNode(head.label));
     if (head.code) {
       // 批准：那一步的主参数等宽；回答：问题原文照正文排。
-      const code = document.createElement(n.kind === "approve" ? "code" : "span");
-      code.className = n.kind === "approve" ? s.nbCode : s.nbQuote;
+      const asCode = n.kind === "approve" || n.kind === "network";
+      const code = document.createElement(asCode ? "code" : "span");
+      code.className = asCode ? s.nbCode : s.nbQuote;
       code.textContent = head.code;
       l1.append(code);
     }

@@ -288,6 +288,16 @@ pub fn channel(
         .item(Label::Code, code)
 }
 
+/// 一件失败复制出去的整段：首行是那一句，下面原样接它的详情；详情空 ⇒ 只剩那一句（不出空行）。
+/// 界面那一侧同一排法（`kit/detail.ts::detailBody` 的单件那一支，跨语言金样 `detail-many.golden.json` 的 `one`）。
+pub fn one(said: &str, detail: &str) -> String {
+    if detail.trim().is_empty() {
+        said.to_string()
+    } else {
+        format!("{said}\n{detail}")
+    }
+}
+
 /// 一行汇总 `head` 底下几件各自的失败 `(那件的那一句, 它的详情)` ⇒ 复制出去的整段：首行 `head`，每件一段（那一句 ＋ 详情），
 /// 段间空一行；详情空的那件不出段；一件都没有 ⇒ `None`（不出按钮）。界面那一侧同一排法（`kit/detail.ts::detailMany`，跨语言金样 `detail-many.golden.json`）。
 pub fn many(head: &str, segments: &[(String, String)]) -> Option<String> {

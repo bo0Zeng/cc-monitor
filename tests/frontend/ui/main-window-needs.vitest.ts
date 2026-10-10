@@ -262,9 +262,15 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
 describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
   it("★ 钉条第一行：批准写工具名 ＋ 那一步；回答写问题；计划 · 等批准；判不出只写需要你", () => {
     expect(needsHeadline(approve())).toEqual({ label: copyText("needs.bar.approve", { tool: "Bash" }), code: "rm -rf build/" });
-    expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null, text: copyText("beSession.needs.answer"), tone: "need" })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
-    expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null, text: copyText("beSession.needs.plan"), tone: "need" }).label).toBe(copyText("needs.bar.plan"));
-    expect(needsHeadline({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), tone: "need" })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
+    expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null, text: "", tone: "need" })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
+    expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null, text: "", tone: "need" }).label).toBe(copyText("needs.bar.plan"));
+    expect(needsHeadline({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: "", tone: "need" })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
+    // 后端多判出的四种：放行联网带那条命令；协作请求 · 会话目标 · 对话框不挂哪一步。
+    expect(needsHeadline({ kind: "network", tool: "Bash", call: "b", what: "curl x", sinceMs: null, text: "", tone: "need" })).toEqual({ label: copyText("needs.bar.network"), code: "curl x" });
+    const bare = (kind: "worker" | "goal" | "choose") => needsHeadline({ kind, tool: null, call: null, what: null, sinceMs: null, text: "", tone: "need" });
+    expect(bare("worker")).toEqual({ label: copyText("needs.bar.worker"), code: null });
+    expect(bare("goal")).toEqual({ label: copyText("needs.bar.goal"), code: null });
+    expect(bare("choose")).toEqual({ label: copyText("needs.bar.choose"), code: null });
   });
 
   it("★ 去哪答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里 ⇒ 在终端里打开；本机 Linux 不在 ↗ 上 ⇒ 不给按钮", () => {
