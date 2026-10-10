@@ -547,8 +547,16 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
         .map(|(_, v)| super::facts_query::PidWait {
             waiting_for: crate::agents::pidfile_wait(&v),
             since_ms: v.get("statusUpdatedAt").and_then(serde_json::Value::as_u64),
+            read_at_ms: read_at_ms(),
         })
         .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
+}
+
+/// 此刻（epoch ms，这台的钟）：读 pidfile 那一刻，「已等多久」拿它减同一份 pidfile 里的起点。
+fn read_at_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（pidfile，适配层翻好的）· 在等你时等的是什么。
@@ -581,9 +589,10 @@ pub(crate) struct NeedsRow {
     pub(crate) needs: super::facts_query::Needs,
 }
 
-/// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判）。
+/// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
+/// 先答的在前（[`super::facts_query::needs_first`]）。
 pub(crate) fn live_needs(agent_home: &Path) -> Vec<NeedsRow> {
-    live_activity(agent_home)
+    let mut rows = live_activity(agent_home)
         .into_iter()
         .filter(|(_, a)| *a == Some(crate::agents::SessionActivity::NeedsYou))
         .filter_map(|(sid, _)| {
@@ -592,7 +601,12 @@ pub(crate) fn live_needs(agent_home: &Path) -> Vec<NeedsRow> {
                 sid,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    // 先答哪个照核心那一处（同一档、同样久 ⇒ 按会话 id，稳定）。
+    rows.sort_by(|a, b| {
+        super::facts_query::needs_first(&a.needs, &b.needs).then_with(|| a.sid.cmp(&b.sid))
+    });
+    rows
 }
 
 /// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。
@@ -639,6 +653,7 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::facts_query::Nee
     let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
         waiting_for: None,
         since_ms: None,
+        read_at_ms: 0,
     });
     super::facts_query::needs_of(&pending, Some(&wait))
 }

@@ -15,7 +15,8 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { copyText } from "./copy-table";
 import { button } from "./kit/button";
 import { statusDot } from "./kit/status-dot";
-import { machineOf, needsOf, sinceText, fullTitle } from "./session-face";
+import { machineOf, needsOf, fullTitle } from "./session-face";
+import { waitedNow } from "./cards/step-line";
 import s from "./needs-bar.module.css";
 
 export interface NeedsBarHost {
@@ -76,7 +77,7 @@ export class NeedsBar {
       return;
     }
     const head = needsHeadline(n);
-    const waited = sinceText(n.sinceMs, now);
+    const waited = waitedNow(n, now);
     const where = answerWhere(tab);
     const drawn = [tab.sessionId, head.label, head.code ?? "", waited ?? "", where ?? ""].join("\u0000");
     if (drawn === this.drawn) return;

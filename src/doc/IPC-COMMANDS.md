@@ -1836,7 +1836,7 @@ sid → 上次用哪个号起。
 |---|---|---|
 | `needs` | ← | 它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
 | `sid` | ← | 会话 id |
-| `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`；一个都没有 ⇒ 空数组 |
+| `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
 
 #### `history-facts`
 
@@ -1853,7 +1853,7 @@ sid → 上次用哪个号起。
 | `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
-| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出）；不在等 ⇒ `null` |
+| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
 | `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
@@ -2840,7 +2840,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
-| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 骨架行 `index_row` · 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
 
 ### 4.9 终端与会话
 

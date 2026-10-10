@@ -652,6 +652,11 @@ pub(crate) const PRODUCTS: &[Product] = &[
         specimens: specimens::facts,
     },
     Product {
+        name: "needs_row",
+        tags: &[],
+        specimens: specimens::needs_row,
+    },
+    Product {
         name: "index_row",
         tags: &[],
         specimens: specimens::index_row,
@@ -927,6 +932,10 @@ mod specimens {
                         text: Words(s("t")),
                         tone: crate::common::cells::Tone::Need,
                         rank: 1,
+                        waited_ms: Some(1),
+                        waited_text: Some(crate::common::cells::Words(copy_core::format_duration(
+                            1,
+                        ))),
                     }),
                     handed_back: vec![s("a")],
                     retries: vec![RetryRun {
@@ -956,6 +965,25 @@ mod specimens {
                 node_of(&f)
             })
             .collect()
+    }
+
+    /// `sessions-needs` 的一行：会话 id ＋ 那一份 `needs`（与 `facts.needs` 同一个类型）。
+    pub(super) fn needs_row() -> Vec<Specimen> {
+        vec![node_of(&crate::observe::accounts_query::NeedsRow {
+            sid: s("s"),
+            needs: Needs {
+                kind: NeedsKind::Approve,
+                tool: some("Bash"),
+                call: some("c"),
+                what: some("ls"),
+                since_ms: Some(1),
+                text: Words(s("t")),
+                tone: crate::common::cells::Tone::Need,
+                rank: 1,
+                waited_ms: Some(1),
+                waited_text: Some(Words(s("1"))),
+            },
+        })]
     }
 
     pub(super) fn index_row() -> Vec<Specimen> {

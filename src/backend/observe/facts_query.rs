@@ -328,6 +328,11 @@ pub(crate) struct Needs {
     pub(crate) tone: crate::common::cells::Tone,
     /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
     pub(crate) rank: u8,
+    /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+    pub(crate) waited_ms: Option<u64>,
+    /// `waitedMs` 写好的字（时长那一处 `copy_core::format_duration`）；没有起点 ⇒ `null`。
+    pub(crate) waited_text: Option<Words>,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -336,6 +341,8 @@ pub(crate) struct PidWait {
     /// 在等什么框（适配层翻好的 [`crate::agents::WaitOn`]）；没说 / 说不清 ⇒ `None`。
     pub(crate) waiting_for: Option<crate::agents::WaitOn>,
     pub(crate) since_ms: Option<u64>,
+    /// 读那份 pidfile 的时刻（epoch ms，**同一台的钟**）：「已等多久」＝ 它减 `since_ms`。
+    pub(crate) read_at_ms: u64,
 }
 
 /// **「需手动」的唯一判定**：那台说在等什么框 ＋ 记录里最早一个还没结果的调用。
@@ -369,6 +376,7 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         .iter()
         .position(|k| *k == kind)
         .map_or(u8::MAX, |i| i as u8);
+    let waited_ms = wait.since_ms.map(|t| wait.read_at_ms.saturating_sub(t));
     Some(Needs {
         kind,
         tool: call.map(|c| c.name.clone()),
@@ -378,6 +386,8 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         text: needs_words(kind),
         tone: crate::common::cells::Tone::Need,
         rank,
+        waited_ms,
+        waited_text: waited_ms.map(|ms| Words(copy_core::format_duration(ms))),
     })
 }
 
@@ -408,6 +418,19 @@ pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
     NeedsKind::Choose,
     NeedsKind::Unknown,
 ];
+
+/// **几条「需手动」先答哪个**（唯一一处：`sessions-needs` 按它排）：危险度序在前（[`Needs::rank`]）；同一档里等得久的在前
+/// （[`Needs::waited_ms`]，各自在那台算的）；不知道等了多久的排这一档最后。
+pub(crate) fn needs_first(a: &Needs, b: &Needs) -> std::cmp::Ordering {
+    a.rank
+        .cmp(&b.rank)
+        .then_with(|| match (a.waited_ms, b.waited_ms) {
+            (Some(x), Some(y)) => y.cmp(&x),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        })
+}
 
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -638,7 +661,18 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "what"],
+            &[
+                "call",
+                "kind",
+                "rank",
+                "sinceMs",
+                "text",
+                "tone",
+                "tool",
+                "waitedMs",
+                "waitedText",
+                "what",
+            ],
             "prior.needs",
         )?;
     }

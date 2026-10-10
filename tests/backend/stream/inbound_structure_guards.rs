@@ -1517,7 +1517,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "session-new-facts",
         "session-restart",
         "session-terminals",
-        // 样本等「需手动」那一格的字与序（核心第 2 路）合进来后，与 `history-facts` 同进 session-reads 金样。
+        // 非空的清单要活进程的 pidfile，金样生成那一处不起进程；一行的形状由格目录 `needs_row` 的样本与真判定现造的那一份两向钉。
         "sessions-needs",
         "sessions-start",
         "sessions-stop",

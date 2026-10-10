@@ -128,11 +128,36 @@ fn corpus(name: &str) -> Vec<Value> {
             let wait = crate::observe::facts_query::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
+                read_at_ms: 0,
             };
             f["needs"] =
                 serde_json::to_value(crate::observe::facts_query::needs_of(&pending, Some(&wait)))
                     .unwrap();
             vec![f]
+        }
+        // 清单那一行用真判定现造（金样生成那一处不起进程，答不出非空的清单）。
+        "needs_row" => {
+            let pending = vec![crate::observe::facts_query::PendingCall {
+                id: "c".into(),
+                name: "Bash".into(),
+                what: Some("ls".into()),
+                at: None,
+                state: crate::observe::facts_query::StepWait::Running,
+                why: None,
+            }];
+            let wait = crate::observe::facts_query::PidWait {
+                waiting_for: Some(crate::agents::WaitOn::Permission),
+                since_ms: Some(1),
+                read_at_ms: 2,
+            };
+            let needs = crate::observe::facts_query::needs_of(&pending, Some(&wait)).unwrap();
+            vec![
+                serde_json::to_value(crate::observe::accounts_query::NeedsRow {
+                    sid: "s".into(),
+                    needs,
+                })
+                .unwrap(),
+            ]
         }
         "index_row" => {
             let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();

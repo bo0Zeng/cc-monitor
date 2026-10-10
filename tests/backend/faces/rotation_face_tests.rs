@@ -616,7 +616,9 @@ fn rule_users_carry_each_sessions_state() {
     use crate::observe::facts_query::NeedsKind as K;
     let home = Home::new("doing");
     let ctx = home.ctx();
-    for sid in ["s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-bg", "s-gone"] {
+    for sid in [
+        "s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-bg", "s-gone",
+    ] {
         home.saw(&ctx, sid);
     }
     home.end("s-gone");
