@@ -144,6 +144,7 @@ fn mcp_login() -> Vec<super::McpLogin> {
                 None => out.push(super::McpLogin {
                     name: e.name,
                     who: e.login_in,
+                    command: crate::agents::mcp_login_command(kind).unwrap_or(""),
                 }),
             }
         }

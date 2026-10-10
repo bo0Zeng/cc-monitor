@@ -16,6 +16,8 @@ use super::assets::{MAX_PROJECT_MCP_BYTES, PROJECT_MCP_FILE};
 use crate::agents::{McpEntry, McpLook, McpRead, McpStatus};
 use crate::common::said::IntoNote as _;
 
+/// 在 Claude 的会话里登录 MCP 服务器的那条命令（`/mcp` 里选中那一个 · 登录）。
+pub(crate) const LOGIN_COMMAND: &str = "/mcp";
 /// 各号家目录里那份「要登录」缓存的文件名（每号各有一份的那张表 `accounts.rs::NATIVE_IDENTITY` 也列它：每号各一份）。
 pub(crate) const NEEDS_AUTH_CACHE: &str = "mcp-needs-auth-cache.json";
 /// 条目没带 `ttlMs` 时 Claude 的缺省有效期（用户自己配的 http / sse 那一种）。

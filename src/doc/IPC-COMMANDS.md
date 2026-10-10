@@ -2258,8 +2258,11 @@ skill 装记录的写口。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
-| `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `failed` | ← | 这台此刻活着的会话里那一家说它连不上 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 这台本地钟的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
+| `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 这台本地钟的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
 | `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
+| `mark` | ← | 小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了） |
 | `name` | ← | server 名 |
 | `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
 | `projectDir` | → | 可缺席 / `null` |

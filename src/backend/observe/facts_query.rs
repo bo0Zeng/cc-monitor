@@ -611,6 +611,30 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
     Ok(facts)
 }
 
+/// 说 MCP 样子的那种记录行里必有的字（快路只放过带它的行；[`could_matter`] 与 [`mcp_of`] 同一个口径）。
+const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
+
+/// 只要 `mcp` 那一格：读 `r` 整份，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 累加（口径与整份事实那一格同一处）。
+/// 扩展页问「这台活会话里谁连不上」用（`observe::accounts_query::live_mcp_failed`）。
+pub(crate) fn mcp_of<R: std::io::BufRead>(mut r: R) -> std::io::Result<Vec<McpTrouble>> {
+    let mut f = SessionFacts::default();
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        let read = r.read_until(b'\n', &mut buf)?;
+        if read == 0 || buf.last() != Some(&b'\n') {
+            break;
+        }
+        let line = &buf[..buf.len() - 1];
+        if contains(line, MCP_MARK) {
+            if let Some(v) = super::record_scan::parse_record(line) {
+                note_mcp(&mut f, &v);
+            }
+        }
+    }
+    Ok(f.mcp)
+}
+
 /// 扫完之后按上限表与中转标记定上下文上限（每次按调用方给的表重判，不进扫描）。
 pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, relay: Option<bool>) {
     if let Some(u) = facts.usage.as_mut() {
@@ -630,7 +654,7 @@ pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
         // 交回：记录级 `origin.handback`（键名在行里）。
         || contains(line, b"\"handback\"")
         // MCP 状态：「延后加载的工具变了」那种附件（行里带它的类型名）。
-        || contains(line, b"\"deferred_tools_delta\"")
+        || contains(line, MCP_MARK)
         // 重试：它本身（`api_error`）· 一串还没下文时，它后面的回复 / 人发的一句。
         || contains(line, b"\"api_error\"")
         || (open_retry(facts) && (contains(line, b"\"assistant\"") || contains(line, b"\"user\"")))

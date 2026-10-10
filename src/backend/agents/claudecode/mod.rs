@@ -173,7 +173,10 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     wait_of: pidfile::wait_of,
 };
 
-pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
+pub(crate) const MCP: super::McpFace = super::McpFace {
+    read: mcp::read,
+    login_command: mcp::LOGIN_COMMAND,
+};
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {

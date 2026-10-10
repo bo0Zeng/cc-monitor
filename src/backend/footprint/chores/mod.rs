@@ -110,10 +110,12 @@ pub(crate) struct Facts {
     pub declined: Vec<String>,
 }
 
-/// 一个要登录的 MCP：名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）。
+/// 一个要登录的 MCP：名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）· 登录那条命令。
 pub(crate) struct McpLogin {
     pub name: String,
     pub who: Vec<String>,
+    /// 登录要敲的那条命令（那一家的，`agents::mcp_login_command`）。
+    pub command: &'static str,
 }
 
 /// 一件的成品（线上形状由判据按键集钉住）。
@@ -384,7 +386,7 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         c.said = copy_text("beChore.mcpLogin.said", &[]);
         c.why = copy_text("beChore.mcpLogin.why", &[]);
         c.steps = vec![copy_text("beChore.mcpLogin.step", &[("name", &m.name)])];
-        c.copy = Some("/mcp".to_string());
+        c.copy = Some(m.command.to_string());
         out.push(c);
     }
     // 同一份文件里有两件都没做 ⇒ 各自的「整份」都给含两件的那一份（按现在的内容先合一件、再合另一件）。

@@ -11736,6 +11736,57 @@
       "zh": "读取失败 · {path} · {why}",
       "args": ["path", "why"]
     },
+    "beMcp.mark.sep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "beMcp.mark.login": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需登录 · {accounts} · {time} 记下",
+      "args": ["accounts", "time"]
+    },
+    "beMcp.mark.loginBare": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需登录 · {time} 记下",
+      "args": ["time"]
+    },
+    "beMcp.mark.loginTip": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需登录（{accounts}）",
+      "args": ["accounts"]
+    },
+    "beMcp.mark.loginTipBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需登录",
+      "args": []
+    },
+    "beMcp.mark.failed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话「{title}」里连接失败 · {time}",
+      "args": ["title", "time"],
+      "limited": ["连接"]
+    },
+    "beMcp.mark.failedUntimed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话「{title}」里连接失败",
+      "args": ["title"],
+      "limited": ["连接"]
+    },
+    "beMcp.mark.failedTip": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "连接失败",
+      "args": [],
+      "limited": ["连接"]
+    },
     "rsHooksDiag.diagnose.notObject": {
       "kind": "body",
       "role": "说明",
@@ -18971,6 +19022,49 @@
       "role": "片段",
       "zh": "{machine} · {state}",
       "args": ["machine", "state"]
+    },
+    "extPage.dot.titleMark": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} · {state} · {mark}",
+      "args": ["machine", "state", "mark"]
+    },
+    "extPage.legend.needsLogin": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需登录",
+      "args": []
+    },
+    "extPage.legend.failed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "连接失败",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "extPage.mcp.login": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "去登录",
+      "args": []
+    },
+    "extPage.mcp.loginHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "复制 {cmd} · 在该号的会话里粘贴、选中 {name} 登录",
+      "args": ["cmd", "name"]
+    },
+    "extPage.mcp.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制 {cmd}",
+      "args": ["cmd"]
+    },
+    "extPage.mcp.copyFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "复制 {cmd} 失败",
+      "args": ["cmd"]
     },
     "beExt.apply.changed": {
       "kind": "error",

@@ -537,6 +537,16 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
     SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
 }
 
+/// 一份会话记录的标题（同历史清单那一格：起的名字 · 首条用户输入摘要 · sid 前 8 位三选一），走清单缓存（没变不重扫、变长只扫尾巴）。
+pub(crate) fn session_title_of(p: &Path) -> String {
+    let row = analyze_session_cached(p);
+    super::search_rules::session_title(
+        row["aiTitle"].as_str(),
+        row["firstUserExcerpt"].as_str().unwrap_or(""),
+        row["sessionId"].as_str().unwrap_or(""),
+    )
+}
+
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
 fn analyze_session_cached(p: &Path) -> serde_json::Value {
     let lock = || SESSION_META.lock().unwrap_or_else(|e| e.into_inner());

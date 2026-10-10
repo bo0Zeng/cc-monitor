@@ -1314,7 +1314,10 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             MCP_READ,
             "/reply",
             &[
+                "failed",
+                "login",
                 "loginIn",
+                "mark",
                 "name",
                 "scope",
                 "seenAt",

@@ -370,10 +370,12 @@ fn 自己配的_mcp_要登录_可选一件_不进角标() {
         McpLogin {
             name: "m-a".into(),
             who: vec!["p".into(), "w".into()],
+            command: "/mcp",
         },
         McpLogin {
             name: "m-b".into(),
             who: vec![],
+            command: "/mcp",
         },
     ];
     let c = chores(&f);

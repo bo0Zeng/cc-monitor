@@ -79,10 +79,25 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 }
             };
             // 读 MCP 的那一家：唯一声明了 MCP 读面的那一家（今天只有 Claude）；Codex 的 MCP 来了由请求说是哪一家。
-            let read = crate::agents::sole_kind(|a| a.mcp.is_some())
-                .and_then(|k| crate::agents::mcp_read(k, dir.as_deref(), &mcp_look(k)))
-                .unwrap_or_default();
-            capped(mcp_reply(&read))
+            let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
+                return capped(mcp_reply(&Default::default(), &McpSay::default()));
+            };
+            let look = mcp_look(kind);
+            let read = crate::agents::mcp_read(kind, dir.as_deref(), &look).unwrap_or_default();
+            // 连不上：这台此刻活着的会话里那一家说的（各号的家都看）；每个名字取说它最晚的那一条。
+            let homes: Vec<std::path::PathBuf> =
+                look.homes.iter().map(|(_, h)| h.clone()).collect();
+            let failed = crate::observe::accounts_query::live_mcp_failed(&homes);
+            let now_s = i64::try_from(look.now_ms / 1000).unwrap_or(i64::MAX);
+            let tz_min =
+                crate::platform::local_tz::offset_secs(look.now_ms / 1000).unwrap_or(0) / 60;
+            let say = McpSay {
+                failed: &failed,
+                now_s,
+                tz_min,
+                login_command: crate::agents::mcp_login_command(kind).unwrap_or(""),
+            };
+            capped(mcp_reply(&read, &say))
         }
         other => Err((
             "bad_args",
@@ -136,15 +151,59 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
+/// [`mcp_reply`] 写字要的：这台活会话里说连不上的那几个 · 此刻（unix 秒）与时区偏移（分钟，东正）· 登录那一步复制的那条命令（那一家的）。
+#[derive(Default)]
+pub(crate) struct McpSay<'a> {
+    pub failed: &'a [crate::observe::accounts_query::LiveMcpFailed],
+    pub now_s: i64,
+    pub tz_min: i64,
+    pub login_command: &'static str,
+}
+
 /// `mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
-pub(crate) fn mcp_reply(r: &crate::agents::McpRead) -> Value {
+/// 每条带写好的字（界面照抄）：`login`（需登录那一句 · 悬停那一截 · 复制的命令）· `failed`（连不上那一句 · 悬停那一截 · 原话）·
+/// `mark`（小标画哪一种：连不上压过需登录；停用的不连 ⇒ 不标连不上）。
+pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> Value {
+    use crate::agents::McpStatus;
+    let time = |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), say.now_s, say.tz_min);
     let entries: Vec<Value> = r
         .entries
         .iter()
         .map(|e| {
+            let login = (e.status == McpStatus::NeedsLogin).then(|| {
+                let who = e.login_in.join(&copy_text("beMcp.mark.sep", &[]));
+                let at = e.seen_ms.map_or(String::new(), |t| time(i64::try_from(t).unwrap_or(i64::MAX)));
+                let (said, tip) = if who.is_empty() {
+                    (copy_text("beMcp.mark.loginBare", &[("time", &at)]), copy_text("beMcp.mark.loginTipBare", &[]))
+                } else {
+                    (
+                        copy_text("beMcp.mark.login", &[("accounts", &who), ("time", &at)]),
+                        copy_text("beMcp.mark.loginTip", &[("accounts", &who)]),
+                    )
+                };
+                json!({ "said": said, "tip": tip, "copy": say.login_command })
+            });
+            let failed = (e.status != McpStatus::Disabled)
+                .then(|| say.failed.iter().find(|f| f.name == e.name))
+                .flatten()
+                .map(|f| {
+                    let said = match f.at_ms {
+                        Some(t) => copy_text("beMcp.mark.failed", &[("title", &f.title), ("time", &time(t))]),
+                        None => copy_text("beMcp.mark.failedUntimed", &[("title", &f.title)]),
+                    };
+                    json!({ "said": said, "tip": copy_text("beMcp.mark.failedTip", &[]), "detail": f.detail })
+                });
+            let mark = if failed.is_some() {
+                json!(McpStatus::Failed)
+            } else if login.is_some() {
+                json!(McpStatus::NeedsLogin)
+            } else {
+                Value::Null
+            };
             json!({
                 "scope": e.scope, "name": e.name, "server": e.server, "sourcePath": e.source,
                 "status": e.status, "loginIn": e.login_in, "seenAt": e.seen_ms,
+                "mark": mark, "login": login, "failed": failed,
             })
         })
         .collect();

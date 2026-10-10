@@ -114,3 +114,83 @@ fn the_tasks_product_matches_the_cross_language_golden() {
     let got = answer_at(&h, "tasks-list", &g["request"]).unwrap();
     assert_eq!(got, g["product"], "成品与金样对不上");
 }
+
+/// ★ `mcp-read` 每条写好的字（扩展页小标与抽屉那一行照抄）：需登录那一句（号名 · 几点记下）· 连不上那一句（这台活会话里最近说它的那一条：
+/// 会话名 · 几点 · 原话）· 小标取哪一种（连不上压过需登录；停用的不连 ⇒ 什么都不标）。成品 == 金样 `marked`（界面读同一份）。
+/// 要求：用户 10-09 认的 MCP 状态稿甲 1 / 甲 2；主会话定「判定还是 mcp-read 一处，每条再加两格写好的字」。
+#[test]
+fn the_mcp_marks_are_written_once_on_the_backend() {
+    use crate::agents::{McpEntry, McpRead, McpStatus};
+    use crate::observe::accounts_query::LiveMcpFailed;
+    let g: Value =
+        serde_json::from_str(include_str!("../../__fixtures__/mcp-read.golden.json")).unwrap();
+    let ms = |s: &str| crate::common::time::parse_iso8601_ms(s).unwrap();
+    let http = json!({"type": "http", "url": "http://x"});
+    let e = |name: &str, server: &Value, status, login_in: &[&str], seen: Option<u64>| McpEntry {
+        scope: "user",
+        name: name.into(),
+        server: server.clone(),
+        source: "<CJ>".into(),
+        status,
+        login_in: login_in.iter().map(|s| s.to_string()).collect(),
+        seen_ms: seen,
+    };
+    let seen = Some(ms("2026-10-09T10:42:00Z") as u64);
+    let read = McpRead {
+        entries: vec![
+            e(
+                "s-login",
+                &http,
+                McpStatus::NeedsLogin,
+                &["acct-a", "acct-b"],
+                seen,
+            ),
+            e("s-both", &http, McpStatus::NeedsLogin, &[], seen),
+            e(
+                "s-failed",
+                &json!({"command": "s-failed"}),
+                McpStatus::Unknown,
+                &[],
+                None,
+            ),
+            e("s-off", &http, McpStatus::Disabled, &[], None),
+            e(
+                "s-plain",
+                &json!({"command": "s-plain"}),
+                McpStatus::Unknown,
+                &[],
+                None,
+            ),
+        ],
+        dirs: vec![],
+        problems: vec![],
+    };
+    let f = |name: &str, at: Option<i64>, detail: Option<&str>, title: &str| LiveMcpFailed {
+        name: name.into(),
+        at_ms: at,
+        detail: detail.map(str::to_string),
+        title: title.into(),
+    };
+    let failed = vec![
+        f(
+            "s-both",
+            Some(ms("2026-10-09T10:31:00Z")),
+            Some("err-1"),
+            "会话-甲",
+        ),
+        f("s-failed", None, None, "会话-乙"),
+        f(
+            "s-off",
+            Some(ms("2026-10-09T10:00:00Z")),
+            Some("err-2"),
+            "会话-丙",
+        ),
+    ];
+    let say = McpSay {
+        failed: &failed,
+        now_s: ms("2026-10-09T12:00:00Z") / 1000,
+        tz_min: 0,
+        login_command: "/mcp",
+    };
+    assert_eq!(mcp_reply(&read, &say), g["marked"]);
+}

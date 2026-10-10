@@ -259,7 +259,10 @@ pub(crate) enum Stop {
 
 /// 假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
 /// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
-pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace { read: read_mcp };
+pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace {
+    read: read_mcp,
+    login_command: "/fake-mcp",
+};
 
 fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate::agents::McpRead {
     let mut out = crate::agents::McpRead::default();

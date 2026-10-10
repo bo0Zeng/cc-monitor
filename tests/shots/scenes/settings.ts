@@ -243,6 +243,14 @@ export const SETTINGS_SCENES: Scene[] = [
     }
     await sleep(500);
   }, troubleWorld),
+  settings("settings-ext-mcp", "设置 · 扩展 · MCP 需登录 / 连不上", "筛到 MCP：github 本机的点右上角黄标（需登录）、devbox 红标（连不上）· 图例多两项 · 点开：本机那一行「需登录 · 号 · 几点记下」［去登录］· devbox 那一行「连不上 · 会话「…」里 · 几点」＋ 原话 ＋［复制详情］", async () => {
+    await go("ext");
+    await sleep(600);
+    await click(await byText(".settings-page:not([hidden]) .ext-filter button", "MCP"));
+    await sleep(300);
+    document.querySelector<HTMLElement>('.settings-page:not([hidden]) .ext-row[data-key="mcp/github"]')?.click();
+    await sleep(500);
+  }, troubleWorld),
   settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
     await go("general");
     await sleep(500);

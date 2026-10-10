@@ -999,6 +999,25 @@ fn the_sessions_mcp_trouble_is_the_last_thing_said_per_list() {
     );
 }
 
+/// 只读 MCP 那一格的快扫（扩展页问「这台活会话里谁连不上」用）：与整份事实扫出来的 `mcp` 一格逐项相等。
+/// 要求：用户 10-09 认的 MCP 状态稿甲 1 / 甲 2「连不上的原因取这台活会话里最近一条」。
+#[test]
+fn the_mcp_only_scan_says_what_the_full_facts_say() {
+    let recs = vec![
+        mcp_delta(json!({"failedMcpServers": [{"name": "m-f", "error": "e-1"}]})),
+        assistant(vec![]),
+        mcp_delta(json!({"needsAuthMcpServers": ["m-n"]})),
+        mcp_delta(json!({"failedMcpServers": [{"name": "m-g", "error": "e-2"}]})),
+    ];
+    let text = jsonl(&recs);
+    let got = mcp_of(text.as_bytes()).unwrap();
+    assert_eq!(got, scan_all(&text).mcp);
+    assert_eq!(
+        got.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+        ["m-g", "m-n"]
+    );
+}
+
 /// 〔G2〕「需手动」带写好的字与语气：八种各一句（等批准 / 等回答 / 等批准（计划）/ 等放行 / 等批准（协作请求）/ 等确认 / 等选择 / 需手动）；语气恒 `need`。出口照抄。
 #[test]
 fn needs_carries_its_words_and_tone() {

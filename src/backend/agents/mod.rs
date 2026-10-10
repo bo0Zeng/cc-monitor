@@ -1397,6 +1397,8 @@ pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
 #[derive(Clone, Copy)]
 pub(crate) struct McpFace {
     pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
+    /// 在那一家的会话里登录 MCP 服务器要敲的那条命令（扩展页「去登录」· 待办那一件复制它）。
+    pub(crate) login_command: &'static str,
 }
 
 /// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
@@ -1469,6 +1471,13 @@ pub(crate) fn mcp_read_among(
     adapter_among(registry, kind)
         .and_then(|a| a.mcp)
         .map(|f| (f.read)(project_dir, look))
+}
+
+/// `kind` 那一家登录 MCP 服务器的那条命令（[`McpFace::login_command`]）。那一家不认得 MCP ⇒ `None`。
+pub(crate) fn mcp_login_command(kind: &str) -> Option<&'static str> {
+    adapter_among(REGISTRY, kind)
+        .and_then(|a| a.mcp)
+        .map(|f| f.login_command)
 }
 
 /// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。

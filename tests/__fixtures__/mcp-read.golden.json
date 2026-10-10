@@ -1,19 +1,167 @@
 {
   "说明": [
-    "`mcp-read` 的跨语言金样：后端（适配层 `agents/claudecode/mcp.rs` ＋ `feature_face::mcp_reply`）对夹具现算 == reply；monitor `mcp.rs::decode_mcp_read` 读同一份 reply。",
+    "`mcp-read` 的跨语言金样：后端（适配层 `agents/claudecode/mcp.rs` ＋ `feature_face::mcp_reply`）对夹具现算 == reply；界面 `src/frontend/ui/ext-reads.ts::decodeMcpRead` 读同一份 reply 与 marked。",
     "只采结构（占位 server 名 / 占位命令）。`<DIR>` / `<CJ>` 由测试换成临时目录下的真路径。",
-    "状态：这一份不喂各号的家（要登录那一种另有判据 `mcp_tests.rs::status_says_only_what_the_config_side_can_know`），只出停用与判不出两种。"
+    "状态：这一份不喂各号的家（要登录那一种另有判据 `mcp_tests.rs::status_says_only_what_the_config_side_can_know`），只出停用与判不出两种。",
+    "marked：写好的字那三格（`mark` · `login` · `failed`）。判据 `feature_face_tests.rs::the_mcp_marks_are_written_once_on_the_backend` 拿手造的条目、此刻 2026-10-09T12:00Z、UTC 现算 == marked；名字、号名、原话都是占位。"
   ],
   "claudeJson": "{\"mcpServers\":{\"u1\":{\"command\":\"/opt/u1\"}},\"projects\":{\"<DIR>\":{\"mcpServers\":{\"l1\":{\"type\":\"http\",\"url\":\"http://x\"}},\"disabledMcpServers\":[\"p1\"]},\"/other\":{}}}",
   "mcpJson": "{\"mcpServers\":{\"p1\":{\"command\":\"p1\",\"args\":[\"-x\"]}}}",
   "reply": {
     "entries": [
-      { "scope": "user", "name": "u1", "server": { "command": "/opt/u1" }, "sourcePath": "<CJ>", "status": "unknown", "loginIn": [], "seenAt": null },
-      { "scope": "local", "name": "l1", "server": { "type": "http", "url": "http://x" }, "sourcePath": "<CJ>", "status": "unknown", "loginIn": [], "seenAt": null },
-      { "scope": "project", "name": "p1", "server": { "command": "p1", "args": ["-x"] }, "sourcePath": "<DIR>/.mcp.json", "status": "disabled", "loginIn": [], "seenAt": null }
+      {
+        "scope": "user",
+        "name": "u1",
+        "server": {
+          "command": "/opt/u1"
+        },
+        "sourcePath": "<CJ>",
+        "status": "unknown",
+        "loginIn": [],
+        "seenAt": null,
+        "mark": null,
+        "login": null,
+        "failed": null
+      },
+      {
+        "scope": "local",
+        "name": "l1",
+        "server": {
+          "type": "http",
+          "url": "http://x"
+        },
+        "sourcePath": "<CJ>",
+        "status": "unknown",
+        "loginIn": [],
+        "seenAt": null,
+        "mark": null,
+        "login": null,
+        "failed": null
+      },
+      {
+        "scope": "project",
+        "name": "p1",
+        "server": {
+          "command": "p1",
+          "args": [
+            "-x"
+          ]
+        },
+        "sourcePath": "<DIR>/.mcp.json",
+        "status": "disabled",
+        "loginIn": [],
+        "seenAt": null,
+        "mark": null,
+        "login": null,
+        "failed": null
+      }
     ],
-    "dirs": ["/other", "<DIR>"],
+    "dirs": [
+      "/other",
+      "<DIR>"
+    ],
     "problems": []
   },
-  "codes": ["bad_args", "too_large"]
+  "codes": [
+    "bad_args",
+    "too_large"
+  ],
+  "marked": {
+    "entries": [
+      {
+        "scope": "user",
+        "name": "s-login",
+        "server": {
+          "type": "http",
+          "url": "http://x"
+        },
+        "sourcePath": "<CJ>",
+        "status": "needsLogin",
+        "loginIn": [
+          "acct-a",
+          "acct-b"
+        ],
+        "seenAt": 1791542520000,
+        "mark": "needsLogin",
+        "login": {
+          "said": "需登录 · acct-a、acct-b · 10:42 记下",
+          "tip": "需登录（acct-a、acct-b）",
+          "copy": "/mcp"
+        },
+        "failed": null
+      },
+      {
+        "scope": "user",
+        "name": "s-both",
+        "server": {
+          "type": "http",
+          "url": "http://x"
+        },
+        "sourcePath": "<CJ>",
+        "status": "needsLogin",
+        "loginIn": [],
+        "seenAt": 1791542520000,
+        "mark": "failed",
+        "login": {
+          "said": "需登录 · 10:42 记下",
+          "tip": "需登录",
+          "copy": "/mcp"
+        },
+        "failed": {
+          "said": "会话「会话-甲」里连接失败 · 10:31",
+          "tip": "连接失败",
+          "detail": "err-1"
+        }
+      },
+      {
+        "scope": "user",
+        "name": "s-failed",
+        "server": {
+          "command": "s-failed"
+        },
+        "sourcePath": "<CJ>",
+        "status": "unknown",
+        "loginIn": [],
+        "seenAt": null,
+        "mark": "failed",
+        "login": null,
+        "failed": {
+          "said": "会话「会话-乙」里连接失败",
+          "tip": "连接失败",
+          "detail": null
+        }
+      },
+      {
+        "scope": "user",
+        "name": "s-off",
+        "server": {
+          "type": "http",
+          "url": "http://x"
+        },
+        "sourcePath": "<CJ>",
+        "status": "disabled",
+        "loginIn": [],
+        "seenAt": null,
+        "mark": null,
+        "login": null,
+        "failed": null
+      },
+      {
+        "scope": "user",
+        "name": "s-plain",
+        "server": {
+          "command": "s-plain"
+        },
+        "sourcePath": "<CJ>",
+        "status": "unknown",
+        "loginIn": [],
+        "seenAt": null,
+        "mark": null,
+        "login": null,
+        "failed": null
+      }
+    ],
+    "dirs": [],
+    "problems": []
+  }
 }

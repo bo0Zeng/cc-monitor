@@ -500,6 +500,74 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
         .collect()
 }
 
+/// 这台活会话里那一家说连不上的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LiveMcpFailed {
+    pub name: String,
+    /// 说它的那条记录的时刻（epoch ms）；记录没写 / 解不出 ⇒ `None`。
+    pub at_ms: Option<i64>,
+    /// 那一家写的原话（复制详情用）。
+    pub detail: Option<String>,
+    /// 说它的那条会话的标题（同历史清单那一格的口径）。
+    pub title: String,
+}
+
+/// 这台此刻活着的交互会话（`homes` 各号的家里的 pidfile；判活同 [`live_session_ids`]，后台任务不算）里，
+/// 那一家说连不上的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
+/// 每条会话只读 MCP 那一格（`facts_query::mcp_of`）；标题取历史清单的缓存（`history_query::session_title_of`）。
+pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
+    let mut out: Vec<LiveMcpFailed> = Vec::new();
+    for home in homes {
+        for (pid, v) in pidfiles(home) {
+            if crate::agents::pidfile_background(&v)
+                || !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v))
+            {
+                continue;
+            }
+            let Some(sid) = v
+                .get("sessionId")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            let Ok(path) = super::history_query::session_record(home, sid) else {
+                continue;
+            };
+            let Ok(file) = std::fs::File::open(&path) else {
+                continue;
+            };
+            let Ok(said) = super::facts_query::mcp_of(std::io::BufReader::new(file)) else {
+                continue;
+            };
+            let mut title: Option<String> = None;
+            for m in said {
+                if m.status != crate::agents::McpStatus::Failed {
+                    continue;
+                }
+                let at_ms =
+                    m.at.as_deref()
+                        .and_then(crate::common::time::parse_iso8601_ms);
+                if out.iter().any(|o| o.name == m.name && o.at_ms >= at_ms) {
+                    continue;
+                }
+                out.retain(|o| o.name != m.name);
+                let title = title
+                    .get_or_insert_with(|| super::history_query::session_title_of(&path))
+                    .clone();
+                out.push(LiveMcpFailed {
+                    name: m.name,
+                    at_ms,
+                    detail: m.detail,
+                    title,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 /// 这台此刻活着的交互会话的工作目录（判活同 [`live_session_ids`]；后台任务不算），去重、排好序。计划读面从这里找工作区。
 pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
     let mut v: Vec<String> = pidfiles(agent_home)

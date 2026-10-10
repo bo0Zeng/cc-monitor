@@ -717,7 +717,10 @@ fn two_families() -> Vec<Adapter> {
         assets: Some(assets),
         history: None,
         upstream: None,
-        mcp: Some(McpFace { read: mcp }),
+        mcp: Some(McpFace {
+            read: mcp,
+            login_command: "/m",
+        }),
         footprint: None,
         accounts: Some(acc),
         records: Some(records(find)),
