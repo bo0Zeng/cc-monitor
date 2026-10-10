@@ -32,9 +32,11 @@ import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
   AGENT_WINDOWS_ASK_EVENT,
+  PLAN_OPEN_EVENT,
   SHOW_RUN_CARD_EVENT,
   SWITCH_TO_SESSION_EVENT,
   type AgentWindowSaid,
+  type PlanOpenSaid,
   type ShowRunCard,
   type SwitchToSession,
 } from "./window-events";
@@ -560,6 +562,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
   // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后（不发系统通知）。
   planView.book = planNeeds;
+  // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
+  void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
   tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i) });
   const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
   planNeeds.subscribe(() => {

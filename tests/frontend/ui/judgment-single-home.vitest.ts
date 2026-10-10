@@ -696,6 +696,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     LINK_RETRY_OP: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
+    // 「在计划里看」那一问（窗口 → monitor → 主窗口），参数形状只在这里；TS 侧收的是壳发的事件（`window-events.ts`），零孪生。
+    PLAN_OPEN_OP: NONE,
+    plan_open_args: NONE,
+    plan_open_target: NONE,
     // 窗口的样子：令牌解成数只在这里（主界面那一侧只按名单读计算值、原样交过来，不解析；
     //   名单两边相等由 `theme_tests::the_token_list_is_the_same_on_both_sides` 钉）。
     THEME_TOKENS: NONE,

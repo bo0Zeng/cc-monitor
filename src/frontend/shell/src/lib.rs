@@ -1085,6 +1085,11 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
 static REMOTE_CTX: std::sync::OnceLock<(Arc<event_replay::EventReplay>, tauri::AppHandle)> =
     std::sync::OnceLock::new();
 
+/// 主窗口那一侧的应用把手（起来之后才有；通道上由 monitor 自己接的那几条要发界面事件时取它）。
+pub(crate) fn main_app() -> Option<tauri::AppHandle> {
+    REMOTE_CTX.get().map(|(_, app)| app.clone())
+}
+
 /// 一台远端的重起闭包：每次调用起一条新的 `stream_source::run`。
 fn remote_respawn(
     cfg: stream_source::RemoteConfig,

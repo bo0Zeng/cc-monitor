@@ -288,6 +288,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         Own::Window,
         "文件窗口断线条上「重新连接」：连接循环住 monitor（`stream_source::run`），叫醒它不等退避睡满；连没连上看 `link` 那条流",
     ),
+    (
+        "plan-open",
+        Own::Window,
+        "文件窗口「在计划里看」只交意图 `{workspace, slice, id}`：monitor 把主窗口拉到前面、发事件给它开计划页选中那一格（主窗口住 monitor）",
+    ),
 ];
 
 /// `HOST_OPS`（代码那一侧）== [`CHANNEL_OWN`]（登记那一侧），两向；每一行都写了理由。

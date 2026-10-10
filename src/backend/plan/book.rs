@@ -209,6 +209,11 @@ impl Book {
             .then(|| d.to_string())
     }
 
+    /// 读好过的工作区（文件窗口反查只看这几个：不为每个目录起一次 pb）。
+    pub(crate) fn workspaces(&self) -> Vec<String> {
+        lock(&self.seen).keys().cloned().collect()
+    }
+
     /// 这个工作区上一次读好的成品。
     pub(crate) fn last(&self, workspace: &str) -> Option<Value> {
         lock(&self.seen).get(workspace).map(|s| s.doc.clone())

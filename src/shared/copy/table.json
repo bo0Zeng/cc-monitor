@@ -29645,6 +29645,78 @@
       "role": "空态",
       "zh": "没有对得上的签收",
       "args": []
+    },
+    "rsFilewinPlan.col.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "格",
+      "args": []
+    },
+    "rsFilewinPlan.cell.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "rsFilewinPlan.cell.dup": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{title} 也声明此文件",
+      "args": ["title"]
+    },
+    "rsFilewinPlan.cell.listSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "rsFilewinPlan.owner.block": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块「{block}」",
+      "args": ["block"]
+    },
+    "rsFilewinPlan.owner.signed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "签 {time}",
+      "args": ["time"]
+    },
+    "rsFilewinPlan.menu.open": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在计划里看 · {title}",
+      "args": ["title"]
+    },
+    "rsFilewinPlan.owner.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在计划里看",
+      "args": []
+    },
+    "rsFilewinPlan.open.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "切到计划页失败 · {why}",
+      "args": ["why"]
+    },
+    "rsFilewinPlan.cell.unreadableHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "读取失败 · {slice} · {said}",
+      "args": ["slice", "said"]
+    },
+    "rsChanHost.plan.noMain": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "主窗口不在 · 计划页未打开",
+      "args": []
+    },
+    "rsChanHost.plan.emitFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "主窗口未收到 · 计划页未打开",
+      "args": []
     }
   }
 }

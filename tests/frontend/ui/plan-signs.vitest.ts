@@ -49,3 +49,17 @@ describe("退回对象：顶块与格", () => {
     expect(t).toMatchObject({ id: "A2", title: "写出模块", done: true, signer: null });
   });
 });
+
+describe("「在计划里看」：壳发给主窗口的事件名两边同一个", () => {
+  it("`chan/host.rs::PLAN_OPEN_EVENT` == `window-events.ts::PLAN_OPEN_EVENT`（从 Rust 源码抠，异源）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { PLAN_OPEN_EVENT } = await import("../../../src/frontend/ui/window-events.ts");
+    const rs = readFileSync("src/frontend/shell/src/chan/host.rs", "utf8");
+    const m = rs.match(/const PLAN_OPEN_EVENT: &str = "([^"]+)";/);
+    expect(m, "Rust 那一侧的常量抠不出来").not.toBeNull();
+    expect(PLAN_OPEN_EVENT).toBe(m![1]);
+    // 主窗口真的听它（剥掉注释再找）。
+    const main = readFileSync("src/frontend/ui/main.ts", "utf8").replace(/\/\/.*$/gm, "");
+    expect(main).toContain("listen<PlanOpenSaid>(PLAN_OPEN_EVENT");
+  });
+});

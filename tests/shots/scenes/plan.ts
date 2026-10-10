@@ -186,13 +186,13 @@ export const PLAN_SCENES: Scene[] = [
   plan("plan-44-signs", "签收排成一条", "概览「最近签收 · 全部 N」点进去：整片的签收按时间排成一条、新的在上（不进需手动）；右上按标题找", async () => {
     await openPlan();
     await click(".plan-view .plan-signs-all");
-    await waitFor(".plan-view .plan-signs");
+    await waitFor('.plan-view [data-view="signs"]');
     await sleep(300);
   }),
   plan("plan-45-signs-find", "签收流 · 按标题找", "签收流里输「解析」：只剩那几格的签收（被后签的那条也在）", async () => {
     await openPlan();
     await click(".plan-view .plan-signs-all");
-    await type(".plan-signs-find", "解析");
+    await type('.plan-view [data-find="signs"]', "解析");
     await sleep(300);
   }),
 ];

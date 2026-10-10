@@ -422,6 +422,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "plan-ack"
                 | "plan-unack"
                 | "plan-return"
+                // 文件窗口反查：读认可那份小文件（同步文件 I/O；不起 pb）。
+                | "plan-files"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
@@ -662,6 +664,8 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-ack",
         "plan-unack",
         "plan-return",
+        // 文件窗口反查：阻塞（读认可那份小文件）。
+        "plan-files",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。

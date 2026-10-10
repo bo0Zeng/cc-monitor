@@ -1242,6 +1242,29 @@ async fn screenshot_for_the_shots_tool() {
         w.pick_also(&["main.rs", "notes.txt"]);
         w.perform(crate::select::Action::Delete, None);
     }
+    // 计划反查那两张（稿 06 第 1 · 3 张）：目录落在一片的仓库里 ⇒ 「格」一列 ＋ 预览头「归属」；右键多「在计划里看」。
+    //   合成后端不答 `plan-files`（那一问回错 ⇒ 当不在片里）⇒ 等它落空之后照真后端的回包形状摆上一份（中性例子）。
+    if scene.starts_with("plan") {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let reply = serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
+            {"name": "main.rs", "id": "A2-1", "title": "下单入口", "statusCode": "done", "block": "下单流程",
+             "signAtText": "09:18", "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
+            {"name": "Cargo.toml", "id": "A1-1", "title": "打包配置", "statusCode": "done", "block": null,
+             "signAtText": "09-20 14:22", "fileState": "ok", "fileNote": null, "dup": []},
+            {"name": "README.md", "id": "A1-2", "title": "说明文档", "statusCode": "open", "block": null,
+             "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
+            {"name": "notes.txt", "id": "A3-1", "title": "库存客户端", "statusCode": "open", "block": "下单流程",
+             "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
+            {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": "dropped", "block": null,
+             "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
+        ]});
+        *w.listing.plan.lock().unwrap() = crate::plan::from_reply(&reply);
+    }
+    if scene == "plan-menu" {
+        let i = row_of(&w, "main.rs");
+        w.tally.menu_clicked = Some(i);
+        w.apply_menu_click(egui::pos2(440.0, 300.0));
+    }
     let open_unreadable = scene == "unreadable";
     let shot_w: f32 = std::env::var("CCM_SHOTS_FILEWIN_W")
         .ok()
@@ -1249,7 +1272,7 @@ async fn screenshot_for_the_shots_tool() {
         .unwrap_or(1280.0);
     let scene_name = scene.clone();
     let theme = crate::theme::testing::default_theme();
-    let preview = scene == "main";
+    let preview = scene == "main" || scene.starts_with("plan");
     let split = scene == "split";
     let h = std::thread::spawn(move || {
         struct Shot {

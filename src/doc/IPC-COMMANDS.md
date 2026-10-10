@@ -3616,7 +3616,7 @@ cc-bus 钩子诊断。
 | `readAt` | ← | 读到的时刻（epoch ms） |
 | `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
 | `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
-| `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null` |
+| `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null`；顶块（`project`）那一次记在片上的 `returned` |
 | `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`
@@ -3651,6 +3651,23 @@ cc-bus 钩子诊断。
 | `path` | ← | `view` 写的那一页（那台机器上的路径）；别的 ⇒ `null` |
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported` · `refused`
+
+#### `plan-files`
+
+文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-files`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dir` | → | 那台机器上的绝对路径（串） |
+| `workspace` | ← | 工作区根；不在任何工作区 ⇒ `null` |
+| `slice` | ← | 片名；不在任何一片的仓库（`<工作区>/<片名>/`）里 ⇒ `null` |
+| `unreadable` | ← | 那一片此刻读不成的那一句（条目空） |
+| `entries` | ← | 每份声明过的文件 `{name, id, title, statusCode, status, block, signAtText, fileState, fileNote, dup: [{id, title}]}`（被几格声明 ⇒ 先声明的作主、其余进 `dup`） |
+| `unowned` | ← | 无主的那几份（要 pb 给；没给 ⇒ `null`） |
+
+码：`bad_args` · `failed`
 
 #### `plan-ack`
 
@@ -3695,7 +3712,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `client` | → | 自报的前端（过 `terminal-input` 那一道身份门） |
-| `id` | → | 格的编号 |
+| `id` | → | 格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手） |
 | `line` | ← | 送出的那一行（后端拼；只读） |
 | `result` | ← | `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制） |
 | `said` | ← | `refused` / `copy` 时给人看的那一句 |
@@ -3835,6 +3852,7 @@ cc-bus 钩子诊断。
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
 | `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径） |
+| `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |

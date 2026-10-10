@@ -179,7 +179,11 @@ export class PlanView {
   async openAt(origin: Origin, workspace: string, slice: string, cell: string | null): Promise<void> {
     this.current = { origin, workspace, name: slice };
     this.selected = cell;
-    await this.open();
+    this.signsOpen = false;
+    this.atItem = null;
+    // 已经开着（文件窗口那一下常是这样）⇒ 就地换到那一片那一格。
+    if (this.isOpen) this.afterList();
+    else await this.open();
   }
 
   /** 此刻站在第几条计划项（标签栏「需手动」的下一站从它算）；不在计划页 / 没站在哪一条 ⇒ `null`。 */
@@ -950,7 +954,7 @@ export class PlanView {
   /** 整片的签收排成一条（新的在上；按标题找）。不进需手动、不算琥珀数。 */
   private signsFlow(slice: PlanSlice): HTMLElement {
     const box = document.createElement("div");
-    box.className = "plan-signs";
+    box.dataset.view = "signs";
     const all = signsNewestFirst(slice);
     const h1 = document.createElement("div");
     h1.className = s.pvH1;
@@ -962,7 +966,7 @@ export class PlanView {
     find.className = s.pvSignFind;
     const q = document.createElement("input");
     q.type = "search";
-    q.className = "plan-signs-find";
+    q.dataset.find = "signs";
     q.placeholder = copyText("plan.page.search");
     q.setAttribute("aria-label", copyText("plan.page.search"));
     q.value = this.signsQuery;

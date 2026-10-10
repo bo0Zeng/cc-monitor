@@ -135,13 +135,17 @@ const HOP: u8 = 1;
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
-pub(crate) const HOST_OPS: [&str; 5] = [
+pub(crate) const HOST_OPS: [&str; 6] = [
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
     filewin_contract::LINK_RETRY_OP,
+    filewin_contract::PLAN_OPEN_OP,
 ];
+
+/// 「在计划里看」交给主窗口的事件名（界面 `window-events.ts::PLAN_OPEN_EVENT`，两边逐字相同，`plan-signs.vitest.ts` 比）。
+const PLAN_OPEN_EVENT: &str = "plan-open";
 
 /// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
 const TERMINAL_SSH: &str = "terminal-ssh";
@@ -197,6 +201,9 @@ impl InboundBackends {
             }
             if op.0 == filewin_contract::FILEWIN_OPEN_OP {
                 return Box::pin(filewin_open(origin, payload));
+            }
+            if op.0 == filewin_contract::PLAN_OPEN_OP {
+                return Box::pin(plan_open(origin, payload));
             }
             if op.0 == filewin_contract::LINK_RETRY_OP {
                 // 叫醒那台的连接循环（它睡在退避里）；连没连上由 `link` 那条流说。
@@ -412,6 +419,44 @@ async fn filewin_open(origin: Origin, payload: Body) -> Result<Body, CallError> 
         Ok(()) => Ok(Body(b"{}".to_vec())),
         Err((code, why)) => Err(refused(code, why)),
     }
+}
+
+/// **文件窗口「在计划里看」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{workspace, slice, id}`）；这里把主窗口拉到前面，
+/// 发 [`PLAN_OPEN_EVENT`] 给它（带上那台的名字：片按机器区分），主窗口开计划页、选中那一格。主窗口不在 ⇒ 说真实原因。
+async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
+    use tauri::{Emitter as _, Manager as _};
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let Some(t) = filewin_contract::plan_open_target(&args) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let Some(app) = crate::main_app() else {
+        return Err(refused(
+            "no_main_window",
+            copy_text("rsChanHost.plan.noMain", &[]),
+        ));
+    };
+    if app.get_webview_window(crate::MAIN_WINDOW_LABEL).is_none() {
+        return Err(refused(
+            "no_main_window",
+            copy_text("rsChanHost.plan.noMain", &[]),
+        ));
+    }
+    // 拉到前面走主窗口那一处（第二次启动 · 点通知同一条：还原 · 显示 · 聚焦，失败各留一行日志）。
+    crate::platform::window::raise_main(&app, None, true);
+    let said = serde_json::json!({
+        "origin": origin.as_wire_str(),
+        "workspace": t.workspace,
+        "slice": t.slice,
+        "id": t.id,
+    });
+    let to = tauri::EventTarget::webview_window(crate::MAIN_WINDOW_LABEL);
+    app.emit_to(to, PLAN_OPEN_EVENT, said).map_err(|e| {
+        tracing::warn!("plan-open not delivered to the main window: {e}");
+        refused("emit_failed", copy_text("rsChanHost.plan.emitFailed", &[]))
+    })?;
+    Ok(Body(b"{}".to_vec()))
 }
 
 /// 一格快照 ⇒ 流里的一格。收场那一格是 `Closed{Peer(结局)}`，其余是 `Frame{seq, {"got","total"}}`。

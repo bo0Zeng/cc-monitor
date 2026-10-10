@@ -468,6 +468,49 @@ pub(crate) struct PlanReturnReply {
     pub screen: Option<String>,
 }
 
+/// `plan-files` 里一份文件（文件窗口「格」一列与预览头那一块）。读它的是文件窗口（Rust），不生成界面的类型。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct PlanFileOwner {
+    /// 文件名（目录里的那一项）。
+    pub name: String,
+    /// 作主的那一格（排期上先声明它的那一格）。
+    pub id: String,
+    pub title: Option<String>,
+    pub status_code: Option<String>,
+    pub status: Option<String>,
+    /// 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
+    pub block: Option<String>,
+    /// 作数那一条签收的时刻（成了字）；没签过 ⇒ `null`。
+    pub sign_at_text: Option<String>,
+    /// 对账：`ok` · `missing` · `empty` · `broken`。
+    pub file_state: Option<String>,
+    pub file_note: Option<String>,
+    /// 也声明它的那几格（pb 判据红「两个节点声明同一个文件」）。
+    pub dup: Vec<PlanFileDup>,
+}
+
+/// 也声明同一份文件的另一格。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanFileDup {
+    pub id: String,
+    pub title: Option<String>,
+}
+
+/// `plan-files` 的回包：这个目录落在哪一片的仓库里（不在 ⇒ `slice: null`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanFiles {
+    pub workspace: Option<String>,
+    pub slice: Option<String>,
+    /// 那一片此刻读不成的那一句（条目空）。
+    pub unreadable: Option<String>,
+    pub entries: Vec<PlanFileOwner>,
+    /// 无主的那几份（要 pb 给 `unowned`；没给 ⇒ `null`）。
+    pub unowned: Option<Vec<String>>,
+}
+
 /// 帧面出口：一份按 JSON 拼的回包过一遍 `T`（线上那一份就是 `T` 的序列化）。对不上 ⇒ 拼的那一侧有错（程序员错误），回 `failed`。
 pub(crate) fn checked<T: Serialize + serde::de::DeserializeOwned>(
     v: Value,

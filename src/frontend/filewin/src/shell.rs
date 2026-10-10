@@ -232,6 +232,8 @@ pub struct Listing {
     pub open_fail: Arc<Mutex<Option<(super::source::OpenFail, String)>>>,
     /// 摆着的这一屏是什么时候列到的（UNIX 秒；0 ＝ 还没列到过）。断线条「离线 · 采样 13:40」那个时刻。
     pub landed: Arc<AtomicU64>,
+    /// 计划反查（稿 06）：这个目录落在某一片的仓库里 ⇒ 每份文件归哪一格（后端 `plan-files`）；不在 / 还没问到 ⇒ `None`。
+    pub plan: Arc<Mutex<Option<super::plan::PlanDir>>>,
 }
 
 impl Default for Listing {
@@ -249,6 +251,7 @@ impl Default for Listing {
             total: Arc::new(AtomicU64::new(0)),
             open_fail: Arc::new(Mutex::new(None)),
             landed: Arc::new(AtomicU64::new(0)),
+            plan: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -343,6 +346,7 @@ impl Listing {
         self.rows.lock().unwrap().clear();
         self.hidden.lock().unwrap().clear();
         *self.error.lock().unwrap() = None;
+        *self.plan.lock().unwrap() = None;
     }
 
     /// 切隐藏文件显不显示：显示 ⇒ 收起来的那几行并回来、按 `sort` 重排；不显示 ⇒ 挪到一边。
@@ -532,6 +536,8 @@ pub struct FileWindow {
     /// 那一下可能失败（那台远端的配置没存全 · 本机找不到终端 · 本机没有 ssh 客户端），而一次失败与一次成功
     /// 在屏幕上长得一样 ⇒ 结果落在这一格，界面上画出来，判据读同一个值。
     term_notice: Arc<Mutex<Option<String>>>,
+    /// 「在计划里看」那一下没成说的话（同 [`Self::term_notice`] 那一形：摆在列表上面）。
+    plan_notice: Arc<Mutex<Option<String>>>,
     /// 🔴**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
     ///
     /// 它是 `P3`（老面板退役）的最后一格功能前置：老面板 `open(revealPath)`
@@ -619,6 +625,8 @@ pub struct MenuAt {
     pub at: egui::Pos2,
     pub actions: Vec<Action>,
     pub n: usize,
+    /// 单选的那一份归某一格 ⇒ 菜单多一项「在计划里看 · {标题}」（那一项的字；不归 ⇒ `None`）。
+    pub plan: Option<String>,
     /// 🔴 第几次开菜单。egui 的弹层按「上一帧有没有这个 id 的响应」判「刚打开」：
     ///   摆着一个菜单时在另一行上再右键一下，同一个 id 会被当成「开着时有人点了别处」
     ///   当场关掉 ⇒ 右键第二下只关不开。每次开菜单换一个 id 就没有这一形。
@@ -773,6 +781,7 @@ impl FileWindow {
             props: None,
             status_wanted: false,
             term_notice: Arc::new(Mutex::new(None)),
+            plan_notice: Arc::new(Mutex::new(None)),
             reveal: None,
             selection: Selection::default(),
             type_ahead: TypeAhead::default(),
@@ -844,6 +853,7 @@ impl FileWindow {
                         *l.open_fail.lock().unwrap() = fail;
                     }
                 });
+                self.reload_plan(h, mine);
             }
             // ── 没有运行时 ⇒ 问不了后端，也走不了 SFTP 那条退路 ⇒ **出声**。
             //
@@ -1012,6 +1022,90 @@ impl FileWindow {
     /// 「在此打开终端」那一下说了什么（`None` = 没话说）。判据与界面看同一个值。
     pub fn term_notice(&self) -> Option<String> {
         self.term_notice.lock().unwrap().clone()
+    }
+
+    /// 「在计划里看」那一下没成说的话（`None` = 没话说）。
+    pub fn plan_notice(&self) -> Option<String> {
+        self.plan_notice.lock().unwrap().clone()
+    }
+
+    /// 计划反查：问那台后端这个目录归哪一片、每份文件归哪一格（`plan-files`），跟着这一趟列目录（同一个号）落地。
+    /// 有损目录不问（反查按显示串比路径，比不准就不比）；问不成 ⇒ 当不在任何一片里（这一列不出，不出声：列目录那一趟会说话）。
+    fn reload_plan(&self, h: &tokio::runtime::Handle, mine: u64) {
+        let Some(line) = self.line.clone() else {
+            return;
+        };
+        if self.cwd_raw.is_some() {
+            return;
+        }
+        let l = self.listing.clone();
+        let origin = self.source.origin();
+        let args = serde_json::json!({ "dir": self.cwd });
+        h.spawn(async move {
+            let got = super::source::ask(
+                &line,
+                &origin,
+                super::plan::CMD_PLAN_FILES,
+                &args,
+                std::time::Duration::from_secs(10),
+            )
+            .await
+            .ok()
+            .and_then(|d| super::plan::from_reply(&d));
+            if l.epoch.load(Ordering::SeqCst) == mine {
+                *l.plan.lock().unwrap() = got;
+            }
+        });
+    }
+
+    /// 单选的那一份文件归的那一格（`(文件名, 那一格)`）；多选 · 文件夹 · 不归 ⇒ `None`。
+    pub fn picked_owner(&self) -> Option<(String, super::plan::Owner)> {
+        let plan = self.listing.plan.lock().unwrap();
+        let plan = plan.as_ref()?;
+        let rows = self.listing.rows.lock().unwrap();
+        let idx = self.selection.picked_indices(&rows);
+        let [i] = idx.as_slice() else { return None };
+        let r = rows.get(*i)?;
+        if r.opens_as_dir() {
+            return None;
+        }
+        plan.owner(&r.name).map(|o| (r.name.clone(), o.clone()))
+    }
+
+    /// 「在计划里看」：经通道交给 monitor（[`filewin_contract::PLAN_OPEN_OP`]，寻址 ＝ 这台 · 参数 `{workspace, slice, id}`）——
+    /// 主窗口拉到前面、切到计划页、选中那一格。窗口不认识主窗口；那一问不成 ⇒ 那句原话摆在列表上面。回值 = 真的发出去了。
+    pub fn open_in_plan(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some((_, owner)) = self.picked_owner() else {
+            return false;
+        };
+        let Some(dir) = self.listing.plan.lock().unwrap().clone() else {
+            return false;
+        };
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            *self.plan_notice.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let args = filewin_contract::plan_open_args(&dir.workspace, &dir.slice, &owner.id);
+        let origin = self.source.origin();
+        let slot = self.plan_notice.clone();
+        *slot.lock().unwrap() = None;
+        h.spawn(async move {
+            let r = super::source::ask(
+                &line,
+                &origin,
+                filewin_contract::PLAN_OPEN_OP,
+                &args,
+                TERMINAL_WITHIN,
+            )
+            .await;
+            *slot.lock().unwrap() = r
+                .err()
+                .map(|why| copy_text("rsFilewinPlan.open.failed", &[("why", &why.to_string())]));
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        });
+        true
     }
 
     /// 在**当前这个目录**里给用户开一个真终端。回值 = 真的发出去了。
@@ -4284,10 +4378,14 @@ impl FileWindow {
             (select::actions_for(&picked), idx.len())
         };
         self.key_notice = None;
+        let plan = self
+            .picked_owner()
+            .map(|(_, o)| super::plan::menu_label(&o));
         self.menu = Some(MenuAt {
             at,
             actions,
             n,
+            plan,
             serial: MENU_SERIAL.fetch_add(1, Ordering::SeqCst) + 1,
         });
         true
@@ -4305,6 +4403,7 @@ impl FileWindow {
         };
         let mut open = true;
         let mut chosen: Option<Action> = None;
+        let mut want_plan = false;
         egui::Popup::new(
             Self::menu_id(m.serial),
             ui.ctx().clone(),
@@ -4319,6 +4418,19 @@ impl FileWindow {
                 ui.label(MENU_EMPTY.as_str());
             }
             for a in &m.actions {
+                // 「在计划里看」放在删除那一项之前、隔一道线（稿 06 第 3 张）。
+                if *a == Action::Delete {
+                    if let Some(label) = &m.plan {
+                        let b = ui.button(format!(
+                            "{} {label}",
+                            egui_phosphor::regular::TREE_STRUCTURE
+                        ));
+                        if b.clicked() {
+                            want_plan = true;
+                        }
+                        ui.separator();
+                    }
+                }
                 // 这台做不到的那一件置灰，hover 说为什么。
                 let blocked = self.unavailable_here(*a);
                 let b = ui.add_enabled(blocked.is_none(), egui::Button::new(a.label(m.n)));
@@ -4331,8 +4443,12 @@ impl FileWindow {
                 }
             }
         });
-        if chosen.is_some() || !open {
+        if chosen.is_some() || want_plan || !open {
             self.menu = None;
+        }
+        if want_plan {
+            let ctx = ui.ctx().clone();
+            self.open_in_plan(Some(ctx));
         }
         if let Some(a) = chosen {
             let ctx = ui.ctx().clone();
@@ -4439,6 +4555,9 @@ impl FileWindow {
         // 一次性的那几句（键位做不成的原因 · 跳到隐藏文件 · …）不画在这里：由窗口那一级收成右下角的回执（`Workspace::frame`）。
         // 开终端那一下说的话 —— 摆着不走（到你换台机器 / 换个系统为止都成立的状态）⇒ 一条警告条。
         if let Some(said) = self.term_notice() {
+            super::kit::banner(ui, super::kit::Tone::Warn, &said, &[]);
+        }
+        if let Some(said) = self.plan_notice() {
             super::kit::banner(ui, super::kit::Tone::Warn, &said, &[]);
         }
         // 目录打不开：哪一种（后端的码）说一句 ＋ 出路「回上一级」「回主目录」；系统原话进「复制详情」。
@@ -4680,6 +4799,13 @@ impl FileWindow {
     fn listing_frame(&mut self, ui: &mut egui::Ui, prev_first: usize, prev_last: usize) {
         let jump = self.listing_jump(ui, prev_first, prev_last);
         let want = self.reveal.as_ref().map(|r| r.name.clone());
+        // 计划反查：目录落在某一片的仓库里 ⇒ 多一列「格」（不在 ⇒ 这一列宽 0，什么都不多）。
+        let plan = self.listing.plan.lock().unwrap().clone();
+        self.cols.cell = if plan.is_some() {
+            super::rows::CELL_COL
+        } else {
+            0.0
+        };
         // 表头：点一列排序（再点反向），拖分隔线改列宽。
         if let Some(by) = super::rows::show_header(ui, &mut self.cols, self.sort) {
             self.click_header(by);
@@ -4744,6 +4870,7 @@ impl FileWindow {
                 &self.cols,
                 tail.as_deref(),
                 cell.as_mut(),
+                plan.as_ref(),
             );
             let outcome = cell.and_then(|c| c.outcome);
             drop(rows);

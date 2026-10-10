@@ -1,5 +1,5 @@
 //! 命令表 · 计划：读面 `plan-list` · `plan-read` · `plan-cell-view`（planned-build 的工作区 · 片 · 一格的 agent 视角；只读）；
-//! 代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `view`；写盘的是 pb）；
+//! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `view`；写盘的是 pb）；
 //! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
 
 use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
@@ -36,6 +36,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径）",
         codes: &["bad_args", "failed", "no_pb", "not_workspace", "pb_unsupported", "refused"],
         fields: &[arg("cmd", "`continue` · `pause` · `view`"), arg("workspace", "工作区根"), out("rc", "pb 的退出码（成了才回，恒 0）"), out("said", "pb 说的第一句"), out("path", "`view` 写的那一页（那台机器上的路径）；别的 ⇒ `null`")],
+        takes_input: true,
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+    },
+    // 反查只读本子里那一份（不起 pb），照样放阻塞档（读认可那份小文件）。
+    CommandSpec {
+        name: "plan-files",
+        summary: "文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb）",
+        codes: &["bad_args", "failed"],
+        fields: &[arg("dir", "那台机器上的绝对路径（串）"), out("workspace", "工作区根；不在任何工作区 ⇒ `null`"), out("slice", "片名；不在任何一片的仓库（`<工作区>/<片名>/`）里 ⇒ `null`"), out("unreadable", "那一片此刻读不成的那一句（条目空）"), out("entries", "每份声明过的文件 `{name, id, title, statusCode, status, block, signAtText, fileState, fileNote, dup: [{id, title}]}`（被几格声明 ⇒ 先声明的作主、其余进 `dup`）"), out("unowned", "无主的那几份（要 pb 给；没给 ⇒ `null`）")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
     },

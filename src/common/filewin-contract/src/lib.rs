@@ -2,6 +2,7 @@
 //! - [`OpenRequest`] —— 开窗种子，整份走窗口进程的 stdin（一份 JSON，写完关掉 = EOF = 给完了）；
 //! - [`Ready`] —— 窗口进程列完第一屏在 stdout 上说的那一行；
 //! - [`TERMINAL_OPEN_OP`] —— 「在此打开终端」：窗口在它那条通道上 `call` 的、由 monitor 自己接下来的那一条（只带意图：那台 ＋ 当前目录）；
+//! - [`PLAN_OPEN_OP`] —— 「在计划里看」：同上那一形（只带意图：那台 ＋ 工作区 · 片 · 格），monitor 交给主窗口；
 //! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量。
 
 use copy_core::copy_text;
@@ -129,6 +130,28 @@ pub const LINK_KIND: &str = "link";
 /// 「重新连接」：窗口那一条警告条上的按钮 ⇒ 在通道上 `call` 这一条（寻址 ＝ 那台，参数空），
 /// **monitor 自己接**：叫醒那台的连接循环，不等退避睡满。回 `{}`；连没连上看 [`LINK_KIND`] 那条流。
 pub const LINK_RETRY_OP: &str = "link-retry";
+
+/// 「在计划里看」（计划反查，设计稿 planned-build 06）：窗口在通道上 `call` 这一条（寻址 ＝ 那台），**monitor 自己接**：
+/// 把主窗口拉到前面、切到计划页、选中那一格（片按机器区分：寻址就是那台）。参数 `{workspace, slice, id}`（[`plan_open_args`]）。
+pub const PLAN_OPEN_OP: &str = "plan-open";
+
+/// 「在计划里看」交给主窗口的那一份（monitor 照它发事件）。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlanOpen {
+    pub workspace: String,
+    pub slice: String,
+    pub id: String,
+}
+
+/// [`PLAN_OPEN_OP`] 的参数。
+pub fn plan_open_args(workspace: &str, slice: &str, id: &str) -> serde_json::Value {
+    serde_json::json!({ "workspace": workspace, "slice": slice, "id": id })
+}
+
+/// [`PLAN_OPEN_OP`] 的参数 → 那一格（缺了 / 形状不对 ⇒ `None`：调用方用错了）。
+pub fn plan_open_target(args: &serde_json::Value) -> Option<PlanOpen> {
+    serde_json::from_value(args.clone()).ok()
+}
 
 /// [`FILEWIN_OPEN_OP`] 的参数：发起那扇窗正在用的样子（新窗口照它画）。
 pub fn filewin_open_args(theme: &Theme) -> serde_json::Value {
