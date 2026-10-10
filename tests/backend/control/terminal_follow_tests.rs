@@ -37,6 +37,8 @@ impl Iso {
     }
     fn tmux(&self, args: &[&str]) -> std::process::Output {
         Command::new("tmux")
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
             .arg("-S")
             .arg(&self.sock)
             .args(args)

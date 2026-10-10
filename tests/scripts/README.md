@@ -17,11 +17,7 @@
 
 跑法与射程都在各脚本自己的头注里。
 
-另有一份 PowerShell 模板存在 `src/frontend/shell/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
-
-| 模板 | 作用 |
-|---|---|
-| `../../src/shared/cc.ps1.tpl` | cc 集成 PowerShell 块模板。设置面板装 cc 集成时把这段（`__ccm_bind` 自动打开 monitor · 窗口标签 ＋ 带标签的 `ssh` · 接上别名文件）写入用户 profile 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内 |
+PowerShell 别名块的模板是 `src/shared/cc.ps1.tpl`（不在本目录；后端编译时 `include_str!` 进去）：设置里装别名块时把它（`__ccm_bind` 自动打开 monitor · 窗口标签 ＋ 带标签的 `ssh` · 接上别名文件）写进用户 `$PROFILE` 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内。
 
 ---
 
@@ -44,7 +40,7 @@ powershell -NoProfile -File tests\scripts\run.ps1 [dev|build|check|clean]
 | `dev` | `npx tauri dev`（弹 1100x800 窗口，HMR） |
 | `build` | `npx tauri build`（产 msi + nsis + exe） |
 | `check` | `cargo check`（不编 release） |
-| `clean` | `cargo clean`（清 `src/frontend/shell/target/`） |
+| `clean` | `cargo clean`（清仓根 `.build/shell/`） |
 
 ### 前置依赖
 

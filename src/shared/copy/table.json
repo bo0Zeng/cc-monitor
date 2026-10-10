@@ -12091,25 +12091,6 @@
       "zh": "拒绝写入 · 须为绝对路径（{path}）",
       "args": ["path"]
     },
-    "rsProfileInstaller.hint.whereToEdit": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "\n修法 · 用编辑器打开 {what} · 删掉不要的行 · 再开新终端\n",
-      "args": ["what"]
-    },
-    "rsProfileInstaller.hint.head": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{what} 里有 {count} 行提到 ccm · 在 cc-monitor 管理段之外 · cc-monitor 不碰\n删不删、删哪几行手动定\n\n{lines}",
-      "args": ["what", "count", "lines"],
-      "limited": ["ccm"]
-    },
-    "rsProfileInstaller.hint.line": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "  行 {lineNo}  {text}\n",
-      "args": ["lineNo", "text"]
-    },
     "rsFencedBlock.pair.noEnd": {
       "kind": "error",
       "role": "报错",

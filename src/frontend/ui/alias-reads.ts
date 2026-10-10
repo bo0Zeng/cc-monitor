@@ -31,8 +31,6 @@ export interface NameClash {
 export interface BlockState {
   present: boolean;
   conflictingFunctions: NameClash[];
-  /** 「你 rc 里这几行是旧的」那段话；空串 = 没有要清的。 */
-  manualCleanupHint: string;
 }
 
 /** 哪一代 PowerShell（线上名与后端 `platform::shell::PsHost` 逐字）。 */
@@ -107,16 +105,14 @@ function decodeClash(v: unknown): NameClash {
 function decodeBlockState(v: unknown): BlockState {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["present", "conflictingFunctions", "manualCleanupHint"]) ||
+    !sameKeys(v, ["present", "conflictingFunctions"]) ||
     typeof v.present !== "boolean" ||
-    !Array.isArray(v.conflictingFunctions) ||
-    typeof v.manualCleanupHint !== "string"
+    !Array.isArray(v.conflictingFunctions)
   )
     throw bad();
   return {
     present: v.present,
     conflictingFunctions: v.conflictingFunctions.map(decodeClash),
-    manualCleanupHint: v.manualCleanupHint,
   };
 }
 

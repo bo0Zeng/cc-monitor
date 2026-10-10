@@ -175,11 +175,7 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
 fn every_code_symbol_named_in_the_docs_still_resolves() {
     /// 例外表：**每条都写清「为什么它解析不到却是对的」**。
     /// 下面有一条自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
-    const EXCEPTIONS: &[(&str, &str)] = &[(
-        "run_tmux_reconcile_poller",
-        "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
-                 删掉反而丢掉「为什么今天没有 poller」的解释",
-    )];
+    const EXCEPTIONS: &[(&str, &str)] = &[];
     const KW: &[&str] = &[
         "fn", "struct", "enum", "const", "static", "trait", "mod", "type",
     ];
@@ -384,83 +380,10 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 #[test]
 fn every_repo_path_named_in_the_docs_still_resolves() {
     /// 例外：**解析不到却是对的**。三种形状，每种都在本仓真实出现过。
-    const EXCEPTIONS: &[(&str, &str)] = &[
-        (
-            "src/frontend/shell/gen/schemas/acl-manifests.json",
-            "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
-        ),
-        (
-            "shared/ccm-wrapper.sh",
-            "**历史句**：原文逐字写着「取代已删除的 …」——删掉它反而丢掉「今天为什么没有 wrapper」",
-        ),
-        (
-            "tests/e2e/tmux-guarded-acceptance.sh",
-            "**历史句**：`INVARIANTS §34` 那一段逐字在说「这套 e2e 的输入源是\
-                 那个已被删掉的 builder ⇒ 整套删了」——它点这个路径正是为了说清**哪一套没了**；\
-                 删掉这句话，读的人只会看见「三道门少了一层真机验收」而不知道为什么",
-        ),
-        (
-            "src/launch-render-cli.ts",
-            "**历史句**：`INVARIANTS §33` 背景段逐字讲「F03 当时有两个渲染器、\
-                 各住哪」—— TS 那份 CLI 渲染器已删，§33 末尾的 LR1 更新段给了今天的住址\
-                 （`ccm_invocation.rs`）。改写背景段会丢掉「这条铁律当初是对着哪一份立的」",
-        ),
-        (
-            "tests/launch-render-cli.test.ts",
-            "**历史句**：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
-                 哪套测试上（R04① · #76 防线）。套件随 TS 渲染器删了，今天的验证住址逐条写在\
-                 §33 末尾的 LR1 更新段",
-        ),
-        // 下面四条：TS 兜底一族（座 · 兜底渲染器）与它们的两份套件按删了。
-        //   `INVARIANTS §31 / §31a / §33 / §33b` 与 `CONTRIBUTING` 那一节点它们的句子都是**沿革**
-        //   （「阶段①问前端座」「门禁腐过一次」「四处同源」「双渲染器」），每处旁边都补了那句今天的住址；
-        //   删掉路径，读的人就不知道今天那条规矩当初是对着哪一份立的。
-        (
-            "src/session-backend.ts",
-            "**历史句**：TS 座，已删（外层三格今天只在 `payload.rs`）",
-        ),
-        (
-            "src/launch-render-fallback.ts",
-            "**历史句**：TS 兜底渲染器，已删",
-        ),
-        // 下面五条：载荷那一层（裸载荷 · 外层 tmux 三格）与前端那份 IR 随「起会话只交一行 `ccm …`」删了。
-        //   `INVARIANTS §33 / §33b / §39` 与只绑 Windows 的 §36 点它们的句子都是**沿革**（当时那条规矩对着哪一份立、当时由哪套测试钉），
-        //   每处旁边都补了今天的住址（§33 末尾「今天」那一段 · 只绑 Windows 的 §36 末尾「今天」那一段）。
-        (
-            "src/frontend/ui/launch-plan.ts",
-            "**历史句**：`LaunchPlan` IR 当年的家（§33 背景 · §39 · 本机走 IR 那一节），已删",
-        ),
-        (
-            "src/frontend/ui/launch-dimensions.ts",
-            "**历史句**：维度注册表当年的家（§33 背景），已删",
-        ),
-        (
-            "tests/test-support/launch-payload-golden.ts",
-            "**历史句**：载荷那一份夹具的用例表（§33 LR2 更新 · U8c-3 后一半），已删",
-        ),
-        (
-            "tests/test-support/launch-tmux-outer-golden.ts",
-            "**历史句**：外层 tmux 三格那一份夹具的用例表（§33 LR2 更新 · U8c-3 后一半），已删",
-        ),
-        (
-            "tests/frontend/ui/launch-requests.vitest.ts",
-            "**历史句**：只绑 Windows 的 §36 当时那几格的验证住址（维度注册表在本机下的行为），随 IR 删了；今天的验证写在那一节末尾「今天」那一段",
-        ),
-        (
-            "tests/session-backend-gate.vitest.ts",
-            "**历史句**：`§31` 第①条的旧机检，已由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 接替",
-        ),
-        // `tests/session-backend.test.ts` 那一行摘了：唯一点它的 CONTRIBUTING 沿革段随重写删了。
-        // `src/frontend/ui/cards/memory-recall.ts` 那一行摘了：CONTRIBUTING 的示例改成「写在 `cards/` 下」，不再点那个占位文件名。
-        (
-            "code-picture/doc/agents/claude-code.md",
-            "**跨仓引用**：另一个仓的语料，本仓解析不到是正常的",
-        ),
-        ("agents/claude-code.md", "同上（同一句里的简写形）"),
-        // `account-ux/` · `unify-launch/` 两行摘了：`doc/` 里点它们的出处删了之后没人再这样写。
-        // 账号切换那份计划仓设计稿那一行摘了：INVARIANTS 那一段改写成现状之后 `doc/` 里没人再指它。
-        // `/.mcp.json` 那一行摘了：INVARIANTS 那两处改写之后 `doc/` 里没人再这样写。
-    ];
+    const EXCEPTIONS: &[(&str, &str)] = &[(
+        "src/frontend/shell/gen/schemas/acl-manifests.json",
+        "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
+    )];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 
     // 解析口径：跟踪着的文件（自检在 [`tracked_files`] 里：清单太短 ⇒ 口径坏了）。
@@ -498,7 +421,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
         }
     }
     // ★ 自检 2：锚点必须在场，人群换了就当场红。
-    const CANARY: &str = "src/session-backend.ts";
+    const CANARY: &str = "tests/backend/protocol_doc_gen.rs";
     assert!(
         refs.iter().any(|(_, _, c)| c == CANARY),
         "抽到了 {} 条，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是「带目录的仓内路径」这一类了。\n\
@@ -1379,6 +1302,400 @@ fn every_invariants_section_cited_in_code_exists() {
         bad.is_empty(),
         "这些地方点了一个 `INVARIANTS` 里不存在的节（共扫 {total} 处）：\n  {}\n\
          ⇒ 改号 / 删节之后引用没跟上；或节号写错。改成真在的那一节。",
+        bad.join("\n  ")
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 全部耐久文档：写全了的仓内路径 · 相对链接 · 代码文件名 · 帧命令名都得对得上今天的仓
+//
+// 上面两条只读 `src/doc/`、只认反引号里带目录的路径、按后缀比；10-09 的文档对账在壳的导览里
+// 查出九份早已不在的文件、在 `src/README.md` 里查出两份 —— 它们都不在那两条的人群里。
+// 下面两条的人群 = `src/doc/` ＋ 全仓入口 README（[`durable_docs`]），口径更严：
+// 写成 `src/…` / `tests/…` 的路径按仓根全路径比（不按后缀），文件或目录得在 `git ls-files` 里。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 耐久文档的人群：`src/doc/` 下跟踪着的 `.md` ＋ 全仓入口 `README*.md`（不含 vendor 等）。
+///
+/// 不收的：`CHANGELOG.md`（每节是当时那一版的说法，按定义是历史）· `src/doc/IPC-COMMANDS.md`
+/// （从代码生成，`protocol_doc_gen` 逐字节比，不会腐）· `src/shared/*/SKILL.md`（装到用户机器上的说明，
+/// 里面的路径是用户机器上的）· `tests/evidence/` 下的取证记录（记的是当时的读数）。
+fn durable_docs() -> Vec<(String, String)> {
+    let root = repo_root();
+    let mut v: Vec<PathBuf> = doc_files();
+    v.extend(entry_readmes());
+    v.sort();
+    v.dedup();
+    let out: Vec<(String, String)> = v
+        .into_iter()
+        .filter_map(|p| {
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel == "src/doc/IPC-COMMANDS.md" {
+                return None;
+            }
+            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {rel} 失败: {e}"));
+            Some((rel, text))
+        })
+        .collect();
+    // 正控：入口 README 与 `src/doc/` 两边都在人群里。
+    for must in [
+        "README.md",
+        "src/frontend/shell/README.md",
+        "tests/e2e/README.md",
+        "src/doc/ARCHITECTURE.md",
+    ] {
+        assert!(
+            out.iter().any(|(r, _)| r == must),
+            "耐久文档的人群里没有 `{must}` —— 口径坏了（收到 {} 份）",
+            out.len()
+        );
+    }
+    out
+}
+
+/// 跟踪着的文件全集 ＋ 它们的每一级目录（仓根相对、正斜杠，目录不带尾 `/`）。
+fn tracked_files_and_dirs() -> (
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+) {
+    let files: std::collections::BTreeSet<String> = tracked_files().into_iter().collect();
+    let mut dirs = std::collections::BTreeSet::new();
+    for f in &files {
+        let mut cur = f.as_str();
+        while let Some(i) = cur.rfind('/') {
+            cur = &cur[..i];
+            dirs.insert(cur.to_string());
+        }
+    }
+    (files, dirs)
+}
+
+/// 一行里写全了的仓内路径：`src/` 或 `tests/` 打头（前面不是路径字符），收到路径字符为止。
+/// 带模板记号（`<…>` · `{…}` · `*`）的是写法示例，不是某一份文件，不收。
+fn full_repo_paths_in(line: &str) -> Vec<String> {
+    let b = line.as_bytes();
+    let is_path = |c: u8| c.is_ascii_alphanumeric() || b"_./-".contains(&c);
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        let tail = &b[i..];
+        let starts = tail.starts_with(b"src/") || tail.starts_with(b"tests/");
+        if starts && (i == 0 || !(is_path(b[i - 1]) || b"<{*".contains(&b[i - 1]))) {
+            let mut e = i;
+            while e < b.len() && (is_path(b[e]) || b"<>{}*".contains(&b[e])) {
+                e += 1;
+            }
+            let raw = &line[i..e];
+            let p = raw.trim_end_matches(['.', '-']);
+            if !p.contains(['<', '>', '{', '}', '*']) {
+                out.push(p.to_string());
+            }
+            i = e.max(i + 1);
+        } else {
+            i += line[i..].chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    out
+}
+
+/// **耐久文档里写全了的仓内路径、相对链接、代码文件名必须在仓里。**
+///
+/// 三种形状：
+/// 1. `src/…` / `tests/…`（反引号里外都算）—— 按仓根全路径比，文件或目录；
+/// 2. Markdown 相对链接 `](../x/y.md)` —— 按那份文档所在目录解析；
+/// 3. 反引号里的裸代码文件名（`.rs` · `.ts` · `.mjs` · `.sh` · `.py` · `.css`）—— 全仓得有一份同名的。
+///
+/// 写成 crate 内相对（`src/lib.rs` 指壳的那一份）的一律改成仓根全路径：同一个 `src/lib.rs`
+/// 在壳、后端、各共享 crate 里各有一份，读的人分不出指哪一份。
+#[test]
+fn every_repo_path_in_the_durable_docs_exists() {
+    /// 允许名单：解析不到却是对的。每条写清为什么。
+    const ALLOWED: &[(&str, &str)] = &[
+        (
+            "src/frontend/shell/gen/schemas/acl-manifests.json",
+            "tauri 构建生成物（gitignore）：构建过才在盘上，`git ls-files` 里恒没有；文档讲的正是去哪看这份生成物",
+        ),
+        (
+            "src/frontend/shell/embedded-backends/",
+            "发版铺内嵌后端字节的落点（gitignore）：干净 clone 里没有，构建文档讲的正是往这里铺",
+        ),
+        (
+            "src/frontend/shell/native-backend/",
+            "发版铺本机后端与文件窗口二进制的落点（gitignore），同上",
+        ),
+        (
+            "aliases.sh",
+            "`~/.cc-monitor/` 里照别名配置生成的那份文件的名字（INVARIANTS §2.1 的数据文件表），不是仓里的脚本",
+        ),
+    ];
+    let (files, dirs) = tracked_files_and_dirs();
+    let basenames: std::collections::BTreeSet<&str> = files
+        .iter()
+        .map(|f| f.rsplit('/').next().unwrap_or(f))
+        .collect();
+    let exists = |p: &str| {
+        let q = p.trim_end_matches('/');
+        files.contains(q) || dirs.contains(q)
+    };
+    let mut seen_allowed: std::collections::BTreeSet<&str> = Default::default();
+    let mut bad = Vec::new();
+    let mut checked = 0usize;
+    for (rel, text) in durable_docs() {
+        let doc_dir = rel.rsplit_once('/').map_or("", |(d, _)| d).to_string();
+        let mut in_fence = false;
+        for (i, line) in text.lines().enumerate() {
+            let ln = i + 1;
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+            }
+            // ① 写全了的仓内路径（代码块里的也算：文件树与命令示例里写错的一样误导人）
+            for p in full_repo_paths_in(line) {
+                checked += 1;
+                if let Some((a, _)) = ALLOWED.iter().find(|(a, _)| *a == p) {
+                    seen_allowed.insert(a);
+                    continue;
+                }
+                if !exists(&p) {
+                    bad.push(format!("{rel}:{ln}  `{p}` —— 仓里没有这份文件或目录"));
+                }
+            }
+            if in_fence {
+                continue;
+            }
+            // ② Markdown 相对链接
+            let mut from = 0usize;
+            while let Some(k) = line[from..].find("](") {
+                let s = from + k + 2;
+                let Some(e) = line[s..].find(')') else { break };
+                let target = line[s..s + e].split('#').next().unwrap_or("").trim();
+                from = s + e;
+                let tb = target.as_bytes();
+                if tb.is_empty()
+                    || tb.windows(3).any(|w| w == b"://")
+                    || tb.starts_with(b"mailto:")
+                    || tb.starts_with(b"/")
+                {
+                    continue;
+                }
+                checked += 1;
+                let mut parts: Vec<&str> = doc_dir.split('/').filter(|x| !x.is_empty()).collect();
+                let mut ok = true;
+                for seg in target.split('/') {
+                    match seg {
+                        "" | "." => {}
+                        ".." => ok &= parts.pop().is_some(),
+                        s => parts.push(s),
+                    }
+                }
+                let resolved = parts.join("/");
+                if !ok || !(exists(&resolved) || resolved.is_empty()) {
+                    bad.push(format!(
+                        "{rel}:{ln}  链接 `{target}` —— 解析成 `{resolved}`，仓里没有"
+                    ));
+                }
+            }
+            // ③ 反引号里的裸代码文件名
+            for chunk in line.split('`').skip(1).step_by(2) {
+                let c = chunk.split(':').next().unwrap_or("").trim();
+                if c.contains('/') || c.contains(' ') || c.starts_with('.') {
+                    continue;
+                }
+                let Some((stem, ext)) = c.rsplit_once('.') else {
+                    continue;
+                };
+                if stem.is_empty()
+                    || !["rs", "ts", "mts", "mjs", "sh", "py", "css"].contains(&ext)
+                    || !c
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || "_.-".contains(ch))
+                {
+                    continue;
+                }
+                checked += 1;
+                if let Some((a, _)) = ALLOWED.iter().find(|(a, _)| *a == c) {
+                    seen_allowed.insert(a);
+                    continue;
+                }
+                if !basenames.contains(c) {
+                    bad.push(format!("{rel}:{ln}  `{c}` —— 全仓没有叫这个名字的文件"));
+                }
+            }
+        }
+    }
+    // 自检：抽取器在干活（今天上千处）；一条合成的悬空路径必须被认出。
+    assert!(checked > 300, "只核了 {checked} 处 —— 抽取器坏了");
+    let ghost = format!("见 `{}/no/such/probe.rs`", "src");
+    assert_eq!(
+        full_repo_paths_in(&ghost),
+        vec![format!("{}/no/such/probe.rs", "src")]
+    );
+    assert!(
+        full_repo_paths_in("`src/frontend/ui/<名>.ts`").is_empty(),
+        "模板形该跳过"
+    );
+    // 允许名单保鲜：没人再写的那一条删掉。
+    for (a, why) in ALLOWED {
+        assert!(
+            seen_allowed.contains(a),
+            "允许名单里的 `{a}` 在耐久文档里已经没人写了 —— 删掉这一行（当初的理由：{why}）"
+        );
+    }
+    assert!(
+        bad.is_empty(),
+        "耐久文档点名了这些仓里没有的东西（共核 {checked} 处）：\n  {}\n\n\
+         ⇒ 照现状改：搬了家写新住址，删了的连那句说明一起删（只为旧版存在的说明不留）。\
+         真要留的（生成物这类）进本条的允许名单、写理由。",
+        bad.join("\n  ")
+    );
+}
+
+/// 协议参考里登记的入方向命令（`## 4.` 里的 `#### \`名\``）与出方向帧（`## 1.` 里的 `### \`kind\``）。
+///
+/// 读的是生成物 `IPC-COMMANDS.md`：它由后端 `protocol_doc_gen` 从命令注册表与帧类型逐字节生成、
+/// 并有判据对拍，所以它就是注册表的一份忠实副本；壳这边的判据够不着后端 crate 的注册表本身。
+fn registered_commands_and_frames() -> (
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+) {
+    let text = std::fs::read_to_string(repo_root().join("src/doc/IPC-COMMANDS.md"))
+        .expect("读协议参考 IPC-COMMANDS.md");
+    let mut cmds = std::collections::BTreeSet::<String>::new();
+    let mut frames = std::collections::BTreeSet::<String>::new();
+    let mut sec = ' ';
+    for line in text.lines() {
+        if line.as_bytes().starts_with(b"## ") {
+            sec = line[3..].chars().next().unwrap_or(' ');
+            continue;
+        }
+        let head = line.trim_start_matches('#');
+        if head.len() == line.len() || !head.as_bytes().starts_with(b" `") {
+            continue;
+        }
+        let Some(name) = head[2..].split('`').next() else {
+            continue;
+        };
+        match sec {
+            '4' => {
+                cmds.insert(name.to_string());
+            }
+            '1' => {
+                frames.insert(name.to_string());
+            }
+            _ => {}
+        }
+    }
+    for (set, want, floor, what) in [
+        (&cmds, ["history-lines", "cancel"], 100, "入方向命令"),
+        (&frames, ["hello", "line"], 20, "出方向帧"),
+    ] {
+        assert!(
+            want.iter().all(|w| set.contains(*w)) && set.len() > floor,
+            "协议参考里认出的{what}只有 {} 个 —— 认法坏了",
+            set.len()
+        );
+    }
+    (cmds, frames)
+}
+
+/// 「帧命令 `a` · `b`」「帧 `x`」后面紧跟的那一串反引号名（中间只隔 `·` `、` `/` `，` `或` `与` `和` `（` `）` 与空白）。
+/// 返回 (是不是帧命令, 名)。
+fn frame_names_in(line: &str) -> Vec<(bool, String)> {
+    let mut out = Vec::new();
+    let mut from = 0usize;
+    while let Some(k) = line[from..].find('帧') {
+        let mut i = from + k + '帧'.len_utf8();
+        let is_cmd = line[i..].starts_with("命令");
+        if is_cmd {
+            i += "命令".len();
+        }
+        loop {
+            let rest = &line[i..];
+            let skip: usize = rest
+                .chars()
+                .take_while(|c| c.is_whitespace() || "·、/，,或与和（）()…".contains(*c))
+                .map(char::len_utf8)
+                .sum();
+            let rest = &rest[skip..];
+            if !rest.starts_with('`') {
+                break;
+            }
+            let Some(e) = rest[1..].find('`') else { break };
+            let name = &rest[1..1 + e];
+            let shaped = !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+                && name.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+            if shaped {
+                out.push((is_cmd, name.to_string()));
+            }
+            i += skip + e + 2;
+        }
+        from = i.max(from + k + '帧'.len_utf8());
+    }
+    out
+}
+
+/// **耐久文档里写成「帧命令 `名`」的得在命令注册表里，写成「帧 `kind`」的得是登记过的出方向帧。**
+///
+/// 改名 / 删命令之后，文档里那句「界面经帧命令 `x` 问」照旧读得通，而没有东西会红。
+/// 只认紧跟在「帧命令」「帧」后面的那一串名字，口径窄、不误红：
+/// 订阅种类（`session-lines`）· 事件名（`monitor-error`）· 模式词写在别处时不进人群。
+#[test]
+fn every_frame_command_named_in_the_durable_docs_is_registered() {
+    /// 允许名单：写成「帧 / 帧命令」后面却不在注册表里、而且是对的。每条写清为什么。
+    const ALLOWED: &[(&str, &str)] = &[];
+    let (cmds, frames) = registered_commands_and_frames();
+    let mut seen_allowed: std::collections::BTreeSet<&str> = Default::default();
+    let mut bad = Vec::new();
+    let mut checked = 0usize;
+    for (rel, text) in durable_docs() {
+        for (i, line) in text.lines().enumerate() {
+            for (is_cmd, name) in frame_names_in(line) {
+                checked += 1;
+                if let Some((a, _)) = ALLOWED.iter().find(|(a, _)| *a == name) {
+                    seen_allowed.insert(a);
+                    continue;
+                }
+                let (ok, what) = if is_cmd {
+                    (cmds.contains(&name), "命令注册表里没有这条入方向命令")
+                } else {
+                    // 「帧 `x`」：出方向帧的 kind；写成连字符的是帧命令（「帧 `history-lines`」这种省写），两边都认。
+                    (
+                        frames.contains(&name) || cmds.contains(&name),
+                        "既不是登记过的出方向帧，也不是登记过的命令",
+                    )
+                };
+                if !ok {
+                    bad.push(format!("{rel}:{}  `{name}` —— {what}", i + 1));
+                }
+            }
+        }
+    }
+    // 自检：认法在干活，且一条合成的假命令会被认出。
+    assert!(checked > 15, "只认出 {checked} 处帧 / 帧命令 —— 认法坏了");
+    let ghost = format!("经帧命令 `{}` 与 `history-lines` 问", "no-such-probe");
+    assert_eq!(
+        frame_names_in(&ghost),
+        vec![
+            (true, "no-such-probe".to_string()),
+            (true, "history-lines".to_string())
+        ]
+    );
+    for (a, why) in ALLOWED {
+        assert!(
+            seen_allowed.contains(a),
+            "允许名单里的 `{a}` 已经没人写了 —— 删掉这一行（当初的理由：{why}）"
+        );
+    }
+    assert!(
+        bad.is_empty(),
+        "耐久文档里点名的这些帧 / 帧命令对不上注册表（共核 {checked} 处）：\n  {}\n\n\
+         ⇒ 照现状改成今天的名字；删了的连那句一起删。",
         bad.join("\n  ")
     );
 }

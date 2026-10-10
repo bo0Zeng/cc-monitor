@@ -130,7 +130,6 @@ interface AccessDom {
   accessRows: HTMLElement;
   panel: HTMLDivElement;
   accessWarn: HTMLElement;
-  cleanupHint: HTMLPreElement;
   rcPolicy: HTMLDivElement;
   allowBtn: HTMLButtonElement;
   accessNote: HTMLElement;
@@ -158,9 +157,6 @@ function buildAccessDom(local: boolean, on: { allow(): void; other(): void; open
   panel.hidden = true;
   const accessWarn = el("div", "cfg-hint");
   accessWarn.dataset.role = "access-warn";
-  const cleanupHint = document.createElement("pre");
-  cleanupHint.className = "ccm-rc-block-legacy";
-  cleanupHint.hidden = true;
   // 加载这份 `$PROFILE` 的那一代 PowerShell 会不会跑它（执行策略由那台后端现问、判）；不会且不是组策略钉着 ⇒ 给标准做法的按钮。
   const rcPolicy = document.createElement("div");
   rcPolicy.className = "cfg-hint";
@@ -190,8 +186,8 @@ function buildAccessDom(local: boolean, on: { allow(): void; other(): void; open
       : []),
   );
   chooser.append(rcSel, otherIn, chooserBtns, otherErr);
-  access.append(pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote);
-  return { access, pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote, chooser, rcSel, otherIn, otherErr };
+  access.append(pathCcm, accessRows, panel, accessWarn, rcPolicy, allowBtn, accessNote);
+  return { access, pathCcm, accessRows, panel, accessWarn, rcPolicy, allowBtn, accessNote, chooser, rcSel, otherIn, otherErr };
 }
 
 /** 接入那一格里的一行：一个点 ＋ 一句 ＋ 行尾的按钮。 */
@@ -271,7 +267,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 
   // ═══ 接上终端（在最上，先显示现状）═══
   const dom = buildAccessDom(local, { allow: () => void onAllow(), other: () => void onOther(), openRc: () => void onOpenRc() });
-  const { pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote, chooser, rcSel, otherIn, otherErr } = dom;
+  const { pathCcm, accessRows, panel, accessWarn, rcPolicy, allowBtn, accessNote, chooser, rcSel, otherIn, otherErr } = dom;
   body.appendChild(dom.access);
 
   // ═══ 清单（配置文件按「基于」排成树）═══
@@ -420,10 +416,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       renderOffRow(on, t);
     }
     accessWarn.textContent = accessWarnText(cands, on);
-    // 「你配置里这几行是旧的」：后端逐行指名，产品自己一个字节都不删。
-    const hint = cands.map((c) => c.block.manualCleanupHint).filter(Boolean).join("\n");
-    cleanupHint.hidden = !hint;
-    cleanupHint.textContent = hint;
     showPolicy((t?.block.present ? t : on[0])?.policy ?? t?.policy ?? null);
     fillRcOptions();
     renderClash();

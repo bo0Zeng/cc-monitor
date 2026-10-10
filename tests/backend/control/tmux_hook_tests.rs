@@ -431,6 +431,8 @@ fn hx2_real_tmux_reading_on_a_private_socket() {
     let sock = format!("ccm-hx2-{}", std::process::id());
     let tmux = |args: &[&str]| {
         std::process::Command::new("tmux")
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
             .args(["-L", sock.as_str(), "-u"])
             .args(args)
             .output()

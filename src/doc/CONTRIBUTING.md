@@ -126,7 +126,7 @@
 ```bash
 cd src/frontend/shell
 grep -rn 'State<.*BindRegistry>' src/                        # State 的全部消费者
-grep -rn 'app.manage(bind_registry' src/lib.rs                # manage 调用
+grep -rn 'app.manage(bind_registry' src/                     # manage 调用（在 lib.rs 的 setup()）
 grep -rln 'bring_remote_terminal_to_front' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
 cargo test --workspace
 ```

@@ -36,10 +36,7 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     //      · `tests/e2e/README.md` 与 `src/frontend/shell/README.md` 的两处占位符 `<daemon>` —— 换成 `<backend>`；
     //      · `src/frontend/shell/README.md` 里「安装 / 卸载 daemon」两句 —— 界面按钮文案住 `src/frontend/ui/settings/machine-card.ts`，同拍改成「安装 / 卸载后端」。
     //    ⇒ **账不许挂空号**：这六条今天在盘上都命中 0 次，留着就是六条空转的放行。
-    ("src/doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
-     "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),
-    ("src/doc/INVARIANTS.md", "**原措辞**：「daemon 对被观测文件系统必须只读，绝不写。」",
-     "§41.6 的**原措辞留档**（2026-07-31 收窄前那句）—— 历史句，改它等于篡改沿革；而它旁边那句「现措辞」正是本轮改的那一处"),
+    // 〔文档清理 10-10〕INVARIANTS 收成现状之后，那两句引文（用户原话 · §41.6 的原措辞）随沿革删了，两条例外跟着删。
 ];
 
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
@@ -191,9 +188,11 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
     let mut offenders: Vec<String> = Vec::new();
     let mut used = vec![false; spans.len()];
     let mut idents = 0usize;
+    let mut total_hits = 0usize;
     for (rel, site_text) in &bodies {
         let raw = site_text.as_bytes();
         for h in hits(site_text) {
+            total_hits += 1;
             let (a, b) = token_at(raw, h, h + 6);
             if !site_text[a..b].eq_ignore_ascii_case("daemon") {
                 idents += 1;
@@ -217,10 +216,15 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         }
     }
 
-    // ── 抽取器自检③：标识符那一档在真语料上跑到了（合成串过了不代表真树上跑到了）──
+    // ── 抽取器自检③：真语料里有命中时，标识符那一档要真跑到（合成串过了不代表真树上跑到了）──
+    //   人群里一处 `daemon` 都没有也是合法的现状（文档清理之后就是这样）：那时本条只剩合成自检在咬。
     assert!(
-        idents > 0,
-        "一处代码标识符都没数出来 —— 本条在真语料上没跑起来"
+        total_hits == 0 || idents > 0 || !offenders.is_empty(),
+        "真语料里有 {total_hits} 处命中，却一处代码标识符都没数出来 —— 本条在真语料上没跑起来"
+    );
+    assert!(
+        !bodies.is_empty() && bodies.iter().all(|(_, t)| !t.is_empty()),
+        "人群的正文没读到"
     );
 
     // ── 抽取器自检④：每条例外都真盖住了一处裸词（没盖住 = 那条例外空转）──

@@ -5,7 +5,7 @@
 //! P5（`zero-poll-liveness`）删掉了后端的 8s ticker 线程 —— 之后每一拍由
 //! **tmux hook → `--tmux-notify` → SIGUSR1 → `WatchEvent::Poke`** 驱动，
 //! server 生死由 pidfd / socket inotify 管，**backend 零定时器**（`no_timer_guard` 钉着）。
-//! monitor 侧那个 8s 对账 poller 也早已删（`run_tmux_reconcile_poller`，改收帧驱动）。
+//! monitor 侧没有对账 poller：会话的活与不活由那台后端的账本按事件裁。
 //!
 //! **可是「backend 每 ~8s 推帧」「帧最长 8s 陈旧」这两句仍留在四处注释里**，
 //! 一句在 `lib.rs`（两处）、一句在 `tmux_reconcile.rs`、一句在 `stream_source/`。

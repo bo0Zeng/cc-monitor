@@ -21,25 +21,26 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 |---|---|---|
 | `monitor` | 界面进程：webview 窗口 ＋ 通信层面 A 的客户端。零 SSH，不写用户文件 | 用户 |
 | `ccm`（开发树里叫 `cc-monitor-backend`） | 唯一的后端。每台机器上 `~/.cc-monitor/bin/ccm` 就是那台的后端，也是用户敲的 `claude` 的壳（argv 打头是 `--` 加后端词才进后端，其余交给 `claude`） | 本机：monitor 连上来时起；远端：monitor 接那台时经一次 exec `--resident-ensure` 起（已在跑就用那一个） |
-| `cc-monitor-filewin` | 文件管理器窗口，独立前端，一个窗口一个进程 | monitor（交给它一条回环通道和一把钥匙） |
+| `cc-monitor-filewin` | 文件管理器窗口，独立前端，一个窗口一个进程 | monitor（父子管道：通道就是窗口进程的 stdin / stdout，不监听） |
 
 `claude` 不是我们起的进程：后端渲好一条命令串，monitor 交给用户自己的终端去 exec。
 
 ```
 本机                                                          远端（每台）
-┌ monitor（界面，零 SSH）─────┐  回环 ＋ 钥匙  ┌ 文件窗口 ×N ┐
+┌ monitor（界面，零 SSH）─────┐   父子管道   ┌ 文件窗口 ×N ┐
 │ webview 窗口 · 通道客户端   │◀─────────────▶│ call /      │
 └──────┬─────────────────────┘               │ subscribe   │
-       │ 管道                                 └─────────────┘
-┌──────▼──────────────────────────┐  SSH（隧道 · exec · SFTP）  ┌ 常驻后端（与本机同形）┐
+       │ 本人 Unix 套接字 / 管道              └─────────────┘
+┌──────▼──────────────────────────┐  SSH（链路 · exec · SFTP）  ┌ 常驻后端（与本机同形）┐
 │ 本机常驻后端                      │ ──────────────────────────▶│ ＋ 中转（进程内）      │
 │ 持有到各远端的全部 SSH（含 SFTP） │                            └───────────────────────┘
 │ 中转 ＋ 上游选择                  │ ◀── agent 经中转口连进来
 └─────────────────────────────────┘
 ```
 
-- 本机固定两个进程：monitor ＋ 本机常驻后端。Linux 上后端脱离起、只听回环口，monitor 用钥匙接上；monitor 关了，后端按那台机器的「退出行为」留下或退出，下次 monitor 起来接回。Windows 上后端是 monitor 监护的子进程，随 monitor 退出。
-- 远端每台一个常驻后端，与本机同形。monitor 经本机后端在那条 SSH 连接上开的隧道接它，不另开公网口；那台后端比 monitor 旧就换一份。远端只支持 Linux（x86_64 / aarch64），别的系统连上时显式拒绝。
+- 本机固定两个进程：monitor ＋ 本机常驻后端。Linux 上后端脱离起，只听家里的本人 Unix 套接字 `<家>/run/backend.sock`（`run/` 只给本人、收连接时核对端 uid、目录独占锁；没有钥匙），monitor 接上它；monitor 关了，后端按那台机器的「退出行为」留下或退出，下次 monitor 起来接回。Windows 上后端是 monitor 监护的子进程（管道），随 monitor 退出。
+- 远端每台一个常驻后端，与本机同形。本机后端在那条 SSH 连接上开一条链路，在那台跑 `ccm -- --resident-attach` 小中继去连那台的套接字、原样对拷；不另开任何口。那台后端比 monitor 旧就换一份。远端只支持 Linux（x86_64 / aarch64），别的系统连上时显式拒绝。
+- 门与载体的细则（attach 行、拒绝理由）在 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) §1；为什么没有钥匙在 INVARIANTS §48.1。
 - 一个常驻后端可以同时接多个客户，连接数归零那一刻按「退出行为」当场决定退不退。
 
 ### 1.2 会话内容流：本机与远端同一条帧路
@@ -48,7 +49,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
    <claude_dir>/projects/<编码后的 cwd>/<sid>.jsonl        （claude 写）
                  │  那台后端的 observe/watcher 盯文件，逐行出 line 帧（JSONL）
                  ▼
-   本机：管道  ·  远端：本机后端持有的那条 SSH 长连接（隧道）
+   本机：本人套接字 / 管道  ·  远端：本机后端持有的那条 SSH 长连接上的链路
                  ▼
    monitor stream_source/batch.rs 的 LineIntake：攒批 · 静默窗 · 续点
    （本机那条经 local_lines.rs 进同一个收口）
@@ -64,7 +65,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_state` · `sessions_replayed` 随 `session-lines` 一起来，起停帧不吃 credit、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、界面说「说不清」。
 - **背压**：前端给 credit；实时行没有 credit 就丢，并在原位报 gap，前端按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。
-- **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。后端在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出（旧的 Tauri 命令 `list_active_sessions`〔散文墓碑〕已删）。
+- **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录 `agents/record.rs`，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
 
@@ -141,7 +142,7 @@ monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知�
 
 壳里没有后端那几层的副本：
 
-- 不产观测帧，读都问后端（本机那几问也走 `<local>` 长连接；每问 exec 一次本机后端的那份传输 `local_query`〔散文墓碑〕已删）；
+- 不产观测帧，读都问后端（本机那几问也走 `<local>` 长连接）；
 - 调后端控制面只经通信层那一个分流器 `src/comms/inward/backend_route.rs`（`Done` / `Refused` / `NoChannel` 三态，被门拒绝不另找一条路）；
 - 与后端共用的只放在共享 crate `src/common/` 里；
 - 壳自己的 `platform/` 住壳要的平台原语：文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录）与控制台输出的解码（Windows 按那台的 OEM 代码页）。
@@ -186,12 +187,12 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 ### 2.8 其余几块
 
 - **中转**（通信层面 B）：本机远端同形，是那台常驻后端进程里的一条线程，对外端口由它绑，进门要钥匙。凡经 `ccm` 起的会话都注入中转地址（`ccm` 在最终 exec 那一处问上游选择，开关读 `CCM_RELAY_ALL_SESSIONS`）；用户自己设了 `ANTHROPIC_BASE_URL` 时不注入并说一句。中转只切流，这一发走哪个上游、注入什么凭据由账号域的上游选择定，monitor 对凭据文件零读零写。
-- **文件管理**：`cc-monitor-filewin` 是独立前端，经回环通道 ＋ 钥匙只说 `call` / `subscribe`。写用户的文件只经那台后端的文件管理面（`files-peek` · `files-put` 带期望值 · `files-delete` …），本机远端同一条路；monitor 碰用户文件只有一个开口，只差 `origin`。
+- **文件管理**：`cc-monitor-filewin` 是独立前端，经父子管道（它的 stdin / stdout）只说 `call` / `subscribe`。写用户的文件只经那台后端的文件管理面（`files-peek` · `files-put` 带期望值 · `files-delete` …），本机远端同一条路；monitor 碰用户文件只有一个开口，只差 `origin`。
 - **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。「换不换、换成什么」由后端帧命令 `deploy-plan` 出计划（只升不降，身份读字节里的戳、不跑它），monitor 只按计划放字节。
 - **资产**：每台后端一份资产目录，本机后端按事件在各后端之间拉 / 合 / 推；装到别的机器要用户点，先看差异。
 - **退出行为**：住那台机器自己的 `~/.cc-monitor/backend.json`，只有那台后端读写（`control/exit_policy`），决定那一刻现读。
 
-### 2.9 核心与适配层：成品 · 格目录 · 出口声明
+### 2.9 核心与适配层：成品 · 格目录
 
 后端里「判定与写字」只有一处，叫**核心**；它两边各是一层适配。手机、CLI、桌面界面、对端后端都是出口；任何出口要改形，只要核心里已经有那一格，就只改出口自己。
 
@@ -225,58 +226,27 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 #### 格目录 `cells-catalog`
 
-一条只读帧命令（族 `registry/cells.rs`，本体 `faces/cells_catalog.rs`），列出每件成品有哪些格。出口据它写自己的声明，不读核心代码就知道有没有那一格。
+只读帧命令 `cells-catalog`（本体 `faces/cells_catalog.rs`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口据它就知道有没有那一格，不必读核心代码。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以命令本身的输出与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的成品（`record` · `read_row`）格只许加。
 
-```json
-{
-  "products": [
-    { "name": "facts",
-      "cells": [ { "path": "cost.text", "kind": "text", "type": "string" },
-                 { "path": "usage.limitFrom", "kind": "value", "type": "enum" }, … ] },
-    …
-  ],
-  "pending": [ { "product": "facts", "path": "usage.contextText", "kind": "text" }, … ]
-}
-```
+#### 出口怎么挑格（今天）
 
-- **成品**：`record`（通用记录）· `facts`（会话事实，`history-facts`）· `needs_row`（需手动清单的一行，`sessions-needs` 的 `waiting[]`）· `index_row`（骨架行，`history-index` 的 `rows[]`）· `read_row`（行摘要，`history-read` 的 `rows[]`）· 会话帧按帧的 `kind`（`session_added` · `session_status` · `session_state` · `session_removed`）。其余成品随各批换形时登记进来。
-- **格**：`path` 的写法与出口声明里点格的写法同一种 —— `a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面。`kind` 是 `value` · `text` · `tone`；`type` 是 `string` · `number` · `bool` · `enum`（闭集的词）· `object`（原样透传的一团，不再往里分格）。
-- **从哪来**：不手写第二份。每件成品登记一组**样本**（用成品自己的 Rust 类型造的值：可缺的格都填上、列表不空、每种变体各一个），目录 ＝ 样本经 serde 交给一个走查序列化器得到的格路径；`Words` / `Tone` 两个类型名就是 `text` / `tone` 的来源。线上的 `serde_json` 与它走的是同一份 `Serialize` 实现。
-- **`pending`**：已判了要补、还没落地的格。落地那一刻它进了 `products`，这一行就得删。判了不补的（如骨架行的时刻：手机改吃 `history-branch.off` 拿主线之后就没有用处）不登记，理由写在 `PENDING` 的头注里。
-- **判据**（`tests/backend/faces/cells_catalog_tests.rs`）：① 样本里没有 `None`、没有空列表；② 目录 ＝ 同一批样本经 `serde_json` 写出来的格（两向）；③ 目录对真代码写出来的跨语言金样两向相等（记录金样每类全格 ＋ 最少格、说话人十四种都见到）；④ 写好的字由类型说（同叫 `text`，原文是值）；⑤ `pending` 与目录不重（表可以空）；⑥ 帧命令出的就是目录；⑦ **冻结**：两个前端都照它读的成品（`record` · `read_row`，`frozen: true`）格只许加 —— 对的是落盘的格目录金样，冻结成品的格在金样里有、目录里没了或换了样就红，重写金样也不放行。冻结表就是格目录的这一子集，不另立一份格清单。
-
-#### 出口声明
-
-出口不靠后端开关定形，靠自己交的一份声明（连上来时在流的 attach 行里，提问时在请求信封里）。核心只认这几个词，词表是核心的一部分：
-
-| 词 | 管什么 | 例 |
-|---|---|---|
-| `cells` / `omit` | 要哪几格 / 哪几格不要（路径写法同格目录；缺省 ＝ 全量） | `"omit": {"record": ["blocks[type=tool_use].input"]}` |
-| `where` / `order` | 只按核心已算好的格筛、排（筛「在等人」不是判定，判定在核心算 `needs` 时已做完） | `"where": {"session": {"needs": "present"}}` |
-| `budget` | 体积预算：回包字节 · 条数 · 每格字数；超了怎么截是每件成品在核心登记一次 | `{"replyBytes": 262144, "items": 200}` |
-| `stream` | 流从哪起（尾部 / 从头）、带不带后台会话 | `{"since": "tail", "background": true}` |
-| `ship`（装运） | `json`（帧 / 一行 JSON）· `text`（把成品里的 `text` / `rows` 格拼成字；不按业务写） | `"ship": "text"` |
-
-声明点了目录里没有的格 ⇒ 当场拒 `unknown_cell`（带那几格的名字），不静默丢。`raw` 这类受限格只有认证档允许的连接能点。投影只有一处：成品照常出全量 → `project(成品, 声明)` 挑格、筛排、截 → 按 `ship` 装运。今天还在用的开关（流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `summaryOnly` · `whole` · `--index` · `raw`，`quota-read --text`）在投影落地那一批一次性收进声明、旧形当场删；`--stdin-line` · `--args-b64`（传输）与 `--query` · `--limit` 一类（查询本身的参数）不进声明。
+出口按需定形的声明（挑格 · 筛排 · 预算 · 装运）还没做；今天出口的形状靠这几样开关：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `summaryOnly` · `whole` · `--index` · `raw`，`quota-read --text`。新的出口需求不再往核心里加开关，照下表判。
 
 #### 一个出口的新需求：只改出口，还是动核心
 
 | 问 | 是 ⇒ | 否 ⇒ |
 |---|---|---|
 | ① 格目录里已经有这一格（值或写好的字）？ | 下一问 | **动核心**：补这一格，对所有出口一次补齐 |
-| ② 只是「要 / 不要某几格」「按已有的格筛 / 排」「换预算」「换装运」？ | **只改出口的声明** | 下一问 |
+| ② 只是「要 / 不要某几格」「按已有的格筛 / 排」「换预算」「换装运」？ | **只改出口** | 下一问 |
 | ③ 要的是新判定、新句子、新的跨会话 / 跨机器汇总、新的推送时机？ | **动核心**：新判定进核心、新格进目录；之后同类需求回到 ② | — |
-| ④ 要投影词表里没有的新动作（一种新的筛法）？ | **动核心的投影**（通用的，所有出口都能用），极少见 | — |
 
-格已有 ⇒ 只改出口；格没有或要新判定 ⇒ 动核心一次，补给所有出口。出口永远不自己算一格。动核心的每一刀走全套：命令登记 → `IPC-COMMANDS.md` 重生成 → 冻结表 / 金样同拍 → `BUILD_ID`；只改出口的声明不走这一串。
+格已有 ⇒ 只改出口；格没有或要新判定 ⇒ 动核心一次，补给所有出口。出口永远不自己算一格。动核心的每一刀走全套：命令登记 → `IPC-COMMANDS.md` 重生成 → 冻结表 / 金样同拍 → `BUILD_ID`。
 
 ---
 
 ## 3. Tauri State：只有一个家
 
-State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；消费者与跨线程持有者从代码现查（做法见 [CONTRIBUTING.md § 3.1](CONTRIBUTING.md)），不另抄一张表。
-
-为什么值得一整份文档：漏一次 `app.manage()` 不会被 `cargo check` 抓住——命令签名照样编译过，运行时第一次调用才 panic。Tauri 的 State 注入是运行期按类型查表的，编译器在这条路上帮不了你：改完要在 dev 模式里真点一次。
+State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo check` 抓不住、运行时第一次调用才 panic。规矩与找全消费者的做法见 INVARIANTS §8 · [CONTRIBUTING.md § 3.1](CONTRIBUTING.md)。
 
 ---
 
@@ -288,12 +258,12 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 |---|---|---|---|
 | `config.json` | monitor 设置 | monitor | 主题 · 字体 · 行为开关 · 机器表 · 诊断 |
 | `ps-await/<PID>.tty` | Linux bash / zsh 接入块（本机桌面上开的 shell） | monitor `bind.rs` | 那个 shell 的进程号 · 起始时刻 · 终端设备，monitor 据它认窗口（认上 / 认不出就删） |
-| `ps-registry/<PID>.json` | monitor | monitor（↗ 沿进程链时先查它） | 那个 shell 显示在哪个窗口（与 shell 进程同寿） |
-| `auto-launch.json` | monitor 设置 | PowerShell 接入块 | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
+| `ps-registry/<PID>.json` | monitor（Linux） | monitor（↗ 沿进程链时先查它） | 那个 shell 显示在哪个窗口（与 shell 进程同寿） |
+| `auto-launch.json` | monitor 设置 | PowerShell 接入块（`__ccm_bind`） | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
 | `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号） |
 | `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
 
-后端自己的状态（`backend.json` · 中转钥匙 · 监听令牌 · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，写者逐文件登记在 `readonly_guard.rs` 的 `OWN_STATE_WRITERS`。
+后端自己的状态（`backend.json` · 中转根钥匙 `relay-key` · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，写者逐文件登记在 `readonly_guard.rs` 的 `OWN_STATE_WRITERS`。
 
 只读的外部数据源：`<claude_dir>/projects/**/*.jsonl`（会话内容）· `<claude_dir>/sessions/<PID>.json`（活跃会话，PID ＋ `procStart` 双校验）· `<claude_dir>/tasks/<sid>/`（Task 面板），都由那台后端读。
 
@@ -303,11 +273,11 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 
 ## 5. 关键设计选择与理由
 
-每条都是「为什么不能用别的方案」。
+每条都是「为什么不能用别的方案」。规矩本身由判据钉着的那几条只写在 INVARIANTS，这里不重复：顺序靠 `seq` 不靠后端保序（§5 · §9）· 判活要 PID ＋ `procStart`（§6）· 拉前三重校验（§7）· 长耗时同步调用走 `spawn_blocking`（§10）· 浮层真挂 `document.body`（§13）· 启动重放贴底不抖（§21）。
 
 ### 零侵入：只读 Claude Code 的数据源
 
-后端只读 `projects/` 与 `sessions/`。写入一律是用户显式触发，而且只经那台后端的文件管理面：删历史会话只收 sid（`files-delete-session`）；从某一轮分叉只新增一份 `<new-sid>.jsonl`，`O_EXCL` 新建、绝不覆盖，原会话零改动（`control/fork_write`）。按 sid 找那份会话文件只有一份实现，两处共用（原先收路径的源守卫 `validate_branch_source`〔散文墓碑〕已不在）。装别名块、skill、MCP 是用户点名的写，别名块只动 BEGIN / END 块内。
+后端只读 `projects/` 与 `sessions/`。写入一律是用户显式触发，而且只经那台后端的文件管理面：删历史会话只收 sid（`files-delete-session`）；从某一轮分叉只新增一份 `<new-sid>.jsonl`，`O_EXCL` 新建、绝不覆盖，原会话零改动（`control/fork_write`）。按 sid 找那份会话文件只有一份实现，两处共用。装别名块、skill、MCP 是用户点名的写，别名块只动 BEGIN / END 块内。
 
 **为什么**：用户对「数据源就是我自己的命令痕迹」的认知不能破；写是必要时的可选副作用，就得是显式的、可见的（足迹页逐条列出）。
 
@@ -316,12 +286,6 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参数、都没有 `Default`：控制台（`ConsolePolicy`：`Hidden` · `NewVisible` · `Inherit`）· 生命周期（`Lifetime`：`JobKillOnClose` · `Detached`）· stderr 去向（`StderrSink`：`ToLog` · `Null` · `Inherit` · `Captured`）。还自造 `Command` 的地方逐处登记。给用户开真终端那一处刻意是 `NewVisible`。
 
 **为什么**：Windows 上 GUI 进程起一个控制台程序而不给 flag，系统会新配一个带窗口的控制台——用户看到就会关，关掉就杀死子进程（退出码 `0xC000013A`）。分进程之后，原来免费的东西都要显式管：谁杀谁、控制台策略、错误怎么跨进程传、两边对版、起不起得来。三个必填参数让坏默认值无法被表达；子进程的 stderr 接进 monitor 日志，死亡码说人话（「被控制台事件杀死」而不是裸退出码）。
-
-### 顺序靠 seq，不靠后端保序
-
-重放时就绪点持锁只做快照、把订阅置为实时，交格全在锁外；顺序保证交给 per-file 单调 seq 加前端二分插入。并发到的实时行先于快照旧行到达也无碍。跨通道的顺序（行 vs `session-ended`）不由 seq 覆盖，由同队列同序（INVARIANTS §20）与大批在调用方任务里发完再返回（INVARIANTS §10）兜住。
-
-**为什么**：持锁完整交付会让重放期间 watcher 阻塞数十毫秒到秒级；seq 排序把「后端保序」变成「前端排序」，交付顺序成了纯性能自由度（优先会话先交就是用的这份自由）。
 
 ### 成批交付
 
@@ -337,14 +301,6 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 **为什么**：建卡（markdown · DOMPurify · 高亮）是重放期最大的成本；不建看不见的卡，上万条记录的会话也能秒开。
 
-### 启动重放贴底不抖
-
-- 守卫式 `snap()`：只在落后底部超过 1px 时才写 `scrollTop`，不每帧重钉。
-- 窗口内的中部插入交给原生 `overflow-anchor`，不手动补偿（叠加会双重位移）。
-- 尾部优先收纳：当前 tab 的尾块直接渲染，更老的块与后台 tab 的记录只进账本；后台 tab 空闲时物化尾部，切过去时同步物化。
-
-**为什么**：旧内容逐条插到贴底视口上方，会让浏览器逐帧重排并重做滚动锚定，高分屏上分数像素的舍入误差每帧不同，整块上下抖。细则在 INVARIANTS §21。
-
 ### 每个窗口一个入口
 
 `index.html` · `settings.html` · `viewer.html` 各有自己的入口（`entry-main.ts` · `entry-settings.ts` · `entry-viewer.ts`）。设置窗的模块图里没有高亮、数学排版与 tab 管理；设置窗关窗是隐藏、复用时重跑取值，主窗销毁时连带销毁它（`lib.rs::windows_to_destroy_after`）。独立只读窗口复用 `TabManager` 过滤到那个会话，订一条 `session-lines/<sid>`，不发 `frontend-ready`。
@@ -357,20 +313,6 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 换号重启直接结束旧会话再 resume 同一个 sid；compact 失败不阻断，kill 失败必须中止——绝不在旧进程还活着时续 resume，否则新旧两个进程抢同一份会话。选不了原账号时不静默换号，拒绝并给出「用当前账号」的显式选择。
 
-### 判活：PID ＋ procStart
-
-活跃会话按 `sessions/<PID>.json` 判：进程在 ∧ 文件里有 `procStart` 时再比进程创建时间。读法住后端 `platform/`（Windows 读 `GetProcessTimes`，Linux 读 `/proc/<pid>/stat` 第 22 字段），判定两平台共用一张。`procStart` 是平台原生格式，各自与本平台的查询口径同源，不需要启发式。
-
-- **为什么不只查 PID**：Windows 的 PID 短期复用很常见，只看进程在不在会把僵尸条目判成活跃。
-- **为什么 `procStart` 可缺**：Claude Code 在某些启动路径下写 pidfile 会漏这个字段；缺了就只看 PID，而不是整条解析失败、漏掉一个 tab。
-- **解析 `/proc/<pid>/stat` 不能朴素按空白切**：第 2 字段 `comm` 可以含空格与括号（`tmux: server` 就是），要从最后一个 `)` 之后数。
-
-### 拉前三重校验
-
-Windows 上把终端窗口拉到前台前要同时满足：窗口把手还有效 ∧ 当前 owner pid 等于绑定时的 ∧ owner 的进程创建时间等于绑定时的。任一不符就拒绝拉前并说原因。本机远端的窗口都是点 ↗ 那一刻沿进程链现找的，过同一道校验。
-
-**为什么**：窗口把手复用比 PID 复用还频繁，不校验 owner 会把不相干的窗口拉到前面。
-
 ### 按控制台认窗口（Windows）
 
 点 ↗ 时沿进程链每一级借它的控制台问一句：`AttachConsole` → `GetConsoleWindow` → 那个窗口的属主（`platform/console.rs::console_window`，壳里借控制台只此一处）。
@@ -380,23 +322,11 @@ Windows Terminal 里每个标签的伪控制台窗口的属主就是承载它的
 还要那个标签当时在前台、标题没被别人改，cc-monitor 自己从标签栏起的会话（命令里 ssh 用全路径，不带窗口标签）一样落空。控制台的属主由 Windows Terminal 自己维护，
 谁起的、装没装接入块都一样认得准。只认到窗口：Windows Terminal 没有从外部选中别人标签的接口。
 
-### tooltip 挂在 body 上
-
-设置里的 `?` 提示框挂到 `document.body`，`position: fixed` ＋ 按视口算坐标。
-
-**为什么**：祖先有 `transform` 时，`position: fixed` 的包含块从视口变成那个祖先，坐标就不再是视口坐标，提示框会跑出屏幕。
-
 ### 日志：tracing 在 Builder 之前初始化
 
 `logging::init` 必须在 `tauri::Builder::default()` 之前调用（全局 dispatcher 只能装一次）：文件层按天滚动、非阻塞写；`EnvFilter` 可热改级别，不重启就生效；日志行不上屏：要让用户知道的出错只走 `ui_error::tell`（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情，事件 `monitor-error`，出口由 `logging.rs::install_error_emitter` 装上，限流防风暴），前端照那一句弹提示；其余 ERROR 只进日志。日志目录建不出来就退化成只写 stdout，monitor 照样起。后端子进程的 stderr 接进 monitor 的滚动日志，脱离起的后端写自己那份日志。
 
 **为什么**：release 版是 GUI 子系统，没有 stderr；日志不落盘，一条解析失败的 warn 就没人看见。
-
-### Win32 同步调用走 spawn_blocking
-
-`bring_terminal_to_front` 等 Win32 同步调用放进 `spawn_blocking`，前端再加超时兜底。
-
-**为什么**：`EnumWindows` / `SetForegroundWindow` 这类调用可能阻塞数十毫秒到秒级，放在 Tauri 主 runtime 上会卡住 IPC 派发（INVARIANTS §10）。
 
 ### bring_monitor_to_front 三层 hack
 

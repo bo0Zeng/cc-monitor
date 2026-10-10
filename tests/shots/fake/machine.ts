@@ -171,7 +171,6 @@ export function machineOps(): Record<string, OpHandler> {
               { name: "cc", line: 125, wins: "yours" },
               { name: "cct", line: 129, wins: "yours" },
             ],
-            manualCleanupHint: "",
           },
           unreadable: null,
           policy: null,

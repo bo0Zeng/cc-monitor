@@ -34,7 +34,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     block: {
       present: blockAt.has(path),
       conflictingFunctions: path === "/h/rc-a" ? clashes : [],
-      manualCleanupHint: "",
     },
   });
 

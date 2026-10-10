@@ -196,7 +196,7 @@ The "Data locations" page in Settings shows the full path of every file.
 - On Windows, sessions cannot yet be sent to the background, re-attached, previewed or typed into; the local backend exits together with the UI.
 - macOS is not supported, neither as the local machine nor as a remote one; Linux arm64 works as a remote machine only.
 - Multi-account currently works on Linux machines only; the account store cannot be set up on a local Windows machine.
-- The Windows side of what 4.0.6 and 4.1.0 change (finding the window for ↗, the PowerShell hook, the file window) has only been cross-compiled and tested automatically, not run on a real Windows machine — see the [CHANGELOG](CHANGELOG.md).
+- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, …); the newer ↗ that finds the window through the console has not yet run on real Windows, and desktop notifications cannot be judged in the VM.
 - ↗ brings the window forward but cannot pick a tab inside Windows Terminal; terminals connected through a jump host or port translation cannot be matched.
 
 ---

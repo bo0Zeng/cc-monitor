@@ -283,23 +283,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
         //
         // ⇒ 规则：**要么挂 shim（共享原语或自建），要么每一处都自带选择器**。
         // `--names-only` 只取名字、不装 shim ⇒ 不算挂了共享原语（那样的套件要么自建 shim，要么每处自带选择器）。
-        let uses_shared_shim = exec
-            .iter()
-            .any(|l| l.contains("tmux-shim.sh") && !l.contains("--names-only"));
-        // 自建 shim 的形状 = **两件事同时成立**：
-        // ① 往一个**名为 `tmux` 的文件**里写；② 那个文件里 `exec` 时带选择器。
-        //
-        // ⚠ 第一版只找「同一行里有 `exec` + `tmux` + `-L`」，**漏了 `cc-spawn-uplift`**
-        //   —— 它写的是 `exec "$REALTMUX" -L $SOCK "$@"`，那一行里**没有字面量 `tmux`**
-        //   （真 tmux 的路径在变量里），而且「写文件」与「exec」分在两行（heredoc）。
-        //   ⇒ 判定要按**形状**认，别按某一行的字面量。
-        let writes_a_tmux_file = exec
-            .iter()
-            .any(|l| l.contains("/tmux\"") || l.contains("/tmux'") || l.contains("/tmux <<"));
-        let execs_with_selector = exec
-            .iter()
-            .any(|l| l.contains("exec ") && (l.contains(" -L ") || l.contains(" -S ")));
-        let installs_own_shim = writes_a_tmux_file && execs_with_selector;
+        let (uses_shared_shim, installs_own_shim) = shim_isolation(&exec);
         /// **允许裸调的**（文件名, 为什么）。默认拒绝，例外要写清楚。
         const BARE_TMUX_OK: &[(&str, &str)] = &[
             (
@@ -771,6 +755,27 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
 /// ② 后面紧跟的是**小写子命令**（`new-session` / `ls` / …）。
 /// 少了②，`echo "… tmux ls …"` 这类文字会被算进来 —— 首版就是这么数出 28 的
 /// （另一把尺数 15）。**两把尺不一致就不能立棘轮**，先把尺修对。
+/// 一份脚本（剥掉整行注释之后的可执行行）是怎么把 tmux 钉在私有 server 上的：
+/// (挂了共享原语 `tmux-shim.sh`, 自建了 shim)。`--names-only` 只取名字、不装 shim ⇒ 不算挂了共享原语。
+///
+/// 自建 shim 的形状 = **两件事同时成立**：① 往一个**名为 `tmux` 的文件**里写；② 那个文件里 `exec` 时带选择器。
+/// ⚠ 第一版只找「同一行里有 `exec` + `tmux` + `-L`」，**漏了 `cc-spawn-uplift`**
+///   —— 它写的是 `exec "$REALTMUX" -L $SOCK "$@"`，那一行里**没有字面量 `tmux`**
+///   （真 tmux 的路径在变量里），而且「写文件」与「exec」分在两行（heredoc）。
+///   ⇒ 判定要按**形状**认，别按某一行的字面量。
+fn shim_isolation(exec: &[&str]) -> (bool, bool) {
+    let uses_shared_shim = exec
+        .iter()
+        .any(|l| l.contains("tmux-shim.sh") && !l.contains("--names-only"));
+    let writes_a_tmux_file = exec
+        .iter()
+        .any(|l| l.contains("/tmux\"") || l.contains("/tmux'") || l.contains("/tmux <<"));
+    let execs_with_selector = exec
+        .iter()
+        .any(|l| l.contains("exec ") && (l.contains(" -L ") || l.contains(" -S ")));
+    (uses_shared_shim, writes_a_tmux_file && execs_with_selector)
+}
+
 fn bare_tmux_call(line: &str) -> bool {
     let b = line.as_bytes();
     let mut i = 0usize;
@@ -1041,6 +1046,246 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
         assert!(
             why.chars().count() >= 15,
             "`{f}` 没写清为什么它不是往真路径里写"
+        );
+    }
+}
+
+/// 一份脚本 / 代码里「起 tmux 之前摘掉了继承来的 `$TMUX`」的几种写法（有边界地找，不按子串）。
+/// `$TMUX` 一有值，tmux 就按它连那台 server（压过 `TMUX_TMPDIR`）；带了 `-S` / `-L` 的不看它选 server，
+/// 但 `TMUX_PANE` 照旧被当成「当前窗格」—— 两个一起摘才干净。
+fn strips_inherited_tmux(tmux_body: &str) -> bool {
+    use guard_core::contains_word as has;
+    has(tmux_body, "sandbox-env.sh")
+        || has(tmux_body, "unset TMUX")
+        || has(tmux_body, "-u TMUX")
+        || has(tmux_body, "env -i")
+        || has(tmux_body, "env_clear()")
+        || (has(tmux_body, "env_remove(\"TMUX\")") && has(tmux_body, "env_remove(\"TMUX_PANE\")"))
+}
+
+/// Rust 里一处 `Command::new("tmux")`：从那一行起到这条链结束（`;` 或 `.output()` / `.spawn()` / `.status()`），
+/// 是否带了选择器、是否摘了 `TMUX` 与 `TMUX_PANE`。
+fn rust_tmux_chain(tmux_rows: &[&str], at: usize) -> (bool, bool) {
+    use guard_core::contains_word as has;
+    let mut chain = String::new();
+    for tmux_row in &tmux_rows[at..tmux_rows.len().min(at + 16)] {
+        chain.push_str(tmux_row);
+        chain.push('\n');
+        let ends =
+            has(tmux_row, ".output()") || has(tmux_row, ".spawn()") || has(tmux_row, ".status()");
+        if ends || tmux_row.trim_end().as_bytes().last() == Some(&b';') {
+            break;
+        }
+    }
+    let selected = has(&chain, "\"-S\"") || has(&chain, "\"-L\"");
+    let stripped = has(&chain, "env_clear()")
+        || (has(&chain, "env_remove(\"TMUX\")") && has(&chain, "env_remove(\"TMUX_PANE\")"));
+    (selected, stripped)
+}
+
+/// **仓里每一处起 tmux 的地方都说清连哪台 server：测试与脚本显式 `-S` / `-L`（或经强插 `-L` 的 shim）并摘掉 `$TMUX`；
+/// 产品代码只经 `platform::child::Child` 起 tmux。**
+///
+/// 10-09 21:33 的事故：一条测试靠 `TMUX_TMPDIR` 隔离，跑它的终端里 `$TMUX` 有值、压过了它，一句 `kill-server`
+/// 打掉了开发机上正在用的那台 tmux server。上面 `no_e2e_suite_isolates_with_tmux_tmpdir` 只管 `tests/e2e/*.sh`，
+/// 这一条把人群放到 `src/` ＋ `tests/` 下全部跟踪着的脚本与代码：
+///
+/// - shell 脚本：每一处命令位上的 `tmux <子命令>` 带 `-S` / `-L`，或这份脚本挂了 shim（[`shim_isolation`]）；
+///   有 tmux 调用的脚本还得摘掉继承来的 `$TMUX`（`. sandbox-env.sh` · `unset TMUX` · `env -u TMUX` · `env -i`）。
+/// - Rust 测试：每一处 `Command::new("tmux")` 那条链里带 `"-S"` / `"-L"`，并 `env_remove("TMUX")` ＋ `env_remove("TMUX_PANE")`（或 `env_clear()`）。
+/// - 产品 Rust（`src/backend` · `src/frontend` · `src/common`）：不许 `Command::new("tmux")`。产品要连的就是用户自己那台，
+///   带不了私有选择器；它只经 `Child` 起，`Child` 的测试构建那一道（`tests/backend/platform/child_tmux_fence.rs`）
+///   把裸名 `tmux` 摘掉 `$TMUX` / `TMUX_PANE` 并落到本进程自己的空目录 —— 绕过 `Child` 就绕过了那一道。
+/// - JS / TS / Python：起 `tmux` 的那一行（`spawn("tmux"` 一类）同 Rust 测试的要求。
+///
+/// 买不到：程序名在变量里的（`"$REALTMUX"` · `Command::new(&tmux)`）认不出 —— 本仓这几处今天都带选择器，判据不替它们作保。
+#[test]
+fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
+    use guard_core::contains_word as has;
+    /// 允许名单（文件, 为什么）。默认拒绝；名单上的文件照算红，算不出红的那一条就得删。
+    const ALLOWED: &[(&str, &str)] = &[
+        (
+            "src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh",
+            "随部署装到用户机器上的 cc-bus：往用户自己那台 tmux 里的会话送键，本就该连那台",
+        ),
+        (
+            "tests/e2e/gen-idle-tmux.sh",
+            "夹具生成器，被别的套件调：隔离与摘 `$TMUX` 由调用方给（调用方 PATH 上有强插 `-L` 的 shim）",
+        ),
+    ];
+    const SPAWNS: &[&str] = &[
+        "spawn(\"tmux\"",
+        "spawnSync(\"tmux\"",
+        "execFile(\"tmux\"",
+        "execFileSync(\"tmux\"",
+        "run([\"tmux\"",
+        "Popen([\"tmux\"",
+        "check_output([\"tmux\"",
+        "check_call([\"tmux\"",
+    ];
+    let root = crate::guard_support::repo_root();
+    let listing = std::process::Command::new("git")
+        .args(["ls-files", "-z", "--", "src", "tests"])
+        .current_dir(&root)
+        .output()
+        .expect("跑不动 git ls-files");
+    let tmux_files: Vec<String> = String::from_utf8_lossy(&listing.stdout)
+        .split('\0')
+        .filter(|r| !r.is_empty())
+        .filter(|r| {
+            let b = r.as_bytes();
+            !b.starts_with(b"src/vendor/") && !has(r, "/node_modules/") && !has(r, "__fixtures__")
+        })
+        .filter(|r| {
+            let ext = r.rsplit('.').next().unwrap_or("");
+            ["sh", "bash", "rs", "mjs", "js", "ts", "mts", "py"].contains(&ext)
+        })
+        .map(str::to_string)
+        .collect();
+    assert!(
+        tmux_files.len() > 500,
+        "人群只有 {} 份 —— 口径坏了",
+        tmux_files.len()
+    );
+    let is_comment = |row: &str| {
+        let b = row.trim_start().as_bytes();
+        b.starts_with(b"#") || b.starts_with(b"//") || b.starts_with(b"/*") || b.starts_with(b"*")
+    };
+    let mut bad = Vec::new();
+    let mut seen_allowed = std::collections::BTreeSet::new();
+    let mut sites = 0usize;
+    for tmux_rel in &tmux_files {
+        let Ok(tmux_body) = std::fs::read_to_string(root.join(tmux_rel)) else {
+            continue;
+        };
+        if !has(&tmux_body, "tmux") {
+            continue;
+        }
+        let allowed = ALLOWED.iter().find(|(a, _)| a == tmux_rel).map(|(a, _)| *a);
+        let before = bad.len();
+        let ext = tmux_rel.rsplit('.').next().unwrap_or("");
+        let tmux_rows: Vec<&str> = tmux_body.lines().collect();
+        match ext {
+            "sh" | "bash" => {
+                let exec: Vec<&str> = tmux_rows
+                    .iter()
+                    .copied()
+                    .filter(|row| !row.trim_start().as_bytes().starts_with(b"#"))
+                    .collect();
+                let (shared, own) = shim_isolation(&exec);
+                let mut calls = 0usize;
+                for (i, row) in tmux_rows.iter().enumerate() {
+                    if row.trim_start().as_bytes().starts_with(b"#") {
+                        continue;
+                    }
+                    if bare_tmux_call(row) {
+                        calls += 1;
+                        if !(shared || own) {
+                            bad.push(format!(
+                                "{tmux_rel}:{}  裸调 tmux、也没挂 shim：{}",
+                                i + 1,
+                                row.trim()
+                            ));
+                        }
+                    } else if has(row, "tmux -S ") || has(row, "tmux -L ") {
+                        calls += 1;
+                    }
+                }
+                sites += calls;
+                if calls > 0 && !strips_inherited_tmux(&tmux_body) {
+                    bad.push(format!("{tmux_rel}  起 tmux 却没摘继承来的 $TMUX（`. sandbox-env.sh` / `unset TMUX` / `env -u TMUX -u TMUX_PANE`）"));
+                }
+            }
+            "rs" => {
+                let product = tmux_rel.as_bytes().starts_with(b"src/");
+                for (i, row) in tmux_rows.iter().enumerate() {
+                    if is_comment(row) || !has(row, "Command::new(\"tmux\")") {
+                        continue;
+                    }
+                    sites += 1;
+                    if product {
+                        bad.push(format!(
+                            "{tmux_rel}:{}  产品代码直接 `Command::new(\"tmux\")` —— 改经 `platform::child::Child`（测试构建里它摘 $TMUX、落私有目录）",
+                            i + 1
+                        ));
+                        continue;
+                    }
+                    let (selected, stripped) = rust_tmux_chain(&tmux_rows, i);
+                    if !selected {
+                        bad.push(format!(
+                            "{tmux_rel}:{}  起 tmux 没带 \"-S\" / \"-L\"",
+                            i + 1
+                        ));
+                    }
+                    if !stripped {
+                        bad.push(format!(
+                            "{tmux_rel}:{}  起 tmux 没摘 TMUX / TMUX_PANE（`.env_remove(\"TMUX\").env_remove(\"TMUX_PANE\")`）",
+                            i + 1
+                        ));
+                    }
+                }
+            }
+            _ => {
+                for (i, row) in tmux_rows.iter().enumerate() {
+                    if is_comment(row) || !SPAWNS.iter().any(|p| has(row, p)) {
+                        continue;
+                    }
+                    sites += 1;
+                    let span = tmux_rows[i..tmux_rows.len().min(i + 4)].join("\n");
+                    if !["\"-S\"", "\"-L\"", "'-S'", "'-L'"]
+                        .iter()
+                        .any(|p| has(&span, p))
+                    {
+                        bad.push(format!("{tmux_rel}:{}  起 tmux 没带 -S / -L", i + 1));
+                    }
+                    let drops = has(&tmux_body, "TMUX_PANE")
+                        && (has(&tmux_body, "delete")
+                            || has(&tmux_body, "pop")
+                            || has(&tmux_body, "env -u"));
+                    if !drops {
+                        bad.push(format!(
+                            "{tmux_rel}:{}  起 tmux 没摘继承来的 TMUX / TMUX_PANE",
+                            i + 1
+                        ));
+                    }
+                }
+            }
+        }
+        // 允许名单上的文件：它的红照旧算出来、再整份放行 —— 算不出红就说明这一条不再需要。
+        if let Some(a) = allowed {
+            if bad.len() > before {
+                seen_allowed.insert(a);
+            }
+            bad.truncate(before);
+        }
+    }
+    // 自检：认法在干活（今天几百处），且合成的坏形状被认出。
+    assert!(sites > 100, "只认出 {sites} 处 tmux 调用 —— 认法坏了");
+    let probe = format!(
+        "{}::new(\"tmux\")\n    .args([\"-L\", \"x\"])\n    .output()",
+        "Command"
+    );
+    let probe_rows: Vec<&str> = probe.lines().collect();
+    assert_eq!(
+        rust_tmux_chain(&probe_rows, 0),
+        (true, false),
+        "没摘 TMUX 的那条链要认出来"
+    );
+    assert!(
+        !strips_inherited_tmux("tmux -L x ls\n"),
+        "没摘 $TMUX 的脚本要认出来"
+    );
+    assert!(
+        bad.is_empty(),
+        "这些地方起 tmux 时没说清连哪台 server（共认出 {sites} 处）：\n  {}\n\n\
+         ⇒ 测试与脚本：显式 `-S <私有 socket>` / `-L <私有名>`（或挂 `tests/e2e/tmux-shim.sh`），并摘掉 `$TMUX` 与 `TMUX_PANE`；\
+         产品代码：经 `platform::child::Child` 起。",
+        bad.join("\n  ")
+    );
+    for (a, why) in ALLOWED {
+        assert!(
+            seen_allowed.contains(a),
+            "允许名单里的 `{a}` 已经不会红了（没了或改对了）—— 删掉这一行（当初的理由：{why}）"
         );
     }
 }

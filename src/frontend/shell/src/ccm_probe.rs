@@ -504,8 +504,7 @@ pub(crate) fn ask_place_verdict(
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // 用户 `K34` 逐字要的是「**原本的配置要手动删除**」——**产品不删，但要说得出**。
-// `K-R62` 已经买到「你 rc 里那几行是旧的」（`profile_installer::scan_legacy_rc_lines`）；
-// 这里是**它的兄弟**：**PATH 上那个 `ccm` 是不是我们装的那一份**。
+// 这里问的是：**PATH 上那个 `ccm` 是不是我们装的那一份**。
 //
 // 🔴 **不许只比路径字符串**。比路径认不出「同名不同物」，而要防的恰恰就是
 //    「本机上另有一个也叫 `ccm` 的东西」（用户 `~/.local/bin/ccm` 那份旧 bash）。
@@ -669,7 +668,7 @@ pub fn classify_path_ccm(ours: &CcmProbeResult, on_path: &CcmProbeResult) -> Pat
 
 /// **纯函数**：那句话。措辞刻意**不是**「请删除」——
 /// 产品一个字节都不删（`K31` ＋ 用户 `K34` 逐字「原本的配置要手动删除」），
-/// 边界只有用户自己知道。同 `profile_installer::render_manual_cleanup_hint` 那一族。
+/// 边界只有用户自己知道。
 pub fn render_path_ccm_hint(
     verdict: PathCcmVerdict,
     ours: &CcmProbeResult,

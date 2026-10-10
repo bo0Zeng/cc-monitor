@@ -563,6 +563,8 @@ fn pidfd_watches_a_real_tmux_server_and_stays_silent_while_it_lives() {
     let sock = format!("ccmP3-{}", std::process::id());
     let tmux = |args: &[&str]| -> std::process::Output {
         std::process::Command::new("tmux")
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
             .args(["-L", &sock])
             .args(args)
             .output()
@@ -570,6 +572,8 @@ fn pidfd_watches_a_real_tmux_server_and_stays_silent_while_it_lives() {
     };
     // -f /dev/null：不读用户的 ~/.tmux.conf（隔离）
     let out = std::process::Command::new("tmux")
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
         .args([
             "-f",
             "/dev/null",

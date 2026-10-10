@@ -107,7 +107,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `--backend-probe` · `--find-in-session --query <q> <路径>` · `--list-user-inputs <路径>` ·
   帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
   会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
-- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词（`session_kind` · `status`）10-09 起不再上线。
+- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词不上线。
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（成品面：格目录里冻结的 `record` · `read_row`）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `--resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。

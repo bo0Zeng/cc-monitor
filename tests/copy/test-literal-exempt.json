@@ -84,6 +84,9 @@
       { "text": "开窗", "use": "词义" },
       { "text": "日志", "use": "非文案" }
     ],
+    "tests/frontend/shell/doc_claim_registry_tests.rs": [
+      { "text": "命令", "use": "非文案" }
+    ],
     "tests/frontend/shell/diagnostics_report_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],

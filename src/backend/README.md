@@ -1,130 +1,21 @@
-# cc-monitor-backend (远端后端)
+# 后端（`src/backend/`，crate `cc-monitor-backend`）
 
-cc-monitor 的 SSH-远端功能后端（issue #15 起，已历 F14–F30+ 多轮迭代）。它 tail 远端
-`~/.claude` 会话 JSONL 并流式回传已连接的 client（cc-monitor / 未来 aterm）。协议契约的权威文档是
-[`../doc/IPC-PROTOCOL.md`](../doc/IPC-PROTOCOL.md)；部署见 [`../doc/REMOTE-PHASE0-DEPLOY.md`](../doc/REMOTE-PHASE0-DEPLOY.md)。
+每台机器上的 `~/.cc-monitor/bin/ccm` 就是那台的后端：读会话、起进程、动 tmux、拨 SSH、管资产、写用户的文件，全在这里；monitor 与外部前端只经帧面说话，用户敲的 `ccm` 走 CLI 面（[ARCHITECTURE §2.2](../doc/ARCHITECTURE.md)）。
 
-- **运行期 Linux-only。** inotify watcher 流式（`src/watcher.rs`）+ 一次性历史查询子命令（`src/history_query.rs`/`src/search_query.rs`）。
-- **交叉编译 + 内嵌部署。** 由 CI（`release.yml`）用 `cargo zigbuild` 交叉编译 x86_64/aarch64 musl 静态二进制，
-  **内嵌进 `cc-monitor.exe`**（Linux 上是 `cc-monitor`；`src/frontend/shell/embedded-backends/`），
-  首次连远端时经 SFTP 自部署到 `~/.cc-monitor/bin/`
-  （`sftp::ensure_backend_deployed`，按 arch + `.build_id` 门控）。**不再需要在目标机上手动 build**。
-- **Standalone crate。** 故意 *不* 进 Cargo workspace、无根 `Cargo.toml` 引用它——避免 Windows/Tauri CI 去
-  编译这个 Linux-only crate。CI 单独在 ubuntu 跑它的 `cargo fmt --check`/`clippy`/`test`（`.github/workflows/ci.yml` 的后端 job）。
+- **模块地图**在 ARCHITECTURE §2.2（`platform/` · `observe/` · `control/` · `files/` · `accounts/` · `agents/` · `assets/` · `stream/` · `faces/` …）；每个目录的 `mod.rs` 头注是那一块的说明。这里不再抄一份。
+- **协议**：帧、入方向命令、CLI 子命令、错误码逐格在 [IPC-COMMANDS.md](../doc/IPC-COMMANDS.md)（从命令注册表 `stream/inbound/registry/` 与帧类型生成，勿手改）；载体、信封、握手在 [IPC-PROTOCOL.md](../doc/IPC-PROTOCOL.md)。
+- **不是壳的 workspace 成员**：它要能在目标机上原生构建，发版时交叉编成 x86_64 / aarch64 的 musl 静态二进制，内嵌进 monitor，第一次接一台远端时部署过去（计划由帧命令 `deploy-plan` 出）。本机那份随包带上（Windows 上是 monitor 监护的子进程）。远端只支持 Linux。
+- **三个身份数**（都在 `lib.rs`）：`PROTO_VERSION` 只在破坏性线上变更时加；`BUILD_ID` 是这份二进制的身份，换不换后端按它判（加 / 删命令、改帧形时由合并的人打）；`CAPABILITIES` 是 hello 里自报的能力集。
 
-## 内部分层（U2 起，2026-08-01）
+## 构建与测试
 
-`unified-backend` 工作区把 cc-monitor 拆成 **frontend（UI + 开窗）** 与 **backend（读 + 控制）**，
-本 crate 就是 backend。§1.1 的三条解耦线，**第一条（平台线）U2 起有了目录，但尚未收口**：
-
-```
-src/
-├── platform/     平台原语与平台 cfg 的归属地（**两层的生产段现在零平台原语**；main.rs 仍有 3 处，见下）
-│   ├── proc.rs       /proc 与进程身份：pid_alive · proc_starttime · parse_starttime_from_stat
-│   │                 · parse_btime · USER_HZ · start_epoch_from_ticks · proc_cmdline
-│   │                 · proc_claude_config_dir · session_alive + is_same_live_process（纯判定）
-│   ├── paths.rs      path_key（NTFS 大小写折叠 —— 路径语义，不是 /proc）
-│   ├── signal.rs     send_sigusr1（U3 从 tmux_hook 下沉；身份校验刻意留在调用方——那是域判断）
-│   └── pidwatch.rs   pidfd_open + watch_pid_until_exit（零轮询，阻塞在无超时 poll(2)）
-├── observe/      ★ 读，不改变世界
-│   ├── watcher.rs · history_query · search_query · accounts_query（原先列着的 usage_query 随用量聚合轴删了）
-│   ├── turn_detect · codex          两个纯解析核
-│   └── fs.rs        mtime_ms（U3 从 common/ 搬回——两个调用点同属 observe，「≥2 层」不成立）
-├── control/      ★ 会改变世界，或产出「怎么改变世界」的计划
-│   ├── fork_write.rs    写盘（O_EXCL 新建）—— **唯一**写盘白名单，红线 I7 的那个洞口
-│   ├── tmux_hook.rs     改 tmux server 状态 + 发 SIGUSR1
-│   └── resolve_query.rs 产 CommandPlan（名字里有 query 但它是**计划面**，账本 S14）
-├── common/       两层都要、**平台无关**、无域知识（门槛写在 common/mod.rs）
-│   ├── paths.rs      projects_root（原有 5 处）
-│   └── fs.rs         read_regular_capped（U3 从 accounts_query 搬来，**反向边因此消失**）
-└── 顶层           main（组装根）· wire（协议类型）· 四条 guard + `layering_guard`（`guard_support` 是它们共用的剥法工具，不是护栏本身）
+```bash
+cd src/backend
+cargo test --lib                 # 单测与登记类判据（判据本体住 tests/backend/，经 #[path] 挂进来）
+cargo fmt --check
+cargo clippy --all-targets
+cargo check --all-targets --target x86_64-pc-windows-msvc   # 平台线的判据：跨 target 编得过
+CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen   # 改了命令 / 帧之后重生成协议参考
 ```
 
-### 两层之间只有一个方向，而且**条数被钉住**
-
-`observe → control` 允许，**反向一条都不许**（§1.1-2），由 `layering_guard.rs` 机检。
-今天正向**恰好一个符号**：`watcher` 调 `control::tmux_hook::install_hooks`。
-
-那不是设计失误 —— tmux hook 活在 **server 进程的内存里**，server 每次重起都要重装，
-而「server 起来了」这个事实**只有 observe 知道**（socket 目录 inotify）。硬要反过来只能靠轮询，
-与 §41 零定时器铁律正面冲突。**「有一个正当例外」与「这条线随便穿」是两回事，
-中间隔着的就是那个计数** —— 多一个就红，逼下一个人把他的理由也写出来。
-
-> U3 摸底时真有过一条**反向边**（`fork_write` → `accounts_query::read_regular_capped`）。
-> **没有给它开例外**：那个函数根本不是 observe 的域逻辑，是通用安全读文件，
-> 搬进 `common/fs.rs` 之后边自然消失。铁律 6：改结构让问题不存在。
-
-### 「唯一允许平台 cfg 的层」是**目标**，不是现状
-
-Phase D 审计逐条查过，**生产段还有 2 处平台原语在 `platform/` 之外**（U2 时是 4 处，U3 收掉 `tmux_hook` 那处，HX1 收掉 `shutdown_signal` 那处），如实列在这里 —— 两处全在 `main.rs`，它是**组装根**，平台分支留在这里可辩护：
-
-| 位置 | 是什么 | 处置 |
-|---|---|---|
-| ~~`tmux_hook.rs` 的 `libc::kill`~~ | ~~`#[cfg(unix)]` + 发 SIGUSR1~~ | **U3 已收**进 `platform/signal.rs` |
-| `main.rs` SIGUSR1 处理器 | `#[cfg(unix)]` / `#[cfg(not(unix))]` 一对 | `main.rs` 是**组装根**，平台分支留在这里可辩护。但不能因此说「唯一」 |
-| `main.rs` USERPROFILE 回退 | `#[cfg(windows)]` | 同上 |
-| ~~`main.rs` 里等停机信号的那个函数~~ | ~~一对 cfg~~ | **HX1 已收**进 `platform/signal.rs::shutdown_listener`（流模式的收场 `inbound::exit_after_drain` 也要它） |
-
-> **刻意不写行号**：U3 只改了 `main.rs` 的 mod 块（净 −7 行），这张表里三处行号**当场全漂**，
-> 而 Phase D 审计是逐个数出来的。跨文件行号引用在这个仓已经栽过多次 —— 用符号名指。
-
-（U2 已收的两处曾经也在这张表上：`accounts_query.rs` 的 `proc_claude_config_dir`
-读 `/proc/<pid>/environ`，和 `watcher.rs` 里内联的第五处 `join("projects")`。）
-
-### ✅ U4a：跨 target 编译**已清零并进 CI**
-
-`cargo check --all-targets --target x86_64-pc-windows-msvc` **RC=0**（此前 12 个错），
-并已接进后端 CI job（ubuntu 上跑，`check` 不链接，成本近零）。
-
-⚠ **「编得过」≠「跑得起来」。** Windows 侧今天是**诚实的空壳**，不是实现：
-
-| 符号 | 非目标平台的行为 | 真实现 |
-|---|---|---|
-| `pidwatch::watch_pid_until_exit` | **Windows 臂已写**（`pidwatch/win32.rs`：带 `SYNCHRONIZE` 的进程句柄 ＋ 不带超时的等待，与 `linux.rs` 逐形对拍）；其余平台仍是**什么都不做** + `tracing::error!`，刻意**不调** `on_dead` —— 与「`poll` 真错误不报死」同一条纪律 | ⚠ Windows 那一臂同上一行：**编得过 ＋ 源码对拍**，真机零读数 |
-| `proc::pid_alive` · `proc_starttime` · `start_epoch_from_ticks` | **Windows 臂已写**（`platform/win_proc.rs`：`OpenProcess` ＋ 退出码 ＋ `GetProcessTimes`；「拒绝访问」算存在，与 Linux 同契约）；其余平台仍是 `unimplemented!()` / `None` | ⚠ **只买到编得过 ＋ 纯换算对拍**，真机零读数（本路不碰 Win11 虚拟机）—— 下面那段「把没做的标成做完」的警告对它**照样适用**：它是「源码写对了」，不是「Windows 上验过了」 |
-| `signal::send_sigusr1` | `false`（**保守方向**：发不出去当没发，调用方本就容忍失败） | U4b 定 Windows 等价物 |
-
-**U4b 需要 Windows 真机**：行自己写着「`WaitForSingleObject` 换 pidfd —— 等价性
-仓里无实测，**第一步先验**」，而那个「验」在 Linux 上做不了。把一份无法验证的 Win32 实现
-写进去再宣布完成，就是「把没做的标成做完」。
-
-> **`platform/fallback_guard.rs` 钉住这一族**：fallback 分支不许凭空返回「成功」值。
-> 它从一个真实地雷来 —— `pid_alive` 的非 Linux 分支曾经恒真，让会话**永远不被归档**
-> 且毫无信号，在仓里活了很久（U2/U3 两轮识别、两轮推迟）。
-
-### 判据不是「cfg 出现在哪」
-
-计划自审打掉过这条：本 crate 在 Windows 上编不过的 12 个错里，头号的 `pidfd_open`
-**根本没有 cfg** —— 它是无条件编译的 Linux-only 代码，cfg 位置扫描抓不到。
-真判据只有 `cargo check --all-targets --target x86_64-pc-windows-msvc`，
-U2 把 11/12 个错集中到一个文件，**U4a 清零并接进 CI**（见上）。
-
-⇒ **平台线的编译判据已收口；语义判据（Windows 上真的跑得对）留 U4b。**
-
-> **⚠ 这段曾停留在 U2/U3 时期的措辞**（「已登记、刻意不修：`pid_alive` 非 Linux 恒返回 `true`」）。
-> Phase D 审计逮出：**就在杀掉这颗雷的那个 commit 里，三处文档仍在断言它是活的**。
-> 现状见上面那张表 —— `pid_alive` 已是 `unimplemented!()`，跨 target check 已 RC=0 并进 CI。
-
-## 版本 / 身份 / 能力（三轴正交，见 `../doc/INVARIANTS.md` §26/§28）
-- `PROTO_VERSION`（`main.rs`）：只在**破坏性 wire 变更**时 bump；additive 新帧/新能力**不** bump。
-- `BUILD_ID`（`main.rs`）：人读构建标 = **身份**，管 staleness 检测 + 重部署确认（单源自源码，`build.rs` 编译期提取）。
-- `CAPABILITIES`（`main.rs`）：后端在 hello 帧自报的**能力 token 集**——monitor 按声明发流模式 flag（F66/#58③，
-  取代旧「build_id 精确匹配」门控）。**加新能力 token = 同时加 `split_stream_flags` 剥离分支**（`every_capability_token_is_strippable` 测试强制，防 §26 死循环）。
-
-## Wire protocol
-每行一个 UTF-8 JSON 对象、`\n` 结尾、对象内无裸 `\n`/`\r`。`Frame` 类型见 `src/wire.rs`，外部 `kind` tag（snake_case），共 **9 个**：
-`hello`（首帧握手，带 `v`/`build_id`/`host_arch`/`claude_dir`/`capabilities`）、`line`（tail 到的一行原始 jsonl）、
-`session_added`（新会话文件出现）、`session_status`（红绿灯状态变化，F27）、
-`session_removed`（会话消失；**S0 起带 `cause`**：`gone` = 真没了 / `superseded` = 同一 pidfile 原地换 sid，即 `/branch`、`/clear`）、
-`turn_end`（一轮对话结束）、`session_state`（会话账本的成品：可重连 / 已结束）、
-`overflow`（拥塞丢帧哨兵，#32）。字段细节以 `../doc/IPC-PROTOCOL.md` §10 为准。
-
-> **2026-07-31 Phase G 更正**：这里此前写「共 6 个」，漏了 `turn_end` / `tmux_session_closed` /
-> `tmux_sessions` 三个，`session_removed` 也没跟上 S0 加的 `cause`；而下游那句
-> 「字段细节以 IPC-PROTOCOL.md 为准」指向的那份**同样漏了这三个**。两处已一并补齐。
-> 后来 tmux 那两帧删了：tmux 快照只喂后端自己的会话账本（`observe/session_ledger.rs`），线上只发成品 `session_state`。
-> 上面那句「共 N 个」只列了常用的那几种，全表以 IPC-PROTOCOL §10 为准。
-
-一次性历史查询（带参数 exec，干完即退、不进流式协议）：`--list-projects` / `--list-sessions <dir>` /
-`--read-session[-tail] <path>` / `--search` / `--usage` / `--resolve` /
-`--list-accounts` / `--session-accounts` / `--account-trust <configDir> <cwd>`（A2 多账号，全只读）。
+测试一律在沙箱里跑：起 tmux 的测试显式 `-S` / `-L` 私有 socket 并摘掉 `$TMUX`，起真后端的测试经唯一的隔离口拿私有 tmux（INVARIANTS §48.3）。
