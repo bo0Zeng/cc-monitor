@@ -699,6 +699,11 @@ fn this_build_script() -> std::path::PathBuf {
 
 /// 在一个临时目录里铺几份只带身份戳的假字节，真跑一趟构建脚本，回（stdout, stderr）。
 fn run_build_script(tag: &str, files: &[(&str, String)]) -> (String, String) {
+    run_build_script_for(tag, files, env!("CCM_TARGET_TRIPLE"))
+}
+
+/// 同 [`run_build_script`]，但这一趟的 `TARGET` 由调用方给（编别的平台那一形）。
+fn run_build_script_for(tag: &str, files: &[(&str, String)], target: &str) -> (String, String) {
     let dir = std::env::temp_dir().join(format!("ccm-embed-agree-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("out")).unwrap();
@@ -712,7 +717,7 @@ fn run_build_script(tag: &str, files: &[(&str, String)]) -> (String, String) {
         .env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
         .env("OUT_DIR", dir.join("out"))
-        .env("TARGET", env!("CCM_TARGET_TRIPLE"))
+        .env("TARGET", target)
         .output()
         .expect("起不了构建脚本");
     let _ = std::fs::remove_dir_all(&dir);
@@ -782,4 +787,94 @@ fn embedded_copies_must_agree_or_the_build_fails() {
         "一份字节都没有却交出了 id：{out}\n{err}"
     );
     assert!(!err.contains(DISAGREE), "{err}");
+}
+
+/// ④ **铺着的本机那几份是给别的 target 编的 ⇒ 这一趟当它们不在**：不内嵌（不置 cfg）、不 panic、照没铺那样喊一句 warning。
+/// 合并树照常 `re-embed.sh --native`（铺的是本机 linux 那份），门禁 `winlink` 再编 Windows 那份 lib 测试程序，就是这一形。
+/// 清单缺席（铺着字节却说不出给谁编的）仍当场失败：那份字节可信不可信答不上来。正控：同一份铺法、TARGET 对得上 ⇒ 内嵌。
+#[test]
+fn native_bytes_staged_for_another_target_are_left_out_not_fatal() {
+    let native = env!("CCM_TARGET_TRIPLE");
+    let other = if native == "x86_64-pc-windows-gnu" {
+        "x86_64-unknown-linux-gnu"
+    } else {
+        "x86_64-pc-windows-gnu"
+    };
+    let staged = |manifest: Option<&str>| {
+        let body = format!(
+            "\x7fELF fake {}p9z-native{} tail",
+            deploy_contract::STAMP_OPEN,
+            deploy_contract::STAMP_CLOSE
+        );
+        let mut v = vec![
+            ("native-backend/cc-monitor-native", body.clone()),
+            ("native-backend/cc-monitor-filewin", body),
+        ];
+        if let Some(m) = manifest {
+            v.push(("native-backend/cc-monitor-native.target", format!("{m}\n")));
+            v.push(("native-backend/cc-monitor-filewin.target", format!("{m}\n")));
+        }
+        v
+    };
+    let cfgs = |stdout: &str| -> Vec<String> {
+        stdout
+            .lines()
+            .filter_map(|l| l.strip_prefix("cargo:rustc-cfg=embedded_native_"))
+            .map(String::from)
+            .collect()
+    };
+
+    // 正控：给这一趟的 TARGET 编的 ⇒ 两份都内嵌
+    let (out, err) = run_build_script_for("native-own", &staged(Some(native)), native);
+    assert_eq!(
+        cfgs(&out),
+        vec!["backend", "filewin"],
+        "对得上的那一形没内嵌：{out}\n{err}"
+    );
+
+    // 铺着本机那份、编别的 target ⇒ 编得过、两份都不进产物
+    let (out, err) = run_build_script_for("native-other", &staged(Some(native)), other);
+    // 构建脚本后面几步（Windows 清单 · tauri）在这个裸环境里本来就起不来，只看本机那两步自己的话
+    assert!(
+        !err.contains("是给 `"),
+        "铺着别的 target 的本机字节，构建脚本当场失败了：{err}"
+    );
+    assert!(
+        cfgs(&out).is_empty(),
+        "别的 target 的字节被内嵌进来了：{out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "cargo:rustc-env=CCM_TARGET_EXE_SUFFIX={}",
+            target_exe_suffix_for_test(other)
+        )),
+        "构建脚本没走到本机那一步：{out}"
+    );
+    assert!(
+        out.lines().any(|l| l.starts_with("cargo:warning=")
+            && l.contains(native)
+            && l.contains("cc-monitor-native")),
+        "不内嵌却没喊（说清铺着的是给谁编的）：{out}"
+    );
+    assert!(
+        out.lines().any(|l| l.starts_with("cargo:warning=")
+            && l.contains(native)
+            && l.contains("cc-monitor-filewin")),
+        "文件窗口那份不内嵌却没喊：{out}"
+    );
+
+    // 清单缺席：说不出给谁编的 ⇒ 仍当场失败
+    let (out, err) = run_build_script_for("native-nomanifest", &staged(None), native);
+    assert!(
+        err.contains("空串 = 根本没有 `cc-monitor-native.target`"),
+        "铺着字节却没有清单，构建脚本放过去了：{out}\n{err}"
+    );
+}
+
+fn target_exe_suffix_for_test(target: &str) -> &'static str {
+    if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    }
 }
