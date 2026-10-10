@@ -222,7 +222,10 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         total_hits == 0 || idents > 0 || !offenders.is_empty(),
         "真语料里有 {total_hits} 处命中，却一处代码标识符都没数出来 —— 本条在真语料上没跑起来"
     );
-    assert!(!bodies.is_empty() && bodies.iter().all(|(_, t)| !t.is_empty()), "人群的正文没读到");
+    assert!(
+        !bodies.is_empty() && bodies.iter().all(|(_, t)| !t.is_empty()),
+        "人群的正文没读到"
+    );
 
     // ── 抽取器自检④：每条例外都真盖住了一处裸词（没盖住 = 那条例外空转）──
     let idle: Vec<&str> = EXEMPT

@@ -1382,8 +1382,8 @@ fn full_repo_paths_in(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while i < b.len() {
-        let rest = &line[i..];
-        let starts = rest.starts_with("src/") || rest.starts_with("tests/");
+        let tail = &b[i..];
+        let starts = tail.starts_with(b"src/") || tail.starts_with(b"tests/");
         if starts && (i == 0 || !(is_path(b[i - 1]) || b"<{*".contains(&b[i - 1]))) {
             let mut e = i;
             while e < b.len() && (is_path(b[e]) || b"<>{}*".contains(&b[e])) {
@@ -1396,7 +1396,7 @@ fn full_repo_paths_in(line: &str) -> Vec<String> {
             }
             i = e.max(i + 1);
         } else {
-            i += rest.chars().next().map_or(1, char::len_utf8);
+            i += line[i..].chars().next().map_or(1, char::len_utf8);
         }
     }
     out
@@ -1473,10 +1473,11 @@ fn every_repo_path_in_the_durable_docs_exists() {
                 let Some(e) = line[s..].find(')') else { break };
                 let target = line[s..s + e].split('#').next().unwrap_or("").trim();
                 from = s + e;
-                if target.is_empty()
-                    || target.contains("://")
-                    || target.starts_with("mailto:")
-                    || target.starts_with('/')
+                let tb = target.as_bytes();
+                if tb.is_empty()
+                    || tb.windows(3).any(|w| w == b"://")
+                    || tb.starts_with(b"mailto:")
+                    || tb.starts_with(b"/")
                 {
                     continue;
                 }
@@ -1499,15 +1500,18 @@ fn every_repo_path_in_the_durable_docs_exists() {
             }
             // ③ 反引号里的裸代码文件名
             for chunk in line.split('`').skip(1).step_by(2) {
-                let c = chunk.split("::").next().unwrap_or("").trim();
-                let c = c.split(':').next().unwrap_or(c);
+                let c = chunk.split(':').next().unwrap_or("").trim();
                 if c.contains('/') || c.contains(' ') || c.starts_with('.') {
                     continue;
                 }
-                let Some((stem, ext)) = c.rsplit_once('.') else { continue };
+                let Some((stem, ext)) = c.rsplit_once('.') else {
+                    continue;
+                };
                 if stem.is_empty()
                     || !["rs", "ts", "mts", "mjs", "sh", "py", "css"].contains(&ext)
-                    || !c.chars().all(|ch| ch.is_ascii_alphanumeric() || "_.-".contains(ch))
+                    || !c
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || "_.-".contains(ch))
                 {
                     continue;
                 }
@@ -1525,8 +1529,14 @@ fn every_repo_path_in_the_durable_docs_exists() {
     // 自检：抽取器在干活（今天上千处）；一条合成的悬空路径必须被认出。
     assert!(checked > 300, "只核了 {checked} 处 —— 抽取器坏了");
     let ghost = format!("见 `{}/no/such/probe.rs`", "src");
-    assert_eq!(full_repo_paths_in(&ghost), vec![format!("{}/no/such/probe.rs", "src")]);
-    assert!(full_repo_paths_in("`src/frontend/ui/<名>.ts`").is_empty(), "模板形该跳过");
+    assert_eq!(
+        full_repo_paths_in(&ghost),
+        vec![format!("{}/no/such/probe.rs", "src")]
+    );
+    assert!(
+        full_repo_paths_in("`src/frontend/ui/<名>.ts`").is_empty(),
+        "模板形该跳过"
+    );
     // 允许名单保鲜：没人再写的那一条删掉。
     for (a, why) in ALLOWED {
         assert!(
@@ -1557,15 +1567,17 @@ fn registered_commands_and_frames() -> (
     let mut frames = std::collections::BTreeSet::<String>::new();
     let mut sec = ' ';
     for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("## ") {
-            sec = rest.chars().next().unwrap_or(' ');
+        if line.as_bytes().starts_with(b"## ") {
+            sec = line[3..].chars().next().unwrap_or(' ');
             continue;
         }
         let head = line.trim_start_matches('#');
-        if head.len() == line.len() || !head.starts_with(" `") {
+        if head.len() == line.len() || !head.as_bytes().starts_with(b" `") {
             continue;
         }
-        let Some(name) = head[2..].split('`').next() else { continue };
+        let Some(name) = head[2..].split('`').next() else {
+            continue;
+        };
         match sec {
             '4' => {
                 cmds.insert(name.to_string());
@@ -1576,18 +1588,17 @@ fn registered_commands_and_frames() -> (
             _ => {}
         }
     }
-    let (c, f) = (cmds, frames);
-    assert!(
-        c.contains("history-lines") && c.contains("cancel") && c.len() > 100,
-        "协议参考里认出的入方向命令只有 {} 条 —— 认法坏了",
-        c.len()
-    );
-    assert!(
-        f.contains("hello") && f.contains("line") && f.len() > 20,
-        "协议参考里认出的出方向帧只有 {} 种 —— 认法坏了",
-        f.len()
-    );
-    (c, f)
+    for (set, want, floor, what) in [
+        (&cmds, ["history-lines", "cancel"], 100, "入方向命令"),
+        (&frames, ["hello", "line"], 20, "出方向帧"),
+    ] {
+        assert!(
+            want.iter().all(|w| set.contains(*w)) && set.len() > floor,
+            "协议参考里认出的{what}只有 {} 个 —— 认法坏了",
+            set.len()
+        );
+    }
+    (cmds, frames)
 }
 
 /// 「帧命令 `a` · `b`」「帧 `x`」后面紧跟的那一串反引号名（中间只隔 `·` `、` `/` `，` `或` `与` `和` `（` `）` 与空白）。
@@ -1615,7 +1626,9 @@ fn frame_names_in(line: &str) -> Vec<(bool, String)> {
             let Some(e) = rest[1..].find('`') else { break };
             let name = &rest[1..1 + e];
             let shaped = !name.is_empty()
-                && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
                 && name.chars().next().is_some_and(|c| c.is_ascii_lowercase());
             if shaped {
                 out.push((is_cmd, name.to_string()));
@@ -1668,7 +1681,10 @@ fn every_frame_command_named_in_the_durable_docs_is_registered() {
     let ghost = format!("经帧命令 `{}` 与 `history-lines` 问", "no-such-probe");
     assert_eq!(
         frame_names_in(&ghost),
-        vec![(true, "no-such-probe".to_string()), (true, "history-lines".to_string())]
+        vec![
+            (true, "no-such-probe".to_string()),
+            (true, "history-lines".to_string())
+        ]
     );
     for (a, why) in ALLOWED {
         assert!(
