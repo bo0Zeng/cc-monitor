@@ -1,11 +1,11 @@
 /**
  * **会话正文经通道直接问那台机器的后端、按形状收成品**：
- * 查看器整份读 · 骨架按偏移取一段（`history-page`）· 按行号取一段（`history-lines`）· 一个子运行的记录（`history-run`，按运行读）·
+ * 骨架按偏移取一段（`history-page`，主窗口 tab 与查看器都走它）· 按行号取一段（`history-lines`）· 一个子运行的记录（`history-run`，按运行读）·
  * 主线外清单（`history-branch`，冷读；实时那一路是会话流的 `branch` 格）· 那台后端的漂移账（`drift-report`）。
  *
  * # 它顶掉了什么
  *
- * 此前是 monitor 的四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` ·
+ * 此前是 monitor 的四条 Tauri 命令（查看器整份读那一条 · `read_session_range` · `read_session_lines` ·
  * 按目录读子 agent 的那一条）：monitor 从那台后端取原文、自己解析记录（`messages.rs` / `parser.rs` / `codex_record.rs`）、
  * 编号、组载荷。记录解释搬进后端之后（`src/backend/agents/claudecode/`），后端的帧应答**就是成品** —— 每一行在渲染模型里
  * 是什么（通用记录 `LineRecord`，ts-rs 从后端导出）、行号、`cwd`、进不进界面，都是后端给的；monitor 那一跳只搬字节。
@@ -23,6 +23,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
 import { exactKeys, isObj } from "./ipc/decode";
+import { copyText } from "./copy-table";
 
 /** 一个子运行记录里的一条：通用记录 ＋ 它的对账键（撤那个子运行的活卡用）。 */
 export interface RunRecordRow {
@@ -65,8 +66,6 @@ export interface RecordDriftFace {
   overflowed: boolean;
 }
 
-/** 查看器整份读那一件的期限：同它上一个住址（monitor `frame_query::read_budget(256 MiB)` ＝ 60 ＋ 512 秒）。 */
-const WHOLE_READ_BUDGET_MS = 572_000;
 /** 按偏移取一段 · 子 agent 那一份：同它上一个住址（一次性远端那一趟的天花板，120 秒）。 */
 const PIECE_BUDGET_MS = 120_000;
 /** 漂移账：一问（30 秒，同会话读面那几问）。 */
@@ -194,32 +193,6 @@ async function answered<T>(origin: Origin, reply: Promise<Uint8Array>, decode: (
   }
 }
 
-/**
- * **查看器读一整份会话**：从头按页取，每页交 `onChunk`（边读边发，首屏不等整份）；`cancelled()` 为真就停。
- * 回交出去的条数。读过 256 MiB 那一件由后端明拒（那句话说读到了哪），这里原样抛出。
- */
-export async function readWholeSession(
-  origin: Origin,
-  jsonlPath: string,
-  onChunk: (payloads: JsonlLinePayload[]) => void,
-  cancelled: () => boolean,
-): Promise<number> {
-  const budget = budgetWithin(WHOLE_READ_BUDGET_MS);
-  let offset = 0;
-  let seq = 0;
-  let total = 0;
-  for (;;) {
-    const body = jsonBody({ path: jsonlPath, offset, seq, whole: true });
-    const page = await answered(origin, chan.call(origin, "history-page", body, budget), (v) => decodePage(origin, v));
-    if (cancelled()) return total;
-    if (page.payloads.length > 0) onChunk(page.payloads);
-    total += page.payloads.length;
-    if (page.eof || page.next <= offset) return total;
-    offset = page.next;
-    seq = page.nextSeq;
-  }
-}
-
 /** **按偏移取一段** `[offset, until)`（两端、`seqBase` 取自骨架索引）：一段可能跨页，取到这一段的末尾。 */
 export async function readRange(
   origin: Origin,
@@ -240,6 +213,29 @@ export async function readRange(
     at = page.next;
     seq = page.nextSeq;
   }
+}
+
+/** 骨架里认得一行在哪的那一半（`live-window.ts::SkeletonLedger` 的这两件）。 */
+interface RowPlaces {
+  uuidToSeq: ReadonlyMap<string, number>;
+  factsOf(seq: number): { o: number; n: number } | undefined;
+}
+
+/**
+ * **按记录 id 取回那一行全文**（出口省掉的正文展开那一下，`RenderContext.fullRecord`）：骨架里那一行的字节边界，
+ * 取 `[o, o + n)`、不带声明。骨架还没接上 / 骨架里没有这一行 ⇒ 抛（说清为什么），下次展开再取。主窗口 tab 与查看器同一处。
+ */
+export async function readRecordById(
+  origin: Origin,
+  jsonlPath: string,
+  places: RowPlaces | null,
+  id: string,
+): Promise<LineRecord | null> {
+  const seq = places?.uuidToSeq.get(id);
+  const at = seq === undefined ? undefined : places?.factsOf(seq);
+  if (seq === undefined || !at) throw new Error(copyText("recordReads.byId.notIndexed"));
+  const rows = await readRange(origin, jsonlPath, at.o, at.o + at.n, seq);
+  return rows.find((p) => p.record.id === id)?.record ?? null;
 }
 
 /** **按行号取一段** `[from, until)`（`until` 缺 ＝ 到末尾，一段 ≤ 1 MiB）。`leftMs` ＝ 那一件事还剩多少。 */

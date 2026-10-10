@@ -63,12 +63,20 @@ fn run_dispatches_the_subcommand() {
     std::fs::write(&p, "").unwrap();
     let ps = p.to_string_lossy().into_owned();
     assert_eq!(
-        run(&tmp, &s(&["--list-user-inputs", "--from", "0", &ps])),
+        run(
+            &tmp,
+            &s(&["--list-user-inputs", "--from", "0", &ps]),
+            &Default::default()
+        ),
         0
     );
     // 对照：同一份参数换个错名 ⇒ 2
     assert_eq!(
-        run(&tmp, &s(&["--list-user-inputz", "--from", "0", &ps])),
+        run(
+            &tmp,
+            &s(&["--list-user-inputz", "--from", "0", &ps]),
+            &Default::default()
+        ),
         2
     );
     std::fs::remove_dir_all(&tmp).ok();
@@ -143,19 +151,31 @@ fn run_dispatches_find_and_keeps_the_path_fence() {
     .unwrap();
     let ps = p.to_string_lossy().into_owned();
     assert_eq!(
-        run(&tmp, &s(&["--find-in-session", "--query", "x", &ps])),
+        run(
+            &tmp,
+            &s(&["--find-in-session", "--query", "x", &ps]),
+            &Default::default()
+        ),
         0
     );
     // 对照：同一份参数换个错名 ⇒ 2
     assert_eq!(
-        run(&tmp, &s(&["--find-in-sessionz", "--query", "x", &ps])),
+        run(
+            &tmp,
+            &s(&["--find-in-sessionz", "--query", "x", &ps]),
+            &Default::default()
+        ),
         2
     );
     let outside = tmp.join("secret.jsonl");
     std::fs::write(&outside, "x\n").unwrap();
     let os = outside.to_string_lossy().into_owned();
     assert_eq!(
-        run(&tmp, &s(&["--find-in-session", "--query", "x", &os])),
+        run(
+            &tmp,
+            &s(&["--find-in-session", "--query", "x", &os]),
+            &Default::default()
+        ),
         2
     );
     std::fs::remove_dir_all(&tmp).ok();

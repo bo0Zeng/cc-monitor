@@ -14,24 +14,20 @@ import {
 import { BranchFolder } from "../branch-fold";
 import { RecordTimeline } from "../record-timeline";
 import { releaseEnhanceRoot } from "../render";
-import {
-  renderStreamRecord,
-  routeMeta,
-  type MetaSink,
-  type StreamSink,
-} from "../render-stream-record";
-import { UnrenderedRanges } from "../render-window";
-// 查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
-import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
-import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
-import { readBranch, readLines, readWholeSession } from "../record-reads";
+import { renderStreamRecord, type StreamSink } from "../render-stream-record";
+// 查看器 ＝ 骨架 ＋ 按视口取：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）、同一条取法（`rowRuns` → `readRange`）。
+import { SkeletonView, ledgerFromIndex, rowRuns } from "../skeleton-view";
+import type { SkeletonLedger } from "../live-window";
+import { skeletonKind } from "../height-estimate";
+import { findInSession, readSessionIndex } from "../session-reads";
+import { readBranch, readLines, readRange, readRecordById } from "../record-reads";
 import { followSession, type FollowEvent } from "../events";
 import { attachBranchButton } from "../branch-button";
 import { openNewSession } from "../new-session";
 // 大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
 // 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
-import { UserInputPanel } from "./user-input-panel";
+import { UserInputPanel, type JumpResult } from "./user-input-panel";
 // 按轮折叠与主窗口同一个（`turn-fold.ts`）。
 import { TurnFold, revealProcessOf } from "../turn-fold";
 import { button } from "../kit/button";
@@ -93,7 +89,7 @@ interface JsonlLinePayload {
   session_id: string;
   cwd: string | null;
   path: string;
-  /** 文件内单调的 seq；一次性读完时按它排进时间线。 */
+  /** 文件内单调的 seq；按它排进时间线。 */
   seq: number;
   record: LineRecord;
 }
@@ -157,9 +153,28 @@ function pageStatus(s: ViewerStatus): string {
   return s.more ? copyText("sessionViewer.status.more", { n: s.n }) : copyText("sessionViewer.status.all", { n: s.n });
 }
 
-const TAIL_INITIAL = 150; // 首屏渲染的末尾条数
-const BATCH_SIZE = 200; // 上翻每批补渲染条数（约 1–2 秒一口）
-const TOP_TRIGGER_PX = 800; // 距顶触发补批阈值（约一屏余量，撞顶之前就补）
+const TAIL_INITIAL = 150; // 首屏取回、渲染的末尾条数（建卡的那几类）
+const ISLAND_RADIUS = 100; // 深链岛：命中那一条上下各取几条
+
+/** 从 `from`（不含）往前数 `k` 条建卡的行，回最早那一条的 seq（不够 ⇒ 账本第一行）。 */
+function cardsBack(ledger: SkeletonLedger, from: number, k: number): number {
+  let n = 0;
+  for (let q = from - 1; q >= ledger.base; q--) {
+    const f = ledger.factsOf(q);
+    if (f && skeletonKind(f) !== "none" && ++n === k) return q;
+  }
+  return ledger.base;
+}
+
+/** 从 `at`（含）往后数 `k` 条建卡的行，回最后那一条的下一行（不够 ⇒ 账本末尾）。 */
+function cardsAhead(ledger: SkeletonLedger, at: number, k: number): number {
+  let n = 0;
+  for (let q = at; q < ledger.endSeq; q++) {
+    const f = ledger.factsOf(q);
+    if (f && skeletonKind(f) !== "none" && ++n === k) return q + 1;
+  }
+  return ledger.endSeq;
+}
 
 /**
  * 某一条显示不了 ⇒ 卡的位置上画「这一条显示不了」［复制详情］；原因进日志，不在状态行报数，详情交那一条的原文 ＋ 原因。
@@ -193,22 +208,24 @@ export class SessionViewer {
   private toolsEl!: HTMLElement;
   private streamEl!: HTMLElement;
   private stream: MessageStream | null = null;
-  // 尾部优先的增量渲染状态（load 时重建）
-  private payloads: JsonlLinePayload[] = [];
-  private unrendered: UnrenderedRanges | null = null;
-  private uuidToIdx = new Map<string, number>();
   /**
-   * 骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
-   * `null` ＝ 没接上（本机后端不在 / Codex 会话 / seq 对不上）。查看器仍全量收正文，
-   * 骨架买的是滚动条与「只建可见区」，不是内存。
+   * 骨架层：先要这份会话的骨架索引，没取回的 seq 区间由占位顶住（滚动条一开始就是全会话的），
+   * 滚到哪、跳到哪就按索引里的字节边界取哪一段（`rowRuns` → `readRange`，与实时 tab 同一条）。正文不整份读、不驻留。
    */
   private skeleton: SkeletonView | null = null;
+  /** 在途的「按偏移取一段」：跳转 · 首屏等它们落完。 */
+  private readonly inflight = new Set<Promise<void>>();
+  /** 已经画进来的行号（取回的 · 跟着长接上的）。 */
+  private readonly drawn = new Set<number>();
+  /** 跟着长接上的、骨架索引之后的最后一行（没有 ⇒ 索引的最后一行）。 */
+  private liveLast = -1;
+  /** 会话里进界面的条数（骨架里有 `t` 的行 ＋ 跟着长接上的）。 */
+  private total = 0;
   private renderCtx: RenderContext | null = null;
   private renderSink: StreamSink | null = null;
   private folder: BranchFolder | null = null;
   /** 按轮折叠（与主窗口同一个）：一轮的边界与结论问后端 `history-turns`。 */
   private turnFold: TurnFold | null = null;
-  private renderingBatch = false;
   /** 读取世代号：异步间隙（rAF / 通道）之后核对，换了会话的残余操作直接丢掉。 */
   private loadGeneration = 0;
   private onScrollFill = (): void => {
@@ -280,7 +297,7 @@ export class SessionViewer {
   }
 
   /**
-   * 空态开 / 关：读完了（`loaded`）、没有还没画的段、消息流里一张卡都没有 ⇒ 开；否则关。
+   * 空态开 / 关：读完了（`loaded`）、没有还没取的段、消息流里一张卡都没有 ⇒ 开；否则关。
    * 在跑的会话还会长 ⇒ 空态多一句「新消息到达后显示」。
    */
   private syncEmpty(): void {
@@ -288,7 +305,7 @@ export class SessionViewer {
       this.loaded &&
       !!this.stream &&
       this.stream.contentElement.childElementCount === 0 &&
-      (this.unrendered?.isEmpty ?? true);
+      (this.skeleton?.pendingRows ?? 0) === 0;
     if (none) {
       const hint = this.live ? copyText("sessionViewer.empty.liveHint") : undefined;
       const e = emptyState({ icon: "chat", text: copyText("sessionViewer.empty.none"), hint });
@@ -314,9 +331,10 @@ export class SessionViewer {
   }
 
   /**
-   * 两段加载：先收集（那台后端按页出记录行，只收 payload 并预提取分支 / 队列数据，不渲染），
-   * 收齐后渲染末尾 `TAIL_INITIAL` 条首屏（＋ 深链岛）、折一次、贴底或定位；之后上翻由 `maybeFillAbove` 按批补。
-   * `dispose()` 让世代号递增，在途的页与异步残余都按世代号丢掉。
+   * 骨架 ＋ 按视口取：先要骨架索引（整份会话的行 → 字节边界 · 类 · 估高料），整份画成占位；
+   * 首屏只按偏移取末尾 `TAIL_INITIAL` 条（深链再取命中那一条附近一段），落完折一次、贴底或定位；
+   * 之后滚到哪段占位就取哪段（`maybeFillAbove` → `fillVisible` → `materialize` → `fetchRows`）。
+   * 索引要不到 ⇒ 读不出那一条（不退回整份读）。`dispose()` 让世代号递增，在途的段与异步残余都按世代号丢掉。
    */
   async load(opts: ViewerOptions): Promise<void> {
     this.setHead(opts.displayTitle, opts.head);
@@ -363,6 +381,8 @@ export class SessionViewer {
       pendingToolResults: new Map(),
       // 远端会话展开子 agent 要带上 origin
       origin: opts.origin,
+      // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文
+      fullRecord: (id) => readRecordById(opts.origin, opts.jsonlPath, this.skeleton?.ledger ?? null, id),
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);
@@ -377,80 +397,62 @@ export class SessionViewer {
     };
     this.renderCtx = ctx;
     this.renderSink = sink;
-    this.payloads = [];
-    this.uuidToIdx.clear();
+    this.drawn.clear();
+    this.liveLast = -1;
+    this.total = 0;
 
-    // 收集阶段只收 payload，不渲染（标题记录照占一格；查看器标题静态，不认它）。
-    const collectSink: MetaSink = {};
-    // 骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
     const origin = opts.origin;
-    // 经通道直接问那台后端（`session-reads.ts`）；要不到 ⇒ `available:false`，它自己不抛。
-    const indexP = readSessionIndex(origin, opts.jsonlPath, 0);
-    // 主线外清单（回退掉的那几条）与正文并行冷读一次；读不到 ⇒ 不折（之后跟着长的由流里的 `branch` 格说）。
+    // 主线外清单（回退掉的那几条）与索引并行冷读一次；读不到 ⇒ 不折（之后跟着长的由流里的 `branch` 格说）。
     const branchP = readBranch(origin, opts.jsonlPath).catch((e: unknown) => {
       console.warn("[session-viewer] 主线外清单没读到（不折）：", e);
       return null;
     });
-    const onChunk = (chunk: JsonlLinePayload[]): void => {
-      if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
-      for (const p of chunk) {
-        // 逐条 try/catch：异形 message 抛错不能丢整页计数
-        try {
-          routeMeta(p, collectSink);
-        } catch (err) {
-          console.warn("[session-viewer] 收集阶段单条异常(跳过):", err);
-        }
-        this.payloads.push(p); // 占位也 push：下标与总条数对齐（meta 也占一格）
-      }
-    };
 
     try {
-      // 经通道问那台后端（`history-page`，`record-reads.ts::readWholeSession`）：按页交 `onChunk`，同一个 Promise 链里交完。
-      // 本机与远端同一条路（`origin` 必填）。
-      await readWholeSession(opts.origin, opts.jsonlPath, onChunk, () => !this.stream || this.loadGeneration !== gen);
-      const branch = await branchP;
-      if (this.loadGeneration !== gen) return; // 已换会话
-      if (!this.stream) return;
-      this.setLoading(false);
-      // 排序兜底（页应有序）：让区间账本与 payload 下标对齐
-      this.payloads.sort((a, b) => a.seq - b.seq);
-      this.uuidToIdx.clear();
-      this.payloads.forEach((p, i) => this.uuidToIdx.set(p.record.id, i));
-      this.unrendered = new UnrenderedRanges(this.payloads.length);
-      // 折叠组件建一次，增量批后按清单重折（清单是整份的，读法不改它）
+      // 经通道问那台后端（`session-reads.ts`）：要不到 ⇒ `available:false`，它自己不抛。本机与远端同一条路（`origin` 必填）。
+      const res = await readSessionIndex(origin, opts.jsonlPath, 0);
+      if (this.loadGeneration !== gen || !this.stream) return;
+      const got = ledgerFromIndex(res);
+      if (!got.ok) throw new Error(got.reason);
+      const ledger = got.ledger;
+      for (let q = ledger.base; q < ledger.endSeq; q++) if (ledger.factsOf(q)?.t !== undefined) this.total++;
       this.folder = new BranchFolder(this.stream.contentElement);
+      const view = new SkeletonView(ledger, this.streamEl, sink.timeline, {
+        materialize: (lo, hi) => this.fetchRows(gen, view, lo, hi),
+      });
+      this.skeleton = view;
+      // 折叠先交给账本：占位插进去就是折后的高（同主窗口 `TabStreamView.attachSkeleton`）
+      this.turnFold?.seedFolds(ledger);
+      view.attachGaps([[ledger.base, ledger.endSeq]]);
+      // 首屏：尾巴（＋ 深链岛）
+      view.ensureRange(cardsBack(ledger, ledger.endSeq, TAIL_INITIAL), ledger.endSeq);
+      const target = opts.scrollToUuid !== undefined ? ledger.uuidToSeq.get(opts.scrollToUuid) : undefined;
+      if (target !== undefined && view.isPending(target)) {
+        view.ensureRange(cardsBack(ledger, target, ISLAND_RADIUS), cardsAhead(ledger, target, ISLAND_RADIUS));
+      }
+      const [branch] = await Promise.all([branchP, this.settled()]);
+      if (this.loadGeneration !== gen || !this.stream) return;
+      this.setLoading(false);
       const off = this.followOff ?? branch?.off;
       this.followOff = null;
       if (off) this.folder.setOff(new Set(off));
-
-      // 首屏:深链 → 目标岛 + 尾段;否则只尾段
-      const total = this.payloads.length;
-      const targetIdx = opts.scrollToUuid
-        ? (this.uuidToIdx.get(opts.scrollToUuid) ?? null)
-        : null;
-      this.renderRange(Math.max(0, total - TAIL_INITIAL), total);
-      if (targetIdx !== null && this.unrendered.contains(targetIdx)) {
-        this.renderRange(Math.max(0, targetIdx - 100), Math.min(total, targetIdx + 100));
-      }
       this.rebuildFold();
-      this.countEl.textContent = copyText("sessionViewer.head.count", { n: total });
-      this.updateStatus(total);
+      this.countEl.textContent = copyText("sessionViewer.head.count", { n: this.total });
+      this.updateStatus();
       // 清单建在这里：面板默认收着 ⇒ 对下面的定位 / 贴底零布局影响（滚之前插一块可见的东西会把落点顶歪）。
       this.rebuildUserInputs();
       void this.turnFold?.refresh();
       // 从搜索结果跳进来 ⇒ 定位到命中消息；否则贴底。
       if (opts.scrollToUuid) {
-        this.scrollToMessage(opts.scrollToUuid);
+        void Promise.resolve(this.scrollToMessage(opts.scrollToUuid)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
       } else {
         this.stream?.scrollToBottom();
       }
-      // 上翻补批挂在 .stream 滚动容器上（dispose 时随 streamEl 替换自然解绑）
+      // 滚到哪段占位就取哪段（dispose 时随 streamEl 替换自然解绑）
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
-      // 调度：自链 —— 短会话首屏不足一屏时永远没有 scroll 事件 ⇒ 主动踢一脚；世代 / 已到顶 / 在途几道守卫挡着，不满足即停
+      // 调度：一次性 —— 首屏落完之后视口里若还露着占位（尾巴不足一屏），主动物化一次；没布局 ⇒ 什么都不做
       requestAnimationFrame(() => void this.maybeFillAbove());
-      // 索引到了就接骨架（首屏已经在了，不等它）
-      void indexP.then((res) => this.attachSkeleton(gen, res));
-      // 读的这段时间里流里先来的行接上（重叠的按 `seq` 去掉）。
+      // 读的这段时间里流里先来的行接上（索引里已经有的按 `seq` 去掉）。
       this.loaded = true;
       const early = this.followBuf;
       this.followBuf = [];
@@ -464,83 +466,58 @@ export class SessionViewer {
       this.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [retry], detailOf(e)));
     }
   }
-  /** 升序 payloads 里第一个 `seq >= x` 的下标 */
-  private idxAtSeq(x: number): number {
-    let l = 0;
-    let r = this.payloads.length;
-    while (l < r) {
-      const m = (l + r) >>> 1;
-      if (this.payloads[m].seq < x) l = m + 1;
-      else r = m;
-    }
-    return l;
+
+  /** 在途的段都落完（失败的那一个原样抛出：首屏读不出就是读不出）。 */
+  private async settled(): Promise<void> {
+    const done = await Promise.allSettled([...this.inflight]);
+    const failed = done.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed) throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
   }
 
   /**
-   * 接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上；Codex 会话 / 读完之间文件被改写 ⇒ 不接），
-   * 再把 `UnrenderedRanges` 的每个洞翻成 seq 区间画成占位：从上一个已渲染记录的下一行起、到下一个已渲染记录为止
-   * （夹在中间的不可显示行一并归进去，高为 0）。
+   * 骨架交来 `[lo, hi)`：按索引里的字节边界取要建卡的那几段（`rowRuns`，已经画过的切段），落地按 seq 插进时间线（视口钉住）、
+   * 配对工具结果、重折。取不到 ⇒ 那一段放回占位（下次滚到 / 跳到再取），失败原样交给等它的人。
    */
-  private attachSkeleton(
-    gen: number,
-    res: SessionIndexResult | undefined,
-  ): void {
-    if (!res || !this.stream || this.loadGeneration !== gen || !this.unrendered || !this.renderCtx) return;
-    const got = ledgerFromIndex(res);
-    if (!got.ok) {
-      console.info(`[session-viewer] 骨架未接：${got.reason}`);
-      return;
+  private fetchRows(gen: number, view: SkeletonView, lo: number, hi: number): void {
+    const o = this.opts;
+    if (!o) return;
+    for (const run of rowRuns(view.ledger, lo, hi, (q) => this.drawn.has(q))) {
+      const p: Promise<void> = readRange(o.origin, o.jsonlPath, run.offset, run.until, run.a).then(
+        (rows) => {
+          if (this.loadGeneration !== gen || this.skeleton !== view) return;
+          view.pinned(() => this.drawRows(rows));
+          this.updateStatus();
+          this.syncEmpty();
+        },
+        (e: unknown) => {
+          if (this.loadGeneration === gen && this.skeleton === view) view.restore(run.a, run.b);
+          console.warn(`[session-viewer] 按偏移取正文失败 [${run.a},${run.b})：`, e);
+          throw e instanceof Error ? e : new Error(String(e));
+        },
+      );
+      this.inflight.add(p);
+      p.catch(() => {});
+      void p.finally(() => this.inflight.delete(p)).catch(() => {});
     }
-    const ledger = got.ledger;
-    let checked = 0;
-    for (const p of this.payloads) {
-      const u = p.record.id;
-      if (ledger.uuidToSeq.get(u) !== p.seq) {
-        console.warn(`[session-viewer] 骨架未接：seq ${p.seq} 在索引里是 ${String(ledger.uuidToSeq.get(u))}`);
-        return;
-      }
-      if (++checked >= 8) break;
-    }
-    const n = this.payloads.length;
-    const gaps = this.unrendered.holes.map(([a, b]): [number, number] => [
-      a === 0 ? ledger.base : this.payloads[a - 1].seq + 1,
-      b < n ? this.payloads[b].seq : ledger.endSeq,
-    ]);
-    const view = new SkeletonView(ledger, this.streamEl, this.renderSink!.timeline, {
-      materialize: (lo, hi) => {
-        this.renderRange(this.idxAtSeq(lo), this.idxAtSeq(hi));
-        this.rebuildFold();
-      },
-    });
-    // 折叠先交给账本：占位插进去就是折后的高（同主窗口 `TabStreamView.attachSkeleton`）
-    this.turnFold?.seedFolds(ledger);
-    view.attachGaps(gaps);
-    this.skeleton = view;
-    view.fillVisible();
-    this.updateStatus(n);
   }
 
-  /** 渲染 payload 下标区间 [lo,hi)（逐条 renderStreamRecord，二分插入保序）。 */
-  private renderRange(lo: number, hi: number): void {
-    if (!this.renderCtx || !this.renderSink || !this.unrendered || !this.stream) return;
+  /** 取回的 / 跟着长来的几行画进去（按 seq 插；画过的跳过）：配对工具结果、重折。 */
+  private drawRows(rows: JsonlLinePayload[]): void {
+    if (!this.stream || !this.renderCtx || !this.renderSink) return;
+    const fresh = rows.filter((p) => !this.drawn.has(p.seq));
+    if (fresh.length === 0) return;
     // 二分插入只能在摊平的 DOM 上做：邻居若已被折叠层收编，insertBefore 会 NotFoundError ⇒ 先摊平，批后重折。
     this.folder?.unwrapAll();
-    const from = Math.max(0, lo);
-    const to = Math.min(this.payloads.length, hi);
-    // 批内暂停逐卡贴底：首屏 150 卡逐卡读 scrollHeight 就是 150 次强制 reflow；批末按粘底状态一次贴底。
+    // 批内暂停逐卡贴底：逐卡读 scrollHeight 就是逐卡一次强制 reflow；批末按粘底状态一次贴底。
     this.stream.batchInsert(() => {
-      for (let i = from; i < to; i++) {
-        if (!this.unrendered!.contains(i)) continue; // 已渲染（岛重叠）跳过
-        this.renderOne(this.payloads[i]);
+      for (const p of fresh) {
+        this.drawn.add(p.seq);
+        this.renderOne(p);
       }
     });
-    this.unrendered.markRendered(from, to);
-    // 批缝落在 tool_use / tool_result 中间时 result 先成了孤儿卡；上方批补出 tool_use 后必须回填合并，孤儿卡出 DOM 的同时出账。
-    if (this.renderCtx) {
-      for (const el of reconcilePendingToolResults(this.renderCtx)) {
-        this.renderSink?.timeline.removeByElement(el);
-      }
-    }
+    // 段缝落在 tool_use / tool_result 中间时 result 先成了孤儿卡；另一段补出 tool_use 后必须回填合并，孤儿卡出 DOM 的同时出账。
+    for (const el of reconcilePendingToolResults(this.renderCtx)) this.renderSink.timeline.removeByElement(el);
+    this.rebuildFold();
   }
 
   /** 画一条；显示不了 ⇒ 卡位上画「这一条显示不了」［复制详情］，原因进日志（不在状态行报数）。 */
@@ -576,12 +553,11 @@ export class SessionViewer {
   }
 
   /** 底一行只说条数：`{n} 条` / `{n} 条 · 上翻加载更早`（显示不了的那一条在卡位上说）。 */
-  private updateStatus(total: number): void {
-    // 顶部还有没渲染的（上翻能补）⇒ 说一句；只剩深链岛与尾段之间的内部缝 ⇒ 不说（上翻无洞可补）。
-    const fillable = this.unrendered
-      ? this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx()) !== null
-      : false;
-    this.statusEl.textContent = this.statusOf({ n: total, more: fillable, live: this.live, following: this.following && this.followSub !== null });
+  private updateStatus(): void {
+    // 顶上还有没取的（上翻能补）⇒ 说一句；只剩深链岛与尾段之间的缝 ⇒ 不说。
+    const sk = this.skeleton;
+    const more = sk !== null && sk.isPending(sk.ledger.base);
+    this.statusEl.textContent = this.statusOf({ n: this.total, more, live: this.live, following: this.following && this.followSub !== null });
   }
 
   // ==== 跟着长（在跑的会话） ====
@@ -597,7 +573,7 @@ export class SessionViewer {
     } else if (e.t === "live") {
       if (this.live === e.live) return;
       this.live = e.live;
-      if (this.loaded) this.updateStatus(this.payloads.length);
+      if (this.loaded) this.updateStatus();
       this.syncEmpty();
       this.onLive?.(e.live);
     } else if (e.t === "branch") {
@@ -606,15 +582,15 @@ export class SessionViewer {
       else this.followOff = e.off;
     } else if (e.t === "sight") {
       this.following = e.seen;
-      if (this.loaded) this.updateStatus(this.payloads.length);
+      if (this.loaded) this.updateStatus();
       // 又看得见了 ⇒ 看不见那段时间里写出来的按行号补上。
       if (e.seen && this.loaded) void this.catchUp(gen);
     }
   }
 
-  /** 已经有的最后一行的行号（没有 ⇒ -1）。 */
+  /** 已经有的最后一行的行号（骨架索引的最后一行，或跟着长接上的更后面那一行；没有 ⇒ -1）。 */
   private lastSeq(): number {
-    return this.payloads.length > 0 ? this.payloads[this.payloads.length - 1].seq : -1;
+    return Math.max(this.liveLast, (this.skeleton?.ledger.endSeq ?? 0) - 1);
   }
 
   /** 流里丢了行 / 断过 ⇒ 从已有的最后一行之后按行号读到末尾，接上。 */
@@ -645,27 +621,11 @@ export class SessionViewer {
     const fresh = [...lines].sort((a, b) => a.seq - b.seq).filter((p) => (p.seq > last ? ((last = p.seq), true) : false));
     if (fresh.length === 0) return;
     const atBottom = this.stream.stuckToBottom;
-    const meta: MetaSink = {};
-    this.folder?.unwrapAll();
-    this.stream.batchInsert(() => {
-      for (const p of fresh) {
-        try {
-          routeMeta(p, meta);
-        } catch (err) {
-          console.warn("[session-viewer] 跟着长：单条收集异常(跳过):", err);
-        }
-        this.payloads.push(p);
-        this.uuidToIdx.set(p.record.id, this.payloads.length - 1);
-        this.renderOne(p);
-      }
-    });
-    if (this.renderCtx) {
-      for (const el of reconcilePendingToolResults(this.renderCtx)) this.renderSink?.timeline.removeByElement(el);
-    }
-    this.rebuildFold();
-    const total = this.payloads.length;
-    this.countEl.textContent = copyText("sessionViewer.head.count", { n: total });
-    this.updateStatus(total);
+    this.liveLast = last;
+    this.total += fresh.length;
+    this.drawRows(fresh);
+    this.countEl.textContent = copyText("sessionViewer.head.count", { n: this.total });
+    this.updateStatus();
     this.rebuildUserInputs();
     void this.turnFold?.refresh();
     if (!atBottom) this.showNewPill(true);
@@ -676,79 +636,38 @@ export class SessionViewer {
     if (this.newPill) this.newPill.hidden = !on;
   }
 
-  /** 要不要补：不足一屏（没有滚动条、事件永远不来）或滚近顶部。 */
-  private shouldFill(): boolean {
-    const el = this.streamEl;
-    return el.scrollHeight - el.clientHeight <= 1 || el.scrollTop <= TOP_TRIGGER_PX;
+  /** 滚动 / 首屏之后：只物化与视口相交的那段占位（取回由 `fetchRows` 做，不自链）。 */
+  private maybeFillAbove(): void {
+    if (this.skeleton && this.skeleton.fillVisible() > 0) this.updateStatus();
   }
 
   /**
-   * 滚近顶部 / 不足一屏 ⇒ 往上补一批。视口稳定靠手动补偿（每批重建折叠会销毁原生锚点，WebKitGTK 也没有锚定）：
-   * 同一任务内突变、临时关原生锚定、按 scrollHeight 差值回写。批后自链复检（零高批 / 短内容没有 scroll 事件）。
+   * 滚到指定 uuid 的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`（同主窗口 `TabStreamView.jumpInTab`）：
+   * 还在占位里 ⇒ 经骨架物化它附近那一段、**等在途的段落完**再找卡（取不到 ⇒ reject 带原因）；找不到就退到贴底。
    */
-  private async maybeFillAbove(): Promise<void> {
-    // 接上骨架 ⇒ 不再「从顶上往上一批批补」，只物化与视口相交的那段占位（不自链）
-    if (this.skeleton) {
-      if (this.skeleton.fillVisible() > 0) this.updateStatus(this.payloads.length);
-      return;
-    }
-    if (this.renderingBatch || !this.unrendered || this.unrendered.isEmpty) return;
-    if (!this.shouldFill()) return;
-    // 有进行中的选区 ⇒ 这次不补（补批的摊平 / 重折会杀选区），等下次 scroll。
-    const sel = document.getSelection();
-    if (sel && !sel.isCollapsed) return;
-    const gap = this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx());
-    if (!gap) return;
-    const gen = this.loadGeneration;
-    this.renderingBatch = true;
-    try {
-      // 调度：一次性 —— 渲染批之前先让状态文绘一帧
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      // 世代守卫：rAF 间隙里可能已换会话
-      if (!this.stream || this.loadGeneration !== gen) return;
-      const [a, b] = gap;
-      const el = this.streamEl;
-      const beforeH = el.scrollHeight;
-      const beforeTop = el.scrollTop;
-      try {
-        el.style.overflowAnchor = "none";
-        this.renderRange(Math.max(a, b - BATCH_SIZE), b);
-        this.rebuildFold();
-        el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
-      } finally {
-        // 还原必须在 finally：渲染段抛出会留下 overflow-anchor:none，这个会话永久失去原生锚定。
-        el.style.overflowAnchor = "";
+  private scrollToMessage(uuid: string): JumpResult {
+    const sk = this.skeleton;
+    const seq = sk?.ledger.uuidToSeq.get(uuid);
+    if (sk && seq !== undefined && sk.isPending(seq)) {
+      sk.ensure(seq, ISLAND_RADIUS);
+      this.updateStatus();
+      if (this.inflight.size > 0) {
+        const gen = this.loadGeneration;
+        return Promise.allSettled([...this.inflight]).then((done) => {
+          if (this.loadGeneration !== gen) return null;
+          const el = this.reveal(uuid);
+          const failed = done.find((r): r is PromiseRejectedResult => r.status === "rejected");
+          if (!el && failed) throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+          return el;
+        });
       }
-      this.updateStatus(this.payloads.length);
-    } finally {
-      this.renderingBatch = false;
     }
-    // 调度：自链 —— 下一帧复检（补批通常把 scrollTop 顶过阈值自然停；零高批 / 不足一屏则继续）
-    requestAnimationFrame(() => void this.maybeFillAbove());
+    return this.reveal(uuid);
   }
 
-  /**
-   * 滚到指定 uuid 的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`。
-   * 这里多出实时窗口没有的两段：还没渲染就先渲出目标岛；找不到就退到贴底。
-   */
-  private scrollToMessage(uuid: string): HTMLElement | null {
-    // 目标还没渲染（非首屏路径调进来）⇒ 先渲染目标岛
-    const idx = this.uuidToIdx.get(uuid);
-    // 接上骨架 ⇒ 岛也经骨架物化（占位要跟着切开，不许在占位中间凭空插一段卡）
-    const seq = idx !== undefined ? this.payloads[idx]?.seq : undefined;
-    if (this.skeleton && seq !== undefined && this.skeleton.isPending(seq)) {
-      this.skeleton.ensure(seq, 100);
-      this.updateStatus(this.payloads.length);
-    } else if (idx !== undefined && this.unrendered?.contains(idx)) {
-      this.renderRange(Math.max(0, idx - 100), Math.min(this.payloads.length, idx + 100));
-      this.rebuildFold();
-      this.updateStatus(this.payloads.length);
-    }
+  private reveal(uuid: string): HTMLElement | null {
     const el = revealCard(this.streamEl, uuid);
-    if (!el) {
-      this.stream?.scrollToBottom();
-      return null;
-    }
+    if (!el) this.stream?.scrollToBottom();
     return el;
   }
 
@@ -874,14 +793,13 @@ export class SessionViewer {
     // 骨架随会话走
     this.skeleton?.dispose();
     this.skeleton = null;
-    // 释放增量渲染状态（payloads 可达几十 MB）
-    this.payloads = [];
-    this.unrendered = null;
-    this.uuidToIdx.clear();
+    this.inflight.clear();
+    this.drawn.clear();
+    this.liveLast = -1;
+    this.total = 0;
     this.renderCtx = null;
     this.renderSink = null;
     this.folder = null;
-    this.renderingBatch = false;
     // 清单也跟着释放：留着就是上一个会话的句子挂在下一个会话上、点下去找不到卡。`reset` 同时让在途那趟回来后不许回写。
     this.outline?.reset();
     if (this.said && popoverOpenOn(this.saidBtn)) closePopover();

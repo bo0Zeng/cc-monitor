@@ -360,13 +360,16 @@ fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         }
         v
     };
-    let merged = answer_merge(&json!({ "sessions": [
+    let merged = answer_merge(
+        &json!({ "sessions": [
         mk("local-old", 100, 3, false, None),
         mk("rem-new", 300, 2, false, Some("pi")),
         mk("rem-mid", 200, 1, false, Some("wsl")),
         mk("tie-a", 150, 0, false, Some("pi")),
         mk("tie-b", 150, 0, false, None),
-    ] }))
+    ] }),
+        &Default::default(),
+    )
     .unwrap();
     let order: Vec<&str> = merged["sessions"]
         .as_array()
@@ -394,12 +397,12 @@ fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         ]),
     ] {
         assert_eq!(
-            answer_merge(&json!({ "sessions": rows })).unwrap()["truncated"],
+            answer_merge(&json!({ "sessions": rows }), &Default::default()).unwrap()["truncated"],
             true
         );
     }
     assert_eq!(
-        answer_merge(&json!({ "sessions": [] })).unwrap(),
+        answer_merge(&json!({ "sessions": [] }), &Default::default()).unwrap(),
         json!({ "totalHits": 0, "sessionCount": 0, "truncated": false, "sessions": [] })
     );
     // 形状不对 ⇒ bad_args（不替界面补值）。
@@ -409,7 +412,10 @@ fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         json!({ "sessions": [ { "updatedAt": "1", "hitCount": 1, "hitsTruncated": false } ] }),
         json!({ "sessions": [ { "updatedAt": 1, "hitCount": -1, "hitsTruncated": false } ] }),
     ] {
-        assert_eq!(answer_merge(&bad).unwrap_err().0, "bad_args");
+        assert_eq!(
+            answer_merge(&bad, &Default::default()).unwrap_err().0,
+            "bad_args"
+        );
     }
 }
 
@@ -482,7 +488,7 @@ fn merged_sessions_carry_row_and_span_texts() {
     let merged = merge_at(
         &json!({ "sessions": [ { "sessionId": "s1", "updatedAt": u, "hitCount": 1, "hitsTruncated": false, "hits": [] } ] }),
         now,
-        &|t| t,
+        &Default::default(),
     )
     .unwrap();
     let s = &merged["sessions"][0];

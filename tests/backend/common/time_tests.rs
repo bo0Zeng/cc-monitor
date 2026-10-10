@@ -11,9 +11,15 @@
 //! | T8 | 历史页那几格（本地钟秒数）：分段（今天 · 昨天 · 本周周一起 · 按月 / 往年带年）· 行尾 · 内容头时间段 · 会话内查找的时刻 | 真值 |
 //! | T9 | 历史页回包出口那一遍：行添 `atText` · `sectionText` · `spanText`，按各自那一刻的偏移排；没有时刻的格不添 | 真值 |
 //! | T10 | 文件的修改时间（本地钟秒数）：列里那一格（今天 `HH:MM` · 今年 `MM-DD` · 往年带年）· 完整那一格 `YYYY-MM-DD HH:MM:SS` | 真值 |
+//! | T11 | 看的那一台的时区（[`Tz`]）：IANA 名认得 ⇒ 那个时区；认不得 · 不是串 · 缺 ⇒ UTC；夏令时按**那一刻**算（同一个时区冬夏两个偏移） | 真值 ＋ 反空真 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
+
+/// 东八区（没有夏令时）。
+fn sh() -> Tz {
+    Tz::named("Asia/Shanghai").expect("时区库里有上海")
+}
 
 #[test]
 fn t1_fixed_points() {
@@ -98,11 +104,12 @@ fn t4_the_constant_lives_only_here() {
 #[test]
 fn t5_display_forms_follow_the_day_and_the_year() {
     let now = days_from_civil(2026, 10, 7) * 86_400 + 12 * 3_600;
-    assert_eq!(fmt_at(now + 2 * 3_600 + 5 * 60, now, 0), "14:05");
-    assert_eq!(fmt_at(now + 86_400, now, 0), "10-08 12:00");
-    assert_eq!(fmt_at(now - 300 * 86_400, now, 0), "2025-12-11 12:00");
+    let utc = Tz::default();
+    assert_eq!(fmt_at(now + 2 * 3_600 + 5 * 60, now, &utc), "14:05");
+    assert_eq!(fmt_at(now + 86_400, now, &utc), "10-08 12:00");
+    assert_eq!(fmt_at(now - 300 * 86_400, now, &utc), "2025-12-11 12:00");
     // 东八区：UTC 20:00 是本地次日 04:00。
-    assert_eq!(fmt_at(now + 8 * 3_600, now, 480), "10-08 04:00");
+    assert_eq!(fmt_at(now + 8 * 3_600, now, &sh()), "10-08 04:00");
 }
 
 #[test]
@@ -119,7 +126,7 @@ fn t6_reply_gets_a_text_next_to_every_time_cell() {
         "sessions": {"s": {"account": {"since": now - 120, "history": [{"at": now - 60, "fromResetsAt": now + 60}]}}},
         "count": 3,
     });
-    with_texts(&mut v, now, 0);
+    with_texts(&mut v, now, &Tz::default());
     assert_eq!(v["earliestReturn"]["atText"], "12:10");
     let a = &v["accounts"][0];
     assert_eq!(a["seenAtText"], "11:59");
@@ -149,15 +156,17 @@ fn t7_clock_face_of_a_record_time() {
     assert_eq!(hm(base + 20 * 3_600 + 30 * 60 + 8 * 3_600), "04:30");
     let iso = "2026-10-07T20:30:15.123Z";
     let t = base + 20 * 3_600 + 30 * 60 + 15;
+    assert_eq!(iso_hm(iso, &Tz::default()).as_deref(), Some("20:30"));
     assert_eq!(
-        iso_hm_here(iso).as_deref(),
-        Some(hm(local_secs(t)).as_str())
+        iso_hm(iso, &sh()).as_deref(),
+        Some("04:30"),
+        "按看的那一台的时区，不按这台"
     );
-    assert_eq!(ms_hm_here(t * 1_000 + 123), hm(local_secs(t)));
+    assert_eq!(ms_hm(t * 1_000 + 123, &sh()), "04:30");
     assert_eq!(hms(base + 7 * 3_600 + 13 * 60 + 20), "07:13:20");
-    assert_eq!(secs_hms_here(t), hms(local_secs(t)));
-    assert_eq!(iso_hm_here(""), None);
-    assert_eq!(iso_hm_here("not a time at all"), None);
+    assert_eq!(secs_hms(t, &sh()), "04:30:15");
+    assert_eq!(iso_hm("", &sh()), None);
+    assert_eq!(iso_hm("not a time at all", &sh()), None);
 }
 
 /// 本地钟上的 年-月-日 时:分 ⇒ 本地钟秒数（判据里当作「已经按偏移排过」的那一格）。
@@ -236,8 +245,8 @@ fn t8_history_sections_row_times_spans_and_hits() {
 
 #[test]
 fn t9_history_row_gets_its_three_texts() {
-    // 东八区（固定偏移）：UTC 2026-10-07 05:00 ⇒ 本地 13:00 · 此刻 UTC 07:30 ⇒ 本地 15:30。
-    let east = |t: i64| t + 8 * 3_600;
+    // 东八区：UTC 2026-10-07 05:00 ⇒ 本地 13:00 · 此刻 UTC 07:30 ⇒ 本地 15:30。
+    let east = sh();
     let utc = |y, m, d, h, mi| lt(y, m, d, h, mi) * 1_000;
     let (at, section, span) = history_times(
         utc(2026, 10, 7, 5, 0),
@@ -277,4 +286,91 @@ fn t10_file_mtime_short_and_full() {
     assert_eq!(mtime_texts(-5 * 3_600, today(2026, 1, 1)).0, "1969-12-31");
     // 闰日。
     assert_eq!(mtime_texts(951_782_400, today(2000, 3, 1)).0, "02-29");
+}
+
+#[test]
+fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
+    // 认不得 · 不是串 · 缺 ⇒ UTC（信封那一格的宽读）。
+    assert_eq!(Tz::of(&serde_json::json!("Asia/Shanghai")), sh());
+    for v in [
+        serde_json::json!("Nowhere/Atlantis"),
+        serde_json::json!(480),
+        serde_json::Value::Null,
+    ] {
+        assert_eq!(Tz::of(&v), Tz::default(), "{v}");
+    }
+    assert_eq!(sh().offset_secs(0), 8 * 3_600);
+    // 「看的人就在这一台」：按这台系统的钟（与这台的偏移读法同一处）；只等于它自己。
+    let here = Tz::named(TZ_HERE).expect("认得 local");
+    let t = days_from_civil(2026, 7, 1) * 86_400;
+    assert_eq!(
+        here.offset_secs(t),
+        crate::platform::local_tz::offset_secs(t as u64).unwrap_or(0)
+    );
+    assert_ne!(here, Tz::default());
+    assert_eq!(here, Tz::named("local").unwrap());
+    // 洛杉矶：2026-07-01 是夏令时（UTC−7），2026-12-01 是标准时（UTC−8）——偏移按那一刻算，不按此刻。
+    let la = Tz::named("America/Los_Angeles").expect("时区库里有洛杉矶");
+    let summer = days_from_civil(2026, 7, 1) * 86_400 + 19 * 3_600;
+    let winter = days_from_civil(2026, 12, 1) * 86_400 + 19 * 3_600;
+    assert_eq!(la.offset_secs(summer), -7 * 3_600);
+    assert_eq!(la.offset_secs(winter), -8 * 3_600);
+    // 冬天看夏天那一刻：钟面按夏天的偏移（12:00），不是按此刻的（11:00）。
+    assert_eq!(fmt_at(summer, winter, &la), "07-01 12:00");
+    assert_eq!(fmt_at(winter, winter, &la), "11:00");
+    // 同一刻、看的人在两地：今天 / 昨天跟着看的那一台的日子走。
+    let late = days_from_civil(2026, 10, 7) * 86_400 + 20 * 3_600; // UTC 20:00
+    assert_eq!(fmt_at(late - 3 * 3_600, late, &Tz::default()), "17:00");
+    assert_eq!(
+        fmt_at(late - 3 * 3_600, late, &sh()),
+        "01:00",
+        "上海此刻已是 10-08 04:00，UTC 17:00 那一刻是那边今天 01:00"
+    );
+    assert_eq!(fmt_at(late - 9 * 3_600, late, &Tz::default()), "11:00");
+    assert_eq!(
+        fmt_at(late - 9 * 3_600, late, &sh()),
+        "10-07 19:00",
+        "UTC 今天 11:00 在上海是昨天 19:00"
+    );
+}
+
+#[test]
+fn t12_detail_time_slots_are_filled_in_the_viewer_zone_with_the_offset() {
+    let t = days_from_civil(2026, 10, 7) * 86_400 + 20 * 3_600 + 30 * 60 + 15;
+    let line = format!(r#"{{"detail":"时刻：{}\n码：x"}}"#, at_slot(t));
+    assert_eq!(
+        fill_at(&line, &sh()),
+        r#"{"detail":"时刻：2026-10-08 04:30:15 +08:00\n码：x"}"#
+    );
+    assert_eq!(
+        fill_at(&line, &Tz::default()),
+        r#"{"detail":"时刻：2026-10-07 20:30:15 +00:00\n码：x"}"#
+    );
+    assert!(matches!(
+        fill_at("没有空位", &sh()),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    // 坏了的空位原样留着（看得见），不吞字。
+    assert_eq!(fill_at("⟦at:xx⟧ 与 ⟦at:", &sh()), "⟦at:xx⟧ 与 ⟦at:");
+    // 复制详情本身只写空位：那一层不知道看的人是谁。
+    assert!(crate::stream::detail::of(Some("c"), "x", None).contains("⟦at:"));
+}
+
+/// 钟面 `HH:MM` 与界面那一个钟面读口（`clock-face.ts::clockFace`）对同一份金样。
+#[test]
+fn t13_clock_face_follows_the_shared_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/clock-face.golden.json")).unwrap();
+    let cases = g["cases"].as_array().unwrap();
+    assert!(cases.len() >= 6);
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter_map(|c| {
+            let ms = c["ms"].as_i64().unwrap();
+            let off = c["offsetMin"].as_i64().unwrap();
+            let got = hm(ms.div_euclid(1_000) + off * 60);
+            (got != c["want"].as_str().unwrap()).then(|| format!("{c} ⇒ {got}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{wrong:?}");
 }

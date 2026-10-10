@@ -112,13 +112,14 @@ fn new_session_id(source_sid: &str) -> String {
 
 /// `--fork-session <source-sid> <message-uuid>`：stdout 出一行 `ForkResult` JSON、exit 0；
 /// 出错 exit 2 + stderr 一行 `{code, message, detail}`（与帧面失败应答同一份 [`Failed`]）。
-pub fn run(agent_home: &Path, args: &[String]) -> i32 {
+/// `tz` ＝ 看的那一台的时区（`--tz`）：失败详情那一行时刻按它填。
+pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
     match cli(agent_home, args) {
         Ok(line) => {
             println!("{line}");
             0
         }
-        Err(f) => f.emit(),
+        Err(f) => f.emit(tz),
     }
 }
 

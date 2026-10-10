@@ -483,7 +483,8 @@ fn last_say_is_the_first_line_of_the_last_text() {
         f.last_say,
         Some(LastSay {
             text: "结论一行".into(),
-            at: Some("t2".into())
+            at: Some("t2".into()),
+            at_ms: None,
         })
     );
     let f = scan_all(&jsonl(&[
@@ -504,6 +505,7 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         name: name.into(),
         what: what.map(str::to_string),
         at: None,
+        at_ms: None,
         state: StepWait::Unclear,
         why: None,
         text: None,
@@ -1043,6 +1045,7 @@ fn needs_carries_its_words_and_tone() {
         name: name.into(),
         what: None,
         at: None,
+        at_ms: None,
         state: StepWait::Running,
         why: None,
         text: None,
@@ -1306,6 +1309,7 @@ fn needs_carry_a_rank_riskier_first() {
         name: name.into(),
         what: None,
         at: None,
+        at_ms: None,
         state: StepWait::Running,
         why: None,
         text: None,
@@ -1362,6 +1366,7 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
         name: "Bash".into(),
         what: Some("ls".into()),
         at: None,
+        at_ms: None,
         state: StepWait::Unclear,
         why: None,
         text: None,
@@ -1446,6 +1451,7 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         name: name.into(),
         what: what.map(str::to_string),
         at: None,
+        at_ms: None,
         state: StepWait::Unclear,
         why: None,
         text: None,

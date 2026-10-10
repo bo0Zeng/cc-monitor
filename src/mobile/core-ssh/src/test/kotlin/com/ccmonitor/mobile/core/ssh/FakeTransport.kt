@@ -92,6 +92,8 @@ class FakeTransport(
 
     override suspend fun execCapture(command: String): ExecResult = nope()
 
+    override suspend fun execDuplex(command: String): com.ccmonitor.mobile.core.remote.RemoteDuplex = nope()
+
     override suspend fun sftpList(path: String): List<SftpEntry> = nope()
 
     override suspend fun sftpRealPath(path: String): String = nope()

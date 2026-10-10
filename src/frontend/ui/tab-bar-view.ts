@@ -32,6 +32,7 @@ import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { foldCaret } from "./kit/fold";
+import { fmtDur } from "./duration-format";
 import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -719,7 +720,7 @@ export class TabBarView {
         l1.textContent = copyText("tabBar.machineDown.body", { machine: r.origin, n: r.n });
         const l2 = document.createElement("span");
         l2.className = "tab-machine-down-seen";
-        l2.textContent = copyText("tabBar.machineDown.seen", { ago: sinceText(r.since, now) ?? "0s" });
+        l2.textContent = copyText("tabBar.machineDown.seen", { ago: sinceText(r.since, now) ?? fmtDur(0) });
         body.append(l1, l2);
         const re = document.createElement("button");
         re.type = "button";

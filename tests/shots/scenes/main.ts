@@ -6,7 +6,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
-import { click, hover, mainReady, openTab, rightClick, scrollStream, sleep, waitFor } from "./helpers";
+import { click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -185,10 +185,25 @@ function unreadWorld(): World {
   c.title("认不出的记录");
   c.user("把发布脚本里的版本号改成从标签读。");
   c.say("好，先看一下现在的发布脚本。");
-  c.unread("unread-unknown");
+  c.golden("unread-unknown");
   c.say("脚本里版本号写死在第 12 行，改成读 `git describe` 的结果。");
-  c.unread("unread-parse-failed");
+  c.golden("unread-parse-failed");
   c.user("可以，顺便把 CHANGELOG 也补一条。");
+  s.records = c.records;
+  return w;
+}
+
+/** 提问卡与计划卡：那一问一计划与它们的答都照核心金样（`steps[].ask` 由核心写，界面只照它建卡；假后端不算）。 */
+function askWorld(): World {
+  const w = defaultWorld();
+  const s = w.sessions[0];
+  const c = new Convo(s.sid, s.cwd, "2026-10-01T07:00:00Z");
+  c.title("提问与计划");
+  c.user("重试那一块先出个计划给我看。");
+  c.golden("reply-ask");
+  c.golden("said-ask-answered");
+  c.golden("said-plan-approved");
+  c.say("好，照计划开始改。");
   s.records = c.records;
   return w;
 }
@@ -271,7 +286,7 @@ export const MAIN_SCENES: Scene[] = [
   main("main-turn-rail", "主窗口 · 轮次刻度悬停", "160 轮的会话：右缘相邻并格（每格 3 轮）· 当前那一格加长、强调色；悬停一格左侧出小卡（第几–几轮 · 起始时刻 · 你那句）", async () => {
     await mainReady(1);
     await waitFor(".turn-rail.active .turn-tick");
-    await sleep(300);
+    await settled(await until(streamScroller));
     const ticks = [...document.querySelectorAll<HTMLElement>(".turn-rail.active .turn-tick")];
     const t = ticks[Math.floor(ticks.length / 2)];
     t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
@@ -405,15 +420,21 @@ export const MAIN_SCENES: Scene[] = [
   }, emptyWorld),
   main("main-long", "主窗口 · 长会话", "一个 160 轮、640 条记录的会话，停在底部", async () => {
     await mainReady(1);
-    await sleep(1500);
+    const scroller = await until(streamScroller);
+    await settled(scroller);
   }, longWorld),
   main("main-long-middle", "主窗口 · 长会话滚到中间", "同一个长会话往上翻到中间（看懒建卡与骨架）", async () => {
     await mainReady(1);
-    await sleep(1200);
-    const box = document.querySelector<HTMLElement>("#message-stream");
-    const scroller = [...(box?.querySelectorAll<HTMLElement>("*") ?? [])].find((e) => e.scrollHeight > e.clientHeight + 100);
-    if (scroller) scroller.scrollTop = scroller.scrollHeight / 2;
-    await sleep(800);
+    const scroller = await until(streamScroller);
+    await settled(scroller);
+    // 先粗跳到一半（懒建卡要在那一带建出来），再把固定的那一轮（第 80 步完成那张）贴到顶上：
+    //   一半处的总高里有多少是估的、多少是量过的，看哪几张卡先建完，按总高的一半截，每趟差半轮。
+    scroller.scrollTop = scroller.scrollHeight / 2;
+    await settled(scroller);
+    const card = [...scroller.querySelectorAll<HTMLElement>("[data-id]")].find((e) => e.textContent?.includes("第 80 步完成"));
+    if (!card) throw new Error("粗跳到一半之后，第 80 步那张卡不在页里");
+    card.scrollIntoView({ block: "start" });
+    await settled(scroller);
   }, longWorld),
   main("main-unseen-machine", "主窗口 · 一台机器连不上", "gpu-01 的会话流一开始就看不见（那台机器连不上）", async () => {
     await mainReady(ALL_TABS - 1);
@@ -499,9 +520,9 @@ export const MAIN_SCENES: Scene[] = [
   card("card-retry", "API 重试细条", "调用失败、CLI 正在重试（第 1/2 次）", async () => {
     await openCard(".card-api-retry", 0, "center");
   }),
-  card("card-ask", "提问卡与计划卡", "AskUserQuestion（已选）＋ ExitPlanMode 计划", async () => {
+  card("card-ask", "提问卡与计划卡", "AskUserQuestion（已选）＋ ExitPlanMode 计划：一问一计划与它们的答照核心记录金样", async () => {
     await openCard(".block-plan", 0, "center");
-  }),
+  }, askWorld),
   card("card-compact-error", "续接摘要 · 斜杠命令 · API 报错 · 打断", "一个会话里：/compact 续接摘要、斜杠命令卡、529 报错卡、重试细条、用户打断与打断时说的话", async () => {
     await mainReady(ALL_TABS);
     await scrollStream("top");

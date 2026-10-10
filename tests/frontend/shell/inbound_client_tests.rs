@@ -316,7 +316,8 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
             "e2e-ping-1",
             "ping",
             &Value::Null,
-            Some(Duration::from_millis(10_000))
+            Some(Duration::from_millis(10_000)),
+            None
         ),
         "\ne2e 脚本喂给真后端的行与 monitor 编码器的产物不一致。\n\
              改了编码器就把脚本里那条 `INBOUND_PING_LINE` 一起改（反之亦然）——\n\
@@ -416,7 +417,8 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
             line["id"].as_str().expect("id"),
             "launch",
             &line["args"],
-            line["within_ms"].as_u64().map(Duration::from_millis)
+            line["within_ms"].as_u64().map(Duration::from_millis),
+            line["tz"].as_str()
         ),
         "e2e 那一行的信封不是 monitor 那一跳会产出的那一行（键序 / 空白对不上）"
     );
@@ -493,14 +495,26 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 #[test]
 fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     let args = serde_json::json!({});
-    let line = encode_request("abc-0", "ping", &args, None);
+    let line = encode_request("abc-0", "ping", &args, None, None);
     assert_eq!(line, "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{}}\n");
-    let carried = encode_request("abc-0", "ping", &args, Some(Duration::from_millis(1_500)));
+    let carried = encode_request(
+        "abc-0",
+        "ping",
+        &args,
+        Some(Duration::from_millis(1_500)),
+        None,
+    );
     assert_eq!(
         carried,
         "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{},\"within_ms\":1500}\n"
     );
-    let tiny = encode_request("abc-0", "ping", &args, Some(Duration::from_micros(300)));
+    let tiny = encode_request(
+        "abc-0",
+        "ping",
+        &args,
+        Some(Duration::from_micros(300)),
+        None,
+    );
     assert!(
         tiny.contains("\"within_ms\":1}"),
         "不足 1 ms 该记 1：{tiny}"
@@ -510,6 +524,12 @@ fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     for k in ["id", "cmd", "args", "within_ms"] {
         assert!(v.get(k).is_some(), "信封缺字段 `{k}`：{carried}");
     }
+    // 看的这一台的时区：带了就在最后一格（后端 `Request.tz`）；不带 ⇒ 没有那一格。
+    let zoned = encode_request("abc-0", "ping", &args, None, Some("Asia/Shanghai"));
+    assert_eq!(
+        zoned,
+        "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{},\"tz\":\"Asia/Shanghai\"}\n"
+    );
 }
 
 /// 信封里带的期限就是这一发的等待：发起方给多久，那一行的 `within_ms` 就是多久（写出去之前花掉的那一点除外）。

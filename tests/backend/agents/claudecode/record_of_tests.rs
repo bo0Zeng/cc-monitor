@@ -156,6 +156,19 @@ const CASES: &[(&str, &str)] = &[
         "unread-parse-failed",
         r#"{"type":"ai-title","sessionId":"s"}"#,
     ),
+    (
+        "reply-ask",
+        r#"{"type":"assistant","uuid":"a-ask","timestamp":"2026-10-09T01:30:02.500Z","message":{"role":"assistant","model":"model-x","content":[{"type":"tool_use","id":"call-ask","name":"AskUserQuestion","input":{"questions":[{"header":"h","question":"q?","multiSelect":true,"options":[{"label":"a","description":"d"},{"label":"b"}]}]}},{"type":"tool_use","id":"call-plan","name":"ExitPlanMode","input":{"plan":"1. p"}}]}}"#,
+    ),
+    // 上面那一问一计划各自答了（截图台架的提问卡 / 计划卡照这三条画，不另造）。
+    (
+        "said-ask-answered",
+        r#"{"type":"user","uuid":"u-ask-answered","timestamp":"2026-10-09T01:30:02.600Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-ask","content":"User has answered your questions: \"q?\"=\"a\". You can now continue with the user's answers in mind.","is_error":false}]},"toolUseResult":{"answers":{"q?":"a"}}}"#,
+    ),
+    (
+        "said-plan-approved",
+        r#"{"type":"user","uuid":"u-plan-approved","timestamp":"2026-10-09T01:30:02.700Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-plan","content":"User has approved your plan. You can now start coding.","is_error":false}]},"toolUseResult":{"plan":"1. p"}}"#,
+    ),
 ];
 
 #[test]
@@ -163,7 +176,9 @@ fn every_kind_matches_the_golden_full_and_minimal() {
     let got: String = CASES
         .iter()
         .map(|(name, raw)| {
-            let r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
+            // 金样是线上那一形：出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
+            let mut r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
+            r.stamp(&crate::Tz::default());
             format!(
                 "{}\n",
                 serde_json::to_string(&serde_json::json!({ "case": name, "record": r })).unwrap()

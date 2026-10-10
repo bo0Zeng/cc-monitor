@@ -18,6 +18,12 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "atMs",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "id",
           "type": "string"
         },
@@ -169,6 +175,48 @@
           "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.arg",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.kind",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].header",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].multi",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].options[].description",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].options[].label",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].question",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.text",
           "type": "string"
         },
         {
@@ -356,6 +404,12 @@
           "kind": "value",
           "path": "{t=said}.results.*.patch[].oldStart",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.results.*.preview",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -695,6 +749,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "lastSay.atMs",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "lastSay.text",
           "type": "string"
         },
@@ -799,6 +859,12 @@
           "kind": "value",
           "path": "pending[].at",
           "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "pending[].atMs",
+          "type": "number"
         },
         {
           "frozen": false,

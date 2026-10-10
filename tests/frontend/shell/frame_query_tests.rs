@@ -231,7 +231,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/frontend/ui/record-reads.ts` 直问。
     (
         "history-page",
-        "按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段）：编号 · 进不进界面 · `cwd` 都是后端给的，`whole` 那一件的上限判定也在后端",
+        "按字节分页读、出记录行（骨架按偏移取一段：主窗口 tab 与查看器）：编号 · 进不进界面 · `cwd` 都是后端给的，要哪几格由界面交的声明（`view`）定",
     ),
     (
         "history-lines",
@@ -1020,7 +1020,10 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
                 .chars()
                 .filter(|c| !c.is_whitespace())
                 .collect();
+            // stdio 那条载体登记在它那一条路的名下（`StdioRoute`）；产品那一条（`StdioRoute::local`）就是 `<local>`。
             flat.contains("register(crate::inbound_client::LOCAL_ORIGIN")
+                || (flat.contains("register(route.origin.as_wire_str()")
+                    && flat.contains("origin:crate::origin::Origin::local()"))
         })
         .collect();
     let want: std::collections::BTreeSet<String> = [
@@ -1247,7 +1250,7 @@ fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
 /// 多一处 = 又长出一个发起点（进表、写这件事是什么、值给多少）；少一处 = 那件事不再有期限了（或者搬了家没改表）。
 const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     // `tasks.rs` 那一行摘了：monitor 那份任务 notify 删了，不再问 `tasks-list`。
-    // `subagent·rs` 的 `query` · `history·rs` 的 `stream_read_session_jsonl` · `session_skeleton·rs` 的 `read_session_lines` 三行摘了〔散文墓碑〕：
+    // `subagent·rs` 的 `query` · `history·rs` 的整份读 · `session_skeleton·rs` 的 `read_session_lines` 三行摘了〔散文墓碑〕：
     //   那三条命令退役（界面经通道直问那台后端，期限在界面那一手造）。
     (
         "stream_source/snapshot.rs",
@@ -1345,7 +1348,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 #[test]
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
-    // 历史浏览器读整份那一件（`history·rs` 那个 `stream_read_session_jsonl`〔散文墓碑〕）进了界面（期限在 `src/frontend/ui/record-reads.ts` 那一手造）。
+    // 历史浏览器读整份那一件进了界面，后来查看器改成骨架 ＋ 按视口取（`src/frontend/ui/record-reads.ts::readRange`），整份读这件事没了。
     let snapshot_src = crate::guard_support::stream_source_file("snapshot.rs");
     let cases: [(&str, &str, &str); 1] =
         [(&snapshot_src, "async fn fetch_snapshot(", "'read: for ")];

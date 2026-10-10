@@ -8,14 +8,11 @@ import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.command.CodexInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.model.ClaudeTurnEndDetector
-import com.ccmonitor.mobile.core.claude.model.ClaudeUsageAggregator
 import com.ccmonitor.mobile.core.claude.model.CodexRecordParser
 import com.ccmonitor.mobile.core.claude.model.CodexTurnEndDetector
-import com.ccmonitor.mobile.core.claude.model.CodexUsageAggregator
 import com.ccmonitor.mobile.core.claude.model.JsonlParser
 import com.ccmonitor.mobile.core.claude.model.RecordParser
 import com.ccmonitor.mobile.core.claude.model.TurnEndDetector
-import com.ccmonitor.mobile.core.claude.model.UsageAggregatorSpi
 import com.ccmonitor.mobile.core.claude.transport.ClaudeSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.CodexSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.SessionLocator
@@ -85,8 +82,6 @@ class AgentProfile private constructor(
     val turnEndDetector: TurnEndDetector,
     /** 远端会话发现命令、`path→sessionId`、agent-dir 解析。 */
     val sessionLocator: SessionLocator,
-    /** 一批记录 → 用量汇总。 */
-    val usageAggregator: UsageAggregatorSpi,
     /**
      * 会话目录工厂（会话发现、活动判定、可读标题）。
      *
@@ -120,7 +115,6 @@ class AgentProfile private constructor(
                 recordParser = JsonlParser,
                 turnEndDetector = ClaudeTurnEndDetector,
                 sessionLocator = ClaudeSessionLocator,
-                usageAggregator = ClaudeUsageAggregator,
                 newSessionCatalog = { channel, agentDir -> ClaudeSessionCatalog(channel, agentDir) },
             )
 
@@ -141,7 +135,6 @@ class AgentProfile private constructor(
                 recordParser = CodexRecordParser,
                 turnEndDetector = CodexTurnEndDetector,
                 sessionLocator = CodexSessionLocator,
-                usageAggregator = CodexUsageAggregator,
                 newSessionCatalog = { channel, agentDir -> CodexSessionCatalog(channel, agentDir) },
             )
 

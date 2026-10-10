@@ -108,6 +108,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     let v = crate::files::answer_wire(
         "files-size",
         &serde_json::json!({ "path": t.to_string_lossy() }),
+        &Default::default(),
     )
     .expect("一趟干净的算大小被拒了");
     let got: std::collections::BTreeSet<&str> = v
@@ -129,6 +130,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     let e = crate::files::answer_wire(
         "files-size",
         &serde_json::json!({ "path": base.join("没有").to_string_lossy() }),
+        &Default::default(),
     )
     .expect_err("不存在的路径算出了大小");
     assert_eq!(e.code, "unreadable");
@@ -142,7 +144,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         e.raw.as_deref().is_some_and(|r| !r.is_empty()),
         "系统原话丢了：{e:?}"
     );
-    let e = crate::files::answer_wire("files-size", &serde_json::json!({}))
+    let e = crate::files::answer_wire("files-size", &serde_json::json!({}), &Default::default())
         .expect_err("没给 path 竟然收了");
     assert_eq!(e.code, "bad_path");
     std::fs::remove_dir_all(&base).ok();
@@ -187,6 +189,7 @@ fn stat_reports_the_owner_and_where_a_link_points() {
         crate::files::answer_wire(
             "files-stat",
             &serde_json::json!({ "path": base.join(name).to_string_lossy() }),
+            &Default::default(),
         )
         .expect("该答得出来")
     };

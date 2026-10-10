@@ -10,6 +10,8 @@ description = "前端宿主原语：两个前端（monitor 主界面 · 文件�
 [dependencies]
 # 本机时区偏移（`MIT OR Apache-2.0`）：文件窗口那一份搬来，monitor 也用；已在锁文件里，零新包。
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# 看的这一台的时区名（IANA，`MIT OR Apache-2.0`）：请求信封 `tz` 那一格交给后端，后端按它写「几点」；chrono 已经带它进锁文件，零新包。
+iana-time-zone = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 交给 Win32 的路径（长路径前缀）只从它来；仓内 crate、零依赖。

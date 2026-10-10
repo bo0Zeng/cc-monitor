@@ -34,12 +34,6 @@ class SettingsViewModel(
 
     fun setNewUi(enabled: Boolean) = viewModelScope.launch(io) { repo.setNewUiEnabled(enabled) }
 
-    /** 对话总览的来源路径。null = 没设过，由界面显示回退值。 */
-    val overviewSourcePath: StateFlow<String?> =
-        repo.overviewSourcePath().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    fun saveOverviewSourcePath(value: String) = viewModelScope.launch(io) { repo.setOverviewSourcePath(value) }
-
     /** 新对话的权限模式。null = 用 Claude 自己的默认。 */
     val permissionMode: StateFlow<String?> =
         repo.permissionMode().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

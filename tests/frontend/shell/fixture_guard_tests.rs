@@ -29,8 +29,11 @@ fn live_reference_corpus() -> Vec<(String, String)> {
     let root = fg_repo_root();
     let mut out: Vec<(String, String)> = Vec::new();
     for (sub, excluded) in [
-        ("src", &["shell/src/fixture_guard.rs"] as &[&str]),
-        ("tests", &["shell/fixture_guard_tests.rs"]),
+        ("src", &[] as &[&str]),
+        (
+            "tests",
+            &["shell/fixture_guard.rs", "shell/fixture_guard_tests.rs"],
+        ),
     ] {
         for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], excluded) {
             let rel = p

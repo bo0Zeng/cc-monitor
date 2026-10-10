@@ -281,6 +281,7 @@ class HostConnectorGatewayTest {
         private const val HOST_LINK = "app/src/main/kotlin/com/ccmonitor/mobile/ui/common/HostLink.kt"
         private const val ATTACHMENT_PICKER = "app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/AttachmentPicker.kt"
         private const val KEEP_ALIVE = "app/src/main/kotlin/com/ccmonitor/mobile/service/SshKeepAliveService.kt"
+        private const val HOST_BACKENDS = "app/src/main/kotlin/com/ccmonitor/mobile/link/HostBackends.kt"
 
         /** 顶层/成员函数声明（含 `private` / `suspend`）。不认调用 —— `fun` 后必须紧跟名字与 `(`。 */
         private val FUN_DECL_RE = Regex("""(?m)^\s*(?:private\s+|internal\s+)?(?:suspend\s+)?fun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
@@ -311,7 +312,8 @@ class HostConnectorGatewayTest {
                 "connect" to setOf(SESSION_VM, SFTP_VM, HOST_LINK),
                 "retain" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
                 "release" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
-                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK, ATTACHMENT_PICKER),
+                // HOST_BACKENDS：常驻流开在那条连接上（`liveExecutor` / `liveDuplex` 每次现取）。
+                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK, ATTACHMENT_PICKER, HOST_BACKENDS),
                 "disconnectAll" to setOf(KEEP_ALIVE),
             )
 
@@ -328,7 +330,7 @@ class HostConnectorGatewayTest {
          * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 / `probeAndReconnectStale` |
          * | `app/…/ui/session/SessionViewModel.kt` | 通道工厂 + `sessions` |
          * | `app/…/ui/chat/AttachmentPicker.kt` | `commandExecutor` |
-         * | `app/…/ui/chat/ChatRoute.kt` · `app/…/ui/overview/ConversationsRoute.kt` | `commandChannel` 接线点 |
+         * | `app/…/ui/chat/ChatRoute.kt` | `commandChannel` 接线点 |
          * | `app/…/ui/sftp/SftpScreen.kt` | 只有一行 import，供 KDoc 链接用；代码里不碰 |
          *
          * 没有一条在拿「连接的生死与句柄」。
@@ -340,7 +342,6 @@ class HostConnectorGatewayTest {
                 GATEWAY,
                 ATTACHMENT_PICKER,
                 "app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatRoute.kt",
-                "app/src/main/kotlin/com/ccmonitor/mobile/ui/overview/ConversationsRoute.kt",
                 SESSION_VM,
                 "app/src/main/kotlin/com/ccmonitor/mobile/ui/sftp/SftpScreen.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/CommandChannel.kt",

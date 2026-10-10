@@ -8,7 +8,8 @@ use super::topic::Topic;
 /// 现算一个主题的小成品：照主题表的 `reask` 那条命令，用它登记的那个处理器跑一次（与客户端重问拿到的是同一份，实现只一处），回它的应答。
 /// 不现算的主题 · 要 `key` 却没给 · 那条命令答不成 ⇒ `None`（帧里不带，客户端重问；上限在 [`super::wire::Frame::changed`] 判）。
 /// 同步跑（读那台自己的盘，毫秒级）：发端在一阵变化之后调一次。
-pub fn body_now(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
+/// `tz` ＝ 这条连接看的那一台的时区（attach 带来的）：成品里的时刻字按它写，与客户端带同一个 `tz` 重问拿到的是同一份。
+pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde_json::Value> {
     use crate::stream::inbound::spec::Run;
     let s = topic.spec();
     let args = match s.ask {
@@ -27,6 +28,7 @@ pub fn body_now(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
         within_ms: None,
         // 不带声明 ＝ 全量：帧里的小成品与客户端不带 view 重问拿到的是同一份
         view: serde_json::Value::Null,
+        tz: tz.clone(),
         until: None,
     };
     match spec.run {

@@ -19,6 +19,7 @@ import type { FactsSource } from "./views/facts-source";
 import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionActivity } from "./generated/SessionActivity";
+import type { LineRecord } from "./generated/LineRecord";
 import type { SessionState } from "./tab-session-state";
 import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 
@@ -100,7 +101,7 @@ export interface Tab {
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */
   pending: PendingCall[];
   /** 最后一段正文的头一行（后端 `lastSay`）：悬停卡「它最后一句」。 */
-  lastSay: { text: string; at: string | null } | null;
+  lastSay: { text: string; at: string | null; atMs: number | null } | null;
   /** 一串一串重试的结局（后端 `retries`：首条重试记录的 uuid → 结局）：消息流里的重试细条按它画。 */
   retries: ReadonlyMap<string, RetryOutcome>;
   /**
@@ -140,6 +141,8 @@ export interface Tab {
     string,
     { block: ToolResultBlock; element: HTMLElement }
   >;
+  /** 出口省掉的正文展开那一下按记录 id 取回那一行全文（`RenderContext.fullRecord`；按这个 tab 的骨架取）。 */
+  fullRecord: (id: string) => Promise<LineRecord | null>;
   /**
    * 按 seq 去重集合。一个 Tab == 一个 jsonl == 一个 seq 空间（seq ＝ 当前文件里的行号）：重连后后端从 0 重发 → 命中即丢，Tab 内容不翻倍。
    * 这是入口唯一一道去重：文件从头重读时后端先出声、行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配新的集合；INVARIANTS § 25）。

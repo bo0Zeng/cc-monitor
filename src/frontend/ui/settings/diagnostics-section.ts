@@ -14,7 +14,7 @@ import { button, setDisabled } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { icon } from "../kit/icon";
 import { homeShort } from "../kit/path";
-import { formatBytes } from "../format";
+import { sizeText } from "../format";
 import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { unknownConfigKeys } from "../config";
@@ -361,7 +361,7 @@ async function driftOfAll(): Promise<{ origin: string; report: { faces: RecordDr
 function sizeOf(bytes: number): HTMLElement {
   const size = document.createElement("span");
   size.className = "diag-file-size";
-  size.textContent = formatBytes(bytes);
+  size.textContent = sizeText(bytes);
   return size;
 }
 

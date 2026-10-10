@@ -368,7 +368,11 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     );
 
     // ① 会话读：说得出话，但说的是**别人的话**（措辞是 Claude 的目录布局）。
-    let rc = crate::observe::history_query::run(&root, &["--list-projects".to_string()]);
+    let rc = crate::observe::history_query::run(
+        &root,
+        &["--list-projects".to_string()],
+        &Default::default(),
+    );
     assert_eq!(
         rc, 2,
         "`--list-projects` 对一个布局不同的 agent 不再报错了 —— \

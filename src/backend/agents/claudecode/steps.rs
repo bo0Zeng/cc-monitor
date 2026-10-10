@@ -6,7 +6,9 @@
 //! 解析时填进记录成品（`schema.rs`：assistant 的 `toolSteps` · user 的 `toolResults` · 报错的 `apiReason`），界面只排版。
 //! 读不出的格就缺，不猜。
 
-use crate::agents::{Answer, ApiReason, PatchHunk, StepResult, ToolStep};
+use crate::agents::{
+    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepResult, ToolStep,
+};
 
 /// 一次改动的 diff 至多带多少字（各段行正文的字数之和）：超了就只给前几段、立 `patchTruncated`，**整段不劈**；
 /// 放不下的段一律不给（连第一段也不例外 —— 不然它就不是上界）。本机 1,139 份记录实测：32 KiB 让 98.99% 的改动整份给全。
@@ -113,6 +115,7 @@ fn named(name: &str, input: &Value) -> ToolStep {
             note: None,
             known: true,
             text: None,
+            ask: None,
         };
     }
     if let Some((_, k)) = ARG_TOOLS.iter().find(|(t, _)| *t == name) {
@@ -125,6 +128,7 @@ fn named(name: &str, input: &Value) -> ToolStep {
             note,
             known: true,
             text: None,
+            ask: None,
         };
     }
     ToolStep {
@@ -134,7 +138,67 @@ fn named(name: &str, input: &Value) -> ToolStep {
         note: None,
         known: BARE_TOOLS.contains(&name),
         text: None,
+        ask: ask_of(name, input),
     }
+}
+
+/// 提问 / 计划那一格（[`ToolStep::ask`]）：`AskUserQuestion` 的 `questions[]`（`header` · `question` · `multiSelect` · `options[]{label, description}`）·
+/// `ExitPlanMode` 的 `plan`。形状不对（没有题 · 题没有选项表 · 选项没有名 · 计划是空的）⇒ `None`。
+fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
+    let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    match name {
+        "AskUserQuestion" => {
+            let qs = input
+                .get("questions")?
+                .as_array()
+                .filter(|q| !q.is_empty())?;
+            let questions = qs
+                .iter()
+                .map(|q| {
+                    let options = q
+                        .get("options")?
+                        .as_array()?
+                        .iter()
+                        .map(|o| {
+                            Some(AskOption {
+                                label: text(o, "label")?,
+                                description: text(o, "description").filter(|d| !d.is_empty()),
+                            })
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(AskQuestion {
+                        header: text(q, "header").filter(|h| !h.is_empty()),
+                        question: text(q, "question")?,
+                        multi: q.get("multiSelect").and_then(Value::as_bool) == Some(true),
+                        options,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(StepAsk::Questions { questions })
+        }
+        "ExitPlanMode" => text(input, "plan")
+            .filter(|p| !p.trim().is_empty())
+            .map(|text| StepAsk::Plan { text }),
+        _ => None,
+    }
+}
+
+/// 结果首行预览至多几个字（按字符；协议上的定长，两个前端都不再截）。
+const PREVIEW_MAX: usize = 60;
+
+/// 第一条非空行、去掉两头空白、至多 [`PREVIEW_MAX`] 字，截了以「…」收尾（留 59 字 ＋「…」）；没有非空行 ⇒ `None`。
+fn preview_of(text: &str) -> Option<String> {
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    Some(match line.char_indices().nth(PREVIEW_MAX) {
+        Some(_) => {
+            let cut = line
+                .char_indices()
+                .nth(PREVIEW_MAX - 1)
+                .map_or(line.len(), |(i, _)| i);
+            format!("{}…", &line[..cut])
+        }
+        None => line.to_string(),
+    })
 }
 
 /// 压成一行（换行与连串空白 ⇒ 一个空格）并截到 [`ARG_MAX`] 字。
@@ -171,6 +235,7 @@ fn counted(block: &Value, tur: Option<&Value>) -> StepResult {
     let is_error = block.get("is_error").and_then(Value::as_bool) == Some(true);
     let mut r = StepResult {
         ok: !is_error,
+        preview: preview_of(&text),
         ..StepResult::default()
     };
     let tur_text = tur.and_then(Value::as_str).unwrap_or("");

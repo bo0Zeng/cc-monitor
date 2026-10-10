@@ -442,7 +442,11 @@ impl Iso {
     /// 有界等待（夹具侧）：那一屏里 `needle` 至少出现了 `times` 次。
     fn shows_times(&self, handle: &str, needle: &str, times: usize) -> bool {
         (0..150).any(|_| {
-            let p = preview_on(self.on(), &json!({ "terminal": handle, "color": false }));
+            let p = preview_on(
+                self.on(),
+                &json!({ "terminal": handle, "color": false }),
+                &Default::default(),
+            );
             let hit = p.is_ok_and(|v| v["lines"].to_string().matches(needle).count() >= times);
             if !hit {
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -495,15 +499,30 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     );
 
     // 抓一屏：带色与不带色同一屏指纹相同；尺寸是那个窗格的。
-    let a = preview_on(iso.on(), &json!({ "terminal": h, "color": true })).unwrap();
-    let b = preview_on(iso.on(), &json!({ "terminal": h, "color": false })).unwrap();
+    let a = preview_on(
+        iso.on(),
+        &json!({ "terminal": h, "color": true }),
+        &Default::default(),
+    )
+    .unwrap();
+    let b = preview_on(
+        iso.on(),
+        &json!({ "terminal": h, "color": false }),
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(a["screen"], b["screen"]);
     assert_eq!(
         (a["cols"].as_u64(), a["rows"].as_u64()),
         (Some(80), Some(10))
     );
     assert!(b["lines"][0].get("spans").is_none());
-    let big = preview_on(iso.on(), &json!({ "terminal": h, "scrollback": 999_999 })).unwrap();
+    let big = preview_on(
+        iso.on(),
+        &json!({ "terminal": h, "scrollback": 999_999 }),
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(big["capped"], true);
 
     // 看见的那一屏没变 ⇒ 送；变了 ⇒ 不送、交回新指纹。
@@ -556,7 +575,12 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     .unwrap();
     assert_eq!(r["result"], "delivered");
     assert!(iso.shows(&theirs, "mine-zq"));
-    let p = preview_on(iso.on(), &json!({ "terminal": theirs, "color": false })).unwrap();
+    let p = preview_on(
+        iso.on(),
+        &json!({ "terminal": theirs, "color": false }),
+        &Default::default(),
+    )
+    .unwrap();
     assert!(
         !p["lines"].to_string().contains("nope-zq"),
         "被拒的那两次还是打进去了"
@@ -569,7 +593,8 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
             json!({ "result": "refused", "why": "not_known", "said": no_said("not_known") })
         );
         assert_eq!(
-            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.code),
+            preview_on(iso.on(), &json!({ "terminal": raw }), &Default::default())
+                .map_err(|e| e.code),
             Err("not_known".to_string())
         );
     }
@@ -663,12 +688,22 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
     let r = input_on(iso.on(), &json!({ "sid": "sid-a", "text": "to-a-zq" })).unwrap();
     assert_eq!(r, json!({ "result": "delivered" }));
     assert!(iso.shows(&ha, "to-a-zq"), "送进去的字没出现在 A 那一屏");
-    let shot_a = preview_on(iso.on(), &json!({ "sid": "sid-a", "color": false })).unwrap();
+    let shot_a = preview_on(
+        iso.on(),
+        &json!({ "sid": "sid-a", "color": false }),
+        &Default::default(),
+    )
+    .unwrap();
     assert!(
         shot_a["lines"].to_string().contains("to-a-zq"),
         "按 sid 抓的不是 A 那一屏"
     );
-    let shot_b = preview_on(iso.on(), &json!({ "terminal": hb, "color": false })).unwrap();
+    let shot_b = preview_on(
+        iso.on(),
+        &json!({ "terminal": hb, "color": false }),
+        &Default::default(),
+    )
+    .unwrap();
     assert!(
         !shot_b["lines"].to_string().contains("to-a-zq"),
         "给 A 的字落进了活动窗格 B"

@@ -48,10 +48,10 @@ fn answer_from(
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
-    local: &dyn Fn(i64) -> i64,
+    tz: &crate::Tz,
 ) -> Value {
     let l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
-    serde_json::to_value(super::answer_from(&l, origin, ann, ask, now_ms, local)).unwrap()
+    serde_json::to_value(super::answer_from(&l, origin, ann, ask, now_ms, tz)).unwrap()
 }
 
 fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_annotations::Loaded) {
@@ -198,7 +198,14 @@ fn ask(args: Value) -> Ask {
 }
 
 fn answer(args: Value) -> Value {
-    answer_from(&listing(), None, Ok(&ann()), &ask(args), 1_000, &|t| t)
+    answer_from(
+        &listing(),
+        None,
+        Ok(&ann()),
+        &ask(args),
+        1_000,
+        &Default::default(),
+    )
 }
 
 fn sids(v: &Value) -> Vec<String> {
@@ -299,7 +306,14 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     // 改过的标题压过原标题（正控：注解里 S1 没改名、label 是原标题；这里给它一条改名）。
     let mut t = ann();
     t.get_mut(S1).unwrap().custom_title = Some("改过的".into());
-    let w = answer_from(&listing(), None, Ok(&t), &ask(json!({})), 1_000, &|t| t);
+    let w = answer_from(
+        &listing(),
+        None,
+        Ok(&t),
+        &ask(json!({})),
+        1_000,
+        &Default::default(),
+    );
     assert_eq!(find(&w, S1)["label"], "改过的");
     assert_eq!(find(&w, S1)["customTitle"], "改过的");
 }
@@ -338,7 +352,7 @@ fn filters_and_context_parents() {
         Ok(&ann()),
         &ask(json!({"within_days": 1})),
         1_000 + 2 * 86_400_000,
-        &|t| t,
+        &Default::default(),
     );
     assert_eq!(far["total"], 0);
 }
@@ -460,7 +474,7 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 /// 行与组带 `origin`；`listing` 不带 `origin` / 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn a_remote_listing_is_handed_in_and_kept_for_typing() {
-    let ask = |args: Value| crate::history::history_list::answer(args);
+    let ask = |args: Value| crate::history::history_list::answer(args, Default::default());
     // 每个判据用自己的机器名（缓存是进程级的一张表）。
     let e = ask(json!({"origin": "list-dev"})).await.unwrap_err();
     assert_eq!(e.0, "no_listing", "没记着那台的清单却答了：{e:?}");
@@ -546,7 +560,7 @@ fn the_product_matches_the_cross_language_golden() {
         Ok(&ann()),
         &ask(json!({})),
         1_000,
-        &|t| t,
+        &Default::default(),
     );
     let path = fixtures().join("history-list.golden.json");
     if std::env::var_os("CCM_BLESS").is_some() {
@@ -576,7 +590,7 @@ fn unreadable_annotations_say_so_and_the_rows_still_come() {
             annotations(&loaded),
             &ask(json!({})),
             1_000,
-            &|t| t,
+            &Default::default(),
         );
         assert!(
             v["notice"].as_str().is_some_and(|s| !s.is_empty()),
@@ -681,8 +695,8 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     for sid in [S1, S2, S4, "no-such-session"] {
         let a = ask(json!({ "sid": sid }));
         let narrow = listing(Some(sid));
-        let want = answer_from(&whole, None, Ok(&ann()), &a, 1_000, &|t| t);
-        let got = answer_from(&narrow, None, Ok(&ann()), &a, 1_000, &|t| t);
+        let want = answer_from(&whole, None, Ok(&ann()), &a, 1_000, &Default::default());
+        let got = answer_from(&narrow, None, Ok(&ann()), &a, 1_000, &Default::default());
         assert_eq!(got, want, "按 sid {sid} 问：只扫一份与整台扫答得不一样");
         // 反空真：真有行可比（不在的那个除外），只扫一份那一形里别的会话没被整份扫。
         if sid != "no-such-session" {
@@ -744,7 +758,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
         listing_annotations(&raw).as_ref().map_err(Clone::clone),
         &ask(json!({})),
         1_000,
-        &|t| t,
+        &crate::Tz::default(),
     );
     let via_here = answer_from(
         &raw,
@@ -752,7 +766,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
         listing_annotations(&raw).as_ref().map_err(Clone::clone),
         &ask(json!({})),
         1_000,
-        &|t| t,
+        &crate::Tz::default(),
     );
     assert_eq!(starred(&direct, S1), Some(json!(true)), "直连那台读到星");
     assert_eq!(

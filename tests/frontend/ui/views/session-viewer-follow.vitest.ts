@@ -28,9 +28,9 @@ vi.mock("../../../../src/frontend/ui/record-reads", async (orig) => {
   const real = await orig<typeof import("../../../../src/frontend/ui/record-reads")>();
   return {
     ...real,
-    readWholeSession: vi.fn(async (o: string, p: string, onChunk: (c: unknown[]) => void, c: () => boolean) => {
+    readRange: vi.fn(async (o: string, p: string, a: number, b: number, seq: number) => {
       follow.order.push("read");
-      return real.readWholeSession(o as never, p, onChunk as never, c);
+      return real.readRange(o as never, p, a, b, seq);
     }),
     readLines: vi.fn(async () => ({ from: 0, next: 0, eof: true, payloads: [] })),
   };

@@ -5,8 +5,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import com.ccmonitor.mobile.core.claude.bridge.BridgeFrame
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.claude.transport.SessionSignals
-import com.ccmonitor.mobile.core.claude.transport.SignalSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -19,9 +17,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -338,60 +334,7 @@ class ChatControllerTest {
 
     // ---- 跨通路信号汇的接线 ----------------------------
 
-    /**
-     * 一个 controller 里的每条对话都接同一个（进程级的）信号汇，
-     * 而且按 Claude 自己的对话编号接、不是按 `ChatController` 的 `key`。
-     *
-     * 这一条要防的两个 bug，各自都是「静默失效」：
-     * ① 汇不是进程级的（`AppModule` 写成 `factory` 而不是 `single`，或本类每条对话新造一个）
-     *    ⇒ 总览通路投进去的等待态在聊天屏那侧永远看不见，而一条断言都不会红（判据各造自己的汇，各自都绿）。
-     * ② 键拿错了（用 `<hostId>/<sid>` 去接，而 daemon / pidfile 两侧认的是 sid）⇒ 信号恒 null，同样一条断言都不红。
-     *
-     * 所以判据故意让 `key` 与 `claudeSessionId` 不相等：拿错键的实现在这里当场红。
-     */
-    @Test
-    fun everySessionInOneControllerTalksToTheSameProcessWideBus() =
-        runTest {
-            val bus = SessionSignals()
-            val c = ChatController(scopeFactory = { backgroundScope }, signals = bus)
-
-            // key 与 claudeSessionId 刻意不同：混用两个键的实现在这里恒 null ⇒ 红
-            val a = c.sessionFor("host-1/$SID_A", claudeSessionId = SID_A)
-            val b = c.sessionFor("host-1/$SID_B", claudeSessionId = SID_B)
-            runCurrent()
-
-            bus.publishWaiting(SID_A, "waiting", "sandbox request", SignalSource.DAEMON_SESSION_ADDED, 1_000)
-            runCurrent()
-
-            assertNotNull("往汇里投一条，A 这条对话就该看见（同一个汇）", a.state.value.waiting)
-            assertNull("而 B 不该看见 —— 汇是共用的，信号仍然按 sid 分得开", b.state.value.waiting)
-
-            bus.publishWaiting(SID_B, "waiting", "input needed", SignalSource.DAEMON_SESSION_STATUS, 1_100)
-            runCurrent()
-            assertNotNull("第二条对话走的也是同一个汇", b.state.value.waiting)
-            c.releaseAll()
-        }
-
-    /**
-     * 阴性对照：不给汇（`signals = null`，判据与 debug 重放屏走的正是这条）
-     * ⇒ 行为不变，屏上一个字都不多。
-     */
-    @Test
-    fun aControllerWithoutABusChangesNothing() =
-        runTest {
-            val c = ChatController(scopeFactory = { backgroundScope })
-            val a = c.sessionFor("host-1/$SID_A", claudeSessionId = SID_A)
-            runCurrent()
-            assertNull(a.state.value.waiting)
-            assertNull(a.state.value.quota)
-            c.releaseAll()
-        }
-
     private companion object {
-        /** 两个不同的 Claude 对话编号：判据要靠它们区分「同一个汇」与「拿错键」。 */
-        const val SID_A = "8cfb1b93-285d-42ca-bcc1-24f02419f930"
-        const val SID_B = "1d0e4c72-7a55-4f01-9b3e-0c5a2e8b6d14"
-
         /** 推进到「第一帧已上屏、后续帧还没发」的时刻。要大于缓释节拍、小于 [LATE_FRAME_DELAY_MS]。 */
         const val EARLY_MS = 500L
 

@@ -1,9 +1,7 @@
 package com.ccmonitor.mobile.ui.copy
 
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
-import com.ccmonitor.mobile.ui.overview.SECTION_NEEDS_MANUAL
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -78,21 +76,6 @@ class SecondPersonBanTest {
                 hits.joinToString("\n") { "  ${it.where}  「${it.word}」 in ${it.literal}" },
             emptyList<Hit>(),
             hits,
-        )
-    }
-
-    /**
-     * 另一条规矩：「需要你」一律叫「需手动」。
-     *
-     * 单独钉，是因为它是总览屏的分区名：上面那条机检只要有人把它拼起来就漏，
-     * 而这个常量是它唯一的上屏入口，逐字钉得住。
-     */
-    @Test
-    fun theSectionIsCalledNeedsManualNotNeedsYou() {
-        assertEquals("需手动", SECTION_NEEDS_MANUAL)
-        assertFalse(
-            "分区名一律叫「需手动」，不许是「需要你」",
-            SECTION_NEEDS_MANUAL.contains("需要你"),
         )
     }
 }

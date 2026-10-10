@@ -218,10 +218,10 @@ describe("〔STC〕第五问：会话事实", () => {
       projectDir: "/g/proj",
       writers: [],
       pending: [
-        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3", state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
-        { id: "tu-3", name: "Agent", what: null, at: "t4", state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
+        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3", atMs: null, state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
+        { id: "tu-3", name: "Agent", what: null, at: "t4", atMs: null, state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
       ],
-      lastSay: { text: "done", at: "t5" },
+      lastSay: { text: "done", at: "t5", atMs: null },
       needs: null,
       handedBack: ["ag-7"],
       retries: [
@@ -299,8 +299,9 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "connected", detail: null, at: null }] }), "状态只认那三种").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "failed" }] }), "缺 detail").toThrow(ReplyUnreadable);
     // 每步状态：state 只认那三种、why 只认那两种（或 null）；重试结局只认那四种，每件恰好两格。
-    const step = { id: "x", name: "Bash", what: null, at: null, state: "unclear", why: "untracked", text: "U", whyText: "W" };
+    const step = { id: "x", name: "Bash", what: null, at: null, atMs: null, state: "unclear", why: "untracked", text: "U", whyText: "W" };
     expect(decodeFacts({ ...good, pending: [step] }).pending[0]).toEqual(step);
+    expect(() => decodeFacts({ ...good, pending: [{ ...step, atMs: "1" }] }), "atMs 是后端解好的毫秒（数）").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, pending: [{ ...step, state: "done" }] }), "state 只认那三种").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, pending: [{ ...step, why: "guess" }] }), "why 只认那两种").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null, at: null, state: "running", text: null, whyText: null }] }), "缺 why").toThrow(ReplyUnreadable);

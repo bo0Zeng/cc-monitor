@@ -152,7 +152,7 @@ export interface SessionFacts {
   /** 还没有结果的工具调用（文件序：正在跑 / 在等批准的那几步）。 */
   pending: PendingCall[];
   /** 最后一段正文的头一行（悬停卡「它最后一句」）。 */
-  lastSay: { text: string; at: string | null } | null;
+  lastSay: { text: string; at: string | null; atMs: number | null } | null;
   /** 需手动：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
   needs: Needs | null;
   /** 交回了的子运行（子 agent 的 id，文件序）：同一个子运行的收场通知以交回为准，消息流里不再另画。 */
@@ -230,6 +230,8 @@ export interface PendingCall {
   what: string | null;
   /** 那条记录的时刻（ISO 原样）；没有 ⇒ `null`。 */
   at: string | null;
+  /** `at` 的毫秒（后端解好的）：「已经跑了多久」交那一个读口（`duration-format.ts::spanNow`）走字，界面不解析 `at`。 */
+  atMs: number | null;
   /** 这一步此刻的样子（后端 `facts_query::settle_pending` 判）：在跑 · 在等你 · 状态不明。界面只读它，不按「没有结果」当在跑。 */
   state: StepWait;
   /** 状态不明的原因（后端给的码）；别的状态 ⇒ `null`。 */
@@ -277,7 +279,7 @@ export interface Needs {
   waitedMs: number | null;
   /** `waitedMs` 写好的字（答出那一刻）；没有起点 ⇒ `null`。 */
   waitedText: string | null;
-  /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`cards/step-line.ts::waitedNow`）。 */
+  /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`duration-format.ts::waitedNow`）。 */
   receivedAt: number;
 }
 
@@ -502,9 +504,9 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
-    if (!isObj(p) || !exactKeys(p, ["at", "id", "name", "state", "text", "what", "why", "whyText"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at) || !strOrNull(p.text) || !strOrNull(p.whyText)) return bad();
+    if (!isObj(p) || !exactKeys(p, ["at", "atMs", "id", "name", "state", "text", "what", "why", "whyText"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at) || !(p.atMs === null || isNum(p.atMs)) || !strOrNull(p.text) || !strOrNull(p.whyText)) return bad();
     if (!(isStr(p.state) && STEP_WAIT.has(p.state)) || !(p.why === null || (isStr(p.why) && UNCLEAR_WHY.has(p.why)))) return bad();
-    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, state: p.state as StepWait, why: p.why as UnclearWhy | null, text: p.text, whyText: p.whyText });
+    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, atMs: p.atMs, state: p.state as StepWait, why: p.why as UnclearWhy | null, text: p.text, whyText: p.whyText });
   }
   if (!Array.isArray(v.mcp)) return bad();
   const mcp: McpTrouble[] = [];
@@ -521,8 +523,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   let lastSay: SessionFacts["lastSay"] = null;
   if (v.lastSay !== null) {
     const l = v.lastSay;
-    if (!isObj(l) || !exactKeys(l, ["at", "text"]) || !isStr(l.text) || !strOrNull(l.at)) return bad();
-    lastSay = { text: l.text, at: l.at };
+    if (!isObj(l) || !exactKeys(l, ["at", "atMs", "text"]) || !isStr(l.text) || !strOrNull(l.at) || !(l.atMs === null || isNum(l.atMs))) return bad();
+    lastSay = { text: l.text, at: l.at, atMs: l.atMs };
   }
   let needs: Needs | null = null;
   if (v.needs !== null) {

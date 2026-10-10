@@ -26,7 +26,7 @@
  *
  * - 渲染管线是**真的**：真 `cards/renderMessage` → 真 `render-stream-record` → 真
  *   `markCardId` 写 `data-id`。**没有** mock 掉「卡上有没有 `data-id`」这件事。
- * - **只有 IPC 那一层是假的**：`invoke` 换成「把 `viewerRig.chunk` 从 `Channel` 灌回去」。
+ * - **只有 IPC 那一层是假的**：骨架索引照 `viewerRig.chunk` 现造（或用例塞的那份），按偏移取一段从 `chunk` 里按字节轴切。
  * - jsdom 没有 `ResizeObserver` / `scrollIntoView` / **`CSS`** ⇒ 这里补桩。
  *   `scrollIntoView` 的桩正是观测口：jsdom 无布局，「滚没滚到」量不了，
  *   量得了的只有**「请求发给了谁」**。
@@ -44,7 +44,7 @@ import { withSessionReads } from "./chan-fake";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
 /** `find` = 后端 `history-find` 这一刻回什么（旧回包形状 `{available, total, hits}`；没塞 ⇒ 要不到）。 */
-/** `failPage` = 读记录那一问这一次答不上（查看器「读不出」那一态）。 */
+/** `failPage` = 骨架索引与按偏移取正文那两问答不上（查看器「读不出」那一态）。`index` 没塞 ⇒ 照 `chunk` 现造（`indexOfChunk`）。 */
 export const viewerRig: { chunk: unknown[]; index?: unknown; find?: unknown; failPage?: boolean } = { chunk: [] };
 
 /**
@@ -115,18 +115,63 @@ export function tauriCoreMock(): Record<string, unknown> {
     // 会话读面三问改走通道：`withSessionReads` 把 `chan_call` 译回「哪一问 ＋ 旧形参」、回包译成后端成品字节。
     invoke: vi.fn(withSessionReads(async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_user_inputs") return answerListUserInputs(args as { fromOffset: number });
-      if (cmd === "stream_read_session_jsonl") {
+      // 按偏移取一段：骨架里 `[offset, until)` 那几行里 `chunk` 有的（台子的字节轴 ＝ 索引那几行的 `o`）。
+      if (cmd === "read_session_range") {
         if (viewerRig.failPage) throw new Error("devbox 连不上");
-        const ch = args.onChunk as { onmessage?: ((v: unknown) => void) | null };
-        ch.onmessage?.(viewerRig.chunk);
-        return viewerRig.chunk.length;
+        const a = args as { offset: number; until: number };
+        const at = offsetsOf(rigIndex());
+        return viewerRig.chunk.filter((p) => {
+          const o = at.get((p as RigPayload).seq);
+          return o !== undefined && o >= a.offset && o < a.until;
+        });
       }
-      // 骨架索引：没塞就回 undefined（== 今天所有既有用例的形状：查看器不接骨架）
-      if (cmd === "read_session_index") return viewerRig.index;
+      // 骨架索引：用例塞了就用它；没塞 ⇒ 照 `chunk` 现造一份（查看器只经骨架取正文）。
+      if (cmd === "read_session_index") {
+        if (viewerRig.failPage) throw new Error("devbox 连不上");
+        return rigIndex();
+      }
       if (cmd === "find_in_session") return viewerRig.find;
       return undefined;
     })),
   };
+}
+
+/** 台子里一行占多少字节（现造的索引里 `o = seq × RIG_ROW_BYTES`）。 */
+export const RIG_ROW_BYTES = 100;
+
+/**
+ * 照 `chunk` 现造的骨架索引：第 0 行到最大那个 `seq` 每行一格（`chunk` 里没有的那一行 ＝ 不进界面、只占号）；
+ * 有的那一行带 `t` · `u` 与骨架判「建不建卡」要的那几格（正文字数 `ch`、折叠单元 `fd`），口径照后端 `IndexRow`。
+ */
+export function indexOfChunk(chunk: unknown[]): { available: true; from: 0; end: number; rows: Record<string, unknown>[] } {
+  const by = new Map<number, Record<string, unknown>>();
+  for (const p of chunk as RigPayload[]) by.set(p.seq, p.record as Record<string, unknown>);
+  const last = Math.max(-1, ...by.keys());
+  const rows = Array.from({ length: last + 1 }, (_, s) => {
+    const row: Record<string, unknown> = { o: s * RIG_ROW_BYTES, n: RIG_ROW_BYTES };
+    const r = by.get(s);
+    if (!r) return row;
+    row.t = r.t;
+    if (typeof r.id === "string") row.u = r.id;
+    const blocks = Array.isArray(r.blocks) ? (r.blocks as Array<{ type?: string; text?: string }>) : [];
+    const ch = blocks.filter((b) => b.type === "text").reduce((n, b) => n + (b.text?.length ?? 0), 0);
+    const fd = blocks.filter((b) => b.type !== "text").length;
+    if (ch > 0) row.ch = ch;
+    if (fd > 0) row.fd = fd;
+    return row;
+  });
+  return { available: true, from: 0, end: rows.length * RIG_ROW_BYTES, rows };
+}
+
+/** 这一刻台子的索引：用例塞的那份，没塞 ⇒ 照 `chunk` 现造。 */
+function rigIndex(): unknown {
+  return viewerRig.index ?? indexOfChunk(viewerRig.chunk);
+}
+
+/** 索引里每一行（第 k 行 ＝ `from` 那一行的行号 ＋ k，台子一律从 0）的起点字节。 */
+function offsetsOf(index: unknown): Map<number, number> {
+  const rows = ((index as { rows?: Array<{ o: number }> } | undefined)?.rows ?? []) as Array<{ o: number }>;
+  return new Map(rows.map((r, s) => [s, r.o]));
 }
 
 /** 后端喂给 `SessionViewer` 的一行（`JsonlLinePayload` 的最小形状）。 */

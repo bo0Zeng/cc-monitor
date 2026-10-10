@@ -676,7 +676,7 @@ impl FileWindow {
                 "rsFilewinChrome.status.picked",
                 &[
                     ("n", &picked.len().to_string()),
-                    ("size", &super::rows::human_size(bytes)),
+                    ("size", &copy_core::size_text(bytes)),
                 ],
             ));
         }

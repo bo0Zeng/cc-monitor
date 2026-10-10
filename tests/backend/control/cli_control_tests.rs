@@ -515,6 +515,7 @@ fn run_cli<R: std::io::Read + Send + 'static>(args: &[String], stdin: R) -> (i32
         .unwrap();
     let rc = rt.block_on(run_io(
         args,
+        &Default::default(),
         stdin,
         std::time::Duration::from_millis(300),
         &mut out,

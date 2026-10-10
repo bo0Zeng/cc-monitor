@@ -1109,7 +1109,7 @@ impl FindPager {
 }
 
 /// 一条命中的成品：片段三段 ＋ 第几轮（你说的第几句之后；第一句之前 ＝ 0）＋ 那条记录的时刻（毫秒，读不出 ＝ 0）
-/// ＋ 它按这台本地钟写好的样子 `tsText`（[`crate::common::time::hit_text_here`]；界面照抄）。
+/// （按看的那一台的钟写好的样子 `tsText` 在出口那一下添，[`with_hit_text`]）。
 fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -> Value {
     let (before, matched, after) = search_rules::make_snippet(hit, q);
     serde_json::json!({
@@ -1120,8 +1120,15 @@ fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -
         "after": after,
         "turn": turn,
         "tsMs": ts_ms,
-        "tsText": crate::common::time::hit_text_here(ts_ms),
     })
+}
+
+/// 出口那一下：一条命中添上 `tsText`（`tsMs` 按看的那一台的时区写，[`crate::common::time::hit_text`]；界面照抄）。
+pub(crate) fn with_hit_text(hit: &Value, tz: &crate::common::time::Tz) -> Value {
+    let mut h = hit.clone();
+    let ms = h.get("tsMs").and_then(Value::as_i64).unwrap_or(0);
+    h["tsText"] = crate::common::time::hit_text(ms, tz).into();
+    h
 }
 
 /// **会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
@@ -1138,12 +1145,13 @@ pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
     query: &str,
     include_tools: bool,
     limit: usize,
+    tz: &crate::common::time::Tz,
     out: &mut W,
 ) -> std::io::Result<(u64, u64)> {
     writeln!(out, "{{\"kind\":\"session_find\",\"v\":1}}")?;
     let (count, total) =
         scan_session_find(r, query, include_tools, FindPage::first(limit), |hit| {
-            serde_json::to_writer(&mut *out, hit)?;
+            serde_json::to_writer(&mut *out, &with_hit_text(hit, tz))?;
             out.write_all(b"\n")
         })?;
     writeln!(
@@ -1229,19 +1237,23 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 /// - 会话行其余各格原样透传（形状由界面的解码器收，这里只读排序与计数要的那三格）。
 ///
 /// 码：`bad_args`（不是 `{sessions: [...]}` / 某一行缺那三格或类型不对）。纯计算：不读盘、不起进程。
-pub(crate) fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)> {
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64);
-    merge_at(args, now_ms, &crate::common::time::local_secs)
+pub(crate) fn answer_merge(
+    args: &Value,
+    tz: &crate::common::time::Tz,
+) -> Result<Value, (&'static str, String)> {
+    merge_at(
+        args,
+        crate::common::time::now_secs().saturating_mul(1_000),
+        tz,
+    )
 }
 
-/// [`answer_merge`] 的可喂钟那一半：每行再添行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`；`local` 同
-/// [`crate::common::time::history_times`]）。
+/// [`answer_merge`] 的可喂钟那一半：每行再添行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按看的那一台的时区；
+/// 同 [`crate::common::time::history_times`]）。
 pub(crate) fn merge_at(
     args: &Value,
     now_ms: i64,
-    local: &dyn Fn(i64) -> i64,
+    tz: &crate::common::time::Tz,
 ) -> Result<Value, (&'static str, String)> {
     let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
     let rows = args
@@ -1267,7 +1279,7 @@ pub(crate) fn merge_at(
         total_hits = total_hits.saturating_add(hits);
         truncated |= cut;
         let (at_text, _, span_text) =
-            crate::common::time::history_times(updated, updated, updated, now_ms, local);
+            crate::common::time::history_times(updated, updated, updated, now_ms, tz);
         let mut row = row.clone();
         row["atText"] = serde_json::Value::String(at_text.0);
         row["spanText"] = serde_json::Value::String(span_text.0);

@@ -199,7 +199,7 @@ fn local_and_remote_are_exactly_complementary() {
 //      · `remote_branch.rs` 的 `create_remote_branch_session`〔散文墓碑〕
 //      · `remote_history.rs` 的 `delete_remote_history_session`〔散文墓碑〕
 //      · `stream_remote_history_sessions`〔散文墓碑〕（随远端会话清单搬进本机后端一起删了）
-//      · `stream_read_remote_session`〔散文墓碑〕（函数也删了：本机远端合成一条 `history·rs::stream_read_session_jsonl`）
+//      · `stream_read_remote_session`〔散文墓碑〕（函数也删了：本机远端合成一条，后来整份读这件事也随查看器改成骨架 ＋ 按视口取没了）
 //      · `list_remote_mcp_project_dirs`〔散文墓碑〕（本机远端同一条 `mcp-read`，那个远端分支删了）
 //
 // 🔴 **为什么参数名从 `origin` 改成 `host`，而不是原样留着**：

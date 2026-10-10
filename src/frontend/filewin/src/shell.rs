@@ -2939,7 +2939,7 @@ impl FileWindow {
                         ("n", &(p.text.len()).to_string()),
                         (
                             "limit",
-                            &(super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64))
+                            &(copy_core::size_text(super::editor::MAX_EDIT_BYTES as u64))
                                 .to_string(),
                         ),
                     ],
@@ -3686,10 +3686,10 @@ impl FileWindow {
         parts.push(copy_text(
             "rsFilewinEditPage.foot.size",
             &[
-                ("size", &super::rows::human_size(e.text.len() as u64)),
+                ("size", &copy_core::size_text(e.text.len() as u64)),
                 (
                     "cap",
-                    &super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64),
+                    &copy_core::size_text(super::editor::MAX_EDIT_BYTES as u64),
                 ),
             ],
         ));
@@ -4265,7 +4265,7 @@ impl FileWindow {
         let meta = if row.is_dir {
             copy_text("rsFilewinWriteops.delete.rowDir", &[])
         } else {
-            super::rows::human_size(row.size)
+            copy_core::size_text(row.size)
         };
         self.write_board.describe(
             &row.path,

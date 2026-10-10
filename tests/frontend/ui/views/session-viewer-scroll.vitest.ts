@@ -238,6 +238,8 @@ describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => 
       at: ts(seq),
       who: { speaker: { kind: "toolResult" }, text: "" },
       blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: out }], isError: false }],
+      // 首行预览是核心出的一格（`steps.rs::preview_of`），夹具照后端成品带上
+      results: { [id]: { ok: true, preview: out } },
     });
 
   it("四条记录的 uuid 全跳得到，落点是各自那一块", async () => {

@@ -2,6 +2,7 @@
  * 状态栏最左那一枚「消息」：点开锚在它上方的浮层，列本次运行里最近 20 条提示（时刻 · 图标 · 一句 · 还能做的动作）；
  * 有没看过的出错提示时右上一个琥珀点。只在内存里（kit toast 的记录），不落盘。
  */
+import { clockFaceHere } from "./clock-face";
 import { chip, setChipOpen } from "./kit/chip";
 import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
@@ -109,7 +110,8 @@ export class StatusMessages {
       row.dataset.smRow = "";
       const time = document.createElement("span");
       time.className = s.smTime;
-      time.textContent = toastClock(r.at);
+      // 几点出的：提示是界面自己出的事（不经后端），按这一台的钟面写（与核心「几点」同一套写法，`clock-face.ts`）。
+      time.textContent = clockFaceHere(r.at);
       const text = document.createElement("span");
       text.className = s.smText;
       text.textContent = r.detail ? copyText("statusBar.messages.line", { title: r.title, fact: r.detail.split("\n")[0] }) : r.title;
@@ -207,7 +209,4 @@ export class StatusMessages {
   }
 }
 
-/** 这条提示是几点出的：看的人这台的钟面 —— 提示是界面自己出的事，不来自哪台后端，没有「那台的本地钟」可照抄。 */
-function toastClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+

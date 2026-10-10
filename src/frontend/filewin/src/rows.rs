@@ -380,7 +380,7 @@ fn paint_hit(ui: &Ui, rect: egui::Rect, h: &HitRow) {
         if h.dir {
             String::new()
         } else {
-            h.size.map(human_size).unwrap_or_default()
+            h.size.map(copy_core::size_text).unwrap_or_default()
         },
         None,
         true,
@@ -902,7 +902,7 @@ fn paint_one_row(
     let size_text = if r.is_dir {
         String::new()
     } else {
-        human_size(r.size)
+        copy_core::size_text(r.size)
     };
     let mut tips: Vec<(egui::Rect, String)> = Vec::new();
     let folded: Vec<String> = [
@@ -1062,22 +1062,6 @@ pub fn reveal_index(rows: &[Listed], name: &str) -> Option<usize> {
 /// 一行占多高（行间不留缝 ⇒ 就是行高令牌）。「滚到第 i 行」用它算偏移。
 pub fn row_pitch(ui: &Ui) -> f32 {
     metrics(ui.ctx()).row_h
-}
-
-/// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。
-pub fn human_size(n: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    let mut v = n as f64;
-    let mut u = 0;
-    while v >= 1024.0 && u + 1 < UNITS.len() {
-        v /= 1024.0;
-        u += 1;
-    }
-    if u == 0 {
-        format!("{n} B")
-    } else {
-        format!("{:.1} {}", v, UNITS[u])
-    }
 }
 
 /// Headless 跑一趟 egui 并收 [`RenderTally`]。

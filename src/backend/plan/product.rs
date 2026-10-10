@@ -471,8 +471,8 @@ pub(crate) fn slice_summary(sl: &Value) -> Value {
 }
 
 /// 时刻写成给人看的字（界面照抄，不换算）：`readAt` · `since` · `at`（毫秒整数，或签收那种 ISO 串）旁边添 `<键>Text`，
-/// 按 `now_ms` 与时区偏移（分钟，东正）经 [`crate::common::time::fmt_at`] 写。`at` 是串却读不成时刻（块的站位编号）⇒ 不添。
-pub(crate) fn with_time_texts(v: &mut Value, now_ms: i64, tz_min: i64) {
+/// 按 `now_ms` 与看的那一台的时区经 [`crate::common::time::fmt_at`] 写。`at` 是串却读不成时刻（块的站位编号）⇒ 不添。
+pub(crate) fn with_time_texts(v: &mut Value, now_ms: i64, tz: &crate::Tz) {
     match v {
         Value::Object(m) => {
             let adds: Vec<(String, String)> = ["readAt", "since", "at"]
@@ -488,21 +488,19 @@ pub(crate) fn with_time_texts(v: &mut Value, now_ms: i64, tz_min: i64) {
                         crate::common::time::fmt_at(
                             ms.div_euclid(1000),
                             now_ms.div_euclid(1000),
-                            tz_min,
+                            tz,
                         ),
                     ))
                 })
                 .collect();
             for x in m.values_mut() {
-                with_time_texts(x, now_ms, tz_min);
+                with_time_texts(x, now_ms, tz);
             }
             for (k, t) in adds {
                 m.insert(k, Value::String(t));
             }
         }
-        Value::Array(a) => a
-            .iter_mut()
-            .for_each(|x| with_time_texts(x, now_ms, tz_min)),
+        Value::Array(a) => a.iter_mut().for_each(|x| with_time_texts(x, now_ms, tz)),
         _ => {}
     }
 }
