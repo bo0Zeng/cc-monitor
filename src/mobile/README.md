@@ -41,7 +41,7 @@ cd src/mobile
 ## 测试
 
 ```sh
-./gradlew ktlintCheck detektDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain
+./gradlew ktlintCheck detektDebug :app:lintDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain
 python3 -m pytest bridge/tests        # bridge 的 Python 金样测试
 bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（读 .build/mobile/*/test-results）
 ```
@@ -50,7 +50,7 @@ bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（�
 
 - **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease`（CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
 - **要设备的 instrumentation 测（androidTest）不进门禁、也不进 CI**：接好模拟器或真机后跑 `bash scripts/android-test.sh`。其中 `SshConnectionTest` 要一台真 SSH 服务端，入口脚本不跑它，手测时用 `-Pandroid.testInstrumentationRunnerArguments.sshHost=<地址>` 给地址。
-- **Android Lint**（`./gradlew :app:lintDebug`）也不在门禁里：今天有 3 条 error（两条 NewApi、一条 RestrictedApi），修掉之后再进。
+- **Android Lint**（`:app:lintDebug`）在上面那条里：error 一条就红，warning 不拦。
 
 ## License
 

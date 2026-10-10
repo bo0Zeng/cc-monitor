@@ -14,6 +14,7 @@ import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -376,9 +377,11 @@ internal object KeepAlivePolicy {
 
     /**
      * 「系统不许起」这族异常在这个系统上存不存在（API 31 才引入）。
+     * 标 `@ChecksSdkIntAtLeast`：Lint 只认 `Build.VERSION.SDK_INT` 那一种写法，版本号从参数进来它看不出这是版本门。
      * 单独成一个函数，版本门才可测：单测手上只有普通 `IllegalStateException`，`Api31.isRefusal` 对它恒为 false，
      * 门写在 [isStartRefusal] 里的话摘掉它测试照样绿。
      */
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
     fun startRefusalIsPossible(sdkInt: Int): Boolean = sdkInt >= Build.VERSION_CODES.S
 
     /** API 31 才有的类型判断关在这里，低版本上不加载，免得 `NoClassDefFoundError`。 */
