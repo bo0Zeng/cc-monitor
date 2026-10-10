@@ -379,10 +379,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cause: RemovalCause::Gone,
             },
         ],
-        both(Frame::TurnEnd {
-            session_id: s("s1"),
-            uuid: s("u1"),
-        }),
+        both(Frame::turn_end(s("s1"), s("u1"), None, None)),
         [
             Frame::Overflow {
                 dropped: 7,
@@ -923,20 +920,50 @@ fn b64_matches_the_rfc_4648_test_vectors() {
     }
 }
 
-/// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**
-/// （只 Line 带）。uuid = 客户端 dedup 键。
+/// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid","title","body"}`，**无 byte_offset**
+/// （只 Line 带）。uuid = 客户端 dedup 键；title · body 是通知那两行（核心写好，桌面与手机照抄）。
 #[test]
-fn turn_end_frame_serializes_with_session_and_uuid_only() {
-    let line = to_line(&Frame::TurnEnd {
-        session_id: "sid-9".into(),
-        uuid: "u-abc".into(),
-    })
+fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
+    let line = to_line(&Frame::turn_end(
+        "sid-9".into(),
+        "u-abc".into(),
+        Some("notes"),
+        None,
+    ))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
     assert_eq!(v["kind"], "turn_end");
     assert_eq!(v["session_id"], "sid-9");
     assert_eq!(v["uuid"], "u-abc");
+    assert_eq!(
+        v["title"],
+        copy_core::copy_text("turnNotify.finish.title", &[("tab", "notes")])
+    );
+    assert_eq!(
+        v["body"],
+        copy_core::copy_text("turnNotify.finish.body", &[])
+    );
     assert!(v.get("byte_offset").is_none(), "TurnEnd 不带 byte_offset");
+}
+
+/// 通知标题里叫这条会话什么：会话名 → 项目名（项目目录最后一截，两种分隔符都认）→ sid 前 8 位。空名当没有。
+#[test]
+fn turn_end_title_names_the_session_then_the_project_then_the_sid() {
+    let title = |name: Option<&str>, project: Option<&str>| match Frame::turn_end(
+        "0123456789ab".into(),
+        "u".into(),
+        name,
+        project,
+    ) {
+        Frame::TurnEnd { title, .. } => title.0,
+        _ => unreachable!(),
+    };
+    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
+    assert_eq!(title(Some("notes"), Some("/w/proj")), finish("notes"));
+    assert_eq!(title(None, Some("/w/proj/")), finish("proj"));
+    assert_eq!(title(Some(""), Some("C:\\w\\proj")), finish("proj"));
+    assert_eq!(title(None, Some("/")), finish("01234567"));
+    assert_eq!(title(None, None), finish("01234567"));
 }
 
 #[test]
@@ -1719,6 +1746,8 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("overflow", "lost_truncated", "bool"),
     ("turn_end", "session_id", "string"),
     ("turn_end", "uuid", "string"),
+    ("turn_end", "title", "string"),
+    ("turn_end", "body", "string"),
     // 〔第二个前端 2026-10-08〕**逐字流**（聊天屏的打字机）。`tap_frames_have_exactly_these_bytes` 钉的是字节，
     // 本表钉的是**有人在读它** —— 少了这几行，整条 `tap` 被清理掉时没有任何判据说得出「有个前端靠它」。
     // ⚠ `ev` 与 `end` 恰有一个 ⇒ 一份样本只带得动 `ev`（打字机读的那一支）；`end` 两个取值的字节由那条逐字节判据钉。
@@ -1765,10 +1794,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             }],
             lost_truncated: true,
         },
-        Frame::TurnEnd {
-            session_id: "s".into(),
-            uuid: "u".into(),
-        },
+        Frame::turn_end("s".into(), "u".into(), None, None),
         Frame::Tap {
             stream: "s".into(),
             run: s.clone(),

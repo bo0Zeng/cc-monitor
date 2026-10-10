@@ -15,6 +15,7 @@ import { runLabel } from "./runs";
 
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
+import type { SessionTurnEndPayload } from "./generated/SessionTurnEndPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -449,11 +450,11 @@ export class TabManager {
     }
   }
 
-  /** 那台一个会话一轮结束（会话流的 `turn_end` 格，在不在看都来）⇒ 系统通知（没有 tab 的会话不报）。 */
-  onTurnEnd(origin: Origin, sessionId: string): void {
-    const tab = this.store.tabs.get(sessionId);
+  /** 那台一个会话一轮结束（会话流的 `turn_end` 格，在不在看都来）⇒ 系统通知，标题 · 正文照抄格上后端写好的（没有 tab 的会话不报）。 */
+  onTurnEnd(origin: Origin, turn: SessionTurnEndPayload): void {
+    const tab = this.store.tabs.get(turn.session_id);
     if (!tab || tab.origin !== origin) return;
-    turnEndNotifier.observe(sessionId, tab.title);
+    turnEndNotifier.observe(turn.session_id, turn.title, turn.body);
   }
 
   /**

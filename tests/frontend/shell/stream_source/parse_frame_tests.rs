@@ -1052,3 +1052,23 @@ fn the_version_health_kind_is_decided_here_not_in_the_ui() {
         Some(VERSION_KIND_INCOMPARABLE)
     );
 }
+
+/// `turn_end` 带着后端写好的通知两行（`title` · `body`）原样解进来；缺一格 ⇒ 形状不对（不在壳里补一个标题）。
+#[test]
+fn a_turn_end_carries_the_written_title_and_body() {
+    let ok = r#"{"kind":"turn_end","session_id":"s","uuid":"u","title":"T","body":"B"}"#;
+    assert_eq!(
+        parse_frame(ok).unwrap(),
+        InboundFrame::TurnEnd(crate::ui_contract::SessionTurnEndPayload {
+            session_id: "s".into(),
+            title: "T".into(),
+            body: "B".into(),
+        })
+    );
+    for line in [
+        r#"{"kind":"turn_end","session_id":"s","uuid":"u","body":"B"}"#,
+        r#"{"kind":"turn_end","session_id":"s","uuid":"u","title":"T"}"#,
+    ] {
+        assert!(parse_frame(line).is_err(), "认了一帧契约外的：{line}");
+    }
+}

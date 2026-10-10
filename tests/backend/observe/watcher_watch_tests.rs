@@ -103,10 +103,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     }
     assert_eq!(kinds, vec![format!("runs {A}")]);
     // 摘要那几格（状态 · 轮次边沿 · 文件重读 / 不在了）不挑：没在看的会话照发。
-    sink.send(Frame::TurnEnd {
-        session_id: B.into(),
-        uuid: "u".into(),
-    });
+    sink.send(Frame::turn_end(B.into(), "u".into(), None, None));
     sink.send(Frame::SessionFileGone {
         session_id: B.into(),
         path: "p".into(),

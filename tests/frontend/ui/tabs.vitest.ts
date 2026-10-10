@@ -6366,14 +6366,15 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(lineReads()).toEqual([]);
   });
 
-  it("一轮结束（turn_end 格）⇒ 按那个 tab 的名字报通知；没有 tab / 别的机器上的同名会话不报", async () => {
+  it("一轮结束（turn_end 格）⇒ 照抄格上写好的标题 · 正文报通知；没有 tab / 别的机器上的同名会话不报", async () => {
     const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
     vi.mocked(turnEndNotifier.observe).mockClear();
-    const t = tm.ensureTab("wt", null, "/p/wt.jsonl", LOCAL_ORIGIN);
-    tm.onTurnEnd(LOCAL_ORIGIN, "wt");
-    tm.onTurnEnd("box", "wt");
-    tm.onTurnEnd(LOCAL_ORIGIN, "nobody");
-    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([["wt", t.title]]);
+    tm.ensureTab("wt", null, "/p/wt.jsonl", LOCAL_ORIGIN);
+    const turn = (session_id: string) => ({ session_id, title: `T-${session_id}`, body: "B" });
+    tm.onTurnEnd(LOCAL_ORIGIN, turn("wt"));
+    tm.onTurnEnd("box", turn("wt"));
+    tm.onTurnEnd(LOCAL_ORIGIN, turn("nobody"));
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([["wt", "T-wt", "B"]]);
   });
 
   it("Codex 样本（后端真走过 watcher 的那几帧，壳那一跳同一份金样）⇒ 它那个 tab 两轮各报一次通知", async () => {
@@ -6382,16 +6383,16 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
       .trim()
       .split("\n")
-      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string });
+      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string; title?: string; body?: string });
     const announced = frames.filter((f) => f.kind === "session_added");
     expect(announced).toHaveLength(1);
     const codexSid = announced[0].sid!;
-    const tab = tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
-    for (const f of frames.filter((f) => f.kind === "turn_end")) tm.onTurnEnd(LOCAL_ORIGIN, f.session_id!);
-    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([
-      [codexSid, tab.title],
-      [codexSid, tab.title],
-    ]);
+    tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
+    const ends = frames.filter((f) => f.kind === "turn_end");
+    for (const f of ends) tm.onTurnEnd(LOCAL_ORIGIN, { session_id: f.session_id!, title: f.title!, body: f.body! });
+    expect(ends.every((f) => typeof f.title === "string" && f.title !== "" && typeof f.body === "string")).toBe(true);
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual(ends.map((f) => [codexSid, f.title, f.body]));
+    expect(ends).toHaveLength(2);
   });
 });
 

@@ -1347,7 +1347,7 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
         "end_turn 行 Line **先**发"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid }) if session_id == "sess-1" && uuid == "u-2"),
+        matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid, .. }) if session_id == "sess-1" && uuid == "u-2"),
         "Line 后紧跟 TurnEnd(u-2)"
     );
     assert!(
@@ -1358,6 +1358,46 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
         rx.try_recv().is_err(),
         "无多余帧（畸形行不产 TurnEnd、user 行不产 TurnEnd）"
     );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 一轮结束那一帧的标题叫这条会话什么，按宣告时记下的会话名 · 项目目录（pidfile 改了名，下一轮就用新名）。
+#[test]
+fn the_turn_end_title_uses_what_the_session_was_announced_with() {
+    let dir = std::env::temp_dir().join(format!("ccm-turnend-title-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.clone(), false, false);
+    let path = dir.join("sess-1.jsonl");
+    state.active_sids.insert("sess-1".to_string());
+    state.sessions.insert(
+        dir.join("1.json"),
+        SessionEntry {
+            pid: 1,
+            sid: "sess-1".into(),
+            status: None,
+            waiting_for: None,
+            name: None,
+            project: Some("/w/proj".into()),
+        },
+    );
+    let end = r#"{"type":"assistant","uuid":"u-2","message":{"stop_reason":"end_turn"}}"#;
+    std::fs::write(&path, format!("{end}\n")).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let title = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| loop {
+        match rx.try_recv() {
+            Ok(Frame::TurnEnd { title, .. }) => break title.0,
+            Ok(_) => continue,
+            Err(_) => panic!("没出 turn_end"),
+        }
+    };
+    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
+    assert_eq!(title(&mut rx), finish("proj"), "没起名 ⇒ 项目名");
+    state.sessions.get_mut(&dir.join("1.json")).unwrap().name = Some("notes".into());
+    std::fs::write(&path, format!("{end}\n{}\n", end.replace("u-2", "u-3"))).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(title(&mut rx), finish("notes"), "起了名 ⇒ 会话名");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -1523,6 +1563,41 @@ fn status_diff_emits_session_status_frame() {
             ..
         }) if face.activity() == Some(SessionActivity::Idle)
     ));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// pidfile 改了名（`/rename`）：不发帧，记账那一格跟上（一轮结束的通知标题读它）；项目目录宣告时记下（没有记录 ⇒ cwd）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_renamed_pidfile_updates_the_name_the_turn_end_title_reads() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-rename-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("projects")).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, true);
+    let pidfile = dir.join(format!("{pid}.json"));
+    let write = |name: &str| {
+        std::fs::write(
+            &pidfile,
+            format!(r#"{{"pid":{pid},"sessionId":"rn-sid","cwd":"/w/proj","procStart":"{ticks}","status":"busy","name":"{name}"}}"#),
+        )
+        .unwrap();
+    };
+    write("a");
+    process_session_added(&pidfile, &mut state, &mut sink);
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    let entry = |state: &ReaderState| {
+        let e = state.sessions.get(&pidfile).expect("记着");
+        (e.name.clone(), e.project.clone())
+    };
+    assert_eq!(entry(&state), (Some("a".into()), Some("/w/proj".into())));
+    write("b");
+    process_session_added(&pidfile, &mut state, &mut sink);
+    assert!(rx.try_recv().is_err(), "改名不发帧");
+    assert_eq!(entry(&state).0.as_deref(), Some("b"));
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -2425,10 +2500,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
 
     // 排空后下一次 send 会先补 Overflow。
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::TurnEnd {
-        session_id: "x".into(),
-        uuid: "u".into(),
-    });
+    sink.send(Frame::turn_end("x".into(), "u".into(), None, None));
     match rx.try_recv() {
         Ok(Frame::Overflow {
             dropped,
@@ -2479,10 +2551,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     assert!(sink.lost_truncated, "截断了就要说出来，不许静默");
 
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::TurnEnd {
-        session_id: "x".into(),
-        uuid: "u".into(),
-    });
+    sink.send(Frame::turn_end("x".into(), "u".into(), None, None));
     match rx.try_recv() {
         Ok(Frame::Overflow {
             lost,

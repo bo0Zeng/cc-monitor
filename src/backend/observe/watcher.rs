@@ -1592,6 +1592,9 @@ struct SessionEntry {
     /// ——modify 事件 diff，变了发 session_status 帧（远端红绿灯）。
     status: Option<String>,
     waiting_for: Option<String>,
+    /// 会话名（pidfile 的 `name`，改了名跟着改）与项目目录（宣告时定）：一轮结束那一帧的通知标题读它们（[`Frame::turn_end`]）。
+    name: Option<String>,
+    project: Option<String>,
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -2200,10 +2203,13 @@ fn send_line(
     // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
     if let Some(uuid) = turn_uuid {
-        sink.send(Frame::TurnEnd {
-            session_id: session_id.to_string(),
+        let entry = state.sessions.values().find(|e| e.sid == session_id);
+        sink.send(Frame::turn_end(
+            session_id.to_string(),
             uuid,
-        });
+            entry.and_then(|e| e.name.as_deref()),
+            entry.and_then(|e| e.project.as_deref()),
+        ));
     }
     (rec.changed, branch_changed)
 }
@@ -2414,6 +2420,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         let new_status = meta_str("status");
         let new_waiting = meta_str("waitingFor");
         let entry = state.sessions.get_mut(&key).expect("just checked");
+        entry.name = meta_str("name");
         if entry.status != new_status || entry.waiting_for != new_waiting {
             entry.status = new_status.clone();
             entry.waiting_for = new_waiting.clone();
@@ -2524,6 +2531,13 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     } = a;
     // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
     let key_for_watch = key.clone();
+    // 先定位该 sid 的记录（Batch8-F25：帧要带 path 供 monitor 旁路快照；mtime 降序，first=当前活跃文件。
+    // 会话刚起还没写首行时为空 → path=None，此时无历史可拉，后续行天然从 tail 全量到达）。项目目录也从它来，没有记录 ⇒ cwd。
+    let jsonls = sid_jsonls(state, &sid);
+    let project_dir = jsonls
+        .first()
+        .and_then(|p| crate::agents::project_dir_of(p))
+        .or_else(|| a.cwd.clone());
     state.sessions.insert(
         key,
         SessionEntry {
@@ -2531,6 +2545,8 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
             sid: sid.clone(),
             status: a.status,
             waiting_for: a.waiting_for.clone(),
+            name: a.name.clone(),
+            project: project_dir.clone(),
         },
     );
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
@@ -2549,10 +2565,6 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if announced {
         return wrote;
     }
-    // Batch8-F25：先定位该 sid 的记录（帧要带 path 供 monitor 旁路快照；
-    // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
-    // 此时无历史可拉，后续行天然从 tail 全量到达）。
-    let jsonls = sid_jsonls(state, &sid);
     // 历史处理按模式分流（Batch8-F25）：
     // - tail-only：**先 prime**（推进 cursor/seq 到当前完整行数 L，零行帧）——
     //   帧要带 first 文件的 L 供 monitor 校验快照完整性（审计 D-I2），prime
@@ -2574,10 +2586,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         background: a.background,
         attachable: a.attachable,
         cwd: a.cwd.clone(),
-        project_dir: jsonls
-            .first()
-            .and_then(|p| crate::agents::project_dir_of(p))
-            .or(a.cwd),
+        project_dir,
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,

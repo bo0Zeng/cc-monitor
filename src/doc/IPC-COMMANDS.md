@@ -102,6 +102,8 @@ turn-end 边沿（一轮 assistant 完成）。
 |---|---|---|
 | `session_id` | string | 会话 id |
 | `uuid` | string | 这一轮最后那条 assistant 记录的 uuid |
+| `title` | Words | 通知的标题（写好的字，桌面与手机照抄）：「本轮完成 · 会话名」，没起名用项目名，再没有用 sid 前 8 位 |
+| `body` | Words | 通知的正文（写好的字） |
 
 ### `overflow`
 

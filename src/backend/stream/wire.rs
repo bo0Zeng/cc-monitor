@@ -576,6 +576,10 @@ pub enum Frame {
         session_id: String,
         /// 这一轮最后那条 assistant 记录的 uuid。
         uuid: String,
+        /// 通知的标题（写好的字，桌面与手机照抄）：「本轮完成 · 会话名」，没起名用项目名，再没有用 sid 前 8 位。只经 [`Frame::turn_end`] 来。
+        title: Words,
+        /// 通知的正文（写好的字）。
+        body: Words,
     },
     // 这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
     //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
@@ -1014,6 +1018,27 @@ impl TransferEnd {
 }
 
 impl Frame {
+    /// 一轮结束那一帧：通知的两行在这里一处写。叫这条会话什么 —— 会话名（空的当没有）→ 项目目录最后一截 → sid 前 8 位。
+    pub(crate) fn turn_end(
+        session_id: String,
+        uuid: String,
+        name: Option<&str>,
+        project_dir: Option<&str>,
+    ) -> Frame {
+        let project = project_dir.and_then(|d| d.split(['/', '\\']).rfind(|s| !s.is_empty()));
+        let short: String = session_id.chars().take(8).collect();
+        let tab = name.filter(|n| !n.is_empty()).or(project).unwrap_or(&short);
+        Frame::TurnEnd {
+            title: Words(copy_core::copy_text(
+                "turnNotify.finish.title",
+                &[("tab", tab)],
+            )),
+            body: Words(copy_core::copy_text("turnNotify.finish.body", &[])),
+            session_id,
+            uuid,
+        }
+    }
+
     /// 成功、不带数据的那一种应答。
     pub(crate) fn ok(id: &str) -> Frame {
         Frame::Reply {

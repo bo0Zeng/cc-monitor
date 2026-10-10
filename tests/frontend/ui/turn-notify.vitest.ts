@@ -30,40 +30,39 @@ async function flush(): Promise<void> {
   await Promise.resolve();
 }
 
-// 认的是会话流的 `turn_end` 格（在不在看都来），不是行：调用方（`TabManager.onTurnEnd`）只给 sid 与 tab 名。
+// 认的是会话流的 `turn_end` 格（在不在看都来），不是行：调用方（`TabManager.onTurnEnd`）给 sid 与后端写好的标题 · 正文，照抄。
 describe("F42 TurnEndNotifier", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("happy path:一轮结束 + 失焦 → 通知(标题带 tab 名)", async () => {
+  it("happy path:一轮结束 + 失焦 → 通知(标题 · 正文照抄后端写好的那两行)", async () => {
     const { n, send } = makeNotifier();
-    n.observe("s1", "[devbox] 项目甲");
+    n.observe("s1", "标题甲", "正文乙");
     await flush();
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][0]).toContain("项目甲");
+    expect(send.mock.calls).toEqual([["标题甲", "正文乙"]]);
   });
 
   it("窗口聚焦 → 不通知", async () => {
     const { n, send } = makeNotifier({ focused: true });
-    n.observe("s1", "t");
+    n.observe("s1", "t", "b");
     await flush();
     expect(send).not.toHaveBeenCalled();
   });
 
   it("同会话 10s 防抖;不同会话互不影响", async () => {
     const { n, send, state } = makeNotifier();
-    n.observe("s1", "t");
+    n.observe("s1", "t", "b");
     state.now = T0 + 5_000;
-    n.observe("s1", "t"); // 5s 内再来 → 抑制
-    n.observe("s2", "t2"); // 另一会话不受影响
+    n.observe("s1", "t", "b"); // 5s 内再来 → 抑制
+    n.observe("s2", "t2", "b"); // 另一会话不受影响
     state.now = T0 + 11_000;
-    n.observe("s1", "t"); // 过窗 → 放行
+    n.observe("s1", "t", "b"); // 过窗 → 放行
     await flush();
     expect(send).toHaveBeenCalledTimes(3);
   });
 
   it("开关关 → 不通知(且不因判定链前段短路而误发)", async () => {
     const { n, send } = makeNotifier({ enabled: false });
-    n.observe("s1", "t");
+    n.observe("s1", "t", "b");
     await flush();
     expect(send).not.toHaveBeenCalled();
   });
@@ -71,7 +70,7 @@ describe("F42 TurnEndNotifier", () => {
   it("disable()(viewer 窗口)→ 永不通知", async () => {
     const { n, send } = makeNotifier();
     n.disable();
-    n.observe("s1", "t");
+    n.observe("s1", "t", "b");
     await flush();
     expect(send).not.toHaveBeenCalled();
   });
@@ -85,7 +84,7 @@ describe("F42 TurnEndNotifier", () => {
       send,
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    n.observe("s1", "t");
+    n.observe("s1", "t", "b");
     await flush();
     expect(send).toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
@@ -128,5 +127,16 @@ describe("系统通知只经壳的 notify_desktop", () => {
     const { readFileSync } = await import("node:fs");
     expect(readFileSync("src/frontend/ui/turn-notify.ts", "utf8")).not.toContain("plugin-notification");
     vi.doUnmock("../../../src/frontend/ui/ipc/commands");
+  });
+});
+
+// 会话流的 `turn_end` 格带着后端写好的标题 · 正文；缺一格就不收（界面不补一个标题）。
+describe("turn_end 格的解法", () => {
+  it("三格齐 ⇒ 成品；缺标题或正文 ⇒ null", async () => {
+    const { decodeTurnEndPayload } = await import("../../../src/frontend/ui/events");
+    expect(decodeTurnEndPayload({ session_id: "s", title: "T", body: "B" })).toEqual({ session_id: "s", title: "T", body: "B" });
+    expect(decodeTurnEndPayload({ session_id: "s", body: "B" })).toBeNull();
+    expect(decodeTurnEndPayload({ session_id: "s", title: "T" })).toBeNull();
+    expect(decodeTurnEndPayload(null)).toBeNull();
   });
 });

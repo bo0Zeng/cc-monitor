@@ -270,6 +270,10 @@ pub struct WatchedSession {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionTurnEndPayload {
     pub session_id: String,
+    /// 通知的标题（后端写好的字，照抄）。
+    pub title: String,
+    /// 通知的正文（后端写好的字，照抄）。
+    pub body: String,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。

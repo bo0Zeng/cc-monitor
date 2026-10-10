@@ -28,7 +28,7 @@ class BackendFeedTest {
     private fun turnEnd(
         sid: String,
         uuid: String,
-    ) = """{"kind":"turn_end","session_id":"$sid","uuid":"$uuid"}"""
+    ) = """{"kind":"turn_end","session_id":"$sid","uuid":"$uuid","title":"T","body":"B"}"""
 
     /** 每开一次流取下一份台本里的 [FakeDuplex]；[outcomes] 里排着的先回（走不通的那几种）。 */
     private class Remote {
@@ -93,7 +93,7 @@ class BackendFeedTest {
             runCurrent()
             assertEquals(setOf("s1", "s2"), f.table.value.sessions.keys)
             assertTrue(f.table.value.replayed)
-            assertEquals("turn_end 一帧不重、一帧不漏", listOf(TurnEnd("s1", "u1"), TurnEnd("s1", "u2")), ends)
+            assertEquals("turn_end 一帧不重、一帧不漏", listOf(TurnEnd("s1", "u1", "T", "B"), TurnEnd("s1", "u2", "T", "B")), ends)
         }
 
     @Test

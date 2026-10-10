@@ -1257,12 +1257,14 @@ impl EventReplay {
     }
 
     /// 那台一个会话一轮结束（后端 `turn_end`，在不在看都来）：交那台的会话流一格（不吃 credit、不丢、不进留存）。
-    pub fn on_turn_end(&self, origin: &crate::origin::Origin, session_id: String) {
+    pub fn on_turn_end(
+        &self,
+        origin: &crate::origin::Origin,
+        turn: crate::ui_contract::SessionTurnEndPayload,
+    ) {
         self.on_lifecycle(
             origin.as_wire_str(),
-            vec![SessionStreamFrame::TurnEnd(
-                crate::ui_contract::SessionTurnEndPayload { session_id },
-            )],
+            vec![SessionStreamFrame::TurnEnd(turn)],
         );
     }
 
