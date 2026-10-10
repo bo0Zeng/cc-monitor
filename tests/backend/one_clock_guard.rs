@@ -38,7 +38,8 @@ fn wall_clock_sites(prod: &str) -> Vec<String> {
         .filter(|l| {
             let flat: String = l.chars().filter(|c| !c.is_whitespace()).collect();
             WALL_CLOCK_CALLS.iter().any(|c| flat.contains(c))
-                || (flat.contains("SystemTime") && (flat.contains("elapsed(") || flat.contains("Instant")))
+                || (flat.contains("SystemTime")
+                    && (flat.contains("elapsed(") || flat.contains("Instant")))
         })
         .map(|l| l.trim().to_string())
         .collect()
@@ -90,12 +91,21 @@ fn c1_only_common_time_reads_the_wall_clock() {
 
 #[test]
 fn c1_the_shapes_are_recognised() {
-    assert_eq!(wall_clock_sites("let t = std::time::SystemTime::now();").len(), 1);
+    assert_eq!(
+        wall_clock_sites("let t = std::time::SystemTime::now();").len(),
+        1
+    );
     assert_eq!(wall_clock_sites("let t = SystemTime :: now ();").len(), 1);
     assert_eq!(wall_clock_sites("let t = chrono::Utc::now();").len(), 1);
     assert_eq!(wall_clock_sites("let z = jiff::Zoned::now();").len(), 1);
-    assert_eq!(wall_clock_sites("let w = boot_wall + SystemTime::UNIX_EPOCH; t0.elapsed()").len(), 1);
-    assert_eq!(wall_clock_sites("let t = crate::common::time::now();").len(), 0);
+    assert_eq!(
+        wall_clock_sites("let w = boot_wall + SystemTime::UNIX_EPOCH; t0.elapsed()").len(),
+        1
+    );
+    assert_eq!(
+        wall_clock_sites("let t = crate::common::time::now();").len(),
+        0
+    );
     assert_eq!(wall_clock_sites("// SystemTime::now() 不许").len(), 0);
     assert_eq!(wall_clock_sites("let d = t0.elapsed();").len(), 0);
 }
@@ -129,7 +139,10 @@ fn c2_the_clock_dial_only_compiles_under_the_feature() {
         "Cargo.toml 的 [features] 里有 `{FEATURE} = []`（它不开任何依赖的特性）"
     );
     if let Some(d) = default {
-        assert!(!d.contains(&format!("\"{FEATURE}\"")), "`default` 里不许有 `{FEATURE}`：{d}");
+        assert!(
+            !d.contains(&format!("\"{FEATURE}\"")),
+            "`default` 里不许有 `{FEATURE}`：{d}"
+        );
     }
 
     let src = read(&crate::guard_support::src_root().join(CLOCK_FILE));
@@ -153,8 +166,15 @@ fn c2_the_clock_dial_only_compiles_under_the_feature() {
         .find(|&i| lines[i].trim() == "}" && lines[i].len() - lines[i].trim_start().len() == indent)
         .expect("`mod shots_clock` 有收尾");
     let body = lines[decl[0]..=end].join("\n");
-    assert!(body.contains(ENV), "环境变量 `{ENV}` 在 `mod {MODULE}` 里读");
-    let rest = format!("{}\n{}", lines[..decl[0]].join("\n"), lines[end + 1..].join("\n"));
+    assert!(
+        body.contains(ENV),
+        "环境变量 `{ENV}` 在 `mod {MODULE}` 里读"
+    );
+    let rest = format!(
+        "{}\n{}",
+        lines[..decl[0]].join("\n"),
+        lines[end + 1..].join("\n")
+    );
     assert!(!rest.contains(ENV), "{CLOCK_FILE} 里特性闸外读了 `{ENV}`");
     // 引用那一行（`shots_clock::now()`）也在特性闸下。
     let uses: Vec<usize> = lines
@@ -163,7 +183,11 @@ fn c2_the_clock_dial_only_compiles_under_the_feature() {
         .filter(|(i, l)| (*i < decl[0] || *i > end) && l.contains(&format!("{MODULE}::")))
         .map(|(i, _)| i)
         .collect();
-    assert_eq!(uses.len(), 1, "`{MODULE}::` 在模块外恰好用一次（`now()` 里）");
+    assert_eq!(
+        uses.len(),
+        1,
+        "`{MODULE}::` 在模块外恰好用一次（`now()` 里）"
+    );
     assert_eq!(
         lines[uses[0] - 1].trim(),
         format!("#[cfg(feature = \"{FEATURE}\")]"),
@@ -206,5 +230,8 @@ fn c4_default_build_reads_the_system_clock() {
         .unwrap()
         .as_millis() as i64;
     let ours = crate::common::time::now_ms();
-    assert!((ours - sys).abs() < 5_000, "默认构建里 `now_ms()` 就是系统钟：{ours} vs {sys}");
+    assert!(
+        (ours - sys).abs() < 5_000,
+        "默认构建里 `now_ms()` 就是系统钟：{ours} vs {sys}"
+    );
 }
