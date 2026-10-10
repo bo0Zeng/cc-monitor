@@ -107,7 +107,9 @@ fn caps_child() {
         let h = spawn(
             std::io::Cursor::new(input.as_bytes().to_vec()),
             tx,
-            crate::stream::inbound::WatchDesk::for_tests(),
+            crate::stream::inbound::WatchDesk::new(|_| {
+                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            }),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("读循环");

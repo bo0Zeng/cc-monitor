@@ -950,7 +950,9 @@ fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> s
         crate::stream::inbound::spawn(
             std::io::Cursor::new(line.into_bytes()),
             tx,
-            crate::stream::inbound::WatchDesk::for_tests(),
+            crate::stream::inbound::WatchDesk::new(|_| {
+                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            }),
             crate::stream::wire::HelloFlushed::for_tests(),
         )
         .await

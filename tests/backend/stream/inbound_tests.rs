@@ -138,7 +138,9 @@ async fn one_line(input: &str) -> Vec<String> {
     let h = spawn(
         std::io::Cursor::new(input.as_bytes().to_vec()),
         tx,
-        crate::stream::inbound::WatchDesk::for_tests(),
+        crate::stream::inbound::WatchDesk::new(|_| {
+            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+        }),
         crate::stream::wire::HelloFlushed::for_tests(),
     );
     h.await.expect("reader task");
@@ -348,7 +350,9 @@ async fn an_oversized_line_does_not_grow_memory() {
                 nl_sent: false,
             },
             tx,
-            crate::stream::inbound::WatchDesk::for_tests(),
+            crate::stream::inbound::WatchDesk::new(|_| {
+                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            }),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("reader task");
@@ -427,7 +431,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
             &links,
             &xfers,
             &follows,
-            &WatchDesk::for_tests(),
+            &crate::stream::inbound::WatchDesk::new(|_| {
+                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            }),
         )
     };
 
@@ -964,7 +970,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &WatchDesk::for_tests()),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -981,7 +987,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &WatchDesk::for_tests()),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -1009,7 +1015,10 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     &links,
                     &xfers,
                     &follows,
-                    &WatchDesk::for_tests()
+                    &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<
+                        Vec<crate::stream::wire::WatchFrom>,
+                    >()
+                    .1)
                 ),
                 Disposition::SpawnBlocking(..)
             )
@@ -1063,7 +1072,9 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &links,
         &xfers,
         &follows,
-        &WatchDesk::for_tests(),
+        &crate::stream::inbound::WatchDesk::new(|_| {
+            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+        }),
     )
     .await;
 

@@ -106,7 +106,9 @@ fn d2_child_harness() {
         let _reader = spawn(
             tokio::io::stdin(),
             tx,
-            crate::stream::inbound::WatchDesk::for_tests(),
+            crate::stream::inbound::WatchDesk::new(|_| {
+                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            }),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         let stop = shutdown_listener();
