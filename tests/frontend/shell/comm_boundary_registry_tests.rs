@@ -1,5 +1,5 @@
 //! 通信层边界判据的本体 —— 模块头注（成员怎么认 · 十一条管什么 · 买到什么买不到什么）住
-//! `src/frontend/shell/src/comm_boundary_registry.rs`，不在这里抄第二份。
+//! `tests/frontend/shell/comm_boundary_registry.rs`，不在这里抄第二份。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

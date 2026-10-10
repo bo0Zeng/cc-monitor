@@ -52,7 +52,7 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
 /// 64 MiB 比本仓见过的任何一次请求都宽两个量级以上，同时把「一个数就能耗尽内存」这条路堵死。
-/// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 const BODY_CAP: usize = 64 * 1024 * 1024;
 /// **tee 侧解码缓冲**的字节上限（`SseSplitter` 的半行 · `ChunkedView` 攒着的那截）。
 ///

@@ -324,11 +324,8 @@ fn the_scan_actually_reads_the_monitor_rust_tree() {
 
     let files = rust_files();
     // 剥法自检：本文件自己剥完应当只剩几行（它整体是 cfg(test)）。
-    let me = files
-        .iter()
-        .find(|(n, _)| n == "src/rust_timer_registry.rs")
-        .map(|(_, s)| s.as_str())
-        .expect("扫不到本文件 —— 遍历器或路径坏了");
+    // 本模块的头（`rust_timer_registry.rs`）10-10 搬进了 `tests/`，不在被扫的生产树里 ⇒ 剥法自检直接读它。
+    let me: &str = include_str!("rust_timer_registry.rs");
     assert!(
         production(me).len() < me.len() / 2,
         "本文件剥完还剩一半以上 —— 剥法没生效，下面几条会把说明文字当成命中"

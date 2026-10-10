@@ -211,7 +211,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
     // ⇒ 把「已知的例外」变成「已修的缺陷」，头注那句警告随之删掉。
     srcs.push((
         PathBuf::from("doc_claim_registry.rs"),
-        include_str!("../../../src/frontend/shell/src/doc_claim_registry.rs").to_string(),
+        include_str!("doc_claim_registry.rs").to_string(),
     ));
     // `build.rs` 是单文件、不在任何被扫的目录下 —— 第一版就漏了它，
     // 于是 `build.rs` 里定义的函数（如 `build.rs::emit_embedded_id`）被当成「腐了」。**抽取器的扫描面要自己说清楚。**
@@ -848,7 +848,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
 ///
 /// 🔴 **成因不是「有人改漏了」，是「人群里根本没有它」**：那一件的「七处」＝
 /// [`the_release_version_is_the_same_in_all_six_places`] 数得到的那几处 ＋ `Cargo.lock`，
-/// 而现打 `grep -c '当前发布\|current release' src/frontend/shell/src/doc_claim_registry.rs`
+/// 而现打 `grep -c '当前发布\|current release' tests/frontend/shell/doc_claim_registry.rs`
 /// **零命中** —— **判据在，而它的人群不含这一处**。
 /// ★ 这与 `R73` 第五节登记的「判据在、执行面没有」是**同一族的镜像**：执行面在，人群不够。
 /// 而它的默认结局一样：**静默的绿**。

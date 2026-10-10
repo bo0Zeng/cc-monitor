@@ -122,7 +122,7 @@ const SCANNED: &[(&str, &str)] = &[
 
 // 🔴 〔步 7c 剖分 2026-09-19〕**原来这里有一条 `const SELF` 自摘，已按判据自己给的出路删掉。**
 //
-// 它排掉的是 `src/frontend/shell/src/atomic_replace_registry.rs`，理由是那份文件的
+// 它排掉的是 `tests/frontend/shell/atomic_replace_registry.rs`，理由是那份文件的
 // **示例字面量**（`MoveFileExW(` / `ReplaceFileW(`）会被下面的扫描当成真调用点。
 // 那些示例这一轮跟着测试段搬进了本文件，而 `call_sites()` 只扫 `src_root()`
 // （生产树）⇒ 生产段那份里一个示例都不剩 ⇒ **排除成了死规则**。

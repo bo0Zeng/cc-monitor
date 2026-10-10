@@ -543,7 +543,7 @@ mod tests {
         assert_eq!(lib, "pub const BUILD_ID: &str = \"p9c-three\";\n");
         assert_eq!(guard, guard0, "子命令集没变，表却被改了");
         // 变了：删最老那行（p9a）、追加新行（p9c，指纹取自 NEW-ROW）。
-        let red = "thread 'x' panicked at build_id_guard.rs:1:1:\nNEW-ROW: (\"<新 id>\", \"--a\\n--b\\n--c\")\ntest result: FAILED. 0 passed; 1 failed\n";
+        let red = "thread 'x' panicked:\nNEW-ROW: (\"<新 id>\", \"--a\\n--b\\n--c\")\ntest result: FAILED. 0 passed; 1 failed\n";
         let (said, lib, guard) = run("changed", red);
         assert!(said.trim_end().ends_with("BUMP: OK"), "变了那条路没走通：{said}");
         assert_eq!(lib, "pub const BUILD_ID: &str = \"p9c-three\";\n");

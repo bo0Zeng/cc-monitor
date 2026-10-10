@@ -63,7 +63,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// 〔`K-R61` 09-11 现打过一次：初版这里只写了四处，漏的正是 `plugin/probe.rs` 那一行 ——
 /// 而那一处本轮**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
 ///
-/// - `src/frontend/shell/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
+/// - `tests/frontend/shell/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
 ///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
 /// - `src/backend/plugin/probe.rs` 的
 ///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
