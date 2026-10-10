@@ -61,6 +61,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
             }
             Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
             Out::Runs { sid, .. } => format!("runs {sid}"),
+            Out::Branch { sid, .. } => format!("branch {sid}"),
         })
         .collect();
     assert_eq!(
@@ -116,6 +117,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
                 Out::Status { sid, .. } => format!("status {sid}"),
                 Out::Runs { origin, sid, .. } => format!("runs {origin}/{sid}"),
+                Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
             })
             .collect()
     };
@@ -249,4 +251,42 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
             .count(),
         0
     );
+}
+
+/// 主线外清单：原样转出去；F5 重放跟在那个活会话的宣告后面再说一次（最新那一份）；会话离开 ⇒ 不再重放。
+#[test]
+fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
+    let off = |ids: &str| crate::ui_contract::RecordBody::from_json(ids.to_string()).unwrap();
+    let branch = |s: &str, ids: &str| In::Branch {
+        origin: "pi".into(),
+        sid: s.into(),
+        off: off(ids),
+    };
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    b.step(live("pi", "b"));
+    assert_eq!(
+        b.step(branch("a", r#"["u1"]"#)),
+        vec![Out::Branch {
+            origin: "pi".into(),
+            sid: "a".into(),
+            off: off(r#"["u1"]"#)
+        }]
+    );
+    b.step(branch("a", r#"["u1","u2"]"#));
+    b.step(branch("b", r#"["x"]"#));
+    b.step(left("pi", "b", Fate::Ended));
+    // 同一个 sid 又活了（续接）：它离开前那份清单不算数，等那台再说。
+    b.step(live("pi", "b"));
+    let r = b.replay(&[]);
+    let got: Vec<String> = r
+        .before
+        .iter()
+        .map(|o| match o {
+            Out::Live { sid, .. } => format!("live {sid}"),
+            Out::Branch { sid, off, .. } => format!("branch {sid} {}", off.0.get()),
+            other => format!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(got, vec!["live a", r#"branch a ["u1","u2"]"#, "live b"]);
 }

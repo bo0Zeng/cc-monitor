@@ -24,7 +24,7 @@ import { describe, it, expect } from "vitest";
 import { buildInteractiveCard, settleInteractive } from "../../../../src/frontend/ui/cards/interactive";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 describe("交互等待类工具：不许被折进通用工具组", () => {
@@ -36,18 +36,16 @@ describe("交互等待类工具：不许被折进通用工具组", () => {
     pendingToolResults: new Map(),
     lazy: false,
   });
-  const ask = (cards: Record<string, string> | undefined): JsonlRecord =>
+  const ask = (cards: Record<string, string> | undefined): LineRecord =>
     ({
-      type: "assistant",
-      uuid: "a",
-      timestamp: "2026-01-01T00:00:00.000Z",
-      message: {
-        role: "assistant",
-        content: [
-          { type: "tool_use", id: "t1", name: "AskUserQuestion", input: { questions: [{ question: "q?", options: [{ label: "x" }] }] } },
-        ],
-      },
-      ...(cards ? { toolCards: cards } : {}),
+      agent: "claude",
+      t: "reply",
+      id: "a",
+      at: "2026-01-01T00:00:00.000Z",
+      blocks: [{ type: "tool_use", id: "t1", name: "AskUserQuestion", input: { questions: [{ question: "q?", options: [{ label: "x" }] }] } }],
+      autoReply: false,
+      endsTurn: false,
+      ...(cards ? { cards } : {}),
     }) as never;
 
   it("★ 后端说这是交互卡（`toolCards` 里是 `interactive`）⇒ 默认可见的一张卡，不进工具组", () => {

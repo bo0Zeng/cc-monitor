@@ -2,22 +2,23 @@
 //! 查看器整页 · 按偏移 · 按行号 · 子 agent）共用的那一个核。
 //!
 //! 它只做「通用的流式读取机器」那一半：切行 · 可计行编号（口径只住 `history_query::line_counts`）· 挑哪一家来解释
-//! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 装成品。**一行在渲染模型里是什么**住适配层
-//! （`agents/<名>/` 的 `RecordFace.parse`）—— 进不进界面、`cwd` 都是适配层给的。
+//! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 配排队消息的打字时刻（[`TypedTimes`]，只认适配层给的
+//! [`crate::agents::QueueMark`]）· 装成品。**一行在界面里是什么**住适配层（`agents/<名>/` 的 `RecordFace.parse`，出通用记录）。
 //!
-//! 这里**只读渲染模型里正文住的那三个键名**（[`fold_body`]，只在客户端索要折起那一形时），**一家自己的字段一个都不读**：
-//! 渲染模型（`JsonlRecord`）是**所有适配层共用的那一个**（Codex 那一家也映射进它，见 `agents/codex/record.rs`）
-//! ⇒「正文住哪几格」是通用层的契约，不是某一家的形状；折起那一形**只有一份**，走适配层的能力位只会是一份实现加一道转手。
+//! 这里**只读通用记录里正文住的那几个键名**（[`fold_body`]，只在客户端索要折起那一形时），**一家自己的字段一个都不读**。
 //!
-//! 三种成品（前两种的第三个参数 `summary_only` 选装哪一形，见 [`fold_body`]）：
-//! - **行摘要**（[`rows_of`]，给 monitor 旁路快照）：每个可计行 `{end, hash, message?, cwd?}` —— `end` 是这一行（含 `\n`）
+//! 三种成品（都经一个 [`Reader`]：它带着打字时刻表，也带着要不要折起那一形）：
+//! - **行摘要**（[`rows_of`]，给 monitor 旁路快照）：每个可计行 `{end, hash, record?, cwd?}` —— `end` 是这一行（含 `\n`）
 //!   之后那个字节的偏移（后端读的是原始字节 ⇒ 永远说得准；没 `\n` 收尾的残尾 ⇒ `null`），`hash` 是这一行正文的摘要
-//!   （续传前核「还是不是那一行」用，[`line_hash`]）。`message` 缺 ＝ 不进界面（照占号）。
-//! - **记录行**（[`record_lines`]，给界面）：只装进界面的那些，`{session_id, path, seq, cwd, message}`（`JsonlLinePayload`
+//!   （续传前核「还是不是那一行」用，[`line_hash`]）。`record` 缺 ＝ 不进界面（照占号）。
+//! - **记录行**（[`record_lines`]，给界面）：只装进界面的那些，`{session_id, path, seq, cwd, record}`（`JsonlLinePayload`
 //!   去掉流机器那两格：`origin` 由问的那一方知道 · `skipped_from` 只属实时流）。
-//! - **折起那一行的成品**（上面两种各自的 `summary_only` 置真）：形状与行数一格不差，只是每条的 `message` 剥掉正文那几格。
+//! - **子运行那一页**（[`run_rows`]）：`{record, rid?}`。
+//!
+//! 一页从文件中段起读时，调用方把起点之前 [`QUEUE_LOOKBACK_BYTES`] 以内那一段一起交进来（[`Reader::new`]），只为配打字时刻。
 
-use crate::agents::{ParsedLine, RecordFace};
+use crate::agents::record::TypedTimes;
+use crate::agents::RecordFace;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -31,8 +32,9 @@ pub(crate) fn line_hash(body: &[u8]) -> u64 {
     })
 }
 
-/// 一页原始字节 ⇒ 逐行 `(正文, 末端)`：正文去掉 `\n` 与行尾 `\r`；末端 ＝ 这一行（含 `\n`）之后那个字节的偏移，残尾 ⇒ `None`。
-fn split_lines(offset: u64, bytes: &[u8]) -> Vec<(&[u8], Option<u64>)> {
+/// 一页原始字节 ⇒ 逐行 `(正文, 起点, 末端)`：正文去掉 `\n` 与行尾 `\r`；起点 ＝ 这一行第一个字节的偏移；
+/// 末端 ＝ 这一行（含 `\n`）之后那个字节的偏移，残尾 ⇒ `None`。
+fn split_lines_full(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64, Option<u64>)> {
     let mut out = Vec::new();
     let mut at = 0usize;
     while at < bytes.len() {
@@ -42,70 +44,122 @@ fn split_lines(offset: u64, bytes: &[u8]) -> Vec<(&[u8], Option<u64>)> {
         };
         let consumed = seg.len() + usize::from(had_nl);
         let end = had_nl.then(|| offset + (at + consumed) as u64);
-        out.push((seg.strip_suffix(b"\r").unwrap_or(seg), end));
+        out.push((
+            seg.strip_suffix(b"\r").unwrap_or(seg),
+            offset + at as u64,
+            end,
+        ));
         at += consumed;
     }
     out
 }
 
-/// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
-/// `summary_only` 置真 ⇒ 出成品之前先剥正文（[`fold_body`]）：进不进界面、行号怎么占**都不受它影响**（剥的只是已出成品的内容）。
-fn interpret(face: &RecordFace, body: &[u8], summary_only: bool) -> Option<ParsedLine> {
-    match (face.parse)(&String::from_utf8_lossy(body)) {
-        Ok(Some(mut p)) if p.displayable => {
-            if summary_only {
-                fold_body(&mut p.message);
-            }
-            Some(p)
+/// 往回多看多少字节配排队消息的打字时刻：一页从文件中段起读时，`queued` 那条的打字时刻（那一家写在更早的一行上）
+/// 可能落在上一页。排队消息与它被插进那一轮的那一条实测相隔两分钟量级 ⇒ 上界固定，配不上照用那条自己的时刻。
+pub(crate) const QUEUE_LOOKBACK_BYTES: u64 = 512 * 1024;
+
+/// 一页起点 `offset` 之前那一段（[`QUEUE_LOOKBACK_BYTES`] 以内）⇒ `(它的起点, 原始字节)`；从文件头读 / 读不动 ⇒ 空。
+/// `target` 是已过围栏的那份记录。
+pub(crate) fn lead_of(target: &Path, offset: u64) -> (u64, Vec<u8>) {
+    use std::io::{Read, Seek, SeekFrom};
+    let at = offset.saturating_sub(QUEUE_LOOKBACK_BYTES);
+    let mut buf = Vec::new();
+    let read = std::fs::File::open(target).and_then(|mut f| {
+        f.seek(SeekFrom::Start(at))?;
+        f.take(offset - at).read_to_end(&mut buf)
+    });
+    match read {
+        Ok(_) => (at, buf),
+        Err(_) => (offset, Vec::new()),
+    }
+}
+
+/// 一页的读法：适配层 ＋ 打字时刻表（往回多看那一段已经喂过）＋ 要不要折起那一形。
+pub(crate) struct Reader<'a> {
+    face: &'a RecordFace,
+    typed: TypedTimes,
+    summary_only: bool,
+}
+
+impl<'a> Reader<'a> {
+    /// `lead` ＝ 这一页起点之前那一段原始字节（[`QUEUE_LOOKBACK_BYTES`] 以内；从文件头读 ⇒ 空），`lead_at` 是它在文件里的起点。
+    /// 只拿来配打字时刻：不出成品、不占号；开头那半截行（从行中间起的）解析不出，自然跳过。
+    pub(crate) fn new(face: &'a RecordFace, lead_at: u64, lead: &[u8], summary_only: bool) -> Self {
+        let mut r = Self {
+            face,
+            typed: TypedTimes::default(),
+            summary_only,
+        };
+        for (body, start) in split_starts(lead_at, lead) {
+            r.interpret(body, start); // 只为喂打字时刻表：成品不要
         }
-        Ok(_) => None,
-        Err(e) => {
-            tracing::debug!("record_page: 解析不出的一行（照占号、不出成品）: {e}");
-            None
+        r
+    }
+
+    /// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
+    /// `summary_only` ⇒ 出成品之前先剥正文（[`fold_body`]）：进不进界面、行号怎么占**都不受它影响**。
+    fn interpret(&mut self, body: &[u8], start: u64) -> Option<(Value, Option<String>)> {
+        match (self.face.parse)(&String::from_utf8_lossy(body), start) {
+            Ok(Some(mut t)) => {
+                self.typed.pass(&mut t);
+                let mut record = serde_json::to_value(t.record?).ok()?;
+                if self.summary_only {
+                    fold_body(&mut record);
+                }
+                Some((record, t.cwd))
+            }
+            Ok(None) => None,
+            Err(e) => {
+                tracing::debug!("record_page: 解析不出的一行（照占号、不出成品）: {e}");
+                None
+            }
         }
     }
 }
 
-/// **剥掉渲染模型里正文住的那几格** —— 客户端索要「折起那一行的成品」（`summaryOnly`）时走这一下。
+/// **剥掉通用记录里正文住的那几格** —— 客户端索要「折起那一行的成品」（`summaryOnly`）时走这一下。
 ///
-/// 剥的是三个键名，按名字剥、不认记录类型（通用层不许按 `type` 分支）：
-/// - `message.content` —— user / assistant 的正文 · 思考 · 工具入参 · 工具结果，**省流量的就是这一格**；
-///   `message` 这个对象留着（`role` · `model` · `usage` · `stop_reason` 合起来几十字节，而折起那一行要按 `usage` 报字数）。
-/// - `raw` —— `cc-monitor-unrecognized` 抢救下来的整行原文（Codex 那一家的事件行全是这一形）：它就是那一条的全部正文。
-/// - `content` —— `queue-operation` 的排队正文；它的折起形是 `userText`（后端已判好「谁说的」），界面本来就只读成品那一格。
+/// 剥的是键名，按名字剥、不认记录类别：
+/// - `blocks` —— 正文 · 推理 · 工具入参 · 工具结果，**省流量的就是这一格**；
+/// - `results.*.patch` / `patchTruncated` —— 改动结果的逐段改动（折起那一行只要「+N −M」那一句）。
 ///
-/// 剥完**剩下的正好是折起那一行要用的**：时刻 `timeText` · 谁说的 `userText` · 一行人话 `toolSteps` · 卡型 `toolCards`
-/// · 结果一句 `toolResults` · 报错种类 `apiReason` 与机器可读的 `error`（都不是正文：前者是后端判好的种类，后者是折起的报错卡要读的那一格）
-/// · 链上身份 `uuid` / `parentUuid` / `sessionId`。
+/// 剥完**剩下的正好是折起那一行要用的**：时刻 `timeText` · 谁说的 `who` · 一行人话 `steps` · 卡型 `cards`
+/// · 结果一句 `results`（去掉逐段改动）· 报错 `error` · 型号 `model`。
 ///
 /// **剥 ≠ 置空**：这几格是**删掉**而不是给 `null` / `[]` —— 给个空值等于说「这一条没有正文」，那是假话；
-/// 删掉才说得准「这一帧里没有这一格」。要正文的客户端不置这个开关，一切照旧（见 [`rows_of`] / [`record_lines`] 的默认实参）。
-fn fold_body(message: &mut Value) {
-    if let Some(m) = message.get_mut("message").and_then(Value::as_object_mut) {
-        m.remove("content");
-    }
-    if let Some(o) = message.as_object_mut() {
-        o.remove("raw");
-        o.remove("content");
+/// 删掉才说得准「这一帧里没有这一格」。要正文的客户端不置这个开关，一切照旧。
+fn fold_body(record: &mut Value) {
+    let Some(o) = record.as_object_mut() else {
+        return;
+    };
+    o.remove("blocks");
+    if let Some(results) = o.get_mut("results").and_then(Value::as_object_mut) {
+        for r in results.values_mut().filter_map(Value::as_object_mut) {
+            r.remove("patch");
+            r.remove("patchTruncated");
+        }
     }
 }
 
-/// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
-/// `summary_only` 置真 ⇒ 每条的 `message` 剥掉正文（[`fold_body`]）；`end` / `hash` / `cwd` 与条数一格不变。
-pub(crate) fn rows_of(
-    face: &RecordFace,
-    offset: u64,
-    bytes: &[u8],
-    summary_only: bool,
-) -> Vec<Value> {
-    split_lines(offset, bytes)
+/// 一页原始字节 ⇒ 逐行 `(正文, 起点)`（[`split_lines`] 的起点那一形）。
+fn split_starts(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64)> {
+    split_lines_full(offset, bytes)
         .into_iter()
-        .filter(|(body, _)| super::history_query::line_counts(body))
-        .map(|(body, end)| {
+        .map(|(body, start, _)| (body, start))
+        .collect()
+}
+
+/// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件 `{end, hash, record?, cwd?}`。
+/// `summary_only`（建 [`Reader`] 时给）⇒ 每条的 `record` 剥掉正文（[`fold_body`]）；`end` / `hash` / `cwd` 与条数一格不变。
+pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+    split_lines_full(offset, bytes)
+        .into_iter()
+        .filter(|(body, _, _)| super::history_query::line_counts(body))
+        .map(|(body, start, end)| {
             let mut row = json!({ "end": end, "hash": line_hash(body) });
-            if let Some(p) = interpret(face, body, summary_only) {
-                row["message"] = p.message;
-                if let Some(cwd) = p.cwd {
+            if let Some((record, cwd)) = reader.interpret(body, start) {
+                row["record"] = record;
+                if let Some(cwd) = cwd {
                     row["cwd"] = Value::String(cwd);
                 }
             }
@@ -114,77 +168,62 @@ pub(crate) fn rows_of(
         .collect()
 }
 
-/// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些。回 `(成品, 下一个行号)`。
-/// `summary_only` 置真 ⇒ 每条的 `message` 剥掉正文（[`fold_body`]）；行号怎么占、哪几条出成品**都不变**。
-pub(crate) fn record_lines<'a>(
-    face: &RecordFace,
+/// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些。`lines` 每条带它的起点字节偏移。回 `(成品, 下一个行号)`。
+pub(crate) fn record_lines<'b>(
+    reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
-    lines: impl IntoIterator<Item = &'a [u8]>,
-    summary_only: bool,
+    lines: impl IntoIterator<Item = (&'b [u8], u64)>,
 ) -> (Vec<Value>, u64) {
-    let sid = (face.sid)(path).unwrap_or_default();
+    let sid = (reader.face.sid)(path).unwrap_or_default();
     let path_str = path.to_string_lossy();
     let mut next = seq;
     let mut out = Vec::new();
-    for body in lines {
+    for (body, start) in lines {
         if !super::history_query::line_counts(body) {
             continue;
         }
         let at = next;
         next += 1;
-        if let Some(p) = interpret(face, body, summary_only) {
+        if let Some((record, cwd)) = reader.interpret(body, start) {
             out.push(json!({
                 "session_id": sid,
                 "path": path_str,
                 "seq": at,
-                "cwd": p.cwd,
-                "message": p.message,
+                "cwd": cwd,
+                "record": record,
             }));
         }
     }
     (out, next)
 }
 
-/// [`record_lines`] 喂一页原始字节（`history-page`）；`summary_only` 原样递下去。
+/// [`record_lines`] 喂一页原始字节（`history-page`；`offset` 是这一页在文件里的起点）。
 pub(crate) fn record_lines_of_page(
-    face: &RecordFace,
+    reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
+    offset: u64,
     bytes: &[u8],
-    summary_only: bool,
 ) -> (Vec<Value>, u64) {
-    record_lines(
-        face,
-        path,
-        seq,
-        split_lines(0, bytes).into_iter().map(|(body, _)| body),
-        summary_only,
-    )
+    record_lines(reader, path, seq, split_starts(offset, bytes))
 }
 
-/// 一页子运行记录（`history-run`）：认得出的每一条给 `{message, rid?}`（进不进界面由界面按记录类型定 —— 这一面是
-/// 「整份摆出来看」，与主会话那条路不同）；`rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出的行跳过。
-pub(crate) fn run_rows(face: &RecordFace, bytes: &[u8]) -> Vec<Value> {
-    let faces = crate::agents::RunFaces::of(face);
-    split_lines(0, bytes)
+/// 一页子运行记录（`history-run`，`offset` 是这一页在文件里的起点）：出了记录的每一条给 `{record, rid?}`；
+/// `rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出 / 不进界面的行跳过。
+pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+    let faces = crate::agents::RunFaces::of(reader.face);
+    split_starts(offset, bytes)
         .into_iter()
-        .filter_map(|(body, _)| {
+        .filter_map(|(body, start)| {
+            let (record, _) = reader.interpret(body, start)?;
             let text = String::from_utf8_lossy(body);
-            let message = match (face.parse)(&text) {
-                Ok(Some(p)) => p.message,
-                Ok(None) => return None,
-                Err(e) => {
-                    tracing::warn!("run record parse skip: {e}");
-                    return None;
-                }
-            };
             let rid = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
                 .ok()
                 .and_then(|v| faces.response_id(&v));
             Some(match rid {
-                Some(rid) => serde_json::json!({ "message": message, "rid": rid }),
-                None => serde_json::json!({ "message": message }),
+                Some(rid) => json!({ "record": record, "rid": rid }),
+                None => json!({ "record": record }),
             })
         })
         .collect()

@@ -204,9 +204,9 @@ const LONG_NOSPACE = "refactor_inventory_client_retry_timeout_config_loader_and_
 
 function longTitleWorld(): World {
   const w = defaultWorld();
-  w.sessions[0].records.push({ type: "ai-title", aiTitle: LONG_MIXED, sessionId: w.sessions[0].sid } as never);
-  w.sessions[1].records.push({ type: "ai-title", aiTitle: LONG_NOSPACE, sessionId: w.sessions[1].sid } as never);
-  w.sessions[2].records.push({ type: "ai-title", aiTitle: LONG_MIXED, sessionId: w.sessions[2].sid } as never);
+  w.sessions[0].records.push({ agent: "claude", id: "@title-long-0", t: "title", text: LONG_MIXED, by: "agent" });
+  w.sessions[1].records.push({ agent: "claude", id: "@title-long-1", t: "title", text: LONG_NOSPACE, by: "agent" });
+  w.sessions[2].records.push({ agent: "claude", id: "@title-long-2", t: "title", text: LONG_MIXED, by: "agent" });
   return w;
 }
 
@@ -327,7 +327,17 @@ export const MAIN_SCENES: Scene[] = [
     const w = defaultWorld();
     // 第一个会话此刻在跑一步 Bash（两分钟前开始、还没结果）。
     const at = new Date(Date.now() - 125_000).toISOString();
-    w.sessions[0].records.push({ type: "assistant", timestamp: at, timeText: hm(Date.now() - 125_000), message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }] } } as never);
+    w.sessions[0].records.push({
+      agent: "claude",
+      id: "a-run-step",
+      at,
+      timeText: hm(Date.now() - 125_000),
+      t: "reply",
+      blocks: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }],
+      autoReply: false,
+      endsTurn: false,
+      steps: { toolu_run: { tool: "Bash", arg: "pytest -q tests/test_inventory_client.py", known: true } },
+    });
     return w;
   }),
   main("main-step-awaiting", "主窗口 · 过程里那一步在等你批准", "在等批准的会话：过程里那一步琥珀点 ·「等你批准」· 右侧已等多久（后端 needs.call 指的那一步）", async () => {

@@ -2,13 +2,14 @@
  * 秤 2（表第 2 行）的**语料构造器** —— 真浏览器那一侧与 jsdom 门禁那一侧
  * **共用同一份**，否则"估值"与"真值"就不是同一张卡的两个读数，整杆秤失去意义。
  *
- * 它做的事只有一件：`JSONL 记录 → 真实卡片 DOM`，走的是生产的总分发器
+ * 它做的事只有一件：`通用记录 → 真实卡片 DOM`，走的是生产的总分发器
  * `renderMessage(rec, ctx)`（`src/frontend/ui/cards/index.ts`），不是手搭 DOM。
  *
  * # 语料从哪来
  *
- * - **真形语料**（`source: "shaped"`）：`tests/__fixtures__/scale2-height-records.jsonl`，
- *   由 `tests/evidence/U-scale2-sample-records.ts` 产出。
+ * - **真形语料**（`source: "shaped"`）：`tests/__fixtures__/scale2-height-line-records.jsonl`（通用记录，一行一条），
+ *   由后端把 `tests/__fixtures__/scale2-height-records.jsonl`（盘上原文，`tests/evidence/U-scale2-sample-records.ts` 产出）
+ *   经 `history-page` 翻成的成品（一行对一行、`timeText` 去掉 —— 钟面由下面按测试钉的时区补）。
  *   🔴 **结构采自真机 `~/.claude/projects`，正文一个字都不是真的。**
  *   逐字符同形替换：字符数 / 行数 / 每行长度 / 显示宽度 / 断词位置 / markdown 结构 /
  *   块的种类与数量 / CJK:ASCII 比例**逐位相同**，而字母、数字、汉字全部换成
@@ -41,17 +42,12 @@
  *   `SUMMARY_H` 那一支对齐。
  */
 import { withTimeText } from "../../test-support/time-text";
-import { withUserText } from "../../test-support/user-text";
 import {
   renderMessage,
   buildToolGroup,
   addToToolGroup,
 } from "../../../src/frontend/ui/cards/index";
-import type {
-  JsonlRecord,
-  RenderContext,
-  ContentBlock,
-} from "../../../src/frontend/ui/cards/index";
+import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 export interface CorpusItem {
@@ -127,51 +123,46 @@ function cardClassOf(el: HTMLElement): string {
 
 const lines = (n: number): string => Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
 
-/** 一条手工 user 记录；`speaker` 是后端会判出的来源（夹具显式写，前端不判）。人与压缩摘要的正文就是原文 trim。 */
-function userText(text: string, timestamp: string, uuid: string, speaker: Record<string, unknown> = { kind: "human" }): JsonlRecord {
+/** 一条手工 said 记录；`speaker` 是后端会判出的来源（夹具显式写，前端不判）。人与压缩摘要的正文就是原文 trim。 */
+function userText(text: string, at: string, id: string, speaker: Record<string, unknown> = { kind: "human" }): LineRecord {
   const shown = speaker.kind === "human" || speaker.kind === "compactSummary";
   return {
-    type: "user",
-    uuid,
-    parentUuid: null,
-    timestamp,
-    message: { role: "user", content: text },
-    userText: { speaker, text: shown ? text.trim() : "" },
-  } as unknown as JsonlRecord;
+    agent: "claude",
+    t: "said",
+    id,
+    at,
+    blocks: [{ type: "text", text }],
+    who: { speaker, text: shown ? text.trim() : "" },
+  } as unknown as LineRecord;
 }
 
-/** `card-api-retry`：`system` + `subtype:"api_error"`（`cards/index.ts` 的 api_error 那一支） */
-function apiRetry(i: number, formatted: string): JsonlRecord {
+/** `card-api-retry`：`t: "retry"`（`cards/index.ts` 的重试那一支）。原因种类不给（同真语料里认不出原因的那一形）。 */
+function apiRetry(i: number, _formatted: string): LineRecord {
   return {
-    type: "system",
-    subtype: "api_error",
-    uuid: `syn-retry-${i}`,
-    parentUuid: null,
-    timestamp: "2026-09-18T12:34:56.000Z",
-    retryAttempt: (i % 5) + 1,
-    maxRetries: 5,
-    error: { formatted },
-  } as unknown as JsonlRecord;
+    agent: "claude",
+    t: "retry",
+    id: `syn-retry-${i}`,
+    at: "2026-09-18T12:34:56.000Z",
+    attempt: (i % 5) + 1,
+    max: 5,
+  } as unknown as LineRecord;
 }
 
-/** `card-api-error`：`assistant` + `isApiErrorMessage` */
-function apiError(i: number, text: string): JsonlRecord {
+/** `card-api-error`：回复 ＋ `error`（上游最终失败写的那一条）。 */
+function apiError(i: number, text: string): LineRecord {
   return {
-    type: "assistant",
-    uuid: `syn-apierr-${i}`,
-    parentUuid: null,
-    timestamp: "2026-09-18T12:34:56.000Z",
-    isApiErrorMessage: true,
-    error: "overloaded_error",
-    apiErrorStatus: 529,
-    message: {
-      role: "assistant",
-      content: [{ type: "text", text } as ContentBlock],
-    },
-  } as unknown as JsonlRecord;
+    agent: "claude",
+    t: "reply",
+    id: `syn-apierr-${i}`,
+    at: "2026-09-18T12:34:56.000Z",
+    blocks: [{ type: "text", text }],
+    autoReply: false,
+    endsTurn: false,
+    error: { status: 529 },
+  } as unknown as LineRecord;
 }
 
-const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
+const SYNTHETIC: { rec: LineRecord; note: string }[] = [
   // ── card-api-retry：细条，本轮三个悬案的主角 ──
   ...[
     "Connection error (ECONNRESET)",
@@ -304,7 +295,7 @@ const SYNTHETIC: { rec: JsonlRecord; note: string }[] = [
 ];
 
 /**
- * 构造整份语料。`fixtureJsonl` 是 `tests/__fixtures__/scale2-height-records.jsonl`
+ * 构造整份语料。`fixtureJsonl` 是 `tests/__fixtures__/scale2-height-line-records.jsonl`
  * 的全文（浏览器侧用 vite 的 `?raw`，jsdom 侧用 `readFileSync`）。
  */
 export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
@@ -314,9 +305,9 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
 
   for (const line of fixtureJsonl.split("\n")) {
     if (!line.trim()) continue;
-    let rec: JsonlRecord;
+    let rec: LineRecord;
     try {
-      rec = withTimeText(withUserText(JSON.parse(line) as JsonlRecord)); // 后端那两格成品
+      rec = withTimeText(JSON.parse(line) as LineRecord); // 钟面按测试钉的时区补
     } catch {
       continue;
     }

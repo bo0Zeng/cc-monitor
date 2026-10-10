@@ -3,7 +3,8 @@
  */
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
+import { usageOf } from "./records";
 import type { OpHandler, SessionSpec, World } from "./types";
 
 export const jsonlPathOf = (s: SessionSpec): string => `${s.cwd}/${s.sid}.jsonl`;
@@ -13,8 +14,8 @@ function sessionByPath(w: World, path: unknown): SessionSpec | undefined {
 }
 
 /** 记录行的字节布局（骨架 / 大纲按偏移读）：每条一行 JSON。 */
-const layouts = new WeakMap<JsonlRecord[], { at: { o: number; n: number }[]; end: number }>();
-function layout(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: number } {
+const layouts = new WeakMap<LineRecord[], { at: { o: number; n: number }[]; end: number }>();
+function layout(records: LineRecord[]): { at: { o: number; n: number }[]; end: number } {
   // 记一份（同一个数组只量一次）：长会话每问都整份 stringify 一遍，假后端自己就占掉页里一大截主线程（性能台架量的是产品）。
   const had = layouts.get(records);
   if (had && had.at.length === records.length) return had;
@@ -22,7 +23,7 @@ function layout(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: 
   layouts.set(records, fresh);
   return fresh;
 }
-function layoutOnce(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: number } {
+function layoutOnce(records: LineRecord[]): { at: { o: number; n: number }[]; end: number } {
   let o = 0;
   const at = records.map((r) => {
     const n = JSON.stringify(r).length + 1;
@@ -33,16 +34,15 @@ function layoutOnce(records: JsonlRecord[]): { at: { o: number; n: number }[]; e
   return { at, end: o };
 }
 
-const textOf = (r: JsonlRecord): string => {
-  if (r.type === "user") return r.userText.text;
-  if (r.type === "assistant" && Array.isArray(r.message.content)) {
-    return (r.message.content as { type: string; text?: string }[])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text ?? "")
-      .join("\n");
-  }
-  return "";
-};
+type Said = Extract<LineRecord, { t: "said" }>;
+type Reply = Extract<LineRecord, { t: "reply" }>;
+const isSaid = (r: LineRecord): r is Said => r.t === "said";
+const isReply = (r: LineRecord): r is Reply => r.t === "reply";
+/** 回复里的正文块（按块）。 */
+const replyTexts = (r: Reply): string[] => r.blocks.flatMap((b) => (b.type === "text" ? [b.text] : []));
+const textOf = (r: LineRecord): string => (isSaid(r) ? r.who.text : isReply(r) ? replyTexts(r).join("\n") : "");
+/** 骨架索引的 `t` 是那一家记录原文的类别（Claude：user / assistant / system …）。 */
+const RAW_KIND: Record<LineRecord["t"], string> = { said: "user", reply: "assistant", retry: "system", title: "ai-title", queued: "queue-operation" };
 
 export const ACCOUNTS = [
   { name: "work", email: "work@example.com", authKind: "subscription", isDefault: true },
@@ -206,7 +206,7 @@ export function defaultOps(): Record<string, OpHandler> {
       while (i1 < recs.length && at[i1].o < until) i1++;
       const base = req.seq === undefined ? i0 : Number(req.seq);
       return {
-        lines: recs.slice(i0, i1).map((message, k) => ({ session_id: s?.sid ?? "", path, seq: base + k, cwd: s?.cwd ?? null, message })),
+        lines: recs.slice(i0, i1).map((record, k) => ({ session_id: s?.sid ?? "", path, seq: base + k, cwd: s?.cwd ?? null, record })),
         next: i1 < recs.length ? at[i1].o : end,
         nextSeq: base + (i1 - i0),
         eof: i1 >= recs.length || (i1 < recs.length && at[i1].o >= until),
@@ -222,7 +222,7 @@ export function defaultOps(): Record<string, OpHandler> {
         from,
         next: from + recs.length,
         eof: from + recs.length >= s.records.length,
-        lines: recs.map((message, i) => ({ session_id: s.sid, path: jsonlPathOf(s), seq: from + i, cwd: s.cwd, message })),
+        lines: recs.map((record, i) => ({ session_id: s.sid, path: jsonlPathOf(s), seq: from + i, cwd: s.cwd, record })),
       };
     },
     "history-index": (_o, req, w) => {
@@ -230,15 +230,13 @@ export function defaultOps(): Record<string, OpHandler> {
       const { at, end } = layout(recs);
       const rows = recs.map((r, i) => {
         const t = textOf(r);
-        const row: Record<string, unknown> = { o: at[i].o, n: at[i].n, t: r.type, ch: t.length, pl: t.split("\n").filter((l) => l.trim() !== "").length };
-        if ("uuid" in r && r.uuid) row.u = r.uuid;
-        if (r.type === "user" && t) {
+        const row: Record<string, unknown> = { o: at[i].o, n: at[i].n, t: RAW_KIND[r.t], ch: t.length, pl: t.split("\n").filter((l) => l.trim() !== "").length };
+        row.u = r.id;
+        if (isSaid(r) && t) {
           row.x = t;
-          row.ts = r.timestamp;
+          row.ts = r.at;
         }
-        if ((r.type === "user" || r.type === "assistant") && Array.isArray(r.message.content)) {
-          row.fd = (r.message.content as { type: string }[]).filter((b) => b.type !== "text").length;
-        }
+        if (isSaid(r) || isReply(r)) row.fd = r.blocks.filter((b) => b.type !== "text").length;
         return row;
       });
       return { from: 0, end, rows };
@@ -249,8 +247,8 @@ export function defaultOps(): Record<string, OpHandler> {
         from: 0,
         end: layout(recs).end,
         entries: recs
-          .filter((r): r is Extract<JsonlRecord, { type: "user" }> => r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "")
-          .map((r) => ({ uuid: r.uuid, excerpt: r.userText.text.slice(0, 120), timestamp: r.timestamp })),
+          .filter((r): r is Said => isSaid(r) && r.who.speaker.kind === "human" && r.who.text !== "")
+          .map((r) => ({ uuid: r.id, excerpt: r.who.text.slice(0, 120), timestamp: r.at })),
       };
     },
     // 一轮的摘要：照后端 `observe/turns.rs` 那几条口径（人说的一句起、到下一句；结尾 ＝ 最后一次工具调用之后带正文的那几条，没有 ⇒ 中断标记 / 报错卡；
@@ -276,8 +274,7 @@ export function defaultOps(): Record<string, OpHandler> {
           if (no.failed) t.fails++;
         }
         if (t.ending.length === 0 && x.stop) t.ending = [x.stop];
-        const texts = recs.filter((r): r is Extract<JsonlRecord, { type: "assistant" }> => r.type === "assistant" && t.ending.includes(r.uuid));
-        const body = texts.flatMap((r) => ((r.message.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text ?? "")));
+        const body = recs.filter((r): r is Reply => isReply(r) && t.ending.includes(r.id)).flatMap(replyTexts);
         // 只取正文行：代码块整块不算；只有代码 ⇒「仅代码」（同后端 `turns.rs::reply_head`）。
         let fenced = false;
         let code = false;
@@ -304,16 +301,17 @@ export function defaultOps(): Record<string, OpHandler> {
         t.span = b - a >= 1000 ? { text: copyText("rsTurns.span.done", { when, dur: "{dur}" }), from: a, to: b } : { text: when, from: null, to: null };
       };
       recs.forEach((r, i) => {
-        const sp = r.type === "user" ? r.userText.speaker : null;
-        const head = sp !== null && r.type === "user" && r.uuid && ((sp.kind === "human" && r.userText.text !== "") || sp.kind === "slashCommand" || sp.kind === "bashInput");
-        if (head && r.type === "user") {
+        const sp = isSaid(r) ? r.who.speaker : null;
+        const head = sp !== null && isSaid(r) && ((sp.kind === "human" && r.who.text !== "") || sp.kind === "slashCommand" || sp.kind === "bashInput");
+        if (head && isSaid(r)) {
           if (cur && acc) {
             cur.done = true;
             close(cur, acc);
           }
-          const said = sp!.kind === "slashCommand" ? `${(sp as { name: string }).name} ${(sp as { args?: string }).args ?? ""}`.trim() : r.userText.text;
+          const said = sp!.kind === "slashCommand" ? `${(sp as { name: string }).name} ${(sp as { args?: string }).args ?? ""}`.trim() : r.who.text;
+          const when = r.at ?? "";
           cur = {
-            at: at[i].o, uuid: r.uuid!, start: r.timestamp, end: r.timestamp, startText: hm(Date.parse(r.timestamp)), endText: hm(Date.parse(r.timestamp)), said: said.split("\n")[0].slice(0, 50),
+            at: at[i].o, uuid: r.id, start: when, end: when, startText: hm(Date.parse(when)), endText: hm(Date.parse(when)), said: said.split("\n")[0].slice(0, 50),
             tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, ending: [], reply: "", done: false, phase: "idle", parts: [], span: { text: "", from: null, to: null },
           };
           acc = { middles: 0, compacts: 0, stop: null, notices: [], runs: [], agentCalls: [], pending: [] };
@@ -322,52 +320,52 @@ export function defaultOps(): Record<string, OpHandler> {
           return;
         }
         if (!cur || !acc) return;
-        const rr = r as { type: string; subtype?: string; timestamp?: string };
-        if (rr.type === "system" && rr.subtype === "api_error") {
+        if (r.t === "retry") {
           cur.retries++;
           return;
         }
-        if (r.type !== "user" && r.type !== "assistant") return;
-        cur.end = r.timestamp;
-        cur.endText = hm(Date.parse(r.timestamp));
-        const content = Array.isArray(r.message.content) ? (r.message.content as { type: string; id?: string; name?: string; text?: string; is_error?: boolean; tool_use_id?: string; input?: Record<string, unknown> }[]) : [];
-        if (r.type === "assistant") {
+        if (!isSaid(r) && !isReply(r)) return;
+        cur.end = r.at ?? cur.end;
+        cur.endText = hm(Date.parse(cur.end));
+        if (isReply(r)) {
           acc.stop = null;
-          const kids = (r as { childRuns?: Record<string, unknown> }).childRuns ?? {};
+          const kids = r.runs ?? {};
           let called = false;
-          for (const b of content) {
+          for (const b of r.blocks) {
             if (b.type === "tool_use") {
               called = true;
-              if (b.id && b.id in kids) {
+              if (b.id in kids) {
                 cur.agents++;
                 acc.agentCalls.push(b.id);
               } else cur.tools++;
-              if (b.id && b.name) acc.pending.push({ id: b.id, name: b.name, what: typeof b.input?.pattern === "string" ? b.input.pattern : typeof b.input?.command === "string" ? b.input.command : typeof b.input?.file_path === "string" ? b.input.file_path : null });
+              const input = (b.input ?? {}) as Record<string, unknown>;
+              const what = [input.pattern, input.command, input.file_path].find((v): v is string => typeof v === "string") ?? null;
+              acc.pending.push({ id: b.id, name: b.name, what });
               acc.middles += cur.ending.length;
               cur.ending = [];
             }
             if (b.type === "thinking") cur.thinking++;
           }
-          const hasText = content.some((b) => b.type === "text" && b.text?.trim());
-          if ((r as { isApiErrorMessage?: boolean }).isApiErrorMessage) {
-            acc.stop = r.uuid;
+          const hasText = r.blocks.some((b) => b.type === "text" && b.text.trim());
+          if (r.error) {
+            acc.stop = r.id;
             cur.done = true;
           } else if (called && hasText) acc.middles++;
-          else if (hasText) cur.ending.push(r.uuid);
-          if (r.message.stop_reason === "end_turn") cur.done = true;
+          else if (hasText) cur.ending.push(r.id);
+          if (r.endsTurn) cur.done = true;
         } else {
-          for (const b of content) {
+          for (const b of r.blocks) {
             if (b.type !== "tool_result") continue;
-            acc.pending = acc.pending.filter((p) => p.id !== b.tool_use_id);
-            if (b.is_error) cur.fails++;
+            acc.pending = acc.pending.filter((p) => p.id !== b.for);
+            if (b.isError) cur.fails++;
           }
-          const k = r.userText.speaker as { kind: string; taskId?: string; status?: string; handback?: boolean; from?: string };
+          const k = r.who.speaker as { kind: string; taskId?: string; status?: string; handback?: boolean; from?: string };
           if (k.kind === "taskNotification") acc.notices.push({ task: k.taskId ?? null, failed: k.status === "failed" });
           else if (k.kind === "agentMessage" && k.handback && k.from) acc.runs.push(k.from);
           else if (k.kind === "agentMessage" || k.kind === "peerSession") cur.peers++;
           else if (k.kind === "compactSummary") acc.compacts++;
           else if (k.kind === "interrupt") {
-            acc.stop = r.uuid;
+            acc.stop = r.id;
             cur.done = true;
             acc.pending = [];
           }
@@ -404,25 +402,31 @@ export function defaultOps(): Record<string, OpHandler> {
     "history-facts": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
       const recs = s?.records ?? [];
-      const last = [...recs].reverse().find((r) => r.type === "assistant" && r.message.usage);
+      const last = [...recs].reverse().find((r): r is Reply => isReply(r) && usageOf.has(r));
       const touched = new Set<string>();
       for (const r of recs) {
-        if (r.type !== "assistant" || !Array.isArray(r.message.content)) continue;
-        for (const b of r.message.content as { type: string; name?: string; input?: { file_path?: string } }[]) {
-          if (b.type === "tool_use" && (b.name === "Edit" || b.name === "Write") && b.input?.file_path) touched.add(b.input.file_path);
+        if (!isReply(r)) continue;
+        for (const b of r.blocks) {
+          const fp = b.type === "tool_use" ? (b.input as { file_path?: unknown } | null)?.file_path : undefined;
+          if (b.type === "tool_use" && (b.name === "Edit" || b.name === "Write") && typeof fp === "string") touched.add(fp);
         }
       }
       let usage: { promptTokens: number; model: string | null; peakPromptTokens: number; limit: number; limitFrom: string } | null = null;
-      if (last && last.type === "assistant" && last.message.usage) {
+      const lastUsage = last ? usageOf.get(last) : undefined;
+      if (last && lastUsage) {
         const sum = (u: { input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }) =>
           u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens;
         let peak = 0;
-        for (const r of recs) if (r.type === "assistant" && r.message.usage) peak = Math.max(peak, sum(r.message.usage));
+        for (const r of recs) {
+          const u = usageOf.get(r);
+          if (u) peak = Math.max(peak, sum(u));
+        }
         // 上限照后端那一条判：中转看见过 ⇒ 带没带扩展上下文那一项；没看见过 ⇒ 带 [1m] / 见过超过 200k ⇒ 1M；判不出 ⇒ assumed
         const relay = s?.relay;
-        const from = relay ? "relay" : (last.message.model ?? "").includes("[1m]") ? "model" : peak > 200_000 ? "observed" : "assumed";
+        const model = last.model ?? null;
+        const from = relay ? "relay" : (model ?? "").includes("[1m]") ? "model" : peak > 200_000 ? "observed" : "assumed";
         const limit = relay === "std" && peak <= 200_000 ? 200_000 : 1_000_000;
-        usage = { promptTokens: sum(last.message.usage), model: last.message.model, peakPromptTokens: peak, limit, limitFrom: from };
+        usage = { promptTokens: sum(lastUsage), model, peakPromptTokens: peak, limit, limitFrom: from };
       }
       // 没结果的调用 · 最后一句 · 需手动：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
       const what = (name: string, input: Record<string, unknown> | undefined): string | null => {
@@ -435,16 +439,15 @@ export function defaultOps(): Record<string, OpHandler> {
       let pending: { id: string; name: string; what: string | null; at: string | null }[] = [];
       let lastSay: { text: string; at: string | null } | null = null;
       for (const r of recs) {
-        const content = (r as { message?: { content?: unknown } }).message?.content;
-        const at = (r as { timestamp?: string }).timestamp ?? null;
-        if (r.type === "assistant" && Array.isArray(content)) {
-          for (const b of content as { type: string; id?: string; name?: string; text?: string; input?: Record<string, unknown> }[]) {
-            if (b.type === "text" && b.text?.trim()) lastSay = { text: b.text.split("\n").find((l) => l.trim())!.trim().slice(0, 160), at };
-            if (b.type === "tool_use" && b.id && b.name) pending.push({ id: b.id, name: b.name, what: what(b.name, b.input), at });
+        const at = r.at ?? null;
+        if (isReply(r)) {
+          for (const b of r.blocks) {
+            if (b.type === "text" && b.text.trim()) lastSay = { text: b.text.split("\n").find((l) => l.trim())!.trim().slice(0, 160), at };
+            if (b.type === "tool_use") pending.push({ id: b.id, name: b.name, what: what(b.name, b.input as Record<string, unknown>), at });
           }
-        } else if (r.type === "user") {
-          const results = Array.isArray(content) ? (content as { type: string; tool_use_id?: string }[]).filter((b) => b.type === "tool_result") : [];
-          pending = results.length > 0 ? pending.filter((p) => !results.some((b) => b.tool_use_id === p.id)) : [];
+        } else if (isSaid(r)) {
+          const results = r.blocks.flatMap((b) => (b.type === "tool_result" ? [b.for] : []));
+          pending = results.length > 0 ? pending.filter((p) => !results.includes(p.id)) : [];
         }
       }
       let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null } | null = null;
@@ -460,7 +463,7 @@ export function defaultOps(): Record<string, OpHandler> {
       // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
       const handedBack: string[] = [];
       for (const r of recs) {
-        const sp = (r as { userText?: { speaker?: { kind?: string; handback?: boolean; from?: string } } }).userText?.speaker;
+        const sp = isSaid(r) ? r.who.speaker : null;
         if (sp?.kind === "agentMessage" && sp.handback === true && sp.from && !handedBack.includes(sp.from)) handedBack.push(sp.from);
       }
       // 每步状态（同后端 `facts_query::settle_pending`）：在等的那一步 ⇒ 在等你；会话活着 ⇒ 在跑；否则状态不明（没有进程）。
@@ -472,22 +475,22 @@ export function defaultOps(): Record<string, OpHandler> {
       const retries: { id: string; outcome: string }[] = [];
       for (const r of recs) {
         const open = retries.at(-1)?.outcome === "retrying";
-        const rr = r as { type: string; subtype?: string; uuid?: string; isApiErrorMessage?: boolean; isMeta?: boolean; message?: { content?: unknown } };
-        if (rr.type === "system" && rr.subtype === "api_error") {
-          if (!open && rr.uuid) retries.push({ id: rr.uuid, outcome: "retrying" });
-        } else if (open && rr.type === "assistant") {
-          retries.at(-1)!.outcome = rr.isApiErrorMessage ? "failed" : "recovered";
-        } else if (open && rr.type === "user" && !rr.isMeta) {
-          const c = rr.message?.content;
-          if (!(Array.isArray(c) && (c as { type: string }[]).some((b) => b.type === "tool_result"))) retries.at(-1)!.outcome = "interrupted";
+        if (r.t === "retry") {
+          if (!open) retries.push({ id: r.id, outcome: "retrying" });
+        } else if (open && isReply(r)) {
+          retries.at(-1)!.outcome = r.error ? "failed" : "recovered";
+        } else if (open && isSaid(r) && r.who.speaker.kind !== "system") {
+          if (!r.blocks.some((b) => b.type === "tool_result")) retries.at(-1)!.outcome = "interrupted";
         }
       }
       return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null };
     },
+    // 主线外清单：假世界的会话都没有回退过。
+    "history-branch": (_o, req, w) => ({ off: [], end: layout(sessionByPath(w, req.path)?.records ?? []).end }),
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);
       const run = s?.runs.find((r) => r.run === req.run || (req.tool !== undefined && r.tool === req.tool));
-      const all = run && s ? (s.runRecords[run.run] ?? []).map((message) => ({ message })) : [];
+      const all = run && s ? (s.runRecords[run.run] ?? []).map((record) => ({ record })) : [];
       // 一条记录当 400 字节：续读从 `from` 那一条往后。
       const rows = all.slice(Math.floor(Number(req.from ?? 0) / 400));
       const path = `${s?.cwd ?? ""}/${s?.sid ?? ""}/subagents/${run?.run ?? "x"}.jsonl`;

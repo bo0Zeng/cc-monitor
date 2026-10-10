@@ -11,21 +11,12 @@ import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 import { clipboardWrites } from "../../test-support/clipboard-fake";
 
-// ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
-//
-// 这个文件此前把 `BranchFolder` 整个 stub 成空壳（每个方法 no-op），于是全仓**没有任何东西**
-// 能证明 live 模式下每来一行调了几次 —— 而复核已经指出这条性质「行为上与不改完全等价
-// （同样的行、同样的结果）」，**慢不会让任何测试变红**。
-// ⇒ 不先建量具就动性能，改完无从证明改对了。计数器挂在既有 stub 上，成本近零。
-//
-// ⚠⚠ **但本轮实测：光有计数器还建不起判据** —— 见 `audit-0805/features/F15-*.md §2`。
-//   `routeMetaAndBranch` 在本文件里被 mock 成**不调 `sink.onBranchRecord`**（`:77-84`），
-//   于是 `recordAdded` 在这套 mock 下**永远是 0**。
-//   ★ **让 tabs.ts 可测的那批 mock，恰好把「调了几次」这件事也 mock 没了。**
-//   计数器先留着（零成本、零行为影响），判据要等那批 mock 被改成「保真到调用次数」那一层。
+// ★ audit-0805 F15：**「每行调了几次」要可测** —— 折叠层的 stub 带计数器（`cardsAdded` · `rebuildNow` · 收到的主线外清单），
+// `renderContentRecord` 的 mock 真往 timeline 里塞（否则 `inserted` 恒假，计数恒零）。
 const f15 = vi.hoisted(() => ({
-  recordAdded: 0,
+  cardsAdded: 0,
   rebuildNow: 0,
+  setOff: [] as string[][],
   /**
    * ★ `renderContentRecord` 的**保真默认实现**（往 timeline 里塞一条）。
    *
@@ -102,11 +93,14 @@ vi.mock("../../../src/frontend/ui/record-timeline", () => ({
 vi.mock("../../../src/frontend/ui/branch-fold", () => ({
   BranchFolder: class {
     constructor(_el: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
+    offCount = 0;
+    setOff(off: ReadonlySet<string>): void {
+      f15.setOff.push([...off]);
+      this.offCount = off.size;
+    }
     // F15：计数，不做事 —— 量的是「被调了几次」，不是它做了什么。
-    recordAdded(): void {
-      f15.recordAdded++;
+    cardsAdded(): void {
+      f15.cardsAdded++;
     }
     unwrapAll(): void {}
     rebuildNow(): void {
@@ -115,39 +109,10 @@ vi.mock("../../../src/frontend/ui/branch-fold", () => ({
     dispose(): void {}
   },
 }));
-// F40a:tabs.ts 消费两段式入口(routeMetaAndBranch 判 meta / renderContentRecord 建卡)。
-// mock 按 message.type 粗判 consumed/content,与真实现语义对齐(防未来 meta 用例静默走错路)
+// F40a:tabs.ts 消费两段式入口(routeMeta 判 meta / renderContentRecord 建卡)。
+// mock 按 record.t 粗判 consumed/content,与真实现语义对齐(防未来 meta 用例静默走错路)
 vi.mock("../../../src/frontend/ui/render-stream-record", () => ({
-  // ★ F15 第 1 步：mock 必须**真调 `sink.onBranchRecord`**。
-  //
-  // 此前它只返回 `"consumed"`/`"content"`、一次都不碰 sink ⇒ `tab.branchFolder.recordAdded`
-  // （`tabs.ts:810` 挂在 sink 上）在本文件里**永远是 0 次** ⇒ 「live 每来一行喂一次
-  // BranchFolder」这条性质**无法被任何判据看见**。
-  // 这里镜像真实现的**分支判定**（`branching.ts:282-291`：类型在集合内 + 有 uuid + 有 timestamp），
-  // 不复刻它构造出的 `BranchRecord` 内容 —— 本文件量的是**次数**，不是那条记录长什么样。
-  routeMetaAndBranch: vi.fn(
-    (
-      payload: {
-        message?: { type?: string; uuid?: string | null; timestamp?: string | null };
-      },
-      sink?: { onBranchRecord?: (rec: unknown) => void },
-    ) => {
-      const m = payload.message;
-      const t = m?.type ?? "";
-      if (["ai-title", "custom-title", "queue-operation"].includes(t)) return "consumed";
-      const isBranchKind = [
-        "user",
-        "assistant",
-        "attachment",
-        "system",
-        "cc-monitor-unrecognized",
-      ].includes(t);
-      if (isBranchKind && m?.uuid && m?.timestamp) {
-        sink?.onBranchRecord?.({ uuid: m.uuid, parentUuid: null, timestamp: m.timestamp });
-      }
-      return "content";
-    },
-  ),
+  routeMeta: vi.fn((payload: { record?: { t?: string } }) => (payload.record?.t === "title" ? "consumed" : "content")),
   // ★ F15 第 3 步：mock 必须**真往 timeline 里塞**。
   //
   // 上面把 `RecordTimeline.size` 改成真会涨之后还不够 —— 真正调 `timeline.insert` 的是
@@ -370,7 +335,7 @@ describe("TabManager 生命周期", () => {
         cwd: "/a/proj/sub",
         path: `/p/${sid}.jsonl`,
         seq,
-        message: { type: "assistant", uuid: `${sid}-${seq}` } as never,
+        record: { t: "reply", id: `${sid}-${seq}` } as never,
       } as never);
     tm.createSkeletonTab("proj-sid", "/a/proj", LOCAL_ORIGIN);
     for (let seq = 40; seq < 45; seq++) tail("proj-sid", seq);
@@ -436,7 +401,7 @@ describe("TabManager 生命周期", () => {
       cwd: "/p",
       path: "/p/dup-sid.jsonl",
       seq,
-      message: { type: "assistant", uuid } as never,
+      record: { t: "reply", id: uuid } as never,
     });
     tm.onLine(mkPayload(7, "u-1") as never);
     const after1 = spy.mock.calls.length;
@@ -745,7 +710,7 @@ describe("TabManager 生命周期", () => {
       cwd: "/p",
       path: `/p/${sid}.jsonl`,
       seq,
-      message: { type: "assistant", uuid } as never,
+      record: { t: "reply", id: uuid } as never,
     }) as never;
 
   async function spyRender() {
@@ -1236,7 +1201,7 @@ describe("TabManager 生命周期", () => {
       cwd: "/p",
       path: "/p/meta-bg.jsonl",
       seq: 60,
-      message: { type: "ai-title", aiTitle: "标题" } as never,
+      record: { t: "title", text: "标题" } as never,
     } as never);
     const t = home(tm).store.tabs.get("meta-bg")!;
     expect(t.window.pendingCount).toBe(0); // consumed,不收纳
@@ -2705,7 +2670,7 @@ describe("F15 每行代价的现状基线", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     tm = makeTM();
-    f15.recordAdded = 0;
+    f15.cardsAdded = 0;
     f15.rebuildNow = 0;
   });
   afterEach(() => {
@@ -2717,25 +2682,24 @@ describe("F15 每行代价的现状基线", () => {
     cwd: "/w",
     path: `/w/${sid}.jsonl`,
     seq,
-    message: { type: "assistant", uuid: `u-${seq}`, timestamp: "2026-08-06T00:00:00Z" },
+    record: { t: "reply", id: `u-${seq}`, timestamp: "2026-08-06T00:00:00Z" },
   });
 
-  it("★ live 每来一行，BranchFolder 就被喂一次", () => {
+  it("★ live 每来一行建了卡，折叠层就听一次「有新卡」（帧末合批在它里面）", () => {
     tm.ensureTab("s1", "/w", "/w/s1.jsonl", LOCAL_ORIGIN);
     for (let i = 1; i <= 5; i++) tm.onLine(line("s1", i) as never);
-    // 抽取器自检：三处 mock 只要有一处退回空壳，这里就是 0 —— 那不是「合批做好了」。
     expect(
-      f15.recordAdded,
-      "`recordAdded` 一次都没被调到 —— 不是合批生效了，是 `routeMetaAndBranch` 的 mock " +
-        "又不调 `sink.onBranchRecord` 了（F15 §2 那个坑）。先修量具再读这个数。",
-    ).toBeGreaterThan(0);
-    expect(
-      f15.recordAdded,
-      "喂 5 行、BranchFolder 被调的次数变了（该是 5）。⚠ 这个数**不因合批而降**：" +
-        "F15 的合批做在 `BranchFolder` **内部**（帧末只算一次主线），而本文件把 " +
-        "`BranchFolder` 整个 stub 掉了，量到的是「被喂了几次」。" +
-        "真正省下的那次 O(N) 由 `branch-fold-batching.vitest.ts` 钉。",
+      f15.cardsAdded,
+      "喂 5 行、折叠层听到的次数变了（该是 5）。0 ⇒ 多半是 `renderContentRecord` 的 mock 又退回空壳（`inserted` 恒假）。",
     ).toBe(5);
+  });
+
+  it("★ 会话流的 branch 格 ⇒ 那个 tab 的折叠层按整份清单重折；没有那个 tab ⇒ 不收", () => {
+    tm.ensureTab("s1", "/w", "/w/s1.jsonl", LOCAL_ORIGIN);
+    f15.setOff.length = 0;
+    tm.onSessionBranch({ session_id: "s1", off: ["u-2", "u-3"] });
+    tm.onSessionBranch({ session_id: "nope", off: ["x"] });
+    expect(f15.setOff).toEqual([["u-2", "u-3"]]);
   });
 
   it("★ 后台 tab 每来一行，tab bar 就整刷一次", () => {
@@ -4064,7 +4028,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       cwd: "/p",
       path: `/p/${sid}.jsonl`,
       seq,
-      message: { type: "assistant", uuid } as never,
+      record: { t: "reply", id: uuid } as never,
     }) as never;
   /** 索引：第 i 行 uuid = `u{i + shift}`（shift ≠ 0 模拟「seq 空间对不上」） */
   const idx = (n: number, shift = 0) => ({
@@ -4781,7 +4745,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       path: `/p/${sid}.jsonl`,
       seq,
       ...(origin ? { origin } : {}),
-      message: { type: "assistant", uuid: `${sid}-${seq}` } as never,
+      record: { t: "reply", id: `${sid}-${seq}` } as never,
     }) as never;
   // ⚠ 等的是 rAF（`fillAbove` 补完一批靠 `requestAnimationFrame` 自链复检，jsdom 里约 16ms 一拍）——
   //   只让几个 0ms 宏任务过去等不到它：上一条的自链会漏进下一条的计数（首跑现打过一次）。
@@ -5041,7 +5005,7 @@ describe("〔CF2〕前端账本的上界", () => {
     w.pinFloor(100_000);
     w.markFetchedBelow(0); // 先当作「到顶了」
     expect(w.belowState).toEqual({ kind: "none" });
-    const mk = (seq: number) => ({ session_id: "s", cwd: null, path: "/p/s.jsonl", seq, message: {} }) as never;
+    const mk = (seq: number) => ({ session_id: "s", cwd: null, path: "/p/s.jsonl", seq, record: {} }) as never;
     // 尾部优先那种到达序：高的一段先到，低的一段后到
     for (let s = PENDING_CAP; s < PENDING_CAP * 2; s++) w.defer(mk(s));
     expect(w.pendingCount, "刚好 CAP 条不修").toBe(PENDING_CAP);
@@ -5173,7 +5137,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
       path: `/home/u/proj/${sid}.jsonl`,
       seq,
       origin,
-      message: { type: "user", uuid: `${sid}-${seq}` },
+      record: { t: "said", id: `${sid}-${seq}` },
     }) as never;
   /** 等在途的那几趟通道往返落完（每趟是若干个微任务 ＋ 一次宏任务，多等几轮）。 */
   const settle = async (): Promise<void> => {
@@ -5406,7 +5370,7 @@ describe("〔FW1〕记录文件的出声", () => {
     cwd: "/p",
     path: "/p/rf-sid.jsonl",
     seq,
-    message: { type: "assistant", uuid: `rf-${seq}` } as never,
+    record: { t: "reply", id: `rf-${seq}` } as never,
   });
   const noticeText = (tm: TabManager): string | null => {
     const first = tm.streamElOf("rf-sid")?.firstElementChild as HTMLElement | null | undefined;
@@ -5610,11 +5574,11 @@ describe("组员关系是 tab 自己的属性", () => {
 // 入口只剩按 seq 那一道去重 ⇒ 不重来的话，新的一代的第 0 行会被旧的一代的第 0 行挡掉（渲染内核在本文件里是替身，数它收到了谁）。
 describe("〔RENDER2〕从头重读 ⇒ tab 整份重来", () => {
   const mk = (seq: number, uuid: string) =>
-    ({ session_id: "rr-sid", cwd: "/p", path: "/p/rr-sid.jsonl", seq, message: { type: "assistant", uuid } }) as never;
+    ({ session_id: "rr-sid", cwd: "/p", path: "/p/rr-sid.jsonl", seq, record: { t: "reply", id: uuid } }) as never;
   const rendered = async (): Promise<string[]> => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     return (renderContentRecord as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
-      (c) => (c[0] as { message: { uuid: string } }).message.uuid,
+      (c) => (c[0] as { record: { id: string } }).record.id,
     );
   };
 
@@ -5674,7 +5638,7 @@ describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () 
             cwd: "/p",
             path: "/p/sq.jsonl",
             seq: s,
-            message: { type: "assistant", uuid: `sq-${s}` },
+            record: { t: "reply", id: `sq-${s}` },
             ...(say && run !== undefined ? { skipped_from: run } : {}),
           } as never);
           run = undefined;
@@ -5694,7 +5658,7 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     const tm = makeTM();
-    tm.onLine({ session_id: "bgA", cwd: "/p", path: "/p/bgA.jsonl", seq: 0, message: { type: "assistant", uuid: "a0" } } as never);
+    tm.onLine({ session_id: "bgA", cwd: "/p", path: "/p/bgA.jsonl", seq: 0, record: { t: "reply", id: "a0" } } as never);
     tm.onBatchStart();
     const big = 40 * 1024; // 两条合起来超过 64 Ki，各自一条不超
     for (let s = 0; s < 150; s++) {
@@ -5704,7 +5668,7 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
         cwd: "/p",
         path: "/p/bgB.jsonl",
         seq: s,
-        message: { type: "assistant", uuid: `b${s}`, message: { role: "assistant", content: [{ type: "text", text }] } },
+        record: { t: "reply", id: `b${s}`, blocks: [{ type: "text", text }] },
       } as never);
     }
     tm.onBatchEnd();

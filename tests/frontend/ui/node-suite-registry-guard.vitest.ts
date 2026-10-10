@@ -65,7 +65,6 @@ import { stripComments } from "../../test-support/strip-comments.ts";
  */
 const NODE_SUITES: readonly (readonly [string, string])[] = [
   ["test:diff", "tests/frontend/ui/cards/diff.test.ts"],
-  ["test:branching", "tests/frontend/ui/branching.test.ts"],
   ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts"],
   // `test:bash` 整份删了：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端（`text_tests.rs::slash_and_bash_forms`）。
   ["test:remote-health", "tests/frontend/ui/remote-health.test.ts"],

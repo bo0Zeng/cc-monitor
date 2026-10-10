@@ -367,7 +367,7 @@ fn hx2_the_version_warning_says_which_side_is_older() {
 #[test]
 fn parses_two_line_frames_with_all_fields() {
     // 帧上带的是成品（`message` 原样收下、monitor 不读它）与这条记录自己的 `cwd`，不再是原文 `raw`。
-    let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"message":{"type":"user"},"cwd":"/w","byte_offset":40}"#;
+    let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"record":{"t":"said"},"cwd":"/w","byte_offset":40}"#;
     let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1,"byte_offset":80}"#;
 
     let f0 = parse_frame(l0).expect("line 0 must parse");
@@ -377,7 +377,7 @@ fn parses_two_line_frames_with_all_fields() {
             session_id: "s-1".to_string(),
             path: "/home/pi/.claude/projects/p/s-1.jsonl".to_string(),
             seq: 0,
-            message: crate::ui_contract::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
+            record: crate::ui_contract::RecordBody::from_json(r#"{"t":"said"}"#.to_string()),
             cwd: Some("/w".to_string()),
             end: 40,
             rid: None,
@@ -386,9 +386,9 @@ fn parses_two_line_frames_with_all_fields() {
 
     let f1 = parse_frame(l1).expect("line 1 must parse");
     match f1 {
-        InboundFrame::Line { seq, message, .. } => {
+        InboundFrame::Line { seq, record, .. } => {
             assert_eq!(seq, 1);
-            assert!(message.is_none(), "没带成品 ⇒ 不进界面（照占号）");
+            assert!(record.is_none(), "没带成品 ⇒ 不进界面（照占号）");
         }
         other => panic!("expected Line, got {other:?}"),
     }

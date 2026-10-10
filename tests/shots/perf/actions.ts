@@ -293,7 +293,7 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
       turn(c, target.cwd, 1000 + round, false);
       const from = target.records.length;
       target.records.push(...c.records);
-      const frames: SessionStreamFrame[] = c.records.map((message, i) => ({ line: { session_id: target.sid, cwd: target.cwd, path: `${target.cwd}/${target.sid}.jsonl`, seq: from + i, origin: target.origin, message } }) as SessionStreamFrame);
+      const frames: SessionStreamFrame[] = c.records.map((record, i) => ({ line: { session_id: target.sid, cwd: target.cwd, path: `${target.cwd}/${target.sid}.jsonl`, seq: from + i, origin: target.origin, record } }) as SessionStreamFrame);
       await step(steps, "lines", () => be.pushFrames(target.origin, frames));
       await sleep(500);
     }

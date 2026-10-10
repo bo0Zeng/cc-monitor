@@ -70,7 +70,7 @@ export const PERF_SCENES: Scene[] = [
     world: perfWorld,
     act: async (ctx) => {
       window.__perfBackend = ctx.backend;
-      await waitFor(".session-viewer [data-uuid]", 180_000);
+      await waitFor(".session-viewer [data-id]", 180_000);
     },
   },
   {

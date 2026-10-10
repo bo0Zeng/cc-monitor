@@ -334,7 +334,7 @@ fn records_face(
     file_name: fn(&str) -> String,
 ) -> crate::agents::RecordFace {
     crate::agents::RecordFace {
-        parse: |_| Ok(None),
+        parse: |_, _| Ok(None),
         sid: session_id_of,
         is_session_file,
         tree: Some(crate::agents::RecordTree { root, file_name }),

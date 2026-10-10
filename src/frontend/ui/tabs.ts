@@ -14,6 +14,7 @@ import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
 
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -423,14 +424,10 @@ export class TabManager {
   }
 
   /**
-   * 启动重放开始时调一次：现有 Tab 的分支折叠切到批模式（只收不算主线）；重放期新建的 Tab 也进批模式（看 `store.inBatch`）。
+   * 启动重放开始时调一次：进批模式（惰性高亮；重放期的旧记录不建卡，收纳进 `tab.window` ⇒ 视口上方零插入）。
    */
   onBatchStart(): void {
     this.store.inBatch = true;
-    for (const t of this.store.tabs.values()) {
-      t.branchFolder.setBatchMode(true);
-      // 重放期的旧记录不建卡（收纳进 `tab.window`）⇒ 视口上方零插入。
-    }
   }
 
   /** 重放批完结：各 Tab 一次性算完、切回实时。 */
@@ -463,7 +460,7 @@ export class TabManager {
     if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
-    // jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
+    // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
@@ -921,6 +918,13 @@ export class TabManager {
       markRunWindow(card, this.runWindows.has(`${tab.sessionId}\u0000${e.run}`));
     }
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
+  }
+
+  /**
+   * 一个会话的主线外清单到了（会话流里的 `branch` 格，整份）：那个 tab 的折叠层按它重折。没有这个 tab ⇒ 不收。
+   */
+  onSessionBranch(p: SessionBranchPayload): void {
+    this.store.tabs.get(p.session_id)?.branchFolder.setOff(new Set(p.off));
   }
 
   /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */

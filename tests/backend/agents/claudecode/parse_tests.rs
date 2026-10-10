@@ -111,9 +111,11 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
         }
         other => panic!("期望 Unrecognized，得到 {other:?}"),
     }
-    // 没有链身份 ⇒ 不 emit（它不进链，断不了链；「不静默」归 drift_ledger）。
-    //   原断言「必须 emit —— 否则链断」对**无身份**的这一形不成立；带身份的那一形见下一条。
-    assert!(!r.is_displayable(), "无链身份的看不懂记录在解析阶段滤掉");
+    // 没有链身份 ⇒ 不出链事实（它不进链，断不了链；「不静默」归 drift_ledger）；带身份的那一形见下一条。
+    assert!(
+        super::super::chain::chain_fact(r#"{"type":"some-future-record-type","foo":42}"#).is_none(),
+        "无链身份的看不懂记录不进链"
+    );
 }
 
 /// ★ 这条是 F63 真正要防的未来：Claude 发一个**带链身份**的新类型。
@@ -140,8 +142,11 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
         other => panic!("期望 Unrecognized，得到 {other:?}"),
     }
     assert!(
-        r.is_displayable(),
-        "带链身份的必须 emit —— 否则它的 children 成孤儿 root"
+        super::super::chain::chain_fact(
+            r#"{"type":"brand-new-2027","uuid":"u9","parentUuid":"u8","timestamp":"t9","payload":{"a":1}}"#
+        )
+        .is_some(),
+        "带链身份的必须进链 —— 否则它的 children 成孤儿 root"
     );
 }
 
@@ -220,12 +225,12 @@ fn zero_information_loss_over_mixed_fixture() {
                         matches!(r, JsonlRecord::Unrecognized { .. }),
                         "该行应被抢救：{line}"
                     );
-                    // 抢救出来的：带链身份 ⇔ emit（无身份的元数据在解析阶段滤掉）
+                    // 抢救出来的：带链身份 ⇔ 进链（无身份的元数据不进链）
                     let ident = matches!(&r, JsonlRecord::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some());
                     assert_eq!(
-                        r.is_displayable(),
+                        super::super::chain::chain_fact(line).is_some(),
                         ident,
-                        "抢救出来的：带链身份 ⇔ emit：{line}"
+                        "抢救出来的：带链身份 ⇔ 进链：{line}"
                     );
                 }
             }
@@ -298,7 +303,7 @@ fn f63_real_data_ledger() {
                             .or_default() += 1;
                     }
                     Ok(Some(r)) => {
-                        if r.is_displayable() {
+                        if super::super::record_of::record_of(r, "@0").is_some() {
                             emitted += 1
                         } else {
                             deliberate += 1
@@ -352,17 +357,12 @@ fn every_timed_record_carries_its_clock_face() {
         format!(r#"{{"type":"p15-neutral-unknown","uuid":"k1","timestamp":"{ts}"}}"#),
     ];
     for l in &lines {
-        let m = parsed_line(l).unwrap().unwrap().message;
+        let m = serde_json::to_value(parse_line(l).unwrap().unwrap()).unwrap();
         assert_eq!(m["timeText"], want.as_str(), "{l}");
     }
-    let bare = parsed_line(r#"{"type":"queue-operation","operation":"enqueue"}"#)
-        .unwrap()
-        .unwrap()
-        .message;
+    let m = |l: &str| serde_json::to_value(parse_line(l).unwrap().unwrap()).unwrap();
+    let bare = m(r#"{"type":"queue-operation","operation":"enqueue"}"#);
     assert!(bare.get("timeText").is_none(), "没时刻 ⇒ 不上线");
-    let bad = parsed_line(r#"{"type":"attachment","uuid":"t2","timestamp":"soon"}"#)
-        .unwrap()
-        .unwrap()
-        .message;
+    let bad = m(r#"{"type":"attachment","uuid":"t2","timestamp":"soon"}"#);
     assert!(bad.get("timeText").is_none(), "解不出 ⇒ 不上线");
 }

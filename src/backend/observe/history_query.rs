@@ -1645,17 +1645,21 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
 ) -> Result<LinesPage, (&'static str, String)> {
     let until = until.unwrap_or(u64::MAX);
     let mut lines: Vec<String> = Vec::new();
+    let mut starts: Vec<u64> = Vec::new();
     let mut bytes: usize = 0;
     let mut n: u64 = 0; // 下一个可计行的行号
+    let mut pos: u64 = 0; // 这一行的起点字节偏移
     let mut buf: Vec<u8> = Vec::new();
     let eof = loop {
         if n >= until {
             break false;
         }
         buf.clear();
+        let start = pos;
         let read = r
             .read_until(b'\n', &mut buf)
             .map_err(|e| ("failed", format!("scan failed: {e}")))?;
+        pos += read as u64;
         if read == 0 || buf.last() != Some(&b'\n') {
             break true; // 文件到头；torn 残尾不计（同 `tail_plan`）
         }
@@ -1679,6 +1683,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         }
         bytes += body.len();
         lines.push(String::from_utf8_lossy(body).into_owned());
+        starts.push(start);
         if bytes >= page {
             break false;
         }
@@ -1687,6 +1692,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
     Ok(LinesPage {
         from,
         lines,
+        starts,
         next,
         eof,
     })
@@ -1699,6 +1705,8 @@ pub(crate) struct LinesPage {
     pub from: u64,
     /// 可计行的原文（不含行尾 `\n`；`\r` 与 BOM 原样留着，调用方剥）。
     pub lines: Vec<String>,
+    /// 每一条在文件里的起点字节偏移（与 `lines` 逐条对齐）。
+    pub starts: Vec<u64>,
     /// 下一段从这一行起。
     pub next: u64,
     /// 读到了最后一个完整行之后（后面没有了）。

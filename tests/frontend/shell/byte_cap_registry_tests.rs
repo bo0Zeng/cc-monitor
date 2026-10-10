@@ -758,6 +758,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`history-read` 一页（一帧应答）的正文字节数",
         "索引截断（不丢数据）",
     ),
+    // 分页读记录时往回多看那一段：只拿来配排队消息的打字时刻；配不上（打字在这一段之前）⇒ 那条照用它自己的时刻（协议文档写明），记录一条不少。
+    (
+        "src/backend/observe/record_page.rs",
+        "QUEUE_LOOKBACK_BYTES",
+        "从文件中段起读一页记录时，往回多读、只用来配排队消息打字时刻的那一段原始字节（配对用的索引；记录本身一条不少）",
+        "索引截断（不丢数据）",
+    ),
     // `backend-log` 一帧回多少：只回诊断文件的尾部，`truncated: true` 说清前面还有。
     (
         "src/backend/faces/read_face.rs",
@@ -1662,6 +1669,13 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "page as u64",
         "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
              读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
+    ),
+    // `record_page::lead_of` 往回多看的那一段：起点是 `offset − QUEUE_LOOKBACK_BYTES`（已在 `CAPS` 里，饱和到 0）⇒ 读的长度不过它。
+    (
+        "src/backend/observe/record_page.rs",
+        "offset - at",
+        "`lead_of` 读 `[offset − QUEUE_LOOKBACK_BYTES, offset)` 那一段（`QUEUE_LOOKBACK_BYTES` 已在 `CAPS` 里）；\
+             只为配打字时刻（索引），配不上照用那条自己的时刻、记录一条不少 —— 协议文档写明。",
     ),
     // `read_face::log_tail` 的上限是入参 `max`，唯一调用点给的是 `min(调用方要的, LOG_TAIL_BYTES)`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：从 `size − max` 起读、应答带 `truncated`（前面还有没回的）。
