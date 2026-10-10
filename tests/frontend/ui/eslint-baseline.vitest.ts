@@ -46,7 +46,8 @@
  *   ⇒ 两条同一族：**判据自己不可移植时，它守的东西在那个平台上等于没人守**。
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, relative, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
@@ -133,10 +134,26 @@ function runEslintCached(): EslintJsonResult[] {
   return cached;
 }
 
+/**
+ * eslint 自己的结果缓存（`--cache`，按文件内容认）：没改过的文件不重 lint，读数逐条照旧（缓存里存的就是上回那份结果）。
+ * 全仓 lint 一趟 25 s 上下的 CPU，负载下要 44–60 s，挂在 120 s 期限上过半；门禁一趟里 `npm` 与 `coverage` 两格各跑一遍、
+ * 快检再跑一遍 —— 同一棵树上第二遍起只 lint 改过的那几份。
+ * ⚠ 缓存住址按「依赖锁 ＋ eslint 配置」的内容分：升级了 eslint / 插件、改了配置 ⇒ 换一份新缓存，不拿旧规则的结果顶替。
+ *   住 `.build/`（构建输出那一处，git 与 eslint 都不看它）。
+ */
+function cacheLocation(): string {
+  const key = createHash("sha256");
+  for (const f of ["package-lock.json", "eslint.config.js"]) key.update(read(f));
+  const dir = resolve(REPO_ROOT, ".build", "eslint-cache");
+  mkdirSync(dir, { recursive: true });
+  return resolve(dir, key.digest("hex").slice(0, 16));
+}
+
 function runEslint(): EslintJsonResult[] {
   let out: string;
+  const cache = ["--cache", "--cache-strategy", "content", "--cache-location", cacheLocation()];
   try {
-    out = execFileSync(process.execPath, [ESLINT_BIN, ".", "-f", "json"], {
+    out = execFileSync(process.execPath, [ESLINT_BIN, ".", "-f", "json", ...cache], {
       cwd: REPO_ROOT,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,

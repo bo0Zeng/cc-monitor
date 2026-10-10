@@ -32,7 +32,8 @@
 //!
 //! # 存亡
 //!
-//! - 票表挂在本连接上（`stream/inbound` 的读循环持有）：连接走了 ⇒ 票表 `Drop` ⇒ 每张票的订阅线程收到「停」⇒ 杀那个控制模式客户端、收尸。
+//! - 票表挂在本连接上（`stream/inbound` 的读循环持有）：连接走了 ⇒ 票表 `Drop` ⇒ 每张票的订阅线程收到「停」⇒ 关那个控制模式客户端的输入、等它自己退、收尸
+//!   （不直接杀，起落也一个一个来：tmux 3.6a 的 server 会因控制模式客户端被杀、或几个同时起落而段错误，见 [`SHIFT`]）。
 //! - 每张票两条线程：读控制模式输出的那一条（读到头 ＝ 客户端退了）· 订阅本身那一条（抓屏 · 推帧 · 等回执）。都是阻塞读，不醒来。
 //! - 那个控制模式客户端不算「连着几个终端窗口」：名单 `clients` 与 ↗ 的 `list-clients` 都把控制模式客户端滤掉；
 //!   tmux 快照里那一列「有人连着」（`session_attached`）会因它变成 1，今天没有读者（判据钉着读出来的不变）。
@@ -313,15 +314,19 @@ impl Desk {
             "-t",
             t.session.as_str(),
         ]);
+        // 起落一个一个来（见 [`SHIFT`]）：占着它起客户端、等 attach 那一问答完，再放开。
+        let shift = SHIFT.lock().unwrap_or_else(|p| p.into_inner());
         let mut proc = child
             .stream()
             .map_err(super::capture_pane::tmux_unavailable)?;
-        let out = proc.take_stdout().ok_or_else(|| {
+        let mut out = BufReader::new(proc.take_stdout().ok_or_else(|| {
             CmdErr::new(
                 "unobservable",
                 crate::common::contract::malformed("no output stream from the tmux control client"),
             )
-        })?;
+        })?);
+        attached(&mut out);
+        drop(shift);
         let (tx, rx) = smpsc::channel::<Ev>();
         let pending = Arc::new(AtomicBool::new(false));
         {
@@ -331,8 +336,12 @@ impl Desk {
                     g.slots
                         .insert(seat.ticket.clone(), Slot::On(Follow { tx: tx.clone() }));
                 }
-                // 起的这几下当中退订到了 ⇒ 刚起的客户端随 `proc` 一起收。
-                _ => return Ok(()),
+                // 起的这几下当中退订到了 ⇒ 刚起的客户端收掉（关输入、等它自己退，另起一条线程等，不占这一问）。
+                _ => {
+                    spawn_reader(out, None, tx, pending);
+                    std::thread::spawn(move || detach(proc, &rx));
+                    return Ok(());
+                }
             }
         }
         spawn_reader(out, t.pane.clone(), tx, Arc::clone(&pending));
@@ -416,13 +425,12 @@ impl Drop for Inner {
 /// 读控制模式客户端的输出：我们那个窗格的 `%output`、或任何别的通知（窗格关了 · 布局变了 · 会话没了…）⇒ 「变了」；
 /// 别的窗格的输出不管。连着几笔「变了」只报一次（订阅线程取走之前不再报）。读到头 ⇒ 「客户端退了」。
 fn spawn_reader(
-    out: std::process::ChildStdout,
+    mut rd: BufReader<std::process::ChildStdout>,
     pane: Option<String>,
     tx: smpsc::Sender<Ev>,
     pending: Arc<AtomicBool>,
 ) {
     std::thread::spawn(move || {
-        let mut rd = BufReader::new(out);
         let mut line = Vec::new();
         loop {
             line.clear();
@@ -445,6 +453,40 @@ fn spawn_reader(
         }
         let _ = tx.send(Ev::Closed);
     });
+}
+
+/// 控制模式客户端的**起落一个一个来**：起一个（到 attach 那一问答完）· 收一个（到它退出）都占着这把锁，同一时刻只有一个在过渡。
+///
+/// 🔴 tmux 3.6a 的 server 在这两种情形下会段错误，那台 server 整个没了（上面所有会话一起没，用户自己的终端也在里面；
+///   内核日志 `tmux: server … segfault`）—— 10-09 在隔离 server 上实测：
+///   - 控制模式客户端被 SIGKILL 掉，哪怕一次只有一个：六台 server 四百轮里没了五台；
+///   - 两个以上控制模式客户端同时起落（各自关输入正常断开）：六台全没（每台百来轮）；
+///   - 关输入断开、起落一个一个来：同样的负载（十组压满 CPU）、六台各四百多次起落，一台没崩。
+///   ⇒ 不杀、只关输入（[`detach`]）；起与收都排在这把锁后面。锁是进程级的（判据各起各的隔离 server，也一起排，慢不了几毫秒）。
+static SHIFT: Mutex<()> = Mutex::new(());
+
+/// 读到 attach 那一问答完：`%end`（接上了）· `%error`（没接上，客户端随即退出）· 读到头（已经退了）。之前那几行（`%begin`）不要。
+fn attached(out: &mut BufReader<std::process::ChildStdout>) {
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        match out.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => return,
+            Ok(_) if line.starts_with(b"%end") || line.starts_with(b"%error") => return,
+            Ok(_) => {}
+        }
+    }
+}
+
+/// 收一个还连着的控制模式客户端：占着 [`SHIFT`] 关它的输入（控制模式里输入读到头 ＝ 断开）、等读输出那条线程报「客户端退了」
+/// （读到头），再放手（收尸 —— 组里这时已经没人）。不直接杀（为什么见 [`SHIFT`]）。
+/// 等多久归 tmux：输入一关它就走断开那一套、随即退出；server 卡死时它也卡着，这条线程跟着停在这里（阻塞读，不醒），
+///   server 缓过来或没了它就退、这里随之收尸。
+fn detach(mut proc: crate::platform::child::Streaming, rx: &smpsc::Receiver<Ev>) {
+    let _shift = SHIFT.lock().unwrap_or_else(|p| p.into_inner());
+    proc.close_stdin();
+    while !matches!(rx.recv(), Ok(Ev::Closed) | Err(_)) {}
+    drop(proc);
 }
 
 /// 一张票的订阅本身：抓屏 · 推帧 · 等回执。
@@ -472,6 +514,7 @@ impl Worker {
         let mut dirty = true;
         let mut last: Option<String> = None;
         let mut step = self.capture(&mut seq, &mut in_flight, &mut dirty, &mut last);
+        let mut closed = false;
         while matches!(step, Step::Go) {
             step = match rx.recv() {
                 Ok(Ev::Changed) => {
@@ -495,6 +538,7 @@ impl Worker {
                 }
                 Ok(Ev::Closed) => {
                     // 客户端退了：终端还在 ⇒ 看着它的那条路断了；不在 ⇒ 终端没了。
+                    closed = true;
                     let on = On {
                         socket: self.socket.as_deref(),
                     };
@@ -503,7 +547,11 @@ impl Worker {
                 Ok(Ev::Stop) | Err(_) => Step::Quit,
             };
         }
-        drop(proc); // 杀控制模式客户端、收尸
+        if closed {
+            drop(proc); // 它已经退了：收尸
+        } else {
+            detach(proc, &rx);
+        }
         if let Step::End(why) = step {
             lock(&self.tickets).slots.remove(&self.ticket);
             let _ = self.replies.blocking_send(Frame::TerminalFollowEnd {

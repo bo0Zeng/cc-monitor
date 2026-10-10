@@ -107,53 +107,72 @@ describe("C1 · 差量重折 == 从零折", () => {
     el.textContent = uuid ?? "sep";
     return el;
   };
-  /** 逻辑序列：顶层子节点，wrap 展开读 inner */
-  const logical = (c: HTMLElement): string[] => {
-    const out: string[] = [];
-    for (const ch of Array.from(c.children)) {
-      if (ch.classList.contains("branch-fold-wrap")) {
-        for (const k of Array.from(ch.querySelector(".branch-fold-body-inner")!.children)) out.push(k.textContent ?? "");
-      } else out.push(ch.textContent ?? "");
-    }
-    return out;
-  };
-
-  it("随机 300 步：每一步差量结果 == 从零折", () => {
-    const r = rng(20260926);
+  /**
+   * 一段随机历史（`steps` 步，从空容器起）。每一步之后：差量重折的 DOM == 平铺容器上另一个实例从零折的 DOM。
+   * 参照那一侧：同一串卡按同一逻辑顺序平铺在另一个容器里（从不折），每一步克隆一份去从零折。平铺那份跟着插卡同步长
+   * （插在锚点对应的那张前面），不从被测容器里读回来 —— 被测那一侧要是把顺序弄乱了，两边就对不上。
+   * → [这一段查了几步, 一共见过几个折叠段]
+   */
+  function history(seed: number, steps: number): [number, number] {
+    const r = rng(seed);
     const el = document.createElement("div");
     const folder = new BranchFolder(el);
+    const flat = document.createElement("div");
+    const order: HTMLElement[] = []; // 被测那一侧的卡，按逻辑顺序（＝文档顺序）
+    const twin = new Map<HTMLElement, HTMLElement>(); // 被测的卡 → 平铺那份里的同一张
     let next = 0;
     let checked = 0;
     let foldedSeen = 0;
-    for (let step = 0; step < 300; step++) {
+    for (let step = 0; step < steps; step++) {
       const op = r();
-      if (op < 0.45 || el.children.length === 0) {
+      if (op < 0.45 || order.length === 0) {
         // 插一张卡：末尾，或插在随机一张现有卡前（它若在折叠段里就插进段里 —— R6 口径）
-        const c = card(r() < 0.1 ? null : `u${next++}`);
-        const all = Array.from(el.querySelectorAll<HTMLElement>(".card"));
-        if (all.length === 0 || r() < 0.5) el.appendChild(c);
-        else {
-          const anchor = all[Math.floor(r() * all.length)];
+        const id = r() < 0.1 ? null : `u${next++}`;
+        const c = card(id);
+        const t = card(id);
+        if (order.length === 0 || r() < 0.5) {
+          el.appendChild(c);
+          flat.appendChild(t);
+          order.push(c);
+        } else {
+          const at = Math.floor(r() * order.length);
+          const anchor = order[at];
           anchor.parentElement!.insertBefore(c, anchor);
+          flat.insertBefore(t, twin.get(anchor)!);
+          order.splice(at, 0, c);
         }
+        twin.set(c, t);
       } else {
         // 换主线外清单：每张卡独立地以 0.3 的概率在清单里
         const off = new Set<string>();
-        for (const c of Array.from(el.querySelectorAll<HTMLElement>(".card"))) {
+        for (const c of order) {
           const u = c.dataset.id;
           if (u && r() < 0.3) off.add(u);
         }
         folder.setOff(off);
       }
       folder.rebuildNow();
-      // 参照：同一逻辑序列的平铺容器，另一个实例从零折
-      const flat = document.createElement("div");
-      for (const t of logical(el)) flat.appendChild(card(t === "sep" ? null : t));
-      const ref = new BranchFolder(flat);
-      ref.setOff(offOf(folder));
-      expect(el.innerHTML, `第 ${step} 步`).toBe(flat.innerHTML);
-      foldedSeen += el.querySelectorAll(".branch-fold-wrap").length;
+      const ref = flat.cloneNode(true) as HTMLElement;
+      new BranchFolder(ref).setOff(offOf(folder));
+      if (!el.isEqualNode(ref)) expect(el.innerHTML, `种子 ${seed} 第 ${step} 步`).toBe(ref.innerHTML);
+      foldedSeen += el.querySelectorAll(":scope > .branch-fold-wrap").length;
       checked++;
+    }
+    expect(el.querySelectorAll(".card").length, "被测那一侧的卡数与参照对不上").toBe(order.length);
+    return [checked, foldedSeen];
+  }
+
+  // 三段各 100 步（三个种子，第一段就是原来那一段的前 100 步），共 300 步、每一步都查。
+  //   原先是一段 300 步：卡数一路长到一百二十张，每一步从零折一整份 ⇒ 平方级，带覆盖率负载 89–150 时 8–26 s，挂在 30 s 期限上过半；
+  //   jsdom 里折一段要建八九个节点，大头在产品那份折叠本身，判据这边省不出来。分三段之后每段长到四十来张（照样有插进段里 ·
+  //   段并段拆 · 一步换十几段），平方那一项是原来的三分之一。
+  it("随机 3 × 100 步：每一步差量结果 == 从零折", () => {
+    let checked = 0;
+    let foldedSeen = 0;
+    for (const seed of [20260926, 20260927, 20260928]) {
+      const [c, f] = history(seed, 100);
+      checked += c;
+      foldedSeen += f;
     }
     expect(checked).toBe(300);
     expect(foldedSeen, "反空真：序列里真出现过折叠段").toBeGreaterThan(50);

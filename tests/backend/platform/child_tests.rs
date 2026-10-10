@@ -470,3 +470,25 @@ fn internal_families_inner() {
     );
     println!("{INTERNAL_READING}");
 }
+
+/// 长寿子进程：关掉它的 stdin ⇒ 读到头就自己退的程序自己退了（输出读到头、退出码 0，不是被杀的）——拿着它的那一方还没放手。
+/// （终端订阅收 tmux 控制模式客户端就走这一条：直接杀会让 tmux 3.6a 的 server 段错误。）
+#[cfg(unix)]
+#[test]
+fn closing_a_streaming_childs_stdin_lets_it_leave_on_its_own() {
+    use std::io::Read;
+    let mut s = Child::new("sh")
+        .args(["-c", "cat; echo bye-zq"])
+        .stream()
+        .expect("起得来");
+    let mut out = s.take_stdout().expect("输出流");
+    s.close_stdin();
+    let mut got = String::new();
+    out.read_to_string(&mut got).expect("读到头");
+    assert_eq!(
+        got, "bye-zq\n",
+        "stdin 关了，cat 读到头之后那一行该印出来、再退"
+    );
+    let status = s.child.wait().expect("收尸");
+    assert!(status.success(), "它是自己退的，不是被杀的：{status:?}");
+}

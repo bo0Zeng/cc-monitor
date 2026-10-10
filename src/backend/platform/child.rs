@@ -475,18 +475,25 @@ pub(crate) fn cannot_detach() -> Option<String> {
     os::cannot_detach()
 }
 
-/// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退）。
+/// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退），
+/// 拿着它的那一方可以先关（[`Streaming::close_stdin`]）请它自己退。
 /// **放手即收**：`Drop` ⇒ 杀整组（Windows：终止 Job）、收尸。没有期限 —— 它活多久由拿着它的那一方定，不是节拍。
 pub(crate) struct Streaming {
     child: std::process::Child,
     group: os::Group,
-    _stdin: Option<std::process::ChildStdin>,
+    stdin: Option<std::process::ChildStdin>,
 }
 
 impl Streaming {
     /// 它的输出流（只给一次）。读到头 ＝ 它退了。
     pub(crate) fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
         self.child.stdout.take()
+    }
+
+    /// 关掉它的 stdin（再调什么也不做）：读到 stdin 头就自己收尾的程序据此自己退，它的输出随之读到头。
+    /// 之后照旧放手即杀组收尸（它已经退了时组里没人，收尸之前组号仍被它占着、不会落到别的组上）。
+    pub(crate) fn close_stdin(&mut self) {
+        self.stdin = None;
     }
 }
 
@@ -517,7 +524,7 @@ impl Child {
         Ok(Streaming {
             child,
             group,
-            _stdin: stdin,
+            stdin,
         })
     }
 }

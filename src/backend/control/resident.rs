@@ -172,7 +172,7 @@ pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
 pub fn ensure(args: &[String]) -> i32 {
     // 本平台没有常驻 ⇒ 先说，一个目录都不建（诊断文件那层目录也不建）。
     if let Some(why) = unsupported_here() {
-        return fail("unsupported", why);
+        return fail(ENSURE, "unsupported", why);
     }
     let hosted = vec![
         // 中转口与这台 `ccm` 起会话时找的是同一个口（同一个函数：这台环境里交了就用交的，否则默认口）。
