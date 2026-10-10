@@ -3996,3 +3996,23 @@ stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities�
 | `fd` | number? | 折叠单元数：`tool_use` / `tool_result` / `thinking` / `redacted_thinking` / `image` 块 |
 | `x` | string? | 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略 |
 | `ts` | string? | 同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席） |
+
+#### `TailPlan`
+
+`--read-session-tail` 那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `total` | number | 可计行总数（`line_counts` 口径） |
+| `tail_from` | number | 尾段第一行的行号 |
+| `split_at` | number | 尾段第一行的字节起点（＝ 头段的字节终点） |
+| `end` | number | 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里 |
+
+#### `RecordProbe`
+
+`record_in` 的答案。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `present` | bool | `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到 |
+| `root` | string | 查的那棵记录树的根 |

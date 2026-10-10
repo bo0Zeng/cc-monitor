@@ -1412,3 +1412,22 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
     }
     let _ = std::fs::remove_dir_all(&home);
 }
+
+impl crate::guard_support::Shaped for Searched {
+    fn samples() -> Vec<Self> {
+        vec![Searched {
+            lines: vec!["{}".into()],
+            unreadable: 0,
+            skipped: vec!["codex"],
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for Branch {
+    fn samples() -> Vec<Self> {
+        vec![Branch {
+            off: vec!["u-1".into()],
+            end: 99,
+        }]
+    }
+}

@@ -1416,7 +1416,7 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
 /// 抽出来是因为帧面那条（`history-tail`）只要**这张图**，
 /// 正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话，
 /// 而 CLI 这条仍然一口气印完。**两条路扫的是同一个函数**，行号口径因此只有一份。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
     pub total: u64,
@@ -1773,7 +1773,7 @@ pub(crate) fn record_for(
 }
 
 /// [`record_in`] 的答案。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct RecordProbe {
     /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
     pub present: bool,

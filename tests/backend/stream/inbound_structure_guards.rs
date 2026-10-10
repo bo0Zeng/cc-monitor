@@ -1132,6 +1132,54 @@ use typed_replies::*;
 #[allow(clippy::type_complexity)]
 const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     (
+        "history-annotate",
+        sampled::<crate::history::history_annotations::Annotated>,
+        &["customTitle", "hidden", "starred", "updatedAt"],
+        &[],
+    ),
+    (
+        "history-branch",
+        sampled::<crate::faces::read_face::Branch>,
+        &[],
+        &[],
+    ),
+    (
+        "history-forget",
+        sampled::<crate::history::history_annotations::Forgotten>,
+        &[],
+        &[],
+    ),
+    (
+        "history-last-accounts",
+        sampled::<crate::control::launch_account::LastAccounts>,
+        &[],
+        &[],
+    ),
+    (
+        "history-record",
+        sampled::<crate::observe::history_query::RecordProbe>,
+        &[],
+        &[],
+    ),
+    (
+        "history-search",
+        sampled::<crate::faces::read_face::Searched>,
+        &[],
+        &[],
+    ),
+    (
+        "history-search-merge",
+        sampled::<crate::observe::search_query::Merged>,
+        &[],
+        &[],
+    ),
+    (
+        "history-tail",
+        sampled::<crate::observe::history_query::TailPlan>,
+        &[],
+        &[],
+    ),
+    (
         "quota-probe",
         sampled::<crate::faces::quota_probe_face::Probed>,
         &[],
@@ -1547,7 +1595,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 95;
+    const UNSHAPED_CEILING: usize = 87;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1612,14 +1660,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "first-run",
         "forward-start",
         "forward-stop",
-        "history-annotate",
-        "history-branch",
-        "history-forget",
-        "history-last-accounts",
-        "history-record",
-        "history-search",
-        "history-search-merge",
-        "history-tail",
         "last-seen-read",
         "last-seen-write",
         "launch-local",

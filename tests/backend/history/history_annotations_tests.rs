@@ -275,3 +275,22 @@ fn an_unreadable_file_hands_its_raw_to_the_detail_not_the_sentence() {
     assert!(!e.message.contains(raw), "原话上了句子：{e:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+impl crate::guard_support::Shaped for Annotated {
+    fn samples() -> Vec<Self> {
+        vec![Annotated {
+            entry: Entry {
+                starred: true,
+                custom_title: Some("t".into()),
+                hidden: false,
+                updated_at: 1,
+            },
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for Forgotten {
+    fn samples() -> Vec<Self> {
+        vec![Forgotten { removed: true }]
+    }
+}
