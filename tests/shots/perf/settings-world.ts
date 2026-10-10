@@ -120,7 +120,7 @@ export function settingsPerfWorld(): World {
       return {
         id: `r_${String(k).padStart(3, "0")}`,
         name: `规则 ${k + 1}`,
-        rotation: { order, enabled: order.slice(1), when: k % 2 ? "full" : { threshold: { n: 80 + (k % 20) } }, atLimit: "continue", wait: 40 },
+        rotation: { order, enabled: order.slice(1), ...(k % 2 ? {} : { cap: { "*": { "5h": 80 + (k % 20) } } }), atLimit: "continue", wait: 40 },
         rev: 2,
         updatedAt: 0,
         isDefault: k === 0,

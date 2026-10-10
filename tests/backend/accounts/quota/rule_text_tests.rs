@@ -12,9 +12,28 @@ fn base() -> Rotation {
             RotationSlot::Named("w".into()),
         ],
         enabled: vec!["p".into(), "w".into()],
-        when: RotationWhen::Threshold { n: 90 },
+        cap: lines(&[("5h", 90)]),
         ..Rotation::default()
     }
+}
+
+/// 触发那一行（`cap["*"]`）。
+fn lines(set: &[(&str, u8)]) -> Caps {
+    let mut cap = Caps::new();
+    for (w, n) in set {
+        cap.entry("*".into())
+            .or_default()
+            .insert((*w).into(), CapValue::N(*n));
+    }
+    cap
+}
+
+fn five() -> String {
+    copy_text("acct.slot.fiveHour", &[])
+}
+
+fn seven() -> String {
+    copy_text("acct.slot.sevenDay", &[])
 }
 
 fn has(s: &str, key: &str, args: &[(&str, &str)]) -> bool {
@@ -73,7 +92,6 @@ fn the_explanation_names_wait_off_slots_and_at_limit_only_when_they_apply() {
         &[("acct", "w"), ("at", "17:00-02:00")]
     ));
     assert!(has(&explain(&r), "beRotation.explain.go", &[]));
-    r.when = RotationWhen::Full;
     r.cap = Caps::new();
     assert!(
         !has(&explain(&r), "beRotation.explain.go", &[]),
@@ -150,10 +168,64 @@ fn the_summary_lists_order_trigger_and_the_non_default_bits() {
     .join(&arrow);
     let want = [
         head,
-        copy_text("beRotation.sum.pct", &[("n", "90")]),
+        copy_text("beRotation.sum.pct", &[("w", &five()), ("n", "90")]),
         copy_text("beRotation.sum.preempt", &[]),
         copy_text("beRotation.sum.stop", &[]),
     ]
     .join(&copy_text("kit.text.sep", &[]));
     assert_eq!(summary(&r), want);
+}
+
+/// ★ 触发两格：只设 5h ⇒「5h 到 90% 从头取首个可用 · 7d 被拒才换」；两格都设 ⇒「5h 到 90%、7d 到 95% 从头取首个可用」、不说被拒才换；
+/// 两格都空 ⇒「被拒才换」。摘要两格各一段；触发那一行不算进「封顶 N」。
+#[test]
+fn the_texts_name_each_window_of_the_trigger() {
+    let mut r = base();
+    let line = |w: &str, n: &str| copy_text("beRotation.explain.line", &[("w", w), ("n", n)]);
+    let one = explain(&r);
+    assert!(
+        has(
+            &one,
+            "beRotation.explain.atLines",
+            &[("lines", &line(&five(), "90"))]
+        ),
+        "{one}"
+    );
+    assert!(
+        has(&one, "beRotation.explain.onRefusedOf", &[("w", &seven())]),
+        "{one}"
+    );
+    r.cap = lines(&[("5h", 90), ("7d", 95)]);
+    let both = explain(&r);
+    let list = [line(&five(), "90"), line(&seven(), "95")]
+        .join(&copy_text("beRotation.explain.lineSep", &[]));
+    assert!(
+        has(&both, "beRotation.explain.atLines", &[("lines", &list)]),
+        "{both}"
+    );
+    assert!(!both.contains(&copy_text(
+        "beRotation.explain.onRefusedOf",
+        &[("w", &seven())]
+    )));
+    let sum = summary(&r);
+    assert!(
+        has(&sum, "beRotation.sum.pct", &[("w", &five()), ("n", "90")]),
+        "{sum}"
+    );
+    assert!(
+        has(&sum, "beRotation.sum.pct", &[("w", &seven()), ("n", "95")]),
+        "{sum}"
+    );
+    assert!(
+        !sum.contains(&copy_text("beRotation.sum.cap", &[("n", "1")])),
+        "{sum}"
+    );
+    r.cap
+        .entry("w".into())
+        .or_default()
+        .insert("7d".into(), CapValue::N(80));
+    assert!(has(&summary(&r), "beRotation.sum.cap", &[("n", "1")]));
+    r.cap = Caps::new();
+    assert!(has(&explain(&r), "beRotation.explain.onRefused", &[]));
+    assert!(has(&summary(&r), "beRotation.sum.full", &[]));
 }

@@ -1,9 +1,8 @@
 //! 换号的唯一判定：触发 · 按序取首个能接的 · 超额规矩 · 不打转。
 
 use super::{decide, Back, Facts, Kind, Verdict};
-use crate::accounts::quota::rotation::{
-    AtLimit, Baseline, Caps, RotationWhen, Stints, SwitchWhy, Unready,
-};
+use crate::accounts::quota::rotation::CapValue;
+use crate::accounts::quota::rotation::{AtLimit, Baseline, Caps, Stints, SwitchWhy, Unready};
 use crate::agents::{QuotaOverage, QuotaReading, QuotaWindow};
 use std::collections::BTreeMap;
 
@@ -38,11 +37,7 @@ fn overage(r: QuotaReading) -> QuotaReading {
 }
 
 fn slot(n: &str) -> Option<&'static str> {
-    match n {
-        "five_hour" => Some("5h"),
-        "seven_day" => Some("7d"),
-        _ => None,
-    }
+    crate::agents::claudecode::quota::slot_of(n)
 }
 
 fn key(n: &str) -> Option<String> {
@@ -51,7 +46,8 @@ fn key(n: &str) -> Option<String> {
 
 struct World {
     pool: Vec<String>,
-    when: RotationWhen,
+    /// 触发那一行（`cap["*"]`：所有号这语义位）；判的时候并进 `cap`。
+    lines: BTreeMap<String, CapValue>,
     at_limit: AtLimit,
     seen: BTreeMap<String, QuotaReading>,
     api: Vec<String>,
@@ -75,7 +71,7 @@ impl World {
     fn new(pool: &[&str]) -> Self {
         Self {
             pool: pool.iter().map(|s| s.to_string()).collect(),
-            when: RotationWhen::Full,
+            lines: BTreeMap::new(),
             at_limit: AtLimit::Continue,
             seen: BTreeMap::new(),
             api: Vec::new(),
@@ -130,10 +126,13 @@ impl World {
                 Kind::Sub
             }
         };
+        let mut cap = self.cap.clone();
+        if !self.lines.is_empty() {
+            cap.insert("*".into(), self.lines.clone());
+        }
         let f = Facts {
             pool: &self.pool,
-            when: self.when,
-            cap: &self.cap,
+            cap: &cap,
             stint: &self.stint,
             preempt: self.preempt,
             at_limit: self.at_limit,
@@ -153,6 +152,24 @@ impl World {
             tried: &tried,
         };
         run(&f)
+    }
+}
+
+/// 触发那一行：5h · 7d 各一格（`0` ＝ 那一格空着）。
+fn lines(h5: u8, d7: u8) -> BTreeMap<String, CapValue> {
+    let mut m = BTreeMap::new();
+    for (k, n) in [("5h", h5), ("7d", d7)] {
+        if n > 0 {
+            m.insert(k.to_string(), CapValue::N(n));
+        }
+    }
+    m
+}
+
+fn to5h(n: u8) -> SwitchWhy {
+    SwitchWhy::Threshold {
+        n,
+        w: Some("5h".into()),
     }
 }
 
@@ -272,7 +289,7 @@ fn before_sending_a_refused_current_account_switches_first() {
 #[test]
 fn threshold_mode_switches_on_the_next_request() {
     let mut w = World::new(&["a", "b", "c"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.seen
         .insert("a".into(), reading(false, 0.91, Some(NOW + 60)));
     w.seen
@@ -281,7 +298,7 @@ fn threshold_mode_switches_on_the_next_request() {
         w.judge("a", None, &[]).0,
         Verdict::Switch {
             to: "c".into(),
-            why: SwitchWhy::Threshold { n: 90 },
+            why: to5h(90),
             from_resets_at: Some(NOW + 60),
             skipped: vec![]
         }
@@ -289,7 +306,7 @@ fn threshold_mode_switches_on_the_next_request() {
     w.seen
         .insert("a".into(), reading(false, 0.89, Some(NOW + 60)));
     assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
-    w.when = RotationWhen::Full;
+    w.lines.clear();
     w.seen
         .insert("a".into(), reading(false, 0.99, Some(NOW + 60)));
     assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
@@ -300,7 +317,7 @@ fn threshold_mode_switches_on_the_next_request() {
 #[test]
 fn a_refusal_falls_back_to_the_first_unrefused_account_past_the_threshold() {
     let mut w = World::new(&["a", "b", "c"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.seen
         .insert("b".into(), reading(true, 1.0, Some(NOW + 60)));
     w.seen
@@ -335,7 +352,7 @@ fn a_refusal_falls_back_to_the_first_unrefused_account_past_the_threshold() {
     assert!(matches!(
         w.judge("a", None, &[]).0,
         Verdict::Stuck {
-            why: SwitchWhy::Threshold { n: 90 },
+            why: SwitchWhy::Threshold { n: 90, .. },
             ..
         }
     ));
@@ -346,7 +363,7 @@ fn a_refusal_falls_back_to_the_first_unrefused_account_past_the_threshold() {
 #[test]
 fn a_hard_limit_holds_until_the_earliest_account_is_back_under_the_threshold() {
     let mut w = World::new(&["a", "b", "c"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.at_limit = AtLimit::Stop;
     w.seen
         .insert("a".into(), reading(false, 0.95, Some(NOW + 600)));
@@ -363,6 +380,7 @@ fn a_hard_limit_holds_until_the_earliest_account_is_back_under_the_threshold() {
         .insert("c".into(), reading(true, 1.0, Some(NOW + 900)));
     let want = Verdict::Hold {
         n: 90,
+        w: Some("5h".into()),
         back: Back {
             account: "a".into(),
             at: NOW + 600,
@@ -388,7 +406,7 @@ fn a_hard_limit_holds_until_the_earliest_account_is_back_under_the_threshold() {
         .insert("a".into(), reading(false, 0.95, Some(NOW + 600)));
     assert!(matches!(w.judge("a", None, &[]).0, Verdict::Stuck { .. }));
     // 「被拒才换」模式下 `stop` 不成立（没有 N%）：照常换到没被拒的 b。
-    w.when = RotationWhen::Full;
+    w.lines.clear();
     w.at_limit = AtLimit::Stop;
     assert!(
         matches!(w.judge("a", Some(&refused), &["a"]).0, Verdict::Switch { to, .. } if to == "b")
@@ -417,7 +435,7 @@ fn overage_counts_as_full_and_only_subscriptions_take_over() {
 
 // ── 积木：每号上限（按窗口 · 按时段）· 单段预算 · 切回 ─────────────────────────────
 
-use crate::accounts::quota::rotation::{Base, CapSlot, CapValue};
+use crate::accounts::quota::rotation::{Base, CapSlot};
 
 /// 一个号只有 5h 一个窗口的快照（没被拒）。
 fn at(used5h: f64, resets: u64) -> QuotaReading {
@@ -510,7 +528,7 @@ fn a_stint_moves_on_after_its_points_and_stays_when_nobody_can_take_over() {
 #[test]
 fn a_stint_is_soft_and_a_cap_is_hard() {
     let mut w = World::new(&["a", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.seen.insert("a".into(), at(0.95, NOW + 600));
     w.stint.insert("b".into(), [("5h".to_string(), 5u8)].into());
     w.base.insert(
@@ -530,23 +548,23 @@ fn a_stint_is_soft_and_a_cap_is_hard() {
     assert!(matches!(
         w.judge("b", None, &[]).0,
         Verdict::Stuck {
-            why: SwitchWhy::Threshold { n: 90 },
+            why: SwitchWhy::Threshold { n: 90, .. },
             ..
         }
     ));
     w.at_limit = AtLimit::Stop;
     assert!(matches!(
         w.judge("b", None, &[]).0,
-        Verdict::Hold { n: 90, back: Back { ref account, at, .. }, .. } if account == "a" && at == NOW + 600
+        Verdict::Hold { n: 90, w: Some(_), back: Back { ref account, at, .. }, .. } if account == "a" && at == NOW + 600
     ));
 }
 
-/// ★ 用户例子二「其他三个都过 90% 才用 b，一重置就切回去」：`order: [work, personal, team, b]` · `when: ≥90%` · `preempt: true`。
+/// ★ 用户例子二「其他三个都过 90% 才用 b，一重置就切回去」：`order: [work, personal, team, b]` · `cap["*"]: 5h · 7d ≥90%` · `preempt: true`。
 /// 「备胎」不是一格：排在最后 ＋ 切回，就是它。
 #[test]
 fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
     let mut w = World::new(&["work", "personal", "team", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.seen.insert("work".into(), at(0.91, NOW + 3000));
     w.seen.insert("personal".into(), at(0.93, NOW + 1000));
@@ -556,7 +574,7 @@ fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
         w.judge("work", None, &[]).0,
         Verdict::Switch {
             to: "b".into(),
-            why: SwitchWhy::Threshold { n: 90 },
+            why: to5h(90),
             from_resets_at: Some(NOW + 3000),
             skipped: vec![]
         }
@@ -595,7 +613,7 @@ fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
 #[test]
 fn the_verdict_never_flaps_between_two_accounts() {
     let mut w = World::new(&["work", "personal", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.stint.insert("b".into(), [("5h".to_string(), 5u8)].into());
     w.base.insert(
@@ -637,12 +655,12 @@ fn the_verdict_never_flaps_between_two_accounts() {
     );
 }
 
-/// ★ 一份典型配置：`order: [work, personal, team, b]` · `when: ≥90%` · `personal: {cap: [{at: "01:00-20:00", n: 99}]}` ·
+/// ★ 一份典型配置：`order: [work, personal, team, b]` · `cap["*"]: 5h · 7d ≥90%` · `personal: {cap: [{at: "01:00-20:00", n: 99}]}` ·
 /// `preempt: true` · `atLimit: continue`。personal 在 1 点到 20 点能用到 99%：19:59 personal 在 95% 照用；20:01 上限回到 90% ⇒ 下一发换走。
 #[test]
 fn a_daytime_cap_lets_personal_run_to_ninety_nine_until_eight_pm() {
     let mut w = World::new(&["work", "personal", "team", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.at_limit = AtLimit::Continue;
     w.cap = caps(&[("personal", "*", slots("01:00-20:00", 99))]);
@@ -673,7 +691,7 @@ fn a_daytime_cap_lets_personal_run_to_ninety_nine_until_eight_pm() {
         w.judge("personal", None, &[]).0,
         Verdict::Switch {
             to: "b".into(),
-            why: SwitchWhy::Threshold { n: 90 },
+            why: to5h(90),
             from_resets_at: Some(far),
             skipped: vec![]
         },
@@ -694,11 +712,11 @@ fn a_daytime_cap_lets_personal_run_to_ninety_nine_until_eight_pm() {
     );
 }
 
-/// ★ 跨午夜的一段（`22:00-06:00`）：含起不含止；落不进那一段 ⇒ 落回这个号 `*` 的，再落回 `when`。按窗口写的压过 `*`。
+/// ★ 跨午夜的一段（`22:00-06:00`）：含起不含止；落不进那一段 ⇒ 落回这个号 `*` 的，再落回触发（`cap["*"]`）。按窗口写的压过 `*`。
 #[test]
 fn a_slot_across_midnight_and_the_fallthrough_order_of_caps() {
     let mut w = World::new(&["q", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.cap = caps(&[
         ("q", "5h", slots("22:00-06:00", 99)),
         ("q", "*", CapValue::N(80)),
@@ -722,19 +740,19 @@ fn a_slot_across_midnight_and_the_fallthrough_order_of_caps() {
             "{hh:02}:{mm:02}"
         );
     }
-    // 12:00 落回 `*` 的 80%：用到 85% 就过了（`when` 的 90% 不管它）。
+    // 12:00 落回 `*` 的 80%：用到 85% 就过了（触发的 90% 不管它）。
     w.seen.insert("q".into(), at(0.85, far));
     local(&mut w, 12, 0);
     assert!(matches!(
         w.judge("q", None, &[]).0,
         Verdict::Switch {
-            why: SwitchWhy::Threshold { n: 80 },
+            why: SwitchWhy::Threshold { n: 80, .. },
             ..
         }
     ));
 }
 
-/// 「满了才换」模式下给一个号设的上限照样算（`when` 只是缺省上限）。
+/// 「满了才换」模式下给一个号设的上限照样算（触发那一行只是最末一层）。
 #[test]
 fn a_per_account_cap_applies_in_full_mode_too() {
     let mut w = World::new(&["a", "b"]);
@@ -742,7 +760,7 @@ fn a_per_account_cap_applies_in_full_mode_too() {
     w.seen.insert("a".into(), at(0.91, NOW + 600));
     assert!(matches!(
         w.judge("a", None, &[]).0,
-        Verdict::Switch { ref to, why: SwitchWhy::Threshold { n: 90 }, .. } if to == "b"
+        Verdict::Switch { ref to, why: SwitchWhy::Threshold { n: 90, .. }, .. } if to == "b"
     ));
     w.seen.insert("a".into(), at(0.89, NOW + 600));
     assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
@@ -753,7 +771,7 @@ fn a_per_account_cap_applies_in_full_mode_too() {
 #[test]
 fn a_per_model_week_is_its_own_window_key() {
     let mut w = World::new(&["a", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.at_limit = AtLimit::Stop;
     let opus = |used: f64, resets: u64| QuotaReading {
         status: None,
@@ -782,6 +800,7 @@ fn a_per_model_week_is_its_own_window_key() {
         w.judge("a", None, &[]).0,
         Verdict::Hold {
             n: 90,
+            w: Some("7d".into()),
             back: Back {
                 account: "a".into(),
                 at: NOW + 50_000,
@@ -800,7 +819,7 @@ fn a_per_model_week_is_its_own_window_key() {
 #[test]
 fn personal_comes_back_at_one_am_through_its_slot_not_a_reset() {
     let mut w = World::new(&["work", "personal", "team", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.cap = caps(&[("personal", "*", slots("01:00-20:00", 99))]);
     let far = NOW + 3 * 86_400;
@@ -835,7 +854,7 @@ fn personal_comes_back_at_one_am_through_its_slot_not_a_reset() {
 #[test]
 fn a_manual_switch_is_not_undone_by_preempt() {
     let mut w = World::new(&["z", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.seen.insert("z".into(), at(0.20, NOW + 3000));
     w.seen.insert("b".into(), at(0.30, NOW + 3000));
@@ -858,7 +877,7 @@ fn a_manual_switch_is_not_undone_by_preempt() {
 #[test]
 fn a_cap_of_zero_keeps_an_account_out_for_its_slot_and_preempt_brings_it_back() {
     let mut w = World::new(&["q", "z"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.cap = caps(&[(
         "q",
@@ -885,7 +904,7 @@ fn a_cap_of_zero_keeps_an_account_out_for_its_slot_and_preempt_brings_it_back() 
         matches!(
             &v,
             Verdict::Switch {
-                why: SwitchWhy::Threshold { n: 0 },
+                why: SwitchWhy::Off { w: None },
                 ..
             }
         ),
@@ -997,7 +1016,7 @@ fn any_non_fallback_account_counts() {
 #[test]
 fn over_a_soft_threshold_stays_and_a_hard_one_waits() {
     let mut w = with_fallback(&["a", "b"], &["b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.seen
         .insert("a".into(), reading(false, 0.95, Some(NOW + 180)));
     assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
@@ -1074,7 +1093,7 @@ fn step(from: u64, to: u64, account: Option<&str>, why: Option<SwitchWhy>) -> Pl
 #[test]
 fn the_plan_follows_decide_through_resets_and_preempt() {
     let mut w = World::new(&["work", "personal", "team", "b"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.preempt = true;
     w.seen.insert("work".into(), at(0.91, NOW + 3000));
     w.seen.insert("personal".into(), at(0.93, NOW + 1000));
@@ -1084,12 +1103,7 @@ fn the_plan_follows_decide_through_resets_and_preempt() {
     assert_eq!(
         w.plan("work", end),
         vec![
-            step(
-                NOW,
-                NOW + 1000,
-                Some("b"),
-                Some(SwitchWhy::Threshold { n: 90 })
-            ),
+            step(NOW, NOW + 1000, Some("b"), Some(to5h(90))),
             step(
                 NOW + 1000,
                 NOW + 3000,
@@ -1103,12 +1117,7 @@ fn the_plan_follows_decide_through_resets_and_preempt() {
     w.preempt = false;
     assert_eq!(
         w.plan("work", end),
-        vec![step(
-            NOW,
-            end,
-            Some("b"),
-            Some(SwitchWhy::Threshold { n: 90 })
-        )]
+        vec![step(NOW, end, Some("b"), Some(to5h(90)))]
     );
 }
 
@@ -1129,7 +1138,7 @@ fn a_slot_off_shows_in_the_plan_and_the_lane() {
                 five,
                 two,
                 Some("personal"),
-                Some(SwitchWhy::Threshold { n: 0 })
+                Some(SwitchWhy::Off { w: None })
             ),
             step(two, end, Some("work"), Some(SwitchWhy::Preempt)),
         ]
@@ -1144,7 +1153,8 @@ fn a_slot_off_shows_in_the_plan_and_the_lane() {
                 from: five,
                 to: two,
                 state: LaneState::Off,
-                n: None
+                n: None,
+                w: None
             }],
             vec![]
         )
@@ -1155,7 +1165,7 @@ fn a_slot_off_shows_in_the_plan_and_the_lane() {
 #[test]
 fn a_hold_is_a_gap_in_the_plan_until_the_earliest_is_back() {
     let mut w = World::new(&["work", "personal"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.at_limit = AtLimit::Stop;
     w.seen
         .insert("work".into(), reading(true, 1.0, Some(NOW + 1800)));
@@ -1164,7 +1174,15 @@ fn a_hold_is_a_gap_in_the_plan_until_the_earliest_is_back() {
     assert_eq!(
         w.plan("work", end),
         vec![
-            step(NOW, NOW + 600, None, Some(SwitchWhy::Held { n: 90 })),
+            step(
+                NOW,
+                NOW + 600,
+                None,
+                Some(SwitchWhy::Held {
+                    n: 90,
+                    w: Some("5h".into())
+                })
+            ),
             step(NOW + 600, end, Some("personal"), Some(full5h())),
         ]
     );
@@ -1175,7 +1193,8 @@ fn a_hold_is_a_gap_in_the_plan_until_the_earliest_is_back() {
             from: NOW,
             to: NOW + 1800,
             state: LaneState::Refused,
-            n: None
+            n: None,
+            w: None
         }]
     );
 }
@@ -1184,13 +1203,17 @@ fn a_hold_is_a_gap_in_the_plan_until_the_earliest_is_back() {
 #[test]
 fn effective_caps_name_their_layer_and_the_one_below() {
     let mut w = World::new(&["work", "personal"]);
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     w.cap = caps(&[
         ("work", "*", CapValue::N(99)),
         ("work", "5h", slots("17:00-02:00", 0)),
     ]);
     local(&mut w, 20, 0);
-    let at = |v: Option<u8>, layer| CapAt { v, layer };
+    let at = |v: Option<u8>, layer| CapAt {
+        v,
+        layer,
+        w: (layer == CapLayer::Trigger).then_some("5h"),
+    };
     let got = w.with("work", None, &[], |f| {
         (
             effective_cap(f, "work", "5h"),
@@ -1202,7 +1225,8 @@ fn effective_caps_name_their_layer_and_the_one_below() {
         got,
         (
             (at(Some(0), CapLayer::Window), at(Some(99), CapLayer::All)),
-            (at(Some(99), CapLayer::All), at(Some(90), CapLayer::Trigger)),
+            // 全部窗口那一格下面是两窗各一条线 ⇒ 下一层写不成一个数（两窗各取多少见 `effective_lines`）。
+            (at(Some(99), CapLayer::All), at(None, CapLayer::None)),
             (
                 at(Some(90), CapLayer::Trigger),
                 at(Some(90), CapLayer::Trigger)
@@ -1211,7 +1235,7 @@ fn effective_caps_name_their_layer_and_the_one_below() {
     );
     // 时段外（10:00）⇒ 5h 那一格落不进 ⇒ 取全部窗口；满了才换、没设 ⇒ 不封顶。
     local(&mut w, 10, 0);
-    w.when = RotationWhen::Full;
+    w.lines.clear();
     let got = w.with("work", None, &[], |f| {
         (
             effective_cap(f, "work", "5h"),
@@ -1235,7 +1259,7 @@ fn seven() -> World {
         &["work", "team", "lab", "api", "personal", "spare", "backup"],
         &["backup"],
     );
-    w.when = RotationWhen::Threshold { n: 90 };
+    w.lines = lines(90, 90);
     let far = NOW + 3 * 3600;
     for a in ["work", "team", "lab", "api", "personal", "spare"] {
         w.seen.insert(a.into(), at(0.95, far));
@@ -1328,5 +1352,229 @@ fn the_plan_leaves_the_fallback_when_an_account_resets() {
             step(NOW, reset, Some("backup"), None),
             step(reset, end, Some("work"), Some(SwitchWhy::LeaveFallback)),
         ]
+    );
+}
+
+// ── 触发线分 5h / 7d（`cap["*"]`：所有号这语义位；一格空着 ＝ 那一窗满了才换）──────────────────────────
+
+/// 一个号 5h · 7d（· 分档的 7d）各一个窗口的快照（没被拒）。
+fn wins(rows: &[(&str, f64, u64)]) -> QuotaReading {
+    QuotaReading {
+        status: None,
+        refused: false,
+        limiting: rows.first().map(|r| r.0.to_string()),
+        resets_at: rows.first().map(|r| r.2),
+        windows: rows
+            .iter()
+            .map(|(name, used, at)| QuotaWindow {
+                name: (*name).into(),
+                used: Some(*used),
+                resets_at: Some(*at),
+                warned_at: None,
+            })
+            .collect(),
+        overage: None,
+    }
+}
+
+/// ★ 只设 5h：5h 到线就换，记下是 5h 那一窗；7d 到了 95% 也不换（7d 空着 ＝ 7d 满了才换）。
+#[test]
+fn only_the_five_hour_line_switches_and_an_empty_week_waits_for_full() {
+    let mut w = World::new(&["a", "b"]);
+    w.lines = lines(90, 0);
+    w.seen
+        .insert("b".into(), wins(&[("five_hour", 0.1, NOW + 600)]));
+    w.seen.insert(
+        "a".into(),
+        wins(&[
+            ("five_hour", 0.91, NOW + 600),
+            ("seven_day", 0.2, NOW + 86_400),
+        ]),
+    );
+    assert_eq!(
+        w.judge("a", None, &[]).0,
+        Verdict::Switch {
+            to: "b".into(),
+            why: to5h(90),
+            from_resets_at: Some(NOW + 600),
+            skipped: vec![]
+        }
+    );
+    w.seen.insert(
+        "a".into(),
+        wins(&[
+            ("five_hour", 0.3, NOW + 600),
+            ("seven_day", 0.95, NOW + 86_400),
+        ]),
+    );
+    assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay, "7d 没设线 ⇒ 不换");
+}
+
+/// ★ 7d 那一格管所有 7 天窗口（含分档的 `7d:opus`，同一语义位）：opus 周额度到线 ⇒ 换，记下 7d。
+/// 号自己那一行的 `7d` 一格同样管分档的（这号这语义位那一层）。
+#[test]
+fn the_week_line_covers_the_per_model_weeks_too() {
+    let mut w = World::new(&["a", "b"]);
+    w.lines = lines(0, 95);
+    w.seen
+        .insert("b".into(), wins(&[("five_hour", 0.1, NOW + 600)]));
+    w.seen.insert(
+        "a".into(),
+        wins(&[
+            ("five_hour", 0.2, NOW + 600),
+            ("seven_day_opus", 0.96, NOW + 50_000),
+        ]),
+    );
+    assert_eq!(
+        w.judge("a", None, &[]).0,
+        Verdict::Switch {
+            to: "b".into(),
+            why: SwitchWhy::Threshold {
+                n: 95,
+                w: Some("7d".into())
+            },
+            from_resets_at: Some(NOW + 50_000),
+            skipped: vec![]
+        }
+    );
+    // 号自己 7d 一格放到 99：opus 96% 不再过线。
+    w.cap = caps(&[("a", "7d", CapValue::N(99))]);
+    assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
+    // 号自己 7d 一格收到 90、触发那一行全空：opus 96% 照样过（这号这语义位管分档的）。
+    w.lines.clear();
+    w.cap = caps(&[("a", "7d", CapValue::N(90))]);
+    assert!(matches!(
+        w.judge("a", None, &[]).0,
+        Verdict::Switch { why: SwitchWhy::Threshold { n: 90, ref w }, .. } if w.as_deref() == Some("7d")
+    ));
+}
+
+/// ★ 两窗都过线：记下的线 · 窗口 · 几点回来取同一窗 —— 卡得最久的那一窗（7d 那条线、7d 的重置时刻）。
+#[test]
+fn the_line_the_window_and_the_return_come_from_the_same_window() {
+    let mut w = World::new(&["a", "b"]);
+    w.lines = lines(90, 95);
+    w.seen
+        .insert("b".into(), wins(&[("five_hour", 0.1, NOW + 600)]));
+    w.seen.insert(
+        "a".into(),
+        wins(&[
+            ("five_hour", 0.92, NOW + 3600),
+            ("seven_day", 0.97, NOW + 3 * 86_400),
+        ]),
+    );
+    assert_eq!(
+        w.judge("a", None, &[]).0,
+        Verdict::Switch {
+            to: "b".into(),
+            why: SwitchWhy::Threshold {
+                n: 95,
+                w: Some("7d".into())
+            },
+            from_resets_at: Some(NOW + 3 * 86_400),
+            skipped: vec![]
+        }
+    );
+    // 停发也带那一窗；泳道那一段同样带。
+    w.at_limit = AtLimit::Stop;
+    w.seen.insert(
+        "b".into(),
+        wins(&[
+            ("five_hour", 0.95, NOW + 1800),
+            ("seven_day", 0.1, NOW + 86_400),
+        ]),
+    );
+    assert!(matches!(
+        w.judge("a", None, &[]).0,
+        Verdict::Hold { n: 95, ref w, .. } if w.as_deref() == Some("7d")
+    ));
+    let spans = w.with("b", None, &[], |f| lane(f, "a", NOW + 3600));
+    assert_eq!(
+        spans,
+        vec![LaneSpan {
+            from: NOW,
+            to: NOW + 3600,
+            state: LaneState::Capped,
+            n: Some(95),
+            w: Some("7d".into())
+        }]
+    );
+}
+
+/// ★ 时段停用不借「到 0% 换」：换号记成 `off`（带那一格的窗口），不是 `threshold {n: 0}`。
+#[test]
+fn a_slot_off_is_recorded_as_off_not_as_a_zero_line() {
+    let mut w = World::new(&["a", "b"]);
+    w.cap = caps(&[("a", "5h", slots("17:00-02:00", 0))]);
+    local(&mut w, 18, 0);
+    w.seen
+        .insert("a".into(), wins(&[("five_hour", 0.1, w.now + 600)]));
+    assert!(matches!(
+        w.judge("a", None, &[]).0,
+        Verdict::Switch { why: SwitchWhy::Off { ref w }, .. } if w.as_deref() == Some("5h")
+    ));
+}
+
+/// ★ 层次：这号这窗口 → 这号这语义位 → 这号全部窗口 → 所有号这语义位；封顶表每一列此刻取哪一层、哪一窗。
+#[test]
+fn effective_lines_fall_through_to_the_trigger_of_their_own_window() {
+    let mut w = World::new(&["work", "team"]);
+    w.lines = lines(90, 0);
+    w.cap = caps(&[("work", "7d", CapValue::N(95))]);
+    let got = w.with("work", None, &[], |f| {
+        (
+            effective_cap(f, "work", "5h").0,
+            effective_cap(f, "work", "7d").0,
+            effective_cap(f, "team", "7d").0,
+            super::effective_lines(f, "team"),
+        )
+    });
+    let at = |v: Option<u8>, layer, w: Option<&'static str>| CapAt { v, layer, w };
+    assert_eq!(got.0, at(Some(90), CapLayer::Trigger, Some("5h")));
+    assert_eq!(got.1, at(Some(95), CapLayer::Window, None));
+    assert_eq!(
+        got.2,
+        at(None, CapLayer::None, None),
+        "7d 触发空着 ⇒ 不封顶"
+    );
+    assert_eq!(
+        got.3,
+        vec![
+            (
+                "5h",
+                at(Some(90), CapLayer::Trigger, Some("5h")),
+                at(Some(90), CapLayer::Trigger, Some("5h"))
+            ),
+            (
+                "7d",
+                at(None, CapLayer::None, None),
+                at(None, CapLayer::None, None)
+            ),
+        ]
+    );
+}
+
+/// ★ 顶行「距 {w} 线 {n} 点」：各窗按这号这窗此刻的线算还差几点，取差得最少的；封顶压过触发；都没线 ⇒ 不给。
+#[test]
+fn the_distance_to_the_line_is_per_window_and_honours_caps() {
+    let mut w = World::new(&["team"]);
+    w.lines = lines(90, 0);
+    w.seen.insert(
+        "team".into(),
+        wins(&[
+            ("seven_day", 0.86, NOW + 86_400),
+            ("five_hour", 0.22, NOW + 600),
+        ]),
+    );
+    let got = w.with("team", None, &[], |f| super::to_line(f, "team"));
+    assert_eq!(got, Some(("5h".into(), 68)), "7d 没线 ⇒ 说 5h");
+    w.cap = caps(&[("team", "7d", CapValue::N(90))]);
+    let got = w.with("team", None, &[], |f| super::to_line(f, "team"));
+    assert_eq!(got, Some(("7d".into(), 4)), "封顶 7d ≤90 ⇒ 7d 只差 4 点");
+    w.lines.clear();
+    w.cap.clear();
+    assert_eq!(
+        w.with("team", None, &[], |f| super::to_line(f, "team")),
+        None
     );
 }

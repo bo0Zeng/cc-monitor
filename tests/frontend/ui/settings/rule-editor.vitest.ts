@@ -61,7 +61,6 @@ import { accountColorSlot } from "../../../../src/frontend/ui/account-color";
 const ROT: Rotation = {
   order: [{ start: true }, "team", "lab"],
   enabled: ["team", "lab"],
-  when: "full",
   atLimit: "continue",
   wait: 40,
 };
@@ -120,7 +119,7 @@ const PLAN: PlanRead = {
       to: 8200,
       toText: "23:00",
       account: "lab",
-      why: { threshold: { n: 0 } },
+      why: { off: {} },
     },
     {
       from: 8200,
@@ -128,7 +127,7 @@ const PLAN: PlanRead = {
       to: 1000 + 12 * 3600,
       toText: "09:00",
       account: null,
-      why: { held: { n: 90 } },
+      why: { held: { n: 90, w: "5h" } },
     },
   ],
   lanes: [
@@ -319,26 +318,123 @@ describe("规则编辑器 · 每格改完即存", () => {
     expect(readRules.mock.calls.length).toBe(before + 1);
   });
 
-  it("触发 ≥N%：写错的数也交后端，它拒（when 那一格）⇒ 框红 ＋ 红字 1–99；界面不另判范围", async () => {
+  it("★ 触发两格：满时两格空着（灰「—」）；在 5h 格填 90 ⇒ 写触发那一行的 5h 格、单选随之落到到线；7d 空 ＝ 7d 满才换（悬停那一句）", async () => {
     const el = await mount();
     const ed = await openNight(el);
+    const radio = (k: string) =>
+      ed.querySelector<HTMLInputElement>(`[data-rot-trig="${k}"]`)!;
+    const cell = (w: string) =>
+      editor()!.querySelector<HTMLInputElement>(`[data-rot-line-num="${w}"]`)!;
+    expect([radio("full").checked, radio("line").checked]).toEqual([true, false]);
+    expect([cell("5h").value, cell("7d").value]).toEqual(["", ""]);
+    expect(cell("5h").placeholder).toBe(copyText("rot.list.useNone"));
+    expect(cell("7d").getAttribute("aria-label")).toBe(
+      copyText("acct.rot.lineAria", { w: "7d" }),
+    );
+    expect(cell("7d").getAttribute("aria-description")).toBe(
+      copyText("acct.rot.lineEmpty", { w: "7d" }),
+    );
+    const next: Rotation = { ...ROT, cap: { "*": { "5h": 90 } } };
+    saveRule.mockResolvedValueOnce(saved(next));
+    cell("5h").value = "90";
+    cell("5h").dispatchEvent(new Event("change"));
+    await settle();
+    expect(saveRule.mock.calls[0][1].rotation.cap).toEqual({ "*": { "5h": 90 } });
+    expect(
+      editor()!.querySelector<HTMLInputElement>('[data-rot-trig="line"]')!.checked,
+    ).toBe(true);
+    expect(cell("5h").value).toBe("90");
+    expect(cell("7d").value, "7d 那一格照旧空着").toBe("");
+  });
+
+  it("★ 点「到线」且两格都空 ⇒ 5h 预填 90 写盘；点「满」⇒ 两格都清掉（`cap` 里不留触发那一行，号自己的封顶不动）", async () => {
+    const el = await mount();
+    let ed = await openNight(el);
+    saveRule.mockResolvedValueOnce(saved({ ...ROT, cap: { "*": { "5h": 90 } } }));
+    ed.querySelector<HTMLInputElement>('[data-rot-trig="line"]')!.dispatchEvent(
+      new Event("change"),
+    );
+    await settle();
+    expect(saveRule.mock.calls[0][1].rotation.cap).toEqual({ "*": { "5h": 90 } });
+    ed.querySelector<HTMLElement>("[data-ed-back]")!.click();
+    const both: Rotation = {
+      ...ROT,
+      cap: { "*": { "5h": 90, "7d": 95 }, team: { "7d": 80 } },
+    };
+    readRules.mockResolvedValue(rules([DAILY, { ...NIGHT, rotation: both }]));
+    ed = await openNight(await mount());
+    saveRule.mockClear();
+    saveRule.mockResolvedValueOnce(saved({ ...ROT, cap: { team: { "7d": 80 } } }));
+    ed.querySelector<HTMLInputElement>('[data-rot-trig="full"]')!.dispatchEvent(
+      new Event("change"),
+    );
+    await settle();
+    expect(saveRule.mock.calls[0][1].rotation.cap).toEqual({ team: { "7d": 80 } });
+  });
+
+  it("★ 填错：写错的数也交后端，它拒（`cap.*.5h` 那一格）⇒ 那一格框红、照原样写着填的字 ＋ 行尾红字 1–99；另一格不红；界面不另判范围", async () => {
+    const el = await mount();
+    await openNight(el);
     saveRule.mockResolvedValueOnce({
       state: "refused",
-      errors: [{ cell: "when.threshold.n", code: "range" }],
+      errors: [{ cell: "cap.*.5h", code: "range" }],
     });
-    const pct = ed.querySelector<HTMLInputElement>("[data-ed-pct]")!;
-    pct.value = "120";
-    pct.dispatchEvent(new Event("change"));
+    const cell = (w: string) =>
+      editor()!.querySelector<HTMLInputElement>(`[data-rot-line-num="${w}"]`)!;
+    cell("5h").value = "120";
+    cell("5h").dispatchEvent(new Event("change"));
     await settle();
-    expect(saveRule.mock.calls[0][1].rotation.when).toEqual({
-      threshold: { n: 120 },
-    });
-    expect(
-      editor()!.querySelector<HTMLInputElement>("[data-ed-pct]")!.dataset.error,
-    ).toBe("true");
-    expect(editor()!.querySelector("[data-ed-pct-err]")!.textContent).toBe(
+    expect(saveRule.mock.calls[0][1].rotation.cap).toEqual({ "*": { "5h": 120 } });
+    expect(cell("5h").dataset.error).toBe("true");
+    expect(cell("5h").value).toBe("120");
+    expect(cell("7d").dataset.error).toBeUndefined();
+    expect(editor()!.querySelector("[data-rot-line-err]")!.textContent).toBe(
       copyText("rot.ed.pctErr"),
     );
+  });
+
+  it("★ 盘上 5h 是按时段（命令行 / AI 写的）⇒ 那一格画成按钮「时段 N」，点开即封顶浮层", async () => {
+    readRules.mockResolvedValue(
+      rules([
+        DAILY,
+        {
+          ...NIGHT,
+          rotation: {
+            ...ROT,
+            cap: { "*": { "5h": [{ at: "17:00-02:00", n: 80 }, { at: "02:00-17:00", n: 95 }] } },
+          },
+        },
+      ]),
+    );
+    const ed = await openNight(await mount());
+    const b = ed.querySelector<HTMLButtonElement>('[data-rot-line-slots="5h"]')!;
+    expect(b.textContent).toBe(copyText("rot.cap.slotsN", { n: 2 }));
+    expect(ed.querySelector<HTMLInputElement>('[data-rot-trig="line"]')!.checked).toBe(true);
+    b.click();
+    await settle();
+    expect(document.querySelector('[data-rot-cap="*"]')).not.toBeNull();
+  });
+
+  it("★ 封顶表没设的格写落下来的值（后端 effective，灰）：来自触发 ⇒「≤90」；全部窗口那一列 · 不封顶 ⇒「—」；设了的格照旧", async () => {
+    readPlan.mockResolvedValue({
+      ...PLAN,
+      effective: {
+        team: {
+          "5h": { v: 90, layer: "trigger", w: "5h", below: { v: 90, layer: "trigger", w: "5h" } },
+          "7d": { v: null, layer: "none", below: { v: null, layer: "none" } },
+          "*": { v: null, layer: "none", below: { v: null, layer: "none" }, list: "5h ≤90 · 7d 不封顶", belowList: "5h ≤90 · 7d 不封顶" },
+        },
+      },
+    });
+    const el = await mount();
+    await openNight(el);
+    await settlePlan();
+    const cap = (k: string) =>
+      editor()!.querySelector<HTMLButtonElement>(`[data-ed-cap="${k}"]`)!;
+    expect(cap("team.5h").textContent).toBe(copyText("rot.cap.fixedShort", { n: 90 }));
+    expect(cap("team.5h").dataset.fallen).toBe("true");
+    expect(cap("team.7d").textContent).toBe(copyText("rot.list.useNone"));
+    expect(cap("team.*").textContent).toBe(copyText("rot.list.useNone"));
   });
 
   it("无号可换：后端说这条规则没有上限（atLimitApplies false）⇒ 两态灰；有上限 ⇒ 可点、点「停」写 atLimit stop", async () => {
@@ -430,7 +526,7 @@ describe("规则编辑器 · 封顶表与预览", () => {
         from: "23:00",
         to: "09:00",
         acct: copyText("rot.pv.held"),
-        why: copyText("acct.hist.held", { name: "lab", n: 90 }),
+        why: copyText("acct.hist.held", { name: "lab", w: "5h", n: 90 }),
       }),
     ]);
   });

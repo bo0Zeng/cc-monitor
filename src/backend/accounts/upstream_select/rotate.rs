@@ -107,8 +107,10 @@ pub(crate) fn at_limit_in_effect(agent: &str, said: AtLimit) -> AtLimit {
 pub(crate) struct PlanView {
     pub(crate) steps: Vec<decide::PlanStep>,
     pub(crate) lanes: Vec<PlanLane>,
-    /// 号 → 窗口键（`*` ＝ 全部窗口）→ （此刻取的, 这一格不算时往下一层取到的）。
+    /// 号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ （此刻取的, 这一格不算时往下一层取到的）。
     pub(crate) effective: BTreeMap<String, BTreeMap<String, (decide::CapAt, decide::CapAt)>>,
+    /// 号 → 两窗（`5h` · `7d`）此刻各取的线 · 这号全部窗口那一格不算时各取的（全部窗口那一格的悬停与「其余时段」）。
+    pub(crate) lines: BTreeMap<String, Vec<(&'static str, decide::CapAt, decide::CapAt)>>,
 }
 
 /// 预览里一个号的泳道：不能用的那几段 · 重置时刻（`(语义位或窗口键, 时刻)`）。
@@ -118,6 +120,8 @@ pub(crate) struct PlanLane {
     pub(crate) resets: Vec<(String, u64)>,
     /// 此刻卡人的那个窗口（语义位或窗口键）与用了多少（%）；没出过数 ⇒ `None`。
     pub(crate) pinch: Option<(String, u32)>,
+    /// 离线最近的那一窗（语义位）与还差几点（[`decide::to_line`]）；都没线 ⇒ `None`。
+    pub(crate) to_line: Option<(String, u32)>,
 }
 
 /// 一发请求在上游选择这一侧的事实（判的时候要的；按量号那几格由调用方从 key 表答）。
@@ -255,7 +259,6 @@ impl Hop {
     ) -> Facts<'f> {
         Facts {
             pool,
-            when: rot.when,
             cap: &rot.cap,
             stint: &rot.stint,
             preempt: rot.preempt,
@@ -537,14 +540,19 @@ impl Hop {
                 self.stuck(a.sid, rec, &skipped);
                 None
             }
-            Verdict::Hold { n, back, skipped } => {
+            Verdict::Hold {
+                n,
+                w,
+                back,
+                skipped,
+            } => {
                 let rec = SwitchRecord {
                     at_text: None,
                     from_resets_at_text: None,
                     at: a.now,
                     from: current.to_string(),
                     to: current.to_string(),
-                    why: SwitchWhy::Held { n },
+                    why: SwitchWhy::Held { n, w },
                     from_resets_at: Some(back.at),
                 };
                 self.stuck(a.sid, rec, &skipped);
@@ -783,7 +791,6 @@ impl Hop {
         let (slot, key) = (slot_fn(agent), key_fn(agent));
         let f = Facts {
             pool: &pool,
-            when: rot.when,
             cap: &rot.cap,
             stint: &rot.stint,
             preempt: rot.preempt,
@@ -828,28 +835,33 @@ impl Hop {
                     spans: decide::lane(&f, x, until),
                     resets,
                     pinch: self.pinch(agent, x, now),
+                    to_line: decide::to_line(&f, x),
                 }
             })
             .collect();
+        let columns = crate::accounts::quota::rotation::LINE_SLOTS
+            .iter()
+            .copied()
+            .chain([crate::accounts::quota::rotation::ALL_WINDOWS]);
         let effective = pool
             .iter()
             .map(|x| {
-                let mut keys: Vec<String> = ["5h", "7d"].iter().map(|k| k.to_string()).collect();
-                keys.extend(rot.cap.get(x).into_iter().flat_map(|m| m.keys().cloned()));
-                keys.push(crate::accounts::quota::rotation::ALL_WINDOWS.to_string());
-                keys.dedup();
-                let cells = keys.into_iter().fold(BTreeMap::new(), |mut m, k| {
-                    m.entry(k.clone())
-                        .or_insert_with(|| decide::effective_cap(&f, x, &k));
-                    m
-                });
+                let cells = columns
+                    .clone()
+                    .map(|k| (k.to_string(), decide::effective_cap(&f, x, k)))
+                    .collect();
                 (x.clone(), cells)
             })
+            .collect();
+        let lines = pool
+            .iter()
+            .map(|x| (x.clone(), decide::effective_lines(&f, x)))
             .collect();
         PlanView {
             steps,
             lanes,
             effective,
+            lines,
         }
     }
 
@@ -916,6 +928,7 @@ impl Hop {
             Some(Blocked {
                 earliest: Some(AccountAt {
                     at_text: None,
+                    w: decide::line_window(&back.account, &f),
                     account: back.account,
                     at: back.at,
                 }),
@@ -928,6 +941,7 @@ impl Hop {
                     .min()
                     .map(|(at, x)| AccountAt {
                         at_text: None,
+                        w: decide::line_window(x, &f),
                         account: x.clone(),
                         at,
                     }),
@@ -949,7 +963,7 @@ impl Hop {
         let mut quota = show::show(
             held.as_ref().map(|o| (&o.reading, o.seen_at)),
             self.show_facts(&s.agent, &lib, &s.current, row),
-            show::near_of(rot.when),
+            &show::lines_of(&rot.cap, &s.current, now, local_offset(now), &key, &slot_of),
             now,
             &slot_of,
         );

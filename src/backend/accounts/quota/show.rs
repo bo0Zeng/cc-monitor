@@ -6,19 +6,20 @@
 //! | `refused` | 上次那一发被拒、它说的回来时刻未到（与轮换同一个判法 `decide::refused_at`；过了 ⇒ 照下面几行判，各窗口的数照旧作数） |
 //! | `overageInUse` | 订阅号正在用付费超额、卡着的窗口未重置 |
 //! | `resetSinceSeen` | 卡着的那个窗口（被拒 · 超额 · 按钮那个窗口）看到之后已经重置过了：上次的数不再作数 |
-//! | `near` | 有语义位的窗口用到 N%、未重置（同轮换的「到阈值」一个判法），或回包说越过了预警线 |
+//! | `near` | 有语义位的窗口用到这号这一窗此刻的线（没线 ⇒ [`NEAR_DEFAULT`]）、未重置（同轮换的「过线」一个判法），或回包说越过了预警线 |
 //! | `ok` | 其余 |
 //!
-//! 每个语义位另带一格 `full`（用满：用到 100%、未重置）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」。
+//! 每个语义位另带一格 `full`（用满：用到 100%、未重置）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」；
+//! 一格 `atLine`（那一窗用到了这号这一窗此刻的线、未重置；没线的窗不出）：悬停卡那一窗行尾写「到线」。
 //!
-//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。N 由调用方给：这台的账用默认轮换的 N，会话那一份用会话的 N；
-//! 没设（满了才换）⇒ [`NEAR_DEFAULT`]。
+//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。线由调用方按 [`lines_of`] 给：
+//! 这台的账用默认规则的线，会话那一份用会话那一份的线。
 
 use super::decide::{self, Kind};
 use crate::agents::{QuotaReading, QuotaStatus};
 use serde::{Deserialize, Serialize};
 
-/// 没设「到 N% 换」时，「快满」的门槛（%）。
+/// 那一窗没线（满了才换）时，「快满」的门槛（%）。
 pub(crate) const NEAR_DEFAULT: u8 = 80;
 
 /// 最后一次看到距今超过这么多秒 ⇒ 数旧。
@@ -75,6 +76,10 @@ pub struct SlotShow {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub full: bool,
+    /// 到线：这一窗用到这号这一窗此刻的线、还没重置（没线 ⇒ 不出）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub at_line: bool,
 }
 
 /// 一个号的显示态。
@@ -170,12 +175,16 @@ pub(crate) fn windows_of(
         .collect()
 }
 
-/// 「快满」的门槛：轮换是「到 N% 换」⇒ N；否则 [`NEAR_DEFAULT`]。
-pub(crate) fn near_of(when: super::rotation::RotationWhen) -> u8 {
-    match when {
-        super::rotation::RotationWhen::Threshold { n } => n,
-        super::rotation::RotationWhen::Full => NEAR_DEFAULT,
-    }
+/// 这个号各窗此刻的线（窗口名 → 线；没线 ⇒ `None`）：与轮换判过线同一处（[`decide::line_at`]）。
+pub(crate) fn lines_of<'a>(
+    cap: &'a super::rotation::Caps,
+    account: &'a str,
+    now: u64,
+    offset: i64,
+    key: &'a dyn Fn(&str) -> Option<String>,
+    slot: &'a dyn Fn(&str) -> Option<&'static str>,
+) -> impl Fn(&str) -> Option<u8> + 'a {
+    move |name| decide::line_at(cap, account, &key(name)?, slot(name), now, offset)
 }
 
 /// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
@@ -190,6 +199,7 @@ fn slots_of(
     r: &QuotaReading,
     now: u64,
     slot: &dyn Fn(&str) -> Option<&'static str>,
+    line: &dyn Fn(&str) -> Option<u8>,
 ) -> Vec<SlotShow> {
     SLOTS
         .iter()
@@ -210,6 +220,10 @@ fn slots_of(
                 pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,
                 full: full(w, now),
+                at_line: r.windows.iter().any(|x| {
+                    slot(&x.name) == Some(*s)
+                        && line(&x.name).is_some_and(|n| decide::at_line(x, n, now))
+                }),
             })
         })
         .collect()
@@ -220,11 +234,11 @@ fn full(w: &crate::agents::QuotaWindow, now: u64) -> bool {
     w.used.is_some_and(|u| u >= 1.0) && !super::reset_since_seen(w.resets_at, now)
 }
 
-/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）；`n` ＝ 「快满」的门槛。
+/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）；`line` ＝ 这号各窗此刻的线（[`lines_of`]）。
 pub(crate) fn show(
     seen: Option<(&QuotaReading, u64)>,
     facts: Facts,
-    n: u8,
+    line: &dyn Fn(&str) -> Option<u8>,
     now: u64,
     slot: &dyn Fn(&str) -> Option<&'static str>,
 ) -> QuotaShow {
@@ -240,7 +254,7 @@ pub(crate) fn show(
             windows: Vec::new(),
         };
     };
-    let slots = slots_of(r, now, slot);
+    let slots = slots_of(r, now, slot, line);
     let limiting = r
         .limiting
         .as_deref()
@@ -268,7 +282,13 @@ pub(crate) fn show(
         QuotaState::OverageInUse
     } else if passed(shown_reset) {
         QuotaState::ResetSinceSeen
-    } else if decide::window_over(r, n, now, slot).is_some()
+    } else if decide::window_over(
+        r,
+        &|w| line(w).filter(|n| *n > 0).unwrap_or(NEAR_DEFAULT),
+        now,
+        slot,
+    )
+    .is_some()
         || r.status == Some(QuotaStatus::Warning)
     {
         QuotaState::Near

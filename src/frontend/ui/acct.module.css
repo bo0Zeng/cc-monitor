@@ -286,24 +286,6 @@
     cursor: pointer;
   }
 
-  .acctPct {
-    width: 4ch;
-    padding: 0 var(--space-2);
-    border: 1px solid var(--field-border);
-    border-radius: var(--radius-s);
-    background: var(--field-bg);
-    color: var(--text);
-    text-align: center;
-  }
-
-  .acctPct[data-error="true"] {
-    border-color: var(--error);
-  }
-
-  .acctTriggerUnit {
-    color: var(--text-2);
-  }
-
   .acctLimit [data-disabled="true"] {
     opacity: 0.45;
   }

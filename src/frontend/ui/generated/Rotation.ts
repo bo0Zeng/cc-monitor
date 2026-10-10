@@ -2,19 +2,18 @@
 import type { AtLimit } from "./AtLimit";
 import type { CapValue } from "./CapValue";
 import type { RotationSlot } from "./RotationSlot";
-import type { RotationWhen } from "./RotationWhen";
 
 /**
- * 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
+ * 一份轮换：顺序 · 勾了哪几个 · 线（触发那一行 ＋ 每号上限，都在 `cap`）· 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
  * 起始账号占位恒算勾上。后三格缺省（空 · 空 · 关）时不写出。
  */
-export type Rotation = { order: Array<RotationSlot>, enabled: Array<string>, when: RotationWhen, 
+export type Rotation = { order: Array<RotationSlot>, enabled: Array<string>, 
 /**
  * 盘上缺 ⇒ `continue`。
  */
 atLimit: AtLimit, 
 /**
- * 每号覆盖的上限：`{号: {窗口键|"*": n | [{at, n}]}}`（盖过 `when`；时段外落回下一层）。
+ * 线：`{号|"*": {窗口键|"*": n | [{at, n}]}}`；层次 这号这窗口 → 这号这语义位 → 这号全部窗口 → 所有号这语义位（`"*"` 那一行），时段外落回下一层。
  */
 cap?: { [key in string]: { [key in string]: CapValue } }, 
 /**

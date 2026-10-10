@@ -188,20 +188,23 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
     let base = ledger::answer_of(ctx.hop.quota.path(), now);
     let seen = &base.accounts;
     let lib = ctx.hop.library();
-    let n = show::near_of(ctx.hop.store.now().default_rotation().when);
+    let rot = ctx.hop.store.now().default_rotation();
+    let offset = crate::accounts::upstream_select::rotate::local_offset(now);
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
         let slot = crate::agents::window_slot_of(agent);
         let key = crate::agents::window_key_of(agent);
+        let slot = |w: &str| slot.and_then(|f| f(w));
+        let key = |w: &str| key.and_then(|f| f(w));
         let mut sh = show::show(
             o.map(|o| (&o.reading, o.seen_at)),
             ctx.hop
                 .show_facts(agent, &lib, account, &|a| (ctx.rows)(agent, a)),
-            n,
+            &show::lines_of(&rot.cap, account, now, offset, &key, &slot),
             now,
-            &|w| slot.and_then(|f| f(w)),
+            &slot,
         );
         if let Some(o) = o {
-            sh.windows = show::windows_of(o, &|w| key.and_then(|f| f(w)), now);
+            sh.windows = show::windows_of(o, &key, now);
         }
         sh
     };
@@ -794,7 +797,33 @@ fn first_of(rot: &Rotation, start: &str) -> String {
 }
 
 fn cap_at_wire(c: &crate::accounts::quota::decide::CapAt) -> Value {
-    json!({"v": c.v, "layer": c.layer})
+    let mut v = json!({"v": c.v, "layer": c.layer});
+    if let Some(w) = c.w {
+        v["w"] = json!(w);
+    }
+    v
+}
+
+/// 全部窗口那一格的悬停：两窗各取多少（`5h ≤90 · 7d 不封顶`），一句由这里拼。
+fn lines_text(each: &[(&'static str, crate::accounts::quota::decide::CapAt)]) -> String {
+    each.iter()
+        .map(|(w, c)| {
+            let w = slot_label(w);
+            match c.v {
+                Some(n) => copy_text("beRotation.eff.line", &[("w", &w), ("n", &n.to_string())]),
+                None => copy_text("beRotation.eff.none", &[("w", &w)]),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(&copy_text("kit.text.sep", &[]))
+}
+
+fn slot_label(w: &str) -> String {
+    match w {
+        "5h" => copy_text("acct.slot.fiveHour", &[]),
+        "7d" => copy_text("acct.slot.sevenDay", &[]),
+        other => other.to_string(),
+    }
 }
 
 /// 时间轴的视窗（此刻之前, 之后，秒）：`6h` ＝ 前 2h · 后 4h；`24h` ＝ 前 6h · 后 18h；`7d` ＝ 前 1d · 后 6d。不给 ⇒ `None`（编辑器那一问：从此刻起）。
@@ -1025,7 +1054,7 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         .map(|l| {
             let mut v = json!({
                 "account": l.account,
-                "spans": l.spans.iter().map(|x| json!({"from": x.from, "fromText": text(x.from), "to": x.to, "toText": text(x.to), "state": x.state, "n": x.n})).collect::<Vec<_>>(),
+                "spans": l.spans.iter().map(|x| json!({"from": x.from, "fromText": text(x.from), "to": x.to, "toText": text(x.to), "state": x.state, "n": x.n, "w": x.w})).collect::<Vec<_>>(),
                 "resets": l.resets.iter().map(|(w, at)| json!({"w": w, "at": at, "atText": text(*at)})).collect::<Vec<_>>(),
                 "pct": l.pinch.as_ref().map(|p| p.1),
             });
@@ -1053,7 +1082,7 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         .effective
         .iter()
         .map(|(a, cells)| {
-            let m: Map<String, Value> = cells
+            let mut m: Map<String, Value> = cells
                 .iter()
                 .map(|(k, (at, below))| {
                     let mut v = cap_at_wire(at);
@@ -1061,12 +1090,20 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
                     (k.clone(), v)
                 })
                 .collect();
+            // 全部窗口那一格：两窗此刻各取多少 · 这一格不算时各取多少（后端拼好的一句）。
+            if let (Some(Value::Object(all)), Some(ls)) =
+                (m.get_mut(rotation::ALL_WINDOWS), view_obj.lines.get(a))
+            {
+                let now_: Vec<_> = ls.iter().map(|(w, at, _)| (*w, *at)).collect();
+                let below: Vec<_> = ls.iter().map(|(w, _, b)| (*w, *b)).collect();
+                all.insert("list".into(), json!(lines_text(&now_)));
+                all.insert("belowList".into(), json!(lines_text(&below)));
+            }
             (a.clone(), Value::Object(m))
         })
         .collect();
     let grid = view.map(|(before, _)| grid_of(before, from, until, tz_min * 60, &text));
-    let head =
-        (view.is_some() && !machine).then(|| head_of(ctx, &rot, &agent, &view_obj, now, &text));
+    let head = (view.is_some() && !machine).then(|| head_of(ctx, &agent, &view_obj, now, &text));
     let past = match (view, &asked) {
         (Some(_), Asked::Session(sid)) => Some(
             past_of(&book.sessions[*sid], from, now)
@@ -1166,10 +1203,10 @@ fn grid_of(before: u64, from: u64, until: u64, off: i64, text: &dyn Fn(u64) -> S
 }
 
 /// 时间轴顶行：池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, w?}}`（最早回来的那个号、几点、哪个窗口重置）；
-/// 否则 `{account, w, pct, toTrigger?}`（此刻用的号 · 卡人的窗口与用量 · 触发是 ≥N% 时还差几点）。
+/// 否则 `{account, w, pct, toLine?: {w, n}}`（此刻用的号 · 卡人的窗口与用量 · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线
+/// ——封顶 → 触发，同 `effective`——算，取差得最少的那一窗；都没线 ⇒ 缺）。
 fn head_of(
     ctx: &Ctx,
-    rot: &Rotation,
     agent: &str,
     v: &crate::accounts::upstream_select::rotate::PlanView,
     now: u64,
@@ -1213,8 +1250,13 @@ fn head_of(
     if let Some((w, pct)) = ctx.hop.pinch(agent, &account, now) {
         h["w"] = json!(w);
         h["pct"] = json!(pct);
-        if let rotation::RotationWhen::Threshold { n } = rot.when {
-            h["toTrigger"] = json!(u32::from(n).saturating_sub(pct));
+        if let Some((lw, n)) = v
+            .lanes
+            .iter()
+            .find(|l| l.account == account)
+            .and_then(|l| l.to_line.as_ref())
+        {
+            h["toLine"] = json!({"w": lw, "n": n});
         }
         // 「估」：到的是这号这窗口此刻取的上限（封顶 → 触发；都没有 ⇒ 满）；没根据（[`Observed::eta`] 那几条）就不给。
         let target = v
@@ -1296,7 +1338,7 @@ pub(crate) struct SessionRead {
 
 /// `rotation-session-set`：一批会话的轮换来源（`{sids, rotation}`；`rotation` ＝ `"follow"` · `{"rule": id}` ·
 /// `"custom"`（恢复上一份自己的，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的 ＝「转为本会话」）·
-/// `{"custom": {order, enabled, when, …}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
+/// `{"custom": {order, enabled, cap?, …}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
 /// 回每个会话的结果。指向的规则不在 ⇒ `no_such_rule`（整批不写）。
 pub(crate) fn answer_session_set(args: &Value) -> Answer {
     answer_session_set_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
@@ -1330,7 +1372,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         }
         _ => {
             return Err(bad(
-                "`rotation` must be \"follow\", \"parent\", \"custom\", \"detach\", {\"rule\": id} or {\"custom\": {order, enabled, when}}",
+                "`rotation` must be \"follow\", \"parent\", \"custom\", \"detach\", {\"rule\": id} or {\"custom\": {order, enabled, cap?}}",
             ))
         }
     };

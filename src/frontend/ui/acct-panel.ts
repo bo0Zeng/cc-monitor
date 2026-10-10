@@ -46,8 +46,12 @@ import {
   openSaveAsRule,
   rowsOf,
   rulePeek,
+  lineNow,
   toggled,
+  triggerLine,
+  atLineMode,
   waitControl,
+  type LineWindow,
 } from "./rot-editor";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
@@ -61,6 +65,7 @@ import {
   type QuotaReadAccount,
 } from "./quota-lines";
 import {
+  checkRotation,
   readPlan,
   type PlanRead,
   defaultRuleOf,
@@ -74,6 +79,7 @@ import { headLine, timelineAxis, viewSwitch, type TlView } from "./rot-timeline"
 import { standingOf } from "./sessions-where";
 import { startSettings } from "./tab-batch-run";
 import type { AtLimit } from "./generated/AtLimit";
+import type { CellError } from "./generated/CellError";
 import type { QuotaShow } from "./generated/QuotaShow";
 import type { Rotation } from "./generated/Rotation";
 import type { RotationSource } from "./generated/RotationSource";
@@ -121,6 +127,9 @@ interface Open {
   timelineOpen: boolean;
   /** 时间轴：视窗 · 最后一趟回答 · 那一趟问的钥匙 · 第几趟（只认最后一趟）。 */
   tl: { view: TlView; plan: PlanRead | null; key: string; seq: number };
+  /** 触发那两格：后端逐格校验回的错 · 填错那一格上次填的字（拒了时照原样画回去）。 */
+  lineErrors: CellError[];
+  lineDraft: Partial<Record<LineWindow, string>>;
   /** 正在拖 / 正在填：数据到了先不重画。 */
   hold: boolean;
   pending: boolean;
@@ -216,6 +225,8 @@ export function openAccountPanel(
     saveFailed: null,
     timelineOpen: false,
     tl: { view: "24h", plan: null, key: "", seq: 0 },
+    lineErrors: [],
+    lineDraft: {},
     hold: false,
     pending: false,
     unsub: [],
@@ -462,6 +473,7 @@ function rowUsage(
   q: QuotaShow | null,
   now: number,
   reading: QuotaReadAccount["reading"],
+  atLine: string | null = null,
 ): HTMLElement {
   const box = el("span", s.acctRowUsage);
   if (!q) return box;
@@ -478,7 +490,8 @@ function rowUsage(
     if (q.state === "refused") box.dataset.shade = "refused";
     return box;
   }
-  for (const slot of [q.limiting ?? "5h"]) {
+  // 此刻过线的那一窗（后端预览泳道此刻那一格）⇒ 改显那一窗。
+  for (const slot of [atLine ?? q.limiting ?? "5h"]) {
     const x = q.slots.find((v) => v.slot === slot);
     const here = q.limiting === slot;
     const cell = el("span", s.acctRowSlot);
@@ -503,7 +516,10 @@ function rowUsage(
     }
     if (x?.full || (here && q.state === "refused"))
       cell.dataset.shade = "refused";
-    else if (here && (q.state === "near" || q.state === "overageInUse"))
+    else if (
+      slot === atLine ||
+      (here && (q.state === "near" || q.state === "overageInUse"))
+    )
       cell.dataset.shade = "warn";
     if (q.stale) cell.dataset.stale = "true";
     box.appendChild(cell);
@@ -768,14 +784,14 @@ function rotationBlock(
   }
   if (r)
     sec.content.appendChild(
-      rotationList(o, host, read, r, quota, now, !follow),
+      rotationList(o, host, read, r, quota, now, !follow, o.tl.plan),
     );
   const tl = timelineFold(o, host, read, quota);
   sec.content.appendChild(tl);
   return sec.root;
 }
 
-/** `触发 (•)满 ( )≥[90]%` ＋ `无号可换 [继续跑 | 停]`（后者只在 `≥N%` 时有效）。 */
+/** `触发 (•)满 ( )到线 5h [90]% 7d [—]%`（与规则编辑器同一组件）＋ `无号可换 [继续跑 | 停]`（后者只在设了线时有效）。范围由后端判。 */
 function triggerControls(
   o: Open,
   host: AcctPanelHost,
@@ -785,73 +801,26 @@ function triggerControls(
 ): HTMLElement {
   const box = el("span", s.acctTrigger);
   box.appendChild(el("span", s.acctTriggerLabel, copyText("acct.rot.trigger")));
-  const name = `acct-trigger-${o.sid}`;
-  const pctMode = r.when !== "full";
-  const n = r.when === "full" ? 90 : r.when.threshold.n;
-  const radio = (
-    on: boolean,
-    label: string,
-    pick: () => void,
-  ): HTMLLabelElement => {
-    const l = el("label", s.acctRadio);
-    const i = document.createElement("input");
-    i.type = "radio";
-    i.name = name;
-    i.checked = on;
-    i.disabled = readonly;
-    i.addEventListener("change", pick);
-    l.append(i, document.createTextNode(label));
-    return l;
-  };
-  const num = document.createElement("input");
-  num.type = "text";
-  num.inputMode = "numeric";
-  num.className = s.acctPct;
-  num.value = String(n);
-  num.disabled = readonly;
-  const commit = (): void => {
-    const v = Number(num.value.trim());
-    if (!Number.isInteger(v) || v < 50 || v > 99) {
-      num.dataset.error = "true";
-      num.title = copyText("acct.rot.pctRange");
-      return;
-    }
-    delete num.dataset.error;
-    if (pctMode && v === n) return;
-    void save(o, host, { custom: { ...r, when: { threshold: { n: v } } } });
-  };
-  num.addEventListener("focus", () => {
-    o.hold = true;
-    num.select();
-  });
-  num.addEventListener("blur", () => {
-    commit();
-    release(o, host);
-  });
-  num.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !ev.isComposing) num.blur();
-  });
-  box.append(
-    radio(
-      !pctMode,
-      copyText("acct.rot.trigFull"),
-      () => void save(o, host, { custom: { ...r, when: "full" } }),
-    ),
-    radio(
-      pctMode,
-      copyText("acct.rot.trigPct"),
-      () =>
-        void save(o, host, { custom: { ...r, when: { threshold: { n } } } }),
-    ),
-    num,
-    el("span", s.acctTriggerUnit, copyText("acct.rot.pctUnit")),
+  const pctMode = atLineMode(r);
+  box.appendChild(
+    triggerLine(r, {
+      name: `acct-trigger-${o.sid}`,
+      readonly,
+      errors: o.lineErrors,
+      draft: o.lineDraft,
+      origin: o.origin,
+      write: (next) => void saveLine(o, host, next),
+      onDraft: (w, t) => (o.lineDraft = { ...o.lineDraft, [w]: t }),
+      onFocus: () => (o.hold = true),
+      onBlur: () => release(o, host),
+    }),
   );
   // 无号可换时怎么办（稿里没画的那一格）：两态分段；「满」触发时没有 N%，灰着。
   const lim = el("span", s.acctLimit);
   const label = el("span", s.acctTriggerLabel, copyText("acct.lim.label"));
   attachTooltip(label, () =>
     pctMode
-      ? copyText("acct.lim.labelHint", { n })
+      ? copyText("acct.lim.labelHint")
       : copyText("acct.lim.fullOnly"),
   );
   const seg = segmented<AtLimit>({
@@ -865,7 +834,7 @@ function triggerControls(
   });
   const [go, stop] = [...seg.querySelectorAll<HTMLButtonElement>("button")];
   if (go) attachTooltip(go, copyText("acct.lim.goHint"));
-  if (stop) attachTooltip(stop, () => copyText("acct.lim.stopHint", { n }));
+  if (stop) attachTooltip(stop, () => copyText("acct.lim.stopHint"));
   if (readonly || !pctMode) {
     seg.dataset.disabled = "true";
     for (const b of [go, stop]) if (b) b.disabled = true;
@@ -892,6 +861,7 @@ function rotationList(
   quota: QuotaRead | null,
   now: number,
   editable: boolean,
+  plan: PlanRead | null,
 ): HTMLElement {
   const rows = rowsOf(r, read.account.start, quota, read.agent);
   const list = el("div", s.acctList);
@@ -949,6 +919,12 @@ function rotationList(
       if (q.state === "overageInUse")
         line.appendChild(tagEl(copyText("acct.val.over"), "warn"));
     }
+    // 此刻过线的号：行尾小签「7d 到线」（判定来自后端预览泳道此刻那一格；被拒照今天红签优先）。
+    const atLine = q?.state === "refused" ? null : lineNow(plan, row.account);
+    if (atLine)
+      line.appendChild(
+        tagEl(copyText("acct.tag.atLine", { w: slotLabel(atLine) }), "warn"),
+      );
     // 封顶：本会话那份可改（行尾一个小按钮开浮层，编的是这号全部窗口那一格）；只读的写成小标签。
     // 兜底（排在封顶之后）：本会话那份顺序里具名的号上一个开关（开 ⇒ 实心标；关 ⇒ 悬停 / 行内有焦点才出）；只读的只画开着的那个实心标。
     const named = r.order.includes(row.account);
@@ -979,7 +955,12 @@ function rotationList(
     else if ((r.fallback ?? []).includes(row.account))
       line.appendChild(fallbackMark());
     line.appendChild(
-      rowUsage(q, now, ledgerOf(quota, read.agent, row.account)?.reading),
+      rowUsage(
+        q,
+        now,
+        ledgerOf(quota, read.agent, row.account)?.reading,
+        atLine,
+      ),
     );
     if (editable) {
       // 键盘：Alt+↑ / Alt+↓ 移位、空格勾（复选框自己管）。
@@ -1090,6 +1071,24 @@ async function save(
     if (open === o) render(o, host);
   });
   return ok;
+}
+
+/** 触发那两格写盘：先交后端逐格校验（`rotation-plan` 草稿），错的格框红、不写；没错才写。 */
+async function saveLine(o: Open, host: AcctPanelHost, next: Rotation): Promise<void> {
+  let errors: CellError[];
+  try {
+    errors = await checkRotation(o.origin, next);
+  } catch (e) {
+    console.warn("[acct] rotation-plan 校验失败：", e);
+    errors = [];
+  }
+  o.lineErrors = errors;
+  if (errors.length > 0) {
+    if (open === o) render(o, host);
+    return;
+  }
+  o.lineDraft = {};
+  await save(o, host, { custom: next });
 }
 
 /** 转为本会话：照此刻生效的那条拷成本会话的（之后脱钩）；toast `orders · 本会话（从 日常 转来）[撤销]`，撤销 ＝ 写回原来源。 */

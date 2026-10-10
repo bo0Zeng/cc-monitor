@@ -22,6 +22,7 @@ declare const classes: {
   readonly rotPeekTag: string;
   readonly rotSave: string;
   readonly rotTime: string;
+  readonly rotTrigger: string;
   readonly rotUnit: string;
 };
 export default classes;

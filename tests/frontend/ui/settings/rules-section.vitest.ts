@@ -61,7 +61,6 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 const ROT: Rotation = {
   order: [{ start: true }, "team"],
   enabled: ["team"],
-  when: "full",
   atLimit: "continue",
   wait: 40,
 };

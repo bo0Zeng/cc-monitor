@@ -20800,17 +20800,41 @@
       "zh": "{acct} 先用",
       "args": ["acct"]
     },
-    "beRotation.explain.atPct": {
+    "beRotation.explain.atLines": {
       "kind": "body",
       "role": "说明",
-      "zh": "到 {n}% 从头取首个可用",
-      "args": ["n"]
+      "zh": "{lines} 从头取首个可用",
+      "args": ["lines"]
+    },
+    "beRotation.explain.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} 到 {n}%",
+      "args": ["w", "n"]
+    },
+    "beRotation.explain.lineSlots": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} 按时段",
+      "args": ["w"]
+    },
+    "beRotation.explain.lineSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
     },
     "beRotation.explain.onRefused": {
       "kind": "body",
       "role": "说明",
       "zh": "被拒才换",
       "args": []
+    },
+    "beRotation.explain.onRefusedOf": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{w} 被拒才换",
+      "args": ["w"]
     },
     "beRotation.explain.preempt": {
       "kind": "body",
@@ -20887,8 +20911,14 @@
     "beRotation.sum.pct": {
       "kind": "body",
       "role": "片段",
-      "zh": "≥{n}%",
-      "args": ["n"]
+      "zh": "{w} ≥{n}%",
+      "args": ["w", "n"]
+    },
+    "beRotation.sum.slots": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} 按时段",
+      "args": ["w"]
     },
     "beRotation.sum.full": {
       "kind": "body",
@@ -20925,6 +20955,18 @@
       "role": "片段",
       "zh": "封顶 {n}",
       "args": ["n"]
+    },
+    "beRotation.eff.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} ≤{n}",
+      "args": ["w", "n"]
+    },
+    "beRotation.eff.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} 不封顶",
+      "args": ["w"]
     },
     "beRotation.rule.gone": {
       "kind": "error",
@@ -21441,6 +21483,12 @@
       "kind": "title",
       "role": "标题",
       "zh": "下一个",
+      "args": []
+    },
+    "acct.hover.atLine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "到线",
       "args": []
     },
     "acct.hover.nextNone": {
@@ -22142,8 +22190,8 @@
     "rot.cap.restTrig": {
       "kind": "body",
       "role": "片段",
-      "zh": "触发 ≥{n}%",
-      "args": ["n"]
+      "zh": "触发 {w} ≥{n}%",
+      "args": ["w", "n"]
     },
     "rot.cap.restNone": {
       "kind": "body",
@@ -22688,7 +22736,7 @@
     "rot.how.orderHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "到触发才换 · 不能用时从头取首个可用 · 不主动换回",
+      "zh": "到线才换 · 不能用时从头取首个可用 · 不主动换回",
       "args": []
     },
     "rot.how.preemptHint": {
@@ -22736,7 +22784,7 @@
     "rot.capT.layers": {
       "kind": "body",
       "role": "悬停",
-      "zh": "这号这窗口 → 这号全部窗口 → 触发 · 时段外落到下一层",
+      "zh": "这号这窗口 → 这号全部窗口 → 触发这窗口 · 时段外落到下一层",
       "args": []
     },
     "rot.capT.effective": {
@@ -22744,6 +22792,12 @@
       "role": "悬停",
       "zh": "此刻 {v} · 来自 {layer}",
       "args": ["v", "layer"]
+    },
+    "rot.capT.effectiveAll": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "此刻 {list}",
+      "args": ["list"]
     },
     "rot.capT.noCap": {
       "kind": "body",
@@ -22766,8 +22820,8 @@
     "rot.capT.layerTrigger": {
       "kind": "body",
       "role": "片段",
-      "zh": "触发",
-      "args": []
+      "zh": "触发 {w}",
+      "args": ["w"]
     },
     "rot.capT.stintTitle": {
       "kind": "title",
@@ -22832,6 +22886,12 @@
     "rot.why.trig": {
       "kind": "body",
       "role": "片段",
+      "zh": "{w} ≥{n}%",
+      "args": ["w", "n"]
+    },
+    "rot.why.trigAny": {
+      "kind": "body",
+      "role": "片段",
       "zh": "≥{n}%",
       "args": ["n"]
     },
@@ -22889,22 +22949,28 @@
       "zh": "满",
       "args": []
     },
-    "acct.rot.trigPct": {
+    "acct.rot.trigLine": {
       "kind": "control",
       "role": "标签",
-      "zh": "≥",
+      "zh": "到线",
       "args": []
+    },
+    "acct.rot.lineAria": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "{w} 换号线",
+      "args": ["w"]
+    },
+    "acct.rot.lineEmpty": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "空即 {w} 满才换",
+      "args": ["w"]
     },
     "acct.rot.pctUnit": {
       "kind": "body",
       "role": "片段",
       "zh": "%",
-      "args": []
-    },
-    "acct.rot.pctRange": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "50–99",
       "args": []
     },
     "acct.rot.saveFail": {
@@ -22928,8 +22994,8 @@
     "acct.lim.labelHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "轮换内账号都 ≥{n}% 时",
-      "args": ["n"]
+      "zh": "轮换内账号都到线时",
+      "args": []
     },
     "acct.lim.go": {
       "kind": "control",
@@ -22952,13 +23018,13 @@
     "acct.lim.stopHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "停发 · 最早有号回到 {n}% 以下时续发",
-      "args": ["n"]
+      "zh": "停发 · 最早有号回到线下时续发",
+      "args": []
     },
     "acct.lim.fullOnly": {
       "kind": "body",
       "role": "片段",
-      "zh": "仅按 ≥N% 触发时有效",
+      "zh": "仅设线时有效",
       "args": []
     },
     "acct.lim.downgraded": {
@@ -22978,6 +23044,12 @@
       "role": "片段",
       "zh": "在用",
       "args": []
+    },
+    "acct.tag.atLine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} 到线",
+      "args": ["w"]
     },
     "acct.tag.start": {
       "kind": "body",
@@ -23230,6 +23302,12 @@
     "acct.hist.pct": {
       "kind": "body",
       "role": "片段",
+      "zh": "{name} {w} ≥{n}%",
+      "args": ["name", "w", "n"]
+    },
+    "acct.hist.pctAny": {
+      "kind": "body",
+      "role": "片段",
       "zh": "{name} ≥{n}%",
       "args": ["name", "n"]
     },
@@ -23240,6 +23318,12 @@
       "args": ["name", "instead"]
     },
     "acct.hist.held": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{name} {w} ≥{n}% · 停发",
+      "args": ["name", "w", "n"]
+    },
+    "acct.hist.heldAny": {
       "kind": "body",
       "role": "片段",
       "zh": "{name} ≥{n}% · 停发",
@@ -23332,8 +23416,14 @@
     "acct.banner.held": {
       "kind": "body",
       "role": "说明",
-      "zh": "轮换内账号均 ≥{n}% · 最早 {name} ↻{at} (+{rel})",
-      "args": ["n", "name", "at", "rel"]
+      "zh": "轮换内账号均到线 · 最早 {name} {w} ↻{at} (+{rel})",
+      "args": ["name", "w", "at", "rel"]
+    },
+    "acct.banner.heldAny": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换内账号均到线 · 最早 {name} ↻{at} (+{rel})",
+      "args": ["name", "at", "rel"]
     },
     "acct.banner.back": {
       "kind": "body",
@@ -23419,11 +23509,11 @@
       "zh": "在用 {acct}",
       "args": ["acct"]
     },
-    "rot.tl.toTrig": {
+    "rot.tl.toLine": {
       "kind": "body",
       "role": "片段",
-      "zh": "距触发 {n} 点",
-      "args": ["n"]
+      "zh": "距 {w} 线 {n} 点",
+      "args": ["w", "n"]
     },
     "rot.tl.est": {
       "kind": "body",
@@ -23512,7 +23602,7 @@
     "rot.tlLg.capped": {
       "kind": "body",
       "role": "片段",
-      "zh": "过封顶",
+      "zh": "到线",
       "args": []
     },
     "rot.tlLg.off": {
@@ -23560,8 +23650,8 @@
     "rot.tlSt.capped": {
       "kind": "body",
       "role": "片段",
-      "zh": "{acct} 过封顶 {n}",
-      "args": ["acct", "n"]
+      "zh": "{acct} {w} ≥{n}%",
+      "args": ["acct", "w", "n"]
     },
     "rot.tlSt.off": {
       "kind": "body",

@@ -3,12 +3,17 @@
 use super::*;
 use serde_json::json;
 
+/// `cap` 为 `null` ⇒ 不写这一格（满了才换、不封顶）。
 fn rot(
     order: serde_json::Value,
     enabled: serde_json::Value,
-    when: serde_json::Value,
+    cap: serde_json::Value,
 ) -> serde_json::Value {
-    json!({"order": order, "enabled": enabled, "when": when})
+    let mut v = json!({"order": order, "enabled": enabled});
+    if !cap.is_null() {
+        v["cap"] = cap;
+    }
+    v
 }
 
 fn none(_: &str) -> bool {
@@ -26,7 +31,7 @@ fn the_pool_starts_from_the_start_slot_and_takes_only_enabled_accounts() {
         &rot(
             json!([{"start": true}, "b", "a", "c"]),
             json!(["a", "c"]),
-            json!("full"),
+            json!(null),
         ),
         1..=1,
         &ok,
@@ -44,51 +49,64 @@ fn the_pool_starts_from_the_start_slot_and_takes_only_enabled_accounts() {
 fn a_bad_rotation_is_refused_whole_naming_the_cell() {
     let cases = [
         (
-            rot(json!([{"start": true}, "a", "a"]), json!([]), json!("full")),
+            rot(json!([{"start": true}, "a", "a"]), json!([]), json!(null)),
             "order[2]",
         ),
         (
-            rot(json!([{"start": true}, "_"]), json!([]), json!("full")),
+            rot(json!([{"start": true}, "_"]), json!([]), json!(null)),
             "order[1]",
         ),
         (
-            rot(json!(["a"]), json!([]), json!("full")),
+            rot(json!(["a"]), json!([]), json!(null)),
             "`order` must hold",
         ),
         (
-            rot(json!([{"start": true}, "a"]), json!(["b"]), json!("full")),
+            rot(json!([{"start": true}, "a"]), json!(["b"]), json!(null)),
             "enabled[0]",
         ),
         (
-            rot(
-                json!([{"start": true}]),
-                json!([]),
-                json!({"threshold": {"n": 0}}),
-            ),
-            "when.threshold.n",
+            rot(json!([{"start": true}]), json!([]), json!({"*": {"5h": 0}})),
+            "cap.*.5h",
         ),
         (
             rot(
                 json!([{"start": true}]),
                 json!([]),
-                json!({"threshold": {"n": 100}}),
+                json!({"*": {"7d": 100}}),
             ),
-            "when.threshold.n",
+            "cap.*.7d",
         ),
         (
-            rot(json!([{"start": true}]), json!([]), json!("soon")),
-            "`when`",
+            rot(
+                json!([{"start": true}]),
+                json!([]),
+                json!({"*": {"7d": [{"at": "17:00-02:00", "n": 0}]}}),
+            ),
+            "cap.*.7d",
+        ),
+        // 触发那一行只收两个语义位：分档的窗口键 · 全部窗口都不收。
+        (
+            rot(
+                json!([{"start": true}]),
+                json!([]),
+                json!({"*": {"7d:opus": 90}}),
+            ),
+            "cap.*.7d:opus",
         ),
         (
-            json!({"order": [{"start": true}], "enabled": [], "when": "full", "x": 1}),
+            rot(json!([{"start": true}]), json!([]), json!({"*": {"*": 90}})),
+            "cap.*.*",
+        ),
+        (
+            json!({"order": [{"start": true}], "enabled": [], "x": 1}),
             "unknown field `x`",
         ),
         (
-            json!({"order": [{"start": true}], "enabled": [], "when": "full", "atLimit": "halt"}),
+            json!({"order": [{"start": true}], "enabled": [], "atLimit": "halt"}),
             "`atLimit`",
         ),
         (
-            json!({"order": [{"start": true}], "enabled": [], "when": "full", "atLimit": null}),
+            json!({"order": [{"start": true}], "enabled": [], "atLimit": null}),
             "`atLimit`",
         ),
     ];
@@ -99,7 +117,7 @@ fn a_bad_rotation_is_refused_whole_naming_the_cell() {
     let good = rot(
         json!([{"start": true}, "a"]),
         json!(["a"]),
-        json!({"threshold": {"n": 90}}),
+        json!({"*": {"5h": 90, "7d": 90}}),
     );
     let r = rotation_from(&good, 1..=1, &ok, &none, None).expect("ok");
     // 缺 `atLimit` ⇒ `continue`、缺 `wait` ⇒ 40，读回时照写出来。
@@ -118,7 +136,7 @@ fn a_bad_rotation_is_refused_whole_naming_the_cell() {
     let old: Rotation = serde_json::from_value(good.clone()).expect("旧盘上形状");
     assert_eq!(old.at_limit, AtLimit::Continue);
     assert!(rotation_from(
-        &rot(json!(["a"]), json!(["a"]), json!("full")),
+        &rot(json!(["a"]), json!(["a"]), json!(null)),
         0..=1,
         &ok,
         &none,
@@ -135,7 +153,7 @@ fn a_newly_enabled_api_account_moves_to_the_end() {
         &rot(
             json!([{"start": true}, "api1", "a", "b"]),
             json!(["a"]),
-            json!("full"),
+            json!(null),
         ),
         1..=1,
         &ok,
@@ -147,7 +165,7 @@ fn a_newly_enabled_api_account_moves_to_the_end() {
         &rot(
             json!([{"start": true}, "api1", "a", "b"]),
             json!(["a", "api1", "b"]),
-            json!("full"),
+            json!(null),
         ),
         1..=1,
         &ok,
@@ -163,7 +181,7 @@ fn a_newly_enabled_api_account_moves_to_the_end() {
         &rot(
             json!([{"start": true}, "api1", "a", "b"]),
             json!(["a", "api1", "b"]),
-            json!("full"),
+            json!(null),
         ),
         1..=1,
         &ok,
@@ -242,7 +260,7 @@ fn with(extra: serde_json::Value) -> serde_json::Value {
     let mut v = rot(
         json!([{"start": true}, "z", "q", "b"]),
         json!(["z", "q", "b"]),
-        json!({"threshold": {"n": 90}}),
+        json!(null),
     );
     for (k, x) in extra.as_object().expect("obj") {
         v[k] = x.clone();
@@ -284,7 +302,7 @@ fn the_new_cells_have_one_shape_each_and_read_back_as_written() {
         plain
     );
     assert!(rotation_from(
-        &with(json!({"when": {"threshold": {"n": 1}}})),
+        &with(json!({"cap": {"*": {"5h": 1}}})),
         1..=1,
         &ok,
         &none,
@@ -359,7 +377,7 @@ fn a_cap_of_zero_is_taken_and_reads_back_the_same() {
     let ok = |a: &str| a != "_";
     let none = |_: &str| false;
     let with = |extra: serde_json::Value| {
-        let mut v = json!({"order": [{"start": true}, "z", "q", "b"], "enabled": ["z", "q", "b"], "when": {"threshold": {"n": 90}}});
+        let mut v = json!({"order": [{"start": true}, "z", "q", "b"], "enabled": ["z", "q", "b"]});
         for (k, x) in extra.as_object().unwrap() {
             v[k] = x.clone();
         }
@@ -508,11 +526,11 @@ fn the_watcher_rescans_a_foreign_write_without_being_asked() {
 #[test]
 fn an_old_book_upgrades_once_into_rules() {
     let old = json!({
-        "default": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full"},
+        "default": {"order": [{"start": true}, "b"], "enabled": ["b"]},
         "sessions": {
             "s-f": {"agent": "claude-code", "start": "a", "current": "a", "since": 1, "follow": true},
             "s-c": {"agent": "claude-code", "start": "a", "current": "a", "since": 1, "follow": false,
-                    "custom": {"order": ["c"], "enabled": ["c"], "when": "full"}}
+                    "custom": {"order": ["c"], "enabled": ["c"]}}
         }
     });
     let b: Book = serde_json::from_value(old).expect("读得进");
@@ -574,9 +592,9 @@ fn todays_shape_upgrades_without_losing_a_cell() {
     let custom = json!({
         "order": [{"start": true}, "beta", "gamma", "delta"],
         "enabled": ["beta", "gamma"],
-        "when": {"threshold": {"n": 95}},
         "atLimit": "stop",
         "cap": {
+            "*": {"5h": 95, "7d": 95},
             "beta": {"*": 99},
             "gamma": {"*": [{"at": "17:00-02:00", "n": 0}, {"at": "02:00-17:00", "n": 99}]}
         }

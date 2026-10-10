@@ -435,15 +435,19 @@ impl Home {
         self.root.join(rotation::FILE_NAME)
     }
 
-    fn set_default(&self, enabled: &[&str], when: serde_json::Value) {
-        self.set_default_at(enabled, when, "continue");
+    /// `line` ＝ 触发那一行两窗各设的线（`None` ＝ 满了才换）。
+    fn set_default(&self, enabled: &[&str], line: Option<u8>) {
+        self.set_default_at(enabled, line, "continue");
     }
 
-    fn set_default_at(&self, enabled: &[&str], when: serde_json::Value, at_limit: &str) {
+    fn set_default_at(&self, enabled: &[&str], line: Option<u8>, at_limit: &str) {
         let mut order = vec![serde_json::json!({"start": true})];
         order.extend(["a", "b"].iter().map(|a| serde_json::json!(a)));
         let r = rotation::rotation_from(
-            &serde_json::json!({"order": order, "enabled": enabled, "when": when, "atLimit": at_limit}),
+            &match line {
+                Some(n) => serde_json::json!({"order": order, "enabled": enabled, "cap": {"*": {"5h": n, "7d": n}}, "atLimit": at_limit}),
+                None => serde_json::json!({"order": order, "enabled": enabled, "atLimit": at_limit}),
+            },
             1..=1,
             &|a| a != "_",
             &|_| false,
@@ -559,7 +563,7 @@ fn a_refused_b_serves(auth: Option<&str>) -> String {
 #[test]
 fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
     let home = Home::new("swap");
-    home.set_default(&["b"], serde_json::json!("full"));
+    home.set_default(&["b"], None);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let relay = home.relay(up);
     let resp = send_as_a(relay);
@@ -600,7 +604,7 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
 #[test]
 fn a_restarted_backend_sends_the_first_request_of_a_pinned_session_to_the_pinned_account() {
     let home = Home::new("resume");
-    home.set_default(&["b"], serde_json::json!("full"));
+    home.set_default(&["b"], None);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     assert!(send_as_a(home.relay(up)).starts_with("HTTP/1.1 200"));
     let fresh = home.relay(up);
@@ -625,13 +629,13 @@ fn nothing_to_swap_to_hands_down_the_refusal_as_is() {
     assert_eq!(home.session("s-1").current, "a");
 
     // 下一发：a 在额度账上被拒到重置时刻 ⇒ 直接走 b（不先撞 a），b 也拒 ⇒ 原样交回，不回到 a。
-    home.set_default(&["b"], serde_json::json!("full"));
+    home.set_default(&["b"], None);
     assert_eq!(send_as_a(relay), refused_with_quota());
     assert_eq!(got.lock().expect("lock").len(), 2);
 
     // 一发之内：a 拒 ⇒ 换 b，b 也拒 ⇒ 原样交回；a、b 各一发，不打转。
     let fresh = Home::new("none-2");
-    fresh.set_default(&["b"], serde_json::json!("full"));
+    fresh.set_default(&["b"], None);
     let (up, got) = spawn_judging_upstream(all_refused);
     assert_eq!(send_as_a(fresh.relay(up)), refused_with_quota());
     let auths: Vec<Option<String>> = got
@@ -654,7 +658,7 @@ fn nothing_to_swap_to_hands_down_the_refusal_as_is() {
 #[test]
 fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     let home = Home::new("brief");
-    home.set_default(&["b"], serde_json::json!("full"));
+    home.set_default(&["b"], None);
     let now = crate::accounts::quota::now_unix();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
@@ -682,14 +686,20 @@ fn threshold_mode_moves_the_next_request() {
         }
     }
     let home = Home::new("threshold");
-    home.set_default(&["b"], serde_json::json!({"threshold": {"n": 90}}));
+    home.set_default(&["b"], Some(90));
     let (up, got) = spawn_judging_upstream(a_at_95);
     let relay = home.relay(up);
     assert!(!send_as_a(relay).contains("x-from: b"));
     assert!(send_as_a(relay).contains("x-from: b"));
     assert_eq!(got.lock().expect("lock").len(), 2);
     let s = home.session("s-1");
-    assert_eq!(s.history[0].why, rotation::SwitchWhy::Threshold { n: 90 });
+    assert_eq!(
+        s.history[0].why,
+        rotation::SwitchWhy::Threshold {
+            n: 90,
+            w: Some("5h".into())
+        }
+    );
 }
 
 /// b 那个窗口几点重置（比 a 的早 ⇒ 池里最早回到阈值以下的是 b）。
@@ -744,7 +754,7 @@ fn a_hard_limit_answers_the_agent_with_its_own_limit_reply_instead_of_sending() 
         both_past_ninety(auth, false)
     }
     let home = Home::new("hold");
-    home.set_default_at(&["b"], serde_json::json!({"threshold": {"n": 90}}), "stop");
+    home.set_default_at(&["b"], Some(90), "stop");
     let (up, got) = spawn_judging_upstream(answer);
     let relay = home.relay(up);
     assert!(!send_as_a(relay).contains("x-from: b"));
@@ -756,7 +766,14 @@ fn a_hard_limit_answers_the_agent_with_its_own_limit_reply_instead_of_sending() 
     let last = s.history.last().expect("记了一条");
     assert_eq!(
         (last.why.clone(), last.from_resets_at, last.from == last.to),
-        (rotation::SwitchWhy::Held { n: 90 }, Some(B_BACK), true)
+        (
+            rotation::SwitchWhy::Held {
+                n: 90,
+                w: Some("5h".into())
+            },
+            Some(B_BACK),
+            true
+        )
     );
     let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     assert!(
@@ -769,7 +786,7 @@ fn a_hard_limit_answers_the_agent_with_its_own_limit_reply_instead_of_sending() 
     );
 
     let soft = Home::new("hold-soft");
-    soft.set_default(&["b"], serde_json::json!({"threshold": {"n": 90}}));
+    soft.set_default(&["b"], Some(90));
     let (up, got) = spawn_judging_upstream(answer);
     let relay = soft.relay(up);
     for _ in 0..3 {
@@ -785,7 +802,7 @@ fn a_hard_limit_also_holds_when_the_resend_is_refused() {
         both_past_ninety(auth, true)
     }
     let home = Home::new("hold-refused");
-    home.set_default_at(&["b"], serde_json::json!({"threshold": {"n": 90}}), "stop");
+    home.set_default_at(&["b"], Some(90), "stop");
     let (up, got) = spawn_judging_upstream(answer);
     let relay = home.relay(up);
     send_as_a(relay);
@@ -830,7 +847,7 @@ fn overage_in_use_moves_the_next_request_to_a_subscription_with_room() {
         }
     }
     let home = Home::new("overage");
-    home.set_default(&["b"], serde_json::json!("full"));
+    home.set_default(&["b"], None);
     let (up, _got) = spawn_judging_upstream(a_on_overage);
     let relay = home.relay(up);
     assert!(!send_as_a(relay).contains("x-from: b"));
@@ -841,7 +858,7 @@ fn overage_in_use_moves_the_next_request_to_a_subscription_with_room() {
 #[test]
 fn no_token_lands_in_the_books_or_the_answer() {
     let home = Home::new("leak");
-    home.set_default(&["b"], serde_json::json!("full"));
+    home.set_default(&["b"], None);
     let (up, _got) = spawn_judging_upstream(a_refused_b_serves);
     let resp = send_as_a(home.relay(up));
     let books = [

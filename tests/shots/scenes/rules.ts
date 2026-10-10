@@ -8,7 +8,7 @@ import { fakePlan } from "../fake/timeline";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
-import { click, sleep, waitFor } from "./helpers";
+import { click, hover, sleep, type, waitFor } from "./helpers";
 
 const S1 = "5e550001-0000-4000-8000-000000000001";
 const S2 = "5e550002-0000-4000-8000-000000000002";
@@ -33,7 +33,6 @@ interface R {
 const ROT = {
   order: [{ start: true }, "personal", "work"],
   enabled: ["personal", "work"],
-  when: "full",
   atLimit: "continue",
   wait: 40,
 };
@@ -42,7 +41,7 @@ const THREE: R[] = [
   {
     id: "r_daily",
     name: "日常",
-    summary: "personal → work → team · ≥90% · 停 · 封顶 2",
+    summary: "personal → work → team · 5h ≥90% · 停 · 封顶 2",
     live: [S1, S2],
     ended: [S3],
     isDefault: true,
@@ -57,7 +56,7 @@ const THREE: R[] = [
   {
     id: "r_saver",
     name: "省额度",
-    summary: "lab → team → api · ≥80% · 单段 10",
+    summary: "lab → team → api · 5h ≥80% · 7d ≥95% · 单段 10",
   },
 ];
 
@@ -111,19 +110,19 @@ function rulesWorld(list: R[] = THREE): () => World {
 const NIGHT_ROT = {
   order: [{ start: true }, "team", "lab", "work", "personal"],
   enabled: ["team", "lab", "work"],
-  when: { threshold: { n: 90 } },
   atLimit: "continue",
   wait: 40,
   preempt: true,
   fallback: ["work"],
   cap: {
+    "*": { "5h": 90 },
     work: {
       "*": [
         { at: "17:00-02:00", n: 0 },
         { at: "02:00-17:00", n: 99 },
       ],
     },
-    lab: { "5h": 80 },
+    lab: { "5h": 80, "7d": 95 },
   },
 };
 
@@ -161,7 +160,7 @@ function editorWorld(): () => World {
         if (x.id === "r_night") {
           x.rotation = NIGHT_ROT;
           x.explain =
-            "起始账号先用 · 到 90% 从头取首个可用 · 前面的号有额度就换回它 · work 只兜底 · 别的号有额度就不用 work · 40 分钟内有号恢复就先等 · work 17:00-02:00 停用 · 都到上限仍发";
+            "起始账号先用 · 5h 到 90% 从头取首个可用 · 7d 被拒才换 · 前面的号有额度就换回它 · work 只兜底 · 别的号有额度就不用 work · 40 分钟内有号恢复就先等 · work 17:00-02:00 停用 · 都到上限仍发";
           x.atLimitApplies = true;
         }
       return r;
@@ -247,7 +246,13 @@ function editorWorld(): () => World {
           lanes: [],
           effective: {
             work: {
-              "*": { v: 0, layer: "all", below: { v: 90, layer: "trigger" } },
+              "*": {
+                v: 0,
+                layer: "all",
+                below: { v: null, layer: "none" },
+                list: "5h ≤0 · 7d ≤0",
+                belowList: "5h ≤90 · 7d 不封顶",
+              },
             },
           },
         };
@@ -269,21 +274,21 @@ function editorWorld(): () => World {
           {
             ...span(0.6 * H, 2 * H),
             account: "lab",
-            why: { threshold: { n: 90 } },
+            why: { threshold: { n: 90, w: "5h" } },
           },
           { ...span(2 * H, 5 * H), account: "team", why: "preempt" },
           {
             ...span(5 * H, end),
             account: "lab",
-            why: { threshold: { n: 90 } },
+            why: { threshold: { n: 90, w: "5h" } },
           },
         ],
         lanes: [
           {
             account: "team",
             spans: [
-              { ...span(0.6 * H, 2 * H), state: "capped", n: 90 },
-              { ...span(5 * H, Math.min(end, 7 * H)), state: "capped", n: 90 },
+              { ...span(0.6 * H, 2 * H), state: "capped", n: 90, w: "5h" },
+              { ...span(5 * H, Math.min(end, 7 * H)), state: "capped", n: 90, w: "5h" },
             ],
             resets: [{ w: "5h", ...at(2 * H) }],
           },
@@ -298,43 +303,19 @@ function editorWorld(): () => World {
         ],
         effective: {
           team: {
-            "5h": {
-              v: 90,
-              layer: "trigger",
-              below: { v: 90, layer: "trigger" },
-            },
-            "7d": {
-              v: 90,
-              layer: "trigger",
-              below: { v: 90, layer: "trigger" },
-            },
-            "*": {
-              v: 90,
-              layer: "trigger",
-              below: { v: 90, layer: "trigger" },
-            },
+            "5h": { v: 90, layer: "trigger", w: "5h", below: { v: 90, layer: "trigger", w: "5h" } },
+            "7d": { v: null, layer: "none", below: { v: null, layer: "none" } },
+            "*": { v: null, layer: "none", below: { v: null, layer: "none" }, list: "5h ≤90 · 7d 不封顶", belowList: "5h ≤90 · 7d 不封顶" },
           },
           lab: {
-            "5h": {
-              v: 80,
-              layer: "window",
-              below: { v: 90, layer: "trigger" },
-            },
-            "7d": {
-              v: 90,
-              layer: "trigger",
-              below: { v: 90, layer: "trigger" },
-            },
-            "*": {
-              v: 90,
-              layer: "trigger",
-              below: { v: 90, layer: "trigger" },
-            },
+            "5h": { v: 80, layer: "window", below: { v: 90, layer: "trigger", w: "5h" } },
+            "7d": { v: 95, layer: "window", below: { v: null, layer: "none" } },
+            "*": { v: null, layer: "none", below: { v: null, layer: "none" }, list: "5h ≤80 · 7d ≤95", belowList: "5h ≤80 · 7d ≤95" },
           },
           work: {
             "5h": { v: 0, layer: "all", below: { v: 0, layer: "all" } },
             "7d": { v: 0, layer: "all", below: { v: 0, layer: "all" } },
-            "*": { v: 0, layer: "all", below: { v: 90, layer: "trigger" } },
+            "*": { v: 0, layer: "all", below: { v: null, layer: "none" }, list: "5h ≤0 · 7d ≤0", belowList: "5h ≤90 · 7d 不封顶" },
           },
         },
       };
@@ -510,7 +491,7 @@ export const RULES_SCENES: Scene[] = [
   scene(
     "rules-editor",
     "设置 · 轮换 · 规则编辑器",
-    "点夜间：面包屑 轮换 / 夜间 · 后端那句说明 · 顺序（起始账号占位 · 封顶 · 兜底 · 用量）· 触发 · 换法三卡 · 无号可换 · 按号封顶表 · 预览",
+    "点夜间：面包屑 轮换 / 夜间 · 后端那句说明 · 顺序（起始账号占位 · 封顶 · 兜底 · 用量）· 触发 满 / 到线 5h 90 · 7d 空 · 换法三卡 · 无号可换 · 按号封顶表（没设的格写落下来的灰值）· 预览",
     goEditor,
     editorWorld(),
     960,
@@ -519,7 +500,7 @@ export const RULES_SCENES: Scene[] = [
   scene(
     "rules-editor-cap",
     "设置 · 轮换 · 编辑器 · 封顶浮层",
-    "work「全部窗口」那一格：按时段两段 ＋ 24h 色带，下面「其余时段 ＝ 触发 ≥90%」（后端 effective 的下一层）",
+    "work「全部窗口」那一格：按时段两段 ＋ 24h 色带，下面「其余时段 · 5h ≤90 · 7d 不封顶」（后端那一句两窗各取多少）",
     async () => {
       await goEditor();
       await click('[data-ed-cap="work.*"]');
@@ -528,6 +509,46 @@ export const RULES_SCENES: Scene[] = [
     editorWorld(),
     960,
     1100,
+  ),
+  scene(
+    "rules-editor-line-bad",
+    "设置 · 轮换 · 编辑器 · 触发填错",
+    "5h 格填 120：后端回 cap.*.5h · range ⇒ 那一格框红、照原样留着 120 ＋ 行尾红字 1–99，不写盘；7d 那一格照旧",
+    async () => {
+      await goEditor();
+      await type('[data-rot-line-num="5h"]', "120");
+      document
+        .querySelector('[data-rot-line-num="5h"]')
+        ?.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(900);
+      document.querySelector("[data-rot-trigger]")?.scrollIntoView({ block: "center" });
+      await sleep(300);
+    },
+    () => {
+      const w = editorWorld()();
+      w.ops["rotation-rule-save"] = () => ({
+        state: "refused",
+        errors: [{ cell: "cap.*.5h", code: "range" }],
+      });
+      return w;
+    },
+    960,
+    620,
+  ),
+  scene(
+    "rules-editor-line-empty",
+    "设置 · 轮换 · 编辑器 · 7d 空着",
+    "到线 · 只设 5h：悬停 7d 那一格 ⇒「空即 7d 满才换」",
+    async () => {
+      await goEditor();
+      document.querySelector("[data-rot-trigger]")?.scrollIntoView({ block: "center" });
+      await sleep(300);
+      await hover('[data-rot-line-num="7d"]');
+      await sleep(900);
+    },
+    editorWorld(),
+    960,
+    620,
   ),
   scene(
     "rules-editor-narrow",

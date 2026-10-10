@@ -363,11 +363,15 @@ export async function checkRotation(
   ) as CellError[];
 }
 
-/** 上限取自哪一层（`rotation-plan` 的 `effective`）：这号这窗口 · 这号全部窗口 · 触发 · 不封顶。 */
+/** 上限取自哪一层（`rotation-plan` 的 `effective`）：这号这窗口 · 这号全部窗口 · 触发那一行（`w` ＝ 哪一窗）· 不封顶。 */
 export interface CapAt {
   v: number | null;
   layer: "window" | "all" | "trigger" | "none";
+  w?: string;
 }
+
+/** 封顶表一格：此刻取的 ＋ 这一格不算时往下一层取到的；全部窗口那一格另带两窗各取多少（后端写好的一句）。 */
+export type CapCell = CapAt & { below: CapAt; list?: string; belowList?: string };
 
 /** `rotation-plan` 的预览（后端照 `decide` 算好；界面只排版）。时刻都带写好的 `…Text`。 */
 /** 预览 / 时间轴里一段：`[from, to)` 用 `account`（`null` ＝ 停发）；`why` ＝ 那一段开头为什么换。 */
@@ -390,6 +394,8 @@ export interface PlanLane {
     toText: string;
     state: "refused" | "capped" | "off" | "overage";
     n: number | null;
+    /** 过线的那一窗（只 `capped` 有）。 */
+    w?: string | null;
   }[];
   resets: { w: string; at: number; atText: string }[];
   pct?: number | null;
@@ -397,13 +403,13 @@ export interface PlanLane {
   warm?: { at: number; atText: string }[];
 }
 
-/** 时间轴顶行（后端判）：此刻用谁 · 卡人窗口与用量 · 距触发 · 估几点到上限；或卡住时最早回来的号。 */
+/** 时间轴顶行（后端判）：此刻用谁 · 卡人窗口与用量 · 离线最近的那一窗还差几点 · 估几点到上限；或卡住时最早回来的号。 */
 export type PlanHead =
   | {
       account?: string;
       w?: string;
       pct?: number;
-      toTrigger?: number;
+      toLine?: { w: string; n: number };
       /** 按目前涨法几点用到这号这窗口此刻的上限（后端有根据才给）。 */
       est?: { at: number; atText: string; pct: number; w: string };
     }
@@ -419,7 +425,7 @@ export interface PlanRead {
   until: number;
   plan: PlanSeg[];
   lanes: PlanLane[];
-  effective: Record<string, Record<string, CapAt & { below: CapAt }>>;
+  effective: Record<string, Record<string, CapCell>>;
   /** 带 `view` 时：按格的刻度（悬停 / 键盘按格走），`label` ＝ 轴上写的字。 */
   grid?: { at: number; atText: string; label?: string }[];
   head?: PlanHead;

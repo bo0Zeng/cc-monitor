@@ -33,13 +33,13 @@ function plan(p: Partial<PlanRead> = {}): PlanRead {
     fromText: "20:00",
     until: T + 18 * H,
     past: [seg(-6 * H, -2 * H, "work", null), seg(-2 * H, 0, "personal", { full: { w: "five_hour" } })],
-    plan: [seg(0, 2 * H, "team", null), seg(2 * H, 18 * H, "lab", { threshold: { n: 90 } })],
+    plan: [seg(0, 2 * H, "team", null), seg(2 * H, 18 * H, "lab", { threshold: { n: 90, w: "5h" } })],
     lanes: [
       {
         account: "team",
         pct: 22,
         usedBy: 2,
-        spans: [{ from: T + 2 * H, fromText: "04:00", to: T + 3 * H, toText: "05:00", state: "capped", n: 90 }],
+        spans: [{ from: T + 2 * H, fromText: "04:00", to: T + 3 * H, toText: "05:00", state: "capped", n: 90, w: "7d" }],
         resets: [
           { w: "5h", at: T + 3 * H, atText: "05:00" },
           { w: "7d", at: T + 9 * H, atText: "11:00" },
@@ -53,7 +53,7 @@ function plan(p: Partial<PlanRead> = {}): PlanRead {
       atText: `g${i}`,
       ...(i % 3 === 0 ? { label: `L${i}` } : {}),
     })),
-    head: { account: "team", w: "5h", pct: 63, toTrigger: 27 },
+    head: { account: "team", w: "5h", pct: 63, toLine: { w: "5h", n: 27 } },
     ...p,
   };
 }
@@ -62,7 +62,7 @@ beforeEach(() => document.body.replaceChildren());
 
 describe("时间轴 · 顶行", () => {
   it("平时 ＝ 在用 号 窗口 用量 · 距触发 N 点；卡住 ＝ 最早回来的号 ↻几点 (+多久) · 哪个窗口重置", () => {
-    const parts = [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toTrig", { n: 27 })];
+    const parts = [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toLine", { w: "5h", n: 27 })];
     expect(headLine(plan())).toEqual({ text: parts.join(copyText("kit.text.sep")), parts, blocked: false });
     const b = headLine(plan({ head: { blocked: { account: "team", at: T + 38 * 60, atText: "02:38", w: "5h" } } }))!;
     expect(b.blocked).toBe(true);
@@ -77,10 +77,10 @@ describe("时间轴 · 顶行", () => {
 
   it("后端给了估 ⇒ 顶行末尾接「估 几点 到 N%」；没给就不写", () => {
     const est = { at: T + 40 * 60, atText: "02:40", pct: 90, w: "5h" };
-    expect(headLine(plan({ head: { account: "team", w: "5h", pct: 63, toTrigger: 27, est } }))!.text).toBe(
+    expect(headLine(plan({ head: { account: "team", w: "5h", pct: 63, toLine: { w: "5h", n: 27 }, est } }))!.text).toBe(
       [
         copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }),
-        copyText("rot.tl.toTrig", { n: 27 }),
+        copyText("rot.tl.toLine", { w: "5h", n: 27 }),
         copyText("rot.tl.est", { at: "02:40", pct: 90 }),
       ].join(copyText("kit.text.sep")),
     );
@@ -99,7 +99,7 @@ describe("时间轴 · 本会话轨", () => {
       ["lab", "future"],
     ]);
     const whys = [...ax.querySelectorAll<HTMLElement>("[data-tl-why]")];
-    expect(whys.map((w) => w.textContent)).toEqual([copyText("rot.why.full"), copyText("rot.why.trig", { n: 90 })]);
+    expect(whys.map((w) => w.textContent)).toEqual([copyText("rot.why.full"), copyText("rot.why.trig", { w: "5h", n: 90 })]);
     expect(whys.every((w) => w.closest("[data-tl-seg]") === null)).toBe(true);
     expect(whys.map((w) => w.style.left)).toEqual([segs[1].style.left, segs[3].style.left]);
   });
@@ -113,7 +113,7 @@ describe("时间轴 · 本会话轨", () => {
         from: "t2",
         to: "t18",
         acct: "lab",
-        why: copyText("acct.hist.pct", { name: "team", n: 90 }),
+        why: copyText("acct.hist.pct", { name: "team", w: "5h", n: 90 }),
       }),
     );
   });
@@ -170,7 +170,7 @@ describe("时间轴 · 悬停与键盘", () => {
       [
         "g8",
         copyText("rot.tlHover.use", { acct: "lab" }),
-        copyText("rot.tlSt.until", { what: copyText("rot.tlSt.capped", { acct: "team", n: 90 }), at: "05:00" }),
+        copyText("rot.tlSt.until", { what: copyText("rot.tlSt.capped", { acct: "team", w: "7d", n: 90 }), at: "05:00" }),
       ].join(copyText("kit.text.sep")),
     );
     key("End");

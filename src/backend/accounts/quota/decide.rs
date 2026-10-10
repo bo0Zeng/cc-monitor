@@ -6,10 +6,11 @@
 //! |---|---|
 //! | 被拒 | 刚回来的回包被拒（429）；或额度账上被拒、还没到它说的回来时刻（[`refused_at`]） |
 //! | 超额在兜 | 订阅号正在用付费超额、卡着的窗口还没重置 |
-//! | 过上限 | 有窗口用到它的上限、还没重置。上限按窗口键取：这个号这个窗口的 → 这个号 `*` 的 → 这份轮换的 `when`（「满了才换」没有缺省上限）；按时段写的取此刻（本地钟）落在的那一段，落不进 ⇒ 往下一层。此刻取到的上限是 `0` ⇒ 这个号不用：不看用量（刚重置的 0%、从没见过都算），回来的时刻 ＝ 那一段的止 |
+//! | 过上限 | 有窗口用到它的上限（线）、还没重置。线按 [`layers`] 取（唯一一处）：这号这窗口 → 这号这语义位 → 这号全部窗口 → 所有号这语义位（`cap["*"]`，即规则一级的「触发」那一行；那一格空着 ＝ 那一窗满了才换）；按时段写的取此刻（本地钟）落在的那一段，落不进 ⇒ 往下一层。此刻取到的上限是 `0` ⇒ 这个号不用：不看用量（刚重置的 0%、从没见过都算），回来的时刻 ＝ 那一段的止 |
 //! | 能用 | 其余 |
 //!
 //! 「几点回来」＝ 卡着它的每一处（被拒 / 超额那个窗口 · 过了上限的每个窗口）都重置的那一刻；有一处说不出 ⇒ 说不出。
+//! 记下的线（`n`）· 窗口（语义位 `w`）· 窗口键 · 几点回来取**同一处**：卡得最久的那一处（说不出的那一处算最久）。
 //!
 //! **挑法** [`decide`]：
 //! 1. 此刻的号能用：此刻的号是兜底号（`fallback`）、池里有非兜底的号能用了 ⇒ 切到首个能用的那个（按池序，不管换法：
@@ -22,17 +23,17 @@
 //!    此刻的号只是过了上限 ⇒ 硬上限照 `Wait` 办，软上限留在此刻的号上照发。往非兜底号切照旧立刻切；没标兜底 ⇒ 不等。
 //!    这一家给不出「用满」回包 ⇒ 照旧切。超额在兜不等。
 //! 3. 一个都没有 ⇒ 照到上限那一格：`continue` 且此刻的号被拒 ⇒ 退一步取首个没被拒、也不在超额上的（不管上限）；
-//!    `stop` 且这份轮换有上限（`when` 是到 N%，或给池里的号设了上限）、说得出几点有号回来 ⇒ 这一发不发上游（[`Verdict::Hold`]）；
+//!    `stop` 且这份轮换有上限（触发那一行设了线，或给池里的号设了上限）、说得出几点有号回来 ⇒ 这一发不发上游（[`Verdict::Hold`]）；
 //!    其余 ⇒ 不换（被拒就原样交回上游的拒绝，过上限就留在此刻的号上照发）。
 //!
-//! 今天的几种情况都是它的特例：429 ＝ 此刻的号被拒 · 到 N% ＝ 缺省上限 · 超额在兜 ＝ 只换到能用的订阅号 · `atLimit` 照旧。
+//! 今天的几种情况都是它的特例：429 ＝ 此刻的号被拒 · 到 N% ＝ 触发那一行的线 · 超额在兜 ＝ 只换到能用的订阅号 · `atLimit` 照旧。
 //! 候选只从池里、且不含此刻的与这一发试过的 ⇒ 一发请求至多换「池子大小」次，不打转。
 //! 不会来回抖：一个窗口里用量只增不减 ⇒「能用 → 不能用」只因用量涨、「不能用 → 能用」只因重置（或时段换了上限）；
 //! `preempt` 只在挡在前面的号回来那一刻改结论（手动换过来时本就能用的号不在那份名单里 ⇒ 手动换号不会被切回）；`stint` 按换进来那一刻的基线算，每换进来一次只用一次。
 
 use super::reset_since_seen;
 use super::rotation::{
-    AtLimit, Base, Baseline, CapValue, Caps, RotationWhen, Stints, SwitchWhy, Unready, ALL_WINDOWS,
+    AtLimit, Base, Baseline, CapValue, Caps, Stints, SwitchWhy, Unready, ALL_WINDOWS, LINE_SLOTS,
 };
 use crate::agents::{QuotaReading, QuotaWindow};
 
@@ -57,9 +58,7 @@ pub enum Kind {
 pub(crate) struct Facts<'a> {
     /// 这个会话的轮换池（按序）。
     pub(crate) pool: &'a [String],
-    /// 缺省上限（「到 N% 换」的 N；「满了才换」没有）。
-    pub(crate) when: RotationWhen,
-    /// 每号覆盖的上限。
+    /// 每号的上限（线）；`"*"` 那一行 ＝ 所有号这语义位（规则一级的「触发」）。
     pub(crate) cap: &'a Caps,
     /// 每号的单段预算。
     pub(crate) stint: &'a Stints,
@@ -116,6 +115,8 @@ pub(crate) enum Verdict {
     /// 硬上限：池里没有能接的号 ⇒ 这一发不发上游，回那一家的「用满」回包；`back` ＝ 池里最早回来的那一刻。
     Hold {
         n: u8,
+        /// 卡着的那一窗（语义位）；说不出 ⇒ `None`。
+        w: Option<String>,
         back: Back,
         skipped: Vec<(String, Unready)>,
     },
@@ -147,9 +148,10 @@ pub(crate) enum Standing {
         until: Option<u64>,
         key: Option<String>,
     },
-    /// 过上限：`n` ＝ 第一个过了上限的窗口的上限。
+    /// 过上限：`n` · `w`（语义位）· `key` · `until` 都取卡得最久的那一处；`n == 0` ＝ 此刻那一格取到 0（时段停用）。
     OverCap {
         n: u8,
+        w: Option<String>,
         until: Option<u64>,
         key: Option<String>,
     },
@@ -185,17 +187,22 @@ fn over(w: &QuotaWindow, n: u8, now: u64) -> bool {
     w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && live(w.resets_at, now)
 }
 
-/// 「快满」那一问（显示态用）：有语义位（`5h` / `7d`）的窗口里，第一个用到 `n`%、还没重置的。与 [`standing`] 的「过上限」同一个判法。
+/// 「快满」那一问（显示态用）：有语义位（`5h` / `7d`）的窗口里，第一个用到 `n(窗口名)`%、还没重置的。与 [`standing`] 的「过上限」同一个判法。
 pub(crate) fn window_over<'r>(
     r: &'r QuotaReading,
-    n: u8,
+    n: &dyn Fn(&str) -> u8,
     now: u64,
     slot: &dyn Fn(&str) -> Option<&'static str>,
 ) -> Option<&'r QuotaWindow> {
     r.windows
         .iter()
         .filter(|w| slot(&w.name).is_some())
-        .find(|w| over(w, n, now))
+        .find(|w| over(w, n(&w.name), now))
+}
+
+/// 这一窗用到它的线、还没重置（显示态「到线」那一枚签）。
+pub(crate) fn at_line(w: &QuotaWindow, n: u8, now: u64) -> bool {
+    n > 0 && over(w, n, now)
 }
 
 /// 「额度账上这个号此刻被拒着」的唯一判法：上次那一发被拒、它说的回来时刻还没到（适配层给被拒的快照恒带时刻；
@@ -211,53 +218,121 @@ pub(crate) fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
 
 /// 此刻是本地钟一天里的第几分钟。
 fn minute_of(f: &Facts<'_>) -> u16 {
-    let local = i128::from(f.now) + i128::from(f.offset);
+    minute_at(f.now, f.offset)
+}
+
+fn minute_at(now: u64, offset: i64) -> u16 {
+    let local = i128::from(now) + i128::from(offset);
     u16::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
 }
 
-/// 这个号这个窗口此刻的上限（没有 ⇒ `None`：「满了才换」又没给它设）。
-pub(crate) fn cap_of(f: &Facts<'_>, account: &str, key: &str) -> Option<u8> {
-    let minute = minute_of(f);
-    let pick = |v: &CapValue| match v {
+/// 一格此刻取到的值：一个数 ⇒ 它；按时段 ⇒ 此刻落在的那一段（落不进 ⇒ `None`，往下一层）。
+fn pick(v: &CapValue, minute: u16) -> Option<u8> {
+    match v {
         CapValue::N(n) => Some(*n),
         CapValue::Slots(s) => s.iter().find(|x| x.holds(minute)).map(|x| x.n),
-    };
-    f.cap
-        .get(account)
-        .and_then(|m| {
-            m.get(key)
-                .and_then(pick)
-                .or_else(|| m.get(ALL_WINDOWS).and_then(pick))
-        })
-        .or(match f.when {
-            RotationWhen::Threshold { n } => Some(n),
-            RotationWhen::Full => None,
-        })
+    }
 }
 
-/// 这个号此刻有没有哪一格上限取到 `0`（不用它）：有 ⇒ （那一格到几点不再是 `0`：按时段写的取那一段的止，写死的 `0` 说不出, 窗口键；`*` ⇒ `None`）。
-fn off_now(f: &Facts<'_>, account: &str) -> Option<(Option<u64>, Option<String>)> {
+/// ★ 线的层次（唯一一处）：这号这窗口（`key`）→ 这号这语义位（`slot`，与 `key` 同名时不重复）→ 这号全部窗口 →
+/// 所有号这语义位（`cap["*"][slot]`，规则一级的「触发」那一行）。`key == "*"`（全部窗口那一格）⇒ 只有这号全部窗口那一层。
+/// 没写的层不出；每层带它是哪一层、那一格的值、触发那一层是哪一窗。
+fn layers<'c>(
+    cap: &'c Caps,
+    account: &str,
+    key: &str,
+    slot: Option<&'static str>,
+) -> Vec<(CapLayer, &'c CapValue, Option<&'static str>)> {
+    let per = cap.get(account);
+    let cell = |m: Option<&'c std::collections::BTreeMap<String, CapValue>>, k: &str| {
+        m.and_then(|m| m.get(k))
+    };
+    let mut out = Vec::new();
+    if key != ALL_WINDOWS {
+        out.extend(cell(per, key).map(|v| (CapLayer::Window, v, None)));
+        if let Some(s) = slot.filter(|s| *s != key) {
+            out.extend(cell(per, s).map(|v| (CapLayer::Window, v, None)));
+        }
+    }
+    out.extend(cell(per, ALL_WINDOWS).map(|v| (CapLayer::All, v, None)));
+    if key != ALL_WINDOWS {
+        if let Some(s) = slot {
+            out.extend(cell(cap.get(ALL_WINDOWS), s).map(|v| (CapLayer::Trigger, v, Some(s))));
+        }
+    }
+    out
+}
+
+/// 这个号这个窗口（窗口键 `key` · 语义位 `slot`）在本地钟第 `minute` 分钟取的线；哪层都没有 ⇒ `None`（那一窗满了才换）。
+fn line_in(
+    cap: &Caps,
+    account: &str,
+    key: &str,
+    slot: Option<&'static str>,
+    minute: u16,
+) -> Option<u8> {
+    layers(cap, account, key, slot)
+        .into_iter()
+        .find_map(|(_, v, _)| pick(v, minute))
+}
+
+/// 显示态用：这个号这个窗口此刻（`now` · 本地钟比 UTC 快 `offset` 秒）取的线。与 [`cap_of`] 同一处。
+pub(crate) fn line_at(
+    cap: &Caps,
+    account: &str,
+    key: &str,
+    slot: Option<&'static str>,
+    now: u64,
+    offset: i64,
+) -> Option<u8> {
+    line_in(cap, account, key, slot, minute_at(now, offset))
+}
+
+/// 这个号这个窗口此刻的上限（没有 ⇒ `None`：那一窗满了才换）。
+pub(crate) fn cap_of(
+    f: &Facts<'_>,
+    account: &str,
+    key: &str,
+    slot: Option<&'static str>,
+) -> Option<u8> {
+    line_in(f.cap, account, key, slot, minute_of(f))
+}
+
+/// 窗口键 → 语义位（照这个号的快照里同键的那个窗口；认不出 ⇒ `None`）。
+fn slot_of_key(f: &Facts<'_>, r: Option<&QuotaReading>, key: &str) -> Option<String> {
+    r?.windows
+        .iter()
+        .find(|w| (f.key)(&w.name).as_deref() == Some(key))
+        .and_then(|w| (f.slot)(&w.name))
+        .map(str::to_string)
+}
+
+/// 这个号此刻有没有哪一格上限取到 `0`（不用它）：有 ⇒ （那一格到几点不再是 `0`：按时段写的取那一段的止，写死的 `0` 说不出, 窗口键（`*` ⇒ `None`）, 语义位）。
+/// 触发那一行不收 `0` ⇒ 只看这号自己那一行。
+fn off_now(
+    f: &Facts<'_>,
+    account: &str,
+    r: Option<&QuotaReading>,
+) -> Option<(Option<u64>, Option<String>, Option<String>)> {
     let per = f.cap.get(account)?;
     let minute = minute_of(f);
     per.keys().find_map(|k| {
-        if cap_of(f, account, k) != Some(0) {
+        let (_, v, _) = layers(f.cap, account, k, None)
+            .into_iter()
+            .find(|(_, v, _)| pick(v, minute).is_some())?;
+        if pick(v, minute) != Some(0) {
             return None;
         }
-        // 取到 0 的那一层：这个窗口自己的那一格落得进 ⇒ 它；否则是 `*` 那一格。
-        let pick = |v: &CapValue| match v {
-            CapValue::N(0) => Some(None),
+        let until = match v {
             CapValue::Slots(s) => s
                 .iter()
                 .find(|x| x.n == 0 && x.holds(minute))
-                .map(|x| span_end(f, &x.at)),
+                .and_then(|x| span_end(f, &x.at)),
             CapValue::N(_) => None,
         };
-        let until = per
-            .get(k)
-            .and_then(pick)
-            .or_else(|| per.get(ALL_WINDOWS).and_then(pick))
-            .flatten();
-        Some((until, (k != ALL_WINDOWS).then(|| k.clone())))
+        let key = (k != ALL_WINDOWS).then(|| k.clone());
+        let w = key.as_deref().and_then(|k| slot_of_key(f, r, k));
+        Some((until, key, w))
     })
 }
 
@@ -271,60 +346,90 @@ fn span_end(f: &Facts<'_>, at: &str) -> Option<u64> {
     u64::try_from(i128::from(f.now) + left).ok()
 }
 
-/// 这份轮换有没有上限（缺省的，或给池里哪个号设的）：硬上限只在有上限时成立。
+/// 这份轮换有没有上限（触发那一行设了线，或给池里哪个号设了）：硬上限只在有上限时成立。
 fn has_caps(f: &Facts<'_>) -> bool {
-    matches!(f.when, RotationWhen::Threshold { .. }) || f.pool.iter().any(|a| f.cap.contains_key(a))
+    f.cap.get(ALL_WINDOWS).is_some_and(|m| !m.is_empty())
+        || f.pool.iter().any(|a| f.cap.contains_key(a))
+}
+
+/// 卡着一个号的一处：重置时刻 · 窗口键 · 那一处的线（被拒 / 超额那一处没有）· 语义位。
+struct Part {
+    t: Option<u64>,
+    key: Option<String>,
+    n: Option<u8>,
+    w: Option<String>,
 }
 
 /// ★ 谓词：读成 `r` 的这个号此刻能不能用。`heard` ⇒ `r` 是刚回来的那个回包（被拒就是被拒，不看时刻）。
 fn standing_in(f: &Facts<'_>, account: &str, r: &QuotaReading, heard: bool) -> Standing {
-    // 卡着它的每一处：（重置时刻, 窗口键）。
-    let mut parts: Vec<(Option<u64>, Option<String>)> = Vec::new();
+    let mut parts: Vec<Part> = Vec::new();
     let refused = (heard && r.refused) || refused_at(r, f.now);
     let overage = !refused && overage_in_use(r, (f.kind)(account), f.now);
     if refused || overage {
-        parts.push((r.resets_at, r.limiting.as_deref().and_then(|l| (f.key)(l))));
+        parts.push(Part {
+            t: r.resets_at,
+            key: r.limiting.as_deref().and_then(|l| (f.key)(l)),
+            n: None,
+            w: r.limiting
+                .as_deref()
+                .and_then(|l| (f.slot)(l))
+                .map(str::to_string),
+        });
     }
-    let mut first_n: Option<u8> = None;
-    if let Some(part) = off_now(f, account) {
-        first_n = Some(0);
-        parts.push(part);
+    if let Some((t, key, w)) = off_now(f, account, Some(r)) {
+        parts.push(Part {
+            t,
+            key,
+            n: Some(0),
+            w,
+        });
     }
     for w in &r.windows {
         let Some(k) = (f.key)(&w.name) else { continue };
+        let slot = (f.slot)(&w.name);
         // 取到 0 的那一格上面已经记过（不看用量）。
-        let Some(n) = cap_of(f, account, &k).filter(|n| *n > 0) else {
+        let Some(n) = cap_of(f, account, &k, slot).filter(|n| *n > 0) else {
             continue;
         };
         if over(w, n, f.now) {
-            first_n.get_or_insert(n);
-            parts.push((w.resets_at, Some(k)));
+            parts.push(Part {
+                t: w.resets_at,
+                key: Some(k),
+                n: Some(n),
+                w: slot.map(str::to_string),
+            });
         }
     }
-    if parts.is_empty() {
-        return Standing::Usable;
-    }
-    // 回来的时刻 ＝ 最晚那一处（一样晚取先列的）；有一处说不出 ⇒ 说不出。
-    let mut last: Option<(u64, Option<String>)> = None;
+    // 卡得最久的那一处：说不出几点的那一处（先列的）；都说得出 ⇒ 最晚那一处（一样晚取先列的）。
+    let mut bind: Option<Part> = None;
     let mut unknown = false;
-    for (t, k) in parts {
-        match t {
-            None => unknown = true,
-            Some(t) if last.as_ref().is_none_or(|(at, _)| t > *at) => last = Some((t, k)),
-            Some(_) => {}
+    for p in parts {
+        let later = match (&bind, p.t) {
+            (_, None) => !unknown,
+            (None, Some(_)) => true,
+            (Some(b), Some(t)) => !unknown && b.t.is_some_and(|bt| t > bt),
+        };
+        if p.t.is_none() {
+            unknown = true;
+        }
+        if later {
+            bind = Some(p);
         }
     }
-    let until = last.as_ref().map(|(t, _)| *t).filter(|_| !unknown);
-    let key = last.and_then(|(_, k)| k);
+    let Some(p) = bind else {
+        return Standing::Usable;
+    };
+    let until = p.t.filter(|_| !unknown);
     if refused {
-        Standing::Refused { until, key }
+        Standing::Refused { until, key: p.key }
     } else if overage {
-        Standing::Overage { until, key }
+        Standing::Overage { until, key: p.key }
     } else {
         Standing::OverCap {
-            n: first_n.unwrap_or(100),
+            n: p.n.unwrap_or(100),
+            w: p.w,
             until,
-            key,
+            key: p.key,
         }
     }
 }
@@ -333,10 +438,13 @@ fn standing_in(f: &Facts<'_>, account: &str, r: &QuotaReading, heard: bool) -> S
 pub(crate) fn standing(account: &str, f: &Facts<'_>) -> Standing {
     match (f.seen)(account) {
         Some(r) => standing_in(f, account, &r, false),
-        None => off_now(f, account).map_or(Standing::Usable, |(until, key)| Standing::OverCap {
-            n: 0,
-            until,
-            key,
+        None => off_now(f, account, None).map_or(Standing::Usable, |(until, key, w)| {
+            Standing::OverCap {
+                n: 0,
+                w,
+                until,
+                key,
+            }
         }),
     }
 }
@@ -517,7 +625,17 @@ pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Un
             current_reading(f).and_then(|r| r.resets_at),
             true,
         ),
-        Standing::OverCap { n, until, .. } => (SwitchWhy::Threshold { n: *n }, *until, false),
+        Standing::OverCap { n: 0, w, until, .. } => {
+            (SwitchWhy::Off { w: w.clone() }, *until, false)
+        }
+        Standing::OverCap { n, w, until, .. } => (
+            SwitchWhy::Threshold {
+                n: *n,
+                w: w.clone(),
+            },
+            *until,
+            false,
+        ),
     };
     // 2. 不能用 ⇒ 从头取首个能用的。
     let mut skipped = Vec::new();
@@ -535,15 +653,20 @@ pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Un
     // 硬上限：有上限、说得出几点有号回来 ⇒ 不发上游（说不出照软上限办）。超额在兜不算。
     if to.is_none() && f.at_limit == AtLimit::Stop && !subs_only && has_caps(f) {
         if let Some(back) = earliest_back(f) {
-            let n = match (&cur, f.when) {
-                (Standing::OverCap { n, .. }, _) => *n,
-                (_, RotationWhen::Threshold { n }) => n,
+            // 记下的线与窗口：此刻的号过了线 ⇒ 它卡着的那一处；否则 ⇒ 最早回来的那个号卡着的那一处。
+            let (n, w) = match &cur {
+                Standing::OverCap { n, w, .. } => (*n, w.clone()),
                 _ => match standing(&back.account, f) {
-                    Standing::OverCap { n, .. } => n,
-                    _ => 100,
+                    Standing::OverCap { n, w, .. } => (n, w),
+                    _ => (100, None),
                 },
             };
-            return Verdict::Hold { n, back, skipped };
+            return Verdict::Hold {
+                n,
+                w,
+                back,
+                skipped,
+            };
         }
     }
     match to {
@@ -634,6 +757,14 @@ pub(crate) fn spent(account: &str, f: &Facts<'_>) -> bool {
     !standing(account, f).usable()
 }
 
+/// 这个号此刻过线（不是被拒 · 超额 · 时段停用）⇒ 卡着它的那一窗（语义位）；否则 ⇒ `None`。
+pub(crate) fn line_window(account: &str, f: &Facts<'_>) -> Option<String> {
+    match standing(account, f) {
+        Standing::OverCap { n, w, .. } if n > 0 => w,
+        _ => None,
+    }
+}
+
 /// 这个号不能用的话几点回来；说不出 ⇒ `None`。
 pub(crate) fn back_at(account: &str, f: &Facts<'_>) -> Option<u64> {
     standing(account, f).back().and_then(|(t, _)| t)
@@ -656,7 +787,7 @@ pub(crate) struct PlanStep {
 pub(crate) enum LaneState {
     /// 被拒、还没到回来的时刻。
     Refused,
-    /// 过了上限（`n` ＝ 那个上限）。
+    /// 过了上限（`n` ＝ 那条线 · `w` ＝ 那一窗）。
     Capped,
     /// 上限取到 `0`（时段停用）。
     Off,
@@ -671,6 +802,8 @@ pub(crate) struct LaneSpan {
     pub(crate) to: u64,
     pub(crate) state: LaneState,
     pub(crate) n: Option<u8>,
+    /// 过线的那一窗（语义位；只 `capped` 有）。
+    pub(crate) w: Option<String>,
 }
 
 /// 预览里结论会变的时刻（`(f.now, until)` 里，升序去重）：池里各号的重置时刻 · 被拒说的回来时刻 · 按时段写的上限的起止（本地钟）。
@@ -731,7 +864,7 @@ pub(crate) fn plan(
             Verdict::Stay => (Some(cur.clone()), None, None),
             Verdict::Switch { to, why, .. } => (Some(to.clone()), Some(why), Some(to)),
             Verdict::Stuck { .. } => (Some(cur.clone()), None, None),
-            Verdict::Hold { n, .. } => (None, Some(SwitchWhy::Held { n }), None),
+            Verdict::Hold { n, w, .. } => (None, Some(SwitchWhy::Held { n, w }), None),
             Verdict::Wait { instead, back, .. } => (
                 None,
                 Some(SwitchWhy::Wait {
@@ -768,20 +901,23 @@ pub(crate) fn lane(f: &Facts<'_>, account: &str, until: u64) -> Vec<LaneSpan> {
     for (i, &t) in times.iter().enumerate() {
         let end = times.get(i + 1).copied().unwrap_or(until);
         let g = Facts { now: t, ..*f };
-        let (state, n) = match standing(account, &g) {
+        let (state, n, w) = match standing(account, &g) {
             Standing::Usable => continue,
-            Standing::Refused { .. } => (LaneState::Refused, None),
-            Standing::Overage { .. } => (LaneState::Overage, None),
-            Standing::OverCap { n: 0, .. } => (LaneState::Off, None),
-            Standing::OverCap { n, .. } => (LaneState::Capped, Some(n)),
+            Standing::Refused { .. } => (LaneState::Refused, None, None),
+            Standing::Overage { .. } => (LaneState::Overage, None, None),
+            Standing::OverCap { n: 0, .. } => (LaneState::Off, None, None),
+            Standing::OverCap { n, w, .. } => (LaneState::Capped, Some(n), w),
         };
         match out.last_mut() {
-            Some(last) if last.to == t && last.state == state && last.n == n => last.to = end,
+            Some(last) if last.to == t && last.state == state && last.n == n && last.w == w => {
+                last.to = end
+            }
             _ => out.push(LaneSpan {
                 from: t,
                 to: end,
                 state,
                 n,
+                w,
             }),
         }
     }
@@ -792,58 +928,94 @@ pub(crate) fn lane(f: &Facts<'_>, account: &str, until: u64) -> Vec<LaneSpan> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CapLayer {
-    /// 这号这窗口那一格。
+    /// 这号这窗口那一格（含这号这语义位）。
     Window,
     /// 这号「全部窗口」那一格。
     All,
-    /// 这份轮换的触发（到 N%）。
+    /// 触发那一行（所有号这语义位，`cap["*"]`）。
     Trigger,
     /// 哪层都没有：不封顶。
     None,
 }
 
-/// 此刻取到的上限 ＋ 来自哪一层（`v = None` ＝ 不封顶）。
+/// 此刻取到的上限 ＋ 来自哪一层（`v = None` ＝ 不封顶）· 来自触发时是哪一窗。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CapAt {
     pub(crate) v: Option<u8>,
     pub(crate) layer: CapLayer,
+    pub(crate) w: Option<&'static str>,
 }
 
-/// 这号这窗口（`key`；`*` ＝ 全部窗口那一格）此刻实际取的上限，与「这一格不算」时往下一层取到的（封顶浮层「其余时段 ＝ …」）。
-/// 层次同 [`cap_of`]：这号这窗口 → 这号全部窗口 → 触发；按时段的取此刻落在的那段，落不进 ⇒ 往下一层。
+const NO_CAP: CapAt = CapAt {
+    v: None,
+    layer: CapLayer::None,
+    w: None,
+};
+
+/// 封顶表里一列的语义位：`5h` · `7d` 两列就是它们自己；全部窗口那一列 · 别的窗口键没有。
+fn column_slot(key: &str) -> Option<&'static str> {
+    LINE_SLOTS.iter().copied().find(|s| *s == key)
+}
+
+fn first_at(ls: &[(CapLayer, &CapValue, Option<&'static str>)], minute: u16) -> CapAt {
+    ls.iter()
+        .find_map(|(layer, v, w)| {
+            pick(v, minute).map(|n| CapAt {
+                v: Some(n),
+                layer: *layer,
+                w: *w,
+            })
+        })
+        .unwrap_or(NO_CAP)
+}
+
+/// 封顶表这号这一列（`5h` · `7d` · `*` ＝ 全部窗口）此刻实际取的上限，与「这一格不算」时往下一层取到的（封顶浮层「其余时段 ＝ …」）。
+/// 层次即 [`layers`]；全部窗口那一格下面是两窗各一条线、写不成一个数 ⇒ 它的下一层恒是「不封顶」，两窗各取多少另见 [`effective_lines`]。
 pub(crate) fn effective_cap(f: &Facts<'_>, account: &str, key: &str) -> (CapAt, CapAt) {
     let minute = minute_of(f);
-    let pick = |v: &CapValue| match v {
-        CapValue::N(n) => Some(*n),
-        CapValue::Slots(s) => s.iter().find(|x| x.holds(minute)).map(|x| x.n),
+    let ls = layers(f.cap, account, key, column_slot(key));
+    let at = first_at(&ls, minute);
+    // 「这一格不算」：去掉这一格自己那一层（这号这窗口 · 全部窗口那一列则是这号全部窗口）。
+    let own = if key == ALL_WINDOWS {
+        CapLayer::All
+    } else {
+        CapLayer::Window
     };
-    let per = f.cap.get(account);
-    let trigger = match f.when {
-        RotationWhen::Threshold { n } => CapAt {
-            v: Some(n),
-            layer: CapLayer::Trigger,
-        },
-        RotationWhen::Full => CapAt {
-            v: None,
-            layer: CapLayer::None,
-        },
-    };
-    let all = per
-        .and_then(|m| m.get(ALL_WINDOWS))
-        .and_then(pick)
-        .map(|n| CapAt {
-            v: Some(n),
-            layer: CapLayer::All,
-        });
-    if key == ALL_WINDOWS {
-        return (all.unwrap_or(trigger), trigger);
-    }
-    let below = all.unwrap_or(trigger);
-    let own = per.and_then(|m| m.get(key)).and_then(pick).map(|n| CapAt {
-        v: Some(n),
-        layer: CapLayer::Window,
-    });
-    (own.unwrap_or(below), below)
+    let rest: Vec<_> = ls.iter().copied().filter(|(l, _, _)| *l != own).collect();
+    let below = first_at(&rest, minute);
+    (at, below)
+}
+
+/// 这号两窗（`5h` · `7d`）此刻各取的线，与这号全部窗口那一格不算时各取的（全部窗口那一格的悬停与「其余时段」）。
+pub(crate) fn effective_lines(f: &Facts<'_>, account: &str) -> Vec<(&'static str, CapAt, CapAt)> {
+    let minute = minute_of(f);
+    LINE_SLOTS
+        .iter()
+        .map(|s| {
+            let ls = layers(f.cap, account, s, Some(s));
+            let without_all: Vec<_> = ls
+                .iter()
+                .copied()
+                .filter(|(l, _, _)| *l != CapLayer::All)
+                .collect();
+            (*s, first_at(&ls, minute), first_at(&without_all, minute))
+        })
+        .collect()
+}
+
+/// 时间轴顶行「距 {w} 线 {n} 点」：这个号各窗按此刻取的线（[`cap_of`]）还差几点，取差得最少的那一窗；都没线 ⇒ `None`。
+pub(crate) fn to_line(f: &Facts<'_>, account: &str) -> Option<(String, u32)> {
+    let r = (f.seen)(account)?;
+    r.windows
+        .iter()
+        .filter_map(|w| {
+            let slot = (f.slot)(&w.name)?;
+            let k = (f.key)(&w.name)?;
+            let n = cap_of(f, account, &k, Some(slot)).filter(|n| *n > 0)?;
+            let pct = (used_now(w, f.now) * 100.0).round().max(0.0) as u32;
+            Some((slot.to_string(), u32::from(n).saturating_sub(pct)))
+        })
+        .min_by_key(|(_, d)| *d)
 }
 
 #[cfg(test)]
