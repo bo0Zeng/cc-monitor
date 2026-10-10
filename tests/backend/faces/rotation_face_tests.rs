@@ -161,10 +161,10 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
         diag,
     ) = crate::common::contract::tests::diag(|| {
         answer_set_with(
-        &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["x"]}}),
-    )
-    .expect_err("应拒")
+            &ctx,
+            &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["x"]}}),
+        )
+        .expect_err("应拒")
     });
     assert_eq!(code, "bad_args");
     assert!(diag.contains("enabled[0]"), "{msg}");
