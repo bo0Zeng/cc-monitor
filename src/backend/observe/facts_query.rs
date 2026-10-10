@@ -529,17 +529,16 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
 
 /// 一种「需手动」写好的字（唯一一处：会话事实的 `needs.text` · 轮换在用名单都由它写）。
 pub(crate) fn needs_words(kind: NeedsKind) -> Words {
-    let key = match kind {
-        NeedsKind::Approve => "beSession.needs.approve",
-        NeedsKind::Answer => "beSession.needs.answer",
-        NeedsKind::Plan => "beSession.needs.plan",
-        NeedsKind::Network => "beSession.needs.network",
-        NeedsKind::Worker => "beSession.needs.worker",
-        NeedsKind::Goal => "beSession.needs.goal",
-        NeedsKind::Choose => "beSession.needs.choose",
-        NeedsKind::Unknown => "beSession.needs.unknown",
-    };
-    Words(copy_core::copy_text(key, &[]))
+    Words(match kind {
+        NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
+        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
+        NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
+        NeedsKind::Worker => copy_core::copy_text("beSession.needs.worker", &[]),
+        NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
+    })
 }
 
 /// 「需手动」先答哪个（[`Needs::rank`] 的来历，唯一一处）：种类已按顶上那个框判（顶上的先答），这里再按危险度 ——
@@ -631,14 +630,14 @@ impl UsageFact {
             Some(n) if n >= CONTEXT_WARN_AT => Tone::Warn,
             _ => Tone::Plain,
         };
-        let from = |k: &str| Some(Words(copy_core::copy_text(k, &[])));
         self.limit_from_text = match limit_from {
-            LimitFrom::Relay => from("beUsage.from.relay"),
-            LimitFrom::Setting => from("beUsage.from.setting"),
-            LimitFrom::Model => from("beUsage.from.model"),
-            LimitFrom::Observed => from("beUsage.from.observed"),
+            LimitFrom::Relay => Some(copy_core::copy_text("beUsage.from.relay", &[])),
+            LimitFrom::Setting => Some(copy_core::copy_text("beUsage.from.setting", &[])),
+            LimitFrom::Model => Some(copy_core::copy_text("beUsage.from.model", &[])),
+            LimitFrom::Observed => Some(copy_core::copy_text("beUsage.from.observed", &[])),
             LimitFrom::Assumed => None,
-        };
+        }
+        .map(Words);
     }
 }
 

@@ -169,7 +169,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
     b.className = "grid-monitor-badge badge-ctx";
     if (s.context.tone === "warn") b.classList.add("is-high");
     b.textContent = copyText("gridMonitor.renderBadges.ctx", { ctx: s.context.text });
-    b.title = copyText(s.context.percent === null ? "gridMonitor.renderBadges.ctxTokensHint" : "gridMonitor.renderBadges.ctxHint");
+    b.title = s.context.percent === null ? copyText("gridMonitor.renderBadges.ctxTokensHint") : copyText("gridMonitor.renderBadges.ctxHint");
     badges.appendChild(b);
   }
   if (s.unread > 0) {
