@@ -965,6 +965,13 @@ mod specimens {
         out.push(rec(Body::Queued {
             who: who(Speaker::Human),
         }));
+        // 认不出的一行：两个原因各一个（`why` 是闭集的词，样本各给一种）。
+        for why in [
+            crate::agents::record::UnreadWhy::UnknownType,
+            crate::agents::record::UnreadWhy::ParseFailed,
+        ] {
+            out.push(rec(Body::unread(why, some("k"), "{}")));
+        }
         out.iter().map(node_of).collect()
     }
 

@@ -524,6 +524,42 @@
           "kind": "value",
           "path": "{t=title}.text",
           "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=unread}.count",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=unread}.excerpt",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=unread}.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "{t=unread}.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=unread}.type",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=unread}.why",
+          "type": "enum"
         }
       ],
       "name": "record"

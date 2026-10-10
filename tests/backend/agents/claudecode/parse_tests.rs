@@ -193,16 +193,20 @@ fn zero_information_loss_over_mixed_fixture() {
         ),
         (
             r#"{"type":"mode","mode":"normal","sessionId":"s1"}"#,
-            "salvaged",
-        ), // 真实样本
+            "known",
+        ), // 真实样本：Claude 的状态行，10-10 起是认识的类型
         (
             r#"{"type":"pr-link","sessionId":"s1","prNumber":37,"timestamp":"t2"}"#,
-            "salvaged",
-        ), // 真实样本
+            "known",
+        ), // 真实样本：Claude 的状态行，10-10 起是认识的类型
         (
             r#"{"type":"agent-name","agentName":"x","sessionId":"s1"}"#,
+            "known",
+        ), // 真实样本：Claude 的状态行，10-10 起是认识的类型
+        (
+            r#"{"type":"brand-new-kind","sessionId":"s1","timestamp":"t2"}"#,
             "salvaged",
-        ), // 真实样本
+        ), // 没见过的类型
         (
             r#"{"type":"user","uuid":"u2","timestamp":"t3","message":99}"#,
             "salvaged",
@@ -249,7 +253,7 @@ fn zero_information_loss_over_mixed_fixture() {
         fixture.len(),
         "每一行都必须有交代"
     );
-    assert_eq!(kept, 5);
+    assert_eq!(kept, 6);
     assert_eq!(skipped, 2);
     assert_eq!(errored, 1);
 }

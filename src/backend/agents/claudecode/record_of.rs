@@ -7,10 +7,11 @@
 //! | `system` · `subtype == "api_error"` | `retry` |
 //! | `ai-title` / `custom-title` | `title{by: agent / user}` |
 //! | `queue-operation` · `remove` · 人说的 | `queued` |
-//! | 其余（别的 `system` · `attachment` · 看不懂的 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
+//! | 看不懂的（`Unrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录） |
+//! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy};
+use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy, UnreadWhy};
 use serde_json::Value;
 
 /// 这一家在线上的 `agent` 值。
@@ -176,6 +177,29 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
                 timestamp,
                 time_text,
                 Body::Queued { who },
+            ))
+        }
+        // 认不出（没见过的类型 · 见过的类型形状变了）：每行一条 `unread`；相邻同类并成一条是出记录页那一遍的事。
+        JsonlRecord::Unrecognized {
+            uuid,
+            timestamp,
+            time_text,
+            original_type,
+            raw,
+            reason,
+            ..
+        } => {
+            // 连 `type` 都没有的一行算「没见过的类型」（serde 报的是缺判别格，不是认识的类型形状变了）。
+            let why = if reason == "unknown-type" || original_type.is_none() {
+                UnreadWhy::UnknownType
+            } else {
+                UnreadWhy::ParseFailed
+            };
+            Some(rec_of(
+                uuid.unwrap_or_default(),
+                timestamp,
+                time_text,
+                Body::unread(why, original_type, &raw),
             ))
         }
         _ => None,

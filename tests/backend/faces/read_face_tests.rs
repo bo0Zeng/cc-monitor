@@ -1071,9 +1071,10 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
         Some(n),
         "history-index 的行数"
     );
-    // `history-lines` 出的是**记录行**（只装进界面的那些；这份结构占位语料一条都不进）⇒ 条数不再等于行数，
-    //   行号空间由 `next`（数的是可计行）钉。
-    assert_eq!(lines["lines"].as_array().map(Vec::len), Some(0));
+    // `history-lines` 出的是**记录行**（只装进界面的那些）⇒ 条数不再等于行数，行号空间由 `next`（数的是可计行）钉。
+    //   这份结构占位语料每行都没有 `type` ⇒ 每行一条认不出的，相邻同类并成一条（`count` 是可计行数）。
+    assert_eq!(lines["lines"].as_array().map(Vec::len), Some(1));
+    assert_eq!(lines["lines"][0]["record"]["count"].as_u64(), Some(n));
     assert_eq!(
         lines["next"].as_u64(),
         Some(n),

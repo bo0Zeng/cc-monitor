@@ -126,7 +126,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `id` | string | 这条记录在本会话里的身份：**不透明串**（非空、会话内唯一；主线外清单、分叉、跳转都按它认），前端不解析、不拼。那一家的记录自己有身份就用它（Claude 的 `uuid`）；没有的合成「`@<这一行起点的字节偏移>`」 |
 | `at` | string? | 记录时刻（ISO-8601 原样）；插进正在跑的那一轮的 `queued` 是打字那一刻 |
 | `timeText` | string? | `at` 在那台本地钟上的钟面 `HH:MM`（界面照抄、不换算） |
-| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `queued` |
+| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `queued` · `unread` |
 
 各类的格：
 
@@ -137,6 +137,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
 | `queued`（人在一轮跑着时插进去的一句） | `who`（同 `said`） |
+| `unread`（这一家的这一行认不出：没见过的类型 · 见过的类型形状变了） | `why`（闭集 `unknownType` `parseFailed`）· `type`（那一行自己说的类型原样，只当标签、出口不按它取字；没有 ⇒ `null`）· `text`（写好的一句）· `tone`（恒 `warn`）· `excerpt`（原文截到 400 字节、按字符截，给［复制详情］，出口照抄不解析）· `count`（并了几条：出记录页那一遍把相邻、原因与类型都一样的并成一条；实时 `line` 帧每行一条、恒 1） |
 
 内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError}` · `image {source}`。
 

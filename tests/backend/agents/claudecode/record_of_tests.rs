@@ -148,6 +148,14 @@ const CASES: &[(&str, &str)] = &[
         "queued-pasted",
         r#"{"type":"queue-operation","operation":"remove","content":"see <pasted_content id=\"p2\">\nA\n</pasted_content id=\"p2\">","timestamp":"2026-10-09T01:31:29.000Z"}"#,
     ),
+    (
+        "unread-unknown",
+        r#"{"type":"brand-new-kind","uuid":"n-1","timestamp":"2026-10-09T01:31:30.000Z","x":1}"#,
+    ),
+    (
+        "unread-parse-failed",
+        r#"{"type":"ai-title","sessionId":"s"}"#,
+    ),
 ];
 
 #[test]
@@ -217,10 +225,12 @@ fn the_cheap_class_agrees_with_the_record() {
             .unwrap()
             .and_then(|r| record_of(r, "L1"))
             .map(|r| r.body.class());
-        assert_eq!(class_of(&v), want, "{raw}");
+        // 骨架不出认不出的行（`unread`）：它不在主线判定里起作用，骨架上也没有它的读者 ⇒ 便宜那一问对它答「不出」。
+        let cheap = want.filter(|c| *c != RecordClass::Unread);
+        assert_eq!(class_of(&v), cheap, "{raw}");
         seen.insert(format!("{want:?}"));
     }
-    assert_eq!(seen.len(), 6, "五类 ＋ 不出记录都得见到：{seen:?}");
+    assert_eq!(seen.len(), 7, "六类 ＋ 不出记录都得见到：{seen:?}");
 }
 
 #[test]
@@ -270,13 +280,92 @@ fn records_without_a_reader_do_not_come_out() {
         r#"{"type":"system","subtype":"local_command","uuid":"x","timestamp":"t"}"#,
         r#"{"type":"permission-mode","permissionMode":"plan","sessionId":"s"}"#,
         r#"{"type":"queue-operation","operation":"enqueue","content":"x","timestamp":"t"}"#,
-        r#"{"type":"some-new-kind","uuid":"x","timestamp":"t"}"#,
     ] {
         let rec = crate::agents::claudecode::parse::parse_line(raw)
             .unwrap()
             .unwrap();
         assert!(record_of(rec, "L1").is_none(), "{raw}");
     }
+}
+
+/// Claude 自己的状态行（07-16 语料里落在「未知类型」的那 7 种）：认识、不上屏 —— 不出记录，也不再记成漂移。
+#[test]
+fn claude_status_lines_are_known_and_stay_off_screen() {
+    for t in [
+        "mode",
+        "agent-name",
+        "file-history-delta",
+        "pr-link",
+        "relocated",
+        "worktree-state",
+        "frame-link",
+    ] {
+        let raw = format!(r#"{{"type":"{t}","sessionId":"s","x":1}}"#);
+        let rec = crate::agents::claudecode::parse::parse_line(&raw)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !matches!(
+                rec,
+                crate::agents::claudecode::schema::JsonlRecord::Unrecognized { .. }
+            ),
+            "{t} 还落在认不出那一支"
+        );
+        assert!(record_of(rec, "L1").is_none(), "{t}");
+    }
+}
+
+/// 认不出的一行出 `unread`：没见过的类型 · 见过的类型形状变了；写好的一句、`warn`、原文摘录按字符截到 400 字节以内。
+#[test]
+fn an_unread_line_comes_out_as_unread() {
+    use crate::agents::record::{UnreadWhy, EXCERPT_BYTES};
+    let r = one(r#"{"type":"some-new-kind","uuid":"x","timestamp":"2026-10-09T01:30:00.000Z"}"#)
+        .expect("没见过的类型也要出一条");
+    let Body::Unread {
+        why,
+        kind,
+        text,
+        tone,
+        excerpt,
+        count,
+    } = &r.body
+    else {
+        panic!("{r:?}")
+    };
+    assert_eq!(*why, UnreadWhy::UnknownType);
+    assert_eq!(kind.as_deref(), Some("some-new-kind"));
+    assert!(text.0.contains("some-new-kind"), "{text:?}");
+    assert_eq!(*tone, crate::common::cells::Tone::Warn);
+    assert!(excerpt.0.contains("some-new-kind"));
+    assert_eq!(*count, 1);
+    assert_eq!(r.id, "x");
+    assert!(r.at.is_some());
+
+    // 已知类型、必填格没了 ⇒ 形状变了。
+    let r = one(r#"{"type":"ai-title","sessionId":"s"}"#).expect("形状变了也要出一条");
+    assert!(
+        matches!(
+            r.body,
+            Body::Unread {
+                why: UnreadWhy::ParseFailed,
+                ..
+            }
+        ),
+        "{r:?}"
+    );
+
+    // 长行：按字符截，不截半个字。
+    let long = format!(r#"{{"type":"some-new-kind","pad":"{}"}}"#, "字".repeat(400));
+    let r = one(&long).unwrap();
+    let Body::Unread { excerpt, .. } = &r.body else {
+        panic!()
+    };
+    assert!(
+        excerpt.0.len() <= EXCERPT_BYTES && excerpt.0.len() > EXCERPT_BYTES - 4,
+        "{}",
+        excerpt.0.len()
+    );
+    assert!(long.starts_with(&excerpt.0));
 }
 
 /// 秤 1 / 2 / 6 喂界面的语料就是这一家翻译表对原文语料（`scale2-height-records.jsonl`）逐行的成品 ——
