@@ -948,10 +948,7 @@ fn watch_loop(
     // 账号 manifest（「账号清单变了」一帧）。
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
-    let mut state = ReaderState::new(projects.clone(), wants.with_bg, wants.tail_only);
-    // 注入「客户端索要了 pid / 原文」这两位（不进 `new` 的签名，理由在那两个字段的头注里）。
-    state.with_pid = wants.with_pid;
-    state.with_raw = wants.with_raw;
+    let mut state = ReaderState::new(projects.clone());
     state.launch_home = crate::platform::paths::data_home();
     // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
     state.runs.book = book;
@@ -1380,32 +1377,19 @@ struct ReaderState {
     /// Only sessions whose PID is alive on this host stream; historical jsonl is
     /// NOT pulled (that is the Ctrl+H history browser's job).
     active_sids: HashSet<String>,
-    /// Batch7-F24：`--with-bg` 时放行 kind:"bg" 会话（宣告+流行，帧带元信息）；
-    /// 默认 false = Batch6-F21 行为（bg 不算会话）。
-    with_bg: bool,
-    /// Batch8-F25：`--tail-only` 时连接不重放历史——初扫/宣告只推进 cursor 与
-    /// seq 计数器到当前完整行数 L（行号语义，之后新行 seq 从 L 起），零行帧；
-    /// 历史由 monitor 经 `--read-session` 旁路快照拉取（0..L'-1 由 monitor 编号，
-    /// 重叠区被 (sid,seq) 去重吸收）。默认 false = 全量重放（旧 monitor 兼容）。
-    tail_only: bool,
-    /// `--with-pid`：客户端显式索要 `session_added` 上的 `pid`（本机 ↗ 按它找窗口）。
-    /// 默认 false、不进 [`ReaderState::new`] 的签名（与 `events_tx` 同一条纪律）；生产路由 [`watch_loop`] 注入，夹具直接置字段。
-    with_pid: bool,
-    /// `--with-raw`：客户端显式索要 `line` 上的 `raw`（那一行原文）。默认 false，注入方式同 `with_pid`。
-    with_raw: bool,
     /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
     runs: crate::observe::runs::RunTrack,
     /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
     branches: HashMap<PathBuf, crate::agents::mainline::Chain>,
     /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
-    /// `--tail-only` 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
+    /// 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
     typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
     /// 起会话便条与账号记录住的那个家（`None` ⇒ 不认便条）。默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入。
     launch_home: Option<PathBuf>,
 }
 
 impl ReaderState {
-    fn new(projects: PathBuf, with_bg: bool, tail_only: bool) -> Self {
+    fn new(projects: PathBuf) -> Self {
         ReaderState {
             sid_files: None,
             projects,
@@ -1417,10 +1401,6 @@ impl ReaderState {
             events_tx: None,
             pid_watched: HashSet::new(),
             active_sids: HashSet::new(),
-            with_bg,
-            tail_only,
-            with_pid: false,
-            with_raw: false,
             runs: crate::observe::runs::RunTrack::new(
                 crate::agents::run_faces(stream_kind()),
                 std::sync::Arc::default(),
@@ -2056,7 +2036,6 @@ fn send_line(
         cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
         rid: rec.rid,
-        raw: state.with_raw.then(|| line.raw.clone()),
     });
     // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
@@ -2241,25 +2220,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if pidfile_cwd(&bytes).is_some_and(|c| super::history_query::hidden_cwd(&c)) {
         return false;
     }
-    // 后台会话（适配层判，`agents::pidfile_background`）是自己 pidfile 的真作者（身份证据对它们正确地放行），
-    // 但不是交互会话：没开 `--with-bg` ⇒ 不成 tab。
+    // 后台会话（适配层判，`agents::pidfile_background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
     let background = is_background(&bytes);
-    if background {
-        if !state.with_bg {
-            // 审计 S1：若该 key 此前以 interactive 身份被 track（原地翻 kind /
-            // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
-            // 2s 窗口，并补齐"同进程翻 kind"这条本地有、远端缺的清理。
-            if let Some(old) = state.sessions.remove(&key) {
-                // 原地翻成非交互 kind：交互会话确实没了（进程还在，但不该是 tab）。
-                retire_sid_if_unreferenced(&old.sid, RemovalCause::Gone, state, sink);
-            }
-            tracing::debug!(
-                "sessions json skipped (background): {} pid {pid} is a non-interactive session",
-                path.display()
-            );
-            return false;
-        }
-    }
     // Batch9-F27：帧元信息一次解析（status diff 与后面的宣告帧共用）
     let meta: Option<serde_json::Value> = serde_json::from_slice(&bytes).ok();
     let meta_str = |k: &str| {
@@ -2366,19 +2328,13 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
     // 此时无历史可拉，后续行天然从 tail 全量到达）。
     let jsonls = sid_jsonls(state, &sid);
-    // 历史处理按模式分流（Batch8-F25）：
-    // - tail-only：**先 prime**（推进 cursor/seq 到当前完整行数 L，零行帧）——
-    //   帧要带 first 文件的 L 供 monitor 校验快照完整性（审计 D-I2），prime
-    //   无行帧故"帧先于行"契约不受影响；
-    // - 全量（默认，旧 monitor 兼容）：帧先行，再照旧全量推流（镜像本地
-    //   session-added 触发的 force-rescan）。
+    // 历史不重放：先 prime（推进 cursor/seq 到当前完整行数 L，零行帧）—— 帧带 first 文件的 L 供客户端核快照拉全了没有，
+    // 之后的新行 seq 从 L 起；`[0, L)` 由客户端经骨架 / 尾段补。
     let mut first_lines: Option<u64> = None;
-    if state.tail_only {
-        for (i, p) in jsonls.iter().enumerate() {
-            let n = prime_file_cursor(p, state);
-            if i == 0 {
-                first_lines = Some(n);
-            }
+    for (i, p) in jsonls.iter().enumerate() {
+        let n = prime_file_cursor(p, state);
+        if i == 0 {
+            first_lines = Some(n);
         }
     }
     let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
@@ -2410,14 +2366,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         waiting_for: meta_str("waitingFor"),
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
-        // 只给索要了的客户端（见 `wire::Frame::SessionAdded::pid`）。pid 与 verdict 核过的是同一个进程。
-        pid: state.with_pid.then_some(pid),
+        // pid 与 verdict 核过的是同一个进程（见 `wire::Frame::SessionAdded::pid`）。
+        pid,
     });
-    if !state.tail_only {
-        for p in &jsonls {
-            process_jsonl(p, state, sink);
-        }
-    }
     // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
     let mut runs_changed = false;
     for p in &jsonls {
@@ -2426,8 +2377,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if runs_changed || state.runs.has_runs(&sid) {
         sink.send(state.runs.frame(&sid));
     }
-    // 冷接（只推游标）时历史里已经有主线外的 ⇒ 宣告之后整份发一次（之后变了才发；全量重放那一路读的时候已经说过）。
-    for p in jsonls.iter().filter(|_| state.tail_only) {
+    // 冷接（只推游标）时历史里已经有主线外的 ⇒ 宣告之后整份发一次（之后变了才发）。
+    for p in &jsonls {
         if state
             .branches
             .get(&path_key(p))
@@ -2696,7 +2647,7 @@ fn note_jsonl(state: &mut ReaderState, p: &Path) {
     }
 }
 
-/// Batch8-F25：tail-only 的初扫/宣告路径——把 cursor 与 seq 计数器推进到当前
+/// Batch8-F25：初扫/宣告路径——把 cursor 与 seq 计数器推进到当前
 /// **最后一个完整行**（F14 torn-line 语义：残行不计数、留给 tail 阶段），
 /// 不发任何行帧。之后 notify 到来的新行 seq == 此刻完整行数 L（行号语义），
 /// 与 monitor 快照侧的 0..L'-1 编号同处一个行号空间，重叠区被 (sid,seq)

@@ -271,10 +271,10 @@ pub const STAMP_OPEN: &str = "<<ccm-build-id:";
 /// 身份戳的关界标（见 [`STAMP_OPEN`]）。
 pub const STAMP_CLOSE: &str = ":ccm-build-id>>";
 
-/// 后端流模式声明的能力 token（hello 帧的 `capabilities`，字典序）：后端 `lib.rs::CAPABILITIES` 取它，
-/// monitor 拿它认 hello 里的 token、并在确认那台装的就是手上这一版时预知能力。
+/// 后端流模式声明的能力 token（hello 帧的 `capabilities`，字典序）：后端写 hello 时取它，monitor 拿它认 hello 里的 token（认不得的记账）。
 /// 每个 token 都要有后端 `split_stream_flags` 的剥离分支（后端 `every_capability_token_is_strippable` 钉着）。
-pub const STREAM_CAPABILITIES: &[&str] = &["bg", "tail-only"];
+/// 今天是空的：流模式起参只剩 `--stream` · `--tz` · `--view`，这条流要什么由声明说（`view`），不再按能力协商旗标。
+pub const STREAM_CAPABILITIES: &[&str] = &[];
 
 /// 身份戳的两个界标（扫描函数的参数形）。生产里两侧都交 [`STAMP_OPEN`] / [`STAMP_CLOSE`]，判据可换一对去验扫描本身。
 #[derive(Debug, Clone, Copy)]

@@ -1,7 +1,6 @@
 //! 远端流主循环：重连、起流、逐帧分派。
 
 use super::*;
-use crate::copy_table::copy_text;
 use crate::event_replay::EventReplay;
 use crate::session_book::{In as BookIn, LiveMeta};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -102,9 +101,6 @@ pub async fn run(
     // 重连循环：每轮跑一次 stream_loop。失败 / 掉线后按指数退避（2→4→8→16→30s 封顶）重连；本轮站住了则下次以 MIN 快速重连。
     // 唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep（INVARIANT §10）。
     let mut backoff = RECONNECT_MIN;
-    // hello 自愈账本：存上一轮 backend 自报的能力 token 集。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
-    // 带 flag 的一轮连 hello 都没收到（旧后端把未知参数当一次性查询退出）⇒ 清账回退降级，防止 flagged 重连死循环。
-    let mut hello_confirmed: Option<Vec<String>> = None;
     // 这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
     let mut unsupported: Option<String> = None;
     let mut unsupported_code: Option<&'static str> = None;
@@ -118,7 +114,6 @@ pub async fn run(
             &replay,
             &health,
             &connected,
-            &mut hello_confirmed,
             &mut unsupported,
             &mut unsupported_code,
         )
@@ -132,12 +127,6 @@ pub async fn run(
                 Some(code) => crate::machine_state::unsupported(&cfg.origin_label(), code),
                 None => crate::machine_state::down(&cfg.origin_label()),
             }
-        }
-        if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
-            tracing::warn!(
-                "stream_source hello 自愈轮未收到 hello,回退降级模式(backend 可能被换旧)"
-            );
-            hello_confirmed = None;
         }
         // 连接断了 ≠ 会话死了：这台的成品整份作废，当时活的 / 可重连的一律「说不清」；
         //   重连之后那台的新连接自己重报一遍（它的账本从 tmux 推出可重连，`observe/session_ledger.rs`）。
@@ -200,7 +189,6 @@ async fn stream_loop(
     replay: &Arc<EventReplay>,
     health: &HealthOut,
     connected: &Arc<AtomicBool>,
-    hello_confirmed: &mut Option<Vec<String>>,
     unsupported: &mut Option<String>,
     unsupported_code: &mut Option<&'static str>,
 ) -> Result<(), String> {
@@ -210,10 +198,8 @@ async fn stream_loop(
 
     let Opened {
         stream,
-        with_bg,
-        tail_only,
         t_connect_start,
-    } = open_round(cfg, health, hello_confirmed, unsupported, unsupported_code).await?;
+    } = open_round(cfg, health, unsupported, unsupported_code).await?;
 
     // 这条 channel 是双工的：`split_and_park` 一步切开并把写半边停住 —— `ParkedWriter` 身上没有任何写方法，收到 hello 才换得出能发命令的客户端。
     // 切与停必须是同一步：中间留一个裸 `WriteHalf` 就是一个「Hello 之前能写」的窗口（见 `inbound_client` 头注）。
@@ -240,15 +226,15 @@ async fn stream_loop(
         replay,
         health,
         connected,
-        with_bg,
-        tail_only,
         remote_older,
         t_connect_start,
     };
 
     // 攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]（本机那条流用的是同一个）；每连接一套，函数任何退出路径随 `intake` 被丢掉而关闭队列
     // （已入队项仍会被分发器拉完）。
-    let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, health);
+    let mut intake = LineIntake::open(host_label.clone(), replay, health);
+    // 没开「显示后台会话」⇒ 那台的 bg 会话（`session_added.background`）连同它的行 · 状态 · 去向一起不进（本机那条流同一个口径）。
+    let mut bg = super::local::BgHide::new(crate::load_show_bg_sessions());
     // 这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
     let mut tally = crate::frame_tally::FrameTally::new(format!("stream_source {host_label}"));
     // 解不出来的帧每种说一次（日志 ＋ 这台的健康信息）。
@@ -282,7 +268,9 @@ async fn stream_loop(
         };
         let line = line.as_str();
 
-        let frame = unread.take(line, &mut tally, &say_health);
+        let frame = unread
+            .take(line, &mut tally, &say_health)
+            .filter(|f| !bg.hides(f));
         // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则归档后迟到的行把 Tab 复活成僵尸 live。
         // SessionAdded / Hello / Overflow / 坏帧不作边界（多个小会话的 snapshot 才能聚成大批；行先于 Added 到达无妨：前端 ensureTab 见行即建）。
         // `session_state`（可重连 / 已结束的成品）同理：它说的「离开了」必须排在这个会话的行之后。
@@ -318,7 +306,6 @@ async fn stream_loop(
             }) => on_hello(
                 host_label.clone(),
                 round,
-                hello_confirmed,
                 HelloSeen {
                     v,
                     build_id,
@@ -329,7 +316,7 @@ async fn stream_loop(
                     capabilities,
                     commands,
                 },
-            )?,
+            ),
             Some(InboundFrame::Line {
                 session_id,
                 path,
@@ -366,7 +353,7 @@ async fn stream_loop(
                 activity_tone,
                 waiting_for,
                 container,
-                // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
+                // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这条流的声明去掉了它（`remote_resident::remote_stream_view`）。
                 pid: _,
             }) => on_session_added(
                 &host_label,
@@ -508,20 +495,17 @@ async fn stream_loop(
     }
 }
 
-/// 本轮起流的结果：接上的那条流、本轮发的流模式 flag、本轮连接的起点。
+/// 本轮起流的结果：接上的那条流、本轮连接的起点。
 struct Opened {
     stream: crate::remote_resident::Replayed,
-    with_bg: bool,
-    tail_only: bool,
     t_connect_start: std::time::Instant,
 }
 
-/// 起流：部署预检（这台自证过就是期望 build 则跳过）→ 按能力定流模式 flag → 接那台的常驻后端。
+/// 起流：部署预检（这台自证过就是期望 build 则跳过）→ 接那台的常驻后端。
 /// 起不来 ⇒ `Err`（非 unix 另记进 `unsupported`，[`run`] 据此停下）。
 async fn open_round(
     cfg: &RemoteConfig,
     health: &HealthOut,
-    hello_confirmed: &Option<Vec<String>>,
     unsupported: &mut Option<String>,
     unsupported_code: &mut Option<&'static str>,
 ) -> Result<Opened, String> {
@@ -533,7 +517,7 @@ async fn open_round(
     // 连接前确保远端后端已部署到固定落点（`~/.cc-monitor/bin/ccm`）；这一版没带字节 ⇒ `byte_table::choose` 回「这一版没带」→ 优雅 no-op。
     // best-effort：部署失败不阻断（手动部署的后端仍可连）。
     // 上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接（`VERIFIED_BUILD` 头注：记的是 hello 自证，不是预检结论）。
-    // 跳过时 `confirmed_build` 直接给「我这一版」—— 给 `None` 会让下面的 caps 阶梯掉进空集全降级（省两条连接换来一轮降级 + 一轮升级重连）。
+    // 跳过时 `confirmed_build` 记「我这一版」（只进 `[perf]` 那一行日志）。
     // 「我这一版」只有一个值：手上那份内嵌字节自报的 id；没带字节 ⇒ `None` ⇒ 不跳、不乐观。
     let mine = crate::byte_table::my_backend_id();
     let verified = verified_build_of(&host_label);
@@ -570,28 +554,11 @@ async fn open_round(
         confirmed_build.as_deref()
     );
 
-    // 流模式门控：从后端声明的能力 token 决定发哪些 flag。旧后端会把未知参数当一次性查询处理后退出（无 hello → 重连死循环，§26），
-    // 故只对声明了对应能力的后端发 flag。能力两条来源，hello 自愈账本优先：
-    // ① `hello_confirmed`（上一轮 backend 自报的能力）—— 最权威，收过真 hello 才有。
-    // ② 否则部署侧确认了当前内嵌 build（`confirmed_build == 我这一版`）→ 用内嵌后端的能力常量预知，省第一轮往返（乐观路径）。
-    // ③ 都没有 → 空集 → 全降级（连接正常、功能退化）。
-    // hello 优先于部署侧：②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全。
-    let caps: Vec<String> = hello_confirmed.clone().unwrap_or_else(|| {
-        if mine.is_some() && confirmed_build.as_deref() == mine {
-            embedded_backend_capabilities()
-        } else {
-            Vec::new()
-        }
-    });
-    let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let t_exec = std::time::Instant::now();
     // 起流失败就抹掉自证记忆 —— 否则一台后端被删 / 被换旧的机器会每一轮都跳预检、每一轮都失败。代价是多一次重连（`VERIFIED_BUILD` 头注）。
     // 接那台的常驻后端（没有就起一个；与本机同形）。起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
-    let flags = (with_bg, tail_only);
     crate::machine_state::connecting(&host_label, "attach");
-    let stream: crate::remote_resident::Replayed = match crate::remote_resident::attach(cfg, flags)
-        .await
-    {
+    let stream: crate::remote_resident::Replayed = match crate::remote_resident::attach(cfg).await {
         Ok(s) => s,
         Err(e) => {
             // 非 unix ⇒ 记进这台的连接状态（`run` 据此停下，不再按退避重连）。
@@ -613,16 +580,13 @@ async fn open_round(
         }
     };
     tracing::info!(
-        "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend；\
-         with_bg={with_bg} tail_only={tail_only}）\
+        "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend）\
          · 自本轮连接开始 T+{}ms",
         t_exec.elapsed().as_millis(),
         t_connect_start.elapsed().as_millis()
     );
     Ok(Opened {
         stream,
-        with_bg,
-        tail_only,
         t_connect_start,
     })
 }
@@ -700,9 +664,6 @@ struct Round<'a> {
     replay: &'a Arc<EventReplay>,
     health: &'a HealthOut,
     connected: &'a Arc<AtomicBool>,
-    /// 本轮实际发的流模式 flag。
-    with_bg: bool,
-    tail_only: bool,
     /// 接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
     remote_older: bool,
     /// 本轮连接的起点（`[perf]` 埋点从这里算）。
@@ -721,20 +682,12 @@ struct HelloSeen {
     commands: Vec<String>,
 }
 
-/// hello 那一臂：打日志、记账、置「连上了」、版本提示、自证记忆、升级判定、降级提示。
-/// `Err` ＝ 值得带 flag 重连升级一轮（由 [`run`] 照常重连）。
-fn on_hello(
-    host_label: String,
-    round: Round,
-    hello_confirmed: &mut Option<Vec<String>>,
-    hello: HelloSeen,
-) -> Result<(), String> {
+/// hello 那一臂：打日志、记账、置「连上了」、版本提示、自证记忆。
+fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     let Round {
         replay,
         health,
         connected,
-        with_bg,
-        tail_only,
         remote_older,
         t_connect_start,
     } = round;
@@ -778,14 +731,6 @@ fn on_hello(
             tracing::warn!("stream_source remote-health (version) emit failed: {e}");
         }
     }
-    // F66（#58③）：本轮若跑在降级模式（未开 tail_only）——用 backend **自报的
-    // 能力**判断能否升级，不再靠 build_id 精确匹配（闭合 2026-07-09 事故）：
-    // ① backend 声明了**能开本轮没开的 flag** 的能力 → 记 hello 自愈账（存能力集）,
-    //    立即重连升级（connected 已置 true → 退避重置 MIN,~2s 内带 flag 回来）。
-    //    **防无限循环**：仅当「下一轮据此算出的 flag 严格优于本轮」才重连——flag 数
-    //    有限（2）、每次升级严格增开，最多 2 轮收敛。
-    // ② backend 无任何能力声明（真旧后端）→ 降级可见化（否则用户看到「bg 会话
-    //    消失+拥塞复发」却无从归因，实测连环误诊）——经 remote-health 提示。
     tracing::info!(
         "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自本轮连接开始）· \
          caps={capabilities:?}",
@@ -799,42 +744,6 @@ fn on_hello(
     } else {
         forget_verified_build(&host_label);
     }
-    // 升级判定无条件问 `should_upgrade_reconnect`（两项都写全 `&& !cur_*`，记账后 `next==cur` ⇒ 恒 false）。
-    let show_bg = crate::load_show_bg_sessions();
-    let next = decide_stream_flags(&capabilities, show_bg);
-    if should_upgrade_reconnect((with_bg, tail_only), next) {
-        *hello_confirmed = Some(capabilities.clone());
-        return Err(copy_text("rsSshSource.upgrade.reconnect", &[]));
-    }
-    // ⚠ 「旧后端降级可见化」那一格**仍然**留在 `!tail_only` 里 —— 它问的是
-    //   另一件事（「这台后端一条能力都没声明」），口径一个字没动。
-    if !tail_only {
-        if capabilities.is_empty() {
-            let message = match mine {
-                Some(m) => copy_text(
-                    "rsSshSource.health.degraded",
-                    &[
-                        ("build", &build_id.to_string()),
-                        ("expected", &m.to_string()),
-                    ],
-                ),
-                None => copy_text(
-                    "rsSshSource.health.degradedNoOwnBytes",
-                    &[("build", &build_id.to_string())],
-                ),
-            };
-            let payload = crate::ui_contract::RemoteHealthPayload {
-                origin: host_label.clone(),
-                kind: "degraded".to_string(),
-                message,
-                detail: String::new(),
-            };
-            if let Err(e) = health(payload) {
-                tracing::warn!("stream_source remote-health (degraded) emit failed: {e}");
-            }
-        }
-    }
-    Ok(())
 }
 
 /// 新宣告一个活会话：成品（元信息 ＋ 初始灯 ＋ 容器）原样交 `session_book`（本机那条流同一个口），有记录文件就排旁路快照。
@@ -853,7 +762,7 @@ fn on_session_added(
         sid: sid.clone(),
         meta,
     });
-    // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
+    // Batch8-F26：历史走旁路快照——宣告带 path 即入队
     // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
     // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
     intake.announced(&sid, path, lines);

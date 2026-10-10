@@ -56,7 +56,7 @@ class ResidentLink(
         if (gate != GateVerdict.Same) return LinkOutcome.Gate(gate)
         val ensured = oneShot.run(ENSURE)
         if (ensured !is OneShotOutcome.Ok) return LinkOutcome.Ensure(ensured)
-        val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), FLAGS, scope, timeouts.handshakeMs, nonce, onBreak)
+        val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), scope, timeouts.handshakeMs, nonce, onBreak)
         return if (attached is AttachOutcome.Attached) checked(attached.client, timeouts) else LinkOutcome.Attach(attached)
     }
 
@@ -88,8 +88,5 @@ class ResidentLink(
     companion object {
         const val ENSURE: String = "--resident-ensure"
         const val ATTACH: String = "--resident-attach"
-
-        /** 这条连接要的流旗标：不重放历史（正文由 `history-tail` / `history-read` 另取）。 */
-        val FLAGS: List<String> = listOf("--tail-only")
     }
 }

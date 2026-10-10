@@ -8,7 +8,7 @@ use std::sync::Arc;
 //
 // === 旁路快照拉取（每管道一个对话，完就断） ===
 //
-// tail-only 下后端不重放历史；每个已宣告会话的**尾段**（最后 `SNAPSHOT_TAIL_LINES` 个可计行）由这里经已开着的长连接取回，按行号编 seq 灌进与 tail 行
+// 后端不重放历史；每个已宣告会话的**尾段**（最后 `SNAPSHOT_TAIL_LINES` 个可计行）由这里经已开着的长连接取回，按行号编 seq 灌进与 tail 行
 // 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收。
 // 尾段之下的头段不预拉：界面往上翻时按行号 / 按偏移取回（`live-window.ts` 的 `BelowState`）。
 // 并发 ≤SNAPSHOT_CONCURRENCY（不抢 tail 通道带宽）；priority sid 优先出队。

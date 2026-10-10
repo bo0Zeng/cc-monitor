@@ -300,7 +300,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cwd: Some(s("/w")),
                 byte_offset: 120,
                 rid: Some(s("r1")),
-                raw: Some(s("{}")),
             },
             Frame::Line {
                 session_id: s("s1"),
@@ -310,7 +309,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cwd: None,
                 byte_offset: 120,
                 rid: None,
-                raw: None,
             },
         ],
         [
@@ -339,7 +337,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     host: TerminalHost::Tmux,
                     terminal: Some("tmux-3-7".into()),
                 }),
-                pid: Some(42),
+                pid: 42,
             },
             Frame::SessionAdded {
                 sid: s("s1"),
@@ -357,7 +355,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 activity_tone: crate::stream::wire::activity_cells(None).1,
                 waiting_for: None,
                 container: None,
-                pid: None,
+                pid: 0,
             },
         ],
         [
@@ -1089,7 +1087,6 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         cwd: None,
         byte_offset: 99,
         rid: None,
-        raw: None,
     };
 
     let line = to_line(&frame).expect("serialize");
@@ -1300,12 +1297,12 @@ fn dg3_codex_fields_serialize_when_present() {
         activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     })
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1366,11 +1363,11 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":0}\n",
         "agent_kind(缺=claude)/liveness_confidence(缺=authoritative) 省略，字节等价旧形"
     );
 
@@ -1513,7 +1510,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: None,
             container: c,
-            pid: None,
+            pid: 0,
         })
         .unwrap()
     };
@@ -1521,18 +1518,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1576,33 +1573,30 @@ fn sessions_replayed_has_exactly_these_bytes() {
     );
 }
 
-/// `session_added.pid` 的线上形：缺席 ⇒ 与本字段加进来之前逐字节相同；带上 ⇒ 排在最后、是个整数。
+/// `session_added.pid` 的线上形：恒在、排在最后、是个整数。
 #[test]
-fn loc1b_session_added_pid_is_additive() {
-    let frame = |pid: Option<u32>| {
-        to_line(&Frame::SessionAdded {
-            sid: "s".into(),
-            agent_kind: None,
-            liveness_confidence: None,
-            background: false,
-            attachable: None,
-            cwd: None,
-            project_dir: None,
-            name: None,
-            path: None,
-            lines: None,
-            activity: None,
-            activity_text: crate::stream::wire::activity_cells(None).0,
-            activity_tone: crate::stream::wire::activity_cells(None).1,
-            waiting_for: None,
-            container: None,
-            pid,
-        })
-        .unwrap()
-    };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
+fn loc1b_session_added_carries_the_pid() {
+    let line = to_line(&Frame::SessionAdded {
+        sid: "s".into(),
+        agent_kind: None,
+        liveness_confidence: None,
+        background: false,
+        attachable: None,
+        cwd: None,
+        project_dir: None,
+        name: None,
+        path: None,
+        lines: None,
+        activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
+        waiting_for: None,
+        container: None,
+        pid: 4242,
+    })
+    .unwrap();
     assert_eq!(
-        frame(Some(4242)),
+        line,
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
     );
 }
@@ -1738,7 +1732,6 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "path", "string"),
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
-    ("line", "raw", "string"),
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
     // （`faces/cells_catalog.rs` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
@@ -1783,7 +1776,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             cwd: None,
             byte_offset: 9,
             rid: None,
-            raw: Some("{}".into()),
         },
         Frame::Overflow {
             dropped: 2,
@@ -1904,7 +1896,6 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         cwd: None,
         byte_offset: 0,
         rid: None,
-        raw: None,
     };
     assert!(
         !to_line(&f).unwrap().contains("timeText"),
@@ -1915,32 +1906,6 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         to_line(&f).unwrap().contains(r#""timeText":"04:30""#),
         "{}",
         to_line(&f).unwrap()
-    );
-}
-
-/// `line.raw`：没索要的客户端字节一个不变（不带这一格）；索要了才带、是那一行原文。
-#[test]
-fn line_raw_is_only_there_when_asked() {
-    let line = |raw: Option<String>| {
-        to_line(&Frame::Line {
-            session_id: "s".into(),
-            path: "/p".into(),
-            seq: 0,
-            record: None,
-            cwd: None,
-            byte_offset: 5,
-            rid: None,
-            raw,
-        })
-        .unwrap()
-    };
-    assert_eq!(
-        line(None),
-        "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5}\n"
-    );
-    assert_eq!(
-        line(Some("{\"a\":1}".into())),
-        "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5,\"raw\":\"{\\\"a\\\":1}\"}\n"
     );
 }
 

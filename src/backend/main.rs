@@ -31,7 +31,7 @@ use cc_monitor_backend::*;
 
 use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use wire::{to_line, Frame};
+use wire::Frame;
 
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
@@ -99,8 +99,8 @@ async fn main() {
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
     //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
     //      混进后端的日志行就把「正常路径一个字都不说」这条契约破了；
-    //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
-    //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
+    //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--stream` / `--tz`
+    //      从 argv **任意位置**剥掉，而 `ccm --tz x` 里那个要原样透传给 agent；
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
     // 分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
     // argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
@@ -127,17 +127,24 @@ async fn main() {
     let args: Vec<String> = backend_args;
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
-    let (args, wants) = split_stream_flags(args);
-    init_tracing(is_query_mode(&args));
+    // 流的声明写坏了（`--stream --view <认不出的>`）：不起流 —— 当一次性那一形回失败信封、退出 2（下面那个 `match` 的头一臂）。
+    let (args, wants, bad_view) = match split_stream_flags(args) {
+        Ok((a, w)) => (a, w, None),
+        Err(why) => (Vec::new(), StreamWants::default(), Some(why)),
+    };
+    init_tracing(is_query_mode(&args) || bad_view.is_some());
 
     let agent_home = resolve_agent_home();
 
-    if is_query_mode(&args) {
+    if is_query_mode(&args) || bad_view.is_some() {
         // 看的那一台的时区（`--tz`，剥流旗标那一步剥出来的）：一次性回包里的「几点」按它写。
         let z = &wants.tz;
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
+            _ if bad_view.is_some() => {
+                cli_control::refuse_stream_view(bad_view.as_deref().unwrap_or_default(), z)
+            }
             // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
             // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
@@ -334,7 +341,11 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `the_backend_can_already_discover_homes_it_just_does_not_send_them`
         // 钉的是另一半 —— 空表不等于没能力。
         homes: Vec::new(),
-        capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
+        // 流旗标只剩 `--stream` · `--tz` · `--view`（这条流要什么由声明说）⇒ 契约 crate 那一份今天是空的。
+        capabilities: deploy_contract::STREAM_CAPABILITIES
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::command_names()
             .into_iter()
@@ -388,7 +399,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     // bounded frame channel.
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = observe::runs::RunBook::shared();
-    let tz = wants.tz.clone();
+    let (tz, view) = (wants.tz.clone(), wants.view.clone());
     let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
     let inbound_task = inbound::spawn(
         tokio::io::stdin(),
@@ -418,7 +429,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     let stop = inbound::shutdown_listener();
     // 这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
     let tap_rx = tap::attach(book, tz.clone());
-    let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz);
+    let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz, view);
     tokio::pin!(writer);
     let signalled = tokio::select! {
         _ = &mut writer => {
@@ -515,7 +526,7 @@ struct Attached {
     reader: tokio::io::BufReader<tokio::io::ReadHalf<own_chan::Stream>>,
     writer: BufWriter<tokio::io::WriteHalf<own_chan::Stream>>,
     hello_flushed: wire::HelloFlushed,
-    /// 这条连接要的流模式旗标（attach 行里的 `flags`）；`None` = 用进程起参那一份。
+    /// 这条连接要什么（attach 行里的 `tz` · `view`）；`None` = 用进程起参那一份。
     flags: Option<StreamWants>,
 }
 
@@ -756,7 +767,7 @@ async fn serve_listening(
                 let Attached { reader, writer, hello_flushed, flags } = att;
                 let book = observe::runs::RunBook::shared();
                 let wants = flags.unwrap_or_else(|| defaults.clone());
-                let tz = wants.tz.clone();
+                let (tz, view) = (wants.tz.clone(), wants.view.clone());
                 let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
@@ -774,7 +785,7 @@ async fn serve_listening(
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz, view) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {
@@ -854,6 +865,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
     mut tap_rx: impl tap::TapSource,
     tz: cc_monitor_backend::Tz,
+    view: Option<cc_monitor_backend::StreamView>,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -896,7 +908,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                 Some(f) = tap_rx.next() => f,
             }
         };
-        if let Err(e) = write_frame(&mut out, &frame, &tz).await {
+        if let Err(e) = write_frame(&mut out, &frame, &tz, view.as_ref()).await {
             // Broken pipe (client gone) is the normal end-of-life; stop quietly.
             tracing::warn!("stdout write failed ({e}); stopping writer");
             return;
@@ -909,14 +921,16 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
 }
 
 /// Serialize one frame to its wire line and write it (no flush).
-/// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）。
+/// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）；
+/// 推送帧照这条流的出口声明裁格（`view`；应答的 kind 不在声明的住处表里，原样）。
 async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out: &mut W,
     frame: &Frame,
     tz: &cc_monitor_backend::Tz,
+    view: Option<&cc_monitor_backend::StreamView>,
 ) -> std::io::Result<()> {
-    let line =
-        to_line(frame).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let line = cc_monitor_backend::stream::wire::to_line_viewed(frame, view)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     out.write_all(cc_monitor_backend::stamp_detail_slots(&line, tz).as_bytes())
         .await
 }

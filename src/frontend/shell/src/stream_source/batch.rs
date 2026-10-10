@@ -94,7 +94,7 @@ pub(super) async fn flush_lines(
 ///
 /// # 它管什么、不管什么
 ///
-/// 管：[`Batcher`] ＋ 带静默窗的收（[`LineIntake::recv_or_flush`]）· 旁路快照队列与分发器（`tail_only` 时起）·
+/// 管：[`Batcher`] ＋ 带静默窗的收（[`LineIntake::recv_or_flush`]）· 旁路快照队列与分发器（后端不重放历史，历史一律走它）·
 /// 续点（`snapshot_resume`）。**不管会话的起停**：那是后端出的成品，两条流各自交 `session_book`。
 ///
 /// 丢掉它 ⇒ 快照队列当场关（与原来 `stream_loop` 里那个 `SnapshotQueueCloser` 同一个时机）。
@@ -103,36 +103,31 @@ pub(crate) struct LineIntake {
     replay: Arc<EventReplay>,
     batcher: Batcher,
     snapshots: std::sync::Arc<SnapshotQueue>,
-    tail_only: bool,
     /// 实时那一路的「连着的不可显示那一段」（`SkipRuns`）。
     runs: crate::SkipRuns,
     _closer: SnapshotQueueCloser,
 }
 
 impl LineIntake {
-    /// `tail_only`：这条流的后端是不是按「不重放历史」起的 —— 是 ⇒ 历史走旁路快照（起分发器）。
+    /// 后端不重放历史 ⇒ 历史走旁路快照（起分发器）。
     pub(super) fn open(
         origin_label: String,
-        tail_only: bool,
         replay: &Arc<EventReplay>,
         health: &HealthOut,
     ) -> Self {
         let snapshots = SnapshotQueue::new();
-        if tail_only {
-            tauri::async_runtime::spawn(snapshot_dispatcher(
-                snapshots.clone(),
-                replay.clone(),
-                health.clone(),
-                origin_label.clone(),
-            ));
-        }
+        tauri::async_runtime::spawn(snapshot_dispatcher(
+            snapshots.clone(),
+            replay.clone(),
+            health.clone(),
+            origin_label.clone(),
+        ));
         LineIntake {
             origin_label,
             replay: replay.clone(),
             batcher: Batcher::new(BATCH_CAP),
             _closer: SnapshotQueueCloser(snapshots.clone()),
             snapshots,
-            tail_only,
             runs: crate::SkipRuns::default(),
         }
     }
@@ -169,11 +164,8 @@ impl LineIntake {
         }
     }
 
-    /// 一个会话被宣告了：tail-only 下带 `path` 就排一份旁路快照（无 path = 会话刚起还没写 jsonl ⇒ 无历史可拉）。
+    /// 一个会话被宣告了：带 `path` 就排一份旁路快照（无 path = 会话刚起还没写 jsonl ⇒ 无历史可拉）。
     pub(super) fn announced(&self, sid: &str, path: Option<String>, lines: Option<u64>) {
-        if !self.tail_only {
-            return;
-        }
         if let Some(p) = path {
             self.snapshots.push(SnapshotItem {
                 sid: sid.to_string(),

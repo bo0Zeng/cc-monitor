@@ -1357,7 +1357,7 @@ pub(crate) fn batch_to_payloads(
                     session_id: line.session_id,
                     cwd: line.cwd,
                     path: line.path.to_string_lossy().into_owned(),
-                    // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
+                    // P5.1：后端给每行编行号（流不重放历史，与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
                     record,
