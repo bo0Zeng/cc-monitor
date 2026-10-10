@@ -627,7 +627,7 @@ fn resolve_writes_a_short_form_beside_the_whole_script() {
     let short = cct["lineShort"].as_str().unwrap_or_else(|| panic!("{cct}"));
     assert_eq!(
         short,
-        "tmux new-session -s tmp-cc … ccm -- --cwd /tmp --ccm-agent claude --launcher claude"
+        "tmux new-session -d -s tmp-cc … ccm -- --cwd /tmp --ccm-agent claude --launcher claude"
     );
     assert!(
         cct["line"].as_str().unwrap().contains("send-keys"),
