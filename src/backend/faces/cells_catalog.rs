@@ -1003,7 +1003,7 @@ mod specimens {
             activity: Some(activity),
             activity_text: activity_cells(Some(activity)).0,
             activity_tone: activity_cells(Some(activity)).1,
-            waiting_for: some("permission prompt"),
+            waiting_for: some("x"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
                 terminal: some("tmux-1-1"),
@@ -1032,7 +1032,7 @@ mod specimens {
                     activity: Some(a),
                     activity_text: activity_cells(Some(a)).0,
                     activity_tone: activity_cells(Some(a)).1,
-                    waiting_for: some("permission prompt"),
+                    waiting_for: some("x"),
                     liveness_confidence: some("heuristic"),
                 })
             })
