@@ -114,7 +114,11 @@ pub fn handles(flag: &str) -> bool {
 /// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
 /// `cmd` 进复制详情的「命令」那一项；`message` 可带下层原话（`Said.raw`），原话进复制详情、不上句子。
 pub fn emit_err(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    emit_failed(&mut std::io::stderr(), &failed_of(cmd, code, message.into()), false)
+    emit_failed(
+        &mut std::io::stderr(),
+        &failed_of(cmd, code, message.into()),
+        false,
+    )
 }
 
 /// [`emit_err`] 交出去的那一份：那一句进 `message`，下层原话进复制详情（[`Failed::new`] 的 `raw`）。

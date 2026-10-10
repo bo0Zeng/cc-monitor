@@ -210,6 +210,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         written: runs::written,
     }),
     project_dir: Some(parse::project_dir),
+    mcp_said: Some(mcp::said_of),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

@@ -6,7 +6,7 @@
       "partial": false,
       "text": "$0.42"
     },
-    "end": 1633,
+    "end": 1796,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -15,6 +15,18 @@
       "at": "t5",
       "text": "done"
     },
+    "mcp": [
+      {
+        "detail": "e-f",
+        "name": "m-f",
+        "status": "failed"
+      },
+      {
+        "detail": null,
+        "name": "m-n",
+        "status": "needsLogin"
+      }
+    ],
     "needs": null,
     "pending": [
       {

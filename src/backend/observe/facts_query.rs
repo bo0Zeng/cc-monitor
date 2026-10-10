@@ -30,6 +30,7 @@
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
 //! | `retries` | 一串相邻的 API 重试（`system` · `api_error`）按首条的 `uuid` 记一件，结局看它后面第一条 `assistant` / 人发的 `user`（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
+//! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 连不上 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -165,6 +166,19 @@ pub(crate) struct SessionFacts {
     pub(crate) tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
     pub(crate) cost: Option<Cost>,
+    /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 连不上 · 还在连），按名字排；没列的不等于连上了。
+    pub(crate) mcp: Vec<McpTrouble>,
+}
+
+/// 会话里一个有毛病的 MCP 服务器。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct McpTrouble {
+    pub(crate) name: String,
+    /// `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
+    pub(crate) status: crate::agents::McpStatus,
+    /// 连不上时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
+    pub(crate) detail: Option<String>,
 }
 
 /// 全会话用量：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
@@ -468,6 +482,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "forkedFrom",
         "handedBack",
         "lastSay",
+        "mcp",
         "needs",
         "pending",
         "permissionMode",
@@ -531,6 +546,9 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     for r in v["retries"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
         exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
     }
+    for m in v["mcp"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        exact_keys(m, &["detail", "name", "status"], "prior.mcp[]")?;
+    }
     serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
 }
 
@@ -592,6 +610,8 @@ pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
         // 交回：记录级 `origin.handback`（键名在行里）。
         || contains(line, b"\"handback\"")
+        // MCP 状态：「延后加载的工具变了」那种附件（行里带它的类型名）。
+        || contains(line, b"\"deferred_tools_delta\"")
         // 重试：它本身（`api_error`）· 一串还没下文时，它后面的回复 / 人发的一句。
         || contains(line, b"\"api_error\"")
         || (open_retry(facts) && (contains(line, b"\"assistant\"") || contains(line, b"\"user\"")))
@@ -624,6 +644,41 @@ fn note_handback(f: &mut SessionFacts, v: &Value) {
     if f.handed_back.len() > HANDED_BACK_KEEP {
         f.handed_back.remove(0);
     }
+}
+
+/// 那一家这一条说了 MCP 的哪几张表 ⇒ 那几种整种换掉（没说的那几种沿用）。
+fn note_mcp(f: &mut SessionFacts, v: &Value) {
+    use crate::agents::McpStatus as S;
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let Some(said) = crate::agents::mcp_said_of(kind, v) else {
+        return;
+    };
+    let named = |names: Vec<String>, status| {
+        names.into_iter().map(move |name| McpTrouble {
+            name,
+            status,
+            detail: None,
+        })
+    };
+    let mut put = |status: S, now: Vec<McpTrouble>| {
+        f.mcp.retain(|m| m.status != status);
+        f.mcp.extend(now);
+    };
+    if let Some(n) = said.pending {
+        put(S::Pending, named(n, S::Pending).collect());
+    }
+    if let Some(n) = said.needs_login {
+        put(S::NeedsLogin, named(n, S::NeedsLogin).collect());
+    }
+    if let Some(n) = said.failed {
+        let now = n.into_iter().map(|(name, detail)| McpTrouble {
+            name,
+            status: S::Failed,
+            detail,
+        });
+        put(S::Failed, now.collect());
+    }
+    f.mcp.sort_by(|a, b| a.name.cmp(&b.name));
 }
 
 fn open_retry(f: &SessionFacts) -> bool {
@@ -719,6 +774,7 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
         .map(str::to_string);
     let kind = v.get("type").and_then(Value::as_str);
     note_retry(f, kind, v);
+    note_mcp(f, v);
     match kind {
         Some("user") => note_user(f, v),
         Some("assistant") => {

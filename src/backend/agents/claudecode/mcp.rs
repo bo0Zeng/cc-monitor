@@ -194,6 +194,51 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
     }
 }
 
+/// 注册表 `RecordFace.mcp_said` 那一格：「延后加载的工具变了」那种附件里的三张表（`pendingMcpServers` · `needsAuthMcpServers` ·
+/// `failedMcpServers`，后者每项 `{name, error}`）。Claude Code 每次只写它这一次算了的那几张 ⇒ 没写的那一格 `None`。
+pub(crate) fn said_of(v: &Value) -> Option<crate::agents::McpSaid> {
+    if v.get("type").and_then(Value::as_str) != Some("attachment") {
+        return None;
+    }
+    let a = v.get("attachment")?;
+    if a.get("type").and_then(Value::as_str) != Some("deferred_tools_delta") {
+        return None;
+    }
+    let names = |k: &str| {
+        a.get(k).and_then(Value::as_array).map(|xs| {
+            xs.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+    };
+    let failed = a.get(FAILED).and_then(Value::as_array).map(|xs| {
+        xs.iter()
+            .filter_map(|x| {
+                let name = x.get("name")?.as_str()?.to_string();
+                Some((
+                    name,
+                    x.get("error").and_then(Value::as_str).map(str::to_string),
+                ))
+            })
+            .collect::<Vec<_>>()
+    });
+    for k in a.as_object()?.keys() {
+        if k.ends_with("McpServers") && ![PENDING, NEEDS_AUTH, FAILED].contains(&k.as_str()) {
+            super::drift::record(super::drift::DriftFace::UnknownMcpList, k, None);
+        }
+    }
+    Some(crate::agents::McpSaid {
+        pending: names(PENDING),
+        needs_login: names(NEEDS_AUTH),
+        failed,
+    })
+}
+
+/// 那三张表在附件里的键名（Claude Code 的字；认得的只有这三张）。
+const PENDING: &str = "pendingMcpServers";
+const NEEDS_AUTH: &str = "needsAuthMcpServers";
+const FAILED: &str = "failedMcpServers";
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/claudecode/mcp_tests.rs"]
 mod tests;

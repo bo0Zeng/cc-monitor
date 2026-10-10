@@ -47,6 +47,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     child_link: None,
     children: None,
     project_dir: Some(history::project_dir),
+    mcp_said: None,
 };
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。

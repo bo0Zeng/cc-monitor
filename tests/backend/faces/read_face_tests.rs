@@ -506,6 +506,7 @@ fn golden_facts_session(home: &Path) -> String {
         r#"{"type":"system","subtype":"api_error","uuid":"rt-2","timestamp":"t5a","parentUuid":"f-5","retryAttempt":1,"maxRetries":10}"#,
         r#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s-g"}"#,
         r#"{"type":"cost-state","totalCostUSD":0.4242,"modelUsage":{},"hasUnknownModelCost":false}"#,
+        r#"{"type":"attachment","attachment":{"type":"deferred_tools_delta","addedNames":[],"needsAuthMcpServers":["m-n"],"failedMcpServers":[{"name":"m-f","error":"e-f"}]}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))

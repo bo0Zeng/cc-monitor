@@ -11874,6 +11874,13 @@
       "args": [],
       "limited": ["Claude Code"]
     },
+    "rsDriftLedger.consequence.unknownMcpList": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "这一种 MCP 状态不进会话的 MCP 那一格 · Claude Code 或已加新的 MCP 状态",
+      "args": [],
+      "limited": ["Claude Code"]
+    },
     "rsDriftLedger.consequence.knownTypeParse": {
       "kind": "body",
       "role": "说明",

@@ -1833,6 +1833,7 @@ sid → 上次用哪个号起。
 | `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null` |
 | `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
+| `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；没列的不等于连上了 |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
 | `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |

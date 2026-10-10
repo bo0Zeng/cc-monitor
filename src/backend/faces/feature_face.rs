@@ -144,7 +144,7 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead) -> Value {
         .map(|e| {
             json!({
                 "scope": e.scope, "name": e.name, "server": e.server, "sourcePath": e.source,
-                "status": e.status.wire(), "loginIn": e.login_in, "seenAt": e.seen_ms,
+                "status": e.status, "loginIn": e.login_in, "seenAt": e.seen_ms,
             })
         })
         .collect();

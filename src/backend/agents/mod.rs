@@ -418,6 +418,8 @@ pub(crate) struct RecordFace {
     pub(crate) children: Option<ChildFace>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
+    pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -1405,25 +1407,34 @@ pub(crate) struct McpLook {
     pub now_ms: u64,
 }
 
-/// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它）。配置层只说说得准的：
-/// 停用的（配置里写着）· 要登录的（那一家最近一次连它时记下的、还在有效期内）；别的一律 `Unknown`，不猜「连上了」。
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它；线上名即 serde 名，闭集）。
+/// 配置层（`mcp-read`）只说说得准的：停用（配置里写着）· 要登录（那一家最近一次连它时记下的、还在有效期内）· 其余 `Unknown`；
+/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 连不上 · 还在连。两处都不说「连上了」。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) enum McpStatus {
     NeedsLogin,
+    Failed,
+    Pending,
     Disabled,
     #[default]
     Unknown,
 }
 
-impl McpStatus {
-    /// 线上名（闭集）。
-    pub(crate) fn wire(self) -> &'static str {
-        match self {
-            McpStatus::NeedsLogin => "needsLogin",
-            McpStatus::Disabled => "disabled",
-            McpStatus::Unknown => "unknown",
-        }
-    }
+/// 一条记录里那一家说的各 MCP 服务器此刻的样子：三张表各一格；这一条没写的那一格 ⇒ `None`（沿用上一条说的）。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct McpSaid {
+    pub pending: Option<Vec<String>>,
+    pub needs_login: Option<Vec<String>>,
+    /// 连不上的：名字 · 那一家写的原话（没写 ⇒ `None`）。
+    pub failed: Option<Vec<(String, Option<String>)>>,
+}
+
+/// `kind` 那一家在这条记录里说的 MCP 样子。那一家不说 / 不是这种记录 ⇒ `None`。
+pub(crate) fn mcp_said_of(kind: &str, v: &serde_json::Value) -> Option<McpSaid> {
+    record_face(kind)
+        .and_then(|r| r.mcp_said)
+        .and_then(|f| f(v))
 }
 
 /// 一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。

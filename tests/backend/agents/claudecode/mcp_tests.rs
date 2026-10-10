@@ -189,3 +189,33 @@ fn a_broken_login_cache_is_said() {
     assert_eq!(got.entries[0].status, McpStatus::Unknown);
     assert_eq!(got.problems.len(), 1, "{:?}", got.problems);
 }
+
+/// 会话记录里那一家说的 MCP 状态（「延后加载的工具变了」附件）：三张表逐格翻成中立的说法；这一条没写的那一格 ⇒ `None`（沿用上一条）；
+/// 认不出的 `…McpServers` 表 ⇒ 记漂移账（Claude Code 多了一种状态）；别的记录 ⇒ `None`。
+#[test]
+fn the_records_mcp_lists_are_read_and_an_unknown_one_is_drift() {
+    use crate::agents::claudecode::drift::{snapshot, DriftFace};
+    let rec = |a: serde_json::Value| serde_json::json!({"type": "attachment", "attachment": a});
+    let got = said_of(&rec(serde_json::json!({
+        "type": "deferred_tools_delta",
+        "pendingMcpServers": ["m-p"],
+        "failedMcpServers": [{"name": "m-f", "error": "e-1"}, {"name": "m-g"}],
+        "c2NewMcpServers": ["m-x"],
+    })))
+    .expect("那一条认得");
+    assert_eq!(got.pending, Some(vec!["m-p".to_string()]));
+    assert_eq!(got.needs_login, None, "没写 ⇒ 沿用上一条");
+    assert_eq!(
+        got.failed,
+        Some(vec![
+            ("m-f".to_string(), Some("e-1".to_string())),
+            ("m-g".to_string(), None)
+        ])
+    );
+    assert!(snapshot()
+        .iter()
+        .any(|f| f.face == DriftFace::UnknownMcpList
+            && f.entries.iter().any(|e| e.key == "c2NewMcpServers")));
+    assert_eq!(said_of(&rec(serde_json::json!({"type": "date"}))), None);
+    assert_eq!(said_of(&serde_json::json!({"type": "user"})), None);
+}

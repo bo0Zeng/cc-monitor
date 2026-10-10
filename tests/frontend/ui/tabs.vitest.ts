@@ -5128,6 +5128,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     permissionMode: null,
     tokens: null,
     cost: null,
+    mcp: [],
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>

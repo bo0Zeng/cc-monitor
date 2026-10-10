@@ -198,7 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 1633,
+      end: 1796,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -228,6 +228,10 @@ describe("〔STC〕第五问：会话事实", () => {
         last: { id: "", tokens: [1, 0, 3, 2, 0] },
       },
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
+      mcp: [
+        { name: "m-f", status: "failed", detail: "e-f" },
+        { name: "m-n", status: "needsLogin", detail: null },
+      ],
     });
   });
 
@@ -258,6 +262,10 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts(without("handedBack")), "缺 handedBack").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, handedBack: [7] }), "id 只收字符串").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(ReplyUnreadable);
+    // 会话的 MCP：每项恰好三格，状态只认那三种（不收「连上了」）。
+    expect(() => decodeFacts(without("mcp")), "缺 mcp").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "connected", detail: null }] }), "状态只认那三种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "failed" }] }), "缺 detail").toThrow(ReplyUnreadable);
     // 每步状态：state 只认那三种、why 只认那两种（或 null）；重试结局只认那四种，每件恰好两格。
     const step = { id: "x", name: "Bash", what: null, at: null, state: "unclear", why: "untracked" };
     expect(decodeFacts({ ...good, pending: [step] }).pending[0]).toEqual(step);

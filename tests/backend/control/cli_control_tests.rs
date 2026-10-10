@@ -877,12 +877,21 @@ fn the_raw_words_go_into_the_detail_not_a_field_of_their_own() {
     assert!(v.get("raw").is_none(), "信封又多了一格 raw：{v}");
     let raw_label = copy_core::copy_text("detail.label.raw", &[]);
     assert!(
-        f.detail.contains(&format!("{raw_label}：Permission denied (os error 13)")),
+        f.detail
+            .contains(&format!("{raw_label}：Permission denied (os error 13)")),
         "原话没进复制详情：{}",
         f.detail
     );
-    let without = failed_of("resident-ensure", "no_home", copy_core::said::Said::from("那一句".to_string()));
-    assert!(!without.detail.contains(&format!("{raw_label}：")), "没有原话也写了原话那一项：{}", without.detail);
+    let without = failed_of(
+        "resident-ensure",
+        "no_home",
+        copy_core::said::Said::from("那一句".to_string()),
+    );
+    assert!(
+        !without.detail.contains(&format!("{raw_label}：")),
+        "没有原话也写了原话那一项：{}",
+        without.detail
+    );
 }
 
 /// 帧面跑一条命令，取它那一帧应答（JSON）。`within_ms` 照帧面信封那一格原样带。
