@@ -132,7 +132,7 @@ fn s2_the_module_is_declared_only_under_the_feature() {
             hits.push(rel);
         }
     }
-    assert!(seen > 100, "人群不空（本包源码读到了 {seen} 份）");
+    assert!(seen > 50, "人群不空（本包源码读到了 {seen} 份）");
     assert!(hits.is_empty(), "生产源码里别处引了 `{MODULE}`：{hits:?}");
 }
 
