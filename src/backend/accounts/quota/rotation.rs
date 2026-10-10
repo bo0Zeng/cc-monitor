@@ -1514,7 +1514,8 @@ pub struct CellError {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub with: Option<usize>,
-    pub said: String,
+    #[cfg_attr(test, ts(type = "string"))]
+    pub said: crate::common::cells::Words,
 }
 
 /// 一格错（那一句照短码由核心写：名称那三种 · 封顶那四种）。
@@ -1535,7 +1536,7 @@ pub(crate) fn cell_err(cell: String, code: &str, with: Option<usize>) -> CellErr
         cell,
         code: code.to_string(),
         with,
-        said,
+        said: crate::common::cells::Words(said),
     }
 }
 
