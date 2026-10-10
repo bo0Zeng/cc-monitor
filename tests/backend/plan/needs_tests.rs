@@ -257,3 +257,17 @@ fn the_line_carries_only_the_facts() {
         "人 · A2-1 长度换算实现：单位写错了 改成米"
     );
 }
+
+/// 页头「判据 N 红」与「需手动」里判据红那几条口径一致：每条 `check.red` 恰一条 `red`（没认可时都算进 `needCount`）。
+#[test]
+fn every_red_check_is_exactly_one_red_need() {
+    let sl = &crate::plan::product::make(
+        &crate::plan::fixture::dump("/w"),
+        &crate::plan::fixture::who,
+    )
+    .doc["slices"][0];
+    let reds = sl["check"]["red"].as_array().unwrap().len();
+    let got = of_slice(sl, None);
+    assert_eq!(got.iter().filter(|n| n["kind"] == "red").count(), reds);
+    assert!(reds > 0, "夹具里没有判据红 —— 本条空转");
+}

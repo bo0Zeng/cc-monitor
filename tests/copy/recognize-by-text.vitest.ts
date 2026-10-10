@@ -19,11 +19,15 @@ import { stripComments } from "../test-support/strip-comments.ts";
  * - cc_bus 三条认的是 cc-bus 脚本自己的输出行（cc-bus 的文本不归文案表），不是表里的句子；
  * - `accounts.ts::deriveUi` 按「过旧」「不支持账号」认的那两条删了（少了两条）：「需更新」改认结构化的 `AccountsState.oldBackend`（`chan-caller.ts::isOldBackend`）；
  * - `tab-drop.ts::defaultGroupName` 认默认组名「组 N」续号那一条删了：改成照 `tabDrop.group.defaultName` 现取模板认（`tab-drop-default-name.vitest.ts`）。
+ * - `plan/product.rs::why_code` 两条认的是 pb dump 里 `why` 的原话（「里面 d/m 做完了」，pb 的协议值，不归文案表），拆成 `whyCode` 交界面；
+ *   拆 pb 原话只住这一处（pb 给了结构化的原因就删）。
  */
 const RECOGNIZE_BY_TEXT = [
   "src/backend/control/cc_bus.rs · 已杀会话",
   "src/backend/control/cc_bus.rs · 已摘掉",
   "src/backend/control/cc_bus.rs · 已 spawn:",
+  "src/backend/plan/product.rs · 里面 ",
+  "src/backend/plan/product.rs ·  做完了",
 ];
 
 const MATCH_CALL =

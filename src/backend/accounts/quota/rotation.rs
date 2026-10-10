@@ -1113,42 +1113,19 @@ pub(crate) fn rescan(path: &Path) {
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）：别的进程写了 ⇒ [`rescan`]。返回的那一份活着就一直盯。
 /// 起的时候先记下此刻那一份（之后的改动才有得比）。
 pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
-    use notify::Watcher;
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?
         .to_path_buf();
     crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
     rescan(path);
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        let Ok(ev) = res else { return };
-        if matches!(ev.kind, notify::EventKind::Access(_)) {
-            return;
-        }
-        if ev
-            .paths
-            .iter()
-            .any(|p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME))
-        {
-            let _ = tx.send(());
-        }
-    })
-    .map_err(|e| e.to_string())?;
-    w.watch(&dir, notify::RecursiveMode::NonRecursive)
-        .map_err(|e| e.to_string())?;
     let target = path.to_path_buf();
-    std::thread::Builder::new()
-        .name("rotation-watch".to_string())
-        .spawn(move || {
-            // 监听器一丢（发端随它走）⇒ 收不到 ⇒ 线程退出。
-            while rx.recv().is_ok() {
-                while rx.try_recv().is_ok() {}
-                rescan(&target);
-            }
-        })
-        .map_err(|e| e.to_string())?;
-    Ok(w)
+    crate::platform::watch_file::watch(
+        &[(dir, false)],
+        |p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME),
+        "rotation-watch",
+        move || rescan(&target),
+    )
 }
 
 /// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json`，进程活着就一直盯。盯不上只出声。

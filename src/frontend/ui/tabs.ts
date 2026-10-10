@@ -1139,8 +1139,17 @@ export class TabManager {
 
   /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
   jumpToNextNeeds(): void {
-    const sid = this.bar.nextNeedsSid();
-    if (sid !== null) this.switchTo(sid);
+    this.bar.nextNeeds();
+  }
+
+  /** 计划那一侧的「需手动」挂进来（几条 · 站在第几条 · 去第几条），之后数变了调 `planNeedsChanged`。 */
+  attachPlanNeeds(plan: { count: () => number; at: () => number | null; open: (i: number) => void }): void {
+    this.bar.plan = plan;
+    this.bar.planNeedsChanged();
+  }
+
+  planNeedsChanged(): void {
+    this.bar.planNeedsChanged();
   }
 
   /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */

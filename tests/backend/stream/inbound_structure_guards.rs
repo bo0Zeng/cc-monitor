@@ -418,6 +418,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "plan-list"
                 | "plan-read"
                 | "plan-cell-view"
+                // 代敲 pb 的用户命令：起一次 pb 子进程（`view` 画整张图）。
+                | "plan-command"
                 // 计划审面三条：读—改—写后端自己的小文件（跨进程锁）· 退回现读一次计划（起 pb）再送字（起 tmux）。
                 | "plan-ack"
                 | "plan-unack"
@@ -659,6 +661,8 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-list",
         "plan-read",
         "plan-cell-view",
+        // 代敲 pb 的用户命令：阻塞（起 pb 子进程）。
+        "plan-command",
         // 计划审面三条：阻塞（小文件 I/O · 起 pb · 起 tmux）。
         "plan-ack",
         "plan-unack",

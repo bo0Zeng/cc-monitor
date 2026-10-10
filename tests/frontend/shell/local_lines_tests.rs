@@ -146,11 +146,6 @@ const FRAMES: &[(&str, &str)] = &[
         "rotation_rules_changed",
         r#"{"kind":"rotation_rules_changed"}"#,
     ),
-    // 某个 pb 工作区的计划变了 —— 这一侧认得、还不消费：吸收点照收照丢，不交回。
-    (
-        "plan_changed",
-        r#"{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}"#,
-    ),
     (
         "link_data",
         r#"{"kind":"link_data","link":"cf1-no-such-link","data":"aGk="}"#,
@@ -196,6 +191,11 @@ const FRAMES: &[(&str, &str)] = &[
         "tap",
         r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"ev":{"t":"stop","ok":true}}"#,
     ),
+    // 某个 pb 工作区的计划变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+    (
+        "plan_changed",
+        r#"{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}"#,
+    ),
     // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
     (
         "session_runs",
@@ -240,6 +240,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
+                    | (&"plan_changed", InboundFrame::PlanChanged { .. })
                     | (&"session_runs", InboundFrame::SessionRuns { .. })
                     | (&"session_branch", InboundFrame::SessionBranch { .. })
                     | (
@@ -269,6 +270,8 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_file_reread",
             // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
             "tasks_changed",
+            // 计划变了（同上，本机消费者交重放缓冲那张订阅表）。
+            "plan_changed",
             // 运行表 · 主线外清单（会话成品，交会话账）。
             "session_runs",
             "session_branch",

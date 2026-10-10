@@ -112,6 +112,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // ===== App =====
   { id: "app.open-settings", label: copyText("keybindingActions.app.settings"), category: "App", default: "Comma", available: true, scope: "bare" },
   { id: "app.toggle-history", label: copyText("keybindingActions.app.history"), category: "App", default: "KeyH", available: true, scope: "bare" },
+  { id: "app.toggle-plan", label: copyText("keybindingActions.app.plan"), category: "App", default: "KeyP", available: true, scope: "bare" },
   { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true, scope: "any" },
   { id: "app.keys", label: copyText("keybindingActions.app.keys"), category: "App", default: "Shift+Slash", available: true, scope: "bare" },
   { id: "app.minimize", label: copyText("keybindingActions.app.minimize"), category: "App", default: "Ctrl+KeyM", available: true, scope: "any" },

@@ -63,49 +63,32 @@ pub(crate) fn arm(ws: &Path, last: Option<Seen>, reread: Reread) {
     }
 }
 
-/// 挂监听、起那条重读线程。返回的那一份活着就一直盯。
+/// 挂监听（工作区根本层 ＋ 计划仓整棵，经 [`crate::platform::watch_file`]）、起那条重读线程。返回的那一份活着就一直盯。
 pub(crate) fn watch(
     ws: &Path,
     last: Option<Seen>,
     reread: Reread,
 ) -> Result<notify::RecommendedWatcher, String> {
-    use notify::Watcher;
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    let root = ws.to_path_buf();
-    let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        let Ok(ev) = res else { return };
-        if matches!(ev.kind, notify::EventKind::Access(_)) {
-            return;
-        }
-        if ev.paths.iter().any(|p| concerns(&root, p)) {
-            let _ = tx.send(());
-        }
-    })
-    .map_err(|e| e.to_string())?;
-    w.watch(ws, notify::RecursiveMode::NonRecursive)
-        .map_err(|e| e.to_string())?;
+    let mut dirs = vec![(ws.to_path_buf(), false)];
     let plan = ws.join(PLAN_DIR);
     if plan.is_dir() {
-        w.watch(&plan, notify::RecursiveMode::Recursive)
-            .map_err(|e| e.to_string())?;
+        dirs.push((plan, true));
     }
+    let root = ws.to_path_buf();
     let target = ws.to_path_buf();
-    std::thread::Builder::new()
-        .name("plan-watch".to_string())
-        .spawn(move || {
-            let mut last = last;
-            // 监听器一丢（发端随它走）⇒ 收不到 ⇒ 线程退出。
-            while rx.recv().is_ok() {
-                while rx.try_recv().is_ok() {}
-                let Some(now) = reread(&target) else { continue };
-                if last.as_ref() != Some(&now) {
-                    last = Some(now.clone());
-                    let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));
-                }
+    let mut last = last;
+    crate::platform::watch_file::watch(
+        &dirs,
+        move |p| concerns(&root, p),
+        "plan-watch",
+        move || {
+            let Some(now) = reread(&target) else { return };
+            if last.as_ref() != Some(&now) {
+                last = Some(now.clone());
+                let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));
             }
-        })
-        .map_err(|e| e.to_string())?;
-    Ok(w)
+        },
+    )
 }
 
 #[cfg(test)]
