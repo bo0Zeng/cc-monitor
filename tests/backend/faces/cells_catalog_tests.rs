@@ -135,6 +135,8 @@ fn corpus(name: &str) -> Vec<Value> {
                 at: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
+                text: None,
+                why_text: None,
             }];
             let wait = crate::observe::facts_query::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
@@ -164,6 +166,8 @@ fn corpus(name: &str) -> Vec<Value> {
                 at: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
+                text: None,
+                why_text: None,
             }];
             let wait = crate::observe::facts_query::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),

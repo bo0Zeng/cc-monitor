@@ -1333,7 +1333,7 @@ export class TabManager {
       const call = row.dataset.call ?? "";
       const waited = n?.call === call ? waitedNow(n, Date.now()) : null;
       const p = by.get(call);
-      paintWaiting(row, p?.state ?? "unclear", waited, n?.kind === "approve", p?.why ?? null);
+      paintWaiting(row, p ?? null, waited, n?.kind === "approve");
     }
   }
 

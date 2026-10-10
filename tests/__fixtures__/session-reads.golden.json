@@ -45,16 +45,20 @@
         "id": "tu-1",
         "name": "Edit",
         "state": "unclear",
+        "text": "状态不明",
         "what": "/w/a.ts",
-        "why": "noWriter"
+        "why": "noWriter",
+        "whyText": "无进程在运行该会话"
       },
       {
         "at": "t4",
         "id": "tu-3",
         "name": "Agent",
         "state": "unclear",
+        "text": "状态不明",
         "what": null,
-        "why": "noWriter"
+        "why": "noWriter",
+        "whyText": "无进程在运行该会话"
       }
     ],
     "permissionMode": "acceptEdits",

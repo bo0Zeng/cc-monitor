@@ -46,4 +46,13 @@ patch?: Array<PatchHunk>,
 /**
  * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
  */
-patchTruncated?: boolean, };
+patchTruncated?: boolean, 
+/**
+ * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+ */
+text: string, 
+/**
+ * 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+ */
+timed?: string, };

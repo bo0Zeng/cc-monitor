@@ -576,26 +576,27 @@ describe("一步还没结果时：照会话事实画", () => {
   it("★ 刚建出来不画状态；事实说在跑 ⇒ 转圈；在等你批准 ⇒ 琥珀点「等你批准」＋ 已等多久；等的不是批准 ⇒「在等你」；状态不明 ⇒ 问号「状态不明」；结果到了照结果、之后的事实不改它", () => {
     const row = buildStepLine("Bash", { tool: "Bash", arg: "rm -rf build/", note: "清掉构建目录", known: true } as never, "", "t1");
     expect([row.dataset.state, row.dataset.call, icon(row)], "事实到之前不当它在跑").toEqual(["pending", "t1", ""]);
-    paintWaiting(row, "running", null, false);
+    paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);
     expect([row.dataset.state, row.querySelector(".step-icon [role=progressbar], .step-icon > span") !== null]).toEqual(["running", true]);
-    paintWaiting(row, "awaiting", "2m", true);
+    paintWaiting(row, { state: "awaiting", text: null, whyText: null }, "2m", true);
     expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", copyText("stream.step.awaiting"), "2m"]);
     expect(row.querySelector(".step-icon .step-await-dot"), "琥珀点").not.toBeNull();
-    paintWaiting(row, "awaiting", null, false);
+    paintWaiting(row, { state: "awaiting", text: null, whyText: null }, null, false);
     expect(row.querySelector(".step-await")?.textContent).toBe(copyText("stream.step.awaitingYou"));
-    paintWaiting(row, "unclear", null, false, "untracked");
-    expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, copyText("stream.step.unclear"), "svg"]);
-    expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停说后端给的原因").toBe(copyText("stream.step.unclearUntracked"));
-    paintWaiting(row, "unclear", null, false, "noWriter");
-    expect(row.querySelector<HTMLElement>(".step-right")?.title).toBe(copyText("stream.step.unclearNoWriter"));
+    // 状态不明：右侧与悬停照核心写好的那两句（`text` · `whyText`）原样；事实里没有这一步 ⇒ 状态不明（这一判在桌面）。
+    paintWaiting(row, { state: "unclear", text: "U-text", whyText: "U-why" }, null, false);
+    expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, "U-text", "svg"]);
+    expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停照后端写的那一句").toBe("U-why");
+    paintWaiting(row, null, null, false);
+    expect([row.querySelector(".step-right")?.textContent, row.querySelector<HTMLElement>(".step-right")?.hasAttribute("title")]).toEqual([copyText("stream.step.unclear"), false]);
     settleStepLine(row, undefined, { ok: true } as never, false, 1200);
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
-    paintWaiting(row, "running", null, false);
+    paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);
     expect(row.dataset.state, "结果已经到了的那一行不改").toBe("ok");
   });
 
   it("★ 会话事实比那一步的卡先到：建卡时就照它画（事实里没有的那一步不画，等下一份事实）", () => {
-    const c = { ...ctx(), needs: { kind: "approve", call: "t2", waitedMs: 65_000, receivedAt: Date.now() }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
+    const c = { ...ctx(), needs: { kind: "approve", call: "t2", waitedMs: 65_000, receivedAt: Date.now() }, stepWait: (id: string) => ({ t1: { state: "running", text: null, whyText: null }, t2: { state: "awaiting", text: null, whyText: null } } as Record<string, { state: "running" | "awaiting"; text: null; whyText: null }>)[id] };
     const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }, { id: "t3", name: "Bash", input: {} }]) as object) } as unknown as LineRecord;
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
@@ -634,14 +635,15 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
         { id: "t3", text: "…" },
         { id: "t4", text: "Exit code 1", error: true },
       ]) as object),
-      results: { t1: { ok: true, lines: 3 }, t2: { ok: true, added: 38, removed: 6 }, t3: { ok: true, lines: 212 }, t4: { ok: false } },
+      // 右侧那一句是核心写的（`text`；带耗时那一形 `timed` 里留 `{dur}`）：这里照抄、只填用时。
+      results: { t1: { ok: true, lines: 3, text: "", timed: "{dur}" }, t2: { ok: true, added: 38, removed: 6, text: "+38 −6" }, t3: { ok: true, lines: 212, text: "L212" }, t4: { ok: false, text: "F", timed: "F · {dur}" } },
     } as unknown as LineRecord;
     renderMessage(res, c);
     expect([0, 1, 2, 3].map((i) => [line(i).dataset.state, line(i).querySelector(".step-right")?.textContent])).toEqual([
       ["ok", "1m00s"],
       ["ok", "+38 −6"],
-      ["ok", copyText("stream.step.lines", { n: "212" })],
-      ["failed", copyText("stream.step.failedFor", { dur: "1m00s" })],
+      ["ok", "L212"],
+      ["failed", "F · 1m00s"],
     ]);
   });
 
@@ -667,9 +669,13 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
   });
 
   it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 steps ⇒ 工具名 ＋ 入参一句兜底", () => {
-    expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), 10)).toBe(copyText("stream.step.unknown"));
-    expect(stateOf(undefined, { ok: false, rejected: true }, true)).toBe("rejected");
-    expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", 10)).toBe(copyText("stream.step.rejected"));
+    // 右侧那一句都是核心写的：认不出的工具那一句（`step.text`）· 结果那一句（`text`；带耗时那一形 `timed` 由这里填用时）。
+    expect(stepRight({ tool: "mcp__x", known: false, text: "UNK" } as never, { ok: true, text: "" }, 10)).toBe("UNK");
+    expect(stateOf({ tool: "mcp__x", known: false } as never, { ok: true, text: "" }, false)).toBe("unknown");
+    expect(stateOf(undefined, { ok: false, rejected: true, text: "R" }, true)).toBe("rejected");
+    expect(stepRight({ tool: "mcp__x", known: false, text: "UNK" } as never, { ok: false, rejected: true, text: "R" }, 10), "没成的照结果那一句").toBe("R");
+    expect(stepRight(undefined, { ok: false, text: "F", timed: "F · {dur}" }, 41_000)).toBe("F · 41s");
+    expect(stepRight(undefined, { ok: false, text: "F", timed: "F · {dur}" }, null), "说不出用时 ⇒ 不带耗时那一形").toBe("F");
     expect([fmtStepDur(300), fmtStepDur(41_000), fmtStepDur(182_000)]).toEqual(["0.3s", "41s", "3m02s"]);
     expect(middleEllipsis(`/${"a".repeat(100)}/file.py`, 40)).toMatch(/^\/a+…\/file\.py$/);
   });

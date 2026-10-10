@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 291,
+  "ceiling": 286,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -88,39 +88,18 @@
       "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
     },
     {
-      "file": "src/frontend/ui/cards/interactive.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "第 1 批",
-      "why": "提问 / 计划结果 `answer.kind === \"approved\"` ⇒ 字：并进 V9（步骤结果带 text）"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "第 1 批",
-      "why": "V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "caseWord",
-      "n": 3,
-      "kind": "第 1 批",
-      "why": "V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批"
-    },
-    {
       "file": "src/frontend/ui/cards/step-line.ts",
       "rule": "durUnit",
       "n": 4,
       "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批）"
+      "why": "时长 / 时刻 / 大小那一族（两条记录相减成耗时、写耗时（右侧那一句 10-10 已收进核心 `StepResult.text`，只剩耗时那一截））"
     },
     {
       "file": "src/frontend/ui/cards/step-line.ts",
       "rule": "clock",
       "n": 2,
       "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批）"
+      "why": "时长 / 时刻 / 大小那一族（两条记录相减成耗时、写耗时（右侧那一句 10-10 已收进核心 `StepResult.text`，只剩耗时那一截））"
     },
     {
       "file": "src/frontend/ui/cards/step-line.ts",
