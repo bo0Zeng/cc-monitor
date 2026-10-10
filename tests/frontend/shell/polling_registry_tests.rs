@@ -85,7 +85,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
 #[test]
 fn the_other_half_of_the_sweep_still_has_a_home() {
     let root = repo_root();
-    let other = root.join("src/frontend/shell/src/rust_timer_registry.rs");
+    let other = root.join("tests/frontend/shell/rust_timer_registry.rs");
     let body = fs::read_to_string(&other).unwrap_or_default();
     // ⚠ `contains_word` 不是 `contains`：变异实测把 `REGISTERED` 改名成 `REGISTERED_X`，
     // 裸 `contains` **照样绿**（前缀）。那正是 F24 那一族 —— 而它在这条**新写的**判据里
@@ -97,7 +97,7 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
              ★ 要么把那半的新家写进头注，要么把头注改回「未做」；\n\
              **不许留着一句指向空处的指针** —— 那比没有注释更坏（skill 铁律 14）。"
     );
-    let me = fs::read_to_string(root.join("src/frontend/shell/src/polling_registry.rs"))
+    let me = fs::read_to_string(root.join("tests/frontend/shell/polling_registry.rs"))
         .expect("读不到本文件");
     // ⚠ **只看头注那半**（`production_source` 把 `#[cfg(test)]` 段剥掉）。
     // 变异实测：拿整份文件 `contains` 时，**本条自己的代码里就写着这个名字**

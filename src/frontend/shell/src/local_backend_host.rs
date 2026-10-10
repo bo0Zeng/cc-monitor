@@ -130,7 +130,7 @@ impl StartOutcome {
 /// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
 /// 不是我们自己的子进程，不能假设它讲道理。
 /// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
-/// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
@@ -1047,7 +1047,7 @@ fn start_detached(
 ///
 /// 等的是**一次性条件**（那个套接字起没起来），有明确上限（`LISTEN_WAIT_TRIES` ×
 /// `LISTEN_WAIT_INTERVAL_MS` ≈ 1 秒），等到就走、等不到就如实报错，**不无限重试**。
-/// **登记住址** `src/frontend/shell/src/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
+/// **登记住址** `tests/frontend/shell/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
 /// 这一类要求「说清等什么、上限是多少」）。
 ///
 /// ⚠ 上限为什么是这个量级：对端**就在本机**，从 `execve` 到绑上是毫秒级；

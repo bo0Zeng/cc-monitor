@@ -534,9 +534,7 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
     // 现在桩以外的任何一行都会被逐行打出来。
     // ★ 顺带把桩本身也钉住（`stub_lines == 3`）：桩要是没了，
     //   这个模块的判据就整批不参加编译，而那一格是**静默的**。
-    let me = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/plugin_class_registry.rs"
-    ));
+    let me = guard_core::production_code(include_str!("plugin_class_registry.rs"));
     let mut stub_lines = 0usize;
     let leftovers: Vec<&str> = me
         .lines()
@@ -584,11 +582,12 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
     );
     let myself = format!("plugin_class{}registry", '_');
     let decl = format!("mod {myself};");
+    let path_attr = format!("#[path = \"../../../../tests/frontend/shell/{myself}.rs\"]");
     let mut consumers: Vec<String> = Vec::new();
     for (path, src) in &files {
         for line in guard_core::production_code(src).lines() {
-            // `lib.rs` 里那一行模块声明是它存在的方式，不是消费。
-            if line.trim() == decl {
+            // `lib.rs` 里那一行模块声明（连同挂进 `tests/` 的那行 `#[path]`）是它存在的方式，不是消费。
+            if line.trim() == decl || line.trim() == path_attr {
                 continue;
             }
             if guard_core::contains_word(line, &myself) {

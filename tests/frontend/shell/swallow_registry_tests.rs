@@ -1,4 +1,4 @@
-//! **业务路径零裸吞** —— 人群判据与登记表（设计与射程住 `src/frontend/shell/src/swallow_registry.rs` 头注）。
+//! **业务路径零裸吞** —— 人群判据与登记表（设计与射程住 `tests/frontend/shell/swallow_registry.rs` 头注）。
 //!
 //! （逐字）「**处置不是别吞，是吞了要留一行日志**」。
 //!
@@ -662,7 +662,7 @@ fn w5vis_test_only_modules_are_derived_and_excluded() {
     let derived = test_only_modules(&files);
     for known in [
         "src/backend/alloc_probe.rs",
-        "src/frontend/shell/src/needle_anchor_registry.rs",
+        "tests/frontend/shell/needle_anchor_registry.rs",
     ] {
         let real = std::fs::canonicalize(root.join(known)).expect("已知的那份不在了 —— 改本条");
         assert!(
