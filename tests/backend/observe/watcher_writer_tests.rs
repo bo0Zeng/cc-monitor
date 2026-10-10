@@ -144,7 +144,7 @@ fn closed(p: &Path) -> crate::platform::writers::OpenBatch {
     }
 }
 
-/// 有进程开着它写 ⇒ 宣告（帧上说是哪一家、活是推出来的）· 已有的行 · 一轮结束；之后追加的行由文件事件那一路照常上流。
+/// 有进程开着它写 ⇒ 宣告（帧上说是哪一家；判活与 pidfile 那一路同一档，不标 heuristic）· 已有的行 · 一轮结束；之后追加的行由文件事件那一路照常上流。
 #[test]
 fn a_record_being_written_is_announced_with_its_lines_and_turn_end() {
     let mut r = rig("announce");
@@ -154,7 +154,7 @@ fn a_record_being_written_is_announced_with_its_lines_and_turn_end() {
     assert_eq!(
         brief(&frames),
         vec![
-            "added:codex:heuristic",
+            "added:codex:-",
             "line:0",
             "line:1",
             "line:2",
@@ -227,7 +227,7 @@ fn an_unwatched_session_still_says_its_turn_end() {
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     assert_eq!(
         brief(&drain(&mut r.rx)),
-        vec!["added:codex:heuristic", "turn_end:t1"]
+        vec!["added:codex:-", "turn_end:t1"]
     );
     gone(w);
     std::fs::remove_dir_all(&r.dir).ok();
@@ -250,7 +250,7 @@ fn a_closed_record_retires_the_session_and_a_reopen_brings_it_back() {
     let again = brief(&drain(&mut r.rx));
     assert_eq!(
         again.first().map(String::as_str),
-        Some("added:codex:heuristic")
+        Some("added:codex:-")
     );
     gone(w);
     gone(w2);
@@ -303,7 +303,7 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     let pidfiles = r.dir.join("sessions");
     initial_session_scan(&pidfiles, &mut r.state, &mut r.sink);
     let b = brief(&drain(&mut r.rx));
-    assert_eq!(b.first().map(String::as_str), Some("added:codex:heuristic"));
+    assert_eq!(b.first().map(String::as_str), Some("added:codex:-"));
     gone(w);
     let got = resync_sessions(&pidfiles, &mut r.state, &mut r.sink, None);
     assert_eq!(got.removed, 1);

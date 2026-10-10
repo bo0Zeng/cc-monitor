@@ -2758,16 +2758,14 @@ fn announce_writer(
             status: None,
             waiting_for: None,
             activity: None,
-            // 「开着即活」是推出来的（这一家在世期间一直开着记录 —— 适配层说的），不是那一家自己报的 ⇒ 照实标。
-            liveness_confidence: Some(LIVENESS_BY_WRITER.to_string()),
+            // 「这个进程开着这份记录写」是系统给的事实，再挂上 pidfd 看守 ⇒ 与 pidfile 那一路同一档（不标）。
+            // 不确定的那一头是漏认（这一家要是中途关了记录，我们会当它走了），不是把死的认成活的。
+            liveness_confidence: None,
         },
         state,
         sink,
     )
 }
-
-/// 「开着即活」那一路宣告的会话帧上的判活置信度（线上 `liveness_confidence`）。
-const LIVENESS_BY_WRITER: &str = "heuristic";
 
 /// 「这条会话用哪个号起的」：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt`）。
 /// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。写不成只出声。

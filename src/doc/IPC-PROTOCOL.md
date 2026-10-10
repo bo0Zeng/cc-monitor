@@ -89,8 +89,10 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
    `session_added.agent_kind` 每条都带（那一家的 kind）。哪几家进流、各自怎么判活由适配层说（`agents::followed`）：
    - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在；`liveness_confidence` 缺。
    - 没有 pidfile 的那一家（Codex）：活会话 ＝ **有进程开着它的那份记录写**（看 `/proc/<pid>/fdinfo` 的打开方式，不看进程名）；
-     那个进程退了（pidfd）或把记录写完关闭、复核已没人开着写 ⇒ `session_removed`（`gone`）。帧上 `liveness_confidence: "heuristic"`：
-     「活着」是推出来的。⚠ 「Codex 在世期间一直开着这份 rollout」只读过源码（codex-rs 的 rollout 写者任务持有文件），**没在真机上实测过**。
+     那个进程退了（pidfd）或把记录写完关闭、复核已没人开着写 ⇒ `session_removed`（`gone`）。「开着它写」是系统给的事实、再加 pidfd 看守，
+     与 pidfile 那一路同一档 ⇒ `liveness_confidence` 同样缺（`"heuristic"` 只留给真靠猜的，比如按修改时刻）。
+     ⚠ 「Codex 在世期间一直开着这份 rollout」只读过源码（codex-rs 的 rollout 写者任务持有文件），**没在真机上实测过**。
+     它要是不成立（中途关了文件），后果是漏认 / 提早摘掉，不会把死的认成活的。
      扫进程表只在三种时候：记录根下新建 / 打开了一份还没认的记录（按事件攒批：一次醒来读完的那一批里开了又关的当场抵掉，读的人不引出扫描）·
      起步与「重新对齐」· 内核事件队列溢出。已知口子：一份很大的记录正被人读到一半时恰好赶上那一批，会多扫一趟、什么帧都不出（不误报）。
      只在 Linux 上判得了；别的平台照实判不了，这一家的会话不宣告。
