@@ -6,7 +6,7 @@
 //!
 //! # 有界
 //!
-//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到 [`MAX_SAMPLE_BYTES`]。这是诊断面，不是数据管道。
+//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到 [`EXCERPT_BYTES`](crate::agents::record::EXCERPT_BYTES)。这是诊断面，不是数据管道。
 //!
 //! # 按机器分
 //!
@@ -20,8 +20,6 @@ use std::sync::Mutex;
 
 /// 每个面最多记多少个不同的键。超出的并进 [`OVERFLOW_KEY`]。
 pub const MAX_KEYS: usize = 64;
-/// 首见样例的截断长度（字节，按字符边界安全截断）。
-pub const MAX_SAMPLE_BYTES: usize = 400;
 /// 键数超限之后的归并键。
 pub const OVERFLOW_KEY: &str = "<overflow>";
 
@@ -103,16 +101,14 @@ fn lock() -> std::sync::MutexGuard<'static, Ledger> {
     ledger().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 按字符边界把样例截到 [`MAX_SAMPLE_BYTES`] 以内。
+/// 按字符边界把样例截到 [`EXCERPT_BYTES`](crate::agents::record::EXCERPT_BYTES) 以内（与记录里认不出那一条的摘录同一个截断：[`crate::agents::record::excerpt_of`]），截了 ⇒ 末尾一个 `…`。
 fn truncate_sample(s: &str) -> String {
-    if s.len() <= MAX_SAMPLE_BYTES {
-        return s.to_string();
+    let cut = crate::agents::record::excerpt_of(s);
+    if cut.len() == s.len() {
+        cut
+    } else {
+        format!("{cut}…")
     }
-    let mut end = MAX_SAMPLE_BYTES;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}…", &s[..end])
 }
 
 /// 记一次。**这是本模块唯一的写入口。**

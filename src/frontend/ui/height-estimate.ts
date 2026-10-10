@@ -302,6 +302,8 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   if (el.classList.contains("card-injected")) return 22;
   // 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
   if (el.classList.contains("card-api-retry")) return 17;
+  // 认不出的那一行：同重试细条那一套（收着一行；展开之后渲染真高接管）。
+  if (el.classList.contains("card-unread")) return 17;
   if (el.classList.contains("card-bash-input")) return 19;
   // 修法②:card-bash-output 按 header + min(行数, 20) 算。
   // 行数直接数 DOM 里**已经截过的** pre(cards/bash.ts 超 30 行只留头 20 行),

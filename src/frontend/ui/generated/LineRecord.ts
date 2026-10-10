@@ -7,6 +7,7 @@ import type { StepResult } from "./StepResult";
 import type { TitleBy } from "./TitleBy";
 import type { ToolCard } from "./ToolCard";
 import type { ToolStep } from "./ToolStep";
+import type { UnreadWhy } from "./UnreadWhy";
 import type { UserText } from "./UserText";
 
 /**
@@ -68,4 +69,24 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, });
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });

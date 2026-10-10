@@ -6,7 +6,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import type { QuotaRead } from "./acct-words";
+import { takeNames, type QuotaRead } from "./acct-words";
 import type { Rotation } from "./generated/Rotation";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { RestartOutcome } from "./generated/RestartOutcome";
@@ -56,6 +56,7 @@ export function decodeQuotaRead(v: unknown): QuotaRead {
       bad(`unseen[${i}]`);
   }
   arr(o.usableNow, "usableNow");
+  takeNames(o.names);
   return o as unknown as QuotaRead;
 }
 
@@ -152,6 +153,7 @@ export function decodeRulesRead(v: unknown): RulesRead {
     decodeRuleRow(r, `rules[${i}]`),
   );
   const str = (x: unknown): string | null => (typeof x === "string" && x !== "" ? x : null);
+  takeNames(o.names);
   return {
     state: o.state as RulesRead["state"],
     reason: str(o.reason),
@@ -186,6 +188,7 @@ export function decodeSessionRotationRead(v: unknown): SessionRotationRead {
     obj(x.account, `sessions.${sid}.account`);
     obj(x.quota, `sessions.${sid}.quota`);
   }
+  takeNames(o.names);
   return { now: o.now, sessions: ss as Record<string, SessionRotationState> };
 }
 
@@ -462,6 +465,7 @@ export function decodePlan(v: unknown): PlanRead {
   arr(o.plan, "plan");
   arr(o.lanes, "lanes");
   obj(o.effective, "effective");
+  takeNames(o.names);
   return o as unknown as PlanRead;
 }
 

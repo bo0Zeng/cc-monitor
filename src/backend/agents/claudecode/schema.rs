@@ -465,6 +465,23 @@ pub enum JsonlRecord {
     LastPrompt {},
     #[serde(rename = "file-history-snapshot")]
     FileHistorySnapshot {},
+    // Claude 自己的状态行（07-16 语料：mode 6472 / agent-name 2020 / file-history-delta 181 / pr-link 58 / relocated 19 /
+    // worktree-state 19 / frame-link 2，都没有链身份）：认识、不上屏、不进链。从前落在 `Unrecognized` 里，
+    // 记录出 `unread` 之后会被它们刷满 ⇒ 10-10 登成认识的类型（同 `permission-mode`）。
+    #[serde(rename = "mode")]
+    Mode {},
+    #[serde(rename = "agent-name")]
+    AgentName {},
+    #[serde(rename = "file-history-delta")]
+    FileHistoryDelta {},
+    #[serde(rename = "pr-link")]
+    PrLink {},
+    #[serde(rename = "relocated")]
+    Relocated {},
+    #[serde(rename = "worktree-state")]
+    WorktreeState {},
+    #[serde(rename = "frame-link")]
+    FrameLink {},
 
     /// F63 (issue #49)：**看不懂的记录 —— 留原文 + 留链上的身份**。
     ///

@@ -2,7 +2,7 @@
   "说明": [
     "出口扫描判据（tests/frontend/ui/exit-judgment-scan.vitest.ts）的欠账名单：界面与壳里「自己判定、自己格式化、按码取字」今天的存量，只许删、不许加。",
     "每格 = 文件 × 规则（规则表 tests/frontend/ui/exit-rules.ts）× 剥过注释后的命中数，逐格恒等；ceiling = 各格之和，只许往下改（判据里 CEILING_AT_MOST 同改）。",
-    "kind：第 1 批 / 第 3 批 / 第 7 批 = 复审三排给哪一批收；待分 = 还没逐条分开（骨架词表与后端码取字混着）；留 = 不是违例（why 写凭什么）。",
+    "kind：第 1 批 / 第 3 批 / 第 7 批 = 复审三排给哪一批收；留 = 不是违例（why 写凭什么：界面自己的骨架词表 · 宿主 / 通道本职的失败句 · 开发者日志 · 排版几何）。10-10 起没有「待分」（判据钉着）。",
     "手机端并进来：roots 里加它的目录与语言，跑一次判据，逐格登进来、ceiling 与 CEILING_AT_MOST 加上那几格 —— 唯一一次许加。"
   ],
   "roots": [
@@ -15,28 +15,28 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 296,
+  "ceiling": 294,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "账号 chip 的状态字：按 chip 状态码取字（needs-update · query-failed · not-enabled）；核心给账号状态写好的字"
     },
     {
       "file": "src/frontend/ui/account-chip.ts",
       "rule": "caseWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "同上：chipLabel 按状态码 switch 取字"
     },
     {
       "file": "src/frontend/ui/acct-panel.ts",
       "rule": "codeWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "`kind === \"api\"` 取「按量」那个字（核心每号 rows 首行已写好类型字，改读它）；另一处 `mode === \"restart\"` 是界面自己的切换方式（骨架词），收完前一处这一格改「留」"
     },
     {
       "file": "src/frontend/ui/acct-view.ts",
@@ -53,32 +53,25 @@
       "why": "V4：按显示态定颜色档 · 自己拼按钮那几格（核心给 tone 与写好的格）"
     },
     {
-      "file": "src/frontend/ui/acct-words.ts",
-      "rule": "codeWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "V1 / V2：号名 `_` ⇒ 字 · 语义位 `5h` / `7d` ⇒ 字（成品每号带 label、每个位带 label）"
-    },
-    {
       "file": "src/frontend/ui/agent-window-text.ts",
       "rule": "codeWord",
       "n": 5,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "子运行状态 / 孤儿原因码 ⇒ 字（done · failed · stopped · orphaned）：子运行成品带写好的状态字"
     },
     {
       "file": "src/frontend/ui/agent-window-text.ts",
       "rule": "caseWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "同上：子运行结局按码 switch 取字"
     },
     {
       "file": "src/frontend/ui/cards/api-reason.ts",
       "rule": "caseWord",
       "n": 5,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "上游失败原因码（ApiReason）⇒ 原因词：记录的 retry · error 带写好的原因字"
     },
     {
       "file": "src/frontend/ui/cards/compact.ts",
@@ -105,8 +98,8 @@
       "file": "src/frontend/ui/cards/interactive.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "提问 / 计划结果 `answer.kind === \"approved\"` ⇒ 字：并进 V9（步骤结果带 text）"
     },
     {
       "file": "src/frontend/ui/cards/step-line.ts",
@@ -147,15 +140,15 @@
       "file": "src/frontend/ui/cc-bus-hooks-reads.ts",
       "rule": "caseWord",
       "n": 5,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "cc-bus 钩子安装状态码 ⇒ 字（not-installed · installed-via-path …）：hooks-diag 成品带写好的状态字"
     },
     {
       "file": "src/frontend/ui/control-said.ts",
       "rule": "caseWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "这台不可用的原因码（no_tmux · no_unix_mode）⇒ 字：后端回包带 said"
     },
     {
       "file": "src/frontend/ui/duration-format.ts",
@@ -175,8 +168,8 @@
       "file": "src/frontend/ui/events.ts",
       "rule": "codeWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "会话流那条连接自己的故障（HopFault：Dropped · Overrun），是通道 / 宿主本职的失败句，不是核心成品的码"
     },
     {
       "file": "src/frontend/ui/events.ts",
@@ -210,36 +203,36 @@
       "file": "src/frontend/ui/front-result.ts",
       "rule": "caseWord",
       "n": 7,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "↗ 浮层上的按钮名（界面自己的动作闭集），骨架词"
     },
     {
       "file": "src/frontend/ui/ipc/chan-caller.ts",
       "rule": "codeWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "通道层自己的失败句（对端版本码 backend_old · 超时 Overrun），宿主本职"
     },
     {
       "file": "src/frontend/ui/kit/detail.ts",
       "rule": "codeWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "［复制详情］按钮自己的状态（已复制 · 复制失败），骨架词"
     },
     {
       "file": "src/frontend/ui/kit/interrupts.ts",
       "rule": "caseWord",
       "n": 5,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "会话里在跑的那几族（turn · agent · task · transfer · edit）⇒ 族名：session-interrupts 成品带写好的族名"
     },
     {
       "file": "src/frontend/ui/launch-slot.ts",
       "rule": "codeWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "终端预览结果码（gone · unread）⇒ 字：预览成品带写好的那一句"
     },
     {
       "file": "src/frontend/ui/main.ts",
@@ -259,36 +252,36 @@
       "file": "src/frontend/ui/needs-bar.ts",
       "rule": "caseWord",
       "n": 8,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "需手动种类码 ⇒ 字（八种）：needs 已带 text（核心写好），这几处改读 needs.text 就删"
     },
     {
       "file": "src/frontend/ui/new-session.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "起会话那一下界面自己等超时（timeout）的那一句，宿主本职"
     },
     {
       "file": "src/frontend/ui/new-session.ts",
       "rule": "caseWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "新建会话框格错码（no_dir · tmux_taken）⇒ 字：同 R2，格错带 said"
     },
     {
       "file": "src/frontend/ui/record-file-notice.ts",
       "rule": "caseWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "记录文件变化码（gone · truncated · rewritten）⇒ 字：那一帧带写好的一句"
     },
     {
       "file": "src/frontend/ui/remote-health.ts",
       "rule": "caseWord",
       "n": 8,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 7 批",
+      "why": "远端健康事件 kind ⇒ 标题（版本三类 · overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
     },
     {
       "file": "src/frontend/ui/rot-editor.ts",
@@ -329,15 +322,15 @@
       "file": "src/frontend/ui/runs.ts",
       "rule": "codeWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "子运行最后一步的种类（tool · thinking · text）⇒ 字：子运行成品带写好的那一句"
     },
     {
       "file": "src/frontend/ui/runs.ts",
       "rule": "caseWord",
       "n": 5,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "子运行状态码 ⇒ 字（running · done · failed · stopped · unknown）：子运行成品带写好的状态字"
     },
     {
       "file": "src/frontend/ui/session-face.ts",
@@ -364,57 +357,57 @@
       "file": "src/frontend/ui/settings/account-new-form.ts",
       "rule": "caseWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "新账号表单 baseUrl 格错码 ⇒ 字：同 R2，格错带 said"
     },
     {
       "file": "src/frontend/ui/settings/accounts-section.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "登录状态码 notLoggedIn ⇒ 字：账号成品带写好的登录状态字"
     },
     {
       "file": "src/frontend/ui/settings/backend-section.ts",
       "rule": "caseWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 7 批",
+      "why": "停后端的结局码（graceful · killed · not_running）⇒ 字：机器页那一行，随机器状态成品带 said 一起收"
     },
     {
       "file": "src/frontend/ui/settings/claude-dir-check.ts",
       "rule": "caseWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "agent-home-check 回包状态码（missing · not_dir · no_records）⇒ 字：回包带写好的一句"
     },
     {
       "file": "src/frontend/ui/settings/data-section.ts",
       "rule": "caseWord",
       "n": 2,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 7 批",
+      "why": "数据类别（truth · cache）⇒ 字：data-report 带写好的字（V12 同批）"
     },
     {
       "file": "src/frontend/ui/settings/ext-section.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "扩展种类 `kind === \"skill\"` ⇒ 字：ext-list 每项带写好的种类字"
     },
     {
       "file": "src/frontend/ui/settings/ext-section.ts",
       "rule": "caseWord",
       "n": 8,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "扩展各台状态码（same · differs · missing · project）⇒ 字，图例同一套：ext-list 带写好的状态字与图例"
     },
     {
       "file": "src/frontend/ui/settings/machine-card.ts",
       "rule": "caseWord",
       "n": 9,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 7 批",
+      "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
     },
     {
       "file": "src/frontend/ui/settings/machine-card.ts",
@@ -462,36 +455,36 @@
       "file": "src/frontend/ui/tab-batch-menu.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "会话在不在码 `liveness === \"unseen\"` ⇒ 字：会话帧带写好的状态字（V11 同批）"
     },
     {
       "file": "src/frontend/ui/tab-batch-run.ts",
       "rule": "caseWord",
       "n": 8,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "批量起 / 停的拒绝码（no_tmux · ambiguous · name_taken …）⇒ 字：每个会话的结局带 said"
     },
     {
       "file": "src/frontend/ui/tab-stream-view.ts",
       "rule": "codeWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "界面自己往下取记录那一下的状态（maybe · fetching · failed），骨架词"
     },
     {
       "file": "src/frontend/ui/tasks-panel.ts",
       "rule": "caseWord",
       "n": 4,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "任务状态码（pending · in_progress · completed · deleted）⇒ 字：tasks-list 成品带写好的状态字"
     },
     {
       "file": "src/frontend/ui/terminal-open.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "壳开终端窗口自己的失败（setMissing），宿主本职"
     },
     {
       "file": "src/frontend/ui/terminal-page.ts",
@@ -518,8 +511,8 @@
       "file": "src/frontend/ui/views/command-bar.ts",
       "rule": "caseWord",
       "n": 7,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "命令面板的分组标题（界面自己的分组闭集），骨架词"
     },
     {
       "file": "src/frontend/ui/views/grid-monitor.ts",
@@ -532,22 +525,22 @@
       "file": "src/frontend/ui/views/history-rows.ts",
       "rule": "caseWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "搜索命中的种类（user · tool · report）⇒ 字：搜索结果每条带写好的种类字"
     },
     {
       "file": "src/frontend/ui/views/history.ts",
       "rule": "caseRank",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "键盘导航（Home 键 ⇒ 第 0 行），不是按状态排档"
     },
     {
       "file": "src/frontend/ui/views/keys-overview.ts",
       "rule": "caseWord",
       "n": 6,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "留",
+      "why": "快捷键总览的作用域（any · idle · main …，界面自己的键位表），骨架词"
     },
     {
       "file": "src/frontend/ui/views/plan-model.ts",
@@ -560,15 +553,15 @@
       "file": "src/frontend/ui/views/plan-review.ts",
       "rule": "codeWord",
       "n": 1,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "计划需看那一格的原因码 `whyCode.kind === \"inside\"` ⇒ 字：plan needs 带写好的一句"
     },
     {
       "file": "src/frontend/ui/views/session-find.ts",
       "rule": "codeWord",
       "n": 3,
-      "kind": "待分",
-      "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
+      "kind": "第 1 批",
+      "why": "会话内查找命中的种类（user · report · tool）⇒ 字：同 history-rows，命中带写好的种类字"
     },
     {
       "file": "src/frontend/shell/src/remote_resident.rs",

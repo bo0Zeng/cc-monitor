@@ -1946,3 +1946,20 @@ fn every_cell_error_carries_its_written_sentence() {
         [copy_core::copy_text("rot.save.tooLong", &[])]
     );
 }
+
+/// ★ 出号名的四件成品都带核心写好的号名 / 位名（`names`，[`crate::accounts::quota::name_words`]）：界面照它画，不认 `_` 与 `5h` / `7d`。
+#[test]
+fn every_product_that_names_accounts_carries_the_names() {
+    let home = Home::new("names");
+    let ctx = home.ctx();
+    let want = crate::accounts::quota::name_words::names_cell();
+    let rules = answer_rules_read_with(&ctx).expect("rules");
+    assert_eq!(rules["names"], want, "rotation-rules-read");
+    home.saw(&ctx, "s-1");
+    let one = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("session");
+    assert_eq!(one["names"], want, "rotation-session-read");
+    let plan = answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("plan");
+    assert_eq!(plan["names"], want, "rotation-plan");
+    let quota = answer_quota_read_with(&ctx, now()).expect("quota");
+    assert_eq!(quota["names"], want, "quota-read");
+}

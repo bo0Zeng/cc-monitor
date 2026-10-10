@@ -178,6 +178,21 @@ function oldBackendWorld(): World {
   return w;
 }
 
+function unreadWorld(): World {
+  const w = defaultWorld();
+  const s = w.sessions[0];
+  const c = new Convo(s.sid, s.cwd, "2026-10-01T07:00:00Z");
+  c.title("认不出的记录");
+  c.user("把发布脚本里的版本号改成从标签读。");
+  c.say("好，先看一下现在的发布脚本。");
+  c.unread("unread-unknown");
+  c.say("脚本里版本号写死在第 12 行，改成读 `git describe` 的结果。");
+  c.unread("unread-parse-failed");
+  c.user("可以，顺便把 CHANGELOG 也补一条。");
+  s.records = c.records;
+  return w;
+}
+
 function oddCardsWorld(): World {
   const w = defaultWorld();
   const s = w.sessions[0];
@@ -491,6 +506,12 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await scrollStream("top");
   }, oddCardsWorld),
+  card("card-unread", "认不出的记录", "核心认不出的两行（没见过的类型 · 见过的类型形状变了）：各一行琥珀细条，第一条点开看原文摘录与［复制详情］", async () => {
+    await mainReady(ALL_TABS);
+    await openCard(".card-unread", 0, "center");
+    document.querySelector<HTMLDetailsElement>(".stream.active .card-unread")!.open = true;
+    await sleep(200);
+  }, unreadWorld),
   card("card-table-code", "表格与代码块", "assistant 正文里的表格、有序列表、代码块", async () => {
     await mainReady(ALL_TABS);
     await openCard("table", 0, "center");

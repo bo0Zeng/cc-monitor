@@ -156,11 +156,16 @@ const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_A
 /// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）、每号添好几行（`faces/quota_rows.rs`）
 /// 与开窗那一判（`warm`：quota-warm 照它发一句 / 睡到几点）。
 pub(crate) fn answer_quota_read() -> Answer {
-    let now = crate::accounts::quota::now_unix();
-    let mut v = wire::<_, Fail>(&quota_read_with(&Ctx::here(), now))?;
+    answer_quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix())
+}
+
+/// [`answer_quota_read`] 的本体（出口那几遍都在这里：时刻字 · 每号几行 · 开窗那一判 · 号名 / 位名）。
+pub(crate) fn answer_quota_read_with(ctx: &Ctx, now: u64) -> Answer {
+    let mut v = wire::<_, Fail>(&quota_read_with(ctx, now))?;
     crate::common::time::with_texts_here(&mut v, now);
     crate::faces::quota_rows::with_rows(&mut v);
     crate::faces::quota_rows::with_warm(&mut v);
+    crate::accounts::quota::name_words::with_names(&mut v);
     Ok(v)
 }
 
@@ -411,7 +416,9 @@ pub(crate) fn answer_rules_read() -> Answer {
 }
 
 pub(crate) fn answer_rules_read_with(ctx: &Ctx) -> Answer {
-    wire(&rules_wire(ctx))
+    let mut v = wire::<_, Fail>(&rules_wire(ctx))?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
 }
 
 /// 名称那一格的错：空 · 超长 · 与这台别的规则重名（不分大小写、去首尾空白）。
@@ -829,11 +836,7 @@ fn lines_text(each: &[(&'static str, crate::accounts::quota::decide::CapAt)]) ->
 }
 
 fn slot_label(w: &str) -> String {
-    match w {
-        "5h" => copy_text("acct.slot.fiveHour", &[]),
-        "7d" => copy_text("acct.slot.sevenDay", &[]),
-        other => other.to_string(),
-    }
+    crate::accounts::quota::name_words::slot_text(w)
 }
 
 /// 时间轴的视窗（此刻之前, 之后，秒）：`6h` ＝ 前 2h · 后 4h；`24h` ＝ 前 6h · 后 18h；`7d` ＝ 前 1d · 后 6d。不给 ⇒ `None`（编辑器那一问：从此刻起）。
@@ -936,6 +939,13 @@ fn warm_of(ctx: &Ctx) -> std::collections::BTreeMap<String, Vec<u64>> {
 }
 
 pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let mut v = plan_with(ctx, args, now)?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
+}
+
+/// [`answer_plan_with`] 的本体（号名 / 位名那一遍之前）。
+fn plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let view = view_secs(args)?;
     let (from, until) = match view {
         Some((before, after)) => (now.saturating_sub(before), now + after),
@@ -1332,13 +1342,15 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
         );
     }
-    wire(&SessionRead {
+    let mut v = wire::<_, Fail>(&SessionRead {
         state,
         reason,
         detail,
         now,
         sessions,
-    })
+    })?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
 }
 
 /// `rotation-session-read` 的应答。

@@ -28,11 +28,7 @@ fn lines(r: &Rotation) -> Vec<(&'static str, &CapValue)> {
 }
 
 fn slot_label(w: &str) -> String {
-    match w {
-        "5h" => copy_text("acct.slot.fiveHour", &[]),
-        "7d" => copy_text("acct.slot.sevenDay", &[]),
-        other => other.to_string(),
-    }
+    crate::accounts::quota::name_words::slot_text(w)
 }
 
 /// 单段预算对「所有号所有窗口」写的那一个数（`stint: {"*": {"*": n}}`）。

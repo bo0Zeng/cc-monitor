@@ -203,3 +203,42 @@ fn the_five_hour_cell_is_written_by_the_core() {
         "金样里要有读不出的一份与订阅号"
     );
 }
+
+/// ★ `quota-read` 线上形状的金样（Rust · TS · Kotlin 共用这一份）：`quota-text` 金样里每个案例的回包照真出口走完
+/// （每格的字与语气 · 时刻字 · 每号 `rows: [[{text, tone}]]` · `fiveHour` · `warm` · 号名 / 位名 `names`）原样落盘。
+/// 重写：`CCM_REGEN_QUOTA_READ=1 cargo test --lib -- quota_rows`。
+#[test]
+fn the_wire_golden_is_what_the_exit_writes() {
+    let raw = std::fs::read_to_string(golden_path()).unwrap();
+    let g: Value = serde_json::from_str(&raw).unwrap();
+    let mut cases = Vec::new();
+    for c in g["cases"].as_array().unwrap() {
+        let tz = c["tzOffsetMin"].as_i64().unwrap_or(0);
+        let mut v = through_the_exit(&c["reply"], tz);
+        let now = v["now"].as_i64().unwrap_or_default();
+        for (list, seen) in [("accounts", true), ("unseen", false)] {
+            for x in v[list].as_array_mut().into_iter().flatten() {
+                let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap();
+                crate::common::time::with_texts(&mut w, now, tz);
+                x["warm"] = w;
+            }
+        }
+        crate::accounts::quota::name_words::with_names(&mut v);
+        cases.push(serde_json::json!({"name": c["name"], "tzOffsetMin": tz, "reply": v}));
+    }
+    let got = serde_json::json!({
+        "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。",
+        "cases": cases,
+    });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/__fixtures__/quota-read.golden.json");
+    let text = format!("{}\n", serde_json::to_string_pretty(&got).unwrap());
+    if std::env::var_os("CCM_REGEN_QUOTA_READ").is_some() {
+        std::fs::write(&path, &text).unwrap();
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        text == want,
+        "quota-read 线上金样与真出口不一致（CCM_REGEN_QUOTA_READ=1 重写）"
+    );
+}

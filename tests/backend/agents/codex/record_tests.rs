@@ -383,11 +383,36 @@ fn events_and_meta_records_do_not_come_out() {
         env("event_msg", json!({"type": "token_count"})),
         env("session_meta", json!({"id": "s"})),
         env("turn_context", json!({"cwd": "/w"})),
-        json!({"type": "some_future_kind", "payload": {"id": "x"}}),
     ] {
         assert!(rec(&v).is_none(), "{v}");
         let t = translated(&v.to_string(), 0).unwrap().unwrap();
         assert!(t.record.is_none() && t.queue.is_none(), "{v}");
+    }
+}
+
+/// 认不出的顶层类型 · 认不出的 `response_item` 子型 ⇒ 一条 `unread`（类型照那一行说的，写好的一句带它）。
+#[test]
+fn unknown_kinds_come_out_as_unread() {
+    for (v, want) in [
+        (
+            json!({"type": "some_future_kind", "payload": {"id": "x"}}),
+            "some_future_kind",
+        ),
+        (
+            env("response_item", json!({"type": "future_item"})),
+            "future_item",
+        ),
+    ] {
+        let r = rec(&v).unwrap_or_else(|| panic!("{v}"));
+        let crate::agents::record::Body::Unread {
+            kind, text, count, ..
+        } = &r.body
+        else {
+            panic!("{r:?}")
+        };
+        assert_eq!(kind.as_deref(), Some(want));
+        assert!(text.0.contains(want), "{text:?}");
+        assert_eq!(*count, 1);
     }
 }
 

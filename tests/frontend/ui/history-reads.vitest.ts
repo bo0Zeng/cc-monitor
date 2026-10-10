@@ -37,7 +37,7 @@ describe("严格收：形状不对就抛，不猜", () => {
 });
 
 describe("问的是谁、带了什么", () => {
-  it("改注解问 <local>；上次账号问会话所在那台；请求体逐键、显式给期限", async () => {
+  it("改注解与上次账号都问会话所在那台（注解跟着会话住在那台）；请求体逐键、显式给期限", async () => {
     invokeMock.mockImplementation((_cmd: string, a: ChanCallArgs) =>
       Promise.resolve(
         a.op === "history-annotate"
@@ -45,10 +45,10 @@ describe("问的是谁、带了什么", () => {
           : chanReply({ accounts: {} }),
       ),
     );
-    await annotate("s1", { customTitle: "" });
+    await annotate("dev", "s1", { customTitle: "" });
     await lastAccounts("dev");
     expect(chanCalls().map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([
-      ["<local>", "history-annotate", { sid: "s1", patch: { customTitle: "" } }],
+      ["dev", "history-annotate", { sid: "s1", patch: { customTitle: "" } }],
       ["dev", "history-last-accounts", {}],
     ]);
     for (const a of chanCalls()) expect(a.leftMs, `${a.op} 没给期限`).toBeGreaterThan(0);

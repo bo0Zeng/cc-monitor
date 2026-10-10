@@ -11,6 +11,16 @@ import type { ChildRunTag } from "../../../src/frontend/ui/generated/ChildRunTag
 import type { ToolStep } from "../../../src/frontend/ui/generated/ToolStep";
 import type { StepResult } from "../../../src/frontend/ui/generated/StepResult";
 import type { Speaker } from "../../../src/frontend/ui/generated/Speaker";
+import RECORD_GOLDEN from "../../__fixtures__/record.golden.jsonl?raw";
+
+/** 核心金样里认不出的那一条（字与摘录是后端真写的，这里不另写）：`case` ⇒ 记录。 */
+const UNREAD_GOLDEN: Record<string, LineRecord> = Object.fromEntries(
+  RECORD_GOLDEN.split("\n")
+    .filter((l) => l.trim() !== "")
+    .map((l) => JSON.parse(l) as { case: string; record: LineRecord })
+    .filter((g) => g.record.t === "unread")
+    .map((g) => [g.case, g.record]),
+);
 
 // 假后端也出记录成品里过程那几格（`steps` · `results` · 报错原因），口径照真后端 `agents/claudecode/steps.rs` 的那张表抄一份小的。
 const PATH_ARG: Record<string, string> = { Read: "file_path", Edit: "file_path", Write: "file_path", MultiEdit: "file_path" };
@@ -204,6 +214,12 @@ export class Convo {
 
   retry(attempt: number, max: number): this {
     this.records.push({ agent: "claude", id: nextUuid(), ...this.at(5), t: "retry", reason: "overloaded", attempt, max });
+    return this;
+  }
+
+  /** 认不出的一行：照核心金样那一条（`unread-unknown` · `unread-parse-failed`），只换 id 与时刻。 */
+  unread(name: "unread-unknown" | "unread-parse-failed"): this {
+    this.records.push({ ...UNREAD_GOLDEN[name], id: nextUuid(), ...this.at(5) });
     return this;
   }
 

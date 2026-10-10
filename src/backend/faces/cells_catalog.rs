@@ -591,9 +591,30 @@ pub(crate) struct Product {
     pub(crate) tags: &'static [(&'static str, &'static str)],
     /// 样本：每个可缺的格都填上、每个列表都不空、每种变体各一个。
     pub(crate) specimens: fn() -> Vec<Specimen>,
-    /// **冻结**：两个前端（桌面界面 · 手机）都照它读的成品面 —— 格只许加，删 / 改名 / 换类型 ⇒ 判据红
-    /// （对的是落盘的格目录金样：冻结成品的格在金样里有、目录里没了或换了样，重写金样也不放行）。
-    pub(crate) frozen: bool,
+    /// **冻结**：两个前端（桌面界面 · 手机）都照它读的那几格 —— 删 / 改名 / 换类型 ⇒ 判据红
+    /// （对的是落盘的格目录金样：金样里标了冻结的格、目录里没了或换了样，重写金样也不放行）。
+    pub(crate) frozen: Frozen,
+}
+
+/// 一件成品哪几格冻结。
+pub(crate) enum Frozen {
+    /// 没有前端照它逐格读到「缺一格就坏」的地步。
+    No,
+    /// 整件：每一格都冻结（今天的、以后加的）。
+    All,
+    /// 只这几格（目录里的路径写法）：第二个前端读的那一截；其余的格照常可改。
+    Cells(&'static [&'static str]),
+}
+
+impl Frozen {
+    /// 这一格冻结不冻结。
+    pub(crate) fn holds(&self, path: &str) -> bool {
+        match self {
+            Frozen::No => false,
+            Frozen::All => true,
+            Frozen::Cells(c) => c.contains(&path),
+        }
+    }
 }
 
 /// 一件成品的格（按路径排）＋ 样本里的洞。
@@ -643,69 +664,101 @@ pub(crate) const PRODUCTS: &[Product] = &[
             ("answer", "kind"),
         ],
         specimens: specimens::record,
-        frozen: true,
+        frozen: Frozen::All,
     },
     Product {
         name: "facts",
         tags: &[],
         specimens: specimens::facts,
-        frozen: false,
+        frozen: Frozen::No,
     },
     Product {
         name: "needs_row",
         tags: &[],
         specimens: specimens::needs_row,
-        frozen: false,
+        frozen: Frozen::No,
     },
     Product {
         name: "index_row",
         tags: &[],
         specimens: specimens::index_row,
-        frozen: false,
+        frozen: Frozen::No,
     },
     Product {
         name: "read_row",
         tags: &[],
         specimens: specimens::read_row,
-        frozen: true,
+        frozen: Frozen::All,
     },
+    // 会话三帧：第二个前端（手机）照下面点名的格逐格读，缺一格整帧当坏帧丢（会话列表有、点进去空白）——
+    // 这几格就是它的冻结表（从前住 `wire_tests::SECOND_FRONTEND_READS`，10-10 挪来，一处登记）。`container` · `pid` 不在内。
     Product {
         name: "session_added",
         tags: &[],
         specimens: specimens::session_added,
-        frozen: false,
+        frozen: Frozen::Cells(&[
+            "sid",
+            "path",
+            "cwd",
+            "name",
+            "lines",
+            "waiting_for",
+            "agent_kind",
+            "liveness_confidence",
+            "attachable",
+            "activity",
+            "activity_text",
+            "activity_tone",
+            "background",
+        ]),
     },
     Product {
         name: "session_status",
         tags: &[],
         specimens: specimens::session_status,
-        frozen: false,
+        frozen: Frozen::Cells(&[
+            "sid",
+            "waiting_for",
+            "liveness_confidence",
+            "activity",
+            "activity_text",
+            "activity_tone",
+        ]),
     },
     Product {
         name: "session_state",
         tags: &[],
         specimens: specimens::session_state,
-        frozen: false,
+        frozen: Frozen::No,
     },
     Product {
         name: "session_removed",
         tags: &[],
         specimens: specimens::session_removed,
-        frozen: false,
+        frozen: Frozen::Cells(&["sid", "cause"]),
     },
     Product {
         name: "cell_error",
         tags: &[],
         specimens: specimens::cell_error,
-        frozen: false,
+        frozen: Frozen::No,
     },
 ];
 
-/// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, frozen, cells: [{path, kind, type}]}], pending: [{product, path, kind}]}`。
+/// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
 pub(crate) fn catalog() -> serde_json::Value {
     let products: Vec<serde_json::Value> = PRODUCTS
         .iter()
-        .map(|p| serde_json::json!({"name": p.name, "frozen": p.frozen, "cells": cells_of(p).0}))
+        .map(|p| {
+            let cells: Vec<serde_json::Value> = cells_of(p)
+                .0
+                .into_iter()
+                .map(|c| {
+                    serde_json::json!({"path": c.path, "kind": c.kind, "type": c.ty, "frozen": p.frozen.holds(&c.path)})
+                })
+                .collect();
+            serde_json::json!({"name": p.name, "cells": cells})
+        })
         .collect();
     serde_json::json!({"products": products, "pending": PENDING})
 }
@@ -912,6 +965,13 @@ mod specimens {
         out.push(rec(Body::Queued {
             who: who(Speaker::Human),
         }));
+        // 认不出的一行：两个原因各一个（`why` 是闭集的词，样本各给一种）。
+        for why in [
+            crate::agents::record::UnreadWhy::UnknownType,
+            crate::agents::record::UnreadWhy::ParseFailed,
+        ] {
+            out.push(rec(Body::unread(why, some("k"), "{}")));
+        }
         out.iter().map(node_of).collect()
     }
 

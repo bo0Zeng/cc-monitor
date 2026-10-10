@@ -33,6 +33,7 @@ import type { StepResult } from "../generated/StepResult";
 import { waitedNow, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
 import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
+import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, jsonPrefix } from "../format";
 import { openFileWindow } from "../file-window";
@@ -278,6 +279,9 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult
           outcome: ctx.retryOutcome?.(rec.id),
         }),
       };
+    case "unread":
+      // 这一家的这一行核心认不出：一行 warn 细条（字与摘录都是核心写的），默认折起。
+      return { kind: "card", element: buildUnreadLine({ text: rec.text, excerpt: rec.excerpt, time }) };
     case "title":
       return { kind: "skip" };
     // 插进正在跑的那一轮的一句（那一轮里没有它自己的 said 记录）：不在这里建卡，那句话就整条消失。
