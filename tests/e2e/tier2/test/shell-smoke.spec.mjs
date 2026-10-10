@@ -3,7 +3,7 @@
 // 经 session-1 hop 驱真 WebView2，用 WebDriver 断言 cc-monitor 的裸壳（无会话时）：
 //   1. 壳元素存在：#app / #tab-bar / #message-stream / #status-bar
 //   2. 无会话时：状态栏里没有这个会话的几枚（任务 · agent · 上下文），.empty-state 可见含「暂无活跃会话」
-//   3. 4 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
+//   3. 5 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
 //   4. overlay 快捷键（物理码，dispatcher 按 KeyboardEvent.code 归一）：
 //        KeyH → 历史 overlay 出现；Escape → 关；
 //        Ctrl+KeyK → 命令栏出现；Escape → 关。
@@ -30,6 +30,7 @@ const SHELL = ["#app", "#tab-bar", "#message-stream", "#status-bar"];
 const TOPBAR = [
   ".settings-trigger",
   ".history-trigger",
+  ".plan-trigger",
   ".grid-monitor-trigger",
   ".sftp-trigger",
   ".status-cmdk",
@@ -93,7 +94,7 @@ describe("F-E5a cc-monitor 裸壳 DOM 冒烟", () => {
     expect(emptyText).toContain("暂无活跃会话");
   });
 
-  it("3) 4 顶栏钮 + status-cmdk 存在且可点", async () => {
+  it("3) 5 顶栏钮 + status-cmdk 存在且可点", async () => {
     for (const sel of TOPBAR) {
       const el = $(sel);
       const exists = await el.isExisting();

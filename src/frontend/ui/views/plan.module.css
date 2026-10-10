@@ -198,7 +198,7 @@
     height: 22px;
     padding: 0 var(--space-4);
     border: 1px solid var(--border-strong);
-    border-radius: 11px;
+    border-radius: var(--radius-m);
     background: transparent;
     color: var(--text-2);
     font: inherit;
@@ -321,7 +321,7 @@
     flex: none;
     width: 3px;
     height: 16px;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
     background: var(--kc, var(--text-faint));
   }
 
@@ -371,7 +371,7 @@
     padding: 0 var(--space-4);
     overflow: hidden;
     border: 1px solid var(--border-soft);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
     background: var(--overlay-hover);
     color: var(--text);
     font: inherit;
@@ -417,7 +417,6 @@
   .pvLegendKind::before {
     width: 3px;
     height: 11px;
-    border-radius: 1px;
     background: var(--kc);
     content: "";
   }
@@ -446,7 +445,7 @@
   }
 
   .pvH1Text {
-    font-size: 17px;
+    font-size: var(--font-size-title);
     font-weight: 600;
   }
 

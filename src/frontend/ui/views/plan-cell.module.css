@@ -55,7 +55,7 @@
   }
 
   .cdTitle {
-    font-size: 17px;
+    font-size: var(--font-size-title);
     font-weight: 600;
   }
 
@@ -79,7 +79,6 @@
   .cdKind::before {
     width: 3px;
     height: 10px;
-    border-radius: 1px;
     background: var(--kc, var(--text-2));
     content: "";
   }
@@ -171,7 +170,7 @@
 
   .cdProse code {
     padding: 0 var(--space-2);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     background: var(--bg-2);
     font-family: var(--font-mono);
     font-size: var(--font-size-small);

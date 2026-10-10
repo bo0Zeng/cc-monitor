@@ -89,11 +89,11 @@ fn the_shape_of_one_launch_command_line() {
         printed(&["--cwd", "/p", "--model", "opus"]),
         format!("{nested}; cd '/p' && exec claude --model opus")
     );
-    // codex：换启动器 + **不清** claude 的嵌套标记 + cc-bus 身份配方
+    // codex：换启动器 + **不清** claude 的嵌套标记（只清各家的会话号变量，同起子进程原语）+ cc-bus 身份配方
     assert_eq!(
         printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
         format!(
-            "{} cd '/p' && exec codex --no-daemon",
+            "{} unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon",
             *super::super::BUS_ID_RECIPE
         )
     );
@@ -2153,17 +2153,19 @@ fn codex_runs_without_the_shared_daemon_and_without_an_account() {
     };
     let line = |a: &[&str]| render(&plan_of(a, &e, &t));
     let bus = &*super::super::BUS_ID_RECIPE;
+    // 会话号变量照样清（同起子进程原语，`nested_of`）：codex 没有嵌套标记，这一句只有它们。
+    let sid = crate::platform::shell::posix::unset(&crate::agents::self_sid_envs());
     assert_eq!(
         line(&["resume", "s1", "--ccm-agent", "codex", "--cwd", "/p"]),
-        format!("{bus} cd '/p' && exec codex --no-daemon resume s1")
+        format!("{bus} {sid}cd '/p' && exec codex --no-daemon resume s1")
     );
     assert_eq!(
         line(&["--cwd", "/p", "--ccm-agent", "codex", "--base"]),
-        format!("{bus} cd '/p' && exec codex --no-daemon")
+        format!("{bus} {sid}cd '/p' && exec codex --no-daemon")
     );
     assert_eq!(
         line(&["--no-daemon", "--cwd", "/p", "--ccm-agent", "codex"]),
-        format!("{bus} cd '/p' && exec codex --no-daemon")
+        format!("{bus} {sid}cd '/p' && exec codex --no-daemon")
     );
 }
 
@@ -2402,4 +2404,26 @@ fn the_container_path_hands_its_parent_inward_and_never_a_stale_one() {
         !with.contains("export "),
         "父被 export 进窗格的 shell 了（之后在那个窗格里敲的都会被算成它的孩子）：{with}"
     );
+}
+
+/// 直路要清掉的环境 ＝ 那一家的嵌套标记 ∪ 各家「我是哪个会话」的变量：没有嵌套标记的那一家（codex）照样清会话号变量，
+/// 打印出来的那一行与真跑那一趟（起子进程原语也摘它们）才一样；已在嵌套标记里的不重复。
+#[test]
+fn the_direct_path_clears_the_session_id_variables_even_without_nested_markers() {
+    let sid_vars = crate::agents::self_sid_envs();
+    assert!(!sid_vars.is_empty(), "没有登记会话号变量 —— 本条空转");
+    let bare = nested_of(&[]);
+    for k in &sid_vars {
+        assert!(
+            bare.iter().any(|v| v == k),
+            "没有嵌套标记的那一家漏了 {k}：{bare:?}"
+        );
+    }
+    let with = nested_of(&["X_NESTED", sid_vars[0]]);
+    assert_eq!(
+        with.iter().filter(|v| *v == sid_vars[0]).count(),
+        1,
+        "重复了：{with:?}"
+    );
+    assert_eq!(with[0], "X_NESTED");
 }
