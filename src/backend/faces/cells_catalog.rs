@@ -709,13 +709,13 @@ mod specimens {
     use super::{node_of, Specimen};
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
-        Answer, ApiReason, ChildRunTag, Pasted, PatchHunk, SessionActivity, Speaker, StepResult,
-        ToolCard, ToolStep, UserText,
+        Answer, ApiReason, ChildRunTag, McpStatus, Pasted, PatchHunk, SessionActivity, Speaker,
+        StepResult, ToolCard, ToolStep, UserText,
     };
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
-        Cost, LastRequest, LastSay, LimitFrom, Needs, NeedsKind, PendingCall, RetryOutcome,
-        RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
+        Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,
+        RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::history_query::IndexRow;
     use crate::stream::wire::{
@@ -998,6 +998,15 @@ mod specimens {
                         count: 1,
                         tone: crate::common::cells::Tone::Busy,
                     }),
+                    mcp: [McpStatus::NeedsLogin, McpStatus::Failed, McpStatus::Pending]
+                        .into_iter()
+                        .map(|status| McpTrouble {
+                            name: s("m"),
+                            status,
+                            detail: some("e"),
+                            at: some("t"),
+                        })
+                        .collect(),
                 };
                 node_of(&f)
             })

@@ -881,6 +881,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
+        "src/backend/agents/claudecode/mcp.rs",
+        "MAX_CACHE_BYTES",
+        "判 MCP 状态时读一个号家目录里的那份「要登录」缓存",
+        "降级+说清",
+    ),
+    (
         "src/backend/agents/claudecode/assets.rs",
         "MAX_PROJECT_MCP_BYTES",
         "资产目录扫描时读一份项目 `.mcp.json`",

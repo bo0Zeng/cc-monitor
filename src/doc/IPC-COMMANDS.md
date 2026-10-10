@@ -1864,6 +1864,7 @@ sid → 上次用哪个号起。
 | `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
+| `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
 | `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
@@ -2280,13 +2281,19 @@ skill 装记录的写口。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
-| `entries` | ← | `{scope, name, server, sourcePath}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `failed` | ← | 这台此刻活着的会话里那一家说它连不上 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 这台本地钟的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
+| `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 这台本地钟的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
+| `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
+| `mark` | ← | 小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了） |
 | `name` | ← | server 名 |
 | `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
 | `projectDir` | → | 可缺席 / `null` |
 | `scope` | ← | `user` · `local` · `project` |
+| `seenAt` | ← | `status` 是 `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null` |
 | `server` | ← | 那一条配置原样（未知字段不丢） |
 | `sourcePath` | ← | 读自哪一份文件 |
+| `status` | ← | 闭集：`needsLogin`（agent 最近一次连它时要登录、还在有效期内）· `disabled`（这个项目里停用了）· `unknown`（配置层判不出：不说连上了） |
 
 码：`bad_args` · `too_large`
 

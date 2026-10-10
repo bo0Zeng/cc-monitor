@@ -1721,6 +1721,67 @@ body.settings-window-mode .settings-panel {
     font-size: var(--font-size-mono);
     color: var(--text-2);
   }
+  /* MCP 那一格右上角的小标：黄 = 需登录 · 红 = 连不上（哪一种由那台后端定）。 */
+  .ext-dot-glyph {
+    position: relative;
+    display: inline-flex;
+  }
+  .ext-dot-mark {
+    position: absolute;
+    top: -3px;
+    right: -4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .ext-dot-mark.is-login {
+    background: var(--warn);
+  }
+  .ext-dot-mark.is-fail {
+    background: var(--error);
+  }
+  /* 抽屉里那台下面的 MCP 那一行。 */
+  .ext-mcp {
+    margin: 6px 0 0 24px;
+  }
+  .ext-mcp-said {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: var(--font-size-small);
+  }
+  .ext-mcp-pip {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .ext-mcp.is-login .ext-mcp-said {
+    color: var(--warn);
+  }
+  .ext-mcp.is-fail .ext-mcp-said {
+    color: var(--error);
+  }
+  .ext-mcp-acts {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .ext-mcp-raw {
+    margin: 6px 0 0;
+    padding: 8px 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-faint);
+    border-radius: var(--radius-m);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--text-2);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
   .ext-dot.is-same {
     color: var(--success);
   }

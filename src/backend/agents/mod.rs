@@ -423,6 +423,8 @@ pub(crate) struct RecordFace {
     pub(crate) background: Option<fn(&serde_json::Value) -> Vec<BgMark>>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
+    pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -1429,10 +1431,50 @@ pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
     REGISTRY.iter().filter_map(|a| a.footprint)
 }
 
-/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
+/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）＋ 判状态要看的那几个家。
 #[derive(Clone, Copy)]
 pub(crate) struct McpFace {
-    pub(crate) read: fn(Option<&Path>) -> McpRead,
+    pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
+    /// 在那一家的会话里登录 MCP 服务器要敲的那条命令（扩展页「去登录」· 待办那一件复制它）。
+    pub(crate) login_command: &'static str,
+}
+
+/// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
+/// 账号库是通用层的知识，由通用层收齐交给那一家；那一家只认自己家目录里的文件。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct McpLook {
+    pub homes: Vec<(Option<String>, PathBuf)>,
+    pub now_ms: u64,
+}
+
+/// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它；线上名即 serde 名，闭集）。
+/// 配置层（`mcp-read`）只说说得准的：停用（配置里写着）· 要登录（那一家最近一次连它时记下的、还在有效期内）· 其余 `Unknown`；
+/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 连不上 · 还在连。两处都不说「连上了」。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum McpStatus {
+    NeedsLogin,
+    Failed,
+    Pending,
+    Disabled,
+    #[default]
+    Unknown,
+}
+
+/// 一条记录里那一家说的各 MCP 服务器此刻的样子：三张表各一格；这一条没写的那一格 ⇒ `None`（沿用上一条说的）。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct McpSaid {
+    pub pending: Option<Vec<String>>,
+    pub needs_login: Option<Vec<String>>,
+    /// 连不上的：名字 · 那一家写的原话（没写 ⇒ `None`）。
+    pub failed: Option<Vec<(String, Option<String>)>>,
+}
+
+/// `kind` 那一家在这条记录里说的 MCP 样子。那一家不说 / 不是这种记录 ⇒ `None`。
+pub(crate) fn mcp_said_of(kind: &str, v: &serde_json::Value) -> Option<McpSaid> {
+    record_face(kind)
+        .and_then(|r| r.mcp_said)
+        .and_then(|f| f(v))
 }
 
 /// 一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
@@ -1450,6 +1492,11 @@ pub(crate) struct McpEntry {
     pub name: String,
     pub server: serde_json::Value,
     pub source: String,
+    pub status: McpStatus,
+    /// 要登录：在哪几个号里（账号库里的名字，排好序）；没设账号的那一份不出名字。别的状态恒空。
+    pub login_in: Vec<String>,
+    /// 要登录：最近一次看到是何时（epoch ms）；别的状态 `None`。
+    pub seen_ms: Option<u64>,
 }
 
 /// `kind` 那一家的 MCP 读面，读一遍。`None` = 那一家不认得 MCP。
@@ -1457,15 +1504,28 @@ pub(crate) fn mcp_read_among(
     registry: &[Adapter],
     kind: &str,
     project_dir: Option<&Path>,
+    look: &McpLook,
 ) -> Option<McpRead> {
     adapter_among(registry, kind)
         .and_then(|a| a.mcp)
-        .map(|f| (f.read)(project_dir))
+        .map(|f| (f.read)(project_dir, look))
+}
+
+/// `kind` 那一家登录 MCP 服务器的那条命令（[`McpFace::login_command`]）。那一家不认得 MCP ⇒ `None`。
+pub(crate) fn mcp_login_command(kind: &str) -> Option<&'static str> {
+    adapter_among(REGISTRY, kind)
+        .and_then(|a| a.mcp)
+        .map(|f| f.login_command)
+}
+
+/// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。
+pub(crate) fn home_of_kind(kind: &str) -> Option<PathBuf> {
+    adapter_among(REGISTRY, kind).and_then(|a| (a.home)())
 }
 
 /// [`mcp_read_among`] 对本机注册表 —— 帧命令 `mcp-read` 的读法入口。
-pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>) -> Option<McpRead> {
-    mcp_read_among(REGISTRY, kind, project_dir)
+pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>, look: &McpLook) -> Option<McpRead> {
+    mcp_read_among(REGISTRY, kind, project_dir, look)
 }
 
 /// 一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起

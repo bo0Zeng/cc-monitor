@@ -158,9 +158,13 @@ fn the_fast_path_never_changes_the_answer() {
     recs.push(result("g2"));
     recs.push(json!({"type": "attachment", "x": 1}));
     recs.push(handback("fp-1", true));
+    recs.push(mcp_delta(
+        json!({"failedMcpServers": [{"name": "m-f", "error": "e"}]}),
+    ));
     let text = jsonl(&recs);
     let fast = scan_all(&text);
     assert_eq!(fast.handed_back, ["fp-1"], "交回那一行没漏过快路");
+    assert_eq!(fast.mcp.len(), 1, "MCP 那一行没漏过快路");
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
@@ -952,6 +956,73 @@ fn every_permission_mode_value_passes_through_as_written() {
             jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
         assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
     }
+}
+
+/// 一条「延后加载的工具变了」附件（Claude Code 写的那一形；名字与原因都是占位）。只放给了的那几格。
+fn mcp_delta(fields: Value) -> Value {
+    let mut a = json!({"type": "deferred_tools_delta", "addedNames": [], "addedLines": [], "removedNames": [], "wireHiddenNames": [], "readdedNames": []});
+    for (k, v) in fields.as_object().unwrap() {
+        a[k] = v.clone();
+    }
+    json!({"type": "attachment", "attachment": a})
+}
+
+/// 这个会话的 MCP 有毛病的那几个：那一家最后一次说的为准，一格一格地换（这一条没写的那一格沿用上一条）；
+/// 写了空表 ⇒ 那一种清空。连不上的带原话。没列的不等于连上了 ⇒ 不出。
+/// 要求：用户 10-09 定「乙：从会话记录的 deferred_tools_delta 读出这个会话的 MCP 状态，failed 带原因，作为会话事实里的一格」。
+#[test]
+fn the_sessions_mcp_trouble_is_the_last_thing_said_per_list() {
+    use crate::agents::McpStatus;
+    let recs = vec![
+        mcp_delta(
+            json!({"pendingMcpServers": ["m-p"], "failedMcpServers": [{"name": "m-f", "error": "e-1"}]}),
+        ),
+        mcp_delta(json!({"pendingMcpServers": [], "needsAuthMcpServers": ["m-n2", "m-n1"]})),
+        assistant(vec![]),
+    ];
+    let got = scan_all(&jsonl(&recs)).mcp;
+    let t = |n: &str, s, d: Option<&str>| McpTrouble {
+        name: n.into(),
+        status: s,
+        detail: d.map(str::to_string),
+        at: None,
+    };
+    assert_eq!(
+        got,
+        vec![
+            t("m-f", McpStatus::Failed, Some("e-1")),
+            t("m-n1", McpStatus::NeedsLogin, None),
+            t("m-n2", McpStatus::NeedsLogin, None),
+        ]
+    );
+    let later = [recs, vec![mcp_delta(json!({"failedMcpServers": []}))]].concat();
+    assert_eq!(
+        scan_all(&jsonl(&later)).mcp,
+        vec![
+            t("m-n1", McpStatus::NeedsLogin, None),
+            t("m-n2", McpStatus::NeedsLogin, None),
+        ],
+        "清空连不上的那一种，要登录的沿用"
+    );
+}
+
+/// 只读 MCP 那一格的快扫（扩展页问「这台活会话里谁连不上」用）：与整份事实扫出来的 `mcp` 一格逐项相等。
+/// 要求：用户 10-09 认的 MCP 状态稿甲 1 / 甲 2「连不上的原因取这台活会话里最近一条」。
+#[test]
+fn the_mcp_only_scan_says_what_the_full_facts_say() {
+    let recs = vec![
+        mcp_delta(json!({"failedMcpServers": [{"name": "m-f", "error": "e-1"}]})),
+        assistant(vec![]),
+        mcp_delta(json!({"needsAuthMcpServers": ["m-n"]})),
+        mcp_delta(json!({"failedMcpServers": [{"name": "m-g", "error": "e-2"}]})),
+    ];
+    let text = jsonl(&recs);
+    let got = mcp_of(text.as_bytes()).unwrap();
+    assert_eq!(got, scan_all(&text).mcp);
+    assert_eq!(
+        got.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+        ["m-g", "m-n"]
+    );
 }
 
 /// 〔G2〕「需手动」带写好的字与语气：八种各一句（等批准 / 等回答 / 等批准（计划）/ 等放行 / 等批准（协作请求）/ 等确认 / 等选择 / 需手动）；语气恒 `need`。出口照抄。

@@ -501,7 +501,7 @@ export function defaultOps(): Record<string, OpHandler> {
           ? { text: line(fmtDur((Date.now() - first.sinceMs) / 1000)), clock: { text: line("{dur}"), from: first.sinceMs }, what, count: cmds.length, tone: "busy" }
           : { text: copyText("beSession.activity.backgroundWork"), clock: null, what: null, count: 0, tone: "busy" };
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, bgTasks: [], background };
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, bgTasks: [], background, mcp: [] };
     },
     // 主线外清单：假世界的会话都没有回退过。
     "history-branch": (_o, req, w) => ({ off: [], end: layout(sessionByPath(w, req.path)?.records ?? []).end }),

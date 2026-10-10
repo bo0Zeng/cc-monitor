@@ -645,7 +645,12 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         compact_request: None,
         local: None,
     };
-    let got = crate::agents::mcp_read_among(std::slice::from_ref(&adapter), AGENT_KIND, Some(&dir));
+    let got = crate::agents::mcp_read_among(
+        std::slice::from_ref(&adapter),
+        AGENT_KIND,
+        Some(&dir),
+        &crate::agents::McpLook::default(),
+    );
     let _ = std::fs::remove_dir_all(&dir);
     let got = got.expect("注册表里有 MCP 读面，通用层却没读它");
     assert_eq!(got.entries.len(), 1, "{got:?}");
@@ -661,7 +666,8 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
     assert!(crate::agents::mcp_read_among(
         std::slice::from_ref(&bare),
         AGENT_KIND,
-        Some(std::path::Path::new("/"))
+        Some(std::path::Path::new("/")),
+        &crate::agents::McpLook::default(),
     )
     .is_none());
 }
