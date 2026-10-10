@@ -204,7 +204,7 @@ export function openBatchMenu(
 }
 
 /**
- * 「轮换规则 ▸」：子菜单 跟随默认（默认那条的名字）· 各条规则 · 管理规则…（没有「本会话」：批量写本会话没有意义）。
+ * 「轮换规则 ▸」：子菜单 跟随默认（核心写好的那一句 `followText`）· 各条规则 · 管理规则…（没有「本会话」：批量写本会话没有意义）。
  * 账号按机器分开 ⇒ 只许同机批量，跨机灰着写为什么。选一项 ⇒ 这一批一次交那台，逐会话结局照那台说的进结果提示。
  */
 function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun, done: () => void): MenuItem | null {
@@ -217,7 +217,6 @@ function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun
   const rules = host.rulesOf(origin);
   if (rules === undefined) return null;
   if (rules === null) return { label, pending: true };
-  const def = rules.rules.find((r) => r.id === rules.defaultRule);
   const apply = (to: SessionRotationWrite, src: string): void => {
     void (async () => {
       const sids = tabs.map((t) => t.sessionId);
@@ -239,7 +238,7 @@ function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun
     })();
   };
   const submenu: MenuItem[] = [
-    { label: copyText("rot.src.followOf", { name: def?.name ?? "" }), onClick: () => apply("follow", copyText("rot.src.follow")) },
+    { label: rules.followText, onClick: () => apply("follow", copyText("rot.src.follow")) },
     ...rules.rules.map((r): MenuItem => ({ label: r.name, onClick: () => apply({ rule: r.id }, copyText("rot.src.rule", { name: r.name })) })),
     { label: "", divider: true },
     { label: copyText("rot.src.manage"), onClick: () => host.openRules?.(origin) },

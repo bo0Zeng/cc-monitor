@@ -1115,6 +1115,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `defaultRule` | ← | 默认规则的 id |
+| `followText` | ← | 「跟随默认」那一项写好的字：默认那条没起名（还是起始的名字）⇒「跟随默认」，起了名 ⇒「跟随默认（名字）」；新建会话面板 · 批量菜单照抄 |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |

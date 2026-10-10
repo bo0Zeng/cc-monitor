@@ -20,7 +20,7 @@ describe("号名 / 位名照核心那张表", () => {
     expect(slotLabel("7d")).toBe("七天");
   });
   it("规则表带来的表同样收", () => {
-    decodeRulesRead({ state: "absent", reason: null, detail: null, defaultRule: "d", rules: [], names: { accounts: { _: "甲" }, slots: { "5h": "乙", "7d": "丙" } } });
+    decodeRulesRead({ state: "absent", reason: null, detail: null, defaultRule: "d", followText: "f", rules: [], names: { accounts: { _: "甲" }, slots: { "5h": "乙", "7d": "丙" } } });
     expect(accountLabel("_")).toBe("甲");
     expect(slotLabel("7d")).toBe("丙");
   });
