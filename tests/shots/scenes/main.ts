@@ -204,9 +204,9 @@ const LONG_NOSPACE = "refactor_inventory_client_retry_timeout_config_loader_and_
 
 function longTitleWorld(): World {
   const w = defaultWorld();
-  w.sessions[0].records.push({ type: "ai-title", aiTitle: LONG_MIXED, sessionId: w.sessions[0].sid } as never);
-  w.sessions[1].records.push({ type: "ai-title", aiTitle: LONG_NOSPACE, sessionId: w.sessions[1].sid } as never);
-  w.sessions[2].records.push({ type: "ai-title", aiTitle: LONG_MIXED, sessionId: w.sessions[2].sid } as never);
+  w.sessions[0].records.push({ agent: "claude", id: "@title-long-0", t: "title", text: LONG_MIXED, by: "agent" });
+  w.sessions[1].records.push({ agent: "claude", id: "@title-long-1", t: "title", text: LONG_NOSPACE, by: "agent" });
+  w.sessions[2].records.push({ agent: "claude", id: "@title-long-2", t: "title", text: LONG_MIXED, by: "agent" });
   return w;
 }
 
@@ -290,15 +290,26 @@ export const MAIN_SCENES: Scene[] = [
   }, injectWorld),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
-    await scrollStream(".card-api-retry");
-    document.querySelector<HTMLElement>(".card-api-retry")!.scrollIntoView({ block: "start" });
+    // 重试细条在那一轮的过程里（完成的轮默认收起）⇒ 先点开那一轮的过程行，再滚到细条。
+    const retry = await waitFor(".stream.active .card-api-retry");
+    const turn = retry.dataset.procOf;
+    if (turn && retry.classList.contains("proc-hidden")) {
+      document.querySelector<HTMLElement>(`.stream.active .proc-line[data-turn="${CSS.escape(turn)}"]`)?.click();
+      await sleep(300);
+    }
+    await scrollStream(".stream.active .card-api-retry");
+    retry.scrollIntoView({ block: "start" });
+    // 顶上留一点上文（细条上面那一句），细条不贴着会话头。
+    let box: HTMLElement | null = retry.parentElement;
+    while (box && box.scrollHeight <= box.clientHeight + 4) box = box.parentElement;
+    if (box) box.scrollTop -= 80;
     await sleep(300);
   }),
   main("main-waiting", "主窗口 · 等授权的会话", "第二个 tab：会话在等用户点授权（黄灯）", async () => {
     await mainReady(ALL_TABS);
     await openTab(1);
   }),
-  main("main-needs-answer", "主窗口 · 需要你：等回答", "gpu-01 上的会话在等你回答：栏顶「需要你 2」、行尾「等回答」、钉条是那一问（远端在 tmux 里 ⇒ 在终端里打开）", async () => {
+  main("main-needs-answer", "主窗口 · 需手动：等回答", "gpu-01 上的会话在等你回答：栏顶「需手动 2」、行尾「等回答」、钉条是那一问（远端在 tmux 里 ⇒ 在终端里打开）", async () => {
     await mainReady(ALL_TABS);
     await openTab(5);
     await sleep(600);
@@ -327,7 +338,17 @@ export const MAIN_SCENES: Scene[] = [
     const w = defaultWorld();
     // 第一个会话此刻在跑一步 Bash（两分钟前开始、还没结果）。
     const at = new Date(Date.now() - 125_000).toISOString();
-    w.sessions[0].records.push({ type: "assistant", timestamp: at, timeText: hm(Date.now() - 125_000), message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }] } } as never);
+    w.sessions[0].records.push({
+      agent: "claude",
+      id: "a-run-step",
+      at,
+      timeText: hm(Date.now() - 125_000),
+      t: "reply",
+      blocks: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }],
+      autoReply: false,
+      endsTurn: false,
+      steps: { toolu_run: { tool: "Bash", arg: "pytest -q tests/test_inventory_client.py", known: true } },
+    });
     return w;
   }),
   main("main-step-awaiting", "主窗口 · 过程里那一步在等你批准", "在等批准的会话：过程里那一步琥珀点 ·「等你批准」· 右侧已等多久（后端 needs.call 指的那一步）", async () => {
@@ -338,7 +359,7 @@ export const MAIN_SCENES: Scene[] = [
     document.querySelector(".step-line[data-state=awaiting]")?.scrollIntoView({ block: "center" });
     await sleep(500);
   }),
-  main("main-needs-list", "主窗口 · 「需要你」菜单", "悬停栏顶「需要你 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
+  main("main-needs-list", "主窗口 · 「需手动」菜单", "悬停栏顶「需手动 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
     await mainReady(ALL_TABS);
     await sleep(600);
     document.querySelector<HTMLElement>(".tab-needs")!.dispatchEvent(new Event("mouseenter"));

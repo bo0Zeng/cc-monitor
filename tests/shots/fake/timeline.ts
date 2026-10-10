@@ -24,6 +24,8 @@ export interface FakePlanOpts {
   blocked?: boolean;
   /** quota-warm 在跑（泳道画 ○）。 */
   warm?: boolean;
+  /** team 是兜底：过去 work 被拒时先等 personal（不用兜底 team）；将来 personal 到 90% 用 team，personal 重置就换下兜底。 */
+  fallback?: boolean;
 }
 
 export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
@@ -53,11 +55,23 @@ export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
   const cut = (x: number): number => Math.min(x, planEnd);
   // 走过的：work 满了 ⇒ 换到 personal，之后一直在 personal。
   const sw = Math.max(-before + 0.5 * H, -4.7 * H);
-  const pastSegs = [
-    { ...span(-before, sw), account: "work", why: null },
-    { ...span(sw, 0), account: "personal", why: { full: { w: "five_hour" } } },
-  ];
-  const plan = o.blocked
+  const pastSegs = o.fallback
+    ? [
+        { ...span(-before, sw - 0.3 * H), account: "work", why: null },
+        { ...span(sw - 0.3 * H, sw), account: null, why: { wait: { account: "personal", instead: "team" } } },
+        { ...span(sw, 0), account: "personal", why: { full: { w: "five_hour" } } },
+      ]
+    : [
+        { ...span(-before, sw), account: "work", why: null },
+        { ...span(sw, 0), account: "personal", why: { full: { w: "five_hour" } } },
+      ];
+  const plan = o.fallback
+    ? [
+        { ...span(0, 1.6 * H), account: "personal", why: null },
+        { ...span(1.6 * H, 3 * H), account: "team", why: { threshold: { n: 90 } } },
+        { ...span(3 * H, cut(after)), account: "personal", why: "leaveFallback" },
+      ].filter((x) => x.to > x.from)
+    : o.blocked
     ? [
         { ...span(0, 0.63 * H), account: null, why: { held: { n: 90 } } },
         { ...span(0.63 * H, cut(after)), account: "team", why: "preempt" },

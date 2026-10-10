@@ -1,12 +1,12 @@
 /**
- * 「要你动手」各类的数排成几枚小标签（「文件与数据」顶上 · 每台段头 · 别名页页首指路条同一套）：
- * 要做（含过期）· 要你定 · 要装 · 可选（含要装 · 可选）· 已做；0 的不出。类与态都是那台后端给的，这里只数、只排。
+ * 「待办」各类的数排成几枚小标签（「文件与数据」顶上 · 每台段头 · 别名页页首指路条同一套）：
+ * 要做（含过期）· 待定 · 要装 · 可选（含要装 · 可选）· 已做；0 的不出。类与态都是那台后端给的，这里只数、只排。
  */
 import { tag } from "../kit/badge";
 import { copyText } from "../copy-table";
 import type { Chore } from "./data-reads";
 
-/** 各类的数：要做（含过期）· 要你定 · 要装 · 可选（含要装 · 可选）· 已做；0 的不出。 */
+/** 各类的数：要做（含过期）· 待定 · 要装 · 可选（含要装 · 可选）· 已做；0 的不出。 */
 export function countTags(list: readonly Chore[], only?: readonly ("must" | "decide" | "install" | "optional" | "done")[]): HTMLElement[] {
   const open = list.filter((c) => c.state !== "done" && c.state !== "declined");
   const n = {

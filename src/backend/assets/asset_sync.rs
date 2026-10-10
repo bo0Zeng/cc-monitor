@@ -14,10 +14,10 @@
 //! # capture ＋「只读一行 stdin」，不是长流
 //!
 //! - 不起远端的流模式：流模式一起来就往 tmux server 装全局 hook（载荷里烤着那个进程的 pid），一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
-//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：
+//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_args.rs::read_input` 收）：
 //!   命令行里只有后端路径与两个旗标，载荷不进命令行（不要求远端登录 shell 认 POSIX 单引号与管道）。
 //!   后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line` · `shell_quote_core::posix_quote`）：路径里没有 `'` / `\` 时 fish 也认。
-//! - 一趟的大小有上限：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒）⇒ 推的载荷按台切块，
+//! - 一趟的大小有上限：远端 CLI 面 stdin 的上限（`cli_args::MAX_CLI_STDIN`，1 MiB，超了拒）⇒ 推的载荷按台切块，
 //!   一块不超过 [`PUSH_MAX_BYTES`]；单独一台就超了 ⇒ 那一台不推、说出来。
 //!
 //! # 事件，不是定时（`no_timer_guard`）
@@ -26,6 +26,7 @@
 //! （对可达表里每一台各一趟）。一趟的期限归调用方。
 //! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
@@ -44,8 +45,9 @@ pub const PULL_FLAG: &str = "--assets-catalog";
 pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
-pub type Fold =
-    std::sync::Arc<dyn Fn(&Value) -> Result<Value, (&'static str, String)> + Send + Sync>;
+pub type Fold = std::sync::Arc<
+    dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail> + Send + Sync,
+>;
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command() -> String {
@@ -145,15 +147,17 @@ async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
     tokio::task::spawn_blocking(move || f(&args))
         .await
         .map_err(|e| {
-            copy_text(
-                "beAssetSync.foldBlocking.unfinished",
-                &[("e", &e.to_string())],
+            crate::common::said::Said::with_raw(
+                copy_text("beAssetSync.foldBlocking.unfinished", &[]),
+                &e,
             )
+            .into_note()
         })?
-        .map_err(|(c, m)| {
+        .map_err(|f| {
+            let c = f.code.clone();
             copy_text(
                 "beAssetSync.foldBlocking.failed",
-                &[("c", &c.to_string()), ("m", &m.to_string())],
+                &[("c", &c), ("m", &f.into_note())],
             )
         })
 }
@@ -180,10 +184,11 @@ async fn sync_one(
                         None,
                         false,
                         0,
-                        &[copy_text(
-                            "beAssetSync.syncOne.unparsable",
-                            &[("e", &e.to_string())],
-                        )],
+                        &[crate::common::said::Said::with_raw(
+                            copy_text("beAssetSync.syncOne.unparsable", &[]),
+                            &e,
+                        )
+                        .into_note()],
                     ),
                 )
             }

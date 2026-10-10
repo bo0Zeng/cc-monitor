@@ -842,11 +842,28 @@ fn note_detached_death(
         // 这条路上进程真的起来过 ⇒ 没有「起不来」那一支的两个字段。
         start_failure: None,
     };
-    shout_if_the_ledger_refused(crate::backend_policy::record_death(
-        crate::inbound_client::LOCAL_ORIGIN,
-        &ev,
-        &mut crate::backend_policy::MonitorLog,
-    ));
+    // 脱离那条路没有监护：它走了就没人再起它 ⇒ 本机连不上，等用户点［重新连接］。
+    after_death(
+        crate::backend_policy::record_death(
+            crate::inbound_client::LOCAL_ORIGIN,
+            &ev,
+            &mut crate::backend_policy::MonitorLog,
+        ),
+        crate::ui_error::Then::Down,
+    );
+}
+
+/// 记完一笔之后：落点拒收就再喊一声（[`shout_if_the_ledger_refused`]），再告诉用户（[`crate::ui_error::tell`]，
+/// 只记日志的那几格它自己不推）。
+fn after_death(rec: Option<crate::backend_policy::Recorded>, then: crate::ui_error::Then) {
+    let Some(r) = rec else { return };
+    let tell = crate::ui_error::UiError::LocalBackendDied {
+        death: r.death.clone(),
+        then,
+        ledger_line: r.line.clone(),
+    };
+    shout_if_the_ledger_refused(Some(r));
+    crate::ui_error::tell(tell);
 }
 
 /// 记完一笔之后**不许把 [`crate::backend_policy::Recorded`] 丢掉**。
@@ -1389,19 +1406,26 @@ fn run_resident_stop_within(
 fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseEvent) + Send + Sync>
 {
     std::sync::Arc::new(|e| {
-        let (code, attempt, status, witness) = match e {
+        let (code, attempt, status, witness, next) = match e {
             local_backend::SuperviseEvent::Exited {
                 code,
                 attempt,
                 status,
                 witness,
-            } => (code, attempt, status, witness),
+                next,
+            } => (code, attempt, status, witness, next),
             other => {
                 tracing::info!("本机后端: {other:?}");
                 return;
             }
         };
-        tracing::info!("本机后端: 第 {attempt} 次那一命结束（code={code:?}）");
+        tracing::info!("本机后端: 第 {attempt} 次那一命结束（code={code:?}，之后 {next:?}）");
+        // 叫停的（停 / 重启 / 更新本机那一下）：不是死亡，不上账、不告诉用户。
+        let then = match next {
+            local_backend::AfterExit::Stopped => return,
+            local_backend::AfterExit::Restart => crate::ui_error::Then::Restarted,
+            local_backend::AfterExit::GiveUp => crate::ui_error::Then::Down,
+        };
         // ① 两维证据：只认**观测到的**那一档。
         let (handshake, reader) = match witness {
             local_backend::StreamWitness::Observed { handshake, reader } => (handshake, reader),
@@ -1444,11 +1468,14 @@ fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseE
             // 这条路上进程真的起来过 ⇒ 没有「起不来」那一支的两个字段。
             start_failure: None,
         };
-        shout_if_the_ledger_refused(crate::backend_policy::record_death(
-            crate::inbound_client::LOCAL_ORIGIN,
-            &ev,
-            &mut crate::backend_policy::MonitorLog,
-        ));
+        after_death(
+            crate::backend_policy::record_death(
+                crate::inbound_client::LOCAL_ORIGIN,
+                &ev,
+                &mut crate::backend_policy::MonitorLog,
+            ),
+            then,
+        );
     })
 }
 

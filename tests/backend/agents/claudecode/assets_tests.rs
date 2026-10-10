@@ -198,3 +198,31 @@ fn the_catalog_sees_one_of_each_kind_at_each_level() {
     assert_eq!(got, want);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 装着的插件：`skills/<名>/`（含指向别处的链接）与插件缓存里每个版本各一个，名字取清单；没清单的目录不算。
+#[test]
+fn plugins_come_from_skills_and_the_plugin_cache_named_by_their_manifest() {
+    let root = temp_dir("plugins");
+    let manifest = |d: &Path, name: &str| {
+        std::fs::create_dir_all(d.join(".claude-plugin")).unwrap();
+        std::fs::write(
+            d.join(".claude-plugin/plugin.json"),
+            format!(r#"{{"name":"{name}"}}"#),
+        )
+        .unwrap();
+    };
+    let elsewhere = root.join("elsewhere/pb-src");
+    manifest(&elsewhere, "alpha-plugin");
+    std::fs::create_dir_all(root.join("skills")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&elsewhere, root.join("skills/alpha")).unwrap();
+    std::fs::create_dir_all(root.join("skills/plain-skill")).unwrap();
+    let cached = root.join("plugins/cache/market/beta/1.0.0");
+    manifest(&cached, "beta-plugin");
+    let got = plugins(&root);
+    let names: Vec<&str> = got.iter().map(|(_, n)| n.as_str()).collect();
+    #[cfg(unix)]
+    assert_eq!(names, vec!["alpha-plugin", "beta-plugin"]);
+    assert!(got.iter().any(|(d, n)| d == &cached && n == "beta-plugin"));
+    assert!(!got.iter().any(|(d, _)| d.ends_with("plain-skill")));
+}

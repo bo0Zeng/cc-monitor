@@ -126,6 +126,14 @@ fn sources(parent: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// 记录根底下（平铺一层）`<父>.lanes/<id>.<LANE_EXT>`：本假家的子运行文件名就是它的 id。
+fn find(root: &Path, child_id: &str) -> Option<PathBuf> {
+    std::fs::read_dir(root).ok()?.flatten().find_map(|e| {
+        let p = e.path().join(format!("{child_id}.{LANE_EXT}"));
+        (e.path().extension().is_some_and(|x| x == LANES_SUFFIX) && p.is_file()).then_some(p)
+    })
+}
+
 /// [`sources`] 的反方向：`<父记录去后缀>.lanes/<lane>.ndjson` ⇒ 父记录（与子运行记录同一个后缀）。
 fn owner(p: &Path) -> Option<PathBuf> {
     if !p.extension().is_some_and(|e| e == LANE_EXT) {
@@ -147,6 +155,7 @@ pub(crate) const FACES: RunFaces = RunFaces {
     children: Some(crate::agents::ChildFace {
         sources,
         owner,
+        find,
         hint,
         written,
     }),

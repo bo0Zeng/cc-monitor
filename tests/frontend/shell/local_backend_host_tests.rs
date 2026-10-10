@@ -4612,3 +4612,72 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         vec![("x.rs".to_string(), "sneaky".to_string())]
     );
 }
+
+/// 推给界面的出错事件不许是日志行：本机后端说过话之后以退出码 1 退出（崩溃那一格），
+/// 界面收到的每一条都要带文案键、那句话 = 照键与参数从文案表取出来的那一句，句子里没有日志行的形状
+/// （模块路径 `a::b` · `key=value` · 方括号账名）。原话只许待在复制详情里。
+#[cfg(unix)]
+#[test]
+fn a_local_backend_crash_reaches_the_ui_as_a_copy_keyed_sentence_not_a_log_line() {
+    use std::os::unix::process::ExitStatusExt;
+    let got = crate::ui_error::tests::during(|| {
+        note_detached_death(
+            std::process::ExitStatus::from_raw(1 << 8),
+            crate::backend_policy::Handshake::Spoke,
+            crate::backend_policy::ReaderEnd::CleanEof,
+        );
+    });
+    assert_eq!(got.len(), 1, "本机后端崩了，界面该恰好收到一条：{got:?}");
+    crate::ui_error::tests::assert_is_copy_not_log(&got[0]);
+}
+
+/// 叫停不是死亡：被监护的本机后端说过话之后由 `stop()` 结束（设置里停 / 重启 / 更新本机都走这一下），
+/// 账上不许多一笔「崩溃」。Windows 上 `kill()` 是 `TerminateProcess(…, 1)`，从前这一下被记成「崩溃 · 退出码 1」
+/// 并弹到界面上；这里在 Linux 上是信号 9，同一条路。
+#[cfg(unix)]
+#[test]
+fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
+    use std::sync::Arc;
+    let _guard = crate::inbound_client::local_origin_test_lock();
+    let hello = concat!(
+        r#"{"kind":"hello","v":1,"build_id":"stop-not-death","host_arch":"x86_64","#,
+        r#""claude_dir":"/dev/null","commands":["ping"]}"#
+    );
+    let base = local_health();
+    let h = local_backend::supervise_with_stdio(
+        std::path::PathBuf::from("sh"),
+        vec![
+            "-c".into(),
+            "printf '%s\\n' \"$CCM_STOP_HELLO\"; exec sleep 30".into(),
+        ],
+        vec![("CCM_STOP_HELLO".to_string(), hello.to_string())],
+        local_backend::CrashLimits::default(),
+        Arc::new(|| 0),
+        backend_supervise_events(),
+        Some(Arc::new(local_backend::local_stdio_consumer)),
+        crate::spawn_managed::local_backend_supervised(),
+    );
+    for _ in 0..200 {
+        if h.current_pid().is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(h.current_pid().is_some(), "4 秒内没起来");
+    // 等 hello 被读到（说过话那一维）再叫停。
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    h.stop();
+    for _ in 0..100 {
+        if h.current_pid().is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let after = local_health();
+    assert_eq!(
+        (after.crashed, after.refused, after.misread),
+        (base.crashed, base.refused, base.misread),
+        "叫停被记成了一次死亡（前 {base:?} / 后 {after:?}）"
+    );
+}

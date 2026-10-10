@@ -42,6 +42,8 @@ mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内
                   //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod ui_contract;
+// 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
+mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
@@ -341,7 +343,8 @@ fn session_side_effects(
         | Out::Unseen { .. }
         | Out::Status { .. }
         | Out::Listed { .. }
-        | Out::Runs { .. } => {}
+        | Out::Runs { .. }
+        | Out::Branch { .. } => {}
     }
 }
 
@@ -1172,6 +1175,10 @@ pub(crate) fn load_all_remote_configs() -> Vec<(stream_source::RemoteConfig, boo
         Ok(cfgs) => cfgs,
         Err(why) => {
             tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
+            ui_error::tell(ui_error::UiError::MachinesUnreadable {
+                path: cfg_path.display().to_string(),
+                why: why.to_string(),
+            });
             Vec::new()
         }
     }
@@ -1297,7 +1304,7 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<stream_source::
 /// v2.4.2 issue #2 抽出的最小 seam。今天它**只有一个**生产调用方：`stream_source::flush_lines`
 /// （远端流 · 本机流 · 旁路快照三路的行都从那里出去）。
 ///
-/// **这里不解释记录**：这一行在渲染模型里是什么（`message`）、进不进界面（有没有 `message`）、
+/// **这里不解释记录**：这一行在界面里是什么（`record`）、进不进界面（有没有 `record`）、
 /// 它自己的 `cwd`，都是那台后端给的成品（`agents/claudecode/`）；本函数只组载荷、记「连着的不可显示那一段」，`seq` 透传。
 ///
 /// `origin`：数据来源。载荷上的 `origin` 字段由它派生：本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字
@@ -1311,8 +1318,8 @@ pub(crate) fn batch_to_payloads(
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
         let skipped = runs.pending(&line.session_id, line.seq);
-        match line.message {
-            Some(message) => {
+        match line.record {
+            Some(record) => {
                 runs.saw(&line.session_id, line.seq, None);
                 payloads.push(ui_contract::JsonlLinePayload {
                     session_id: line.session_id,
@@ -1321,7 +1328,7 @@ pub(crate) fn batch_to_payloads(
                     // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
-                    message,
+                    record,
                     skipped_from: skipped,
                     rid: line.rid,
                 });

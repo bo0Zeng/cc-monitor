@@ -115,6 +115,8 @@ interface Live {
   onExpire?: () => void;
   /** 撤销提示条的那一步（`Ctrl+Z` 撤最新的一条）。 */
   undo?: () => void;
+  /** 这一步可撤的先后（与 [`silentUndo`] 比谁更新）。 */
+  undoAt?: number;
 }
 
 const live: Live[] = [];
@@ -132,6 +134,24 @@ function remember(r: ToastRecord): void {
   changed();
 }
 
+/** 右侧抽屉开着时它的宽（toast 让到它左边）；`null` ＝ 没开着。 */
+let drawerRight: number | null = null;
+
+/**
+ * 右侧抽屉开 / 关时报一声（`kit/drawer.ts`）：宽写在 toast 那一栏自己身上（`--kit-drawer-right`），之后才出来的那一栏也照写。
+ * 不写在根元素上：根上写一个自定义属性 ＝ 整页每个节点都要重算样式（WebKitGTK 上长会话开着时一下几百毫秒到一秒多）。
+ */
+export function setDrawerRight(px: number | null): void {
+  drawerRight = px;
+  const st = document.getElementById(STACK_ID);
+  if (st) applyDrawerRight(st);
+}
+
+function applyDrawerRight(st: HTMLElement): void {
+  if (drawerRight === null) st.style.removeProperty("--kit-drawer-right");
+  else st.style.setProperty("--kit-drawer-right", `${drawerRight}px`);
+}
+
 function stack(): HTMLElement {
   let st = document.getElementById(STACK_ID);
   if (!st) {
@@ -140,6 +160,7 @@ function stack(): HTMLElement {
     st.className = s.toastStack;
     st.setAttribute("role", "region");
     st.setAttribute("aria-label", copyText("kit.toast.region"));
+    applyDrawerRight(st);
     document.body.appendChild(st);
   }
   return st;
@@ -369,19 +390,41 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
 export function undoToast(title: string, undo: () => void, commit: () => void): () => void {
   const dismiss = toast(title, "", { level: "success", action: { label: copyText("kit.toast.undo"), run: undo }, onExpire: commit });
   const t = live[live.length - 1];
-  if (t) t.undo = undo;
+  if (t) {
+    t.undo = undo;
+    t.undoAt = ++undoSeq;
+  }
   return dismiss;
 }
 
-/** `Ctrl+Z`：撤最新那一条还开着的撤销提示（收起它、不再提交）。没有 ⇒ `false`。 */
+let undoSeq = 0;
+/** 不出提示条、只给 `Ctrl+Z` 的那一步（同样 8 秒；下一步不出条的进来就顶掉它）。 */
+let quiet: { undo: () => void; at: number; timer: ReturnType<typeof setTimeout> } | null = null;
+
+/**
+ * 不值得出提示条的小动作（只排了顺序）：不出 toast，`Ctrl+Z` 在 8 秒内照样撤得回（规范 I11 · I14）。
+ */
+export function silentUndo(undo: () => void): void {
+  if (quiet) clearTimeout(quiet.timer);
+  // 调度：一次性 —— 8 秒后这一步不再能撤；下一步不出条的进来先清掉
+  const timer = setTimeout(() => (quiet = null), TOAST_ACTION_MS);
+  quiet = { undo, at: ++undoSeq, timer };
+}
+
+/** `Ctrl+Z`：撤最新那一步（还开着的撤销提示，或 [`silentUndo`] 记下的那一步，谁新撤谁）。没有 ⇒ `false`。 */
 export function undoLatest(): boolean {
-  for (let i = live.length - 1; i >= 0; i--) {
-    const t = live[i];
-    if (!t.undo) continue;
-    const undo = t.undo;
-    drop(t, false);
-    undo();
+  let t: Live | null = null;
+  for (let i = live.length - 1; i >= 0 && t === null; i--) if (live[i].undo) t = live[i];
+  if (quiet && (t === null || quiet.at > (t.undoAt ?? 0))) {
+    const q = quiet;
+    clearTimeout(q.timer);
+    quiet = null;
+    q.undo();
     return true;
   }
-  return false;
+  if (t === null) return false;
+  const undo = t.undo!;
+  drop(t, false);
+  undo();
+  return true;
 }

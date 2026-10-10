@@ -1,14 +1,14 @@
 /**
- * 一条记录的渲染管线（renderMessage → markCardUuid → 喂分支折叠 → 工具组合并 → 挂进 DOM），
- * 实时标签页 · 会话查看器 · 子运行卡三处共用，差异经 sink 注入（append / insertBefore · 用不用 BranchFolder · 触不触发 userActive）。
+ * 一条记录的渲染管线（renderMessage → markCardId → 工具组合并 → 挂进 DOM），
+ * 实时标签页 · 会话查看器 · 子运行卡三处共用，差异经 sink 注入（append / insertBefore · 触不触发 userActive）。
+ * 主线外（回退掉的）那几条不在这里判：那台后端给清单（实时帧 `branch` · 冷读 `history-branch`），`BranchFolder` 按卡上的 `data-id` 折。
  *
  * 工具组合并按 timeline 的邻居判：renderMessage 交回 `tool-group` 时 `timeline.peekPrev(seq)` 看左邻居，
- * 是工具组 ⇒ 单元并进它的 body，不建新 entry；否则建组、记 uuid、插进 timeline。
+ * 是工具组 ⇒ 单元并进它的 body，不建新 entry；否则建组、记 id、插进 timeline。
  * 合并方向只看 timeline 已排好的序、与到达顺序无关（早 seq 的后到也先按 seq 找到位置再判邻居）。
  */
 
-import { renderMessage, buildToolGroup, addToToolGroup, type JsonlRecord, type RenderContext } from "./cards";
-import { extractBranchRecord, type BranchRecord } from "./branching";
+import { renderMessage, buildToolGroup, addToToolGroup, type LineRecord, type RenderContext } from "./cards";
 import { observeForEnhance } from "./render";
 import { applyIntrinsicSize } from "./height-estimate";
 import { saidByHuman } from "./speaker";
@@ -20,27 +20,19 @@ import type { JsonlLinePayload } from "./events";
 /**
  * caller（TabManager / SessionViewer / Subagent）提供的差异点。
  *
- * 必填：timeline + branch record 处理。
+ * 必填：timeline。
  * 可选：title 路由、user-active 触发、lazy hljs 注册。
  */
 export interface StreamSink {
   /** 按 seq 排序插入用 */
   timeline: RecordTimeline;
   /**
-   * 接到 branch record（user/assistant/system/attachment 链节点）时调。
-   * - TabManager：`tab.branchFolder.recordAdded(rec)` 实时算 mainBranch
-   * - SessionViewer：push 进数组，全部 load 完再 setRecordsAndRebuild 一次
-   */
-  onBranchRecord(rec: BranchRecord): void;
-  /** issue #36：queue-operation enqueue 记录（content）——折叠豁免集合。 */
-  onQueueOperation?(content: string): void;
-  /**
-   * 收到 ai-title / custom-title 时调（TabManager 用）。
+   * 收到标题记录（`t: "title"`）时调（TabManager 用）。
    * SessionViewer / Subagent 不实现 = 标题不更新。
    */
   onTitleUpdate?: (title: string) => void;
   /**
-   * payload 是真用户输入（type=user + 渲染成 card）时调，传入 sessionId。
+   * payload 是真用户输入（人说的 said / queued + 渲染成 card）时调，传入 sessionId。
    * 仅 TabManager 用（触发自动切 Tab 到对应 session）。
    */
   onRealUserInput?: (sessionId: string) => void;
@@ -50,101 +42,33 @@ export interface StreamSink {
    */
   enhanceRoot?: HTMLElement | null;
   /**
-   * 一张普通卡（user / assistant / system）建好、记过 uuid 之后调。只有会话查看器实现：给卡挂「从这一轮建分支」。
+   * 一张普通卡建好、记过 id 之后调。只有会话查看器实现：给卡挂「从这一轮建分支」。
    * 工具组卡不触发（不在会话轮次上分支）。
    */
-  onCardRendered?: (element: HTMLElement, message: JsonlRecord) => void;
+  onCardRendered?: (element: HTMLElement, record: LineRecord) => void;
 }
 
 /**
  * 两段式：
- * - routeMetaAndBranch：元数据路由 ＋ 喂分支折叠 —— 收纳（不建卡）与渲染两条路共用这一份；
+ * - routeMeta：元数据路由 —— 收纳（不建卡）与渲染两条路共用这一份；
  * - renderContentRecord：纯渲染（建卡 · 工具组合并 · 挂进 DOM）；
  * - renderStreamRecord：两段串起来。
  */
 
 /** meta 路由要的最小 sink 面：查看器的收集段没有 timeline 也能用（StreamSink 结构兼容）。 */
-export type MetaSink = Pick<
-  StreamSink,
-  "onTitleUpdate" | "onQueueOperation" | "onBranchRecord"
->;
+export type MetaSink = Pick<StreamSink, "onTitleUpdate">;
 
 /**
- * 元数据路由 + branch record 喂送。返回:
- * - "consumed":ai-title / custom-title / queue-operation——无卡可渲,到此为止;
- * - "content":其余记录(含 render 后会 skip 的 attachment/空 user——它们仍占链节点,
- *   branch record 已在本函数喂送,issue #8 链完整性)。
+ * 元数据路由。返回：
+ * - "consumed"：标题记录 —— 无卡可渲，到此为止；
+ * - "content"：其余记录（含 render 后会 skip 的那几种）。
  */
-/** content → 用户打字的时刻（`enqueue` 那一刻）。有界：只留最近 200 条（价值只在几十秒内配上）；丢了退回用 `remove` 的时刻。 */
-const QUEUED_AT = new Map<string, { at: string; time?: string }>();
-const QUEUED_AT_CAP = 200;
-
-function rememberQueuedAt(content: string, at: string | null, time: string | undefined): void {
-  if (!at) return;
-  // 后写覆盖先写：同一句话重发时，要的是**最近一次**打字时刻。
-  QUEUED_AT.delete(content);
-  QUEUED_AT.set(content, { at, time });
-  while (QUEUED_AT.size > QUEUED_AT_CAP) {
-    const oldest = QUEUED_AT.keys().next().value;
-    if (oldest === undefined) break;
-    QUEUED_AT.delete(oldest);
-  }
-}
-
-function queuedAtOf(content: string): { at: string; time?: string } | null {
-  return QUEUED_AT.get(content) ?? null;
-}
-
-export function routeMetaAndBranch(
-  payload: JsonlLinePayload,
-  sink: MetaSink,
-): "consumed" | "content" {
-  const message = payload.message;
-
-  // 1. ai-title / custom-title 路由
-  if (message.type === "ai-title") {
-    sink.onTitleUpdate?.(message.aiTitle);
+export function routeMeta(payload: JsonlLinePayload, sink: MetaSink): "consumed" | "content" {
+  const record = payload.record;
+  if (record.t === "title") {
+    sink.onTitleUpdate?.(record.text);
     return "consumed";
   }
-  if (message.type === "custom-title") {
-    sink.onTitleUpdate?.(message.customTitle);
-    return "consumed";
-  }
-
-  // 1.5 queue-operation 路由，两件事：
-  // ① `enqueue` 的 content 喂折叠豁免集合（排队消息不被当成「ESC 弃稿」折掉），不建卡；
-  // ② `remove` 的 content 要建卡：被插进正在跑的那一轮时 CC 不写 `user` 记录，这是那句话唯一的存在。
-  //    `dequeue` 不建：它独立成一轮，随后就有 `user` 记录，再建就显示两遍。
-  if (message.type === "queue-operation") {
-    if (message.operation === "enqueue" && message.content) {
-      sink.onQueueOperation?.(message.content);
-      // 记下打字时刻：`remove` 的时间戳是被插进那一轮的时刻（可能晚一两分钟），打字时刻在 `enqueue` 这条上。
-      // 按 content 记，`remove` 时取回；同一句话重发时后写覆盖先写，取到最近一次打字时刻。
-      rememberQueuedAt(message.content, message.timestamp, message.timeText);
-      return "consumed";
-    }
-    // 只有人说的那一支建卡：后台通知 · agent 来话这些也会排队、也会被插进正在跑的那一轮，谁说的由后端判好（`userText`）。
-    if (message.operation === "remove" && message.content && message.userText?.speaker.kind === "human" && message.userText.text) {
-      // 把打字时刻（连同它的钟面 `timeText`）贴回记录上 —— 下游 `renderMessage` 认这两格。
-      // 取不到（enqueue 那条没到 / 已被挤出）⇒ 原样用 `remove` 的时刻，**不空着**：
-      // 一个晚 25 秒的时间仍然比没有时间有用，而卡上「排队时发出」那句已经在提示读者。
-      const typedAt = queuedAtOf(message.content);
-      if (typedAt) {
-        message.timestamp = typedAt.at;
-        message.timeText = typedAt.time;
-      }
-      // ⚠ **不喂 branch**：它没有 `uuid`/`parentUuid`，喂进去等于给分叉折叠算法
-      // 一个没有父子关系的节点（issue #8 的链完整性）。⇒ 建卡但不进链，
-      // 由 `queued_user_message_never_enters_the_branch_chain` 钉住。
-      return "content";
-    }
-    return "consumed";
-  }
-
-  // 2. branch record 提取（user/assistant/system/attachment 都喂；不区分 kind）
-  //    issue #8：链完整性 — 即使 render 会 skip 也要 feed（attachment / 空 user 占链节点）
-  const branchRec = extractBranchRecord(message);
-  if (branchRec) sink.onBranchRecord(branchRec);
   return "content";
 }
 
@@ -156,7 +80,7 @@ export function renderStreamRecord(
   ctx: RenderContext,
   sink: StreamSink,
 ): void {
-  if (routeMetaAndBranch(payload, sink) === "consumed") return;
+  if (routeMeta(payload, sink) === "consumed") return;
   renderContentRecord(payload, ctx, sink);
 }
 
@@ -167,22 +91,22 @@ export function renderStreamRecord(
 // |---|---|
 // | `render`   | `renderMessage()`（O(len) 的活都在这里） |
 // | `merge`    | 工具组邻居判定 ＋ `addToToolGroup` ＋ `buildToolGroup` |
-// | `estimate` | `markCardUuid` ＋ `onCardRendered` ＋ `applyIntrinsicSize` |
+// | `estimate` | `markCardId` ＋ `onCardRendered` ＋ `applyIntrinsicSize` |
 // | `mount`    | `timeline.insert` ＋ `observeForEnhance` |
 //
 // `total` 是入口出口真夹的，`total − Σ四段` 是分派开销与调用方回调，不摊进任何一段。
-// 默认关：分桶要的字节数只能 `JSON.stringify(message)` 现算（本身就是 O(len)）；探针 `null` 时热路径只多一次布尔判断。
+// 默认关：分桶要的字节数只能 `JSON.stringify(record)` 现算（本身就是 O(len)）；探针 `null` 时热路径只多一次布尔判断。
 // 开了之后字节数、卡型（`card`：第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard` 同口径）、
 // 物化进 DOM 的字符数（`domChars`）都在总时刻取完之后才算，不污染分段读数。
 // ───────────────────────────────────────────────────────────────────────────
 
 /** 秤 1 的一条样本。时间单位 ms（`performance.now()` 的差）。 */
 export interface RenderCostSample {
-  /** `JSON.stringify(message)` 的 UTF-8 字节数 —— 分桶用的那根轴 */
+  /** `JSON.stringify(record)` 的 UTF-8 字节数 —— 分桶用的那根轴 */
   bytes: number;
   /**
    * 走了哪条分支。**`skip` 也留**：那是"白跑一趟 `renderMessage` 什么也没建"的成本，
-   * 从账上抹掉它，长尾里的 attachment/空 user 就成了免费的。
+   * 从账上抹掉它，长尾里不建卡的那几种就成了免费的。
    */
   branch: "skip" | "card" | "tool-group" | "tool-group-merged";
   /** 落进了哪种卡（第一个 `card-*` 类名；skip 记 `"skip"`）—— 成本轴 */
@@ -193,7 +117,7 @@ export interface RenderCostSample {
   render: number;
   /** ② tool-group 合并 / 新建外壳 */
   merge: number;
-  /** ③ 估高（markCardUuid + onCardRendered + applyIntrinsicSize） */
+  /** ③ 估高（markCardId + onCardRendered + applyIntrinsicSize） */
   estimate: number;
   /** ④ DOM 挂载（timeline.insert + observeForEnhance） */
   mount: number;
@@ -239,13 +163,12 @@ function pushCostSample(ring: RenderCostSample[], s: RenderCostSample): void {
 }
 
 /**
- * 记录字节数（口径 = 原始 jsonl 行：后端解析时多填的 `userText` 成品不算）。
+ * 记录字节数（口径 = 线上那一条通用记录的 JSON）。
  * ⚠ 调用点必须在**总时刻取完之后**，否则它自己的 O(len) 会进读数。
  */
-function recordBytes(message: JsonlRecord): number {
+function recordBytes(record: LineRecord): number {
   try {
-    const raw = message.type === "user" || message.type === "queue-operation" ? { ...message, userText: undefined } : message;
-    return new TextEncoder().encode(JSON.stringify(raw)).length;
+    return new TextEncoder().encode(JSON.stringify(record)).length;
   } catch {
     // 循环引用之类 —— 不让仪表把渲染搞崩，记 0 让它落进最小桶并在报表里显形
     return 0;
@@ -266,7 +189,7 @@ function domCharsOf(els: readonly Element[]): number {
 
 /**
  * 纯渲染段:建卡 / tool-group 后处理合并 / DOM 挂载 / userActive。
- * 前置:routeMetaAndBranch 已对该 payload 返回 "content"(meta 已消费、branch 已喂)。
+ * 前置:routeMeta 已对该 payload 返回 "content"(meta 已消费)。
  *
  * 秤 1 的仪表夹在本函数的入口与每一条 `return` 之前（见上方那段）。
  * **仪表不改渲染行为**：探针关着时每处只多一次 `probe ?` 布尔判断，
@@ -280,7 +203,7 @@ export function renderContentRecord(
 ): void {
   const probe = costRing;
   const t0 = probe ? performance.now() : 0;
-  const message = payload.message;
+  const message = payload.record;
 
   // 3. 渲染
   // 建卡计数（与收纳计数对照，emitPerfSummary 落盘；jsdom 单测没有 main.ts，防 undefined）
@@ -293,10 +216,10 @@ export function renderContentRecord(
     case "skip": {
       // 系统注入（「谁说的」稿 A）：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
       // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
-      const injected = message.type === "user" && message.userText.speaker.kind === "system" ? message.userText.speaker.body : undefined;
-      if (message.type === "user" && typeof injected === "string" && injected !== "") {
+      const injected = message.t === "said" && message.who.speaker.kind === "system" ? message.who.speaker.body : undefined;
+      if (typeof injected === "string" && injected !== "") {
         const strip = buildInjectedLine(injected, message.timeText ?? "");
-        markCardUuid(strip, message);
+        markCardId(strip, message);
         sink.timeline.insert({ seq: payload.seq, element: strip, kind: "aside", toolGroup: null });
       }
       if (probe) {
@@ -333,8 +256,8 @@ export function renderContentRecord(
           return;
         }
       }
-      // 普通卡：直接 markCardUuid + timeline.insert
-      markCardUuid(result.element, message);
+      // 普通卡：直接 markCardId + timeline.insert
+      markCardId(result.element, message);
       sink.onCardRendered?.(result.element, message); // 查看器挂分支按钮
       applyIntrinsicSize(result.element); // content-visibility 的估高初值
       const tEstimate = probe ? performance.now() : 0;
@@ -349,7 +272,7 @@ export function renderContentRecord(
 
       // 真用户输入触发回调（让 TabManager 自动切 Tab）。排队消息也算：用户刚插了话，多半正等着看回应。
       // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
-      if ((message.type === "user" || message.type === "queue-operation") && saidByHuman(message.userText?.speaker.kind ?? "")) {
+      if ((message.t === "said" || message.t === "queued") && saidByHuman(message.who.speaker.kind)) {
         sink.onRealUserInput?.(payload.session_id);
       }
       if (probe) {
@@ -402,8 +325,8 @@ export function renderContentRecord(
       const group = buildToolGroup(result.time);
       addToToolGroup(group, result.units);
       const tMerge = probe ? performance.now() : 0;
-      // tool-group root 也写 data-uuid（首条贡献 uuid）让 BranchFolder 把它当卡识别
-      markCardUuid(group.root, message);
+      // tool-group root 也写 data-id（首条贡献 id）让 BranchFolder 把它当卡识别
+      markCardId(group.root, message);
       applyIntrinsicSize(group.root); // 折叠组 = summary 常数
       const tEstimate = probe ? performance.now() : 0;
       sink.timeline.insert({
@@ -435,41 +358,31 @@ export function renderContentRecord(
 
 /**
  * **落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
- * tool_result 被注入进它那个 tool_use 的单元里），就在它真正落下的那一块上记 `data-member-uuid`，
+ * 工具结果被注入进它那个工具调用的单元里），就在它真正落下的那一块上记 `data-member-id`，
  * 会话内查找 / 大纲命中它时 `revealCard` 找得到。
- * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-uuid`）；
- * - user 记录里的 tool_result 块：注入到了哪个 tool_use 单元的结果区块，就记在那个区块上。
- * 不用 `data-uuid`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
+ * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-id`）；
+ * - said 记录里的工具结果块：注入到了哪个工具调用单元的结果区块，就记在那个区块上。
+ * 不用 `data-id`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
  * 后者的产物是秤 2 金标准的 DOM 指纹，落点是管线的事。
  */
-function markMemberUuids(message: JsonlRecord, ctx: RenderContext, result: ReturnType<typeof renderMessage>): void {
-  const uuid = (message as { uuid?: unknown }).uuid;
-  if (typeof uuid !== "string" || uuid === "") return;
+function markMemberUuids(record: LineRecord, ctx: RenderContext, result: ReturnType<typeof renderMessage>): void {
+  const id = record.id;
   if (result.kind === "tool-group") {
-    for (const u of result.units) if (!u.dataset.memberUuid) u.dataset.memberUuid = uuid;
+    for (const u of result.units) if (!u.dataset.memberId) u.dataset.memberId = id;
   }
-  if (message.type !== "user") return;
-  const content = (message.message as { content?: unknown }).content;
-  if (!Array.isArray(content)) return;
-  for (const b of content) {
-    const id = (b as { type?: unknown; tool_use_id?: unknown }).tool_use_id;
-    if ((b as { type?: unknown }).type !== "tool_result" || typeof id !== "string") continue;
-    const inline = ctx.toolUseElements.get(id)?.querySelector<HTMLElement>(".block-tool-result-inline");
-    if (inline) inline.dataset.memberUuid = uuid;
+  if (record.t !== "said") return;
+  for (const b of record.blocks) {
+    if (b.type !== "tool_result") continue;
+    const inline = ctx.toolUseElements.get(b.for)?.querySelector<HTMLElement>(".block-tool-result-inline");
+    if (inline) inline.dataset.memberId = id;
   }
 }
 
 /**
- * 给卡的 root 写 data-uuid（＋ data-parent-uuid）：BranchFolder 靠它定位与判主线。
- * system 卡（api_error 重试细条）也要写：它在 jsonl 链上，不写会把夹着它的 ESC 折叠段劈成两段。
+ * 给卡的 root 写 data-id（记录的 `id`）：BranchFolder 按它认主线外清单里的那几条，轮次 / 跳转 / 查找按它找卡。
+ * 重试细条也要写：回退掉的那一段里夹着它时，不写会把折叠段劈成两段。排队那一句不写（它不在哪一轮的链上）。
  */
-function markCardUuid(el: HTMLElement, rec: JsonlRecord): void {
-  if (rec.type !== "user" && rec.type !== "assistant" && rec.type !== "system") {
-    return;
-  }
-  if (!rec.uuid) return; // system 的 uuid 是 Option，缺失就不 mark
-  el.setAttribute("data-uuid", rec.uuid);
-  if (rec.parentUuid) {
-    el.setAttribute("data-parent-uuid", rec.parentUuid);
-  }
+export function markCardId(el: HTMLElement, rec: LineRecord): void {
+  if (rec.t !== "said" && rec.t !== "reply" && rec.t !== "retry") return;
+  el.setAttribute("data-id", rec.id);
 }

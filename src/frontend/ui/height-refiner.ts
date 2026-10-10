@@ -7,7 +7,7 @@
  * 零定时器：由宿主在滚动 / 骨架接上之后调。
  */
 import { refineItemOf, type RefineItem } from "./height-estimate";
-import type { JsonlRecord } from "./generated/JsonlRecord";
+import type { LineRecord } from "./generated/LineRecord";
 import type { SkeletonView } from "./skeleton-view";
 
 /** 一批交出去、按同序回高（排不出的那一件回 `null`，留第一级）。 */
@@ -57,7 +57,7 @@ export class HeightRefiner {
    * 这几行精算、换进账本。不值得精算的（`refineItemOf` 回 `null`）与排不出的留第一级。
    * 算的途中列宽变了（账本 `relayout` 过）⇒ 回来的高是旧列宽下的，整批丢掉、回 `false`（调用方让这几行以后再问）。
    */
-  async refine(view: SkeletonView, rows: ReadonlyArray<{ seq: number; rec: JsonlRecord }>): Promise<boolean> {
+  async refine(view: SkeletonView, rows: ReadonlyArray<{ seq: number; rec: LineRecord }>): Promise<boolean> {
     if (!this.measure) return true;
     const colW = view.ledger.columnWidth;
     const work: Array<[number, RefineItem]> = [];

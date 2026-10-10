@@ -7,7 +7,7 @@ import type { ActionId } from "../../../../src/frontend/ui/keybindings/actions";
 
 let d: KeybindingDispatcher;
 let fired: string[];
-const ids: ActionId[] = ["panel.toggle-tasks", "app.open-command-bar", "app.undo", "session.to-bottom", "tab.context-menu", "session.prev-turn"];
+const ids: ActionId[] = ["panel.toggle-tasks", "app.open-command-bar", "app.undo", "session.to-bottom", "tab.context-menu", "session.prev-turn", "tabBar.move-up", "tabBar.rename-group", "tabBar.focus-cycle"];
 
 function at(where: "body" | "input" | "tabs" | "status" | "stream"): void {
   const el = document.getElementById(`w-${where}`);
@@ -76,13 +76,13 @@ describe("快捷键 · 作用范围", () => {
     expect(fired).toEqual(["app.undo", "app.undo"]);
   });
 
-  it("🔴 主区那几个（End · Alt+↑）：焦点在标签页栏 / 状态栏上不放行", () => {
+  it("🔴 主区那几个（End · Alt+↑）：焦点在标签页栏 / 状态栏上不放行（栏里的 Alt+↑ 归栏）", () => {
     for (const w of ["stream", "tabs", "status", "input"] as const) {
       at(w);
       press("End");
       press("ArrowUp", { altKey: true });
     }
-    expect(fired).toEqual(["session.to-bottom", "session.prev-turn"]);
+    expect(fired).toEqual(["session.to-bottom", "session.prev-turn", "tabBar.move-up"]);
   });
 
   it("🔴 右键菜单：Shift+F10 与菜单键都开；主区或标签页栏放行，输入框里不放行", () => {
@@ -92,6 +92,51 @@ describe("快捷键 · 作用范围", () => {
     at("input");
     press("ContextMenu");
     expect(fired).toEqual(["tab.context-menu", "tab.context-menu"]);
+  });
+});
+
+// 一个键可以分给作用范围不相交的几个动作：Alt+↑ 在主区是上一轮、在标签页栏里是往上挪一格；按下时按焦点在哪取第一个放行的。
+describe("快捷键 · 一个键分给几个作用范围", () => {
+  it("🔴 Alt+↑：焦点在栏里 ⇒ 往上挪；在主区 ⇒ 上一轮；在状态栏 / 输入框 ⇒ 都不", () => {
+    for (const w of ["tabs", "stream", "body", "status", "input"] as const) {
+      at(w);
+      press("ArrowUp", { altKey: true });
+    }
+    expect(fired).toEqual(["tabBar.move-up", "session.prev-turn", "session.prev-turn"]);
+  });
+
+  it("🔴 「栏」那一档只在焦点在标签页栏里放行（F2 改分组名）", () => {
+    for (const w of ["tabs", "stream", "body", "status", "input"] as const) {
+      at(w);
+      press("F2");
+    }
+    expect(fired).toEqual(["tabBar.rename-group"]);
+  });
+
+  it("🔴 主区那一条改了键，栏那一条照旧（不连带）", () => {
+    d.setOverride("session.prev-turn", "Ctrl+ArrowUp");
+    at("tabs");
+    press("ArrowUp", { altKey: true });
+    at("stream");
+    press("ArrowUp", { altKey: true });
+    press("ArrowUp", { ctrlKey: true });
+    expect(fired).toEqual(["tabBar.move-up", "session.prev-turn"]);
+  });
+
+  it("🔴 谁占着这个键：只算作用范围相交的（编辑器的撞键确认据此）", () => {
+    expect(d.whoOwns("Alt+ArrowUp", "bar")).toBe("tabBar.move-up");
+    expect(d.whoOwns("Alt+ArrowUp", "main")).toBe("session.prev-turn");
+    expect(d.whoOwns("Alt+ArrowUp", "idle"), "「没有输入焦点时」与两边都相交").not.toBeNull();
+    expect(d.whoOwns("F2", "main"), "F2 只在栏里").toBeNull();
+    expect(d.whoOwns("F2", "nav")).toBe("tabBar.rename-group");
+  });
+
+  it("🔴 F6：主区 ↔ 栏轮转那一键随时放行（输入框里也能跳出来）", () => {
+    for (const w of ["tabs", "stream", "input"] as const) {
+      at(w);
+      press("F6");
+    }
+    expect(fired).toEqual(["tabBar.focus-cycle", "tabBar.focus-cycle", "tabBar.focus-cycle"]);
   });
 });
 

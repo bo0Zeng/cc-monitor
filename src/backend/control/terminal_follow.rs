@@ -142,10 +142,10 @@ struct Inner {
     tickets: Tickets,
 }
 
-type CmdErr = (&'static str, String);
+type CmdErr = crate::stream::inbound::spec::Fail;
 
 fn bad_args(detail: &str) -> CmdErr {
-    ("bad_args", crate::common::contract::malformed(detail))
+    CmdErr::new("bad_args", crate::common::contract::malformed(detail))
 }
 
 fn ticket_of(args: &Value) -> Option<String> {
@@ -175,7 +175,7 @@ pub(crate) fn end_said(why: FollowEnd) -> String {
 /// 抓那个终端的一屏失败了（或控制模式客户端退了之后再看一眼）⇒ 停因：终端 / tmux 都没了 ⇒ `gone`；还在 ⇒ `lost`。
 fn end_of<T>(seen: &Result<T, CmdErr>) -> FollowEnd {
     match seen {
-        Err(("no_such_session" | "no_server", _)) => FollowEnd::Gone,
+        Err(f) if matches!(f.code.as_str(), "no_such_session" | "no_server") => FollowEnd::Gone,
         _ => FollowEnd::Lost,
     }
 }
@@ -199,14 +199,14 @@ impl Desk {
             FOLLOW => self.follow(args),
             FOLLOW_ACK => self.ack(args),
             UNFOLLOW => self.unfollow(args),
-            other => Err((
+            other => Err(CmdErr::from((
                 "unknown_command",
                 crate::common::contract::malformed(&format!("unknown follow command `{other}`")),
-            )),
+            ))),
         };
         match r {
             Ok(()) => Frame::ok(id),
-            Err((code, m)) => Frame::refused(id, cmd, code, &m),
+            Err(f) => Frame::refused(id, cmd, &f.code, &f.message),
         }
     }
 
@@ -236,13 +236,13 @@ impl Desk {
             return Err(bad_args("this `ticket` is already following"));
         }
         if g.slots.len() >= MAX_FOLLOWS_PER_CONNECTION {
-            return Err((
+            return Err(CmdErr::from((
                 "too_many_follows",
                 copy_text(
                     "beTermFollow.register.tooMany",
                     &[("max", &MAX_FOLLOWS_PER_CONNECTION.to_string())],
                 ),
-            ));
+            )));
         }
         g.seats += 1;
         let n = g.seats;
@@ -267,13 +267,13 @@ impl Desk {
         let t = terminals::follow_target_on(on, args)?;
         let v = terminals::tmux_version_on(on)?;
         if !tmux_version_ok(&v) {
-            return Err((
+            return Err(CmdErr::from((
                 "tmux_too_old",
                 copy_text(
                     "beTermFollow.tmux.tooOld",
                     &[("version", v.as_str()), ("need", "3.2")],
                 ),
-            ));
+            )));
         }
         // 控制模式客户端：只读、不改尺寸，挂在那个终端所在的 tmux 会话上。它自己不要 `$TMUX`（不当成嵌套），
         // 但要与别的几条问同一台 server：没给 socket 时照 `$TMUX` 里那一台。
@@ -299,7 +299,7 @@ impl Desk {
             .stream()
             .map_err(super::capture_pane::tmux_unavailable)?;
         let out = proc.take_stdout().ok_or_else(|| {
-            (
+            CmdErr::new(
                 "unobservable",
                 crate::common::contract::malformed("no output stream from the tmux control client"),
             )
@@ -335,10 +335,11 @@ impl Desk {
         tokio::task::spawn_blocking(move || self.follow(&args))
             .await
             .unwrap_or_else(|e| {
-                Err((
+                Err(CmdErr::new(
                     "unobservable",
-                    crate::common::contract::malformed(&format!("follow task: {e}")),
-                ))
+                    crate::common::contract::malformed("follow task did not finish"),
+                )
+                .with_raw(Some(&e.to_string())))
             })
     }
 
@@ -352,12 +353,12 @@ impl Desk {
             .ok_or_else(|| bad_args("`seq` must be a positive integer"))?;
         match lock(&self.0.tickets).slots.get(&ticket) {
             Some(Slot::On(f)) if f.tx.send(Ev::Ack(seq)).is_ok() => Ok(()),
-            _ => Err((
+            _ => Err(CmdErr::from((
                 "not_known",
                 crate::common::contract::malformed(
                     "no such follow (it ended or was never started)",
                 ),
-            )),
+            ))),
         }
     }
 

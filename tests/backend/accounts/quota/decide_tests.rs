@@ -1253,7 +1253,7 @@ fn leave_to(to: &str) -> Verdict {
     }
 }
 
-/// ★ 在 b 上、r 恢复、按顺序 ⇒ 下一发切 r（记「兜底 · r 已恢复」）；刚回来的那一发照过 ⇒ 这一问不换。
+/// ★ 在 b 上、r 恢复、按顺序 ⇒ 下一发切 r（记「换下兜底 · r 已恢复」）；刚回来的那一发照过 ⇒ 这一问不换。
 #[test]
 fn on_the_fallback_a_recovered_account_takes_over_even_without_preempt() {
     let mut w = seven();

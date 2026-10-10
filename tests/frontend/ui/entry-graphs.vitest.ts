@@ -755,13 +755,14 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
   "src/frontend/ui/views/agent-window.module.css": { stacked: false, why: "agent 窗口（`views/agent-window.ts`）：标题区 · 说明 · 小片 · 结束线只挂自己的哈希类；滚动容器挂全局 `.stream`，不叠这些类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
-  "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需要你」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需手动」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-screen.module.css": { stacked: false, why: "终端画面那块 `pre`（`terminal-screen.ts::screenPre`）：只挂自己的哈希类；版位与滚动归外面那一格（终端页的类 / 浮层的全局类，在另一个元素上）" },
   "src/frontend/ui/kit/dock.module.css": { stacked: false, why: "底部抽屉件：只挂自己的哈希类（网格那一格的 id 由主窗口挂，不是类）" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
+  "src/frontend/ui/tab-group.module.css": { stacked: true, why: "拖放反馈：引导线点亮叠在全局 `.tab-group-list` 上、出栏取消叠在 `.tab-drag-ghost` 上、落下淡出叠在 `.tab` 上；插入线与小标签只挂自己的哈希类" },
   "src/frontend/ui/kit/icon.module.css": { stacked: false, why: "图标件：svg 只挂自己的哈希类" },
   "src/frontend/ui/kit/badge.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/banner.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
@@ -794,7 +795,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上；
+  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需手动」计数）用上；
   // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上；
   // field 由设置窗「添加机器」框用上；block · card · list-row 一直没有面，删了。
   [],
@@ -806,31 +807,79 @@ const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
   // （进度条那一形产品里一直没人用，连同它的类删了 ⇒ progress 那一条摘了。）
 };
 
+/**
+ * 〔UC2〕第一格要的两份读数，在 `beforeAll` 里按窗口各算一次（产物在那之后不变）：
+ * - `hashed`：module 类名 `k` → 产物 CSS 里它的哈希名（谓词就是 [`hashedOf`]，只是每个 `(窗口, k)` 只算一遍）；
+ * - `inJs`：哈希名 → 那个窗口的 JS 里有没有它（`jsCode.includes` 的同义：哈希名全由 `[\w-]` 组成 ⇒ 它的每一次出现都落在
+ *   JS 里某一段极大的 `[\w-]` 连串之内；先把「以 `_` 起头、前面不接 `[\w-]` 的连串」一趟收成集合，命中整段的直接认，
+ *   没命中整段的才回落到 `includes` —— 读数与逐个 `includes` 逐位相同）。
+ * 原先这两样在用例体里逐类现算（九百多次 `hashedOf` ＋ 九百多次对一两 MB 的 JS 做 `includes`，再每类四条 `expect`）：
+ * 空机带覆盖率 ~0.3 s，机器负载 20 以上、两套 vitest 并跑时撞 5 s 默认期限。
+ */
+const UC2_READINGS = new Map<Win, { hashed: Map<string, string[]>; inJs: (h: string) => boolean }>();
+function uc2Readings(win: Win): { hashed: Map<string, string[]>; inJs: (h: string) => boolean } {
+  const had = UC2_READINGS.get(win);
+  if (had) return had;
+  const built = builtClasses(win);
+  const hashed = new Map<string, string[]>();
+  for (const ks of Object.values(MODULE_CLASSES)) for (const k of ks) if (!hashed.has(k)) hashed.set(k, hashedOf(built, k));
+  const code = CLOSURES[win].jsCode;
+  const runs = new Set<string>();
+  for (const m of code.matchAll(/(?<![\w-])_[\w-]*/g)) runs.add(m[0]);
+  const memo = new Map<string, boolean>();
+  const inJs = (h: string): boolean => {
+    let v = memo.get(h);
+    if (v === undefined) {
+      v = runs.has(h) || code.includes(h);
+      memo.set(h, v);
+    }
+    return v;
+  };
+  const r = { hashed, inJs };
+  UC2_READINGS.set(win, r);
+  return r;
+}
+
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
+  beforeAll(() => {
+    for (const w of Object.keys(WINDOWS) as Win[]) {
+      const r = uc2Readings(w);
+      for (const hs of r.hashed.values()) if (hs.length === 1) r.inJs(hs[0]);
+    }
+  }, TIMEOUT_MS);
+
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
     const mods = Object.keys(MODULE_CLASSES);
     expect(mods.length, "一份 `.module.css` 都没有 —— 本组零命中地绿（件 10 的示范被删了？）").toBeGreaterThan(0);
+    // 逐类的四件事各记成一行违例、末尾一条 `toEqual([])`（原先每类四条 `expect`，九百多类 × 4 的断言开销本身就是这格的大头）。
+    const bad: string[] = [];
     let judged = 0;
     for (const f of mods) {
       const wins = (Object.keys(WINDOWS) as Win[]).filter((w) => CLOSURES[w].modules.has(f));
       if (KIT_AWAITING_FACES.has(f)) {
-        expect(wins, `${f} 已经有窗口用上了 —— 把它从 KIT_AWAITING_FACES 里摘掉`).toEqual([]);
+        if (wins.length > 0) bad.push(`${f} 已经有窗口用上了（${wins.join(" ")}）—— 把它从 KIT_AWAITING_FACES 里摘掉`);
         continue;
       }
-      expect(wins, `${f} 不在任何窗口的模块图里 —— 没有代码导入它，它进不了产物`).not.toEqual([]);
-      expect(MODULE_CLASSES[f].length, `${f} 里一个类都没抽到 —— 下面零命中地绿`).toBeGreaterThan(0);
+      if (wins.length === 0) bad.push(`${f} 不在任何窗口的模块图里 —— 没有代码导入它，它进不了产物`);
+      if (MODULE_CLASSES[f].length === 0) bad.push(`${f} 里一个类都没抽到 —— 下面零命中地绿`);
       for (const w of wins) {
         const built = builtClasses(w);
+        const r = uc2Readings(w);
         for (const k of MODULE_CLASSES[f]) {
-          const hashed = hashedOf(built, k);
-          expect(hashed, `${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名`).toHaveLength(1);
-          expect(built.has(k) && !GLOBAL_CLASSES.has(k), `${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`).toBe(false);
-          const partial = KIT_PARTIAL[f]?.includes(k) ?? false;
-          expect(CLOSURES[w].jsCode.includes(hashed[0]), partial ? `${w}：${f} 的 .${k} 已经用上了 —— 从 KIT_PARTIAL 摘掉` : `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`).toBe(!partial);
+          const hashed = r.hashed.get(k) ?? hashedOf(built, k);
           judged++;
+          if (built.has(k) && !GLOBAL_CLASSES.has(k)) bad.push(`${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`);
+          if (hashed.length !== 1) {
+            bad.push(`${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名，实有 ${hashed.length} 个（${hashed.join(" ")}）`);
+            continue;
+          }
+          const partial = KIT_PARTIAL[f]?.includes(k) ?? false;
+          if (r.inJs(hashed[0]) !== !partial)
+            bad.push(partial ? `${w}：${f} 的 .${k} 已经用上了 —— 从 KIT_PARTIAL 摘掉` : `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`);
         }
       }
     }
+    expect(bad, "CSS Modules 在产物里不成立的那几处").toEqual([]);
     expect(judged).toBeGreaterThan(0);
   });
 

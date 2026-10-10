@@ -246,6 +246,41 @@ fn tap_capacity_reading_with_a_dozen_concurrent_streams() {
     }
 }
 
+/// ★ 订阅计划：某个工作区的计划变了 ⇒ 这条流连接推一帧 `plan_changed {workspace, rev}`；没再变 ⇒ 不再推。
+#[test]
+fn a_plan_change_becomes_one_plan_changed_frame() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+    rt.block_on(async {
+        let (_ev_tx, ev_rx) = tokio::sync::mpsc::channel::<TapEvent>(4);
+        let mut t = attach_rx(
+            ev_rx,
+            std::sync::Arc::new(crate::observe::runs::RunBook::default()),
+        );
+        let tx = tokio::sync::broadcast::channel::<crate::plan::watch::Change>(4).0;
+        t.plan = Some(tx.subscribe());
+        tx.send(("/w".to_string(), "r2".to_string(), 3)).unwrap();
+        let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
+            .await
+            .expect("该推一帧");
+        match f {
+            Some(Frame::PlanChanged {
+                workspace,
+                rev,
+                needs,
+            }) => assert_eq!((workspace.as_str(), rev.as_str(), needs), ("/w", "r2", 3)),
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), t.next())
+                .await
+                .is_err()
+        );
+    });
+}
+
 /// ★ 订阅额度：额度账那条通道响一下 ⇒ 这条流连接推一帧 `quota_changed`（不带载荷，客户端去重拉 `quota-read`）；
 /// 没订那条通道的连接永远不推。
 #[test]

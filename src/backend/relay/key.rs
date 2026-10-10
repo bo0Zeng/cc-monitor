@@ -75,7 +75,7 @@ pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> O
 
 /// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘。**本模块唯一的写口**
 /// （`readonly_guard` 第四层登记；门是 `relay/listen.rs`，只在绑上口之后调）。
-pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
+pub(crate) fn ensure_key(path: &Path) -> Result<Key, crate::common::said::Said> {
     if let Some(k) = read_key(path) {
         return Ok(k);
     }
@@ -89,13 +89,18 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
     })?;
     // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。挪到拿锁之前：锁的是这个目录，它得先在。
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        copy_text(
-            "beDoor.fs.mkdirFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beDoor.fs.mkdirFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir)
-        .map_err(|e| crate::common::said::Said::from(e).said_logging_raw())?;
+    let _lock = crate::platform::lock::hold(dir).map_err(crate::common::said::Said::from)?;
     if let Some(k) = read_key(path) {
         return Ok(k);
     }
@@ -120,9 +125,8 @@ fn mint() -> Result<Key, String> {
 
 /// 落盘（经 `own_state`：出生即只给本人 → 写满 → 原子挪过去）。那一层目录由 [`ensure_key`] 在拿锁前建。
 /// 报错里只有路径，**永远没有钥匙本身**。
-fn write_key(path: &Path, k: &Key) -> Result<(), String> {
+fn write_key(path: &Path, k: &Key) -> Result<(), crate::common::said::Said> {
     crate::common::own_state::write(path, k.expose().as_bytes())
-        .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 // 判据 ＋ 同层判据共用的夹具（`TEST_KEY` · `test_key` · `seed_test_home`）都住这一份测试文件里。

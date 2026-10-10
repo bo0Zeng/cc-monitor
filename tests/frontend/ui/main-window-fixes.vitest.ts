@@ -49,17 +49,6 @@ vi.mock("../../../src/frontend/ui/record-timeline", () => ({
     }
   },
 }));
-vi.mock("../../../src/frontend/ui/branch-fold", () => ({
-  BranchFolder: class {
-    constructor(_e: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
-    recordAdded(): void {}
-    unwrapAll(): void {}
-    rebuildNow(): void {}
-    dispose(): void {}
-  },
-}));
 vi.mock("../../../src/frontend/ui/tasks-panel", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/tasks-panel")>()),
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
@@ -247,34 +236,35 @@ describe("有分组时数字键 / ] [ / 关掉当前 tab 后的落点都按条�
     const tm = makeTabs(["a", "b", "c", "d", "e"]);
     const { store, prefs } = inside(tm);
     prefs.collections = [{ id: "g", name: "G" }];
-    (store.tabs.get("c") as Tab).group = "g";
-    (store.tabs.get("d") as Tab).group = "g";
+    // 组员聚在第一个组员那一格 ⇒ 条上是 a e（组）b c d，不是到达的 a b c d e。
+    (store.tabs.get("a") as Tab).group = "g";
+    (store.tabs.get("e") as Tab).group = "g";
     return tm;
   }
 
-  it("条上 c d a b e：1 ⇒ c；b 上 ] ⇒ e；d 上 ] ⇒ a；a 上 [ ⇒ d", () => {
+  it("条上 a e b c d：2 ⇒ e；e 上 ] ⇒ b；d 上 ] ⇒ a；b 上 [ ⇒ e", () => {
     const tm = grouped();
     const st = inside(tm).store;
-    tm.switchTo("e");
-    tm.jumpToIndex(1);
-    expect(st.activeId).toBe("c");
-    tm.switchTo("b");
-    tm.cycleActive(1);
+    tm.switchTo("c");
+    tm.jumpToIndex(2);
     expect(st.activeId).toBe("e");
+    tm.cycleActive(1);
+    expect(st.activeId).toBe("b");
     tm.switchTo("d");
     tm.cycleActive(1);
     expect(st.activeId).toBe("a");
+    tm.switchTo("b");
     tm.cycleActive(-1);
-    expect(st.activeId).toBe("d");
+    expect(st.activeId).toBe("e");
   });
 
-  it("关掉当前的 d ⇒ 落到条上它后面的 a", () => {
+  it("关掉当前的 a ⇒ 落到条上它后面的 e", () => {
     const tm = grouped();
     const st = inside(tm).store;
-    tm.switchTo("d");
-    (st.tabs.get("d") as Tab).state = ENDED;
-    tm.closeTab("d");
-    expect(st.activeId).toBe("a");
+    tm.switchTo("a");
+    (st.tabs.get("a") as Tab).state = ENDED;
+    tm.closeTab("a");
+    expect(st.activeId).toBe("e");
   });
 });
 
@@ -364,7 +354,7 @@ function page(from: number, n: number): unknown {
     path: "/p/r.jsonl",
     end: from + n,
     more: false,
-    rows: Array.from({ length: n }, (_, i) => ({ message: { i: from + i } })),
+    rows: Array.from({ length: n }, (_, i) => ({ record: { t: "said", id: `r${from + i}`, i: from + i } })),
   };
 }
 const renderNum = (rec: unknown): { kind: "card"; element: HTMLElement } => {
@@ -391,6 +381,28 @@ describe("子 agent 的时间线：读失败一次不丢之前显示过的", () 
     await t.refresh();
     expect(nums(t.body)).toEqual(["0", "1", "2", "3", "4"]);
     expect(t.body.querySelector(".block-agent-error")).toBeNull();
+  });
+});
+
+describe("子 agent 的时间线：回退掉的那几条按那份记录的主线外清单折起来", () => {
+  it("读到第一页 ⇒ 问一次那份记录的清单；清单里那几张卡折成一段，之后续读来的不再问", async () => {
+    const asked: string[] = [];
+    const load = async (from: number) => page(from, from === 0 ? 4 : 1) as never;
+    const t = new RunTimeline({
+      origin: LOCAL_ORIGIN,
+      parent: "x",
+      which: { run: "r" },
+      load,
+      render: renderNum,
+      branch: async (path) => (asked.push(path), ["r1", "r2"]),
+    });
+    await t.refresh();
+    await t.refresh();
+    expect(asked).toEqual(["/p/r.jsonl"]);
+    const wrap = t.body.querySelector(".branch-fold-wrap");
+    expect(wrap, "清单里那两条该折成一段").not.toBeNull();
+    expect(nums(wrap as HTMLElement)).toEqual(["1", "2"]);
+    expect(nums(t.body)).toEqual(["0", "1", "2", "3", "4"]);
   });
 });
 
@@ -472,6 +484,9 @@ describe("上下文占用：状态栏与监控板读同一个上限（后端定�
     needs: null,
     handedBack: [],
     retries: [],
+    permissionMode: null,
+    tokens: null,
+    cost: null,
     usage: { promptTokens: 350_000, model: "claude-opus-5-5", peakPromptTokens: 350_000, limit, limitFrom },
   });
   it("中转说是 1M：35%（不是 175%）；状态栏与监控板同一个数", () => {

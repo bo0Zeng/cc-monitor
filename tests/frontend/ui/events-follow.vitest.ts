@@ -12,7 +12,7 @@ vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-
 import { followSession, STREAM_WINDOW, type FollowEvent } from "../../../src/frontend/ui/events";
 import { chanStreamModule, streamFake } from "../../test-support/chan-stream-fake.ts";
 
-const line = (sid: string, seq: number): Record<string, unknown> => ({ session_id: sid, cwd: null, path: `/p/${sid}.jsonl`, seq, message: { type: "user", uuid: `u${seq}` } });
+const line = (sid: string, seq: number): Record<string, unknown> => ({ session_id: sid, cwd: null, path: `/p/${sid}.jsonl`, seq, record: { agent: "claude", id: `u${seq}`, t: "said" } });
 const frame = (seq: number, body: unknown): unknown => ({ t: "frame", seq, body: JSON.stringify(body) });
 
 describe("跟着一个会话", () => {
@@ -42,6 +42,23 @@ describe("跟着一个会话", () => {
     rec.sink([{ t: "seen", from: null }]);
     expect(got).toEqual([{ t: "live", live: true }, { t: "gap" }, { t: "sight", seen: false }, { t: "sight", seen: true }]);
     expect(rec.wants, "只有起停格 ⇒ 不还").toEqual([4]);
+    h.stop();
+  });
+
+  it("主线外清单那一格（branch）⇒ 一件 {t: branch, off}；别的会话的不交；形状不对不交；不吃 credit", async () => {
+    const got: FollowEvent[] = [];
+    const h = await followSession("devbox", "s1", (e) => got.push(e));
+    const rec = streamFake.subscriptions[0]!;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    rec.sink([
+      frame(0, { branch: { session_id: "s1", off: ["u2", "u3"] } }),
+      frame(1, { branch: { session_id: "s9", off: ["x"] } }),
+      frame(2, { branch: { session_id: "s1", off: [1] } }),
+      frame(3, { line: line("s1", 4) }),
+    ]);
+    warn.mockRestore();
+    expect(got).toEqual([{ t: "lines", lines: [line("s1", 4)] }, { t: "branch", off: ["u2", "u3"] }]);
+    expect(rec.wants, "branch 那几格不吃 credit：只还那一行").toEqual([1]);
     h.stop();
   });
 

@@ -1,4 +1,4 @@
-//! 「要你动手」记下的选择：不用了 / 还是要做 · 我自己贴 / 改回让 cc-monitor 接上；读不懂的那份不覆盖。
+//! 「待办」记下的选择：不用了 / 还是要做 · 我自己贴 / 改回让 cc-monitor 接上；读不懂的那份不覆盖。
 
 use super::*;
 use serde_json::json;
@@ -46,7 +46,7 @@ fn 读不懂的那份_不覆盖_回错() {
     assert_eq!(
         mark_at(&f, &json!({"op": "decline", "id": "x"}))
             .unwrap_err()
-            .0,
+            .code,
         "marks_unreadable"
     );
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "{oops");
@@ -64,7 +64,7 @@ fn 不认的_op_或缺参数_拒() {
         json!({"op": "decline"}),
         json!({"op": "selfPaste"}),
     ] {
-        assert_eq!(mark_at(&f, &a).unwrap_err().0, "bad_args", "{a}");
+        assert_eq!(mark_at(&f, &a).unwrap_err().code, "bad_args", "{a}");
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -81,5 +81,21 @@ fn skipping_the_start_block_is_remembered_and_can_be_undone() {
     assert!(current(Some(&path)).start_skipped);
     mark_at(&path, &serde_json::json!({"op": "unskipStart"})).unwrap();
     assert!(!current(Some(&path)).start_skipped);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[cfg(unix)]
+#[test]
+fn 读不出来的那份_原话进详情不上句子() {
+    // 那份文件谁都读不了（权限 000）⇒ 读不出来（不是读不懂）：句子只带路径与原因词，下层原话跟着失败走、进复制详情。
+    use std::os::unix::fs::PermissionsExt;
+    let d = tmp("noread");
+    let f = d.join("chores.json");
+    std::fs::write(&f, "{}").unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let e = mark_at(&f, &json!({"op": "decline", "id": "x"})).unwrap_err();
+    assert_eq!(e.code, "marks_unreadable", "{e:?}");
+    let raw = e.raw.as_deref().expect("原话丢了");
+    assert!(!e.message.contains(raw), "原话上了句子：{e:?}");
     let _ = std::fs::remove_dir_all(&d);
 }

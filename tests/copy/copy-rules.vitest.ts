@@ -144,7 +144,6 @@ export const CHECKS: Record<string, Check> = {
     const m = /\{([A-Za-z_]*(?:code|Code))\}/.exec(e.zh);
     return m ? `把错误码插进了话里（{${m[1]}}）` : null;
   },
-  "C-P1": (e) => (/您/.test(e.zh) ? "称用户用了「您」" : null),
   "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
   "C-T1": (e, ctx) => {
     const hits = r1Hits(speech(e.zh), ctx.terms);
@@ -171,7 +170,7 @@ export const CHECKS: Record<string, Check> = {
     return n > 1 ? `括号补充 ${n} 处 > 1` : null;
   },
   "C-L4": (e) => (/^\s*(?:（[^（）]*）|\([^()]*\))\s*$/.test(e.zh) ? "整条被括号包住" : null),
-  // 收严的三条（C-L2 · C-P1 · C-Y4）替掉上面的旧实现；W 系（新写法 N 系）跟在后面。
+  // 收严的两条（C-L2 · C-Y4）替掉上面的旧实现；W 系（新写法 N 系）跟在后面。
   ...TIGHTENED,
   ...W_CHECKS,
 };
@@ -279,6 +278,18 @@ describe("CP2a · 文案规范", () => {
         if (!check({ kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 放过了自己的反例「${zh}」`);
       for (const zh of r.good)
         if (check({ kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 逮住了自己的正例「${zh}」`);
+    }
+    expect(p).toEqual([]);
+  });
+
+  it("★ 正例不和「原话进详情」打架：每条规矩的正例都过 C-W18，规矩正文说到原话的都说它进详情", () => {
+    const w18 = CHECKS["C-W18"];
+    expect(w18, "C-W18 没有机检").toBeTruthy();
+    const p: string[] = [];
+    for (const r of rules) {
+      for (const zh of r.good)
+        if (w18({ kind: r.probeKind ?? "body", role: r.probeRole, zh, args: [] }, ctx)) p.push(`${r.id} 的正例「${zh}」句子里接了原话`);
+      if (r.id !== "C-W18" && /原话/.test(r.rule) && !/详情/.test(r.rule)) p.push(`${r.id} 的正文说到原话却没说它进详情`);
     }
     expect(p).toEqual([]);
   });
@@ -396,7 +407,9 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     // 值的认法：错误值直接变成字串的才算（e / err / error 的 to_string · format!），别的值不算。
     const raw = (v: string): string[] => rustRefsIn("x.rs", `copy_text("a.b.c", &[("x", ${v})]);`).refs.flatMap((r) => r.raw ?? []);
     for (const v of ["&e.to_string()", "&err.to_string()", "&error.to_string()", '&format!("{e}")', '&format!("{e:?}")']) expect(raw(v), v).toEqual(["x"]);
-    for (const v of ["&o.to_string()", "&io_reason(e.kind())", "n", '&format!("{n}")', "&e.kind().to_string()"]) expect(raw(v), v).toEqual([]);
+    // 子进程的 stderr / stdout 直接喂进来的也算（漏网那几条：占位叫 {said}，喂的是 stderr）。
+    for (const v of ["got.stderr.trim()", "stderr.trim()", "&stderr", "&String::from_utf8_lossy(&out.stdout)", "&r.stderr_tail"]) expect(raw(v), v).toEqual(["x"]);
+    for (const v of ["&o.to_string()", "&io_reason(e.kind())", "n", '&format!("{n}")', "&e.kind().to_string()", "&said", "&stderred"]) expect(raw(v), v).toEqual([]);
   });
 
   it("占位符名不算文字：{origin} 不会被术语表的 origin 禁词扫红", () => {

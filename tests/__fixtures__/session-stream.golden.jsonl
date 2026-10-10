@@ -1,10 +1,10 @@
 {"kind":"hello","v":1,"build_id":"b1","host_arch":"x86_64","claude_dir":"/home/u/.claude","homes":[{"agent_kind":"claude","path":"/home/u/.claude"}],"capabilities":["bg","tail-only"],"emits":["line"],"commands":["ping"],"unavailable":[{"command":"tmux-list","code":"no_tmux"}],"host_env":{"CCM_RELAY_PORT":"47001"},"uncancellable":["ping"]}
 {"kind":"hello","v":1,"build_id":"b1","host_arch":"x86_64","claude_dir":"/home/u/.claude"}
-{"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"message":{"role":"user"},"cwd":"/w","byte_offset":120,"rid":"r1","raw":"{}"}
+{"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"record":{"agent":"claude","id":"u1","at":"2026-10-09T01:30:00.000Z","timeText":"09:30","t":"said","who":{"speaker":{"kind":"human"},"text":"q"},"blocks":[{"type":"text","text":"q"}]},"cwd":"/w","byte_offset":120,"rid":"r1","raw":"{}"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"byte_offset":120}
-{"kind":"session_added","sid":"s1","agent_kind":"claude","liveness_confidence":"pidfile","session_kind":"bg","background":true,"attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","lines":9,"status":"waiting","activity":"needs_you","waiting_for":"permission prompt","container":{"host":"tmux","terminal":"tmux-3-7"},"pid":42}
+{"kind":"session_added","sid":"s1","agent_kind":"claude","liveness_confidence":"pidfile","background":true,"attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","lines":9,"activity":"needs_you","waiting_for":"permission prompt","container":{"host":"tmux","terminal":"tmux-3-7"},"pid":42}
 {"kind":"session_added","sid":"s1"}
-{"kind":"session_status","sid":"s1","status":"waiting","activity":"needs_you","waiting_for":"permission prompt","liveness_confidence":"pidfile"}
+{"kind":"session_status","sid":"s1","activity":"needs_you","waiting_for":"permission prompt","liveness_confidence":"pidfile"}
 {"kind":"session_status","sid":"s1"}
 {"kind":"session_state","sid":"s1","state":"reconnectable"}
 {"kind":"session_state","sid":"s1","state":"reconnectable"}
@@ -28,6 +28,8 @@
 {"kind":"rotation_changed","sid":"s1"}
 {"kind":"rotation_rules_changed"}
 {"kind":"rotation_rules_changed"}
+{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}
+{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"sessions_replayed"}
@@ -48,6 +50,8 @@
 {"kind":"tap","stream":"s1","resp":0,"n":1,"end":"done"}
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","label":"scan","kind":"Explore","tool":"t1","parent":"a9","state":"failed","last":{"t":"tool","name":"Bash"},"waiting":"Bash","started_ms":1000,"started_text":"00:00","active_ms":2000,"ended_ms":3000,"why":"reported","error":"boom","calls":7,"background":true}],"ended":[{"run":"a0","tool":"t0","state":"failed"}]}
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","state":"running"}],"ended":[]}
+{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","off":["u2","a2"]}
+{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","off":[]}
 {"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"capped":false,"captured_at":1,"captured_at_text":"00:00:01","cols":80,"cursor":{"visible":true,"x":0,"y":0},"lines":[{"spans":[{"fg":"green","from":0,"to":2}],"text":"ok"}],"rows":1,"screen":"00000000000000a1","scrollback_lines":0}}
 {"kind":"terminal_screen","ticket":"t1","seq":1,"view":{}}
 {"kind":"terminal_follow_end","ticket":"t1","why":"too_big","said":"that-sentence-1"}

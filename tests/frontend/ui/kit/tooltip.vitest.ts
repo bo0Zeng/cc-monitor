@@ -16,6 +16,7 @@ import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
 import { adoptNativeTitles, attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
 import { placeFloat } from "../../../../src/frontend/ui/kit/place";
+import { button, setDisabled } from "../../../../src/frontend/ui/kit/button";
 
 /** 悬停提示的两种摆法（`tooltip.ts` 的 PLACEMENT 表）：上方居中 · 卡式右侧顶对齐，间距 6。 */
 const placeTip = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "above", align: "center", gap: 6 }, tip, view);
@@ -223,6 +224,31 @@ describe("出现时机与摆法", () => {
     closeMenu();
     hideTooltips(); // 空着时调也无事
   });
+
+  it("★ 菜单开着时悬停卡不出：右键时卡还在等 500ms ⇒ 到点也不出；指针在宿主上再动也不出；菜单收了才照常", () => {
+    const root = document.createElement("div");
+    const row = document.createElement("div");
+    row.className = "row";
+    root.appendChild(row);
+    document.body.appendChild(root);
+    delegateTooltip(root, ".row", () => "卡", { placement: "right", hold: true });
+    vi.advanceTimersByTime(1000);
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    // 还没到 500ms 就右键：菜单出来。
+    openMenu({ x: 1, y: 1 }, [{ label: "一项", onClick: () => {} }]);
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "菜单开着，等着的那张卡到点也不出").toBe(0);
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "指针在宿主上再动也不出").toBe(0);
+    closeMenu();
+    vi.advanceTimersByTime(1000);
+    row.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "菜单收了 ⇒ 照常出").toBe(1);
+    hideTooltips();
+  });
 });
 
 describe("元素上的 title 改走 kit 的悬停提示（adoptNativeTitles）", () => {
@@ -255,6 +281,29 @@ describe("元素上的 title 改走 kit 的悬停提示（adoptNativeTitles）",
     vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("改了名");
     expect(row.hasAttribute("title")).toBe(false);
+  });
+
+  it("★ 按钮禁用时那句说明（悬停出着）：恢复可点那一刻收掉，之后再悬停也不再出那一句；原来的说明回来", () => {
+    adoptNativeTitles(document);
+    vi.advanceTimersByTime(1000);
+    const plain = button({ label: "甲钮" });
+    const hinted = button({ label: "看", hint: "乙钮的说明" });
+    document.body.append(plain, hinted);
+    for (const [b, back] of [[plain, null], [hinted, "乙钮的说明"]] as const) {
+      setDisabled(b, "丙原因");
+      b.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("丙原因");
+      setDisabled(b, null);
+      expect(tipsInBody(), "恢复可点 ⇒ 禁用那句当场收掉").toBe(0);
+      b.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      vi.advanceTimersByTime(1000);
+      b.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+      expect(document.querySelector('[role="tooltip"]')?.textContent ?? null, "再悬停：原来的说明（没有就不出）").toBe(back);
+      b.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      vi.advanceTimersByTime(1000);
+    }
   });
 
   it("三个窗口的入口都装它（entry-common 一处）", async () => {
@@ -309,6 +358,63 @@ describe("接管 title 不丢读屏名、全文已显示就不重复出", () => 
     for (const el of focusable) el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     expect(focusable.every((e) => !e.hasAttribute("title")), "title 没挪走").toBe(true);
     expect(focusable.map(accName)).toEqual(before);
+  });
+
+  /** 可访问说明：`aria-description` → title（没被拿去当名字时）。 */
+  function accDesc(el: HTMLElement): string {
+    const d = el.getAttribute("aria-description");
+    if (d !== null) return d.trim();
+    const t = el.getAttribute("title")?.trim() ?? "";
+    return t !== "" && accName(el) !== t ? t : "";
+  }
+
+  /** 等接管那一圈（观察者回调 · 它自己挪走 title 引出的那一圈）都跑完。 */
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  };
+
+  it("★ 不等悬停：元素一挂上就接管 —— 已有可访问名的不覆盖、名字与说明不相同才挂说明；没名字的才拿说明当名字", async () => {
+    adoptNativeTitles(document);
+    const mk = (html: string): HTMLElement => {
+      const w = document.createElement("div");
+      w.innerHTML = html;
+      document.body.appendChild(w);
+      return w.firstElementChild as HTMLElement;
+    };
+    const cases: [HTMLElement, string, string][] = [
+      // 头上那枚标签（不可聚焦、有字）：名字是它的字，原因是说明。
+      [mk(`<span title="甲机的 tmux 低于 3.2">仅快照甲</span>`), "", "甲机的 tmux 低于 3.2"],
+      // 字与说明一样：不再挂说明（读屏不念两遍）。
+      [mk(`<button title="收起甲">收起甲</button>`), "收起甲", ""],
+      [mk(`<button title="看它的终端甲">看甲</button>`), "看甲", "看它的终端甲"],
+      [mk(`<button aria-label="设置甲" title="设置甲"><svg></svg></button>`), "设置甲", ""],
+      [mk(`<button aria-label="设置乙" title="打开设置乙"><svg></svg></button>`), "设置乙", "打开设置乙"],
+      [mk(`<textarea aria-label="回车送出甲" title="回车送出甲"></textarea>`), "回车送出甲", ""],
+      // 只有 title 能当名字的（图标按钮 · 可聚焦的一行）：说明挪成名字，不再另挂说明。
+      [mk(`<button title="历史甲"><svg></svg></button>`), "历史甲", ""],
+      [mk(`<div tabindex="0" title="整理笔记甲"><span>整理笔记甲</span><span>notes</span></div>`), "整理笔记甲", ""],
+    ];
+    await Promise.resolve();
+    for (const [el, name, desc] of cases) {
+      expect(el.hasAttribute("title"), `${el.outerHTML}：title 还在 ⇒ 系统提示照出、读屏照旧念`).toBe(false);
+      expect([accName(el), accDesc(el)], el.outerHTML).toEqual([name, desc]);
+    }
+  });
+
+  it("★ 代码后来改 title（按钮禁用 / 恢复）：说明跟着换；恢复后没有原说明 ⇒ 说明撤掉", async () => {
+    adoptNativeTitles(document);
+    const plain = button({ label: "甲钮" });
+    const hinted = button({ label: "乙", hint: "乙钮的说明" });
+    document.body.append(plain, hinted);
+    await settle();
+    expect([accName(hinted), accDesc(hinted)]).toEqual(["乙", "乙钮的说明"]);
+    for (const b of [plain, hinted]) setDisabled(b, "丙原因");
+    await settle();
+    expect([accDesc(plain), accDesc(hinted)]).toEqual(["丙原因", "丙原因"]);
+    for (const b of [plain, hinted]) setDisabled(b, null);
+    await settle();
+    expect([accName(plain), accDesc(plain)]).toEqual(["甲钮", ""]);
+    expect([accName(hinted), accDesc(hinted)]).toEqual(["乙", "乙钮的说明"]);
   });
 
   it("全文已经完整显示（没被截断）⇒ 不再弹一遍；截断了 ⇒ 照出", () => {

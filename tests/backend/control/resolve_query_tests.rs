@@ -225,7 +225,7 @@ fn resolve_from_json_propagates_validation_errors() {
 // ════════════════════════════════════════════════════════════════════════
 //
 // 要求：后端 `resolve` 帧命令与 `--resolve` 子命令是给 aterm 冻结的跨仓契约，保留并由判据钉住形状；
-// 契约正文住 `src/doc/IPC-PROTOCOL.md` §10「`resolve`」一节的「跨仓承诺」小节。
+// 契约正文住 `src/doc/IPC-PROTOCOL.md` §8 末尾「`--resolve`」那一条。
 //
 // 为什么这一族要比上面那几条更硬：仓内**零调用方**（`D §D7`）⇒ 改坏了**仓里没有任何东西会红**，
 // 消费方在仓外、按字节读。上面那几条只核几个字段名与几条错误码；这一族把**整份线上形状**钉在
@@ -280,7 +280,7 @@ fn frozen_every_frozen_sample_still_produces_the_same_bytes() {
         if let Some(want) = s["product"].as_str() {
             ok += 1;
             let out = got.unwrap_or_else(|e| panic!("冻结样例 {req} 该成功，却回了 {e:?}"));
-            assert_eq!(out, want, "冻结样例 {req} 的成品字节变了 —— 这是一次跨仓契约变更（IPC-PROTOCOL §10 跨仓承诺小节）");
+            assert_eq!(out, want, "冻结样例 {req} 的成品字节变了 —— 这是一次跨仓契约变更（IPC-PROTOCOL §8「--resolve」那一条）");
             let v: Value = serde_json::from_str(&out).unwrap();
             for k in v.as_object().unwrap().keys() {
                 assert!(plan_fields.contains(k), "成品里多出一个承诺外的键 `{k}`");
@@ -388,7 +388,8 @@ fn frozen_the_wire_field_names_are_the_frozen_ones() {
     }
 }
 
-/// R3 错误码全集：生产段交给错误出口的码字面量集合 == 金样 `error_codes`（两向）；
+/// R3 错误码全集：生产段交给错误出口的码字面量集合 ∪ 读入参那一处（[`crate::control::cli_args::READ_ARGS_CODES`]，
+/// 一次性那条经它读入参时才算进来）== 金样 `error_codes`（两向）；
 /// 流那条的登记表 `codes` == 全集减去只属于一次性那条的；信封只有 `code` / `message` 两键、退出码 == 金样。
 #[test]
 fn frozen_the_error_codes_and_the_envelope_are_the_frozen_ones() {
@@ -411,6 +412,15 @@ fn frozen_the_error_codes_and_the_envelope_are_the_frozen_ones() {
         {
             found.push(lit.to_string());
         }
+    }
+    // 入参不在本文件读：交给 CLI 面读入参的那一处（与别的子命令同一套口 · 上限 · 码）。那一处会回的码由
+    // `cli_args_tests` 对着它自己的源码钉住；这里只认「本文件真的经它读」。
+    if src.contains("cli_args::read_args(") {
+        found.extend(
+            crate::control::cli_args::READ_ARGS_CODES
+                .iter()
+                .map(|c| c.to_string()),
+        );
     }
     let codes = frozen_sorted(frozen_list(&g, "error_codes"));
     assert_eq!(
@@ -482,6 +492,141 @@ fn frozen_both_entry_points_of_the_commitment_are_still_wired() {
         cell.contains("resolve_query::resolve_json_for_inbound("),
         "流那条 `resolve` 不再经 `resolve_json_for_inbound` —— 两条路不再共用一个纯函数"
     );
+}
+
+/// R5 一次性那条读入参与别的子命令同一套口：`--args-b64`（argv，不碰 stdin）· `--stdin-line` · stdin 开着不写 ⇒ `no_input` ·
+/// 超上限 ⇒ `args_too_large`（不截断）· 用法错 ⇒ `bad_args`。第二个前端的执行通道写不了 stdin，原先只能读 stdin 的 `--resolve` 它够不着。
+/// 金样 `oneshot_input_flags` 就是两个修饰词的字面量。
+#[test]
+fn frozen_the_oneshot_entry_reads_its_args_the_way_every_cli_subcommand_does() {
+    use crate::control::cli_args::{MAX_ARGS_B64_LEN, MAX_CLI_STDIN};
+    let g = frozen_golden();
+    assert_eq!(
+        frozen_sorted(frozen_list(&g, "oneshot_input_flags")),
+        frozen_sorted(vec![
+            crate::ARGS_B64_FLAG.to_string(),
+            crate::STDIN_LINE_FLAG.to_string()
+        ]),
+        "金样承诺的两个修饰词 ≠ 代码里的字面量"
+    );
+    struct Silent(std::sync::mpsc::Receiver<()>);
+    impl std::io::Read for Silent {
+        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+            let _ = self.0.recv();
+            Ok(0)
+        }
+    }
+    let quiet = std::time::Duration::from_millis(300);
+    // 在另一条线程里跑、本线程掐表：挂住时红在 10 s，不是把整趟测试拖死。
+    let run = |opts: &[&str], stdin: Box<dyn std::io::Read + Send>| {
+        let opts: Vec<String> = opts.iter().map(|s| s.to_string()).collect();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let shown = format!("{opts:?}");
+        std::thread::spawn(move || {
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            let rc = run_io(&opts, stdin, quiet, &mut out, &mut err);
+            let _ = tx.send((
+                rc,
+                String::from_utf8(out).unwrap(),
+                String::from_utf8(err).unwrap(),
+            ));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("{shown}：10 s 还没回 —— 那是挂住"))
+    };
+    let code = |err: &str| -> String {
+        serde_json::from_str::<Value>(err.trim())
+            .unwrap_or_else(|_| panic!("stderr 不是信封：{err:?}"))["code"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let sample = &g["samples"][0];
+    let req = sample["request"].as_str().unwrap();
+    let want = format!("{}\n", sample["product"].as_str().unwrap());
+    // stdin 那一形（原样）。
+    let by_stdin = run(&[], Box::new(std::io::Cursor::new(req.as_bytes().to_vec())));
+    assert_eq!(
+        by_stdin,
+        (0, want.clone(), String::new()),
+        "stdin 那一形的成品变了"
+    );
+    // argv 那一形：stdin 开着不写也不碰它，成品逐字一样。
+    let b64 = crate::stream::wire::b64_encode(req.as_bytes());
+    let (_hold, rx) = std::sync::mpsc::channel::<()>();
+    let by_argv = run(&[crate::ARGS_B64_FLAG, &b64], Box::new(Silent(rx)));
+    assert_eq!(by_argv, by_stdin, "`--args-b64` 与 stdin 答得不一样");
+    // 只读一行：读到换行就动手。
+    let by_line = run(
+        &[crate::STDIN_LINE_FLAG],
+        Box::new(std::io::Cursor::new(format!("{req}\n").into_bytes())),
+    );
+    assert_eq!(by_line, by_stdin, "`--stdin-line` 答得不一样");
+    // 失败一律退出 2、stdout 空、stderr 一行信封。
+    let refuse = |opts: &[&str], stdin: Box<dyn std::io::Read + Send>| {
+        let (rc, out, err) = run(opts, stdin);
+        assert_eq!((rc, out.as_str()), (ERROR_EXIT, ""), "{opts:?} 该被拒");
+        code(&err)
+    };
+    let (_hold2, rx2) = std::sync::mpsc::channel::<()>();
+    assert_eq!(
+        refuse(&[], Box::new(Silent(rx2))),
+        "no_input",
+        "stdin 开着不写该立即回码"
+    );
+    assert_eq!(
+        refuse(
+            &[crate::ARGS_B64_FLAG, &b64, crate::STDIN_LINE_FLAG],
+            Box::new(std::io::empty())
+        ),
+        "bad_args"
+    );
+    assert_eq!(
+        refuse(&[crate::ARGS_B64_FLAG], Box::new(std::io::empty())),
+        "bad_args"
+    );
+    let big = "A".repeat(MAX_ARGS_B64_LEN + 4);
+    assert_eq!(
+        refuse(&[crate::ARGS_B64_FLAG, &big], Box::new(std::io::empty())),
+        "args_too_large"
+    );
+    // stdin 超上限：拒收，不再截断成一段解析失败的 JSON。
+    assert_eq!(
+        refuse(
+            &[],
+            Box::new(std::io::Cursor::new(vec![b' '; MAX_CLI_STDIN as usize + 1]))
+        ),
+        "args_too_large"
+    );
+    assert_eq!(
+        refuse(&[crate::ARGS_B64_FLAG, "e30"], Box::new(std::io::empty())),
+        "bad_request"
+    );
+}
+
+/// R6 文档侧：IPC-PROTOCOL §8「`--resolve`」那一条写了全部错误码与两个修饰词（承诺的正文就在那里，金样改了文档不改 ⇒ 红）。
+#[test]
+fn frozen_the_protocol_doc_states_the_whole_commitment() {
+    let g = frozen_golden();
+    let doc = include_str!("../../../src/doc/IPC-PROTOCOL.md");
+    let sec = doc
+        .split("## 8. CLI 一次性调用")
+        .nth(1)
+        .and_then(|s| s.split("\n## ").next())
+        .expect("IPC-PROTOCOL.md 没有「8. CLI 一次性调用」那一节");
+    let item = sec
+        .split("\n- ")
+        .find(|b| b.starts_with("**`--resolve`**"))
+        .expect("§8 里没有「`--resolve`」那一条");
+    for want in frozen_list(&g, "error_codes")
+        .into_iter()
+        .chain(frozen_list(&g, "oneshot_input_flags"))
+    {
+        assert!(
+            item.contains(&format!("`{want}`")),
+            "§8「--resolve」那一条没写 `{want}`（金样里有）"
+        );
+    }
 }
 
 /// 会话 id 的校验规则：第二个前端照它铸 / 认 id（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）。放宽或收紧都红。

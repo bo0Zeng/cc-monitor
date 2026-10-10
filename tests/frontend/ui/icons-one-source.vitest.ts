@@ -71,7 +71,7 @@ describe("图标只有一个出处", () => {
     const bad = ts.filter((f) => swap.test(f.text)).map((f) => f.file);
     expect(bad, "这几份按开合换折叠号的图（改用 foldCaret）").toEqual([]);
     const users = ts.filter((f) => /\bfoldCaret\(\)/.test(f.text)).map((f) => f.file.replace(/^.*src\/frontend\/ui\//, "")).sort();
-    expect(users).toEqual(["kit/fold.ts", "settings/chore-row.ts", "settings/rule-editor.ts", "settings/rules-section.ts", "status-messages.ts", "turn-fold.ts", "views/history-rows.ts"]);
+    expect(users).toEqual(["kit/fold.ts", "settings/chore-row.ts", "settings/rule-editor.ts", "settings/rules-section.ts", "status-messages.ts", "tab-bar-view.ts", "turn-fold.ts", "views/history-rows.ts"]);
   });
 
   it("--icon-… 只由 css-marks.ts 经登记表设", () => {

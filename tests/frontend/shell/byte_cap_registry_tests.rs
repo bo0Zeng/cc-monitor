@@ -660,15 +660,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     (
-        "src/backend/control/resolve_query.rs",
-        "MAX_RESOLVE_STDIN",
-        "`--resolve` 的 stdin",
-        "截断+说清",
+        "src/backend/control/cli_args.rs",
+        "MAX_CLI_STDIN",
+        "一次性 CLI 子命令（派生的那些与 `--resolve`）的 stdin args JSON",
+        "拒收+回错",
     ),
     (
-        "src/backend/control/cli_control.rs",
-        "MAX_CLI_STDIN",
-        "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
+        "src/backend/control/cli_args.rs",
+        "MAX_ARGS_B64_LEN",
+        "一次性 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
         "拒收+回错",
     ),
     (
@@ -758,6 +758,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`history-read` 一页（一帧应答）的正文字节数",
         "索引截断（不丢数据）",
     ),
+    // 分页读记录时往回多看那一段：只拿来配排队消息的打字时刻；配不上（打字在这一段之前）⇒ 那条照用它自己的时刻（协议文档写明），记录一条不少。
+    (
+        "src/backend/observe/record_page.rs",
+        "QUEUE_LOOKBACK_BYTES",
+        "从文件中段起读一页记录时，往回多读、只用来配排队消息打字时刻的那一段原始字节（配对用的索引；记录本身一条不少）",
+        "索引截断（不丢数据）",
+    ),
     // `backend-log` 一帧回多少：只回诊断文件的尾部，`truncated: true` 说清前面还有。
     (
         "src/backend/faces/read_face.rs",
@@ -845,6 +852,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
+    // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "PATCH_MAX",
+        "一次改动结果里逐段 diff 的行正文总字数",
+        "截断+说清",
+    ),
     // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
     (
         "src/backend/agents/codex/relay.rs",
@@ -864,6 +878,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "SKILL_DOC_MAX_BYTES",
         "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
         "硬报错",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "PLUGIN_MANIFEST_MAX_BYTES",
+        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
+        "跳过+说清",
     ),
     (
         "src/backend/assets/asset_catalog.rs",
@@ -915,18 +935,24 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-    // 「要你动手」收事实时读用户的启动文件 / 设置文件：超了跳过那一份（`warn!` 带路径），那一件不出改法。
+    // 「待办」收事实时读用户的启动文件 / 设置文件：超了跳过那一份（`warn!` 带路径），那一件不出改法。
     (
         "src/backend/footprint/chores/gather.rs",
         "READ_CAP",
-        "「要你动手」读一份用户启动文件 / 设置文件（`~/.bashrc` · `~/.claude/settings.json`）",
+        "「待办」读一份用户启动文件 / 设置文件（`~/.bashrc` · `~/.claude/settings.json`）",
         "跳过+说清",
     ),
-    // 「要你动手」记下的选择：超了当读不懂 ⇒ 不覆盖、`marks_unreadable`；判的时候照没记算。
+    // 「待办」记下的选择：超了当读不懂 ⇒ 不覆盖、`marks_unreadable`；判的时候照没记算。
     (
         "src/backend/footprint/chores/marks.rs",
         "MAX_BYTES",
-        "后端自有的「要你动手」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
+        "后端自有的「待办」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/plan/review.rs",
+        "MAX_BYTES",
+        "后端自有的计划认可与退回记录 `~/.cc-monitor/plan-review.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
@@ -1643,6 +1669,13 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "page as u64",
         "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
              读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
+    ),
+    // `record_page::lead_of` 往回多看的那一段：起点是 `offset − QUEUE_LOOKBACK_BYTES`（已在 `CAPS` 里，饱和到 0）⇒ 读的长度不过它。
+    (
+        "src/backend/observe/record_page.rs",
+        "offset - at",
+        "`lead_of` 读 `[offset − QUEUE_LOOKBACK_BYTES, offset)` 那一段（`QUEUE_LOOKBACK_BYTES` 已在 `CAPS` 里）；\
+             只为配打字时刻（索引），配不上照用那条自己的时刻、记录一条不少 —— 协议文档写明。",
     ),
     // `read_face::log_tail` 的上限是入参 `max`，唯一调用点给的是 `min(调用方要的, LOG_TAIL_BYTES)`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：从 `size − max` 起读、应答带 `truncated`（前面还有没回的）。

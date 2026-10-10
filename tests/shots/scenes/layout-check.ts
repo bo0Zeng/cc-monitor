@@ -41,8 +41,13 @@ function floats(): string[] {
   const all = [...document.querySelectorAll<HTMLElement>('body > [role="menu"], body > div[role="dialog"]:not([aria-modal="true"]), body > [data-role="front-busy"]')].filter(
     (f) => f.style.left !== "" && getComputedStyle(f).position === "fixed" && visible(f),
   );
-  const anchors = [...document.querySelectorAll<HTMLElement>('[aria-expanded="true"]')].filter((a) => visible(a) && !all.some((f) => f.contains(a)));
+  const opened = (sel: string): HTMLElement[] =>
+    [...document.querySelectorAll<HTMLElement>(sel)].filter((a) => visible(a) && !all.some((f) => f.contains(a)));
+  // 菜单只认开菜单的那颗（kit 菜单开时给它挂 `aria-haspopup`）：展开着的折叠号（组头 ⌄ 之类）也是 `aria-expanded="true"`，不是触发物。
+  const menuAnchors = opened('[aria-expanded="true"][aria-haspopup]');
+  const anyAnchors = opened('[aria-expanded="true"]');
   for (const f of all) {
+    const anchors = f.matches('[role="menu"]') ? menuAnchors : anyAnchors;
     const fr = f.getBoundingClientRect();
     if (!inView(fr)) out.push(`浮层 ${name(f)} ${fmt(fr)} 伸出窗口`);
     for (const sub of f.querySelectorAll<HTMLElement>('[data-sub-open="true"] > [role="menu"]')) {

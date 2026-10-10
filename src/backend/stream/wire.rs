@@ -307,9 +307,14 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
     },
-    /// One JSONL line tailed from a session file —— 带的是**成品**：
-    /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
-    /// monitor 只原样转交。原文 `raw` 只给发了 `--with-raw` 的客户端（第二个前端自己解析记录）。
+    /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
+    /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
+    /// 原文 `raw` 只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。
+    ///
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里，只增不改
+    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`；
+    /// 新加的格也得先登记，`every_product_field_is_in_the_frozen_table`）。`raw` 逐字节等于那一行
+    /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
     Line {
         /// 会话 id。
         session_id: String,
@@ -317,9 +322,9 @@ pub enum Frame {
         path: String,
         /// 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset`。
         seq: u64,
-        /// 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号。
+        /// 这一行的通用记录；缺 ＝ 不进界面、照占号。
         #[serde(skip_serializing_if = "Option::is_none")]
-        message: Option<serde_json::Value>,
+        record: Option<crate::agents::record::Record>,
         /// 这条记录自己的工作目录。
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
@@ -335,16 +340,14 @@ pub enum Frame {
         /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
-        /// 〔additive〕这一行记录的**原文**（去掉行尾换行）。只在客户端发了 `--with-raw` 时才带
+        /// 〔additive〕这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。只在客户端发了 `--with-raw` 时才带
         /// （`ReaderState::with_raw`）—— 第二个前端自己解析记录，要它；没索要的客户端收到的字节与本字段加进来之前一字不差。
         #[serde(skip_serializing_if = "Option::is_none")]
         raw: Option<String>,
     },
     /// A new session file appeared.
     ///
-    /// Batch7-F24（additive，向后兼容）：附带 pidfile 元信息——`session_kind`
-    /// （"interactive"/"bg"；字段名避开 enum tag `kind`）、`cwd`、`name`。
-    /// None 时不上线（旧行为字节不变）；旧 monitor 忽略未知字段。
+    /// 附带 pidfile 元信息（`cwd` · `name` …）；缺的格不上线。
     SessionAdded {
         /// 会话 id。
         sid: String,
@@ -356,16 +359,13 @@ pub enum Frame {
         /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
-        /// pidfile 里的会话种类原词（`interactive` · `bg` …）。monitor 不读它（读 `background`）；第二个前端在读，冻结。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        session_kind: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
         /// 只在 `true` 时上线（缺 ＝ 交互会话；交互会话的帧字节与本字段加进来之前一字不差）。
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         background: bool,
         /// **E73（additive）：attach 进去对人有没有意义。**
         ///
-        /// `session_kind` 今天把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
+        /// pidfile 的会话种类把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
         /// 坐在终端里跟它对话」。SDK / 脚本驱动的会话正好是「①要②不要」—— 它有 tmux、
         /// `@ccm_sid` 也对，但 `stdin=DEVNULL`，用户敲的字会被脚本吃掉。
         ///
@@ -399,10 +399,6 @@ pub enum Frame {
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
-        /// Batch9-F27（additive）：宣告时的初始 status/waitingFor——连接建立灯就对。
-        /// `status` 是 pidfile 原词：monitor 不读它（读 `activity`）；第二个前端在读，冻结。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
         /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
@@ -430,9 +426,6 @@ pub enum Frame {
     SessionStatus {
         /// 会话 id。
         sid: String,
-        /// 红绿灯状态（pidfile 里的 `status` 原词；monitor 读 `activity`，第二个前端读它，冻结）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
         /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
@@ -579,6 +572,21 @@ pub enum Frame {
     /// 无载荷：客户端收到就重问一次 `rotation-rules-read`。用着改到的规则的会话另各推一帧 `rotation_changed`。
     /// 走 tap 那条可丢的通道（规则在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     RotationRulesChanged,
+
+    /// **这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要或要你看的数变了；
+    /// 认可 / 撤销认可也推一帧新的数）。
+    ///
+    /// 只带工作区 · 新摘要 · 要你看的数：客户端收到就重问一次 `plan-read`（那一份的唯一出口仍是那条查询）；摘要与手上那一份相同 ⇒ 不用问。
+    /// 只盯这条后端读过的工作区（`plan-list` / `plan-read` 认过的）。走 tap 那条可丢的通道（计划在盘上，丢了重问就补上）。
+    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    PlanChanged {
+        /// 工作区根。
+        workspace: String,
+        /// 新的输出摘要（同 `plan-read` 的 `rev`）。
+        rev: String,
+        /// 这个工作区此刻要你看的数（没认可的，不含 agent 问人那一种 —— 那一条由会话那一侧数；同 `plan-read` 的 `needCount`）。
+        needs: u64,
+    },
 
     /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
     ///
@@ -732,6 +740,16 @@ pub enum Frame {
         runs: Vec<RunInfo>,
         /// 被挤出表的已收场子运行。
         ended: Vec<RunEnded>,
+    },
+    /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
+    /// 整份、变了才发（宣告之后历史里已经有就发一次）；从没发过 ＝ 空。冷读那一路是读命令 `history-branch`。这一家的记录没有链 ⇒ 从不发。
+    SessionBranch {
+        /// 会话 id。
+        sid: String,
+        /// 这份会话记录在那台机器上的绝对路径。
+        path: String,
+        /// 主线外那几条的 `id`。
+        off: Vec<String>,
     },
 
     /// **一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
@@ -1047,6 +1065,8 @@ impl Frame {
             Frame::RotationChanged { .. } => true,
             // 同上：规则表在盘上（`rotation-rules-read` 随时重问得到）；也不走出方向那条通道。
             Frame::RotationRulesChanged => true,
+            // 同上：计划在盘上（`plan-read` 随时重问得到）；也不走出方向那条通道。
+            Frame::PlanChanged { .. } => true,
             // 同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
             Frame::TasksChanged { .. } => false,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
@@ -1068,6 +1088,8 @@ impl Frame {
             Frame::Tap { .. } => true,
             // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
             Frame::SessionRuns { .. } => false,
+            // 同上：整份快照，下一次变就整份重发。
+            Frame::SessionBranch { .. } => false,
             // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
             Frame::TerminalScreen { .. } => false,
             Frame::TerminalFollowEnd { .. } => false,
@@ -1094,6 +1116,7 @@ impl Frame {
             Frame::QuotaChanged => ("quota_changed", None),
             Frame::RotationChanged { sid } => ("rotation_changed", Some(sid.clone())),
             Frame::RotationRulesChanged => ("rotation_rules_changed", None),
+            Frame::PlanChanged { workspace, .. } => ("plan_changed", Some(workspace.clone())),
             Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {
@@ -1108,6 +1131,7 @@ impl Frame {
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
+            Frame::SessionBranch { sid, .. } => ("session_branch", Some(sid.clone())),
             Frame::TerminalScreen { ticket, .. } => ("terminal_screen", Some(ticket.clone())),
             Frame::TerminalFollowEnd { ticket, .. } => {
                 ("terminal_follow_end", Some(ticket.clone()))

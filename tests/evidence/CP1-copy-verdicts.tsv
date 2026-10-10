@@ -197,3 +197,8 @@ src/backend/accounts/oauth/mod.rs:237	—	保留	[不对外] renew_line：续访
 src/backend/accounts/oauth/mod.rs:239	、	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因 · 收回过期锁），只进后端日志
 src/backend/accounts/oauth/store.rs:65	里面那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
 src/backend/accounts/oauth/store.rs:78	旁边那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
+src/backend/plan/product.rs:19	做完了	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来跟 pb 给的状态比、数顶层进度
+src/backend/plan/product.rs:20	不做了	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来跟 pb 给的状态比、数顶层进度
+src/backend/lib.rs:1733	计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\n              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1741	与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/plan/needs.rs:22	看全局	保留	[不对外] pb dump 的阶段标（phases[].marks 里那个协议值，不是界面文案）：只拿来认顶块是不是走到交回的关口

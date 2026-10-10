@@ -137,6 +137,24 @@ pub(crate) fn write_user_inputs<R: std::io::BufRead, W: std::io::Write>(
     Ok(count)
 }
 
+/// 从头那一份已经扫好（共用扫描图）⇒ 照同一个头尾三段写出。
+pub(crate) fn write_rows<W: std::io::Write>(
+    rows: &[UserInputRow],
+    end: u64,
+    out: &mut W,
+) -> std::io::Result<()> {
+    writeln!(out, "{{\"kind\":\"user_inputs\",\"v\":1,\"from\":0}}")?;
+    for row in rows {
+        serde_json::to_writer(&mut *out, row)?;
+        out.write_all(b"\n")?;
+    }
+    writeln!(
+        out,
+        "{{\"kind\":\"user_inputs_end\",\"count\":{},\"end\":{end}}}",
+        rows.len()
+    )
+}
+
 /// [`write_user_inputs`] 的中段：逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个
 /// 完整行的末字节）。CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-user-inputs`，
 /// 装成成品 `{from, end, entries}`）跑的是**同一个**扫描 —— 「什么算一条用户输入」仍只住 [`user_input_of`]。

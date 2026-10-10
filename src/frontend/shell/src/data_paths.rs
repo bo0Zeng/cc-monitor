@@ -329,6 +329,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::PLAN_REVIEW_REL,
+            copy_text("rsDataPaths.backend.planReview", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::LAST_SEEN_REL,
             copy_text("rsDataPaths.backend.lastSeen", &[]),
             DataClass::Cache,

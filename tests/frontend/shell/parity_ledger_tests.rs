@@ -65,7 +65,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_log_file", "app.logs", Side::Both),
     // 设置窗「现在重启」：重起 cc-monitor 自己（不吃 origin，本机远端无从分）⇒ `Both`，归已有能力 `app.config`（「要重启才生效」那几项改的都是本机配置）。
     ("restart_app", "app.config", Side::Both),
-    // 系统通知（「一轮完成」「需要你」）：出在 monitor 面前这台的桌面上，哪台的会话都一样 ⇒ `Both`，归已有能力 `app.window.self`。
+    // 系统通知（「一轮完成」「需手动」）：出在 monitor 面前这台的桌面上，哪台的会话都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("notify_desktop", "app.window.self", Side::Both),
     // 写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，哪台的内容都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("clipboard_write", "app.window.self", Side::Both),
@@ -1069,35 +1069,13 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 /// （改走一行 `RemoteOnly`、同时另加一行 `RemoteOnly`）⇒ 直方图不动，本条静默。
 /// 候选那一档（`FramePlane`）**不吃这个亏** —— 它另有一张逐条点名的人裁表在对拍。
 ///
-/// 〔量于 09-14，本工作树 `track/k-r115`，`command_dispatch_class()` 现打〕
+/// 每格的数是**跑出来的**：改了某条命令的 `Side` 或体之后，先让 `hist == want` 那一比印出现打的直方图，照它写，
+/// 不按增减去算（算出来恰好相等不是判据）。
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-    // 🔴 **39 → 34。** `origin` 归一退役了 5 条 `Side::Remote` 的命令
-    //    （并进了本机那条）。**现打确认这 5 条全部落在 `RemoteOnly` 这一档**，
-    //    所以只有这一格动、另外三格一个都不动 —— 那是意料之中的：五条的体里都有
-    //    `load_remote_config_by_label(` / `require_cfg_by_label(` 这类 `REMOTE_ONLY_MARKS`，
-    //    而一条 `FRAME_PLANE_MARKS`（`client_for(` / `backend_route::`）都没有。
-    //    ⚠ 这个数是**跑出来的**，不是 39−5 算出来的：先把总数改对、让 `hist == want`
-    //      那一比去印现打，再照它写。（算出来的那个恰好也是 34，但「恰好相等」不是判据。）
-    // 🔴 **34 → 33。** 两笔一起落在这一格上，净 −1：
-    //    −2 = `origin` 归一的最后两对退役了 `write_remote_mcp_server` /
-    //         `remove_remote_mcp_server`（并进本机同名那两条）；
-    //    +1 = `sftp_chmod`：签名里带 `RemoteConfig`、
-    //         体里点名 `with_sftp`，派生器现打归 `RemoteOnly`。
-    //    ⚠ 另外三格一个都不动 —— 退役那两条的体里有 `load_remote_config_by_label(`
-    //      这类 `REMOTE_ONLY_MARKS`、一条 `FRAME_PLANE_MARKS` 都没有；新来那一条同理。
-    //    ⚠ 这个数是**跑出来的**：先让 `signed_total` 那一比印出现打的 48 行，
-    //      再让 `hist == want` 印出现打的直方图，照它写。
-    //      （34−2+1 恰好也是 33，但「算出来恰好相等」不是判据。）
-    // RemoteOnly 34 → 33、FramePlane 5 → 6：`cc_bus_spawn` 改走 `bus-spawn` 原语，
-    //   派生器从 `RemoteOnly` 挪到 `FramePlane`（跑出来的：`hist == want` 那一比现打 {RemoteOnly: 33, FramePlane: 6}）。
-    // RemoteOnly 32 → 31、Unclassified 10 → 11：`start_forward` 查配置那一下搬进了宿主
-    //   `dial_host.rs` 起转发那一处（已随转发账进本机常驻后端删了）（端口转发进了通信层，读配置是宿主的事）⇒ 它的体里再没有 `REMOTE_ONLY_MARKS`，
-    //   而派生器只跟同一份文件里的调用 ⇒ 落 `Unclassified`（「这把尺子够不着」，不是「安全」；它照旧只对远端）。
-    //   跑出来的：`hist == want` 那一比现打 {RemoteOnly: 31, Unclassified: 11}。
-    (Derived::RemoteOnly, 3), // **4 → 3**：`deploy_remote_acct_iso` 退役（跑出来核过）// **主线 5 ＋ MIG-1 −1（测试连接）⇒ 4** // **6 → 5**：`deploy_remote_backend` 先问本机常驻后端要计划（`deploy-plan`）⇒ 派生器现打归 `Mixed` // **6 → 5**：测试连接那一条出表（签名里带 `RemoteConfig`，原归 `RemoteOnly`）；跑出来核过 // **7 → 6**：远端项目 `.mcp.json` 那一条读退役（同上）；跑出来核过 // **8 → 7**：`probe_ccm_cli` 不再查远端配置（改经那台后端的门问 `ccm-probe`）⇒ 落 `Unclassified`；跑出来核过 // 10 − AL2 2 ⇒ 8（AL2：远端装 / 卸别名块两条删了） // **12 → 10**：远端 acct-iso 那两条（带 `RemoteConfig`）并进带 origin 的 `Both` // **13 → 12**：`push_public_key` 转 `Mixed`（见下一行）// **14 → 13**：`list_remote_tmux`（改问那台后端 `tmux-list`）// **15 → 14**：`read_remote_mcp_servers`（改问那台后端 `mcp-read`）// **16 → 15**（`diagnose_remote_cc_bus_hooks` 不再查远端配置、改经 `frame_query::call` 问那台后端 ⇒ 落 `Unclassified`；跑出来核过）// **17 → 16**（远端项目清单那条 Tauri 命令随清单改走本机后端删了：它体里读远端配置表（`load_remote_configs`），原归 `RemoteOnly`；跑出来核过） // **18 → 17**（`list_remote_accounts` 随账号清单改走通道删了：它体里查远端配置（`cfg_for`），原归 `RemoteOnly`；跑出来核过） // **19 → 18**（远端「某会话属哪个账号」那条退役、改走通道；原归 `RemoteOnly`；跑出来核过） // **20 → 19（`sftp_copy` 删了：它签名里带 `RemoteConfig`，原归 `RemoteOnly`；跑出来核过）** // **〔合并 F7c＋C2〕F7c 21 与 C2 −1 相加 ⇒ 20；Unclassified F7c 9 与 C2 ＋1 ⇒ 10（跑出来核过）** // **32 → 21，Unclassified 10 → 9**（池子那十二条删了：十一条带 `RemoteConfig` 的归 `RemoteOnly`，`sftp_cancel_transfer` 签名里没有它、归 `Unclassified`；跑出来核过）。 // **〔合并 A3＋BS1b〕33 → 32**（A3 的 check_account_trust Remote→Both 与 BS1b 的 cc_bus_spawn RemoteOnly→FramePlane 各 −1；跑出来核过）。 // **33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
-    (Derived::FramePlane, 0), // 3 → 0（`cc_bus_spawn` / `cc_bus_broadcast` / `cc_bus_kill` 退役：体里走 `bus-*` 原语，原归 `FramePlane`；跑出来核过） · 5 → 3（`kill_remote_tmux` / `tmux_send_keys` 退役：体里走 `backend_route::`，原归 `FramePlane`；跑出来核过） · 6 → 5（远端抓屏那一条退役：它体里走 `client_for(`，原归 `FramePlane`；跑出来核过） // −1（`account_usage`）；BS1b +1（`cc_bus_spawn`）
-    (Derived::Mixed, 1), // **2 → 1**：公钥推送那一条（原 `Mixed`）进了本机后端、出表〔散文墓碑〕 // **1 → 2**：`deploy_remote_backend`（判定问本机后端 · 放字节经远端 `files` 链路；两支都走、不是失败退回）// **0 → 1**：`push_public_key` —— 那台后端在 ⇒ 经它的文件管理面写（`client_for`），不在 ⇒ 仍是 Bootstrap 那一串拨号 shell；两支按**此刻状态**分，不是失败退回（`D11`）
-    (Derived::Unclassified, 2), // **主线 9 ＋ MIG-1 −7 ⇒ 2**（现打核过） // **4 → 3**：`list_remote_tmux` 出表（原归 `Unclassified`：体里只转调 `frame_query::call`）；跑出来核过 // **主线 10 ＋ MIG-1 −6 ⇒ 4** // **13 → 10**：`probe_ccm_cli` · `render_ccm_launch` · `render_launch_payload` 退役（界面经通道直问那台后端）；跑出来核过 // **10 → 7**：端口转发三条删了（原归 `Unclassified`：C2 之后体里只转调宿主 / 读进程内的账）；跑出来核过 // **13 − MIG-1 3 ⇒ 10**：`~/.ssh/config` 导入那三条删了（原归 `Unclassified`） // **14 → 13**：远端 MCP user 段那一条读退役（界面经通道直问 `mcp-read`）；跑出来核过 // **13 → 14**：`probe_ccm_cli`（同上一行） // **12 → 13**：`list_remote_tmux`（同上）// **11 → 12**：`read_remote_mcp_servers`（同上）// **10 → 11**：`diagnose_remote_cc_bus_hooks`（同上一行）// **〔本机对称〕12 → 10**：`panorama_call` 与 `panorama_cancel` 翻 `Both`（本机也经它问本机后端），出了 `Side::Remote` 这一栏；跑出来核过 // **11 → 12**：`panorama_cancel`（Remote；只拉一张进程内的票，签名与体里都没有远端配置 ⇒ 落 `Unclassified`；跑出来核过） // **RL1 −1 与 RM1c ＋1 ⇒ 11（跑出来核过）** // **11 → 12**：`panorama_call`（Remote；体里只转调 `frame_query::call`，派生器只跟同一份文件 ⇒ 落 `Unclassified`；跑出来核过；本机那一侧另有进程内那几条命令） // **11 → 10**：`relay_ensure` 退役（它就是 RM1a 加进来的那一条） // **10 → 11**：`relay_ensure`（Remote；体里只转调 `remote_relay::ensure_on`，派生器只跟同一份文件 ⇒ 落 `Unclassified`；它照旧只对远端，本机那一臂在 `remote_relay` 里拒）。跑出来核过 // 主线 10 ＋ MIG-3b −1（远端钩子诊断那条退役）〔散文墓碑〕
+    (Derived::RemoteOnly, 3),
+    (Derived::FramePlane, 0),
+    (Derived::Mixed, 1), // `deploy_remote_backend`：判定问本机后端 · 放字节经远端 `files` 链路；两支都走，不是失败退回
+    (Derived::Unclassified, 2),
 ];
 
 /// 派生器在**整张** `LEDGER` 上认出的 `FramePlane` 命令数（不分 `Side`）—— 候选集（`Remote` 那一栏里的

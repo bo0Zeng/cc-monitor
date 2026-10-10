@@ -376,7 +376,7 @@ pub(crate) fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> S
         &[
             ("what", &what.to_string()),
             ("count", &(hits.len()).to_string()),
-            ("body", &body.to_string()),
+            ("lines", &body.to_string()),
         ],
     );
     out.push_str(&copy_text(
@@ -427,13 +427,13 @@ pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
     if !absolute {
         return Err(copy_text(
             "rsProfileInstaller.fence.notAbsolute",
-            &[("raw", &format!("{:?}", raw))],
+            &[("path", &format!("{:?}", raw))],
         ));
     }
     if expanded.split(['/', '\\']).any(|seg| seg == "..") {
         return Err(copy_text(
             "rsProfileInstaller.fence.dotdot",
-            &[("raw", &format!("{:?}", raw))],
+            &[("path", &format!("{:?}", raw))],
         ));
     }
     let norm = |s: &str| s.replace('\\', "/");
@@ -445,7 +445,7 @@ pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
         return Err(copy_text(
             "rsProfileInstaller.fence.outsideHome",
             &[
-                ("raw", &format!("{:?}", raw)),
+                ("path", &format!("{:?}", raw)),
                 ("home", &format!("{:?}", home)),
             ],
         ));
@@ -467,7 +467,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
                 return Err(copy_text(
                     "rsProfileInstaller.fence.symlinkEscape",
                     &[
-                        ("raw", &format!("{:?}", raw)),
+                        ("path", &format!("{:?}", raw)),
                         ("realParent", &format!("{:?}", real_parent)),
                     ],
                 ));

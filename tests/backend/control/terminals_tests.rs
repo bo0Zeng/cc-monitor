@@ -111,7 +111,11 @@ fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
         json!({ "terminal": 1 }),
         json!({ "sid": "x".repeat(300) }),
     ] {
-        assert_eq!(target_of(&bad).map_err(|e| e.0), Err("bad_target"), "{bad}");
+        assert_eq!(
+            target_of(&bad).map_err(|e| e.code),
+            Err("bad_target".to_string()),
+            "{bad}"
+        );
     }
     let rows = vec![
         row("$1", "a-cc", "s1", "", "claude"),
@@ -187,7 +191,11 @@ fn text_and_keys_are_separate_and_keys_come_from_a_closed_table() {
         json!({ "text": "a\u{1b}b" }),
         json!({ "text": "a", "enter": "yes" }),
     ] {
-        assert_eq!(input_of(&bad).map_err(|e| e.0), Err("bad_args"), "{bad}");
+        assert_eq!(
+            input_of(&bad).map_err(|e| e.code),
+            Err("bad_args".to_string()),
+            "{bad}"
+        );
     }
 }
 
@@ -210,23 +218,23 @@ fn each_row_says_whether_this_caller_may_act_on_it() {
     );
     assert_eq!(
         see(&theirs, None)["can"]["input"],
-        json!({ "no": "not-yours", "said": no_said("not-yours") })
+        json!({ "no": "not_yours", "said": no_said("not_yours") })
     );
     assert_eq!(see(&theirs, Some("mobile"))["can"]["input"], json!(true));
     assert_eq!(
         see(&plain, None)["can"]["end"],
-        json!({ "no": "not-managed", "said": no_said("not-managed") })
+        json!({ "no": "not_managed", "said": no_said("not_managed") })
     );
     assert_eq!(see(&plain, None)["started_by"]["client"], Value::Null);
     assert_eq!(
         see(&wide, None)["can"]["end"],
-        json!({ "no": "other-windows", "said": no_said("other-windows") })
+        json!({ "no": "other_windows", "said": no_said("other_windows") })
     );
     assert_eq!(see(&wide, None)["can"]["input"], json!(true));
     assert_eq!(see(&plain, None)["state"], "idle");
     assert_eq!(
         see(&row("$5", "x-cc", "s", "", "zsh"), None)["state"],
-        "program-exited"
+        "program_exited"
     );
     assert_eq!(see(&shared, None)["state"], "running");
     assert_eq!(see(&shared, None)["title"], "t");
@@ -343,7 +351,7 @@ fn the_products_match_the_golden() {
     }
     let built = [
         input_reply("delivered", None, None),
-        input_reply("refused", Some("screen-changed"), Some("0000000000000000")),
+        input_reply("refused", Some("screen_changed"), Some("0000000000000000")),
         input_reply("unsure", None, None),
     ];
     assert_eq!(serde_json::to_value(built).unwrap(), i["replies"]);
@@ -502,8 +510,8 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     )
     .unwrap();
     assert_eq!(r["result"], "refused");
-    assert_eq!(r["why"], "screen-changed");
-    assert_eq!(r["said"], no_said("screen-changed"));
+    assert_eq!(r["why"], "screen_changed");
+    assert_eq!(r["said"], no_said("screen_changed"));
     assert_ne!(r["screen"], json!(seen));
 
     // 送键：ctrl-c 把前台的 cat 停掉 ⇒ 那个会话随之结束、从名单里消失。
@@ -527,7 +535,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
         }
         assert_eq!(
             input_on(iso.on(), &args).unwrap(),
-            json!({ "result": "refused", "why": "not-yours", "said": no_said("not-yours") })
+            json!({ "result": "refused", "why": "not_yours", "said": no_said("not_yours") })
         );
     }
     let r = input_on(
@@ -547,11 +555,11 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     for raw in ["=pipe-x:", "$1", "%0", "pipe-x"] {
         assert_eq!(
             input_on(iso.on(), &json!({ "terminal": raw, "text": "x" })).unwrap(),
-            json!({ "result": "refused", "why": "not-known", "said": no_said("not-known") })
+            json!({ "result": "refused", "why": "not_known", "said": no_said("not_known") })
         );
         assert_eq!(
-            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.0),
-            Err("not_known")
+            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.code),
+            Err("not_known".to_string())
         );
     }
 }
@@ -741,25 +749,129 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
     );
 }
 
-/// 原因码（线上那一形，短横）各有一句（彼此不同的那几种不同句；`not-known` 与 `ended` 都是「终端已不在」）；认不出的落「被拒」。
+/// 原因码（线上那一形，下划线）各有一句（彼此不同的那几种不同句；`not_known` 与 `ended` 都是「终端已不在」）；认不出的落「被拒」。
 #[test]
 fn every_refusal_reason_has_its_sentence() {
     let codes = [
-        "not-yours",
-        "not-managed",
-        "other-windows",
-        "not-known",
+        "not_yours",
+        "not_managed",
+        "other_windows",
+        "not_known",
         "ambiguous",
-        "screen-changed",
+        "screen_changed",
     ];
     let said: Vec<String> = codes.iter().map(|c| no_said(c)).collect();
     let mut uniq = said.clone();
     uniq.sort();
     uniq.dedup();
     assert_eq!(uniq.len(), codes.len(), "两种原因同一句：{said:?}");
-    assert_eq!(no_said("ended"), no_said("not-known"));
+    assert_eq!(no_said("ended"), no_said("not_known"));
     assert_eq!(no_said("what"), copy_text("beTerminal.no.other", &[]));
     assert!(!said.contains(&no_said("what")));
-    let r = input_reply("refused", Some("not-yours"), None);
-    assert_eq!(r["said"], no_said("not-yours"));
+    let r = input_reply("refused", Some("not_yours"), None);
+    assert_eq!(r["said"], no_said("not_yours"));
+}
+
+/// 终端这一族线上的原因码与状态（名单 `can.*.no` · `terminal-input` 的 `why` · 名单行的 `state`）和同族命令级码一个写法：
+/// 小写 ＋ 下划线，不带短横。从金样里真出的成品逐格取，不另列一份码表。
+#[test]
+fn terminal_reason_codes_use_underscores_like_command_codes() {
+    fn walk(v: &Value, out: &mut Vec<String>) {
+        match v {
+            Value::Object(m) => {
+                for (k, x) in m {
+                    if matches!(k.as_str(), "no" | "why" | "state") {
+                        if let Some(s) = x.as_str() {
+                            out.push(s.to_string());
+                        }
+                    }
+                    walk(x, out);
+                }
+            }
+            Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let mut codes = Vec::new();
+    walk(&golden(), &mut codes);
+    assert!(
+        codes.len() >= 4,
+        "金样里取到的码太少（{codes:?}）—— 本条在空转"
+    );
+    for c in &codes {
+        assert!(
+            !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_'),
+            "终端码 `{c}` 不是小写下划线写法"
+        );
+    }
+    for code in codes_of("terminal-input")
+        .iter()
+        .chain(codes_of("terminals-list").iter())
+    {
+        assert!(!code.contains('-'), "命令级码 `{code}` 带短横");
+    }
+}
+
+/// ★ `terminal-input` 只收它真用得上的那几格；`take`（「先接管输入」）删了 —— 原先收了、校验了、然后丢掉，
+/// 第二个前端照字段表画了一颗按钮、按下去什么都不变。再送它 ⇒ 照「多送一格就拒」回 `bad_args`，在碰 tmux 之前。
+#[test]
+fn terminal_input_refuses_fields_it_does_not_use() {
+    let on = On {
+        socket: Some("/nonexistent/cli2nd/tmux.sock"),
+    };
+    for extra in ["take", "nonsense"] {
+        let mut args = json!({ "terminal": "tmux-1", "text": "x" });
+        args[extra] = json!(true);
+        let e = input_on(on, &args).expect_err("多送的一格该被拒");
+        assert_eq!(e.code, "bad_args", "{extra}：码不对：{e:?}");
+        assert!(
+            e.message.contains(extra),
+            "{extra}：那句话没点名多出来的那一格：{}",
+            e.message
+        );
+    }
+}
+
+/// ★ 抓屏不过身份门、恒可用 ⇒ 不在「这个调用方能做什么」（`can`）里占一格：放在那里读起来像会变的能力，实际恒真。
+#[test]
+fn can_holds_only_what_can_vary() {
+    for r in [
+        row("$1", "a-cc", "", "", "bash"),
+        row("$2", "b-cc", "sid-b", "mobile", "claude"),
+    ]
+    .iter()
+    {
+        let can = &terminal_json(r, &[], None)["can"];
+        let keys: Vec<&str> = can
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, ["end", "input"], "`can` 里多了 / 少了格：{can}");
+    }
+}
+
+/// ★ 每行只带会变的格：`purpose` 原先恒为 `normal`（只有这一种），读起来像会变、实际不变 ⇒ 删。
+/// `host` 留着（同样恒为 `tmux`，但它是宿主的名字，换宿主时就是这一格在变）。字段表里也不许再登记它。
+#[test]
+fn a_row_carries_no_constant_purpose() {
+    for r in [
+        row("$1", "a-cc", "", "", "bash"),
+        row("$2", "b-cc", "sid-b", "mobile", "claude"),
+    ]
+    .iter()
+    {
+        let t = terminal_json(r, &[], None);
+        assert!(t.get("purpose").is_none(), "行里还有 `purpose`：{t}");
+        assert_eq!(t["host"], "tmux", "`host` 该留着");
+    }
+    let spec = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|c| c.name == "terminals-list")
+        .expect("没有 terminals-list");
+    assert!(
+        !spec.fields.iter().any(|f| f.name == "purpose"),
+        "terminals-list 的字段表还登记着 `purpose`"
+    );
 }

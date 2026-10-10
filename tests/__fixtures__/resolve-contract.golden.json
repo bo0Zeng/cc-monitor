@@ -1,5 +1,5 @@
 {
-  "_note": "resolve / --resolve 给仓外 aterm 的跨仓承诺的冻结金样（契约冻结 2026-07-18，daemon-协议-v1 §3）。改任何一格 = 跨仓契约变更：同轮改代码 + 本文件 + IPC-PROTOCOL §10「resolve」跨仓承诺小节 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带的那一族。",
+  "_note": "resolve / --resolve 给仓外 aterm 的跨仓承诺的冻结金样（契约冻结 2026-07-18，daemon-协议-v1 §3）。改任何一格 = 跨仓契约变更：同轮改代码 + 本文件 + IPC-PROTOCOL §8「--resolve」那一条 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带的那一族。",
   "frozen": "2026-07-18",
   "consumer": "aterm",
   "request_fields": [
@@ -38,10 +38,20 @@
     "bad_request",
     "invalid_session_id",
     "unsafe_launch_candidate",
-    "serialize_failed"
+    "serialize_failed",
+    "args_too_large",
+    "no_input",
+    "bad_args"
   ],
   "oneshot_only_codes": [
-    "stdin_read_failed"
+    "stdin_read_failed",
+    "args_too_large",
+    "no_input",
+    "bad_args"
+  ],
+  "oneshot_input_flags": [
+    "--args-b64",
+    "--stdin-line"
   ],
   "samples": [
     {

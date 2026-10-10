@@ -215,6 +215,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
         row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),
         row("chores.json", h.join(rr::CHORES_REL), "file"),
+        row("plan-review.json", h.join(rr::PLAN_REVIEW_REL), "file"),
         row("last-seen.json", h.join(rr::LAST_SEEN_REL), "file"),
         row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
         row("quota.json", h.join(rr::QUOTA_LEDGER_REL), "file"),

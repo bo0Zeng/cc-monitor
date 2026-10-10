@@ -90,12 +90,6 @@ impl Tailed {
         Ok(None)
     }
 
-    /// 从头记（整份读那一形先调它）。
-    pub(crate) fn restart(&mut self) {
-        self.consumed = 0;
-        self.witness.clear();
-    }
-
     /// 收下一段完整行（推进 `consumed`、换见证；可以一行一行地交，见证只留最后那 [`WITNESS_BYTES`] 字节，不复制整段）。
     pub(crate) fn took(&mut self, whole: &[u8]) {
         self.consumed += whole.len() as u64;

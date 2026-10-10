@@ -17,7 +17,7 @@ const ALLOWED: &[(&str, &str)] = &[
              「not allowed」。界面自己不经插件的 JS 发通知（走壳命令 `notify_desktop`，`platform/notify.rs`；Windows 那一臂在壳里用插件）",
     ),
     ("core:window:allow-minimize", "最小化"),
-    ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需要你 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
+    ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需手动 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
     ("core:window:allow-set-fullscreen", "全屏"),
     ("core:window:allow-is-fullscreen", "查全屏状态"),
     ("core:window:allow-close", "关窗"),

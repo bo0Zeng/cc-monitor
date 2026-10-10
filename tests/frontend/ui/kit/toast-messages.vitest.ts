@@ -36,12 +36,31 @@ describe("toast 排版 ＋「消息」记录", () => {
     expect(toasts()[0].querySelector("[data-part=detail]")!.childNodes.length, "空的第二行要是真空（CSS :empty 收起）").toBe(0);
   });
 
-  it("🔴 右侧抽屉开着 ⇒ toast 让到它左边（抽屉宽写进 --kit-drawer-right），关了还原", async () => {
+  it("🔴 右侧抽屉开着 ⇒ toast 让到它左边（抽屉宽写进 toast 那一栏的 --kit-drawer-right：开着之前就有的、开着时才出来的都算），关了还原", async () => {
     const { openDrawer } = await import("../../../../src/frontend/ui/kit/drawer");
+    const inset = (): string => document.getElementById("kit-toast-stack")?.style.getPropertyValue("--kit-drawer-right") ?? "<没有那一栏>";
     const d = openDrawer({ title: copyText("keybindingActions.category.account"), body: document.createElement("div"), width: 440 });
-    expect(document.documentElement.style.getPropertyValue("--kit-drawer-right")).toBe("440px");
+    kit.toast("已复制", "", { level: "info" });
+    expect(inset()).toBe("440px");
     await d.close();
-    expect(document.documentElement.style.getPropertyValue("--kit-drawer-right")).toBe("");
+    expect(inset()).toBe("");
+    kit.toast("已复制", "", { level: "info" });
+    const d2 = openDrawer({ title: copyText("keybindingActions.category.account"), body: document.createElement("div"), width: 400 });
+    expect(inset()).toBe("400px");
+    await d2.close();
+    expect(inset()).toBe("");
+  });
+
+  it("🔴 抽屉开关不碰根元素的样式（根上写自定义属性 ＝ 整页每个节点重算样式：WebKitGTK 上一下几百毫秒到一秒多）", async () => {
+    const { openDrawer } = await import("../../../../src/frontend/ui/kit/drawer");
+    const seen: string[] = [];
+    const mo = new MutationObserver((rs) => rs.forEach((r) => seen.push(r.attributeName ?? "")));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    const d = openDrawer({ title: copyText("keybindingActions.category.account"), body: document.createElement("div"), width: 440 });
+    await d.close();
+    await Promise.resolve();
+    mo.disconnect();
+    expect(seen).toEqual([]);
   });
 
   it("🔴 记录带时刻与还能做的动作；撤销期过了（到点提交）⇒ 记录里不再给「撤销」，重试照留", () => {

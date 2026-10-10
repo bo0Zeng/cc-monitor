@@ -74,6 +74,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
     //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
     "history-facts",
+    // 主线外清单的冷读（界面经通道直接问；monitor 这一侧从不发它）。
+    "history-branch",
     // 一轮的摘要（过程行 · 刻度 · 大纲同源；界面经通道直接问，monitor 这一侧从不发它）。
     "history-turns",
     // 那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
@@ -268,7 +270,7 @@ pub(crate) struct Row {
     /// 这一行正文的摘要（后端算，跨进程稳定）—— 续传前核「还是不是那一行」。
     pub hash: u64,
     /// 这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
-    pub message: Option<crate::ui_contract::RecordBody>,
+    pub record: Option<crate::ui_contract::RecordBody>,
     /// 这条记录自己的 `cwd`。
     pub cwd: Option<String>,
 }
@@ -289,7 +291,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
         Value::Null => None,
         e => Some(e.as_u64()?),
     };
-    let message = match v.get("message") {
+    let record = match v.get("record") {
         None => None,
         Some(m) if m.is_object() => Some(crate::ui_contract::RecordBody::from_json(m.to_string())?),
         Some(_) => return None,
@@ -301,7 +303,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
     Some(Row {
         end,
         hash: v.get("hash")?.as_u64()?,
-        message,
+        record,
         cwd,
     })
 }

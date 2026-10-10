@@ -16,9 +16,10 @@ use std::path::{Path, PathBuf};
 
 use crate::assets::door::{self, Door};
 
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 /// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
-pub(crate) type Record<'a> = &'a dyn Fn(&Value) -> Result<Value, (&'static str, String)>;
+pub(crate) type Record<'a> =
+    &'a dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 装记录里这一件叫什么（记录按 `skills 根 / name` 算目录 ⇒ 就是 `<skills 根>/cc-bus`）。
 pub(crate) const NAME: &str = "cc-bus";
@@ -140,7 +141,7 @@ const FILES: &[(&str, &[u8])] = &[
 
 /// ★ **白名单（独立 realpath 围栏）**：`<skills 根>` 若已在，解到底必须仍在它的上一层底下（挡「skills 是个指向别处的软链」）。
 /// 还不在 ⇒ 写的时候逐级建（`files-put` 的 `parents`，每一级各过写口那道围栏）。回 `(写的根, 落点)`：根 = skills 根的上一层。
-fn fenced_root(skills: &Path) -> Result<(PathBuf, PathBuf), String> {
+fn fenced_root(skills: &Path) -> Result<(PathBuf, PathBuf), crate::common::said::Said> {
     let top = skills
         .parent()
         .ok_or_else(|| {
@@ -151,21 +152,21 @@ fn fenced_root(skills: &Path) -> Result<(PathBuf, PathBuf), String> {
         })?
         .to_path_buf();
     if skills.exists() {
-        let real = skills.canonicalize().map_err(|e| {
-            copy_text(
-                "beCcBusInstall.fence.resolveFailed",
-                &[
-                    ("path", &skills.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
+        // 解不到底：那一句只带路径与原因词，系统原话进复制详情。
+        let unresolved = |at: &Path, e: std::io::Error| {
+            crate::common::said::Said::with_raw(
+                copy_text(
+                    "beCcBusInstall.fence.resolveFailed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
-        })?;
-        let top_real = top.canonicalize().map_err(|e| {
-            copy_text(
-                "beCcBusInstall.fence.resolveFailed",
-                &[("path", &top.display().to_string()), ("e", &e.to_string())],
-            )
-        })?;
+        };
+        let real = skills.canonicalize().map_err(|e| unresolved(skills, e))?;
+        let top_real = top.canonicalize().map_err(|e| unresolved(&top, e))?;
         if !real.starts_with(&top_real) {
             return Err(copy_text(
                 "beCcBusInstall.fence.escapes",
@@ -173,7 +174,8 @@ fn fenced_root(skills: &Path) -> Result<(PathBuf, PathBuf), String> {
                     ("real", &real.display().to_string()),
                     ("top", &top_real.display().to_string()),
                 ],
-            ));
+            )
+            .into());
         }
     }
     Ok((top, skills.join(NAME)))
@@ -226,10 +228,15 @@ pub(crate) fn state_at(skills: &Path) -> Value {
     })
 }
 
-fn skills_root() -> Result<PathBuf, (&'static str, String)> {
+fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
     super::asset_kind()
         .and_then(crate::agents::skills_root)
-        .ok_or(("refused", copy_text("beCcBusInstall.root.unknown", &[])))
+        .ok_or_else(|| {
+            crate::stream::inbound::spec::Fail::from((
+                "refused",
+                copy_text("beCcBusInstall.root.unknown", &[]),
+            ))
+        })
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。
@@ -244,7 +251,8 @@ pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
 
 /// 装到给定的 skills 根（可注入，判据拿临时目录跑）。
 pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer {
-    let (top, dest) = fenced_root(skills).map_err(|e| ("refused", e))?;
+    let (top, dest) = fenced_root(skills)
+        .map_err(|e| crate::stream::inbound::spec::Fail::from(("refused", e)))?;
     let root = top.display().to_string();
     let dest_s = dest.display().to_string();
     // 先算幂等：全都一致就什么都不做（不备份、不写、不记）。
@@ -279,7 +287,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
                 "refused",
                 copy_text(
                     "beCcBusInstall.backup.failed",
-                    &[("dest", &dest_s), ("bak", &bak), ("e", &e)],
+                    &[("dest", &dest_s), ("bak", &bak), ("why", &e)],
                 ),
             )
         })?;
@@ -310,7 +318,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
     }
     let record_failed = record(&json!({ "op": "add", "name": NAME, "files": files }))
         .err()
-        .map(|(_, e)| copy_text("beCcBusInstall.record.failed", &[("e", &e)]));
+        .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
     Ok(json!({
         "dest": dest_s,
         "written": FILES.iter().map(|(rel, _)| *rel).collect::<Vec<_>>(),

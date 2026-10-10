@@ -491,7 +491,7 @@ fn last_say_is_the_first_line_of_the_last_text() {
     assert!(t.ends_with('…'));
 }
 
-/// ★ 需要你：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
+/// ★ 需手动：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
 #[test]
 fn needs_is_decided_from_the_wait_and_the_pending_call() {
     let call = |id: &str, name: &str, what: Option<&str>| PendingCall {
@@ -777,4 +777,142 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
         (RETRY_KEEP, "r3"),
         "超了丢最早的"
     );
+}
+
+fn priced(req: &str, model: &str, usage: Value) -> Value {
+    json!({"type": "assistant", "requestId": req, "timestamp": "t-a",
+        "message": {"model": model, "usage": usage, "content": [{"type": "text", "text": "x"}]}})
+}
+
+/// 用量成品：同一次请求写出的几条只算一次（取最后一条）· 写缓存分 5m / 1h 两档（没分档的整份算 5m）· 成品串后端写好；
+/// 续传接力（从任一行边界接着扫）== 一次扫完。
+#[test]
+fn tokens_count_each_request_once_with_two_cache_write_tiers() {
+    let text = jsonl(&[
+        priced(
+            "r1",
+            "m-x",
+            json!({"input_tokens": 10, "output_tokens": 5,
+            "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 300,
+            "cache_creation": {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 200}}),
+        ),
+        priced(
+            "r1",
+            "m-x",
+            json!({"input_tokens": 10, "output_tokens": 50,
+            "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 300,
+            "cache_creation": {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 200}}),
+        ),
+        priced(
+            "r2",
+            "m-x",
+            json!({"input_tokens": 0, "output_tokens": 0,
+            "cache_read_input_tokens": 0, "cache_creation_input_tokens": 1000}),
+        ),
+        priced("r3", "m-y", json!({"input_tokens": 7, "output_tokens": 7})),
+    ]);
+    let f = scan_all(&text);
+    let t = f.tokens.clone().expect("tokens");
+    assert_eq!(
+        (
+            t.input,
+            t.output,
+            t.cache_read,
+            t.cache_write5m,
+            t.cache_write1h,
+            t.requests
+        ),
+        (17, 57, 1000, 1100, 200, 3)
+    );
+    assert_eq!(
+        t.text,
+        copy_core::copy_text(
+            "beSpend.tokens.line",
+            &[
+                ("input", "17"),
+                ("output", "57"),
+                ("read", "1.0k"),
+                ("write", "1.3k")
+            ]
+        )
+    );
+    assert_eq!(f.cost, None, "记录里没有花费那一条 ⇒ 不给花费");
+    let cut = text.find('\n').unwrap() + 1;
+    let first = scan_facts(
+        &text.as_bytes()[..cut],
+        SessionFacts::default(),
+        &Vec::new(),
+        None,
+    )
+    .unwrap();
+    let prior = prior_from(&serde_json::to_value(&first).unwrap()).unwrap();
+    let resumed = scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap();
+    assert_eq!(resumed.tokens, f.tokens);
+}
+
+/// 花费照记录里那一家自己记的（最后一条为准），不按定价自己算；有定不了价的型号 ⇒ 串里带「约」；不到一分 ⇒ 另一句。
+#[test]
+fn cost_is_the_last_cost_record_as_written() {
+    let cost = |usd: f64, unknown: bool| json!({"type": "cost-state", "totalCostUSD": usd, "modelUsage": {}, "hasUnknownModelCost": unknown});
+    let f = scan_all(&jsonl(&[cost(0.5, true), cost(1.234, false)]));
+    assert_eq!(
+        f.cost,
+        Some(Cost {
+            micros: 1_234_000,
+            partial: false,
+            text: copy_core::copy_text("beSpend.cost.exact", &[("usd", "1.23")])
+        })
+    );
+    let f = scan_all(&jsonl(&[cost(2.0, true)]));
+    assert_eq!(
+        f.cost.as_ref().map(|c| c.text.clone()),
+        Some(copy_core::copy_text(
+            "beSpend.cost.about",
+            &[("usd", "2.00")]
+        ))
+    );
+    let f = scan_all(&jsonl(&[cost(0.001, false)]));
+    assert_eq!(
+        f.cost.map(|c| c.text),
+        Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
+    );
+}
+
+/// 许可档：最后一条许可档记录说的那一档（会话事实；记录流里不显示）。
+#[test]
+fn the_permission_mode_is_the_last_one_written() {
+    let text = jsonl(&[
+        json!({"type": "permission-mode", "permissionMode": "default", "sessionId": "s"}),
+        json!({"type": "user", "message": {"content": "q"}}),
+        json!({"type": "permission-mode", "permissionMode": "acceptEdits", "sessionId": "s"}),
+    ]);
+    assert_eq!(
+        scan_all(&text).permission_mode.as_deref(),
+        Some("acceptEdits")
+    );
+    assert_eq!(
+        scan_all(&jsonl(&[
+            json!({"type": "user", "message": {"content": "q"}})
+        ]))
+        .permission_mode,
+        None
+    );
+}
+
+/// 许可档照原值交、不翻译不收窄：六个真值与别名 `manual` 各走一遍。
+#[test]
+fn every_permission_mode_value_passes_through_as_written() {
+    for m in [
+        "default",
+        "plan",
+        "acceptEdits",
+        "bypassPermissions",
+        "dontAsk",
+        "auto",
+        "manual",
+    ] {
+        let text =
+            jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
+        assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
+    }
 }

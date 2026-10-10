@@ -25,6 +25,8 @@ const FAMILY: &[&str] = &[
     "history-find",
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
+    // 主线外清单的冷读（共用扫描图）。
+    "history-branch",
     "history-turns",
     "history-read",
     // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
@@ -350,10 +352,10 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
     // 结构占位：两条用户输入（带同一个查找词）、一条助手行、一个空行、一条 meta —— 不采任何真会话正文。
     let body = [
         r#"{"type":"user","uuid":"u-1","timestamp":"t1","message":{"content":"zqx one"}}"#,
-        r#"{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"text","text":"zqx two"}]}}"#,
+        r#"{"type":"assistant","uuid":"a-1","timestamp":"t1a","parentUuid":"u-1","message":{"content":[{"type":"text","text":"zqx two"}]}}"#,
         "",
-        r#"{"type":"user","uuid":"m-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"u-2","timestamp":"t2","message":{"content":"three zqx"}}"#,
+        r#"{"type":"user","uuid":"m-1","timestamp":"t1aa","parentUuid":"a-1","isMeta":true,"message":{"content":"meta"}}"#,
+        r#"{"type":"user","uuid":"u-2","parentUuid":"m-1","timestamp":"t2","message":{"content":"three zqx"}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -475,10 +477,10 @@ fn golden_session(home: &Path) -> String {
     let p = dir.join("g.jsonl");
     let body = [
         r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"content":"alpha zqx beta"}}"#,
-        r#"{"type":"assistant","uuid":"out-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+        r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
         "",
-        r#"{"type":"user","uuid":"meta-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"in-2","timestamp":"t2","message":{"content":"delta"}}"#,
+        r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"content":"meta"}}"#,
+        r#"{"type":"user","uuid":"in-2","parentUuid":"meta-1","timestamp":"t2","message":{"content":"delta"}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -494,14 +496,16 @@ fn golden_facts_session(home: &Path) -> String {
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("f.jsonl");
     let body = [
-        r#"{"type":"user","uuid":"f-1","cwd":"/g/proj","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
-        r#"{"type":"user","uuid":"f-1b","isMeta":true,"origin":{"kind":"peer","from":"ag-7","handback":true,"body":"report"},"message":{"content":"<agent-message from=\"ag-7\">report</agent-message>"}}"#,
-        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","retryAttempt":1,"maxRetries":10}"#,
-        r#"{"type":"assistant","uuid":"f-2","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
-        r#"{"type":"user","uuid":"f-3","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
-        r#"{"type":"assistant","uuid":"f-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
-        r#"{"type":"assistant","uuid":"f-5","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
-        r#"{"type":"system","subtype":"api_error","uuid":"rt-2","retryAttempt":1,"maxRetries":10}"#,
+        r#"{"type":"user","uuid":"f-1","timestamp":"t0a","cwd":"/g/proj","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
+        r#"{"type":"user","uuid":"f-1b","timestamp":"t0aa","parentUuid":"f-1","isMeta":true,"origin":{"kind":"peer","from":"ag-7","handback":true,"body":"report"},"message":{"content":"<agent-message from=\"ag-7\">report</agent-message>"}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","timestamp":"t0aaa","parentUuid":"f-1b","retryAttempt":1,"maxRetries":10}"#,
+        r#"{"type":"assistant","uuid":"f-2","parentUuid":"rt-1","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
+        r#"{"type":"user","uuid":"f-3","timestamp":"t3a","parentUuid":"f-2","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
+        r#"{"type":"assistant","uuid":"f-4","parentUuid":"f-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
+        r#"{"type":"assistant","uuid":"f-5","parentUuid":"f-4","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-2","timestamp":"t5a","parentUuid":"f-5","retryAttempt":1,"maxRetries":10}"#,
+        r#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s-g"}"#,
+        r#"{"type":"cost-state","totalCostUSD":0.4242,"modelUsage":{},"hasUnknownModelCost":false}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -518,15 +522,15 @@ fn golden_turns_session(home: &Path) -> String {
     let p = dir.join("t.jsonl");
     let body = [
         r#"{"type":"user","uuid":"t-1","timestamp":"t1","message":{"content":"first line\nsecond"}}"#,
-        r#"{"type":"assistant","uuid":"t-2","timestamp":"t2","message":{"content":[{"type":"thinking","thinking":"h"}]}}"#,
-        r#"{"type":"assistant","uuid":"t-3","timestamp":"t3","message":{"content":[{"type":"text","text":"between"}]}}"#,
-        r#"{"type":"assistant","uuid":"t-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"u-1","name":"Bash","input":{"command":"c"}}]}}"#,
-        r#"{"type":"user","uuid":"t-5","timestamp":"t5","message":{"content":[{"type":"tool_result","tool_use_id":"u-1","content":"Exit code 1","is_error":true}]}}"#,
-        r#"{"type":"assistant","uuid":"t-6","timestamp":"t6","message":{"content":[{"type":"tool_use","id":"u-2","name":"Edit","input":{"file_path":"/w/a"}}]}}"#,
-        r#"{"type":"user","uuid":"t-7","timestamp":"t7","message":{"content":[{"type":"tool_result","tool_use_id":"u-2","content":"The user doesn't want to proceed with this tool use.","is_error":true}]}}"#,
-        r#"{"type":"assistant","uuid":"t-8","timestamp":"t8","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"r1\n\nr2\nr3\nr4"}]}}"#,
-        r#"{"type":"user","uuid":"t-9","timestamp":"t9","message":{"content":"next"}}"#,
-        r#"{"type":"assistant","uuid":"t-10","timestamp":"t10","message":{"content":[{"type":"tool_use","id":"u-3","name":"Read","input":{"file_path":"/w/b"}}]}}"#,
+        r#"{"type":"assistant","uuid":"t-2","parentUuid":"t-1","timestamp":"t2","message":{"content":[{"type":"thinking","thinking":"h"}]}}"#,
+        r#"{"type":"assistant","uuid":"t-3","parentUuid":"t-2","timestamp":"t3","message":{"content":[{"type":"text","text":"between"}]}}"#,
+        r#"{"type":"assistant","uuid":"t-4","parentUuid":"t-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"u-1","name":"Bash","input":{"command":"c"}}]}}"#,
+        r#"{"type":"user","uuid":"t-5","parentUuid":"t-4","timestamp":"t5","message":{"content":[{"type":"tool_result","tool_use_id":"u-1","content":"Exit code 1","is_error":true}]}}"#,
+        r#"{"type":"assistant","uuid":"t-6","parentUuid":"t-5","timestamp":"t6","message":{"content":[{"type":"tool_use","id":"u-2","name":"Edit","input":{"file_path":"/w/a"}}]}}"#,
+        r#"{"type":"user","uuid":"t-7","parentUuid":"t-6","timestamp":"t7","message":{"content":[{"type":"tool_result","tool_use_id":"u-2","content":"The user doesn't want to proceed with this tool use.","is_error":true}]}}"#,
+        r#"{"type":"assistant","uuid":"t-8","parentUuid":"t-7","timestamp":"t8","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"r1\n\nr2\nr3\nr4"}]}}"#,
+        r#"{"type":"user","uuid":"t-9","parentUuid":"t-8","timestamp":"t9","message":{"content":"next"}}"#,
+        r#"{"type":"assistant","uuid":"t-10","parentUuid":"t-9","timestamp":"t10","message":{"content":[{"type":"tool_use","id":"u-3","name":"Read","input":{"file_path":"/w/b"}}]}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -671,8 +675,8 @@ fn facts_say_what_the_session_is_waiting_for() {
         waiting,
         serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64})
     );
-    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
-    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");
+    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需手动");
+    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
 
 /// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
@@ -1197,7 +1201,7 @@ fn golden_record_session(home: &Path) -> PathBuf {
     p
 }
 
-/// ★★**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-run`
+/// ★★**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-branch` · `history-run`
 /// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
 ///
 /// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/frame_query_tests.rs`）·
@@ -1211,6 +1215,7 @@ fn the_record_products_match_the_cross_language_golden() {
         "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path})).unwrap(),
         "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true})).unwrap(),
         "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1})).unwrap(),
+        "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path})).unwrap(),
         "history-run": answer_at(
             &home,
             "history-run",
@@ -1300,5 +1305,111 @@ fn find_hits_carry_their_time_text() {
         .as_str()
         .is_some_and(|t| t.contains(':')));
     assert_eq!(v["hits"][1]["tsText"], "", "读不出时刻 ⇒ 空串");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ **`summaryOnly` 那一位真的接到了三条读记录命令上，而且两头都断。**
+///
+/// 核那一层（剥哪几格 · 折起那一行要用的那几格一格不少）由
+/// `observe/record_page_tests.rs::the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell`
+/// 逐标记两向钉着。本条钉的是**宿主这一跳**：三条命令各自把 `args` 里那一位读出来、原样递进核。
+/// 核那条判据单独立不住这件事 —— `read_face` 一行都不读那一位，它照样全绿。
+///
+/// 两头都断：置真 ⇒ 正文标记一个不剩且**条数不变**；缺席（= 今天的行为）⇒ 正文标记**必须**在。
+/// 只断前一头的话，宿主把成品整个弄空也能绿。
+#[test]
+fn the_three_record_reads_each_honour_summary_only_both_ways() {
+    let home = scratch("summary-only");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    // 结构占位：`ZQBODY-*` 只住正文（思考 · 说的话 · 工具结果），`ZQKEEP-*` 另有一份住后端判好的 `userText`
+    //   —— 不采任何真会话正文。
+    let body = [
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-asked"}]}}"#,
+        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-said"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt"}}]}}"#,
+        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, &body).unwrap();
+    let path = p.to_string_lossy().to_string();
+    const GONE: &[&str] = &["ZQBODY-think", "ZQBODY-said", "ZQBODY-result"];
+
+    // 三条各自的入参与装成品的那一格。
+    let cases: [(&str, serde_json::Value, &str); 3] = [
+        ("history-read", serde_json::json!({"path": path}), "rows"),
+        ("history-page", serde_json::json!({"path": path}), "lines"),
+        (
+            "history-lines",
+            serde_json::json!({"path": path, "from": 0}),
+            "lines",
+        ),
+    ];
+    for (cmd, base, key) in cases {
+        let ask = |summary_only: Option<bool>| {
+            let mut args = base.clone();
+            if let Some(b) = summary_only {
+                args[&"summaryOnly".to_string()] = serde_json::json!(b);
+            }
+            answer_at(&home, cmd, &args)
+                .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"))
+        };
+        let full = ask(None);
+        let fold = ask(Some(true));
+        let off = ask(Some(false));
+        let text = |v: &serde_json::Value| serde_json::to_string(&v[key]).unwrap();
+        let count = |v: &serde_json::Value| v[key].as_array().map_or(0, Vec::len);
+
+        // ── 缺席（今天的行为）＋ 显式 false：正文**必须**在 ──
+        for (what, v) in [("缺席", &full), ("显式 false", &off)] {
+            let t = text(v);
+            for m in GONE {
+                assert!(
+                    t.contains(m),
+                    "`{cmd}`（`summaryOnly` {what}）的成品里没有正文标记 `{m}` —— \
+                     默认那一形变了，或者夹具没打到（下面那一半会恒绿）"
+                );
+            }
+            assert!(
+                t.contains("ZQKEEP-asked"),
+                "`{cmd}`（{what}）连人说的话都没有"
+            );
+        }
+        // ── 置真：正文一个不剩，条数一条不少 ──
+        let t = text(&fold);
+        for m in GONE {
+            assert!(
+                !t.contains(m),
+                "`{cmd}` 收了 `summaryOnly: true` 还在给正文 `{m}`：{t}"
+            );
+        }
+        assert!(
+            t.contains("ZQKEEP-asked"),
+            "`{cmd}` 把折起那一行要显示的人说的话也剥掉了"
+        );
+        assert_eq!(
+            count(&fold),
+            count(&full),
+            "`{cmd}` 收了 `summaryOnly` 之后条数变了 —— 剥的该是内容，不是行"
+        );
+        assert_eq!(count(&fold), 3, "`{cmd}` 的夹具三行都该出成品");
+        // 两形除了 `{key}` 那一格之外逐格相同（`next` / `eof` / `nextSeq` / `from` 不许受它影响）。
+        let strip = |v: &serde_json::Value| {
+            let mut o = v.as_object().unwrap().clone();
+            o.remove(key);
+            o
+        };
+        assert_eq!(
+            strip(&fold),
+            strip(&full),
+            "`{cmd}` 收了 `summaryOnly` 之后 `{key}` 之外的格也变了"
+        );
+        assert!(
+            t.len() < text(&full).len(),
+            "`{cmd}` 的折起那一形没比全文小"
+        );
+    }
     let _ = std::fs::remove_dir_all(&home);
 }

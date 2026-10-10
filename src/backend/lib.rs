@@ -53,6 +53,7 @@ mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
+pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `plan_changed`（只读，一个字节都不写）
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
@@ -850,7 +851,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
 ///
-/// p9a-chores：data-report 换形（todo ＝ 要你动手各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
+/// p9a-chores：data-report 换形（todo ＝ 待办各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
 ///
 /// p9b-background-activity：session_added / session_status 多 background / activity（适配层翻）；invalid_args 收进 bad_args；删帧命令 deploy-retired 与旧装法清理链。
 ///
@@ -881,7 +882,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9o-detail-everywhere：拨号应答 · files 链路失败应答 · backend_status.machine · 六条读答（unreadable）各多可缺 detail · 自有状态文件失败带原话 · 「那台不认这条命令」统一按码取一句、remote_ask 遇老后端回 unknown_command · Codex 中转（relay-optin 入参 agent · 426 / 403 key-scope · 直通钥匙 relay-pass-key）· Linux 单实例令牌转交 · 找 ssh 进后端。
 ///
 /// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
-pub const BUILD_ID: &str = "p9p-rotation-rules";
+///
+/// p9q-plan-cli-faces：planned-build 读写（plan-list / plan-read / plan-cell-view / plan-ack / plan-unack / plan-return ＋ plan_changed）；CLI 面放出起会话等 9 条与 ext-list-here、--args-b64 载荷口、无输入回 no_input、超大回 args_too_large；记录帧换形的加法（history-branch ＋ session_branch、history-facts 许可档 / 用量 / 花费成品、删 accounts-isolate 与 session_kind / status）；终端原因码统一下划线、terminal-input 删 take、terminals-list 的 can 删 preview；session-new 带 ticket。
+///
+/// p9r-resolve-argv-raw-said：--resolve 认 --args-b64 / --stdin-line（与别的 CLI 子命令同一处读，一次性那条码全集 +args_too_large · no_input · bad_args）；terminals-list 每行删恒为 normal 的 purpose；CLI 失败信封多可缺 raw（下层原话，进复制详情）；profiles-read 的 fileProblem 多可缺 detail；几族失败句只留原因词、原话进详情；轮换说明文案抢回 / 兜底分开说。
+///
+/// p9s-record-arg-line：过程一行的主参数（steps.arg）改成协议上的定长一行（至多 200 字、按字符截、截了带省略号；原来 400）；CRLF 行的 line.raw 不含 \r；冻结表照现状（session_kind / status 已删）；history-branch 进经通道的命令表；后端删三处没人调的（账号面 watched · 读位 restart · ScanMap::scan）；plan-return「已结束」那句文案键挪进会话状态族。
+pub const BUILD_ID: &str = "p9s-record-arg-line";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -947,7 +954,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--accounts-add` 的入参（API 号的 key 在内）**从 stdin 读**，不收 argv。⚠ 加这几行会逼出一次 `BUILD_ID` bump。
     "--accounts-add",
     "--accounts-init",
-    "--accounts-isolate",
     "--accounts-login-cmd",
     // 各号共用的用户级 MCP 那四条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` / `sync` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--accounts-mcp-pick",
@@ -1012,6 +1018,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--quota-read",
+    // 计划读面三条（`inbound::REGISTRY` 的 `plan-*`）自动派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-list",
+    "--plan-read",
+    "--plan-cell-view",
+    // 计划审面三条（`plan-ack` · `plan-unack` · `plan-return`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-ack",
+    "--plan-unack",
+    "--plan-return",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1042,7 +1056,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--data-report",
     // 换 agent 家目录存之前那一问（`agent-home-check`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--agent-home-check",
-    // 「要你动手」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--chores-mark",
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--last-seen-read",
@@ -1092,6 +1106,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
+    // 扩展页那张表的本机那一半（`ext-list-here`）派生的 CLI 面：只有这台一列，一格都不问可达表
+    //   （跨机那一整张仍只在帧面的 `ext-list`）。登记理由同上面那几族 —— `is_query_mode` 那道闸门读本表。
+    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--ext-list-here",
     // 扩展页写备注那一条（`ext-note-set`）派生的 CLI 面。
     "--ext-note-set",
     // 可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
@@ -1173,6 +1191,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // `history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // 主线外清单的冷读（手机端不发帧命令，从 CLI 面问）。⚠ 新子命令 ⇒ BUILD_ID 由合并那一拍统一 bump。
+    "--history-branch",
     "--history-facts",
     "--history-find",
     "--history-index",
@@ -1190,6 +1210,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-run",
     "--history-search",
+    // 各台搜索结果合成一份（`history-search-merge`，纯计算）派生的 CLI 面：原先「只有界面逐台问完才有得合」，第二个前端同样逐台问 ⇒ 放出。
+    // ⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    "--history-search-merge",
     "--history-tail",
     // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-turns",
@@ -1218,6 +1241,18 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--search",
     "--session-accounts",
     "--session-interrupts",
+    // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
+    //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
+    //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），
+    //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `cli_control::STREAM_ONLY`，照派生规则上 CLI 面。
+    //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。
+    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--session-new",
+    "--session-new-dir",
+    "--session-new-facts",
+    "--sessions-start",
+    "--sessions-stop",
+    "--sessions-where",
     // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ssh-config-aliases",
     "--ssh-config-import",
@@ -1228,7 +1263,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 合并那一拍统一 bump。
     "--terminal-input",
+    // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `cli_control` 那张「只有界面用得着」的表里，
+    //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    "--terminal-name-mint",
     "--terminal-preview",
+    "--terminal-ssh",
     "--terminals-list",
     "--tmux-notify",
 ];
@@ -1720,6 +1759,21 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         rationale: "与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
+        family: "wire-commands",
+        capability: "plan-return",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\
+              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--plan-return",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
         family: "cli-subcommands",
         capability: "--terminal-input",
         target: Target::Windows,
@@ -2067,6 +2121,8 @@ pub const EMITS: &[&str] = &[
     "rotation_changed",
     // 这台的轮换规则表 / 默认指向变了（帧面写规则那一路与盯盘那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "rotation_rules_changed",
+    // 某个 pb 工作区的计划变了（plan 读面盯它读过的工作区，重读后输出摘要变了才发，走 tap 那条可丢的通道；登记 = 承诺真发）。
+    "plan_changed",
     // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
@@ -2091,6 +2147,8 @@ pub const EMITS: &[&str] = &[
     "tap",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_runs",
+    // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "session_branch",
     // 终端实时预览的一屏与收尾（`control/terminal_follow.rs` 的订阅线程真发，登记 = 承诺真发）。
     // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "terminal_screen",
@@ -2135,11 +2193,19 @@ pub struct StreamWants {
 /// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
 /// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
 /// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
-/// 上限同默认那一形（`control/cli_control.rs::MAX_CLI_STDIN`，超了拒、不截断）。
+/// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
 ///
 /// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
+
+/// **argv 形载荷口**：跟在子命令后面、位置不限（`--history-read --args-b64 <base64 的 JSON>`）⇒ 入参从这里取，不碰 stdin。
+///
+/// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
+/// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
+/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_args.rs::MAX_ARGS_B64_LEN`。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const ARGS_B64_FLAG: &str = "--args-b64";
 
 /// **「给人看」那一形**：跟在 `--quota-read` 后面（`--quota-read --text`）⇒ 同一份回包排成每号一段的字（`control/quota_text.rs`）。
 /// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
@@ -2155,6 +2221,8 @@ pub fn cli_flag(name: &str) -> String {
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--after-ms",
+    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    ARGS_B64_FLAG,
     // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
@@ -2242,6 +2310,11 @@ mod fourth_face_tests;
 #[cfg(test)]
 #[path = "../../tests/backend/main_window_raise_guard.rs"]
 mod window_raise_guard;
+
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+#[path = "../../tests/backend/raw_said_guard.rs"]
+mod raw_said_guard;
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]

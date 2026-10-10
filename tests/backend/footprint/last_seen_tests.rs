@@ -68,7 +68,7 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
 #[test]
 fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
     let d = Dir::new("args");
-    let code = |a: serde_json::Value| write_at(&d.file(), &a, 1).unwrap_err().0;
+    let code = |a: serde_json::Value| write_at(&d.file(), &a, 1).unwrap_err().code;
     assert_eq!(
         code(json!({"origin": "devbox", "kind": "ext", "value": {}})),
         "bad_args"
@@ -86,7 +86,7 @@ fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
         code(json!({"origin": "devbox", "kind": "data", "value": {"s": big}})),
         "too_large"
     );
-    assert_eq!(read_at(&d.file(), &json!({})).unwrap_err().0, "bad_args");
+    assert_eq!(read_at(&d.file(), &json!({})).unwrap_err().code, "bad_args");
     assert!(!d.file().exists(), "拒掉的不许落一个字节");
 }
 
@@ -144,7 +144,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
         &json!({"origin": "gpu-01", "forget": true, "kind": "data", "value": {"x": 2}}),
         40,
     );
-    assert_eq!(mixed.unwrap_err().0, "bad_args");
+    assert_eq!(mixed.unwrap_err().code, "bad_args");
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap()["data"]["atMs"],
         10

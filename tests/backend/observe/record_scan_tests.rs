@@ -58,7 +58,7 @@ fn index_direct(bytes: &[u8]) -> (Vec<String>, u64) {
 fn r1_one_pass_equals_each_scan_on_its_own() {
     let text = fixture(3);
     let bytes = text.as_bytes();
-    let map = ScanMap::scan(bytes, bytes.len() as u64).expect("scan");
+    let map = ScanMap::scan_with(bytes, bytes.len() as u64, None).expect("scan");
 
     let (want_index, want_end) = index_direct(bytes);
     let got_index: Vec<String> = map
@@ -207,4 +207,26 @@ fn r5_peek_never_scans() {
         .unwrap();
     assert!(scans.peek(&p).is_none(), "变了还交旧的");
     std::fs::remove_dir_all(&d).ok();
+}
+
+/// R5：回退重发 ⇒ 扫描图带主线外清单（`history-branch` 读它），「你说过的话」与轮次里不再有被回退掉的那一句。
+#[test]
+fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
+    let rows = [
+        r#"{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-10-01T00:00:00.000Z","message":{"role":"user","content":"first ask"}}"#,
+        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-10-01T00:00:01.000Z","message":{"model":"m-x","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}}"#,
+        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-10-01T00:00:02.000Z","message":{"role":"user","content":"old wording"}}"#,
+        r#"{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":"2026-10-01T00:00:03.000Z","message":{"model":"m-x","stop_reason":"end_turn","content":[{"type":"text","text":"r2"}]}}"#,
+        r#"{"type":"user","uuid":"u3","parentUuid":"a1","timestamp":"2026-10-01T00:00:04.000Z","message":{"role":"user","content":"new wording"}}"#,
+        r#"{"type":"assistant","uuid":"a3","parentUuid":"u3","timestamp":"2026-10-01T00:00:05.000Z","message":{"model":"m-x","stop_reason":"end_turn","content":[{"type":"text","text":"r3"}]}}"#,
+    ];
+    let text = rows.join("\n") + "\n";
+    let bytes = text.as_bytes();
+    let chain = crate::agents::claudecode::RECORDS.chain;
+    let map = ScanMap::scan_with(bytes, bytes.len() as u64, chain).expect("scan");
+    assert_eq!(map.off, ["u2", "a2"]);
+    let inputs: Vec<&str> = map.inputs.iter().map(|r| r.uuid.as_str()).collect();
+    assert_eq!(inputs, ["u1", "u3"]);
+    let turns: Vec<&str> = map.turns.iter().map(|t| t.uuid.as_str()).collect();
+    assert_eq!(turns, ["u1", "u3"]);
 }

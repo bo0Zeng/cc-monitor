@@ -16,6 +16,14 @@ pub fn io_reason(kind: std::io::ErrorKind) -> String {
     }
 }
 
+/// 起一个子进程起不来的原因词：程序不在 ⇒ 「未装」（起进程那一口的 `NotFound` 说的是程序，不是某条路径）；其余同 [`io_reason`]。
+pub fn spawn_reason(kind: std::io::ErrorKind) -> String {
+    match kind {
+        std::io::ErrorKind::NotFound => copy_text("reason.spawn.notInstalled", &[]),
+        k => io_reason(k),
+    }
+}
+
 /// 一个 SFTP 状态码（v3 标准码的数）→ 原因词：无此文件 · 无权限同 IO 那两个词，坏报文是两端协议对不上（程序出错），
 /// 无连接 · 连接断是这一趟走的那条连接断了（「连接断开」，不是机器状态的「离线」），不支持就是不支持；
 /// 通用失败（服务端把盘满等都归这一码）与没认出的码一律「原因不明」。

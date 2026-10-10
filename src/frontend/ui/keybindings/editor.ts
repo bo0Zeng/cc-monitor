@@ -302,8 +302,8 @@ export class KeybindingsEditor implements OverlayHandle {
       }
     }
 
-    // 冲突检测：这个 chord 现在被谁占着？
-    const owner = dispatcher.whoOwns(chord);
+    // 冲突检测：这个 chord 现在被谁占着（只算作用范围相交的：主区与栏可以共用一个键）？
+    const owner = dispatcher.whoOwns(chord, action.scope);
     if (owner && owner !== id) {
       const ownerAction = findAction(owner);
       const ownerLabel = ownerAction?.label ?? owner;

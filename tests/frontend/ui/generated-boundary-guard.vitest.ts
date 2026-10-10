@@ -499,7 +499,7 @@ describe("C01 边界生成物", () => {
  * 没有专属 payload struct（11 个 struct 里没有它）。写了就是假红。
  */
 describe("C02 事件名钉死", () => {
-  it("ui_contract.rs 的事件名常量（〔MIG-1〕今天 3 个），TS 侧字面量逐个对上", () => {
+  it("ui_contract.rs 的事件名常量（今天 4 个），TS 侧字面量逐个对上", () => {
     const rust = rustCode(read("src/frontend/shell/src/ui_contract.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
@@ -526,10 +526,12 @@ describe("C02 事件名钉死", () => {
     //   剩 `frontend-ready` · `remote-health` · `task-update`。
     // 主线 11 ＋ MIG-1 −9 ⇒ 2（剩 `frontend-ready` · `remote-health`）。
     // 2 → 3：`MACHINE_STATE`（"machine-state"，每台机器的状态成品一变就推一帧），由 `machine-feed.ts` 订阅。
-    expect(pairs.length, `期望恰好 3 个事件名常量，实得 ${pairs.length}`).toBe(3);
+    // 3 → 4：`UI_ERROR`（"monitor-error"，要让用户知道的出错：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），由 `backend-errors.ts` 订阅。
+    //   名字原来只在 `logging.rs` 里一个私有常量上，没进这张表。
+    expect(pairs.length, `期望恰好 4 个事件名常量，实得 ${pairs.length}`).toBe(4);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
-    const tsFiles = ["src/frontend/ui/events.ts", "src/frontend/ui/main.ts", "src/frontend/ui/remote-health.ts", "src/frontend/ui/machine-feed.ts"];
+    const tsFiles = ["src/frontend/ui/events.ts", "src/frontend/ui/main.ts", "src/frontend/ui/remote-health.ts", "src/frontend/ui/machine-feed.ts", "src/frontend/ui/backend-errors.ts"];
     const tsCode = tsFiles.map((f) => code(read(f))).join("\n");
     // `events.ts` 里那个 `sub<` 包装随最后几条 Tauri 监听退役没了，自检改认一个今天真在的调用形。
     expect(tsCode, "剥过头了").toContain("chan.subscribe(");

@@ -65,7 +65,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **背压**：前端给 credit；实时行没有 credit 就丢，并在原位报 gap，前端按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。后端在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出（旧的 Tauri 命令 `list_active_sessions`〔散文墓碑〕已删）。
-- **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 渲染模型）只在后端 `agents/claudecode/`，界面按形状收成品；多台的搜索结果由本机后端合并排序。
+- **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录 `agents/record.rs`，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
 
 ### 1.3 每条线的源头
@@ -313,7 +313,7 @@ PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust �
 
 ### 日志：tracing 在 Builder 之前初始化
 
-`logging::init` 必须在 `tauri::Builder::default()` 之前调用（全局 dispatcher 只能装一次）：文件层按天滚动、非阻塞写；`EnvFilter` 可热改级别，不重启就生效；ERROR 级经 `logging.rs::install_error_emitter` 注入的回调发 `monitor-error`，前端弹提示（限流防风暴）。日志目录建不出来就退化成只写 stdout，monitor 照样起。后端子进程的 stderr 接进 monitor 的滚动日志，脱离起的后端写自己那份日志。
+`logging::init` 必须在 `tauri::Builder::default()` 之前调用（全局 dispatcher 只能装一次）：文件层按天滚动、非阻塞写；`EnvFilter` 可热改级别，不重启就生效；日志行不上屏：要让用户知道的出错只走 `ui_error::tell`（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情，事件 `monitor-error`，出口由 `logging.rs::install_error_emitter` 装上，限流防风暴），前端照那一句弹提示；其余 ERROR 只进日志。日志目录建不出来就退化成只写 stdout，monitor 照样起。后端子进程的 stderr 接进 monitor 的滚动日志，脱离起的后端写自己那份日志。
 
 **为什么**：release 版是 GUI 子系统，没有 stderr；日志不落盘，一条解析失败的 warn 就没人看见。
 

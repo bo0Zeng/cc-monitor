@@ -212,6 +212,14 @@ mod tests {
              那一格 09-21 的处置：**不是把数改对，是把抄来的第二份摘掉**。",
         ),
         (
+            "plan",
+            "计划（planned-build）的读面：找 pb、在工作区里起 `pb dump`（只读子命令，不带身份）、加工成界面排版的成品、\
+             盯计划仓推 `plan_changed`。它归 backend-core 是因为计划仓与 pb 都**在那台机器上**。\
+             **计划仓零写盘**：每个工作区上一次读好的那一份只在进程内存里；计划仓与工作区 `.env` 一个字节都不写\
+             （`tests/backend/plan/book_tests.rs` 跑前跑后逐字节对拍）。认可与退回记在后端自己的 \
+             `~/.cc-monitor/plan-review.json`（`plan/review.rs`，第四层逐份登记）",
+        ),
+        (
             "stderr_log",
             "脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件。\
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
@@ -320,6 +328,10 @@ mod tests {
             "守卫：协议面本身的几条（协议级码闭集 · serde 类型登记 · 子进程旗标 · EMITS 子集）",
         ),
         ("ratchet_guard", "守卫：那几张登记表的断言行逐字没动"),
+        (
+            "raw_said_guard",
+            "守卫：失败那一句不许直接是下层原话（只读源码）",
+        ),
         (
             "runs_guard",
             "守卫：通用层只认「运行」（扫描 ＋ 两套子运行形状跑同一批判据；临时目录里造夹具，不碰仓与家目录）",
@@ -920,10 +932,17 @@ mod tests {
         ),
         (
             "footprint/chores/marks.rs",
-            "**「要你动手」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
+            "**「待办」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
              文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
              经 `own_state` 原子写（`O_EXCL` 临时文件 · 0600 · 写满 → 挪过去）；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
              线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
+        ),
+        (
+            "plan/review.rs",
+            "**计划要你看的认可与退回记录** `~/.cc-monitor/plan-review.json`：认可过的几条（键带条目版本）· 退回过的格（送给谁 · 当时的子格与正文摘要）。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（计划仓 `.planned-build/` 一个字节不写，认可不回写 pb）。\
+             在跨进程锁里读盘 → 改 → 经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
+             线上入口两扇：认可那一半的宿主（`faces/plan_review_face.rs`：`plan-ack` · `plan-unack`）· 退回那一半的宿主（`faces/plan_return_face.rs`：`plan-return`），各 ＋ 派生的 CLI 面",
         ),
         (
             "footprint/last_seen.rs",
@@ -1041,6 +1060,14 @@ mod tests {
              起它之前建好家里那个不出会话的工作目录 —— 用户 / AI / skill 按需调，不定时",
         ),
         (
+            "faces/plan_review_face.rs",
+            "计划认可的帧面宿主（`plan-ack` · `plan-unack`，帧面与派生的 CLI 面共用）：认可 / 撤销认可",
+        ),
+        (
+            "faces/plan_return_face.rs",
+            "计划退回的帧面宿主（`plan-return`，帧面与派生的 CLI 面共用）：送到了 / 送达未知之后记那一次退回",
+        ),
+        (
             "relay/listen.rs",
             "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
@@ -1149,11 +1176,28 @@ mod tests {
             "skill_ledger::answer_",
             "stream/inbound/registry/assets.rs",
         ),
-        // 「要你动手」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
+        // 「待办」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
         (
             "footprint/chores/marks.rs",
             "marks::answer_mark",
             "stream/inbound/registry/assets.rs",
+        ),
+        // 计划认可与退回：认可两条（`answer_ack` · `answer_unack`）只从认可那一半的宿主进，记退回（`answer_returned`）只从退回那一半进；
+        // 读口 `current` / `review_path` 不在针上。
+        (
+            "plan/review.rs",
+            "review::answer_ack",
+            "faces/plan_review_face.rs",
+        ),
+        (
+            "plan/review.rs",
+            "review::answer_unack",
+            "faces/plan_review_face.rs",
+        ),
+        (
+            "plan/review.rs",
+            "review::answer_returned",
+            "faces/plan_return_face.rs",
         ),
         // 离线那台的上次值：一条写口 `answer_write`（`write_at` 是它的本体，判据直接喂临时目录）；读口 `answer_read` 只读。
         (
@@ -4447,7 +4491,7 @@ mod g6_scope_pins {
 ///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
 ///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
 /// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
-///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 差一个 `.into()`；
+///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 多一格可缺的 `raw`（下层原话）；
 ///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
 ///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
 ///
@@ -4514,10 +4558,10 @@ mod error_envelope_registry {
         ),
         (
             "control/cli_control.rs",
-            "message.into()",
-            "一次性 CLI 入口的 `emit_err`",
-            "签名收 `impl Into<String>`（调用点既传 `&str` 也传 `format!` 出来的 `String`）\
-             ⇒ 与另两份差一个 `.into()`。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
+            "let mut body = serde_json::json!",
+            "一次性 CLI 入口的 `emit_err`（信封拼在 `err_body`）",
+            "签名收 `impl Into<Said>`（调用点既传 `&str` / `String`，也传带下层原话的 `Said`）\
+             ⇒ 比另几份多一格可缺的 `raw`（下层原话，读的那一方放进复制详情）。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
         ),
         (
             "control/fork_write.rs",

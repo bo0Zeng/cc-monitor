@@ -212,7 +212,7 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("appearance")).toEqual([copyText("settingsPanel.group.fonts"), copyText("settingsPanel.group.colors"), copyText("settingsPanel.group.keybindings")]);
     // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
     expect(pageTitles("logs")).toEqual([]);
-    // 文件与数据：两栏（要你动手 · cc-monitor 放了什么）；「足迹」并进「放了什么」，「未识别的数据」并进日志页的诊断信息。
+    // 文件与数据：两栏（待办 · cc-monitor 放了什么）；「足迹」并进「放了什么」，「未识别的数据」并进日志页的诊断信息。
     expect(pageTitles("data")).toEqual([]);
     expect(document.querySelector('.settings-page[data-route-id="data"] .data-claude-dir'), "本机那一块 Claude 目录").toBeTruthy();
     expect(document.querySelectorAll('.settings-page[data-route-id="data"] .data-pane').length, "文件与数据两栏").toBe(2);
@@ -480,7 +480,7 @@ describe("S2 设置面板分页结构", () => {
     expect(document.querySelector('.settings-page[data-route-id="machine:devbox"] .machine-monitor #stub-remote-aliases')).toBeNull();
     const stub = term.querySelector<HTMLElement>("#stub-remote-aliases")!;
     expect(stub.parentElement!.firstElementChild, "别名不在「终端」栏最前面").toBe(stub);
-    // 「让直接敲的 claude 也走中转」搬进「文件与数据 → 要你动手」：机器页哪一栏都不再有那一块。
+    // 「让直接敲的 claude 也走中转」搬进「文件与数据 → 待办」：机器页哪一栏都不再有那一块。
     expect(term.querySelector("details.relay-optin")).toBeNull();
     expect(tabPage("acct").querySelector("details.relay-optin")).toBeNull();
     // 本机那一格：「终端」里也有「别名」—— 两边同一个位置。

@@ -246,7 +246,7 @@ fn round_detail(target: &str, e: &mut Entry) -> Option<String> {
     use copy_core::detail::Label;
     let step = said.said.clone();
     Some(
-        said.with_item(Label::Target, target)
+        said.with_target(copy_core::detail::Target::Machine(target))
             .with_item(Label::Hop, &step)
             .with_item(Label::Code, e.reason.as_deref().unwrap_or(""))
             .detail,

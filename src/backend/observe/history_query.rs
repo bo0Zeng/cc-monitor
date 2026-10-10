@@ -669,7 +669,8 @@ fn validate_session_path_among(
 }
 
 /// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
-/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
+/// 透传原字节：这是冻结给第二个前端的那一面（`IPC-PROTOCOL.md` §7），按原样留着。要**成品**（逐行解析好的记录）走
+/// `history-read`（后端自己的 `agents/claudecode/parse.rs::parse_line`；monitor 侧早已没有自己的解析）。
 fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
@@ -685,7 +686,7 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
 /// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
 /// 截断/重写（远端 size < offset）**不在此判**——同 aterm 由客户端另经 size 查检测后
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
-/// 透传而非逐行：monitor 侧 parse_line 管线已全，backend 不重复造（同 `read_session`）。
+/// 透传原字节，理由同 `read_session`（冻结的那一面；成品走 `history-read`）。
 ///
 /// 〔骨架〕加了两个**选项**（不是新子命令 —— 见 [`FromOffsetOpts`] 的头注）：
 /// `--until <end>` 把透传收成半开区间 `[offset, end)`；`--index` 不透传字节，改出
@@ -733,9 +734,10 @@ fn stream_from_offset<W: std::io::Write>(
 /// # 🔴 为什么是选项，不是一条新子命令 `--session-index`
 ///
 /// 加子命令 ⇒ `build_id_guard` 的指纹变 ⇒ 必须 bump `BUILD_ID`（远端才会判 stale 重装）。
-/// 本轮（10 路并行）**明令不许 bump**。选项不进指纹 —— 这正是那条护栏头注自陈的盲区
-/// 「子命令集没变但行为变了它不管」。⇒ **这一刀在已部署的老后端上是休眠的**，
-/// 直到下一次有人 bump；**老后端上的行为已设计成可认出来**：
+/// 当时（10 路并行）**明令不许 bump**，而那时选项还不进指纹，于是选成了选项。
+/// ⚠ 那个前提已经不在：从 `p4m-tail` 起 `SUBCOMMAND_OPTIONS` 也进 `build_id_guard` 的指纹（`#options` 段），
+/// 今天加一个选项和加一条子命令一样逼出 bump。留成选项的理由只剩下面两节（语义上就是「从偏移读」· 老后端上认得出来）。
+/// **老后端上的行为已设计成可认出来**：
 /// 老后端不认 `--index`/`--until`（它只读 `args[1..=2]`，多余参数不看）⇒ 照旧透传字节
 /// ⇒ 首行不是 `{"kind":"session_index",…}` ⇒ monitor 据此判「对面不会出索引」并诚实降级
 /// （`--until` 同理：多拿到的尾巴由 monitor 自己按 `end` 截掉，结果仍然对，只是多传了字节）。
@@ -849,6 +851,12 @@ pub(crate) fn list_user_inputs_into(
     from: u64,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
+    // 从头要 ⇒ 共用扫描图那一份（回退掉的那几句已经不在里面，与帧面同一份）。
+    if from == 0 {
+        let map = cold_scan(agent_home, jsonl_path)?;
+        return crate::observe::user_inputs::write_rows(&map.inputs, map.end, &mut out)
+            .map_err(|e| format!("stream failed: {e}"));
+    }
     crate::observe::user_inputs::write_user_inputs(
         open_user_inputs_at(agent_home, jsonl_path, from)?,
         from,
@@ -1611,17 +1619,21 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
 ) -> Result<LinesPage, (&'static str, String)> {
     let until = until.unwrap_or(u64::MAX);
     let mut lines: Vec<String> = Vec::new();
+    let mut starts: Vec<u64> = Vec::new();
     let mut bytes: usize = 0;
     let mut n: u64 = 0; // 下一个可计行的行号
+    let mut pos: u64 = 0; // 这一行的起点字节偏移
     let mut buf: Vec<u8> = Vec::new();
     let eof = loop {
         if n >= until {
             break false;
         }
         buf.clear();
+        let start = pos;
         let read = r
             .read_until(b'\n', &mut buf)
             .map_err(|e| ("failed", format!("scan failed: {e}")))?;
+        pos += read as u64;
         if read == 0 || buf.last() != Some(&b'\n') {
             break true; // 文件到头；torn 残尾不计（同 `tail_plan`）
         }
@@ -1645,6 +1657,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         }
         bytes += body.len();
         lines.push(String::from_utf8_lossy(body).into_owned());
+        starts.push(start);
         if bytes >= page {
             break false;
         }
@@ -1653,6 +1666,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
     Ok(LinesPage {
         from,
         lines,
+        starts,
         next,
         eof,
     })
@@ -1665,6 +1679,8 @@ pub(crate) struct LinesPage {
     pub from: u64,
     /// 可计行的原文（不含行尾 `\n`；`\r` 与 BOM 原样留着，调用方剥）。
     pub lines: Vec<String>,
+    /// 每一条在文件里的起点字节偏移（与 `lines` 逐条对齐）。
+    pub starts: Vec<u64>,
     /// 下一段从这一行起。
     pub next: u64,
     /// 读到了最后一个完整行之后（后面没有了）。

@@ -321,17 +321,12 @@ describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口�
   const jsonl: RigPayload[] = [
     userLine(0, "u0", "问一句"),
     line(1, {
-      type: "assistant",
-      uuid: "a1",
-      timestamp: "2026-09-10T00:00:01.000Z",
-      message: { id: "msg_T8", role: "assistant", content: [{ type: "text", text: "答一句" }] },
-      sessionId: "s1",
-      requestId: null,
-      parentUuid: null,
-      forkedFrom: null,
-      isApiErrorMessage: false,
-      error: null,
-      apiErrorStatus: null,
+      t: "reply",
+      id: "a1",
+      at: "2026-09-10T00:00:01.000Z",
+      blocks: [{ type: "text", text: "答一句" }],
+      autoReply: false,
+      endsTurn: false,
     }),
     userLine(2, "u2", "再问"),
   ];

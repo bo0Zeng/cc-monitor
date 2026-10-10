@@ -408,9 +408,12 @@ impl M {
             "cc-bus-install" => {
                 super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
             }
-            other => Err(("unknown_command", other.to_string())),
+            other => Err(crate::stream::inbound::spec::Fail::from((
+                "unknown_command",
+                other.to_string(),
+            ))),
         };
-        r.map_err(|(c, m)| (c.to_string(), m))
+        r.map_err(|f| (f.code, f.message))
     }
 }
 
@@ -1125,7 +1128,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
-    let (code, _) =
+    let crate::stream::inbound::spec::Fail { code, .. } =
         answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
     assert_eq!(code, "stale");
     assert!(dir.join("SKILL.md").exists());
@@ -1175,7 +1178,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         "MCP 那份原文没抄进备份"
     );
     // 这台没建账号库：用户级 MCP 只读，卸也拒。
-    let (code, _) = answer_uninstall_preview(
+    let crate::stream::inbound::spec::Fail { code, .. } = answer_uninstall_preview(
         &m.door(),
         &m.env,
         &json!({ "kind": "mcp", "name": "x", "at": { "level": "user" } }),

@@ -14,6 +14,7 @@ import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
 
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -40,19 +41,8 @@ import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, 
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 import type { RulesRead } from "./quota-reads";
-// `Tab` 的形状与标题函数在 `tab-model.ts`、落点算术在 `tab-drop.ts`；这里 re-export，调用方只 import 本文件。
+// `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
-export {
-  moveTab,
-  pickDropTarget,
-  tabUnderY,
-  commonDirName,
-  defaultGroupName,
-  groupMoveForDrop,
-  DWELL_MS,
-  DWELL_MOVE_PX,
-} from "./tab-drop";
-export type { DropTarget, GroupMove, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
@@ -91,7 +81,7 @@ export class TabManager {
   /** 会话状态账（`tab-store.ts`）：本类与拆出去的几份读写同一个实例。 */
   private readonly store = new TabStore();
   /** 路由（`tab-router.ts`）；切换本身的编排（可见性 · 物化 · 面板 · 贴底）在 `switchTo`。 */
-  private readonly router = new TabRouter(this.store, () => this.bar.visibleOrder());
+  private readonly router = new TabRouter(this.store, () => this.bar.navOrder());
 
   /**
    * 实时流视图（`tab-stream-view.ts`）。在构造体里建、不写成字段初始化：它要 `streamRootEl`，
@@ -128,6 +118,7 @@ export class TabManager {
     });
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
+      closeEndedIn: (gid) => this.closeEndedIn(gid),
       openTabCwd: (sid) => this.openTabCwd(sid),
       bringTerminalToFront: (sid) => this.frontFrom(sid, "row"),
       bringRemoteTerminalToFront: (sid) => this.frontFrom(sid, "row"),
@@ -137,7 +128,10 @@ export class TabManager {
       isSelected: (sid) => this.selection.has(sid),
       beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
       takeSuppressedClick: (sid) => this.dragger.takeSuppressedClick(sid),
+      beginGroupDrag: (e, gid, head) => this.dragger.beginGroup(e, gid, head),
+      takeSuppressedHeadClick: (gid) => this.dragger.takeSuppressedHeadClick(gid),
       openMenu: (e, sid) => this.openMenu(e, sid),
+      toggleSelect: (sid) => this.pick(sid, "toggle"),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
       reconnect: (origin) => this.reconnect(origin),
@@ -155,9 +149,11 @@ export class TabManager {
       },
       CHANNEL_ACTS,
     );
-    this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
+    this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar, {
       refreshTabBar: () => this.refreshTabBar(),
       openInNewWindow: (sid, screenX, screenY) => this.openInNewWindow(sid, screenX, screenY),
+      renameGroupNow: (gid) => this.bar.renameGroupNow(gid),
+      selectedFor: (sid) => this.selectedFor(sid),
     });
     this.view = new TabStreamView(this.store, streamRootEl, {
       onLine: (payload) => this.onLine(payload),
@@ -214,17 +210,93 @@ export class TabManager {
     if (t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => this.prefs.togglePin(sid), () => {});
   }
 
-  /** 移出分组：撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销（组随最后一个人走没了也建得回来）。 */
-  private leaveGroupUndoable(sid: string): void {
-    const col = this.prefs.groupOf(sid);
-    void this.prefs.leaveGroup(sid);
-    this.refreshTabBar();
-    if (!col) return;
-    const before = { ...col };
-    undoToast(copyText("tabBar.group.left", { name: col.name }), () => {
-      void this.prefs.restoreGroup(before, [sid]);
-      this.refreshTabBar();
-    }, () => {});
+  /** 按下 / 焦点的这一个在多选里（≥2）⇒ 选中的全部（按栏里的顺序）；否则只有它。 */
+  private selectedFor(sid: string): string[] {
+    const sel = this.selection.has(sid) ? this.selection.inOrder(this.bar.visibleOrder()) : [];
+    return sel.length > 1 ? sel : [sid];
+  }
+
+  /**
+   * 栏里键盘挪位（`Alt+↑↓`，焦点在栏里）：焦点那一行（选了几个 ⇒ 一起）挪一格；组头上 ⇒ 整组。焦点跟着那一行。
+   */
+  moveFocused(dir: -1 | 1): void {
+    const row = this.bar.focusedRow();
+    if (row === null) return;
+    this.dragger.keyMove(row.kind === "head" ? row : { kind: "tab", sids: this.selectedFor(row.sid) }, dir);
+    this.refocus(row);
+  }
+
+  /** `Alt+←`：焦点那一行（选了几个 ⇒ 一起）出组，放到组后面。 */
+  leaveFocused(): void {
+    const row = this.bar.focusedRow();
+    if (row?.kind !== "tab") return;
+    this.dragger.keyLeave(this.selectedFor(row.sid));
+    this.refocus(row);
+  }
+
+  /** `Alt+→`：和上一行建组 / 进上一行的组。 */
+  joinPrevFocused(): void {
+    const row = this.bar.focusedRow();
+    if (row?.kind !== "tab") return;
+    this.dragger.keyJoinPrev(this.selectedFor(row.sid));
+    this.refocus(row);
+  }
+
+  /** `F2`：组头或组员上 ⇒ 改这个组的名字。 */
+  renameFocusedGroup(): void {
+    const row = this.bar.focusedRow();
+    const gid = row === null ? null : row.kind === "head" ? row.gid : (this.store.tabs.get(row.sid)?.group ?? null);
+    if (gid !== null) this.bar.renameGroupNow(gid);
+  }
+
+  /** `F6`：焦点在主区与标签页栏之间轮（进栏落在当前标签页那一行）。 */
+  cycleFocus(): void {
+    if (this.bar.focusedRow() === null) {
+      this.bar.focusBar();
+      return;
+    }
+    const main = document.getElementById("message-stream");
+    if (main) main.focus();
+    else (document.activeElement as HTMLElement | null)?.blur();
+  }
+
+  /** 命令面板那三条（新建分组 · 加入分组… · 移出分组）作用于谁：选了几个 ⇒ 选中的；否则当前标签页。 */
+  private groupTargets(): string[] {
+    const sid = this.store.activeId;
+    if (sid === null) return [];
+    const sel = this.selection.inOrder(this.bar.visibleOrder());
+    return sel.length > 1 ? sel : [sid];
+  }
+
+  /** 命令面板列不列分组那三条：没拉过组表（撕离出来的查看窗）⇒ `null`；否则有几个组、作用对象里几个在组里。 */
+  groupCommandState(): { groups: number; grouped: number } | null {
+    if (!this.prefs.collectionsLoaded || this.store.activeId === null) return null;
+    const grouped = this.groupTargets().filter((sid) => (this.store.tabs.get(sid)?.group ?? null) !== null).length;
+    return { groups: this.prefs.collections.length, grouped };
+  }
+
+  /** 命令「新建分组」：建「分组 N」把它们放进去、名字框打开。 */
+  foundGroupFromCommand(): void {
+    this.dragger.foundNow(this.groupTargets());
+  }
+
+  /** 命令「移出分组」。 */
+  leaveGroupFromCommand(): void {
+    this.dragger.leaveNow(this.groupTargets().filter((sid) => (this.store.tabs.get(sid)?.group ?? null) !== null));
+  }
+
+  /** 命令「加入分组…」：在当前标签页那一行上开「分组 ▸」那一层（那一行看不见 ⇒ 锚在会话头）。 */
+  openGroupMenuFromCommand(): void {
+    const sid = this.store.activeId;
+    if (sid === null) return;
+    const row = this.bar.tabButtons.get(sid)?.root;
+    const anchor = row && row.getClientRects().length > 0 ? row : document.getElementById("session-head");
+    if (anchor) this.menu.openGroupMenu(anchor, this.groupTargets());
+  }
+
+  /** 挪完之后焦点回那一行（整刷会把它摘下来再插回去）；建了组、名字框开着 ⇒ 不抢。 */
+  private refocus(row: { kind: "tab"; sid: string } | { kind: "head"; gid: string }): void {
+    if (!(document.activeElement instanceof HTMLInputElement)) this.bar.focusRow(row);
   }
 
   /** 拖动排序 / 成组 / 撕窗口的状态机（`tab-bar-drag.ts`）。在构造体里建：它要 `barEl`。 */
@@ -280,16 +352,9 @@ export class TabManager {
       collections: () => this.prefs.collections,
       // 组员关系是 tab 自己的属性：菜单那三个动作改完内存（落盘偏好那一份同时写盘）就重画。
       groupOf: (sid) => this.prefs.groupOf(sid),
-      joinGroup: (sid, gid) => {
-        void this.prefs.joinGroup(sid, gid);
-        this.refreshTabBar();
-      },
-      foundGroup: (sids, name, id) => {
-        const why = this.prefs.foundGroup(sids, name, id);
-        this.refreshTabBar();
-        return why;
-      },
-      leaveGroup: (sid) => this.leaveGroupUndoable(sid),
+      joinGroup: (sids, gid) => this.dragger.joinNow(sids, gid),
+      foundGroup: (sids) => this.dragger.foundNow(sids),
+      leaveGroup: (sids) => this.dragger.leaveNow(sids),
       pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
       close: (sid) => this.closeTab(sid),
@@ -337,19 +402,9 @@ export class TabManager {
     collections: () => this.prefs.collections,
     pinnedLoaded: () => this.prefs.pinnedLoaded,
     setPinned: (sids, on) => this.prefs.setPinnedMany(sids, on),
-    joinGroup: (sids, gid) => {
-      void this.prefs.joinGroupMany(sids, gid);
-      this.refreshTabBar();
-    },
-    foundGroup: (sids, name, id) => {
-      const why = this.prefs.foundGroup(sids, name, id);
-      this.refreshTabBar();
-      return why;
-    },
-    leaveGroup: (sids) => {
-      void this.prefs.leaveGroupMany(sids);
-      this.refreshTabBar();
-    },
+    joinGroup: (sids, gid) => this.dragger.joinNow(sids, gid),
+    foundGroup: (sids) => this.dragger.foundNow(sids),
+    leaveGroup: (sids) => this.dragger.leaveNow(sids),
     closeTabs: (sids) => {
       for (const sid of sids) this.closeTab(sid);
     },
@@ -369,14 +424,10 @@ export class TabManager {
   }
 
   /**
-   * 启动重放开始时调一次：现有 Tab 的分支折叠切到批模式（只收不算主线）；重放期新建的 Tab 也进批模式（看 `store.inBatch`）。
+   * 启动重放开始时调一次：进批模式（惰性高亮；重放期的旧记录不建卡，收纳进 `tab.window` ⇒ 视口上方零插入）。
    */
   onBatchStart(): void {
     this.store.inBatch = true;
-    for (const t of this.store.tabs.values()) {
-      t.branchFolder.setBatchMode(true);
-      // 重放期的旧记录不建卡（收纳进 `tab.window`）⇒ 视口上方零插入。
-    }
   }
 
   /** 重放批完结：各 Tab 一次性算完、切回实时。 */
@@ -409,7 +460,7 @@ export class TabManager {
     if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
-    // jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
+    // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
@@ -869,6 +920,13 @@ export class TabManager {
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
   }
 
+  /**
+   * 一个会话的主线外清单到了（会话流里的 `branch` 格，整份）：那个 tab 的折叠层按它重折。没有这个 tab ⇒ 不收。
+   */
+  onSessionBranch(p: SessionBranchPayload): void {
+    this.store.tabs.get(p.session_id)?.branchFolder.setOff(new Set(p.off));
+  }
+
   /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */
   setRunWindow(sid: string, run: string, open: boolean): void {
     const k = `${sid}\u0000${run}`;
@@ -917,7 +975,7 @@ export class TabManager {
     return tab !== undefined && isLive(tab.state);
   }
 
-  /** 这个会话此刻「需要你」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
+  /** 这个会话此刻「需手动」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
   needsWordOf(sessionId: string): string | null {
     const tab = this.store.tabs.get(sessionId);
     const n = tab ? needsOf(tab) : null;
@@ -1080,23 +1138,23 @@ export class TabManager {
     this.bar.mountHeadActions(buttons);
   }
 
-  /** `Ctrl+J` · 点「需要你」：跳到下一个需要你的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
+  /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
   jumpToNextNeeds(): void {
     const sid = this.bar.nextNeedsSid();
     if (sid !== null) this.switchTo(sid);
   }
 
-  /** 此刻需要你的会话数（窗口标题 · 系统通知用）。 */
+  /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */
   needsCount(): number {
     return this.bar.needsCountNow();
   }
 
-  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需要你」用）。 */
+  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需手动」用）。 */
   tabsInOrder(): Tab[] {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }
 
-  /** 会话头 · 「需要你」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
+  /** 会话头 · 「需手动」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
   activeTab(): Tab | null {
     const sid = this.store.activeId;
     return sid === null ? null : (this.store.tabs.get(sid) ?? null);
@@ -1134,13 +1192,27 @@ export class TabManager {
     this.menu.open(anchor, sid, this.view.streamToggles());
   }
 
-  /** 菜单键 / `Shift+F10`：在当前标签页上开右键菜单（锚在它那一行；那一行看不见 ⇒ 锚在会话头）。 */
+  /**
+   * 菜单键 / `Shift+F10`：焦点在栏里 ⇒ 开焦点那一行的菜单（组头 ⇒ 组的菜单；选了几个、焦点在其中 ⇒ 批量菜单）；
+   * 否则在当前标签页上开（锚在它那一行；那一行看不见 ⇒ 锚在会话头）。
+   */
   openActiveMenu(): void {
+    const row = this.bar.focusedRow();
+    if (row?.kind === "head") return this.bar.openGroupMenuAt(row.gid);
+    if (row?.kind === "tab") {
+      const el = this.bar.tabButtons.get(row.sid)?.root;
+      if (el) {
+        const sids = this.selectedFor(row.sid);
+        if (sids.length > 1) openBatchMenu(el, sids, this.batchHost);
+        else this.openMenu(el, row.sid);
+        return;
+      }
+    }
     const sid = this.store.activeId;
     if (sid === null) return;
-    const row = document.querySelector<HTMLElement>("#tab-bar .tab.active");
-    const anchor = row && row.getClientRects().length > 0 ? row : document.getElementById("session-head");
-    if (anchor) this.openMenuFor(anchor, sid);
+    const anchor = this.bar.tabButtons.get(sid)?.root;
+    const at = anchor && anchor.getClientRects().length > 0 ? anchor : document.getElementById("session-head");
+    if (at) this.openMenuFor(at, sid);
   }
 
   /** `End`：当前会话回到底部。 */
@@ -1208,7 +1280,7 @@ export class TabManager {
       if (clearedIdle) this.refreshTabBar();
       return;
     }
-    // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
+    // 需手动的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
     if (act?.doing !== "needs_you") tab.needs = null;
     tab.facts.markStale();
     void tab.facts.refresh();
@@ -1285,29 +1357,58 @@ export class TabManager {
     if (!sid) return;
     const current = this.store.tabs.get(sid);
     if (!current || !closesWithoutMenu(current.state)) return;
-    const index = this.store.orderedIds.indexOf(sid);
-    const tab = this.detachTab(sid);
-    if (!tab) return;
-    tab.streamEl.classList.remove("active");
-    tab.inputsEl.classList.remove("active");
-    this.pendingCloses.set(sid, { tab, index });
-    const headline = tab.pinned
-      ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(tab) })
-      : copyText("tabBar.close.done", { title: fullTitle(tab) });
-    undoToast(headline, () => this.undoClose(sid), () => this.settleClose(sid));
+    const headline = current.pinned
+      ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(current) })
+      : copyText("tabBar.close.done", { title: fullTitle(current) });
+    this.closeUndoable([sid], headline, true);
   }
 
-  /** 撤销期里的那一个放回去：原位（顺序里原来那一格）· 原分组 · 原固定，并切回它。 */
-  private undoClose(sid: string): void {
-    const p = this.pendingCloses.get(sid);
-    if (!p) return;
-    this.pendingCloses.delete(sid);
-    const { tab, index } = p;
-    this.store.tabs.set(sid, tab);
-    this.store.orderedIds.splice(Math.min(index, this.store.orderedIds.length), 0, sid);
-    if (tab.group !== null && !this.prefs.collections.some((c) => c.id === tab.group)) tab.group = null;
-    if (tab.pinned) void this.prefs.persistPinned(); // 期间别处落过一次固定表就没有它了
-    this.switchTo(sid);
+  /** 组的菜单「关闭组里已结束的」：一次关掉，一条「已关闭 N 个［撤销］」。 */
+  private closeEndedIn(gid: string): void {
+    const sids = this.bar.visibleOrder().filter((sid) => {
+      const t = this.store.tabs.get(sid);
+      return t !== undefined && t.group === gid && closesWithoutMenu(t.state);
+    });
+    if (sids.length === 0) return;
+    this.closeUndoable(sids, copyText("tabBar.close.doneMany", { n: sids.length }), false);
+  }
+
+  /**
+   * 先只从栏上摘下来，给一条 8 秒「撤销」：撤销 ⇒ 原位、原分组、原固定放回（`refocus` ⇒ 并切回第一个）；
+   * 到点 ⇒ 做完关闭剩下的事（取消固定 · 出组 · 让后端忘掉）。
+   */
+  private closeUndoable(sids: readonly string[], headline: string, refocus: boolean): void {
+    const at = new Map(sids.map((sid) => [sid, this.store.orderedIds.indexOf(sid)]));
+    const taken: string[] = [];
+    for (const sid of sids) {
+      const tab = this.detachTab(sid);
+      if (!tab) continue;
+      tab.streamEl.classList.remove("active");
+      tab.inputsEl.classList.remove("active");
+      this.pendingCloses.set(sid, { tab, index: at.get(sid)! });
+      taken.push(sid);
+    }
+    if (taken.length === 0) return;
+    // 放回按原来的位置从前往后插（摘的时候各自记的是摘之前的那一格）。
+    const back = [...taken].sort((a, b) => at.get(a)! - at.get(b)!);
+    undoToast(headline, () => this.undoClose(back, refocus), () => back.forEach((sid) => this.settleClose(sid)));
+  }
+
+  /** 撤销期里的那几个放回去：原位（顺序里原来那一格）· 原分组 · 原固定；`refocus` ⇒ 切回第一个。 */
+  private undoClose(sids: readonly string[], refocus: boolean): void {
+    let first: string | null = null;
+    for (const sid of sids) {
+      const p = this.pendingCloses.get(sid);
+      if (!p) continue;
+      this.pendingCloses.delete(sid);
+      const { tab, index } = p;
+      this.store.tabs.set(sid, tab);
+      this.store.orderedIds.splice(Math.min(index, this.store.orderedIds.length), 0, sid);
+      if (tab.group !== null && !this.prefs.collections.some((c) => c.id === tab.group)) tab.group = null;
+      if (tab.pinned) void this.prefs.persistPinned(); // 期间别处落过一次固定表就没有它了
+      first ??= sid;
+    }
+    if (first !== null && refocus) this.switchTo(first);
     this.refreshTabBar();
   }
 
@@ -1329,8 +1430,9 @@ export class TabManager {
 
     const wasActive = this.store.activeId === sessionId;
     const idx = this.store.orderedIds.indexOf(sessionId);
-    // 落到条上看到的顺序里的后一个，没有就前一个（落点在别的组里也照这个顺序）
-    const seen = this.bar.visibleOrder();
+    // 落到条上看到的顺序里的后一个，没有就前一个（落点在别的组里也照这个顺序；收着的组里的看不见、不落过去）
+    const nav = this.bar.navOrder();
+    const seen = nav.includes(sessionId) ? nav : this.bar.visibleOrder();
     const at = seen.indexOf(sessionId);
     const fallbackId = seen[at + 1] ?? seen[at - 1] ?? null;
 
@@ -1612,6 +1714,8 @@ export class TabManager {
     }
     if (this.store.activeId === sessionId) return;
 
+    // 要切到的在收着的组里（Ctrl+J · 命令面板 · 通知）⇒ 那个组展开（下面那次整刷画出来）。
+    this.prefs.expandFor(sessionId);
     // 切当前 tab 只换 `.active`（CSS visibility），不用 display，免得整棵子树重建布局。
     this.view.showOnly(sessionId);
     const next = this.store.tabs.get(sessionId);

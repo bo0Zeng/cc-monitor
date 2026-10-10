@@ -220,6 +220,9 @@ acct-core = { path = "../../common/acct-core" }
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
+# 暂停时钟（`#[tokio::test(start_paused = true)]`）：拿「截止时刻」说事的测试用虚拟时钟，机器负载多高读数都一样。
+# 只在 dev 侧开 —— resolver 2 下 dev 依赖的特性不并进产品构建，发布二进制里的 tokio 照旧是上面那份 `full`。
+tokio = { version = "1", features = ["test-util"] }
 
 # 系统通知（`platform/notify.rs`）：Linux 上经会话总线直说通知协议，全进程一条长连接（插件那一份每条新开、发完就丢，GNOME 会当场收走）。
 # 已在依赖图里（notification 插件底下的 notify-rust 就用它），这里只是在 Linux 上直接用。

@@ -234,7 +234,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-uuid]", 15_000);
+      await waitFor(".session-viewer [data-id]", 15_000);
       await sleep(1500);
     },
   },
@@ -249,7 +249,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-uuid]", 15_000);
+      await waitFor(".session-viewer [data-id]", 15_000);
       await sleep(1200);
     },
   },
@@ -264,7 +264,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 560,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-uuid]", 15_000);
+      await waitFor(".session-viewer [data-id]", 15_000);
       await sleep(1200);
     },
   },

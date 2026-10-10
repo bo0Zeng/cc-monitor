@@ -842,6 +842,8 @@ export class SettingsPanel {
       connection: parts?.connection,
       ccMonitor: cc,
       menu: () => this.remoteSection?.menuFor(pageId) ?? [],
+      // 卡头问题行的修法：远端那几颗与机器列表那一行同一个口子；本机只有重试 / 更新（宿主做）。
+      onFix: (fix) => (local ? void this.runFix(pageId, fix) : this.remoteSection?.runFix(pageId, fix)),
     });
     if (parts) page.slots.config.appendChild(parts.terminal);
     this.machinePages.set(pageId, page);
@@ -906,7 +908,7 @@ export class SettingsPanel {
       ),
     );
 
-    // 文件与数据：两栏（要你动手 · cc-monitor 放了什么）；本机那两块（Claude 目录 · cc-monitor 的文件）由这里建好交进去。
+    // 文件与数据：两栏（待办 · cc-monitor 放了什么）；本机那两块（Claude 目录 · cc-monitor 的文件）由这里建好交进去。
     const dataPage = document.createElement("div");
     const ownFiles = this.safeBlock(
       copyText("settingsPanel.group.dataPlaces"),

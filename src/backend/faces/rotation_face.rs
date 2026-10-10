@@ -653,7 +653,7 @@ pub(crate) fn preset_with(
         e.source = Source::Rule(rule.to_string());
         b.sessions.insert(sid.to_string(), e);
     })
-    .map_err(|e| ("io_failed", e.said_logging_raw()))
+    .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号、来源还是规则的；写不成只出声）。

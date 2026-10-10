@@ -259,3 +259,35 @@ fn owner_maps_a_child_record_back_to_its_parent() {
         assert_eq!(owner(&p(other)), None, "{other}");
     }
 }
+
+/// `find`：按子 agent 的 id 在记录树里找它那份记录（嵌套一层也认）；`child_parent_sid` 再对到父会话。名字带路径分隔符的 id 不找。
+#[test]
+fn a_child_id_is_found_under_its_parent_and_mapped_to_the_parent_sid() {
+    let root = std::env::temp_dir().join(format!("runs-find-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let proj = root.join("-w-p");
+    std::fs::create_dir_all(proj.join("s-parent/subagents/nest")).unwrap();
+    std::fs::write(proj.join("s-parent.jsonl"), "{}\n").unwrap();
+    std::fs::write(proj.join("s-parent/subagents/agent-abc123.jsonl"), "{}\n").unwrap();
+    std::fs::write(
+        proj.join("s-parent/subagents/nest/agent-def456.jsonl"),
+        "{}\n",
+    )
+    .unwrap();
+    assert_eq!(
+        find(&root, "abc123"),
+        Some(proj.join("s-parent/subagents/agent-abc123.jsonl"))
+    );
+    assert_eq!(
+        find(&root, "def456"),
+        Some(proj.join("s-parent/subagents/nest/agent-def456.jsonl"))
+    );
+    assert_eq!(find(&root, "nope"), None);
+    assert_eq!(find(&root, "../abc123"), None);
+    assert_eq!(
+        crate::agents::child_parent_sid(&root, "def456").as_deref(),
+        Some("s-parent")
+    );
+    assert_eq!(crate::agents::child_parent_sid(&root, "nope"), None);
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -291,7 +291,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
-                message: Some(serde_json::json!({"role": "user"})),
+                record: Some(crate::agents::record::Record {
+                    at: Some(s("2026-10-09T01:30:00.000Z")),
+                    time_text: Some(s("09:30")),
+                    ..said_record("u1", "q")
+                }),
                 cwd: Some(s("/w")),
                 byte_offset: 120,
                 rid: Some(s("r1")),
@@ -301,7 +305,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
-                message: None,
+                record: None,
                 cwd: None,
                 byte_offset: 120,
                 rid: None,
@@ -313,7 +317,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 sid: s("s1"),
                 agent_kind: Some(s("claude")),
                 liveness_confidence: Some(s("pidfile")),
-                session_kind: Some(s("bg")),
                 background: true,
                 attachable: Some(true),
                 cwd: Some(s("/w")),
@@ -321,7 +324,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
                 lines: Some(9),
-                status: Some(s("waiting")),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
@@ -334,7 +336,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 sid: s("s1"),
                 agent_kind: None,
                 liveness_confidence: None,
-                session_kind: None,
                 background: false,
                 attachable: None,
                 cwd: None,
@@ -342,7 +343,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 name: None,
                 path: None,
                 lines: None,
-                status: None,
                 activity: None,
                 waiting_for: None,
                 container: None,
@@ -352,14 +352,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus {
                 sid: s("s1"),
-                status: Some(s("waiting")),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
-                status: None,
                 activity: None,
                 waiting_for: None,
                 liveness_confidence: None,
@@ -422,6 +420,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::QuotaChanged),
         both(Frame::RotationChanged { sid: s("s1") }),
         both(Frame::RotationRulesChanged),
+        both(Frame::PlanChanged {
+            workspace: s("/w"),
+            rev: s("r1"),
+            needs: 2,
+        }),
         both(Frame::TasksChanged { sid: s("s1") }),
         both(Frame::SessionsReplayed),
         both(Frame::SessionFileGone {
@@ -520,6 +523,18 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     ..RunInfo::default()
                 }],
                 ended: vec![],
+            },
+        ],
+        [
+            Frame::SessionBranch {
+                sid: s("s1"),
+                path: s("/p/s1.jsonl"),
+                off: vec![s("u2"), s("a2")],
+            },
+            Frame::SessionBranch {
+                sid: s("s1"),
+                path: s("/p/s1.jsonl"),
+                off: vec![],
             },
         ],
         [
@@ -689,6 +704,14 @@ fn link_frames_have_exactly_these_bytes() {
         (
             Frame::TasksChanged { sid: "s1".into() },
             "{\"kind\":\"tasks_changed\",\"sid\":\"s1\"}\n",
+        ),
+        (
+            Frame::PlanChanged {
+                workspace: "/w".into(),
+                rev: "0123abcd".into(),
+                needs: 2,
+            },
+            "{\"kind\":\"plan_changed\",\"workspace\":\"/w\",\"rev\":\"0123abcd\",\"needs\":2}\n",
         ),
     ];
     for (f, want) in cases {
@@ -1019,6 +1042,27 @@ fn seq_counter_is_monotonic_per_path_and_independent_across_paths() {
     assert_eq!(d.next("/x"), 1);
 }
 
+/// 一条最少格的 `said` 通用记录（结构占位）。
+fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
+    use crate::agents::record::{Block, Body, Record};
+    Record {
+        agent: "claude".into(),
+        id: id.into(),
+        at: None,
+        time_text: None,
+        body: Body::Said {
+            who: crate::agents::UserText {
+                speaker: crate::agents::Speaker::Human,
+                text: text.into(),
+                pasted: Vec::new(),
+            },
+            blocks: vec![Block::Text { text: text.into() }],
+            results: Default::default(),
+            cwd: None,
+        },
+    }
+}
+
 #[test]
 fn line_with_quotes_backslashes_and_newline_roundtrips() {
     let raw = "before\"quote\\backslash\nafter-newline";
@@ -1026,7 +1070,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         session_id: "sid".into(),
         path: "/some/path.jsonl".into(),
         seq: 42,
-        message: Some(serde_json::json!({ "text": raw })),
+        record: Some(said_record("u1", raw)),
         cwd: None,
         byte_offset: 99,
         rid: None,
@@ -1047,7 +1091,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     // Parses back and the raw field is recovered byte-for-byte.
     let v: Value = serde_json::from_str(body).expect("parse");
     assert_eq!(v["kind"], "line");
-    assert_eq!(v["message"]["text"], raw);
+    assert_eq!(v["record"]["blocks"][0]["text"], raw);
     assert_eq!(v["seq"], 42);
 }
 
@@ -1229,7 +1273,6 @@ fn dg3_codex_fields_serialize_when_present() {
         sid: "s".into(),
         agent_kind: Some("codex".into()),
         liveness_confidence: Some("heuristic".into()),
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1237,7 +1280,6 @@ fn dg3_codex_fields_serialize_when_present() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -1251,7 +1293,6 @@ fn dg3_codex_fields_serialize_when_present() {
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        status: Some("busy".into()),
         activity: None,
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
@@ -1259,7 +1300,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"busy\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1294,7 +1335,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         sid: "s".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1302,7 +1342,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -1316,14 +1355,13 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        status: Some("idle".into()),
         activity: None,
         waiting_for: None,
         liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"idle\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1440,7 +1478,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             sid: "s".into(),
             agent_kind: None,
             liveness_confidence: None,
-            session_kind: None,
             background: false,
             attachable: None,
             cwd: None,
@@ -1448,7 +1485,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             name: None,
             path: None,
             lines: None,
-            status: None,
             activity: None,
             waiting_for: None,
             container: c,
@@ -1513,7 +1549,6 @@ fn loc1b_session_added_pid_is_additive() {
             sid: "s".into(),
             agent_kind: None,
             liveness_confidence: None,
-            session_kind: None,
             background: false,
             attachable: None,
             cwd: None,
@@ -1521,7 +1556,6 @@ fn loc1b_session_added_pid_is_additive() {
             name: None,
             path: None,
             lines: None,
-            status: None,
             activity: None,
             waiting_for: None,
             container: None,
@@ -1672,17 +1706,14 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "raw", "string"),
     ("session_added", "sid", "string"),
     ("session_added", "path", "string"),
-    ("session_added", "session_kind", "string"),
     ("session_added", "cwd", "string"),
     ("session_added", "name", "string"),
     ("session_added", "lines", "number"),
-    ("session_added", "status", "string"),
     ("session_added", "waiting_for", "string"),
     ("session_added", "agent_kind", "string"),
     ("session_added", "liveness_confidence", "string"),
     ("session_added", "attachable", "bool"),
     ("session_status", "sid", "string"),
-    ("session_status", "status", "string"),
     ("session_status", "waiting_for", "string"),
     ("session_status", "liveness_confidence", "string"),
     ("session_removed", "sid", "string"),
@@ -1692,6 +1723,23 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("overflow", "lost_truncated", "bool"),
     ("turn_end", "session_id", "string"),
     ("turn_end", "uuid", "string"),
+    // 〔第二个前端 2026-10-08〕**逐字流**（聊天屏的打字机）。`tap_frames_have_exactly_these_bytes` 钉的是字节，
+    // 本表钉的是**有人在读它** —— 少了这几行，整条 `tap` 被清理掉时没有任何判据说得出「有个前端靠它」。
+    // ⚠ `ev` 与 `end` 恰有一个 ⇒ 一份样本只带得动 `ev`（打字机读的那一支）；`end` 两个取值的字节由那条逐字节判据钉。
+    ("tap", "stream", "string"),
+    ("tap", "run", "string"),
+    ("tap", "resp", "number"),
+    ("tap", "n", "number"),
+    ("tap", "ev", "object"),
+    // 〔第二个前端 2026-10-08〕**一切帧命令的应答与撤销**。失败那三格（`code` / `message` / `detail`）是
+    // 失败卡与「复制详情」的全部原料：`detail` 跟着帧回，而最常见的那条错正好是「联系不上」—— 那时再去取就取不到。
+    ("reply", "id", "string"),
+    ("reply", "ok", "bool"),
+    ("reply", "code", "string"),
+    ("reply", "message", "string"),
+    ("reply", "detail", "string"),
+    ("reply", "data", "object"),
+    ("cancelled", "id", "string"),
     ("request", "id", "string"),
     ("request", "cmd", "string"),
     ("request", "args", "object"),
@@ -1707,7 +1755,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 1,
-            message: None,
+            record: None,
             cwd: None,
             byte_offset: 9,
             rid: None,
@@ -1717,7 +1765,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             sid: "s".into(),
             agent_kind: s.clone(),
             liveness_confidence: s.clone(),
-            session_kind: s.clone(),
             background: false,
             attachable: Some(false),
             cwd: s.clone(),
@@ -1725,7 +1772,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             name: s.clone(),
             path: s.clone(),
             lines: Some(3),
-            status: s.clone(),
             activity: None,
             waiting_for: s.clone(),
             container: None,
@@ -1733,7 +1779,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         },
         Frame::SessionStatus {
             sid: "s".into(),
-            status: s.clone(),
             activity: None,
             waiting_for: s.clone(),
             liveness_confidence: s.clone(),
@@ -1754,6 +1799,23 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             uuid: "u".into(),
         },
+        Frame::Tap {
+            stream: "s".into(),
+            run: s.clone(),
+            resp: 1,
+            n: 0,
+            ev: Some(crate::agents::StreamEv::Start { rid: "r-1".into() }),
+            end: None,
+        },
+        Frame::Reply {
+            id: "1".into(),
+            ok: false,
+            code: s.clone(),
+            message: s.clone(),
+            detail: s.clone(),
+            data: Some(serde_json::json!({})),
+        },
+        Frame::Cancelled { id: "1".into() },
     ];
     frames
         .iter()
@@ -1822,7 +1884,7 @@ fn line_raw_is_only_there_when_asked() {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 0,
-            message: None,
+            record: None,
             cwd: None,
             byte_offset: 5,
             rid: None,
@@ -1840,6 +1902,172 @@ fn line_raw_is_only_there_when_asked() {
     );
 }
 
+// ═══ 成品面：通用记录与 history-read 的行，两个前端共同的契约（冻结：只许加，加了也要登记进来）═══════
+//
+// 换形那一刀（10-09）之后，`line.record` 与 `history-read.rows` 是两个前端都吃的**成品面**：判定只在后端，前端只排版。
+// ⇒ 下表登记的每一格不许改名、删、换类型；新加一格也得先登记进来（`every_product_field_is_in_the_frozen_table`），
+// 这样「两边在读的到底是哪几格」永远有一张表说得清。
+
+/// （哪一面, 字段, JSON 类型）。面：`record` 公共格 · `said` / `reply` / `retry` / `title` / `queued` 各类自己的格
+/// · `who`（`UserText`）· `error`（报错回复）· `block:<type>` 各种内容块 · `rows`（`history-read` 每一行）。
+const PRODUCT_FACE: &[(&str, &str, &str)] = &[
+    ("record", "agent", "string"),
+    ("record", "id", "string"),
+    ("record", "at", "string"),
+    ("record", "timeText", "string"),
+    ("record", "t", "string"),
+    ("said", "who", "object"),
+    ("said", "blocks", "array"),
+    ("said", "results", "object"),
+    ("said", "cwd", "string"),
+    ("reply", "blocks", "array"),
+    ("reply", "model", "string"),
+    ("reply", "autoReply", "bool"),
+    ("reply", "endsTurn", "bool"),
+    ("reply", "cards", "object"),
+    ("reply", "steps", "object"),
+    ("reply", "runs", "object"),
+    ("reply", "error", "object"),
+    ("retry", "reason", "string"),
+    ("retry", "attempt", "number"),
+    ("retry", "max", "number"),
+    ("title", "text", "string"),
+    ("title", "by", "string"),
+    ("queued", "who", "object"),
+    ("who", "speaker", "object"),
+    ("who", "text", "string"),
+    ("error", "reason", "string"),
+    ("error", "status", "number"),
+    ("block:text", "type", "string"),
+    ("block:text", "text", "string"),
+    ("block:thinking", "type", "string"),
+    ("block:thinking", "text", "string"),
+    ("block:tool_use", "type", "string"),
+    ("block:tool_use", "id", "string"),
+    ("block:tool_use", "name", "string"),
+    ("block:tool_use", "input", "object"),
+    ("block:tool_result", "type", "string"),
+    ("block:tool_result", "for", "string"),
+    ("block:tool_result", "content", "array"),
+    ("block:tool_result", "isError", "bool"),
+    ("block:image", "type", "string"),
+    ("block:image", "source", "object"),
+    ("rows", "end", "number"),
+    ("rows", "hash", "number"),
+    ("rows", "record", "object"),
+    ("rows", "cwd", "string"),
+];
+
+/// 记录金样里**全格**那几条（适配层真打出来的，`record_of_tests` 钉着它与代码一致）。
+fn full_records() -> Vec<Value> {
+    let golden = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/__fixtures__/record.golden.jsonl"
+    ))
+    .expect("记录金样不在");
+    golden
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|v| {
+            [
+                "said-full",
+                "reply-full",
+                "reply-error",
+                "retry-full",
+                "title-agent",
+                "queued",
+            ]
+            .contains(&v["case"].as_str().unwrap_or(""))
+        })
+        .map(|v| v["record"].clone())
+        .collect()
+}
+
+/// `history-read` 一页的行：真走读核（Claude 那一家），一条带 `cwd` 的人话 ＋ 一条不进界面的。
+fn history_read_rows() -> Vec<Value> {
+    let face = crate::agents::claudecode::RECORDS;
+    let page = concat!(
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-10-09T01:30:00.000Z","cwd":"/w","message":{"role":"user","content":"q"}}"#,
+        "\n",
+        r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
+        "\n",
+    );
+    let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], false);
+    crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
+}
+
+/// 一面的样本：`(面, 那一面的对象)`，每一面至少一份。
+fn product_samples() -> Vec<(String, Value)> {
+    let mut out = Vec::new();
+    for r in full_records() {
+        let t = r["t"].as_str().unwrap().to_string();
+        out.push(("record".to_string(), r.clone()));
+        out.push((t.clone(), r.clone()));
+        if let Some(w) = r.get("who") {
+            out.push(("who".to_string(), w.clone()));
+        }
+        if let Some(e) = r.get("error") {
+            out.push(("error".to_string(), e.clone()));
+        }
+        for b in r
+            .get("blocks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            out.push((format!("block:{}", b["type"].as_str().unwrap()), b.clone()));
+        }
+    }
+    for row in history_read_rows() {
+        out.push(("rows".to_string(), row));
+    }
+    out
+}
+
+/// 记录的五个类别。
+const RECORD_CLASSES: [&str; 5] = ["said", "reply", "retry", "title", "queued"];
+
+/// 这一面的这一格登记过没有：各类别的格 ＝ 它自己那几格 ＋ `record` 公共格。
+fn registered(face: &str, field: &str) -> bool {
+    PRODUCT_FACE.iter().any(|(f, k, _)| {
+        *k == field && (*f == face || (*f == "record" && RECORD_CLASSES.contains(&face)))
+    })
+}
+
+/// 冻结表里每一格，在真打出来的成品里都在、类型对。
+#[test]
+fn the_record_shape_both_frontends_read_stays_put() {
+    let samples = product_samples();
+    for (face, field, ty) in PRODUCT_FACE {
+        let hits: Vec<&Value> = samples
+            .iter()
+            .filter(|(f, _)| f == face)
+            .filter_map(|(_, v)| v.get(*field))
+            .collect();
+        assert!(!hits.is_empty(), "{face}.{field} 没了（两个前端在读它）");
+        for got in hits {
+            assert_eq!(json_type(got), *ty, "{face}.{field} 换了类型：{got}");
+        }
+    }
+}
+
+/// 成品面进冻结表：真打出来的成品里出现的每一格都登记过（加一格可以，但得先进表 —— 两边读哪几格才说得清）。
+#[test]
+fn every_product_field_is_in_the_frozen_table() {
+    let mut loose = Vec::new();
+    // `record` 那一面的样本就是各类别的样本（按类别查，那里连公共格一起认）。
+    for (face, v) in product_samples().into_iter().filter(|(f, _)| f != "record") {
+        for key in v.as_object().expect("成品面都是对象").keys() {
+            if !registered(&face, key) {
+                loose.push(format!("{face}.{key}"));
+            }
+        }
+    }
+    loose.sort();
+    loose.dedup();
+    assert!(loose.is_empty(), "成品里有没登记进冻结表的格：{loose:?}");
+}
+
 // ═══ 第二个前端调的一次性子命令：冻结（叫法 · 位置参数 · 输出里它读的那几格）══════════════
 //
 // `--resolve` 的入出形状另有冻结金样（`tests/__fixtures__/resolve-contract.golden.json`）；会话 id 的校验规则钉在
@@ -1855,6 +2083,35 @@ const SECOND_FRONTEND_SUBCOMMANDS: &[(&str, usize)] = &[
     ("--resolve", 0),
     ("--search", 1),
     ("--fork-session", 2),
+    // 〔第二个前端 2026-10-08〕它**今天在调 / 这一拍要接**的另外九条。上面那八条之外，这九条一条都没有判据保护
+    //   —— 上一次清理命令名（`invalid_args` 并进 `bad_args` · `--history-projects` / `--history-sessions` 从
+    //   `SUBCOMMANDS` 消失）在它那一侧**不会红，会在用户手里坏**。
+    // 两类，各有各的真检验（见本族那条测试，membership 之外不许空转）：
+    //   ① CLI 独有、有位置参数的三条 ⇒ 下面 `runs` 里照原来的叫法真跑一趟；
+    //   ② 帧面派生的六条 ⇒ 入参走 stdin 一段 JSON，argv 上一个位置参数都没有（0 由 `cli_control::spec_for` 验）。
+    ("--backend-probe", 0),
+    ("--find-in-session", 1),
+    ("--list-user-inputs", 1),
+    ("--ping", 0),
+    ("--terminals-list", 0),
+    ("--terminal-preview", 0),
+    ("--terminal-input", 0),
+    ("--history-page", 0),
+    ("--history-facts", 0),
+];
+
+/// 上面那张表里**帧面派生**的那几条（CLI 口由 `cli_control::cli_exposed` 自动给，没有分派臂）。
+///
+/// 🔴 **单列一张不是冗余，是上面那张表对它们恒绿** —— 现打出来的：把帧面 `history-page` 改个名，
+/// CLI 口当场消失，而 `SUBCOMMANDS` 里 `"--history-page"` 那个串还在（两者都是源码字面量、互不相干）
+/// ⇒ `the_subcommands_the_second_frontend_calls_stay_put` **照样报绿**。本表让那一形当场红。
+const SECOND_FRONTEND_DERIVED_SUBCOMMANDS: &[&str] = &[
+    "--ping",
+    "--terminals-list",
+    "--terminal-preview",
+    "--terminal-input",
+    "--history-page",
+    "--history-facts",
 ];
 
 /// （子命令, 输出一行里第二个前端读的字段, JSON 类型）。
@@ -1900,6 +2157,32 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
     for (flag, _) in SECOND_FRONTEND_SUBCOMMANDS {
         assert!(crate::SUBCOMMANDS.contains(flag), "{flag} 不在子命令表里了");
     }
+    // ⚠ **上面那一圈对帧面派生的那几条是「串对串」** —— 本表与 `SUBCOMMANDS` 都是源码里的字面量，
+    //   帧面那条命令改名 / 删掉 / 进了 `STREAM_ONLY`，CLI 口当场消失而那个串还在 ⇒ 它照样绿（实测过）。
+    //   ⇒ 派生那几条逐条验**真能派发**（[`SECOND_FRONTEND_DERIVED_SUBCOMMANDS`]），顺便验登记的 0 不是凑的。
+    for flag in SECOND_FRONTEND_DERIVED_SUBCOMMANDS {
+        let spec = crate::control::cli_control::spec_for(flag).unwrap_or_else(|| {
+            panic!(
+                "{flag} 是帧面派生的 CLI 口，而 `spec_for` 今天查不到它 —— 帧面那条命令改名 / 删了 / 进了
+                 `cli_control::STREAM_ONLY`，CLI 面当场消失，而 `SUBCOMMANDS` 里那个串还在
+                 ⇒ 第二个前端调它只会拿到一堆 jsonl 行（`is_query_mode` 把它当未知 flag ⇒ 照常进流模式）。"
+            )
+        });
+        let (_, pos) = SECOND_FRONTEND_SUBCOMMANDS
+            .iter()
+            .find(|(f, _)| f == flag)
+            .unwrap_or_else(|| panic!("{flag} 列在派生表里，却不在冻结表里"));
+        assert_eq!(
+            *pos, 0,
+            "{flag} 是帧面 `{}` 派生的 CLI 口（入参走 stdin），位置参数该登记成 0",
+            spec.name
+        );
+    }
+    // 探测口不在 `REGISTRY` 上（它是 `cli_control` 自己那一口）⇒ 单独验分派臂认得它。
+    assert!(
+        crate::control::cli_control::handles("--backend-probe"),
+        "`--backend-probe` 的分派臂不认它了 —— 第二个前端靠它判这台支持哪几条"
+    );
     let (home, sid, path) = second_frontend_home("sub");
     let p = path.to_string_lossy().to_string();
     let argv = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -1917,6 +2200,11 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
         ),
         ("--search", argv(&["--search", "x"])),
         (
+            "--find-in-session",
+            argv(&["--find-in-session", "--query", "x", &p]),
+        ),
+        ("--list-user-inputs", argv(&["--list-user-inputs", &p])),
+        (
             "--fork-session",
             argv(&[
                 "--fork-session",
@@ -1931,7 +2219,18 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
             .find(|(f, _)| f == flag)
             .unwrap()
             .1;
-        assert_eq!(args.len() - 1, want, "{flag} 的位置参数个数");
+        // 位置参数 ＝ 去掉子命令本身、去掉 `--opt` 与紧跟它的那个值之后剩下的。
+        // （原来写的是 `args.len() - 1`，那只对「不带选项」那几条成立；`--find-in-session` 必带 `--query <q>`。）
+        let mut positional = 0usize;
+        let mut it = args[1..].iter();
+        while let Some(a) = it.next() {
+            if a.starts_with("--") {
+                let _ = it.next();
+            } else {
+                positional += 1;
+            }
+        }
+        assert_eq!(positional, want, "{flag} 的位置参数个数");
         assert!(crate::is_query_mode(args), "{flag} 不进一次性查询了");
         let code = match *flag {
             "--search" => crate::observe::search_query::run(&home, args),

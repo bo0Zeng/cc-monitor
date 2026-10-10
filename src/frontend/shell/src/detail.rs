@@ -97,16 +97,6 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     .render()
 }
 
-/// 一条 ERROR 级日志事件（`monitor-error` 那条 toast）的详情：时刻 · 本机 · 对象（来源模块）· 原话（那条日志）。
-pub(crate) fn of_log_event(target: &str, message: &str) -> String {
-    Detail::new()
-        .item(Label::At, now())
-        .item(Label::Local, local_line())
-        .item(Label::Target, target)
-        .item(Label::Raw, message)
-        .render()
-}
-
 /// 壳自己那几条命令的失败：给人看的那一句 ＋ 复制详情那几行。全仓壳命令的失败只这一形（ts-rs 导出）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -255,6 +245,14 @@ impl Said {
             return self;
         }
         Said::of_parts(self.said, self.parts.insert(label, value))
+    }
+
+    /// 详情里补「对象」那一项（只收标识，[`copy_core::detail::Target`]）。已有 · 那份里有读不出项名的一块 ⇒ 原样。
+    pub(crate) fn with_target(self, t: copy_core::detail::Target<'_>) -> Said {
+        if self.parts.has_block() || self.parts.has(Label::Target) {
+            return self;
+        }
+        Said::of_parts(self.said, self.parts.target(t))
     }
 }
 

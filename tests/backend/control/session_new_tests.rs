@@ -320,10 +320,17 @@ fn a_taken_name_at_start_time_is_reported_on_the_name_slot() {
     assert_eq!((e.0, field_of(&e)), ("tmux_taken", json!("tmuxName")));
     rig.ccm_rc = 1;
     let e = rig.call(req(json!({}))).unwrap_err();
+    // 那一句只说原因（C-W18：句子里不接原话、不带退出码）；退出码与 ccm 的 stderr 进复制详情（`raw`）。
     assert_eq!(
         (e.0, field_of(&e), e.1.as_str()),
-        ("start_failed", Value::Null, "boom")
+        (
+            "start_failed",
+            Value::Null,
+            copy_core::copy_text("beSessionNew.start.failed", &[]).as_str()
+        )
     );
+    let raw = e.3.as_deref().unwrap_or_default();
+    assert!(raw.contains("boom") && raw.contains('1'), "{raw}");
 }
 
 #[test]
@@ -469,6 +476,24 @@ fn a_new_session_marks_its_cwd_trusted_in_its_account_before_it_starts() {
         ))
         .is_err());
     assert!(rig.marks.borrow().is_empty(), "目录不在 ⇒ 什么都不起、不标");
+}
+
+/// 带票那一层接在入口上：同一张票再问 ⇒ 回第一次那一份、不再起（界面期限到之后再核一次就是这一问）；
+/// 票不合格 ⇒ `bad_args`、什么都不起；不同的票照常各起各的。
+#[test]
+fn asking_again_with_the_same_ticket_starts_nothing_more() {
+    let rig = Rig::new(Some(vec![]));
+    let t = format!("rig-{}", std::process::id());
+    let first = rig.call(req(json!({ "ticket": t }))).unwrap();
+    let again = rig.call(req(json!({ "ticket": t }))).unwrap();
+    assert_eq!(first, again);
+    assert_eq!(rig.ccm.borrow().len(), 1, "同一张票只起一次");
+    let bad = rig.call(req(json!({ "ticket": "a b" }))).unwrap_err();
+    assert_eq!(bad.0, "bad_args");
+    assert_eq!(rig.ccm.borrow().len(), 1);
+    rig.call(req(json!({ "ticket": format!("{t}-other") })))
+        .unwrap();
+    assert_eq!(rig.ccm.borrow().len(), 2, "另一张票照常起");
 }
 
 /// ★ 选了规则起（`rotation: {rule}`）：起之前这台先定好 sid（那一家起新会话时认的 `--session-id`）、把那个会话的来源写成那条规则，再起；

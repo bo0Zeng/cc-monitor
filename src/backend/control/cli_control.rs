@@ -14,8 +14,12 @@
 //!
 //! # 信封（与 `--resolve` 同形）
 //!
-//! · 入：stdin 一段 JSON = 那条命令的 `args`（空 stdin = `{}`）。默认读到 EOF；子命令后面跟 [`STDIN_LINE_FLAG`] ⇒ 只读一行
-//!   （给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
+//! · 入：那条命令的 `args`（一段 JSON；空 = `{}`），两个口**二选一**，都是一处读（[`read_args`]，住 `cli_args`），每条子命令自动都有：
+//!   - stdin：默认读到 EOF；带 [`crate::STDIN_LINE_FLAG`]（任意位置）⇒ 只读一行（给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，
+//!     capture 不关远端 stdin）。stdin 开着却 [`super::cli_args::STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`，不挂住。
+//!   - argv：[`crate::ARGS_B64_FLAG`] `<base64 的 JSON>`（任意位置；给写不了 stdin 的调用方：第二个前端的执行通道只有 stdout）。
+//!     给了它就**不碰 stdin**；与 [`crate::STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
+//!   上限：stdin [`super::cli_args::MAX_CLI_STDIN`]；argv [`super::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
 //! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]：只给 `quota-read`，
 //!   同一份回包排成给人看的字（`control/quota_text.rs`）；别的命令带它 ⇒ `bad_args`。
 //! · 错：exit 2 + stderr 一行 `{"code","message"}`。
@@ -24,46 +28,14 @@
 use crate::common::contract;
 use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
 use crate::stream::wire::Request;
-use std::io::Read;
-
-/// stdin 上限（兜 DoS，不是兜格式；同 `resolve_query::MAX_RESOLVE_STDIN`）。超限是拒收，不是截断：
-/// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
-pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
+use std::io::{Read, Write};
+use std::time::Duration;
 
 /// 能力探测口。集成方按能力兼容，不按版本号；出 JSON（不是 `ccm --ccm-probe` 那种 `key=value` 行：那是 ccm 专用的方言）。
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
-/// 「只读一行 stdin」那个修饰词住 [`crate::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
-pub(crate) use crate::STDIN_LINE_FLAG;
-
-/// 读入参那一段（可喂任意读端 —— 生产交进程的 stdin）。`one_line` ⇒ 读到第一个换行就停，**不再多要一个字节**
-/// （调用方的 stdin 可能永远不关）；否则读到 EOF。两形同一个上限、同一种拒法。
-pub(crate) fn read_input<R: std::io::BufRead>(
-    r: R,
-    one_line: bool,
-) -> Result<String, (&'static str, String)> {
-    let mut buf: Vec<u8> = Vec::new();
-    // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
-    let mut capped = r.take(MAX_CLI_STDIN + 1);
-    let got = if one_line {
-        std::io::BufRead::read_until(&mut capped, b'\n', &mut buf)
-    } else {
-        capped.read_to_end(&mut buf)
-    };
-    if let Err(e) = got {
-        return Err(("stdin_read_failed", format!("read stdin failed: {e}")));
-    }
-    if buf.len() as u64 > MAX_CLI_STDIN {
-        return Err((
-            "args_too_large",
-            // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
-            contract::malformed(&format!(
-                "args JSON over the {MAX_CLI_STDIN}-byte cap, refused (not truncated)"
-            )),
-        ));
-    }
-    String::from_utf8(buf).map_err(|e| ("stdin_read_failed", format!("read stdin failed: {e}")))
-}
+/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`super::cli_args`]：`--resolve` 也经它读，而它不该为此引到整张命令表。
+use super::cli_args::{read_args, STDIN_QUIET};
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -76,52 +48,41 @@ const CLI_REQUEST_ID: &str = "cli";
 ///
 /// 另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
 /// 按 `SUBCOMMANDS` 分流（`control::ccm::intercept`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
-/// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里答的是假话 ⇒ 不上。
+/// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里结构上答不了 ⇒ 不上；[`UI_ONLY`] 那几条答得了、只是除了界面没人用 ⇒ 暂不上。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
     !matches!(spec.run, Run::Builtin)
         && !crate::control::ccm::argv::is_ccm_word(&flag_of(spec.name))
         && !STREAM_ONLY.contains(&spec.name)
+        && !UI_ONLY.contains(&spec.name)
 }
 
-/// **只在流面上有意义**的命令。
-/// `resync` 对齐的是本进程里在跑的 watcher；一次性 exec 里一份都没有 ⇒ 只能答 `watchers: 0`，那是假话。
-/// `apikey-routing` 同理：「中转在不在」读的是本进程的监听状态，一次性进程里没有中转 ⇒ 恒答「不在」。
-/// `launch-local` 只给界面用（它回的身份 token 要交回界面去回填 sid）。
-/// `forward-*` 同理：转发账住本进程（常驻那一个）；一次性进程开出来的转发随进程退出就没了、列出来恒空。
+/// **一次性进程里结构上答不了**的命令：答出来是假话（读的是常驻进程才有的状态：watcher · 中转监听 · 转发账 · 可达表），
+/// 或做的事活不过这个进程（换号重启要拿退出排空的票钉住常驻进程）。逐条理由是数据，住测试那一侧的 `STREAM_ONLY_WHY`（两向相等）。
+///
+/// 只收这一种理由。「答得了，只是除了界面没人用」是另一种，住 [`UI_ONLY`] —— 两种混在一张表里时，
+/// 后一种被读成前一种，第二个前端（只有一次性 CLI 与流两条路进后端）就够不着。
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "apikey-routing",
-    // 「直接敲的也走中转」那一段的「中转在不在」同样读本进程的监听状态。
     "relay-optin",
     "launch-local",
     "forward-start",
     "forward-stop",
     "forward-list",
-    // 起会话要的终端名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
-    "terminal-name-mint",
-    // 开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
-    "terminal-ssh",
-    // ↗ 那一问：那台答「此刻谁在显示这个会话」—— 只有拉前那一方（界面）用得着。
-    "session-terminals",
-    // ↗ 那一问的本机一半：同上，只有拉前那一方用得着。
-    "terminal-processes",
-    // 各台搜索结果合成一份：界面逐台问完才有得合；命令行那一侧 `--search` 只问这一台，用不着合。
-    "history-search-merge",
-    // 扩展页那张表与「装」的枢纽：读本进程的可达表（远端那几台叫什么、怎么够得着）；一次性进程里那张表是空的 ⇒ 只剩本机、答的是假话。
     "ext-list",
     "ext-hub-preview",
     "ext-hub-apply",
-    // tab 栏多选的批量停 / 起：一批会话一次问，只给界面用（命令行那一侧逐个 `--kill` / 直接敲 `ccm` 就是它们）。
-    "sessions-stop",
-    "sessions-start",
-    "sessions-where",
-    // 换号重启：要等压缩、等会话报出（几分钟），界面关了那台照样做完 —— 那是常驻流上的事；命令行那一侧逐个 `--kill` 再敲 `ccm --resume` 就是它。
     "session-restart",
-    // 起新会话框那三问：只有界面那个框用得着（命令行那一侧直接敲 `ccm` 就是它）。
-    "session-new",
-    "session-new-facts",
-    "session-new-dir",
 ];
+
+/// **答得出真话、只是除了界面没人用得着**的命令。这是关于「调用方是谁」的产品判断，不是结构限制 ——
+/// 有新的调用方（第二个前端）要它，就挪出去。理由不许是「命令行那一侧直接敲 `ccm` 就是它」：那挡的是第二个**入口**，挡不住第二个**前端**。
+/// 逐条理由住测试那一侧的 `UI_ONLY_WHY`（两向相等）。
+///
+/// 2026-10-09 复核（第二个前端的审计 §4）：起新会话框三问 · tab 栏批量停 / 起 / 问样子 · 铸终端名 · 开终端那一串 · 各台搜索结果合并
+/// 九条放出（事实全在这台：tmux 名单现探、会话快照问一次重探一次、记录在不在现读、合并是纯计算 ⇒ 一次性进程答的与常驻那一个同样是真话）。
+/// 留下的两条是 ↗ 拉前那一问的两半，只有能拉前桌面窗口的那一方用得着，第二个前端自己也说不用。
+pub(crate) const UI_ONLY: &[&str] = &["session-terminals", "terminal-processes"];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
 pub(crate) fn flag_of(name: &str) -> String {
@@ -148,10 +109,23 @@ pub fn handles(flag: &str) -> bool {
 }
 
 /// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
-pub fn emit_err(code: &str, message: impl Into<String>) -> i32 {
-    let body = serde_json::json!({ "code": code, "message": message.into() });
-    eprintln!("{body}");
+pub fn emit_err(code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
+    emit_err_to(&mut std::io::stderr(), code, message)
+}
+
+fn emit_err_to(err: &mut dyn Write, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
+    let body = err_body(code, &message.into());
+    let _ = writeln!(err, "{body}");
     2
+}
+
+/// 失败信封 `{code, message, raw?}`：`message` 是给人看的那一句；`raw` 是下层原话（有才带），读的那一方放进复制详情、不上句子。
+pub(crate) fn err_body(code: &str, s: &copy_core::said::Said) -> serde_json::Value {
+    let mut body = serde_json::json!({ "code": code, "message": s.said });
+    if let Some(r) = &s.raw {
+        body["raw"] = serde_json::Value::String(r.clone());
+    }
+    body
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。
@@ -172,6 +146,24 @@ fn probe() -> i32 {
 
 /// CLI 控制面的一次性入口。返回进程退出码。
 pub async fn run(args: &[String]) -> i32 {
+    run_io(
+        args,
+        std::io::stdin(),
+        STDIN_QUIET,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
+    .await
+}
+
+/// [`run`] 的本体：stdin / stdout / stderr 是入参（测试喂替身，逐字比两个口的应答）。
+pub(crate) async fn run_io<R: Read + Send + 'static>(
+    args: &[String],
+    stdin: R,
+    quiet: Duration,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
     let flag = args.first().map(String::as_str).unwrap_or_default();
     if flag == PROBE_FLAG {
         return probe();
@@ -179,23 +171,35 @@ pub async fn run(args: &[String]) -> i32 {
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：
         // backend 的一次性模式对未知参数的既定行为是 exit 2 + 结构化 stderr。
-        return emit_err(
+        return emit_err_to(
+            err,
             "unknown_command",
             contract::malformed(&format!("unknown CLI flag {flag}")),
         );
     };
+    let opts = &args[1..];
     // 「给人看」那一形只给 `quota-read`（`control/quota_text.rs`）；别的命令带它 ⇒ 用法错，不悄悄忽略。
-    let text = args[1..].iter().any(|a| a == crate::TEXT_FLAG);
+    let text = opts.iter().any(|a| a == crate::TEXT_FLAG);
     if text && spec.name != "quota-read" {
-        return emit_err("bad_args", copy_core::copy_text("acct.text.onlyQuota", &[]));
+        return emit_err_to(
+            err,
+            "bad_args",
+            copy_core::copy_text("acct.text.onlyQuota", &[]),
+        );
     }
     let mut input = String::new();
     if reads_stdin(spec) {
-        let one_line = args.get(1).map(String::as_str) == Some(STDIN_LINE_FLAG);
-        match read_input(std::io::stdin().lock(), one_line) {
+        match read_args(opts, stdin, quiet) {
             Ok(s) => input = s,
-            Err((code, message)) => return emit_err(code, message),
+            Err((code, message)) => return emit_err_to(err, code, message),
         }
+    } else if opts.iter().any(|a| a == crate::ARGS_B64_FLAG) {
+        // 不收入参的命令带 argv 载荷：用法错，不悄悄忽略（同 `--text`）。
+        return emit_err_to(
+            err,
+            "bad_args",
+            contract::malformed(&format!("{flag} takes no args")),
+        );
     }
     let trimmed = input.trim();
     let cli_args: serde_json::Value = if trimmed.is_empty() {
@@ -203,7 +207,9 @@ pub async fn run(args: &[String]) -> i32 {
     } else {
         match serde_json::from_str(trimmed) {
             Ok(v) => v,
-            Err(e) => return emit_err("bad_request", format!("args JSON parse failed: {e}")),
+            Err(e) => {
+                return emit_err_to(err, "bad_request", format!("args JSON parse failed: {e}"))
+            }
         }
     };
     let req = Request {
@@ -222,7 +228,8 @@ pub async fn run(args: &[String]) -> i32 {
         Run::Async(f) => f(req).await,
         Run::AsyncData(f) => f(req).await.map_err(|f| (f.code, f.message)),
         Run::Builtin => {
-            return emit_err(
+            return emit_err_to(
+                err,
                 "not_available_in_cli",
                 contract::malformed("this command is only served on the frame channel"),
             )
@@ -233,13 +240,13 @@ pub async fn run(args: &[String]) -> i32 {
         Ok(v) => {
             let v = v.unwrap_or_else(|| serde_json::json!({}));
             if text {
-                println!("{}", crate::control::quota_text::render_here(&v));
+                let _ = writeln!(out, "{}", crate::control::quota_text::render_here(&v));
             } else {
-                println!("{v}");
+                let _ = writeln!(out, "{v}");
             }
             0
         }
-        Err((code, message)) => emit_err(&code, message),
+        Err((code, message)) => emit_err_to(err, &code, message),
     }
 }
 

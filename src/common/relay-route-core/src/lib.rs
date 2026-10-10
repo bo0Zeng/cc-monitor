@@ -94,8 +94,11 @@ pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
 /// 〔同上〕配置文件上次经 cc-monitor 写出去的那一份的指纹（后端读配置文件时拿它比 ⇒「之后有人手改过」；删了只是不再说那一句）。
 pub const PROFILES_WRITTEN_REL: &str = ".cc-monitor/profiles-written.json";
 
-/// 〔同上〕「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
+/// 〔同上〕「待办」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
 pub const CHORES_REL: &str = ".cc-monitor/chores.json";
+
+/// 〔同上〕计划「要你看」的认可与「退回」的记录（后端 `plan/review.rs` 写；计划仓本身一个字节不写）。
+pub const PLAN_REVIEW_REL: &str = ".cc-monitor/plan-review.json";
 
 /// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；连不上时照它画、跨重启还在）。
 pub const LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
@@ -322,6 +325,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("aliasesPs", PS_ALIASES_REL, false, true),
     ("skillLedger", SKILL_LEDGER_REL, false, true),
     ("chores", CHORES_REL, false, true),
+    ("planReview", PLAN_REVIEW_REL, false, true),
     ("lastSeen", LAST_SEEN_REL, false, false),
     ("assetCatalog", ASSET_CATALOG_REL, false, false),
     ("quota", QUOTA_LEDGER_REL, false, true),

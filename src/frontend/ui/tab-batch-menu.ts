@@ -11,9 +11,9 @@ import type { Tab } from "./tab-model";
 import { canResume, hasTerminal, isResumeOnly } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import { openMenu, type MenuItem } from "./kit/menu";
-import { createRefusal, newCollectionId, type CollectionRefusal, type TabCollection } from "./tab-collections";
-import { sayCollectionRefusal } from "./tab-bar-prefs";
-import { confirmDialog, askText, type ConfirmFn } from "./kit/dialog";
+import type { TabCollection } from "./tab-collections";
+import { confirmDialog, type ConfirmFn } from "./kit/dialog";
+import { groupSubmenu } from "./tab-menu";
 import { recentToasts, toast, type ToastRecord } from "./kit/toast";
 import { showMessage } from "./status-messages";
 import { machineName } from "./control-said";
@@ -32,8 +32,9 @@ export interface TabBatchHost {
   collections(): TabCollection[];
   pinnedLoaded(): boolean;
   setPinned(sids: readonly string[], on: boolean): void;
+  /** 分组那三件（与单个右键 · 拖放同一口：做完重画、给可撤的提示；新建 ＝「分组 N」＋ 名字框立刻打开）。 */
   joinGroup(sids: readonly string[], gid: string): void;
-  foundGroup(sids: readonly string[], name: string, id: string): CollectionRefusal | null;
+  foundGroup(sids: readonly string[]): void;
   leaveGroup(sids: readonly string[]): void;
   closeTabs(sids: readonly string[]): void;
   /** 那台的规则表（还没读到 ⇒ `null`，菜单里那一项转圈）；不给 / 回 `undefined`（宿主没接）⇒ 不出「轮换规则」。 */
@@ -108,9 +109,9 @@ function local(action: string, tabs: readonly Tab[], doable: Tab[], skipped: Bat
   sayBatch(action, tabs, [...doable.map((t): BatchOutcome => ({ sid: t.sessionId, outcome: "done", why: "" })), ...skipped]);
 }
 
-/** 右键一个选中的 tab（多选 ≥ 2）⇒ 开批量菜单。`sids` 按条上的顺序。`done` = 做完一项之后（宿主清多选）。 */
+/** 右键一个选中的 tab（多选 ≥ 2；键盘菜单键 ⇒ 锚在焦点那一行）⇒ 开批量菜单。`sids` 按条上的顺序。`done` = 做完一项之后（宿主清多选）。 */
 export function openBatchMenu(
-  e: MouseEvent,
+  e: MouseEvent | HTMLElement,
   sids: readonly string[],
   host: TabBatchHost,
   run: TabBatchRun = PRODUCTION_RUN,
@@ -174,31 +175,24 @@ export function openBatchMenu(
     );
   }
   if (host.collectionsLoaded()) {
-    const join: MenuItem[] = host.collections().map((col) => {
-      const [movable, already] = split(tabs, (t) => t.group !== col.id, copyText("tabBatch.why.inThatGroup"));
-      return item(copyText("tabBatch.menu.joinOne", { name: col.name, n: movable.length }), movable.length, () =>
-        local(copyText("tabBatch.action.join", { name: col.name }), tabs, movable, already, (s) => host.joinGroup(s, col.id)),
-      false, already[0]?.why);
-    });
-    join.push(
-      item(copyText("tabBatch.menu.found", { n: tabs.length }), tabs.length, async () => {
-        // 同单个菜单「新建集合…」：到上界先说，再问名字；整批进同一个新组。
-        const full = createRefusal(host.collections());
-        if (full) return sayCollectionRefusal(full);
-        const name = await askText({ title: copyText("tabMenu.collection.title"), label: copyText("tabMenu.collection.namePrompt"), action: copyText("tabMenu.collection.action") });
-        if (!name?.trim()) return;
-        const why = host.foundGroup(tabs.map((t) => t.sessionId), name, newCollectionId());
-        if (why) return sayCollectionRefusal(why);
-        sayBatch(copyText("tabBatch.action.found", { name: name.trim() }), tabs, tabs.map((t) => ({ sid: t.sessionId, outcome: "done", why: "" })));
+    // 「分组 ▸」：与单个右键同一份（每项带能做的个数）；做完的提示是那一口给的可撤 toast，不另出结果条。
+    const after = (fn: () => void) => () => {
+      fn();
+      done();
+    };
+    items.push({
+      label: copyText("tabMenu.collection.add"),
+      submenu: groupSubmenu({
+        collections: host.collections(),
+        movable: (gid) => tabs.filter((t) => t.group !== gid).length,
+        grouped: tabs.filter((t) => t.group !== null).length,
+        many: tabs.length,
+        found: after(() => host.foundGroup(tabs.map((t) => t.sessionId))),
+        join: (gid) => after(() => host.joinGroup(tabs.filter((t) => t.group !== gid).map((t) => t.sessionId), gid))(),
+        leave: after(() => host.leaveGroup(tabs.filter((t) => t.group !== null).map((t) => t.sessionId))),
+        why: { inThatGroup: copyText("tabBatch.why.inThatGroup"), notInGroup: copyText("tabBatch.why.notInGroup") },
       }),
-    );
-    items.push({ label: copyText("tabMenu.collection.add"), submenu: join });
-    const [grouped, loose] = split(tabs, (t) => t.group !== null, copyText("tabBatch.why.notInGroup"));
-    items.push(
-      item(copyText("tabBatch.menu.leave", { n: grouped.length }), grouped.length, () =>
-        local(copyText("tabBatch.action.leave"), tabs, grouped, loose, (s) => host.leaveGroup(s)),
-      false, loose[0]?.why),
-    );
+    });
   }
   const [closable, notClosable] = split(tabs, (t) => isResumeOnly(t.state), copyText("tabBatch.why.live"));
   items.push(
@@ -206,7 +200,7 @@ export function openBatchMenu(
       local(copyText("tabBatch.action.close"), tabs, closable, notClosable, (s) => host.closeTabs(s)),
     false, notClosable[0]?.why),
   );
-  openMenu({ x: e.clientX, y: e.clientY }, items);
+  openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, items);
 }
 
 /**

@@ -168,6 +168,34 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     ]);
   });
 
+  it("★ 筛选只挑行、不重建行：筛掉又放回的那一行还是原来那个元素（几百行 × 十几台时每敲一个字整张表重建一遍）", async () => {
+    const s = await page([listWith(demoMissing)]);
+    const demo = s.element.querySelector('.ext-row[data-key="skill/demo"]');
+    const search = s.element.querySelector(".ext-search") as HTMLInputElement;
+    search.value = "npx";
+    search.dispatchEvent(new Event("input"));
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"]'), "筛掉的不在表里").toBeNull();
+    search.value = "";
+    search.dispatchEvent(new Event("input"));
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"]')).toBe(demo);
+    const [, skillOnly] = [...s.element.querySelectorAll(".ext-filter button")] as HTMLButtonElement[];
+    skillOnly.click();
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"]')).toBe(demo);
+  });
+
+  it("★ 重读回来还是同一份表 ⇒ 不重画（进页先画手上那份、同步完再读一遍：两份一样时整张表白建一遍）；变了才重画", async () => {
+    const s = await page([listWith(demoMissing)]);
+    const demo = s.element.querySelector('.ext-row[data-key="skill/demo"]');
+    s.loadNow();
+    await settle();
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"]'), "同一份表：行还是原来那个").toBe(demo);
+    backend([listWith(cell("same", [place(user, "same", true)]))]);
+    s.loadNow();
+    await settle();
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"]'), "表变了：重画").not.toBe(demo);
+    expect(dots(s, "demo")[1][1]).toBe(copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.same") }));
+  });
+
   it("抽屉：安装位置每台一行（装得了的才给勾 · 现状 · 只有全局一处的「卸载…」跟在后面）；装在项目里的逐处列；没有可装的说后端给的那一句", async () => {
     const both = cell("project", [place(user, "missing"), place(proj, "same", true)], bring());
     const s = await page([listWith(both)]);
@@ -484,5 +512,15 @@ describe("一次装到几台：要填的值只填一次", () => {
     installBtn(s).click();
     await settle();
     expect(applied).toMatchObject({ to: ["laptop", "nano"], fill: { env: { API_KEY: "sk-123" } } });
+  });
+});
+
+describe("几百行 × 十几台的表：滚出视口的行不排（读数住 `tests/shots/perf/settings-bench.mjs`）", () => {
+  it("表行（表头除外）content-visibility: auto；估的内容高是一行字（内边距与底线另算，估错了滚动条长短会跳）", () => {
+    const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/settings.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const body = /\.ext-row:not\(\.ext-head\)\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(body, "那一条规则在").not.toBe("");
+    expect(body).toMatch(/content-visibility:\s*auto;/);
+    expect(body).toMatch(/contain-intrinsic-size:\s*auto 1lh;/);
   });
 });

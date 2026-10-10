@@ -25,7 +25,7 @@
  * # 台子的保真边界（搬家不改这一段，只把它挪到一个家）
  *
  * - 渲染管线是**真的**：真 `cards/renderMessage` → 真 `render-stream-record` → 真
- *   `markCardUuid` 写 `data-uuid`。**没有** mock 掉「卡上有没有 `data-uuid`」这件事。
+ *   `markCardId` 写 `data-id`。**没有** mock 掉「卡上有没有 `data-id`」这件事。
  * - **只有 IPC 那一层是假的**：`invoke` 换成「把 `viewerRig.chunk` 从 `Channel` 灌回去」。
  * - jsdom 没有 `ResizeObserver` / `scrollIntoView` / **`CSS`** ⇒ 这里补桩。
  *   `scrollIntoView` 的桩正是观测口：jsdom 无布局，「滚没滚到」量不了，
@@ -39,7 +39,6 @@
  * 解析，且会被提升到文件顶）· 只有一边用的 DOM 查询助手。搬「其实不一样的东西」
  * 会逼出一个参数越加越多的壳，那是另一种漂。
  */
-import { withUserText } from "./user-text";
 import { expect, vi } from "vitest";
 import { withSessionReads } from "./chan-fake";
 
@@ -136,36 +135,35 @@ export interface RigPayload {
   cwd: null;
   path: string;
   seq: number;
-  message: unknown;
+  record: unknown;
 }
 
-/** 裸一行：`message` 由调用方整块给（要造 assistant / 畸形记录时用）。 */
-export function line(seq: number, message: Record<string, unknown>): RigPayload {
-  // user 记录带上 monitor 填的那一格成品（夹具不含注入噪声，见 `user-text.ts`）
-  return { session_id: "s1", cwd: null, path: "/p/s1.jsonl", seq, message: withUserText(message) };
+/** 裸一行：通用记录由调用方整块给（要造回复 / 畸形记录时用）；`agent` 缺 ⇒ claude。 */
+export function line(seq: number, record: Record<string, unknown>): RigPayload {
+  return { session_id: "s1", cwd: null, path: "/p/s1.jsonl", seq, record: { agent: "claude", ...record } };
+}
+
+/** 第 `seq` 行的时刻（夹具里一律按行号造）。 */
+function atOf(seq: number): string {
+  return `2026-09-10T00:00:${String(seq % 60).padStart(2, "0")}.000Z`;
 }
 
 /**
- * 一条 user 记录。`over` 覆盖任意字段（`isMeta` / `isSidechain` / `parentUuid` …）——
- * 判据要造的反例全靠它，别为每种反例再开一个构造器。
+ * 一条人说的记录（`t: "said"`）。`over` 覆盖任意格（`who` 换成别的说话人 · `blocks` …）——
+ * 判据要造的反例全靠它，别为每种反例再开一个构造器。`who` 缺 ⇒ 人说的、正文就是 `content`。
  */
 export function userLine(
   seq: number,
-  uuid: string | null,
-  content: unknown,
+  id: string,
+  content: string,
   over: Record<string, unknown> = {},
 ): RigPayload {
   return line(seq, {
-    type: "user",
-    uuid,
-    timestamp: `2026-09-10T00:00:${String(seq % 60).padStart(2, "0")}.000Z`,
-    message: { role: "user", content },
-    cwd: null,
-    sessionId: "s1",
-    isSidechain: false,
-    isMeta: false,
-    parentUuid: null,
-    forkedFrom: null,
+    t: "said",
+    id,
+    at: atOf(seq),
+    who: { speaker: { kind: "human" }, text: content.trim() },
+    blocks: [{ type: "text", text: content }],
     ...over,
   });
 }
@@ -178,21 +176,15 @@ export function withSession(p: RigPayload, sessionId: string): RigPayload {
   return { ...p, session_id: sessionId, path: `/p/${sessionId}.jsonl` };
 }
 
-/** 一条 assistant 记录（清单口径里它必须被排掉，判据要拿它当反例）。 */
-export function assistantLine(seq: number, uuid: string, text: string): RigPayload {
+/** 一条回复记录（清单口径里它必须被排掉，判据要拿它当反例）。 */
+export function assistantLine(seq: number, id: string, text: string): RigPayload {
   return line(seq, {
-    type: "assistant",
-    uuid,
-    timestamp: `2026-09-10T00:00:${String(seq % 60).padStart(2, "0")}.000Z`,
-    message: { role: "assistant", content: [{ type: "text", text }] },
-    sessionId: "s1",
-    isSidechain: false,
-    requestId: null,
-    parentUuid: null,
-    forkedFrom: null,
-    isApiErrorMessage: false,
-    error: null,
-    apiErrorStatus: null,
+    t: "reply",
+    id,
+    at: atOf(seq),
+    blocks: [{ type: "text", text }],
+    autoReply: false,
+    endsTurn: false,
   });
 }
 

@@ -658,7 +658,7 @@ fn shared_root(home: &Path) -> PathBuf {
 fn no_email(_: &Path) -> Option<String> {
     None
 }
-fn no_line(_: &str) -> Result<Option<ParsedLine>, String> {
+fn no_line(_: &str, _: u64) -> Result<Option<Translated>, String> {
     Ok(None)
 }
 fn no_sid(_: &Path) -> Option<String> {
@@ -672,6 +672,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         is_session_file: |_| false,
         tree: None,
         turn_end: None,
+        chain: None,
         find_session: Some(find),
         branch: None,
         drift: None,
@@ -692,7 +693,6 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
         user_mcp_key: "servers",
         shared_root,
         email_in: no_email,
-        watched: &[],
         session_env: crate::agents::SessionEnvKeys {
             config_dir: "",
             base_url: "",
@@ -734,6 +734,7 @@ fn two_families() -> Vec<Adapter> {
                 user_mcp_file: alpha_mcp_file,
                 project_mcp_file: ".alpha-mcp.json",
                 servers_key: "servers",
+                plugins: |_| Vec::new(),
             },
             alpha_mcp,
             accounts("alpha.json"),
@@ -748,6 +749,7 @@ fn two_families() -> Vec<Adapter> {
                 user_mcp_file: beta_mcp_file,
                 project_mcp_file: ".beta-mcp.json",
                 servers_key: "servers",
+                plugins: |_| Vec::new(),
             },
             beta_mcp,
             accounts("beta.json"),

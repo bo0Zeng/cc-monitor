@@ -500,6 +500,24 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
         .collect()
 }
 
+/// 这台此刻活着的交互会话的工作目录（判活同 [`live_session_ids`]；后台任务不算），去重、排好序。计划读面从这里找工作区。
+pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
+    let mut v: Vec<String> = pidfiles(agent_home)
+        .into_iter()
+        .filter(|(_, v)| !crate::agents::pidfile_background(v))
+        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .filter_map(|(_, v)| {
+            v.get("cwd")
+                .and_then(|x| x.as_str())
+                .filter(|c| !c.is_empty())
+                .map(str::to_string)
+        })
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
 /// 此刻持着 `sid` 的活交互进程 pid（同一批 pidfile、同 [`live_session_ids`] 的判活；后台任务不算），升序。
 /// 不止一个 ⇒ 同一条会话有几个进程在同时写。
 pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {

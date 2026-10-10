@@ -388,10 +388,13 @@ describe("D1 · 数学也 lazy", () => {
   it("展开时才建的 thinking body 走急路：零占位", () => {
     const res = renderMessage(
       {
-        type: "assistant",
-        uuid: "u1",
-        timestamp: "2026-01-01T00:00:00Z",
-        message: { role: "assistant", content: [{ type: "thinking", thinking: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }] },
+        agent: "claude",
+        t: "reply",
+        id: "u1",
+        at: "2026-01-01T00:00:00Z",
+        blocks: [{ type: "thinking", text: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }],
+        autoReply: false,
+        endsTurn: false,
       } as never,
       { parentPath: "/p/s.jsonl", origin: "<local>", toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: true } as never,
     );
@@ -463,6 +466,28 @@ describe("D2 · 每个滚动容器一个 IO", () => {
       observeForEnhance(mk(), A);
       expect(FakeIO.all.length).toBe(3);
       expect(FakeIO.all[2].opts.root).toBe(A);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("里面没有等着补的代码块 / 公式的卡不交给 IO（个个挂着 ＝ 滚动时每一帧都替它们算一遍交叉：300 轮的子运行 2495 个目标 → 299 个）", async () => {
+    FakeIO.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    try {
+      const { observeForEnhance } = await import("../../../src/frontend/ui/render");
+      const root = document.createElement("div");
+      const plain = document.createElement("div");
+      plain.innerHTML = renderMarkdown("只有字，没有代码块。", { lazy: true });
+      const code = document.createElement("div");
+      code.innerHTML = renderMarkdown("```ts\nconst a = 1;\n```", { lazy: true });
+      const math = document.createElement("div");
+      math.innerHTML = renderMarkdown("$$a^2$$", { lazy: true });
+      observeForEnhance(plain, root);
+      observeForEnhance(code, root);
+      observeForEnhance(math, root);
+      const io = FakeIO.all.find((x) => x.opts.root === root)!;
+      expect([...io.observed]).toEqual([code, math]);
     } finally {
       vi.unstubAllGlobals();
     }

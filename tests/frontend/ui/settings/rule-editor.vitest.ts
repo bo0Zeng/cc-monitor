@@ -12,6 +12,7 @@ import type {
   RulesRead,
 } from "../../../../src/frontend/ui/quota-reads";
 import type { Rotation } from "../../../../src/frontend/ui/generated/Rotation";
+import { TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 
 const readRules = vi.fn();
 const saveRule = vi.fn();
@@ -457,22 +458,29 @@ describe("规则编辑器 · 封顶表与预览", () => {
     const el = await mount();
     await openNight(el);
     await settlePlan();
-    const tipOf = async (sel: string): Promise<string | null> => {
+    // 悬停延时走假计时器推过去（原先真睡 560 ＋ 600 ms、两格共 2.3 s，负载高时整格撞 5 s 默认期限）。
+    // 只假 setTimeout：提示的「同组」宽限读 `Date.now()`，假了它会把收起时刻记到真钟的未来、串到后面的用例。
+    const tipOf = (sel: string): string | null => {
       const b = editor()!.querySelector<HTMLElement>(sel)!;
-      b.dispatchEvent(new Event("mouseenter"));
-      await new Promise((r) => setTimeout(r, 560));
-      const t = document.querySelector('[role="tooltip"]')?.textContent ?? null;
-      b.dispatchEvent(new Event("mouseleave"));
-      await new Promise((r) => setTimeout(r, 600));
-      return t;
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        b.dispatchEvent(new Event("mouseenter"));
+        vi.advanceTimersByTime(TOOLTIP_DELAY_MS + 60);
+        const t = document.querySelector('[role="tooltip"]')?.textContent ?? null;
+        b.dispatchEvent(new Event("mouseleave"));
+        vi.advanceTimersByTime(600);
+        return t;
+      } finally {
+        vi.useRealTimers();
+      }
     };
-    expect(await tipOf('[data-ed-cap="team.5h"]')).toBe(
+    expect(tipOf('[data-ed-cap="team.5h"]')).toBe(
       copyText("rot.capT.effective", {
         v: copyText("rot.cap.fixedShort", { n: 99 }),
         layer: copyText("rot.capT.layerAll"),
       }),
     );
-    expect(await tipOf('[data-ed-cap="lab.5h"]')).toBeNull();
+    expect(tipOf('[data-ed-cap="lab.5h"]')).toBeNull();
   });
 
   it("预览：问 `{rule, span: 12h}`；「这条规则」按段排、换号点写原因短码（时段停用 · 停发）；泳道里不能用的段带它的样子；换视窗 ⇒ 重问", async () => {

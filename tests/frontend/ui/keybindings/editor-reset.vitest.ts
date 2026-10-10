@@ -54,6 +54,16 @@ describe("快捷键编辑器 · 单条恢复默认", () => {
     expect(changes).toBeGreaterThan(0);
   });
 
+  it("★ 同一个键在作用范围不相交的动作上不算撞（Alt+↑：主区上一轮 · 栏里往上挪）⇒ 不问，两条都留着", async () => {
+    new KeybindingsEditor({ onChange: () => {} });
+    dispatcher.setOverride("tabBar.move-up", "KeyQ");
+    resetBtnOf("tabBar.move-up").click();
+    await flush();
+    expect(confirms.length).toBe(0);
+    expect(dispatcher.effectiveChord("tabBar.move-up")).toBe("Alt+ArrowUp");
+    expect(dispatcher.effectiveChord("session.prev-turn")).toBe("Alt+ArrowUp");
+  });
+
   it("★ 默认键没人占 ⇒ 不问，直接回默认；每次改动都通知外面重数「已改 N 项」", async () => {
     let changes = 0;
     new KeybindingsEditor({ onChange: () => (changes += 1) });

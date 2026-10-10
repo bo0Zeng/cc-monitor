@@ -277,12 +277,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "用户角色记录是谁说的（人 · CLI 注入 · agent 来话 · 后台通知 · 斜杠命令 · `!` 输入输出 · 压缩摘要 · 中断标记……）",
     // 规则一份住适配层 `user_text`；后端读者（搜索 · 历史摘录 · 大纲 · 骨架索引）经注册表 `agents::user_text_of` 够它。
     //   前端：后端解析 user 记录与排队消息时填 `userText`（`speaker` ＋ 要显示的 `text`），渲染 / 排队消息建卡 /
-    //   compact 检测 / 分叉折叠 / 估高只读成品；TS 那几份认标签的（注入噪声 · 排队消息 · 斜杠 · bash · compact 前缀）都删了。
+    //   compact 检测 / 估高只读成品；TS 那几份认标签的（注入噪声 · 排队消息 · 斜杠 · bash · compact 前缀）都删了。
     homes: ["src/backend/agents/claudecode/text.rs::user_text"],
     status: "zero",
     defs: ["stripInternalNoise", "isQueuedUserSpeech", "parseSlashCommand", "parseBashInput", "parseBashOutput", "isCompactSummary"],
     needles: [
-      { text: 'startsWith("[Request interrupted by user")', count: 0, file: "src/frontend/ui/branching.ts" },
       { text: "Request interrupted by user", count: 0 },
       { text: "<task-notification", count: 0 },
       { text: "<agent-message", count: 0 },
@@ -601,6 +600,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     has_block: NONE,
     insert: NONE,
     item: NONE,
+    // 「对象」那一项（只收标识：会话写机器 ＋ 短 sid，不写标题）；界面不写详情。
+    target: NONE,
+    // 「一句 ＋ 原话」（`said` 模块，后端与共享契约 crate 同一份）：界面只收后端写好的句子与详情，TS 侧没有孪生。
+    logged: NONE,
+    with_raw: NONE,
+    wrap: NONE,
     many: "J26",
     // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
     parse: NONE,
@@ -617,6 +622,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     io_reason: NONE,
     // SFTP 状态码 → 原因词（同一模块）：只有后端的 SFTP 那一层用，TS 侧没有孪生。
     sftp_status_reason: NONE,
+    // 子进程起不来 → 原因词（同一模块）：只有后端起子进程那一口用，TS 侧不起进程，没有孪生。
+    spawn_reason: NONE,
   },
   "creds-core": {
     // monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。
@@ -740,6 +747,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,
     CHORES_REL: NONE,
+    // 计划要你看的认可与退回记录（后端 `plan/review.rs` 写；数据位置页按它列）。
+    PLAN_REVIEW_REL: NONE,
     // 离线那台的上次值（后端写；数据位置页按它列）· 后端自己家里那一份清单（后端「文件与数据」逐样 stat 它）。
     LAST_SEEN_REL: NONE,
     OWN_HOME_ENTRIES: NONE,

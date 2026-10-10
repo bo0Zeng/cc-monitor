@@ -27,6 +27,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::SessionRemoved { .. } => "session_removed",
         InboundFrame::SessionState { .. } => "session_state",
         InboundFrame::SessionRuns { .. } => "session_runs",
+        InboundFrame::SessionBranch { .. } => "session_branch",
         InboundFrame::Overflow { .. } => "overflow",
         InboundFrame::Reply { .. } => "reply",
         InboundFrame::Cancelled { .. } => "cancelled",
@@ -44,6 +45,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::QuotaChanged => "quota_changed",
         InboundFrame::RotationChanged { .. } => "rotation_changed",
         InboundFrame::RotationRulesChanged => "rotation_rules_changed",
+        InboundFrame::PlanChanged => "plan_changed",
     }
 }
 
