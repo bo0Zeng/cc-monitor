@@ -4,7 +4,8 @@
  * - 页头：所有片（同一工作区的挨着；别的机器的带机器徽标）· 按标题找 · 自动接着做 · ［整张图］· 返回。
  * - 子头：工作区 · 顶块接手 · 阶段 · 站在 · 判据 N 红 · 过滤三枚（全部 · 没做完 · 要你看）。
  * - 左：大纲（只写标题；状态图标 · 类一道颜色 ＋ 一个词 · 行尾原因 / 接手 / 阶段）；底下类的图例与「不做了的 藏起」。
- * - 右：没选格 ⇒ 概览（块 · 顶层进度 · 最近签收）；选了 ⇒ 那一格的详情（`plan-cell.ts`）。
+ * - 右：没选格 ⇒ 概览（块 · 顶层进度 · 最近签收）；选了 ⇒ 那一格的详情（`plan-cell.ts`）；
+ *   概览「最近签收 · 全部 N」⇒ 签收流（整片的签收按时间排成一条、新的在上、按标题找；稿 03 第 12 张，不进需手动）。
  *
  * 数据：每台问 `plan-list`，选中的那一片所在的工作区问 `plan-read`；那台推 `plan-changed` ⇒ 摘要变了才重问。
  * 判定全在后端；这里只排版、只认最后一趟回答。
@@ -47,7 +48,7 @@ import {
   type PlanFilter,
 } from "./plan-model";
 import { CellDetail } from "./plan-cell";
-import { needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
+import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan.module.css";
@@ -112,6 +113,9 @@ export class PlanView {
   private query = "";
   private folded = new Set<string>();
   private selected: string | null = null;
+  /** 右栏在签收流上（没选格时）；那一栏自己的「按标题找」。 */
+  private signsOpen = false;
+  private signsQuery = "";
   private seq = 0;
   private autoFail: string | null = null;
   private renderQueued = false;
@@ -131,7 +135,7 @@ export class PlanView {
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,
       workspace: () => this.current?.workspace ?? "",
       switchTo: (sid) => this.goSession(sid),
-      returnCell: (slice, cell) => openReturn(this.review, slice, cell),
+      returnCell: (slice, cell) => openReturn(this.review, slice, cellTarget(slice, cell)),
     });
     this.review = {
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,
@@ -204,12 +208,16 @@ export class PlanView {
     dispatcher.popOverlay(this.layer);
   }
 
-  /** Esc 一次一层：搜索框有字 ⇒ 清空 ＞ 选着格 ⇒ 回概览 ＞ 关页。 */
+  /** Esc 一次一层：搜索框有字 ⇒ 清空 ＞ 选着格 / 在签收流上 ⇒ 回概览 ＞ 关页。 */
   private handleEsc(): boolean {
     if (this.searchInput.value) {
       this.searchInput.value = "";
       this.query = "";
       this.render();
+      return true;
+    }
+    if (this.signsOpen && this.selected === null) {
+      this.openSigns(false);
       return true;
     }
     if (this.selected !== null) {
@@ -339,6 +347,7 @@ export class PlanView {
     this.prefs.last = refKey(ref);
     this.savePrefs();
     this.selected = null;
+    this.signsOpen = false;
     this.folded.clear();
     this.autoFail = null;
     this.afterList();
@@ -347,7 +356,16 @@ export class PlanView {
   private select(id: string | null): void {
     this.selected = id;
     this.atItem = null;
+    this.signsOpen = false;
     this.render();
+  }
+
+  /** 右栏换到签收流（`false` ⇒ 回概览）。 */
+  private openSigns(on: boolean): void {
+    this.selected = null;
+    this.signsOpen = on;
+    this.signsQuery = "";
+    this.renderBody();
   }
 
   /** 经 Ctrl J 开的那一条：读回来了 ⇒ 选中它所在的格（顶块那一种没有格 ⇒ 概览）。 */
@@ -415,10 +433,9 @@ export class PlanView {
     all.forEach((n, i) => {
       if (this.needHere(slice, n)) out.push(needBar(this.review, slice, n, { i, n: all.length }));
     });
-    if (cell) {
-      const r = returnedBar(this.review, cell);
-      if (r) out.push(r);
-    }
+    // 选了格 ⇒ 那一格退回过没有；概览 ⇒ 顶块退回过没有（记在片上）。
+    const r = returnedBar(this.review, cell ? (cell.returned ?? null) : (slice.returned ?? null));
+    if (r) out.push(r);
     return out;
   }
 
@@ -681,9 +698,9 @@ export class PlanView {
     tree.append(this.outline(slice), this.legend(slice));
     const cell = this.selected ? cellIndex(slice).get(this.selected) : undefined;
     if (!cell && this.selected) this.selected = null;
-    pane.append(...this.reviewBars(slice, cell));
-    if (cell) pane.appendChild(this.detail.render(slice, cell, this.currentDoc()?.rev ?? ""));
-    else pane.appendChild(this.overview(slice));
+    if (cell) pane.append(...this.reviewBars(slice, cell), this.detail.render(slice, cell, this.currentDoc()?.rev ?? ""));
+    else if (this.signsOpen) pane.appendChild(this.signsFlow(slice));
+    else pane.append(...this.reviewBars(slice, cell), this.overview(slice));
     this.bodyEl.replaceChildren(tree, pane);
   }
 
@@ -915,34 +932,82 @@ export class PlanView {
     // 最近签收
     const signs = signsNewestFirst(slice);
     if (signs.length > 0) {
-      const sec3 = section(copyText("plan.overview.recent"), copyText("plan.overview.all", { n: signs.length }));
-      for (const it of signs.slice(0, 5)) {
-        const row = document.createElement("div");
-        row.className = s.pvSign;
-        const tm = text(it.sign.atText ?? "", s.pvSignTm);
-        const body = document.createElement("div");
-        body.className = s.pvSignBody;
-        const tl = document.createElement("div");
-        tl.className = s.pvSignTitle;
-        setKindColor(tl, kindSlot(slice, it.cell.kind));
-        const kw = text(it.cell.kind ?? "", s.pvKw);
-        const go = document.createElement("button");
-        go.type = "button";
-        go.className = s.pvLink;
-        go.textContent = it.cell.title ?? it.cell.id;
-        go.addEventListener("click", () => this.select(it.cell.id));
-        tl.append(go, kw);
-        const why = document.createElement("div");
-        why.className = s.pvSignWhy;
-        why.append(...this.detail.refText(slice, it.sign.reason ?? "", it.sign.refs));
-        body.append(tl, why);
-        row.append(tm, body);
-        if (it.sign.by) row.appendChild(this.whoChip(it.sign.by, true));
-        sec3.appendChild(row);
-      }
+      const sec3 = section(copyText("plan.overview.recent"));
+      const all = document.createElement("button");
+      all.type = "button";
+      all.className = `${s.pvLink} plan-signs-all`;
+      all.textContent = copyText("plan.overview.all", { n: signs.length });
+      all.addEventListener("click", () => this.openSigns(true));
+      sec3.firstElementChild?.appendChild(all);
+      for (const it of signs.slice(0, 5)) sec3.appendChild(this.signRow(slice, it));
       box.appendChild(sec3);
     }
     return box;
+  }
+
+  // ───────────────────────── 签收流 ─────────────────────────
+
+  /** 整片的签收排成一条（新的在上；按标题找）。不进需手动、不算琥珀数。 */
+  private signsFlow(slice: PlanSlice): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "plan-signs";
+    const all = signsNewestFirst(slice);
+    const h1 = document.createElement("div");
+    h1.className = s.pvH1;
+    const t = document.createElement("span");
+    t.className = s.pvH1Text;
+    t.textContent = copyText("plan.signs.title");
+    const meta = text(copyText("plan.signs.meta", { slice: slice.name, n: all.length }), s.pvH1Meta);
+    const find = document.createElement("label");
+    find.className = s.pvSignFind;
+    const q = document.createElement("input");
+    q.type = "search";
+    q.className = "plan-signs-find";
+    q.placeholder = copyText("plan.page.search");
+    q.setAttribute("aria-label", copyText("plan.page.search"));
+    q.value = this.signsQuery;
+    find.append(icon("search", "compact"), q);
+    h1.append(t, meta, spacer(), find);
+    const list = document.createElement("div");
+    list.className = s.pvSec;
+    const fill = (): void => {
+      const got = signsNewestFirst(slice, this.signsQuery);
+      if (got.length === 0) list.replaceChildren(text(copyText("plan.signs.none"), s.pvMeta));
+      else list.replaceChildren(...got.map((it) => this.signRow(slice, it)));
+    };
+    q.addEventListener("input", () => {
+      this.signsQuery = q.value.trim();
+      fill();
+    });
+    fill();
+    box.append(h1, list);
+    return box;
+  }
+
+  /** 签收的一行：时刻 · 那一格（标题 ＋ 类）· 理由（话里的编号换成标题）· 签的那一位。 */
+  private signRow(slice: PlanSlice, it: ReturnType<typeof signsNewestFirst>[number]): HTMLElement {
+    const row = document.createElement("div");
+    row.className = s.pvSign;
+    const tm = text(it.sign.atText ?? "", s.pvSignTm);
+    const body = document.createElement("div");
+    body.className = s.pvSignBody;
+    const tl = document.createElement("div");
+    tl.className = s.pvSignTitle;
+    setKindColor(tl, kindSlot(slice, it.cell.kind));
+    const kw = text(it.cell.kind ?? "", s.pvKw);
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = s.pvLink;
+    go.textContent = it.cell.title ?? it.cell.id;
+    go.addEventListener("click", () => this.select(it.cell.id));
+    tl.append(go, kw);
+    const why = document.createElement("div");
+    why.className = s.pvSignWhy;
+    why.append(...this.detail.refText(slice, it.sign.reason ?? "", it.sign.refs));
+    body.append(tl, why);
+    row.append(tm, body);
+    if (it.sign.by) row.appendChild(this.whoChip(it.sign.by, true));
+    return row;
   }
 
   // ───────────────────────── 会话标签 ─────────────────────────

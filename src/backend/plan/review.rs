@@ -55,7 +55,7 @@ impl Review {
     }
 
     /// 给一份成品（[`super::book::Book`] 出的）标上：每条要你看认可没有（`acked`）· 每片与整份的要你看数（`needCount`）·
-    /// 退回过的格此刻的状态（`returned`：[`needs::landing`]；没退回过 ⇒ `null`）。
+    /// 退回过的格此刻的状态（`returned`：[`needs::landing`]；没退回过 ⇒ `null`；顶块那一次记在片上）。
     pub(crate) fn annotate(&self, doc: &mut Value) {
         let ws = doc
             .get("workspace")
@@ -79,6 +79,15 @@ impl Review {
                     .and_then(Value::as_array)
                     .cloned()
                     .unwrap_or_default();
+                // 顶块（`project`）退回过 ⇒ 那一片顶上带它此刻落没落地（与格同一判法）。
+                let top = match (
+                    self.returned(&ws, &name, needs::TOP_BLOCK),
+                    needs::target(sl, needs::TOP_BLOCK),
+                ) {
+                    (Some(r), Some(t)) => needs::landing(r, &t, &cells),
+                    _ => Value::Null,
+                };
+                sl["returned"] = top;
                 if let Some(arr) = sl.get_mut("cells").and_then(Value::as_array_mut) {
                     for c in arr {
                         let id = c.get("id").and_then(Value::as_str).unwrap_or_default();

@@ -131,7 +131,7 @@ export const PLAN_SCENES: Scene[] = [
     await waitFor(".session-plan-mark", 10_000);
     await sleep(400);
   }),
-  plan("plan-32-top", "需手动 · 顶块走到看全局", "概览顶上一条「整片做完 · 待过目」：［认可］［退回…］· 需手动 1 / 3 · 下一条", async () => {
+  plan("plan-32-top", "需手动 · 顶块走到看全局", "概览顶上一条「整片做完 · 需过目」：［认可］［退回…］· 需手动 1 / 3 · 下一条", async () => {
     await openPlan();
     await waitFor(".plan-view .plan-need");
   }, { topDone: true }),
@@ -167,5 +167,32 @@ export const PLAN_SCENES: Scene[] = [
     await row("A4");
     await click(await byText(".plan-view .plan-need button", "认可"));
     await sleep(900);
+  }),
+  plan("plan-41-top-return", "顶块的退回框", "顶块那一条点［退回…］：标题是片名、送给只有顶块接手一项（project 没有签它的）；送出的一行「人 · project ledger：…」", async () => {
+    await openPlan();
+    await waitFor(".plan-view .plan-need");
+    await click(await byText(".plan-view .plan-need button", "退回…"));
+    await type(".plan-return-text", "导出那一半先停，导入先和真账单对一遍。");
+    await sleep(300);
+  }, { topDone: true }),
+  plan("plan-42-top-returned", "顶块退回之后 · 等它改", "概览顶上：顶块那一条下面一条「已退回 · 送给总负责 · 几点」", async () => {
+    await openPlan();
+    await waitFor(".plan-view .plan-returned");
+  }, { topDone: true, topReturned: "returned" }),
+  plan("plan-43-top-landed", "顶块退回已落地", "概览顶上：「退回已落地 · 在底下加了「导出与导入对拍」」", async () => {
+    await openPlan();
+    await waitFor(".plan-view .plan-returned");
+  }, { topDone: true, topReturned: "landed" }),
+  plan("plan-44-signs", "签收排成一条", "概览「最近签收 · 全部 N」点进去：整片的签收按时间排成一条、新的在上（不进需手动）；右上按标题找", async () => {
+    await openPlan();
+    await click(".plan-view .plan-signs-all");
+    await waitFor(".plan-view .plan-signs");
+    await sleep(300);
+  }),
+  plan("plan-45-signs-find", "签收流 · 按标题找", "签收流里输「解析」：只剩那几格的签收（被后签的那条也在）", async () => {
+    await openPlan();
+    await click(".plan-view .plan-signs-all");
+    await type(".plan-signs-find", "解析");
+    await sleep(300);
   }),
 ];

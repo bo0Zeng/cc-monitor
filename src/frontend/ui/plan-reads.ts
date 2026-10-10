@@ -367,6 +367,7 @@ export function decodeSlice(v: unknown, what: string): PlanSlice {
     bare,
     needs: needsOf(o.needs, `${what}.needs`),
     needCount: count(o.needCount, `${what}.needCount`),
+    returned: returnedOf(o.returned, `${what}.returned`),
   };
 }
 

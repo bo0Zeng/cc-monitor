@@ -156,10 +156,10 @@ export interface SignItem {
   sign: PlanSign;
 }
 
-/** 全片的签收，新的在上（`at` 是 pb 给的 ISO 时刻；排不出时刻的排后）。 */
-export function signsNewestFirst(slice: PlanSlice): SignItem[] {
+/** 全片的签收，新的在上（`at` 是 pb 给的 ISO 时刻；排不出时刻的排后）。给了 `query` ⇒ 只留那一格标题（或编号）对得上的。 */
+export function signsNewestFirst(slice: PlanSlice, query = ""): SignItem[] {
   const all: SignItem[] = [];
-  for (const c of slice.cells) for (const g of c.signs) all.push({ cell: c, sign: g });
+  for (const c of slice.cells) if (matches(c, query)) for (const g of c.signs) all.push({ cell: c, sign: g });
   const t = (x: SignItem): number => (x.sign.at ? Date.parse(x.sign.at) || 0 : 0);
   return all.sort((a, b) => t(b) - t(a));
 }

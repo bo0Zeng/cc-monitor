@@ -330,6 +330,9 @@ pub(crate) struct PlanSlice {
     pub needs: Vec<PlanNeed>,
     /// 这一片要你看的数（没认可的，不含问人）。
     pub need_count: u32,
+    /// 顶块（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
+    #[serde(default)]
+    pub returned: Option<PlanReturned>,
 }
 
 /// 会话 ⇒ 它接手的那一块（会话头那一枚标）。

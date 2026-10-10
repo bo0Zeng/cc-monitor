@@ -108,3 +108,43 @@ fn annotate_marks_acks_counts_and_return_states_on_the_product() {
     assert_eq!(sl["cells"][1]["returned"], Value::Null);
     let _ = json!(null);
 }
+
+/// 退回过顶块（project）⇒ 那一片顶上带 `returned`：顶层多出退回之后新建的一格 ⇒ 已落地（带那一格的标题）；没退回过 ⇒ `null`。
+#[test]
+fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
+    let b = crate::plan::book::Book::default();
+    let take = |b: &crate::plan::book::Book| {
+        b.take(
+            crate::plan::dump::Ran::Dump {
+                doc: dump("/w"),
+                raw: dump("/w").to_string().into_bytes(),
+            },
+            Path::new("/w"),
+            &who,
+            1,
+        )
+        .unwrap()
+    };
+    let mut doc = take(&b);
+    let f = file("review-project");
+    current(Some(&f)).annotate(&mut doc);
+    assert_eq!(doc["slices"][0]["returned"], Value::Null);
+    let mut r = rec(5);
+    r.children = vec!["A1".into()];
+    returned_at(&f, "/w", "alpha", "project", r).unwrap();
+    let mut doc = take(&b);
+    current(Some(&f)).annotate(&mut doc);
+    let got = &doc["slices"][0]["returned"];
+    assert_eq!(got["state"], "landed");
+    assert_eq!(got["by"], "child");
+    assert_eq!(got["child"]["id"], "A2");
+    assert_eq!(got["child"]["title"], "乙功能");
+    let mut r = rec(6);
+    r.children = vec!["A1".into(), "A2".into()];
+    // 顶块没有正文：记下的摘要是空正文那一份（送的那一刻也是这么记的）。
+    r.body = crate::plan::needs::body_digest(&json!({}));
+    returned_at(&f, "/w", "alpha", "project", r).unwrap();
+    let mut doc = take(&b);
+    current(Some(&f)).annotate(&mut doc);
+    assert_eq!(doc["slices"][0]["returned"]["state"], "returned");
+}

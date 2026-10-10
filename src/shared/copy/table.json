@@ -28902,7 +28902,7 @@
     "plan.review.topDone": {
       "kind": "title",
       "role": "标题",
-      "zh": "整片做完 · 待过目",
+      "zh": "整片做完 · 需过目",
       "args": []
     },
     "plan.review.topDoneWhat": {
@@ -29626,6 +29626,24 @@
       "kind": "body",
       "role": "片段",
       "zh": "指向它的",
+      "args": []
+    },
+    "plan.signs.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "签收",
+      "args": []
+    },
+    "plan.signs.meta": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{slice} · {n} 条 · 新的在上",
+      "args": ["slice", "n"]
+    },
+    "plan.signs.none": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "没有对得上的签收",
       "args": []
     }
   }
