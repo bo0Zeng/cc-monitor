@@ -914,7 +914,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
 /// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
 /// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；轮换规则 CellError 与机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
-pub const BUILD_ID: &str = "p9x-changed-topic-view";
+///
+/// p9y-viewer-tz-skeleton：时刻按看的人那一台的钟——请求信封 · CLI `--tz` · attach 行带 tz（IANA 名，缺 · 认不得 ⇒ UTC），回包的「几点」「今天 / 昨天」与复制详情那一行都按它写；
+/// 推送帧里现算的小成品按这条连接 attach 带来的 tz 写；轮换规则盖上 rotation.tz、按规则自己的时区判；rotation-rule-save / rename 回 savedAtText；记录带 atMs。
+/// 查看器改「骨架 ＋ 按视口取」：history-page 的 whole 与 too_large 删、界面整份读删；ToolStep.ask · StepResult.preview 由核心出（出口省掉工具入参 / 结果正文）。
+/// 通用记录多一类 unread（认不出的行，相邻同类并一条）；号名 / 位名由核心写（四件成品带 names）；history-list 的 raw 带那台自己那份注解；冻结格进版本号指纹；
+/// 手机接核心第一批（常驻长连接 --resident-ensure → --resident-attach）。
+pub const BUILD_ID: &str = "p9y-viewer-tz-skeleton";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
