@@ -28313,6 +28313,36 @@
       "zh": "已改 {n}",
       "args": ["n"]
     },
+    "beChore.mcpLogin.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "MCP「{name}」需登录",
+      "args": ["name"]
+    },
+    "beChore.mcpLogin.whoSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "beChore.mcpLogin.said": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "不登录也能用 · 该服务器的工具缺席",
+      "args": []
+    },
+    "beChore.mcpLogin.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "上次连它时要求登录 · 登录后重查即消失",
+      "args": []
+    },
+    "beChore.mcpLogin.step": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在该号的会话里输入 /mcp · 选中 {name} · 登录",
+      "args": ["name"]
+    },
     "beChore.staleCcm.name": {
       "kind": "title",
       "role": "标题",

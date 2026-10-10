@@ -93,7 +93,7 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
 
 /// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
 /// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。
-fn mcp_look(kind: &str) -> crate::agents::McpLook {
+pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
     let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
         .and_then(|h| {
             crate::accounts::manage::mcp_share_exec::accounts_in(&h.display().to_string())

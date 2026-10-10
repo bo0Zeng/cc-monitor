@@ -104,8 +104,16 @@ pub(crate) struct Facts {
     pub dead: Vec<DeadLines>,
     pub relay: Vec<Relay>,
     pub hooks: Option<Hooks>,
+    /// 用户自己配的（全局 · 本项目 · 项目文件里的）、要登录的 MCP（`mcp-read` 那一份判定）。
+    pub mcp_login: Vec<McpLogin>,
     /// 点过「不用了」的那几件（`marks.rs`）。
     pub declined: Vec<String>,
+}
+
+/// 一个要登录的 MCP：名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）。
+pub(crate) struct McpLogin {
+    pub name: String,
+    pub who: Vec<String>,
 }
 
 /// 一件的成品（线上形状由判据按键集钉住）。
@@ -367,6 +375,16 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
                 same_file.push((out.len(), p));
             }
         }
+        out.push(c);
+    }
+    for m in &f.mcp_login {
+        let mut c = Chore::new(format!("mcp-login:{}", m.name), "optional", "copyCommand");
+        c.name = copy_text("beChore.mcpLogin.name", &[("name", &m.name)]);
+        c.loc = m.who.join(&copy_text("beChore.mcpLogin.whoSep", &[]));
+        c.said = copy_text("beChore.mcpLogin.said", &[]);
+        c.why = copy_text("beChore.mcpLogin.why", &[]);
+        c.steps = vec![copy_text("beChore.mcpLogin.step", &[("name", &m.name)])];
+        c.copy = Some("/mcp".to_string());
         out.push(c);
     }
     // 同一份文件里有两件都没做 ⇒ 各自的「整份」都给含两件的那一份（按现在的内容先合一件、再合另一件）。
