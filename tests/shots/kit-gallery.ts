@@ -193,9 +193,10 @@ function overview(): void {
   );
 
   document.body.append(
-    section("错误条 · 警告条 · 空态", "C15 · C16", "g-cols4", [
+    section("错误条 · 警告条 · 中性条 · 空态", "C15 · C16", "g-cols4", [
       ["错误条", banner("error", "读取账号失败 · 内容无法解析", [button({ label: "复制详情", size: "compact" })])],
       ["警告条", banner("warn", "重启 cc-monitor 后生效", [button({ label: copyText("restartNow.bar.action"), size: "compact" })])],
+      ["中性条 · 还没出错", banner("info", copyText("newSession.timeout.checking", { machine: "devbox" }), [spinner()])],
       ["空态", stage(emptyState({ text: "无会话", hint: "终端里 ccm 启动后自动出现" }))],
     ]),
   );

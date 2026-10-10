@@ -224,6 +224,9 @@ describe("错误条 · 空态", () => {
     const e = banner("error", "读取账号失败 · 内容无法解析", [button({ label: "复制详情" })]);
     expect([e.getAttribute("role"), e.dataset.intent, e.lastElementChild?.textContent]).toEqual(["alert", "error", "复制详情"]);
     expect(banner("warn", "重启 cc-monitor 后生效").getAttribute("role")).toBe("status");
+    // 中性那一档（还没出错，比如正在核实）：不当警报念、不用错误 / 警告的图标。
+    const n = banner("info", "正在核实 devbox 是否已起");
+    expect([n.getAttribute("role"), n.dataset.intent, n.querySelector("svg")?.dataset.icon]).toEqual(["status", "info", "info"]);
   });
 
   it("空态：图标 ＋ 一句 ＋ 怎么让它有 ＋ 至多一颗按钮", () => {

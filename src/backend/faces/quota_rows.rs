@@ -181,10 +181,13 @@ fn unseen_block(u: &Value) -> Rows {
     rows
 }
 
-/// `quota-read` 顶上那一句：读不出 ⇒ 读取失败；一个号都没有 ⇒ 无采样；否则没有。
-pub(crate) fn head_text(state: &str, empty: bool) -> Option<Words> {
+/// `quota-read` 顶上那一句：读不出 ⇒ 读答的原因那一句（读的哪份 · 原因词；没给才说「原因不明」）；一个号都没有 ⇒ 无采样；否则没有。
+pub(crate) fn head_text(state: &str, empty: bool, reason: Option<&str>) -> Option<Words> {
     if state == "unreadable" {
-        Some(Words(copy_text("acct.text.readFail", &[])))
+        Some(Words(reason.filter(|r| !r.trim().is_empty()).map_or_else(
+            || copy_text("acct.text.readFail", &[]),
+            str::to_string,
+        )))
     } else if empty {
         Some(Words(copy_text("acct.seen.none", &[])))
     } else {

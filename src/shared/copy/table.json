@@ -13140,8 +13140,10 @@
     "backendPolicy.exit.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "退出策略读不出 · 按默认（不停止）",
-      "args": []
+      "zh": "{why} · 退出策略按默认（不停止）",
+      "args": [
+        "why"
+      ]
     },
     "rsBackendPolicy.health.unknown": {
       "kind": "body",
@@ -15674,6 +15676,12 @@
       "role": "报错",
       "zh": "结果过大 · {size} 字节 · 上限 {cap} · 未返回",
       "args": ["size", "cap"]
+    },
+    "beExitPolicy.read.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到主目录（HOME 与 USERPROFILE 均未设） · 未读取",
+      "args": []
     },
     "beExitPolicy.answerSet.noHome": {
       "kind": "error",
@@ -21315,6 +21323,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "被拒",
+      "args": []
+    },
+    "acct.val.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读不到",
       "args": []
     },
     "acct.val.none": {

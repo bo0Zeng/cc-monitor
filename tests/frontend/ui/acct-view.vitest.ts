@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { bannerOf, sessionChip, sessionHoverRows, tabBlockedOf, whyOf } from "../../../src/frontend/ui/acct-view.ts";
 import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store.ts";
-import type { QuotaRead } from "../../../src/frontend/ui/acct-words.ts";
+import { fiveHourCell, type QuotaRead } from "../../../src/frontend/ui/acct-words.ts";
 import type { QuotaShow } from "../../../src/frontend/ui/generated/QuotaShow.ts";
 import type { SessionRotation } from "../../../src/frontend/ui/generated/SessionRotation.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -136,5 +136,15 @@ describe("记录 · 提示条 · 标签页", () => {
     const b = tabBlockedOf(entry({ blocked: { earliest: { account: "team", at: NOW + 600, atText: "12:10" } } }, { state: "refused" }));
     expect(b?.text).toBe("✕ 5h");
     expect(b?.hover).toMatch(copyPattern("acct.tab.hover", { w: "5h", name: "team" }, { whole: true }));
+  });
+});
+
+describe("每号 5h 那一格（恢复菜单 · 新建会话的账号项）", () => {
+  it("额度账读不出 ⇒ 那一格说「读不到」，不是悄悄不出（原因与复制详情在账号面板那一条）", () => {
+    const r = { state: "unreadable", reason: "x", detail: null, path: null, now: 0, accounts: [], unseen: [], usableNow: [], earliestReturn: null } as QuotaRead;
+    expect(fiveHourCell(r, "claude-code", "work")).toBe(
+      copyText("resumeMenu.account.quota", { slot: copyText("acct.slot.fiveHour"), value: copyText("acct.val.unreadable") }),
+    );
+    expect(fiveHourCell(null, "claude-code", "work"), "没问过 ⇒ 照旧不出").toBeNull();
   });
 });

@@ -97,7 +97,7 @@ const DAILY = rule("r_daily", "日常", {
 const NIGHT = rule("r_night", "夜间");
 
 function rules(list: RuleRow[] = [DAILY, NIGHT]): RulesRead {
-  return { state: "present", defaultRule: "r_daily", rules: list };
+  return { state: "present", reason: null, detail: null, defaultRule: "r_daily", rules: list };
 }
 
 const PLAN: PlanRead = {

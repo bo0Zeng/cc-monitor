@@ -388,6 +388,23 @@ const more = (id: string) => `[data-rules-more="${id}"]`;
 
 export const RULES_SCENES: Scene[] = [
   scene(
+    "rules-unreadable",
+    "设置 · 轮换 · 规则表读不出",
+    "那份规则表读不出：表顶一条警告条，后端写好的那一句（读的哪份 · 原因词）＋［复制详情］；表照后端给的（只剩默认那条）",
+    goRules,
+    () => {
+      const w = rulesWorld([THREE[0]])();
+      const read = w.ops["rotation-rules-read"];
+      w.ops["rotation-rules-read"] = (o, req, world) => ({
+        ...(read(o, req, world) as Record<string, unknown>),
+        state: "unreadable",
+        reason: "读取 /home/user/.cc-monitor/rotation.json 失败 · 内容无法解析",
+        detail: "时刻 2026-10-10 01:00:00 +08:00\n机器 Linux x86_64 · 后端 fake\n命令 rotation-rules-read\n码 unreadable\n原话 expected value at line 1 column 1",
+      });
+      return w;
+    },
+  ),
+  scene(
     "rules-list",
     "设置 · 轮换 · 规则列表",
     "本机的规则：日常（默认）· 夜间 · 省额度；摘要后端写、一行截断；在用 2 会话 / 1 会话 / —",

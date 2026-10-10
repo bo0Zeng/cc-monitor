@@ -95,6 +95,9 @@ export interface RuleRow {
 /** `rotation-rules-read` 的应答。 */
 export interface RulesRead {
   state: "present" | "absent" | "unreadable";
+  /** 只在 `unreadable` 时有：那一句（读的哪份 · 原因词）· 复制详情。 */
+  reason: string | null;
+  detail: string | null;
   defaultRule: string;
   rules: RuleRow[];
 }
@@ -148,8 +151,11 @@ export function decodeRulesRead(v: unknown): RulesRead {
   const rules = arr(o.rules, "rules").map((r, i) =>
     decodeRuleRow(r, `rules[${i}]`),
   );
+  const str = (x: unknown): string | null => (typeof x === "string" && x !== "" ? x : null);
   return {
     state: o.state as RulesRead["state"],
+    reason: str(o.reason),
+    detail: str(o.detail),
     defaultRule: o.defaultRule,
     rules,
   };

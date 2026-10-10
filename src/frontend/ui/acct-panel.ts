@@ -398,6 +398,16 @@ function nowBlock(
     sec.content.appendChild(
       banner("error", copyText("acct.now.readFail"), [retry]),
     );
+  } else if (quota.state === "unreadable") {
+    // 问到了、那份账读不出：后端写好的那一句（读的哪份 · 原因词）＋ 复制详情（原话在那里）。
+    sec.content.appendChild(
+      banner(
+        "warn",
+        quota.text ?? quota.reason ?? copyText("acct.now.readFail"),
+        [],
+        quota.detail ?? "",
+      ),
+    );
   }
   const who = el("div", s.acctWho);
   who.appendChild(acctAvatar(read.account.current, 20));

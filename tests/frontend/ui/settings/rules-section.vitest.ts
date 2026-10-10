@@ -111,6 +111,8 @@ const SAVER = rule("r_saver", "省额度");
 function rules(list: RuleRow[] = [DAILY, NIGHT, SAVER]): RulesRead {
   return {
     state: "present",
+    reason: null,
+    detail: null,
     defaultRule: list.find((r) => r.isDefault)?.id ?? "r_daily",
     rules: list,
   };
@@ -282,6 +284,15 @@ describe("轮换栏 · 表", () => {
         (r) => r.dataset.rule,
       ),
     ).toEqual(["r_1", "r_10", "r_11"]);
+  });
+
+  it("规则表那份读不出 ⇒ 警告条说后端给的原因那一句 ＋［复制详情］", async () => {
+    const why = "读取 /h/.cc-monitor/rotation.json 失败 · 内容无法解析";
+    readRules.mockResolvedValueOnce({ ...rules([DAILY]), state: "unreadable", reason: why, detail: "时刻 …\n原话 zz" });
+    const el = await mount();
+    const bar = [...el.querySelectorAll<HTMLElement>("[role=status]")].find((b) => b.textContent?.includes(why));
+    expect(bar, "读不出那一条没说原因").toBeTruthy();
+    expect(bar!.querySelector('[data-part="copy-detail"]'), "没有［复制详情］").not.toBeNull();
   });
 
   it("读不到那台的规则 ⇒ 警告条 ＋［重试］，新建灰", async () => {

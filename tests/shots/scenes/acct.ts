@@ -736,6 +736,29 @@ export const ACCT_SCENES: Scene[] = [
       },
     ),
   ),
+  scene(
+    "acct-panel-unreadable",
+    "面板 · 额度账读不出",
+    "那份额度账读不出：「当前」那一块一条警告条，后端写好的那一句（读的哪份 · 原因词）＋［复制详情］",
+    openPanel,
+    () => {
+      const w = world(() => {})();
+      const why = "读取 /home/user/.cc-monitor/quota.json 失败 · 内容无法解析";
+      w.ops["quota-read"] = () => ({
+        state: "unreadable",
+        reason: why,
+        detail: "时刻 2026-10-10 01:00:00 +08:00\n机器 Linux x86_64 · 后端 fake\n命令 quota-read\n码 unreadable\n原话 expected value at line 1 column 1",
+        text: why,
+        path: "/home/user/.cc-monitor/quota.json",
+        now: now(),
+        accounts: [],
+        unseen: [],
+        usableNow: [],
+        earliestReturn: null,
+      });
+      return w;
+    },
+  ),
   // ── 面板
   scene(
     "acct-panel",

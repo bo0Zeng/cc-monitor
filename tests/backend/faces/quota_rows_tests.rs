@@ -31,7 +31,12 @@ fn through_the_exit(reply: &Value, tz: i64) -> Value {
     let empty = ["accounts", "unseen"]
         .iter()
         .all(|l| v[*l].as_array().is_none_or(Vec::is_empty));
-    v["text"] = serde_json::to_value(head_text(v["state"].as_str().unwrap_or(""), empty)).unwrap();
+    v["text"] = serde_json::to_value(head_text(
+        v["state"].as_str().unwrap_or(""),
+        empty,
+        v["reason"].as_str(),
+    ))
+    .unwrap();
     v
 }
 
@@ -121,4 +126,19 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
     assert_eq!(w(week, true).at, Some(now + 9000 + WARM_MARGIN_S));
     let expired = serde_json::json!({"login": "ok", "state": "ok", "slots": [{"slot": "5h", "pct": 90, "resetsAt": now - 5}]});
     assert_eq!(w(expired, true).act, WarmAct::Send);
+}
+
+/// 读不出那一句照读答的原因说（读的哪份 · 原因词）；没给原因才退回「原因不明」那一句。
+#[test]
+fn the_unreadable_head_says_the_reason() {
+    let why = "读取失败 · /h/.cc-monitor/quota.json · 无权限";
+    assert_eq!(
+        head_text("unreadable", true, Some(why)).map(|w| w.0),
+        Some(why.to_string())
+    );
+    assert_eq!(
+        head_text("unreadable", true, None).map(|w| w.0),
+        Some(copy_text("acct.text.readFail", &[]))
+    );
+    assert!(head_text("present", false, Some(why)).is_none());
 }
