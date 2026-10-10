@@ -642,7 +642,11 @@ fn refusals_say_which_way_live_went() {
         ("bad_args", "stopped"),
         ("unobservable", "stopped"),
     ] {
-        assert_eq!(live_after_refusal(code), live, "{code}");
+        assert_eq!(
+            serde_json::to_value(live_after_refusal(code)).unwrap(),
+            serde_json::json!({ "live": live }),
+            "{code}"
+        );
     }
     // 三种停因各有一句，彼此不同、都不空。
     let said: Vec<String> = [FollowEnd::Gone, FollowEnd::Lost, FollowEnd::TooBig]
@@ -652,4 +656,17 @@ fn refusals_say_which_way_live_went() {
     assert!(said.iter().all(|s| !s.trim().is_empty()));
     assert_ne!(said[0], said[1]);
     assert_ne!(said[1], said[2]);
+}
+
+impl crate::guard_support::Shaped for Refused {
+    fn samples() -> Vec<Self> {
+        vec![
+            Refused {
+                live: Live::SnapshotOnly,
+            },
+            Refused {
+                live: Live::Stopped,
+            },
+        ]
+    }
 }

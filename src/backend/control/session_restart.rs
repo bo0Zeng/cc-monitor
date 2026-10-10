@@ -16,7 +16,7 @@ use super::launch_account::{self as la, AccountAsk, Settled};
 use super::launch_render::Failed;
 use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_CAP};
 use crate::platform::child::{Budget, Deadline, Until};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use std::future::Future;
 
 /// 命令级失败（码 ＋ 那一句 ＋ 按码定形的 `data`），全是自有值：跨阻塞线程交回来。
@@ -121,9 +121,41 @@ pub(crate) fn parse(args: &Value) -> Result<Req, Failed> {
     })
 }
 
-/// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`）。
-fn already_live(said: String, pids: &[u32]) -> Failed {
-    (batch::ALREADY_LIVE, said, Some(json!({ "pids": pids })))
+/// 失败信封里按码定形的 `data`（`account_unavailable` 那一形是 [`la::AccountUnavailable`]，与起会话那几条同一份）。
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum Refused {
+    /// `ambiguous`：在跑的那几个终端名。
+    Ambiguous { names: Vec<String> },
+    /// `session_already_live`：另有活进程在写的那几个 pid；停完旧的之后才发现的 ⇒ 带 `stopped: true`。
+    Live {
+        pids: Vec<u32>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        stopped: bool,
+    },
+    /// `stop_failed`：停那一步的码。
+    StopFailed { why: String },
+    /// `start_failed`：旧的已停，在这个终端里起新的没成（那一步的码）。
+    StartFailed {
+        terminal: String,
+        why: Option<String>,
+        stopped: bool,
+    },
+}
+
+impl Refused {
+    fn data(self) -> Option<Value> {
+        serde_json::to_value(self).ok()
+    }
+}
+
+/// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`；停完旧的之后 ⇒ 多 `stopped: true`）。
+fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
+    (
+        batch::ALREADY_LIVE,
+        said,
+        Refused::Live { pids, stopped }.data(),
+    )
 }
 
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）
@@ -162,7 +194,7 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
                         ("pids", &batch::pids_said(&live)),
                     ],
                 );
-                return Err(already_live(said, &live));
+                return Err(already_live(said, live, false));
             }
             Ok((account, name, live))
         }
@@ -172,7 +204,7 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
                 "beSessionRestart.locate.ambiguous",
                 &[("names", &names.join(", "))],
             ),
-            Some(json!({ "names": names })),
+            Refused::Ambiguous { names }.data(),
         )),
         Some(Standing::Idle(_) | Standing::None) | None => Err(not_here()),
     }
@@ -183,7 +215,14 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
 fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> Result<(), Failed> {
     let _total = Budget::capped(SWAP_CAP, req.until);
     if let Err((why, said)) = (deps.kill)(name, &req.item.sid) {
-        return Err(("stop_failed", said, Some(json!({ "why": why }))));
+        return Err((
+            "stop_failed",
+            said,
+            Refused::StopFailed {
+                why: why.to_string(),
+            }
+            .data(),
+        ));
     }
     let others: Vec<u32> = (deps.writers)(&req.item.sid)
         .into_iter()
@@ -194,8 +233,7 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
             "beSessionRestart.live.afterStop",
             &[("pids", &batch::pids_said(&others))],
         );
-        let (c, m, _) = already_live(said, &others);
-        return Err((c, m, Some(json!({ "pids": others, "stopped": true }))));
+        return Err(already_live(said, others, true));
     }
     let a = batch::start_named(
         &req.item,
@@ -211,12 +249,18 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
     Err((
         "start_failed",
         a.detail,
-        Some(json!({ "terminal": name, "why": a.why, "stopped": true })),
+        Refused::StartFailed {
+            terminal: name.to_string(),
+            why: a.why,
+            stopped: true,
+        }
+        .data(),
     ))
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Compact {
     Done,
     TimedOut,
@@ -225,16 +269,23 @@ pub(crate) enum Compact {
     Failed,
 }
 
-impl Compact {
-    pub(crate) fn as_wire(self) -> &'static str {
-        match self {
-            Compact::Done => "done",
-            Compact::TimedOut => "timed_out",
-            Compact::Skipped => "skipped",
-            Compact::Unsupported => "unsupported",
-            Compact::Failed => "failed",
-        }
-    }
+/// 新进程报没报出（等到期限为止）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Arrival {
+    Arrived,
+    Missed,
+}
+
+/// `session-restart` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Restarted {
+    pub(crate) compact: Compact,
+    pub(crate) started: Arrival,
+    /// 所在的终端（会话名）。
+    pub(crate) terminal: String,
+    /// 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+    pub(crate) account: Option<la::LaunchedAccount>,
 }
 
 async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
@@ -300,12 +351,20 @@ pub(crate) async fn run<H: Host>(
         Ok(ears) => ears.within(req.arrive_within_ms).await,
         Err(_) => false,
     };
-    Ok(json!({
-        "compact": compact.as_wire(),
-        "started": if started { "arrived" } else { "missed" },
-        "terminal": name,
-        "account": super::launch_render::launched(&account),
-    }))
+    crate::stream::inbound::spec::wire::<_, (&str, String)>(&Restarted {
+        compact,
+        started: if started {
+            Arrival::Arrived
+        } else {
+            Arrival::Missed
+        },
+        terminal: name,
+        account: match account {
+            Settled::Account(a) => Some(a),
+            Settled::Base | Settled::Unsaid => None,
+        },
+    })
+    .map_err(|(c, m)| (c.to_string(), m, None))
 }
 
 #[cfg(test)]

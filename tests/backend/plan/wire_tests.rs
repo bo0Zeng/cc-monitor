@@ -74,3 +74,21 @@ fn ack_and_return_replies_pass_through_their_types_unchanged() {
         }));
     }
 }
+
+/// `plan-command` 回包的样本（`every_command_declares_exactly_the_fields_it_puts_out` 读；可缺的格都填上 ＋ 一份都缺的）。
+impl crate::guard_support::Shaped for PlanCmdReply {
+    fn samples() -> Vec<Self> {
+        vec![
+            PlanCmdReply {
+                rc: 0,
+                said: Some("wrote /tmp/x.html".into()),
+                path: Some("/tmp/x.html".into()),
+            },
+            PlanCmdReply {
+                rc: 0,
+                said: None,
+                path: None,
+            },
+        ]
+    }
+}

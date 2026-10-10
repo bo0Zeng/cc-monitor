@@ -22,7 +22,7 @@
 //! 不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
 
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::shell::posix;
@@ -266,7 +266,15 @@ pub(crate) fn answer_in(args: &Value, powershell: bool, ssh: &SshClient) -> Resu
             ));
         }
     };
-    Ok(json!({ "command": render(&req, powershell, ssh)? }))
+    crate::stream::inbound::spec::wire(&SshCommand {
+        command: render(&req, powershell, ssh)?,
+    })
+}
+
+/// `terminal-ssh` 的应答：那一整行命令。
+#[derive(serde::Serialize)]
+pub(crate) struct SshCommand {
+    pub(crate) command: String,
 }
 
 /// `command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。

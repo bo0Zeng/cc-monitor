@@ -37,6 +37,7 @@
 //! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：本件在收「找」，不搬「写」）——
 //! 它是本 crate 只读白名单上那一条，搬它要动的是白名单，那是另一件事。
 
+use crate::stream::detail::Failed;
 use std::path::Path;
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
@@ -110,18 +111,31 @@ fn new_session_id(source_sid: &str) -> String {
 }
 
 /// `--fork-session <source-sid> <message-uuid>`：stdout 出一行 `ForkResult` JSON、exit 0；
-/// 出错 exit 2 + stderr 出 `{code,message}`（与 `--resolve` 同一个错误信封约定）。
+/// 出错 exit 2 + stderr 一行 `{code, message, detail}`（与帧面失败应答同一份 [`Failed`]）。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
-    match run_inner(agent_home, args) {
-        Ok(res) => {
-            match serde_json::to_string(&res) {
-                Ok(s) => println!("{s}"),
-                Err(e) => return fail("serialize", &e.to_string()),
-            }
+    match cli(agent_home, args) {
+        Ok(line) => {
+            println!("{line}");
             0
         }
-        Err(msg) => fail("fork_failed", &msg),
+        Err(f) => f.emit(),
     }
+}
+
+/// [`run`] 的本体：成 ⇒ 那一行 `ForkResult`；败 ⇒ 那一份失败（详情的「命令」那一项是 `fork-session`）。
+pub(crate) fn cli(agent_home: &Path, args: &[String]) -> Result<String, Failed> {
+    let res = run_inner(agent_home, args)
+        .map_err(|m| Failed::new(Some("fork-session"), "fork_failed", m, None, None))?;
+    // 两格都是字符串，实际到不了；到了也照规矩：那一句只说原因，原话进详情。
+    serde_json::to_string(&res).map_err(|e| {
+        Failed::new(
+            Some("fork-session"),
+            "serialize",
+            crate::common::contract::malformed("fork result does not serialize"),
+            Some(&e.to_string()),
+            None,
+        )
+    })
 }
 
 /// 帧面 `session-fork {sid, uuid} → {sessionId, jsonlPath}` 的本体 —— 与 CLI
@@ -203,12 +217,6 @@ fn fork_checked(
     // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。
     let argv = [String::new(), sid.to_string(), uuid.to_string()];
     run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))
-}
-
-fn fail(code: &str, message: &str) -> i32 {
-    let env = serde_json::json!({ "code": code, "message": message });
-    eprintln!("{env}");
-    2
 }
 
 fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {

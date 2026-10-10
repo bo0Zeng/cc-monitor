@@ -1125,6 +1125,208 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
     );
 }
 
+mod typed_replies {
+    pub(super) use crate::control::session_batch as sb;
+    pub(super) use crate::control::session_new as sn;
+    pub(super) use crate::faces::rotation_face as rf;
+    pub(super) use crate::guard_support::{merged, sampled, sampled_and, Sampled};
+}
+use typed_replies::*;
+
+/// 出参是 typed 结构体的命令（头注 ①′）：样本由那个类型真序列化（[`crate::guard_support::Shaped`]），列同 [`SHAPED`] 的后两格（`SHAPED` 住判据 [`every_command_declares_exactly_the_fields_it_puts_out`] 里）。
+/// 成功应答不带 `data`、只有失败信封带的（`terminal-follow`）⇒ 样本就是失败那一形。
+#[allow(clippy::type_complexity)]
+const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
+    (
+        "plan-command",
+        sampled::<crate::plan::wire::PlanCmdReply>,
+        &[],
+        &[],
+    ),
+    (
+        "history-annotate",
+        sampled::<crate::history::history_annotations::Annotated>,
+        &["customTitle", "hidden", "starred", "updatedAt"],
+        &[],
+    ),
+    (
+        "history-branch",
+        sampled::<crate::faces::read_face::Branch>,
+        &[],
+        &[],
+    ),
+    (
+        "history-forget",
+        sampled::<crate::history::history_annotations::Forgotten>,
+        &[],
+        &[],
+    ),
+    (
+        "history-last-accounts",
+        sampled::<crate::control::launch_account::LastAccounts>,
+        &[],
+        &[],
+    ),
+    (
+        "history-record",
+        sampled::<crate::observe::history_query::RecordProbe>,
+        &[],
+        &[],
+    ),
+    (
+        "history-search",
+        sampled::<crate::faces::read_face::Searched>,
+        &[],
+        &[],
+    ),
+    (
+        "history-search-merge",
+        sampled::<crate::observe::search_query::Merged>,
+        &[],
+        &[],
+    ),
+    (
+        "history-tail",
+        sampled::<crate::observe::history_query::TailPlan>,
+        &[],
+        &[],
+    ),
+    (
+        "quota-probe",
+        sampled::<crate::faces::quota_probe_face::Probed>,
+        &[],
+        &[],
+    ),
+    ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
+    (
+        "session-terminals",
+        sampled::<crate::observe::session_terminals::Showing>,
+        &[
+            "activity",
+            "clientAddr",
+            "clientPort",
+            "serverAddr",
+            "serverPort",
+            "ssh",
+        ],
+        &[],
+    ),
+    (
+        "session-interrupts",
+        sampled::<crate::observe::interrupts_query::SessionInterrupts>,
+        &["family", "names"],
+        &[],
+    ),
+    (
+        "session-new",
+        sampled_and::<sn::SessionNew, sn::SessionNewRefusal>,
+        &["configDir", "model", "name"],
+        &[],
+    ),
+    ("session-new-dir", sampled::<sn::DirChecked>, &[], &[]),
+    (
+        "session-new-facts",
+        sampled::<crate::faces::session_new_face::NewFacts>,
+        &["lastMs", "launch", "startText", "turn"],
+        &[],
+    ),
+    (
+        "session-restart",
+        restart_samples,
+        &["configDir", "model", "name"],
+        &[],
+    ),
+    (
+        "sessions-start",
+        sampled::<sb::Batched>,
+        &[
+            "account",
+            "cmd",
+            "configDir",
+            "copyDetail",
+            "detail",
+            "model",
+            "name",
+            "outcome",
+            "said",
+            "session",
+            "sid",
+            "unavailable",
+            "why",
+        ],
+        &[],
+    ),
+    (
+        "sessions-stop",
+        sampled::<sb::Batched>,
+        &[
+            "bus",
+            "cmd",
+            "copyDetail",
+            "detail",
+            "outcome",
+            "said",
+            "session",
+            "sid",
+            "why",
+        ],
+        &[],
+    ),
+    (
+        "sessions-where",
+        sampled::<sb::Whereabouts>,
+        &["host", "names", "sid", "standing", "terminal", "terminals"],
+        &[],
+    ),
+    (
+        "terminal-follow",
+        sampled::<crate::control::terminal_follow::Refused>,
+        &[],
+        &[],
+    ),
+    (
+        "terminal-name-mint",
+        sampled::<crate::control::ccm::Minted>,
+        &[],
+        &[],
+    ),
+    (
+        "terminal-processes",
+        sampled::<crate::dial::terminal_processes::Processes>,
+        &["name", "pid", "start"],
+        &[],
+    ),
+    (
+        "terminal-ssh",
+        sampled::<crate::dial::terminal::SshCommand>,
+        &[],
+        &[],
+    ),
+    ("rotation-default-set", sampled::<rf::DefaultSet>, &[], &[]),
+    ("rotation-plan", sampled::<rf::PlanReply>, &[], &[]),
+    ("rotation-rule-delete", sampled::<rf::RuleDeleted>, &[], &[]),
+    ("rotation-rule-rename", sampled::<rf::RuleSaved>, &[], &[]),
+    ("rotation-rule-save", sampled::<rf::RuleSaved>, &[], &[]),
+    ("rotation-rules-read", sampled::<rf::RulesRead>, &[], &[]),
+    (
+        "rotation-session-read",
+        sampled::<rf::SessionRead>,
+        &[],
+        &[],
+    ),
+    ("rotation-session-set", sampled::<rf::SessionSet>, &[], &[]),
+];
+
+/// `session-restart`：成功那一形 ＋ 失败信封按码定形的 `data`（自己那几形 ＋ 选不了号那一形）。
+fn restart_samples() -> Sampled {
+    use crate::control::session_restart as sr;
+    merged(vec![
+        sampled::<sr::Restarted>(),
+        sampled::<sr::Refused>(),
+        sampled::<crate::control::launch_account::AccountUnavailable>(),
+    ])
+}
+
 /// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
 ///
 /// 镜子（`CommandSpec::fields`）是手写的，协议参考从它生成：它比真出参少一格，照文档接的人就看不到那一格
@@ -1134,6 +1336,7 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 /// 每条命令三选一，三张表两两不交、并起来恰好是注册表：
 /// ① [`SHAPED`]：有真序列化的样本 ⇒ 登的 out ∪ both ＝ 样本顶层的键 ∪ 登了但住在下层的（`below`，必须在样本更深处见得到）
 ///    ∪ 登了但这份样本走不到的那一支（`elsewhere`，逐条写为什么）；
+/// ①′ [`TYPED`]：出参是 typed 结构体 ⇒ 样本由那个类型真序列化（每一支一个，`Shaped::samples`），比法同 ①；
 /// ② [`UNSHAPED`]：出参是现拼的 `json!`、仓里还没有真序列化器写的样本 ⇒ 今天对不了，逐条列名（只许删、不许加：
 ///    新命令要么带金样进 ①，要么零出参）；
 /// ③ [`ZERO_OUT`]：零出参（`fields` 里没有 out / both），逐条写结果走哪儿。
@@ -1407,7 +1610,9 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("transfer-stop", "只回 ok（幂等）"),
         ("transfer-upload", "只回 ok；进度与终局走 `transfer` 帧"),
     ];
-    /// 有出参、还没有真序列化样本的命令（见头注 ②）。
+    /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
+    /// 多一条就红；删了一批就把它降到现数（不降也红）。
+    const UNSHAPED_CEILING: usize = 87;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1475,14 +1680,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "first-run",
         "forward-start",
         "forward-stop",
-        "history-annotate",
-        "history-branch",
-        "history-forget",
-        "history-last-accounts",
-        "history-record",
-        "history-search",
-        "history-search-merge",
-        "history-tail",
         "last-seen-read",
         "last-seen-write",
         "launch-local",
@@ -1495,42 +1692,18 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "place-verdict",
         "plan-ack",
         "plan-cell-view",
-        "plan-command",
         "plan-list",
         "plan-read",
         "plan-return",
         "plan-unack",
         "powershell-policy-set",
-        "quota-probe",
-        "quota-read",
         "remote-probe",
         "remote-reach",
         "resident-verdict",
-        "rotation-default-set",
-        "rotation-plan",
-        "rotation-rule-delete",
-        "rotation-rule-rename",
-        "rotation-rule-save",
-        "rotation-rules-read",
-        "rotation-session-read",
-        "rotation-session-set",
-        "session-interrupts",
-        "session-new",
-        "session-new-dir",
-        "session-new-facts",
-        "session-restart",
-        "session-terminals",
-        "sessions-start",
-        "sessions-stop",
-        "sessions-where",
         "skill-install-apply",
         "skill-install-plan",
         "skill-install-record",
         "skill-read",
-        "terminal-follow",
-        "terminal-name-mint",
-        "terminal-processes",
-        "terminal-ssh",
     ];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {
@@ -1559,15 +1732,28 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             .collect()
     };
     let mut bad = Vec::new();
-    for (cmd, golden, ptr, below, elsewhere) in SHAPED {
+    #[allow(clippy::type_complexity)]
+    let mut samples: Vec<(&str, serde_json::Value, &[&str], &[(&str, &str)])> = SHAPED
+        .iter()
+        .map(|(cmd, golden, ptr, below, elsewhere)| {
+            let g: serde_json::Value = serde_json::from_str(golden).unwrap();
+            let sample = g
+                .pointer(ptr)
+                .unwrap_or_else(|| panic!("{cmd}：金样里没有 `{ptr}`"))
+                .clone();
+            (*cmd, sample, *below, *elsewhere)
+        })
+        .collect();
+    samples.extend(
+        TYPED
+            .iter()
+            .map(|(cmd, of, below, elsewhere)| (*cmd, of().value, *below, *elsewhere)),
+    );
+    for (cmd, sample, below, elsewhere) in &samples {
         let spec = super::REGISTRY
             .iter()
             .find(|s| s.name == *cmd)
-            .unwrap_or_else(|| panic!("`SHAPED` 里的 `{cmd}` 不在注册表里"));
-        let g: serde_json::Value = serde_json::from_str(golden).unwrap();
-        let sample = g
-            .pointer(ptr)
-            .unwrap_or_else(|| panic!("{cmd}：金样里没有 `{ptr}`"));
+            .unwrap_or_else(|| panic!("`SHAPED` / `TYPED` 里的 `{cmd}` 不在注册表里"));
         let top = top_keys(sample);
         assert!(
             !top.is_empty(),
@@ -1605,9 +1791,19 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         bad.join("\n")
     );
     // 三张表两两不交、并起来恰好是注册表。
-    let shaped: std::collections::BTreeSet<&str> = SHAPED.iter().map(|r| r.0).collect();
+    let shaped: std::collections::BTreeSet<&str> = samples.iter().map(|r| r.0).collect();
     let unshaped: std::collections::BTreeSet<&str> = UNSHAPED.iter().copied().collect();
-    assert_eq!(shaped.len(), SHAPED.len(), "`SHAPED` 有重复");
+    assert_eq!(shaped.len(), samples.len(), "`SHAPED` / `TYPED` 有重复");
+    assert!(
+        UNSHAPED.len() <= UNSHAPED_CEILING,
+        "`UNSHAPED` 有 {} 条，比上一批删完的 {UNSHAPED_CEILING} 条多 —— 这张名单只许删：新命令要么出 typed 结构体进 `TYPED`、要么带金样进 `SHAPED`",
+        UNSHAPED.len()
+    );
+    assert!(
+        UNSHAPED.len() >= UNSHAPED_CEILING,
+        "`UNSHAPED` 删到了 {} 条 ⇒ 把 `UNSHAPED_CEILING` 降到这个数（不降，下一个人就能悄悄加回去）",
+        UNSHAPED.len()
+    );
     assert_eq!(unshaped.len(), UNSHAPED.len(), "`UNSHAPED` 有重复");
     let mut want_shaped_or_listed = std::collections::BTreeSet::new();
     let mut zero_out = std::collections::BTreeSet::new();
@@ -1637,5 +1833,122 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     assert_eq!(
         listed, want_shaped_or_listed,
         "有出参的命令要么带真序列化样本进 `SHAPED`，要么（今天对不了）列进 `UNSHAPED`；表里的名字也必须还在注册表里"
+    );
+}
+
+/// ★ **顶层是枚举的 typed 应答，样本数不少于变体数**（[`crate::guard_support::Shaped`] 头注那条规矩的硬下限）。
+///
+/// 变体数从源码数：类型全名（`std::any::type_name`）⇒ 模块路径 ⇒ `src/backend/<路径>.rs` 或 `…/mod.rs`，在那份生产段里找
+/// `enum <名>` / `struct <名>`，枚举体在顶层按逗号切、去掉属性与注释后数。找不到定义 ⇒ 红（量具坏了，不当它是结构体放过）。
+/// 只管个数：样本是不是恰好每个变体各一个，它看不出（那要靠写样本的人照规矩来）。
+#[test]
+fn typed_enum_replies_sample_every_variant() {
+    fn variants_of(type_path: &str) -> Option<usize> {
+        let mut segs: Vec<&str> = type_path.split("::").collect();
+        let name = segs.pop().expect("类型全名为空");
+        assert_eq!(
+            segs.first().copied(),
+            Some("cc_monitor_backend"),
+            "`{type_path}` 不在本 crate 里"
+        );
+        let rel = segs[1..].join("/");
+        let root = crate::guard_support::src_root();
+        let file = [format!("{rel}.rs"), format!("{rel}/mod.rs")]
+            .into_iter()
+            .map(|r| root.join(r))
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| panic!("`{type_path}`：找不到模块文件 `{rel}.rs` / `{rel}/mod.rs`"));
+        let raw = std::fs::read_to_string(&file).unwrap();
+        let code: String = crate::guard_support::production_code(&raw)
+            .lines()
+            .map(|l| l.find("//").map_or(l, |i| &l[..i]))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let find_item = |kw: &str| {
+            code.match_indices(kw).map(|(i, _)| i).find(|&i| {
+                let before = code[..i].chars().next_back();
+                let after = &code[i + kw.len()..];
+                before.is_none_or(|c| !is_word(c))
+                    && after.starts_with(char::is_whitespace)
+                    && after
+                        .trim_start()
+                        .strip_prefix(name)
+                        .is_some_and(|rest| !rest.starts_with(is_word))
+            })
+        };
+        let at = match (find_item("enum"), find_item("struct")) {
+            (Some(i), None) => i,
+            (None, Some(_)) => return None,
+            (None, None) => panic!(
+                "`{type_path}`：`{}` 里找不到 `enum {name}` / `struct {name}`",
+                file.display()
+            ),
+            (Some(_), Some(_)) => panic!(
+                "`{type_path}`：`{}` 里 `{name}` 既有 enum 又有 struct",
+                file.display()
+            ),
+        };
+        let open = at + code[at..].find('{').expect("枚举没有体");
+        let (mut depth, mut count, mut piece) = (0i32, 0usize, String::new());
+        let mut flush = |piece: &mut String| {
+            let mut t = piece.trim().to_string();
+            while let Some(rest) = t.strip_prefix("#[") {
+                let mut d = 1;
+                let end = rest
+                    .char_indices()
+                    .find(|(_, c)| {
+                        match c {
+                            '[' => d += 1,
+                            ']' => d -= 1,
+                            _ => {}
+                        }
+                        d == 0
+                    })
+                    .map(|(i, _)| i)
+                    .expect("属性没收口");
+                t = rest[end + 1..].trim().to_string();
+            }
+            if !t.is_empty() {
+                count += 1;
+            }
+            piece.clear();
+        };
+        for c in code[open + 1..].chars() {
+            match c {
+                '{' | '(' | '[' | '<' => depth += 1,
+                '}' if depth == 0 => break,
+                '}' | ')' | ']' | '>' => depth -= 1,
+                ',' if depth == 0 => {
+                    flush(&mut piece);
+                    continue;
+                }
+                _ => {}
+            }
+            piece.push(c);
+        }
+        flush(&mut piece);
+        Some(count)
+    }
+    let mut bad = Vec::new();
+    let mut enums = 0usize;
+    for (cmd, of, _, _) in TYPED {
+        for (ty, n) in of().census {
+            if let Some(v) = variants_of(ty) {
+                enums += 1;
+                if n < v {
+                    bad.push(format!("  {cmd}：`{ty}` 有 {v} 个变体，样本只有 {n} 个"));
+                }
+            }
+        }
+    }
+    assert!(
+        enums >= 2,
+        "`TYPED` 里只数到 {enums} 个顶层是枚举的应答 —— 量具坏了（`rotation-plan` · `rotation-rule-save` 都是），本条在空转"
+    );
+    assert!(
+        bad.is_empty(),
+        "顶层是枚举的 typed 应答要每个变体一个样本（漏了的那一支，它的格判据就看不见）：\n{}",
+        bad.join("\n")
     );
 }

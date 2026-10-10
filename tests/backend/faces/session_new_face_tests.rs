@@ -15,14 +15,20 @@ fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
     assert_eq!(
         got,
         vec![
-            json!({ "cwd": "/a", "lastMs": 40 }),
-            json!({ "cwd": "/b", "lastMs": 30 })
+            RecentDir {
+                cwd: "/a".into(),
+                last_ms: 40
+            },
+            RecentDir {
+                cwd: "/b".into(),
+                last_ms: 30
+            }
         ]
     );
     let many: Vec<(String, i64)> = (0..20).map(|i| (format!("/d{i}"), i)).collect();
     let got = recent_dirs(&many, &|_| false);
     assert_eq!(got.len(), RECENT_MAX);
-    assert_eq!(got[0]["cwd"], "/d19");
+    assert_eq!(got[0].cwd, "/d19");
 }
 
 #[test]
@@ -67,4 +73,23 @@ fn a_launcher_is_found_in_the_session_shell_path() {
     assert!(!launcher_found_in("tool-x", Some(&bare)));
     assert!(launcher_found_in("tool-x", None), "判不了被当成了没装");
     let _ = std::fs::remove_dir_all(&d);
+}
+
+impl crate::guard_support::Shaped for NewFacts {
+    fn samples() -> Vec<Self> {
+        vec![NewFacts {
+            recent: vec![RecentDir {
+                cwd: "/home/u/proj".into(),
+                last_ms: 1,
+            }],
+            tmux: true,
+            agents: vec!["claude"],
+            fork: Some(ForkFacts {
+                agent: "claude",
+                launch: serde_json::json!({ "cwd": { "kind": "unknown", "why": "gone" } }),
+                turn: Some(3),
+                start_text: Some("09:30".into()),
+            }),
+        }]
+    }
 }

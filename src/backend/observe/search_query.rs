@@ -1246,12 +1246,25 @@ pub(crate) fn merge_at(
         sessions.push((updated, row));
     }
     search_rules::sort_by_recency(&mut sessions, |(updated, _)| *updated);
-    Ok(serde_json::json!({
-        "totalHits": total_hits,
-        "sessionCount": sessions.len(),
-        "truncated": truncated,
-        "sessions": sessions.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
-    }))
+    crate::stream::inbound::spec::wire(&Merged {
+        total_hits,
+        session_count: sessions.len(),
+        truncated,
+        sessions: sessions.into_iter().map(|(_, v)| v).collect(),
+    })
+}
+
+/// `history-search-merge` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Merged {
+    /// `hitCount` 之和。
+    pub(crate) total_hits: u64,
+    pub(crate) session_count: usize,
+    /// 任一行 `hitsTruncated`。
+    pub(crate) truncated: bool,
+    /// 各台的会话行（原样，每行添好 `atText` · `spanText`），按 `updatedAt` 倒序。
+    pub(crate) sessions: Vec<Value>,
 }
 
 #[cfg(test)]

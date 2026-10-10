@@ -5,6 +5,7 @@ use super::*;
 use crate::accounts::quota::ledger::{Ledger, Source};
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
+use serde_json::json;
 use std::sync::Arc;
 
 const FIXTURE: &str = include_str!("../../__fixtures__/claude-usage.fixture.txt");
@@ -135,9 +136,10 @@ fn a_probe_starts_the_official_client_reads_three_windows_and_books_them() {
     assert_eq!(o.seen_at, NOW);
     assert_eq!(o.window_seen("seven_day_fable").from, Source::Usage);
     let on_disk = ledger::answer_of(ctx.hop.quota.path(), NOW);
-    assert_eq!(on_disk["accounts"][0]["account"], "b");
+    assert_eq!(on_disk.accounts[0].account, "b");
     // `quota-read` 的显示态照原名出窗口（只增；`slots` 那两格照留）。
-    let q = crate::faces::rotation_face::quota_read_with(&ctx, NOW);
+    let q = serde_json::to_value(crate::faces::rotation_face::quota_read_with(&ctx, NOW))
+        .expect("json");
     let row = &q["accounts"][0];
     assert_eq!(row["windows"][2]["key"], "7d:fable");
     assert_eq!(row["windows"][2]["from"], "usage");
@@ -214,4 +216,19 @@ fn bad_args_unknown_accounts_and_api_keys_never_start_anything() {
         "not_found"
     );
     assert_eq!(home.seen(), "", "一次都没起");
+}
+
+impl crate::guard_support::Shaped for Probed {
+    fn samples() -> Vec<Self> {
+        vec![Probed {
+            agent: "claude-code".into(),
+            account: "b".into(),
+            from: "usage",
+            now: 1,
+            state: "unreadable",
+            reason: Some("no table".into()),
+            windows: Vec::new(),
+            path: Some("/x/quota.json".into()),
+        }]
+    }
 }

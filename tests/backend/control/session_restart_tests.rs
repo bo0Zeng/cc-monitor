@@ -3,6 +3,7 @@
 use super::*;
 use crate::control::launch_render::local;
 use crate::control::session_batch::TmuxEntry;
+use serde_json::json;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -404,4 +405,41 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
         "另有进程在写，还起了新的：{:?}",
         rig.calls()
     );
+}
+
+impl crate::guard_support::Shaped for Restarted {
+    fn samples() -> Vec<Self> {
+        vec![Restarted {
+            compact: Compact::TimedOut,
+            started: Arrival::Arrived,
+            terminal: "proj-cc".into(),
+            account: Some(la::LaunchedAccount {
+                name: "work".into(),
+                config_dir: "/home/u/.claude-work".into(),
+                model: None,
+            }),
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for Refused {
+    fn samples() -> Vec<Self> {
+        vec![
+            Refused::Ambiguous {
+                names: vec!["proj-cc".into(), "proj-cc-2".into()],
+            },
+            Refused::Live {
+                pids: vec![41, 42],
+                stopped: true,
+            },
+            Refused::StopFailed {
+                why: "too_many_windows".into(),
+            },
+            Refused::StartFailed {
+                terminal: "proj-cc".into(),
+                why: Some("record_gone".into()),
+                stopped: true,
+            },
+        ]
+    }
 }

@@ -794,3 +794,51 @@ fn every_start_marks_the_cwd_trusted_in_its_account_before_it_starts() {
         );
     }
 }
+
+fn launched_sample() -> LaunchedAccount {
+    LaunchedAccount {
+        name: "work".into(),
+        config_dir: "/home/u/.claude-work".into(),
+        model: Some("opus".into()),
+    }
+}
+
+impl crate::guard_support::Shaped for Batched {
+    fn samples() -> Vec<Self> {
+        let all = Outcome {
+            sid: "s-1".into(),
+            outcome: "failed",
+            why: Some("record_gone".into()),
+            detail: "/home/u/.claude-work".into(),
+            said: Some("x".into()),
+            copy_detail: "y".into(),
+            session: Some("proj-cc".into()),
+            bus: Some(serde_json::json!({ "removed": 1 })),
+            cmd: Some("ccm --resume s-1".into()),
+            account: Some(launched_sample()),
+            unavailable: Some(AccountUnavailable {
+                requested: "work".into(),
+                pinned: true,
+                list_known: true,
+                alternative: Some("home".into()),
+            }),
+        };
+        vec![Batched { results: vec![all] }]
+    }
+}
+
+impl crate::guard_support::Shaped for Whereabouts {
+    fn samples() -> Vec<Self> {
+        vec![Whereabouts {
+            results: vec![Whereabout {
+                sid: "s-1".into(),
+                standing: StandingWord::Ambiguous,
+                names: vec!["proj-cc".into()],
+                terminals: vec![TerminalAt {
+                    host: "tmux",
+                    terminal: "$1".into(),
+                }],
+            }],
+        }]
+    }
+}
