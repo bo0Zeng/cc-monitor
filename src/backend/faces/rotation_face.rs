@@ -75,6 +75,8 @@ pub(crate) struct Ctx {
     pub(crate) rows: Rows,
     pub(crate) live: Live,
     pub(crate) doing: DoingRead,
+    /// 看的那一台的时区（请求信封的 `tz`）：写规则那一下盖进规则（[`Rotation::stamped`]）。
+    pub(crate) tz: crate::Tz,
 }
 
 impl Ctx {
@@ -109,7 +111,14 @@ impl Ctx {
                     &crate::observe::history_query::agent_home(),
                 )
             }),
+            tz: crate::Tz::default(),
         }
+    }
+
+    /// 这一问看的那一台的时区（写规则的那几问用）。
+    pub(crate) fn viewing(mut self, tz: &crate::Tz) -> Self {
+        self.tz = tz.clone();
+        self
     }
 
     fn is_api(&self, agent: &str, a: &str) -> bool {
@@ -196,7 +205,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
     let seen = &base.accounts;
     let lib = ctx.hop.library();
     let rot = ctx.hop.store.now().default_rotation();
-    let offset = crate::accounts::upstream_select::rotate::local_offset(now);
+    let offset = rot.offset_at(now);
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
         let slot = crate::agents::window_slot_of(agent);
         let key = crate::agents::window_key_of(agent);
@@ -512,8 +521,12 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
 /// 重名不拒、名后加 ` 2` · ` 3` … 取第一个不重的。
 /// 回 `{state: "saved", rule}` · `{state: "refused", errors: [{cell, code, with?}]}`（逐格，界面照它标红）·
 /// `{state: "conflict", rev}`（别处先改过了）。形状不对 ⇒ `bad_args`；改的那条不在 ⇒ `no_such_rule`。
-pub(crate) fn answer_rule_save(args: &Value) -> Answer {
-    answer_rule_save_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_rule_save(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_rule_save_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
 }
 
 pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
@@ -568,6 +581,8 @@ pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer
     if !errors.is_empty() {
         return refused(errors);
     }
+    // 写的那一下盖上看的那一台的时区：按时段的上限按它判（拷来的 · 照旧的也一样重盖）。
+    let rot = rot.stamped(&ctx.tz);
     let name = name.trim().to_string();
     let wrote = rotation::face_change(&ctx.hop.store, |b| -> Result<String, u64> {
         match id.clone() {
@@ -1357,8 +1372,12 @@ pub(crate) struct SessionRead {
 /// `"custom"`（恢复上一份自己的，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的 ＝「转为本会话」）·
 /// `{"custom": {order, enabled, cap?, …}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
 /// 回每个会话的结果。指向的规则不在 ⇒ `no_such_rule`（整批不写）。
-pub(crate) fn answer_session_set(args: &Value) -> Answer {
-    answer_session_set_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_session_set(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_session_set_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
 }
 
 /// 要写成什么样。
@@ -1451,7 +1470,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
                 Source::Custom,
                 Some(s.and_then(|s| s.custom.clone()).unwrap_or(effective)),
             ),
-            Want::Detach => (Source::Custom, Some(effective)),
+            Want::Detach => (Source::Custom, Some(effective.stamped(&ctx.tz))),
             Want::Custom(v) => (
                 Source::Custom,
                 Some(
@@ -1462,7 +1481,8 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
                         &|a| ctx.is_api(&g, a),
                         Some(&effective),
                     )
-                    .map_err(|e| bad(&e))?,
+                    .map_err(|e| bad(&e))?
+                    .stamped(&ctx.tz),
                 ),
             ),
         };

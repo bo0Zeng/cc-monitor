@@ -148,6 +148,12 @@ pub struct Rotation {
     /// 往非兜底号切照旧立刻切；没标兜底 ⇒ 这一格不起作用。`0` ＝ 不等。盘上缺 ⇒ 缺省 40。
     #[serde(default = "wait_default")]
     pub wait: u8,
+    /// 按时段写的上限（`cap` 里的 `[{at, n}]`）那几个钟点按哪个时区（IANA 名）：写规则那一下由后端从请求信封的 `tz` 盖进来
+    /// （看的那一台的时区；`local` 那种盖不进来 ⇒ 缺），判的时候按它算 —— 跟后端那台在哪个时区、此刻有没有人在看都无关。
+    /// 缺 ⇒ UTC（同别处「没带按 UTC」）。界面读到原样回、回了也不认（写的那一下照信封重盖）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub tz: Option<String>,
 }
 
 impl Default for Rotation {
@@ -162,11 +168,28 @@ impl Default for Rotation {
             preempt: false,
             fallback: Vec::new(),
             wait: WAIT_DEFAULT,
+            tz: None,
         }
     }
 }
 
 impl Rotation {
+    /// 时刻 `t`（unix 秒）那一刻这份规则的钟比 UTC 快几秒（按时段的上限按它取）：规则自己的 [`Rotation::tz`]，缺 ⇒ UTC。
+    pub(crate) fn offset_at(&self, t: u64) -> i64 {
+        let t = i64::try_from(t).unwrap_or(i64::MAX);
+        self.tz
+            .as_deref()
+            .and_then(crate::common::time::Tz::iana)
+            .unwrap_or_default()
+            .offset_secs(t)
+    }
+
+    /// 写规则那一下：盖上看的那一台的时区（请求信封的 `tz`）。
+    pub(crate) fn stamped(mut self, tz: &crate::common::time::Tz) -> Self {
+        self.tz = tz.iana_name();
+        self
+    }
+
     /// 这个会话实际的轮换池（按序、去重）：占位换成起始账号，具名的只取勾上的。
     pub(crate) fn pool(&self, start: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -1369,7 +1392,15 @@ pub(crate) fn rotation_from(
     if let Some(k) = o.keys().find(|k| {
         !matches!(
             k.as_str(),
-            "order" | "enabled" | "atLimit" | "cap" | "stint" | "preempt" | "fallback" | "wait"
+            "order"
+                | "enabled"
+                | "atLimit"
+                | "cap"
+                | "stint"
+                | "preempt"
+                | "fallback"
+                | "wait"
+                | "tz"
         )
     }) {
         return Err(format!("unknown field `{k}`"));
@@ -1498,6 +1529,8 @@ pub(crate) fn rotation_from(
         preempt,
         fallback,
         wait,
+        // 写的那一下由调用方照信封盖（[`Rotation::stamped`]）；入参里带的那一格不认。
+        tz: None,
     })
 }
 

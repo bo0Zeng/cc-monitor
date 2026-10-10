@@ -340,3 +340,25 @@ fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
         "UTC 今天 11:00 在上海是昨天 19:00"
     );
 }
+
+#[test]
+fn t12_detail_time_slots_are_filled_in_the_viewer_zone_with_the_offset() {
+    let t = days_from_civil(2026, 10, 7) * 86_400 + 20 * 3_600 + 30 * 60 + 15;
+    let line = format!(r#"{{"detail":"时刻：{}\n码：x"}}"#, at_slot(t));
+    assert_eq!(
+        fill_at(&line, &sh()),
+        r#"{"detail":"时刻：2026-10-08 04:30:15 +08:00\n码：x"}"#
+    );
+    assert_eq!(
+        fill_at(&line, &Tz::default()),
+        r#"{"detail":"时刻：2026-10-07 20:30:15 +00:00\n码：x"}"#
+    );
+    assert!(matches!(
+        fill_at("没有空位", &sh()),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    // 坏了的空位原样留着（看得见），不吞字。
+    assert_eq!(fill_at("⟦at:xx⟧ 与 ⟦at:", &sh()), "⟦at:xx⟧ 与 ⟦at:");
+    // 复制详情本身只写空位：那一层不知道看的人是谁。
+    assert!(crate::stream::detail::of(Some("c"), "x", None).contains("⟦at:"));
+}

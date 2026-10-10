@@ -94,6 +94,21 @@ impl Tz {
             .map(|z| Self(Zone::Named(z)))
     }
 
+    /// 只认 IANA 名（不认 [`TZ_HERE`]）：存进盘的时区（轮换规则的 `tz`）按它读，判出来的不随后端那台变。
+    pub fn iana(name: &str) -> Option<Self> {
+        jiff::tz::TimeZone::get(name)
+            .ok()
+            .map(|z| Self(Zone::Named(z)))
+    }
+
+    /// 存得进盘的那个名（IANA；UTC ⇒ `UTC`）；「这一台」没有名 ⇒ `None`。
+    pub fn iana_name(&self) -> Option<String> {
+        match &self.0 {
+            Zone::Named(z) => Some(z.iana_name().unwrap_or("UTC").to_string()),
+            Zone::Here => None,
+        }
+    }
+
     /// 信封那一格的读法（帧面 `tz` · CLI `--tz` · 流开头 `--tz` 同一处读）：是串且认得 ⇒ 那个时区，别的 ⇒ UTC。
     pub fn of(v: &serde_json::Value) -> Self {
         v.as_str().and_then(Self::named).unwrap_or_default()
@@ -116,6 +131,46 @@ impl Tz {
     pub fn local(&self, t: i64) -> i64 {
         t + self.offset_secs(t)
     }
+}
+
+/// **复制详情里那一行时刻的空位**：详情在答话那台深处拼好（那一层不知道看的人是谁），时刻先写成这个空位，
+/// 出去那一下（流的写者 · CLI 的出口）按看的那一台的时区填成 `YYYY-MM-DD HH:MM:SS ±HH:MM`（[`fill_at`]）。
+/// 漏填一处 ⇒ 看的人看得见这个空位，不会悄悄按哪台的钟写错。
+const AT_OPEN: &str = "⟦at:";
+const AT_CLOSE: char = '⟧';
+
+/// 时刻 `t`（unix 秒）的空位。
+pub(crate) fn at_slot(t: i64) -> String {
+    format!("{AT_OPEN}{t}{AT_CLOSE}")
+}
+
+/// 把一段字里的时刻空位（[`at_slot`]）按看的那一台的时区填好（带偏移，`copy_core::detail::stamp`）；没有空位 ⇒ 原样。
+/// 填进去的只有数字 · `-` · `:` · `+` · 空格，放进 JSON 串里不用转义（流的写者对整行调它）。
+pub(crate) fn fill_at<'a>(s: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
+    if !s.contains(AT_OPEN) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find(AT_OPEN) {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + AT_OPEN.len()..];
+        match after
+            .find(AT_CLOSE)
+            .and_then(|j| Some((j, after[..j].parse::<i64>().ok()?)))
+        {
+            Some((j, t)) => {
+                out.push_str(&copy_core::detail::stamp(t, tz.offset_secs(t)));
+                rest = &after[j + AT_CLOSE.len_utf8()..];
+            }
+            None => {
+                out.push_str(AT_OPEN);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
 }
 
 /// 一个时刻（unix 秒）按此刻与看的那一台的时区写给人看：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。

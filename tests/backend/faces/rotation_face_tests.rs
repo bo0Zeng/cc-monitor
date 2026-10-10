@@ -93,6 +93,7 @@ impl Home {
                 let doing = Arc::clone(&self.doing);
                 Box::new(move || doing.lock().expect("lock").clone())
             },
+            tz: Default::default(),
         }
     }
 
@@ -150,7 +151,8 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     .expect("ok");
     assert_eq!(
         got["rotation"],
-        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "cap": {"*": {"5h": 90, "7d": 90}}, "atLimit": "continue", "wait": 40})
+        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "cap": {"*": {"5h": 90, "7d": 90}}, "atLimit": "continue", "wait": 40, "tz": "UTC"}),
+        "写的那一下盖上看的那一台的时区（这里没带 ⇒ UTC）"
     );
     assert_eq!(got["isDefault"], true);
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
@@ -2003,5 +2005,91 @@ fn every_cell_error_carries_its_written_sentence() {
     assert_eq!(
         said_of(&got),
         [copy_core::copy_text("rot.save.tooLong", &[])]
+    );
+}
+
+/// ★ 按时段的上限按**规则自己的时区**判：写规则那一下盖上请求信封的 `tz`（拷来的 · 照旧的也重盖；入参里带的那一格不认），
+/// 判的时候按它取偏移 —— 后端那台在哪个时区都一样（判的那几处不读这台的钟）。缺 ⇒ UTC；`local` 盖不进来。
+#[test]
+fn time_of_day_caps_follow_the_zone_stamped_into_the_rule() {
+    let home = Home::new("rule-tz");
+    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let ctx = home.ctx().viewing(&sh);
+    let mut rot = rot_json(&["b"]);
+    rot["tz"] = json!("America/Los_Angeles");
+    let got = answer_rule_save_with(&ctx, &json!({"name": "带时区", "rotation": rot}), now())
+        .expect("ok");
+    assert_eq!(got["state"], "saved", "{got}");
+    let id = got["rule"]["id"].as_str().unwrap().to_string();
+    let stored = ctx.hop.store.now().rules[&id].rotation.clone();
+    assert_eq!(
+        stored.tz.as_deref(),
+        Some("Asia/Shanghai"),
+        "盖的是信封的时区，不是入参里那一格"
+    );
+    assert_eq!(stored.offset_at(1_791_405_000), 8 * 3_600);
+    // 换一个看的人改它（不给 `rotation`，照旧的那份）⇒ 重盖成他的。
+    let utc = home.ctx();
+    let again = answer_rule_save_with(
+        &utc,
+        &json!({"id": id, "name": "带时区", "ifRev": got["rule"]["rev"]}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(again["state"], "saved", "{again}");
+    assert_eq!(
+        utc.hop.store.now().rules[&id].rotation.tz.as_deref(),
+        Some("UTC")
+    );
+    // 缺 · 「这一台」 ⇒ UTC（不随后端那台的钟）。
+    let bare = crate::accounts::quota::rotation::Rotation::default();
+    assert_eq!(bare.offset_at(1_791_405_000), 0);
+    let here = bare.clone().stamped(&crate::Tz::named("local").unwrap());
+    assert_eq!(here.tz, None);
+    let odd = crate::accounts::quota::rotation::Rotation {
+        tz: Some("local".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        odd.offset_at(1_791_405_000),
+        0,
+        "盘上的 `local` 不认（判的不许随后端那台变）"
+    );
+}
+
+/// 判轮换的那几处一处都不读这台后端的钟（同一条规则、后端换个时区跑，判出来的一样）。
+#[test]
+fn rotation_judging_never_reads_this_machines_clock() {
+    for (file, src) in [
+        (
+            "accounts/upstream_select/rotate.rs",
+            include_str!("../../../src/backend/accounts/upstream_select/rotate.rs"),
+        ),
+        (
+            "faces/rotation_face.rs",
+            include_str!("../../../src/backend/faces/rotation_face.rs"),
+        ),
+        (
+            "accounts/quota/rotation.rs",
+            include_str!("../../../src/backend/accounts/quota/rotation.rs"),
+        ),
+        (
+            "accounts/quota/show.rs",
+            include_str!("../../../src/backend/accounts/quota/show.rs"),
+        ),
+    ] {
+        let code = guard_core::production_code(src);
+        assert!(
+            !code.contains("local_tz"),
+            "{file} 读了这台的钟（按时段的上限要按规则自己的时区）"
+        );
+        assert!(
+            !code.contains("TZ_HERE") && !code.contains("Tz::named(\"local\")"),
+            "{file}"
+        );
+    }
+    assert!(
+        include_str!("../../../src/backend/accounts/quota/rotation.rs").contains("fn offset_at("),
+        "反空真：判的那一处在"
     );
 }

@@ -66,7 +66,7 @@ pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
         Some("--list-projects") => {
             return match list_projects_to(agent_home, &mut std::io::stdout().lock()) {
                 Ok(()) => 0,
-                Err((Some(code), said)) => coded_failure(code, &said),
+                Err((Some(code), said)) => coded_failure(code, &said, tz),
                 Err((None, e)) => query_failed(&e),
             }
         }
@@ -155,7 +155,7 @@ pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
 
 /// 带码的那一行：CLI 错误信封（与 CLI 控制面同一份失败载体 `stream::detail::Failed`：`{code, message, detail}`；读信封的是 `remote_ask::settle_pulled`）。
 /// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
-fn coded_failure(code: &str, said: &str) -> i32 {
+fn coded_failure(code: &str, said: &str, tz: &crate::Tz) -> i32 {
     let f = crate::stream::detail::Failed::new(
         Some("list-projects"),
         code,
@@ -163,7 +163,7 @@ fn coded_failure(code: &str, said: &str) -> i32 {
         None,
         None,
     );
-    f.emit()
+    f.emit(tz)
 }
 
 /// 一次性查询失败的那一行（无码的旧形）。

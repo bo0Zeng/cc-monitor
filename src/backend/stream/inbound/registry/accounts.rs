@@ -54,7 +54,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_rule"],
         fields: &[arg("dedupe", "可缺席：`true` ⇒ 重名不拒，名后加 ` 2` · ` 3` … 取第一个不重的（复制 · 复制到别的机器）"), out("errors", "只在 `refused` 时有：`[{cell, code, with?}]`：哪一格（触发那一行是 `cap.*.5h` · `cap.*.7d`）· 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段"), arg("from", "新建时不给 `rotation`：从哪条规则拷（`\"blank\"` ＝ 只有起始账号）"), arg("id", "改哪条；不给 ＝ 新建"), arg("ifRev", "改之前读到的 `rev`；对不上 ⇒ `{state:\"conflict\", rev}`、不写"), arg("name", "规则名（1–24 字，这台不重名：去首尾空白、不分大小写）"), out("rev", "只在 `conflict` 时有：此刻的版本"), arg("rotation", "整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap[\"*\"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）"), out("rule", "只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项）"), out("state", "`\"saved\"`（写成了）· `\"refused\"`（逐格错，没写）· `\"conflict\"`（读到之后别处改过，没写）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_rule_save(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_rule_save(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "rotation-rule-rename",
@@ -102,7 +102,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed", "io_failed", "no_parent", "no_such_rule"],
         fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `\"parent\"`（跟随父会话：父按会话血缘填；有一个没有父或父是别的一家 ⇒ 整批 `no_parent`）· `{\"rule\": id}` · `\"custom\"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `\"detach\"`（照此刻生效的那份拷成本会话的）· `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "rotation-switch",

@@ -144,7 +144,7 @@ async fn main() {
             Some("--resolve") => control::resolve_query::run(&agent_home, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
-            Some("--fork-session") => control::fork_write::run(&agent_home, &args),
+            Some("--fork-session") => control::fork_write::run(&agent_home, &args, z),
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
@@ -162,7 +162,7 @@ async fn main() {
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
-            | Some("--account-trust-zero") => observe::accounts_query::run(&agent_home, &args),
+            | Some("--account-trust-zero") => observe::accounts_query::run(&agent_home, &args, z),
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
             // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
             // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
@@ -883,7 +883,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                 Some(f) = tap_rx.next() => f,
             }
         };
-        if let Err(e) = write_frame(&mut out, &frame).await {
+        if let Err(e) = write_frame(&mut out, &frame, &tz).await {
             // Broken pipe (client gone) is the normal end-of-life; stop quietly.
             tracing::warn!("stdout write failed ({e}); stopping writer");
             return;
@@ -896,13 +896,16 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
 }
 
 /// Serialize one frame to its wire line and write it (no flush).
+/// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）。
 async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out: &mut W,
     frame: &Frame,
+    tz: &cc_monitor_backend::Tz,
 ) -> std::io::Result<()> {
     let line =
         to_line(frame).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    out.write_all(line.as_bytes()).await
+    out.write_all(cc_monitor_backend::stamp_detail_slots(&line, tz).as_bytes())
+        .await
 }
 
 /// 解析会话数据根：后端盯着的那一家的家目录（注册表 `LocalFace::home_at`）。

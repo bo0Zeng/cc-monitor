@@ -2152,7 +2152,7 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
         assert!(crate::is_query_mode(args), "{flag} 不进一次性查询了");
         let code = match *flag {
             "--search" => crate::observe::search_query::run(&home, args),
-            "--fork-session" => crate::control::fork_write::run(&home, args),
+            "--fork-session" => crate::control::fork_write::run(&home, args, &Default::default()),
             _ => crate::observe::history_query::run(&home, args, &Default::default()),
         };
         assert_eq!(code, 0, "{flag} 照原来的叫法跑不通了：{args:?}");
