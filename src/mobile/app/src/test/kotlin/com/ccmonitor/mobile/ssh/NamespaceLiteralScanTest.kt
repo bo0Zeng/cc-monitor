@@ -7,88 +7,46 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 两个名字空间前缀各只定义一处；后端那个只许出现在「读」的位置。
+ * 手机在远端不再有自己的名字空间；后端那个只许出现在「读」的位置。
  *
- * 远端分两层：通用层是 cc-monitor 后端的（`~/.cc-monitor/` 下的一切、tmux `cc-*`），我们只读；
- * 专属层是我们的（`~/.aterm/` 下的一切、tmux `atermpipe-*`），我们才写。本文件是那条界线的源码扫描那一道：
+ * 从前手机在远端有一层自己的（`~/.aterm/` 下的管道文件、tmux `atermpipe-*`）；起会话 · 送字改走那台核心之后那一层没了。
+ * 本文件是那条界线的源码扫描那一道：
  *
  * | # | 问什么 |
  * |---|---|
- * | ① | `const val ATERM_HOME` / `const val PIPE_SESSION_PREFIX` 各恰好定义一处 |
- * | ② | `.aterm` 与 `atermpipe-` 两个字面在生产代码里的每文件命中数逐字钉死 |
- * | ③ | `.cc-monitor` 只出现在 `BackendBin`（部署落点）那一处 |
- *
- * 行为那一道（会写远端的命令串，其真实输出里的路径落在哪）住 `core-claude` 的 `NamespacePrefixTest`。
- * 扫描防「新长出来一处写路径」，真实输出防「这几支偷偷改了落点」。
+ * | ① | `.aterm` 与 `atermpipe-` 两个字面在生产代码里一次都不出现 |
+ * | ② | `.cc-monitor` 只出现在 `BackendBin`（部署落点）那一处 |
  *
  * 注意：一条读别的模块源文件的判据，必须住在那个 task 的输入涵盖得到的地方。放在 `core-claude` 里的话，
  * 改 `app/` 下的文件不会让 `:core-claude:test` 重跑（它照样 `UP-TO-DATE`），判据就成了恒绿。
  * `:app:testDebugUnitTest` 的运行时 classpath 含全部 `core-…` 模块的产物，任何模块的代码改动都会让它重跑。
- * 只改注释的改动可能不改字节码、不重跑；对本判据无影响（[codeOnly] 本来就把注释剥掉了）。
  *
  * ### 判别力边界
  *
- * | 绕过形态 | 这三条 |
+ * | 绕过形态 | 这几条 |
  * |---|---|
- * | 复制一份 `".aterm"` / `"atermpipe-"` 字面到第二处 | 红（点名文件 + 计数） |
+ * | 又写回一处 `".aterm"` / `"atermpipe-"` 字面 | 红（点名文件 + 计数） |
  * | 在生产代码里写死 `"~/.cc-monitor/x"` | 红（点名文件） |
  * | `"." + "cc-monitor"` · `String(charArrayOf(…))` · 反射拼串 | 抓不到：防手滑不防拼接 |
  * | `androidTest` / `src/debug` 源集 | 不在扫描面内 |
- * | 注释 / KDoc 里提到这些字面 | 刻意不算（[codeOnly] 先剥注释），注释里写不出路径 |
+ * | 注释 / KDoc 里提到这些字面 | 刻意不算（[codeOnly] 先剥注释） |
+ *
+ * 「一次都不出现」那一条的判别力押在扫描器自检（[theScannerCountsRealLiteralsAndNothingElse]）上：它证真字面一定认得出。
  */
 class NamespaceLiteralScanTest {
-    /**
-     * 两个前缀常量各恰好定义一处，住址定值钉死。
-     *
-     * 多一处红（有人又造了一份），挪窝也红（要重新过一遍眼再改这张表）。
-     */
+    /** 手机自己那一层名字空间的两个字面，生产代码里一次都不出现。 */
     @Test
-    fun theTwoPrefixConstantsAreDefinedExactlyOnce() {
+    fun theOldPhoneNamespaceLiteralsAppearNowhere() {
         val root = repoRoot()
         val sources = productionSources(root)
         assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 150)
-
-        for ((decl, expectedFile) in PINNED_CONST_DECLS) {
-            val found =
-                sources
-                    .filter { codeOnly(it.readText()).contains(decl) }
-                    .map { it.relativeTo(root).invariantSeparatorsPath }
-                    .sorted()
-            assertEquals(
-                "`$decl` 必须只有一个定义处（两个前缀各一个唯一定义处，别处只许引用常量）。",
-                listOf(expectedFile),
-                found,
-            )
-        }
-    }
-
-    /**
-     * `.aterm` 与 `atermpipe-` 两个字面在生产代码里的每文件命中数逐字钉死。
-     *
-     * 钉的是 file -> count（不只是文件集）：同一个文件里再长出第二处照样红。
-     *
-     * `.aterm` 的匹配前面不许挨标识符字符：否则 `com.ccmonitor.mobile` 这个包名
-     * 会让每个文件都命中，判据当场沦为噪音。
-     */
-    @Test
-    fun theTwoNamespaceLiteralsAppearNowhereElse() {
-        val root = repoRoot()
-        val sources = productionSources(root)
-        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 150)
-
-        for ((mark, pinned) in PINNED_LITERAL_COUNTS) {
+        for (mark in listOf(DOT_ATERM, PIPE_PREFIX)) {
             val counts = sortedMapOf<String, Int>()
             for (f in sources) {
                 val n = countLiteral(codeOnly(f.readText()), mark)
                 if (n > 0) counts[f.relativeTo(root).invariantSeparatorsPath] = n
             }
-            assertTrue("前提：`$mark` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", counts.values.sum() > 0)
-            assertEquals(
-                "`$mark` 这个字面只许住在常量的定义处（别处引用常量即可）。" +
-                    "多出来的请改成引用常量；确属散文/引文的，连同理由加进 PINNED_LITERAL_COUNTS。",
-                pinned,
-                counts.toMap(),
-            )
+            assertEquals("`$mark` 是手机从前在远端自己那一层的名字：那一层已经没有了，别再往那里写。", emptyMap<String, Int>(), counts.toMap())
         }
     }
 
@@ -208,32 +166,6 @@ class NamespaceLiteralScanTest {
         private const val DOT_ATERM = ".aterm"
         private const val PIPE_PREFIX = "atermpipe-"
         private const val CC_MONITOR = ".cc-monitor"
-
-        /** 定值钉：两个前缀常量的声明各住哪个文件。 */
-        private val PINNED_CONST_DECLS =
-            linkedMapOf(
-                "const val ATERM_HOME" to "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/command/ClaudeInvocation.kt",
-                "const val PIPE_SESSION_PREFIX" to "app/src/main/kotlin/com/ccmonitor/mobile/ssh/PipeLauncher.kt",
-            )
-
-        /**
-         * 定值钉：两个名字空间字面在生产代码里的 file -> 次数。
-         *
-         * | 文件 | 次数 | 为什么它可以有 |
-         * |---|---|---|
-         * | `ClaudeInvocation.kt` | 1 | `const val ATERM_HOME = ".aterm"`，唯一定义处 |
-         * | `PipeLauncher.kt` | 1 | `const val PIPE_SESSION_PREFIX = "atermpipe-"`，唯一定义处 |
-         *
-         * 钉的是次数不只是文件集：同一个文件里再长出一处也红。
-         */
-        private val PINNED_LITERAL_COUNTS =
-            linkedMapOf(
-                DOT_ATERM to
-                    mapOf(
-                        "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/command/ClaudeInvocation.kt" to 1,
-                    ),
-                PIPE_PREFIX to mapOf("app/src/main/kotlin/com/ccmonitor/mobile/ssh/PipeLauncher.kt" to 1),
-            )
 
         /**
          * 定值钉：`.cc-monitor` 的合法住处——`BackendBin`（部署落点 `~/.cc-monitor/bin/ccm`，拼后端命令只在那里）。

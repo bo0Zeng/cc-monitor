@@ -1,17 +1,12 @@
 package com.ccmonitor.mobile.ui.nav
 
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
-import com.ccmonitor.mobile.ui.chat.REMOTE_FAILED_PREFIX
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
-import com.ccmonitor.mobile.ui.chat.newSessionIdFor
-import com.ccmonitor.mobile.ui.chat.resumeIdFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -74,78 +69,24 @@ class NavRoutesTest {
                 newUi = false,
                 // 种类是必填的（无默认值）：`newUi × agentKind` 四格在 `AgentArchetypeTest` 里钉
                 agentKind = AgentKind.ClaudeCode,
-                lastConversationId = null,
                 newConversationId = { "s-new" },
             ) { "session/tab-$it" }
         assertTrue("关着时必须还是终端那条路：$off", off.startsWith("session/"))
         assertFalse("关着时不许出现对话总览", off.startsWith("conversations"))
     }
 
-    /**
-     * 开关打开 ⇒ 直接进聊天屏。
-     *
-     * 落点表在 `chatLanding` 的 KDoc 里，逐条判据在 `LaunchLandingTest`。
-     */
+    /** 开关打开 ⇒ 这台上空的新建会话（不回上次那条）。 */
     @Test
-    fun withTheFlagOnTheDestinationIsTheChatScreen() {
+    fun withTheFlagOnTheDestinationIsAFreshChat() {
         val on =
             onConnectDestination(
                 hostId = "h1",
                 newUi = true,
                 // 种类是必填的（无默认值）：`newUi × agentKind` 四格在 `AgentArchetypeTest` 里钉
                 agentKind = AgentKind.ClaudeCode,
-                lastConversationId = "s7",
                 newConversationId = { "s-new" },
-                // 记住的编号 == 确认过的 ⇒ 才允许按「已存在」恢复它。
-                confirmedConversationId = "s7",
             ) { "session/tab-$it" }
-        assertEquals(Screen.Chat.of("h1", "s7"), on)
-        assertFalse("不许落在对话总览上", on.startsWith("conversations"))
-    }
-
-    /**
-     * 记住了但从没被确认过的编号，必须按「新对话」起。
-     *
-     * 连接失败那次也可能把编号记下了；下次落地 `--resume` 一个远端从没有过的编号，Claude 当场退出
-     * （`No conversation found with session ID: …`），整轮死掉。`SettingsRepository.getLastConversation`
-     * 的头注写着「拿它的地方必须容忍打开一个空对话」，本条就是那句话的判据形态。
-     *
-     * 判据钉的是 `isNew=true` 这个具体差别，不是「返回了某个聊天路由」：后者在 bug 存在时也成立。
-     */
-    @Test
-    fun aRememberedButUnconfirmedConversationStartsFreshInsteadOfResuming() {
-        val unconfirmed =
-            onConnectDestination(
-                hostId = "h1",
-                newUi = true,
-                // 种类是必填的（无默认值）：`newUi × agentKind` 四格在 `AgentArchetypeTest` 里钉
-                agentKind = AgentKind.ClaudeCode,
-                lastConversationId = "s7",
-                newConversationId = { "s-new" },
-                confirmedConversationId = null,
-            ) { "session/tab-$it" }
-        assertEquals(
-            "没被确认过的编号必须按新对话起（否则就是 resume 一个不存在的对话）",
-            Screen.Chat.of("h1", "s7", isNew = true),
-            unconfirmed,
-        )
-
-        // 阴性对照：确认过的是另一个编号 ⇒ 同样不许当成已存在
-        val mismatched =
-            onConnectDestination(
-                hostId = "h1",
-                newUi = true,
-                // 种类是必填的（无默认值）：`newUi × agentKind` 四格在 `AgentArchetypeTest` 里钉
-                agentKind = AgentKind.ClaudeCode,
-                lastConversationId = "s7",
-                newConversationId = { "s-new" },
-                confirmedConversationId = "s-other",
-            ) { "session/tab-$it" }
-        assertEquals(
-            "判据必须是逐字相等，不是「确认过的非空」",
-            Screen.Chat.of("h1", "s7", isNew = true),
-            mismatched,
-        )
+        assertEquals(Screen.Chat.of("h1", "s-new", isNew = true), on)
     }
 
     /**
@@ -185,13 +126,6 @@ class NavRoutesTest {
             assertFalse("「新对话」的字不许出现禁用词「$w」：$newLabel", newLabel.contains(w))
         }
         assertTrue("它得真说「对话」：这是词表指定的替代说法", newLabel.contains("对话"))
-
-        // 上屏的失败说明同理：它后面还会拼上远端原话，
-        //   所以前缀本身必须干净，不能把 `bridge.log` 这种内部名字端给用户。
-        for (w in listOf("会话", "连接", "SSH", "tmux", "bridge", "daemon", "exec", "offset", "log")) {
-            assertFalse("失败说明不许出现禁用词「$w」：$REMOTE_FAILED_PREFIX", REMOTE_FAILED_PREFIX.lowercase().contains(w.lowercase()))
-        }
-        assertTrue("它得说清是远端那个 Claude 的事", REMOTE_FAILED_PREFIX.contains("远端") && REMOTE_FAILED_PREFIX.contains("Claude"))
     }
 
     // ---- 新界面必须能开出第一个对话 -------------------------------
@@ -203,7 +137,7 @@ class NavRoutesTest {
      * 连第一个对话都开不出来。
      *
      * 判据落在「导航层能不能表达『这是新开的』」上：下游 `ChatRoute` 要靠它
-     * 决定加不加 `--resume`，拿一个远端从没见过的编号去 resume 必然失败。
+     * 决定是发第一条时请那台起（新建会话），还是读那条已有的。
      */
     @Test
     fun openingANewConversationIsDistinguishableFromOpeningAnExistingOne() {
@@ -214,58 +148,11 @@ class NavRoutesTest {
         assertTrue("缺省必须是保守的一侧（已有对话）：$existing", existing.contains("${Screen.Chat.ARG_NEW}=false"))
     }
 
-    /**
-     * 新编号要能安全地当作远端标识。
-     *
-     * 它不只是界面 key：会变成远端目录名与那条常驻命令的标识，
-     * 所以必须过 `ClaudeInvocation.isValidSessionId`。这里调真的那个校验函数，
-     * 不在测试里另写一份正则（同一份判据两份实现会各自漂移）。
-     */
+    /** 新建会话那张草稿的票：每张不同（同一张票再问 `session-new`，那台认出是同一趟、不起第二个）。 */
     @Test
-    fun aFreshConversationIdIsAcceptedByTheRealSessionIdCheck() {
+    fun everyDraftGetsItsOwnTicket() {
         val ids = List(20) { newConversationId() }
-        ids.forEach {
-            assertTrue("生成的编号被真校验拒了：$it", ClaudeInvocation.isValidSessionId(it))
-            // 它还要当得了 Claude 自己的对话编号：`--session-id` 只认合法 UUID。
-            //   过不了这关，我们就只能让 Claude 自己另发一个 ⇒ 两个编号分叉 ⇒ 下次找不回来。
-            assertTrue("还必须是合法 UUID，否则交不给 Claude：$it", ClaudeInvocation.isValidUuid(it))
-        }
-        assertEquals("编号不许重复 —— 撞号就是两个对话共用一条远端管道", ids.size, ids.toSet().size)
-    }
-
-    /**
-     * 「接着跑」与「把编号交出去」是同一个布尔的两面，永远只能有一个。
-     *
-     * 两个都给会被 `ClaudeInvocation.pipeInvocation` 当场炸掉；
-     * 两个都不给则 Claude 自己另发一个编号 ⇒ 分叉。
-     * 判据落在「任何一种情形下恰好给一个」上，而不是分别断言两个函数。
-     */
-    @Test
-    fun exactlyOneOfResumeAndHandOverIsChosen() {
-        for (isNew in listOf(true, false)) {
-            val chosen = listOfNotNull(resumeIdFor("s1", isNew), newSessionIdFor("s1", isNew))
-            assertEquals("isNew=$isNew 时必须恰好给一个，实得 $chosen", 1, chosen.size)
-            assertEquals("给出去的必须就是这条对话的编号", "s1", chosen.single())
-        }
-        assertNull("新对话不 resume", resumeIdFor("s1", isNew = true))
-        assertNull("已有对话不重发编号", newSessionIdFor("s1", isNew = false))
-    }
-
-    /**
-     * 新开的对话不许 `--resume`；已有的必须 resume。
-     *
-     * 新对话的编号是本机现生成的、远端从没见过，接它必然失败。
-     * 反过来漏掉已有对话的 resume 也不行：那会起一条同名的空对话。
-     *
-     * 判据用真的 `newConversationId()` 产的编号，不自己捏一个，免得测的是想象中的形状。
-     */
-    @Test
-    fun aFreshConversationIsNotResumedButAnExistingOneIs() {
-        val fresh = newConversationId()
-        assertNull("新开的对话不许 resume：远端根本没有这个编号", resumeIdFor(fresh, isNew = true))
-
-        val existing = "abc-123"
-        assertEquals("已有对话必须接着跑，否则会起一条同名空对话", existing, resumeIdFor(existing, isNew = false))
+        assertEquals("票不许重复：撞票就是两个草稿被那台当成同一趟", ids.size, ids.toSet().size)
     }
 
     /**

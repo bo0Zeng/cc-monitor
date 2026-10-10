@@ -12,8 +12,13 @@ import java.io.File
  *
  * 判据只看代码：注释里提 tmux 是正常的，所以扫描前先剥注释，剥完还剩 `tmux` 的才算在碰它。
  * 只认小写 `tmux`：`TmuxBackend` 这类类型名出现在 import 或类型注解里是合法的。
+ * 唯一放过的是 `session-new` 入参里那一格「起在哪」的线上词（[SESSION_NEW_PLACE]）：那是请那台核心在它的 tmux 里起，手机不碰 tmux。
  */
 class CoreClaudeKnowsNoTmuxTest {
+    private companion object {
+        const val SESSION_NEW_PLACE = "\"place\" to \"tmux\""
+    }
+
     /** 本模块的 main 源集。测试的工作目录可能是仓根或模块目录，两种都试。 */
     private fun mainSources(): List<File> {
         val dir =
@@ -42,7 +47,7 @@ class CoreClaudeKnowsNoTmuxTest {
                         codeOnly(f.readText())
                             .lineSequence()
                             .withIndex()
-                            .filter { (_, line) -> line.contains("tmux") }
+                            .filter { (_, line) -> line.replace(SESSION_NEW_PLACE, "").contains("tmux") }
                             .map { (i, line) -> "${f.name}:${i + 1} ${line.trim().take(80)}" }
                             .toList()
                     hits.takeIf { it.isNotEmpty() }

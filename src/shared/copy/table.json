@@ -25422,6 +25422,18 @@
       "zh": "重试",
       "args": []
     },
+    "mobChat.delivery.sending": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "发送中",
+      "args": []
+    },
+    "mobChat.record.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 上找不到这条会话的记录",
+      "args": ["machine"]
+    },
     "terminal.why.ambiguous": {
       "kind": "body",
       "role": "片段",

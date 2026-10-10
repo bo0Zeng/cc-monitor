@@ -32,6 +32,21 @@ sealed interface LinkState {
     ) : LinkState
 }
 
+/** 一台的常驻流对外的那三样：会话表 · 记录行 · 一问一答。聊天屏只经它（测试给假的）。 */
+interface CoreLink {
+    val table: StateFlow<SessionTable>
+    val lines: SharedFlow<RecordLine>
+
+    suspend fun call(
+        cmd: String,
+        args: Map<String, Any?>? = null,
+        withinMs: Long = DEFAULT_CALL_MS,
+    ): Reply
+}
+
+/** 一问一答默认等多久。 */
+const val DEFAULT_CALL_MS: Long = 15_000L
+
 /**
  * 一台机器的常驻流（`ccm -- --resident-attach`）＋ 上面折出来的会话表，断了自己接回去。手机对这台的一问一答都经 [call]。
  *
@@ -52,14 +67,14 @@ class BackendFeed(
     private val onLost: () -> Unit = {},
     private val onBreak: (String) -> Unit = {},
     private val backoff: Backoff = Backoff(),
-) {
+) : CoreLink {
     private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
     val state: StateFlow<LinkState> = stateFlow.asStateFlow()
 
     private val tableFlow = MutableStateFlow(SessionTable())
 
     /** 流上的会话帧折出来的会话表（此刻有哪些会话、各自的状态字与语气）。 */
-    val table: StateFlow<SessionTable> = tableFlow.asStateFlow()
+    override val table: StateFlow<SessionTable> = tableFlow.asStateFlow()
 
     private val changeFlow = MutableSharedFlow<String>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -70,6 +85,14 @@ class BackendFeed(
 
     /** 流上的 `turn_end` 帧（逐帧，未折；折成一轮一条在 [TurnEnds]）。 */
     val turnEnds: SharedFlow<TurnEnd> = turnEndFlow.asSharedFlow()
+
+    private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = LINE_BUFFER)
+
+    /**
+     * 流上的 `line` 帧（每条会话记录文件新写的一行，带核心的通用记录）。聊天屏只收它那一条的。
+     * 满了 ⇒ 这里停读（SSH 窗口跟着停），不丢；没人收 ⇒ 不攒。
+     */
+    override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
 
     @Volatile private var client: FrameClient? = null
 
@@ -97,10 +120,10 @@ class BackendFeed(
     }
 
     /** 一问一答。流没通 ⇒ [Reply.LinkDown]。 */
-    suspend fun call(
+    override suspend fun call(
         cmd: String,
-        args: Map<String, Any?>? = null,
-        withinMs: Long = DEFAULT_CALL_MS,
+        args: Map<String, Any?>?,
+        withinMs: Long,
     ): Reply = client?.call(cmd, args, withinMs) ?: Reply.LinkDown
 
     /** 跟着 SSH 的这一条连接：没通 ⇒ 停在断开；通着 ⇒ 接、断了再接，直到它换一条（被 `collectLatest` 取消）。 */
@@ -162,6 +185,7 @@ class BackendFeed(
             tableFlow.value = next
             frame.str("kind")?.let(changeFlow::tryEmit)
             TurnEnd.of(frame)?.let(turnEndFlow::tryEmit)
+            RecordLine.of(frame)?.let { lineFlow.emit(it) }
             if (next.needsResync) {
                 // 丢了会话帧：这张表不可信了 ⇒ 重接，那台整份重报。
                 kick.trySend(Unit)
@@ -190,6 +214,6 @@ class BackendFeed(
 
     private companion object {
         const val BUFFER = 64
-        const val DEFAULT_CALL_MS = 15_000L
+        const val LINE_BUFFER = 256
     }
 }

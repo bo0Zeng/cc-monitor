@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.di
 
 import android.util.Log
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.bridge.UplinkSink
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
@@ -11,10 +10,10 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.KnownHostDaoStore
 import com.ccmonitor.mobile.ui.chat.ChatController
-import com.ccmonitor.mobile.ui.chat.ChatSessionKey
+import com.ccmonitor.mobile.ui.chat.ChatOpen
+import com.ccmonitor.mobile.ui.chat.ChatSession
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
 import com.ccmonitor.mobile.ui.chat.ConnectionHolder
-import com.ccmonitor.mobile.ui.chat.HostId
 import com.ccmonitor.mobile.ui.claude.ReadingPaneViewModel
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
@@ -33,19 +32,13 @@ val appModule =
     module {
         // 聊天 VM 是薄壳，真身是 `ChatController`（single）持有的 `ChatSession`：下行不挂在 viewModelScope 上，
         // 离开聊天屏不会断。`key` 决定是哪个对话，同一对话在不同屏、不同 VM 实例之间必须给同一个 key。
-        //
-        // 参数一律按类型取，不按位置解构：谁在 `parametersOf` 前面多插一个参数，位置解构会拿错参数，
-        // 类型恰好兼容时还是静默错配。uplink 收参数而不是 `getOrNull()` 全局解析，调用方决定接哪条上行。
+        // 参数按类型取一件 `ChatOpen`，不按位置取几个裸串。
         viewModel {
-            // 按类型取（`ChatSessionKey` 是 value class）；裸 String 会和别的字符串参数静默错配。
-            val key = it.getOrNull<ChatSessionKey>()?.value ?: ChatSessionKey.DEFAULT
+            val open = it.get<ChatOpen>()
             ChatViewModel(
-                get<ChatController>().sessionFor(
-                    key = key,
-                    uplink = it.getOrNull<UplinkSink>(),
-                    // 带上主机，对话才持有得住那条连接
-                    hostId = it.getOrNull<HostId>()?.value,
-                ),
+                get<ChatController>().sessionFor(key = open.key, hostId = open.hostId) { scope ->
+                    ChatSession(get<HostBackends>().of(open.hostId).also { f -> f.ensure() }, open.target, open.machine, scope)
+                },
             )
         }
         // 应用级的对话持有者，tail 活在这里，不活在屏幕里。逐出要记日志，否则「对话怎么没了」无从查起。
