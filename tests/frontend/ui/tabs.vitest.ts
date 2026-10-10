@@ -2406,22 +2406,32 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(frontBtn(tm, "r2")!.querySelector("svg")?.getAttribute("data-icon"), "↗ 换成对勾").toBe("check");
   });
 
-  it("★ 在飞超过 300ms：↗ 旁出「查找终端…」，同一个会话再点不重发；回来了就收起", async () => {
-    let done: (v: unknown) => void = () => {};
-    mockInvoke.mockImplementation((cmd: string) => (cmd === "bring_terminal_to_front" ? new Promise((r) => (done = r)) : Promise.resolve([])));
-    const tm = makeTM();
-    tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
-    const btn = frontBtn(tm, "l1")!;
-    btn.click();
-    btn.click();
-    await new Promise((r) => setTimeout(r, 120));
-    expect(document.querySelector("[data-role=front-busy]"), "300ms 之内不出（防闪）").toBeNull();
-    await new Promise((r) => setTimeout(r, 300));
-    expect(document.querySelector("[data-role=front-busy]")?.textContent).toBe(copyText("front.pending.label"));
-    expect(mockInvoke.mock.calls.filter((c) => c[0] === "bring_terminal_to_front").length, "在飞时再点不重发").toBe(1);
-    done({ kind: "switched" });
-    await new Promise((r) => setTimeout(r, 500));
-    expect(document.querySelector("[data-role=front-busy]"), "回来了就收起").toBeNull();
+  // 测的就是两段时长本身（300ms 之前不出 · 出了至少停 400ms：`FRONT_PENDING_AFTER_MS` / `FRONT_PENDING_MIN_MS`）⇒ 假时钟拨到界上两侧，不真等。
+  // 数照写字面量：这两个数是给人看的约定（标题写着），常量被改了判据要红。
+  it("★ 在飞超过 300ms：↗ 旁出「查找终端…」，同一个会话再点不重发；出了至少停 400ms，回来了就收起", async () => {
+    vi.useFakeTimers();
+    try {
+      let done: (v: unknown) => void = () => {};
+      mockInvoke.mockImplementation((cmd: string) => (cmd === "bring_terminal_to_front" ? new Promise((r) => (done = r)) : Promise.resolve([])));
+      const tm = makeTM();
+      tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
+      const btn = frontBtn(tm, "l1")!;
+      const busy = () => document.querySelector("[data-role=front-busy]");
+      btn.click();
+      btn.click();
+      await vi.advanceTimersByTimeAsync(299);
+      expect(busy(), "300ms 之内不出（防闪）").toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(busy()?.textContent).toBe(copyText("front.pending.label"));
+      expect(mockInvoke.mock.calls.filter((c) => c[0] === "bring_terminal_to_front").length, "在飞时再点不重发").toBe(1);
+      done({ kind: "switched" });
+      await vi.advanceTimersByTimeAsync(399);
+      expect(busy(), "出了就至少停 400ms（防闪），刚回来不收").not.toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(busy(), "回来了、停够了就收起").toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("★ 通道那一跳：那台旧 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；连不上 ⇒「离线」＋［重新连接］", async () => {
@@ -4093,40 +4103,55 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
 
   // 切换可打断：索引是切进来那一下要的，回来时人已经切走了 ⇒ 不在后台接（接骨架要插占位、量几何、补可见区 ——
   // 收起的 tab 里做这些是白干还逼排版，快速连切时一串旧切换的活全堆在后面）。停着，切回来的下一帧再接。
+  // 「停住」就是 `TabStreamView.STAY_MS`（150ms）这段时长 ⇒ 假时钟拨到界上两侧，不真等（数照写字面量，常量被改了要红）。
   it("★ 索引回来时 tab 已经切走 ⇒ 不在后台接；切回来停住了再接，不重问", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
-      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    ) as never));
-    const t = replay("pk"); // pk 是当前的，批结束要了索引（还没回来）
-    tm.onLine(mk("pkOther", 5, "po5"));
-    tm.switchTo("pkOther"); // 索引回来之前切走
-    await settle();
-    expect(t.skeleton, "切走了还在后台接骨架 ⇒ 旧切换的活还在干").toBeNull();
-    tm.switchTo("pk");
-    expect(t.skeleton, "同步段里不接（接要量几何）").toBeNull();
-    await new Promise((r) => setTimeout(r, 250));
-    expect(t.skeleton, "切回来停住了该接上").not.toBeNull();
-    expect(t.skeleton!.pendingRows).toBe(200);
-    expect(indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/pk.jsonl").length, "停着的那一份直接用，不重问").toBe(1);
+    vi.useFakeTimers();
+    try {
+      vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+        Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+      ) as never));
+      const t = replay("pk"); // pk 是当前的，批结束要了索引（还没回来）
+      tm.onLine(mk("pkOther", 5, "po5"));
+      tm.switchTo("pkOther"); // 索引回来之前切走
+      await vi.advanceTimersByTimeAsync(0);
+      expect(t.skeleton, "切走了还在后台接骨架 ⇒ 旧切换的活还在干").toBeNull();
+      tm.switchTo("pk");
+      expect(t.skeleton, "同步段里不接（接要量几何）").toBeNull();
+      await vi.advanceTimersByTimeAsync(149);
+      expect(t.skeleton, "还没停够就接了").toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(t.skeleton, "切回来停住了该接上").not.toBeNull();
+      expect(t.skeleton!.pendingRows).toBe(200);
+      expect(indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/pk.jsonl").length, "停着的那一份直接用，不重问").toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // 按住「下一个 tab」连切：每个 tab 只在眼前几十毫秒。要骨架索引（后端整份读那个会话的记录文件）、接骨架、刷大纲
   // 都是给「停下来看」的人准备的 —— 路过的 tab 一概不发、不接；在眼前停住了才做。
   it("★ 路过的 tab（切进来又马上切走）不要骨架索引；停住了才要", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
-      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    ) as never));
-    tm.onLine(mk("dwA", 1, "dwa1")); // 首个 tab ⇒ 当前
-    tm.onLine(mk("dwB", 200, "u200")); // 后台 tab：直渲、钉 floor，还没要过索引
-    const ofB = () => indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/dwB.jsonl").length;
-    tm.switchTo("dwB");
-    tm.switchTo("dwA"); // 路过
-    await new Promise((r) => setTimeout(r, 250));
-    expect(ofB(), "路过的 tab 也去要索引 ⇒ 按住切一圈就是一圈整份读").toBe(0);
-    tm.switchTo("dwB");
-    expect(ofB(), "同步段里不要").toBe(0);
-    await new Promise((r) => setTimeout(r, 250));
-    expect(ofB(), "停住了该要").toBe(1);
+    vi.useFakeTimers();
+    try {
+      vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+        Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+      ) as never));
+      tm.onLine(mk("dwA", 1, "dwa1")); // 首个 tab ⇒ 当前
+      tm.onLine(mk("dwB", 200, "u200")); // 后台 tab：直渲、钉 floor，还没要过索引
+      const ofB = () => indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/dwB.jsonl").length;
+      tm.switchTo("dwB");
+      tm.switchTo("dwA"); // 路过
+      await vi.advanceTimersByTimeAsync(150);
+      expect(ofB(), "路过的 tab 也去要索引 ⇒ 按住切一圈就是一圈整份读").toBe(0);
+      tm.switchTo("dwB");
+      expect(ofB(), "同步段里不要").toBe(0);
+      await vi.advanceTimersByTimeAsync(149);
+      expect(ofB(), "还没停够就要了").toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ofB(), "停住了该要").toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // 「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。
