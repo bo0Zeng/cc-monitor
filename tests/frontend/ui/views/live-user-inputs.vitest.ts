@@ -469,9 +469,11 @@ describe("KR45D2 清单跟着 tab 走", () => {
     await settleOutline();
     vi.mocked(invoke).mockClear();
     tm.switchTo("s1");
-    await new Promise((r) => setTimeout(r, 200)); // 在眼前停住了才刷大纲（`TabStreamView.STAY_MS`：路过的 tab 不发这一问）
-    await settleOutline();
-    expect(outlineCalls().map((a) => (a as { jsonlPath: string }).jsonlPath)).toContain("/p/s1.jsonl");
+    // 在眼前停住了才刷大纲（`TabStreamView.STAY_MS`：路过的 tab 不发这一问）⇒ 按条件等它发出去，不按墙钟歇。
+    await vi.waitFor(async () => {
+      await settleOutline();
+      expect(outlineCalls().map((a) => (a as { jsonlPath: string }).jsonlPath)).toContain("/p/s1.jsonl");
+    }, { timeout: 4_000, interval: 20 });
   });
 
   it("关掉 tab ⇒ 清单清空、查找面板摘掉；在途那趟回来也不许回写", async () => {

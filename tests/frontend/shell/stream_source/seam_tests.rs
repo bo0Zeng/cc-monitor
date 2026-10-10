@@ -211,7 +211,8 @@ async fn reconnect_wakes_only_the_loop_waiting_on_that_machine() {
     let waiting = tokio::spawn(async move { a.notified().await });
     tokio::task::yield_now().await;
     kick("seam-wake-b");
-    tokio::time::sleep(Duration::from_millis(30)).await;
+    // 单线程运行时：吵醒了的话它已经在就绪队列里，让一拍就轮到它跑完 —— 不按墙钟。
+    tokio::task::yield_now().await;
     assert!(!waiting.is_finished(), "别台的「重新连接」吵醒了这一台");
     kick("seam-wake-a");
     tokio::time::timeout(Duration::from_secs(2), waiting)
