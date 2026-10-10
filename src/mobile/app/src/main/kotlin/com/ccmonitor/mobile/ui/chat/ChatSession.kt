@@ -1,12 +1,14 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryLines
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.HistoryTail
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.str
@@ -70,12 +72,16 @@ sealed interface ChatTarget {
  * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上）⇒ 等它报到（会话表里那个目录新出现的一条）⇒ 再送那句。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
  * - 正文：`history-tail` ＋ `history-read` 读最后一屏，之后跟流上这条会话的 `line` 帧；往上翻再读上一段。记录 ⇒ 渲染单元见 [RecordUnits]。
+ * - 在屏上（[visible]）才进这台的 `stream-watch` 名单；进名单 · 断线重接之后，`[已有, seq)` 那一段按行号用 `history-lines` 补上
+ *   （`from[]` 给的 seq，或来了一行比已有的新、中间缺着），缺得多就整份重读最后一屏；重叠处按行号去重。
  * 手机这边只记「送出去、记录里还没出现」的那几句；记录里出现了同一句人话 ⇒ 那一句的标消失。
  *
  * 它不是 `ViewModel`：持有者是应用级的 [ChatController]，离开聊天屏照样跟着。
  */
 class ChatSession(
     private val link: CoreLink,
+    /** 这台的 `stream-watch` 名单：在屏上时才看这一条（不在名单里的会话，它的行不上流）。 */
+    private val watch: SessionWatch,
     target: ChatTarget,
     /** 这台在手机上的名字（「{machine} 无应答」那几句）。 */
     private val machine: String,
@@ -93,10 +99,14 @@ class ChatSession(
     @Volatile private var sid: String? = (target as? ChatTarget.Existing)?.sid
     private var path: String? = null
 
-    /** 已读到的最早一行的字节起点 · 最新一行之后的字节；尾段要了几行。 */
+    /** 已读到的最早一行的字节起点；已有的最新一行之后那一行的行号；尾段要了几行。 */
     private var head = 0L
-    private var tail = 0L
+    private var nextSeq = 0L
     private var tailLines = PAGE_LINES
+
+    /** 在屏上 ⇒ 这一条在名单里（[holding]）。sid 还没有（新建会话起好之前）⇒ 起好再进。 */
+    @Volatile private var shown = false
+    private var holding: AutoCloseable? = null
 
     private var follow: Job? = null
     private var starting: Job? = null
@@ -160,7 +170,30 @@ class ChatSession(
         }
     }
 
-    fun close() = scope.cancel()
+    /** 聊天屏进 / 出：进了名单这条会话的行才上流，退了就停（`stream-watch`）。 */
+    fun visible(on: Boolean) {
+        shown = on
+        syncHold()
+    }
+
+    @Synchronized
+    private fun syncHold() {
+        val s = sid
+        if (shown && s != null && attached) {
+            if (holding == null) holding = watch.hold(s)
+        } else {
+            holding?.close()
+            holding = null
+        }
+    }
+
+    @Volatile private var attached = false
+
+    fun close() {
+        shown = false
+        syncHold()
+        scope.cancel()
+    }
 
     private suspend fun deliver(o: Outgoing) {
         val s = sid ?: started() ?: return fail(o, permanent = false, text = null)
@@ -227,6 +260,7 @@ class ChatSession(
             } ?: return failSession(copyText("launchArrival.missed.title"))
         sid = arrived
         _state.value = _state.value.copy(sid = arrived)
+        syncHold()
         follow = scope.launch { attach(arrived) }
     }
 
@@ -234,34 +268,90 @@ class ChatSession(
         _state.value = _state.value.copy(failedWhy = text)
     }
 
-    /** 先订上这条会话的 `line` 帧（攒着），再读最后一屏；读完把攒着的、比读到的更新的接上，之后来一条接一条。 */
+    /** 一条会话流上来的两样：一行 · 进名单那一格（从第几行起上流）。 */
+    private sealed interface Event {
+        data class Line(
+            val line: RecordLine,
+        ) : Event
+
+        data class From(
+            val seq: Long,
+        ) : Event
+    }
+
+    /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。 */
     private suspend fun attach(s: String) {
-        val buffered = Channel<RecordLine>(Channel.UNLIMITED)
+        val events = Channel<Event>(Channel.UNLIMITED)
         val subscribed = CompletableDeferred<Unit>()
+        val fromSubscribed = CompletableDeferred<Unit>()
         scope.launch {
-            link.lines.onSubscription { subscribed.complete(Unit) }.collect { if (it.sid == s) buffered.send(it) }
+            link.lines.onSubscription { subscribed.complete(Unit) }.collect { if (it.sid == s) events.send(Event.Line(it)) }
+        }
+        scope.launch {
+            watch.from.onSubscription { fromSubscribed.complete(Unit) }.collect { if (it.sid == s) events.send(Event.From(it.seq)) }
         }
         subscribed.await()
+        fromSubscribed.await()
+        attached = true
+        syncHold()
         watchRunning(s)
         val p = pathOf(s) ?: return
         path = p
-        val t = readTail(p, tailLines) ?: return
-        val page = readRange(p, t.splitAt, t.end) ?: return
-        lock.withLock {
-            head = t.splitAt
-            tail = t.end
-            records.addAll(page)
-            _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null)
-            publishLocked()
-        }
-        for (line in buffered) {
+        lock.withLock { if (!reloadLocked(p)) return }
+        for (e in events) {
             lock.withLock {
-                if (line.byteOffset <= tail) return@withLock
-                tail = line.byteOffset
-                line.record?.let { records += it }
+                when (e) {
+                    is Event.Line -> {
+                        if (e.line.seq < nextSeq) return@withLock
+                        if (e.line.seq > nextSeq && !fillLocked(p, e.line.seq)) return@withLock
+                        if (e.line.seq < nextSeq) return@withLock
+                        e.line.record?.let { records += it }
+                        nextSeq = e.line.seq + 1
+                    }
+                    is Event.From -> if (e.seq > nextSeq) fillLocked(p, e.seq)
+                }
                 publishLocked()
             }
         }
+    }
+
+    /** 整份重来：读最后一屏（[tailLines] 行）。没读成 ⇒ `false`（那一句已上屏）。 */
+    private suspend fun reloadLocked(p: String): Boolean {
+        val t = readTail(p, tailLines) ?: return false
+        val page = readRange(p, t.splitAt, t.end) ?: return false
+        head = t.splitAt
+        nextSeq = t.total
+        records.clear()
+        records.addAll(page)
+        _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null)
+        publishLocked()
+        return true
+    }
+
+    /**
+     * 补上 `[nextSeq, until)`：缺得不多按行号取（`history-lines`）；缺得多（超过一屏）⇒ 整份重读最后一屏、更早的往上翻再取。
+     * 没补成 ⇒ `false`，已有的不动（下一行来了再补）。
+     */
+    private suspend fun fillLocked(
+        p: String,
+        until: Long,
+    ): Boolean {
+        if (until - nextSeq > PAGE_LINES) {
+            tailLines = PAGE_LINES
+            return reloadLocked(p)
+        }
+        while (nextSeq < until) {
+            val r = link.call(HistoryLines.COMMAND, HistoryLines.args(p, nextSeq, until), READ_MS)
+            val page =
+                (r as? Reply.Ok)?.let { HistoryLines.of(it.data) }
+                    ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
+            records += page.records
+            if (page.next <= nextSeq) break
+            nextSeq = page.next
+            if (page.eof) break
+        }
+        nextSeq = maxOf(nextSeq, until)
+        return true
     }
 
     private fun watchRunning(s: String) {
