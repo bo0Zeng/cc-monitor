@@ -364,11 +364,11 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
         ),
         (
             "read_accounts",
-            "src/backend/accounts/upstream_select/file_face.rs::read_at",
+            "src/backend/accounts/upstream_select/file_face.rs::key_facts_at",
         ),
         (
             "apikey_routed_subset",
-            "src/backend/accounts/upstream_select/endpoint.rs::answer_routing_with",
+            "src/backend/observe/accounts_query.rs::list_product_with",
         ),
     ];
     let literals: [(&str, &str); 4] = [

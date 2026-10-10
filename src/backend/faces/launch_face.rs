@@ -36,6 +36,7 @@ pub(crate) fn library_of(agent: &str) -> Library {
         &rows,
         agent,
         crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+        crate::relay::our_relay_listening(relay_route_core::PORT),
     ))
 }
 

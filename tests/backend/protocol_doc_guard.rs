@@ -628,8 +628,23 @@ mod tests {
             ),
             (
                 "observe/accounts_query.rs",
+                "Badge",
+                "`accounts-list` 每个号那一枚徽章（命令应答里的一块），不是流协议帧",
+            ),
+            (
+                "observe/accounts_query.rs",
+                "BadgeFacts",
+                "**不上线**：徽章那一判照类型读回清单那一行的几格（读，不写）",
+            ),
+            (
+                "observe/accounts_query.rs",
                 "RawAccount",
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
+            ),
+            (
+                "observe/history_query.rs",
+                "Can",
+                "`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」那一格：命令应答里的一块，不是流协议帧",
             ),
             (
                 "observe/history_query.rs",

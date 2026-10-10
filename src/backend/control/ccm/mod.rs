@@ -495,7 +495,11 @@ pub(crate) fn answer_print(
 
 /// 设置窗合并预览的「等于」那一行：合好的意图 ＋「假设在这个目录敲」（`at`：`~` 打头按这台家目录展开；空 ⇒ 家目录）。
 /// 与 [`answer_print`] 同一个 [`plan_of`] ＋ `plan::render_for`，环境同 [`Env::for_preview`]，只换了敲的那个目录。
-pub(crate) fn preview_resolved(p: Parsed, home: &str, at: Option<&str>) -> Result<String, String> {
+pub(crate) fn preview_resolved(
+    p: Parsed,
+    home: &str,
+    at: Option<&str>,
+) -> Result<(String, String), String> {
     let Parsed::Opts(o) = p else {
         return Err(copy_text("beCcm.preview.noSession", &[]));
     };
@@ -503,8 +507,12 @@ pub(crate) fn preview_resolved(p: Parsed, home: &str, at: Option<&str>) -> Resul
     if let Some(a) = at.map(str::trim).filter(|a| !a.is_empty()) {
         env.pwd = plan::expand_home(a, &env.home);
     }
+    let home = env.home.clone();
     let plan = plan_of(&o, env, false).map_err(|Die(m)| m)?;
-    Ok(plan::render_for(&plan, plan::terminal_shell()))
+    Ok((
+        plan::render_for(&plan, plan::terminal_shell()),
+        plan::render_short(&plan, &home),
+    ))
 }
 
 /// 帧命令 `terminal-name-mint`：**起会话要一个终端名 —— 问这台**（这一版宿主只有 tmux，铸的是 tmux 会话名）。

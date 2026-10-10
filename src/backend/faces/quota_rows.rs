@@ -16,7 +16,7 @@ pub(crate) struct Cell {
     pub(crate) tone: Tone,
 }
 
-type Rows = Vec<Vec<Cell>>;
+pub(crate) type Rows = Vec<Vec<Cell>>;
 
 fn c(text: String) -> Cell {
     Cell {
@@ -115,7 +115,7 @@ fn seen_row(a: &Value) -> Vec<Cell> {
 }
 
 /// 出过数的号那一段。
-fn seen_block(a: &Value) -> Rows {
+pub(crate) fn seen_block(a: &Value) -> Rows {
     let mut rows = vec![head(a)];
     let limiting = s(a, "limiting");
     let windowed = !limiting.is_empty()
@@ -154,7 +154,7 @@ fn seen_block(a: &Value) -> Rows {
 }
 
 /// 没出过数的号那一段：`— 无采样`（按量号 `5h/7d — 无采样`）。
-fn unseen_block(u: &Value) -> Rows {
+pub(crate) fn unseen_block(u: &Value) -> Rows {
     let mut rows = vec![head(u)];
     if s(u, "kind") == "api" {
         rows.push(vec![
@@ -188,7 +188,7 @@ pub(crate) fn head_text(state: &str, empty: bool, reason: Option<&str>) -> Optio
 }
 
 /// 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）：`5h 41%` · 卡着的照语义位那一格的字。
-fn five_hour(value: &str) -> String {
+pub(crate) fn five_hour(value: &str) -> String {
     copy_text(
         "resumeMenu.account.quota",
         &[
@@ -201,33 +201,6 @@ fn five_hour(value: &str) -> String {
 /// `quota-read` 顶上那一格「5h」：账读不出 ⇒ `5h 读不到`（每号那一格这时没有号可挂）；否则没有。
 pub(crate) fn head_five_hour(state: &str) -> Option<Words> {
     (state == "unreadable").then(|| Words(five_hour(&copy_text("acct.val.unreadable", &[]))))
-}
-
-/// ★ 给 `quota-read` 的回包（出口那一遍之后）每号添 `rows`（读不出 ⇒ 账上本来就没有号）与 `fiveHour`
-/// （出过数的订阅号才有；按量号没有分窗口 · 没出过数的号 ⇒ `null`）。顶上那一格在回包类型里（[`head_five_hour`]）。
-pub(crate) fn with_rows(reply: &mut Value) {
-    for (list, block) in [
-        ("accounts", seen_block as fn(&Value) -> Rows),
-        ("unseen", unseen_block),
-    ] {
-        if let Some(xs) = reply.get_mut(list).and_then(Value::as_array_mut) {
-            for x in xs {
-                x["rows"] = serde_json::to_value(block(x)).unwrap_or(Value::Null);
-                x["fiveHour"] = if list == "unseen" || x["kind"] == "api" {
-                    Value::Null
-                } else {
-                    let none = copy_text("acct.val.none", &[]);
-                    let text = x["slots"]
-                        .as_array()
-                        .and_then(|xs| xs.iter().find(|s| s["slot"] == "5h"))
-                        .and_then(|s| s["text"].as_str())
-                        .unwrap_or(&none)
-                        .to_string();
-                    Value::String(five_hour(&text))
-                };
-            }
-        }
-    }
 }
 
 /// 开窗那一判：重置时刻之后再等这么久才看（重置按整点 / 十分对齐，留余量）。
@@ -245,12 +218,30 @@ pub(crate) enum WarmAct {
 
 /// `warm`：quota-warm 照它办（只执行、不判）。`at` 只在 `wait` 时有（旁边由出口写好 `atText`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Warm {
     pub(crate) act: WarmAct,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) at: Option<i64>,
+    /// `at` 写给人看的样子（[`Warm::stamp`]）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) at_text: Option<Words>,
+    /// `at` 距今。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) at_rel_text: Option<Words>,
     /// 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
     pub(crate) text: Words,
+}
+
+impl Warm {
+    /// 出口那一下：按钟写 `at` 旁边那两格。
+    pub(crate) fn stamp(mut self, clock: &crate::common::time::TextClock) -> Self {
+        if let Some(t) = self.at.and_then(|t| u64::try_from(t).ok()) {
+            self.at_text = Some(clock.text(t));
+            self.at_rel_text = clock.rel(t);
+        }
+        self
+    }
 }
 
 fn slot_of<'a>(a: &'a Value, slot: &str) -> Option<&'a Value> {
@@ -264,11 +255,15 @@ pub(crate) fn warm_of(a: &Value, seen: bool, now: i64) -> Warm {
     let wait = |at: i64, text: String| Warm {
         act: WarmAct::Wait,
         at: Some(at),
+        at_text: None,
+        at_rel_text: None,
         text: Words(text),
     };
     let send = |text: String| Warm {
         act: WarmAct::Send,
         at: None,
+        at_text: None,
+        at_rel_text: None,
         text: Words(text),
     };
     match s(a, "login") {
@@ -321,20 +316,6 @@ pub(crate) fn warm_of(a: &Value, seen: bool, now: i64) -> Warm {
         return send(copy_text("acct.warm.expired", &[]));
     }
     send(copy_text("acct.warm.noWindow", &[]))
-}
-
-/// ★ 给 `quota-read` 的回包（出口那一遍之后）每号添 `warm`；`at` 旁边的字按看的那一台的时区写好。
-pub(crate) fn with_warm(reply: &mut Value, tz: &crate::Tz) {
-    let now = reply.get("now").and_then(Value::as_i64).unwrap_or_default();
-    for (list, seen) in [("accounts", true), ("unseen", false)] {
-        if let Some(xs) = reply.get_mut(list).and_then(Value::as_array_mut) {
-            for x in xs {
-                let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap_or(Value::Null);
-                crate::common::time::with_texts_now(&mut w, u64::try_from(now).unwrap_or(0), tz);
-                x["warm"] = w;
-            }
-        }
-    }
 }
 
 #[cfg(test)]

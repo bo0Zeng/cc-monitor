@@ -561,6 +561,7 @@ export class TabManager {
         activity: tab.activity?.doing ?? null,
         activityText: tab.activity?.text ?? null,
         activityTone: tab.activity?.tone ?? null,
+        activityOrder: tab.activity?.order ?? null,
         needs: needsOf(tab)?.text ?? null,
         runningAgents: runs.filter((r) => r.state === "running").length,
         totalAgents: runs.length,
@@ -1283,15 +1284,16 @@ export class TabManager {
     this.emitTabStateProbe(tab);
   }
 
-  /** 红绿灯（会话流的 activity 格）：那一态 ＋ 核心写好的字与语气（`doing = null` ＝ 那一家没说，字与语气照样有）。Tab 未建 ⇒ 暂存。无变化不重绘。 */
+  /** 红绿灯（会话流的 activity 格）：那一态 ＋ 核心写好的字与语气 ＋ 监控板的序（`doing = null` ＝ 那一家没说，字与语气照样有）。Tab 未建 ⇒ 暂存。无变化不重绘。 */
   updateActivity(
     sessionId: string,
     doing: SessionActivity | null,
     waitingFor: string | null,
     text: string,
     tone: string,
+    order: number,
   ): void {
-    const act = { doing, waitingFor, text, tone };
+    const act = { doing, waitingFor, text, tone, order };
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       this.store.pendingActivity.set(sessionId, act);
@@ -1305,7 +1307,8 @@ export class TabManager {
       tab.activity?.doing === act.doing &&
       tab.activity?.waitingFor === act.waitingFor &&
       tab.activity?.text === act.text &&
-      tab.activity?.tone === act.tone
+      tab.activity?.tone === act.tone &&
+      tab.activity?.order === act.order
     ) {
       if (clearedIdle) this.refreshTabBar();
       return;
@@ -1358,7 +1361,7 @@ export class TabManager {
       const call = row.dataset.call ?? "";
       const waited = n?.call === call ? waitedNow(n, Date.now()) : null;
       const p = by.get(call);
-      paintWaiting(row, p?.state ?? "unclear", waited, n?.kind === "approve", p?.why ?? null);
+      paintWaiting(row, p ?? null, waited, n?.kind === "approve");
     }
   }
 

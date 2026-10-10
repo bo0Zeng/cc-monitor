@@ -28,7 +28,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "profiles-resolve",
         summary: "一段合下来的合并表与「等于」那一行（可按未存的表单算）",
         codes: &["bad_args", "refused"],
-        fields: &[arg("at", "假设在这个目录敲（`~` 打头按这台家目录展开；`null` ＝ 家目录）"), out("chain", "继承链（父 → 子）"), arg("edit", "未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算）"), out("line", "这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null`"), out("lineError", "算不出那一行时 ccm 的原话"), arg("name", "哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字）"), out("problem", "合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`"), out("rows", "合并表 `[{key, slot, label, vals, said, from, overriddenBy}]`：父 → 子、层内照写的顺序；被后来那一层盖掉的也在，`overriddenBy` 是盖掉它的那一段")],
+        fields: &[arg("at", "假设在这个目录敲（`~` 打头按这台家目录展开；`null` ＝ 家目录）"), out("chain", "继承链（父 → 子）"), arg("edit", "未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算）"), out("line", "这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null`"), out("lineShort", "「等于」那一行的短形（设置页那一格照抄；tmux 那一形只写建哪个会话 ＋ 里面跑的命令，直路只写进哪个目录 ＋ 跑什么，家目录写 `~`）；整条在 `line`；算不出 ⇒ `null`"), out("lineError", "算不出那一行时 ccm 的原话"), arg("name", "哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字）"), out("problem", "合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`"), out("rows", "合并表 `[{key, slot, label, vals, said, from, overriddenBy}]`：父 → 子、层内照写的顺序；被后来那一层盖掉的也在，`overriddenBy` 是盖掉它的那一段")],
         takes_input: true,
         run: Run::Blocking(|r| crate::assets::aliases::page::answer_resolve(&LocalFiles, &r.args).map(Some).map_err(|(c, m)| (c.to_string(), m))),
     },

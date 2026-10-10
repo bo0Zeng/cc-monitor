@@ -9,37 +9,96 @@ fn golden_path() -> std::path::PathBuf {
         .join("../../tests/__fixtures__/quota-text.golden.json")
 }
 
-/// 一份回包照真出口那几步走一遍（不写 `rows` 的那几格从回包里删掉再重写，金样里只留原数与显示态）。
+/// 金样里一个出过数的号：原数 ＋ 显示态（格的字与语气、时刻字都不在，由出口写）。
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SeenIn {
+    agent: String,
+    account: String,
+    seen_at: u64,
+    reading: Value,
+    #[serde(default)]
+    windows_seen: Option<Value>,
+    #[serde(flatten)]
+    show: crate::accounts::quota::show::QuotaShow,
+}
+
+/// 一份回包照真出口走一遍（[`crate::faces::quota_read::reply_of`]，钟按金样那一份的时区）：金样里只留原数与显示态，
+/// 语义位那一格的字由显示态那一处写（`slot_words`），其余由出口写。
 fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
-    use crate::accounts::quota::show::{slot_words, QuotaState};
-    let mut v = reply.clone();
-    let now = v["now"].as_i64().unwrap_or_default();
-    for a in v["accounts"].as_array_mut().into_iter().flatten() {
-        let state: QuotaState = serde_json::from_value(a["state"].clone()).unwrap();
-        let limiting = a["limiting"].as_str().map(str::to_string);
-        for x in a["slots"].as_array_mut().into_iter().flatten() {
-            let here = limiting.as_deref() == x["slot"].as_str();
-            let pct = x["pct"].as_u64().map(|p| p as u32);
-            let full = x["full"].as_bool().unwrap_or(false);
-            let (t, tone) = slot_words(state, here, pct, full);
-            x["text"] = serde_json::to_value(t).unwrap();
-            x["tone"] = serde_json::to_value(tone).unwrap();
-        }
-    }
-    crate::common::time::with_texts(&mut v, now, tz);
-    with_rows(&mut v);
-    let empty = ["accounts", "unseen"]
-        .iter()
-        .all(|l| v[*l].as_array().is_none_or(Vec::is_empty));
-    v["text"] = serde_json::to_value(head_text(
-        v["state"].as_str().unwrap_or(""),
-        empty,
-        v["reason"].as_str(),
-    ))
-    .unwrap();
-    v["fiveHour"] =
-        serde_json::to_value(head_five_hour(v["state"].as_str().unwrap_or(""))).unwrap();
-    v
+    use crate::accounts::quota::show::slot_words;
+    use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
+    let now = reply["now"].as_u64().unwrap_or_default();
+    let seen: Vec<Seen> = reply["accounts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|a| {
+            // 用量那一格由显示态那一处写（`usage_of`）：金样里没有，先占个位再照真判定写。
+            let mut a = a.clone();
+            a["usage"] = serde_json::json!({"value": "", "text": ""});
+            let mut x: SeenIn = serde_json::from_value(a).unwrap();
+            for s in &mut x.show.slots {
+                let here = x.show.limiting.as_deref() == Some(s.slot.as_str());
+                (s.text, s.tone) = slot_words(x.show.state, here, s.pct, s.full);
+            }
+            x.show.usage = crate::accounts::quota::show::usage_of(
+                x.show.kind,
+                x.show.state,
+                x.show.limiting.as_deref(),
+                &x.show.slots,
+                x.reading["resetsAt"].as_u64(),
+            );
+            Seen {
+                agent: x.agent,
+                account: x.account,
+                seen_at: x.seen_at,
+                reading: x.reading,
+                windows_seen: x.windows_seen,
+                show: x.show,
+            }
+        })
+        .collect();
+    let unseen: Vec<UnseenHead> = reply["unseen"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|u| {
+            let mut u = u.clone();
+            u["usage"] = serde_json::json!({"value": "", "text": "", "tone": "plain"});
+            let mut h: UnseenHead = serde_json::from_value(u).unwrap();
+            h.usage = crate::accounts::quota::show::usage_of(
+                h.kind,
+                crate::accounts::quota::show::QuotaState::Unseen,
+                None,
+                &[],
+                None,
+            )
+            .into();
+            h
+        })
+        .collect();
+    let state = match reply["state"].as_str() {
+        Some("present") => "present",
+        Some("absent") => "absent",
+        _ => "unreadable",
+    };
+    let base = Base {
+        state,
+        reason: reply["reason"].clone(),
+        detail: reply.get("detail").cloned().unwrap_or(Value::Null),
+        path: reply["path"].as_str().map(str::to_string),
+        now,
+        usable_now: serde_json::from_value(reply["usableNow"].clone()).unwrap_or_default(),
+        earliest: reply["earliestReturn"]["account"].as_str().map(|a| {
+            (
+                a.to_string(),
+                reply["earliestReturn"]["at"].as_u64().unwrap_or_default(),
+            )
+        }),
+    };
+    let clock = crate::common::time::TextClock::new(now, tz);
+    serde_json::to_value(reply_of(base, seen, unseen, &clock)).unwrap()
 }
 
 fn texts(rows: &Value) -> Value {
@@ -70,16 +129,7 @@ fn rows_text_and_warm_match_the_golden() {
     let mut wrong = Vec::new();
     for c in cases.iter_mut() {
         let tz = crate::Tz::of(&c["tz"]);
-        let mut v = through_the_exit(&c["reply"], &tz);
-        let now = v["now"].as_i64().unwrap_or_default();
-        // 开窗：照真出口（with_warm 按这台的钟写 `atText`；金样按它自己的偏移比，这里按偏移重写一遍）。
-        for (list, seen) in [("accounts", true), ("unseen", false)] {
-            for x in v[list].as_array_mut().into_iter().flatten() {
-                let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap();
-                crate::common::time::with_texts(&mut w, now, &tz);
-                x["warm"] = w;
-            }
-        }
+        let v = through_the_exit(&c["reply"], &tz);
         let blocks: Vec<Value> = ["accounts", "unseen"]
             .iter()
             .flat_map(|l| v[*l].as_array().cloned().unwrap_or_default())
@@ -214,16 +264,7 @@ fn the_wire_golden_is_what_the_exit_writes() {
     let mut cases = Vec::new();
     for c in g["cases"].as_array().unwrap() {
         let tz = crate::Tz::of(&c["tz"]);
-        let mut v = through_the_exit(&c["reply"], &tz);
-        let now = v["now"].as_i64().unwrap_or_default();
-        for (list, seen) in [("accounts", true), ("unseen", false)] {
-            for x in v[list].as_array_mut().into_iter().flatten() {
-                let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap();
-                crate::common::time::with_texts(&mut w, now, &tz);
-                x["warm"] = w;
-            }
-        }
-        crate::accounts::quota::name_words::with_names(&mut v);
+        let v = through_the_exit(&c["reply"], &tz);
         cases.push(serde_json::json!({"name": c["name"], "tz": c["tz"], "reply": v}));
     }
     let got = serde_json::json!({

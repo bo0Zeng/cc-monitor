@@ -91,7 +91,7 @@ pub fn apikey_routed_subset(
 /// 「鉴权方式这一维不再阻塞这个号被选中」。这是这条规则的唯一住址（几个生产者都调它，各填一个不同默认值在结构上不可表示）。
 /// - 订阅号：凭据文件在不在。
 /// - api-key 号：恒真，它不用那个文件。
-/// `true` 不等于「真能连上」（界面要把这个状态说出来，`src/frontend/ui/accounts.ts::accountStatusBadge`），也不等于「凭据有效」（订阅那一支只 stat 存在性，过期 / 吊销看不出来）。
+/// `true` 不等于「真能连上」（徽章要把这个状态说出来，`src/backend/observe/accounts_query.rs::badge_of`），也不等于「凭据有效」（订阅那一支只 stat 存在性，过期 / 吊销看不出来）。
 pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
     match auth_kind {
         k if k == AUTH_KIND_API_KEY => true,

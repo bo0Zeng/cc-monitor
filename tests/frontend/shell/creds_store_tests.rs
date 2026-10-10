@@ -62,16 +62,11 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
 // `file_face_tests::gp1_a_program_write_keeps_everything_the_human_put_there` ·
 // `file_face_tests::gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`。
 
-// 读侧那两条（`KS11` 权限放宽出声 · 三态「读坏了不许退化成没配」）打的是 monitor 那一份状态读者
-//   （`creds_store::read_status_at`〔散文墓碑〕）。读者换成那台的后端（`apikey-read`）⇒ 两条原样搬去后端那一份读口：
-//   `file_face_tests::us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not` ·
-//   `file_face_tests::us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured`。
-
 // ============================================================ `K-H2c` `KH2C1` / `KH2C3`
 
 // 「写侧落下的那一行，正是起会话那一侧会去找的那一行」那条跨两半的判据
 //   （`what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕）挪去后端：起会话那一侧找行的读者
-//   今天是那台后端的 `file_face::rows_at`（`launch-endpoint` · `apikey-routing` 读同一份），与写口同一个模块 ⇒
+//   今天是那台后端的 `file_face::rows_at`（`ccm` 起会话 · `accounts-list` 徽章读同一份），与写口同一个模块 ⇒
 //   `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses`（写口真写 → 成品真答 `/s/`）。
 
 /// ★★ **`KH2C1` 的机检那一半**：写侧**没有第二份**「取末段名」的实现。
@@ -365,10 +360,6 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
         "正控失败：后端那一份写口里也数不到 —— 针瞎了"
     );
 }
-
-// `ApikeyCredentialsStatus` 那两条（TS 手写类型双向对拍 · 类型装不下明文）随结构体一起退役：
-//   状态由那台后端出成品（`apikey-read`），「装不下明文」由后端应答的形状（`file_face_tests` · 跨语言金样
-//   `tests/__fixtures__/apikey.golden.json` 的零明文断言）与 TS 解码器的严格收（`tests/frontend/ui/apikey-reads.vitest.ts`：多一格就抛）钉着。
 
 // ================================================================ `K-H2` `KH7`
 

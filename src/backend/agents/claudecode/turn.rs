@@ -1,11 +1,11 @@
 //! turn-end 判词（backend 侧 · TurnEnd 帧的检测核）。
 //!
-//! 契约 = aterm `TurnDetector.kt` 逐字对拍：turn-end ⟺ `type=="assistant" && message.stop_reason=="end_turn" && !isApiError`，且这条记录属于主运行。
+//! 契约 = 手机端 `src/mobile/core-claude/.../model/TurnDetector.kt` 逐字对拍：turn-end ⟺ `type=="assistant" && message.stop_reason=="end_turn" && !isApiError`，且这条记录属于主运行。
 //! 字段坑：`isApiErrorMessage` → isApiError、`stop_reason` 嵌在 message 下。
 //! 「属于主运行」不在本判词里：子运行的记录归属由本家 `runs::run_of` 答、由通用 watcher 在发 `TurnEnd` 之前排除（子运行的轮次收尾 ≠ 主运行一轮结束）。
 //!
-//! `process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`（逐记录、backend 不去重）；去重在 aterm 侧
-//! （rolling-latest + debounce(1200ms) `baselineByPath`：首见吞历史不通知、offset 续拉重放 uuid≤基线不通知）。
+//! `process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`（逐记录、backend 不去重）；去重在手机端
+//! （`TurnEndDebouncer.kt` 的 rolling-latest + debounce(1200ms) ＋ `SshKeepAliveService.kt` 的 `baselineByPath`：首见吞历史不通知、offset 续拉重放 uuid≤基线不通知）。
 //! backend 仍逐行转发每一条 Line（不因分类丢行）；turn-end 是在 raw 之外额外算的边沿信号，不替代、不过滤 Line。
 //!
 //! 判词只此一份：桌面与手机的完成通知都认 `TurnEnd` 帧（界面 `src/frontend/ui/turn-notify.ts` 不读记录，`tests/frontend/ui/turn-notify.vitest.ts` 钉着）。
@@ -60,7 +60,7 @@ enum LooseStr {
 /// 子串闸：`stop_reason` 的值 `end_turn` 以这个字面量出现在原文里是 turn-end 的必要条件。
 const END_TURN_NEEDLE: &str = "\"end_turn\"";
 
-/// 一条记录是否为 turn-end 边沿。**逐字对拍 aterm `TurnDetector`**：
+/// 一条记录是否为 turn-end 边沿。**逐字对拍手机端 `TurnDetector.kt`**：
 /// `assistant` && `message.stop_reason=="end_turn"` && !`isApiErrorMessage`（子运行的那几条由通用 watcher 先排除，见头注）。
 /// 缺字段一律安全默认（stop_reason 缺→非 end_turn→false；error 缺→false→不排除）。
 pub fn is_turn_end(p: &Probe) -> bool {

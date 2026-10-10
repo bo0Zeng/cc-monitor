@@ -1,8 +1,7 @@
 /**
  * **账号域的读面**：经通道问那台机器（本机也一样）的后端，带 per-origin TTL 缓存 ＋ 手动刷新。
  *
- * 三条帧命令：账号清单 `accounts-list`· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`，
- * 外加本机 apikey 表那一问（`apikey_routing_for`）。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
+ * 三条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求「一个判定只有一个家」）：
  * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收、缓存」。
@@ -15,8 +14,6 @@ import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
-// API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
-import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
 import { recallSeen, rememberSeen } from "./last-seen";
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
@@ -128,11 +125,6 @@ export function accountsAgentProfile(): AgentProfileRow | null {
     return null;
   }
   return AGENT_PROFILE_TABLE.find((r) => r.adapterId === id) ?? null;
-}
-
-/** 那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */
-export async function fetchMachineApikeyRouting(origin: Origin, configDirs: string[]): Promise<ApikeyRoutingView> {
-  return await fetchApikeyRouting(origin, launchAgentId(), configDirs);
 }
 
 /**

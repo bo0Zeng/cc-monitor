@@ -10,6 +10,7 @@ pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 
 pub mod plan_review_face; // 帧面 `plan-ack` · `plan-unack`：计划认可（记在后端自己的 `plan-review.json`）
 pub(crate) mod project; // 通用投影 `project(成品, 声明)`：出口在请求信封里交的 `view`（cells · omit）照格目录校验、挑格去格，只这一处
 pub mod quota_probe_face; // 帧面 `quota-probe`：用某个号查一次额度（起官方客户端报用量、读法住适配层），记进同一本额度账
+pub(crate) mod quota_read; // `quota-read` 的成品（有类型：每号 ＝ 原数 ＋ 显示态 ＋ 写好的几行 · 5h 那一格 · 开窗那一判；顶上 ＋ 号名表）
 pub(crate) mod quota_rows; // `quota-read` 每号的 `rows`（额度每号几行，唯一的行模型）与开窗那一判 `warm`
 pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
 pub mod resync_face;

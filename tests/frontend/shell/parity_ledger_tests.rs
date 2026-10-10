@@ -34,9 +34,8 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   （下面 `chan_subscribe` 那一行）；`app.window.session` 还剩开窗那一条。
     // K-H2a：apikey 表那把第三方 API key。读那条**只回掩码**（`KS6`），写那条是「界面」这个第二写者（`KS10`）。
     // 两条都收 `origin` ⇒ `Both`：本机读写 monitor 自己那一份，远端交那台机器的后端
-    // （`apikey-read` / `apikey-key-set`）。`creds.apikey` 那条平价欠账（「把 key 送到远端的路」）结清。
-    // 读那条（`read_apikey_credentials_status`）与 `apikey.routing` 那一条（`apikey_routing_for`）〔散文墓碑〕退役：
-    //   界面经通道直接问那台后端（`apikey-read` / `apikey-routing`，`src/frontend/ui/apikey-reads.ts`）。
+    // （`apikey-key-set`）。`creds.apikey` 那条平价欠账（「把 key 送到远端的路」）结清。
+    // 读那条与「表里有没有行」那一条退役：两样事实并进账号清单的徽章（`accounts-list`）。
     // 写那条（`write_apikey_credentials_key`〔散文墓碑〕）也退役：界面经通道直接发 `apikey-key-set`
     //   （`src/frontend/ui/apikey-reads.ts::writeApikeyKey`）—— 写前核路径那一问由常驻后端的身份（带数据目录）答了。
     // 这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址 —— 按 origin 取那台的事实

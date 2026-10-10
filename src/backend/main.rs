@@ -342,7 +342,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
             .collect(),
         // ★★〔NET2 真填〕握手帧第四条面「我做得到什么」：这台机器上接得下却做不到的命令（tmux · unix 权限位两维，
         // 表从 `inbound::REGISTRY` 的 `codes` 派生）。是**提示不是闸门**（读数是握手那一刻的，`wire.rs` 那个字段头注口径③）。
-        // 仓外 aterm 不读这个字段（只读核过 `DaemonTransport.kt::parseHello`，未知字段忽略）；有 tmux 的 unix 机器上恒空 ⇒ 字节不变。
+        // 手机端不读这个字段（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonTransport.kt::parseHello`，未知字段忽略）；有 tmux 的 unix 机器上恒空 ⇒ 字节不变。
         // 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine`。
         unavailable: unavailable_here(),
         // 回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。

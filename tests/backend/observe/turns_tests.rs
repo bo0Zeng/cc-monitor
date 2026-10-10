@@ -415,6 +415,8 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
         what: Some("from .a import".into()),
         since_ms: Some(1234),
         text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+        head: crate::common::cells::Words(String::new()),
+        head_code: None,
         tone: crate::common::cells::Tone::Need,
         rank: 1,
         waited_ms: Some(1),

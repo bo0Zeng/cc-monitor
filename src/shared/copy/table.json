@@ -1051,12 +1051,6 @@
       "zh": "写后回读 · {path} 里无账号 {account} 的 API key",
       "args": ["path", "account"]
     },
-    "beUpstreamFileFace.perm.tooWide": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{how} · 修法 {fix}",
-      "args": ["how", "fix"]
-    },
     "beUpstreamFileFace.write.noParent": {
       "kind": "error",
       "role": "原因格",
@@ -6855,6 +6849,18 @@
       "kind": "control",
       "role": "标签",
       "zh": "值",
+      "args": []
+    },
+    "profilesPage.merge.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制整条命令",
+      "args": []
+    },
+    "profilesPage.merge.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制整条",
       "args": []
     },
     "profilesPage.merge.equals": {
@@ -16374,12 +16380,6 @@
       "kind": "error",
       "role": "原因格",
       "zh": "缺 {k} · 要字符串",
-      "args": ["k"]
-    },
-    "beUpstreamEndpoint.args.missingStrings": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "缺 {k} · 要字符串数组",
       "args": ["k"]
     },
     "beUpstreamEndpoint.optin.noHome": {

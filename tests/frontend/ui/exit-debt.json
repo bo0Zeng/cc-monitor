@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 267,
+  "ceiling": 247,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -40,17 +40,10 @@
     },
     {
       "file": "src/frontend/ui/acct-view.ts",
-      "rule": "codeWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "V4：按显示态定颜色档 · 自己拼按钮那几格（核心给 tone 与写好的格）"
-    },
-    {
-      "file": "src/frontend/ui/acct-view.ts",
       "rule": "caseWord",
-      "n": 21,
+      "n": 20,
       "kind": "第 1 批",
-      "why": "V4：按显示态定颜色档 · 自己拼按钮那几格（核心给 tone 与写好的格）"
+      "why": "记录原因（whyOf：换号原因码 ⇒ 字）· 热切换不成立的原因码 ⇒ 原因词（reasonLabel）：核心给记录与失败带写好的字（V4 颜色档与按钮那几格 10-10 已收进核心 usage）"
     },
     {
       "file": "src/frontend/ui/agent-window-text.ts",
@@ -79,27 +72,6 @@
       "n": 1,
       "kind": "第 3 批",
       "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/cards/interactive.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "第 1 批",
-      "why": "提问 / 计划结果 `answer.kind === \"approved\"` ⇒ 字：并进 V9（步骤结果带 text）"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "第 1 批",
-      "why": "V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "caseWord",
-      "n": 3,
-      "kind": "第 1 批",
-      "why": "V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批"
     },
     {
       "file": "src/frontend/ui/cc-bus-hooks-reads.ts",
@@ -198,13 +170,6 @@
       "n": 2,
       "kind": "留",
       "why": "开发者日志（`[perf]` 行 / console），不上屏"
-    },
-    {
-      "file": "src/frontend/ui/needs-bar.ts",
-      "rule": "caseWord",
-      "n": 8,
-      "kind": "第 1 批",
-      "why": "需手动种类码 ⇒ 字（八种）：needs 已带 text（核心写好），这几处改读 needs.text 就删"
     },
     {
       "file": "src/frontend/ui/new-session.ts",
@@ -436,13 +401,6 @@
       "n": 7,
       "kind": "留",
       "why": "命令面板的分组标题（界面自己的分组闭集），骨架词"
-    },
-    {
-      "file": "src/frontend/ui/views/grid-monitor.ts",
-      "rule": "caseRank",
-      "n": 4,
-      "kind": "第 1 批",
-      "why": "V10：监控板组内排序照抄后端档（快照带核心的序）"
     },
     {
       "file": "src/frontend/ui/views/history-rows.ts",

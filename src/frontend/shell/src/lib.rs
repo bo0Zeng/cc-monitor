@@ -863,7 +863,7 @@ pub fn run() {
             config::load_config,
             config::patch_config,
             config::machine_table_try,
-            // K-H2a：apikey 表那把 key 的写（`KS10`）。读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
+            // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
             // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
             // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
             //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
@@ -1406,12 +1406,6 @@ impl SkipRuns {
         self.0.remove(sid);
     }
 }
-
-// `read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`
-//   （`src/frontend/ui/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
-
-// `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
-//   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
 
 // 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 // 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`

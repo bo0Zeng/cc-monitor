@@ -316,3 +316,90 @@ fn a_slot_cell_is_written_once_by_state() {
         (c("acct.val.none", &[]), Tone::Plain)
     );
 }
+
+/// ★★ 用量那一格（状态栏按钮 · 切号下拉 · 「下一个」）由核心写：窗口 · 值 · 重置 · 连成的一句 · 语气，出口照抄。
+/// 回包没说卡在哪一窗 ⇒ 画 `5h`（这一判也只在这里）。
+#[test]
+fn the_usage_cell_is_written_by_the_core() {
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
+    let shown = |r: Option<&QuotaReading>, kind: Kind| {
+        let mut q = show(r.map(|r| (r, NOW)), facts(kind), &no_line, NOW, &slot);
+        q.stamp(&clock);
+        q.usage
+    };
+    let five = crate::accounts::quota::name_words::slot_text("5h");
+    // 订阅 · 正常：`5h 50%`，常规色。
+    let u = shown(Some(&sub(0.5, LATER)), Kind::Sub);
+    assert_eq!(
+        (
+            u.slot.as_deref(),
+            u.window.as_ref().map(|w| w.0.as_str()),
+            u.reset.is_none(),
+            u.tone
+        ),
+        (Some("5h"), Some(five.as_str()), true, Tone::Plain)
+    );
+    assert_eq!(
+        u.text.0,
+        copy_core::copy_text("acct.usage.wv", &[("w", &five), ("v", &u.value.0)])
+    );
+    // 快满 ⇒ 警示色。
+    assert_eq!(shown(Some(&sub(0.9, LATER)), Kind::Sub).tone, Tone::Warn);
+    // 用满 ⇒ 失败色。
+    assert_eq!(shown(Some(&sub(1.0, LATER)), Kind::Sub).tone, Tone::Fail);
+    // 被拒 ⇒ 失败色 ＋ 几点重置（照卡着那一窗的时刻），连成 `5h ✕ ↻hh:mm`。
+    let mut refused = sub(1.0, LATER);
+    refused.refused = true;
+    let u = shown(Some(&refused), Kind::Sub);
+    let reset = copy_core::copy_text("acct.reset.at", &[("at", &clock.text(LATER).0)]);
+    assert_eq!(
+        (u.tone, u.reset.as_ref().map(|r| r.0.clone())),
+        (Tone::Fail, Some(reset.clone()))
+    );
+    assert_eq!(
+        u.text.0,
+        copy_core::copy_text(
+            "acct.usage.wvr",
+            &[("w", &five), ("v", &u.value.0), ("r", &reset)]
+        )
+    );
+    // 超额在兜 ⇒ 警示色、不写重置。
+    let mut over = sub(1.0, LATER);
+    over.overage = Some(QuotaOverage {
+        status: Some(QuotaStatus::Allowed),
+        resets_at: None,
+        disabled: None,
+        in_use: true,
+    });
+    let u = shown(Some(&over), Kind::Sub);
+    assert_eq!((u.tone, u.reset.is_none()), (Tone::Warn, true), "{u:?}");
+    // 回包没说卡在哪一窗 ⇒ 画 5h。
+    let mut free = sub(0.3, LATER);
+    free.limiting = None;
+    free.windows.retain(|w| w.name == "five_hour");
+    assert_eq!(shown(Some(&free), Kind::Sub).slot.as_deref(), Some("5h"));
+    // 没出过数 ⇒ `5h —`，常规色。
+    let u = shown(None, Kind::Sub);
+    assert_eq!(
+        (u.value.0.as_str(), u.tone),
+        (t("acct.val.none").as_str(), Tone::Plain)
+    );
+    // 按量 · 能发 ⇒ `按量`、没有窗口；按量 · 被拒 ⇒ `被拒 ↻hh:mm`、失败色。
+    let u = shown(Some(&sub(0.0, LATER)), Kind::Api);
+    assert_eq!(
+        (u.window.is_none(), u.text.0.as_str(), u.tone),
+        (true, t("acct.kind.api").as_str(), Tone::Plain)
+    );
+    let mut api = sub(0.0, LATER);
+    api.refused = true;
+    let u = shown(Some(&api), Kind::Api);
+    assert_eq!(
+        (u.value.0.as_str(), u.tone),
+        (t("acct.val.refusedOnly").as_str(), Tone::Fail)
+    );
+    assert_eq!(
+        u.text.0,
+        copy_core::copy_text("acct.usage.wv", &[("w", &u.value.0), ("v", &reset)])
+    );
+}

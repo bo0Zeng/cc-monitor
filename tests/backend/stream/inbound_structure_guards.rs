@@ -318,11 +318,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "hooks-diag"
                 // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
                 | "resync"
-                // 上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
+                // 上游选择那份凭据文件的写口：同步文件 I/O（原子写一份）。
                 | "apikey-key-set"
-                | "apikey-read"
-                // 上游选择出的成品：读一份凭据文件 ＋ 装表，同步阻塞。
-                | "apikey-routing"
                 // 直接敲的也走中转：读一份用户级设置文件 ＋ 一份钥匙文件（同步文件 I/O）。
                 | "relay-optin"
                 // `relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
@@ -577,9 +574,7 @@ fn every_registered_command_declares_its_run_kind() {
         "hooks-diag",         //
         "resync",             //
         "apikey-key-set",
-        "apikey-read",
-        "apikey-routing", //
-        "relay-optin",    //
+        "relay-optin", //
         "footprint-report",
         "data-report",
         "agent-home-check",
@@ -1222,15 +1217,7 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    (
-        "quota-read",
-        sampled::<rf::QuotaRead>,
-        &[],
-        &[(
-            "names",
-            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
-        )],
-    ),
+    ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
         "session-terminals",
         sampled::<crate::observe::session_terminals::Showing>,
@@ -1399,7 +1386,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         include_str!("../../__fixtures__/rotation-switch-restart.golden.json");
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
-    const APIKEY: &str = include_str!("../../__fixtures__/apikey.golden.json");
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
     const CC_BUS_CONTROL: &str = include_str!("../../__fixtures__/cc-bus-control.golden.json");
     const CC_BUS_READ: &str = include_str!("../../__fixtures__/cc-bus-read.golden.json");
@@ -1430,8 +1416,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
         ("accounts-list", ACCOUNTS, "/accounts-list", &[], &[]),
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
-        ("apikey-read", APIKEY, "/apikey-read", &[], &[]),
-        ("apikey-routing", APIKEY, "/apikey-routing", &[], &[]),
         ("cells-catalog", CELLS_CATALOG, "", &[], &[]),
         (
             "bus-list",

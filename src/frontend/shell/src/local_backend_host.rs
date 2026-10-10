@@ -1557,7 +1557,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
 // monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退，monitor 一行都不管；
-// - 在不在：起会话那一发由那台的 `ccm` 在最终 exec 那一处判；界面上那几格由本机常驻后端自己答（`apikey-routing` 的 `running`）；
+// - 在不在：起会话那一发由那台的 `ccm` 在最终 exec 那一处判；界面上那几格由本机常驻后端自己答（`accounts-list` 每号的徽章）；
 // monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
 
 /// 起本机后端时交给它的那份**环境**。起它的两条载体（常驻那条 `start_detached` 的 `extra_env` ·
@@ -1595,7 +1595,7 @@ pub(crate) fn backend_env_from(
 }
 
 // `relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
-//   （`apikey-routing` · `relay-optin` 的成品里那一格读后端进程内的监听状态；起会话那一发归 `ccm`，见 `INVARIANTS §48.1a`）。
+//   （`accounts-list` 的徽章 · `relay-optin` 的成品里那一格读后端进程内的监听状态；起会话那一发归 `ccm`，见 `INVARIANTS §48.1a`）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」

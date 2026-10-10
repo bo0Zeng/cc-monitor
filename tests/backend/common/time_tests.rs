@@ -248,28 +248,21 @@ fn t9_history_row_gets_its_three_texts() {
     // 东八区：UTC 2026-10-07 05:00 ⇒ 本地 13:00 · 此刻 UTC 07:30 ⇒ 本地 15:30。
     let east = sh();
     let utc = |y, m, d, h, mi| lt(y, m, d, h, mi) * 1_000;
-    let mut row = serde_json::json!({
-        "at": utc(2026, 10, 7, 5, 0),
-        "startedAt": utc(2026, 10, 6, 18, 1),
-        "updatedAt": utc(2026, 10, 7, 5, 0),
-    });
-    history_texts(&mut row, utc(2026, 10, 7, 7, 30), &east);
-    assert_eq!(row["atText"], "13:00");
+    let (at, section, span) = history_times(
+        utc(2026, 10, 7, 5, 0),
+        utc(2026, 10, 6, 18, 1),
+        utc(2026, 10, 7, 5, 0),
+        utc(2026, 10, 7, 7, 30),
+        &east,
+    );
+    assert_eq!(at.0, "13:00");
     assert_eq!(
-        row["sectionText"],
+        section.0,
         copy_core::copy_text("history.section.today", &[])
     );
     assert_eq!(
-        row["spanText"], "02:01–13:00",
+        span.0, "02:01–13:00",
         "两头各按自己那一刻排：UTC 前一天 18:01 落在本地今天"
-    );
-    let mut bare = serde_json::json!({"updatedAt": utc(2026, 10, 7, 5, 0)});
-    history_texts(&mut bare, utc(2026, 10, 7, 7, 30), &east);
-    assert!(
-        bare.get("atText").is_none()
-            && bare.get("sectionText").is_none()
-            && bare.get("spanText").is_none(),
-        "缺 `at` / `startedAt` ⇒ 不添"
     );
 }
 

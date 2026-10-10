@@ -57,9 +57,7 @@ A new session file appeared。
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
-| `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
-| `activity_text` | Words | 此刻在干什么写好的字（`activity_cells`；说不清也有一格） |
-| `activity_tone` | Tone | 那一态的语气（同上） |
+| `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -71,9 +69,7 @@ A new session file appeared。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
-| `activity_text` | Words | 同 `session_added.activity_text` |
-| `activity_tone` | Tone | 同 `session_added.activity_tone` |
+| `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -286,6 +282,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 - `reconnectable` —— claude 退了、它的 tmux 会话还在（`@ccm_sid` 仍挂着它）⇒ 接得回去
 - `ended` —— 进程没了、容器也没了（或被顶替了）⇒ 只能 resume
+
+#### `ActivityFace`
+
+**活会话此刻在干什么的那几格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上）：那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `activity` | SessionActivity? |  |
+| `activity_text` | Words |  |
+| `activity_tone` | Tone |  |
+| `activity_order` | number |  |
 
 #### `LostFrame`
 
@@ -1143,6 +1150,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `defaultRule` | ← | 默认规则的 id |
+| `followText` | ← | 「跟随默认」那一项写好的字：默认那条没起名（还是起始的名字）⇒「跟随默认」，起了名 ⇒「跟随默认（名字）」；新建会话面板 · 批量菜单照抄 |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
@@ -1317,38 +1325,11 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 码：`bad_args` · `bad_file` · `io_failed`
 
-#### `apikey-read`
-
-上游选择凭据文件在这台的状态。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --apikey-read`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `configured` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 |
-| `masked` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 |
-| `notice` | ← | 权限过宽 / 查不出来时的一句话（文件不在时 `null`） |
-| `path` | ← | 那份文件的绝对路径 |
-| `problem` | ← | 读不动 / 解析不了时的一句话 |
-
-#### `apikey-routing`
-
-这几个号在这台的表里有没有行 · 这台的中转在不在。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `routed` | ← | 传进来的里面、**表里有对应行**的那几个（原样回） |
-| `running` | ← | 这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里） |
-
-码：`bad_args`
-
 #### `accounts-list`
 
 账号清单。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-list`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1702,7 +1683,7 @@ sid → 上次用哪个号起。
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 | `origin` | → | 可缺席：那台的名字（`listing` 是它的；行与组都标上它） |
 | `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一支问的就是它；注解跟着会话住在那台，本机代问时照那台带来的并、不拿本机那份去盖 |
+| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份、不拿本机那份去盖 |
 | `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按看的那一台的时区（请求的 `tz`）写好，界面照抄 |
 | `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |
@@ -1856,7 +1837,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `head` 钉条第一行、`headCode` 它等宽那一段 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
 | `sid` | ← | 会话 id |
 | `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
 
@@ -1878,7 +1859,7 @@ sid → 上次用哪个号起。
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
 | `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
-| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
+| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
 | `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
@@ -2658,6 +2639,7 @@ cc-bus 钩子诊断。
 | `chain` | ← | 继承链（父 → 子） |
 | `edit` | → | 未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算） |
 | `line` | ← | 这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null` |
+| `lineShort` | ← | 「等于」那一行的短形（设置页那一格照抄；tmux 那一形只写建哪个会话 ＋ 里面跑的命令，直路只写进哪个目录 ＋ 跑什么，家目录写 `~`）；整条在 `line`；算不出 ⇒ `null` |
 | `lineError` | ← | 算不出那一行时 ccm 的原话 |
 | `name` | → | 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字） |
 | `problem` | ← | 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null` |
@@ -3844,7 +3826,6 @@ cc-bus 钩子诊断。
 | `--account-trust-zero` `<cwd>` | 账号 0（没启用多账号时那个原生身份）的信任预检，形状同 `--account-trust`；`cwd` 只当查表键，不收路径参数 |
 | `--accounts-add` | ＝ 帧命令 `accounts-add`：新建一个号 |
 | `--accounts-init` | ＝ 帧命令 `accounts-init`：建账号库 |
-| `--accounts-list` | ＝ 帧命令 `accounts-list`：账号清单 |
 | `--accounts-login-cmd` | ＝ 帧命令 `accounts-login-cmd`：在终端里登录一个号的那一行 |
 | `--accounts-mcp-pick` | ＝ 帧命令 `accounts-mcp-pick`：两边都改了的那一条用哪一版 |
 | `--accounts-mcp-read` | ＝ 帧命令 `accounts-mcp-read`：这台各账号共用的用户级 MCP 此刻的样子 |
@@ -3863,7 +3844,6 @@ cc-bus 钩子诊断。
 | `--aliases-block-render` | ＝ 帧命令 `aliases-block-render`：别名块预览 |
 | `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
-| `--apikey-read` | ＝ 帧命令 `apikey-read`：上游选择凭据文件在这台的状态 |
 | `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
 | `--assets-catalog-merge` | ＝ 帧命令 `assets-catalog-merge`：把另一台后端的整份目录并进来 |
 | `--assets-sync` | ＝ 帧命令 `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录 |
@@ -4081,6 +4061,17 @@ stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities�
 | `jsonlPath` | string |  |
 
 ### `--read-session-from-offset … --index` 的出参行
+
+#### `Can`
+
+`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（`can_of` 的成品）：闭集的词与两个开关。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `resume` | string | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
+| `accounts` | bool | 恢复时能不能选号 |
+| `fork` | bool | 能不能从某一轮分叉 |
+| `delete` | string | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
 
 #### `IndexRow`
 

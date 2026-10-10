@@ -236,6 +236,10 @@ export interface PendingCall {
   state: StepWait;
   /** 状态不明的原因（后端给的码）；别的状态 ⇒ `null`。 */
   why: UnclearWhy | null;
+  /** 过程那一行右侧那一句（状态不明 ⇒「状态不明」）；别的 ⇒ `null`。 */
+  text: string | null;
+  /** 状态不明时悬停说的为什么（后端照 `why` 写好）；别的 ⇒ `null`。 */
+  whyText: string | null;
 }
 
 /** 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile、判不了活。 */
@@ -263,6 +267,10 @@ export interface Needs {
   sinceMs: number | null;
   /** 核心写好的字（等批准 · 等回答 · 需手动），照抄。 */
   text: string;
+  /** 钉条第一行（核心写好的种类 ＋ 工具名：「等批准 · Bash」），照抄；短的那一格是 `text`。 */
+  head: string;
+  /** 钉条里等宽那一段（批准 · 回答 · 放行带主参数；别的种类 ⇒ `null`），照抄。 */
+  headCode: string | null;
   /** 语气（恒 `need`）。 */
   tone: string;
   /** 先答哪个（0 最先：顶上的框先答，再按危险度；后端 `facts_query::NEEDS_BY_DANGER`）。 */
@@ -553,9 +561,9 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
-    if (!isObj(p) || !exactKeys(p, ["at", "atMs", "id", "name", "state", "what", "why"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at) || !(p.atMs === null || isNum(p.atMs))) return bad();
+    if (!isObj(p) || !exactKeys(p, ["at", "atMs", "id", "name", "state", "text", "what", "why", "whyText"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at) || !(p.atMs === null || isNum(p.atMs)) || !strOrNull(p.text) || !strOrNull(p.whyText)) return bad();
     if (!(isStr(p.state) && STEP_WAIT.has(p.state)) || !(p.why === null || (isStr(p.why) && UNCLEAR_WHY.has(p.why)))) return bad();
-    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, atMs: p.atMs, state: p.state as StepWait, why: p.why as UnclearWhy | null });
+    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, atMs: p.atMs, state: p.state as StepWait, why: p.why as UnclearWhy | null, text: p.text, whyText: p.whyText });
   }
   if (!Array.isArray(v.mcp)) return bad();
   const mcp: McpTrouble[] = [];
@@ -578,8 +586,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
+    if (!isObj(n) || !exactKeys(n, ["call", "head", "headCode", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
   }
   if (!Array.isArray(v.bgTasks)) return bad();
   const bgTasks: BgTask[] = [];

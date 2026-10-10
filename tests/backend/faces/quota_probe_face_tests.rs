@@ -139,8 +139,12 @@ fn a_probe_starts_the_official_client_reads_three_windows_and_books_them() {
     let on_disk = ledger::answer_of(ctx.hop.quota.path(), NOW);
     assert_eq!(on_disk.accounts[0].account, "b");
     // `quota-read` 的显示态照原名出窗口（只增；`slots` 那两格照留）。
-    let q = serde_json::to_value(crate::faces::rotation_face::quota_read_with(&ctx, NOW))
-        .expect("json");
+    let q = serde_json::to_value(crate::faces::rotation_face::quota_read_with(
+        &ctx,
+        NOW,
+        &crate::Tz::default(),
+    ))
+    .expect("json");
     let row = &q["accounts"][0];
     assert_eq!(row["windows"][2]["key"], "7d:fable");
     assert_eq!(row["windows"][2]["from"], "usage");

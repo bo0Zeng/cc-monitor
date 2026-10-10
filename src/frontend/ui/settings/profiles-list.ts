@@ -82,6 +82,29 @@ function button(label: string, cls: string, onClick: () => void): HTMLButtonElem
 const link = (label: string, onClick: () => void, danger = false): HTMLButtonElement =>
   button(label, danger ? "cfg-link cfg-link-danger" : "cfg-link", onClick);
 
+/**
+ * 「敲 xx 等于」那一格：标签一行（带「复制整条」）＋ 核心写好的短形（`lineShort`）；算不出 ⇒ 那一句（`lineError` / `problem`）标红。
+ * 整条脚本只进剪贴板，不上屏。
+ */
+function equalsBlock(name: string, r: Resolved | null, role: string): HTMLElement[] {
+  const head = el("div", "cfg-hint prof-equals-head", copyText("profilesPage.merge.equals", { name }));
+  const whole = r?.line ?? null;
+  if (whole !== null) {
+    const copy = link(copyText("profilesPage.merge.copy"), () => {
+      void writeClipboard(whole).then(
+        () => toast(copyText("profilesPage.merge.copied"), "", { level: "info" }),
+        (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }),
+      );
+    });
+    copy.dataset.role = `${role}-copy`;
+    head.appendChild(copy);
+  }
+  const line = el("pre", "prof-line", r?.lineShort ?? r?.lineError ?? r?.problem ?? "");
+  line.dataset.role = role;
+  if (!r?.lineShort) line.classList.add("prof-line-bad");
+  return [head, line];
+}
+
 /** 窄窗（合并表落到那一行下面）的分界。 */
 const WIDE = "(min-width: 900px)";
 
@@ -304,7 +327,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       }
     } catch (e) {
       if (mine === seq) {
-        resolved = { chain: [], rows: [], line: null, lineError: null, problem: e instanceof Error ? e.message : String(e) };
+        resolved = { chain: [], rows: [], line: null, lineShort: null, lineError: null, problem: e instanceof Error ? e.message : String(e) };
         renderPanel();
       }
     }
@@ -361,11 +384,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     });
     atRow.append(el("span", "", copyText("profilesPage.merge.at")), atIn);
     box.appendChild(atRow);
-    box.appendChild(el("div", "cfg-hint", copyText("profilesPage.merge.equals", { name: p.name })));
-    const line = el("pre", "prof-line", resolved.line ?? resolved.lineError ?? resolved.problem ?? "");
-    line.dataset.role = "equals";
-    if (!resolved.line) line.classList.add("prof-line-bad");
-    box.appendChild(line);
+    box.append(...equalsBlock(p.name, resolved, "equals"));
     box.appendChild(el("div", "cfg-hint", copyText("profilesPage.merge.hint", { name: p.name })));
     if (p.kind === "function") {
       const fn = el("div", "prof-fn");
@@ -794,7 +813,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
             if (mine === formSeq) formResolved = r;
           },
           (e: unknown) => {
-            if (mine === formSeq) formResolved = { chain: [], rows: [], line: null, lineError: null, problem: e instanceof Error ? e.message : String(e) };
+            if (mine === formSeq) formResolved = { chain: [], rows: [], line: null, lineShort: null, lineError: null, problem: e instanceof Error ? e.message : String(e) };
           },
         ),
       );
@@ -997,11 +1016,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     field("", more);
     box.appendChild(grid);
     const name = f.name.trim() || st.was || "";
-    box.appendChild(el("div", "cfg-hint", copyText("profilesPage.merge.equals", { name: name || copyText("profilesPage.form.unnamed") })));
-    const line = el("pre", "prof-line", formResolved?.line ?? formResolved?.lineError ?? formResolved?.problem ?? "");
-    line.dataset.role = "form-equals";
-    if (!formResolved?.line) line.classList.add("prof-line-bad");
-    box.appendChild(line);
+    box.append(...equalsBlock(name || copyText("profilesPage.form.unnamed"), formResolved, "form-equals"));
     if (formResolved?.chain.length) box.appendChild(el("div", "cfg-hint", copyText("profilesPage.form.chain", { name, chain: formResolved.chain.join(copyText("beProfile.chain.arrow")) })));
     const acts = el("div", "cfg-acts");
     const save = button(copyText("profilesPage.form.save"), "settings-btn settings-btn-primary", () => void onSave());

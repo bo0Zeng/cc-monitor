@@ -139,7 +139,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
 /// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
 ///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍 aterm TurnDetector）；
-///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
+///   `turn_end` 加进 EMITS。dedup 视界在手机端（`TurnEndDebouncer.kt` 的 debounce ＋ `SshKeepAliveService.kt` 的 `baselineByPath`）。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
 ///   bump BUILD_ID 给含 DG3-6 的后端独立身份（Phase G 审计 I2：防"同 id 不同内容"静默陈旧）。
@@ -1008,7 +1008,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
     // ⚠ 它们与 `--list-accounts` / `--session-accounts` 是**同一个函数的两个宿主**，
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
-    "--accounts-list",
+    //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
     "--accounts-sessions",
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
@@ -1086,12 +1086,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--rotation-session-set",
     "--rotation-switch",
     "--exit-policy-set",
-    // 上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
-    // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
-    // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。
+    // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。
     "--apikey-key-set",
-    "--apikey-read",
-    // `--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 起会话那一行 `ccm …` 的渲染（`inbound::REGISTRY` 的 `launch-render-cli`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
     //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。

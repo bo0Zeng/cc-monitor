@@ -39,25 +39,36 @@ pub(crate) fn status_of(is_live: Option<bool>) -> &'static str {
 /// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
 /// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
 /// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（确认框里多说一句）。
-pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> serde_json::Value {
-    let resume = if status == "live" {
-        "switch"
-    } else if bg {
-        "bg"
-    } else {
-        "yes"
-    };
-    let delete = match status {
-        "live" => "live",
-        "unknown" => "unsure",
-        _ => "yes",
-    };
-    serde_json::json!({
-        "resume": resume,
-        "accounts": crate::agents::account_env_of(kind).is_some(),
-        "fork": crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
-        "delete": delete,
-    })
+pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
+    Can {
+        resume: if status == "live" {
+            "switch"
+        } else if bg {
+            "bg"
+        } else {
+            "yes"
+        },
+        accounts: crate::agents::account_env_of(kind).is_some(),
+        fork: crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
+        delete: match status {
+            "live" => "live",
+            "unknown" => "unsure",
+            _ => "yes",
+        },
+    }
+}
+
+/// `history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（[`can_of`] 的成品）：闭集的词与两个开关。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Can {
+    /// `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+    pub(crate) resume: &'static str,
+    /// 恢复时能不能选号。
+    pub(crate) accounts: bool,
+    /// 能不能从某一轮分叉。
+    pub(crate) fork: bool,
+    /// `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+    pub(crate) delete: &'static str,
 }
 
 /// 查询模式入口。返回进程退出码。

@@ -258,7 +258,7 @@ pub(crate) fn pick_kind_among(
     pick_among(registry, name, |kind, _| kind)
 }
 
-/// 按适配器 id 认（上游选择那几问的 `agent`：`apikey-routing` · `accounts-list` · `launch-local`）。规则见 [`pick_among`]。
+/// 按适配器 id 认（上游选择那几问的 `agent`：`accounts-list` · `launch-local`）。规则见 [`pick_among`]。
 pub(crate) fn pick_adapter_among(
     registry: &[Adapter],
     id: Option<&str>,
@@ -604,6 +604,10 @@ pub struct ToolStep {
     pub note: Option<String>,
     /// 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
     pub known: bool,
+    /// 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub text: Option<crate::common::cells::Words>,
     /// 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
     /// 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -697,6 +701,14 @@ pub struct StepResult {
     #[serde(rename = "patchTruncated", skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub patch_truncated: bool,
+    /// 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+    /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub text: crate::common::cells::Words,
+    /// 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub timed: Option<crate::common::cells::Words>,
     /// 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -705,6 +717,65 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub chars: Option<u32>,
+}
+
+/// 耗时那一截的占位（出口填）。
+pub(crate) const DUR_SLOT: &str = "{dur}";
+
+impl StepResult {
+    /// ★ 右侧那一句（唯一一处）。`read` ＝ 这是读文件那一类的结果（`lines` 才说成「读了几行」；命令输出几行 · 搜索命中几行不说）。
+    pub(crate) fn written(mut self, read: bool) -> Self {
+        let w = |s: String| crate::common::cells::Words(s);
+        let (text, timed) = if self.rejected {
+            (copy_core::copy_text("stream.step.rejected", &[]), None)
+        } else if !self.ok {
+            (
+                copy_core::copy_text("stream.step.failed", &[]),
+                Some(copy_core::copy_text(
+                    "stream.step.failedFor",
+                    &[("dur", DUR_SLOT)],
+                )),
+            )
+        } else if let Some(a) = &self.answer {
+            // 提问 / 计划答了什么（卡片底行那一句）。
+            (
+                match a {
+                    Answer::Approved => copy_core::copy_text("interactive.done.approved", &[]),
+                    Answer::Picked { options } => copy_core::copy_text(
+                        "interactive.done.picked",
+                        &[("option", &options.join(" / "))],
+                    ),
+                },
+                None,
+            )
+        } else {
+            let diff: Vec<String> = [
+                self.added.filter(|n| *n > 0).map(|n| format!("+{n}")),
+                self.removed.filter(|n| *n > 0).map(|n| format!("−{n}")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            if !diff.is_empty() {
+                (diff.join(" "), None)
+            } else if let Some(n) = self.lines.filter(|_| read) {
+                (
+                    copy_core::copy_text("stream.step.lines", &[("n", &n.to_string())]),
+                    None,
+                )
+            } else if let Some(n) = self.files {
+                (
+                    copy_core::copy_text("stream.step.files", &[("n", &n.to_string())]),
+                    None,
+                )
+            } else {
+                (String::new(), Some(DUR_SLOT.to_string()))
+            }
+        };
+        self.text = w(text);
+        self.timed = timed.map(w);
+        self
+    }
 }
 
 /// 一段改动（统一 diff 的一个 hunk）。行正文带着头字（` ` 没变 · `+` 加的 · `-` 删的）。
@@ -1089,9 +1160,12 @@ pub(crate) fn step_result_of(
     tur: Option<&serde_json::Value>,
 ) -> StepResult {
     text_face(kind).map_or_else(
-        || StepResult {
-            ok: block.get("is_error").and_then(serde_json::Value::as_bool) != Some(true),
-            ..StepResult::default()
+        || {
+            StepResult {
+                ok: block.get("is_error").and_then(serde_json::Value::as_bool) != Some(true),
+                ..StepResult::default()
+            }
+            .written(false)
         },
         |t| (t.result)(block, tur),
     )

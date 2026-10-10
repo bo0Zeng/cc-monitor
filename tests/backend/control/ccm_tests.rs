@@ -387,6 +387,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
         self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
+        inner: vec!["/usr/local/bin/ccm".into(), "--cwd".into(), "/p".into()],
         bus: None,
     };
     let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");

@@ -1479,13 +1479,13 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
             sid,
-            activity,
+            face,
             background,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                activity,
+                face.activity(),
                 Some(SessionActivity::Working),
                 "适配层翻好的活动态"
             );
@@ -1502,12 +1502,12 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionStatus {
             sid,
-            activity,
+            face,
             waiting_for,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
-            assert_eq!(activity, Some(SessionActivity::NeedsYou));
+            assert_eq!(face.activity(), Some(SessionActivity::NeedsYou));
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
         other => panic!("expected SessionStatus, got {other:?}"),
@@ -1518,10 +1518,10 @@ fn status_diff_emits_session_status_frame() {
     assert!(matches!(
         rx.try_recv(),
         Ok(Frame::SessionStatus {
-            activity: Some(SessionActivity::Idle),
+            face,
             waiting_for: None,
             ..
-        })
+        }) if face.activity() == Some(SessionActivity::Idle)
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -2031,9 +2031,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2049,9 +2047,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2073,9 +2069,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2091,9 +2085,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2109,9 +2101,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2150,9 +2140,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,

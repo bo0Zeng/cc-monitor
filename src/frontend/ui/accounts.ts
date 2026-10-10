@@ -4,9 +4,7 @@
 // 别处：经通道读 ＋ 缓存 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName, peerVersionSaid } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-// API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
 // 先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
-import type { ApikeyRoutingView } from "./apikey-reads";
 import { copyText } from "./copy-table";
 import type { AuthKind } from "./generated/judgment-rules";
 
@@ -43,6 +41,11 @@ export interface Account {
   keyMasked?: string | null;
   /** API 号那一行的端点（没写 ⇒ `null` ＝ 官方地址）。线上恒有这一格，本地造的夹具可以不写。 */
   baseUrl?: string | null;
+  /**
+   * 账号菜单每一项右边那一枚徽章（那台后端写好：原地模式 · API key 号经不经中转 · 订阅号登录了没有，`observe/accounts_query.rs::badge_of`）。
+   * 只出自这一件成品，界面不按号的类型去挑来源。
+   */
+  badge: { text: string; warn: boolean; title: string };
 }
 
 /** 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。 */
@@ -137,100 +140,12 @@ export function defaultAccount(state: AccountsState): Account | null {
   return name === null ? null : (state.accounts.find((a) => a.name === name) ?? null);
 }
 
-/**
- * 账号状态徽章：设置里的账号表（`settings/accounts-section.ts`）与状态栏 chip 的账号菜单（`account-chip.ts`）共用这一份取值。
- * api-key 号不写「已登录」（选得中、起得来，但请求未必发得出去）；「已登录」只代表 `.credentials.json` 在，凭据过期 / 被吊销看不出来。
- */
-export interface AccountStatusBadge {
-  /** 徽章文本。 */
-  text: string;
-  /** 是否该显示成警示态（调用方加 `warn` class）。 */
-  warn: boolean;
-  /** hover 说明；空串 = 不加 title。 */
-  title: string;
-}
-/**
- * api-key 号那一格：**这个号所在那台机器**（本机 / 远端同一条路：那台的后端答 `apikey-routing`）的两格事实。
- * 起会话时由那台的 `ccm` 定往哪发、那台的中转按那台 key 表里这一行换上 key ⇒ 两格都成立才替它配好。
- *
- * | `endpoint` | 用户看到 | 那句话为什么是真的 |
- * |---|---|---|
- * | `{hasRow:true,running:true}` | 「API key（经中转）」 | 两个前置都成立 |
- * | `{hasRow:true,running:false}` | 「API key（中转未运行）」 | 起会话那一侧会**当场拒** |
- * | `{hasRow:false}` | 「API key（未配置端点）」 | 表里没有这一行 ⇒ 确实没人替它配 |
- * | 缺席 | 「API key（未配置端点）」 | 没问到 ⇒ **不替它下判断**，只把条件说清 |
- *
- * ⚠ **不许从「不会配」直接跳成「已登录」** —— 中间隔着这两格。
- */
-export type ApikeyEndpointState = { hasRow: boolean; running: boolean };
-
 /** 账号表那一行第二行要的那一档（设置窗账号页）：API key 号 · 订阅号已登录 · 订阅号还没登录（「已登录」只代表凭据文件在）。 */
 export type AccountRowKind = "apikey" | "subscription" | "notLoggedIn";
 
 export function accountRowKind(a: Account): AccountRowKind {
   if (a.authKind === "api-key") return "apikey";
   return a.loggedIn ? "subscription" : "notLoggedIn";
-}
-
-/**
- * 把那台机器的读数落到**一个账号**上。
- *
- * `configDir` 缺席（账号 0）⇒ `undefined`：账号 0 在 manifest 里没有目录名，
- * 推不出 key 表里的 id ⇒ 说不出就不表态。
- */
-export function apikeyEndpointStateFor(
-  a: Account,
-  routing: ApikeyRoutingView,
-): ApikeyEndpointState | undefined {
-  if (!a.configDir) return undefined;
-  return { hasRow: routing.routed.includes(a.configDir), running: routing.running };
-}
-
-export function accountStatusBadge(
-  a: Account,
-  endpoint?: ApikeyEndpointState,
-): AccountStatusBadge {
-  if (a.mode === "in-place") {
-    return {
-      text: copyText("accounts.badge.inPlace"),
-      warn: true,
-      title: copyText("accounts.badge.inPlaceHint"),
-    };
-  }
-  if (a.authKind === "api-key") {
-    if (endpoint?.hasRow && endpoint.running) {
-      return {
-        text: copyText("accounts.badge.apikeyRelayed"),
-        warn: false,
-        title:
-          copyText("accounts.badge.apikeyRelayedHint"),
-      };
-    }
-    if (endpoint?.hasRow) {
-      return {
-        text: copyText("accounts.badge.apikeyRelayDown"),
-        warn: true,
-        title:
-          copyText("accounts.badge.apikeyRelayDownHint"),
-      };
-    }
-    // 两种「没配上」的成因，各说各的 —— 合成一句就等于又写下一句说不准的话。
-    const why = endpoint != null ? copyText("accounts.badge.whyNoRow") : copyText("accounts.badge.whyUnknown");
-    return {
-      text: copyText("accounts.badge.apikeyNoEndpoint"),
-      warn: true,
-      title:
-        copyText("accounts.badge.apikeyNoEndpointHint", { why }),
-    };
-  }
-  if (!a.authReady) {
-    return {
-      text: copyText("accounts.badge.notSignedIn"),
-      warn: true,
-      title: copyText("accounts.badge.notSignedInHint"),
-    };
-  }
-  return { text: copyText("accounts.badge.signedIn"), warn: false, title: "" };
 }
 
 /** 可选账号列表（照那台后端写好的 `selectable`；判定住 `acct_core::account_selectable`）。休眠判据 / 计数一律走它。 */

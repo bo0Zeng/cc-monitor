@@ -21,7 +21,7 @@ import { clockNow, spanNow, waitedNow } from "./duration-format";
 /** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, head: tab.activity.text, headCode: null, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 };
 }
 
 /**

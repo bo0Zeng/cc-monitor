@@ -325,15 +325,9 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
                 lines: Some(9),
-                activity: Some(crate::agents::SessionActivity::NeedsYou),
-                activity_text: crate::stream::wire::activity_cells(Some(
+                face: crate::stream::wire::ActivityFace::of(Some(
                     crate::agents::SessionActivity::NeedsYou,
-                ))
-                .0,
-                activity_tone: crate::stream::wire::activity_cells(Some(
-                    crate::agents::SessionActivity::NeedsYou,
-                ))
-                .1,
+                )),
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
                     host: TerminalHost::Tmux,
@@ -352,9 +346,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 name: None,
                 path: None,
                 lines: None,
-                activity: None,
-                activity_text: crate::stream::wire::activity_cells(None).0,
-                activity_tone: crate::stream::wire::activity_cells(None).1,
+                face: crate::stream::wire::ActivityFace::of(None),
                 waiting_for: None,
                 container: None,
                 pid: None,
@@ -363,23 +355,15 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus {
                 sid: s("s1"),
-                activity: Some(crate::agents::SessionActivity::NeedsYou),
-                activity_text: crate::stream::wire::activity_cells(Some(
+                face: crate::stream::wire::ActivityFace::of(Some(
                     crate::agents::SessionActivity::NeedsYou,
-                ))
-                .0,
-                activity_tone: crate::stream::wire::activity_cells(Some(
-                    crate::agents::SessionActivity::NeedsYou,
-                ))
-                .1,
+                )),
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
-                activity: None,
-                activity_text: crate::stream::wire::activity_cells(None).0,
-                activity_tone: crate::stream::wire::activity_cells(None).1,
+                face: crate::stream::wire::ActivityFace::of(None),
                 waiting_for: None,
                 liveness_confidence: None,
             },
@@ -1295,9 +1279,7 @@ fn dg3_codex_fields_serialize_when_present() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
@@ -1305,21 +1287,19 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
     })
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1361,30 +1341,26 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
         pid: None,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n",
         "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1508,9 +1484,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             name: None,
             path: None,
             lines: None,
-            activity: None,
-            activity_text: crate::stream::wire::activity_cells(None).0,
-            activity_tone: crate::stream::wire::activity_cells(None).1,
+            face: crate::stream::wire::ActivityFace::of(None),
             waiting_for: None,
             container: c,
             pid: None,
@@ -1521,18 +1495,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
@@ -1591,19 +1565,17 @@ fn loc1b_session_added_pid_is_additive() {
             name: None,
             path: None,
             lines: None,
-            activity: None,
-            activity_text: crate::stream::wire::activity_cells(None).0,
-            activity_tone: crate::stream::wire::activity_cells(None).1,
+            face: crate::stream::wire::ActivityFace::of(None),
             waiting_for: None,
             container: None,
             pid,
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":4242}\n"
     );
 }
 
@@ -1970,14 +1942,11 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
 #[test]
 fn session_frames_carry_the_state_written_and_toned() {
     use crate::agents::SessionActivity as A;
-    use crate::stream::wire::{activity_cells, SessionFate};
+    use crate::stream::wire::{ActivityFace, SessionFate};
     let status = |a: Option<A>| {
-        let (activity_text, activity_tone) = activity_cells(a);
         serde_json::to_value(Frame::SessionStatus {
             sid: "s".into(),
-            activity: a,
-            activity_text,
-            activity_tone,
+            face: ActivityFace::of(a),
             waiting_for: None,
             liveness_confidence: None,
         })
@@ -2004,6 +1973,23 @@ fn session_frames_carry_the_state_written_and_toned() {
         copy_core::copy_text("beSession.activity.unclear", &[])
     );
     assert_eq!(none["activity_tone"], "now");
+
+    // V10 监控板组内的序由核心给（`activity_order`，小的在前）：等人 > 在干活 > 后台任务运行中 > 闲着 > 说不清。
+    let order = |a: Option<A>| {
+        status(a)["activity_order"]
+            .as_u64()
+            .expect("activity_order 必有")
+    };
+    let ranked = [
+        Some(A::NeedsYou),
+        Some(A::Working),
+        Some(A::BackgroundWork),
+        Some(A::Idle),
+        None,
+    ];
+    for w in ranked.windows(2) {
+        assert!(order(w[0]) < order(w[1]), "{:?} 应排在 {:?} 前", w[0], w[1]);
+    }
 
     for (f, name, hint) in [
         (

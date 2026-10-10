@@ -49,29 +49,14 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
   return groups;
 }
 
-/** 组内排序优先级：活会话先于归档；活会话内 等人（要你操作）> 在干活 > 后台任务运行中 > 闲着 > 说不清（同后端 `accounts_query::live_doing` 的档）。
- *  同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
+/** 组内排序：先按两轴分三段（活 · 可重连（claude 退、tmux 在）· 已结束只能 resume），段内只按核心给的序（`activityOrder`，
+ *  后端 `ActivityFace` 那一格，小的在前）；还没收到序的排在那一段最后。同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
-  const rank = (s: GridSessionSnapshot): number => {
-    // 两轴：已结束（只能 resume）排最后；可重连（claude 退、tmux 在）排活会话之后、已结束之前。
-    if (isResumeOnly(s.state)) return 9;
-    if (s.state.liveness === "dead") return 8;
-    switch (s.activity) {
-      case "needs_you":
-        return 0;
-      case "working":
-        return 1;
-      case "background_work":
-        return 2;
-      case "idle":
-        return 3;
-      case null:
-        return 4;
-    }
-  };
+  const band = (s: GridSessionSnapshot): number => (isResumeOnly(s.state) ? 2 : s.state.liveness === "dead" ? 1 : 0);
+  const order = (s: GridSessionSnapshot): number => s.activityOrder ?? Number.POSITIVE_INFINITY;
   return sessions
     .map((s, i) => ({ s, i }))
-    .sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i)
+    .sort((a, b) => band(a.s) - band(b.s) || order(a.s) - order(b.s) || a.i - b.i)
     .map((x) => x.s);
 }
 
