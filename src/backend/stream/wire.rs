@@ -567,7 +567,8 @@ pub enum Frame {
     },
     /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
     /// 不 dedup**——每见一条 turn-end 记录（判词住适配层，见 `agents/claudecode/turn.rs`）
-    /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
+    /// 发一帧；手机端（`src/mobile`：`TurnEndDebouncer.kt` 的 rolling-latest + debounce(1200ms) ＋ `SshKeepAliveService.kt` 的
+    /// `baselineByPath`）塌合同 turn 的多记录、
     /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
     /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
@@ -580,7 +581,7 @@ pub enum Frame {
     },
     // 这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
     //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
-    //   仓外 aterm 的 `DaemonTransport.parseFrame` 从来按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
+    //   手机端 `DaemonTransport.kt::parseFrame` 按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live
