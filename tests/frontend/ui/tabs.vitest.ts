@@ -6358,14 +6358,14 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
       .trim()
       .split("\n")
       .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string });
-    const added = frames.filter((f) => f.kind === "session_added");
-    expect(added).toHaveLength(1);
-    const sid = added[0].sid!;
-    const t = tm.ensureTab(sid, null, added[0].path!, LOCAL_ORIGIN);
+    const announced = frames.filter((f) => f.kind === "session_added");
+    expect(announced).toHaveLength(1);
+    const codexSid = announced[0].sid!;
+    const tab = tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
     for (const f of frames.filter((f) => f.kind === "turn_end")) tm.onTurnEnd(LOCAL_ORIGIN, f.session_id!);
     expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([
-      [sid, t.title],
-      [sid, t.title],
+      [codexSid, tab.title],
+      [codexSid, tab.title],
     ]);
   });
 });
