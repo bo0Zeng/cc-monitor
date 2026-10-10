@@ -235,6 +235,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （分档取消之后对**每个**会话都成立）。",
     ),
     (
+        "SNAPSHOT_TAIL_LINES",
+        "**条数**不是体量：连上时旁路快照只取每会话最后这么多个可计行（`stream_source/snapshot·rs`），\
+             值就是 `REPLAY_TAIL_KEEP`（同一个口径，引用它、不另写数）。单会话快照的字节上界另有 `SNAPSHOT_MAX_BYTES`（本表 `CAPS`）。",
+    ),
+    (
         "CHANNEL_CAPACITY",
         "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
     ),
