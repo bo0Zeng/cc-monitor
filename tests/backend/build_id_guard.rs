@@ -519,9 +519,23 @@ mod tests {
                 d.join("first.txt").display()
             );
             std::fs::write(d.join("bin/cargo"), fake).unwrap();
-            assert!(Command::new("chmod").arg("+x").arg(d.join("bin/cargo")).status().unwrap().success());
-            assert!(Command::new("git").args(["init", "-q"]).current_dir(&d).status().unwrap().success());
-            let path = format!("{}:{}", d.join("bin").display(), std::env::var("PATH").unwrap_or_default());
+            assert!(Command::new("chmod")
+                .arg("+x")
+                .arg(d.join("bin/cargo"))
+                .status()
+                .unwrap()
+                .success());
+            assert!(Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(&d)
+                .status()
+                .unwrap()
+                .success());
+            let path = format!(
+                "{}:{}",
+                d.join("bin").display(),
+                std::env::var("PATH").unwrap_or_default()
+            );
             let out = Command::new("bash")
                 .arg(&script)
                 .arg("p9c-three")
@@ -539,13 +553,19 @@ mod tests {
         };
         // 没变：只改 BUILD_ID，表一个字节不动。
         let (said, lib, guard) = run("same", "test result: ok. 1 passed\n");
-        assert!(said.trim_end().ends_with("BUMP: OK"), "没变那条路没走通：{said}");
+        assert!(
+            said.trim_end().ends_with("BUMP: OK"),
+            "没变那条路没走通：{said}"
+        );
         assert_eq!(lib, "pub const BUILD_ID: &str = \"p9c-three\";\n");
         assert_eq!(guard, guard0, "子命令集没变，表却被改了");
         // 变了：删最老那行（p9a）、追加新行（p9c，指纹取自 NEW-ROW）。
         let red = "thread 'x' panicked:\nNEW-ROW: (\"<新 id>\", \"--a\\n--b\\n--c\")\ntest result: FAILED. 0 passed; 1 failed\n";
         let (said, lib, guard) = run("changed", red);
-        assert!(said.trim_end().ends_with("BUMP: OK"), "变了那条路没走通：{said}");
+        assert!(
+            said.trim_end().ends_with("BUMP: OK"),
+            "变了那条路没走通：{said}"
+        );
         assert_eq!(lib, "pub const BUILD_ID: &str = \"p9c-three\";\n");
         assert_eq!(
             guard,
@@ -553,7 +573,10 @@ mod tests {
         );
         // 红时既不绿也不印 NEW-ROW ⇒ 脚本报红、不改表。
         let (said, _, guard) = run("broken", "error[E0425]: cannot find value\n");
-        assert!(said.contains("BUMP: 红"), "指纹那条编不过时脚本没报红：{said}");
+        assert!(
+            said.contains("BUMP: 红"),
+            "指纹那条编不过时脚本没报红：{said}"
+        );
         assert_eq!(guard, guard0);
     }
 }
