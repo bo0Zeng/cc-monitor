@@ -82,8 +82,9 @@ ck "--resume=<sid> 等号形式原样交出去" \
 # 打印的是**配方不是值**（`TMUX` 判断留在串里、执行时才求值），所以这条串对宿主 `TMUX`
 # 仍然逐字节稳定，不需要给这个 helper 加 `env -u TMUX`（那就成了为实现让路改判据）。
 # 〔§49〕配方里读会话名那一发带 `-u`（主线 SH1 改了配方、这一行没跟上，本路合并时补）。
-ck "--ccm-agent codex：换启动器 + 不连共享后台 + 无嵌套 env + cc-bus 身份配方" \
-   "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex --no-daemon" \
+# 会话号变量照样清（同起子进程原语：真跑那一趟摘掉它们，打印那一行也写上，print↔exec 才一样）。
+ck "--ccm-agent codex：换启动器 + 不连共享后台 + 不清 claude 的嵌套 env（只清会话号变量）+ cc-bus 身份配方" \
+   "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon" \
    "$(ccm -- --ccm-agent codex --cwd /p --ccm-print)"
 ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形；从前 ccm 报「不支持 resume」）" \
    "yes" \
