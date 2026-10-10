@@ -163,7 +163,7 @@ describe("F91 GridMonitorView", () => {
       // 可重连：语气还是旧的「在跑」，形状按两轴盖过它。
       snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activity: "working", activityText: "核心·运行中", activityTone: "now" }),
       snap({ sessionId: "id", title: "闲", activity: "idle", activityText: "核心·空闲", activityTone: "plain" }),
-      snap({ sessionId: "bg", title: "后台", activity: "background_work", activityText: "核心·后台", activityTone: "plain" }),
+      snap({ sessionId: "bg", title: "bg", activity: "background_work", activityText: "核心·后台", activityTone: "plain" }),
       snap({ sessionId: "nk", title: "说不清", activity: null, activityText: "核心·说不清", activityTone: "now" }),
     ]);
     const view = new GridMonitorView(source);
