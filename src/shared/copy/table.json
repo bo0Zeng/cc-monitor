@@ -2200,25 +2200,25 @@
     "terminalReads.preview.notKnown": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 不在终端名单",
+      "zh": "读取画面失败 · 不在名单",
       "args": []
     },
     "terminalReads.preview.ambiguous": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 多个终端匹配",
+      "zh": "读取画面失败 · 目标无效 · 多个终端匹配",
       "args": []
     },
     "terminalReads.preview.unobservable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 终端名单不可读",
+      "zh": "读取画面失败 · 原因不明 · 终端名单不可读",
       "args": []
     },
     "tmuxControl.kill.badName": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 失败 · 会话名无效",
+      "zh": "结束 {target} 失败 · 名称无效",
       "args": ["target"]
     },
     "tmuxControl.kill.noTmux": {
@@ -4574,7 +4574,7 @@
     "front.body.redialFailed": {
       "kind": "body",
       "role": "片段",
-      "zh": "重新连接失败 · 点［重新连接］再试",
+      "zh": "重新连接失败 · 原因不明",
       "args": [],
       "limited": ["连接"]
     },
@@ -4650,16 +4650,15 @@
     "front.body.detached": {
       "kind": "body",
       "role": "说明",
-      "zh": "tmux 会话 · 无终端连接",
+      "zh": "tmux 会话 · 未接终端",
       "args": [],
-      "limited": ["tmux", "连接"]
+      "limited": ["tmux"]
     },
     "front.body.background": {
       "kind": "body",
       "role": "片段",
-      "zh": "后台 · 无终端连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "后台 · 未接终端",
+      "args": []
     },
     "front.body.elsewhere": {
       "kind": "body",
@@ -8956,7 +8955,7 @@
     "diagnostics.copy.fallback": {
       "kind": "body",
       "role": "说明",
-      "zh": "复制失败 · 已全选 · 手动复制即可",
+      "zh": "已全选 · 剪贴板不可用 · 手动复制即可",
       "args": []
     },
     "diagnostics.unknown.label": {
@@ -9232,9 +9231,8 @@
     "backend.status.notConnected": {
       "kind": "body",
       "role": "状态",
-      "zh": "未连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "离线",
+      "args": []
     },
     "backend.status.connected": {
       "kind": "body",
@@ -12185,7 +12183,7 @@
     "rsCcBusDeploy.win.noOwnBytes": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 装的 ccm（{at}）{build} · 未带后端字节 · 版本不可比{lack}\n{pathCaveat}",
+      "zh": "本机 ccm 版本不可比\ncc-monitor 装的 ccm（{at}）{build} · 未带后端字节{lack}\n{pathCaveat}",
       "args": ["at", "build", "lack", "pathCaveat"],
       "limited": ["ccm"]
     },
@@ -15988,7 +15986,7 @@
     "beRemoteAsk.unreachableMessage.say": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未连上 {machine} · 或刚重启过 · 连上后自动恢复",
+      "zh": "{machine} 离线 · 上线后自动恢复",
       "args": ["machine"]
     },
     "beRemoteAsk.register.full": {
@@ -16446,8 +16444,8 @@
     "credsPerm.windowsProbe.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取访问权限失败 · Windows 错误码 {rc}",
-      "args": ["rc"]
+      "zh": "读取访问权限失败 · {why}",
+      "args": ["why"]
     },
     "credsPerm.currentUserSid.noToken": {
       "kind": "error",
@@ -16476,8 +16474,8 @@
     "credsPerm.probe.noMetadata": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取文件信息失败 · {e}",
-      "args": ["e"]
+      "zh": "读取文件信息失败 · {why}",
+      "args": ["why"]
     },
     "credsPerm.judge.undetermined": {
       "kind": "error",
@@ -16628,7 +16626,7 @@
     "events.unseen.droppedTitle": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 断开",
+      "zh": "{machine} 离线",
       "args": ["machine"]
     },
     "events.unseen.overrunTitle": {
@@ -18270,7 +18268,7 @@
     "beUses.session.noSlot": {
       "kind": "error",
       "role": "报错",
-      "zh": "无法开新 SSH 连接 · 此连接名额已满",
+      "zh": "无法新开 SSH 连接 · 此连接的名额已满（sshd MaxSessions）",
       "args": [],
       "limited": ["SSH", "连接"]
     },
@@ -23991,7 +23989,7 @@
     "rsFilewinChrome.link.reconnecting": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 断开 · 重新连接中…",
+      "zh": "{machine} 离线 · 重新连接中…",
       "args": ["machine"],
       "limited": ["连接"]
     },
@@ -24138,7 +24136,7 @@
     "rsFilewinEditPage.offline.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 断开 · 改动保留",
+      "zh": "{machine} 离线 · 改动保留",
       "args": ["machine"]
     },
     "rsFilewinEditPage.action.retry": {
@@ -25071,10 +25069,8 @@
     "terminal.liveWhy.offline": {
       "kind": "body",
       "role": "片段",
-      "zh": "{machine} 断开",
-      "args": [
-        "machine"
-      ]
+      "zh": "{machine} 离线",
+      "args": ["machine"]
     },
     "terminal.screen.follow": {
       "kind": "action",
@@ -25356,9 +25352,8 @@
     "settingsNav.dot.up": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} · 已连接",
-      "args": ["machine"],
-      "limited": ["连接"]
+      "zh": "{machine} · 在线",
+      "args": ["machine"]
     },
     "settingsNav.dot.down": {
       "kind": "body",
@@ -25413,9 +25408,8 @@
     "machinePage.state.up": {
       "kind": "body",
       "role": "状态",
-      "zh": "已连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "在线",
+      "args": []
     },
     "machinePage.state.down": {
       "kind": "body",
@@ -26001,9 +25995,8 @@
     "machinePage.cc.summaryDown": {
       "kind": "body",
       "role": "片段",
-      "zh": "未连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "离线",
+      "args": []
     },
     "machinePage.cc.summaryVer": {
       "kind": "body",
@@ -28981,8 +28974,9 @@
     "detail.value.notConnected": {
       "kind": "body",
       "role": "片段",
-      "zh": "未连上",
-      "args": []
+      "zh": "未连接",
+      "args": [],
+      "limited": ["连接"]
     },
     "detail.value.truncated": {
       "kind": "body",
