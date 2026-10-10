@@ -268,11 +268,54 @@ pub(crate) fn ms_hm(ms: i64, tz: &Tz) -> String {
     hm(tz.local(ms.div_euclid(1_000)))
 }
 
+/// **此刻**：后端各处取当前墙钟只走这一个（判据 `one_clock_guard`：别处不许直接问系统钟）。
+/// 正式构建里它就是系统钟；只有带特性 `shots` 编的后端（截图台架）认台架交来的起点时刻、从那一刻接着走（[`shots_clock`]）。
+pub(crate) fn now() -> std::time::SystemTime {
+    #[cfg(feature = "shots")]
+    if let Some(t) = shots_clock::now() {
+        return t;
+    }
+    std::time::SystemTime::now()
+}
+
+/// 截图台架的拨钟：起点时刻由台架交（环境变量 `CCM_SHOTS_NOW_MS`，unix 毫秒）；进程头一回问钟那一刻对上它，之后照系统钟接着走
+/// （记的是两者之差，不另起一只钟）。没给 · 解不出 ⇒ 不拨（`None`，照系统钟）。默认构建里这一段不编进去。
+#[cfg(feature = "shots")]
+mod shots_clock {
+    use std::sync::OnceLock;
+    use std::time::{Duration, SystemTime};
+
+    /// （往后拨?, 拨多少）。
+    static SHIFT: OnceLock<Option<(bool, Duration)>> = OnceLock::new();
+
+    pub(super) fn now() -> Option<SystemTime> {
+        let sys = SystemTime::now();
+        let (ahead, d) = (*SHIFT.get_or_init(|| {
+            let ms: u64 = std::env::var("CCM_SHOTS_NOW_MS").ok()?.trim().parse().ok()?;
+            let at = SystemTime::UNIX_EPOCH + Duration::from_millis(ms);
+            Some(match at.duration_since(sys) {
+                Ok(d) => (true, d),
+                Err(e) => (false, e.duration()),
+            })
+        }))?;
+        if ahead {
+            sys.checked_add(d)
+        } else {
+            sys.checked_sub(d)
+        }
+    }
+}
+
+/// 此刻（unix 毫秒）。
+pub(crate) fn now_ms() -> i64 {
+    now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
 /// 此刻（unix 秒）。
 pub(crate) fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+    now_ms().div_euclid(1_000)
 }
 
 /// 文件的修改时间（本地钟秒数；`today` ＝ 本地今天是第几天）⇒ `(列里那一格, 完整那一格)`：

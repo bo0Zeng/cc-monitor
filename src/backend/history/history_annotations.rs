@@ -194,7 +194,7 @@ fn sid_arg(args: &Value) -> Result<&str, crate::stream::inbound::spec::Fail> {
 }
 
 fn now_ms() -> i64 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)

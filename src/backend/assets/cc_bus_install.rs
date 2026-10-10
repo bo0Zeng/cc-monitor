@@ -275,7 +275,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
         .map_err(|e| ("refused", e))?
         .is_some()
     {
-        let ts = std::time::SystemTime::now()
+        let ts = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|x| x.as_secs())
             .unwrap_or(0);
