@@ -3,7 +3,7 @@
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"record":{"agent":"claude","id":"u1","at":"2026-10-09T01:30:00.000Z","timeText":"09:30","t":"said","who":{"speaker":{"kind":"human"},"text":"q"},"blocks":[{"type":"text","text":"q"}]},"cwd":"/w","byte_offset":120,"rid":"r1","raw":"{}"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"byte_offset":120}
 {"kind":"session_added","sid":"s1","agent_kind":"claude","liveness_confidence":"pidfile","background":true,"attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","lines":9,"activity":"needs_you","activity_text":"需手动","activity_tone":"need","waiting_for":"permission prompt","container":{"host":"tmux","terminal":"tmux-3-7"},"pid":42}
-{"kind":"session_added","sid":"s1","activity_text":"运行中","activity_tone":"now"}
+{"kind":"session_added","sid":"s1","agent_kind":"claude","activity_text":"运行中","activity_tone":"now"}
 {"kind":"session_status","sid":"s1","activity":"needs_you","activity_text":"需手动","activity_tone":"need","waiting_for":"permission prompt","liveness_confidence":"pidfile"}
 {"kind":"session_status","sid":"s1","activity_text":"运行中","activity_tone":"now"}
 {"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain"}

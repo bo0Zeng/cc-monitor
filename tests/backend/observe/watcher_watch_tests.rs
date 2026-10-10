@@ -21,7 +21,7 @@ fn rig(
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
-    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let mut state = ReaderState::new(dir.clone(), false, false);
     state.active_sids.insert(A.to_string());
     state.active_sids.insert(B.to_string());
     (dir, state, FrameSink::new(tx), rx)
@@ -90,9 +90,9 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     assert_eq!(n, 3, "没在看的会话照读（行号照数），只是不上流");
     assert_eq!(lines(&mut rx), vec![(A.into(), 0), (A.into(), 1)]);
     // 运行表 · 主线外清单也是那一行的内容：没在看就不上流；在看的照发。
-    sink.send(state.runs.frame(B));
+    sink.send(state.book.frame(B));
     sink.send(branch_frame(&state, B, &file(&dir, B)));
-    sink.send(state.runs.frame(A));
+    sink.send(state.book.frame(A));
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {
         kinds.push(match f {
@@ -187,7 +187,7 @@ fn coming_into_view_resends_the_run_table_and_the_branch_list() {
     append(&pb, 1);
     watch_sessions(ids(&[A]), &mut state, &mut sink);
     process_jsonl(&pb, &mut state, &mut sink);
-    state.runs.adopt(B, &pb);
+    adopt_runs(&mut state, B, &pb);
     while rx.try_recv().is_ok() {}
     watch_sessions(ids(&[A, B]), &mut state, &mut sink);
     let mut kinds = Vec::new();

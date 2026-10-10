@@ -668,7 +668,7 @@ fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)
         shape.name
     );
     // 会话退休（派出它们的那一方没了）⇒ 还算在跑的那两个变状态不明，已收场的不动。
-    let Some(Frame::SessionRuns { runs: last, .. }) = track.retire(SID) else {
+    let Some(Frame::SessionRuns { runs: last, .. }) = track.book.retire(SID) else {
         panic!(
             "[{}] 会话退休时有在跑的子运行，却没出最后那一帧",
             shape.name
@@ -839,7 +839,7 @@ fn cold_crowded_scenario(shape: &Shape) {
         shape.name
     );
     // 挤出表的不丢终态：每个收场了、对上了派出调用的子运行，在运行表或 `ended` 里恰好出现一次，终态对。
-    let Frame::SessionRuns { runs, ended, .. } = track.frame(SID) else {
+    let Frame::SessionRuns { runs, ended, .. } = track.book.frame(SID) else {
         panic!("frame() 该出运行表帧");
     };
     assert_eq!(
@@ -1040,7 +1040,7 @@ fn a_frame_judges_quiet_runs_without_waiting_for_another_record() {
         "差两秒到阈值 ⇒ 还在跑"
     );
     std::thread::sleep(Duration::from_millis(2500));
-    let Frame::SessionRuns { runs, .. } = track.frame(SID) else {
+    let Frame::SessionRuns { runs, .. } = track.book.frame(SID) else {
         panic!("frame() 该出运行表帧");
     };
     assert_eq!(
@@ -1060,7 +1060,7 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
     let shape = claude_code();
     let book = Arc::new(RunBook::default());
     let track = RunTrack::new(shape.faces, book.clone());
-    assert_eq!(track.next_due(), None, "没有子运行 ⇒ 没有期限");
+    assert_eq!(track.book.next_due(), None, "没有子运行 ⇒ 没有期限");
     let sec = Duration::from_secs(1);
     let t0 = SystemTime::now();
     for (run, ago) in [
@@ -1073,15 +1073,15 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
     }
     let d1 = t0 + 10 * sec;
     assert_eq!(
-        track.next_due(),
+        track.book.next_due(),
         Some(d1),
         "期限 ＝ 最早那个在跑的 seen + 阈值"
     );
     assert!(
-        track.due_frames(d1 - Duration::from_millis(1)).is_empty(),
+        track.book.due_frames(d1 - Duration::from_millis(1)).is_empty(),
         "期限之前不判"
     );
-    let frames = track.due_frames(d1);
+    let frames = track.book.due_frames(d1);
     let [Frame::SessionRuns { runs, .. }] = frames.as_slice() else {
         panic!("到点、表变了 ⇒ 恰好一帧：{frames:?}");
     };
@@ -1091,14 +1091,14 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
         st,
         vec![("w1", RunState::Unknown), ("w2", RunState::Running)]
     );
-    assert!(track.due_frames(d1).is_empty(), "表没再变 ⇒ 不再出帧");
+    assert!(track.book.due_frames(d1).is_empty(), "表没再变 ⇒ 不再出帧");
     assert_eq!(
-        track.next_due(),
+        track.book.next_due(),
         Some(t0 + 25 * sec),
         "判完按剩下的重算期限"
     );
-    assert_eq!(track.due_frames(t0 + 25 * sec).len(), 1);
-    assert_eq!(track.next_due(), None, "没有在跑的了 ⇒ 不再有期限");
+    assert_eq!(track.book.due_frames(t0 + 25 * sec).len(), 1);
+    assert_eq!(track.book.next_due(), None, "没有在跑的了 ⇒ 不再有期限");
 
     // watcher 的等：没有期限 ⇒ 只被事件叫醒（300ms 后才来的事件照收、中间不醒）；有期限 ⇒ 到点回 None；期限之前的事件先回。
     let (tx, rx) = std::sync::mpsc::channel::<u8>();
@@ -1109,7 +1109,7 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
     });
     let t = std::time::Instant::now();
     assert_eq!(
-        next_event(&rx, track.next_due(), SystemTime::now()),
+        next_event(&rx, track.book.next_due(), SystemTime::now()),
         Ok(Some(7))
     );
     assert!(
@@ -1145,7 +1145,7 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
         &std::fs::read_to_string(repo().join("src/backend/observe/watcher.rs")).unwrap(),
     );
     assert_eq!(w.matches("crate::observe::runs::next_event(").count(), 1);
-    assert!(w.contains("state.runs.next_due()") && !w.contains("events_rx.recv()"));
+    assert!(w.contains("state.book.next_due()") && !w.contains("events_rx.recv()"));
 }
 
 /// 一个文件事件只在它自己那份父记录底下找新的子运行记录：别的会话那份不扫；不是子运行记录形状的（旁边的元数据之类）一份都不扫。
@@ -1400,7 +1400,7 @@ fn extra_cells_scenario(shape: &Shape) {
         "[{}] 开始那一刻的钟面跟着开始取早的那个（这台本地钟，界面照抄）",
         shape.name
     );
-    let Some(Frame::SessionRuns { runs, .. }) = track.retire(SID) else {
+    let Some(Frame::SessionRuns { runs, .. }) = track.book.retire(SID) else {
         panic!("[{}] 会话退休时 g1 还在跑，却没出最后那一帧", shape.name);
     };
     let g1 = runs.iter().find(|r| r.run == "g1").unwrap();

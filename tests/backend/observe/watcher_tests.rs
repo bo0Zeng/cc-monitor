@@ -855,8 +855,13 @@ fn empty_lines_are_skipped_and_do_not_consume_seq() {
 
 #[test]
 fn is_jsonl_and_is_session_json_classify_correctly() {
-    assert!(is_jsonl(Path::new("/x/abc.jsonl")));
-    assert!(!is_jsonl(Path::new("/x/abc.json")));
+    let st = ReaderState::new(PathBuf::from("/x"), false, false);
+    assert!(st.root_of(Path::new("/x/abc.jsonl")).is_some());
+    assert!(st.root_of(Path::new("/x/abc.json")).is_none());
+    assert!(
+        st.root_of(Path::new("/y/abc.jsonl")).is_none(),
+        "不在哪一家的根下 ⇒ 不是会话记录"
+    );
     assert!(is_session_json(Path::new("/x/1234.json")));
     assert!(!is_session_json(Path::new("/x/1234.jsonl")));
 }
@@ -1318,7 +1323,7 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let mut state = ReaderState::new(dir.clone(), false, false);
     let path = dir.join("sess-1.jsonl");
     state.active_sids.insert("sess-1".to_string()); // process_jsonl 门控
                                                     // 三行：非 turn-end user / turn-end assistant / 畸形。
@@ -2017,7 +2022,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     // Fill both slots — these go through cleanly, no overflow owed.
     sink.send(Frame::SessionAdded {
         sid: "a".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -2035,7 +2040,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     });
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -2059,7 +2064,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     // Channel is full now: three sends are dropped and counted.
     sink.send(Frame::SessionAdded {
         sid: "c".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -2077,7 +2082,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     });
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -2095,7 +2100,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     });
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -2136,7 +2141,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     // Steady state: no spurious Overflow once recovered.
     sink.send(Frame::SessionAdded {
         sid: "g".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -3123,7 +3128,7 @@ fn fw1_rig(
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
     let sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let mut state = ReaderState::new(dir.clone(), false, false);
     state.active_sids.insert("s-fw1".to_string());
     let path = dir.join("s-fw1.jsonl");
     (dir, path, state, sink, rx)
@@ -3821,7 +3826,7 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
 fn a_sub_runs_turn_end_is_not_the_main_runs() {
     let (tx, mut rx) = mpsc::channel::<Frame>(16);
     let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+    let mut state = ReaderState::new(PathBuf::from("/p"), false, false);
     let main = r#"{"type":"assistant","uuid":"u-main","message":{"id":"m1","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
     let sub = r#"{"type":"assistant","uuid":"u-sub","isSidechain":true,"agentId":"a1","message":{"id":"m2","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
     for (i, raw) in [main, sub].into_iter().enumerate() {
@@ -3850,7 +3855,7 @@ fn a_sub_runs_turn_end_is_not_the_main_runs() {
 fn a_queued_line_on_the_live_stream_carries_the_moment_it_was_typed() {
     let (tx, mut rx) = mpsc::channel::<Frame>(16);
     let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+    let mut state = ReaderState::new(PathBuf::from("/p"), false, false);
     let enq = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-01-02T03:00:00.000Z","content":"also this"}"#;
     let rem = r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:02:00.000Z","content":"also this"}"#;
     for (i, (path, raw, start)) in [
@@ -3895,7 +3900,7 @@ fn line_frames_carry_the_raw_text_only_when_the_stream_asked() {
     for asked in [false, true] {
         let (tx, mut rx) = mpsc::channel::<Frame>(16);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+        let mut state = ReaderState::new(PathBuf::from("/p"), false, false);
         state.with_raw = asked;
         for (i, raw) in rows.iter().enumerate() {
             let line = ReadLine {
@@ -3925,7 +3930,7 @@ fn line_raw_is_the_record_line_byte_for_byte() {
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let mut state = ReaderState::new(dir.clone(), false, false);
     state.with_raw = true;
     let path = dir.join("sess-raw.jsonl");
     state.active_sids.insert("sess-raw".to_string());
@@ -3965,12 +3970,15 @@ fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
     std::fs::write(&b, "{}\n").unwrap();
     let mut st = ReaderState::new(projects.clone(), false, false);
     assert!(st.sid_files.is_none(), "表应在第一次宣告时才建");
-    assert_eq!(sid_jsonls(&mut st, sid), find_sid_jsonls(&projects, sid));
+    assert_eq!(sid_jsonls(&mut st, sid), find_sid_jsonls(&st, sid));
     assert_eq!(sid_jsonls(&mut st, sid), vec![b.clone(), a.clone()]);
     assert!(st.sid_files.is_some(), "第一次宣告之后表该在了");
-    // 表在之后：整棵树换成一个走不到的根，表照样答得出（证明答案来自表，不是又走了一遍）。
-    st.projects = base.join("nowhere");
+    // 表在之后：盘上悄悄多一份同 sid 的（没有它的事件），表里没有它 ⇒ 不交（证明答案来自表，不是又走了一遍）。
+    let quiet = projects.join("-p-quiet").join(format!("{sid}.jsonl"));
+    std::fs::create_dir_all(quiet.parent().unwrap()).unwrap();
+    std::fs::write(&quiet, "{}\n").unwrap();
     assert_eq!(sid_jsonls(&mut st, sid), vec![b.clone(), a.clone()]);
+    std::fs::remove_file(&quiet).unwrap();
     // 删一份 ＋ 它的事件 ⇒ 不交它。
     std::fs::remove_file(&a).unwrap();
     note_jsonl(&mut st, &a);
@@ -3981,8 +3989,7 @@ fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
     std::fs::write(&c, "{}\n").unwrap();
     note_jsonl(&mut st, &c);
     assert_eq!(sid_jsonls(&mut st, sid2), vec![c.clone()]);
-    // 表里没有的 sid ⇒ 整棵走一遍（根换回来才走得到）。
-    st.projects = projects.clone();
+    // 表里没有的 sid ⇒ 整棵走一遍。
     let sid3 = "0000aaaa-0000-4000-8000-00000000c4c6";
     let d = projects.join("-p-old").join(format!("{sid3}.jsonl"));
     std::fs::write(&d, "{}\n").unwrap();

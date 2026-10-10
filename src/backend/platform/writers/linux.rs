@@ -160,7 +160,7 @@ pub(crate) fn watch_opens(
 }
 
 /// 根规范化成绝对路径：在的那一截照 `canonicalize`，还不在的那一截原样接上（readlink 出来的路径与它可比）。
-fn absolute(root: &Path) -> PathBuf {
+pub(crate) fn absolute(root: &Path) -> PathBuf {
     let mut missing = Vec::new();
     let mut at = root.to_path_buf();
     loop {

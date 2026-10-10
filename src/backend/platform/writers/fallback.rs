@@ -9,6 +9,11 @@ use std::path::Path;
 /// 本平台上没有这道耳朵 ⇒ 这个类型造不出来（[`watch_opens`] 恒答 `None`）。
 pub(crate) struct OpenEar(());
 
+/// 本平台不比路径（[`writers_of`] 判不了）：原样。
+pub(crate) fn absolute(root: &Path) -> std::path::PathBuf {
+    root.to_path_buf()
+}
+
 /// 见模块头注：判不了。
 pub(crate) fn writers_of(wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
     let _ = wanted;
