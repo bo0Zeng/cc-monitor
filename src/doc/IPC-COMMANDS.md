@@ -2250,13 +2250,16 @@ skill 装记录的写口。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
-| `entries` | ← | `{scope, name, server, sourcePath}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
 | `name` | ← | server 名 |
 | `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
 | `projectDir` | → | 可缺席 / `null` |
 | `scope` | ← | `user` · `local` · `project` |
+| `seenAt` | ← | `status` 是 `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null` |
 | `server` | ← | 那一条配置原样（未知字段不丢） |
 | `sourcePath` | ← | 读自哪一份文件 |
+| `status` | ← | 闭集：`needsLogin`（agent 最近一次连它时要登录、还在有效期内）· `disabled`（这个项目里停用了）· `unknown`（配置层判不出：不说连上了） |
 
 码：`bad_args` · `too_large`
 
