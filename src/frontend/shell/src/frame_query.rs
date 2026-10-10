@@ -175,14 +175,14 @@ pub(crate) async fn call(
                 return deadline.overdue(&who);
             }
             said(route_call_error(&e, &who, |code, message| {
-                // 码只进日志；给人看的是哪一问没成 ＋ 那台的原话。
+                // 码只进日志；给人看的是哪一问没成 ＋ 那台那一句（那台的原话在应答的 detail 里，不在这一格）。
                 tracing::warn!("frame query {cmd} refused ({code}): {message}");
                 if message.trim().is_empty() {
                     copy_text("rsFrameQuery.call.failedNoReason", &[("who", &who)])
                 } else {
                     copy_text(
                         "rsFrameQuery.call.failed",
-                        &[("who", &who), ("message", &message.to_string())],
+                        &[("who", &who), ("said", &message.to_string())],
                     )
                 }
             }))

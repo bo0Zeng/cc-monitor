@@ -298,20 +298,28 @@ pub(crate) async fn answer_push(
 
 /// 生产那一个读口：本机那份 `.pub`（有界，超了就不是公钥）。
 pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String)> {
-    let said = |e: String| {
+    let said = |why: &str| {
         (
             "refused",
             copy_text(
                 "rsPubkey.pushPublicKey.readFailed",
-                &[("path", path), ("e", &e)],
+                &[("path", path), ("why", why)],
             ),
         )
     };
-    let meta = std::fs::metadata(path).map_err(|e| said(e.to_string()))?;
+    // 系统原话记一行日志；句子只带原因词。
+    let io = |e: std::io::Error| {
+        let (c, m) = said(&copy_core::io_reason(e.kind()));
+        (
+            c,
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(m, e)),
+        )
+    };
+    let meta = std::fs::metadata(path).map_err(io)?;
     if meta.len() > PUB_READ_MAX {
-        return Err(said(copy_text("bePubkey.read.tooBig", &[])));
+        return Err(said(&copy_text("bePubkey.read.tooBig", &[])));
     }
-    std::fs::read_to_string(path).map_err(|e| said(e.to_string()))
+    std::fs::read_to_string(path).map_err(io)
 }
 
 #[cfg(test)]

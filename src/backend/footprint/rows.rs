@@ -445,7 +445,7 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
             SurfaceState::Present { detail } => SurfaceState::Present {
                 detail: copy_text(
                     "rsConfigSurface.observe.eitherPresent",
-                    &[("detail", &detail.to_string())],
+                    &[("what", &detail.to_string())],
                 ),
             },
             // 内层本来就"不确定"（比如目录列不出来）时，**追加**而不是替换那条理由——
@@ -611,7 +611,7 @@ fn row(
         Err(e) => (
             None,
             SurfaceState::Undetermined {
-                why: copy_text("rsConfigSurface.row.declMismatch", &[("e", &e.to_string())]),
+                why: copy_text("rsConfigSurface.row.declMismatch", &[("why", &e)]),
             },
         ),
     };

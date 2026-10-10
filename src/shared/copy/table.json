@@ -9428,8 +9428,8 @@
     "rsPubkey.pushPublicKey.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "rsPubkey.pushPublicKey.noKey": {
       "kind": "error",
@@ -9580,8 +9580,8 @@
     "rsSftp.deploy.unameFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {machine} 机型失败 · {e} · 未安装后端",
-      "args": ["machine", "e"]
+      "zh": "读取 {machine} 机型失败 · {why} · 未安装后端",
+      "args": ["machine", "why"]
     },
     "bePlaceVerdict.why.rebuilt": {
       "kind": "body",
@@ -11308,8 +11308,8 @@
     "rsInboundClient.error.refused": {
       "kind": "error",
       "role": "原因格",
-      "zh": "远端拒绝 · {message}",
-      "args": ["message"]
+      "zh": "远端拒绝 · {said}",
+      "args": ["said"]
     },
     "rsInboundClient.error.refusedNoReason": {
       "kind": "error",
@@ -11510,8 +11510,8 @@
     "rsConfigSurface.row.declMismatch": {
       "kind": "error",
       "role": "报错",
-      "zh": "登记的路径与安装位置对不上 · {e}",
-      "args": ["e"]
+      "zh": "登记的路径与安装位置对不上 · {why}",
+      "args": ["why"]
     },
     "rsConfigSurface.effect.indirectWrite": {
       "kind": "body",
@@ -11640,8 +11640,8 @@
     "rsConfigSurface.observe.eitherPresent": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机存在（{detail}）",
-      "args": ["detail"]
+      "zh": "本机存在（{what}）",
+      "args": ["what"]
     },
     "rsConfigSurface.observe.eitherAbsent": {
       "kind": "error",
@@ -11926,8 +11926,8 @@
     "rsShellDialect.ps.builtinAliasUnknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "PowerShell 自带别名未知 · {name} 是否撞名未知 · {e}",
-      "args": ["name", "e"],
+      "zh": "PowerShell 自带别名未知 · {name} 是否撞名未知",
+      "args": ["name"],
       "limited": ["PowerShell"]
     },
     "rsShellDialect.ps.nameTakenPath": {
@@ -12255,8 +12255,8 @@
     "rsAssetSync.call.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 · {message}",
-      "args": ["message"]
+      "zh": "本机后端 · {said}",
+      "args": ["said"]
     },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
@@ -12369,8 +12369,8 @@
     "rsDialHost.ask.writeFenced": {
       "kind": "error",
       "role": "报错",
-      "zh": "{message} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
-      "args": ["message"]
+      "zh": "{said} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
+      "args": ["said"]
     },
     "rsDialHost.ask.timeout": {
       "kind": "error",
@@ -12437,8 +12437,8 @@
     "rsLinkMux.flight.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "发送任务未完成 · {e}",
-      "args": ["e"]
+      "zh": "发送任务未完成 · 程序出错",
+      "args": []
     },
     "rsLinkMux.open.refused": {
       "kind": "error",
@@ -12450,8 +12450,8 @@
     "rsLinkMux.said.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端拒绝连接 · {message}",
-      "args": ["message"],
+      "zh": "本机后端拒绝连接 · {said}",
+      "args": ["said"],
       "limited": ["连接"]
     },
     "rsSftpPool.watch.lost": {
@@ -12506,8 +12506,8 @@
     "rsChanWire.frame.badHead": {
       "kind": "error",
       "role": "原因格",
-      "zh": "收到的数据头无法解析 · {e}",
-      "args": ["e"]
+      "zh": "收到的数据头无法解析",
+      "args": []
     },
     "rsChanWire.segment.tooLong": {
       "kind": "error",
@@ -12739,8 +12739,8 @@
     "rsLaunch.remote.taskFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "打开终端失败 · {e}",
-      "args": ["e"]
+      "zh": "打开终端失败 · 程序出错",
+      "args": []
     },
     "rsLaunch.terminalDial.local": {
       "kind": "error",
@@ -13481,8 +13481,8 @@
     "rsSshSource.snapshot.failed": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话 {sid} 的历史快照未拉下 · {err}\n此标签页暂只有实时消息 · 完整内容到历史浏览器查看",
-      "args": ["sid", "err"]
+      "zh": "会话 {sid} 的历史快照未拉下\n此标签页暂只有实时消息 · 完整内容到历史浏览器查看",
+      "args": ["sid"]
     },
     "rsRemoteBranch.what.messageId": {
       "kind": "body",
@@ -13535,8 +13535,8 @@
     "rsAssetSync.reach.said": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 · {message}",
-      "args": ["message"]
+      "zh": "本机后端 · {said}",
+      "args": ["said"]
     },
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
@@ -14269,8 +14269,8 @@
     "rsFrameQuery.call.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}查询失败 · {message}",
-      "args": ["who", "message"]
+      "zh": "{who}查询失败 · {said}",
+      "args": ["who", "said"]
     },
     "rsFrameQuery.call.failedNoReason": {
       "kind": "error",

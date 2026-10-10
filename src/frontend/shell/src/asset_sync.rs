@@ -61,10 +61,7 @@ impl LocalBackend for ResidentBackend {
         let client = crate::dial_host::local_backend_accepting(CMD).await?;
         let data = client.call(CMD, args, BUDGET).await.map_err(|e| {
             match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
-                copy_text(
-                    "rsAssetSync.call.failed",
-                    &[("message", &message.to_string())],
-                )
+                copy_text("rsAssetSync.call.failed", &[("said", &message.to_string())])
             }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
             }
@@ -101,10 +98,7 @@ async fn register_reach(cfg: &crate::stream_source::RemoteConfig) -> Result<(), 
         .map(|_| ())
         .map_err(|e| {
             match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
-                copy_text(
-                    "rsAssetSync.reach.said",
-                    &[("message", &message.to_string())],
-                )
+                copy_text("rsAssetSync.reach.said", &[("said", &message.to_string())])
             }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
             }
