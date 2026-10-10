@@ -39,6 +39,7 @@
 //! （`creds_core::perm::create_private`，O_EXCL）· 写满 · 落盘 · 原子改名 · 失败删自己的临时文件。
 //! ⚠ 现有文件**解析不了 ⇒ 拒绝、不覆盖**（`bad_file`）：人手编打错一个逗号时，覆盖等于把他写的东西抹掉。
 
+use crate::common::said::IntoNote as _;
 use crate::stream::inbound::spec::Fail;
 use copy_core::copy_text;
 use creds_core::perm::{self, Verdict};
@@ -364,7 +365,11 @@ fn notice_of(v: &Verdict) -> Option<String> {
             "beUpstreamFileFace.perm.tooWide",
             &[("how", how), ("fix", fix)],
         )),
-        Verdict::Undetermined { why } => Some(why.clone()),
+        // 提示格没有详情位：那一句交出去，原话记一行日志。
+        Verdict::Undetermined { why, raw } => Some(match raw {
+            Some(r) => crate::common::said::Said::with_raw(why.clone(), r).into_note(),
+            None => why.clone(),
+        }),
     }
 }
 

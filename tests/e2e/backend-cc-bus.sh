@@ -110,8 +110,9 @@ echo "[4] ★ 收件人非法：交给 cc-send 之前后端先判形状（INVARI
 printf '{"to":"a/b","text":"x"}' | d --bus-send >"$SANDBOX/o4.txt"; rc4=$?
 chk "退出码非 0" "$([ "$rc4" -ne 0 ] && echo yes || echo no)" "yes"
 chk "码是 bad_id" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
+# 失败信封 {code, message, detail}：message 是按码定的那一句，处理器原话（点名那个值 · 查过哪几处 · 实测字节数）在复制详情 detail 里。
 chk "  消息里点名那个值（后端拒的，不是 cc-send）" \
-  "$(jq -r .message < "$SANDBOX/err.txt" | grep -c '"a/b"')" "1"
+  "$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err.txt" | grep -c '"a/b"')" "1"
 
 echo "[5] ★ 被路由层拦下：与「名字写错了」必须分得开"
 printf 'probe_cc\tnobody\n' > "$BUS/policy.tsv"
@@ -126,7 +127,7 @@ echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$EMPTY" HOME="$NOHOME" PATH="$EMPTY" \
     "$TIMEOUT" 20 "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err6.txt"
 chk "码是 not_installed（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err6.txt" 2>/dev/null)" "not_installed"
-msg="$(jq -r .message < "$SANDBOX/err6.txt" 2>/dev/null)"
+msg="$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err6.txt" 2>/dev/null)"
 chk "  列出了 ~/.local/bin 那一处" "$(printf '%s' "$msg" | grep -c '.local/bin/cc-list')" "1"
 chk "  列出了 skills 那一处" "$(printf '%s' "$msg" | grep -c 'skills/cc-bus/scripts/cc-list')" "1"
 chk "  告诉人怎么指过去" "$(printf '%s' "$msg" | grep -c 'CC_BUS_BIN_DIR')" "1"
@@ -164,7 +165,7 @@ chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外
   "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
 chk "  码是 timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err8.txt" 2>/dev/null)" "timed_out"
 chk "  消息说得出多半卡在哪（cc-bus 的锁；flock 是禁档词，句子改说「锁」）" \
-  "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -cF "$(zh_frag beCcBus.timedOut.say)")" "1"
+  "$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err8.txt" 2>/dev/null | grep -cF "$(zh_frag beCcBus.timedOut.say)")" "1"
 
 echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
 # ★ 真事故：CLI 入口原来从 `fields` **派生**「要不要读 stdin」，而 `fields` 是
@@ -249,7 +250,7 @@ python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
     "$TIMEOUT" 20 "$D" -- --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
 chk "★ 码是 too_long（不是兜底的 failed）" "$(jq -r .code < "$SANDBOX/err12.txt" 2>/dev/null)" "too_long"
-_m12="$(jq -r .message < "$SANDBOX/err12.txt" 2>/dev/null)"
+_m12="$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err12.txt" 2>/dev/null)"
 chk "  说了实测字节数（别让人自己去量）" "$(printf '%s' "$_m12" | grep -cF "$(zh beCcBus.deliver.tooLong reason= n=200000)")" "1"
 chk "  明说不是 cc-bus 坏了（归因不许甩锅）" "$(printf '%s' "$_m12" | grep -cF "$(zh beCcBus.notRun.tooLong)")" "1"
 # 对照：120KB 必须仍然发得出去（免得判据把上限收窄成"长的都不让发"）
@@ -545,7 +546,7 @@ printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" 20 "$D" -- --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
 # 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
 _TOOOLD="$(zh_frag beCcBus.read.tooOld)"
-chk "★ 老 cc-bus ⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + (.message | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
+chk "★ 老 cc-bus ⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
 rm -f "$BUS/agents.tsv" "$BUS/spawned.tsv"
 
 echo "[SH1-c] ★ D-g：monitor 杀会话成功 ⇒ 对登记在那个会话 pane 上的 id 调 cc-kill（认 pane pid，不按会话名猜）"
