@@ -345,6 +345,29 @@ pub(super) const SPECS: &[CommandSpec] = &[
             .map(Some)
         }),
     },
+    // 〔第二个前端 2026-10-08〕扩展页那张表的**本机那一半**：同一份 `assets::ext::answer_list`，只是目录先裁到这台自己那一格。
+    //   凭据在 `ext::columns`：本机那一列**压根不问可达表**（`here` 为真 ⇒ `reachable` 恒真、`key` 恒 `null`、`name` 取目录里那台自报的 label），
+    //   可达表只被**别的台**那几列用来认名字与连没连上。裁完一列不剩 ⇒ 可达表无从参与 ⇒ 这一条在一次性进程里与常驻那一个**答得一样真**，
+    //   照派生规则（`cli_control::cli_exposed`）上 CLI 面。
+    //   跨机那一整张（别的台叫什么 · 连没连上 · 「装到…」从哪台拿哪一版）仍只在 `ext-list`（`cli_control::STREAM_ONLY`，理由在 `cli_control_tests::NOT_ON_CLI`）。
+    //   ⚠ 不是把 `ext-list` 加一个参数：上不上 CLI 面按**命令名**派生，同一条命令没法「带这个参数才上」。
+    CommandSpec {
+        name: "ext-list-here",
+        summary: "设置「扩展」页那张表的本机那一半（不问可达表）",
+        codes: &["bad_args", "catalog_unreadable", "io_failed"],
+        fields: &[out("machines", "恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表"), out("problems", "同 `ext-list`：这台扫的时候读不出来的那几份"), out("rows", "同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格"), arg("visit", "同 `ext-list`：`true` = 这一问算「来看了一次」")],
+        takes_input: true,
+        run: Run::BlockingData(|r| {
+            // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
+            let here = |visit: bool| {
+                let (mut cat, problems) = crate::assets::asset_catalog::answer_current(visit)?;
+                let me = cat.self_id.clone();
+                cat.machines.retain(|id, _| *id == me);
+                Ok((cat, problems))
+            };
+            crate::assets::ext::answer_list(&r.args, &here, &[]).map(Some)
+        }),
+    },
     // 用户写 / 改 / 清一个条目的备注：资产目录的写口从这扇门递进去（记进本机自己那一格，随目录同步）。
     CommandSpec {
         name: "ext-note-set",

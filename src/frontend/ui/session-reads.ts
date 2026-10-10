@@ -144,6 +144,24 @@ export interface SessionFacts {
   handedBack: string[];
   /** 一串一串的 API 重试与结局（后端按首条的 uuid 记；消息流里那条细条挂在首条上，按它的 id 读）。 */
   retries: RetryRun[];
+  /** 此刻的许可档（原样）；没有 ⇒ `null`。 */
+  permissionMode: string | null;
+  /** 全会话用量（后端按请求去重、写缓存分两档；`text` 是写好的成品）。 */
+  tokens: TokenUse | null;
+  /** 全会话花费（记录里那一家自己记的；`text` 是写好的成品）。记录里没有 ⇒ `null`。 */
+  cost: { micros: number; partial: boolean; text: string } | null;
+}
+
+/** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
+export interface TokenUse {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite5m: number;
+  cacheWrite1h: number;
+  requests: number;
+  text: string;
+  last: { id: string; tokens: number[] } | null;
 }
 
 /** 一串相邻的 API 重试（后端 `facts_query::RetryRun`）。 */
@@ -382,7 +400,37 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "projectDir", "retries", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!strOrNull(v.permissionMode)) return bad();
+  let tokens: TokenUse | null = null;
+  if (v.tokens !== null) {
+    const p = v.tokens;
+    const nums = ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h", "requests"] as const;
+    if (!isObj(p) || !exactKeys(p, ["cacheRead", "cacheWrite1h", "cacheWrite5m", "input", "last", "output", "requests", "text"])) return bad();
+    if (!nums.every((k) => isNum(p[k])) || !isStr(p.text)) return bad();
+    let last: TokenUse["last"] = null;
+    if (p.last !== null) {
+      const l = p.last;
+      if (!isObj(l) || !exactKeys(l, ["id", "tokens"]) || !isStr(l.id) || !Array.isArray(l.tokens) || !l.tokens.every(isNum)) return bad();
+      last = { id: l.id, tokens: [...(l.tokens as number[])] };
+    }
+    tokens = {
+      input: p.input as number,
+      output: p.output as number,
+      cacheRead: p.cacheRead as number,
+      cacheWrite5m: p.cacheWrite5m as number,
+      cacheWrite1h: p.cacheWrite1h as number,
+      requests: p.requests as number,
+      text: p.text,
+      last,
+    };
+  }
+  let cost: SessionFacts["cost"] = null;
+  if (v.cost !== null) {
+    const c = v.cost;
+    if (!isObj(c) || !exactKeys(c, ["micros", "partial", "text"]) || !isNum(c.micros) || typeof c.partial !== "boolean" || !isStr(c.text)) return bad();
+    cost = { micros: c.micros, partial: c.partial, text: c.text };
+  }
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
@@ -449,6 +497,9 @@ export function decodeFacts(v: unknown): SessionFacts {
     needs,
     handedBack: v.handedBack as string[],
     retries,
+    permissionMode: v.permissionMode as string | null,
+    tokens,
+    cost,
   };
 }
 

@@ -277,7 +277,9 @@ export class TabStreamView {
       turns: () => turnFold.all,
       waiting: () => this.store.tabs.get(sessionId)?.needs != null,
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
-      jump: (uuid) => void this.jumpInTab(sessionId, streamEl, uuid),
+      // 刻度跳不过去（那一段还取不回来：骨架没接上、`jumpInTab` 已经踢了一次要骨架）⇒ 这一下就算了，再点多半已接上。
+      // 不能让它成一条没人接的 rejection：全局兜底会把整条状态栏换成一行「REJ: …」。
+      jump: (uuid) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, uuid)).catch(() => undefined),
       inFront: () => this.store.activeId === sessionId,
     });
     turnFold.onTurns = () => turnRail.render();
@@ -410,6 +412,7 @@ export class TabStreamView {
       if (sid !== sessionId) this.finds.get(sid)?.close();
       if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
       t.turnRail.el.classList.toggle("active", sid === sessionId);
+      if (sid === sessionId) t.turnFold.flushStale(); // Ctrl+O 之后还没按新默认排过（后台只记了一笔）⇒ 当场排
       if (sid === sessionId) t.turnRail.shown(); // 收起期间没量过 ⇒ 下一帧量一次
 
     }
@@ -682,7 +685,31 @@ export class TabStreamView {
   toggleProcessExpanded(): void {
     const on = !processExpandedDefault();
     setProcessExpandedDefault(on);
-    for (const t of this.store.tabs.values()) t.turnFold.setDefault(on);
+    // 当前 tab 当场排；后台的只记一笔（看不见的二十几个一起排，WebKitGTK 上这一下要好几秒）：空闲时一个一个排，切进来时还没排到就当场排（`showOnly`）。
+    for (const t of this.store.tabs.values()) t.turnFold.setDefault(on, t.sessionId !== this.store.activeId);
+    this.scheduleStaleFolds();
+  }
+
+  private staleFoldsScheduled = false;
+
+  /** 后台 tab 还没按新默认排过的：空闲时排一个、再排自己，排完即停。 */
+  private scheduleStaleFolds(): void {
+    if (this.staleFoldsScheduled) return;
+    const next = [...this.store.tabs.values()].find((t) => t.turnFold.isStale);
+    if (!next) return;
+    this.staleFoldsScheduled = true;
+    const run = (): void => {
+      this.staleFoldsScheduled = false;
+      if (this.store.tabs.get(next.sessionId) === next) next.turnFold.flushStale();
+      this.scheduleStaleFolds();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      // 调度：自链 —— Ctrl+O 之后后台 tab 按新默认重排：空闲时排一个再排自己，都排过即停
+      window.requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      // 调度：自链 —— 上面那条在没有 rIC 时的兜底，同一条链
+      window.setTimeout(run, 50);
+    }
   }
 
   /** `Alt+↑` / `Alt+↓`：当前 tab 上 / 下一轮。 */
@@ -913,6 +940,8 @@ export class TabStreamView {
         this.fetchMissingRows(tab, ledger, lo, hi, new Set(taken.map((p) => p.seq)));
       },
     });
+    // 折叠先交给账本：占位插进去就是折后的高、补可见区不建折着的过程行（不先交 ⇒ 插完排版时再改高、再钉视口，这一帧多排两次版）
+    tab.turnFold.seedFolds(ledger);
     // 在视口上方插一块高占位：同 `fillAbove` 的纪律 —— 关原生锚定、同一个同步任务里按 ΔscrollHeight 补偿
     const el = tab.streamEl;
     const beforeH = el.scrollHeight;

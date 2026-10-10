@@ -14,6 +14,7 @@ import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { fold } from "./kit/fold";
 import { icon } from "./kit/icon";
+import { spinner } from "./kit/progress";
 import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
@@ -35,7 +36,7 @@ import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
-import { awaitArrival, type ArrivalMatch } from "./launch-arrival";
+import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
 import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
@@ -334,7 +335,14 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   let machines: MachineOpt[] = [{ origin, up: true }];
   let forkLine: HTMLElement | null = null;
   let dirSeq = 0;
-  let pendingTop: { text: string; acts: HTMLElement[] } | null = null;
+  let pendingTop: { text: string; acts: HTMLElement[]; detail: string } | null = null;
+  // 这一趟的票：期限到了带同一张再问 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。
+  // 表单一格没改就再点［新建］⇒ 还是这一张（等于再核一次）；改过任一格 ⇒ 换一张（那是另一趟）。
+  let ticket = crypto.randomUUID();
+  /** 上一次交出去的那一份（不含票）：比它就知道表单改没改。 */
+  let lastAsked: string | null = null;
+  /** 这张票头一次发出去那一刻（[`liveSince`]）；换票时清掉。 */
+  let since: ReadonlySet<string> | null = null;
 
   const form = el("div");
   form.className = s.nsForm;
@@ -460,12 +468,12 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     } else if (factsFailed !== null) {
       top.appendChild(banner("error", factsFailed));
     } else if (pendingTop) {
-      top.appendChild(banner("error", pendingTop.text, pendingTop.acts));
+      top.appendChild(banner("error", pendingTop.text, pendingTop.acts, pendingTop.detail));
     }
   };
   /** 整体不行的那一句落在框顶。 */
-  const sayTop = (text: string, acts: HTMLElement[] = []): void => {
-    pendingTop = { text, acts };
+  const sayTop = (text: string, acts: HTMLElement[] = [], detail = ""): void => {
+    pendingTop = { text, acts, detail };
     paintTop();
   };
 
@@ -582,6 +590,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       place: place(),
       local: isLocalOrigin(origin),
       models: await machineModels(origin).catch(() => ({})),
+      ticket,
     };
     if (account) req.account = account;
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
@@ -592,17 +601,31 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     return req;
   };
 
-  const submit = async (): Promise<string | null | false> => {
+  const submit = async (): Promise<{ said: string; detail: string } | null | false> => {
     pendingTop = null;
     paintTop();
     for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
-    const res = await askNew(origin, await buildRequest());
+    const req = await buildRequest();
+    const asked = JSON.stringify({ ...req, ticket: null });
+    if (lastAsked !== null && asked !== lastAsked) {
+      ticket = crypto.randomUUID();
+      req.ticket = ticket;
+      since = null;
+    }
+    lastAsked = asked;
+    // 这张票头一次发出去那一刻这台已经报过的会话：回话晚到时，那之后先报到的那个才认得出是它。
+    since ??= liveSince(origin);
+    let res = await askNew(origin, req);
+    if (res.kind === "timeout") {
+      // 结果未知：同一张票自己再核一次（那台认得出是不是同一趟 —— 起好了回原样那一份，落过去；不起第二个）。
+      sayTop(copyText("newSession.timeout.checking", { machine: machineName(origin) }), [spinner()], res.detail);
+      res = await askNew(origin, req);
+    }
     if (res.kind === "ok") {
-      void afterStart(origin, res);
+      void afterStart(origin, res, since ?? undefined);
       return null;
     }
-    showFailure(res);
-    return false;
+    return showFailure(res);
   };
 
   /** 号选不了：那一格下说为什么 ＋［改用 {替代}］（有替代才给）＋［登录…］。 */
@@ -626,28 +649,35 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     );
   };
 
-  const showFailure = (res: Exclude<NewResult, { kind: "ok" }>): void => {
+  /** ［再核一次］：同一张票再交一次（起好了 ⇒ 那台回原样那一份；那一趟根本没到 ⇒ 这次起）。 */
+  const recheckBtn = (): HTMLElement => {
+    const again = button({ label: copyText("newSession.recheck.action"), size: "compact" });
+    again.addEventListener("click", () => handle.submit());
+    return again;
+  };
+
+  /** 没起成的那几形落在哪：无应答 / 还在起 ⇒ 框顶 ＋［再核一次］（不给重试，免得起第二个）；某一格 ⇒ 那一格下；整体 ⇒ 按钮行上方一行红字 ＋［复制详情］。 */
+  const showFailure = (res: Exclude<NewResult, { kind: "ok" }>): { said: string; detail: string } | false => {
     const machine = machineName(origin);
     if (res.kind === "timeout") {
-      const again = button({ label: copyText("newSession.retry.action"), size: "compact" });
-      again.addEventListener("click", () => handle.submit());
-      sayTop(copyText("launch.timeout.noAnswer", { machine }), [again]);
-      return;
+      sayTop(copyText("newSession.timeout.unknown", { machine }), [recheckBtn()], res.detail);
+      return false;
     }
-    if (res.kind === "unreachable") {
-      sayTop(res.said);
-      return;
+    if (res.kind === "pending") {
+      sayTop(res.said, [recheckBtn()], res.detail);
+      return false;
     }
+    if (res.kind === "unreachable") return { said: res.said, detail: res.detail };
     if (res.field === "account" && res.unavailable) {
       showAccountUnavailable(res.unavailable);
-      return;
+      return false;
     }
     const slot = fieldRow(res.field, { cwd: cwdRow, tmuxName: tmuxRow, command: cmdRow, agent: agentRow, place: placeRow, account: accountRow });
     if (slot && !slot.root.hidden) {
       slot.setNote(fieldSaid(res.code, res.said, machine), "error");
-      return;
+      return false;
     }
-    sayTop(res.said);
+    return { said: res.said, detail: res.detail };
   };
 
   const handle = formDialog({
@@ -741,7 +771,8 @@ async function openLogin(origin: Origin): Promise<void> {
 }
 
 /** 起了之后：开窗那一形先开窗；等那台报出这个会话 ⇒ 主窗口里切过去，别的窗口（设置 · 查看）说一句「已启动」＋［切过去］。 */
-async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>): Promise<void> {
+/** `before`：这张票头一次发出去那一刻这台已经报过的会话（主窗口里那一形交占位标签页；别的窗口没有这份）。 */
+async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>, before?: ReadonlySet<string>): Promise<void> {
   const r = res.reply;
   if (r.outcome === "open" && r.cmd !== null) {
     const failed = await openWindow(origin, r.cmd, r.cwd);
@@ -752,7 +783,7 @@ async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }
   }
   const match: ArrivalMatch = r.sid !== null ? { sid: r.sid } : { cwd: r.cwd };
   if (placeholder) {
-    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match });
+    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match, ...(before ? { before } : {}) });
     return;
   }
   const sid = await awaitArrival({ origin, match, tmuxName: r.session, arrived: null });
@@ -784,10 +815,10 @@ export async function startNewSession(r: { origin: Origin; cwd: string; account:
   const said =
     res.kind === "timeout"
       ? copyText("launch.timeout.noAnswer", { machine })
-      : res.kind === "unreachable"
+      : res.kind === "unreachable" || res.kind === "pending"
         ? res.said
         : fieldSaid(res.code, res.said, machine);
-  toast(copyText("newSession.start.failed"), said);
+  toast(copyText("newSession.start.failed"), said, { detail: res.detail });
   return false;
 }
 

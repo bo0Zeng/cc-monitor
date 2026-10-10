@@ -95,7 +95,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # ── 仓根 ────────────────────────────────────────────────────────────────────
-# `tests/evidence/x.py` ⇒ parents[2] 才是仓根（见 tests/evidence/README.md 那条）。
+# 本文件住 `tests/evidence/` ⇒ parents[2] 才是仓根（见 tests/evidence/README.md 那条）。
 REPO = Path(__file__).resolve().parents[2]
 
 SRC_ROOT = REPO / "src"

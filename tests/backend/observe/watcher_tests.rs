@@ -1470,13 +1470,11 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
             sid,
-            status,
             activity,
             background,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
-            assert_eq!(status.as_deref(), Some("busy"), "宣告带初始 status");
             assert_eq!(
                 activity,
                 Some(SessionActivity::Working),
@@ -1495,13 +1493,11 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionStatus {
             sid,
-            status,
             activity,
             waiting_for,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
-            assert_eq!(status.as_deref(), Some("waiting"));
             assert_eq!(activity, Some(SessionActivity::NeedsYou));
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
@@ -1512,7 +1508,11 @@ fn status_diff_emits_session_status_frame() {
     process_session_added(&pidfile, &mut state, &mut sink);
     assert!(matches!(
         rx.try_recv(),
-        Ok(Frame::SessionStatus { status: Some(s), activity: Some(SessionActivity::Idle), waiting_for: None, .. }) if s == "idle"
+        Ok(Frame::SessionStatus {
+            activity: Some(SessionActivity::Idle),
+            waiting_for: None,
+            ..
+        })
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1635,14 +1635,9 @@ fn with_bg_and_tail_only_combined() {
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
-            sid,
-            session_kind,
-            lines,
-            path,
-            ..
+            sid, lines, path, ..
         }) => {
             assert_eq!(sid, "combo-sid");
-            assert_eq!(session_kind.as_deref(), Some("bg"), "with_bg 放行");
             assert_eq!(lines, Some(2), "tail-only 带 L");
             assert!(path.is_some());
         }
@@ -1675,14 +1670,12 @@ fn with_bg_announces_bg_with_metadata() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
             sid,
-            session_kind,
             background,
             cwd,
             name,
             ..
         }) => {
             assert_eq!(sid, "bg-sid");
-            assert_eq!(session_kind.as_deref(), Some("bg"));
             assert!(background, "后台会话那一格由适配层判好");
             assert_eq!(cwd.as_deref(), Some("/proj/x"));
             assert_eq!(name.as_deref(), Some("评估任务"));
@@ -2022,7 +2015,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "a".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2030,7 +2022,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2040,7 +2031,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "b".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2048,7 +2038,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2064,7 +2053,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "c".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2072,7 +2060,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2082,7 +2069,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "d".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2090,7 +2076,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2100,7 +2085,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "e".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2108,7 +2092,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2141,7 +2124,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "g".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2149,7 +2131,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -3824,7 +3805,7 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
 fn a_sub_runs_turn_end_is_not_the_main_runs() {
     let (tx, mut rx) = mpsc::channel::<Frame>(16);
     let mut sink = FrameSink::new(tx);
-    let state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
+    let mut state = ReaderState::new(PathBuf::from("/nonexistent-projects"), false, false);
     let main = r#"{"type":"assistant","uuid":"u-main","message":{"id":"m1","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
     let sub = r#"{"type":"assistant","uuid":"u-sub","isSidechain":true,"agentId":"a1","message":{"id":"m2","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
     for (i, raw) in [main, sub].into_iter().enumerate() {
@@ -3833,7 +3814,7 @@ fn a_sub_runs_turn_end_is_not_the_main_runs() {
             raw: raw.to_string(),
             byte_offset: 0,
         };
-        send_line("s", "/p/s.jsonl", line, &state, &mut sink);
+        send_line("s", "/p/s.jsonl", line, &mut state, &mut sink);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -3864,7 +3845,7 @@ fn line_frames_carry_the_raw_text_only_when_the_stream_asked() {
                 raw: raw.to_string(),
                 byte_offset: 0,
             };
-            send_line("s", "/p/s.jsonl", line, &state, &mut sink);
+            send_line("s", "/p/s.jsonl", line, &mut state, &mut sink);
         }
         let mut got = Vec::new();
         while let Ok(f) = rx.try_recv() {
@@ -3975,4 +3956,77 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
     assert!(made, "目录后建出来、写进配置文件 ⇒ 要听得见");
     assert!(!other, "同目录别的文件不算配置文件变了");
     assert!(renamed, "写旁名再换名上位 ⇒ 要听得见");
+}
+
+/// 主线外清单实时那一路：冷接（只推游标）时历史里已经有回退 ⇒ 宣告之后发一帧整份；之后回退重发 ⇒ 再发一帧；
+/// 接在主线末梢上的新行 ⇒ 清单没变、不发。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-branch-{}", std::process::id()));
+    let proj = dir.join("projects").join("proj-b");
+    std::fs::create_dir_all(&proj).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let jsonl = proj.join("br-sid.jsonl");
+    let line = |id: &str, parent: &str, at: &str, ty: &str| {
+        format!(
+            r#"{{"type":"{ty}","uuid":"{id}","parentUuid":{p},"timestamp":"{at}","message":{{"role":"{ty}","content":"w"}}}}"#,
+            p = if parent.is_empty() {
+                "null".to_string()
+            } else {
+                format!("\"{parent}\"")
+            }
+        ) + "\n"
+    };
+    let mut body = line("u1", "", "t1", "user")
+        + &line("a1", "u1", "t2", "assistant")
+        + &line("u2", "a1", "t3", "user")
+        + &line("u3", "a1", "t4", "user");
+    std::fs::write(&jsonl, &body).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, true);
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"br-sid","cwd":"/p","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let mut branches = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionBranch { sid, path, off } = f {
+            assert_eq!(sid, "br-sid");
+            assert_eq!(path, jsonl.to_string_lossy());
+            branches.push(off);
+        }
+    }
+    assert_eq!(branches, [vec!["u2".to_string()]]);
+    // 接在主线末梢上 ⇒ 不发。
+    body += &line("a3", "u3", "t5", "assistant");
+    std::fs::write(&jsonl, &body).unwrap();
+    process_jsonl(&jsonl, &mut state, &mut sink);
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionBranch { off, .. } = f {
+            got.push(off);
+        }
+    }
+    assert!(got.is_empty(), "清单没变不该发：{got:?}");
+    // 在 a1 之后再回退重发 ⇒ 整份再发一次。
+    body += &line("u4", "a1", "t6", "user");
+    std::fs::write(&jsonl, &body).unwrap();
+    process_jsonl(&jsonl, &mut state, &mut sink);
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionBranch { off, .. } = f {
+            got.push(off);
+        }
+    }
+    assert_eq!(
+        got,
+        [vec!["u2".to_string(), "u3".to_string(), "a3".to_string()]]
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

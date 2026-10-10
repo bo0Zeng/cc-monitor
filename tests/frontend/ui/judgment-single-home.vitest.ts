@@ -748,6 +748,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,
     CHORES_REL: NONE,
+    // 计划要你看的认可与退回记录（后端 `plan/review.rs` 写；数据位置页按它列）。
+    PLAN_REVIEW_REL: NONE,
     // 离线那台的上次值（后端写；数据位置页按它列）· 后端自己家里那一份清单（后端「文件与数据」逐样 stat 它）。
     LAST_SEEN_REL: NONE,
     OWN_HOME_ENTRIES: NONE,

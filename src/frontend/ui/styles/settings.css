@@ -1623,6 +1623,12 @@ body.settings-window-mode .settings-panel {
     border-bottom: 1px solid var(--border-faint);
     cursor: pointer;
   }
+  /* 几百行 × 十几台时整张表上万个节点：滚出视口的行跳过样式 / 布局 / 绘制（切回这一页、逐字筛选时只排看得见的那几十行）。
+     估的是内容高（内边距与底线另算）＝ 一行字；排过一次之后记住真高（`auto`）。 */
+  .ext-row:not(.ext-head) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1lh;
+  }
   .ext-row:hover {
     background: var(--overlay-hover);
   }

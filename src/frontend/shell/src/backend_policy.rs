@@ -436,7 +436,7 @@ pub trait DeathSink {
     fn write_line(&mut self, line: &str) -> Result<(), String>;
 }
 
-/// 生产落点：**monitor 自己的滚动日志**。
+/// 生产落点：**monitor 自己的滚动日志**（只进日志；告诉用户的那一句由调用方经 `ui_error::tell` 说）。
 ///
 /// ★ 这是本件「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
 /// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 一个已经登记在
@@ -464,6 +464,8 @@ impl DeathSink for MonitorLog {
 #[must_use]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Recorded {
+    /// 判出来的那一格（调用方据它告诉用户：`ui_error::UiError::LocalBackendDied`）。
+    pub death: Death,
     /// 落在账上的那一行（落点拒收时也给，好让调用方至少能就地喊一声）。
     pub line: String,
     /// 落点拒收时**原样**转来的那句话。`None` = 写进去了。
@@ -526,7 +528,11 @@ pub fn record_death(
         h.last = Some(line.clone());
         h.last_brief = Some(last_brief(&d));
     }
-    Some(Recorded { line, sink_error })
+    Some(Recorded {
+        death: d,
+        line,
+        sink_error,
+    })
 }
 
 /// 这台机的读数。**未登记 ⇒ 一条都没有**（而那一格说「答不出来」，不说「没崩过」）。

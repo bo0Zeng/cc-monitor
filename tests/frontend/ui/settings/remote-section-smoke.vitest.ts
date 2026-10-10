@@ -13,6 +13,14 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...a: unknown[]) => invokeMock(...a),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+/** 设置窗订的事件：按名字记下处理函数（测试里直接推一帧）。 */
+const eventHandlers = new Map<string, (e: { payload: unknown }) => void>();
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, h: (e: { payload: unknown }) => void) => {
+    eventHandlers.set(name, h);
+    return Promise.resolve(() => eventHandlers.delete(name));
+  },
+}));
 
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { MachineCard } from "../../../../src/frontend/ui/settings/machine-card";
@@ -84,3 +92,32 @@ describe("机器卡折叠指示：代码画的箭头，不是字符", () => {
     expect(t?.textContent).toBe("");
   });
 });
+
+describe("重读机器表之后，上一批机器卡不再收告知（不留在全窗那张名单上）", () => {
+  it("★ 刷新三次（＝ 设置窗关了再开三次）⇒ 一条「指纹已记下」只让当前那张卡去盘上读一次", async () => {
+    let reads = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "load_config") reads++;
+      return cmd === "load_config"
+        ? Promise.resolve({ remote: { enabled: true, hosts: [{ label: "devbox", host: "h", user: "u", hostKeyFingerprint: "SHA256:disk" }] } })
+        : Promise.resolve([]);
+    });
+    const s = new RemoteSection({ headless: true });
+    document.body.appendChild(s.element);
+    const readsPerNotice = async (): Promise<number> => {
+      const notice = eventHandlers.get("remote-health");
+      expect(notice, "机器卡订了 remote-health").toBeDefined();
+      reads = 0;
+      notice!({ payload: { origin: "devbox", kind: "host_key_pinned", message: "已记下" } });
+      await new Promise((r) => setTimeout(r, 0));
+      return reads;
+    };
+    await s.refresh();
+    const once = await readsPerNotice();
+    expect(once, "当前那张卡去盘上读了").toBeGreaterThan(0);
+    await s.refresh();
+    await s.refresh();
+    expect(await readsPerNotice(), "刷新几次都只有当前那一张卡去读盘（上一批卡已经作废）").toBe(once);
+  });
+});
+

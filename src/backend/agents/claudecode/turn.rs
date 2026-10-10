@@ -65,7 +65,12 @@ const END_TURN_NEEDLE: &str = "\"end_turn\"";
 /// `assistant` && `message.stop_reason=="end_turn"` && !`isApiErrorMessage`（子运行的那几条由通用 watcher 先排除，见头注）。
 /// 缺字段一律安全默认（stop_reason 缺→非 end_turn→false；error 缺→false→不排除）。
 pub fn is_turn_end(p: &Probe) -> bool {
-    is_assistant(p) && stop_reason(p) == Some("end_turn") && !is_api_error(p)
+    is_assistant(p) && ends_turn(stop_reason(p), is_api_error(p))
+}
+
+/// 一条 assistant 记录是不是一轮的结束（帧 `turn_end` 与通用记录的 `endsTurn` 共用这一个判定）。
+pub(crate) fn ends_turn(stop_reason: Option<&str>, api_error: bool) -> bool {
+    stop_reason == Some("end_turn") && !api_error
 }
 
 /// turn-end 边沿的 uuid（= 完成 assistant 记录 uuid），供 TurnEnd 帧 + 客户端幂等去重。

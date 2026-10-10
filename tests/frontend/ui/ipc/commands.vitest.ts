@@ -34,7 +34,7 @@
  * 有 `#[cfg(windows)]` / `#[cfg(not(windows))]` 一对（`lib.rs:1376` 与 `lib.rs:1475`）。
  * 用 `Set` 去重是对的；拿 `grep -c` 复核的人会以为差了一个。
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, sep } from "node:path";
 import ts from "typescript";
@@ -387,10 +387,14 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
       if (f.includes(".test.") || f.includes(".vitest.")) continue;
       if (f.endsWith("/ipc/commands.ts")) continue; // 包装层是签名，不是调用点
+      const raw = readFileSync(f, "utf8");
+      // 剥注释是把注释逐字换成空格、不并字 ⇒ 原文里没有成词的 `launchLocal`，剥完也匹配不上下面以 `\blaunchLocal\s*\(` 起头的正则
+      // （块注释以 `/` 收尾、行注释以换行收尾 ⇒ 剥前剥后词边界不变）⇒ 不剥不扫，人群不变。
+      if (!/\blaunchLocal\b/.test(raw)) continue;
       // ⚠ **先剥注释**：散文里逐字写着 `invoke("resume_history_session", …)` 这种句子
       //    （`launch-requests.ts` 的头注、`accounts.ts` 的说明各一处），
       //    不剥会被数成调用点 —— 本轮实测扫出 6 处而真实是 4。
-      const code = stripComments(readFileSync(f, "utf8"), "ts");
+      const code = stripComments(raw, "ts");
       for (const m of code.matchAll(
         // ⚠ 窗口 1200 字符是**量出来的**：`fork-flow.ts` 那处调用里夹着一整段注释，
         //    400 的窗口够不到它的收尾 `})`，实测只扫到 3 处（应为 4）—— 那是**假绿**方向。
@@ -404,9 +408,14 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     }
     return out;
   }
+  // 全 `src` 扫一趟，下面两条共用（原先各扫一遍、都挂在 5 s 默认期限上：负载 60 以上带覆盖率撞过）。
+  let SITES: Array<{ file: string; text: string; kind: string }> = [];
+  beforeAll(() => {
+    SITES = localLaunchCallSites();
+  }, SCAN_TIMEOUT_MS);
 
   it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
-    const sites = localLaunchCallSites();
+    const sites = SITES;
     // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
     expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
     // 只许一处：多一条新主路 ⇒ 红一次，逼人回来看要不要传账号。
@@ -442,7 +451,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   //   值真的被铸出来、且真的避让了，由 `views/history-actions.vitest.ts` 与
   //   `fork-flow.vitest.ts` 那两组**行为**判据买。两段合起来才是那条性质。
   it("★ 每一处 `resume_history_session` 都带 `tmuxName`（分母 = 带得了这个参数的那几处）", () => {
-    const sites = localLaunchCallSites();
+    const sites = SITES;
     const resumeSites = sites.filter((s) => s.kind === "resume");
     // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
     expect(
@@ -744,31 +753,40 @@ function nameOf(n: ts.Node | undefined): string | null {
   return null;
 }
 
-/** 外层宿主的名字（给键用，免得同名字段在不同接口里撞成一个）。 */
-function hostOf(node: ts.Node): string {
-  for (let p: ts.Node | undefined = node.parent; p; p = p.parent) {
-    if (
-      ts.isInterfaceDeclaration(p) ||
-      ts.isClassDeclaration(p) ||
-      ts.isTypeAliasDeclaration(p) ||
-      ts.isFunctionDeclaration(p) ||
-      ts.isMethodDeclaration(p) ||
-      ts.isMethodSignature(p)
-    ) {
-      const n = nameOf(p.name);
-      if (n) return n;
-    }
+/**
+ * 外层宿主的名字（给键用，免得同名字段在不同接口里撞成一个）：最近一层**有名字的**接口 / 类 / 类型别名 / 函数 / 方法。
+ * 不沿父指针往上找，而是 [`originDecls`] 往下走时随身带着（建树不挂父指针：挂父指针的建树慢两倍多，
+ * 全前端 TS 这样建一遍在负载 70 以上带覆盖率撞过 30 s）。`host` 是**这个节点之外**最近的那一层，与原先从 `node.parent` 起找同义。
+ */
+function hostAfter(node: ts.Node, host: string): string {
+  if (
+    ts.isInterfaceDeclaration(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isMethodSignature(node)
+  ) {
+    return nameOf(node.name) ?? host;
   }
-  return "<top>";
+  return host;
 }
 
 /** 一份 TS 源码里「名字带 origin、带类型标注」的全部声明。 */
 function originDecls(rel: string, src: string): Decl[] {
-  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  // 不解析 JSDoc：下面只经 `forEachChild` 往下走，它本来就不进 JSDoc 节点 ⇒ 读数不变；这个仓注释很重，跳过它建树省两三成。
+  const sf = ts.createSourceFile(
+    rel,
+    src,
+    { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone },
+    false,
+    ts.ScriptKind.TS,
+  );
   const out: Decl[] = [];
-  const push = (node: ts.Node, name: string, type: ts.Node): void => {
+  let host = "<top>";
+  const push = (name: string, type: ts.Node): void => {
     out.push({
-      key: `${rel}::${hostOf(node)}.${name}`,
+      key: `${rel}::${host}.${name}`,
       type: type.getText(sf),
       nullable: containsNull(type),
     });
@@ -783,7 +801,7 @@ function originDecls(rel: string, src: string): Decl[] {
       node.type
     ) {
       const name = nameOf(node.name);
-      if (name && isOriginName(name)) push(node, name, node.type);
+      if (name && isOriginName(name)) push(name, node.type);
     }
     // 函数 / 方法的返回类型：函数名**以 origin 收尾**（`pickPrimaryOrigin`）才是「回一个 origin」；
     // `findHostByOrigin` / `resolveRemoteConfigByOrigin` 是「按 origin 找别的东西」，回的不是 origin。
@@ -792,7 +810,7 @@ function originDecls(rel: string, src: string): Decl[] {
       node.type
     ) {
       const name = nameOf(node.name);
-      if (name && /origins?$/i.test(name) && !/byorigins?$/i.test(name)) push(node, `${name}()`, node.type);
+      if (name && /origins?$/i.test(name) && !/byorigins?$/i.test(name)) push(`${name}()`, node.type);
     }
     // 函数类型别名 `type X = (origin: …) => …` 的参数已由 isParameter 覆盖。
     // `const origins = new Set<…>()` / `new Map<…>()`：元素类型写在类型实参上，不在标注里。
@@ -800,10 +818,13 @@ function originDecls(rel: string, src: string): Decl[] {
       const name = nameOf(node.name);
       const init = node.initializer;
       if (name && isOriginName(name) && ts.isNewExpression(init) && init.typeArguments) {
-        for (const ta of init.typeArguments) push(node, `${name}<>`, ta);
+        for (const ta of init.typeArguments) push(`${name}<>`, ta);
       }
     }
+    const outer = host;
+    host = hostAfter(node, outer);
     ts.forEachChild(node, visit);
+    host = outer;
   };
   visit(sf);
   return out;
@@ -829,6 +850,11 @@ function originCorpus(): Decl[] {
 }
 
 describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", { timeout: SCAN_TIMEOUT_MS }, () => {
+  // 全前端 TS 建一遍树是本组唯一的重活：在这里做一次（原先落在第一条用例里，负载 70 带覆盖率时那一条读过 27 s）。
+  beforeAll(() => {
+    originCorpus();
+  }, SCAN_TIMEOUT_MS);
+
   it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；〔C4b〕待办表今天为空）", () => {
     const found = originCorpus()
       .filter((d) => d.nullable)

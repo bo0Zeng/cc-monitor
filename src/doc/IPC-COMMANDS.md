@@ -50,7 +50,6 @@ A new session file appeared。
 | `sid` | string | 会话 id |
 | `agent_kind` | string? | 会话属哪 agent kind——`"codex"`（Codex 会话） |
 | `liveness_confidence` | string? | 判活置信度——`"heuristic"`（Codex 无 pidfile、mtime/proc 启发） |
-| `session_kind` | string? | pidfile 里的会话种类原词（`interactive` · `bg` …） |
 | `background` | bool? | 是不是后台会话（不是人坐在终端里对话的那种） |
 | `attachable` | bool? | attach 进去对人有没有意义 |
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |
@@ -58,7 +57,6 @@ A new session file appeared。
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
-| `status` | string? | 宣告时的初始 status/waitingFor——连接建立灯就对 |
 | `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
@@ -71,7 +69,6 @@ A new session file appeared。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `status` | string? | 红绿灯状态（pidfile 里的 `status` 原词；monitor 读 `activity`，第二个前端读它，冻结） |
 | `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
@@ -166,6 +163,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 （无字段）
 
+### `plan_changed`
+
+**这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要或要你看的数变了；认可 / 撤销认可也推一帧新的数）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `workspace` | string | 工作区根 |
+| `rev` | string | 新的输出摘要（同 `plan-read` 的 `rev`） |
+| `needs` | number | 这个工作区此刻要你看的数（没认可的，不含 agent 问人那一种 —— 那一条由会话那一侧数；同 `plan-read` 的 `needCount`） |
+
 ### `tasks_changed`
 
 **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
@@ -259,6 +266,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `sid` | string | 会话 id |
 | `runs` | [RunInfo] | 在表里的子运行（整份） |
 | `ended` | [RunEnded] | 被挤出表的已收场子运行 |
+
+### `session_branch`
+
+一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `path` | string | 这份会话记录在那台机器上的绝对路径 |
+| `off` | [string] | 主线外那几条的 `id` |
 
 ### `terminal_screen`
 
@@ -1454,24 +1471,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
-#### `accounts-isolate`
-
-把一个共享项变成每个号各一份。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-isolate`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
-| `applied` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
-| `backup` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `item` | → | 共享库顶层的一个名字（含 `/` · `.` · `..` · 共享库里没有 · 是后端看会话用的那几项（常驻后端只看共享库那一份）⇒ `refused`） |
-| `notes` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
-| `steps` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
-
-码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
-
 #### `accounts-rollback`
 
 按一份备份还原。
@@ -1702,7 +1701,7 @@ sid → 上次用哪个号起。
 
 把各台的搜索结果合成一份。
 
-收 `args` · 可撤 · 只在流上
+收 `args` · 可撤 · CLI：`ccm -- --history-search-merge`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1760,6 +1759,7 @@ sid → 上次用哪个号起。
 | `lines` | ← | **记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现） |
 | `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数） |
 | `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
+| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为） |
 | `until` | → | 可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止 |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1777,6 +1777,7 @@ sid → 上次用哪个号起。
 | `offset` | → | 从这个字节起（缺省 0） |
 | `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
 | `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准 |
+| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为） |
 | `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1796,6 +1797,7 @@ sid → 上次用哪个号起。
 | `offset` | → | 同 `history-read` |
 | `path` | → | 同 `history-read` |
 | `seq` | → | `offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq` |
+| `summaryOnly` | → | 同 `history-read` |
 | `until` | → | 同 `history-read` |
 | `whole` | → | 这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06） |
 
@@ -1838,6 +1840,20 @@ sid → 上次用哪个号起。
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
 | `writers` | ← | 此刻持着这条会话的活进程 pid（这台的 pidfile），升序；不留 pidfile 的那一家恒空 |
+
+码：`bad_args` · `failed` · `too_large`
+
+#### `history-branch`
+
+主线外清单。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-branch`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `end` | ← | 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说） |
+| `off` | ← | 回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空 |
+| `path` | → | jsonl 路径（围栏同 `history-read`） |
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2348,6 +2364,21 @@ skill 装记录的写口。
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
+#### `ext-list-here`
+
+设置「扩展」页那张表的本机那一半（不问可达表）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-list-here`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `machines` | ← | 恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表 |
+| `problems` | ← | 同 `ext-list`：这台扫的时候读不出来的那几份 |
+| `rows` | ← | 同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格 |
+| `visit` | → | 同 `ext-list`：`true` = 这一问算「来看了一次」 |
+
+码：`bad_args` · `catalog_unreadable` · `io_failed`
+
 #### `ext-note-set`
 
 写 / 改 / 清一个扩展的备注。
@@ -2821,7 +2852,7 @@ cc-bus 钩子诊断。
 
 给一台远端开终端要跑的那一串。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-ssh`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2874,29 +2905,27 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | ← | `session` 里：哪一家（没标就缺） |
-| `can` | ← | 这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}` |
-| `client` | → ← | 请求里可选：自报的前端，决定每行的 `mine` / `can`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
+| `can` | ← | 这个调用方能做什么：`input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}`（抓屏不过身份门、恒可用，不在这里） |
+| `client` | → ← | 请求里可选：自报的前端，决定每行的 `can` 与 `started_by.mine`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
 | `clients` | ← | 此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台 |
 | `complete` | ← | `false` ＝ 名单里有读不懂的行（画「部分」） |
 | `cwd` | ← | 当前目录 |
-| `end` | ← | 能不能结束（`{no: "not-yours" \| "not-managed" \| "other-windows"}`） |
+| `end` | ← | 能不能结束（`{no: "not_yours" \| "not_managed" \| "other_windows"}`） |
 | `host` | ← | 终端宿主（这一版是 `tmux`） |
 | `input` | ← | 输入方式：`shared`（tmux：各端都能打字） |
 | `kind` | ← | `clients` 一项：客户端种类（`terminal-window` …） |
 | `last_activity` | ← | 最近动静（秒） |
-| `mine` | ← | 这个调用方能不能送字 / 结束 |
+| `mine` | ← | `started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`） |
 | `no` | ← | 做不了的原因 |
-| `preview` | ← | 能不能抓屏 |
 | `program` | ← | 前台程序名 |
-| `purpose` | ← | `normal` … |
 | `session` | ← | 里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}` |
 | `sid` | ← | `session` 里：会话 id |
 | `since` | ← | `clients` 一项：连上的时刻（秒） |
 | `started_by` | ← | 谁起的：`{client, mine}` |
-| `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program-exited`（有会话、前台是 shell） |
+| `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program_exited`（有会话、前台是 shell） |
 | `terminal` | ← | 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回） |
 | `terminals` | ← | 终端名单（每行一个终端） |
-| `title` | ← | 窗格标题 |
+| `title` | ← | 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名 |
 | `tmux_name` | ← | tmux 会话名 |
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -2940,13 +2969,12 @@ cc-bus 钩子诊断。
 | `key` | → | 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down` |
 | `result` | ← | `delivered` · `unsure`（不知道送没送到，别重发）· `refused` |
 | `said` | ← | `refused` 时给人看的那一句（后端写好） |
-| `screen` | ← | `screen-changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed` |
+| `screen` | ← | `screen_changed` 时带的新指纹 |
+| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed` |
 | `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `take` | → | 要不要先接管输入（tmux 上无所谓，各端都能打字） |
 | `terminal` | → | 目标：名单里的不透明句柄（前端不拼、不解析） |
 | `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
-| `why` | ← | `refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed` |
+| `why` | ← | `refused` 的原因：`not_known` · `ambiguous` · `ended` · `not_yours` · `not_managed` · `screen_changed` |
 
 码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
@@ -2994,7 +3022,7 @@ cc-bus 钩子诊断。
 
 起会话要的终端名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-name-mint`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3023,7 +3051,7 @@ cc-bus 钩子诊断。
 
 停一批会话（逐个答，一个不成不挡下一个）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-stop`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3046,7 +3074,7 @@ cc-bus 钩子诊断。
 
 一批会话各在这台哪个终端里。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-where`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3066,7 +3094,7 @@ cc-bus 钩子诊断。
 
 起 / 接回一批会话（逐个答）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-start`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3101,7 +3129,7 @@ cc-bus 钩子诊断。
 
 起一个新会话（全产品一个框、一个请求）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3123,17 +3151,18 @@ cc-bus 钩子诊断。
 | `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
 | `session` | ← | `started` 时的 tmux 会话名 |
 | `sid` | ← | 分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出） |
+| `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界） |
 | `tmuxName` | → | 可缺 ⇒ 这台铸 |
 | `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |
 | `uuid` | → | `forkFrom` 里：从哪条消息处分叉 |
 
-码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `no_such_rule`
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_such_rule`
 
 #### `session-new-facts`
 
 起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-facts`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3156,7 +3185,7 @@ cc-bus 钩子诊断。
 
 起新会话前核一个目录：在不在 · 会用哪个终端名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-dir`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3576,9 +3605,116 @@ cc-bus 钩子诊断。
 
 码：`bad_args`
 
+### 4.10 计划
+
+#### `plan-list`
+
+这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-list`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dirs` | → | 可选：另要问的目录（串的数组） |
+| `fresh` | → | 可选布尔：`true` ⇒ 认过的目录也重问 |
+| `pb` | ← | `{state: ok\|missing\|unsupported, said, version}`：pb 装没装、认不认得它的输出 |
+| `workspaces` | ← | 每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, slices: [{name, domain, current, progress, needCount, error, stale}]}` |
+
+码：`bad_args`
+
+#### `plan-read`
+
+一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-read`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `workspace` | → | 工作区根（`plan-list` 给的那个） |
+| `rev` | ← | 这一份输出的摘要：变了才算计划变了 |
+| `readAt` | ← | 读到的时刻（epoch ms） |
+| `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
+| `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null` |
+| `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
+
+码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`
+
+#### `plan-cell-view`
+
+一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-cell-view`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `id` | → | 格的编号 |
+| `slice` | → | 片名 |
+| `view` | ← | 原样那一段 |
+| `workspace` | → | 工作区根 |
+
+码：`bad_args` · `no_view`
+
+#### `plan-ack`
+
+认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-ack`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 那一条的键（`plan-read` 里 `needs[].key`） |
+| `slice` | → | 片名 |
+| `workspace` | → | 工作区根 |
+| `acked` | ← | `true` |
+| `key` | ← | 原样 |
+| `needCount` | ← | 这个工作区此刻要你看的数 |
+
+码：`bad_args` · `io_failed` · `no_such_need` · `not_ackable` · `not_read` · `review_unreadable`
+
+#### `plan-unack`
+
+撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-unack`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 那一条的键 |
+| `slice` | → | 片名 |
+| `workspace` | → | 工作区根 |
+| `acked` | ← | `false` |
+| `key` | ← | 原样 |
+| `needCount` | ← | 这个工作区此刻要你看的数 |
+
+码：`bad_args` · `io_failed` · `not_read` · `review_unreadable`
+
+#### `plan-return`
+
+把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-return` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `client` | → | 自报的前端（过 `terminal-input` 那一道身份门） |
+| `id` | → | 格的编号 |
+| `line` | ← | 送出的那一行（后端拼；只读） |
+| `result` | ← | `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制） |
+| `said` | ← | `refused` / `copy` 时给人看的那一句 |
+| `screen` | ← | `screen-changed` 时带的新指纹 |
+| `seen_screen` | → | 送之前看到的那一屏的指纹（同 `terminal-input`） |
+| `slice` | → | 片名 |
+| `text` | → | 人的原话（换行并成空格） |
+| `to` | → | 可选：`owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有） |
+| `to` | ← | 送给的那一位（同 `plan-read` 里 `owner` 的形状） |
+| `why` | ← | `waiting`（在等你批准或回答）· `ended` · `unknown` · 或 `terminal-input` 的原因 |
+| `workspace` | → | 工作区根 |
+
+码：`bad_args` · `bad_target` · `capture_failed` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_server` · `no_such_cell` · `no_such_session` · `no_target` · `no_tmux` · `not_workspace` · `pb_unsupported` · `review_unreadable` · `unobservable`
+
 ## 5. CLI 子命令
 
-一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的从 stdin 读一段 JSON，回一行 JSON 到 stdout。
+一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。
 「＝ 帧命令」的那几条与流上同名命令是同一个处理器。
 
 | 子命令 | 说明 |
@@ -3587,7 +3723,6 @@ cc-bus 钩子诊断。
 | `--account-trust-zero` `<cwd>` | 账号 0（没启用多账号时那个原生身份）的信任预检，形状同 `--account-trust`；`cwd` 只当查表键，不收路径参数 |
 | `--accounts-add` | ＝ 帧命令 `accounts-add`：新建一个号 |
 | `--accounts-init` | ＝ 帧命令 `accounts-init`：建账号库 |
-| `--accounts-isolate` | ＝ 帧命令 `accounts-isolate`：把一个共享项变成每个号各一份 |
 | `--accounts-list` | ＝ 帧命令 `accounts-list`：账号清单 |
 | `--accounts-login-cmd` | ＝ 帧命令 `accounts-login-cmd`：在终端里登录一个号的那一行 |
 | `--accounts-mcp-pick` | ＝ 帧命令 `accounts-mcp-pick`：两边都改了的那一条用哪一版 |
@@ -3629,6 +3764,7 @@ cc-bus 钩子诊断。
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |
+| `--ext-list-here` | ＝ 帧命令 `ext-list-here`：设置「扩展」页那张表的本机那一半（不问可达表） |
 | `--ext-note-set` | ＝ 帧命令 `ext-note-set`：写 / 改 / 清一个扩展的备注 |
 | `--ext-uninstall-apply` | ＝ 帧命令 `ext-uninstall-apply`：从这台卸一个扩展 |
 | `--ext-uninstall-preview` | ＝ 帧命令 `ext-uninstall-preview`：从这台卸一个扩展之前那张卡 |
@@ -3663,6 +3799,7 @@ cc-bus 钩子诊断。
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |
+| `--history-branch` | ＝ 帧命令 `history-branch`：主线外清单 |
 | `--history-facts` | ＝ 帧命令 `history-facts`：会话事实 |
 | `--history-find` | ＝ 帧命令 `history-find`：会话内查找 |
 | `--history-forget` | ＝ 帧命令 `history-forget`：删一条历史注解 |
@@ -3675,6 +3812,7 @@ cc-bus 钩子诊断。
 | `--history-record` | ＝ 帧命令 `history-record`：这条会话的记录还在不在 |
 | `--history-run` | ＝ 帧命令 `history-run`：一个子运行的记录 |
 | `--history-search` | ＝ 帧命令 `history-search`：全文搜索 |
+| `--history-search-merge` | ＝ 帧命令 `history-search-merge`：把各台的搜索结果合成一份 |
 | `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段从哪个字节起 |
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「你说过的话」清单 |
@@ -3698,6 +3836,12 @@ cc-bus 钩子诊断。
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
+| `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数 |
+| `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
+| `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
+| `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
+| `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |
+| `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
@@ -3728,6 +3872,12 @@ cc-bus 钩子诊断。
 | `--session-accounts` | 正在跑的会话各属哪个号：每条 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
+| `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
+| `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
+| `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
+| `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
+| `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
 | `--skill-install-record` | ＝ 帧命令 `skill-install-record`：skill 装记录的写口 |
@@ -3737,7 +3887,9 @@ cc-bus 钩子诊断。
 | `--ssh-config-resolve` | ＝ 帧命令 `ssh-config-resolve`：一个别名的有效连接参数 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
+| `--terminal-name-mint` | ＝ 帧命令 `terminal-name-mint`：起会话要的终端名 |
 | `--terminal-preview` | ＝ 帧命令 `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方） |
+| `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 

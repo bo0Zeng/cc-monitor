@@ -140,22 +140,3 @@ fn add_plans_dir_links_and_manifest_and_refuses_duplicates() {
     };
     assert_eq!(plan_add(&s, &dup).unwrap_err().0, "refused");
 }
-
-/// 会话起停与会话记录那两项不许隔离：常驻后端只看共享库里的那一份，隔离了那个号起的会话主窗口里就看不见。别的共享项照旧能隔离。
-#[test]
-fn the_items_the_session_watcher_reads_cannot_be_isolated() {
-    let mut s = snap(healthy());
-    for n in ["sessions", "projects"] {
-        s.shared
-            .entries
-            .insert(n.to_string(), Item::Dir { mode: Some(0o700) });
-    }
-    for n in ["sessions", "projects"] {
-        let got = plan_isolate(&s, n);
-        assert!(
-            matches!(&got, Err((_, said)) if said.contains(n)),
-            "{n} 被放行隔离了：{got:?}"
-        );
-    }
-    assert!(plan_isolate(&s, "skills").is_ok(), "别的共享项照旧能隔离");
-}

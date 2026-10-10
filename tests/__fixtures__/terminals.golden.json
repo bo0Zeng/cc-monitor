@@ -16,8 +16,7 @@
         {
           "can": {
             "end": true,
-            "input": true,
-            "preview": true
+            "input": true
           },
           "clients": [
             {
@@ -31,7 +30,6 @@
           "input": "shared",
           "last_activity": 100,
           "program": "claude",
-          "purpose": "normal",
           "session": {
             "agent": "claude",
             "sid": "sid-a"
@@ -48,14 +46,13 @@
         {
           "can": {
             "end": {
-              "no": "not-yours",
+              "no": "not_yours",
               "said": "手机端内部会话"
             },
             "input": {
-              "no": "not-yours",
+              "no": "not_yours",
               "said": "手机端内部会话"
-            },
-            "preview": true
+            }
           },
           "clients": [],
           "cwd": "/r",
@@ -63,7 +60,6 @@
           "input": "shared",
           "last_activity": 300,
           "program": "vim",
-          "purpose": "normal",
           "started_by": {
             "client": "desktop",
             "mine": false
@@ -76,8 +72,7 @@
         {
           "can": {
             "end": true,
-            "input": true,
-            "preview": true
+            "input": true
           },
           "clients": [],
           "cwd": "/q",
@@ -85,7 +80,6 @@
           "input": "shared",
           "last_activity": 200,
           "program": "bash",
-          "purpose": "normal",
           "session": {
             "agent": "claude",
             "sid": "sid-b"
@@ -94,7 +88,7 @@
             "client": "mobile",
             "mine": true
           },
-          "state": "program-exited",
+          "state": "program_exited",
           "terminal": "tmux-2-2",
           "title": "bash",
           "tmux_name": "pipe-x"
@@ -187,7 +181,7 @@
       },
       {
         "result": "refused",
-        "why": "screen-changed",
+        "why": "screen_changed",
         "said": "画面已变",
         "screen": "0000000000000000"
       },

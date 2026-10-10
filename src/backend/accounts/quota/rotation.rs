@@ -240,6 +240,8 @@ pub enum SwitchWhy {
     /// 要往后换到 `instead` 时，排在它前面的 `account` 在「最多等几分钟」内就回来 ⇒ 先停着等它（这一发没发上游；
     /// `fromResetsAt` ＝ 它回来的那一刻）。
     Wait { account: String, instead: String },
+    /// 在兜底号上、池里有非兜底的号又能用了 ⇒ 切到首个能用的那个（`to`），不管换法。
+    LeaveFallback,
 }
 
 /// 一条换号记录。`from == to` 的是没换成的那几种（跳过 · 留在超额）。

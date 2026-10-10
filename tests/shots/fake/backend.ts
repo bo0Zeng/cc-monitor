@@ -46,6 +46,7 @@ export class FakeBackend {
   private readonly subs = new Map<number, Sub>();
   /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
   private readonly listedOrigins = new Set<string>();
+  private screenSeq = 0;
 
   constructor(readonly world: World) {}
 
@@ -204,6 +205,14 @@ export class FakeBackend {
   pushQuota(origin: string, body: unknown): void {
     for (const sub of this.subs.values()) {
       if (sub.origin === origin && sub.kind === "quota-changed") this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(body) }]);
+    }
+  }
+
+  /** 性能台架：往那台所有终端实时画面的订阅上推一屏（`view` 同 `terminal-preview` 成品）。 */
+  pushScreen(origin: string, view: unknown): void {
+    this.screenSeq += 1;
+    for (const sub of this.subs.values()) {
+      if (sub.origin === origin && sub.kind.startsWith("terminal-screen/")) this.send(sub, [{ t: "frame", seq: this.screenSeq, body: JSON.stringify({ seq: this.screenSeq + 1, view }) }]);
     }
   }
 

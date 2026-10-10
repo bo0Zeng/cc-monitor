@@ -467,4 +467,26 @@ describe("D2 · 每个滚动容器一个 IO", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("里面没有等着补的代码块 / 公式的卡不交给 IO（个个挂着 ＝ 滚动时每一帧都替它们算一遍交叉：300 轮的子运行 2495 个目标 → 299 个）", async () => {
+    FakeIO.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    try {
+      const { observeForEnhance } = await import("../../../src/frontend/ui/render");
+      const root = document.createElement("div");
+      const plain = document.createElement("div");
+      plain.innerHTML = renderMarkdown("只有字，没有代码块。", { lazy: true });
+      const code = document.createElement("div");
+      code.innerHTML = renderMarkdown("```ts\nconst a = 1;\n```", { lazy: true });
+      const math = document.createElement("div");
+      math.innerHTML = renderMarkdown("$$a^2$$", { lazy: true });
+      observeForEnhance(plain, root);
+      observeForEnhance(code, root);
+      observeForEnhance(math, root);
+      const io = FakeIO.all.find((x) => x.opts.root === root)!;
+      expect([...io.observed]).toEqual([code, math]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

@@ -605,7 +605,11 @@ describe("秤 4 每帧账本", () => {
       folder.setBatchMode(true);
       for (const r of recs) folder.recordAdded(r);
       folder.setBatchMode(false);
-      for (let i = 0; i < REPS; i++) folder.flushPending();
+      // 每次之前登记一条与记录无关的队列内容：主线要重算（没变过的话 flush 照用上次的，一次都不算 —— 量不到）
+      for (let i = 0; i < REPS; i++) {
+        folder.addQueuedContent(`读数用的占位 ${i}`);
+        folder.flushPending();
+      }
 
       const led = ledger();
       expect(led.computes, `n=${n}：该算 ${REPS} 次`).toBe(REPS);
@@ -635,5 +639,50 @@ describe("秤 4 每帧账本", () => {
         "🔴 这一列**不是 WebView2 的读数**。仪表在生产代码里，真机跑一次就有同一列数；本轮没有真机。",
       ].join("\n"),
     );
+  });
+});
+
+describe("物化 / 补批之后的重折：上次算过之后一条新记录都没来 ⇒ 主线照用上次的，不再整份重算", () => {
+  afterEach(() => {
+    delete (globalThis as unknown as { __ccmPerf?: PerfBag }).__ccmPerf;
+  });
+
+  it("rebuildNow 连着几次（骨架往下物化一段一次）只算一次；来了新记录 / 队列豁免变了 ⇒ 照算；折叠结果与每次都算一样", () => {
+    installPerf(false);
+    const { el, folder } = mount();
+    // 一条主线 a→b→c，c 上分叉出 d（旧分支）与 e（主线）：d 折起来
+    const recs: BranchRecord[] = [
+      { uuid: "a", parentUuid: null, timestamp: "2026-10-01T00:00:01Z", type: "user" },
+      { uuid: "b", parentUuid: "a", timestamp: "2026-10-01T00:00:02Z", type: "assistant" },
+      { uuid: "c", parentUuid: "b", timestamp: "2026-10-01T00:00:03Z", type: "user" },
+      { uuid: "d", parentUuid: "c", timestamp: "2026-10-01T00:00:04Z", type: "assistant" },
+      { uuid: "e", parentUuid: "c", timestamp: "2026-10-01T00:00:05Z", type: "assistant" },
+    ] as BranchRecord[];
+    folder.setBatchMode(true);
+    for (const r of recs) {
+      appendCard(el, r.uuid);
+      folder.recordAdded(r);
+    }
+    folder.flushPending();
+    folder.setBatchMode(false);
+    const after = ledger().computes;
+    const shape = el.innerHTML;
+    for (let k = 0; k < 4; k++) {
+      folder.unwrapAll();
+      folder.rebuildNow();
+    }
+    expect(ledger().computes - after, "没来新记录：不再整份重算").toBe(0);
+    expect(el.innerHTML, "折叠结果照旧").toBe(shape);
+    // 来了一条新记录 ⇒ 照算
+    folder.setBatchMode(true);
+    appendCard(el, "f");
+    folder.recordAdded({ uuid: "f", parentUuid: "e", timestamp: "2026-10-01T00:00:06Z", type: "user" } as BranchRecord);
+    folder.setBatchMode(false);
+    folder.rebuildNow();
+    expect(ledger().computes - after).toBe(1);
+    // 队列豁免变了 ⇒ 照算
+    folder.addQueuedContent("队列里的一句");
+    folder.rebuildNow();
+    expect(ledger().computes - after).toBe(2);
   });
 });

@@ -14,6 +14,7 @@
  * 设计与读数住（本文件不抄数）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeMenu } from "../../../src/frontend/ui/kit/menu";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
@@ -89,6 +90,7 @@ function rig(n: number, grouped = 0): Rig {
   };
   const host: TabBarViewHost = {
     refreshTabBar: vi.fn(),
+    closeEndedIn: vi.fn(),
     openTabCwd: vi.fn().mockResolvedValue(undefined),
     bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
@@ -98,7 +100,10 @@ function rig(n: number, grouped = 0): Rig {
     isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),
     takeSuppressedClick: vi.fn().mockReturnValue(false),
+    beginGroupDrag: vi.fn(),
+    takeSuppressedHeadClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
+    toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
@@ -259,7 +264,7 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     void r.bar.children;
     expect(c.n).toBe(1);
   });
-  it("散 tab 仍排在**最后一个**组容器之后（`P7a3-Y2`「未归组的照常在后面」；两个组，第二个是后建的）", () => {
+  it("组与散的混排：组在它第一个组员那一格（两个组，第二个是后建的、组员在前面那些之后）", () => {
     const r = make(6, 2);
     r.prefs.collections.push({ id: "c2", name: "组二" });
     r.store.tabs.get("s2")!.group = "c2";
@@ -289,10 +294,12 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
         collections: [],
         collectionsLoaded: false,
         persistOrder: vi.fn().mockResolvedValue(undefined),
+        snapshot: () => ({ order: [], groups: [], groupOf: new Map() }),
+        offerUndo: vi.fn(),
       } as unknown as TabBarPrefs,
       r.bar,
-      r.view.tabButtons,
-      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined) },
+      r.view,
+      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined), renameGroupNow: vi.fn(), selectedFor: (sid: string) => [sid] },
     );
     return { r, drag, reads };
   };
@@ -344,36 +351,45 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
     expect(reads.n).toBe(2 * n);
   });
 
-  it("落点没变的 mousemove ⇒ `classList.toggle` 0 次；换一个落点 ⇒ 恰好 2 次（清旧 ＋ 标新）", () => {
+  it("落点没变的 mousemove ⇒ 落点标记 0 次 DOM 写；换一个落点 ⇒ 插入线挪一次", () => {
     const { r, drag } = dragRig(20);
     down(r, drag, "s0");
-    move(130); // 起拖 ＋ 第一次标（落在 s3 之前）
-    const spy = vi.spyOn(DOMTokenList.prototype, "toggle");
+    move(130); // 起拖 ＋ 第一次画（落在 s3 之前）
+    const line = [...document.body.children].find((e) => e instanceof HTMLElement && e.style.top !== "" && !e.classList.contains("tab-drag-ghost")) as HTMLElement;
+    expect(line, "插入线画出来了（量具自检）").toBeDefined();
+    const writes: MutationRecord[] = [];
+    const mo = new MutationObserver((m) => writes.push(...m));
+    mo.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["class", "style", "hidden"] });
+    const flush = (): number => {
+      writes.push(...mo.takeRecords());
+      return writes.filter((w) => w.target !== document.querySelector(".tab-drag-ghost")).length;
+    };
     try {
       move(131);
       move(132);
-      expect(spy).toHaveBeenCalledTimes(0);
+      expect(flush(), "同一个落点").toBe(0);
       move(250); // 换到另一格
-      expect(spy).toHaveBeenCalledTimes(2);
+      expect(flush()).toBeGreaterThan(0);
+      expect(line.style.top, "线挪到了新那一格的上沿").toBe(`${6 * 40 - 1}px`);
     } finally {
-      spy.mockRestore();
+      mo.disconnect();
     }
-    expect(r.bar.querySelectorAll(".drop-before").length, "任何时刻只有一个落点标记").toBe(1);
+    void r;
   });
 });
 
 describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那几个", () => {
-  it("建 TabBarView：手势三个在 barEl 上、悬停两组（卡 · 行尾动作）各四个在列表上、栏顶「刷新」五个 ·「需手动」菜单进出两个；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
+  it("建 TabBarView：手势五个在 barEl 上（点 · 右键 · 按下 · 列表键按下 / 松开）、悬停两组（卡 · 行尾动作）各四个在列表上、栏顶「刷新」五个 ·「需手动」菜单进出两个；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
     for (const m of [5, 40]) {
       const spy = vi.spyOn(EventTarget.prototype, "addEventListener");
       try {
         const r = make(0);
         const on = (el: EventTarget): string[] =>
           spy.mock.calls.filter((_, i) => spy.mock.contexts[i] === el).map((c) => c[0] as string).sort();
-        expect(on(r.bar), "手势：恰好三个委托").toEqual(["click", "contextmenu", "mousedown"]);
+        expect(on(r.bar), "手势：恰好五个委托").toEqual(["click", "contextmenu", "keydown", "keyup", "mousedown"]);
         expect(on(r.view.listEl), "悬停：卡与行尾动作两组委托").toEqual(["focusin", "focusin", "focusout", "focusout", "mouseout", "mouseout", "mouseover", "mouseover"]);
         // 栏顶「刷新」一份悬停提示（五个）·「需手动」菜单的进 / 出两个（固定，不随 tab 数涨）。
-        expect(spy.mock.calls.length, "构造总数恒定").toBe(3 + 8 + 5 + 2);
+        expect(spy.mock.calls.length, "构造总数恒定").toBe(5 + 8 + 5 + 2);
         spy.mockClear();
         for (let i = 0; i < m; i++) {
           r.store.tabs.set(`n${i}`, fakeTab(`n${i}`));
@@ -506,7 +522,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
 
     it("组头上的点击不当成 tab 手势（委托只认 tab 按钮）", () => {
       const r = make(3, 2);
-      (r.bar.querySelector(".tab-group-del") as HTMLElement).dispatchEvent(
+      (r.bar.querySelector(".tab-group-more") as HTMLElement).dispatchEvent(
         new MouseEvent("mousedown", { button: 0, bubbles: true }),
       );
       r.bar.querySelector(".tab-group-head")!.dispatchEvent(
@@ -515,6 +531,8 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       expect(r.host.beginDrag).not.toHaveBeenCalled();
       expect(r.host.openMenu).not.toHaveBeenCalled();
       expect(r.host.switchTo).not.toHaveBeenCalled();
+      expect(document.querySelector("[role=menu]"), "组头右键开的是组的菜单").not.toBeNull();
+      closeMenu();
     });
 
     it("barEl 里一个不是本视图建的 `.tab` 元素上的手势 ⇒ 不分派（sid 只从本视图那张表里认）", () => {
@@ -545,7 +563,7 @@ describe("P5：切 tab 只写 4 次 class，与 tab 数无关（代码不改，�
       streamEl.className = "stream";
       const inputsEl = document.createElement("div");
       root.append(streamEl, inputsEl);
-      store.tabs.set(`s${i}`, { sessionId: `s${i}`, streamEl, inputsEl, turnFold: { release: () => {} }, turnRail: { el: document.createElement("div"), shown: () => {} }, stream: { park: () => {} } } as unknown as Tab);
+      store.tabs.set(`s${i}`, { sessionId: `s${i}`, streamEl, inputsEl, turnFold: { release: () => {}, flushStale: () => {} }, turnRail: { el: document.createElement("div"), shown: () => {} }, stream: { park: () => {} } } as unknown as Tab);
     }
     const view = new TabStreamView(store, root, {} as TabStreamHost);
     const mo = new MutationObserver(() => {});

@@ -412,36 +412,6 @@
       "zh": "{path} 是指向 {target} 的链接 · 先换回普通文件再建账号库",
       "args": ["path", "target"]
     },
-    "beAcctPlan.isolate.already": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{name} 的 {item} 已单独 · 跳过",
-      "args": ["name", "item"]
-    },
-    "beAcctPlan.isolate.badItem": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{item} 无效 · 只能是共享库顶层的一个名字",
-      "args": ["item"]
-    },
-    "beAcctPlan.isolate.notDeclared": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{item} 不是身份文件 · 之后提示它非共享链接属预期",
-      "args": ["item"]
-    },
-    "beAcctPlan.isolate.watched": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{item} 不可隔离 · 会话列表只看共享库那份\n隔离后此号会话主窗口看不见",
-      "args": ["item"]
-    },
-    "beAcctPlan.isolate.notShared": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{shared} 里无 {item}",
-      "args": ["shared", "item"]
-    },
     "beAcctPlan.links.noneShared": {
       "kind": "body",
       "role": "空态",
@@ -1695,6 +1665,18 @@
       "zh": "主目录未知 · 找不到 ~/.cc-monitor/bin/ccm · 未启动会话",
       "args": [],
       "limited": ["ccm"]
+    },
+    "beSessionNew.start.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动失败 · 程序出错",
+      "args": []
+    },
+    "beSessionNew.ticket.pending": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "上一次新建仍在启动 · 稍后再核",
+      "args": []
     },
     "beSessionNew.agent.missing": {
       "kind": "error",
@@ -3905,6 +3887,12 @@
         "C-W15": "键位表 / 命令面板里的动作名"
       }
     },
+    "sessionState.closeEnded.inGroup": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "关闭组里已结束的（{n}）",
+      "args": ["n"]
+    },
     "remoteLaunchRun.copyFallback.failedManual": {
       "kind": "error",
       "role": "报错",
@@ -4211,7 +4199,7 @@
     "tabBatch.menu.found": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建分组…（{n}）",
+      "zh": "新建分组（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.leave": {
@@ -4273,24 +4261,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "已取消固定",
-      "args": []
-    },
-    "tabBatch.action.join": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已加入分组「{name}」",
-      "args": ["name"]
-    },
-    "tabBatch.action.found": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已新建分组「{name}」",
-      "args": ["name"]
-    },
-    "tabBatch.action.leave": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已移出分组",
       "args": []
     },
     "tabBatch.action.rot": {
@@ -4459,8 +4429,44 @@
     "tabMenu.collection.remove": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "移出分组「{name}」",
-      "args": ["name"]
+      "zh": "移出分组",
+      "args": []
+    },
+    "tabMenu.group.rename": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "改名",
+      "args": []
+    },
+    "tabMenu.group.collapse": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "收起",
+      "args": []
+    },
+    "tabMenu.group.expand": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "展开",
+      "args": []
+    },
+    "tabMenu.group.collapseAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全部收起",
+      "args": []
+    },
+    "tabMenu.group.expandAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全部展开",
+      "args": []
+    },
+    "tabMenu.group.dissolve": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "解散分组",
+      "args": []
     },
     "tabMenu.pin.pin": {
       "kind": "action",
@@ -4477,31 +4483,13 @@
     "tabMenu.collection.add": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "加入分组",
-      "args": []
-    },
-    "tabMenu.collection.namePrompt": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "分组名",
+      "zh": "分组",
       "args": []
     },
     "tabMenu.collection.new": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建分组…",
-      "args": []
-    },
-    "tabMenu.collection.title": {
-      "kind": "title",
-      "role": "标题",
       "zh": "新建分组",
-      "args": []
-    },
-    "tabMenu.collection.action": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "新建",
       "args": []
     },
     "tabMenu.open.openInWindow": {
@@ -5339,12 +5327,6 @@
       "zh": "窗口出错 · 无会话可显示",
       "args": []
     },
-    "errorToast.showErrorToast.noMessage": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无消息内容",
-      "args": []
-    },
     "errorToast.showErrorToast.openLog": {
       "kind": "action",
       "role": "按钮",
@@ -5587,23 +5569,41 @@
       "zh": "已固定",
       "args": []
     },
-    "tabBarView.group.dissolveHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "解散分组 · 标签页不关闭",
-      "args": []
-    },
-    "tabBarView.group.dissolve": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "×",
-      "args": []
-    },
     "tabDrop.group.defaultName": {
       "kind": "body",
       "role": "片段",
       "zh": "分组 {n}",
       "args": ["n"]
+    },
+    "tabDrop.pill.found": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "建分组",
+      "args": []
+    },
+    "tabDrop.pill.join": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "进「{name}」",
+      "args": ["name"]
+    },
+    "tabDrop.ghost.cancel": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "松开取消",
+      "args": []
+    },
+    "tabDrop.ghost.many": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{title} +{n}",
+      "args": ["title", "n"]
+    },
+    "tabDrop.ghost.group": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} · {n}",
+      "args": ["name", "n"]
     },
     "tabStreamView.sentinel.moreCount": {
       "kind": "body",
@@ -13861,11 +13861,23 @@
       "zh": "先填工作目录",
       "args": []
     },
-    "newSession.retry.action": {
+    "newSession.recheck.action": {
       "kind": "action",
       "role": "按钮",
-      "zh": "重试",
+      "zh": "再核一次",
       "args": []
+    },
+    "newSession.timeout.checking": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "正在核实 {machine} 是否已起",
+      "args": ["machine"]
+    },
+    "newSession.timeout.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 启动结果未知",
+      "args": ["machine"]
     },
     "newSession.window.failed": {
       "kind": "error",
@@ -15434,6 +15446,132 @@
       "zh": "{bin} 启动失败 · {e}",
       "args": ["bin", "e"]
     },
+    "bePlan.dump.noPythonHint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "planned-build 要 python3",
+      "args": []
+    },
+    "bePlan.dump.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读计划超时 · {dur}",
+      "args": ["dur"]
+    },
+    "bePlan.dump.notRun": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "planned-build 启动失败",
+      "args": []
+    },
+    "bePlan.dump.noDump": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "要更新 · 计划不可用\nplanned-build 缺 dump",
+      "args": []
+    },
+    "bePlan.dump.exited": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读计划失败 · 程序出错 · 退出码 {rc}",
+      "args": ["rc"]
+    },
+    "bePlan.dump.unparsable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "planned-build 输出内容无法解析",
+      "args": []
+    },
+    "bePlan.dump.shape": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "要更新 · 计划不可用\nplanned-build 输出形状 {shape}",
+      "args": ["shape"]
+    },
+    "bePlan.face.noPb": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未装 planned-build",
+      "args": []
+    },
+    "bePlan.face.notWorkspace": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "不在 planned-build 工作区里",
+      "args": []
+    },
+    "bePlan.review.mkdirFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "创建 {dir} 失败",
+      "args": ["dir"]
+    },
+    "bePlan.review.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认可与退回未记下 · 无主目录",
+      "args": []
+    },
+    "bePlan.review.notRead": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该工作区未读过 · 先打开计划页",
+      "args": []
+    },
+    "bePlan.review.noSuchNeed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该条已不在需手动里 · 重读计划后再看",
+      "args": []
+    },
+    "bePlan.review.notAckable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "agent 问人的条目去会话里答 · 不收认可",
+      "args": []
+    },
+    "bePlan.review.noSuchCell": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "计划里无此格 · 重读计划后再看",
+      "args": []
+    },
+    "bePlan.review.noTarget": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该格无{role} · 换一个送给",
+      "args": ["role"]
+    },
+    "bePlan.return.waiting": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "会话在等批准或回答 · 先去会话里答",
+      "args": []
+    },
+    "bePlan.return.ended": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "会话已结束 · 复制此行，恢复会话后贴入",
+      "args": []
+    },
+    "bePlan.return.unknown": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "认不出负责的会话 · 复制此行自行贴入",
+      "args": []
+    },
+    "bePlan.return.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "人 · {id} {title}：{text}",
+      "args": ["id", "title", "text"]
+    },
+    "bePlan.face.noView": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无 agent 视角 · 重读计划后再看",
+      "args": []
+    },
     "beProbe.parse.emptyOutput": {
       "kind": "error",
       "role": "原因格",
@@ -16516,6 +16654,12 @@
       "zh": "已关闭「{title}」 · 已取消固定",
       "args": ["title"]
     },
+    "tabBar.close.doneMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已关闭标签页 ×{n}",
+      "args": ["n"]
+    },
     "tabBar.persist.collectionsFailed": {
       "kind": "error",
       "role": "报错",
@@ -17312,6 +17456,30 @@
       "role": "原因格",
       "zh": "{path} 非会话记录 · 未删除",
       "args": ["path"]
+    },
+    "beSpend.cost.exact": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "${usd}",
+      "args": ["usd"]
+    },
+    "beSpend.cost.about": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "约 ${usd}",
+      "args": ["usd"]
+    },
+    "beSpend.cost.tiny": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不到 $0.01",
+      "args": []
+    },
+    "beSpend.tokens.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入 {input} · 输出 {output} · 读缓存 {read} · 写缓存 {write}",
+      "args": ["input", "output", "read", "write"]
     },
     "beFilesWrite.session.noReader": {
       "kind": "error",
@@ -20507,7 +20675,7 @@
     "beRotation.explain.preempt": {
       "kind": "body",
       "role": "说明",
-      "zh": "前面的号恢复即切回",
+      "zh": "前面的号有额度就换回它",
       "args": []
     },
     "beRotation.explain.noPreempt": {
@@ -20525,14 +20693,20 @@
     "beRotation.explain.fallback": {
       "kind": "body",
       "role": "说明",
-      "zh": "{list} 兜底",
+      "zh": "{list} 只兜底",
       "args": ["list"]
     },
     "beRotation.explain.wait": {
       "kind": "body",
       "role": "说明",
-      "zh": "其余号 {dur} 内恢复则不切兜底",
+      "zh": "{dur} 内有号恢复就先等",
       "args": ["dur"]
+    },
+    "beRotation.explain.leave": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "别的号有额度就不用 {list}",
+      "args": ["list"]
     },
     "beRotation.explain.off": {
       "kind": "body",
@@ -21840,7 +22014,7 @@
     "rot.fallback.hint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "其余号均不可用且等不到恢复时才切兜底",
+      "zh": "别的号都没额度时才用它 · 有号恢复就换走",
       "args": []
     },
     "rot.fallback.aria": {
@@ -22314,7 +22488,7 @@
     "rot.how.preemptHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "前面的号恢复即切回",
+      "zh": "前面的号有额度就换回它",
       "args": []
     },
     "rot.how.stintHint": {
@@ -22467,6 +22641,12 @@
       "zh": "抢回",
       "args": []
     },
+    "rot.why.leave": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "换下兜底",
+      "args": []
+    },
     "rot.why.stint": {
       "kind": "body",
       "role": "片段",
@@ -22482,7 +22662,7 @@
     "rot.why.wait": {
       "kind": "body",
       "role": "片段",
-      "zh": "等 {acct}",
+      "zh": "先等 {acct}",
       "args": ["acct"]
     },
     "acct.rot.title": {
@@ -22850,7 +23030,7 @@
     "acct.hist.wait": {
       "kind": "body",
       "role": "片段",
-      "zh": "等 {name} 恢复 · 不换到 {instead}",
+      "zh": "先等 {name} · 不用兜底 {instead}",
       "args": ["name", "instead"]
     },
     "acct.hist.held": {
@@ -22893,6 +23073,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "{name} 已恢复",
+      "args": ["name"]
+    },
+    "acct.hist.leaveFallback": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "换下兜底 · {name} 已恢复",
       "args": ["name"]
     },
     "acct.hist.more": {
@@ -26714,6 +26900,42 @@
       "zh": "回到底部",
       "args": []
     },
+    "keybindingActions.tabBar.moveUp": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "往上挪",
+      "args": []
+    },
+    "keybindingActions.tabBar.moveDown": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "往下挪",
+      "args": []
+    },
+    "keybindingActions.tabBar.leaveGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出分组",
+      "args": []
+    },
+    "keybindingActions.tabBar.joinPrev": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "与上一个成组",
+      "args": []
+    },
+    "keybindingActions.tabBar.renameGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改分组名",
+      "args": []
+    },
+    "keybindingActions.tabBar.focusCycle": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在主区与标签页栏之间切焦点",
+      "args": []
+    },
     "keybindingActions.app.keys": {
       "kind": "action",
       "role": "按钮",
@@ -26897,6 +27119,30 @@
       "zh": "pin 固定",
       "args": []
     },
+    "main.cmd.groupNew": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建分组",
+      "args": []
+    },
+    "main.cmd.groupJoin": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加入分组…",
+      "args": []
+    },
+    "main.cmd.groupLeave": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出分组",
+      "args": []
+    },
+    "main.cmd.groupKeywords": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "group 分组 标签页",
+      "args": []
+    },
     "main.cmd.procExpand": {
       "kind": "action",
       "role": "按钮",
@@ -27011,6 +27257,12 @@
       "zh": "窗口与应用",
       "args": []
     },
+    "keys.group.bar": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "标签页栏",
+      "args": []
+    },
     "keys.group.unbound": {
       "kind": "title",
       "role": "标题",
@@ -27033,6 +27285,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "上一轮 / 下一轮",
+      "args": []
+    },
+    "keys.row.move": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "往上 / 往下挪",
       "args": []
     },
     "keys.row.panels": {
@@ -27093,6 +27351,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "主区 / 标签页栏",
+      "args": []
+    },
+    "keys.scope.bar": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "标签页栏",
       "args": []
     },
     "keys.scope.bare": {
@@ -27433,6 +27697,54 @@
       "role": "说明",
       "zh": "已移出分组「{name}」",
       "args": ["name"]
+    },
+    "tabBar.group.founded": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已建分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.joined": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移到「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.joinedMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移到「{name}」 ×{n}",
+      "args": ["name", "n"]
+    },
+    "tabBar.group.leftMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移出分组 ×{n}",
+      "args": ["n"]
+    },
+    "tabBar.group.moved": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移动分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.sumNeeds": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.sumRunning": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在跑 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.more": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "分组操作",
+      "args": []
     },
     "tabBar.unpinned.toast": {
       "kind": "body",
@@ -28105,6 +28417,12 @@
       "zh": "待办里记下的选择 · 不再用的几件 · 自己贴的启动文件",
       "args": []
     },
+    "rsDataPaths.backend.planReview": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "计划需手动里认可过的几条 · 退回过的格",
+      "args": []
+    },
     "rsDataPaths.backend.lastSeen": {
       "kind": "body",
       "role": "说明",
@@ -28727,6 +29045,49 @@
       "role": "片段",
       "zh": "{machine} · {sid}",
       "args": ["machine", "sid"]
+    },
+    "errorToast.showErrorToast.reconnect": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "rsUiError.localExited.restarted": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机上的 cc-monitor 意外退出 · 已重启",
+      "args": []
+    },
+    "rsUiError.localExited.down": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机离线 · cc-monitor 意外退出",
+      "args": []
+    },
+    "rsUiError.localQuit.restarted": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机上的 cc-monitor 启动即退出 · 已重启",
+      "args": []
+    },
+    "rsUiError.localQuit.down": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机离线 · cc-monitor 启动即退出",
+      "args": []
+    },
+    "rsUiError.localUnreadable.down": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机离线 · 程序出错",
+      "args": []
+    },
+    "rsUiError.machines.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取机器列表失败 · 内容无法解析",
+      "args": []
     }
   }
 }

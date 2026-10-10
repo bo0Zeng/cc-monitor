@@ -69,7 +69,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
 2. 内容：每条记录一帧 `line`，带成品 `message`（缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed`（只带 sid 或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed` / `plan_changed`（只带 sid、工作区与摘要，或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` / `turn_end` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / `tasks_changed` 这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
@@ -83,7 +83,11 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   请求可带 `args.client` 自报是哪个前端：没声明 / 声明成 `ccm` ⇒ 这一维不拦；声明的就是自报的 ⇒ 放；声明了别的 ⇒ `wrong_owner`（别的前端起的，这里只能看）。
   `kill` · `launch` 的 `send-into` · `sessions-*` · `terminal-input` · `session-restart` 共用这一维；它防误动，不是安全边界。
 - **破坏性动作三道门**：名字精确匹配（`=name:`，不许含 `:` / `=` / 控制字符）⇒ 名字像我们铸的（`cc-*` / `<X>-cc`）或已挂 `@ccm_sid` ⇒ 只有一个窗口（只给杀会话）。杀的是 `#{session_id}` 句柄，不是名字。
+- **抓屏不过身份门、恒可用**：`terminal-preview` 只读，谁问都给（身份门只管送字 / 结束）⇒ `terminals-list` 每行的 `can` 里只有会变的 `input` · `end`，没有 `preview` 那一格。
+  `terminal-input` 只收 `terminal` | `sid` · `text` · `enter` · `key` · `seen_screen` · `client`，多送一格 ⇒ `bad_args`。
 - **终端句柄**：`terminals-list` 每行的 `terminal` 是不透明句柄，前端不拼、不解析；后端不收任意 tmux 目标串，句柄 / sid 先在那一刻的名单里对上才动手。
+- **送字的回话不带画面**：`terminal-input` 回 `delivered` 时**不带** `screen`（`screen` 只跟 `refused` ＋ `screen_changed` 一起回，是那一刻的新指纹）。
+  要连着按，要么订 `terminal-follow`（只在帧面），要么每按一下之前问一次 `terminal-preview` 拿新指纹。重抓的节拍归前端。
 
 ## 7. 两个前端共吃的冻结面
 
@@ -92,25 +96,38 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）·
   `session_added` `sid` `path` `session_kind` `cwd` `name` `lines` `status` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
   `session_status` `sid` `status` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
-  `turn_end` `session_id` `uuid` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）。
+  `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
+  请求信封 `id` `cmd` `args` `within_ms`（可缺）。`line` 里成品那一格（今天叫 `message`）不在这张冻结表里：记录帧换形之后按新形状另立。
 - 一次性子命令（叫法 · 位置参数个数 · 输出里它读的那几格）：`--list-projects`（`dirName` `projectPath` `sessionCount` `lastActivityMs`）·
   `--list-sessions <项目目录名>`（`sessionId` `aiTitle` `cwd` `jsonlPath` `messageCountApprox` `startedAtMs` `updatedAtMs` `isBg`）· `--read-session <路径>` ·
-  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin）；
+  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin 或 `--args-b64`）·
+  `--backend-probe` · `--find-in-session --query <q> <路径>` · `--list-user-inputs <路径>` ·
+  帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
   会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
 - `session_kind` · `status` 是那一家的原词，monitor 不读（读后端判好的 `background` · `activity`），只为第二个前端留着。
-- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（表在那里，类型逐格对）。
+- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `--resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。
 - 部署：第二个前端从 GitHub Release 下后端字节（两个 musl 目标），按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验；资产名登记在 [RELEASING.md](RELEASING.md)。
 
 ## 8. CLI 一次性调用
 
-- `ccm -- --子命令 [位置参数…]`。从帧命令派生的那些（`--files-ls` 之类）与流上同名命令是同一个处理器：收 `args` 的从 stdin 读一段 JSON（上限 1 MiB，超了拒、不截断），stdout 一行应答 JSON。
+- `ccm -- --子命令 [位置参数…]`。从帧命令派生的那些（`--files-ls` 之类）与流上同名命令是同一个处理器，stdout 一行应答 JSON。
+- **入参**（收 `args` 的那些；一段 JSON，空 ＝ `{}`）有两个口，**二选一**，每条派生子命令都有，两个修饰词都认**任意位置**：
+  - **stdin**：默认读到 EOF；带 `--stdin-line` ⇒ 读到第一个换行就动手（给关不掉 stdin 的调用方）。上限 1 MiB（1048576 字节）。
+    stdin 开着、却 1000 ms 内一个字节都没来 ⇒ 立即回 `no_input`（不挂住）；第一个字节到了之后不再计时。stdin 是 EOF ⇒ 当 `{}`，缺哪格由命令自己回 `bad_args`。
+  - **argv**：`--args-b64 <base64 的 JSON>`（标准字母表、带补位）。给了它就不碰 stdin（写不了 stdin 的调用方用它，例如只有 stdout 的执行通道）。
+    值上限 131068 字节（编码后，约 96 KiB 的 JSON）。系统先卡一道：Linux 单个参数 ≤ 131072 字节（含结尾 NUL），经 ssh 时整行命令是登录 shell `-c` 的**一个**参数，
+    同一个上限管整行；Windows 整行 ≤ 32767 个字符。超过系统那一道，后端根本起不来，调用方看到的是 shell / sshd 那一层的错（如 `Argument list too long`），不是下面的信封 ⇒ 更大的载荷走 stdin。
+  - 两个都给（`--args-b64` 与 `--stdin-line`）· `--args-b64` 缺值 / 给两次 · 不收入参的命令带 `--args-b64` ⇒ `bad_args`；base64 坏 / 解出来不是 UTF-8 / 不是 JSON ⇒ `bad_request`；
+    超上限（哪一个口都一样）⇒ `args_too_large`，拒收、不截断。
 - 失败：stderr 一行 `{code, message}`、退出 2。
 - 出清单的那几条（骨架索引 · 你说过的话 · 会话内查找）是**三段**：首行头（认得出对面会出这份东西）· 每条一行 · 尾行带 `count` 与续点。**没有尾行 ⇒ 输出被截断**，调用方不许当全量。
   选项写在位置参数**前面**：老后端不认新选项时会快速失败（stdout 0 字节、退出 2），而不是把整份会话透传回来；客户端认「首行不是那个头」⇒ 诚实降级。
 - 路径参数过同一套路径围栏（只许落在那台的会话记录树里）。
-- **`--resolve`**（stdin `ResumeSpec` → stdout `CommandPlan`）与仓外 aterm 的契约冻结，字节以金样为准。它的三个出参可信度不同：`command`（候选启动器 ＋ `--resume <sid>`）可当事实用；
+- **`--resolve`**（`ResumeSpec` → stdout `CommandPlan`）与仓外 aterm 的契约冻结，字节以金样为准。入参与上面同一套口：stdin（可带 `--stdin-line`）或 `--args-b64`，同一套上限。
+  错误码全集：`bad_request` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`（流上的 `resolve` 也回这几个）·
+  `stdin_read_failed` · `args_too_large` · `no_input` · `bad_args`（只在一次性这条）。它的三个出参可信度不同：`command`（候选启动器 ＋ `--resume <sid>`）可当事实用；
   `sessionName` 纯从 sid 派生、没查过 tmux；`capabilities` 是典型档、不是这台此刻的探测结果 —— 要判某个 tmux 会话在不在，问 `terminals-list`。
 
 ## 9. 本机进程之间的文件

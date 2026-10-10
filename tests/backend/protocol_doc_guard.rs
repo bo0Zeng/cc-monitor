@@ -633,6 +633,11 @@ mod tests {
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
             ),
             (
+                "observe/listing_scan.rs",
+                "ListingHead",
+                "**只读不出**：扫历史清单时读 CLI 记录行的窄探针（记录文件 schema 里要的那几格），不上线",
+            ),
+            (
                 "agents/claudecode/turn.rs",
                 "Probe",
                 "**只读不出**：turn-end 判词读 CLI 记录行的窄探针（记录文件 schema 的五格），不上线",
@@ -686,6 +691,10 @@ mod tests {
             (
                 "agents/claudecode/turn.rs",
                 include_str!("../../src/backend/agents/claudecode/turn.rs"),
+            ),
+            (
+                "observe/listing_scan.rs",
+                include_str!("../../src/backend/observe/listing_scan.rs"),
             ),
         ];
 

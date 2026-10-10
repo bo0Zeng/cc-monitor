@@ -577,6 +577,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "不是判据，是截图工具的一格：`npm run shots`（`tests/shots/filewin.mjs`）起私有 Xvfb、按全名逐场景拉起它截文件窗口。\
              谁什么时候跑：要文件窗口的底图、或动了文件窗口的样子要附截图时跑。",
         ),
+        (
+            "perf_rig_worker",
+            "不是判据，是性能台架的一格：`tests/shots/perf/filewin-perf.sh <测试二进制>` 起私有 Xvfb、按全名拉起它，\
+             印每一段（静着 · 悬停 · 滚轮 · 键盘 · 看一眼）的进程 CPU 与帧数。谁什么时候跑：动了文件窗口的重画 / 列表 / 预览、要附性能读数时跑。",
+        ),
     ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕

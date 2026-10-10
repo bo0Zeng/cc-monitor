@@ -30,24 +30,43 @@ import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/productio
 
 const HOME = "src/frontend/ui/ipc/origin.ts";
 
-/** 一个节点所在的函数 / 方法名（类方法记成 `类.方法`）；都不在 ⇒ `<模块顶层>`。 */
-function ownerOf(n: ts.Node): string {
-  for (let cur: ts.Node | undefined = n; cur; cur = cur.parent) {
-    if (ts.isFunctionDeclaration(cur) && cur.name) return cur.name.text;
-    if (ts.isMethodDeclaration(cur) && cur.name && ts.isIdentifier(cur.name)) {
-      const cls = cur.parent;
-      return ts.isClassDeclaration(cls) && cls.name ? `${cls.name.text}.${cur.name.text}` : cur.name.text;
-    }
-    if (ts.isVariableDeclaration(cur) && ts.isIdentifier(cur.name) && cur.initializer && (ts.isArrowFunction(cur.initializer) || ts.isFunctionExpression(cur.initializer))) {
-      return cur.name.text;
-    }
+/**
+ * 一个节点所在的函数 / 方法名（类方法记成 `类.方法`）；都不在 ⇒ `<模块顶层>`。
+ * 不沿父指针往上找，而是 [`localComparesOf`] 往下走时随身带着：`ownerAfter(n, 外层, n 的父)` 是 `n` 底下的节点所在的那一层
+ * （`n` 自己是有名字的函数 / 方法 / 「变量 = 函数」就是它，否则照旧是外层）—— 与原先从节点自己起往上找第一层同义。
+ * 建树不挂父指针（挂父指针的建树慢两倍多：全仓生产 TS 这样建一遍，负载 90 带覆盖率撞过 30 s）。
+ */
+function ownerAfter(cur: ts.Node, outer: string, parent: ts.Node | undefined): string {
+  if (ts.isFunctionDeclaration(cur) && cur.name) return cur.name.text;
+  if (ts.isMethodDeclaration(cur) && cur.name && ts.isIdentifier(cur.name)) {
+    return parent && ts.isClassDeclaration(parent) && parent.name ? `${parent.name.text}.${cur.name.text}` : cur.name.text;
   }
-  return "<模块顶层>";
+  if (ts.isVariableDeclaration(cur) && ts.isIdentifier(cur.name) && cur.initializer && (ts.isArrowFunction(cur.initializer) || ts.isFunctionExpression(cur.initializer))) {
+    return cur.name.text;
+  }
+  return outer;
+}
+
+/**
+ * 这份源码**可能**比本机那个值吗：命中要么经 `LOCAL_ORIGIN`（直接写、或从 import 起的别名 —— import 里照样写着它）、
+ * 要么是值为 `<local>` 的字面量；标识符与字符串里任何一个字符都可以写成反斜杠转义 ⇒ 三样都没有的文件不建树。
+ * 判的是同一个谓词，只是先用正文排掉肯定零命中的文件。
+ */
+function mayCompareLocal(text: string): boolean {
+  return /LOCAL_ORIGIN|<local>|\\/.test(text);
 }
 
 /** 一份源码里「自己比本机那个值」的全部命中：`[所在函数, 行号]`。 */
 export function localComparesOf(fileName: string, text: string): Array<[string, number]> {
-  const sf = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  if (!mayCompareLocal(text)) return [];
+  // 不解析 JSDoc：下面只经 `forEachChild` 往下走、行号取 `getStart`（默认不含 JSDoc）⇒ 读数不变，建树省两三成。
+  const sf = ts.createSourceFile(
+    fileName,
+    text,
+    { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone },
+    false,
+    ts.ScriptKind.TS,
+  );
   const aliases = new Set<string>(["LOCAL_ORIGIN"]);
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st)) continue;
@@ -74,14 +93,16 @@ export function localComparesOf(fileName: string, text: string): Array<[string, 
   ]);
   const out: Array<[string, number]> = [];
   const line = (n: ts.Node): number => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
-  const visit = (n: ts.Node): void => {
+  const visit = (n: ts.Node, outer: string, parent: ts.Node | undefined): void => {
+    // 命中的两形（二元比较 · case）自己不是函数 / 方法 ⇒ 所在那一层就是外层。
     if (ts.isBinaryExpression(n) && EQ.has(n.operatorToken.kind) && (isLocalValue(n.left) || isLocalValue(n.right))) {
-      out.push([ownerOf(n), line(n)]);
+      out.push([outer, line(n)]);
     }
-    if (ts.isCaseClause(n) && isLocalValue(n.expression)) out.push([ownerOf(n), line(n)]);
-    ts.forEachChild(n, visit);
+    if (ts.isCaseClause(n) && isLocalValue(n.expression)) out.push([outer, line(n)]);
+    const owner = ownerAfter(n, outer, parent);
+    ts.forEachChild(n, (c) => visit(c, owner, n));
   };
-  visit(sf);
+  visit(sf, "<模块顶层>", undefined);
   return out;
 }
 
@@ -97,6 +118,10 @@ describe("〔TL3 · 🔴-5〕「是不是本机」只在 origin.ts 判", () => {
       "// function f(o) { return o === LOCAL_ORIGIN; }",
     ].join("\n");
     expect(localComparesOf("x.ts", src).map(([o]) => o).sort()).toEqual(["a", "b", "c", "d"]);
+    // 先筛的那一道：名字 / 值带反斜杠转义也得过筛、照样认得出；正文里一样都没有的文件一个都不出。
+    expect(localComparesOf("y.ts", 'function g(o: string): boolean { return o === "\\u003clocal>"; }')).toEqual([["g", 1]]);
+    expect(localComparesOf("y.ts", "function h(o: string): boolean { return o === LOCAL\\u005fORIGIN; }")).toEqual([["h", 1]]);
+    expect(localComparesOf("y.ts", 'function k(o: string): boolean { return o === "remote"; }')).toEqual([]);
   });
 
   it("人群从盘上派生，家那一份在里面", () => {

@@ -13,15 +13,16 @@
 //! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
 //! **没有任何判据在拦着它们漂开**。判据现在有了，住
 //! `tests/backend/observe/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（随家从 monitor 那份守卫搬来）。
-//! backend 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
-//! 不是**口径**的差别。
+//! 后端**有**记录解析（`agents/claudecode/parse.rs::parse_line`，2026-09-28 进后端，`line` 帧的成品与 `history-read` 的逐行成品都出自它）；
+//! 本模块仍直接在 `serde_json::Value` 上抽取，是因为搜索只要正文 / 工具内容那几段文本，不要整条记录的成品 ——
+//! 那是**取数**的差别，不是**口径**的差别（口径只有上面那一个家）。
 //!
 //! 安全：路径严格限 `<claude_dir>/projects/`（〔审计 F 🔴-6〕经 observe 唯一那道围栏 `observe/fence.rs::Fence`；
 //! 先前这里内联复刻了一份 history_query 的，点名的第二个家）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::mtime_ms;
+use crate::observe::fs::{mtime_ms, split_whole_lines, Step, Tailed};
 use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -237,6 +238,8 @@ pub fn warm_in_background(agent_home: PathBuf) {
     let spawned = std::thread::Builder::new()
         .name("search-warm".into())
         .spawn(move || {
+            // 低优先级：不跟前台的帧命令抢 CPU（建索引只是让第一问快，不该让别的问慢）。
+            crate::platform::proc::lower_this_thread();
             let (files, kept) = warm(&agent_home);
             tracing::info!(
                 "全文搜索索引：后台建好 {files} 份，常驻 {kept} 字节（上界 {RESIDENT_MAX_BYTES}）"
@@ -294,9 +297,6 @@ fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
     files
 }
 
-/// 追加读之前核的那一段：`consumed` 之前最多这么多字节；对不上 ⇒ 被改写过、整份重读。
-const WITNESS_BYTES: usize = 256;
-
 /// 一棵 projects 的索引：每份会话文件一格，按 (mtime, 长度) 增量读。
 pub(crate) struct SearchIndex {
     files: BTreeMap<PathBuf, FileEntry>,
@@ -321,12 +321,10 @@ pub(crate) struct Refresh {
     pub(crate) bytes: u64,
 }
 
-/// 一份会话文件在索引里的样子。`[0, consumed)` 是已读进 `done` 的完整行；其后没写完的那截在 `tail`（旧现扫也把它当一行看）。
+/// 一份会话文件在索引里的样子。`[0, read.consumed())` 是已读进 `done` 的完整行；其后没写完的那截在 `tail`（旧现扫也把它当一行看）。
 struct FileEntry {
-    /// 上一次读完时的 (读之前 stat 的 mtime, 真读到的长度)。
-    seen: (Option<std::time::SystemTime>, u64),
-    consumed: u64,
-    witness: Vec<u8>,
+    /// 读到哪了（没变不读 · 变长只读尾巴那本账，与历史清单的缓存共用 [`Tailed`]）。
+    read: Tailed,
     done: Facts,
     tail: Facts,
     /// 读不动（不是合法 UTF-8）：坏在完整行里 ⇒ 下次变了就整份重读；坏在残尾里 ⇒ 追加读会重看它。
@@ -415,6 +413,11 @@ impl Facts {
                     {
                         self.excerpt = search_rules::truncate_excerpt(&rt.main, 120);
                     }
+                    // 〔perfC〕既没有正文也没有工具文本、又不开一轮的（不搜工具时的工具调用 / 工具结果）永远命中不了、
+                    //   也不进轮次 ⇒ 不进常驻索引（搜与会话内查找的答案不变，常驻字节省下来留给更多会话）。
+                    if rt.main.is_empty() && rt.tool.is_empty() && !opens_turn {
+                        continue;
+                    }
                     let ts_ms = v
                         .get("timestamp")
                         .and_then(Value::as_str)
@@ -467,11 +470,9 @@ impl Facts {
 }
 
 impl FileEntry {
-    fn empty(mtime: Option<std::time::SystemTime>, tools: bool) -> Self {
+    fn empty(tools: bool) -> Self {
         Self {
-            seen: (mtime, 0),
-            consumed: 0,
-            witness: Vec::new(),
+            read: Tailed::default(),
             done: Facts::default(),
             tail: Facts::default(),
             bad: None,
@@ -483,38 +484,36 @@ impl FileEntry {
     /// 从 `consumed` 起新读到的字节并进来：最后一个 `\n` 之前的完整行进 `done`，之后的残尾整个换掉 `tail`。
     /// 切点紧跟 `\n`（ASCII）⇒ 每段是不是合法 UTF-8 与整份是不是同一个答案。
     fn take(&mut self, mtime: Option<std::time::SystemTime>, new: &[u8]) {
-        let end = self.consumed + new.len() as u64;
-        let cut = new.iter().rposition(|&b| b == b'\n').map_or(0, |k| k + 1);
-        let (whole, rest) = new.split_at(cut);
+        let end = self.read.consumed() + new.len() as u64;
+        let (whole, rest) = split_whole_lines(new);
         self.bad = None;
         self.tail = Facts::default();
+        let mut took = false;
         if !whole.is_empty() {
             match std::str::from_utf8(whole) {
                 Ok(s) => {
                     let mut seg = Facts::default();
                     seg.absorb(s, self.tools);
                     self.done.extend(seg);
+                    took = true;
                 }
                 Err(e) => {
-                    *self = Self::empty(mtime, self.tools);
+                    *self = Self::empty(self.tools);
                     self.bad = Some((BadAt::Done, e.to_string()));
                 }
             }
-            if self.bad.is_none() {
-                self.consumed += cut as u64;
-                let mut w = std::mem::take(&mut self.witness);
-                w.extend_from_slice(whole);
-                self.witness = w.split_off(w.len() - w.len().min(WITNESS_BYTES));
-            }
         }
+        if took {
+            self.read.took(whole);
+        }
+        self.read.saw((mtime, end));
         if self.bad.is_none() {
             match std::str::from_utf8(rest) {
                 Ok(s) => self.tail.absorb(s, self.tools),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
-        self.seen = (mtime, end);
-        self.weight = self.witness.len() + self.done.weight() + self.tail.weight();
+        self.weight = self.read.witness_len() + self.done.weight() + self.tail.weight();
     }
 }
 
@@ -539,48 +538,47 @@ impl SearchIndex {
         }
     }
 
-    /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读。打不开 / 读不了 ⇒ `Err(原因)`。
+    /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读（[`Tailed::step`]）。打不开 / 读不了 ⇒ `Err(原因)`。
     fn bring_up(
         &mut self,
         path: &Path,
         prev: Option<FileEntry>,
         tools: bool,
     ) -> Result<FileEntry, String> {
-        use std::io::{Read, Seek, SeekFrom};
-        let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
-        let seen = (meta.modified().ok(), meta.len());
         // 这一问要工具文本而这一格没抽过 ⇒ 整份重读。
-        if let Some(mut e) = prev.filter(|e| e.tools || !tools) {
-            if e.seen == seen {
+        let prev = prev.filter(|e| e.tools || !tools);
+        // 坏在完整行里 ⇒ 不追加读（整份重读）；坏在残尾里 ⇒ 追加读会重看它。
+        let may_append = prev
+            .as_ref()
+            .is_some_and(|e| e.bad.as_ref().map_or(true, |(at, _)| *at == BadAt::Tail));
+        let (step, seen) = Tailed::step(
+            prev.as_ref().map(|e| &e.read),
+            path,
+            may_append,
+            &mut self.last.bytes,
+        )?;
+        // 「没变」与「只读尾巴」只在有上一次那本账时出（[`Tailed::step`]）。
+        match (step, prev) {
+            (Step::Same, Some(e)) => {
                 self.last.reused += 1;
-                return Ok(e);
+                Ok(e)
             }
-            let grew =
-                seen.1 > e.seen.1 && e.bad.as_ref().map_or(true, |(at, _)| *at == BadAt::Tail);
-            if grew {
-                let w = e.witness.len() as u64;
-                let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
-                let mut buf = Vec::new();
-                f.seek(SeekFrom::Start(e.consumed - w))
-                    .and_then(|_| f.read_to_end(&mut buf))
-                    .map_err(|e| e.to_string())?;
-                self.last.bytes += buf.len() as u64;
-                if buf.len() as u64 >= w && buf[..w as usize] == e.witness[..] {
-                    self.last.appended += 1;
-                    e.take(seen.0, &buf[w as usize..]);
-                    return Ok(e);
-                }
+            (Step::Appended(new), Some(mut e)) => {
+                self.last.appended += 1;
+                e.take(seen.0, &new);
+                Ok(e)
             }
+            (Step::Appended(_), None) | (Step::Whole, _) => {
+                let buf = Tailed::read_whole(path, &mut self.last.bytes)?;
+                self.last.full += 1;
+                let mut e = FileEntry::empty(tools);
+                e.take(seen.0, &buf);
+                Ok(e)
+            }
+            (Step::Same, None) => Err(crate::common::contract::malformed(
+                "Tailed::step answered Same without a previous entry",
+            )),
         }
-        let mut buf = Vec::new();
-        std::fs::File::open(path)
-            .and_then(|mut f| f.read_to_end(&mut buf))
-            .map_err(|e| e.to_string())?;
-        self.last.full += 1;
-        self.last.bytes += buf.len() as u64;
-        let mut e = FileEntry::empty(seen.0, tools);
-        e.take(seen.0, &buf);
-        Ok(e)
     }
 
     /// 一份会话里按文件序出命中：只看完整行（`done`，与 [`scan_session_find`] 同）、跳过没 uuid 的。`q` 已小写、已 trim。
@@ -904,7 +902,7 @@ pub(crate) fn record_hit<'a>(
     q_lc: &str,
     include_tools: bool,
 ) -> Option<(&'static str, &'a str)> {
-    if rt.main.to_lowercase().contains(q_lc) {
+    if search_rules::contains_lc(&rt.main, q_lc) {
         let kind = if rt.is_assistant {
             "assistant"
         } else if rt.report {
@@ -914,7 +912,7 @@ pub(crate) fn record_hit<'a>(
         };
         return Some((kind, &rt.main));
     }
-    if include_tools && !rt.tool.is_empty() && rt.tool.to_lowercase().contains(q_lc) {
+    if include_tools && !rt.tool.is_empty() && search_rules::contains_lc(&rt.tool, q_lc) {
         return Some(("tool", &rt.tool));
     }
     None

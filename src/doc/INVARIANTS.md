@@ -201,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放；`launch-pending/` 由 `ccm` 最终那一跳写、观测侧清；`known_hosts` 由拨号侧写） | 一台机器一个家：后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上）· 离线那台的上次值（再连上一次就有）· 起会话便条（进程退出即清）· 主机钥匙（下次拨号按固化的指纹再认下）· 配置文件上次经 cc-monitor 写出时的指纹（删了只是下次不说「手改过」） |
-| `relay-key` `relay-pass-key` `listen-token` `listen-<口>.pid` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的三把钥匙（中转两把 · 监听口一把）与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「待办」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `relay-pass-key` `listen-token` `listen-<口>.pid` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的三把钥匙（中转两把 · 监听口一把）与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「待办」里点过「不用了」的几件与选了自己贴的那份启动文件 · 计划需手动里认可过的几条与退回过的格 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -385,7 +385,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 15. logging 子系统失败不能阻塞 monitor 启动
 
-`logging::init()` 在 `tauri::Builder` 之前调用（tracing 全局 dispatcher 必须在 Builder 之前 init）。它内部做的所有事情——创建 logs 目录、构造 rolling appender、注册 ErrorEmitterLayer——**任一失败都必须 fallback 到 stdout-only，让 monitor 仍能起来**。
+`logging::init()` 在 `tauri::Builder` 之前调用（tracing 全局 dispatcher 必须在 Builder 之前 init）。它内部做的所有事情——创建 logs 目录、构造 rolling appender——**任一失败都必须 fallback 到 stdout-only，让 monitor 仍能起来**。
 
 - log 目录创建失败 → `eprintln!` 报错，file layer = None，subscriber 仍 init 但只发到 stdout
 - rolling appender 构造失败（罕见——磁盘满 / NTFS quota）→ 同上
@@ -460,7 +460,7 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 
 宽容 schema 挡的是「已知类型多了未知字段」（serde 默认忽略，整行不丢）。但**两条丢失路径它挡不住**，F63（2026-07-16）补上：
 
-1. **未知 `type`** → serde 落到 `#[serde(other)] Unknown`。**`Unknown` 现在只是 serde 落点，绝不出 `parser::parse_line`** —— 它被抢救成 `JsonlRecord::Unrecognized`（留 `raw` 原文 + `uuid`/`parentUuid`/`timestamp`）。
+1. **未知 `type`** → serde 落到 `#[serde(other)] Unknown`。**`Unknown` 现在只是 serde 落点，绝不出 `parse_line`**（后端适配层 `src/backend/agents/claudecode/parse.rs`） —— 它被抢救成 `JsonlRecord::Unrecognized`（留 `raw` 原文 + `uuid`/`parentUuid`/`timestamp`）。
 2. **已知 `type` 但字段解析失败**（`from_str` 返回 Err）且原文仍是合法 JSON → 同样抢救成 `Unrecognized`（`reason="parse-failed: …"`，并 `tracing::warn` 一条）。只有**连 JSON 语法都不成立**的行才仍返回 `Err`。
 
 **为什么**：记录一旦静默消失，它的 children 的 `parentUuid` 就指向集合外 → `branching.ts:100-106` 判孤儿 root → 死胡同 plain user root **整棵误折叠**（`branching.ts:24` 早预警、2026-06-13 咬过一次）。`Unrecognized` **带链身份（`uuid` / `parentUuid`）的**进 `is_displayable()` 白名单（没有链身份的不进前端：前端没有它的读者，也不会让别人成孤儿；新类型仍由 `drift_ledger` 报出，不静默）（照 `Attachment` 先例：不建卡但进链）；前端 `branching.ts::extractBranchRecord` 白名单含 `"cc-monitor-unrecognized"`。

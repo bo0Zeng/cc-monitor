@@ -71,6 +71,7 @@ import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage } from "./terminal-page";
+import { onMachineState } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -208,6 +209,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (el.tabIndex < 0) el.tabIndex = -1;
       el.focus({ preventScroll: true });
     },
+  });
+  // 那台重连回来（壳推「已连上」）⇒ 终端页停在「那台断开」的实时自己重新订上。
+  onMachineState((origin, m) => {
+    if (m?.state === "up") terminalPage.machineUp(origin);
   });
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
@@ -564,6 +569,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       .catch((e) => console.warn("toggle-fullscreen failed:", e));
   };
 
+  // 命令面板里分组那三条（作用于选中的 / 当前标签页）：新建分组 · 加入分组…（有组才列）· 移出分组（在组里才列）。
+  const groupCommands = (): Command[] => {
+    const g = tabs.groupCommandState();
+    if (g === null) return [];
+    const kw = copyText("main.cmd.groupKeywords");
+    const out: Command[] = [{ id: "group-new", group: "current", icon: "list", title: copyText("main.cmd.groupNew"), keywords: kw, run: () => tabs.foundGroupFromCommand() }];
+    if (g.groups > 0) out.push({ id: "group-join", group: "current", icon: "list", title: copyText("main.cmd.groupJoin"), keywords: kw, run: () => tabs.openGroupMenuFromCommand() });
+    if (g.grouped > 0) out.push({ id: "group-leave", group: "current", icon: "list", title: copyText("main.cmd.groupLeave"), keywords: kw, run: () => tabs.leaveGroupFromCommand() });
+    return out;
+  };
+
   // 命令面板（Ctrl+K）：打开那一刻现拼一份（分组 · 键位 · 可不可用由这里给，面板只排版）。
   const buildCommands = (): Command[] => {
     const chordHint = (id: Parameters<typeof dispatcher.effectiveChord>[0]): string | undefined => {
@@ -588,6 +604,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
+        ...groupCommands(),
         { id: "proc-expand", group: "current", icon: "expand", title: copyText("main.cmd.procExpand"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
         { id: "acct-panel", group: "current", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) },
       );
@@ -732,6 +749,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.open-cc-bus", () => overlays.toggle("cc-bus"));
   dispatcher.bind("app.undo", () => void undoLatest());
   onSession("tab.context-menu", () => tabs.openActiveMenu());
+  // 标签页栏里（焦点在栏里）：挪一格 · 出组 · 与上一个成组 · 改分组名；F6 主区 ↔ 栏。
+  dispatcher.bind("tabBar.move-up", () => tabs.moveFocused(-1));
+  dispatcher.bind("tabBar.move-down", () => tabs.moveFocused(1));
+  dispatcher.bind("tabBar.leave-group", () => tabs.leaveFocused());
+  dispatcher.bind("tabBar.join-prev", () => tabs.joinPrevFocused());
+  dispatcher.bind("tabBar.rename-group", () => tabs.renameFocusedGroup());
+  dispatcher.bind("tabBar.focus-cycle", () => tabs.cycleFocus());
   onSession("session.to-bottom", () => tabs.toBottom());
   dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
   dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));

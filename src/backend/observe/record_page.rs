@@ -3,14 +3,19 @@
 //!
 //! 它只做「通用的流式读取机器」那一半：切行 · 可计行编号（口径只住 `history_query::line_counts`）· 挑哪一家来解释
 //! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 装成品。**一行在渲染模型里是什么**住适配层
-//! （`agents/<名>/` 的 `RecordFace.parse`），这里一个记录字段都不读 —— 进不进界面、`cwd` 都是适配层给的。
+//! （`agents/<名>/` 的 `RecordFace.parse`）—— 进不进界面、`cwd` 都是适配层给的。
 //!
-//! 两种成品：
+//! 这里**只读渲染模型里正文住的那三个键名**（[`fold_body`]，只在客户端索要折起那一形时），**一家自己的字段一个都不读**：
+//! 渲染模型（`JsonlRecord`）是**所有适配层共用的那一个**（Codex 那一家也映射进它，见 `agents/codex/record.rs`）
+//! ⇒「正文住哪几格」是通用层的契约，不是某一家的形状；折起那一形**只有一份**，走适配层的能力位只会是一份实现加一道转手。
+//!
+//! 三种成品（前两种的第三个参数 `summary_only` 选装哪一形，见 [`fold_body`]）：
 //! - **行摘要**（[`rows_of`]，给 monitor 旁路快照）：每个可计行 `{end, hash, message?, cwd?}` —— `end` 是这一行（含 `\n`）
 //!   之后那个字节的偏移（后端读的是原始字节 ⇒ 永远说得准；没 `\n` 收尾的残尾 ⇒ `null`），`hash` 是这一行正文的摘要
 //!   （续传前核「还是不是那一行」用，[`line_hash`]）。`message` 缺 ＝ 不进界面（照占号）。
 //! - **记录行**（[`record_lines`]，给界面）：只装进界面的那些，`{session_id, path, seq, cwd, message}`（`JsonlLinePayload`
 //!   去掉流机器那两格：`origin` 由问的那一方知道 · `skipped_from` 只属实时流）。
+//! - **折起那一行的成品**（上面两种各自的 `summary_only` 置真）：形状与行数一格不差，只是每条的 `message` 剥掉正文那几格。
 
 use crate::agents::{ParsedLine, RecordFace};
 use serde_json::{json, Value};
@@ -44,9 +49,15 @@ fn split_lines(offset: u64, bytes: &[u8]) -> Vec<(&[u8], Option<u64>)> {
 }
 
 /// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
-fn interpret(face: &RecordFace, body: &[u8]) -> Option<ParsedLine> {
+/// `summary_only` 置真 ⇒ 出成品之前先剥正文（[`fold_body`]）：进不进界面、行号怎么占**都不受它影响**（剥的只是已出成品的内容）。
+fn interpret(face: &RecordFace, body: &[u8], summary_only: bool) -> Option<ParsedLine> {
     match (face.parse)(&String::from_utf8_lossy(body)) {
-        Ok(Some(p)) if p.displayable => Some(p),
+        Ok(Some(mut p)) if p.displayable => {
+            if summary_only {
+                fold_body(&mut p.message);
+            }
+            Some(p)
+        }
         Ok(_) => None,
         Err(e) => {
             tracing::debug!("record_page: 解析不出的一行（照占号、不出成品）: {e}");
@@ -55,14 +66,44 @@ fn interpret(face: &RecordFace, body: &[u8]) -> Option<ParsedLine> {
     }
 }
 
+/// **剥掉渲染模型里正文住的那几格** —— 客户端索要「折起那一行的成品」（`summaryOnly`）时走这一下。
+///
+/// 剥的是三个键名，按名字剥、不认记录类型（通用层不许按 `type` 分支）：
+/// - `message.content` —— user / assistant 的正文 · 思考 · 工具入参 · 工具结果，**省流量的就是这一格**；
+///   `message` 这个对象留着（`role` · `model` · `usage` · `stop_reason` 合起来几十字节，而折起那一行要按 `usage` 报字数）。
+/// - `raw` —— `cc-monitor-unrecognized` 抢救下来的整行原文（Codex 那一家的事件行全是这一形）：它就是那一条的全部正文。
+/// - `content` —— `queue-operation` 的排队正文；它的折起形是 `userText`（后端已判好「谁说的」），界面本来就只读成品那一格。
+///
+/// 剥完**剩下的正好是折起那一行要用的**：时刻 `timeText` · 谁说的 `userText` · 一行人话 `toolSteps` · 卡型 `toolCards`
+/// · 结果一句 `toolResults` · 报错种类 `apiReason` 与机器可读的 `error`（都不是正文：前者是后端判好的种类，后者是折起的报错卡要读的那一格）
+/// · 链上身份 `uuid` / `parentUuid` / `sessionId`。
+///
+/// **剥 ≠ 置空**：这几格是**删掉**而不是给 `null` / `[]` —— 给个空值等于说「这一条没有正文」，那是假话；
+/// 删掉才说得准「这一帧里没有这一格」。要正文的客户端不置这个开关，一切照旧（见 [`rows_of`] / [`record_lines`] 的默认实参）。
+fn fold_body(message: &mut Value) {
+    if let Some(m) = message.get_mut("message").and_then(Value::as_object_mut) {
+        m.remove("content");
+    }
+    if let Some(o) = message.as_object_mut() {
+        o.remove("raw");
+        o.remove("content");
+    }
+}
+
 /// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
-pub(crate) fn rows_of(face: &RecordFace, offset: u64, bytes: &[u8]) -> Vec<Value> {
+/// `summary_only` 置真 ⇒ 每条的 `message` 剥掉正文（[`fold_body`]）；`end` / `hash` / `cwd` 与条数一格不变。
+pub(crate) fn rows_of(
+    face: &RecordFace,
+    offset: u64,
+    bytes: &[u8],
+    summary_only: bool,
+) -> Vec<Value> {
     split_lines(offset, bytes)
         .into_iter()
         .filter(|(body, _)| super::history_query::line_counts(body))
         .map(|(body, end)| {
             let mut row = json!({ "end": end, "hash": line_hash(body) });
-            if let Some(p) = interpret(face, body) {
+            if let Some(p) = interpret(face, body, summary_only) {
                 row["message"] = p.message;
                 if let Some(cwd) = p.cwd {
                     row["cwd"] = Value::String(cwd);
@@ -74,11 +115,13 @@ pub(crate) fn rows_of(face: &RecordFace, offset: u64, bytes: &[u8]) -> Vec<Value
 }
 
 /// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些。回 `(成品, 下一个行号)`。
+/// `summary_only` 置真 ⇒ 每条的 `message` 剥掉正文（[`fold_body`]）；行号怎么占、哪几条出成品**都不变**。
 pub(crate) fn record_lines<'a>(
     face: &RecordFace,
     path: &Path,
     seq: u64,
     lines: impl IntoIterator<Item = &'a [u8]>,
+    summary_only: bool,
 ) -> (Vec<Value>, u64) {
     let sid = (face.sid)(path).unwrap_or_default();
     let path_str = path.to_string_lossy();
@@ -90,7 +133,7 @@ pub(crate) fn record_lines<'a>(
         }
         let at = next;
         next += 1;
-        if let Some(p) = interpret(face, body) {
+        if let Some(p) = interpret(face, body, summary_only) {
             out.push(json!({
                 "session_id": sid,
                 "path": path_str,
@@ -103,18 +146,20 @@ pub(crate) fn record_lines<'a>(
     (out, next)
 }
 
-/// [`record_lines`] 喂一页原始字节（`history-page`）。
+/// [`record_lines`] 喂一页原始字节（`history-page`）；`summary_only` 原样递下去。
 pub(crate) fn record_lines_of_page(
     face: &RecordFace,
     path: &Path,
     seq: u64,
     bytes: &[u8],
+    summary_only: bool,
 ) -> (Vec<Value>, u64) {
     record_lines(
         face,
         path,
         seq,
         split_lines(0, bytes).into_iter().map(|(body, _)| body),
+        summary_only,
     )
 }
 

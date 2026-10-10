@@ -16,7 +16,7 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -84,6 +84,20 @@ describe("一个会话读成什么（session-face）", () => {
     expect(got).toEqual(["running", "needs-you", "idle", "exited", "ended", "gone", "unknown", "running"]);
   });
 
+  it("收着的组头汇总：等你 · 在跑各数一遍（空闲 · 已结束 · 状态不明 · Claude 已退出不算）", () => {
+    const members = [
+      tab("a", { activity: waiting }),
+      tab("b", { activity: { doing: "working", waitingFor: null } }),
+      tab("c", { activity: { doing: "working", waitingFor: null } }),
+      tab("d", { activity: { doing: "idle", waitingFor: null } }),
+      tab("e", { state: ENDED }),
+      tab("f", { state: UNSEEN }),
+      tab("g", { state: RECONNECTABLE, activity: waiting }),
+    ];
+    expect(groupSummary(members)).toEqual({ needs: 1, running: 2 });
+    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0 });
+  });
+
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
     expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("tabBar.needsKind.approve"), waited: "2m" }), needs: true });
     const running = tab("b", { activity: { doing: "working", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
@@ -135,6 +149,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
   store.activeId = tabs[0]?.sessionId ?? null;
   const host = {
     refreshTabBar: vi.fn(),
+    closeEndedIn: vi.fn(),
     openTabCwd: vi.fn().mockResolvedValue(undefined),
     bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
@@ -144,7 +159,10 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
     isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),
     takeSuppressedClick: vi.fn().mockReturnValue(false),
+    beginGroupDrag: vi.fn(),
+    takeSuppressedHeadClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
+    toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
@@ -496,7 +514,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "screen-changed", said: "那台写的一句 · 画面", screen: "fp9" }));
+    r.setReply(async () => ({ result: "refused", why: "screen_changed", said: "那台写的一句 · 画面", screen: "fp9" }));
     key(b, "Enter");
     await flush();
     expect([b.value, r.shotCount()]).toEqual(["1", 2]);
@@ -522,7 +540,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "not-known", said: "那台写的一句 · 不在", screen: null }));
+    r.setReply(async () => ({ result: "refused", why: "not_known", said: "那台写的一句 · 不在", screen: null }));
     const lists = vi.mocked(r.reads.list).mock.calls.length;
     key(b, "Enter");
     await flush();
@@ -646,6 +664,38 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(r.follows).toHaveLength(1);
     [...r.page.el.querySelectorAll("button")].find((b) => b.textContent?.includes(copyText("terminal.bar.liveRetry")))!.click();
     expect(r.follows).toHaveLength(2);
+  });
+
+  it("★★ 实时停在「那台断开」、那台自己重连回来（机器状态推「已连上」）⇒ 自动重新订上、输入框恢复；别的机器回来不动", async () => {
+    const r = rig([row("a")], { t: tab("a", { origin: "devbox" }) }, "live");
+    r.page.setVisible(true);
+    await flush();
+    r.follows[0].events.screen(liveShot("ok live"));
+    r.follows[0].events.stop({ kind: "stopped", said: "devbox 断开", offline: true });
+    expect(box(r.page).disabled).toBe(true);
+    r.page.machineUp("gpu-01");
+    await flush();
+    expect(r.follows, "别的机器回来不该重订").toHaveLength(1);
+    r.page.machineUp("devbox");
+    await flush();
+    expect(r.follows.map((f) => f.terminal), "那台回来 ⇒ 重新订上").toEqual(["tmux-a", "tmux-a"]);
+    expect(box(r.page).disabled, "输入框恢复").toBe(false);
+    expect(r.page.el.textContent).not.toContain(copyText("terminal.bar.liveStopped", { why: "devbox 断开" }));
+    r.follows[1].events.screen(liveShot("back"));
+    expect(visibleText(r.page.el)).toContain(copyText("terminal.head.live"));
+    r.page.machineUp("devbox");
+    await flush();
+    expect(r.follows, "实时中再来一帧「已连上」不重订").toHaveLength(2);
+  });
+
+  it("★ 输入框的读屏名是头上「送往 …」那一行（提示句只当占位，读屏不把同一句念成名字又念成说明）", async () => {
+    const r = rig([row("a")], { t: tab("a", { origin: "devbox" }) });
+    r.page.setVisible(true);
+    await flush();
+    const by = box(r.page).getAttribute("aria-labelledby") ?? "";
+    const named = by.split(/\s+/).map((id) => r.page.el.querySelector(`[id="${id}"]`)?.textContent ?? "").join(" ").trim();
+    expect(named).toBe(copyText("terminal.input.to", { title: fullTitle(tab("a", { origin: "devbox" })), machine: "devbox" }));
+    expect(named).not.toBe(box(r.page).placeholder);
   });
 
   it("★ 抓屏失败 ⇒ 只出那一条错误条、不去订实时；点［刷新］抓到了 ⇒ 照常订上", async () => {

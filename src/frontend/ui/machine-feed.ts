@@ -3,7 +3,7 @@
  * 那台一变就来一帧（正在连 / 装 / 更新、连上、没连上、指纹不对 ……），界面不轮询；设置窗与主窗口都从这里订。
  */
 import { listen } from "@tauri-apps/api/event";
-import { decodeMachineState, type MachineState } from "./settings/machine-state";
+import { decodeMachineState, type MachineState } from "./machine-state-decode";
 
 /** 壳那一侧的事件名（`ui_contract::events::MACHINE_STATE`）。 */
 export const MACHINE_STATE_EVENT = "machine-state";

@@ -34,6 +34,8 @@ pub(crate) struct ScanMap {
     pub(crate) index: Vec<IndexRow>,
     pub(crate) inputs: Vec<UserInputRow>,
     pub(crate) turns: Vec<TurnRow>,
+    /// 主线外清单（回退掉的那几条，文件序；`history-branch`）。用户输入与轮次已经不含它们。
+    pub(crate) off: Vec<String>,
     /// 定上下文上限之前的事实（上限按每次问的上限表现定）。
     facts: SessionFacts,
     /// 估算的常驻字节（字节上限按它算）。
@@ -43,7 +45,17 @@ pub(crate) struct ScanMap {
 impl ScanMap {
     /// 从字节 0 读 `r`，至多读 `len` 字节。
     pub(crate) fn scan<R: std::io::BufRead>(r: R, len: u64) -> std::io::Result<ScanMap> {
+        Self::scan_with(r, len, None)
+    }
+
+    /// 同 [`Self::scan`]，`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
+    pub(crate) fn scan_with<R: std::io::BufRead>(
+        r: R,
+        len: u64,
+        chain: Option<fn(&str) -> Option<crate::agents::mainline::ChainFact>>,
+    ) -> std::io::Result<ScanMap> {
         use std::io::BufRead as _;
+        let mut facts = Vec::new();
         let mut r = r.take(len);
         let mut map = ScanMap::default();
         let mut turns = TurnScan::default();
@@ -58,6 +70,9 @@ impl ScanMap {
             map.end += read as u64;
             map.facts.end = map.end;
             let body = &buf[..buf.len() - 1];
+            if let Some(f) = chain.and_then(|c| c(&String::from_utf8_lossy(body))) {
+                facts.push(f);
+            }
             let counted = super::history_query::line_counts(body);
             let v = parse_record(body);
             if counted {
@@ -83,6 +98,12 @@ impl ScanMap {
         }
         if let Some(row) = turns.finish() {
             map.turns.push(row);
+        }
+        map.off = crate::agents::mainline::off_of(facts);
+        if !map.off.is_empty() {
+            let off: std::collections::HashSet<&str> = map.off.iter().map(String::as_str).collect();
+            map.inputs.retain(|r| !off.contains(r.uuid.as_str()));
+            map.turns.retain(|t| !off.contains(t.uuid.as_str()));
         }
         map.bytes = map.estimate();
         Ok(map)
@@ -120,11 +141,13 @@ impl ScanMap {
             .iter()
             .map(|r| 96 + opt(&r.t) + opt(&r.u) + opt(&r.x) + opt(&r.ts))
             .sum();
-        let inputs: usize = self
-            .inputs
-            .iter()
-            .map(|r| 72 + r.uuid.len() + r.timestamp.len() + r.excerpt.len())
-            .sum();
+        let off: usize = self.off.iter().map(|o| 24 + o.len()).sum();
+        let inputs: usize = off
+            + self
+                .inputs
+                .iter()
+                .map(|r| 72 + r.uuid.len() + r.timestamp.len() + r.excerpt.len())
+                .sum::<usize>();
         let turns: usize = self
             .turns
             .iter()
@@ -247,7 +270,9 @@ impl RecordScans {
             g.flights.push((path.to_path_buf(), f.clone()));
             f
         };
-        let scanned = ScanMap::scan(std::io::BufReader::new(file), stamp.0).map(Arc::new);
+        let chain = crate::agents::record_face_of(path).and_then(|f| f.chain);
+        let scanned =
+            ScanMap::scan_with(std::io::BufReader::new(file), stamp.0, chain).map(Arc::new);
         {
             let mut g = self.lock();
             g.flights.retain(|(p, _)| p != path);

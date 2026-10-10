@@ -1376,6 +1376,8 @@ struct ReaderState {
     with_raw: bool,
     /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
     runs: crate::observe::runs::RunTrack,
+    /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
+    branches: HashMap<PathBuf, crate::agents::mainline::Chain>,
     /// 起会话便条与账号记录住的那个家（`None` ⇒ 不认便条）。默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入。
     launch_home: Option<PathBuf>,
 }
@@ -1402,6 +1404,7 @@ impl ReaderState {
                 std::sync::Arc::default(),
             ),
             launch_home: None,
+            branches: HashMap::new(),
         }
     }
 }
@@ -1820,6 +1823,7 @@ impl Follow {
 fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.offsets.remove(key);
     state.tails.remove(key);
+    state.branches.remove(key);
 }
 
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（补读计数用）。
@@ -1870,6 +1874,12 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     if reread.is_some() {
         state.seqs.restart(&key_str);
     }
+    // 从 0 重读 ⇒ 链从头记；先前说过有主线外的 ⇒ 重读完这一趟一定再说一次（哪怕变成空）。
+    let mut branch_changed = reread.is_some()
+        && state
+            .branches
+            .remove(&key)
+            .is_some_and(|c| !c.off().is_empty());
     let (lines, new_cursor) = read_new_lines_at(
         &chunk,
         chunk_start,
@@ -1893,12 +1903,41 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     let n = lines.len();
     let mut runs_changed = state.runs.adopt(&session_id, path);
     for line in lines {
-        runs_changed |= send_line(&session_id, &path_str, line, state, sink);
+        let (r, b) = send_line(&session_id, &path_str, line, state, sink);
+        runs_changed |= r;
+        branch_changed |= b;
     }
     if runs_changed {
         sink.send(state.runs.frame(&session_id));
     }
+    if branch_changed {
+        sink.send(branch_frame(state, &session_id, path));
+    }
     n
+}
+
+/// 这份记录此刻的主线外清单那一帧（整份）。
+fn branch_frame(state: &ReaderState, sid: &str, path: &Path) -> Frame {
+    Frame::SessionBranch {
+        sid: sid.to_string(),
+        path: path.to_string_lossy().into_owned(),
+        off: state
+            .branches
+            .get(&path_key(path))
+            .map(|c| c.off().to_vec())
+            .unwrap_or_default(),
+    }
+}
+
+/// 一行喂进这份记录的链索引（这一家有链才喂）；回：主线外清单变没变。
+fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) -> bool {
+    let Some(fact) = crate::agents::record_face(stream_kind())
+        .and_then(|f| f.chain)
+        .and_then(|c| c(raw))
+    else {
+        return false;
+    };
+    state.branches.entry(path_key(path)).or_default().push(fact)
 }
 
 /// 流式 watcher 跟的那一家：今天只跟记录树那一家（`agents::record_tree_kind`）；Codex 的发现与判活随实时流那一路接。
@@ -1909,14 +1948,15 @@ fn stream_kind() -> &'static str {
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
 /// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
-/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿（回：运行表变没变）。
+/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（回：运行表变没变 · 主线外清单变没变）。
 fn send_line(
     session_id: &str,
     path_str: &str,
     line: ReadLine,
-    state: &ReaderState,
+    state: &mut ReaderState,
     sink: &mut FrameSink,
-) -> bool {
+) -> (bool, bool) {
+    let branch_changed = feed_chain(state, Path::new(path_str), &line.raw);
     let runs = &state.runs;
     let face = crate::agents::record_face(stream_kind());
     let parsed = face.and_then(|f| match (f.parse)(&line.raw) {
@@ -1953,7 +1993,7 @@ fn send_line(
             uuid,
         });
     }
-    rec.changed
+    (rec.changed, branch_changed)
 }
 
 /// **从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
@@ -2014,8 +2054,12 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         raw: raw.to_string(),
         byte_offset: cursor.consumed + rest.len() as u64,
     };
-    if send_line(sid, &path.to_string_lossy(), line, state, sink) {
+    let (runs_changed, branch_changed) = send_line(sid, &path.to_string_lossy(), line, state, sink);
+    if runs_changed {
         sink.send(state.runs.frame(sid));
+    }
+    if branch_changed {
+        sink.send(branch_frame(state, sid, path));
     }
 }
 
@@ -2162,7 +2206,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             entry.waiting_for = new_waiting.clone();
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
-                status: new_status,
                 activity: meta.as_ref().and_then(crate::agents::pidfile_activity),
                 waiting_for: new_waiting,
                 // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
@@ -2266,7 +2309,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         // DG1 Codex 发现路才发 agent_kind="codex"+liveness_confidence="heuristic"。
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: meta_str("kind"),
         background,
         // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
         //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
@@ -2282,7 +2324,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         name: meta_str("name"),
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
-        status: meta_str("status"),
         activity: meta.as_ref().and_then(crate::agents::pidfile_activity),
         waiting_for: meta_str("waitingFor"),
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
@@ -2302,6 +2343,16 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     }
     if runs_changed || state.runs.has_runs(&sid) {
         sink.send(state.runs.frame(&sid));
+    }
+    // 冷接（只推游标）时历史里已经有主线外的 ⇒ 宣告之后整份发一次（之后变了才发；全量重放那一路读的时候已经说过）。
+    for p in jsonls.iter().filter(|_| state.tail_only) {
+        if state
+            .branches
+            .get(&path_key(p))
+            .is_some_and(|c| !c.off().is_empty())
+        {
+            sink.send(branch_frame(state, &sid, p));
+        }
     }
     wrote
 }
@@ -2591,6 +2642,9 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     if reader.from == 0 && (prev.consumed > 0 || prev.seen_len > 0) {
         state.seqs.restart(&key_str);
     }
+    if reader.from == 0 {
+        state.branches.remove(&key);
+    }
     let mut cursor = ReadCursor {
         consumed: reader.from,
         seen_len: reader.from,
@@ -2615,6 +2669,15 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
         cursor = next;
         // 这一块里派出 / 收场过的子运行补进运行簿（宣告之后那一帧运行表带出去）。
         state.runs.prime(&session_id, &block);
+        // 链事实补进链索引（宣告之后那一帧主线外清单带出去）。
+        if let Some(chain) = crate::agents::record_face(stream_kind()).and_then(|f| f.chain) {
+            let c = state.branches.entry(key.clone()).or_default();
+            for line in block.split(|&b| b == b'\n') {
+                if let Some(f) = std::str::from_utf8(line).ok().and_then(chain) {
+                    c.push(f);
+                }
+            }
+        }
         tail.extend_from_slice(&block);
         let drop = tail.len().saturating_sub(TAIL_PROBE as usize);
         tail.drain(..drop);

@@ -8,6 +8,7 @@ import type { Origin } from "./ipc/origin";
 import { loadRunPage, type RunPage, type RunWhich } from "./record-reads";
 import { copyText } from "./copy-table";
 import { sayFailure } from "./kit/detail";
+import { observeForEnhance } from "./render";
 
 /** 渲染器给出来的那一形（`cards/index.ts::renderMessage` 的结果，只取要用的两种）。 */
 export type RunRender = (
@@ -27,6 +28,11 @@ export interface RunTimelineDeps {
   onRecord?: (rid: string) => void;
   /** 读法（判据换成假的；缺 ＝ 经通道问那台后端）。 */
   load?: (from: number) => Promise<RunPage>;
+  /**
+   * 惰路渲染（`RenderContext.lazy`）留下的代码块 / 公式占位：交给这个滚动容器，滚进视口再补（与主窗口 / 查看窗同一套）。
+   * 缺 ＝ 渲染器当场补完，这里什么都不做。
+   */
+  enhanceRoot?: HTMLElement;
 }
 
 export class RunTimeline {
@@ -79,12 +85,16 @@ export class RunTimeline {
         this.end = page.end;
         for (const row of page.rows) {
           const r = this.deps.render(row.message);
-          if (r.kind === "card") this.body.appendChild(r.element);
-          else if (r.kind === "tool-group") {
+          const root = this.deps.enhanceRoot;
+          if (r.kind === "card") {
+            this.body.appendChild(r.element);
+            if (root) observeForEnhance(r.element, root);
+          } else if (r.kind === "tool-group") {
             const wrap = document.createElement("div");
             wrap.className = "block-agent-tool-group";
             for (const u of r.units) wrap.appendChild(u);
             this.body.appendChild(wrap);
+            if (root) for (const u of r.units) observeForEnhance(u, root);
           }
           if (row.rid !== undefined) this.deps.onRecord?.(row.rid);
         }

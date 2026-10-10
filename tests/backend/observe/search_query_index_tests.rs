@@ -278,7 +278,7 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
     append(&b2, add.as_bytes());
     touch(&b2, 1_900_000_000_000);
     ask();
-    let witness = before.min(WITNESS_BYTES as u64);
+    let witness = before.min(crate::observe::fs::WITNESS_BYTES as u64);
     let grew = Refresh {
         full: 0,
         appended: 1,
@@ -382,4 +382,46 @@ fn fix_main_warms_the_search_index_once() {
         "observe::search_query::warm_in_background(agent_home.clone());",
     )
     .unwrap_or_else(|e| panic!("`main.rs` 里预热不是恰好一处：{e}"));
+}
+
+/// 〔perfC #5〕常驻索引存紧：一条既没有正文、也没有工具文本、也不开一轮的记录（不搜工具时的工具调用 / 工具结果）
+/// 永远命中不了、也不进轮次 ⇒ 不进索引。一千条这样的记录不许撑大那一格的常驻字节；搜与会话内查找的答案照旧。
+#[test]
+fn records_that_can_never_hit_take_no_room_in_the_index() {
+    let home = std::env::temp_dir().join(format!("ccm-sx-dead-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let f = p(&home, "-w-dead/dead.jsonl");
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    let mut text = line("u-0", "开头那一句 cursor") + "\n";
+    for i in 0..1000 {
+        text.push_str(
+            &json!({"type":"user","uuid":format!("t-{i}"),"timestamp":"2026-04-01T00:00:00Z",
+                "message":{"role":"user","content":[{"type":"tool_result","tool_use_id":format!("x{i}"),"content":"ok"}]}})
+            .to_string(),
+        );
+        text.push('\n');
+    }
+    text.push_str(&(line("u-1", "结尾那一句 cursor") + "\n"));
+    std::fs::write(&f, &text).unwrap();
+    let mut index = SearchIndex::default();
+    let entry = index.bring_up(&f, None, false).expect("读得了");
+    assert!(
+        entry.weight < 4096,
+        "一千条命中不了的记录占了 {} 字节常驻",
+        entry.weight
+    );
+    // 答案照旧：两条正文都命中、轮次照数（会话内查找）。
+    let mut hits = Vec::new();
+    let fence = crate::observe::fence::Fence::at(&home.join("projects")).unwrap();
+    let admitted = fence.admit(&f).unwrap();
+    index.files.insert(admitted.clone(), entry);
+    index
+        .find(&admitted, "cursor", false, FindPage::first(10), |v| {
+            hits.push(v["uuid"].as_str().unwrap_or_default().to_string());
+            Ok(())
+        })
+        .expect("归索引管")
+        .expect("找得了");
+    assert_eq!(hits, vec!["u-0".to_string(), "u-1".to_string()]);
+    std::fs::remove_dir_all(&home).ok();
 }

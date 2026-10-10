@@ -5,7 +5,8 @@
  *   写「不在 tmux 里」（↗ 真能用时给「切到终端」）；在 tmux 里却认不出的写「非 cc-monitor 启动」。
  * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次，同时订那台的实时画面（`terminal-follow.ts`）：
  *   订上了 ⇒ 头上「● 实时」、画面跟着变、送完不再重抓；那台只能快照 ⇒ 多一枚「仅快照」，照旧送完 0.5 · 1.5 · 3 秒各再抓一次、其余时候点「重新看」；
- *   实时断了 ⇒ 画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条原因 ＋［重新接上］（不自己重连）。收起 / 换页 / 切标签页即退订。开着不轮询。
+ *   实时断了 ⇒ 画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条原因 ＋［重新接上］（流断了不自己重连）；断在「那台断开」的，
+ *   那台自己重连回来（机器状态推「已连上」，宿主转给 {@link TerminalPage.machineUp}）⇒ 自动重新订上、输入框跟着恢复。收起 / 换页 / 切标签页即退订。开着不轮询。
  * - 往上翻了不拽回：底部出「回到最新」。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
  * - 送字带上看到的那一屏的指纹：画面已经变了 ⇒ 后端不送，这里重抓给人看。不知道送没送到 ⇒ 照实说、不重发。
@@ -94,6 +95,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLE
   if (text !== undefined) e.textContent = text;
   return e;
 }
+
+/** 页内元素 id 的流水号（「送往 …」那一行给输入框当名字）。 */
+let pageSeq = 0;
 
 export class TerminalPage {
   readonly el: HTMLElement;
@@ -222,6 +226,9 @@ export class TerminalPage {
     this.box = el("textarea");
     this.box.className = s.termBox;
     this.box.rows = 1;
+    // 读屏名 ＝ 头上「送往 …」那一行；提示句只当占位（否则同一句既当名字又当说明，念两遍）。
+    this.to.id = `term-to-${++pageSeq}`;
+    this.box.setAttribute("aria-labelledby", this.to.id);
     this.box.addEventListener("keydown", (ev) => this.onBoxKey(ev));
     this.box.addEventListener("input", () => this.onBoxInput());
     this.sendBtn = button({ label: copyText("terminal.input.send"), size: "compact", onClick: () => this.sendBox(true) });
@@ -280,6 +287,13 @@ export class TerminalPage {
     this.onBoxInput();
     this.paint();
     if (this.visible) void this.refresh();
+  }
+
+  /** 一台机器连上了（宿主转来机器状态推送里的「已连上」）：实时正停在「这台断开」⇒ 重找终端、重新订上（输入框随之恢复）；别的情形不动。 */
+  machineUp(origin: string): void {
+    if (!this.visible || this.origin !== origin || this.live.at !== "stopped" || !this.live.offline) return;
+    this.live = { at: "off" };
+    void this.refresh();
   }
 
   /** 找终端、抓一屏（名单也重问：终端可能刚起 / 刚没）。 */
@@ -478,13 +492,13 @@ export class TerminalPage {
       return false;
     }
     const why = sent?.result === "refused" ? sent.why : "";
-    if (why === "screen-changed") {
+    if (why === "screen_changed") {
       this.showNote({ text: copyText("terminal.input.screenChanged"), tone: "error" });
       void this.recapture();
       return false;
     }
     this.showNote({ text: copyText("terminal.input.failed", { why: sent?.result === "refused" ? sent.said : copyText("terminal.why.other") }), tone: "error", retry: what });
-    if (why === "not-known" || why === "ended") void this.refresh();
+    if (why === "not_known" || why === "ended") void this.refresh();
     return false;
   }
 

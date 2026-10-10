@@ -33,6 +33,9 @@ pub mod events {
     /// **某台机器的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
     /// `machine_state.rs`）。正在连 / 装 / 更新、连上、没连上、指纹不对 …… 一变就推一帧，界面不轮询。
     pub const MACHINE_STATE: &str = "machine-state";
+    /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情）。
+    /// 壳推给界面的出错只这一种；日志行不上屏。
+    pub const UI_ERROR: &str = "monitor-error";
     // 窗到窗的 `open-account-panel`（设置窗账号页指路框 ⇒ 主窗口账号面板）随指路框退役：默认轮换与规则在设置「轮换」栏里管。
     // 「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
     //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），

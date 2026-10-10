@@ -288,8 +288,6 @@ fn log_file_info_reports_the_backend_stderr_file_from_the_same_path_it_was_hande
         reload_handle,
         log_dir: monitor_log_dir(&root),
         monitor_data_dir: root.clone(),
-        error_emit_fn: Arc::new(RwLock::new(None)),
-        error_emit_enabled: Arc::new(AtomicBool::new(false)),
         _guard: Mutex::new(None),
     };
     assert!(

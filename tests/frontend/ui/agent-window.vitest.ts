@@ -187,6 +187,35 @@ describe("agent 窗口", () => {
     expect(pill.hidden).toBe(true);
   });
 
+  it("代码块的高亮推迟到滚进视口（与主窗口 / 查看窗同一套）：几百轮的子运行开窗不当场把每一段代码都高亮一遍", async () => {
+    const seen: Array<{ root: Element | null; els: Element[] }> = [];
+    class FakeIO {
+      private readonly mine: { root: Element | null; els: Element[] };
+      constructor(_cb: IntersectionObserverCallback, opts: IntersectionObserverInit = {}) {
+        this.mine = { root: (opts.root as Element | null) ?? null, els: [] };
+        seen.push(this.mine);
+      }
+      observe(el: Element): void {
+        this.mine.els.push(el);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    try {
+      h.pages = [{ rows: [brief("查一下"), say("c1", "改好了：\n\n```ts\nconst a = 1;\n```")] }, { rows: [] }];
+      const { root } = await open();
+      const scroll = root.querySelector<HTMLElement>(".session-viewer-stream")!;
+      const block = root.querySelector<HTMLElement>(".code-block");
+      expect(block?.classList.contains("code-pending"), "还没滚进视口：先不高亮").toBe(true);
+      const io = seen.find((x) => x.root === scroll);
+      expect(io, "看的是这扇窗自己的滚动容器").toBeDefined();
+      expect(io!.els.some((el) => el.contains(block)), "那张卡交给它等着滚进视口").toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("进来停在哪：收场的停在最上（从派活那段话读起），在跑的不动（跟着长）", async () => {
     for (const [state, want] of [["done", 0], ["running", 1500]] as const) {
       h.pages = [{ rows: [brief("查一下"), say("c1", "一")] }, { rows: [] }];

@@ -138,7 +138,7 @@ export function defaultOps(): Record<string, OpHandler> {
           isDefault: true,
           users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
           summary: "起始 · 满",
-          explain: "起始账号先用 · 被拒才换 · 不主动换回 · 其余号 40m 内恢复则不切兜底",
+          explain: "起始账号先用 · 被拒才换 · 不主动换回",
           missing: [],
           atLimitApplies: false,
         },
@@ -482,7 +482,7 @@ export function defaultOps(): Record<string, OpHandler> {
           if (!(Array.isArray(c) && (c as { type: string }[]).some((b) => b.type === "tool_result"))) retries.at(-1)!.outcome = "interrupted";
         }
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries };
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null };
     },
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);

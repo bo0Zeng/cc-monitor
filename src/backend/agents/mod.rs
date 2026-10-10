@@ -65,6 +65,8 @@ use std::path::{Path, PathBuf};
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
+pub(crate) mod mainline;
+pub(crate) mod record;
 pub(crate) mod sse_anthropic;
 pub(crate) mod sse_openai_responses;
 
@@ -369,6 +371,8 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
+    pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
@@ -552,6 +556,32 @@ pub struct StepResult {
     #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub exit_code: Option<i32>,
+    /// 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub file: Option<String>,
+    /// 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub patch: Option<Vec<PatchHunk>>,
+    /// diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+    #[serde(rename = "patchTruncated", skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub patch_truncated: bool,
+}
+
+/// 一段改动（统一 diff 的一个 hunk）。行正文带着头字（` ` 没变 · `+` 加的 · `-` 删的）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PatchHunk {
+    /// 改之前这段从第几行起（1 起）· 占几行；改之后同。
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub lines: Vec<String>,
 }
 
 /// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。
@@ -750,6 +780,8 @@ pub(crate) struct ChildFace {
     /// 一个路径**若是**某份父记录的子运行记录（形状对得上 `sources` 会收的那种）⇒ 那份父记录的路径；否则 `None`。
     /// 文件事件来了只对它答得出的才去找，且只在那一份父记录底下找。
     pub(crate) owner: fn(&Path) -> Option<PathBuf>,
+    /// 记录树根底下，id 为这个的子运行的记录（[`Self::owner`] 再对到它的父记录）；没有 ⇒ `None`。计划读面把接手 id 对到会话时用。
+    pub(crate) find: fn(&Path, &str) -> Option<PathBuf>,
     /// 父记录的一行原文可能说到子运行（[`RecordFace::child_link`] 会答出东西）—— 便宜的预筛：漏判不许，多判无妨。
     /// 只读尾巴的那条流接上会话时，靠它从父记录已有的那一截里只挑这几行解析。
     pub(crate) hint: fn(&str) -> bool,
@@ -1008,6 +1040,24 @@ pub(crate) fn record_tree_among(registry: &[Adapter], kind: &str) -> Option<Reco
 /// `kind` 那一家家目录 `home` 下记录树的根。那一家没有记录树 ⇒ `None`。
 pub(crate) fn records_root_among(registry: &[Adapter], kind: &str, home: &Path) -> Option<PathBuf> {
     record_tree_among(registry, kind).map(|t| (t.root)(home))
+}
+
+/// 记录树根底下 id 为 `child_id` 的子运行挂在哪个会话底下（父记录的会话 id）；对不上 ⇒ `None`。问的是记录树那一家（[`record_tree_kind`]）。
+pub(crate) fn child_parent_sid(records_root: &Path, child_id: &str) -> Option<String> {
+    child_parent_sid_among(REGISTRY, record_tree_kind()?, records_root, child_id)
+}
+
+/// [`child_parent_sid`] 的可喂夹具那一半：问 `kind` 那一家。
+pub(crate) fn child_parent_sid_among(
+    registry: &[Adapter],
+    kind: &str,
+    records_root: &Path,
+    child_id: &str,
+) -> Option<String> {
+    let r = adapter_among(registry, kind)?.records?;
+    let ch = r.children?;
+    let parent = (ch.owner)(&(ch.find)(records_root, child_id)?)?;
+    (r.sid)(&parent)
 }
 
 /// [`records_root_among`] 在生产注册表上、记录树那一家（[`record_tree_kind`]）。
@@ -1805,6 +1855,8 @@ pub(crate) struct AssetFace {
     pub(crate) project_mcp_file: &'static str,
     /// MCP 配置文件里装 server 表的那个顶层键。
     pub(crate) servers_key: &'static str,
+    /// 一个配置根底下装着的插件：插件根 ＋ 它清单里的名字（用户级 skill 目录里放进来的 · 插件缓存里每个版本一个）。
+    pub(crate) plugins: fn(config_root: &Path) -> Vec<(PathBuf, String)>,
 }
 
 /// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。
@@ -1834,6 +1886,15 @@ pub(crate) struct Sightings {
     pub mcp: Vec<McpSeen>,
     /// 读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」不许合成一句。
     pub problems: Vec<String>,
+}
+
+/// 这几个配置根底下装着的插件（插件根 ＋ 名字）：逐家问（注册序）、配置根的次序。
+pub(crate) fn plugins(config_roots: &[PathBuf]) -> Vec<(PathBuf, String)> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.assets)
+        .flat_map(|f| config_roots.iter().flat_map(move |r| (f.plugins)(r)))
+        .collect()
 }
 
 /// 注册表里每一家有资产面的，各扫一遍（注册序）。

@@ -48,6 +48,11 @@ export interface SlotSpec {
   agent: string;
   /** 认报到用的那一格（分叉 ⇒ sid；新起的 ⇒ 目录）。 */
   match: ArrivalMatch;
+  /**
+   * 从哪一刻算「新起的」：发请求那一刻这台已经报过的 sid（[`liveSince`]）。缺 ⇒ 交占位那一刻。
+   * 回话晚到（期限到了再核一次才拿到「起好了」）时会话可能已经先报到了 ⇒ 要按发请求那一刻算，不然它永远不算新的。
+   */
+  before?: ReadonlySet<string>;
 }
 
 
@@ -114,8 +119,8 @@ interface Pending extends ArrivalSpec {
 }
 
 const pending = new Set<Pending>();
-/** 每台报过的活会话 sid（`{cwd}` 那一格要分新旧）。 */
-const seenLive = new Map<string, Set<string>>();
+/** 每台报过的活会话：sid → 它的工作目录（`{cwd}` 那一格要分新旧；晚到的那一件要回头认）。 */
+const seenLive = new Map<string, Map<string, string | null>>();
 
 const key = (o: Origin): string => (isLocalOrigin(o) ? LOCAL_ORIGIN : o);
 const trimSlash = (p: string): string => (p.length > 1 ? p.replace(/\/+$/, "") : p);
@@ -180,7 +185,7 @@ export function watchArrival(spec: ArrivalSpec): void {
   }
   const p: Pending = {
     ...spec,
-    before: new Set(seenLive.get(key(spec.origin)) ?? []),
+    before: new Set(seenLive.get(key(spec.origin))?.keys() ?? []),
     // 一次性的预算（`polling_registry` 登记）：到点只说一次「没看到」，不重试、不轮询。
     // 调度：一次性 —— 起会话之后等那台报出它的预算，到点只说一次；见到了当场清
     timer: setTimeout(() => {
@@ -192,17 +197,32 @@ export function watchArrival(spec: ArrivalSpec): void {
   pending.add(p);
 }
 
+/** 主窗口：此刻这台已经报过的活会话 sid（发请求那一刻记下，交 [`watchUntilArrived`] 的 `before`）。 */
+export function liveSince(origin: Origin): ReadonlySet<string> {
+  return new Set(seenLive.get(key(origin))?.keys() ?? []);
+}
+
 /**
  * 主窗口：起好了的那一个一直等到那台报出它（不设期限：没报到的样子由占位标签页自己画），报到了交 `onArrived`。
+ * `before`（发请求那一刻已经报过的那几个）给了 ⇒ 那之后已经报到、认得出的当场交（下一拍，调用方先把自己登记好）。
  * 回一个「不等了」（占位标签页被关掉时调）。
  */
-export function watchUntilArrived(origin: Origin, match: ArrivalMatch, onArrived: (sid: string) => void): () => void {
+export function watchUntilArrived(origin: Origin, match: ArrivalMatch, onArrived: (sid: string) => void, before?: ReadonlySet<string>): () => void {
+  const from = new Set(before ?? seenLive.get(key(origin))?.keys() ?? []);
+  const already = [...(seenLive.get(key(origin)) ?? new Map<string, string | null>())].find(([sid, cwd]) => arrivalMatches(match, sid, { cwd }, from));
+  if (already) {
+    let off = false;
+    queueMicrotask(() => {
+      if (!off) onArrived(already[0]);
+    });
+    return () => void (off = true);
+  }
   const p: Pending = {
     origin,
     match,
     tmuxName: null,
     arrived: null,
-    before: new Set(seenLive.get(key(origin)) ?? []),
+    before: from,
     timer: null,
     onArrived,
   };
@@ -259,8 +279,8 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
     answer(p, sid);
   }
   let s = seenLive.get(k);
-  if (!s) seenLive.set(k, (s = new Set()));
-  s.add(sid);
+  if (!s) seenLive.set(k, (s = new Map()));
+  s.set(sid, seen.cwd);
 }
 
 /** 主窗口：接上发起方交过来的预期（`main.ts` 装一次）。 */

@@ -7,8 +7,10 @@
 - 私有 Xvfb（`tests/scripts/xvfb-free.sh` 挑号），一扇 1280×800 的 GTK 窗口里放一个 WebKitWebView；
   伺服用 `serve.mjs`（生产构建 ＋ 假后端），HOME 隔离进 `.build/perf-sandbox/`。不起后端、不起 claude、不碰 tmux。
 - WebKit 没有 CDP、没有长任务 / Event Timing：点击用页里派发的鼠标事件（tab 栏的处理照常跑），
-  「画出来」取点击之后第二个 rAF（切换之后第一帧整帧画完）；卡顿取窗口里的帧间隔（rAF 链）：> 50 ms 的帧数与合计超出。
+  「画出来」取点击之后第二个 rAF（切换之后第一帧整帧画完）；卡顿取窗口里的帧间隔（rAF 链）：> 50 ms 的帧数与合计超出；
+  「接骨架那一帧」＝ 插骨架占位那一刻所在那一帧的帧间隔；「停住之后最长一帧」＝ 点下去 150 ms（宿主的停留判定）之后、切换那一帧画完之后结束的帧里最长那一帧（冷切时就是接骨架、补可见区那一帧）。
 - 量法与 `bench.mjs` 同名的三项对齐：切一下（冷 / 热）· 连续快速切（20 下 / 每 200 ms，3 串）· 长会话（冷切进去 ＋ 往上滚 60 下）。
+- 设置窗那一组（`--only settings`，与 `settings-bench.mjs` 对齐）：开窗 · 每一页点两遍 · 扩展页逐字筛选 · 关了再开（常驻内存走势）。
 """
 import argparse
 import json
@@ -32,7 +34,7 @@ ap.add_argument("--runs", type=int, default=3)
 ap.add_argument("--out", default=os.path.join(REPO, ".build/perf-webkit"))
 ap.add_argument("--css", default=None)
 ap.add_argument("--port", type=int, default=None)
-ap.add_argument("--only", default="switch,rapid,keys,long")
+ap.add_argument("--only", default="switch,rapid,keys,long", help="switch,rapid,keys,long,boot 量主窗口；settings 量设置窗")
 ap.add_argument("--shot", action="store_true", help="只截几张图看样子（开页 · 切到最长那条 · 往上滚一段 · 切到一条短的）")
 ap.add_argument("--merge", default=None, help="几次分开跑的读数合成一张：目录1,目录2,…")
 ap.add_argument("--dev", action="store_true", help="开发服务器（模块按源码路径可 import ⇒ 能给方法挂计时）")
@@ -48,6 +50,8 @@ if args.css:
     probe += '\n;document.addEventListener("DOMContentLoaded", () => { const s = document.createElement("style"); s.textContent = %s; document.head.appendChild(s); });' % json.dumps(css)
 
 ctx = GLib.MainContext.default()
+# 宿主的停留判定（`tab-stream-view.ts::STAY_MS`）：切进来停住这么久才接骨架 ⇒ 「停住之后最长一帧」从这里起算
+STAY_MS = 150
 
 
 def pump(ms):
@@ -221,9 +225,13 @@ def measured_click(v, i, watch_ms=1500):
     v.js(CLICK % i)
     pump(watch_ms)
     cpu = cpu_ms() - c0
-    frames = v.js("return __perf.frameStop()")
     w = v.js("return __perf.since(%f)" % since)
     c = w["clicks"][0] if w["clicks"] else {}
+    # 停住之后最长一帧：点下去 STAY_MS（宿主的停留判定）之后、且切换那一帧画完（第二个 rAF）之后结束的帧里最长的那一帧
+    # （机器忙时切换那一帧本身就能拖过 150 ms —— 不能把它算成停住那一帧）
+    stay = v.js("return __perf.frameAfter(%f, %f)" % (c.get("t0", since), max(STAY_MS, c.get("frame2") or 0)))
+    attach = v.js("return __perf.attachFrame(%f)" % c.get("t0", since))
+    frames = v.js("return __perf.frameStop()")
     over = [d for d in frames if d > 50]
     return {
         "tab": i,
@@ -234,6 +242,8 @@ def measured_click(v, i, watch_ms=1500):
         "jankN": len(over),
         "jankMs": sum(d - 16.7 for d in over),
         "frameMax": max(frames) if frames else 0,
+        "stayFrame": stay,
+        "attachFrame": attach,
         "nodesOn": sum(x["on"] for x in w["mut"]),
         "nodesOff": sum(x["off"] for x in w["mut"]),
     }
@@ -252,7 +262,14 @@ def bench_switch(v, url, run, result):
         for i in range(n):
             if v.js(TAB_AT % i)["active"]:
                 continue
+            # `--profile`：冷切进长会话那几下各存一份方法计时（含调用顺序 —— 停住之后那一帧里谁先谁后）
+            deep = args.profile and ps == "cold" and (v.js(TAB_AT % i)["turns"] or 0) >= 200
+            if deep:
+                v.js("window.__prof && window.__prof.reset(); return 0")
             rows.append({"run": run, "pass": ps, **measured_click(v, i)})
+            if deep:
+                with open(os.path.join(args.out, f"prof-cold-long-{i}.json"), "w") as f:
+                    json.dump(v.js("return window.__prof ? { top: window.__prof.dump(), seq: window.__prof.seq ? window.__prof.seq() : null } : null"), f, indent=1, ensure_ascii=False)
         if v.js(TAB_AT % 0)["active"]:
             rows.append({"run": run, "pass": "warm", **measured_click(v, 1)})
     if args.profile and args.profile_pass == "warm":
@@ -357,6 +374,143 @@ def bench_long(v, url, run, result):
             "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "scrollTop": v.js("return document.querySelector('.stream.active').scrollTop")}
 
 
+SCLICK = """
+const t = document.querySelector(%s);
+if (!t) return false;
+t.scrollIntoView({ block: 'nearest' });
+const b = t.getBoundingClientRect();
+const at = { bubbles: true, cancelable: true, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, button: 0 };
+t.dispatchEvent(new PointerEvent('pointerdown', at));
+t.dispatchEvent(new MouseEvent('mousedown', at));
+t.dispatchEvent(new PointerEvent('pointerup', at));
+t.dispatchEvent(new MouseEvent('mouseup', at));
+t.dispatchEvent(new MouseEvent('click', at));
+return true;
+"""
+NAV = '.settings-shell:not(.settings-shell-h) > .settings-nav .settings-nav-item[data-route-id="%s"]'
+TAB = '.settings-page:not([hidden]) .settings-shell-h .settings-nav-item[data-route-id="%s"]'
+LOCAL_PAGE = "machine:（本机）"
+
+
+def s_click(v, sel, watch_ms=1500):
+    v.js("return await __perf.quiet(300, 5000)")
+    since = v.js("__perf.frameStart(); return performance.now()")
+    c0 = cpu_ms()
+    if not v.js(SCLICK % json.dumps(sel)):
+        v.js("return __perf.frameStop()")
+        return None
+    pump(watch_ms)
+    cpu = cpu_ms() - c0
+    frames = v.js("return __perf.frameStop()")
+    w = v.js("return __perf.since(%f)" % since)
+    c = w["clicks"][0] if w["clicks"] else {}
+    over = [d for d in frames if d > 50]
+    return {"cpu": cpu, "sync": c.get("sync"), "frame2": c.get("frame2"), "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "frameMax": max(frames or [0]), "nodes": sum(x["on"] + x["off"] for x in w["mut"])}
+
+
+def bench_settings(v, url, run, result):
+    """设置窗：开窗 · 每一页点两遍（首次可见 / 回来）· 扩展页逐字筛选 · 关了再开 `RE_CYCLES` 轮的常驻内存。"""
+    b0 = time.monotonic()
+    v.load(url)
+    v.js("for (;;) { if (window.__shots && window.__shots.state !== 'booting') return window.__shots.state; await new Promise((r) => setTimeout(r, 100)); }")
+    if v.js("return window.__shots.state") != "done":
+        raise RuntimeError(v.js("return window.__shots.error"))
+    ready = (time.monotonic() - b0) * 1000
+    v.js("return await __perf.quiet(1000, 60000)")
+    boot_frames = v.js("return __perf.bootFrames.slice(1)")
+    # 探针开窗那 15 s 自己起着一条 rAF 链 ⇒ 空闲 CPU 等它停了再量
+    v.js("const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; await new Promise((r) => setTimeout(r, Math.max(0, 15500 - (performance.now() - dcl)))); return 0")
+    c0 = cpu_ms()
+    pump(3000)
+    opened = {"run": run, "ready": ready, "idleCpu": cpu_ms() - c0, "rss": rss_mb(), "nodes": v.js("return document.getElementsByTagName('*').length"),
+              "bootJankN": len([d for d in boot_frames if d > 50]), "bootFrameMax": max(boot_frames or [0])}
+    result["sopen"].append(opened)
+    ids = v.js("return [...document.querySelectorAll('.settings-shell:not(.settings-shell-h) > .settings-nav .settings-nav-item')].map((e) => e.dataset.routeId)")
+    for ps in ("first", "again"):
+        for i in ids:
+            m = s_click(v, NAV % i)
+            if m:
+                result["spages"].append({"run": run, "pass": ps, "kind": "machine" if i.startswith("machine:") else "top", "id": i, **m})
+        s_click(v, NAV % LOCAL_PAGE)
+        tabs = v.js("return [...document.querySelectorAll('.settings-page:not([hidden]) .settings-shell-h .settings-nav-item')].map((e) => e.dataset.routeId)")
+        for i in tabs[1:] + tabs[:1]:
+            m = s_click(v, TAB % i)
+            if m:
+                result["spages"].append({"run": run, "pass": ps, "kind": "tab", "id": i, **m})
+    # 扩展页逐字筛选
+    s_click(v, NAV % "ext", 2500)
+    v.js("return await __perf.quiet(500, 8000)")
+    since = v.js("__perf.frameStart(); return performance.now()")
+    c0 = cpu_ms()
+    for k in range(1, 8):
+        t0 = time.monotonic()
+        v.js("const s = document.querySelector('.settings-page:not([hidden]) .ext-search'); s.value = %s; s.dispatchEvent(new Event('input', { bubbles: true })); return 0" % json.dumps("tool-01"[:k]))
+        pump(max(0, 80 - (time.monotonic() - t0) * 1000))
+    v.js("const s = document.querySelector('.settings-page:not([hidden]) .ext-search'); s.value = ''; s.dispatchEvent(new Event('input', { bubbles: true })); return 0")
+    v.js("return await __perf.quiet(300, 5000)")
+    frames = v.js("return __perf.frameStop()")
+    w = v.js("return __perf.since(%f)" % since)
+    over = [d for d in frames if d > 50]
+    result["sfilter"].append({"run": run, "cpu": cpu_ms() - c0, "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "frameMax": max(frames or [0]), "nodes": sum(x["on"] + x["off"] for x in w["mut"])})
+    # 关了再开：Ctrl+W 藏窗 → 壳推一帧「拿到焦点」；WebKit 没有强制 GC，只看常驻内存与文档里的节点
+    re = [{"cycle": 0, "rss": rss_mb(), "nodes": v.js("return document.getElementsByTagName('*').length")}]
+    for c in range(1, RE_CYCLES + 1):
+        v.js("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', ctrlKey: true, bubbles: true, cancelable: true })); return 0")
+        pump(150)
+        v.js("await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'tauri://focus', payload: true }); return 0")
+        v.js("return await __perf.quiet(300, 8000)")
+        for i in ("ext", LOCAL_PAGE, "machines"):
+            s_click(v, NAV % i, 600)
+        re.append({"cycle": c, "rss": rss_mb(), "nodes": v.js("return document.getElementsByTagName('*').length")})
+    result["sreopen"].append({"run": run, "rows": re})
+    print(f"  WebKit 设置窗 第 {run + 1} 趟", flush=True)
+
+
+RE_CYCLES = 10
+
+
+def summarize_settings(r):
+    L = []
+    if r.get("sopen"):
+        L.append("## 设置窗 · 开窗")
+        L.append("")
+        L.append("| 趟 | 开好（ms） | 开窗 15 s 里 >50ms 帧 | 最长帧 | 空闲 3 s CPU | 常驻内存 MB（WebKit 全部进程） | 节点 |")
+        L.append("|---|---|---|---|---|---|---|")
+        for x in r["sopen"]:
+            L.append(f"| {x['run'] + 1} | {x['ready']:.0f} | {x['bootJankN']} | {x['bootFrameMax']:.0f} | {x['idleCpu']:.0f} | {x['rss']:.0f} | {x['nodes']} |")
+        L.append("")
+    if r.get("spages"):
+        L.append("## 设置窗 · 切页（每组 p50 / 最大，ms）")
+        L.append("")
+        L.append("| 页 | 遍 | 次 | CPU | 同步段 | 画出来（第二帧） | 卡帧个 | 最长帧 | 新建节点 |")
+        L.append("|---|---|---|---|---|---|---|---|---|")
+        groups = {}
+        for x in r["spages"]:
+            name = ("本机页" if x["id"] == LOCAL_PAGE else "其余机器页") if x["kind"] == "machine" else x["id"]
+            groups.setdefault((name, x["pass"]), []).append(x)
+        for (name, ps), xs in groups.items():
+            def pm(k):
+                vals = [x[k] or 0 for x in xs]
+                return f"{pct(vals, 0.5):.0f} / {max(vals):.0f}"
+            L.append(f"| {name} | {'首次' if ps == 'first' else '回来'} | {len(xs)} | {pm('cpu')} | {pm('sync')} | {pm('frame2')} | {pm('jankN')} | {pm('frameMax')} | {pm('nodes')} |")
+        L.append("")
+    if r.get("sfilter"):
+        L.append("## 设置窗 · 扩展页逐字筛选（7 个字 ＋ 清空）")
+        L.append("")
+        L.append("| 趟 | CPU | 卡帧个 | 卡帧超出合计 | 最长帧 | 新建节点 |")
+        L.append("|---|---|---|---|---|---|")
+        for x in r["sfilter"]:
+            L.append(f"| {x['run'] + 1} | {x['cpu']:.0f} | {x['jankN']} | {x['jankMs']:.0f} | {x['frameMax']:.0f} | {x['nodes']} |")
+        L.append("")
+    for x in r.get("sreopen", []):
+        rows = x["rows"]
+        L.append(f"## 设置窗 · 关了再开 第 {x['run'] + 1} 趟（没有强制 GC：常驻内存只看走势）")
+        L.append("")
+        L.append("轮 / 常驻内存 MB / 文档节点：" + " · ".join(f"{y['cycle']}:{y['rss']:.0f}/{y['nodes']}" for y in rows))
+        L.append("")
+    return "\n".join(L)
+
+
 def snapshot(v, path):
     """整窗截一张（从这扇 GTK 窗口取像素；这台机器的 gi 没有 cairo 那一格转换，WebKit 自己的截图接口用不了）。"""
     from gi.repository import Gdk  # noqa: PLC0415
@@ -400,8 +554,8 @@ def summarize(r):
     if r["switch"]:
         L.append("## 切一下（p50 / p95，ms）")
         L.append("")
-        L.append("| 组 | 次 | CPU（WebKit 全部进程） | 同步段 | 画出来（第二帧） | 卡帧个（>50ms） | 卡帧超出合计 | 最长帧 | 新建节点 |")
-        L.append("|---|---|---|---|---|---|---|---|---|")
+        L.append("| 组 | 次 | CPU（WebKit 全部进程） | 同步段 | 画出来（第二帧） | 卡帧个（>50ms） | 卡帧超出合计 | 最长帧 | 停住之后最长一帧 | 接骨架那一帧（次） | 新建节点 |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|---|")
         groups = [
             ("冷切（没建过卡）", [x for x in r["switch"] if x["pass"] == "cold"]),
             ("热切（建过）", [x for x in r["switch"] if x["pass"] == "warm"]),
@@ -413,10 +567,15 @@ def summarize(r):
                 continue
 
             def pp(k):
-                vals = [x[k] or 0 for x in xs]
+                vals = [x.get(k) or 0 for x in xs]
                 return f"{pct(vals, 0.5):.0f} / {pct(vals, 0.95):.0f}"
 
-            L.append(f"| {name} | {len(xs)} | {pp('cpu')} | {pp('sync')} | {pp('frame2')} | {pp('jankN')} | {pp('jankMs')} | {pp('frameMax')} | {pp('nodesOn')} |")
+            def hit(k):
+                # 只在一部分下里有的读数（接骨架那一帧：只有接了骨架的那几下）
+                vals = [x[k] for x in xs if x.get(k) is not None]
+                return f"{pct(vals, 0.5):.0f} / {pct(vals, 0.95):.0f}（{len(vals)}）" if vals else "—"
+
+            L.append(f"| {name} | {len(xs)} | {pp('cpu')} | {pp('sync')} | {pp('frame2')} | {pp('jankN')} | {pp('jankMs')} | {pp('frameMax')} | {pp('stayFrame')} | {hit('attachFrame')} | {pp('nodesOn')} |")
         L.append("")
     if r["rapid"]:
         xs = r["rapid"]
@@ -480,8 +639,9 @@ def main():
                 if f"READY {port}" in line:
                     break
         url = f"http://127.0.0.1:{port}/index.html?scene=perf-tabs"
+        surl = f"http://127.0.0.1:{port}/settings.html?scene=perf-settings"
         load0 = os.getloadavg()
-        result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "webkit": f"{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": load0}, "boot": [], "switch": [], "rapid": [], "keys": [], "long": []}
+        result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "webkit": f"{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": load0}, "boot": [], "switch": [], "rapid": [], "keys": [], "long": [], "sopen": [], "spages": [], "sfilter": [], "sreopen": []}
         if args.shot:
             v = View()
             try:
@@ -501,10 +661,16 @@ def main():
                         result[name].append(got)
                 finally:
                     v.close()
+            if "settings" in only:
+                v = View()
+                try:
+                    bench_settings(v, surl, run, result)
+                finally:
+                    v.close()
         result["load"]["end"] = os.getloadavg()
         with open(os.path.join(args.out, "perf-webkit.json"), "w") as f:
             json.dump(result, f, indent=1)
-        table = summarize(result)
+        table = summarize(result) + "\n" + summarize_settings(result)
         with open(os.path.join(args.out, "perf-webkit.md"), "w") as f:
             f.write(table)
         print(table)

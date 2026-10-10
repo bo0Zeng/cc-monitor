@@ -33,6 +33,61 @@ pub(crate) const MAX_PROJECT_MCP_BYTES: u64 = 4 * 1024 * 1024;
 /// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 不取说明、说出来。
 const SKILL_DOC_MAX_BYTES: u64 = 1024 * 1024;
 
+/// 插件缓存（配置根下）：`plugins/cache/<市场>/<插件>/<版本>/` 每个版本一个插件根。
+const PLUGIN_CACHE: [&str; 2] = ["plugins", "cache"];
+/// 插件清单（相对插件根）。
+const PLUGIN_MANIFEST: [&str; 2] = [".claude-plugin", "plugin.json"];
+/// 读清单的上限（手写的几行 JSON，远不到这个量级）。
+const PLUGIN_MANIFEST_MAX_BYTES: u64 = 64 * 1024;
+
+/// 一个配置根底下装着的插件：插件根 ＋ 清单里的名字。插件根从两处来：`skills/<名>/`（用户自己放进来的，常是指向插件根的链接）
+/// · 插件缓存里每个版本一个。没有清单 / 读不懂 / 没名字的目录不算插件；读不了的那一层当没有。
+pub(crate) fn plugins(config_root: &Path) -> Vec<(PathBuf, String)> {
+    fn subdirs(d: &Path) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(d)
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir())
+                    .collect()
+            })
+            .unwrap_or_default();
+        v.sort();
+        v
+    }
+    let mut dirs = subdirs(&config_root.join(SKILLS_DIR));
+    let cache = PLUGIN_CACHE
+        .iter()
+        .fold(config_root.to_path_buf(), |p, s| p.join(s));
+    for market in subdirs(&cache) {
+        for plugin in subdirs(&market) {
+            dirs.extend(subdirs(&plugin));
+        }
+    }
+    dirs.into_iter()
+        .filter_map(|d| {
+            let m = PLUGIN_MANIFEST.iter().fold(d.clone(), |p, s| p.join(s));
+            if !m.exists() {
+                return None; // 普通 skill 目录：不是插件，不用说
+            }
+            let bytes = match read_regular_capped(&m, PLUGIN_MANIFEST_MAX_BYTES) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!(
+                        "[plugins] {} 读不出来，这个目录不算插件：{}",
+                        m.display(),
+                        e.said
+                    );
+                    return None;
+                }
+            };
+            let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+            let name = v.get("name")?.as_str()?.to_string();
+            Some((d, name))
+        })
+        .collect()
+}
+
 /// 这台机器上 skill 的根：`<配置根>/skills`。
 pub(crate) fn skills_root() -> Option<PathBuf> {
     Some(resolve_home().join(SKILLS_DIR))

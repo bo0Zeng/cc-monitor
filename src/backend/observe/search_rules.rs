@@ -107,6 +107,50 @@ pub(crate) fn make_snippet(text: &str, needle_lc: &str) -> (String, String, Stri
     }
 }
 
+/// 大小写不敏感的「包含」：与 `hay.to_lowercase().contains(needle_lc)` 逐个同答案，但**每问不分配**
+/// （常驻索引每问都对每一条记录跑它；每条整段转小写的那一份分配是每问的大头）。
+/// 全 ASCII 的原文不拷贝、逐字节比；其余转小写进本线程一块复用的缓冲再找（缓冲长到最长那一条就不再长）。
+/// 原文里有大写 Σ ⇒ 照整段转小写那一条走（它按上下文把词尾的 Σ 变成 ς，逐字符转做不到）。
+pub(crate) fn contains_lc(hay: &str, needle_lc: &str) -> bool {
+    if needle_lc.is_empty() {
+        return true;
+    }
+    if hay.is_ascii() {
+        if !needle_lc.is_ascii() {
+            return false;
+        }
+        let (h, n) = (hay.as_bytes(), needle_lc.as_bytes());
+        if n.len() > h.len() {
+            return false;
+        }
+        return (0..=h.len() - n.len()).any(|i| {
+            h[i].to_ascii_lowercase() == n[0]
+                && h[i + 1..i + n.len()]
+                    .iter()
+                    .zip(&n[1..])
+                    .all(|(a, b)| a.to_ascii_lowercase() == *b)
+        });
+    }
+    if hay.contains('Σ') {
+        return hay.to_lowercase().contains(needle_lc);
+    }
+    thread_local! {
+        static LOWER: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    }
+    LOWER.with(|buf| {
+        let mut buf = buf.borrow_mut();
+        buf.clear();
+        for c in hay.chars() {
+            if c.is_ascii() {
+                buf.push(c.to_ascii_lowercase());
+            } else {
+                buf.extend(c.to_lowercase());
+            }
+        }
+        buf.contains(needle_lc)
+    })
+}
+
 /// 大小写不敏感子串查找：返回原文里匹配区间的 `(起始字节, 结束字节)`。
 /// 逐字符比对原文的小写展开 vs needle（needle 已小写）。只对粗筛命中的 ≤limit 条跑，
 /// `O(n·m)` 可接受。能正确处理 CJK（无大小写）与 ASCII，多字符小写展开也对齐到原文字符边界。

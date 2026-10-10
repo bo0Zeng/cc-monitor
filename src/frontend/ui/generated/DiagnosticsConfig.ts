@@ -10,7 +10,7 @@ log_enabled: boolean,
  */
 log_level: string, 
 /**
- * ERROR 级别是否 emit 给前端弹 toast。set 后立即生效。
+ * 要让用户知道的出错（`ui_error`）弹不弹 toast。set 后立即生效。
  */
 error_toast: boolean, 
 /**

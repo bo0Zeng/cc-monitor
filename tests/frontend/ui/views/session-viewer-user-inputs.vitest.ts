@@ -70,7 +70,7 @@ const INTERRUPT = { clean: "", interrupt: true };
  * 挂一份会话。`outline` = 后端这一刻说清单里有哪几条（缺省：`lines` 里 user 行的 uuid **按给的顺序**，
  * 摘要取正文 —— 这只是夹具的省事写法，**不是**判定：要排掉谁的用例一律显式传）。
  */
-async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionViewer> {
+async function mount(lines: RigPayload[], outline?: string[], shape: ConstructorParameters<typeof SessionViewer>[0] = {}): Promise<SessionViewer> {
   viewerRig.chunk = lines;
   const text = (p: RigPayload): string => {
     const c = (p.message as { message?: { content?: unknown } }).message?.content;
@@ -80,7 +80,7 @@ async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionVi
     .filter((p) => (p.message as { type?: string }).type === "user")
     .map((p) => (p.message as { uuid: string }).uuid))
     .map((u) => outlineEntry(u, text(lines.find((p) => (p.message as { uuid?: string }).uuid === u)!)));
-  const v = new SessionViewer();
+  const v = new SessionViewer(shape);
   document.body.appendChild(v.element);
   await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
   await settleOutline();
@@ -479,5 +479,44 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
       .filter((c) => c[0] === "chan_call" && (c[1] as unknown as { op?: string }).op === "history-turns")
       .map((c) => chanArgsJson(c[1] as unknown as ChanCallArgs));
     expect(turns.at(-1)).toEqual({ path: "/p/s1.jsonl", from: 0 });
+  });
+});
+
+describe("读到哪一句：滚动时把视口顶上那一句之前最近的一句标成当前", () => {
+  /** 每张卡的上沿按 uuid 写死（jsdom 不排版）；流的上沿 0 ⇒ 判线在 8。 */
+  function tops(v: SessionViewer, at: Record<string, number>): { reads: () => number } {
+    let n = 0;
+    const stream = streamOf(v);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const u = this.getAttribute("data-uuid");
+      const top = this === stream ? 0 : u !== null && u in at ? at[u] : 0;
+      if (u !== null) n += 1;
+      return { top, bottom: top + 20, height: 20, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    });
+    return { reads: () => n };
+  }
+  const current = (v: SessionViewer): string[] => rowsOf(v).filter((r) => r.getAttribute("aria-current") === "true").map((r) => r.dataset.inputUuid ?? "");
+
+  it("（独立查看窗）标到上沿已过判线的最后一句；一句都没过 ⇒ 第一句；一帧里来几个 scroll 只量一趟", async () => {
+    const lines = [userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复"), userLine(3, "u3", "第二句"), assistantLine(4, "a3", "回复"), userLine(5, "u5", "第三句")];
+    const v = await mount(lines, undefined, { window: { foot: document.createElement("div") } });
+    const at: Record<string, number> = { u1: -500, a1: -400, u3: -100, a3: 50, u5: 300 };
+    const probe = tops(v, at);
+    for (let k = 0; k < 5; k++) streamOf(v).dispatchEvent(new Event("scroll"));
+    rig.flushRaf(2);
+    expect(current(v)).toEqual(["u3"]);
+    // 几个 scroll 合成一趟：卡最多各量一次（逐个 scroll 当场量 ＝ 每个都按清单整份找卡、逼一次布局）
+    expect(probe.reads()).toBeLessThanOrEqual(3);
+    at.u1 = 40;
+    at.u3 = 200;
+    streamOf(v).dispatchEvent(new Event("scroll"));
+    rig.flushRaf(2);
+    expect(current(v)).toEqual(["u1"]);
+    at.u1 = -900;
+    at.u3 = -600;
+    at.u5 = -10;
+    streamOf(v).dispatchEvent(new Event("scroll"));
+    rig.flushRaf(2);
+    expect(current(v)).toEqual(["u5"]);
   });
 });

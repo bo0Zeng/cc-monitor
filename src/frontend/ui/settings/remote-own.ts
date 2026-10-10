@@ -36,6 +36,8 @@ function whatOf(id: string): string {
       return copyText("rsDataPaths.backend.skillLedger");
     case "chores":
       return copyText("rsDataPaths.backend.chores");
+    case "planReview":
+      return copyText("rsDataPaths.backend.planReview");
     case "lastSeen":
       return copyText("rsDataPaths.backend.lastSeen");
     case "assetCatalog":

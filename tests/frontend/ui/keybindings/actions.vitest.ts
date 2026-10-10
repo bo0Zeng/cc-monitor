@@ -3,6 +3,7 @@
 // 这里锁的不是"某个键绑成什么"，而是几条**加 action 时最容易悄悄踩坏**的契约：
 // 漏进显示顺序表 → 整组 action 在编辑器里静默消失，用户既看不到也绑不了，而 TS 不会报错。
 import { describe, it, expect } from "vitest";
+import { KeybindingDispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { ACTIONS, CATEGORY_LABEL, CATEGORY_ORDER, type Category } from "../../../../src/frontend/ui/keybindings/actions";
 
 describe("ACTIONS 清单结构性守卫", () => {
@@ -28,14 +29,16 @@ describe("ACTIONS 清单结构性守卫", () => {
   // **不能**跳过 available:false —— dispatcher 的 rebuildChordTable 不看 available，照样把它写进
   // chordToAction（"冲突时后定义的赢"），而派发时又 `if (!action?.available) return`：净效果是
   // 一条未上线 action 能把同 chord 的**已上线**快捷键彻底打哑，且按下去什么都不发生。
-  it("默认 chord 不冲突（含未上线的：它们同样占用 chord 表）", () => {
-    const byChord = new Map<string, string[]>();
-    for (const a of ACTIONS) {
-      if (!a.default) continue;
-      byChord.set(a.default, [...(byChord.get(a.default) ?? []), a.id]);
-    }
-    const dup = [...byChord.entries()].filter(([, ids]) => ids.length > 1);
-    expect(dup, `重复默认键位: ${JSON.stringify(dup)}`).toEqual([]);
+  it("默认 chord 不冲突（含未上线的：它们同样占用 chord 表）；同一个键分给作用范围不相交的几个不算", () => {
+    const dup: string[] = [];
+    for (const [i, a] of ACTIONS.entries())
+      for (const b of ACTIONS.slice(i + 1))
+        if (a.default && a.default === b.default && KeybindingDispatcher.scopesOverlap(a.scope, b.scope, a.default)) dup.push(`${a.default}: ${a.id} · ${b.id}`);
+    expect(dup, "重复默认键位").toEqual([]);
+    // 正控：同一档（主区）的两条压在同一个键上认得出；主区与栏不相交。
+    expect(KeybindingDispatcher.scopesOverlap("main", "main", "Alt+ArrowUp")).toBe(true);
+    expect(KeybindingDispatcher.scopesOverlap("main", "bar", "Alt+ArrowUp")).toBe(false);
+    expect(KeybindingDispatcher.scopesOverlap("bare", "bar", "F2"), "单键规则含栏").toBe(true);
   });
 
   it("未上线（available:false）的 action 不得占用默认 chord", () => {

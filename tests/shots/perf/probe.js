@@ -14,9 +14,27 @@
     ev: [],
     clicks: [],
     mut: [],
+    /** 骨架占位插进流里的时刻（接骨架那一下；MutationObserver 回调里记）。 */
+    gaps: [],
     frames: null,
   };
   window.__perf = P;
+  // 页里建过的每个 IntersectionObserver 都记下来（试验项「摘掉 IO 再量空闲」用）
+  P.ios = [];
+  if (typeof IntersectionObserver === "function") {
+    const IO = IntersectionObserver;
+    window.IntersectionObserver = function (cb, opts) {
+      const io = new IO(cb, opts);
+      io.__targets = new Set();
+      const ob = io.observe.bind(io);
+      const un = io.unobserve.bind(io);
+      io.observe = (el) => (io.__targets.add(el), ob(el));
+      io.unobserve = (el) => (io.__targets.delete(el), un(el));
+      P.ios.push(io);
+      return io;
+    };
+    window.IntersectionObserver.prototype = IO.prototype;
+  }
   try {
     new PerformanceObserver((l) => {
       for (const e of l.getEntries()) P.lt.push({ s: e.startTime, d: e.duration });
@@ -60,13 +78,17 @@
     true,
   );
   const watch = () => {
-    const root = document.getElementById("message-stream");
+    // 主窗口数消息流（按可见 / 后台流分开）；别的窗（设置窗 · 查看窗）没有消息流 ⇒ 整个 body 都算「可见」。
+    // 主窗口的消息流晚于 DOMContentLoaded 才建 ⇒ 只有主窗口才等它（别的窗不留一条 20 ms 的空转）。
+    const main = !/^\/(settings|viewer)\.html$/.test(location.pathname);
+    const root = main ? document.getElementById("message-stream") : document.body;
     if (!root) return void setTimeout(watch, 20);
     new MutationObserver((recs) => {
       const t = performance.now();
       let on = 0;
       let off = 0;
       for (const r of recs) {
+        for (const a of r.addedNodes) if (a.nodeType === 1 && a.classList.contains("stream-skeleton-gap")) P.gaps.push(t);
         let n = 0;
         for (const a of r.addedNodes) n += a.nodeType === 1 ? 1 + a.getElementsByTagName("*").length : 0;
         if (n === 0) continue;
@@ -117,11 +139,12 @@
       tick();
     });
   P.frameStart = () => {
-    const f = { last: performance.now(), d: [], on: true };
+    const f = { last: performance.now(), d: [], at: [], on: true };
     P.frames = f;
     const step = (t) => {
       if (!f.on) return;
       f.d.push(t - f.last);
+      f.at.push(t);
       f.last = t;
       requestAnimationFrame(step);
     };
@@ -131,5 +154,28 @@
     if (!P.frames) return [];
     P.frames.on = false;
     return P.frames.d.slice(1);
+  };
+  /**
+   * 「停住之后最长一帧」：`t0`（点下去）起 `fromMs` 之后结束的帧里最长那一帧（ms）。冷切进一个 tab、停住（宿主的停留判定 150 ms）之后
+   * 那一帧接骨架、补可见区 —— 这一帧多长，就是人停下来看时第一下滚 / 点要等多久。`fromMs` 由台架给（停留判定与切换那一帧画完取晚的）。
+   * 先 `frameStart`，`frameStop` 之前调。
+   */
+  /**
+   * 「接骨架那一帧」：`t0` 之后第一次插骨架占位的那一刻落在哪一帧里 —— 那一帧的帧间隔（ms）；这一下没接骨架 ⇒ `null`。
+   * 冷切停住之后接骨架、补可见区都在这一帧里（插占位、补可见区、DOM 变动回调排版是同一个任务）。
+   */
+  P.attachFrame = (t0) => {
+    const f = P.frames;
+    const g = P.gaps.find((t) => t >= t0);
+    if (!f || g === undefined) return null;
+    for (let k = 1; k < f.d.length; k++) if (f.at[k] > g) return f.d[k];
+    return null;
+  };
+  P.frameAfter = (t0, fromMs) => {
+    const f = P.frames;
+    if (!f) return 0;
+    let m = 0;
+    for (let k = 1; k < f.d.length; k++) if (f.at[k] - t0 >= fromMs) m = Math.max(m, f.d[k]);
+    return m;
   };
 })();

@@ -7,7 +7,8 @@ import { hms } from "../fake/clock";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
-import { byText, click, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
+import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
+import { emit } from "@tauri-apps/api/event";
 
 const ALL_TABS = 7;
 
@@ -91,6 +92,28 @@ function noDirWorld(): World {
   const w = defaultWorld();
   w.ops["session-new"] = () => {
     throw new Refuse("no_dir", "目录不存在", { field: "cwd", unavailable: null });
+  };
+  return w;
+}
+
+/** 起新会话框：点［新建］那一问两次都没等到回话（那台卡住）：「起没起未知」＋［再核一次］（同一张票，不会起第二个）＋［复制详情］。 */
+function noAnswerWorld(): World {
+  const w = defaultWorld();
+  w.ops["session-new"] = () => {
+    throw {
+      err: { Hop: { idx: 1, tag: "wait", reach: "Sent", why: "Overrun" } },
+      body: [],
+      detail: "机器：devbox\n命令：session-new\n断在：第 1 跳 · 等回话\n码：Overrun",
+    };
+  };
+  return w;
+}
+
+/** 起新会话框：那台说整体不行（不落在哪一格）：按钮行上方一行红字 ＋［复制详情］。 */
+function startFailedWorld(): World {
+  const w = defaultWorld();
+  w.ops["session-new"] = () => {
+    throw new Refuse("start_failed", copyText("beSessionNew.start.failed"), { field: null, unavailable: null }, "exit 1\nccm: launcher exited 1");
   };
   return w;
 }
@@ -244,6 +267,24 @@ export const PANEL_SCENES: Scene[] = [
     await click(await byText('[role="dialog"] button', "新建"));
     await sleep(600);
   }, noDirWorld),
+  panel("panel-new-session-noanswer", "起新会话 · 无应答", "点［新建］、那台两次都没回话（期限到 ⇒ 带同一张票自己再核一次）：框顶「起没起未知」＋［再核一次］（同一张票，起好了就落过去、不起第二个）＋［复制详情］，不给［重试］", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await sleep(300);
+    await click(await byText('[role="dialog"] button', "新建"));
+    await sleep(800);
+  }, noAnswerWorld),
+  panel("panel-new-session-failed", "起新会话 · 整体不行", "那台说起不来、不落在哪一格：按钮行上方一行红字 ＋［复制详情］（表单框那一形），框不关、填的都在", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await sleep(300);
+    await click(await byText('[role="dialog"] button', "新建"));
+    await sleep(600);
+  }, startFailedWorld),
   panel("panel-new-slot-starting", "起新会话 · 正在启动", "点［新建］、那台回「起好了」：框关掉，标签页栏末尾长出占位标签页「正在启动」（转圈 · 项目名），主区换成它那一页；报到了原位换成真的", async () => {
     await startNewSession();
     await waitFor("#tab-bar [data-slot]");
@@ -417,6 +458,13 @@ export const PANEL_SCENES: Scene[] = [
     await rightClick("#tab-bar .tab");
     await sleep(900);
   }),
+  panel("panel-tab-menu-hovered", "tab 右键菜单 · 指针停在 tab 上", "指针停在第一个 tab 上、悬停卡还没出就点右键：菜单开着期间悬停卡不出（不压在菜单上）", async () => {
+    await mainReady(ALL_TABS);
+    await hover("#tab-bar .tab");
+    await rightClick("#tab-bar .tab");
+    await hover("#tab-bar .tab");
+    await sleep(900);
+  }),
   panel("panel-tab-menu-remote", "tab 右键菜单 · 远端会话", "在 devbox 那个 tab 上点右键", async () => {
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll("#tab-bar .tab")[3]);
@@ -547,6 +595,19 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[data-role=messages-list]");
     await sleep(400);
   }, behaviorKeyWorld),
+  panel("panel-ui-error-toast", "本机后端意外退出 · toast", "壳推来的出错：标题是照文案写好的那一句，［重新连接］［看日志］［复制详情］；日志行只在复制详情里", async () => {
+    await mainReady(ALL_TABS);
+    await emit("monitor-error", LOCAL_EXITED);
+    await sleep(700);
+  }),
+  panel("panel-ui-error-messages", "本机后端意外退出 · 「消息」", "同一条在「消息」里：一句 ＋ 动作，［详情］展开看复制详情那几行", async () => {
+    await mainReady(ALL_TABS);
+    await emit("monitor-error", LOCAL_EXITED);
+    await sleep(300);
+    await click("[data-role=status-messages]");
+    await waitFor("[data-role=messages-list]");
+    await sleep(400);
+  }),
   panel("panel-batch-kill", "批量结束 · 确认框", "全选之后右键「结束会话（n）」：中断 / 保留逐项写，清单前 8 个 ＋ 另外几个，清单下一行已结束的跳过", async () => {
     await mainReady(ALL_TABS);
     const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
@@ -802,3 +863,14 @@ export const FRONT_SCENES: Scene[] = [
 
 // 首次打开那一张不带默认存储（tab 栏默认宽、命令面板提示没看过）
 PANEL_SCENES[PANEL_SCENES.length - 1].storage = {};
+
+/** 壳推来的那一条（本机后端说过话之后退出码 1 退出、没人再起它）。详情里的账行是复制详情的原话。 */
+const LOCAL_EXITED = {
+  code: "local-exited",
+  key: "rsUiError.localExited.down",
+  args: {},
+  said: copyText("rsUiError.localExited.down"),
+  detail: "时刻：2026-10-09 13:39:41 -07:00\n本机：cc-monitor 4.1.6 · Linux x86_64\n码：退出码 1\n原话：[死亡账] origin=<local> 判定=崩溃 退出状态=退出码 1 —— 说过话之后异常终止",
+  reconnect: "<local>",
+  at: 0,
+};

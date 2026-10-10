@@ -660,15 +660,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     (
-        "src/backend/control/resolve_query.rs",
-        "MAX_RESOLVE_STDIN",
-        "`--resolve` 的 stdin",
-        "截断+说清",
+        "src/backend/control/cli_args.rs",
+        "MAX_CLI_STDIN",
+        "一次性 CLI 子命令（派生的那些与 `--resolve`）的 stdin args JSON",
+        "拒收+回错",
     ),
     (
-        "src/backend/control/cli_control.rs",
-        "MAX_CLI_STDIN",
-        "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
+        "src/backend/control/cli_args.rs",
+        "MAX_ARGS_B64_LEN",
+        "一次性 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
         "拒收+回错",
     ),
     (
@@ -845,6 +845,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
+    // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "PATCH_MAX",
+        "一次改动结果里逐段 diff 的行正文总字数",
+        "截断+说清",
+    ),
     // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
     (
         "src/backend/agents/codex/relay.rs",
@@ -864,6 +871,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "SKILL_DOC_MAX_BYTES",
         "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
         "硬报错",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "PLUGIN_MANIFEST_MAX_BYTES",
+        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
+        "跳过+说清",
     ),
     (
         "src/backend/assets/asset_catalog.rs",
@@ -927,6 +940,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/footprint/chores/marks.rs",
         "MAX_BYTES",
         "后端自有的「待办」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/plan/review.rs",
+        "MAX_BYTES",
+        "后端自有的计划认可与退回记录 `~/.cc-monitor/plan-review.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
