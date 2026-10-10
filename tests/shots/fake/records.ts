@@ -23,6 +23,20 @@ function fakeStep(name: string, input: Record<string, unknown>): ToolStep {
   return { tool: name, known: BARE.has(name) };
 }
 function fakeResult(name: string, input: Record<string, unknown>, content: string, isError: boolean): StepResult {
+  return { ...fakeCounts(name, input, content, isError), ...bodyCells(content) };
+}
+
+/** 核心另出的两格（照真后端 `steps.rs::preview_of` 与 `chars`）：首行预览（至多 60 字）· 正文多少字。正文空 ⇒ 都缺。 */
+function bodyCells(content: string): Pick<StepResult, "preview" | "chars"> {
+  if (content === "") return {};
+  const line = content.split("\n").map((l) => l.trim()).find((l) => l !== "");
+  const chars = [...content].length;
+  if (line === undefined) return { chars };
+  const cs = [...line];
+  return { preview: cs.length > 60 ? `${cs.slice(0, 59).join("")}…` : line, chars };
+}
+
+function fakeCounts(name: string, input: Record<string, unknown>, content: string, isError: boolean): StepResult {
   if (isError) return { ok: false };
   const lines = (s: unknown) => (typeof s === "string" && s.length > 0 ? s.split("\n").length : 0);
   if (name === "Edit") return { ok: true, added: lines(input.new_string), removed: lines(input.old_string) };
