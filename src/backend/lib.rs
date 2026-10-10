@@ -926,7 +926,14 @@ pub const PROTO_VERSION: u32 = 1;
 /// 通道 Call 帧头带 view（请求信封同一格）；StepResult 多 chars（冻结）；骨架索引帧面按列排。一轮结束的系统通知认 turn_end 帧，Codex 适配层补 turn_end（task_complete）。
 /// Codex 会话进流：watcher 跟注册表里能跟的每一家，没有 pidfile 的那一家按写者判活（platform/writers，Linux）；session_added.agent_kind 每条都带。
 /// 手机：一轮完成改读常驻流 turn_end、断了自己接回去、只核 BUILD_ID（删逐格核格目录）、信封与 attach 行带 tz。
-pub const BUILD_ID: &str = "p9z-stream-watch-codex";
+///
+/// p10a-flagless-typed-clock：删流旗标——--with-bg · --tail-only · --with-pid · --with-raw · --index 不认；attach 行只剩 {attach, tz?, view?}（别的键当 malformed），CLI 那一臂 --stream [--tz] [--view]；
+/// 历史一律不重放（宣告带行数 L，[0, L) 客户端按骨架补）、session_added.pid 恒在、line.raw 删；hello.capabilities 删（契约 crate 的 STREAM_CAPABILITIES 一起删）。
+/// 核心多出几格：quota-read · history-list 成品改成类型、进格目录；额度显示态带 usage（颜色档）；步骤结果带写好的 text / timed、认不出的工具 ToolStep.text；
+/// session_added / session_status 的活动那几格收成 ActivityFace、多 activity_order（监控板组内只按它排）；accounts-list 每号带 badge；rotation-rules-read 多 followText；profiles-resolve 多 lineShort。
+/// 删 apikey-read · apikey-routing（没有读者）。后端「现在」只一处 common::time::now（带特性 shots 编的从台架交的时刻接着走）。
+/// 手机聊天屏起会话走 session-new ＋ terminal-input（删路 A 与 src/mobile/bridge）。
+pub const BUILD_ID: &str = "p10a-flagless-typed-clock";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
