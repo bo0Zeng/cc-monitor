@@ -56,7 +56,7 @@ fn the_top_level_base_url_is_read_and_odd_shapes_are_unreadable() {
     );
 }
 
-/// 「要你动手」那一件的合法：顶层那一行在 ⇒ 就地换那一行；不在 ⇒ 放到文件最前面（表头之前才是顶层）；
+/// 「待办」那一件的合法：顶层那一行在 ⇒ 就地换那一行；不在 ⇒ 放到文件最前面（表头之前才是顶层）；
 /// 合好的那份再读一遍就是那条地址，别的行一个字不动；现在的内容读不懂 ⇒ 不给改法。
 #[test]
 fn merging_the_base_url_line_keeps_everything_else_and_reads_back() {

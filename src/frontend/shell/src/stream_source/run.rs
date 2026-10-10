@@ -334,7 +334,7 @@ async fn stream_loop(
                 session_id,
                 path,
                 seq,
-                message,
+                record,
                 cwd,
                 end,
                 rid,
@@ -345,7 +345,7 @@ async fn stream_loop(
                         session_id,
                         path: std::path::PathBuf::from(path),
                         seq,
-                        message,
+                        record,
                         cwd,
                         end: Some(end),
                         rid,
@@ -362,6 +362,8 @@ async fn stream_loop(
                 path,
                 lines,
                 activity,
+                activity_text,
+                activity_tone,
                 waiting_for,
                 container,
                 // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
@@ -377,6 +379,8 @@ async fn stream_loop(
                     project_dir,
                     name,
                     activity,
+                    activity_text,
+                    activity_tone,
                     waiting_for,
                     container,
                     pid: None,
@@ -387,6 +391,8 @@ async fn stream_loop(
             Some(InboundFrame::SessionStatus {
                 sid,
                 activity,
+                activity_text,
+                activity_tone,
                 waiting_for,
             }) => {
                 // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
@@ -398,6 +404,8 @@ async fn stream_loop(
                     origin: host_label.clone(),
                     sid,
                     activity,
+                    activity_text,
+                    activity_tone,
                     waiting_for,
                 });
             }
@@ -409,6 +417,13 @@ async fn stream_loop(
                     ended,
                 });
             }
+            Some(InboundFrame::SessionBranch { sid, off, .. }) => {
+                crate::session_book::feed(BookIn::Branch {
+                    origin: host_label.clone(),
+                    sid,
+                    off,
+                });
+            }
             Some(InboundFrame::SessionRemoved { sid }) => {
                 // 只剩内容流的边界：残批已在循环头冲掉；这里摘排队中的快照 ＋ 给在途的打取消标记（归档后迟到的快照行会经「见行复活」造出僵尸 tab）、续点作废。
                 // 它离开之后是什么由下一帧 `session_state` 说。
@@ -418,12 +433,13 @@ async fn stream_loop(
                 intake.removed(&sid);
             }
             // 后端裁好的去向（可重连 / 已结束）原样交出口（残批已在循环头冲掉）。
-            Some(InboundFrame::SessionState { sid, state }) => {
+            Some(InboundFrame::SessionState { sid, state, words }) => {
                 tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
                 crate::session_book::feed(BookIn::Left {
                     origin: host_label.clone(),
                     sid,
                     fate: state,
+                    words: Some(words),
                 });
             }
             Some(InboundFrame::Overflow {

@@ -191,15 +191,19 @@ fn a_windows_dacl_with_a_wide_principal_is_called_out() {
 fn undetermined_is_not_a_green_light() {
     let v = judge(&Protection::Undetermined {
         why: "这一份构建没有开 `harden`".to_string(),
+        raw: Some("os error 5".to_string()),
     });
     assert!(v.needs_attention(), "「查不出来」被当成了没问题");
     match &v {
-        Verdict::Undetermined { why } => {
+        Verdict::Undetermined { why, raw } => {
             assert!(
                 copy_core::copy_matches("credsPerm.judge.undetermined", &why),
                 "说法太软：{why}"
             );
             assert!(why.contains("harden"), "说法里没带上原因：{why}");
+            // 原话跟着走、不上句子。
+            assert_eq!(raw.as_deref(), Some("os error 5"));
+            assert!(!why.contains("os error"), "{why}");
         }
         other => panic!("应当是 Undetermined，实得 {other:?}"),
     }
@@ -302,4 +306,24 @@ fn a_file_created_through_create_private_is_born_owner_only() {
         "对已存在的路径应当直接失败（O_EXCL / CREATE_NEW），而不是跟随并截断它"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 量不动（文件不在）：句子只给原因词，系统原话另带在 `raw`（进复制详情 / 日志），不上句子。
+#[cfg(unix)]
+#[test]
+fn an_unreadable_probe_keeps_the_system_words_out_of_the_sentence() {
+    match probe(std::path::Path::new("/nonexistent-perm-probe/x")) {
+        Protection::Undetermined { why, raw } => {
+            assert!(
+                copy_core::copy_matches("credsPerm.probe.noMetadata", &why),
+                "{why}"
+            );
+            let raw = raw.expect("系统原话另带");
+            assert!(
+                !raw.trim().is_empty() && !why.contains(raw.trim()),
+                "{why} / {raw}"
+            );
+        }
+        other => panic!("应当是 Undetermined，实得 {other:?}"),
+    }
 }

@@ -138,12 +138,30 @@ export interface SessionFacts {
   pending: PendingCall[];
   /** 最后一段正文的头一行（悬停卡「它最后一句」）。 */
   lastSay: { text: string; at: string | null } | null;
-  /** 需要你：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
+  /** 需手动：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
   needs: Needs | null;
   /** 交回了的子运行（子 agent 的 id，文件序）：同一个子运行的收场通知以交回为准，消息流里不再另画。 */
   handedBack: string[];
   /** 一串一串的 API 重试与结局（后端按首条的 uuid 记；消息流里那条细条挂在首条上，按它的 id 读）。 */
   retries: RetryRun[];
+  /** 此刻的许可档（原样）；没有 ⇒ `null`。 */
+  permissionMode: string | null;
+  /** 全会话用量（后端按请求去重、写缓存分两档；`text` 是写好的成品）。 */
+  tokens: TokenUse | null;
+  /** 全会话花费（记录里那一家自己记的；`text` 是写好的成品）。记录里没有 ⇒ `null`。 */
+  cost: { micros: number; partial: boolean; text: string } | null;
+}
+
+/** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
+export interface TokenUse {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite5m: number;
+  cacheWrite1h: number;
+  requests: number;
+  text: string;
+  last: { id: string; tokens: number[] } | null;
 }
 
 /** 一串相邻的 API 重试（后端 `facts_query::RetryRun`）。 */
@@ -179,10 +197,10 @@ const UNCLEAR_WHY: ReadonlySet<string> = new Set<UnclearWhy>(["noWriter", "untra
 export type StepWait = "running" | "awaiting" | "unclear";
 const STEP_WAIT: ReadonlySet<string> = new Set<StepWait>(["running", "awaiting", "unclear"]);
 
-/** 「需要你」的种类：批准一步 · 回答一问 · 批准计划 · 判不出（只说在等你）。 */
-export type NeedsKind = "approve" | "answer" | "plan" | "unknown";
+/** 「需手动」的种类（后端 `facts_query::NeedsKind` 判好）：批准一步 · 回答一问 · 批准计划 · 放行联网 · 批准协作请求 · 确认会话目标 · 在对话框里选 · 判不出。 */
+export type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 
-/** 「需要你」的成品（后端 `facts_query::Needs`）。 */
+/** 「需手动」的成品（后端 `facts_query::Needs`）。 */
 export interface Needs {
   kind: NeedsKind;
   /** 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。 */
@@ -193,9 +211,13 @@ export interface Needs {
   what: string | null;
   /** 何时起等（epoch ms）；没有 ⇒ `null`。 */
   sinceMs: number | null;
+  /** 核心写好的字（等批准 · 等回答 · 需手动），照抄。 */
+  text: string;
+  /** 语气（恒 `need`）。 */
+  tone: string;
 }
 
-const NEEDS_KIND: ReadonlySet<string> = new Set(["approve", "answer", "plan", "unknown"]);
+const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
 export type FactsResult =
@@ -382,7 +404,37 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "projectDir", "retries", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!strOrNull(v.permissionMode)) return bad();
+  let tokens: TokenUse | null = null;
+  if (v.tokens !== null) {
+    const p = v.tokens;
+    const nums = ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h", "requests"] as const;
+    if (!isObj(p) || !exactKeys(p, ["cacheRead", "cacheWrite1h", "cacheWrite5m", "input", "last", "output", "requests", "text"])) return bad();
+    if (!nums.every((k) => isNum(p[k])) || !isStr(p.text)) return bad();
+    let last: TokenUse["last"] = null;
+    if (p.last !== null) {
+      const l = p.last;
+      if (!isObj(l) || !exactKeys(l, ["id", "tokens"]) || !isStr(l.id) || !Array.isArray(l.tokens) || !l.tokens.every(isNum)) return bad();
+      last = { id: l.id, tokens: [...(l.tokens as number[])] };
+    }
+    tokens = {
+      input: p.input as number,
+      output: p.output as number,
+      cacheRead: p.cacheRead as number,
+      cacheWrite5m: p.cacheWrite5m as number,
+      cacheWrite1h: p.cacheWrite1h as number,
+      requests: p.requests as number,
+      text: p.text,
+      last,
+    };
+  }
+  let cost: SessionFacts["cost"] = null;
+  if (v.cost !== null) {
+    const c = v.cost;
+    if (!isObj(c) || !exactKeys(c, ["micros", "partial", "text"]) || !isNum(c.micros) || typeof c.partial !== "boolean" || !isStr(c.text)) return bad();
+    cost = { micros: c.micros, partial: c.partial, text: c.text };
+  }
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
@@ -405,8 +457,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null };
+    if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "text", "tone", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone)) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone };
   }
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
@@ -449,6 +501,9 @@ export function decodeFacts(v: unknown): SessionFacts {
     needs,
     handedBack: v.handedBack as string[],
     retries,
+    permissionMode: v.permissionMode as string | null,
+    tokens,
+    cost,
   };
 }
 

@@ -82,3 +82,38 @@ describe("画法", () => {
     expect(pre.textContent).toBe("abcd");
   });
 });
+
+describe("实时画面一帧一帧换：只换变了的行", () => {
+  const L = (text: string, spans: ScreenLine["spans"] = []): ScreenLine => ({ text, spans });
+  const red = (from: number, to: number) => [{ from, to, fg: "red" as const }];
+
+  it("换一帧：没变的行节点原样留着（不整屏拆了重建）；换完与从头画一模一样 —— 行数变多 / 变少 / 首行变空也一样", () => {
+    const frames: ScreenLine[][] = [
+      [L("● Bash(npm run build)", red(0, 1)), L("  ⎿  Running…"), L(""), L("✶ Building… (1s)", red(0, 1))],
+      [L("● Bash(npm run build)", red(0, 1)), L("  ⎿  Running…"), L("     ✓ 812 modules"), L("✶ Building… (2s)", red(0, 1))],
+      [L("● Bash(npm run build)", red(0, 1)), L("  ⎿  Running…"), L("     ✓ 812 modules"), L("     dist/x.js 12 kB"), L("✶ Building… (3s)", red(0, 1))],
+      [L(""), L("  ⎿  Running…"), L("✶ Building… (4s)", red(0, 1))],
+      [L(""), L("  ⎿  Running…")],
+      [],
+      [L("$ ", red(0, 1))],
+    ];
+    const pre = document.createElement("pre");
+    renderScreen(pre, frames[0]);
+    for (let k = 1; k < frames.length; k++) {
+      const prev = frames[k - 1];
+      const before = [...pre.childNodes];
+      const keepFirst = prev[1]?.text === frames[k][1]?.text ? before.find((n) => n.textContent === "  ⎿  Running…") : undefined;
+      renderScreen(pre, frames[k]);
+      expect(pre.innerHTML, `第 ${k} 帧`).toBe(painted(frames[k]).innerHTML);
+      if (keepFirst) expect([...pre.childNodes].includes(keepFirst), `第 ${k} 帧：没变的那一行该原样留着`).toBe(true);
+    }
+  });
+
+  it("别处动过这块画面（不是上一帧画出来的样子）⇒ 整屏重画，不在别人的节点上打补丁", () => {
+    const pre = document.createElement("pre");
+    renderScreen(pre, [L("a"), L("b")]);
+    pre.append("外人加的");
+    renderScreen(pre, [L("a"), L("c")]);
+    expect(pre.innerHTML).toBe(painted([L("a"), L("c")]).innerHTML);
+  });
+});

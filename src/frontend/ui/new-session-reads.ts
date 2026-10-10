@@ -6,6 +6,7 @@ import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { saidOfTransport } from "./control-said";
+import { detailOf } from "./kit/detail";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { ForkLaunch } from "./session-writes";
 import { decodeForkLaunch } from "./session-writes";
@@ -106,16 +107,22 @@ export interface NewRequest {
   forkFrom?: { sid: string; uuid: string };
   models?: Record<string, string>;
   local: boolean;
+  /** 这一趟的票（一个框一张）：期限到了再问一次带同一张 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。 */
+  ticket?: string;
   /** 轮换来源：缺 ＝ 跟随默认；`{rule}` ＝ 那台起之前先定 sid、按它写好来源（会话一报到就是那条规则）。 */
   rotation?: { rule: string };
 }
 
-/** 起的结局：起了 · 某一格不行 / 整体不行（那台说的码与那一句）· 期限到（结果未知）· 够不着那台。 */
+/**
+ * 起的结局：起了 · 某一格不行 / 整体不行（那台说的码与那一句）· 同一张票那一趟还在起 · 期限到（结果未知）· 够不着那台。
+ * 不行的几形都带复制详情（`detail`，没有 ⇒ 空串）。
+ */
 export type NewResult =
   | { kind: "ok"; reply: SessionNew }
-  | { kind: "refused"; code: string; said: string; field: SessionNewField | null; unavailable: AccountUnavailable | null }
-  | { kind: "timeout" }
-  | { kind: "unreachable"; said: string };
+  | { kind: "refused"; code: string; said: string; field: SessionNewField | null; unavailable: AccountUnavailable | null; detail: string }
+  | { kind: "pending"; said: string; detail: string }
+  | { kind: "timeout"; detail: string }
+  | { kind: "unreachable"; said: string; detail: string };
 
 /** 拒绝体的 `data`（`{field, unavailable}`）；读不出 ⇒ 当整体不行。 */
 function refusalData(d: unknown): { field: SessionNewField | null; unavailable: AccountUnavailable | null } {
@@ -136,15 +143,17 @@ export async function askNew(origin: Origin, req: NewRequest): Promise<NewResult
   try {
     reply = await chan.call(origin, "session-new", body, budget);
   } catch (e) {
-    if (!(e instanceof ChanError)) return { kind: "unreachable", said: String(e) };
+    const detail = detailOf(e);
+    if (!(e instanceof ChanError)) return { kind: "unreachable", said: String(e), detail };
     const err = e.error;
     if (err.layer === "peer" && err.why === "refused") {
       const r = refusalOf(err.body);
-      if (r) return { kind: "refused", code: r.code, said: r.message, ...refusalData(r.data) };
+      if (r?.code === "launch_pending") return { kind: "pending", said: r.message, detail };
+      if (r) return { kind: "refused", code: r.code, said: r.message, ...refusalData(r.data), detail };
     }
-    // 发出去了、没等到回话（期限到 · 半路断了）⇒ 结果未知：先刷新再看，不说失败。
-    if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout" };
-    return { kind: "unreachable", said: saidOfTransport(origin, err) };
+    // 发出去了、没等到回话（期限到 · 半路断了）⇒ 结果未知：同一张票再问一次（那台认得出是不是同一趟），不说失败。
+    if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", detail };
+    return { kind: "unreachable", said: saidOfTransport(origin, err), detail };
   }
   return { kind: "ok", reply: decodeNew(readJson(reply)) };
 }

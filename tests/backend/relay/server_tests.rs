@@ -4250,3 +4250,56 @@ fn tee_line(ev: &TapEvent) -> String {
     })
     .expect("tee 那一件写不成 JSON")
 }
+
+/// **性能台架**（平时 `ignored`；`cargo test --release --lib -- --ignored relay_overhead_bench --nocapture` 出读数）：
+/// 同一个假上游，直连与经中转各发 `N` 发（每发一条新连接、读到收尾），量每发的墙钟，印 p50 / p90 / 最大与两者之差。
+/// 只出读数、不判阈值（回环上中转多出来的那一跳是几十微秒量级，机器忙时抖得比它大）。
+#[test]
+#[ignore = "性能台架：只出读数"]
+fn relay_overhead_bench() {
+    const N: usize = 300;
+    let up = spawn_fake_upstream(None);
+    let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+    let direct = |up: SocketAddr| {
+        let mut c = TcpStream::connect(up).expect("connect upstream");
+        c.set_nodelay(true).expect("nodelay");
+        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("deadline");
+        let body = REQUEST_BODY;
+        let req = format!(
+            "POST /v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        c.write_all(req.as_bytes()).expect("write");
+        c
+    };
+    let stats = |name: &str, f: &dyn Fn() -> TcpStream| -> f64 {
+        let mut ms = Vec::with_capacity(N);
+        for _ in 0..N {
+            let t = std::time::Instant::now();
+            let mut c = f();
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read");
+            assert!(!got.is_empty());
+            ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+        ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p = |q: f64| ms[((N as f64 - 1.0) * q) as usize];
+        println!(
+            "perf.relay.{name} p50={:.3}ms p90={:.3}ms max={:.3}ms",
+            p(0.5),
+            p(0.9),
+            ms[N - 1]
+        );
+        p(0.5)
+    };
+    let d = stats("direct", &|| direct(up.addr));
+    let r = stats("relayed", &|| {
+        send_request(
+            relay_addr,
+            "/s/agentA/acctA/v1/messages?beta=true",
+            "x-claude-code-session-id: sid-BENCH\r\n",
+        )
+    });
+    println!("perf.relay.added_p50={:.3}ms", r - d);
+}

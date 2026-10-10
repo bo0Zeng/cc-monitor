@@ -202,10 +202,10 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/local_backend_host_tests.rs",
+        "tests/frontend/shell/remote_resident_tests.rs",
         "src/backend/stream/listen.rs",
-        "★**跨 crate 字面量对拍**：「口被占着」那句拒绝原因（`REFUSE_BUSY`）宿主与后端各声明一份，宿主凭它判「这次拒绝会不会自己好」；\
-         漂了**不会报错** —— 上一个 monitor 刚退、对面还没反应过来，会被当成不可恢复直接报失败 ⇒ 同时读两侧源码才验得了",
+        "★**跨 crate 字面量对拍**：小中继「没人在听」那个理由词（`REFUSE_ABSENT`）monitor 与后端各声明一份，monitor 凭它判「等一会儿再接」还是「当场停」；\
+         漂了**不会报错** —— 刚起的那台后端还没绑上，会被当成接不上直接报失败 ⇒ 同时读两侧源码才验得了",
     ),
     (
         "monitor→backend",

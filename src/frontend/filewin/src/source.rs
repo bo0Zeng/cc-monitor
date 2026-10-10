@@ -578,7 +578,7 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
     let rd = std::fs::read_dir(dir).map_err(|e| {
         copy_text(
             "rsFilewinSource.local.readDirFailed",
-            &[("e", &e.to_string())],
+            &[("why", &copy_core::io_reason(e.kind()))],
         )
     })?;
     let mut out: Vec<Listed> = Vec::new();
@@ -677,9 +677,8 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 //
 // # 形状
 //
-// 窗口进程（`proc::child_main`）从 stdin 拿到交接件（`chan::host::Handoff`：回环地址 ＋
-// 钥匙 ＋ 帧长），用 `chan::dial::dial` 连上 monitor 那个通道口，换一个
-// `chan::client::Client`（[`Line`]）。此后读侧与写面**每一条**都经 [`ask`] 说
+// 窗口进程（`proc::child_main`）从 stdin 第一行拿到种子（含帧长），在自己的 stdin / stdout 上
+// 起一个 `chan::client::Client`（[`Line`]）—— 起它的 monitor 在那对管子的另一头（父子管道，没有钥匙）。此后读侧与写面**每一条**都经 [`ask`] 说
 // `call(origin, op, payload, budget)`，由 monitor 那一侧的路由器转给 `inbound_client`
 // ——本机与远端同一条路。
 //
@@ -894,7 +893,7 @@ pub fn rows_from_ls_data(
         out.push(row_from_ls_entry(one).map_err(|e| {
             copy_text(
                 "rsFilewinSource.ls.badEntry",
-                &[("i", &i.to_string()), ("e", &e.to_string())],
+                &[("i", &i.to_string()), ("why", &e)],
             )
         })?);
     }
@@ -1089,16 +1088,20 @@ fn now_stamp() -> String {
 pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
     let origin = at.0.as_str();
     use comms_inward::chan::wire::{CallError, PeerFault};
+    // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`said`]）。
+    let mut raw_body: Option<String> = None;
     if let CallError::Peer {
         why: PeerFault::Refused { body },
     } = e
     {
-        let wrote = serde_json::from_slice::<serde_json::Value>(&body.0)
-            .ok()
-            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string))
-            .unwrap_or_default();
-        if !wrote.trim().is_empty() {
-            return wrote;
+        match serde_json::from_slice::<serde_json::Value>(&body.0) {
+            Ok(v) => {
+                let wrote = v.get("detail").and_then(|d| d.as_str()).unwrap_or_default();
+                if !wrote.trim().is_empty() {
+                    return wrote.to_string();
+                }
+            }
+            Err(_) => raw_body = Some(String::from_utf8_lossy(&body.0).into_owned()),
         }
     }
     let f = e.hop_facts();
@@ -1111,6 +1114,7 @@ pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError
         f.hop.as_deref(),
         &f.code,
     )
+    .maybe(copy_core::detail::Label::Raw, raw_body.as_deref())
     .render()
 }
 
@@ -1154,10 +1158,10 @@ pub async fn ask_coded_cancellable(
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         Failed::here(
-            copy_text("rsFilewinSource.ask.badArgs", &[("e", &e.to_string())]),
+            copy_text("rsFilewinSource.ask.badArgs", &[]),
             origin,
             cmd,
-            None,
+            Some(&e.to_string()),
         )
     })?);
     let op = Op(cmd.to_string());
@@ -1171,10 +1175,10 @@ pub async fn ask_coded_cancellable(
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
         Failed::here(
-            copy_text("rsFilewinSource.ask.unreadable", &[("e", &e.to_string())]),
+            copy_text("rsFilewinSource.ask.unreadable", &[]),
             origin,
             cmd,
-            None,
+            Some(&e.to_string()),
         )
     })?;
     if v.is_null() {
@@ -1399,10 +1403,8 @@ pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError)
                             .and_then(serde_json::Value::as_str)
                             .unwrap_or(""),
                     ),
-                    Err(_) => copy_text(
-                        "rsFilewinSource.said.refused",
-                        &[("detail", &(String::from_utf8_lossy(&body.0)).to_string())],
-                    ),
+                    // 拒绝体读不懂：句子只说被拒，那段原文进详情（[`detail_of`]）。
+                    Err(_) => copy_text("rsFilewinSource.said.refused", &[]),
                 }
             }
             // 那台不认这条命令：全产品同一句，名字是这扇窗看着的那台。

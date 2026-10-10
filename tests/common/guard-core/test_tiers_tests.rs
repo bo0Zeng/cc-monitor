@@ -180,6 +180,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
     ),
     (
+        "tests/backend/platform/child_tests.rs",
+        "internal_families_inner",
+        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::internal_families_inner" },
+    ),
+    (
         "tests/backend/control/exit_policy_tests.rs",
         "wire_child",
         Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
@@ -274,6 +279,16 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/filewin/workspace_tests.rs",
         "screenshot_for_the_shots_tool",
         Trigger::Filter { by: "tests/shots/filewin.mjs", needle: "workspace::tests::screenshot_for_the_shots_tool" },
+    ),
+    (
+        "tests/frontend/filewin/workspace_tests.rs",
+        "perf_rig_worker",
+        Trigger::Filter { by: "tests/shots/perf/filewin-perf.sh", needle: "workspace::tests::perf_rig_worker" },
+    ),
+    (
+        "tests/backend/relay/server_tests.rs",
+        "relay_overhead_bench",
+        Trigger::Manual("读数不是判据：中转每发多出来的那一跳（直连与经中转各发 N 发比 p50）；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/filewin/rows_tests.rs",

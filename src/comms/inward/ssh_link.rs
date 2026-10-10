@@ -88,9 +88,6 @@ pub struct Ack {
     /// 同上，跳板那一台。
     #[serde(default)]
     pub jump_strict: bool,
-    /// 开通道被远端回拒时 SSH 协议给的原因码（RFC 4254 §5.1，如 `administratively_prohibited` · `connect_failed`）；老后端 / 别的失败 ⇒ `None`。
-    #[serde(default)]
-    pub open_refused: Option<String>,
     /// 没拨成时后端给的原因码（闭集：`resolve` · `unreachable` · `timeout` · `host_key` · `auth` · `password` · `key_unreadable` · `jump` · `other`）；老后端 / 拨成了 ⇒ `None`。
     #[serde(default)]
     pub reason: Option<String>,
@@ -118,8 +115,6 @@ pub enum LinkError {
     Refused {
         why: String,
         fingerprint: Option<String>,
-        /// 开通道被回拒的原因码（[`Ack::open_refused`] 原样）。
-        open_refused: Option<String>,
         /// 没拨成的原因码（[`Ack::reason`] 原样）。
         reason: Option<String>,
         /// 后端写好的复制详情（[`Ack::detail`] 原样；老后端 ⇒ `None`）。
@@ -209,7 +204,6 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
                     .error
                     .unwrap_or_else(|| copy_text("rsSshLink.dial.noReason", &[])),
                 fingerprint: ack.fingerprint,
-                open_refused: ack.open_refused,
                 reason: ack.reason,
                 detail: ack.detail,
             });

@@ -16,6 +16,7 @@ use crate::common::fs::read_regular_capped;
 use super::accounts::{config_path_in, MAX_CONFIG_BYTES};
 use super::paths::{resolve_home, CONFIG_DIR_ENV};
 use crate::agents::{McpSeen, Sightings, SkillSeen};
+use crate::common::said::IntoNote as _;
 
 /// skill 目录名（配置根下）。
 const SKILLS_DIR: &str = "skills";
@@ -141,10 +142,19 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
-            out.problems.push(copy_text(
-                "beClaudeAssets.scan.listFailed",
-                &[("path", &root.display().to_string()), ("e", &e.to_string())],
-            ));
+            out.problems.push(
+                crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beClaudeAssets.scan.listFailed",
+                        &[
+                            ("path", &root.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
+                .into_note(),
+            );
             return;
         }
     };
@@ -179,7 +189,7 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
                             &[("path", &doc.display().to_string()), ("why", why)],
                         )
                     })
-                    .said_logging_raw(),
+                    .into_note(),
                 );
                 None
             }
@@ -236,7 +246,7 @@ pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
                     &[("path", &claude_json.display().to_string()), ("why", why)],
                 )
             })
-            .said_logging_raw(),
+            .into_note(),
         ),
     }
 }
@@ -258,7 +268,7 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
                     ),
                     &e,
                 )
-                .said_logging_raw(),
+                .into_note(),
             );
             return;
         }

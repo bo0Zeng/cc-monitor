@@ -532,7 +532,7 @@ pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     pids
 }
 
-/// 那台 pidfile 说这条会话**此刻在等人**（适配层翻成 [`crate::agents::SessionActivity::NeedsYou`]）：等的是哪一类（`waitingFor` 原样）· 从何时起等（`statusUpdatedAt`，epoch ms）。
+/// 那台 pidfile 说这条会话**此刻在等人**（适配层翻成 [`crate::agents::SessionActivity::NeedsYou`]）：等的是什么框（适配层翻好的 [`crate::agents::WaitOn`]）· 从何时起等（`statusUpdatedAt`，epoch ms）。
 /// 判活同 [`session_writers`]；不在等 / 没有活进程持着它 ⇒ `None`。几个进程同时持着、有一个在等 ⇒ 取它（等得最早的那个）。
 /// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `facts_query::needs_of`。
 pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_query::PidWait> {
@@ -545,10 +545,7 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
         .filter(|(_, v)| !crate::agents::pidfile_background(v))
         .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
         .map(|(_, v)| super::facts_query::PidWait {
-            waiting_for: v
-                .get("waitingFor")
-                .and_then(|x| x.as_str())
-                .map(str::to_string),
+            waiting_for: crate::agents::pidfile_wait(&v),
             since_ms: v.get("statusUpdatedAt").and_then(serde_json::Value::as_u64),
         })
         .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
@@ -563,13 +560,14 @@ pub(crate) struct Doing {
     pub(crate) needs: Option<super::facts_query::NeedsKind>,
 }
 
-/// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等你 ＞ 在跑 ＞ 空闲 ＞ 说不清。
+/// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等人 ＞ 在跑 ＞ 后台命令在跑 ＞ 空闲 ＞ 说不清。
 /// 在等你 ⇒ 读那条会话的记录（扫描图缓存）配上没结果的调用判种类；记录找不到 ⇒ 判不出（`Unknown`）。
 pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
     use crate::agents::SessionActivity as A;
     let rank = |a: Option<A>| match a {
-        Some(A::NeedsYou) => 3,
-        Some(A::Working) => 2,
+        Some(A::NeedsYou) => 4,
+        Some(A::Working) => 3,
+        Some(A::BackgroundWork) => 2,
         Some(A::Idle) => 1,
         None => 0,
     };

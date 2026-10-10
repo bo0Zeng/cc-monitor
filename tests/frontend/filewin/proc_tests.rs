@@ -1,4 +1,4 @@
-//! 窗口进程那一侧的躯体（`proc.rs`：拨回通道 · 列第一屏 · `child_main` 的行序）那几条判据 ——
+//! 窗口进程那一侧的躯体（`proc.rs`：读种子那一行 · 在 stdin / stdout 上起通道 · 列第一屏 · `child_main` 的行序）那几条判据 ——
 //! 原住 `tests/frontend/shell/filewin/proc_tests.rs` 的后半，随躯体搬进独立包；进程形态（起进程 · 种子 · 就绪那一行）那一半留在 monitor 那一侧。
 
 use super::*;
@@ -9,71 +9,31 @@ fn synthetic_cfg() -> String {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴窗口进程拨回 monitor 那一下
+// 🔴窗口进程在自己的 stdin / stdout 上起通道
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **拿着交接件拨得通；钥匙不对 / 口不在就是错 —— 而且错的时候窗口不开**（`D11`）。
-///
-/// ① 阳性：一个真通道口（合成后端挂在宿主上）⇒ 拨得通，而且那条线**真能说一次 `call`**；
-/// ② 钥匙错一个字节 ⇒ 错（不是「连上了再说」）；③ 口不在 ⇒ 错。
-/// ④ `child_main` 里「先拨、拨不通就回 `EXIT_WINDOW_FAILED`」排在开窗之前（源码行序，代理）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it() {
-    use crate::find::testing::{Declared, FakeBackend};
-    // ① 阳性：真口 ＋ 真钥匙。
-    let be = std::sync::Arc::new(FakeBackendHost::new(FakeBackend::new(
-        &["files-stat"],
-        Declared::default(),
-    )));
-    let h = crate::find::testing::start_host(
-        be,
-        crate::find::testing::test_key(),
-        1 << 20,
-        std::time::Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    let line = dial_back(&h).await.expect("拿着对的交接件却拨不通");
-    let origin = comms_inward::origin::Origin("proc-dial".into());
-    let r = crate::source::ask(
-        &line,
-        &origin,
-        "files-stat",
-        &serde_json::json!({ "path": "/" }),
-        std::time::Duration::from_secs(5),
-    )
-    .await;
-    assert!(r.is_ok(), "拨通了却说不了一次 call：{r:?}");
-    // ② 钥匙错。
-    let mut wrong = h.clone();
-    wrong.key = comms_inward::chan::wire::Key("0".repeat(64));
-    let e = match dial_back(&wrong).await {
-        Ok(_) => panic!("钥匙不对竟然拨通了"),
-        Err(e) => e,
-    };
-    assert!(
-        copy_core::copy_matches("rsFilewinProc.dialBack.failed", &e),
-        "{e}"
+/// 🔴 **种子只读 stdin 的那一行，一个字节都不多拿**（之后同一根管子就是通道，多读进缓冲的就不在通道那一侧了）；
+/// 一行都没有就 EOF ⇒ 空串（交给 `decode_request` 说「种子是空的」）。
+/// ④ `child_main` 里「在 stdin / stdout 上起通道」排在开窗之前（源码行序，代理）。
+#[test]
+fn the_seed_is_exactly_the_first_line_and_the_channel_follows_on_the_same_pipes() {
+    let mut r = std::io::Cursor::new(b"{\"seed\":1}\n\x00\x01frame-bytes".to_vec());
+    assert_eq!(read_seed_line(&mut r).unwrap(), "{\"seed\":1}");
+    assert_eq!(
+        r.position() as usize,
+        "{\"seed\":1}\n".len(),
+        "种子之后的字节被多读走了 —— 通道那一侧会少一截"
     );
-    // ③ 口不在（拿一个刚放掉的回环端口）。
-    let dead = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap()
-    };
-    let mut gone = h.clone();
-    gone.addr = dead;
-    assert!(dial_back(&gone).await.is_err(), "口不在竟然拨通了");
-    // ④ 行序：拨在开窗之前，拨不通就回失败码。
+    let mut empty = std::io::Cursor::new(Vec::<u8>::new());
+    assert_eq!(read_seed_line(&mut empty).unwrap(), "");
     let prod =
         guard_core::production_code(include_str!("../../../src/frontend/filewin/src/proc.rs"));
-    let at_dial = guard_core::find_pinned(&prod, "rt.block_on(dial_back(&req.handoff))")
-        .expect("child_main 里没有拨回那一下");
+    // ④ 行序：在 stdin / stdout 上起通道排在开窗之前。
+    let at_dial = guard_core::find_pinned(&prod, "line_over_stdio(req.frame)")
+        .expect("child_main 里没有在 stdin / stdout 上起通道那一下");
     let at_open = guard_core::find_pinned(&prod, "super::shell::open_detached_seeded(")
         .expect("child_main 里没有开窗那一下");
-    assert!(
-        at_dial < at_open,
-        "开窗排在拨通道之前 —— 拨不通时窗口已经开了"
-    );
+    assert!(at_dial < at_open, "开窗排在起通道之前");
     // ⑤种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
     //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
     for f in ["reveal", "bookmarks", "machines"] {
@@ -236,15 +196,7 @@ async fn the_first_screen_asks_home_only_when_told_nothing() {
             asked: std::sync::Mutex::new(Vec::new()),
             refuse,
         });
-        let h = crate::find::testing::start_host(
-            be.clone(),
-            crate::find::testing::test_key(),
-            1 << 20,
-            std::time::Duration::from_secs(5),
-        )
-        .await
-        .expect("回环口绑得上");
-        let line = dial_back(&h).await.expect("拨得通");
+        let line = crate::find::testing::wire(be.clone(), 1 << 20);
         let got = first_screen(&line, &Source::remote(synthetic_cfg()), cwd)
             .await
             .map(|(d, rows)| (d, rows.into_iter().map(|l| l.row.name).collect()));

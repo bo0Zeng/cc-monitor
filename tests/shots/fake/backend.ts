@@ -46,6 +46,7 @@ export class FakeBackend {
   private readonly subs = new Map<number, Sub>();
   /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
   private readonly listedOrigins = new Set<string>();
+  private screenSeq = 0;
 
   constructor(readonly world: World) {}
 
@@ -168,13 +169,15 @@ export class FakeBackend {
       });
       frames.push({ container: { session_id: s.sid, container: s.container } });
       const from = this.world.replayTail === undefined ? 0 : Math.max(0, s.records.length - this.world.replayTail);
-      s.records.slice(from).forEach((message, i) => {
-        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, message } });
+      s.records.slice(from).forEach((record, i) => {
+        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, record } });
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, waiting_for: s.waitingFor } });
-      if (s.ended) frames.push({ ended: { session_id: s.sid } });
-      else if (s.idle) frames.push({ idle: { session_id: s.sid } });
+      // 字与语气照后端 `wire::activity_cells` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
+      const act = s.activity === null ? null : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["idle", "plain"] } as const)[s.activity];
+      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: act ? copyText(`beSession.activity.${act[0]}`) : null, activity_tone: act ? act[1] : null, waiting_for: s.waitingFor } });
+      if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("sessionState.ended.name"), hint: copyText("sessionState.ended.tooltip"), tone: "plain" } });
+      else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("sessionState.reconnectable.name"), hint: copyText("sessionState.reconnectable.tooltip"), tone: "plain" } });
     }
     this.listedOrigins.add(origin);
     frames.push({ listed: { origin, all: this.world.machines.every((m) => this.listedOrigins.has(m)) } });
@@ -204,6 +207,14 @@ export class FakeBackend {
   pushQuota(origin: string, body: unknown): void {
     for (const sub of this.subs.values()) {
       if (sub.origin === origin && sub.kind === "quota-changed") this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(body) }]);
+    }
+  }
+
+  /** 性能台架：往那台所有终端实时画面的订阅上推一屏（`view` 同 `terminal-preview` 成品）。 */
+  pushScreen(origin: string, view: unknown): void {
+    this.screenSeq += 1;
+    for (const sub of this.subs.values()) {
+      if (sub.origin === origin && sub.kind.startsWith("terminal-screen/")) this.send(sub, [{ t: "frame", seq: this.screenSeq, body: JSON.stringify({ seq: this.screenSeq + 1, view }) }]);
     }
   }
 

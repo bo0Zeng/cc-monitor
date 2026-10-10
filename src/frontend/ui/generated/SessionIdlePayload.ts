@@ -4,4 +4,8 @@
  * audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
  * `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
  */
-export type SessionIdlePayload = { session_id: string, };
+export type SessionIdlePayload = { session_id: string, 
+/**
+ * 同 [`SessionEndedPayload`] 那三格。
+ */
+text: string | null, hint: string | null, tone: string | null, };

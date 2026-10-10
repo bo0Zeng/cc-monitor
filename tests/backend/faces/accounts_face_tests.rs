@@ -164,10 +164,10 @@ fn ok(t: &Tmp, cmd: &str, args: Value) -> Value {
     call(t, cmd, args.clone()).unwrap_or_else(|e| panic!("{cmd} {args}：{e:?}"))
 }
 
-fn code(t: &Tmp, cmd: &str, args: Value) -> &'static str {
+fn code(t: &Tmp, cmd: &str, args: Value) -> String {
     match call(t, cmd, args.clone()) {
         Ok(v) => panic!("{cmd} {args} 本该被拒，却成了：{v}"),
-        Err((c, _)) => c,
+        Err(f) => f.code,
     }
 }
 
@@ -621,7 +621,7 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
             Some(b) => json!({ "name": "k2", "kind": "api-key", "key": key, "baseUrl": b }),
             None => json!({ "name": "k2", "kind": "api-key", "key": key }),
         };
-        assert_eq!(call(&t, "accounts-add", args).unwrap_err().0, "bad_args");
+        assert_eq!(call(&t, "accounts-add", args).unwrap_err().code, "bad_args");
         assert!(!t.exists(".cc-monitor/accounts/k2"));
     }
 }
@@ -631,8 +631,12 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
 fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
-    let key_set =
-        |_: &Value| -> file_face::FileFaceAnswer { Err(("io_failed", "盘满了".to_string())) };
+    let key_set = |_: &Value| -> file_face::FileFaceAnswer {
+        Err(crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            "盘满了".to_string(),
+        )))
+    };
     let got = call_door(
         &t,
         &key_set,
@@ -996,46 +1000,6 @@ fn repair_privatises_a_linked_identity_item_instead_of_deleting_it() {
     );
 }
 
-// ───────────────────────────── 隔离 ─────────────────────────────
-
-/// 把一个共享项隔离成每个号各一份：内容取自共享库、共享库那份留着、各号互不影响；不在身份表里 ⇒ 提示下次修复不会再链它。
-#[test]
-fn isolate_makes_a_private_copy_per_account() {
-    let t = two_accounts("iso");
-    let dry = ok(
-        &t,
-        "accounts-isolate",
-        json!({ "item": "settings.json", "dryRun": true }),
-    );
-    assert!(
-        t.is_link(".cc-monitor/accounts/lab/settings.json"),
-        "预演动了盘"
-    );
-    assert!(!dry["notes"].as_array().unwrap().is_empty());
-    ok(&t, "accounts-isolate", json!({ "item": "settings.json" }));
-    for a in ["lab", "x"] {
-        let rel = format!(".cc-monitor/accounts/{a}/settings.json");
-        assert!(!t.is_link(&rel), "{a}");
-        assert_eq!(t.read(&rel), "{\"theme\":\"dark\"}");
-    }
-    assert_eq!(t.read(".claude/settings.json"), "{\"theme\":\"dark\"}");
-    t.write(
-        ".cc-monitor/accounts/lab/settings.json",
-        "{\"theme\":\"zzz\"}",
-    );
-    assert_eq!(
-        t.read(".cc-monitor/accounts/x/settings.json"),
-        "{\"theme\":\"dark\"}"
-    );
-    for bad in ["", "a/b", "..", "no-such-thing"] {
-        assert_eq!(
-            code(&t, "accounts-isolate", json!({ "item": bad })),
-            "refused",
-            "{bad:?}"
-        );
-    }
-}
-
 // ───────────────────────────── 回滚 ─────────────────────────────
 
 /// ★ 修复之前那一刻可以原样回去：修复前后各拍一张（不跟链接的）目录树，回滚之后与修复前逐项相同。
@@ -1124,7 +1088,7 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
     )
     .unwrap();
     let e = call(&t, "accounts-rollback", json!({})).unwrap_err();
-    assert_eq!(e.0, "io_failed");
+    assert_eq!(e.code, "io_failed");
     assert!(t.p("victim/precious.txt").is_file(), "越界的删除照做了");
     assert_eq!(
         t.read(".claude/.credentials.json"),

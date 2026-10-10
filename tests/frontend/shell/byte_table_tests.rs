@@ -49,15 +49,9 @@ fn the_key_is_read_from_what_the_machine_answers() {
         assert_eq!(key_of(os, arch), want, "{os} / {arch}");
     }
     // 问不出：不许回落成任何一格。
-    assert!(matches!(
-        key_of("", "x86_64"),
-        Err(Refusal::OsUnknown { .. })
-    ));
-    assert!(matches!(key_of("  ", ""), Err(Refusal::OsUnknown { .. })));
-    assert!(matches!(
-        key_of("Linux", ""),
-        Err(Refusal::ArchUnknown { .. })
-    ));
+    assert!(matches!(key_of("", "x86_64"), Err(Refusal::OsUnknown(_))));
+    assert!(matches!(key_of("  ", ""), Err(Refusal::OsUnknown(_))));
+    assert!(matches!(key_of("Linux", ""), Err(Refusal::ArchUnknown(_))));
     // 答得出、但不是表里的值：原样带出它答的词。
     assert_eq!(
         key_of("FreeBSD", "amd64"),
@@ -87,7 +81,7 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
         "",
         "'uname' is not recognized as an internal command",
     ) {
-        Err(r @ Refusal::OsUnknown { .. }) => {
+        Err(r @ Refusal::OsUnknown(_)) => {
             assert_eq!(
                 r.raw(),
                 Some("'uname' is not recognized as an internal command"),
@@ -104,7 +98,7 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
     }
     // 答了认不出的几段 ⇒ 句子只说「应答无法解析」，那几段进复制详情。
     match key_from_uname(Some(0), "Linux x86_64 extra", "") {
-        Err(r @ Refusal::OsUnknown { .. }) => {
+        Err(r @ Refusal::OsUnknown(_)) => {
             assert_eq!(r.raw(), Some("Linux x86_64 extra"));
             let said = r.say("devbox");
             assert!(!said.contains("extra"), "{said}");
@@ -117,26 +111,26 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
     }
     // 只答一段 ⇒ 问不出 arch，答的那一段进详情；什么都没答 ⇒ 没有原话。
     match key_from_uname(Some(0), "Linux\n", "") {
-        Err(r @ Refusal::ArchUnknown { .. }) => assert_eq!(r.raw(), Some("Linux")),
+        Err(r @ Refusal::ArchUnknown(_)) => assert_eq!(r.raw(), Some("Linux")),
         other => panic!("{other:?}"),
     }
     assert_eq!(key_from_uname(Some(0), "", "").unwrap_err().raw(), None);
     // 没送退出码（连接被掐）≠ 0：不许读成「跑成了」。
     assert!(matches!(
         key_from_uname(None, "Linux x86_64", ""),
-        Err(Refusal::OsUnknown { .. })
+        Err(Refusal::OsUnknown(_))
     ));
     assert!(matches!(
         key_from_uname(Some(0), "", ""),
-        Err(Refusal::OsUnknown { .. })
+        Err(Refusal::OsUnknown(_))
     ));
     assert!(matches!(
         key_from_uname(Some(0), "Linux\n", ""),
-        Err(Refusal::ArchUnknown { .. })
+        Err(Refusal::ArchUnknown(_))
     ));
     assert!(matches!(
         key_from_uname(Some(0), "Linux x86_64 extra", ""),
-        Err(Refusal::OsUnknown { .. })
+        Err(Refusal::OsUnknown(_))
     ));
 }
 
@@ -158,7 +152,7 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
     );
     for (exit, out, err) in [(Some(1), "", lossy.as_str()), (Some(0), lossy.as_str(), "")] {
         let r = key_from_uname(exit, out, err);
-        let Err(refusal @ Refusal::OsUnknown { .. }) = &r else {
+        let Err(refusal @ Refusal::OsUnknown(_)) = &r else {
             panic!("不是 UTF-8 的回话照样该是「问不出 OS」：{r:?}");
         };
         let said = refusal.say("vmself");
@@ -172,7 +166,7 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
     }
     // 正控：UTF-8 的报错照旧说「应答报错」（不说成无法解析），原话进复制详情。
     match key_from_uname(Some(1), "", "'uname' is not recognized") {
-        Err(r @ Refusal::OsUnknown { .. }) => {
+        Err(r @ Refusal::OsUnknown(_)) => {
             let said = r.say("vmself");
             assert!(
                 said.contains(copy_core::copy_static!("rsByteTable.key.said")),
@@ -221,10 +215,7 @@ fn choose_answers_every_cell_of_table_a() {
         }
     }
     // 键问不出 ⇒ 原样交回（不走表）。
-    let os_unknown = Refusal::OsUnknown {
-        why: "x".into(),
-        raw: None,
-    };
+    let os_unknown = Refusal::OsUnknown(copy_core::said::Said::from("x"));
     assert_eq!(choose(Err(os_unknown.clone())).unwrap_err(), os_unknown);
 }
 
@@ -236,14 +227,14 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             os: "macOS".into(),
             arch: "arm64".into(),
         },
-        Refusal::OsUnknown {
-            why: copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
-            raw: Some("uname: not found".into()),
-        },
-        Refusal::ArchUnknown {
-            why: copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
-            raw: Some("Linux".into()),
-        },
+        Refusal::OsUnknown(copy_core::said::Said::with_raw(
+            copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            "uname: not found",
+        )),
+        Refusal::ArchUnknown(copy_core::said::Said::with_raw(
+            copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            "Linux",
+        )),
         Refusal::NotPromisedHere {
             os: "Windows".into(),
             arch: "x86_64".into(),
@@ -276,9 +267,9 @@ fn every_refusal_names_the_machine_and_what_it_is() {
                     assert!(s.contains(arch.as_str()), "本机那句要说出是哪种架构：{s}");
                 }
             }
-            Refusal::OsUnknown { why, raw } | Refusal::ArchUnknown { why, raw } => {
-                assert!(s.contains(why.as_str()), "{s}");
-                let raw = raw.as_deref().unwrap_or_default();
+            Refusal::OsUnknown(why) | Refusal::ArchUnknown(why) => {
+                assert!(s.contains(why.said.as_str()), "{s}");
+                let raw = why.raw.as_deref().unwrap_or_default();
                 assert!(!s.contains(raw), "原话不上句子：{s}");
             }
         }
@@ -303,8 +294,8 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             Refusal::UnsupportedMachine { os, arch } => {
                 ("unsupportedMachine", os.as_str(), arch.as_str(), "")
             }
-            Refusal::OsUnknown { why, .. } => ("osUnknown", "", "", why.as_str()),
-            Refusal::ArchUnknown { why, .. } => ("archUnknown", "", "", why.as_str()),
+            Refusal::OsUnknown(why) => ("osUnknown", "", "", why.said.as_str()),
+            Refusal::ArchUnknown(why) => ("archUnknown", "", "", why.said.as_str()),
             Refusal::NotPromisedHere {
                 os,
                 arch,

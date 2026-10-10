@@ -120,6 +120,19 @@ fn many_segments_follow_the_cross_language_golden() {
     }
 }
 
+/// 一件失败复制出去的整段（CLI 的 `--text` 失败那一形）：与界面 `detailBody` 的单件那一支读同一份金样的 `one`。
+#[test]
+fn one_failure_follows_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/detail-many.golden.json")).unwrap();
+    let cases = g["one"].as_array().unwrap();
+    assert!(cases.len() >= 2);
+    for c in cases {
+        let got = one(c["said"].as_str().unwrap(), c["detail"].as_str().unwrap());
+        assert_eq!(Some(got.as_str()), c["body"].as_str(), "{c}");
+    }
+}
+
 #[test]
 fn stamp_writes_local_time_with_offset() {
     // 2026-10-08 06:32:07 UTC
@@ -177,4 +190,36 @@ fn a_written_detail_parses_back_into_items() {
         "时刻：t\n机器：m\n命令：c\n码：x\n原话：line one\n命令：not a command\n码：not a code"
     );
     assert!(Detail::parse("random words\n码：x").has_block());
+}
+
+#[test]
+fn a_session_target_is_the_machine_and_a_short_sid_never_the_title() {
+    // 会话标题常常就是用户的第一句话，详情不含会话内容 ⇒ 对象那一项只写机器 ＋ sid 前 8 位。
+    let sid = "0000aaaa-0000-4000-8000-000000000001";
+    let d = Detail::new().target(Target::Session {
+        machine: "devbox",
+        sid,
+    });
+    assert_eq!(d.render(), "对象：devbox · 0000aaaa");
+    assert_eq!(
+        Detail::new().target(Target::Account("work")).render(),
+        "对象：work"
+    );
+}
+
+#[test]
+fn the_target_item_takes_no_free_text() {
+    // 自由文本进不了「对象」：item / insert 拿 Label::Target 当场拒，只能经 Detail::target（只收标识）。
+    let title = "帮我把登录页的报错改一下";
+    let puts: [fn(&'static str) -> Detail; 3] = [
+        |t| Detail::new().item(Label::Target, t),
+        |t| Detail::new().insert(Label::Target, t),
+        |t| Detail::new().maybe(Label::Target, Some(t)),
+    ];
+    for put in puts {
+        assert!(
+            std::panic::catch_unwind(|| put(title)).is_err(),
+            "对象那一项收了自由文本"
+        );
+    }
 }

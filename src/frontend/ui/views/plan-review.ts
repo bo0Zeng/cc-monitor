@@ -72,7 +72,7 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
     const sid = need.sid;
     if (sid) acts.push(button({ label: copyText("plan.review.askGo"), kind: "primary", size: "compact", onClick: () => host.switchTo(sid) }));
   } else {
-    title.append(copyText("plan.review.ended"));
+    title.append(copyText("sessionState.planReview.ended"));
     if (blk?.owner) title.appendChild(host.who(blk.owner));
     const w = root?.whyCode;
     body.push(w?.kind === "inside" ? copyText("plan.review.endedWhat", { done: w.done, of: w.of }) : copyText("plan.review.endedOpen"));

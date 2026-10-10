@@ -54,7 +54,7 @@
         "about": null,
         "builtin": {
           "hooks": true,
-          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作\n装上后要在该机 ~/.claude/settings.json 加两条钩子才自动收信 · cc-monitor 不替你改\n下面每台一行 · 钩子装没装与要加的内容"
+          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作\n装上后要在该机 ~/.claude/settings.json 加两条钩子才自动收信 · cc-monitor 不代改\n下面每台一行 · 钩子装没装与要加的内容"
         },
         "cells": [
           {

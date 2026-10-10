@@ -3,13 +3,46 @@
  */
 import type { Scene } from "../scenes/index";
 import { sleep, waitCount, waitFor } from "../scenes/helpers";
-import { PERF_TURNS, perfWorld } from "./world";
+import { PERF_TURNS, perfMainWorld, perfWorld } from "./world";
+import "./actions";
 import { sidOf } from "../fake/world";
+import { SETTINGS_SCALE, settingsPerfWorld } from "./settings-world";
 
 /** 最长那条会话（`PERF_TURNS[0]`，420 轮）的 sid：查看窗那一项开它。 */
 export const LONGEST_SID = sidOf(0x100);
 
 export const PERF_SCENES: Scene[] = [
+  {
+    id: "perf-main",
+    page: "index",
+    dir: "性能",
+    title: "一屋子 tab · 主窗口其余",
+    desc: "同 perf-tabs，另有几条在等你、最长那条带子 agent 与任务；页内动作见 `actions.ts`（perfA）",
+    width: 1280,
+    height: 800,
+    world: perfMainWorld,
+    act: async (ctx) => {
+      window.__perfBackend = ctx.backend;
+      await waitCount("#tab-bar .tab", PERF_TURNS.length, 180_000);
+      await sleep(900);
+    },
+  },
+  {
+    id: "perf-agent",
+    page: "viewer",
+    query: `viewer=${sidOf(0x100)}&run=agent-p0`,
+    dir: "性能",
+    title: "agent 窗口开 300 轮的子运行",
+    desc: "agent 窗口整份读一条 300 轮的子运行",
+    width: 1280,
+    height: 800,
+    world: perfMainWorld,
+    act: async (ctx) => {
+      window.__perfBackend = ctx.backend;
+      await waitFor(".session-viewer-stream", 180_000);
+      await sleep(500);
+    },
+  },
   {
     id: "perf-tabs",
     page: "index",
@@ -35,8 +68,24 @@ export const PERF_SCENES: Scene[] = [
     width: 1280,
     height: 800,
     world: perfWorld,
+    act: async (ctx) => {
+      window.__perfBackend = ctx.backend;
+      await waitFor(".session-viewer [data-id]", 180_000);
+    },
+  },
+  {
+    id: "perf-settings",
+    page: "settings",
+    dir: "性能",
+    title: "设置窗 · 真实规模",
+    desc: "十几台机器、二十几个账号、三十条规则、几百个扩展，给性能台架量开窗 · 切页 · 滚动 · 筛选",
+    width: 960,
+    height: 740,
+    world: settingsPerfWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-uuid]", 180_000);
+      // 机器子页（每台一项）都注册上来才算开好
+      await waitCount('.settings-nav .settings-nav-item[data-route-id^="machine:"]', SETTINGS_SCALE.remotes + 1, 180_000);
+      await sleep(600);
     },
   },
 ];

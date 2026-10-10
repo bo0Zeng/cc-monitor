@@ -190,6 +190,14 @@ pub struct RouteKey {
     pub seg2: String,
 }
 
+/// 地址里紧跟第 2 段的来处段（`~<来处>[~<父>]`，语法住 `relay_route_core::parse_origin`）。中转**不解释**它：
+/// 原样放进 [`Ask::origin`] 交给上游选择（会话血缘在那一层认）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteOrigin {
+    pub token: String,
+    pub parent: Option<String>,
+}
+
 /// tee 那条流的身份：**一个流标签**。**不用业务名、不带路由键**（① 不问账号）——
 /// `stream` 取自请求自己带的那个头（[`Destinations::stream_label_headers`]），不是路径段；没有 ⇒ 空串。
 /// 先前还带着路由键（NDJSON 行那一形要它），那一形随独立 `--relay` 删了。
@@ -295,6 +303,8 @@ pub enum Destination<'a> {
 pub struct Ask<'a> {
     /// 请求头里取出的流标签（[`Destinations::stream_label_headers`]）；没有 ⇒ 空串。
     pub label: &'a str,
+    /// 地址里的来处段（[`RouteOrigin`]）；没有 ⇒ `None`。
+    pub origin: Option<&'a RouteOrigin>,
     /// 下游送来的整份请求体（中转先收全了才问去处）。
     pub body: &'a [u8],
     /// 这一发带的请求头的**名字**（原样大小写，只有名字、没有值）：同一家按带没带某个头选上游时看它。

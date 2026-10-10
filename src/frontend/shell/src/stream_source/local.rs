@@ -56,7 +56,7 @@ pub(crate) enum LocalStep {
         session_id: String,
         path: String,
         seq: u64,
-        message: Option<crate::ui_contract::RecordBody>,
+        record: Option<crate::ui_contract::RecordBody>,
         cwd: Option<String>,
         end: Option<u64>,
         rid: Option<String>,
@@ -79,7 +79,7 @@ pub(crate) enum LocalStep {
     Plan {
         workspace: String,
         rev: String,
-        needs: Option<u64>,
+        needs: u64,
     },
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
@@ -121,6 +121,8 @@ pub(crate) fn local_product(
             project_dir,
             name,
             activity,
+            activity_text,
+            activity_tone,
             waiting_for,
             container,
             pid,
@@ -135,6 +137,8 @@ pub(crate) fn local_product(
                 project_dir: project_dir.clone(),
                 name: name.clone(),
                 activity: *activity,
+                activity_text: activity_text.clone(),
+                activity_tone: activity_tone.clone(),
                 waiting_for: waiting_for.clone(),
                 container: container.clone(),
                 pid: *pid,
@@ -143,19 +147,25 @@ pub(crate) fn local_product(
         LocalItem::Frame(InboundFrame::SessionStatus {
             sid,
             activity,
+            activity_text,
+            activity_tone,
             waiting_for,
         }) => (!hidden.contains(sid)).then(|| BookIn::Status {
             origin: origin(),
             sid: sid.clone(),
             activity: *activity,
+            activity_text: activity_text.clone(),
+            activity_tone: activity_tone.clone(),
             waiting_for: waiting_for.clone(),
         }),
-        LocalItem::Frame(InboundFrame::SessionState { sid, state }) => (!hidden.contains(sid))
-            .then(|| BookIn::Left {
+        LocalItem::Frame(InboundFrame::SessionState { sid, state, words }) => {
+            (!hidden.contains(sid)).then(|| BookIn::Left {
                 origin: origin(),
                 sid: sid.clone(),
                 fate: *state,
-            }),
+                words: Some(words.clone()),
+            })
+        }
         LocalItem::Frame(InboundFrame::SessionsReplayed) => {
             Some(BookIn::Listed { origin: origin() })
         }
@@ -165,6 +175,12 @@ pub(crate) fn local_product(
                 sid: sid.clone(),
                 runs: runs.clone(),
                 ended: ended.clone(),
+            }),
+        LocalItem::Frame(InboundFrame::SessionBranch { sid, off, .. }) => (!hidden.contains(sid))
+            .then(|| BookIn::Branch {
+                origin: origin(),
+                sid: sid.clone(),
+                off: off.clone(),
             }),
         LocalItem::Frame(_) => None,
     }
@@ -190,7 +206,7 @@ pub(crate) fn local_step(
             session_id,
             path,
             seq,
-            message,
+            record,
             cwd,
             end,
             rid,
@@ -202,7 +218,7 @@ pub(crate) fn local_step(
                     session_id,
                     path,
                     seq,
-                    message,
+                    record,
                     cwd,
                     end: Some(end),
                     rid,
@@ -312,7 +328,7 @@ pub(crate) async fn consume_local(
                     session_id,
                     path,
                     seq,
-                    message,
+                    record,
                     cwd,
                     end,
                     rid,
@@ -322,7 +338,7 @@ pub(crate) async fn consume_local(
                             session_id,
                             path: std::path::PathBuf::from(path),
                             seq,
-                            message,
+                            record,
                             cwd,
                             end,
                             rid,

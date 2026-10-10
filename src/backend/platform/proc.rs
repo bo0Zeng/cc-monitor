@@ -300,3 +300,44 @@ pub(crate) fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
     let current_start = if exists { proc_starttime(pid) } else { None };
     super::liveness::is_same_live_process(exists, expected_start, current_start)
 }
+
+/// 把分配器手里已经放掉、却还占着物理页的内存还给系统（全文搜索整份重读了一大批之后调一次）。
+/// glibc 的 `malloc` 放掉的空洞只在堆顶时才自己还 ⇒ 一问含工具的搜索读过几百 MB、只留下 128 MB 的常驻之后，
+/// 进程 RSS 停在那一问的高水位（680 MB 合成世界实测 ~570 MB → 调它之后 ~280 MB）。musl / Windows 的分配器不需要也没有这一招 ⇒ 不做。
+pub(crate) fn return_freed_memory() {
+    // SAFETY: 纯 libc 调用，不带指针；只把空闲页还给内核，不动在用的块。
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
+/// 把**调用它的这条线程**降到低优先级（后台一次性热缓存用：不跟前台的帧命令抢 CPU）。
+/// 回真 ＝ 降成了；降不了 / 这一平台不支持 ⇒ 假（照常跑，只是不让）。它之后由这条线程起的线程随它（Linux 按线程记 nice）。
+pub(crate) fn lower_this_thread() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // Linux 上 nice 值按线程记：`setpriority(PRIO_PROCESS, 线程号)` 只动这一条。
+        // 已经比这还低（整个进程被 `nice` 起来的）⇒ 不动（往高调要特权，也不该）。
+        // SAFETY: 纯系统调用，参数是本线程号与一个常数，不碰内存。
+        unsafe {
+            let tid = libc::gettid() as libc::id_t;
+            if libc::getpriority(libc::PRIO_PROCESS, tid) >= BACKGROUND_NICE {
+                return true;
+            }
+            libc::setpriority(libc::PRIO_PROCESS, tid, BACKGROUND_NICE) == 0
+        }
+    }
+    #[cfg(windows)]
+    {
+        super::win_proc::lower_this_thread()
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        false
+    }
+}
+
+/// [`lower_this_thread`] 在 Linux 上给的 nice 值。
+#[cfg(target_os = "linux")]
+pub(crate) const BACKGROUND_NICE: libc::c_int = 10;

@@ -10,7 +10,7 @@ import { join, sep } from "node:path";
 
 /** 族 A：待贴进配置文件才生效。**必须**走统一组件。 */
 const FAMILY_A = [
-  // 别名那一行的「我自己贴」不再就地弹代码：点了去「要你动手」里那一件（`data-page.ts`，见族 B 那一行）。
+  // 别名那一行的「我自己贴」不再就地弹代码：点了去「待办」里那一件（`data-page.ts`，见族 B 那一行）。
   "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子 → 那台的 agent 设置文件
 ];
 
@@ -35,7 +35,7 @@ const FAMILY_B = [
   //   随功能删了（账号别名由后端自动写进别名文件），它从族 AB 回到族 B。
   "src/frontend/ui/settings/accounts-section.ts",
   "src/frontend/ui/settings/profiles-list.ts", // 别名清单：复制要删的 .bashrc 行号（人自己去删，cc-monitor 不改它）
-  // 「要你动手」：要贴的那几行 / 合好的整份。贴到哪 · 改哪一行 · 何时生效由那台后端成品的编号步骤与 diff 给
+  // 「待办」：要贴的那几行 / 合好的整份。贴到哪 · 改哪一行 · 何时生效由那台后端成品的编号步骤与 diff 给
   //   （`机器配置-v2.md` §3 定稿的样子，不是三槽组件那一形），复制之后那一件标「已复制 · 等你贴」、存盘后后端自己认出。
   "src/frontend/ui/settings/data-page.ts",
   "src/frontend/ui/views/plan.ts", // 计划页：认不出的接手 / 签收人那一枚点了复制那个 id（给人看，不贴进任何配置）

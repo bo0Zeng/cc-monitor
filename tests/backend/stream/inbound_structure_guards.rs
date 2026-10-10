@@ -265,6 +265,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-find"
                 | "backend-log" // 读一份诊断文件的尾部（同步文件 I/O），同档
                 | "history-turns" // 一轮的摘要：扫一段会话，同档
+                | "history-branch" // 主线外清单：扫一份会话（共用扫描图），同档
                 | "history-facts" // 会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
                 | "history-read"
                 | "history-lines" // 按行号取回：从文件头数，同档
@@ -330,7 +331,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "data-report"
                 // 换 Claude 目录前那一问：stat 两次。
                 | "agent-home-check"
-                // 「要你动手」记下的选择：读—改—写后端自己那份小文件（同步文件 I/O）。
+                // 「待办」记下的选择：读—改—写后端自己那份小文件（同步文件 I/O）。
                 | "chores-mark"
                 // 离线那台的上次值：读 / 读—改—写后端自己那份小文件（同步文件 I/O）。
                 | "last-seen-read"
@@ -350,7 +351,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-remove"
                 | "accounts-set-default"
                 | "accounts-repair"
-                | "accounts-isolate"
                 | "accounts-rollback"
                 | "accounts-verify"
                 | "accounts-login-cmd"
@@ -389,6 +389,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 装记录的写口 ＋ 扩展页那张表（扫盘 ＋ 原子写目录文件）＋ 卸之前那张卡（读装记录 · 逐个读盘比摘要），同步文件 I/O。
                 | "skill-install-record"
                 | "ext-list"
+                // 同 `ext-list`：同一个本体（目录裁到本机那一格再进去），同样是扫盘 ＋ 原子写目录文件。
+                | "ext-list-here"
                 | "ext-uninstall-preview"
                 // 扩展页写备注：现扫 ＋ 原子写目录文件。
                 | "ext-note-set"
@@ -478,6 +480,8 @@ fn every_registered_command_declares_its_run_kind() {
         "terminal-ssh",
         // `history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
         "history-search-merge",
+        // `cells-catalog`：格目录，纯计算 ⇒ 不进阻塞档。
+        "cells-catalog",
         // 资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
@@ -535,6 +539,7 @@ fn every_registered_command_declares_its_run_kind() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "history-branch",
         "history-read",
         "history-lines",  //
         "history-record", //
@@ -588,6 +593,7 @@ fn every_registered_command_declares_its_run_kind() {
         // skill 卸三条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-record",
         "ext-list",
+        "ext-list-here",
         "ext-uninstall-preview",
         "ext-note-set",
         // 历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
@@ -619,7 +625,6 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-remove",
         "accounts-set-default",
         "accounts-repair",
-        "accounts-isolate",
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",
@@ -1066,5 +1071,572 @@ fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
     assert!(
         crate::SUBCOMMANDS.iter().any(|f| names_tmux(f)),
         "正控失败：同一个找法在 `SUBCOMMANDS` 里认不出 `--tmux-notify` —— 上面的零命中不可信"
+    );
+}
+
+/// ★ **收了、校验了、然后丢掉** 的入参：`xxx_arg(args, "名", …)?;` 整句丢弃返回值（或 `let _ = xxx_arg(…)`）。
+///
+/// 那一格在注册表的字段表里写着、在协议文档里写着，调用方照着它画按钮 —— 而处理函数只验了它的形状、从不读它的值。
+/// `terminal-input` 的 `take` 就是这样活了几个月（第二个前端画了一颗「接管输入」，按下去什么都不变）。
+/// 要它真不起作用就删掉它（字段表 · 校验 · 调用方 · 文档一起），别留一个只校验不用的格。
+#[test]
+fn no_handler_validates_an_arg_and_then_throws_it_away() {
+    // 扫 `src/backend`（本条住 `tests/backend/`，不在自己的语料里 —— 靠住址，见 `scan_tree!` 头注）。
+    let root = crate::guard_support::src_root();
+    let files = guard_core::scan_tree!(&root, &["rs"]);
+    assert!(
+        files.len() > 50,
+        "只扫到 {} 份 .rs —— 走错树了，本条在空转",
+        files.len()
+    );
+    // 一句话的形状：可选的 `let _ =`，然后 `<名字>_arg(`，以 `)?;` 收尾（单行）。
+    let discarded = |line: &str| -> bool {
+        let t = line.trim();
+        let t = t.strip_prefix("let _ =").map(str::trim_start).unwrap_or(t);
+        let Some(open) = t.find('(') else {
+            return false;
+        };
+        let head = &t[..open];
+        // 整句就是这一次调用：调用者是一条路径（`a::b_arg`），前面没有 `let x =` 之类接住它。
+        let callee = head.rsplit("::").next().unwrap_or(head);
+        !callee.is_empty()
+            && callee.ends_with("_arg")
+            && head
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+            && t[open..].contains('"')
+            && (t.ends_with(")?;") || (line.trim().starts_with("let _ =") && t.ends_with(");")))
+    };
+    let mut hits = Vec::new();
+    let mut seen_calls = 0usize;
+    for (f, raw) in &files {
+        let prod = crate::guard_support::production_side_of(f, raw);
+        for line in prod.lines() {
+            seen_calls += line.matches("_arg(").count();
+            if discarded(line) {
+                hits.push(format!("{}: {}", f.display(), line.trim()));
+            }
+        }
+    }
+    assert!(
+        seen_calls > 10,
+        "生产段里 `_arg(` 一共才 {seen_calls} 处 —— 量具坏了，本条在空转"
+    );
+    assert!(
+        hits.is_empty(),
+        "这些入参验完就丢了（返回值没人用）：\n{}\n要么真用它，要么把这一格从字段表 · 校验 · 调用方 · 协议文档里一起删掉。",
+        hits.join("\n")
+    );
+}
+
+/// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
+///
+/// 镜子（`CommandSpec::fields`）是手写的，协议参考从它生成：它比真出参少一格，照文档接的人就看不到那一格
+/// （`history-facts` 少过花费 · 用量 · 许可档三格，第二个前端就是这么漏掉花费的）；多一格，文档就在说不存在的东西。
+/// 样本取后端真序列化器写的金样（各金样头注逐字：由后端真序列化器写 / 现算 == reply），不是手抄一份键表。
+///
+/// 每条命令三选一，三张表两两不交、并起来恰好是注册表：
+/// ① [`SHAPED`]：有真序列化的样本 ⇒ 登的 out ∪ both ＝ 样本顶层的键 ∪ 登了但住在下层的（`below`，必须在样本更深处见得到）
+///    ∪ 登了但这份样本走不到的那一支（`elsewhere`，逐条写为什么）；
+/// ② [`UNSHAPED`]：出参是现拼的 `json!`、仓里还没有真序列化器写的样本 ⇒ 今天对不了，逐条列名（只许删、不许加：
+///    新命令要么带金样进 ①，要么零出参）；
+/// ③ [`ZERO_OUT`]：零出参（`fields` 里没有 out / both），逐条写结果走哪儿。
+#[test]
+fn every_command_declares_exactly_the_fields_it_puts_out() {
+    const FOOTPRINT_REPORT: &str = include_str!("../../__fixtures__/footprint-report.golden.json");
+    const ROTATION_SWITCH_RESTART: &str =
+        include_str!("../../__fixtures__/rotation-switch-restart.golden.json");
+    const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
+    const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
+    const APIKEY: &str = include_str!("../../__fixtures__/apikey.golden.json");
+    const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
+    const CC_BUS_CONTROL: &str = include_str!("../../__fixtures__/cc-bus-control.golden.json");
+    const CC_BUS_READ: &str = include_str!("../../__fixtures__/cc-bus-read.golden.json");
+    const CCM_PROBE: &str = include_str!("../../__fixtures__/ccm-probe.golden.json");
+    const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
+    const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
+    const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
+    const HISTORY_LIST: &str = include_str!("../../__fixtures__/history-list.golden.json");
+    const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
+    const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
+    const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
+    const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
+    const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
+    const RECORD_READS: &str = include_str!("../../__fixtures__/record-reads.golden.json");
+    const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
+    const RESYNC: &str = include_str!("../../__fixtures__/resync.golden.json");
+    const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
+    const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
+    const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
+    const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
+    const TERMINALS: &str = include_str!("../../__fixtures__/terminals.golden.json");
+    const TMUX_CONTROL: &str = include_str!("../../__fixtures__/tmux-control.golden.json");
+    /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
+    #[allow(clippy::type_complexity)]
+    const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
+        ("accounts-list", ACCOUNTS, "/accounts-list", &[], &[]),
+        ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
+        ("apikey-read", APIKEY, "/apikey-read", &[], &[]),
+        ("apikey-routing", APIKEY, "/apikey-routing", &[], &[]),
+        (
+            "bus-list",
+            CC_BUS_CONTROL,
+            "/bus-list/reply",
+            &["ccm_sid", "id", "live", "target", "unread"],
+            &[],
+        ),
+        ("bus-send", CC_BUS_CONTROL, "/bus-send/reply", &[], &[]),
+        ("bus-kill", CC_BUS_CONTROL, "/bus-kill/reply", &[], &[]),
+        ("bus-spawn", CC_BUS_CONTROL, "/bus-spawn/reply", &[], &[]),
+        (
+            "bus-broadcast",
+            CC_BUS_CONTROL,
+            "/bus-broadcast/reply",
+            &["detail", "error", "id"],
+            &[],
+        ),
+        (
+            "bus-state",
+            CC_BUS_READ,
+            "/state/reply",
+            &[
+                "ccm_sid",
+                "dir",
+                "id",
+                "live",
+                "registered_at",
+                "spawned_at",
+                "target",
+                "task",
+                "unread",
+            ],
+            &[],
+        ),
+        (
+            "bus-inbox",
+            CC_BUS_READ,
+            "/inbox/reply",
+            &["class", "from", "text", "ts"],
+            &[],
+        ),
+        ("history-lines", RECORD_READS, "/history-lines", &[], &[]),
+        ("history-page", RECORD_READS, "/history-page", &[], &[]),
+        ("history-read", RECORD_READS, "/history-read", &[], &[]),
+        ("history-run", RECORD_READS, "/history-run", &[], &[]),
+        ("history-facts", SESSION_READS, "/history-facts", &[], &[]),
+        ("history-find", SESSION_READS, "/history-find", &[], &[]),
+        ("history-index", SESSION_READS, "/history-index", &[], &[]),
+        ("history-turns", SESSION_READS, "/history-turns", &[], &[]),
+        (
+            "history-user-inputs",
+            SESSION_READS,
+            "/history-user-inputs",
+            &[],
+            &[],
+        ),
+        (
+            "ssh-config-aliases",
+            SSH_CONFIG,
+            "/ssh-config-aliases",
+            &[],
+            &[],
+        ),
+        (
+            "ssh-config-resolve",
+            SSH_CONFIG,
+            "/ssh-config-resolve",
+            &[],
+            &[],
+        ),
+        (
+            "ssh-config-import",
+            SSH_CONFIG,
+            "/ssh-config-import",
+            &[
+                "addresses",
+                "alias",
+                "host",
+                "inList",
+                "jump",
+                "keyPath",
+                "label",
+                "members",
+                "port",
+                "proxyJump",
+                "user",
+            ],
+            &[],
+        ),
+        (
+            "terminals-list",
+            TERMINALS,
+            "/terminals-list/reply",
+            &[
+                "agent",
+                "can",
+                "client",
+                "clients",
+                "cwd",
+                "end",
+                "host",
+                "input",
+                "kind",
+                "last_activity",
+                "mine",
+                "no",
+                "program",
+                "purpose",
+                "session",
+                "sid",
+                "since",
+                "started_by",
+                "state",
+                "terminal",
+                "title",
+                "tmux_name",
+            ],
+            &[],
+        ),
+        (
+            "terminal-preview",
+            TERMINALS,
+            "/terminal-preview/reply",
+            &["spans", "text"],
+            &[],
+        ),
+        (
+            "terminal-input",
+            TERMINALS,
+            "/terminal-input/replies",
+            &[],
+            &[],
+        ),
+        ("kill", TMUX_CONTROL, "/kill/reply", &[], &[]),
+        ("launch", TMUX_CONTROL, "/launch/reply", &[], &[]),
+        (
+            "mcp-read",
+            MCP_READ,
+            "/reply",
+            &["name", "scope", "server", "sourcePath"],
+            &[],
+        ),
+        ("mcp-server-put", MCP_EDIT, "/putReply", &[], &[]),
+        (
+            "mcp-server-remove",
+            MCP_EDIT,
+            "/removeAbsentReply",
+            &[],
+            &[],
+        ),
+        ("profiles-read", PROFILES, "/readReply", &[], &[]),
+        ("profiles-resolve", PROFILES, "/resolveReply", &[], &[]),
+        ("profiles-impact", PROFILES, "/impactReply", &[], &[]),
+        ("profiles-bases", PROFILES, "/basesReply", &[], &[]),
+        ("profiles-write", PROFILES, "/writeReply", &[], &[]),
+        ("aliases-read", ALIASES, "/readReply", &[], &[]),
+        ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
+        ("resync", RESYNC, "/reply", &[], &[]),
+        ("history-list", HISTORY_LIST, "", &[], &[]),
+        (
+            "forward-list",
+            FORWARD_LIST,
+            "",
+            &[
+                "connCount",
+                "id",
+                "localPort",
+                "origin",
+                "remoteHost",
+                "remotePort",
+                "state",
+            ],
+            &[],
+        ),
+        ("files-grep", FILES_GREP, "", &[], &[]),
+        (
+            "hooks-diag",
+            HOOKS_DIAG,
+            "",
+            &["command", "kind", "note", "path", "session_start", "stop"],
+            &[],
+        ),
+        ("relay-optin", RELAY_OPTIN, "", &[], &[]),
+        (
+            "tasks-list",
+            TASKS_LIST,
+            "/product",
+            &[
+                "activeForm",
+                "blockedBy",
+                "blocks",
+                "description",
+                "id",
+                "status",
+                "subject",
+            ],
+            &[],
+        ),
+        ("pubkey-push", PUBKEY_PUSH, "/product", &[], &[]),
+        ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
+        ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
+        ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
+        ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
+        (
+            "session-fork",
+            SESSION_FORK,
+            "/product",
+            &[
+                "account", "cwd", "from", "host", "kind", "terminal", "value",
+            ],
+            &[(
+                "why",
+                "`launch.kind` 是 `unknown` 那一支才有；金样走的是 `known` 那一支",
+            )],
+        ),
+    ];
+    /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
+    const ZERO_OUT: &[(&str, &str)] = &[
+        ("aliases-block-install", "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`"),
+        ("aliases-block-remove", "同 `aliases-block-install`"),
+        ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
+        ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
+        ("link-credit", "只回 ok（还信用）"),
+        ("link-data", "只回 ok；字节走 `link_data` 帧"),
+        ("link-open", "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧"),
+        ("ping", "问活，回 ok"),
+        ("resolve", "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体，协议参考从结构体本身生成（冻结金样 `resolve-contract`）"),
+        ("terminal-follow-ack", "只回 ok；下一帧画面走 `terminal_screen`"),
+        ("terminal-unfollow", "只回 ok（幂等）"),
+        ("transfer-download", "只回 ok；进度与终局走 `transfer` 帧"),
+        ("transfer-start", "只回 ok；进度与终局走 `transfer` 帧"),
+        ("transfer-stop", "只回 ok（幂等）"),
+        ("transfer-upload", "只回 ok；进度与终局走 `transfer` 帧"),
+    ];
+    /// 有出参、还没有真序列化样本的命令（见头注 ②）。
+    const UNSHAPED: &[&str] = &[
+        "accounts-add",
+        "accounts-init",
+        "accounts-login-cmd",
+        "accounts-mcp-pick",
+        "accounts-mcp-read",
+        "accounts-mcp-remove",
+        "accounts-mcp-sync",
+        "accounts-remove",
+        "accounts-repair",
+        "accounts-rollback",
+        "accounts-sessions",
+        "accounts-set-default",
+        "accounts-verify",
+        "agent-home-check",
+        "aliases-block-render",
+        "apikey-key-set",
+        "assets-catalog",
+        "assets-catalog-merge",
+        "authorized-keys-add",
+        "backend-log",
+        "cc-bus-install",
+        "cc-bus-install-state",
+        "ccm-print",
+        "chores-mark",
+        "data-report",
+        "drift-report",
+        "exit-policy-read",
+        "exit-policy-set",
+        "ext-hub-apply",
+        "ext-hub-preview",
+        "ext-list",
+        "ext-list-here",
+        "ext-note-set",
+        "ext-uninstall-apply",
+        "ext-uninstall-preview",
+        "files-browse",
+        "files-chmod",
+        "files-commit-text",
+        "files-commit-upload",
+        "files-copy",
+        "files-create",
+        "files-delete",
+        "files-delete-session",
+        "files-extract",
+        "files-find",
+        "files-home",
+        "files-index-rebuild",
+        "files-index-status",
+        "files-link",
+        "files-ls",
+        "files-mkdir",
+        "files-peek",
+        "files-put",
+        "files-read-chunk",
+        "files-read-text",
+        "files-rename",
+        "files-size",
+        "files-stage-chunk",
+        "files-stat",
+        "files-write-text",
+        "first-run",
+        "forward-start",
+        "forward-stop",
+        "history-annotate",
+        "history-branch",
+        "history-forget",
+        "history-last-accounts",
+        "history-record",
+        "history-search",
+        "history-search-merge",
+        "history-tail",
+        "last-seen-read",
+        "last-seen-write",
+        "launch-local",
+        "launch-render-cli",
+        "machine-interrupts",
+        "mcp-sync-apply",
+        "mcp-sync-plan",
+        "mcp-sync-preview",
+        "mcp-sync-source",
+        "place-verdict",
+        "plan-ack",
+        "plan-cell-view",
+        "plan-list",
+        "plan-read",
+        "plan-return",
+        "plan-unack",
+        "powershell-policy-set",
+        "quota-probe",
+        "quota-read",
+        "remote-probe",
+        "remote-reach",
+        "resident-verdict",
+        "rotation-default-set",
+        "rotation-plan",
+        "rotation-rule-delete",
+        "rotation-rule-rename",
+        "rotation-rule-save",
+        "rotation-rules-read",
+        "rotation-session-read",
+        "rotation-session-set",
+        "session-interrupts",
+        "session-new",
+        "session-new-dir",
+        "session-new-facts",
+        "session-restart",
+        "session-terminals",
+        "sessions-start",
+        "sessions-stop",
+        "sessions-where",
+        "skill-install-apply",
+        "skill-install-plan",
+        "skill-install-record",
+        "skill-read",
+        "terminal-follow",
+        "terminal-name-mint",
+        "terminal-processes",
+        "terminal-ssh",
+    ];
+    fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                for (k, x) in m {
+                    into.insert(k.clone());
+                    keys_at_any_depth(x, into);
+                }
+            }
+            serde_json::Value::Array(xs) => xs.iter().for_each(|x| keys_at_any_depth(x, into)),
+            _ => {}
+        }
+    }
+    fn top_keys(v: &serde_json::Value) -> std::collections::BTreeSet<String> {
+        match v {
+            serde_json::Value::Object(m) => m.keys().cloned().collect(),
+            serde_json::Value::Array(xs) => xs.iter().flat_map(top_keys).collect(),
+            _ => Default::default(),
+        }
+    }
+    let out_of = |spec: &super::CommandSpec| -> std::collections::BTreeSet<String> {
+        spec.fields
+            .iter()
+            .filter(|f| f.dir != super::spec::Dir::In)
+            .map(|f| f.name.to_string())
+            .collect()
+    };
+    let mut bad = Vec::new();
+    for (cmd, golden, ptr, below, elsewhere) in SHAPED {
+        let spec = super::REGISTRY
+            .iter()
+            .find(|s| s.name == *cmd)
+            .unwrap_or_else(|| panic!("`SHAPED` 里的 `{cmd}` 不在注册表里"));
+        let g: serde_json::Value = serde_json::from_str(golden).unwrap();
+        let sample = g
+            .pointer(ptr)
+            .unwrap_or_else(|| panic!("{cmd}：金样里没有 `{ptr}`"));
+        let top = top_keys(sample);
+        assert!(
+            !top.is_empty(),
+            "{cmd}：样本没有键 —— 指针指错了，本条在空转"
+        );
+        let mut deep = std::collections::BTreeSet::new();
+        keys_at_any_depth(sample, &mut deep);
+        for b in *below {
+            assert!(
+                !top.contains(*b) && deep.contains(*b),
+                "{cmd}：`below` 里的 `{b}` 该在样本下层见得到（在顶层 ⇒ 删掉它；哪儿都没有 ⇒ 挪进 `elsewhere` 并写为什么）"
+            );
+        }
+        for (e, why) in *elsewhere {
+            assert!(
+                !deep.contains(*e) && !why.is_empty(),
+                "{cmd}：`elsewhere` 的 `{e}` 样本里见得到 ⇒ 挪进 `below`"
+            );
+        }
+        let mut real = top.clone();
+        real.extend(below.iter().map(|s| s.to_string()));
+        real.extend(elsewhere.iter().map(|(e, _)| e.to_string()));
+        let declared = out_of(spec);
+        if declared != real {
+            let shipped_not_declared: Vec<_> = top.difference(&declared).collect();
+            let declared_not_shipped: Vec<_> = declared.difference(&real).collect();
+            bad.push(format!(
+                "  {cmd}：出了没登 {shipped_not_declared:?} · 登了没出 {declared_not_shipped:?}"
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "注册表登的出参与真序列化出来的不一致（协议参考照登记生成，照它接的人会漏掉 / 等不到这几格）：\n{}",
+        bad.join("\n")
+    );
+    // 三张表两两不交、并起来恰好是注册表。
+    let shaped: std::collections::BTreeSet<&str> = SHAPED.iter().map(|r| r.0).collect();
+    let unshaped: std::collections::BTreeSet<&str> = UNSHAPED.iter().copied().collect();
+    assert_eq!(shaped.len(), SHAPED.len(), "`SHAPED` 有重复");
+    assert_eq!(unshaped.len(), UNSHAPED.len(), "`UNSHAPED` 有重复");
+    let mut want_shaped_or_listed = std::collections::BTreeSet::new();
+    let mut zero_out = std::collections::BTreeSet::new();
+    for spec in super::REGISTRY {
+        if out_of(spec).is_empty() {
+            zero_out.insert(spec.name);
+        } else {
+            want_shaped_or_listed.insert(spec.name);
+        }
+    }
+    let both: Vec<_> = shaped.intersection(&unshaped).collect();
+    assert!(both.is_empty(), "既对过又列在没对的里：{both:?}");
+    let in_zero: Vec<_> = shaped
+        .union(&unshaped)
+        .filter(|c| zero_out.contains(**c))
+        .collect();
+    assert!(
+        in_zero.is_empty(),
+        "这几条零出参，不该在两张表里：{in_zero:?}"
+    );
+    let zero_listed: std::collections::BTreeSet<&str> = ZERO_OUT.iter().map(|(c, _)| *c).collect();
+    assert_eq!(
+        zero_listed, zero_out,
+        "登成零出参的命令要逐条写为什么（`ZERO_OUT`）—— 有应答数据却一格都没登，协议参考里它就整个没有出参表"
+    );
+    let listed: std::collections::BTreeSet<&str> = shaped.union(&unshaped).copied().collect();
+    assert_eq!(
+        listed, want_shaped_or_listed,
+        "有出参的命令要么带真序列化样本进 `SHAPED`，要么（今天对不了）列进 `UNSHAPED`；表里的名字也必须还在注册表里"
     );
 }

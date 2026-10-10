@@ -196,6 +196,26 @@ impl ChildFail {
     }
 }
 
+impl ChildFail {
+    /// 同 [`ChildFail::into_cmd_err`]，但句子里只给原因词（`said` 拿到的是 [`copy_core::spawn_reason`] 那一词），
+    /// 系统原话另带（进复制详情）。超时那一档照旧：原语那句就是成品，没有原话。
+    pub(crate) fn into_cmd_said(
+        self,
+        other: &'static str,
+        said: impl FnOnce(&str) -> String,
+    ) -> (&'static str, copy_core::said::Said) {
+        match self {
+            ChildFail::TimedOut { .. } => {
+                (TIMED_OUT, copy_core::said::Said::from(self.to_string()))
+            }
+            ChildFail::NotFound(e) | ChildFail::Io(e) => (
+                other,
+                copy_core::said::Said::with_raw(said(&copy_core::spawn_reason(e.kind())), &e),
+            ),
+        }
+    }
+}
+
 /// 命令级码：这条命令起的子进程过了期限没结束（已杀整组）。
 pub(crate) const TIMED_OUT: &str = "child_timed_out";
 
@@ -310,7 +330,7 @@ impl Child {
         c.args(&self.args);
         if let Some(keys) = &self.inherit_only {
             c.env_clear();
-            for k in keys.iter().filter(|k| !OWN_ENVS.contains(k)) {
+            for k in keys.iter().filter(|k| !is_internal_name(k)) {
                 if let Some(v) = std::env::var_os(k) {
                     c.env(k, v);
                 }
@@ -318,6 +338,12 @@ impl Child {
         }
         for k in OWN_ENVS {
             c.env_remove(k);
+        }
+        // 后端内部那几族（不论谁交的、是不是本进程自己的）一律不往下传。
+        for (k, _) in std::env::vars_os() {
+            if is_internal_name(&k.to_string_lossy()) {
+                c.env_remove(&k);
+            }
         }
         for (k, v) in &self.envs {
             match v {
@@ -505,6 +531,10 @@ fn read_all(r: Option<impl Read>) -> Vec<u8> {
 
 fn is_own(k: &OsStr) -> bool {
     OWN_ENVS.iter().any(|o| OsStr::new(o) == k)
+}
+
+fn is_internal_name(k: &str) -> bool {
+    crate::platform::child_env::is_internal(k)
 }
 
 #[cfg(unix)]

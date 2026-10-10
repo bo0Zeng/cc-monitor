@@ -227,7 +227,7 @@ struct Tail {
 
 /// 一行在留存里算多少字节：成品原文 ＋ 两格路径（结构体本身的开销不算，量纲见 [`HELD_BYTES_CAP`]）。
 fn held_size(p: &JsonlLinePayload) -> usize {
-    p.message.0.get().len() + p.path.len() + p.cwd.as_ref().map_or(0, String::len)
+    p.record.0.get().len() + p.path.len() + p.cwd.as_ref().map_or(0, String::len)
 }
 
 /// 一行记在哪条留存下。
@@ -1198,7 +1198,7 @@ impl EventReplay {
         origin: &crate::origin::Origin,
         workspace: &str,
         rev: &str,
-        needs: Option<u64>,
+        needs: u64,
     ) {
         let body =
             serde_json::json!({ "plan": { "workspace": workspace, "rev": rev, "needs": needs } })

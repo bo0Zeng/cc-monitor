@@ -9,6 +9,7 @@ use serde_json::Value;
 use super::accounts::MAX_CONFIG_BYTES;
 use super::assets::{MAX_PROJECT_MCP_BYTES, PROJECT_MCP_FILE};
 use crate::agents::{McpEntry, McpRead};
+use crate::common::said::IntoNote as _;
 
 /// 注册表那一格的实现：按这台机器的环境现解 `.claude.json`。
 pub(crate) fn read(project_dir: Option<&Path>) -> McpRead {
@@ -79,7 +80,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
                     ),
                     &e,
                 )
-                .said_logging_raw(),
+                .into_note(),
             );
             return None;
         }
@@ -96,7 +97,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
                         &[("path", &path.display().to_string()), ("why", why)],
                     )
                 })
-                .said_logging_raw(),
+                .into_note(),
             );
             None
         }

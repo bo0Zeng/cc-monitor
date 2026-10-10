@@ -19,7 +19,7 @@ use copy_core::copy_text;
 use serde_json::Value;
 use std::path::Path;
 
-type Refusal = (&'static str, String);
+type Refusal = crate::stream::inbound::spec::Fail;
 
 /// 清单 · 共享集合两份小文件的读取上限。
 const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;
@@ -64,7 +64,7 @@ pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, R
         return Ok(None);
     }
     let mpath = join(&super::scan::accts_root(home), super::scan::MANIFEST_FILE);
-    // 那一句只带路径与原因词；原话记日志（这一族的应答还没有详情那一格）。
+    // 那一句只带路径与原因词；原话进复制详情。
     let say = |w: &str| {
         copy_text(
             "beAcctScan.manifest.unreadable",
@@ -72,7 +72,7 @@ pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, R
         )
     };
     let text = read_text(&mpath, MAX_SMALL_BYTES)
-        .map_err(|e| ("io_failed", e.wrap(say).said_logging_raw()))?;
+        .map_err(|e| Refusal::from(("io_failed", e.wrap(say))))?;
     let Some(text) = text else {
         return Ok(None);
     };
@@ -122,7 +122,7 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
     let key = layout::user_mcp_key();
     let file = layout::identity_config_file();
     let spath = door::join_under(home, relay_route_core::ACCOUNTS_MCP_REL);
-    // 那一句只带路径与原因词；原话记日志（这一族的应答还没有详情那一格）。
+    // 那一句只带路径与原因词；原话进复制详情。
     let say = |w: &str| {
         copy_text(
             "beAcctMcpShare.store.unreadable",
@@ -130,14 +130,14 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
         )
     };
     let store_raw = read_text(&spath, MAX_SMALL_BYTES)
-        .map_err(|e| ("io_failed", e.wrap(say).said_logging_raw()))?;
+        .map_err(|e| Refusal::from(("io_failed", e.wrap(say))))?;
     let store = match &store_raw {
         Some(t) => Store::parse(t, key).map_err(|e| {
             (
                 "refused",
                 copy_text(
                     "beAcctMcpShare.store.cannotUse",
-                    &[("path", &spath), ("e", &e)],
+                    &[("path", &spath), ("why", &e)],
                 ),
             )
         })?,
@@ -226,7 +226,7 @@ fn write_account(d: &dyn Door, h: &Here, a: &Account, want: &Servers) -> Result<
     };
     if let Some(t) = &a.raw {
         backup(d, &h.home, &a.seen.name, t)
-            .map_err(|e| copy_text("beAcctMcpShare.note.backupFailed", &[("e", &e)]))?;
+            .map_err(|e| copy_text("beAcctMcpShare.note.backupFailed", &[("why", &e)]))?;
     }
     match put_private(d, &h.home, &rel, &text, a.raw.as_deref()) {
         Ok(()) => Ok(true),
@@ -267,12 +267,7 @@ pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>,
     if item_at(&accts).exists() {
         crate::platform::lock::hold(Path::new(&accts))
             .map(Some)
-            .map_err(|e| {
-                (
-                    "io_failed",
-                    crate::common::said::Said::from(e).said_logging_raw(),
-                )
-            })
+            .map_err(|e| Refusal::from(("io_failed", crate::common::said::Said::from(e))))
     } else {
         Ok(None)
     }
@@ -308,7 +303,10 @@ fn run(
     if h.store.paused {
         return match why {
             Why::Auto => Ok(paused_view(&h)),
-            Why::Asked => Err(("refused", copy_text("beAcctMcpShare.sync.paused", &[]))),
+            Why::Asked => Err(Refusal::from((
+                "refused",
+                copy_text("beAcctMcpShare.sync.paused", &[]),
+            ))),
         };
     }
     let seen: Vec<Seen> = h.accounts.iter().map(|a| a.seen.clone()).collect();
@@ -333,7 +331,7 @@ fn run(
                 notes.push(match other {
                     Err(e) => copy_text(
                         "beAcctMcpShare.note.writeFailed",
-                        &[("account", &a.seen.name), ("e", &e)],
+                        &[("account", &a.seen.name), ("why", &e)],
                     ),
                     _ => copy_text("beAcctMcpShare.note.stale", &[("account", &a.seen.name)]),
                 });
@@ -352,7 +350,7 @@ fn run(
         .map_err(|e| {
             (
                 "io_failed",
-                copy_text("beAcctMcpShare.store.writeFailed", &[("e", &e.said())]),
+                copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
         })?;
     }
@@ -375,7 +373,10 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal
     {
         let _held = lock(&home)?;
         let Some(list) = accounts_in(&home)? else {
-            return Err(("refused", copy_text("beAcctMcpShare.sync.noLibrary", &[])));
+            return Err(Refusal::from((
+                "refused",
+                copy_text("beAcctMcpShare.sync.noLibrary", &[]),
+            )));
         };
         let h = load(&home, list)?;
         if h.store.paused == !on {
@@ -397,7 +398,7 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal
         .map_err(|e| {
             (
                 "io_failed",
-                copy_text("beAcctMcpShare.store.writeFailed", &[("e", &e.said())]),
+                copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
         })?;
         if !on {
@@ -440,10 +441,10 @@ fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Refusal> {
     if anywhere {
         Ok(())
     } else {
-        Err((
+        Err(Refusal::from((
             "not_found",
             copy_text("beAcctMcpShare.name.unknown", &[("name", name)]),
-        ))
+        )))
     }
 }
 
@@ -471,10 +472,10 @@ pub(crate) fn pick(
 /// 装到全局：这一条写进共享集合、同步到所有号（名字空 / 定义不是对象 ⇒ 拒）。扩展页的确认卡接它。
 pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpView, Refusal> {
     if name.trim().is_empty() || !def.is_object() {
-        return Err((
+        return Err(Refusal::from((
             "bad_args",
             crate::common::contract::malformed("a server needs a name and an object definition"),
-        ));
+        )));
     }
     run(d, Why::Asked, &|s, seen| {
         Ok(mcp_share::decide(s, seen, name, Some(def.clone())))

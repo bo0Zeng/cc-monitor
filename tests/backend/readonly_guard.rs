@@ -286,6 +286,11 @@ mod tests {
              它归 backend-core 是因为中转住本机常驻后端这个进程，帧从这个进程的 wire 出去。\
              **零写盘**：只在内存里递事件",
         ),
+        (
+            "lineage",
+            "会话血缘（谁起的谁）：中转那一路每一发先认一次。它归 backend-core 是因为中转住本机常驻后端这个进程；\
+             写的只有 `~/.cc-monitor/lineage.json`（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
         ("observe", "观测面 —— 读，不改变世界"),
         ("platform", "唯一允许平台原语与平台 cfg 的层"),
         ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
@@ -324,6 +329,10 @@ mod tests {
             "守卫：协议面本身的几条（协议级码闭集 · serde 类型登记 · 子进程旗标 · EMITS 子集）",
         ),
         ("ratchet_guard", "守卫：那几张登记表的断言行逐字没动"),
+        (
+            "raw_said_guard",
+            "守卫：失败那一句不许直接是下层原话（只读源码）",
+        ),
         (
             "runs_guard",
             "守卫：通用层只认「运行」（扫描 ＋ 两套子运行形状跑同一批判据；临时目录里造夹具，不碰仓与家目录）",
@@ -923,8 +932,14 @@ mod tests {
              读不懂的那份不覆盖。入口两扇：中转换号那一路（上游选择）· 帧面改轮换 / 现在就换那一路",
         ),
         (
+            "lineage.rs",
+            "**会话血缘** `~/.cc-monitor/lineage.json`：起会话地址里每个来处绑给了哪个会话 · 每个会话的父。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
+             经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。入口只有中转那一路（上游选择对中转的那个口）—— 不是帧面命令",
+        ),
+        (
             "footprint/chores/marks.rs",
-            "**「要你动手」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
+            "**「待办」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
              文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
              经 `own_state` 原子写（`O_EXCL` 临时文件 · 0600 · 写满 → 挪过去）；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
              线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
@@ -1148,6 +1163,12 @@ mod tests {
             "rotation::face_change",
             "faces/rotation_face.rs",
         ),
+        // 会话血缘：写口只有中转那一路认「谁起的谁」那一个函数，门是上游选择对中转的那个口。
+        (
+            "lineage.rs",
+            "lineage::relay_saw",
+            "accounts/upstream_select/mod.rs",
+        ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),
         // 主机钥匙：门是握手核对钥匙那一处，不是命令注册。
@@ -1168,7 +1189,7 @@ mod tests {
             "skill_ledger::answer_",
             "stream/inbound/registry/assets.rs",
         ),
-        // 「要你动手」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
+        // 「待办」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
         (
             "footprint/chores/marks.rs",
             "marks::answer_mark",
@@ -4483,7 +4504,7 @@ mod g6_scope_pins {
 ///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
 ///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
 /// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
-///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 差一个 `.into()`；
+///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 多一格可缺的 `raw`（下层原话）；
 ///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
 ///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
 ///
@@ -4548,13 +4569,8 @@ mod error_envelope_registry {
              （`ResolveError` ＋ `Serialize`）的一份，并且**多一条兜底**：序列化失败时手写一行 JSON。\
              ⇒ 它与另三份**不同形**，收成一份要么砍掉这条兜底、要么把它摊给另三份。",
         ),
-        (
-            "control/cli_control.rs",
-            "message.into()",
-            "一次性 CLI 入口的 `emit_err`",
-            "签名收 `impl Into<String>`（调用点既传 `&str` 也传 `format!` 出来的 `String`）\
-             ⇒ 与另两份差一个 `.into()`。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
-        ),
+        // `control/cli_control.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `stream::detail::Failed` 序列化，
+        //   与帧面失败应答同一份（`{code, message, detail, data?}`），不再手拼键。
         (
             "control/fork_write.rs",
             "let env = serde_json::json!",
@@ -4588,14 +4604,7 @@ mod error_envelope_registry {
              与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
              ⇒ 收进 `control/` 那几份出口要先让 `dial/` 反向引 `control/`，不划算。",
         ),
-        (
-            "observe/history_query.rs",
-            "serde_json::json!({ \"code\": code, \"message\": said })",
-            "`--list-projects` 在「记录树根不在」时的带码信封（`no_record_tree`）",
-            "同 `accounts_query` 那一行的理由：它落在 observe 层，`control/` 的 `emit_err` 按 `layering_guard` 的边引不到\
-             （引了还会把 `cli_control` 可达的 tmux 带进三十来条帧命令的 `no_tmux` 判定）；只这一处、只这一个码，\
-             认码的是问它的那一方（`remote_ask::settle_pulled` 把码交回调用方）。",
-        ),
+        // `observe/history_query.rs` 那一行（`--list-projects` 的 `no_record_tree` 信封）删了：同上，改由 `Failed` 序列化。
     ];
 
     /// 一行里 `code` 这个键出现几次（两种写法都算）—— [`envelope_sites`] 的**纯函数那一半**。
@@ -4639,12 +4648,12 @@ mod error_envelope_registry {
         out
     }
 
-    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件，地板留了余量）。
+    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件；10-09 CLI 控制面与 `--list-projects` 两处收进同一份失败载体后 7 处，地板留了余量）。
     #[test]
     fn the_envelope_scan_is_not_silently_empty() {
         let sites = envelope_sites();
         assert!(
-            sites.len() >= 8,
+            sites.len() >= 5,
             "全树只扫到 {} 处错误信封 —— 扫坏了，下面几条此刻在空转",
             sites.len()
         );
@@ -4652,7 +4661,7 @@ mod error_envelope_registry {
         files.sort_unstable();
         files.dedup();
         assert!(
-            files.len() >= 5,
+            files.len() >= 4,
             "这些信封只来自 {} 份文件 —— 遍历塌了",
             files.len()
         );
@@ -4731,8 +4740,9 @@ mod error_envelope_registry {
     #[test]
     fn every_signed_row_says_why_it_is_its_own_copy() {
         // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
+        // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`stream::detail::Failed`，与帧面同一份）。
         assert!(
-            SIGNED.len() >= 7,
+            SIGNED.len() >= 5,
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );
@@ -5074,6 +5084,13 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "own-chan",
+            DEPS,
+            MEASURED_CLEAN,
+            "本人通道：常驻后端听的那个 Unix 套接字（目录独占锁 `flock` · 绑 · 收连接核对端 uid · 连）；仓内 crate、只依赖 tokio 与 libc。\
+             现打 0 处写面：绑套接字会在那个目录里建一个套接字文件（内核做），删陈旧文件与建目录都在调用方 `control/resident.rs`（第四层）",
         ),
         (
             "relay-route-core",

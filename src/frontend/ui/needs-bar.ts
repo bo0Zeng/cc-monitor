@@ -1,11 +1,11 @@
 /**
- * **「需要你」钉条**（消息流底部）：当前会话在等你时，一条说清等什么、等了多久、去哪答；答完（状态变了）就消失，不留痕。
+ * **「需手动」钉条**（消息流底部）：当前会话在等你时，一条说清等什么、等了多久、去哪答；答完（状态变了）就消失，不留痕。
  *
- * - 第一行 `等批准 · Bash` ＋ 那一步的主参数（等宽）/ `等回答` ＋ 问题 / `计划 · 等批准` / `需要你`（判不出，不猜）；
+ * - 第一行 `等批准 · Bash` ＋ 那一步的主参数（等宽）/ `等回答` ＋ 问题 / `计划 · 等批准` / `需手动`（判不出，不猜）；
  *   第二行 `2m · 在终端里答`。
  * - 右边：Windows 有 ↗ ⇒ ［切到终端］；远端且在 tmux 里 ⇒ ［在终端里打开］；都不行 ⇒ 不给按钮（cc-monitor 只能看，不替你答）。
  *
- * 另两件「需要你」的事也住这里：窗口标题（`cc-monitor · 需要你 2`）· 系统通知（主窗口不在前台时、一个会话**开始**等你就发一条）。
+ * 另两件「需手动」的事也住这里：窗口标题（`cc-monitor · 需手动 2`）· 系统通知（主窗口不在前台时、一个会话**开始**等你就发一条）。
  */
 import type { Tab } from "./tab-model";
 import type { Needs } from "./session-reads";
@@ -16,7 +16,6 @@ import { copyText } from "./copy-table";
 import { button } from "./kit/button";
 import { statusDot } from "./kit/status-dot";
 import { machineOf, needsOf, sinceText, fullTitle } from "./session-face";
-import { needsWord } from "./session-words";
 import s from "./needs-bar.module.css";
 
 export interface NeedsBarHost {
@@ -29,11 +28,19 @@ export interface NeedsBarHost {
 export function needsHeadline(n: Needs): { label: string; code: string | null } {
   switch (n.kind) {
     case "approve":
-      return { label: n.tool ? copyText("needs.bar.approve", { tool: n.tool }) : needsWord("approve"), code: n.what };
+      return { label: n.tool ? copyText("needs.bar.approve", { tool: n.tool }) : n.text, code: n.what };
     case "answer":
       return { label: copyText("needs.bar.answer"), code: n.what };
     case "plan":
       return { label: copyText("needs.bar.plan"), code: null };
+    case "network":
+      return { label: copyText("needs.bar.network"), code: n.what };
+    case "worker":
+      return { label: copyText("needs.bar.worker"), code: null };
+    case "goal":
+      return { label: copyText("needs.bar.goal"), code: null };
+    case "choose":
+      return { label: copyText("needs.bar.choose"), code: null };
     case "unknown":
       return { label: copyText("needs.bar.unknown"), code: null };
   }
@@ -82,8 +89,9 @@ export class NeedsBar {
     l1.append(document.createTextNode(head.label));
     if (head.code) {
       // 批准：那一步的主参数等宽；回答：问题原文照正文排。
-      const code = document.createElement(n.kind === "approve" ? "code" : "span");
-      code.className = n.kind === "approve" ? s.nbCode : s.nbQuote;
+      const asCode = n.kind === "approve" || n.kind === "network";
+      const code = document.createElement(asCode ? "code" : "span");
+      code.className = asCode ? s.nbCode : s.nbQuote;
       code.textContent = head.code;
       l1.append(code);
     }
@@ -104,9 +112,9 @@ export class NeedsBar {
 
 /**
  * 窗口标题与系统通知：每次标签页栏刷新时喂一次（`observe`）。
- * - 标题：`cc-monitor · 需要你 N`（0 个时只有 `cc-monitor`）；变了才写。
+ * - 标题：`cc-monitor · 需手动 N`（0 个时只有 `cc-monitor`）；变了才写。
  * - 通知：一个会话**开始**等你（上一次喂的时候它不在等）、主窗口不在前台、设置里开着 ⇒ 发一条：标题 `{title}（{machine}）· 等批准`，正文是那一句。
- *   那一刻会话事实还没到（种类不明）⇒ 等它到了再发（不先发一条「需要你」再补一条）；到不了（老后端）⇒ 最多等 [`NOTIFY_WAIT_MS`] 照发。
+ *   那一刻会话事实还没到（种类不明）⇒ 等它到了再发（不先发一条「需手动」再补一条）；到不了（老后端）⇒ 最多等 [`NOTIFY_WAIT_MS`] 照发。
  */
 export const NOTIFY_WAIT_MS = 3000;
 
@@ -156,7 +164,7 @@ export class NeedsWatch {
     if (this.deps.isFocused()) return;
     try {
       if (!(await this.deps.enabled())) return;
-      await this.deps.send(copyText("needs.notify.title", { title: fullTitle(t), machine: machineOf(t), kind: needsWord(need.kind) }), need.what ?? "");
+      await this.deps.send(copyText("needs.notify.title", { title: fullTitle(t), machine: machineOf(t), kind: need.text }), need.what ?? "");
     } catch (e) {
       console.warn("needs-notify: send failed:", e);
     }

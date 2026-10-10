@@ -40,7 +40,7 @@ import { homeShort } from "../kit/path";
 import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
-import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
+import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
@@ -119,7 +119,7 @@ export interface AliasManager {
   element: HTMLElement;
   load(): void;
   reread(): void;
-  /** 「要你动手」里「让终端认得 ccm 和别名」那一件的态（这台没选自己贴 ⇒ `null`）。 */
+  /** 「待办」里「让终端认得 ccm 和别名」那一件的态（这台没选自己贴 ⇒ `null`）。 */
   setSelfPaste(c: { state: string } | null): void;
 }
 
@@ -311,7 +311,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   let otherRc: string | null = null;
   /** 接上那一行下面开着哪一块。 */
   let panelOpen: "preview" | "uninstall" | "choose" | null = null;
-  /** 「要你动手」里「让终端认得 ccm 和别名」那一件（这台选了自己贴才有；那台后端答的）。 */
+  /** 「待办」里「让终端认得 ccm 和别名」那一件（这台选了自己贴才有；那台后端答的）。 */
   let selfPaste: { state: string } | null = null;
   let allowHost: PsHost | null = null;
 
@@ -562,7 +562,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     else accessNote.textContent = afterRcText(verb, cands.find((c) => c.path === path)?.policy ?? null, shell);
   };
 
-  /** 「我自己贴」：交那台记下，去「要你动手」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
+  /** 「我自己贴」：交那台记下，去「待办」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
   const goChores = (): void => {
     wrap.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "data", anchor: `chores:${opts.origin()}` } }));
   };
@@ -757,7 +757,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         // 🔴 探不动 ≠ 不在 PATH 上：原话上屏，开关不给拨。
         onPath = null;
         lock(true);
-        pathHelp.textContent = copyText("machineAliases.userPath.readFailed", { error: st.error });
+        sayWithDetail(pathHelp, st.error.said, st.error.detail);
       } else {
         onPath = st.onUserPath;
         lock(false);
@@ -772,7 +772,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
     } catch (e) {
       onPath = null;
       lock(true);
-      sayWithDetail(pathHelp, copyText("machineAliases.userPath.readFailed", { error: String(e) }), detailOf(e));
+      sayFailure(pathHelp, copyText("machineAliases.userPath.readFailed"), e);
     }
     paintStatus();
   };

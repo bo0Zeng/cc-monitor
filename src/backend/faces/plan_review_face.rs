@@ -28,10 +28,6 @@ fn slice_of<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
         .find(|s| s.get("name").and_then(Value::as_str) == Some(name))
 }
 
-fn io(e: (&'static str, String)) -> Fail {
-    Fail::new(e.0, e.1)
-}
-
 /// 这个键此刻能不能认可：不在 ⇒ `no_such_need`；问人那一种 ⇒ `not_ackable`。
 pub(crate) fn check_ack(sl: &Value, key: &str) -> Result<(), Fail> {
     match needs::ackable(sl, key) {
@@ -75,7 +71,7 @@ fn ack(args: &Value) -> Answer {
     let sl = slice_of(&doc, slice)
         .ok_or_else(|| Fail::new("no_such_need", copy_text("bePlan.review.noSuchNeed", &[])))?;
     check_ack(sl, key)?;
-    crate::plan::review::answer_ack(ws, slice, key, &needs::keys_of(sl)).map_err(io)?;
+    crate::plan::review::answer_ack(ws, slice, key, &needs::keys_of(sl))?;
     after_ack(ws, key, true)
 }
 
@@ -85,7 +81,7 @@ fn unack(args: &Value) -> Answer {
         str_arg(args, "slice")?,
         str_arg(args, "key")?,
     );
-    crate::plan::review::answer_unack(ws, slice, key).map_err(io)?;
+    crate::plan::review::answer_unack(ws, slice, key)?;
     after_ack(ws, key, false)
 }
 

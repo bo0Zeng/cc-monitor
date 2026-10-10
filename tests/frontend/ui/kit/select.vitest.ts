@@ -209,3 +209,20 @@ describe("下拉 · 悬停小卡 · 多了出筛选框", () => {
     ).toBe("筛选它们");
   });
 });
+
+describe("下拉 · 合着时的灰字", () => {
+  it("给了 `shownNote` ⇒ 框上用它（`\"\"` ⇒ 不写）；面板里那一项照旧带 `note`", () => {
+    const sel = select({
+      label: "src",
+      options: [{ value: "p", label: "parent", note: "a-very-long-parent-title · night", shownNote: "" }],
+      value: "p",
+      onChange: () => {},
+    });
+    document.body.appendChild(sel.el);
+    expect(sel.el.textContent).toBe("parent");
+    sel.el.click();
+    expect(rows()[0]!.textContent).toContain("a-very-long-parent-title · night");
+    closeMenu();
+    sel.el.remove();
+  });
+});

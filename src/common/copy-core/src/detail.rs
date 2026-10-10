@@ -3,7 +3,7 @@
 //! 线上那一格 `detail` 只装界面那句**下面**的几行：「项名：值」，项名是闭集 [`Label`]（文案表 `detail.label.*`），
 //! 只列有值的项；界面复制时把它接在自己显示的那句下面（首行永远就是屏上那句，不会两处各写一份而对不上）。
 //!
-//! 不进这里的：会话内容、key / token、请求参数值（命令只写名）。原话截 [`RAW_CAP`] 字节，截了在末尾标「…（截断）」。
+//! 不进这里的：会话内容（会话标题也算：它常常就是用户的第一句话 ⇒「对象」只收标识，[`Target`]）、key / token、请求参数值（命令只写名）。原话截 [`RAW_CAP`] 字节，截了在末尾标「…（截断）」。
 //! 项名与值之间用全角冒号、不靠空格对齐（中文在等宽字体下占宽不定，贴到别处会乱）。
 
 use crate::copy_text;
@@ -24,7 +24,7 @@ pub enum Label {
     Command,
     /// 用户自己的路径。
     Path,
-    /// 用户自己的对象（会话名 · 账号名）。
+    /// 对象：哪个会话 / 账号 / 模块 / 机器。只经 [`Detail::target`] 写（只收标识，不收会话标题）。
     Target,
     /// 通道断在哪一跳 · 发没发出。
     Hop,
@@ -64,6 +64,45 @@ impl Label {
     }
 }
 
+/// 「对象」那一项写什么：**只收标识**。会话不写标题（标题常常就是用户的第一句话，详情不含会话内容），写机器 ＋ sid 前 8 位。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target<'a> {
+    /// 哪台上的哪个会话。
+    Session { machine: &'a str, sid: &'a str },
+    /// 账号名（路由第 2 段那个名字）。
+    Account(&'a str),
+    /// 出错的模块（日志事件的来源）。
+    Module(&'a str),
+    /// 连的是哪一台（机器名）。
+    Machine(&'a str),
+}
+
+/// sid 留几位（够认、不长）。
+const SID_SHOWN: usize = 8;
+
+impl Target<'_> {
+    fn line(&self) -> String {
+        match self {
+            Target::Session { machine, sid } => {
+                let short: String = sid.chars().take(SID_SHOWN).collect();
+                copy_text(
+                    "detail.target.session",
+                    &[("machine", machine), ("sid", &short)],
+                )
+            }
+            Target::Account(s) | Target::Module(s) | Target::Machine(s) => s.to_string(),
+        }
+    }
+}
+
+/// 「对象」不收自由文本（见 [`Target`]）。
+fn no_free_target(label: Label) {
+    assert!(
+        label != Label::Target,
+        "「对象」那一项只经 Detail::target 写（只收标识，不收会话标题）"
+    );
+}
+
 /// 写一份详情：按调用次序一项一行；值是空白的项不出。补一项按项名次序插（[`Detail::insert`]）；
 /// 对端写好的一整份原样当一块（[`Detail::block`]）—— 不拆渲染好的字。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -84,7 +123,9 @@ impl Detail {
     }
 
     /// 加一项；值去掉首尾空白后是空的 ⇒ 不加。原话（[`Label::Raw`]）截到 [`RAW_CAP`]。
+    /// 「对象」不走这里（自由文本进不来）：拿 [`Label::Target`] 当场拒，改走 [`Detail::target`]。
     pub fn item(mut self, label: Label, value: impl AsRef<str>) -> Detail {
+        no_free_target(label);
         if let Some(line) = line_of(label, value.as_ref()) {
             self.items.push(Item::Line(label, line));
         }
@@ -97,6 +138,26 @@ impl Detail {
             Some(v) => self.item(label, v),
             None => self,
         }
+    }
+
+    /// 「对象」那一项（按项名次序插，同 [`Detail::insert`]）。
+    pub fn target(mut self, t: Target<'_>) -> Detail {
+        let value = t.line();
+        if let Some(line) = line_of(Label::Target, &value) {
+            let rank = |l: Label| {
+                Label::ALL
+                    .iter()
+                    .position(|x| *x == l)
+                    .unwrap_or(usize::MAX)
+            };
+            let at = self
+                .items
+                .iter()
+                .position(|i| matches!(i, Item::Line(l, _) if rank(*l) > rank(Label::Target)))
+                .unwrap_or(self.items.len());
+            self.items.insert(at, Item::Line(Label::Target, line));
+        }
+        self
     }
 
     /// 对端写好的一整份（远端后端那份转交给界面时，本机壳在它后面补「本机」那一行）。空白 ⇒ 不加。
@@ -139,6 +200,7 @@ impl Detail {
 
     /// 补一项，按 [`Label::ALL`] 的次序插在第一条后排项之前（没有后排项 ⇒ 末尾）；值空 ⇒ 原样。
     pub fn insert(mut self, label: Label, value: impl AsRef<str>) -> Detail {
+        no_free_target(label);
         let Some(line) = line_of(label, value.as_ref()) else {
             return self;
         };
@@ -224,6 +286,16 @@ pub fn channel(
         .item(Label::Command, command)
         .maybe(Label::Hop, hop)
         .item(Label::Code, code)
+}
+
+/// 一件失败复制出去的整段：首行是那一句，下面原样接它的详情；详情空 ⇒ 只剩那一句（不出空行）。
+/// 界面那一侧同一排法（`kit/detail.ts::detailBody` 的单件那一支，跨语言金样 `detail-many.golden.json` 的 `one`）。
+pub fn one(said: &str, detail: &str) -> String {
+    if detail.trim().is_empty() {
+        said.to_string()
+    } else {
+        format!("{said}\n{detail}")
+    }
 }
 
 /// 一行汇总 `head` 底下几件各自的失败 `(那件的那一句, 它的详情)` ⇒ 复制出去的整段：首行 `head`，每件一段（那一句 ＋ 详情），

@@ -21,6 +21,7 @@ fn what_base_url_builds_the_inverse_accepts_and_parse_restores() {
                     mode: m,
                     seg1: a,
                     seg2: b,
+                    origin: None,
                     rest: "v1/messages?beta=true"
                 })
             );
@@ -146,5 +147,88 @@ fn keying_a_url_is_the_inverse_of_splitting_it() {
         keyed_base_url(&already, &key),
         None,
         "已经带钥匙的不再插一次"
+    );
+}
+
+/// 来处段（会话血缘）：拼上去的 `~<来处>[~<父>]` 被逆一侧收、被切的一侧还原；钥匙插拔前后尾段原样。
+#[test]
+fn an_origin_tail_round_trips_through_build_shape_split_and_parse() {
+    let key = "0123456789abcdef".repeat(4);
+    let parent = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
+    for m in RouteMode::ALL {
+        let url = base_url(PORT, m, "claude-code", "work").unwrap();
+        for (p, tail) in [
+            (None, "~0a1b2c3d4e5f6071".to_string()),
+            (Some(parent), format!("~0a1b2c3d4e5f6071~{parent}")),
+        ] {
+            let with = with_origin(&url, "0a1b2c3d4e5f6071", p).expect("合法来处拼不上");
+            assert_eq!(with, format!("{url}/{tail}"));
+            assert!(base_url_shape_ok(&with), "带来处的被逆拒了：{with}");
+            let keyed = keyed_base_url(&with, &key).expect("带来处的插不进钥匙");
+            let (head, rest) = split_keyed_base_url(&keyed).expect("带来处的切不开");
+            assert_eq!(
+                format!("{head}{}", &rest[1..]),
+                with,
+                "去掉钥匙段 == 原地址"
+            );
+            let target = format!("{}/v1/messages", &rest);
+            let got = parse_target(&target).expect("带来处的请求目标切不出");
+            assert_eq!(
+                got,
+                Parsed {
+                    mode: m,
+                    seg1: "claude-code",
+                    seg2: "work",
+                    origin: Some(Origin {
+                        token: "0a1b2c3d4e5f6071",
+                        parent: p,
+                    }),
+                    rest: "v1/messages",
+                }
+            );
+            assert_eq!(
+                with_origin(&with, "0a1b2c3d4e5f6071", None),
+                None,
+                "已经带来处的不再拼一次"
+            );
+        }
+    }
+}
+
+/// 来处段坏形：拼的一侧拒（段闸外 · 空），认与切的一侧拒（空 · 三截 · 段闸外 · 不在尾上）。
+#[test]
+fn bad_origin_tails_are_refused_on_every_side() {
+    let url = base_url(PORT, RouteMode::Passthrough, "claude-code", "_").unwrap();
+    for (t, p) in [
+        ("", None),
+        ("a.b", None),
+        ("ok", Some("")),
+        ("ok", Some("a b")),
+    ] {
+        assert_eq!(with_origin(&url, t, p), None, "{t:?} {p:?} 拼上了");
+    }
+    assert_eq!(with_origin("https://api.example.com/v1", "ok", None), None);
+    for bad in ["~", "~~p", "~t~", "~t~p~q", "~t.x", "~t~p.q"] {
+        assert!(!base_url_shape_ok(&format!("{url}/{bad}")), "{bad} 被收了");
+        assert_eq!(
+            parse_target(&format!("/t/claude-code/_/{bad}/v1/messages")),
+            None,
+            "{bad} 被切出来了"
+        );
+    }
+    assert!(
+        !base_url_shape_ok(&format!("{url}/~t/x")),
+        "来处之后还有段的被收了"
+    );
+    assert_eq!(
+        parse_target("/t/claude-code/_/v1/~t"),
+        Some(Parsed {
+            mode: RouteMode::Passthrough,
+            seg1: "claude-code",
+            seg2: "_",
+            origin: None,
+            rest: "v1/~t",
+        }),
+        "不紧跟在第 2 段之后的不是来处，原样交上游"
     );
 }

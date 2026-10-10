@@ -33,8 +33,7 @@
 //!
 //! # 两档：`cargo bench` 出读数，`cargo test` 只证明「跑得起来」
 //!
-//! 本文件原住 `tests/evidence/S7-history-read.rs`（量具与历史读数那棵树，规矩是「不许改」），
-//! TQ1 把它搬进 `tests/benches/` —— bench 源码从此有一个家（「度量能力」那一格）。
+//! bench 源码的家是 `tests/benches/`（「度量能力」那一格）。
 //!
 //! - **`cargo bench --bench s7_history_read`**（cargo 给目标传 `--bench`）⇒ 下面那张读数表，照旧。
 //!   🔴 墙钟**不当判据**：这一档从不进门禁。

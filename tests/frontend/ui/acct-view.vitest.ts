@@ -116,6 +116,9 @@ describe("记录 · 提示条 · 标签页", () => {
     expect(whyOf({ at: NOW, atText: "12:00", from: "b", to: "c", why: { stint: { w: "5h", n: 5 } } })).toEqual({ why: copyText("acct.hist.stint", { w: "5h", n: "5" }), reset: null });
     expect(whyOf({ at: NOW, atText: "12:00", from: "b", to: "z", why: "preempt" })).toEqual({ why: copyText("acct.hist.preempt", { name: "z" }), reset: null });
   });
+  it("原因：离开兜底 `换下兜底 · r 已恢复`（名是换去的那个号）", () => {
+    expect(whyOf({ at: NOW, atText: "12:00", from: "b", to: "r", why: "leaveFallback" })).toEqual({ why: copyText("acct.hist.leaveFallback", { name: "r" }), reset: null });
+  });
   it("卡住：单号 · 全满 · 硬上限 · 时刻已过；能发 ⇒ 不出", () => {
     expect(bannerOf(entry(), NOW)).toBeNull();
     const single = entry({ blocked: { earliest: { account: "personal", at: NOW + 5400, atText: "13:30" } } }, { state: "refused" });

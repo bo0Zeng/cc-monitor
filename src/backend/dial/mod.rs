@@ -56,7 +56,7 @@ pub(crate) mod uses;
 pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward", "files", "tunnel"];
+pub const USES: &[&str] = &["stream", "capture", "forward", "files"];
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -91,9 +91,6 @@ pub enum Use {
     Forward,
     /// 开 sftp 子系统，之后在链路上一问一答（受限的远端文件操作：写只许两处，[`sftp`]）。
     Files,
-    /// 一条 direct-tcpip 到远端回环 `tunnel_port`（那台常驻后端的监听口），原样对拷。
-    /// 不绑本机口（与 `forward` 不同）：monitor 经这条链路直接讲监听协议（不另开公网口）。
-    Tunnel,
 }
 
 /// `use: capture` 的参数。
@@ -145,9 +142,6 @@ pub struct DialRequest {
     pub capture: Option<CaptureOpts>,
     #[serde(default)]
     pub forward: Option<ForwardSpec>,
-    /// `use: tunnel` 的目标口（远端 `127.0.0.1` 上）。
-    #[serde(default)]
-    pub tunnel_port: Option<u16>,
     /// ack 之前逐行报阶段（测试连接那六格）。
     #[serde(default)]
     pub stages: bool,
@@ -201,10 +195,6 @@ pub struct DialAck {
     pub strict: bool,
     /// 同上，跳板那一台（直连 ⇒ `false`）。
     pub jump_strict: bool,
-    /// 开通道被远端回拒时，SSH 协议给的原因码（RFC 4254 §5.1：`administratively_prohibited` ·
-    /// `connect_failed` · `unknown_channel_type` · `resource_shortage` · `unknown`）。只有 `tunnel` 那一形填；其余 ⇒ `None`。additive。
-    /// 界面据它分「那台 sshd 不许端口转发」（停、不重试）与「那个口上还没人」（等一会儿再开）。
-    pub open_refused: Option<&'static str>,
     /// 没拨成时的原因码（闭集，[`why`]）：界面按码说那一句、给那颗修法。拨成了 / 说不清 ⇒ `None`。additive。
     pub reason: Option<&'static str>,
     /// 协议版本（[`ACK_V`]）。
@@ -227,7 +217,6 @@ impl DialAck {
             winner: None,
             strict: false,
             jump_strict: false,
-            open_refused: None,
             reason: None,
             v: ACK_V,
             uses: USES,
@@ -239,18 +228,6 @@ impl DialAck {
         DialAck {
             reason: why,
             ..self
-        }
-    }
-
-    /// 同 [`DialAck::failed`]，带上远端回拒开通道的原因码。
-    fn open_refused(
-        error: crate::common::said::Said,
-        fingerprint: Option<String>,
-        why: &'static str,
-    ) -> Self {
-        DialAck {
-            open_refused: Some(why),
-            ..DialAck::failed(error, fingerprint)
         }
     }
 }
@@ -298,21 +275,6 @@ pub(crate) fn why_of_stage(stage: &str) -> &'static str {
         "timeout" => why::TIMEOUT,
         "hostkey" => why::HOST_KEY,
         _ => why::OTHER,
-    }
-}
-
-/// russh 的开通道失败 → 线上那个原因码（[`DialAck::open_refused`]）。不是开通道被拒 ⇒ `None`。
-pub(crate) fn open_failure_word(e: &russh::Error) -> Option<&'static str> {
-    use russh::ChannelOpenFailure as F;
-    match e {
-        russh::Error::ChannelOpenFailure(f) => Some(match f {
-            F::AdministrativelyProhibited => "administratively_prohibited",
-            F::ConnectFailed => "connect_failed",
-            F::UnknownChannelType => "unknown_channel_type",
-            F::ResourceShortage => "resource_shortage",
-            F::Unknown => "unknown",
-        }),
-        _ => None,
     }
 }
 

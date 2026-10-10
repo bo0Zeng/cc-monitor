@@ -2,7 +2,7 @@
 """RT1 · 在 Linux 上交叉编出 Win11 虚拟机真机测试要的全部 Windows 字节（本机侧跑）。
 
 守的要求：「能，用虚拟机」——「Win11 虚拟机可以当真机测试资源」。
-本脚本只产字节，不碰虚拟机（拷过去、起、收是 `RT1-vm.py` 的事）。
+本脚本只产字节，不碰虚拟机（拷过去、起、收不在本脚本里）。
 
 配方与 `tests/scripts/re-embed.sh::do_native` 同一条（后端 `--release --locked`，
 铺进 `src/frontend/shell/native-backend/` 并旁挂 `.target`），差别只有一处：re-embed 取「本机 host triple」，

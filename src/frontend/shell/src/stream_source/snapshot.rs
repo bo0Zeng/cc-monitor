@@ -379,7 +379,7 @@ async fn fetch_snapshot(
                     session_id: sid.to_string(),
                     path: std::path::PathBuf::from(path),
                     seq,
-                    message: row.message,
+                    record: row.record,
                     cwd: row.cwd,
                     end: span.map(|(_, e)| e),
                     rid: None,

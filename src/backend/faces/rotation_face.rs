@@ -69,6 +69,8 @@ type DoingRead = Box<dyn Fn() -> std::collections::BTreeMap<String, Doing> + Sen
 
 pub(crate) struct Ctx {
     pub(crate) hop: Hop,
+    /// 会话血缘（读：会话的父；跟随父会话按它填）。
+    pub(crate) lineage: Arc<crate::lineage::LineageStore>,
     pub(crate) rows: Rows,
     pub(crate) live: Live,
     pub(crate) doing: DoingRead,
@@ -89,6 +91,7 @@ impl Ctx {
                 library(),
                 None,
             ),
+            lineage: Arc::new(crate::lineage::LineageStore::at(crate::lineage::path_now())),
             rows: Box::new(move |agent, a| {
                 (agent == crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT
                     && rows.iter().any(|r| r == a))
@@ -290,7 +293,7 @@ fn rule_wire(
     })
 }
 
-/// 一个活会话的状态（主窗口标签页同一套）：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · unknown）。
+/// 一个活会话的状态（主窗口标签页同一套）：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · network · worker · goal · choose · unknown）。
 /// 说不清在干什么 ⇒ `working`（主窗口那颗点同样画成在跑）。
 fn doing_wire(d: Option<&Doing>) -> Value {
     use crate::agents::SessionActivity as A;
@@ -301,7 +304,8 @@ fn doing_wire(d: Option<&Doing>) -> Value {
             "needs": d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown),
         }),
         Some(A::Idle) => json!({"state": "idle", "needs": null}),
-        Some(A::Working) | None => json!({"state": "working", "needs": null}),
+        // 后台命令还在跑：重启会把它掐掉 ⇒ 按「在跑」报（与说不清同一侧，不当空闲）。
+        Some(A::Working | A::BackgroundWork) | None => json!({"state": "working", "needs": null}),
     }
 }
 
@@ -653,7 +657,7 @@ pub(crate) fn preset_with(
         e.source = Source::Rule(rule.to_string());
         b.sessions.insert(sid.to_string(), e);
     })
-    .map_err(|e| ("io_failed", e.said_logging_raw()))
+    .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号、来源还是规则的；写不成只出声）。
@@ -1130,11 +1134,15 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
     let (state, why, book) = read_book(ctx);
     let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
     let live = (ctx.live)();
+    let lineage = ctx.lineage.now();
     let mut sessions = Map::new();
     for sid in sids {
         let agent = book.sessions.get(&sid).map(|s| s.agent.clone());
         let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
-        let one = ctx.hop.view(&book, &sid, &row, &|x| live.contains(x), now);
+        let parent = lineage.parent_of(&sid);
+        let one = ctx
+            .hop
+            .view(&book, &sid, parent, &row, &|x| live.contains(x), now);
         sessions.insert(
             sid,
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
@@ -1156,6 +1164,8 @@ pub(crate) fn answer_session_set(args: &Value) -> Answer {
 /// 要写成什么样。
 enum Want {
     Follow,
+    /// 跟随父会话（父按血缘填）。
+    Parent,
     Rule(String),
     /// 恢复自己那份（没有 ⇒ 照此刻生效的那份拷）。
     Restore,
@@ -1168,6 +1178,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
     let sids = sids_of(args, "sids")?;
     let want = match args.get("rotation") {
         Some(Value::String(s)) if s == "follow" => Want::Follow,
+        Some(Value::String(s)) if s == "parent" => Want::Parent,
         Some(Value::String(s)) if s == "custom" => Want::Restore,
         Some(Value::String(s)) if s == "detach" => Want::Detach,
         Some(Value::Object(m)) if m.len() == 1 && m.contains_key("custom") => {
@@ -1178,7 +1189,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         }
         _ => {
             return Err(bad(
-                "`rotation` must be \"follow\", \"custom\", \"detach\", {\"rule\": id} or {\"custom\": {order, enabled, when}}",
+                "`rotation` must be \"follow\", \"parent\", \"custom\", \"detach\", {\"rule\": id} or {\"custom\": {order, enabled, when}}",
             ))
         }
     };
@@ -1195,6 +1206,24 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         if !book.rules.contains_key(id) {
             return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
         }
+    }
+    // 跟随父会话：每个都得在血缘里有父，且父（在账本里的话）与它同一家；有一个不成立 ⇒ 整批 `no_parent`。
+    let lineage = ctx.lineage.now();
+    let parent_of = |sid: &str| -> Option<String> {
+        let p = lineage.parent_of(sid)?;
+        let mine = book
+            .sessions
+            .get(sid)
+            .map(|s| s.agent.as_str())
+            .or(agent.as_deref());
+        let theirs = book.sessions.get(p).map(|s| s.agent.as_str());
+        match (mine, theirs) {
+            (Some(m), Some(t)) if m != t => None,
+            _ => Some(p.to_string()),
+        }
+    };
+    if matches!(want, Want::Parent) && sids.iter().any(|sid| parent_of(sid).is_none()) {
+        return Err(("no_parent", copy_text("beRotation.parent.none", &[])).into());
     }
     // 先把要写的每一份都判完（不合法整批拒、一个字节不写），再一次写进去。
     let mut plan: Vec<(String, Source, Option<Rotation>)> = Vec::new();
@@ -1216,6 +1245,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         };
         let (source, custom) = match &want {
             Want::Follow => (Source::Follow, None),
+            Want::Parent => (Source::Parent(parent_of(sid).unwrap_or_default()), None),
             Want::Rule(id) => (Source::Rule(id.clone()), None),
             Want::Restore => (
                 Source::Custom,

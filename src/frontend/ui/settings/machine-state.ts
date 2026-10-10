@@ -5,46 +5,16 @@
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineStateKind } from "../generated/MachineStateKind";
-import type { VersionRelation } from "../generated/VersionRelation";
 import type { MachineDotState } from "../kit/status-dot";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyDetailButton } from "../kit/detail";
 import { copyText } from "../copy-table";
-import { exactKeys, isObj } from "../ipc/decode";
+import { decodeMachineState } from "../machine-state-decode";
 
 export type { MachineState, MachineFix };
-
-const KINDS: readonly MachineStateKind[] = [
-  "up",
-  "connecting",
-  "installing",
-  "updating",
-  "down",
-  "host_key_changed",
-  "needs_update",
-  "newer",
-  "disabled",
-  "unsupported",
-  "unknown",
-];
-const RELATIONS: readonly VersionRelation[] = ["same", "older", "newer", "incomparable"];
-const FIXES: readonly MachineFix[] = ["retry", "conn_settings", "push_key", "compare_fingerprint", "update", "connect"];
-const KEYS = ["detail", "fixes", "os", "reason", "seenHostKey", "stage", "state", "version", "versionRelation"];
-
-const strOrNull = (v: unknown): v is string | null => v === null || (typeof v === "string" && v !== "");
-
-/** 严格收：键集恰好那九格、每格取值在闭集里；收不下 ⇒ `null`（那一行照「没问到」画，不替后端编一态）。 */
-export function decodeMachineState(raw: unknown): MachineState | null {
-  if (!isObj(raw) || !exactKeys(raw, KEYS)) return null;
-  const v = raw;
-  if (!KINDS.includes(v.state as MachineStateKind)) return null;
-  if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.detail)) return null;
-  if (v.versionRelation !== null && !RELATIONS.includes(v.versionRelation as VersionRelation)) return null;
-  if (!Array.isArray(v.fixes) || !v.fixes.every((f) => FIXES.includes(f as MachineFix))) return null;
-  return v as unknown as MachineState;
-}
+export { decodeMachineState };
 
 /** 一台怎么画。`problem` 为空 ＝ 不出问题行。 */
 export interface MachineFace {
@@ -52,7 +22,7 @@ export interface MachineFace {
   /** 名字旁那个词（连着时不说）。 */
   word: string;
   problem: string;
-  /** 问题行的样子：出错 · 要你动手 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
+  /** 问题行的样子：出错 · 待办 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
   tone: "error" | "warn" | "busy";
   bar: boolean;
   fixes: MachineFix[];
@@ -142,10 +112,7 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
     case "disabled":
       return face(copyText("machinePage.state.disabled"), copyText("machinePage.problem.disabled"));
     case "unsupported":
-      return face(
-        copyText("machineState.word.unsupported"),
-        m.reason === "no_forwarding" ? copyText("machineState.problem.noForwarding") : copyText("machineState.problem.notUnix", { machine }),
-      );
+      return face(copyText("machineState.word.unsupported"), copyText("machineState.problem.notUnix", { machine }));
   }
 }
 

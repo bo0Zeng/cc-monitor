@@ -48,7 +48,7 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
 function card(cls: string, uuid?: string): HTMLElement {
   const el = cls === "card-tool-group" ? document.createElement("details") : document.createElement("div");
   el.className = `card ${cls}`;
-  if (uuid) el.setAttribute("data-uuid", uuid);
+  if (uuid) el.setAttribute("data-id", uuid);
   return el;
 }
 
@@ -140,7 +140,7 @@ describe("按轮折叠", () => {
   it("跳卡 / 查找落在折着的过程里（revealCard）：展开那一轮再滚；工具组里的一步也找得到", async () => {
     const g = card("card-tool-group", "a1") as HTMLDetailsElement;
     const unit = document.createElement("div");
-    unit.dataset.memberUuid = "a2";
+    unit.dataset.memberId = "a2";
     g.appendChild(unit);
     const { content, fold } = rig([card("card-user", "u1"), g, card("card-assistant", "a3")], [
       { available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["a3"] })] },
@@ -269,6 +269,119 @@ describe("按轮折叠", () => {
     expect(hidden(late)).toBe(true);
   });
 
+  it("重排不重画没变的过程行：卡后到只挪位置，行上的节点原样留着；字变了（又一轮工具）才重画", async () => {
+    const { content, fold } = rig(
+      [card("card-user", "u1"), card("card-assistant", "a1")],
+      [
+        { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false })] },
+        { available: true, from: 0, end: 12, turns: [turn("u1", 0, { done: false, parts: [{ text: "头", tone: "plain" }, { text: "工具 ×3", tone: "plain" }] })] },
+      ],
+    );
+    await fold.refresh();
+    const line = lines(content)[0];
+    const caret = line.firstChild;
+    content.appendChild(card("card-assistant", "a9"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(line.firstChild).toBe(caret);
+    await fold.refresh();
+    expect(line.textContent).toContain("工具 ×3");
+  });
+
+  it("重排时归属没变的卡一个属性都不写（`data-proc-of` / 工具组的 open 有样式挂着：照写一遍 ＝ 每次卡进出流都让全部过程卡重算样式）", async () => {
+    setProcessExpandedDefault(true);
+    try {
+      const { content, fold } = rig(
+        [card("card-user", "u1"), card("card-assistant", "a1"), card("card-tool-group", "g1"), card("card-user", "u2"), card("card-assistant", "a2")],
+        [{ available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 5)] }],
+      );
+      await fold.refresh();
+      const written: string[] = [];
+      const mo = new MutationObserver((rs) => {
+        for (const r of rs) if (r.type === "attributes" && !(r.target as HTMLElement).classList.contains(PROC_LINE_CLASS)) written.push(`${(r.target as HTMLElement).dataset.id}:${r.attributeName}`);
+      });
+      mo.observe(content, { attributes: true, subtree: true });
+      content.appendChild(card("card-assistant", "a3")); // 卡后到 ⇒ 重排
+      await new Promise((r) => setTimeout(r, 0));
+      mo.disconnect();
+      expect(written.filter((w) => !w.startsWith("a3:")), "别的卡归属没变：不写").toEqual([]);
+    } finally {
+      setProcessExpandedDefault(false);
+    }
+  });
+
+  it("展开的那几轮量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
+    setProcessExpandedDefault(true);
+    const cards: HTMLElement[] = [];
+    const turns: TurnSummary[] = [];
+    for (let k = 0; k < 4; k++) {
+      cards.push(card("card-user", `u${k}`), card("card-assistant", `a${k}`), card("card-assistant", `b${k}`));
+      turns.push(turn(`u${k}`, k));
+    }
+    const { content, fold } = rig(cards, [{ available: true, from: 0, end: 10, turns }]);
+    const log: string[] = [];
+    // 过程行在 0、它那一轮的最后一张在 2000：每一轮都高过一屏（视口 800）⇒ 都要竖线、都要收起行
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      log.push("read");
+      const bottom = this.classList.contains(PROC_LINE_CLASS) ? 28 : 2000;
+      return { top: bottom - 20, bottom, height: 20, left: 0, right: 100, width: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    vi.spyOn(content, "clientHeight", "get").mockReturnValue(800);
+    const after = vi.spyOn(Element.prototype, "after").mockImplementation(function (this: Element, ...nodes: (Node | string)[]) {
+      log.push("write");
+      this.parentNode?.insertBefore(nodes[0] as Node, this.nextSibling);
+    });
+    const height = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, "height");
+    Object.defineProperty(CSSStyleDeclaration.prototype, "height", {
+      configurable: true,
+      get: height?.get,
+      set(this: CSSStyleDeclaration, v: string) {
+        log.push("write");
+        height?.set?.call(this, v);
+      },
+    });
+    try {
+      await fold.refresh();
+      expect(lines(content).map((l) => l.querySelector<HTMLElement>(".proc-rule")?.style.height)).toEqual(["1972px", "1972px", "1972px", "1972px"]);
+      expect(content.querySelectorAll(".proc-tail").length).toBe(4);
+      // 量的那几下连成块：一块量完、写完；新插进去的收起行要再量一块 ⇒ 最多两块（逐轮量一下写一下 ＝ 轮数那么多块）
+      const readRuns = log.filter((x, i) => x === "read" && log[i - 1] !== "read").length;
+      expect(readRuns, log.join(" ")).toBeLessThanOrEqual(2);
+    } finally {
+      rect.mockRestore();
+      after.mockRestore();
+      if (height) Object.defineProperty(CSSStyleDeclaration.prototype, "height", height);
+      setProcessExpandedDefault(false);
+    }
+  });
+
+  it("骨架的行高只量一次（每次重排都量 ＝ 每次都逼整页同步布局）", async () => {
+    const content = document.createElement("div");
+    content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"));
+    document.body.replaceChildren(content);
+    const setFolds = vi.fn();
+    const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
+    const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
+    let reads = 0;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains(PROC_LINE_CLASS)) reads += 1;
+      return { height: 28, width: 100, top: 0, bottom: 28, left: 0, right: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      await fold.refresh();
+      for (let k = 0; k < 5; k++) {
+        content.appendChild(card("card-assistant", `late${k}`));
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      expect(setFolds.mock.calls.length).toBeGreaterThan(3);
+      expect(setFolds.mock.lastCall?.[0].linePx).toBe(28);
+      expect(reads).toBe(1);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it("续取：从还没收尾的那一轮的 at 起要，回来的整轮替换；续点不在了 ⇒ 从 0 重要", async () => {
     const { fold, read } = rig([], [
       { available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 40, { done: false })] },
@@ -381,17 +494,17 @@ describe("轮次刻度", () => {
 // 系统注入（「谁说的」稿 A ⑤）：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散工具组的相邻合并）。
 describe("系统注入的旁注细条", () => {
   const tool = (uuid: string, id: string) =>
-    ({ type: "assistant", uuid, timestamp: "2026-01-01T02:02:00.000Z", message: { role: "assistant", content: [{ type: "tool_use", id, name: "Read", input: {} }] } }) as never;
+    ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false, endsTurn: false }) as never;
   const injected = (uuid: string, body?: string) =>
-    ({ type: "user", uuid, timestamp: "2026-01-01T02:02:30.000Z", message: { role: "user", content: "x" }, userText: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
+    ({ agent: "claude", t: "said", id: uuid, at: "2026-01-01T02:02:30.000Z", blocks: [{ type: "text", text: "x" }], who: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
 
   it("★ 有正文 ⇒ 一条隐藏的细条进流（带 uuid）；夹在两次工具调用之间也不打散工具组；没正文 ⇒ 什么都不放", () => {
     const content = document.createElement("div");
     const stream = { contentElement: content, insertNode: (el: HTMLElement, ref: HTMLElement | null) => content.insertBefore(el, ref) };
     const timeline = new RecordTimeline(stream as never);
-    const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+    const sink: StreamSink = { timeline };
     const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() };
-    const feed = (seq: number, message: never) => renderContentRecord({ session_id: "s", seq, message } as unknown as JsonlLinePayload, ctx, sink);
+    const feed = (seq: number, record: never) => renderContentRecord({ session_id: "s", seq, record } as unknown as JsonlLinePayload, ctx, sink);
     feed(1, tool("a1", "t1"));
     feed(2, injected("m1", "注入词乙"));
     feed(3, tool("a2", "t2"));
@@ -399,7 +512,7 @@ describe("系统注入的旁注细条", () => {
     const kids = [...content.children] as HTMLElement[];
     expect(kids.map((k) => k.classList.contains("card-tool-group") ? "group" : k.classList.contains("card-injected") ? "aside" : "?")).toEqual(["group", "aside"]);
     expect(kids[0].querySelectorAll(".card-tool-group-body > *").length).toBe(2);
-    expect([kids[1].getAttribute("data-uuid"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
+    expect([kids[1].getAttribute("data-id"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
   });
 
   it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类（前后的工具照样并成一组）", () => {

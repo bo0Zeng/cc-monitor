@@ -102,11 +102,11 @@ fn not_knowing_whether_it_arrived_is_kept_too_but_a_refusal_is_not() {
     let (out, _, kept) = run(
         &doc,
         args("A1"),
-        json!({"result": "refused", "why": "screen-changed", "said": "x", "screen": "def"}),
+        json!({"result": "refused", "why": "screen_changed", "said": "x", "screen": "def"}),
     );
     let out = out.unwrap();
     assert_eq!(out["result"], "refused");
-    assert_eq!(out["why"], "screen-changed");
+    assert_eq!(out["why"], "screen_changed");
     assert_eq!(out["screen"], "def");
     assert!(kept.is_empty());
 }

@@ -28,7 +28,6 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
   c.tool("Edit", { file_path: `${CWD}/src/b.py`, old_string: "def load_config():\n    return {}\n", new_string: "from .config import load_config\n" }, "The file has been updated.", { card: "diff" });
   c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "41 passed in 1.20s", { card: "command" });
   c.say("整理好了：三处读配置并到 `src/config.py`，测试 41 个全过。", 40_000, "end_turn");
-  c.turnDuration(150_000);
 
   // 第二轮：派两个 agent · 交回 · 后台任务通知 · 系统注入 · 结论
   c.user("再让两个 agent 分别查一下文档和示例里有没有旧写法。");
@@ -46,7 +45,7 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
   // 压缩
   c.from({ kind: "slashCommand", name: "/compact", args: "" });
   c.from({ kind: "compactSummary" });
-  (c.records[c.records.length - 1] as { userText: { text: string } }).userText.text = "## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改";
+  (c.records[c.records.length - 1] as { who: { text: string } }).who.text = "## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改";
 
   // 第三轮：重试 · 中途你按了 Esc 并插话 · 再做 · 结论
   c.user("给 load_config 加缓存。");
@@ -107,7 +106,7 @@ function longWorld(n = 90): World {
  * 对一下；折着的过程不物化，剩下几块 0 高的占位。
  */
 async function measure(): Promise<void> {
-  await waitFor(".session-viewer [data-uuid]", 15_000);
+  await waitFor(".session-viewer [data-id]", 15_000);
   await sleep(1500);
   const scroller = document.querySelector<HTMLElement>(".session-viewer-stream")!;
   const est = scroller.scrollHeight;
@@ -124,7 +123,7 @@ async function measure(): Promise<void> {
   }
   await sleep(800);
   const real = scroller.scrollHeight;
-  const cards = document.querySelectorAll(".session-viewer .stream-content > [data-uuid]").length;
+  const cards = document.querySelectorAll(".session-viewer .stream-content > [data-id]").length;
   const left = document.querySelectorAll(".session-viewer .stream-skeleton-gap").length;
   const d = document.createElement("div");
   d.style.cssText = "position:fixed;top:0;left:0;z-index:99999;background:#000;color:#0f0;font:16px monospace;padding:6px";
@@ -209,7 +208,7 @@ export const FOLDALL_SCENES: Scene[] = [
     height: 3600,
     world: foldWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-uuid]", 15_000);
+      await waitFor(".session-viewer [data-id]", 15_000);
       await sleep(1500);
       const s = document.querySelector<HTMLElement>(".session-viewer .stream, .session-viewer [class*='stream']");
       s?.scrollTo(0, 0);

@@ -75,6 +75,7 @@ import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage } from "./terminal-page";
+import { onMachineState } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -166,7 +167,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
   status.appendChild(new StatusMessages().el);
-  // 「要你动手 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
+  // 「待办 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
   const chores = new StatusChores({
     machines: async () => {
       const got: unknown = await commands.backend_machines();
@@ -177,7 +178,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
-  // 「开始用 · 剩 N 步」（有才出，紧跟「要你动手」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
+  // 「开始用 · 剩 N 步」（有才出，紧跟「待办」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
   const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();
@@ -213,6 +214,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       el.focus({ preventScroll: true });
     },
   });
+  // 那台重连回来（壳推「已连上」）⇒ 终端页停在「那台断开」的实时自己重新订上。
+  onMachineState((origin, m) => {
+    if (m?.state === "up") terminalPage.machineUp(origin);
+  });
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
   document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);
@@ -239,7 +244,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 计划那一侧的「需手动」的账（会话头那一枚标 · 标签栏的数 · Ctrl J 都读它；计划页问到的交给它）。
   const planNeeds = new PlanNeedsBook();
 
-  // 会话头（主区顶上 40px）与「需要你」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
+  // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
       active: () => tabs.activeTab(),
       viewTerminal: () => mainDrawer.dock.show("terminal"),
@@ -282,7 +287,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
       queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
       empty.style.display = total > 0 ? "none" : "";
-      // 会话头 · 「需要你」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
+      // 会话头 · 「需手动」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
@@ -316,6 +321,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
     agentOf: (sid) => tabs.agentOf(sid),
+    openSession: (sid) => tabs.switchTo(sid),
+    canOpenSession: (sid) => tabs.snapshotSessions().some((x) => x.sessionId === sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
     openRules: (origin, rule) => void openSettingsWindow(undefined, dest.rulesOf(origin, rule)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
@@ -450,7 +457,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     else if (b.dataset.act === "attach") tabs.attachInTerminal(sid);
   });
   tabs.active.subscribe((a) => {
-    // 切了 tab ⇒ 会话头 · 「需要你」钉条 · 抽屉的终端页换成这一个。
+    // 切了 tab ⇒ 会话头 · 「需手动」钉条 · 抽屉的终端页换成这一个。
     sessionHead.render();
     terminalPage.sessionChanged();
     paintTerminalActs();
@@ -595,6 +602,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       .catch((e) => console.warn("toggle-fullscreen failed:", e));
   };
 
+  // 命令面板里分组那三条（作用于选中的 / 当前标签页）：新建分组 · 加入分组…（有组才列）· 移出分组（在组里才列）。
+  const groupCommands = (): Command[] => {
+    const g = tabs.groupCommandState();
+    if (g === null) return [];
+    const kw = copyText("main.cmd.groupKeywords");
+    const out: Command[] = [{ id: "group-new", group: "current", icon: "list", title: copyText("main.cmd.groupNew"), keywords: kw, run: () => tabs.foundGroupFromCommand() }];
+    if (g.groups > 0) out.push({ id: "group-join", group: "current", icon: "list", title: copyText("main.cmd.groupJoin"), keywords: kw, run: () => tabs.openGroupMenuFromCommand() });
+    if (g.grouped > 0) out.push({ id: "group-leave", group: "current", icon: "list", title: copyText("main.cmd.groupLeave"), keywords: kw, run: () => tabs.leaveGroupFromCommand() });
+    return out;
+  };
+
   // 命令面板（Ctrl+K）：打开那一刻现拼一份（分组 · 键位 · 可不可用由这里给，面板只排版）。
   const buildCommands = (): Command[] => {
     const chordHint = (id: Parameters<typeof dispatcher.effectiveChord>[0]): string | undefined => {
@@ -604,7 +622,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const cur = tabs.activeSessionId();
     const curOrigin = cur === null ? null : tabs.originOf(cur);
     const cmds: Command[] = [];
-    // 会话（空输入时只列在等你的那几行，在「需要你」一组）。
+    // 会话（空输入时只列在等你的那几行，在「需手动」一组）。
     cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0])));
     if (cur !== null && curOrigin !== null) {
       cmds.push(
@@ -619,6 +637,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
+        ...groupCommands(),
         { id: "proc-expand", group: "current", icon: "expand", title: copyText("main.cmd.procExpand"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
         { id: "acct-panel", group: "current", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) },
       );
@@ -765,6 +784,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.open-cc-bus", () => overlays.toggle("cc-bus"));
   dispatcher.bind("app.undo", () => void undoLatest());
   onSession("tab.context-menu", () => tabs.openActiveMenu());
+  // 标签页栏里（焦点在栏里）：挪一格 · 出组 · 与上一个成组 · 改分组名；F6 主区 ↔ 栏。
+  dispatcher.bind("tabBar.move-up", () => tabs.moveFocused(-1));
+  dispatcher.bind("tabBar.move-down", () => tabs.moveFocused(1));
+  dispatcher.bind("tabBar.leave-group", () => tabs.leaveFocused());
+  dispatcher.bind("tabBar.join-prev", () => tabs.joinPrevFocused());
+  dispatcher.bind("tabBar.rename-group", () => tabs.renameFocusedGroup());
+  dispatcher.bind("tabBar.focus-cycle", () => tabs.cycleFocus());
   onSession("session.to-bottom", () => tabs.toBottom());
   dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
   dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));
@@ -832,6 +858,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
+    onSessionBranch: (p) => tabs.onSessionBranch(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
     // 那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,
@@ -855,7 +882,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
     },
-    // 启动重放期间走批模式（惰性高亮 ＋ BranchFolder.batchMode），结束时 flush。
+    // 启动重放期间走批模式（惰性高亮），结束时 flush。
     // DEV 抖动探针跨在批窗口上（生产 probe 恒 null）。
     onBatchStart: () => {
       e2eProbe?.startReplayJitterProbe();
@@ -876,7 +903,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone),
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号

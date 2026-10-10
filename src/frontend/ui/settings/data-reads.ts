@@ -28,7 +28,7 @@ export interface ChangedFile {
   undo: UndoAt | null;
 }
 
-/** 「要你动手」一件的类（角标只数前三类）。 */
+/** 「待办」一件的类（角标只数前三类）。 */
 export type ChoreKind = "must" | "install" | "decide" | "installOptional" | "optional";
 /** 那台判出的态（「已复制」只住界面）。 */
 export type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -77,7 +77,7 @@ export interface DataReport {
   todo: Chore[];
   /** 这台有没有 tmux；查不动 ⇒ `null`。 */
   tmux: boolean | null;
-  /** 「要你动手」里进角标的件数（要做 ＋ 要装 ＋ 要你定，还没做完的）。 */
+  /** 「待办」里进角标的件数（要做 ＋ 要装 ＋ 待定，还没做完的）。 */
   chores: number;
   own: OwnItem[];
 }
@@ -135,7 +135,7 @@ function decodeChore(c: unknown): Chore {
   };
 }
 
-/** 记下「要你动手」里的一个选择（那台后端写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
+/** 记下「待办」里的一个选择（那台后端写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
 export async function markChore(origin: Origin, args: { op: "decline" | "undecline"; id: string } | { op: "selfPaste"; rc: string } | { op: "unselfPaste" } | { op: "skipStart" | "unskipStart" }): Promise<void> {
   const target = isLocalOrigin(origin) ? LOCAL_ORIGIN : origin;
   try {

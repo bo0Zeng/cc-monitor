@@ -23,6 +23,14 @@ ruleName?: string,
  */
 explain: string, 
 /**
+ * 会话血缘里它的父（不管来源是不是跟随它；界面据此决定来源下拉里列不列「跟随父会话」）；没有 ⇒ 缺。
+ */
+parent?: string, 
+/**
+ * 来源是跟随父会话、却追不到父那一条（父没经过中转 · 已清掉 · 绕回来）⇒ `true`，此刻按跟随默认；否则缺。
+ */
+parentMissing?: boolean, 
+/**
  * 这个会话自己那一份（换成别的来源时也留着）。
  */
 custom?: Rotation, account: AccountCell, 

@@ -60,6 +60,8 @@ export interface OwnItem {
 export interface Problem {
   line: number | null;
   message: string;
+  /** 复制详情（有下层原话时才有：TOML 解析器那一句）；没有 ⇒ `null`。 */
+  detail: string | null;
 }
 export interface ProfileRow {
   name: string;
@@ -191,8 +193,8 @@ function decodeForm(v: unknown): ProfileForm {
 
 function decodeProblem(v: unknown): Problem | null {
   if (v === null) return null;
-  if (!isObj(v) || !exactKeys(v, ["line", "message"]) || !optNum(v.line) || typeof v.message !== "string") throw bad();
-  return { line: v.line, message: v.message };
+  if (!isObj(v) || !exactKeys(v, ["line", "message", "detail"]) || !optNum(v.line) || typeof v.message !== "string" || !(v.detail === null || typeof v.detail === "string")) throw bad();
+  return { line: v.line, message: v.message, detail: v.detail };
 }
 
 function decodeShape(v: unknown): { account: string; tmux: boolean } | null {

@@ -533,7 +533,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "这台后端自己的 skills 根下那两个脚本的路径",
     ),
-    // 「要你动手」旧 ccm 那一件：复制给人自己跑的 `rm <路径>`，路径是这台 PATH 上找到的那个文件（这台自己的路径，不进任何会跑的串）。
+    // 「待办」旧 ccm 那一件：复制给人自己跑的 `rm <路径>`，路径是这台 PATH 上找到的那个文件（这台自己的路径，不进任何会跑的串）。
     (
         "src/backend/footprint/chores/mod.rs",
         &["chores"],

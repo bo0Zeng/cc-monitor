@@ -90,26 +90,13 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
         .map(|i| (i % 249) as u8)
         .collect();
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let h = crate::find::testing::start_host(
+    let line = crate::find::testing::wire(
         std::sync::Arc::new(Two {
             log: log.clone(),
             body: body.clone(),
         }),
-        crate::find::testing::test_key(),
         4 << 20,
-        std::time::Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    let line = comms_inward::chan::dial::dial(
-        &h,
-        comms_inward::chan::wire::Budget {
-            until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: comms_inward::chan::wire::CancelToken::new(),
-        },
-    )
-    .await
-    .expect("拨得通");
+    );
     let board = crate::download::DownloadBoard::default();
     let local = crate::source::wire_bytes(b"/tmp/dl/f\xfe");
     pull_by_bytes(

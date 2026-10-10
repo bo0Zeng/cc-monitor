@@ -34,7 +34,11 @@ pub(crate) mod assets;
 pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
 pub(crate) mod cards;
+// 记录链（`uuid` / `parentUuid`）⇒ 通用层算主线外清单要的事实。
+pub(crate) mod chain;
+// 盘上一行 ⇒ 通用记录（翻译表只住这里）。
 pub(crate) mod drift;
+pub(crate) mod record_of;
 // 「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
 pub(crate) mod liveness;
@@ -131,6 +135,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
@@ -165,13 +170,14 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     tasks_dir: Some(paths::tasks_root),
     background_of: pidfile::background_of,
     activity_of: pidfile::activity_of,
+    wait_of: pidfile::wait_of,
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
-    parse: parse::parsed_line,
+    parse: parse::translated,
     sid: records::session_id_of,
     is_session_file: records::is_session_file,
     tree: Some(super::RecordTree {
@@ -179,6 +185,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         file_name: records::session_file_name,
     }),
     turn_end: Some(turn::turn_end_uuid_of),
+    chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
     drift: Some(drift::report),

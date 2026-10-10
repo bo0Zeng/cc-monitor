@@ -10,7 +10,7 @@
 
 @layer components {
 /* === Tab Bar === */
-/* 栏顶一排（36 高）· 「需要你 N」· 机器离线条 · 列表（滚动的只是它）。
+/* 栏顶一排（36 高）· 「需手动 N」· 机器离线条 · 列表（滚动的只是它）。
    一行 30 高、左 2px 条（当前 = `--accent`）、状态点固定一列、标题一行省略、行尾徽标靠右；
    行尾动作悬停 / 焦点时盖在行尾（同色底 ＋ 渐隐），标题不挪位。 */
 
@@ -79,8 +79,7 @@
 }
 
 .tab-bar-icon:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--focus-ring));
 }
 
 .tab-bar-icon:disabled {
@@ -93,7 +92,7 @@
   color: var(--text);
 }
 
-/* 「需要你 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标。 */
+/* 「需手动 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标。 */
 .tab-needs {
   flex: none;
   display: flex;
@@ -196,8 +195,7 @@
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--focus-ring));
 }
 
 .tab.active {
@@ -604,9 +602,10 @@
 
 /* === Tab 撕离拖拽（tear-off） === */
 
-/* 拖拽中的源 Tab 变暗，提示"正在被拖出"。 */
-.tab.dragging {
-  opacity: 0.4;
+/* 拖拽中的源行（拖整组 ⇒ 整个组）变暗到 35%。 */
+.tab.dragging,
+.tab-group.dragging {
+  opacity: 0.35;
 }
 
 /* 跟随光标的浮动 ghost：小号悬浮 Tab 芯片。position/left/top 由 JS 写内联。 */
@@ -615,6 +614,9 @@
   left: 0;
   top: 0;
   z-index: var(--z-drag);
+  display: flex;
+  align-items: center;
+  gap: 6px;
   pointer-events: none;
   max-width: 240px;
   overflow: hidden;
@@ -718,7 +720,7 @@
   contain-intrinsic-size: auto 120px;
 }
 
-/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-uuid,恒为首子)。
+/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-id,恒为首子)。
    contain-intrinsic-size 显式覆盖 120px 兜底(它匹配 .stream-content > *)。 */
 .stream-more-above {
   text-align: center;
@@ -1118,7 +1120,7 @@
 }
 
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
-/* 在等你（C7「需要你」卡）：左 3px 琥珀；答了之后左条去掉、底行写答了什么（§5.2.7）。 */
+/* 在等你（C7「需手动」卡）：左 3px 琥珀；答了之后左条去掉、底行写答了什么（§5.2.7）。 */
 .block-ask,
 .block-plan {
   border: 1px solid var(--border-medium);
@@ -2589,23 +2591,14 @@
 抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
    `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记同拍摘了（那张表今天是空的）。 */
 
-/* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
-   只搬不指示的话，「拖动排序」是一次盲操作 —— 松手前不知道会落在哪。 */
-.tab.drop-before {
-  box-shadow: inset 0 2px 0 0 var(--accent);
-}
-
-/* `onto` 落点：**与这个 tab 成组**。
-   🔴 **必须用 `outline` 而不是 `border`**（§D.5 逐字）：`border` 改盒模型 ⇒ 拖动时目标
-      tab 尺寸变化 ⇒ 连锁 reflow，而且会让 §D.4 那个基于矩形的停留判定**自己失效**
-      （矩形一变，指针就"移出"了，停留永远攒不满 250ms）。
-   ⚠ `transform: scale` 只 repaint 不 reflow，同理由。**不给它加 transition** ——
-      拖动里 250ms 的动画会让「满了没有」这件事看不清，而且 transition 属性白名单
-      （css-conventions ⑥）本来就不该为一个瞬时反馈开口子。 */
-.tab.drop-onto {
+/* 压住（建组 / 进组）或落在组头：目标那一行 2px 外框 ＋ 12% accent 底，右侧小标签（`tab-group.module.css` 的 `.pill`）。
+   用 `outline` 不用 `border`、不缩放：不改盒模型 ⇒ 不连锁 reflow，也不改到停留判定量的那块矩形；不加 transition（瞬时反馈）。 */
+.tab.drop-onto,
+.tab-group-head.drop-onto {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-  transform: scale(1.03);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* P7a-3（#61）：标签页集合。**纯手动**建、手动命名 —— 组头点一下改名、× 解散。
@@ -2613,52 +2606,135 @@
 .tab-group {
   display: flex;
   flex-direction: column;
+  margin: 4px 0 6px;
 }
 
-/* 分组头：「⌄ 名字 计数」（26 高、`--text-2` 小字）；悬停出「解散分组」。 */
+/* 组头：⌄ · 名字 · 组员数 · 收着时汇总（等你 · 在跑）· 悬停 / 焦点时右侧「⋯」。点 ⌄ 或空白处收起 / 展开，点名字改名。 */
 .tab-group-head {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-3);
   height: 26px;
-  margin-top: 6px;
   padding: 0 8px 0 6px;
   color: var(--text-2);
   font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.tab-group-head:hover {
+  background: var(--state-hover);
+}
+
+/* 键盘走行停在组头上（↑↓ · F6）：焦点环同标签页那一行（环本身照全局那一条，只收进行内）。 */
+.tab-group-head:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring));
+}
+
+/* 当前标签页在收着的组里：组头左边一道 accent（同当前行）。 */
+.tab-group-head.is-current {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tab-group-caret {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
 }
 
 .tab-group-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text);
   font: inherit;
+  font-weight: 600;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: text;
 }
 
-.tab-group-del {
-  visibility: hidden;
-  padding: 0 2px;
+.tab-group-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-group-sum {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+}
+
+.tab-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-group-chip[data-dot="needs-you"] {
+  color: var(--warn);
+}
+
+.tab-group-chip[data-dot="running"] {
+  color: var(--success);
+}
+
+/* 窄栏才出的那个点（最要紧的那个状态）。 */
+.tab-group-mini {
+  display: none;
+}
+
+.tab-group-sp {
+  flex: 1;
+}
+
+.tab-group-more {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   border: 0;
+  border-radius: var(--radius-s);
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
+  visibility: hidden;
 }
 
-.tab-group-head:hover .tab-group-del,
-.tab-group-head:focus-within .tab-group-del {
+.tab-group-head:hover .tab-group-more,
+.tab-group-head:focus-within .tab-group-more,
+.tab-group-more[aria-expanded="true"] {
   visibility: visible;
 }
 
+/* 组员：整体缩进 12px，左侧 1px 引导线 —— 组在哪结束一眼看得出（最后一个组与下面散的之间不再混）。 */
 .tab-group-list {
   display: flex;
   flex-direction: column;
+  margin-left: 12px;
+  border-left: 1px solid var(--border-medium);
+}
+
+.tab-group-list > .tab {
+  padding-left: 9px;
+}
+
+.tab-group.is-collapsed > .tab-group-list {
+  display: none;
 }
 
 /* 复活出来的固定 tab 的**空态**。
@@ -2690,7 +2766,7 @@
 
 /* 放在层的末尾：它要压过上面那几条同元素的规则（选择器更具体，后写）。 */
 /* 栏收起（窗宽 < 980 或手动收起，`tab-bar-fold.ts` 挂 `data-tab-bar`；规范 I8 偏离：每格 = 状态点 ＋ 项目名两个字母）：
-   栏收成 44px，栏顶竖排，「需要你」收成「● N」。 */
+   栏收成 44px，栏顶竖排，「需手动」收成「● N」。 */
 body[data-tab-bar="folded"]:not(.viewer-mode) #tab-bar {
   width: 44px;
 }
@@ -2738,10 +2814,26 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab {
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-abbr {
   display: block;
 }
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-list {
+  margin-left: 4px;
+}
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head {
-  height: 10px;
-  margin: 6px 8px 2px;
+  justify-content: center;
+  gap: 2px;
+  height: 22px;
   padding: 0;
-  border-top: 1px solid var(--border-soft);
+  font-size: var(--font-size-xs);
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-caret,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-count {
+  display: inline-grid;
+  width: auto;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group.is-collapsed .tab-group-mini {
+  display: inline-flex;
+  order: 1;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-count {
+  order: 2;
 }
 }

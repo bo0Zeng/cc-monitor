@@ -398,6 +398,8 @@ struct OwnItem {
 struct ProblemOut {
     line: Option<usize>,
     message: String,
+    /// 复制详情（有下层原话时才有：TOML 解析器那一句）；没有 ⇒ `null`。
+    detail: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -429,6 +431,7 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
             .and_then(|x| x.line)
             .or_else(|| chain_problem_line(book, &p.name)),
         message: e.clone(),
+        detail: None,
     });
     let mut own: Vec<OwnItem> = p
         .items
@@ -570,6 +573,10 @@ pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>) -> Answ
         .map(|p| ProblemOut {
             line: p.line,
             message: p.message.clone(),
+            detail: p
+                .raw
+                .as_deref()
+                .map(|r| crate::stream::detail::of(Some("profiles-read"), "syntax", Some(r))),
         });
     let seed: Vec<ProfileOut> = if store.text.is_none() {
         let text = profile::apply_changes(Some(""), &seed_changes()).map_err(refused)?;

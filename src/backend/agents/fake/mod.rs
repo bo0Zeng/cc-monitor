@@ -122,6 +122,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
@@ -334,11 +335,12 @@ fn records_face(
     file_name: fn(&str) -> String,
 ) -> crate::agents::RecordFace {
     crate::agents::RecordFace {
-        parse: |_| Ok(None),
+        parse: |_, _| Ok(None),
         sid: session_id_of,
         is_session_file,
         tree: Some(crate::agents::RecordTree { root, file_name }),
         turn_end: None,
+        chain: Some(chain_fact),
         find_session: None,
         branch: None,
         drift: None,
@@ -350,6 +352,32 @@ fn records_face(
         children: None,
         project_dir: None,
     }
+}
+
+/// 链事实（与 Claude 每一格都不同名）：`{"node", "up", "when", "role": human | bot | note, "cut": bool, "words"}`；
+/// 排队那句是 `{"queued": "…"}`。只有 `human` / `bot` 进界面。
+pub(crate) fn chain_fact(raw: &str) -> Option<crate::agents::mainline::ChainFact> {
+    use crate::agents::mainline::{ChainFact, Link};
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let s = |k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    if let Some(q) = s("queued") {
+        return Some(ChainFact::Queued(q));
+    }
+    let role = s("role")?;
+    Some(ChainFact::Node(Link {
+        id: s("node")?,
+        parent: s("up"),
+        at: s("when")?,
+        said: role == "human",
+        reply: role == "bot",
+        interrupt: v.get("cut").and_then(serde_json::Value::as_bool) == Some(true),
+        text: (role == "human").then(|| s("words").unwrap_or_default()),
+        shown: role != "note",
+    }))
 }
 
 /// `sess-<sid>.ndjson` ⇒ sid。
@@ -379,6 +407,7 @@ fn local_face(
         tasks_dir: Some(|h| h.join("todo")),
         background_of: |v| v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
         activity_of: |_| None,
+        wait_of: |_| None,
     }
 }
 
@@ -390,7 +419,6 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         user_mcp_key: "servers",
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
-        watched: &[],
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",

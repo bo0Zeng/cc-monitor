@@ -1,9 +1,9 @@
 /**
- * Claude 完成一轮的系统通知：实时到达（非批量重放）的 assistant 行带 `stop_reason=="end_turn"` → 窗口在后台时发系统通知把用户叫回来。
+ * 代理完成一轮的系统通知：实时到达（非批量重放）的回复记录带 `endsTurn`（判定只在后端，与帧 `turn_end` 同一个）→ 窗口在后台时发系统通知把用户叫回来。
  *
  * 误报防线（顺序即短路序，前五道全同步、零热路径成本）：
  * 1. inBatch 跳过——启动重放 / SSH 重连 chunked 重放 / 历史灌入全走批量路径；
- * 2. 非 assistant / 非 end_turn 跳过；
+ * 2. 不是回复 / 不是一轮结束跳过；
  * 3. 时间戳新鲜度（|now−ts| ≤ 90s）——批外漏网的旧行（如乱序补发）兜底；
  * 4. per-会话防抖 10s；
  * 5. 窗口聚焦跳过（用户正看着，不打扰）；
@@ -16,21 +16,12 @@ import { commands } from "./ipc/commands";
 import { copyText } from "./copy-table";
 
 /**
- * onLine payload 的最小形状（`tabs.ts` 的 `LinePayload` 超集兼容）。
- *
- * `| null`：`timestamp` 在 `cc-monitor-unrecognized` 上是 `Option<String>`、没有 `skip_serializing_if` ⇒ 线上是显式 null。
- * 不直接用生成的 `JsonlLinePayload`：这里只要「够不够判一轮结束」那几个字段（最小契约，依赖注入全量替换才可测）。
- * 子运行的记录不走主会话的行（它们进运行表），
- * 这里见到的全是主运行的记录。
+ * onLine payload 的最小形状（生成的 `JsonlLinePayload` 结构兼容）。
+ * 不直接用生成的那个：这里只要「够不够判一轮结束」那几格（最小契约，依赖注入全量替换才可测）。
+ * 子运行的记录不走主会话的行（它们进运行表），这里见到的全是主运行的记录。
  */
 export interface TurnNotifyPayload {
-  message?: {
-    type?: string;
-    timestamp?: string | null;
-    /** API 错误消息（`isApiErrorMessage`）：带 end_turn 也不算一轮结束；与后端 `observe/turn_detect.rs` 同一条（跨语言对拍只看 `observe()` 实现区）。 */
-    isApiErrorMessage?: boolean;
-    message?: { stop_reason?: string | null };
-  };
+  record?: { t?: string; at?: string; endsTurn?: boolean };
 }
 
 export interface TurnNotifyDeps {
@@ -74,13 +65,10 @@ export class TurnEndNotifier {
   /** tabs.onLine 每行调用；内部自筛，非 turn-end 的行零开销返回。 */
   observe(sid: string, tabTitle: string, payload: TurnNotifyPayload, inBatch: boolean): void {
     if (this.disabled || inBatch) return;
-    const rec = payload?.message;
-    if (!rec || rec.type !== "assistant") return;
-    // API 错误带 end_turn 时不是一轮真的结束。与后端 `turn_detect.rs` 的合取项由 `turn-notify.vitest.ts` 跨语言逐条对拍。
-    if (rec.isApiErrorMessage) return;
-    if (rec.message?.stop_reason !== "end_turn") return;
+    const rec = payload?.record;
+    if (!rec || rec.t !== "reply" || rec.endsTurn !== true) return;
     const now = this.deps.now();
-    const ts = rec.timestamp ? Date.parse(rec.timestamp) : NaN;
+    const ts = rec.at ? Date.parse(rec.at) : NaN;
     if (!Number.isFinite(ts) || Math.abs(now - ts) > FRESH_MS) return;
     const last = this.lastNotify.get(sid) ?? 0;
     if (now - last < DEBOUNCE_MS) return;
@@ -102,7 +90,7 @@ export class TurnEndNotifier {
 
 // --- 默认 send：壳的 `notify_desktop`（平台那一半在 `platform/notify.rs`：Linux 上连接留到通知关掉，GNOME 才不当场收走）---
 
-/** 发一条系统通知（「需要你」那条也走这里）。 */
+/** 发一条系统通知（「需手动」那条也走这里）。 */
 export async function notifySend(title: string, body: string): Promise<void> {
   await commands.notify_desktop({ title, body });
 }

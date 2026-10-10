@@ -684,7 +684,7 @@ fn judge_refuses_at_the_key_the_line_and_the_promise_and_nowhere_else() {
     assert_eq!(judge(Route::Remote, linux.clone()), linux);
     assert!(matches!(
         judge(Route::Remote, key_of("", "")),
-        Err(Refusal::OsUnknown { .. })
+        Err(Refusal::OsUnknown(_))
     ));
     assert!(matches!(
         judge(Route::Remote, key_of("Darwin", "arm64")),

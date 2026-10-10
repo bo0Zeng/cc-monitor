@@ -13,6 +13,8 @@ members = [
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
+    # 本人通道（Unix 套接字 ＋ 对端 uid）：后端 · monitor 同一份，不发钥匙。
+    "../../common/own-chan",
     "../../common/shell-quote-core",
     "../../common/copy-core",
     # `agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
@@ -37,7 +39,7 @@ members = [
 
 [package]
 name = "monitor"
-version = "4.1.5"
+version = "4.1.6"
 description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
@@ -157,6 +159,8 @@ creds-core = { path = "../../common/creds-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
+# 本人通道：连本机常驻后端（Unix 套接字 ＋ 对端 uid，不发钥匙）；后端那一侧链同一份。
+own-chan = { path = "../../common/own-chan" }
 # 部署那一族的契约（契约类）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
 deploy-contract = { path = "../../common/deploy-contract" }
 # 通信层面 A（crate 住 `src/comms/inward/`；壳里 `chan/` 再导出，模块路径不变）。
@@ -220,6 +224,9 @@ acct-core = { path = "../../common/acct-core" }
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
+# 暂停时钟（`#[tokio::test(start_paused = true)]`）：拿「截止时刻」说事的测试用虚拟时钟，机器负载多高读数都一样。
+# 只在 dev 侧开 —— resolver 2 下 dev 依赖的特性不并进产品构建，发布二进制里的 tokio 照旧是上面那份 `full`。
+tokio = { version = "1", features = ["test-util"] }
 
 # 系统通知（`platform/notify.rs`）：Linux 上经会话总线直说通知协议，全进程一条长连接（插件那一份每条新开、发完就丢，GNOME 会当场收走）。
 # 已在依赖图里（notification 插件底下的 notify-rust 就用它），这里只是在 Linux 上直接用。

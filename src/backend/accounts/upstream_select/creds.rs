@@ -126,7 +126,7 @@ pub(crate) fn announce(
             let _ = writeln!(out, "[apikey] how to fix: {fix}");
             n += 2;
         }
-        Verdict::Undetermined { why } => {
+        Verdict::Undetermined { why, .. } => {
             let _ = writeln!(out, "[apikey] credentials permissions unknown: {why}");
             n += 1;
         }

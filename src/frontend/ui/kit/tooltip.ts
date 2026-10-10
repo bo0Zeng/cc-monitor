@@ -52,6 +52,32 @@ export function hideTooltips(): void {
   }
 }
 
+/** 此刻压着悬停提示的那几层（右键菜单 / 下拉开着）：它们开着时，只有宿主在这些层里面的提示才出（菜单里那几项的说明照常）。 */
+const holders = new Set<HTMLElement>();
+
+/**
+ * 一层浮层（菜单）开着期间压住悬停提示：已出的收掉；等着出的、指针再动想出的，都不出 —— 悬停卡不许压在菜单上。
+ * 宿主在 `layer` 里面的照常出。回收手（浮层关掉时调一次）。
+ */
+export function holdTooltips(layer: HTMLElement): () => void {
+  holders.add(layer);
+  hideTooltips();
+  return () => void holders.delete(layer);
+}
+
+/** 宿主此刻能不能出提示：没有浮层压着 · 或宿主就在压着的那一层里。 */
+function mayShow(host: HTMLElement): boolean {
+  if (holders.size === 0) return true;
+  for (const layer of holders) if (layer.isConnected && layer.contains(host)) return true;
+  for (const layer of [...holders]) if (!layer.isConnected) holders.delete(layer);
+  return holders.size === 0;
+}
+
+/** 收起挂在 `host` 上、此刻显示着的那一条（宿主的说明变了 / 不再适用时：按钮从禁用恢复可点）。 */
+export function hideTooltipOf(host: HTMLElement): void {
+  for (const [tip, owner] of [...live]) if (owner === host) hiders.get(tip)?.();
+}
+
 export interface TooltipOpts {
   /** 不等 500ms（信息图标那种点名要看的）。 */
   immediate?: boolean;
@@ -105,7 +131,7 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
       if (!other.isConnected) hiders.delete(other);
       else if (other !== tip) h();
     }
-    if (!host?.isConnected) return;
+    if (!host?.isConnected || !mayShow(host)) return;
     const t = content(host);
     if (t === "" || t === null) return hide();
     tip ??= document.createElement("div");
@@ -138,7 +164,9 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     const same = h === host;
     host = h;
     if (same && shown()) return;
-    const inGroup = Date.now() - lastHiddenAt < GROUP_GRACE_MS || [...hiders.keys()].some((t) => t.isConnected);
+    // 钟往回拨了（系统改时间）那一下不算「刚收过」。
+    const since = Date.now() - lastHiddenAt;
+    const inGroup = (since >= 0 && since < GROUP_GRACE_MS) || [...hiders.keys()].some((t) => t.isConnected);
     if (opts.immediate || inGroup) return show();
     // 调度：一次性 —— 悬停 500ms 才出提示，离开即清
     timer = setTimeout(show, TOOLTIP_DELAY_MS);
@@ -196,25 +224,17 @@ export function delegateTooltip(root: HTMLElement, selector: string, content: (e
 
 /**
  * 全产品的 `title` 属性改走本模块的悬停提示：系统自己画的那种提示（WebKitGTK 黑底白字 · WebView2 各版本各样）不跟主题、
- * 不按 500ms 节奏、也不摆在宿主上方。指针 / 焦点进一个带 `title` 的元素那一刻，把它挪进 `data-kit-title`（系统提示就不出了），
- * 再按这里的节奏出提示；代码之后又写了 `title` ⇒ 下一次进来再挪。三个窗口的入口各装一次（`entry-common.ts`）。
+ * 不按 500ms 节奏、也不摆在宿主上方。带 `title` 的元素一挂上（或代码改了它的 `title`）就把它挪进 `data-kit-title`（系统提示就不出了），
+ * 再按这里的节奏出提示；指针 / 焦点进来那一刻再兜一次。三个窗口的入口各装一次（`entry-common.ts`）。
+ * 读屏（按 accname 判，{@link adoptTitle}）：已有可访问名的不覆盖，那句挂成说明（`aria-description`），与名字相同就不挂；
+ * 只有 title 能当名字的（图标按钮 · 可聚焦的一行）才把它写成 `aria-label`。不等悬停：读屏不悬停。
  */
 export function adoptNativeTitles(doc: Document = document): void {
   const hostOf = (t: EventTarget | null): HTMLElement | null => {
     if (!(t instanceof Element) || typeof t.closest !== "function") return null;
     return t.closest<HTMLElement>("[title], [data-kit-title]");
   };
-  const take = (el: HTMLElement): void => {
-    const t = el.getAttribute("title");
-    if (t === null) return;
-    if (t === "") delete el.dataset.kitTitle;
-    else {
-      el.dataset.kitTitle = t;
-      // title 也是读屏的名字（图标按钮多半只靠它）：名字不来自别处的，挪走之前写进 aria-label。
-      if (!nameFromElsewhere(el)) el.setAttribute("aria-label", t);
-    }
-    el.removeAttribute("title");
-  };
+  const take = adoptTitle;
   const c = controller((h) => {
     const t = h.dataset.kitTitle ?? null;
     return t !== null && shownInFull(h, t) ? null : t;
@@ -229,6 +249,23 @@ export function adoptNativeTitles(doc: Document = document): void {
     const from = hostOf(e.target);
     if (from && from !== hostOf(e.relatedTarget ?? null)) c.leave();
   };
+  // 一挂上 / 代码改了 title 就接管（读屏不悬停）；指针 / 焦点进来那一下是兜底。
+  for (const el of doc.querySelectorAll<HTMLElement>("[title]")) adoptTitle(el);
+  if (typeof MutationObserver === "function" && doc.documentElement) {
+    new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === "attributes") {
+          if (r.target instanceof HTMLElement) adoptTitle(r.target);
+          continue;
+        }
+        for (const n of r.addedNodes) {
+          if (!(n instanceof HTMLElement)) continue;
+          if (n.hasAttribute("title")) adoptTitle(n);
+          for (const el of n.querySelectorAll<HTMLElement>("[title]")) adoptTitle(el);
+        }
+      }
+    }).observe(doc.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["title"] });
+  }
   doc.addEventListener("mouseover", enter, true);
   doc.addEventListener("focusin", enter, true);
   doc.addEventListener("mouseout", out, true);
@@ -239,6 +276,67 @@ export function adoptNativeTitles(doc: Document = document): void {
   doc.addEventListener("keydown", (e) => {
     if (e.key === "Escape") c.hide();
   }, true);
+}
+
+/**
+ * 接管一个元素的 `title`（挪进 `data-kit-title`），读屏那一面按 accname 摆：
+ * - 名字来自别处（labelledby · aria-label · 名字来自内容的角色带着字 · 表单控件的 label）⇒ 名字不动；那句与名字不同才挂成说明。
+ * - 名字只能来自 title：可聚焦的、或没有字的 ⇒ 写成 `aria-label`（不另挂说明）；不可聚焦、自己有字的（头上那枚标签）⇒ 字照读、那句挂成说明。
+ * 自己写上的 `aria-label` / `aria-description` 记了号，再接管或 title 被撤掉（`data-kit-title` 也没了）时先撤掉。
+ */
+export function adoptTitle(el: HTMLElement): void {
+  const t = el.getAttribute("title");
+  if (t === null) {
+    if (el.dataset.kitTitle === undefined) dropAdopted(el);
+    return;
+  }
+  dropAdopted(el);
+  el.removeAttribute("title");
+  if (t.trim() === "") {
+    delete el.dataset.kitTitle;
+    return;
+  }
+  el.dataset.kitTitle = t;
+  const name = nameNotFromTitle(el);
+  const text = norm(el.textContent ?? "");
+  if (name !== "") {
+    if (norm(t) !== name) setOwn(el, "aria-description", t);
+  } else if (focusable(el) || text === "") {
+    setOwn(el, "aria-label", t);
+  } else if (norm(t) !== text) {
+    setOwn(el, "aria-description", t);
+  }
+}
+
+/** 收起 `adoptTitle` 自己写上的那几格（宿主的 title 被代码撤掉 / 换了）。 */
+export function dropAdopted(el: HTMLElement): void {
+  for (const a of (el.dataset.kitAria ?? "").split(" ")) if (a) el.removeAttribute(a);
+  delete el.dataset.kitAria;
+}
+
+function setOwn(el: HTMLElement, attr: "aria-label" | "aria-description", v: string): void {
+  el.setAttribute(attr, v);
+  el.dataset.kitAria = [...new Set([...(el.dataset.kitAria ?? "").split(" ").filter(Boolean), attr])].join(" ");
+}
+
+const norm = (x: string): string => x.replace(/\s+/g, " ").trim();
+
+/** 可聚焦（读屏落焦点时要念名字）。 */
+function focusable(el: HTMLElement): boolean {
+  return el.matches("button, a[href], input, textarea, select, summary, [tabindex], [contenteditable=\"true\"]");
+}
+
+/** 不算 title 时的可访问名（accname 1.2 与 title 相关的那几步；名字来自内容取文字）。没有 ⇒ 空串。 */
+function nameNotFromTitle(el: HTMLElement): string {
+  const by = el.getAttribute("aria-labelledby")?.trim();
+  if (by) return norm(by.split(/\s+/).map((id) => el.ownerDocument.getElementById(id)?.textContent ?? "").join(" "));
+  const label = el.getAttribute("aria-label");
+  if (label?.trim() && !(el.dataset.kitAria ?? "").includes("aria-label")) return norm(label);
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+    return norm([...(el.labels ?? [])].map((l) => l.textContent ?? "").join(" "));
+  }
+  if (nameFromElsewhere(el)) return norm(el.textContent ?? "");
+  return "";
 }
 
 /** 名字来自内容的那几种（accname 1.2）：按钮 · 链接 · 菜单项 · 选项 · 标签页 · 格。 */

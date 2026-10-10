@@ -2,10 +2,10 @@
 //!
 //! - `changedFiles`：cc-monitor 写进**你的**文件的那几处（今天在、cc-monitor 装口放的、不在 `~/.cc-monitor/` 里），
 //!   每处说改了什么、撤回在哪一页（页 · 栏 · 锚点，界面照它跳）。
-//! - `todo`：「要你动手」各件（[`super::chores`]）；其中「要装」那一类来自 [`needs_install`]：你自己装、cc-monitor 只查的那几样里，
+//! - `todo`：「待办」各件（[`super::chores`]）；其中「要装」那一类来自 [`needs_install`]：你自己装、cc-monitor 只查的那几样里，
 //!   这台**确实缺**的（查不动的不算缺，不报；tmux 一律可选、不进这里）；`required` ＝ 缺了起不了会话。
 //! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`；与起新会话那一问同一个判法 `control::terminals::rows_here`）。
-//! - `chores`：「要你动手」里进角标的件数（要做 ＋ 要装 ＋ 要你定，还没做完的），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
+//! - `chores`：「待办」里进角标的件数（要做 ＋ 要装 ＋ 待定，还没做完的），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
 //!
 //! - `own`：cc-monitor 在这台自己家里（`~/.cc-monitor/`）放的每一样（[`own_rows`]）：在不在 · 文件多大 · 删了会丢还是能重建。
 //!
@@ -77,7 +77,7 @@ fn missing(r: &SurfaceRow) -> Option<Value> {
     }))
 }
 
-/// 足迹里这台确实缺的那几样（「要你动手」里「要装」那一类的事实）。
+/// 足迹里这台确实缺的那几样（「待办」里「要装」那一类的事实）。
 pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Value> {
     report.rows.iter().filter_map(missing).collect()
 }
@@ -103,7 +103,7 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
         .collect()
 }
 
-/// 整份足迹 ＋「要你动手」各件 ＋ 有没有 tmux ＋ 自己家里那几样 ⇒ 这一页的成品。
+/// 整份足迹 ＋「待办」各件 ＋ 有没有 tmux ＋ 自己家里那几样 ⇒ 这一页的成品。
 pub(crate) fn shape(
     report: &ConfigSurfaceReport,
     todo: Vec<Value>,

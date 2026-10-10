@@ -121,16 +121,18 @@ pub(crate) fn current(path: Option<&Path>) -> Review {
     }
 }
 
-type Err = (&'static str, String);
+type Err = crate::stream::inbound::spec::Fail;
 
 /// 读—改—写一次（跨进程锁里；读不懂的不覆盖）。
 fn edit_at(path: &Path, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
-    let dir = path.parent().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("review path has no parent"),
-    ))?;
+    let dir = path.parent().ok_or_else(|| {
+        Err::new(
+            "bad_args",
+            crate::common::contract::malformed("review path has no parent"),
+        )
+    })?;
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        (
+        Err::from((
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
@@ -138,25 +140,20 @@ fn edit_at(path: &Path, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
                     &[("dir", &dir.display().to_string())],
                 ),
                 e,
-            )
-            .said_logging_raw(),
-        )
+            ),
+        ))
     })?;
-    let _g = crate::platform::lock::hold(dir).map_err(|e| {
-        (
-            "io_failed",
-            crate::common::said::Said::from(e).said_logging_raw(),
-        )
-    })?;
+    let _g = crate::platform::lock::hold(dir)
+        .map_err(|e| Err::from(("io_failed", crate::common::said::Said::from(e))))?;
     let mut r = match read_at(path) {
         crate::common::own_state::Read::Absent => Review::default(),
         crate::common::own_state::Read::Present(r) => r,
         crate::common::own_state::Read::Unreadable(why) => {
-            return Err(("review_unreadable", why.said_logging_raw()))
+            return Err(Err::from(("review_unreadable", why)))
         }
     };
     f(&mut r);
-    crate::common::own_state::write_json(path, &r).map_err(|e| ("io_failed", e.said_logging_raw()))
+    crate::common::own_state::write_json(path, &r).map_err(|e| Err::from(("io_failed", e)))
 }
 
 /// 认可一条：那一片只留此刻还在的键（`live`）＋ 这一条。
@@ -215,7 +212,7 @@ pub(crate) fn returned_at(
 }
 
 fn path_or_err() -> Result<PathBuf, Err> {
-    review_path().ok_or(("io_failed", copy_text("bePlan.review.noHome", &[])))
+    review_path().ok_or_else(|| Err::new("io_failed", copy_text("bePlan.review.noHome", &[])))
 }
 
 /// `plan-ack` 的写口（**只从 `faces/plan_review_face.rs` 进**）。

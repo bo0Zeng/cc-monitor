@@ -119,7 +119,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let from = u64_arg(args, "from")?.unwrap_or(0);
             let (source, run) = history_query::run_source(home, parent, run, tool)?;
             let source_str = source.to_string_lossy().into_owned();
-            let (_, face) = record_face(home, &source_str)?;
+            let (target, face) = record_face(home, &source_str)?;
             let page = history_query::read_page(
                 home,
                 &source_str,
@@ -128,7 +128,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
-            let rows = crate::observe::record_page::run_rows(&face, &page.bytes);
+            let rows = crate::observe::record_page::run_rows(
+                &mut reader(&face, &target, from, false),
+                from,
+                &page.bytes,
+            );
             capped(json!({
                 "run": run,
                 "path": source_str,
@@ -222,13 +226,14 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             };
             accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
         }
-        // 按字节分页读，出**行摘要**（monitor 旁路快照那一页）：`{rows: [{end, hash, message?, cwd?}], next, eof}`，
+        // 按字节分页读，出**行摘要**（monitor 旁路快照那一页）：`{rows: [{end, hash, record?, cwd?}], next, eof}`，
         //   每个可计行一条（`observe/record_page.rs::rows_of`）。原先回 `text`、由 monitor 切行解析。
         "history-read" => {
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
-            let (_, face) = record_face(home, path)?;
+            let summary_only = summary_only(args);
+            let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
                 path,
@@ -238,7 +243,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 LINE_CAP_BYTES,
             )?;
             Ok(json!({
-                "rows": crate::observe::record_page::rows_of(&face, offset, &page.bytes),
+                "rows": crate::observe::record_page::rows_of(
+                    &mut reader(&face, &target, offset, summary_only),
+                    offset,
+                    &page.bytes,
+                ),
                 "next": page.next,
                 "eof": page.eof,
             }))
@@ -252,6 +261,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let until = u64_arg(args, "until")?;
             let seq = u64_arg(args, "seq")?.unwrap_or(0);
             let whole = args.get("whole").and_then(Value::as_bool).unwrap_or(false);
+            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
@@ -274,8 +284,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                     ),
                 ));
             }
-            let (lines, next_seq) =
-                crate::observe::record_page::record_lines_of_page(&face, &target, seq, &page.bytes);
+            let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
+                &mut reader(&face, &target, offset, summary_only),
+                &target,
+                seq,
+                offset,
+                &page.bytes,
+            );
             Ok(json!({
                 "lines": lines,
                 "next": page.next,
@@ -289,6 +304,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
+            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_lines(
                 home,
@@ -298,11 +314,15 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
+            let first = page.starts.first().copied().unwrap_or(0);
             let (lines, _) = crate::observe::record_page::record_lines(
-                &face,
+                &mut reader(&face, &target, first, summary_only),
                 &target,
                 page.from,
-                page.lines.iter().map(|l| l.as_bytes()),
+                page.lines
+                    .iter()
+                    .map(|l| l.as_bytes())
+                    .zip(page.starts.iter().copied()),
             );
             Ok(json!({
                 "from": page.from,
@@ -422,7 +442,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需要你）。
+        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
         //   `limits` = 设置里的上限表（模型名子串 → 上限），可缺；上限每次按它重判。
         //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
         //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
@@ -466,7 +486,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 facts.agent = history_query::facts_agent(home, path);
             }
             facts.writers = accounts_query::session_writers(home, sid);
-            // 需要你：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+            // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             facts.needs = facts_query::needs_of(
                 &facts.pending,
                 accounts_query::session_wait(home, sid).as_ref(),
@@ -484,6 +504,12 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 return Err(too_large(size));
             }
             Ok(v)
+        }
+        // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
+        "history-branch" => {
+            let path = str_arg(args, "path")?;
+            let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
+            capped(json!({ "off": map.off, "end": map.end }))
         }
         "history-tail" => {
             let path = str_arg(args, "path")?;
@@ -539,6 +565,17 @@ fn record_face(
         crate::common::contract::malformed("no adapter reads this record"),
     ))?;
     Ok((target, face))
+}
+
+/// 从 `offset` 起读那一份记录的读法：起点之前那一段一起喂进去配排队消息的打字时刻（`record_page::lead_of`）。
+fn reader<'a>(
+    face: &'a crate::agents::RecordFace,
+    target: &std::path::Path,
+    offset: u64,
+    summary_only: bool,
+) -> crate::observe::record_page::Reader<'a> {
+    let (lead_at, lead) = crate::observe::record_page::lead_of(target, offset);
+    crate::observe::record_page::Reader::new(face, lead_at, &lead, summary_only)
 }
 
 /// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
@@ -670,6 +707,31 @@ fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'sta
             crate::common::contract::malformed(&format!("{key} must be a string")),
         )),
     }
+}
+
+/// `summaryOnly`：客户端**显式只要折起那一行的成品** —— 读记录那三条（`history-read` · `history-page` ·
+/// `history-lines`）每条的 `record` 剥掉正文那几格（哪几格见 `observe/record_page.rs::fold_body`）。缺 / 不是 `true` ⇒ 默认 `false` ＝ 今天的行为，一切照旧。
+///
+/// # 为什么是**一次一问的入参**，不是 `ReaderState` 的一位
+///
+/// `watcher.rs` 的 `with_raw` / `with_pid` 住连接上，是因为它们管的是**推**出去的帧
+/// （`line` / `session_added` 没有「这一问」可以带标志，只有连接可带）。这三条是**拉**的
+/// 一问一答，`args` 本来就在手上 ⇒ 入参是它唯一自然的家；而且更有表达力：同一条连接
+/// 可以「列表问折起的、查看器问全文的」，连接级的一位做不到这件事。
+///
+/// # 「反向开关」这个不对称
+///
+/// `with_*` 那两位是「客户端显式**索要**一格」（加数据），这一位看着像「客户端显式**不要**一坨」（减数据）。
+/// 名字按**它给什么**起而不按它拿掉什么起（`summaryOnly`，不是 `withoutContent`），不对称就落回原处：
+/// 它是**选成品的形状**（折起那一形 ‖ 全文那一形），与 `with_*` 同样是 additive 的一位 ——
+/// 默认那一形一个字节都不动，老客户端不受影响。真正残留的不对称只有一处、且是性质决定的：
+/// 索要型拿到的是超集，选形型拿到的是**另一形**（要正文得再问一次全文那一形）。
+/// ⇒ 它只属于「知道自己在折」的客户端；**不许**变成默认，也不许由后端替谁猜。
+///
+/// 宽松收（不是 `true` 就当 `false`，不回 `bad_args`）：与同族的 `whole` / `titles` / `appExit` 同一个口径；
+/// 这一位上「收宽了」的后果是**多给了正文**（对但费流量），不是少给。
+fn summary_only(args: &Value) -> bool {
+    args.get("summaryOnly").and_then(Value::as_bool) == Some(true)
 }
 
 fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {

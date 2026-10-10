@@ -48,8 +48,8 @@ const ACK_DEADLINE: Duration = Duration::from_secs(45);
 /// 池里那条共享连接的一格、永不释放 —— 局部卡死升级成全局卡死。后端零定时器（`no_timer_guard`）⇒ 期限只能在
 /// 调用方这一侧执行；到点 ⇒ 读写报 `TimedOut` ⇒ 调用方返回、丢掉链路 ⇒ `link-close` ⇒ 后端收掉那个任务、格还回去。
 ///
-/// **默认有，豁免要点名**：[`open`] 开出来的每一条链路出生就带着它；本来就该长活的三形
-/// （后端长连接流 · 端口转发 · 部署文件面 —— 后者每一问自带期限）显式调 [`DialStream::lives_long`] 摘掉，
+/// **默认有，豁免要点名**：[`open`] 开出来的每一条链路出生就带着它；本来就该长活的几形
+/// （远端常驻后端那条长流 · 部署文件面 —— 后者每一问自带期限）显式调 [`DialStream::lives_long`] 摘掉，
 /// 那三处由 `dial_host_tests::only_the_three_long_lived_links_drop_the_deadline` 两向钉住。
 ///
 /// 值：今天各调用方外面套的最宽是「握手 45 s ＋ 读 30 s」、当时账号工具的部署整趟 45 s ⇒ 120 s 不收紧任何一条既有的；
@@ -344,30 +344,28 @@ impl tokio::io::AsyncWrite for DialStream {
 
 /// 开链路、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
 ///
-/// 失败回 `(那一句 ＋ 复制详情, 开通道被远端回拒的原因码)` —— 原因码只有 `tunnel` 那一形会有（[`tunnel`] 的调用方据它决定停不停）。
 /// 后端说没拨成 ⇒ 详情是它写的那一份（远端补「本机」一行，[`crate::detail::relayed`]）；读应答这一跳坏了 ⇒ 壳写、原话进详情。
 async fn open(
     cfg: &RemoteConfig,
     req: &serde_json::Value,
     want: &str,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
-) -> Result<(DialStream, Ack), (Said, Option<String>)> {
+) -> Result<(DialStream, Ack), Said> {
     // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
-    let client = local_channel().await.map_err(|e| (Said::from(e), None))?;
+    let client = local_channel().await.map_err(Said::from)?;
     // ★ F05 下半的那条埋点跟着拨号搬到这里：量的是「开链路 ＋（池里没有时）TCP ＋ 握手 ＋ 指纹校验 ＋ 鉴权 ＋ 开通道」。
     // 同一台远端已经有连接时，这个数只剩「开一条 channel」—— 复用的收益就在这一行里看得见。
     let t_handshake = std::time::Instant::now();
     let link = LinkStream::open(client, req.clone(), LINK_CALL_BUDGET)
         .await
-        .map_err(|e| (Said::from(e), None))?;
+        .map_err(Said::from)?;
     let mut r = BufReader::new(Bounded::new(link, Some((due, ONE_SHOT_DEADLINE))));
     let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage);
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
         Ok(Ok(ack)) => ack,
         Ok(Err(LinkError::Refused {
             why,
-            open_refused,
             reason,
             fingerprint,
             detail,
@@ -380,33 +378,30 @@ async fn open(
                 fingerprint.as_deref(),
                 &said,
             );
-            return Err((said, open_refused));
+            return Err(said);
         }
-        Ok(Err(e)) => return Err((link_said(e), None)),
+        Ok(Err(e)) => return Err(link_said(e)),
         // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
         Err(_) => {
-            return Err((
-                Said::from(copy_text(
-                    "rsDialHost.open.timeout",
-                    &[
-                        ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
-                        (
-                            "addr",
-                            // 原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
-                            &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
-                                .chain(
-                                    cfg.addresses
-                                        .iter()
-                                        .map(|a| a.trim().to_string())
-                                        .filter(|a| !a.is_empty()),
-                                )
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        ),
-                    ],
-                )),
-                None,
-            ));
+            return Err(Said::from(copy_text(
+                "rsDialHost.open.timeout",
+                &[
+                    ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
+                    (
+                        "addr",
+                        // 原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
+                        &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
+                            .chain(
+                                cfg.addresses
+                                    .iter()
+                                    .map(|a| a.trim().to_string())
+                                    .filter(|a| !a.is_empty()),
+                            )
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    ),
+                ],
+            )));
         }
     };
     // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
@@ -678,18 +673,12 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
     }
 }
 
-// `open_stream`〔散文墓碑〕（`use:"stream"` 的一条 exec 字节流）删了：唯一的问者 `stream_source` 那个一次性 exec 原语随公钥推送进本机后端一起走了。
-
-/// **一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
-/// direct-tcpip 到远端 `127.0.0.1:port`）。出生带一次性总时限；接成流之后由调用方摘（`remote_resident::attach`）。
-/// 失败回 `(说法, 开通道被远端回拒的原因码)`（`remote_resident::retry_tunnel` 据码分停 / 等）。
-pub(crate) async fn tunnel(
-    cfg: &RemoteConfig,
-    port: u16,
-) -> Result<DialStream, (Said, Option<String>)> {
-    let req = request(cfg, "tunnel", serde_json::json!({ "tunnel_port": port }))
-        .map_err(|e| (Said::from(e), None))?;
-    open(cfg, &req, "tunnel", &mut |_| {}).await.map(|(s, _)| s)
+/// **一条长 exec 字节流**（链路 `use:"stream"`：本机常驻后端在池里那条 SSH 连接上开一条 session 通道、exec `cmd`，
+/// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（`remote_resident::attach`：`ccm -- --resident-attach`）。
+/// 出生带一次性总时限；接成流之后由调用方摘。
+pub(crate) async fn stream(cfg: &RemoteConfig, cmd: &str) -> Result<DialStream, Said> {
+    let req = request(cfg, "stream", serde_json::json!({ "command": cmd }))?;
+    open(cfg, &req, "stream", &mut |_| {}).await.map(|(s, _)| s)
 }
 
 /// **收全一条 exec**：stdout / stderr / 退出码。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
@@ -707,9 +696,7 @@ pub(crate) async fn capture(
             "capture": { "max_bytes": max_bytes, "abort_marker": abort_marker },
         }),
     )?;
-    let (mut link, _) = open(cfg, &req, "capture", &mut |_| {})
-        .await
-        .map_err(|(e, _)| e)?;
+    let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}).await?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
     let got = ssh_link::captured(&mut link.r, cap)
@@ -760,9 +747,7 @@ impl RemoteFs {
     /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录（答得出 = 链路通了；值本身没人要）。
     pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, Said> {
         let req = request(cfg, "files", serde_json::json!({}))?;
-        let (link, _) = open(cfg, &req, "files", &mut |_| {})
-            .await
-            .map_err(|(e, _)| e)?;
+        let (link, _) = open(cfg, &req, "files", &mut |_| {}).await?;
         let fs = RemoteFs {
             // 长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
             link: tokio::sync::Mutex::new(link.lives_long()),

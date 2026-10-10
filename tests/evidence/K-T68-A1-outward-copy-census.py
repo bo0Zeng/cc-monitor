@@ -95,7 +95,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # ── 仓根 ────────────────────────────────────────────────────────────────────
-# `tests/evidence/x.py` ⇒ parents[2] 才是仓根（见 tests/evidence/README.md 那条）。
+# 本文件住 `tests/evidence/` ⇒ parents[2] 才是仓根（见 tests/evidence/README.md 那条）。
 REPO = Path(__file__).resolve().parents[2]
 
 SRC_ROOT = REPO / "src"
@@ -413,7 +413,7 @@ D2_WORDS = {"判据", "守卫", "尺子", "棘轮", "空真", "恒绿", "墓碑"
             "定框", "铸名", "死亡账"}
 D5_WORDS = {"死亡账", "尺子", "棘轮", "空真", "恒绿", "墓碑", "活体", "定框", "铸名"}
 # 病③ 建议式口吻（**代理判据，读成下界**）
-D3_RE = re.compile(r"建议|请先|请改|请重|请手动|请检查|请用|请在|需要你|你可以|可尝试|不妨|最好")
+D3_RE = re.compile(r"建议|请先|请改|请重|请手动|请检查|请用|请在|需手动|你可以|可尝试|不妨|最好")
 # 病④ AI 味形状（**代理判据**：三个信号各自数，再数同时命中）
 D4_DASH_RE = re.compile(r"——|--(?!>)|—")
 D4_PAREN_RE = re.compile(r"（[^）]{2,}）|\([^)]{4,}\)")

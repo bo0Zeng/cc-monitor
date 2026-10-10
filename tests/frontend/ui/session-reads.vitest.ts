@@ -51,15 +51,15 @@ beforeEach(() => invokeMock.mockReset());
 describe("〔C4b〕会话读面三问：按形状收", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的三份成品（逐字段）", () => {
     const idx = decodeIndex(golden["history-index"]);
-    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 376, 4]);
+    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 476, 4]);
     expect(idx.rows.map((r) => [r.o, r.n, r.u])).toEqual([
       [0, 86, "in-1"],
-      [86, 137, "out-1"],
-      [224, 75, "meta-1"],
-      [299, 77, "in-2"],
+      [86, 175, "out-1"],
+      [262, 115, "meta-1"],
+      [377, 99, "in-2"],
     ]);
     const ui = decodeUserInputs(golden["history-user-inputs"]);
-    expect([ui.from, ui.end]).toEqual([0, 376]);
+    expect([ui.from, ui.end]).toEqual([0, 476]);
     expect(ui.entries).toEqual([
       { uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
       { uuid: "in-2", excerpt: "delta", timestamp: "t2" },
@@ -107,7 +107,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-index"]));
     const idx = await readSessionIndex("<local>", "/p/s.jsonl", 7);
     expect(sent()).toEqual(["<local>", "history-index", { path: "/p/s.jsonl", offset: 7 }]);
-    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 376, 4]);
+    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 476, 4]);
 
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-user-inputs"]));
     const ui = await listUserInputs("devbox", "/p/s.jsonl", 42);
@@ -198,7 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 1241,
+      end: 1633,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -216,6 +216,18 @@ describe("〔STC〕第五问：会话事实", () => {
         { id: "rt-1", outcome: "recovered" },
         { id: "rt-2", outcome: "retrying" },
       ],
+      permissionMode: "acceptEdits",
+      tokens: {
+        input: 1,
+        output: 0,
+        cacheRead: 3,
+        cacheWrite5m: 2,
+        cacheWrite1h: 0,
+        requests: 1,
+        text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
+        last: { id: "", tokens: [1, 0, 3, 2, 0] },
+      },
+      cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
     });
   });
 
@@ -235,9 +247,10 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
-    // 需要你：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
-    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42 };
+    // 需手动：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
+    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), tone: "need" };
     expect(decodeFacts({ ...good, needs }).needs).toEqual(needs);
+    expect(() => decodeFacts({ ...good, needs: { ...needs, text: undefined } }), "缺写好的字").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, needs: { kind: "plan", tool: null, what: null } }), "缺 sinceMs").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null }] }), "缺 at").toThrow(ReplyUnreadable);
@@ -295,7 +308,7 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     const { decodePage, decodeLines, decodeRun } = await import("../../../src/frontend/ui/record-reads");
     const page = decodePage("<local>", recordGolden["history-page"]);
     expect([page.next, page.nextSeq, page.eof]).toEqual([273, 3, true]);
-    expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, (p.message as { uuid?: string }).uuid])).toEqual([
+    expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, p.record.id])).toEqual([
       [1, "r", "/w", "r-1"],
       [2, "r", null, "r-2"],
     ]);
@@ -310,6 +323,15 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     expect([run.run, run.rows.length, run.rows.map((r) => r.rid ?? null), run.more]).toEqual(["a1", 2, [null, "m-s2"], false]);
     // 反向：外层多一格 ⇒ 不收（两端契约对不上，不猜）。
     expect(() => decodePage("<local>", { ...(recordGolden["history-page"] as object), extra: 1 })).toThrow();
+  });
+
+  it("★★ 金样：主线外清单（history-branch）读得懂；清单里不是串 / 外层多一格 ⇒ 不收", async () => {
+    const { decodeBranch } = await import("../../../src/frontend/ui/record-reads");
+    // 金样那份会话两条都没有链（r-2 不接 r-1）⇒ 两个根、r-1 是不接任何回复的人那一句 ⇒ 后端判它回退掉了。
+    expect(decodeBranch(recordGolden["history-branch"])).toEqual({ off: ["r-1"], end: 273 });
+    expect(decodeBranch({ off: ["u2", "u3"], end: 9 })).toEqual({ off: ["u2", "u3"], end: 9 });
+    expect(() => decodeBranch({ off: [2], end: 9 })).toThrow();
+    expect(() => decodeBranch({ off: [], end: 9, extra: 1 })).toThrow();
   });
 });
 

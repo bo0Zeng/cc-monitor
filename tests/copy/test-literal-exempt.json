@@ -111,13 +111,11 @@
     "tests/frontend/ui/agent-window.vitest.ts": [
       { "text": "主会话", "use": "输入" }
     ],
-    "tests/frontend/ui/branching.test.ts": [
-      { "text": "其他", "use": "输入" }
-    ],
     "tests/frontend/ui/cc-bus-control.vitest.ts": [
       { "text": "被拒", "use": "用例名" }
     ],
     "tests/frontend/ui/config-persist-failure.vitest.ts": [
+      { "text": "分组", "use": "用例名" },
       { "text": "固定", "use": "用例名" },
       { "text": "快捷键", "use": "用例名" },
       { "text": "顺序", "use": "用例名" }

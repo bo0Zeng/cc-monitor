@@ -95,7 +95,7 @@ describe("别名与配置文件 · 账号与扩展", () => {
     expect(ops.sort()).toEqual(["accounts-mcp-read@devbox", "data-report@devbox", "ext-list@<local>"]);
   });
 
-  it("★ 页首指路条与页尾一句读那台 data-report：N 件要你动手 · 另 M 件可选［去「文件与数据」］· 改过你的 K 个文件［去看］；点了带上那台去那一栏", async () => {
+  it("★ 页首指路条与页尾一句读那台 data-report：N 件待办 · 另 M 件可选［去「文件与数据」］· 改过你的 K 个文件［去看］；点了带上那台去那一栏", async () => {
     data = { home: "/h", changedFiles: [{ path: "~/.bashrc", what: "w", undo: null }, { path: "~/.x", what: "w", undo: null }], todo: [chore("a", "must"), chore("b", "decide"), chore("c", "optional"), chore("d", "optional", "done")], tmux: true, chores: 2, own: [] };
     const el = page();
     const went: unknown[] = [];

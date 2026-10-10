@@ -175,6 +175,19 @@ fn a_toml_syntax_error_is_reported_at_its_line_and_blocks_every_profile() {
     assert_eq!(b.problems[0].line, Some(3));
 }
 
+/// 写错的那一句只说「格式错误」；TOML 解析器的原话不上句子，另带（进复制详情）。
+#[test]
+fn a_toml_syntax_error_keeps_the_parser_words_out_of_the_sentence() {
+    let b = parse_book("[cc]\naccount = \"b\"\n[cct\n");
+    let p = &b.problems[0];
+    assert_eq!(p.message, copy_text("beProfile.file.syntax", &[]));
+    let raw = p.raw.as_deref().expect("解析器原话另带");
+    assert!(
+        !raw.trim().is_empty() && !p.message.contains(raw.trim()),
+        "{p:?}"
+    );
+}
+
 #[test]
 fn a_broken_profile_does_not_block_an_unrelated_one() {
     let b = parse_book("[ok]\naccount = \"b\"\n[bad]\nbogus = 1\n[child]\nfrom = \"bad\"\n");

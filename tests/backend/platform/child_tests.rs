@@ -34,18 +34,12 @@ fn gone_within(pid: &str, tries: u32) -> Result<(), Option<char>> {
 #[test]
 fn own_envs_are_exactly_what_the_host_hands_the_backend_for_itself() {
     let got: std::collections::BTreeSet<&str> = OWN_ENVS.into_iter().collect();
-    let want: std::collections::BTreeSet<&str> = [
-        "CCM_LISTEN_PORT",
-        "CCM_LISTEN_TOKEN_FILE",
-        "CCM_BACKEND_STDERR_LOG",
-    ]
-    .into_iter()
-    .collect();
+    let want: std::collections::BTreeSet<&str> = ["CCM_RESIDENT", "CCM_BACKEND_STDERR_LOG"]
+        .into_iter()
+        .collect();
     assert_eq!(got, want);
     // 远端 `--resident-ensure` 交给常驻载体的那几格 == 这一份 ＋ 中转口（中转口要往下传给窗格里的 ccm）。
     let handed: std::collections::BTreeSet<String> = crate::control::resident::child_env(
-        1,
-        std::path::Path::new("/h/.cc-monitor/listen-token"),
         std::path::Path::new("/h"),
         &[
             (crate::stream::listen::RELAY_PORT_ENV, "8788".into()),
@@ -126,9 +120,9 @@ fn a_missing_program_is_not_found() {
 #[test]
 fn own_envs_never_reach_a_child_except_through_pass_own() {
     let c = Child::new("env")
-        .inherit_only(&["PATH", "CCM_LISTEN_PORT"])
+        .inherit_only(&["PATH", "CCM_RESIDENT"])
         .env("KEEP_ME", "1")
-        .pass_own("CCM_LISTEN_TOKEN_FILE", "/iso/token");
+        .pass_own("CCM_BACKEND_STDERR_LOG", "/iso/stderr.log");
     let cmd = c.command();
     let set: std::collections::BTreeMap<String, Option<String>> = cmd
         .get_envs()
@@ -140,7 +134,7 @@ fn own_envs_never_reach_a_child_except_through_pass_own() {
         })
         .collect();
     for k in OWN_ENVS {
-        let want = (k == "CCM_LISTEN_TOKEN_FILE").then(|| "/iso/token".to_string());
+        let want = (k == "CCM_BACKEND_STDERR_LOG").then(|| "/iso/stderr.log".to_string());
         assert_eq!(set.get(k).cloned().flatten(), want, "{k}：{set:?}");
     }
     assert_eq!(set.get("KEEP_ME"), Some(&Some("1".to_string())));
@@ -162,14 +156,14 @@ fn own_envs_never_reach_a_child_except_through_pass_own() {
 fn a_real_child_sees_only_the_own_env_passed_on_purpose() {
     let out = Child::new("env")
         .env("KEEP_ME", "1")
-        .pass_own("CCM_LISTEN_PORT", "7")
+        .pass_own("CCM_RESIDENT", "7")
         .run(Deadline::secs(10))
         .expect("起 env");
     let text = String::from_utf8_lossy(&out.stdout);
     let names: std::collections::BTreeMap<&str, &str> =
         text.lines().filter_map(|l| l.split_once('=')).collect();
     for k in OWN_ENVS {
-        if k == "CCM_LISTEN_PORT" {
+        if k == "CCM_RESIDENT" {
             assert_eq!(names.get(k), Some(&"7"), "{text}");
         } else {
             assert!(!names.contains_key(k), "子进程拿到了 {k}：{text}");
@@ -301,4 +295,96 @@ fn a_reused_thread_carries_no_budget_into_the_next_command() {
     })
     .join()
     .expect("线程");
+}
+
+/// 〔环境里没有后端内部变量，也没有会话号变量〕会话环境里混进来的后端内部变量（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server
+/// 全局环境里的监听口与钥匙文件 · 常驻开关 · 诊断文件）—— 起出来的每个子进程（agent 会话就在里面）一个都看不见；
+/// 真要往下传的那几格（中转口 · 家）照旧到得了。外层带着这些变量把本测试二进制当子进程起、跑内层（进程环境不能在多线程测试里改）。
+#[test]
+#[cfg(unix)]
+fn a_child_never_inherits_the_backend_internal_families() {
+    assert!(crate::platform::child_env::is_internal("CCM_LISTEN_PORT"));
+    assert!(crate::platform::child_env::is_internal("CCM_BACKEND_BIN"));
+    assert!(crate::platform::child_env::is_internal("CCM_RESIDENT"));
+    assert!(!crate::platform::child_env::is_internal("CCM_RELAY_PORT"));
+    assert!(!crate::platform::child_env::is_internal("CCM_DATA_DIR"));
+    let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
+        .args([
+            "platform::child::tests::internal_families_inner",
+            "--exact",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(INTERNAL_MARK, "1")
+        .env("CCM_LISTEN_PORT", "52917")
+        .env("CCM_LISTEN_TOKEN_FILE", "/h/.cc-monitor/listen-token")
+        .env(
+            "CCM_BACKEND_STDERR_LOG",
+            "/h/.cc-monitor/logs/backend/stderr.log",
+        )
+        .env("CCM_BACKEND_BIN", "/h/.cc-monitor/bin/ccm")
+        .env("CCM_RESIDENT", "1")
+        .env("CCM_RELAY_PORT", "8788")
+        .env("CCM_DATA_DIR", "/iso/home")
+        .envs(
+            crate::agents::self_sid_envs()
+                .into_iter()
+                .map(|k| (k, "parent-sid")),
+        )
+        .output()
+        .expect("起内层");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(text.contains(INTERNAL_READING), "内层没跑到：{text}");
+    assert!(out.status.success(), "内层红了：{text}");
+}
+
+const INTERNAL_MARK: &str = "CCM_CHILD_INTERNAL_INNER";
+const INTERNAL_READING: &str = "INTERNAL-FAMILIES-READ";
+
+#[test]
+#[cfg(unix)]
+#[ignore = "内层入口：只在被外层用 CCM_CHILD_INTERNAL_INNER 拉起时才做断言"]
+fn internal_families_inner() {
+    if std::env::var(INTERNAL_MARK).is_err() {
+        return;
+    }
+    // 与 `main.rs` 同一个入口：登记会话号变量。
+    crate::agents::install_child_env_filter();
+    let out = Child::new("env").run(Deadline::secs(10)).expect("起 env");
+    let text = String::from_utf8_lossy(&out.stdout);
+    let names: std::collections::BTreeMap<&str, &str> =
+        text.lines().filter_map(|l| l.split_once('=')).collect();
+    let leaked: Vec<&str> = names
+        .keys()
+        .copied()
+        .filter(|k| crate::platform::child_env::is_internal(k))
+        .collect();
+    assert_eq!(leaked, Vec::<&str>::new(), "后端内部变量漏给了子进程");
+    let sids = crate::agents::self_sid_envs();
+    assert!(
+        !sids.is_empty(),
+        "适配层一个「我是哪个会话」的变量都没登记 —— 下面那一格空转"
+    );
+    let leaked_sid: Vec<&str> = names.keys().copied().filter(|k| sids.contains(k)).collect();
+    assert_eq!(
+        leaked_sid,
+        Vec::<&str>::new(),
+        "会话号变量漏给了子进程（它起的会话会把那个会话错当成父）"
+    );
+    assert_eq!(
+        names.get("CCM_RELAY_PORT"),
+        Some(&"8788"),
+        "正控：中转口没到"
+    );
+    assert_eq!(
+        names.get("CCM_DATA_DIR"),
+        Some(&"/iso/home"),
+        "正控：家没到"
+    );
+    println!("{INTERNAL_READING}");
 }

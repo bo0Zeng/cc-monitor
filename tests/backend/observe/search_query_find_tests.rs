@@ -3,7 +3,7 @@
 //! 买到：命中集合两向（期望取自夹具的 uuid 命名 `hit-*` / `miss-*`，不取自判定函数）· 文件序 ·
 //! `--include-tools` 两态 · 上限只砍「列」不砍「数」· 与 `--search` 对同一份文件给出同一组命中与片段 ·
 //! argv 的写法与报错形 · 分派与路径守卫。
-//! **买不到**：命中之后前端跳不跳得到那张卡（工具结果并进工具组时找不到 `[data-uuid]`）—— 那在前端判。
+//! **买不到**：命中之后前端跳不跳得到那张卡（工具结果并进工具组时找不到 `[data-id]`）—— 那在前端判。
 //! 夹具是**合成的结构**，不含任何真会话正文。
 
 use super::*;
@@ -177,7 +177,7 @@ fn find_and_global_search_agree_on_the_same_file() {
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();
         // 会话那一格来自索引：整份读进一格 `FileEntry`。
-        let mut entry = FileEntry::empty(None, true);
+        let mut entry = FileEntry::empty(true);
         entry.take(None, &std::fs::read(&p).expect("读夹具"));
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
         // 两者刻意的差别只有一处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列。

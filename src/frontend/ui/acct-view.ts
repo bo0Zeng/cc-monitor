@@ -172,6 +172,8 @@ export function whyOf(h: SwitchRecord): { why: string; reset: string | null } {
         return { why: copyText("acct.hist.toOverage"), reset };
       case "preempt":
         return { why: copyText("acct.hist.preempt", { name: accountLabel(h.to) }), reset: null };
+      case "leaveFallback":
+        return { why: copyText("acct.hist.leaveFallback", { name: accountLabel(h.to) }), reset: null };
       default: {
         const left: never = w;
         return left;

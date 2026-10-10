@@ -17,8 +17,7 @@ import { icon, type IconName } from "./kit/icon";
 import { statusDot, setDot } from "./kit/status-dot";
 import { attachTooltip } from "./kit/tooltip";
 import { button } from "./kit/button";
-import { dotOf, fullTitle, machineOf, stateLine } from "./session-face";
-import { dotLabel } from "./session-words";
+import { dotOf, fullTitle, machineOf, stateLine, stateWord } from "./session-face";
 import s from "./session-head.module.css";
 
 export interface SessionHeadHost {
@@ -126,7 +125,7 @@ export class SessionHead {
     const sameSession = this.drawn?.split("\u0000")[0] === tab.sessionId;
     this.drawn = drawn;
     this.el.style.display = "";
-    setDot(this.dot, d, dotLabel(d));
+    setDot(this.dot, d, stateWord(tab));
     this.title.textContent = fullTitle(tab);
     this.where.textContent = machineOf(tab);
     this.dir.textContent = tab.projectDir ?? "";

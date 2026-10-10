@@ -27,6 +27,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::SessionRemoved { .. } => "session_removed",
         InboundFrame::SessionState { .. } => "session_state",
         InboundFrame::SessionRuns { .. } => "session_runs",
+        InboundFrame::SessionBranch { .. } => "session_branch",
         InboundFrame::Overflow { .. } => "overflow",
         InboundFrame::Reply { .. } => "reply",
         InboundFrame::Cancelled { .. } => "cancelled",

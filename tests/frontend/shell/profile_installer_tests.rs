@@ -281,7 +281,7 @@ fn the_user_path_status_wire_fields_match_the_hand_written_ts() {
         on_user_path: true,
         add_command: Some("a".into()),
         remove_command: Some("r".into()),
-        error: Some("e".into()),
+        error: Some(crate::detail::Said::from("e")),
     };
     let v = serde_json::to_value(&sample).expect("序列化");
     let keys: Vec<String> = v.as_object().expect("是个对象").keys().cloned().collect();

@@ -34,15 +34,10 @@ fn slice_of<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
         .find(|s| s.get("name").and_then(Value::as_str) == Some(name))
 }
 
-fn io(e: (&'static str, String)) -> Fail {
-    Fail::new(e.0, e.1)
-}
-
 /// 送一次（生产 ＝ `terminal-input` 的本体）。
 pub(crate) type Send<'a> = &'a dyn Fn(&Value) -> Result<Value, Fail>;
 /// 记一次退回（生产 ＝ [`crate::plan::review`] 的写口）。
-pub(crate) type Record<'a> =
-    &'a dyn Fn(&str, &str, &str, Returned) -> Result<(), (&'static str, String)>;
+pub(crate) type Record<'a> = &'a dyn Fn(&str, &str, &str, Returned) -> Result<(), Fail>;
 
 fn reply(line: &str, to: &Value, result: &str, why: Option<&str>, said: Option<String>) -> Value {
     json!({"line": line, "to": to, "result": result, "why": why, "said": said, "screen": null})
@@ -101,7 +96,7 @@ pub(crate) fn return_with(
             &to,
             "copy",
             Some("ended"),
-            Some(copy_text("bePlan.return.ended", &[])),
+            Some(copy_text("sessionState.planReturn.ended", &[])),
         ));
     }
     if to.get("activity").and_then(Value::as_str) == Some("needs_you") {
@@ -146,8 +141,7 @@ pub(crate) fn return_with(
                 children,
                 body: needs::body_digest(cell),
             },
-        )
-        .map_err(io)?;
+        )?;
     }
     let mut out = reply(
         &line,
@@ -163,9 +157,7 @@ pub(crate) fn return_with(
 fn give_back(args: &Value) -> Answer {
     let ws = str_arg(args, "workspace")?;
     let doc = crate::faces::plan_face::read_fresh(ws)?;
-    let send = |a: &Value| {
-        crate::control::terminals::input_for_inbound(a).map_err(|(c, m)| Fail::new(&c, m))
-    };
+    let send = |a: &Value| crate::control::terminals::input_for_inbound(a);
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(ws, sl, id, r)
     };

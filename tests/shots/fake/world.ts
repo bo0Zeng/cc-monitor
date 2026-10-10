@@ -138,7 +138,6 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     88_000,
     "end_turn",
   );
-  c.turnDuration(184_000);
   return { convo: c, agentTool, agentTool2 };
 }
 
