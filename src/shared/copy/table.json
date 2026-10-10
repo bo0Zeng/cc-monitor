@@ -1573,13 +1573,13 @@
     "rsRemoteResident.ensure.answerIncomplete": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端启动常驻后端的回答缺端口或钥匙",
+      "zh": "远端启动常驻后端的回答无法识别",
       "args": []
     },
     "rsRemoteResident.hello.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端常驻后端的端口被别的程序占用",
+      "zh": "远端回的不是 cc-monitor 后端",
       "args": []
     },
     "rsRemoteResident.verdict.unreadable": {
@@ -1607,18 +1607,17 @@
       "zh": "读取远端常驻后端的回话失败",
       "args": []
     },
-    "rsRemoteResident.tunnel.unreachable": {
+    "rsRemoteResident.relay.absent": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败",
-      "args": ["port"],
-      "limited": ["连接"]
+      "zh": "{machine} 后端未在运行 · 启动后即退出",
+      "args": ["machine"]
     },
-    "rsRemoteResident.tunnel.forwardingProhibited": {
+    "rsRemoteResident.relay.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入失败 · 被拒 · 远端 sshd 禁止转发（AllowTcpForwarding no）\n把远端 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local\n重启 sshd 后再接入",
-      "args": []
+      "zh": "{machine} 后端无法接入 · 需重启 {machine} 后端",
+      "args": ["machine"]
     },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
@@ -1720,11 +1719,37 @@
         "C-Y4": "「?」是 tmux 会话名里被禁的字符本身"
       }
     },
-    "beResident.token.noRandom": {
+    "beResident.claim.pathTooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "取不到系统随机数 · 无法生成常驻后端钥匙 · 未启动",
-      "args": []
+      "zh": "连接入口路径过长 · {len}/{max} 字节 · {path}",
+      "args": ["path", "len", "max"],
+      "limited": ["连接"]
+    },
+    "beResident.claim.bindFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "后端无法打开连接入口 {path} · {why}",
+      "args": ["path", "why"],
+      "limited": ["连接"]
+    },
+    "beResident.sandbox.realHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "测试环境里的后端要用真实主目录下的 {path} · 拒绝启动",
+      "args": ["path"]
+    },
+    "beResident.legacy.stopped": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "升级前的常驻后端已停止 · pid {pid} · {how}",
+      "args": ["pid", "how"]
+    },
+    "beResident.legacy.stuck": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "升级前的常驻后端无法停止 · pid {pid} · {why}",
+      "args": ["pid", "why"]
     },
     "beResident.spawn.failed": {
       "kind": "error",
@@ -2175,25 +2200,25 @@
     "terminalReads.preview.notKnown": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 不在终端名单",
+      "zh": "读取画面失败 · 不在名单",
       "args": []
     },
     "terminalReads.preview.ambiguous": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 多个终端匹配",
+      "zh": "读取画面失败 · 目标无效 · 多个终端匹配",
       "args": []
     },
     "terminalReads.preview.unobservable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 终端名单不可读",
+      "zh": "读取画面失败 · 原因不明 · 终端名单不可读",
       "args": []
     },
     "tmuxControl.kill.badName": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 失败 · 会话名无效",
+      "zh": "结束 {target} 失败 · 名称无效",
       "args": ["target"]
     },
     "tmuxControl.kill.noTmux": {
@@ -4549,7 +4574,7 @@
     "front.body.redialFailed": {
       "kind": "body",
       "role": "片段",
-      "zh": "重新连接失败 · 点［重新连接］再试",
+      "zh": "重新连接失败 · 原因不明",
       "args": [],
       "limited": ["连接"]
     },
@@ -4616,16 +4641,15 @@
     "front.body.detached": {
       "kind": "body",
       "role": "说明",
-      "zh": "tmux 会话 · 无终端连接",
+      "zh": "tmux 会话 · 未接终端",
       "args": [],
-      "limited": ["tmux", "连接"]
+      "limited": ["tmux"]
     },
     "front.body.background": {
       "kind": "body",
       "role": "片段",
-      "zh": "后台 · 无终端连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "后台 · 未接终端",
+      "args": []
     },
     "front.body.elsewhere": {
       "kind": "body",
@@ -8845,7 +8869,7 @@
     "diagnostics.copy.fallback": {
       "kind": "body",
       "role": "说明",
-      "zh": "复制失败 · 已全选 · 手动复制即可",
+      "zh": "已全选 · 剪贴板不可用 · 手动复制即可",
       "args": []
     },
     "diagnostics.unknown.label": {
@@ -9121,9 +9145,8 @@
     "backend.status.notConnected": {
       "kind": "body",
       "role": "状态",
-      "zh": "未连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "离线",
+      "args": []
     },
     "backend.status.connected": {
       "kind": "body",
@@ -9382,13 +9405,6 @@
       "role": "原因格",
       "zh": "公钥为空",
       "args": []
-    },
-    "rsFilewinProc.dialBack.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "文件窗口连接主程序失败 · {e}",
-      "args": ["e"],
-      "limited": ["连接"]
     },
     "rsFilewinProc.open.noStderr": {
       "kind": "error",
@@ -11008,13 +11024,6 @@
       "zh": "文件窗口未启动 · {why}",
       "args": ["why"]
     },
-    "rsFilewinEntry.open.noHost": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口连接后端失败 · 主程序一侧未就绪",
-      "args": [],
-      "limited": ["连接"]
-    },
     "rsFilewinEntry.plan.noTarget": {
       "kind": "error",
       "role": "报错",
@@ -11772,6 +11781,13 @@
       "args": [],
       "limited": ["Claude Code"]
     },
+    "rsDriftLedger.consequence.unknownWaitingFor": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动的种类按判不出显示 · Claude Code 或已加新的等待类型",
+      "args": [],
+      "limited": ["Claude Code"]
+    },
     "rsDriftLedger.consequence.knownTypeParse": {
       "kind": "body",
       "role": "说明",
@@ -12081,7 +12097,7 @@
     "rsCcBusDeploy.win.noOwnBytes": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 装的 ccm（{at}）{build} · 未带后端字节 · 版本不可比{lack}\n{pathCaveat}",
+      "zh": "本机 ccm 版本不可比\ncc-monitor 装的 ccm（{at}）{build} · 未带后端字节{lack}\n{pathCaveat}",
       "args": ["at", "build", "lack", "pathCaveat"],
       "limited": ["ccm"]
     },
@@ -12449,13 +12465,6 @@
       "zh": "本机侧无 SFTP 传输 · 文件窗口只开在远端",
       "args": []
     },
-    "rsChanHost.start.bindFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机连接服务绑定 127.0.0.1 失败 · {e}",
-      "args": ["e"],
-      "limited": ["连接"]
-    },
     "rsOrigin.route.blank": {
       "kind": "error",
       "role": "报错",
@@ -12495,23 +12504,12 @@
       "zh": "中转用的钥匙 · 后端运行时用 · 删后要重启后端",
       "args": []
     },
-    "rsDataPaths.backend.relayPassKey": {
+    "rsDataPaths.backend.listenDir": {
       "kind": "body",
       "role": "说明",
-      "zh": "中转直通专用钥匙 · 地址写进命令行的 agent 用 · 删后要重启后端",
-      "args": []
-    },
-    "rsDataPaths.backend.listenToken": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "连本机后端用的钥匙 · 后端运行时用 · 删后要重启后端",
-      "args": []
-    },
-    "rsDataPaths.backend.listenPid": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机常驻后端的进程记录 · 后端运行时用 · 删后要重启后端",
-      "args": []
+      "zh": "常驻后端的连接入口 · 后端运行时用 · 删后要重启后端",
+      "args": [],
+      "limited": ["连接"]
     },
     "rsDataPaths.backend.policy": {
       "kind": "body",
@@ -14765,20 +14763,20 @@
     "rsLocalBackendHost.adopt.notYet": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 无程序监听",
-      "args": ["port"]
+      "zh": "{path} 上暂无后端在听",
+      "args": ["path"]
     },
     "rsLocalBackendHost.adopt.nobody": {
       "kind": "error",
       "role": "原因格",
-      "zh": "端口上无程序监听",
+      "zh": "没有后端在听",
       "args": []
     },
     "rsLocalBackendHost.afterSpawn.neverListened": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 一直无程序监听",
-      "args": ["port"]
+      "zh": "{path} 上一直没有后端在听",
+      "args": ["path"]
     },
     "rsLocalBackendHost.start.unreachableKilled": {
       "kind": "error",
@@ -14790,14 +14788,14 @@
     "rsLocalBackendHost.start.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 上已有程序但接不上 · {why}\n不起第二个 · 不换端口 · 要重来先停掉占端口的进程",
-      "args": ["port", "why"]
+      "zh": "{path} 上已有后端但接不上 · {why}\n不起第二个 · 要重来先停掉它",
+      "args": ["path", "why"]
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未启动 · 端口 {port} 上已有的后端接不上 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
-      "args": ["port", "why", "pidPath"]
+      "zh": "本机后端未启动 · 已在运行的后端接不上 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
+      "args": ["why", "pidPath"]
     },
     "rsLocalBackendHost.stream.lost": {
       "kind": "error",
@@ -14810,13 +14808,6 @@
       "kind": "error",
       "role": "原因格",
       "zh": "程序出错 · 连接接不进来",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "rsLocalBackendHost.stream.nonblockingFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错 · 连接设置失败",
       "args": [],
       "limited": ["连接"]
     },
@@ -14874,39 +14865,46 @@
     "rsLocalBackendHost.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序应答不可读 · {why}",
+      "zh": "后端的应答不可读 · {why}",
       "args": ["why"]
     },
     "rsLocalBackendHost.handshake.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序回的一行超过 {cap} 字节未换行 · 停止读取",
+      "zh": "后端回的一行超过 {cap} 字节未换行 · 停止读取",
       "args": ["cap"]
     },
     "rsLocalBackendHost.handshake.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序回的行非 UTF-8",
+      "zh": "后端回的行非 UTF-8",
       "args": []
     },
     "rsLocalBackendHost.handshake.closed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "端口上的程序已关闭连接",
+      "zh": "后端已关闭连接",
       "args": [],
       "limited": ["连接"]
     },
     "rsLocalBackendHost.probe.noAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 已连 · {why} · 无应答",
-      "args": ["port", "why"]
+      "zh": "已连上 {path} · {why} · 无应答",
+      "args": ["path", "why"]
     },
     "rsLocalBackendHost.probe.noDeadline": {
       "kind": "error",
       "role": "原因格",
       "zh": "连接端口上的后端失败 · {why}",
       "args": ["why"],
+      "limited": ["连接"]
+    },
+    "rsLocalBackendHost.probe.cannotConnect": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "连接失败 · {path} · {why}",
+      "args": ["path", "why"],
       "limited": ["连接"]
     },
     "rsLocalBackendHost.hello.buildMismatch": {
@@ -14926,18 +14924,6 @@
       "role": "报错",
       "zh": "端口上的程序答的第一行不是后端的回答 · {bytes} 字节",
       "args": ["bytes"]
-    },
-    "rsLocalBackendHost.token.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 内容为空 · 本机后端无法启动也接不上\n删掉它再起（rm {path}） · 在跑的旧后端删后也接不上 · 一并停掉",
-      "args": ["path"]
-    },
-    "rsLocalBackendHost.fs.readFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取失败 · {path} · {why}",
-      "args": ["path", "why"]
     },
     "rsToolRegistry.tools.skillInstallsLedgerNote": {
       "kind": "body",
@@ -15367,6 +15353,36 @@
       "role": "报错",
       "zh": "读计划超时 · {dur}",
       "args": ["dur"]
+    },
+    "bePlan.face.shape": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "计划回包形状不对",
+      "args": []
+    },
+    "bePlan.command.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb {verb} 超时 · {dur}",
+      "args": ["verb", "dur"]
+    },
+    "bePlan.command.exited": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb {verb} 失败 · 程序出错 · 退出码 {rc}",
+      "args": ["verb", "rc"]
+    },
+    "bePlan.command.noPage": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb view 没给页面路径",
+      "args": []
+    },
+    "bePlan.command.noVerb": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "要更新 · 计划不可用\nplanned-build 缺 {verb}",
+      "args": ["verb"]
     },
     "bePlan.dump.notRun": {
       "kind": "error",
@@ -15878,7 +15894,7 @@
     "beRemoteAsk.unreachableMessage.say": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未连上 {machine} · 或刚重启过 · 连上后自动恢复",
+      "zh": "{machine} 离线 · 上线后自动恢复",
       "args": ["machine"]
     },
     "beRemoteAsk.register.full": {
@@ -16336,8 +16352,8 @@
     "credsPerm.windowsProbe.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取访问权限失败 · Windows 错误码 {rc}",
-      "args": ["rc"]
+      "zh": "读取访问权限失败 · {why}",
+      "args": ["why"]
     },
     "credsPerm.currentUserSid.noToken": {
       "kind": "error",
@@ -16366,8 +16382,8 @@
     "credsPerm.probe.noMetadata": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取文件信息失败 · {e}",
-      "args": ["e"]
+      "zh": "读取文件信息失败 · {why}",
+      "args": ["why"]
     },
     "credsPerm.judge.undetermined": {
       "kind": "error",
@@ -16518,7 +16534,7 @@
     "events.unseen.droppedTitle": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 断开",
+      "zh": "{machine} 离线",
       "args": ["machine"]
     },
     "events.unseen.overrunTitle": {
@@ -17385,6 +17401,72 @@
       "zh": "不到 $0.01",
       "args": []
     },
+    "beSession.activity.working": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "运行中",
+      "args": []
+    },
+    "beSession.activity.needsYou": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动",
+      "args": []
+    },
+    "beSession.activity.idle": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "空闲",
+      "args": []
+    },
+    "beSession.needs.approve": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.answer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等回答",
+      "args": []
+    },
+    "beSession.needs.plan": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行",
+      "args": []
+    },
+    "beSession.needs.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认",
+      "args": []
+    },
+    "beSession.needs.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
+      "args": []
+    },
+    "beSession.needs.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动",
+      "args": []
+    },
     "beSpend.tokens.line": {
       "kind": "body",
       "role": "片段",
@@ -18094,7 +18176,7 @@
     "beUses.session.noSlot": {
       "kind": "error",
       "role": "报错",
-      "zh": "无法开新 SSH 连接 · 此连接名额已满",
+      "zh": "无法新开 SSH 连接 · 此连接的名额已满（sshd MaxSessions）",
       "args": [],
       "limited": ["SSH", "连接"]
     },
@@ -18154,13 +18236,6 @@
       "role": "报错",
       "zh": "读取失败 · {path} · 原因不明",
       "args": ["path"]
-    },
-    "beUses.tunnel.unreachable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "连接远端 127.0.0.1:{port} 失败",
-      "args": ["port"],
-      "limited": ["连接"]
     },
     "beLink.install.tooMany": {
       "kind": "error",
@@ -20708,6 +20783,30 @@
       "zh": "默认规则 · 先设别的为默认",
       "args": []
     },
+    "beRotation.parent.none": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无父会话 · 不是在别的会话里起的",
+      "args": []
+    },
+    "beLineage.write.noParent": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · {path} · 无上一级目录",
+      "args": ["path"]
+    },
+    "beLineage.write.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beLineage.write.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{said} · 未覆盖",
+      "args": ["said"]
+    },
     "beRotation.write.noParent": {
       "kind": "error",
       "role": "原因格",
@@ -20772,6 +20871,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "args": []
+    },
+    "rsDataPaths.backend.lineage": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话血缘 · 各会话由谁起的",
       "args": []
     },
     "rsToolRegistry.tools.quotaNote": {
@@ -21541,6 +21646,42 @@
       "kind": "control",
       "role": "标签",
       "zh": "跟随默认",
+      "args": []
+    },
+    "rot.src.parent": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "跟随父会话",
+      "args": []
+    },
+    "rot.src.leadParent": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随父会话 {name} · 规则 {rule}",
+      "args": ["name", "rule"]
+    },
+    "rot.src.leadParentOwn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随父会话 {name} · 本会话",
+      "args": ["name"]
+    },
+    "rot.src.leadParentMissing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随父会话 {name} · 父会话未经中转 · 按默认 {rule}",
+      "args": ["name", "rule"]
+    },
+    "rot.src.openParent": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "打开父会话",
+      "args": []
+    },
+    "rot.src.openParentOff": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "父会话不在会话列表里",
       "args": []
     },
     "rot.src.followOf": {
@@ -23756,7 +23897,7 @@
     "rsFilewinChrome.link.reconnecting": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 断开 · 重新连接中…",
+      "zh": "{machine} 离线 · 重新连接中…",
       "args": ["machine"],
       "limited": ["连接"]
     },
@@ -23903,7 +24044,7 @@
     "rsFilewinEditPage.offline.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 断开 · 改动保留",
+      "zh": "{machine} 离线 · 改动保留",
       "args": ["machine"]
     },
     "rsFilewinEditPage.action.retry": {
@@ -24180,6 +24321,30 @@
       "zh": "计划 · 等批准",
       "args": []
     },
+    "needs.bar.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行 · 联网",
+      "args": []
+    },
+    "needs.bar.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准 · 协作请求",
+      "args": []
+    },
+    "needs.bar.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认 · 会话目标",
+      "args": []
+    },
+    "needs.bar.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
+      "args": []
+    },
     "needs.bar.unknown": {
       "kind": "body",
       "role": "片段",
@@ -24257,6 +24422,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "等批准",
+      "args": []
+    },
+    "tabBar.needsKind.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行",
+      "args": []
+    },
+    "tabBar.needsKind.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "tabBar.needsKind.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认",
+      "args": []
+    },
+    "tabBar.needsKind.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
       "args": []
     },
     "tabBar.needsKind.unknown": {
@@ -24788,10 +24977,8 @@
     "terminal.liveWhy.offline": {
       "kind": "body",
       "role": "片段",
-      "zh": "{machine} 断开",
-      "args": [
-        "machine"
-      ]
+      "zh": "{machine} 离线",
+      "args": ["machine"]
     },
     "terminal.screen.follow": {
       "kind": "action",
@@ -25073,9 +25260,8 @@
     "settingsNav.dot.up": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} · 已连接",
-      "args": ["machine"],
-      "limited": ["连接"]
+      "zh": "{machine} · 在线",
+      "args": ["machine"]
     },
     "settingsNav.dot.down": {
       "kind": "body",
@@ -25130,9 +25316,8 @@
     "machinePage.state.up": {
       "kind": "body",
       "role": "状态",
-      "zh": "已连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "在线",
+      "args": []
     },
     "machinePage.state.down": {
       "kind": "body",
@@ -25718,9 +25903,8 @@
     "machinePage.cc.summaryDown": {
       "kind": "body",
       "role": "片段",
-      "zh": "未连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "离线",
+      "args": []
     },
     "machinePage.cc.summaryVer": {
       "kind": "body",
@@ -25975,12 +26159,6 @@
       "role": "说明",
       "zh": "{machine} 版本较新 · 部分功能不可用",
       "args": ["machine"]
-    },
-    "machineState.problem.noForwarding": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "禁止端口转发 · 实时显示不可用",
-      "args": []
     },
     "machineState.problem.notUnix": {
       "kind": "body",
@@ -28704,8 +28882,9 @@
     "detail.value.notConnected": {
       "kind": "body",
       "role": "片段",
-      "zh": "未连上",
-      "args": []
+      "zh": "未连接",
+      "args": [],
+      "limited": ["连接"]
     },
     "detail.value.truncated": {
       "kind": "body",
@@ -28952,6 +29131,847 @@
       "kind": "error",
       "role": "原因格",
       "zh": "内容无法解析",
+      "args": []
+    },
+    "plan.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "计划",
+      "args": []
+    },
+    "plan.page.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "返回",
+      "args": []
+    },
+    "plan.page.search": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "按标题找",
+      "args": []
+    },
+    "plan.page.whole": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "整张图",
+      "args": []
+    },
+    "plan.page.wholeHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "pb view · 在浏览器里开 pb 画的整张图",
+      "args": []
+    },
+    "plan.page.wholeRemote": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "只在本机",
+      "args": []
+    },
+    "plan.page.wholeOpened": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "整张图已在浏览器里打开",
+      "args": []
+    },
+    "plan.page.wholeFailed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "整张图没打开",
+      "args": []
+    },
+    "plan.auto.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "自动接着做",
+      "args": []
+    },
+    "plan.auto.scope": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "管工作区 {ws} 的全部片：{list}",
+      "args": ["ws", "list"]
+    },
+    "plan.auto.cmds": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "开：pb continue · 关：pb pause",
+      "args": []
+    },
+    "plan.auto.what": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "开着时每一轮结束 agent 自己约下一次；要看着它就关",
+      "args": []
+    },
+    "plan.auto.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "切换失败 · {reason}",
+      "args": ["reason"]
+    },
+    "plan.sub.top": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶块",
+      "args": []
+    },
+    "plan.sub.standing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "站在 {title}",
+      "args": ["title"]
+    },
+    "plan.sub.red": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "判据 {n} 红",
+      "args": ["n"],
+      "waive": {
+        "C-T1": "pb 自己的叫法（planned-build 的检查叫判据、三种状态是「做完了 · 没做完 · 不做了」），用户在 pb 里也这么叫"
+      }
+    },
+    "plan.filter.all": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "全部",
+      "args": []
+    },
+    "plan.filter.open": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "没做完",
+      "args": []
+    },
+    "plan.review.topDone": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "整片做完 · 待过目",
+      "args": []
+    },
+    "plan.review.topDoneWhat": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶块阶段「{phase}」（看全局） · 顶层做完 {done} / {of}",
+      "args": ["phase", "done", "of"]
+    },
+    "plan.review.red": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "判据红 · {rule} · 块「{block}」",
+      "args": ["rule", "block"],
+      "waive": {
+        "C-T1": "pb 自己的叫法（planned-build 的检查叫判据），用户在 pb 里也这么叫"
+      }
+    },
+    "plan.review.redFix": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改法（pb 给的）：{fix}",
+      "args": ["fix"]
+    },
+    "plan.review.ask": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "agent 在此格提问 · 等回答",
+      "args": []
+    },
+    "plan.review.askGo": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "去会话答",
+      "args": []
+    },
+    "sessionState.planReview.ended": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "接手的会话已结束",
+      "args": []
+    },
+    "plan.review.endedWhat": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块没做完 · 里面 {done}/{of}",
+      "args": ["done", "of"]
+    },
+    "plan.review.endedOpen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块没做完",
+      "args": []
+    },
+    "plan.review.endedSub": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "接手是 agent 的块：父会话也停才算",
+      "args": []
+    },
+    "plan.review.resume": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复会话",
+      "args": []
+    },
+    "plan.review.pos": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动 {i} / {n}",
+      "args": ["i", "n"]
+    },
+    "plan.review.next": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下一条",
+      "args": []
+    },
+    "plan.review.ack": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "认可",
+      "args": []
+    },
+    "plan.review.ackNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "认可只记在 cc-monitor · 不写计划仓",
+      "args": []
+    },
+    "plan.review.acked": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已认可 · {what}",
+      "args": ["what"]
+    },
+    "plan.review.undo": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "撤销",
+      "args": []
+    },
+    "plan.review.ackFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认可没记上",
+      "args": []
+    },
+    "plan.review.return": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "退回…",
+      "args": []
+    },
+    "plan.review.tell": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "说给负责的…",
+      "args": []
+    },
+    "plan.return.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "退回「{title}」",
+      "args": ["title"]
+    },
+    "plan.return.titleSend": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "说给负责的 · {title}",
+      "args": ["title"]
+    },
+    "plan.return.what": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "要改什么",
+      "args": []
+    },
+    "plan.return.to": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "送给",
+      "args": []
+    },
+    "plan.return.roleOwner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在长它的（块「{block}」的接手）",
+      "args": ["block"]
+    },
+    "plan.return.roleSigner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "签它的（上一级）",
+      "args": []
+    },
+    "plan.return.noSigner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "pb 未给 signer",
+      "args": []
+    },
+    "plan.return.noOwner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "此格无接手",
+      "args": []
+    },
+    "plan.return.line": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "送出的一行",
+      "args": []
+    },
+    "plan.return.lineNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "只带事实；收到人话怎么做，pb 已教过 agent",
+      "args": []
+    },
+    "plan.return.send": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "退回",
+      "args": []
+    },
+    "plan.return.sendTell": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "送出",
+      "args": []
+    },
+    "plan.return.autoSwitched": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "默认项送不到，改选上一级",
+      "args": []
+    },
+    "plan.return.copyLine": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制此行",
+      "args": []
+    },
+    "plan.return.sent": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已送给 {session}",
+      "args": ["session"]
+    },
+    "plan.return.unsure": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "送达未知 · 别重发",
+      "args": []
+    },
+    "plan.return.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制此行",
+      "args": []
+    },
+    "plan.bar.returned": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已退回 · 送给 {session} · {time} · 等它在底下加一格或改正文",
+      "args": ["session", "time"]
+    },
+    "plan.bar.landedChild": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "退回已落地 · 底下新加「{title}」",
+      "args": ["title"]
+    },
+    "plan.bar.landedBody": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "退回已落地 · 正文已改",
+      "args": []
+    },
+    "plan.head.mark": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "此会话接手「{slice}」里一块 · 点开计划页选中那块",
+      "args": ["slice"]
+    },
+    "plan.head.top": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶块",
+      "args": []
+    },
+    "plan.filter.needs": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "需手动",
+      "args": []
+    },
+    "plan.strip.offline": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 离线 · 下面是 {time} 读到的",
+      "args": ["machine", "time"]
+    },
+    "plan.strip.reconnect": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "plan.strip.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读不成 · {reason}",
+      "args": ["reason"]
+    },
+    "plan.strip.sliceUnreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取失败 · {reason}",
+      "args": ["reason"]
+    },
+    "plan.strip.stale": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下面是 {time} 读到的",
+      "args": ["time"]
+    },
+    "plan.empty.text": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无计划",
+      "args": []
+    },
+    "plan.empty.hint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "会话的工作目录在 planned-build 工作区里时自动列出",
+      "args": []
+    },
+    "plan.empty.add": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "添加工作区…",
+      "args": []
+    },
+    "plan.addWs.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "添加工作区",
+      "args": []
+    },
+    "plan.addWs.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "目录",
+      "args": []
+    },
+    "plan.addWs.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "添加",
+      "args": []
+    },
+    "plan.outline.label": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "计划大纲",
+      "args": []
+    },
+    "plan.outline.rootProgress": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{done}/{of} 做完",
+      "args": ["done", "of"]
+    },
+    "plan.whyShort.nosign": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没签",
+      "args": []
+    },
+    "plan.whyShort.upper": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等收下",
+      "args": []
+    },
+    "plan.whyShort.inside": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{done}/{of}",
+      "args": ["done", "of"]
+    },
+    "plan.legend.dropped": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不做了的",
+      "args": [],
+      "waive": {
+        "C-W17": "pb 自己的叫法（planned-build 的检查叫判据、三种状态是「做完了 · 没做完 · 不做了」），用户在 pb 里也这么叫"
+      }
+    },
+    "plan.legend.hide": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "藏起",
+      "args": []
+    },
+    "plan.legend.show": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "列出",
+      "args": []
+    },
+    "plan.overview.top": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶层 做完 {done} / {of} · 不做 {dropped}",
+      "args": ["done", "of", "dropped"]
+    },
+    "plan.overview.readAt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读于 {time}",
+      "args": ["time"]
+    },
+    "plan.overview.blocks": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "块",
+      "args": []
+    },
+    "plan.overview.progress": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "顶层进度",
+      "args": []
+    },
+    "plan.overview.recent": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "最近签收",
+      "args": []
+    },
+    "plan.overview.all": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "全部 {n}",
+      "args": ["n"]
+    },
+    "plan.blocks.block": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "块",
+      "args": []
+    },
+    "plan.blocks.owner": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "接手",
+      "args": []
+    },
+    "plan.blocks.phase": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "阶段",
+      "args": []
+    },
+    "plan.blocks.at": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "站在",
+      "args": []
+    },
+    "plan.blocks.inside": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "里面做完",
+      "args": []
+    },
+    "plan.progress.cell": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "格",
+      "args": []
+    },
+    "plan.progress.status": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "状态",
+      "args": []
+    },
+    "plan.progress.block": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "块",
+      "args": []
+    },
+    "plan.who.sub": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{session} 的 agent",
+      "args": ["session"]
+    },
+    "plan.who.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "认不出 · {id}",
+      "args": ["id"]
+    },
+    "plan.who.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制完整 id",
+      "args": []
+    },
+    "plan.cell.blockRoot": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块「{block}」的根格 · 接手",
+      "args": ["block"]
+    },
+    "plan.cell.grower": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在长它的",
+      "args": []
+    },
+    "plan.cell.toSession": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "切到会话",
+      "args": []
+    },
+    "plan.cell.design": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "要做成什么样",
+      "args": []
+    },
+    "plan.cell.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开全部",
+      "args": []
+    },
+    "plan.cell.inside": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "里面",
+      "args": []
+    },
+    "plan.cell.edges": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "连着的 · 连着它的",
+      "args": []
+    },
+    "plan.cell.files": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "管的文件",
+      "args": []
+    },
+    "plan.cell.signs": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "收下",
+      "args": []
+    },
+    "plan.cell.agentView": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "agent 站在此格看到的",
+      "args": []
+    },
+    "plan.cell.agentViewHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "pb 印给 agent 的一段",
+      "args": []
+    },
+    "plan.cell.idLine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟 agent 说时用：",
+      "args": []
+    },
+    "plan.cell.copyId": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "复制编号",
+      "args": []
+    },
+    "plan.cell.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制 {id}",
+      "args": ["id"]
+    },
+    "plan.edge.group": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{word} · {n}",
+      "args": ["word", "n"]
+    },
+    "plan.edge.out": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它{word}",
+      "args": ["word"]
+    },
+    "plan.edge.in": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{word}它的",
+      "args": ["word"]
+    },
+    "plan.edge.afterOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它排在后面",
+      "args": []
+    },
+    "plan.edge.afterIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "排在它后面的",
+      "args": []
+    },
+    "plan.edge.replacesOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它顶掉",
+      "args": []
+    },
+    "plan.edge.replacesIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶掉它的",
+      "args": []
+    },
+    "plan.file.path": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "文件",
+      "args": []
+    },
+    "plan.file.state": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "对账",
+      "args": []
+    },
+    "plan.file.note": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "长度",
+      "args": []
+    },
+    "plan.file.also": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "也声明它的",
+      "args": []
+    },
+    "plan.sign.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没签",
+      "args": []
+    },
+    "plan.sign.inner": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "有子的格不签，里面全做完它就做完",
+      "args": []
+    },
+    "plan.sign.count": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 条 · 后签的作数",
+      "args": ["n"]
+    },
+    "plan.sign.counts": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "作数",
+      "args": []
+    },
+    "plan.bar.dropped": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被「{title}」顶掉 · 文件声明转给它",
+      "args": ["title"]
+    },
+    "plan.bar.droppedBare": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "不做了",
+      "args": [],
+      "waive": {
+        "C-W17": "pb 自己的叫法（planned-build 的检查叫判据、三种状态是「做完了 · 没做完 · 不做了」），用户在 pb 里也这么叫"
+      }
+    },
+    "main.cmd.openPlan": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "计划",
+      "args": []
+    },
+    "main.cmd.planKeywords": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "plan pb planned-build 计划",
+      "args": []
+    },
+    "main.topbar.planHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "计划 · 各片的格、状态与签收",
+      "args": []
+    },
+    "keybindingActions.app.plan": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "计划",
+      "args": []
+    },
+    "plan.page.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "plan.page.listSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "plan.edge.withOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它连着",
+      "args": []
+    },
+    "plan.edge.withIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "连着它的",
+      "args": []
+    },
+    "plan.edge.toOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它指向",
+      "args": []
+    },
+    "plan.edge.toIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "指向它的",
       "args": []
     },
     "detail.target.session": {

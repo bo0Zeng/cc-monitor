@@ -155,7 +155,7 @@ function subagentRecords(sid: string, cwd: string): SessionSpec["runRecords"] {
   return { "agent-a1": a1.records, "agent-a2": a2.records };
 }
 
-function smallConvo(sid: string, cwd: string, title: string, ask: string, answer: string, tokens = 20_000): Convo {
+export function smallConvo(sid: string, cwd: string, title: string, ask: string, answer: string, tokens = 20_000): Convo {
   const c = new Convo(sid, cwd, "2026-10-01T10:30:00Z");
   c.title(title);
   c.user(ask);

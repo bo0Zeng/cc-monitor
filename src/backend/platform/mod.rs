@@ -23,13 +23,14 @@
 //! - [`child`]：后端起子进程的唯一原语（期限必填 · 超时杀整组 / 整个 Job · 自有环境无条件摘 · 脱离起 · ccm 最终那一跳）
 //! - `win_proc`：Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（只在 Windows 编译时存在，不写 intra-doc 链接）
 //! - [`shell`]：shell 方言与「把一串命令交给这台的 shell」那一跳
+//! - [`watch_file`]：盯盘的唯一原语（几个目录 · 路径过滤 · 一阵动静并成一次回调）—— 轮换 · 计划都用它
 
 pub(crate) mod acct_view;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
 pub(crate) mod child;
-/// 常驻后端自有的那几格环境的名字（监听口 · 钥匙文件 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
+/// 常驻后端自有的那几格环境的名字（常驻开关 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
 pub(crate) mod child_env;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
@@ -49,6 +50,7 @@ pub(crate) mod ssh_agent;
 pub(crate) mod ssh_client;
 pub(crate) mod stderr_fd;
 pub(crate) mod tcp_rtt;
+pub(crate) mod watch_file;
 #[cfg(windows)]
 pub(crate) mod win_proc;
 #[cfg(windows)]

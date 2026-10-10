@@ -12,7 +12,7 @@
 //!
 //! - 生产句柄对 `transfer/<id>` **真的出帧**：逐格对拍 ⇒ 进度格序号从 1 连续、每格就是本机后端推上来的那一格，
 //!   最后一格是 `Closed{Peer({"state":"done","bytes","sha256"})}`；流还没被取就收场的那一趟 ⇒ 恰好一格终局（快照合并）。
-//! - **停订就是撤**：经真回环停订 ⇒ 本机后端收到 `transfer-stop {id}`。
+//! - **停订就是撤**：经真通道停订 ⇒ 本机后端收到 `transfer-stop {id}`。
 //! - 没有这张票 / 第二次订阅 / 带了 `from` ⇒ 原位 `Closed{Peer}` 说清楚，不装作订阅成功。
 //! - 开单口：没有这台机器的配置 ⇒ `Peer{Refused{"no_such_origin"}}`（不起任何连接）。
 //!
@@ -20,7 +20,6 @@
 //!
 //! - 真 sshd 上的一趟（`tests/evidence/SR1b-sftp-loopback.py`）；真窗口进程（窗口那一侧由 `filewin` 的判据另判）。
 
-use super::super::dial::dial;
 use super::super::wire::{
     Body, Budget, By, CallError, CancelToken, Comms, Item, Op, PeerFault, Sub,
 };
@@ -39,18 +38,13 @@ fn budget(ms: u64) -> Budget {
     }
 }
 
-/// 起一个挂着**生产句柄**的真通道口，拨上去。
+/// 起一条挂着**生产句柄**的真通道（一对内存管子，生产里是窗口进程的 stdout / stdin），回窗口那一侧的客户端。
 async fn rig() -> crate::chan::client::Client {
-    let h = start_with(
-        Arc::new(InboundBackends),
-        mint_key(),
-        FRAME,
-        Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    assert!(h.addr.ip().is_loopback());
-    dial(&h, budget(5_000)).await.expect("连得上并过认证")
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let (rd, wr) = tokio::io::split(theirs);
+    serve_with(rd, wr, Arc::new(InboundBackends));
+    let (rd, wr) = tokio::io::split(ours);
+    crate::chan::client::Client::over(rd, wr, FRAME)
 }
 
 /// 收一条订阅直到 `Closed`（或期限到）。
@@ -201,7 +195,7 @@ async fn a_transfer_that_ends_before_the_first_take_streams_just_its_end() {
     }
 }
 
-/// 🔴 **停订就是撤**：经真回环停订 ⇒ 本机后端收到 `transfer-stop {id}`。
+/// 🔴 **停订就是撤**：经真通道停订 ⇒ 本机后端收到 `transfer-stop {id}`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stopping_the_subscription_cancels_the_transfer() {
     let _g = crate::inbound_client::local_origin_test_lock();

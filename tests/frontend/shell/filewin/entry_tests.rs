@@ -4,9 +4,6 @@
 //! 列不出来就带原文报错」（「谁去问」改成窗口进程自己，那句待设计侧改写）；「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
 //! 「判据：入口人群两向相等、`open_file_window` 在包装层外恰好一处」—— 本族判的正是先问后开、三支落点、命令真接到前端。
 
-#[path = "../../filewin/theme_testing.rs"]
-mod theme_testing;
-
 use super::*;
 
 fn synth_cfg() -> RemoteConfig {
@@ -29,40 +26,8 @@ fn synth_cfg() -> RemoteConfig {
 //   `proc_tests::the_first_screen_asks_home_only_when_told_nothing`（真通道口 ＋ 替身后端）与
 //   `proc_tests::the_window_process_lists_first_and_the_parent_carries_its_words`（替身窗口进程说那一行）。
 
-/// 🔴 **通道口没起来 ⇒ 一个窗口进程都不起**（`D11`：窗口只有这一条路够后端），而且话不是空的。
-///
-/// 判据进程里 `chan::host::start` 没调过 ⇒ 交接件拿不到。⚠ 本条买的是入口这一格的早退，
-/// 不是「列不出来」那一形（那一形住 `proc_tests`）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn without_a_channel_no_window_process_is_started() {
-    let before = cc_monitor_filewin::shell::open_requested();
-    for (path, reveal) in [
-        ("   ", None),
-        ("/srv/whatever", None),
-        ("", Some("/a/b.txt")),
-    ] {
-        let e = open_with(
-            synth_cfg(),
-            path.into(),
-            reveal.map(str::to_string),
-            None,
-            theme_testing::default_theme(),
-            Box::new(|_| {}),
-        )
-        .await
-        .expect_err("没有通道口竟然开了窗");
-        assert_eq!(
-            e.said,
-            copy_text("rsFilewinEntry.open.noHost", &[]),
-            "早退的话不对：{e:?}"
-        );
-    }
-    assert_eq!(
-        cc_monitor_filewin::shell::open_requested(),
-        before,
-        "没有通道口却请求开窗了"
-    );
-}
+// 「通道口没起来 ⇒ 一个窗口进程都不起」那一条删了：通道不再是 monitor 起来时绑的一个口，而是每个窗口进程自己的 stdin / stdout
+//   （父子管道，`chan::host::serve_window`），没有「没起来」这一形。
 
 /// 🔴〔09-28 裁 3〕**窗口进程列不出来的那句原话原样到 webview**；进程层的错才套「文件窗口没起来」。
 #[test]

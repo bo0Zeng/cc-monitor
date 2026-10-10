@@ -32,8 +32,8 @@ import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { foldCaret } from "./kit/fold";
-import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
-import { dotLabel, needsWord } from "./session-words";
+import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { dotLabel } from "./session-words";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -271,17 +271,32 @@ export class TabBarView {
     } else this.downSince.delete(origin);
   }
 
-  /** 跳到下一个需手动的会话（`Ctrl+J` · 点「需手动」那一条）。没有 ⇒ 什么都不做。 */
-  nextNeedsSid(): string | null {
+  /**
+   * 计划那一侧的「需手动」（计划页挂进来）：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条。
+   * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题，不发系统通知。
+   */
+  plan: { count: () => number; at: () => number | null; open: (i: number) => void } = { count: () => 0, at: () => null, open: () => {} };
+
+  /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：会话在前、计划项在后。没有 ⇒ 什么都不做。 */
+  nextNeeds(): void {
     const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
-    return nextNeeds(order, this.store.activeId);
+    const at = this.plan.at();
+    const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, this.plan.count());
+    if (step === null) return;
+    if ("sid" in step) this.host.switchTo(step.sid);
+    else this.plan.open(step.plan);
   }
 
-  /** 此刻需手动的会话数（窗口标题用）。 */
+  /** 此刻「需手动」的数：需要处理的会话 ＋ 计划项（窗口标题用）。 */
   needsCountNow(): number {
-    let n = 0;
+    let n = this.plan.count();
     for (const t of this.store.tabs.values()) if (needsOf(t)) n++;
     return n;
+  }
+
+  /** 计划那一侧的数变了 ⇒ 重画「需手动 N」。 */
+  planNeedsChanged(): void {
+    this.updateNeedsStrip();
   }
 
   private reread(): void {
@@ -322,8 +337,7 @@ export class TabBarView {
     }
     if (e.target instanceof Node && this.needsEl.contains(e.target)) {
       if (menuAnchoredOn(this.needsEl)) closeMenu();
-      const next = this.nextNeedsSid();
-      if (next !== null) this.host.switchTo(next);
+      this.nextNeeds();
       return;
     }
     if (e.target instanceof Element && typeof e.target.closest === "function") {
@@ -1093,7 +1107,7 @@ export class TabBarView {
     const state = document.createElement("div");
     state.className = st.needs ? "tab-hover-state tab-hover-need" : "tab-hover-state";
     const d = dotOf(tab);
-    state.append(statusDot(d, dotLabel(d), "compact"), document.createTextNode(st.text));
+    state.append(statusDot(d, stateWord(tab), "compact"), document.createTextNode(st.text));
     card.appendChild(state);
     const peek = peekLine(tab);
     if (peek) card.appendChild(line("tab-hover-peek", peek));
@@ -1124,7 +1138,7 @@ export class TabBarView {
     const reconnectable = view.reconnectable;
     const dot = dotOf(tab);
     const n = needsOf(tab);
-    const needsText = n ? needsWord(n.kind) : "";
+    const needsText = n ? n.text : "";
     const parts = titleParts(tab);
     const unread = tab.unread > 0 && !active;
     // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
@@ -1155,9 +1169,10 @@ export class TabBarView {
       refs.root.classList.toggle("unseen-done", unseenDone);
       refs.root.classList.toggle("waiting-you", n !== null);
       // 只写真变了的那几格（一个状态变了 ⇒ 这颗按钮上恰好：类 · 点的样子 · 点的读屏名）。
-      if (refs.dot.dataset.state !== dot) {
+      const dotName = stateWord(tab);
+      if (refs.dot.dataset.state !== dot || refs.dot.getAttribute("aria-label") !== dotName) {
         refs.dot.dataset.state = dot;
-        refs.dot.setAttribute("aria-label", dotLabel(dot));
+        refs.dot.setAttribute("aria-label", dotName);
       }
       if (refs.label.textContent !== titleText) refs.label.textContent = titleText;
       setText(refs.proj, parts.proj ?? "");

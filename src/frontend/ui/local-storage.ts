@@ -25,6 +25,8 @@ export const LS_KEYS = {
   lastActiveSid: "cc-monitor.last-active-sid",
   /** 历史页的界面偏好（看法 · 筛选：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时）。纯界面偏好，丢了回到默认。 */
   historyPrefs: "cc-monitor.history.prefs",
+  /** 计划页的界面偏好（选中哪一片 · 不做了藏不藏 · 折着的格 · 手加的工作区目录）。 */
+  planPrefs: "cc-monitor.plan.prefs",
   /** 命令栏 chip 是否已被用户见过 —— 首次运行给一次性微高亮，之后不再。 */
   cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
   /** 「有改动需重启」的原因集。存在设置窗网页的**会话存储**里（这一次启动的状态，重启即清），不在 localStorage。 */

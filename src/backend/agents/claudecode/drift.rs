@@ -37,6 +37,8 @@ pub enum DriftFace {
     UnknownSessionKind,
     /// 进程状态文件里认不出的 `status`（活动灯说不清）。
     UnknownSessionStatus,
+    /// 进程状态文件里认不出的 `waitingFor`（在等什么说不清 ⇒ 「需手动」判不出种类）。
+    UnknownWaitingFor,
 }
 
 impl DriftFace {
@@ -54,6 +56,9 @@ impl DriftFace {
             }
             DriftFace::UnknownSessionStatus => {
                 copy_text("rsDriftLedger.consequence.unknownSessionStatus", &[])
+            }
+            DriftFace::UnknownWaitingFor => {
+                copy_text("rsDriftLedger.consequence.unknownWaitingFor", &[])
             }
         }
     }

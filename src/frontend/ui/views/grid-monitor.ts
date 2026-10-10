@@ -66,6 +66,7 @@ export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessio
       case "working":
         return 1;
       case "idle":
+      case "background_work":
         return 2;
       case null:
         return 3;

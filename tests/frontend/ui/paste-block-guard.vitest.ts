@@ -38,6 +38,9 @@ const FAMILY_B = [
   // 「待办」：要贴的那几行 / 合好的整份。贴到哪 · 改哪一行 · 何时生效由那台后端成品的编号步骤与 diff 给
   //   （`机器配置-v2.md` §3 定稿的样子，不是三槽组件那一形），复制之后那一件标「已复制 · 等你贴」、存盘后后端自己认出。
   "src/frontend/ui/settings/data-page.ts",
+  "src/frontend/ui/views/plan.ts", // 计划页：认不出的接手 / 签收人那一枚点了复制那个 id（给人看，不贴进任何配置）
+  "src/frontend/ui/views/plan-review.ts", // 退回框：送不了时［复制这一行］（给人自己去会话里贴，不贴进任何配置）
+  "src/frontend/ui/views/plan-cell.ts", // 一格详情：复制「跟 agent 说时用」的编号（给人看，不贴进任何配置）
 ];
 
 /**

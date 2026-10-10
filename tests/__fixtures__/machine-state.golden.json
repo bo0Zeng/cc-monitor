@@ -174,10 +174,10 @@
       }
     },
     {
-      "name": "不让转发",
+      "name": "不是 Unix",
       "machine": {
         "state": "unsupported",
-        "reason": "no_forwarding",
+        "reason": "not_unix",
         "stage": null,
         "version": null,
         "versionRelation": null,

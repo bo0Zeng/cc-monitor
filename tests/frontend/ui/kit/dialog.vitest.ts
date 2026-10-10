@@ -163,6 +163,7 @@ const ASK_CALLERS = [
   "src/frontend/ui/settings/machine-card.ts",
   "src/frontend/ui/settings/panel.ts",
   "src/frontend/ui/views/history.ts",
+  "src/frontend/ui/views/plan.ts",
 ];
 
 describe("D1b · 对话框的答案一律 await", () => {

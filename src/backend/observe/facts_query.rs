@@ -38,6 +38,7 @@
 //! 工具结果那一大类（常是整份文件内容）连解析都不做。**只省时间、不改结果**：
 //! 能改动事实的记录必然带着那几个键名（Claude Code 写 JSON 不转义 ASCII 字母），由判据逐行对拍「过滤 / 不过滤」两向相等。
 
+use crate::common::cells::Words;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -182,7 +183,7 @@ pub(crate) struct TokenUse {
     /// 算进来的请求数。
     pub(crate) requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
-    pub(crate) text: String,
+    pub(crate) text: Words,
     /// 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
     pub(crate) last: Option<LastRequest>,
 }
@@ -201,7 +202,7 @@ pub(crate) struct LastRequest {
 pub(crate) struct Cost {
     pub(crate) micros: u64,
     pub(crate) partial: bool,
-    pub(crate) text: String,
+    pub(crate) text: Words,
 }
 
 /// 一串相邻的 API 重试。
@@ -287,16 +288,24 @@ pub(crate) struct LastSay {
     pub(crate) at: Option<String>,
 }
 
-/// 「需手动」的种类。判不出 ⇒ `Unknown`（只说在等你，不猜）。
+/// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum NeedsKind {
-    /// 批准一个工具调用。
+    /// 批准一个工具调用（或别的批准框）。
     Approve,
-    /// 回答一个问题。
+    /// 回答一个问题 / 填那一侧要的输入。
     Answer,
     /// 批准计划。
     Plan,
+    /// 放行沙箱里的命令联网。
+    Network,
+    /// 批准协作的另一个运行发来的请求。
+    Worker,
+    /// 确认它提的会话目标。
+    Goal,
+    /// 在开着的对话框里选一项。
+    Choose,
     Unknown,
 }
 
@@ -313,21 +322,28 @@ pub(crate) struct Needs {
     pub(crate) what: Option<String>,
     /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
     pub(crate) since_ms: Option<u64>,
+    /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+    pub(crate) text: Words,
+    /// 语气（恒 `need`）。
+    pub(crate) tone: crate::common::cells::Tone,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PidWait {
-    /// `waitingFor` 原样（`permission prompt` · `dialog open` …）。
-    pub(crate) waiting_for: Option<String>,
+    /// 在等什么框（适配层翻好的 [`crate::agents::WaitOn`]）；没说 / 说不清 ⇒ `None`。
+    pub(crate) waiting_for: Option<crate::agents::WaitOn>,
     pub(crate) since_ms: Option<u64>,
 }
 
-/// **「需手动」的唯一判定**：那台说在等 ＋ 记录里最早一个还没结果的调用。
-/// - 那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
-/// - 别的工具、且那台说是批准框（`waitingFor` 带 `permission`）⇒ 批准（那一步的主参数）；
-/// - 其余（没有没结果的调用 · 说不出是哪种框）⇒ 判不出，不猜。
+/// **「需手动」的唯一判定**：那台说在等什么框 ＋ 记录里最早一个还没结果的调用。
+/// - 批准框（或没说是哪种框）：那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
+///   批准框里别的工具 ⇒ 批准（那一步的主参数）；没说是哪种框且不是那两种工具 ⇒ 判不出，不猜；
+/// - 要填 / 要答 ⇒ 回答；联网 ⇒ 放行（那一步多半就是要联网的那条命令）；
+/// - 协作请求 · 会话目标 · 别的对话框 ⇒ 各一种，不挂记录里的哪一步（那一步不在这份记录里 / 不是一步工具调用）。
+///   这几种是顶上那个框：底下就算有提问 / 计划，也是先答它。
 pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+    use crate::agents::WaitOn as W;
     let wait = wait?;
     let first = pending.first();
     let asks = pending
@@ -336,18 +352,26 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
     let plan = pending
         .iter()
         .find(|p| PLAN_TOOLS.contains(&p.name.as_str()));
-    let permission = wait
-        .waiting_for
-        .as_deref()
-        .is_some_and(|w| w.to_ascii_lowercase().contains("permission"));
-    let (kind, call) = if let Some(a) = asks {
-        (NeedsKind::Answer, Some(a))
-    } else if let Some(p) = plan {
-        (NeedsKind::Plan, Some(p))
-    } else if let (Some(p), true) = (first, permission) {
-        (NeedsKind::Approve, Some(p))
-    } else {
-        (NeedsKind::Unknown, None)
+    let (kind, call) = match wait.waiting_for {
+        Some(W::Permission) | None if asks.is_some() => (NeedsKind::Answer, asks),
+        Some(W::Permission) | None if plan.is_some() => (NeedsKind::Plan, plan),
+        Some(W::Permission) => (NeedsKind::Approve, first),
+        None => (NeedsKind::Unknown, None),
+        Some(W::Input) => (NeedsKind::Answer, asks.or(first)),
+        Some(W::Network) => (NeedsKind::Network, first),
+        Some(W::Worker) => (NeedsKind::Worker, None),
+        Some(W::Goal) => (NeedsKind::Goal, None),
+        Some(W::Dialog) => (NeedsKind::Choose, None),
+    };
+    let text = match kind {
+        NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
+        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
+        NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
+        NeedsKind::Worker => copy_core::copy_text("beSession.needs.worker", &[]),
+        NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
     };
     Some(Needs {
         kind,
@@ -355,6 +379,8 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         call: call.map(|c| c.id.clone()),
         what: call.and_then(|c| c.what.clone()),
         since_ms: wait.since_ms,
+        text: Words(text),
+        tone: crate::common::cells::Tone::Need,
     })
 }
 
@@ -508,7 +534,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["call", "kind", "sinceMs", "tool", "what"],
+            &["call", "kind", "sinceMs", "text", "tone", "tool", "what"],
             "prior.needs",
         )?;
     }
@@ -905,7 +931,7 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
     }
     add(true, &tokens);
     s.last = Some(LastRequest { id, tokens });
-    s.text = copy_core::copy_text(
+    s.text = Words(copy_core::copy_text(
         "beSpend.tokens.line",
         &[
             ("input", &short_tokens(s.input)),
@@ -913,7 +939,7 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
             ("read", &short_tokens(s.cache_read)),
             ("write", &short_tokens(s.cache_write5m + s.cache_write1h)),
         ],
-    );
+    ));
 }
 
 /// 花费那一条（`totalCostUSD` 是到此刻为止的全会话总数；`hasUnknownModelCost` 为真 ⇒ 有型号定不了价、数只是下限）。
@@ -936,7 +962,7 @@ fn note_cost(f: &mut SessionFacts, v: &Value) {
     f.cost = Some(Cost {
         micros,
         partial,
-        text,
+        text: Words(text),
     });
 }
 

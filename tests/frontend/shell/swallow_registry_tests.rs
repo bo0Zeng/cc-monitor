@@ -60,8 +60,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] how to fix: {fix}\");", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/manage/mcp_share_watch.rs", "let _ = live.kick.send(());", Why::PeerGone, "踢一下各号 MCP 的同步线程：线程不在了就没人要这一下（起不来那一次已经出声）"),
     ("src/backend/accounts/manage/mcp_share_watch.rs", "let _ = to_worker.send(());", Why::PeerGone, "文件事件转给同步线程：线程不在了就没人要这一下"),
-    ("src/backend/accounts/quota/rotation.rs", "let _ = tx.send(());", Why::PeerGone, "盯 rotation.json 的文件事件转给重扫线程：线程不在了就没人要这一下"),
-    ("src/backend/plan/watch.rs", "let _ = tx.send(());", Why::PeerGone, "盯计划仓的文件事件转给重读线程：线程不在了就没人要这一下"),
+    ("src/backend/platform/watch_file.rs", "let _ = tx.send(());", Why::PeerGone, "盯盘那一口把文件事件转给收的线程（轮换 · 计划共用）：线程不在了就没人要这一下"),
     ("src/backend/accounts/manage/mcp_share_watch.rs", "let _ = live.watcher.unwatch(gone);", Why::CleanupAfterFailure, "名单里离开的目录卸掉 watch：多半那个号的目录已经删了，卸不掉不改名单"),
     ("src/backend/accounts/manage/exec.rs", "let _ = door::link(d, &home, &self.rel(at)?, target);", Why::CleanupAfterFailure, "私有化自检没过：删掉落位的那一份之后把原来那条链接建回去；主错误已在回、备份里有原件"),
     ("src/backend/accounts/manage/exec.rs", "let _ = door::remove(d, &home, &self.rel(&tmp)?, false);", Why::CleanupAfterFailure, "导入凭据的临时件：改权限 / 换名失败之后删它；主错误已在回，删不掉只剩一份 0600 的临时件"),
@@ -74,7 +73,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/quota/rotation.rs", "let _ = rules_changes().send(());", Why::NotAnError, "进程内「规则表变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/control/cli_args.rs", "let _ = std::io::BufRead::fill_buf(&mut br);", Why::Signal, "读入参的静默窗只等「第一个字节（或 EOF）到了」这件事；读错不在这里报 —— 紧接着那一趟 `read_input` 读同一个读端会再拿到它、按 `stdin_read_failed` 报"),
     ("src/backend/control/cli_args.rs", "let _ = tx.send(Ev::Done(read_input(br, one_line)));", Why::PeerGone, "静默窗到点之后等的那一方已经回了 `no_input`、进程正要退：读线程这时才读完，没人要这个结果"),
-    ("src/backend/control/cli_control.rs", "let _ = writeln!(err, \"{body}\");", Why::Diag, "CLI 面的失败信封写 stderr：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
+    ("src/backend/control/cli_control.rs", "let _ = writeln!(err, \"{line}\");", Why::Diag, "CLI 面的失败信封写 stderr：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
     ("src/backend/control/resolve_query.rs", "let _ = writeln!(out, \"{json}\");", Why::Diag, "`--resolve` 的成品写 stdout：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/resolve_query.rs", "let _ = writeln!(err, \"{}\", error_envelope(code, message));", Why::Diag, "`--resolve` 的失败信封写 stderr：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
     ("src/backend/control/cli_control.rs", "let _ = writeln!(out, \"{v}\");", Why::Diag, "CLI 面的应答写 stdout：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
@@ -105,10 +104,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=capture without `cap", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=forward without `for", Why::DeadLink, ""),
-    // 隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=tunnel without `tunn", Why::DeadLink, ""),
-    // 开 direct-tcpip 失败那一条改成先按回拒码组 ack（`open_refused`）再写；写不进去同上。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &ack).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", Why::DeadLink, ""),
     // 开 sftp 子系统没成那一条（同上：写不进去说明界面已经走了；SFTP 那一下的原话先进了日志）。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp).because(stages.why())).await;", Why::DeadLink, ""),
@@ -200,7 +195,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "w.send(()).ok();", Why::Signal, ""),
     ("src/comms/inward/chan/router.rs", "tx.send(out).await.ok();", Why::PeerGone, ""),
-    ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", Why::DeadLink, ""),
+    ("src/frontend/filewin/src/proc.rs", "let _ = err.write_all(encode_ready(r).as_bytes()).and_then(|()| err.flush());", Why::DeadLink, "就绪那一行写不出去 = 起它的 monitor 已经不在了（stderr 管子断了），没人收"),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", Why::Signal, ""),
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
@@ -229,8 +224,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_core::backend_old(&copy_core::local_machine()))));", Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(error));", Why::PeerGone, ""),
-    ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_read_timeout(None);", Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
-    ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_write_timeout(None);", Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(crate::ui_error::EVENT, p);", Why::Diag, "把一条要让用户知道的出错推给界面；推不上它照样进了日志文件"),
     // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", Why::Reap, "Windows 句柄 / 内存释放"),
@@ -242,6 +235,10 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.exec.stdinLost\", &[]), &e),", Why::DeadLink, ""),
     // `agent_home` 的可重入挂法（`rewatch_agent_home`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
+    ("src/backend/control/resident.rs", "let _ = tokio::io::copy(&mut down, &mut stdout).await;", Why::DeadLink, "小中继下行：套接字那头走了 / stdout 写不出去（ssh 通道关了），两种都是这一趟结束，退出就是交代"),
+    ("src/backend/control/resident.rs", "let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;", Why::DeadLink, "小中继收尾 flush：ssh 通道已经关了就写不出去，退出就是交代"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&rec);", Why::Reap, "升级那一跳停完旧版之后收掉它的旧记录：结局已经写进日志；删不掉只剩一份陈记录，下一个新版起来会再核一次身份（ESRCH / exe 对不上照样答对）"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(data_home.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME));", Why::Reap, "升级那一跳顺手收掉旧版的钥匙文件：新版不读它，删不掉只是留一个没人用的文件"),
     ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 

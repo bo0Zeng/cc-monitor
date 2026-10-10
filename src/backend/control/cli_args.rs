@@ -53,7 +53,7 @@ pub(crate) const READ_ARGS_CODES: &[&str] = &[
     "stdin_read_failed",
 ];
 
-fn bad_args(why: &str) -> (&'static str, String) {
+pub(crate) fn bad_args(why: &str) -> (&'static str, String) {
     ("bad_args", contract::malformed(why))
 }
 

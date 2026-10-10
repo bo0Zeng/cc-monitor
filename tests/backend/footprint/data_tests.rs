@@ -36,7 +36,7 @@ fn report(rows: Vec<SurfaceRow>) -> ConfigSurfaceReport {
     ConfigSurfaceReport {
         rows,
         settings_scopes: scopes,
-        claude_config_dir: "/h/.claude".into(),
+        agent_home: "/h/.claude".into(),
         home: "/h".into(),
     }
 }

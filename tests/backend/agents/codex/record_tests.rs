@@ -475,7 +475,11 @@ fn codex_records_carry_the_clock_face_too() {
             .unwrap()
             .record
             .unwrap();
-        assert_eq!(got.time_text.as_deref(), Some(want.as_str()), "{v}");
+        assert_eq!(
+            got.time_text.as_ref().map(|w| w.0.as_str()),
+            Some(want.as_str()),
+            "{v}"
+        );
         assert_eq!(got.at.as_deref(), Some(ts), "{v}");
     }
 }

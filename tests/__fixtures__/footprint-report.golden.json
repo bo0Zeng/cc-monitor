@@ -1,5 +1,5 @@
 {
-  "claude_config_dir": "/nonexistent-footprint-golden/.claude",
+  "agent_home": "/nonexistent-footprint-golden/.claude",
   "home": "/nonexistent-footprint-golden",
   "rows": [
     {

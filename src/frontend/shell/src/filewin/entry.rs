@@ -230,14 +230,12 @@ pub(crate) async fn open_with(
         Target::Reveal { dir, name } => (Some(dir), Some(name)),
         Target::Home => (None, None),
     };
-    // 🔴通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
-    let handoff = crate::chan::host::handoff()
-        .ok_or_else(|| command(copy_text("rsFilewinEntry.open.noHost", &[])))?;
+    // 通道就是窗口进程的 stdin / stdout（`chan::host::serve_window`）：帧长上限随种子交过去，两端同一个数。
     let req = OpenRequest {
         origin,
         cwd,
         reveal,
-        handoff,
+        frame: crate::chan::host::FRAME_MAX_BYTES,
         bookmarks,
         view,
         machines: machine_names(),

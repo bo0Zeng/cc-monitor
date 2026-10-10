@@ -114,19 +114,11 @@ fn every_entry_carries_the_class_the_invariants_table_gives_it() {
         "从 §2.1 只抽出 {truths} 条真相 / {caches} 条缓存 —— 抽取器坏了"
     );
     let d = TestDir::new("classes");
-    // 后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）；
-    //   进程记录那一行的名字带口号，表里写 `listen-<口>.pid`。
+    // 后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）。
     let mut got: Vec<(String, DataClass)> = monitor_entries(d.path())
         .into_iter()
-        .chain(backend_entries(d.path(), d.path(), Some(51234)))
-        .map(|e| {
-            let label = if e.label == relay_route_core::listen_pid_file_name(51234) {
-                "listen-<口>.pid".to_string()
-            } else {
-                e.label
-            };
-            (label, e.class)
-        })
+        .chain(backend_entries(d.path(), d.path()))
+        .map(|e| (e.label, e.class))
         .collect();
     got.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(
@@ -181,24 +173,17 @@ fn backend_rows_point_where_the_backend_itself_writes() {
     use relay_route_core as rr;
     let home = TestDir::new("backend-home");
     let data = TestDir::new("backend-data");
-    let got: Vec<(String, PathBuf, String)> =
-        backend_entries(home.path(), data.path(), Some(51234))
-            .into_iter()
-            .map(|e| (e.label, PathBuf::from(e.path), e.kind))
-            .collect();
+    let got: Vec<(String, PathBuf, String)> = backend_entries(home.path(), data.path())
+        .into_iter()
+        .map(|e| (e.label, PathBuf::from(e.path), e.kind))
+        .collect();
     let h = home.path();
     let row = |l: &str, p: PathBuf, k: &str| (l.to_string(), p, k.to_string());
     let want = vec![
         row("bin/", h.join(".cc-monitor/bin"), "dir"),
         row("staging/", h.join(rr::STAGING_DIR_REL), "dir"),
         row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
-        row("relay-pass-key", h.join(rr::PASS_KEY_FILE_REL), "file"),
-        row("listen-token", h.join(rr::LISTEN_TOKEN_FILE_REL), "file"),
-        row(
-            "listen-51234.pid",
-            h.join(".cc-monitor/listen-51234.pid"),
-            "file",
-        ),
+        row("run/", h.join(rr::LISTEN_DIR_REL), "dir"),
         row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
         row("profiles.toml", h.join(rr::PROFILES_REL), "file"),
         row(
@@ -220,6 +205,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
         row("quota.json", h.join(rr::QUOTA_LEDGER_REL), "file"),
         row("rotation.json", h.join(rr::ROTATION_REL), "file"),
+        row("lineage.json", h.join(rr::LINEAGE_REL), "file"),
         row(
             "launch-accounts.json",
             h.join(rr::LAUNCH_ACCOUNTS_REL),
@@ -245,12 +231,6 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("backups/", h.join(rr::EXT_BACKUPS_DIR_REL), "dir"),
     ];
     assert_eq!(got, want);
-    // 口号拿不到 ⇒ 进程记录那一行不列（不猜一个口）
-    let without: Vec<String> = backend_entries(home.path(), data.path(), None)
-        .into_iter()
-        .map(|e| e.label)
-        .collect();
-    assert!(!without.iter().any(|l| l.ends_with(".pid")), "{without:?}");
 }
 
 /// ★★ 〔「家里的都进唯一枚举，判据两向」〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量
@@ -290,16 +270,15 @@ fn every_home_path_in_the_contract_has_a_row() {
     );
     let home = TestDir::new("contract-home");
     let data = TestDir::new("contract-data");
-    let covered: std::collections::BTreeSet<String> =
-        backend_entries(home.path(), data.path(), None)
-            .into_iter()
-            .filter_map(|e| {
-                Path::new(&e.path)
-                    .strip_prefix(home.path())
-                    .ok()
-                    .map(|p| p.to_string_lossy().replace('\\', "/"))
-            })
-            .collect();
+    let covered: std::collections::BTreeSet<String> = backend_entries(home.path(), data.path())
+        .into_iter()
+        .filter_map(|e| {
+            Path::new(&e.path)
+                .strip_prefix(home.path())
+                .ok()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+        })
+        .collect();
     let mut want = declared.clone();
     // 后端落点（`bin/ccm`）由它所在目录那一行覆盖
     want.remove(relay_route_core::BACKEND_LANDING_REL);

@@ -4579,7 +4579,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/backend_client_guard_tests.rs", 3), // 新行：头注里三块（旧文件名 · 旧登记表 · 旧层判据文件）
         ("tests/frontend/shell/byte_cap_registry_tests.rs", 6),
         // `hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
-        ("src/backend/footprint/rows.rs", 3), // 1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
+        ("src/backend/footprint/rows.rs", 2), // 3 → 2：成品那一格改名 `agent_home` 之后旧名彻底死了，点它的那句改成现状。1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
         // `tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行随整份判据文件删了（它守的围栏与部署命令一起退役）。
         ("tests/frontend/shell/capability_registry_tests.rs", 1),
         ("tests/frontend/shell/ccm_cli_contract_tests.rs", 1),
@@ -4766,7 +4766,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/footprint.rs", 1), // 新行：cc-bus 那一条随 Claude 布局那一半搬来，带着它那块（`~/.cc-bus/` note 点写面旧命令名）
         ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
         ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
-        ("src/frontend/shell/src/dial_host.rs", 1), // `stream` 用法那一个开链路口删了，原地一块
+        // `src/frontend/shell/src/dial_host.rs` 那一行摘了：`stream` 用法的开链路口又回来了（远端常驻后端的小中继走它），墓碑那句改成现状。
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑

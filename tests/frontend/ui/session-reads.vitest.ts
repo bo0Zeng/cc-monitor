@@ -248,8 +248,9 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
     // 需手动：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
-    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42 };
+    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), tone: "need" };
     expect(decodeFacts({ ...good, needs }).needs).toEqual(needs);
+    expect(() => decodeFacts({ ...good, needs: { ...needs, text: undefined } }), "缺写好的字").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, needs: { kind: "plan", tool: null, what: null } }), "缺 sinceMs").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null }] }), "缺 at").toThrow(ReplyUnreadable);

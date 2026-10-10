@@ -491,9 +491,11 @@ fn last_say_is_the_first_line_of_the_last_text() {
     assert!(t.ends_with('…'));
 }
 
-/// ★ 需手动：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
+/// ★ 需手动：那台说在等才有；种类由「在等什么」（适配层翻好的 [`WaitOn`]）配记录里没结果的那一步判，判不出不猜。
+/// 那一家的六个词逐个落到一种（不再有五个落进判不出）。
 #[test]
 fn needs_is_decided_from_the_wait_and_the_pending_call() {
+    use crate::agents::WaitOn as W;
     let call = |id: &str, name: &str, what: Option<&str>| PendingCall {
         id: id.into(),
         name: name.into(),
@@ -502,54 +504,77 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         state: StepWait::Unclear,
         why: None,
     };
-    let wait = |w: Option<&str>| PidWait {
-        waiting_for: w.map(str::to_string),
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
         since_ms: Some(42),
     };
     let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
+    let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
+    let plan = vec![call("p", "ExitPlanMode", None)];
     // 不在等 ⇒ 没有。
     assert_eq!(needs_of(&bash, None), None);
     // 批准框 ＋ 一步没结果 ⇒ 批准那一步。
     assert_eq!(
-        needs_of(&bash, Some(&wait(Some("permission prompt")))),
+        needs_of(&bash, Some(&wait(Some(W::Permission)))),
         Some(Needs {
             kind: NeedsKind::Approve,
             tool: Some("Bash".into()),
             call: Some("b".into()),
             what: Some("rm -rf build/".into()),
-            since_ms: Some(42)
+            since_ms: Some(42),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
         })
     );
-    // 提问 ⇒ 回答（不看 waitingFor）；计划 ⇒ 批准计划。
-    let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
-    assert_eq!(
-        needs_of(&ask, Some(&wait(Some("dialog open"))))
-            .unwrap()
-            .kind,
-        NeedsKind::Answer
-    );
-    assert_eq!(
-        needs_of(&ask, Some(&wait(None))).unwrap().what.as_deref(),
-        Some("要不要？")
-    );
-    let plan = vec![call("p", "ExitPlanMode", None)];
-    let n = needs_of(&plan, Some(&wait(None))).unwrap();
-    assert_eq!(
-        (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
-        (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
-    );
-    // 说不出是哪种框 · 没有没结果的调用 ⇒ 判不出（不猜成批准）。
-    for (pending, w) in [
-        (bash.clone(), Some("dialog open")),
-        (bash.clone(), None),
-        (vec![], Some("permission prompt")),
+    // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
+    for w in [Some(W::Permission), None] {
+        let n = needs_of(&ask, Some(&wait(w))).unwrap();
+        assert_eq!(
+            (n.kind, n.what.as_deref()),
+            (NeedsKind::Answer, Some("要不要？"))
+        );
+        let n = needs_of(&plan, Some(&wait(w))).unwrap();
+        assert_eq!(
+            (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
+            (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
+        );
+    }
+    // 每个「在等什么」一种；表一行一个，`call` 列是那一种认不认记录里没结果的那一步。
+    let kinds = [
+        (W::Permission, NeedsKind::Approve, true),
+        (W::Network, NeedsKind::Network, true),
+        (W::Worker, NeedsKind::Worker, false),
+        (W::Goal, NeedsKind::Goal, false),
+        (W::Input, NeedsKind::Answer, true),
+        (W::Dialog, NeedsKind::Choose, false),
+    ];
+    for (w, kind, with_call) in kinds {
+        let n = needs_of(&bash, Some(&wait(Some(w)))).unwrap();
+        assert_eq!(n.kind, kind, "{w:?}");
+        assert_eq!(n.call.is_some(), with_call, "{w:?}");
+        // 记录里没有没结果的调用：种类照旧，只是说不出是哪一步。
+        let n = needs_of(&[], Some(&wait(Some(w)))).unwrap();
+        assert_eq!((n.kind, n.call), (kind, None), "{w:?}");
+    }
+    // 弹着别的框（选项框 · 联网 · 协作 · 目标）时，底下那个提问 / 计划轮不到：先答的是顶上那个框。
+    for (w, kind) in [
+        (W::Dialog, NeedsKind::Choose),
+        (W::Network, NeedsKind::Network),
+        (W::Worker, NeedsKind::Worker),
+        (W::Goal, NeedsKind::Goal),
     ] {
-        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(
+            needs_of(&ask, Some(&wait(Some(w)))).unwrap().kind,
+            kind,
+            "{w:?}"
+        );
+    }
+    // 那台没说在等什么（或说了认不出的词）· 也没有提问 / 计划 ⇒ 判不出（不猜成批准）。
+    for pending in [bash.clone(), vec![]] {
+        let n = needs_of(&pending, Some(&wait(None))).unwrap();
         assert_eq!(
             (n.kind, n.tool, n.call, n.what),
-            (NeedsKind::Unknown, None, None, None),
-            "{w:?} / {}",
-            pending.len()
+            (NeedsKind::Unknown, None, None, None)
         );
     }
 }
@@ -643,6 +668,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             call: Some("b1".into()),
             what: None,
             since_ms: Some(1),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
         }),
         ..SessionFacts::default()
     };
@@ -683,7 +710,7 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
     f.needs = needs_of(
         &f.pending,
         Some(&PidWait {
-            waiting_for: Some("permission prompt".into()),
+            waiting_for: Some(crate::agents::WaitOn::Permission),
             since_ms: None,
         }),
     );
@@ -825,7 +852,7 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
         (17, 57, 1000, 1100, 200, 3)
     );
     assert_eq!(
-        t.text,
+        t.text.0,
         copy_core::copy_text(
             "beSpend.tokens.line",
             &[
@@ -860,12 +887,15 @@ fn cost_is_the_last_cost_record_as_written() {
         Some(Cost {
             micros: 1_234_000,
             partial: false,
-            text: copy_core::copy_text("beSpend.cost.exact", &[("usd", "1.23")])
+            text: crate::common::cells::Words(copy_core::copy_text(
+                "beSpend.cost.exact",
+                &[("usd", "1.23")]
+            ))
         })
     );
     let f = scan_all(&jsonl(&[cost(2.0, true)]));
     assert_eq!(
-        f.cost.as_ref().map(|c| c.text.clone()),
+        f.cost.as_ref().map(|c| c.text.0.clone()),
         Some(copy_core::copy_text(
             "beSpend.cost.about",
             &[("usd", "2.00")]
@@ -873,7 +903,7 @@ fn cost_is_the_last_cost_record_as_written() {
     );
     let f = scan_all(&jsonl(&[cost(0.001, false)]));
     assert_eq!(
-        f.cost.map(|c| c.text),
+        f.cost.map(|c| c.text.0),
         Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
     );
 }
@@ -914,5 +944,75 @@ fn every_permission_mode_value_passes_through_as_written() {
         let text =
             jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
         assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
+    }
+}
+
+/// 〔G2〕「需手动」带写好的字与语气：八种各一句（等批准 / 等回答 / 等批准（计划）/ 等放行 / 等批准（协作请求）/ 等确认 / 等选择 / 需手动）；语气恒 `need`。出口照抄。
+#[test]
+fn needs_carries_its_words_and_tone() {
+    use crate::agents::WaitOn as W;
+    let call = |name: &str| PendingCall {
+        id: "c".into(),
+        name: name.into(),
+        what: None,
+        at: None,
+        state: StepWait::Running,
+        why: None,
+    };
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
+        since_ms: None,
+    };
+    let cases = [
+        (
+            vec![call("Bash")],
+            Some(W::Permission),
+            NeedsKind::Approve,
+            "beSession.needs.approve",
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            None,
+            NeedsKind::Answer,
+            "beSession.needs.answer",
+        ),
+        (
+            vec![call("ExitPlanMode")],
+            None,
+            NeedsKind::Plan,
+            "beSession.needs.plan",
+        ),
+        (
+            vec![call("Bash")],
+            Some(W::Network),
+            NeedsKind::Network,
+            "beSession.needs.network",
+        ),
+        (
+            vec![],
+            Some(W::Worker),
+            NeedsKind::Worker,
+            "beSession.needs.worker",
+        ),
+        (
+            vec![],
+            Some(W::Goal),
+            NeedsKind::Goal,
+            "beSession.needs.goal",
+        ),
+        (
+            vec![],
+            Some(W::Dialog),
+            NeedsKind::Choose,
+            "beSession.needs.choose",
+        ),
+        (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
+    ];
+    for (pending, w, kind, key) in cases {
+        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(n.kind, kind);
+        let v = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
+        assert_eq!(v["tone"], "need", "{kind:?}");
     }
 }

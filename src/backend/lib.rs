@@ -46,6 +46,7 @@ pub mod history; // 历史清单与注解（history_list · history_annotations�
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
+pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -885,7 +886,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9r-resolve-argv-raw-said：--resolve 认 --args-b64 / --stdin-line（与别的 CLI 子命令同一处读，一次性那条码全集 +args_too_large · no_input · bad_args）；terminals-list 每行删恒为 normal 的 purpose；CLI 失败信封多可缺 raw（下层原话，进复制详情）；profiles-read 的 fileProblem 多可缺 detail；几族失败句只留原因词、原话进详情；轮换说明文案抢回 / 兜底分开说。
 ///
 /// p9s-record-arg-line：过程一行的主参数（steps.arg）改成协议上的定长一行（至多 200 字、按字符截、截了带省略号；原来 400）；CRLF 行的 line.raw 不含 \r；冻结表照现状（session_kind / status 已删）；history-branch 进经通道的命令表；后端删三处没人调的（账号面 watched · 读位 restart · ScanMap::scan）；plan-return「已结束」那句文案键挪进会话状态族。
-pub const BUILD_ID: &str = "p9s-record-arg-line";
+///
+/// p9t-resident-socket-cells：常驻后端去钥匙，只听家里只给本人的 Unix 套接字（~/.cc-monitor/run/），远端经 ssh 跑 --resident-attach 小中继去连；attach 行只剩 {attach, flags}；--resident-ensure 答 {pid}（不再给 port / token）；拨号 ack 去掉 open_refused 与 tunnel；只许直通那把中转钥匙由根钥匙派生、relay-pass-key 不再用；文件窗口改走父子管道（种子与就绪行），不再监听。
+/// 会话血缘：起会话地址尾上带来处段 ~<来处>[~<父>]（语法只在 relay-route-core）；中转认谁起的谁，记 ~/.cc-monitor/lineage.json；起子进程不往下传各家「我是哪个会话」的变量（self_sid_env）；子会话默认跟随父会话（{"parent": sid}）。
+/// CLI 失败信封只剩一种：stderr 一行 {code, message, detail, data?}（与帧面失败应答同一份 stream::detail::Failed），下层原话进 detail，不再有 raw 格；--text 的失败是那一句 ＋ 复制详情；CLI 面开 --within-ms（同帧面 within_ms）。needs.kind 八种（approve · answer · plan · network · worker · goal · choose · unknown）；activity 多 background_work；足迹那一份 claude_config_dir 改叫 agent_home。
+/// 状态的字进核心：session_added / session_status 带 activity_text · activity_tone，session_state 带 state_text · state_hint · state_tone（必有），facts.needs 带 text · tone；新帧命令 cells-catalog（每件成品有哪些格）。计划：plan-command（代敲 pb continue · pause · view），plan_changed 三格必填、壳转进界面。全文搜索分层（正文层优先留、工具层先放，常驻上界 128 MB）。
+pub const BUILD_ID: &str = "p9t-resident-socket-cells";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1007,6 +1013,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--drift-report",
+    // 格目录（帧面 `cells-catalog` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--cells-catalog",
     // 公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",
@@ -1023,6 +1031,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-ack",
     "--plan-unack",
     "--plan-return",
+    // 代敲 pb 的用户命令（`plan-command`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-command",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1231,6 +1241,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
+    // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--resident-attach",
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
@@ -2208,6 +2220,11 @@ pub const ARGS_B64_FLAG: &str = "--args-b64";
 /// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
 
+/// **期限口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--terminals-list --within-ms 10000`）⇒ 与帧面请求信封的 `within_ms`
+/// 同名同义：发起方这一发愿意等多久（毫秒），减余量换成截止时刻，装总期限的命令都收紧到它；值不是正整数 ⇒ 当没带（同帧面那一格的宽读）。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const WITHIN_MS_FLAG: &str = "--within-ms";
+
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
 /// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
@@ -2240,6 +2257,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // `--quota-read` 的「给人看」那一形（只给这一条）。
     TEXT_FLAG,
     "--until",
+    // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    WITHIN_MS_FLAG,
 ];
 
 /// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流索要了什么）。

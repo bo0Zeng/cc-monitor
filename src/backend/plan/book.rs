@@ -116,7 +116,7 @@ impl Book {
                             good.insert(name, (sl.clone(), now_ms));
                         } else if let Some((prev, at)) = good.get(&name) {
                             let mut kept = prev.clone();
-                            kept["stale"] = json!({"said": error, "since": at});
+                            kept["stale"] = json!({"said": error, "raw": null, "since": at});
                             *sl = kept;
                         } else {
                             sl["needs"] = json!([]);

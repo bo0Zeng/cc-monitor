@@ -173,7 +173,8 @@ fn give_back(args: &Value) -> Answer {
 /// 帧面入口：命令名从 `r.cmd` 来。
 pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
     match cmd {
-        "plan-return" => give_back(args),
+        "plan-return" => give_back(args)
+            .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanReturnReply>),
         other => Err(bad(&format!("unknown command `{other}`"))),
     }
 }

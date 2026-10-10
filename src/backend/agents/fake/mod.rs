@@ -122,6 +122,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
@@ -406,6 +407,7 @@ fn local_face(
         tasks_dir: Some(|h| h.join("todo")),
         background_of: |v| v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
         activity_of: |_| None,
+        wait_of: |_| None,
     }
 }
 

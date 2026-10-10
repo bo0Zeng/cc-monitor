@@ -62,6 +62,22 @@
   cursor: pointer;
 }
 
+/* 顶栏「计划」：计划那一侧有需手动的 ⇒ 右上一颗琥珀点（`main.ts` 照 `PlanNeedsBook` 挂 `data-needs`）。 */
+.plan-trigger {
+  position: relative;
+}
+
+.plan-trigger[data-needs="true"]::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  content: "";
+}
+
 .tab-bar-icon:focus-visible {
   outline-offset: calc(-1 * var(--focus-ring));
 }

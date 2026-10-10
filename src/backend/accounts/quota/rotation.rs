@@ -2,8 +2,8 @@
 //!
 //! - 每台一张规则表：一条规则 ＝ 一份有名字的轮换（顺序 · 勾了哪几个 · 换号时机 · 封顶 · 换法 · 最多等几分钟）；
 //!   本机默认 ＝ 指向其中一条（`defaultRule`），永远至少一条；缺省那一条只有「起始账号」那一格 ⇒ 缺省不轮换。
-//! - 每个会话的来源三选一：跟随默认 · 用某条规则（链接：规则改了它下一发就按新的走）· 本会话自己一份
-//!   （换成别的来源时自己那一份留着）；按会话 id 存，后端重启后还在。
+//! - 每个会话的来源四选一：跟随默认 · 跟随父会话（链接：父此刻按哪份它就按哪份；谁起的谁只在 `lineage.rs`）·
+//!   用某条规则（链接：规则改了它下一发就按新的走）· 本会话自己一份（换成别的来源时自己那一份留着）；按会话 id 存，后端重启后还在。
 //! - 每个会话此刻钉在哪个号、从什么时候起、换号记录；会话换了起它的号（重启换号 / 换号恢复）⇒ 钉号随之清掉。
 //! - 判「换不换、换谁」只在 [`super::decide`]；这里只有存取。
 
@@ -385,6 +385,14 @@ pub struct SessionRotation {
     pub rule_name: Option<String>,
     /// 按此刻生效的那一份写好的一句规则说明（界面照抄）。
     pub explain: String,
+    /// 会话血缘里它的父（不管来源是不是跟随它；界面据此决定来源下拉里列不列「跟随父会话」）；没有 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub parent: Option<String>,
+    /// 来源是跟随父会话、却追不到父那一条（父没经过中转 · 已清掉 · 绕回来）⇒ `true`，此刻按跟随默认；否则缺。
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub parent_missing: bool,
     /// 这个会话自己那一份（换成别的来源时也留着）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
@@ -493,6 +501,9 @@ fn is_zero(v: &u64) -> bool {
     *v == 0
 }
 
+/// 跟随父会话最多追几层（再深 ⇒ 按跟随默认）。
+pub(crate) const PARENT_DEPTH: usize = 8;
+
 /// 「看见」的时刻隔多久才刷新一次（秒）。
 pub(crate) const SEEN_REFRESH: u64 = 86_400;
 /// 跟随默认 · 没换过号 · 没有自己那一份的会话，多久没被看见就从账本里清掉（秒）。
@@ -520,7 +531,7 @@ impl SessionEntry {
     }
 }
 
-/// 一个会话的轮换从哪来。线上 `"follow"` · `"custom"` · `{"rule": "<id>"}`。
+/// 一个会话的轮换从哪来。线上 `"follow"` · `"custom"` · `{"rule": "<id>"}` · `{"parent": "<sid>"}`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -535,6 +546,8 @@ impl SessionEntry {
 pub enum Source {
     /// 跟随这台的默认规则（默认换了一条也跟着走）。
     Follow,
+    /// 跟随父会话（链接：父那一条此刻按哪份它就按哪份；值是父的会话 id，取自会话血缘）。只共享规则，钉号与换号记录各自一份。
+    Parent(String),
     /// 本会话自己那一份。
     Custom,
     /// 用某条规则（链接）。
@@ -741,11 +754,25 @@ impl Book {
             .unwrap_or_default()
     }
 
-    /// 这个会话此刻实际按哪条规则（本会话 ⇒ `None`；指向的规则不在了 ⇒ 默认那条）。
+    /// 顺着「跟随父会话」追到说了算的那一条（自己不是跟随父会话 ⇒ 就是自己）；最多追 [`PARENT_DEPTH`] 层。
+    /// 追不到（父不在账本里 · 绕回来 · 太深）⇒ `None`：按跟随默认。
+    pub(crate) fn decider<'a>(&'a self, s: &'a SessionEntry) -> Option<&'a SessionEntry> {
+        let mut cur = s;
+        for _ in 0..=PARENT_DEPTH {
+            match &cur.source {
+                Source::Parent(p) => cur = self.sessions.get(p)?,
+                _ => return Some(cur),
+            }
+        }
+        None
+    }
+
+    /// 这个会话此刻实际按哪条规则（本会话 ⇒ `None`；指向的规则不在了 / 跟随父会话追不到 ⇒ 默认那条）。
     pub(crate) fn rule_of<'a>(&'a self, s: &'a SessionEntry) -> Option<&'a str> {
-        match &s.source {
-            Source::Custom if s.custom.is_some() => None,
-            Source::Rule(id) if self.rules.contains_key(id) => Some(id.as_str()),
+        let d = self.decider(s);
+        match d.map(|d| (&d.source, d)) {
+            Some((Source::Custom, d)) if d.custom.is_some() => None,
+            Some((Source::Rule(id), _)) if self.rules.contains_key(id) => Some(id.as_str()),
             _ => self
                 .rules
                 .contains_key(&self.default_rule)
@@ -753,16 +780,43 @@ impl Book {
         }
     }
 
-    /// 这个会话此刻按哪一份轮换：跟随 ⇒ 默认那条 · 规则 ⇒ 那条（不在了 ⇒ 默认那条）· 本会话 ⇒ 自己那份。
+    /// 这个会话此刻按哪一份轮换：跟随 ⇒ 默认那条 · 跟随父会话 ⇒ 父此刻那份 · 规则 ⇒ 那条（不在了 ⇒ 默认那条）· 本会话 ⇒ 自己那份。
     pub(crate) fn rotation_of(&self, s: &SessionEntry) -> Rotation {
-        match (&s.source, &s.custom) {
-            (Source::Custom, Some(c)) => c.clone(),
+        match self.decider(s) {
+            Some(SessionEntry {
+                source: Source::Custom,
+                custom: Some(c),
+                ..
+            }) => c.clone(),
             _ => self
                 .rule_of(s)
                 .and_then(|id| self.rules.get(id))
                 .map(|r| r.rotation.clone())
                 .unwrap_or_default(),
         }
+    }
+
+    /// 同 [`Book::saw`]；这一下是新建的、且血缘里有父、父在账本里且与它同一家 ⇒ 来源 ＝ 跟随父会话（不同家的不继承）。
+    /// 已记下的会话来源一律不动。
+    pub(crate) fn saw_child(
+        &mut self,
+        sid: &str,
+        agent: &str,
+        start: &str,
+        now: u64,
+        parent: Option<&str>,
+    ) -> bool {
+        let fresh = !self.sessions.contains_key(sid);
+        let moved = self.saw(sid, agent, start, now);
+        if fresh {
+            let same = parent
+                .filter(|p| *p != sid)
+                .filter(|p| self.sessions.get(*p).is_some_and(|ps| ps.agent == agent));
+            if let (Some(p), Some(s)) = (same, self.sessions.get_mut(sid)) {
+                s.source = Source::Parent(p.to_string());
+            }
+        }
+        moved
     }
 
     /// 中转第一次看见这个会话 / 会话换了起它的号 ⇒ 记下（换了起它的号 ⇒ 钉号清掉，从新号起算）。改了 ⇒ `true`。
@@ -793,12 +847,12 @@ impl Book {
         }
     }
 
-    /// 清旧会话（稿第 12 题）：跟随默认 · 没换过号 · 没有自己那一份 · 超过 [`DROP_AFTER`] 没被看见 ⇒ 从账本里删。
+    /// 清旧会话（稿第 12 题）：跟随默认或跟随父会话 · 没换过号 · 没有自己那一份 · 超过 [`DROP_AFTER`] 没被看见 ⇒ 从账本里删。
     /// 用规则的 · 本会话的 · 换过号的都不动；删掉的那种再来一发会照新会话记回来（一样的一条，不丢东西）。回删了几条。
     pub(crate) fn drop_stale(&mut self, now: u64) -> usize {
         let before = self.sessions.len();
         self.sessions.retain(|_, s| {
-            !(s.source == Source::Follow
+            !(matches!(s.source, Source::Follow | Source::Parent(_))
                 && s.custom.is_none()
                 && s.history.is_empty()
                 && now.saturating_sub(s.last_seen()) > DROP_AFTER)
@@ -1059,42 +1113,19 @@ pub(crate) fn rescan(path: &Path) {
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）：别的进程写了 ⇒ [`rescan`]。返回的那一份活着就一直盯。
 /// 起的时候先记下此刻那一份（之后的改动才有得比）。
 pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
-    use notify::Watcher;
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?
         .to_path_buf();
     crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
     rescan(path);
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        let Ok(ev) = res else { return };
-        if matches!(ev.kind, notify::EventKind::Access(_)) {
-            return;
-        }
-        if ev
-            .paths
-            .iter()
-            .any(|p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME))
-        {
-            let _ = tx.send(());
-        }
-    })
-    .map_err(|e| e.to_string())?;
-    w.watch(&dir, notify::RecursiveMode::NonRecursive)
-        .map_err(|e| e.to_string())?;
     let target = path.to_path_buf();
-    std::thread::Builder::new()
-        .name("rotation-watch".to_string())
-        .spawn(move || {
-            // 监听器一丢（发端随它走）⇒ 收不到 ⇒ 线程退出。
-            while rx.recv().is_ok() {
-                while rx.try_recv().is_ok() {}
-                rescan(&target);
-            }
-        })
-        .map_err(|e| e.to_string())?;
-    Ok(w)
+    crate::platform::watch_file::watch(
+        &[(dir, false)],
+        |p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME),
+        "rotation-watch",
+        move || rescan(&target),
+    )
 }
 
 /// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json`，进程活着就一直盯。盯不上只出声。
@@ -1136,7 +1167,12 @@ fn ring_changed(before: &Book, after: &Book) {
     let rules_moved = before.rules != after.rules || before.default_rule != after.default_rule;
     for (sid, s) in &after.sessions {
         let moved = match before.sessions.get(sid) {
-            Some(b) => b != s || (rules_moved && before.rotation_of(b) != after.rotation_of(s)),
+            // 跟随父会话的：父那一条变了，它此刻生效那份就变了（规则表没动也算）。
+            Some(b) => {
+                b != s
+                    || ((rules_moved || matches!(s.source, Source::Parent(_)))
+                        && before.rotation_of(b) != after.rotation_of(s))
+            }
             None => true,
         };
         if moved {

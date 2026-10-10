@@ -24,7 +24,6 @@ import { toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
-import { needsWord } from "./session-words";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
@@ -979,7 +978,7 @@ export class TabManager {
   needsWordOf(sessionId: string): string | null {
     const tab = this.store.tabs.get(sessionId);
     const n = tab ? needsOf(tab) : null;
-    return n ? needsWord(n.kind) : null;
+    return n ? n.text : null;
   }
 
   /**
@@ -1140,8 +1139,17 @@ export class TabManager {
 
   /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
   jumpToNextNeeds(): void {
-    const sid = this.bar.nextNeedsSid();
-    if (sid !== null) this.switchTo(sid);
+    this.bar.nextNeeds();
+  }
+
+  /** 计划那一侧的「需手动」挂进来（几条 · 站在第几条 · 去第几条），之后数变了调 `planNeedsChanged`。 */
+  attachPlanNeeds(plan: { count: () => number; at: () => number | null; open: (i: number) => void }): void {
+    this.bar.plan = plan;
+    this.bar.planNeedsChanged();
+  }
+
+  planNeedsChanged(): void {
+    this.bar.planNeedsChanged();
   }
 
   /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */
@@ -1261,8 +1269,10 @@ export class TabManager {
     sessionId: string,
     doing: SessionActivity | null,
     waitingFor: string | null,
+    text: string | null,
+    tone: string | null,
   ): void {
-    const act = doing === null ? null : { doing, waitingFor };
+    const act = doing === null ? null : { doing, waitingFor, text, tone };
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       if (act) this.store.pendingActivity.set(sessionId, act);
@@ -1275,7 +1285,8 @@ export class TabManager {
     const clearedIdle = act !== null && this.applyState(tab, "activity");
     if (
       tab.activity?.doing === act?.doing &&
-      tab.activity?.waitingFor === act?.waitingFor
+      tab.activity?.waitingFor === act?.waitingFor &&
+      tab.activity?.text === act?.text
     ) {
       if (clearedIdle) this.refreshTabBar();
       return;

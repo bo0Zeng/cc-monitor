@@ -3,11 +3,11 @@
 //!
 //! # 它今天管什么
 //!
-//! - **门牌**：中转口 [`PORT`] · 常驻监听口 [`listen_port_for`] · 两把钥匙 [`KEY_FILE_REL`] / [`LISTEN_TOKEN_FILE_REL`] ·
+//! - **门牌**：中转口 [`PORT`] · 常驻后端的套接字 [`listen_socket_for`] · 中转钥匙 [`KEY_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单 ·
-//!   监听口的进程记录 [`listen_pid_file_name`]。
+//!   常驻后端的进程记录 [`listen_pid_for`]。
 //!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
@@ -29,18 +29,47 @@
 //!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）·
 //!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
 //!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
-//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
-//!   监听口的进程记录（`local_backend_host::pid_path`，[`listen_pid_file_name`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
+//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
+//!   常驻后端的进程记录（[`listen_pid_for`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
 
-/// 〔两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
-/// 这台机器 ＋ 这个家（`~/.cc-monitor`；隔离跑时 `CCM_DATA_DIR`）⇒ 那一个口。门牌只跟着家走：与 Claude 目录、
-/// 与哪一家 agent 都无关（改一个设置、换一个终端起 monitor，都还是同一个口、同一个后端）。
-/// 本机宿主（monitor `local_backend_host`）与后端 `--resident-ensure` / `--resident-stop` 同一个函数
-/// ⇒ 一台机器一个常驻后端，本机 / 远端视角收敛。FNV-1a 写死（`DefaultHasher` 跨 Rust 版本不稳定，升级后要算出同一个口）。
-pub fn listen_port_for(data_home: &std::path::Path) -> u16 {
+/// 常驻后端听的那个 Unix 套接字所在的目录（相对家目录）：只给本人（`0700`）。常驻后端活着时攥着这个目录的独占锁
+/// （抢不到 = 已有一个在听），套接字与进程记录都住这里。门由内核给：目录权限 ＋ 对端 uid，没有钥匙。
+pub const LISTEN_DIR_REL: &str = ".cc-monitor/run";
+
+/// 套接字的文件名（在 [`LISTEN_DIR_REL`] 里）。
+pub const LISTEN_SOCKET_NAME: &str = "backend.sock";
+
+/// 常驻后端自己记的「谁在听」（`pid\n二进制\n`）的文件名（在 [`LISTEN_DIR_REL`] 里）。
+pub const LISTEN_PID_NAME: &str = "backend.pid";
+
+/// 这个家（`~/.cc-monitor`；隔离跑时 `CCM_DATA_DIR`）⇒ 常驻后端那个目录。门牌只跟着家走：与 Claude 目录、与哪一家 agent 都无关。
+/// 本机宿主（monitor `local_backend_host`）与后端（常驻后端 · `--resident-ensure` / `--resident-attach` / `--resident-stop`）同一个函数
+/// ⇒ 一台机器一个家一个常驻后端。
+pub fn listen_dir_for(data_home: &std::path::Path) -> std::path::PathBuf {
+    data_home.join(file_name_of(LISTEN_DIR_REL))
+}
+
+/// 同上 ⇒ 那个套接字。
+pub fn listen_socket_for(data_home: &std::path::Path) -> std::path::PathBuf {
+    listen_dir_for(data_home).join(LISTEN_SOCKET_NAME)
+}
+
+/// 同上 ⇒ 那份进程记录。
+pub fn listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
+    listen_dir_for(data_home).join(LISTEN_PID_NAME)
+}
+
+/// 「这是一次沙箱跑」的标记（值 `1`）：测试 / 台架起后端时在白名单环境里带上。带着它的常驻后端若要占的家落在本账号真家目录的
+/// `.cc-monitor` 下 ⇒ 拒绝起（后端 `control/resident.rs::sandbox_refusal`）。仓里起沙箱后端的每个入口都带它（判据钉）。
+pub const SANDBOX_ENV: &str = "CCM_SANDBOX";
+
+/// 〔升级那一跳用，跨过 4.1.x 之后删〕4.1.x 及以前的常驻后端听回环 TCP、把「谁在听」记在 `<家>/listen-<口>.pid`，
+/// 口按家用 FNV-1a 算。新的常驻后端起来时按这一份找到还在跑的旧的、停掉它（它占着中转口），再接中转。
+/// 只有那一跳读它；算法逐字是旧版那一份（写死，升级前后要算出同一个口）。
+pub fn legacy_listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
     const PORT_BASE: u16 = 49152;
     const PORT_SPAN: u32 = 16384;
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -48,8 +77,12 @@ pub fn listen_port_for(data_home: &std::path::Path) -> u16 {
         h ^= u64::from(*b);
         h = h.wrapping_mul(0x1000_0000_01b3);
     }
-    PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
+    let port = PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16);
+    data_home.join(format!("listen-{port}.pid"))
 }
+
+/// 〔同上，跨过 4.1.x 之后删〕旧版常驻后端的钥匙文件（在家里）：停掉旧的之后一并删掉。
+pub const LEGACY_LISTEN_TOKEN_NAME: &str = "listen-token";
 
 /// **后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
@@ -58,9 +91,6 @@ pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
 /// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
 
-/// 常驻监听口的钥匙文件（相对家目录；0600，本机宿主与远端 `--resident-ensure` 同一份）。
-pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
-
 /// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
 /// **远端**：`--resident-ensure` 起那台的常驻后端时交同一个值（本机远端同形）。
 pub const PORT: u16 = 8788;
@@ -68,9 +98,6 @@ pub const PORT: u16 = 8788;
 /// 中转钥匙文件相对家目录的路径（`INVARIANTS §48.1a`）：**中转所在那台机器**上 `0600`，中转绑上口之后自己读回或铸。
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
-
-/// 只许直通（`/t/`）的那把钥匙的文件（同机同权限、同一个铸法）。地址只能经命令行参数交给的那一家只拿它（`INVARIANTS §48.1a`）。
-pub const PASS_KEY_FILE_REL: &str = ".cc-monitor/relay-pass-key";
 
 /// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
@@ -121,6 +148,9 @@ pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
 /// 〔同上〕**账号轮换**（后端账号域写）：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
 pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
 
+/// 〔同上〕**会话血缘**（后端 `lineage.rs` 写，唯一写者是中转那一路）：谁起的谁 ＋ 起会话地址里每个来处绑给了哪个会话。
+pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
+
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
 pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
 
@@ -145,12 +175,6 @@ pub const ACCOUNTS_DIR_REL: &str = accounts_dir_rel!();
 
 /// 账号库清单在 [`ACCOUNTS_DIR_REL`] 下的文件名（后端写；ccm 起会话 · 账号查询 · 账号之间同步 MCP 都读它）。
 pub const ACCOUNTS_MANIFEST_NAME: &str = "accounts.json";
-
-/// 〔同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
-/// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。
-pub fn listen_pid_file_name(port: u16) -> String {
-    format!("listen-{port}.pid")
-}
 
 /// 相对家目录的一段 ⇒ 最后一截（文件名）。给各写者定自己那个 `FILE_NAME`（临时件的名字从它拼），名字仍只住上面那一处。
 pub const fn file_name_of(rel: &'static str) -> &'static str {
@@ -240,8 +264,8 @@ pub fn segment_is_safe(seg: &str) -> bool {
 /// 拼 `/<前缀>/<seg1>/<seg2>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：
 /// 拼错一段的症状是中转回一个查不出来的 404，所以宁可当场拒）。
 ///
-/// 没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份 ⇒ 这条地址**不随会话变**，
-/// 中转从 agent 请求里自带的头认会话。
+/// 没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份，中转从 agent 请求里自带的头认会话。
+/// 起会话那一跳另在尾上拼一段来处（[`with_origin`]，会话血缘）：那是一次起会话的号，不是会话 id，也不进路由键。
 pub fn route_path(mode: RouteMode, seg1: &str, seg2: &str) -> Option<String> {
     (segment_is_safe(seg1) && segment_is_safe(seg2))
         .then(|| format!("{}{seg1}/{seg2}", mode.prefix()))
@@ -256,8 +280,8 @@ pub fn base_url(port: u16, mode: RouteMode, seg1: &str, seg2: &str) -> Option<St
     route_path(mode, seg1, seg2).map(|p| format!("http://127.0.0.1:{port}{p}"))
 }
 
-/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好两段、每段过闸。别的一律 `false`
-/// （`localhost` · `https` · 查询串 · 尾斜杠 · 少段多段 · 端口前导空）。
+/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好两段、每段过闸，后面可以再跟一段来处
+/// （[`with_origin`] 的产物）。别的一律 `false`（`localhost` · `https` · 查询串 · 尾斜杠 · 少段多段 · 端口前导空）。
 pub fn base_url_shape_ok(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
         return false;
@@ -276,7 +300,60 @@ pub fn base_url_shape_ok(url: &str) -> bool {
         return false;
     };
     let parts: Vec<&str> = segs.split('/').collect();
-    port_ok && parts.len() == 2 && parts.iter().all(|p| segment_is_safe(p))
+    let route_ok = match parts.as_slice() {
+        [a, b] => segment_is_safe(a) && segment_is_safe(b),
+        [a, b, o] => segment_is_safe(a) && segment_is_safe(b) && parse_origin(o).is_some(),
+        _ => false,
+    };
+    port_ok && route_ok
+}
+
+/// 〔会话血缘〕来处段打头的那个字符。不在段闸字符里 ⇒ 来处段与路由段、与 agent 自己拼上的真路径（`v1/…`）都分得开。
+pub const ORIGIN_MARK: char = '~';
+
+/// 来处段 `~<来处>[~<父>]` 切出来的样子。
+///
+/// - `token`：起会话那一趟（`ccm`）现铸的一个号，一次起会话一个。中转第一次看见它就把它绑给发这一发的那个会话；
+///   之后别的会话拿着同一条地址来（在那个会话里直接起的进程原样继承这条地址）⇒ 它们的父就是绑的那一个。
+/// - `parent`：起会话那一趟被一个会话的 shell 调用时，那个会话的编号。
+///
+/// 两格都只是形状，谁绑谁、记在哪由后端那一处管（`lineage.rs`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Origin<'a> {
+    pub token: &'a str,
+    pub parent: Option<&'a str>,
+}
+
+/// 一段是不是来处段、是的话切开。`~` 打头，后面一截或两截（`~` 隔开），每截过段闸。
+pub fn parse_origin(seg: &str) -> Option<Origin<'_>> {
+    let body = seg.strip_prefix(ORIGIN_MARK)?;
+    let mut it = body.split(ORIGIN_MARK);
+    let token = it.next().filter(|t| segment_is_safe(t))?;
+    let parent = match it.next() {
+        None => None,
+        Some(p) if segment_is_safe(p) => Some(p),
+        Some(_) => return None,
+    };
+    it.next().is_none().then_some(Origin { token, parent })
+}
+
+/// 给一条构造口产物（[`base_url`]，还没带来处）拼上来处段：`<地址>/~<来处>[~<父>]`。
+/// 地址不是那一形 / 已经带了来处 / 任一截过不了段闸 ⇒ `None`。读者：`ccm` 起会话最终那一跳。
+pub fn with_origin(url: &str, token: &str, parent: Option<&str>) -> Option<String> {
+    if !base_url_shape_ok(url)
+        || url
+            .rsplit('/')
+            .next()
+            .is_some_and(|l| l.starts_with(ORIGIN_MARK))
+    {
+        return None;
+    }
+    let seg = match parent {
+        Some(p) => format!("{ORIGIN_MARK}{token}{ORIGIN_MARK}{p}"),
+        None => format!("{ORIGIN_MARK}{token}"),
+    };
+    parse_origin(&seg)?;
+    Some(format!("{url}/{seg}"))
 }
 
 /// 请求目标 `/<前缀>/<seg1>/<seg2>/<rest>` 切出来的样子（中转那一侧用）。
@@ -285,21 +362,33 @@ pub struct Parsed<'a> {
     pub mode: RouteMode,
     pub seg1: &'a str,
     pub seg2: &'a str,
-    /// 第 2 段之后的全部（**不带**开头那个 `/`），原样交上游。
+    /// 紧跟第 2 段的来处段（[`parse_origin`]）；没有 ⇒ `None`。
+    pub origin: Option<Origin<'a>>,
+    /// 第 2 段（有来处段时是来处段）之后的全部（**不带**开头那个 `/`），原样交上游。
     pub rest: &'a str,
 }
 
-/// 切请求目标。不是这个形状（前缀不认得 · 少段 · 某段过不了闸）⇒ `None`。
+/// 切请求目标。不是这个形状（前缀不认得 · 少段 · 某段过不了闸 · 第 2 段之后是 `~` 打头却不是合法来处段）⇒ `None`。
 pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
     let (mode, after) = RouteMode::ALL
         .iter()
         .find_map(|m| target.strip_prefix(m.prefix()).map(|r| (*m, r)))?;
     let (seg1, after) = after.split_once('/')?;
     let (seg2, rest) = after.split_once('/')?;
-    (segment_is_safe(seg1) && segment_is_safe(seg2)).then_some(Parsed {
+    if !(segment_is_safe(seg1) && segment_is_safe(seg2)) {
+        return None;
+    }
+    let (origin, rest) = if rest.starts_with(ORIGIN_MARK) {
+        let (seg, rest) = rest.split_once('/')?;
+        (Some(parse_origin(seg)?), rest)
+    } else {
+        (None, rest)
+    };
+    Some(Parsed {
         mode,
         seg1,
         seg2,
+        origin,
         rest,
     })
 }
@@ -309,14 +398,13 @@ pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
 mod tests;
 
 /// 〔「家里的都进这一份」〕后端在这台自己家里放的每一样：`(名字, 相对家目录, 是目录, 删了会丢)`。名字是闭集（界面按它取说法）；
-/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（监听口进程记录 · API key 表 · 后端错误输出）不在这里。
+/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（API key 表 · 后端错误输出）不在这里。
 /// 后端「文件与数据」那一份成品逐样 stat 它（`footprint/data.rs::own_rows`）。
 pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("bin", ".cc-monitor/bin", true, false),
     ("staging", STAGING_DIR_REL, true, false),
     ("relayKey", KEY_FILE_REL, false, true),
-    ("relayPassKey", PASS_KEY_FILE_REL, false, true),
-    ("listenToken", LISTEN_TOKEN_FILE_REL, false, true),
+    ("listenDir", LISTEN_DIR_REL, true, true),
     ("policy", BACKEND_POLICY_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
@@ -330,6 +418,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("assetCatalog", ASSET_CATALOG_REL, false, false),
     ("quota", QUOTA_LEDGER_REL, false, true),
     ("rotation", ROTATION_REL, false, true),
+    ("lineage", LINEAGE_REL, false, true),
     ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
     ("knownHosts", KNOWN_HOSTS_REL, false, false),

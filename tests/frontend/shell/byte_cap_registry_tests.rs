@@ -72,7 +72,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "SEEN_REFRESH",
-        "**秒数**不是字节：轮换账本里「中转最后一次看见这个会话」隔多久才刷新一次（`accounts/quota/rotation.rs`，一天）；只决定多久写一次盘，不限任何读写的体量。",
+        "**秒数**不是字节：轮换账本里「中转最后一次看见这个会话」隔多久才刷新一次（`accounts/quota/rotation.rs`，一天）· 会话血缘里一条被用到的时刻隔多久刷新（`lineage.rs`，一天）；只决定多久写一次盘，不限任何读写的体量。",
     ),
     (
         "EST_FRESH",
@@ -80,7 +80,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "DROP_AFTER",
-        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的跟随默认 · 没换过号的会话）；决定哪几条被清，不限任何读写的体量。",
+        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的跟随默认 · 没换过号的会话）· 会话血缘清旧条目的门槛（`lineage.rs`，90 天没被用到）；决定哪几条被清，不限任何读写的体量。",
     ),
     (
         "STALE_AFTER",
@@ -445,6 +445,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "SNAPSHOT_MAX_BYTES",
         "首连快照单会话体量",
         "截断+说清",
+    ),
+    // 文件窗口通道（窗口进程的 stdin / stdout）上一帧的头 / 体各自的上限：一屏目录的 JSON 在兆字节级。两端同一个数（随种子交过去）。
+    (
+        "src/frontend/shell/src/chan/host.rs",
+        "FRAME_MAX_BYTES",
+        "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
+        "拒收+回错",
     ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
     (
@@ -908,6 +915,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/accounts/quota/rotation.rs",
         "MAX_BYTES",
         "后端自有的账号轮换 `~/.cc-monitor/rotation.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/lineage.rs",
+        "MAX_BYTES",
+        "后端自有的会话血缘 `~/.cc-monitor/lineage.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     (

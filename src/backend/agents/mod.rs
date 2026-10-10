@@ -168,6 +168,9 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
+    /// 这一家不导 ⇒ `None`。
+    pub(crate) self_sid_env: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
@@ -277,6 +280,27 @@ pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
 /// 别名清单的名字由它派生：`<它>`（当前目录起）· `<它>t`（tmux 里起）· `<它>a`（接回）· 每个号 `<号><它>` / `<号><它>t`。
 pub(crate) fn wrapper_alias(kind: &str) -> Option<&'static str> {
     launch_face_among(REGISTRY, kind).and_then(|f| f.launcher_alias)
+}
+
+/// 各家导给子进程的「我是哪个会话」变量（注册序、去重；[`LaunchFace::self_sid_env`]）。`ccm` 按它认父；
+/// 后端自己起的子进程不该带着它们（常驻后端若是在某个会话里起的，环境里就有那个会话的编号）。
+pub(crate) fn self_sid_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for e in REGISTRY
+        .iter()
+        .filter_map(|a| a.launch.as_ref()?.self_sid_env)
+    {
+        if !v.contains(&e) {
+            v.push(e);
+        }
+    }
+    v
+}
+
+/// 把各家「我是哪个会话」的变量登记进起子进程原语的不往下传名单（`platform::child_env::also_internal`）。
+/// 入口（`main.rs`）在分流之前调一次：之后这个进程起的每个子进程都看不见它们。
+pub fn install_child_env_filter() {
+    crate::platform::child_env::also_internal(self_sid_envs());
 }
 
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
@@ -420,6 +444,8 @@ pub(crate) struct LocalFace {
     pub(crate) background_of: fn(&serde_json::Value) -> bool,
     /// 进程状态文件 ⇒ 此刻在干什么；说不清 ⇒ `None`。
     pub(crate) activity_of: fn(&serde_json::Value) -> Option<SessionActivity>,
+    /// 进程状态文件 ⇒ 在等人时等的是什么框；没说 / 说不清 ⇒ `None`。
+    pub(crate) wait_of: fn(&serde_json::Value) -> Option<WaitOn>,
 }
 
 /// 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
@@ -433,6 +459,26 @@ pub enum SessionActivity {
     NeedsYou,
     /// 闲着，等下一句输入。
     Idle,
+    /// 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）。
+    BackgroundWork,
+}
+
+/// 一条会话在等人时，**等的是什么框**（与哪一家无关；适配层从那一家的词翻过来，翻不出 ⇒ 不给）。
+/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::facts_query::needs_of`），不在这里判。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WaitOn {
+    /// 批准框（工具调用 · 提问 · 计划都弹在这一类里，分哪种看那一步是什么工具）。
+    Permission,
+    /// 沙箱里的命令要联网，等放行。
+    Network,
+    /// 协作的另一个运行（worker）发来的批准请求。
+    Worker,
+    /// 它提了一个会话目标，等确认。
+    Goal,
+    /// 要填 / 要答（提问 · MCP 那一侧要的输入）。
+    Input,
+    /// 别的对话框开着（选项 · 提示 · 设置），等选。
+    Dialog,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）·
@@ -1133,6 +1179,11 @@ pub(crate) fn pidfile_background(v: &serde_json::Value) -> bool {
 /// 后端盯着的那一家的进程状态文件 `v` 说此刻在干什么（[`LocalFace::activity_of`]）。没有那一家 / 说不清 ⇒ `None`。
 pub(crate) fn pidfile_activity(v: &serde_json::Value) -> Option<SessionActivity> {
     tree_local_face().and_then(|f| (f.activity_of)(v))
+}
+
+/// 后端盯着的那一家的进程状态文件 `v` 说在等什么框（[`LocalFace::wait_of`]）。没有那一家 / 没说 / 说不清 ⇒ `None`。
+pub(crate) fn pidfile_wait(v: &serde_json::Value) -> Option<WaitOn> {
+    tree_local_face().and_then(|f| (f.wait_of)(v))
 }
 
 /// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。

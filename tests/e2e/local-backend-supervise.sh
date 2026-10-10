@@ -227,8 +227,8 @@ else ok "Rust 侧跑完没有漏网的后端（进程表里按 exe ＋ \$WORK �
 
 # ── 远端那一形：`--resident-ensure` 起的常驻后端（远端那台就是这样起的）────────────────────
 # 一台自己的家（`$WORK/remote-home`）＋ 自己的中转口与假上游；`ccm` 就是后端二进制（叫这个名字时是壳）。
-#   ① 每次起都换钥匙：先放一把「旧环境里漏出去的」，起来之后它不认、只认它自己写下的那一把；刚起时回给客户端的答里没有钥匙，
-#      读到 hello 之后再问一次就拿得到（客户端每次读文件）。
+#   ① 门由内核给：常驻后端只听那台家里只给本人的套接字（`run/backend.sock`），没有钥匙；monitor 经 ssh 跑的小中继
+#      （`--resident-attach`）连它、原样对拷。带钥匙的 attach 行（旧形状）不认；没人在听时中继回「absent」。
 #   ② API key 账号：那台的中转从那台自己的 key 表取 key 带上。假上游只记头名不记值。
 RH="$WORK/remote-home"; RBIN="$WORK/rbin"; mkdir -p "$RH/.cc-monitor" "$RBIN"
 chmod 700 "$RH/.cc-monitor"
@@ -270,45 +270,42 @@ PY
 chmod +x "$WORK/fake-agent"
 # 远端那台的环境：家 · `ccm` 在 PATH 上 · 中转口 · 默认上游指着假上游（任何一发都出不了这台）· 只有要换 key 的号走中转。
 rcm() {
-  env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_BASE_URL -u CCM_DATA_DIR -u CCM_LISTEN_PORT -u CCM_LISTEN_TOKEN_FILE \
+  env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_BASE_URL -u CCM_DATA_DIR \
     HOME="$RH" PATH="$RBIN:$PATH" CCM_RELAY_PORT="$RP" CCM_RELAY_ALL_SESSIONS=0 \
     CCM_AGENT_UPSTREAM_CLAUDE_CODE="http://127.0.0.1:$UP" ccm "$@"
 }
 jget() { python3 -c 'import json,sys;v=json.loads(sys.stdin.read() or "{}").get(sys.argv[1]);print("null" if v is None else v)' "$1"; }
-OLD_TOKEN="0123456789abcdef0123456789abcdef"
-printf '%s' "$OLD_TOKEN" > "$RH/.cc-monitor/listen-token"; chmod 600 "$RH/.cc-monitor/listen-token"
+SOCK="$RH/.cc-monitor/run/backend.sock"
 E1="$(rcm -- --resident-ensure 2>"$WORK/e1.err")"
-LP="$(printf '%s' "$E1" | jget port)"
-if [ "$(printf '%s' "$E1" | jget token)" = "null" ] && [ "$(printf '%s' "$E1" | jget pid)" != "null" ]; then
-  ok "远端起常驻：刚起的那一个，答里没有钥匙（钥匙由它绑上口之后自己写）"
-else bad "远端起常驻：答里不该带钥匙（$(printf '%s' "$E1" | jget token | cut -c1-4)…）或没起：$(cat "$WORK/e1.err")"; fi
-hello() { python3 - "$1" <<'PY'
-import socket, sys
-try:
-    c = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=2); c.settimeout(2)
-    print("ok" if b'"hello"' in c.makefile("rb").readline() else "no")
-except Exception:
-    print("no")
-PY
-}
-for _ in $(seq 1 50); do [ "$(hello "$LP")" = ok ] && break; sleep 0.1; done
-attach() { python3 - "$LP" "$1" <<'PY'
-import json, socket, sys
-c = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=5); c.settimeout(5)
-r = c.makefile("rb"); r.readline()
-c.sendall(json.dumps({"attach": sys.argv[2]}).encode() + b"\n")
-print(json.loads(r.readline()).get("attach", "?"))
-PY
-}
+P1="$(printf '%s' "$E1" | jget pid)"
+if [ "$P1" != "null" ]; then ok "远端起常驻：起了一个（pid $P1），答里只有 pid"
+else bad "远端起常驻没起来：$E1 $(cat "$WORK/e1.err")"; fi
+for _ in $(seq 1 50); do [ -S "$SOCK" ] && break; sleep 0.1; done
+MODE="$(stat -c %a "$RH/.cc-monitor/run" 2>/dev/null)"
+if [ -S "$SOCK" ] && [ "$MODE" = 700 ]; then ok "常驻后端听那台家里的套接字，所在目录只给本人（$MODE）"
+else bad "套接字没出现或目录不是只给本人：$(ls -la "$RH/.cc-monitor/run" 2>&1 | head -5)"; fi
 E2="$(rcm -- --resident-ensure 2>"$WORK/e2.err")"
-NEW_TOKEN="$(printf '%s' "$E2" | jget token)"
-if [ "$NEW_TOKEN" != "null" ] && [ "$NEW_TOKEN" != "$OLD_TOKEN" ] && [ "${#NEW_TOKEN}" -eq 32 ] \
-   && [ "$NEW_TOKEN" = "$(cat "$RH/.cc-monitor/listen-token")" ] && [ "$(printf '%s' "$E2" | jget pid)" = "null" ]; then
-  ok "远端常驻换了一把新钥匙写回钥匙文件；口上已有人时再问一次回的就是盘上那一把（不再另起）"
-else bad "远端常驻没换钥匙 / 再问一次回的不是盘上那一把：$(cat "$WORK/e2.err")"; fi
-if [ "$(attach "$OLD_TOKEN")" = refused ] && [ "$(attach "$NEW_TOKEN")" = ok ]; then
-  ok "旧环境里漏出去的那把钥匙不认了，新那一把接得上"
-else bad "钥匙作废没生效：旧钥匙 $(attach "$OLD_TOKEN") · 新钥匙 $(attach "$NEW_TOKEN")"; fi
+if [ "$(printf '%s' "$E2" | jget pid)" = "$P1" ]; then ok "已有人在听时再问一次：不再另起，答的是在听那一位"
+else bad "再问一次又起了一个 / 答的不是在听那一位：$E2 $(cat "$WORK/e2.err")"; fi
+# 经小中继接：第一行 hello，交 attach 行，读那一句应答。
+relay() { RELAY_LINE="$1" python3 - "$RH" "$RBIN" "$RP" "$UP" <<'PY'
+import json, os, subprocess, sys
+home, rbin, rp, up = sys.argv[1:5]
+env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "ANTHROPIC_", "CCM_DATA_DIR"))}
+env.update(HOME=home, PATH=rbin + ":" + env.get("PATH", ""), CCM_RELAY_PORT=rp)
+p = subprocess.Popen(["ccm", "--", "--resident-attach"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+first = json.loads(p.stdout.readline() or b"{}")
+if first.get("kind") != "hello":
+    print("first:" + str(first.get("reason", "?"))); p.kill(); sys.exit()
+p.stdin.write(os.environ["RELAY_LINE"].encode() + b"\n"); p.stdin.flush()
+print(json.loads(p.stdout.readline() or b"{}").get("attach", "?"))
+p.stdin.close(); p.kill(); p.wait()
+PY
+}
+if [ "$(relay '{"attach":true}')" = ok ]; then ok "经小中继接上了：hello → attach 行（不带钥匙）→ ok"
+else bad "经小中继没接上：$(relay '{"attach":true}')"; fi
+if [ "$(relay '{"attach":"0123456789abcdef0123456789abcdef"}')" = refused ]; then ok "带钥匙的旧形状 attach 行不认"
+else bad "旧形状 attach 行也接上了"; fi
 SECRET="sk-e2e-$(python3 -c 'import secrets;print(secrets.token_hex(12))')"
 printf '{"name":"main"}' | rcm -- --accounts-init >"$WORK/init.out" 2>&1
 ADD="$(printf '{"name":"k1","kind":"api-key","key":"%s","baseUrl":"http://127.0.0.1:%s"}' "$SECRET" "$UP" | rcm -- --accounts-add 2>&1)"
@@ -332,6 +329,8 @@ else ok "key 的明文没出现在 key 表以外的任何输出里"; fi
 STOP="$(rcm -- --resident-stop 2>&1)"
 if [ "$(printf '%s' "$STOP" | jget stopped)" = graceful ]; then ok "远端常驻后端按它自己记的 pid 收尾退出"
 else bad "远端常驻后端没停下：$STOP"; fi
+if [ "$(relay '{"attach":true}')" = "first:absent" ]; then ok "没人在听时小中继回「absent」（monitor 据它隔一会儿再接）"
+else bad "没人在听时小中继答的不是 absent：$(relay '{"attach":true}')"; fi
 kill "$UPID" 2>/dev/null
 
 echo

@@ -135,6 +135,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
@@ -169,6 +170,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     tasks_dir: Some(paths::tasks_root),
     background_of: pidfile::background_of,
     activity_of: pidfile::activity_of,
+    wait_of: pidfile::wait_of,
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };

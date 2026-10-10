@@ -687,6 +687,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let names: Vec<&str> = head.headers.iter().map(|(k, _)| k.as_str()).collect();
     let ask = Ask {
         label,
+        origin: r.origin.as_ref(),
         body: &body,
         names: &names,
     };

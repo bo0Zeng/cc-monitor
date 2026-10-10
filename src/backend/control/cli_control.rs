@@ -22,10 +22,13 @@
 //!   上限：stdin [`super::cli_args::MAX_CLI_STDIN`]；argv [`super::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
 //! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]：只给 `quota-read`，
 //!   同一份回包排成给人看的字（`control/quota_text.rs`）；别的命令带它 ⇒ `bad_args`。
-//! · 错：exit 2 + stderr 一行 `{"code","message"}`。
+//! · 期限：[`crate::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
+//! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
+use crate::stream::detail::Failed;
+use crate::stream::inbound::spec::Fail;
 use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
 use crate::stream::wire::Request;
 use std::io::{Read, Write};
@@ -35,7 +38,7 @@ use std::time::Duration;
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
 /// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`super::cli_args`]：`--resolve` 也经它读，而它不该为此引到整张命令表。
-use super::cli_args::{read_args, STDIN_QUIET};
+use super::cli_args::{bad_args, read_args, STDIN_QUIET};
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -109,23 +112,30 @@ pub fn handles(flag: &str) -> bool {
 }
 
 /// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
-pub fn emit_err(code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    emit_err_to(&mut std::io::stderr(), code, message)
+/// `cmd` 进复制详情的「命令」那一项；`message` 可带下层原话（`Said.raw`），原话进复制详情、不上句子。
+pub fn emit_err(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
+    emit_failed(
+        &mut std::io::stderr(),
+        &failed_of(cmd, code, message.into()),
+        false,
+    )
 }
 
-fn emit_err_to(err: &mut dyn Write, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    let body = err_body(code, &message.into());
-    let _ = writeln!(err, "{body}");
+/// [`emit_err`] 交出去的那一份：那一句进 `message`，下层原话进复制详情（[`Failed::new`] 的 `raw`）。
+pub(crate) fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Failed {
+    Failed::new(Some(cmd), code, s.said, s.raw.as_deref(), None)
+}
+
+/// 失败那一份投到 CLI 面：stderr 一行 `{code, message, detail, data?}`（与帧面失败应答同一份 [`Failed`]），退出 2。
+/// `text`（[`crate::TEXT_FLAG`]，给人看那一形）⇒ 那一句 ＋ 下面原样接复制详情，不是 JSON。
+fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool) -> i32 {
+    let line = if text {
+        f.text()
+    } else {
+        serde_json::to_string(f).unwrap_or_else(|_| f.text())
+    };
+    let _ = writeln!(err, "{line}");
     2
-}
-
-/// 失败信封 `{code, message, raw?}`：`message` 是给人看的那一句；`raw` 是下层原话（有才带），读的那一方放进复制详情、不上句子。
-pub(crate) fn err_body(code: &str, s: &copy_core::said::Said) -> serde_json::Value {
-    let mut body = serde_json::json!({ "code": code, "message": s.said });
-    if let Some(r) = &s.raw {
-        body["raw"] = serde_json::Value::String(r.clone());
-    }
-    body
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。
@@ -168,34 +178,48 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     if flag == PROBE_FLAG {
         return probe();
     }
+    let opts = &args[1..];
+    // 「给人看」那一形：成功只给 `quota-read`（`control/quota_text.rs`）；失败那一形不分命令（那一句 ＋ 复制详情）。
+    let text = opts.iter().any(|a| a == crate::TEXT_FLAG);
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：
         // backend 的一次性模式对未知参数的既定行为是 exit 2 + 结构化 stderr。
-        return emit_err_to(
-            err,
+        let f = Failed::new(
+            None,
             "unknown_command",
             contract::malformed(&format!("unknown CLI flag {flag}")),
+            None,
+            None,
         );
+        return emit_failed(err, &f, text);
     };
-    let opts = &args[1..];
-    // 「给人看」那一形只给 `quota-read`（`control/quota_text.rs`）；别的命令带它 ⇒ 用法错，不悄悄忽略。
-    let text = opts.iter().any(|a| a == crate::TEXT_FLAG);
+    let refuse = |err: &mut dyn Write, code: &str, message: String| {
+        emit_failed(
+            err,
+            &Failed::new(Some(spec.name), code, message, None, None),
+            text,
+        )
+    };
     if text && spec.name != "quota-read" {
-        return emit_err_to(
+        return refuse(
             err,
             "bad_args",
             copy_core::copy_text("acct.text.onlyQuota", &[]),
         );
     }
+    let within_ms = match within_of(opts) {
+        Ok(ms) => ms,
+        Err((code, message)) => return refuse(err, code, message),
+    };
     let mut input = String::new();
     if reads_stdin(spec) {
         match read_args(opts, stdin, quiet) {
             Ok(s) => input = s,
-            Err((code, message)) => return emit_err_to(err, code, message),
+            Err((code, message)) => return refuse(err, code, message),
         }
     } else if opts.iter().any(|a| a == crate::ARGS_B64_FLAG) {
         // 不收入参的命令带 argv 载荷：用法错，不悄悄忽略（同 `--text`）。
-        return emit_err_to(
+        return refuse(
             err,
             "bad_args",
             contract::malformed(&format!("{flag} takes no args")),
@@ -207,28 +231,27 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     } else {
         match serde_json::from_str(trimmed) {
             Ok(v) => v,
-            Err(e) => {
-                return emit_err_to(err, "bad_request", format!("args JSON parse failed: {e}"))
-            }
+            Err(e) => return refuse(err, "bad_request", format!("args JSON parse failed: {e}")),
         }
     };
     let req = Request {
         id: CLI_REQUEST_ID.to_string(),
         cmd: spec.name.to_string(),
-        args: cli_args,
-        within_ms: None,
-        until: None,
+        args: cli_args.clone(),
+        within_ms,
+        // 与帧面同一处换算：发起方期限从收到起算、减余量换成截止时刻。
+        until: crate::stream::inbound::until_of(within_ms),
     };
-    // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限装，CLI 面没有发起方期限；别的命令不装（`None`）。
+    // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限与发起方期限里早的那个装；别的命令不装（`None`）。
     let total = crate::stream::inbound::install_total(&req);
-    // 这三行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
-    let outcome = match spec.run {
-        Run::Blocking(f) => f(req),
-        Run::BlockingData(f) => f(req).map_err(|f| (f.code, f.message)),
-        Run::Async(f) => f(req).await,
-        Run::AsyncData(f) => f(req).await.map_err(|f| (f.code, f.message)),
+    // 这几行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
+    let outcome: Result<Option<serde_json::Value>, Fail> = match spec.run {
+        Run::Blocking(f) => f(req).map_err(Fail::from),
+        Run::BlockingData(f) => f(req),
+        Run::Async(f) => f(req).await.map_err(Fail::from),
+        Run::AsyncData(f) => f(req).await,
         Run::Builtin => {
-            return emit_err_to(
+            return refuse(
                 err,
                 "not_available_in_cli",
                 contract::malformed("this command is only served on the frame channel"),
@@ -246,8 +269,36 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             }
             0
         }
-        Err((code, message)) => emit_err_to(err, &code, message),
+        // 失败那一份与帧面同一处出（「码 → 句」表 · 复制详情 · 按码定形的 `data`）。
+        Err(f) => emit_failed(err, &f.settle(spec.name, &cli_args), text),
     }
+}
+
+/// 期限口 [`crate::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::ARGS_B64_FLAG`]）；
+/// 值的读法与帧面信封那一格同一处（[`crate::stream::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
+fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
+    let mut seen: Option<Option<u64>> = None;
+    let mut i = 0;
+    while i < opts.len() {
+        if opts[i] == crate::WITHIN_MS_FLAG {
+            let Some(v) = opts.get(i + 1).filter(|v| !v.starts_with("--")) else {
+                return Err(bad_args(&format!(
+                    "{} needs a value",
+                    crate::WITHIN_MS_FLAG
+                )));
+            };
+            let ms = serde_json::from_str::<serde_json::Value>(v)
+                .ok()
+                .and_then(|v| crate::stream::wire::within_ms_of(&v));
+            if seen.replace(ms).is_some() {
+                return Err(bad_args(&format!("{} given twice", crate::WITHIN_MS_FLAG)));
+            }
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    Ok(seen.flatten())
 }
 
 #[cfg(test)]
