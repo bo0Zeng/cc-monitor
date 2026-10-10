@@ -483,7 +483,12 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             "{}",
             a.kind
         );
-        assert_eq!(d.nested, face.nested_env.to_vec(), "{} 的嵌套标记", a.kind);
+        assert_eq!(
+            d.nested,
+            crate::control::ccm::plan::nested_of(face.nested_env),
+            "{} 的嵌套标记",
+            a.kind
+        );
         assert_eq!(
             d.bus_id_recipe, face.needs_bus_id,
             "{} 的 cc-bus 身份",

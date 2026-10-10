@@ -540,7 +540,7 @@ pub(crate) struct Direct {
     pub(crate) account_name: String,
     /// `--base`：显式 `unset CLAUDE_CONFIG_DIR`。
     pub(crate) unset_config_dir: bool,
-    /// 要 unset 的嵌套标记（claude 四个 / codex 零个）。
+    /// 要 unset 的：那一家的嵌套标记（claude 四个 / codex 零个）∪ 各家「我是哪个会话」的变量（[`nested_of`]）。
     pub(crate) nested: Vec<String>,
     pub(crate) cwd: String,
     /// 最终 exec 的 argv：启动器 ＋ 原样透传（`--resume` 这类 ccm 不吃，照写交出去）。
@@ -1285,9 +1285,7 @@ pub(crate) fn build_among(
         config_dir,
         account_name: account,
         unset_config_dir: o.use_base,
-        nested: face
-            .map(|f| f.nested_env.iter().map(|s| s.to_string()).collect())
-            .unwrap_or_default(),
+        nested: nested_of(face.map(|f| f.nested_env).unwrap_or(&[])),
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
@@ -1495,6 +1493,18 @@ fn render_direct(d: &Direct) -> String {
         .collect();
     line.push_str(&posix::exec(&words));
     line
+}
+
+/// 直路那一趟要清掉的环境（唯一一处，打印出来的那一行与真跑那一趟都按它）：那一家的嵌套标记 ∪ 各家「我是哪个会话」的变量
+/// （`agents::self_sid_envs`；起子进程原语对每个子进程也摘它们 —— 不写进打印那一行，`--ccm-print` 跑出来的环境就比真跑多一个父会话号）。
+pub(crate) fn nested_of(face_nested: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = face_nested.iter().map(|s| s.to_string()).collect();
+    for k in crate::agents::self_sid_envs() {
+        if !out.iter().any(|o| o == k) {
+            out.push(k.to_string());
+        }
+    }
+    out
 }
 
 /// 直路那一行的 PowerShell 写法：与 [`render_direct`] 逐项对应（设 / 清环境 · 中转地址现读钥匙文件 · 换目录 · 跑）。
