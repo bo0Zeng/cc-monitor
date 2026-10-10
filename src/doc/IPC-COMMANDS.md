@@ -49,7 +49,7 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `agent_kind` | string | 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …） |
-| `liveness_confidence` | string? | 判活置信度：`"heuristic"` ＝ 这一家不留 pidfile，「活着」是从「有进程开着它的记录写」推出来的（`observe::watcher` 的「开着即活」那一路） |
+| `liveness_confidence` | string? | 判活置信度：`"heuristic"` ＝ 「活着」是猜的（比如按修改时刻） |
 | `background` | bool? | 是不是后台会话（不是人坐在终端里对话的那种） |
 | `attachable` | bool? | attach 进去对人有没有意义 |
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |

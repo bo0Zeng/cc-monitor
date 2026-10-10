@@ -408,8 +408,8 @@ pub enum Frame {
         sid: String,
         /// 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …）。每条都带。
         agent_kind: String,
-        /// 判活置信度：`"heuristic"` ＝ 这一家不留 pidfile，「活着」是从「有进程开着它的记录写」推出来的
-        /// （`observe::watcher` 的「开着即活」那一路）。缺 ＝ pidfile 判的（权威）。
+        /// 判活置信度：`"heuristic"` ＝ 「活着」是猜的（比如按修改时刻）。缺 ＝ 系统给的事实判的：pidfile ＋ pidfd，
+        /// 或「有进程开着它的记录写」＋ pidfd（`observe::watcher` 的「开着即活」那一路）—— 两路同一档。今天没有哪一路标它。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
