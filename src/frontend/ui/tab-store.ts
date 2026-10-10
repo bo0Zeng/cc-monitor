@@ -133,7 +133,7 @@ export class TabStore {
 
   /**
    * **条上看到的顺序**：组与散的混排在 `orderedIds` 里，每个组的组员聚到它第一个组员那一格（`tab-drop.ts::barRows`）。
-   * Shift 连选 · 「需要你」读这一个顺序；给了 `skipCollapsed` ⇒ 跳过那些收着的组里的（数字键 · `]` `[` · 关掉后落到哪）。
+   * Shift 连选 · 「需手动」读这一个顺序；给了 `skipCollapsed` ⇒ 跳过那些收着的组里的（数字键 · `]` `[` · 关掉后落到哪）。
    */
   visibleOrder(groupIds: readonly string[], skipCollapsed?: ReadonlySet<string>): string[] {
     const out: string[] = [];

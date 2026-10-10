@@ -85,8 +85,8 @@ export interface UserPathStatus {
   addCommand: string | null;
   /** 「撤」那条命令的逐字文本。 */
   removeCommand: string | null;
-  /** 探不动时的原话。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
-  error: string | null;
+  /** 探不动时的那一句 ＋ 复制详情（PowerShell 的原话 · 退出码在详情里）。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
+  error: Said | null;
 }
 
 /** 两条开窗命令的结局（壳 `platform/terminal.rs::TerminalOpen`）：开了 · 一个终端都没探到 · 设置里指定的那个不在。 */
@@ -146,7 +146,6 @@ export const commands = {
     invoke<RestartHint>("set_diagnostics_config", args),
 
   /** 这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`）。 */
-  bound_terminal_count: () => invoke<number>("bound_terminal_count"),
 
   /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上按设置 / 探到的终端 / Windows 上 PowerShell。
    *  结局同 `open_terminal_window`（`"noWindow"` ＝ 这台找不到终端）。只经 `src/frontend/ui/terminal-open.ts` 调。桶①。 */
@@ -165,7 +164,7 @@ export const commands = {
   open_terminal_window: (args: { command: string }) =>
     invoke<TerminalOpened>("open_terminal_window", args),
 
-  /** 发一条系统通知（「一轮完成」「需要你」）。界面判要不要发，壳只发（`platform/notify.rs`）。桶①。 */
+  /** 发一条系统通知（「一轮完成」「需手动」）。界面判要不要发，壳只发（`platform/notify.rs`）。桶①。 */
   notify_desktop: (args: { title: string; body: string }) => invoke<void>("notify_desktop", args),
 
   /** 写系统剪贴板（`clipboard.rs`，回真成败）。桶①。只经 `src/frontend/ui/clipboard.ts` 调（复制只有一个家）。 */

@@ -541,6 +541,26 @@
         },
         {
           "kind": "value",
+          "path": "mcp[].at",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "mcp[].detail",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "mcp[].name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "mcp[].status",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
           "path": "needs.call",
           "type": "string"
         },

@@ -188,8 +188,8 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-general", "设置 · 通用", "通用：行为 · 恢复命令 · 高级", "general"),
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
-  page("settings-data", "设置 · 文件与数据 · 要你动手", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 连不上的那台离线未检查", "data"),
-  settings("settings-data-chore-open", "设置 · 要你动手 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
+  page("settings-data", "设置 · 文件与数据 · 待办", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 连不上的那台离线未检查", "data"),
+  settings("settings-data-chore-open", "设置 · 待办 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
     await go("data");
     await sleep(500);
     const row = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]');
@@ -198,7 +198,7 @@ export const SETTINGS_SCENES: Scene[] = [
     document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]')?.scrollIntoView({ block: "start" });
     await sleep(400);
   }),
-  settings("settings-data-chore-codex", "设置 · 要你动手 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff（钥匙遮住）· 复制这一行 / 复制改好的整份文件", async () => {
+  settings("settings-data-chore-codex", "设置 · 待办 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff（钥匙遮住）· 复制这一行 / 复制改好的整份文件", async () => {
     await go("data");
     await sleep(500);
     const sel = '.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:codex"]';
@@ -241,6 +241,14 @@ export const SETTINGS_SCENES: Scene[] = [
       document.querySelector<HTMLInputElement>(`.settings-page:not([hidden]) .ext-pick[data-machine="${m}"]`)?.click();
       await sleep(300);
     }
+    await sleep(500);
+  }, troubleWorld),
+  settings("settings-ext-mcp", "设置 · 扩展 · MCP 需登录 / 连不上", "筛到 MCP：github 本机的点右上角黄标（需登录）、devbox 红标（连不上）· 图例多两项 · 点开：本机那一行「需登录 · 号 · 几点记下」［去登录］· devbox 那一行「连不上 · 会话「…」里 · 几点」＋ 原话 ＋［复制详情］", async () => {
+    await go("ext");
+    await sleep(600);
+    await click(await byText(".settings-page:not([hidden]) .ext-filter button", "MCP"));
+    await sleep(300);
+    document.querySelector<HTMLElement>('.settings-page:not([hidden]) .ext-row[data-key="mcp/github"]')?.click();
     await sleep(500);
   }, troubleWorld),
   settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {

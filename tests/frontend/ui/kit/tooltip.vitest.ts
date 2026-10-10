@@ -212,6 +212,56 @@ describe("出现时机与摆法", () => {
     expect(tipsInBody()).toBe(0);
   });
 
+  it("★ 键盘走行（↑↓ 换焦点）不逐行弹卡：每换一行重新等 500ms，停够了才出；指针那一组的「立刻换」不适用于焦点", () => {
+    vi.advanceTimersByTime(1000);
+    const root = document.createElement("div");
+    const rows = ["a", "b", "c"].map((t) => {
+      const r = document.createElement("div");
+      r.className = "row";
+      r.tabIndex = 0;
+      r.textContent = t;
+      root.appendChild(r);
+      return r;
+    });
+    document.body.appendChild(root);
+    delegateTooltip(root, ".row", (el) => `行 ${el.textContent}`, { hold: true, placement: "right" });
+    const tip = () => document.querySelector('[role="tooltip"]')?.textContent ?? null;
+    rows[0].focus();
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tip(), "停在一行够 500ms ⇒ 出").toBe("行 a");
+    rows[1].focus();
+    expect(tip(), "走到下一行那一刻：上一张收、这一张不立刻出").toBeNull();
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 1);
+    expect(tip()).toBeNull();
+    rows[2].focus();
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 1);
+    expect(tip(), "还在走：不出").toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(tip(), "停够了才出").toBe("行 c");
+    // 指针那一组照旧：从这张卡移到别的宿主立刻换。
+    rows[2].blur();
+    rows[0].dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    expect(tip(), "指针在同一组里移过去：立刻换").toBe("行 a");
+    // 指针已在一行上、卡出着：点一下（焦点落到同一行）不收不重等。
+    rows[0].focus();
+    expect(tip()).toBe("行 a");
+  });
+
+  it("★ 单挂（attachTooltip）的宿主同理：焦点从一个移到下一个不立刻出", () => {
+    vi.advanceTimersByTime(1000);
+    const [a, b] = [document.createElement("button"), document.createElement("button")];
+    document.body.append(a, b);
+    attachTooltip(a, "甲");
+    attachTooltip(b, "乙");
+    a.focus();
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody()).toBe(1);
+    b.focus();
+    expect(tipsInBody(), "焦点换过去那一刻不出").toBe(0);
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("乙");
+  });
+
   it("★ 菜单弹出时收起悬停提示（不许压在菜单第一项上）", () => {
     const host = document.createElement("button");
     document.body.appendChild(host);

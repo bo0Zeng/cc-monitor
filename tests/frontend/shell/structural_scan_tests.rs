@@ -814,7 +814,7 @@ fn every_comment_stripping_transformer_is_registered() {
         // `LegacyRcKind::Comment`（`K-R57` 现打用户 `~/.bashrc`：14 行里 4 行是注释，
         // 那 4 行也该让用户看见）。⇒ 共享原语在这里不是「不够」，是**用了就把活做反了**。
         (
-            // 「要你动手」失效行那一件（`src/backend/platform/shell/posix.rs`）。
+            // 「待办」失效行那一件（`src/backend/platform/shell/posix.rs`）。
             "posix.rs::dead_source_lines",
             "不是剥法：逐行找启动文件里 `source` / `.` 指向的文件不在的那几行、原文原样带回去指名；\
                  注释行跳过是因为注释里的 `source` 不生效，不是要丢掉它们（`strip_comment_lines` 不回行号与原文）",
@@ -944,12 +944,6 @@ fn every_comment_stripping_transformer_is_registered() {
 fn comment_stripping_has_exactly_one_shared_implementation() {
     const REGISTERED: &[(&str, &str)] = &[
         (
-            // 〔搬树 2026-09-18〕`profile_installer.rs` → 它那条握手文档守卫搬去了
-            // `tests/frontend/shell/profile_installer_handshake_doc_guard.rs`，剥法随判据一起走。
-            "profile_installer_handshake_doc_guard.rs",
-            "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
-        ),
-        (
             // 〔步 7c 剖分 2026-09-19 · C 类〕住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
             "e2e_gate_registry_tests.rs",
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
@@ -990,12 +984,9 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     found.dedup();
 
     // 抽取器自检：连登记在册的那一个都扫不到 ⇒ 遍历或形态坏了，下面的对拍会空绿。
-    // 🔴 〔搬树 2026-09-18〕点名的住址跟着搬：那份私有剥法
-    //    （`profile_installer` 握手文档那条守卫里的 `fn strip_comments`）今天住
-    //    `tests/frontend/shell/profile_installer_handshake_doc_guard.rs`。**剥法本身一个字没改。**
     assert!(
-        found.contains(&"profile_installer_handshake_doc_guard.rs".to_string()),
-        "连 `profile_installer_handshake_doc_guard.rs` 里那个已登记的实现都没扫到 —— \n\
+        found.contains(&"e2e_gate_registry_tests.rs".to_string()),
+        "连 `e2e_gate_registry_tests.rs` 里那个已登记的实现都没扫到 —— \n\
              遍历或形态坏了，那样「没有新增」这个结论是零命中得来的，不是真的。实得：{found:?}"
     );
 
@@ -4775,7 +4766,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/footprint.rs", 1), // 新行：cc-bus 那一条随 Claude 布局那一半搬来，带着它那块（`~/.cc-bus/` note 点写面旧命令名）
         ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
         ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
-        ("src/frontend/shell/src/dial_host.rs", 1), // `stream` 用法那一个开链路口删了，原地一块
+        // `src/frontend/shell/src/dial_host.rs` 那一行摘了：`stream` 用法的开链路口又回来了（远端常驻后端的小中继走它），墓碑那句改成现状。
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑

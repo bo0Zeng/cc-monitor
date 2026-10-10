@@ -30,7 +30,6 @@
           "input": "shared",
           "last_activity": 100,
           "program": "claude",
-          "purpose": "normal",
           "session": {
             "agent": "claude",
             "sid": "sid-a"
@@ -61,7 +60,6 @@
           "input": "shared",
           "last_activity": 300,
           "program": "vim",
-          "purpose": "normal",
           "started_by": {
             "client": "desktop",
             "mine": false
@@ -82,7 +80,6 @@
           "input": "shared",
           "last_activity": 200,
           "program": "bash",
-          "purpose": "normal",
           "session": {
             "agent": "claude",
             "sid": "sid-b"

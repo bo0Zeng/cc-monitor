@@ -254,6 +254,17 @@ pub enum StreamWitness {
     },
 }
 
+/// 一命结束之后监护器怎么办。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AfterExit {
+    /// 有人叫它停（`SuperviseHandle::stop`）：不是死亡。
+    Stopped,
+    /// 立刻重起。
+    Restart,
+    /// 放弃（崩溃循环），不再起。
+    GiveUp,
+}
+
 /// 监护器对外说的话。**调用方决定怎么呈现** —— 本模块不 emit 任何事件（宿主无关）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SuperviseEvent {
@@ -275,6 +286,8 @@ pub enum SuperviseEvent {
         status: Option<std::process::ExitStatus>,
         /// ★ `K-P3b`：消费者这一侧观测到的两维。见 [`StreamWitness`]。
         witness: StreamWitness,
+        /// 这一命结束之后监护器怎么办（停是被叫停的 · 重起 · 放弃）。
+        next: AfterExit,
     },
     GaveUp {
         reason: String,
@@ -902,14 +915,16 @@ pub fn supervise_with_stdio(
             let status = reaped.as_mut().and_then(|c| c.wait().ok());
             let code = status.and_then(|s| s.code());
             pid.store(0, Ordering::SeqCst);
-            on_event(SuperviseEvent::Exited {
-                code,
-                attempt,
-                status,
-                witness: report.witness,
-            });
-
+            // 是有人叫它停的（`stop()` 杀的）⇒ 那不是一次死亡：如实交 `Stopped`，宿主不记账、不告诉用户。
+            //   Windows 上 `kill()` 是 `TerminateProcess(…, 1)` ⇒ 不先问这一格，那一下会被记成「崩溃 · 退出码 1」。
             if stopping.load(Ordering::SeqCst) {
+                on_event(SuperviseEvent::Exited {
+                    code,
+                    attempt,
+                    status,
+                    witness: report.witness,
+                    next: AfterExit::Stopped,
+                });
                 return;
             }
             let t = now_ms();
@@ -923,6 +938,16 @@ pub fn supervise_with_stdio(
                 g.retain(|x| t.saturating_sub(*x) < limits.window_ms);
                 d
             };
+            on_event(SuperviseEvent::Exited {
+                code,
+                attempt,
+                status,
+                witness: report.witness,
+                next: match decision {
+                    Decision::Restart => AfterExit::Restart,
+                    Decision::GiveUp { .. } => AfterExit::GiveUp,
+                },
+            });
             match decision {
                 Decision::Restart => continue,
                 Decision::GiveUp { reason } => {
@@ -1424,7 +1449,7 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
 /// - `--with-pid`：`session_added` 带上 `pid`（`wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
-///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
+///   本机 ↗ 点那一刻从 agent 进程往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
 ///
 /// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。
@@ -1540,10 +1565,16 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionRemoved { .. }
         | InboundFrame::SessionState { .. }
         | InboundFrame::SessionStatus { .. }
+        // 额度账 / 某个会话的轮换 / 轮换规则变了 ⇒ 交回读循环（`consume_local` 交 `quota-changed` 订阅，与远端同一个口）。
+        | InboundFrame::QuotaChanged
+        | InboundFrame::RotationChanged { .. }
+        | InboundFrame::RotationRulesChanged
         | InboundFrame::SessionsReplayed
         | InboundFrame::SessionFileNotice { .. }
         // 任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
         | InboundFrame::TasksChanged { .. }
+        // 计划变了 ⇒ 同上（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+        | InboundFrame::PlanChanged { .. }
         // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
         | InboundFrame::SessionRuns { .. }
         // 主线外清单 ⇒ 同上（排在那个会话的宣告之后；交会话账）。

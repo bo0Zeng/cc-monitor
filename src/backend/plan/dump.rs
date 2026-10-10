@@ -17,7 +17,7 @@ const RC_UNREADABLE: i32 = 3;
 const RC_USAGE: i32 = 4;
 
 /// 起 pb 用的解释器（pb 自己的钩子也这样起它）。
-fn interpreter() -> String {
+pub(crate) fn interpreter() -> String {
     format!("python3{}", std::env::consts::EXE_SUFFIX)
 }
 

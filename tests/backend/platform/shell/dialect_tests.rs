@@ -447,7 +447,9 @@ fn a_powershell_builtin_alias_is_named_and_an_unknown_listing_is_said() {
     assert_eq!(builtin_alias_note("workcc", &ok), None);
     let unknown: PsAliases = Err("exit Some(1)".into());
     let said = builtin_alias_note("workcc", &unknown).expect("问不到却当成没撞");
-    assert!(said.contains("exit Some(1)"), "{said}");
+    // 问不到的原因（PowerShell 的原话）只进日志，撞名提示那一句不带它。
+    assert!(!said.contains("exit Some(1)"), "{said}");
+    assert!(said.contains("workcc"), "{said}");
 }
 
 /// PowerShell 5.1 单引号字面量的**最小词法模型**，照它词法器的规则手写（引号集与生产的 `PS_QUOTES` 异源）：

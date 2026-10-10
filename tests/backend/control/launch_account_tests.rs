@@ -355,3 +355,22 @@ fn concurrent_records_all_land() {
     );
     let _ = std::fs::remove_dir_all(&h);
 }
+
+impl crate::guard_support::Shaped for LastAccounts {
+    fn samples() -> Vec<Self> {
+        vec![LastAccounts {
+            accounts: [("s-1".to_string(), "work".to_string())].into(),
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for AccountUnavailable {
+    fn samples() -> Vec<Self> {
+        vec![AccountUnavailable {
+            requested: "work".into(),
+            pinned: true,
+            list_known: true,
+            alternative: Some("home".into()),
+        }]
+    }
+}

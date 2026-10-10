@@ -129,6 +129,18 @@ fn a_toml_syntax_error_is_one_file_problem_with_its_line_and_no_sections() {
     assert_eq!(r["profiles"], json!([]));
     assert_eq!(r["fileProblem"]["line"], 3);
     assert!(r["fileProblem"]["message"].is_string());
+    // 解析器原话进复制详情（原话那一项），句子里没有。
+    let detail = r["fileProblem"]["detail"]
+        .as_str()
+        .expect("有原话 ⇒ 有详情");
+    assert!(detail.contains("profiles-read"), "{detail}");
+    assert!(
+        !r["fileProblem"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("expected"),
+        "{r}"
+    );
 }
 
 #[test]

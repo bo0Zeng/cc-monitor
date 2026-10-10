@@ -6,6 +6,7 @@
 //! ⚠ `§42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族。
 
 use super::*;
+use crate::stream::inbound::spec::Fail;
 
 fn args(v: serde_json::Value) -> serde_json::Value {
     v
@@ -33,8 +34,12 @@ fn attach_is_not_a_mode_here() {
         "mode": "attach-only", "name": "x", "payload": "y"
     })))
     .unwrap_err();
-    assert_eq!(e.0, "bad_args");
-    assert!(e.1.contains("unknown mode"), "错误没说清楚为什么：{}", e.1);
+    assert_eq!(e.code, "bad_args");
+    assert!(
+        e.message.contains("unknown mode"),
+        "错误没说清楚为什么：{}",
+        e.message
+    );
 }
 
 #[test]
@@ -48,18 +53,21 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
     ] {
         match parse_request(&base(name, payload)) {
             Ok(_) => panic!("{why} 居然通过了"),
-            Err(e) => assert_eq!(e.0, "bad_args", "{why}"),
+            Err(e) => assert_eq!(e.code, "bad_args", "{why}"),
         }
     }
     // 超长
     let long = "x".repeat(MAX_FIELD_BYTES + 1);
-    assert_eq!(parse_request(&base("n", &long)).unwrap_err().0, "bad_args");
+    assert_eq!(
+        parse_request(&base("n", &long)).unwrap_err().code,
+        "bad_args"
+    );
     // `ccm_sid` 会被拼进 tmux 格式串，收紧字符集
     let e = parse_request(&serde_json::json!({
         "mode":"create-or-attach","name":"n","payload":"p","ccm_sid":"a b"
     }))
     .unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code, "bad_args");
 }
 
 /// ★`agent` / `width` / `height` 的形状校验。
@@ -132,7 +140,7 @@ fn the_create_only_fields_have_their_own_shapes() {
     ] {
         match parse_request(&ok(extra)) {
             Ok(_) => panic!("{why} 居然通过了"),
-            Err(e) => assert_eq!(e.0, "bad_args", "{why}"),
+            Err(e) => assert_eq!(e.code, "bad_args", "{why}"),
         }
     }
 }
@@ -500,15 +508,16 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
         "mode": "send-keys-raw", "name": "x-cc", "payload": "Escape"
     }))
     .expect_err("删掉的 mode 必须被拒");
-    assert_eq!(e.0, "bad_args");
-    let listed =
-        e.1.split("expected")
-            .nth(1)
-            .unwrap_or_else(|| panic!("错误文案没列 mode 集合：{}", e.1));
+    assert_eq!(e.code, "bad_args");
+    let listed = e
+        .message
+        .split("expected")
+        .nth(1)
+        .unwrap_or_else(|| panic!("错误文案没列 mode 集合：{}", e.message));
     assert!(
         listed.contains("create-or-attach / send-into") && !listed.contains("send-keys-raw"),
         "错误文案列的不是真正的 mode 集合：{}",
-        e.1
+        e.message
     );
 }
 
@@ -789,7 +798,7 @@ impl FakeTmux {
 fn said(ok: bool, s: &str) -> Result<Ran, CmdErr> {
     Ok(Ran {
         ok,
-        said: s.to_string(),
+        stderr: s.to_string(),
     })
 }
 
@@ -819,11 +828,15 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
         _ => said(false, "can't find session: cc-w5vis"),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.0, "create_failed");
-    assert!(
-        e.1.contains("/home/u/p: No such file or directory"),
-        "{}",
-        e.1
+    assert_eq!(e.code, "create_failed");
+    // 句子只带原因词；tmux 的原话进复制详情（`raw`），不上句子。
+    assert_eq!(
+        e.message,
+        copy_text("beLaunch.create.failed", &[("name", "cc-w5vis")])
+    );
+    assert_eq!(
+        e.raw.as_deref(),
+        Some("can't create session: /home/u/p: No such file or directory")
     );
     assert_eq!(
         f.verbs(),
@@ -854,8 +867,9 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.0, "typed_unconfirmed");
-    assert!(e.1.contains("can't find pane: %9"), "{}", e.1);
+    assert_eq!(e.code, "typed_unconfirmed");
+    assert!(!e.message.contains("can't find pane"), "{}", e.message);
+    assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
 }
 
 /// ★ S5 的话：做成了不说；没做成 ⇒ 说哪一步、tmux 说的、后果（两步逐格，两向）。起不来 tmux 那一形同样要说。
@@ -872,9 +886,21 @@ fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
         for must in ["cc-x", "invalid option: w5vis", step.consequence()] {
             assert!(n.contains(must), "{step:?} 那句话里缺 `{must}`：{n}");
         }
-        let n = secondary_note("cc-x", step, &Err(("no_tmux", "起不来 tmux：w5vis".into())))
-            .unwrap_or_else(|| panic!("{step:?} 起不来 tmux 却一个字都没说"));
-        assert!(n.contains("起不来 tmux：w5vis"), "{n}");
+        let n = secondary_note(
+            "cc-x",
+            step,
+            &Err(Fail::new("no_tmux", "tmux 启动失败 · 未装".into()).with_raw(Some("w5vis"))),
+        )
+        .unwrap_or_else(|| panic!("{step:?} 起不来 tmux 却一个字都没说"));
+        // 日志那一行：那一句 ＋ 原话（`Said::logged`）都在。
+        assert_eq!(
+            n,
+            format!(
+                "会话 \"cc-x\" 建好了，但{}没做成：tmux 启动失败 · 未装: w5vis —— {}",
+                step.what(),
+                step.consequence()
+            )
+        );
     }
     // 身份意图那一步的后果必须点名 `wrong_owner`（S2 那条事实链的另一头）。
     assert!(Secondary::IntentTag.consequence().contains("wrong_owner"));
@@ -901,13 +927,25 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
         r,
         Ran {
             ok: false,
-            said: "duplicate session: w5vis".into()
+            stderr: "duplicate session: w5vis".into()
         }
     );
     let r = ran(sh(), &["has-session"]).expect("起得来");
     assert!(r.ok);
     let e = ran(crate::platform::child::Child::new(dir.join("gone")), &["x"]).unwrap_err();
-    assert_eq!(e.0, "no_tmux");
+    assert_eq!(e.code, "no_tmux");
+    // 起不来：句子只说原因词（未装），系统原话进复制详情。
+    assert_eq!(
+        e.message,
+        copy_text(
+            "beLaunch.run.noTmux",
+            &[(
+                "why",
+                &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+            )]
+        )
+    );
+    assert!(e.raw.is_some(), "系统原话丢了");
     // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
     assert_eq!(
         said_of(b"  \n"),
@@ -969,9 +1007,9 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
     for bad in ["-x", "a.b", "a*b"] {
         let f = FakeTmux::new(|_| said(false, "can't find session"));
         let e = run_with(&with_name(bad), &|a| f.call(a)).unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code, "bad_args", "{bad}");
         assert_eq!(
-            Some(e.1),
+            Some(e.message),
             new_tmux_name_said(bad),
             "{bad}：说的不是 ccm 铸名那一句"
         );
@@ -1005,7 +1043,7 @@ fn a_created_session_is_declared_by_whoever_created_it() {
             seen.borrow_mut().push(a.join(" "));
             Ok(Ran {
                 ok: true,
-                said: String::new(),
+                stderr: String::new(),
             })
         };
         run_with(&req, &fake).expect("该建成");

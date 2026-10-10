@@ -140,8 +140,12 @@ fn indent_before(text: &str, at: usize) -> Option<&str> {
 
 /// 值的写法跟着键所在的那一行：键独占一行 ⇒ 两格缩进的展开写法、续行补上键的缩进；否则压成一行。
 fn render(value: &Value, indent: Option<&str>) -> Result<String, String> {
-    let bad_value =
-        |e: serde_json::Error| copy_text("beAcctJsonKey.render.failed", &[("e", &e.to_string())]);
+    let bad_value = |e: serde_json::Error| {
+        crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            copy_text("beAcctJsonKey.render.failed", &[]),
+            e,
+        ))
+    };
     match indent {
         Some(ind) => {
             let pretty = serde_json::to_string_pretty(value).map_err(bad_value)?;

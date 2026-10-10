@@ -171,6 +171,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
+    ("plan-list", "新帧命令：这台的 pb 工作区与片（找 pb · 跑 pb dump 在后端）；计划页只排版"),
+    ("plan-read", "新帧命令：一个工作区的成品（接手 / 签收人对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),
+    ("plan-cell-view", "新帧命令：一格的 agent 视角（pb 原样那一段）；计划页详情折着的那一段只排版"),
+    ("plan-ack", "新帧命令：认可一条需手动（只记在 cc-monitor，键带条目版本，后端判）；计划页那一条只排版"),
+    ("plan-unack", "新帧命令：撤掉认可（toast［撤销］那一下）；计划页只排版"),
+    ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
+    // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
+    ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · view（退出码与 pb 那一句在后端认）；计划页开关与［整张图］只排版"),
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
     ("rotation-rules-read", "新帧命令：那台的轮换规则表（默认指向哪条 · 每条谁在用 · 摘要与说明由后端写），面板来源下拉与设置里规则管理只排版"),
     ("rotation-plan", "新帧命令：一份轮换草稿逐格校验（封顶时段重叠 · 起止相同 · 时刻写错 · 越界），浮层只照它标红"),
@@ -374,11 +383,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "本机后端读—改—写自己那份小文件；前端 `src/frontend/ui/last-seen.ts::rememberSeen` 交（账号清单 · 「文件与数据」读成了那一份），\
          monitor 这一侧零发送点",
     ),
-    // 「要你动手」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
+    // 「待办」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
     (
         "chores-mark",
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
-         （「要你动手」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
+         （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (

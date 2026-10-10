@@ -131,20 +131,33 @@ pub(crate) fn accounts_enabled_here() -> bool {
 
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
-    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
-        copy_text(
+    // 没有清单 ＝ 没启用多账号（正常状态）：只回那一句，不记日志（记了就是每次列账号都多一行 WARN，CLI 的 stderr 也跟着脏）。
+    if matches!(p.try_exists(), Ok(false)) {
+        return Err(copy_text(
             "beAccountsQuery.loadManifest.unreadable",
-            &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
-        )
+            &[
+                ("path", &(p.display()).to_string()),
+                ("why", &copy_core::io_reason(std::io::ErrorKind::NotFound)),
+            ],
+        ));
+    }
+    // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
+    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
+        crate::common::said::IntoNote::into_note(e.wrap(|why| {
+            copy_text(
+                "beAccountsQuery.loadManifest.unreadable",
+                &[("path", &(p.display()).to_string()), ("why", why)],
+            )
+        }))
     })?;
     // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，`serde_json` 不吃它 ⇒ 不剥就是账号页整块空。
     // 同一份文件的另一个读者是 `control/ccm/plan.rs::AccountTable::load`，两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉。
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
     let root: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
-        copy_text(
-            "beAccountsQuery.loadManifest.badJson",
-            &[("e", &e.to_string())],
-        )
+        crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            copy_text("beAccountsQuery.loadManifest.badJson", &[]),
+            e,
+        ))
     })?;
     match root.get("version").and_then(|v| v.as_u64()) {
         Some(SUPPORTED_SCHEMA) => {}
@@ -498,6 +511,74 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
                 .map(str::to_string)
         })
         .collect()
+}
+
+/// 这台活会话里那一家说连不上的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LiveMcpFailed {
+    pub name: String,
+    /// 说它的那条记录的时刻（epoch ms）；记录没写 / 解不出 ⇒ `None`。
+    pub at_ms: Option<i64>,
+    /// 那一家写的原话（复制详情用）。
+    pub detail: Option<String>,
+    /// 说它的那条会话的标题（同历史清单那一格的口径）。
+    pub title: String,
+}
+
+/// 这台此刻活着的交互会话（`homes` 各号的家里的 pidfile；判活同 [`live_session_ids`]，后台任务不算）里，
+/// 那一家说连不上的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
+/// 每条会话只读 MCP 那一格（`facts_query::mcp_of`）；标题取历史清单的缓存（`history_query::session_title_of`）。
+pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
+    let mut out: Vec<LiveMcpFailed> = Vec::new();
+    for home in homes {
+        for (pid, v) in pidfiles(home) {
+            if crate::agents::pidfile_background(&v)
+                || !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v))
+            {
+                continue;
+            }
+            let Some(sid) = v
+                .get("sessionId")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            let Ok(path) = super::history_query::session_record(home, sid) else {
+                continue;
+            };
+            let Ok(file) = std::fs::File::open(&path) else {
+                continue;
+            };
+            let Ok(said) = super::facts_query::mcp_of(std::io::BufReader::new(file)) else {
+                continue;
+            };
+            let mut title: Option<String> = None;
+            for m in said {
+                if m.status != crate::agents::McpStatus::Failed {
+                    continue;
+                }
+                let at_ms =
+                    m.at.as_deref()
+                        .and_then(crate::common::time::parse_iso8601_ms);
+                if out.iter().any(|o| o.name == m.name && o.at_ms >= at_ms) {
+                    continue;
+                }
+                out.retain(|o| o.name != m.name);
+                let title = title
+                    .get_or_insert_with(|| super::history_query::session_title_of(&path))
+                    .clone();
+                out.push(LiveMcpFailed {
+                    name: m.name,
+                    at_ms,
+                    detail: m.detail,
+                    title,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
 }
 
 /// 这台此刻活着的交互会话的工作目录（判活同 [`live_session_ids`]；后台任务不算），去重、排好序。计划读面从这里找工作区。
@@ -926,10 +1007,10 @@ pub(crate) fn trust_product_at(
     let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
         (
             "failed".to_string(),
-            copy_text(
-                "beAccountsQuery.trustProductAt.unparsable",
-                &[("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beAccountsQuery.trustProductAt.unparsable", &[]),
+                e,
+            )),
         )
     })?;
     match (v["trusted"].as_bool(), v["known"].as_bool()) {
@@ -941,6 +1022,32 @@ pub(crate) fn trust_product_at(
             crate::common::contract::malformed("trust line lacks `trusted` / `known`"),
         )),
     }
+}
+
+/// `--account-trust <configDir> <cwd>` / `--account-trust-zero <cwd>` 的 CLI 一趟：成 ⇒ 那一行 `{trusted, known, error}`；
+/// 败 ⇒ 那一份失败（与帧面失败应答同一种信封 [`crate::stream::detail::Failed`]；拒绝码原样，详情的「命令」那一项是这条 CLI 的名字）。
+pub(crate) fn trust_cli(
+    accts_dir: &Path,
+    args: &[String],
+) -> Result<String, crate::stream::detail::Failed> {
+    let flag = args.first().map(String::as_str).unwrap_or_default();
+    let cmd = flag.trim_start_matches("--");
+    let got = match (flag, args.get(1), args.get(2)) {
+        ("--account-trust", Some(cfg), Some(cwd)) => account_trust(accts_dir, cfg, cwd),
+        ("--account-trust-zero", Some(cwd), _) => account_trust_zero(cwd),
+        _ => Err((
+            "bad_args".to_string(),
+            if flag == "--account-trust" {
+                "--account-trust requires <configDir> <cwd>"
+            } else {
+                "--account-trust-zero requires <cwd>"
+            }
+            .to_string(),
+        )),
+    };
+    got.map_err(|(code, message)| {
+        crate::stream::detail::Failed::new(Some(cmd), &code, message, None, None)
+    })
 }
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
@@ -959,50 +1066,13 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             }
             0
         }
-        Some("--account-trust") => match (args.get(1), args.get(2)) {
-            (Some(cfg), Some(cwd)) => match account_trust(&accts_dir, cfg, cwd) {
-                Ok(line) => {
-                    println!("{line}");
-                    0
-                }
-                Err((code, message)) => {
-                    // 结构化错误：stderr 纯 JSON，客户端可整段 parse（同 --resolve 约定）
-                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
-                    2
-                }
-            },
-            _ => {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "code": "bad_args",
-                        "message": "--account-trust requires <configDir> <cwd>"
-                    })
-                );
-                2
+        Some("--account-trust") | Some("--account-trust-zero") => match trust_cli(&accts_dir, args)
+        {
+            Ok(line) => {
+                println!("{line}");
+                0
             }
-        },
-        Some("--account-trust-zero") => match args.get(1) {
-            Some(cwd) => match account_trust_zero(cwd) {
-                Ok(line) => {
-                    println!("{line}");
-                    0
-                }
-                Err((code, message)) => {
-                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
-                    2
-                }
-            },
-            None => {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "code": "bad_args",
-                        "message": "--account-trust-zero requires <cwd>"
-                    })
-                );
-                2
-            }
+            Err(f) => f.emit(),
         },
         other => {
             eprintln!("cc-monitor-backend accounts error: unknown argument: {other:?}");

@@ -146,7 +146,7 @@ describe("data-report 的应答严格收", () => {
   });
 });
 
-describe("要你动手", () => {
+describe("待办", () => {
   it("★ 每台一段、照成品画要装两档；连不上的那台说离线未检查；角标 ＝ 读到的各台 chores 相加", async () => {
     answers.set(LOCAL_ORIGIN, report());
     answers.set("devbox", report({ chores: 2, todo: [] }));

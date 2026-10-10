@@ -189,7 +189,7 @@ pub(crate) fn request(
 }
 
 /// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, saved?, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
-/// `forward` · `tunnel_port` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
+/// `forward` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
 pub(crate) fn resolve(v: &Value) -> Result<crate::dial::DialRequest, (&'static str, String)> {
     let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
     let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;

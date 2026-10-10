@@ -1089,7 +1089,8 @@ pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
         "rsFilewinFind.refusal.line",
         &[
             ("hint", &hint.to_string()),
-            ("message", &message.to_string()),
+            // 对端应答里那一句（原话在应答的 detail 里，不在这一格）。
+            ("said", &message.to_string()),
         ],
     )
 }
@@ -1101,8 +1102,14 @@ async fn ask_find(
     args: &Value,
 ) -> Result<Option<FindOutcome>, super::source::Failed> {
     match super::source::ask_coded(line, origin, CMD_FIND, args, call_timeout()).await {
+        // 回来的读不懂：两端约定对不上（程序出错）；解析器的原话进复制详情。
         Ok(v) => decode_find(&v).map(Some).map_err(|e| {
-            copy_text("rsFilewinFind.round.findFailed", &[("e", &e.to_string())]).into()
+            super::source::Failed::here(
+                copy_text("rsFilewinFind.round.findFailed", &[]),
+                origin,
+                CMD_FIND,
+                Some(&e.to_string()),
+            )
         }),
         Err(f) if f.code.as_deref() == Some("superseded") => Ok(None),
         Err(f) => Err(f),
@@ -1118,8 +1125,11 @@ async fn ask_status(line: &Line, origin: &Origin) -> Result<IndexStatus, String>
         call_timeout(),
     )
     .await?;
-    decode_status(&v)
-        .map_err(|e| copy_text("rsFilewinFind.round.statusFailed", &[("e", &e.to_string())]))
+    // 同上读不懂；这一格只有一句（不出复制详情），解析器的原话记一行日志。
+    decode_status(&v).map_err(|e| {
+        tracing::warn!("filewin: {CMD_INDEX_STATUS} answer unreadable: {e}");
+        copy_text("rsFilewinFind.round.statusFailed", &[])
+    })
 }
 
 /// 🔴 **一趟搜索的全部编排。**

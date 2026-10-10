@@ -102,16 +102,16 @@ impl SessionFate {
     pub(crate) fn cells(self) -> (Words, Words, Tone) {
         match self {
             SessionFate::Reconnectable => (
-                Words(copy_core::copy_text("beSession.fate.reconnectable", &[])),
+                Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
                 Words(copy_core::copy_text(
-                    "beSession.fate.reconnectableHint",
+                    "sessionState.reconnectable.tooltip",
                     &[],
                 )),
                 Tone::Plain,
             ),
             SessionFate::Ended => (
-                Words(copy_core::copy_text("beSession.fate.ended", &[])),
-                Words(copy_core::copy_text("beSession.fate.endedHint", &[])),
+                Words(copy_core::copy_text("sessionState.ended.name", &[])),
+                Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
                 Tone::Plain,
             ),
         }
@@ -349,7 +349,7 @@ pub enum Frame {
         ///
         /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
         /// （`wire_tests.rs::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
-        /// 🔴 **监听口的钥匙永远不在这里**：名单只有两格、钥匙文件路径不在名单里（`wire_tests.rs::hx2_the_listen_token_is_never_echoed` 钉）——
+        /// 🔴 **名单只有两格**、常驻开关不在名单里（`wire_tests.rs::hx2_the_echo_list_is_exactly_the_two_handed_names` 钉）——
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,
@@ -472,7 +472,7 @@ pub enum Frame {
         /// 〔additive〕那个 claude 进程的 **pid**。
         ///
         /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
-        /// 它按 pid 找父 PowerShell 去绑窗口（`bind::SidHwndCache::record`，Windows）只能从这一格拿 pid。
+        /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
         ///
         /// 只在客户端发了 `--with-pid` 时才带（`ReaderState::with_pid`；只有本机那条流发）—— 没索要的客户端
         /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。

@@ -22,7 +22,7 @@
       "effect_label": "插入或更新一段带标记的内容；卸载时只删此段",
       "host_label": "远端",
       "installable": true,
-      "note": "或你在「别名」区选的其它 profile",
+      "note": "或「别名」区选的其它 profile",
       "path_declared": "~/.bashrc",
       "path_resolved": "/nonexistent-footprint-golden/.bashrc",
       "source_label": "随 cc-monitor 一起安装的程序",
@@ -68,7 +68,7 @@
       "uninstallable": false
     },
     {
-      "effect_label": "只生成待贴文本 · 由你自己粘贴 · cc-monitor 不写此文件",
+      "effect_label": "只生成待贴文本 · 手动粘贴 · cc-monitor 不写此文件",
       "host_label": "本机或远端",
       "installable": true,
       "note": "只碰 hooks 段，而且 cc-monitor 不写，只生成待贴文本",
@@ -102,7 +102,7 @@
       "uninstallable": false
     },
     {
-      "effect_label": "cc-monitor 不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
+      "effect_label": "cc-monitor 不直接写它；但在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
       "host_label": "本机或远端",
       "installable": true,
       "note": "运行期状态：收件箱、名册、队列、日志\n本机与远端都读；发消息、派活、广播、结束 agent 这些写操作只动远端那份",
@@ -326,7 +326,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
-      "note": "相对你选定的项目目录",
+      "note": "相对选定的项目目录",
       "path_declared": ".mcp.json",
       "path_resolved": null,
       "source_label": "由 cc-monitor 现场生成的文本",
@@ -377,7 +377,7 @@
       "effect_label": "cc-monitor 不装它 · 只查它在不在；缺失时此行会提示 · 装上即可",
       "host_label": "本机或远端",
       "installable": false,
-      "note": "查 ccm 时用登录 shell 读你的 rc",
+      "note": "查 ccm 时用登录 shell 读用户的 rc",
       "path_declared": "bash",
       "path_resolved": null,
       "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",

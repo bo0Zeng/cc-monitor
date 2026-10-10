@@ -21,11 +21,6 @@ impl Book {
         self.last(workspace)
             .and_then(|d| d.get("rev").and_then(Value::as_str).map(str::to_string))
     }
-
-    /// 认过的工作区。
-    pub(crate) fn workspaces(&self) -> Vec<String> {
-        lock(&self.seen).keys().cloned().collect()
-    }
 }
 
 fn ran(doc: &Value) -> Ran {

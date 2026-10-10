@@ -43,12 +43,7 @@ pub(crate) struct ScanMap {
 }
 
 impl ScanMap {
-    /// 从字节 0 读 `r`，至多读 `len` 字节。
-    pub(crate) fn scan<R: std::io::BufRead>(r: R, len: u64) -> std::io::Result<ScanMap> {
-        Self::scan_with(r, len, None)
-    }
-
-    /// 同 [`Self::scan`]，`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
+    /// 从字节 0 读 `r`，至多读 `len` 字节；`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
     pub(crate) fn scan_with<R: std::io::BufRead>(
         r: R,
         len: u64,
@@ -128,7 +123,7 @@ impl ScanMap {
         f
     }
 
-    /// 还没结果的工具调用（文件序；种类判「需要你」用）。
+    /// 还没结果的工具调用（文件序；种类判「需手动」用）。
     pub(crate) fn pending(&self) -> &[super::facts_query::PendingCall] {
         &self.facts.pending
     }

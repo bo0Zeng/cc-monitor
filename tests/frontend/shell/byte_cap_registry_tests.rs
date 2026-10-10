@@ -72,7 +72,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "SEEN_REFRESH",
-        "**秒数**不是字节：轮换账本里「中转最后一次看见这个会话」隔多久才刷新一次（`accounts/quota/rotation.rs`，一天）；只决定多久写一次盘，不限任何读写的体量。",
+        "**秒数**不是字节：轮换账本里「中转最后一次看见这个会话」隔多久才刷新一次（`accounts/quota/rotation.rs`，一天）· 会话血缘里一条被用到的时刻隔多久刷新（`lineage.rs`，一天）；只决定多久写一次盘，不限任何读写的体量。",
     ),
     (
         "EST_FRESH",
@@ -80,7 +80,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "DROP_AFTER",
-        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的跟随默认 · 没换过号的会话）；决定哪几条被清，不限任何读写的体量。",
+        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的跟随默认 · 没换过号的会话）· 会话血缘清旧条目的门槛（`lineage.rs`，90 天没被用到）；决定哪几条被清，不限任何读写的体量。",
     ),
     (
         "STALE_AFTER",
@@ -337,6 +337,12 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "FRAME_BUDGET_US",
         "**时间**（一帧的预算，微秒），不是字节。两个门槛从它推出来。",
     ),
+    (
+        "TRIM_AFTER_BYTES",
+        "**还内存的门槛**，不是上限：全文搜索一问读盘超过它，才把分配器放掉的空页还给系统\
+             （`observe/search_query.rs` → `platform/proc.rs::return_freed_memory`）。没有任何东西被拒、被截 —— \
+             每份照样读、照样搜；限常驻多少的是同文件的 `RESIDENT_MAX_BYTES`（`CAPS` 里那一行）。",
+    ),
     // ── 后端 Windows 判活（`platform/win_proc.rs` · `platform/proc.rs`）带进来的五个 ──
     //    全是 Win32 常量与时间换算，没有一个量字节。
     (
@@ -445,6 +451,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "SNAPSHOT_MAX_BYTES",
         "首连快照单会话体量",
         "截断+说清",
+    ),
+    // 文件窗口通道（窗口进程的 stdin / stdout）上一帧的头 / 体各自的上限：一屏目录的 JSON 在兆字节级。两端同一个数（随种子交过去）。
+    (
+        "src/frontend/shell/src/chan/host.rs",
+        "FRAME_MAX_BYTES",
+        "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
+        "拒收+回错",
     ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
     (
@@ -660,21 +673,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     (
-        "src/backend/control/resolve_query.rs",
-        "MAX_RESOLVE_STDIN",
-        "`--resolve` 的 stdin",
-        "截断+说清",
-    ),
-    (
-        "src/backend/control/cli_control.rs",
+        "src/backend/control/cli_args.rs",
         "MAX_CLI_STDIN",
-        "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
+        "一次性 CLI 子命令（派生的那些与 `--resolve`）的 stdin args JSON",
         "拒收+回错",
     ),
     (
-        "src/backend/control/cli_control.rs",
+        "src/backend/control/cli_args.rs",
         "MAX_ARGS_B64_LEN",
-        "控制面 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
+        "一次性 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
         "拒收+回错",
     ),
     (
@@ -874,6 +881,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
+        "src/backend/agents/claudecode/mcp.rs",
+        "MAX_CACHE_BYTES",
+        "判 MCP 状态时读一个号家目录里的那份「要登录」缓存",
+        "降级+说清",
+    ),
+    (
         "src/backend/agents/claudecode/assets.rs",
         "MAX_PROJECT_MCP_BYTES",
         "资产目录扫描时读一份项目 `.mcp.json`",
@@ -917,6 +930,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/lineage.rs",
+        "MAX_BYTES",
+        "后端自有的会话血缘 `~/.cc-monitor/lineage.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/accounts/upstream_select/file_face.rs",
         "KEY_FILE_READ_CAP",
         "上游选择的凭据文件 `apikey-credentials.json`（写 key 前读；读不出来就 `io_failed`、不覆盖）",
@@ -941,18 +960,18 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-    // 「要你动手」收事实时读用户的启动文件 / 设置文件：超了跳过那一份（`warn!` 带路径），那一件不出改法。
+    // 「待办」收事实时读用户的启动文件 / 设置文件：超了跳过那一份（`warn!` 带路径），那一件不出改法。
     (
         "src/backend/footprint/chores/gather.rs",
         "READ_CAP",
-        "「要你动手」读一份用户启动文件 / 设置文件（`~/.bashrc` · `~/.claude/settings.json`）",
+        "「待办」读一份用户启动文件 / 设置文件（`~/.bashrc` · `~/.claude/settings.json`）",
         "跳过+说清",
     ),
-    // 「要你动手」记下的选择：超了当读不懂 ⇒ 不覆盖、`marks_unreadable`；判的时候照没记算。
+    // 「待办」记下的选择：超了当读不懂 ⇒ 不覆盖、`marks_unreadable`；判的时候照没记算。
     (
         "src/backend/footprint/chores/marks.rs",
         "MAX_BYTES",
-        "后端自有的「要你动手」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
+        "后端自有的「待办」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     (

@@ -65,7 +65,7 @@ pub enum MachineFix {
 pub struct MachineState {
     /// 那台此刻是什么样。
     pub state: MachineStateKind,
-    /// 没连上 / 做不了的原因码（`down`：拨号那一层的闭集码；`unsupported`：`not_unix` · `no_forwarding`；本机没连上：`local`）。
+    /// 没连上 / 做不了的原因码（`down`：拨号那一层的闭集码；`unsupported`：`not_unix`；本机没连上：`local`）。
     pub reason: Option<String>,
     /// 正在连时到哪一步：`deploy`（部署预检 / 装）· `attach`（接那台的常驻后端）。
     pub stage: Option<String>,
@@ -85,9 +85,8 @@ pub struct MachineState {
     pub detail: Option<String>,
 }
 
-/// 「做不了」的两个原因码。
+/// 「做不了」的原因码。
 pub const NOT_UNIX: &str = "not_unix";
-pub const NO_FORWARDING: &str = "no_forwarding";
 
 #[derive(Debug, Clone, Default)]
 struct Entry {
@@ -346,7 +345,7 @@ pub(crate) fn product(origin: &str, enabled: bool) -> MachineState {
 }
 
 /// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
-/// 起本机后端那一趟探口时记（`local_backend_host::probe_listen_port`）；是我们这一版 / 没人 ⇒ 清掉。
+/// 起本机后端那一趟探口时记（`local_backend_host::probe_listen_socket`）；是我们这一版 / 没人 ⇒ 清掉。
 static LOCAL_FOREIGN: Mutex<Option<String>> = Mutex::new(None);
 
 /// 记下（或清掉）本机口上那一份别的构建。

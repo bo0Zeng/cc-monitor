@@ -244,7 +244,12 @@ export async function readSessionRotation(
 
 /** `"follow"` 跟随默认 · `{rule}` 用某条规则 · `"custom"` 恢复上一份自己的 · `"detach"` 照此刻生效的那份拷成本会话 · `{custom}` 整份写。 */
 export type SessionRotationWrite =
-  "follow" | "custom" | "detach" | { rule: string } | { custom: Rotation };
+  | "follow"
+  | "parent"
+  | "custom"
+  | "detach"
+  | { rule: string }
+  | { custom: Rotation };
 
 export async function writeSessionRotation(
   origin: Origin,

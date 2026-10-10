@@ -252,14 +252,9 @@ fn the_exec_time_key_comes_from_the_home_key_file_and_goes_into_the_first_segmen
         keyed_for_exec(url, KeyKind::Full, &get).as_deref(),
         Some(format!("http://127.0.0.1:8788/{key}/t/claude-code/_").as_str())
     );
-    assert_eq!(
-        keyed_for_exec(url, KeyKind::Pass, &get),
-        None,
-        "只许直通那一把的文件不在，却插出了全权那一把"
-    );
-    let pass = "b".repeat(64);
-    let pfile = home.join(relay_route_core::PASS_KEY_FILE_REL);
-    std::fs::write(&pfile, &pass).unwrap();
+    // 只许直通那一把从根钥匙派生（盘上没有第二份）：插出来的不是根钥匙。
+    let pass = crate::relay::pass_key_on_disk(&home).expect("根钥匙在就派生得出来");
+    assert_ne!(pass, key, "只许直通那一把就是根钥匙本身");
     assert_eq!(
         keyed_for_exec(url, KeyKind::Pass, &get).as_deref(),
         Some(format!("http://127.0.0.1:8788/{pass}/t/claude-code/_").as_str())

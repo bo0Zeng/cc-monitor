@@ -12,9 +12,7 @@
         "block": {
           "conflictingFunctions": [],
           "manualCleanupHint": "",
-          "outdated": false,
-          "present": false,
-          "version": null
+          "present": false
         },
         "blockLines": 15,
         "exists": true,

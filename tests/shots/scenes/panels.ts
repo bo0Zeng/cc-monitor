@@ -8,6 +8,7 @@ import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
+import { emit } from "@tauri-apps/api/event";
 
 const ALL_TABS = 7;
 
@@ -376,7 +377,7 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor('aside[role="dialog"]');
     await sleep(500);
   }),
-  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需要你 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
+  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需手动 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
     await openCommandBar();
     await sleep(300);
   }),
@@ -594,6 +595,19 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[data-role=messages-list]");
     await sleep(400);
   }, behaviorKeyWorld),
+  panel("panel-ui-error-toast", "本机后端意外退出 · toast", "壳推来的出错：标题是照文案写好的那一句，［重新连接］［看日志］［复制详情］；日志行只在复制详情里", async () => {
+    await mainReady(ALL_TABS);
+    await emit("monitor-error", LOCAL_EXITED);
+    await sleep(700);
+  }),
+  panel("panel-ui-error-messages", "本机后端意外退出 · 「消息」", "同一条在「消息」里：一句 ＋ 动作，［详情］展开看复制详情那几行", async () => {
+    await mainReady(ALL_TABS);
+    await emit("monitor-error", LOCAL_EXITED);
+    await sleep(300);
+    await click("[data-role=status-messages]");
+    await waitFor("[data-role=messages-list]");
+    await sleep(400);
+  }),
   panel("panel-batch-kill", "批量结束 · 确认框", "全选之后右键「结束会话（n）」：中断 / 保留逐项写，清单前 8 个 ＋ 另外几个，清单下一行已结束的跳过", async () => {
     await mainReady(ALL_TABS);
     const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
@@ -608,7 +622,7 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[aria-modal='true']");
     await sleep(400);
   }),
-  panel("panel-batch-result-view", "批量结束 · 结果［查看］", "确认之后：toast 只一句汇总（已结束 4 · 失败 2）＋［查看］；点了打开「消息」、展开那一条，逐条原因在那里", async () => {
+  panel("panel-batch-result-view", "批量结束 · 结果［查看］", "确认之后：toast 只一句汇总（已结束 4 · 失败 ×2）＋［查看］；点了打开「消息」、展开那一条，逐条原因在那里", async () => {
     await mainReady(ALL_TABS);
     const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
     for (const t of tabs) {
@@ -731,14 +745,14 @@ export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
 }));
 
 export const FRONT_SCENES: Scene[] = [
-  frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "本机会话：Windows Terminal 开着 3 个窗口、这个终端没登记 ⇒ 不挑一个切、不闪；浮层锚在会话头的 ↗ 下，照实说拉不了、带候选个数", async () => {
+  { ...frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "Linux 本机会话：终端程序开着 3 个窗口、这个 shell 开在接上终端之前（没登记）⇒ 不挑一个切、不闪；浮层锚在会话头的 ↗ 下，照实说拉不了、带候选个数（Windows 上按控制台认窗口，到不了这一形）", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
-  }),
+    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "gnome-terminal-server", count: 3 });
+  }), hostOs: "linux" },
   { ...frontScene("panel-front-wayland", "↗ · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
@@ -756,23 +770,7 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
   }), hostOs: "linux" },
-  frontScene("panel-front-background-tab", "↗ · 终端在后台标签页", "单独起的 PowerShell 被 Win11 交给「终端」应用（进程链断）、借它的控制台挂了记号标题，却没有窗口带着它（那个标签页不在前台）：浮层照实说找不到窗口，灰字给改法", async () => {
-    await mainReady(ALL_TABS);
-    await clickHeadFront();
-    await waitFor("[data-role=front-result]");
-    await sleep(400);
-  }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "background-tab", program: "ssh.exe" });
-  }),
-  frontScene("panel-front-hosted", "↗ · 终端由 Windows 托管", "进程链断在被交给「终端」应用的 PowerShell 上、连它的控制台也借不到：浮层说定位失败，灰字给改法", async () => {
-    await mainReady(ALL_TABS);
-    await clickHeadFront();
-    await waitFor("[data-role=front-result]");
-    await sleep(400);
-  }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "hosted-by-wt", program: "ssh.exe" });
-  }),
-  frontScene("panel-front-unbound", "↗ · 本机终端没登记", "在接上终端之前开的 PowerShell：浮层给［接上终端］（直达设置那一节）", async () => {
+  frontScene("panel-front-unbound", "↗ · 本机终端没登记", "进程链上哪一级都认不出窗口（Linux：shell 开在接上终端之前）：浮层给［接上终端］（直达设置那一节）", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
     await waitFor("[data-role=front-result]");
@@ -849,3 +847,14 @@ export const FRONT_SCENES: Scene[] = [
 
 // 首次打开那一张不带默认存储（tab 栏默认宽、命令面板提示没看过）
 PANEL_SCENES[PANEL_SCENES.length - 1].storage = {};
+
+/** 壳推来的那一条（本机后端说过话之后退出码 1 退出、没人再起它）。详情里的账行是复制详情的原话。 */
+const LOCAL_EXITED = {
+  code: "local-exited",
+  key: "rsUiError.localExited.down",
+  args: {},
+  said: copyText("rsUiError.localExited.down"),
+  detail: "时刻：2026-10-09 13:39:41 -07:00\n本机：cc-monitor 4.1.6 · Linux x86_64\n码：退出码 1\n原话：[死亡账] origin=<local> 判定=崩溃 退出状态=退出码 1 —— 说过话之后异常终止",
+  reconnect: "<local>",
+  at: 0,
+};

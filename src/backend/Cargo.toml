@@ -119,6 +119,8 @@ win-path-core = { path = "../common/win-path-core" }
 shell-quote-core = { path = "../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与 monitor 同一份（目标）。
 relay-route-core = { path = "../common/relay-route-core" }
+# 本人通道（常驻后端听的那个 Unix 套接字 · 目录独占锁 · 核对端 uid · 一次性子命令连它）：monitor 链同一份。
+own-chan = { path = "../common/own-chan" }
 # `search-core` 这一行删了：它只剩本 crate 用，带 Claude 记录格式知识 ⇒ 通用口径收成 `observe/search_rules.rs`，
 #   记录文本那一半进适配层 `agents/claudecode/text.rs`（K-R100「口径只有一份」照旧，家换了）。
 # `gate-core` 这一行删了：monitor 那一侧的门删掉之后它只剩本 crate 用 ⇒ 收成模块 `control/gate_rules.rs`。
@@ -284,6 +286,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # 配置文件（`~/.cc-monitor/profiles.toml`）的读与按条目改：保留用户手写的注释与排版（`assets/profiles`）。
 toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
+
+# ── 远端 musl 版的全局分配器：mimalloc（`main.rs` 那一处 `#[global_allocator]`，判据 `allocator_guard`）──
+# musl 自带的分配器放掉的内存不还给系统：680 MB 合成世界里热完全文搜索索引就常驻 350–490 MB（glibc 同一世界 117 MB），
+# 问过一次含工具的搜索再涨两三百 MB、不回落。远端那台跑的就是这一版 ⇒ 只在 musl 目标上换；
+# 本机 glibc 版（它会 `malloc_trim`，见 `platform/proc.rs::return_freed_memory`）与 Windows 版照旧用系统分配器，不多编这一棵 C。
+# 许可 MIT（crate 与它带的 C 源都是）；C 源由 `cc` 编，交叉编译走 `cargo zigbuild` 的 zig cc（`cc` 本 lock 里早就有，`ring` 用它）。
+# 缺省 feature 为空（v3、不开 secure / override）。签字行住 `readonly_guard::g6_dependency_signoff`。
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。

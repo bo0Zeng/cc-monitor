@@ -741,6 +741,10 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/new-session.module.css": { stacked: false, why: "起新会话框：外框是 kit 表单对话框，里面全是自己的类" },
   "src/frontend/ui/launch-slot.module.css": { stacked: true, why: "起会话之后的占位标签页：栏里那一行挂全局的 `.tab`（与真标签页同一个样子 · `.tab-dot` / `.tab-title` 那几格），那一页与报错卡只挂自己的哈希类" },
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
+  "src/frontend/ui/views/plan-bits.module.css": { stacked: false, why: "计划页小件：阶段框与类色那几档，全是自己的类" },
+  "src/frontend/ui/views/plan-cell.module.css": { stacked: true, why: "一格详情：给 kit 建的按钮 · 徽标 · 提示条挂本页的版位类" },
+  "src/frontend/ui/views/plan-review.module.css": { stacked: false, why: "计划需手动那一条 · 退回框：全是自己的类（按钮用 kit 原样）" },
+  "src/frontend/ui/views/plan.module.css": { stacked: true, why: "计划页：给 kit 建的按钮 · 开关 · 状态点挂本页的版位类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
   "src/frontend/ui/rot-timeline.module.css": { stacked: false, why: "轮换时间轴（面板 · 设置「轮换」栏 · 编辑器预览共用）：只挂自己的哈希类（挂法同 rot-editor；段的号色走内联 `--tl-c` / `var(--acct-inkN)`，不叠全局头像类）" },
@@ -755,7 +759,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
   "src/frontend/ui/views/agent-window.module.css": { stacked: false, why: "agent 窗口（`views/agent-window.ts`）：标题区 · 说明 · 小片 · 结束线只挂自己的哈希类；滚动容器挂全局 `.stream`，不叠这些类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
-  "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需要你」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需手动」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-screen.module.css": { stacked: false, why: "终端画面那块 `pre`（`terminal-screen.ts::screenPre`）：只挂自己的哈希类；版位与滚动归外面那一格（终端页的类 / 浮层的全局类，在另一个元素上）" },
@@ -795,7 +799,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上；
+  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需手动」计数）用上；
   // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上；
   // field 由设置窗「添加机器」框用上；block · card · list-row 一直没有面，删了。
   [],

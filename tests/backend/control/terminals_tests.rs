@@ -435,9 +435,13 @@ impl Iso {
     }
     /// 有界等待（夹具侧）：那一屏里出现了 `needle`。
     fn shows(&self, handle: &str, needle: &str) -> bool {
+        self.shows_times(handle, needle, 1)
+    }
+    /// 有界等待（夹具侧）：那一屏里 `needle` 至少出现了 `times` 次。
+    fn shows_times(&self, handle: &str, needle: &str, times: usize) -> bool {
         (0..150).any(|_| {
             let p = preview_on(self.on(), &json!({ "terminal": handle, "color": false }));
-            let hit = p.is_ok_and(|v| v["lines"].to_string().contains(needle));
+            let hit = p.is_ok_and(|v| v["lines"].to_string().matches(needle).count() >= times);
             if !hit {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
@@ -481,7 +485,12 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     )
     .unwrap();
     assert_eq!(r["result"], "delivered");
-    assert!(iso.shows(&h, "l2-zq"));
+    // 等到 `cat` 把最后一行吐回来（回显一次 ＋ `cat` 自己印一次 = 两次）：只等回显那一次，`cat` 那一行可能还在路上，
+    //   下面两次抓屏之间画面会变（负载 40–130 时并发跑红过：带色 / 不带色指纹不同 · 带着旧指纹送被拒成 screen_changed）。
+    assert!(
+        iso.shows_times(&h, "l2-zq", 2),
+        "cat 没把多行粘贴的最后一行印回来"
+    );
 
     // 抓一屏：带色与不带色同一屏指纹相同；尺寸是那个窗格的。
     let a = preview_on(iso.on(), &json!({ "terminal": h, "color": true })).unwrap();
@@ -686,10 +695,14 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
         .trim()
         .parse()
         .expect("pane_pid");
-    // 有界等待（夹具侧）：那个窗格的进程已经 exec 成 `cat`（之前读到的环境是 tmux 自己的）。
+    // 有界等待（夹具侧）：那个窗格的进程 exec 成 `cat` **而且做完了**（之前读到的环境是 tmux 自己的）。
+    //   只看 `comm` 不够：内核在 exec 里先换上新的地址空间、再改名，环境那几页要再往后才摆好 ⇒ 这中间
+    //   `comm` 已是 `cat`、`/proc/<pid>/environ` 却读回 0 字节，打标那一下读环境落在这里就判 `PaneUnknown`
+    //   （负载 100 时并发跑四百多趟红过一次）。改成名字对上、环境也读得出来才算起好。
     let ready = (0..150).any(|_| {
         let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
-        let hit = comm.trim() == "cat";
+        let env = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+        let hit = comm.trim() == "cat" && !env.is_empty();
         if !hit {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
@@ -712,7 +725,9 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
         .unwrap()
         .iter()
         .find(|t| t["session"]["sid"] == "sid-box")
-        .unwrap_or_else(|| panic!("名单里没有挂着 sid-box 的终端：{l}"))["terminal"]
+        .unwrap_or_else(|| {
+            panic!("名单里没有挂着 sid-box 的终端（打标两次：{tagged:?} · {again:?}）：{l}")
+        })["terminal"]
         .as_str()
         .unwrap()
         .to_string();
@@ -850,4 +865,28 @@ fn can_holds_only_what_can_vary() {
             .collect();
         assert_eq!(keys, ["end", "input"], "`can` 里多了 / 少了格：{can}");
     }
+}
+
+/// ★ 每行只带会变的格：`purpose` 原先恒为 `normal`（只有这一种），读起来像会变、实际不变 ⇒ 删。
+/// `host` 留着（同样恒为 `tmux`，但它是宿主的名字，换宿主时就是这一格在变）。字段表里也不许再登记它。
+#[test]
+fn a_row_carries_no_constant_purpose() {
+    for r in [
+        row("$1", "a-cc", "", "", "bash"),
+        row("$2", "b-cc", "sid-b", "mobile", "claude"),
+    ]
+    .iter()
+    {
+        let t = terminal_json(r, &[], None);
+        assert!(t.get("purpose").is_none(), "行里还有 `purpose`：{t}");
+        assert_eq!(t["host"], "tmux", "`host` 该留着");
+    }
+    let spec = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|c| c.name == "terminals-list")
+        .expect("没有 terminals-list");
+    assert!(
+        !spec.fields.iter().any(|f| f.name == "purpose"),
+        "terminals-list 的字段表还登记着 `purpose`"
+    );
 }

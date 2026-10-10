@@ -34,6 +34,8 @@ pub struct Route {
     pub mode: super::Mode,
     /// 前两段，整包交给上游选择当键。中转**不解释**它们。
     pub key: super::RouteKey,
+    /// 紧跟第 2 段的来处段（会话血缘，`relay_route_core::Origin`）；没有 ⇒ `None`。不进路由键、不交上游，原样递给上游选择。
+    pub origin: Option<super::RouteOrigin>,
     pub rest: String,
 }
 
@@ -62,6 +64,10 @@ pub fn parse(target: &str) -> Option<Route> {
             seg1: p.seg1.to_string(),
             seg2: p.seg2.to_string(),
         },
+        origin: p.origin.map(|o| super::RouteOrigin {
+            token: o.token.to_string(),
+            parent: o.parent.map(str::to_string),
+        }),
         rest: format!("/{}", p.rest),
     })
 }

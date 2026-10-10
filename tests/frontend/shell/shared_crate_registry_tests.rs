@@ -604,6 +604,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     // ⇒ 改了工作面的名字而没同拍改 spawn 处那个字面量，**当场红**。
     const SPAWNED_BY_JUDGE: &[(&str, &str)] = &[
         (
+            "worker_runs_the_real_child_main",
+            "真 `child_main` 那一趟（stdin 不关）：由 `proc_tests.rs` 的 `RealChild::start` spawn 子进程跑 \
+             （列不出来 / 关窗之后进程在预算内退那两条）",
+        ),
+        (
             "xvfb_worker_opens_a_real_window",
             "实景开窗那一趟：由 `shell_tests.rs` 的 `scenario_a()` spawn 子进程跑",
         ),

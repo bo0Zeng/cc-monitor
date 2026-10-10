@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 /**
- * 主窗口的标签页栏 · 「需要你」· 会话头：一个会话读成什么、谁在等你、去哪答。
+ * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
- * - `session-face.ts`：状态点 · 状态句 · peek · 需要你（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
- * - 标签页栏：「需要你 N」只在 N ≥ 1 时出、点它跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
+ * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
+ * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
  * - 钉条：种类 ＋ 工具 ＋ 那一句、去哪答（Windows ↗ / 远端 tmux / 都不行不给按钮）；窗口标题与系统通知；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
  *
@@ -18,7 +18,7 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, needsOrder, nextNeeds, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -87,10 +87,10 @@ describe("状态的字照抄核心写好的（G2：界面不按码取字）", ()
 });
 
 describe("一个会话读成什么（session-face）", () => {
-  it("★ 需要你：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需要你」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
+  it("★ 需手动：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需手动」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
     expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), tone: "need", rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 });
     expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
-    expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" }, needs: approve() })), "已经答完：不留一条需要你").toBeNull();
+    expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" }, needs: approve() })), "已经答完：不留一条需手动").toBeNull();
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
   });
 
@@ -178,7 +178,7 @@ describe("一个会话读成什么（session-face）", () => {
     ];
     const order = needsOrder(tabs, NOW);
     expect(order).toEqual(["e", "f", "d", "b", "c"]);
-    expect([nextNeeds(order, "a"), nextNeeds(order, "e"), nextNeeds(order, "c"), nextNeeds([], "a")]).toEqual(["e", "f", "e", null]);
+    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "f" }, { sid: "e" }, null]);
   });
 
   it("★ 先后对核心那一处的共用金样（needs-order.golden.json，Rust needs_first 读同一份）", () => {
@@ -238,8 +238,8 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
   return { view, host, store, el };
 }
 
-describe("标签页栏：「需要你 N」与机器离线条", () => {
-  it("★ 「需要你」只在有人等你时出、写数；点它跳等得最久的，再点跳下一个；行尾「等批准」换掉未读数", () => {
+describe("标签页栏：「需手动 N」与机器离线条", () => {
+  it("★ 「需手动」只在有人等你时出、写数；点它跳等得最久的，再点跳下一个；行尾「等批准」换掉未读数", () => {
     const r = bar([tab("a"), tab("b", { activity: waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
@@ -255,7 +255,7 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
     expect(b.badge.textContent).toBe("3");
   });
 
-  it("★ 悬停「需要你」500ms ⇒ kit 菜单：每个在等你的会话一行（等得最久的在前 · 状态 · 那一句作第二行）；点一行切过去；没到点就移开不开", () => {
+  it("★ 悬停「需手动」500ms ⇒ kit 菜单：每个在等你的会话一行（等得最久的在前 · 状态 · 那一句作第二行）；点一行切过去；没到点就移开不开", () => {
     vi.useFakeTimers();
     try {
       const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) }), tab("b", { activity: waiting, needs: approve(NOW - 60_000) })]);
@@ -307,8 +307,8 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
   });
 });
 
-describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
-  it("★ 钉条第一行：批准写工具名 ＋ 那一步；回答写问题；计划 · 等批准；判不出只写需要你", () => {
+describe("「需手动」钉条 · 窗口标题 · 系统通知", () => {
+  it("★ 钉条第一行：批准写工具名 ＋ 那一步；回答写问题；计划 · 等批准；判不出只写需手动", () => {
     expect(needsHeadline(approve())).toEqual({ label: copyText("needs.bar.approve", { tool: "Bash" }), code: "rm -rf build/" });
     expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null, text: "", tone: "need", rank: 0, waitedMs: null, waitedText: null, receivedAt: 0 })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
     expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null, text: "", tone: "need", rank: 0, waitedMs: null, waitedText: null, receivedAt: 0 }).label).toBe(copyText("needs.bar.plan"));
@@ -361,7 +361,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
       return { w, titles, sent, tick: (ms: number) => (now += ms) };
     };
 
-    it("★ 标题：`cc-monitor · 需要你 N`，0 个时只有 `cc-monitor`；变了才写", () => {
+    it("★ 标题：`cc-monitor · 需手动 N`，0 个时只有 `cc-monitor`；变了才写", () => {
       const r = rig(true);
       r.w.observe([tab("a")]);
       r.w.observe([tab("a")]);
@@ -369,7 +369,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
       expect(r.titles).toEqual([copyText("needs.windowTitle.base"), copyText("needs.windowTitle.count", { n: 2 })]);
     });
 
-    it("★ 通知：一个会话**开始**等你、主窗口不在前台才发一条；种类没到先等它（不先发一条需要你）；同一次等待不重发", async () => {
+    it("★ 通知：一个会话**开始**等你、主窗口不在前台才发一条；种类没到先等它（不先发一条需手动）；同一次等待不重发", async () => {
       const r = rig(false);
       const t = tab("a", { activity: waiting });
       r.w.observe([t]);
@@ -401,7 +401,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn() };
+    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -843,7 +843,7 @@ describe("报错卡上去它的终端那两颗（与会话头同一道）", () =
   });
 });
 
-// 窗口标题起步就是产品名：三份入口 HTML 的 <title> 与壳 / 需要你那一路设的基础标题同字（不写死别的产品名）。
+// 窗口标题起步就是产品名：三份入口 HTML 的 <title> 与壳 / 需手动那一路设的基础标题同字（不写死别的产品名）。
 describe("入口 HTML 的 <title> == 窗口的基础标题", () => {
   it("index · settings · viewer 三份都是 needs.windowTitle.base", async () => {
     const { readFileSync } = await import("node:fs");

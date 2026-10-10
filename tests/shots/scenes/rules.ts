@@ -91,7 +91,7 @@ function rulesWorld(list: R[] = THREE): () => World {
             ]),
             ...(r.ended ?? []).map((sid) => [
               sid,
-              { state: "ended", needs: null, text: copyText("beSession.fate.ended"), tone: "plain" },
+              { state: "ended", needs: null, text: copyText("sessionState.ended.name"), tone: "plain" },
             ]),
           ]),
           sids: r.live ?? [],
@@ -161,7 +161,7 @@ function editorWorld(): () => World {
         if (x.id === "r_night") {
           x.rotation = NIGHT_ROT;
           x.explain =
-            "起始账号先用 · 到 90% 从头取首个可用 · 前面的号恢复即切回 · work 17:00-02:00 停用 · 都到上限仍发";
+            "起始账号先用 · 到 90% 从头取首个可用 · 前面的号有额度就换回它 · work 只兜底 · 别的号有额度就不用 work · 40 分钟内有号恢复就先等 · work 17:00-02:00 停用 · 都到上限仍发";
           x.atLimitApplies = true;
         }
       return r;

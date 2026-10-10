@@ -25,7 +25,8 @@ pub enum Protection {
     /// backend 那个 `platform/fallback_guard.rs` 整篇讲的就是这一条：
     /// 「为了让代码在别的平台上也能跑一下，给一个答不上来的问题编一个看起来无害的答案」，
     /// 而 `true` / `Some(..)` / `Ok(..)` 恰恰是最危险的那几个。
-    Undetermined { why: String },
+    /// `why` 上屏（原因词来自闭集）；`raw` 是下层原话（系统报错 · Windows 错误码），只进复制详情 / 日志，可缺。
+    Undetermined { why: String, raw: Option<String> },
 }
 
 /// 判完的结论。
@@ -35,8 +36,8 @@ pub enum Verdict {
     OwnerOnly,
     /// 过宽。`how` 说清宽在哪，`fix` 说清怎么修 —— **两样都要有**。
     TooWide { how: String, fix: String },
-    /// 查不出来。**不是绿灯**：调用方要照 `TooWide` 一样把它显出来。
-    Undetermined { why: String },
+    /// 查不出来。**不是绿灯**：调用方要照 `TooWide` 一样把它显出来。`raw` 同 [`Protection::Undetermined`]。
+    Undetermined { why: String, raw: Option<String> },
 }
 
 impl Verdict {
@@ -87,8 +88,9 @@ pub fn judge(p: &Protection) -> Verdict {
                 }
             }
         }
-        Protection::Undetermined { why } => Verdict::Undetermined {
+        Protection::Undetermined { why, raw } => Verdict::Undetermined {
             why: copy_text("credsPerm.judge.undetermined", &[("why", &why.to_string())]),
+            raw: raw.clone(),
         },
     }
 }
@@ -105,7 +107,11 @@ pub fn probe(path: &std::path::Path) -> Protection {
                 mode: m.permissions().mode() & 0o7777,
             },
             Err(e) => Protection::Undetermined {
-                why: copy_text("credsPerm.probe.noMetadata", &[("e", &e.to_string())]),
+                why: copy_text(
+                    "credsPerm.probe.noMetadata",
+                    &[("why", &copy_core::io_reason(e.kind()))],
+                ),
+                raw: Some(e.to_string()),
             },
         };
     }
@@ -118,6 +124,7 @@ pub fn probe(path: &std::path::Path) -> Protection {
         let _ = path;
         return Protection::Undetermined {
             why: copy_text("credsPerm.probe.notHardened", &[]),
+            raw: None,
         };
     }
     #[cfg(not(any(unix, windows)))]
@@ -125,6 +132,7 @@ pub fn probe(path: &std::path::Path) -> Protection {
         let _ = path;
         return Protection::Undetermined {
             why: copy_text("credsPerm.probe.unsupported", &[]),
+            raw: None,
         };
     }
 }
@@ -283,12 +291,14 @@ fn windows_probe(p: &std::path::Path) -> Protection {
     let path_w = match win_path_core::win32_path(p) {
         Ok(w) => w,
         Err(e) => {
+            // 上屏的只是原因词（系统给的错误类别）；码进原话。
             return Protection::Undetermined {
                 why: copy_text(
                     "credsPerm.windowsProbe.unreadable",
-                    &[("rc", &e.raw_os_error().unwrap_or(0).to_string())],
+                    &[("why", &copy_core::io_reason(e.kind()))],
                 ),
-            }
+                raw: Some(e.to_string()),
+            };
         }
     };
     unsafe {
@@ -304,11 +314,13 @@ fn windows_probe(p: &std::path::Path) -> Protection {
             &mut psd,
         );
         if rc.is_err() {
+            let e = std::io::Error::from_raw_os_error(rc.0 as i32);
             return Protection::Undetermined {
                 why: copy_text(
                     "credsPerm.windowsProbe.unreadable",
-                    &[("rc", &(rc.0).to_string())],
+                    &[("why", &copy_core::io_reason(e.kind()))],
                 ),
+                raw: Some(format!("GetNamedSecurityInfoW {}: {e}", rc.0)),
             };
         }
         let mut s = PWSTR::null();
@@ -323,6 +335,7 @@ fn windows_probe(p: &std::path::Path) -> Protection {
             let _ = LocalFree(HLOCAL(psd.0));
             return Protection::Undetermined {
                 why: copy_text("credsPerm.windowsProbe.toText", &[]),
+                raw: None,
             };
         }
         let sddl = s.to_string().unwrap_or_default();

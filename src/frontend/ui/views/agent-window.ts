@@ -130,6 +130,8 @@ export class AgentWindow {
       toolUseElements: new Map(),
       pendingToolResults: new Map(),
       runCards: this.runCards,
+      // 代码块高亮 / 公式推迟到滚进视口（`RunTimeline` 交给本窗的滚动容器）：几百轮的子运行开窗不当场全高亮一遍
+      lazy: true,
     };
     this.stream.contentElement.append(this.head, this.why, this.kids);
 
@@ -191,6 +193,7 @@ export class AgentWindow {
       parent: row.jsonlPath,
       which: { run: this.run },
       render: (rec: LineRecord) => renderMessage(rec, this.ctx),
+      enhanceRoot: this.scrollEl,
     });
     this.wrap.appendChild(this.timeline.element);
     this.stream.contentElement.append(this.wrap);

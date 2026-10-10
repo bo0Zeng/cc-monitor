@@ -306,7 +306,22 @@ fn in_list_is_judged_by_host_user_and_port() {
         answer_import(&serde_json::json!({}))
             .map(|_| ())
             .unwrap_err()
-            .0,
+            .code,
         "bad_args"
+    );
+}
+
+/// `ssh -G` 没成那两形：句子只带别名与原因词，ssh 自己说的 · 系统报错进复制详情、不上句子。
+#[test]
+fn a_failed_ssh_g_keeps_what_ssh_said_out_of_the_sentence() {
+    let e = ssh_g_exited("web", b"ssh: Could not resolve hostname web\n");
+    assert_eq!(e.code, "failed");
+    assert_eq!(
+        e.message,
+        copy_text("beSshConfig.host.sshGExit", &[("alias", "web")])
+    );
+    assert_eq!(
+        e.raw.as_deref(),
+        Some("ssh: Could not resolve hostname web")
     );
 }

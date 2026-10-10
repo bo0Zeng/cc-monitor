@@ -553,7 +553,7 @@ describe("TabManager 生命周期", () => {
       return c.querySelector(".tab-hover-state")?.textContent;
     };
     tm.updateActivity("tt1", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
-    expect(said(), "活着、在等：种类还没到 ⇒ 只说需要你（不猜，也不印英文原样）").toBe(copyText("beSession.activity.needsYou"));
+    expect(said(), "活着、在等：种类还没到 ⇒ 只说需手动（不猜，也不印英文原样）").toBe(copyText("beSession.activity.needsYou"));
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
     expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
     tm.archiveTab("tt1");
@@ -1216,7 +1216,7 @@ describe("TabManager 生命周期", () => {
   });
 });
 
-describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终端页 · 需要你订它）", () => {
+describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终端页 · 需手动订它）", () => {
   it("★ 当前会话 运行中 → 空闲（数量没变、用量没变）⇒ 订阅者照样收到一次；同一状态再来不收", () => {
     document.body.innerHTML = "";
     const barEl = document.createElement("div");
@@ -5137,6 +5137,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     cost: null,
     bgTasks: [],
     background: null,
+    mcp: [],
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>

@@ -1,4 +1,4 @@
-//! 系统通知那一条 Tauri 命令（「一轮完成」「需要你」）：界面判要不要发，壳只发 —— 平台那一半在 [`crate::platform::notify`]。
+//! 系统通知那一条 Tauri 命令（「一轮完成」「需手动」）：界面判要不要发，壳只发 —— 平台那一半在 [`crate::platform::notify`]。
 
 use crate::detail::Said;
 

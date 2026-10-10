@@ -93,7 +93,7 @@ export interface Tab {
   touchedFiles: Set<string>;
   /** 本会话最新一轮的用量与上下文（后端 `history-facts` 的 `usage`：数 ＋ 写好的字，HUD 与监控板照抄）。null = 还没有（或事实还没到）。 */
   usage: UsageFact | null;
-  /** 需要你（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
+  /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */
   backgroundWork: BackgroundWork | null;
@@ -182,7 +182,7 @@ export interface Tab {
 }
 
 /**
- * Tab 摘要，发给宿主用于状态栏 / empty-state / 会话头 / 终端页 / 需要你那几处。按活性轴分：活 / 死（死里含可重连）；
+ * Tab 摘要，发给宿主用于状态栏 / empty-state / 会话头 / 终端页 / 需手动那几处。按活性轴分：活 / 死（死里含可重连）；
  * `faces` 是每个 tab 此刻的点 · 在等什么 · 在跑哪一步（只拿来比「变没变」：运行中 → 空闲数量不变，会话头也得重画）。
  */
 export interface TabsSummary {

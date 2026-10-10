@@ -168,6 +168,9 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
+    /// 这一家不导 ⇒ `None`。
+    pub(crate) self_sid_env: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
@@ -277,6 +280,27 @@ pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
 /// 别名清单的名字由它派生：`<它>`（当前目录起）· `<它>t`（tmux 里起）· `<它>a`（接回）· 每个号 `<号><它>` / `<号><它>t`。
 pub(crate) fn wrapper_alias(kind: &str) -> Option<&'static str> {
     launch_face_among(REGISTRY, kind).and_then(|f| f.launcher_alias)
+}
+
+/// 各家导给子进程的「我是哪个会话」变量（注册序、去重；[`LaunchFace::self_sid_env`]）。`ccm` 按它认父；
+/// 后端自己起的子进程不该带着它们（常驻后端若是在某个会话里起的，环境里就有那个会话的编号）。
+pub(crate) fn self_sid_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for e in REGISTRY
+        .iter()
+        .filter_map(|a| a.launch.as_ref()?.self_sid_env)
+    {
+        if !v.contains(&e) {
+            v.push(e);
+        }
+    }
+    v
+}
+
+/// 把各家「我是哪个会话」的变量登记进起子进程原语的不往下传名单（`platform::child_env::also_internal`）。
+/// 入口（`main.rs`）在分流之前调一次：之后这个进程起的每个子进程都看不见它们。
+pub fn install_child_env_filter() {
+    crate::platform::child_env::also_internal(self_sid_envs());
 }
 
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
@@ -399,6 +423,8 @@ pub(crate) struct RecordFace {
     pub(crate) background: Option<fn(&serde_json::Value) -> Vec<BgMark>>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
+    pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -1346,8 +1372,6 @@ pub(crate) struct AccountsFace {
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
     pub(crate) email_in: fn(&Path) -> Option<String>,
-    /// 后端看会话用的那几项（会话起停 · 会话记录）：常驻后端只看共享库里的这一份 ⇒ 各号必须链回去，不许隔离。
-    pub(crate) watched: &'static [&'static str],
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -1407,10 +1431,50 @@ pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
     REGISTRY.iter().filter_map(|a| a.footprint)
 }
 
-/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
+/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）＋ 判状态要看的那几个家。
 #[derive(Clone, Copy)]
 pub(crate) struct McpFace {
-    pub(crate) read: fn(Option<&Path>) -> McpRead,
+    pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
+    /// 在那一家的会话里登录 MCP 服务器要敲的那条命令（扩展页「去登录」· 待办那一件复制它）。
+    pub(crate) login_command: &'static str,
+}
+
+/// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
+/// 账号库是通用层的知识，由通用层收齐交给那一家；那一家只认自己家目录里的文件。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct McpLook {
+    pub homes: Vec<(Option<String>, PathBuf)>,
+    pub now_ms: u64,
+}
+
+/// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它；线上名即 serde 名，闭集）。
+/// 配置层（`mcp-read`）只说说得准的：停用（配置里写着）· 要登录（那一家最近一次连它时记下的、还在有效期内）· 其余 `Unknown`；
+/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 连不上 · 还在连。两处都不说「连上了」。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum McpStatus {
+    NeedsLogin,
+    Failed,
+    Pending,
+    Disabled,
+    #[default]
+    Unknown,
+}
+
+/// 一条记录里那一家说的各 MCP 服务器此刻的样子：三张表各一格；这一条没写的那一格 ⇒ `None`（沿用上一条说的）。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct McpSaid {
+    pub pending: Option<Vec<String>>,
+    pub needs_login: Option<Vec<String>>,
+    /// 连不上的：名字 · 那一家写的原话（没写 ⇒ `None`）。
+    pub failed: Option<Vec<(String, Option<String>)>>,
+}
+
+/// `kind` 那一家在这条记录里说的 MCP 样子。那一家不说 / 不是这种记录 ⇒ `None`。
+pub(crate) fn mcp_said_of(kind: &str, v: &serde_json::Value) -> Option<McpSaid> {
+    record_face(kind)
+        .and_then(|r| r.mcp_said)
+        .and_then(|f| f(v))
 }
 
 /// 一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
@@ -1428,6 +1492,11 @@ pub(crate) struct McpEntry {
     pub name: String,
     pub server: serde_json::Value,
     pub source: String,
+    pub status: McpStatus,
+    /// 要登录：在哪几个号里（账号库里的名字，排好序）；没设账号的那一份不出名字。别的状态恒空。
+    pub login_in: Vec<String>,
+    /// 要登录：最近一次看到是何时（epoch ms）；别的状态 `None`。
+    pub seen_ms: Option<u64>,
 }
 
 /// `kind` 那一家的 MCP 读面，读一遍。`None` = 那一家不认得 MCP。
@@ -1435,15 +1504,28 @@ pub(crate) fn mcp_read_among(
     registry: &[Adapter],
     kind: &str,
     project_dir: Option<&Path>,
+    look: &McpLook,
 ) -> Option<McpRead> {
     adapter_among(registry, kind)
         .and_then(|a| a.mcp)
-        .map(|f| (f.read)(project_dir))
+        .map(|f| (f.read)(project_dir, look))
+}
+
+/// `kind` 那一家登录 MCP 服务器的那条命令（[`McpFace::login_command`]）。那一家不认得 MCP ⇒ `None`。
+pub(crate) fn mcp_login_command(kind: &str) -> Option<&'static str> {
+    adapter_among(REGISTRY, kind)
+        .and_then(|a| a.mcp)
+        .map(|f| f.login_command)
+}
+
+/// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。
+pub(crate) fn home_of_kind(kind: &str) -> Option<PathBuf> {
+    adapter_among(REGISTRY, kind).and_then(|a| (a.home)())
 }
 
 /// [`mcp_read_among`] 对本机注册表 —— 帧命令 `mcp-read` 的读法入口。
-pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>) -> Option<McpRead> {
-    mcp_read_among(REGISTRY, kind, project_dir)
+pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>, look: &McpLook) -> Option<McpRead> {
+    mcp_read_among(REGISTRY, kind, project_dir, look)
 }
 
 /// 一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起
@@ -1733,9 +1815,9 @@ pub(crate) struct SettingsEnvFace {
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
     /// 地址 → 要合并进那份文件的那一段。
     pub(crate) snippet: fn(&str) -> String,
-    /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「要你动手」按它算 diff）。现在的内容读不懂 ⇒ `None`。
+    /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「待办」按它算 diff）。现在的内容读不懂 ⇒ `None`。
     pub(crate) merge: fn(&str, &str) -> Option<String>,
-    /// 地址住那份文件里哪一格（「要你动手」那一件的位置行）。
+    /// 地址住那份文件里哪一格（「待办」那一件的位置行）。
     pub(crate) slot: &'static str,
 }
 

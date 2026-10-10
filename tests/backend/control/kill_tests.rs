@@ -181,3 +181,30 @@ fn the_kill_reply_carries_what_the_bus_cleanup_did() {
     assert_eq!(quiet["bus"]["said"], serde_json::Value::Null);
     assert_eq!(quiet["bus"]["detail"], "");
 }
+
+/// 没杀成那两形：句子只带原因词，原话（tmux 的 stderr · 起不来时的系统报错）进复制详情、不上句子。
+#[test]
+fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
+    let e = kill_refused(b"can't find pane: %9\n");
+    assert_eq!(e.code, "kill_failed");
+    assert_eq!(e.message, copy_text("beKill.run.failed", &[]));
+    assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
+
+    let dir = std::env::temp_dir().join(format!("ccm-kill-gone-{}", std::process::id()));
+    let fail = crate::platform::child::Child::new(dir.join("gone"))
+        .run(crate::platform::child::Deadline::secs(5))
+        .expect_err("不存在的程序起得来");
+    let e = tmux_unavailable(fail);
+    assert_eq!(e.code, "no_tmux");
+    assert_eq!(
+        e.message,
+        copy_text(
+            "beKill.run.noTmux",
+            &[(
+                "why",
+                &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+            )]
+        )
+    );
+    assert!(e.raw.is_some(), "系统原话丢了");
+}

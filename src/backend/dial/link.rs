@@ -375,7 +375,12 @@ async fn pump_down(
         let n = match from.read(&mut buf[..allow]).await {
             Ok(0) => break None,
             Ok(n) => n,
-            Err(e) => break Some(copy_text("beLink.gone.withError", &[("e", &e.to_string())])),
+            // 这一句交给链路收场那一格（没有原话位）：系统原话记一行日志。
+            Err(e) => {
+                break Some(crate::common::said::IntoNote::into_note(
+                    crate::common::said::Said::with_raw(copy_text("beLink.gone.withError", &[]), e),
+                ))
+            }
         };
         // ③ 扣掉读到的那么多（第一字节在 ① 里已经扣了）。
         if n > 1 {
@@ -419,7 +424,10 @@ async fn pump_up(
                 &id,
                 &cmd,
                 "link_closed",
-                &copy_text("beLink.gone.withError", &[("e", &e.to_string())]),
+                &crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                    copy_text("beLink.gone.withError", &[]),
+                    e,
+                )),
             ),
         };
         if replies.send(frame).await.is_err() {

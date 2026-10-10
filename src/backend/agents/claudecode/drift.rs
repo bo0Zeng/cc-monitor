@@ -39,6 +39,8 @@ pub enum DriftFace {
     UnknownSessionStatus,
     /// 进程状态文件里认不出的 `waitingFor`（在等什么说不清 ⇒ 「需手动」判不出种类）。
     UnknownWaitingFor,
+    /// 记录里「延后加载的工具变了」附件里认不出的 MCP 状态表（`…McpServers`）：那一种状态的服务器不进会话的 MCP 那一格。
+    UnknownMcpList,
 }
 
 impl DriftFace {
@@ -60,6 +62,7 @@ impl DriftFace {
             DriftFace::UnknownWaitingFor => {
                 copy_text("rsDriftLedger.consequence.unknownWaitingFor", &[])
             }
+            DriftFace::UnknownMcpList => copy_text("rsDriftLedger.consequence.unknownMcpList", &[]),
         }
     }
 }

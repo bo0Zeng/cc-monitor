@@ -1,6 +1,6 @@
-//! 「要你动手」那几件（`机器配置-v2.md` §2–§3）：这台后端按事实判类 · 态、算好要贴的东西（行号 · diff · 合好的整份），界面只画。
+//! 「待办」那几件（`机器配置-v2.md` §2–§3）：这台后端按事实判类 · 态、算好要贴的东西（行号 · diff · 合好的整份），界面只画。
 //!
-//! - 类：`must`（要做）· `install`（要装）· `decide`（要你定）· `installOptional`（要装 · 可选）· `optional`（可选）。
+//! - 类：`must`（要做）· `install`（要装）· `decide`（待定）· `installOptional`（要装 · 可选）· `optional`（可选）。
 //!   角标只数前三类里还没做完的（[`badge`]）。
 //! - 态：`todo` · `done`（自己认出）· `expired`（贴过的失效了，升成要做）· `blocked`（先决没满足）· `declined`（可选的点过「不用了」）。
 //!   「已复制」只住界面（点了复制的那一刻），不进这里。
@@ -104,8 +104,18 @@ pub(crate) struct Facts {
     pub dead: Vec<DeadLines>,
     pub relay: Vec<Relay>,
     pub hooks: Option<Hooks>,
+    /// 用户自己配的（全局 · 本项目 · 项目文件里的）、要登录的 MCP（`mcp-read` 那一份判定）。
+    pub mcp_login: Vec<McpLogin>,
     /// 点过「不用了」的那几件（`marks.rs`）。
     pub declined: Vec<String>,
+}
+
+/// 一个要登录的 MCP：名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）· 登录那条命令。
+pub(crate) struct McpLogin {
+    pub name: String,
+    pub who: Vec<String>,
+    /// 登录要敲的那条命令（那一家的，`agents::mcp_login_command`）。
+    pub command: &'static str,
 }
 
 /// 一件的成品（线上形状由判据按键集钉住）。
@@ -171,7 +181,7 @@ impl Chore {
     }
 }
 
-/// 进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的（没做 · 过期）。
+/// 进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的（没做 · 过期）。
 pub(crate) fn badge(chores: &[Value]) -> usize {
     chores
         .iter()
@@ -180,7 +190,7 @@ pub(crate) fn badge(chores: &[Value]) -> usize {
         .count()
 }
 
-/// 事实 ⇒ 各件（急的在前：要做 · 要你定 · 要装 · 要装 · 可选 · 可选）。
+/// 事实 ⇒ 各件（急的在前：要做 · 待定 · 要装 · 要装 · 可选 · 可选）。
 pub(crate) fn chores(f: &Facts) -> Vec<Value> {
     let mut out: Vec<Chore> = Vec::new();
     if let Some(s) = &f.stale_ccm {
@@ -367,6 +377,16 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
                 same_file.push((out.len(), p));
             }
         }
+        out.push(c);
+    }
+    for m in &f.mcp_login {
+        let mut c = Chore::new(format!("mcp-login:{}", m.name), "optional", "copyCommand");
+        c.name = copy_text("beChore.mcpLogin.name", &[("name", &m.name)]);
+        c.loc = m.who.join(&copy_text("beChore.mcpLogin.whoSep", &[]));
+        c.said = copy_text("beChore.mcpLogin.said", &[]);
+        c.why = copy_text("beChore.mcpLogin.why", &[]);
+        c.steps = vec![copy_text("beChore.mcpLogin.step", &[("name", &m.name)])];
+        c.copy = Some(m.command.to_string());
         out.push(c);
     }
     // 同一份文件里有两件都没做 ⇒ 各自的「整份」都给含两件的那一份（按现在的内容先合一件、再合另一件）。

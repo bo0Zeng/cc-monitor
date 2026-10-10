@@ -43,7 +43,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 None,
-                copy_text("beAcctVerify.global.badManifest", &[("e", e)]),
+                copy_text("beAcctVerify.global.badManifest", &[("why", e)]),
             );
             return finish(o);
         }
@@ -53,7 +53,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         o.push(
             CheckLevel::Fail,
             None,
-            copy_text("beAcctVerify.global.roots", &[("e", &e)]),
+            copy_text("beAcctVerify.global.roots", &[("why", &e)]),
         );
         return finish(o);
     }

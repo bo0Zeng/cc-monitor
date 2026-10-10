@@ -72,6 +72,17 @@ function extList(w: World): unknown {
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": (_o, _r, w) => extList(w),
+    // 各台的 MCP 列表（形状同 `tests/__fixtures__/mcp-read.golden.json` 的 marked）：本机 github 两个号要登录（黄标）· devbox 上一个活会话说它连不上（红标）。
+    "mcp-read": (origin) => {
+      const entry = (over: Record<string, unknown>) => ({ scope: "user", name: "github", server: { type: "http", url: "https://example.invalid/mcp" }, sourcePath: `${HOME}/.claude.json`, status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
+      const entries =
+        origin === "<local>"
+          ? [entry({ status: "needsLogin", loginIn: ["personal", "work"], seenAt: 1791542520000, mark: "needsLogin", login: { said: copyText("beMcp.mark.login", { accounts: "personal、work", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "personal、work" }), copy: "/mcp" } })]
+          : origin === "devbox"
+            ? [entry({ mark: "failed", failed: { said: copyText("beMcp.mark.failed", { title: "整理工单", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "Connection failed: connect ECONNREFUSED 127.0.0.1:7801" } })]
+            : [];
+      return { entries, dirs: [], problems: [] };
+    },
     // 「装到 N 台」那一张卡（本机后端并好的）：MCP 那一条要一个 token，win-laptop 上已经有了。
     "ext-hub-preview": (_o, req) => {
       const to = req.to as (string | null)[];
@@ -156,8 +167,6 @@ export function machineOps(): Record<string, OpHandler> {
           exists: true,
           block: {
             present: true,
-            version: "v2",
-            outdated: false,
             conflictingFunctions: [
               { name: "cc", line: 125, wins: "yours" },
               { name: "cct", line: 129, wins: "yours" },
@@ -219,13 +228,12 @@ export function machineOps(): Record<string, OpHandler> {
             program: "claude",
             cwd: x.cwd,
             session: { sid: x.sid, agent: "claude" },
-            purpose: "normal",
             started_by: { client: "ccm", mine: true },
             clients: i === 0 ? [{ kind: "terminal-window", since: 1_700_000_000, last_activity: 1_700_000_100 }] : [],
             input: "shared",
             state: "running",
             last_activity: 1_700_000_100,
-            can: { preview: true, input: true, end: true },
+            can: { input: true, end: true },
           };
         }),
     }),
@@ -286,7 +294,6 @@ export function machineOps(): Record<string, OpHandler> {
         own: [
           { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
-          { id: "relayPassKey", path: "~/.cc-monitor/relay-pass-key", dir: false, class: "truth", exists: true, size: 64 },
           { id: "policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size: null },
           { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 1840 },
           { id: "aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size: 512 },
@@ -368,7 +375,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       ok: true,
       summary: "",
     }),
-    bound_terminal_count: () => 2,
     get_data_paths: () => ({
       monitorDataDir: `${HOME}/.cc-monitor`,
       entries: [
@@ -439,7 +445,7 @@ function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<str
   return null;
 }
 
-/** 「要你动手」一件（假后端照 `footprint/chores` 的成品形状）。 */
+/** 「待办」一件（假后端照 `footprint/chores` 的成品形状）。 */
 function chore(over: Record<string, unknown>): Record<string, unknown> & { kind: string; state: string } {
   return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
 }
@@ -448,8 +454,8 @@ const SETTINGS = `${HOME}/.claude/settings.json`;
 const WHOLE = '{\n  "env": {\n    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",\n    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"\n  }\n}\n';
 const DEVBOX_CHORES = [
   chore({ id: "stale-ccm", kind: "must", name: copyText("beChore.staleCcm.name"), loc: "/usr/local/bin/ccm", said: copyText("beChore.staleCcm.said"), why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 管不到", steps: [copyText("beChore.staleCcm.step")], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand" }),
-  chore({ id: "clash:cc", kind: "decide", name: "「cc」重名 · 你写的 / 清单", loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
-  chore({ id: "clash:cct", kind: "decide", name: "「cct」重名 · 你写的 / 清单", loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "clash:cc", kind: "decide", name: copyText("beChore.clash.name", { name: "cc" }), loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "clash:cct", kind: "decide", name: copyText("beChore.clash.name", { name: "cct" }), loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
   chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: copyText("beChore.dead.said"), why: copyText("beChore.dead.why"), steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
   chore({
     id: "relay:claude-code",

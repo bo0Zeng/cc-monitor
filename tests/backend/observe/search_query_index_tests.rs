@@ -404,7 +404,7 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
     text.push_str(&(line("u-1", "结尾那一句 cursor") + "\n"));
     std::fs::write(&f, &text).unwrap();
     let mut index = SearchIndex::default();
-    let entry = index.bring_up(&f, None, false).expect("读得了");
+    let entry = bring_up(&f, None, false, &mut index.last).expect("读得了");
     assert!(
         entry.weight < 4096,
         "一千条命中不了的记录占了 {} 字节常驻",
@@ -424,4 +424,216 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
         .expect("找得了");
     assert_eq!(hits, vec!["u-0".to_string(), "u-1".to_string()]);
     std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔perfC2〕正文与工具文本分两层留：上界装得下每一份的正文、装不下全部工具文本时，问过一次「含工具」之后，
+/// 不含工具的那一问**一个字节都不读**（工具层先放掉，正文层不被挤出去）；两种问法的答案都与不设上界逐字相等，常驻不超上界。
+#[test]
+fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
+    let home = std::env::temp_dir().join(format!("ccm-sx-tiers-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let bulk = "npm test --watch ".repeat(240);
+    for i in 0..6 {
+        let f = p(&home, &format!("-w-tiers/s{i}.jsonl"));
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        let mut text = line(&format!("u-{i}"), &format!("第 {i} 份 cursor")) + "\n";
+        text.push_str(
+            &json!({"type":"assistant","uuid":format!("a-{i}"),"timestamp":"2026-04-01T00:00:01Z",
+                "message":{"role":"assistant","content":[{"type":"tool_use","id":format!("t{i}"),"name":"Bash","input":{"command":bulk}}]}})
+            .to_string(),
+        );
+        text.push('\n');
+        std::fs::write(&f, &text).unwrap();
+        touch(&f, 1_800_000_000_000 + i64::from(i) * 1_000);
+    }
+    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let live = crate::observe::accounts_query::live_session_ids(&home);
+    let ask = |index: &mut SearchIndex, q: &str, tools: bool| {
+        let rest: Vec<String> = if tools {
+            vec!["--include-tools".into()]
+        } else {
+            vec![]
+        };
+        let mut buf = Vec::new();
+        index
+            .search(&fence, q, &parse_opts(&rest), &live, &mut buf)
+            .expect("search ok");
+        String::from_utf8(buf).expect("UTF-8")
+    };
+    let mut free_plain = SearchIndex::with_budget(usize::MAX);
+    let want_plain = ask(&mut free_plain, "cursor", false);
+    let mut free_tools = SearchIndex::with_budget(usize::MAX);
+    let want_tools = ask(&mut free_tools, "npm test", true);
+    let (plain, all) = (free_plain.kept(), free_tools.kept());
+    assert!(
+        all > plain * 3,
+        "工具文本不够大，判不出挤占（正文 {plain} · 全部 {all}）"
+    );
+    let budget = plain + (all - plain) / 3;
+    let mut bounded = SearchIndex::with_budget(budget);
+    for round in 0..2 {
+        assert_eq!(
+            ask(&mut bounded, "npm test", true),
+            want_tools,
+            "第 {round} 趟：含工具的答案变了"
+        );
+        assert!(
+            bounded.kept() <= budget,
+            "常驻 {} 超了上界 {budget}",
+            bounded.kept()
+        );
+        assert_eq!(
+            ask(&mut bounded, "cursor", false),
+            want_plain,
+            "第 {round} 趟：不含工具的答案变了"
+        );
+        assert_eq!(
+            (bounded.last.full, bounded.last.appended, bounded.last.bytes),
+            (0, 0, 0),
+            "第 {round} 趟：问过含工具之后，不含工具的那一问还在读盘（正文层被工具层挤出去了）"
+        );
+    }
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔perfC2〕几批、几条线程带出来的答案，行序仍是最近优先（跨批也不乱）：七十份、每份一条命中、修改时刻各不同。
+#[test]
+fn many_batches_still_answer_most_recent_first() {
+    let home = std::env::temp_dir().join(format!("ccm-sx-batches-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let n = SEARCH_BATCH * 2 + 6;
+    for i in 0..n {
+        let f = p(&home, &format!("-w-b{}/s{i:03}.jsonl", i % 7));
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(
+            &f,
+            line(&format!("u-{i}"), &format!("cursor 第 {i} 份")) + "\n",
+        )
+        .unwrap();
+        // 名字越大越旧：最近优先的序与名字序、目录序都不同。
+        touch(&f, 1_800_000_000_000 - (i as i64) * 1_000);
+    }
+    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let mut buf = Vec::new();
+    SearchIndex::default()
+        .search(
+            &fence,
+            "cursor",
+            &parse_opts(&[]),
+            &crate::observe::accounts_query::live_session_ids(&home),
+            &mut buf,
+        )
+        .expect("search ok");
+    let got: Vec<String> = String::from_utf8(buf)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let v = serde_json::from_str::<Value>(l).unwrap();
+            format!(
+                "{} {}",
+                v["sessionId"].as_str().unwrap(),
+                v["title"].as_str().unwrap()
+            )
+        })
+        .collect();
+    // 标题取自那一份自己的第一句 ⇒ 线程交回的序乱了、读出来的那一格与它的路径对不上就红。
+    let want: Vec<String> = (0..n)
+        .map(|i| format!("s{i:03} cursor 第 {i} 份"))
+        .collect();
+    assert_eq!(got, want);
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔perfC4〕几条线程 ＝ min(8, 这台机器可用的并行数)，至少一条；问不出可用数 ⇒ 一条（远端可能是一两核的小机器，不按 8 条起）。
+#[test]
+fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
+    use crate::observe::par::par_workers;
+    let got: Vec<(Option<usize>, usize)> = [
+        None,
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(3),
+        Some(8),
+        Some(9),
+        Some(64),
+    ]
+    .into_iter()
+    .map(|a| (a, par_workers(a)))
+    .collect();
+    assert_eq!(
+        got,
+        vec![
+            (None, 1),
+            (Some(0), 1),
+            (Some(1), 1),
+            (Some(2), 2),
+            (Some(3), 3),
+            (Some(8), 8),
+            (Some(9), 8),
+            (Some(64), 8),
+        ]
+    );
+}
+
+/// 〔perfC4〕几条线程只在一处算：后端生产段里问机器并行数的只有 `observe/par.rs` 那一处（[`crate::observe::par::par_workers`]），
+/// 别处要分线程走 `par_in_order`，不自己再问一遍、再定一个上限。
+#[test]
+fn the_worker_count_is_asked_in_one_place() {
+    let root = crate::guard_support::src_root();
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(
+        files.len() >= 100,
+        "只扫到 {} 份 `.rs` —— 走树坏了，本条在空转",
+        files.len()
+    );
+    let hits: Vec<(String, usize)> = files
+        .iter()
+        .map(|(p, src)| {
+            let n = crate::guard_support::production_code(src)
+                .matches("available_parallelism")
+                .count();
+            (
+                p.strip_prefix(&root)
+                    .unwrap_or(p)
+                    .display()
+                    .to_string()
+                    .replace('\\', "/"),
+                n,
+            )
+        })
+        .filter(|(_, n)| *n > 0)
+        .collect();
+    assert_eq!(
+        hits,
+        vec![("observe/par.rs".to_string(), 1)],
+        "问机器并行数只许在 `observe/par.rs::par_workers` 一处（别处分线程走 `par_in_order`）"
+    );
+}
+
+/// 〔perfC2〕分给几条线程的那一套（历史清单与全文搜索共用）：结果按原序交回；某一件 panic 原样抛出来，不悄悄少一件。
+#[test]
+fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
+    let items: Vec<usize> = (0..500).collect();
+    let got = crate::observe::par::par_in_order(items.clone(), |i| {
+        if i % 37 == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        i * 3
+    });
+    assert_eq!(got, items.iter().map(|i| i * 3).collect::<Vec<_>>());
+    let caught = std::panic::catch_unwind(|| {
+        crate::observe::par::par_in_order((0..64).collect::<Vec<usize>>(), |i| {
+            assert!(i != 40, "第 40 件坏了");
+            i
+        })
+    });
+    assert!(caught.is_err(), "有一件 panic 却交回了结果");
+}
+
+/// 〔perfC2〕常驻上界钉在 128 MB：口径是「多常驻 ≤ 200 MB 换每问 ≤ 1 s」，按 `drive.mjs --only search` 在 680 MB 合成世界量
+/// （进程 CPU 毫秒，不按墙钟）—— 正文整份装得下的最小一档；含工具那一形 128 / 256 都装不下、调大只多常驻不变快。要改它先重量这一组读数。
+#[test]
+fn the_resident_bound_is_128_mb() {
+    assert_eq!(RESIDENT_MAX_BYTES, 128 << 20);
 }

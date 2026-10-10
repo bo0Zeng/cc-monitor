@@ -908,7 +908,7 @@ export class SettingsPanel {
       ),
     );
 
-    // 文件与数据：两栏（要你动手 · cc-monitor 放了什么）；本机那两块（Claude 目录 · cc-monitor 的文件）由这里建好交进去。
+    // 文件与数据：两栏（待办 · cc-monitor 放了什么）；本机那两块（Claude 目录 · cc-monitor 的文件）由这里建好交进去。
     const dataPage = document.createElement("div");
     const ownFiles = this.safeBlock(
       copyText("settingsPanel.group.dataPlaces"),

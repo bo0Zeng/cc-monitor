@@ -22,7 +22,7 @@ fn has(s: &str, key: &str, args: &[(&str, &str)]) -> bool {
         .any(|p| p == copy_text(key, args))
 }
 
-/// ★ 抢回开着时说「前面的号恢复即切回」，关着说「不主动换回」（旧那句写死的在抢回开着时是假话）。
+/// ★ 抢回开着时说「前面的号有额度就换回它」，关着说「不主动换回」（旧那句写死的在抢回开着时是假话）。
 #[test]
 fn the_explanation_follows_preempt() {
     let mut r = base();
@@ -35,7 +35,7 @@ fn the_explanation_follows_preempt() {
     assert!(!has(&on, "beRotation.explain.noPreempt", &[]));
 }
 
-/// 兜底：标了才说「b 兜底 · … · 40m 内恢复则不切兜底」，等待关掉（0）只说兜底；没标兜底不提等待。时段停用的号写出时段；
+/// 兜底：标了才说「b 只兜底 · … · 40 分钟内有号恢复就先等」，等待关掉（0）只说兜底；没标兜底不提等待。时段停用的号写出时段；
 /// 有上限才说「都到上限即停 / 仍发」。
 #[test]
 fn the_explanation_names_wait_off_slots_and_at_limit_only_when_they_apply() {
@@ -82,22 +82,57 @@ fn the_explanation_names_wait_off_slots_and_at_limit_only_when_they_apply() {
     assert!(has(&explain(&r), "beRotation.explain.onRefused", &[]));
 }
 
-/// ★ 标了兜底就说「其余号恢复即切回」，紧跟兜底那一段、在等待之前（不管换法：兜底只临时用）；没标不说。
+/// ★ 标了兜底就从「这个号」说「别的号有额度就不用 b」（点兜底号的名），紧跟兜底那一段、在等待之前（不管换法：兜底只临时用）；没标不说。
 #[test]
 fn the_explanation_says_the_fallback_hands_back() {
     let mut r = base();
-    assert!(!has(&explain(&r), "beRotation.explain.leave", &[]));
+    assert!(!has(
+        &explain(&r),
+        "beRotation.explain.leave",
+        &[("list", "w")]
+    ));
     r.fallback = vec!["w".into()];
     let forty = copy_core::format_duration(40 * 60_000);
     let want = [
         copy_text("beRotation.explain.fallback", &[("list", "w")]),
-        copy_text("beRotation.explain.leave", &[]),
+        copy_text("beRotation.explain.leave", &[("list", "w")]),
         copy_text("beRotation.explain.wait", &[("dur", &forty)]),
     ]
     .join(&copy_text("kit.text.sep", &[]));
     assert!(explain(&r).contains(&want), "{}", explain(&r));
     r.wait = 0;
-    assert!(has(&explain(&r), "beRotation.explain.leave", &[]));
+    assert!(has(
+        &explain(&r),
+        "beRotation.explain.leave",
+        &[("list", "w")]
+    ));
+}
+
+/// ★ 抢回与兜底是两件事，说明里分开说：抢回那一段与兜底那几段不共用一个词「切回」；兜底那一段点兜底号的名。
+/// 时长那一格是成品字（`format_duration` 出的「40 分钟」），不是「40m」这种缩写。
+#[test]
+fn preempt_and_fallback_read_apart_and_the_wait_is_spelled_out() {
+    let mut r = base();
+    r.preempt = true;
+    r.fallback = vec!["w".into()];
+    let text = explain(&r);
+    let sep = copy_text("kit.text.sep", &[]);
+    let parts: Vec<&str> = text.split(sep.as_str()).collect();
+    assert!(parts.iter().all(|p| !p.contains("切回")), "{text}");
+    let leave = copy_text("beRotation.explain.leave", &[("list", "w")]);
+    assert!(parts.contains(&leave.as_str()), "{text}");
+    assert!(leave.contains('w'), "兜底那一段点兜底号的名：{leave}");
+    assert_ne!(
+        leave,
+        copy_text("beRotation.explain.preempt", &[]),
+        "两件事一句话"
+    );
+    let forty = copy_text("durationFormat.unit.min", &[("n", "40")]);
+    let wait = parts
+        .iter()
+        .find(|p| p.contains(&forty))
+        .unwrap_or_else(|| panic!("等待那一段写成品字 {forty}：{text}"));
+    assert!(!wait.contains("40m"), "{wait}");
 }
 
 /// 摘要：顺序（勾上的、前三个）· 触发 · 抢回 · 停 · 封顶几个号。

@@ -1318,3 +1318,25 @@ fn the_copy_body_exists_only_when_there_is_a_detail() {
         "排法同 `copy_core::detail::many`（跨语言金样）"
     );
 }
+
+/// 对端拒了、拒绝体却不是 JSON：句子只说被拒，那段原文不上句子、进复制详情的「原话」那一项。
+#[test]
+fn an_unreadable_refusal_keeps_its_body_out_of_the_sentence_and_in_the_detail() {
+    use comms_inward::chan::wire::{Body, CallError, PeerFault};
+    let refused = CallError::Peer {
+        why: PeerFault::Refused {
+            body: Body(b"<html>bad gateway</html>".to_vec()),
+        },
+    };
+    let at = Origin("devbox".into());
+    let s = said(&at, "files-ls", &refused);
+    assert_eq!(s, copy_text("rsFilewinSource.said.refused", &[]));
+    let d = detail_of(&at, "files-ls", &refused);
+    assert!(
+        d.contains(&format!(
+            "{}：<html>bad gateway</html>",
+            copy_text("detail.label.raw", &[])
+        )),
+        "{d}"
+    );
+}

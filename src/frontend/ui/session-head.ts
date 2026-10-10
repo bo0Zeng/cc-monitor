@@ -31,6 +31,8 @@ export interface SessionHeadHost {
   resume(anchor: HTMLElement, sid: string): void;
   attach(sid: string): void;
   reconnect(origin: string): void;
+  /** 这个会话是计划里哪一块的接手 ⇒ 那一枚标的字与点了去哪；不是 ⇒ `null`。 */
+  planMark(tab: Tab): { slice: string; label: string; open: () => void } | null;
 }
 
 /**
@@ -56,6 +58,7 @@ export class SessionHead {
   private readonly where: HTMLSpanElement;
   private readonly dir: HTMLSpanElement;
   private readonly state: HTMLSpanElement;
+  private readonly plan: HTMLSpanElement;
   private readonly extra: HTMLSpanElement;
   private readonly acts: HTMLSpanElement;
   private drawn: string | null = null;
@@ -75,13 +78,15 @@ export class SessionHead {
     this.dir.className = s.shDir;
     this.state = document.createElement("span");
     this.state.className = s.shState;
+    this.plan = document.createElement("span");
+    this.plan.className = s.shPlanSlot;
     const sp = document.createElement("span");
     sp.className = s.shSp;
     this.extra = document.createElement("span");
     this.extra.className = s.shExtra;
     this.acts = document.createElement("span");
     this.acts.className = s.shActs;
-    this.el.append(this.dot, this.title, this.where, this.dir, this.state, sp, this.extra, this.acts);
+    this.el.append(this.dot, this.title, this.where, this.dir, this.state, this.plan, sp, this.extra, this.acts);
     this.el.style.display = "none";
   }
 
@@ -114,7 +119,8 @@ export class SessionHead {
     // 看它的终端：会话还有终端可去才出（已结束的没有）。
     const term = hasTerminal(tab.state);
     const extra = canResume(tab.state) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra].join("\u0000");
+    const mark = this.host.planMark(tab);
+    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? ""].join("\u0000");
     if (drawn === this.drawn) return;
     const sameSession = this.drawn?.split("\u0000")[0] === tab.sessionId;
     this.drawn = drawn;
@@ -136,6 +142,16 @@ export class SessionHead {
             ? button({ label: copyText("sessionHead.act.reconnect"), size: "compact", onClick: () => this.host.reconnect(tab.origin) })
             : null;
     this.extra.replaceChildren(...(extraBtn ? [extraBtn] : []));
+    // 计划那一枚标：这个会话是哪一片哪一块的接手、在什么阶段；点了开计划页并选中那一块。
+    if (mark) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `${s.shPlan} session-plan-mark`;
+      b.append(icon("plan", "compact"), document.createTextNode(mark.label));
+      attachTooltip(b, () => copyText("plan.head.mark", { slice: mark.slice }));
+      b.addEventListener("click", () => mark.open());
+      this.plan.replaceChildren(b);
+    } else this.plan.replaceChildren();
     // 右边一排随会话种类变（本机才有目录、Windows 才有 ↗）；同一个会话只在这两样变了时重建。
     const shape = `${remote ? 1 : 0}${front ? 1 : 0}${term ? 1 : 0}`;
     if (!sameSession || this.acts.dataset.shape !== shape) {

@@ -29,6 +29,7 @@
 //!
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
+use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
@@ -158,14 +159,16 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             // 只比标题与第一句：帧面才有的一格（CLI 面没有这个选项）。
             let titles = args.get("titles").and_then(Value::as_bool) == Some(true);
             let mut unreadable = 0usize;
-            let mut v = lines(|out| {
+            let lines = rows(|out| {
                 unreadable = search_query::search_into(home, query, &rest, titles, out)
                     .map_err(|e| ("failed", e))?;
                 Ok(())
             })?;
-            v["unreadable"] = json!(unreadable);
-            v["skipped"] = json!(crate::agents::content_search_skips());
-            Ok(v)
+            wire(&Searched {
+                lines,
+                unreadable,
+                skipped: crate::agents::content_search_skips(),
+            })
         }
         // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
         //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
@@ -442,7 +445,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需要你）。
+        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
         //   `limits` = 设置里的上限表（模型名子串 → 上限），可缺；上限每次按它重判。
         //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
         //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
@@ -486,7 +489,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 facts.agent = history_query::facts_agent(home, path);
             }
             facts.writers = accounts_query::session_writers(home, sid);
-            // 需要你：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+            // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             facts.needs = facts_query::needs_of(
                 &facts.pending,
                 accounts_query::session_wait(home, sid).as_ref(),
@@ -513,12 +516,17 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             Ok(v)
         }
         // 这台上需手动的会话清单（一次问一台）：活着、那台说在等人的每一个，带它在等什么（同 `history-facts.needs`，不另判）。
-        "sessions-needs" => Ok(json!({ "waiting": accounts_query::live_needs(home) })),
+        "sessions-needs" => crate::stream::inbound::spec::wire(&NeedsList {
+            waiting: accounts_query::live_needs(home),
+        }),
         // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
         "history-branch" => {
             let path = str_arg(args, "path")?;
             let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-            capped(json!({ "off": map.off, "end": map.end }))
+            capped(wire(&Branch {
+                off: map.off.clone(),
+                end: map.end,
+            })?)
         }
         "history-tail" => {
             let path = str_arg(args, "path")?;
@@ -528,12 +536,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             ))?;
             let plan =
                 history_query::tail_now(home, path, n as usize).map_err(|e| ("failed", e))?;
-            Ok(json!({
-                "total": plan.total,
-                "tail_from": plan.tail_from,
-                "split_at": plan.split_at,
-                "end": plan.end,
-            }))
+            wire(&plan)
         }
         // 这条会话的记录还在不在（resume 之前问；本体住 `history_query::record_in`）。
         // 可选 `configDir`：这次 resume 要用的那个账号根（缺席 / `null` ⇒ 这台的家目录）。
@@ -553,7 +556,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             };
             let probe =
                 history_query::record_for(home, config_dir, sid).map_err(|e| ("bad_args", e))?;
-            Ok(json!({ "present": probe.present, "root": probe.root }))
+            wire(&probe)
         }
         other => Err((
             "bad_args",
@@ -596,21 +599,48 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// 跑一个「往 `out` 里逐行写」的查询，收成 `{"lines": [...]}`。
-fn lines(f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>) -> Answer {
+/// 跑一个「往 `out` 里逐行写」的查询，收成非空的那几行。
+fn rows(
+    f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>,
+) -> Result<Vec<String>, (&'static str, String)> {
     let mut out = CappedBuf::default();
     let res = f(&mut out);
     if out.over {
         return Err(too_large(out.seen));
     }
     res?;
-    let text = String::from_utf8_lossy(&out.buf);
-    let rows: Vec<&str> = text
+    Ok(String::from_utf8_lossy(&out.buf)
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
-        .collect();
-    Ok(json!({ "lines": rows }))
+        .map(str::to_string)
+        .collect())
+}
+
+/// `history-search` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Searched {
+    /// 每命中会话一行 `SessionHits`（JSON 串），形状与行序同 `--search`。
+    pub(crate) lines: Vec<String>,
+    /// 这一趟有几份会话记录读不动、没搜到。
+    pub(crate) unreadable: usize,
+    /// 内容搜索不覆盖、这台上又有它的会话记录的那几家。
+    pub(crate) skipped: Vec<&'static str>,
+}
+
+/// `sessions-needs` 的应答：这台上需手动的会话，先答的在前。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct NeedsList {
+    pub(crate) waiting: Vec<crate::observe::accounts_query::NeedsRow>,
+}
+
+/// `history-branch` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Branch {
+    /// 回退掉的那几条记录的 `id`（文件序）。
+    pub(crate) off: Vec<String>,
+    /// 最后一个完整行的末字节。
+    pub(crate) end: u64,
 }
 
 /// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `stream/inbound/registry/accounts.rs`

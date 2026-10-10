@@ -404,6 +404,8 @@ pub struct Columns {
     pub mtime: f32,
     pub kind: f32,
     pub size: f32,
+    /// 「格」那一列（计划反查，稿 06）多宽：目录落在某一片的仓库里 ⇒ [`CELL_COL`]，别处 ⇒ 0（这一列不在）。窗口每帧按反查结果设。
+    pub cell: f32,
 }
 
 impl Default for Columns {
@@ -412,9 +414,13 @@ impl Default for Columns {
             mtime: 150.0,
             kind: 120.0,
             size: 90.0,
+            cell: 0.0,
         }
     }
 }
+
+/// 「格」那一列的宽（稿 06：120）。
+pub const CELL_COL: f32 = 120.0;
 
 /// 一列最窄多少（拖窄到这里就停）。
 pub const MIN_COL: f32 = 56.0;
@@ -431,6 +437,18 @@ const GRIP: f32 = 4.0;
 pub const ORDER: [SortBy; 4] = [SortBy::Name, SortBy::Mtime, SortBy::Type, SortBy::Size];
 
 impl Columns {
+    /// 先把「格」那一列从最右切下来（它不在 · 放不下 ⇒ `None`，整行照旧给四列）。名称列至少留 [`MIN_NAME`]。
+    pub fn split_cell(&self, row: egui::Rect) -> (egui::Rect, Option<egui::Rect>) {
+        if self.cell <= 0.0 || row.width() - self.cell < MIN_NAME {
+            return (row, None);
+        }
+        let x = row.right() - self.cell;
+        (
+            egui::Rect::from_min_max(row.min, egui::pos2(x, row.bottom())),
+            Some(egui::Rect::from_min_max(egui::pos2(x, row.top()), row.max)),
+        )
+    }
+
     /// 一行（或表头）的矩形 → 四列各自的矩形（按 [`ORDER`]）。名称列吃剩下的，至少 [`MIN_NAME`]。
     /// 一行放不下（双栏 · 窗口窄）⇒ 按「大小 · 类型 · 修改时间」的先后留列：放不下整宽的那一列压到不窄于
     /// [`MIN_COL`]，再窄就收起（宽 0，悬停名字看它）；四列的总宽恒等于那一行（不画出界）。
@@ -498,7 +516,21 @@ pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy
         egui::Stroke::new(1.0, p.border),
     );
     let mut picked = None;
-    let rects = cols.rects(rect);
+    let (rest, cell_r) = cols.split_cell(rect);
+    if let Some(c) = cell_r {
+        let g = one_line(
+            ui,
+            super::plan::column_label(),
+            c.width() - 2.0 * PAD,
+            p.text2,
+        );
+        ui.painter().with_clip_rect(c).galley(
+            egui::pos2(c.left() + PAD, c.center().y - g.size().y / 2.0),
+            g,
+            p.text2,
+        );
+    }
+    let rects = cols.rects(rest);
     for (k, by) in ORDER.into_iter().enumerate() {
         let r = rects[k];
         // 不进 Tab 顺序（`FOCUSABLE` 不要）：列表的键盘归窗口自己那一套，egui 的焦点落在这里会把方向键挡住。
@@ -592,6 +624,7 @@ pub fn show_file_rows(
         cols,
         None,
         None,
+        None,
     );
 }
 
@@ -627,6 +660,7 @@ pub fn show_file_rows_with_tail(
     cols: &Columns,
     tail: Option<&str>,
     mut inline: Option<&mut InlineCell>,
+    plan: Option<&super::plan::PlanDir>,
 ) {
     tally.total_rows = rows.len();
     ui.scope(|ui| {
@@ -674,7 +708,7 @@ pub fn show_file_rows_with_tail(
                     tally.faded_rows.push(i);
                 }
                 let cell = inline.as_deref_mut().filter(|c| c.row == i);
-                let hit = paint_one_row(ui, i, r, revealed, mark, cols, cell);
+                let hit = paint_one_row(ui, i, r, revealed, mark, cols, cell, plan);
                 if let Some(m) = hit.picked {
                     tally.picked_click = Some((i, m));
                 }
@@ -724,6 +758,7 @@ fn paint_one_row(
     mark: Mark,
     cols: &Columns,
     inline: Option<&mut InlineCell>,
+    plan: Option<&super::plan::PlanDir>,
 ) -> RowHit {
     let p = palette(ui.ctx());
     let m = metrics(ui.ctx());
@@ -758,7 +793,8 @@ fn paint_one_row(
     } else {
         (p.text, p.text2)
     };
-    let [name_c, mtime_c, kind_c, size_c] = cols.rects(rect);
+    let (rest, plan_c) = cols.split_cell(rect);
+    let [name_c, mtime_c, kind_c, size_c] = cols.rects(rest);
     let k = kind::icon_kind(r);
     // 名称列：图标 ＋ 名字（＋ 名字读不出来时那个记号）。断了的链接图标淡一级。
     let icon_color = match k {
@@ -930,6 +966,72 @@ fn paint_one_row(
     );
     cell(kind_c, kind::type_text(r), false);
     cell(size_c, size_text, true);
+    // 「格」那一列：那一格的状态图标 ＋ 标题；被两格声明 ⇒ 后面一个红 ⚠（悬停写另一格）；那一片读不成 ⇒「—」。文件夹空着。
+    if let (Some(c), Some(d)) = (plan_c, plan) {
+        if let Some(said) = &d.unreadable {
+            let g = one_line(
+                ui,
+                super::plan::unreadable_mark(),
+                c.width() - 2.0 * PAD,
+                minor,
+            );
+            painter.with_clip_rect(c).galley(
+                egui::pos2(c.left() + PAD, rect.center().y - g.size().y / 2.0),
+                g,
+                minor,
+            );
+            tips.push((
+                c,
+                copy_text(
+                    "rsFilewinPlan.cell.unreadableHint",
+                    &[("slice", &d.slice), ("said", said)],
+                ),
+            ));
+        } else if let Some(o) = d.owner(&r.name).filter(|_| !r.opens_as_dir()) {
+            let tint = match o.status {
+                super::plan::Status::Done => p.success,
+                _ => minor,
+            };
+            let ic = painter.layout_no_wrap(
+                super::plan::status_icon(o.status).to_string(),
+                egui::TextStyle::Body.resolve(ui.style()),
+                tint,
+            );
+            let iw = ic.size().x;
+            painter.with_clip_rect(c).galley(
+                egui::pos2(c.left() + PAD, rect.center().y - ic.size().y / 2.0),
+                ic,
+                tint,
+            );
+            let warn = (!o.dup.is_empty()).then(|| {
+                painter.layout_no_wrap(
+                    egui_phosphor::regular::WARNING.to_string(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    p.error,
+                )
+            });
+            let ww = warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
+            let tx = c.left() + PAD + iw + 6.0;
+            let g = one_line(ui, o.title.clone(), c.right() - PAD - tx - ww, main);
+            let gw = g.size().x;
+            if g.elided {
+                tips.push((c, o.title.clone()));
+            }
+            painter.with_clip_rect(c).galley(
+                egui::pos2(tx, rect.center().y - g.size().y / 2.0),
+                g,
+                main,
+            );
+            if let Some(w) = warn {
+                painter.with_clip_rect(c).galley(
+                    egui::pos2(tx + gw + 6.0, rect.center().y - w.size().y / 2.0),
+                    w,
+                    p.error,
+                );
+                tips.push((c, super::plan::dup_text(o)));
+            }
+        }
+    }
     // 悬停在修改时间那一格上 ⇒ 完整时间；悬停在截成「…」的那一格上 ⇒ 全文。
     let at = ui.input(|i| i.pointer.hover_pos());
     let in_time = at.is_some_and(|p| mtime_c.contains(p));

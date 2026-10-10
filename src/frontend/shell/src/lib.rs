@@ -42,6 +42,8 @@ mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内
                   //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod ui_contract;
+// 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
+mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
@@ -312,40 +314,6 @@ fn nested_env_markers() -> Vec<&'static str> {
     out
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// 会话成品到达时 monitor **自己的事**（拉前终端的绑定）—— 不是裁决，是这台界面进程要记的窗口账。
-///
-/// - 本机活会话：按 pid 找父 PowerShell 绑窗口（Windows 本机 ↗；老后端不带 pid 就不绑）；
-/// - 本机离开：一律忘（旧 sid 连 attach 都接不上）。远端会话没有要记的：↗ 点那一刻现查。
-fn session_side_effects(
-    out: &session_book::Out,
-    local_cache: &Arc<bind::SidHwndCache>,
-    bind_registry: &bind::BindRegistry,
-) {
-    use session_book::Out;
-    let local = |o: &str| o == crate::origin::LOCAL;
-    match out {
-        Out::Live { origin, sid, meta } if local(origin) => {
-            if let Some(pid) = meta.pid {
-                let _ = local_cache.record(sid, pid, bind_registry);
-            }
-        }
-        Out::Left { origin, sid, .. } if local(origin) => local_cache.apply_local_removal(sid),
-        Out::Unseen { origin, sids } if local(origin) => {
-            for sid in sids {
-                local_cache.apply_local_removal(sid);
-            }
-        }
-        Out::Live { .. }
-        | Out::Left { .. }
-        | Out::Unseen { .. }
-        | Out::Status { .. }
-        | Out::Listed { .. }
-        | Out::Runs { .. }
-        | Out::Branch { .. } => {}
-    }
-}
-
 /// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
 pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
 /// 主窗的标签（`tauri.conf.json` 里那一个）。
@@ -453,6 +421,7 @@ pub(crate) fn center_window_in_work_area(w: &tauri::WebviewWindow) {
 // 收掉 monitor 另起的那个本机中转。中转并进本机常驻后端之后，本机固定两个进程（monitor ＋ 常驻后端），
 // 中转随后端按「退出行为」留或退⇒ 退出臂里不再有第三个进程要收，那条缝连同它的判据一起删掉。
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 启动 perf 测量起点
     let t0 = std::time::Instant::now();
@@ -669,12 +638,6 @@ pub fn run() {
                 }
             }
 
-            // 面 A 通道：绑回环、起路由器，外部前端（下一波接进文件窗口）经它说 call/subscribe。
-            // 起不来只出声、不退回别的路（`D11`）；钥匙永不进日志（`chan::host` 头注）。
-            if let Err(e) = tauri::async_runtime::block_on(chan::host::start()) {
-                tracing::warn!("面 A 通道没起来：{e}");
-            }
-
             // 主窗的初始尺寸（`tauri.conf.json`）夹进工作区（小屏上底边别压在任务栏下）、摆在正中（重启不漂）。
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 center_window_in_work_area(&window);
@@ -714,11 +677,9 @@ pub fn run() {
             // auto-launch 时主动启动 monitor（不硬编码安装路径）
             auto_launch::update_monitor_path_on_startup(&monitor_data_dir);
 
-            // v1.7：BindRegistry 监听 ps-await/ → EnumWindows → 写 ps-registry/。
-            // SidHwndCache 持久化 sid → 拉前所需信息（含复合指纹）。
+            // 握手表（Linux bash / zsh 接入块那一份）：监听 ps-await/*.tty → 按标题找窗口 → 写 ps-registry/。
+            //   ↗ 点那一刻现读进程链（`bind.rs`），不缓存会话 ↔ 窗口。
             let bind_registry = bind::BindRegistry::spawn(monitor_data_dir.clone());
-            let sid_hwnd_cache =
-                bind::SidHwndCache::load(monitor_data_dir.join("sid-hwnd-cache.json"));
 
             // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
             //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
@@ -782,13 +743,10 @@ pub fn run() {
             //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
             {
                 let replay = replay.clone();
-                let bind_for_emitter = bind_registry.clone();
-                let cache_for_emitter = sid_hwnd_cache.clone();
                 let spawned = std::thread::Builder::new()
                     .name("session-book-emitter".into())
                     .spawn(move || {
                         while let Ok(out) = book_rx.recv() {
-                            session_side_effects(&out, &cache_for_emitter, &bind_for_emitter);
                             replay.on_lifecycle(out.origin(), out.frames());
                         }
                     });
@@ -865,7 +823,6 @@ pub fn run() {
             // `app.manage(session_map)`〔散文墓碑〕那一行删了：本机活会话表是进程级的一张（`session_map::local()`），命令直接读它。
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
-            app.manage(sid_hwnd_cache.clone());
             // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
             app.manage(logging_state.clone());
 
@@ -889,7 +846,6 @@ pub fn run() {
             // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
             // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
             //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
-            bound_terminal_count,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
@@ -1000,8 +956,6 @@ pub fn run() {
         // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                // PowerShell 接入块等的那个「monitor 起来了」复位（崩了复位不了，那一态由它们看互斥量认出来）。
-                bind::BindRegistry::going_away();
                 // P2s（C8②③）：**杀不杀由这台机自己的值说了算**，缺省不杀。
                 //
                 // 〔条 66〕那个值住后端所在那台机器上 ⇒ 这里**在决定那一刻现问**
@@ -1085,6 +1039,11 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
 /// 起远端流要的两样上下文（启动时放进来，热加载时取用）。
 static REMOTE_CTX: std::sync::OnceLock<(Arc<event_replay::EventReplay>, tauri::AppHandle)> =
     std::sync::OnceLock::new();
+
+/// 主窗口那一侧的应用把手（起来之后才有；通道上由 monitor 自己接的那几条要发界面事件时取它）。
+pub(crate) fn main_app() -> Option<tauri::AppHandle> {
+    REMOTE_CTX.get().map(|(_, app)| app.clone())
+}
 
 /// 一台远端的重起闭包：每次调用起一条新的 `stream_source::run`。
 fn remote_respawn(
@@ -1173,6 +1132,10 @@ pub(crate) fn load_all_remote_configs() -> Vec<(stream_source::RemoteConfig, boo
         Ok(cfgs) => cfgs,
         Err(why) => {
             tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
+            ui_error::tell(ui_error::UiError::MachinesUnreadable {
+                path: cfg_path.display().to_string(),
+                why: why.to_string(),
+            });
             Vec::new()
         }
     }
@@ -1383,13 +1346,6 @@ impl SkipRuns {
 
 // 别名一族六条（`aliases_render` / `_read` / `_install` / `aliases_block_*`〔散文墓碑〕）退役：
 //   规则 · 方言 · 围栏住那台机器的后端（`src/backend/assets/aliases/`），界面经 `chan.call(origin, "aliases-*")` 直问（`src/frontend/ui/alias-reads.ts`）。
-
-/// 这台（monitor 所在那台）**已经跟 monitor 完成拉前握手的终端数**（PowerShell 别名块里 `__ccm_bind` 的产物）。
-/// 从前夹在 `aliases_read` 的成品里（`bound_terminals`）；它住本进程的 `BindRegistry`、不是那台后端盘上的事实 ⇒ 单独一问（⑬「拉前」）。
-#[tauri::command]
-fn bound_terminal_count(bind_state: tauri::State<'_, Arc<bind::BindRegistry>>) -> u32 {
-    u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX)
-}
 
 #[tauri::command]
 fn forget_session(
@@ -1605,29 +1561,24 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
 // `list_session_activity`〔散文墓碑〕· `list_active_sessions`〔散文墓碑〕两条命令退役：本机活会话的骨架与初始灯
 //   是会话流里的 `live` / `activity` 成品（就绪点按成品缓存重放），与远端同一条路。
 
-/// v1.7：拉对应终端窗口。
-///
-/// 流程：sid → 查 SidHwndCache → 校验复合指纹（IsWindow + owner_pid + procStart）
-/// → activate_window。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
+/// 拉本机会话的终端窗口：点那一刻现走那个 claude 往上的进程链（`bind::bring_local_window`，与远端那一格同一条规则），
+/// 校验、拉前。会话账里没有它的进程号（不在活集里）⇒ 「没登记」。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
 #[tauri::command]
 async fn bring_terminal_to_front(
     session_id: String,
-    cache: tauri::State<'_, Arc<bind::SidHwndCache>>,
+    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
 ) -> Result<bind::FrontOutcome, Said> {
     let r: Result<bind::FrontOutcome, Said> = async move {
-        let cache = cache.inner().clone();
+        let bind = bind_state.inner().clone();
         Ok(tokio::task::spawn_blocking(move || {
-            if let Some(o) = bind::front_refusal() {
-                return o;
-            }
-            let Some(binding) = cache.lookup(&session_id) else {
-                return bind::FrontOutcome::Unbound;
-            };
-            match bind::verify_binding(&binding) {
-                Ok(()) => bind::activate(binding.hwnd),
-                Err(o) => o,
+            let pid = session_book::book()
+                .read()
+                .live_pid(&crate::origin::Origin::local(), &session_id);
+            match pid {
+                Some(pid) => bind::bring_local_window(pid, &bind),
+                None => bind::front_refusal().unwrap_or(bind::FrontOutcome::Unbound),
             }
         })
         .await
@@ -1640,7 +1591,7 @@ async fn bring_terminal_to_front(
 /// 拉对应**远端** Tab 的本地终端窗口，两问各一次（界面按顺序调）：
 /// ① 交那台 `session-terminals` 的 `terminals` 原样 ⇒ 按窗口标签找（`bind::bring_labeled_window`）：对上了回那一次的结局，
 ///    没有标签 / 对不上回 `None`（界面接着问第二问）；
-/// ② 交本机后端 `terminal-processes` 的成品 `chain` ⇒ 先查握手表、再沿链找属主的窗口（链断在控制台 shell 上 ⇒ 挂记号标题按标题找），
+/// ② 交本机后端 `terminal-processes` 的成品 `chain` ⇒ 沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，
 ///    校验、拉前（`bind::bring_chain_window`），回结局。两样都空 ⇒ `None`。
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
 #[tauri::command]

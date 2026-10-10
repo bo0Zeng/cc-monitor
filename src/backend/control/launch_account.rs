@@ -392,7 +392,15 @@ pub(crate) fn answer_last_accounts() -> Result<Value, crate::stream::inbound::sp
             .map_err(|e| crate::stream::inbound::spec::Fail::from(("unreadable", e)))?,
         None => Book::default(),
     };
-    Ok(serde_json::json!({ "accounts": book.sessions }))
+    crate::stream::inbound::spec::wire(&LastAccounts {
+        accounts: book.sessions,
+    })
+}
+
+/// `history-last-accounts` 的应答：`{sid: 号}`。
+#[derive(Debug, Serialize)]
+pub(crate) struct LastAccounts {
+    pub(crate) accounts: BTreeMap<String, String>,
 }
 
 #[cfg(test)]

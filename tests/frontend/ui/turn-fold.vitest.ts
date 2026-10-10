@@ -269,6 +269,119 @@ describe("按轮折叠", () => {
     expect(hidden(late)).toBe(true);
   });
 
+  it("重排不重画没变的过程行：卡后到只挪位置，行上的节点原样留着；字变了（又一轮工具）才重画", async () => {
+    const { content, fold } = rig(
+      [card("card-user", "u1"), card("card-assistant", "a1")],
+      [
+        { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false })] },
+        { available: true, from: 0, end: 12, turns: [turn("u1", 0, { done: false, parts: [{ text: "头", tone: "plain" }, { text: "工具 ×3", tone: "plain" }] })] },
+      ],
+    );
+    await fold.refresh();
+    const line = lines(content)[0];
+    const caret = line.firstChild;
+    content.appendChild(card("card-assistant", "a9"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(line.firstChild).toBe(caret);
+    await fold.refresh();
+    expect(line.textContent).toContain("工具 ×3");
+  });
+
+  it("重排时归属没变的卡一个属性都不写（`data-proc-of` / 工具组的 open 有样式挂着：照写一遍 ＝ 每次卡进出流都让全部过程卡重算样式）", async () => {
+    setProcessExpandedDefault(true);
+    try {
+      const { content, fold } = rig(
+        [card("card-user", "u1"), card("card-assistant", "a1"), card("card-tool-group", "g1"), card("card-user", "u2"), card("card-assistant", "a2")],
+        [{ available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 5)] }],
+      );
+      await fold.refresh();
+      const written: string[] = [];
+      const mo = new MutationObserver((rs) => {
+        for (const r of rs) if (r.type === "attributes" && !(r.target as HTMLElement).classList.contains(PROC_LINE_CLASS)) written.push(`${(r.target as HTMLElement).dataset.id}:${r.attributeName}`);
+      });
+      mo.observe(content, { attributes: true, subtree: true });
+      content.appendChild(card("card-assistant", "a3")); // 卡后到 ⇒ 重排
+      await new Promise((r) => setTimeout(r, 0));
+      mo.disconnect();
+      expect(written.filter((w) => !w.startsWith("a3:")), "别的卡归属没变：不写").toEqual([]);
+    } finally {
+      setProcessExpandedDefault(false);
+    }
+  });
+
+  it("展开的那几轮量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
+    setProcessExpandedDefault(true);
+    const cards: HTMLElement[] = [];
+    const turns: TurnSummary[] = [];
+    for (let k = 0; k < 4; k++) {
+      cards.push(card("card-user", `u${k}`), card("card-assistant", `a${k}`), card("card-assistant", `b${k}`));
+      turns.push(turn(`u${k}`, k));
+    }
+    const { content, fold } = rig(cards, [{ available: true, from: 0, end: 10, turns }]);
+    const log: string[] = [];
+    // 过程行在 0、它那一轮的最后一张在 2000：每一轮都高过一屏（视口 800）⇒ 都要竖线、都要收起行
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      log.push("read");
+      const bottom = this.classList.contains(PROC_LINE_CLASS) ? 28 : 2000;
+      return { top: bottom - 20, bottom, height: 20, left: 0, right: 100, width: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    vi.spyOn(content, "clientHeight", "get").mockReturnValue(800);
+    const after = vi.spyOn(Element.prototype, "after").mockImplementation(function (this: Element, ...nodes: (Node | string)[]) {
+      log.push("write");
+      this.parentNode?.insertBefore(nodes[0] as Node, this.nextSibling);
+    });
+    const height = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, "height");
+    Object.defineProperty(CSSStyleDeclaration.prototype, "height", {
+      configurable: true,
+      get: height?.get,
+      set(this: CSSStyleDeclaration, v: string) {
+        log.push("write");
+        height?.set?.call(this, v);
+      },
+    });
+    try {
+      await fold.refresh();
+      expect(lines(content).map((l) => l.querySelector<HTMLElement>(".proc-rule")?.style.height)).toEqual(["1972px", "1972px", "1972px", "1972px"]);
+      expect(content.querySelectorAll(".proc-tail").length).toBe(4);
+      // 量的那几下连成块：一块量完、写完；新插进去的收起行要再量一块 ⇒ 最多两块（逐轮量一下写一下 ＝ 轮数那么多块）
+      const readRuns = log.filter((x, i) => x === "read" && log[i - 1] !== "read").length;
+      expect(readRuns, log.join(" ")).toBeLessThanOrEqual(2);
+    } finally {
+      rect.mockRestore();
+      after.mockRestore();
+      if (height) Object.defineProperty(CSSStyleDeclaration.prototype, "height", height);
+      setProcessExpandedDefault(false);
+    }
+  });
+
+  it("骨架的行高只量一次（每次重排都量 ＝ 每次都逼整页同步布局）", async () => {
+    const content = document.createElement("div");
+    content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"));
+    document.body.replaceChildren(content);
+    const setFolds = vi.fn();
+    const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
+    const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
+    let reads = 0;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains(PROC_LINE_CLASS)) reads += 1;
+      return { height: 28, width: 100, top: 0, bottom: 28, left: 0, right: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      await fold.refresh();
+      for (let k = 0; k < 5; k++) {
+        content.appendChild(card("card-assistant", `late${k}`));
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      expect(setFolds.mock.calls.length).toBeGreaterThan(3);
+      expect(setFolds.mock.lastCall?.[0].linePx).toBe(28);
+      expect(reads).toBe(1);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it("续取：从还没收尾的那一轮的 at 起要，回来的整轮替换；续点不在了 ⇒ 从 0 重要", async () => {
     const { fold, read } = rig([], [
       { available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 40, { done: false })] },

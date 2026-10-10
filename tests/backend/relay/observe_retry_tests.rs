@@ -14,6 +14,8 @@ use std::sync::Mutex;
 /// 假上游收到的一发：鉴权头 · 请求体。
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Got {
+    /// 请求行里的目标（`/v1/messages` 那一截）。
+    pub(super) target: String,
     pub(super) auth: Option<String>,
     pub(super) body: Vec<u8>,
 }
@@ -53,7 +55,8 @@ pub(super) fn spawn_judging_upstream(
             let mut body = vec![0u8; clen];
             let _ = r.read_exact(&mut body);
             let reply = answer(auth.as_deref());
-            g2.lock().expect("lock").push(Got { auth, body });
+            let target = line.split(' ').nth(1).unwrap_or("").to_string();
+            g2.lock().expect("lock").push(Got { target, auth, body });
             let _ = s.write_all(reply.as_bytes());
             let _ = s.flush();
         }
@@ -154,7 +157,7 @@ fn the_quota_headers_of_an_answer_land_in_the_ledger_under_the_account_that_answ
     );
     assert!(book.entry("claude-code", "_").is_none());
     let on_disk = ledger::answer_of(Some(&d.join(ledger::FILE_NAME)), 0);
-    assert_eq!(on_disk["accounts"][0]["account"], "q");
+    assert_eq!(on_disk.accounts[0].account, "q");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -275,10 +278,12 @@ fn a_refused_answer_is_resent_elsewhere_and_only_the_second_answer_goes_down() {
         got,
         [
             Got {
+                target: "/v1/messages".into(),
                 auth: Some("Bearer mine".into()),
                 body: b"{\"orig\":1}".to_vec()
             },
             Got {
+                target: "/v1/messages".into(),
                 auth: Some("Bearer swapped".into()),
                 body: b"{\"swapped\":1}".to_vec()
             },
@@ -491,6 +496,33 @@ impl Home {
                 clock.load(std::sync::atomic::Ordering::SeqCst)
             }));
         spawn_relay_over(accounts)
+    }
+
+    fn lineage_path(&self) -> std::path::PathBuf {
+        self.root.join(crate::lineage::FILE_NAME)
+    }
+
+    /// 同 [`Home::relay`]，另装上会话血缘（落在这个家里）。
+    fn relay_tracing(&self, up: SocketAddr) -> SocketAddr {
+        let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
+        let hop = Hop::new(
+            Arc::new(RotationStore::at(Some(self.rotation_path()))),
+            Arc::clone(&quota),
+            Some(self.root.clone()),
+            self.library(),
+            Some(dead_token_endpoint()),
+        );
+        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
+            .recording_to(quota)
+            .rotating_with(hop)
+            .tracing_lineage(Arc::new(crate::lineage::LineageStore::at(Some(
+                self.lineage_path(),
+            ))));
+        spawn_relay_over(accounts)
+    }
+
+    fn lineage(&self) -> crate::lineage::Book {
+        crate::lineage::LineageStore::at(Some(self.lineage_path())).now()
     }
 
     fn session(&self, sid: &str) -> rotation::SessionEntry {
@@ -923,4 +955,94 @@ fn the_relay_refreshes_when_it_last_saw_a_session_once_a_day() {
         bytes
     );
     assert_eq!(got.lock().expect("lock").len(), 4);
+}
+
+fn send_on(relay: SocketAddr, path: &str, sid: &str, extra: &str) -> String {
+    shoot(
+        relay,
+        path,
+        &format!("authorization: {AGENT_TOKEN}\r\nx-claude-code-session-id: {sid}\r\n{extra}"),
+        &request_body(UUID_A),
+    )
+}
+
+fn serves(_auth: Option<&str>) -> String {
+    sse_200("")
+}
+
+/// ★ 会话血缘：同一条带来处的地址，第一个发的会话绑下它、之后别的会话发 ⇒ 父 ＝ 它；地址里带父的 ⇒ 记那个父；
+/// 来处段不交上游；带 agent-id 头（subagent）的那一发与不带的落在同一条轮换、不记血缘。
+#[test]
+fn the_relay_records_who_started_whom_from_the_origin_tail() {
+    let home = Home::new("lineage");
+    let (up, got) = spawn_judging_upstream(serves);
+    let relay = home.relay_tracing(up);
+    let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
+    assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
+    assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
+    let sub = "x-claude-code-agent-id: agent-1\r\n";
+    assert!(send_on(relay, path, "s-owner", sub).starts_with("HTTP/1.1 200"));
+    let with_parent = "/t/claude-code/a/~ffff000011112222~s-p/v1/messages";
+    assert!(send_on(relay, with_parent, "s-new", "").starts_with("HTTP/1.1 200"));
+    let b = home.lineage();
+    assert_eq!(b.parent_of("s-owner"), None);
+    assert_eq!(b.parent_of("s-kid"), Some("s-owner"));
+    assert_eq!(b.parent_of("s-new"), Some("s-p"));
+    assert_eq!(
+        b.parents
+            .iter()
+            .filter(|(_, p)| p.parent == "s-owner")
+            .map(|(k, _)| k.as_str())
+            .collect::<Vec<_>>(),
+        vec!["s-kid"],
+        "subagent 那一发被记成了孩子"
+    );
+    let book = RotationStore::at(Some(home.rotation_path())).now();
+    let mut sids: Vec<&str> = book.sessions.keys().map(String::as_str).collect();
+    sids.sort_unstable();
+    assert_eq!(
+        sids,
+        ["s-kid", "s-new", "s-owner"],
+        "subagent 那一发另起了一条轮换"
+    );
+    let got = got.lock().expect("lock");
+    assert!(
+        got.iter().all(|g| g.target == "/v1/messages"),
+        "来处段交上游了：{:?}",
+        got.iter().map(|g| g.target.clone()).collect::<Vec<_>>()
+    );
+}
+
+/// ★ 跟随父会话整趟：父会话用着规则「夜间」，在它里面起的会话（同一条地址、不同会话头）第一发就记成跟随父会话、按父那份走；
+/// 带 agent-id 头的 subagent 那一发不另起一条。
+#[test]
+fn a_session_started_inside_another_follows_its_rotation_from_the_first_request() {
+    let home = Home::new("lineage-follow");
+    let (up, _got) = spawn_judging_upstream(serves);
+    let relay = home.relay_tracing(up);
+    let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
+    assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
+    rotation::face_change(&RotationStore::at(Some(home.rotation_path())), |b| {
+        b.rules.insert(
+            "r_night000".into(),
+            rotation::Rule {
+                name: "夜间".into(),
+                rotation: rotation::Rotation {
+                    preempt: true,
+                    ..rotation::Rotation::default()
+                },
+                rev: 1,
+                updated_at: 0,
+            },
+        );
+        b.sessions.get_mut("s-owner").expect("owner").source =
+            rotation::Source::Rule("r_night000".into());
+    })
+    .expect("write");
+    assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
+    let book = RotationStore::at(Some(home.rotation_path())).now();
+    let kid = &book.sessions["s-kid"];
+    assert_eq!(kid.source, rotation::Source::Parent("s-owner".into()));
+    assert_eq!(book.rule_of(kid), Some("r_night000"));
+    assert!(book.rotation_of(kid).preempt);
 }

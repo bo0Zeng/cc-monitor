@@ -49,6 +49,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     background: None,
     children: None,
     project_dir: Some(history::project_dir),
+    mcp_said: None,
 };
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
@@ -71,6 +72,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: resume::RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,

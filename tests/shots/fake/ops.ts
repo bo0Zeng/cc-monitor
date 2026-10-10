@@ -432,7 +432,7 @@ export function defaultOps(): Record<string, OpHandler> {
         const fromText = from === "assumed" ? null : copyText(`beUsage.from.${from}` as "beUsage.from.relay");
         usage = { promptTokens: prompt, model, peakPromptTokens: peak, limit, limitFrom: from, percent, contextText: percent === null ? short(prompt) : copyText("beUsage.context.pct", { n: String(percent) }), contextTone: percent !== null && percent >= 80 ? "warn" : "plain", promptTokensText: short(prompt), limitText: short(limit), limitFromText: fromText };
       }
-      // 没结果的调用 · 最后一句 · 需要你：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
+      // 没结果的调用 · 最后一句 · 需手动：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
       const what = (name: string, input: Record<string, unknown> | undefined): string | null => {
         if (!input) return null;
         if (name === "AskUserQuestion") return ((input.questions as { question?: string }[] | undefined)?.[0]?.question ?? null) || null;
@@ -466,7 +466,11 @@ export function defaultOps(): Record<string, OpHandler> {
         else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs, ...said("approve") };
         else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs, ...said("unknown") };
       }
-      if (needs) needs = { ...needs, rank: 0 };
+      // 已等多久在那台算（同后端 `needs_of`：读 pidfile 那一刻减起点，字由时长那一处写）；没有起点 ⇒ 两格 null。
+      if (needs) {
+        const waitedMs = needs.sinceMs === null ? null : Math.max(0, Date.now() - needs.sinceMs);
+        needs = { ...needs, rank: 0, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000) } as typeof needs;
+      }
       // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
       const handedBack: string[] = [];
       for (const r of recs) {
@@ -501,7 +505,7 @@ export function defaultOps(): Record<string, OpHandler> {
           ? { text: line(fmtDur((Date.now() - first.sinceMs) / 1000)), clock: { text: line("{dur}"), from: first.sinceMs }, what, count: cmds.length, tone: "busy" }
           : { text: copyText("beSession.activity.backgroundWork"), clock: null, what: null, count: 0, tone: "busy" };
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, bgTasks: [], background };
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, bgTasks: [], background, mcp: [] };
     },
     // 主线外清单：假世界的会话都没有回退过。
     "history-branch": (_o, req, w) => ({ off: [], end: layout(sessionByPath(w, req.path)?.records ?? []).end }),

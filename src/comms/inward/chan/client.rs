@@ -1,9 +1,9 @@
-//! 通道 · **客户端**：外部前端手里那一半 —— 拿一条连好的流和一把钥匙，换来 `call` / `subscribe`。
+//! 通道 · **客户端**：外部前端手里那一半 —— 拿一对连好的读写半边，换来 `call` / `subscribe`。
 //!
 //! # 🔴 它**不做**的事
 //!
-//! - **不拨号、不找地址、不读钥匙**（`C4` / `C5`）：[`Client::open`] 收的是一条**已经连好**的流
-//!   与一把**已经交到手里**的钥匙。拨到哪、钥匙从 stdin 怎么来，归外部前端的宿主。
+//! - **不拨号、不找地址**（`C4` / `C5`）：[`Client::over`] 收的是一对**已经连好**的读写半边
+//!   （今天是外部前端进程自己的 stdin / stdout：起它的 monitor 在管子那一头）。没有钥匙：谁连得上由系统给。
 //! - **不造期限**（`X2`）：每一次 `call` 都要调用者显式给 [`Budget`]（`X6`），本文件一个期限常量都没有。
 //! - **不重试、不排队**。
 //!
@@ -28,13 +28,12 @@
 //! # 买不到什么
 //!
 //! - **不买自动重连**：它只有交给它的那一条流，断了就断了；订阅停在 `Unseen`，不会自己回来。
-//!   `§4.5.2` 要的「通信层自己重连」需要地址与钥匙，今天那两样在外部前端的宿主手里 —— 登记为欠账。
+//!   父子管道断了就是起它的那一方不在了，没有可重连的东西。
 //! - **不买「对面真的停了」**：撤单那一帧只是尽力。
 
 use super::wire::{
     err_from_wire, item_from_wire, read_frame, write_frame, Body, Budget, By, CallError, Comms,
-    Cursor, Head, HopFault, HopId, Item, Key, Kind, Offer, Op, Origin, OursFault, PeerFault, Reach,
-    ReadFault, Sub, Withdraw,
+    Cursor, Head, HopFault, HopId, Item, Kind, Offer, Op, Origin, OursFault, Reach, Sub, Withdraw,
 };
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
@@ -120,51 +119,14 @@ pub struct Client {
 }
 
 impl Client {
-    /// 在一条**已经连好**的流上出示钥匙，换一个客户端。
+    /// 在一对**已经连好**的读写半边上起一个客户端（不握手：谁连得上由系统给）。
     ///
-    /// - 钥匙不对 ⇒ `Peer{Refused}`（通道是通的，对面答「不行」）；
-    /// - 期限内对面没答 ⇒ `Hop{第 0 跳 auth, …, Overrun}`；
-    /// - 对面没答就断了 ⇒ `Hop{第 0 跳 auth, …, Dropped}`。
-    ///
-    /// `frame` 是帧头 / 帧体各自的字节上限，由宿主给（`C4`）。
-    ///
-    /// # Errors
-    ///
-    /// 见上。
-    pub async fn open<S>(io: S, key: &Key, frame: usize, budget: Budget) -> Result<Self, CallError>
+    /// `frame` 是帧头 / 帧体各自的字节上限，由宿主给（`C4`）。要在 tokio 运行时里调（起读写两个任务）。
+    pub fn over<R, W>(rd: R, mut wr: W, frame: usize) -> Self
     where
-        S: AsyncRead + AsyncWrite + Send + 'static,
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
     {
-        let (mut rd, mut wr) = tokio::io::split(io);
-        let wake = budget.deadline();
-        let hello = Head::Hello { key: key.0.clone() };
-        let sent = tokio::select! {
-            r = tokio::time::timeout_at(wake, write_frame(&mut wr, &hello, &[])) => r,
-            () = budget.cancel.cancelled() => return Err(cancelled()),
-        };
-        match sent {
-            Ok(Ok(())) => {}
-            Ok(Err(_)) => return Err(hop(0, "auth", Reach::Unknown, HopFault::Dropped)),
-            Err(_elapsed) => return Err(hop(0, "auth", Reach::Unknown, HopFault::Overrun)),
-        }
-        let answer = tokio::select! {
-            r = tokio::time::timeout_at(wake, read_frame(&mut rd, frame)) => r,
-            () = budget.cancel.cancelled() => return Err(cancelled()),
-        };
-        match answer {
-            Ok(Ok((Head::Welcome, _))) => {}
-            Ok(Ok((Head::Denied, body))) => {
-                return Err(CallError::Peer {
-                    why: PeerFault::Refused { body: Body(body) },
-                })
-            }
-            Ok(Ok(_)) | Ok(Err(ReadFault::Bad(_))) => return Err(OursFault::Broken.into()),
-            Ok(Err(ReadFault::Eof)) | Ok(Err(ReadFault::Io(_))) => {
-                return Err(hop(0, "auth", Reach::Sent, HopFault::Dropped))
-            }
-            Err(_elapsed) => return Err(hop(0, "auth", Reach::Sent, HopFault::Overrun)),
-        }
-
         let (tx, mut rx) = mpsc::channel::<Job>(16);
         let shared = Arc::new(Shared {
             tx,
@@ -187,10 +149,10 @@ impl Client {
         });
         let reader_shared = Arc::clone(&shared);
         tokio::spawn(async move { read_loop(rd, frame, reader_shared).await });
-        Ok(Self {
+        Self {
             shared,
             rt: tokio::runtime::Handle::current(),
-        })
+        }
     }
 
     /// 发一帧控制头（撤单 / credit / 撤订阅），不等。连接没了就算了 —— 它本来就只是尽力。
@@ -459,15 +421,12 @@ async fn read_loop<R: AsyncRead + Unpin>(mut rd: R, frame: usize, shared: Arc<Sh
                     lock(&shared.taps).remove(&id);
                 }
             }
-            Head::Hello { .. }
-            | Head::Call { .. }
+            Head::Call { .. }
             | Head::Cancel { .. }
             | Head::Subscribe { .. }
             | Head::Want { .. }
             | Head::Stop { .. }
-            | Head::OfferOf { .. }
-            | Head::Welcome
-            | Head::Denied => break,
+            | Head::OfferOf { .. } => break,
         }
     }
     // 断了：在飞的 `call` 一律答「断在读那一跳，发没发到拿不准」；订阅原位出「看不见」。

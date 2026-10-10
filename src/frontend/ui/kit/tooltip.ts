@@ -1,5 +1,6 @@
 /**
- * 悬停提示：悬停或键盘焦点停 500ms 出现，同一组里移到下一个立刻换；离开即消。
+ * 悬停提示：悬停或键盘焦点停 500ms 出现，指针在同一组里移到下一个立刻换；离开即消。
+ * 键盘走行（↑↓ / Tab 换焦点）不套「同一组立刻换」：每换一个宿主先收起、重新等 500ms，停够了才出（走一路不逐行弹卡）。
  *
  * - 第一行写这个东西是什么 / 现在怎样，第二行起才是补充；不放能点的东西。
  * - 挂 `document.body`（脱离带 `transform` 的祖先，`fixed` 才按视口算）、只在显示期间存在：
@@ -95,7 +96,7 @@ type TipContent = string | HTMLElement | null;
  * 一条提示的控制器：显示 / 收起 / 进出宿主。宿主在 `arm` 时给（委托式里每次指针进的是哪一行就是哪一个）。
  * `attachTooltip`（一个宿主四个监听器）与 `delegateTooltip`（一个容器四个监听器、管它里面的每一行）共用这一份。
  */
-function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpts): { arm(host: HTMLElement): void; leave(): void; hide(): void; host(): HTMLElement | null } {
+function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpts): { arm(host: HTMLElement, by?: "pointer" | "focus"): void; leave(): void; hide(): void; host(): HTMLElement | null } {
   let tip: HTMLElement | null = null;
   let host: HTMLElement | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -158,12 +159,20 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     putAt(tip, placeFloat({ rect: box, ...PLACEMENT[opts.placement ?? "above"], gap: GAP }, r, view));
     tip.style.visibility = "";
   };
-  const arm = (h: HTMLElement): void => {
+  const arm = (h: HTMLElement, by: "pointer" | "focus" = "pointer"): void => {
     clearCloser();
     clearTimer();
     const same = h === host;
     host = h;
     if (same && shown()) return;
+    if (by === "focus" && !opts.immediate) {
+      // 键盘走行：换到别的宿主先收起这张（以及别处出着的），停够 500ms 才出。
+      hide();
+      hideTooltips();
+      // 调度：一次性 —— 焦点停 500ms 才出提示，焦点移走即清
+      timer = setTimeout(show, TOOLTIP_DELAY_MS);
+      return;
+    }
     // 钟往回拨了（系统改时间）那一下不算「刚收过」。
     const since = Date.now() - lastHiddenAt;
     const inGroup = (since >= 0 && since < GROUP_GRACE_MS) || [...hiders.keys()].some((t) => t.isConnected);
@@ -187,7 +196,7 @@ export function attachTooltip(
   const c = controller(() => (typeof text === "function" ? text() : text), opts);
   host.addEventListener("mouseenter", () => c.arm(host));
   host.addEventListener("mouseleave", () => c.leave());
-  host.addEventListener("focusin", () => c.arm(host));
+  host.addEventListener("focusin", () => c.arm(host, "focus"));
   host.addEventListener("focusout", () => c.hide());
   host.addEventListener("keydown", (e) => {
     if (e.key === "Escape") c.hide();
@@ -215,7 +224,7 @@ export function delegateTooltip(root: HTMLElement, selector: string, content: (e
   });
   root.addEventListener("focusin", (e) => {
     const el = hit(e.target);
-    if (el) c.arm(el);
+    if (el) c.arm(el, "focus");
   });
   root.addEventListener("focusout", (e) => {
     if (hit(e.target) && hit(e.target) !== hit(e.relatedTarget)) c.hide();
@@ -243,7 +252,7 @@ export function adoptNativeTitles(doc: Document = document): void {
     const el = hostOf(e.target);
     if (!el) return;
     take(el);
-    c.arm(el);
+    c.arm(el, e.type === "focusin" ? "focus" : "pointer");
   };
   const out = (e: Event & { relatedTarget?: EventTarget | null }): void => {
     const from = hostOf(e.target);

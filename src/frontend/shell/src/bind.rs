@@ -1,43 +1,25 @@
-//! v1.7.0：PowerShell 主动注册 (PS_PID → hwnd) 映射的握手 watcher。
+//! ↗ 认终端窗口：此刻显示这个会话的，是这台电脑上哪个窗口。
 //!
-//! ## 信息流
+//! ## 一条规则，本机远端同一条
 //!
-//! ```text
-//! [PowerShell cc function]
-//!   1. 设 WindowTitle = marker  ← **先**（v2 竞态修复，顺序不可换）
-//!   2. 写 ps-await/<PID>.json {ps_pid, marker, proc_start}  ← **后**
-//!   3. 轮询（30ms 步，deadline 3s）：await 被删 **或** registry 落地且指纹匹配 ⇒ 返回
+//! 点 ↗ 那一刻现拿一串进程（本机会话：claude 往上的进程链；远端会话：本机后端按连接对到的、开着那条连接的进程往上），
+//! [`pick_chain_window`] 沿链从下往上，每一级先问「它显示在哪个窗口」（[`shell_window`]），再看它名下有没有可见顶层窗口；
+//! 碰到有窗口的那一级（终端本身）就停，那一级恰好一个窗口 ⇒ 它，好几个 ⇒ 照实说分不清（不挑）。
+//! 找到的窗口交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。不缓存：每次点击现读。
 //!
-//! [本模块 BindRegistry watcher]
-//!   4. notify 监听 ps-await 目录
-//!   5. 新文件 → 读 marker
-//!   6. EnumWindows + GetWindowTextW 找 `title.contains(marker)` 的窗口（**子串**，不是相等：
-//!      WT 会往标题里塞别的东西）；找不到先重试 ≤600ms（12 × 50ms）兜旧模板
-//!   7. 写 ps-registry/<PID>.json {ps_pid, hwnd, owner_pid, owner_proc_start, proc_start}
-//!   8. 删 ps-await/<PID>.json → PS 解除阻塞
+//! 「它显示在哪个窗口」两种读法，哪台有哪种：
+//! - **Windows**：问那个进程的控制台（`platform::console::console_window`）—— Windows Terminal 里每个标签的伪控制台窗口的属主就是
+//!   承载它的那个终端窗口，经典控制台就是控制台窗口自己。不要接入块、不要登记、不看是谁起的它（cc-monitor 从标签栏起的、
+//!   用户自己开的一样认得准）。只认到窗口，认不到窗口里的哪个标签（Windows Terminal 没有从外部选中别人标签的接口）。
+//! - **Linux（X11）**：bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在本机桌面上开的 shell 里留一份 `ps-await/<进程号>.tty`
+//!   （进程号 · 起始时刻 · 终端设备），不起后台、不等。认窗口归这里：monitor 起来那一刻扫一遍、之后每落一份就认一份
+//!   （[`process_tty_file`]）—— 往那个终端写改标题的控制序列挂记号、按标题找窗口（EWMH）、写进握手表（`ps-registry/`），标题出栈还原。
 //!
-//! [SessionMap added 新 session]
-//!   9. ToolHelp 拿 claude_pid 往上的进程链（中间可以隔着 ccm / cmd）
-//!   10. 沿链走到终端窗口的属主为止，第一个登记过且作数的 PowerShell（[`walk_chain`]）→ HwndEntry
-//!   11. 写 sid-hwnd-cache.json
-//! ```
+//! 远端那台还会回显窗口标签（`LC_CCM_WINDOW`，`<shell 进程号>-<起始时刻>`，接入块设的）：对得上 ⇒ 直接问那个 shell（[`labeled_window`]）。
 //!
 //! ## 心跳清理
 //!
-//! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`〔散文墓碑〕，
-//! 死 PS 的条目从内存 + 磁盘移除。避免长期累积。
-//!
-//! ## bash / zsh 那一份（Linux 本机）
-//!
-//! 接入块（`src/shared/ccm-aliases.sh`）在本机桌面上开的 shell 里只留一份 `ps-await/<进程号>.tty`（进程号 · 起始时刻 · 终端设备），
-//! 不起后台、不等。认窗口归这里：monitor 起来那一刻扫一遍、之后每落一份就认一份（[`process_tty_file`]）——
-//! 往那个终端写改标题的控制序列挂记号、按标题找窗口（X11 · EWMH）、写进同一张握手表，标题出栈还原。
-//!
-//! ## ↗ 远端那一格
-//!
-//! 点 ↗ 时现查（那台答「此刻谁在显示它」、本机后端按连接对到这台电脑上的进程链），本模块做最后两跳 ——
-//! [`bring_chain_window`]：沿链从下往上走到终端窗口的属主为止，哪一级 PowerShell 在这张表里登记过、且作数 ⇒ 用它登记的窗口；
-//! 没有就看属主那一级的窗口（好几个就照实说分不清，不挑）；交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。
+//! 每 10s 扫一遍内存中的握手表，对每个 shell 进程号调 `is_process_alive`〔散文墓碑〕，死了的从内存 + 磁盘移除。
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
@@ -48,18 +30,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// cc function 写入 ps-await/<PID>.json 的内容。
-#[derive(Debug, Deserialize, Clone)]
-pub struct AwaitRequest {
-    pub ps_pid: u32,
-    pub marker: String,
-    /// 进程起始时刻戳的字符串：Windows 是 Win32 FILETIME（PS 端 `[Process].StartTime.ToFileTime()`），
-    /// Linux 是开机后的时钟滴答（`/proc/<pid>/stat`）。**跟 Claude Code 写的 `procStart`（.NET 本地 ticks）
-    /// 不是一回事**。同台比较用 `platform::pid::start_stamp`。
-    pub proc_start: String,
-}
-
-/// 写入 ps-registry/<PID>.json 的内容；同时缓存到 BindRegistry.by_ps_pid 内存。
+/// 握手表的一条（Linux bash / zsh 那一份认出来的），写入 ps-registry/<进程号>.json；同时缓存到 BindRegistry.by_ps_pid 内存。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HwndEntry {
     pub ps_pid: u32,
@@ -76,20 +47,7 @@ pub struct HwndEntry {
     /// Unix 毫秒
     pub registered_at: i64,
 }
-/// session_id → 拉前所需信息（持久化到 sid-hwnd-cache.json）。
-/// 跟 HwndEntry 几乎一样，但带 session 维度的快照（hwnd 复用 / PID 复用校验靠这些字段）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SidHwndBinding {
-    pub hwnd: isize,
-    pub owner_pid: u32,
-    pub owner_proc_start: u64,
-    pub ps_pid: u32,
-    pub ps_proc_start: String,
-    pub title_at_bind: String,
-    pub registered_at: i64,
-}
-
-/// 全局 ps-pid → hwnd 注册表。Arc<Self> 给 SessionMap 持有用。
+/// 全局 shell 进程号 → 窗口的握手表（Linux bash / zsh 那一份）。
 pub struct BindRegistry {
     monitor_data_dir: PathBuf,
     by_ps_pid: Arc<RwLock<HashMap<u32, HwndEntry>>>,
@@ -100,7 +58,16 @@ pub struct BindRegistry {
 
 impl BindRegistry {
     /// 启动 watcher 线程 + 心跳线程。返回 Arc 给外部持有引用。
+    /// 这台没有 bash / zsh 终端记录那一套（[`crate::platform::console::TTY_RECORDS`]：只有 Linux 有）⇒ 一张空表，不建目录、不读盘、不起线程
+    /// （Windows 按控制台认窗口，这张表在那里永远是空的）。
     pub fn spawn(monitor_data_dir: PathBuf) -> Arc<Self> {
+        if !crate::platform::console::TTY_RECORDS {
+            return Arc::new(Self {
+                monitor_data_dir,
+                by_ps_pid: Arc::new(RwLock::new(HashMap::new())),
+                tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
+            });
+        }
         let await_dir = monitor_data_dir.join(AWAIT_SUBDIR);
         let registry_dir = monitor_data_dir.join("ps-registry");
 
@@ -125,28 +92,12 @@ impl BindRegistry {
 
         Self::spawn_await_watcher(me.clone(), await_dir);
         Self::spawn_heartbeat(me.clone());
-        // 挂上「monitor 起来了 / 还活着」那两样：PowerShell 接入块后台那一份等到它才去认领窗口（不定时醒、不动窗口标题），
-        // 在 monitor 起来之前就开着的 PowerShell 也由此在它起来时补上登记。
-        crate::platform::proc::hold_monitor_marks(
-            shell_quote_core::MONITOR_ALIVE_NAME,
-            shell_quote_core::MONITOR_UP_NAME,
-        );
         me
     }
 
-    /// 正常退出时调：把「monitor 起来了」复位，之后新开的 PowerShell 不会去找一个已经不在的 monitor。
-    pub fn going_away() {
-        crate::platform::proc::lower_monitor_up_mark();
-    }
-
-    /// 查 ps_pid 对应的 hwnd entry。SessionMap 在新 session 加入时调。
+    /// 查 shell 进程号对应的那一条登记。
     pub fn lookup_hwnd_for_ps(&self, ps_pid: u32) -> Option<HwndEntry> {
         self.by_ps_pid.read().get(&ps_pid).cloned()
-    }
-
-    /// 当前注册的 PS 数量（UI 状态显示用）
-    pub fn registration_count(&self) -> usize {
-        self.by_ps_pid.read().len()
     }
 
     fn registry_dir(&self) -> PathBuf {
@@ -178,20 +129,6 @@ impl BindRegistry {
 
 use shell_quote_core::AWAIT_SUBDIR;
 
-/// 把「扫到的那个窗口」＋「await 请求」组装成一条绑定。
-/// 平台无关（Win32 那一跳全在 [`find_window_by_marker_substr`] 里）。
-fn entry_from_marker_hit(req: &AwaitRequest, hit: MarkerHit, owner_proc_start: u64) -> HwndEntry {
-    HwndEntry {
-        ps_pid: req.ps_pid,
-        hwnd: hit.hwnd,
-        owner_pid: hit.owner_pid,
-        owner_proc_start,
-        ps_proc_start: req.proc_start.clone(),
-        title_at_bind: hit.title,
-        registered_at: crate::utils::now_ms(),
-    }
-}
-
 /// 启动时扫已有 ps-registry/*.json（应对 monitor 重启）。
 /// P3 归并：走 utils::scan_dir_jsons。
 fn scan_registry_dir(dir: &Path) -> HashMap<u32, HwndEntry> {
@@ -215,7 +152,7 @@ fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
         return;
     }
 
-    // 启动时也扫一遍现有的（应对 monitor 启动前 PS 已写了 await 文件）
+    // 启动时也扫一遍现有的（monitor 起来之前开的 shell 留下的那几份）
     drain_await_dir(&this, &await_dir);
 
     while let Ok(_evt) = rx.recv() {
@@ -223,7 +160,7 @@ fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
     }
 }
 
-/// 处理 await_dir 下所有 *.json（PowerShell：读 marker → 找窗口 → 写 registry → 删 await）与 *.tty（bash / zsh：见 [`process_tty_file`]）
+/// 处理 await_dir 下所有 *.tty（bash / zsh：见 [`process_tty_file`]）
 fn drain_await_dir(this: &BindRegistry, await_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(await_dir) else {
         return;
@@ -231,7 +168,6 @@ fn drain_await_dir(this: &BindRegistry, await_dir: &Path) {
     for entry in entries.flatten() {
         let p = entry.path();
         match p.extension().and_then(|e| e.to_str()) {
-            Some("json") => process_await_file(this, &p),
             Some(TTY_RECORD_EXT) => process_tty_file(this, &p),
             _ => {}
         }
@@ -303,7 +239,7 @@ pub(crate) fn claim_tty(
 /// 生产那一份探针：这台此刻找得了窗口才去碰终端 —— 标题入栈，挂记号、等一步、按标题找，最多 12 步（≤600ms，同握手那条）；
 /// 每一步都重挂一次（shell 刚起来时提示符会把标题改回去），找到就停，最后出栈还原。
 fn probe_tty_title(tty: &str, marker: &str) -> Option<MarkerHit> {
-    use crate::platform::console_title::{tty_title, TtyTitle};
+    use crate::platform::console::{tty_title, TtyTitle};
     if !crate::platform::hwnd::supported() || !tty_title(tty, TtyTitle::Push) {
         return None;
     }
@@ -371,86 +307,6 @@ fn process_tty_file(this: &BindRegistry, file: &Path) {
     }
 }
 
-fn process_await_file(this: &BindRegistry, await_file: &Path) {
-    let raw = match std::fs::read_to_string(await_file) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("bind: read {} failed: {e}", await_file.display());
-            return;
-        }
-    };
-    // v1.7.8：PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM（前 3 字节 EF BB BF），
-    // serde_json 不剥 BOM 直接解析失败 → process_await_file 早早 return，
-    // find_window_for_marker / ps-registry 全没机会跑。这是 v1.7.0-1.7.7 整个
-    // cc 集成"装上没用"的真凶。防御性剥 BOM 兜任何 UTF-8 输入。
-    let raw = raw.trim_start_matches('\u{feff}');
-    let req: AwaitRequest = match serde_json::from_str(raw) {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("bind: parse {} failed: {e}", await_file.display());
-            // 解析失败也要删掉，避免反复触发
-            let _ = std::fs::remove_file(await_file);
-            return;
-        }
-    };
-
-    // v2.22 竞态修复:老模板(profile 块 v1)是**先写 await 文件、后设窗口标题**——
-    // notify 在文件落地瞬间触发本函数,首次 EnumWindows 时 marker 大概率还没设上。
-    // 立刻删 await 走失败路径会让 PS 端绑定成败全凭时序运气(实测:每个新 shell
-    // 首次 cc 固定烧满超时)。找不到先短暂重试(≤600ms,50ms 步),给 PS 设标题的
-    // 窗口;新模板(v2)已反转顺序,首次即中,重试是对旧模板/慢标题传播的兜底。
-    let mut found = find_window_for_marker(&req);
-    if found.is_none() {
-        for _ in 0..12 {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            found = find_window_for_marker(&req);
-            if found.is_some() {
-                break;
-            }
-        }
-    }
-    let entry = match found {
-        Some(e) => e,
-        None => {
-            tracing::warn!(
-                "bind: no window found with marker={:?} ps_pid={} (retried 600ms)",
-                req.marker,
-                req.ps_pid
-            );
-            // 找不到窗口也要清 await，让 PS 解除阻塞超时
-            let _ = std::fs::remove_file(await_file);
-            return;
-        }
-    };
-
-    // 写到 ps-registry/<PID>.json
-    let registry_file = this.registry_dir().join(format!("{}.json", req.ps_pid));
-    if let Err(e) = host_core::atomic_write_json(&registry_file, &entry) {
-        tracing::warn!(
-            "bind: write registry {} failed: {e}",
-            registry_file.display()
-        );
-        let _ = std::fs::remove_file(await_file);
-        return;
-    }
-
-    // 更新内存缓存
-    this.by_ps_pid.write().insert(req.ps_pid, entry.clone());
-
-    tracing::info!(
-        "bind: registered ps_pid={} hwnd={:#x} owner_pid={} title={:?}",
-        req.ps_pid,
-        entry.hwnd,
-        entry.owner_pid,
-        entry.title_at_bind
-    );
-
-    // 最后删 await 文件，解除 PS 阻塞
-    if let Err(e) = std::fs::remove_file(await_file) {
-        tracing::warn!("bind: remove await {} failed: {e}", await_file.display());
-    }
-}
-
 /// `find_window_by_marker_substr` 命中的窗口快照（住 `platform::hwnd`，这里再导出）。
 pub use crate::platform::hwnd::MarkerHit;
 
@@ -467,16 +323,6 @@ fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
 }
 
-fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
-    let m = find_window_by_marker_substr(&req.marker)?;
-    // FileTime → u64（HwndEntry.owner_proc_start 仍 wire u64 保兼容；0 表示拿不到）
-    let owner_proc_start = crate::platform::pid::start_stamp(m.owner_pid).unwrap_or(0);
-
-    // 组装那一步是**平台无关**的（见 `entry_from_marker_hit` 头注：写在这里的话
-    // 那一格在 Linux 门禁上一条判据都够不到）。
-    Some(entry_from_marker_hit(req, m, owner_proc_start))
-}
-
 /// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -485,9 +331,9 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
 pub enum FrontOutcome {
     /// 窗口到前面了。
     Switched,
-    /// 同一个终端程序开着几个窗口、这个终端没登记 ⇒ 分不清；`count` 是候选窗口个数。
+    /// 链上哪一级都认不出显示在哪个窗口，终端程序又开着几个窗口 ⇒ 分不清；`count` 是候选窗口个数。
     Several { program: String, count: usize },
-    /// 本机会话的终端没登记（在接上终端之前开的）。
+    /// 本机会话的进程链上哪一级都认不出显示在哪个窗口（Linux：shell 开在接上终端之前 · 会话在 tmux 里，界面再按窗口标签找一次）。
     Unbound,
     /// 认得的那个窗口已经不在了。
     WindowGone,
@@ -495,11 +341,7 @@ pub enum FrontOutcome {
     Unclear,
     /// 找到了，系统不许抢前台（它在任务栏闪）。
     Refused,
-    /// 链上有控制台 shell 却没有窗口（默认终端交接给了 Windows Terminal），借它的控制台挂记号标题也借不到。`program` 是开着那条连接的程序。
-    HostedByWt { program: String },
-    /// 默认终端交接那一形：记号标题挂上了，没有哪个窗口带着它 ⇒ 它在 Windows Terminal 某个窗口的后台标签页里。
-    BackgroundTab { program: String },
-    /// 整条链连个 shell 都没有：真在后台。
+    /// 整条链上哪一级都没有窗口：真在后台。
     NoWindow { program: String },
     /// Wayland 会话：别的程序的窗口 cc-monitor 看不见、也切不过去（`desktop` 是桌面名，可能空）。界面给［在 cc-monitor 里打开］。
     DesktopWontSwitch { desktop: String },
@@ -543,19 +385,7 @@ impl VerifyMiss {
     }
 }
 
-/// 验证 hwnd 仍合法 + 当前 owner_pid 跟绑定时一致 + 该进程 procStart 一致。
-///
-/// 三样事实（窗口还在 · 属主 · 属主起始时刻）由 `platform::{hwnd, pid}` 读，三格比对留在这里；
-/// 这台此刻读不到桌面窗口那一族 ⇒ 那一句（[`refusal_of`]）。
-pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), FrontOutcome> {
-    if let Some(o) = front_refusal() {
-        return Err(o);
-    }
-    verify_window(binding.hwnd, binding.owner_pid, binding.owner_proc_start)
-        .map_err(VerifyMiss::outcome)
-}
-
-/// [`verify_binding`] 的本体：只看那三样（句柄 · 属主 pid · 属主起始时刻），绑定从哪来不管。
+/// 找到的那个窗口还是不是它：句柄还在 · 属主 pid 没换 · 属主起始时刻没换（三样事实由 `platform::{hwnd, pid}` 读，三格比对留在这里）。
 fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result<(), VerifyMiss> {
     use crate::platform::hwnd;
     if !hwnd::exists(hwnd_v) {
@@ -592,107 +422,6 @@ pub fn activate(hwnd: isize) -> FrontOutcome {
     }
 }
 
-/// 持久化的 sid → 拉前信息缓存。SessionMap 在新 session 时 record；
-/// bring_terminal_to_front 时 lookup + verify_binding + activate。
-pub struct SidHwndCache {
-    file: PathBuf,
-    by_sid: Arc<RwLock<HashMap<String, SidHwndBinding>>>,
-}
-
-impl SidHwndCache {
-    pub fn load(file: PathBuf) -> Arc<Self> {
-        let mut initial = HashMap::new();
-        if let Ok(s) = std::fs::read_to_string(&file) {
-            if let Ok(map) = serde_json::from_str::<HashMap<String, SidHwndBinding>>(&s) {
-                initial = map;
-            }
-        }
-        tracing::info!("sid-hwnd-cache: loaded {} entries", initial.len());
-        Arc::new(Self {
-            file,
-            by_sid: Arc::new(RwLock::new(initial)),
-        })
-    }
-
-    pub fn lookup(&self, sid: &str) -> Option<SidHwndBinding> {
-        self.by_sid.read().get(sid).cloned()
-    }
-
-    /// claude 新 session 出现时调：从 claude 往上沿进程链（同远端那一格的规则，[`walk_chain`]）找登记过、且作数的 PowerShell → 写绑定。
-    /// claude 往往不是 PowerShell 的直接子进程（敲 cc 时中间隔着 ccm；npm 装的 claude 中间隔着 cmd）。
-    /// 返回 Some 表示绑定成功，None 表示没找到（那个 PowerShell 没登记 / 还没登记完）。
-    pub fn record(
-        &self,
-        sid: &str,
-        claude_pid: u32,
-        bind: &BindRegistry,
-    ) -> Option<SidHwndBinding> {
-        let chain: Vec<ChainLink> = crate::platform::pid::ancestors(claude_pid)
-            .into_iter()
-            .map(|(pid, name)| ChainLink { pid, name })
-            .collect();
-        let ChainHit::Registered(entry) = walk_chain(
-            &chain,
-            |pid| holding_registration(bind, pid),
-            crate::platform::hwnd::visible_top_windows_of,
-        ) else {
-            return None;
-        };
-        let binding = SidHwndBinding {
-            hwnd: entry.hwnd,
-            owner_pid: entry.owner_pid,
-            owner_proc_start: entry.owner_proc_start,
-            ps_pid: entry.ps_pid,
-            ps_proc_start: entry.ps_proc_start,
-            title_at_bind: entry.title_at_bind,
-            registered_at: crate::utils::now_ms(),
-        };
-        self.by_sid.write().insert(sid.to_string(), binding.clone());
-        self.persist();
-        tracing::info!(
-            "sid-hwnd: bound sid={} → hwnd={:#x} (ps_pid={} owner_pid={})",
-            sid,
-            binding.hwnd,
-            binding.ps_pid,
-            binding.owner_pid
-        );
-        Some(binding)
-    }
-
-    pub fn forget(&self, sid: &str) {
-        if self.by_sid.write().remove(sid).is_some() {
-            self.persist();
-            tracing::debug!("sid-hwnd: forgot sid={}", sid);
-        }
-    }
-
-    /// K-W1C：**本机**一个 sid 离开活跃集这个**事实**到达时，这份缓存该变成什么样。
-    ///
-    /// # 为什么这一步必须住在这里
-    ///
-    /// 原先它整条住在 Tauri `setup` 闭包里那条 `session-changes-emitter` 线程上
-    /// （拿着 `AppHandle`）—— **测不动**。于是「后端算出会话没了」到「那条绑定真的
-    /// 被忘了」这一段线，本仓一条判据都没有（当时唯一碰 `forget` 的单测直接调原语，一条推送边都不经过）。
-    /// 抽成方法之后，判据钉的是**行为**（事实进来、缓存变成什么样），
-    /// 不是那段闭包的行号 —— 这条链哪天搬家，判据整块跟着走。
-    ///
-    /// # 今天的行为，逐字一句
-    ///
-    /// **离开活跃集的一律忘**（可重连 · 已结束 · 说不清三种去向都走这里，由 `lib.rs::session_side_effects` 调）：
-    /// 这份缓存只记「claude 往上的进程链里有登记过的 shell」那一形（Windows 本机 · Linux 不在 tmux 里的会话）；
-    /// Linux 上在 tmux 里的本机会话不靠它 —— 点 ↗ 那一刻按窗口标签现查（界面 `frontByLocalLabel`）；被顶替的旧 sid 连 attach 都接不上。
-    pub fn apply_local_removal(&self, sid: &str) {
-        self.forget(sid);
-    }
-
-    fn persist(&self) {
-        let snapshot = self.by_sid.read().clone();
-        if let Err(e) = host_core::atomic_write_json(&self.file, &snapshot) {
-            tracing::warn!("sid-hwnd persist failed: {e}");
-        }
-    }
-}
-
 /// 沿进程链找到的那个窗口（属主与它的起始时刻由本进程现读）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FoundWindow {
@@ -717,7 +446,7 @@ pub struct ChainLink {
     pub name: String,
 }
 
-/// 握手表里这一条还作不作数：登记的那个 PowerShell 就是此刻这个进程（起始时刻 `start_now` 与登记时对得上；读不到也不算）·
+/// 握手表里这一条还作不作数：登记的那个 shell 就是此刻这个进程（起始时刻 `start_now` 与登记时对得上；读不到也不算）·
 /// 它登记的窗口还在且属主没换（`window_ok`）。读法是参数（判据喂替身）。
 pub(crate) fn registration_holds(
     entry: &HwndEntry,
@@ -745,25 +474,25 @@ impl FoundWindow {
 /// 沿进程链从下往上走到终端窗口那一级为止的结局。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ChainHit<'a> {
-    /// 走到终端窗口之前，有一级在握手表里登记过、且作数（`registered` 已校验）⇒ 它登记的那一条。
-    Registered(HwndEntry),
+    /// 走到终端窗口之前，有一级认得出它显示在哪个窗口（`known`）⇒ 那个窗口。
+    Known(FoundWindow),
     /// 先走到一个有可见顶层窗口的进程（终端本身）⇒ 它和它的窗口们（一个或好几个）。
     Owner(&'a ChainLink, Vec<isize>),
     /// 整条链都没有。
     Nothing,
 }
 
-/// 沿进程链从下往上（开着连接 / 起会话的那个进程在前）：每一级先看握手表（`registered` 只交作数的那一条），
+/// 沿进程链从下往上（开着连接 / 起会话的那个进程在前）：每一级先问它显示在哪个窗口（`known`，生产那一份是 [`shell_window`]），
 /// 再看它名下有没有可见顶层窗口；碰到有窗口的那一级就停 —— 终端窗口的属主以上的进程不在这个窗口里，
-/// 它们登记的是别的窗口（比如从某个 PowerShell 里打开的 Windows Terminal，它上面那个 PowerShell）。读法是参数（判据喂替身）。
+/// 它们显示在别的窗口（比如从某个 PowerShell 里打开的 Windows Terminal，它上面那个 PowerShell）。读法是参数（判据喂替身）。
 pub(crate) fn walk_chain<'a>(
     chain: &'a [ChainLink],
-    registered: impl Fn(u32) -> Option<HwndEntry>,
+    known: impl Fn(u32) -> Option<FoundWindow>,
     windows_of: impl Fn(u32) -> Vec<isize>,
 ) -> ChainHit<'a> {
     for l in chain {
-        if let Some(e) = registered(l.pid) {
-            return ChainHit::Registered(e);
+        if let Some(w) = known(l.pid) {
+            return ChainHit::Known(w);
         }
         let wins = windows_of(l.pid);
         if !wins.is_empty() {
@@ -773,29 +502,16 @@ pub(crate) fn walk_chain<'a>(
     ChainHit::Nothing
 }
 
-/// 点击那一刻在链上那个控制台 shell 上挂一次记号标题、按标题找窗口的结局（默认终端交接那一档）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TitleProbe {
-    /// 带着记号标题的那个窗口。
-    Found(FoundWindow),
-    /// 记号挂上了，没有哪个窗口的标题带着它（Windows Terminal 只把前台标签页的标题给窗口）。
-    NotShown,
-    /// 借不到那个控制台。
-    Unavailable,
-}
-
-/// 进程链 ⇒ 要拉的那个窗口：链上登记过的 PowerShell ⇒ 它登记的窗口（精确到窗口）；否则终端窗口的属主恰好一个窗口 ⇒ 它；
-/// 好几个 ⇒ 分不清（不挑，交出候选）；链上只有一个没有窗口的控制台 shell（默认终端交接）⇒ 在它的控制台上挂一次记号标题
-/// 按标题找（`probe`）；整条链都没有 ⇒ 没有窗口。`start_of` 读属主的起始时刻。
+/// 进程链 ⇒ 要拉的那个窗口：链上有一级认得出 ⇒ 那个窗口（精确到窗口）；否则终端窗口的属主恰好一个窗口 ⇒ 它；
+/// 好几个 ⇒ 分不清（不挑，交出候选个数）；整条链都没有 ⇒ 没有窗口（说开着连接的那个程序）。`start_of` 读属主的起始时刻。
 pub(crate) fn pick_chain_window(
     chain: &[ChainLink],
-    registered: impl Fn(u32) -> Option<HwndEntry>,
+    known: impl Fn(u32) -> Option<FoundWindow>,
     windows_of: impl Fn(u32) -> Vec<isize>,
     start_of: impl Fn(u32) -> u64,
-    probe: impl Fn(u32) -> TitleProbe,
 ) -> Result<FoundWindow, FrontOutcome> {
-    match walk_chain(chain, registered, windows_of) {
-        ChainHit::Registered(e) => Ok(FoundWindow::of(&e)),
+    match walk_chain(chain, known, windows_of) {
+        ChainHit::Known(w) => Ok(w),
         ChainHit::Owner(l, wins) => match wins.as_slice() {
             [h] => Ok(FoundWindow {
                 hwnd: *h,
@@ -807,62 +523,39 @@ pub(crate) fn pick_chain_window(
                 count: wins.len(),
             }),
         },
-        // 链上有一个控制台 shell 却没有窗口 ⇒ 它的终端窗口归了链外的程序（Windows 默认终端把它交给了 Windows Terminal），
-        // 不是在后台跑；整条链连个 shell 都没有 ⇒ 真在后台。
-        ChainHit::Nothing => {
-            let program = chain.first().map(|l| l.name.clone()).unwrap_or_default();
-            match chain.iter().find(|l| is_console_shell(&l.name)) {
-                Some(shell) => match probe(shell.pid) {
-                    TitleProbe::Found(w) => Ok(w),
-                    TitleProbe::NotShown => Err(FrontOutcome::BackgroundTab { program }),
-                    TitleProbe::Unavailable => Err(FrontOutcome::HostedByWt { program }),
-                },
-                None => Err(FrontOutcome::NoWindow { program }),
-            }
-        }
-    }
-}
-
-/// 生产那一份记号标题探针：借 `pid` 的控制台挂 `ccm-front-<pid>-<随机>`，按标题子串找窗口（标题经 Windows Terminal
-/// 转到窗口上要一会儿 ⇒ 最多等 600 ms，同握手那条的重试）。
-fn probe_by_marker_title(pid: u32) -> TitleProbe {
-    let marker = format!(
-        "ccm-front-{pid}-{}",
-        &uuid::Uuid::new_v4().simple().to_string()[..8]
-    );
-    let hit = crate::platform::console_title::with_marker_title(pid, &marker, || {
-        for _ in 0..12 {
-            if let Some(m) = find_window_by_marker_substr(&marker) {
-                return Some(m);
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        None
-    });
-    match hit {
-        None => TitleProbe::Unavailable,
-        Some(None) => TitleProbe::NotShown,
-        Some(Some(m)) => TitleProbe::Found(FoundWindow {
-            hwnd: m.hwnd,
-            owner_pid: m.owner_pid,
-            owner_proc_start: crate::platform::pid::start_stamp(m.owner_pid).unwrap_or(0),
+        ChainHit::Nothing => Err(FrontOutcome::NoWindow {
+            program: chain.first().map(|l| l.name.clone()).unwrap_or_default(),
         }),
     }
 }
 
-/// 那台回显的窗口标签（`<PowerShell 进程号>-<起始时刻>`，接入块设的）⇒ 握手表里那一条：同一个 PowerShell（起始时刻对得上）、
-/// 登记还作数（`holding`）。几个终端按交来的顺序（最近动静在前），第一个对上的就是它。
-pub(crate) fn labeled_registration(
+/// 本机会话的那一条：同 [`pick_chain_window`]，只是整条链都没有窗口时说「没登记」（界面接着按窗口标签找：Linux 上会话在 tmux 里，
+/// claude 的进程链到不了终端窗口）。
+pub(crate) fn pick_local_window(
+    chain: &[ChainLink],
+    known: impl Fn(u32) -> Option<FoundWindow>,
+    windows_of: impl Fn(u32) -> Vec<isize>,
+    start_of: impl Fn(u32) -> u64,
+) -> Result<FoundWindow, FrontOutcome> {
+    pick_chain_window(chain, known, windows_of, start_of).map_err(|o| match o {
+        FrontOutcome::NoWindow { .. } => FrontOutcome::Unbound,
+        o => o,
+    })
+}
+
+/// 那台回显的窗口标签（`<shell 进程号>-<起始时刻>`，接入块设的）⇒ 那个 shell 显示在哪个窗口：此刻那个进程号的起始时刻
+/// （`start_of`）与标签里的对得上才问（进程号被复用不认）。几个终端按交来的顺序（最近动静在前），第一个认得出的就是它。
+pub(crate) fn labeled_window(
     terminals: &[serde_json::Value],
-    holding: impl Fn(u32) -> Option<HwndEntry>,
-) -> Option<HwndEntry> {
+    start_of: impl Fn(u32) -> Option<u64>,
+    known: impl Fn(u32) -> Option<FoundWindow>,
+) -> Option<FoundWindow> {
     terminals
         .iter()
         .filter_map(|t| t.get("window")?.as_str()?.split_once('-'))
         .filter_map(|(p, s)| Some((p.parse::<u32>().ok()?, s.parse::<u64>().ok()?)))
-        .find_map(|(pid, start)| {
-            holding(pid).filter(|e| e.ps_proc_start.trim().parse::<u64>().ok() == Some(start))
-        })
+        .filter(|&(pid, start)| start_of(pid) == Some(start))
+        .find_map(|(pid, _)| known(pid))
 }
 
 /// ↗ 远端那一格先按窗口标签找：对上了 ⇒ 校验、拉前，回那一次的结局；没有标签 / 对不上 ⇒ `None`（接着按连接对）。
@@ -873,15 +566,10 @@ pub fn bring_labeled_window(
     if !crate::platform::hwnd::supported() {
         return None;
     }
-    labeled_registration(terminals, |pid| holding_registration(bind, pid))
-        .map(|e| bring_found_window(&FoundWindow::of(&e)))
-}
-
-/// 交互终端里的 shell（有它 ⇒ 这一串进程是开在一个终端窗口里的）。
-fn is_console_shell(name: &str) -> bool {
-    ["powershell.exe", "pwsh.exe", "cmd.exe"]
-        .iter()
-        .any(|s| name.eq_ignore_ascii_case(s))
+    labeled_window(terminals, crate::platform::pid::start_stamp, |pid| {
+        shell_window(bind, pid)
+    })
+    .map(|w| bring_found_window(&w))
 }
 
 /// 生产那一份「握手表里作数的那一条」：查表 ＋ 此刻的起始时刻 ＋ 窗口三重校验。
@@ -894,19 +582,61 @@ fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
     .then_some(entry)
 }
 
-/// ↗ 远端那一格：进程链 ⇒ 握手表里登记的窗口（或终端窗口的属主那一个）⇒ 校验 ＋ 拉前。
+/// 生产那一份「这一级显示在哪个窗口」：握手表里作数的登记（Linux bash / zsh）；没有 ⇒ 它的控制台显示在哪个窗口（Windows）。
+/// 属主与它的起始时刻现读。
+fn shell_window(bind: &BindRegistry, pid: u32) -> Option<FoundWindow> {
+    if let Some(e) = holding_registration(bind, pid) {
+        return Some(FoundWindow::of(&e));
+    }
+    let hwnd = crate::platform::console::console_window(pid)?;
+    let owner_pid = crate::platform::hwnd::owner_pid(hwnd);
+    Some(FoundWindow {
+        hwnd,
+        owner_pid,
+        owner_proc_start: crate::platform::pid::start_stamp(owner_pid).unwrap_or(0),
+    })
+}
+
+/// 本机后端回的那串进程按本机现读 ⇒ 窗口（认得出 ⇒ 那个；否则属主那一级的窗口）。
+fn pick_live(
+    chain: &[ChainLink],
+    bind: &BindRegistry,
+    local: bool,
+) -> Result<FoundWindow, FrontOutcome> {
+    let known = |pid| shell_window(bind, pid);
+    let windows_of = crate::platform::hwnd::visible_top_windows_of;
+    let start_of = |pid| crate::platform::pid::start_stamp(pid).unwrap_or(0);
+    if local {
+        pick_local_window(chain, known, windows_of, start_of)
+    } else {
+        pick_chain_window(chain, known, windows_of, start_of)
+    }
+}
+
+/// ↗ 远端那一格：本机后端交来的进程链 ⇒ 窗口 ⇒ 校验 ＋ 拉前。
 pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutcome {
     if let Some(o) = front_refusal() {
         return o;
     }
-    let picked = pick_chain_window(
-        chain,
-        |pid| holding_registration(bind, pid),
-        crate::platform::hwnd::visible_top_windows_of,
-        |pid| crate::platform::pid::start_stamp(pid).unwrap_or(0),
-        probe_by_marker_title,
-    );
-    match picked {
+    match pick_live(chain, bind, false) {
+        Ok(w) => bring_found_window(&w),
+        Err(o) => o,
+    }
+}
+
+/// ↗ 本机那一格：点那一刻现走 claude（`claude_pid`）往上的进程链 ⇒ 窗口 ⇒ 校验 ＋ 拉前。
+/// claude 往往不是 shell 的直接子进程（敲 cc 时中间隔着 ccm；npm 装的 claude 中间隔着 cmd）。
+pub fn bring_local_window(claude_pid: u32, bind: &BindRegistry) -> FrontOutcome {
+    if let Some(o) = front_refusal() {
+        return o;
+    }
+    // 从它自己问起（它和它的 shell 挂在同一个控制台上；被终端直接起的那一形，父进程就是终端本身、借不到控制台）。
+    // 它自己那一级的名字不进任何一句（分不清说的是终端那一级、没有窗口在本机说「没登记」）⇒ 空。
+    let chain: Vec<ChainLink> = std::iter::once((claude_pid, String::new()))
+        .chain(crate::platform::pid::ancestors(claude_pid))
+        .map(|(pid, name)| ChainLink { pid, name })
+        .collect();
+    match pick_live(&chain, bind, true) {
         Ok(w) => bring_found_window(&w),
         Err(o) => o,
     }

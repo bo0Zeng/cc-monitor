@@ -447,7 +447,7 @@ mod tests {
                 "参数塞不进一次命令调用（内核的单参数上限）—— 我给的东西太大，不是那个程序坏了"
                     .to_string()
             }
-            crate::plugin::invoke::NotRun::Failed(msg) => msg,
+            crate::plugin::invoke::NotRun::Failed(s) => s.logged(),
         }
     }
 
@@ -466,7 +466,9 @@ mod tests {
         let mut r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
         for _ in 0..50 {
             match &r {
-                Err(crate::plugin::invoke::NotRun::Failed(m)) if m.contains("os error 26") => {
+                Err(crate::plugin::invoke::NotRun::Failed(m))
+                    if m.raw.as_deref().is_some_and(|r| r.contains("os error 26")) =>
+                {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                     r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
                 }
@@ -1684,14 +1686,10 @@ mod tests {
         );
         // 那两个会随环境一起漂过去的变量名，点住住址（不复述它们的值）。
         assert!(
-            !crate::stream::listen::ENV_PORT.is_empty()
-                && !crate::stream::listen::ENV_TOKEN_FILE.is_empty(),
+            !crate::stream::listen::ENV_RESIDENT.is_empty() && !crate::stderr_log::ENV.is_empty(),
             "常驻口那两个变量名空了 —— 本格头注 ② 段指的就是它们"
         );
-        assert_ne!(
-            crate::stream::listen::ENV_PORT,
-            crate::stream::listen::ENV_TOKEN_FILE
-        );
+        assert_ne!(crate::stream::listen::ENV_RESIDENT, crate::stderr_log::ENV);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1755,8 +1753,8 @@ mod tests {
             ])
             .env(INHERIT_MARK, "1")
             // ★ 键名现取，值是夹具的。
-            .env(crate::stream::listen::ENV_PORT, FAKE_PORT_VALUE)
-            .env(crate::stream::listen::ENV_TOKEN_FILE, FAKE_TOKEN_VALUE)
+            .env(crate::stream::listen::ENV_RESIDENT, FAKE_PORT_VALUE)
+            .env(crate::stderr_log::ENV, FAKE_TOKEN_VALUE)
             .stdin(std::process::Stdio::null())
             .output()
             .expect("起不来那个内层进程");
@@ -1794,8 +1792,8 @@ mod tests {
             // 这里**不做断言也不打读数行** —— 「它到底跑没跑」由外层那条数读数行的断言看着。
             return;
         }
-        let port_key = crate::stream::listen::ENV_PORT;
-        let token_key = crate::stream::listen::ENV_TOKEN_FILE;
+        let port_key = crate::stream::listen::ENV_RESIDENT;
+        let token_key = crate::stderr_log::ENV;
 
         // ── 分母①：本进程（扮演后端）的环境键 ────────────────────────────
         let parent: std::collections::BTreeSet<String> = std::env::vars_os()

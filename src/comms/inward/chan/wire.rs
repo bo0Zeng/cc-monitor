@@ -361,38 +361,6 @@ pub trait Sub: futures::Stream<Item = Item> + Send {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  五、认证钥匙
-// ════════════════════════════════════════════════════════════════════════════
-
-/// 连接者要出示的那把钥匙。**本类型不打印内容**（`Debug` 手写成占位），
-/// 为的是它永远不会被一条 `tracing!("{:?}")` 顺手带进日志。
-///
-/// ⚠ 钥匙从哪来、怎么交到外部前端手里，不归本文件（`C4`：它由宿主交给通信层）。
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Key(pub String);
-
-impl std::fmt::Debug for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Key(<不打印>)")
-    }
-}
-
-impl Key {
-    /// 比对两把钥匙。**逐字节全比完再答**，不在第一个不等处提前返回
-    /// —— 回环口上任何本机进程都能来试，提前返回会把「前几个字节对了」泄给计时。
-    pub fn matches(&self, other: &str) -> bool {
-        let a = self.0.as_bytes();
-        let b = other.as_bytes();
-        let mut diff = u8::from(a.len() != b.len());
-        for (i, x) in a.iter().enumerate() {
-            diff |= x ^ b.get(i).copied().unwrap_or(0);
-        }
-        diff == 0
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 //  五b、能力协商—— 面 A 上「对端认不认」的唯一答处
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -518,9 +486,6 @@ impl Offer {
 #[serde(tag = "t")]
 pub enum Head {
     // ── 客户端 → 路由器 ──
-    Hello {
-        key: String,
-    },
     Call {
         id: u64,
         origin: Origin,
@@ -550,8 +515,6 @@ pub enum Head {
         origin: Origin,
     },
     // ── 路由器 → 客户端 ──
-    Welcome,
-    Denied,
     Done {
         id: u64,
     },
@@ -748,10 +711,9 @@ pub async fn read_frame<R: AsyncRead + Unpin>(
     let head = read_segment(r, cap, true).await?;
     let body = read_segment(r, cap, false).await?;
     let head: Head = serde_json::from_slice(&head).map_err(|e| {
-        ReadFault::Bad(copy_text(
-            "rsChanWire.frame.badHead",
-            &[("e", &e.to_string())],
-        ))
+        // 解析器的原话记一行日志；这一格交的是一句话（链路断的原因）。
+        tracing::warn!("chan: frame head unreadable: {e}");
+        ReadFault::Bad(copy_text("rsChanWire.frame.badHead", &[]))
     })?;
     Ok((head, body))
 }

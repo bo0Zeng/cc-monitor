@@ -13,6 +13,8 @@
  * - 备注：自带扩展的内置备注照画；用户写的经本机后端记进它的目录（`ext-note-set`），写完让本机后端同步一趟各台。
  * - 要加钩子的那一个（自带的 cc-bus）：抽屉里每台一行钩子状态与要加的内容，问那台后端（`hooks-diag`，抽屉打开时问一次），
  *   界面不读那份配置文件、也不写它。
+ * - MCP 那几行每台的小标（需登录 · 连不上）与抽屉里那一行：问那一台自己的后端（`mcp-read`，每次读完表各台问一次），
+ *   哪一种、那一句、悬停那一截、［去登录］复制的命令、原话都是它写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
 import { copyText } from "../copy-table";
@@ -41,8 +43,13 @@ import {
   type ExtPlace,
   type ExtRow,
   type ExtUninstallCard,
+  mcpRead,
+  type McpEntry,
+  type McpRead,
 } from "../ext-reads";
-import { sayFailure } from "../kit/detail";
+import { copyDetailButton, sayFailure } from "../kit/detail";
+import { writeClipboard } from "../clipboard";
+import { toast, failToast } from "../kit/toast";
 
 type KindFilter = "all" | "skill" | "mcp";
 
@@ -63,11 +70,27 @@ const TONE_CLASS: Record<"ok" | "bad" | "unknown", string> = {
 
 const DOT_ICON: Record<ExtCell["state"], IconName> = { same: "success", differs: "half", missing: "ring", project: "folder" };
 
-/** 一格的点：态 ⇒ Phosphor 图标（代码画，颜色随 `DOT_CLASS`）；悬停 / 图例那一句由调用方给。 */
-export function dotOf(state: ExtCell["state"]): HTMLSpanElement {
+/** MCP 那一格右上角的小标（哪一种由那台后端的 `mcp-read` 定：`mark`）。 */
+const MARK_CLASS: Record<NonNullable<McpEntry["mark"]>, string> = {
+  needsLogin: "ext-dot-mark is-login",
+  failed: "ext-dot-mark is-fail",
+};
+
+/** 一格的点：态 ⇒ Phosphor 图标（代码画，颜色随 `DOT_CLASS`）；`mark` ⇒ 右上角一个小标；悬停 / 图例那一句由调用方给。 */
+export function dotOf(state: ExtCell["state"], mark: McpEntry["mark"] = null): HTMLSpanElement {
   const d = el("span", DOT_CLASS[state]);
-  d.appendChild(icon(DOT_ICON[state], "compact"));
+  const glyph = el("span", "ext-dot-glyph");
+  glyph.appendChild(icon(DOT_ICON[state], "compact"));
+  if (mark !== null) glyph.appendChild(el("span", MARK_CLASS[mark]));
+  d.appendChild(glyph);
   return d;
+}
+
+/** 那一条的小标在悬停里那一截（后端写好的字）。 */
+function markTip(e: McpEntry): string | null {
+  if (e.mark === "failed") return e.failed?.tip ?? null;
+  if (e.mark === "needsLogin") return e.login?.tip ?? null;
+  return null;
 }
 
 /** 一格 / 一处给人看的那句话（悬停 · 抽屉里那一行）。 */
@@ -207,6 +230,9 @@ export class ExtSection {
   private slots = new Map<string, Slot>();
   private install: Install = freshInstall();
   private hooks = new Map<string, HookSlot>();
+  /** 各台的 MCP 列表（按 `machineKey`；那台后端 `mcp-read` 答的，带写好的需登录 / 连不上）· 那一串（一字不差 ⇒ 不重画）。 */
+  private mcp = new Map<string, McpRead>();
+  private mcpWire = new Map<string, string>();
   /** 备注正在改（那一段草稿；`null` = 没在改）· 写备注那一问没成时那一句。 */
   private noteDraft: string | null = null;
   private noteError: string | null = null;
@@ -279,6 +305,7 @@ export class ExtSection {
         this.renderTable();
         this.renderDrawer();
       }
+      if (this.list) void this.readMcp(this.list);
       if (visit) void this.reload(false, LOCAL_ORIGIN);
     } catch (e) {
       if (my !== this.seq) return;
@@ -286,15 +313,69 @@ export class ExtSection {
     }
   }
 
-  /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。 */
+  /**
+   * 表里有 MCP 行 ⇒ 各台（连得上的）问它自己的后端一次 `mcp-read`，小标与抽屉那一行照它画。
+   * 连不上的那台 · 问不成的那台：不画小标（没小标只说「装了」）。回来的一字不差 ⇒ 不重画；变了只重建 MCP 那几行与抽屉。
+   */
+  private async readMcp(list: ExtList): Promise<void> {
+    const wanted = list.rows.some((r) => r.kind === "mcp") ? list.machines.filter((m) => m.reachable) : [];
+    const keep = new Set(wanted.map(machineKey));
+    let changed = false;
+    for (const k of [...this.mcp.keys()]) {
+      if (!keep.has(k)) {
+        this.mcp.delete(k);
+        this.mcpWire.delete(k);
+        changed = true;
+      }
+    }
+    if (changed) this.repaintMcp();
+    await Promise.all(
+      wanted.map(async (m) => {
+        const key = machineKey(m);
+        let got: McpRead | null = null;
+        try {
+          got = await mcpRead(originOf(m));
+        } catch {
+          got = null;
+        }
+        if (this.list !== list) return;
+        const wire = got === null ? "" : JSON.stringify(got);
+        if ((this.mcpWire.get(key) ?? "") === wire) return;
+        if (got === null) {
+          this.mcp.delete(key);
+          this.mcpWire.delete(key);
+        } else {
+          this.mcp.set(key, got);
+          this.mcpWire.set(key, wire);
+        }
+        this.repaintMcp();
+      }),
+    );
+  }
+
+  /** MCP 列表变了：只重建 MCP 那几行（别的行原样留着）、重画表与抽屉。 */
+  private repaintMcp(): void {
+    for (const r of [...this.rowEls.keys()]) if (r.kind === "mcp") this.rowEls.delete(r);
+    this.renderTable();
+    this.renderDrawer();
+  }
+
+  /** 那台的 MCP 列表里这个名字的那一条（全局那一段）；没问到 ⇒ `null`。 */
+  private mcpEntry(r: ExtRow, m: ExtMachine): McpEntry | null {
+    if (r.kind !== "mcp" || !m.reachable) return null;
+    return this.mcp.get(machineKey(m))?.entries.find((e) => e.name === r.name) ?? null;
+  }
+
+  /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。
+   * 每台那一格是后端写好的那一句（原话它记进日志，不随应答来）；整趟没成那一句是通道那一层的（{@link syncAssets}）。 */
   private async syncOnce(on: Origin): Promise<string> {
     try {
       const s = await syncAssets(on);
       return s.synced
-        .flatMap((x) => (x.error === null ? [] : [copyText("extPage.status.syncRow", { machine: x.origin, e: x.error })]))
+        .flatMap((x) => (x.error === null ? [] : [copyText("extPage.status.syncRow", { machine: x.origin, said: x.error })]))
         .join(" ");
     } catch (e) {
-      return copyText("extPage.status.syncFailed", { e: e instanceof Error ? e.message : String(e) });
+      return copyText("extPage.status.syncFailed", { said: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -334,6 +415,16 @@ export class ExtSection {
       item.append(dotOf(st), el("span", "", legendText(st)));
       legend.appendChild(item);
     }
+    if (rows.some((r) => r.kind === "mcp")) {
+      for (const [mark, said] of [
+        ["needsLogin", copyText("extPage.legend.needsLogin")],
+        ["failed", copyText("extPage.legend.failed")],
+      ] as const) {
+        const item = el("span", "ext-legend-item");
+        item.append(dotOf("same", mark), el("span", "", said));
+        legend.appendChild(item);
+      }
+    }
     this.table.appendChild(legend);
   }
 
@@ -358,9 +449,14 @@ export class ExtSection {
     const dots = el("span", "ext-dots");
     r.cells.forEach((c, i) => {
       const m = list.machines[i];
-      const d = dotOf(c.state);
+      const e = this.mcpEntry(r, m);
+      const d = dotOf(c.state, e?.mark ?? null);
       if (!m.reachable) d.classList.add("is-offline");
-      d.title = copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) });
+      const tip = e ? markTip(e) : null;
+      d.title =
+        tip === null
+          ? copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) })
+          : copyText("extPage.dot.titleMark", { machine: machineName(m), state: stateText(c.state, c.places), mark: tip });
       dots.appendChild(d);
     });
     line.appendChild(dots);
@@ -554,6 +650,8 @@ export class ExtSection {
       top.appendChild(b);
     }
     line.appendChild(top);
+    const mcp = this.mcpEntry(r, m);
+    if (mcp) this.mcpLines(line, r, mcp);
     if (!bring && c.note) line.appendChild(el("div", "settings-hint", c.note));
     if (!only || only.note !== null || (r.kind === "skill" && only.dir !== null)) {
       const places = el("div", "ext-places");
@@ -569,6 +667,43 @@ export class ExtSection {
     }
     if (slot.card) line.appendChild(this.cardOf(r, m, key, slot));
     return line;
+  }
+
+  /** 抽屉里那台下面的 MCP 那一行（两种都没有 ⇒ 不画）：需登录那一句 ＋［去登录］；连不上那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
+  private mcpLines(line: HTMLElement, r: ExtRow, e: McpEntry): void {
+    const login = e.login;
+    if (login) {
+      const box = el("div", "ext-mcp is-login");
+      box.appendChild(el("div", "ext-mcp-said")).append(el("span", "ext-mcp-pip"), login.said);
+      const acts = el("div", "ext-mcp-acts");
+      const go = button(copyText("extPage.mcp.login"), () => void this.copyLogin(login.copy));
+      go.dataset.action = "mcp-login";
+      acts.append(go, el("span", "settings-hint", copyText("extPage.mcp.loginHint", { cmd: login.copy, name: r.name })));
+      box.appendChild(acts);
+      line.appendChild(box);
+    }
+    const failed = e.failed;
+    if (failed) {
+      const box = el("div", "ext-mcp is-fail");
+      box.appendChild(el("div", "ext-mcp-said")).append(el("span", "ext-mcp-pip"), failed.said);
+      if (failed.detail !== null) {
+        box.appendChild(el("pre", "ext-mcp-raw", failed.detail));
+        const copy = copyDetailButton(failed.said, failed.detail);
+        if (copy) box.appendChild(el("div", "ext-mcp-acts")).appendChild(copy);
+      }
+      line.appendChild(box);
+    }
+  }
+
+  /** ［去登录］：复制那条命令（不跳窗），toast 一句。 */
+  private async copyLogin(cmd: string): Promise<void> {
+    try {
+      await writeClipboard(cmd);
+    } catch (e) {
+      failToast(copyText("extPage.mcp.copyFailed", { cmd }), e, { level: "error" });
+      return;
+    }
+    toast(copyText("extPage.mcp.copied", { cmd }), "", { level: "success" });
   }
 
   /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 有目录的 ⇒ 本机「在文件夹中显示」、远端「在文件窗口里打开」。 */

@@ -1,0 +1,155 @@
+/* 计划「需手动」那一条 · 已退回 / 已落地 · 退回框（设计稿 planned-build 03）。 */
+@layer components {
+  .rvBar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    padding: 10px var(--space-5);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius-m);
+    background: color-mix(in srgb, var(--warn) 7%, var(--bg-2));
+    font-size: var(--font-size-small);
+  }
+
+  .rvBar[data-kind="red"] {
+    border-color: color-mix(in srgb, var(--error) 35%, transparent);
+    border-left-color: var(--error-text);
+    background: color-mix(in srgb, var(--error) 6%, var(--bg-2));
+  }
+
+  .rvBar[data-kind="returned"],
+  .rvBar[data-kind="landed"] {
+    border-color: var(--border-soft);
+    border-left-color: var(--border-medium);
+    background: var(--bg-2);
+    color: var(--text-2);
+  }
+
+  .rvBar[data-kind="landed"] {
+    border-left-color: var(--success);
+  }
+
+  .rvBar:focus-visible {
+    outline: var(--focus-ring) solid var(--accent);
+    outline-offset: var(--focus-ring);
+  }
+
+  .rvHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .rvTitle {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .rvBar[data-kind="red"] .rvTitle {
+    color: var(--error-text);
+  }
+
+  .rvSide {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+  }
+
+  .rvBody {
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+
+  .rvActs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rvNote {
+    color: var(--text-faint);
+    font-size: var(--font-size-xs);
+  }
+
+  .rvForm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .rvFormHead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rvText {
+    min-height: 64px;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text);
+    font: inherit;
+    resize: vertical;
+  }
+
+  .rvText:focus {
+    border-color: var(--field-border-focus);
+    outline: none;
+  }
+
+  .rvOpts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .rvOpt {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    cursor: pointer;
+  }
+
+  .rvOpt[data-unavailable="true"] {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .rvOptText {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+  }
+
+  .rvLine {
+    padding: var(--space-4);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}

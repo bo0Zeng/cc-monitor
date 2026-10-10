@@ -228,20 +228,20 @@ fn the_tail_plan_matches_an_independent_count() {
 #[test]
 fn an_oversized_listing_is_refused_not_truncated() {
     let big = vec![b'x'; LINES_CAP_BYTES + 1];
-    match lines(|out| {
+    match rows(|out| {
         use std::io::Write;
         out.write_all(&big).map_err(|e| ("failed", e.to_string()))
     }) {
         Err((c, _)) => assert_eq!(c, "too_large"),
         Ok(_) => panic!("超上限的输出被当成完整清单交出去了"),
     }
-    let ok = lines(|out| {
+    let ok = rows(|out| {
         use std::io::Write;
         out.write_all(b"a\n\n b \n")
             .map_err(|e| ("failed", e.to_string()))
     })
     .unwrap();
-    assert_eq!(ok, serde_json::json!({"lines": ["a", "b"]}));
+    assert_eq!(ok, vec!["a".to_string(), "b".to_string()]);
 }
 
 /// ★ F2（→出成品）：骨架索引与大纲清单两条帧命令的应答**就是成品**，
@@ -514,6 +514,7 @@ fn golden_facts_session(home: &Path) -> String {
         r#"{"type":"system","subtype":"api_error","uuid":"rt-2","timestamp":"t5a","parentUuid":"f-5","retryAttempt":1,"maxRetries":10}"#,
         r#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s-g"}"#,
         r#"{"type":"cost-state","totalCostUSD":0.4242,"modelUsage":{},"hasUnknownModelCost":false}"#,
+        r#"{"type":"attachment","attachment":{"type":"deferred_tools_delta","addedNames":[],"needsAuthMcpServers":["m-n"],"failedMcpServers":[{"name":"m-f","error":"e-f"}]}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -697,8 +698,8 @@ fn facts_say_what_the_session_is_waiting_for() {
         copy_core::short_duration(ms),
         "与过程行耗时同一种短写法"
     );
-    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
-    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");
+    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需手动");
+    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
 
 /// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
@@ -1436,6 +1437,25 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+impl crate::guard_support::Shaped for Searched {
+    fn samples() -> Vec<Self> {
+        vec![Searched {
+            lines: vec!["{}".into()],
+            unreadable: 0,
+            skipped: vec!["codex"],
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for Branch {
+    fn samples() -> Vec<Self> {
+        vec![Branch {
+            off: vec!["u-1".into()],
+            end: 99,
+        }]
+    }
+}
+
 /// ★ **这台上需手动的会话清单**（`sessions-needs`）：恰好是这台此刻活着、那台 pidfile 说在等人的那几个会话；
 /// 每一个的 `needs` 就是 `history-facts` 对同一份记录答的那一格（同一处判、同一份字，清单不另判）；
 /// 记录找不到的照列（判不出是哪一步，但框是哪种照那台说的）；在跑 · 空闲 · 进程死了的都不在。
@@ -1514,4 +1534,25 @@ fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
     o.remove("waitedText");
     (ms, rest)
+}
+
+impl crate::guard_support::Shaped for NeedsList {
+    fn samples() -> Vec<Self> {
+        use crate::observe::facts_query::{needs_of, PidWait};
+        let needs = needs_of(
+            &[],
+            Some(&PidWait {
+                waiting_for: Some(crate::agents::WaitOn::Worker),
+                since_ms: Some(1),
+                read_at_ms: 2,
+            }),
+        )
+        .expect("在等就有需手动");
+        vec![NeedsList {
+            waiting: vec![crate::observe::accounts_query::NeedsRow {
+                sid: "s-1".into(),
+                needs,
+            }],
+        }]
+    }
 }

@@ -116,7 +116,7 @@ impl Book {
                             good.insert(name, (sl.clone(), now_ms));
                         } else if let Some((prev, at)) = good.get(&name) {
                             let mut kept = prev.clone();
-                            kept["stale"] = json!({"said": error, "since": at});
+                            kept["stale"] = json!({"said": error, "raw": null, "since": at});
                             *sl = kept;
                         } else {
                             sl["needs"] = json!([]);
@@ -207,6 +207,11 @@ impl Book {
         lock(&self.seen)
             .contains_key(d.as_ref())
             .then(|| d.to_string())
+    }
+
+    /// 读好过的工作区（文件窗口反查只看这几个：不为每个目录起一次 pb）。
+    pub(crate) fn workspaces(&self) -> Vec<String> {
+        lock(&self.seen).keys().cloned().collect()
     }
 
     /// 这个工作区上一次读好的成品。

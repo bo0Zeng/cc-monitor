@@ -70,8 +70,8 @@ pub(crate) enum NotRun {
     /// ★ 它必须与兜底桶分开：调用方要分得出「我给的东西太大」（自己能修）
     /// 与「那个程序坏了」（自己修不了）。合成一个码就等于**归错因**。
     ArgListTooLong,
-    /// 其余起不来的原因（不存在 / 没权限 / 别的 IO 错），原文带上。
-    Failed(String),
+    /// 其余起不来的原因（不存在 / 没权限 / 别的 IO 错）：句子只带原因词，系统原话另带。
+    Failed(copy_core::said::Said),
 }
 
 /// 跑完了：拿到码与两条流。**语义不在这里**。
@@ -134,9 +134,16 @@ fn not_run(bin: &Path, e: ChildFail) -> NotRun {
             return NotRun::ArgListTooLong;
         }
     }
-    NotRun::Failed(copy_text(
-        "beInvoke.notRun.failed",
-        &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+    let why = match &e {
+        ChildFail::NotFound(io) | ChildFail::Io(io) => copy_core::spawn_reason(io.kind()),
+        ChildFail::TimedOut { .. } => copy_core::io_reason(std::io::ErrorKind::TimedOut),
+    };
+    NotRun::Failed(copy_core::said::Said::with_raw(
+        copy_text(
+            "beInvoke.notRun.failed",
+            &[("bin", &(bin.display()).to_string()), ("why", &why)],
+        ),
+        &e,
     ))
 }
 

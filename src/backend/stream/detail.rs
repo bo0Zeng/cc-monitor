@@ -59,6 +59,23 @@ impl Failed {
     pub(crate) fn text(&self) -> String {
         copy_core::detail::one(&self.message, &self.detail)
     }
+
+    /// 投到 CLI 面（**唯一一处**：CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 都经这里）：
+    /// stderr 一行 `{code, message, detail, data?}`，退出 2；`text`（[`crate::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
+    pub(crate) fn emit_to(&self, err: &mut dyn std::io::Write, text: bool) -> i32 {
+        let line = if text {
+            self.text()
+        } else {
+            serde_json::to_string(self).unwrap_or_else(|_| self.text())
+        };
+        let _ = writeln!(err, "{line}");
+        2
+    }
+
+    /// [`Failed::emit_to`] 的 stderr · JSON 那一形（不收 `--text` 的那几条 CLI）。
+    pub(crate) fn emit(&self) -> i32 {
+        self.emit_to(&mut std::io::stderr(), false)
+    }
 }
 
 /// 读不出来那一形在成功应答里的两格：`reason` 是那一句（不带原话）· `detail` 是复制详情（排法同失败应答，码 `unreadable`）。

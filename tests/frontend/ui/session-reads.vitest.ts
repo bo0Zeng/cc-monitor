@@ -198,7 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 2918,
+      end: 3081,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: {
@@ -242,6 +242,10 @@ describe("〔STC〕第五问：会话事实", () => {
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
       bgTasks: [{ call: "tu-b1", task: "bb1", cmd: "make test-all", at: "2026-10-09T08:00:00.000Z" }],
       background: null,
+      mcp: [
+        { name: "m-f", status: "failed", detail: "e-f", at: null },
+        { name: "m-n", status: "needsLogin", detail: null, at: null },
+      ],
     });
   });
 
@@ -274,7 +278,7 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
-    // 需要你：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
+    // 需手动：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
     const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs: 1000, waitedText: "1 秒" };
     // 本机收到的那一刻随解码记下（会走的钟从它起接着加；不在线上）。
     expect(decodeFacts({ ...good, needs }, 777).needs).toEqual({ ...needs, receivedAt: 777 });
@@ -290,6 +294,10 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts(without("handedBack")), "缺 handedBack").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, handedBack: [7] }), "id 只收字符串").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(ReplyUnreadable);
+    // 会话的 MCP：每项恰好三格，状态只认那三种（不收「连上了」）。
+    expect(() => decodeFacts(without("mcp")), "缺 mcp").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "connected", detail: null, at: null }] }), "状态只认那三种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "failed" }] }), "缺 detail").toThrow(ReplyUnreadable);
     // 每步状态：state 只认那三种、why 只认那两种（或 null）；重试结局只认那四种，每件恰好两格。
     const step = { id: "x", name: "Bash", what: null, at: null, state: "unclear", why: "untracked" };
     expect(decodeFacts({ ...good, pending: [step] }).pending[0]).toEqual(step);

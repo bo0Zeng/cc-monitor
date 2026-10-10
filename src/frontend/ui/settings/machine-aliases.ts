@@ -40,7 +40,7 @@ import { homeShort } from "../kit/path";
 import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
-import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
+import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
@@ -119,7 +119,7 @@ export interface AliasManager {
   element: HTMLElement;
   load(): void;
   reread(): void;
-  /** 「要你动手」里「让终端认得 ccm 和别名」那一件的态（这台没选自己贴 ⇒ `null`）。 */
+  /** 「待办」里「让终端认得 ccm 和别名」那一件的态（这台没选自己贴 ⇒ `null`）。 */
   setSelfPaste(c: { state: string } | null): void;
 }
 
@@ -311,7 +311,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   let otherRc: string | null = null;
   /** 接上那一行下面开着哪一块。 */
   let panelOpen: "preview" | "uninstall" | "choose" | null = null;
-  /** 「要你动手」里「让终端认得 ccm 和别名」那一件（这台选了自己贴才有；那台后端答的）。 */
+  /** 「待办」里「让终端认得 ccm 和别名」那一件（这台选了自己贴才有；那台后端答的）。 */
   let selfPaste: { state: string } | null = null;
   let allowHost: PsHost | null = null;
 
@@ -363,17 +363,10 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     }
   };
 
-  /** 已接上的每一份一行：旧版 ⇒「换成新版」；否则现状 ＋ 看加了什么 · 卸载。 */
+  /** 已接上的每一份一行：现状 ＋ 看加了什么 · 卸载。 */
   const renderOnRows = (on: StartupFile[]): void => {
     for (const c of on) {
       const p = short(c.path);
-      if (c.block.outdated) {
-        accessRows.appendChild(
-          accessLine("warn", copyText("machineAliases.access.outdated", { path: p }), button(copyText("machineAliases.access.reconnect"), "settings-btn-primary ccm-access-connect", () => void runRc("install", c.path))),
-        );
-        accessRows.appendChild(el("div", "cfg-hint", copyText("machineAliases.access.outdatedHint")));
-        continue;
-      }
       accessRows.appendChild(
         accessLine(
           c.policy?.loads === false ? "warn" : "ok",
@@ -459,10 +452,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     const tail = names.length ? copyText("machineAliases.status.clashTail", { names: names.join(copyText("accountsMcp.list.sep")) }) : "";
     const t = target();
     let dot: CfgDot;
-    if (on.some((c) => c.block.outdated)) {
-      dot = "warn";
-      row.setAction(button(copyText("machineAliases.status.update"), "settings-btn-primary", () => row.setOpen(true)));
-    } else if (on.length) {
+    if (on.length) {
       dot = "ok";
       row.setAction(null);
     } else {
@@ -488,22 +478,12 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     renderAccess();
   });
 
-  /** 握手终端数住 monitor 进程里（不是那台盘上的事实）⇒ 另问 monitor；只有本机 PowerShell 那一格显示它。 */
-  const refreshBound = (): void => {
-    if (!psExtras || !local) return;
-    void commands.bound_terminal_count().then(
-      (n) => psExtras?.setBound(n),
-      () => undefined,
-    );
-  };
-
   /** 读回口：启动文件候选（接入那一格）。清单那一块自己读配置文件（`profiles-read`）。 */
   const readBack = async (): Promise<void> => {
     try {
       const got = await readAliases(opts.origin(), shell, otherRc);
       home = got.home;
       cands = got.rcCandidates;
-      refreshBound();
     } catch (e) {
       sayFailure(accessWarn, copyText("machineAliases.readBack.failed"), e);
       row.setStatus("warn", copyText("machineAliases.status.readFailed"));
@@ -539,7 +519,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       otherRc = raw;
       cands = got.rcCandidates;
       if (got.otherRc) chosen = got.otherRc;
-      refreshBound();
     } catch (e) {
       sayFailure(otherErr, copyText("machineAliases.other.failed"), e);
     }
@@ -562,7 +541,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     else accessNote.textContent = afterRcText(verb, cands.find((c) => c.path === path)?.policy ?? null, shell);
   };
 
-  /** 「我自己贴」：交那台记下，去「要你动手」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
+  /** 「我自己贴」：交那台记下，去「待办」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
   const goChores = (): void => {
     wrap.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "data", anchor: `chores:${opts.origin()}` } }));
   };
@@ -661,38 +640,25 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 「Windows 终端」那一行（只本机 PowerShell）：能切回几个窗口 · 没开时自动打开 · cmd / Git Bash 也认 ccm
+// 「Windows 终端」那一行（只本机 PowerShell）：没开时自动打开 · cmd / Git Bash 也认 ccm
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // 别名块那一半（选哪份 `$PROFILE` · 装 / 卸 / 预览 / 现状 · 执行策略）在上面「别名」那一行里，与 POSIX 同一族命令；
-// 这一行是不随启动文件走的那三格：
-// - 已完成拉前握手的终端数（住 monitor 进程里，另问 monitor）；
+// 这一行是不随启动文件走的那两格：
 // - 用别名起 claude 时 cc-monitor 没开就先打开它（开关，立刻生效）；
 // - 用户级 PATH：开关就是手动加的那一下，拨回就是删；每次读都真问一趟（不缓存），探不动 ≠ 不在 PATH 上 ——
 //   读不出时开关不给拨、那句原话上屏。那两条命令的逐字文本给不想拨开关的人看（与开关跑的是同一份字节）。
 
 interface PsExtras {
-  setBound(n: number): void;
   loadNow(): void;
 }
 
 function buildPsExtras(row: CfgRow): PsExtras {
   const body = row.body;
-  let bound: number | null = null;
   let onPath: boolean | null = null;
   const paintStatus = (): void => {
-    const n = bound === null ? copyText("machineAliases.ps.empty") : String(bound);
-    row.setStatus(
-      onPath === null ? "off" : "ok",
-      onPath ? copyText("machineAliases.win.statusPathOn", { n }) : copyText("machineAliases.win.statusPathOff", { n }),
-    );
+    row.setStatus(onPath === null ? "off" : "ok", onPath ? copyText("machineAliases.win.statusPathOn") : copyText("machineAliases.win.statusPathOff"));
   };
-
-  const bind = el("div", "cfg-sw-row");
-  bind.dataset.role = "win-bind";
-  const bindName = el("span", "cfg-sw-name", copyText("machineAliases.win.bindTitle"));
-  const bindHelp = el("span", "cfg-hint", copyText("machineAliases.win.bindHelp", { n: copyText("machineAliases.ps.empty") }));
-  bind.append(bindName, bindHelp);
 
   const auto = toggleSwitch({
     label: copyText("machineAliases.ps.autoLaunch"),
@@ -739,7 +705,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
     cmdPre.hidden = !cmdPre.hidden;
   });
   cmdLink.hidden = true;
-  body.append(bind, auto.root, autoPath, pathSw.root, pathHelp, cmdLink, cmdPre);
+  body.append(auto.root, autoPath, pathSw.root, pathHelp, cmdLink, cmdPre);
 
   const lock = (disabled: boolean): void => {
     if (disabled) pathSw.input.setAttribute("aria-disabled", "true");
@@ -757,7 +723,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         // 🔴 探不动 ≠ 不在 PATH 上：原话上屏，开关不给拨。
         onPath = null;
         lock(true);
-        pathHelp.textContent = copyText("machineAliases.userPath.readFailed", { error: st.error });
+        sayWithDetail(pathHelp, st.error.said, st.error.detail);
       } else {
         onPath = st.onUserPath;
         lock(false);
@@ -772,7 +738,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
     } catch (e) {
       onPath = null;
       lock(true);
-      sayWithDetail(pathHelp, copyText("machineAliases.userPath.readFailed", { error: String(e) }), detailOf(e));
+      sayFailure(pathHelp, copyText("machineAliases.userPath.readFailed"), e);
     }
     paintStatus();
   };
@@ -793,11 +759,6 @@ function buildPsExtras(row: CfgRow): PsExtras {
 
   paintStatus();
   return {
-    setBound: (n) => {
-      bound = n;
-      bindHelp.textContent = copyText("machineAliases.win.bindHelp", { n: String(n) });
-      paintStatus();
-    },
     loadNow: () => {
       void refreshAutoLaunch();
       void refreshPath();

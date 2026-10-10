@@ -231,7 +231,8 @@ fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr
             "too_long",
             copy_text("beCcBus.notRun.tooLong", &[]).to_string(),
         ),
-        NotRun::Failed(msg) => ("failed", msg),
+        // 这条失败形没有原话位：系统原话记一行日志，句子只带原因词。
+        NotRun::Failed(s) => ("failed", crate::common::said::IntoNote::into_note(s)),
     })
 }
 

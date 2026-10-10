@@ -83,7 +83,7 @@ export const BGWORK_SCENES: Scene[] = [
     tabOf("排序模型训练").dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await sleep(800);
   }),
-  bw("bw-02-group-folded", "收着的组头", "「订单」「训练」两组收着：组头汇总「需要你 1 · 在跑 1 · 后台任务 1」与「后台任务 1」；展开的组头不汇总", async () => {
+  bw("bw-02-group-folded", "收着的组头", "「订单」「训练」两组收着：组头汇总「需手动 1 · 在跑 1 · 后台任务 1」与「后台任务 1」；展开的组头不汇总", async () => {
     await mainReady(N);
     await click(tabOf("部署文档"));
     await sleep(300);

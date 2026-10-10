@@ -84,7 +84,8 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     let out = Command::new("tmux")
         .arg("-S")
         .arg(&sock)
-        .args(["new-session", "-d", "-s", "a", "sleep 120"])
+        // 程序与参数分开给：tmux 直接 exec，中间不隔一层 shell（下面等 exec 做完要认得出它的名字）。
+        .args(["new-session", "-d", "-s", "a", "sleep", "120"])
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")
         .output()
@@ -98,10 +99,13 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
         .parse()
         .expect("读不到 pane_pid");
     // 那个「claude」（pane 里的进程）自己的环境里有 TMUX / TMUX_PANE —— tmux 注的。
-    assert!(wait_until(5, || matches!(
-        crate::platform::proc::proc_env_var(pane_pid, "TMUX"),
-        crate::platform::proc::EnvRead::Value(_)
-    )));
+    //   先等 exec 成 `sleep` 做完（`exec_settled`）：exec 之前读到的环境是 fork 出来那一份（也有 TMUX），只等 TMUX 出现
+    //   会在 exec 那一拍之前就放行，下面那一问落进 exec 当中 ⇒ 判「取不到」（负载下并发跑红过：Unreadable ≠ Detached）。
+    assert!(wait_until(5, || exec_settled(pane_pid, "sleep")
+        && matches!(
+            crate::platform::proc::proc_env_var(pane_pid, "TMUX"),
+            crate::platform::proc::EnvRead::Value(_)
+        )));
 
     assert_eq!(
         shown_by(pane_pid).unwrap(),
@@ -287,8 +291,26 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
         "bad_args"
     );
     assert_eq!(
-        product(&Shown::Detached),
+        serde_json::to_value(product(&Shown::Detached)).expect("json"),
         serde_json::json!({ "terminals": [], "why": "detached" })
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+impl crate::guard_support::Shaped for Showing {
+    fn samples() -> Vec<Self> {
+        vec![Showing {
+            terminals: vec![Terminal {
+                ssh: Some(SshConnection {
+                    client_addr: "203.0.113.2".into(),
+                    client_port: 50000,
+                    server_addr: "203.0.113.1".into(),
+                    server_port: 22,
+                }),
+                activity: Some(1),
+                window: Some("1-2".into()),
+            }],
+            why: Some("detached"),
+        }]
+    }
 }

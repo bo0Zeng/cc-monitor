@@ -354,7 +354,8 @@ async fn a_failed_remote_command_keeps_its_envelope_code() {
         .unwrap_err();
     assert_eq!(e.code.as_deref(), Some("stale"));
     assert!(e.message.contains("盘上那份变了"), "{e:?}");
+    // 不是信封的原样 stderr：句子只说「后端报错」，那台的原话记日志、不上句子。
     let e = run("bash: boom").await.unwrap_err();
     assert_eq!(e.code, None);
-    assert!(e.message.contains("boom"), "{e:?}");
+    assert_eq!(e.message, copy_text("beRemoteAsk.run.failed", &[]), "{e:?}");
 }

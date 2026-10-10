@@ -535,10 +535,10 @@ async fn blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(f).await.map_err(|e| {
         (
             "failed",
-            copy_text(
-                "beHistoryJoin.blocking.unfinished",
-                &[("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beHistoryJoin.blocking.unfinished", &[]),
+                e,
+            )),
         )
     })?
 }

@@ -45,6 +45,37 @@ pub(crate) fn current_uid() -> u32 {
     0
 }
 
+/// 本账号在账号数据库里登记的家目录（`getpwuid_r`），**不看 `$HOME`**：测试与台架会改 `$HOME`，这一格要的正是「改之前那一个」。
+/// 查不到 ⇒ `None`；非 unix ⇒ `None`（那里没有常驻这一形，问它的只有常驻后端起来那一刻）。
+#[cfg(unix)]
+pub(crate) fn account_home() -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let mut buf = vec![0 as libc::c_char; 16 * 1024];
+    // SAFETY: `pwd` 由 `getpwuid_r` 填；`buf` 活到读完 `pw_dir`；返回的 `out` 只在非空时解引用。
+    unsafe {
+        let mut pwd: libc::passwd = std::mem::zeroed();
+        let mut out: *mut libc::passwd = std::ptr::null_mut();
+        let rc = libc::getpwuid_r(
+            libc::getuid(),
+            &mut pwd,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut out,
+        );
+        if rc != 0 || out.is_null() || pwd.pw_dir.is_null() {
+            return None;
+        }
+        let dir = std::ffi::CStr::from_ptr(pwd.pw_dir);
+        let p = PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes()));
+        (!p.as_os_str().is_empty()).then_some(p)
+    }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn account_home() -> Option<PathBuf> {
+    None
+}
+
 /// 一个路径（跟链接）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
 /// （`files::index::build` · `files::size`）。调用方只把它用在「不跟链接地看过、确是目录」的条目上，跟不跟链接在那里没有差别。
 /// 非 unix ⇒ `None`：那一判在那个平台上不开口（全当同一个文件系统），不编一个数。

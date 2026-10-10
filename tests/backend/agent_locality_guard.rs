@@ -178,15 +178,10 @@ mod tests {
              不是哪个 agent 的 `sessions/` 目录布局 —— 合并只读 `updatedAt` / `hitCount` / `hitsTruncated` 三格。",
         ),
         (
-            "faces/rotation_face.rs",
-            "\"sessions\"",
-            "这是换号那一族**线上的字段名**（一批会话各自的结果 / 那一份，`rotation-session-*` · `rotation-switch`），\
-             不是哪个 agent 的 `sessions/` 目录布局。",
-        ),
-        (
             "faces/rotation_switch_face.rs",
             "\"sessions\"",
-            "同上一条：「现在就换」的入参与每个会话的结果那一格（`rotation-switch`），不是目录布局。",
+            "这是换号那一族**线上的字段名**：「现在就换」的入参与每个会话的结果那一格（`rotation-switch`），\
+             不是哪个 agent 的 `sessions/` 目录布局（`rotation-session-*` 那两条的应答改成 typed 结构体，字面量随之没了）。",
         ),
         (
             "stream/inbound/registry/accounts.rs",

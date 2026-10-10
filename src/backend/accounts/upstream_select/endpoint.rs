@@ -182,6 +182,11 @@ pub(crate) fn keyed_for_args(url: &str, get: &dyn Fn(&str) -> Option<String>) ->
     keyed_for_exec(url, crate::relay::KeyKind::Pass, get)
 }
 
+/// 非得经 shell 那一趟、地址拼进参数的那一家：照字面插进那个词的只许直通那一把（这台家目录下根钥匙派生的那一个）。只读。
+pub(crate) fn pass_key_for_shell(home: &std::path::Path) -> Option<String> {
+    crate::relay::pass_key_on_disk(home)
+}
+
 /// 一条不带钥匙的中转地址 ⇒ 插上这台盘上 `kind` 那把钥匙的那一形（agent 进程要的就是它）。
 /// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
 pub(crate) fn keyed_for_exec(
@@ -376,7 +381,7 @@ pub(crate) fn answer_optin(args: &Value) -> EndpointAnswer {
     ))
 }
 
-/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「要你动手」那一件同读这一份）。
+/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「待办」那一件同读这一份）。
 pub(crate) struct OptinReport {
     pub(crate) state: OptinState,
     /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。

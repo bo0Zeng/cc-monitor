@@ -11,7 +11,7 @@
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
-| 常驻监听口 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"tunnel"` 走过去，不开公网口） | 回环 TCP，口按家（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）算；第一行 attach 带钥匙文件里那一把，可带 `"flags":[…]`（起流旗标的子集）；每条连接各一份 watcher / 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；先读 hello，再交一行 `{"attach":true}`（可带 `"flags":[…]`，起流旗标的子集），回 `{"attach":"ok"}` 或 `{"attach":"refused","reason":"malformed-attach"}`；中继连不上时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；每条连接各一份 watcher / 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
@@ -103,7 +103,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
 - 一次性子命令（叫法 · 位置参数个数 · 输出里它读的那几格）：`--list-projects`（`dirName` `projectPath` `sessionCount` `lastActivityMs`）·
   `--list-sessions <项目目录名>`（`sessionId` `aiTitle` `cwd` `jsonlPath` `messageCountApprox` `startedAtMs` `updatedAtMs` `isBg`）· `--read-session <路径>` ·
-  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin）·
+  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin 或 `--args-b64`）·
   `--backend-probe` · `--find-in-session --query <q> <路径>` · `--list-user-inputs <路径>` ·
   帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
   会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
@@ -160,10 +160,14 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   缺值 · 给两次 ⇒ `bad_args`；值不是正整数 ⇒ 当没带（同帧面那一格）。
 - 失败：stderr 一行 `{code, message, detail}`（少数码另带 `data`）、退出 2 —— 与帧面失败应答出自同一份：同一个失败两个面上 `code` · `message` · `detail` · `data` 逐字相同（`detail` 恒在）。
   带 `--text` ⇒ stderr 是那一句 ＋ 下面原样接 `detail` 那几行（同界面「复制详情」复制出去的那一段），不是 JSON。
+  手写的几条一次性子命令（`--list-projects` · `--fork-session` · `--account-trust` · `--account-trust-zero`）失败也是这一份（详情里的「命令」是那条子命令名，不收 `--text`）；
+  只有 `--resolve` 另是一形（`{code, message}` 两格，冻结给第二个前端，见 §10）。
 - 出清单的那几条（骨架索引 · 你说过的话 · 会话内查找）是**三段**：首行头（认得出对面会出这份东西）· 每条一行 · 尾行带 `count` 与续点。**没有尾行 ⇒ 输出被截断**，调用方不许当全量。
   选项写在位置参数**前面**：老后端不认新选项时会快速失败（stdout 0 字节、退出 2），而不是把整份会话透传回来；客户端认「首行不是那个头」⇒ 诚实降级。
 - 路径参数过同一套路径围栏（只许落在那台的会话记录树里）。
-- **`--resolve`**（stdin `ResumeSpec` → stdout `CommandPlan`）与仓外 aterm 的契约冻结，字节以金样为准。它的三个出参可信度不同：`command`（候选启动器 ＋ `--resume <sid>`）可当事实用；
+- **`--resolve`**（`ResumeSpec` → stdout `CommandPlan`）与仓外 aterm 的契约冻结，字节以金样为准。入参与上面同一套口：stdin（可带 `--stdin-line`）或 `--args-b64`，同一套上限。
+  错误码全集：`bad_request` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`（流上的 `resolve` 也回这几个）·
+  `stdin_read_failed` · `args_too_large` · `no_input` · `bad_args`（只在一次性这条）。它的三个出参可信度不同：`command`（候选启动器 ＋ `--resume <sid>`）可当事实用；
   `sessionName` 纯从 sid 派生、没查过 tmux；`capabilities` 是典型档、不是这台此刻的探测结果 —— 要判某个 tmux 会话在不在，问 `terminals-list`。
 
 ## 9. 本机进程之间的文件
@@ -174,10 +178,9 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | 文件 | 写 | 读 | 是什么 |
 |---|---|---|---|
 | `config.json` | monitor（唯一写口 `config.rs::patch_config_at`：交「改哪几条路径」，进程级锁里现读、逐条应用、原子替换；盘上读不懂就拒写） | monitor 前端 · `logging` · 起本机后端时取 `claudeDir` | 主题 · 字体 · `claudeDir` 覆盖 · 诊断 · 机器表 `remote.hosts`（改认人的那几格时整张表要成立：`config.rs::check_machine_table`） |
-| `ps-await/<PID>.json` | PowerShell `__ccm_bind` | monitor `bind.rs` | `{ps_pid, marker, proc_start}`：「去找标题 = marker 的窗口」；短暂 |
-| `ps-registry/<PID>.json` | monitor `bind.rs` | PowerShell · monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：绑上了；与 PS 进程同寿 |
-| `sid-hwnd-cache.json` | monitor `SidHwndCache` | monitor 启动恢复 · 拉前 | `{<sid>: 同上那几格}`：会话 → 窗口；拉前时三重校验（窗口在 · owner pid · owner 起始时刻），过期自动清 |
-| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
+| `ps-await/<PID>.tty` | Linux bash / zsh 接入块（`src/shared/ccm-aliases.sh`，本机桌面上开的 shell） | monitor `bind.rs` | `{shell_pid, proc_start, tty}`：「去认这个终端的窗口」；认上 / 认不出就删 |
+| `ps-registry/<PID>.json` | monitor `bind.rs` | monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：那个 shell 显示在哪个窗口；与 shell 进程同寿 |
+| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell 接入块 `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
 | `history-metadata.json` | 本机常驻后端（`history-annotate` / `history-forget`；读不懂就拒写、只改那一条） | 本机常驻后端（`history-list` 并进成品） | `{<sid>: {starred, custom_title, hidden}}` |
 | `logs/monitor/` · `logs/backend/` | monitor · 常驻后端 | 人 · `backend-log` | 诊断日志（按天滚 · 有上限） |
 | `backend.json` | `exit-policy-set` | `exit-policy-read` · monitor 退出时 | 「退出行为」：monitor 退出时结束不结束本机常驻后端 |
@@ -190,39 +193,18 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `attachable: false` ⇒ 不提供 attach / 拉前 / 「杀死空 tmux」，缺席 ＝ `true`。`procStart` 参与 PID 复用检测：缺了就退化成只看进程在不在。
 - `<claude_dir>/tasks/<sid>/<id>.json`：任务清单（`<digits>.json` 才算，`.lock` / `.highwatermark` 忽略；读到半截 JSON 单条跳过）。后端盯这棵树，变了发 `tasks_changed{sid}`，客户端重问 `tasks-list`。
 
-## 跨进程握手时序图（cc 集成）
+## 切到终端：此刻显示这个会话的是哪个窗口
 
-敲 `cc`（或开一个 PowerShell）时，PowerShell 让 monitor 认出自己的终端窗口：
+点 ↗ 那一刻现查，不缓存：本机会话从 agent 进程往上走进程链；远端会话先问那台此刻谁连着它（带窗口标签 `LC_CCM_WINDOW` 就先按标签），
+再问本机后端开着那条连接的是哪串进程（`terminal-processes`）。最后一跳在 monitor（`bind.rs::pick_chain_window`）：沿链从下往上，
+每一级先问「它显示在哪个窗口」，再看它名下的可见顶层窗口，碰到终端本身就停（恰好一个窗口 ⇒ 它，几个 ⇒ 照实说分不清）。
 
-```
-PS (__ccm_bind)                          文件                            monitor (bind.rs)
-1. ps-registry/<PID>.json 在且 ps_proc_start 对得上 ⇒ 已绑，返回
-2. auto-launch 开着且 monitor 不在 ⇒ 后台起 monitor（不抢焦点、不死等）
-3. marker = "ccm-bind-<PID>-<8 位 GUID>"
-4. ★ 先设窗口标题 WindowTitle = marker
-5. 后写 ps-await/<PID>.json ──────────►  ps-await/<PID>.json
-                                                     │ notify（合并一小段）
-                                                     ▼
-                                                  6. 读它（剥 BOM）
-                                                  7. EnumWindows 找标题含 marker 的窗口
-                                                     找不到 ⇒ 短重试
-                                                  8. 取窗口属主进程与它的起始时刻
-                                                  9. 写 ps-registry/<PID>.json
-6'. 轮询，直到 ps-await 被删或 ps-registry 落地且指纹对上 ◄──
-                                                 10. 删 ps-await/<PID>.json
-7'. 退出：标题还是 marker 就恢复原标题；循环外再补查一次 registry；ps-await 还在就自删
-```
-
-开 PowerShell 那一份（`__ccm_bind -Background`）第 1 步之后不做第 2 步，第 3–7' 步交给后台一个空 runspace：等到「monitor 起来了」（`Local\cc-monitor-up` 事件）且看得出它真在跑（`Local\cc-monitor-alive` 互斥量被占着）时才做，不出声。
-轮询步长与总期限住 `src/shared/cc.ps1.tpl`，monitor 侧的合并与重试节奏住 `bind.rs`（`handshake_timings_match_their_pinned_values` 钉着）。
-
-**为什么第 4 步必须在第 5 步之前**：monitor 在 await 文件落地那一瞬就去找窗口；先写文件、后设标题的话，monitor 越快越找不到，每个新 shell 的首次 `cc` 都会烧满超时。
-两侧各修一半：PowerShell 侧反转顺序 ⇒ 首次即中；monitor 侧的短重试兜住旧模板与慢标题传播。
-
-**退出条件是二选一**：await 文件被删，**或** registry 落地且指纹对上 —— monitor 的清理时序怎么变都走得通。
-
-**为什么这样设计**：文件 ＋ notify 两边都简单、出问题能直接看文件、不用管连接；await 用 PID 当文件名，多个 PowerShell 同时绑互不覆盖；marker 带 GUID，PID 被复用也不会认错窗口；
-窗口缓存持久化，monitor 重启不丢绑定；auto-launch 记 monitor 的路径，monitor 搬了家下次启动自己更新。
+「它显示在哪个窗口」：
+- **Windows**：借那个进程的控制台问一句（`platform::console::console_window`：`AttachConsole` → `GetConsoleWindow` → 属主）。
+  Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的那个窗口；经典控制台就是控制台窗口自己。不要接入块、不要登记、不改标题。
+  只认到窗口，认不到窗口里的哪个标签。
+- **Linux（X11）**：bash / zsh 接入块在本机桌面上开的 shell 里留 `ps-await/<PID>.tty`，monitor 往那个终端写改标题序列挂记号、按标题找窗口，
+  写进 `ps-registry/`（标题出栈还原）。
 
 ## 加一条协议
 

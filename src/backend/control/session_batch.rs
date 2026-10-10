@@ -7,7 +7,7 @@
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
-use super::launch_account::{self as la, AccountAsk, Settled};
+use super::launch_account::{self as la, AccountAsk, AccountUnavailable, LaunchedAccount, Settled};
 use super::launch_render::{local, wire};
 use crate::platform::child::{Child, Deadline};
 use serde_json::{json, Map, Value};
@@ -44,9 +44,12 @@ pub(crate) struct Deps<'a> {
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
-    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, CmdErr>,
+    /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
+    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, crate::stream::inbound::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
-    pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), CmdErr>,
+    /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
+    pub(crate) send_into:
+        &'a dyn Fn(&str, &str, &str) -> Result<(), crate::stream::inbound::spec::Fail>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
     /// 基名从哪来 ⇒ 这台铸的新会话名（同 `terminal-name-mint`：按这台此刻的会话名避让）。
@@ -120,9 +123,65 @@ pub(crate) struct Answer {
     /// 开终端那一形要跑的那一行。
     pub(crate) cmd: Option<String>,
     /// 起的那一条实际用的号（`launch-local` 应答那一格同形；停 / 没起 ⇒ `null`）。
-    pub(crate) account: Value,
+    pub(crate) account: Option<LaunchedAccount>,
     /// 选不了号那一项的那一形（同 `account_unavailable` 的 `data`；别的 ⇒ `null`）。
-    pub(crate) unavailable: Value,
+    pub(crate) unavailable: Option<AccountUnavailable>,
+}
+
+/// `sessions-stop` / `sessions-start` 的应答：逐个结果，与入参同序。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Batched {
+    pub(crate) results: Vec<Outcome>,
+}
+
+/// 一个会话的结局上线那一形（[`Answer`] ＋ 失败那一项多的两格）。可缺的格一律出 `null`，不省键。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Outcome {
+    pub(crate) sid: String,
+    pub(crate) outcome: &'static str,
+    pub(crate) why: Option<String>,
+    pub(crate) detail: String,
+    pub(crate) said: Option<String>,
+    pub(crate) copy_detail: String,
+    pub(crate) session: Option<String>,
+    pub(crate) bus: Option<Value>,
+    pub(crate) cmd: Option<String>,
+    pub(crate) account: Option<LaunchedAccount>,
+    pub(crate) unavailable: Option<AccountUnavailable>,
+}
+
+/// `sessions-where` 的应答：逐个结果，与入参同序。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Whereabouts {
+    pub(crate) results: Vec<Whereabout>,
+}
+
+/// 一个 sid 此刻在这台 tmux 里的样子（[`Standing`] 上线那一形 ＋ 这台没 tmux）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum StandingWord {
+    Running,
+    Ambiguous,
+    Idle,
+    None,
+    NoTmux,
+}
+
+/// `sessions-where` 一项：`terminals` 与 `names` 同序同数。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Whereabout {
+    pub(crate) sid: String,
+    pub(crate) standing: StandingWord,
+    pub(crate) names: Vec<String>,
+    pub(crate) terminals: Vec<TerminalAt>,
+}
+
+/// 名单里那一行（词同容器那一格与 `terminals-list`）。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct TerminalAt {
+    pub(crate) host: &'static str,
+    pub(crate) terminal: String,
 }
 
 impl Answer {
@@ -135,8 +194,8 @@ impl Answer {
             session: None,
             bus: None,
             cmd: None,
-            account: Value::Null,
-            unavailable: Value::Null,
+            account: None,
+            unavailable: None,
         }
     }
     fn skipped(sid: &str, code: &str, detail: String) -> Self {
@@ -150,7 +209,7 @@ impl Answer {
     }
     /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，`crate::stream::said`；
     /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
-    fn to_json(&self, cmd: &str) -> Value {
+    fn to_wire(self, cmd: &str) -> Outcome {
         let failed = self.outcome == "failed";
         let said = match (&self.why, failed && cmd == "sessions-stop") {
             (Some(why), true) => crate::stream::said::reword(
@@ -164,19 +223,19 @@ impl Answer {
             (Some(why), true) => crate::stream::detail::of(Some(cmd), why, Some(&self.detail)),
             _ => String::new(),
         };
-        json!({
-            "sid": self.sid,
-            "outcome": self.outcome,
-            "why": self.why,
-            "detail": self.detail,
-            "said": said,
-            "copyDetail": copy_detail,
-            "session": self.session,
-            "bus": self.bus,
-            "cmd": self.cmd,
-            "account": self.account,
-            "unavailable": self.unavailable,
-        })
+        Outcome {
+            sid: self.sid,
+            outcome: self.outcome,
+            why: self.why,
+            detail: self.detail,
+            said,
+            copy_detail,
+            session: self.session,
+            bus: self.bus,
+            cmd: self.cmd,
+            account: self.account,
+            unavailable: self.unavailable,
+        }
     }
 }
 
@@ -254,36 +313,42 @@ pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let sids = sids_of(args.get("sids"))?;
     let rows = listed(deps)?;
     let host = crate::stream::wire::TerminalHost::Tmux.as_wire();
-    let results: Vec<Value> = sids
+    let results = sids
         .iter()
         .map(|sid| {
-            let (kind, found) = match rows.as_deref().map(|r| carriers(r, sid)) {
-                None => ("no_tmux", vec![]),
-                Some(Standing::Running(e)) => ("running", vec![e]),
-                Some(Standing::Ambiguous(es)) => ("ambiguous", es),
-                Some(Standing::Idle(e)) => ("idle", vec![e]),
-                Some(Standing::None) => ("none", vec![]),
+            let (standing, found) = match rows.as_deref().map(|r| carriers(r, sid)) {
+                None => (StandingWord::NoTmux, vec![]),
+                Some(Standing::Running(e)) => (StandingWord::Running, vec![e]),
+                Some(Standing::Ambiguous(es)) => (StandingWord::Ambiguous, es),
+                Some(Standing::Idle(e)) => (StandingWord::Idle, vec![e]),
+                Some(Standing::None) => (StandingWord::None, vec![]),
             };
-            let names: Vec<&str> = found.iter().map(|e| e.name.as_str()).collect();
-            let terminals: Vec<Value> = found
-                .iter()
-                .map(|e| json!({ "host": host, "terminal": e.terminal }))
-                .collect();
-            json!({ "sid": sid, "standing": kind, "names": names, "terminals": terminals })
+            Whereabout {
+                sid: sid.clone(),
+                standing,
+                names: found.iter().map(|e| e.name.clone()).collect(),
+                terminals: found
+                    .iter()
+                    .map(|e| TerminalAt {
+                        host,
+                        terminal: e.terminal.clone(),
+                    })
+                    .collect(),
+            }
         })
         .collect();
-    Ok(json!({ "results": results }))
+    crate::stream::inbound::spec::wire(&Whereabouts { results })
 }
 
 /// `sessions-stop`：`{sids}` ⇒ `{results}`。
 pub(crate) fn stop(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let sids = sids_of(args.get("sids"))?;
     let rows = listed(deps)?;
-    let results: Vec<Value> = sids
+    let results: Vec<Outcome> = sids
         .iter()
-        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_json("sessions-stop"))
+        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_wire("sessions-stop"))
         .collect();
-    Ok(json!({ "results": results }))
+    crate::stream::inbound::spec::wire(&Batched { results })
 }
 
 fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
@@ -307,10 +372,13 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
             bus: Some(bus),
             ..Answer::done(sid)
         },
-        Err(e) => Answer {
-            session: Some(name),
-            ..Answer::failed(sid, e)
-        },
+        Err(f) => {
+            let code = f.code.clone();
+            Answer {
+                session: Some(name),
+                ..Answer::failed(sid, (&code, crate::common::said::Said::from(f).logged()))
+            }
+        }
     }
 }
 
@@ -476,11 +544,11 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     } else {
         None
     };
-    let results: Vec<Value> = items
+    let results = items
         .iter()
-        .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_json("sessions-start"))
+        .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_wire("sessions-start"))
         .collect();
-    Ok(json!({ "results": results }))
+    crate::stream::inbound::spec::wire(&Batched { results })
 }
 
 /// 一个：先判用哪个号（选不了 ⇒ 跳过、不挡别的），再问记录在不在（查这个号那棵树），再按那一形做。
@@ -499,10 +567,11 @@ fn start_one(
     let account = match la::settle(&it.account, Some(&it.sid), models, deps.accounts) {
         Ok(a) => a,
         Err(u) => {
+            let requested = u.requested.clone();
             return Answer {
-                unavailable: serde_json::to_value(&u).unwrap_or(Value::Null),
-                ..Answer::skipped(&it.sid, "account_unavailable", u.requested)
-            }
+                unavailable: Some(u),
+                ..Answer::skipped(&it.sid, "account_unavailable", requested)
+            };
         }
     };
     let root = match &account {
@@ -543,10 +612,9 @@ fn start_one(
         }
     };
     Answer {
-        account: if done.outcome == "done" {
-            super::launch_render::launched(&account)
-        } else {
-            Value::Null
+        account: match &account {
+            Settled::Account(a) if done.outcome == "done" => Some(a.clone()),
+            _ => None,
         },
         ..done
     }
@@ -603,7 +671,13 @@ fn start_in_tmux(
                     pretrust(account, &it.cwd, deps);
                     match (deps.send_into)(&n, &it.sid, &line) {
                         Ok(()) => Answer::done(&it.sid),
-                        Err(e) => Answer::failed(&it.sid, e),
+                        Err(f) => {
+                            let code = f.code.clone();
+                            Answer::failed(
+                                &it.sid,
+                                (&code, crate::common::said::Said::from(f).logged()),
+                            )
+                        }
                     }
                 }
             };

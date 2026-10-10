@@ -20,7 +20,7 @@ export interface FactsChange {
   /** 是哪一家那一格到了 / 变了（卡头那一家的名字要补上）。 */
   agent: boolean;
   writers: boolean;
-  /** 需要你那一格变了。 */
+  /** 需手动那一格变了。 */
   needs: boolean;
   /** 悬停卡的那两样（没结果的调用 · 最后一句）变了。 */
   peek: boolean;

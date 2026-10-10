@@ -150,7 +150,7 @@ pub struct LiveMeta {
     pub activity_tone: String,
     pub waiting_for: Option<String>,
     pub container: Option<SessionContainer>,
-    /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
+    /// 那个 claude 进程的 pid（本机 ↗ 点那一刻从它往上找窗口；没索要 ⇒ `None`）。
     pub pid: Option<u32>,
 }
 
@@ -196,7 +196,7 @@ pub enum In {
     },
     /// `session_branch`：那台后端给的一个会话的主线外清单（记录 `id` 的 JSON 数组原文，不解释）。
     Branch {
-        origin: String,
+        origin: crate::origin::Origin,
         sid: String,
         off: crate::ui_contract::RecordBody,
     },
@@ -238,7 +238,7 @@ pub enum Out {
     },
     /// 一个会话的主线外清单（原样转）。
     Branch {
-        origin: String,
+        origin: crate::origin::Origin,
         sid: String,
         off: crate::ui_contract::RecordBody,
     },
@@ -352,7 +352,7 @@ impl Book {
             }
             In::Branch { origin, sid, off } => {
                 self.origins
-                    .entry(origin.clone())
+                    .entry(origin.as_wire_str().to_string())
                     .or_default()
                     .branch
                     .insert(sid.clone(), off.clone());
@@ -413,6 +413,18 @@ impl Book {
         )
     }
 
+    /// 那台那个会话此刻活着时，宣告它的那一帧带来的 agent 进程号（↗ 点那一刻从它往上走进程链；没带 / 不活 ⇒ `None`）。
+    pub fn live_pid(&self, origin: &crate::origin::Origin, sid: &str) -> Option<u32> {
+        match self
+            .origins
+            .get(origin.as_wire_str())
+            .and_then(|b| b.sessions.get(sid))
+        {
+            Some(Product::Live(meta)) => meta.pid,
+            _ => None,
+        }
+    }
+
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
     pub fn forget(&mut self, sid: &str) {
         for b in self.origins.values_mut() {
@@ -451,7 +463,7 @@ impl Book {
                         }
                         if let Some(off) = b.branch.get(sid) {
                             r.before.push(Out::Branch {
-                                origin: (*o).clone(),
+                                origin: crate::origin::Origin((*o).clone()),
                                 sid: sid.clone(),
                                 off: off.clone(),
                             });
@@ -518,8 +530,8 @@ impl Out {
             | Out::Left { origin, .. }
             | Out::Listed { origin, .. }
             | Out::Unseen { origin, .. }
-            | Out::Runs { origin, .. }
-            | Out::Branch { origin, .. } => origin,
+            | Out::Runs { origin, .. } => origin,
+            Out::Branch { origin, .. } => origin.as_wire_str(),
         }
     }
 

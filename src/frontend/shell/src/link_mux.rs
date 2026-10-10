@@ -33,10 +33,7 @@ use crate::inbound_client::{CallError, InboundClient};
 /// （`D11`），但分流规则只许有一份 —— 同 `frame_query` / `cc_bus` 那几个发送端的理由。
 fn said(e: &CallError) -> String {
     match route_call_error(e, &copy_core::local_machine(), |_code, message| {
-        copy_text(
-            "rsLinkMux.said.refused",
-            &[("message", &message.to_string())],
-        )
+        copy_text("rsLinkMux.said.refused", &[("said", &message.to_string())])
     }) {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
     }
@@ -327,10 +324,14 @@ impl LinkStream {
         self.flight = None;
         Poll::Ready(match r {
             Ok(inner) => inner,
-            Err(e) => Err(std::io::Error::other(copy_text(
-                "rsLinkMux.flight.unfinished",
-                &[("e", &e.to_string())],
-            ))),
+            Err(e) => {
+                // 那条发送任务没回来（panic / 被取消）：句子说「程序出错」，原话记一行日志。
+                tracing::warn!("链路发送任务没回来: {e}");
+                Err(std::io::Error::other(copy_text(
+                    "rsLinkMux.flight.unfinished",
+                    &[],
+                )))
+            }
         })
     }
 }

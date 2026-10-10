@@ -16,7 +16,8 @@ use copy_core::copy_text;
 use serde::Serialize;
 
 /// 命令级错误：`(code, message)`。
-type CmdErr = (&'static str, String);
+/// 失败：码 ＋ 那一句 ＋ 原话（`ssh -G` 自己说的 · 起不来时的系统报错，进复制详情）。
+type CmdErr = crate::stream::inbound::spec::Fail;
 
 /// 一个别名解析出的有效连接参数（`ssh-config-resolve` 的成品）。线上 camelCase（界面 `ssh-config-reads.ts` 严格收）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -254,37 +255,42 @@ const SSH_G_WITHIN: Deadline = Deadline::secs(5);
 pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, CmdErr> {
     let alias = alias.trim();
     if !is_safe_alias(alias) {
-        return Err((
+        return Err(CmdErr::from((
             "bad_alias",
             copy_text("beSshConfig.host.badAlias", &[("alias", alias)]),
-        ));
+        )));
     }
     if alias.starts_with('-') {
-        return Err(("bad_alias", copy_text("beSshConfig.host.dashAlias", &[])));
+        return Err(CmdErr::from((
+            "bad_alias",
+            copy_text("beSshConfig.host.dashAlias", &[]),
+        )));
     }
     let out = Child::new("ssh")
         .arg("-G")
         .arg(alias)
         .run(SSH_G_WITHIN)
         .map_err(|e| {
-            e.into_cmd_err("failed", |e| {
-                copy_text("beSshConfig.host.sshGFailed", &[("e", &e.to_string())])
-            })
+            CmdErr::from(e.into_cmd_said("failed", |why| {
+                copy_text("beSshConfig.host.sshGFailed", &[("why", why)])
+            }))
         })?;
     if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err((
-            "failed",
-            copy_text(
-                "beSshConfig.host.sshGExit",
-                &[("alias", alias), ("detail", stderr.trim())],
-            ),
-        ));
+        return Err(ssh_g_exited(alias, &out.stderr));
     }
     Ok(parse_ssh_g_output(
         &String::from_utf8_lossy(&out.stdout),
         alias,
     ))
+}
+
+/// `ssh -G` 退了非 0：句子只说哪个别名，ssh 自己说的那句进复制详情。
+pub(crate) fn ssh_g_exited(alias: &str, stderr: &[u8]) -> CmdErr {
+    CmdErr::new(
+        "failed",
+        copy_text("beSshConfig.host.sshGExit", &[("alias", alias)]),
+    )
+    .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
 /// 批量导入：列全部别名、逐个 `ssh -G`（保序）、聚合成预览组。解析失败的别名跳过（best-effort）。
@@ -307,10 +313,12 @@ pub(crate) fn answer_aliases() -> serde_json::Value {
 
 /// `ssh-config-resolve {alias}` 的成品。
 pub(crate) fn answer_resolve(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
-    let alias = args.get("alias").and_then(|v| v.as_str()).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `alias`"),
-    ))?;
+    let alias = args.get("alias").and_then(|v| v.as_str()).ok_or_else(|| {
+        CmdErr::from((
+            "bad_args",
+            crate::common::contract::malformed("missing `alias`"),
+        ))
+    })?;
     resolve(alias).map(|r| to_value(&r))
 }
 
@@ -323,10 +331,14 @@ pub(crate) fn answer_import(args: &serde_json::Value) -> Result<serde_json::Valu
         .get("known")
         .cloned()
         .and_then(|v| serde_json::from_value(v).ok())
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing `known` (an array of {host, user, port})"),
-        ))?;
+        .ok_or_else(|| {
+            CmdErr::from((
+                "bad_args",
+                crate::common::contract::malformed(
+                    "missing `known` (an array of {host, user, port})",
+                ),
+            ))
+        })?;
     let mut groups = import();
     mark_in_list(&mut groups, &known);
     Ok(serde_json::json!({ "groups": to_value(&groups) }))

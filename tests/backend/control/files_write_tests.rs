@@ -1984,6 +1984,11 @@ fn deleting_a_session_takes_only_a_sid_and_removes_exactly_that_file() {
         crate::agents::claudecode::paths::session_file_for_delete_in(&home, s)
     });
     assert!(matches!(again, Err(WriteRefusal::Refused(_))), "{again:?}");
+    // 找不到 ⇒ 说「记录已不在」；sid 形状不对 ⇒ 说「目标无效」（不把英文原话递上句子）。
+    assert_eq!(
+        crate::agents::claudecode::paths::session_file_for_delete_in(&home, sid).unwrap_err(),
+        copy_core::copy_text("beClaudePaths.delete.notFound", &[("id", sid)])
+    );
     for bad in ["../x", "a/b", "", "x.jsonl"] {
         let got = delete_session_with(bad, |s| {
             crate::agents::claudecode::paths::session_file_for_delete_in(&home, s)
@@ -1991,6 +1996,11 @@ fn deleting_a_session_takes_only_a_sid_and_removes_exactly_that_file() {
         assert!(
             matches!(got, Err(WriteRefusal::Refused(_))),
             "`{bad}` 竟然过了：{got:?}"
+        );
+        assert_eq!(
+            crate::agents::claudecode::paths::session_file_for_delete_in(&home, bad).unwrap_err(),
+            copy_core::copy_text("beClaudePaths.delete.badId", &[("id", bad)]),
+            "`{bad}`"
         );
     }
     std::fs::remove_dir_all(&base).ok();

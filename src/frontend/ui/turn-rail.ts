@@ -1,6 +1,6 @@
 /**
  * **轮次刻度**：正文区右缘一列，每轮一格（3px 短线），按这一轮在整段会话里的序号均匀排。
- * 视口所在的那一轮 `--accent` 加长；在等你的那一轮（这个会话此刻「需要你」⇒ 最后一轮）琥珀。超过 60 轮相邻的并成一格。
+ * 视口所在的那一轮 `--accent` 加长；在等你的那一轮（这个会话此刻「需手动」⇒ 最后一轮）琥珀。超过 60 轮相邻的并成一格。
  * 悬停一格 ⇒ 左侧小卡「第 9 轮 · 02:05 · 工具 ×2」· 你那句的第一行 · 回复头三行（kit 悬停卡）。点一格 / `Alt+↑↓` ⇒ 跳到那一轮开头。
  *
  * 轮的数据与过程行、大纲同一份（`turn-fold.ts` 手上的 `history-turns` 成品），本模块只排版；跳经宿主（与查找 / 大纲同一个住址）。
@@ -19,7 +19,7 @@ const TIP_WIDTH = 300;
 
 export interface RailHost {
   turns(): readonly TurnSummary[];
-  /** 这个会话此刻在等你（「需要你」）。 */
+  /** 这个会话此刻在等你（「需手动」）。 */
   waiting(): boolean;
   /** 跳到那一轮开头（没加载的由宿主取到再跳）。 */
   jump(uuid: string): void;
@@ -63,7 +63,7 @@ export class TurnRail {
     delegateTooltip(this.el, ".turn-tick", (t) => this.tip(t), { placement: "left", width: () => TIP_WIDTH });
   }
 
-  /** 轮变了 / 「需要你」变了：重排每一格。 */
+  /** 轮变了 / 「需手动」变了：重排每一格。 */
   render(): void {
     const turns = this.host.turns();
     this.groups = railGroups(turns.length);

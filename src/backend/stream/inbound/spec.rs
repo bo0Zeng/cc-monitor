@@ -185,6 +185,20 @@ pub(crate) const fn both(name: &'static str, doc: &'static str) -> Field {
     }
 }
 
+/// typed 应答 → 应答 `data`（`serde_json::Value` 的对象按键排，与此前现拼的 `json!` 逐字节同形）。
+/// 错误那一形跟着调用方（[`Fail`] · 各处的 `(码, 那一句)`）。序列化不出（实际到不了：格都是普通值）⇒ `failed`，原话记日志。
+pub(crate) fn wire<T: serde::Serialize, E: From<(&'static str, String)>>(
+    t: &T,
+) -> Result<serde_json::Value, E> {
+    serde_json::to_value(t).map_err(|e| {
+        tracing::warn!("reply does not serialize: {e}");
+        E::from((
+            "failed",
+            crate::common::contract::malformed("reply does not serialize"),
+        ))
+    })
+}
+
 /// 一条入方向命令的登记。**名字与处理器绑在同一个值里**；协议文档的命令那一半也从这里生成。
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy)]

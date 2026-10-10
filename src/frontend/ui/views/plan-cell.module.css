@@ -1,0 +1,352 @@
+/* 一格的详情（设计稿 planned-build 02）：右栏从上到下一列。 */
+@layer components {
+  .cd {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cdCrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cdLink {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-link);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .cdHead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+
+  .cdGap {
+    flex: 1 1 auto;
+  }
+
+  .cdSt {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+  }
+
+  .cdSt[data-look="done"] {
+    color: var(--success);
+  }
+
+  .cdSt[data-look="open"] {
+    color: var(--text-2);
+  }
+
+  .cdSt[data-look="dropped"] {
+    color: var(--text-faint);
+  }
+
+  .cdTitle {
+    font-size: var(--font-size-title);
+    font-weight: 600;
+  }
+
+  .cdTitle[data-look="dropped"] {
+    color: var(--text-faint);
+    text-decoration: line-through;
+  }
+
+  .cdKind {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 18px;
+    padding: 0 var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--kc, var(--text-2)) 45%, transparent);
+    border-radius: var(--radius-s);
+    color: var(--kc, var(--text-2));
+    font-size: var(--font-size-xs);
+  }
+
+  .cdKind::before {
+    width: 3px;
+    height: 10px;
+    background: var(--kc, var(--text-2));
+    content: "";
+  }
+
+  .cdBadge {
+    height: 17px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    line-height: 15px;
+  }
+
+  .cdBadge[data-look="done"] {
+    border-color: color-mix(in srgb, var(--success) 40%, transparent);
+    color: var(--success);
+  }
+
+  .cdWhy {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cdPos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cdBar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+    padding: 9px var(--space-5) 10px;
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cdSec {
+    margin-top: 18px;
+  }
+
+  .cdSecHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin: 0 0 var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: 600;
+  }
+
+  .cdAside {
+    margin-left: auto;
+    font-weight: 400;
+  }
+
+  .cdProse {
+    color: var(--text);
+    font-family: var(--font-prose);
+    font-size: var(--font-size-prose);
+    line-height: var(--line-height-prose);
+  }
+
+  .cdProse[data-folded="true"] {
+    max-height: 22em;
+    overflow: hidden;
+  }
+
+  .cdProse p {
+    margin: 0 0 var(--space-3);
+  }
+
+  .cdProse ul,
+  .cdProse ol {
+    margin: 0 0 var(--space-3);
+    padding-left: 20px;
+  }
+
+  .cdProse code {
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-s);
+    background: var(--bg-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+  }
+
+  .cdRef {
+    padding: 0;
+    border: 0;
+    border-bottom: 1px dotted color-mix(in srgb, var(--color-link) 40%, transparent);
+    background: none;
+    color: var(--color-link);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .cdLine {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 26px;
+    font-size: var(--font-size-small);
+  }
+
+  .cdKw {
+    color: var(--kc, var(--text-2));
+    font-size: var(--font-size-xs);
+  }
+
+  .cdMuted {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cdGroup {
+    margin: 0 0 var(--space-4);
+  }
+
+  .cdGroupHead {
+    display: block;
+    margin: var(--space-1) 0;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .cdTbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-small);
+  }
+
+  .cdTbl th {
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    text-align: left;
+  }
+
+  .cdTbl td {
+    padding: 5px var(--space-4);
+    border-bottom: 1px solid var(--border-faint);
+    vertical-align: middle;
+  }
+
+  .cdMono {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+  }
+
+  .cdTbl td.cdMono {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .cdFileState {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    font-size: var(--font-size-xs);
+  }
+
+  .cdFileState[data-state="ok"] {
+    border-color: color-mix(in srgb, var(--success) 40%, transparent);
+    color: var(--success);
+  }
+
+  .cdFileState[data-state="warn"] {
+    border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+    color: var(--warn);
+  }
+
+  .cdFileState[data-state="bad"] {
+    border-color: color-mix(in srgb, var(--error) 45%, transparent);
+    color: var(--error-text);
+  }
+
+  .cdSign {
+    padding: var(--space-4) 0 10px;
+    border-bottom: 1px solid var(--border-faint);
+  }
+
+  .cdSignHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cdCounts {
+    padding: 0 var(--space-2);
+    border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+    border-radius: var(--radius-s);
+    color: var(--success);
+    font-size: var(--font-size-xs);
+  }
+
+  .cdSignWhy {
+    margin-top: 3px;
+    color: var(--text);
+    font-size: var(--font-size-small);
+    line-height: 1.6;
+  }
+
+  .cdSign[data-old="true"] .cdSignWhy {
+    color: var(--text-2);
+  }
+
+  .cdFold {
+    margin-top: 18px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+  }
+
+  .cdFoldHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .cdFoldHint {
+    margin-left: auto;
+    font-size: var(--font-size-xs);
+  }
+
+  .cdPre {
+    margin: 0;
+    padding: var(--space-4) var(--space-5) 10px;
+    border-top: 1px solid var(--border-soft);
+    background: var(--bg-2);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .cdId {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-faint);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+}

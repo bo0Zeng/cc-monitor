@@ -122,7 +122,7 @@ pub enum InboundFrame {
         /// 进 `session_book` 的活会话成品（本机那条流同一个口）。
         container: Option<crate::session_book::SessionContainer>,
         /// 〔additive〕那个 claude 进程的 pid。本机活会话的成品（`session_book::LiveMeta::pid`）
-        /// 拿它给本机 ↗ 绑窗口（`bind::SidHwndCache::record`）；老后端不带 ⇒ `None`。远端那一支不读它。
+        /// 拿它给本机 ↗ 点那一刻找窗口（`bind::bring_local_window`）；没带 ⇒ `None`。远端那一支不读它。
         pid: Option<u32>,
     },
     /// 后端的活会话清单报完了（Phase 1 走完）。无载荷。
@@ -225,6 +225,13 @@ pub enum InboundFrame {
     RotationChanged { sid: String },
     /// 那台的轮换规则表 / 默认指向变了（`rotation_rules_changed`，无载荷）⇒ 同上一格 `{"rules":true}`；界面要就发 `rotation-rules-read`。
     RotationRulesChanged,
+    /// 那台某个 pb 工作区的计划变了（`plan_changed`：工作区 · 新摘要 · 需手动的数）⇒
+    /// 交订了那台 `plan-changed` 的订阅一格 `{workspace, rev, needs}`；界面要就发 `plan-read`。
+    PlanChanged {
+        workspace: String,
+        rev: String,
+        needs: u64,
+    },
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -690,6 +697,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         },
         // 同上一格 `{"rules":true}`：界面要就发 `rotation-rules-read`。
         "rotation_rules_changed" => InboundFrame::RotationRulesChanged,
+        // 交订了 `plan-changed` 的订阅：界面要就发 `plan-read`。三格都必填（缺哪一格都算形状不对）。
+        "plan_changed" => InboundFrame::PlanChanged {
+            workspace: req_str(obj, k, "workspace")?,
+            rev: req_str(obj, k, "rev")?,
+            needs: req_u64(obj, k, "needs")?,
+        },
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

@@ -15,7 +15,7 @@
       "partial": false,
       "text": "$0.42"
     },
-    "end": 2918,
+    "end": 3081,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -24,6 +24,20 @@
       "at": "t5",
       "text": "done"
     },
+    "mcp": [
+      {
+        "at": null,
+        "detail": "e-f",
+        "name": "m-f",
+        "status": "failed"
+      },
+      {
+        "at": null,
+        "detail": null,
+        "name": "m-n",
+        "status": "needsLogin"
+      }
+    ],
     "needs": null,
     "pending": [
       {

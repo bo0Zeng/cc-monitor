@@ -108,16 +108,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     (
         "open_file_window",
-        Own::Window,
-        "〔09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",
+        Own::Channel,
+        "起文件窗口进程、把它的 stdin / stdout 接进通道（窗口的 call 经通道到后端）、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列）",
     ),
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
-    (
-        "bound_terminal_count",
-        Own::Front,
-        "已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
-    ),
     (
         "bring_remote_terminal_to_front",
         Own::Front,
@@ -142,7 +137,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "notify_desktop",
         Own::Window,
-        "系统通知（「一轮完成」「需要你」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
+        "系统通知（「一轮完成」「需手动」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
     ),
     (
         "clipboard_write",
@@ -287,6 +282,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         "link-retry",
         Own::Window,
         "文件窗口断线条上「重新连接」：连接循环住 monitor（`stream_source::run`），叫醒它不等退避睡满；连没连上看 `link` 那条流",
+    ),
+    (
+        "plan-open",
+        Own::Window,
+        "文件窗口「在计划里看」只交意图 `{workspace, slice, id}`：monitor 把主窗口拉到前面、发事件给它开计划页选中那一格（主窗口住 monitor）",
     ),
 ];
 

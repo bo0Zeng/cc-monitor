@@ -320,7 +320,7 @@ fn no_line_for_an_empty_process_or_a_lone_compact_summary() {
     assert_eq!(texts(&rows[2]).len(), 2, "过程 · 工具 ×1（压缩不另计数）");
 }
 
-/// 正在跑的那一轮（后端从这台的会话事实拼进来）：在等你批准 ⇒ 「等你批准：那一步」需要你语气，右端「已等 {dur}」；
+/// 正在跑的那一轮（后端从这台的会话事实拼进来）：在等批准 ⇒ 「等批准：那一步」需手动语气，右端「已等 {dur}」；
 /// 在跑 ⇒ 「现在：那一步」，右端「HH:MM 起 · {dur}」；没有活进程 ⇒ 不写「现在」。收尾了的轮不动。
 #[test]
 fn live_turn_says_what_runs_now_or_what_waits_for_you() {

@@ -1,11 +1,11 @@
 /**
- * **一个会话在主窗口上读成什么**：状态点 · 状态一句 · 需要你 · 悬停卡那一句 · 标题拆成几段。
- * 标签页行、悬停卡、会话头、「需要你」那几处都从这里取，不各拼一份。
+ * **一个会话在主窗口上读成什么**：状态点 · 状态一句 · 需手动 · 悬停卡那一句 · 标题拆成几段。
+ * 标签页行、悬停卡、会话头、「需手动」那几处都从这里取，不各拼一份。
  *
  * 只排版：两轴状态（`tab-session-state.ts`）、活动信号（`Tab.activity`）、会话事实（`needs` · `pending` · `lastSay`）
  * 都是后端给的事实；这里只挑哪一样露、怎么写。唯一的「合」：活动信号说不在等了，手上那份 `needs` 当场不认
- * （活动信号比会话事实来得早；两者对不上时以它为准，不留一条已经答完的「需要你」）；说在等、会话事实还没到 ⇒
- * 先写「需要你」（分不出是哪种，不猜）。
+ * （活动信号比会话事实来得早；两者对不上时以它为准，不留一条已经答完的「需手动」）；说在等、会话事实还没到 ⇒
+ * 先写「需手动」（分不出是哪种，不猜）。
  */
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork, Needs } from "./session-reads";
@@ -59,7 +59,7 @@ export function machineOf(tab: Tab): string {
 
 /**
  * 状态一句（会话头 · 悬停卡第三行）：`运行中 · Bash 2m` · `等批准 · 2m` · `后台任务运行中 · make test-all · 12m` · `空闲 · 完成 3m 前` · `已结束` ·
- * `Claude 已退出` · `状态不明 · gpu-01 不可见` · `记录已不在`。`needs` ＝ 这一句是不是「需要你」（琥珀）。
+ * `Claude 已退出` · `状态不明 · gpu-01 不可见` · `记录已不在`。`needs` ＝ 这一句是不是「需手动」（琥珀）。
  */
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
   const n = needsOf(tab);
@@ -187,9 +187,15 @@ export function needsOrder(tabs: readonly Tab[], now: number): string[] {
     .map((x) => x.t.sessionId);
 }
 
-/** 按一下 `Ctrl+J` 落到哪：当前就是在等你的 ⇒ 下一个（转回头）；否则第一个。没有在等你的 ⇒ `null`。 */
-export function nextNeeds(order: readonly string[], active: string | null): string | null {
-  if (order.length === 0) return null;
+/**
+ * 「需手动」的下一站：会话在前（`order`）、计划项在后（`planCount` 条）。站在计划项上 ⇒ `planAt` 是第几条，否则看 `active` 那个会话。
+ * 走到尽头绕回开头；两边都空 ⇒ `null`。
+ */
+export function nextNeedsStep(order: readonly string[], active: string | null, planAt: number | null, planCount: number): { sid: string } | { plan: number } | null {
+  const first = (): { sid: string } | { plan: number } | null => (order.length > 0 ? { sid: order[0] } : planCount > 0 ? { plan: 0 } : null);
+  if (planAt !== null && planAt < planCount) return planAt + 1 < planCount ? { plan: planAt + 1 } : first();
   const i = active === null ? -1 : order.indexOf(active);
-  return i < 0 ? order[0] : order[(i + 1) % order.length];
+  if (i < 0) return first();
+  if (i + 1 < order.length) return { sid: order[i + 1] };
+  return planCount > 0 ? { plan: 0 } : first();
 }

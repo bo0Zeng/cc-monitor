@@ -1970,6 +1970,68 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
 /// 要求：「本机后端 … 并上注解、出成品」—— 本机那一支的
 /// 「活没活」从 monitor 的 `SessionMap` 换到这台后端自己答，答错就是历史列表上一个活会话不亮 / 一个死会话亮着。
 /// 夹具：本测试进程自己的 pid（活）· 一个超出 pid 上限的 pid（死）· 没有 `sessionId` 的（不算）· 文件名不是 pid 的（不看）。
+/// 这台活会话里说连不上的 MCP：每个名字取说它最晚的那一条（带那条会话的标题与原话）；死了的会话不算（那份原话已经过时），后台任务不算。
+/// 夹具：两个号的家各一个活会话（本测试进程的 pid）· 一个死会话（说得最晚，不许取）。
+/// 要求：用户 10-09 认的 MCP 状态稿：「连不上的原因取这台活会话里最近一条；会话都结束了就不画红标」。
+#[cfg(unix)]
+#[test]
+fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {
+    let me = std::process::id();
+    let delta = |at: &str, name: &str, err: &str| serde_json::json!({"type": "attachment", "timestamp": at, "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": name, "error": err}]}});
+    let title = |t: &str| serde_json::json!({"type": "custom-title", "customTitle": t});
+    let home_with = |tag: &str, pid: u32, sid: &str, recs: &[serde_json::Value]| {
+        let home = tmpdir(tag);
+        fs::create_dir_all(home.join("sessions")).unwrap();
+        fs::write(
+            home.join("sessions").join(format!("{pid}.json")),
+            serde_json::json!({"sessionId": sid, "cwd": "/w"}).to_string(),
+        )
+        .unwrap();
+        let dir = home.join("projects").join("-w");
+        fs::create_dir_all(&dir).unwrap();
+        let body: String = recs.iter().map(|r| format!("{r}\n")).collect();
+        fs::write(dir.join(format!("{sid}.jsonl")), body).unwrap();
+        home
+    };
+    let a = home_with(
+        "mcpf-a",
+        me,
+        "sid-a",
+        &[
+            title("t-a"),
+            delta("2026-10-09T10:00:00.000Z", "m-1", "old"),
+        ],
+    );
+    let b = home_with(
+        "mcpf-b",
+        me,
+        "sid-b",
+        &[
+            title("t-b"),
+            delta("2026-10-09T10:31:00.000Z", "m-1", "new"),
+        ],
+    );
+    let dead = home_with(
+        "mcpf-dead",
+        4_194_304,
+        "sid-d",
+        &[delta("2026-10-09T11:00:00.000Z", "m-1", "stale")],
+    );
+    let got = live_mcp_failed(&[a.clone(), b.clone(), dead.clone()]);
+    for h in [&a, &b, &dead] {
+        let _ = fs::remove_dir_all(h);
+    }
+    assert_eq!(
+        got,
+        vec![LiveMcpFailed {
+            name: "m-1".into(),
+            at_ms: crate::common::time::parse_iso8601_ms("2026-10-09T10:31:00.000Z"),
+            detail: Some("new".into()),
+            title: "t-b".into(),
+        }]
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
@@ -2191,4 +2253,53 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
     .into_iter()
     .collect();
     assert_eq!(got, want);
+}
+
+/// `--account-trust` / `--account-trust-zero` 的失败与帧面失败应答同一种信封（`stream::detail::Failed`）：
+/// 拒绝码原样、详情的「命令」那一项是这条 CLI 的名字；参数不齐那一支同形（码 `bad_args`）。
+#[test]
+fn the_trust_cli_failures_are_the_one_failed_envelope() {
+    let root = tmpdir("trust-cli");
+    let accts = root.join("accts");
+    write_manifest(&accts, r#"{"version":1,"accounts":[]}"#);
+    let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for (args, code, cmd) in [
+        (
+            a(&["--account-trust", "/etc", "/w"]),
+            "unknown_config_dir",
+            "account-trust",
+        ),
+        (
+            a(&["--account-trust", "/a'b", "/w"]),
+            "unsafe_config_dir",
+            "account-trust",
+        ),
+        (a(&["--account-trust", "/etc"]), "bad_args", "account-trust"),
+        (
+            a(&["--account-trust-zero"]),
+            "bad_args",
+            "account-trust-zero",
+        ),
+    ] {
+        let f = trust_cli(&accts, &args).unwrap_err();
+        assert_eq!(f.code, code, "{args:?}");
+        assert!(!f.message.is_empty(), "{args:?} 没有那一句");
+        assert!(
+            f.detail.contains(cmd),
+            "{args:?} 详情里要有命令名：{}",
+            f.detail
+        );
+        assert!(
+            f.detail.contains(code),
+            "{args:?} 详情里要有码：{}",
+            f.detail
+        );
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(
+            v.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
+            ["code", "detail", "message"],
+            "{args:?}"
+        );
+    }
+    let _ = fs::remove_dir_all(&root);
 }

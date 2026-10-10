@@ -153,7 +153,7 @@ export interface SessionFacts {
   pending: PendingCall[];
   /** 最后一段正文的头一行（悬停卡「它最后一句」）。 */
   lastSay: { text: string; at: string | null } | null;
-  /** 需要你：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
+  /** 需手动：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
   needs: Needs | null;
   /** 交回了的子运行（子 agent 的 id，文件序）：同一个子运行的收场通知以交回为准，消息流里不再另画。 */
   handedBack: string[];
@@ -169,6 +169,8 @@ export interface SessionFacts {
   bgTasks: BgTask[];
   /** 后台任务运行中那一句（后端 `facts_query::background_of` 写；界面照抄、时长那一截按会走的那一句走字）。不是这一态 ⇒ `null`。 */
   background: BackgroundWork | null;
+  /** 这个会话里那一家说有毛病的 MCP 服务器（按名字排；没列的不等于连上了）。`detail` 是连不上时的原话（复制详情用）。 */
+  mcp: McpTrouble[];
 }
 
 /** 一条还没收场的后台命令（续传令牌的一部分）。 */
@@ -186,6 +188,15 @@ export interface BackgroundWork {
   what: string | null;
   count: number;
   tone: string;
+}
+
+/** 会话里一个有毛病的 MCP 服务器（后端 `facts_query::McpTrouble`）。 */
+export interface McpTrouble {
+  name: string;
+  status: "needsLogin" | "failed" | "pending";
+  detail: string | null;
+  /** 说它的那条记录的时刻原样；没有 ⇒ `null`。 */
+  at: string | null;
 }
 
 /** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
@@ -232,11 +243,12 @@ const UNCLEAR_WHY: ReadonlySet<string> = new Set<UnclearWhy>(["noWriter", "untra
 /** 一步还没结果时的样子（后端 `facts_query::StepWait`）。 */
 export type StepWait = "running" | "awaiting" | "unclear";
 const STEP_WAIT: ReadonlySet<string> = new Set<StepWait>(["running", "awaiting", "unclear"]);
+const MCP_TROUBLE: ReadonlySet<string> = new Set<McpTrouble["status"]>(["needsLogin", "failed", "pending"]);
 
 /** 「需手动」的种类（后端 `facts_query::NeedsKind` 判好）：批准一步 · 回答一问 · 批准计划 · 放行联网 · 批准协作请求 · 确认会话目标 · 在对话框里选 · 判不出。 */
 export type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 
-/** 「需要你」的成品（后端 `facts_query::Needs`）。 */
+/** 「需手动」的成品（后端 `facts_query::Needs`）。 */
 export interface Needs {
   kind: NeedsKind;
   /** 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。 */
@@ -448,7 +460,7 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "mcp", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
   if (!strOrNull(v.permissionMode)) return bad();
   let tokens: TokenUse | null = null;
   if (v.tokens !== null) {
@@ -485,6 +497,12 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
     if (!isObj(p) || !exactKeys(p, ["at", "id", "name", "state", "what", "why"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at)) return bad();
     if (!(isStr(p.state) && STEP_WAIT.has(p.state)) || !(p.why === null || (isStr(p.why) && UNCLEAR_WHY.has(p.why)))) return bad();
     pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, state: p.state as StepWait, why: p.why as UnclearWhy | null });
+  }
+  if (!Array.isArray(v.mcp)) return bad();
+  const mcp: McpTrouble[] = [];
+  for (const m of v.mcp) {
+    if (!isObj(m) || !exactKeys(m, ["at", "detail", "name", "status"]) || !isStr(m.name) || !strOrNull(m.detail) || !strOrNull(m.at) || !(isStr(m.status) && MCP_TROUBLE.has(m.status))) return bad();
+    mcp.push({ name: m.name, status: m.status as McpTrouble["status"], detail: m.detail, at: m.at });
   }
   if (!Array.isArray(v.retries)) return bad();
   const retries: RetryRun[] = [];
@@ -580,6 +598,7 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
     cost,
     bgTasks,
     background,
+    mcp,
   };
 }
 

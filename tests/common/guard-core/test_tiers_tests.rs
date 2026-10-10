@@ -180,6 +180,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
     ),
     (
+        "tests/backend/platform/child_tests.rs",
+        "internal_families_inner",
+        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::internal_families_inner" },
+    ),
+    (
         "tests/backend/control/exit_policy_tests.rs",
         "wire_child",
         Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
@@ -296,6 +301,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/frontend/filewin/shell_keys_tests.rs", needle: "shell::keys_tests::xvfb_worker_real_keys_on_the_window" },
     ),
     (
+        "tests/frontend/filewin/proc_tests.rs",
+        "worker_runs_the_real_child_main",
+        Trigger::Filter { by: "tests/frontend/filewin/proc_tests.rs", needle: "proc::tests::worker_runs_the_real_child_main" },
+    ),
+    (
         "tests/frontend/filewin/shell_tests.rs",
         "xvfb_worker_opens_a_real_window",
         Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_a_real_window" },
@@ -393,11 +403,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/shell/platform/console_text_tests.rs",
         "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
-    ),
-    (
-        "tests/backend/assets/aliases/block_tests.rs",
-        "claim_the_rendered_block_registers_in_the_background_without_a_word",
-        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）解析渲染出来的接入块、跑后台登记的五种情形（标题与 monitor 换替身）；跑法住它自己的头注"),
     ),
 ];
 

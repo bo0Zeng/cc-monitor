@@ -1,4 +1,4 @@
-//! 「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件 · 首次运行「开始用」那一块点过「跳过」。
+//! 「待办」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件 · 首次运行「开始用」那一块点过「跳过」。
 //! 住 `~/.cc-monitor/chores.json`（`relay_route_core::CHORES_REL`），后端自己的状态，不是用户数据；全仓唯一的写者是 [`answer_mark`]。
 //! 读三态（不在 ＝ 什么都没记 · 读不懂 ＝ 不覆盖、照没记算判，写的那一刻回错）。
 
@@ -35,7 +35,7 @@ pub(crate) fn read_at(path: &Path) -> crate::common::own_state::Read<Marks> {
     crate::common::own_state::read_json(path, MAX_BYTES)
 }
 
-/// 判「要你动手」用：读不懂的那份照什么都没记算（写的那一刻才回错）。
+/// 判「待办」用：读不懂的那份照什么都没记算（写的那一刻才回错）。
 pub(crate) fn current(path: Option<&Path>) -> Marks {
     match path.map(read_at) {
         Some(crate::common::own_state::Read::Present(m)) => m,

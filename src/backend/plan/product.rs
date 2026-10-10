@@ -19,6 +19,47 @@ pub(crate) const EDGES: [&str; 4] = ["to", "with", "after", "replaces"];
 pub(crate) const DONE: &str = "做完了";
 pub(crate) const DROPPED: &str = "不做了";
 
+/// pb 的三种状态 ⇒ 线上的码（`statusCode`）；pb 给了别的字 ⇒ `None`（界面照出原话、当没做完画）。
+pub(crate) fn status_code(s: Option<&str>) -> Option<&'static str> {
+    match s? {
+        DONE => Some("done"),
+        "没做完" => Some("open"),
+        DROPPED => Some("dropped"),
+        _ => None,
+    }
+}
+
+/// 没做完的原因 ⇒ `whyCode`：`没签` ⇒ `{kind: nosign}` · `等上一级收下` ⇒ `{kind: upper}` ·
+/// `里面 d/m 做完了` ⇒ `{kind: inside, done, of}`；认不出 ⇒ `null`（界面照出原话）。拆 pb 原话只在这一处。
+pub(crate) fn why_code(s: Option<&str>) -> Value {
+    let Some(s) = s else { return Value::Null };
+    match s {
+        "没签" => return json!({"kind": "nosign"}),
+        "等上一级收下" => return json!({"kind": "upper"}),
+        _ => {}
+    }
+    let inside = s
+        .strip_prefix("里面 ")
+        .and_then(|r| r.strip_suffix(" 做完了"))
+        .and_then(|r| r.split_once('/'))
+        .and_then(|(d, m)| Some((d.trim().parse::<u64>().ok()?, m.trim().parse::<u64>().ok()?)));
+    match inside {
+        Some((done, of)) => json!({"kind": "inside", "done": done, "of": of}),
+        None => Value::Null,
+    }
+}
+
+/// 对账的四种（在 · 缺 · 空 · 坏）⇒ `stateCode`；认不出 ⇒ `None`。
+pub(crate) fn file_code(s: Option<&str>) -> Option<&'static str> {
+    match s? {
+        "在" => Some("ok"),
+        "缺" => Some("missing"),
+        "空" => Some("empty"),
+        "坏" => Some("broken"),
+        _ => None,
+    }
+}
+
 /// 一片里每格的 `agent_view`：`(片, 格) ⇒ 原文`。
 pub(crate) type Views = BTreeMap<(String, String), String>;
 
@@ -86,6 +127,7 @@ pub(crate) fn make(doc: &Value, who: WhoPort) -> Made {
                 .collect()
         })
         .unwrap_or_default();
+    let by_session = by_session(&slices);
     Made {
         doc: json!({
             "pb": s(doc, "pb"),
@@ -93,9 +135,63 @@ pub(crate) fn make(doc: &Value, who: WhoPort) -> Made {
             "repo": s(doc, "repo"),
             "auto": doc.get("auto").and_then(Value::as_bool).unwrap_or(false),
             "slices": slices,
+            "bySession": by_session,
         }),
         views,
     }
+}
+
+/// 会话 ⇒ 它接手的那一块（会话头那一枚标 · 「这个会话是哪一片哪一块的接手」）：
+/// `{片, 块, 块根格（编号）, 块根格标题（顶块 ⇒ null）, 顶块不顶块, 阶段, 站在哪一格（编号 ＋ 标题）, via: session|subagent}`。
+/// 子 agent 接的块记在父会话名下；一个会话名下几块 ⇒ 自己接的压过子 agent 替它接的，同档取片与块的先后里第一块。
+/// 对不上会话的接手不进表。
+pub(crate) fn by_session(slices: &[Value]) -> Value {
+    let mut out = serde_json::Map::new();
+    for pass in ["session", "subagent"] {
+        for sl in slices {
+            let title_of = |id: &str| {
+                sl.get("cells")
+                    .and_then(Value::as_array)
+                    .and_then(|cs| cs.iter().find(|c| c["id"] == id))
+                    .map_or(Value::Null, |c| c["title"].clone())
+            };
+            for b in sl
+                .get("blocks")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let owner = &b["owner"];
+                let Some(sid) = owner["sid"].as_str() else {
+                    continue;
+                };
+                if owner["kind"] != pass || out.contains_key(sid) {
+                    continue;
+                }
+                let top = b["id"] == crate::plan::needs::TOP_BLOCK;
+                let root = b["cells"]
+                    .as_array()
+                    .and_then(|c| c.first())
+                    .and_then(Value::as_str);
+                let at = b["at"].as_str();
+                out.insert(
+                    sid.to_string(),
+                    json!({
+                        "slice": sl["name"],
+                        "block": b["id"],
+                        "cell": root.map_or(Value::Null, |r| json!(r)),
+                        "title": if top { Value::Null } else { root.map_or(Value::Null, title_of) },
+                        "top": top,
+                        "phase": b["phase"],
+                        "at": b["at"],
+                        "atTitle": at.map_or(Value::Null, title_of),
+                        "via": pass,
+                    }),
+                );
+            }
+        }
+    }
+    Value::Object(out)
 }
 
 /// 一片。带 `error` 的片只出名字、领域与那一句（pb 那时给不出别的）。
@@ -115,7 +211,19 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         m
     };
     if let Some(e) = sl.get("error").filter(|e| !e.is_null()) {
-        return Value::Object(head(e.clone()));
+        // 读不成又没读好过：形状照常（空的），`bare` 说「只有头几格」。
+        let mut m = head(e.clone());
+        m.insert("bare".into(), json!(true));
+        for k in ["kinds", "phases", "top", "blocks", "cells", "archived"] {
+            m.insert(k.into(), json!([]));
+        }
+        m.insert("done".into(), json!(false));
+        m.insert("progress".into(), Value::Null);
+        m.insert(
+            "check".into(),
+            json!({"unreadable": [], "red": [], "undecidable": []}),
+        );
+        return Value::Object(m);
     }
     let cells_in: Vec<&Value> = sl
         .get("cells")
@@ -189,7 +297,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                         .flatten()
                         .filter(|o| **o != id)
                         .collect();
-                    json!({"path": path, "state": s(f, "state"), "note": s(f, "note"), "alsoBy": also})
+                    let state = f.get("state").and_then(Value::as_str);
+                    json!({"path": path, "state": s(f, "state"), "stateCode": file_code(state), "note": s(f, "note"), "alsoBy": also})
                 })
                 .collect();
             let signs: Vec<Value> = c
@@ -217,7 +326,9 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 "pointedBy": pointed_by,
                 "files": files,
                 "status": s(c, "status"),
+                "statusCode": status_code(c.get("status").and_then(Value::as_str)),
                 "why": s(c, "why"),
+                "whyCode": why_code(c.get("why").and_then(Value::as_str)),
                 "signs": signs,
                 "owner": who_json(c.get("owner").and_then(Value::as_str), who),
                 // 签它的那一位（pb 还没给 ⇒ `null`；请求单第 2 条）。
@@ -306,6 +417,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         .collect();
 
     let mut m = head(Value::Null);
+    m.insert("bare".into(), json!(false));
     m.insert("kinds".into(), json!(kinds));
     m.insert("phases".into(), json!(phases));
     m.insert(
@@ -331,6 +443,20 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
     Value::Object(m)
 }
 
+/// `plan-list` 里一个工作区那一行（标过认可的成品 ⇒ 去掉格与签收，只留切换与计数要的）。
+pub(crate) fn list_row(v: &Value) -> Value {
+    json!({
+        "workspace": v["workspace"],
+        "repo": v["repo"],
+        "auto": v["auto"],
+        "rev": v["rev"],
+        "stale": v["stale"],
+        "needCount": v["needCount"],
+        "bySession": v["bySession"],
+        "slices": v["slices"].as_array().map(|a| a.iter().map(slice_summary).collect::<Vec<_>>()).unwrap_or_default(),
+    })
+}
+
 /// 一片的一句话摘要（`plan-list` 那一行要的）：工作区 · 片名 · 领域 · 当前片没有 · 顶层进度 · 要你看的数（标过认可之后才有）· 读不成的那一句。
 pub(crate) fn slice_summary(sl: &Value) -> Value {
     json!({
@@ -342,6 +468,43 @@ pub(crate) fn slice_summary(sl: &Value) -> Value {
         "error": sl.get("error").cloned().unwrap_or(Value::Null),
         "stale": sl.get("stale").cloned().unwrap_or(Value::Null),
     })
+}
+
+/// 时刻写成给人看的字（界面照抄，不换算）：`readAt` · `since` · `at`（毫秒整数，或签收那种 ISO 串）旁边添 `<键>Text`，
+/// 按 `now_ms` 与时区偏移（分钟，东正）经 [`crate::common::time::fmt_at`] 写。`at` 是串却读不成时刻（块的站位编号）⇒ 不添。
+pub(crate) fn with_time_texts(v: &mut Value, now_ms: i64, tz_min: i64) {
+    match v {
+        Value::Object(m) => {
+            let adds: Vec<(String, String)> = ["readAt", "since", "at"]
+                .iter()
+                .filter_map(|k| {
+                    let ms = match m.get(*k)? {
+                        Value::Number(n) => n.as_i64(),
+                        Value::String(s) => crate::common::time::parse_iso8601_ms(s),
+                        _ => None,
+                    }?;
+                    Some((
+                        format!("{k}Text"),
+                        crate::common::time::fmt_at(
+                            ms.div_euclid(1000),
+                            now_ms.div_euclid(1000),
+                            tz_min,
+                        ),
+                    ))
+                })
+                .collect();
+            for x in m.values_mut() {
+                with_time_texts(x, now_ms, tz_min);
+            }
+            for (k, t) in adds {
+                m.insert(k, Value::String(t));
+            }
+        }
+        Value::Array(a) => a
+            .iter_mut()
+            .for_each(|x| with_time_texts(x, now_ms, tz_min)),
+        _ => {}
+    }
 }
 
 #[cfg(test)]

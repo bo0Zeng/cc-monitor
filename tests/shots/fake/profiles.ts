@@ -124,9 +124,9 @@ function current(w: World): P[] {
   return b;
 }
 
-const problemOf = (w: World, p: P, all: P[]): { line: number; message: string } | null => {
+const problemOf = (w: World, p: P, all: P[]): { line: number; message: string; detail: null } | null => {
   if (state(w) !== "broken") return null;
-  if (p.name === "teamcct") return { line: 23, message: copyText("beProfile.chain.broken", { name: "teamcct", e: copyText("beProfile.at.line", { line: "23", e: copyText("beProfile.value.unknown", { key: "tmux-sise" }) }) }) };
+  if (p.name === "teamcct") return { line: 23, message: copyText("beProfile.chain.broken", { name: "teamcct", why: copyText("beProfile.at.line", { line: "23", why: copyText("beProfile.value.unknown", { key: "tmux-sise" }) }) }), detail: null };
   void all;
   return null;
 };
@@ -192,7 +192,7 @@ export function profilesOps(): Record<string, OpHandler> {
         exists: !empty,
         fingerprint: empty ? null : "412-0123456789abcdef",
         editedAt: st === "edited" ? "14:20" : null,
-        fileProblem: st === "syntax" ? { line: 12, message: copyText("beProfile.file.syntax", { e: "invalid table header" }) } : null,
+        fileProblem: st === "syntax" ? { line: 12, message: copyText("beProfile.file.syntax"), detail: "原话：invalid table header" } : null,
         profiles: empty || st === "syntax" ? [] : all.map((p) => row(w, p, all)),
         seed: empty ? seed.map((p) => row(w, p, seed)) : [],
         migrated: st === "migrated" ? { count: 11, path: PATH, skipped: [copyText("beProfile.migrate.restToCcm", { name: "cca" })] } : null,

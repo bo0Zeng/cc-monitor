@@ -1116,10 +1116,18 @@ impl Workspace {
         if let Some(a) = preview_act {
             let f = self.focus;
             let action = match a {
-                super::preview::PreviewAct::Edit => super::select::Action::Edit,
-                super::preview::PreviewAct::Download => super::select::Action::Download,
+                super::preview::PreviewAct::Edit => Some(super::select::Action::Edit),
+                super::preview::PreviewAct::Download => Some(super::select::Action::Download),
+                super::preview::PreviewAct::OpenInPlan => None,
             };
-            self.pane_on_mut(f).perform(action, Some(ctx.clone()));
+            match action {
+                Some(action) => {
+                    self.pane_on_mut(f).perform(action, Some(ctx.clone()));
+                }
+                None => {
+                    self.pane_on_mut(f).open_in_plan(Some(ctx.clone()));
+                }
+            }
         }
         // ── 一栏 / 两栏：主底那一块（没有它，框之间露出来的是 egui 自带的灰黑底）──
         let bg = super::theme::palette(ui.ctx()).bg;
@@ -1250,12 +1258,20 @@ impl Workspace {
             self.peek = None;
         }
         if let Some(a) = act {
-            let action = match a {
-                super::preview::PreviewAct::Edit => super::select::Action::Edit,
-                super::preview::PreviewAct::Download => super::select::Action::Download,
-            };
             self.peek = None;
-            self.pane_on_mut(f).perform(action, Some(ctx.clone()));
+            match a {
+                super::preview::PreviewAct::Edit => {
+                    self.pane_on_mut(f)
+                        .perform(super::select::Action::Edit, Some(ctx.clone()));
+                }
+                super::preview::PreviewAct::Download => {
+                    self.pane_on_mut(f)
+                        .perform(super::select::Action::Download, Some(ctx.clone()));
+                }
+                super::preview::PreviewAct::OpenInPlan => {
+                    self.pane_on_mut(f).open_in_plan(Some(ctx.clone()));
+                }
+            }
         }
     }
 

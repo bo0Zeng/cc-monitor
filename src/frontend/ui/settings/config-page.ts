@@ -1,7 +1,7 @@
 /**
  * 机器页「别名与配置文件」那一栏：一张清单，每项一行，点开就地做（`设计稿/机器配置-v2.md` §5 方案 A）。
  *
- * - 页首一句：这一页每一项都是你点了才改；要你自己动手的在「文件与数据 → 要你动手」。
+ * - 页首一句：这一页每一项都是你点了才改；要你自己动手的在「文件与数据 → 待办」。
  * - 「终端」组：别名（含接上 / 卸载 ccm；默认展开）· Windows 终端（只本机 Windows）—— 都由 `machine-aliases.ts` 建。
  * - 「账号与扩展」组：共用 MCP（含「停止同步」）· 装在这台的扩展（→ 扩展页）。
  *
@@ -207,7 +207,7 @@ export interface ConfigPageSpec extends AliasManagerSpec {
 }
 
 /**
- * 页首指路条（「{machine} 上有 N 件要你动手 · 另 M 件可选」［去「文件与数据」］）与页尾一句（「cc-monitor 在 {machine} 上改过你的 N 个文件」［去看］）：
+ * 页首指路条（「{machine} 上有 N 件待办 · 另 M 件可选」［去「文件与数据」］）与页尾一句（「cc-monitor 在 {machine} 上改过你的 N 个文件」［去看］）：
  * 都读那台的 `data-report`（同一份成品，件数不另数）；读不到 ⇒ 两处都不出。
  */
 function buildDataPointers(spec: ConfigPageSpec, onSelfPaste: (c: { state: string } | null) => void): { head: HTMLElement; foot: HTMLElement; load(): void } {
@@ -235,7 +235,7 @@ function buildDataPointers(spec: ConfigPageSpec, onSelfPaste: (c: { state: strin
           dot.className = "data-dot";
           dot.dataset.tone = r.chores > 0 ? "bad" : "muted";
           const text = r.chores > 0 ? copyText("cfgPage.pointer.chores", { machine, n: r.chores, m: optional }) : copyText("cfgPage.pointer.optional", { machine, m: optional });
-          // 稿 12：那几枚分类数小标签（要做 · 要你定 · 要装 · 可选），与「文件与数据」同一套。
+          // 稿 12：那几枚分类数小标签（要做 · 待定 · 要装 · 可选），与「文件与数据」同一套。
           const tags = document.createElement("span");
           tags.className = "data-summary cfg-pointer-tags";
           tags.append(...countTags(r.todo, ["must", "decide", "install", "optional"]));

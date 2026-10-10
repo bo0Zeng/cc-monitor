@@ -1,4 +1,4 @@
-//! 从这台收「要你动手」要的事实（[`super::Facts`]）：别名块的候选 · PATH 上先找到的 ccm · 设置文件 · 记下的选择。
+//! 从这台收「待办」要的事实（[`super::Facts`]）：别名块的候选 · PATH 上先找到的 ccm · 设置文件 · 记下的选择。
 //! 只读（读用户的启动文件与设置文件、stat）；判定在 [`super::chores`]。
 
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
@@ -113,8 +113,48 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<Value>) -> Facts {
         dead,
         relay: relay(),
         hooks: hooks(),
+        mcp_login: mcp_login(),
         declined: marks.declined,
     }
+}
+
+/// 用户自己配的、要登录的 MCP：全局那一段 ＋ 这台此刻活着的会话所在项目的那两段（判定在 `mcp-read` 那一份）。同名并成一件、号取并集。
+fn mcp_login() -> Vec<super::McpLogin> {
+    let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
+        return Vec::new();
+    };
+    let look = crate::faces::feature_face::mcp_look(kind);
+    let cwds = crate::agents::home_of_kind(kind)
+        .map(|h| crate::observe::accounts_query::live_cwds(&h))
+        .unwrap_or_default();
+    let dirs = std::iter::once(None).chain(cwds.iter().map(|d| Some(Path::new(d.as_str()))));
+    let mut out: Vec<super::McpLogin> = Vec::new();
+    for dir in dirs {
+        let Some(read) = crate::agents::mcp_read(kind, dir, &look) else {
+            continue;
+        };
+        for e in read.entries {
+            if e.status != crate::agents::McpStatus::NeedsLogin
+                || (dir.is_some() && e.scope == "user")
+            {
+                continue;
+            }
+            match out.iter_mut().find(|m| m.name == e.name) {
+                Some(m) => m.who.extend(e.login_in),
+                None => out.push(super::McpLogin {
+                    name: e.name,
+                    who: e.login_in,
+                    command: crate::agents::mcp_login_command(kind).unwrap_or(""),
+                }),
+            }
+        }
+    }
+    for m in &mut out {
+        m.who.sort();
+        m.who.dedup();
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
 }
 
 /// PATH 上先找到的 `ccm` 不是 cc-monitor 放的那一份 ⇒ 那一份。

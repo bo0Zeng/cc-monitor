@@ -6,7 +6,6 @@
 //! [`dialect`] · [`block`] · [`fence`] · [`form`]）在那台后端里：读、算、经它自己的文件管理面写，界面经通道直问（`aliases-*` 八条帧命令，
 //! 下面 `answer_*`）。「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端），`origin` 这一维随之退役：
 //! 方言那道闸改问这台自己（[`dialect_here`]）、`PATH` 撞名查这台自己的 `PATH`、围栏的符号链接那一步量这台自己的盘。
-//! 已握手的终端数（`boundTerminals`）不是这台盘上的事实，住 monitor 进程里 ⇒ 不在这里的成品里（界面另问 monitor）。
 //!
 //! 〔用 2026-09-17〕逐字：「**不要有 account alias 这种东西。alias 应该独立吗？应该就是 ccm
 //! 参数附加器。即生成别名，都是调用 ccm，ccm 本身就可以指定账号。**」
@@ -406,10 +405,8 @@ fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>,
     match look(d, home, path)? {
         Look::Text(t) => Ok(Some(t)),
         Look::Absent => Ok(None),
-        Look::Unreadable(e) => Err(copy_text(
-            "beProfile.file.unreadable",
-            &[("path", path), ("e", &e)],
-        )),
+        // 那一句是 files-peek 的成品句（带路径 ＋ 原因词），原样交出去，不再套一层「读取失败」。
+        Look::Unreadable(said) => Err(said),
     }
 }
 
@@ -507,7 +504,7 @@ pub fn migrate_here() {
             )
         ),
         Ok(false) => {}
-        Err(e) => tracing::warn!("{}", copy_text("beProfile.migrate.failed", &[("e", &e)])),
+        Err(e) => tracing::warn!("{}", copy_text("beProfile.migrate.failed", &[("why", &e)])),
     }
 }
 

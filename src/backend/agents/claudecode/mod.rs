@@ -137,6 +137,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
@@ -174,7 +175,10 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     wait_of: pidfile::wait_of,
 };
 
-pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
+pub(crate) const MCP: super::McpFace = super::McpFace {
+    read: mcp::read,
+    login_command: mcp::LOGIN_COMMAND,
+};
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
@@ -213,6 +217,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         written: runs::written,
     }),
     project_dir: Some(parse::project_dir),
+    mcp_said: Some(mcp::said_of),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

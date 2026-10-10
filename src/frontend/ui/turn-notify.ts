@@ -90,7 +90,7 @@ export class TurnEndNotifier {
 
 // --- 默认 send：壳的 `notify_desktop`（平台那一半在 `platform/notify.rs`：Linux 上连接留到通知关掉，GNOME 才不当场收走）---
 
-/** 发一条系统通知（「需要你」那条也走这里）。 */
+/** 发一条系统通知（「需手动」那条也走这里）。 */
 export async function notifySend(title: string, body: string): Promise<void> {
   await commands.notify_desktop({ title, body });
 }

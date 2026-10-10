@@ -331,7 +331,7 @@ pub(crate) fn apply(
                         ("step", &(i + 1).to_string()),
                         ("of", &plan.ops.len().to_string()),
                         ("what", &steps[i]),
-                        ("e", &e),
+                        ("why", &e),
                         ("backup", &id),
                     ],
                 ),

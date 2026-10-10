@@ -11,8 +11,9 @@ use crate::accounts::quota::ledger;
 use crate::accounts::upstream_select::rotate::account_ok;
 use crate::faces::rotation_face::Ctx;
 use crate::platform::child::{Child, Deadline};
+use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::ffi::OsStr;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
@@ -107,16 +108,16 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
         child = child.env("PATH", p);
     }
     let out = child.run(PROBE_WITHIN).map_err(|e| {
-        e.into_cmd_err("failed", |e| {
+        crate::stream::inbound::spec::Fail::from(e.into_cmd_said("failed", |why| {
             copy_text(
                 "beQuotaProbe.run.failed",
-                &[("program", face.program), ("e", &e.to_string())],
+                &[("program", face.program), ("why", why)],
             )
-        })
+        }))
     })?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
-        let said: String = String::from_utf8_lossy(&out.stderr)
+        let stderr: String = String::from_utf8_lossy(&out.stderr)
             .lines()
             .chain(text.lines())
             .map(str::trim)
@@ -129,30 +130,49 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
             .status
             .code()
             .map_or_else(|| "-".to_string(), |c| c.to_string());
-        return Err((
+        // 退出码与它说的那一行是原话：进复制详情，不上句子。
+        return Err(crate::stream::inbound::spec::Fail::new(
             "failed",
-            copy_text(
-                "beQuotaProbe.run.exit",
-                &[("program", face.program), ("exit", &code), ("said", &said)],
-            ),
+            copy_text("beQuotaProbe.run.exit", &[("program", face.program)]),
         )
-            .into());
+        .with_raw(Some(&format!("exit {code}: {stderr}"))));
     }
     let shown = book.map(|p| p.display().to_string());
+    let probed = |state, reason, windows| Probed {
+        agent: agent.to_string(),
+        account: account.to_string(),
+        from: "usage",
+        now,
+        state,
+        reason,
+        windows,
+        path: shown.clone(),
+    };
     match (face.read)(&text, now) {
-        Err(why) => Ok(json!({
-            "agent": agent, "account": account, "from": "usage", "now": now,
-            "state": "unreadable", "reason": why, "windows": [], "path": shown,
-        })),
+        Err(why) => wire(&probed("unreadable", Some(why), Vec::new())),
         Ok(windows) => {
             ledger::record_probe(&ctx.hop.quota, agent, account, windows.clone(), now)
                 .map_err(|e| ("io_failed", e))?;
-            Ok(json!({
-                "agent": agent, "account": account, "from": "usage", "now": now,
-                "state": "read", "reason": null, "windows": windows, "path": shown,
-            }))
+            wire(&probed("read", None, windows))
         }
     }
+}
+
+/// `quota-probe` 的应答（各格的意思见注册表那一条）。
+#[derive(serde::Serialize)]
+pub(crate) struct Probed {
+    agent: String,
+    account: String,
+    /// 恒 `"usage"`。
+    from: &'static str,
+    now: u64,
+    /// `"read"` · `"unreadable"`。
+    state: &'static str,
+    /// 只在 `unreadable` 时有（英文诊断）；`read` ⇒ `null`。
+    reason: Option<String>,
+    /// `unreadable` ⇒ `[]`。
+    windows: Vec<crate::agents::QuotaWindow>,
+    path: Option<String>,
 }
 
 #[cfg(test)]

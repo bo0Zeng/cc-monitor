@@ -24,6 +24,9 @@ mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ +
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+#[cfg(test)]
+#[path = "../../tests/backend/allocator_guard.rs"]
+mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
 pub mod assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
 #[cfg(test)]
 #[path = "../../tests/backend/build_features_tests.rs"]
@@ -46,6 +49,7 @@ pub mod history; // 历史清单与注解（history_list · history_annotations�
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
+pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -848,7 +852,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
 ///
-/// p9a-chores：data-report 换形（todo ＝ 要你动手各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
+/// p9a-chores：data-report 换形（todo ＝ 待办各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
 ///
 /// p9b-background-activity：session_added / session_status 多 background / activity（适配层翻）；invalid_args 收进 bad_args；删帧命令 deploy-retired 与旧装法清理链。
 ///
@@ -881,7 +885,20 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
 ///
 /// p9q-plan-cli-faces：planned-build 读写（plan-list / plan-read / plan-cell-view / plan-ack / plan-unack / plan-return ＋ plan_changed）；CLI 面放出起会话等 9 条与 ext-list-here、--args-b64 载荷口、无输入回 no_input、超大回 args_too_large；记录帧换形的加法（history-branch ＋ session_branch、history-facts 许可档 / 用量 / 花费成品、删 accounts-isolate 与 session_kind / status）；终端原因码统一下划线、terminal-input 删 take、terminals-list 的 can 删 preview；session-new 带 ticket。
-pub const BUILD_ID: &str = "p9q-plan-cli-faces";
+///
+/// p9r-resolve-argv-raw-said：--resolve 认 --args-b64 / --stdin-line（与别的 CLI 子命令同一处读，一次性那条码全集 +args_too_large · no_input · bad_args）；terminals-list 每行删恒为 normal 的 purpose；CLI 失败信封多可缺 raw（下层原话，进复制详情）；profiles-read 的 fileProblem 多可缺 detail；几族失败句只留原因词、原话进详情；轮换说明文案抢回 / 兜底分开说。
+///
+/// p9s-record-arg-line：过程一行的主参数（steps.arg）改成协议上的定长一行（至多 200 字、按字符截、截了带省略号；原来 400）；CRLF 行的 line.raw 不含 \r；冻结表照现状（session_kind / status 已删）；history-branch 进经通道的命令表；后端删三处没人调的（账号面 watched · 读位 restart · ScanMap::scan）；plan-return「已结束」那句文案键挪进会话状态族。
+///
+/// p9t-resident-socket-cells：常驻后端去钥匙，只听家里只给本人的 Unix 套接字（~/.cc-monitor/run/），远端经 ssh 跑 --resident-attach 小中继去连；attach 行只剩 {attach, flags}；--resident-ensure 答 {pid}（不再给 port / token）；拨号 ack 去掉 open_refused 与 tunnel；只许直通那把中转钥匙由根钥匙派生、relay-pass-key 不再用；文件窗口改走父子管道（种子与就绪行），不再监听。
+/// 会话血缘：起会话地址尾上带来处段 ~<来处>[~<父>]（语法只在 relay-route-core）；中转认谁起的谁，记 ~/.cc-monitor/lineage.json；起子进程不往下传各家「我是哪个会话」的变量（self_sid_env）；子会话默认跟随父会话（{"parent": sid}）。
+/// CLI 失败信封只剩一种：stderr 一行 {code, message, detail, data?}（与帧面失败应答同一份 stream::detail::Failed），下层原话进 detail，不再有 raw 格；--text 的失败是那一句 ＋ 复制详情；CLI 面开 --within-ms（同帧面 within_ms）。needs.kind 八种（approve · answer · plan · network · worker · goal · choose · unknown）；activity 多 background_work；足迹那一份 claude_config_dir 改叫 agent_home。
+/// 状态的字进核心：session_added / session_status 带 activity_text · activity_tone，session_state 带 state_text · state_hint · state_tone（必有），facts.needs 带 text · tone；新帧命令 cells-catalog（每件成品有哪些格）。计划：plan-command（代敲 pb continue · pause · view），plan_changed 三格必填、壳转进界面。全文搜索分层（正文层优先留、工具层先放，常驻上界 128 MB）。
+///
+/// p9u-needs-bgwork-mcp：核心补格——facts.needs 加 rank（先答哪个）· waitedMs · waitedText（已等多久在那台算）；facts.usage 带写好的字（contextText · limitText · promptTokensText · percent · contextTone · limitFromText）；activity 说不清也带字（运行中 · now），background_work 写「后台任务运行中」· 语气 busy；facts 多 bgTasks · background（后台命令与时长，会走的那一句 clock{text, from}）· mcp（要登录 · 连不上 · 还在连）；格目录缺格清空、记录金样扩全、冻结表并进格目录。
+/// 新命令 sessions-needs（这台上需手动的会话 {waiting:[{sid, needs}]}，先答的在前）· plan-files（计划格 ⇄ 文件反查）；阻塞命令总期限的超时码统一 child_timed_out（bus-* 原 timed_out，sessions-where/stop/start 列名单超时原回 unobservable）；session-restart 失败 data 与 rotation-* 等应答改 typed（线上形状不变）；sessions-start 的 kind 只入。
+/// ccm 直路打印那一行与真跑同清各家会话号变量（codex 的 --ccm-print 多一段 unset CLAUDE_CODE_SESSION_ID）；关窗 / 列不出来之后文件窗口进程照样退；Windows 摘子进程环境不分大小写；常驻开关先判不支持（--resident-ensure 在不支持的平台先回 unsupported、不建目录）；tmux 控制模式客户端关 stdin 断开（不 SIGKILL）；全文搜索 mimalloc ＋ 多线程重读。
+pub const BUILD_ID: &str = "p9u-needs-bgwork-mcp";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1023,6 +1040,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-ack",
     "--plan-unack",
     "--plan-return",
+    // 代敲 pb 的用户命令（`plan-command`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-command",
+    // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-files",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1053,7 +1074,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--data-report",
     // 换 agent 家目录存之前那一问（`agent-home-check`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--agent-home-check",
-    // 「要你动手」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--chores-mark",
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--last-seen-read",
@@ -1231,6 +1252,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
+    // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--resident-attach",
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
@@ -2190,7 +2213,7 @@ pub struct StreamWants {
 /// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
 /// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
 /// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
-/// 上限同默认那一形（`control/cli_control.rs::MAX_CLI_STDIN`，超了拒、不截断）。
+/// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
 ///
 /// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
@@ -2200,7 +2223,7 @@ pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 ///
 /// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
 /// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
-/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_control.rs::MAX_ARGS_B64_LEN`。
+/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_args.rs::MAX_ARGS_B64_LEN`。
 /// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const ARGS_B64_FLAG: &str = "--args-b64";
 

@@ -116,10 +116,10 @@ pub(crate) fn plan_project_mcp(
             Value::Object(skeleton)
         }
         Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|e| {
-            copy_text(
-                "beMcpEdit.plan.parseFailed",
-                &[("what", what), ("e", &e.to_string())],
-            )
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beMcpEdit.plan.parseFailed", &[("what", what)]),
+                e,
+            ))
         })?,
     };
     if !change(&mut v)? {

@@ -37,6 +37,8 @@ export const FILEWIN_SCENES = [
   { id: "filewin-drag-in", scene: "drag-in", title: "文件窗口 · 从桌面拖进来", desc: "拖着两个文件经过列表：列表区一层淡强调色底 ＋ 虚线框「松开上传 → orders-service（2 个文件）」（稿 20）" },
   { id: "filewin-narrow-drawer", scene: "narrow-drawer", width: 720, title: "文件窗口 · 窄档 720 · 左栏抽屉", desc: "窗宽 720：左栏收成盖在列表上的抽屉（不挤列表），开关打开着（稿 23）" },
   { id: "filewin-peek", scene: "peek", width: 720, title: "文件窗口 · 窄档 · 空格看一眼", desc: "窗宽 720、main.rs 上按空格：窗口正中一块「看一眼」浮层（代码高亮）；Esc / 空格 / 点别处收（稿 24）" },
+  { id: "filewin-plan", scene: "plan", title: "文件窗口 · 计划反查", desc: "目录落在一片的仓库里（稿 06 第 1 张）：列表多一列「格」（状态图标 ＋ 那一格的标题；被两格声明带红 ⚠）；选中 main.rs，预览头多一块「归属」（标题 ·［在计划里看］· 片 · 块 · 签收时刻 · 也声明了它的那一格）。回包是合成的（真后端 `plan-files` 判）" },
+  { id: "filewin-plan-menu", scene: "plan-menu", title: "文件窗口 · 右键 · 在计划里看", desc: "main.rs 上右键（稿 06 第 3 张）：删除之前多一项「在计划里看 · 下单入口」；不归哪一格的文件这一项不出" },
   { id: "filewin-focus", scene: "focus", title: "文件窗口 · 键盘焦点环", desc: "按 Tab 走到搜索框：2px 强调色外环（鼠标点出来的不画）" },
 ].map((s) => ({ dir: "文件窗口", width: 1280, height: 800, ...s }));
 
