@@ -78,7 +78,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 | 判活 | `<claude_dir>/sessions/<PID>.json` ＋ tmux 会话上的 `@ccm_sid` |
 | 流量 | HTTP 请求本身（中转看得见的那一份） |
 | 起会话 · 控制 | 用户意图 |
-| 窗口绑定 · 拉前 | 本机：PowerShell 接入块的 marker 握手；远端：此刻连着那个会话的终端（那台报出它的 `SSH_CONNECTION`，本机后端在连接表里认出这台电脑上开着那条连接的进程链）。两条都只在 Windows 上 |
+| 窗口绑定 · 拉前 | 点 ↗ 那一刻现查一串进程：本机从 agent 进程往上；远端从此刻连着那个会话的终端（那台报出它的 `SSH_CONNECTION`，本机后端在连接表里认出这台电脑上开着那条连接的进程链）。每一级「显示在哪个窗口」：Windows 问它的控制台；Linux 问 bash / zsh 接入块认下的那一份 |
 | 账号 · 上游 | `~/.cc-monitor/accounts/accounts.json` ＋ 每台机器一份 API 号凭据表 |
 | 配置 | 各自的配置文件（monitor 的 `config.json` · 每台后端的 `backend.json`） |
 
@@ -208,10 +208,9 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
 | `config.json` | monitor 设置 | monitor | 主题 · 字体 · 行为开关 · 机器表 · 诊断 |
-| `ps-await/<PID>.json` | PowerShell（`__ccm_bind`：每开一个 PowerShell 后台一次 · 敲 `cc` 时前台一次） | monitor `bind.rs` | PS 通知 monitor 去找标题含 marker 的窗口（短暂，3s 超时） |
-| `ps-registry/<PID>.json` | monitor | PowerShell · monitor（本机会话 ↗ · 远端会话 ↗ 先查它） | monitor 回告绑定成功与 HWND（与 PS 进程同寿） |
-| `sid-hwnd-cache.json` | monitor | monitor | sid → 窗口把手的持久缓存 |
-| `auto-launch.json` | monitor 设置 | PowerShell | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
+| `ps-await/<PID>.tty` | Linux bash / zsh 接入块（本机桌面上开的 shell） | monitor `bind.rs` | 那个 shell 的进程号 · 起始时刻 · 终端设备，monitor 据它认窗口（认上 / 认不出就删） |
+| `ps-registry/<PID>.json` | monitor | monitor（↗ 沿进程链时先查它） | 那个 shell 显示在哪个窗口（与 shell 进程同寿） |
+| `auto-launch.json` | monitor 设置 | PowerShell 接入块 | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
 | `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号） |
 | `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
 
@@ -219,7 +218,7 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 
 只读的外部数据源：`<claude_dir>/projects/**/*.jsonl`（会话内容）· `<claude_dir>/sessions/<PID>.json`（活跃会话，PID ＋ `procStart` 双校验）· `<claude_dir>/tasks/<sid>/`（Task 面板），都由那台后端读。
 
-字段定义、编码约束（UTF-8 无 BOM）、原子性与握手时序 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。每个文件的完整路径在设置的「数据位置」页。
+字段定义、编码约束（UTF-8 无 BOM）、原子性与切到终端那一套 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。每个文件的完整路径在设置的「数据位置」页。
 
 ---
 
@@ -289,21 +288,18 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 ### 拉前三重校验
 
-Windows 上把终端窗口拉到前台前要同时满足：窗口把手还有效 ∧ 当前 owner pid 等于绑定时的 ∧ owner 的进程创建时间等于绑定时的。任一不符就拒绝拉前并说原因。本机的绑定来自握手；远端会话的窗口是点 ↗ 那一刻沿进程链现找的，过同一道校验。
+Windows 上把终端窗口拉到前台前要同时满足：窗口把手还有效 ∧ 当前 owner pid 等于绑定时的 ∧ owner 的进程创建时间等于绑定时的。任一不符就拒绝拉前并说原因。本机远端的窗口都是点 ↗ 那一刻沿进程链现找的，过同一道校验。
 
 **为什么**：窗口把手复用比 PID 复用还频繁，不校验 owner 会把不相干的窗口拉到前面。
 
-### marker 握手：先改标题，后写文件
+### 按控制台认窗口（Windows）
 
-PowerShell **先**把窗口标题（WindowTitle，`[System.Console]::Title`）设成唯一 marker，**后**写 `ps-await/<PID>.json`；monitor 收到文件后 `EnumWindows` 找标题含 marker 的窗口，找不到就重试（最多 600ms），找到写回 `ps-registry/<PID>.json`，PS 看到后恢复标题。顺序不可换：反过来 monitor 会在文件落地瞬间去找一个还没设上的标题。每开一个 PowerShell 都在后台做一次（只在 monitor 在跑时，不等、不出声）；敲 `cc` 时前台再确认一次。时序图在 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
+点 ↗ 时沿进程链每一级借它的控制台问一句：`AttachConsole` → `GetConsoleWindow` → 那个窗口的属主（`platform/console.rs::console_window`，壳里借控制台只此一处）。
+Windows Terminal 里每个标签的伪控制台窗口的属主就是承载它的那个终端窗口（拖到别的窗口时由 Windows Terminal 改挂）；经典控制台就是控制台窗口自己；看不见的不算。
 
-**为什么本机不按进程找窗口**：PowerShell 不拥有终端窗口（Windows Terminal 是单独进程，cmd 走 conhost，VS Code 走集成终端），window owner 不等于 PS，从 claude 往上数常常数不到那个窗口。让 PS 改自己窗口的标题、再按标题反查，不依赖进程关系。远端会话没有这一步可走（终端可能是用户自己开的 `ssh`），它从连接的拥有者往上数（见 §6）。
-
-### UTF-8 BOM 双向防御
-
-PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust 端 `bind.rs::process_await_file` 解析前先剥掉任何 BOM。
-
-**为什么**：PowerShell 5.1 的 `Out-File -Encoding utf8` 默认写 BOM，`serde_json` 不剥就解析失败；源头修 ＋ 接收端兜底，旧模板也能用。
+**为什么不按进程找窗口**：Windows Terminal 一个进程开几个窗口，按进程只分得出「这个程序有两个窗口」。**为什么不靠接入块登记**：登记要用户装 PowerShell 接入块、
+还要那个标签当时在前台、标题没被别人改，cc-monitor 自己从标签栏起的会话（命令里 ssh 用全路径，不带窗口标签）一样落空。控制台的属主由 Windows Terminal 自己维护，
+谁起的、装没装接入块都一样认得准。只认到窗口：Windows Terminal 没有从外部选中别人标签的接口。
 
 ### tooltip 挂在 body 上
 
@@ -341,7 +337,7 @@ PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust �
 - **子运行的记录走主会话的行**：子运行（子 agent）的记录数量大，全量推会把重放缓冲撑大数倍、还会混进主时间线。那台后端照样盯着它们
   （与主记录同一条文件事件管线），只出成品：运行表帧 `session_runs`（列在 agent 面板里，不进主 tab 的消息流）；点面板那一行 / 派出它的那张卡的卡头
   开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位（`tap` 帧带 `run`），子运行的流不上主 tab 的活卡。
-- **从 claude 的祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，claude 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。本机改为终端主动告诉 monitor 它是哪个窗口（PowerShell 接入块的 marker 握手）。远端会话从此刻连着它的终端出发：那台读出那个终端的 `SSH_CONNECTION`（在 tmux 里就问 tmux 此刻哪些客户端连着），本机后端按这四元组在连接表里找到这台电脑上开着那条连接的进程，往上数父进程到 `explorer.exe` 为止，monitor 取链上第一个有可见窗口的进程。链从连接的拥有者起、不从 claude 起；找不到就照实说原因（在 tmux 后台没人连着 · 不在这台电脑上 · 经跳板或端口转换对不上 · 没有窗口或不止一个）。
+- **从 claude 的祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，claude 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。本机改为点 ↗ 那一刻沿 agent 进程往上，每一级问它的控制台显示在哪个窗口（Windows）。远端会话从此刻连着它的终端出发：那台读出那个终端的 `SSH_CONNECTION`（在 tmux 里就问 tmux 此刻哪些客户端连着），本机后端按这四元组在连接表里找到这台电脑上开着那条连接的进程，往上数父进程到 `explorer.exe` 为止，monitor 沿链每一级先问它的控制台显示在哪个窗口，再取第一个有可见窗口的进程。链从连接的拥有者起、不从 claude 起；找不到就照实说原因（在 tmux 后台没人连着 · 不在这台电脑上 · 经跳板或端口转换对不上 · 没有窗口或不止一个）。
 - **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件管理器窗口不渲染会话记录，所以它是原生（egui）的。
 
 ---

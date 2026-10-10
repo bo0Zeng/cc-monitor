@@ -808,11 +808,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_name_ok: "J18",
     // cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
     bus_id_ok: "J12",
-    // 握手目录名（PowerShell 别名块的 `__ccm_bind` 写、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
+    // 握手目录名（bash / zsh 接入块写终端记录、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
     AWAIT_SUBDIR: NONE,
-    // 「monitor 起来了 / 还活着」那两样系统对象的名字（monitor 挂、别名块渲染时填进 PowerShell 模板）：TS 侧零处碰它 ⇒ NONE。
-    MONITOR_UP_NAME: NONE,
-    MONITOR_ALIVE_NAME: NONE,
     // 启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,

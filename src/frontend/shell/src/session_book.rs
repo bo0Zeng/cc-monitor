@@ -135,7 +135,7 @@ pub struct LiveMeta {
     pub activity: Option<SessionActivity>,
     pub waiting_for: Option<String>,
     pub container: Option<SessionContainer>,
-    /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
+    /// 那个 claude 进程的 pid（本机 ↗ 点那一刻从它往上找窗口；没索要 ⇒ `None`）。
     pub pid: Option<u32>,
 }
 
@@ -373,6 +373,18 @@ impl Book {
                 .and_then(|b| b.sessions.get(sid)),
             Some(Product::Live(_))
         )
+    }
+
+    /// 那台那个会话此刻活着时，宣告它的那一帧带来的 agent 进程号（↗ 点那一刻从它往上走进程链；没带 / 不活 ⇒ `None`）。
+    pub fn live_pid(&self, origin: &crate::origin::Origin, sid: &str) -> Option<u32> {
+        match self
+            .origins
+            .get(origin.as_wire_str())
+            .and_then(|b| b.sessions.get(sid))
+        {
+            Some(Product::Live(meta)) => meta.pid,
+            _ => None,
+        }
     }
 
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。

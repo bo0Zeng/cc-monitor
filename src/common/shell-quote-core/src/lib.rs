@@ -108,18 +108,8 @@ pub fn bus_id_ok(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// 握手目录名（相对 monitor 数据目录）。已装的 `__ccm_bind`（`src/shared/cc.ps1.tpl`）也写它 ⇒ **不许改值**。
+/// 握手目录名（相对 monitor 数据目录）。本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在这里留终端记录 ⇒ **不许改值**。
 pub const AWAIT_SUBDIR: &str = "ps-await";
-
-/// 「monitor 起来了」那个有名字的事件（Windows，手动复位，同一个登录会话里可见）：monitor 起来时置位、正常退出时复位；
-/// PowerShell 接入块后台那一份在它上面阻塞等，等到了才去认领窗口（不定时醒、不动窗口标题）。
-/// monitor 挂上它、别名块渲染时填进模板，两侧读同一份；已装的块里写着这个值 ⇒ **不许改值**。
-pub const MONITOR_UP_NAME: &str = "Local\\cc-monitor-up";
-
-/// 「monitor 还活着」那个有名字的互斥量：monitor 起来后一直占着（崩了系统替它放手）。接入块后台那一份拿得到它 ⇒ 此刻没有 monitor 在跑
-/// （[`MONITOR_UP_NAME`] 的置位是上一个没正常退出的 monitor 留下的）；没认上时也是等它被放手，再等下一个 monitor 起来。
-/// 两侧读同一份；已装的块里写着这个值 ⇒ **不许改值**。
-pub const MONITOR_ALIVE_NAME: &str = "Local\\cc-monitor-alive";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 〔`INVARIANTS §47` ③〕**命令片段类**：启动器。

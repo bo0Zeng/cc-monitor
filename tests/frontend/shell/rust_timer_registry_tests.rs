@@ -33,25 +33,11 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "ticker",
         "★ **本表一上岗就抓到的那个真节拍器**：`run_heartbeat` = \
              `loop { sleep(10s); cleanup_dead() }` —— 无限、周期、无上限。\
-             它清的是「死 pid 的 HWND 绑定」。**事件源存在但没用**：pid 死亡本可由内核事件\
+             它清的是「死 shell 的窗口登记」（Linux bash / zsh 那一份）。**事件源存在但没用**：pid 死亡本可由内核事件\
              （Windows job object / backend 侧那套 pidfd）推回来，今天是靠 10s 扫一遍。\
 **节拍归 `bind.rs::BindRegistry`**（`spawn_heartbeat` 起，与 monitor 进程同寿）；远端 ↗ 点那一刻现查，不另起节拍器。\
              ⚠ **退役未排期** —— 换内核事件源要 Windows 真机才量得了，本机一格都买不到。\
              如实记未排期，**不编一个假 owner 让它看起来有人管**。",
-    ),
-    (
-        "src/bind.rs",
-        "probe_by_marker_title",
-        "wait-for-condition",
-        "↗ 默认终端交接那一档：借控制台挂记号标题之后等它传到窗口标题上，12×50ms（≤600ms）找到就停。**有次数上限**、\
-             只在点 ↗ 那一下跑，不是节拍器。（远端点 ↗ 的现扫重试随窗口标签那一套回来，与上面握手那条同一个上限。）",
-    ),
-    (
-        "src/bind.rs",
-        "process_await_file",
-        "wait-for-condition",
-        "一处等窗口：`find_window_for_marker` 的 12×50ms（≤600ms，等 PowerShell 设标题传播）。**有次数上限**，\
-             不是节拍器。（**2 → 1**：远端那条点 ↗ 时的现扫重试随窗口标题那一套删了。）",
     ),
     (
         "src/platform/ewmh.rs",
@@ -64,7 +50,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "src/bind.rs",
         "probe_tty_title",
         "wait-for-condition",
-        "本机 bash / zsh 接入块那一份记录：在它的终端上挂记号标题之后等它传到窗口标题上，12×50ms（≤600ms，同握手那条）找到就停；\
+        "本机 bash / zsh 接入块那一份记录：在它的终端上挂记号标题之后等它传到窗口标题上，12×50ms（≤600ms）找到就停；\
              每步重挂一次（shell 刚起来时提示符会把标题改回去）。**有次数上限**，只在 monitor 起来那一刻与新记录落地那一下跑，\
              同一份没认上的这一趟不再认（`tty_tried`），不是节拍器。",
     ),

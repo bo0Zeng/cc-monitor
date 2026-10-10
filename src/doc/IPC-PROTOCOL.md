@@ -172,10 +172,9 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | 文件 | 写 | 读 | 是什么 |
 |---|---|---|---|
 | `config.json` | monitor（唯一写口 `config.rs::patch_config_at`：交「改哪几条路径」，进程级锁里现读、逐条应用、原子替换；盘上读不懂就拒写） | monitor 前端 · `logging` · 起本机后端时取 `claudeDir` | 主题 · 字体 · `claudeDir` 覆盖 · 诊断 · 机器表 `remote.hosts`（改认人的那几格时整张表要成立：`config.rs::check_machine_table`） |
-| `ps-await/<PID>.json` | PowerShell `__ccm_bind` | monitor `bind.rs` | `{ps_pid, marker, proc_start}`：「去找标题 = marker 的窗口」；短暂 |
-| `ps-registry/<PID>.json` | monitor `bind.rs` | PowerShell · monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：绑上了；与 PS 进程同寿 |
-| `sid-hwnd-cache.json` | monitor `SidHwndCache` | monitor 启动恢复 · 拉前 | `{<sid>: 同上那几格}`：会话 → 窗口；拉前时三重校验（窗口在 · owner pid · owner 起始时刻），过期自动清 |
-| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
+| `ps-await/<PID>.tty` | Linux bash / zsh 接入块（`src/shared/ccm-aliases.sh`，本机桌面上开的 shell） | monitor `bind.rs` | `{shell_pid, proc_start, tty}`：「去认这个终端的窗口」；认上 / 认不出就删 |
+| `ps-registry/<PID>.json` | monitor `bind.rs` | monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：那个 shell 显示在哪个窗口；与 shell 进程同寿 |
+| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell 接入块 `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
 | `history-metadata.json` | 本机常驻后端（`history-annotate` / `history-forget`；读不懂就拒写、只改那一条） | 本机常驻后端（`history-list` 并进成品） | `{<sid>: {starred, custom_title, hidden}}` |
 | `logs/monitor/` · `logs/backend/` | monitor · 常驻后端 | 人 · `backend-log` | 诊断日志（按天滚 · 有上限） |
 | `backend.json` | `exit-policy-set` | `exit-policy-read` · monitor 退出时 | 「退出行为」：monitor 退出时结束不结束本机常驻后端 |
@@ -188,39 +187,18 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `attachable: false` ⇒ 不提供 attach / 拉前 / 「杀死空 tmux」，缺席 ＝ `true`。`procStart` 参与 PID 复用检测：缺了就退化成只看进程在不在。
 - `<claude_dir>/tasks/<sid>/<id>.json`：任务清单（`<digits>.json` 才算，`.lock` / `.highwatermark` 忽略；读到半截 JSON 单条跳过）。后端盯这棵树，变了发 `tasks_changed{sid}`，客户端重问 `tasks-list`。
 
-## 跨进程握手时序图（cc 集成）
+## 切到终端：此刻显示这个会话的是哪个窗口
 
-敲 `cc`（或开一个 PowerShell）时，PowerShell 让 monitor 认出自己的终端窗口：
+点 ↗ 那一刻现查，不缓存：本机会话从 agent 进程往上走进程链；远端会话先问那台此刻谁连着它（带窗口标签 `LC_CCM_WINDOW` 就先按标签），
+再问本机后端开着那条连接的是哪串进程（`terminal-processes`）。最后一跳在 monitor（`bind.rs::pick_chain_window`）：沿链从下往上，
+每一级先问「它显示在哪个窗口」，再看它名下的可见顶层窗口，碰到终端本身就停（恰好一个窗口 ⇒ 它，几个 ⇒ 照实说分不清）。
 
-```
-PS (__ccm_bind)                          文件                            monitor (bind.rs)
-1. ps-registry/<PID>.json 在且 ps_proc_start 对得上 ⇒ 已绑，返回
-2. auto-launch 开着且 monitor 不在 ⇒ 后台起 monitor（不抢焦点、不死等）
-3. marker = "ccm-bind-<PID>-<8 位 GUID>"
-4. ★ 先设窗口标题 WindowTitle = marker
-5. 后写 ps-await/<PID>.json ──────────►  ps-await/<PID>.json
-                                                     │ notify（合并一小段）
-                                                     ▼
-                                                  6. 读它（剥 BOM）
-                                                  7. EnumWindows 找标题含 marker 的窗口
-                                                     找不到 ⇒ 短重试
-                                                  8. 取窗口属主进程与它的起始时刻
-                                                  9. 写 ps-registry/<PID>.json
-6'. 轮询，直到 ps-await 被删或 ps-registry 落地且指纹对上 ◄──
-                                                 10. 删 ps-await/<PID>.json
-7'. 退出：标题还是 marker 就恢复原标题；循环外再补查一次 registry；ps-await 还在就自删
-```
-
-开 PowerShell 那一份（`__ccm_bind -Background`）第 1 步之后不做第 2 步，第 3–7' 步交给后台一个空 runspace：等到「monitor 起来了」（`Local\cc-monitor-up` 事件）且看得出它真在跑（`Local\cc-monitor-alive` 互斥量被占着）时才做，不出声。
-轮询步长与总期限住 `src/shared/cc.ps1.tpl`，monitor 侧的合并与重试节奏住 `bind.rs`（`handshake_timings_match_their_pinned_values` 钉着）。
-
-**为什么第 4 步必须在第 5 步之前**：monitor 在 await 文件落地那一瞬就去找窗口；先写文件、后设标题的话，monitor 越快越找不到，每个新 shell 的首次 `cc` 都会烧满超时。
-两侧各修一半：PowerShell 侧反转顺序 ⇒ 首次即中；monitor 侧的短重试兜住旧模板与慢标题传播。
-
-**退出条件是二选一**：await 文件被删，**或** registry 落地且指纹对上 —— monitor 的清理时序怎么变都走得通。
-
-**为什么这样设计**：文件 ＋ notify 两边都简单、出问题能直接看文件、不用管连接；await 用 PID 当文件名，多个 PowerShell 同时绑互不覆盖；marker 带 GUID，PID 被复用也不会认错窗口；
-窗口缓存持久化，monitor 重启不丢绑定；auto-launch 记 monitor 的路径，monitor 搬了家下次启动自己更新。
+「它显示在哪个窗口」：
+- **Windows**：借那个进程的控制台问一句（`platform::console::console_window`：`AttachConsole` → `GetConsoleWindow` → 属主）。
+  Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的那个窗口；经典控制台就是控制台窗口自己。不要接入块、不要登记、不改标题。
+  只认到窗口，认不到窗口里的哪个标签。
+- **Linux（X11）**：bash / zsh 接入块在本机桌面上开的 shell 里留 `ps-await/<PID>.tty`，monitor 往那个终端写改标题序列挂记号、按标题找窗口，
+  写进 `ps-registry/`（标题出栈还原）。
 
 ## 加一条协议
 

@@ -646,10 +646,7 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
         .collect();
     assert_eq!(present, vec![target.display().to_string().as_str()]);
     let hit = after.iter().find(|c| c.block.present).unwrap();
-    assert!(
-        hit.exists && hit.block.version.is_some(),
-        "PowerShell 那一对围栏带版本串：{hit:?}"
-    );
+    assert!(hit.exists, "{hit:?}");
     // 同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称；
     //   从前这里断言「仍是假」（PowerShell 的别名块不接，那一侧只有代装那一处，`AL1d.md §5` 第 4 条）。
     assert!(hit.sourced, "{hit:?}");

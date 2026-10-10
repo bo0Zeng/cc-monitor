@@ -170,7 +170,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **为什么不能松动**：
 - 避免循环依赖：读 config 不能先解析 claudeDir，否则用户填错路径就再也打不开设置面板。
 - 用户切换 Claude 数据目录后主题 / 字体偏好不丢。
-- profile backup / sid-hwnd-cache / ps-await 等跨进程文件位置稳定，PS 端不需要动态查询。
+- profile backup / ps-await 等跨进程文件位置稳定，shell 接入块那一端不需要动态查询。
 
 **唯一的明文例外：`CCM_DATA_DIR`**（`config.rs::DATA_DIR_ENV`，`P17` 2026-09-22 引入 · 补成本条的例外）。
 它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），**不是**给用户搬家用的设置面（设置页「数据位置」只读展示）。规矩四条：
@@ -197,8 +197,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（文件管理窗口进程；整份原子换，后写者赢） | 文件管理窗口的整窗缩放 —— 用户按 Ctrl + = / - 调出来的；设置页「数据位置」列出它 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
-| `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
-| `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
+| `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口登记，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放；`launch-pending/` 由 `ccm` 最终那一跳写、观测侧清；`known_hosts` 由拨号侧写） | 一台机器一个家：后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上）· 离线那台的上次值（再连上一次就有）· 起会话便条（进程退出即清）· 主机钥匙（下次拨号按固化的指纹再认下）· 配置文件上次经 cc-monitor 写出时的指纹（删了只是下次不说「手改过」） |
 | `relay-key` `relay-pass-key` `listen-token` `listen-<口>.pid` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的三把钥匙（中转两把 · 监听口一把）与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「待办」里点过「不用了」的几件与选了自己贴的那份启动文件 · 计划需手动里认可过的几条与退回过的格 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
@@ -206,7 +205,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
 - **规矩**：**新增任何 data dir 文件，必须在 `data_paths.rs` 的枚举里声明它是哪类**（那里是逐个 data dir 文件的唯一权威枚举点，带 description）。truth 的格式要迁移友好；cache 允许随手删。
-- **两笔边界别误读**：① `auto-launch.json` 同文件混真相+派生，是**良性**的（派生位自愈，整体迁移不坏）；② `ps-registry/`/`ps-await/`/`logs/` 在子目录，那是**按用途/IPC 对端分**的，**不是按真相/缓存分**——`sid-hwnd-cache.json` 这个纯缓存反而在根、跟 `config.json` 平级。
+- **两笔边界别误读**：① `auto-launch.json` 同文件混真相+派生，是**良性**的（派生位自愈，整体迁移不坏）；② `ps-registry/`/`ps-await/`/`logs/` 在子目录，那是**按用途/IPC 对端分**的，**不是按真相/缓存分**。
 - **机器强制形态（已落地）**：`data_paths.rs::DataPathInfo` 带一个**非可选**的 `class: DataClass`（`truth` / `cache`）枚举字段 ⇒ 「新文件必须选类」由类型系统兜住；设置页「数据位置」每行据它显示「删了会丢 / 可随手删」。每一项的类与本节上面那张表两向相等（异源判据）。
 
 ---
@@ -406,10 +405,10 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里经 `platform::window::raise_main` 还原 · 显示 · 拉前主窗口；Linux 带上第二个实例启动时拿到的 `XDG_ACTIVATION_TOKEN` / `DESKTOP_STARTUP_ID`）
 3. 第二个实例自身立即退出
 
-**为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、`sid-hwnd-cache.json`、jsonl watcher、`logs/monitor/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：
+**为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、jsonl watcher、`logs/monitor/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：
 
 - 双重渲染（两个窗口都监听同一 jsonl）
-- cc 握手 race（两个 monitor 都 EnumWindows 找 marker，先到先赢 / 后到的写不到 `ps-registry/`）
+- 认窗口 race（Linux 上两个 monitor 都去认同一份 `ps-await/*.tty`，往同一个终端挂记号标题，后到的写不到 `ps-registry/`）
 - 不可预测的 `auto-launch.json` last-writer-wins 覆盖
 
 跨 user session（同一台机器两个用户登录）不冲突 —— Windows 的 mutex 是 user-scoped，Linux 的会话总线每个登录会话一条。
@@ -711,9 +710,9 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 ### 现状签收（2026-07-16，F64 全库核查，无违反）
 cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算」的东西。持久身份
 全挂**外部稳定 id**：
-- 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、后端 `history_annotations.rs::Table`、`bind.rs::SidHwndBinding`）。
+- 会话表 / 历史 metadata key = Claude Code `sessionId`（`session_map.rs`、后端 `history_annotations.rs::Table`）。
 - ps-registry key = OS `pid`（`bind.rs`）。
-- 唯一自铸的 opaque token = bind 握手 marker `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs`）——**瞬时握手、用完即删、不从路径算**，不当持久身份，合规。
+- 唯一自铸的 opaque token = 认窗口那一下挂的记号标题 `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs::claim_tty`）——**瞬时、用完即还原、不从路径算**，不当持久身份，合规。
 
 ### `origin` 边界（有意的外部稳定 id，别手滑）
 `RemoteConfig.label`（`stream_source/config.rs`，空则回退 `host`）是唯一「持久（config.json）+

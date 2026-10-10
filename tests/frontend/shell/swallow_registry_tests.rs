@@ -187,7 +187,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = ShowWindow(h, SW_RESTORE);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(&p);", Why::CleanupAfterFailure, "撤死进程留下的登记文件；删不掉下次重扫再撤"),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(file);", Why::CleanupAfterFailure, "bash / zsh 那一份记录用完 / 认不出 / 作废就删；删不掉下一个 monitor 起来按身份再核、再删"),
-    ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(await_file);", Why::CleanupAfterFailure, "等待文件用完就删；删不掉只剩一份无主的等待文件，下次按身份再核"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };", Why::NotAnError, "按属主筛的那一遍：同上，要的是出参里的属主 pid"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(pid as isize));", Why::NotAnError, "回调里自己收结果、从不提前停；枚举失败 ⇒ 收到的是空表，调用方照「没有窗口」说"),
@@ -218,7 +217,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_RESTORE);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_SHOW);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = local_cache.record(sid, pid, bind_registry);", Why::NotAnError, "`None` = 这个会话不是经 cc 起的 / 还没握手完（常态）；绑上了 `record` 自己记日志"),
     // F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）随起停事件并进会话流删了（就绪点在流里原位交成品）。
     ("src/frontend/shell/src/lib.rs", "let _ = w.set_focus();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.show();", Why::WindowBestEffort, ""),

@@ -160,7 +160,7 @@ describe("数据位置「真相 / 缓存」那一格", () => {
     const entries = [
       mk("config.json", "truth"),
       mk("history-metadata.json", "truth"),
-      mk("sid-hwnd-cache.json", "cache"),
+      mk("last-seen.json", "cache"),
       mk("logs/", "cache"),
     ];
     paths.value = { monitorDataDir: "/h", entries, backendHome: "/h", backendEntries: [], webviewUserDataDir: null };
@@ -177,7 +177,7 @@ describe("数据位置「真相 / 缓存」那一格", () => {
     expect(got).toEqual([
       ["config.json", copyText("data.class.keep")],
       ["history-metadata.json", copyText("data.class.keep")],
-      ["sid-hwnd-cache.json", copyText("data.class.disposable")],
+      ["last-seen.json", copyText("data.class.disposable")],
       ["logs/", copyText("data.class.disposable")],
     ]);
   });

@@ -1449,7 +1449,7 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
 /// - `--with-pid`：`session_added` 带上 `pid`（`wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
-///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
+///   本机 ↗ 点那一刻从 agent 进程往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
 ///
 /// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。

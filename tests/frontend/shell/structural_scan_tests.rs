@@ -944,12 +944,6 @@ fn every_comment_stripping_transformer_is_registered() {
 fn comment_stripping_has_exactly_one_shared_implementation() {
     const REGISTERED: &[(&str, &str)] = &[
         (
-            // 〔搬树 2026-09-18〕`profile_installer.rs` → 它那条握手文档守卫搬去了
-            // `tests/frontend/shell/profile_installer_handshake_doc_guard.rs`，剥法随判据一起走。
-            "profile_installer_handshake_doc_guard.rs",
-            "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
-        ),
-        (
             // 〔步 7c 剖分 2026-09-19 · C 类〕住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
             "e2e_gate_registry_tests.rs",
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
@@ -990,12 +984,9 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     found.dedup();
 
     // 抽取器自检：连登记在册的那一个都扫不到 ⇒ 遍历或形态坏了，下面的对拍会空绿。
-    // 🔴 〔搬树 2026-09-18〕点名的住址跟着搬：那份私有剥法
-    //    （`profile_installer` 握手文档那条守卫里的 `fn strip_comments`）今天住
-    //    `tests/frontend/shell/profile_installer_handshake_doc_guard.rs`。**剥法本身一个字没改。**
     assert!(
-        found.contains(&"profile_installer_handshake_doc_guard.rs".to_string()),
-        "连 `profile_installer_handshake_doc_guard.rs` 里那个已登记的实现都没扫到 —— \n\
+        found.contains(&"e2e_gate_registry_tests.rs".to_string()),
+        "连 `e2e_gate_registry_tests.rs` 里那个已登记的实现都没扫到 —— \n\
              遍历或形态坏了，那样「没有新增」这个结论是零命中得来的，不是真的。实得：{found:?}"
     );
 

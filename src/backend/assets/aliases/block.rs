@@ -53,7 +53,7 @@ use crate::platform::shell::dialect::{self, Shell};
 pub(crate) const BEGIN_MARKER: &str = "# === cc-monitor BEGIN";
 pub(crate) const END_MARKER: &str = "# === cc-monitor END";
 
-/// PowerShell 别名块的模板源码（`__ccm_bind` ＋ 接上别名文件那一行）。
+/// PowerShell 别名块的模板源码（`__ccm_bind` · 窗口标签 ＋ `ssh` · 接上别名文件那一行）。
 const CC_TEMPLATE: &str = include_str!("../../../shared/cc.ps1.tpl");
 
 /// 启动文件里、我们的围栏之外，自己定义了一个与清单里某条同名的函数（会和那条别名打架：后定义的赢）。
@@ -93,14 +93,6 @@ pub(crate) enum Wins {
 pub(crate) struct BlockState {
     /// 这份文件里有没有 cc-monitor 的别名块（**悬空的 BEGIN 也算在**，见 `block_presence`）。
     pub present: bool,
-    /// 块头上的版本串（`… BEGIN v2 ===` 那一段）；不带版本串的旧块 ⇒ `None`。
-    pub version: Option<String>,
-    /// 块在、而版本串不是这一版的那个 ⇒ `true`（两种方言都判；POSIX 那一块不带版本串的就是旧的）。
-    /// v3 起模板结尾多一行接上别名文件—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
-    /// v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
-    /// v5：数据目录搬到 `~/.cc-monitor`，v4 块里 `$ccmDir` 写的是旧住址 ⇒ 抬版本，装着 v4 的人重装一次（不认老路径）。
-    /// 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
-    pub outdated: bool,
     /// 块外自己定义的、与清单里某条同名的函数（只提醒，不替人改）。
     pub conflicting_functions: Vec<NameClash>,
     /// 🔴 **「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
@@ -120,12 +112,8 @@ pub(crate) struct BlockState {
 pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockState {
     let flavor = Shell::of_target(path);
     let content = strip_bom(raw);
-    let (present, version) = block_presence(flavor, content);
-    let outdated = present && version != current_version_of(flavor);
     BlockState {
-        present,
-        version,
-        outdated,
+        present: block_presence(flavor, content),
         conflicting_functions: find_conflicting_functions(flavor, content, names)
             .into_iter()
             .map(|mut c| {
@@ -178,8 +166,8 @@ pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
 /// 而不是「同一件事的第四个形状」（那三套）。
 ///
-/// 两种方言的块都只管接入：POSIX 让 `ccm` 进 PATH ＋ 接上别名文件；PowerShell 是拉前握手 `__ccm_bind` ＋ 接上别名文件
-/// （`cc` / `cct` / `cca` 都在清单里，块里不再带函数）。
+/// 两种方言的块都只管接入：POSIX 让 `ccm` 进 PATH ＋ 接上别名文件；PowerShell 是 `__ccm_bind` ＋ 窗口标签 ＋ 接上别名文件
+/// （`cc` / `cct` / `cca` 都在清单里，块里不再带别名函数）。
 pub(crate) fn plan_install(
     flavor: Shell,
     existing: &str,
@@ -217,24 +205,16 @@ pub(crate) fn plan_uninstall(flavor: Shell, existing: &str, what: &str) -> Resul
     }
 }
 
-/// 这份文件里**有没有** cc-monitor 的块，以及块里的版本串。
+/// 这份文件里**有没有** cc-monitor 的块。
 ///
 /// 两种方言认的是**两对不同的围栏**，一对都不许混：混了就是「装一个把另一个整块替换掉」
 /// （`account_aliases` 那对刻意不同前缀，理由同源）。
 /// 两种方言同一口径：只看有没有一行以 BEGIN 打头（**悬空的 BEGIN 也算在**——否则界面会说「未安装」
-/// 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形），版本串是 BEGIN 后面那一段。
-fn block_presence(flavor: Shell, content: &str) -> (bool, Option<String>) {
+/// 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形）。
+fn block_presence(flavor: Shell, content: &str) -> bool {
     match flavor {
-        Shell::PowerShell => find_block_version(content, BEGIN_MARKER),
-        Shell::Posix => find_block_version(content, CCM_PROFILE_BEGIN),
-    }
-}
-
-/// 这一版别名块的版本串：PowerShell 那一块从模板第一行现读，POSIX 那一块是 [`POSIX_BLOCK_VERSION`]。
-fn current_version_of(flavor: Shell) -> Option<String> {
-    match flavor {
-        Shell::PowerShell => current_block_version(),
-        Shell::Posix => Some(POSIX_BLOCK_VERSION.to_string()),
+        Shell::PowerShell => has_block(content, BEGIN_MARKER),
+        Shell::Posix => has_block(content, CCM_PROFILE_BEGIN),
     }
 }
 
@@ -307,7 +287,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 ///
 /// # 为什么不是「给 `scan_legacy_profiles`〔散文墓碑〕的路径表加两行」
 ///
-/// 那个函数（已删）认的是 [`find_block_version`]（**围栏**）。而 `K-R57` 现打用户本机：
+/// 那个函数（已删）认的是 [`has_block`]（**围栏**）。而 `K-R57` 现打用户本机：
 /// `~/.bashrc` 三种围栏**全部零命中**，那 14 行 ccm 相关**全是裸写的**
 /// ⇒ **加路径解决不了「够不着裸行」**，只会让读数看起来像做完了。
 /// ⇒ 这里换的是**判法**：按行走、跳过我们自己的围栏段、按**词**认 `ccm`。
@@ -537,7 +517,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 
 /// 读进来的那一份：把 BOM 剥掉再交给任何**判内容**的东西。
 ///
-/// 🔴 不剥会坏两件事：① `find_block_version` 按 `strip_prefix(BEGIN_MARKER)` 认围栏，
+/// 🔴 不剥会坏两件事：① `has_block` 按 `starts_with(BEGIN_MARKER)` 认围栏，
 /// 而 `\u{feff}# === cc-monitor BEGIN` 前缀对不上 ⇒ 界面说「未安装」、藏起卸载按钮，
 /// 点安装却报行号（那正是 T04 审计③ 治过的那一形）；② BOM 会被当成用户内容
 /// 原样写回文件中间。（这里**两种方言都剥**：它是「读」这一侧，宽进。）
@@ -550,31 +530,20 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
     flavor.dialect().encode_for_disk(content)
 }
 
-/// PowerShell 别名块的代码：拉前握手 `__ccm_bind` ＋ 接上别名文件那一行（`src/shared/cc.ps1.tpl`）。
+/// PowerShell 别名块的代码：`__ccm_bind`（勾了自动打开就先把 cc-monitor 开起来）· 窗口标签 ＋ 带标签的那层 `ssh` ·
+/// 接上别名文件那一行（`src/shared/cc.ps1.tpl`）。
 ///
-/// 块里只留它非留不可的：握手（本机 Windows 会话靠它把终端窗口登记给 cc-monitor）。`cc` 进了清单（清单渲染出来的
-/// PowerShell 别名本来就带一行有守卫的 `__ccm_bind` 调用，与从前块里那份同形）；没有 tmux 的目标没有 `cct` / `cca`。
+/// 切到终端不靠这一块：cc-monitor 点 ↗ 那一刻按终端的控制台认窗口（v9 起块里没有握手、没有后台）。`cc` 进了清单（清单渲染出来的
+/// PowerShell 别名带一行有守卫的 `__ccm_bind` 调用）；没有 tmux 的目标没有 `cct` / `cca`。
 /// 用户级 PATH 那件事是另一格（用户点一下，命令文本由 monitor `profile_installer.rs` 生成）。
 ///
-/// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
-/// `auto-launch.json` 的那个目录），按 PowerShell 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`
-/// （跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
-/// `{{MONITOR_UP}}` · `{{MONITOR_ALIVE}}` 填「monitor 起来了」那个事件与「monitor 还活着」那个互斥量的名字
-/// （两侧共用的那一份 `shell_quote_core::MONITOR_UP_NAME` · `MONITOR_ALIVE_NAME`）。
+/// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `auto-launch.json` 的那个目录），按 PowerShell
+/// 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`（跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
 pub(crate) fn render_cc_code(monitor_data_dir: &Path) -> String {
-    CC_TEMPLATE
-        .replace(
-            "{{MONITOR_DATA_DIR}}",
-            &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
-        )
-        .replace(
-            "{{MONITOR_UP}}",
-            &dialect::ps_literal(shell_quote_core::MONITOR_UP_NAME),
-        )
-        .replace(
-            "{{MONITOR_ALIVE}}",
-            &dialect::ps_literal(shell_quote_core::MONITOR_ALIVE_NAME),
-        )
+    CC_TEMPLATE.replace(
+        "{{MONITOR_DATA_DIR}}",
+        &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
+    )
 }
 
 /// idempotent 安装：把别名块写到 profile / rc，已有块则原地替换。用户在 BEGIN/END 块外的内容完全不动。
@@ -613,33 +582,15 @@ pub(crate) fn uninstall_from_profile(d: &dyn Door, path: &Path) -> Result<(), St
     .map(|_| ())
 }
 
-/// 这一版模板的块头版本串（`src/shared/cc.ps1.tpl` 第一行 `BEGIN vN` 那个 `vN`）—— 版本号的唯一住址是模板本身。
-pub(crate) fn current_block_version() -> Option<String> {
-    find_block_version(CC_TEMPLATE, BEGIN_MARKER).1
-}
-
 // === 内部 helpers ===
 
-/// 找文件中第一个 cc-monitor 块的版本字符串（"v1" 等）。
-fn find_block_version(content: &str, marker: &str) -> (bool, Option<String>) {
-    for line in content.lines() {
-        // T04 审计③：与 `find_pair` 同口径（`trim_start`）。不加的话缩进的悬空 BEGIN 会让
-        // `has_ccm_block=false` → UI 说"未安装"**且隐藏卸载按钮**，而点安装却 Err 报行号。
-        if let Some(rest) = line.trim_start().strip_prefix(marker) {
-            // rest 可能是 " v1 ===" 之类
-            let trimmed = rest.trim().trim_end_matches('=').trim();
-            // trimmed = "v1"
-            return (
-                true,
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                },
-            );
-        }
-    }
-    (false, None)
+/// 有没有一行以 `marker` 打头（cc-monitor 块的 BEGIN 那一行）。
+fn has_block(content: &str, marker: &str) -> bool {
+    // T04 审计③：与 `find_pair` 同口径（`trim_start`）。不加的话缩进的悬空 BEGIN 会让
+    // `has_ccm_block=false` → UI 说"未安装"**且隐藏卸载按钮**，而点安装却 Err 报行号。
+    content
+        .lines()
+        .any(|line| line.trim_start().starts_with(marker))
 }
 
 /// 同一份文件里谁生效：这份里有别名块 ⇒ 你那一行在块后面就是你写的、在前面就是清单；没有别名块 ⇒ 先记「说不清」，
@@ -763,11 +714,10 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
 /// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
 /// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
 /// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
-/// 它是**前缀**（认块用 `starts_with`）：写下去的那一行是 `{BEGIN} {版本} ===`（与 PowerShell 那一对同一形），
-/// 不带版本串的那一行（从前的 `… BEGIN ===`，块里还定义着 cc / cct / cca）照样认得、判成旧版。
+/// 它是**前缀**（认块用 `starts_with`）：写下去的那一行是 `{BEGIN} {版本} ===`（与 PowerShell 那一对同一形）。
 pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN";
-/// POSIX 别名块这一版的版本串（唯一住址）。v2：块只让 `ccm` 进 PATH ＋ 接上别名文件，不再定义 cc / cct / cca。
-/// v3：本机桌面上开的 shell 多留一份终端记录（`ps-await/<进程号>.tty`）＋ 设 `LC_CCM_WINDOW`，cc-monitor 据它认终端窗口（↗）—— 装着 v2 的人重装一次。
+/// POSIX 别名块的版本串（写进块头那一行，唯一住址）：块让 `ccm` 进 PATH ＋ 接上别名文件；本机桌面上开的 shell 多留一份终端记录
+/// （`ps-await/<进程号>.tty`）＋ 设 `LC_CCM_WINDOW`，cc-monitor 据它认终端窗口（↗）。
 pub(crate) const POSIX_BLOCK_VERSION: &str = "v3";
 pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 
