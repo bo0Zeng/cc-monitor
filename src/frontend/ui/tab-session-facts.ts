@@ -57,7 +57,8 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
 
   const needs = JSON.stringify(tab.needs) !== JSON.stringify(f.needs);
   tab.needs = f.needs;
-  const peek = JSON.stringify([tab.pending, tab.lastSay]) !== JSON.stringify([f.pending, f.lastSay]);
+  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork]) !== JSON.stringify([f.pending, f.lastSay, f.background]);
+  tab.backgroundWork = f.background;
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;
   tab.retries = new Map(f.retries.map((r) => [r.id, r.outcome]));

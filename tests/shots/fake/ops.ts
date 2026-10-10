@@ -3,6 +3,7 @@
  */
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { fmtDur } from "../../../src/frontend/ui/quota-lines";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
 import type { OpHandler, SessionSpec, World } from "./types";
@@ -485,7 +486,18 @@ export function defaultOps(): Record<string, OpHandler> {
           if (!r.blocks.some((b) => b.type === "tool_result")) retries.at(-1)!.outcome = "interrupted";
         }
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null };
+      // 后台任务运行中那一句：照后端 `facts_query::background_of`（命令取最早起的 · 几条 ⇒「等 N 条」· 时长 ＝ 它起了多久；同一张文案表的 `beSession.activity.*`）。
+      let background: { text: string; clock: { text: string; from: number } | null; what: string | null; count: number; tone: string } | null = null;
+      if (s?.activity === "background_work") {
+        const cmds = s.bgCommands ?? [];
+        const first = cmds[0];
+        const what = first ? (cmds.length > 1 ? copyText("beSession.activity.backgroundMany", { cmd: first.cmd, n: String(cmds.length) }) : first.cmd) : null;
+        const line = (dur: string) => copyText("beSession.activity.backgroundFor", { cmd: what ?? "", dur });
+        background = first
+          ? { text: line(fmtDur((Date.now() - first.sinceMs) / 1000)), clock: { text: line("{dur}"), from: first.sinceMs }, what, count: cmds.length, tone: "busy" }
+          : { text: copyText("beSession.activity.backgroundWork"), clock: null, what: null, count: 0, tone: "busy" };
+      }
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, bgTasks: [], background };
     },
     // 主线外清单：假世界的会话都没有回退过。
     "history-branch": (_o, req, w) => ({ off: [], end: layout(sessionByPath(w, req.path)?.records ?? []).end }),

@@ -503,6 +503,12 @@ fn golden_facts_session(home: &Path) -> String {
         r#"{"type":"user","uuid":"f-3","timestamp":"t3a","parentUuid":"f-2","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
         r#"{"type":"assistant","uuid":"f-4","parentUuid":"f-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
         r#"{"type":"assistant","uuid":"f-5","parentUuid":"f-4","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
+        // 后台命令两条：一条还在跑（make test-all），一条收到了收场通知（住 queue-operation）⇒ 账上只剩前一条。
+        r#"{"type":"assistant","uuid":"f-6","parentUuid":"f-5","timestamp":"2026-10-09T08:00:00.000Z","message":{"content":[{"type":"tool_use","id":"tu-b1","name":"Bash","input":{"command":"make test-all","run_in_background":true}}]}}"#,
+        r#"{"type":"user","uuid":"f-7","parentUuid":"f-6","timestamp":"2026-10-09T08:00:01.000Z","toolUseResult":{"stdout":"","backgroundTaskId":"bb1"},"message":{"content":[{"type":"tool_result","tool_use_id":"tu-b1","content":"Command running in background with ID: bb1."}]}}"#,
+        r#"{"type":"assistant","uuid":"f-8","parentUuid":"f-7","timestamp":"2026-10-09T08:10:00.000Z","message":{"content":[{"type":"tool_use","id":"tu-b2","name":"Bash","input":{"command":"python train.py","run_in_background":true}}]}}"#,
+        r#"{"type":"user","uuid":"f-9","parentUuid":"f-8","timestamp":"2026-10-09T08:10:01.000Z","toolUseResult":{"stdout":"","backgroundTaskId":"bb2"},"message":{"content":[{"type":"tool_result","tool_use_id":"tu-b2","content":"Command running in background with ID: bb2."}]}}"#,
+        r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-09T08:20:00.000Z","content":"<task-notification>\n<task-id>bb2</task-id>\n<tool-use-id>tu-b2</tool-use-id>\n<status>completed</status>\n<summary>Background command \"train\" completed (exit code 0)</summary>\n</task-notification>"}"#,
         r#"{"type":"system","subtype":"api_error","uuid":"rt-2","timestamp":"t5a","parentUuid":"f-5","retryAttempt":1,"maxRetries":10}"#,
         r#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s-g"}"#,
         r#"{"type":"cost-state","totalCostUSD":0.4242,"modelUsage":{},"hasUnknownModelCost":false}"#,

@@ -150,6 +150,27 @@ export interface SessionFacts {
   tokens: TokenUse | null;
   /** 全会话花费（记录里那一家自己记的；`text` 是写好的成品）。记录里没有 ⇒ `null`。 */
   cost: { micros: number; partial: boolean; text: string } | null;
+  /** 还没收场的后台命令（后端累加的那份账，续传时原样交回；界面不读）。 */
+  bgTasks: BgTask[];
+  /** 后台任务运行中那一句（后端 `facts_query::background_of` 写；界面照抄、时长那一截按会走的那一句走字）。不是这一态 ⇒ `null`。 */
+  background: BackgroundWork | null;
+}
+
+/** 一条还没收场的后台命令（续传令牌的一部分）。 */
+export interface BgTask {
+  call: string;
+  task: string | null;
+  cmd: string | null;
+  at: string | null;
+}
+
+/** 后台任务运行中那一态的成品：`text` 发出那一刻写好的一句 · `clock` 同一句时长留 `{dur}`（填 现在 − `from`）· `what` 命令那一格 · `count` 几条。 */
+export interface BackgroundWork {
+  text: string;
+  clock: { text: string; from: number } | null;
+  what: string | null;
+  count: number;
+  tone: string;
 }
 
 /** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
@@ -404,7 +425,7 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
   if (!strOrNull(v.permissionMode)) return bad();
   let tokens: TokenUse | null = null;
   if (v.tokens !== null) {
@@ -460,6 +481,24 @@ export function decodeFacts(v: unknown): SessionFacts {
     if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "text", "tone", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone)) return bad();
     needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone };
   }
+  if (!Array.isArray(v.bgTasks)) return bad();
+  const bgTasks: BgTask[] = [];
+  for (const t of v.bgTasks) {
+    if (!isObj(t) || !exactKeys(t, ["at", "call", "cmd", "task"]) || !isStr(t.call) || !strOrNull(t.task) || !strOrNull(t.cmd) || !strOrNull(t.at)) return bad();
+    bgTasks.push({ call: t.call, task: t.task, cmd: t.cmd, at: t.at });
+  }
+  let background: BackgroundWork | null = null;
+  if (v.background !== null) {
+    const b = v.background;
+    if (!isObj(b) || !exactKeys(b, ["clock", "count", "text", "tone", "what"]) || !isStr(b.text) || !strOrNull(b.what) || !isNum(b.count) || !isStr(b.tone)) return bad();
+    let clock: BackgroundWork["clock"] = null;
+    if (b.clock !== null) {
+      const c = b.clock;
+      if (!isObj(c) || !exactKeys(c, ["from", "text"]) || !isStr(c.text) || !isNum(c.from)) return bad();
+      clock = { text: c.text, from: c.from };
+    }
+    background = { text: b.text, clock, what: b.what, count: b.count, tone: b.tone };
+  }
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
   if (!(v.projectDir === null || isStr(v.projectDir))) return bad();
@@ -504,6 +543,8 @@ export function decodeFacts(v: unknown): SessionFacts {
     permissionMode: v.permissionMode as string | null,
     tokens,
     cost,
+    bgTasks,
+    background,
   };
 }
 

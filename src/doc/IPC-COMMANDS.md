@@ -1835,6 +1835,8 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | ← | 这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null` |
+| `background` | ← | 那台说一轮停了、后台命令还在跑 ⇒ `{text, clock, what, count, tone}`：`text` 写好的一句（「后台任务运行中 · make test-all · 12m」，发出那一刻的钟；命令拿不到 ⇒ 只那个字）· `clock` 同一句时长留 `{dur}` 的 `{text, from}`（填 现在 − `from` 毫秒）· `what` 命令那一格（「{cmd} 等 {n} 条」）· `count` 这一次进程起来之后起、还没收场的几条 · `tone` 恒 busy；不是这一态 ⇒ `null`（每次现查） |
+| `bgTasks` | ← | 还没收场的后台命令 `{call, task, cmd, at}`（起它的调用 id · 任务号 · 命令原样 · 起它的那条记录的时刻），文件序，至多 16 条（续传令牌的一部分） |
 | `cost` | ← | 全会话花费（记录里那一家自己记的那一条，最后一条为准）`{micros, partial, text}`（`text` 写好）；记录里没有 ⇒ `null`（不按定价自己算） |
 | `end` | ← | 最后一个完整行的末字节 |
 | `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null` |

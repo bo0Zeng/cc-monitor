@@ -967,6 +967,22 @@ mod specimens {
                         partial: false,
                         text: Words(s("$0.01")),
                     }),
+                    bg_tasks: vec![crate::observe::facts_query::BgTask {
+                        call: s("c"),
+                        task: some("b"),
+                        cmd: some("make"),
+                        at: some("t"),
+                    }],
+                    background: Some(crate::observe::facts_query::Background {
+                        text: Words(s("t")),
+                        clock: Some(crate::observe::facts_query::Clock {
+                            text: Words(s("t")),
+                            from: 1,
+                        }),
+                        what: Some(Words(s("make"))),
+                        count: 1,
+                        tone: crate::common::cells::Tone::Busy,
+                    }),
                 };
                 node_of(&f)
             })

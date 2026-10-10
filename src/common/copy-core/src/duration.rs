@@ -46,3 +46,27 @@ pub fn format_duration(ms: u64) -> String {
 pub fn format_elapsed(d: std::time::Duration) -> String {
     format_duration(u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
+
+/// 短时长（文案规范 N5 那一种写法）：`45s` · `6m` · `1h50m` · `2h` · `3d`（满 24 小时只写天）；秒以下舍去、分钟以下舍去。
+/// 会话状态一句里那一截（「后台任务运行中 · make test-all · 12m」）由它出；桌面秒级走字的那一个读口是
+/// `quota-lines.ts::fmtDur`，两侧各对金样 `tests/__fixtures__/short-duration.golden.json`。
+pub fn short_duration(ms: u64) -> String {
+    const DAY: u64 = 86_400;
+    let d = ms / 1000;
+    if d < 60 {
+        return format!("{d}s");
+    }
+    if d >= DAY {
+        return format!("{}d", d / DAY);
+    }
+    let mins = d / 60;
+    if mins < 60 {
+        return format!("{mins}m");
+    }
+    let (h, m) = (mins / 60, mins % 60);
+    if m == 0 {
+        format!("{h}h")
+    } else {
+        format!("{h}h{m}m")
+    }
+}

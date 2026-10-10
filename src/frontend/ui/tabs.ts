@@ -546,6 +546,7 @@ export class TabManager {
         contextTokens: tab.latestPromptTokens,
         unread: tab.unread,
         background: tab.background,
+        backgroundWork: tab.backgroundWork,
         account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
       });
     }
@@ -740,6 +741,7 @@ export class TabManager {
       latestContextLimit: null,
       latestLimitFrom: "assumed",
       needs: null,
+      backgroundWork: null,
       pending: [],
       lastSay: null,
       retries: new Map(),
@@ -1284,6 +1286,7 @@ export class TabManager {
     }
     // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
     if (act?.doing !== "needs_you") tab.needs = null;
+    if (act?.doing !== "background_work") tab.backgroundWork = null;
     tab.facts.markStale();
     void tab.facts.refresh();
     tab.activity = act;

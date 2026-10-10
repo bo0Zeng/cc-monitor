@@ -392,6 +392,8 @@ pub(crate) struct RecordFace {
     pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
     /// 子运行的记录住哪（由父记录路径推出）。`None` ＝ 这一家没有单独存放的子运行记录。
     pub(crate) children: Option<ChildFace>,
+    /// 一条记录里说到后台命令的那几笔（起了一条 · 它拿到了任务号 · 它收场了）。`None` ＝ 这一家没有后台命令。
+    pub(crate) background: Option<fn(&serde_json::Value) -> Vec<BgMark>>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
 }
@@ -507,6 +509,34 @@ pub(crate) struct ChildLink {
     pub(crate) error: Option<String>,
     /// 后台派出：派出那一方当场拿到的只是「已启动」，没等它。
     pub(crate) background: bool,
+}
+
+/// 后台命令的一笔账（适配层从那一家的记录翻过来，与哪一家无关）：
+/// 起了一条（工具调用 id · 那条命令原样）· 它当场拿到了任务号 · 它收场了（完成 / 失败 / 被叫停都算，只认是哪一条）。
+/// 哪几条此刻还在跑、句子怎么写在核心（`observe::facts_query`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BgMark {
+    Started {
+        call: String,
+        cmd: Option<String>,
+    },
+    Named {
+        call: String,
+        task: String,
+    },
+    Ended {
+        call: Option<String>,
+        task: Option<String>,
+    },
+}
+
+/// 一条已解析的记录里说到后台命令的那几笔（[`RecordFace::background`]，按记录树那一家问；那一家没有 ⇒ 空）。
+pub(crate) fn background_marks(v: &serde_json::Value) -> Vec<BgMark> {
+    record_tree_kind()
+        .and_then(record_face)
+        .and_then(|r| r.background)
+        .map(|f| f(v))
+        .unwrap_or_default()
 }
 
 /// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。

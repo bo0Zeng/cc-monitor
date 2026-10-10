@@ -1,12 +1,21 @@
 {
   "history-facts": {
     "agent": "claude",
+    "background": null,
+    "bgTasks": [
+      {
+        "at": "2026-10-09T08:00:00.000Z",
+        "call": "tu-b1",
+        "cmd": "make test-all",
+        "task": "bb1"
+      }
+    ],
     "cost": {
       "micros": 424200,
       "partial": false,
       "text": "$0.42"
     },
-    "end": 1633,
+    "end": 2918,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"

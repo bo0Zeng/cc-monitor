@@ -14,6 +14,8 @@ export function dotLabel(d: DotState): string {
       return copyText("sessionFace.dot.running");
     case "needs-you":
       return copyText("sessionFace.dot.needs");
+    case "background":
+      return copyText("sessionFace.dot.background");
     case "idle":
       return copyText("sessionFace.dot.idle");
     case "exited":

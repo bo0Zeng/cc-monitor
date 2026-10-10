@@ -31,6 +31,8 @@ export interface SessionSpec {
   waitingFor: string | null;
   /** 在等你时从何时起等（epoch ms；`history-facts` 的 `needs.sinceMs`）。缺 ⇒ 不知道。 */
   waitingSinceMs?: number;
+  /** 后台任务运行中时还在跑的后台命令（最早起的在前；`history-facts` 的 `background` 照后端 `facts_query::background_of` 拼）。缺 ⇒ 记录里一条都对不上。 */
+  bgCommands?: { cmd: string; sinceMs: number }[];
   container: SessionContainer;
   records: LineRecord[];
   runs: RunInfo[];

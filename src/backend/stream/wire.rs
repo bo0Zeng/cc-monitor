@@ -119,7 +119,7 @@ impl SessionFate {
 }
 
 /// **活会话此刻在干什么的字与语气的唯一一处**（`session_added` · `session_status` 都由它填）：
-/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台在跑 · `plain`。说不清（`None`）⇒ 两格都不上线。
+/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`。说不清（`None`）⇒ 两格都不上线。
 pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Option<Words>, Option<Tone>) {
     let Some(a) = a else {
         return (None, None);
@@ -138,8 +138,8 @@ pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Option<Words>, Opti
             Tone::Plain,
         ),
         SessionActivity::BackgroundWork => (
-            copy_core::copy_text("beSession.activity.background", &[]),
-            Tone::Plain,
+            copy_core::copy_text("beSession.activity.backgroundWork", &[]),
+            Tone::Busy,
         ),
     };
     (Some(Words(text)), Some(tone))

@@ -35,6 +35,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   contextTokens: null,
   unread: 0,
   background: false,
+  backgroundWork: null,
   account: null,
   ...over,
 });
@@ -63,20 +64,22 @@ describe("F91 groupSessionsByOrigin", () => {
 });
 
 describe("F91 sortSessionsInGroup", () => {
-  it("活会话先于归档；活内 等人>在干活>闲着>说不清；同档稳定", () => {
+  it("活会话先于归档；活内 等人>在干活>后台任务运行中>闲着>说不清；同档稳定", () => {
     const sorted = sortSessionsInGroup([
       snap({ sessionId: "arch", state: ENDED }),
       snap({ sessionId: "idle", activity: "idle" }),
       snap({ sessionId: "unknown", activity: null }),
+      snap({ sessionId: "shell", activity: "background_work" }),
       snap({ sessionId: "wait", activity: "needs_you" }),
       snap({ sessionId: "busy", activity: "working" }),
-      snap({ sessionId: "shell", activity: "idle" }),
+      snap({ sessionId: "idle2", activity: "idle" }),
     ]);
     expect(sorted.map((s) => s.sessionId)).toEqual([
       "wait",
       "busy",
-      "idle",
       "shell",
+      "idle",
+      "idle2",
       "unknown",
       "arch",
     ]);
@@ -156,17 +159,37 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
-  it("audit-fixes F03.2：可重连 cell 的 .live-dot 加 .reconnectable 类（覆写红绿黄；〔U4〕原名 .tmux-idle）", () => {
+  it("格子的点是 kit 状态点、与标签页行同一颗：可重连 ⇒ 空心（活动态是陈旧的也不算）· 空闲 ⇒ 灰（不是红）· 后台任务运行中 ⇒ 单独一色", () => {
     document.body.replaceChildren();
     const source = mkSource([
-      // activityStatus=busy（会加 act 类）但 tmuxIdle=true → 灰类必须叠上、CSS 源序覆写。
-      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activity: "working" }),
+      snap({ sessionId: "gi", origin: "pi", state: RECONNECTABLE, activity: "working" }),
+      snap({ sessionId: "id", origin: "pi", activity: "idle" }),
+      snap({ sessionId: "bw", origin: "pi", activity: "background_work" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
-    const dot = document.querySelector<HTMLElement>(".grid-monitor-cell .live-dot")!;
-    // 删 updateCell 里 `view.reconnectable ? " reconnectable"` 那一截则此断言红。
-    expect(dot.classList.contains("reconnectable")).toBe(true);
+    const dot = (sid: string) => document.querySelector<HTMLElement>(`.grid-monitor-cell[data-sid="${sid}"] [role="img"]`)!;
+    expect(dot("gi").dataset.state).toBe("exited");
+    expect(dot("id").dataset.state).toBe("idle");
+    expect(dot("bw").dataset.state).toBe("background");
+    expect(dot("bw").getAttribute("aria-label")).toBe(copyText("sessionFace.dot.background"));
+    view.close();
+  });
+
+  it("后台任务运行中：徽标写命令那一格（核心写的），悬停给整句、时长按此刻走；不是这一态不出", () => {
+    document.body.replaceChildren();
+    const from = Date.now() - 12 * 60_000 - 5_000;
+    const bw = { text: "x", clock: { text: "L · {dur}", from }, what: "make test-all", count: 1, tone: "busy" };
+    const source = mkSource([
+      snap({ sessionId: "bw", origin: "pi", activity: "background_work", backgroundWork: bw }),
+      snap({ sessionId: "id", origin: "pi", activity: "idle", backgroundWork: bw }),
+    ]);
+    const view = new GridMonitorView(source);
+    view.open();
+    const badge = document.querySelector<HTMLElement>('.grid-monitor-cell[data-sid="bw"] .badge-bgwork')!;
+    expect(badge.textContent).toBe(copyText("gridMonitor.renderBadges.background", { cmd: "make test-all" }));
+    expect(badge.title).toBe("L · 12m");
+    expect(document.querySelector('.grid-monitor-cell[data-sid="id"] .badge-bgwork')).toBeNull();
     view.close();
   });
 

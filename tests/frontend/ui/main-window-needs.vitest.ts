@@ -48,12 +48,14 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     writers: [],
     unread: 0,
     needs: null,
+    backgroundWork: null,
     pending: [],
     lastSay: null,
     ...over,
   } as unknown as Tab;
 }
 
+const bgAct = { doing: "background_work" as const, waitingFor: null, text: copyText("beSession.activity.backgroundWork"), tone: "busy" };
 const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need" };
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), tone: "need" });
 
@@ -109,9 +111,24 @@ describe("一个会话读成什么（session-face）", () => {
       tab("e", { state: ENDED }),
       tab("f", { state: UNSEEN }),
       tab("g", { state: RECONNECTABLE, activity: waiting }),
+      tab("h", { activity: bgAct }),
+      tab("i", { state: RECONNECTABLE, activity: bgAct }),
     ];
-    expect(groupSummary(members)).toEqual({ needs: 1, running: 2 });
-    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0 });
+    expect(groupSummary(members)).toEqual({ needs: 1, running: 2, background: 1 });
+    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0, background: 0 });
+  });
+
+  it("后台任务运行中：点单独一档 · 状态一句照抄核心、时长那一截按此刻走 · 拿不到 ⇒ 核心写的那个字 · peek 照空闲（它最后一句）", () => {
+    const from = NOW - 64 * 60_000;
+    const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" };
+    const t = tab("a", { activity: bgAct, backgroundWork: bw, lastSay: { text: "最后一句", at: null } });
+    expect(dotOf(t)).toBe("background");
+    expect(stateWord(t)).toBe(bgAct.text);
+    expect(stateLine(t, NOW)).toEqual({ text: "L · 1h4m", needs: false });
+    expect(stateLine(t, NOW + 60_000).text, "钟在走").toBe("L · 1h5m");
+    expect(stateLine(tab("b", { activity: bgAct, backgroundWork: { ...bw, clock: null } }), NOW).text).toBe("写好的一句");
+    expect(stateLine(tab("c", { activity: bgAct }), NOW).text).toBe(bgAct.text);
+    expect(peekLine(t)).toBe("最后一句");
   });
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {

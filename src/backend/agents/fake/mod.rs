@@ -348,6 +348,7 @@ fn records_face(
         response_id: None,
         run_of: None,
         child_link: None,
+        background: None,
         children: None,
         project_dir: None,
     }

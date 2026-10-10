@@ -198,7 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 1633,
+      end: 2918,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -228,7 +228,19 @@ describe("〔STC〕第五问：会话事实", () => {
         last: { id: "", tokens: [1, 0, 3, 2, 0] },
       },
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
+      bgTasks: [{ call: "tu-b1", task: "bb1", cmd: "make test-all", at: "2026-10-09T08:00:00.000Z" }],
+      background: null,
     });
+  });
+
+  it("★ 后台任务运行中那一句：照抄 · 会走的那一句 · 形状不对就抛", () => {
+    const good = golden["history-facts"] as Record<string, unknown>;
+    const bg = { text: "t", clock: { text: "x {dur}", from: 5 }, what: "make", count: 2, tone: "busy" };
+    expect(decodeFacts({ ...good, background: bg }).background).toEqual(bg);
+    expect(decodeFacts({ ...good, background: { ...bg, clock: null, what: null } }).background).toEqual({ ...bg, clock: null, what: null });
+    expect(() => decodeFacts({ ...good, background: { ...bg, extra: 1 } })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, background: { ...bg, clock: { text: "x" } } })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, bgTasks: [{ call: "c" }] })).toThrow(ReplyUnreadable);
   });
 
   it("★ 形状不对 ⇒ 抛：缺一格 / 多一格 / 类型不对（成品要原样当令牌交回去，不能收一份后端不认的）", () => {

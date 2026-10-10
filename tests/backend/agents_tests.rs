@@ -683,6 +683,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         child_link: None,
         children: None,
         project_dir: None,
+        background: None,
     }
 }
 

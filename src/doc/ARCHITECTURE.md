@@ -215,7 +215,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 |---|---|---|
 | 值 | 机器要的码、数、时刻（epoch / ISO 原样）、id | 普通类型；闭集的词是枚举的单元变体 |
 | 写好的字（`text` · `…Text`） | 核心按文案表与这台的语言、本地钟写好的一句 | `common::cells::Words` |
-| 语气（`tone` · `…Tone`） | 闭集：`plain` · `fail` · `now` · `need`（要用到再加 `ok` · `warn`） | `common::cells::Tone` |
+| 语气（`tone` · `…Tone`） | 闭集：`plain` · `fail` · `now` · `need` · `busy`（后台有事在跑、不要人）（要用到再加 `ok` · `warn`） | `common::cells::Tone` |
 | 活钟 `{dur}` | 要随时间走的那一截：`{text: "…{dur}…", from, to}`，出口用登记过的那一个读口填 | 过程行 `span` |
 | `detail` · `raw` | 复制详情（只在失败时）· 原文透传（受认证约束的可选格） | — |
 

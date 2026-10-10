@@ -476,6 +476,56 @@
         },
         {
           "kind": "value",
+          "path": "background.clock.from",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "background.clock.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "background.count",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "background.text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "background.tone",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "background.what",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].at",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].call",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].cmd",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].task",
+          "type": "string"
+        },
+        {
+          "kind": "value",
           "path": "cost.micros",
           "type": "number"
         },

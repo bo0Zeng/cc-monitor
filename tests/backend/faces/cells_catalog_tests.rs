@@ -132,6 +132,15 @@ fn corpus(name: &str) -> Vec<Value> {
             f["needs"] =
                 serde_json::to_value(crate::observe::facts_query::needs_of(&pending, Some(&wait)))
                     .unwrap();
+            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
+            let tasks: Vec<crate::observe::facts_query::BgTask> =
+                serde_json::from_value(f["bgTasks"].clone()).unwrap();
+            f["background"] = serde_json::to_value(crate::observe::facts_query::background_of(
+                &tasks,
+                None,
+                u64::MAX / 2,
+            ))
+            .unwrap();
             vec![f]
         }
         "index_row" => {

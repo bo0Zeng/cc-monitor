@@ -820,9 +820,9 @@ export class TabBarView {
   private paintGroupHead(g: GroupEls, col: TabCollection): void {
     const members = [...this.store.tabs.values()].filter((t) => t.group === col.id);
     const collapsed = col.collapsed === true;
-    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0 };
+    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0, background: 0 };
     const current = collapsed && members.some((t) => t.sessionId === this.store.activeId);
-    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${current ? 1 : 0}`;
+    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${sum.background}\u0000${current ? 1 : 0}`;
     if (g.drawn === drawn) return;
     g.drawn = drawn;
     if (g.name.textContent !== col.name) g.name.textContent = col.name;
@@ -833,7 +833,7 @@ export class TabBarView {
     g.wrap.classList.toggle("is-collapsed", collapsed);
     g.head.classList.toggle("is-current", current);
     const chips: HTMLElement[] = [];
-    const chip = (dot: "needs-you" | "running", text: string): HTMLElement => {
+    const chip = (dot: "needs-you" | "running" | "background", text: string): HTMLElement => {
       const c = document.createElement("span");
       c.className = "tab-group-chip";
       c.dataset.dot = dot;
@@ -842,9 +842,10 @@ export class TabBarView {
     };
     if (sum.needs > 0) chips.push(chip("needs-you", copyText("tabBar.group.sumNeeds", { n: sum.needs })));
     if (sum.running > 0) chips.push(chip("running", copyText("tabBar.group.sumRunning", { n: sum.running })));
+    if (sum.background > 0) chips.push(chip("background", copyText("tabBar.group.sumBackground", { n: sum.background })));
     g.sum.replaceChildren(...chips);
-    // 窄栏只放得下一个点：有等你的画琥珀，否则有在跑的画绿。
-    const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : null;
+    // 窄栏只放得下一个点：需手动 ＞ 运行中 ＞ 后台任务运行中。
+    const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : sum.background > 0 ? "background" : null;
     g.mini.replaceChildren(...(urgent ? [statusDot(urgent, dotLabel(urgent), "compact")] : []));
   }
 

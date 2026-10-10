@@ -30,6 +30,8 @@
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
 //! | `retries` | 一串相邻的 API 重试（`system` · `api_error`）按首条的 `uuid` 记一件，结局看它后面第一条 `assistant` / 人发的 `user`（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
+//! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
+//! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -91,6 +93,9 @@ pub(crate) const PENDING_KEEP: usize = 16;
 
 /// 重试至多留多少串（超 ⇒ 丢最早的）。
 pub(crate) const RETRY_KEEP: usize = 200;
+
+/// 还没收场的后台命令至多留几条（超 ⇒ 丢最早的）。
+pub(crate) const BG_KEEP: usize = 16;
 
 /// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
@@ -166,6 +171,147 @@ pub(crate) struct SessionFacts {
     pub(crate) tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
     pub(crate) cost: Option<Cost>,
+    /// 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+    pub(crate) bg_tasks: Vec<BgTask>,
+    /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+    pub(crate) background: Option<Background>,
+}
+
+/// 一条还没收场的后台命令。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BgTask {
+    /// 起它的那次工具调用 id。
+    pub(crate) call: String,
+    /// 它当场拿到的任务号；还没回 ⇒ `null`。
+    pub(crate) task: Option<String>,
+    /// 那条命令原样（适配层给的）；没有 ⇒ `null`。
+    pub(crate) cmd: Option<String>,
+    /// 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+    pub(crate) at: Option<String>,
+}
+
+/// 后台任务运行中那一态的成品：写好的一句（发出那一刻的钟）· 会走的那一句（`{dur}` 由桌面那一个读口填）·
+/// 命令那一格（监控板徽标用）· 几条 · 语气。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Background {
+    /// 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
+    pub(crate) text: Words,
+    /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`quota-lines.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
+    /// 命令或起始时刻拿不到 ⇒ `null`。
+    pub(crate) clock: Option<Clock>,
+    /// 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。
+    pub(crate) what: Option<Words>,
+    /// 还在跑的后台命令几条（这一次进程起来之后起的；记录里一条都对不上 ⇒ 0）。
+    pub(crate) count: u32,
+    /// 语气（恒 `busy`）。
+    pub(crate) tone: crate::common::cells::Tone,
+}
+
+/// 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Clock {
+    pub(crate) text: Words,
+    pub(crate) from: u64,
+}
+
+/// 时长那一截的占位（桌面那一个读口填）。
+const DUR_SLOT: &str = "{dur}";
+
+/// **后台任务运行中那一句的唯一一处**：`tasks` ＝ 记录里还没收场的后台命令；`born_ms` ＝ 那台持着这条会话、说这一态的进程何时起的
+/// （后台命令活不过它的进程：更早起的那几条是上一个进程留下的、早被掐了，不算）；`now_ms` ＝ 这台此刻。
+/// 命令取最早起的那条（主参数一行，同悬停卡 peek 的截法）；不止一条 ⇒ 「{cmd} 等 {n} 条」；时长 ＝ 它起了多久。
+pub(crate) fn background_of(tasks: &[BgTask], born_ms: Option<u64>, now_ms: u64) -> Background {
+    let at = |t: &BgTask| {
+        t.at.as_deref()
+            .and_then(crate::common::time::parse_iso8601_ms)
+            .and_then(|ms| u64::try_from(ms).ok())
+    };
+    let mut open: Vec<(&BgTask, Option<u64>)> = tasks
+        .iter()
+        .map(|t| (t, at(t)))
+        .filter(|(_, a)| match (a, born_ms) {
+            (Some(a), Some(b)) => *a >= b,
+            _ => true,
+        })
+        .collect();
+    open.sort_by_key(|(_, a)| a.unwrap_or(u64::MAX));
+    let count = u32::try_from(open.len()).unwrap_or(u32::MAX);
+    let word = || {
+        Words(copy_core::copy_text(
+            "beSession.activity.backgroundWork",
+            &[],
+        ))
+    };
+    let first = open.first();
+    let cmd = first.and_then(|(t, _)| t.cmd.as_deref()).and_then(one_line);
+    let what = cmd.map(|c| {
+        if count > 1 {
+            copy_core::copy_text(
+                "beSession.activity.backgroundMany",
+                &[("cmd", &c), ("n", &count.to_string())],
+            )
+        } else {
+            c
+        }
+    });
+    let from = first.and_then(|(_, a)| *a);
+    let (text, clock) = match (&what, from) {
+        (Some(w), Some(from)) => {
+            let line = |dur: &str| {
+                Words(copy_core::copy_text(
+                    "beSession.activity.backgroundFor",
+                    &[("cmd", w), ("dur", dur)],
+                ))
+            };
+            (
+                line(&copy_core::short_duration(now_ms.saturating_sub(from))),
+                Some(Clock {
+                    text: line(DUR_SLOT),
+                    from,
+                }),
+            )
+        }
+        _ => (word(), None),
+    };
+    Background {
+        text,
+        clock,
+        what: what.map(Words),
+        count,
+        tone: crate::common::cells::Tone::Busy,
+    }
+}
+
+/// 一笔后台命令的账记到 `f` 上（口径见头注那张表）。
+fn note_background(f: &mut SessionFacts, v: &Value, at: Option<&String>) {
+    use crate::agents::BgMark;
+    for m in crate::agents::background_marks(v) {
+        match m {
+            BgMark::Started { call, cmd } => {
+                f.bg_tasks.retain(|t| t.call != call);
+                f.bg_tasks.push(BgTask {
+                    call,
+                    task: None,
+                    cmd,
+                    at: at.cloned(),
+                });
+                if f.bg_tasks.len() > BG_KEEP {
+                    f.bg_tasks.remove(0);
+                }
+            }
+            BgMark::Named { call, task } => {
+                if let Some(t) = f.bg_tasks.iter_mut().find(|t| t.call == call) {
+                    t.task = Some(task);
+                }
+            }
+            BgMark::Ended { call, task } => f.bg_tasks.retain(|t| {
+                !(call.as_deref() == Some(t.call.as_str()) || (task.is_some() && task == t.task))
+            }),
+        }
+    }
 }
 
 /// 全会话用量：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
@@ -480,6 +626,8 @@ pub(crate) fn context_limit(
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
         "agent",
+        "background",
+        "bgTasks",
         "cost",
         "end",
         "forkedFrom",
@@ -548,6 +696,23 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     for r in v["retries"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
         exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
     }
+    for t in v["bgTasks"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        exact_keys(t, &["at", "call", "cmd", "task"], "prior.bgTasks[]")?;
+    }
+    if !v["background"].is_null() {
+        exact_keys(
+            &v["background"],
+            &["clock", "count", "text", "tone", "what"],
+            "prior.background",
+        )?;
+        if !v["background"]["clock"].is_null() {
+            exact_keys(
+                &v["background"]["clock"],
+                &["from", "text"],
+                "prior.background.clock",
+            )?;
+        }
+    }
     serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
 }
 
@@ -614,6 +779,12 @@ pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
         || (open_retry(facts) && (contains(line, b"\"assistant\"") || contains(line, b"\"user\"")))
         // 有没结果的调用：它的结果（行里带着它的 id）· 你又发了一句（`user` 记录、没有工具结果）。
         // 别人的工具结果（常是整份文件内容）照旧连解析都不做。
+        // 后台命令：起它的调用 · 当场回的任务号 · 有没收场的 ⇒ 收场通知（三处都带着那个框）与出错的当场结果（行里带着它的 id）。
+        || contains(line, b"\"run_in_background\"")
+        || contains(line, b"\"backgroundTaskId\"")
+        || (!facts.bg_tasks.is_empty()
+            && (contains(line, b"task-notification")
+                || facts.bg_tasks.iter().any(|t| contains(line, t.call.as_bytes()))))
         || (!facts.pending.is_empty()
             && contains(line, b"\"user\"")
             && (!contains(line, b"\"tool_result\"")
@@ -736,6 +907,7 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
         .map(str::to_string);
     let kind = v.get("type").and_then(Value::as_str);
     note_retry(f, kind, v);
+    note_background(f, v, at.as_ref());
     match kind {
         Some("user") => note_user(f, v),
         Some("assistant") => {

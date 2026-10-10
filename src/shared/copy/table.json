@@ -2817,6 +2817,12 @@
       "zh": "等 {waitingFor}",
       "args": ["waitingFor"]
     },
+    "gridMonitor.renderBadges.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台任务 · {cmd}",
+      "args": ["cmd"]
+    },
     "gridMonitor.renderBadges.waiting": {
       "kind": "body",
       "role": "状态",
@@ -17450,11 +17456,23 @@
       "zh": "空闲",
       "args": []
     },
-    "beSession.activity.background": {
+    "beSession.activity.backgroundWork": {
       "kind": "body",
       "role": "片段",
-      "zh": "后台在跑",
+      "zh": "后台任务运行中",
       "args": []
+    },
+    "beSession.activity.backgroundFor": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "后台任务运行中 · {cmd} · {dur}",
+      "args": ["cmd", "dur"]
+    },
+    "beSession.activity.backgroundMany": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cmd} 等 {n} 条",
+      "args": ["cmd", "n"]
     },
     "beSession.fate.reconnectable": {
       "kind": "body",
@@ -24212,6 +24230,12 @@
       "zh": "需要你",
       "args": []
     },
+    "sessionFace.dot.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台任务运行中",
+      "args": []
+    },
     "sessionFace.dot.idle": {
       "kind": "body",
       "role": "片段",
@@ -27808,6 +27832,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "在跑 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.sumBackground": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "后台任务 {n}",
       "args": ["n"]
     },
     "tabBar.group.more": {

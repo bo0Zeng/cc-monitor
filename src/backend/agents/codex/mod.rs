@@ -45,6 +45,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     response_id: None,
     run_of: None,
     child_link: None,
+    background: None,
     children: None,
     project_dir: Some(history::project_dir),
 };

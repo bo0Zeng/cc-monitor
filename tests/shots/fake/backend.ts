@@ -173,7 +173,7 @@ export class FakeBackend {
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
       // 字与语气照后端 `wire::activity_cells` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
-      const act = s.activity === null ? null : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["background", "plain"] } as const)[s.activity];
+      const act = s.activity === null ? null : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["backgroundWork", "busy"] } as const)[s.activity];
       frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: act ? copyText(`beSession.activity.${act[0]}`) : null, activity_tone: act ? act[1] : null, waiting_for: s.waitingFor } });
       if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("beSession.fate.ended"), hint: copyText("beSession.fate.endedHint"), tone: "plain" } });
       else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("beSession.fate.reconnectable"), hint: copyText("beSession.fate.reconnectableHint"), tone: "plain" } });

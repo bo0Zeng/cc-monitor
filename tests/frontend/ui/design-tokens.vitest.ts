@@ -51,6 +51,7 @@ const CONTRAST: Record<string, [number, number, number]> = {
   "--text-faint": [2.9, 2.5, 2.0],
   "--accent": [4.3, 3.7, 3.0],
   "--warn": [7.1, 6.1, 4.9],
+  "--bgwork": [5.7, 4.9, 3.9],
   "--error": [4.9, 4.2, 3.4],
   "--error-text": [6.9, 6.0, 4.8],
   "--color-link": [7.8, 6.7, 5.4],

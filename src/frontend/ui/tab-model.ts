@@ -20,7 +20,7 @@ import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionActivity } from "./generated/SessionActivity";
 import type { SessionState } from "./tab-session-state";
-import type { Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
+import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 
 // 会话状态住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
 
@@ -101,6 +101,8 @@ export interface Tab {
   latestLimitFrom: UsageFact["limitFrom"];
   /** 需要你（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
+  /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */
+  backgroundWork: BackgroundWork | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */
   pending: PendingCall[];
   /** 最后一段正文的头一行（后端 `lastSay`）：悬停卡「它最后一句」。 */

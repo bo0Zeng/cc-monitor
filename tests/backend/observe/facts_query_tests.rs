@@ -964,13 +964,48 @@ fn needs_carries_its_words_and_tone() {
         since_ms: None,
     };
     let cases = [
-        (vec![call("Bash")], Some(W::Permission), NeedsKind::Approve, "beSession.needs.approve"),
-        (vec![call("AskUserQuestion")], None, NeedsKind::Answer, "beSession.needs.answer"),
-        (vec![call("ExitPlanMode")], None, NeedsKind::Plan, "beSession.needs.plan"),
-        (vec![call("Bash")], Some(W::Network), NeedsKind::Network, "beSession.needs.network"),
-        (vec![], Some(W::Worker), NeedsKind::Worker, "beSession.needs.worker"),
-        (vec![], Some(W::Goal), NeedsKind::Goal, "beSession.needs.goal"),
-        (vec![], Some(W::Dialog), NeedsKind::Choose, "beSession.needs.choose"),
+        (
+            vec![call("Bash")],
+            Some(W::Permission),
+            NeedsKind::Approve,
+            "beSession.needs.approve",
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            None,
+            NeedsKind::Answer,
+            "beSession.needs.answer",
+        ),
+        (
+            vec![call("ExitPlanMode")],
+            None,
+            NeedsKind::Plan,
+            "beSession.needs.plan",
+        ),
+        (
+            vec![call("Bash")],
+            Some(W::Network),
+            NeedsKind::Network,
+            "beSession.needs.network",
+        ),
+        (
+            vec![],
+            Some(W::Worker),
+            NeedsKind::Worker,
+            "beSession.needs.worker",
+        ),
+        (
+            vec![],
+            Some(W::Goal),
+            NeedsKind::Goal,
+            "beSession.needs.goal",
+        ),
+        (
+            vec![],
+            Some(W::Dialog),
+            NeedsKind::Choose,
+            "beSession.needs.choose",
+        ),
         (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
     ];
     for (pending, w, kind, key) in cases {
@@ -979,5 +1014,137 @@ fn needs_carries_its_words_and_tone() {
         let v = serde_json::to_value(&n).unwrap();
         assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
         assert_eq!(v["tone"], "need", "{kind:?}");
+    }
+}
+
+fn bg_launch(id: &str, cmd: &str, at: &str) -> Value {
+    json!({"type": "assistant", "timestamp": at, "message": {"content": [tool_use(id, "Bash", json!({"command": cmd, "run_in_background": true}))]}})
+}
+
+fn bg_named(id: &str, task: &str) -> Value {
+    json!({"type": "user", "toolUseResult": {"backgroundTaskId": task}, "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "x"}]}})
+}
+
+fn bg_done(task: &str, call: &str) -> Value {
+    json!({"type": "queue-operation", "operation": "enqueue", "content": format!("<task-notification>\n<task-id>{task}</task-id>\n<tool-use-id>{call}</tool-use-id>\n<status>completed</status>\n</task-notification>")})
+}
+
+/// 后台命令的账：起了 ⇒ 记下；拿到任务号 ⇒ 补上；收场通知（按任务号或调用 id 都认）⇒ 摘；前台命令不进账；
+/// 接力扫 == 一次扫完；快路不漏这几种行。
+#[test]
+fn background_commands_are_kept_until_their_end_notice() {
+    let recs = vec![
+        bg_launch("b1", "make test-all", "2026-10-09T08:00:00.000Z"),
+        bg_named("b1", "k1"),
+        bg_launch("b2", "python train.py", "2026-10-09T08:05:00.000Z"),
+        bg_named("b2", "k2"),
+        assistant(vec![tool_use("f1", "Bash", json!({"command": "ls"}))]),
+        result("f1"),
+        bg_launch("b3", "sleep 9", "2026-10-09T08:06:00.000Z"),
+        bg_named("b3", "k3"),
+        bg_done("k3", ""),
+    ];
+    let text = jsonl(&recs);
+    let f = scan_all(&text);
+    let calls: Vec<&str> = f.bg_tasks.iter().map(|t| t.call.as_str()).collect();
+    assert_eq!(calls, ["b1", "b2"]);
+    assert_eq!(f.bg_tasks[0].task.as_deref(), Some("k1"));
+    assert_eq!(f.bg_tasks[0].cmd.as_deref(), Some("make test-all"));
+    assert_eq!(
+        f.bg_tasks[0].at.as_deref(),
+        Some("2026-10-09T08:00:00.000Z")
+    );
+    // 按调用 id 收场（通知里没写任务号的那一形）。
+    let mut more = recs.clone();
+    more.push(json!({"type": "attachment", "attachment": {"type": "queued_command", "prompt": "<task-notification>\n<tool-use-id>b1</tool-use-id>\n<status>killed</status>\n</task-notification>"}}));
+    let g = scan_all(&jsonl(&more));
+    assert_eq!(
+        g.bg_tasks
+            .iter()
+            .map(|t| t.call.as_str())
+            .collect::<Vec<_>>(),
+        ["b2"]
+    );
+    // 接力：从每个行边界续扫都等于一次扫完。
+    let mut at = 0usize;
+    for line in text.split_inclusive('\n') {
+        at += line.len();
+        let head = scan_all(&text[..at]);
+        let tail = scan_facts(text[at..].as_bytes(), head, &Vec::new(), None).unwrap();
+        assert_eq!(tail.bg_tasks, f.bg_tasks, "续点 {at}");
+    }
+    // 快路：每行都解析与先过滤再解析结果一样。
+    let mut slow = SessionFacts::default();
+    for line in text.lines() {
+        slow.end += line.len() as u64 + 1;
+        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
+            note_record(&mut slow, &v);
+        }
+    }
+    assert_eq!(f, slow);
+}
+
+/// ★ 后台任务运行中那一句的唯一判定：一条 ⇒「后台任务运行中 · 命令 · 时长」；几条 ⇒ 命令取最早起的、「等 N 条」、
+/// 时长按它算；进程起来之前起的不算（被掐了）；命令拿不到 ⇒ 只写那个字；会走的那一句留 `{dur}`、起点是那一条起的时刻。
+#[test]
+fn the_background_line_is_written_here() {
+    let t = |call: &str, cmd: Option<&str>, at: Option<&str>| BgTask {
+        call: call.into(),
+        task: None,
+        cmd: cmd.map(str::to_string),
+        at: at.map(str::to_string),
+    };
+    let t0 = crate::common::time::parse_iso8601_ms("2026-10-09T08:00:00.000Z").unwrap() as u64;
+    let one = [t(
+        "a",
+        Some("make test-all\nsecond line"),
+        Some("2026-10-09T08:00:00.000Z"),
+    )];
+    let b = background_of(&one, None, t0 + 12 * 60_000 + 30_000);
+    let line = |cmd: &str, dur: &str| {
+        copy_core::copy_text(
+            "beSession.activity.backgroundFor",
+            &[("cmd", cmd), ("dur", dur)],
+        )
+    };
+    let many = |cmd: &str, n: &str| {
+        copy_core::copy_text("beSession.activity.backgroundMany", &[("cmd", cmd), ("n", n)])
+    };
+    assert_eq!(b.text.0, line("make test-all", "12m"));
+    assert_eq!(b.what.as_ref().unwrap().0, "make test-all");
+    assert_eq!(b.count, 1);
+    assert_eq!(b.tone, crate::common::cells::Tone::Busy);
+    let c = b.clock.unwrap();
+    assert_eq!(
+        (c.text.0.as_str(), c.from),
+        ("后台任务运行中 · make test-all · {dur}", t0)
+    );
+
+    let many = [
+        t("late", Some("make lint"), Some("2026-10-09T08:30:00.000Z")),
+        t(
+            "early",
+            Some("python train.py"),
+            Some("2026-10-09T08:00:00.000Z"),
+        ),
+    ];
+    let b = background_of(&many, None, t0 + 64 * 60_000);
+    assert_eq!(b.text.0, line(&many("python train.py", "2"), "1h4m"));
+    assert_eq!(b.count, 2);
+
+    // 进程 08:10 起的 ⇒ 08:00 那条是上一个进程留下的，不算。
+    let born = t0 + 10 * 60_000;
+    let b = background_of(&many, Some(born), t0 + 40 * 60_000);
+    assert_eq!(b.text.0, line("make lint", "10m"));
+    assert_eq!(b.count, 1);
+
+    // 一条都对不上 · 命令拿不到 ⇒ 只写那个字，不出会走的那一句。
+    for tasks in [vec![], vec![t("x", None, Some("2026-10-09T08:00:00.000Z"))]] {
+        let b = background_of(&tasks, None, t0);
+        assert_eq!(
+            b.text.0,
+            copy_core::copy_text("beSession.activity.backgroundWork", &[])
+        );
+        assert!(b.clock.is_none() && b.what.is_none());
     }
 }

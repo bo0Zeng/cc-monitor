@@ -551,6 +551,23 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
         .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
 }
 
+/// 那台 pidfile 说这条会话**一轮停了、后台命令还在跑**（适配层翻成 [`crate::agents::SessionActivity::BackgroundWork`]）⇒
+/// `Some(那个进程何时起的，epoch ms；没写 ⇒ None)`；不是这一态 / 没有活进程持着它 ⇒ `None`。判活同 [`session_writers`]；
+/// 几个进程同时持着 ⇒ 取起得最早的那个（它留下的后台命令最多）。
+pub(crate) fn session_background(agent_home: &Path, sid: &str) -> Option<Option<u64>> {
+    pidfiles(agent_home)
+        .into_iter()
+        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
+        .filter(|(_, v)| {
+            crate::agents::pidfile_activity(v)
+                == Some(crate::agents::SessionActivity::BackgroundWork)
+        })
+        .filter(|(_, v)| !crate::agents::pidfile_background(v))
+        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .map(|(_, v)| v.get("startedAt").and_then(serde_json::Value::as_u64))
+        .min_by_key(|b| b.unwrap_or(u64::MAX))
+}
+
 /// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（pidfile，适配层翻好的）· 在等你时等的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Doing {

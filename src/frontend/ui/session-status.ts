@@ -8,20 +8,21 @@ import type { Origin } from "./generated/Origin";
 import type { SessionState } from "./tab-session-state";
 import type { RunState } from "./generated/RunState";
 import type { SessionActivity } from "./generated/SessionActivity";
+import type { BackgroundWork } from "./session-reads";
 
 /** tab/cell 上叠的活动灯类名。空串 = 不叠类（默认绿点）。 */
 export type ActivityLightClass = "" | "act-idle" | "act-waiting";
 
-/** 活着的会话那颗点的颜色（`kit/status-dot` 的 `DotState` 里活着的那三态）。 */
-export type ActivityDot = "running" | "needs-you" | "idle";
+/** 活着的会话那颗点的颜色（`kit/status-dot` 的 `DotState` 里活着的那四态）。 */
+export type ActivityDot = "running" | "needs-you" | "background" | "idle";
 
 /** 活动态 ⇒ 点 · 灯。说不清（`null`）⇒ 默认：在运行的点、不叠灯。 */
 const ACTIVITY_FACE: Record<SessionActivity, { dot: ActivityDot; light: ActivityLightClass }> = {
   working: { dot: "running", light: "" },
   needs_you: { dot: "needs-you", light: "act-waiting" },
   idle: { dot: "idle", light: "act-idle" },
-  // 一轮停了、后台命令还在跑：这一态的样子还没出稿 ⇒ 先照空闲画（不另造一种点）。
-  background_work: { dot: "idle", light: "act-idle" },
+  // 一轮停了、后台命令还在跑：单独一色（`--bgwork`），不呼吸。
+  background_work: { dot: "background", light: "" },
 };
 
 /** 活动态 ⇒ 点 · 灯（标签栏 · 状态点 · 总览只从这里取）。 */
@@ -63,6 +64,8 @@ export interface GridSessionSnapshot {
   unread: number;
   /** 后台会话（⚙）。 */
   background: boolean;
+  /** 后台任务运行中那一句（`Tab.backgroundWork` 原样，核心写的）；不是这一态 ⇒ null。 */
+  backgroundWork: BackgroundWork | null;
   /** A3：该会话所属账号名（live 探测）；null = 本地会话 / 未知（不猜）。 */
   account: string | null;
 }

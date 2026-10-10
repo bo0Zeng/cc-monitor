@@ -210,3 +210,23 @@ fn the_shared_duration_golden_agrees_with_this_reader() {
         .collect();
     assert!(wrong.is_empty(), "时长格式化与金样不符：{wrong:?}");
 }
+
+/// **短时长的对拍**：共用金样 `tests/__fixtures__/short-duration.golden.json` 逐条喂给 [`short_duration`]；
+/// 桌面那一侧 `tests/copy/short-duration.vitest.ts` 读同一份（`quota-lines.ts::fmtDur`）。
+#[test]
+fn the_shared_short_duration_golden_agrees_with_this_reader() {
+    let raw = include_str!("../../__fixtures__/short-duration.golden.json");
+    let golden: serde_json::Value = serde_json::from_str(raw).expect("金样不是合法 JSON");
+    let cases = golden["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() >= 10, "金样只有 {} 条（反空真）", cases.len());
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter_map(|c| {
+            let ms = c["ms"].as_u64().expect("ms 不是非负整数");
+            let want = c["want"].as_str().expect("want 不是字符串");
+            let got = short_duration(ms);
+            (got != want).then(|| format!("{ms}: {got:?} ≠ {want:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "短时长与金样不符：{wrong:?}");
+}
