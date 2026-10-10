@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>TooGenericExceptionCaught:SshConnection.kt:SshConnection$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SshConnection.kt:SshConnection$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:SshConnectionManager.kt:SshConnectionManager$e: Exception</ID>
+  </CurrentIssues>
+</SmellBaseline>

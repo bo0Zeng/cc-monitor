@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 界面由 Compose 画；这里只给窗口一个 NoActionBar + DayNight 主题。 -->
+    <style name="Theme.Aterm" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>
