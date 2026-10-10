@@ -255,7 +255,7 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
     ));
     let pid = c.0.id();
     let err = stop_pid(pid, Path::new("/nonexistent/cc-monitor-backend"), 200, 200).unwrap_err();
-    assert!(err.contains(&pid.to_string()), "{err}");
+    assert!(err.said.contains(&pid.to_string()), "{err}");
     assert!(matches!(c.0.try_wait(), Ok(None)), "对不上身份的也被停了");
     // 线上三个词。
     let words: Vec<&str> = [

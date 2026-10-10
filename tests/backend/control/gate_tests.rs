@@ -729,3 +729,21 @@ fn the_gate_puts_the_session_name_in_as_is() {
     // 反向自检：门的那几句确实还从这里取文、还填 name（不是改名后空转）。
     assert!(prod.contains("\"beGate.admit.noSession\"") && prod.contains("(\"name\", "));
 }
+
+/// tmux 起不来：句子只说原因词，系统原话（`No such file or directory (os error 2)` 一类）不上句子。
+#[test]
+fn a_missing_tmux_is_said_with_a_reason_word_not_the_os_words() {
+    let dir = std::env::temp_dir().join(format!("ccm-gate-gone-{}", std::process::id()));
+    let (code, said) = probe_with(Child::new(dir.join("gone")), "=x:").unwrap_err();
+    assert_eq!(code, "no_tmux");
+    assert_eq!(
+        said,
+        copy_text(
+            "beGate.probe.noTmux",
+            &[(
+                "why",
+                &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+            )]
+        )
+    );
+}

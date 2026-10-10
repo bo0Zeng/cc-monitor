@@ -207,7 +207,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("bus", "顺手从 cc-bus 注销的结果 `{removed, failed, unread, said, detail}`：`said` 是那几行句子（没有 ⇒ `null`），`detail` 是复制详情（没有 ⇒ 空串）"), arg("client", "自报的前端（过「哪个前端的会话」那一维）"), out("killed", "杀成了"), arg("name", "要杀的 tmux 会话名"), out("session", "杀掉的 tmux 会话名"), arg("sid", "可带：只结束挂着这个会话（`@ccm_sid`）的窗格")],
         takes_input: true,
-        run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },
     // 一批会话的停 / 起：每一个同单个那一条（`kill` · `launch` · `launch-render-cli` · `launch-local`），逐个答结局。
     //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
@@ -368,6 +368,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         // **之外**，而「撞了」这件事后端已经用 `created:false` 表达完了（`§15 裁五`）。
         fields: &[arg("agent", "可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）"), arg("ccm_sid", "可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格"), arg("client", "可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）"), out("created", "这一次新建了会话"), arg("cwd", "可选，仅 create-or-attach"), arg("height", "同 `width`"), arg("mode", "`create-or-attach`（建或接）· `send-into`（往已在的会话里键入）"), arg("name", "tmux 会话名"), arg("payload", "要键入的那一行"), out("session", "落在哪个会话上"), out("typed", "`send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）"), arg("width", "可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给")],
         takes_input: true,
-        run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
     },
 ];

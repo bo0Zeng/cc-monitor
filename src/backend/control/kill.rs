@@ -25,8 +25,8 @@ const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 /// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀 · 顺手注销 cc-bus 共用）。
 pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
 
-/// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
-type CmdErr = (&'static str, String);
+/// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
+type CmdErr = crate::stream::inbound::spec::Fail;
 
 /// 从入方向的 `args` 取出会话名并做**形状**校验。
 ///
@@ -37,10 +37,12 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
         .as_object()
         .and_then(|o| o.get("name"))
         .and_then(|v| v.as_str())
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing `name`"),
-        ))?;
+        .ok_or_else(|| {
+            CmdErr::from((
+                "bad_args",
+                crate::common::contract::malformed("missing `name`"),
+            ))
+        })?;
     admit_existing_name(name)?;
     Ok(name.to_string())
 }
@@ -51,24 +53,30 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
 pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
     use crate::control::gate_rules::TmuxNameIssue as I;
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
-        None if name.contains(':') => Err((
+        None if name.contains(':') => Err(CmdErr::from((
             "bad_args",
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
-        )),
+        ))),
         None => Ok(()),
-        Some(I::Empty) => Err(("bad_args", copy_text("beKill.name.empty", &[]))),
-        Some(I::Control(_)) => Err(("bad_args", copy_text("beKill.name.control", &[]))),
-        Some(I::Deceptive(c)) => Err((
+        Some(I::Empty) => Err(CmdErr::from((
+            "bad_args",
+            copy_text("beKill.name.empty", &[]),
+        ))),
+        Some(I::Control(_)) => Err(CmdErr::from((
+            "bad_args",
+            copy_text("beKill.name.control", &[]),
+        ))),
+        Some(I::Deceptive(c)) => Err(CmdErr::from((
             "bad_args",
             copy_text(
                 "beKill.name.deceptive",
                 &[("cp", &format!("U+{:04X}", c as u32))],
             ),
-        )),
-        Some(other) => Err((
+        ))),
+        Some(other) => Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!("unexpected name issue: {other:?}")),
-        )),
+        ))),
     }
 }
 
@@ -114,22 +122,25 @@ fn run_expecting(
     let out = Child::new("tmux")
         .args(&argv)
         .run(KILL_TMUX_WITHIN)
-        .map_err(|e| {
-            e.into_cmd_err("no_tmux", |e| {
-                copy_text("beKill.run.noTmux", &[("e", &e.to_string())])
-            })
-        })?;
+        .map_err(tmux_unavailable)?;
     if out.status.success() {
         let bus = super::cc_bus::unregister_panes(name, &panes);
         return Ok(bus);
     }
-    Err((
-        "kill_failed",
-        copy_text(
-            "beKill.run.failed",
-            &[("e", String::from_utf8_lossy(&out.stderr).trim())],
-        ),
-    ))
+    Err(kill_refused(&out.stderr))
+}
+
+/// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。
+pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> CmdErr {
+    CmdErr::from(e.into_cmd_said("no_tmux", |why| {
+        copy_text("beKill.run.noTmux", &[("why", why)])
+    }))
+}
+
+/// tmux 起来了、但没杀成：句子说「tmux 报错」，tmux 自己说的那句进复制详情。
+pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
+    CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
+        .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
 /// 要走的那几个 pane 的根进程 pid（`only` ＝ 只结束这几个窗格；`None` ＝ 整个会话）。问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
@@ -142,15 +153,12 @@ fn pane_pids(handle: &str, only: Option<&[String]>) -> Vec<u32> {
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。
-pub(crate) fn kill_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let name = parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
-    let client = super::gate::requester_of(args).map_err(|(c, m)| (c.to_string(), m))?;
+pub(crate) fn kill_for_inbound(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
+    let name = parse_name(args)?;
+    let client = super::gate::requester_of(args)?;
     // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
-    let sid = super::gate::sid_of(args).map_err(|(c, m)| (c.to_string(), m))?;
-    let bus = run_expecting(&name, sid.as_deref(), client.as_deref())
-        .map_err(|(c, m)| (c.to_string(), m))?;
+    let sid = super::gate::sid_of(args)?;
+    let bus = run_expecting(&name, sid.as_deref(), client.as_deref())?;
     Ok(reply(&name, &bus))
 }
 

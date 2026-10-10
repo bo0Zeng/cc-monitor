@@ -58,11 +58,11 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |_: &str, _: &str| -> Result<Value, crate::control::session_batch::CmdErr> {
+        let kill = |_: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
             unreachable!("起新会话不杀")
         };
         let send_into =
-            |_: &str, _: &str, _: &str| -> Result<(), crate::control::session_batch::CmdErr> {
+            |_: &str, _: &str, _: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
                 unreachable!("起新会话不往已有的终端里键入")
             };
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::control::session_batch::CmdErr> {

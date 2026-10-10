@@ -87,19 +87,23 @@ impl Rig {
                 .push(format!("record {sid} {dir:?}"));
             Ok((!self.gone.contains(&sid), "/root/x".to_string()))
         };
-        let kill = |name: &str, sid: &str| -> Result<Value, CmdErr> {
+        let kill = |name: &str, sid: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
             self.calls.borrow_mut().push(format!("kill {name} {sid}"));
             match self.kill_err {
-                Some(c) => Err((c, "said".to_string())),
+                Some(c) => Err(crate::stream::inbound::spec::Fail::new(
+                    c,
+                    "said".to_string(),
+                )),
                 None => Ok(json!({ "removed": [], "failed": [], "unread": null })),
             }
         };
-        let send_into = |name: &str, sid: &str, line: &str| -> Result<(), CmdErr> {
-            self.launched.borrow_mut().push(
-                json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid }),
-            );
-            Ok(())
-        };
+        let send_into =
+            |name: &str, sid: &str, line: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
+                self.launched.borrow_mut().push(
+                    json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid }),
+                );
+                Ok(())
+            };
         // 真 ccm：建会话撞名 ⇒ 退出码 3（响亮失败）。
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), CmdErr> {
             self.ccm.borrow_mut().push(argv.to_vec());
@@ -523,15 +527,16 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     let record =
         |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
     // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限 5 s）。
-    let kill = |name: &str, _: &str| -> Result<Value, CmdErr> {
+    let kill = |name: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
         let mark = dir.join(name);
         Child::new("sh")
             .args(["-c", &format!("touch {}; sleep 30", mark.display())])
             .run(Deadline::secs(5))
             .map(|_| json!({}))
-            .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()))
+            .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()).into())
     };
-    let send_into = |_: &str, _: &str, _: &str| -> Result<(), CmdErr> { Ok(()) };
+    let send_into =
+        |_: &str, _: &str, _: &str| -> Result<(), crate::stream::inbound::spec::Fail> { Ok(()) };
     let run_ccm = |_: &[String]| -> Result<(i32, String, String), CmdErr> {
         Ok((0, String::new(), String::new()))
     };

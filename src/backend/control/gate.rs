@@ -177,9 +177,11 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Cm
         ])
         .run(PROBE_TMUX_WITHIN)
         .map_err(|e| {
-            e.into_cmd_err("no_tmux", |e| {
-                copy_text("beGate.probe.noTmux", &[("e", &e.to_string())])
-            })
+            // 句子只说原因词；系统原话记一行日志（门这一层的失败形是「码 ＋ 一句」，没有原话位）。
+            let (c, s) = e.into_cmd_said("no_tmux", |why| {
+                copy_text("beGate.probe.noTmux", &[("why", why)])
+            });
+            (c, crate::common::said::IntoNote::into_note(s))
         })?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.trim_end_matches(['\n', '\r']);

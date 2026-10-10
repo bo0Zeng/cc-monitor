@@ -182,8 +182,10 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
 /// → 同一个名字用新号起。
 fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> Result<(), Failed> {
     let _total = Budget::capped(SWAP_CAP, req.until);
-    if let Err((why, said)) = (deps.kill)(name, &req.item.sid) {
-        return Err(("stop_failed", said, Some(json!({ "why": why }))));
+    if let Err(f) = (deps.kill)(name, &req.item.sid) {
+        // 换号重启的失败格没有原话位：tmux 原话记一行日志，句子照旧交出去。
+        let why = f.code.clone();
+        return Err(("stop_failed", f.into_note(), Some(json!({ "why": why }))));
     }
     let others: Vec<u32> = (deps.writers)(&req.item.sid)
         .into_iter()

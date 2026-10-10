@@ -1310,8 +1310,8 @@
     "beGate.probe.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beGate.admit.noSession": {
@@ -1408,8 +1408,8 @@
     "beKill.run.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beSessionRestart.locate.notInTerminal": {
@@ -1439,8 +1439,8 @@
     "beKill.run.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "结束 tmux 会话失败 · {e}",
-      "args": ["e"],
+      "zh": "结束 tmux 会话失败 · tmux 报错",
+      "args": [],
       "limited": ["tmux"]
     },
     "beLaunch.said.silent": {
@@ -1453,22 +1453,22 @@
     "beLaunch.run.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beLaunch.create.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "新建 tmux 会话失败 · {name} · tmux 会话不存在 · {said}",
-      "args": ["name", "said"],
+      "zh": "新建 tmux 会话失败 · {name} · tmux 报错",
+      "args": ["name"],
       "limited": ["tmux"]
     },
     "beLaunch.type.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 往 {target} 发送失败 · {said} · 内容可能未进去",
-      "args": ["target", "said"],
+      "zh": "tmux 往 {target} 发送失败 · tmux 报错 · 内容可能未进去",
+      "args": ["target"],
       "limited": ["tmux"]
     },
     "beStderrFd.point.dupFailed": {
@@ -1773,20 +1773,20 @@
     "beStop.handle.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "未停止进程 {pid} · 拿不到句柄 · {e}",
-      "args": ["pid", "e"]
+      "zh": "未停止进程 {pid} · 拿不到句柄 · {why}",
+      "args": ["pid", "why"]
     },
     "beStop.signal.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "发送信号 {sig} 失败 · {e}",
-      "args": ["sig", "e"]
+      "zh": "发送信号 {sig} 失败 · {why}",
+      "args": ["sig", "why"]
     },
     "beStop.wait.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "等进程退出出错 · {e}",
-      "args": ["e"]
+      "zh": "等进程退出失败 · {why}",
+      "args": ["why"]
     },
     "beStop.term.none": {
       "kind": "body",
@@ -15455,8 +15455,8 @@
     "beInvoke.notRun.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{bin} 启动失败 · {e}",
-      "args": ["bin", "e"]
+      "zh": "{bin} 启动失败 · {why}",
+      "args": ["bin", "why"]
     },
     "bePlan.dump.noPythonHint": {
       "kind": "body",
@@ -15681,8 +15681,8 @@
     "beSessionSnapshot.probeTmux.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beHistoryQuery.readLinesFrom.lineTooLong": {
@@ -20855,14 +20855,14 @@
     "beQuotaProbe.run.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动 {program} 失败 · {e}",
-      "args": ["program", "e"]
+      "zh": "启动 {program} 失败 · {why}",
+      "args": ["program", "why"]
     },
     "beQuotaProbe.run.exit": {
       "kind": "error",
       "role": "报错",
-      "zh": "{program} 退出码 {exit} · {said}",
-      "args": ["program", "exit", "said"]
+      "zh": "{program} 查询用量失败 · 原因不明",
+      "args": ["program"]
     },
     "rsDataPaths.backend.quota": {
       "kind": "body",

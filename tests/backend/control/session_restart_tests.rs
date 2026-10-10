@@ -77,24 +77,28 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |name: &str, sid: &str| -> Result<Value, batch::CmdErr> {
+        let kill = |name: &str, sid: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
             note(format!("kill {name} {sid}"));
             match self.kill_err {
-                Some(c) => Err((c, "said".to_string())),
+                Some(c) => Err(crate::stream::inbound::spec::Fail::new(
+                    c,
+                    "said".to_string(),
+                )),
                 None => Ok(json!({})),
             }
         };
-        let send_into = |name: &str, sid: &str, line: &str| -> Result<(), batch::CmdErr> {
-            note(format!("send {name} {sid} {line}"));
-            if self.summarize {
-                let mut f = std::fs::OpenOptions::new()
-                    .append(true)
-                    .open(&self.record)
-                    .unwrap();
-                writeln!(f, "{SUMMARY}").unwrap();
-            }
-            Ok(())
-        };
+        let send_into =
+            |name: &str, sid: &str, line: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
+                note(format!("send {name} {sid} {line}"));
+                if self.summarize {
+                    let mut f = std::fs::OpenOptions::new()
+                        .append(true)
+                        .open(&self.record)
+                        .unwrap();
+                    writeln!(f, "{SUMMARY}").unwrap();
+                }
+                Ok(())
+            };
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), batch::CmdErr> {
             note(format!("ccm {}", argv.join(" ")));
             Ok((self.ccm_exit, String::new(), "boom".to_string()))
