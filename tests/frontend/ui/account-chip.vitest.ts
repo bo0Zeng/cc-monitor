@@ -284,11 +284,8 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
-    // 唯一许发的一问是那台的 API key 两格事实（`apikey-routing`，徽章用）；用量那一族一条都不许有。
-    const others = invokeMock.mock.calls.filter(
-      (c) => !(c[0] === "chan_call" && (c[1] as { op?: string })?.op === "apikey-routing"),
-    );
-    expect(others).toEqual([]);
+    // 一问都不许发（API key 两格事实并进了账号清单的徽章，用量那一族也不许有）。
+    expect(invokeMock.mock.calls).toEqual([]);
     const actions = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map(
       (b) => b.textContent,
     );

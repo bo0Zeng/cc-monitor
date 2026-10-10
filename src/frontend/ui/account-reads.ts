@@ -1,8 +1,7 @@
 /**
  * **账号域的读面**：经通道问那台机器（本机也一样）的后端，带 per-origin TTL 缓存 ＋ 手动刷新。
  *
- * 三条帧命令：账号清单 `accounts-list`· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`，
- * 外加本机 apikey 表那一问（`apikey_routing_for`）。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
+ * 三条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求「一个判定只有一个家」）：
  * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收、缓存」。

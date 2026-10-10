@@ -258,7 +258,7 @@ pub(crate) fn pick_kind_among(
     pick_among(registry, name, |kind, _| kind)
 }
 
-/// 按适配器 id 认（上游选择那几问的 `agent`：`apikey-routing` · `accounts-list` · `launch-local`）。规则见 [`pick_among`]。
+/// 按适配器 id 认（上游选择那几问的 `agent`：`accounts-list` · `launch-local`）。规则见 [`pick_among`]。
 pub(crate) fn pick_adapter_among(
     registry: &[Adapter],
     id: Option<&str>,

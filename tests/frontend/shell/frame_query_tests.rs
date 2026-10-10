@@ -665,7 +665,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`）：\
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
     ),
-    // `apikey-read` 那一行退役：写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂删了。
     (
         "assets-sync",
         1,
