@@ -944,9 +944,7 @@ fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
 /// 竞速全输了：那一句只带原因词（拨不通 ⇒「端口不通」）与试过的地址，各地址的系统原话进详情、不上句子。
 #[tokio::test]
 async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail() {
-    let ls = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = ls.local_addr().unwrap().port();
-    drop(ls);
+    let port = crate::refusing_port::refusing_port();
     let ep = Endpoint {
         host: "127.0.0.1".to_string(),
         port,
