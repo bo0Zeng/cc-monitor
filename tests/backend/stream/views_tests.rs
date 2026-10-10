@@ -242,6 +242,14 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         to_line(&added).unwrap(),
         "没声明 ⇒ 字节与 to_line 一样"
     );
+
+    // 只留几格（`cells`）：帧的 `kind` 不在成品的格里，照样留着（客户端按它分派）。
+    let keep = StreamView::parse(&json!({"cells": {"session_status": ["sid"]}}))
+        .unwrap()
+        .expect("认得的声明");
+    let mut status = json!({"kind": "session_status", "sid": "s", "status": "busy"});
+    keep.apply(&mut status);
+    assert_eq!(status, json!({"kind": "session_status", "sid": "s"}));
 }
 
 /// 流的声明只许点推送帧里住着的成品；认不出的词 · 格同请求信封那一处拒。
