@@ -75,7 +75,12 @@ const withOrigin = (origin: string): Record<string, unknown> => (origin === "<lo
 export function historyOps(): Record<string, OpHandler> {
   return {
     // 平铺清单（`history-list`，形状照 `history-list.golden.json`）：本机后端答各台（`origin` 在请求里）。
-    "history-list": (_o, req, w) => {
+    // 远端那一份界面先经长连接问那台常驻 `raw`、再带着（`listing`）交本机后端：那一跳这里只管通不通，合成行照旧按 `origin` 现造。
+    "history-list": (o, req, w) => {
+      if (req.raw === true) {
+        if (w.historyDown?.includes(o)) throw new Error(`连不上 ${o}`);
+        return { rows: [], failed: [] };
+      }
       const origin = (req.origin as string | undefined) ?? "<local>";
       if (w.historyDown?.includes(origin)) throw new Error(`连不上 ${origin}`);
       const q = typeof req.query === "string" ? req.query.toLowerCase() : "";

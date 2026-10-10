@@ -15759,10 +15759,10 @@
       "zh": "本机查询未完成 · 程序出错",
       "args": []
     },
-    "beHistoryList.remote.unreadable": {
+    "beHistoryList.remote.notHeld": {
       "kind": "error",
       "role": "报错",
-      "zh": "列出 {machine} 的会话记录失败 · 内容无法解析",
+      "zh": "{machine} 的会话清单未取回 · 需先向 {machine} 取一次",
       "args": ["machine"]
     },
     "beHistoryJoin.annotations.unparsable": {
