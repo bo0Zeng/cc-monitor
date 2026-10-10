@@ -360,6 +360,7 @@ fn records_face(
         children: None,
         project_dir: None,
         mcp_said: None,
+        held_open: false,
     }
 }
 

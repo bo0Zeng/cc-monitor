@@ -687,6 +687,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         project_dir: None,
         background: None,
         mcp_said: None,
+        held_open: false,
     }
 }
 

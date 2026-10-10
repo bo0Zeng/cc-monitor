@@ -218,6 +218,8 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     }),
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
+    // 判活认 pidfile（`LOCAL`），不认谁开着记录。
+    held_open: false,
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

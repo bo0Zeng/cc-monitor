@@ -21,9 +21,9 @@ mod fallback;
 mod linux;
 
 #[cfg(not(target_os = "linux"))]
-pub(crate) use fallback::{watch_opens, writers_of, OpenEar};
+pub(crate) use fallback::{absolute, watch_opens, writers_of, OpenEar};
 #[cfg(target_os = "linux")]
-pub(crate) use linux::{watch_opens, writers_of, OpenEar};
+pub(crate) use linux::{absolute, watch_opens, writers_of, OpenEar};
 
 /// 开着某份文件写的一个进程：pid ＋ 它的启动时刻（挂 pidfd 看守时挡 PID 复用用；读不到 ⇒ `None`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
