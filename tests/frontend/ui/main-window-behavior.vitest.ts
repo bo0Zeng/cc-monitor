@@ -673,7 +673,7 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
     expect(stateOf(undefined, { ok: false, rejected: true }, true)).toBe("rejected");
     expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", "10s")).toBe(copyText("stream.step.rejected"));
     // 两条记录之间多久：那一个读口写（短时长，同金样）；缺一头 · 倒着 ⇒ 不写。
-    expect([durBetween(0, 300), durBetween(0, 41_000), durBetween(0, 182_000), durBetween(undefined, 5), durBetween(9, 1)]).toEqual(["0s", "41s", "3m", null, null]);
+    expect([durBetween(0, 300), durBetween(0, 41_000), durBetween(0, 182_000), durBetween(undefined, 5), durBetween(9, 1)]).toEqual(["<1s", "41s", "3m", null, null]);
     expect(middleEllipsis(`/${"a".repeat(100)}/file.py`, 40)).toMatch(/^\/a+…\/file\.py$/);
   });
 });

@@ -1,13 +1,13 @@
 {
-  "_": "短时长（文案规范 N5）的对拍金样：Rust copy-core::short_duration / rel_duration（核心写字那一刻）· TS duration-format.ts（桌面走字的那一个读口）· Kotlin DurationFormat（手机端那一个读口）各自读这一份逐条跑、对手写的 want。cases 输入是毫秒：秒以下舍去、分钟以下舍去，满 24 小时只写天。rel 是距今（只写将来，向上取整到分钟，前面 +；到了 ⇒ null）。clock 是会走的钟 {text, from, to?}：text 里的 {dur} 按 (to 或此刻 now) − from 填短时长；from 比此刻还晚 ⇒ 按 0。单位格住文案表 durationFormat.short.*。",
+  "_": "短时长（文案规范 N5）的对拍金样：Rust copy-core::short_duration / rel_duration（核心写字那一刻）· TS duration-format.ts（桌面走字的那一个读口）· Kotlin DurationFormat（手机端那一个读口）各自读这一份逐条跑、对手写的 want。cases 输入是毫秒：不满 1 秒写 <1s、秒以下舍去、分钟以下舍去，满 24 小时只写天。rel 是距今（只写将来，向上取整到分钟，前面 +；到了 ⇒ null）。clock 是会走的钟 {text, from, to?}：text 里的 {dur} 按 (to 或此刻 now) − from 填短时长；from 比此刻还晚 ⇒ 按 0。单位格住文案表 durationFormat.short.*。",
   "cases": [
     {
       "ms": 0,
-      "want": "0s"
+      "want": "<1s"
     },
     {
       "ms": 999,
-      "want": "0s"
+      "want": "<1s"
     },
     {
       "ms": 45000,
@@ -118,7 +118,7 @@
       "text": "等了 {dur}",
       "from": 5000,
       "now": 1000,
-      "want": "等了 0s"
+      "want": "等了 <1s"
     },
     {
       "text": "没有空位",

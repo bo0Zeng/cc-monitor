@@ -35,7 +35,7 @@ import { waitedNow } from "../duration-format";
 import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { firstLineOf, jsonPrefix } from "../format";
+import { firstLineOf, jsonPrefix, sizeText } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { toast } from "../kit/toast";
@@ -1030,7 +1030,7 @@ function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
   more.type = "button";
   more.className = "block-body-show-full";
   const restChars = text.length - pieces[0].length;
-  more.textContent = copyText("cards.markdown.showRest", { kb: (restChars / 1024).toFixed(0) });
+  more.textContent = copyText("cards.markdown.showRest", { size: sizeText(restChars) });
   more.addEventListener(
     "click",
     () => {
@@ -1066,8 +1066,7 @@ function buildTextBody(text: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    const sizeKb = (text.length / 1024).toFixed(0);
-    expand.textContent = copyText("cards.text.showAll", { kb: sizeKb });
+    expand.textContent = copyText("cards.text.showAll", { size: sizeText(text.length) });
     expand.addEventListener(
       "click",
       () => {
@@ -1100,8 +1099,7 @@ function buildMarkdownBody(text: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    const sizeKb = (cleaned.length / 1024).toFixed(0);
-    expand.textContent = copyText("cards.text.showAll", { kb: sizeKb });
+    expand.textContent = copyText("cards.text.showAll", { size: sizeText(cleaned.length) });
     expand.addEventListener(
       "click",
       () => {
@@ -1286,10 +1284,10 @@ function truncate(s: string, n: number): string {
 
 function approximateSize(content: readonly Block[]): string {
   if (content.every((b) => b.type === "text")) {
-    return `${textOf(content).length} chars`;
+    return sizeText(textOf(content).length);
   }
   try {
-    return `${JSON.stringify(content).length} chars`;
+    return sizeText(JSON.stringify(content).length);
   } catch {
     return "";
   }

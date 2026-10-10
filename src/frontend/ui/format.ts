@@ -1,15 +1,34 @@
 /**
- * 字节 · 首行 · JSON 前缀那几样排版小件（`formatBytes` 统一精度）。
+ * 大小 · 首行 · JSON 前缀那几样排版小件（大小只经 [`sizeText`]）。
  *
- * 时刻不在这里：给人看的时刻一律由后端按那台本地钟写好（回包里 `…Text` 那几格），界面照抄、不换算。
+ * 时刻不在这里：给人看的时刻一律由后端按看的那一台的时区写好（回包里 `…Text` 那几格），界面照抄、不换算。
  */
 
-/** 字节数 → 人类可读：B / KB(1d) / MB(1d) / GB(2d) */
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+import { copyText } from "./copy-table";
+
+/**
+ * **大小的那一个读口**（字节 ⇒ 给人看的一格）：不满 1 KB 写整数字节；往上按 1024 进位、最多到 TB，一位小数（先化成十分位整数再四舍五入）；
+ * 舍入到 1024.0 的进一档。单位格住文案表 `sizeFormat.unit.*`；与核心 `copy_core::size_text`（后端 · 壳 · 文件窗口）对同一份金样
+ * `tests/__fixtures__/size-text.golden.json`。界面里别处不许自己换算大小（出口扫描判据钉着）。
+ */
+export function sizeText(n: number): string {
+  const b = Math.max(0, Math.floor(n));
+  let u = 0;
+  while (u + 1 < 5 && b >= 2 ** (10 * (u + 1))) u++;
+  if (u === 0) return unit(0, String(b));
+  const tenths = (k: number): number => Math.floor((b * 10 + 2 ** (10 * k - 1)) / 2 ** (10 * k));
+  let t = tenths(u);
+  if (t >= 10_240 && u + 1 < 5) t = tenths(++u);
+  return unit(u, `${Math.floor(t / 10)}.${t % 10}`);
+}
+
+/** 第 `u` 档单位（B · KB · MB · GB · TB）写上数（文案键逐档字面量）。 */
+function unit(u: number, n: string): string {
+  if (u === 0) return copyText("sizeFormat.unit.b", { n });
+  if (u === 1) return copyText("sizeFormat.unit.kb", { n });
+  if (u === 2) return copyText("sizeFormat.unit.mb", { n });
+  if (u === 3) return copyText("sizeFormat.unit.gb", { n });
+  return copyText("sizeFormat.unit.tb", { n });
 }
 
 /**

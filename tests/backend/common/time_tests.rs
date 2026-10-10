@@ -362,3 +362,22 @@ fn t12_detail_time_slots_are_filled_in_the_viewer_zone_with_the_offset() {
     // 复制详情本身只写空位：那一层不知道看的人是谁。
     assert!(crate::stream::detail::of(Some("c"), "x", None).contains("⟦at:"));
 }
+
+/// 钟面 `HH:MM` 与界面那一个钟面读口（`clock-face.ts::clockFace`）对同一份金样。
+#[test]
+fn t13_clock_face_follows_the_shared_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/clock-face.golden.json")).unwrap();
+    let cases = g["cases"].as_array().unwrap();
+    assert!(cases.len() >= 6);
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter_map(|c| {
+            let ms = c["ms"].as_i64().unwrap();
+            let off = c["offsetMin"].as_i64().unwrap();
+            let got = hm(ms.div_euclid(1_000) + off * 60);
+            (got != c["want"].as_str().unwrap()).then(|| format!("{c} ⇒ {got}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{wrong:?}");
+}

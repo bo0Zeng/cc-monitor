@@ -91,7 +91,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "../kit/toast": ["failToast"],
       "../kit/detail": ["sayFailure"], // 读失败那一句 ＋ 它的［复制详情］：只取那一句与详情、排版，不是效应
       "../local-storage": ["enumeratePrefix"],
-      "../format": ["formatBytes"],
+      "../format": ["sizeText"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
       "../copy-table": ["copyText"], // 取文口：只读一张表，不是效应
       "../kit/icon": ["icon"], // 画图标：不是效应

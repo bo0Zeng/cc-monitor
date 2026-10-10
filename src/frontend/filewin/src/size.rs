@@ -68,7 +68,7 @@ pub fn size_line(s: &Sized) -> String {
         "rsFilewinSize.outcome.line",
         &[
             ("name", &s.name),
-            ("human", &super::rows::human_size(s.bytes)),
+            ("human", &copy_core::size_text(s.bytes)),
             ("bytes", &s.bytes.to_string()),
             ("files", &s.files.to_string()),
             ("dirs", &s.dirs.to_string()),

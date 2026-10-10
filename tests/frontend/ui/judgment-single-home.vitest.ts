@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -504,9 +504,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 后端按那台本地钟写好（记录的 `timeText` · 轮次的 `startText`/`endText` · 子运行的 `started_text` · 分叉的 `startText` ·
     //   终端快照的 `captured_at_text` · 历史清单行的 `atText`/`sectionText`/`spanText` · 搜索合并行的 `atText`/`spanText` · 查找命中的 `tsText`），界面照抄。
     //   删的是 `format.ts::formatTimestampShort` · `views/history-time.ts` 整份 · 终端页 / 起会话框各自那一个钟面换算。
-    // 留着的一处是 `status-messages.ts` 的提示时刻（`toLocaleTimeString`，不在指纹里）：提示是界面自己出的事，不来自哪台后端，没有「那台的本地钟」可照抄。
+    // 钟面 `HH:MM` 那一格另立一行（J30）：界面自己出的事（状态栏提示）没有后端写好的字可照抄，留一个镜像读口。
     homes: [
-      "src/backend/common/time.rs::hm",
       "src/backend/common/time.rs::hms",
       "src/backend/common/time.rs::row_time",
       "src/backend/common/time.rs::section_text",
@@ -515,11 +514,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
     status: "zero",
     defs: ["formatTimestampShort", "rowTime", "sectionKey", "sectionLabel", "spanText", "hitTime"],
-    needles: [
-      { text: "getHours", count: 0 },
-      { text: "getMinutes", count: 0 },
-      { text: "getSeconds", count: 0 },
-    ],
+    needles: [{ text: "getSeconds", count: 0 }],
   },
   J26: {
     what: "一行汇总底下几件各自的失败 ⇒ 复制出去的整段（主界面合流 ×N · 文件窗口进度那一行）",
@@ -560,6 +555,38 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/short-duration.vitest.ts"],
     },
     why: "ARCHITECTURE §2.9「会走的钟」：桌面秒级走的那几处只留一个时长读口，与 Rust 那一份对同一份金样",
+  },
+  J30: {
+    what: "钟面 `HH:MM`（核心写所有「几点」那一处 · 界面自己出的事——状态栏提示——那一个读口）",
+    homes: ["src/backend/common/time.rs::hm"],
+    // 认可的双读口（同 J24 / J28）：提示是界面自己出的事，不经后端、没有 `…Text` 可照抄，而看的人就在这一台 ⇒ 按这一台的钟本来就对；
+    //   排法与核心那一处对同一份金样。时 · 分由平台按这一台的时区给（`getHours` · `getMinutes` 各恰好一处，在 `clock-face.ts::clockFaceHere`）。
+    status: "mirror",
+    defs: ["clockFace", "clockFaceHere"],
+    needles: [
+      { text: "getHours", count: 1 },
+      { text: "getMinutes", count: 1 },
+    ],
+    parity: {
+      via: "tests/__fixtures__/clock-face.golden.json",
+      tests: ["tests/backend/common/time_tests.rs", "tests/copy/clock-face.vitest.ts"],
+    },
+    why: "「时刻按看的人这台的钟」：界面自己出的事生在看的那一台，钟面写法与核心同一套",
+  },
+  J31: {
+    what: "大小（字节 ⇒ 给人看的一格：B · KB · MB · GB · TB，一位小数）",
+    homes: ["copy-core::size_text"],
+    // 认可的双读口（同 J28）：后端 · 壳 · 文件窗口写大小都调核心这一处；界面那一个读口 `format.ts::sizeText` 写回包里只有字节数的那几格
+    //   （日志 · 自有文件 · 诊断 · 卡片里一段正文多长），同一份金样。从前三份（界面 GB 两位 · 文件窗口带 TB · 卡片自己除 1024）收成这一份。
+    status: "mirror",
+    defs: ["sizeText"],
+    gone: ["formatBytes"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/size-text.golden.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/size-text.vitest.ts"],
+    },
+    why: "「实现只一处」：同一种值只许一种样子",
   },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
@@ -624,6 +651,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     format_elapsed: "J24",
     short_duration: "J28",
     rel_duration: "J28",
+    size_text: "J31",
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",

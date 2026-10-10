@@ -146,7 +146,7 @@ fn the_status_line_counts_items_selection_and_hidden_files() {
         "rsFilewinChrome.status.picked",
         &[
             ("n", "4"),
-            ("size", &crate::rows::human_size(1024 + 2048 + 10))
+            ("size", &copy_core::size_text(1024 + 2048 + 10))
         ]
     )));
     assert!(w.set_show_hidden(false));
