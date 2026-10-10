@@ -1285,7 +1285,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
                 "mine",
                 "no",
                 "program",
-                "purpose",
                 "session",
                 "sid",
                 "since",
@@ -1437,6 +1436,9 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "cc-bus-install",
         "cc-bus-install-state",
         "ccm-print",
+        // 〔mg37 合并〕下面两条是与本表并行的两路（core1 · pbui）带进来的新命令，合进来时本表已立「只许删」：
+        //   先列在这里（今天对不了，不说成对过了），各自的真序列化金样补上就挪进 `SHAPED`。
+        "cells-catalog",
         "chores-mark",
         "data-report",
         "drift-report",
@@ -1497,6 +1499,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "place-verdict",
         "plan-ack",
         "plan-cell-view",
+        "plan-command",
         "plan-list",
         "plan-read",
         "plan-return",
