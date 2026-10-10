@@ -1354,10 +1354,39 @@ pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
     REGISTRY.iter().filter_map(|a| a.footprint)
 }
 
-/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
+/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）＋ 判状态要看的那几个家。
 #[derive(Clone, Copy)]
 pub(crate) struct McpFace {
-    pub(crate) read: fn(Option<&Path>) -> McpRead,
+    pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
+}
+
+/// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
+/// 账号库是通用层的知识，由通用层收齐交给那一家；那一家只认自己家目录里的文件。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct McpLook {
+    pub homes: Vec<(Option<String>, PathBuf)>,
+    pub now_ms: u64,
+}
+
+/// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它）。配置层只说说得准的：
+/// 停用的（配置里写着）· 要登录的（那一家最近一次连它时记下的、还在有效期内）；别的一律 `Unknown`，不猜「连上了」。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpStatus {
+    NeedsLogin,
+    Disabled,
+    #[default]
+    Unknown,
+}
+
+impl McpStatus {
+    /// 线上名（闭集）。
+    pub(crate) fn wire(self) -> &'static str {
+        match self {
+            McpStatus::NeedsLogin => "needsLogin",
+            McpStatus::Disabled => "disabled",
+            McpStatus::Unknown => "unknown",
+        }
+    }
 }
 
 /// 一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
@@ -1375,6 +1404,11 @@ pub(crate) struct McpEntry {
     pub name: String,
     pub server: serde_json::Value,
     pub source: String,
+    pub status: McpStatus,
+    /// 要登录：在哪几个号里（账号库里的名字，排好序）；没设账号的那一份不出名字。别的状态恒空。
+    pub login_in: Vec<String>,
+    /// 要登录：最近一次看到是何时（epoch ms）；别的状态 `None`。
+    pub seen_ms: Option<u64>,
 }
 
 /// `kind` 那一家的 MCP 读面，读一遍。`None` = 那一家不认得 MCP。
@@ -1382,15 +1416,21 @@ pub(crate) fn mcp_read_among(
     registry: &[Adapter],
     kind: &str,
     project_dir: Option<&Path>,
+    look: &McpLook,
 ) -> Option<McpRead> {
     adapter_among(registry, kind)
         .and_then(|a| a.mcp)
-        .map(|f| (f.read)(project_dir))
+        .map(|f| (f.read)(project_dir, look))
+}
+
+/// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。
+pub(crate) fn home_of_kind(kind: &str) -> Option<PathBuf> {
+    adapter_among(REGISTRY, kind).and_then(|a| (a.home)())
 }
 
 /// [`mcp_read_among`] 对本机注册表 —— 帧命令 `mcp-read` 的读法入口。
-pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>) -> Option<McpRead> {
-    mcp_read_among(REGISTRY, kind, project_dir)
+pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>, look: &McpLook) -> Option<McpRead> {
+    mcp_read_among(REGISTRY, kind, project_dir, look)
 }
 
 /// 一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起

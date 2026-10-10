@@ -1,6 +1,11 @@
 //! Claude 的 **MCP 布局**：`.claude.json` 顶层 `mcpServers`（user）· `projects[<目录>].mcpServers`（local）·
 //! `<目录>/.mcp.json` 的 `mcpServers`（project）。读法宽容：缺 ⇒ 那一段空；坏 ⇒ 那一段空并说出来（`problems`）。
 //! `.claude.json` 找哪一份与资产目录同一处（`assets::claude_json`）。
+//!
+//! 状态（翻成中立的 [`McpStatus`]）只出配置层说得准的两种：停用 —— `projects[<目录>].disabledMcpServers`
+//! （Claude 连之前先看它）；要登录 —— 各号家目录里 [`NEEDS_AUTH_CACHE`]：Claude 连 http / sse 服务器碰到要登录时记一笔
+//! `{timestamp, id?, ttlMs?}`，有效期内下次直接跳过不连（缺省 15 分钟，记了 `ttlMs` 按它；登录成功整份删）。
+//! 过了有效期 Claude 会重连，那一笔就不再算数 ⇒ 这里同样不算。stdio 的 Claude 不拿这份跳过 ⇒ 不算。
 
 use std::path::Path;
 
@@ -8,17 +13,31 @@ use serde_json::Value;
 
 use super::accounts::MAX_CONFIG_BYTES;
 use super::assets::{MAX_PROJECT_MCP_BYTES, PROJECT_MCP_FILE};
-use crate::agents::{McpEntry, McpRead};
+use crate::agents::{McpEntry, McpLook, McpRead, McpStatus};
 use crate::common::said::IntoNote as _;
 
+/// 各号家目录里那份「要登录」缓存的文件名（足迹表 `accounts.rs::IDENTITY` 也列它：每号各一份）。
+pub(crate) const NEEDS_AUTH_CACHE: &str = "mcp-needs-auth-cache.json";
+/// 条目没带 `ttlMs` 时 Claude 的缺省有效期（用户自己配的 http / sse 那一种）。
+const NEEDS_AUTH_TTL_MS: i128 = 15 * 60 * 1000;
+/// Claude 容忍的钟差：记录时刻比此刻晚不到这么多也算。
+const CLOCK_SLACK_MS: i128 = 60 * 1000;
+/// 那份缓存的上限（一个服务器一小条）。
+const MAX_CACHE_BYTES: u64 = 1024 * 1024;
+
 /// 注册表那一格的实现：按这台机器的环境现解 `.claude.json`。
-pub(crate) fn read(project_dir: Option<&Path>) -> McpRead {
-    read_at(super::assets::claude_json().as_deref(), project_dir)
+pub(crate) fn read(project_dir: Option<&Path>, look: &McpLook) -> McpRead {
+    read_at(super::assets::claude_json().as_deref(), project_dir, look)
 }
 
 /// [`read`] 的本体，`.claude.json` 的位置是参数（判据拿夹具喂它）。
-pub(crate) fn read_at(claude_json: Option<&Path>, project_dir: Option<&Path>) -> McpRead {
+pub(crate) fn read_at(
+    claude_json: Option<&Path>,
+    project_dir: Option<&Path>,
+    look: &McpLook,
+) -> McpRead {
     let mut out = McpRead::default();
+    let mut disabled: Vec<String> = Vec::new();
     if let Some(path) = claude_json {
         if let Some(cj) = read_json(path, MAX_CONFIG_BYTES, &mut out.problems) {
             let src = path.display().to_string();
@@ -29,6 +48,17 @@ pub(crate) fn read_at(claude_json: Option<&Path>, project_dir: Option<&Path>) ->
                     .and_then(|p| p.get(dir.to_string_lossy().as_ref()))
                     .and_then(|p| p.get("mcpServers"));
                 push(&mut out.entries, local, "local", &src);
+                disabled = cj
+                    .get("projects")
+                    .and_then(|p| p.get(dir.to_string_lossy().as_ref()))
+                    .and_then(|p| p.get("disabledMcpServers"))
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
             }
             let mut dirs: Vec<String> = cj
                 .get("projects")
@@ -50,7 +80,64 @@ pub(crate) fn read_at(claude_json: Option<&Path>, project_dir: Option<&Path>) ->
             );
         }
     }
+    judge(&mut out, &disabled, look);
     out
+}
+
+/// 逐条判状态：停用压过要登录（Claude 先看停用、停用的根本不连）。
+fn judge(out: &mut McpRead, disabled: &[String], look: &McpLook) {
+    let caches: Vec<(Option<&str>, Value)> = look
+        .homes
+        .iter()
+        .filter_map(|(who, home)| {
+            read_json(
+                &home.join(NEEDS_AUTH_CACHE),
+                MAX_CACHE_BYTES,
+                &mut out.problems,
+            )
+            .map(|v| (who.as_deref(), v))
+        })
+        .collect();
+    for e in &mut out.entries {
+        if disabled.iter().any(|d| *d == e.name) {
+            e.status = McpStatus::Disabled;
+            continue;
+        }
+        let remote = matches!(
+            e.server.get("type").and_then(Value::as_str),
+            Some("http" | "sse")
+        );
+        if !remote {
+            continue;
+        }
+        let mut hit = false;
+        for (who, cache) in &caches {
+            let Some(at) = fresh_at(cache.get(&e.name), look.now_ms) else {
+                continue;
+            };
+            hit = true;
+            e.seen_ms = e.seen_ms.max(Some(at));
+            if let Some(w) = who {
+                e.login_in.push((*w).to_string());
+            }
+        }
+        if hit {
+            e.status = McpStatus::NeedsLogin;
+            e.login_in.sort();
+            e.login_in.dedup();
+        }
+    }
+}
+
+/// 缓存里一条还在有效期内 ⇒ 它的时刻（epoch ms）。形状不对 ⇒ 不算（同 Claude：读不出就当没有）。
+fn fresh_at(item: Option<&Value>, now_ms: u64) -> Option<u64> {
+    let at = item?.get("timestamp")?.as_u64()?;
+    let ttl = item?
+        .get("ttlMs")
+        .and_then(Value::as_u64)
+        .map_or(NEEDS_AUTH_TTL_MS, i128::from);
+    let age = i128::from(now_ms) - i128::from(at);
+    (age > -CLOCK_SLACK_MS && age < ttl).then_some(at)
 }
 
 fn push(out: &mut Vec<McpEntry>, servers: Option<&Value>, scope: &'static str, source: &str) {
@@ -60,6 +147,9 @@ fn push(out: &mut Vec<McpEntry>, servers: Option<&Value>, scope: &'static str, s
             name: name.clone(),
             server: server.clone(),
             source: source.to_string(),
+            status: Default::default(),
+            login_in: Vec::new(),
+            seen_ms: None,
         });
     }
 }

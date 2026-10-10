@@ -630,13 +630,13 @@ fn beta_mcp_file() -> Option<PathBuf> {
 fn no_sightings(_: &[String], _: Option<&Path>) -> Sightings {
     Sightings::default()
 }
-fn alpha_mcp(_: Option<&Path>) -> McpRead {
+fn alpha_mcp(_: Option<&Path>, _: &McpLook) -> McpRead {
     McpRead {
         dirs: vec!["alpha".into()],
         ..McpRead::default()
     }
 }
-fn beta_mcp(_: Option<&Path>) -> McpRead {
+fn beta_mcp(_: Option<&Path>, _: &McpLook) -> McpRead {
     McpRead {
         dirs: vec!["beta".into()],
         ..McpRead::default()
@@ -707,7 +707,7 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
 fn two_families() -> Vec<Adapter> {
     let row = |kind: &'static str,
                assets: AssetFace,
-               mcp: fn(Option<&Path>) -> McpRead,
+               mcp: fn(Option<&Path>, &McpLook) -> McpRead,
                acc: AccountsFace,
                find: fn(&Path, &str) -> Result<PathBuf, String>| Adapter {
         kind,
@@ -776,7 +776,7 @@ fn each_question_lands_on_the_family_it_names_not_the_first_one() {
         Some(PathBuf::from("/alpha/skills"))
     );
     assert_eq!(
-        mcp_read_among(&reg, "beta", None).map(|r| r.dirs),
+        mcp_read_among(&reg, "beta", None, &McpLook::default()).map(|r| r.dirs),
         Some(vec!["beta".to_string()])
     );
     assert_eq!(
@@ -785,7 +785,7 @@ fn each_question_lands_on_the_family_it_names_not_the_first_one() {
     );
     // 认不出的那一家 ⇒ 没有，不落到第一家。
     assert_eq!(skill_root_among(&reg, "gamma", None), None);
-    assert!(mcp_read_among(&reg, "gamma", None).is_none());
+    assert!(mcp_read_among(&reg, "gamma", None, &McpLook::default()).is_none());
     assert!(accounts_face_among(&reg, "gamma").is_none());
 }
 

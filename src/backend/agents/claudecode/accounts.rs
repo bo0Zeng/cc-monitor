@@ -41,7 +41,7 @@ pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
         IdentityClass::State,
     ),
     (
-        "mcp-needs-auth-cache.json",
+        super::mcp::NEEDS_AUTH_CACHE,
         IdentityRoot::ConfigDir,
         IdentityClass::State,
     ),

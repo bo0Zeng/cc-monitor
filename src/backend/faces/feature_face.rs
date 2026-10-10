@@ -80,7 +80,7 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             };
             // 读 MCP 的那一家：唯一声明了 MCP 读面的那一家（今天只有 Claude）；Codex 的 MCP 来了由请求说是哪一家。
             let read = crate::agents::sole_kind(|a| a.mcp.is_some())
-                .and_then(|k| crate::agents::mcp_read(k, dir.as_deref()))
+                .and_then(|k| crate::agents::mcp_read(k, dir.as_deref(), &mcp_look(k)))
                 .unwrap_or_default();
             capped(mcp_reply(&read))
         }
@@ -89,6 +89,30 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             crate::common::contract::malformed(&format!("this face has no command `{other}`")),
         )),
     }
+}
+
+/// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
+/// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。
+fn mcp_look(kind: &str) -> crate::agents::McpLook {
+    let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
+        .and_then(|h| {
+            crate::accounts::manage::mcp_share_exec::accounts_in(&h.display().to_string())
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, dir)| (Some(name), std::path::PathBuf::from(dir)))
+        .collect();
+    if let Some(bare) = crate::agents::home_of_kind(kind) {
+        if !homes.iter().any(|(_, d)| *d == bare) {
+            homes.push((None, bare));
+        }
+    }
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    crate::agents::McpLook { homes, now_ms }
 }
 
 /// 整份过同一个上限（不截断）。
@@ -117,7 +141,12 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead) -> Value {
     let entries: Vec<Value> = r
         .entries
         .iter()
-        .map(|e| json!({ "scope": e.scope, "name": e.name, "server": e.server, "sourcePath": e.source }))
+        .map(|e| {
+            json!({
+                "scope": e.scope, "name": e.name, "server": e.server, "sourcePath": e.source,
+                "status": e.status.wire(), "loginIn": e.login_in, "seenAt": e.seen_ms,
+            })
+        })
         .collect();
     json!({ "entries": entries, "dirs": r.dirs, "problems": r.problems })
 }
