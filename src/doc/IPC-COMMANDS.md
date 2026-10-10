@@ -1097,6 +1097,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
+| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
@@ -1134,6 +1135,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `defaultRule` | ← | 默认规则的 id |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
+| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
 | `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
@@ -1215,6 +1217,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
+| `names` | ← | 同 `rotation-rules-read` |
 | `effective` | ← | 号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句） |
 | `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
 | `from` | ← | 视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
@@ -1247,6 +1250,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
+| `names` | ← | 同 `rotation-rules-read` |
 | `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |

@@ -77,16 +77,31 @@ export interface QuotaRead {
   fiveHour: string | null;
 }
 
-/** 号在界面上叫什么（`_` ＝ 起会话时没说是哪个号 ⇒ `~/.claude`）。 */
-export function accountLabel(account: string): string {
-  return account === "_" ? copyText("acct.home.name") : account;
+/** 核心写好的号名 / 位名（成品上的 `names`，`accounts/quota/name_words.rs`）：`accounts` 只列与原名不同的号，`slots` 列每个语义位。 */
+export interface Names {
+  accounts: Record<string, string>;
+  slots: Record<string, string>;
 }
 
-/** 语义位的字（后端给 `5h` / `7d`；认不出的照原样）。 */
+/** 最近一份成品带来的那张（出号名的四件成品 `quota-read` · `rotation-rules-read` · `rotation-session-read` · `rotation-plan` 解码时交进来）。 */
+let names: Names = { accounts: {}, slots: {} };
+
+/** 解码器交进来成品上的 `names`（形状不对 ⇒ 不收、留着上一份）。 */
+export function takeNames(v: unknown): void {
+  if (typeof v !== "object" || v === null) return;
+  const { accounts, slots } = v as Partial<Names>;
+  if (typeof accounts !== "object" || accounts === null || typeof slots !== "object" || slots === null) return;
+  names = { accounts, slots };
+}
+
+/** 号在界面上叫什么：照核心那张表；不在表里的号就叫它自己的名字。 */
+export function accountLabel(account: string): string {
+  return names.accounts[account] ?? account;
+}
+
+/** 语义位的字：照核心那张表；不在表里的照原样。 */
 export function slotLabel(slot: string): string {
-  if (slot === "5h") return copyText("acct.slot.fiveHour");
-  if (slot === "7d") return copyText("acct.slot.sevenDay");
-  return slot;
+  return names.slots[slot] ?? slot;
 }
 
 /** 一个语义位那一格的字（核心写好的 `slots[].text`）；这个号没有这一格 ⇒ `—`。 */
