@@ -32,10 +32,6 @@ fun LinkState.Down.problem(machine: String): Problem {
         is LinkOutcome.Ensure -> ensureProblem(o.outcome)
         is LinkOutcome.Attach -> attachProblem(o.outcome, machine)
         is LinkOutcome.HelloDiffers -> Problem(copyText("front.title.update", "machine" to machine), o.theirs.orEmpty())
-        // 同一个 BUILD_ID 却缺手机要读的格 ⇒ 那台要换成和手机同一版（详情里是缺的那几格）。
-        is LinkOutcome.Contract ->
-            (o.reply as? Reply.Failed)?.let { core(it.failure) }
-                ?: Problem(copyText("front.title.update", "machine" to machine), o.missing.joinToString("\n"))
         is LinkOutcome.Up -> Problem(copyText("front.body.offline", "machine" to machine), "")
     }
 }
@@ -87,11 +83,8 @@ fun Reply.problem(machine: String): Problem? =
         is Reply.Failed -> core(failure)
         Reply.TimedOut -> Problem(copyText("front.body.timeout", "machine" to machine), "")
         Reply.Cancelled, Reply.LinkDown -> Problem(copyText("front.body.offline", "machine" to machine), "")
-        is Reply.Unreadable -> Problem(copyText("rsRemoteResident.hello.notOurs"), raw)
+        is Reply.Unreadable -> unreadableReply(raw)
     }
 
-/** 答成了却解不出（缺必填格）：两端契约对不上 ⇒ 那台要换成和手机同一版；详情说是哪一条命令。 */
-fun contractProblem(
-    machine: String,
-    command: String,
-): Problem = Problem(copyText("front.title.update", "machine" to machine), command)
+/** 应答缺必填格（帧上的 · 成品里的同一个说法）；[raw] 进详情。 */
+fun unreadableReply(raw: String): Problem = Problem(copyText("rsRemoteResident.hello.notOurs"), raw)

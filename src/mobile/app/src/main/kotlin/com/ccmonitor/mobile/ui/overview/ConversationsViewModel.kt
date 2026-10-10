@@ -10,8 +10,8 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.link.Problem
-import com.ccmonitor.mobile.link.contractProblem
 import com.ccmonitor.mobile.link.problem
+import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -81,8 +81,9 @@ class ConversationsViewModel(
         decode: (Any?) -> T?,
     ): Fetched<T> =
         when (reply) {
-            is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(contractProblem(machine, command))
-            else -> Fetched.Failed(reply.problem(machine) ?: contractProblem(machine, command))
+            // 同一个 BUILD_ID 下解不出 ＝ 应答缺必填格：同帧上缺格的应答一个说法（详情里是哪一条命令）。
+            is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(unreadableReply(command))
+            else -> Fetched.Failed(reply.problem(machine) ?: unreadableReply(command))
         }
 
     private companion object {

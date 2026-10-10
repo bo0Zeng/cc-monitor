@@ -52,7 +52,7 @@ class HostBackends(
         const val TAG = "HostBackend"
         const val NONCE_LEN = 8
 
-        /** 握手（读 hello · 等 attach 回话）与格目录那一问的期限：冷启要起常驻、读盘，给足。 */
-        val TIMEOUTS = ResidentLink.Timeouts(handshakeMs = 20_000, callMs = 15_000)
+        /** 握手（读 hello · 等 attach 回话）的期限：冷启要起常驻、读盘，给足。 */
+        val TIMEOUTS = ResidentLink.Timeouts(handshakeMs = 20_000)
     }
 }
