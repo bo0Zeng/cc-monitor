@@ -136,15 +136,6 @@ export const ACCOUNT_NAMES: AccountName[] = [
     state: "done",
   },
   {
-    old: "RelayCredentialsStatus",
-    re: ident("RelayCredentialsStatus"),
-    fresh: "ApikeyCredentialsStatus",
-    freshRe: ident("ApikeyCredentialsStatus"),
-    kind: "类型",
-    why: "上一条命令的返回形状",
-    state: "done",
-  },
-  {
     old: "relay.routing",
     re: ident("relay.routing"),
     fresh: "apikey.routing",

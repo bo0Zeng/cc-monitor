@@ -1316,7 +1316,7 @@ pub(crate) fn render_for(plan: &Plan, shell: crate::platform::shell::dialect::Sh
 }
 
 /// **「等于」那一行的短形（唯一一处）**：设置页「敲 xx 等于」那一格照抄，整条脚本另在［复制］里（[`render_for`]）。
-/// tmux 那一形只写建哪个会话 ＋ 里面跑的那条命令（`tmux new-session -s 名 … 内层命令`）；直路只写进哪个目录、用哪份账号目录、跑什么
+/// tmux 那一形只写建哪个会话 ＋ 里面跑的那条命令（`tmux new-session -d -s 名 … 内层命令`）；直路只写进哪个目录、用哪份账号目录、跑什么
 /// （环境的清与设、中转、cc-bus 身份那几段不写）；接回 ⇒ 接哪个会话。家目录写成 `~`；只给人看，词不加引号（带空白的才加）。
 pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
     let word = |w: &str| -> String {
@@ -1338,7 +1338,7 @@ pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
             format!("tmux attach -t {}", word(name))
         }
         Plan::Container(c) => format!(
-            "tmux new-session -s {} \u{2026} {}",
+            "tmux new-session -d -s {} \u{2026} {}",
             word(&c.name),
             words(&c.inner)
         ),
