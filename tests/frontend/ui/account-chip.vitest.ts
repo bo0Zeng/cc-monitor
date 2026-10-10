@@ -1,7 +1,5 @@
 // A3 account-chip 纯函数测试（选主远端 / chip 文本）。
-import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 const readRemoteConfigMock = vi.fn();
 const fetchAccountsMock = vi.fn();
@@ -20,7 +18,6 @@ import {
 } from "../../../src/frontend/ui/account-chip";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { AccountsState, Account } from "../../../src/frontend/ui/accounts";
-import * as accountsMod from "../../../src/frontend/ui/accounts";
 // 读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
 import * as readsMod from "../../../src/frontend/ui/account-reads";
 import * as opsMod from "../../../src/frontend/ui/account-ops";
@@ -30,7 +27,6 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { putAccounts } from "../../../src/frontend/ui/app-store";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { copyPattern } from "../../test-support/copy-pattern";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -73,6 +69,7 @@ function acct(p: Partial<Account>): Account {
     authKind: "subscription",
     authReady: true,
     selectable: true,
+    badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" },
     ...p,
   };
 }
@@ -300,250 +297,31 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
     expect(chip.element.querySelector(".status-account-usage")).toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// K-A1（第二轮）`Y2`/`Y3`：chip 菜单那一列状态的取值**只**来自
-// `accounts.ts::accountStatusBadge` —— 而且断言落在**真渲染出来的 DOM 节点**上。
-//
-// 为什么必须有 DOM 这一层（第一轮的病理，逐字）：第一轮把三态收进 `accountStatusBadge`
-// 并只把**设置面板**那侧接了过去，纯函数那一族当场全绿 —— 而 `account-chip.ts` 这一处
-// 根本没接上，用户从状态栏 chip 的账号菜单看到的仍是「已登录」。
-// ⇒ 「纯函数全绿而 DOM 没接上」是本仓真发生过的失效模式，所以这一族**不**断言
-// `accountStatusBadge(a)` 的返回值（那是上一轮已经绿了的东西，在这一侧等于没测），
-// 只断言 `.account-picker-status` 的 `textContent` 与那一行 `<button>` 的 `title`。
-//
-// ★ 第三轮（PM 裁定「警示走 CSS，不进文本」）在同一族里多钉一维：**`warn` 那个类**。
-// 约定与设置那侧逐字同一套 —— 语义住布尔（`accountStatusBadge` 的 `warn`）、呈现住 CSS
-// （`.accounts-row-badge.warn` / 本轮新加的 `.account-picker-status.warn`）。
-// ⇒ 每一格都断 `classList.contains("warn")`，含一格**阴性对照**（已登录不许上警示色）。
-// ---------------------------------------------------------------------------
-describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
+// 菜单每一项右边那一格只出自账号清单那一件成品（那台后端写的 `badge`：原地模式 · API key 号经不经中转 · 订阅号登录了没有，
+// `observe/accounts_query.rs::badge_of`），界面不按号的类型去挑来源、不再单问 `apikey-routing`。断言落在真渲染出来的 DOM 上：
+// 字照 `badge.text`、悬停照 `badge.title`、警示照 `badge.warn`（呈现走 `data-intent`，不拼进字）。
+describe("chip 菜单的账号徽章：照抄核心写好的那一枚（DOM 层）", () => {
   async function menuRows(accounts: Account[], defaultName: string): Promise<HTMLButtonElement[]> {
+    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
     fetchAccountsMock.mockResolvedValue(state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }));
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
     const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
-    // 地板：菜单没渲染出来 ⇒ 下面每一条都会在空集合上「找不到行」而崩，不会静静地绿。
     expect(items.length, "菜单没把账号渲染出来 —— 下面的断言测不到任何东西").toBe(accounts.length);
     return items;
   }
   const rowOf = (items: HTMLButtonElement[], name: string): HTMLButtonElement =>
     items.find((el) => el.querySelector('[data-part="label"]')?.textContent === name)!;
-  const statusElOf = (row: HTMLButtonElement): HTMLElement =>
-    row.querySelector<HTMLElement>('[data-part="detail"]')!;
-  const statusOf = (row: HTMLButtonElement): string => statusElOf(row).textContent ?? "";
-  /** 「这一格有没有拿到警示呈现」—— 第三轮裁定之后，⚠ 住这儿，不住 `textContent`。 */
-  const warnOf = (row: HTMLButtonElement): boolean => statusElOf(row).dataset.intent === "warn";
+  const detailOf = (row: HTMLButtonElement): HTMLElement => row.querySelector<HTMLElement>('[data-part="detail"]')!;
 
-  it("★ Y2：api-key 号（缺订阅凭据）在菜单里写「api-key（未配置端点）」——不是「已登录」，也不是「未登录 ⚠」", async () => {
-    // `authReady: true` 不是我编的：`acct_core::auth_ready` 对 api-key 那一支逐字 `=> true`
-    //（`src/common/acct-core/src/lib.rs:95-100`），线上后端出的就是这个形。
-    const kk = acct({ name: "kk", authKind: "api-key", loggedIn: false, authReady: true });
-    const items = await menuRows([acct({ name: "wei" }), kk], "wei");
-    const row = rowOf(items, "kk");
-    expect(statusOf(row)).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
-    // 三条阴性：替换**前**这一行会写「未登录 ⚠」（因为 `loggedIn: false`），而 KA6a 点名的
-    // 坏体验是「已登录」那一档。两句都不许再出现在这个格子里。
-    expect(statusOf(row)).not.toBe(copyText("accounts.badge.signedIn"));
-    expect(statusOf(row)).not.toBe(`${copyText("accounts.badge.notSignedIn")} ⚠`);
-    expect(statusOf(row)).not.toBe(copyText("accounts.badge.notSignedIn"));
-    // title 是 `accountStatusBadge` 给的那一句：等号防漂 + 一句字面量防「两边一起坏」的循环自证。
-    // `menuRows` 造的是远端那一档，那台的两格事实这里没给（问不到）⇒ 徽章不表态，与缺席那一档同一句。
-    expect(row.title).toBe(accountsMod.accountStatusBadge(kk).title);
-    expect(row.title).toMatch(copyPattern("accounts.badge.apikeyNoEndpointHint"));
-    // ★ 第三轮：这一格**本来就该是警示态**（选得中却连不上），警示由 `.warn` 类呈现 ——
-    // 文本里一个字形都不拼，所以上面那三条 `not.toBe` 与这一条并不打架。
-    expect(warnOf(row), "api-key 那格没拿到 warn 类 ⇒ 用户看到的是一句普通灰字").toBe(true);
-  });
-
-  it("★ 远端那一台：问的是那台（本机远端同一条路），那台答「表里有行 · 中转在跑」⇒「经中转」", async () => {
-    const kk = acct({ name: "kk", configDir: "/h/.cc-monitor/accounts/kk", authKind: "api-key", loggedIn: false, authReady: true });
-    const spy = vi
-      .spyOn(readsMod, "fetchMachineApikeyRouting")
-      .mockResolvedValue({ routed: ["/h/.cc-monitor/accounts/kk"], running: true });
-    const items = await menuRows([acct({ name: "wei" }), kk], "wei");
-    expect(statusOf(rowOf(items, "kk"))).toBe(copyText("accounts.badge.apikeyRelayed"));
-    expect(warnOf(rowOf(items, "kk"))).toBe(false);
-    expect(spy.mock.calls.map((c) => c[0])).toEqual([pickPrimaryOrigin([host({ label: "devbox" })])]);
-    spy.mockRestore();
-  });
-
-  it("Y3 阴性对照①：in-place ⇒「逃生口」", async () => {
-    const esc = acct({ name: "esc", mode: "in-place", selectable: false });
-    const items = await menuRows([esc, acct({ name: "wei" })], "wei");
-    const row = rowOf(items, "esc");
-    expect(statusOf(row)).toBe(copyText("accounts.badge.inPlace"));
-    expect(row.title).toBe(accountsMod.accountStatusBadge(esc).title);
-    expect(row.title).toContain(copyText("accounts.badge.inPlaceHint"));
-    // 这一格断的是 `accountStatusBadge` **实际给的** `warn` 值 —— 实读 `src/frontend/ui/accounts.ts:185-191`：
-    // in-place 那一支逐字 `warn: true`（它「选得中但不支持按会话切号」，同样是警示态）。
-    expect(accountsMod.accountStatusBadge(esc).warn, "取值源变了就该在这儿先红").toBe(true);
-    expect(warnOf(row)).toBe(true);
-  });
-
-  it("Y3 阴性对照②：订阅号缺凭据 ⇒ 仍是「未登录」那一档（没被这次改动一起放宽）", async () => {
-    const old = acct({ name: "old", loggedIn: false, authReady: false, selectable: false });
-    const items = await menuRows([old, acct({ name: "wei" })], "wei");
-    const row = rowOf(items, "old");
-    expect(statusOf(row)).toBe(copyText("accounts.badge.notSignedIn"));
-    expect(statusOf(row)).not.toBe(copyText("accounts.badge.signedIn"));
-    // 这一句 title 与替换前**逐字相同**（见下面那条「真发现」里贴的替换前三句）。
-    expect(row.title).toBe(copyText("accounts.badge.notSignedInHint"));
-    expect(row.title).toBe(accountsMod.accountStatusBadge(old).title);
-    // ★ 第三轮：第二轮丢掉的那个 ⚠ 就补在这儿 —— 不是拼回文本，是拿到 `.warn` 类。
-    expect(warnOf(row), "订阅号缺凭据那格没拿到 warn 类 ⇒ 「未登录」丢了警示呈现").toBe(true);
-  });
-
-  it("Y3 阴性对照③：订阅号有凭据 ⇒「已登录」，且这一行 title 仍是空串（与替换前逐字相同）", async () => {
-    const wei = acct({ name: "wei", loggedIn: true, authKind: "subscription", authReady: true });
-    const items = await menuRows([wei], "wei");
-    const row = rowOf(items, "wei");
-    expect(statusOf(row)).toBe(copyText("accounts.badge.signedIn"));
-    // 替换前这一支**不设** `row.title`（读作空串）；`accountStatusBadge` 给的 title 是 ""
-    // ⇒ 读数逐字相同（差别只在 DOM 上多了个空的 `title` 属性，用户看不见）。
-    expect(row.title).toBe("");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(wei).title);
-    // ★ 第三轮的**阴性对照**：健康态一格不上色（`.accounts-row-badge` 那条注释逐字的道理 ——
-    // 恒真的信息不携带信息，涂它只会稀释真正要跳出来的那几档）。无条件加类会在这儿红。
-    expect(warnOf(row), "已登录不该上警示色 —— 那说明 warn 被无条件加上了").toBe(false);
-  });
-
-  it("★ Y3 真发现：三格里**两格文案与替换前不逐字相同** —— 记成机检，交 PM 裁，不自批", async () => {
-    // 派工单 Y3 要求「`row.title` 与替换前逐字相同」。替换前那三句逐字取自
-    // `git show HEAD:src/frontend/ui/account-chip.ts`（本轮之前那一版 `accountRow`，即第二个 commit）：
-    //   in-place     : text「逃生口」   · title「in-place 模式：不支持按会话切号」
-    //   订阅缺凭据   : text「未登录 ⚠」 · title「该账号尚未登录——请在终端里用它 /login」
-    //   订阅有凭据   : text「已登录」   · title 不设（读作空串）
-    // 实得：title 三句里**一句不同**（in-place），text 三句里**一句不同**（缺凭据那句少了 ⚠）。
-    // 两处都不是笔误，是「收敛到同一取值源」的必然结果，逐条给因：
-    //   ① ⚠ 拼不回去：`accountStatusBadge` 把「要不要警示」表达成 `warn: true` 这个布尔而
-    //      不是字形，设置那侧靠 `.accounts-row-badge.warn` 的 CSS 上色；本菜单的
-    //      `.account-picker-status` 没有 `.warn` 规则（`src/frontend/ui/styles.css:6106-6110`），
-    //      而 `styles.css` 不在本轮写区。★ 更硬的一条：把 ⚠ 拼进 `text` 会让 api-key 那一支
-    //      变成「api-key（未配置端点） ⚠」—— 与本轮 Y2 逐字冲突。**Y2 与 Y3 在这一格上互斥**，
-    //      单一取值源下无解，只能由 PM 裁（要 ⚠ 就得改 Y2 或给 chip 补一条 `.warn` CSS）。
-    //   ② in-place 的 title 换成了同义但更明确的一句（多了「cc-monitor」与「对它」）。
-    // 本条把这两处钉成机检：PM 若裁定恢复旧文案，这条会红 —— 改它是一个显式动作，不是漂移。
-    //
-    // ★★ **第三轮：这条判据的含义转义了，判据本身一字不动。**
-    // 从「记录一处 delta、待 PM 裁」变成「**钉住『警示不回文本里去』这条裁定**」——
-    // PM 已裁走 CSS 那条路（`.account-picker-status.warn`，本轮新加），⇒ 谁再把 ⚠ 拼进
-    // `text`（比如为了让 chip「看起来像旧版」），下面 `not.toBe("未登录 ⚠")` 当场红。
-    // 那不再是 delta 登记，是一条**反悔要显式**的护栏。同理第二句钉住 in-place 那句 title
-    // 不许悄悄退回旧文案（要退就得改这一行，那是显式动作）。
-    const esc = acct({ name: "esc", mode: "in-place", selectable: false });
-    const old = acct({ name: "old", loggedIn: false, authReady: false, selectable: false });
-    const items = await menuRows([esc, old], "old");
-    // Δ① text：⚠ 没了
-    expect(statusOf(rowOf(items, "old"))).not.toBe(`${copyText("accounts.badge.notSignedIn")} ⚠`);
-    expect(statusOf(rowOf(items, "old"))).toBe(copyText("accounts.badge.notSignedIn"));
-    // Δ② title：in-place 那句换了
-    expect(rowOf(items, "esc").title).not.toBe("in-place 模式：不支持按会话切号");
-    expect(rowOf(items, "esc").title).toBe(copyText("accounts.badge.inPlaceHint"));
-  });
-
-  // ★ 第三轮补的地板：上面那 4 条 warn 断言测的是**类加没加**，jsdom 不加载 `styles.css`
-  // ⇒ 把 `.account-picker-status.warn` 那条规则删掉，它们**一条都不会红**，而用户看到的
-  // 又是一句普通灰字（= 第二轮那个 bug 原样回来）。这正是本仓已有范式治的那个形：
-  // `topbar-icons.vitest.ts` 逐字写着「改名让 styles.css 那条规则失去了宿主」。
-  it("★ 第三轮：`.warn` 那个类在 styles.css 里真有宿主（否则语义在、呈现没了）", () => {
-    // ⚠ 匹配单位是**一整行选择器**，不是子串 —— `scanning-guard-registry.vitest.ts` 那条
-    // 递减棘轮逐字说了为什么（子串比事实小 ⇒ 把事实撑大的改动从缝里溜过去而判据照样绿：
-    // 比如有人写 `.account-picker-status.warn .x { … }`，子串照样命中而那格根本没上色）。
-    // 〔三入口拆分 · 人群改定义〕原先读 `src/frontend/ui/styles.css` 一份；拆开之后读**那个窗口真正加载的
-    // 全部样式表**（它的 html 里 `<link rel="stylesheet">` 清单，按序拼起来）。chip 住主窗状态栏
-    // ⇒ 读主窗那份；账号表住设置窗 ⇒ 读设置窗那份。判红条件一字未改。
-    const windowCssLines = (html: string): string[] =>
-      [...readFileSync(`${REPO_ROOT}/${html}`, "utf8").matchAll(/<link rel="stylesheet" href="\/([^"]+)"/g)]
-        .flatMap((m) => readFileSync(`${REPO_ROOT}/${m[1]}`, "utf8").split("\n"))
-        .map((l) => l.trim());
-    const cssLines = windowCssLines("index.html");
-    const settingsCssLines = windowCssLines("settings.html");
-    // 抽取器自检：先确认这把尺子够得着这个文件（不然下面两条是空真）。
-    expect(cssLines.length, "读到的主窗 CSS 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
-    expect(settingsCssLines.length, "读到的设置窗 CSS 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
-    // chip 的选单是全产品那一个弹出菜单（`kit/menu`），警示态的宿主在它的 CSS Modules 里。
-    const menuCss = readFileSync(`${REPO_ROOT}/src/frontend/ui/kit/menu.module.css`, "utf8").split("\n").map((l) => l.trim());
-    expect(cssLines.length).toBeGreaterThan(1000);
-    expect(menuCss, "读到的不是菜单的 CSS —— 连基准那条规则都没有").toContain(".menuDetail {");
-    expect(menuCss, "菜单右侧那格的警示态没有 CSS 宿主 ⇒ 警示态与正常态长得一模一样").toContain(
-      '.menuDetail[data-intent="warn"] {',
-    );
-    // 同职第二处也一起钉住（设置那张表），免得「治了这一处、没治所有同职的地方」。
-    expect(settingsCssLines, "设置那张账号表用量格的警示态（`data-shade=\"warn\"`）宿主没了 —— 同一套约定的另一半").toContain(
-      '.acct-row-slot[data-shade="warn"],',
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// `K-H2b` `D1 阻-4` / `阻-5`：**没有远端时，chip 渲染的是本机账号，而且带 apikey 端点三态**
-// ---------------------------------------------------------------------------
-//
-// ★★ 它治的是两条**同源**的病：
-// ① `阻-4`：本文件此前两处注释写着「远端全关掉时这里渲染的就是本机账号」——**是假的**。
-//    `fetchAccounts` 只问 `list_remote_accounts`，`origin` 为 `null` 时 `refresh` 整个隐藏。
-// ② `阻-5`：于是 `KH2B7` 那三态**在用户看得见的地方一处都没落地**（取值函数当时生产调用方为 0）。
-// ⇒ 本组既钉「本机那几行真的渲染出来了」，也钉「三态真的分得开」。
-describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 apikey 端点三态", () => {
-  /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给、routing 由那条命令给。 */
-  async function localMenuRows(
-    accounts: Account[],
-    routing: { routed: string[]; running: boolean } | "fail",
-  ): Promise<HTMLButtonElement[]> {
-    // ⚠ 本组同一条测试里会开三次菜单，而 `toggleMenu` 把菜单 append 到 `document.body`、
-    //    **不会先关旧的**（既有测试每条只开一次，所以从没撞上）⇒ 每次先扫干净，
-    //    否则数出来的是三次的**累加**（本轮实测：应为 2，实得 4）。
-    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
-    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
-      state({ accounts: accounts.map((a, i) => ({ ...a, isDefault: i === 0 })) }),
-    );
-    const spy = vi.spyOn(readsMod, "fetchMachineApikeyRouting");
-    if (routing === "fail") spy.mockRejectedValue(new Error("问不到"));
-    else spy.mockResolvedValue(routing);
-    const chip = new AccountChip({ openSettings: () => {} });
-    await chip.refresh();
-    await chip.openMenu();
-    const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
-    expect(items.length, "没有远端时 chip 一行都没渲染 —— 那正是 `阻-4` 那句假话的真实形状").toBe(
-      accounts.length,
-    );
-    return items;
-  }
-  const rowOf = (items: HTMLButtonElement[], name: string): HTMLButtonElement =>
-    items.find((el) => el.querySelector('[data-part="label"]')?.textContent === name)!;
-  const statusOf = (row: HTMLButtonElement): string =>
-    row.querySelector<HTMLElement>('[data-part="detail"]')!.textContent ?? "";
-
-  const apiKey = (name: string, dir: string) =>
-    acct({ name, configDir: dir, authKind: "api-key", loggedIn: false, authReady: true });
-
-  it("★★ 三态在 DOM 上真的分得开（表里有行 + 中转在跑 / 表里有行 + 没跑 / 表里没行）", async () => {
-    const A = apiKey("acct-a", "/h/.claude-alt/acct-a");
-    const B = apiKey("acct-b", "/h/.claude-alt/acct-b");
-    // ① 有行 + 在跑 ⇒ 「经中转」；同一趟里 B 没行 ⇒ 「未配置端点」（非空对照就在同一趟）。
-    let items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: true });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe(copyText("accounts.badge.apikeyRelayed"));
-    expect(statusOf(rowOf(items, "acct-b"))).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
-    // ② 只把「中转在不在跑」翻过来 ⇒ 第三档。
-    items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: false });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe(copyText("accounts.badge.apikeyRelayDown"));
-    // ③ 问不到 routing ⇒ **不表态**，回落到缺席那一档（只说条件、不下判断）。
-    items = await localMenuRows([A, B], "fail");
-    expect(statusOf(rowOf(items, "acct-a"))).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
-    expect(rowOf(items, "acct-a").title).toContain(copyText("accounts.badge.whyUnknown"));
-  });
-
-  it("★ 本机那一趟问的是本机那条路（不是 `list_remote_accounts`）", async () => {
-    const A = apiKey("acct-a", "/h/.claude-alt/acct-a");
-    const localSpy = vi.spyOn(readsMod, "fetchLocalAccounts");
-    await localMenuRows([A], { routed: [], running: false });
-    expect(localSpy).toHaveBeenCalled();
-    // 阴性对照：远端那条一次都没被问 —— 否则「渲染的是本机账号」这句话又成了假的。
-    expect(fetchAccountsMock).not.toHaveBeenCalled();
+  it("★ 字 · 悬停 · 警示都照 `badge`：一枚警示的（API key 号没配上）· 一枚不警示的（订阅号已登录）", async () => {
+    const kk = acct({ name: "kk", authKind: "api-key", loggedIn: false, authReady: true, badge: { text: "B-kk", warn: true, title: "T-kk" } });
+    const wei = acct({ name: "wei", badge: { text: "B-wei", warn: false, title: "" } });
+    const items = await menuRows([wei, kk], "wei");
+    expect([detailOf(rowOf(items, "kk")).textContent, rowOf(items, "kk").title, detailOf(rowOf(items, "kk")).dataset.intent]).toEqual(["B-kk", "T-kk", "warn"]);
+    expect([detailOf(rowOf(items, "wei")).textContent, rowOf(items, "wei").title, detailOf(rowOf(items, "wei")).dataset.intent]).toEqual(["B-wei", "", undefined]);
   });
 });
 
@@ -587,7 +365,6 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }, "acct-a"),
     );
-    vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
@@ -627,7 +404,6 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }),
     );
-    vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     return chip;
@@ -691,7 +467,6 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
       ...state({ accounts: []}),
       meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
     } as unknown as AccountsState);
-    vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     expect(

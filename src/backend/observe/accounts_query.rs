@@ -37,6 +37,7 @@
 //! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，否则拒绝（不退化成任意文件读）；
 //!   `--account-trust-zero` 不收路径参数。
 
+use crate::common::cells::Words;
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
@@ -415,7 +416,14 @@ fn next_default(accts_dir: &Path) -> Option<String> {
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
 /// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。措辞不说「远端」：本机远端同一条路。
-pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> serde_json::Value {
+/// `relay_running` ＝ 这台的中转在不在（徽章要它；调用方读本进程的监听状态，与 `apikey-routing` 同一个判准 ⇒
+/// 只有常驻进程答得出真话，`accounts-list` 在 `STREAM_ONLY`）。
+pub(crate) fn list_product(
+    rows: &[String],
+    agent: &str,
+    table_agent: &str,
+    relay_running: bool,
+) -> serde_json::Value {
     list_product_with(
         &resolve_accts_dir(),
         home_dir().as_deref(),
@@ -423,6 +431,95 @@ pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> s
         &crate::accounts::upstream_select::file_face::machine_key_facts(),
         agent,
         table_agent,
+        relay_running,
+    )
+}
+
+/// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Badge {
+    pub(crate) text: Words,
+    pub(crate) warn: bool,
+    pub(crate) title: Words,
+}
+
+/// 徽章读一个号的那几格（清单那一行照类型读回来，不再按键名取）。
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BadgeFacts {
+    #[serde(default)]
+    mode: String,
+    #[serde(default)]
+    auth_kind: String,
+    #[serde(default)]
+    auth_ready: bool,
+    #[serde(default)]
+    config_dir: Option<String>,
+}
+
+/// ★ 徽章一处判（每一态只出自这里）：原地模式 ⇒ 不隔离；API key 号 ⇒ 这台 key 表里有没有它那一行 · 这台的中转在不在
+/// （两格都成立才「经中转」）；订阅号 ⇒ 登录了没有。`routed` ＝ 表里有它那一行（账号 0 没有目录名 ⇒ `None`：说不出，不替它下判断）。
+pub(crate) fn badge_of(
+    in_place: bool,
+    api_key: bool,
+    auth_ready: bool,
+    routed: Option<bool>,
+    relay_running: bool,
+) -> Badge {
+    let b = |text: String, warn: bool, title: String| Badge {
+        text: Words(text),
+        warn,
+        title: Words(title),
+    };
+    if in_place {
+        return b(
+            copy_text("accounts.badge.inPlace", &[]),
+            true,
+            copy_text("accounts.badge.inPlaceHint", &[]),
+        );
+    }
+    if api_key {
+        return match routed {
+            Some(true) if relay_running => b(
+                copy_text("accounts.badge.apikeyRelayed", &[]),
+                false,
+                copy_text("accounts.badge.apikeyRelayedHint", &[]),
+            ),
+            Some(true) => b(
+                copy_text("accounts.badge.apikeyRelayDown", &[]),
+                true,
+                copy_text("accounts.badge.apikeyRelayDownHint", &[]),
+            ),
+            // 两种「没配上」的成因，各说各的 —— 合成一句就等于又写下一句说不准的话。
+            Some(false) => b(
+                copy_text("accounts.badge.apikeyNoEndpoint", &[]),
+                true,
+                copy_text(
+                    "accounts.badge.apikeyNoEndpointHint",
+                    &[("why", &copy_text("accounts.badge.whyNoRow", &[]))],
+                ),
+            ),
+            None => b(
+                copy_text("accounts.badge.apikeyNoEndpoint", &[]),
+                true,
+                copy_text(
+                    "accounts.badge.apikeyNoEndpointHint",
+                    &[("why", &copy_text("accounts.badge.whyUnknown", &[]))],
+                ),
+            ),
+        };
+    }
+    if !auth_ready {
+        return b(
+            copy_text("accounts.badge.notSignedIn", &[]),
+            true,
+            copy_text("accounts.badge.notSignedInHint", &[]),
+        );
+    }
+    b(
+        copy_text("accounts.badge.signedIn", &[]),
+        false,
+        String::new(),
     )
 }
 
@@ -438,6 +535,7 @@ pub(crate) fn list_product_with(
     keys: &[crate::accounts::upstream_select::file_face::KeyFact],
     agent: &str,
     table_agent: &str,
+    relay_running: bool,
 ) -> serde_json::Value {
     let routed = |dir: &str| {
         !acct_core::apikey_routed_subset(&[dir.to_string()], rows, agent, table_agent).is_empty()
@@ -458,6 +556,15 @@ pub(crate) fn list_product_with(
             .and_then(|id| keys.iter().find(|k| k.id == id));
         a["keyMasked"] = json_str(fact.and_then(|k| k.masked.as_deref()));
         a["baseUrl"] = json_str(fact.and_then(|k| k.base_url.as_deref()));
+        let row: BadgeFacts = serde_json::from_value(a.clone()).unwrap_or_default();
+        let badge = badge_of(
+            row.mode == "in-place",
+            row.auth_kind == acct_core::AUTH_KIND_API_KEY,
+            row.auth_ready,
+            row.config_dir.as_deref().map(&routed),
+            relay_running,
+        );
+        a["badge"] = serde_json::to_value(badge).unwrap_or(serde_json::Value::Null);
     }
     let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
     let notice = (enabled && !accounts.iter().any(|a| a["configDir"].is_null()))

@@ -514,10 +514,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "apikey-key-set",
         "给一个号配 key：monitor 那条命令（`write_apikey_credentials_key`〔散文墓碑〕）推账号 id、本机那一臂先问 `apikey-read` 核路径再转这一条 ——         推 id 搬进后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答，命令与写臂删了",
     ),
-    (
-        "apikey-routing",
-        "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream_select/endpoint.rs`），命令删了",
-    ),
     // skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
     // `C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏（今天走终端管理那一条）。
     (

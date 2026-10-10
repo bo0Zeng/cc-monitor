@@ -2,10 +2,9 @@
 //
 // 账号是按机器的：chip 绑第一台已配置的远端（`pickPrimaryOrigin`），一台都没有就是本机。
 // 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
-import { apikeyEndpointStateFor, deriveUi, defaultAccount, accountColorsActive, accountStatusBadge, type AccountsState, type Account } from "./accounts";
-import { fetchAccounts, fetchLocalAccounts, fetchMachineApikeyRouting, invalidateAccountsCache } from "./account-reads";
+import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
+import { fetchAccounts, fetchLocalAccounts, invalidateAccountsCache } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
-import type { ApikeyRoutingView } from "./apikey-reads";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { failToast } from "./kit/toast";
@@ -72,8 +71,6 @@ export class AccountChip {
   private origin: Origin = LOCAL_ORIGIN;
   /** 这一拍渲染的是本机账号吗（没有远端时回落）。 */
   private local = false;
-  /** 本机那几个 configDir 走不走 apikey 端点改写。`null` ＝ 没问到（远端那半恒 `null`）。 */
-  private apikeyRouting: ApikeyRoutingView | null = null;
   /** `refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
   private bound = false;
   /** 读 store 里 chip 绑的那一台（`account-reads.ts` 每取回一次写进去），不自己存一份。本机那一档 not-ready ⇒ `null`（整个隐藏）。 */
@@ -205,23 +202,9 @@ export class AccountChip {
     }
     // 没有远端不等于没有账号 ⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = isLocalOrigin(this.origin);
-    this.apikeyRouting = null;
     // 取回来的那一份进 store（`account-reads.ts` 取回时已写；同一份再写是空操作），`state` 读 store。
     putAccounts(this.origin, this.local ? await fetchLocalAccounts(force) : await fetchAccounts(this.origin, force));
     this.bound = true;
-    // 本机那一档 not-ready ⇒ 整个隐藏：否则「没有远端 ＋ 本机也没有账号表」时 chip 显出来，菜单里写一句远端口吻的「尚未启用多账号」。
-    if (this.state) {
-      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出 key 表里的 id）。问的是 chip 这一台（本机远端同一条路）。
-      const dirs = this.state.accounts
-        .map((a) => a.configDir)
-        .filter((d): d is string => typeof d === "string" && d.length > 0);
-      try {
-        this.apikeyRouting = dirs.length ? await fetchMachineApikeyRouting(this.origin, dirs) : null;
-      } catch {
-        // 问不到就不表态：徽章回落到「只说条件、不下判断」那一档。
-        this.apikeyRouting = null;
-      }
-    }
     this.paint();
   }
 
@@ -325,12 +308,12 @@ export class AccountChip {
   }
 
   /**
-   * 一个账号那一项：当前的打勾、头像、邮箱 ＋ 登录态（取值只住 `accounts.ts::accountStatusBadge`，与设置里那张账号表同源）；
+   * 一个账号那一项：当前的打勾、头像、邮箱 ＋ 徽章（那台后端写好的 `badge`，`accounts_query::badge_of`）；
    * 每一项带上「走不走 apikey 端点改写」的三态（问不到 routing 时不表态）。
    */
   private accountItem(a: Account, isCurrent: boolean, origin: Origin): MenuItem {
     const selectable = a.selectable;
-    const badge = accountStatusBadge(a, this.apikeyRouting && origin === this.origin ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
+    const badge = a.badge;
     // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
     const led = appStore.quota.get().get(origin)?.accounts.find((x) => x.account === a.name);
     const u = led && badge.warn !== true ? led.usage : null;

@@ -70,6 +70,7 @@ export function decodeAccountsList(v: unknown): {
         "selectable",
         "keyMasked",
         "baseUrl",
+        "badge",
       ]) ||
       typeof a.name !== "string" ||
       typeof a.email !== "string" ||
@@ -82,7 +83,12 @@ export function decodeAccountsList(v: unknown): {
       typeof a.authReady !== "boolean" ||
       typeof a.selectable !== "boolean" ||
       !nullableStr(a.keyMasked) ||
-      !nullableStr(a.baseUrl)
+      !nullableStr(a.baseUrl) ||
+      !isObj(a.badge) ||
+      !exactKeys(a.badge, ["text", "warn", "title"]) ||
+      typeof a.badge.text !== "string" ||
+      typeof a.badge.warn !== "boolean" ||
+      typeof a.badge.title !== "string"
     ) {
       return bad(copyText("accountsDecode.where.nth", { i }));
     }
@@ -98,6 +104,7 @@ export function decodeAccountsList(v: unknown): {
       authReady: a.authReady,
       selectable: a.selectable,
       keyMasked: a.keyMasked,
+      badge: { text: a.badge.text as string, warn: a.badge.warn as boolean, title: a.badge.title as string },
       baseUrl: a.baseUrl,
     };
   });

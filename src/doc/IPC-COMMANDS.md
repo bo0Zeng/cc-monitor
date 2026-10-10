@@ -1311,7 +1311,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 账号清单。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-list`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3799,7 +3799,6 @@ cc-bus 钩子诊断。
 | `--account-trust-zero` `<cwd>` | 账号 0（没启用多账号时那个原生身份）的信任预检，形状同 `--account-trust`；`cwd` 只当查表键，不收路径参数 |
 | `--accounts-add` | ＝ 帧命令 `accounts-add`：新建一个号 |
 | `--accounts-init` | ＝ 帧命令 `accounts-init`：建账号库 |
-| `--accounts-list` | ＝ 帧命令 `accounts-list`：账号清单 |
 | `--accounts-login-cmd` | ＝ 帧命令 `accounts-login-cmd`：在终端里登录一个号的那一行 |
 | `--accounts-mcp-pick` | ＝ 帧命令 `accounts-mcp-pick`：两边都改了的那一条用哪一版 |
 | `--accounts-mcp-read` | ＝ 帧命令 `accounts-mcp-read`：这台各账号共用的用户级 MCP 此刻的样子 |
