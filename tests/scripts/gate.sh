@@ -189,12 +189,12 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
 #      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）；
 #    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
-#      · `clippy-backend` · `appbuild` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
+#      · `clippy-backend` · `appbuild` · `shotsshell` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
 GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile "
-GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
 gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
@@ -896,6 +896,12 @@ run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets
          bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
 run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上真编真链一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
+# ── `shotsshell`：截图台架的无头壳（例子 `ccm-shots-shell`，只在台架特性下编）编不编得过 ──
+# 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；从前没有一格编它，壳里它调的签名一改（如 `call_via` 多一参），
+# 要到跑截图台架才发现（proj10 · mg42 都撞上过）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
+# 与 `cargo` · `appbuild` 同一个 target 目录，增量编一次。
+run_gate shotsshell '不是数出来的数：截图台架那个无头壳（例子 `ccm-shots-shell`）在 Linux 上 dev 档真编真链一趟，只有绿/红两态，与台架 `pool.mjs` 同一条编法。⚠ 只编不跑：台架里它跑得对不对由截图台架自己判' \
+         bash -c 'cd src/frontend/shell && out=$(cargo build --features shots --example ccm-shots-shell 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "shotsshell: 1 passed"'
 
 # ── `winchk`：Windows 那半编不编得过 ──
 # 本机门禁跑在 Linux 上，`#[cfg(windows)]` 的代码根本不参与编译；这里按 `x86_64-pc-windows-gnu` 把它 check 一遍。
