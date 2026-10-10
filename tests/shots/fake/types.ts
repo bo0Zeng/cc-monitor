@@ -62,6 +62,8 @@ export class Refuse {
 }
 
 export interface World {
+  /** 每台机器家目录里的原始文件（真后端读它们答 `REAL_OPS` 那几条；`../disk`）。缺 ⇒ 空家目录。 */
+  disk: Record<string, import("../disk").MachineDisk>;
   /** 第一台是本机（`<local>`）。 */
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */

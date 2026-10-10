@@ -54,22 +54,10 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 
 # 隔离环境：不受本机 CLAUDE_CONFIG_DIR/manifest/工作区污染（R11 教训）。
 #
-# ★★ 〔`K-P2` `F` 拍 09-04；用@09-04「**ccm不要管找不到, 统一走后端**」〕**两处跟着契约改**：
-#
-#  ① `CCM_BACKEND_BIN` 指到 `tests/e2e/fake-backend.sh`。
-#     账号解析从此**没有本地退路** ⇒ 不给后端的话这 12 条会**全部**死在 `exit 4` 上
-#     （现打过：那不是「判据红了」，是**整套跑不起来**）。
-#     ⚠ 这**不是**放宽断言：本套件测的一直是「`renderCli` 渲出来的那行，被真 `ccm` 解析后
-#     展开成什么」——「这台机器装没装后端」从来不是它要测的变量。
-#     照它自己头注那条纪律（「不显式隔离，开发者本机状态就会污染测试断言」）：
-#     从前它靠「没有后端 ⇒ 走本地那条」把这个变量拿掉，今天靠**自带一份后端**拿掉。
-#
-#  ② `HOME` 换成一个空的临时目录：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
-#     空家目录 = 「这台机器没有账号库」，开发者本机的账号库不会被注入断言。
-FAKE_BACKEND="$REPO/tests/e2e/fake-backend.sh"
+# `HOME` 换成一个空的临时目录：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
+# 空家目录 = 「这台机器没有账号库」，开发者本机的账号库不会被注入断言。
 run_print() {
   env -u TMUX -u CLAUDE_CONFIG_DIR \
-    CCM_BACKEND_BIN="$FAKE_BACKEND" \
     HOME="$NOHOME" bash -c "$1 --ccm-print"
 }
 

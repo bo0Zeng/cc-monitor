@@ -6,7 +6,8 @@ import { copyPattern } from "../../test-support/copy-pattern";
 import { hms } from "../fake/clock";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
+import { defaultWorld, LOCAL } from "../fake/world";
+import { putRotation } from "../disk";
 import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
 import { emit } from "@tauri-apps/api/event";
 
@@ -19,25 +20,11 @@ function panel(id: string, title: string, desc: string, act: Scene["act"], world
 /** 这几张要那台的规则表（多选右键「轮换规则 ▸」· 起新会话框「轮换」）：日常（默认）· 夜间 · 省额度。 */
 function rotRulesWorld(): World {
   const w = defaultWorld();
-  const rot = { order: [{ start: true }, "personal", "work"], enabled: ["personal", "work"], when: "full", atLimit: "continue", wait: 40 };
-  const rule = (id: string, name: string, isDefault: boolean) => ({
-    id,
-    name,
-    isDefault,
-    rotation: rot,
-    rev: 1,
-    updatedAt: 0,
-    summary: "personal → work · 满",
-    explain: "起始账号先用 · 被拒才换",
-    missing: [],
-    atLimitApplies: false,
-    users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
-  });
-  w.ops["rotation-rules-read"] = () => ({
-    state: "present",
-    reason: null,
+  const rot = { order: [{ start: true }, "personal", "work"], enabled: ["personal", "work"], atLimit: "continue", wait: 40 };
+  const at = Math.floor(Date.now() / 1000) - 86_400;
+  putRotation(w.disk[LOCAL], {
     defaultRule: "r_daily",
-    rules: [rule("r_daily", "日常", true), rule("r_night", "夜间", false), rule("r_save", "省额度", false)],
+    rules: { r_daily: { name: "日常", rotation: rot, updatedAt: at }, r_night: { name: "夜间", rotation: rot, updatedAt: at }, r_save: { name: "省额度", rotation: rot, updatedAt: at } },
   });
   return w;
 }
