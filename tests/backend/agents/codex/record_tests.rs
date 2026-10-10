@@ -383,11 +383,36 @@ fn events_and_meta_records_do_not_come_out() {
         env("event_msg", json!({"type": "token_count"})),
         env("session_meta", json!({"id": "s"})),
         env("turn_context", json!({"cwd": "/w"})),
-        json!({"type": "some_future_kind", "payload": {"id": "x"}}),
     ] {
         assert!(rec(&v).is_none(), "{v}");
         let t = translated(&v.to_string(), 0).unwrap().unwrap();
         assert!(t.record.is_none() && t.queue.is_none(), "{v}");
+    }
+}
+
+/// 认不出的顶层类型 · 认不出的 `response_item` 子型 ⇒ 一条 `unread`（类型照那一行说的，写好的一句带它）。
+#[test]
+fn unknown_kinds_come_out_as_unread() {
+    for (v, want) in [
+        (
+            json!({"type": "some_future_kind", "payload": {"id": "x"}}),
+            "some_future_kind",
+        ),
+        (
+            env("response_item", json!({"type": "future_item"})),
+            "future_item",
+        ),
+    ] {
+        let r = rec(&v).unwrap_or_else(|| panic!("{v}"));
+        let crate::agents::record::Body::Unread {
+            kind, text, count, ..
+        } = &r.body
+        else {
+            panic!("{r:?}")
+        };
+        assert_eq!(kind.as_deref(), Some(want));
+        assert!(text.0.contains(want), "{text:?}");
+        assert_eq!(*count, 1);
     }
 }
 
@@ -462,11 +487,11 @@ fn excerpt_uses_the_same_speaker() {
     );
 }
 
-/// Codex 那一家的成品同样带 `timeText`（信封上的时刻，这台本地钟的 `HH:MM`）。
+/// Codex 那一家的成品同样在出口那一下得到 `timeText`（信封上的时刻，按看的那一台的时区写 `HH:MM`）。
 #[test]
 fn codex_records_carry_the_clock_face_too() {
     let ts = "2026-10-07T20:30:15.123Z";
-    let want = crate::common::time::iso_hm_here(ts).unwrap();
+    let want = "04:30".to_string();
     let msg = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "ok"}]}});
     let out = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c", "output": "x"}});
     for v in [msg, out] {
@@ -475,6 +500,9 @@ fn codex_records_carry_the_clock_face_too() {
             .unwrap()
             .record
             .unwrap();
+        assert!(got.time_text.is_none(), "解析那一层不写钟面");
+        let mut got = got;
+        got.stamp(&crate::Tz::named("Asia/Shanghai").unwrap());
         assert_eq!(
             got.time_text.as_ref().map(|w| w.0.as_str()),
             Some(want.as_str()),

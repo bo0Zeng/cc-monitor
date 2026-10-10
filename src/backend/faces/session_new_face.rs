@@ -111,7 +111,7 @@ pub(crate) struct ForkFacts {
     pub(crate) launch: Value,
     /// `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
     pub(crate) turn: Option<u64>,
-    /// 那一轮那句在这台本地钟上的 `HH:MM`（说不出 ⇒ `null`）。
+    /// 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
     pub(crate) start_text: Option<String>,
 }
 
@@ -163,7 +163,8 @@ fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
 }
 
 /// `session-new-facts`：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`（`at` ＝ 从哪条消息处分叉：框顶说第几轮、几点）。
-pub(crate) fn facts(args: &Value) -> Answer {
+/// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
+pub(crate) fn facts(args: &Value, tz: &crate::Tz) -> Answer {
     let o = args.as_object().ok_or_else(|| {
         (
             "bad_args",
@@ -225,7 +226,7 @@ pub(crate) fn facts(args: &Value) -> Answer {
                 agent: crate::agents::record_kind_of(&source).unwrap_or_default(),
                 launch: super::fork_face::launch_of(&home, &source, sid).to_json(),
                 turn: turn.as_ref().map(|t| t.0),
-                start_text: turn.and_then(|t| crate::common::time::iso_hm_here(&t.1)),
+                start_text: turn.and_then(|t| crate::common::time::iso_hm(&t.1, tz)),
             })
         }
     };

@@ -16,7 +16,7 @@ import { copyText } from "./copy-table";
 import { button } from "./kit/button";
 import { statusDot } from "./kit/status-dot";
 import { machineOf, needsOf, fullTitle } from "./session-face";
-import { waitedNow } from "./cards/step-line";
+import { waitedNow } from "./duration-format";
 import s from "./needs-bar.module.css";
 
 export interface NeedsBarHost {

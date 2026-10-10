@@ -416,14 +416,16 @@ export function defaultOps(): Record<string, OpHandler> {
         const v = key ? input[key] : undefined;
         return typeof v === "string" ? (v.split("\n").find((l) => l.trim()) ?? "").trim() || null : null;
       };
-      let pending: { id: string; name: string; what: string | null; at: string | null }[] = [];
-      let lastSay: { text: string; at: string | null } | null = null;
+      let pending: { id: string; name: string; what: string | null; at: string | null; atMs: number | null }[] = [];
+      let lastSay: { text: string; at: string | null; atMs: number | null } | null = null;
       for (const r of recs) {
         const at = r.at ?? null;
+        // 假后端替核心解时刻（真后端在 `facts_query` 里解好交 `atMs`）。
+        const atMs = at === null ? null : Date.parse(at);
         if (isReply(r)) {
           for (const b of r.blocks) {
-            if (b.type === "text" && b.text.trim()) lastSay = { text: b.text.split("\n").find((l) => l.trim())!.trim().slice(0, 160), at };
-            if (b.type === "tool_use") pending.push({ id: b.id, name: b.name, what: what(b.name, b.input as Record<string, unknown>), at });
+            if (b.type === "text" && b.text.trim()) lastSay = { text: b.text.split("\n").find((l) => l.trim())!.trim().slice(0, 160), at, atMs };
+            if (b.type === "tool_use") pending.push({ id: b.id, name: b.name, what: what(b.name, b.input as Record<string, unknown>), at, atMs });
           }
         } else if (isSaid(r)) {
           const results = r.blocks.flatMap((b) => (b.type === "tool_result" ? [b.for] : []));

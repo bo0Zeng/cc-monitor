@@ -78,11 +78,6 @@ pub(crate) enum Go {
     Hold { reply: crate::agents::LimitReply },
 }
 
-/// 这台后端此刻的本地钟比 UTC 快几秒（按时段写的上限按它取）；读不出 ⇒ 按 UTC，不猜（同 `--text` 排时刻那一处）。
-pub(crate) fn local_offset(now: u64) -> i64 {
-    crate::platform::local_tz::offset_secs(now).unwrap_or(0)
-}
-
 /// 一家的窗口名 → 窗口键（这一家没给 ⇒ 一个都没有）。
 fn key_fn(agent: &str) -> impl Fn(&str) -> Option<String> {
     let f = crate::agents::window_key_of(agent);
@@ -270,7 +265,7 @@ impl Hop {
             base: &s.baseline,
             above: &s.blocked_above,
             now,
-            offset: local_offset(now),
+            offset: rot.offset_at(now),
             heard,
             seen,
             kind,
@@ -802,7 +797,7 @@ impl Hop {
             base: &BTreeMap::new(),
             above,
             now,
-            offset: local_offset(now),
+            offset: rot.offset_at(now),
             heard: None,
             seen: &seen,
             kind: &kind,
@@ -965,7 +960,14 @@ impl Hop {
         let mut quota = show::show(
             held.as_ref().map(|o| (&o.reading, o.seen_at)),
             self.show_facts(&s.agent, &lib, &s.current, row),
-            &show::lines_of(&rot.cap, &s.current, now, local_offset(now), &key, &slot_of),
+            &show::lines_of(
+                &rot.cap,
+                &s.current,
+                now,
+                rot.offset_at(now),
+                &key,
+                &slot_of,
+            ),
             now,
             &slot_of,
         );

@@ -40,25 +40,23 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
     );
     let why = why_not_editable(&over).expect("超上限却说改得了");
     // 上限那个数要在那句话里。
-    // 上限 256 KiB → 1 MiB（`MAX_EDIT_BYTES` 头注），`human_size` 印出来是 `1.0 M`。
+    // 上限 256 KiB → 1 MiB（`MAX_EDIT_BYTES` 头注），`copy_core::size_text` 印出来是 `1.0 M`。
     assert!(
-        why.contains(&crate::rows::human_size(
-            crate::editor::MAX_EDIT_BYTES as u64
-        )),
+        why.contains(&copy_core::size_text(crate::editor::MAX_EDIT_BYTES as u64)),
         "那句话里没有上限那个数：{why}"
     );
     // 🔴 **「多了多少」必须在，而且不许退化。**
     //
-    // 第一版这里判的是「两个 `human_size` 都在」，而生产那一版正是那么写的
+    // 第一版这里判的是「两个 `copy_core::size_text` 都在」，而生产那一版正是那么写的
     // ⇒ 判据当场逮到它退化成「这份 **256.0 K** 超过 **256.0 K** 的编辑上限」
     //（`256 KiB + 1` 被四舍成 `256.0 K`）。那句话读出来什么都没说。
     // ⇒ 现在判的是「多了 1 字节」这个**永不退化**的数，
     //   它直接答「我该把文件弄小多少」。
     assert!(
         copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &why),
-        "那句话没说超出多少 —— 在边界附近两个 `human_size` 会一模一样：{why}"
+        "那句话没说超出多少 —— 在边界附近两个 `copy_core::size_text` 会一模一样：{why}"
     );
-    // 精确字节数也要在（`human_size` 在边界上分不开两个值）。
+    // 精确字节数也要在（`copy_core::size_text` 在边界上分不开两个值）。
     assert!(
         copy_core::copy_matches_with(
             "rsFilewinEditor.notEditable.tooBig",

@@ -4,7 +4,7 @@
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import { applyRetries, buildApiErrorCard, buildApiRetryCard, mergeRetry } from "../../../src/frontend/ui/cards/api-error";
-import { buildStepLine, fmtStepDur, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
+import { buildStepLine, durBetween, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
 import { applyHandedBack, mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -442,6 +442,7 @@ function toolCalls(calls: { id: string; name: string; input: unknown }[], cards:
     t: "reply",
     id: "a",
     at: "2026-01-01T02:02:00.000Z",
+    atMs: Date.UTC(2026, 0, 1, 2, 2),
     blocks: calls.map((c) => ({ type: "tool_use", ...c })),
     autoReply: false,
     endsTurn: false,
@@ -454,6 +455,7 @@ function results(rs: { id: string; text: string; error?: boolean }[]): LineRecor
     t: "said",
     id: "u",
     at: "2026-01-01T02:03:00.000Z",
+    atMs: Date.UTC(2026, 0, 1, 2, 3),
     blocks: rs.map((r) => ({ type: "tool_result", for: r.id, content: [{ type: "text", text: r.text }], isError: r.error ?? false })),
     who: { speaker: { kind: "toolResult" }, text: "" },
   } as never;
@@ -588,7 +590,7 @@ describe("一步还没结果时：照会话事实画", () => {
     expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停说后端给的原因").toBe(copyText("stream.step.unclearUntracked"));
     paintWaiting(row, "unclear", null, false, "noWriter");
     expect(row.querySelector<HTMLElement>(".step-right")?.title).toBe(copyText("stream.step.unclearNoWriter"));
-    settleStepLine(row, undefined, { ok: true } as never, false, 1200);
+    settleStepLine(row, undefined, { ok: true } as never, false, "1s");
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
     paintWaiting(row, "running", null, false);
     expect(row.dataset.state, "结果已经到了的那一行不改").toBe("ok");
@@ -605,7 +607,7 @@ describe("一步还没结果时：照会话事实画", () => {
   });
 });
 
-// 过程里的一步一行：主参数 · 说明 · 结果一句都是后端给的；界面只排、按 id 配对、时刻相减。
+// 过程里的一步一行：主参数 · 说明 · 结果一句都是后端给的；界面只排、按 id 配对，耗时交那一个读口（两条记录后端解好的 `atMs`）。
 describe("一步一行：后端的 steps / results 排成一行", () => {
   it("★ 发出时不画状态（等会话事实）；结果到了 ⇒ 对勾 ＋ 右侧小字（改动 +N −M · 读了几行 · 否则耗时）；失败 ⇒ 叉 ＋「失败 · 耗时」", () => {
     const c = ctx();
@@ -638,10 +640,10 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
     } as unknown as LineRecord;
     renderMessage(res, c);
     expect([0, 1, 2, 3].map((i) => [line(i).dataset.state, line(i).querySelector(".step-right")?.textContent])).toEqual([
-      ["ok", "1m00s"],
+      ["ok", "1m"],
       ["ok", "+38 −6"],
       ["ok", copyText("stream.step.lines", { n: "212" })],
-      ["failed", copyText("stream.step.failedFor", { dur: "1m00s" })],
+      ["failed", copyText("stream.step.failedFor", { dur: "1m" })],
     ]);
   });
 
@@ -667,10 +669,11 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
   });
 
   it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 steps ⇒ 工具名 ＋ 入参一句兜底", () => {
-    expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), 10)).toBe(copyText("stream.step.unknown"));
+    expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), "10s")).toBe(copyText("stream.step.unknown"));
     expect(stateOf(undefined, { ok: false, rejected: true }, true)).toBe("rejected");
-    expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", 10)).toBe(copyText("stream.step.rejected"));
-    expect([fmtStepDur(300), fmtStepDur(41_000), fmtStepDur(182_000)]).toEqual(["0.3s", "41s", "3m02s"]);
+    expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", "10s")).toBe(copyText("stream.step.rejected"));
+    // 两条记录之间多久：那一个读口写（短时长，同金样）；缺一头 · 倒着 ⇒ 不写。
+    expect([durBetween(0, 300), durBetween(0, 41_000), durBetween(0, 182_000), durBetween(undefined, 5), durBetween(9, 1)]).toEqual(["<1s", "41s", "3m", null, null]);
     expect(middleEllipsis(`/${"a".repeat(100)}/file.py`, 40)).toMatch(/^\/a+…\/file\.py$/);
   });
 });

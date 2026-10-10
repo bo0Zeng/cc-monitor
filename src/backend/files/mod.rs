@@ -539,7 +539,7 @@ pub const KINDS: &[&str] = &["dir", "file", "other", "symlink"];
 const KINDS_BY_CODE: [&str; 4] = ["file", "dir", "symlink", "other"];
 
 /// `files.ls` —— 列一个目录的直接子项。
-fn answer_ls(args: &serde_json::Value) -> Answer {
+fn answer_ls(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let dir = path_arg(args)?;
     let limit = limit_of(args);
     // 打不开的原因分几种码（界面按码说「路径不存在 / 无权限 / 不是目录」，系统原话进详情）。
@@ -584,7 +584,7 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
             row.insert("size".to_string(), serde_json::json!(md.len()));
             if let Some(t) = epoch_secs(md.modified()) {
                 row.insert("mtime_secs".to_string(), serde_json::json!(t));
-                let (short, full) = crate::common::time::mtime_texts_here(t);
+                let (short, full) = crate::common::time::mtime_texts_now(t, tz);
                 row.insert("mtime_text".to_string(), serde_json::json!(short));
                 row.insert("mtime_full".to_string(), serde_json::json!(full));
             }
@@ -627,7 +627,7 @@ where
 
 /// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法要另一个动词，
 /// 那个动词不在 `readonly_guard` 的只读白名单上。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
-fn answer_stat(args: &serde_json::Value) -> Answer {
+fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let path = path_arg(args)?;
     let md = std::fs::metadata(&path).map_err(|e| {
         Refused::with_raw(
@@ -664,7 +664,7 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
     }
     if let Some(ms) = epoch_secs(md.modified()) {
         out.insert("mtime_secs".to_string(), serde_json::json!(ms));
-        let (short, full) = crate::common::time::mtime_texts_here(ms);
+        let (short, full) = crate::common::time::mtime_texts_now(ms, tz);
         out.insert("mtime_text".to_string(), serde_json::json!(short));
         out.insert("mtime_full".to_string(), serde_json::json!(full));
     }
@@ -687,7 +687,7 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
 ///
 /// `query` 是窗口原样发来的搜索词（解析只在 [`query::parse`]）；`seq` ＋ `stream` 让同一个搜索框的旧那一趟收手；
 /// `under` 给了 ⇒ 只搜那个目录底下，不给 ⇒ 家目录；`offset` / `limit` 只回这一屏。
-fn answer_find(args: &serde_json::Value) -> Answer {
+fn answer_find(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let q = args
         .get("query")
         .and_then(serde_json::Value::as_str)
@@ -803,7 +803,7 @@ fn answer_find(args: &serde_json::Value) -> Answer {
             "location": raw::to_json(index::location_of(&h.path, start.as_deref())),
             "size": h.meta.size,
             "mtime_secs": h.meta.mtime_secs,
-            "mtime_text": h.meta.mtime_secs.map(|t| crate::common::time::mtime_texts_here(t).0),
+            "mtime_text": h.meta.mtime_secs.map(|t| crate::common::time::mtime_texts_now(t, tz).0),
             "marks": matcher.marks(&h.path).iter().map(|(a, b)| [a, b]).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "start": path_or_null(&start),
@@ -1411,11 +1411,12 @@ fn home_from(h: Option<std::ffi::OsString>) -> Answer {
 /// ⚠ 分派写成一个对 [`CAPABILITIES`] 的 `match`，而「这个 `match` 与那张表的名字
 /// 两向对得上」由 `capability_guard` 钉住 —— 不许出现「表里有、分派没有」
 /// 那种静默的不可用（本仓 `p1t-removal-cause` 那次真 bug 就是这一形）。
-pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
+/// `tz` ＝ 看的那一台的时区：修改时刻的字（`mtime_text` · `mtime_full`）按它写。
+pub fn answer(name: &str, args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     match name {
-        "files.ls" => answer_ls(args),
-        "files.stat" => answer_stat(args),
-        "files.find" => answer_find(args),
+        "files.ls" => answer_ls(args, tz),
+        "files.stat" => answer_stat(args, tz),
+        "files.find" => answer_find(args, tz),
         "files.index.status" => answer_status(),
         "files.index.rebuild" => answer_index_rebuild(args),
         "files.browse" => answer_browse(args),
@@ -1453,8 +1454,12 @@ pub fn capability_names() -> Vec<&'static str> {
 ///
 /// ⚠ 反向替换之所以够用：本族**没有一条能力名里带 `-`**，
 /// 由 `inbound_structure_guards` 那条两向集合相等钉住。
-pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
-    answer(&wire_name.replace('-', "."), args)
+pub fn answer_wire(
+    wire_name: &str,
+    args: &serde_json::Value,
+    tz: &crate::common::time::Tz,
+) -> Answer {
+    answer(&wire_name.replace('-', "."), args, tz)
 }
 
 #[cfg(test)]

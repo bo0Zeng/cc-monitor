@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import { bannerOf, sessionChip, sessionHoverRows, tabBlockedOf, whyOf } from "../../../src/frontend/ui/acct-view.ts";
 import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store.ts";
-import { fiveHourCell, type QuotaRead } from "../../../src/frontend/ui/acct-words.ts";
+import { fiveHourCell, takeNames, type QuotaRead } from "../../../src/frontend/ui/acct-words.ts";
+// 号名 / 位名照核心写好的那张表（后端 `accounts/quota/name_words.rs` 真写的金样）。
+import NAMES from "../../__fixtures__/names.golden.json";
 import type { QuotaShow } from "../../../src/frontend/ui/generated/QuotaShow.ts";
 import type { SessionRotation } from "../../../src/frontend/ui/generated/SessionRotation.ts";
 import type { SwitchRecord } from "../../../src/frontend/ui/generated/SwitchRecord.ts";
@@ -84,7 +86,8 @@ describe("状态栏账号按钮：各态", () => {
     const absent: SessionRotationEntry = { origin: "<local>", now: NOW, read: { state: "absent", inPlace: "noRelay" } };
     expect(sessionChip(absent, "work", LEDGER)).toMatchObject({ name: "work", value: null });
     expect(sessionChip(undefined, null, LEDGER)).toBeNull();
-    expect(sessionChip(entry({ account: { start: "_", current: "_", since: NOW, sinceText: "12:00", history: [], inPlace: "ok" } }), null, null)?.name).toBe("~/.claude");
+    takeNames(NAMES);
+    expect(sessionChip(entry({ account: { start: "_", current: "_", since: NOW, sinceText: "12:00", history: [], inPlace: "ok" } }), null, null)?.name).toBe(NAMES.accounts._);
   });
 });
 

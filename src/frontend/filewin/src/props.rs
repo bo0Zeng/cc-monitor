@@ -115,7 +115,7 @@ impl Props {
                         copy_text(
                             "rsFilewinProps.value.size",
                             &[
-                                ("human", &super::rows::human_size(s.size)),
+                                ("human", &copy_core::size_text(s.size)),
                                 ("bytes", &s.size.to_string()),
                             ],
                         ),

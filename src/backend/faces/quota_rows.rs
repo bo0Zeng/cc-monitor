@@ -37,21 +37,13 @@ fn s<'a>(v: &'a Value, key: &str) -> &'a str {
 }
 
 fn slot_label(slot: &str) -> Cell {
-    match slot {
-        "5h" => c(copy_text("acct.slot.fiveHour", &[])),
-        "7d" => c(copy_text("acct.slot.sevenDay", &[])),
-        other => c(other.to_string()),
-    }
+    c(crate::accounts::quota::name_words::slot_text(slot))
 }
 
 fn head(v: &Value) -> Vec<Cell> {
     let account = s(v, "account");
     let mut row = vec![
-        if account == "_" {
-            c(copy_text("acct.home.name", &[]))
-        } else {
-            c(account.to_string())
-        },
+        c(crate::accounts::quota::name_words::account_text(account)),
         c(if s(v, "kind") == "api" {
             copy_text("acct.kind.api", &[])
         } else {
@@ -200,7 +192,7 @@ fn five_hour(value: &str) -> String {
     copy_text(
         "resumeMenu.account.quota",
         &[
-            ("slot", &copy_text("acct.slot.fiveHour", &[])),
+            ("slot", &crate::accounts::quota::name_words::slot_text("5h")),
             ("value", value),
         ],
     )
@@ -331,14 +323,14 @@ pub(crate) fn warm_of(a: &Value, seen: bool, now: i64) -> Warm {
     send(copy_text("acct.warm.noWindow", &[]))
 }
 
-/// ★ 给 `quota-read` 的回包（出口那一遍之后）每号添 `warm`；`at` 旁边的字按这台本地钟写好。
-pub(crate) fn with_warm(reply: &mut Value) {
+/// ★ 给 `quota-read` 的回包（出口那一遍之后）每号添 `warm`；`at` 旁边的字按看的那一台的时区写好。
+pub(crate) fn with_warm(reply: &mut Value, tz: &crate::Tz) {
     let now = reply.get("now").and_then(Value::as_i64).unwrap_or_default();
     for (list, seen) in [("accounts", true), ("unseen", false)] {
         if let Some(xs) = reply.get_mut(list).and_then(Value::as_array_mut) {
             for x in xs {
                 let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap_or(Value::Null);
-                crate::common::time::with_texts_here(&mut w, u64::try_from(now).unwrap_or(0));
+                crate::common::time::with_texts_now(&mut w, u64::try_from(now).unwrap_or(0), tz);
                 x["warm"] = w;
             }
         }

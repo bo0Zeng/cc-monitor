@@ -46,18 +46,25 @@ export interface AccountSpec {
   baseUrl?: string;
 }
 
-export function putAccounts(d: MachineDisk, accounts: AccountSpec[]): void {
+/**
+ * 照一台正常机器的样子写账号清单：具名的号 ＋ 末尾那一条账号 0（不设 `CLAUDE_CONFIG_DIR` 那个状态，没有 `configDir`；后端写清单时也是这么合成的）。
+ * `zero: false` ＝ 清单缺了账号 0（只给专门截「缺默认账号」那一条提示的场景用）。
+ */
+export function putAccounts(d: MachineDisk, accounts: AccountSpec[], opts: { zero?: boolean } = {}): void {
   d.files[`${ACCTS}/accounts.json`] = json({
     version: 1,
     updatedAt: "2026-10-01T08:00:00Z",
-    accounts: accounts.map((a) => ({
-      name: a.name,
-      email: a.email ?? (a.kind === "api" ? "" : `${a.name}@example.com`),
-      configDir: `${HOME}/${ACCTS}/${a.name}`,
-      isDefault: a.isDefault ?? false,
-      mode: "isolated",
-      ...(a.kind === "api" ? { authKind: "api-key" } : {}),
-    })),
+    accounts: [
+      ...accounts.map((a) => ({
+        name: a.name,
+        email: a.email ?? (a.kind === "api" ? "" : `${a.name}@example.com`),
+        configDir: `${HOME}/${ACCTS}/${a.name}`,
+        isDefault: a.isDefault ?? false,
+        mode: "isolated",
+        ...(a.kind === "api" ? { authKind: "api-key" } : {}),
+      })),
+      ...(opts.zero === false ? [] : [{ name: "0", email: "0@example.com", isDefault: false, mode: "bare" }]),
+    ],
   });
   const keys: Record<string, { api_key: string; base_url: string }> = {};
   // 这台本来那一份登录（`~/.claude`，账号 0）也登着。

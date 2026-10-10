@@ -74,7 +74,7 @@ fn the_key_count_is_bounded() {
 #[test]
 fn samples_are_truncated_on_a_char_boundary() {
     let mut led = fresh();
-    let long = "中".repeat(MAX_SAMPLE_BYTES);
+    let long = "中".repeat(crate::agents::record::EXCERPT_BYTES);
     record_into(
         &mut led,
         DriftFace::KnownTypeParseFailed,
@@ -85,7 +85,11 @@ fn samples_are_truncated_on_a_char_boundary() {
         .first_sample
         .clone()
         .expect("有样例");
-    assert!(s.len() <= MAX_SAMPLE_BYTES + 4, "没截断：{}", s.len());
+    assert!(
+        s.len() <= crate::agents::record::EXCERPT_BYTES + 4,
+        "没截断：{}",
+        s.len()
+    );
     assert!(s.ends_with('…'), "截断标记没了");
     assert!(
         s.trim_end_matches('…').chars().all(|c| c == '中'),

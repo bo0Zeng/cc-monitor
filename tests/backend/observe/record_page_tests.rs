@@ -14,7 +14,7 @@ fn claude() -> RecordFace {
 
 /// 从文件头读的那一种读法（没有往回看的那一段）。
 fn rd(face: &RecordFace) -> Reader<'_> {
-    Reader::new(face, 0, &[])
+    Reader::new(face, 0, &[], Default::default())
 }
 
 const USER: &str = r#"{"type":"user","uuid":"u1","timestamp":"t","cwd":"/w","message":{"role":"user","content":"q"}}"#;
@@ -361,12 +361,12 @@ fn a_queued_line_carries_the_moment_it_was_typed() {
     // 打字那一行在这一页之前：往回看的那一段交进来就配得上。
     let lead = format!("{{\"torn\": 1}}\n{ENQ}\n");
     let tail = format!("{REM}\n");
-    let mut r = Reader::new(&face, 40, lead.as_bytes());
+    let mut r = Reader::new(&face, 40, lead.as_bytes(), Default::default());
     let (lines, _) = record_lines_of_page(&mut r, at, 9, 40 + lead.len() as u64, tail.as_bytes());
     assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
     let (rows_with, rows_without) = (
         rows_v(
-            &mut Reader::new(&face, 40, lead.as_bytes()),
+            &mut Reader::new(&face, 40, lead.as_bytes(), Default::default()),
             99,
             tail.as_bytes(),
         ),
@@ -417,4 +417,54 @@ fn the_lead_is_the_bounded_stretch_just_before_the_page() {
     let (at, bytes) = lead_of(&p, big);
     assert_eq!((at, bytes.len() as u64), (10, QUEUE_LOOKBACK_BYTES));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 认不出的行：相邻、同一个原因同一个类型的并成一条（`count` 记几条、`text` 带数）；中间隔着不上屏的行也算相邻；
+/// 换了类型 ⇒ 另起一条。行摘要里被并掉的那一行照占号、不带记录；记录行与子运行那一页只出并好的那一条。
+#[test]
+fn adjacent_unread_lines_fold_into_one() {
+    const NEW: &str = r#"{"type":"brand-new","sessionId":"s"}"#;
+    const OTHER: &str = r#"{"type":"other-new","sessionId":"s"}"#;
+    let page = format!("{NEW}\n{MODE}\n{NEW}\n{NEW}\n{OTHER}\n{USER}\n{NEW}\n");
+    let face = claude();
+    let rows = rows_v(&mut rd(&face), 0, page.as_bytes());
+    let recs: Vec<&Value> = rows.iter().filter_map(|r| r.get("record")).collect();
+    let shape: Vec<(String, u64)> = recs
+        .iter()
+        .map(|r| {
+            (
+                format!(
+                    "{}:{}",
+                    r["t"].as_str().unwrap(),
+                    r["type"].as_str().unwrap_or("")
+                ),
+                r["count"].as_u64().unwrap_or(0),
+            )
+        })
+        .collect();
+    let want = vec![
+        ("unread:brand-new".to_string(), 3),
+        ("unread:other-new".to_string(), 1),
+        ("said:".to_string(), 0),
+        ("unread:brand-new".to_string(), 1),
+    ];
+    assert_eq!(shape, want, "{rows:?}");
+    assert_eq!(rows.len(), 7, "每个可计行仍占一条");
+    assert!(
+        recs[0]["text"].as_str().unwrap().contains('3'),
+        "{}",
+        recs[0]["text"]
+    );
+
+    let p = std::path::Path::new("/x/projects/-p/s.jsonl");
+    let lines: Vec<(&[u8], u64)> = page.lines().map(|l| (l.as_bytes(), 0)).collect();
+    let (out, next) = record_lines(&mut rd(&face), p, 10, lines);
+    let seqs: Vec<u64> = out.iter().map(|l| l["seq"].as_u64().unwrap()).collect();
+    assert_eq!(seqs, [10, 14, 15, 16], "并好的那一条用第一行的行号");
+    assert_eq!(next, 17);
+    assert_eq!(out[0]["record"]["count"], 3);
+
+    let runs = run_rows(&mut rd(&face), 0, page.as_bytes());
+    assert_eq!(runs.len(), 4);
+    assert_eq!(runs[0]["record"]["count"], 3);
 }

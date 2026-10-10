@@ -130,7 +130,7 @@ impl StartOutcome {
 /// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
 /// 不是我们自己的子进程，不能假设它讲道理。
 /// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
-/// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
@@ -413,11 +413,19 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
+/// attach 行：「我要流」＋ 看的这一台的时区（同远端那一条 `remote_resident::attach_line` 的 `tz`；`None` ⇒ 不带，后端按 UTC 写推来的钟面）。
+pub(crate) fn attach_line(tz: Option<&str>) -> String {
+    match tz {
+        Some(tz) => format!("{}\n", serde_json::json!({ "attach": true, "tz": tz })),
+        None => "{\"attach\":true}\n".to_string(),
+    }
+}
+
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
 fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(b"{\"attach\":true}\n")
+    w.write_all(attach_line(host_core::viewer_tz().as_deref()).as_bytes())
         .and_then(|()| w.flush())
         .map_err(|e| {
             Said::with_raw(
@@ -895,7 +903,11 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
             // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
             // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
             // 交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::local_backend::absorb_local_frame(f, Some(&client)) {
+            if let Some(f) = crate::local_backend::absorb_local_frame(
+                f,
+                Some(&client),
+                &crate::origin::Origin::local(),
+            ) {
                 crate::local_lines::deliver(f).await;
             }
         }
@@ -1047,7 +1059,7 @@ fn start_detached(
 ///
 /// 等的是**一次性条件**（那个套接字起没起来），有明确上限（`LISTEN_WAIT_TRIES` ×
 /// `LISTEN_WAIT_INTERVAL_MS` ≈ 1 秒），等到就走、等不到就如实报错，**不无限重试**。
-/// **登记住址** `src/frontend/shell/src/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
+/// **登记住址** `tests/frontend/shell/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
 /// 这一类要求「说清等什么、上限是多少」）。
 ///
 /// ⚠ 上限为什么是这个量级：对端**就在本机**，从 `execve` 到绑上是毫秒级；

@@ -31,7 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.data.repo.HostRepository
-import com.ccmonitor.mobile.ui.overview.rememberConversationHistory
+import com.ccmonitor.mobile.ui.overview.rememberRecent
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -84,7 +84,7 @@ private fun DrawerContent(
         drawerEntries().forEach { entry -> EntryRow(entry) { onAction(entry.item.action()) } }
         HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = 8.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            RecentSection(recentEntries(rememberConversationHistory(hostId, linkReady)), onAction)
+            RecentSection(recentEntries(rememberRecent(hostId, linkReady)), onAction)
         }
         HorizontalDivider()
         ServerRow(hostId, onAction)

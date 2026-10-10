@@ -368,7 +368,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `last` | RunDid? |  |
 | `waiting` | string? | 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑） |
 | `started_ms` | number? | 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条） |
-| `started_text` | string? | `started_ms` 在这台本地钟上的钟面 `HH:MM`（跟着 `started_ms` 一起写；界面照抄、不换算） |
+| `started_text` | string? | `started_ms` 在看的那一台钟上的钟面 `HH:MM`（推出去那一下按这条流的时区写，`Frame::stamp`；界面照抄、不换算） |
 | `active_ms` | number? | 最近动静：它自己最近一条记录 |
 | `ended_ms` | number? | 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线） |
 | `why` | RunWhy? | 为什么是这个结局（在跑 ⇒ 不上线） |
@@ -446,6 +446,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `args` | JSON? | 命令的参数对象；缺 ＝ `null` |
 | `within_ms` | number? | 发起方这一发愿意等多久（毫秒） |
 | `view` | JSON? | 出口的声明（要哪几格 · 哪几格不要）；缺 ＝ `null` ＝ 全量 |
+| `tz` | Tz? | 看的那一台的时区（IANA 名）：回包里「几点」「今天 / 昨天」按它写 |
 
 ## 3. 协议级错误码
 
@@ -939,7 +940,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `cover_root` | ← | 要搜全这一趟，重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身（都说不出 ⇒ `null`） |
 | `desc` | → ← | `true` ⇒ 倒过来（默认 `false`） |
-| `hits` | ← | 这一屏的命中，每条一个对象：`path` · `kind` · `location` · `size` · `mtime_secs` · `mtime_text`（修改时间的短写法，这台本地钟写好）· `marks` |
+| `hits` | ← | 这一屏的命中，每条一个对象：`path` · `kind` · `location` · `size` · `mtime_secs` · `mtime_text`（修改时间的短写法，按看的那一台的时区（请求的 `tz`）写好）· `marks` |
 | `index_age_secs` | ← | 答这一趟用的那份索引，是多久以前建的 |
 | `index_missing` | ← | 索引还没建过 ⇒ 几个计数全是 0，而那不是「没搜到」；客户端要自己发 `files-index-rebuild` |
 | `index_root` | ← | 手上那份索引的根（没建过 ⇒ `null`） |
@@ -995,9 +996,9 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `limit` | → | 这一趟最多回几条 |
 | `link_dir` | ← | 只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次） |
 | `link_to` | ← | 只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到） |
-| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（这台本地钟写好，窗口照抄） |
+| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（按看的那一台的时区（请求的 `tz`）写好，窗口照抄） |
 | `mtime_secs` | ← | Unix 纪元秒 |
-| `mtime_text` | ← | 修改时间列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年 `YYYY-MM-DD`（这台本地钟写好，窗口照抄） |
+| `mtime_text` | ← | 修改时间列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年 `YYYY-MM-DD`（按看的那一台的时区（请求的 `tz`）写好，窗口照抄） |
 | `path` | → | 要列的那个目录 |
 | `size` | ← | 字节数 |
 | `total` | ← | 目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」） |
@@ -1017,7 +1018,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `kind` | ← | `dir` · `file` · `symlink` · `other` |
 | `link_target` | ← | 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{"b16":…}`）；不是链接 ⇒ `null` |
 | `mode` | ← | unix 权限位的低 12 位（十进制数；`420` = `0o644`） |
-| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（这台本地钟写好；跟着 `mtime_secs` 出） |
+| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（按看的那一台的时区（请求的 `tz`）写好；跟着 `mtime_secs` 出） |
 | `mtime_secs` | ← | Unix 纪元秒（`mtime_secs` 拿不到就不出这个键） |
 | `mtime_text` | ← | 修改时间的短写法（今天 `HH:MM` · 今年 `MM-DD` · 往年带年；跟着 `mtime_secs` 出） |
 | `owner` | ← | 属主（跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null` |
@@ -1105,7 +1106,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
-| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
+| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
+| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
 | `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来） |
@@ -1142,6 +1144,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `defaultRule` | ← | 默认规则的 id |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
+| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
 | `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
@@ -1164,6 +1167,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `rev` | ← | 只在 `conflict` 时有：此刻的版本 |
 | `rotation` | → | 整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap["*"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换） |
 | `rule` | ← | 只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项） |
+| `savedAtText` | ← | 只在 `saved` 时有：写成那一刻的钟面 `HH:MM`（按请求的 `tz`；编辑器「已保存」照抄） |
 | `state` | ← | `"saved"`（写成了）· `"refused"`（逐格错，没写）· `"conflict"`（读到之后别处改过，没写） |
 
 码：`bad_args` · `io_failed` · `no_such_rule`
@@ -1182,6 +1186,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `name` | → | 新名字 |
 | `rev` | ← | 同 `rotation-rule-save` |
 | `rule` | ← | 同 `rotation-rule-save` |
+| `savedAtText` | ← | 同 `rotation-rule-save` |
 | `state` | ← | 同 `rotation-rule-save` |
 
 码：`bad_args` · `io_failed` · `no_such_rule`
@@ -1223,15 +1228,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
+| `names` | ← | 同 `rotation-rules-read` |
 | `effective` | ← | 号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句） |
 | `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
 | `from` | ← | 视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
-| `fromText` | ← | `from` 按这台本地钟写好的字 |
-| `grid` | ← | 只在带 `view` 时有：刻度 `[{at, atText, label?}]`，按这台本地钟对齐（`6h` 一格 15m · `24h` 1h · `7d` 6h；悬停与键盘按格走），轴上写字的那几格带 `label`（`6h` 每小时 · `24h` 每 3h 写 `HH:MM`；`7d` 每天零点写 `MM-DD`） |
+| `fromText` | ← | `from` 按看的那一台的时区（请求的 `tz`）写好的字 |
+| `grid` | ← | 只在带 `view` 时有：刻度 `[{at, atText, label?}]`，按看的那一台的时区对齐（`6h` 一格 15m · `24h` 1h · `7d` 6h；悬停与键盘按格走），轴上写字的那几格带 `label`（`6h` 每小时 · `24h` 每 3h 写 `HH:MM`；`7d` 每天零点写 `MM-DD`） |
 | `head` | ← | 只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toLine?: {w, n}, est?}`（此刻用的号 · 卡人的窗口与用了多少 % · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线算，取差得最少的那一窗，都没线 ⇒ 缺 · `est` ＝ 按目前涨法几点用到这号这窗口此刻取的上限 `{at, atText, pct, w}`：只在额度账上这一窗有两次不同的采样、最近 30 分钟在涨时给，按这两点的斜率外推，到之前先重置就不给）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置） |
 | `lanes` | ← | 池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n, w}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那条线 · `w` ＝ 那一窗的语义位）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
 | `now` | ← | 这台此刻的 unix 秒 |
-| `nowText` | ← | `now` 按这台本地钟写好的字 |
+| `nowText` | ← | `now` 按看的那一台的时区（请求的 `tz`）写好的字 |
 | `past` | ← | 只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`） |
 | `plan` | ← | `[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；`view` 是 `7d` 时只到此刻 +1d；每个时刻旁有 `…Text` |
 | `reason` | ← | 同 `rotation-rules-read` |
@@ -1255,7 +1261,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
-| `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
+| `names` | ← | 同 `rotation-rules-read` |
+| `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
 | `sids` | → | 会话 id 的数组 |
@@ -1695,8 +1702,8 @@ sid → 上次用哪个号起。
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 | `origin` | → | 可缺席：那台的名字（`listing` 是它的；行与组都标上它） |
 | `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一份就是那台常驻答的它 |
-| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄 |
+| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一支问的就是它；注解跟着会话住在那台，本机代问时照那台带来的并、不拿本机那份去盖 |
+| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按看的那一台的时区（请求的 `tz`）写好，界面照抄 |
 | `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |
 | `truncated` | ← | `rows` 被 `limit` 截过 |
@@ -1733,7 +1740,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `sessionCount` | ← | 会话数 |
-| `sessions` | → ← | 各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、这台本地钟写好 |
+| `sessions` | → ← | 各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、按看的那一台的时区（请求的 `tz`）写好 |
 | `totalHits` | ← | `hitCount` 之和 |
 | `truncated` | ← | 任一行 `hitsTruncated` |
 
@@ -1837,7 +1844,7 @@ sid → 上次用哪个号起。
 | `end` | ← | 最后一个完整行的末字节（残尾不计） |
 | `from` | → ← | 可选，缺 ⇒ 0：从这个字节起扫 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
+| `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：看的那一台钟上的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -1849,7 +1856,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `needs` | ← | 它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
 | `sid` | ← | 会话 id |
 | `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
 
@@ -1907,7 +1914,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（与 `--find-in-session` 的中段逐行相同）；`tsText` ＝ 那条的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
+| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（与 `--find-in-session` 的中段逐行相同）；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
 | `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
@@ -2297,8 +2304,8 @@ skill 装记录的写口。
 |---|---|---|
 | `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
 | `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
-| `failed` | ← | 这台此刻活着的会话里那一家说它连不上 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 这台本地钟的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
-| `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 这台本地钟的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
+| `failed` | ← | 这台此刻活着的会话里那一家说它连不上 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
+| `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
 | `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
 | `mark` | ← | 小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了） |
 | `name` | ← | server 名 |
@@ -2626,7 +2633,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项） |
 | `binDir` | ← | 链接住的目录（`~/.cc-monitor/bin`） |
-| `editedAt` | ← | 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按这台本地钟写好：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）；没改过 · cc-monitor 没写过 ⇒ `null` |
+| `editedAt` | ← | 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区（请求的 `tz`）写好：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）；没改过 · cc-monitor 没写过 ⇒ `null` |
 | `exists` | ← | 配置文件在不在 |
 | `fileProblem` | ← | TOML 本身写坏 ⇒ `{line, message}`（这时 `profiles` 为空、不能按条目改）；否则 `null` |
 | `fingerprint` | ← | 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write` |
@@ -2873,7 +2880,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
-| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `frozen`（两个前端照它读的成品面：格只许加，不删不改名不换类型）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团）· `frozen`（两个前端照它读的格：不删不改名不换类型；`record` · `read_row` 整件冻结，会话三帧只冻手机读的那几格） |
 
 ### 4.9 终端与会话
 
@@ -3015,7 +3022,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `capped` | ← | 要的比上限多、截到了上限 |
 | `captured_at` | ← | 抓屏时刻（秒） |
-| `captured_at_text` | ← | 抓屏时刻在这台本地钟上的 `HH:MM:SS`（界面照抄、不换算） |
+| `captured_at_text` | ← | 抓屏时刻在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（界面照抄、不换算） |
 | `color` | → | 要不要颜色；缺省 `true` |
 | `cols` | ← | 列数 |
 | `cursor` | ← | 光标 `{x, y, visible}` |
@@ -3250,7 +3257,7 @@ cc-bus 钩子诊断。
 | `lastMs` | ← | `recent` 一项：那个目录最近一次会话的修改时刻（毫秒） |
 | `launch` | ← | `fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`） |
 | `recent` | ← | 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻） |
-| `startText` | ← | `fork` 里：那一轮你那句在这台本地钟上的钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`） |
+| `startText` | ← | `fork` 里：那一轮你那句在看的那一台钟上的（请求的 `tz`）钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`） |
 | `tmux` | ← | 这台有没有 tmux（`false` ⇒ 只能开终端窗口） |
 | `turn` | ← | `fork` 里：`at` 那一条在第几轮 |
 
@@ -3909,7 +3916,7 @@ cc-bus 钩子诊断。
 | `--files-stage-chunk` | ＝ 帧命令 `files-stage-chunk`：存盘的一块进暂存区 |
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
-| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按这台本地钟写好） · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
+| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好） · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |

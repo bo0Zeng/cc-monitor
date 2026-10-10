@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.bridge.UplinkSink
-import com.ccmonitor.mobile.core.claude.transport.SessionSignals
 import com.ccmonitor.mobile.ui.common.chatHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,17 +37,6 @@ value class ChatSessionKey(
 }
 
 /**
- * Claude 自己的对话编号（`--session-id` 给的 uuid）的具名载体。
- *
- * 与 [ChatSessionKey] 不同：那个是本进程里的 `<hostId>/<sid>`，这个是 daemon 与 pidfile 都认的 sid。
- * 跨通路信号汇按它索引，拿错了信号恒为 null 且不报错。
- */
-@JvmInline
-value class ClaudeSessionId(
-    val value: String,
-)
-
-/**
  * 应用级的对话持有者（单例，见 `di/AppModule.kt`）。
  *
  * 下行活在这里而不在 ViewModel 里：离开聊天屏不断流，离开 app 后回复完成照样能推送。
@@ -70,12 +58,6 @@ class ChatController(
      * 只要这两个动作，所以收窄接口而不是整个 `SshConnectionManager`。
      */
     private val connections: ConnectionHolder? = null,
-    /**
-     * 跨通路信号汇，null 表示不接（debug 重放屏）。
-     *
-     * 生产侧是进程级单例：总览通路往里投等待态，聊天通路往里投配额与「被挡住了」，两个屏都从它取。
-     */
-    private val signals: SessionSignals? = null,
 ) {
     /** key → 它持有的 hostId。`release` 时要按这张表把持有还回去。 */
     private val heldHosts = mutableMapOf<String, String>()
@@ -116,14 +98,10 @@ class ChatController(
         key: String,
         uplink: UplinkSink? = null,
         hostId: String? = null,
-        claudeSessionId: String? = null,
     ): ChatSession {
         sessions[key]?.let { return it }
         evictIfNeeded()
         val created = ChatSession(uplink, scopeFactory())
-        // 聊天屏不直连总览通路，两边只经信号汇交换。键用 Claude 的 sid 而非本类的 key，daemon 那侧认的是 sid。
-        val bus = signals
-        if (bus != null && claudeSessionId != null) created.attachSignals(bus, claudeSessionId)
         // 对话建起来就持有那条连接，直到 [release] 才放手。
         hostId?.let {
             connections?.retain(it, chatHolder(key))

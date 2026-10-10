@@ -54,7 +54,7 @@ async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
     drop(tx); // 出方向关了 ⇒ 写者排完就寿终
     drop(tap_tx);
     let mut out: Vec<u8> = Vec::new();
-    writer_task(&mut out, rx, reply_rx, Fed(tap_rx)).await;
+    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), Default::default()).await;
     drop(reply_tx);
 
     let text = String::from_utf8(out).expect("utf8");
@@ -82,5 +82,35 @@ async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
     assert!(
         matches!((first_tap, last_line), (Some(t), Some(l)) if t > l) || first_tap.is_none(),
         "tap 帧插到了内容帧前面（它该最低优先）：first_tap={first_tap:?} last_line={last_line:?}"
+    );
+}
+
+/// 出方向的帧写出去那一下按这条流看的那一台的时区写钟面（`Frame::stamp`）；应答通道里的不动（答的那一下已按请求的 `tz` 写好）。
+#[tokio::test]
+async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
+    let runs = |text: Option<&str>| Frame::SessionRuns {
+        sid: "s".into(),
+        runs: vec![wire::RunInfo {
+            run: "r".into(),
+            // 2026-10-07T20:30:00Z
+            started_ms: Some(1_791_405_000_000),
+            started_text: text.map(str::to_string),
+            ..Default::default()
+        }],
+        ended: Vec::new(),
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
+    tx.try_send(runs(None)).unwrap();
+    drop(tx);
+    let mut out: Vec<u8> = Vec::new();
+    let sh = Tz::named("Asia/Shanghai").unwrap();
+    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), sh).await;
+    drop(reply_tx);
+    let text = String::from_utf8(out).unwrap();
+    assert!(
+        text.contains(r#""started_text":"04:30""#),
+        "推出去的那一帧没按流的时区写钟面：{text}"
     );
 }

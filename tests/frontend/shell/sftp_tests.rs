@@ -760,7 +760,13 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .spawn()
         .expect("起不了后端");
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
+    std::thread::spawn(move || {
+        crate::local_backend::local_stdio_consumer(
+            &crate::local_backend::StdioRoute::local(),
+            stdin,
+            stdout,
+        )
+    });
     // 落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
     //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
     let backend_path = format!("{rhome}/{LANDING_REL}");

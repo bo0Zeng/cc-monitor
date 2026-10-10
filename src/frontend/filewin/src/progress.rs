@@ -540,8 +540,8 @@ impl Job {
             let base = copy_text(
                 "rsFilewinProgress.nums.bytes",
                 &[
-                    ("got", &super::rows::human_size(got)),
-                    ("total", &super::rows::human_size(total)),
+                    ("got", &copy_core::size_text(got)),
+                    ("total", &copy_core::size_text(total)),
                 ],
             );
             match eta(got, total, self.started.elapsed().as_secs_f64()) {
@@ -834,7 +834,7 @@ impl Job {
                         ),
                         Some(CopyOutcome::Done { bytes, .. }) => (
                             copy_text("rsFilewinProgress.copy.done", &[("n", "1")]),
-                            super::rows::human_size(*bytes),
+                            copy_core::size_text(*bytes),
                         ),
                         Some(o) => (
                             copy_text("rsFilewinProgress.copy.failed", &[("n", "1")]),

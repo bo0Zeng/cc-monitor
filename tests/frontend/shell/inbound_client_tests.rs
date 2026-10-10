@@ -317,6 +317,7 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
             "ping",
             &Value::Null,
             Some(Duration::from_millis(10_000)),
+            None,
             None
         ),
         "\ne2e 脚本喂给真后端的行与 monitor 编码器的产物不一致。\n\
@@ -418,7 +419,8 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
             "launch",
             &line["args"],
             line["within_ms"].as_u64().map(Duration::from_millis),
-            None
+            None,
+            line["tz"].as_str()
         ),
         "e2e 那一行的信封不是 monitor 那一跳会产出的那一行（键序 / 空白对不上）"
     );
@@ -495,13 +497,14 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 #[test]
 fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     let args = serde_json::json!({});
-    let line = encode_request("abc-0", "ping", &args, None, None);
+    let line = encode_request("abc-0", "ping", &args, None, None, None);
     assert_eq!(line, "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{}}\n");
     let carried = encode_request(
         "abc-0",
         "ping",
         &args,
         Some(Duration::from_millis(1_500)),
+        None,
         None,
     );
     assert_eq!(
@@ -514,6 +517,7 @@ fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
         &args,
         Some(Duration::from_micros(300)),
         None,
+        None,
     );
     assert!(
         tiny.contains("\"within_ms\":1}"),
@@ -524,6 +528,12 @@ fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     for k in ["id", "cmd", "args", "within_ms"] {
         assert!(v.get(k).is_some(), "信封缺字段 `{k}`：{carried}");
     }
+    // 看的这一台的时区：带了就在最后一格（后端 `Request.tz`）；不带 ⇒ 没有那一格。
+    let zoned = encode_request("abc-0", "ping", &args, None, None, Some("Asia/Shanghai"));
+    assert_eq!(
+        zoned,
+        "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{},\"tz\":\"Asia/Shanghai\"}\n"
+    );
 }
 
 /// 出口声明（`view`）是信封里的一格，跟在 `within_ms` 后面；没给 ⇒ 不写这一格（不写 `null`）。
@@ -537,12 +547,13 @@ fn encode_request_carries_the_view_as_its_own_envelope_field() {
         &args,
         Some(Duration::from_millis(1_500)),
         Some(&view),
+        None,
     );
     assert_eq!(
         line,
         "{\"id\":\"abc-0\",\"cmd\":\"history-read\",\"args\":{\"sid\":\"s\"},\"within_ms\":1500,\"view\":{\"omit\":{\"record\":[\"blocks[type=tool_use].input\"]}}}\n"
     );
-    let bare = encode_request("abc-0", "history-read", &args, None, None);
+    let bare = encode_request("abc-0", "history-read", &args, None, None, None);
     assert!(!bare.contains("view"), "没给声明却写了 view：{bare}");
 }
 

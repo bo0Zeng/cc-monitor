@@ -99,8 +99,9 @@ export function historyReasonOf(e: unknown): string {
 
 // ─── 问 ───
 
-/** 改一条注解（星标 / 改名 / 隐藏）。缺格或 `null` = 不改；标题给空白串 = 清空。 */
+/** 改一条注解（星标 / 改名 / 隐藏）。缺格或 `null` = 不改；标题给空白串 = 清空。注解跟着会话住在那台：问的是会话所在那台（`origin`）。 */
 export async function annotate(
+  origin: Origin,
   sessionId: string,
   patch: {
     starred?: boolean;
@@ -110,16 +111,16 @@ export async function annotate(
 ): Promise<EntryMetadata> {
   const body = jsonBody({ sid: sessionId, patch });
   const budget = budgetWithin(ANNOTATION_BUDGET_MS);
-  const reply = await chan.call(LOCAL_ORIGIN, "history-annotate", body, budget);
+  const reply = await chan.call(origin, "history-annotate", body, budget);
   return decodeEntry(readJson(reply));
 }
 
-/** 删会话之后连带删那一条注解（删不掉只记一行：孤儿注解不害人）。 */
-export async function forgetAnnotation(sessionId: string): Promise<void> {
+/** 删会话之后连带删那一条注解（会话所在那台的；删不掉只记一行：孤儿注解不害人）。 */
+export async function forgetAnnotation(origin: Origin, sessionId: string): Promise<void> {
   try {
     const body = jsonBody({ sid: sessionId });
     const budget = budgetWithin(ANNOTATION_BUDGET_MS);
-    await chan.call(LOCAL_ORIGIN, "history-forget", body, budget);
+    await chan.call(origin, "history-forget", body, budget);
   } catch (e) {
     console.warn(`会话 ${sessionId} 删了，它那条注解没删掉（留着不害人）:`, e);
   }

@@ -4,7 +4,7 @@
 //! 机器那一项不写主机名（贴出去的那段不带这台的名字；界面上对这台的称呼由本机壳在「本机」那一行旁边知道）。
 
 use copy_core::copy_text;
-use copy_core::detail::{os_word, stamp, Detail, Label};
+use copy_core::detail::{os_word, Detail, Label};
 
 /// 这台后端此刻的一份详情。`cmd` 缺 ＝ 协议级失败（还没落到哪条命令上）；`raw` 是下层原话（子进程 stderr · 系统报错）。
 pub(crate) fn of(cmd: Option<&str>, code: &str, raw: Option<&str>) -> String {
@@ -56,25 +56,35 @@ impl Failed {
     }
 
     /// 给人看那一形（CLI 的 `--text`）：那一句 ＋ 下面原样接复制详情（同界面［复制详情］复制出去的那一段）。
-    pub(crate) fn text(&self) -> String {
-        copy_core::detail::one(&self.message, &self.detail)
+    /// `tz` ＝ 看的那一台的时区：详情里那一行时刻按它填。
+    pub(crate) fn text(&self, tz: &crate::common::time::Tz) -> String {
+        crate::common::time::fill_at(&copy_core::detail::one(&self.message, &self.detail), tz)
+            .into_owned()
     }
 
     /// 投到 CLI 面（**唯一一处**：CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 都经这里）：
     /// stderr 一行 `{code, message, detail, data?}`，退出 2；`text`（[`crate::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
-    pub(crate) fn emit_to(&self, err: &mut dyn std::io::Write, text: bool) -> i32 {
+    /// `tz` ＝ 看的那一台的时区（`--tz`）：详情里那一行时刻按它填。
+    pub(crate) fn emit_to(
+        &self,
+        err: &mut dyn std::io::Write,
+        text: bool,
+        tz: &crate::common::time::Tz,
+    ) -> i32 {
         let line = if text {
-            self.text()
+            self.text(tz)
         } else {
-            serde_json::to_string(self).unwrap_or_else(|_| self.text())
+            serde_json::to_string(self)
+                .map(|l| crate::common::time::fill_at(&l, tz).into_owned())
+                .unwrap_or_else(|_| self.text(tz))
         };
         let _ = writeln!(err, "{line}");
         2
     }
 
     /// [`Failed::emit_to`] 的 stderr · JSON 那一形（不收 `--text` 的那几条 CLI）。
-    pub(crate) fn emit(&self) -> i32 {
-        self.emit_to(&mut std::io::stderr(), false)
+    pub(crate) fn emit(&self, tz: &crate::common::time::Tz) -> i32 {
+        self.emit_to(&mut std::io::stderr(), false, tz)
     }
 }
 
@@ -93,12 +103,9 @@ pub(crate) fn unreadable(
     }
 }
 
+/// 此刻那一行：先写成空位（[`crate::common::time::at_slot`]），出去那一下按看的那一台的时区填（带偏移）。
 fn now() -> String {
-    let t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let off = crate::platform::local_tz::offset_secs(t).unwrap_or(0);
-    stamp(i64::try_from(t).unwrap_or(i64::MAX), off)
+    crate::common::time::at_slot(crate::common::time::now_secs())
 }
 
 /// `Linux x86_64 · 后端 p9k-…`。

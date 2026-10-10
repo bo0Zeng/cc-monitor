@@ -27,7 +27,7 @@ use crate::stream::wire::{Frame, Topic};
 ///
 /// ⚠ **是条数不是体量**（体量由 `relay::TAP_DATA_CAP` 封）。值：token 级的 SSE 一秒几十到上百件，
 /// 256 件够吸收写者被内容帧占住的一小段；再多攒着只是让活卡更晚，不如丢了让 jsonl 定稿。
-/// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
+/// 登记住址 `tests/frontend/shell/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
 pub(crate) const TAP_CAPACITY: usize = 256;
 
 /// 进程级 hub：此刻每条流连接的 tap 发送端。
@@ -133,7 +133,9 @@ pub struct TapRx {
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::stream::topic_hook::body`]；判据自己接的那一形不现算）。
-    bodies: fn(Topic, Option<&str>) -> Option<serde_json::Value>,
+    bodies: crate::stream::topic_hook::Bodies,
+    /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
+    tz: crate::Tz,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -142,13 +144,13 @@ pub struct TapRx {
 impl TapRx {
     /// 一帧 `changed`，小成品照主题表现算（同步：读这台自己的盘，毫秒级；算完才进 `out`，被别的分支抢先也不丢）。
     fn changed(&self, topic: Topic, key: Option<String>) -> Frame {
-        let body = (self.bodies)(topic, key.as_deref());
+        let body = (self.bodies)(topic, key.as_deref(), &self.tz);
         Frame::changed(topic, key, None, body)
     }
 }
 
 /// 不现算小成品（判据自己接的那一形）。
-fn no_bodies(_: Topic, _: Option<&str>) -> Option<serde_json::Value> {
+fn no_bodies(_: Topic, _: Option<&str>, _: &crate::Tz) -> Option<serde_json::Value> {
     None
 }
 
@@ -212,14 +214,15 @@ impl TapSource for TapRx {
 }
 
 /// 一条流连接接上了 ⇒ 从进程级 hub 拿一条新的 tap 接收端（两条载体各在「流开始」那一处调一次）。
-/// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）。
-pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
+/// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）；`tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
+pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz) -> TapRx {
     let mut rx = attach_rx(hub().attach(), book);
     rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
     rx.rules = Some(crate::accounts::quota::rotation::rules_changes().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;
+    rx.tz = tz;
     rx
 }
 
@@ -288,6 +291,7 @@ pub(crate) fn attach_rx(
         rules: None,
         plan: None,
         bodies: no_bodies,
+        tz: crate::Tz::default(),
     }
 }
 

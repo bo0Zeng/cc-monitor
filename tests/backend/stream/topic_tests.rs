@@ -143,27 +143,32 @@ fn a_computed_body_is_a_declared_body() {
 #[test]
 fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::RotationRules, None),
+        crate::stream::topic_body::body_now(Topic::RotationRules, None, &crate::Tz::default()),
         crate::faces::rotation_face::answer_rules_read().ok(),
         "规则表的小成品不是 rotation-rules-read 的应答"
     );
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::Tasks, Some("no-such-sid")),
+        crate::stream::topic_body::body_now(
+            Topic::Tasks,
+            Some("no-such-sid"),
+            &crate::Tz::default()
+        ),
         crate::faces::feature_face::answer(
             "tasks-list",
-            &serde_json::json!({"sid": "no-such-sid"})
+            &serde_json::json!({"sid": "no-such-sid"}),
+            &crate::Tz::default()
         )
         .ok(),
         "任务清单的小成品不是 tasks-list 的应答"
     );
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::Tasks, None),
+        crate::stream::topic_body::body_now(Topic::Tasks, None, &crate::Tz::default()),
         None,
         "没 key 的任务清单没得问"
     );
     for t in [Topic::Accounts, Topic::Profiles, Topic::Plan] {
         assert_eq!(
-            crate::stream::topic_body::body_now(t, Some("x")),
+            crate::stream::topic_body::body_now(t, Some("x"), &crate::Tz::default()),
             None,
             "{t:?} 不该现算"
         );

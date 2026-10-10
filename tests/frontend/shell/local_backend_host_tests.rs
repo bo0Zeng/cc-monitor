@@ -498,7 +498,9 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
             local_backend::CrashLimits::default(),
             now(),
             Arc::new(|e| println!("[P2s 实测] {e:?}")),
-            Some(Arc::new(local_backend::local_stdio_consumer)),
+            Some(Arc::new(|i, o| {
+                local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+            })),
             crate::spawn_managed::local_backend_supervised(),
         )
     };
@@ -1768,7 +1770,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    - **`embedded-backends` 在 8 个 `.rs` 里**：本文件 · `local_backend.rs` ·
 ///      `src/frontend/shell/build.rs`（`Path::new("embedded-backends")`，**是代码不是散文**）·
 ///      `src/frontend/shell/src/tool_registry.rs`（登记表数据）· `src/frontend/shell/src/sftp.rs` ·
-///      `src/frontend/shell/src/write_site_registry.rs` · `src/backend/main.rs` ·
+///      `tests/frontend/shell/write_site_registry.rs` · `src/backend/main.rs` ·
 ///      `src/backend/build_id_guard.rs`（后四个是文档注释 / 错误文案）。
 ///    ⇒ **结论不变**（那 6 个文件里一条起真后端的测试都没有，逐个看过），
 ///    **坏的是论证的分母** —— 而那句话是本条关于「人群完整性今天够用」的**唯一**正面论证。
@@ -3242,8 +3244,17 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
             );
         }
     }
-    guard_core::find_pinned(&body_of(&host, "fn send_attach("), r#"{\"attach\":true}\n"#)
+    guard_core::find_pinned(&body_of(&host, "fn attach_line("), r#"{\"attach\":true}\n"#)
         .expect("attach 行不是「我要流」那一形（恰好一处）");
+    assert_eq!(
+        crate::local_backend_host::attach_line(None),
+        "{\"attach\":true}\n"
+    );
+    assert_eq!(
+        crate::local_backend_host::attach_line(Some("Asia/Shanghai")),
+        "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
+        "看的这一台的时区跟在旁边一格（后端 `listen::attach_flags` 读 `tz`）"
+    );
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),
@@ -4208,7 +4219,9 @@ fn three_fake_backends_land_in_three_different_cells() {
         once,
         Arc::new(|| 0),
         backend_supervise_events(),
-        Some(Arc::new(local_backend::local_stdio_consumer)),
+        Some(Arc::new(|i, o| {
+            local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+        })),
         crate::spawn_managed::local_backend_supervised(),
     );
     let a = wait_for("崩了", &|h| {
@@ -4231,7 +4244,9 @@ fn three_fake_backends_land_in_three_different_cells() {
         once,
         Arc::new(|| 0),
         backend_supervise_events(),
-        Some(Arc::new(local_backend::local_stdio_consumer)),
+        Some(Arc::new(|i, o| {
+            local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+        })),
         crate::spawn_managed::local_backend_supervised(),
     );
     let b = wait_for("被拒了", &|h| {
@@ -4632,7 +4647,9 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         local_backend::CrashLimits::default(),
         Arc::new(|| 0),
         backend_supervise_events(),
-        Some(Arc::new(local_backend::local_stdio_consumer)),
+        Some(Arc::new(|i, o| {
+            local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+        })),
         crate::spawn_managed::local_backend_supervised(),
     );
     for _ in 0..200 {

@@ -119,12 +119,6 @@ class SettingsRepository(
     suspend fun setNewUiEnabled(enabled: Boolean) =
         dao.upsert(Settings(KEY_NEW_UI_ENABLED, if (enabled) FLAG_ON else FLAG_OFF))
 
-    /** 对话总览要问的那个远端程序的路径。null 表示没设过，由调用方回退到自己的默认值。 */
-    fun overviewSourcePath(): Flow<String?> = dao.observe(KEY_OVERVIEW_SOURCE_PATH)
-
-    suspend fun setOverviewSourcePath(value: String?) =
-        dao.upsert(Settings(KEY_OVERVIEW_SOURCE_PATH, value?.trim()?.ifEmpty { null }))
-
     /**
      * 新对话用哪个权限模式（`claude --permission-mode`）。null 表示用 Claude 自己的默认。
      *
@@ -183,9 +177,6 @@ class SettingsRepository(
 
         /** 开关的关值，只有它判成关。 */
         const val FLAG_OFF = "0"
-
-        /** 对话总览的数据来源路径。 */
-        const val KEY_OVERVIEW_SOURCE_PATH = "overview_source_path"
 
         /** 新对话的权限模式。 */
         const val KEY_PERMISSION_MODE = "permission_mode"

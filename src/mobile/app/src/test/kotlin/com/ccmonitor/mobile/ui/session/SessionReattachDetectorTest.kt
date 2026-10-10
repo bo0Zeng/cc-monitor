@@ -49,6 +49,8 @@ class SessionReattachDetectorTest {
 
         override suspend fun execCapture(command: String): ExecResult = error("unused")
 
+        override suspend fun execDuplex(command: String): com.ccmonitor.mobile.core.remote.RemoteDuplex = error("unused")
+
         override suspend fun sftpList(path: String): List<SftpEntry> = error("unused")
 
         override suspend fun sftpRealPath(path: String): String = error("unused")

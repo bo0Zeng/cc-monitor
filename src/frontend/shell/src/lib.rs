@@ -109,8 +109,19 @@ mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零�
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
+
+// 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/shots_feature_guard_tests.rs"]
+mod shots_feature_guard;
+// 截图台架的无头壳（壳的真代码不带窗口跑；`tests/shots/`）：只在特性 `shots` 下编，发版构建里没有它。
+#[cfg(feature = "shots")]
+pub mod shots_shell;
+
 mod launch;
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/local_origin_registry.rs"]
 mod local_origin_registry;
 mod logging;
 mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
@@ -125,6 +136,8 @@ mod profile_installer;
 // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
 // `mod remote_history;`〔散文墓碑〕删：最后一个函数（按名字核「这台配置过」）随子 agent 那条命令退役。
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
                            // `mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
                            // 会话起停的成品缓存（后端裁、monitor 只转交 ＋ F5 重放）。替掉 `session_map` 本机活会话表〔散文墓碑〕
@@ -180,24 +193,48 @@ mod frame_tally;
 /// 没有 `-D warnings` ⇒ **不会红**。是 Phase D 审计数出「dead_code 正好 +5」才发现的。
 #[cfg(test)]
 mod ccm_cli_contract;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/cross_half_edge_registry.rs"]
 mod cross_half_edge_registry; // F20：两半之间的编译期边（跨半边 include_str! 逐条登记 + ★ 一条都不许长在生产段）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/doc_claim_registry.rs"]
 mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与代码对拍（状态列逐格登记 + ★ 判据从文档里读那个数，代码里不留第二份）
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/frame_cadence_guard.rs"]
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后后端零定时器；被禁措辞见模块头注）
-mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（后端 `control/gate_rules.rs`）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/gate_singleton_guard.rs"]
+mod gate_singleton_guard;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/judges_live_in_tests.rs"]
+mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/） // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（后端 `control/gate_rules.rs`）
 
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/atomic_replace_registry.rs"]
 mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/bus_identity_registry.rs"]
 mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（整体 #[cfg(test)]）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/byte_cap_registry.rs"]
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/capability_registry.rs"]
 mod capability_registry;
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/comm_boundary_registry.rs"]
 mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C5 / X1–X6
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/dial_home_registry.rs"]
 mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]
 mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/exec_site_registry.rs"]
 mod exec_site_registry;
 // F10（出口④）：本机读面清账 + 递减棘轮。
 // ⚠ 注释写在上一行而不是行尾：行尾放不下，而 `rustfmt`
@@ -212,38 +249,63 @@ mod exec_site_registry;
 //  今天挡着正题的是后端侧一批有名有姓的缺口，逐条写在
 //  那张表**自己每一行**里 —— 这里刻意不抄第二份（定框 E12）。〕
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/command_home_registry.rs"]
 mod command_home_registry; // Tauri 命令两张封闭表：monitor 自己的事 / 待迁（整体 cfg(test)）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/local_read_surface_registry.rs"]
 mod local_read_surface_registry;
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/lockfile_conflict_guard.rs"]
 mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须为空（超集不算）
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/needle_anchor_registry.rs"]
 mod needle_anchor_registry; // audit-0805 F24：匹配单位不许比事实小（F23 的兄弟族）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/parity_ledger.rs"]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
                    // EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
                    // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
                    //   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/plugin_class_registry.rs"]
 mod plugin_class_registry;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/polling_registry.rs"]
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（backend 那条零定时器护栏点名要「单独论证」的那半）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/quote_singleton_guard.rs"]
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/rust_timer_registry.rs"]
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/scanning_guard_registry.rs"]
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/session_name_registry.rs"]
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
                            // `sftp_move_ledger`〔散文墓碑〕（K-R78：那 14 处 SFTP 拨号今天各自卡在哪 —— 乙为什么没搬 + 甲的四条挡路石）
                            //   **退役**：那 14 处全搬了（界面进程零 SFTP），底账要记的那件事做完了；它的挡路石各自怎么被拆的写在 SR1b 的记录里。
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/pub_reader_registry.rs"]
 mod pub_reader_registry; // 后端 · 壳 · 共享 crate 的 `pub` 项要有产品读者（只被测试读算零）
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/shared_crate_registry.rs"]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/shell_lint_registry.rs"]
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]
 mod structural_scan;
 // `mod subagent;`〔散文墓碑〕删：子 agent 那一份（列 ＋ 挑 ＋ 读 ＋ 解析）由那台后端按运行读（`history-run`）出成品，界面经通道直问。
 // 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/swallow_registry.rs"]
 mod swallow_registry;
 // TL3（审计 F 🔴-2）：同步 IPC 命令的调用闭包里零 `block_on` / 零同步连后端（`INVARIANTS §10`；整体 cfg(test)）。
 //   注释写在上一行：行尾注释会让 rustfmt 把下一行的注释块缩进对齐过去（同 `local_read_surface_registry` 那一段）。
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/sync_command_registry.rs"]
 mod sync_command_registry;
 // `mod session_skeleton;`〔散文墓碑〕删：按偏移 / 按行号取正文由那台后端出记录行（`history-page` · `history-lines`），界面经通道直问。
 // 大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
@@ -251,9 +313,13 @@ mod sync_command_registry;
 // 远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 // `tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `changed/tasks`。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/tmux_backend_gate_guard.rs"]
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
                              // `tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
 mod utils;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/write_site_registry.rs"]
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
 use crate::copy_table::copy_text;
@@ -684,37 +750,9 @@ pub fn run() {
             //   ↗ 点那一刻现读进程链（`bind.rs`），不缓存会话 ↔ 窗口。
             let bind_registry = bind::BindRegistry::spawn(monitor_data_dir.clone());
 
-            // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
-            //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
-            //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
-            let (book_tx, book_rx) = std::sync::mpsc::channel::<session_book::Out>();
-            session_book::install_sink(book_tx);
+            // 重放缓冲那几个出口（会话成品 · tap · 测试连接进度 · 终端画面）：与截图台架的无头壳（`shots_shell`）同一份接线。
+            wire_replay_outlets(&replay);
 
-            // 本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
-            // 经 `local_lines` → `stream_source::consume_local` → 与远端同一个 `LineIntake`。
-            // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
-            // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
-
-            // `session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
-            //   订了 `session-tap` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
-            {
-                let replay = replay.clone();
-                crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
-            }
-            {
-                let replay = replay.clone();
-                crate::probe_relay::install_sink(move |ticket, cell| {
-                    replay.on_probe(&ticket, cell)
-                });
-            }
-            {
-                // 画面流撤掉 ⇒ 替界面向那台退订（后端那张票的寿命跟着这条流走，重载时界面没人能发）。
-                replay.on_screen_dropped(crate::terminal_screen_relay::unfollow);
-                let replay = replay.clone();
-                crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
-                    replay.on_terminal_screen(origin, ticket, cell)
-                });
-            }
             // host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
             {
                 let handle = app.handle().clone();
@@ -741,26 +779,6 @@ pub fn run() {
                     }
                 });
             }
-            // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
-            //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
-            //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
-            {
-                let replay = replay.clone();
-                let spawned = std::thread::Builder::new()
-                    .name("session-book-emitter".into())
-                    .spawn(move || {
-                        while let Ok(out) = book_rx.recv() {
-                            replay.on_lifecycle(out.origin(), out.frames());
-                        }
-                    });
-                if let Err(e) = spawned {
-                    tracing::error!(
-                        "failed to spawn session-book-emitter thread: {e}; \
-                         会话起停事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
-                    );
-                }
-            }
-
             // 远端是在本机那条流之外**额外**的数据源（本地 + 远端会话同时显示）；机器表里每台要连的起一条。
             // 远端那几条流：启动时与之后每次改机器表（`remote_reconcile`）走同一条对齐路。
             if REMOTE_CTX
@@ -897,7 +915,7 @@ pub fn run() {
             get_log_file_info,
             open_log_file,
             open_log_dir,
-            // 历史清单与注解住本机常驻后端（`history-list` / `history-annotate` / `history-last-accounts`），
+            // 历史清单住本机常驻后端（`history-list`，远端那一支代问）；注解与上次的号跟着会话住在那台（`history-annotate` / `history-last-accounts` 问那台），
             //   界面经通道问（`history-list-reads.ts` · `history-reads.ts`）。
             // 会话正文四条（整份读 · 子 agent · 按偏移 · 按行号）退役：那台后端出记录行，
             //   界面经通道直问（`src/frontend/ui/record-reads.ts`：`history-page` · `history-subagent` · `history-lines`）。
@@ -1038,6 +1056,59 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
         app.emit(ui_contract::events::REMOTE_HEALTH, payload)
             .map_err(|e| e.to_string())
     })
+}
+
+/// 重放缓冲（[`event_replay::EventReplay`]）收东西的那几个口：会话成品（`session_book` 的出口线程 → `on_lifecycle`）·
+/// 中转抄出来的 tap · 测试连接进度 · 终端画面。产品在 setup 里调一次；截图台架的无头壳（`shots_shell`）也调这一份，不另接一遍。
+pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
+    // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
+    //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
+    //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
+    let (book_tx, book_rx) = std::sync::mpsc::channel::<session_book::Out>();
+    session_book::install_sink(book_tx);
+
+    // 本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
+    // 经 `local_lines` → `stream_source::consume_local` → 与远端同一个 `LineIntake`。
+    // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
+    // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
+
+    // `session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
+    //   订了 `session-tap` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
+    {
+        let replay = replay.clone();
+        crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
+    }
+    {
+        let replay = replay.clone();
+        crate::probe_relay::install_sink(move |ticket, cell| replay.on_probe(&ticket, cell));
+    }
+    {
+        // 画面流撤掉 ⇒ 替界面向那台退订（后端那张票的寿命跟着这条流走，重载时界面没人能发）。
+        replay.on_screen_dropped(crate::terminal_screen_relay::unfollow);
+        let replay = replay.clone();
+        crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
+            replay.on_terminal_screen(origin, ticket, cell)
+        });
+    }
+    // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
+    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+    //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
+    {
+        let replay = replay.clone();
+        let spawned = std::thread::Builder::new()
+            .name("session-book-emitter".into())
+            .spawn(move || {
+                while let Ok(out) = book_rx.recv() {
+                    replay.on_lifecycle(out.origin(), out.frames());
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::error!(
+                "failed to spawn session-book-emitter thread: {e}; \
+                 会话起停事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
+            );
+        }
+    }
 }
 
 /// 起远端流要的两样上下文（启动时放进来，热加载时取用）。

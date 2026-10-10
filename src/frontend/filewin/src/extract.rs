@@ -74,7 +74,7 @@ pub fn outcome_text(name: &str, o: &Outcome) -> String {
                 ("files", &e.files.to_string()),
                 ("dirs", &e.dirs.to_string()),
                 ("links", &e.links.to_string()),
-                ("human", &super::rows::human_size(e.bytes)),
+                ("human", &copy_core::size_text(e.bytes)),
             ],
         ),
         Outcome::Skipped(said) => copy_text(

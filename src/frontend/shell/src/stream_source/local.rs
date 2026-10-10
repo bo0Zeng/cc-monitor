@@ -98,10 +98,11 @@ fn local_hides(background: bool, show_bg: bool) -> bool {
 /// 同一个「藏不藏」口径（[`local_hides`]），但**先于**它跑（它会改 `hidden`）。流断 ⇒ 这台的成品作废（说不清）。
 pub(crate) fn local_product(
     item: &LocalItem,
+    label: &str,
     show_bg: bool,
     hidden: &std::collections::HashSet<String>,
 ) -> Option<BookIn> {
-    let origin = || crate::origin::LOCAL.to_string();
+    let origin = || label.to_string();
     match item {
         LocalItem::StreamEnded => Some(BookIn::LinkLost { origin: origin() }),
         LocalItem::LineLost => None,
@@ -170,7 +171,7 @@ pub(crate) fn local_product(
             }),
         LocalItem::Frame(InboundFrame::SessionBranch { sid, off, .. }) => (!hidden.contains(sid))
             .then(|| BookIn::Branch {
-                origin: crate::origin::Origin::local(),
+                origin: crate::origin::Origin(label.to_string()),
                 sid: sid.clone(),
                 off: off.clone(),
             }),
@@ -268,6 +269,7 @@ pub(crate) fn local_step(
 pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
 
 /// **本机会话内容的消费者**：吃 `local_lines` 通道，交给与远端同一个 [`LineIntake`]。
+/// `label` 是这条流说的那台：产品恒是 `<local>`（`local_lines::install`）；截图台架的无头壳每台机器起一个（`shots_shell`）。
 ///
 /// 每条流一个 `LineIntake`：收到 [`LocalItem::StreamEnded`] ⇒ 冲掉残批、丢掉它（快照队列随之关）、
 /// 下一条流换新的 —— 与远端「每条连接一套」同形。本机后端重连之后会重新宣告每个活会话，
@@ -278,12 +280,12 @@ pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
 /// ⚠ 本任务**绝不**等一个经本机通道的应答（快照那几问在分发器的任务里）：读循环可能正停在往本通道送东西上，
 ///   这里要是也等它 ⇒ 互等。
 pub(crate) async fn consume_local(
+    label: String,
     mut rx: tokio::sync::mpsc::Receiver<LocalItem>,
     replay: Arc<EventReplay>,
     health: HealthOut,
 ) {
     let show_bg = crate::load_show_bg_sessions();
-    let label = crate::origin::LOCAL.to_string();
     let mut hidden: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
         let mut intake = LineIntake::open(label.clone(), LOCAL_STREAM_TAIL_ONLY, &replay, &health);
@@ -307,7 +309,7 @@ pub(crate) async fn consume_local(
             ) {
                 intake.flush().await;
             }
-            if let Some(ev) = local_product(&item, show_bg, &hidden) {
+            if let Some(ev) = local_product(&item, &label, show_bg, &hidden) {
                 crate::session_book::feed(ev);
             }
             match local_step(item, show_bg, &mut hidden) {

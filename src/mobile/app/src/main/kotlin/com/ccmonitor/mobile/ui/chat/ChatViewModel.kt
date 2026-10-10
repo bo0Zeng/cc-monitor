@@ -28,9 +28,6 @@ class ChatViewModel(
 
     fun send(text: String) = session.send(text)
 
-    /** 等待态下的逃生动作，见 [ChatSession.sendAnyway]。 */
-    fun sendAnyway(text: String) = session.sendAnyway(text)
-
     fun retry(localId: String) = session.retry(localId)
 
     fun stop() = session.stop()

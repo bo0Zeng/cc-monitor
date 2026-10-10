@@ -4,276 +4,337 @@
     {
       "cells": [
         {
+          "frozen": true,
           "kind": "value",
           "path": "agent",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "at",
           "type": "string"
         },
         {
+          "frozen": true,
+          "kind": "value",
+          "path": "atMs",
+          "type": "number"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "id",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "t",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "text",
           "path": "timeText",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.pasted[].bodyEnd",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.pasted[].bodyStart",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.pasted[].end",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.pasted[].id",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.pasted[].lines",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.pasted[].start",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.speaker.kind",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=queued}.who.text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.autoReply",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.blocks[].type",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.blocks[type=text].text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.blocks[type=thinking].text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.blocks[type=tool_use].id",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.blocks[type=tool_use].input",
           "type": "object"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.blocks[type=tool_use].name",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.cards.*",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.endsTurn",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.error.reason",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.error.status",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.model",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.runs.*.kind",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.runs.*.label",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.arg",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.kind",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.questions[].header",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.questions[].multi",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.questions[].options[].description",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.questions[].options[].label",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.questions[].question",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.ask.text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.known",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.note",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.path",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.tool",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=retry}.attempt",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=retry}.max",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=retry}.reason",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[].type",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=image].source",
           "type": "object"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=text].text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].content[].type",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].content[type=image].source",
           "type": "object"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].content[type=text].text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].for",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].isError",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.cwd",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.added",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.answer.kind",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.answer{kind=picked}.options[]",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.chars",
           "type": "number"
@@ -284,921 +345,1131 @@
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.file",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.files",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.lines",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.ok",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patchTruncated",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch[].lines[]",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch[].newLines",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch[].newStart",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch[].oldLines",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch[].oldStart",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.preview",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.rejected",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.removed",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].bodyEnd",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].bodyStart",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].end",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].id",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].lines",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].start",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker.kind",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=agentMessage}.body",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=agentMessage}.from",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=agentMessage}.handback",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=agentMessage}.name",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=bashInput}.command",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=bashOutput}.stderr",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=bashOutput}.stdout",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=coordinator}.body",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=peerSession}.body",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=peerSession}.from",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=slashCommand}.args",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=slashCommand}.name",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=system}.body",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=taskNotification}.status",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=taskNotification}.summary",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=taskNotification}.taskId",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=taskNotification}.toolUseId",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=title}.by",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "{t=title}.text",
           "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=unread}.count",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=unread}.excerpt",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=unread}.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "{t=unread}.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=unread}.type",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=unread}.why",
+          "type": "enum"
         }
       ],
-      "frozen": true,
       "name": "record"
     },
     {
       "cells": [
         {
+          "frozen": false,
           "kind": "value",
           "path": "agent",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "background.clock.from",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "background.clock.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "background.count",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "background.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "tone",
           "path": "background.tone",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "background.what",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "bgTasks[].at",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "bgTasks[].call",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "bgTasks[].cmd",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "bgTasks[].task",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "cost.micros",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "cost.partial",
           "type": "bool"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "cost.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "end",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "forkedFrom",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "handedBack[]",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "lastSay.at",
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "lastSay.atMs",
+          "type": "number"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "lastSay.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "mcp[].at",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "mcp[].detail",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "mcp[].name",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "mcp[].status",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.call",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.rank",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.sinceMs",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "needs.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "tone",
           "path": "needs.tone",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.tool",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.waitedMs",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "needs.waitedText",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.what",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].at",
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "pending[].atMs",
+          "type": "number"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].id",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].name",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].state",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].what",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].why",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "permissionMode",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "projectDir",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "retries[].id",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "retries[].outcome",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.cacheRead",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.cacheWrite1h",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.cacheWrite5m",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.input",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.last.id",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.last.tokens[]",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.output",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "tokens.requests",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "tokens.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "touchedFiles[]",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "usage.contextText",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "tone",
           "path": "usage.contextTone",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "usage.limit",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "usage.limitFrom",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "usage.limitFromText",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "usage.limitText",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "usage.model",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "usage.peakPromptTokens",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "usage.percent",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "usage.promptTokens",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "usage.promptTokensText",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "writers[]",
           "type": "number"
         }
       ],
-      "frozen": false,
       "name": "facts"
     },
     {
       "cells": [
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.call",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.rank",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.sinceMs",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "needs.text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "tone",
           "path": "needs.tone",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.tool",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.waitedMs",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "needs.waitedText",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "needs.what",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "sid",
           "type": "string"
         }
       ],
-      "frozen": false,
       "name": "needs_row"
     },
     {
       "cells": [
         {
+          "frozen": false,
           "kind": "value",
           "path": "cb",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "ch",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "cj",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "cl",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "fd",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "n",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "o",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pl",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "sc",
           "type": "bool"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "sp",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "t",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "ts",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "u",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "x",
           "type": "string"
         }
       ],
-      "frozen": false,
       "name": "index_row"
     },
     {
       "cells": [
         {
+          "frozen": true,
           "kind": "value",
           "path": "cwd",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "end",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "hash",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "record",
           "type": "object"
         }
       ],
-      "frozen": true,
       "name": "read_row"
     },
     {
       "cells": [
         {
+          "frozen": true,
           "kind": "value",
           "path": "activity",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "text",
           "path": "activity_text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "tone",
           "path": "activity_tone",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "agent_kind",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "attachable",
           "type": "bool"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "background",
           "type": "bool"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "container.host",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "container.terminal",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "cwd",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "kind",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "lines",
           "type": "number"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "liveness_confidence",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "name",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "path",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "pid",
           "type": "number"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "project_dir",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "sid",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "waiting_for",
           "type": "string"
         }
       ],
-      "frozen": false,
       "name": "session_added"
     },
     {
       "cells": [
         {
+          "frozen": true,
           "kind": "value",
           "path": "activity",
           "type": "enum"
         },
         {
+          "frozen": true,
           "kind": "text",
           "path": "activity_text",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "tone",
           "path": "activity_tone",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "kind",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "liveness_confidence",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "sid",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "waiting_for",
           "type": "string"
         }
       ],
-      "frozen": false,
       "name": "session_status"
     },
     {
       "cells": [
         {
+          "frozen": false,
           "kind": "value",
           "path": "kind",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "sid",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "state",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "state_hint",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "state_text",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "tone",
           "path": "state_tone",
           "type": "enum"
         }
       ],
-      "frozen": false,
       "name": "session_state"
     },
     {
       "cells": [
         {
+          "frozen": true,
           "kind": "value",
           "path": "cause",
           "type": "enum"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "kind",
           "type": "string"
         },
         {
+          "frozen": true,
           "kind": "value",
           "path": "sid",
           "type": "string"
         }
       ],
-      "frozen": false,
       "name": "session_removed"
     },
     {
       "cells": [
         {
+          "frozen": false,
           "kind": "value",
           "path": "cell",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "code",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "text",
           "path": "said",
           "type": "string"
         },
         {
+          "frozen": false,
           "kind": "value",
           "path": "with",
           "type": "number"
         }
       ],
-      "frozen": false,
       "name": "cell_error"
     }
   ]

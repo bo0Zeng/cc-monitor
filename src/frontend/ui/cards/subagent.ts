@@ -11,7 +11,7 @@ import type { RunInfo } from "../generated/RunInfo";
 import type { RunState } from "../generated/RunState";
 import { runLastText, runStateMark, runStateText } from "../runs";
 import { copyText } from "../copy-table";
-import { fmtDur } from "../duration-format";
+import { spanNow } from "../duration-format";
 import { icon } from "../kit/icon";
 import { tag } from "../kit/badge";
 import { REVEAL_RUN_EVENT } from "./speaker-bar";
@@ -90,7 +90,7 @@ export function markRunCard(card: HTMLElement, run: string, state: RunState, inf
   st.icon.replaceChildren(runStateMark(state));
   const took =
     info && state !== "running" && state !== "unknown" && info.started_ms !== undefined && info.ended_ms !== undefined
-      ? copyText("agentWindow.facts.took", { dur: fmtDur((info.ended_ms - info.started_ms) / 1000) })
+      ? copyText("agentWindow.facts.took", { dur: spanNow(info.started_ms, info.ended_ms) })
       : null;
   st.state.textContent = took ? [runStateText(state), took].join(copyText("kit.text.sep")) : runStateText(state);
   const last = info && state === "running" ? runLastText(info, null) : null;
