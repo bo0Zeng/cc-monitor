@@ -185,7 +185,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await waitFor(".settings-nav");
     await sleep(1500);
   }),
-  page("settings-general", "设置 · 通用", "通用：行为 · 恢复命令 · 高级", "general"),
+  page("settings-general", "设置 · 通用", "通用：行为 · 恢复会话 · 启动程序 · 高级", "general"),
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
   page("settings-data", "设置 · 文件与数据 · 待办", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 连不上的那台离线未检查", "data"),
@@ -257,7 +257,7 @@ export const SETTINGS_SCENES: Scene[] = [
     document.querySelector<HTMLElement>('.settings-page:not([hidden]) .ext-row[data-key="mcp/github"]')?.click();
     await sleep(500);
   }, troubleWorld),
-  settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
+  settings("settings-general-resume-open", "设置 · 通用 · 恢复会话的启动程序下拉", "启动程序点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
     await go("general");
     await sleep(500);
     document.querySelector<HTMLButtonElement>('.settings-page:not([hidden]) [data-role="resume-select"]')?.click();
@@ -296,7 +296,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
   }),
-  settings("settings-machine-local-cc", "设置 · 本机 · 这台上的 cc-monitor", "本机卡头里展开「这台上的 cc-monitor」：状态 · 随退出停止 · 恢复命令（仅本机 · 留空 = 通用设置）", async () => {
+  settings("settings-machine-local-cc", "设置 · 本机 · 这台上的 cc-monitor", "本机卡头里展开「这台上的 cc-monitor」：状态 · 随退出停止 · 恢复会话的启动程序（仅本机 · 留空 = 通用设置）", async () => {
     await go("machine:（本机）");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);

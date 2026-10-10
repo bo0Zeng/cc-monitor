@@ -4030,7 +4030,7 @@
     "remoteLaunchRun.resume.buildFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "生成恢复命令失败",
+      "zh": "生成恢复会话的启动命令失败",
       "args": []
     },
     "remoteLaunchRun.copyFallback.runRemote": {
@@ -7418,7 +7418,7 @@
     "machineCard.field.resumeCmd": {
       "kind": "control",
       "role": "标签",
-      "zh": "恢复命令",
+      "zh": "恢复会话的启动程序",
       "args": []
     },
     "machineCard.build.filesNeedHost": {
@@ -7703,7 +7703,7 @@
     "settingsPanel.behavior.resume": {
       "kind": "control",
       "role": "标签",
-      "zh": "恢复命令",
+      "zh": "启动程序",
       "args": []
     },
     "settingsPanel.behavior.resumeHelp": {
@@ -7928,7 +7928,7 @@
     "settingsPanel.group.resume": {
       "kind": "title",
       "role": "标题",
-      "zh": "恢复",
+      "zh": "恢复会话",
       "args": []
     },
     "settingsPanel.claudeDir.pickTitle": {
