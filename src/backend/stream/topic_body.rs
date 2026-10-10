@@ -25,6 +25,8 @@ pub fn body_now(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
         cmd: s.reask.to_string(),
         args,
         within_ms: None,
+        // 不带声明 ＝ 全量：帧里的小成品与客户端不带 view 重问拿到的是同一份
+        view: serde_json::Value::Null,
         until: None,
     };
     match spec.run {
