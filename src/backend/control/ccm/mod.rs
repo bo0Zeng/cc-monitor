@@ -235,8 +235,8 @@ pub(crate) fn is_backend_word(w: &str) -> bool {
 ///   第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）；
 /// - 其余一律当 ccm（`argv::parse` 切两半，没有 `--` 整行交 claude）。零参数是「起一个 claude」。
 ///
-/// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
-/// 从 argv 里**任意位置**剥掉，而 `ccm --tail-only` 里那个是要原样交给 agent 的。
+/// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--stream` / `--tz` 从 argv 里**任意位置**剥掉，
+/// 而 `ccm --tz x` 里那个是要原样交给 agent 的。
 pub fn route(argv0: &str, args: &[String]) -> Entry {
     if let Some(name) = profile_called(argv0) {
         let mut v = vec![format!("{PROFILE_SIGIL}{name}")];

@@ -270,7 +270,7 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,
         /// F66（#58③，additive）：本后端声明支持的**能力 token 集**（开放字符串，
-        /// 加法式）。monitor 按此声明决定发哪些流模式 flag（`--with-bg`/`--tail-only`），
+        /// 加法式）。今天恒是空表（流要什么由声明说，没有可协商的旗标），
         /// **不再靠 build_id 精确匹配**——闭合 2026-07-09 那类「身份确认不了就全降级」事故。
         /// 旧 monitor 忽略此字段（additive）；空/缺 = 按最小能力集待它。
         /// **§26 死循环护栏**：只声明本 backend **会先剥离对应 flag** 的能力（老到不剥离
@@ -363,12 +363,10 @@ pub enum Frame {
     },
     /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
     /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
-    /// 原文 `raw` 是过渡格，只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）；
-    /// 两个前端读的是 `record`，手机那一侧的缺格补齐之后 `raw` 删。
+    /// 不带原文：两个前端都读成品。
     ///
-    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
-    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。`raw` 逐字节等于那一行
-    /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` 四格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
+    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。
     Line {
         /// 会话 id。
         session_id: String,
@@ -394,11 +392,6 @@ pub enum Frame {
         /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
-        /// 〔additive〕这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。只在客户端发了 `--with-raw` 时才带
-        /// （`ReaderState::with_raw`）。**过渡格**：两个前端都读核心的成品（`record`）；手机那一侧还缺的几格补齐之前它点着这一格，
-        /// 补齐（缺格清单清零）之后从它的声明里摘掉、这一格随之删。没索要的客户端收到的字节与本字段加进来之前一字不差。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        raw: Option<String>,
     },
     /// A new session file appeared.
     ///
@@ -448,7 +441,7 @@ pub enum Frame {
         /// 天然从 tail 的 seq 0 起全量到达，无需快照。
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
-        /// Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L
+        /// Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L
         /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend
         /// 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强）。
         /// 全量模式 None。
@@ -470,15 +463,12 @@ pub enum Frame {
         /// 与本字段加进来之前一字不差。缺席的意思是「不知道」，**不是** `none`。
         #[serde(skip_serializing_if = "Option::is_none")]
         container: Option<SessionContainer>,
-        /// 〔additive〕那个 claude 进程的 **pid**。
+        /// 那个 claude 进程的 **pid**（恒在）。
         ///
         /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
         /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
-        ///
-        /// 只在客户端发了 `--with-pid` 时才带（`ReaderState::with_pid`；只有本机那条流发）—— 没索要的客户端
-        /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pid: Option<u32>,
+        /// 不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
+        pid: u32,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
@@ -1394,6 +1384,21 @@ pub(crate) fn within_ms_of(v: &serde_json::Value) -> Option<u64> {
 /// any newline inside string fields is escaped by `serde_json` as `\n`.
 pub fn to_line(frame: &Frame) -> serde_json::Result<String> {
     let mut s = serde_json::to_string(frame)?;
+    s.push('\n');
+    Ok(s)
+}
+
+/// [`to_line`] 照这条流的出口声明裁过（`crate::StreamView`；`None` ＝ 全量，字节与 [`to_line`] 同）。流的写者对每一帧调它。
+pub fn to_line_viewed(
+    frame: &Frame,
+    view: Option<&crate::StreamView>,
+) -> serde_json::Result<String> {
+    let Some(view) = view else {
+        return to_line(frame);
+    };
+    let mut v = serde_json::to_value(frame)?;
+    view.apply(&mut v);
+    let mut s = serde_json::to_string(&v)?;
     s.push('\n');
     Ok(s)
 }

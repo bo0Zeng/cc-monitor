@@ -6,7 +6,7 @@
 //! `unread`（这一家的这一行适配层认不出：写好的一句 ＋ 原文摘录）。
 //! 内容块 [`Block`] 是两家共有的词：正文 · 推理 · 工具调用 · 工具结果 · 图片。
 //!
-//! 不在这一形里的：链（上一条是谁 —— 主线外清单另给，`mainline`）· 会话事实（分叉血缘、用量、花费 —— `history-facts`）· 原文（`--with-raw` 的 `raw`）。
+//! 不在这一形里的：链（上一条是谁 —— 主线外清单另给，`mainline`）· 会话事实（分叉血缘、用量、花费 —— `history-facts`）· 原文（线上不带）。
 
 use crate::agents::{ApiReason, ChildRunTag, StepResult, ToolCard, ToolStep, UserText};
 use serde::Serialize;

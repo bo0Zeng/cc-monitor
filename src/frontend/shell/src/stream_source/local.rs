@@ -181,9 +181,7 @@ pub(crate) fn local_product(
 
 /// 本机消费者的**纯分派核**：一件东西 × 「显示 bg 吗」× 「藏起来的 sid」⇒ 怎么处置。
 ///
-/// 为什么 bg 在这里藏而不在后端那边按旗标分：本机常驻后端**跨 monitor 存活**，`adopt` 只比
-/// `build_id` 与家目录、不比起参 ⇒ 起参里的 `--with-bg` 挡不住「用户关了 bg 显示、却接上了一个按开着起的后端」。
-/// 于是两条载体一律带 `--with-bg`，显示与否在这一侧按 `session_added.background` 定（协议序保证宣告先于行）。
+/// bg 会话后端照宣告（帧带 `background`），显示与否在这一侧定（协议序保证宣告先于行；远端那条流同一个口径，[`BgHide`]）。
 pub(crate) fn local_step(
     item: LocalItem,
     show_bg: bool,
@@ -264,9 +262,48 @@ pub(crate) fn local_step(
     }
 }
 
-/// 本机常驻后端两种载体的起参里**恒有** `--tail-only` ⇒ 本机那条流的历史一律走旁路快照。
-/// 两份起参与本常量的一致性由判据对拍（`local_lines_tests`），不靠这句注释。
-pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
+/// 远端那条流的「bg 会话藏不藏」（与 [`local_step`] 同一个口径 [`local_hides`]）：没开「显示后台会话」⇒ 宣告时记下它，
+/// 它的行 · 状态 · 运行表 · 主线外 · 文件提示 · 一轮结束 · 去向一律不进；去向那一帧之后摘掉。
+pub(crate) struct BgHide {
+    show_bg: bool,
+    hidden: std::collections::HashSet<String>,
+}
+
+impl BgHide {
+    pub(crate) fn new(show_bg: bool) -> Self {
+        BgHide {
+            show_bg,
+            hidden: Default::default(),
+        }
+    }
+
+    /// 这一帧藏不藏（宣告那一帧顺手记账）。
+    pub(crate) fn hides(&mut self, f: &InboundFrame) -> bool {
+        match f {
+            InboundFrame::SessionAdded {
+                sid, background, ..
+            } => {
+                if local_hides(*background, self.show_bg) {
+                    self.hidden.insert(sid.clone());
+                    true
+                } else {
+                    self.hidden.remove(sid);
+                    false
+                }
+            }
+            InboundFrame::SessionState { sid, .. } => self.hidden.remove(sid),
+            InboundFrame::Line {
+                session_id: sid, ..
+            }
+            | InboundFrame::SessionStatus { sid, .. }
+            | InboundFrame::SessionRuns { sid, .. }
+            | InboundFrame::SessionBranch { sid, .. }
+            | InboundFrame::SessionFileNotice { sid, .. }
+            | InboundFrame::TurnEnd { sid } => self.hidden.contains(sid),
+            _ => false,
+        }
+    }
+}
 
 /// **本机会话内容的消费者**：吃 `local_lines` 通道，交给与远端同一个 [`LineIntake`]。
 /// `label` 是这条流说的那台：产品恒是 `<local>`（`local_lines::install`）；截图台架的无头壳每台机器起一个（`shots_shell`）。
@@ -288,7 +325,7 @@ pub(crate) async fn consume_local(
     let show_bg = crate::load_show_bg_sessions();
     let mut hidden: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
-        let mut intake = LineIntake::open(label.clone(), LOCAL_STREAM_TAIL_ONLY, &replay, &health);
+        let mut intake = LineIntake::open(label.clone(), &replay, &health);
         // 这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）；流结束 ⇒ `Unseen`。
         let mut seen = false;
         loop {

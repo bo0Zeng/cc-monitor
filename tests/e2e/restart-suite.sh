@@ -75,7 +75,7 @@ trap 'cleanup; tmux_shim_cleanup; ccm_shim_cleanup' EXIT
 command -v tmux >/dev/null || { echo "无 tmux"; exit 1; }
 
 mkfifo "$IN"
-"$CCM_E2E_BIN" -- --tail-only <"$IN" >"$OUT" 2>"$ERR" &
+"$CCM_E2E_BIN" -- --stream <"$IN" >"$OUT" 2>"$ERR" &
 BACKEND_PID=$!
 exec 3>"$IN"
 send() { printf '%s\n' "$1" >&3; }

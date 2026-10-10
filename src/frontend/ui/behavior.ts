@@ -74,7 +74,7 @@ export interface BehaviorConfig {
   bringMonitorToFrontOnUserActive: boolean;
   /**
    * 显示 bg 后台任务会话（⚙ 标识；平铺为普通 tab）。默认 true。
-   * **重启生效**（后端启动时读一次：本地扫描过滤 + 远端 backend --with-bg）。
+   * **重启生效**（壳起流时读一次：本机远端两条流都按它藏 bg 会话）。
    */
   showBgSessions: boolean;
   /**

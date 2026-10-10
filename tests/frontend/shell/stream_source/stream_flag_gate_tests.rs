@@ -1,224 +1,16 @@
-use super::decide_stream_flags;
+//! 流旗标收进声明之后，monitor 这一侧剩下的那几件：起参只剩 `--stream`（本机两条载体一份常量）· hello 里认不得的能力 token 记账 ·
+//! 远端那条流按「显示后台会话」藏 bg 会话（与本机同一个口径）。
 
 fn caps(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-/// F66 DoD：能力门控矩阵——空集（旧 backend/未确认）恒全 false；
-/// 声明 bg+tail-only 后 tail_only 恒开、with_bg 随 showBgSessions；
-/// 部分声明只开对应位；未知 token 忽略。
-/// ★ U-CC1：`KNOWN_CAPABILITY_TOKENS` 与 `decide_stream_flags` 必须是同一份事实。
-///
-/// 漂开的后果是**漂移记账说谎**：backend 声明了一个我们其实认识的 token，诊断面却把它
-/// 报成「不认识」；或者反过来，真的新 token 被当成已知、一声不吭。
+/// 契约里的流能力 token 是空表：monitor 不按能力协商旗标（起流只剩 `--stream`）。
 #[test]
-fn known_capability_tokens_match_decide_stream_flags() {
-    for t in super::KNOWN_CAPABILITY_TOKENS {
-        let one = vec![t.to_string()];
-        assert_ne!(
-            super::decide_stream_flags(&one, true),
-            (false, false),
-            "`{t}` 在名单里，但 decide_stream_flags 根本不看它 —— 两份事实漂了"
-        );
-    }
-    for junk in ["nope", "future-thing", ""] {
-        assert_eq!(
-            super::decide_stream_flags(&[junk.to_string()], true),
-            (false, false),
-            "`{junk}` 不在名单里却影响了 flag —— 名单漏登记了一个真能力"
-        );
-    }
-    // 名单与门控两向都对上：名单恰好是这两个（分母变小的方向也看得见）。
-    assert_eq!(super::KNOWN_CAPABILITY_TOKENS, ["bg", "tail-only"]);
-}
-
-/// 🔴 ★ **跨进程双写点：monitor 发的每一条流模式 flag，
-/// 后端都必须认得并剥离。**
-///
-/// 失效方向是本仓栽过的那一条（§26）：老后端把**不认识**的 `--flag` 当成一次性查询
-/// ⇒ 处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。
-/// 而「声明了那条能力 ⟹ 会剥离对应 flag」是后端那侧的自证纪律 ——
-/// 本条钉的是另一半：**monitor 真正拼进命令行的那几个字面量，一个不落地在
-/// 后端的 `STREAM_FLAGS` 里**。
-///
-/// ⚠ 抠的是**后端源文件**（`include_str!`），不是本仓某个常量的副本 ——
-/// 两侧同源的判据会恒真。
-#[test]
-fn the_stream_flags_monitor_sends_are_all_strippable() {
-    let backend_lib = include_str!("../../../../src/backend/lib.rs");
+fn hello_tokens_monitor_knows_are_the_contract_ones() {
     assert!(
-        backend_lib.contains("pub const STREAM_FLAGS: &[&str]"),
-        "后端侧 STREAM_FLAGS 不在预期文件里，双写点锚点已失效"
-    );
-    // 那张表 fmt 之后折成多行、第一项是引用 `STREAM_FLAG_EXPLICIT` ⇒ 取到 `];` 为止，再把那个常量的字面量补进来。
-    let at = backend_lib
-        .find("pub const STREAM_FLAGS: &[&str]")
-        .expect("抠不到 STREAM_FLAGS");
-    let table = &backend_lib[at..at + backend_lib[at..].find("];").expect("STREAM_FLAGS 没收尾")];
-    let explicit = backend_lib
-        .lines()
-        .find(|l| l.contains("pub const STREAM_FLAG_EXPLICIT: &str"))
-        .expect("抠不到 STREAM_FLAG_EXPLICIT");
-    let line = format!("{table} {explicit}");
-
-    // monitor 侧：从**生产函数体**里抠它真的 `push` 了哪几个串，不手抄一份清单 —— 手抄的那种漏一条不会红。
-    // 远端只剩常驻一形 ⇒ 旗标只经 attach 行（`remote_resident::attach_line`）交给那台，
-    //   远端 `listen::attach_flags` 遇到不在 STREAM_FLAGS 里的词整条拒（不是静默忽略）。
-    let rr = guard_core::production_code(include_str!(
-        "../../../../src/frontend/shell/src/remote_resident.rs"
-    ));
-    let at = rr
-        .find("pub(crate) fn attach_line(")
-        .expect("生产段里没有 `attach_line` —— 抽取器坏了，本条此刻无效");
-    let body = &rr[at..at + rr[at..].find("\n}\n").expect("attach_line 没收尾")];
-    let mut sent: Vec<&str> = Vec::new();
-    for seg in body.split(r#"f.push(""#).skip(1) {
-        if let Some(end) = seg.find('"') {
-            sent.push(&seg[..end]);
-        }
-    }
-    for f in &sent {
-        assert!(
-            line.contains(&format!("\"{f}\"")),
-            "monitor 会发 `{f}`，而后端的 STREAM_FLAGS 里没有它 ⇒ \
-             远端 `attach_flags` 整条拒 ⇒ 接不上那台的常驻后端。\n\
-             后端那一行现打：{line}"
-        );
-    }
-    // 流模式显式词：后端表里有它（名字是 `ccm` 时零参数是起会话）。
-    // 「测试连接探针那一发带它」那一格随探针搬进本机后端：那一发今天住后端 `dial/probe.rs`，
-    //   由它自己拼（`crate::STREAM_FLAG_EXPLICIT`，与本表同一个常量），不再经 monitor。
-    let word = crate::local_backend::STREAM_WORD;
-    assert!(
-        line.contains(&format!("\"{word}\"")),
-        "后端 STREAM_FLAGS 不认 `{word}`：{line}"
-    );
-    // 反向自检：抠出来的就是那两条（相等；防「抠出来是空的也全绿」）。
-    assert_eq!(
-        sent,
-        ["--with-bg", "--tail-only"],
-        "`attach_line` 发的旗标抠出来不是那两条 —— 抽取坏了"
-    );
-}
-
-#[test]
-fn capability_gate_matrix() {
-    // 空集 = 旧 backend / 尚未收到 hello → 全降级
-    assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false));
-    assert_eq!(decide_stream_flags(&caps(&[]), false), (false, false));
-    // 全能力声明
-    assert_eq!(
-        decide_stream_flags(&caps(&["bg", "tail-only"]), true),
-        (true, true)
-    );
-    assert_eq!(
-        decide_stream_flags(&caps(&["bg", "tail-only"]), false),
-        (false, true),
-        "关 showBgSessions 只关 with_bg，tail-only 照开"
-    );
-    // 部分声明：只有 tail-only → with_bg 恒 false（即便 show_bg）
-    assert_eq!(
-        decide_stream_flags(&caps(&["tail-only"]), true),
-        (false, true),
-        "backend 没声明 bg → 即便用户想看也不发 --with-bg"
-    );
-    // 部分声明：只有 bg
-    assert_eq!(
-        decide_stream_flags(&caps(&["bg"]), true),
-        (true, false),
-        "backend 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
-    );
-    // 未知 token 忽略（加法式向前兼容：未来后端声明我们还不认识的能力）
-    assert_eq!(
-        decide_stream_flags(&caps(&["bg", "tail-only", "future-x"]), true),
-        (true, true),
-        "未知能力 token 不影响已知门控"
-    );
-}
-
-use super::should_upgrade_reconnect as up;
-
-/// F66 ★ 防无限重连：`should_upgrade_reconnect` 只在「下一轮严格增开一个本轮关着的
-/// flag」时才 true——保证收敛。真穷举（2² × 2² = 16 格）。
-#[test]
-fn upgrade_reconnect_converges() {
-    let all: Vec<(bool, bool)> = (0..4).map(|m| (m & 1 != 0, m & 2 != 0)).collect();
-    // ① 定义：恰好在「某一位 next 开着而 cur 关着」时为真。
-    for &cur in &all {
-        for &next in &all {
-            let strictly_more = (next.0 && !cur.0) || (next.1 && !cur.1);
-            assert_eq!(
-                up(cur, next),
-                strictly_more,
-                "cur={cur:?} next={next:?}：升级判定与「严格增开某一位」不等价"
-            );
-        }
-    }
-    // ② ★ 关键收敛点（记账之后 `caps` 就是声明集 ⇒ `next == cur`）：**恒不再重连**。
-    for &cur in &all {
-        assert!(!up(cur, cur), "next==cur 时还要重连 ⇒ 无限重连：{cur:?}");
-    }
-    // ③ 下一轮更弱（不该发生，但函数必须安全）→ 不重连。
-    assert!(!up((true, true), (false, false)));
-}
-
-/// F66：乐观路径那份能力集就是契约 crate 那一份（后端 hello 交的同一份），不是手抄。
-/// 用 `contains` 而非精确相等：backend 将来加 token 时本测试仍过，不误红。
-#[test]
-fn embedded_capabilities_single_source_wired() {
-    let caps = super::embedded_backend_capabilities();
-    assert!(caps.contains(&"bg".to_string()), "单源应含 bg：{caps:?}");
-    assert!(
-        caps.contains(&"tail-only".to_string()),
-        "单源应含 tail-only：{caps:?}"
-    );
-    let contract: Vec<String> = deploy_contract::STREAM_CAPABILITIES
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(caps, contract, "乐观能力集与契约那一份漂开了");
-}
-
-/// 🔴 ★ **升级判定不许被 `if !tail_only` 包住**：`tail_only` 已开、`bg` 没开（用户后来打开了 showBgSessions）
-/// 是真实可达的状态 —— guard 会把升级整个跳过 ⇒ `--with-bg` 永远发不出去。
-///
-/// 纯函数那两条（`upgrade_reconnect_converges` / `capability_gate_matrix`）**结构上看不见
-/// 调用点**，这一条按源文本钉：`if should_upgrade_reconnect(` 那一行的缩进，必须与同一个
-/// hello 分支里 `if mine == Some(build_id.as_str()) {` 那一行**相同**
-/// （被任何一层 `if` 包住，缩进就会深一格）。
-/// ⚠ 买不到：「没包住但改成了别的等价短路」（例：`!tail_only && should_upgrade…`）——
-///   下面第二条断言只挡了最直白的那一形。
-#[test]
-fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
-    let prod = crate::guard_support::stream_source_production();
-    let indent = |needle: &str| -> usize {
-        let hits: Vec<&str> = prod.lines().filter(|l| l.contains(needle)).collect();
-        assert_eq!(
-            hits.len(),
-            1,
-            "`{needle}` 在生产段里不是恰好 1 处：{hits:#?}"
-        );
-        hits[0].len() - hits[0].trim_start().len()
-    };
-    let call = indent("if should_upgrade_reconnect(");
-    let anchor = indent("if mine == Some(build_id.as_str()) {");
-    // hello 那一臂抽成了顶层函数 `on_hello`，锚点在函数体第一层（缩进 4）；更浅就是抽错了行。
-    assert!(
-        anchor >= 4,
-        "锚点缩进只有 {anchor} —— 抽错了行，本条此刻无效"
-    );
-    assert_eq!(
-        call, anchor,
-        "升级判定被包进了某个 `if` 里（缩进 {call} ≠ 锚点 {anchor}）—— \
-         若那是 `if !tail_only`，`--with-bg` 在 tail_only 已开的连接上永远发不出去"
-    );
-    let line = prod
-        .lines()
-        .find(|l| l.contains("if should_upgrade_reconnect("))
-        .unwrap();
-    assert!(
-        !line.contains("tail_only &&"),
-        "升级判定前面被短路了：{line}"
+        deploy_contract::STREAM_CAPABILITIES.is_empty(),
+        "契约里又有了流能力 token —— 流要什么由声明说，monitor 不按能力协商旗标"
     );
 }
 
@@ -226,7 +18,7 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
 #[test]
 fn unknown_capabilities_are_booked_under_that_remote() {
     let devbox = crate::origin::Origin("st3-hello-probe".into());
-    super::note_unknown_capabilities(&devbox, &caps(&["bg", "st3-cap-probe"]));
+    super::note_unknown_capabilities(&devbox, &caps(&["st3-cap-probe"]));
     let keys = |o: &crate::origin::Origin| -> Vec<String> {
         tauri::async_runtime::block_on(crate::drift_ledger::drift_ledger_report(o.clone()))
             .expect("读口")
@@ -243,12 +35,6 @@ fn unknown_capabilities_are_booked_under_that_remote() {
     );
 }
 
-// ─── F5：本机后端的起参也是「monitor 发、后端剥」的那一族 ─────────────────
-// 与上面那条（远端 attach 行的旗标）同一族「monitor 发、后端认」；本机起参那一形后端不认的 `--flag` 会被当成一次性查询、
-// 跑完就退（§26）。本机那两条载体的起参是 `local_backend::LOCAL_STREAM_ARGS` 一份常量；住这里是因为
-// 「读后端 `lib.rs` 的源码」这条跨半边已经为本文件登记过了（`cross_half_edge_registry`），不另开一条。
-// 判据总表住 `local_lines_tests.rs` 头注（F1–F8）。
-
 /// 后端 `lib.rs::STREAM_FLAGS` 的字面量（从后端源码摘，异源）。
 fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
     let src = include_str!("../../../../src/backend/lib.rs");
@@ -263,7 +49,7 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
         .step_by(2)
         .map(str::to_string)
         .collect();
-    // 表里第一项引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量。
+    // 表里引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量。
     if body.contains("STREAM_FLAG_EXPLICIT") {
         let l = src
             .lines()
@@ -276,40 +62,29 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
                 .to_string(),
         );
     }
-    out.into_iter().collect()
+    out
 }
 
+/// 本机两条载体的起参：`--` 打头 ＋ 后端 `STREAM_FLAGS` 里那几个（后端不剥 ⇒ 当一次性查询跑完就退，§26）；两条载体用的是这一份。
 #[test]
 fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips() {
     use crate::local_backend::LOCAL_STREAM_ARGS;
     let backend = backend_stream_flags_cf1();
     assert!(
-        backend.len() >= 2,
+        backend.contains("--stream"),
         "后端 STREAM_FLAGS 只摘到 {backend:?} —— 抽取坏了"
     );
-    // 打头的 `--` 是分隔（让 `ccm` 当后端用），不是流模式旗标。
     assert_eq!(
-        LOCAL_STREAM_ARGS.first(),
-        Some(&"--"),
-        "本机后端起参没以 `--` 打头"
+        LOCAL_STREAM_ARGS,
+        &["--", "--stream"],
+        "本机起参只剩「我是流模式」"
     );
     for a in &LOCAL_STREAM_ARGS[1..] {
         assert!(
             backend.contains(*a),
-            "本机后端起参 `{a}` 不在后端 `STREAM_FLAGS`（{backend:?}）里 —— 后端不剥它 ⇒ 当成一次性查询跑完就退（§26）"
+            "本机后端起参 `{a}` 不在后端 `STREAM_FLAGS`（{backend:?}）里"
         );
     }
-    assert!(
-        LOCAL_STREAM_ARGS.contains(&"--with-bg"),
-        "少了 `--with-bg` ⇒ bg 会话的内容从此静默没了（`showBgSessions` 缺省是开的）"
-    );
-    assert_eq!(
-        LOCAL_STREAM_ARGS.contains(&"--tail-only"),
-        crate::stream_source::LOCAL_STREAM_TAIL_ONLY,
-        "起参里有没有 `--tail-only` 与本机消费者认定的「这条流是 tail-only」对不上 —— \
-         要么历史整份重放两遍，要么历史一行都没有"
-    );
-    // 两条载体用的是**这一份**，不是各写一份字面量。
     let stdio = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/local_backend.rs"
     ));
@@ -323,27 +98,46 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
     );
     guard_core::find_pinned(&host, "cmd.args(local_backend::LOCAL_STREAM_ARGS)")
         .unwrap_or_else(|e| panic!("常驻载体没用 LOCAL_STREAM_ARGS：{e}"));
-    assert_eq!(
-        stdio.matches("\"--tail-only\"").count(),
-        1,
-        "local_backend·rs 里 `\"--tail-only\"` 字面量只许住在 LOCAL_STREAM_ARGS 那一处"
-    );
-    assert_eq!(
-        host.matches("\"--tail-only\"").count(),
-        0,
-        "local_backend_host·rs 里不许再有自己的 `\"--tail-only\"` 字面量"
-    );
 }
 
-/// 本机起参要带 `--with-pid`：`session_added.pid` 只给索要了的客户端
-/// （后端 `wire::Frame::SessionAdded::pid`），本机 ↗ 绑窗口只能从那一格拿 pid（monitor 不再自己读 pidfile）。
-/// 异源：旗标字面量从后端 `STREAM_FLAGS` 源码里摘，确认后端真剥它。
+/// 远端那条流：没开「显示后台会话」⇒ bg 会话的宣告与它后面的行 · 状态 · 一轮结束都藏、去向那一帧之后摘；交互会话一帧不藏。
+/// 开着 ⇒ 什么都不藏。
 #[test]
-fn loc1b_the_local_stream_asks_for_the_binding_material() {
-    use crate::local_backend::LOCAL_STREAM_ARGS;
+fn the_remote_stream_hides_background_sessions_like_the_local_one() {
+    let frame = |l: &str| crate::stream_source::parse_frame(l).expect("认得的帧");
+    let added = |sid: &str, bg: bool| {
+        frame(&format!(
+            r#"{{"kind":"session_added","sid":"{sid}","background":{bg},"activity_text":"x","activity_tone":"now","pid":1}}"#
+        ))
+    };
+    let line = |sid: &str| {
+        frame(&format!(
+            r#"{{"kind":"line","session_id":"{sid}","path":"/p","seq":0,"byte_offset":1}}"#
+        ))
+    };
+    let turn = |sid: &str| {
+        frame(&format!(
+            r#"{{"kind":"turn_end","session_id":"{sid}","uuid":"u"}}"#
+        ))
+    };
+    let state = |sid: &str| {
+        frame(&format!(
+            r#"{{"kind":"session_state","sid":"{sid}","state":"ended","state_text":"x","state_hint":"x","state_tone":"plain"}}"#
+        ))
+    };
+    let mut off = crate::stream_source::local::BgHide::new(false);
+    assert!(off.hides(&added("bg1", true)));
+    assert!(off.hides(&line("bg1")));
+    assert!(off.hides(&turn("bg1")));
+    assert!(!off.hides(&added("i1", false)));
+    assert!(!off.hides(&line("i1")));
+    assert!(!off.hides(&turn("i1")));
+    assert!(off.hides(&state("bg1")), "去向那一帧也藏");
     assert!(
-        LOCAL_STREAM_ARGS.contains(&"--with-pid"),
-        "本机起参少了 `--with-pid` ⇒ 本机 `session_added` 不带 pid ⇒ 本机 ↗ 按 PowerShell 父进程绑窗口那一跳没有 pid"
+        !off.hides(&line("bg1")),
+        "去向之后摘掉（同一个 sid 再来是新的宣告）"
     );
-    assert!(backend_stream_flags_cf1().contains("--with-pid"));
+    let mut on = crate::stream_source::local::BgHide::new(true);
+    assert!(!on.hides(&added("bg1", true)));
+    assert!(!on.hides(&line("bg1")));
 }

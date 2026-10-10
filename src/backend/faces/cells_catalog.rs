@@ -1187,7 +1187,7 @@ mod specimens {
                 host: TerminalHost::Tmux,
                 terminal: some("tmux-1-1"),
             }),
-            pid: Some(1),
+            pid: 1,
         }
     }
 
