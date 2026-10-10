@@ -123,16 +123,18 @@ do_native() {
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-filewin（＋ .target = %s）\n' "$triple"
 }
 
-# 真起一趟文件窗口程序（空 stdin），回「退出码 第一行 stdout」。它读不到开窗种子就在 stdout 上说一行 `{"failed":…}`
-# 再退（非 0）—— 那一行正是 monitor 开窗时读的就绪行 ⇒ 读得到它 = 这份字节在这台机器上起得来。不开窗、不碰任何文件。
+# 真起一趟文件窗口程序（空 stdin），回「退出码 就绪行」。它读不到开窗种子就在 stderr 上说一行
+# `ccm-filewin-ready {"failed":…}` 再退（非 0）—— 那一行正是 monitor 开窗时读的就绪行（stdout 是通道）
+# ⇒ 读得到它 = 这份字节在这台机器上起得来。不开窗、不碰任何文件。
 filewin_starts() {
   local f="$1" sandbox rc line
   sandbox="$(mktemp -d)"
   cp "$f" "$sandbox/filewin-under-test"
   chmod +x "$sandbox/filewin-under-test"
   env -i HOME="$sandbox" PATH="/usr/bin:/bin" LANG=C.UTF-8 \
-    timeout 20 "$sandbox/filewin-under-test" </dev/null >"$sandbox/out" 2>/dev/null && rc=0 || rc=$?
-  line="$(head -n 1 "$sandbox/out" 2>/dev/null || true)"
+    timeout 20 "$sandbox/filewin-under-test" </dev/null >/dev/null 2>"$sandbox/err" && rc=0 || rc=$?
+  # 就绪那一行在 stderr、带 `ccm-filewin-ready ` 打头（filewin-contract::READY_MARK；stdout 是通道），stderr 上别的行是诊断。
+  line="$(sed -n 's/^ccm-filewin-ready //p' "$sandbox/err" 2>/dev/null | head -n 1 || true)"
   rm -rf "$sandbox"
   printf '%s %s' "$rc" "$line"
 }
