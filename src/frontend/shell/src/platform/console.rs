@@ -36,8 +36,11 @@ pub fn console_window(pid: u32) -> Option<isize> {
     static LENDING: Mutex<()> = Mutex::new(());
     let _one = LENDING.lock().unwrap_or_else(|e| e.into_inner());
 
-    // SAFETY：挂上之后只调一个取句柄的、立刻摘下；Ctrl+C 忽略只在挂着的这一小段。
+    // 挂控制台会把本进程空着的三个标准句柄换成那个控制台的，摘下后它们就失效了 ⇒ 挂之前记下、摘下之后放回。
+    const STD: [u32; 3] = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+    // SAFETY：挂上之后只调一个取句柄的、立刻摘下；Ctrl+C 忽略只在挂着的这一小段；标准句柄原样放回。
     let console = unsafe {
+        let saved = STD.map(|n| GetStdHandle(n));
         if AttachConsole(pid) == 0 {
             None
         } else {
@@ -45,6 +48,9 @@ pub fn console_window(pid: u32) -> Option<isize> {
             let h = GetConsoleWindow();
             FreeConsole();
             SetConsoleCtrlHandler(None, 0);
+            for (n, old) in STD.into_iter().zip(saved) {
+                SetStdHandle(n, old);
+            }
             Some(h)
         }
     };
@@ -61,6 +67,9 @@ pub fn console_window(pid: u32) -> Option<isize> {
 pub fn console_window(_pid: u32) -> Option<isize> {
     None
 }
+
+/// 这台有没有「本机 bash / zsh 接入块留终端记录、monitor 往那个终端写改标题序列认窗口」那一套（`bind.rs::BindRegistry`）：只有 Linux。
+pub const TTY_RECORDS: bool = cfg!(target_os = "linux");
 
 /// 改终端标题的那三下（xterm 控制序列；终端程序不认标题栈时入栈 / 出栈那两下它不理，标题就留到下一个提示符自己改回）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,4 +123,13 @@ extern "system" {
         handler: Option<unsafe extern "system" fn(u32) -> i32>,
         add: i32,
     ) -> i32;
+    fn GetStdHandle(which: u32) -> isize;
+    fn SetStdHandle(which: u32, handle: isize) -> i32;
 }
+
+#[cfg(windows)]
+const STD_INPUT_HANDLE: u32 = -10i32 as u32;
+#[cfg(windows)]
+const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
+#[cfg(windows)]
+const STD_ERROR_HANDLE: u32 = -12i32 as u32;

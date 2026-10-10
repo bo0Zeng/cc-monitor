@@ -58,7 +58,16 @@ pub struct BindRegistry {
 
 impl BindRegistry {
     /// 启动 watcher 线程 + 心跳线程。返回 Arc 给外部持有引用。
+    /// 这台没有 bash / zsh 终端记录那一套（[`crate::platform::console::TTY_RECORDS`]：只有 Linux 有）⇒ 一张空表，不建目录、不读盘、不起线程
+    /// （Windows 按控制台认窗口，这张表在那里永远是空的）。
     pub fn spawn(monitor_data_dir: PathBuf) -> Arc<Self> {
+        if !crate::platform::console::TTY_RECORDS {
+            return Arc::new(Self {
+                monitor_data_dir,
+                by_ps_pid: Arc::new(RwLock::new(HashMap::new())),
+                tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
+            });
+        }
         let await_dir = monitor_data_dir.join(AWAIT_SUBDIR);
         let registry_dir = monitor_data_dir.join("ps-registry");
 
