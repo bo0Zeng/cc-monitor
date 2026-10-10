@@ -34,7 +34,7 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<Change> {
 }
 
 /// 盯着的那几个：工作区 ⇒ 它的监听器（活着就一直盯）。
-static HELD: Mutex<Vec<(PathBuf, notify::RecommendedWatcher)>> = Mutex::new(Vec::new());
+static HELD: Mutex<Vec<(PathBuf, crate::platform::watch_file::Watching)>> = Mutex::new(Vec::new());
 
 /// 这个事件要不要重读：计划仓里的任何东西 · 工作区根上那份 `.env`。
 pub(crate) fn concerns(ws: &Path, p: &Path) -> bool {
@@ -68,7 +68,7 @@ pub(crate) fn watch(
     ws: &Path,
     last: Option<Seen>,
     reread: Reread,
-) -> Result<notify::RecommendedWatcher, String> {
+) -> Result<crate::platform::watch_file::Watching, String> {
     let mut dirs = vec![(ws.to_path_buf(), false)];
     let plan = ws.join(PLAN_DIR);
     if plan.is_dir() {
@@ -81,7 +81,7 @@ pub(crate) fn watch(
         &dirs,
         move |p| concerns(&root, p),
         "plan-watch",
-        move || {
+        move |_| {
             let Some(now) = reread(&target) else { return };
             if last.as_ref() != Some(&now) {
                 last = Some(now.clone());

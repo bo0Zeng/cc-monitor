@@ -194,90 +194,54 @@ pub fn dir_for_event(path_bytes: &[u8]) -> Option<Vec<u8>> {
 }
 // ══════════════════════ 真的挂上去那一跳 ══════════════════════
 
-/// 一个活着的监听器。它一被丢掉，watch 就跟着没了 —— 调用方要拿住它。
+/// 一个活着的监听器（盯盘原语 [`crate::platform::watch_file`] 那一份）。它一被丢掉，watch 就跟着没了 —— 调用方要拿住它。
 ///
-/// 用裸 `notify`、一个时间窗都不传：去抖器要传时间窗，而零定时器护栏把秒级 `Duration` 构造钉成恰好等于登记表条数
-/// （`no_timer_guard::REGISTERED_DURATION_USES`）。代价：同一个目录连着改十次就重列十次（一次 `read_dir`，与盘的大小无关）。
+/// 一个时间窗都不传：去抖器要传时间窗，而零定时器护栏把秒级 `Duration` 构造钉成恰好等于登记表条数
+/// （`no_timer_guard::REGISTERED_DURATION_USES`）。原语把一阵动静并成一次回调；同一阵里同一个目录只重列一次（一次 `read_dir`，与盘的大小无关）。
 pub struct BrowseWatcher {
-    inner: notify::RecommendedWatcher,
-    /// 此刻**真挂着** watch 的那几个目录（[`BrowseWatcher::sync`] 按它与名单算差分）。
-    armed: Vec<Vec<u8>>,
+    inner: crate::platform::watch_file::Watching,
 }
 
 impl BrowseWatcher {
-    /// 起一个监听器。事件进来 ⇒ 自动调 [`on_change`]。
+    /// 起一个监听器（名单空着，[`Self::sync`] 再挂）。有动静 ⇒ 动过的路径各归到名单上的目录、每个目录调一次 [`on_change`]。
     ///
-    /// ⚠ 回调跑在 `notify` 自己的线程上（那条线程**不在** `no_timer_guard` 的人群里 ——
+    /// ⚠ 回调跑在原语收的那条线程上（那条线程**不在** `no_timer_guard` 的人群里 ——
     /// 人群按「本 crate `src/` 的源码文本」画，同 `observe/watcher.rs` 那条已登记的先例）。
     pub fn start() -> Result<Self, String> {
-        let inner = notify::recommended_watcher(|res: notify::Result<notify::Event>| {
-            let Ok(ev) = res else { return };
-            for p in ev.paths {
-                let bytes = super::raw::path_bytes(&p).to_vec();
-                if let Some(dir) = dir_for_event(&bytes) {
-                    on_change(&dir);
+        let inner = crate::platform::watch_file::watch(
+            &[],
+            |_| true,
+            "browse-watch",
+            |paths| {
+                let mut dirs: Vec<Vec<u8>> = Vec::new();
+                for p in paths {
+                    if let Some(dir) = dir_for_event(super::raw::path_bytes(p)) {
+                        if !dirs.contains(&dir) {
+                            dirs.push(dir);
+                        }
+                    }
                 }
-            }
-        })
-        .map_err(|e| e.to_string())?;
-        Ok(Self {
-            inner,
-            armed: Vec::new(),
-        })
+                for d in dirs {
+                    on_change(&d);
+                }
+            },
+        )?;
+        Ok(Self { inner })
     }
 
     /// 〔「要有人在后端进程里长期持有那个监听器」〕**跟着名单走**：
-    /// 名单上新来的挂上、离开的卸掉（按 [`Self::armed`] 算差分，留下的那几个不重挂）。
+    /// 名单上新来的挂上、离开的卸掉（留下的那几个不重挂）。
     /// 返回 `(此刻真挂着的个数, 这一趟挂不上的逐条原因)`。卸不掉的不算失败（那个目录多半已经没了）。
     pub fn sync(&mut self) -> (usize, Vec<String>) {
-        use notify::Watcher;
-        let want: Vec<Vec<u8>> = match WATCHED.read() {
-            Ok(g) => g.iter().map(|w| w.dir.clone()).collect(),
+        let want: Vec<crate::platform::watch_file::Dir> = match WATCHED.read() {
+            Ok(g) => g
+                .iter()
+                .map(|w| (super::raw::to_path_buf(&w.dir), false))
+                .collect(),
             Err(_) => Vec::new(),
         };
-        let gone: Vec<Vec<u8>> = self
-            .armed
-            .iter()
-            .filter(|d| !want.contains(d))
-            .cloned()
-            .collect();
-        for d in &gone {
-            let _ = self.inner.unwatch(&super::raw::to_path_buf(d));
-        }
-        self.armed.retain(|d| want.contains(d));
-        let mut failures = Vec::new();
-        for d in want {
-            if self.armed.contains(&d) {
-                continue;
-            }
-            match self.inner.watch(
-                &super::raw::to_path_buf(&d),
-                notify::RecursiveMode::NonRecursive,
-            ) {
-                Ok(()) => self.armed.push(d),
-                Err(e) => failures.push(e.to_string()),
-            }
-        }
-        (self.armed.len(), failures)
-    }
-
-    /// 把名单上的目录逐个挂上去。返回挂成功的个数与逐条失败原因。
-    pub fn arm(&mut self) -> (usize, Vec<String>) {
-        use notify::Watcher;
-        let dirs: Vec<Vec<u8>> = match WATCHED.read() {
-            Ok(g) => g.iter().map(|w| w.dir.clone()).collect(),
-            Err(_) => Vec::new(),
-        };
-        let mut ok = 0usize;
-        let mut failures = Vec::new();
-        for d in dirs {
-            let path = super::raw::to_path_buf(&d);
-            match self.inner.watch(&path, notify::RecursiveMode::NonRecursive) {
-                Ok(()) => ok += 1,
-                Err(e) => failures.push(e.to_string()),
-            }
-        }
-        (ok, failures)
+        let failures = self.inner.rearm(&want);
+        (self.inner.armed(), failures)
     }
 }
 

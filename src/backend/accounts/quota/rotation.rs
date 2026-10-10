@@ -1125,7 +1125,7 @@ pub(crate) fn rescan(path: &Path) {
 
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）：别的进程写了 ⇒ [`rescan`]。返回的那一份活着就一直盯。
 /// 起的时候先记下此刻那一份（之后的改动才有得比）。
-pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
+pub(crate) fn watch(path: &Path) -> Result<crate::platform::watch_file::Watching, String> {
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?
@@ -1137,13 +1137,13 @@ pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
         &[(dir, false)],
         |p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME),
         "rotation-watch",
-        move || rescan(&target),
+        move |_| rescan(&target),
     )
 }
 
 /// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json`，进程活着就一直盯。盯不上只出声。
 pub(crate) fn watch_here() {
-    static HELD: Mutex<Option<notify::RecommendedWatcher>> = Mutex::new(None);
+    static HELD: Mutex<Option<crate::platform::watch_file::Watching>> = Mutex::new(None);
     let Some(path) = path_now() else { return };
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
