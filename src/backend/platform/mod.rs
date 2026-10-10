@@ -23,6 +23,7 @@
 //! - [`child`]：后端起子进程的唯一原语（期限必填 · 超时杀整组 / 整个 Job · 自有环境无条件摘 · 脱离起 · ccm 最终那一跳）
 //! - `win_proc`：Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（只在 Windows 编译时存在，不写 intra-doc 链接）
 //! - [`shell`]：shell 方言与「把一串命令交给这台的 shell」那一跳
+//! - [`writers`]：谁开着哪份文件写（进程表一趟 · 新建 / 打开 / 写完关闭那道耳朵）—— 不留 pidfile 的那一家判活用它（Linux；别处判不了）
 //! - [`watch_file`]：盯盘的唯一原语（几个目录 · 路径过滤 · 一阵动静并成一次回调 · 名单换得动 · 踢得醒）—— 轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜都用它
 
 pub(crate) mod acct_view;
@@ -51,6 +52,7 @@ pub(crate) mod ssh_client;
 pub(crate) mod stderr_fd;
 pub(crate) mod tcp_rtt;
 pub(crate) mod watch_file;
+pub(crate) mod writers;
 #[cfg(windows)]
 pub(crate) mod win_proc;
 #[cfg(windows)]
