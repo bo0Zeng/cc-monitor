@@ -11,8 +11,8 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork } from "./session-reads";
 
-/** tab/cell 上叠的活动灯类名。空串 = 不叠类（默认绿点）。 */
-export type ActivityLightClass = "" | "act-idle" | "act-waiting";
+/** tab/cell 根上活动灯那一档的钩子（`data-light`；没有样式、给判据与读屏读）。空串 = 不挂。 */
+export type ActivityLightClass = "" | "idle" | "waiting";
 
 /** 活着的会话那颗点的颜色（`kit/status-dot` 的 `DotState` 里活着的那四态）。 */
 export type ActivityDot = "running" | "needs-you" | "background" | "idle";
@@ -24,12 +24,12 @@ export function activityFace(tone: string | null): { dot: ActivityDot; light: Ac
     case "now":
       return { dot: "running", light: "" };
     case "need":
-      return { dot: "needs-you", light: "act-waiting" };
+      return { dot: "needs-you", light: "waiting" };
     // 一轮停了、后台命令还在跑：单独一色（`--bgwork`），不呼吸。
     case "busy":
       return { dot: "background", light: "" };
     default:
-      return { dot: "idle", light: "act-idle" };
+      return { dot: "idle", light: "idle" };
   }
 }
 

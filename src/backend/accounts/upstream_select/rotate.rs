@@ -916,6 +916,7 @@ impl Hop {
             Some(Blocked {
                 earliest: Some(AccountAt {
                     at_text: None,
+                    at_rel_text: None,
                     account: back.account,
                     at: back.at,
                 }),
@@ -928,6 +929,7 @@ impl Hop {
                     .min()
                     .map(|(at, x)| AccountAt {
                         at_text: None,
+                        at_rel_text: None,
                         account: x.clone(),
                         at,
                     }),

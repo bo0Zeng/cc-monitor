@@ -1096,11 +1096,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
-| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
+| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
 | `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来） |
-| `unseen` | ← | 账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?}`（几格同下） |
+| `unseen` | ← | 账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send\|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`） |
+| `text` | ← | 读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null` |
 | `usableNow` | ← | 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算） |
 
 #### `quota-probe`

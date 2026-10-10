@@ -64,7 +64,7 @@ describe("时间轴 · 顶行", () => {
   it("平时 ＝ 在用 号 窗口 用量 · 距触发 N 点；卡住 ＝ 最早回来的号 ↻几点 (+多久) · 哪个窗口重置", () => {
     const parts = [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toTrig", { n: 27 })];
     expect(headLine(plan())).toEqual({ text: parts.join(copyText("kit.text.sep")), parts, blocked: false });
-    const b = headLine(plan({ head: { blocked: { account: "team", at: T + 38 * 60, atText: "02:38", w: "5h" } } }))!;
+    const b = headLine(plan({ head: { blocked: { account: "team", at: T + 38 * 60, atText: "02:38", atRelText: "+38m", w: "5h" } } }))!;
     expect(b.blocked).toBe(true);
     expect(b.text).toBe(
       [

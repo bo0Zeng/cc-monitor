@@ -230,7 +230,7 @@ export interface StateView {
   ended: boolean;
   /** `.unseen`：说不清（那台暂时看不见）—— 单独一个状态，不当已结束画（标题照常、不出 ×，灯换成暗色）。 */
   unseen: boolean;
-  /** `.reconnectable`：可重连（灯换成暗色、停呼吸）。 */
+  /** 可重连（标签页根上 `data-reconnectable`）。 */
   reconnectable: boolean;
   /** 状态名（「已结束」「可重连」「记录已不在」「说不清」）；活着 ⇒ `null`（活着不另说状态，灯自己说）。 */
   name: string | null;

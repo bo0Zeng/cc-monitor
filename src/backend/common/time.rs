@@ -70,8 +70,30 @@ pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
 /// 回包里认得的时刻格（unix 秒）：出口那一遍（[`with_texts`]）在它旁边添 `<键>Text`。闭集 —— 新的时刻格要显示就加在这里。
 pub(crate) const TIME_KEYS: &[&str] = &["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
 
+/// 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `None`。分钟向上取整。
+pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
+    let d = t - now;
+    if d <= 0 {
+        return None;
+    }
+    if d >= DAY {
+        return Some(format!("+{}d", d / DAY));
+    }
+    let mins = (d + 59) / 60;
+    if mins < 60 {
+        return Some(format!("+{mins}m"));
+    }
+    let (h, m) = (mins / 60, mins % 60);
+    Some(if m == 0 {
+        format!("+{h}h")
+    } else {
+        format!("+{h}h{m}m")
+    })
+}
+
 /// **回包出口那一遍**：走遍整份回包，每个对象里认得的时刻格（[`TIME_KEYS`]，值是整数）旁边添一格 `<键>Text`
-/// ＝ [`fmt_at`] 按 `now` 与 `tz_min` 写好的字。界面只照这一格排，不换算。
+/// ＝ [`fmt_at`] 按 `now` 与 `tz_min` 写好的字；还没到的时刻再添一格 `<键>RelText` ＝ 距今（[`fmt_rel`]，发出那一刻的字，
+/// 要它跟着走就按节拍重问）。界面只照这几格排，不换算。
 pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz_min: i64) {
     match v {
         serde_json::Value::Object(m) => {
@@ -80,7 +102,11 @@ pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz_min: i64) {
                 .filter_map(|k| {
                     m.get(*k)
                         .and_then(serde_json::Value::as_i64)
-                        .map(|t| (format!("{k}Text"), fmt_at(t, now, tz_min)))
+                        .map(|t| (*k, t))
+                })
+                .flat_map(|(k, t)| {
+                    std::iter::once((format!("{k}Text"), fmt_at(t, now, tz_min)))
+                        .chain(fmt_rel(t, now).map(|r| (format!("{k}RelText"), r)))
                 })
                 .collect();
             for x in m.values_mut() {

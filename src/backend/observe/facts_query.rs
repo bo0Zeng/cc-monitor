@@ -201,7 +201,7 @@ pub(crate) struct BgTask {
 pub(crate) struct Background {
     /// 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
     pub(crate) text: Words,
-    /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`quota-lines.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
+    /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`duration-format.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
     /// 命令或起始时刻拿不到 ⇒ `null`。
     pub(crate) clock: Option<Clock>,
     /// 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。
@@ -493,7 +493,7 @@ pub(crate) struct Needs {
     /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
     /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
     pub(crate) waited_ms: Option<u64>,
-    /// `waitedMs` 写好的字（时长那一处 `copy_core::format_duration`）；没有起点 ⇒ `null`。
+    /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
     pub(crate) waited_text: Option<Words>,
 }
 
@@ -549,7 +549,7 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         tone: crate::common::cells::Tone::Need,
         rank,
         waited_ms,
-        waited_text: waited_ms.map(|ms| Words(copy_core::format_duration(ms))),
+        waited_text: waited_ms.map(|ms| Words(copy_core::short_duration(ms))),
     })
 }
 

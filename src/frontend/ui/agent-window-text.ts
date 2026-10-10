@@ -4,7 +4,7 @@
  * 时长一律写到分钟（`fmtDur`：`45s` · `6m` · `1h50m`），窗口每分钟重画一次就够（`views/agent-window.ts`）。
  */
 import { copyText } from "./copy-table";
-import { fmtDur } from "./quota-lines";
+import { fmtDur } from "./duration-format";
 import { runLabel, runStateText } from "./runs";
 import type { RunInfo } from "./generated/RunInfo";
 

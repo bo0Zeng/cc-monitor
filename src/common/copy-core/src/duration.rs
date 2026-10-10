@@ -5,7 +5,7 @@ use crate::copy_text;
 
 /// 时长 → 给人看的一格（〔`rules.json` C-W6〕表里只放 `{dur}`，值由它出；单位格住表里 `durationFormat.unit.*`）：不满 1 秒写毫秒 · 不满 1 分钟按十分之一秒四舍五入、
 /// 整数不带「.0」· 不满 1 小时写「N 分钟」或「N 分 M 秒」· 往上写「N 小时」或「N 小时 M 分」（秒数舍去）。
-/// 与前端 `copy-table.ts::formatDuration` 同形（两侧各对金样 `tests/__fixtures__/duration-format.golden.json`）。
+/// 前端没有它的孪生（已等多久那一格改用短时长 [`short_duration`]，界面那一份随之删）；金样 `tests/__fixtures__/duration-format.golden.json` 只钉这一侧。
 pub fn format_duration(ms: u64) -> String {
     if ms < 1000 {
         return copy_text("durationFormat.unit.ms", &[("n", &ms.to_string())]);

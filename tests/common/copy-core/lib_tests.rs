@@ -192,7 +192,7 @@ fn copy_matches_with_pins_the_given_values_only() {
 }
 
 /// **时长格式化的对拍**：共用金样 `tests/__fixtures__/duration-format.golden.json` 逐条喂给 [`format_duration`]，
-/// 期望是金样里手写的；前端那一侧 `tests/copy/duration-format.vitest.ts` 读同一份。
+/// 期望是金样里手写的（界面没有这一份的孪生，只此一侧）。
 #[test]
 fn the_shared_duration_golden_agrees_with_this_reader() {
     let raw = include_str!("../../__fixtures__/duration-format.golden.json");

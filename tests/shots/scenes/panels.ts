@@ -777,6 +777,8 @@ export const FRONT_SCENES: Scene[] = [
     await sleep(400);
   }, (w) => {
     w.commands.bring_terminal_to_front = () => ({ kind: "unbound" });
+    // 按窗口标签那一问也落空：本机后端说这个会话没有终端显示着。
+    w.ops["session-terminals"] = () => ({ terminals: [], why: "no-terminal" });
   }),
   frontScene("panel-front-remote-detached", "↗ · 远端 tmux 里没有终端连着", "devbox 那台说：tmux 会话在、没有终端连着 ⇒ 无终端窗口 ＋［在终端里打开］（灰）", async () => {
     await mainReady(ALL_TABS);

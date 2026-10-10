@@ -87,7 +87,8 @@ if (problems.length > 0) {
 }
 writeFileSync(path.join(out, "problems.txt"), problems.join("\n") + "\n");
 cleanup();
-process.exit(results.some((r) => !r.ok) ? 1 : 0);
+// 问题表必须是空的：假后端答不上 · 页里报错 · 没截成 · 排版不对，哪一样都算红（不只看「截成没截成」）。
+process.exit(results.some((r) => !r.ok) || problems.length > 0 ? 1 : 0);
 
 async function shootWeb() {
   const port = await freePort();

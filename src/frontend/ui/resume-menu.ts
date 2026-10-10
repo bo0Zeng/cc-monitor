@@ -14,7 +14,7 @@ import { refreshQuota } from "./acct-center";
 import { fetchAccounts } from "./account-reads";
 import { selectableAccounts } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import { fiveHourCell } from "./quota-lines";
+import { fiveHourCell } from "./acct-words";
 import { lookupAgentProfile } from "./agent-profile";
 import type { Origin } from "./ipc/origin";
 import { resumeInTmuxFor } from "./resume-defaults";

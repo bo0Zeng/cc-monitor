@@ -5,7 +5,7 @@
  * 判据：`tests/frontend/ui/settings/rules-timeline.vitest.ts`。
  */
 import { readPlan, readQuota, type PlanRead } from "../quota-reads";
-import { accountLabel, type QuotaRead } from "../quota-lines";
+import { accountLabel, type QuotaRead } from "../acct-words";
 import { timelineAxis, viewSwitch, type TlView } from "../rot-timeline";
 import { checkbox } from "../kit/switch";
 import { copyText } from "../copy-table";

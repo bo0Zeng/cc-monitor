@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import type { Account, AccountsState } from "../../../../src/frontend/ui/accounts";
-import type { QuotaRead } from "../../../../src/frontend/ui/quota-lines";
+import type { QuotaRead } from "../../../../src/frontend/ui/acct-words";
 
 const fetchAccounts = vi.fn();
 const readQuota = vi.fn();
@@ -101,8 +101,9 @@ function quota(refusedAt?: number): QuotaRead {
     limiting: "5h",
     slots: [
       // `full` 是那台后端的显示态（用满才有）；被拒没用满不带它。
-      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", ...(pct5 >= 100 ? { full: true } : {}) },
-      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", ...(pct7 >= 100 ? { full: true } : {}) },
+      // 那一格的字是核心写好的（用满 ✕ · 被拒没用满「{pct}% · 被拒」· 否则「{pct}%」），界面照抄。
+      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", text: pct5 >= 100 ? "✕" : st === "refused" ? copyText("acct.val.refusedPct", { pct: pct5 }) : `${pct5}%`, tone: "plain", ...(pct5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
     ],
     login: "ok",
   });

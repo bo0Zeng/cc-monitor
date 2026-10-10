@@ -38,10 +38,10 @@ import { timelineAxis } from "../rot-timeline";
 import {
   accountLabel,
   slotLabel,
-  slotValue,
+  slotText,
   type QuotaRead,
   type QuotaReadAccount,
-} from "../quota-lines";
+} from "../acct-words";
 import { button } from "../kit/button";
 import { banner } from "../kit/banner";
 import { foldCaret } from "../kit/fold";
@@ -565,7 +565,7 @@ export class RuleEditor {
     if (q.kind === "api") u.textContent = copyText("acct.val.noLimit");
     else {
       const slot = q.limiting ?? "5h";
-      u.textContent = `${slotLabel(slot)} ${slotValue(q, slot)}`;
+      u.textContent = `${slotLabel(slot)} ${slotText(q, slot)}`;
     }
     return u;
   }

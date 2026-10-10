@@ -9,6 +9,7 @@ pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：�
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）
 pub mod plan_review_face; // 帧面 `plan-ack` · `plan-unack`：计划认可（记在后端自己的 `plan-review.json`）
 pub mod quota_probe_face; // 帧面 `quota-probe`：用某个号查一次额度（起官方客户端报用量、读法住适配层），记进同一本额度账
+pub(crate) mod quota_rows; // `quota-read` 每号的 `rows`（额度每号几行，唯一的行模型）与开窗那一判 `warm`
 pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
 pub mod resync_face;
 pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游选择换号要的那几格（两边只在这里接上）
