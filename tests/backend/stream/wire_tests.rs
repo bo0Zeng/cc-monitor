@@ -1729,7 +1729,7 @@ fn net2_uncancellable_is_additive_and_last() {
 // 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::Frozen::Cells`），不在这张表。
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
-const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
+pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("hello", "v", "number"),
     ("hello", "build_id", "string"),
     ("hello", "host_arch", "string"),
@@ -1902,200 +1902,24 @@ fn line_raw_is_only_there_when_asked() {
     );
 }
 
-// ═══ 第二个前端调的一次性子命令：冻结（叫法 · 位置参数 · 输出里它读的那几格）══════════════
+// ═══ 第二个前端调的一次性子命令：冻结（叫法）══════════════════════════════════════
 //
-// `--resolve` 的入出形状另有冻结金样（`tests/__fixtures__/resolve-contract.golden.json`）；会话 id 的校验规则钉在
-// `resolve_query_tests::the_session_id_rule_the_second_frontend_relies_on_stays_put`。
+// 10-10 起手机只调这三条（其余都走常驻流上的帧命令）：探后端 · 起 / 找常驻后端 · 接常驻后端的小中继。
 
-/// （子命令, 位置参数个数）。叫法与位置参数一改，第二个前端那一侧就叫不通了。
-const SECOND_FRONTEND_SUBCOMMANDS: &[(&str, usize)] = &[
-    ("--list-projects", 0),
-    ("--list-sessions", 1),
-    ("--read-session", 1),
-    ("--read-session-tail", 2),
-    ("--read-session-from-offset", 2),
-    ("--resolve", 0),
-    ("--search", 1),
-    ("--fork-session", 2),
-    // 〔第二个前端 2026-10-08〕它**今天在调 / 这一拍要接**的另外九条。上面那八条之外，这九条一条都没有判据保护
-    //   —— 上一次清理命令名（`invalid_args` 并进 `bad_args` · `--history-projects` / `--history-sessions` 从
-    //   `SUBCOMMANDS` 消失）在它那一侧**不会红，会在用户手里坏**。
-    // 两类，各有各的真检验（见本族那条测试，membership 之外不许空转）：
-    //   ① CLI 独有、有位置参数的三条 ⇒ 下面 `runs` 里照原来的叫法真跑一趟；
-    //   ② 帧面派生的六条 ⇒ 入参走 stdin 一段 JSON，argv 上一个位置参数都没有（0 由 `cli_control::spec_for` 验）。
-    ("--backend-probe", 0),
-    ("--find-in-session", 1),
-    ("--list-user-inputs", 1),
-    ("--ping", 0),
-    ("--terminals-list", 0),
-    ("--terminal-preview", 0),
-    ("--terminal-input", 0),
-    ("--history-page", 0),
-    ("--history-facts", 0),
-];
+/// 第二个前端调的一次性子命令（都不带位置参数；`--resident-ensure` 认一个 `--replace`）。叫法一改它那一侧就叫不通了。
+const SECOND_FRONTEND_SUBCOMMANDS: &[&str] =
+    &["--backend-probe", "--resident-ensure", "--resident-attach"];
 
-/// 上面那张表里**帧面派生**的那几条（CLI 口由 `cli_control::cli_exposed` 自动给，没有分派臂）。
-///
-/// 🔴 **单列一张不是冗余，是上面那张表对它们恒绿** —— 现打出来的：把帧面 `history-page` 改个名，
-/// CLI 口当场消失，而 `SUBCOMMANDS` 里 `"--history-page"` 那个串还在（两者都是源码字面量、互不相干）
-/// ⇒ `the_subcommands_the_second_frontend_calls_stay_put` **照样报绿**。本表让那一形当场红。
-const SECOND_FRONTEND_DERIVED_SUBCOMMANDS: &[&str] = &[
-    "--ping",
-    "--terminals-list",
-    "--terminal-preview",
-    "--terminal-input",
-    "--history-page",
-    "--history-facts",
-];
-
-/// （子命令, 输出一行里第二个前端读的字段, JSON 类型）。
-const SECOND_FRONTEND_SUBCOMMAND_FIELDS: &[(&str, &str, &str)] = &[
-    ("--list-projects", "dirName", "string"),
-    ("--list-projects", "projectPath", "string"),
-    ("--list-projects", "sessionCount", "number"),
-    ("--list-projects", "lastActivityMs", "number"),
-    ("--list-sessions", "sessionId", "string"),
-    ("--list-sessions", "aiTitle", "string"),
-    ("--list-sessions", "cwd", "string"),
-    ("--list-sessions", "jsonlPath", "string"),
-    ("--list-sessions", "messageCountApprox", "number"),
-    ("--list-sessions", "startedAtMs", "number"),
-    ("--list-sessions", "updatedAtMs", "number"),
-    ("--list-sessions", "isBg", "bool"),
-];
-
-/// 结构夹具：一个项目、一个会话（三行中性记录），住临时家目录。
-fn second_frontend_home(tag: &str) -> (std::path::PathBuf, String, std::path::PathBuf) {
-    let home = std::env::temp_dir().join(format!("ccm-mif-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    let dir = home.join("projects").join("-p");
-    std::fs::create_dir_all(&dir).unwrap();
-    let sid = "11111111-2222-3333-4444-555555555555".to_string();
-    let path = dir.join(format!("{sid}.jsonl"));
-    let rows = [
-        format!(
-            r#"{{"type":"user","uuid":"aaaaaaaa-0000-0000-0000-000000000001","sessionId":"{sid}","timestamp":"2026-01-01T00:00:00Z","cwd":"/p","message":{{"role":"user","content":"x"}}}}"#
-        ),
-        r#"{"type":"ai-title","aiTitle":"t"}"#.to_string(),
-        format!(
-            r#"{{"type":"assistant","uuid":"aaaaaaaa-0000-0000-0000-000000000002","parentUuid":"aaaaaaaa-0000-0000-0000-000000000001","sessionId":"{sid}","timestamp":"2026-01-01T00:00:01Z","cwd":"/p","message":{{"id":"m1","role":"assistant","content":[{{"type":"text","text":"y"}}]}}}}"#
-        ),
-    ];
-    std::fs::write(&path, rows.join("\n") + "\n").unwrap();
-    (home, sid, path)
-}
-
-/// 每一条都还在子命令表里、照原来的叫法与位置参数真跑得通；列项目 / 列会话输出里它读的那几格还在、类型没变。
+/// 每一条都还在子命令表里、还进一次性模式。
 #[test]
 fn the_subcommands_the_second_frontend_calls_stay_put() {
-    for (flag, _) in SECOND_FRONTEND_SUBCOMMANDS {
+    for flag in SECOND_FRONTEND_SUBCOMMANDS {
         assert!(crate::SUBCOMMANDS.contains(flag), "{flag} 不在子命令表里了");
-    }
-    // ⚠ **上面那一圈对帧面派生的那几条是「串对串」** —— 本表与 `SUBCOMMANDS` 都是源码里的字面量，
-    //   帧面那条命令改名 / 删掉 / 进了 `STREAM_ONLY`，CLI 口当场消失而那个串还在 ⇒ 它照样绿（实测过）。
-    //   ⇒ 派生那几条逐条验**真能派发**（[`SECOND_FRONTEND_DERIVED_SUBCOMMANDS`]），顺便验登记的 0 不是凑的。
-    for flag in SECOND_FRONTEND_DERIVED_SUBCOMMANDS {
-        let spec = crate::control::cli_control::spec_for(flag).unwrap_or_else(|| {
-            panic!(
-                "{flag} 是帧面派生的 CLI 口，而 `spec_for` 今天查不到它 —— 帧面那条命令改名 / 删了 / 进了
-                 `cli_control::STREAM_ONLY`，CLI 面当场消失，而 `SUBCOMMANDS` 里那个串还在
-                 ⇒ 第二个前端调它只会拿到一堆 jsonl 行（`is_query_mode` 把它当未知 flag ⇒ 照常进流模式）。"
-            )
-        });
-        let (_, pos) = SECOND_FRONTEND_SUBCOMMANDS
-            .iter()
-            .find(|(f, _)| f == flag)
-            .unwrap_or_else(|| panic!("{flag} 列在派生表里，却不在冻结表里"));
-        assert_eq!(
-            *pos, 0,
-            "{flag} 是帧面 `{}` 派生的 CLI 口（入参走 stdin），位置参数该登记成 0",
-            spec.name
+        assert!(
+            crate::is_query_mode(&[flag.to_string()]),
+            "{flag} 不进一次性模式了"
         );
     }
-    // 探测口不在 `REGISTRY` 上（它是 `cli_control` 自己那一口）⇒ 单独验分派臂认得它。
-    assert!(
-        crate::control::cli_control::handles("--backend-probe"),
-        "`--backend-probe` 的分派臂不认它了 —— 第二个前端靠它判这台支持哪几条"
-    );
-    let (home, sid, path) = second_frontend_home("sub");
-    let p = path.to_string_lossy().to_string();
-    let argv = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let runs: Vec<(&str, Vec<String>)> = vec![
-        ("--list-projects", argv(&["--list-projects"])),
-        ("--list-sessions", argv(&["--list-sessions", "-p"])),
-        ("--read-session", argv(&["--read-session", &p])),
-        (
-            "--read-session-tail",
-            argv(&["--read-session-tail", &p, "1"]),
-        ),
-        (
-            "--read-session-from-offset",
-            argv(&["--read-session-from-offset", &p, "0"]),
-        ),
-        ("--search", argv(&["--search", "x"])),
-        (
-            "--find-in-session",
-            argv(&["--find-in-session", "--query", "x", &p]),
-        ),
-        ("--list-user-inputs", argv(&["--list-user-inputs", &p])),
-        (
-            "--fork-session",
-            argv(&[
-                "--fork-session",
-                &sid,
-                "aaaaaaaa-0000-0000-0000-000000000002",
-            ]),
-        ),
-    ];
-    for (flag, args) in &runs {
-        let want = SECOND_FRONTEND_SUBCOMMANDS
-            .iter()
-            .find(|(f, _)| f == flag)
-            .unwrap()
-            .1;
-        // 位置参数 ＝ 去掉子命令本身、去掉 `--opt` 与紧跟它的那个值之后剩下的。
-        // （原来写的是 `args.len() - 1`，那只对「不带选项」那几条成立；`--find-in-session` 必带 `--query <q>`。）
-        let mut positional = 0usize;
-        let mut it = args[1..].iter();
-        while let Some(a) = it.next() {
-            if a.starts_with("--") {
-                let _ = it.next();
-            } else {
-                positional += 1;
-            }
-        }
-        assert_eq!(positional, want, "{flag} 的位置参数个数");
-        assert!(crate::is_query_mode(args), "{flag} 不进一次性查询了");
-        let code = match *flag {
-            "--search" => crate::observe::search_query::run(&home, args),
-            "--fork-session" => crate::control::fork_write::run(&home, args),
-            _ => crate::observe::history_query::run(&home, args),
-        };
-        assert_eq!(code, 0, "{flag} 照原来的叫法跑不通了：{args:?}");
-    }
-    let mut buf = Vec::new();
-    crate::observe::history_query::list_projects_to(&home, &mut buf).expect("列项目");
-    let projects: Value =
-        serde_json::from_str(String::from_utf8_lossy(&buf).lines().next().unwrap()).unwrap();
-    let mut buf = Vec::new();
-    crate::observe::history_query::list_sessions_into(&home, "-p", &mut buf).expect("列会话");
-    let sessions: Value = String::from_utf8_lossy(&buf)
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .find(|v| v["sessionId"] == sid.as_str())
-        .expect("列会话里没有夹具那条");
-    for (flag, field, ty) in SECOND_FRONTEND_SUBCOMMAND_FIELDS {
-        let row = if *flag == "--list-projects" {
-            &projects
-        } else {
-            &sessions
-        };
-        let got = row
-            .get(*field)
-            .unwrap_or_else(|| panic!("{flag} 的输出里没了 {field}：{row}"));
-        assert_eq!(json_type(got), *ty, "{flag}.{field} 换了类型：{row}");
-    }
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 〔G2〕会话状态带写好的字与语气（对所有出口一次补齐）：活着的三态在 `session_added` · `session_status` 上

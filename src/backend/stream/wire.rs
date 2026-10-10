@@ -1479,4 +1479,4 @@ pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
 
 #[cfg(test)]
 #[path = "../../../tests/backend/stream/wire_tests.rs"]
-mod tests;
+pub(crate) mod tests;

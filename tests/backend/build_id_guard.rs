@@ -901,7 +901,44 @@ mod tests {
         opts.sort_unstable();
         out.push_str("\n#options\n");
         out.push_str(&opts.join("\n"));
+        // 第四段：两个前端照着读的冻结格（格目录里 `frozen` 的每一格 ＋ 帧那张冻结表）。改了它们同样要打版本号 ——
+        //   手机连上之后只核 `BUILD_ID` 这一处，不再读 `cells-catalog` 逐格核。写成一行摘要（格多，整份放进历史表太长）。
+        out.push('\n');
+        out.push_str(&frozen_fingerprint());
         out
+    }
+
+    /// 冻结格的摘要一行：`frozen <FNV-1a 64>`，摘的是排好序的 `成品.路径 类别 类型` 与 `帧.字段 类型`。
+    fn frozen_fingerprint() -> String {
+        let cat = crate::faces::cells_catalog::catalog();
+        let mut lines: Vec<String> = Vec::new();
+        for p in cat["products"].as_array().into_iter().flatten() {
+            for c in p["cells"].as_array().into_iter().flatten() {
+                if c["frozen"] == true {
+                    lines.push(format!(
+                        "{}.{} {} {}",
+                        p["name"].as_str().unwrap_or(""),
+                        c["path"].as_str().unwrap_or(""),
+                        c["kind"].as_str().unwrap_or(""),
+                        c["type"].as_str().unwrap_or("")
+                    ));
+                }
+            }
+        }
+        for (k, f, t) in crate::stream::wire::tests::SECOND_FRONTEND_READS {
+            lines.push(format!("frame:{k}.{f} {t}"));
+        }
+        // 反向自检：冻结格一格都没数到 ⇒ 这一段恒等、改了冻结格也不红。
+        assert!(
+            lines.len() >= 40,
+            "冻结格只数到 {} 格 —— 摘要退化了",
+            lines.len()
+        );
+        lines.sort_unstable();
+        format!(
+            "frozen {:016x}",
+            crate::observe::record_page::line_hash(lines.join("\n").as_bytes())
+        )
     }
 
     /// ★ E77 的正题。
@@ -928,7 +965,7 @@ mod tests {
             let added: Vec<&&str> = new.iter().filter(|s| !old.contains(s)).collect();
             let removed: Vec<&&str> = old.iter().filter(|s| !new.contains(s)).collect();
             panic!(
-                "backend 的子命令集变了（+{added:?} / -{removed:?}），而 BUILD_ID 还是 `{}`。\n\
+                "backend 的子命令集或冻结格变了（+{added:?} / -{removed:?}；`frozen …` 那一行是两个前端照读的冻结格的摘要），而 BUILD_ID 还是 `{}`。\n\
                  \n\
                  **别只改这张表**。monitor 判「远端该不该换后端」只有一条判据：\n\
                  那台报的 build_id ≠ monitor 内嵌字节自报的 id。不 bump ⇒ 已部署的旧 backend\n\

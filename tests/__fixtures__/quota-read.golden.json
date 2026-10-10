@@ -1,0 +1,1975 @@
+{
+  "cases": [
+    {
+      "name": "订阅 · 正常：当天写 HH:MM、非当天写 MM-DD HH:MM、距今 +1h50m / +3d",
+      "reply": {
+        "accounts": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "fiveHour": "5h 63%",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "personal",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "63%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻18:30",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1h50m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "41%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-09 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+3d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 63,
+                "resetsAt": 1791196200,
+                "resetsAtRelText": "+1h50m",
+                "resetsAtText": "18:30",
+                "slot": "5h",
+                "text": "63%",
+                "tone": "plain"
+              },
+              {
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "resetsAtRelText": "+3d",
+                "resetsAtText": "10-09 09:00",
+                "slot": "7d",
+                "text": "41%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791196260,
+              "atRelText": "+1h51m",
+              "atText": "18:31",
+              "text": "5h 63% ↻18:30"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "personal"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 快满：字同正常（琥珀由界面按 state 上色，不进字）",
+      "reply": {
+        "accounts": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "fiveHour": "5h 86%",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "personal",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "86%",
+                  "tone": "warn"
+                },
+                {
+                  "text": "↻18:30",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1h50m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "41%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-09 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+3d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 86,
+                "resetsAt": 1791196200,
+                "resetsAtRelText": "+1h50m",
+                "resetsAtText": "18:30",
+                "slot": "5h",
+                "text": "86%",
+                "tone": "warn"
+              },
+              {
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "resetsAtRelText": "+3d",
+                "resetsAtText": "10-09 09:00",
+                "slot": "7d",
+                "text": "41%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "near",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791196260,
+              "atRelText": "+1h51m",
+              "atText": "18:31",
+              "text": "5h 86% ↻18:30"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "personal"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 用满被拒：卡着的窗口用满（full）写 ✕ ＋ 几点重置",
+      "reply": {
+        "accounts": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "fiveHour": "5h ✕",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791198000,
+              "resetsAtRelText": "+2h20m",
+              "resetsAtText": "19:00"
+            },
+            "rows": [
+              [
+                {
+                  "text": "work",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "✕",
+                  "tone": "fail"
+                },
+                {
+                  "text": "↻19:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+2h20m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "78%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-07 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "full": true,
+                "pct": 100,
+                "resetsAt": 1791198000,
+                "resetsAtRelText": "+2h20m",
+                "resetsAtText": "19:00",
+                "slot": "5h",
+                "text": "✕",
+                "tone": "fail"
+              },
+              {
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "resetsAtRelText": "+1d",
+                "resetsAtText": "10-07 09:00",
+                "slot": "7d",
+                "text": "78%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "refused",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791198060,
+              "atRelText": "+2h21m",
+              "atText": "19:01",
+              "text": "被拒（5h）↻19:00"
+            }
+          }
+        ],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791198000,
+          "atRelText": "+2h20m",
+          "atText": "19:00"
+        },
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 被拒而没用满（短时限流）：卡着的窗口写 {pct}% · 被拒 ＋ 几点重置",
+      "reply": {
+        "accounts": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "fiveHour": "5h 58% · 被拒",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791189660,
+              "resetsAtRelText": "+1m",
+              "resetsAtText": "16:41"
+            },
+            "rows": [
+              [
+                {
+                  "text": "work",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "58% · 被拒",
+                  "tone": "fail"
+                },
+                {
+                  "text": "↻19:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+2h20m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "78%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-07 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 58,
+                "resetsAt": 1791198000,
+                "resetsAtRelText": "+2h20m",
+                "resetsAtText": "19:00",
+                "slot": "5h",
+                "text": "58% · 被拒",
+                "tone": "fail"
+              },
+              {
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "resetsAtRelText": "+1d",
+                "resetsAtText": "10-07 09:00",
+                "slot": "7d",
+                "text": "78%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "refused",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791198060,
+              "atRelText": "+2h21m",
+              "atText": "19:01",
+              "text": "被拒（5h）↻19:00"
+            }
+          }
+        ],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791198000,
+          "atRelText": "+2h20m",
+          "atText": "19:00"
+        },
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 超额在兜：卡着的窗口写 超额，超额一行 使用中 另计费",
+      "reply": {
+        "accounts": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "fiveHour": "5h 超额",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false,
+              "resetsAt": 1791198000,
+              "resetsAtRelText": "+2h20m",
+              "resetsAtText": "19:00"
+            },
+            "rows": [
+              [
+                {
+                  "text": "work",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "超额",
+                  "tone": "warn"
+                },
+                {
+                  "text": "↻19:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+2h20m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "78%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-07 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "使用中",
+                  "tone": "warn"
+                },
+                {
+                  "text": "另计费",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 104,
+                "resetsAt": 1791198000,
+                "resetsAtRelText": "+2h20m",
+                "resetsAtText": "19:00",
+                "slot": "5h",
+                "text": "超额",
+                "tone": "warn"
+              },
+              {
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "resetsAtRelText": "+1d",
+                "resetsAtText": "10-07 09:00",
+                "slot": "7d",
+                "text": "78%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "overageInUse",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791198060,
+              "atRelText": "+2h21m",
+              "atText": "19:01",
+              "text": "5h 104% ↻19:00"
+            }
+          }
+        ],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791198000,
+          "atRelText": "+2h20m",
+          "atText": "19:00"
+        },
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 上一窗已过 ＋ 数旧：卡着的窗口写 —、↻.. 已过；采样写 几点 · 旧",
+      "reply": {
+        "accounts": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "fiveHour": "5h —",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "team",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻13:10 已过",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "12%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-11 08:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+5d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "09:02 · 旧",
+                  "tone": "warn"
+                }
+              ]
+            ],
+            "seenAt": 1791162120,
+            "seenAtText": "09:02",
+            "slots": [
+              {
+                "pct": 97,
+                "resetsAt": 1791177000,
+                "resetsAtText": "13:10",
+                "slot": "5h",
+                "text": "—",
+                "tone": "plain"
+              },
+              {
+                "pct": 12,
+                "resetsAt": 1791676800,
+                "resetsAtRelText": "+5d",
+                "resetsAtText": "10-11 08:00",
+                "slot": "7d",
+                "text": "12%",
+                "tone": "plain"
+              }
+            ],
+            "stale": true,
+            "state": "resetSinceSeen",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "send",
+              "text": "5h 窗口已过期"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "team"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 被拒却没有分窗口的数（回包只给了几点能再用）⇒ 状态 一行",
+      "reply": {
+        "accounts": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "fiveHour": "5h —",
+            "kind": "sub",
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791192300,
+              "resetsAtRelText": "+45m",
+              "resetsAtText": "17:25"
+            },
+            "rows": [
+              [
+                {
+                  "text": "work",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "状态",
+                  "tone": "plain"
+                },
+                {
+                  "text": "被拒",
+                  "tone": "fail"
+                },
+                {
+                  "text": "↻17:25",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+45m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [],
+            "stale": false,
+            "state": "refused",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "send",
+              "text": "无 5h 窗口"
+            }
+          }
+        ],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791192300,
+          "atRelText": "+45m",
+          "atText": "17:25"
+        },
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "订阅 · 需登录 · 用满（full，用量超过 100%）照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
+      "reply": {
+        "accounts": [
+          {
+            "account": "old",
+            "agent": "claude-code",
+            "fiveHour": "5h 30%",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "needsLogin",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "old",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                },
+                {
+                  "text": "需登录",
+                  "tone": "warn"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "30%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻20:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+3h20m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "✕",
+                  "tone": "fail"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 30,
+                "resetsAt": 1791201600,
+                "resetsAtRelText": "+3h20m",
+                "resetsAtText": "20:00",
+                "slot": "5h",
+                "text": "30%",
+                "tone": "plain"
+              },
+              {
+                "full": true,
+                "pct": 103,
+                "slot": "7d",
+                "text": "✕",
+                "tone": "fail"
+              }
+            ],
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791193200,
+              "atRelText": "+1h",
+              "atText": "17:40",
+              "text": "需登录"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "没指定号（_ ⇒ ~/.claude · 未指定账号）· 别台采样（机器名照写）· 距今整点 +2h 与 +45m",
+      "reply": {
+        "accounts": [
+          {
+            "account": "_",
+            "agent": "claude-code",
+            "fiveHour": "5h 31%",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "~/.claude",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                },
+                {
+                  "text": "未指定账号",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "31%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻18:40",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+2h",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "9%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻17:25",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+45m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:31",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189060,
+            "seenAtText": "16:31",
+            "slots": [
+              {
+                "pct": 31,
+                "resetsAt": 1791196800,
+                "resetsAtRelText": "+2h",
+                "resetsAtText": "18:40",
+                "slot": "5h",
+                "text": "31%",
+                "tone": "plain"
+              },
+              {
+                "pct": 9,
+                "resetsAt": 1791192300,
+                "resetsAtRelText": "+45m",
+                "resetsAtText": "17:25",
+                "slot": "7d",
+                "text": "9%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791196860,
+              "atRelText": "+2h1m",
+              "atText": "18:41",
+              "text": "5h 31% ↻18:40"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "_"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻（写 被拒）/ 需 key",
+      "reply": {
+        "accounts": [
+          {
+            "account": "api",
+            "agent": "claude-code",
+            "fiveHour": null,
+            "kind": "api",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "api",
+                  "tone": "plain"
+                },
+                {
+                  "text": "按量",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h/7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "无限额",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:30",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189000,
+            "seenAtText": "16:30",
+            "slots": [],
+            "stale": false,
+            "state": "ok",
+            "warm": {
+              "act": "send",
+              "text": "无 5h 窗口"
+            }
+          },
+          {
+            "account": "api2",
+            "agent": "claude-code",
+            "fiveHour": null,
+            "kind": "api",
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791190320,
+              "resetsAtRelText": "+12m",
+              "resetsAtText": "16:52"
+            },
+            "rows": [
+              [
+                {
+                  "text": "api2",
+                  "tone": "plain"
+                },
+                {
+                  "text": "按量",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "状态",
+                  "tone": "plain"
+                },
+                {
+                  "text": "被拒",
+                  "tone": "fail"
+                },
+                {
+                  "text": "↻16:52",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+12m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:30",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189000,
+            "seenAtText": "16:30",
+            "slots": [],
+            "stale": false,
+            "state": "refused",
+            "warm": {
+              "act": "send",
+              "text": "无 5h 窗口"
+            }
+          },
+          {
+            "account": "api4",
+            "agent": "claude-code",
+            "fiveHour": null,
+            "kind": "api",
+            "login": "needsKey",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "api4",
+                  "tone": "plain"
+                },
+                {
+                  "text": "按量",
+                  "tone": "plain"
+                },
+                {
+                  "text": "需 key",
+                  "tone": "warn"
+                }
+              ],
+              [
+                {
+                  "text": "5h/7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "无限额",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:30",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189000,
+            "seenAtText": "16:30",
+            "slots": [],
+            "stale": false,
+            "state": "ok",
+            "warm": {
+              "act": "wait",
+              "at": 1791193200,
+              "atRelText": "+1h",
+              "atText": "17:40",
+              "text": "需 key"
+            }
+          }
+        ],
+        "earliestReturn": {
+          "account": "api2",
+          "at": 1791190320,
+          "atRelText": "+12m",
+          "atText": "16:52"
+        },
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "api"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "没出过数：订阅（需登录）与按量各一（— 无采样，不出采样一行）",
+      "reply": {
+        "accounts": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "fiveHour": "5h 4%",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "personal",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "4%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻18:10",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1h30m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "12%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-10 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+4d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 4,
+                "resetsAt": 1791195000,
+                "resetsAtRelText": "+1h30m",
+                "resetsAtText": "18:10",
+                "slot": "5h",
+                "text": "4%",
+                "tone": "plain"
+              },
+              {
+                "pct": 12,
+                "resetsAt": 1791594000,
+                "resetsAtRelText": "+4d",
+                "resetsAtText": "10-10 09:00",
+                "slot": "7d",
+                "text": "12%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "wait",
+              "at": 1791195060,
+              "atRelText": "+1h31m",
+              "atText": "18:11",
+              "text": "5h 4% ↻18:10"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "fiveHour": null,
+            "kind": "sub",
+            "login": "needsLogin",
+            "rows": [
+              [
+                {
+                  "text": "team",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                },
+                {
+                  "text": "需登录",
+                  "tone": "warn"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "无采样",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "warm": {
+              "act": "wait",
+              "at": 1791193200,
+              "atRelText": "+1h",
+              "atText": "17:40",
+              "text": "需登录"
+            }
+          },
+          {
+            "account": "api",
+            "agent": "claude-code",
+            "fiveHour": null,
+            "kind": "api",
+            "login": "ok",
+            "rows": [
+              [
+                {
+                  "text": "api",
+                  "tone": "plain"
+                },
+                {
+                  "text": "按量",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h/7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "无采样",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "warm": {
+              "act": "send",
+              "text": "无采样 · 发一句才知道"
+            }
+          }
+        ],
+        "usableNow": [
+          "personal"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "跨年：非当年写 YYYY-MM-DD HH:MM（过去的采样 · 将来的重置都一样）",
+      "reply": {
+        "accounts": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "fiveHour": "5h —",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "team",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻13:10 已过",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "12%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻2027-01-03 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+2d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "09:02",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1798678920,
+            "seenAtText": "09:02",
+            "slots": [
+              {
+                "pct": 97,
+                "resetsAt": 1798693800,
+                "resetsAtText": "13:10",
+                "slot": "5h",
+                "text": "—",
+                "tone": "plain"
+              },
+              {
+                "pct": 12,
+                "resetsAt": 1798938000,
+                "resetsAtRelText": "+2d",
+                "resetsAtText": "2027-01-03 09:00",
+                "slot": "7d",
+                "text": "12%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "resetSinceSeen",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "send",
+              "text": "5h 窗口已过期"
+            }
+          },
+          {
+            "account": "cold",
+            "agent": "claude-code",
+            "fiveHour": "5h —",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "rows": [
+              [
+                {
+                  "text": "cold",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻01-01 03:00 已过",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "5%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻01-06 09:00 已过",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "2025-12-31 23:50 · 旧",
+                  "tone": "warn"
+                }
+              ]
+            ],
+            "seenAt": 1767196200,
+            "seenAtText": "2025-12-31 23:50",
+            "slots": [
+              {
+                "pct": 2,
+                "resetsAt": 1767207600,
+                "resetsAtText": "01-01 03:00",
+                "slot": "5h",
+                "text": "—",
+                "tone": "plain"
+              },
+              {
+                "pct": 5,
+                "resetsAt": 1767661200,
+                "resetsAtText": "01-06 09:00",
+                "slot": "7d",
+                "text": "5%",
+                "tone": "plain"
+              }
+            ],
+            "stale": true,
+            "state": "resetSinceSeen",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "warm": {
+              "act": "send",
+              "text": "5h 窗口已过期"
+            }
+          }
+        ],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1798718400,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "team",
+          "cold"
+        ]
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "还没看到过任何回包、账号库也是空的",
+      "reply": {
+        "accounts": [],
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "absent",
+        "text": "无采样",
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    },
+    {
+      "name": "额度账读不出来",
+      "reply": {
+        "accounts": [],
+        "earliestReturn": null,
+        "fiveHour": "5h 读不到",
+        "names": {
+          "accounts": {
+            "_": "~/.claude"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
+        "state": "unreadable",
+        "text": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
+        "unseen": [],
+        "usableNow": []
+      },
+      "tzOffsetMin": 480
+    }
+  ],
+  "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。"
+}
