@@ -169,12 +169,23 @@ pub(crate) fn sampled<T: Shaped>() -> Sampled {
     }
 }
 
-/// 成功那一形 ＋ 失败信封 `data` 那一形的样本并成一份（两个 typed 的格都登在同一条命令的出参里）。
-pub(crate) fn sampled_and<T: Shaped, U: Shaped>() -> Sampled {
-    let (mut a, b) = (sampled::<T>(), sampled::<U>());
-    if let (serde_json::Value::Array(x), serde_json::Value::Array(y)) = (&mut a.value, b.value) {
-        x.extend(y);
+/// 几份样本并成一份：成功那一形 ＋ 失败信封 `data` 那几形（它们的格都登在同一条命令的出参里）。
+pub(crate) fn merged(parts: Vec<Sampled>) -> Sampled {
+    let mut all = Vec::new();
+    let mut census = Vec::new();
+    for p in parts {
+        if let serde_json::Value::Array(xs) = p.value {
+            all.extend(xs);
+        }
+        census.extend(p.census);
     }
-    a.census.extend(b.census);
-    a
+    Sampled {
+        value: serde_json::Value::Array(all),
+        census,
+    }
+}
+
+/// [`merged`] 的两份那一形。
+pub(crate) fn sampled_and<T: Shaped, U: Shaped>() -> Sampled {
+    merged(vec![sampled::<T>(), sampled::<U>()])
 }

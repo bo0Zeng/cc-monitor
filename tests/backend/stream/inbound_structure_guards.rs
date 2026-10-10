@@ -1123,7 +1123,7 @@ mod typed_replies {
     pub(super) use crate::control::session_batch as sb;
     pub(super) use crate::control::session_new as sn;
     pub(super) use crate::faces::rotation_face as rf;
-    pub(super) use crate::guard_support::{sampled, sampled_and, Sampled};
+    pub(super) use crate::guard_support::{merged, sampled, sampled_and, Sampled};
 }
 use typed_replies::*;
 
@@ -1209,7 +1209,7 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         "session-new",
         sampled_and::<sn::SessionNew, sn::SessionNewRefusal>,
         &["configDir", "model", "name"],
-        &[("kind", "入参 `account` 的种类；应答 `account` 是实际用的号（`name` · `configDir` · `model`），不带种类")],
+        &[],
     ),
     ("session-new-dir", sampled::<sn::DirChecked>, &[], &[]),
     (
@@ -1220,13 +1220,9 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     (
         "session-restart",
-        sampled::<crate::control::session_restart::Restarted>,
+        restart_samples,
         &["configDir", "model", "name"],
-        &[
-            ("names", "`ambiguous` 失败信封的 `data`（`session_restart::prepare` 现拼）"),
-            ("pids", "`session_already_live` 失败信封的 `data`（`session_restart::already_live` 现拼）"),
-            ("why", "`stop_failed` / `start_failed` 失败信封的 `data`（`session_restart::swap` 现拼）"),
-        ],
+        &[],
     ),
     (
         "sessions-start",
@@ -1246,7 +1242,7 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
             "unavailable",
             "why",
         ],
-        &[("kind", "入参 `account` 的种类；应答 `account` 是实际用的号（`name` · `configDir` · `model`），不带种类")],
+        &[],
     ),
     (
         "sessions-stop",
@@ -1308,6 +1304,16 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     ("rotation-session-set", sampled::<rf::SessionSet>, &[], &[]),
 ];
+
+/// `session-restart`：成功那一形 ＋ 失败信封按码定形的 `data`（自己那几形 ＋ 选不了号那一形）。
+fn restart_samples() -> Sampled {
+    use crate::control::session_restart as sr;
+    merged(vec![
+        sampled::<sr::Restarted>(),
+        sampled::<sr::Refused>(),
+        sampled::<crate::control::launch_account::AccountUnavailable>(),
+    ])
+}
 
 /// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
 ///

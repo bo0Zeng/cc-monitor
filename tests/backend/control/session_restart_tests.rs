@@ -3,6 +3,7 @@
 use super::*;
 use crate::control::launch_render::local;
 use crate::control::session_batch::TmuxEntry;
+use serde_json::json;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -418,5 +419,27 @@ impl crate::guard_support::Shaped for Restarted {
                 model: None,
             }),
         }]
+    }
+}
+
+impl crate::guard_support::Shaped for Refused {
+    fn samples() -> Vec<Self> {
+        vec![
+            Refused::Ambiguous {
+                names: vec!["proj-cc".into(), "proj-cc-2".into()],
+            },
+            Refused::Live {
+                pids: vec![41, 42],
+                stopped: true,
+            },
+            Refused::StopFailed {
+                why: "too_many_windows".into(),
+            },
+            Refused::StartFailed {
+                terminal: "proj-cc".into(),
+                why: Some("record_gone".into()),
+                stopped: true,
+            },
+        ]
     }
 }

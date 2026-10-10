@@ -3130,7 +3130,7 @@ cc-bus 钩子诊断。
 | `said` | ← | 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null` |
 | `fresh_terminal` | → | 可缺：分叉出来的那一条 ⇒ 必铸新终端名 |
 | `items` | → | 要起的会话，每项 `{sid, cwd, account?, fresh_terminal?, fork_of?}` |
-| `kind` | → ← | `account` 的种类 |
+| `kind` | → | `account` 的种类（应答 `account` 是实际用的号，不带种类） |
 | `launcher` | → | 整批一份：用户设置的 resume 命令原值 |
 | `local` | → | 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行） |
 | `mode` | → | `tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开） |
@@ -3162,7 +3162,7 @@ cc-bus 钩子诊断。
 | `cwd` | → ← | 工作目录（开头的 `~` 按这台的家目录读）；应答里是展开之后的（认报到的会话按它） |
 | `field` | ← | 失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`） |
 | `forkFrom` | → | 可缺 |
-| `kind` | → ← | `account` 的种类：`follow` · `base` · `named` |
+| `kind` | → | `account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类） |
 | `local` | → | 发请求的界面就在这台上（开窗那一形本机与远端渲法不同） |
 | `model` | ← | 应答 `account` 里：用的模型 |
 | `models` | → | 可缺 |
@@ -3241,6 +3241,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `account` | → ← | 用户点名的号（只收名字）；应答里是实际用的号 |
 | `agent` | → | 同 `sessions-start` 的整批那几格 |
+| `alternative` | ← | `account_unavailable` 失败的 `data`：给的显式替代号（这台的默认号；`null` ⇒ 只能「不指定号」） |
 | `arrive_within_ms` | → | 等新进程报出的期限（≤ 3 600 000） |
 | `client` | → | 自报的前端，同 `kill` |
 | `compact` | ← | 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed` |
@@ -3250,14 +3251,18 @@ cc-bus 钩子诊断。
 | `cwd` | → | 工作目录 |
 | `defaultLauncher` | → | 同 `sessions-start` |
 | `launcher` | → | 同 `sessions-start` |
+| `listKnown` | ← | `account_unavailable` 失败的 `data`：这台的账号清单读得出来 |
 | `local` | → | 同 `sessions-start` |
 | `model` | ← | 应答 `account` 里：模型 |
 | `models` | → | 可缺：这台的模型偏好表原值 |
 | `name` | ← | 应答 `account` 里：实际用的号 |
 | `names` | ← | `ambiguous` 失败的 `data`：在跑的那几个终端名 |
 | `pids` | ← | `session_already_live` 失败的 `data`：那几个 pid |
+| `pinned` | ← | `account_unavailable` 失败的 `data`：要的号是这条会话上次用的（跟随），不是这次点名的 |
+| `requested` | ← | `account_unavailable` 失败的 `data`：要的那个号 |
 | `sid` | → | 会话 id |
 | `started` | ← | `arrived`（新进程报出了）· `missed` |
+| `stopped` | ← | 停完旧的之后才失败（`session_already_live` · `start_failed`）的 `data`：恒 `true`，旧会话已经不在了 |
 | `terminal` | ← | 所在的终端（会话名） |
 | `why` | ← | `stop_failed` / `start_failed` 失败的 `data`：那一步的码 |
 

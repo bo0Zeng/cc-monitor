@@ -363,3 +363,14 @@ impl crate::guard_support::Shaped for LastAccounts {
         }]
     }
 }
+
+impl crate::guard_support::Shaped for AccountUnavailable {
+    fn samples() -> Vec<Self> {
+        vec![AccountUnavailable {
+            requested: "work".into(),
+            pinned: true,
+            list_known: true,
+            alternative: Some("home".into()),
+        }]
+    }
+}
