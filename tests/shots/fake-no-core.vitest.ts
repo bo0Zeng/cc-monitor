@@ -86,9 +86,6 @@ const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
   "plan.ts": {
     clock: [4, "计划那一族（plan-*）还是合成的：计划 dump 的读法与成品没接真后端（要造计划工作区的原始 dump）"],
   },
-  "profiles.ts": {
-    coreKey: [26, "配置文件那一族（profiles-*）还是合成的：几种坏样子（语法错 · 迁移过 · 改过）的回包句子照抄后端；要造对应的 profiles.toml 原文"],
-  },
 };
 
 const keys = coreKeys();

@@ -10,7 +10,7 @@
 //! # 两种送法，因为两条读循环一条异步一条不是
 //!
 //! - 常驻载体（`local_backend_host.rs` 的读循环）是 tokio 任务 ⇒ [`deliver`]（`send().await`）。
-//! - stdio 载体（`local_backend::local_stdio_consumer`）是裸 `std::thread` ⇒ [`deliver_blocking`]。
+//! - stdio 载体（`local_backend::local_stdio_consumer`）是裸 `std::thread` ⇒ [`StdioOut`]（`blocking_send`）。
 //!   ⚠ 反过来就错：在 tokio 任务里 `blocking_send` 会 panic，在裸线程里没有 runtime 可 `.await`。
 //!
 //! # 背压：级 1
@@ -48,6 +48,7 @@ pub(crate) fn install(app: tauri::AppHandle, replay: Arc<EventReplay>) {
     // 本机两条载体解不出来的帧也进健康信息（同一个出口）。
     crate::stream_source::install_local_health(crate::remote_health_out(app.clone()));
     tauri::async_runtime::spawn(crate::stream_source::consume_local(
+        crate::origin::LOCAL.to_string(),
         rx,
         replay,
         crate::remote_health_out(app),
@@ -67,29 +68,14 @@ pub(crate) async fn deliver(frame: InboundFrame) {
     send(LocalItem::Frame(frame)).await
 }
 
-/// stdio 载体（裸线程）送一帧。
-pub(crate) fn deliver_blocking(frame: InboundFrame) {
-    send_blocking(LocalItem::Frame(frame))
-}
-
 /// 常驻载体上一行超长、整行丢了（下游原位给订阅一格 `Gap`）。
 pub(crate) async fn line_lost() {
     send(LocalItem::LineLost).await
 }
 
-/// stdio 载体上一行超长、整行丢了。
-pub(crate) fn line_lost_blocking() {
-    send_blocking(LocalItem::LineLost)
-}
-
 /// 常驻载体的流结束了。
 pub(crate) async fn stream_ended() {
     send(LocalItem::StreamEnded).await
-}
-
-/// stdio 载体的流结束了。
-pub(crate) fn stream_ended_blocking() {
-    send_blocking(LocalItem::StreamEnded)
 }
 
 async fn send(item: LocalItem) {
@@ -99,10 +85,45 @@ async fn send(item: LocalItem) {
     }
 }
 
-fn send_blocking(item: LocalItem) {
-    let Some(tx) = sender() else { return };
-    if tx.blocking_send(item).is_err() {
-        tracing::warn!("本机内容消费者已经退出 —— 这一件丢掉");
+/// **stdio 载体（裸线程）往哪送**：读循环（`local_backend::local_stdio_consumer`）交回的东西只经它出去。
+///
+/// - [`StdioOut::Local`]：本机那一个消费者（[`install`] 造的通道）—— 产品只有这一形。
+/// - [`StdioOut::Own`]：调用方自己那条通道（截图台架的无头壳每台机器一条，各进一个 `consume_local`；`shots_shell`）。
+///
+/// 送法都是 `blocking_send`（裸线程，见头注「两种送法」）；背压照旧（满了就等）。
+pub(crate) enum StdioOut {
+    Local,
+    #[cfg_attr(not(feature = "shots"), allow(dead_code))]
+    Own(tokio::sync::mpsc::Sender<LocalItem>),
+}
+
+impl StdioOut {
+    /// 送一帧。
+    pub(crate) fn deliver(&self, frame: InboundFrame) {
+        self.send(LocalItem::Frame(frame))
+    }
+
+    /// 一行超长、整行丢了（下游原位给订阅一格 `Gap`）。
+    pub(crate) fn line_lost(&self) {
+        self.send(LocalItem::LineLost)
+    }
+
+    /// 流结束了。
+    pub(crate) fn stream_ended(&self) {
+        self.send(LocalItem::StreamEnded)
+    }
+
+    fn send(&self, item: LocalItem) {
+        let tx = match self {
+            StdioOut::Local => {
+                let Some(tx) = sender() else { return };
+                tx
+            }
+            StdioOut::Own(tx) => tx,
+        };
+        if tx.blocking_send(item).is_err() {
+            tracing::warn!("本机内容消费者已经退出 —— 这一件丢掉");
+        }
     }
 }
 
