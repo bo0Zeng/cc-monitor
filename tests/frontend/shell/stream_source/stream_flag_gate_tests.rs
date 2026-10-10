@@ -107,3 +107,54 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     assert!(!on.hides(&added("bg1", true)));
     assert!(!on.hides(&line("bg1")));
 }
+
+/// 「bg 会话藏不藏」只有一道门（[`crate::stream_source::local::BgHide`]），本机远端两条流各过一次：
+/// 读「显示后台会话」开关的生产调用方恰好是这两条读循环、各自拿它造那道门；远端读循环对每一帧过 `hides`，本机对每一件过 `admit`。
+/// 谁在别处另写一份藏法（或哪条流不过这道门），这一条红。
+#[test]
+fn both_streams_hide_background_sessions_through_the_one_gate() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(files.len() > 100, "只扫到 {} 份 —— 取法坏了", files.len());
+    let callers: std::collections::BTreeSet<String> = files
+        .iter()
+        .filter(|(p, raw)| {
+            !p.ends_with("lib.rs")
+                && guard_core::production_code(raw).contains("load_show_bg_sessions()")
+        })
+        .map(|(p, _)| {
+            p.strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    assert_eq!(
+        callers,
+        ["stream_source/local.rs", "stream_source/run.rs"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        "读「显示后台会话」的不止两条读循环 —— 别处另有一份藏法"
+    );
+    let remote = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/stream_source/run.rs"
+    ));
+    for needle in [
+        "let mut bg = super::local::BgHide::new(crate::load_show_bg_sessions());",
+        "let frame = frame.filter(|f| !bg.hides(f));",
+    ] {
+        guard_core::find_pinned(&remote, needle)
+            .unwrap_or_else(|e| panic!("远端那条流没过那道门：{e}"));
+    }
+    let local = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/stream_source/local.rs"
+    ));
+    for needle in [
+        "let mut bg = BgHide::new(show_bg);",
+        "let Some(item) = bg.admit(item) else {",
+    ] {
+        guard_core::find_pinned(&local, needle)
+            .unwrap_or_else(|e| panic!("本机那条流没过那道门：{e}"));
+    }
+}
