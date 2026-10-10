@@ -475,7 +475,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # 只装 platform-tools：这个 action 默认还装 `tools`，那个旧包已从 SDK 仓里撤了、
+      # sdkmanager 找不到就整步失败（10-10 那一趟）。平台与 build-tools 由 AGP 按需自己装。
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v4
         with:
