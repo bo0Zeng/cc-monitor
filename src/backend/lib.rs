@@ -136,7 +136,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
 /// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
 ///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍 aterm TurnDetector）；
-///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
+///   `turn_end` 加进 EMITS。dedup 视界在手机端（`TurnEndDebouncer.kt` 的 debounce ＋ `SshKeepAliveService.kt` 的 `baselineByPath`）。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
 ///   bump BUILD_ID 给含 DG3-6 的后端独立身份（Phase G 审计 I2：防"同 id 不同内容"静默陈旧）。
