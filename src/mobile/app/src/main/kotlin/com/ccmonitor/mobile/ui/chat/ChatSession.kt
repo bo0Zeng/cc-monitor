@@ -179,11 +179,11 @@ class ChatSession(
                     is TerminalInput.Result.Refused ->
                         (if (res.why in RETRYABLE) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
                             copyText("terminal.input.failed", "why" to res.said)
-                    null -> failed(unreadableReply(r.data.toString()).text)
+                    null -> failed(unreadableReply(machine, TerminalInput.COMMAND, r.data.toString()).text)
                 }
             // 期限到了：发出去了、不知道送没送到 ⇒ 不重发。
             Reply.TimedOut -> unsure
-            else -> failed(r.problem(machine)?.text)
+            else -> failed(r.problem(machine, TerminalInput.COMMAND)?.text)
         }
     }
 
@@ -216,8 +216,8 @@ class ChatSession(
         val before = link.table.value.sessions.keys
         val answer =
             when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket), NEW_MS)) {
-                is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(r.data.toString()).text)
-                else -> return failSession(r.problem(machine)?.text)
+                is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
+                else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
             }
         val arrived =
             answer.sid ?: withTimeoutOrNull(arrivalMs) {
@@ -278,10 +278,10 @@ class ChatSession(
             ?.let { return it }
         return when (val r = link.call(HistoryList.COMMAND, null, READ_MS)) {
             is Reply.Ok -> {
-                val list = HistoryList.of(r.data) ?: return null.also { failSession(unreadableReply(r.data.toString()).text) }
+                val list = HistoryList.of(r.data) ?: return null.also { failSession(unreadableReply(machine, HistoryList.COMMAND, r.data.toString()).text) }
                 list.rows.firstOrNull { it.sessionId == s }?.jsonlPath ?: null.also { failSession(copyText("mobChat.record.missing", "machine" to machine)) }
             }
-            else -> null.also { failSession(r.problem(machine)?.text) }
+            else -> null.also { failSession(r.problem(machine, HistoryList.COMMAND)?.text) }
         }
     }
 
@@ -290,8 +290,8 @@ class ChatSession(
         n: Int,
     ): HistoryTail.Answer? =
         when (val r = link.call(HistoryTail.COMMAND, HistoryTail.args(p, n), READ_MS)) {
-            is Reply.Ok -> HistoryTail.of(r.data) ?: null.also { readFailed(unreadableReply(r.data.toString()).text) }
-            else -> null.also { readFailed(r.problem(machine)?.text) }
+            is Reply.Ok -> HistoryTail.of(r.data) ?: null.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, r.data.toString()).text) }
+            else -> null.also { readFailed(r.problem(machine, HistoryTail.COMMAND)?.text) }
         }
 
     /** 读 `[from, until)` 里的记录，一页不够就接着读。 */
@@ -306,7 +306,7 @@ class ChatSession(
             val r = link.call(HistoryRead.COMMAND, HistoryRead.args(p, at, until), READ_MS)
             val page =
                 (r as? Reply.Ok)?.let { HistoryRead.of(it.data) }
-                    ?: return null.also { readFailed(r.problem(machine)?.text ?: unreadableReply(r.toString()).text) }
+                    ?: return null.also { readFailed(r.problem(machine, HistoryRead.COMMAND)?.text ?: unreadableReply(machine, HistoryRead.COMMAND, r.toString()).text) }
             out += page.records
             if (page.eof || page.next <= at) break
             at = page.next
