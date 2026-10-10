@@ -18,6 +18,7 @@ internal class FakeCoreLink : CoreLink {
     override val table = MutableStateFlow(SessionTable())
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
+    override val epoch = MutableStateFlow(0L)
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }
 
