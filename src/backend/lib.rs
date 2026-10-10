@@ -894,7 +894,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// 会话血缘：起会话地址尾上带来处段 ~<来处>[~<父>]（语法只在 relay-route-core）；中转认谁起的谁，记 ~/.cc-monitor/lineage.json；起子进程不往下传各家「我是哪个会话」的变量（self_sid_env）；子会话默认跟随父会话（{"parent": sid}）。
 /// CLI 失败信封只剩一种：stderr 一行 {code, message, detail, data?}（与帧面失败应答同一份 stream::detail::Failed），下层原话进 detail，不再有 raw 格；--text 的失败是那一句 ＋ 复制详情；CLI 面开 --within-ms（同帧面 within_ms）。needs.kind 八种（approve · answer · plan · network · worker · goal · choose · unknown）；activity 多 background_work；足迹那一份 claude_config_dir 改叫 agent_home。
 /// 状态的字进核心：session_added / session_status 带 activity_text · activity_tone，session_state 带 state_text · state_hint · state_tone（必有），facts.needs 带 text · tone；新帧命令 cells-catalog（每件成品有哪些格）。计划：plan-command（代敲 pb continue · pause · view），plan_changed 三格必填、壳转进界面。全文搜索分层（正文层优先留、工具层先放，常驻上界 128 MB）。
-pub const BUILD_ID: &str = "p9t-resident-socket-cells";
+///
+/// p9u-needs-bgwork-mcp：核心补格——facts.needs 加 rank（先答哪个）· waitedMs · waitedText（已等多久在那台算）；facts.usage 带写好的字（contextText · limitText · promptTokensText · percent · contextTone · limitFromText）；activity 说不清也带字（运行中 · now），background_work 写「后台任务运行中」· 语气 busy；facts 多 bgTasks · background（后台命令与时长，会走的那一句 clock{text, from}）· mcp（要登录 · 连不上 · 还在连）；格目录缺格清空、记录金样扩全、冻结表并进格目录。
+/// 新命令 sessions-needs（这台上需手动的会话 {waiting:[{sid, needs}]}，先答的在前）· plan-files（计划格 ⇄ 文件反查）；阻塞命令总期限的超时码统一 child_timed_out（bus-* 原 timed_out，sessions-where/stop/start 列名单超时原回 unobservable）；session-restart 失败 data 与 rotation-* 等应答改 typed（线上形状不变）；sessions-start 的 kind 只入。
+/// ccm 直路打印那一行与真跑同清各家会话号变量（codex 的 --ccm-print 多一段 unset CLAUDE_CODE_SESSION_ID）；关窗 / 列不出来之后文件窗口进程照样退；Windows 摘子进程环境不分大小写；常驻开关先判不支持（--resident-ensure 在不支持的平台先回 unsupported、不建目录）；tmux 控制模式客户端关 stdin 断开（不 SIGKILL）；全文搜索 mimalloc ＋ 多线程重读。
+pub const BUILD_ID: &str = "p9u-needs-bgwork-mcp";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
