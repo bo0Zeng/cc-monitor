@@ -1,5 +1,7 @@
 // A3 accounts store 纯函数 + 缓存 + config 读写测试（vitest + jsdom）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
@@ -13,7 +15,7 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
-import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, isSelectable, badgeText, sessionBadge, shouldShowAccountBadge, accountStatusBadge, apikeyEndpointStateFor, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
+import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, badgeText, sessionBadge, shouldShowAccountBadge, accountStatusBadge, apikeyEndpointStateFor, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchMachineApikeyRouting } from "../../../src/frontend/ui/account-reads";
 import { getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -50,10 +52,12 @@ function acct(p: Partial<Account>): Account {
     loggedIn: true,
     authKind: "subscription",
     authReady: true,
+    selectable: true,
     ...p,
   };
 }
-function state(p: Partial<AccountsState>): AccountsState {
+/** 夹具照成品写：`selectable` · `meta.effectiveDefault` 是那台后端写好的格（规则住 `acct-core`，金样见下）。 */
+function state(p: Partial<AccountsState>, effectiveDefault: string | null = null): AccountsState {
   return {
     origin: "devbox",
     available: true,
@@ -68,6 +72,7 @@ function state(p: Partial<AccountsState>): AccountsState {
       sharedStore: null,
       count: 0,
       error: null,
+      effectiveDefault,
     },
     accounts: [],
     ...p,
@@ -96,7 +101,7 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   });
   it("未启用（enabled:false）→ not-enabled，带 manifest 路径", () => {
     const ui = deriveUi(
-      state({ meta: { enabled: false, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 0, error: "manifest 不可读" } }),
+      state({ meta: { enabled: false, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 0, error: "manifest 不可读", effectiveDefault: null } }),
     );
     expect(ui.kind).toBe("not-enabled");
     if (ui.kind === "not-enabled") {
@@ -115,49 +120,53 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   });
 });
 
-describe("effectiveDefault", () => {
-  it("那台清单里 isDefault 的那一个", () => {
-    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] });
-    expect(effectiveDefault(s)?.name).toBe("b");
+/**
+ * 「这个号能不能选 · 默认号是谁」跨三处的金样（`tests/__fixtures__/account-default.golden.json`）：
+ * 后端清单成品逐号写 `selectable`、`meta` 写 `effectiveDefault`（`accounts_query_tests` 钉）；命令行不带号落的是同一个（`plan_tests` 钉）；
+ * 界面只照抄那两格 —— 这里按金样的期望造成品，界面读出的能选的号与默认号逐格相等（不另判：`isDefault` 与 `selectable` 故意反着也照成品）。
+ */
+describe("默认号 · 能选的号照那台写好的格（跨三处金样）", () => {
+  const golden = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/account-default.golden.json"), "utf8")) as {
+    cases: { what: string; accounts: { name: string; hasDir: boolean; isDefault: boolean; mode: string; authReady: boolean; exists: boolean }[]; effectiveDefault: string | null; selectable: string[] }[];
+  };
+  it("金样没被删薄", () => {
+    expect(golden.cases.length).toBeGreaterThanOrEqual(6);
   });
-  it("没有标默认的 → 第一个", () => {
-    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b" })] });
-    expect(effectiveDefault(s)?.name).toBe("z");
-  });
-  it("零账号 → null", () => {
-    expect(effectiveDefault(state({ accounts: [] }))).toBeNull();
-  });
-});
-
-describe("currentWorkingAccount（effectiveDefault 语义别名）", () => {
-  it("与 effectiveDefault 值一致", () => {
-    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] });
-    expect(currentWorkingAccount(s)?.name).toBe("b");
-    expect(currentWorkingAccount(s)).toBe(effectiveDefault(s));
-  });
-  it("零账号 → null（与 effectiveDefault 一致）", () => {
-    expect(currentWorkingAccount(state({ accounts: [] }))).toBeNull();
+  for (const c of golden.cases) {
+    it(c.what, () => {
+      const accounts = c.accounts.map((a) =>
+        acct({ name: a.name, configDir: a.hasDir ? `/h/${a.name}` : null, isDefault: a.isDefault, mode: a.mode, authReady: a.authReady, exists: a.exists, selectable: c.selectable.includes(a.name) }),
+      );
+      const s = state({ accounts }, c.effectiveDefault);
+      expect(defaultAccount(s)?.name ?? null).toBe(c.effectiveDefault);
+      expect(selectableAccounts(s).map((a) => a.name)).toEqual(c.selectable);
+    });
+  }
+  it("界面不另判：成品说谁就是谁（与 isDefault · 鉴权那几格反着给也照成品）", () => {
+    const s = state({ accounts: [acct({ name: "z", isDefault: true, selectable: false }), acct({ name: "b", authReady: false, selectable: true })] }, "b");
+    expect(defaultAccount(s)?.name).toBe("b");
+    expect(selectableAccounts(s).map((a) => a.name)).toEqual(["b"]);
   });
 });
 
 describe("currentAccountForBadge（account-ux U6：current 不可选就不能拿去判「不一致」）", () => {
-  it("当前账号可选 → 返回它（与 currentWorkingAccount 同值）", () => {
-    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] });
+  it("当前账号可选 → 返回它", () => {
+    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] }, "b");
     expect(currentAccountForBadge(s)?.name).toBe("b");
   });
   // 下面三条 = DoD 明列的「current 不可选不对齐」。不过滤的话：账号徽章
   // （F09 后唯一消费者）会指着一个系统自己永远不会 follow 过去的账号说"你不一致"。
   it("当前账号未登录 → null（对齐必失败，不能拿它判「不一致」）", () => {
-    const s = state({ accounts: [acct({ name: "b", isDefault: true, loggedIn: false, authReady: false })] });
-    expect(currentWorkingAccount(s)?.name).toBe("b"); // effectiveDefault 照样给
+    const s = state({ accounts: [acct({ name: "b", isDefault: true, loggedIn: false, authReady: false, selectable: false })] }, "b");
+    expect(defaultAccount(s)?.name).toBe("b"); // 默认号照样给
     expect(currentAccountForBadge(s)).toBeNull(); // 但对齐面必须拒
   });
   it("当前账号是 in-place（逃生口，不支持按会话切号）→ null", () => {
-    const s = state({ accounts: [acct({ name: "b", isDefault: true, mode: "in-place" })] });
+    const s = state({ accounts: [acct({ name: "b", isDefault: true, mode: "in-place", selectable: false })] }, "b");
     expect(currentAccountForBadge(s)).toBeNull();
   });
   it("当前账号目录缺失 → null", () => {
-    const s = state({ accounts: [acct({ name: "b", isDefault: true, exists: false })] });
+    const s = state({ accounts: [acct({ name: "b", isDefault: true, exists: false, selectable: false })] }, "b");
     expect(currentAccountForBadge(s)).toBeNull();
   });
   it("零账号 → null", () => {
@@ -177,7 +186,7 @@ describe("accountColorsActive（account-ux U8：单账号/降级时账号色系�
     expect(accountColorsActive(state({ accounts: [] }))).toBe(false);
   });
   it("有 2 个账号但只有 1 个**可选** → 休眠（数的是可选数，不是总数）", () => {
-    const s = state({ accounts: [sel("wei"), acct({ name: "amy", loggedIn: false, authReady: false })] });
+    const s = state({ accounts: [sel("wei"), acct({ name: "amy", loggedIn: false, authReady: false, selectable: false })] });
     expect(s.accounts.length).toBe(2); // 总数够
     expect(accountColorsActive(s)).toBe(false); // 但可选数不够
   });
@@ -186,9 +195,9 @@ describe("accountColorsActive（account-ux U8：单账号/降级时账号色系�
       accountColorsActive(state({ available: false, accounts: [sel("wei"), sel("amy")] })),
     ).toBe(false);
   });
-  it("selectableAccounts 只留 isSelectable 的", () => {
+  it("selectableAccounts 只留成品说选得了的", () => {
     const s = state({
-      accounts: [sel("wei"), acct({ name: "amy", mode: "in-place" }), acct({ name: "p", exists: false })],
+      accounts: [sel("wei"), acct({ name: "amy", mode: "in-place", selectable: false }), acct({ name: "p", exists: false, selectable: false })],
     });
     expect(selectableAccounts(s).map((a) => a.name)).toEqual(["wei"]);
   });
@@ -232,21 +241,6 @@ describe("sessionBadge source 字段（account-ux U1/U5）", () => {
     const b = sessionBadge("s1", "devbox", new Map(), emailBy);
     expect(b?.source).toBe("unknown");
     expect(b?.account).toBeNull();
-  });
-});
-
-describe("isSelectable", () => {
-  it("isolated + 已登录 + 存在 → 可选", () => {
-    expect(isSelectable(acct({}))).toBe(true);
-  });
-  it("未登录 → 不可选", () => {
-    expect(isSelectable(acct({ loggedIn: false, authReady: false }))).toBe(false);
-  });
-  it("in-place → 不可选", () => {
-    expect(isSelectable(acct({ mode: "in-place" }))).toBe(false);
-  });
-  it("目录不存在 → 不可选", () => {
-    expect(isSelectable(acct({ exists: false }))).toBe(false);
   });
 });
 
@@ -569,10 +563,9 @@ describe("shouldShowAccountBadge（A4/§7 徽章门控）", () => {
 
 describe("Z01 账号 0（configDir 缺席）", () => {
   const zero = () =>
-    acct({ name: "0", configDir: null, mode: "bare", loggedIn: true, exists: true });
+    acct({ name: "0", configDir: null, mode: "bare", loggedIn: true, exists: true, selectable: false });
 
   it("暂不可选：从 UI 起它需要 unset 注入，launch-plan 今天只会 export", () => {
-    expect(isSelectable(zero())).toBe(false);
     expect(selectableAccounts(state({ accounts: [zero()] }))).toEqual([]);
   });
 
@@ -600,7 +593,7 @@ describe("Z01 账号 0（configDir 缺席）", () => {
 // ============================================================================
 //
 // ★ **为什么这一族必须落在 TS 这一侧**：那条级联整个住在这里 ——
-// `isSelectable` 为假 ⇒ `selectableAccounts` 不收它 ⇒ 不能设为当前号 ·
+// 成品 `selectable` 为假 ⇒ `selectableAccounts` 不收它 ⇒ 不能设为当前号 ·
 // 进不了 resume/restart 菜单 ·
 // `accountColorsActive` 因为「可选账号 ≥ 2」不成立而连账号色一起休眠。
 // **Rust 全绿而这一条没改，用户看到的还是「这个号不能用」。**
@@ -612,8 +605,9 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
       configDir: `/h/.claude-alt/${name}`,
       loggedIn: false,
       authKind: "api-key",
-      // 两个 Rust 生产者都会填它（值由 `acct_core::auth_ready` 算）。
+      // 两个 Rust 生产者都会填它（值由 `acct_core::auth_ready` · `account_selectable` 算）。
       authReady: true,
+      selectable: true,
     });
   /** 订阅号，**同样没有凭据文件** —— `KAY3` 的阴性对照。 */
   const subNoCred = (name = "sub") =>
@@ -623,15 +617,10 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
       loggedIn: false,
       authKind: "subscription",
       authReady: false,
+      selectable: false,
     });
 
-  it("★ KAY2②：isSelectable 为真", () => {
-    expect(isSelectable(apiKey())).toBe(true);
-  });
-
-  it("★ KAY3：订阅号缺凭据 —— isSelectable 仍为**假**（这道保护不许被一起放宽）", () => {
-    expect(isSelectable(subNoCred())).toBe(false);
-    // 连带：它进不了可选列表。
+  it("★ KAY3：订阅号缺凭据 —— 进不了可选列表（规则在 Rust：`acct_core` 的金样）", () => {
     const st = state({ accounts: [subNoCred()] });
     expect(selectableAccounts(st)).toEqual([]);
   });
@@ -642,11 +631,11 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
   });
 
   it("★ KAY2 级联③：能当当前号 / 上徽章（跟随选中它由那台后端判，见后端判号那一族）", () => {
-    const st = state({ accounts: [apiKey()] });
-    expect(currentWorkingAccount(st)?.name).toBe("api");
+    const st = state({ accounts: [apiKey()] }, "api");
+    expect(defaultAccount(st)?.name).toBe("api");
     expect(currentAccountForBadge(st)?.name).toBe("api");
     // 阴性对照同一格：订阅号缺凭据时落空。
-    const bad = state({ accounts: [subNoCred()] });
+    const bad = state({ accounts: [subNoCred()] }, "sub");
     expect(currentAccountForBadge(bad)).toBeNull();
   });
 
@@ -659,13 +648,6 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
     );
   });
 
-  it("★〔DUP1〕只读后端算好的 authReady，不看 loggedIn（两个方向各一格）", () => {
-    // 规则的唯一住址是 `acct_core::auth_ready`；这两格原来是可缺的，缺了由一个 TS 包装回落到 loggedIn ——
-    // 那是订阅分支在 TS 里的第二份（登记表 `tests/frontend/ui/judgment-single-home.vitest.ts` J1）。
-    // 解码器早已逐键要求这两格，回落不可达，包装删了 ⇒ 两格与 loggedIn 反着给，结论跟 authReady 走。
-    expect(isSelectable(acct({ name: "o", loggedIn: true, authReady: false }))).toBe(false);
-    expect(isSelectable(acct({ name: "o", loggedIn: false, authKind: "api-key", authReady: true }))).toBe(true);
-  });
 });
 
 describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {

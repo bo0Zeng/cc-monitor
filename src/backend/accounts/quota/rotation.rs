@@ -1125,7 +1125,7 @@ pub(crate) fn rescan(path: &Path) {
 
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）：别的进程写了 ⇒ [`rescan`]。返回的那一份活着就一直盯。
 /// 起的时候先记下此刻那一份（之后的改动才有得比）。
-pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
+pub(crate) fn watch(path: &Path) -> Result<crate::platform::watch_file::Watching, String> {
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?
@@ -1137,13 +1137,13 @@ pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
         &[(dir, false)],
         |p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME),
         "rotation-watch",
-        move || rescan(&target),
+        move |_| rescan(&target),
     )
 }
 
 /// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json`，进程活着就一直盯。盯不上只出声。
 pub(crate) fn watch_here() {
-    static HELD: Mutex<Option<notify::RecommendedWatcher>> = Mutex::new(None);
+    static HELD: Mutex<Option<crate::platform::watch_file::Watching>> = Mutex::new(None);
     let Some(path) = path_now() else { return };
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
@@ -1197,13 +1197,13 @@ fn ring_changed(before: &Book, after: &Book) {
     }
 }
 
-/// 进程里那条「这台的规则表 / 默认指向变了」的通道（流连接订它推 `rotation_rules_changed`）。
+/// 进程里那条「这台的规则表 / 默认指向变了」的通道（流连接订它推 `changed {rotation_rules}`）。
 pub(crate) fn rules_changes() -> &'static tokio::sync::broadcast::Sender<()> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> = std::sync::OnceLock::new();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<()>(16).0)
 }
 
-/// 进程里那条「某个会话的轮换 / 账号格变了」的通道（流连接订它推 `rotation_changed`）。
+/// 进程里那条「某个会话的轮换 / 账号格变了」的通道（流连接订它推 `changed {rotation}`）。
 pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
         std::sync::OnceLock::new();
@@ -1502,24 +1502,41 @@ pub(crate) fn rotation_from(
 }
 
 /// 编辑器里一格填错了：哪一格（`name` · `wait` · `cap.*.5h` · `cap.*.7d`（触发那一行）· `cap.<号>.<窗口键>` · `cap.<号>.<窗口键>[i]` · `stint.<号>.<窗口键>`）·
-/// 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）。界面只照它标红、按短码取文案。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）· 那一格下面的那一句（`said`，核心写好）。
+/// 界面照 `cell` 标红、照抄 `said`，不按短码取字。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct CellError {
     pub cell: String,
     pub code: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub with: Option<usize>,
+    #[cfg_attr(test, ts(type = "string"))]
+    pub said: crate::common::cells::Words,
 }
 
-fn cell_err(cell: String, code: &str, with: Option<usize>) -> CellError {
+/// 一格错（那一句照短码由核心写：名称那三种 · 封顶那四种）。
+pub(crate) fn cell_err(cell: String, code: &str, with: Option<usize>) -> CellError {
+    let said = match code {
+        "empty" => copy_text("rot.save.empty", &[]),
+        "dup" => copy_text("rot.save.dup", &[]),
+        "tooLong" => copy_text("rot.save.tooLong", &[]),
+        "same" => copy_text("rot.capErr.same", &[]),
+        "overlap" => copy_text(
+            "rot.capErr.overlap",
+            &[("i", &(with.unwrap_or(0) + 1).to_string())],
+        ),
+        "range" => copy_text("rot.capErr.range", &[]),
+        _ => copy_text("rot.capErr.time", &[]),
+    };
     CellError {
         cell,
         code: code.to_string(),
         with,
+        said: crate::common::cells::Words(said),
     }
 }
 

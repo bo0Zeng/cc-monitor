@@ -2,7 +2,7 @@
 import type { MachineFaultCode } from "./MachineFaultCode";
 
 /**
- * 机器表那一道没过的那一处（闭集码 ＋ 那台的名字）；界面按码取那一句、落在那一格下面。
+ * 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
  */
 export type MachineFault = { 
 /**
@@ -12,4 +12,8 @@ code: MachineFaultCode,
 /**
  * 出问题的那台的名字（`label` 非空取它、否则 `host`）。
  */
-name: string, };
+name: string, 
+/**
+ * 那一格下面的那一句（添加机器框 · 机器卡同读）。
+ */
+said: string, };

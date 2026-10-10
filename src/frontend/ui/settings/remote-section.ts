@@ -156,8 +156,8 @@ export function accountsSummary(state: AccountsState, os: string | null): string
   if (meta.unsupported) return os ? copyText("machineList.summary.single", { os }) : copyText("machineList.summary.singleBare");
   if (!meta.enabled) return copyText("machineList.summary.notEnabled");
   const n = got.accounts.length;
-  const def = got.accounts.find((a) => a.isDefault);
-  return def ? copyText("machineList.summary.accounts", { n, name: def.name }) : copyText("machineList.summary.count", { n });
+  const def = meta.effectiveDefault;
+  return def !== null ? copyText("machineList.summary.accounts", { n, name: def }) : copyText("machineList.summary.count", { n });
 }
 
 /** 删掉的那台经它在转的端口转发一条条停掉（本机后端那本转发账；停不掉的只进日志）。 */

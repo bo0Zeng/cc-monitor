@@ -2,6 +2,7 @@
 
 /**
  * 编辑器里一格填错了：哪一格（`name` · `wait` · `cap.*.5h` · `cap.*.7d`（触发那一行）· `cap.<号>.<窗口键>` · `cap.<号>.<窗口键>[i]` · `stint.<号>.<窗口键>`）·
- * 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）。界面只照它标红、按短码取文案。
+ * 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）· 那一格下面的那一句（`said`，核心写好）。
+ * 界面照 `cell` 标红、照抄 `said`，不按短码取字。
  */
-export type CellError = { cell: string, code: string, with?: number, };
+export type CellError = { cell: string, code: string, with?: number, said: string, };

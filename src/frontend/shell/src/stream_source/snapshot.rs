@@ -8,8 +8,9 @@ use std::sync::Arc;
 //
 // === 旁路快照拉取（每管道一个对话，完就断） ===
 //
-// tail-only 下后端不重放历史；每个已宣告会话的完整历史由这里经独立 SSH 连接跑 `--read-session` 一次性查询拉回，按行号编 seq 灌进与 tail 行
+// tail-only 下后端不重放历史；每个已宣告会话的**尾段**（最后 `SNAPSHOT_TAIL_LINES` 个可计行）由这里经已开着的长连接取回，按行号编 seq 灌进与 tail 行
 // 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收。
+// 尾段之下的头段不预拉：界面往上翻时按行号 / 按偏移取回（`live-window.ts` 的 `BelowState`）。
 // 并发 ≤SNAPSHOT_CONCURRENCY（不抢 tail 通道带宽）；priority sid 优先出队。
 
 const SNAPSHOT_CONCURRENCY: usize = 2;
@@ -17,8 +18,13 @@ const SNAPSHOT_CONCURRENCY: usize = 2;
 /// 历史浏览器按需查询不受此限）。
 const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const SNAPSHOT_CHUNK_LINES: usize = 500;
-/// 尾部优先 —— 最新 N 行先到（第一批 emit 即最新内容），旧历史回填。
-const SNAPSHOT_TAIL_LINES: usize = 500;
+/// 快照只取最后这么多个可计行：**就是壳留存每会话留的那么多**（`event_replay::REPLAY_TAIL_KEEP`，一处口径）。
+///
+/// 为什么不对齐界面账本（`live-window.ts` 的 `PENDING_KEEP` 2000）：多拉的那 1400 行进了留存当场被修回 600（F5 那一屏看不到），
+/// 只在 tab 账本里多占着，往上翻七八次之后才用得上 —— 而往上翻本来就按行号一批 200 行取回（一个往返）。
+/// 600 正是界面开 tab 一次最多物化的条数（`materializeUntilFilled`，等式由 `replay-tail-keep.vitest.ts` 钉着），首屏不用等取回。
+/// 沙箱读数（6 个活会话、原文 32 MB）：600 行 3.4 MB / 15 个往返；2000 行 7.8 MB / 22 个往返；原先整份 16.5 MB / 42 个往返。
+const SNAPSHOT_TAIL_LINES: u64 = crate::event_replay::REPLAY_TAIL_KEEP as u64;
 
 /// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`
 /// （SessionRemoved 时调）摘除排队项 + 给 inflight 打取消标记 + 从 seen 摘除
@@ -251,19 +257,19 @@ enum FetchOutcome {
 
 // 快照只含可计行：口径只住后端 `history_query::line_counts`。
 
-/// 拉取单个会话的完整历史快照并灌进既有管线。
+/// 拉取单个会话的尾段快照（续点在就只续读断线期间新到的那一截）并灌进既有管线。
 ///
 /// 🔴 **不再为每份快照单拨一条 SSH。** 此前这里 exec 一次
 /// `<backend> --read-session-tail <p> 500`，读它一口气印出来的「meta ＋ 尾段 ＋ 头段」；
 /// 现在走已有长连接：先 `history-tail` 问那张图（`total` / `tail_from` / 两段的字节边界），
-/// 再按 `[split_at, end)`、`[0, split_at)` 两段用 `history-read` 分页取正文 ——
-/// 与那条子命令印出的两段**逐字节相同**（后端扫的是同一个函数），行号映射（[`tail_seq`]）一个字没动。
+/// 再只按 `[split_at, end)` 一段用 `history-read` 分页取正文（第 `tail_from` 行起）。
+/// 头段 `[0, split_at)` 不读（原先连上就整份读回来、壳与界面只留尾巴、其余当场丢 —— 沙箱 6 个活会话 16.5 MB → 3.4 MB）。
 ///
 /// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
 /// ended 格**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
 /// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
 ///
-/// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total`。
+/// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total - tail_from`（续传：`total` 减去锚）。
 async fn fetch_snapshot(
     q: &std::sync::Arc<SnapshotQueue>,
     item: &SnapshotItem,
@@ -279,16 +285,16 @@ async fn fetch_snapshot(
     let plan = frame_query::tail(
         &origin,
         path,
-        SNAPSHOT_TAIL_LINES as u64,
+        SNAPSHOT_TAIL_LINES,
         frame_query::Deadline::within(frame_query::PAGE_BUDGET),
     )
     .await?;
-    // 断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
+    // 断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上就只读尾段。
     let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
     let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
-    // 断线期间文件变短了（续点比这一次的图长）⇒ 这一次整份读出来的是另一代的行号：
-    //   先交那个会话一格「变短了、已从头重读」（前端据它整份重来、留存丢旧的一代），再整份读。
-    //   续点不必另丢：这一次整份读完立的新锚盖掉它。
+    // 断线期间文件变短了（续点比这一次的图长）⇒ 这一次读出来的是另一代的行号：
+    //   先交那个会话一格「变短了、已从头重读」（前端据它整份重来、留存丢旧的一代），再读尾段。
+    //   续点不必另丢：这一次读完立的新锚盖掉它。
     if crate::snapshot_resume::shrank(cursor.as_ref(), path, &plan) {
         replay
             .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
@@ -300,7 +306,7 @@ async fn fetch_snapshot(
             .await;
     }
     // 续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
-    //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、整份重读、交那个会话一格「被改过」。
+    //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、从尾段重读、交那个会话一格「被改过」。
     if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
         (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
     {
@@ -316,7 +322,7 @@ async fn fetch_snapshot(
         let whole = page.eof || page.next >= w.end;
         if whole && !crate::snapshot_resume::witness_holds(&w, &page.rows) {
             tracing::warn!(
-                "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，整份重读",
+                "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，从尾段重读",
                 w.start,
                 w.end
             );
@@ -329,7 +335,7 @@ async fn fetch_snapshot(
                     change: FileChange::Rewritten.as_wire().to_string(),
                 })
                 .await;
-            how = crate::snapshot_resume::Read::Full;
+            how = crate::snapshot_resume::Read::Tail;
         }
     }
     if let crate::snapshot_resume::Read::Resume {
@@ -416,7 +422,7 @@ async fn fetch_snapshot(
     if !chunk.is_empty() {
         flush_lines(replay, host_label, chunk, &mut runs).await;
     }
-    // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
+    // 完整性校验：精确对账（F30）—— 只读尾段时对尾段几行，续传时对「锚之后那一截」。
     let (arrived, want) = (walk.arrived(), walk.want());
     if arrived != want {
         return Err(copy_text(
@@ -439,7 +445,7 @@ async fn fetch_snapshot(
             ));
         }
     }
-    // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
+    // `[tail_from, total)` 全到了（尾段：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。尾段之下的前端按需取回。
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
     crate::snapshot_resume::note_witness(&origin, sid, pick.done());
     Ok(FetchOutcome::Done(arrived))
@@ -453,22 +459,6 @@ async fn fetch_snapshot(
 pub(crate) fn compensates_on_cancel(origin: &crate::origin::Origin) -> bool {
     !origin.is_local()
 }
-
-/// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
-/// 锤不到生产代码）：到达序 → 行号。前 total-tail_from 行是尾段（最新），
-/// 其余是头段回填。调用方保证 tail_from <= total（`frame_query::tail` 校验）。
-pub(crate) fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
-    let seg1 = total.saturating_sub(tail_from);
-    if arrived < seg1 {
-        tail_from + arrived
-    } else {
-        arrived - seg1
-    }
-}
-
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/snapshot_tail_tests.rs"]
-mod snapshot_tail_tests;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/snapshot_tests.rs"]

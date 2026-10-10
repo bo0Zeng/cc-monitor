@@ -26,7 +26,7 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
 import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf, lookupAgentProfile } from "./agent-profile";
 import { fetchAccounts } from "./account-reads";
-import { isSelectable, type Account } from "./accounts";
+import type { Account } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
@@ -106,9 +106,11 @@ interface AccountOpt {
 async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[] | null> {
   if (!agentHasAccounts(agent)) return null;
   let list: Account[];
+  let def: string | null;
   try {
     const st = await fetchAccounts(origin);
     if (!st.available) return null;
+    def = st.meta?.effectiveDefault ?? null;
     list = st.accounts.filter((a) => a.configDir !== null && a.mode === "isolated");
   } catch {
     return null;
@@ -119,8 +121,8 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
   const prof = lookupAgentProfile(agent);
   const opts = list.map((a) => ({
     name: a.name,
-    isDefault: a.isDefault,
-    ready: isSelectable(a),
+    isDefault: a.name === def,
+    ready: a.selectable,
     quota: prof.known ? fiveHourCell(q, prof.facts.adapterId, a.name) : null,
   }));
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];

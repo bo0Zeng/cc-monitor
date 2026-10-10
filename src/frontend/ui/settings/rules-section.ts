@@ -7,7 +7,7 @@
  * - 删一条在用的规则 ⇒ 确认框里选那些会话落到哪（转为本会话 · 改为跟随默认）；没人在用 ⇒ 直接删、toast 带撤销。
  *
  * 判定全在那台后端：摘要 · 谁在用 · 名字对不对 · 重名加号 · 版本冲突 · 删默认拒（`rotation-*` 那几条）。会话标题取
- * `history-list`（那台的会话清单）。这里只排版、只认最后一趟回答；那台规则一变推 `quota-changed {rules}`，这一栏自己重读。
+ * `history-list`（那台的会话清单）。这里只排版、只认最后一趟回答；那台规则一变推 `changed {rotation_rules}`，这一栏自己重读。
  */
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import {
@@ -43,7 +43,7 @@ import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
 import { machineName } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import type { CellError } from "../generated/CellError";
+import { nameError } from "../rot-editor";
 import { RuleEditor } from "./rule-editor";
 import s from "./rules-section.module.css";
 import { MachineTimeline } from "./rules-timeline";
@@ -183,7 +183,7 @@ export class RulesSection {
     this.whoGot = null;
   }
 
-  /** 每台订 `quota-changed`：带 `rules` 的那几帧合并成一次重读（只重读此刻在看的那台）。 */
+  /** 每台订 `changed/rotation_rules` ＋ `changed/rotation`：合并成一次重读（只重读此刻在看的那台）。 */
   private async subscribe(): Promise<void> {
     if (this.subscribed) return;
     this.subscribed = true;
@@ -192,15 +192,9 @@ export class RulesSection {
       () => [] as string[],
     );
     const origins: Origin[] = [LOCAL_ORIGIN, ...hosts];
-    const pushed = (
-      origin: Origin,
-      change: { rules: boolean; sids: readonly string[]; all: boolean },
-    ): void => {
-      if (
-        origin !== this.origin ||
-        !(change.rules || change.all || change.sids.length > 0)
-      )
-        return;
+    // 规则表 / 默认指向变了 · 某个会话的来源变了（`changed/rotation_rules` · `changed/rotation`）：一来就合并成一次重读。
+    const pushed = (origin: Origin): void => {
+      if (origin !== this.origin) return;
       if (this.pushTimer !== null) clearTimeout(this.pushTimer);
       // 调度：合批 —— 那台推来的规则 / 会话来源变更：300ms 内几帧合成一次重读
       this.pushTimer = setTimeout(() => {
@@ -210,8 +204,8 @@ export class RulesSection {
     };
     try {
       await bindEvents(
-        { onLine: () => {}, onSessionEnded: () => {}, onQuotaChanged: pushed },
-        { quota: origins },
+        { onLine: () => {}, onSessionEnded: () => {}, onChanged: pushed },
+        { changed: origins.flatMap((origin) => (["rotation_rules", "rotation"] as const).map((topic) => ({ origin, topic }))) },
       );
     } catch (e) {
       console.warn("[rules] 订不上规则推送：", e);
@@ -1058,7 +1052,7 @@ export class RulesSection {
         if (got.state !== "saved")
           throw new Error(
             got.state === "refused"
-              ? cellsText(got.errors)
+              ? nameError(got.errors) // 那台拒了整条：照名称那格说，别的格写「未保存」
               : copyText("rot.fail.conflict"),
           );
         const miss = got.rule.missing;
@@ -1195,21 +1189,3 @@ export class RulesSection {
   }
 }
 
-/** 名称那一格的错照后端短码写（空 · 重名 · 超长）。 */
-function nameError(errors: CellError[]): string {
-  const e = errors.find((x) => x.cell === "name");
-  return e?.code === "dup"
-    ? copyText("rot.save.dup")
-    : e?.code === "tooLong"
-      ? copyText("rot.save.tooLong")
-      : e?.code === "empty"
-        ? copyText("rot.save.empty")
-        : copyText("rot.save.failed");
-}
-
-/** 那台拒了整条（它的账号库不认某格之类）：照名称那格说，别的格写「未保存」。 */
-function cellsText(errors: CellError[]): string {
-  return errors.some((x) => x.cell === "name")
-    ? nameError(errors)
-    : copyText("rot.save.failed");
-}

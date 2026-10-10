@@ -62,13 +62,15 @@ export class Refuse {
 }
 
 export interface World {
+  /** 每台机器家目录里的原始文件（真后端读它们答 `REAL_OPS` 那几条；`../disk`）。缺 ⇒ 空家目录。 */
+  disk: Record<string, import("../disk").MachineDisk>;
   /** 第一台是本机（`<local>`）。 */
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
   /** 配置文件那一页换哪种样子（`fake/profiles.ts`；不给 ⇒ 照设计稿那台的清单）。 */
   profiles?: "normal" | "broken" | "syntax" | "empty" | "migrated" | "edited" | "stale";
-  /** 历史清单问不到的那几台（`history-list` 带它 ⇒ 答 `unreachable`）。 */
+  /** 历史清单问不到的那几台（那台常驻那一跳 `history-list {raw}` 连不上）。 */
   historyDown?: string[];
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */
   closedMachines: string[];

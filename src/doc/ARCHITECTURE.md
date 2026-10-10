@@ -67,7 +67,8 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录 `agents/record.rs`，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
-- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
+- **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `stream/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
+- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `changed {tasks, key: sid}`，界面订 `changed/tasks`，收到就重问 `tasks-list`。
 
 ### 1.3 每条线的源头
 
@@ -200,7 +201,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
  输入适配层（每家 agent 一个）        核心（后端，一处）                     输出适配层（每个出口一个）
  claudecode · codex · fake    ──▶  通用会话 / 记录模型                ──▶  桌面：帧 → 壳（只转运）→ 界面（只排版）
  盘上原始格式 ⇒ 通用模型              所有判定、所有成品只算一次              CLI：--json / --text
-                                     成品 ＝ 值 ＋ 写好的字 ＋ 语气            手机：经 CLI 面或流
+                                     成品 ＝ 值 ＋ 写好的字 ＋ 语气            手机（src/mobile）：经 CLI 面或流
                                                                             对端后端：扇出时问远端
 ```
 
@@ -208,7 +209,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 |---|---|---|
 | 输入适配层（`agents/<家>/`） | 把那一家的盘上格式翻成通用模型（`agents/record.rs::Record` · 会话活动 · 步骤结果的数）；申报那一家用了哪些文件 | 判定、写给人看的句子（给码 ＋ 原话，句子由核心写） |
 | 核心（`observe/` · `control/` · `accounts/` … 与出成品的 `faces/`） | 一切判定；每件成品出全量格：值 ＋ 写好的字 ＋ 语气 ＋ 时刻字 | 认「是哪个出口在问」；为某一个出口加开关 |
-| 输出适配层（壳 ＋ 界面 · CLI 面 · 手机仓 · 扇出那一处） | 挑格（要哪几格）、按核心算好的格筛 / 排、按预算截、装运（帧 / 一行 JSON / 文本） | 判定、写句子、格式化（时长 · 大小 · 百分比 · 按码取字） |
+| 输出适配层（壳 ＋ 界面 · CLI 面 · 手机端（在本仓 `src/mobile`）· 扇出那一处） | 挑格（要哪几格）、按核心算好的格筛 / 排、按预算截、装运（帧 / 一行 JSON / 文本） | 判定、写句子、格式化（时长 · 大小 · 百分比 · 按码取字） |
 
 **成品约定**（每件成品都是这几种格的组合，出口不需要认业务）：
 
@@ -221,6 +222,8 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 | `detail` · `raw` | 复制详情（只在失败时）· 原文透传（受认证约束的可选格） | — |
 
 「这一格是值还是写好的字」由它的 Rust 类型说，不按格名猜：`blocks[].text` 是原文（值），`cost.text` 是核心写的字。界面自己的骨架字（按钮、菜单、标题、空状态）留在界面；凡是描述数据或状态的字都由核心写。
+
+**出口扫描判据**：`tests/frontend/ui/exit-judgment-scan.vitest.ts` 按写法指纹（`tests/frontend/ui/exit-rules.ts`：按码取字 · 按状态排档 · 拼百分比 · 写时长单位 · 换算时刻 · 换算大小）扫桌面界面与壳的生产代码；今天的存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，逐格恒等、只许删不许加（每格写明归哪一批收、或凭什么留）。手机端并进来时把它的目录加进名单的 `roots`。
 
 **会走的钟**：核心写的时刻字是发出那一刻的字。手机与 CLI 要它跟着走就按节拍重问（出口零格式化）；桌面秒级走的那几处（过程行 `{dur}` · 「已等」）只留一个时长读口（TS `duration-format.ts::fmtDur`，与 Rust `copy_core::short_duration` 对同一份金样 `short-duration.golden.json`）。
 

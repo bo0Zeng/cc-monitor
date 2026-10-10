@@ -3,14 +3,14 @@
  *
  * 判定（零命中守卫）：生产 `.ts`（`*.vitest.ts` / `*.test.ts` / `src/frontend/ui/generated/` 之外）
  * 里，`loggedIn` / `authReady` / `authKind` 只许出现在**登记过的那几个文件**里；
- * 可用性一律走 `accounts.ts::isSelectable`。
+ * 可用性一律读那台后端写好的 `selectable`（规则住 `acct_core::account_selectable`，跨三处金样 `tests/__fixtures__/account-default.golden.json`）。
  *
  * # 这条守卫**抓不到**什么（写清楚，别让它看起来比实际强）
  *
  * 1. **它按字符串找。** 有人写 `const flag = a["loggedIn" as const]`、或把字段先解构再改名
  *    传下去（`const { loggedIn: ok } = a; …` —— 这一形**能**抓到，因为字面量还在；
  *    但 `JSON.parse(raw).loggedIn` 这类经过 `any` 的读法，字面量若被拼出来就抓不到）。
- *    ⇒ 真正的地板不是本文件，是 **`isSelectable` 是唯一出口**这件事本身；
+ *    ⇒ 真正的地板不是本文件，是 **可选只由后端那一格答**这件事本身（DUP1 登记表 J29 钉 TS 侧零实现）；
  *    本文件只让「又开一条」这个动作**被看见**。
  * 2. **它是 vitest，扫不到 Rust 侧。** Rust 那边的同类绕过由两条同名判据各守自己那份：
  *    `src/frontend/shell/src/local_accounts.rs::tests::the_auth_dimension_has_exactly_one_computation_path`
@@ -18,8 +18,8 @@
  * 3. **它不判语义。** 一个文件即使不提 `loggedIn`，也可以自己写
  *    `a.mode === "isolated" && a.exists` 冒充可用性判据 —— 那一格今天不钉
  *    （针只有一根，多了会把大量正常代码判红）。
- * 4. **它不判 `authReady` 那一格算得对不对。** 阳性对照钉的是「`isSelectable` 的**函数体内**
- *    真的读了 `a.authReady`」；规则本身住 `acct_core::auth_ready`（后端算好放进这一格），由 Rust 侧那三条
+ * 4. **它不判 `authReady` / `selectable` 那一格算得对不对。** 阳性对照钉的是「`selectableAccounts` 的**函数体内**
+ *    只读了 `a.selectable`」；规则本身住 `acct_core::auth_ready`（后端算好放进这一格），由 Rust 侧那三条
  *    （`acct-core` 的金样互钉 + 两条生产者对拍）守。TS 这边原来还有一个带「旧后端回落 loggedIn」的
  *    包装（`accounts.ts::authReady`〔散文墓碑〕）—— 那是规则订阅分支在 TS 里的第二份，删了。
  * 5. **它扫不到测试侧的第二份实现。** 扫描面（`productionTsFiles`）**按构造**排掉
@@ -73,7 +73,7 @@ function hits(code: string, ident: string): number {
  * 那不是洁癖：`authReady`/`authKind` 登记成 `null` 时，`src/frontend/ui/accounts.ts` 文件**内部**
  * 可以长出第二条直接读 `a.authReady` 的路而本文件全绿 —— D 阶段审计一刀就走通了
  * （复现读数在件计划 `§3c`）。留着那个档，等于给「再开一条」留了一扇不响的门。
- * ⇒ 谁要改这三个数，先回答「这一处凭什么不能走 `isSelectable` / `accountStatusBadge`」；
+ * ⇒ 谁要改这三个数，先回答「这一处凭什么不能走 成品 `selectable` / `accountStatusBadge`」；
  * **把数字调大就是在放宽判据**，不是在修测试。
  *
  * ⚠ **`src/frontend/ui/account-chip.ts` 那一格已经没了（K-A1 第二轮落的），别再加回来。**
@@ -87,7 +87,7 @@ function hits(code: string, ident: string): number {
  * 报文逐字 `src/frontend/ui/account-chip.ts: loggedIn 出现 1 次（登记 0）`，`offenders` 长度 1。
  *
  * ⇒ **登记表今天只剩 `src/frontend/ui/accounts.ts` 一格。** 谁要往这张表加第二格，先回答一句：
- * 「这个新落点凭什么不能走 `isSelectable` / `accountStatusBadge`」——
+ * 「这个新落点凭什么不能走 成品 `selectable` / `accountStatusBadge`」——
  * 上面那两轮的教训是：同职两处必然漂，而漂的那一侧用户先看见。
  */
 const ALLOWED: Record<string, Record<string, number>> = {
@@ -101,10 +101,11 @@ const ALLOWED: Record<string, Record<string, number>> = {
   //   `authReady` 6 → 4（少了函数名与回落里那一处；三个消费点改成直接读 `a.authReady`，次数不变）· `authKind` 不变。
   // `accountRowKind`（设置窗账号表那一行的第二行要哪一档）：`loggedIn` 1 → 2 · `authKind` 3 → 4（各读一次）。
   // `accountLoginActionLabel` 随它没人调删了：`authReady` 4 → 3 · `authKind` 4 → 3。
-  "src/frontend/ui/accounts.ts": { loggedIn: 2, authReady: 3, authKind: 3 },
+  // 10-10 `isSelectable` 删了（能不能选由那台后端写好 `selectable`，规则住 `acct_core::account_selectable`）：`authReady` 3 → 2。
+  "src/frontend/ui/accounts.ts": { loggedIn: 2, authReady: 2, authKind: 3 },
   // 后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
   //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
-  //   不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
+  //   不是**判**：可用性仍只由那台后端写好的 `selectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
   //   单独一个文件、单独一行，两件事分得开（`src/frontend/ui/accounts-decode.ts` 头注）。
   "src/frontend/ui/accounts-decode.ts": { loggedIn: 4, authReady: 4, authKind: 4 },
 };
@@ -132,8 +133,8 @@ describe("KAY4 账号可用性只有一个出口", () => {
     }
     // 剥注释别剥过头：本守卫的全部承重都落在「剥完还剩代码」上。
     const acc = byFile.get("src/frontend/ui/accounts.ts") ?? "";
-    expect(acc, "剥过头了：accounts.ts 里连 isSelectable 都没剩下").toContain(
-      "export function isSelectable",
+    expect(acc, "剥过头了：accounts.ts 里连 selectableAccounts 都没剩下").toContain(
+      "export function selectableAccounts",
     );
     // 而且**注释真的被剥掉了** —— 否则下面的次数全是散文。
     // `accounts.ts` 的注释里逐字出现过 `a.loggedIn`（讲 K-A1 换了哪一项）。
@@ -153,7 +154,7 @@ describe("KAY4 账号可用性只有一个出口", () => {
     }
     expect(
       offenders,
-      "有生产文件直接读了账号的鉴权字段。可用性一律走 `accounts.ts::isSelectable`；\n" +
+      "有生产文件直接读了账号的鉴权字段。可用性一律读那台写好的 `selectable`（规则住 `acct_core::account_selectable`）；\n" +
         "要显示登录态走 `accountStatusBadge`；要按 kind 分流的规则住 `acct_core::auth_ready`。\n" +
         "真要新开一处 ⇒ 把它写进本文件的 `ALLOWED` 并说明凭什么。\n" +
         `实得：\n${offenders.map((o) => `  ${o}`).join("\n")}`,
@@ -177,36 +178,17 @@ describe("KAY4 账号可用性只有一个出口", () => {
     ).toEqual([]);
   });
 
-  it("★ 阳性对照：`isSelectable` 的**函数体内**真的经 `authReady` 而不是裸 `loggedIn`", () => {
-    // 上一条是「没有第二处」；这一条是「第一处确实在做那件事」——
-    // 否则把 `isSelectable` 整个删掉，上一条也会绿（零命中的另一种到法）。
-    //
-    // ⚠ **窗口必须有界到函数体。** 第三轮这里写的是
-    // `/export function isSelectable\(a: Account\): boolean \{[\s\S]*?authReady\(a\)/` ——
-    // `[\s\S]*?` 无界，只保证「开花括号**之后某处**有 `authReady(a)`」。
-    // D 阶段审计一刀就绕过去了：把 `authReady(a)` 挪进一个**定义在 `isSelectable` 之后**的
-    // 语义等价包装 ⇒ 本文件当时 3 passed、vitest 全量 1467 passed，全绿（第四轮复现过，
-    // 读数在件计划 `§3c`）。⇒ 改成先切出函数体（到第一个**行首** `}` 为止）再匹配。
+  it("★ 阳性对照：可选列表只照那台写好的 `selectable`（界面不另判，规则住 `acct_core::account_selectable`）", () => {
+    // 上一条是「没有第二处读鉴权字段」；这一条是「可选那件事确实只读成品那一格」——
+    // 否则把可选判定挪回界面（`mode` · `authReady` · `exists` 拼一遍），上一条照样可能绿（`mode` / `exists` 不在被数的字段里）。
     const acc = byFile.get("src/frontend/ui/accounts.ts") ?? "";
-    const m = /export function isSelectable\(a: Account\): boolean \{\n([\s\S]*?)\n\}/.exec(acc);
-    expect(
-      m,
-      "切不出 `isSelectable` 的函数体（签名或大括号形状变了）—— 下面三条会零命中地绿",
-    ).not.toBeNull();
+    const m = /export function selectableAccounts\(state: AccountsState\): Account\[\] \{\n([\s\S]*?)\n\}/.exec(acc);
+    expect(m, "切不出 `selectableAccounts` 的函数体（签名或大括号形状变了）").not.toBeNull();
     const body = m?.[1] ?? "";
-    // 反空真：闭合锚点若滑过了 `isSelectable` 的尾巴，窗口就又变无界了。
-    expect(body, "切出来的「函数体」跨进了下一个函数 —— 窗口又变无界了").not.toContain(
-      "export function",
-    );
-    // `\b` 不能省：`toContain("a.authReady")` 会被 `a.authReadyX` 这种改名蒙过去。
-    // 原来钉的是「调了 `authReady(a)`」（一个带旧后端回落的包装）；包装删了，改钉直接读后端算好的那一格。
-    expect(
-      /\ba\.authReady\b/.test(body),
-      "`isSelectable` 的函数体里没有 `a.authReady` —— 鉴权判据被挪到别处去了（哪怕挪进一个语义等价的包装也不行：那就是第二条路）",
-    ).toBe(true);
-    expect(
-      /\ba\.loggedIn\b/.test(body),
-      "`isSelectable` 里又出现了裸 `a.loggedIn` —— 可用性只跟后端算好的 `authReady` 走（规则住 `acct_core::auth_ready`）",
-    ).toBe(false);
+    expect(body, "切出来的「函数体」跨进了下一个函数 —— 窗口又变无界了").not.toContain("export function");
+    expect(/\ba\.selectable\b/.test(body), "`selectableAccounts` 不再读成品的 `selectable`").toBe(true);
+    for (const f of ["mode", "authReady", "exists", "loggedIn"]) {
+      expect(new RegExp(`\\ba\\.${f}\\b`).test(body), `\`selectableAccounts\` 又自己读了 \`${f}\` —— 可选判定长回了界面`).toBe(false);
+    }
   });
 });

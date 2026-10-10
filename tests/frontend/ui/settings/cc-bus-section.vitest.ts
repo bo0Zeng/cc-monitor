@@ -632,11 +632,11 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     error: null,
     meta: null,
     accounts: [
-      { name: "z", email: "z@x", configDir: "/a/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
-      { name: "b", email: "b@x", configDir: "/a/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
+      { name: "z", email: "z@x", configDir: "/a/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
+      { name: "b", email: "b@x", configDir: "/a/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
       // 不可选的：未登录 / in-place 逃生口 —— 不该出现在下拉里
-      { name: "gone", email: "", configDir: "/a/g", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false },
-      { name: "inplace", email: "", configDir: "/a/i", isDefault: false, mode: "in-place", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
+      { name: "gone", email: "", configDir: "/a/g", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false, selectable: false },
+      { name: "inplace", email: "", configDir: "/a/i", isDefault: false, mode: "in-place", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: false },
       // ★ K-A1 第四轮（`R4`）加的那一格：**api-key 号（没有订阅凭据、但鉴权前提就绪）
       // 是可选的**（`KAY2`）。它就是上面那份手抄副本与真身**结论相反**的那一格 ——
       // 手抄版断 `a.loggedIn` ⇒ 判它不可选；真身断 `a.authReady` ⇒ 判它可选。
@@ -651,6 +651,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
         loggedIn: false,
         authKind: "api-key",
         authReady: true,
+        selectable: true,
       },
     ],
   };
@@ -741,7 +742,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     ...ACCTS,
     origin: LOCAL_ORIGIN, // 账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
     accounts: [
-      { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
+      { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
       { name: "off", email: "", configDir: "/l/o", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false },
     ],
   };

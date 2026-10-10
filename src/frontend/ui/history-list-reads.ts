@@ -1,13 +1,15 @@
 /**
  * **历史页的平铺会话清单**，经通道问本机常驻后端（帧面 `history-list`，后端 `history/history_list.rs`）。
  *
- * 一台一问（`origin` 缺席 = 本机；远端由本机后端去问那台、并上本机的注解）：哪台先答先画，一台没答不挡别的台。
+ * 一台一问（`origin` 缺席 = 本机）：哪台先答先画，一台没答不挡别的台。
+ * 远端：开页 / 「刷新」（`fresh`）先经已开着的长连接问那台常驻 `raw`（那台热缓存），再把那份原样（`listing`）交本机后端并注解 · 筛 · 排；
+ * 敲字只问本机后端（它记着那份），它说 `no_listing`（没记着：本机后端重启过 / 头一次）⇒ 同开页那一套。照全文搜索的做法：扇出在这里、判定在后端。
  * 判定都在后端：显示标题 · 搜什么 · 怎么排（`at`）· 每行能做什么（`can`）· 分组。这里只做三件事：
- * 问谁、按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛，跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
+ * 问谁（含远端那一份的装运）、按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛，跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
  * 把各台各自排好的行按 `at` 并成一列。
  */
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
+import { chan, ChanError } from "../../comms/inward/chan";
+import { budgetWithin, jsonBody, readJson, refusalOf, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { HistoryShapeError } from "./history-reads";
 import { isObj } from "./ipc/decode";
@@ -101,10 +103,11 @@ export interface HistoryListAsk {
   sort?: "activity" | "created";
   withinDays?: number;
   hidden?: boolean;
+  /** 远端那一台：不用本机后端记着的那份，再问一次那台（开页 · 「刷新」）。不下发给后端。 */
   fresh?: boolean;
 }
 
-/** 一台的清单 30 秒（远端那一跳要整份扫那台）。 */
+/** 一问 30 秒（远端那台常驻热着那份清单；盖住一整份经长连接回来、本机后端并一遍）。 */
 const LIST_BUDGET_MS = 30_000;
 
 const isStr = (v: unknown): v is string => typeof v === "string";
@@ -239,12 +242,42 @@ export async function fetchList(origin: string | undefined, ask: HistoryListAsk)
     ...(ask.sort ? { sort: ask.sort } : {}),
     ...(ask.withinDays ? { within_days: ask.withinDays } : {}),
     ...(ask.hidden ? { hidden: true } : {}),
-    ...(ask.fresh ? { fresh: true } : {}),
   };
+  if (!origin) return askLocal(args);
+  if (!ask.fresh) {
+    try {
+      return await askLocal(args);
+    } catch (e) {
+      if (!notHeld(e)) throw e;
+    }
+  }
+  // 那台常驻答的 `raw` 原样交过去（不在这里解：形状由本机后端认）。
+  const listing = readJson(await askRemoteRaw(origin));
+  return askLocal({ origin, listing, ...args });
+}
+
+/** 本机后端那一问（并 · 筛 · 排都在它那里）。 */
+async function askLocal(args: Record<string, unknown>): Promise<HistoryList> {
   const body = jsonBody(args);
   const budget = budgetWithin(LIST_BUDGET_MS);
   const reply = await chan.call(LOCAL_ORIGIN, "history-list", body, budget);
   return decodeList(readJson(reply));
+}
+
+/** 经已开着的长连接问那台常驻它自己的清单。失败 ⇒ 抛那台那一句（谁老了 / 谁够不到说的是那台）。 */
+async function askRemoteRaw(origin: string): Promise<Uint8Array> {
+  try {
+    const body = jsonBody({ raw: true });
+    const budget = budgetWithin(LIST_BUDGET_MS);
+    return await chan.call(origin, "history-list", body, budget);
+  } catch (e) {
+    throw new Error(saidFrom(e, origin));
+  }
+}
+
+/** 本机后端说「那台的清单还没取回」。 */
+function notHeld(e: unknown): boolean {
+  return e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused" && refusalOf(e.error.body)?.code === "no_listing";
 }
 
 /** 各台各自按 `key` 倒序排好的一列 ⇒ 并成一列（同值保持台的先后，稳定）。只并、不另判。 */

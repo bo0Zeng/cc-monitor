@@ -204,6 +204,7 @@ The "Data locations" page in Settings shows the full path of every file.
 ## Development
 
 - Building and developing: [`src/doc/BUILDING.md`](src/doc/BUILDING.md) · [`src/doc/DEVELOPMENT.md`](src/doc/DEVELOPMENT.md)
+- Mobile app (Android): [`src/mobile/README.md`](src/mobile/README.md)
 - Contributing: [`src/doc/CONTRIBUTING.md`](src/doc/CONTRIBUTING.md)
 - Release notes: [`CHANGELOG.md`](CHANGELOG.md)
 - Test counts are whatever the suites report when run; how to run them is in [`src/doc/DEVELOPMENT.md`](src/doc/DEVELOPMENT.md)

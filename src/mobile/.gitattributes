@@ -1,0 +1,18 @@
+# 统一行尾，避免跨平台 CRLF 问题
+* text=auto eol=lf
+
+# Windows 脚本保留 CRLF
+*.bat text eol=crlf
+
+# gradlew 是 POSIX shell 脚本，必须 LF（CRLF 会让 Unix/Git-Bash 下 `./gradlew` 失败）
+gradlew text eol=lf
+
+# 二进制：不做行尾/文本处理
+*.jar binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.keystore binary
+*.jks binary

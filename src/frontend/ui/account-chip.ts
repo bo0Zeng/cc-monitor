@@ -2,7 +2,7 @@
 //
 // 账号是按机器的：chip 绑第一台已配置的远端（`pickPrimaryOrigin`），一台都没有就是本机。
 // 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
-import { apikeyEndpointStateFor, deriveUi, currentWorkingAccount, accountColorsActive, isSelectable, accountStatusBadge, type AccountsState, type Account } from "./accounts";
+import { apikeyEndpointStateFor, deriveUi, defaultAccount, accountColorsActive, accountStatusBadge, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchMachineApikeyRouting, invalidateAccountsCache } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
 import type { ApikeyRoutingView } from "./apikey-reads";
@@ -40,7 +40,7 @@ export function chipLabel(state: AccountsState | null): string {
     case "not-enabled":
       return copyText("accountChip.label.disabled");
     case "ready": {
-      const def = currentWorkingAccount(state);
+      const def = defaultAccount(state);
       return def ? def.name : copyText("accountChip.label.disabled");
     }
   }
@@ -253,7 +253,7 @@ export class AccountChip {
     this.labelSpan.textContent = text;
     this.element.setAttribute("aria-label", copyText("acct.chip.ariaDefault", { name: text }));
     // ready 时账号图标换成当前账号的彩色头像（与 tab 徽章同色系）；只有 1 个可选账号时颜色区分不了什么 ⇒ 退回账号图标。
-    const cur = currentWorkingAccount(st);
+    const cur = defaultAccount(st);
     this.iconEl.replaceChildren(cur && accountColorsActive(st) ? accountAvatarEl(cur.name) : icon("account", "compact"));
     this.element.style.display = "";
   }
@@ -282,7 +282,7 @@ export class AccountChip {
       return null;
     }
     const st = appStore.accounts.get().get(origin) ?? null;
-    return st && deriveUi(st).kind === "ready" ? (currentWorkingAccount(st)?.name ?? null) : null;
+    return st && deriveUi(st).kind === "ready" ? (defaultAccount(st)?.name ?? null) : null;
   }
 
   private async toggleMenu(anchor: HTMLElement = this.element, origin: Origin = this.origin): Promise<void> {
@@ -305,7 +305,7 @@ export class AccountChip {
             : copyText("accountChip.menu.notEnabled");
       items.push({ label: info, enabled: false }, { label: copyText("accountChip.menu.manageDeploy"), onClick: () => this.deps.openSettings() });
     } else {
-      const def = currentWorkingAccount(st);
+      const def = defaultAccount(st);
       items.push({ label: copyText("acct.foot.default"), enabled: false });
       for (const a of ui.accounts) items.push(this.accountItem(a, def?.name === a.name, origin));
       items.push(
@@ -329,7 +329,7 @@ export class AccountChip {
    * 每一项带上「走不走 apikey 端点改写」的三态（问不到 routing 时不表态）。
    */
   private accountItem(a: Account, isCurrent: boolean, origin: Origin): MenuItem {
-    const selectable = isSelectable(a);
+    const selectable = a.selectable;
     const badge = accountStatusBadge(a, this.apikeyRouting && origin === this.origin ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
     // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
     const led = appStore.quota.get().get(origin)?.accounts.find((x) => x.account === a.name);
@@ -366,14 +366,14 @@ export class AccountChip {
     if (!st) return null;
     const ui = deriveUi(st);
     if (ui.kind !== "ready") return null;
-    return { origin: this.origin, accounts: ui.accounts, defaultName: currentWorkingAccount(st)?.name ?? null };
+    return { origin: this.origin, accounts: ui.accounts, defaultName: defaultAccount(st)?.name ?? null };
   }
 
   /** 按名字切默认账号（供 Ctrl+K 命令；找不到/不可选则忽略）。 */
   async applyDefaultByName(name: string): Promise<void> {
     const snap = this.snapshotReady();
     const a = snap?.accounts.find((x) => x.name === name);
-    if (a && isSelectable(a)) await this.selectDefault(a);
+    if (a?.selectable) await this.selectDefault(a);
   }
 
   private async selectDefault(a: Account, origin: Origin = this.origin): Promise<void> {

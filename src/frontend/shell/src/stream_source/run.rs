@@ -297,7 +297,7 @@ async fn stream_loop(
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
-            // 「这台的长连接能问话了」由下面 Hello 臂里的 `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）。
+            // 「这台的长连接能问话了」由下面 Hello 臂里的 `replay.origin_seen(.., true)` 说（订了这台 `changed/<topic>` 的订阅原位收 `Seen`，`event_replay` 头注那张表）。
             // 连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
             let accepts = inbound
                 .as_ref()
@@ -451,17 +451,9 @@ async fn stream_loop(
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
-            // 那台的账号清单变了 ⇒ 经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（账号表与 chip 据此重取）。
-            Some(InboundFrame::AccountsChanged) => {
-                replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
-            }
-            // 那台的配置文件变了 ⇒ 订了这台 `profiles-changed` 的订阅收一格（设置窗「别名与配置文件」那一页据此重读）。
-            Some(InboundFrame::ProfilesChanged) => {
-                replay.profiles_changed(&crate::origin::Origin(host_label.clone()));
-            }
-            // 某个会话的任务清单变了 ⇒ 订了这台 `session-tasks` 的订阅收一格 `{sid}`。
-            Some(InboundFrame::TasksChanged { sid }) => {
-                replay.tasks_changed(&crate::origin::Origin(host_label.clone()), &sid);
+            // 那台的某样东西变了 ⇒ 订了这台 `changed/<topic>` 的订阅收一格（格体原样；账号表 · 设置页 · 任务面板 · 额度 · 计划据此重读）。
+            Some(InboundFrame::Changed { topic, cell }) => {
+                replay.changed(&crate::origin::Origin(host_label.clone()), &topic, cell);
             }
             // 那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
             Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
@@ -497,29 +489,6 @@ async fn stream_loop(
             // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
             //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
             Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
-            // 那台的额度账 / 某个会话的轮换变了 ⇒ 订了这台 `quota-changed` 的订阅收一格（`{"quota":true}` / `{sid}`）。
-            Some(InboundFrame::QuotaChanged) => {
-                replay.quota_changed(&crate::origin::Origin(host_label.clone()), None);
-            }
-            Some(InboundFrame::RotationChanged { sid }) => {
-                replay.quota_changed(&crate::origin::Origin(host_label.clone()), Some(&sid));
-            }
-            Some(InboundFrame::RotationRulesChanged) => {
-                replay.rotation_rules_changed(&crate::origin::Origin(host_label.clone()));
-            }
-            // 那台某个 pb 工作区的计划变了 ⇒ 订了这台 `plan-changed` 的订阅收一格 `{workspace, rev, needs}`。
-            Some(InboundFrame::PlanChanged {
-                workspace,
-                rev,
-                needs,
-            }) => {
-                replay.plan_changed(
-                    &crate::origin::Origin(host_label.clone()),
-                    &workspace,
-                    &rev,
-                    needs,
-                );
-            }
             // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
             Some(
                 InboundFrame::TerminalScreen { ticket, cell }

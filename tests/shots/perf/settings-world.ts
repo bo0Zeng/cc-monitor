@@ -1,13 +1,12 @@
 /**
  * 设置窗性能台架的合成世界：照真实规模放大 —— 十几台机器、二十几个账号、三十条轮换规则、几百个扩展 × 十几台。
- * 名字与摘要全是按模板拼的占位（与 `fake/world.ts` 同一套口径），不取任何真配置。
+ * 名字全是按模板拼的占位；账号 · 额度 · 轮换落成家目录里的原始文件（`../disk`），摘要 · 说明 · 在用名单由真后端算（与 `fake/world.ts` 同一套口径），不取任何真配置。
  *
  * 量法与读数住 `settings-bench.mjs` 头注；这里只造数据。
  */
-import { copyText } from "../../../src/frontend/ui/copy-table";
-import { fakePlan } from "../fake/timeline";
+import { putAccounts, putQuota, putRotation, putWarm } from "../disk";
 import type { OpHandler, World } from "../fake/types";
-import { defaultConfig, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
+import { defaultConfig, defaultDisk, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
 import { Convo } from "../fake/records";
 
 /** 规模表（改它就改整个世界的量级）。 */
@@ -39,108 +38,50 @@ export function settingsPerfWorld(): World {
     const cwd = `/home/user/work/p${k}`;
     return session(n, origin, cwd, smallConvo(n, cwd), { activity: k % 4 === 0 ? "working" : "idle" });
   });
+  w.disk = defaultDisk(w.machines, w.sessions);
 
-  // ── 账号 · 额度 ──
-  w.ops["accounts-list"] = () => ({
-    accounts: accts.map((name, i) => ({
-      name,
-      email: i % 5 === 4 ? "" : `${name}@example.com`,
-      configDir: `/home/user/.cc-monitor/accounts/${name}`,
-      isDefault: i === 0,
-      mode: "isolated",
-      exists: true,
-      loggedIn: i % 5 !== 4,
-      authKind: i % 5 === 4 ? "api-key" : "subscription",
-      authReady: true,
-      keyMasked: i % 5 === 4 ? "••••••••a1b2" : null,
-      baseUrl: i % 5 === 4 ? "https://api.example.com" : null,
-    })),
-    meta: {
-      enabled: true,
-      acctsDir: "/home/user/.cc-monitor/accounts",
-      manifestPath: "/home/user/.cc-monitor/accounts/accounts.json",
-      updatedAt: "2026-10-01T08:00:00Z",
-      sharedStore: "/home/user/.cc-monitor/accounts/shared",
-      count: accts.length,
-      error: null,
-      unsupported: null,
-      nextDefault: accts[1],
-      home: "/home/user",
-    },
-    notice: null,
+  // ── 账号 · 额度 · 轮换规则：落成本机家目录里的原始文件，真后端读 ──
+  const d = w.disk[LOCAL];
+  const t = now();
+  putAccounts(d, accts.map((name, i) => ({ name, kind: i % 5 === 4 ? ("api" as const) : ("sub" as const), isDefault: i === 0, ...(i % 5 === 4 ? { email: "" } : {}) })));
+  putQuota(
+    d,
+    accts.map((account, i) => {
+      const p5 = (i * 37) % 101;
+      return i % 5 === 4
+        ? { account, seenAt: t - 60 * (i + 1), status: "allowed" as const, windows: [] }
+        : {
+            account,
+            seenAt: t - 60 * (i + 1),
+            status: p5 >= 100 ? ("rejected" as const) : ("allowed" as const),
+            refused: p5 >= 100,
+            limiting: "five_hour",
+            ...(p5 >= 100 ? { resetsAt: t + 600 * (i + 1) } : {}),
+            windows: [
+              { name: "five_hour", used: p5 / 100, resetsAt: t + 600 * (i + 1) },
+              { name: "seven_day", used: ((i * 13) % 100) / 100, resetsAt: t + 3600 * (i + 20) },
+            ],
+          };
+    }),
+  );
+  const sids = w.sessions.map((s) => s.sid);
+  const ruleId = (k: number): string => `r_${String(k).padStart(3, "0")}`;
+  putRotation(d, {
+    defaultRule: ruleId(0),
+    rules: Object.fromEntries(
+      Array.from({ length: SETTINGS_SCALE.rules }, (_, k) => {
+        const order = [{ start: true }, ...Array.from({ length: 4 }, (_, j) => accts[(k + j) % accts.length])];
+        return [ruleId(k), { name: `规则 ${k + 1}`, rotation: { order, enabled: order.slice(1), ...(k % 2 ? {} : { cap: { "*": { "5h": 80 + (k % 20) } } }), atLimit: "continue", wait: 40 }, rev: 2, updatedAt: t - 86_400 }];
+      }),
+    ),
+    sessions: Object.fromEntries(sids.map((sid, j) => [sid, { start: accts[0], current: accts[0], since: t - 3600, source: j % SETTINGS_SCALE.rules === 0 ? "follow" : { rule: ruleId(j % SETTINGS_SCALE.rules) } }])),
   });
+  putWarm(d, [{ account: accts[1], at: t + 2.5 * 3600 }]);
   w.ops["accounts-sessions"] = (origin, _req, world) => ({
     lines: world.sessions
       .filter((s) => s.origin === origin)
       .map((s, i) => JSON.stringify({ pid: 4100 + i, sessionId: s.sid, cwd: s.cwd, configDir: `/home/user/.cc-monitor/accounts/${accts[i % accts.length]}`, account: accts[i % accts.length], bare: false, alive: true, viaRelay: null })),
   });
-  w.ops["quota-read"] = () => {
-    const t = now();
-    return {
-      state: "present",
-      reason: null,
-      path: "/home/user/.cc-monitor/quota.json",
-      now: t,
-      accounts: accts.map((account, i) => {
-        const api = i % 5 === 4;
-        const p5 = (i * 37) % 101;
-        return {
-          agent: "claude-code",
-          account,
-          seenAt: t - 60 * (i + 1),
-          kind: api ? "api" : "sub",
-          state: p5 >= 100 ? "refused" : "ok",
-          stale: false,
-          ...(api ? {} : { limiting: "5h" }),
-          slots: api
-            ? []
-            : [
-                { slot: "5h", pct: p5, resetsAt: t + 600 * (i + 1) },
-                { slot: "7d", pct: (i * 13) % 100, resetsAt: t + 3600 * (i + 20) },
-              ],
-          login: "ok",
-        };
-      }),
-      unseen: [],
-      usableNow: accts.filter((_, i) => (i * 37) % 101 < 100),
-      earliestReturn: null,
-    };
-  };
-
-  // ── 轮换规则 ──
-  const sids = w.sessions.map((s) => s.sid);
-  w.ops["rotation-rules-read"] = () => ({
-    state: "present",
-    reason: null,
-    path: "/home/user/.cc-monitor/rotation.json",
-    defaultRule: "r_000",
-    rules: Array.from({ length: SETTINGS_SCALE.rules }, (_, k) => {
-      const live = sids.filter((_, j) => j % SETTINGS_SCALE.rules === k);
-      const order = [{ start: true }, ...Array.from({ length: 4 }, (_, j) => accts[(k + j) % accts.length])];
-      return {
-        id: `r_${String(k).padStart(3, "0")}`,
-        name: `规则 ${k + 1}`,
-        rotation: { order, enabled: order.slice(1), ...(k % 2 ? {} : { cap: { "*": { "5h": 80 + (k % 20) } } }), atLimit: "continue", wait: 40 },
-        rev: 2,
-        updatedAt: 0,
-        isDefault: k === 0,
-        users: {
-          live: live.length,
-          ended: k % 3,
-          follow: k === 0 ? live.length : 0,
-          doing: Object.fromEntries(live.map((sid) => [sid, { state: "working", needs: null, text: copyText("beSession.activity.working"), tone: "now" }])),
-          sids: live,
-          endedSids: [],
-        },
-        summary: `${order.slice(1).join(" → ")} · ${k % 2 ? "满" : `≥${80 + (k % 20)}%`}`,
-        explain: "起始账号先用 · 被拒才换 · 不主动换回",
-        missing: [],
-        atLimitApplies: k % 2 === 0,
-      };
-    }),
-  });
-  w.ops["rotation-plan"] = (_o, req) => (req.machine ? fakePlan({ view: (req.view as "6h" | "24h" | "7d") ?? "24h", session: false, warm: true }) : { errors: [] });
-
   // ── 扩展：几百个 × 十几台 ──
   // 造一次、记成线上那一串：之后每问只 `JSON.parse` 一遍（真壳也是后端交一串、页里解析）—— 每问现拼几百行的深拷贝是假后端自己的活，不该算进产品读数。
   const extList = w.ops["ext-list"];

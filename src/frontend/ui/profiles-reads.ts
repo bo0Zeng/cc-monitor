@@ -16,9 +16,6 @@ import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom 
 import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 
-/** 配置文件变了的那一种流（与 Rust `event_replay.rs::PROFILES_CHANGED_KIND` 同一个串）。 */
-export const PROFILES_CHANGED_KIND = "profiles-changed";
-
 export type AccountPick = { kind: "account"; name: string } | { kind: "base" };
 export type TmuxMode = "auto" | "fixed" | "base";
 export interface TmuxPick {

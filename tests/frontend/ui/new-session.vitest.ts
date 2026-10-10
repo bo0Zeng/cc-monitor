@@ -46,9 +46,10 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 vi.mock("../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: vi.fn(async () => ({
     available: true,
+    meta: { effectiveDefault: "work" },
     accounts: [
-      { name: "personal", email: "", configDir: "/h/.cc/personal", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false },
-      { name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
+      { name: "personal", email: "", configDir: "/h/.cc/personal", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false, selectable: false },
+      { name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
     ],
   })),
 }));

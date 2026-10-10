@@ -47,7 +47,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 // 具体四例记在那个文件的头注里。
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
-import { ACCOUNTS_CHANGED_KIND } from "../../../src/frontend/ui/session-accounts-poll";
+import { CHANGED_KIND } from "../../../src/frontend/ui/changed-stream";
 import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /**
@@ -518,9 +518,9 @@ describe("C02 事件名钉死", () => {
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/comms/inward/chan.ts` 听 —— 它是通道那一跳的，不是 `ui_contract.rs` 的业务事件）。
     // 不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`），不开裸 Tauri 事件。
     // 12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
-    // 13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `accounts-changed`
+    // 13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `changed/accounts`
     //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），「前端只有两个动作」。
-    // 12 → 11：`TASKS_UPDATE`（"task-update"）退役 —— 任务变更经通道 `subscribe(origin, "session-tasks")`。
+    // 12 → 11：`TASKS_UPDATE`（"task-update"）退役 —— 任务变更经通道 `subscribe(origin, "changed/tasks")`。
     // 12 → 3：会话起停 / 状态那 9 个（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` / `-activity` ·
     //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`ui_contract.rs::SessionStreamFrame`）；
     //   剩 `frontend-ready` · `remote-health` · `task-update`。
@@ -545,17 +545,17 @@ describe("C02 事件名钉死", () => {
 });
 
 /**
- * **最后一个裸事件 `remote-backend-ready` 迁 `subscribe`**（`accounts-changed`）—— 读源码的那两条（扫描层）。
+ * **最后一个裸事件 `remote-backend-ready` 迁 `subscribe`**（`changed/accounts`）—— 读源码的那两条（扫描层）。
  * 守的要求：「前端只有两个动作：`call` · `subscribe`」。行为那一半在 `events-tap.vitest.ts` 的 DL1 那组与
- * `session-accounts-poll.vitest.ts`（纯函数）；Rust 句柄那一半在 `event_replay_tests::the_accounts_changed_stream_…`。设计。
+ * `changed-stream.vitest.ts`（纯函数）；Rust 句柄那一半在 `event_replay_tests::the_changed_accounts_stream_…`。设计。
  */
-describe("〔DL1〕accounts-changed：两侧同一个串 · 零裸事件", () => {
-  it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
+describe("〔DL1〕changed/accounts：两侧同一个串 · 零裸事件", () => {
+  it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
     const rs = read("src/frontend/shell/src/event_replay.rs");
     // 变量名别叫 `m`：`scanning-guard-registry` 按名字认「磁盘语料变量」，同文件里别处的 `m.includes("…")` 会被误算进棘轮。
-    const pinned = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
+    const pinned = rs.match(/pub const CHANGED_KIND: &str = "([^"]+)";/);
     expect(pinned, "Rust 那一侧的常量抠不出来").not.toBeNull();
-    expect(ACCOUNTS_CHANGED_KIND).toBe(pinned![1]);
+    expect(CHANGED_KIND).toBe(pinned![1]);
   });
 
   it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经 `bindEvents` 订它（零命中带正控）", () => {
@@ -565,8 +565,8 @@ describe("〔DL1〕accounts-changed：两侧同一个串 · 零裸事件", () =>
     const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
     const dead = ["remote", "backend", "ready"].join("-");
     expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
-    expect(count(main, "accounts: machines,"), "main.ts 不是恰好一处订 accounts-changed（`bindEvents` 的 `accounts`）").toBe(1);
-    expect(count(main, "    onAccountsChanged,\n"), "main.ts 没把处理器交给 `bindEvents`").toBe(1);
+    expect(count(main, `(["accounts", "tasks", "quota", "rotation", "rotation_rules", "plan"] as const)`), "main.ts 不是恰好一处订 changed/accounts（`bindEvents` 的 `changed`）").toBe(1);
+    expect(count(main, `case "accounts":\n          onAccountsChanged();`), "main.ts 没把账号那一主题交给刷账号那一处").toBe(1);
     // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
     // 正控换锚：`remote-session-added` 那一处裸 listen 随会话起停并进会话流删了 ⇒ 认今天真在的那一处（设置已应用）。
     expect(count(main, "listen(SETTINGS_APPLIED_EVENT"), "正控失败：数法认不出一处真在的 listen").toBe(1);

@@ -42,6 +42,8 @@ export interface QuotaReadAccount {
   /** 这个号那一段（首行 名 · 类型 · 标签；其余每行一组格）。 */
   rows: RowCell[][];
   warm: Warm;
+  /** 「5h 那一格」写好的字（`5h 41%` …）；按量号 ⇒ `null`。 */
+  fiveHour: string | null;
 }
 
 /** `quota-read` 里账号库有、额度账上没出过数的号。 */
@@ -53,6 +55,8 @@ export interface QuotaReadUnseen {
   subId?: string;
   rows: RowCell[][];
   warm: Warm;
+  /** 没出过数 ⇒ 恒 `null`（不出那一格）。 */
+  fiveHour: null;
 }
 
 /** `quota-read` 的回包（`IPC-PROTOCOL.md` `quota-read` 那一节）。 */
@@ -69,6 +73,8 @@ export interface QuotaRead {
   earliestReturn: { account: string; at: number; atText?: string; atRelText?: string } | null;
   /** 读不出 / 一个号都没有时那一句。 */
   text?: string;
+  /** 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`）；否则 `null`（各号自己那一格）。 */
+  fiveHour: string | null;
 }
 
 /** 号在界面上叫什么（`_` ＝ 起会话时没说是哪个号 ⇒ `~/.claude`）。 */
@@ -89,15 +95,11 @@ export function slotText(q: { slots: SlotShow[] }, slot: string): string {
 }
 
 /**
- * 一个号的 5h 那一格（恢复菜单里每个号后面那一格）：`5h 41%` · 卡着的照核心写的字（`5h ✕` …）。
- * 额度账读不出 ⇒ `5h 读不到`（原因与复制详情在账号面板「当前」那一条）。
- * 没问过 · 账上没有这个号、只在账号库里（没出过数）、按量号（没有分窗口）⇒ `null`（不出这一格）。
+ * 一个号的 5h 那一格（恢复菜单 · 新会话框每个号后面那一格）：核心写好的字（`faces/quota_rows.rs::with_rows`）。
+ * 额度账读不出 ⇒ 顶上那一格（`5h 读不到`；原因与复制详情在账号面板「当前」那一条）。
+ * 没问过 · 账上没有这个号 · 按量号 ⇒ `null`（不出这一格）。
  */
 export function fiveHourCell(r: QuotaRead | null | undefined, agent: string, account: string): string | null {
   if (!r) return null;
-  if (r.state === "unreadable")
-    return copyText("resumeMenu.account.quota", { slot: slotLabel("5h"), value: copyText("acct.val.unreadable") });
-  const a = r.accounts.find((x) => x.account === account && x.agent === agent);
-  if (!a || a.kind === "api") return null;
-  return copyText("resumeMenu.account.quota", { slot: slotLabel("5h"), value: slotText(a, "5h") });
+  return r.fiveHour ?? r.accounts.find((x) => x.account === account && x.agent === agent)?.fiveHour ?? null;
 }

@@ -926,7 +926,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const pageB = pageOf(p, "machine:b");
     await change(pageB.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!, "a");
     expect((await diskHosts()).map((h) => h.label)).toEqual(["a", "b"]);
-    expect(pageB.textContent).toContain(copyText("machineCard.field.nameTaken", { name: "a" }));
+    expect(pageB.textContent).toContain(copyText("addMachine.err.taken", { name: "a" }));
     await change(field(pageOf(p, "machine:a"), copyText("machineCard.field.userHint")), "zz");
     expect((await diskHosts()).map((h) => [h.label, h.user])).toEqual([["a", "zz"], ["b", "u"]]);
     expect(banner(sec)).toBe(copyText("remote.save.done"));
@@ -939,13 +939,13 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const pageA = pageOf(p, "machine:a");
     await change(pageA.querySelector<HTMLInputElement>('input[type="number"]')!, "70000");
     expect((await diskHosts())[0]!.port).toBe(2222);
-    expect(pageA.textContent).toContain(copyText("machineCard.field.portRange"));
+    expect(pageA.textContent).toContain(copyText("addMachine.err.port"));
     // 改别的格时也不许把越界那一格兜成 22 写进去
     await change(field(pageA, copyText("machineCard.field.userHint")), "root");
     expect((await diskHosts()).map((h) => [h.user, h.port])).toEqual([["root", 2222]]);
     await change(pageA.querySelector<HTMLInputElement>('input[type="number"]')!, "2200");
     expect((await diskHosts())[0]!.port).toBe(2200);
-    expect(pageA.textContent).not.toContain(copyText("machineCard.field.portRange"));
+    expect(pageA.textContent).not.toContain(copyText("addMachine.err.port"));
   });
 
   it("改名之后这一页讲的是新名字；改名时那台的默认账号 / 默认模型跟着搬", async () => {

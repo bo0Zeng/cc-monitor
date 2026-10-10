@@ -268,10 +268,9 @@ fn exact_target_is_the_exact_match_shape() {
 /// ⚠ **订正上面 B 那一格**〔`K-P2` C 第五拍，09-03〕：本文件的创建臂**今天不再写
 /// `@ccm_sid`** 了（写的是意图键 `@ccm_sid_expect`，见 [`run`] 里那段头注）
 /// ⇒ 「`@ccm_sid` 改名」那个变异**在本文件里已经没有靶子**。
-/// 而这一族今天真有人盯着，只是**不在本包**：monitor 侧
-/// `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
-/// 逐字数本文件生产段的 `(写点, 读点, 意图)` 三元组 ⇒ **门① 会红、门③ 仍不会**。
-/// 别把「门③ 绿」读成「没人看着」，也别读成「有人看着」—— 它们分在两个包里。
+/// 而这一族今天真有人盯着，只是**不在本文件**：`readonly_guard` 只许 `control/identity_tag.rs` 写 tmux 变量，
+/// `ccm/plan_tests.rs::the_container_path_carries_every_intent_inward` 钉渲出的命令只写意图键 ⇒ **门① 会红、门③ 仍不会**。
+/// 别把「门③ 绿」读成「没人看着」，也别读成「有人看着」—— 它们分在别的判据里。
 ///
 /// ⇒ E10 说结构守卫**钉得住顺序与字面量**，那这一条就该有人写。本条补上。
 /// 它不改变 E10 的结论（argv 的**语义**仍要 e2e），只是把能钉的那半钉住。

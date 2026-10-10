@@ -37,6 +37,8 @@ fn through_the_exit(reply: &Value, tz: i64) -> Value {
         v["reason"].as_str(),
     ))
     .unwrap();
+    v["fiveHour"] =
+        serde_json::to_value(head_five_hour(v["state"].as_str().unwrap_or(""))).unwrap();
     v
 }
 
@@ -141,4 +143,63 @@ fn the_unreadable_head_says_the_reason() {
         Some(copy_text("acct.text.readFail", &[]))
     );
     assert!(head_text("present", false, Some(why)).is_none());
+}
+
+/// ★★ 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）由核心写：订阅号 `5h 41%` · 卡着的照语义位的字；
+/// 按量号 · 没出过数的号 ⇒ 没有这一格；账读不出 ⇒ 顶上一格 `5h 读不到`（每号那一格这时没有号可挂）。
+#[test]
+fn the_five_hour_cell_is_written_by_the_core() {
+    let raw = std::fs::read_to_string(golden_path()).unwrap();
+    let g: Value = serde_json::from_str(&raw).unwrap();
+    let cell = |value: &str| {
+        Value::String(copy_text(
+            "resumeMenu.account.quota",
+            &[
+                ("slot", &copy_text("acct.slot.fiveHour", &[])),
+                ("value", value),
+            ],
+        ))
+    };
+    let mut seen_unreadable = false;
+    let mut seen_sub = false;
+    for c in g["cases"].as_array().unwrap() {
+        let v = through_the_exit(&c["reply"], 0);
+        let name = c["name"].as_str().unwrap_or("");
+        if v["state"] == "unreadable" {
+            seen_unreadable = true;
+            assert_eq!(
+                v["fiveHour"],
+                cell(&copy_text("acct.val.unreadable", &[])),
+                "{name}"
+            );
+        } else {
+            assert_eq!(
+                v["fiveHour"],
+                Value::Null,
+                "{name}：读得出 ⇒ 顶上没有这一格"
+            );
+        }
+        for a in v["accounts"].as_array().into_iter().flatten() {
+            let want = if a["kind"] == "api" {
+                Value::Null
+            } else {
+                seen_sub = true;
+                let text = a["slots"]
+                    .as_array()
+                    .and_then(|xs| xs.iter().find(|x| x["slot"] == "5h"))
+                    .and_then(|x| x["text"].as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| copy_text("acct.val.none", &[]));
+                cell(&text)
+            };
+            assert_eq!(a["fiveHour"], want, "{name} · {}", a["account"]);
+        }
+        for a in v["unseen"].as_array().into_iter().flatten() {
+            assert_eq!(a["fiveHour"], Value::Null, "{name}：没出过数 ⇒ 不出这一格");
+        }
+    }
+    assert!(
+        seen_unreadable && seen_sub,
+        "金样里要有读不出的一份与订阅号"
+    );
 }

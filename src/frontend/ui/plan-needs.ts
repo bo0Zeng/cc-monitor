@@ -7,7 +7,7 @@
  */
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { fetchPlanList, type PlanList, type PlanSessionBlock } from "./plan-reads";
-import type { PlanMoved } from "./quota-stream";
+import type { PlanMoved } from "./changed-stream";
 
 /** 一条计划项：哪台 · 哪个工作区 · 哪一片 · 那一片里第几条。 */
 export interface PlanNeedItem {

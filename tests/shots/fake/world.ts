@@ -8,6 +8,8 @@ import { defaultCommands } from "./commands";
 import { historyOps } from "./history";
 import { machineCommands, machineOps } from "./machine";
 import { profilesOps } from "./profiles";
+import { ACCOUNTS } from "./ops";
+import { blankDisk, putAccounts, type LiveSession, type MachineDisk } from "../disk";
 
 export const LOCAL = "<local>";
 export const REMOTES = ["devbox", "gpu-01", "win-laptop"];
@@ -204,8 +206,10 @@ export function defaultWorld(): World {
     session(6, "gpu-01", "/data/train/ranker", smallConvo(sidOf(6), "/data/train/ranker", "排序模型训练脚本", "训练脚本加断点续训。", "加好了：每 500 步存一次，启动时自动找最新的检查点。", 96_000), { activity: "idle", idle: true }),
     session(7, "win-laptop", "C:\\Users\\user\\work\\desktop-app", smallConvo(sidOf(7), "C:\\Users\\user\\work\\desktop-app", "安装包签名", "安装包要加代码签名。", "签名步骤加进打包脚本了，证书从环境变量读。"), { activity: "idle" }),
   ];
+  const machines = [LOCAL, ...REMOTES];
   return {
-    machines: [LOCAL, ...REMOTES],
+    machines,
+    disk: defaultDisk(machines, sessions),
     unseenMachines: [],
     closedMachines: [],
     staleMachines: [],
@@ -214,6 +218,32 @@ export function defaultWorld(): World {
     ops: { ...defaultOps(), ...historyOps(), ...machineOps(), ...profilesOps() },
     commands: { ...defaultCommands(), ...machineCommands() },
   };
+}
+
+/** claude 在 pidfile 里写的原词（`agents/claudecode/pidfile.rs` 认的那一套）。 */
+const PIDFILE_STATUS = { working: "busy", needs_you: "waiting", idle: "idle", background_work: "shell" } as const;
+
+export function liveOf(s: SessionSpec): LiveSession {
+  return {
+    sid: s.sid,
+    cwd: s.cwd,
+    kind: s.background ? "bg" : "interactive",
+    ...(s.activity ? { status: PIDFILE_STATUS[s.activity] } : {}),
+    ...(s.waitingFor ? { waitingFor: s.waitingFor } : {}),
+    ...(s.waitingSinceMs ? { statusUpdatedAt: s.waitingSinceMs } : {}),
+  };
+}
+
+/** 每台一样的账号库（`ops.ts::ACCOUNTS`）＋ 那台还活着的会话各一个替身进程。额度账 · 轮换账本缺省没有（中转还没见过回包）。 */
+export function defaultDisk(machines: string[], sessions: SessionSpec[]): Record<string, MachineDisk> {
+  return Object.fromEntries(
+    machines.map((m) => {
+      const d = blankDisk();
+      putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
+      d.live = sessions.filter((s) => s.origin === m && !s.ended && !s.idle).map((s) => liveOf(s));
+      return [m, d];
+    }),
+  );
 }
 
 export function defaultConfig(): Record<string, unknown> {

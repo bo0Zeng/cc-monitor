@@ -93,10 +93,12 @@ const LEDGER: QuotaRead = {
     login: "ok" as const,
     rows: [],
     warm: { act: "send" as const, text: "" },
+    fiveHour: account === "api" ? null : "5h 30%",
   })),
   unseen: [],
   usableNow: ["work", "team", "api"],
   earliestReturn: null,
+  fiveHour: null,
 };
 
 /** 一张只有默认那一条的规则表（名字 `默认`）。 */
@@ -754,13 +756,13 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       .click();
     expect(writeSessionRotation, "切分段不写").not.toHaveBeenCalled();
     checkRotation.mockResolvedValueOnce([
-      { cell: "cap.team.*[0]", code: "same" },
+      { cell: "cap.team.*[0]", code: "same", said: "那台写的起止那一句" },
     ]);
     [...cap().querySelectorAll<HTMLButtonElement>("button")]
       .find((b) => b.textContent === copyText("rot.cap.ok"))!
       .click();
     await flush();
-    expect(cap().textContent).toContain(copyText("rot.capErr.same"));
+    expect(cap().textContent, "照抄核心写好的 `said`").toContain("那台写的起止那一句");
     expect(writeSessionRotation, "有错不写").not.toHaveBeenCalled();
     checkRotation.mockResolvedValueOnce([]);
     [...cap().querySelectorAll<HTMLButtonElement>("button")]
@@ -910,7 +912,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     input.value = "夜间";
     saveRule.mockResolvedValueOnce({
       state: "refused",
-      errors: [{ cell: "name", code: "dup" }],
+      errors: [{ cell: "name", code: "dup", said: copyText("rot.save.dup") }],
     });
     [...pop().querySelectorAll<HTMLButtonElement>("button")]
       .find((b) => b.textContent === copyText("rot.save.ok"))!
@@ -1158,7 +1160,7 @@ describe("账号面板 · 时间轴", () => {
     await settle();
     const cell = (w: string) =>
       panel().querySelector<HTMLInputElement>(`[data-rot-line-num="${w}"]`)!;
-    checkRotation.mockResolvedValueOnce([{ cell: "cap.*.7d", code: "range" }]);
+    checkRotation.mockResolvedValueOnce([{ cell: "cap.*.7d", code: "range", said: "0–99" }]);
     cell("7d").focus();
     cell("7d").value = "120";
     cell("7d").dispatchEvent(new Event("change"));

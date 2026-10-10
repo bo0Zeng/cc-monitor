@@ -3,14 +3,16 @@
  *
  *   npm run shots -- [--out <目录>] [--only <正则>] [--no-filewin] [--no-web]
  *
- * - 网页那三扇窗：仓里那份 vite ＋ 无头 Chromium ＋ 页里的假后端（`fake/`），场景见 `scenes/`。
+ * - 网页那三扇窗：仓里那份 vite ＋ 无头 Chromium ＋ 页里的假适配层（`fake/`，站在壳的位置）＋ 真后端（`real/pool.mjs`：每个场景每台机器一个，
+ *   读场景造的盘上原始文件 `disk/`）。场景见 `scenes/`。
  * - 文件窗口（egui）：私有 Xvfb 上起那一格截图测试（`tests/frontend/filewin/workspace_tests.rs` 末尾），
  *   一张图一个进程（winit 一个进程只许建一个事件循环）。
- * - 隔离：浏览器与 vite 的 HOME 都在 `.build/shots-sandbox/` 里；不起后端、不起 claude、不碰 tmux、不连任何机器。
+ * - 隔离：浏览器与 vite 的 HOME 都在 `.build/shots-sandbox/` 里；真后端各在一个 bwrap 里（家目录挂成 `/home/user`、断网）；
+ *   不起 claude、不碰用户的 tmux、不连任何机器。
  *
  * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing。
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, statSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -91,6 +93,14 @@ cleanup();
 process.exit(results.some((r) => !r.ok) || problems.length > 0 ? 1 : 0);
 
 async function shootWeb() {
+  // 真后端：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份。
+  if (!process.env.CCM_SHOTS_BACKEND) {
+    const b = spawnSync("cargo", ["build", "--quiet"], { cwd: path.join(repo, "src/backend"), env: { ...scrubbedEnv(), CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "4" }, stdio: ["ignore", "inherit", "inherit"] });
+    if (b.status !== 0) {
+      problems.push(`真后端没编出来（cargo 退出码 ${b.status}）`);
+      return;
+    }
+  }
   const port = await freePort();
   const vite = spawn(process.execPath, [path.join(repo, "tests/shots/serve.mjs"), String(port)], {
     cwd: repo,

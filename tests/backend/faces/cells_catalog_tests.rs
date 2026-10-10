@@ -109,6 +109,13 @@ fn golden(file: &str) -> String {
 /// 各件成品的真样子：跨语言金样里由真代码写出来的那几份（＋ 金样里恰好缺的那一格，用真代码现造）。
 fn corpus(name: &str) -> Vec<Value> {
     match name {
+        // 一格错：真走逐格校验（封顶时段重叠 · 越界），每一形都带写好的那一句。
+        "cell_error" => crate::accounts::quota::rotation::cell_errors(&serde_json::json!({
+            "cap": {"b": {"*": [{"at": "17:00-02:00", "n": 0}, {"at": "01:00-05:00", "n": 120}]}}
+        }))
+        .into_iter()
+        .map(|e| serde_json::to_value(e).unwrap())
+        .collect(),
         "record" => golden("record.golden.jsonl")
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap()["record"].clone())

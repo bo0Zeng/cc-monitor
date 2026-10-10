@@ -4,13 +4,12 @@
  * - 会话账号归属的刷新显式 `force`：这里是那份缓存的写者，缓存给别的读者（chip 菜单、tab 徽章）用；
  *   账号列表（`fetchAccounts`，30s TTL）默认不 force —— 它只在迁移 / 登录时变，区别是数据变化率。
  * - 事件驱动、零定时器（{@link createEventRefresher}）：「会话 ↔ 账号」只在会话起停时变，起停本来就有事件；
- *   刷新的时机 = 长连接握手完成（`accounts-changed` 流里的 `seen`，见 {@link accountsChangedItems}）· 会话起停 · 本界面切号。
+ *   刷新的时机 = 长连接握手完成 / 那台账号清单变了（`changed/accounts` 流里的 `seen` / 帧，见 `changed-stream.ts`）· 会话起停 · 本界面切号。
  *   代价：另一个 monitor 改了默认账号、这台又没有会话起停时，这边要等下一次握手 / 起停 / 操作才刷新。
  */
 
 import type { RemoteHostConfig } from "./remote-config";
 import type { Account, AccountsState, SessionAccount } from "./accounts";
-import type { Item } from "../../comms/inward/chan";
 
 /**
  * 同时在飞的远端数上限。
@@ -179,45 +178,4 @@ export function createEventRefresher(
       return failures;
     },
   };
-}
-
-/**
- * 〔「前端只有两个动作」〕流标签：那台机器上「账号清单可能变了」。
- * 与 Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND` 同一个串（两侧对拍在 `session-accounts-poll.vitest.ts`）。
- */
-export const ACCOUNTS_CHANGED_KIND = "accounts-changed";
-
-/**
- * 每条 `accounts-changed` 订阅一开始给多少格 credit。那一格很稀（一台一次连上 / 一次清单变），
- * 收到的 `frame` 当场还 ⇒ 正常用法打不满；打满了句柄就丢、下一次原位给 `gap`（级 2），这里当成「变过」照刷。
- */
-export const ACCOUNTS_CHANGED_WINDOW = 8;
-
-/**
- * `accounts-changed` 流里的一批格 ⇒ 要不要刷、还多少 credit（纯函数）。
- *
- * 订阅本身与会话行 · tap 走同一处 `chan.subscribe`（`events.ts::bindEvents` 的 `plan`）；
- * 这里只答「这一批格是什么意思」：
- *
- * | 格 | 意思 | 这里 |
- * |---|---|---|
- * | `seen` | 那台的长连接（又）通了、能问了 | 要刷 |
- * | `frame` | 那台后端说账号清单变了 | 要刷，占一格 credit（当场还） |
- * | `gap` | 没 credit 时丢过几格 | 当成变过：要刷 |
- * | `unseen` / `closed` | 断了 / 这条订阅没了 | 不刷（断着问不到；连上时会有 `seen`） |
- *
- * 一批里有几格都只刷一次（`changed` 是一个布尔）。
- */
-export function accountsChangedItems(items: readonly Item[]): { changed: boolean; frames: number } {
-  let changed = false;
-  let frames = 0;
-  for (const it of items) {
-    if (it.t === "frame") {
-      frames += 1;
-      changed = true;
-    } else if (it.t === "seen" || it.t === "gap") {
-      changed = true;
-    }
-  }
-  return { changed, frames };
 }

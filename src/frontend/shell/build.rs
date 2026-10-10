@@ -291,9 +291,19 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
     // ── ① 它是**给这个 target 编的**吗 ─────────────────────────────────────
     //
     // 名字定死（理由见 `NATIVE_BACKEND_DIR` 头注）⇒ 「这份字节属于哪个平台」**只能靠这个清单**。
-    // 缺清单 / 对不上都当场拦：放它过去等于把一个别的平台的二进制内嵌进来，
-    // 而那正是 08-11 补审逮到的那个阻塞级缺陷（往 Windows 上释放 Linux ELF 再报「已起」）。
+    // 放它过去等于把一个别的平台的二进制内嵌进来，而那正是 08-11 补审逮到的那个阻塞级缺陷
+    // （往 Windows 上释放 Linux ELF 再报「已起」）。
+    // 清单写着别的 target ⇒ 这份是给那个 target 铺的（例：铺着本机 linux 那份去编 Windows 的测试程序），
+    //   这一趟当它不在：不内嵌、不置 cfg，照缺席那样喊一句 warning。清单缺席 / 空 ⇒ 说不出给谁编的，当场失败。
     let staged_target = read_trimmed(&target_manifest);
+    if !staged_target.is_empty() && staged_target != target {
+        println!(
+            "cargo:warning=本机内嵌后端（src/frontend/shell/{}）是给 `{staged_target}` 编的，这一趟的 TARGET 是 `{target}` \
+             ⇒ 这一趟不内嵌它（编出来的可执行文件起不了本机后端）。要这个 target 的：`{REEMBED_CMD} --native`（在那个 target 上）。",
+            src.display()
+        );
+        return;
+    }
     if staged_target != target {
         panic!(
             "本机内嵌后端（src/frontend/shell/{}）是给 `{}` 编的，而这一趟的 TARGET 是 `{target}`。\n\
@@ -347,7 +357,7 @@ const NATIVE_FILEWIN_FILE: &str = "cc-monitor-filewin";
 ///
 /// # 形状与 [`embed_native_backend`] 同一套
 ///
-/// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple）· 对不上当场 panic
+/// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple）· 清单写着别的 target ⇒ 这一趟当它不在、清单缺席 ⇒ 当场 panic
 /// （内嵌一个别的平台的程序 = 放到用户盘上起不来）· 缺席 ⇒ 不置 cfg ＋ **可见的** warning。
 /// ⚠ 没有身份戳：它是哪一版由字节本身答（放的时候逐字节比，见 `local_backend::place_local_program`）。
 /// ⚠ **它不能在同一趟 cargo 里现编现嵌**：它是本包的另一个 `[[bin]]`，编它要先编本包的库（本函数就跑在那一步里）
@@ -371,6 +381,15 @@ fn embed_native_filewin() {
         return;
     }
     let staged_target = read_trimmed(&target_manifest);
+    // 清单写着别的 target ⇒ 当它不在（理由同 [`embed_native_backend`] 那一步）；清单缺席 / 空 ⇒ 当场失败。
+    if !staged_target.is_empty() && staged_target != target {
+        println!(
+            "cargo:warning=内嵌文件窗口程序（src/frontend/shell/{}）是给 `{staged_target}` 编的，这一趟的 TARGET 是 `{target}` \
+             ⇒ 这一趟不内嵌它（只在旁边有 `{NATIVE_FILEWIN_FILE}` 时开得了文件窗口）。",
+            src.display()
+        );
+        return;
+    }
     if staged_target != target {
         panic!(
             "内嵌文件窗口程序（src/frontend/shell/{}）是给 `{}` 编的，而这一趟的 TARGET 是 `{target}`。\n\

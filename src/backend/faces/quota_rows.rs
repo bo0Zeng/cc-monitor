@@ -195,7 +195,24 @@ pub(crate) fn head_text(state: &str, empty: bool, reason: Option<&str>) -> Optio
     }
 }
 
-/// ★ 给 `quota-read` 的回包（出口那一遍之后）每号添 `rows`（读不出 ⇒ 账上本来就没有号）。
+/// 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）：`5h 41%` · 卡着的照语义位那一格的字。
+fn five_hour(value: &str) -> String {
+    copy_text(
+        "resumeMenu.account.quota",
+        &[
+            ("slot", &copy_text("acct.slot.fiveHour", &[])),
+            ("value", value),
+        ],
+    )
+}
+
+/// `quota-read` 顶上那一格「5h」：账读不出 ⇒ `5h 读不到`（每号那一格这时没有号可挂）；否则没有。
+pub(crate) fn head_five_hour(state: &str) -> Option<Words> {
+    (state == "unreadable").then(|| Words(five_hour(&copy_text("acct.val.unreadable", &[]))))
+}
+
+/// ★ 给 `quota-read` 的回包（出口那一遍之后）每号添 `rows`（读不出 ⇒ 账上本来就没有号）与 `fiveHour`
+/// （出过数的订阅号才有；按量号没有分窗口 · 没出过数的号 ⇒ `null`）。顶上那一格在回包类型里（[`head_five_hour`]）。
 pub(crate) fn with_rows(reply: &mut Value) {
     for (list, block) in [
         ("accounts", seen_block as fn(&Value) -> Rows),
@@ -204,6 +221,18 @@ pub(crate) fn with_rows(reply: &mut Value) {
         if let Some(xs) = reply.get_mut(list).and_then(Value::as_array_mut) {
             for x in xs {
                 x["rows"] = serde_json::to_value(block(x)).unwrap_or(Value::Null);
+                x["fiveHour"] = if list == "unseen" || x["kind"] == "api" {
+                    Value::Null
+                } else {
+                    let none = copy_text("acct.val.none", &[]);
+                    let text = x["slots"]
+                        .as_array()
+                        .and_then(|xs| xs.iter().find(|s| s["slot"] == "5h"))
+                        .and_then(|s| s["text"].as_str())
+                        .unwrap_or(&none)
+                        .to_string();
+                    Value::String(five_hour(&text))
+                };
             }
         }
     }

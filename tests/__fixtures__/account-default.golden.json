@@ -1,0 +1,66 @@
+{
+  "说明": [
+    "「这个号能不能选 · 这台的默认号是谁」三处同读的金样：规则住 acct-core（account_selectable · effective_default）。",
+    "读它的三处：后端清单成品（tests/backend/observe/accounts_query_tests.rs：逐号 selectable · meta.effectiveDefault）·",
+    "命令行不带 --account（tests/backend/control/ccm/plan_tests.rs：落哪个号）· 起会话跟随（tests/backend/control/launch_account_tests.rs）·",
+    "界面只照抄成品那两格（tests/frontend/ui/accounts.vitest.ts）。",
+    "accounts[]：hasDir = 清单里写了号目录（false = 账号 0）· exists = 号目录在盘上 · authReady = 凭据文件在（订阅号）。",
+    "期望写成字面量，不由规则算出来（算出来就成了循环自证）。"
+  ],
+  "cases": [
+    {
+      "what": "标了默认的那个",
+      "accounts": [
+        { "name": "a", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true },
+        { "name": "b", "hasDir": true, "isDefault": true, "mode": "isolated", "authReady": true, "exists": true }
+      ],
+      "effectiveDefault": "b",
+      "selectable": ["a", "b"]
+    },
+    {
+      "what": "一个都没标 ⇒ 清单里第一个（命令行那一路从前不回落、起成了不指定号）",
+      "accounts": [
+        { "name": "a", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true },
+        { "name": "b", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true }
+      ],
+      "effectiveDefault": "a",
+      "selectable": ["a", "b"]
+    },
+    {
+      "what": "一个都没标、第一个是账号 0 ⇒ 默认就是账号 0（不指定号）；账号 0 不经选号",
+      "accounts": [
+        { "name": "zero", "hasDir": false, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true },
+        { "name": "a", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true }
+      ],
+      "effectiveDefault": "zero",
+      "selectable": ["a"]
+    },
+    {
+      "what": "标了两个 ⇒ 前一个",
+      "accounts": [
+        { "name": "a", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true },
+        { "name": "b", "hasDir": true, "isDefault": true, "mode": "isolated", "authReady": true, "exists": true },
+        { "name": "c", "hasDir": true, "isDefault": true, "mode": "isolated", "authReady": true, "exists": true }
+      ],
+      "effectiveDefault": "b",
+      "selectable": ["a", "b", "c"]
+    },
+    {
+      "what": "选不了的几种：没登录 · 逃生口模式 · 目录不在；默认号是谁不看它能不能用",
+      "accounts": [
+        { "name": "out", "hasDir": true, "isDefault": true, "mode": "isolated", "authReady": false, "exists": true },
+        { "name": "inplace", "hasDir": true, "isDefault": false, "mode": "in-place", "authReady": true, "exists": true },
+        { "name": "gone", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": false },
+        { "name": "ok", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true }
+      ],
+      "effectiveDefault": "out",
+      "selectable": ["ok"]
+    },
+    {
+      "what": "清单是空的 ⇒ 没有默认号",
+      "accounts": [],
+      "effectiveDefault": null,
+      "selectable": []
+    }
+  ]
+}

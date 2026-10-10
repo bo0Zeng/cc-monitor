@@ -2303,3 +2303,104 @@ fn the_trust_cli_failures_are_the_one_failed_envelope() {
     }
     let _ = fs::remove_dir_all(&root);
 }
+
+// ---- 能不能选 · 默认号是谁（跨三处金样 `tests/__fixtures__/account-default.golden.json`）----
+
+/// 金样那一格 ⇒ 盘上一份账号库（号目录 · 凭据文件 · 清单），回清单目录。
+/// 凭据在、目录不在的那一形（订阅号做不出来）写成 API 号（鉴权那一维恒就绪）。
+pub(crate) fn golden_library(tag: &str, case: &serde_json::Value) -> (PathBuf, PathBuf) {
+    let root = tmpdir(tag);
+    let accts = root.join("accts");
+    let shared = root.join("shared");
+    fs::create_dir_all(&shared).unwrap();
+    let mut rows = Vec::new();
+    for a in case["accounts"].as_array().unwrap() {
+        let name = a["name"].as_str().unwrap();
+        let ready = a["authReady"].as_bool().unwrap();
+        let exists = a["exists"].as_bool().unwrap();
+        let mut row = serde_json::json!({
+            "name": name,
+            "isDefault": a["isDefault"],
+            "mode": a["mode"],
+        });
+        if a["hasDir"].as_bool().unwrap() {
+            let dir = accts.join(format!("acct-{name}"));
+            if exists {
+                fs::create_dir_all(&dir).unwrap();
+                if ready {
+                    fs::write(dir.join(CREDENTIALS_FILE), "{}").unwrap();
+                }
+            } else if ready {
+                row["authKind"] = serde_json::json!("api-key");
+            }
+            row["configDir"] = serde_json::json!(dir.to_string_lossy());
+        } else if ready {
+            fs::write(shared.join(CREDENTIALS_FILE), "{}").unwrap();
+        }
+        rows.push(row);
+    }
+    write_manifest(
+        &accts,
+        &serde_json::json!({
+            "version": 1,
+            "sharedStore": shared.to_string_lossy(),
+            "accounts": rows,
+        })
+        .to_string(),
+    );
+    (root, accts)
+}
+
+pub(crate) fn account_default_golden() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../__fixtures__/account-default.golden.json"
+    ))
+    .unwrap()
+}
+
+/// ★★ 清单成品逐号带 `selectable`、`meta` 带 `effectiveDefault`，与金样逐格相等；
+/// 起会话跟随（`launch_account::pick`）读的就是这一份成品：没有上次的号 ⇒ 落默认号（选得了）或不指定号。
+#[test]
+fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
+    let golden = account_default_golden();
+    let cases = golden["cases"].as_array().unwrap();
+    assert!(cases.len() >= 6, "金样被删薄了");
+    for (i, case) in cases.iter().enumerate() {
+        let what = case["what"].as_str().unwrap();
+        let (root, accts) = golden_library(&format!("dflt{i}"), case);
+        let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
+        let got: Vec<&str> = product["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| a["selectable"] == serde_json::json!(true))
+            .map(|a| a["name"].as_str().unwrap())
+            .collect();
+        let want: Vec<&str> = case["selectable"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(got, want, "{what}：能选的号");
+        for a in product["accounts"].as_array().unwrap() {
+            assert!(a["selectable"].is_boolean(), "{what}：每号都带 selectable");
+        }
+        assert_eq!(
+            product["meta"]["effectiveDefault"], case["effectiveDefault"],
+            "{what}：默认号"
+        );
+        // 起会话跟随（没有上次的号）：默认号选得了 ⇒ 它；否则不指定号。
+        use crate::control::launch_account::{pick, Asked, Library, Picked};
+        let picked = pick(&Asked::Follow, &Library::of_product(&product), None, None);
+        let want_pick = case["effectiveDefault"]
+            .as_str()
+            .filter(|d| want.contains(d));
+        match (picked, want_pick) {
+            (Picked::Account { name, .. }, Some(d)) => assert_eq!(name, d, "{what}：跟随落的号"),
+            (Picked::Base, None) => {}
+            (p, w) => panic!("{what}：跟随落成 {p:?}，金样要 {w:?}"),
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+}

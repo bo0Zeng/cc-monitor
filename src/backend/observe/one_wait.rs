@@ -1,7 +1,7 @@
 //! **一次性等待**：盯一个目录的文件事件，每来一批问一次「到了没有」；到了立刻回，到期限回「没等到」。
 //!
 //! 两种用法（换号重启那条命令用）：等某条会话的记录里长出满足判定的一条（压缩摘要）· 等某条会话由一个新进程报出（pidfile）。
-//! 事件由内核推（`notify`，不传时间窗），检查跑在 `notify` 自己的线程上；等的那一侧只有**一次**有界等待，期限由发起方给。
+//! 事件由内核推（经盯盘原语 [`crate::platform::watch_file`]，不传时间窗），检查跑在它收的那条线程上；等的那一侧只有**一次**有界等待，期限由发起方给。
 //! 先装耳朵、再看一眼：装好之前已经到了的也认得出。
 
 use crate::observe::watcher::{running_sessions, Follow};
@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 /// 装好了的一次等待。丢掉它 ⇒ 耳朵一起摘。
 pub(crate) struct Armed {
-    _ears: notify::RecommendedWatcher,
+    _ears: crate::platform::watch_file::Watching,
     hit: tokio::sync::oneshot::Receiver<()>,
 }
 
@@ -40,21 +40,18 @@ impl<F: FnMut() -> bool> Pending<F> {
 
 /// 盯 `dir`（不递归），每批事件问一次 `seen`。
 fn arm(dir: &Path, seen: impl FnMut() -> bool + Send + 'static) -> Result<Armed, String> {
-    use notify::Watcher;
     let (tell, hit) = tokio::sync::oneshot::channel::<()>();
     let state = Arc::new(Mutex::new(Pending {
         tell: Some(tell),
         seen,
     }));
     let on_event = state.clone();
-    let mut ears = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if res.is_ok() {
-            on_event.lock().unwrap_or_else(|e| e.into_inner()).check();
-        }
-    })
-    .map_err(|e| e.to_string())?;
-    ears.watch(dir, notify::RecursiveMode::NonRecursive)
-        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    let ears = crate::platform::watch_file::watch(
+        &[(dir.to_path_buf(), false)],
+        |_| true,
+        "one-wait",
+        move |_| on_event.lock().unwrap_or_else(|e| e.into_inner()).check(),
+    )?;
     state.lock().unwrap_or_else(|e| e.into_inner()).check();
     Ok(Armed { _ears: ears, hit })
 }
