@@ -38,7 +38,7 @@ sealed interface LinkState {
  * 接回去只走一条路：[open]（probe → ensure → attach，带 `--tail-only`）。什么时候走：
  * - [ssh] 换了一条（SSH 那层重连过）⇒ 旧流关掉、当场在新连接上接；[ssh] 是 `null`（SSH 没通）⇒ 不接、停在断开。
  * - SSH 还通、流断了 ⇒ 叫 [onLost]（让 SSH 那层去探活：多半是 SSH 先死了），再按 [Backoff] 接。
- * - 走不通、要人动手的那几种（另一版 · 没装 · 起不了常驻 · 契约对不上）不自己反复试：等 [reconnect]（［重试］）或 [onForeground]。
+ * - 走不通、要人动手的那几种（另一版 · 没装 · 起不了常驻）不自己反复试：等 [reconnect]（［重试］）或 [onForeground]。
  *
  * 每次接上，那台整份重报会话（`session_added` … `sessions_replayed`），会话表从空表重新折，不留旧的、不重一份。
  * SSH 连接本身不归这里：由别处（`HostConnector`）建好、持有，这里只在它上面开那条双向 exec。

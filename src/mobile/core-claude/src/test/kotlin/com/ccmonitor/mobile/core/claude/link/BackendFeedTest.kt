@@ -20,7 +20,6 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackendFeedTest {
     private val hello = """{"kind":"hello","v":1,"build_id":"${EmbeddedBuild.ID}"}"""
-    private val catalog = CellsCatalog.of(mapOf("products" to emptyList<Any>()))!!
 
     private fun added(sid: String) = """{"kind":"session_added","sid":"$sid","activity_text":"空闲","activity_tone":"calm"}"""
 
@@ -52,7 +51,7 @@ class BackendFeedTest {
                 d.push(hello)
                 d.push("""{"attach":"ok"}""")
                 when (val a = FrameClient.attach(d, listOf("--tail-only"), s, HANDSHAKE_MS, "n${remote.opens}") {}) {
-                    is AttachOutcome.Attached -> LinkOutcome.Up(a.client, catalog)
+                    is AttachOutcome.Attached -> LinkOutcome.Up(a.client)
                     else -> LinkOutcome.Attach(a)
                 }
             }
