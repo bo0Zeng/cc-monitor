@@ -262,7 +262,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     agent_kind: s("claude"),
                     path: s("/home/u/.claude"),
                 }],
-                capabilities: vec![s("bg"), s("tail-only")],
                 emits: vec![s("line")],
                 commands: vec![s("ping")],
                 unavailable: vec![Unavailable {
@@ -278,7 +277,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_arch: s("x86_64"),
                 claude_dir: s("/home/u/.claude"),
                 homes: vec![],
-                capabilities: vec![],
                 emits: vec![],
                 commands: vec![],
                 unavailable: vec![],
@@ -300,7 +298,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cwd: Some(s("/w")),
                 byte_offset: 120,
                 rid: Some(s("r1")),
-                raw: Some(s("{}")),
             },
             Frame::Line {
                 session_id: s("s1"),
@@ -310,7 +307,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cwd: None,
                 byte_offset: 120,
                 rid: None,
-                raw: None,
             },
         ],
         [
@@ -333,7 +329,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     host: TerminalHost::Tmux,
                     terminal: Some("tmux-3-7".into()),
                 }),
-                pid: Some(42),
+                pid: 42,
             },
             Frame::SessionAdded {
                 sid: s("s1"),
@@ -349,7 +345,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 face: crate::stream::wire::ActivityFace::of(None),
                 waiting_for: None,
                 container: None,
-                pid: None,
+                pid: 0,
             },
         ],
         [
@@ -955,22 +951,13 @@ fn overflow_frame_serializes_with_dropped_count() {
 
 // `tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
 
-/// F66（#58③）wire 契约：hello 的 `capabilities`。
-/// ① 非空 → 序列化为数组（monitor 据此发 flag）。
-/// ② 空集 → `skip_serializing_if` 省略字段（additive：等价旧 hello，旧 monitor
-///    收到即空集缺省——向后兼容的关键）。
-fn hello(caps: Vec<String>) -> Frame {
-    hello_with(caps, vec![])
-}
-
-fn hello_with(caps: Vec<String>, emits: Vec<String>) -> Frame {
+fn hello_with(emits: Vec<String>) -> Frame {
     Frame::Hello {
         v: 1,
         build_id: "b".into(),
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: caps,
         emits,
         commands: vec![],
         unavailable: vec![],
@@ -979,43 +966,21 @@ fn hello_with(caps: Vec<String>, emits: Vec<String>) -> Frame {
     }
 }
 
+/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。aterm 门控读 emits 判「backend 发不发某帧」。
 #[test]
-fn hello_capabilities_serializes_when_present_and_omits_when_empty() {
-    // ① 非空 → 数组在线上
-    let line = to_line(&hello(vec!["bg".into(), "tail-only".into()])).expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert_eq!(v["kind"], "hello");
-    assert_eq!(v["capabilities"], serde_json::json!(["bg", "tail-only"]));
-    // ② 空集 → 字段省略（旧 hello 等价形态，旧 monitor 忽略缺失 = 空集缺省）
-    let line = to_line(&hello(vec![])).expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert!(
-        v.get("capabilities").is_none(),
-        "空 capabilities 必须被 skip（additive 向后兼容）"
-    );
-}
-
-/// phase②：Hello.emits 与 capabilities 同 additive 规律、且**独立正交**（一个非空一个空时
-/// 各自序列化/省略互不牵连）。aterm 门控读 emits 判「backend 发不发某帧」。
-#[test]
-fn hello_emits_serializes_orthogonally_to_capabilities() {
-    // emits 非空、capabilities 空 → 只 emits 在线上、capabilities 省略。
-    let line = to_line(&hello_with(
-        vec![],
-        vec!["session_status".into(), "turn_end".into()],
-    ))
+fn hello_emits_serializes_when_present_and_omits_when_empty() {
+    let line = to_line(&hello_with(vec![
+        "session_status".into(),
+        "turn_end".into(),
+    ]))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+    assert_eq!(v["kind"], "hello");
     assert_eq!(
         v["emits"],
         serde_json::json!(["session_status", "turn_end"])
     );
-    assert!(
-        v.get("capabilities").is_none(),
-        "capabilities 空 → 省略（不受 emits 非空牵连）"
-    );
-    // 空 emits → 字段省略（additive：旧 client 忽略缺失 = 不依赖任何 α 专属帧）。
-    let line = to_line(&hello_with(vec!["bg".into()], vec![])).expect("serialize");
+    let line = to_line(&hello_with(vec![])).expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
     assert!(v.get("emits").is_none(), "空 emits 必须被 skip（additive）");
 }
@@ -1073,7 +1038,6 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         cwd: None,
         byte_offset: 99,
         rid: None,
-        raw: None,
     };
 
     let line = to_line(&frame).expect("serialize");
@@ -1190,7 +1154,6 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: discovered,
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1253,7 +1216,6 @@ fn dg3_codex_fields_serialize_when_present() {
                 path: "/home/u/.codex".into(),
             },
         ],
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1282,12 +1244,12 @@ fn dg3_codex_fields_serialize_when_present() {
         face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     })
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1314,7 +1276,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1344,11 +1305,11 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":0}\n",
         "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
     );
 
@@ -1386,7 +1347,6 @@ fn hello_unavailable_is_additive_present_and_absent() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1410,7 +1370,6 @@ fn hello_unavailable_is_additive_present_and_absent() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: vec![],
         emits: vec![],
         commands: vec!["kill".into(), "ping".into()],
         unavailable: vec![Unavailable {
@@ -1487,7 +1446,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             face: crate::stream::wire::ActivityFace::of(None),
             waiting_for: None,
             container: c,
-            pid: None,
+            pid: 0,
         })
         .unwrap()
     };
@@ -1495,18 +1454,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1550,31 +1509,28 @@ fn sessions_replayed_has_exactly_these_bytes() {
     );
 }
 
-/// `session_added.pid` 的线上形：缺席 ⇒ 与本字段加进来之前逐字节相同；带上 ⇒ 排在最后、是个整数。
+/// `session_added.pid` 的线上形：恒在、排在最后、是个整数。
 #[test]
-fn loc1b_session_added_pid_is_additive() {
-    let frame = |pid: Option<u32>| {
-        to_line(&Frame::SessionAdded {
-            sid: "s".into(),
-            agent_kind: "claude".to_string(),
-            liveness_confidence: None,
-            background: false,
-            attachable: None,
-            cwd: None,
-            project_dir: None,
-            name: None,
-            path: None,
-            lines: None,
-            face: crate::stream::wire::ActivityFace::of(None),
-            waiting_for: None,
-            container: None,
-            pid,
-        })
-        .unwrap()
-    };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n");
+fn loc1b_session_added_carries_the_pid() {
+    let line = to_line(&Frame::SessionAdded {
+        sid: "s".into(),
+        agent_kind: "claude".to_string(),
+        liveness_confidence: None,
+        background: false,
+        attachable: None,
+        cwd: None,
+        project_dir: None,
+        name: None,
+        path: None,
+        lines: None,
+        face: crate::stream::wire::ActivityFace::of(None),
+        waiting_for: None,
+        container: None,
+        pid: 4242,
+    })
+    .unwrap();
     assert_eq!(
-        frame(Some(4242)),
+        line,
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":4242}\n"
     );
 }
@@ -1628,7 +1584,6 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
             homes: vec![],
-            capabilities: vec![],
             emits: vec![],
             commands: vec![],
             unavailable: vec![],
@@ -1673,7 +1628,6 @@ fn net2_uncancellable_is_additive_and_last() {
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
             homes: vec![],
-            capabilities: vec![],
             emits: vec![],
             commands: vec![],
             unavailable: vec![],
@@ -1704,13 +1658,11 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("hello", "build_id", "string"),
     ("hello", "host_arch", "string"),
     ("hello", "claude_dir", "string"),
-    ("hello", "capabilities", "array"),
     ("hello", "emits", "array"),
     ("line", "session_id", "string"),
     ("line", "path", "string"),
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
-    ("line", "raw", "string"),
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
     // （`faces/cells_catalog.rs` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
@@ -1746,7 +1698,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
     let frames = vec![
-        hello_with(vec!["bg".into()], vec!["turn_end".into()]),
+        hello_with(vec!["turn_end".into()]),
         Frame::Line {
             session_id: "s".into(),
             path: "/p".into(),
@@ -1755,7 +1707,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             cwd: None,
             byte_offset: 9,
             rid: None,
-            raw: Some("{}".into()),
         },
         Frame::Overflow {
             dropped: 2,
@@ -1876,7 +1827,6 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         cwd: None,
         byte_offset: 0,
         rid: None,
-        raw: None,
     };
     assert!(
         !to_line(&f).unwrap().contains("timeText"),
@@ -1887,32 +1837,6 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         to_line(&f).unwrap().contains(r#""timeText":"04:30""#),
         "{}",
         to_line(&f).unwrap()
-    );
-}
-
-/// `line.raw`：没索要的客户端字节一个不变（不带这一格）；索要了才带、是那一行原文。
-#[test]
-fn line_raw_is_only_there_when_asked() {
-    let line = |raw: Option<String>| {
-        to_line(&Frame::Line {
-            session_id: "s".into(),
-            path: "/p".into(),
-            seq: 0,
-            record: None,
-            cwd: None,
-            byte_offset: 5,
-            rid: None,
-            raw,
-        })
-        .unwrap()
-    };
-    assert_eq!(
-        line(None),
-        "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5}\n"
-    );
-    assert_eq!(
-        line(Some("{\"a\":1}".into())),
-        "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5,\"raw\":\"{\\\"a\\\":1}\"}\n"
     );
 }
 

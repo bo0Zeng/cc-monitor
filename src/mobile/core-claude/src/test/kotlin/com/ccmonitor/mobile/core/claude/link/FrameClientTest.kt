@@ -53,16 +53,16 @@ class FrameClientTest {
     ): FrameClient {
         d.push(hello)
         d.push("""{"attach":"ok"}""")
-        val got = FrameClient.attach(d, listOf("--tail-only"), scope, 1_000, "n1", TZ) { breaks += it }
+        val got = FrameClient.attach(d, scope, 1_000, "n1", TZ) { breaks += it }
         return (got as AttachOutcome.Attached).client
     }
 
     @Test
-    fun `先读 hello 再交 attach 行，带这条连接要的旗标`() =
+    fun `先读 hello 再交 attach 行，只说我要流`() =
         runTest {
             val d = FakeDuplex()
             val c = attached(d, backgroundScope)
-            assertEquals("attach 行旁边带看的这一台的时区（不进 flags）", """{"attach":true,"flags":["--tail-only"],"tz":"$TZ"}""", d.written.receive())
+            assertEquals("attach 行带看的这一台的时区", """{"attach":true,"tz":"$TZ"}""", d.written.receive())
             assertEquals(EmbeddedBuild.ID, c.hello.str("build_id"))
         }
 
@@ -143,7 +143,7 @@ class FrameClientTest {
         runTest {
             val d = FakeDuplex()
             d.push("""{"attach":"refused","reason":"absent"}""")
-            val got = FrameClient.attach(d, emptyList(), backgroundScope, 1_000, "n", TZ) {}
+            val got = FrameClient.attach(d, backgroundScope, 1_000, "n", TZ) {}
             assertEquals(AttachOutcome.Refused("absent"), got)
             assertTrue(d.closed)
         }
@@ -153,11 +153,11 @@ class FrameClientTest {
         runTest {
             val a = FakeDuplex()
             a.push("""{"hello":"world"}""")
-            assertTrue(FrameClient.attach(a, emptyList(), backgroundScope, 1_000, "n", TZ) {} is AttachOutcome.NotOurs)
+            assertTrue(FrameClient.attach(a, backgroundScope, 1_000, "n", TZ) {} is AttachOutcome.NotOurs)
             val b = FakeDuplex()
             b.push(hello)
             b.end()
-            val got = FrameClient.attach(b, emptyList(), backgroundScope, 1_000, "n", TZ) {}
+            val got = FrameClient.attach(b, backgroundScope, 1_000, "n", TZ) {}
             assertEquals(AttachOutcome.Stage.ATTACH_REPLY, (got as AttachOutcome.Cut).stage)
         }
 

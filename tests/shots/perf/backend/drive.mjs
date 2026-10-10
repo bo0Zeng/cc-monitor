@@ -33,7 +33,7 @@ const env = {
   ...(RELAY ? { CCM_RELAY_PORT: RELAY } : {}),
 };
 const t0 = performance.now();
-const child = spawn(bin, ["--", "--tail-only", "--with-bg", "--with-pid"], { env, stdio: ["pipe", "pipe", "pipe"] });
+const child = spawn(bin, ["--", "--stream"], { env, stdio: ["pipe", "pipe", "pipe"] });
 let stderr = "";
 let errLine = "";
 let warmAt = null;

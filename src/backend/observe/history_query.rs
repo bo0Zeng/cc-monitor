@@ -99,7 +99,6 @@ pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
         Some("--read-session-from-offset") => match parse_from_offset_args(&args[1..]) {
             Ok((opts, pos)) => match (pos.first(), pos.get(1)) {
                 (Some(p), Some(o)) => match o.parse::<u64>() {
-                    Ok(o) if opts.index => session_index(agent_home, p, o, opts.until),
                     Ok(o) => read_session_from_offset(agent_home, p, o, opts.until),
                     Err(_) => Err(
                         "--read-session-from-offset <jsonl_path> <offset>: offset must be a number"
@@ -715,9 +714,7 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
 /// 透传原字节，理由同 `read_session`（冻结的那一面；成品走 `history-read`）。
 ///
-/// 〔骨架〕加了两个**选项**（不是新子命令 —— 见 [`FromOffsetOpts`] 的头注）：
-/// `--until <end>` 把透传收成半开区间 `[offset, end)`；`--index` 不透传字节，改出
-/// **骨架索引**（[`session_index`]）。两个都不带时字节一个不变（老调用方零回归）。
+/// `--until <end>`（[`FromOffsetOpts`]）把透传收成半开区间 `[offset, end)`。
 fn read_session_from_offset(
     agent_home: &Path,
     jsonl_path: &str,
@@ -755,38 +752,10 @@ fn stream_from_offset<W: std::io::Write>(
     }
 }
 
-/// `--read-session-from-offset` 的两个**选项**：`--index`（出骨架索引，不出字节）·
-/// `--until <end>`（右端收口）。
-///
-/// # 🔴 为什么是选项，不是一条新子命令 `--session-index`
-///
-/// 加子命令 ⇒ `build_id_guard` 的指纹变 ⇒ 必须 bump `BUILD_ID`（远端才会判 stale 重装）。
-/// 当时（10 路并行）**明令不许 bump**，而那时选项还不进指纹，于是选成了选项。
-/// ⚠ 那个前提已经不在：从 `p4m-tail` 起 `SUBCOMMAND_OPTIONS` 也进 `build_id_guard` 的指纹（`#options` 段），
-/// 今天加一个选项和加一条子命令一样逼出 bump。留成选项的理由只剩下面两节（语义上就是「从偏移读」· 老后端上认得出来）。
-/// **老后端上的行为已设计成可认出来**：
-/// 老后端不认 `--index`/`--until`（它只读 `args[1..=2]`，多余参数不看）⇒ 照旧透传字节
-/// ⇒ 首行不是 `{"kind":"session_index",…}` ⇒ monitor 据此判「对面不会出索引」并诚实降级
-/// （`--until` 同理：多拿到的尾巴由 monitor 自己按 `end` 截掉，结果仍然对，只是多传了字节）。
-///
-/// # 语义上它也**就是**「从偏移读」
-///
-/// 索引从 `offset` 起算 ⇒ 冷启动传 0 拿全量；续传传上次的 `end` 拿增量（
-/// 「续传令牌只能用字节偏移」）。与透传字节是同一个读、两种出法。
-///
-/// ⚠ 未知的 `--选项` 与多余的位置参数都**报错**（不静默忽略）：老 monitor 从不带，新 monitor 只带这两个；
-/// 多出来的一定是写错了，而静默忽略会让它拿到一份形状不对的输出还以为成功。
-///
-/// # 🔴 选项可以写在位置参数**前面** —— 而 monitor 就该这么写（让老后端**快速失败**）
-///
-/// 老后端只看 `args[1]`/`args[2]`：把 `--index` 写在路径**后面**，老后端会把**整份会话**透传回来
-/// （弱网上几十 MB，只为了让 monitor 看一眼首行认出「它不会」）。写在**前面**，老后端拿路径当 offset
-/// 解析 ⇒ `offset must be a number` ⇒ **零字节、退出 2**。新后端两种位置都认。
-/// （现打：基线 `161ffa6` 的 release 后端对一份 50 955 695 字节的会话 —— 选项在后 stdout 50 955 695 字节 /
-/// 退出 0；选项在前 stdout 0 字节 / 退出 2。）
+/// `--read-session-from-offset` 的选项：`--until <end>`（右端收口）。位置不限（写在位置参数前后都认）。
+/// 未知的 `--选项` 与多余的位置参数都**报错**（不静默忽略：静默忽略会让调用方拿到一份形状不对的输出还以为成功）。
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct FromOffsetOpts {
-    pub(crate) index: bool,
     pub(crate) until: Option<u64>,
 }
 
@@ -798,7 +767,6 @@ pub(crate) fn parse_from_offset_args(
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--index" => opts.index = true,
             "--until" => {
                 let v = it
                     .next()
@@ -1078,49 +1046,6 @@ pub(crate) fn find_in_session_into(
     Ok(())
 }
 
-/// `--read-session-from-offset <path> <offset> --index [--until <end>]`：**骨架索引**。
-///
-/// 出三段（逐行 JSON）：
-/// 1. 头 `{"kind":"session_index","v":1,"from":<offset>}` —— **首行就能认出**「对面会出索引」；
-/// 2. 每个**可计行**一行 [`IndexRow`]（口径 = [`line_counts`]，与 watcher/monitor 的 seq 空间一字一致：
-///    第 k 行就是 seq `base + k`，`base` = `offset` 之前的可计行数，由调用方持有）；
-/// 3. 尾 `{"kind":"session_index_end","count":N,"end":E}` —— `end` = 最后一个**完整行**的末字节
-///    （torn 残尾不计，F14 口径）＝ 下一次续传该带的 `offset`。**没有尾行 ⇒ 输出被截断了**，
-///    调用方不许把前面那些行当成全量。
-///
-/// 不含正文（已定：骨架不带正文）。每行约 100 字节 × 条数。
-fn session_index(
-    agent_home: &Path,
-    jsonl_path: &str,
-    offset: u64,
-    until: Option<u64>,
-) -> Result<(), String> {
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
-    session_index_into(agent_home, jsonl_path, offset, until, &mut out)?;
-    out.flush().map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
-/// 骨架索引的本体，出口是参数 ——帧面那条（`history-index`）
-/// 与 CLI 这条（`--read-session-from-offset --index`）**跑的是同一个函数**（同 `list_projects_into`）。
-pub(crate) fn session_index_into(
-    agent_home: &Path,
-    jsonl_path: &str,
-    offset: u64,
-    until: Option<u64>,
-    mut out: &mut dyn Write,
-) -> Result<(), String> {
-    write_session_index(
-        open_session_at(agent_home, jsonl_path, offset)?,
-        offset,
-        until,
-        &mut out,
-    )
-    .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
 /// 过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
 pub(crate) fn session_path_at(
     agent_home: &Path,
@@ -1144,34 +1069,9 @@ pub(crate) fn open_session_at(
     Ok(std::io::BufReader::new(f))
 }
 
-/// [`session_index`] 的内核：读 `r`（已定位在 `from`）逐行出索引。**纯 I/O 泛型**，单测直接喂字节。
-///
-/// `until`：只收**起点** `< until` 的行（起点在界内的那一行整行收，不劈半行）。
-/// 返回写出的行数（不含头尾）。
-pub(crate) fn write_session_index<R: std::io::BufRead, W: std::io::Write>(
-    r: R,
-    from: u64,
-    until: Option<u64>,
-    out: &mut W,
-) -> std::io::Result<u64> {
-    writeln!(
-        out,
-        "{{\"kind\":\"session_index\",\"v\":1,\"from\":{from}}}"
-    )?;
-    let (count, end) = scan_session_index(r, from, until, |row| {
-        serde_json::to_writer(&mut *out, row)?;
-        out.write_all(b"\n")
-    })?;
-    writeln!(
-        out,
-        "{{\"kind\":\"session_index_end\",\"count\":{count},\"end\":{end}}}"
-    )?;
-    Ok(count)
-}
-
-/// [`write_session_index`] 的中段：每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
-/// CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-index`，装成成品 `{from, end, rows}`）
-/// 跑的是**同一个**扫描；「这一行占不占 seq」仍只住 [`line_counts`]。
+/// **骨架索引**的扫描：读 `r`（已定位在 `from`）每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
+/// `until`：只收**起点** `< until` 的行（起点在界内的那一行整行收，不劈半行）。`end` ＝ 最后一个完整行的末字节（torn 残尾不计）＝ 下一次续传的起点。
+/// 帧面 `history-index`（`read_face.rs`，CLI 面 `--history-index`）用它；「这一行占不占 seq」仍只住 [`line_counts`]。
 pub(crate) fn scan_session_index<R: std::io::BufRead>(
     mut r: R,
     from: u64,

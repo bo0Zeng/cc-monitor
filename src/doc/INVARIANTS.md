@@ -85,7 +85,7 @@
 
 ## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证（v2.6 B 重构）
 
-后端给每一行分配 per-file 单调递增的 `seq`（从 0 重读时先发 `session_file_reread` 再从 0 数；`--tail-only` 下起点是当前完整行数 ⇒ seq 就是行号，与旁路快照同一个编号空间，§25a）。本机与远端同一个来源（本机会话的行也是本机后端的 `line` 帧）。所有交付路径透传 seq。前端每个 Tab / 查看器持一个 `RecordTimeline`，按 seq 二分插入 DOM。后端交格顺序、切块到达顺序、实时与成批混合，都不影响视觉顺序。seq 保时序、不保投递次数（§25）。
+后端给每一行分配 per-file 单调递增的 `seq`（从 0 重读时先发 `session_file_reread` 再从 0 数；流不重放历史，起点是当前完整行数 ⇒ seq 就是行号，与旁路快照同一个编号空间，§25a）。本机与远端同一个来源（本机会话的行也是本机后端的 `line` 帧）。所有交付路径透传 seq。前端每个 Tab / 查看器持一个 `RecordTimeline`，按 seq 二分插入 DOM。后端交格顺序、切块到达顺序、实时与成批混合，都不影响视觉顺序。seq 保时序、不保投递次数（§25）。
 
 **为什么不能松动**：此前用五个 flag 协调「批 / 实时 / 前插」反复出相位 bug；seq ＋ 二分插入把「后端保序」变成「前端排序」，一次性消掉了那整套机制。
 
@@ -203,7 +203,7 @@
 
 ### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`（F63 / issue #49）
 
-未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。四个降级点各记一笔有界的账：记录那两面住后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`），monitor 那两面住 `src/frontend/shell/src/drift_ledger.rs`；在设置「机器 → 足迹 → 未识别的数据」查看。
+未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；在设置「机器 → 足迹 → 未识别的数据」查看。
 
 **为什么不能松动**：一条记录静默消失，它的子记录就成了孤儿 ⇒ 主线判定把整支误判成「回退掉的」。
 
@@ -307,14 +307,14 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 26. bg 会话门是数据层配置门；后端流模式 flag 必须先于查询模式判定剥离（Batch7-F24）
 
-- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`（那一家的原词不上线）。后台会话是**标注而非过滤**：开关在数据层（流旗标 `--with-bg`），关掉就不流。
+- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`（那一家的原词不上线）。后台会话是**标注而非过滤**：后端照宣告（`background: true`），显示与否由出口按用户开关定（本机远端两条流同一个口径）。
 - **后端任何新的流模式旗标必须在一次性查询模式判定之前从参数里剥掉**（`lib.rs::split_stream_flags`），否则旗标落进查询分支、后端打印结果就退出，monitor 等不到 hello。
-- **monitor 只对 hello 里声明了对应能力的后端发那个旗标**；声明 ⟹ 会剥离，由 `every_capability_token_is_strippable` 强制（加能力 token = 同时加剥离分支）。**能力 ≠ 身份**：`build_id` 管换不换后端，`capabilities` 管发什么旗标，`v` 只为破坏性变更加；绝不用身份匹配代替能力声明。
+- **流要什么不靠协商旗标**：流模式起参只有 `--stream` · `--tz` · `--view`，这条流要什么由声明说（attach 行的 `view` / `--view`）；hello 不带能力 token。`build_id` 管换不换后端，`v` 只为破坏性变更加。
 
 ## 27. 远端会话生命周期信号的两条载荷型约束（Batch9）
 
 - **F5 时起停与骨架先于重放**：就绪点（`event_replay.rs::ready_point`）之前，这条流上的起停帧已经先交（起停帧不吃 credit、不许丢）。
-- **缺省一律按最保守的待**：`status` 缺 ⇒ 未知（不加灯）；hello 无 `capabilities` ⇒ 空集，不发任何流模式旗标。
+- **缺省一律按最保守的待**：`status` 缺 ⇒ 未知（不加灯）。
 
 ## 28. 自造持久身份的护栏（F64 / issue #58 单向门①）
 

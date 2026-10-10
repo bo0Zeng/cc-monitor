@@ -35,7 +35,7 @@ sealed interface LinkState {
 /**
  * 一台机器的常驻流（`ccm -- --resident-attach`）＋ 上面折出来的会话表，断了自己接回去。手机对这台的一问一答都经 [call]。
  *
- * 接回去只走一条路：[open]（probe → ensure → attach，带 `--tail-only`）。什么时候走：
+ * 接回去只走一条路：[open]（probe → ensure → attach）。什么时候走：
  * - [ssh] 换了一条（SSH 那层重连过）⇒ 旧流关掉、当场在新连接上接；[ssh] 是 `null`（SSH 没通）⇒ 不接、停在断开。
  * - SSH 还通、流断了 ⇒ 叫 [onLost]（让 SSH 那层去探活：多半是 SSH 先死了），再按 [Backoff] 接。
  * - 走不通、要人动手的那几种（另一版 · 没装 · 起不了常驻）不自己反复试：等 [reconnect]（［重试］）或 [onForeground]。

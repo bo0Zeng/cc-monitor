@@ -232,7 +232,6 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: discovered,
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         // `K-P4`（09-04）：同上 —— 空表省略，期望字节不变。

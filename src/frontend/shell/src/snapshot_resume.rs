@@ -326,6 +326,16 @@ pub(crate) fn forget(origin: &Origin, sid: &str) {
         .remove(&(origin.as_wire_str().to_string(), sid.to_string()));
 }
 
+/// 那台报了在看哪几个（`stream_watch`）⇒ 不在看的会话续点作废：它们的行不上流，续点停在离开名单那一刻，
+/// 重连时若按旧续点续读就会补读一整段（中间那段界面进名单时已按 `from[]` 自己补过）。作废 ⇒ 再进名单那一次只读尾段（与冷连上同一形）。
+pub(crate) fn keep_only(origin: &Origin, watched: &std::collections::BTreeSet<String>) {
+    let wire = origin.as_wire_str();
+    registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|(o, sid), _| o != wire || watched.contains(sid));
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/snapshot_resume_tests.rs"]
 mod tests;
