@@ -216,7 +216,8 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Compact {
     Done,
     TimedOut,
@@ -225,16 +226,23 @@ pub(crate) enum Compact {
     Failed,
 }
 
-impl Compact {
-    pub(crate) fn as_wire(self) -> &'static str {
-        match self {
-            Compact::Done => "done",
-            Compact::TimedOut => "timed_out",
-            Compact::Skipped => "skipped",
-            Compact::Unsupported => "unsupported",
-            Compact::Failed => "failed",
-        }
-    }
+/// 新进程报没报出（等到期限为止）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Arrival {
+    Arrived,
+    Missed,
+}
+
+/// `session-restart` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Restarted {
+    pub(crate) compact: Compact,
+    pub(crate) started: Arrival,
+    /// 所在的终端（会话名）。
+    pub(crate) terminal: String,
+    /// 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+    pub(crate) account: Option<la::LaunchedAccount>,
 }
 
 async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
@@ -300,12 +308,20 @@ pub(crate) async fn run<H: Host>(
         Ok(ears) => ears.within(req.arrive_within_ms).await,
         Err(_) => false,
     };
-    Ok(json!({
-        "compact": compact.as_wire(),
-        "started": if started { "arrived" } else { "missed" },
-        "terminal": name,
-        "account": super::launch_render::launched(&account),
-    }))
+    crate::stream::inbound::spec::wire::<_, (&str, String)>(&Restarted {
+        compact,
+        started: if started {
+            Arrival::Arrived
+        } else {
+            Arrival::Missed
+        },
+        terminal: name,
+        account: match account {
+            Settled::Account(a) => Some(a),
+            Settled::Base | Settled::Unsaid => None,
+        },
+    })
+    .map_err(|(c, m)| (c.to_string(), m, None))
 }
 
 #[cfg(test)]

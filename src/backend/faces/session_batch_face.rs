@@ -60,7 +60,7 @@ pub(crate) fn with_deps_as<T>(
             &args,
             crate::common::session_snapshot::global(),
         )
-        .map(|v| v["name"].as_str().unwrap_or_default().to_string())
+        .map(|m| m.name)
     };
     let writers = |sid: &str| {
         crate::observe::accounts_query::session_writers(

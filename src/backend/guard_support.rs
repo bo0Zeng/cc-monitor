@@ -138,18 +138,43 @@ pub(crate) fn registry_sources() -> Vec<(String, String)> {
 mod tests;
 
 /// 一条命令应答的 typed 结构体（serde 序列化；处理器经 `stream::inbound::spec::wire` 把它变成应答 `data`）。
-/// 判据（`every_command_declares_exactly_the_fields_it_puts_out`）从它真序列化的样本拿键，与登记的出参两向对拍：
-/// `samples` 每一支（枚举的每个变体 · 只在某一支才有的格）给一个，可缺的格都填上 —— 漏了哪一支，那一支的格登了就红在「登了没出」。
+/// 判据（`every_command_declares_exactly_the_fields_it_puts_out`）从它真序列化的样本拿键，与登记的出参两向对拍。
+///
+/// **规矩：每个分支一个样本，样本人手构造。** 枚举的每个变体一个；只在某一支才有的格（`Option` · `skip_serializing_if`）
+/// 至少有一个样本把它填上。漏了哪一支，那一支的格登了就红在「登了没出」；没登又漏了，就谁也看不见 —— 所以别漏。
+/// 顶层是枚举的，样本数不少于变体数（判据 `typed_enum_replies_sample_every_variant` 数源码里的变体）。
+/// 样本里别用私网地址（用 `203.0.113.x`），别用和文案表同字的中文。
 pub(crate) trait Shaped: serde::Serialize + Sized {
     fn samples() -> Vec<Self>;
 }
 
-/// [`Shaped`] 的样本过真序列化器（判据那一侧读）。
-pub(crate) fn sampled<T: Shaped>() -> serde_json::Value {
-    serde_json::Value::Array(
-        T::samples()
-            .iter()
-            .map(|s| serde_json::to_value(s).expect("样本序列化不出"))
-            .collect(),
-    )
+/// typed 样本过真序列化器之后的那一份（判据那一侧读）：样本本身 ＋ 每个 typed 是谁、给了几个样本。
+pub(crate) struct Sampled {
+    /// 样本数组（每个样本一项）。
+    pub(crate) value: serde_json::Value,
+    /// `(类型全名, 样本数)`：数枚举变体的判据按类型全名找源码。
+    pub(crate) census: Vec<(&'static str, usize)>,
+}
+
+/// [`Shaped`] 的样本过真序列化器。
+pub(crate) fn sampled<T: Shaped>() -> Sampled {
+    let all = T::samples();
+    Sampled {
+        census: vec![(std::any::type_name::<T>(), all.len())],
+        value: serde_json::Value::Array(
+            all.iter()
+                .map(|s| serde_json::to_value(s).expect("样本序列化不出"))
+                .collect(),
+        ),
+    }
+}
+
+/// 成功那一形 ＋ 失败信封 `data` 那一形的样本并成一份（两个 typed 的格都登在同一条命令的出参里）。
+pub(crate) fn sampled_and<T: Shaped, U: Shaped>() -> Sampled {
+    let (mut a, b) = (sampled::<T>(), sampled::<U>());
+    if let (serde_json::Value::Array(x), serde_json::Value::Array(y)) = (&mut a.value, b.value) {
+        x.extend(y);
+    }
+    a.census.extend(b.census);
+    a
 }

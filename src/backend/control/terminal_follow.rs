@@ -155,11 +155,29 @@ fn ticket_of(args: &Value) -> Option<String> {
     }
 }
 
-/// 订不上（码）之后实时那一格落在哪：`snapshot_only`（这台只能快照）· `stopped`（别的）。进失败应答的 `data.live`。
-pub(crate) fn live_after_refusal(code: &str) -> &'static str {
-    match code {
-        "tmux_too_old" | "no_tmux" => "snapshot_only",
-        _ => "stopped",
+/// 订不上之后实时那一格落在哪。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Live {
+    /// 这台只能快照（没装 tmux · tmux 太老）。
+    SnapshotOnly,
+    /// 别的。
+    Stopped,
+}
+
+/// `terminal-follow` 订不上时失败应答的 `data`（订上了不回 `data`：画面走 `terminal_screen` 帧）。
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Refused {
+    pub(crate) live: Live,
+}
+
+/// 订不上（码）⇒ 失败应答的 `data`：`{live}`。
+pub(crate) fn live_after_refusal(code: &str) -> Refused {
+    Refused {
+        live: match code {
+            "tmux_too_old" | "no_tmux" => Live::SnapshotOnly,
+            _ => Live::Stopped,
+        },
     }
 }
 

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::control::session_batch::TmuxEntry;
+use serde_json::json;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 
@@ -572,4 +573,45 @@ fn a_rule_at_launch_that_fails_leaves_nothing_behind() {
         rig.call(req(json!({"rotation": 3}))).expect_err("形状").0,
         "bad_args"
     );
+}
+
+impl crate::guard_support::Shaped for SessionNew {
+    fn samples() -> Vec<Self> {
+        vec![SessionNew {
+            outcome: SessionNewOutcome::Started,
+            session: Some("proj-cc".into()),
+            sid: Some("s-1".into()),
+            cmd: Some("ccm --new".into()),
+            account: Some(LaunchedAccount {
+                name: "work".into(),
+                config_dir: "/home/u/.claude-work".into(),
+                model: Some("opus".into()),
+            }),
+            agent: "claude".into(),
+            cwd: "/home/u/proj".into(),
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for SessionNewRefusal {
+    fn samples() -> Vec<Self> {
+        vec![SessionNewRefusal {
+            field: Some(SessionNewField::Account),
+            unavailable: Some(la::AccountUnavailable {
+                requested: "work".into(),
+                pinned: false,
+                list_known: true,
+                alternative: None,
+            }),
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for DirChecked {
+    fn samples() -> Vec<Self> {
+        vec![DirChecked {
+            exists: true,
+            tmux_name: Some("proj-cc".into()),
+        }]
+    }
 }

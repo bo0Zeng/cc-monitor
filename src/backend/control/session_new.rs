@@ -13,7 +13,7 @@ use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
 use super::launch_render::{local, wire};
 use super::session_batch::{carriers, Deps, NameBase, Standing};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]）＋ 下层原话（不进那一句，进应答的复制详情；没有 ⇒ `None`）。
@@ -560,6 +560,15 @@ fn own_entry(deps: &Deps) -> Result<String, String> {
         .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
 }
 
+/// `session-new-dir` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DirChecked {
+    pub(crate) exists: bool,
+    /// 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
+    pub(crate) tmux_name: Option<String>,
+}
+
 /// `session-new-dir` 的本体：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`（目录在不在 · 这台此刻会给它铸的终端名；没 tmux ⇒ `null`）。
 pub(crate) fn dir_answer(
     args: &Value,
@@ -609,7 +618,7 @@ pub(crate) fn dir_answer(
         }
         Ok(None) | Err(_) => None,
     };
-    Ok(json!({ "exists": exists, "tmuxName": tmux_name }))
+    crate::stream::inbound::spec::wire(&DirChecked { exists, tmux_name })
 }
 
 #[cfg(test)]

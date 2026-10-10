@@ -3,7 +3,7 @@
 //! 写分支记录交 `control/fork_write`（本体与 `session-fork` 同一份）。
 
 use crate::control::session_new;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 type Answer = Result<Value, (&'static str, String)>;
@@ -81,8 +81,45 @@ pub(crate) fn launchable_here(found: &dyn Fn(&str) -> bool) -> Vec<&'static str>
         .collect()
 }
 
+/// `session-new-facts` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct NewFacts {
+    pub(crate) recent: Vec<RecentDir>,
+    /// 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
+    pub(crate) tmux: bool,
+    pub(crate) agents: Vec<&'static str>,
+    /// 没给 `forkOf` ⇒ `null`。
+    pub(crate) fork: Option<ForkFacts>,
+}
+
+/// 最近用过的一个工作目录。
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RecentDir {
+    pub(crate) cwd: String,
+    /// 那个目录最近一次会话的修改时刻（毫秒）。
+    pub(crate) last_ms: i64,
+}
+
+/// 分叉源会话的那几格。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ForkFacts {
+    /// 源会话是哪一家（说不出 ⇒ 空串）。
+    pub(crate) agent: &'static str,
+    /// 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
+    pub(crate) launch: Value,
+    /// `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
+    pub(crate) turn: Option<u64>,
+    /// 那一轮那句在这台本地钟上的 `HH:MM`（说不出 ⇒ `null`）。
+    pub(crate) start_text: Option<String>,
+}
+
 /// 各家记录里的工作目录 ⇒ 最近用过的那几个（新的在前，同一个目录只出一次；不出会话的那个目录不算）。
-pub(crate) fn recent_dirs(items: &[(String, i64)], hidden: &dyn Fn(&str) -> bool) -> Vec<Value> {
+pub(crate) fn recent_dirs(
+    items: &[(String, i64)],
+    hidden: &dyn Fn(&str) -> bool,
+) -> Vec<RecentDir> {
     let mut best: BTreeMap<&str, i64> = BTreeMap::new();
     for (cwd, ms) in items {
         if cwd.is_empty() || hidden(cwd) {
@@ -95,7 +132,10 @@ pub(crate) fn recent_dirs(items: &[(String, i64)], hidden: &dyn Fn(&str) -> bool
     v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
     v.into_iter()
         .take(RECENT_MAX)
-        .map(|(cwd, ms)| json!({ "cwd": cwd, "lastMs": ms }))
+        .map(|(cwd, ms)| RecentDir {
+            cwd: cwd.to_string(),
+            last_ms: ms,
+        })
         .collect()
 }
 
@@ -163,7 +203,7 @@ pub(crate) fn facts(args: &Value) -> Answer {
     };
     let home = crate::observe::history_query::agent_home();
     let fork = match fork_of {
-        None => Value::Null,
+        None => None,
         Some(sid) => {
             let root = crate::agents::records_root(&home).ok_or((
                 "fork_failed",
@@ -175,21 +215,24 @@ pub(crate) fn facts(args: &Value) -> Answer {
                 let f = std::fs::File::open(&source).ok()?;
                 crate::observe::turns::turn_at(std::io::BufReader::new(f), uuid)
             });
-            json!({
-                "agent": crate::agents::record_kind_of(&source).unwrap_or_default(),
-                "launch": super::fork_face::launch_of(&home, &source, sid).to_json(),
-                "turn": turn.as_ref().map(|t| t.0),
-                "startText": turn.and_then(|t| crate::common::time::iso_hm_here(&t.1)),
+            Some(ForkFacts {
+                agent: crate::agents::record_kind_of(&source).unwrap_or_default(),
+                launch: super::fork_face::launch_of(&home, &source, sid).to_json(),
+                turn: turn.as_ref().map(|t| t.0),
+                start_text: turn.and_then(|t| crate::common::time::iso_hm_here(&t.1)),
             })
         }
     };
     let tmux = !matches!(super::session_batch_face::tmux_rows(), Ok(None));
-    Ok(json!({
-        "recent": recent_dirs(&record_dirs(&home), &crate::observe::history_query::hidden_cwd),
-        "tmux": tmux,
-        "agents": launchable_here(&launcher_found),
-        "fork": fork,
-    }))
+    crate::stream::inbound::spec::wire(&NewFacts {
+        recent: recent_dirs(
+            &record_dirs(&home),
+            &crate::observe::history_query::hidden_cwd,
+        ),
+        tmux,
+        agents: launchable_here(&launcher_found),
+        fork,
+    })
 }
 
 #[cfg(test)]

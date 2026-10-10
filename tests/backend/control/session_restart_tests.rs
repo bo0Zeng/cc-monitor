@@ -405,3 +405,18 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
         rig.calls()
     );
 }
+
+impl crate::guard_support::Shaped for Restarted {
+    fn samples() -> Vec<Self> {
+        vec![Restarted {
+            compact: Compact::TimedOut,
+            started: Arrival::Arrived,
+            terminal: "proj-cc".into(),
+            account: Some(la::LaunchedAccount {
+                name: "work".into(),
+                config_dir: "/home/u/.claude-work".into(),
+                model: None,
+            }),
+        }]
+    }
+}

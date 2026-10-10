@@ -370,9 +370,10 @@ fn dispatch(
                             .await
                             .map(|()| None)
                             .map_err(|mut f| {
-                                f.data = Some(serde_json::json!({
-                                    "live": crate::control::terminal_follow::live_after_refusal(&f.code),
-                                }));
+                                f.data = serde_json::to_value(
+                                    crate::control::terminal_follow::live_after_refusal(&f.code),
+                                )
+                                .ok();
                                 f
                             })
                     })

@@ -3154,12 +3154,12 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `rotation` | → | 可缺：轮换来源。缺 / `"follow"` ＝ 跟随默认（不写）· `{rule: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它把来源写成那条规则，回包 `sid` 就是它；规则不在 ⇒ `no_such_rule`；那一家不认先定 sid ⇒ `bad_args` |
-| `account` | → | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}` |
-| `agent` | → | 哪一家（线上的 kind） |
+| `account` | → ← | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}`；应答里是实际用的号（账号 0 / 不指定 ⇒ `null`） |
+| `agent` | → ← | 哪一家（线上的 kind）；应答里是起的那一家 |
 | `cmd` | → ← | `open` 时界面要在终端里跑的那一行 |
 | `command` | → | 启动命令；空 / 缺 ⇒ 那一家的默认启动器 |
 | `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读） |
+| `cwd` | → ← | 工作目录（开头的 `~` 按这台的家目录读）；应答里是展开之后的（认报到的会话按它） |
 | `field` | ← | 失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`） |
 | `forkFrom` | → | 可缺 |
 | `kind` | → ← | `account` 的种类：`follow` · `base` · `named` |
@@ -3212,7 +3212,7 @@ cc-bus 钩子诊断。
 | `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读） |
 | `exists` | ← | 这个目录在不在 |
 | `forkOf` | → | 可缺 |
-| `tmuxName` | → | 可缺 ⇒ 这台铸 |
+| `tmuxName` | ← | 这台此刻会给它铸的终端名（没 tmux ⇒ `null`） |
 
 码：`bad_args`
 
