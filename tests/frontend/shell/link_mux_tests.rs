@@ -68,7 +68,7 @@ fn rig() -> Rig {
                 crate::local_backend::absorb_local_frame(
                     f,
                     Some(&c2),
-                    crate::inbound_client::LOCAL_ORIGIN,
+                    &crate::origin::Origin::local(),
                 );
             }
         }

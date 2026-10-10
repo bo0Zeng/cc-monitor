@@ -107,22 +107,25 @@ mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零写零交路径（本机常驻后端按家推、写、答）—— 只剩判据
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
-                       // 截图台架的无头壳（壳的真代码不带窗口跑；`tests/shots/`）：只在特性 `shots` 下编，发版构建里没有它。
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
+
+// 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/shots_feature_guard_tests.rs"]
+mod shots_feature_guard;
+// 截图台架的无头壳（壳的真代码不带窗口跑；`tests/shots/`）：只在特性 `shots` 下编，发版构建里没有它。
+#[cfg(feature = "shots")]
+pub mod shots_shell;
+
 mod launch;
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
-mod machine_state;
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/shots_feature_guard_tests.rs"]
-mod shots_feature_guard; // 截图台架那个无头壳只在台架编译时有（发版构建不带）
-#[cfg(feature = "shots")]
-pub mod shots_shell; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
-                     // `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
-                     // `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
-                     //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
+mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
+                   // `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
+                   // `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
+                   //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // `plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
               //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。

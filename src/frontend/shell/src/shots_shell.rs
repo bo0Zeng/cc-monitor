@@ -33,7 +33,7 @@ pub const LABEL: &str = "shots";
 
 #[derive(Deserialize)]
 struct Machine {
-    origin: String,
+    origin: crate::origin::Origin,
     argv: Vec<String>,
 }
 
@@ -45,7 +45,7 @@ enum Cmd {
     },
     Sub {
         id: u64,
-        origin: String,
+        origin: crate::origin::Origin,
         kind: String,
         want: u32,
     },
@@ -61,17 +61,17 @@ enum Cmd {
     },
     Call {
         n: u64,
-        origin: String,
+        origin: crate::origin::Origin,
         op: String,
         payload: String,
         left_ms: u64,
     },
     Kill {
-        origin: String,
+        origin: crate::origin::Origin,
     },
     Offer {
         n: u64,
-        origin: String,
+        origin: crate::origin::Origin,
     },
 }
 
@@ -133,7 +133,10 @@ pub fn main() {
         match cmd {
             Cmd::Machines { machines } => {
                 crate::session_book::machines_changed(
-                    machines.iter().map(|m| m.origin.clone()).collect(),
+                    machines
+                        .iter()
+                        .map(|m| m.origin.as_wire_str().to_string())
+                        .collect(),
                 );
                 for m in machines {
                     start(&m, &replay, &health, &children);
@@ -141,9 +144,7 @@ pub fn main() {
             }
             Cmd::Offer { n, origin } => {
                 // 那台握上手没有（入方向通道登记了没有）：台架按它等各台起好。
-                let up = InboundBackends
-                    .offer(&crate::origin::Origin(origin))
-                    .is_some();
+                let up = InboundBackends.offer(&origin).is_some();
                 say(serde_json::json!({ "t": "offer", "n": n, "up": up }));
             }
             Cmd::Sub {
@@ -151,7 +152,7 @@ pub fn main() {
                 origin,
                 kind,
                 want,
-            } => replay.subscribe(LABEL, id, &crate::origin::Origin(origin), &kind, None, want),
+            } => replay.subscribe(LABEL, id, &origin, &kind, None, want),
             Cmd::Want { id, more } => replay.want(LABEL, id, more),
             Cmd::Stop { id } => replay.stop(LABEL, id),
             Cmd::Ready { priority_sid } => {
@@ -168,7 +169,6 @@ pub fn main() {
                 left_ms,
             } => {
                 tauri::async_runtime::spawn(async move {
-                    let origin = crate::origin::Origin(origin);
                     let r = crate::chan::webview::call_via(
                         &InboundBackends,
                         origin.clone(),
@@ -194,10 +194,13 @@ pub fn main() {
                 if let Some(mut c) = children
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .remove(&origin)
+                    .remove(origin.as_wire_str())
                 {
                     if let Err(e) = c.kill() {
-                        tracing::warn!("shots_shell：杀 {origin} 的后端没杀成：{e}");
+                        tracing::warn!(
+                            "shots_shell：杀 {} 的后端没杀成：{e}",
+                            origin.as_wire_str()
+                        );
                     }
                 }
             }
@@ -219,7 +222,7 @@ fn start(
     children: &Arc<Mutex<HashMap<String, crate::spawn_managed::ManagedChild>>>,
 ) {
     let Some((prog, args)) = m.argv.split_first() else {
-        tracing::error!("shots_shell：{} 没给命令", m.origin);
+        tracing::error!("shots_shell：{} 没给命令", m.origin.as_wire_str());
         return;
     };
     let mut cmd = std::process::Command::new(prog);
@@ -234,29 +237,29 @@ fn start(
     ) {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!("shots_shell：{} 的后端起不来：{e}", m.origin);
+            tracing::error!("shots_shell：{} 的后端起不来：{e}", m.origin.as_wire_str());
             return;
         }
     };
     let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
-        tracing::error!("shots_shell：{} 的后端没有管道", m.origin);
+        tracing::error!("shots_shell：{} 的后端没有管道", m.origin.as_wire_str());
         return;
     };
     let (tx, rx) = tokio::sync::mpsc::channel(crate::local_lines::LOCAL_LINES_CAPACITY);
     tauri::async_runtime::spawn(crate::stream_source::consume_local(
-        m.origin.clone(),
+        m.origin.as_wire_str().to_string(),
         rx,
         replay.clone(),
         health.clone(),
     ));
     let route = StdioRoute {
         origin: m.origin.clone(),
-        place: m.origin.clone(),
+        place: m.origin.as_wire_str().to_string(),
         out: StdioOut::Own(tx),
     };
     std::thread::spawn(move || crate::local_backend::local_stdio_consumer(&route, stdin, stdout));
     children
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .insert(m.origin.clone(), child);
+        .insert(m.origin.as_wire_str().to_string(), child);
 }

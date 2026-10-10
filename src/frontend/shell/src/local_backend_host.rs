@@ -898,7 +898,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
             if let Some(f) = crate::local_backend::absorb_local_frame(
                 f,
                 Some(&client),
-                crate::inbound_client::LOCAL_ORIGIN,
+                &crate::origin::Origin::local(),
             ) {
                 crate::local_lines::deliver(f).await;
             }

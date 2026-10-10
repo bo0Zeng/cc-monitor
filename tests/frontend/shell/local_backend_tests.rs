@@ -587,7 +587,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
         .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
     let flat: String = host.chars().filter(|c| !c.is_whitespace()).collect();
     assert!(
-        flat.contains("absorb_local_frame(f,Some(&client),crate::inbound_client::LOCAL_ORIGIN"),
+        flat.contains("absorb_local_frame(f,Some(&client),&crate::origin::Origin::local()"),
         "常驻载体是本机那一台：吸收点交 tap / 画面时说 `<local>`"
     );
     assert!(
@@ -645,7 +645,7 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
     ))
     .unwrap();
-    absorb_local_frame(reply, Some(&client), crate::inbound_client::LOCAL_ORIGIN);
+    absorb_local_frame(reply, Some(&client), &crate::origin::Origin::local());
     let got = call.await.unwrap().expect("应答没路由回来");
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }

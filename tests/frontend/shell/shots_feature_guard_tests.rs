@@ -106,10 +106,7 @@ fn s2_the_module_is_declared_only_under_the_feature() {
     let decl: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter(|(_, l)| {
-            let t = l.trim_start();
-            !t.starts_with("//") && t.contains(&format!("mod {MODULE}"))
-        })
+        .filter(|(_, l)| l.trim() == format!("pub mod {MODULE};"))
         .map(|(i, _)| i)
         .collect();
     assert_eq!(decl.len(), 1, "lib.rs 里 `mod {MODULE}` 恰好声明一次");
@@ -131,10 +128,7 @@ fn s2_the_module_is_declared_only_under_the_feature() {
         if rel == "lib.rs" || rel == format!("{MODULE}.rs") {
             continue;
         }
-        if src
-            .lines()
-            .any(|l| !l.trim_start().starts_with("//") && l.contains(&format!("{MODULE}::")))
-        {
+        if guard_core::contains_word(&guard_core::production_code(&src), MODULE) {
             hits.push(rel);
         }
     }
@@ -153,8 +147,9 @@ fn s3_only_the_screenshot_rig_builds_with_the_feature() {
         {
             scanned += 1;
             for (i, l) in src.lines().enumerate() {
-                let feat = l.contains("--features") && l.contains(FEATURE);
-                if feat || l.contains("--all-features") {
+                let feat = guard_core::contains_word(l, "--features")
+                    && guard_core::contains_word(l, FEATURE);
+                if feat || guard_core::contains_word(l, "--all-features") {
                     bad.push(format!("{}:{}: {}", p.display(), i + 1, l.trim()));
                 }
             }

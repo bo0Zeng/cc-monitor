@@ -224,7 +224,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
         let f = parse_frame(line)
             .unwrap_or_else(|e| panic!("手写的 `{kind}` 帧 parse_frame 解不出来（{e}）：{line}"));
         if let Some(back) =
-            crate::local_backend::absorb_local_frame(f, None, crate::inbound_client::LOCAL_ORIGIN)
+            crate::local_backend::absorb_local_frame(f, None, &crate::origin::Origin::local())
         {
             // 交回的就是喂进去的那一种（不是别的东西）。
             let same = matches!(
@@ -940,7 +940,7 @@ async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
     ] {
         let f = parse_frame(line).expect("手写帧解不出来");
         if let Some(f) =
-            crate::local_backend::absorb_local_frame(f, None, crate::inbound_client::LOCAL_ORIGIN)
+            crate::local_backend::absorb_local_frame(f, None, &crate::origin::Origin::local())
         {
             tx.send(LocalItem::Frame(f)).await.unwrap();
         }
