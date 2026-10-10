@@ -1171,6 +1171,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
     const TERMINALS: &str = include_str!("../../__fixtures__/terminals.golden.json");
     const TMUX_CONTROL: &str = include_str!("../../__fixtures__/tmux-control.golden.json");
+    // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
+    const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
     #[allow(clippy::type_complexity)]
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
@@ -1336,6 +1338,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("resync", RESYNC, "/reply", &[], &[]),
         ("history-list", HISTORY_LIST, "", &[], &[]),
+        ("plan-files", PLAN_FILES, "", &[], &[]),
         (
             "forward-list",
             FORWARD_LIST,
@@ -1500,7 +1503,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-ack",
         "plan-cell-view",
         "plan-command",
-        "plan-files",
         "plan-list",
         "plan-read",
         "plan-return",

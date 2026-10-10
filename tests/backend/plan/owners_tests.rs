@@ -81,3 +81,22 @@ fn an_unreadable_slice_says_so_and_lists_nothing() {
     assert_eq!(v["unreadable"], "图.md 第 3 行：元行缺 id");
     assert_eq!(v["entries"], json!([]));
 }
+
+/// ★ `plan-files` 的应答（过一遍线上类型 `PlanFiles`，帧面出口那一道）== 金样 `tests/__fixtures__/plan-files.golden.json`；
+/// 出参对拍判据（`inbound_structure_guards`）拿这一份对注册表登的出参。
+#[test]
+fn the_reply_through_the_wire_type_is_the_golden_sample() {
+    let got = crate::plan::wire::checked::<crate::plan::wire::PlanFiles>(of_dir(
+        &doc(dump("/w")),
+        "/w/alpha/src",
+    ))
+    .unwrap();
+    let golden: Value =
+        serde_json::from_str(include_str!("../../__fixtures__/plan-files.golden.json")).unwrap();
+    assert_eq!(
+        got,
+        golden,
+        "金样该是：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
+    );
+}
