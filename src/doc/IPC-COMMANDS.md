@@ -1100,7 +1100,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 用某个号查一次额度。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --quota-probe`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 32 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-probe`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1818,6 +1818,18 @@ sid → 上次用哪个号起。
 | `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
 
 码：`bad_args` · `failed` · `too_large`
+
+#### `sessions-needs`
+
+这台上需手动的会话清单。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-needs`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `needs` | ← | 它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `sid` | ← | 会话 id |
+| `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`；一个都没有 ⇒ 空数组 |
 
 #### `history-facts`
 
@@ -2552,7 +2564,7 @@ cc-bus 钩子诊断。
 
 启动文件候选（接入那一格）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-read`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --aliases-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2690,7 +2702,7 @@ cc-bus 钩子诊断。
 
 谁在线 + 各自待读多少。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-list`
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-list`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2701,13 +2713,13 @@ cc-bus 钩子诊断。
 | `target` | ← | tmux 地址 |
 | `unread` | ← | 待读条数 |
 
-码：`not_installed` · `timed_out` · `failed`
+码：`not_installed` · `child_timed_out` · `failed`
 
 #### `bus-broadcast`
 
 给总线上在线的成员群发一条。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-broadcast`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-broadcast`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2721,7 +2733,7 @@ cc-bus 钩子诊断。
 | `skipped_offline` | ← | 因不在线跳过几个 |
 | `text` | → | 正文（非空） |
 
-码：`bad_args` · `not_installed` · `timed_out` · `failed` · `bad_id`
+码：`bad_args` · `not_installed` · `child_timed_out` · `failed` · `bad_id`
 
 #### `bus-kill`
 
@@ -2735,13 +2747,13 @@ cc-bus 钩子诊断。
 | `killed` | ← | 会话真的被杀了 |
 | `stale_only` | ← | 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动 |
 
-码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-send`
 
 发一条消息。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-send`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-send`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2751,7 +2763,7 @@ cc-bus 钩子诊断。
 | `sent` | ← | 投出去了 |
 | `to` | → ← | 收件人身份 |
 
-码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `timed_out` · `too_long` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `child_timed_out` · `too_long` · `failed`
 
 #### `bus-spawn`
 
@@ -2765,13 +2777,13 @@ cc-bus 钩子诊断。
 | `said` | ← | `cc-spawn` 的原始回显，给人看 |
 | `spawned` | ← | 恒 `true` |
 
-码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-state`
 
 总线名单 ＋ spawn 台账一次回全。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-state`
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-state`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2788,7 +2800,7 @@ cc-bus 钩子诊断。
 | `task` | ← | 余下全部，含 TAB |
 | `unread` | ← | 待读条数 |
 
-码：`not_installed` · `timed_out` · `failed`
+码：`not_installed` · `child_timed_out` · `failed`
 
 #### `bus-inbox`
 
@@ -2808,7 +2820,7 @@ cc-bus 钩子诊断。
 | `truncated` | ← | 回显超过 4 MiB ⇒ 保尾，`true` |
 | `ts` | ← | 时间 |
 
-码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
 ### 4.8 终端与会话
 
@@ -2910,7 +2922,7 @@ cc-bus 钩子诊断。
 
 这台的终端名单（形状与宿主无关；这一版宿主是 tmux）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminals-list`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminals-list`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2945,7 +2957,7 @@ cc-bus 钩子诊断。
 
 抓一个终端的一屏（只抓一次，轮询归调用方）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-preview` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-preview` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2971,7 +2983,7 @@ cc-bus 钩子诊断。
 
 往一个终端送字或送键（过身份门）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-input` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-input` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3045,7 +3057,7 @@ cc-bus 钩子诊断。
 
 杀一个 tmux 会话。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --kill` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --kill` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3062,7 +3074,7 @@ cc-bus 钩子诊断。
 
 停一批会话（逐个答，一个不成不挡下一个）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-stop`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 392 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-stop`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3079,13 +3091,13 @@ cc-bus 钩子诊断。
 | `sids` | → | 要停的会话（1–64 个，不重复） |
 | `why` | ← | `skipped` / `failed` 的码 |
 
-码：`bad_args` · `unobservable`
+码：`bad_args` · `unobservable` · `child_timed_out`
 
 #### `sessions-where`
 
 一批会话各在这台哪个终端里。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-where`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-where`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3099,13 +3111,13 @@ cc-bus 钩子诊断。
 | `terminal` | ← | 名单里那一行的句柄 |
 | `terminals` | ← | 与 `names` 同序同数，每项 `{host, terminal}` |
 
-码：`bad_args` · `unobservable`
+码：`bad_args` · `unobservable` · `child_timed_out`
 
 #### `sessions-start`
 
 起 / 接回一批会话（逐个答）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-start`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 392 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-start`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3134,7 +3146,7 @@ cc-bus 钩子诊断。
 | `unavailable` | ← | 选不了号的那一项：`{requested, pinned, listKnown, alternative}` |
 | `why` | ← | `skipped` / `failed` 的码 |
 
-码：`bad_args` · `unobservable`
+码：`bad_args` · `unobservable` · `child_timed_out`
 
 #### `session-new`
 
@@ -3258,7 +3270,7 @@ cc-bus 钩子诊断。
 
 建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --launch` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --launch` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3555,7 +3567,7 @@ cc-bus 钩子诊断。
 
 那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --powershell-policy-set`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --powershell-policy-set`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3596,7 +3608,7 @@ cc-bus 钩子诊断。
 
 批量导入预览。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ssh-config-import`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --ssh-config-import`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3886,6 +3898,7 @@ cc-bus 钩子诊断。
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |

@@ -22,7 +22,7 @@ pub(crate) fn reword(cmd: &str, args: &serde_json::Value, code: &str) -> Option<
         "terminal-follow" => return follow(code),
         "bus-list" => match code {
             "not_installed" => copy_text("ccBus.online.notInstalled", &[]),
-            "timed_out" => copy_text("ccBus.online.timedOut", &[]),
+            "child_timed_out" => copy_text("ccBus.online.timedOut", &[]),
             _ => copy_text("ccBus.online.otherCode", &[]),
         },
         "bus-send" => bus_send(&arg("to"), code),
@@ -32,7 +32,7 @@ pub(crate) fn reword(cmd: &str, args: &serde_json::Value, code: &str) -> Option<
                 "bad_args" => copy_text("ccBus.kill.invalidArgs", &[("id", &id)]),
                 "bad_id" => copy_text("ccBus.kill.badId", &[]),
                 "not_installed" => copy_text("ccBus.kill.notInstalled", &[("id", &id)]),
-                "timed_out" => copy_text("ccBus.kill.timedOut", &[("id", &id)]),
+                "child_timed_out" => copy_text("ccBus.kill.timedOut", &[("id", &id)]),
                 _ => copy_text("ccBus.kill.otherCode", &[("id", &id)]),
             }
         }
@@ -40,19 +40,19 @@ pub(crate) fn reword(cmd: &str, args: &serde_json::Value, code: &str) -> Option<
             "bad_args" => copy_text("ccBus.spawn.invalidArgs", &[]),
             "bad_id" => copy_text("ccBus.spawn.badId", &[]),
             "not_installed" => copy_text("ccBus.spawn.notInstalled", &[]),
-            "timed_out" => copy_text("ccBus.spawn.timedOut", &[]),
+            "child_timed_out" => copy_text("ccBus.spawn.timedOut", &[]),
             _ => copy_text("ccBus.spawn.otherCode", &[]),
         },
         "bus-broadcast" => match code {
             "bad_args" => copy_text("ccBus.broadcast.invalidArgs", &[]),
             "bad_id" => copy_text("ccBus.broadcast.badId", &[]),
             "not_installed" => copy_text("ccBus.broadcast.notInstalled", &[]),
-            "timed_out" => copy_text("ccBus.broadcast.timedOut", &[]),
+            "child_timed_out" => copy_text("ccBus.broadcast.timedOut", &[]),
             _ => copy_text("ccBus.broadcast.otherCode", &[]),
         },
         "bus-state" | "bus-inbox" => match code {
             "not_installed" => copy_text("ccBus.read.notInstalled", &[]),
-            "timed_out" => copy_text("ccBus.read.timedOut", &[]),
+            "child_timed_out" => copy_text("ccBus.read.timedOut", &[]),
             "bad_id" => copy_text("ccBus.read.badId", &[]),
             _ => copy_text("ccBus.read.otherCode", &[]),
         },
@@ -105,7 +105,7 @@ fn bus_send(id: &str, code: &str) -> String {
         "bad_id" => copy_text("ccBus.send.badId", &[]),
         "not_installed" => copy_text("ccBus.send.notInstalled", &[("id", id)]),
         "rejected" => copy_text("ccBus.send.rejected", &[("id", id)]),
-        "timed_out" => copy_text("ccBus.send.timedOut", &[("id", id)]),
+        "child_timed_out" => copy_text("ccBus.send.timedOut", &[("id", id)]),
         "too_long" => copy_text("ccBus.send.tooLong", &[("id", id)]),
         _ => copy_text("ccBus.send.otherCode", &[("id", id)]),
     }

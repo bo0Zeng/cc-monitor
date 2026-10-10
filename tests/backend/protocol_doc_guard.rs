@@ -623,6 +623,11 @@ mod tests {
             ),
             (
                 "observe/accounts_query.rs",
+                "NeedsRow",
+                "`sessions-needs` 一行的出参（会话 id ＋ `history-facts` 那一份 `needs`），命令应答不是流协议帧",
+            ),
+            (
+                "observe/accounts_query.rs",
                 "RawAccount",
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),

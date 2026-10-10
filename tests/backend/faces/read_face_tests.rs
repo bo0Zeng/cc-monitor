@@ -25,6 +25,8 @@ const FAMILY: &[&str] = &[
     "history-find",
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
+    // 这台上需手动的会话清单（异源是手机端的要求「一次问一台，不是一条一问」，不是 `stream/inbound/`）。
+    "sessions-needs",
     // 主线外清单的冷读（共用扫描图）。
     "history-branch",
     "history-turns",
@@ -1411,4 +1413,71 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
         );
     }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ **这台上需手动的会话清单**（`sessions-needs`）：恰好是这台此刻活着、那台 pidfile 说在等人的那几个会话；
+/// 每一个的 `needs` 就是 `history-facts` 对同一份记录答的那一格（同一处判、同一份字，清单不另判）；
+/// 记录找不到的照列（判不出是哪一步，但框是哪种照那台说的）；在跑 · 空闲 · 进程死了的都不在。
+#[cfg(target_os = "linux")]
+#[test]
+fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs() {
+    let home = scratch("sessions-needs");
+    let ask = "dddddddd-1111-2222-3333-444444444444";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{ask}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let mut kids = Vec::new();
+    let mut put = |sid: &str, status: &str| {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("起始时刻");
+        std::fs::write(
+            pids.join(format!("{}.json", c.id())),
+            format!(r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"{status}","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#, c.id()),
+        )
+        .unwrap();
+        kids.push(c);
+    };
+    put("s-busy", "busy");
+    put("s-idle", "idle");
+    put(ask, "waiting");
+    put("s-norecord", "waiting");
+    put("s-dead", "waiting");
+    let mut dead = kids.pop().unwrap();
+    let _ = dead.kill();
+    let _ = dead.wait();
+    let list = answer_at(&home, "sessions-needs", &serde_json::json!({})).expect("答了");
+    let facts = answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap();
+    for mut c in kids {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = std::fs::remove_dir_all(&home);
+    let rows = list["waiting"].as_array().expect("waiting 是数组");
+    let mut sids: Vec<&str> = rows.iter().map(|r| r["sid"].as_str().unwrap()).collect();
+    sids.sort();
+    assert_eq!(sids, vec![ask, "s-norecord"], "{list}");
+    let row = |sid: &str| rows.iter().find(|r| r["sid"] == sid).unwrap();
+    assert!(!facts["needs"].is_null(), "夹具：history-facts 该说在等");
+    assert_eq!(
+        row(ask)["needs"],
+        facts["needs"],
+        "清单那一格与 history-facts 不是同一份"
+    );
+    assert_eq!(row("s-norecord")["needs"]["kind"], "approve");
+    assert_eq!(row("s-norecord")["needs"]["call"], serde_json::Value::Null);
+    for r in rows {
+        let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["needs", "sid"], "一行只有这两格：{r}");
+    }
 }

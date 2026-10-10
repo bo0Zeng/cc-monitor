@@ -58,6 +58,8 @@ struct Rig {
     fork_name: Option<&'static str>,
     /// 此刻持着某个 sid 的活进程（替身的 pidfile）。
     live: Vec<(&'static str, u32)>,
+    /// 列名单那一发失败的码（`None` ⇒ 照 `rows` 答）。
+    list_err: Option<&'static str>,
     /// 预标信任那几下：`pretrust <号目录> <工作目录> @<此前已交的 ccm 数>/<此前已键入的数>`。
     marks: RefCell<Vec<String>>,
 }
@@ -75,12 +77,18 @@ impl Rig {
             cwd_name: "proj-cc-2",
             fork_name: None,
             live: vec![],
+            list_err: None,
             marks: RefCell::new(vec![]),
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
         let caps = caps();
-        let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(self.rows.clone()) };
+        let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+            match self.list_err {
+                Some(c) => Err((c, "said".to_string())),
+                None => Ok(self.rows.clone()),
+            }
+        };
         let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
             self.calls
                 .borrow_mut()
@@ -519,7 +527,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         row("c-cc", Some(C), true),
     ];
     let caps = caps();
-    let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(Some(rows.clone())) };
+    let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> { Ok(Some(rows.clone())) };
     let record =
         |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
     // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限 5 s）。
@@ -791,6 +799,40 @@ fn every_start_marks_the_cwd_trusted_in_its_account_before_it_starts() {
             *rig.marks.borrow(),
             vec!["pretrust /h/.cc/work /w/proj @0/0".to_string()],
             "开窗（local={local}）交回那一行之前标"
+        );
+    }
+}
+
+/// 列名单那一发过了期限（总期限用完了）⇒ 三条都整条回 `child_timed_out`（同别的装了总期限的命令）；
+/// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
+#[test]
+fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
+    for (err, want) in [
+        (
+            crate::platform::child::TIMED_OUT,
+            crate::platform::child::TIMED_OUT,
+        ),
+        ("no_tmux", "unobservable"),
+        ("failed", "unobservable"),
+    ] {
+        let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
+        rig.list_err = Some(err);
+        let code = |r: Result<Value, CmdErr>| r.expect_err("该整条失败").0;
+        assert_eq!(
+            code(rig.run(|d| where_(&json!({ "sids": [A] }), d))),
+            want,
+            "where {err}"
+        );
+        assert_eq!(
+            code(rig.run(|d| stop(&json!({ "sids": [A] }), d))),
+            want,
+            "stop {err}"
+        );
+        let items = vec![item(A, json!({ "kind": "base" }))];
+        assert_eq!(
+            code(rig.run(|d| start(&batch("tmux", false, items), d))),
+            want,
+            "start {err}"
         );
     }
 }

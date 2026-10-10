@@ -966,6 +966,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-list",
     "--accounts-sessions",
     "--machine-interrupts",
+    // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
+    "--sessions-needs",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
     //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
     "--accounts-trust",

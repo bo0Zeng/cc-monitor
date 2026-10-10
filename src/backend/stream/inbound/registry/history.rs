@@ -209,6 +209,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     CommandSpec {
+        name: "sessions-needs",
+        summary: "这台上需手动的会话清单",
+        codes: &[],
+        fields: &[out("needs", "它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框"), out("sid", "会话 id"), out("waiting", "此刻活着、那台说在等人的会话，每项 `{sid, needs}`；一个都没有 ⇒ 空数组")],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::faces::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
         name: "history-facts",
         summary: "会话事实",
         codes: &["bad_args", "failed", "too_large"],

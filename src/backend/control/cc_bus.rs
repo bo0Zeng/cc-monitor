@@ -238,7 +238,7 @@ fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr
 /// 超时那条的说法 —— 几个命令共用一份文案。`secs` ＝ 实际等了多久（[`waited_secs`]）。
 fn timed_out_err(secs: u64) -> (String, String) {
     (
-        "timed_out".to_string(),
+        crate::platform::child::TIMED_OUT.to_string(),
         copy_text("beCcBus.timedOut.say", &[("secs", &secs.to_string())]),
     )
 }
@@ -1308,7 +1308,7 @@ pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
 /// |---|---|---|
 /// | 0 | —— | 回 `{spawned:true, id, said}`；`id` 认不出是 `null`（**起了**，只是没认出名字） |
 /// | 2 | `bad_args` | 它自己的参数校验（目录不存在 / 未知 tool / 账号互斥 / ccm 太旧）|
-/// | 124 | `timed_out` | 🔴 **会话可能已经起来了** —— 说法里明写「先看 `bus-state` 再决定要不要重来」|
+/// | 124 | `child_timed_out` | 🔴 **会话可能已经起来了** —— 说法里明写「先看 `bus-state` 再决定要不要重来」|
 /// | 其它 / 信号 | `failed` | 原样带上它的诊断 |
 ///
 /// ⚠ 期限仍住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），零定时器铁律不动。

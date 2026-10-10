@@ -163,7 +163,7 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
 
   it("★★ 广播（bus-broadcast）", async () => {
     answer({ ok: BCAST.reply });
-    await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(copyText("ccBus.broadcast.doneFailed", { sent: "1", skipped: "1", failed: "1", who: "x_cc（timed_out）" }));
+    await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(copyText("ccBus.broadcast.doneFailed", { sent: "1", skipped: "1", failed: "1", who: "x_cc（child_timed_out）" }));
     expect(sentCalls()).toEqual([["devbox", "bus-broadcast", BCAST.request]]);
   });
 
@@ -182,7 +182,7 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     const badBcast = [
       { ...BCAST.reply, extra: 1 },
       { ...BCAST.reply, sent: "1" },
-      { ...BCAST.reply, failed: [{ id: "x_cc", code: "timed_out", message: "d" }] },
+      { ...BCAST.reply, failed: [{ id: "x_cc", code: "child_timed_out", message: "d" }] },
     ];
     for (const v of badBcast) expect(() => saidOfBroadcast("devbox", v), JSON.stringify(v)).toThrow(ControlError);
   });
@@ -233,7 +233,7 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
       ["不在名单里", { ok: LIST.reply }, "nobody_cc", "ccBus.online.unknown"],
       ["live 是 null", { ok: withNull }, "n_cc", "ccBus.online.unknown"],
       ["通道不在", { fail: NO_CHANNEL }, "alpha_cc", "control.channel.remoteDown"],
-      ["被拒", { fail: refusedReply("timed_out", copyText("ccBus.online.timedOut")) }, "alpha_cc", "ccBus.online.timedOut"],
+      ["被拒", { fail: refusedReply("child_timed_out", copyText("ccBus.online.timedOut")) }, "alpha_cc", "ccBus.online.timedOut"],
     ];
     for (const [what, reply, id, key] of cases) {
       answer(reply);
@@ -285,7 +285,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
 
   it("★★ 广播：发到几个 · 跳过几个 · 失败几个分开说；问不到谁在线时明说全发了 —— 四形两两不同", () => {
     const base = { sent: 3, skipped_offline: 2, liveness_unknown: false, failed: [] as unknown[] };
-    const one = [{ id: "x_cc", error: "timed_out", detail: "d" }];
+    const one = [{ id: "x_cc", error: "child_timed_out", detail: "d" }];
     const said = [
       saidOfBroadcast("devbox", base),
       saidOfBroadcast("devbox", { ...base, failed: one }),
@@ -294,9 +294,9 @@ describe("〔C4e〕回值几态逐态一句", () => {
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(4);
     expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));
-    expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（timed_out）" }));
+    expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（child_timed_out）" }));
     expect(said[2]).toMatch(copyPattern("ccBus.broadcast.doneUnknown"));
-    expect(said[3]).toMatch(copyPattern("ccBus.broadcast.doneUnknownFailed", { failed: 1, who: "x_cc（timed_out）" }));
+    expect(said[3]).toMatch(copyPattern("ccBus.broadcast.doneUnknownFailed", { failed: 1, who: "x_cc（child_timed_out）" }));
   });
 });
 

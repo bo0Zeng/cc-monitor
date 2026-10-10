@@ -561,8 +561,44 @@ pub(crate) struct Doing {
 }
 
 /// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等人 ＞ 在跑 ＞ 后台命令在跑 ＞ 空闲 ＞ 说不清。
-/// 在等你 ⇒ 读那条会话的记录（扫描图缓存）配上没结果的调用判种类；记录找不到 ⇒ 判不出（`Unknown`）。
+/// 在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
 pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
+    live_activity(agent_home)
+        .into_iter()
+        .map(|(sid, activity)| {
+            let needs = (activity == Some(crate::agents::SessionActivity::NeedsYou))
+                .then(|| waiting_needs(agent_home, &sid).map(|n| n.kind))
+                .flatten();
+            (sid, Doing { activity, needs })
+        })
+        .collect()
+}
+
+/// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct NeedsRow {
+    pub(crate) sid: String,
+    pub(crate) needs: super::facts_query::Needs,
+}
+
+/// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判）。
+pub(crate) fn live_needs(agent_home: &Path) -> Vec<NeedsRow> {
+    live_activity(agent_home)
+        .into_iter()
+        .filter(|(_, a)| *a == Some(crate::agents::SessionActivity::NeedsYou))
+        .filter_map(|(sid, _)| {
+            Some(NeedsRow {
+                needs: waiting_needs(agent_home, &sid)?,
+                sid,
+            })
+        })
+        .collect()
+}
+
+/// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。
+fn live_activity(
+    agent_home: &Path,
+) -> std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>> {
     use crate::agents::SessionActivity as A;
     let rank = |a: Option<A>| match a {
         Some(A::NeedsYou) => 4,
@@ -571,7 +607,7 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
         Some(A::Idle) => 1,
         None => 0,
     };
-    let mut out: std::collections::BTreeMap<String, Doing> = std::collections::BTreeMap::new();
+    let mut out: std::collections::BTreeMap<String, Option<A>> = std::collections::BTreeMap::new();
     for (pid, v) in pidfiles(agent_home) {
         if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
             continue;
@@ -585,26 +621,26 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
         };
         let activity = crate::agents::pidfile_activity(&v);
         let cell = out.entry(sid.to_string()).or_default();
-        if rank(activity) > rank(cell.activity) {
-            cell.activity = activity;
+        if rank(activity) > rank(*cell) {
+            *cell = activity;
         }
-    }
-    for (sid, cell) in out.iter_mut() {
-        if cell.activity != Some(A::NeedsYou) {
-            continue;
-        }
-        let pending = super::history_query::session_record(agent_home, sid)
-            .ok()
-            .and_then(|p| super::history_query::cold_scan(agent_home, &p.to_string_lossy()).ok())
-            .map(|m| m.pending().to_vec())
-            .unwrap_or_default();
-        let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
-            waiting_for: None,
-            since_ms: None,
-        });
-        cell.needs = super::facts_query::needs_of(&pending, Some(&wait)).map(|n| n.kind);
     }
     out
+}
+
+/// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::facts_query::needs_of`] 判（同 `history-facts.needs`）；
+/// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的（那台说在等 ⇒ 恒有一份）。
+fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::facts_query::Needs> {
+    let pending = super::history_query::session_record(agent_home, sid)
+        .ok()
+        .and_then(|p| super::history_query::cold_scan(agent_home, &p.to_string_lossy()).ok())
+        .map(|m| m.pending().to_vec())
+        .unwrap_or_default();
+    let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
+        waiting_for: None,
+        since_ms: None,
+    });
+    super::facts_query::needs_of(&pending, Some(&wait))
 }
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
