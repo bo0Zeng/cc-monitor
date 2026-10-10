@@ -1355,6 +1355,57 @@ pub fn fake_sha256(text: &str) -> String {
         .collect()
 }
 
+/// 窗口自己的那一台运行时（判据把窗口的 `rt` 换成它）。
+///
+/// 窗口往线上发东西只有一条路：`rt.spawn` 一个往返。挪到单独这一台上，它的活任务数就是
+/// 「窗口此刻有几趟在路上」，闲下来恰好是 0（通道两头的任务都在判据自己那一台上，不算进来）。
+///
+/// 「这一下什么都没发」由此不靠歇：被测的那一下（`begin_edit` · `copy_to_other` · 松手那一帧 · `follow`）是同步的，
+/// 它返回就是做完了。它要是起了一趟往返，那个任务此刻要么还活着（[`SideRt::in_flight`] 不是 0），
+/// 要么已经走完（线上记录里有它）—— 两样都看。量之前先 [`SideRt::idle`]：之前起的往返（挂线时那一问、换目录那一趟）走完。
+pub struct SideRt(Option<tokio::runtime::Runtime>);
+
+impl SideRt {
+    pub fn new() -> SideRt {
+        SideRt(Some(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .expect("起不来窗口那一台运行时"),
+        ))
+    }
+
+    pub fn handle(&self) -> tokio::runtime::Handle {
+        self.0.as_ref().expect("还在").handle().clone()
+    }
+
+    /// 窗口此刻有几趟在路上。
+    pub fn in_flight(&self) -> usize {
+        self.0.as_ref().expect("还在").metrics().num_alive_tasks()
+    }
+
+    /// 等到窗口一趟都不在路上。按条件等，上限只防挂死。
+    pub async fn idle(&self) {
+        for _ in 0..1000 {
+            if self.in_flight() == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        panic!("等了 5 秒，窗口还有 {} 趟在路上", self.in_flight());
+    }
+}
+
+impl Drop for SideRt {
+    fn drop(&mut self) {
+        // 判据多半在异步段里收尾：那里不许阻塞着关一台运行时。
+        if let Some(rt) = self.0.take() {
+            rt.shutdown_background();
+        }
+    }
+}
+
 /// 判据用的一条通道：一对内存管子，一头交给路由器（挂合成句柄），另一头起窗口手里那个客户端。
 /// 生产里那一对管子是窗口进程自己的 stdin / stdout（monitor 在另一头，壳里 `chan/host.rs::serve_window`）；路由器与客户端只认读写半边。
 pub fn wire(

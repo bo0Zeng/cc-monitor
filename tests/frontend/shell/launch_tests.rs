@@ -1166,8 +1166,18 @@ fn without_a_terminal_exit_the_window_open_says_so_instead_of_running_headless()
     let ran = dir.join("ran");
     let cmd = format!("touch '{}'", ran.display());
     let got = open_window_via(&cmd, None, None);
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    let ran_headless = ran.exists();
+    // 不歇：被无窗口直起的话，起进程那一下在返回之前就做完了（`spawn` 等到 exec 才回）
+    // ⇒ 此刻它要么还在跑（进程表里有一行带着这条路径），要么已经跑完（文件在）。
+    let token = ran.display().to_string();
+    let ps = std::process::Command::new("ps")
+        .args(["-A", "-ww", "-o", "args="])
+        .output()
+        .expect("起不来 ps");
+    assert!(ps.status.success(), "ps 没跑成：{ps:?}");
+    let listed = String::from_utf8_lossy(&ps.stdout)
+        .lines()
+        .any(|l| l.contains(&token));
+    let ran_headless = ran.exists() || listed;
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
         got,

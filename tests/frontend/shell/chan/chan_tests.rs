@@ -15,8 +15,8 @@
 //!
 //! - **不买「真窗口能用」** —— 合成前端与合成句柄都是判据自己造的；接进文件窗口是下一波 F2。
 //! - **不买生产句柄的 `subscribe`** —— 生产今天没有流（`chan::host` 头注），这里只钉它「原位说没有」。
-//! - 🔴 **「credit 用完就不再取」那一格用的是一段短等待**：它只能证明「那段时间里没多取」，
-//!   证明不了「永远不会多取」。它红了一定是真的（多取了），绿了只是这一趟没看见。
+//! - 🔴 **「credit 用完就不再取」那一格证的是「一趟往返之内没多取」**（栅栏见 `round_trip`），
+//!   证明不了「永远不会多取」：哪天抽流改成按计时器隔一阵才取，一趟往返之内看不见它。
 
 use super::client::Client;
 use super::host::{self, InboundBackends};
@@ -256,6 +256,24 @@ async fn subscribe_receives_frames_in_order_and_from_passes_through() {
 }
 
 /// ★ credit 就是回推：给多少取多少，**不多取、不丢**（级 1）。
+/// 同一条连接上走一趟 `echo` 往返，当「路由器那一侧该做的已经做了」的栅栏。
+///
+/// 判据跑在单线程运行时（`#[tokio::test]` 默认）上：路由器的抽流任务只要还能取（credit 没挡住它），
+/// 它在就绪队列里；这一趟往返要转好几圈调度（客户端写 → 路由器读 → 句柄答 → 写回 → 客户端读），
+/// 每一圈它都会被轮到 ⇒ 往返回来时，多取的那一格已经取了。不按墙钟，机器再忙也一样。
+async fn round_trip(c: &Client) {
+    let got = c
+        .call(
+            &Origin("<local>".into()),
+            &Op("echo".into()),
+            Body(b"fence".to_vec()),
+            budget(5_000),
+        )
+        .await
+        .expect("栅栏那一趟 echo 走不通");
+    assert_eq!(got.0, b"fence");
+}
+
 #[tokio::test]
 async fn credit_is_backpressure_not_loss() {
     let (fake, c) = rig();
@@ -267,8 +285,8 @@ async fn credit_is_backpressure_not_loss() {
             other => panic!("应当收到一格帧，实得 {other:?}"),
         }
     }
-    // credit 用完：路由器不该再从句柄那一侧取（短等待，见头注「买不到」第三条）。
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // credit 用完：路由器不该再从句柄那一侧取。同一条连接上走一趟往返当栅栏（见 `round_trip`）。
+    round_trip(&c).await;
     assert_eq!(
         fake.pulled.load(Ordering::SeqCst),
         2,
@@ -286,7 +304,7 @@ async fn credit_is_backpressure_not_loss() {
         vec![0, 1, 2, 3, 4],
         "中间少了 / 乱了 —— 丢帧必须说 Gap，而这里一格都不该丢"
     );
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    round_trip(&c).await;
     assert_eq!(
         fake.pulled.load(Ordering::SeqCst),
         5,
