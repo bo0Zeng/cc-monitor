@@ -305,11 +305,19 @@ pub(crate) fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
 /// glibc 的 `malloc` 放掉的空洞只在堆顶时才自己还 ⇒ 一问含工具的搜索读过几百 MB、只留下 128 MB 的常驻之后，
 /// 进程 RSS 停在那一问的高水位（680 MB 合成世界实测 ~570 MB → 调它之后 ~280 MB）。
 /// 远端 musl 版的分配器是 mimalloc（`main.rs`；它自己隔一会儿把空页还回去）、Windows 的系统堆没有这一招 ⇒ 这两处不做。
-pub(crate) fn return_freed_memory() {
-    // SAFETY: 纯 libc 调用，不带指针；只把空闲页还给内核，不动在用的块。
+/// 回真 ＝ 调了。
+pub(crate) fn return_freed_memory() -> bool {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    unsafe {
-        libc::malloc_trim(0);
+    {
+        // SAFETY: 纯 libc 调用，不带指针；只把空闲页还给内核，不动在用的块。
+        unsafe {
+            libc::malloc_trim(0);
+        }
+        true
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        false
     }
 }
 
