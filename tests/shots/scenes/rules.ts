@@ -320,6 +320,28 @@ export const RULES_SCENES: Scene[] = [
     620,
   ),
   scene(
+    "rules-editor-saved",
+    "设置 · 轮换 · 编辑器 · 已保存",
+    "5h 格改成 80：真后端写盘、回 savedAtText（按看的这一台的时区写的钟面）⇒ 头上「已保存 HH:MM」＋［撤销］",
+    async () => {
+      await goEditor();
+      await type('[data-rot-line-num="5h"]', "80");
+      document
+        .querySelector('[data-rot-line-num="5h"]')
+        ?.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(1200);
+      const saved = document.querySelector("[data-ed-saved]");
+      if (!saved) throw new Error("没出「已保存」那一行");
+      saved.scrollIntoView({ block: "center" });
+      await sleep(300);
+    },
+    () => {
+      return editorWorld()();
+    },
+    960,
+    620,
+  ),
+  scene(
     "rules-editor-line-empty",
     "设置 · 轮换 · 编辑器 · 7d 空着",
     "到线 · 只设 5h：悬停 7d 那一格 ⇒「空即 7d 满才换」",
