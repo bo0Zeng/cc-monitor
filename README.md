@@ -204,6 +204,7 @@ ccm -- --ccm-help                 # 全部选项
 ## 开发
 
 - 构建与开发：[`src/doc/BUILDING.md`](src/doc/BUILDING.md) · [`src/doc/DEVELOPMENT.md`](src/doc/DEVELOPMENT.md)
+- 手机端 app（Android）：[`src/mobile/README.md`](src/mobile/README.md)
 - 贡献：[`src/doc/CONTRIBUTING.md`](src/doc/CONTRIBUTING.md)
 - 更新记录：[`CHANGELOG.md`](CHANGELOG.md)
 - 各套测试的条数以实跑为准，跑法见 [`src/doc/DEVELOPMENT.md`](src/doc/DEVELOPMENT.md)

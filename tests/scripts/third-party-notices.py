@@ -12,6 +12,9 @@
     cargo-about（版本钉在 `CARGO_ABOUT_VERSION`），离线读 cargo 注册表缓存里各包自带的许可文件；目标平台与收纳的许可住
     `tests/scripts/third-party-about.toml`；开发期依赖不收。
   · npm：`package-lock.json` 里不带 `dev` 的包，读 `node_modules/` 里各包自带的许可文件（要先 `npm ci`）。
+  · 仓里原样放进来的第三方文件（手机端 `src/mobile` 的预编库与字体，不经 cargo / npm 解析）：登记在 `VENDORED_FILES`，
+    许可全文跟着放在仓里；每个发版附的整仓源码包里有它们。`src/mobile` 下被跟踪的二进制（aar · jar · so · 字体）
+    每一份都得落在某一行的位置里，漏登记 ⇒ 生成失败。
 
 用法（仓根下）：
     python3 tests/scripts/third-party-notices.py           # 重新生成两份
@@ -38,6 +41,19 @@ VENDOR = ROOT / "src/vendor"
 TREES = [("src/backend/Cargo.toml", False), ("src/frontend/shell/Cargo.toml", True)]
 LOCKS = ["src/backend/Cargo.lock", "src/frontend/shell/Cargo.lock"]
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying|notice)", re.I)
+#: (组件, 版本, SPDX, 在仓里的位置（目录以 / 结尾）, 许可全文所在文件, 说明)
+VENDORED_FILES = [
+    ("termlib", "0.1.1", "Apache-2.0", "src/mobile/libs/m2/org/connectbot/termlib/",
+     "src/mobile/libs/LICENSES/Apache-2.0.txt",
+     "connectbot/termlib 的预编 aar（含 sources.jar）；打过 src/mobile/libs/termlib-patches/ 里的补丁，是改过的版本"),
+    ("libvterm", "termlib 0.1.1 内含", "MIT", "src/mobile/libs/m2/org/connectbot/termlib/0.1.1/termlib-0.1.1.aar",
+     "src/mobile/libs/LICENSES/libvterm-MIT.txt", "编进 termlib aar 的 libjni_cb_term.so"),
+    ("JetBrains Mono", "2.305", "OFL-1.1", "src/mobile/core-ui/src/main/res/font/",
+     "src/mobile/libs/LICENSES/JetBrainsMono-OFL-1.1.txt", "jetbrains_mono_regular.ttf · jetbrains_mono_medium.ttf"),
+    ("Gradle Wrapper", "8.14.3", "Apache-2.0", "src/mobile/gradle/wrapper/gradle-wrapper.jar",
+     "src/mobile/libs/LICENSES/Apache-2.0.txt", "手机端构建用的 Gradle 启动器，不进 app"),
+]
+VENDORED_BINARY = re.compile(r"\.(aar|jar|so|ttf|otf|woff2?)$", re.I)
 
 MIT_TEXT = """MIT License
 
@@ -154,6 +170,25 @@ def npm_entries():
     return out
 
 
+def vendored_entries():
+    tracked = subprocess.run(["git", "ls-files", "-z", "--", "src/mobile"], capture_output=True, text=True,
+                             check=True).stdout.split("\0")
+    out = []
+    for name, ver, spdx, where, text_file, note in VENDORED_FILES:
+        hits = [t for t in tracked if t == where or (where.endswith("/") and t.startswith(where))]
+        if not hits:
+            die("VENDORED_FILES 里 %s 登记的位置 %s 一份被跟踪的文件都没有 —— 删掉这一行或改位置" % (name, where))
+        text_path = ROOT / text_file
+        if not text_path.is_file():
+            die("%s 的许可全文 %s 不在盘上" % (name, text_file))
+        out.append((name, ver, spdx, where, note, text_path.read_text(encoding="utf-8").strip("\n")))
+    stray = sorted(t for t in tracked if VENDORED_BINARY.search(t)
+                   and not any(t == w or (w.endswith("/") and t.startswith(w)) for _, _, _, w, _, _ in VENDORED_FILES))
+    if stray:
+        die("src/mobile 下这几份第三方二进制没登记许可：%s —— 在 VENDORED_FILES 里加一行" % stray)
+    return out
+
+
 def lock_crates():
     got = set()
     for lock in LOCKS:
@@ -196,6 +231,10 @@ def render():
         lines += ["", "-------- %s %s (%s) --------" % (name, ver, spdx), "    npm: %s %s" % (name, ver)]
         for t in texts:
             lines += ["", t, ""]
+    lines += ["", "=================== files vendored in the repo (mobile app, src/mobile) ==================="]
+    for name, ver, spdx, where, note, text in vendored_entries():
+        lines += ["", "-------- %s %s (%s) --------" % (name, ver, spdx), "    vendored: %s %s — %s" % (name, ver, where),
+                  "    %s" % note, "", text, ""]
     notices = "\n".join(lines).replace("\r\n", "\n").replace("\r", "\n").rstrip("\n") + "\n"
 
     lock = lock_crates()

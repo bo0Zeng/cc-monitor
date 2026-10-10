@@ -458,6 +458,40 @@ jobs:
           GATE_ONLY: weak-net
         run: bash tests/scripts/gate.sh
 
+  # 手机端 app（`src/mobile`，Gradle）：构建 ＋ JVM 单测 ＋ release（R8）＋ bridge 金样，命令住门禁的 `mobile` 格。
+  # 不起模拟器：要设备的 androidTest 不在 CI（入口 `src/mobile/scripts/android-test.sh`，接设备手跑）。
+  mobile:
+    name: Mobile app (Gradle build + JVM tests, gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30      # 本机暖缓存约 2 分钟、冷编约 10 分钟；口径见 `rust` 那一格的头注
+    steps:
+      - uses: actions/checkout@v4
+
+      # 供应链：gradle-wrapper.jar 对 Gradle 的 known-good 清单（发行包另由 distributionSha256Sum 校验）。
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: src/mobile
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet pytest
+
+      - name: 门禁 · 手机端
+        env:
+          GATE_ONLY: mobile
+        run: bash tests/scripts/gate.sh
+
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且
 # 在 Windows 根本不编译/不打包），淹没了信号。已移除；已知 Rust 依赖 advisory 残留记入
