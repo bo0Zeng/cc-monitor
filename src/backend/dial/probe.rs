@@ -310,7 +310,7 @@ where
         )
     } else {
         // 量一次往返经过的墙钟（不是节拍：只读两次钟、算个差）。
-        let t0 = std::time::SystemTime::now();
+        let t0 = crate::common::time::now();
         let asked = up_w
             .write_all(
                 format!(

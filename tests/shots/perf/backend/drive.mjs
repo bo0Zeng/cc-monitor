@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { SHOTS_NOW_MS, SHOTS_TZ } from "../../real/pool.mjs";
 
 const [bin, home] = process.argv.slice(2);
 const opt = (k, d) => {
@@ -26,6 +27,9 @@ const env = {
   PATH: "/usr/bin:/bin",
   HOME: home,
   LANG: "C.UTF-8",
+  // 时区与「现在」同截图台架（`real/pool.mjs`）：带特性 `shots` 编的后端从那一刻接着走，默认构建不认这一格。
+  TZ: SHOTS_TZ,
+  CCM_SHOTS_NOW_MS: String(SHOTS_NOW_MS),
   TMUX_TMPDIR: join(box, "tmux"),
   XDG_RUNTIME_DIR: join(box, "run"),
   // 搜索索引那几行（后台建好 · 每问读盘的账）要看见：它们是读数的一部分。

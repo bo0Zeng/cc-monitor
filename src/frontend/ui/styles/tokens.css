@@ -179,6 +179,11 @@
   --dur-float-in: 160ms; /* 浮层出现（淡入 ＋ 上移 4px）· 新出现的一行淡入 */
   --dur-float-out: 120ms;
   --dur-breathe: 1.6s; /* 运行中状态点 */
+  --dur-spin: 0.8s; /* 转圈一圈（进行中的圈 · 标签上在飞的那一圈） */
+  --dur-sweep: 1.4s; /* 不定进度条来回一趟 */
+  --dur-nudge: 1.2s; /* 头一回用时提示那一下（共三下） */
+  --dur-landed: 600ms; /* 拖进分组落定那一下 */
+  --dur-flash: 1.5s; /* 跳到的那一条闪一下 */
 
   /* 主消息流最大宽度（居中容器） */
   --stream-max-width: 780px;
@@ -229,6 +234,11 @@
     --dur-float-in: 0ms;
     --dur-float-out: 0ms;
     --dur-breathe: 0s;
+    --dur-spin: 0s;
+    --dur-sweep: 0s;
+    --dur-nudge: 0s;
+    --dur-landed: 0ms;
+    --dur-flash: 0s;
   }
 }
 }

@@ -472,7 +472,7 @@ impl RunBook {
         let rid = faces.response_id(v);
         let own_rid = rid.clone().filter(|_| mark.is_some());
         let links = faces.child_links(v);
-        let now = SystemTime::now();
+        let now = crate::common::time::now();
         let (changed, learned) = self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
             let mut learned = false;
@@ -512,7 +512,7 @@ impl RunBook {
         if links.is_empty() {
             return false;
         }
-        let now = SystemTime::now();
+        let now = crate::common::time::now();
         let when = faces.written(v).or_else(|| ms(now));
         self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
@@ -612,7 +612,7 @@ impl RunBook {
 
     /// 这个会话此刻的运行表那一帧（出帧前按此刻判一次久未动静）。
     pub(crate) fn frame(&self, sid: &str) -> Frame {
-        self.frame_at(sid, SystemTime::now())
+        self.frame_at(sid, crate::common::time::now())
     }
 
     /// 全部会话按 `now` 判一次久未动静：表变了的那几个各一帧。
@@ -780,7 +780,7 @@ impl RunTrack {
         let len = meta.as_ref().map_or(0, |m| m.len());
         let written = meta
             .and_then(|m| m.modified().ok())
-            .unwrap_or_else(SystemTime::now);
+            .unwrap_or_else(crate::common::time::now);
         if len < cur.consumed {
             cur.consumed = 0;
         }

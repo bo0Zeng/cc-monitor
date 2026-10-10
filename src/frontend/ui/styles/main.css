@@ -384,7 +384,7 @@
 
 /* F84b-fix：首运行一次性微高亮——有限次脉冲后自然停，非模态、点一下即消。 */
 .status-cmdk.first-run {
-  animation: cmdk-first-run 1.2s ease-in-out 3;
+  animation: cmdk-first-run var(--dur-nudge) ease-in-out 3;
 }
 
 @keyframes cmdk-first-run {
@@ -401,11 +401,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .status-cmdk.first-run {
-    animation: none;
-  } /* 尊重减弱动效 */
-}
 
 /* S6：cc-bus 驾驶舱顶层视图的外壳（照 grid-monitor 的 overlay 形态）。 */
 .cc-bus-view {

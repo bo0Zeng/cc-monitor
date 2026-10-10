@@ -716,7 +716,7 @@ pub(crate) fn new_rule_id(taken: &BTreeMap<String, Rule>) -> String {
     use std::hash::{Hash, Hasher};
     loop {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        std::time::SystemTime::now().hash(&mut h);
+        crate::common::time::now().hash(&mut h);
         std::process::id().hash(&mut h);
         RULE_SEQ
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -735,7 +735,7 @@ pub(crate) fn new_session_id() -> String {
     let half = |salt: u8| {
         let mut h = seed.build_hasher();
         salt.hash(&mut h);
-        std::time::SystemTime::now().hash(&mut h);
+        crate::common::time::now().hash(&mut h);
         std::process::id().hash(&mut h);
         RULE_SEQ
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
