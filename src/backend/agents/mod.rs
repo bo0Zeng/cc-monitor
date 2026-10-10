@@ -168,6 +168,9 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
+    /// 这一家不导 ⇒ `None`。
+    pub(crate) self_sid_env: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
@@ -279,6 +282,27 @@ pub(crate) fn wrapper_alias(kind: &str) -> Option<&'static str> {
     launch_face_among(REGISTRY, kind).and_then(|f| f.launcher_alias)
 }
 
+/// 各家导给子进程的「我是哪个会话」变量（注册序、去重；[`LaunchFace::self_sid_env`]）。`ccm` 按它认父；
+/// 后端自己起的子进程不该带着它们（常驻后端若是在某个会话里起的，环境里就有那个会话的编号）。
+pub(crate) fn self_sid_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for e in REGISTRY
+        .iter()
+        .filter_map(|a| a.launch.as_ref()?.self_sid_env)
+    {
+        if !v.contains(&e) {
+            v.push(e);
+        }
+    }
+    v
+}
+
+/// 把各家「我是哪个会话」的变量登记进起子进程原语的不往下传名单（`platform::child_env::also_internal`）。
+/// 入口（`main.rs`）在分流之前调一次：之后这个进程起的每个子进程都看不见它们。
+pub fn install_child_env_filter() {
+    crate::platform::child_env::also_internal(self_sid_envs());
+}
+
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
 pub(crate) fn launchable_kinds() -> Vec<&'static str> {
     REGISTRY
@@ -361,8 +385,9 @@ pub(crate) fn is_agent_process(command: &str) -> bool {
 /// 一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
 #[derive(Clone, Copy)]
 pub(crate) struct RecordFace {
-    /// 一行原文 ⇒ 渲染模型那一条（空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
-    pub(crate) parse: fn(&str) -> Result<Option<ParsedLine>, String>,
+    /// 一行原文（与它在文件里的起点字节偏移，没有自己身份的记录拿它合成 id，[`line_id`]）⇒ 通用记录那一形
+    /// （空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
+    pub(crate) parse: fn(&str, u64) -> Result<Option<Translated>, String>,
     /// 会话文件 ⇒ 它的 sid（这一家的文件命名）。
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这个路径是不是这一家的一份会话记录（按文件形态判：后缀 / 命名）。
@@ -527,7 +552,7 @@ pub struct ChildRunTag {
 pub struct ToolStep {
     /// 工具名（原样）。
     pub tool: String,
-    /// 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格）。认不出主参数 ⇒ 缺。
+    /// 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub arg: Option<String>,
@@ -1015,15 +1040,29 @@ pub(crate) fn is_session_record(p: &Path) -> bool {
         .is_some_and(|d| (d.is_record)(p))
 }
 
-/// 一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
+/// 一行原文翻成的那一形 —— 适配层给，通用层只搬（[`record::Record`] 的格通用层一个都不读，只按 [`QueueMark`] 配打字时刻）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedLine {
-    /// 渲染模型那一条（界面收到的就是它）。
-    pub(crate) message: serde_json::Value,
-    /// 进不进界面：`false` ＝ 照占号、不出成品（没有读者的元数据记录）。
-    pub(crate) displayable: bool,
+pub(crate) struct Translated {
+    /// 这一行在界面里是什么；缺 ＝ 不进界面（照占号、不出成品）。
+    pub(crate) record: Option<record::Record>,
     /// 这条记录自己的 `cwd`（带它的那一类才有）。
     pub(crate) cwd: Option<String>,
+    /// 排队那一对：打字那一刻（不出记录）· 被插进那一轮的那一条（它的 `at` 要换成打字时刻）。
+    pub(crate) queue: Option<QueueMark>,
+}
+
+/// 排队消息的两头。配对按 `text`（人打的那句原文）：同一句重打 ⇒ 取最近一次。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum QueueMark {
+    /// 人在一轮跑着时打了这一句（`at` ＝ 打字时刻）。
+    Typed { text: String, at: String },
+    /// 这一条 `queued` 记录插的是这一句。
+    Taken { text: String },
+}
+
+/// 一行在文件里的起点字节偏移 ⇒ 没有自己身份的记录用的那个 id（会话内唯一、各条读路给出的都一样）。
+pub(crate) fn line_id(start: u64) -> String {
+    format!("@{start}")
 }
 
 /// 注册表里 `kind` 那一家。认不出 ⇒ `None`。
@@ -1293,8 +1332,6 @@ pub(crate) struct AccountsFace {
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
     pub(crate) email_in: fn(&Path) -> Option<String>,
-    /// 后端看会话用的那几项（会话起停 · 会话记录）：常驻后端只看共享库里的这一份 ⇒ 各号必须链回去，不许隔离。
-    pub(crate) watched: &'static [&'static str],
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -1720,9 +1757,9 @@ pub(crate) struct SettingsEnvFace {
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
     /// 地址 → 要合并进那份文件的那一段。
     pub(crate) snippet: fn(&str) -> String,
-    /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「要你动手」按它算 diff）。现在的内容读不懂 ⇒ `None`。
+    /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「待办」按它算 diff）。现在的内容读不懂 ⇒ `None`。
     pub(crate) merge: fn(&str, &str) -> Option<String>,
-    /// 地址住那份文件里哪一格（「要你动手」那一件的位置行）。
+    /// 地址住那份文件里哪一格（「待办」那一件的位置行）。
     pub(crate) slot: &'static str,
 }
 

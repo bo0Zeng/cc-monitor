@@ -22,7 +22,7 @@ function rig(n: number, offset: number, filler = 3) {
   const pos = { offset };
   turns.forEach((t, i) => {
     const head = document.createElement("div");
-    head.setAttribute("data-uuid", t.uuid);
+    head.setAttribute("data-id", t.uuid);
     head.getBoundingClientRect = () => {
       reads++;
       return box(i * 100 - pos.offset, i * 100 - pos.offset + 20);
@@ -30,7 +30,7 @@ function rig(n: number, offset: number, filler = 3) {
     content.appendChild(head);
     for (let k = 0; k < filler; k++) {
       const f = document.createElement("div");
-      f.setAttribute("data-uuid", `${t.uuid}-f${k}`);
+      f.setAttribute("data-id", `${t.uuid}-f${k}`);
       f.getBoundingClientRect = () => {
         reads++;
         return box(i * 100 - pos.offset + 25 + k * 20, i * 100 - pos.offset + 40 + k * 20);

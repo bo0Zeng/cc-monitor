@@ -234,7 +234,7 @@ describe("会话内查找 · 搜索", () => {
     expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
     expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
-    expect(rows[0].hasAttribute("data-uuid"), "命中行不许叫 data-uuid（那是消息卡的名字）").toBe(false);
+    expect(rows[0].hasAttribute("data-id"), "命中行不许叫 data-id（那是消息卡的名字）").toBe(false);
     expect(status(p)).toBe(copyText("sessionFind.status.count", { n: "3" }));
   });
 
@@ -415,7 +415,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     expect(t.skeleton, "骨架没接上 ⇒ 这一格测的不是占位里的跳").not.toBeNull();
     expect(t.skeleton!.isPending(300)).toBe(true);
     expect(t.window.pendingCount, "前端账本只留尾巴 200 条").toBe(200);
-    expect(el.querySelector('[data-uuid="u300"]'), "起点：那张卡还不在").toBeNull();
+    expect(el.querySelector('[data-id="u300"]'), "起点：那张卡还不在").toBeNull();
 
     stub.finds = [found([hit("u300")])];
     tm.openFind();
@@ -429,7 +429,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     const { recordReadCalls } = await import("../../../test-support/chan-fake");
     const ranges = recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");
     expect(ranges.length, "正文真的是按偏移要回来的").toBeGreaterThan(0);
-    expect(el.querySelector('[data-uuid="u300"]'), "取回之后卡建出来了").not.toBeNull();
+    expect(el.querySelector('[data-id="u300"]'), "取回之后卡建出来了").not.toBeNull();
     expect(row.dataset.unjumpable, "等到了卡却标成跳不过去 ⇒ 同步那一下就去找了").toBeUndefined();
   });
 });

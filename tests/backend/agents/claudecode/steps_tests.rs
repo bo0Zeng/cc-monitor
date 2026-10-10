@@ -38,6 +38,22 @@ fn a_step_is_tool_main_arg_and_note() {
         .ends_with('…'));
 }
 
+/// 主参数是协议上的定长一行：至多 200 字（按字符，不切半个字），截了带省略号；不到 200 原样、不带省略号。
+/// 两个前端都不再截（完整内容在卡片里）。
+#[test]
+fn the_main_arg_is_one_line_of_at_most_200_chars() {
+    let arg = |s: &str| step_of("Bash", &json!({ "command": s })).arg.unwrap();
+    let wide = "汉".repeat(500);
+    let got = arg(&wide);
+    assert_eq!(got.chars().count(), 201);
+    assert_eq!(got, format!("{}…", "汉".repeat(200)));
+    let exact = "字".repeat(200);
+    assert_eq!(arg(&exact), exact);
+    assert_eq!(arg("a\n  b\tc"), "a b c");
+    let mixed = format!("{}{}", "x".repeat(199), "😀😀😀");
+    assert_eq!(arg(&mixed), format!("{}😀…", "x".repeat(199)));
+}
+
 #[test]
 fn a_result_reads_counts_from_the_structured_result() {
     let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});

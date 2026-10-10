@@ -122,31 +122,31 @@ describe("面板的上界：在跑的全列 ＋ 最近结束的几个，其余�
 /** 一条主运行的记录：派出一个子运行（后端给的卡型与标签）。 */
 function dispatch(seq: number, tool: string, label: string): never {
   return line(seq, {
-    type: "assistant",
-    uuid: `a${seq}`,
-    timestamp: "2026-09-10T00:00:00.000Z",
-    message: { id: `m${seq}`, role: "assistant", content: [{ type: "tool_use", id: tool, name: "Spawn", input: {} }] },
-    sessionId: SID,
-    requestId: null,
-    parentUuid: null,
-    forkedFrom: null,
-    isApiErrorMessage: false,
-    error: null,
-    apiErrorStatus: null,
-    toolCards: { [tool]: "agent" },
-    childRuns: { [tool]: { label, kind: "Explore" } },
+    t: "reply",
+    id: `a${seq}`,
+    at: "2026-09-10T00:00:00.000Z",
+    blocks: [{ type: "tool_use", id: tool, name: "Spawn", input: {} }],
+    autoReply: false,
+    endsTurn: false,
+    cards: { [tool]: "agent" },
+    runs: { [tool]: { label, kind: "Explore" } },
+  }) as never;
+}
+
+/** 一条工具结果（`who` 是工具结果那一种）。 */
+function result(seq: number, tool: string, text: string): never {
+  return line(seq, {
+    t: "said",
+    id: `u${seq}`,
+    at: "2026-09-10T00:00:01.000Z",
+    who: { speaker: { kind: "toolResult" }, text: "" },
+    blocks: [{ type: "tool_result", for: tool, content: [{ type: "text", text }], isError: false }],
   }) as never;
 }
 
 /** 那次调用当场拿到的结果（后台派出那一形：一拿到就是「已启动」，子运行还在跑）。 */
 function launched(seq: number, tool: string): never {
-  return line(seq, {
-    type: "user",
-    uuid: `u${seq}`,
-    timestamp: "2026-09-10T00:00:01.000Z",
-    message: { role: "user", content: [{ type: "tool_result", tool_use_id: tool, content: "x", is_error: false }] },
-    sessionId: SID,
-  }) as never;
+  return result(seq, tool, "x");
 }
 
 describe("真 TabManager ＋ 真 agent 面板", () => {
@@ -224,7 +224,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onSessionRuns({ session_id: SID, runs: [run("w6", "done", "扫目录", "t1")], ended: [] });
     const handback = (seq: number, from: string) =>
       userLine(seq, `u${seq}`, "<agent-message>…</agent-message>", {
-        userText: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
+        who: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
       }) as never;
     tm.onLine(handback(1, "w6"));
     tm.onLine(handback(2, "w9"));
@@ -237,7 +237,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
     const rec = (seq: number, speaker: Record<string, unknown>) =>
-      userLine(seq, `u${seq}`, "x", { userText: { speaker, text: "x" } }) as never;
+      userLine(seq, `u${seq}`, "x", { who: { speaker, text: "x" } }) as never;
     tm.onLine(rec(1, { kind: "agentMessage", from: "w6", name: "worker-7", handback: true, body: "报告正文" }));
     tm.onLine(rec(2, { kind: "taskNotification", taskId: "w6", status: "completed", summary: "扫目录" }));
     tm.onLine(rec(3, { kind: "taskNotification", taskId: "w8", status: "completed", summary: "别的" }));
@@ -328,15 +328,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
   it("派出那一方拿到的结果收在派出卡里、可展开：交回的结果写几个字；报错写「报错」", () => {
     const { tm, streamRootEl } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
-    tm.onLine(
-      line(1, {
-        type: "user",
-        uuid: "u1",
-        timestamp: "2026-09-10T00:00:01.000Z",
-        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "找到两处", is_error: false }] },
-        sessionId: SID,
-      }) as never,
-    );
+    tm.onLine(result(1, "t1", "找到两处"));
     tm.switchTo(SID);
     const res = streamRootEl.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]')!;
     expect(res.querySelector("summary")?.textContent).toBe(copyText("runCard.result.done", { n: 4 }));

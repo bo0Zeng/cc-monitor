@@ -81,11 +81,11 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "src/remote_resident.rs",
-        "retry_tunnel",
+        "retry_relay",
         "wait-for-condition",
-        "`tunnel_when_bound`（编排住 `retry_tunnel`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
-             后端**不等它 bind**（后端零定时器）⇒ 这里等**那台回环口上有人在听**这个一次性条件（开隧道成功即止），\
-             有次数上限，等不到就如实报「连不上」、交重连那一层；远端回拒码是「不许端口转发」⇒ 当场停、不等。\
+        "接那台常驻后端的小中继（`relay_once`，编排住 `retry_relay`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
+             后端**不等它绑上**（后端零定时器）⇒ 中继回 `absent` 时这里等**那台套接字上有人在听**这个一次性条件（接上即止），\
+             有次数上限，等不到就如实报「那台后端没在运行」、交重连那一层；别的理由 ⇒ 当场停、不等。\
              不是节拍器：只在接那台常驻后端的那一趟跑。",
     ),
     (

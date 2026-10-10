@@ -491,7 +491,7 @@ fn last_say_is_the_first_line_of_the_last_text() {
     assert!(t.ends_with('…'));
 }
 
-/// ★ 需要你：那台说在等才有；种类由「在等什么」（适配层翻好的 [`WaitOn`]）配记录里没结果的那一步判，判不出不猜。
+/// ★ 需手动：那台说在等才有；种类由「在等什么」（适配层翻好的 [`WaitOn`]）配记录里没结果的那一步判，判不出不猜。
 /// 那一家的六个词逐个落到一种（不再有五个落进判不出）。
 #[test]
 fn needs_is_decided_from_the_wait_and_the_pending_call() {

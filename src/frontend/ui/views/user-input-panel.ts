@@ -151,10 +151,10 @@ export class UserInputPanel {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "user-input-row";
-    // 🔴 **刻意不叫 `data-uuid`**：那个名字在本仓有且只有一个意思 ——
+    // 🔴 **刻意不叫 `data-id`**：那个名字在本仓有且只有一个意思 ——
     // 「这是一张渲染出来的消息卡」，`branch-fold.ts:236` 就是照它扫主线的。
-    // 清单行不是卡。两件事共用一个属性名，下一个写 `[data-uuid]` 选择器的人就会数错。
-    // （甲那一轮自抓：第一版真写成了 `data-uuid`，判据当场把卡和行混在一起数成 350。）
+    // 清单行不是卡。两件事共用一个属性名，下一个写 `[data-id]` 选择器的人就会数错。
+    // （甲那一轮自抓：第一版真写成了 `data-id`，判据当场把卡和行混在一起数成 350。）
     row.dataset.inputUuid = entry.uuid;
     row.textContent = `${i + 1}. ${entry.excerpt}`;
     row.title = entry.excerpt;

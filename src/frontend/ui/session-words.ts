@@ -29,7 +29,7 @@ export function dotLabel(d: DotState): string {
   }
 }
 
-/** 「等批准 / 等回答 / 需要你」（标签页行尾 · 会话头 · 悬停卡）。计划也写「等批准」。 */
+/** 「等批准 / 等回答 / 需手动」（标签页行尾 · 会话头 · 悬停卡）。计划也写「等批准」。 */
 export function needsWord(kind: NeedsKind): string {
   switch (kind) {
     case "approve":

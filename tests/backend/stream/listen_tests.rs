@@ -1,9 +1,8 @@
-//! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙）
+//! # 要求住址：`INVARIANTS §48.1`（常驻后端的门由内核给：只给本人的套接字 ＋ 对端 uid，没有钥匙）
 //!
-//! 核原文：`§48.1` 逐字「「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对」「三种拒法**出声且彼此可分**」——
-//! 本族 `a_port_without_a_token_is_refused`（今天钥匙只经文件交，`ENV_TOKEN_FILE`）· `empty_strings_count_as_unset` · `an_empty_token_never_matches` · `tokens_match_is_exact` ·
-//! `attach_verdicts_are_three_distinct_faces` · `the_two_tier_split_is_pinned_cell_by_cell` 逐格判它。
-//! 只听回环、拒绝理由闭集、握手行上界、退出码那几条是同一个监听口的形状，住生产侧 `listen.rs` 头注（「诚实边界」三条），本条不另点。〔IV1 点址 2026-09-25〕
+//! 本族钉帧面那一半：常驻开关怎么认（`mode_from`：空 / `1` / 别的值拒）· attach 行只判形状（`attach_verdict`）·
+//! 拒绝理由闭集 · 握手行上界 · 退出码。门本身（目录独占锁 · 对端 uid）在共享 crate `own-chan` 的判据里，
+//! 抢门牌与沙箱那一判在 `main_claim_tests.rs` / `resident_tests.rs`。
 
 use super::*;
 
@@ -16,79 +15,40 @@ fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String
     }
 }
 
-/// ★ 两个都没有 ⇒ 今天那条路，**一个字节不变**。
+/// 没有 / 空串 ⇒ stdio（shell 里 `export X=` 是常态）；`1` ⇒ 常驻；别的值 ⇒ 拒，且点名那个变量。
+/// 从前那两个变量（口 · 钥匙文件）给了也不认：常驻只看这一个开关。
 #[test]
-fn no_env_means_todays_stdio_path() {
-    assert_eq!(mode_from(&env_of(&[])).expect("空环境"), Mode::Stdio);
-}
-
-/// ★★ **有口没钥匙文件 ⇒ 拒绝起**。这一条是本模块最要紧的一格。
-///
-/// 放过它的后果很具体：同机任何本地进程（**含别的用户**）连上那个口就能发
-/// `launch` / `kill` —— 以本账号的身份执行。回环 TCP 没有权限位，
-/// 补回来的只有这一把钥匙。
-#[test]
-fn a_port_without_a_token_is_refused() {
-    let e = mode_from(&env_of(&[(ENV_PORT, "51000")])).unwrap_err();
-    assert!(
-        e.contains(ENV_TOKEN_FILE),
-        "拒绝的理由里没点名 {ENV_TOKEN_FILE} —— 那句诊断说不清该去补什么：{e}"
-    );
-}
-
-/// 有钥匙文件没口 ⇒ 也拒，且**不静默退回 stdio**。
-#[test]
-fn a_token_without_a_port_is_refused_loudly() {
-    let e = mode_from(&env_of(&[(ENV_TOKEN_FILE, "/h/.cc-monitor/listen-token")])).unwrap_err();
-    assert!(e.contains(ENV_PORT), "{e}");
-}
-
-/// 端口 0 与不是数字的都要拒 —— 0 会让内核随机挑口，而宿主等在算好的那个口上。
-#[test]
-fn port_zero_and_garbage_are_refused() {
-    let f = (ENV_TOKEN_FILE, "/t");
-    assert!(mode_from(&env_of(&[(ENV_PORT, "0"), f])).is_err());
-    assert!(mode_from(&env_of(&[(ENV_PORT, "no"), f])).is_err());
-    assert!(mode_from(&env_of(&[(ENV_PORT, "70000"), f])).is_err());
-}
-
-/// 空串按「没设」算 —— shell 里 `export X=` 是常态。
-#[test]
-fn empty_strings_count_as_unset() {
+fn the_resident_switch_is_empty_one_or_refused() {
+    assert_eq!(mode_from(&env_of(&[])).unwrap(), Mode::Stdio);
     assert_eq!(
-        mode_from(&env_of(&[(ENV_TOKEN_FILE, "  ")])).unwrap(),
+        mode_from(&env_of(&[(ENV_RESIDENT, "  ")])).unwrap(),
         Mode::Stdio
     );
-    assert!(mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN_FILE, " ")])).is_err());
-}
-
-/// 两个都在 ⇒ 常驻；钥匙**只认文件**：从前那个直接装钥匙的变量删了，环境里给了它也不认（不起、不当钥匙用）。
-#[test]
-fn both_present_gives_listen_mode() {
-    let m = mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN_FILE, "/h/k")])).unwrap();
     assert_eq!(
-        m,
-        Mode::Listen {
-            port: 51000,
-            token_file: "/h/k".into()
-        }
+        mode_from(&env_of(&[(ENV_RESIDENT, "1")])).unwrap(),
+        Mode::Listen
     );
-    assert!(
+    for bad in ["0", "yes", "true", "2"] {
+        let e = mode_from(&env_of(&[(ENV_RESIDENT, bad)])).unwrap_err();
+        assert!(e.contains(ENV_RESIDENT), "拒绝的理由没点名开关：{e}");
+    }
+    assert_eq!(
         mode_from(&env_of(&[
-            (ENV_PORT, "51000"),
-            ("CCM_LISTEN_TOKEN", "s3cret")
+            ("CCM_LISTEN_PORT", "51000"),
+            ("CCM_LISTEN_TOKEN_FILE", "/h/k")
         ]))
-        .is_err(),
-        "钥匙装在环境变量里还起了 —— 那把钥匙会被它起的每个进程继承"
+        .unwrap(),
+        Mode::Stdio,
+        "旧的两个变量还在起作用"
     );
 }
 
 /// attach 行可带这条连接的流模式旗标：缺 ⇒ 用进程默认；只认 `STREAM_FLAGS` 里那几个，别的一律当 malformed。
 #[test]
 fn attach_flags_are_optional_closed_and_per_connection() {
-    assert_eq!(attach_flags(r#"{"attach":"t"}"#), Ok(None));
+    assert_eq!(attach_flags(r#"{"attach":true}"#), Ok(None));
     assert_eq!(
-        attach_flags(r#"{"attach":"t","flags":["--tail-only","--with-pid","--with-raw"]}"#),
+        attach_flags(r#"{"attach":true,"flags":["--tail-only","--with-pid","--with-raw"]}"#),
         Ok(Some(crate::StreamWants {
             with_bg: false,
             tail_only: true,
@@ -97,66 +57,44 @@ fn attach_flags_are_optional_closed_and_per_connection() {
         }))
     );
     assert_eq!(
-        attach_flags(r#"{"attach":"t","flags":[]}"#),
+        attach_flags(r#"{"attach":true,"flags":[]}"#),
         Ok(Some(crate::StreamWants::default())),
         "空表 = 一个都不要（老后端那一形），不是「用默认」"
     );
     assert_eq!(
-        attach_flags(r#"{"attach":"t","flags":["--search"]}"#),
+        attach_flags(r#"{"attach":true,"flags":["--search"]}"#),
         Err(())
     );
     assert_eq!(
-        attach_flags(r#"{"attach":"t","flags":"--tail-only"}"#),
+        attach_flags(r#"{"attach":true,"flags":"--tail-only"}"#),
         Err(())
     );
 }
 
-/// ★ 三张脸各判一次，且**错的 token 不许被判成 `Malformed`** ——
-/// 两者的处置一样（都拒），但诊断不一样，而诊断是这条路上唯一能查的东西。
+/// attach 行只判形状：`{"attach":true}`（可带 `flags`）才要流；钥匙串、数字、缺字段、不是 JSON 都是 malformed。
 #[test]
-fn attach_verdicts_are_three_distinct_faces() {
+fn attach_verdicts_judge_the_shape_only() {
+    assert_eq!(attach_verdict("{\"attach\":true}"), Verdict::Attach);
+    assert_eq!(attach_verdict("{\"attach\":true}\n"), Verdict::Attach);
     assert_eq!(
-        attach_verdict("{\"attach\":\"good\"}", "good"),
+        attach_verdict("{\"attach\":true,\"flags\":[\"--tail-only\"]}"),
         Verdict::Attach
     );
-    assert_eq!(
-        attach_verdict("{\"attach\":\"bad\"}", "good"),
-        Verdict::WrongToken
-    );
-    assert_eq!(attach_verdict("not json", "good"), Verdict::Malformed);
-    assert_eq!(attach_verdict("{\"attach\":1}", "good"), Verdict::Malformed);
-    assert_eq!(attach_verdict("{}", "good"), Verdict::Malformed);
-    // 尾随换行/空白要吃掉：`read_line` 给的就是带 `\n` 的那一行。
-    assert_eq!(
-        attach_verdict("{\"attach\":\"good\"}\n", "good"),
-        Verdict::Attach
-    );
+    for bad in [
+        "{\"attach\":\"0123456789abcdef0123456789abcdef\"}",
+        "{\"attach\":false}",
+        "{\"attach\":1}",
+        "{}",
+        "not json",
+    ] {
+        assert_eq!(attach_verdict(bad), Verdict::Malformed, "{bad}");
+    }
 }
 
-/// ★★ **空 token 永远配不上**。
-///
-/// 少了这一格，钥匙文件万一读出空串（或者哪天有人放宽了上面那条），
-/// 客户端发 `{"attach":""}` 就直接过 —— 而那看起来是「认证通过」。
-#[test]
-fn an_empty_token_never_matches() {
-    assert!(!tokens_match("", ""));
-    assert_eq!(attach_verdict("{\"attach\":\"\"}", ""), Verdict::WrongToken);
-}
-
-/// ★ 前缀 / 后缀 / 大小写都不许当成对。
-#[test]
-fn tokens_match_is_exact() {
-    assert!(tokens_match("abc", "abc"));
-    assert!(!tokens_match("ab", "abc"));
-    assert!(!tokens_match("abcd", "abc"));
-    assert!(!tokens_match("ABC", "abc"));
-}
-
-/// ★★ **分档表逐格钉死**。多客户：钥匙对上就交流（不再有「口被占着」那一格）。
+/// 分档表逐格钉死：形状对就交流（多客户，不看有没有人占着）；不对就拒、理由是 malformed。
 #[test]
 fn the_two_tier_split_is_pinned_cell_by_cell() {
     assert_eq!(admit(Verdict::Attach), Admit::Stream);
-    assert_eq!(admit(Verdict::WrongToken), Admit::Refuse(REFUSE_AUTH));
     assert_eq!(admit(Verdict::Malformed), Admit::Refuse(REFUSE_MALFORMED));
 }
 
@@ -166,7 +104,7 @@ fn the_two_tier_split_is_pinned_cell_by_cell() {
 /// 那行就不可能被撕开；哪天有人改成 `refusal_line(&err.to_string())`，本条当场红。
 #[test]
 fn refusal_reasons_are_a_closed_set() {
-    for r in [REFUSE_BUSY, REFUSE_AUTH, REFUSE_MALFORMED] {
+    for r in [REFUSE_MALFORMED, REFUSE_ABSENT, REFUSE_UNREACHABLE] {
         let line = refusal_line(r);
         assert!(line.ends_with('\n'), "NDJSON 每行必须以换行收尾：{line:?}");
         let v: serde_json::Value =
@@ -182,6 +120,7 @@ fn refusal_reasons_are_a_closed_set() {
     //    ⇒ 那个循环**跑零圈**，是个**空转**的判据。
     //    它读起来完全正常，而它一个字节都没在守。⇒ 人群搬到真正的调用点。
     //    ★ 这是本轮「守卫范围 ≠ 性质范围」那一族的第四形：**人群画在了错的文件上**。
+    // 小中继（`control/resident.rs`）那一处由下面另一段钉。
     let caller =
         crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
     let calls: Vec<&str> = caller
@@ -207,6 +146,30 @@ fn refusal_reasons_are_a_closed_set() {
         caller.contains("listen::Admit::Refuse(reason)"),
         "`main.rs` 里那个 `reason` 不再是从 `Admit::Refuse` 解出来的 —— \
              那它是从哪来的？闭集这件事就断在这里。"
+    );
+    // 小中继那一处：实参是 `relay_refusal` 的答（只回两个常量）。
+    let relay = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/resident.rs"
+    ));
+    let relay_calls: Vec<&str> = relay
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.contains("refusal_line("))
+        .collect();
+    assert_eq!(relay_calls.len(), 1, "{relay_calls:?}");
+    assert!(relay_calls[0].contains("refusal_line(reason)"));
+    assert!(relay.contains("let reason = relay_refusal(e.kind());"));
+    assert_eq!(
+        crate::control::resident::relay_refusal(std::io::ErrorKind::NotFound),
+        REFUSE_ABSENT
+    );
+    assert_eq!(
+        crate::control::resident::relay_refusal(std::io::ErrorKind::ConnectionRefused),
+        REFUSE_ABSENT
+    );
+    assert_eq!(
+        crate::control::resident::relay_refusal(std::io::ErrorKind::PermissionDenied),
+        REFUSE_UNREACHABLE
     );
 }
 
@@ -327,24 +290,6 @@ fn the_ok_line_is_one_valid_ndjson_line() {
     assert_eq!(v["attach"], "ok");
 }
 
-/// ★★ **只听回环** —— 与 `relay::server` 那条同一个理由，同一个形状。
-///
-/// 它单独存在时是安慰剂（`bind_guard` 头注自陈过），所以行为那半由
-/// `tests/e2e/local-backend-supervise.sh` 的真进程用例兜。
-#[test]
-fn the_listen_address_is_loopback_and_it_is_a_literal() {
-    use crate::common::net::LOOPBACK;
-    use std::net::{IpAddr, Ipv4Addr};
-    assert_eq!(LOOPBACK, IpAddr::V4(Ipv4Addr::LOCALHOST));
-    assert!(!LOOPBACK.is_unspecified(), "0.0.0.0 = 全网可达");
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/common/net.rs"));
-    assert!(
-        prod.contains("IpAddr::V4(Ipv4Addr::LOCALHOST)"),
-        "回环地址不再是一个**字面量**常量 —— 拼出来的地址源码扫描看不见"
-    );
-}
-
 /// ★★ **超限之后内存不涨** —— 这条性质只有把 `cap` 做成参数才测得动。
 ///
 /// 拿真常量（8 KiB）来测的话，要喂进去的字节量大到只能靠量 RSS 去证，
@@ -369,10 +314,10 @@ async fn the_three_handshake_line_outcomes_are_each_reachable() {
         HandshakeLine::Eof
     );
 
-    let mut one = tokio::io::BufReader::new(&b"{\"attach\":\"t\"}\n"[..]);
+    let mut one = tokio::io::BufReader::new(&b"{\"attach\":true}\n"[..]);
     assert_eq!(
         read_capped_line(&mut one, 64).await.expect("读"),
-        HandshakeLine::Line("{\"attach\":\"t\"}".into())
+        HandshakeLine::Line("{\"attach\":true}".into())
     );
 
     // 没有换行就 EOF：仍当一行交出去（`read_line` 的旧行为逐字如此）。
@@ -383,7 +328,7 @@ async fn the_three_handshake_line_outcomes_are_each_reachable() {
     );
 }
 
-/// 两个退出码不许撞：宿主按它们分「口被占着」与「配置写错了」两条不同的路。
+/// 两个退出码不许撞：宿主按它们分「已有人在听」与「配置写错了」两条不同的路。
 #[test]
 fn the_two_exit_codes_are_distinct_and_nonzero() {
     assert_ne!(EXIT_ADDR_IN_USE, EXIT_BAD_LISTEN_CONFIG);

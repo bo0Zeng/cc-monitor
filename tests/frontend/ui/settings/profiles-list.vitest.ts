@@ -224,16 +224,19 @@ describe("buildProfilesList", () => {
   });
 
   it("写坏的那一段标「现在不能用」、摘要换成后端原话；TOML 写坏 ⇒ 清单换成一张卡、没有表单入口", async () => {
-    book.profiles[3] = row("teamcct", "cct", { usable: false, problem: { line: 23, message: "第 23 行：未知选项 tmux-sise" } });
+    book.profiles[3] = row("teamcct", "cct", { usable: false, problem: { line: 23, message: "第 23 行：未知选项 tmux-sise", detail: null } });
     const { el } = await mount();
     const b = el.querySelector<HTMLElement>('.prof-trow[data-name="teamcct"]')!;
     expect(b.textContent).toContain(copyText("profilesPage.chip.unusable"));
     expect(b.textContent).toContain("第 23 行：未知选项 tmux-sise");
     document.body.replaceChildren();
-    book.fileProblem = { line: 3, message: "坏了" };
+    book.fileProblem = { line: 3, message: "坏了", detail: "原话：expected `]`" };
     book.profiles = [];
     const again = await mount();
-    expect(again.el.querySelector('[data-role="file-problem"]')!.textContent).toContain(copyText("profilesPage.file.at", { line: "3", e: "坏了" }));
+    const card = again.el.querySelector<HTMLElement>('[data-role="file-problem"]')!;
+    expect(card.textContent).toContain(copyText("profilesPage.file.at", { line: "3", why: "坏了" }));
+    expect(card.textContent, "原话不上屏").not.toContain("expected");
+    expect(card.querySelector('[data-part="copy-detail"]'), "有详情 ⇒ 句子后面跟［复制详情］").not.toBeNull();
     expect([...again.el.querySelectorAll("button")].map((x) => x.textContent)).not.toContain(copyText("profilesPage.list.add"));
   });
 

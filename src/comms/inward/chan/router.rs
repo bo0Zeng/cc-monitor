@@ -1,45 +1,39 @@
-//! 通道 · **路由器**：一条已经接进来的连接 ⇒ 认证 ⇒ 按 `origin` 把 `call` / `subscribe` 转给注入的句柄。
+//! 通道 · **路由器**：一条已经接进来的连接 ⇒ 按 `origin` 把 `call` / `subscribe` 转给注入的句柄。
+//! 谁能连上由宿主那一侧的系统给（今天是 monitor 起的窗口进程的父子管道），本文件不认证、没有钥匙。
 //!
 //! # 🔴 纯路由器：它**不做**的事，逐条
 //!
-//! - **不绑端口、不 `accept`**（`C5`）：宿主绑回环、`accept`，把接到的连接交给 [`serve`]
-//!   —— 与面 B 那个先例同形（「由**后端** `bind`/`listen`……把 `accept`
-//!   到的连接交给面 B；面 B 只有 `serve(stream)`」）。
-//! - **不读盘、不读环境变量、不造钥匙**（`C4`）：钥匙、帧长上限、认证等待时长全在 [`Terms`] 里，
-//!   由宿主交进来。
+//! - **不起进程、不接管子**（`C5`）：宿主把那一对读写半边交给 [`serve`]。
+//! - **不读盘、不读环境变量**（`C4`）：帧长上限在 [`Terms`] 里，由宿主交进来。
 //! - **不解释 `op` / `kind` / 载荷**（`C1`）：它们只被原样交给 [`Backends`]。
 //!   「这个 `origin` 今天由谁服务」「那台机器看不看得见」也不在这里判 —— 那是句柄的活。
 //! - **不排队、不重试**（通信层不知道重发一次安不安全）。
 //!
 //! # 它做的事
 //!
-//! 1. **认证**：第一帧必须是 `Hello{key}`，钥匙比对通过才回 `Welcome`；否则回 `Denied` 并关连接。
-//!    认证之前一帧业务都不收（`Hello` 之前来的任何东西都等同于认证失败）。
-//! 2. **配对**：客户端给每个 `call` / `subscribe` 一个编号，路由器只拿它配对应答。
-//! 3. **撤单**：`Cancel{id}` / `Stop{id}` / 连接断开 ⇒ 对应的撤单手柄拨下去（句柄那一侧是尽力）。
-//! 4. **期限执行**（「执行归通信层」）：线上来的是「还剩多少」，路由器按它给
+//! 1. **配对**：客户端给每个 `call` / `subscribe` 一个编号，路由器只拿它配对应答。
+//! 2. **撤单**：`Cancel{id}` / `Stop{id}` / 连接断开 ⇒ 对应的撤单手柄拨下去（句柄那一侧是尽力）。
+//! 3. **期限执行**（「执行归通信层」）：线上来的是「还剩多少」，路由器按它给
 //!    句柄的那一跳装一个上界；超了回 `Hop{at: 第 1 跳 wait, reach: Unknown, why: Overrun}`。
 //!    🔴 路由器**不造**绝对时刻往下传 —— 它交给句柄的就是那段「还剩多少」。
-//! 5. **背压**（级 1）：订阅流按客户端给的 credit（`want`）取，credit 用完就**不取**，
+//! 4. **背压**（级 1）：订阅流按客户端给的 credit（`want`）取，credit 用完就**不取**，
 //!    句柄那一侧的流于是被回推；**零处丢弃**，也就不需要 `Gap`（`Gap` 只在句柄自己丢了时由它原位给出）。
 //!
 //! # 买到什么
 //!
 //! - 一条**进程外**的前端第一次能用 `call` / `subscribe` 两个动作走到后端，
 //!   而路由器身上零业务、零读盘、零起进程、零期限常量（十一条判据现打）。
-//! - 没过认证的连接**一帧业务都进不来**（判据里有一个拿错钥匙的假客户端）。
 //!
 //! # 买不到什么
 //!
 //! - **不买「那个 `origin` 真的有人服务」** —— 句柄说没有，就是 `Hop{第 1 跳 open, NotSent, Unreachable}`。
 //! - **不买对端撤活成功**（只是尽力）。
 //! - **不买连接级重连** —— 这条连接一断，客户端那一侧的订阅得到 `Unseen`，之后不会自己回来；
-//!   重拨归拿着地址与钥匙的那一方（外部前端的宿主），不归本文件。
-//! - **不买「钥匙本身够不够随机」** —— 钥匙由宿主造，本文件只比对。
+//!   重起归起外部前端的那一方（宿主），不归本文件。
 
 use super::wire::{
     err_to_wire, item_to_wire, read_frame, write_frame, Body, By, CallError, CancelToken, Cursor,
-    Head, HopFault, HopId, Item, Key, Kind, Offer, Op, Origin, OursFault, Reach, ReadFault,
+    Head, HopFault, HopId, Item, Kind, Offer, Op, Origin, OursFault, Reach, ReadFault,
 };
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
@@ -81,21 +75,15 @@ pub trait Backends: Send + Sync {
 /// 宿主交进来的全部条件（`C4`：一个都不由路由器自己去拿）。
 #[derive(Clone)]
 pub struct Terms {
-    /// 连接者要出示的那把钥匙。
-    pub key: Key,
     /// 帧头 / 帧体各自的字节上限。
     pub frame: usize,
-    /// 连上之后多久之内必须出示钥匙。
-    pub hello_within: Duration,
 }
 
-/// 一条连接为什么结束了（给宿主记一行日志用；**不含钥匙**）。
+/// 一条连接为什么结束了（给宿主记一行日志用）。
 #[derive(Debug)]
 pub enum Ended {
     /// 对面正常走了。
     Left,
-    /// 没过认证（钥匙不对 / 第一帧不是 `Hello` / 限时内没出示）。
-    Denied,
     /// 对面没按协议说话，或读写出错。
     Broken(String),
 }
@@ -119,28 +107,12 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// **服务一条已经接进来的连接**，直到它结束。
 ///
-/// 宿主 `accept` 之后把连接交进来（`C5`）；每条连接各跑一份，彼此不共享状态。
-pub async fn serve<S>(io: S, terms: Terms, backends: Arc<dyn Backends>) -> Ended
+/// 宿主把那一对读写半边交进来（`C5`）；每条连接各跑一份，彼此不共享状态。
+pub async fn serve<R, W>(mut rd: R, mut wr: W, terms: Terms, backends: Arc<dyn Backends>) -> Ended
 where
-    S: AsyncRead + AsyncWrite + Send + 'static,
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
 {
-    let (mut rd, mut wr) = tokio::io::split(io);
-
-    // ── ① 认证：第一帧必须是 `Hello`，钥匙对得上。之前什么都不收。
-    let first = tokio::time::timeout(terms.hello_within, read_frame(&mut rd, terms.frame)).await;
-    let passed = match first {
-        Ok(Ok((Head::Hello { key }, _))) => terms.key.matches(&key),
-        Ok(Ok(_)) | Ok(Err(_)) | Err(_) => false,
-    };
-    if !passed {
-        // 回一帧 `Denied` 是给正经客户端一个准话；写不出去也无妨，连接照关。
-        write_frame(&mut wr, &Head::Denied, &[]).await.ok();
-        return Ended::Denied;
-    }
-    if let Err(e) = write_frame(&mut wr, &Head::Welcome, &[]).await {
-        return Ended::Broken(format!("回 Welcome 写不出去：{e}"));
-    }
-
     // ── ② 写出去的一律经这一条队列（只有写任务碰写半边，帧不会交错）。
     //    队列满了发送方**等**（回推），不丢。
     let (tx, mut rx) = mpsc::channel::<Out>(16);
@@ -224,12 +196,7 @@ where
                     credit.add_permits(more as usize);
                 }
             }
-            Head::Hello { .. }
-            | Head::Welcome
-            | Head::Denied
-            | Head::Done { .. }
-            | Head::Failed { .. }
-            | Head::Next { .. } => {
+            Head::Done { .. } | Head::Failed { .. } | Head::Next { .. } => {
                 break Ended::Broken("客户端发来了一帧只该由路由器发的头".to_string());
             }
         }

@@ -201,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放；`launch-pending/` 由 `ccm` 最终那一跳写、观测侧清；`known_hosts` 由拨号侧写） | 一台机器一个家：后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上）· 离线那台的上次值（再连上一次就有）· 起会话便条（进程退出即清）· 主机钥匙（下次拨号按固化的指纹再认下）· 配置文件上次经 cc-monitor 写出时的指纹（删了只是下次不说「手改过」） |
-| `relay-key` `relay-pass-key` `listen-token` `listen-<口>.pid` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的三把钥匙（中转两把 · 监听口一把）与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 计划要你看里认可过的几条与退回过的格 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端（`run/` 里的套接字与进程记录由常驻后端自己写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的中转钥匙与常驻后端的套接字和进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「待办」里点过「不用了」的几件与选了自己贴的那份启动文件 · 计划需手动里认可过的几条与退回过的格 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 各会话由谁起的（删了 ⇒ 之后新起的子会话认不出父，不再默认跟随父会话）· 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -385,7 +385,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 15. logging 子系统失败不能阻塞 monitor 启动
 
-`logging::init()` 在 `tauri::Builder` 之前调用（tracing 全局 dispatcher 必须在 Builder 之前 init）。它内部做的所有事情——创建 logs 目录、构造 rolling appender、注册 ErrorEmitterLayer——**任一失败都必须 fallback 到 stdout-only，让 monitor 仍能起来**。
+`logging::init()` 在 `tauri::Builder` 之前调用（tracing 全局 dispatcher 必须在 Builder 之前 init）。它内部做的所有事情——创建 logs 目录、构造 rolling appender——**任一失败都必须 fallback 到 stdout-only，让 monitor 仍能起来**。
 
 - log 目录创建失败 → `eprintln!` 报错，file layer = None，subscriber 仍 init 但只发到 stdout
 - rolling appender 构造失败（罕见——磁盘满 / NTFS quota）→ 同上
@@ -453,7 +453,7 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 **应用范围**：
 - `sessions/<PID>.json` (`session_map::SessionInfo`) —— procStart 字段在 v2.6 后端按 `Option<String>` 反序列化；调用点用 `utils::NetTicks::parse_str` 转 typed value 比较。同样 wire 字符串可缺，Rust 内部用 newtype 隔离避免跟 `bind.rs::HwndEntry.owner_proc_start` (FILETIME) 单位混用
 - `tasks/<sid>/<id>.json` (`tasks::TaskEntry`) — 已经按宽容处理
-- `projects/**/*.jsonl` 的 `messages::JsonlRecord` enum — 非核心字段一律 `Option`/`default`。**未知 type 的处理见 § 18.1（F63 起变了）**。
+- `projects/**/*.jsonl` 的 `agents/claudecode/schema.rs::JsonlRecord` enum — 非核心字段一律 `Option`/`default`。**未知 type 的处理见 § 18.1（F63 起变了）**。
 - 未来添加任何 Claude Code 数据源读取一律照此办
 
 ### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`（F63 / issue #49）
@@ -463,7 +463,7 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 1. **未知 `type`** → serde 落到 `#[serde(other)] Unknown`。**`Unknown` 现在只是 serde 落点，绝不出 `parse_line`**（后端适配层 `src/backend/agents/claudecode/parse.rs`） —— 它被抢救成 `JsonlRecord::Unrecognized`（留 `raw` 原文 + `uuid`/`parentUuid`/`timestamp`）。
 2. **已知 `type` 但字段解析失败**（`from_str` 返回 Err）且原文仍是合法 JSON → 同样抢救成 `Unrecognized`（`reason="parse-failed: …"`，并 `tracing::warn` 一条）。只有**连 JSON 语法都不成立**的行才仍返回 `Err`。
 
-**为什么**：记录一旦静默消失，它的 children 的 `parentUuid` 就指向集合外 → `branching.ts:100-106` 判孤儿 root → 死胡同 plain user root **整棵误折叠**（`branching.ts:24` 早预警、2026-06-13 咬过一次）。`Unrecognized` **带链身份（`uuid` / `parentUuid`）的**进 `is_displayable()` 白名单（没有链身份的不进前端：前端没有它的读者，也不会让别人成孤儿；新类型仍由 `drift_ledger` 报出，不静默）（照 `Attachment` 先例：不建卡但进链）；前端 `branching.ts::extractBranchRecord` 白名单含 `"cc-monitor-unrecognized"`。
+**为什么**：记录一旦静默消失，它的 children 的 `parentUuid` 就指向集合外 → 主线判定（后端 `agents/mainline.rs`）当孤儿 root → 死胡同那一支 **整棵误判成回退掉的**（2026-06-13 咬过一次）。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都由 `chain.rs` 读原文进链（照 `Attachment` 先例：不出通用记录但进链）；没有链身份的不出记录、也不会让别人成孤儿；新类型由 `drift_ledger` 报出，不静默。
 
 **实测（F63 当时，2026-07-16）**：本机 771 会话 / 16 万行，7 个未知 type 共 ~8,800 条以前被静默丢弃（占 5.6%），**uuid 全为 0**——即此刻并没有在误折叠，F63 是**保险**（不再丢 + Claude 发带链身份新类型时自动扛住）。`cc-monitor-unrecognized` 是**本地自造信封**（前缀防撞真类型），**不是** Claude 真实 jsonl 类型、不参与两端 schema 对账。
 
@@ -542,7 +542,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`（排队消息 `
    - **已渲染集 = 尾后缀 ∪ 若干岛**；「哪些 seq 还没物化」的源头是 `SkeletonView` 的**占位集**（`isPending`），不再是 `floor`。占位与已渲染卡**不相交**：占位 `[lo,hi)` 里一张卡都没有。
    - **往占位里建卡只许经骨架**（`fillVisible` / `ensure`）—— 骨架先交给宿主建、再把占位切开。绕开它在占位中间直接 `renderRange` / `renderPayloadsBatch` ＝ 卡落进占位里、总高算两遍。
    - **只物化与视口相交的那一段**（±0.5 屏，每轮 ≤300 行、≤4 轮）；一次滚动不从尾巴往上一批批补。
-   - 占位本身是 timeline 条目（`seq = lo − 0.5`、`kind: "card"`、无 `data-uuid`）⇒ 二分插入的锚照常、工具组不跨空洞合并、`BranchFolder` 把它当断 run。
+   - 占位本身是 timeline 条目（`seq = lo − 0.5`、`kind: "card"`、无 `data-id`）⇒ 二分插入的锚照常、工具组不跨空洞合并、`BranchFolder` 把它当断 run。
    - **视口稳定**：物化与 `attachGaps` 钉住**视口里最上面那张已渲染卡**的屏幕位置（占位可能同时插在它上下两侧，ΔscrollHeight 补偿只对「全在上方」成立）；视口整个落在占位里就不补偿。同一同步任务内测 → 改 → 回写、临时 `overflow-anchor:none`、`finally` 还原（与第 3 条同一豁免类）。
    - **接之前对拍 seq 空间**（抽几条 uuid → 索引里必须同 seq），对不上就不接；接上之后再发生截断重读**不会被发现**（没有持续对拍）。
    - **正文不再驻留**：接上之后前端账本只留离尾巴最近的 `FILL_BATCH` 条、monitor 重放缓冲只留尾巴 `REPLAY_TAIL_KEEP` 条；其余滚到时按偏移要回来（`read_session_range`）——**没见过**的行走 `onLine` 全套（按重放语义：不触发自动切 tab / 轮次通知），**见过**的只建卡（旁路账早记过、去重会拒）。岛里迟到的 live 行就地建卡，占位里的照旧收纳。
@@ -2000,38 +2000,44 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 ---
 
-## 48. 本机常驻后端的宿主三条：**监听口要钥匙 · 脱离后不留僵尸 · 测试里起真后端必须 fail-closed 地隔离用户 tmux**
+## 48. 本机常驻后端的宿主三条：**门由内核给 · 脱离后不留僵尸 · 测试里起真后端必须 fail-closed 地隔离用户 tmux**
 
 三条是同一件事的三个面：常驻后端（「前端不在也活着，前端起来能**接回去**」）一旦**脱离**了起它的那个 monitor，
 **它能做的事就不再有一个父进程看着** —— 谁能连上它、它死了谁收、测试里起的那一个会不会碰到用户的东西，必须各有一条硬规矩。
 
-### 48.1 监听口要钥匙
+### 48.1 门由内核给（本人通道，没有钥匙）
 
-**性质**：常驻后端对外开的**控制口**（回环 TCP；`listen.rs`）只有出示了钥匙的连接才能拿到**流**（能发 `launch` / `kill` 的那一档）。
-「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对（前缀 / 后缀 / 大小写都不算）；
-钥匙不对、形状不对、口被占着 —— 三种拒法**出声且彼此可分**。起它的那一方只交钥匙文件的路径（`CCM_LISTEN_TOKEN_FILE`，本机远端同一种）；
-常驻后端**绑上口之后**自己生成一把新的（128 位随机）、原子写进那份 `0600` 的文件（每次起都换 ⇒ 旧环境里漏出去的那把作废；抢不到口的不碰它），
-连上来的客户端每次读那份文件；钥匙本身不进任何进程的环境。常驻后端起子进程时还把起它的那一方交给它自己的那几格环境清掉（起子进程原语 `platform/child.rs` 无条件做，名单住 `platform/child_env.rs`：
-监听口 · 钥匙文件 · 诊断文件；只有起常驻后端那一处经 `pass_own` 显式交）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
-不认证的只有 hello 那一档（只读、读完即关），它泄露 `claude_dir` / `build_id` / 能力集，这是有意的取舍（`listen.rs` 头注「诚实边界」第 1 条）。
+**性质**：常驻后端只听这台家里的一个 Unix 套接字（`<家>/run/backend.sock`，家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；路径只由共享 crate
+`relay_route_core::listen_socket_for` 算，宿主与后端同一个函数）。门由内核给：`run/` 目录只给本人（`0700`）；收下的每条连接再核一次对端 uid 与本进程相同，
+不同 ⇒ 关掉、出声、hello 都不给（共享 crate `own-chan`）。独占：在听的那一个攥着 `run/` 目录的 `flock` 独占锁，抢不到 ⇒ 带「已有人在听」的退出码退，
+绝不换个地方再起一个；锁随进程死由内核放，留下的陈旧套接字文件由下一个拿到锁的删掉重绑。没有钥匙、没有钥匙文件：
+attach 行只是「我要流」（`{"attach":true}`，可带 `flags`），形状不对 ⇒ 出声拒（`malformed-attach`）。远端经 ssh 跑 `ccm -- --resident-attach`
+小中继连那台的套接字：ssh 证明了是本人，中继在那台以本人身份连。起它的那一方只交常驻开关（`CCM_RESIDENT=1`）；常驻后端起子进程时把它和诊断文件那一格清掉
+（起子进程原语 `platform/child.rs` 无条件做，名单住 `platform/child_env.rs`：常驻开关 · 诊断文件 · `CCM_BACKEND_*` / `CCM_LISTEN_*` 两族 · 各家「我是哪个会话」的变量）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格；会话号变量漏下去，它起的会话会把起它的那个会话错当成父。
+判据 `child_tests.rs::a_child_never_inherits_the_backend_internal_families`。
+不判身份的只有 hello 那一档（连得上就是本人，读完即关）。
+**台架防真家**：沙箱跑（带 `CCM_SANDBOX=1`，或 `$HOME` 与账号数据库里的家目录不一样）却要占本账号真家目录里 `.cc-monitor` 下的门牌（家 · 诊断文件）⇒ 拒绝起。
 
-**为什么不能松动**：回环 TCP **没有权限位** —— 同机任何本地进程（**含别的用户**）连得上那个口，
-没有钥匙就能以本账号的身份起会话、杀会话。Unix socket 的文件权限在这条路上没有，补回来的**只有这一把钥匙**。
+**为什么不能松动**：回环 TCP 没有权限位，同机任何本地进程（含别的用户）连得上，从前只能靠一把钥匙补，而那把钥匙的文件会被另一个后端实例改写
+（10-08 一路台架漏清环境起了一个后端，改写了共用的钥匙文件；真常驻后端内存里认的还是旧那把，远端经 ssh 每次都被拒、永远好不了）。
+套接字的门由内核给：能连上的只有本账号自己的进程 —— 能读你家目录的本来就能以你的身份跑东西。
 
-**谁在守**：后端 `listen_tests.rs::a_port_without_a_token_is_refused` · `listen_tests.rs::a_token_without_a_port_is_refused_loudly` ·
-`listen_tests.rs::empty_strings_count_as_unset` · `listen_tests.rs::an_empty_token_never_matches` · `listen_tests.rs::tokens_match_is_exact` ·
-`listen_tests.rs::attach_verdicts_are_three_distinct_faces` · `listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell`；
+**谁在守**：后端 `listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::attach_verdicts_judge_the_shape_only` ·
+`listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell` · `listen_tests.rs::refusal_reasons_are_a_closed_set`；
+门：`own-chan` 的 `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody`；
+抢门牌：`main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket`（抢不到锁的不碰日志与套接字、目录 `0700`）·
+`resident_tests.rs::a_socket_path_over_the_cap_is_refused_out_loud`；台架防真家：`main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` ·
+`resident_tests.rs::the_sandbox_refusal_truth_table`；升级那一跳：`resident_tests.rs::upgrading_retires_the_old_resident_so_the_relay_port_frees_up`；
 不进环境：`local_backend_host_tests.rs::e2e_the_door_follows_the_home_not_the_claude_dir`（读常驻后端的 `/proc/<pid>/environ`）·
 `local_backend_host_tests.rs::e2e_children_of_the_resident_backend_carry_none_of_its_own_env` · `child_tests.rs::a_real_child_sees_only_the_own_env_passed_on_purpose` · `readonly_guard.rs::spawn_registry`（生产段 `Command::new` 只住原语）；
-换钥匙 `main_claim_tests.rs::a_late_starter_that_cannot_claim_the_port_never_touches_the_log`（抢到口的换一把、`0600`、抢不到的不碰）·
-`resident_tests.rs::the_token_is_private_fresh_each_start_and_never_handed_through_the_environment`；
-宿主那一半 `local_backend_host_tests.rs::the_listen_token_file_is_read_fresh_and_never_written_by_the_host`（每次连现读 · 空文件支 · 宿主不写）·
-`local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（口被别人占着 ⇒ 出声拒，不静默复用）。
+宿主那一半 `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` ·
+`local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（在听的不是我们这一版 / 这个家 ⇒ 出声拒，不静默复用）；
+远端：`remote_resident_tests.rs::the_relay_waits_only_while_nobody_listens` · e2e `local-backend-supervise.sh`（远端那一形：套接字 · 目录权限 · 中继接上 · 旧形状 attach 行不认 · 没人在听回 absent）。
 
-**射程**：上面几段说的是**控制口**。常驻后端今天还绑两类口，如实列：
+**射程**：上面几段说的是常驻后端的套接字。常驻后端今天还绑两类回环口，如实列：
 - **中转口**（`relay/listen.rs`，住常驻后端，本机远端同形）**也要钥匙**，见下面 48.1a。
 - **端口转发**（`dial/uses.rs`）是用户自己配的 `ssh -L` 语义，本就不设钥匙。
-- 文件管理器那条回环通道（`chan/host.rs`）有钥匙，但住 monitor，由管，是本条的同形邻居。
+- 文件窗口那条通道不监听：它是 monitor 起的窗口进程的 stdin / stdout（父子管道，`chan/host.rs::serve_window`），没有钥匙。
 
 #### 48.1a 中转口的钥匙
 
@@ -2040,7 +2046,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 路径第一段不是钥匙（没有 / 错 / 前缀 / 多一截 / 大小写不同 / 空段）⇒ **403**，比对定长时间（与控制口同一份 `listen::tokens_match`）。
 钥匙只认路径第一段（请求头里的不认）。
 过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
-**门上两把钥匙**：全权那一把（`~/.cc-monitor/relay-key`）`/s/` `/t/` 都开；**只许直通**那一把（`~/.cc-monitor/relay-pass-key`，同一个铸法、同样 `0600`）只开 `/t/`，
+**一把根钥匙，门上两个范围**：全权那一把（根钥匙，`~/.cc-monitor/relay-key`，盘上唯一一份）`/s/` `/t/` 都开；**只许直通**那一把不落盘，由根钥匙派生（`relay/key.rs::pass_of`：`HMAC-SHA256(根钥匙, "ccm-relay/t")`，门上与 `ccm` 插地址同一个函数）只开 `/t/`，
 打 `/s/` ⇒ **403**、原因头 `key-scope`（路由认出来就判，在读请求体与问上游选择之前）。
 只许直通那一把**能做的**：经 `/t/` 把请求原样转给那一家的默认上游 —— 中转在 `/t/` **永不代入凭据**，请求得自己带登录头；
 **不能做的**：碰 `/s/`（代入账号库那几行 API key 的那一形）。
@@ -2051,7 +2057,7 @@ argv 同机别的用户读得到、那一家还会把地址原样写进它自己
 拿不到钥匙 ⇒ **不起**（出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
 **钥匙只从那份文件进 agent 进程自己的 env**：交给终端的那一行 `ccm …` 不带中转地址也不带钥匙；`ccm` 直路在自己进程里读那份文件、拼进 agent 进程的环境再 exec，
 地址只能拼进参数的那一家（`Inject::Args`）：参数里那条地址插的是只许直通那一把（`ccm` exec 那一刻插；直接敲的那一家贴进配置的那一行也是这一把，两处地址一模一样）；
-非得经 shell 那一趟（与 `--ccm-print` 预览同形）把钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`（参数里那一形写 `relay-pass-key`）、在那台机器的 shell 里展开
+非得经 shell 那一趟（与 `--ccm-print` 同形）把全权那一把的钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`、在那台机器的 shell 里展开（参数里那一形照字面插只许直通那一把：它本来就进 argv；设置窗那份预览不读钥匙、写成不带钥匙的地址）
 ⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、成品应答里也没有它。
 **唯一的例外**：用户自己选「让直接敲的 claude 也走中转」时（设置文件里写不了 `$(cat …)`），帧命令 `relay-optin` 的成品带着要贴的那一段 ——
 钥匙在里面、进界面、经用户的剪贴板由用户自己合并进 `~/.claude/settings.json`（界面上逐条写明的代价之一）。只这一条成品、只在没装 / 过期时带（已装不带）、
@@ -2110,12 +2116,11 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 **违反过几次**（三条合计）：
 1. **tmux 隔离**：08-11 同族事故打没了用户 **9 个**真实会话（`TMUX_TMPDIR=… tmux kill-server`，被 `$TMUX` 压过）；08-13 `backend-cc-bus.sh` 照着过期注释省掉 shim，
    两个夹具会话落到用户默认 socket；08-26 实现常驻后端期间手工起真后端做冒烟，把用户那台 server 的 `[50]` 整个盖成了那个进程的 pid；08-27 / 08-29 各又盖过一次。
-2. **钥匙**：真放进来过的 0 次；「没人守」被量到过一次（`K-P1` 回修 `阻-4`）：钥匙文件的 `0600` · 竞态支 · 空文件支三格零覆盖，
-   空文件那一支两条路合成闭环、每次都交出空钥匙（后端按「有口没钥匙」拒起 —— 方向是 fail-closed，代价是常驻起不来且自己好不了）。
+2. **门**：从前那把钥匙（回环 TCP 时代）真放进来过的 0 次；被另一个实例改写过一次（10-08 台架漏清环境），远端从此一直被拒 —— 换成本人通道、钥匙删掉。
 3. **僵尸**：未见真违反的记录；这一条是 `KPY3` 立的 DoD。
 
 ⚠ **它买不到的**：
-- **中转口没有钥匙**（见 48.1 射程），本条对它不说话。
+- **中转口的钥匙**见 48.1a，本条对它不说话。
 - **只量了 Linux**：僵尸那条是 `#[cfg(target_os = "linux")]`；Windows 上脱离的形态与收尸没有真机判据（`RT1` 虚拟机那一路的射程）。
 - 48.3 的人群是「起**真后端二进制**的测试」＋「进程内走到 `identity_tag::tag` 的测试」。直接起 tmux server 而不起后端的测试（例：`watcher_tests.rs` 那条 pidfd 判据自带 `-L`）不在人群里，各自隔离、没有一条人群判据管。
 - 进程内那一族只守 `identity_tag` 这一个口：别的生产代码进程内直接起 `tmux`（例：`gate::probe` 的 `admit` 路、`watch_loop` 的探测与装 hook）不经它 —— 今天没有测试进程内走到那几处（`watch_loop` 整条不在单测里起）。

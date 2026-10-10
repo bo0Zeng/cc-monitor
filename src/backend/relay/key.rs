@@ -15,10 +15,16 @@
 //!
 //! `ccm` 在最终 exec 那一处照那一家的注入格（`agents::Inject`）做：认地址环境变量的那一家，直路在自己进程里读这个文件、
 //! 把钥匙拼进那个变量（经本文件 [`keyed_with_key_on_disk`]）；地址只能拼进参数的那一家，拼进参数的是插了**只许直通那一把**
-//! （[`KeyKind::Pass`]，`relay_route_core::PASS_KEY_FILE_REL`）的地址。非得经 shell 那一趟写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`
+//! （[`KeyKind::Pass`]，[`pass_of`] 从根钥匙派生）的地址。非得经 shell 那一趟：全权那一把写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`，
+//! 只许直通那一把在 `ccm` 里现算、照字面写进那个词（它本来就进 argv）
 //! （`control/ccm/plan.rs::relay_export`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
 //! ⇒ 全权那一把只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、webview 里都没有它。
 //! 只许直通那一把会进那一家的 argv 与它自己的日志 —— 它只开得了 `/t/`（永不代入凭据），见 `comms_outward::door`。
+//!
+//! # 一把根钥匙，两个范围
+//!
+//! 盘上只有一份文件（全权那一把，根钥匙）。只许直通那一把**不落盘**：从根钥匙派生（[`pass_of`]：`HMAC-SHA256(根钥匙, "ccm-relay/t")`
+//! 的 64 位小写十六进制）—— 门上与 `ccm` 插地址用的是同一个函数。漏出去的那一把推不回根钥匙。
 //! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 
 use comms_outward::Key;
@@ -29,7 +35,7 @@ use std::path::{Path, PathBuf};
 /// `ccm` 读钥匙 / 渲 `$(cat ~/…)` 用的也是同一个 const。
 pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
-/// 盘上两把钥匙里的哪一把。
+/// 哪一个范围的钥匙。盘上只有全权那一把（根钥匙）；只许直通那一把从它派生（[`pass_of`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyKind {
     /// 全权（`/s/` 与 `/t/`）。
@@ -38,24 +44,38 @@ pub(crate) enum KeyKind {
     Pass,
 }
 
-impl KeyKind {
-    /// 这一把住家目录底下哪儿。
-    pub(crate) fn file_rel(self) -> &'static str {
-        match self {
-            KeyKind::Full => KEY_FILE_REL,
-            KeyKind::Pass => relay_route_core::PASS_KEY_FILE_REL,
-        }
-    }
-}
-
 /// 钥匙的熵：32 字节 = 256 位（要求 ≥128 位）。落盘是 64 个小写十六进制字符。
 const KEY_BYTES: usize = 32;
 
-/// 这台机器上那一把钥匙文件的路径：家目录（`platform::paths::home_dir_from`）底下那一份。
+/// 派生只许直通那一把时用的标签（换了它，已经发出去的只许直通地址全部作废）。
+const PASS_LABEL: &[u8] = b"ccm-relay/t";
+
+/// 这台机器上根钥匙那份文件的路径：家目录（`platform::paths::home_dir_from`）底下那一份。
 /// 取值器是注入的 ⇒ 判据喂夹具家目录，不碰进程环境。
-pub(crate) fn key_path(get: &dyn Fn(&str) -> Option<String>, kind: KeyKind) -> Option<PathBuf> {
+pub(crate) fn key_path(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
-    Some(home.join(kind.file_rel()))
+    Some(home.join(KEY_FILE_REL))
+}
+
+/// 只许直通那一把：`HMAC-SHA256(根钥匙, "ccm-relay/t")` 的 64 位小写十六进制。门上与 `ccm` 插地址同一个函数（纯函数）。
+pub(crate) fn pass_of(full: &Key) -> Key {
+    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, full.expose().as_bytes());
+    let tag = ring::hmac::sign(&k, PASS_LABEL);
+    let hex: String = tag.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    Key::from_text(&hex).expect("HMAC-SHA256 的 32 字节写成 64 位小写十六进制，形状恒对")
+}
+
+/// 根钥匙 ⇒ 那个范围的那一把。
+pub(crate) fn scoped(full: Key, kind: KeyKind) -> Key {
+    match kind {
+        KeyKind::Full => full,
+        KeyKind::Pass => pass_of(&full),
+    }
+}
+
+/// 这台盘上根钥匙派生出来的只许直通那一把（[`pass_of`]）的串；读不到 ⇒ `None`（**只读**）。
+pub(crate) fn pass_key_on_disk(home: &Path) -> Option<String> {
+    read_key(&home.join(KEY_FILE_REL)).map(|full| pass_of(&full).expose().to_string())
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
@@ -69,7 +89,7 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
 /// （环境变量里的、参数里的、用户自己贴进设置文件的那一段 —— 那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
 pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> Option<String> {
-    let key = read_key(&home.join(kind.file_rel()))?;
+    let key = scoped(read_key(&home.join(KEY_FILE_REL))?, kind);
     relay_route_core::keyed_base_url(url, key.expose())
 }
 

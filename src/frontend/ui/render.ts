@@ -281,11 +281,14 @@ function escapeHtml(s: string): string {
  * 补卡片里惰路留下的占位：代码块（`.code-block.code-pending`）跑高亮，数学（`[data-math-pending]`）算 KaTeX、过同一道清洗、原位替换。
  * 幂等：标 `data-enhanced`；没有占位时一次 querySelector 就返回。
  */
+/** 惰路留下的占位：等着高亮的代码块 · 等着排版的公式。 */
+const PENDING = ".code-block.code-pending, [data-math-pending]";
+
 export function enhanceCard(el: HTMLElement): void {
   if (el.dataset.enhanced === "1") return;
   el.dataset.enhanced = "1";
 
-  const pendings = el.querySelectorAll<HTMLElement>(".code-block.code-pending, [data-math-pending]");
+  const pendings = el.querySelectorAll<HTMLElement>(PENDING);
   if (pendings.length === 0) return; // fast path: 该卡片没代码块、没公式
 
   for (const block of pendings) {
@@ -347,8 +350,11 @@ const enhanceObservers = new WeakMap<HTMLElement, IntersectionObserver>();
 
 /**
  * 让一个卡片接受 lazy enhance 调度（`root` = 它所在的滚动容器）。实时 tab 与查看器在 lazy 渲染期间挂卡片时调。
+ * 里面没有等着补的占位（惰路只在建卡那一刻留占位）⇒ 不交给 IO：大多数卡没有代码块 / 公式，个个挂着 ＝ 滚动时每一帧
+ * 都要替它们算一遍交叉（300 轮的子运行 2495 个目标 → 299 个）。
  */
 export function observeForEnhance(el: HTMLElement, root: HTMLElement): void {
+  if (el.dataset.enhanced === "1" || el.querySelector(PENDING) === null) return;
   if (typeof IntersectionObserver === "undefined") {
     enhanceCard(el);
     return;

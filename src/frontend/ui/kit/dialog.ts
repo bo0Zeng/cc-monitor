@@ -181,7 +181,7 @@ function run<T>(
       if (pendingCancel === cancelSelf) pendingCancel = null;
       dispatcher.popOverlay(overlay);
       b.backdrop.remove();
-      if (before instanceof HTMLElement && before.isConnected) before.focus();
+      restoreFocus(before);
       resolve(v);
     };
     const cancelSelf = (): void => finish(cancelled);
@@ -289,6 +289,14 @@ export interface PanelHandle {
 }
 
 /**
+ * 关了之后焦点回到打开之前的那个元素。之前什么都没聚焦（焦点在 body）⇒ 不去叫 `body.focus()`：浮层摘掉时焦点本来就落回 body，
+ * 而 WebKitGTK 上 `body.focus()` 那一下要按整页重算（长会话开着时一百多毫秒，每关一次框都挨一下）。
+ */
+export function restoreFocus(before: Element | null): void {
+  if (before instanceof HTMLElement && before !== document.body && before.isConnected) before.focus();
+}
+
+/**
  * 一块模态面板（命令面板 · 快捷键一览这一类：不是问「要不要做」，是一块要你挑 / 看的东西）。
  * 与上面几种同一套：模态压栈（快捷键只放行 Esc）· Tab 只在框内转 · Esc / 点遮罩关 · 关后焦点回到打开它的地方 · 同一时刻只一个。
  */
@@ -320,7 +328,7 @@ export function panelDialog(spec: PanelSpec): PanelHandle {
     if (pendingCancel === close) pendingCancel = null;
     dispatcher.popOverlay(overlay);
     backdrop.remove();
-    if (before instanceof HTMLElement && before.isConnected) before.focus();
+    restoreFocus(before);
     spec.onClose?.();
   };
   pendingCancel = close;

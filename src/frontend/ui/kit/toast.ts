@@ -134,6 +134,24 @@ function remember(r: ToastRecord): void {
   changed();
 }
 
+/** 右侧抽屉开着时它的宽（toast 让到它左边）；`null` ＝ 没开着。 */
+let drawerRight: number | null = null;
+
+/**
+ * 右侧抽屉开 / 关时报一声（`kit/drawer.ts`）：宽写在 toast 那一栏自己身上（`--kit-drawer-right`），之后才出来的那一栏也照写。
+ * 不写在根元素上：根上写一个自定义属性 ＝ 整页每个节点都要重算样式（WebKitGTK 上长会话开着时一下几百毫秒到一秒多）。
+ */
+export function setDrawerRight(px: number | null): void {
+  drawerRight = px;
+  const st = document.getElementById(STACK_ID);
+  if (st) applyDrawerRight(st);
+}
+
+function applyDrawerRight(st: HTMLElement): void {
+  if (drawerRight === null) st.style.removeProperty("--kit-drawer-right");
+  else st.style.setProperty("--kit-drawer-right", `${drawerRight}px`);
+}
+
 function stack(): HTMLElement {
   let st = document.getElementById(STACK_ID);
   if (!st) {
@@ -142,6 +160,7 @@ function stack(): HTMLElement {
     st.className = s.toastStack;
     st.setAttribute("role", "region");
     st.setAttribute("aria-label", copyText("kit.toast.region"));
+    applyDrawerRight(st);
     document.body.appendChild(st);
   }
   return st;

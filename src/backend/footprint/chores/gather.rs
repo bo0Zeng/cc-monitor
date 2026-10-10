@@ -1,4 +1,4 @@
-//! 从这台收「要你动手」要的事实（[`super::Facts`]）：别名块的候选 · PATH 上先找到的 ccm · 设置文件 · 记下的选择。
+//! 从这台收「待办」要的事实（[`super::Facts`]）：别名块的候选 · PATH 上先找到的 ccm · 设置文件 · 记下的选择。
 //! 只读（读用户的启动文件与设置文件、stat）；判定在 [`super::chores`]。
 
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};

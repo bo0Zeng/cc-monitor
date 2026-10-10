@@ -49,6 +49,9 @@ interface Sess {
   blocked?: Record<string, unknown>;
   fallbackApi?: string;
   absent?: boolean;
+  /** 会话血缘里的父（tab 序号）；`followParent` ⇒ 来源 ＝ 跟随父会话。 */
+  parent?: number;
+  followParent?: boolean;
 }
 interface AcctWorld {
   accounts: Acct[];
@@ -65,7 +68,7 @@ interface AcctWorld {
   /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
   restartReply?: Record<string, unknown>;
   /** 时间轴：卡住（池里都被拒）· quota-warm 在跑。 */
-  tl?: { blocked?: boolean; warm?: boolean };
+  tl?: { blocked?: boolean; warm?: boolean; fallback?: boolean };
 }
 
 const now = (): number => Math.floor(Date.now() / 1000);
@@ -296,14 +299,23 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
           continue;
         }
         const cur = byAcct(s.current);
+        const parentSid = s.parent === undefined ? undefined : sidAt(s.parent);
+        const decider = s.followParent && s.parent !== undefined ? aw.sessions[s.parent] : s;
         sessions[sid] = {
           state: "present",
           agent: "claude-code",
-          source: s.rule ? { rule: s.rule } : s.follow ? "follow" : "custom",
-          ...(s.rule || s.follow
+          source: s.followParent && parentSid
+            ? { parent: parentSid }
+            : s.rule
+              ? { rule: s.rule }
+              : s.follow
+                ? "follow"
+                : "custom",
+          ...(parentSid ? { parent: parentSid } : {}),
+          ...(decider && (decider.rule || decider.follow)
             ? {
                 ruleName:
-                  (aw.rules ?? []).find((r) => r.id === s.rule)?.name ?? "日常",
+                  (aw.rules ?? []).find((r) => r.id === decider.rule)?.name ?? "日常",
               }
             : {}),
           explain:
@@ -357,7 +369,9 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         if (!s) continue;
         const r = req.rotation as unknown;
         s.rule = undefined;
+        s.followParent = false;
         if (r === "follow") s.follow = true;
+        else if (r === "parent") s.followParent = true;
         else if (r === "custom" || r === "detach") {
           s.follow = false;
           s.custom ??= structuredClone(aw.default ?? ROT_CUSTOM);
@@ -379,6 +393,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
             session: true,
             blocked: aw.tl?.blocked,
             warm: aw.tl?.warm,
+            fallback: aw.tl?.fallback,
           })
         : { errors: [] },
     "rotation-rule-save": (_o, req) => ({
@@ -856,6 +871,61 @@ export const ACCT_SCENES: Scene[] = [
     }),
   ),
   scene(
+    "acct-src-parent",
+    "面板 · 来源下拉有「跟随父会话」",
+    "这个会话是在 tab 2 那个会话里起的：下拉紧跟 跟随默认 出 跟随父会话（灰字 父标题 · 夜间）；当前项打勾",
+    async () => {
+      await openPanel();
+      await click('aside[role="dialog"] [data-acct-src]');
+      await waitFor("[role=menu]");
+      await sleep(400);
+    },
+    world((aw) => {
+      aw.rules = [
+        {
+          id: "r_night",
+          name: "夜间",
+          rotation: {
+            order: [{ start: true }, "team", "personal"],
+            enabled: ["team", "personal"],
+            when: "full",
+            atLimit: "continue",
+            wait: 40,
+            preempt: true,
+          },
+          users: 2,
+        },
+      ];
+      aw.sessions[1] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
+      aw.sessions[0] = { ...swappedSess(), custom: undefined, parent: 1, followParent: true };
+    }),
+  ),
+  scene(
+    "acct-parent-readonly",
+    "面板 · 来源 ＝ 跟随父会话（只读）",
+    "上方一行 跟随父会话 {父标题} · 规则 夜间 ［打开父会话］［转为本会话］；触发灰、列表只读",
+    openPanel,
+    world((aw) => {
+      aw.rules = [
+        {
+          id: "r_night",
+          name: "夜间",
+          rotation: {
+            order: [{ start: true }, "team", "personal"],
+            enabled: ["team", "personal"],
+            when: "full",
+            atLimit: "continue",
+            wait: 40,
+            preempt: true,
+          },
+          users: 2,
+        },
+      ];
+      aw.sessions[1] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
+      aw.sessions[0] = { ...swappedSess(), custom: undefined, parent: 1, followParent: true };
+    }),
+  ),
+  scene(
     "acct-custom-edit",
     "面板 · 本会话（可改）",
     "换法 按顺序 | 抢回 | 单段预算 · 最多等 10 分；每行行尾 封顶 按钮（team 设了 ≤80）；右上 存为规则…",
@@ -984,7 +1054,7 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-wait-record",
     "面板 · 记录 · 停着等前面的号",
-    "personal 被拒、work 2 分钟后恢复（最多等 10m）⇒ 不换到 team：记录一行 等 work 恢复 · 不换到 team ↻…",
+    "personal 被拒、work 2 分钟后恢复（最多等 10 分钟）⇒ 不用兜底 team：记录一行 先等 work · 不用兜底 team ↻…",
     async () => {
       await openPanel();
       await scrollPanelTo("记录");
@@ -1272,6 +1342,20 @@ export const ACCT_SCENES: Scene[] = [
     },
     world((aw) => {
       aw.tl = { blocked: true };
+    }),
+    [W, 1000],
+  ),
+  scene(
+    "acct-timeline-fallback",
+    "面板 · 时间轴 · 兜底（6h）",
+    "team 是兜底：过去 work 被拒、personal 快恢复 ⇒ 一段 先等 personal（不发上游）再接 personal；将来 ≥90% → team，personal 重置 ⇒ 换下兜底 → personal",
+    async () => {
+      await openTimeline();
+      await click(await byText("[data-tl-view] button", "6h"));
+      await sleep(900);
+    },
+    world((aw) => {
+      aw.tl = { fallback: true };
     }),
     [W, 1000],
   ),

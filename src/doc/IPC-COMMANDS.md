@@ -28,18 +28,18 @@ Handshake sent once when a client connects。
 
 ### `line`
 
-One JSONL line tailed from a session file —— 带的是**成品**：这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
+会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `session_id` | string | 会话 id |
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
 | `seq` | number | 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset` |
-| `message` | JSON? | 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号 |
+| `record` | Record? | 这一行的通用记录；缺 ＝ 不进界面、照占号 |
 | `cwd` | string? | 这条记录自己的工作目录 |
 | `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
 | `rid` | string? | 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值） |
-| `raw` | string? | 这一行记录的**原文**（去掉行尾换行） |
+| `raw` | string? | 这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去） |
 
 ### `session_added`
 
@@ -1246,12 +1246,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 这台没见过的会话要另给：哪一家 |
-| `rotation` | → | `"follow"` · `{"rule": id}` · `"custom"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的）· `{"custom":{…}}` |
+| `rotation` | → | `"follow"` · `"parent"`（跟随父会话：父按会话血缘填；有一个没有父或父是别的一家 ⇒ 整批 `no_parent`）· `{"rule": id}` · `"custom"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的）· `{"custom":{…}}` |
 | `sessions` | ← | 逐个结果 `{sid: {state:"done"} \| {state:"skipped", code}}` |
 | `sids` | → | 要改的会话 |
 | `start` | → | 起它的号 |
 
-码：`bad_args` · `failed` · `io_failed` · `no_such_rule`
+码：`bad_args` · `failed` · `io_failed` · `no_parent` · `no_such_rule`
 
 #### `rotation-switch`
 
@@ -1726,7 +1726,7 @@ sid → 上次用哪个号起。
 | `more` | ← | 这一页没读到头（再从 `end` 读） |
 | `parent` | → | 父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`） |
 | `path` | ← | 那份子运行记录（不透明，给查看器整份打开用） |
-| `rows` | ← | 这一页里每一条认得出的记录：`message` 在渲染模型里的样子（与主会话同一套记录成品）· `rid` 它的对账键（没有 ⇒ 省略） |
+| `rows` | ← | 这一页里每一条进界面的记录：`record` 通用记录（与主会话同一形）· `rid` 它的对账键（没有 ⇒ 省略） |
 | `run` | → ← | 子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准 |
 | `tool` | → | 派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found` |
 
@@ -1760,7 +1760,7 @@ sid → 上次用哪个号起。
 | `lines` | ← | **记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现） |
 | `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数） |
 | `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
-| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为） |
+| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文 |
 | `until` | → | 可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止 |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1777,8 +1777,8 @@ sid → 上次用哪个号起。
 | `next` | ← | 下一页从这里起（= `offset` ＋ 这一页的原始字节数） |
 | `offset` | → | 从这个字节起（缺省 0） |
 | `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
-| `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准 |
-| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为） |
+| `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd` |
+| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文 |
 | `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1792,7 +1792,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `eof` | ← | 同 `history-read` |
-| `lines` | ← | 只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `message`（`JsonlRecord`） |
+| `lines` | ← | 只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节） |
 | `next` | ← | 同 `history-read` |
 | `nextSeq` | ← | 下一页第一行的行号 |
 | `offset` | → | 同 `history-read` |
@@ -2027,11 +2027,11 @@ sid → 上次用哪个号起。
 |---|---|---|
 | `client` | → | 同 `footprint-report`（本机那一栏才带） |
 | `changedFiles` | ← | cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点） |
-| `chores` | ← | 「要你动手」里进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的 |
+| `chores` | ← | 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的 |
 | `home` | ← | 这台家目录（显示时 `~` 缩写按它） |
 | `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
 | `tmux` | ← | 这台有没有 tmux（查不动 ⇒ `null`） |
-| `todo` | ← | 「要你动手」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
+| `todo` | ← | 「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
 
 码：`bad_args` · `failed`
 
@@ -2082,7 +2082,7 @@ sid → 上次用哪个号起。
 
 #### `chores-mark`
 
-记下「要你动手」里的一个选择。
+记下「待办」里的一个选择。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --chores-mark`
 
@@ -2931,7 +2931,6 @@ cc-bus 钩子诊断。
 | `mine` | ← | `started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`） |
 | `no` | ← | 做不了的原因 |
 | `program` | ← | 前台程序名 |
-| `purpose` | ← | 这一版恒为 `normal`（只有这一种） |
 | `session` | ← | 里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}` |
 | `sid` | ← | `session` 里：会话 id |
 | `since` | ← | `clients` 一项：连上的时刻（秒） |
@@ -3772,7 +3771,7 @@ cc-bus 钩子诊断。
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
-| `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「要你动手」里的一个选择 |
+| `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
@@ -3869,7 +3868,8 @@ cc-bus 钩子诊断。
 | `--read-session-from-offset` `[--index] [--until <end>] <jsonl> <offset>` | 从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）；`--index` ⇒ 出骨架索引：头 `{kind:"session_index",v:1,from}` · 每个可计行一条 `IndexRow`（见下）· 尾 `{kind:"session_index_end",count,end}`。续点用 `line` 帧的 `byte_offset`，别用 `seq` |
 | `--read-session-tail` `<jsonl> <N>` | 尾部优先：首行 `{kind:"snapshot_meta",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)` |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
-| `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{port, token, pid:null}`；没在 ⇒ 起一个脱离的自己、回 `{port, token:null, pid}`（钥匙由它绑上口后写进钥匙文件）；`--replace` 先停掉口上那一位再起 |
+| `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；连不上 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
+| `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起 |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数） |

@@ -157,7 +157,7 @@ describe("分栏 · 分段按钮", () => {
 
 describe("chip", () => {
   it("可点的是按钮、只读的是 span；有事才上色；开着浮层 aria-expanded", () => {
-    const c = chip({ text: "需要你 2", tone: "warn", onClick: () => {} });
+    const c = chip({ text: "需手动 2", tone: "warn", onClick: () => {} });
     expect([c.tagName, c.dataset.intent]).toEqual(["BUTTON", "warn"]);
     setChipOpen(c, true);
     expect(c.getAttribute("aria-expanded")).toBe("true");
@@ -194,7 +194,7 @@ describe("转圈 · 计量条 · 徽标 · 键帽 · 骨架 · 状态点", () =>
     }
   });
 
-  it("计数 0 不画、99 以上写 99+；需要你的计数琥珀；标记与键帽", () => {
+  it("计数 0 不画、99 以上写 99+；需手动的计数琥珀；标记与键帽", () => {
     expect(countBadge(0)).toBeNull();
     expect(countBadge(120)!.textContent).toBe("99+");
     expect(countBadge(2, "warn")!.dataset.intent).toBe("warn");

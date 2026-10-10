@@ -254,7 +254,7 @@ fn rows_of_page(off: u64, body: &str) -> Vec<crate::frame_query::Row> {
         out.push(crate::frame_query::Row {
             end: had_nl.then_some(off + at as u64),
             hash: fnv(line.as_bytes()),
-            message: None,
+            record: None,
             cwd: None,
         });
     }

@@ -463,7 +463,7 @@
     max-width: 100%;
   }
 
-  /* 卡住：琥珀条（需要你留意几点能接着干）。 */
+  /* 卡住：琥珀条（要留意几点能接着干）。 */
   .acctTlHead[data-tl-head="blocked"] {
     padding: var(--space-1) var(--space-2);
     border: 1px solid var(--warn);

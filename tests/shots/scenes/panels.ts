@@ -8,6 +8,7 @@ import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
+import { emit } from "@tauri-apps/api/event";
 
 const ALL_TABS = 7;
 
@@ -376,7 +377,7 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor('aside[role="dialog"]');
     await sleep(500);
   }),
-  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需要你 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
+  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需手动 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
     await openCommandBar();
     await sleep(300);
   }),
@@ -594,6 +595,19 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[data-role=messages-list]");
     await sleep(400);
   }, behaviorKeyWorld),
+  panel("panel-ui-error-toast", "本机后端意外退出 · toast", "壳推来的出错：标题是照文案写好的那一句，［重新连接］［看日志］［复制详情］；日志行只在复制详情里", async () => {
+    await mainReady(ALL_TABS);
+    await emit("monitor-error", LOCAL_EXITED);
+    await sleep(700);
+  }),
+  panel("panel-ui-error-messages", "本机后端意外退出 · 「消息」", "同一条在「消息」里：一句 ＋ 动作，［详情］展开看复制详情那几行", async () => {
+    await mainReady(ALL_TABS);
+    await emit("monitor-error", LOCAL_EXITED);
+    await sleep(300);
+    await click("[data-role=status-messages]");
+    await waitFor("[data-role=messages-list]");
+    await sleep(400);
+  }),
   panel("panel-batch-kill", "批量结束 · 确认框", "全选之后右键「结束会话（n）」：中断 / 保留逐项写，清单前 8 个 ＋ 另外几个，清单下一行已结束的跳过", async () => {
     await mainReady(ALL_TABS);
     const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
@@ -849,3 +863,14 @@ export const FRONT_SCENES: Scene[] = [
 
 // 首次打开那一张不带默认存储（tab 栏默认宽、命令面板提示没看过）
 PANEL_SCENES[PANEL_SCENES.length - 1].storage = {};
+
+/** 壳推来的那一条（本机后端说过话之后退出码 1 退出、没人再起它）。详情里的账行是复制详情的原话。 */
+const LOCAL_EXITED = {
+  code: "local-exited",
+  key: "rsUiError.localExited.down",
+  args: {},
+  said: copyText("rsUiError.localExited.down"),
+  detail: "时刻：2026-10-09 13:39:41 -07:00\n本机：cc-monitor 4.1.6 · Linux x86_64\n码：退出码 1\n原话：[死亡账] origin=<local> 判定=崩溃 退出状态=退出码 1 —— 说过话之后异常终止",
+  reconnect: "<local>",
+  at: 0,
+};

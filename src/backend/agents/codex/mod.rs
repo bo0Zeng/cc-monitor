@@ -13,7 +13,7 @@
 // 历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话。
 pub(crate) mod history;
 pub(crate) mod parse;
-// 记录分类 ＋ 映射进渲染模型。
+// 记录分类 ＋ 翻成通用记录。
 pub(crate) mod record;
 // 经中转那一份（默认上游 · 会话头 · 怎么指到中转 · 直接敲的那份配置里的地址）。
 pub(crate) mod relay;
@@ -27,7 +27,7 @@ pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFac
 };
 /// 记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报。
 pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
-    parse: record::parsed_line,
+    parse: record::translated,
     sid: parse::codex_sid_from_path,
     is_session_file: history::is_session_file,
     // 会话按日期分、不住按项目分的记录树（历史由合成历史面并进来）。
@@ -69,6 +69,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: resume::RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,

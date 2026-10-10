@@ -36,6 +36,9 @@ fn every_cli_exposed_command_is_in_the_query_mode_gate() {
     );
 }
 use super::*;
+use crate::control::cli_args::{
+    read_input, MAX_ARGS_B64_LEN, MAX_CLI_STDIN, STDIN_LINE_FLAG, STDIN_QUIET,
+};
 
 /// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
 /// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收 `Run::Builtin` 与占了 ccm 的词那几条）。
@@ -573,8 +576,20 @@ fn the_argv_payload_answers_byte_for_byte_like_stdin() {
         let (_hold, quiet) = silent();
         // stdin 开着不写：argv 那一形**不该去碰 stdin**（碰了就是挂住或 no_input）。
         let by_argv = run_cli(&strs(&[&flag, crate::ARGS_B64_FLAG, &b64]), quiet);
+        // 失败信封的复制详情首行是出错那一刻的时刻（两趟各自取钟）：抹掉它再逐字比。
+        let unclocked = |(rc, out, err): (i32, String, String)| {
+            let err = match serde_json::from_str::<serde_json::Value>(err.trim()) {
+                Ok(mut v) if v["detail"].is_string() => {
+                    v["detail"] = clockless(v["detail"].as_str().unwrap()).into();
+                    v.to_string()
+                }
+                _ => err,
+            };
+            (rc, out, err)
+        };
         assert_eq!(
-            by_argv, by_stdin,
+            unclocked(by_argv),
+            unclocked(by_stdin.clone()),
             "{flag} {text}：argv 载荷口与 stdin 答得不一样"
         );
         saw_ok |= by_stdin.0 == 0;
@@ -847,6 +862,27 @@ fn the_commands_released_from_ui_only_are_on_the_cli() {
     ] {
         assert!(spec_for(&flag_of(name)).is_some(), "{name} 没上 CLI 面");
     }
+}
+
+/// 失败信封只有一种（`{code, message, detail, data?}`）：调用方交来的下层原话（`Said.raw`）进复制详情的「原话」那一项，不上句子、不另立一格。
+#[test]
+fn the_raw_words_go_into_the_detail_not_a_field_of_their_own() {
+    let f = failed_of(
+        "resident-ensure",
+        "spawn_failed",
+        copy_core::said::Said::with_raw("那一句".to_string(), "Permission denied (os error 13)"),
+    );
+    let v = serde_json::to_value(&f).unwrap();
+    assert_eq!(v["message"], "那一句", "{v}");
+    assert!(v.get("raw").is_none(), "信封又多了一格 raw：{v}");
+    let raw_label = copy_core::copy_text("detail.label.raw", &[]);
+    assert!(
+        f.detail.contains(&format!("{raw_label}：Permission denied (os error 13)")),
+        "原话没进复制详情：{}",
+        f.detail
+    );
+    let without = failed_of("resident-ensure", "no_home", copy_core::said::Said::from("那一句".to_string()));
+    assert!(!without.detail.contains(&format!("{raw_label}：")), "没有原话也写了原话那一项：{}", without.detail);
 }
 
 /// 帧面跑一条命令，取它那一帧应答（JSON）。`within_ms` 照帧面信封那一格原样带。

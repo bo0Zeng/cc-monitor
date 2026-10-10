@@ -26,7 +26,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "data-report",
         summary: "「文件与数据」那一份成品",
         codes: &["bad_args", "failed"],
-        fields: &[arg("client", "同 `footprint-report`（本机那一栏才带）"), out("changedFiles", "cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点）"), out("chores", "「要你动手」里进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的"), out("home", "这台家目录（显示时 `~` 缩写按它）"), out("own", "cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null`"), out("tmux", "这台有没有 tmux（查不动 ⇒ `null`）"), out("todo", "「要你动手」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙")],
+        fields: &[arg("client", "同 `footprint-report`（本机那一栏才带）"), out("changedFiles", "cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点）"), out("chores", "「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的"), out("home", "这台家目录（显示时 `~` 缩写按它）"), out("own", "cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null`"), out("tmux", "这台有没有 tmux（查不动 ⇒ `null`）"), out("todo", "「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::data_answer(&LocalFiles, &r.args)
@@ -71,11 +71,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map(Some)
         }),
     },
-    // 「要你动手」里界面记下的两样选择（不用了 / 还是要做 · 我自己贴 / 改回让 cc-monitor 接上）：写后端自己的 `~/.cc-monitor/chores.json`
+    // 「待办」里界面记下的两样选择（不用了 / 还是要做 · 我自己贴 / 改回让 cc-monitor 接上）：写后端自己的 `~/.cc-monitor/chores.json`
     //   （`footprint/chores/marks.rs`，读—改—写在跨进程锁里、原子写）。一个用户文件都不写。阻塞档（同步文件 I/O）。
     CommandSpec {
         name: "chores-mark",
-        summary: "记下「要你动手」里的一个选择",
+        summary: "记下「待办」里的一个选择",
         codes: &["bad_args", "io_failed", "marks_unreadable"],
         fields: &[arg("id", "`decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`）"), arg("op", "`decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回）"), arg("rc", "`selfPaste` 那一份启动文件（绝对路径）"), out("declined", "改完记着的「不用了」那几件"), out("selfPaste", "改完记着的「我自己贴」那份启动文件；没选 ⇒ `null`"), out("startSkipped", "改完记着的「开始用」跳过没有")],
         takes_input: true,

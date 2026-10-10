@@ -1,4 +1,4 @@
-/* 「需要你」钉条：消息流底部居中、与正文列同宽；`--card` 底 · 左 3px 琥珀。 */
+/* 「需手动」钉条：消息流底部居中、与正文列同宽；`--card` 底 · 左 3px 琥珀。 */
 @layer components {
   .nbBar {
     position: absolute;

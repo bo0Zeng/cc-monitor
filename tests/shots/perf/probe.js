@@ -19,6 +19,22 @@
     frames: null,
   };
   window.__perf = P;
+  // 页里建过的每个 IntersectionObserver 都记下来（试验项「摘掉 IO 再量空闲」用）
+  P.ios = [];
+  if (typeof IntersectionObserver === "function") {
+    const IO = IntersectionObserver;
+    window.IntersectionObserver = function (cb, opts) {
+      const io = new IO(cb, opts);
+      io.__targets = new Set();
+      const ob = io.observe.bind(io);
+      const un = io.unobserve.bind(io);
+      io.observe = (el) => (io.__targets.add(el), ob(el));
+      io.unobserve = (el) => (io.__targets.delete(el), un(el));
+      P.ios.push(io);
+      return io;
+    };
+    window.IntersectionObserver.prototype = IO.prototype;
+  }
   try {
     new PerformanceObserver((l) => {
       for (const e of l.getEntries()) P.lt.push({ s: e.startTime, d: e.duration });

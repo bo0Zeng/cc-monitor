@@ -14,6 +14,7 @@ import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
 
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -423,14 +424,10 @@ export class TabManager {
   }
 
   /**
-   * 启动重放开始时调一次：现有 Tab 的分支折叠切到批模式（只收不算主线）；重放期新建的 Tab 也进批模式（看 `store.inBatch`）。
+   * 启动重放开始时调一次：进批模式（惰性高亮；重放期的旧记录不建卡，收纳进 `tab.window` ⇒ 视口上方零插入）。
    */
   onBatchStart(): void {
     this.store.inBatch = true;
-    for (const t of this.store.tabs.values()) {
-      t.branchFolder.setBatchMode(true);
-      // 重放期的旧记录不建卡（收纳进 `tab.window`）⇒ 视口上方零插入。
-    }
   }
 
   /** 重放批完结：各 Tab 一次性算完、切回实时。 */
@@ -463,7 +460,7 @@ export class TabManager {
     if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
-    // jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
+    // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
@@ -923,6 +920,13 @@ export class TabManager {
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
   }
 
+  /**
+   * 一个会话的主线外清单到了（会话流里的 `branch` 格，整份）：那个 tab 的折叠层按它重折。没有这个 tab ⇒ 不收。
+   */
+  onSessionBranch(p: SessionBranchPayload): void {
+    this.store.tabs.get(p.session_id)?.branchFolder.setOff(new Set(p.off));
+  }
+
   /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */
   setRunWindow(sid: string, run: string, open: boolean): void {
     const k = `${sid}\u0000${run}`;
@@ -971,7 +975,7 @@ export class TabManager {
     return tab !== undefined && isLive(tab.state);
   }
 
-  /** 这个会话此刻「需要你」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
+  /** 这个会话此刻「需手动」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
   needsWordOf(sessionId: string): string | null {
     const tab = this.store.tabs.get(sessionId);
     const n = tab ? needsOf(tab) : null;
@@ -1134,23 +1138,23 @@ export class TabManager {
     this.bar.mountHeadActions(buttons);
   }
 
-  /** `Ctrl+J` · 点「需要你」：跳到下一个需要你的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
+  /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
   jumpToNextNeeds(): void {
     const sid = this.bar.nextNeedsSid();
     if (sid !== null) this.switchTo(sid);
   }
 
-  /** 此刻需要你的会话数（窗口标题 · 系统通知用）。 */
+  /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */
   needsCount(): number {
     return this.bar.needsCountNow();
   }
 
-  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需要你」用）。 */
+  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需手动」用）。 */
   tabsInOrder(): Tab[] {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }
 
-  /** 会话头 · 「需要你」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
+  /** 会话头 · 「需手动」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
   activeTab(): Tab | null {
     const sid = this.store.activeId;
     return sid === null ? null : (this.store.tabs.get(sid) ?? null);
@@ -1276,7 +1280,7 @@ export class TabManager {
       if (clearedIdle) this.refreshTabBar();
       return;
     }
-    // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
+    // 需手动的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
     if (act?.doing !== "needs_you") tab.needs = null;
     tab.facts.markStale();
     void tab.facts.refresh();

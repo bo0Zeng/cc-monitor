@@ -116,7 +116,7 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
     })?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
-        let said: String = String::from_utf8_lossy(&out.stderr)
+        let stderr: String = String::from_utf8_lossy(&out.stderr)
             .lines()
             .chain(text.lines())
             .map(str::trim)
@@ -133,7 +133,11 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
             "failed",
             copy_text(
                 "beQuotaProbe.run.exit",
-                &[("program", face.program), ("exit", &code), ("said", &said)],
+                &[
+                    ("program", face.program),
+                    ("exit", &code),
+                    ("said", &stderr),
+                ],
             ),
         )
             .into());

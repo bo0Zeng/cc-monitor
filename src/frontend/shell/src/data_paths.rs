@@ -98,13 +98,10 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
 
     let entries = monitor_entries(&monitor_data_dir);
     // 后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
-    // 常驻监听口：与宿主同一个算法（按这台的家，`local_backend_host` 起常驻时就是这么算的）。
-    let listen_port =
-        crate::config::resolve_monitor_data_dir().map(|d| relay_route_core::listen_port_for(&d));
     let (backend_home, backend_entries) = match creds_core::store::home_dir() {
         Some(home) => (
             home.join(backend_home_rel()).display().to_string(),
-            backend_entries(&home, &monitor_data_dir, listen_port),
+            backend_entries(&home, &monitor_data_dir),
         ),
         None => ("(unknown)".to_string(), Vec::new()),
     };
@@ -219,14 +216,10 @@ fn home_rel_label(rel: &str, dir: bool) -> String {
 /// **本机后端住在同一个家里的那几样**（只给路径，不给删）。
 ///
 /// 名字各取唯一住址，这里不写字面量：`~/.cc-monitor/` 下相对家目录的那一族取契约常量（`relay_route_core`，后端按同一份落盘；
-/// 程序目录 = 后端落点的上一层）· 监听口的进程记录按同一个口（`listen_port` = 宿主按 Claude 家目录算的那个，`None` ⇒ 这一行不列）·
+/// 程序目录 = 后端落点的上一层；常驻后端的目录也在这一族）·
 /// API key 那份按数据目录（`creds_core::store::credentials_path`）· 后端错误输出 = 宿主交给它的那份文件所在的目录
-/// （`logging::backend_stderr_log_path`）。后端跑着时要用的（两把钥匙 · 进程记录）按真相记：删了要重起后端。
-fn backend_entries(
-    home: &Path,
-    monitor_data_dir: &Path,
-    listen_port: Option<u16>,
-) -> Vec<DataPathInfo> {
+/// （`logging::backend_stderr_log_path`）。后端跑着时要用的（中转钥匙 · 常驻后端的目录）按真相记：删了要重起后端。
+fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
     use relay_route_core as rr;
     let bin = rr::BACKEND_LANDING_REL
         .rsplit_once('/')
@@ -267,26 +260,12 @@ fn backend_entries(
             copy_text("rsDataPaths.backend.relayKey", &[]),
             DataClass::Truth,
         ),
-        file(
-            rr::PASS_KEY_FILE_REL,
-            copy_text("rsDataPaths.backend.relayPassKey", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::LISTEN_TOKEN_FILE_REL,
-            copy_text("rsDataPaths.backend.listenToken", &[]),
+        dir(
+            rr::LISTEN_DIR_REL,
+            copy_text("rsDataPaths.backend.listenDir", &[]),
             DataClass::Truth,
         ),
     ];
-    if let Some(port) = listen_port {
-        let name = rr::listen_pid_file_name(port);
-        out.push(probe_file(
-            home.join(backend_home_rel()).join(&name),
-            &name,
-            &copy_text("rsDataPaths.backend.listenPid", &[]),
-            DataClass::Truth,
-        ));
-    }
     out.extend([
         file(
             rr::BACKEND_POLICY_REL,
@@ -351,6 +330,11 @@ fn backend_entries(
         file(
             rr::ROTATION_REL,
             copy_text("rsDataPaths.backend.rotation", &[]),
+            DataClass::Truth,
+        ),
+        file(
+            rr::LINEAGE_REL,
+            copy_text("rsDataPaths.backend.lineage", &[]),
             DataClass::Truth,
         ),
         file(

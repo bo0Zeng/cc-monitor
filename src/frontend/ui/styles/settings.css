@@ -3094,7 +3094,7 @@ body.settings-window-mode .settings-panel {
   resize: vertical;
 }
 
-/* 「要你动手」一件（v2 §3）：收着一行（点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 展开）· 点开五段 */
+/* 「待办」一件（v2 §3）：收着一行（点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 展开）· 点开五段 */
 .data-dot[data-tone="bad"] {
   background: var(--error);
   border-color: var(--error);

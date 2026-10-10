@@ -611,6 +611,15 @@ chk "★ argv 值超本后端的上限：args_too_large" "$(jq -r .code < "$SAND
 _t0=$(c2ms); d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null 2>&1; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
 chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
 
+# `--resolve`（与仓外 aterm 冻结的那一条）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input（码全集钉在金样里）。
+_rq='{"sessionId":"s1"}'
+printf '%s' "$_rq" | d --resolve >"$SANDBOX/c2-rs-in.txt"; _rc_in=$?
+d --resolve --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-rs-av.txt"; _rc_av=$?
+chk "★ --resolve：argv 载荷口与 stdin 逐字一样（退出 0）" "$_rc_in|$_rc_av|$(cmp -s "$SANDBOX/c2-rs-in.txt" "$SANDBOX/c2-rs-av.txt" && echo 同 || echo 不同)" "0|0|同"
+chk "  --resolve 成品是那条恢复命令" "$(jq -r .command < "$SANDBOX/c2-rs-av.txt" 2>/dev/null)" "claude --resume s1"
+_t0=$(c2ms); d --resolve < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
+chk "★ --resolve 开着不写：立即回 no_input" "$([ "$_rc" -eq 2 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")|$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "是|no_input"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

@@ -122,6 +122,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
@@ -337,7 +338,7 @@ fn records_face(
     file_name: fn(&str) -> String,
 ) -> crate::agents::RecordFace {
     crate::agents::RecordFace {
-        parse: |_| Ok(None),
+        parse: |_, _| Ok(None),
         sid: session_id_of,
         is_session_file,
         tree: Some(crate::agents::RecordTree { root, file_name }),
@@ -421,7 +422,6 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         user_mcp_key: "servers",
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
-        watched: &[],
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",

@@ -169,7 +169,7 @@ function makePayload(seq: number): unknown {
     cwd: "/p",
     path: "/p/s.jsonl",
     seq,
-    message: { type: "assistant", uuid: `u-${seq}` },
+    record: { agent: "claude", t: "reply", id: `u-${seq}` },
   };
 }
 
@@ -622,10 +622,10 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
 // ───────────────────────── D. 生产两处出队已换头指针 ─────────────────────────
 
 /**
- * 「`Array.prototype.shift()` 当队列（`events.ts` drain · `branching.ts` Kahn），
+ * 「`Array.prototype.shift()` 当队列（`events.ts` drain；`branching.ts` 的 Kahn 已随整份删掉 —— 主线外清单进了后端），
  * 超线性是真的（V8 的 left-trim 快路不是无条件生效的）」「换头指针。顺手改」。
  *
- * B 段证的是「换头指针是等价替换」（复制品上）；本段钉的是**生产那两处真的换了**：两份源码（剥掉注释）里
+ * B 段证的是「换头指针是等价替换」（复制品上）；本段钉的是**生产那一处真的换了**：源码（剥掉注释）里
  * `.shift(` 零命中。正控：同一个剥注释 ＋ 数命中的函数，喂改之前的那两行原文各数得出 1 —— 抽取器瞎了会先在正控上红。
  * 改前 / 改后读数（经生产 `bindEvents` 灌一块 20 000 条、空壳 `onLine` 的排空墙钟）住。
  */
@@ -645,8 +645,8 @@ describe("秤 5 · D：生产两处出队不用 shift()", () => {
     expect(shiftCalls("// queue.shift()\n/* queue.shift() */\n")).toBe(0);
   });
 
-  it("src/frontend/ui/events.ts 与 src/frontend/ui/branching.ts 生产段零 `.shift(`", () => {
-    for (const rel of ["../../../src/frontend/ui/events.ts", "../../../src/frontend/ui/branching.ts"]) {
+  it("src/frontend/ui/events.ts 生产段零 `.shift(`", () => {
+    for (const rel of ["../../../src/frontend/ui/events.ts"]) {
       const src = read(rel);
       expect(src.length, `${rel} 读出来是空的 —— 本条会零命中地绿`).toBeGreaterThan(1000);
       expect(shiftCalls(src), `${rel} 里又出现了 \`.shift(\` —— \`\` 要头指针出队`).toBe(0);

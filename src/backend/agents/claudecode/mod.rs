@@ -135,6 +135,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
@@ -176,7 +177,7 @@ pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
-    parse: parse::parsed_line,
+    parse: parse::translated,
     sid: records::session_id_of,
     is_session_file: records::is_session_file,
     tree: Some(super::RecordTree {

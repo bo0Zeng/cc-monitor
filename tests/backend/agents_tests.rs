@@ -211,6 +211,7 @@ fn the_launch_faces_agree_with_the_golden_table() {
             "nested_env" => f.nested_env.join(" "),
             "launch_args" => f.launch_args.join(" "),
             "preset_sid" => f.preset_sid.unwrap_or_default().to_string(),
+            "self_sid_env" => f.self_sid_env.unwrap_or_default().to_string(),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
         if &got != want {
@@ -658,7 +659,7 @@ fn shared_root(home: &Path) -> PathBuf {
 fn no_email(_: &Path) -> Option<String> {
     None
 }
-fn no_line(_: &str) -> Result<Option<ParsedLine>, String> {
+fn no_line(_: &str, _: u64) -> Result<Option<Translated>, String> {
     Ok(None)
 }
 fn no_sid(_: &Path) -> Option<String> {
@@ -693,7 +694,6 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
         user_mcp_key: "servers",
         shared_root,
         email_in: no_email,
-        watched: &[],
         session_env: crate::agents::SessionEnvKeys {
             config_dir: "",
             base_url: "",

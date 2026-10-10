@@ -74,6 +74,9 @@ impl Home {
                 library,
                 None,
             ),
+            lineage: Arc::new(crate::lineage::LineageStore::at(Some(
+                self.root.join(crate::lineage::FILE_NAME),
+            ))),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
             live: Box::new(std::collections::BTreeSet::new),
             doing: Box::new(std::collections::BTreeMap::new),

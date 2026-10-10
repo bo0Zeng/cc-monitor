@@ -16,6 +16,7 @@
 //! - **可以手改**：每次用都读、校验；写错报到哪一行，写错的那一段（与基于它的）此刻不能用，别的照用。
 //! - **按条目改**：设置窗改一段只动那一段（[`set_profile`] / [`remove_profile`]），手写的注释与排版留着。
 
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use toml_edit::{Array, DocumentMut, Item, Table, Value};
 
@@ -97,6 +98,9 @@ pub(crate) struct Problem {
     pub profile: Option<String>,
     pub line: Option<usize>,
     pub message: String,
+    /// 下层原话（TOML 解析器那一句）：不上句子，进页面应答那一格的复制详情。
+    #[serde(skip)]
+    pub raw: Option<String>,
 }
 
 /// 读出来的整份：认得的几段 ＋ 写错的几处。TOML 本身写错 ⇒ 一段都不认（整份不能用）。
@@ -200,7 +204,7 @@ fn groups_of(key: &str, f: &'static str, item: &Item) -> Result<Vec<Vec<String>>
 }
 
 fn parser_said(key: &str, m: &str) -> String {
-    copy_text("beProfile.value.parser", &[("key", key), ("e", m)])
+    copy_text("beProfile.value.parser", &[("key", key), ("why", m)])
 }
 
 /// **读口**：整份文本 ⇒ [`Book`]。一个字节的盘都不碰。
@@ -213,7 +217,8 @@ pub(crate) fn parse_book(text: &str) -> Book {
                 problems: vec![Problem {
                     profile: None,
                     line: e.span().map(|s| line_at(text, s.start)),
-                    message: copy_text("beProfile.file.syntax", &[("e", e.message().trim())]),
+                    message: copy_text("beProfile.file.syntax", &[]),
+                    raw: Some(e.message().trim().to_string()),
                 }],
             }
         }
@@ -231,6 +236,7 @@ pub(crate) fn parse_book(text: &str) -> Book {
                 profile: profile.map(str::to_string),
                 line: Some(line),
                 message,
+                raw: None,
             })
         };
         let Some(t) = item.as_table() else {
@@ -305,10 +311,14 @@ pub(crate) fn read_at(home: &str) -> Result<Book, String> {
     match std::fs::read_to_string(&path) {
         Ok(t) => Ok(parse_book(&t)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Book::default()),
-        Err(e) => Err(copy_text(
-            "beProfile.file.unreadable",
-            &[("path", &path), ("e", &e.to_string())],
-        )),
+        Err(e) => Err(crate::common::said::Said::with_raw(
+            copy_text(
+                "beProfile.file.unreadable",
+                &[("path", &path), ("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
+        )
+        .into_note()),
     }
 }
 
@@ -323,7 +333,7 @@ pub(crate) struct Resolved {
 fn at_line(line: usize, said: String) -> String {
     copy_text(
         "beProfile.at.line",
-        &[("line", &line.to_string()), ("e", &said)],
+        &[("line", &line.to_string()), ("why", &said)],
     )
 }
 
@@ -353,7 +363,10 @@ pub(crate) fn chain<'a>(book: &'a Book, name: &str) -> Result<Vec<&'a Profile>, 
                 "beProfile.chain.broken",
                 &[
                     ("name", &cur.name),
-                    ("e", &at_line(p.line.unwrap_or(cur.line), p.message.clone())),
+                    (
+                        "why",
+                        &at_line(p.line.unwrap_or(cur.line), p.message.clone()),
+                    ),
                 ],
             ));
         }
@@ -379,7 +392,7 @@ pub(crate) fn resolve(book: &Book, name: &str, args: &[String]) -> Result<Resolv
     let chain = chain(book, name)?;
     let layers: Vec<Layer> = chain.iter().map(|p| p.layer()).collect();
     let (parsed, origins) = argv::parse_layered(&layers, args)
-        .map_err(|Die(m)| copy_text("beProfile.resolve.refused", &[("name", name), ("e", &m)]))?;
+        .map_err(|Die(m)| copy_text("beProfile.resolve.refused", &[("name", name), ("why", &m)]))?;
     Ok(Resolved {
         parsed,
         origins,
@@ -403,8 +416,13 @@ pub(crate) struct ProfileEdit {
 
 /// 开始改：整份文本 ⇒ 可改的文档（TOML 写错 ⇒ 那一句，不改）。
 pub(crate) fn edit_start(text: &str) -> Result<DocumentMut, String> {
-    text.parse::<DocumentMut>()
-        .map_err(|e| copy_text("beProfile.file.syntax", &[("e", e.message().trim())]))
+    text.parse::<DocumentMut>().map_err(|e| {
+        crate::common::said::Said::with_raw(
+            copy_text("beProfile.file.syntax", &[]),
+            e.message().trim(),
+        )
+        .into_note()
+    })
 }
 
 /// ccm 选项 ⇒ 这一段要写的 `(键, 值)`，按第一次出现的顺序；同一个键写了几次：`--cwd-if` 并成数组的数组，其余后写的算。

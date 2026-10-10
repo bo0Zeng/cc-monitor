@@ -209,7 +209,7 @@ fn the_product_matches_the_cross_language_golden() {
             "要更新" => up(&o, "p7a", VersionRelation::Older),
             "较新" => up(&o, "p9a", VersionRelation::Newer),
             "版本不可比" => up(&o, "dev", VersionRelation::Incomparable),
-            "不让转发" => unsupported(&o, NO_FORWARDING),
+            "不是 Unix" => unsupported(&o, NOT_UNIX),
             "要密码" => {
                 dial_failed(&o, Some("password"), None, &said("拨号没成"));
                 down(&o)

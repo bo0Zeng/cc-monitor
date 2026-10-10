@@ -374,11 +374,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "本机后端读—改—写自己那份小文件；前端 `src/frontend/ui/last-seen.ts::rememberSeen` 交（账号清单 · 「文件与数据」读成了那一份），\
          monitor 这一侧零发送点",
     ),
-    // 「要你动手」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
+    // 「待办」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
     (
         "chores-mark",
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
-         （「要你动手」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
+         （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (
@@ -487,6 +487,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-annotate",
         "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
+    ),
+    (
+        "history-branch",
+        "主线外清单冷读：查看器与子运行窗口打开时问一次（`record-reads.ts::decodeBranch` 按形状收），之后跟实时帧 `branch`",
     ),
     (
         "history-forget",
@@ -1405,13 +1409,13 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
         rows.iter().map(|r| r.end).collect::<Vec<_>>(),
         vec![Some(54), Some(152), Some(273)]
     );
-    assert!(rows[0].message.is_none(), "不进界面的元数据记录不该带成品");
+    assert!(rows[0].record.is_none(), "不进界面的元数据记录不该带成品");
     assert_eq!(rows[1].cwd.as_deref(), Some("/w"));
-    let m: Value = serde_json::from_str(rows[1].message.as_ref().unwrap().0.get()).unwrap();
+    let m: Value = serde_json::from_str(rows[1].record.as_ref().unwrap().0.get()).unwrap();
     assert_eq!(
-        m, golden["history-read"]["rows"][1]["message"],
+        m, golden["history-read"]["rows"][1]["record"],
         "成品没原样转交"
     );
     // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
-    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "message": "x"})).is_none());
+    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "record": "x"})).is_none());
 }

@@ -138,7 +138,7 @@ export interface SessionFacts {
   pending: PendingCall[];
   /** 最后一段正文的头一行（悬停卡「它最后一句」）。 */
   lastSay: { text: string; at: string | null } | null;
-  /** 需要你：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
+  /** 需手动：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
   needs: Needs | null;
   /** 交回了的子运行（子 agent 的 id，文件序）：同一个子运行的收场通知以交回为准，消息流里不再另画。 */
   handedBack: string[];
@@ -200,7 +200,7 @@ const STEP_WAIT: ReadonlySet<string> = new Set<StepWait>(["running", "awaiting",
 /** 「需手动」的种类（后端 `facts_query::NeedsKind` 判好）：批准一步 · 回答一问 · 批准计划 · 放行联网 · 批准协作请求 · 确认会话目标 · 在对话框里选 · 判不出。 */
 export type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 
-/** 「需要你」的成品（后端 `facts_query::Needs`）。 */
+/** 「需手动」的成品（后端 `facts_query::Needs`）。 */
 export interface Needs {
   kind: NeedsKind;
   /** 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。 */

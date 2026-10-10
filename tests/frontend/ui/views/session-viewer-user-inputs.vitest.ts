@@ -34,8 +34,8 @@ vi.mock("../../../../src/frontend/ui/render-stream-record", async (orig) => {
   const real = await orig<typeof import("../../../../src/frontend/ui/render-stream-record")>();
   return {
     ...real,
-    renderStreamRecord: (p: { message: { uuid?: string } }, ...rest: unknown[]) => {
-      if (p.message.uuid === "boom") throw new Error("这一条坏了");
+    renderStreamRecord: (p: { record: { id?: string } }, ...rest: unknown[]) => {
+      if (p.record.id === "boom") throw new Error("这一条坏了");
       return (real.renderStreamRecord as (...a: unknown[]) => void)(p, ...rest);
     },
   };
@@ -70,17 +70,17 @@ const INTERRUPT = { clean: "", interrupt: true };
  * 挂一份会话。`outline` = 后端这一刻说清单里有哪几条（缺省：`lines` 里 user 行的 uuid **按给的顺序**，
  * 摘要取正文 —— 这只是夹具的省事写法，**不是**判定：要排掉谁的用例一律显式传）。
  */
-async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionViewer> {
+async function mount(lines: RigPayload[], outline?: string[], shape: ConstructorParameters<typeof SessionViewer>[0] = {}): Promise<SessionViewer> {
   viewerRig.chunk = lines;
   const text = (p: RigPayload): string => {
-    const c = (p.message as { message?: { content?: unknown } }).message?.content;
-    return typeof c === "string" ? c : "";
+    const b = (p.record as { blocks?: Array<{ type: string; text?: string }> }).blocks ?? [];
+    return b.length === 1 && b[0].type === "text" ? (b[0].text ?? "") : "";
   };
   outlineBackend.entries = (outline ?? lines
-    .filter((p) => (p.message as { type?: string }).type === "user")
-    .map((p) => (p.message as { uuid: string }).uuid))
-    .map((u) => outlineEntry(u, text(lines.find((p) => (p.message as { uuid?: string }).uuid === u)!)));
-  const v = new SessionViewer();
+    .filter((p) => (p.record as { t?: string }).t === "said")
+    .map((p) => (p.record as { id: string }).id))
+    .map((u) => outlineEntry(u, text(lines.find((p) => (p.record as { id?: string }).id === u)!)));
+  const v = new SessionViewer(shape);
   document.body.appendChild(v.element);
   await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
   await settleOutline();
@@ -100,15 +100,15 @@ const saidOf = (v: SessionViewer): string => toggleOf(v).querySelector('[data-pa
 const panelOf = (_v: SessionViewer): HTMLElement =>
   document.querySelector<HTMLElement>(".user-inputs")!;
 /**
- * 🔴 **找卡一律限定在消息流容器里**。`[data-uuid]` 在本仓只有一个意思（渲染出来的消息卡），
- * 而清单行是另一种东西 —— 早期一版把行也写成 `data-uuid`，这个判据当场把两者混在一起
+ * 🔴 **找卡一律限定在消息流容器里**。`[data-id]` 在本仓只有一个意思（渲染出来的消息卡），
+ * 而清单行是另一种东西 —— 早期一版把行也写成 `data-id`，这个判据当场把两者混在一起
  * 数成 **350**（150 张卡 + 200 行）。行的属性因此改名 `data-input-uuid`；
  * 这两个 helper 让「卡」与「行」在判据里也分得开，别再退回 `v.element.querySelector`。
  */
 const streamOf = (v: SessionViewer): HTMLElement =>
   v.element.querySelector<HTMLElement>(".session-viewer-stream")!;
 const cardOf = (v: SessionViewer, uuid: string): HTMLElement | null =>
-  streamOf(v).querySelector<HTMLElement>(`[data-uuid="${uuid}"]`);
+  streamOf(v).querySelector<HTMLElement>(`[data-id="${uuid}"]`);
 
 beforeEach(() => {
   rig = installViewerRig();
@@ -122,7 +122,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
       [
         userLine(1, "u1", "第一句"),
         assistantLine(2, "a1", "回复"),
-        userLine(3, "u3", "skill 展开的 prompt", { isMeta: true }),
+        userLine(3, "u3", "skill 展开的 prompt", { who: { speaker: { kind: "system" }, text: "" } }),
         userLine(7, "u7", "第二句"),
       ],
       ["u1", "u7"], // 后端说：主线用户输入是这两条（isMeta 那条它排掉了）
@@ -203,7 +203,7 @@ describe("KR45D1 点一下跳过去", () => {
     const lines = Array.from({ length: 200 }, (_, i) => userLine(i + 1, `u${i + 1}`, `第 ${i + 1} 句`));
     const v = await mount(lines);
 
-    const inDom = streamOf(v).querySelectorAll("[data-uuid]").length;
+    const inDom = streamOf(v).querySelectorAll("[data-id]").length;
     expect(inDom).toBe(150); // TAIL_INITIAL：首屏只渲染末尾 150 条
     expect(rowsOf(v).length).toBe(200); // 而清单是 200 条 —— 分母 = 全部 200 条用户输入
     // 分水岭：清单条数 > DOM 里的卡数 ⇒ 它确实不是扫 DOM 扫出来的
@@ -223,7 +223,7 @@ describe("KR45D1 点一下跳过去", () => {
   it("跳不过去的那一条不许静默：标出来（这条不等价是自陈的，这里给它一个活体）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
+      userLine(2, "u2", "[Request interrupted by user]", { who: INTERRUPT }),
     ]);
     // 先证明夹具真的落在那一形上：清单有它，DOM 没有它的卡
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["u1", "u2"]);
@@ -246,7 +246,7 @@ describe("KR45D1 点一下跳过去", () => {
   it("查看器这一侧：跳空是**永久**的（全渲染完照样不建卡）⇒ 转移的真住址不在这里", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
+      userLine(2, "u2", "[Request interrupted by user]", { who: INTERRUPT }),
     ]);
     // 先证明「没有任何未渲染的段留着」——否则下面那句「永久」是空真
     const status = v.element.querySelector('[data-role="status"]')!.textContent ?? "";
@@ -289,7 +289,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
   it("面板与清单行都不带内联 style（含「跳不过去」那一行 —— 变灰也不许退回内联）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
+      userLine(2, "u2", "[Request interrupted by user]", { who: INTERRUPT }),
     ]);
     expect(panelOf(v).getAttribute("style")).toBeNull();
     expect(rowsOf(v).map((r) => r.getAttribute("style"))).toEqual([null, null]);
@@ -427,15 +427,15 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
 
   it("某一条显示不了 ⇒ 卡的位置上「这一条显示不了」［复制详情］（复制的是那一条原文 ＋ 原因），其余照画、状态行不报数", async () => {
     const v = await mount([userLine(1, "u1", "第一句"), userLine(2, "boom", "坏的"), assistantLine(3, "a1", "回复")]);
-    const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-uuid], [data-role=\"broken\"]")];
-    expect(kids.map((k) => k.dataset.uuid ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
+    const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-id], [data-role=\"broken\"]")];
+    expect(kids.map((k) => k.dataset.id ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
     const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
     expect(broken.textContent).toContain(copyText("sessionViewer.card.broken"));
     [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
     await vi.waitFor(() => expect(clipboardWrites(vi.mocked(invoke))).toHaveLength(1));
     const [written] = clipboardWrites(vi.mocked(invoke));
     expect(written).toContain("这一条坏了");
-    expect(written).toContain('"uuid": "boom"');
+    expect(written).toContain('"id": "boom"');
     expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: "3" }));
   });
 
@@ -479,5 +479,44 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
       .filter((c) => c[0] === "chan_call" && (c[1] as unknown as { op?: string }).op === "history-turns")
       .map((c) => chanArgsJson(c[1] as unknown as ChanCallArgs));
     expect(turns.at(-1)).toEqual({ path: "/p/s1.jsonl", from: 0 });
+  });
+});
+
+describe("读到哪一句：滚动时把视口顶上那一句之前最近的一句标成当前", () => {
+  /** 每张卡的上沿按 uuid 写死（jsdom 不排版）；流的上沿 0 ⇒ 判线在 8。 */
+  function tops(v: SessionViewer, at: Record<string, number>): { reads: () => number } {
+    let n = 0;
+    const stream = streamOf(v);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const u = this.getAttribute("data-id");
+      const top = this === stream ? 0 : u !== null && u in at ? at[u] : 0;
+      if (u !== null) n += 1;
+      return { top, bottom: top + 20, height: 20, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    });
+    return { reads: () => n };
+  }
+  const current = (v: SessionViewer): string[] => rowsOf(v).filter((r) => r.getAttribute("aria-current") === "true").map((r) => r.dataset.inputUuid ?? "");
+
+  it("（独立查看窗）标到上沿已过判线的最后一句；一句都没过 ⇒ 第一句；一帧里来几个 scroll 只量一趟", async () => {
+    const lines = [userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复"), userLine(3, "u3", "第二句"), assistantLine(4, "a3", "回复"), userLine(5, "u5", "第三句")];
+    const v = await mount(lines, undefined, { window: { foot: document.createElement("div") } });
+    const at: Record<string, number> = { u1: -500, a1: -400, u3: -100, a3: 50, u5: 300 };
+    const probe = tops(v, at);
+    for (let k = 0; k < 5; k++) streamOf(v).dispatchEvent(new Event("scroll"));
+    rig.flushRaf(2);
+    expect(current(v)).toEqual(["u3"]);
+    // 几个 scroll 合成一趟：卡最多各量一次（逐个 scroll 当场量 ＝ 每个都按清单整份找卡、逼一次布局）
+    expect(probe.reads()).toBeLessThanOrEqual(3);
+    at.u1 = 40;
+    at.u3 = 200;
+    streamOf(v).dispatchEvent(new Event("scroll"));
+    rig.flushRaf(2);
+    expect(current(v)).toEqual(["u1"]);
+    at.u1 = -900;
+    at.u3 = -600;
+    at.u5 = -10;
+    streamOf(v).dispatchEvent(new Event("scroll"));
+    rig.flushRaf(2);
+    expect(current(v)).toEqual(["u5"]);
   });
 });

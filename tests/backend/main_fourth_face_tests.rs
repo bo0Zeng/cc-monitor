@@ -82,6 +82,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    🔴 **4 → 3 → 4**：终端管理 L1 两条（`terminal-preview` / `terminal-input`）进表；`capture-pane` 随抓屏改走
     //    `terminal-preview` 删了。
     //    🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表（起 tmux 控制模式客户端，声明了 `no_tmux`）。
+    //    🔴 **5 → 6**：计划退回 `plan-return` 进表（送字走 `terminal-input` 的本体、要起 tmux，声明了 `no_tmux`）。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
@@ -90,7 +91,8 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
             "terminal-input",
             "terminal-follow",
             "kill",
-            "launch"
+            "launch",
+            "plan-return"
         ],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
@@ -224,6 +226,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
     // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
     // 🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表。
+    // 🔴 **5 → 6**：计划退回 `plan-return` 进表。
     assert_eq!(
         names,
         vec![
@@ -231,7 +234,8 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
             "terminal-input".to_string(),
             "terminal-follow".to_string(),
             "kill".to_string(),
-            "launch".to_string()
+            "launch".to_string(),
+            "plan-return".to_string()
         ],
         "🔴 **Windows 上这张表又空了** —— 这一格就是本拍的正题。\n\
              握手帧第四条面在动机平台上不说话 = 这一拍什么都没买到。\n\

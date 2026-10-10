@@ -179,3 +179,27 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
         "这一形**确实**解析得了 —— 上面那段说明不是假设"
     );
 }
+
+/// 〔会话血缘〕紧跟第 2 段的来处段 `~<来处>[~<父>]` 切出来单放、不进路由键、不交上游；没有它的照旧是 `None`。
+#[test]
+fn the_origin_tail_is_cut_out_and_not_sent_upstream() {
+    let r =
+        parse("/t/agentA/acctA/~0a1b2c3d4e5f6071~p-1/v1/messages").expect("带来处的应当解析成功");
+    assert_eq!(r.key.seg1, "agentA");
+    assert_eq!(r.key.seg2, "acctA");
+    assert_eq!(r.rest, "/v1/messages");
+    assert_eq!(
+        r.origin,
+        Some(super::super::RouteOrigin {
+            token: "0a1b2c3d4e5f6071".into(),
+            parent: Some("p-1".into()),
+        })
+    );
+    let plain = parse("/t/agentA/acctA/v1/messages").expect("不带来处的");
+    assert_eq!(plain.origin, None);
+    assert_eq!(plain.key, r.key, "来处不进路由键");
+    assert!(
+        parse("/t/agentA/acctA/~a.b/v1/messages").is_none(),
+        "坏来处"
+    );
+}

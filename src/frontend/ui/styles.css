@@ -10,7 +10,7 @@
 
 @layer components {
 /* === Tab Bar === */
-/* 栏顶一排（36 高）· 「需要你 N」· 机器离线条 · 列表（滚动的只是它）。
+/* 栏顶一排（36 高）· 「需手动 N」· 机器离线条 · 列表（滚动的只是它）。
    一行 30 高、左 2px 条（当前 = `--accent`）、状态点固定一列、标题一行省略、行尾徽标靠右；
    行尾动作悬停 / 焦点时盖在行尾（同色底 ＋ 渐隐），标题不挪位。 */
 
@@ -76,7 +76,7 @@
   color: var(--text);
 }
 
-/* 「需要你 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标。 */
+/* 「需手动 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标。 */
 .tab-needs {
   flex: none;
   display: flex;
@@ -704,7 +704,7 @@
   contain-intrinsic-size: auto 120px;
 }
 
-/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-uuid,恒为首子)。
+/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-id,恒为首子)。
    contain-intrinsic-size 显式覆盖 120px 兜底(它匹配 .stream-content > *)。 */
 .stream-more-above {
   text-align: center;
@@ -1104,7 +1104,7 @@
 }
 
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
-/* 在等你（C7「需要你」卡）：左 3px 琥珀；答了之后左条去掉、底行写答了什么（§5.2.7）。 */
+/* 在等你（C7「需手动」卡）：左 3px 琥珀；答了之后左条去掉、底行写答了什么（§5.2.7）。 */
 .block-ask,
 .block-plan {
   border: 1px solid var(--border-medium);
@@ -2750,7 +2750,7 @@
 
 /* 放在层的末尾：它要压过上面那几条同元素的规则（选择器更具体，后写）。 */
 /* 栏收起（窗宽 < 980 或手动收起，`tab-bar-fold.ts` 挂 `data-tab-bar`；规范 I8 偏离：每格 = 状态点 ＋ 项目名两个字母）：
-   栏收成 44px，栏顶竖排，「需要你」收成「● N」。 */
+   栏收成 44px，栏顶竖排，「需手动」收成「● N」。 */
 body[data-tab-bar="folded"]:not(.viewer-mode) #tab-bar {
   width: 44px;
 }

@@ -46,6 +46,7 @@ pub mod history; // 历史清单与注解（history_list · history_annotations�
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
+pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -848,7 +849,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
 ///
-/// p9a-chores：data-report 换形（todo ＝ 要你动手各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
+/// p9a-chores：data-report 换形（todo ＝ 待办各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
 ///
 /// p9b-background-activity：session_added / session_status 多 background / activity（适配层翻）；invalid_args 收进 bad_args；删帧命令 deploy-retired 与旧装法清理链。
 ///
@@ -881,7 +882,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
 ///
 /// p9q-plan-cli-faces：planned-build 读写（plan-list / plan-read / plan-cell-view / plan-ack / plan-unack / plan-return ＋ plan_changed）；CLI 面放出起会话等 9 条与 ext-list-here、--args-b64 载荷口、无输入回 no_input、超大回 args_too_large；记录帧换形的加法（history-branch ＋ session_branch、history-facts 许可档 / 用量 / 花费成品、删 accounts-isolate 与 session_kind / status）；终端原因码统一下划线、terminal-input 删 take、terminals-list 的 can 删 preview；session-new 带 ticket。
-pub const BUILD_ID: &str = "p9q-plan-cli-faces";
+///
+/// p9r-resolve-argv-raw-said：--resolve 认 --args-b64 / --stdin-line（与别的 CLI 子命令同一处读，一次性那条码全集 +args_too_large · no_input · bad_args）；terminals-list 每行删恒为 normal 的 purpose；CLI 失败信封多可缺 raw（下层原话，进复制详情）；profiles-read 的 fileProblem 多可缺 detail；几族失败句只留原因词、原话进详情；轮换说明文案抢回 / 兜底分开说。
+///
+/// p9s-record-arg-line：过程一行的主参数（steps.arg）改成协议上的定长一行（至多 200 字、按字符截、截了带省略号；原来 400）；CRLF 行的 line.raw 不含 \r；冻结表照现状（session_kind / status 已删）；history-branch 进经通道的命令表；后端删三处没人调的（账号面 watched · 读位 restart · ScanMap::scan）；plan-return「已结束」那句文案键挪进会话状态族。
+pub const BUILD_ID: &str = "p9s-record-arg-line";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1049,7 +1054,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--data-report",
     // 换 agent 家目录存之前那一问（`agent-home-check`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--agent-home-check",
-    // 「要你动手」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--chores-mark",
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--last-seen-read",
@@ -1227,6 +1232,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
+    // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--resident-attach",
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
@@ -2186,7 +2193,7 @@ pub struct StreamWants {
 /// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
 /// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
 /// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
-/// 上限同默认那一形（`control/cli_control.rs::MAX_CLI_STDIN`，超了拒、不截断）。
+/// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
 ///
 /// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
@@ -2196,7 +2203,7 @@ pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 ///
 /// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
 /// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
-/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_control.rs::MAX_ARGS_B64_LEN`。
+/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_args.rs::MAX_ARGS_B64_LEN`。
 /// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const ARGS_B64_FLAG: &str = "--args-b64";
 

@@ -598,7 +598,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "data-report",
         // 换 Claude 目录前那一问：stat 两次。
         "agent-home-check",
-        // 「要你动手」记下的选择：读—改—写后端自己那份小文件。
+        // 「待办」记下的选择：读—改—写后端自己那份小文件。
         "chores-mark",
         // 离线那台的上次值：读 / 读—改—写后端自己那份小文件。
         "last-seen-read",
@@ -666,6 +666,14 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
+        // 计划读面三条：起一次 pb 并等它退出（研究盘 252 格 1.1 秒），开跑之后打不断。
+        "plan-list",
+        "plan-read",
+        "plan-cell-view",
+        // 计划审面三条：认可 / 撤认可读—改—写后端那份小文件（跨进程锁）；退回现读一次计划（起 pb）再起 tmux 送字。
+        "plan-ack",
+        "plan-unack",
+        "plan-return",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -879,6 +887,13 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-follow",
         "terminal-follow-ack",
         "terminal-unfollow",
+        // 计划六条：起 pb / 读改写小文件 / 起 tmux，阻塞档（上面逐条断）。
+        "plan-list",
+        "plan-read",
+        "plan-cell-view",
+        "plan-ack",
+        "plan-unack",
+        "plan-return",
     ];
     let names = command_names();
     let missing: Vec<&&str> = names.iter().filter(|c| !covered.contains(c)).collect();

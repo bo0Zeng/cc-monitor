@@ -247,7 +247,7 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
-    // 需要你：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
+    // 需手动：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
     const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42 };
     expect(decodeFacts({ ...good, needs }).needs).toEqual(needs);
     expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(ReplyUnreadable);
@@ -307,7 +307,7 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     const { decodePage, decodeLines, decodeRun } = await import("../../../src/frontend/ui/record-reads");
     const page = decodePage("<local>", recordGolden["history-page"]);
     expect([page.next, page.nextSeq, page.eof]).toEqual([273, 3, true]);
-    expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, (p.message as { uuid?: string }).uuid])).toEqual([
+    expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, p.record.id])).toEqual([
       [1, "r", "/w", "r-1"],
       [2, "r", null, "r-2"],
     ]);
@@ -322,6 +322,15 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     expect([run.run, run.rows.length, run.rows.map((r) => r.rid ?? null), run.more]).toEqual(["a1", 2, [null, "m-s2"], false]);
     // 反向：外层多一格 ⇒ 不收（两端契约对不上，不猜）。
     expect(() => decodePage("<local>", { ...(recordGolden["history-page"] as object), extra: 1 })).toThrow();
+  });
+
+  it("★★ 金样：主线外清单（history-branch）读得懂；清单里不是串 / 外层多一格 ⇒ 不收", async () => {
+    const { decodeBranch } = await import("../../../src/frontend/ui/record-reads");
+    // 金样那份会话两条都没有链（r-2 不接 r-1）⇒ 两个根、r-1 是不接任何回复的人那一句 ⇒ 后端判它回退掉了。
+    expect(decodeBranch(recordGolden["history-branch"])).toEqual({ off: ["r-1"], end: 273 });
+    expect(decodeBranch({ off: ["u2", "u3"], end: 9 })).toEqual({ off: ["u2", "u3"], end: 9 });
+    expect(() => decodeBranch({ off: [2], end: 9 })).toThrow();
+    expect(() => decodeBranch({ off: [], end: 9, extra: 1 })).toThrow();
   });
 });
 

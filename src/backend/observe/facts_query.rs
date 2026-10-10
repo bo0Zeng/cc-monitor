@@ -153,7 +153,7 @@ pub(crate) struct SessionFacts {
     pub(crate) pending: Vec<PendingCall>,
     /// 最后一段正文的头一行（悬停卡「它最后一句」）。
     pub(crate) last_say: Option<LastSay>,
-    /// **需要你**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+    /// **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
     pub(crate) needs: Option<Needs>,
     /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
     pub(crate) handed_back: Vec<String>,
@@ -308,7 +308,7 @@ pub(crate) enum NeedsKind {
     Unknown,
 }
 
-/// **需要你**的成品：种类 · 等的那一句 · 从何时起等。
+/// **需手动**的成品：种类 · 等的那一句 · 从何时起等。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Needs {

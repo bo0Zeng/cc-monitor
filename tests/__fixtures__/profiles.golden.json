@@ -197,6 +197,7 @@
         "name": "workcct",
         "own": [],
         "problem": {
+          "detail": null,
           "line": 15,
           "message": "workcct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
         },

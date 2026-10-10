@@ -334,7 +334,7 @@ async fn stream_loop(
                 session_id,
                 path,
                 seq,
-                message,
+                record,
                 cwd,
                 end,
                 rid,
@@ -345,7 +345,7 @@ async fn stream_loop(
                         session_id,
                         path: std::path::PathBuf::from(path),
                         seq,
-                        message,
+                        record,
                         cwd,
                         end: Some(end),
                         rid,
@@ -407,6 +407,13 @@ async fn stream_loop(
                     sid,
                     runs,
                     ended,
+                });
+            }
+            Some(InboundFrame::SessionBranch { sid, off, .. }) => {
+                crate::session_book::feed(BookIn::Branch {
+                    origin: host_label.clone(),
+                    sid,
+                    off,
                 });
             }
             Some(InboundFrame::SessionRemoved { sid }) => {
@@ -501,7 +508,7 @@ async fn stream_loop(
                 cell,
             ),
             // 认识但不消费（理由在变体上）。
-            Some(InboundFrame::TurnEnd) => {}
+            Some(InboundFrame::TurnEnd | InboundFrame::PlanChanged) => {}
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
             None => {}
         }

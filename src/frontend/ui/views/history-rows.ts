@@ -27,7 +27,7 @@ export interface RowHooks {
   menu(r: HistoryRow, at: HTMLElement | { x: number; y: number }): void;
   openWindow(r: HistoryRow): void;
   toggleForks(r: HistoryRow): void;
-  /** 这一会话在主窗口里此刻「需要你」的那个词（等批准 …）；不在 / 不需要 ⇒ `null`。 */
+  /** 这一会话在主窗口里此刻「需手动」的那个词（等批准 …）；不在 / 不需要 ⇒ `null`。 */
   needs(r: HistoryRow): string | null;
 }
 
@@ -46,7 +46,7 @@ function badge(text: string, tone?: "live" | "need"): HTMLElement {
   return b;
 }
 
-/** 状态点：只画在跑与需要你。 */
+/** 状态点：只画在跑与需手动。 */
 function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
   if (needs) return statusDot("needs-you", needs, "compact");
   if (r.status === "live") return statusDot("running", copyText("history.row.live"), "compact");
@@ -54,7 +54,7 @@ function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
 }
 
 /**
- * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 需要你（等批准 …）／ 在跑。
+ * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 需手动（等批准 …）／ 在跑。
  * `live` ＝ 在跑也画成徽标（按项目那一形与内容头；按时间那一形的在跑由状态点说）。
  */
 export function rowBadges(r: HistoryRow, needs: string | null, live = true): HTMLElement[] {

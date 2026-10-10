@@ -122,7 +122,7 @@ pub(super) fn all_to(up: SocketAddr) -> Upstreams {
 fn the_pass_key_reaches_passthrough_but_is_refused_on_substitute_routes() {
     let up = spawn_name_upstream(SSE_OK);
     let relay = spawn_relay_with(all_to(up.addr), Arc::new(Taps::default()));
-    let pass = super::key::key_tests::TEST_PASS_KEY;
+    let pass = super::key::key_tests::test_pass_key();
     let full = super::key::key_tests::TEST_KEY;
     let post = |key: &str, route: &str| {
         send_raw(
@@ -130,12 +130,12 @@ fn the_pass_key_reaches_passthrough_but_is_refused_on_substitute_routes() {
             &format!("POST /{key}/{route}/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"),
         )
     };
-    let got = post(pass, "t/claude-code/0");
+    let got = post(&pass, "t/claude-code/0");
     assert!(
         got.starts_with("HTTP/1.1 200"),
         "直通钥匙打 /t/ 没过：{got:?}"
     );
-    let got = post(pass, "s/claude-code/acct");
+    let got = post(&pass, "s/claude-code/acct");
     assert!(
         got.starts_with("HTTP/1.1 403 ")
             && got
@@ -193,7 +193,8 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
     );
     let taps = Arc::new(Taps::default());
     let relay = spawn_relay_with(ups, Arc::clone(&taps));
-    let key = super::key::key_tests::TEST_PASS_KEY;
+    let key = super::key::key_tests::test_pass_key();
+    let key = key.as_str();
     const SID: &str = "019a0000-0000-7000-8000-00000000c0de";
     const CHILD: &str = "019a0000-0000-7000-8000-0000000c41d0";
 

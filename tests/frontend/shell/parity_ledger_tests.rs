@@ -65,7 +65,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_log_file", "app.logs", Side::Both),
     // 设置窗「现在重启」：重起 cc-monitor 自己（不吃 origin，本机远端无从分）⇒ `Both`，归已有能力 `app.config`（「要重启才生效」那几项改的都是本机配置）。
     ("restart_app", "app.config", Side::Both),
-    // 系统通知（「一轮完成」「需要你」）：出在 monitor 面前这台的桌面上，哪台的会话都一样 ⇒ `Both`，归已有能力 `app.window.self`。
+    // 系统通知（「一轮完成」「需手动」）：出在 monitor 面前这台的桌面上，哪台的会话都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("notify_desktop", "app.window.self", Side::Both),
     // 写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，哪台的内容都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("clipboard_write", "app.window.self", Side::Both),

@@ -22,7 +22,7 @@ export interface MachineFace {
   /** 名字旁那个词（连着时不说）。 */
   word: string;
   problem: string;
-  /** 问题行的样子：出错 · 要你动手 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
+  /** 问题行的样子：出错 · 待办 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
   tone: "error" | "warn" | "busy";
   bar: boolean;
   fixes: MachineFix[];
@@ -112,10 +112,7 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
     case "disabled":
       return face(copyText("machinePage.state.disabled"), copyText("machinePage.problem.disabled"));
     case "unsupported":
-      return face(
-        copyText("machineState.word.unsupported"),
-        m.reason === "no_forwarding" ? copyText("machineState.problem.noForwarding") : copyText("machineState.problem.notUnix", { machine }),
-      );
+      return face(copyText("machineState.word.unsupported"), copyText("machineState.problem.notUnix", { machine }));
   }
 }
 

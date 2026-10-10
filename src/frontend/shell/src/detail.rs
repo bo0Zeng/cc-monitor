@@ -97,16 +97,6 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     .render()
 }
 
-/// 一条 ERROR 级日志事件（`monitor-error` 那条 toast）的详情：时刻 · 本机 · 对象（来源模块）· 原话（那条日志）。
-pub(crate) fn of_log_event(target: &str, message: &str) -> String {
-    Detail::new()
-        .item(Label::At, now())
-        .item(Label::Local, local_line())
-        .target(copy_core::detail::Target::Module(target))
-        .item(Label::Raw, message)
-        .render()
-}
-
 /// 壳自己那几条命令的失败：给人看的那一句 ＋ 复制详情那几行。全仓壳命令的失败只这一形（ts-rs 导出）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -217,6 +207,17 @@ impl Said {
     /// 一句话 ＋ 别处按同一排法写好的那一份详情（本机后端写的 · 上一步留下的），读回成一项一项（之后补项照次序插）。
     pub(crate) fn with_written(said: String, detail: &str) -> Said {
         Said::of_parts(said, Detail::parse(detail))
+    }
+
+    /// 一句话 ＋ 远端后端写好的一整份详情（原样一块，不拆项），后面补「本机」一行；`raw` 是这边另知道的原话（可缺，排最后）。
+    pub(crate) fn relayed_from(said: String, written: &str, raw: Option<&str>) -> Said {
+        Said::of_parts(
+            said,
+            Detail::new()
+                .block(written)
+                .item(Label::Local, local_line())
+                .maybe(Label::Raw, raw),
+        )
     }
 
     /// 换一句给人看的话，复制详情照旧（外层接手下层那一形失败时说得更具体）。

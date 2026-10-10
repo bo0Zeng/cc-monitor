@@ -27,7 +27,7 @@
 //!   ⇒ 本摞判据买到的是**客户端侧那条链**（发命令 · 解析回参 · 画到帧上）真的通，
 //!   **不是**后端那份真索引的正确性 —— 后者的判据住 `tests/backend/files/`。
 //! - **它挂在通道宿主的 `Backends` 那一格上**（[`wire_up`]：真回环口、
-//!   真钥匙、真 `dial`，窗口手里拿的就是生产那个 `chan::client::Client`）。
+//!   真路由器，窗口手里拿的就是生产那个 `chan::client::Client`）。
 //!   ⇒ 「窗口 → 通道 → 路由器」在射程里；**宿主往 `inbound_client` 转交那一跳不在**
 //!   （这台合成后端就坐在那一跳的位置上）。那一跳的能力协商（后端没声明的命令一个字节都不发）
 //!   由本台后端**照样演**：没在 [`FakeBackend::offered`] 里的命令答 `Peer{Unsupported}`，
@@ -1225,23 +1225,7 @@ pub async fn wire_up(origin: &str, be: FakeBackend) -> Wired {
         be: std::sync::Mutex::new(be),
         log: log.clone(),
     });
-    let h = crate::find::testing::start_host(
-        hosted,
-        crate::find::testing::test_key(),
-        1 << 22,
-        std::time::Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    let line = comms_inward::chan::dial::dial(
-        &h,
-        comms_inward::chan::wire::Budget {
-            until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: comms_inward::chan::wire::CancelToken::new(),
-        },
-    )
-    .await
-    .expect("拨得通、过得了认证");
+    let line = crate::find::testing::wire(hosted, 1 << 22);
     Wired {
         origin: origin.to_string(),
         log,
@@ -1371,39 +1355,18 @@ pub fn fake_sha256(text: &str) -> String {
         .collect()
 }
 
-/// 判据用的一把钥匙（形状同生产：两枚 v4 UUID 拼成的 64 位十六进制）。
-pub fn test_key() -> comms_inward::chan::wire::Key {
-    comms_inward::chan::wire::Key(format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    ))
-}
-
-/// 判据用的通道口：绑回环 `127.0.0.1:0`，每条接进来的连接交给路由器，回交接件。
-/// 生产里绑口的是 monitor 那一侧（壳里 `chan/host.rs::start_with`）；窗口这一侧的判据要自己起一个挂着合成句柄的口。
-pub async fn start_host(
+/// 判据用的一条通道：一对内存管子，一头交给路由器（挂合成句柄），另一头起窗口手里那个客户端。
+/// 生产里那一对管子是窗口进程自己的 stdin / stdout（monitor 在另一头，壳里 `chan/host.rs::serve_window`）；路由器与客户端只认读写半边。
+pub fn wire(
     backends: std::sync::Arc<dyn comms_inward::chan::router::Backends>,
-    key: comms_inward::chan::wire::Key,
     frame: usize,
-    hello_within: std::time::Duration,
-) -> std::io::Result<comms_inward::chan::handoff::Handoff> {
+) -> comms_inward::chan::client::Client {
     use comms_inward::chan::router;
-    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
-    let addr = listener.local_addr()?;
-    let terms = router::Terms {
-        key: key.clone(),
-        frame,
-        hello_within,
-    };
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let (rd, wr) = tokio::io::split(theirs);
     tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            let terms = terms.clone();
-            let backends = std::sync::Arc::clone(&backends);
-            tokio::spawn(async move {
-                let _ = router::serve(stream, terms, backends).await;
-            });
-        }
+        let _ = router::serve(rd, wr, router::Terms { frame }, backends).await;
     });
-    Ok(comms_inward::chan::handoff::Handoff { addr, key, frame })
+    let (rd, wr) = tokio::io::split(ours);
+    comms_inward::chan::client::Client::over(rd, wr, frame)
 }

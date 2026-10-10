@@ -65,7 +65,7 @@ pub(crate) use spec::Dir;
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
-/// 取值与 `control/resolve_query.rs::MAX_RESOLVE_STDIN` 同一量级（1 MiB）——
+/// 取值与 `control/cli_args.rs::MAX_CLI_STDIN` 同一量级（1 MiB；`--resolve` 原先自己那一道 `MAX_RESOLVE_STDIN` 已并进它）——
 /// 那条是审计 security-重要② 加的，理由相同：无界读遇超大输入 = 无界堆分配
 /// （Pi 级设备 OOM）。命令信封比 `ResumeSpec` 还小，1 MiB 已是极宽松的上限。
 ///
@@ -75,8 +75,8 @@ pub(crate) use spec::Dir;
 /// `handle_line` 才看 `raw.len()`。D 审计实测：喂 512 MiB 无换行的流 ⇒
 /// **RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
 ///
-/// 也就是说：常数抄了先例，**机制没抄** —— `resolve_query` 用的是
-/// `stdin().take(MAX_RESOLVE_STDIN)`，真·先取上限再读。
+/// 也就是说：常数抄了先例，**机制没抄** —— 先例（当时 `resolve_query` 的 `MAX_RESOLVE_STDIN`，现并进 `cli_args::MAX_CLI_STDIN`）用的是
+/// `stdin().take(上限)`，真·先取上限再读。
 /// 而功能自述的验收判据里逐字写着「超长单行 ⇒ 进程存活、**内存不涨**」，
 /// 那句当时是**没有任何测试的假声明**。
 ///

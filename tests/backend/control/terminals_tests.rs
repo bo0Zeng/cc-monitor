@@ -851,3 +851,27 @@ fn can_holds_only_what_can_vary() {
         assert_eq!(keys, ["end", "input"], "`can` 里多了 / 少了格：{can}");
     }
 }
+
+/// ★ 每行只带会变的格：`purpose` 原先恒为 `normal`（只有这一种），读起来像会变、实际不变 ⇒ 删。
+/// `host` 留着（同样恒为 `tmux`，但它是宿主的名字，换宿主时就是这一格在变）。字段表里也不许再登记它。
+#[test]
+fn a_row_carries_no_constant_purpose() {
+    for r in [
+        row("$1", "a-cc", "", "", "bash"),
+        row("$2", "b-cc", "sid-b", "mobile", "claude"),
+    ]
+    .iter()
+    {
+        let t = terminal_json(r, &[], None);
+        assert!(t.get("purpose").is_none(), "行里还有 `purpose`：{t}");
+        assert_eq!(t["host"], "tmux", "`host` 该留着");
+    }
+    let spec = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|c| c.name == "terminals-list")
+        .expect("没有 terminals-list");
+    assert!(
+        !spec.fields.iter().any(|f| f.name == "purpose"),
+        "terminals-list 的字段表还登记着 `purpose`"
+    );
+}

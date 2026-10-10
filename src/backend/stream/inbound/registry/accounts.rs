@@ -99,8 +99,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "rotation-session-set",
         summary: "改一批会话的轮换",
-        codes: &["bad_args", "failed", "io_failed", "no_such_rule"],
-        fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `{\"rule\": id}` · `\"custom\"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `\"detach\"`（照此刻生效的那份拷成本会话的）· `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
+        codes: &["bad_args", "failed", "io_failed", "no_parent", "no_such_rule"],
+        fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `\"parent\"`（跟随父会话：父按会话血缘填；有一个没有父或父是别的一家 ⇒ 整批 `no_parent`）· `{\"rule\": id}` · `\"custom\"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `\"detach\"`（照此刻生效的那份拷成本会话的）· `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args).map(Some)),
     },

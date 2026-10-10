@@ -1,5 +1,5 @@
 /**
- * CP2a · 文案新写法那套规矩（N 系）落成的机检：C-W1–C-W18 ＋ 收严的 C-L2 · C-P1 · C-Y4。
+ * CP2a · 文案新写法那套规矩（N 系）落成的机检：C-W1–C-W20 ＋ 收严的 C-L2 · C-Y4。
  *
  * 每条检法读的词表 / 闭集都住 `src/shared/copy/rules.json` 那一条的 `words` · `cells` · `limits` · `families` 格，
  * 检法里不另抄一份 —— 改规矩就是改那一格。
@@ -212,6 +212,18 @@ export const W_CHECKS: Record<string, Check> = {
     if (/请(?!求)/.test(s)) h.push("请");
     return h.length ? `口语词「${h.join("」「")}」` : null;
   },
+  // 用户 10-09：不用第二人称（任何一档、命令行也算，不可豁免）。
+  "C-W19": (e, ctx) => {
+    const s = speech(e.zh);
+    const h = words(ctx, "C-W19").filter((w) => s.includes(w));
+    return h.length ? `第二人称「${h.join("」「")}」` : null;
+  },
+  // 术语表「会话」：「会话」前紧跟的技术前缀只许 tmux（SSH 会话 ⇒ SSH 连接）。
+  "C-W20": (e, ctx) => {
+    const ok = new Set(words(ctx, "C-W20"));
+    const h = [...speech(e.zh).matchAll(/([A-Za-z][A-Za-z0-9_-]*) ?会话/g)].map((m) => m[1]).filter((w) => !ok.has(w));
+    return h.length ? `「会话」前接了技术前缀「${[...new Set(h)].join("」「")}」` : null;
+  },
   // 条带 §5.2：原话 · 退出码 · 错误码不上句子，进「复制详情」。按占位符的语义判（名字在 rawArgs 闭集里的就是原话型），不按名单。
   //   另按值认：生产代码喂进去的是 `e.to_string()` 一类（`rust-refs.ts::isRawValue`）⇒ 占位叫什么都算原话型。
   "C-W18": (e, ctx, key) => {
@@ -230,12 +242,6 @@ export const TIGHTENED: Record<string, Check> = {
     if (!e.zh.includes("—")) return null;
     if (["title", "control", "action", "aria"].includes(e.kind) && e.zh.trim() !== "—") return `${e.kind} 档里有破折号`;
     return e.zh.replace(/(^|\s)—(?=\s|$)/g, "").includes("—") ? "破折号没有单独成格" : null;
-  },
-  // N4b：不以「你」开头；任何位置不许「您」。
-  "C-P1": (e) => {
-    const s = speech(e.zh).trimStart();
-    if (/您/.test(s)) return "称用户用了「您」";
-    return s.startsWith("你") ? "以「你」开头" : null;
   },
   // N7a：问号全表禁。
   "C-Y4": (e) => (/[？?]/.test(speech(e.zh)) ? "有问号" : null),

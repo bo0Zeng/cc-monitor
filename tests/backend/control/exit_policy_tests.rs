@@ -242,10 +242,10 @@ fn wire_child() {
 }
 
 /// 生产那一格真读载体：环境由本格给（不继承跑测试那一方的），两档各起一个子进程答 ——
-/// 没有监听口环境 ⇒ 被监护那一句；监听口与钥匙文件都在 ⇒ 常驻那一句。
+/// 没有常驻开关 ⇒ 被监护那一句；开关在 ⇒ 常驻那一句。
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
-    use crate::stream::listen::{ENV_PORT, ENV_TOKEN_FILE};
+    use crate::stream::listen::ENV_RESIDENT;
     let home = temp_dir("wire-child");
     let said = |env: &[(&str, &str)]| -> serde_json::Value {
         let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
@@ -276,7 +276,7 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
     };
     assert_eq!(said(&[]), copy_text("backendPolicy.exit.selfDies", &[]));
     assert_eq!(
-        said(&[(ENV_PORT, "47999"), (ENV_TOKEN_FILE, "/nonexistent/token")]),
+        said(&[(ENV_RESIDENT, "1")]),
         copy_text("backendPolicy.exit.unattended", &[])
     );
     let _ = std::fs::remove_dir_all(&home);
