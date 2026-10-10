@@ -180,6 +180,48 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=reply}.steps.*.ask.kind",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].header",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].multi",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].options[].description",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].options[].label",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].question",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=reply}.steps.*.known",
           "type": "bool"
         },
@@ -356,6 +398,12 @@
           "kind": "value",
           "path": "{t=said}.results.*.patch[].oldStart",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.results.*.preview",
+          "type": "string"
         },
         {
           "frozen": true,

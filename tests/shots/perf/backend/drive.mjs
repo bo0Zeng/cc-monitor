@@ -188,7 +188,7 @@ for (const [tag, path] of [["big", big], ["mid", mid]]) {
   await bench(`history-index-${tag}`, "history-index", { path, offset: 0 });
   await bench(`history-turns-${tag}`, "history-turns", { path, from: 0 });
   await bench(`history-user-inputs-${tag}`, "history-user-inputs", { path, from: 0 });
-  await bench(`history-page-${tag}-first`, "history-page", { path, offset: 0, seq: 0, whole: true });
+  await bench(`history-page-${tag}-first`, "history-page", { path, offset: 0, seq: 0 });
   await bench(`history-find-${tag}`, "history-find", { path, query: "cursor", include_tools: false, limit: 200 });
   await bench(`history-read-${tag}`, "history-read", { path }, 2);
 }
@@ -200,7 +200,7 @@ if (!ONLY.length || ONLY.includes("whole-read")) {
   let seq = 0;
   let pages = 0;
   for (;;) {
-    const r = await call("history-page", { path: big, offset, seq, whole: true });
+    const r = await call("history-page", { path: big, offset, seq });
     pages++;
     if (!r.ok || r.data.eof || r.data.next <= offset) break;
     offset = r.data.next;
@@ -284,7 +284,7 @@ if (!ONLY.length || ONLY.includes("leak")) {
     let offset = 0;
     let seq = 0;
     for (;;) {
-      const r = await call("history-page", { path: big, offset, seq, whole: true });
+      const r = await call("history-page", { path: big, offset, seq });
       if (!r.ok || r.data.eof || r.data.next <= offset) break;
       offset = r.data.next;
       seq = r.data.nextSeq;

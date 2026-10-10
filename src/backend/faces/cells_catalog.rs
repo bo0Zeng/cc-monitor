@@ -768,8 +768,8 @@ mod specimens {
     use super::{node_of, Specimen};
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
-        Answer, ApiReason, ChildRunTag, McpStatus, Pasted, PatchHunk, SessionActivity, Speaker,
-        StepResult, ToolCard, ToolStep, UserText,
+        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
+        SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
     };
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
@@ -864,6 +864,7 @@ mod specimens {
                 lines: vec![s("+a")],
             }]),
             patch_truncated: true,
+            preview: some("p"),
         }
     }
 
@@ -922,16 +923,42 @@ mod specimens {
                 auto_reply: false,
                 ends_turn: true,
                 cards: one("c", ToolCard::Command),
-                steps: one(
-                    "c",
-                    ToolStep {
-                        tool: s("Bash"),
-                        arg: some("ls"),
-                        path: true,
-                        note: some("n"),
-                        known: true,
-                    },
-                ),
+                steps: [
+                    (
+                        s("c"),
+                        ToolStep {
+                            tool: s("Bash"),
+                            arg: some("ls"),
+                            path: true,
+                            note: some("n"),
+                            known: true,
+                            ask: Some(StepAsk::Questions {
+                                questions: vec![AskQuestion {
+                                    header: some("h"),
+                                    question: s("q"),
+                                    multi: true,
+                                    options: vec![AskOption {
+                                        label: s("l"),
+                                        description: some("d"),
+                                    }],
+                                }],
+                            }),
+                        },
+                    ),
+                    (
+                        s("d"),
+                        ToolStep {
+                            tool: s("ExitPlanMode"),
+                            arg: some("a"),
+                            path: true,
+                            note: some("n"),
+                            known: true,
+                            ask: Some(StepAsk::Plan { text: s("p") }),
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
                 runs: one(
                     "c",
                     ChildRunTag {

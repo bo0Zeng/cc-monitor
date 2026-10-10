@@ -209,10 +209,11 @@ describe("KR45D1 点一下跳过去", () => {
     // 分水岭：清单条数 > DOM 里的卡数 ⇒ 它确实不是扫 DOM 扫出来的
     expect(rowsOf(v).length).toBeGreaterThan(inDom);
 
-    expect(cardOf(v, "u1")).toBeNull(); // 第 1 条还没渲染
+    expect(cardOf(v, "u1")).toBeNull(); // 第 1 条还没取回
     rowsOf(v)[0].click();
+    await settleOutline(); // 那一段按偏移取回、落地之后才找卡
     const target = cardOf(v, "u1");
-    expect(target).not.toBeNull(); // 点下去把目标岛渲染出来了
+    expect(target).not.toBeNull(); // 点下去把目标岛取回、渲染出来了
     expect(rig.scrollIntoView.mock.instances[0]).toBe(target);
     expect(rowsOf(v)[0].dataset.unjumpable).toBeUndefined();
   });

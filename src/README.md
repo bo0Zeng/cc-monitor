@@ -23,7 +23,7 @@ TypeScript ＋ Vite，原生 DOM，不引框架。界面只排版后端给的成
 | 对后端只有两个动作 | `call` / `subscribe` 的客户端是 `src/comms/inward/chan.ts`；`origin` 的判定只在 `ipc/origin.ts`；Tauri 命令只经 `ipc/commands.ts` 调（全仓唯一直接 `invoke` 的地方）；读回包的解码在各 `*-reads.ts` 与 `ipc/decode.ts` |
 | 界面状态 | `app-store.ts`（当前机器 · 账号快照 · 当前 tab）· `tab-store.ts` ＋ `tab-router.ts` · `overlay-router.ts` |
 | 会话流管线 | `events.ts`（订会话流、还 credit、按行号补 gap）→ `tabs.ts`（`TabManager`）→ `render-stream-record.ts` → `record-timeline.ts`（按 `seq` 二分插入）→ `stream.ts`（守卫式贴底）→ `render.ts`（marked · KaTeX · highlight.js · DOMPurify） |
-| 视口外不渲染 | `skeleton-view.ts`（有会话索引的 tab 与查看器）· `live-window.ts`（`TailWindow`，只物化尾部）· `height-estimate.ts`（估高，绝不许抛）· `render-window.ts` |
+| 视口外不渲染 | `skeleton-view.ts`（有会话索引的 tab 与查看器）· `live-window.ts`（`TailWindow`，只物化尾部）· `height-estimate.ts`（估高，绝不许抛） |
 | 卡片 | `cards/`（`index.ts` 是分发器；卡型由后端判好随记录来，界面按卡型排版） |
 | 主线外折叠 | `branch-fold.ts`（按后端给的主线外清单折，界面不判谁在主线上） |
 | 视图 | `views/`（历史页 · 只读查看器 · agent 窗 · 计划页 · 命令面板 · 并排监控 · 会话内查找 …） |
