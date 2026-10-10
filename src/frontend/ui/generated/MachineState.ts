@@ -12,7 +12,7 @@ export type MachineState = {
  */
 state: MachineStateKind, 
 /**
- * 没连上 / 做不了的原因码（`down`：拨号那一层的闭集码；`unsupported`：`not_unix` · `no_forwarding`；本机没连上：`local`）。
+ * 没连上 / 做不了的原因码（`down`：拨号那一层的闭集码；`unsupported`：`not_unix`；本机没连上：`local`）。
  */
 reason: string | null, 
 /**

@@ -48,7 +48,7 @@ fn synthetic_request() -> OpenRequest {
         // 〔09-28 裁 3〕「那一屏」（`rows`，含链接 · 时间 · 有损名原始字节几格）不再过这条边界：
         //   窗口进程自己列（`first_screen`）；那几格的解法由 `source_tests` 的 `row_from_ls_entry` 那几条判。
         reveal: Some("坏\u{FFFD}名字".to_string()),
-        handoff: synthetic_handoff(),
+        frame: crate::chan::host::FRAME_MAX_BYTES,
         // 书签文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
         bookmarks: Some(std::path::PathBuf::from(
             "/tmp/书签 目录/filewin-bookmarks.json",
@@ -65,15 +65,6 @@ fn synthetic_request() -> OpenRequest {
         }),
         theme: theme_testing::default_theme(),
         local_line: String::new(),
-    }
-}
-
-/// 一份合成交接件：回环地址 ＋ 一把**合成**钥匙（不是任何一个真口的钥匙）。
-fn synthetic_handoff() -> crate::chan::host::Handoff {
-    crate::chan::host::Handoff {
-        addr: "127.0.0.1:9".parse().expect("合法地址"),
-        key: crate::chan::wire::Key("k".repeat(64)),
-        frame: 1 << 20,
     }
 }
 
@@ -123,15 +114,10 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
         got.origin, want.origin,
         "那台的名字漂了 —— 窗口会问另一台机器（或者谁都没登记过的名字）"
     );
-    // 🔴交接件整份过得去（地址 · 帧长 · 钥匙），否则窗口拨不回来。
-    assert_eq!(got.handoff.addr, want.handoff.addr, "交接件的地址漂了");
-    assert_eq!(got.handoff.frame, want.handoff.frame, "交接件的帧长漂了");
-    assert!(got.handoff.key == want.handoff.key, "交接件的钥匙漂了");
-    // 🔴 钥匙**不进日志**：整份种子的 `Debug` 里找不到它（`Handoff` / `Key` 的 `Debug` 手写成不打印）。
-    assert!(
-        !format!("{want:?}").contains(&want.handoff.key.0),
-        "开窗种子的 `Debug` 把钥匙打出来了 —— 哪天一条 `tracing!(\"{{:?}}\")` 就把它带进日志"
-    );
+    // 🔴帧长过得去（两端同一个数），否则通道那一侧拆帧对不上。
+    assert_eq!(got.frame, want.frame, "通道帧长漂了");
+    // 种子是一行：之后同一根 stdin 就是通道，种子里不许有换行。
+    assert!(!wire.contains('\n'), "种子不是一行 —— 窗口进程只读第一行");
     // ★ 反向自检：**线上那份字节里真的装着那几个值**。
     //   少了这一比，一个「原样回传入参」的假实现照样绿（encode/decode 都不走 serde）。
     for needle in ["台架-远端", "带空格 的目录", "书签 目录"] {
@@ -443,7 +429,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         origin: synthetic_cfg(),
         cwd: Some("/tmp".to_string()),
         reveal: None,
-        handoff: synthetic_handoff(),
+        frame: crate::chan::host::FRAME_MAX_BYTES,
         bookmarks: None,
         view: None,
         machines: Vec::new(),
@@ -454,9 +440,11 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
     for trip in 1..=3 {
-        let (child, _tail) = spawn_window(&req).unwrap_or_else(|e| {
+        let (mut child, _tail) = spawn_window(&req).unwrap_or_else(|e| {
             panic!("第 {trip} 趟连进程都起不来：{e:?}\n⚠ 这一形是台架坏了，不是被测性质红了")
         });
+        // stdin 在生产里是通道的写半边、一直开着；替身 `cat` 要读到 EOF 才退 ⇒ 这里关掉它（等于 monitor 走了）。
+        drop(child.stdin.take());
         pids.push(child.id());
         let st = child
             .wait_for_status()
@@ -487,8 +475,8 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
 /// 分成独立一条（而不是并进上面那条）的理由：上面那条钉「三趟一样」，
 /// 而**三趟一样也可能是三趟都什么都没收到**。这一条是那条的反空真锚。
 ///
-/// 〔09-28 裁 3〕生产那条路今天**接了** stdout（就绪那一行从那里回来）⇒ 本条走的就是 [`spawn_window`] 整条：
-/// 替身 `cat` 把 stdin 原样吐到 stdout，读回来就是它收到的那一份。上一版这里自己拼一根 `.stdin(piped())`（第二份写法）的缘由没了。
+/// 生产那条路接了 stdin / stdout（之后它们就是通道）⇒ 本条走的就是 [`spawn_window`] 整条：
+/// 替身 `cat` 把 stdin 原样吐到 stdout，读回来就是它收到的那一份（种子那一行）。
 #[cfg(unix)]
 #[test]
 fn the_seed_really_arrives_on_the_child_process_stdin() {
@@ -498,6 +486,8 @@ fn the_seed_really_arrives_on_the_child_process_stdin() {
     let seed = encode_request(&req).expect("序列化");
     let (mut child, _tail) = spawn_window(&req).expect("起不了替身进程 —— 台架坏了");
     std::env::remove_var(BIN_ENV);
+    // 生产里 stdin 之后是通道的写半边；替身 `cat` 读到 EOF 才把收到的吐完 ⇒ 关掉它。
+    drop(child.stdin.take());
     let mut seen = String::new();
     std::io::Read::read_to_string(
         &mut child
@@ -510,8 +500,9 @@ fn the_seed_really_arrives_on_the_child_process_stdin() {
     let _ = child.wait_for_status();
     // 🔴 **相等断言**：它收到的**就是**我们编出来的那一份，不多不少。
     assert_eq!(
-        seen, seed,
-        "另一个进程从 stdin 收到的种子与我们送出去的不是同一份字节"
+        seen,
+        format!("{seed}\n"),
+        "另一个进程从 stdin 收到的不是种子那一行（种子 ＋ 换行，之后才是通道）"
     );
     // ★ 反向自检：那份字节**不是空的**，而且真的装着东西（否则上面是「空 == 空」）。
     assert!(
@@ -521,7 +512,7 @@ fn the_seed_really_arrives_on_the_child_process_stdin() {
     );
 }
 
-/// 一个替身窗口进程：读完种子、在 stdout 上说 `say`（原样一行）、再睡 `linger` 秒退出。
+/// 一个替身窗口进程：读种子那一行、在 stderr 上说 `say`（原样一行）、再睡 `linger` 秒退出。
 #[cfg(unix)]
 fn scripted_stand_in(
     dir: &std::path::Path,
@@ -532,9 +523,9 @@ fn scripted_stand_in(
     use std::os::unix::fs::PermissionsExt;
     let p = dir.join(format!("stand-in-{tag}.sh"));
     let body = if say.is_empty() {
-        format!("#!/bin/sh\ncat >/dev/null\nsleep {linger}\nexit 3\n")
+        format!("#!/bin/sh\nread -r _seed\nsleep {linger}\nexit 3\n")
     } else {
-        format!("#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{say}'\nsleep {linger}\n")
+        format!("#!/bin/sh\nread -r _seed\nprintf '%s\\n' '{say}' >&2\nsleep {linger}\n")
     };
     std::fs::write(&p, body).expect("写不出替身脚本");
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -548,7 +539,7 @@ fn scripted_stand_in(
 /// ③ 它一句不说就退 ⇒ 进程层的错（[`Unopened::Process`]），不是「列到 0 行」；
 /// ④ 它说了一句不是约定形状的话 ⇒ 进程层的错（两端契约漂了）。
 /// ⚠ 替身是 shell 脚本，不是那份真窗口进程：「真窗口进程在列不出来时真的不开窗」由 `child_main` 的行序代理
-///   （[`the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it`] ④⑤）钉。
+///   （窗口包 `proc_tests.rs::the_seed_is_exactly_the_first_line_and_the_channel_follows_on_the_same_pipes` ④⑤）钉。
 #[cfg(unix)]
 #[test]
 fn the_window_process_lists_first_and_the_parent_carries_its_words() {
@@ -559,7 +550,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         origin: synthetic_cfg(),
         cwd: None,
         reveal: None,
-        handoff: synthetic_handoff(),
+        frame: crate::chan::host::FRAME_MAX_BYTES,
         bookmarks: None,
         view: None,
         machines: Vec::new(),
@@ -598,7 +589,11 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         other => panic!("一句不说就退，却回了：{other:?}"),
     }
     // ④
-    match run("garbled", "{\"ok\":1}", 0) {
+    match run(
+        "garbled",
+        &format!("{}{{\"ok\":1}}", filewin_contract::READY_MARK),
+        0,
+    ) {
         Err(Unopened::Process(e)) => assert!(!e.said.is_empty()),
         other => panic!("说了一句不是约定形状的话，却回了：{other:?}"),
     }
@@ -619,7 +614,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         origin: synthetic_cfg(),
         cwd: None,
         reveal: None,
-        handoff: synthetic_handoff(),
+        frame: crate::chan::host::FRAME_MAX_BYTES,
         bookmarks: None,
         view: None,
         machines: Vec::new(),
@@ -633,7 +628,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         std::fs::write(
             &p,
             format!(
-                "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{listed}'\nsleep 0.6\nexit {code}\n"
+                "#!/bin/sh\nread -r _seed\nprintf '%s\\n' '{listed}' >&2\nsleep 0.6\nexit {code}\n"
             ),
         )
         .unwrap();
@@ -690,8 +685,13 @@ fn the_ready_line_has_exactly_two_shapes() {
     ] {
         assert!(decode_ready(bad).is_err(), "{bad:?} 被认成了就绪");
     }
-    let mut eof = std::io::Cursor::new(Vec::<u8>::new());
-    assert_eq!(read_ready(&mut eof), Ok(None), "EOF 不是「一句没说」");
+    // 就绪那一行靠打头的记号与 stderr 上的诊断分开：没有记号的同形 JSON 不算。
+    assert!(is_ready_line(&encode_ready(&Ready::Listed(1))));
+    assert!(!is_ready_line("{\"listed\":1}"));
+    assert!(
+        decode_ready("{\"listed\":1}").is_err(),
+        "没有记号也认成了就绪"
+    );
 }
 
 /// **那个 `[[bin]]` 真的托管着窗口进程的躯体。**
@@ -752,7 +752,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
             origin: synthetic_cfg(),
             cwd: Some(dir.to_string_lossy().to_string()),
             reveal: None,
-            handoff: synthetic_handoff(),
+            frame: crate::chan::host::FRAME_MAX_BYTES,
             bookmarks: None,
             view: None,
             machines: Vec::new(),
@@ -938,7 +938,7 @@ fn the_window_process_own_reason_reaches_the_sentence() {
         let p = dir.join(format!("err-{tag}.sh"));
         std::fs::write(
             &p,
-            format!("#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' {err} >&2\nexit 1\n"),
+            format!("#!/bin/sh\nread -r _seed\nprintf '%s\\n' {err} >&2\nexit 1\n"),
         )
         .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -991,7 +991,7 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
         std::fs::write(
             &p,
             format!(
-                "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{listed}'\nsleep 0.6\n{tail}exit {code}\n"
+                "#!/bin/sh\nread -r _seed\nprintf '%s\\n' '{listed}' >&2\nsleep 0.6\n{tail}exit {code}\n"
             ),
         )
         .unwrap();

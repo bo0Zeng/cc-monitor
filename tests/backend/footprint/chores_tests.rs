@@ -13,6 +13,7 @@ fn base() -> Facts {
         dead: vec![],
         relay: vec![],
         hooks: None,
+        mcp_login: vec![],
         declined: vec![],
     }
 }
@@ -358,4 +359,36 @@ fn 钥匙段_从插好钥匙的地址里取() {
         super::gather::key_segment("http://127.0.0.1:8788/t/codex/_"),
         None
     );
+}
+
+/// 用户自己配的 MCP 要登录 ⇒ 一个服务器一件，可选、不进角标；号名进位置那一格；复制的是 `/mcp`。点过「不用了」⇒ 已不用。
+/// 要求：用户 10-09 定「用户自己配的要登录的，在待办里算一件，类 optional，不进角标」。
+#[test]
+fn 自己配的_mcp_要登录_可选一件_不进角标() {
+    let mut f = base();
+    f.mcp_login = vec![
+        McpLogin {
+            name: "m-a".into(),
+            who: vec!["p".into(), "w".into()],
+            command: "/mcp",
+        },
+        McpLogin {
+            name: "m-b".into(),
+            who: vec![],
+            command: "/mcp",
+        },
+    ];
+    let c = chores(&f);
+    assert_eq!(ids(&c), vec!["mcp-login:m-a", "mcp-login:m-b"]);
+    assert!(c.iter().all(|x| x["kind"] == json!("optional")
+        && x["action"] == json!("copyCommand")
+        && x["copy"] == json!("/mcp")));
+    assert_eq!(
+        c[0]["name"],
+        json!(copy_text("beChore.mcpLogin.name", &[("name", "m-a")]))
+    );
+    assert_eq!(c[0]["loc"], json!("p、w"));
+    assert_eq!(badge(&c), 0);
+    f.declined = vec!["mcp-login:m-b".into()];
+    assert_eq!(chores(&f)[1]["state"], json!("declined"));
 }

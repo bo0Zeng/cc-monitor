@@ -35,6 +35,8 @@ fn added(sid: &str) -> Ev {
         path: None,
         lines: None,
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
         pid: None,
@@ -86,7 +88,7 @@ fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
         passed.push(pass);
         for e in extra {
             match e {
-                Frame::SessionState { sid, state } => out.push((sid, Some(state))),
+                Frame::SessionState { sid, state, .. } => out.push((sid, Some(state))),
                 Frame::SessionsReplayed => out.push(("*".into(), None)),
                 other => panic!("账本只该补发成品与清单，却补了 {other:?}"),
             }
@@ -152,6 +154,8 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         path: None,
         lines: None,
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
         pid: None,

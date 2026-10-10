@@ -44,17 +44,6 @@ vi.mock("../../../src/frontend/ui/record-timeline", () => ({
     }
   },
 }));
-vi.mock("../../../src/frontend/ui/branch-fold", () => ({
-  BranchFolder: class {
-    constructor(_e: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
-    recordAdded(): void {}
-    unwrapAll(): void {}
-    rebuildNow(): void {}
-    dispose(): void {}
-  },
-}));
 vi.mock("../../../src/frontend/ui/tasks-panel", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/tasks-panel")>()),
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
@@ -103,10 +92,11 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import { toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
 import { buildToolGroup, addToToolGroup, renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
-import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
 import { copyPattern } from "../../test-support/copy-pattern";
 
@@ -445,23 +435,27 @@ describe("命令面板：远端会话的机器名只出一次", () => {
   });
 });
 
-/** 一条只有工具调用的 assistant 记录。 */
-function toolCalls(calls: { id: string; name: string; input: unknown }[], cards: Record<string, string> = {}): JsonlRecord {
+/** 一条只有工具调用的回复记录。 */
+function toolCalls(calls: { id: string; name: string; input: unknown }[], cards: Record<string, string> = {}): LineRecord {
   return {
-    type: "assistant",
-    uuid: "a",
-    timestamp: "2026-01-01T02:02:00.000Z",
-    message: { role: "assistant", content: calls.map((c) => ({ type: "tool_use", ...c })) },
-    toolCards: cards,
+    agent: "claude",
+    t: "reply",
+    id: "a",
+    at: "2026-01-01T02:02:00.000Z",
+    blocks: calls.map((c) => ({ type: "tool_use", ...c })),
+    autoReply: false,
+    endsTurn: false,
+    cards,
   } as never;
 }
-function results(rs: { id: string; text: string; error?: boolean }[]): JsonlRecord {
+function results(rs: { id: string; text: string; error?: boolean }[]): LineRecord {
   return {
-    type: "user",
-    uuid: "u",
-    timestamp: "2026-01-01T02:03:00.000Z",
-    message: { role: "user", content: rs.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.text, is_error: r.error ?? false })) },
-    userText: { speaker: { kind: "toolResult" }, text: "" },
+    agent: "claude",
+    t: "said",
+    id: "u",
+    at: "2026-01-01T02:03:00.000Z",
+    blocks: rs.map((r) => ({ type: "tool_result", for: r.id, content: [{ type: "text", text: r.text }], isError: r.error ?? false })),
+    who: { speaker: { kind: "toolResult" }, text: "" },
   } as never;
 }
 const ctx = (): RenderContext => ({
@@ -505,7 +499,7 @@ describe("命令卡展开显示命令本身（说明作注），不显示入参 
     );
     if (r.kind !== "tool-group") throw new Error(`期望工具组，得到 ${r.kind}`);
     const d = r.units[0] as HTMLDetailsElement;
-    // 一步一行（§5.2.3）：工具名 · 主参数 · 说明由后端给（`toolSteps`）；这条夹具没带 ⇒ 工具名 ＋ 命令兜底。
+    // 一步一行（§5.2.3）：工具名 · 主参数 · 说明由后端给（`steps`）；这条夹具没带 ⇒ 工具名 ＋ 命令兜底。
     expect([...d.querySelectorAll(".block-summary .step-tool, .block-summary .step-arg")].map((e) => e.textContent)).toEqual(["Bash", 'rg -n "x" src | head']);
     d.open = true;
     d.dispatchEvent(new Event("toggle"));
@@ -601,18 +595,18 @@ describe("一步还没结果时：照会话事实画", () => {
   });
 
   it("★ 会话事实比那一步的卡先到：建卡时就照它画（事实里没有的那一步不画，等下一份事实）", () => {
-    const c = { ...ctx(), needs: { kind: "approve", call: "t2", sinceMs: Date.now() - 65_000 }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
-    const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }, { id: "t3", name: "Bash", input: {} }]) as object) } as unknown as JsonlRecord;
+    const c = { ...ctx(), needs: { kind: "approve", call: "t2", waitedMs: 65_000, receivedAt: Date.now() }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
+    const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }, { id: "t3", name: "Bash", input: {} }]) as object) } as unknown as LineRecord;
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const st = [0, 1, 2].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
     expect(st).toEqual(["running", "awaiting", "pending"]);
-    expect(r.units[1].querySelector(".step-right")?.textContent).toBe("1m05s");
+    expect(r.units[1].querySelector(".step-right")?.textContent).toBe(formatDuration(65_000));
   });
 });
 
 // 过程里的一步一行：主参数 · 说明 · 结果一句都是后端给的；界面只排、按 id 配对、时刻相减。
-describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => {
+describe("一步一行：后端的 steps / results 排成一行", () => {
   it("★ 发出时不画状态（等会话事实）；结果到了 ⇒ 对勾 ＋ 右侧小字（改动 +N −M · 读了几行 · 否则耗时）；失败 ⇒ 叉 ＋「失败 · 耗时」", () => {
     const c = ctx();
     const use = {
@@ -622,13 +616,13 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
         { id: "t3", name: "Read", input: {} },
         { id: "t4", name: "Bash", input: {} },
       ]) as object),
-      toolSteps: {
+      steps: {
         t1: { tool: "Bash", arg: "rg -n x src", note: "找调用点", known: true },
         t2: { tool: "Edit", arg: "/w/src/a.py", path: true, known: true },
         t3: { tool: "Read", arg: "/w/src/b.py", path: true, known: true },
         t4: { tool: "Bash", arg: "pytest -q", known: true },
       },
-    } as unknown as JsonlRecord;
+    } as unknown as LineRecord;
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const line = (i: number) => r.units[i].querySelector<HTMLElement>(".step-line")!;
@@ -640,8 +634,8 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
         { id: "t3", text: "…" },
         { id: "t4", text: "Exit code 1", error: true },
       ]) as object),
-      toolResults: { t1: { ok: true, lines: 3 }, t2: { ok: true, added: 38, removed: 6 }, t3: { ok: true, lines: 212 }, t4: { ok: false } },
-    } as unknown as JsonlRecord;
+      results: { t1: { ok: true, lines: 3 }, t2: { ok: true, added: 38, removed: 6 }, t3: { ok: true, lines: 212 }, t4: { ok: false } },
+    } as unknown as LineRecord;
     renderMessage(res, c);
     expect([0, 1, 2, 3].map((i) => [line(i).dataset.state, line(i).querySelector(".step-right")?.textContent])).toEqual([
       ["ok", "1m00s"],
@@ -656,7 +650,7 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
     const use = toolCalls([
       { id: "e1", name: "Bash", input: {} },
       { id: "e2", name: "Bash", input: {} },
-    ]) as unknown as JsonlRecord;
+    ]) as unknown as LineRecord;
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const res = {
@@ -664,15 +658,15 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
         { id: "e1", text: "Exit code 1", error: true },
         { id: "e2", text: "Exit code 1", error: true },
       ]) as object),
-      toolResults: { e1: { ok: false }, e2: { ok: false, exitCode: 2 } },
-    } as unknown as JsonlRecord;
+      results: { e1: { ok: false }, e2: { ok: false, exitCode: 2 } },
+    } as unknown as LineRecord;
     renderMessage(res, c);
     const said = (i: number) => r.units[i].querySelector(".block-tool-result-inline summary")?.textContent ?? "";
     expect(said(0)).not.toMatch(/exit/);
     expect(said(1)).toMatch(/exit 2/);
   });
 
-  it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 toolSteps（老后端）⇒ 工具名 ＋ 入参一句兜底", () => {
+  it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 steps ⇒ 工具名 ＋ 入参一句兜底", () => {
     expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), 10)).toBe(copyText("stream.step.unknown"));
     expect(stateOf(undefined, { ok: false, rejected: true }, true)).toBe("rejected");
     expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", 10)).toBe(copyText("stream.step.rejected"));
@@ -681,10 +675,10 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
   });
 });
 
-// 人粘贴的块（「谁说的」稿 A）：边界 / 正文那一截 / 行数是后端的 `userText.pasted`；超过 12 行折起，不超过的只露正文。
+// 人粘贴的块（「谁说的」稿 A）：边界 / 正文那一截 / 行数是后端的 `who.pasted`；超过 12 行折起，不超过的只露正文。
 describe("粘贴块", () => {
-  const said = (text: string, pasted: object[]): JsonlRecord =>
-    ({ type: "user", uuid: "p", timestamp: "2026-01-01T14:02:00.000Z", message: { role: "user", content: text }, userText: { speaker: { kind: "human" }, text, pasted } }) as never;
+  const said = (text: string, pasted: object[]): LineRecord =>
+    ({ agent: "claude", t: "said", id: "p", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted } }) as never;
   const span = (text: string, open: string, body: string, close: string, lines: number) => {
     const start = text.indexOf(open);
     const bodyStart = start + open.length;
@@ -708,8 +702,8 @@ describe("粘贴块", () => {
 
 // 不是人说的（「谁说的」稿 A · 事件条）：来源只看后端给的 speaker，正文是后端补的 `speaker.body`。
 describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并条 · 中断标记", () => {
-  const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z"): JsonlRecord =>
-    ({ type: "user", uuid: "s", timestamp: ts, message: { role: "user", content: "x" }, userText: { speaker, text: "" } }) as never;
+  const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z"): LineRecord =>
+    ({ agent: "claude", t: "said", id: "s", at: ts, blocks: [{ type: "text", text: "x" }], who: { speaker, text: "" } }) as never;
 
   it("★ 交回默认展开、正文是 body、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", () => {
     const c = { ...ctx(), runLabelOf: (run: string) => (run === "a7" ? "审面板交互" : undefined) };

@@ -70,6 +70,8 @@ const host: AcctPanelHost = {
   openDefaultMenu: vi.fn(),
   defaultOf: () => "work",
   openResume: vi.fn(),
+  openSession: vi.fn(),
+  canOpenSession: (sid) => sid === "p1",
 };
 
 const LEDGER: QuotaRead = {
@@ -113,7 +115,7 @@ function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
       live: 1,
       ended: 0,
       follow: 1,
-      doing: { s1: { state: "working", needs: null } },
+      doing: { s1: { state: "working", needs: null, text: "核心·运行中", tone: "now" } },
       sids: ["s1"],
       endedSids: [],
     },
@@ -1175,5 +1177,84 @@ describe("账号面板 · 时间轴", () => {
     expect(line.textContent).toBe(
       [...line.children].map((c) => c.textContent).join(copyText("kit.text.sep")),
     );
+  });
+});
+
+describe("账号面板 · 跟随父会话（会话血缘）", () => {
+  const src = (): HTMLButtonElement =>
+    panel().querySelector<HTMLButtonElement>("[data-acct-src]")!;
+  const items = (): HTMLButtonElement[] => [
+    ...document.querySelectorAll<HTMLButtonElement>(
+      'body > [role="menu"] [role^="menuitem"]',
+    ),
+  ];
+  const btn = (text: string): HTMLButtonElement | undefined =>
+    [...panel().querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent === text,
+    );
+  const titled: AcctPanelHost = {
+    ...host,
+    sessionTitle: (sid) => (sid === "p1" ? "orders" : "orders-worker"),
+  };
+  const closeAccountPanel = (): void => {
+    if (document.querySelector('[role="dialog"]'))
+      toggleAccountPanel("s1", "<local>", titled);
+    document.body.replaceChildren();
+  };
+
+  it("★ 没有父 ⇒ 下拉里没有「跟随父会话」；有父 ⇒ 紧跟「跟随默认」出这一项、右侧父标题 ＋ 父此刻那条规则；选它 ⇒ 写 \"parent\" 一次", async () => {
+    seed({}, undefined);
+    openAccountPanel("s1", "<local>", titled);
+    src().click();
+    expect(
+      items().some((i) => i.textContent?.startsWith(copyText("rot.src.parent"))),
+    ).toBe(false);
+    closeAccountPanel();
+    seed({ parent: "p1", ruleName: "日常" }, undefined);
+    openAccountPanel("s1", "<local>", titled);
+    src().click();
+    const labels = items().map((i) => i.textContent ?? "");
+    const at = labels.findIndex((t) => t.startsWith(copyText("rot.src.parent")));
+    expect(at, labels.join(" | ")).toBeGreaterThan(-1);
+    expect(labels[at - 1]).toContain(copyText("rot.src.follow"));
+    expect(labels[at]).toContain("orders");
+    items()[at]!.click();
+    await flush();
+    expect(writeSessionRotation.mock.calls).toEqual([["<local>", ["s1"], "parent"]]);
+  });
+
+  it("★ 来源 ＝ 跟随父会话：下一行「跟随父会话 orders · 规则 日常」＋［打开父会话］［转为本会话］；列表只读；打开 ⇒ 交给宿主切过去", async () => {
+    seed({ source: { parent: "p1" }, parent: "p1", ruleName: "日常" }, undefined);
+    openAccountPanel("s1", "<local>", titled);
+    const lead = panel().querySelector<HTMLElement>("[data-acct-lead]")!.textContent!;
+    expect(lead).toContain(copyText("rot.src.leadParent", { name: "orders", rule: "日常" }));
+    expect(panel().querySelectorAll('[aria-label^="拖动排序"]').length).toBe(0);
+    btn(copyText("rot.src.openParent"))!.click();
+    expect(titled.openSession).toHaveBeenCalledWith("p1");
+    btn(copyText("rot.src.detach"))!.click();
+    await flush();
+    expect(writeSessionRotation.mock.calls.at(-1)).toEqual(["<local>", ["s1"], "detach"]);
+  });
+
+  it("★ 父是本会话那份 ⇒「· 本会话」；父没经过中转 ⇒「· 父会话未经中转 · 按默认 日常」；父不在会话列表里 ⇒［打开父会话］灰、悬停说原因", () => {
+    seed({ source: { parent: "p1" }, parent: "p1" }, undefined);
+    openAccountPanel("s1", "<local>", titled);
+    expect(panel().querySelector("[data-acct-lead]")!.textContent).toContain(
+      copyText("rot.src.leadParentOwn", { name: "orders" }),
+    );
+    closeAccountPanel();
+    seed(
+      { source: { parent: "p9" }, parent: "p9", parentMissing: true, ruleName: "日常" },
+      undefined,
+    );
+    openAccountPanel("s1", "<local>", titled);
+    expect(panel().querySelector("[data-acct-lead]")!.textContent).toContain(
+      copyText("rot.src.leadParentMissing", { name: "orders-worker", rule: "日常" }),
+    );
+    const open = btn(copyText("rot.src.openParent"))!;
+    expect(open.getAttribute("aria-disabled")).toBe("true");
+    expect(open.title).toBe(copyText("rot.src.openParentOff"));
+    open.click();
+    expect(titled.openSession).not.toHaveBeenCalledWith("p9");
   });
 });

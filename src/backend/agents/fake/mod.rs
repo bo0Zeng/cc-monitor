@@ -122,6 +122,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
@@ -258,9 +259,12 @@ pub(crate) enum Stop {
 
 /// 假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
 /// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
-pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace { read: read_mcp };
+pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace {
+    read: read_mcp,
+    login_command: "/fake-mcp",
+};
 
-fn read_mcp(project_dir: Option<&Path>) -> crate::agents::McpRead {
+fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate::agents::McpRead {
     let mut out = crate::agents::McpRead::default();
     let Some(dir) = project_dir else { return out };
     let file = dir.join(".fake-mcp.json");
@@ -280,6 +284,9 @@ fn read_mcp(project_dir: Option<&Path>) -> crate::agents::McpRead {
                     name: name.clone(),
                     server: server.clone(),
                     source: file.display().to_string(),
+                    status: Default::default(),
+                    login_in: Vec::new(),
+                    seen_ms: None,
                 });
             }
         }
@@ -334,11 +341,12 @@ fn records_face(
     file_name: fn(&str) -> String,
 ) -> crate::agents::RecordFace {
     crate::agents::RecordFace {
-        parse: |_| Ok(None),
+        parse: |_, _| Ok(None),
         sid: session_id_of,
         is_session_file,
         tree: Some(crate::agents::RecordTree { root, file_name }),
         turn_end: None,
+        class: None,
         chain: Some(chain_fact),
         find_session: None,
         branch: None,
@@ -348,8 +356,10 @@ fn records_face(
         response_id: None,
         run_of: None,
         child_link: None,
+        background: None,
         children: None,
         project_dir: None,
+        mcp_said: None,
     }
 }
 
@@ -406,6 +416,7 @@ fn local_face(
         tasks_dir: Some(|h| h.join("todo")),
         background_of: |v| v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
         activity_of: |_| None,
+        wait_of: |_| None,
     }
 }
 
@@ -417,7 +428,6 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         user_mcp_key: "servers",
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
-        watched: &[],
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",

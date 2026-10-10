@@ -79,6 +79,9 @@ const manyCard = (a: ManyArgs, over: Record<string, unknown> = {}) => ({
 });
 const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t, name: nameOf(t), done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null })) });
 
+/** 各台 `mcp-read` 答什么（按 origin；没写 ⇒ 空表；`Error` ⇒ 那一问没成）。 */
+let mcpAnswers: Record<string, unknown> = {};
+
 /** 按命令名答（`ext-list` 依次答给定的几份）。 */
 function backend(
   lists: unknown[],
@@ -101,6 +104,11 @@ function backend(
         return chanReply({ note: (chanArgsJson(a) as { text: string }).text || null });
       case "hooks-diag":
         return chanReply(hooks(a.origin));
+      case "mcp-read": {
+        const got = mcpAnswers[a.origin] ?? { entries: [], dirs: [], problems: [] };
+        if (got instanceof Error) throw got;
+        return chanReply(got);
+      }
     }
     throw new Error(`没料到这一问：${a.op}`);
   });
@@ -160,8 +168,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const [, skillOnly] = [...s.element.querySelectorAll(".ext-filter button")] as HTMLButtonElement[];
     skillOnly.click();
     expect(rows()).toEqual(["skill/demo", "skill/noted"]);
-    // 进页那一问算「来看了一次」，随后同步一趟、再读（不算来看）。
-    expect(ops()).toEqual([
+    // 进页那一问算「来看了一次」，随后同步一趟、再读（不算来看）。MCP 那几格的小标另问各台（`mcp-read`，下面那一组判据）。
+    expect(ops().filter(([, op]) => op !== "mcp-read")).toEqual([
       ["<local>", "ext-list", { visit: true }],
       ["<local>", "assets-sync", {}],
       ["<local>", "ext-list", { visit: false }],
@@ -236,6 +244,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
       ["icon:half", copyText("extPage.legend.differs")],
       ["icon:ring", copyText("extPage.state.missing")],
       ["icon:folder", copyText("extPage.legend.project")],
+      ["icon:success", copyText("extPage.legend.needsLogin")],
+      ["icon:success", copyText("extPage.legend.failed")],
     ]);
     open(s, "skill/demo");
     expect((machineLines(s)[1].querySelector(".ext-pick") as HTMLInputElement).disabled, "连不上的那台勾不了").toBe(true);
@@ -385,7 +395,7 @@ describe("备注 · cc-bus 那一行", () => {
     invokeMock.mockClear();
     (s.element.querySelector(".ext-notes .settings-btn-primary") as HTMLButtonElement).click();
     await settle();
-    expect(ops().filter(([, op]) => op !== "hooks-diag")).toEqual([
+    expect(ops().filter(([, op]) => op !== "hooks-diag" && op !== "mcp-read")).toEqual([
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "我的话" }],
       ["<local>", "assets-sync", {}],
       ["<local>", "ext-list", { visit: false }],
@@ -464,6 +474,96 @@ export function comparesFingerprints(src: string): string[] {
   for (const m of code.matchAll(/[^\n]*\btokens?\b[^\n]*(===|!==|==|!=)[^\n]*/g)) hits.push(m[0].trim());
   return hits;
 }
+
+// 要求：用户 10-09 认的 MCP 状态稿甲 1（每台那个点右上角一个小标：黄 = 需登录 · 红 = 连不上；没小标只说「装了」；图例补两项；
+// 停用的不画——主会话定：停用按项目记，一格一台说不清是哪个项目）与甲 2（抽屉里那台下面一行：需登录那一句 ＋［去登录］复制那条命令、toast；
+// 连不上那一句 ＋ 原话 ＋［复制详情］；两种都没有 ⇒ 不画）。字与哪一种都是那台后端 `mcp-read` 写好的，界面照抄。
+describe("MCP：每台的小标与抽屉那一行", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    mcpAnswers = {};
+  });
+  const both = cell("same", [place(user, "same")]);
+  const mcpList = () => ({ machines, problems: [], rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
+  const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
+  const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), copy: "/mcp" };
+  const failed = { said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err: refused" };
+  const laterSaid = copyText("beMcp.mark.failed", { title: "会话-乙", time: "10:50" });
+  const answers = () => {
+    mcpAnswers = {
+      "<local>": { entries: [entry("tracker", { status: "needsLogin", loginIn: ["acct-a"], seenAt: 1, mark: "needsLogin", login })], dirs: [], problems: [] },
+      laptop: { entries: [entry("tracker", { mark: "failed", failed })], dirs: [], problems: [] },
+    };
+  };
+  const marks = (s: ExtSection, name: string) =>
+    [...s.element.querySelectorAll(`.ext-row[data-key$="/${name}"] .ext-dot`)].map((d) => [d.querySelector(".ext-dot-mark")?.className ?? null, (d as HTMLElement).title]);
+  const sameSaid = copyText("extPage.state.same");
+
+  it("小标：哪一种照那台后端的 mark 画，悬停在态后面接它写好的那一截；skill 行不问也不画", async () => {
+    answers();
+    const s = await page([mcpList()]);
+    expect(marks(s, "tracker")).toEqual([
+      ["ext-dot-mark is-login", copyText("extPage.dot.titleMark", { machine: copyText("extPage.machine.here"), state: sameSaid, mark: login.tip })],
+      ["ext-dot-mark is-fail", copyText("extPage.dot.titleMark", { machine: "laptop", state: sameSaid, mark: failed.tip })],
+    ]);
+    expect(marks(s, "demo").map(([m]) => m)).toEqual([null, null]);
+  });
+
+  it("没小标只说装了：那台答的那一条 mark 为空 · 那一问没成 · 那台连不上（不问它）⇒ 都不画", async () => {
+    mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] }, laptop: new Error("断了") };
+    const s = await page([mcpList()]);
+    expect(marks(s, "tracker")).toEqual([
+      [null, copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: sameSaid })],
+      [null, copyText("extPage.dot.title", { machine: "laptop", state: sameSaid })],
+    ]);
+    open(s, "mcp/tracker");
+    expect(s.element.querySelector(".ext-drawer .ext-mcp")).toBeNull();
+    const list = mcpList();
+    list.machines = [machines[0], { ...machines[1], reachable: false }];
+    answers();
+    invokeMock.mockClear();
+    const t = await page([list]);
+    expect(ops().filter(([, op]) => op === "mcp-read").map(([o]) => o)).toEqual(["<local>", "<local>"]);
+    expect(marks(t, "tracker").map(([m]) => m)).toEqual(["ext-dot-mark is-login", null]);
+  });
+
+  it("抽屉：需登录那一句 ＋［去登录］（复制那条命令、toast，不跳窗）；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
+    answers();
+    const s = await page([mcpList()]);
+    open(s, "mcp/tracker");
+    const [mine, theirs] = machineLines(s);
+    expect(mine.querySelector(".ext-mcp.is-login .ext-mcp-said")?.textContent).toBe(login.said);
+    expect(mine.querySelector(".ext-mcp.is-login .settings-hint")?.textContent).toBe(copyText("extPage.mcp.loginHint", { cmd: "/mcp", name: "tracker" }));
+    expect(mine.querySelector(".ext-mcp.is-fail")).toBeNull();
+    expect(theirs.querySelector(".ext-mcp.is-fail .ext-mcp-said")?.textContent).toBe(failed.said);
+    expect(theirs.querySelector(".ext-mcp-raw")?.textContent).toBe(failed.detail);
+    expect(theirs.querySelector('.ext-mcp.is-fail [data-part="copy-detail"]')).not.toBeNull();
+    expect(theirs.querySelector(".ext-mcp.is-login")).toBeNull();
+    const go = mine.querySelector<HTMLButtonElement>('[data-action="mcp-login"]')!;
+    expect(go.textContent).toBe(copyText("extPage.mcp.login"));
+    invokeMock.mockClear();
+    go.click();
+    await settle();
+    expect(invokeMock.mock.calls.filter(([c]) => c === "clipboard_write").map(([, a]) => a)).toEqual([{ text: "/mcp" }]);
+    expect(document.querySelector("#kit-toast-stack")?.textContent).toContain(copyText("extPage.mcp.copied", { cmd: "/mcp" }));
+  });
+
+  it("后台重读回来变了：只重建 MCP 那几行（skill 那一行还是原来那个元素），抽屉不关、换成新的字", async () => {
+    answers();
+    const s = await page([mcpList()]);
+    open(s, "mcp/tracker");
+    const skillRow = s.element.querySelector('.ext-row[data-key="skill/demo"]');
+    mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] }, laptop: { entries: [entry("tracker", { mark: "failed", failed: { ...failed, said: laterSaid } })], dirs: [], problems: [] } };
+    s.loadNow();
+    await settle();
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"]')).toBe(skillRow);
+    expect(marks(s, "tracker").map(([m]) => m)).toEqual([null, "ext-dot-mark is-fail"]);
+    expect(s.element.querySelector(".ext-drawer")?.hasAttribute("hidden")).toBe(false);
+    const [mine, theirs] = machineLines(s);
+    expect(mine.querySelector(".ext-mcp")).toBeNull();
+    expect(theirs.querySelector(".ext-mcp-said")?.textContent).toBe(laterSaid);
+  });
+});
 
 describe("界面层零判定：扩展页不比较指纹、不读配置文件", () => {
   it("扩展页与它的读口两份源码里零处（正控：同一把尺子认得出一处现造的比较）", () => {

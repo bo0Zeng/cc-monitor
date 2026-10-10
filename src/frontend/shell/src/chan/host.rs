@@ -1,17 +1,12 @@
-//! 通道 · 宿主那一侧（monitor 进程里）：绑回环 · 造钥匙 · `accept` · 把连接交给路由器 · 注入后端句柄。
+//! 通道 · 宿主那一侧（monitor 进程里）：把文件窗口进程那一对管子交给路由器 · 注入后端句柄。
 //!
-//! 不是通信层成员（刻意的）：绑口、造钥匙（凭据由后端交给通信层）、定帧长上限与认证等待时长（期限值是策略值）、把 `op` 翻成 `inbound_client` 的命令
+//! 不是通信层成员（刻意的）：接管子、定帧长上限（策略值）、把 `op` 翻成 `inbound_client` 的命令
 //! （路由器不许知道载荷长什么样）都归宿主，与 `relay/listen.rs` 那一份「语义上就该在外面」同形。
-//! 只绑回环（`Ipv4Addr::LOCALHOST`，端口由内核挑）⇒ 不新开任何对外端口；判据直接看 [`start_with`] 交回来的地址是不是回环。
 //!
-//! # 钥匙怎么交接
+//! # 谁连得上
 //!
-//! 1. monitor 起来时 [`start`] 造一把钥匙（两枚 v4 UUID 的 244 位 OS 随机数，写成 64 位十六进制）；
-//! 2. [`handoff`] 把「地址 ＋ 钥匙 ＋ 帧长上限」交给要起外部前端的那一方（`filewin/entry.rs`）；
-//! 3. 那一方把它连同开窗种子写进子进程的 stdin（`proc::OpenRequest::handoff`；不走 argv —— `/proc/<pid>/cmdline` 世界可读；
-//!    不走环境变量 —— `/proc/<pid>/environ` 同用户可读、且会被孙进程继承）；
-//! 4. 外部前端从 stdin 读到它，用 [`super::dial::dial`] 连上并出示钥匙。
-//! 钥匙不进日志：[`Handoff`] 与 `Key` 的 `Debug` 都手写成不打印内容；本文件的日志只印端口。
+//! 没有监听口、没有钥匙：文件窗口进程**总是** monitor 起的子进程（`filewin/proc.rs`），通道就是它的 stdin / stdout ——
+//! 父子管道只有起它的那一方拿得到。种子是 stdin 的第一行，之后同一对管子上走通道的帧（[`serve_window`]）。
 //!
 //! `call` 经注入的 [`InboundBackends`] 走既有的 `inbound_client`（本机与远端同一条路）。
 //!
@@ -21,105 +16,50 @@
 //!   [`InboundBackends::subscribe`] 原位回 `Closed{Peer(…)}`，不装作订阅成功。
 //! - 对端撤活是尽力的：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client` 调用随之被丢 ⇒ 它的 `AbandonGuard`
 //!   补发一条 `cancel{target}`（判据 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。可取消档真停下；阻塞档照跑完。
-//! - 回环口上同一台机器的任何进程都能连，挡它们的只有那把钥匙；能读 monitor 进程内存的人本来就能直接驱动后端。
-//! - 不设连接数上界：没出示钥匙的连接最多挂 `hello_within` 那么久；出示了钥匙的不设上限。
+//! - 不接回：monitor 退了，管子断了，窗口里之后每一件都会出声说没走通（`client.rs` 头注）。
 
 use super::router::{self, Backends, Ended, Terms};
-use super::wire::{
-    Body, By, CallError, CancelToken, Cursor, Item, Key, Kind, Op, Origin, OursFault,
-};
+use super::wire::{Body, By, CallError, CancelToken, Cursor, Item, Kind, Op, Origin, OursFault};
 use crate::copy_table::copy_text;
 use crate::{backend_route, inbound_client};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
-use std::net::Ipv4Addr;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
-// 交接件的形状（[`Handoff`]）住通信层 crate（两端都要认它）；绑口 · 造钥匙 · 生产入口 · 生产句柄 · 传输台那一口住这里。
-pub use comms_inward::chan::handoff::Handoff;
+/// 帧头 / 帧体各自的上限：一屏目录（`filewin::source::LS_LIMIT` 条）的 JSON 在兆字节级，给 64 MiB。两端同一个数（随种子交给窗口进程）。
+pub const FRAME_MAX_BYTES: usize = 64 << 20;
 
-/// 造一把钥匙：两枚 v4 UUID（各 122 位来自 OS 随机源）拼成 64 位十六进制。
-pub fn mint_key() -> Key {
-    Key(format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    ))
+/// 把一个窗口进程的那一对管子交给路由器（`rd` = 它的 stdout，`wr` = 它的 stdin），直到它走了。要在 tokio 运行时里调。
+pub fn serve_window<R, W>(rd: R, wr: W)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    serve_with(rd, wr, Arc::new(InboundBackends));
 }
 
-/// 在回环上起一个通道口，把每条接进来的连接交给路由器。回交接件。
-///
-/// `frame` 与 `hello_within` 由调用方给（它们是策略值）。生产入口 [`start`] 与判据（挂合成句柄的口）都走它。
-///
-/// # Errors
-///
-/// 回环口绑不上。
-pub async fn start_with(
-    backends: Arc<dyn Backends>,
-    key: Key,
-    frame: usize,
-    hello_within: Duration,
-) -> std::io::Result<Handoff> {
-    let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
-    let addr = listener.local_addr()?;
-    let terms = Terms {
-        key: key.clone(),
-        frame,
-        hello_within,
-    };
+/// 同上，句柄是入参（判据挂合成句柄）。
+pub fn serve_with<R, W>(rd: R, wr: W, backends: Arc<dyn Backends>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     tokio::spawn(async move {
-        loop {
-            // `accept` 是内核事件，不是定时器；单次失败（fd 顶满之类）不许把整个口带走。
-            let (stream, _) = match listener.accept().await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!("通道：accept 失败（{e}），这一条放过，口照开");
-                    continue;
-                }
-            };
-            let terms = terms.clone();
-            let backends = Arc::clone(&backends);
-            tokio::spawn(async move {
-                match router::serve(stream, terms, backends).await {
-                    Ended::Left => {}
-                    Ended::Denied => tracing::warn!("通道：一条连接没过认证，已关"),
-                    Ended::Broken(why) => tracing::warn!("通道：一条连接坏了，已关（{why}）"),
-                }
-            });
+        match router::serve(
+            rd,
+            wr,
+            Terms {
+                frame: FRAME_MAX_BYTES,
+            },
+            backends,
+        )
+        .await
+        {
+            Ended::Left => {}
+            Ended::Broken(why) => tracing::warn!("通道：窗口进程那一对管子坏了，已关（{why}）"),
         }
     });
-    Ok(Handoff { addr, key, frame })
-}
-
-/// 本进程那个通道口的交接件（[`start`] 成功之后才有）。
-static HANDOFF: OnceLock<Handoff> = OnceLock::new();
-
-/// **生产入口**：monitor 起来时调一次。绑回环、造钥匙、挂上 [`InboundBackends`]。
-///
-/// # Errors
-///
-/// 回环口绑不上 / 已经起过一次。
-pub async fn start() -> Result<(), String> {
-    let handoff = start_with(
-        Arc::new(InboundBackends),
-        mint_key(),
-        // 帧头 / 帧体各自的上限：一屏目录（`filewin::source::LS_LIMIT` 条）的 JSON 在兆字节级，给 64 MiB。
-        64 << 20,
-        // 没出示钥匙的连接最多挂这么久。
-        Duration::from_secs(5),
-    )
-    .await
-    .map_err(|e| copy_text("rsChanHost.start.bindFailed", &[("e", &e.to_string())]))?;
-    tracing::info!("通道：在 {} 上听（只认回环、只认一把钥匙）", handoff.addr);
-    HANDOFF
-        .set(handoff)
-        .map_err(|_| copy_text("rsChanWire.ours.broken", &[]))
-}
-
-/// 交给要起外部前端的那一方。`None` = 通道没起来 —— 不许因此退回别的路（`D11`）。
-pub fn handoff() -> Option<Handoff> {
-    HANDOFF.get().cloned()
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -135,13 +75,17 @@ const HOP: u8 = 1;
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
-pub(crate) const HOST_OPS: [&str; 5] = [
+pub(crate) const HOST_OPS: [&str; 6] = [
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
     filewin_contract::LINK_RETRY_OP,
+    filewin_contract::PLAN_OPEN_OP,
 ];
+
+/// 「在计划里看」交给主窗口的事件名（界面 `window-events.ts::PLAN_OPEN_EVENT`，两边逐字相同，`plan-signs.vitest.ts` 比）。
+const PLAN_OPEN_EVENT: &str = "plan-open";
 
 /// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
 const TERMINAL_SSH: &str = "terminal-ssh";
@@ -197,6 +141,9 @@ impl InboundBackends {
             }
             if op.0 == filewin_contract::FILEWIN_OPEN_OP {
                 return Box::pin(filewin_open(origin, payload));
+            }
+            if op.0 == filewin_contract::PLAN_OPEN_OP {
+                return Box::pin(plan_open(origin, payload));
             }
             if op.0 == filewin_contract::LINK_RETRY_OP {
                 // 叫醒那台的连接循环（它睡在退避里）；连没连上由 `link` 那条流说。
@@ -412,6 +359,44 @@ async fn filewin_open(origin: Origin, payload: Body) -> Result<Body, CallError> 
         Ok(()) => Ok(Body(b"{}".to_vec())),
         Err((code, why)) => Err(refused(code, why)),
     }
+}
+
+/// **文件窗口「在计划里看」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{workspace, slice, id}`）；这里把主窗口拉到前面，
+/// 发 [`PLAN_OPEN_EVENT`] 给它（带上那台的名字：片按机器区分），主窗口开计划页、选中那一格。主窗口不在 ⇒ 说真实原因。
+async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
+    use tauri::{Emitter as _, Manager as _};
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let Some(t) = filewin_contract::plan_open_target(&args) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let Some(app) = crate::main_app() else {
+        return Err(refused(
+            "no_main_window",
+            copy_text("rsChanHost.plan.noMain", &[]),
+        ));
+    };
+    if app.get_webview_window(crate::MAIN_WINDOW_LABEL).is_none() {
+        return Err(refused(
+            "no_main_window",
+            copy_text("rsChanHost.plan.noMain", &[]),
+        ));
+    }
+    // 拉到前面走主窗口那一处（第二次启动 · 点通知同一条：还原 · 显示 · 聚焦，失败各留一行日志）。
+    crate::platform::window::raise_main(&app, None, true);
+    let said = serde_json::json!({
+        "origin": origin.as_wire_str(),
+        "workspace": t.workspace,
+        "slice": t.slice,
+        "id": t.id,
+    });
+    let to = tauri::EventTarget::webview_window(crate::MAIN_WINDOW_LABEL);
+    app.emit_to(to, PLAN_OPEN_EVENT, said).map_err(|e| {
+        tracing::warn!("plan-open not delivered to the main window: {e}");
+        refused("emit_failed", copy_text("rsChanHost.plan.emitFailed", &[]))
+    })?;
+    Ok(Body(b"{}".to_vec()))
 }
 
 /// 一格快照 ⇒ 流里的一格。收场那一格是 `Closed{Peer(结局)}`，其余是 `Frame{seq, {"got","total"}}`。

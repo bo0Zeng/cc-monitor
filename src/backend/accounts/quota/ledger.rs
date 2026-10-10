@@ -553,7 +553,7 @@ fn merge_trend_fresh(o: &mut Observed) {
 }
 
 /// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。
-pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> serde_json::Value {
+pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
     let (state, why, accounts) = match path.map(read_at) {
         None => (
             "unreadable",
@@ -565,15 +565,32 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> serde_json::Value {
         Some(Read::Unreadable(e)) => ("unreadable", Some(e), vec![]),
     };
     let (reason, detail) = crate::stream::detail::unreadable("quota-read", why.as_ref());
-    serde_json::json!({
-        "state": state,
-        "reason": reason,
-        "detail": detail,
-        "path": path.map(|p| p.display().to_string()),
-        "now": now,
+    LedgerRead {
+        state,
+        reason,
+        detail,
+        path: path.map(|p| p.display().to_string()),
+        now,
         // 走势只在账上（估「几点到」用），不上线。
-        "accounts": accounts.into_iter().map(|mut o| { o.trend.clear(); o }).collect::<Vec<_>>(),
-    })
+        accounts: accounts
+            .into_iter()
+            .map(|mut o| {
+                o.trend.clear();
+                o
+            })
+            .collect(),
+    }
+}
+
+/// 额度账那份文件此刻读到的样子（`quota-read` 的底：文件三态 ＋ 每个号一条）。
+#[derive(Debug, Serialize)]
+pub(crate) struct LedgerRead {
+    pub(crate) state: &'static str,
+    pub(crate) reason: serde_json::Value,
+    pub(crate) detail: serde_json::Value,
+    pub(crate) path: Option<String>,
+    pub(crate) now: u64,
+    pub(crate) accounts: Vec<Observed>,
 }
 
 #[cfg(test)]

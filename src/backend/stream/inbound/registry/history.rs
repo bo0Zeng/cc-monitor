@@ -123,7 +123,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "refused",
             "too_large",
         ],
-        fields: &[out("end", "读到哪了（最后一个整行之后）"), arg("from", "从这个字节起读（缺 ＝ 0）；续读拿上一次的 `end`"), out("more", "这一页没读到头（再从 `end` 读）"), arg("parent", "父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`）"), out("path", "那份子运行记录（不透明，给查看器整份打开用）"), out("rows", "这一页里每一条认得出的记录：`message` 在渲染模型里的样子（与主会话同一套记录成品）· `rid` 它的对账键（没有 ⇒ 省略）"), arg("run", "子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准"), arg("tool", "派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found`")],
+        fields: &[out("end", "读到哪了（最后一个整行之后）"), arg("from", "从这个字节起读（缺 ＝ 0）；续读拿上一次的 `end`"), out("more", "这一页没读到头（再从 `end` 读）"), arg("parent", "父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`）"), out("path", "那份子运行记录（不透明，给查看器整份打开用）"), out("rows", "这一页里每一条进界面的记录：`record` 通用记录（与主会话同一形）· `rid` 它的对账键（没有 ⇒ 省略）"), both("run", "子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准"), arg("tool", "派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -151,7 +151,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-lines",
         summary: "按行号取回一段",
         codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "读到了最后一个完整行之后"), arg("from", "第一行的行号（缺省 0）"), out("lines", "**记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现）"), out("next", "下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), arg("summaryOnly", "只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为）"), arg("until", "可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止")],
+        fields: &[out("eof", "读到了最后一个完整行之后"), both("from", "第一行的行号（缺省 0）"), out("lines", "**记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现）"), out("next", "下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), arg("summaryOnly", "只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文"), arg("until", "可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -163,7 +163,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-read",
         summary: "按字节分页读一份会话",
         codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准"), arg("summaryOnly", "只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为）"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
+        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd`"), arg("summaryOnly", "只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -182,7 +182,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "refused",
             "too_large",
         ],
-        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `message`（`JsonlRecord`）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("summaryOnly", "同 `history-read`"), arg("until", "同 `history-read`"), arg("whole", "这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06）")],
+        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("summaryOnly", "同 `history-read`"), arg("until", "同 `history-read`"), arg("whole", "这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -200,8 +200,20 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-turns",
         summary: "一轮的摘要",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), arg("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串）")],
+        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), both("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串）")],
         takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "sessions-needs",
+        summary: "这台上需手动的会话清单",
+        codes: &[],
+        fields: &[out("needs", "它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框"), out("sid", "会话 id"), out("waiting", "此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组")],
+        takes_input: false,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
                 .map(Some)
@@ -212,7 +224,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-facts",
         summary: "会话事实",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("agent", "这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null`"), out("end", "最后一个完整行的末字节"), out("forkedFrom", "源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`"), out("handedBack", "交回了的子运行 id（按「谁说的」认），去重、文件序"), out("lastSay", "最后一段正文的头一行 `{text, at}`；没有 ⇒ `null`"), out("needs", "那台说在等你 ⇒ `{kind, tool, call, what, sinceMs}`（`kind`：approve · answer · plan · unknown）；不在等 ⇒ `null`"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("pending", "还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活）"), arg("prior", "可选：**上一次应答的 `data` 原样**（续传令牌）"), out("projectDir", "会话起在哪个目录（记录开头）；还没读到 ⇒ `null`"), out("retries", "一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件"), out("touchedFiles", "写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的）"), out("usage", "文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null`"), out("writers", "此刻持着这条会话的活进程 pid（这台的 pidfile），升序；不留 pidfile 的那一家恒空")],
+        fields: &[out("agent", "这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null`"), out("background", "那台说一轮停了、后台命令还在跑 ⇒ `{text, clock, what, count, tone}`：`text` 写好的一句（「后台任务运行中 · make test-all · 12m」，发出那一刻的钟；命令拿不到 ⇒ 只那个字）· `clock` 同一句时长留 `{dur}` 的 `{text, from}`（填 现在 − `from` 毫秒）· `what` 命令那一格（「{cmd} 等 {n} 条」）· `count` 这一次进程起来之后起、还没收场的几条 · `tone` 恒 busy；不是这一态 ⇒ `null`（每次现查）"), out("bgTasks", "还没收场的后台命令 `{call, task, cmd, at}`（起它的调用 id · 任务号 · 命令原样 · 起它的那条记录的时刻），文件序，至多 16 条（续传令牌的一部分）"), out("cost", "全会话花费（记录里那一家自己记的那一条，最后一条为准）`{micros, partial, text}`（`text` 写好）；记录里没有 ⇒ `null`（不按定价自己算）"), out("end", "最后一个完整行的末字节"), out("forkedFrom", "源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`"), out("handedBack", "交回了的子运行 id（按「谁说的」认），去重、文件序"), out("lastSay", "最后一段正文的头一行 `{text, at}`；没有 ⇒ `null`"), arg("limits", "可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`"), out("mcp", "这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了"), out("needs", "那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null`"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("pending", "还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活）"), out("permissionMode", "此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`"), arg("prior", "可选：**上一次应答的 `data` 原样**（续传令牌）"), out("projectDir", "会话起在哪个目录（记录开头）；还没读到 ⇒ `null`"), out("retries", "一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件"), out("tokens", "全会话用量（按请求去重）`{input, output, cacheRead, cacheWrite5m, cacheWrite1h, requests, text, last}`（写缓存分 5 分钟 / 1 小时两档；`text` 写好）；一条带用量的回复都没有 ⇒ `null`"), out("touchedFiles", "写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的）"), out("usage", "文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null`"), out("writers", "此刻持着这条会话的活进程 pid（这台的 pidfile），升序；不留 pidfile 的那一家恒空")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -260,7 +272,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-user-inputs",
         summary: "「你说过的话」清单",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节 ＝ 下一次增量该带的 `from`"), out("entries", "每条用户输入 `{uuid, timestamp, excerpt}`（对话序；与 `--list-user-inputs` 的中段逐行相同）"), arg("from", "增量起点（缺省 0；传上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）")], // 应答出成品：`lines` ⇒ `from` / `end` / `entries`
+        fields: &[out("end", "最后一个完整行的末字节 ＝ 下一次增量该带的 `from`"), out("entries", "每条用户输入 `{uuid, timestamp, excerpt}`（对话序；与 `--list-user-inputs` 的中段逐行相同）"), both("from", "增量起点（缺省 0；传上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）")], // 应答出成品：`lines` ⇒ `from` / `end` / `entries`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

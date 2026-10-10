@@ -330,7 +330,7 @@ impl Child {
         c.args(&self.args);
         if let Some(keys) = &self.inherit_only {
             c.env_clear();
-            for k in keys.iter().filter(|k| !OWN_ENVS.contains(k)) {
+            for k in keys.iter().filter(|k| !is_internal_name(k)) {
                 if let Some(v) = std::env::var_os(k) {
                     c.env(k, v);
                 }
@@ -338,6 +338,12 @@ impl Child {
         }
         for k in OWN_ENVS {
             c.env_remove(k);
+        }
+        // 后端内部那几族（不论谁交的、是不是本进程自己的）一律不往下传。
+        for (k, _) in std::env::vars_os() {
+            if is_internal_name(&k.to_string_lossy()) {
+                c.env_remove(&k);
+            }
         }
         for (k, v) in &self.envs {
             match v {
@@ -445,7 +451,7 @@ impl Child {
         }
     }
 
-    /// 脱离起（自成进程组，stdio 全空），不等；回它的 pid。非 unix：`Io(Unsupported)`。
+    /// 脱离起（自成进程组，stdio 全空），不等；回它的 pid。本平台不能脱离（[`cannot_detach`]）：`Io(Unsupported)`，带那一句。
     pub(crate) fn detach(self) -> Result<u32, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
@@ -463,18 +469,31 @@ impl Child {
     }
 }
 
-/// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退）。
+/// 本平台能不能「脱离当前进程单独跑」（常驻后端的前提）：能 ⇒ `None`；不能 ⇒ 那一句话（Windows）。
+/// 判只住这一处：[`Child::detach`] 与常驻那两个入口（`--resident-ensure` · 带常驻开关的流模式，经 `control::resident::unsupported_here`）都问它。
+pub(crate) fn cannot_detach() -> Option<String> {
+    os::cannot_detach()
+}
+
+/// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退），
+/// 拿着它的那一方可以先关（[`Streaming::close_stdin`]）请它自己退。
 /// **放手即收**：`Drop` ⇒ 杀整组（Windows：终止 Job）、收尸。没有期限 —— 它活多久由拿着它的那一方定，不是节拍。
 pub(crate) struct Streaming {
     child: std::process::Child,
     group: os::Group,
-    _stdin: Option<std::process::ChildStdin>,
+    stdin: Option<std::process::ChildStdin>,
 }
 
 impl Streaming {
     /// 它的输出流（只给一次）。读到头 ＝ 它退了。
     pub(crate) fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
         self.child.stdout.take()
+    }
+
+    /// 关掉它的 stdin（再调什么也不做）：读到 stdin 头就自己收尾的程序据此自己退，它的输出随之读到头。
+    /// 之后照旧放手即杀组收尸（它已经退了时组里没人，收尸之前组号仍被它占着、不会落到别的组上）。
+    pub(crate) fn close_stdin(&mut self) {
+        self.stdin = None;
     }
 }
 
@@ -505,7 +524,7 @@ impl Child {
         Ok(Streaming {
             child,
             group,
-            _stdin: stdin,
+            stdin,
         })
     }
 }
@@ -524,7 +543,15 @@ fn read_all(r: Option<impl Read>) -> Vec<u8> {
 }
 
 fn is_own(k: &OsStr) -> bool {
-    OWN_ENVS.iter().any(|o| OsStr::new(o) == k)
+    k.to_str().is_some_and(|k| {
+        OWN_ENVS
+            .iter()
+            .any(|o| crate::platform::child_env::same_name(o, k))
+    })
+}
+
+fn is_internal_name(k: &str) -> bool {
+    crate::platform::child_env::is_internal(k)
 }
 
 #[cfg(unix)]
@@ -569,6 +596,10 @@ mod os {
     pub(super) fn detach(cmd: &mut Command) -> Result<(), ChildFail> {
         cmd.process_group(0);
         Ok(())
+    }
+
+    pub(super) fn cannot_detach() -> Option<String> {
+        None
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
@@ -652,8 +683,12 @@ mod os {
     pub(super) fn detach(_cmd: &mut Command) -> Result<(), ChildFail> {
         Err(ChildFail::Io(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            copy_core::copy_text("beDetach.detach.notUnix", &[]),
+            cannot_detach().unwrap_or_default(),
         )))
+    }
+
+    pub(super) fn cannot_detach() -> Option<String> {
+        Some(copy_core::copy_text("beDetach.detach.notUnix", &[]))
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {

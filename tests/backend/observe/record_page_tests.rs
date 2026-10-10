@@ -1,34 +1,40 @@
 use super::*;
 
+/// 行摘要按线上的样子看（`ReadRow` 经 serde）。
+fn rows_v(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+    rows_of(reader, offset, bytes)
+        .into_iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect()
+}
+
 fn claude() -> RecordFace {
     crate::agents::claudecode::RECORDS
 }
 
+/// 从文件头读的那一种读法（没有往回看的那一段）。
+fn rd(face: &RecordFace, summary_only: bool) -> Reader<'_> {
+    Reader::new(face, 0, &[], summary_only)
+}
+
 const USER: &str = r#"{"type":"user","uuid":"u1","timestamp":"t","cwd":"/w","message":{"role":"user","content":"q"}}"#;
 const MODE: &str = r#"{"type":"mode","mode":"normal"}"#;
-
-const FOLD_PAGE: &[&str] = &[
-    r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","cwd":"/w","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-user"}]}}"#,
-    r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-say"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}],"usage":{"input_tokens":11,"output_tokens":22}}}"#,
-    r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]},"toolUseResult":{"type":"text","file":{"numLines":7}}}"#,
-    r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:04:08.000Z","content":"ZQKEEP-queued"}"#,
-    r#"{"type":"zq-no-such-kind","uuid":"x1","timestamp":"2026-01-02T03:04:09.000Z","payload":"ZQBODY-raw"}"#,
-];
 
 /// 行摘要：每个可计行一条；末端是含 `\n` 之后那个字节（CRLF 的 `\r` 计在内）· 残尾 `null` · 空白行不占 ·
 /// 不进界面的只有 `{end, hash}`。
 #[test]
 fn rows_carry_exact_ends_and_only_displayable_messages() {
     let page = format!("{USER}\r\n\n  \n{MODE}\n{{torn");
-    let rows = rows_of(&claude(), 100, page.as_bytes(), false);
+    let face = claude();
+    let rows = rows_v(&mut rd(&face, false), 100, page.as_bytes());
     assert_eq!(rows.len(), 3, "{rows:?}");
     let u = USER.len() as u64 + 2;
     assert_eq!(rows[0]["end"], 100 + u);
     assert_eq!(rows[0]["cwd"], "/w");
-    assert_eq!(rows[0]["message"]["uuid"], "u1");
+    assert_eq!(rows[0]["record"]["id"], "u1");
     assert_eq!(rows[1]["end"], 100 + u + 1 + 3 + MODE.len() as u64 + 1);
     assert!(
-        rows[1].get("message").is_none(),
+        rows[1].get("record").is_none(),
         "没有读者的元数据记录不带成品"
     );
     assert!(rows[2]["end"].is_null(), "残尾没有末端");
@@ -40,19 +46,20 @@ fn rows_carry_exact_ends_and_only_displayable_messages() {
 #[test]
 fn record_lines_number_countable_lines_and_keep_only_displayable() {
     let page = format!("{MODE}\n\n{USER}\n");
+    let face = claude();
     let (lines, next) = record_lines_of_page(
-        &claude(),
+        &mut rd(&face, false),
         std::path::Path::new("/p/abc.jsonl"),
         7,
+        0,
         page.as_bytes(),
-        false,
     );
     assert_eq!(next, 9);
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0]["seq"], 8);
     assert_eq!(lines[0]["session_id"], "abc");
     assert_eq!(lines[0]["path"], "/p/abc.jsonl");
-    assert_eq!(lines[0]["message"]["type"], "user");
+    assert_eq!(lines[0]["record"]["t"], "said");
 }
 
 /// 〔原 monitor `parser_tests::parse_for_kind_dispatches_claude_and_codex`〕按文件落在谁的根下认是哪一家：〔散文墓碑〕
@@ -108,65 +115,76 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
     let face =
         crate::agents::record_face_among(&reg, std::path::Path::new("/codex-root/2026/x.jsonl"))
             .expect("Codex 根下的文件没人认");
-    let p = (face.parse)(codex_msg).unwrap().unwrap();
-    assert_eq!(
-        p.message["type"], "assistant",
-        "Codex 那一家没映射进渲染模型"
-    );
+    let p = (face.parse)(codex_msg, 0).unwrap().unwrap();
+    let r = p.record.expect("Codex 那一家没出记录");
+    assert_eq!((r.agent.as_str(), &r.body), ("codex", &r.body));
+    assert!(matches!(r.body, crate::agents::record::Body::Reply { .. }));
     let face = crate::agents::record_face_among(
         &reg,
         std::path::Path::new("/home/u/.claude/projects/a/s.jsonl"),
     )
     .expect("记录树下的文件没人认");
-    let p = (face.parse)(USER).unwrap().unwrap();
+    let p = (face.parse)(USER, 0).unwrap().unwrap();
     assert_eq!(p.cwd.as_deref(), Some("/w"));
-    // Codex 的事件行 ⇒ 抢救形、保原文；空行两家都 `Ok(None)`。
+    assert_eq!(p.record.unwrap().agent, "claude");
+    // Codex 的事件行 ⇒ 不出记录（不上线）；空行两家都 `Ok(None)`。
     let evt =
         r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
-    let p = (crate::agents::codex::RECORDS.parse)(evt).unwrap().unwrap();
-    assert_eq!(p.message["type"], "cc-monitor-unrecognized");
-    assert!((crate::agents::codex::RECORDS.parse)("  ")
+    let p = (crate::agents::codex::RECORDS.parse)(evt, 0)
+        .unwrap()
+        .unwrap();
+    assert!(p.record.is_none());
+    assert!((crate::agents::codex::RECORDS.parse)("  ", 0)
         .unwrap()
         .is_none());
-    assert!((claude().parse)("").unwrap().is_none());
+    assert!((claude().parse)("", 0).unwrap().is_none());
 }
 
 /// 夹具里只住**正文**那几格的标记（开关开 ⇒ 一个都不许剩）。
-/// 每个标记只有一个出处：思考 · 说的话 · 工具入参里主参数之外的那一格 · 工具结果正文 · 抢救下来的整行原文。
+/// 每个标记只有一个出处：思考 · 说的话 · 工具入参里主参数之外的那一格 · 工具结果正文 · 逐段改动里的一行。
 const GONE: &[&str] = &[
     "ZQBODY-think",
     "ZQBODY-say",
     "ZQBODY-input",
     "ZQBODY-result",
-    "ZQBODY-raw",
+    "ZQBODY-patch",
 ];
 
 /// **折起那一行自己要用的**那几格里的标记（开关开 ⇒ 一个都不许少）。
-/// 它们在原文里也住 `message.content` / `content`，但后端判好的成品（`userText.text`）里**另有一份**
-/// ⇒ 剥正文是**去重**，不是把人说的话弄丢。这一半不立，「不许有正文」那一半把投影整个弄坏也能恒绿。
+/// 它们在原文里也住正文块，但后端判好的成品（`who.text`）里**另有一份** ⇒ 剥正文是**去重**，不是把人说的话弄丢。
+/// 这一半不立，「不许有正文」那一半把投影整个弄坏也能恒绿。
 const KEPT: &[&str] = &["ZQKEEP-user", "ZQKEEP-queued"];
 
-/// 折起那一行要用的键名（开关开 ⇒ 逐个还在；它们正是界面画那一行读的那几格）。
+/// 折起那一行要用的格（开关开 ⇒ 逐个还在、值不变；它们正是界面画那一行读的那几格）。
 const FOLDED_CELLS: &[(&str, &str)] = &[
-    ("u1", "userText"),
-    ("a1", "toolCards"),
-    ("a1", "toolSteps"),
-    ("u2", "toolResults"),
+    ("u1", "who"),
+    ("a1", "steps"),
+    ("a1", "model"),
+    ("u3", "results"),
+];
+
+const FOLD_PAGE: &[&str] = &[
+    r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","cwd":"/w","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-user"}]}}"#,
+    r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-say"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}],"usage":{"input_tokens":11,"output_tokens":22}}}"#,
+    r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]},"toolUseResult":{"type":"text","file":{"numLines":7}}}"#,
+    r#"{"type":"user","uuid":"u3","parentUuid":"u2","timestamp":"2026-01-02T03:04:07.500Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]},"toolUseResult":{"filePath":"/w/f.txt","structuredPatch":[{"oldStart":1,"oldLines":1,"newStart":1,"newLines":1,"lines":["-a","+ZQBODY-patch"]}]}}"#,
+    r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:04:08.000Z","content":"ZQKEEP-queued"}"#,
 ];
 
 /// ★ **两头都断**：`summary_only` 开 ⇒ 正文那几格一个不剩、折起那一行要用的一格不少；关 ⇒ 正文**必须**在。
 ///
-/// 两头各自都不够：只断「开 ⇒ 不许有正文」的话，把投影整个弄坏（`message` 恒空、一条都不出成品）也能让它绿；
-/// 只断「关 ⇒ 有正文」的话，开关根本没接上也能绿。⇒ 本条逐标记两向都判，再加上**条数 · 行号 · 身份一格不变**
-/// （剥的是内容，不是「这一行在不在、是第几行」）。
+/// 两头各自都不够：只断「开 ⇒ 不许有正文」的话，把投影整个弄坏（一条都不出成品）也能让它绿；
+/// 只断「关 ⇒ 有正文」的话，开关根本没接上也能绿。⇒ 本条逐标记两向都判，再加上**条数 · 行号 · 身份一格不变**。
 #[test]
 fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() {
     let page = FOLD_PAGE.join("\n") + "\n";
     let at = std::path::Path::new("/p/zq.jsonl");
+    let face = claude();
     let shape = |summary_only: bool| {
-        let (lines, next) = record_lines_of_page(&claude(), at, 5, page.as_bytes(), summary_only);
+        let (lines, next) =
+            record_lines_of_page(&mut rd(&face, summary_only), at, 5, 0, page.as_bytes());
         let (rows, text) = (
-            rows_of(&claude(), 0, page.as_bytes(), summary_only),
+            rows_v(&mut rd(&face, summary_only), 0, page.as_bytes()),
             serde_json::to_string(&lines).unwrap(),
         );
         (lines, next, rows, text)
@@ -174,51 +192,54 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
     let (full_lines, full_next, full_rows, full_text) = shape(false);
     let (fold_lines, fold_next, fold_rows, fold_text) = shape(true);
 
-    // ── 关（默认那一形）：正文**必须**在，一个标记都不许缺 ──
     for m in GONE.iter().chain(KEPT) {
         assert!(
             full_text.contains(m),
             "不给开关时 `{m}` 不在成品里 —— 夹具或投影坏了，下面那一半会恒绿"
         );
     }
-    // ── 开：正文那几格一个不剩 ──
     for m in GONE {
         assert!(
             !fold_text.contains(m),
             "`summary_only` 置真，正文标记 `{m}` 还在成品里：{fold_text}"
         );
     }
-    // ── 开：折起那一行自己要用的一格不少 ──
     for m in KEPT {
         assert!(
             fold_text.contains(m),
             "`summary_only` 置真把折起那一行要显示的 `{m}` 也剥掉了"
         );
     }
-    let cell = |lines: &[serde_json::Value], uuid: &str, key: &str| {
+    let cell = |lines: &[serde_json::Value], id: &str, key: &str| {
         lines
             .iter()
-            .find(|l| l["message"]["uuid"] == uuid)
-            .unwrap_or_else(|| panic!("夹具里没有 uuid={uuid} 那一条"))["message"][key]
+            .find(|l| l["record"]["id"] == id)
+            .unwrap_or_else(|| panic!("夹具里没有 id={id} 那一条"))["record"][key]
             .clone()
     };
-    for (uuid, key) in FOLDED_CELLS {
-        assert_eq!(
-            cell(&fold_lines, uuid, key),
-            cell(&full_lines, uuid, key),
-            "`{key}`（uuid={uuid}）在折起那一形里变了 —— 它是界面画那一行读的那一格"
+    for (id, key) in FOLDED_CELLS {
+        let (fold, full) = (cell(&fold_lines, id, key), cell(&full_lines, id, key));
+        assert!(
+            !full.is_null(),
+            "夹具里 `{key}`（id={id}）没有 —— 下面那一条会恒绿"
         );
+        if *key == "results" {
+            // 结果一句留着，只少了逐段改动。
+            assert_eq!(fold["t2"]["added"], full["t2"]["added"]);
+            assert!(fold["t2"].get("patch").is_none() && full["t2"].get("patch").is_some());
+        } else {
+            assert_eq!(fold, full, "`{key}`（id={id}）在折起那一形里变了");
+        }
     }
-    // ── 开：`message` 那个对象留着（折起那一行按 `usage` 报字数），只是没了 `content` ──
-    let msg = cell(&fold_lines, "a1", "message");
-    assert_eq!(msg["role"], "assistant");
-    assert_eq!(msg["usage"]["output_tokens"], 22);
+    let a1 = fold_lines
+        .iter()
+        .find(|l| l["record"]["id"] == "a1")
+        .unwrap();
     assert!(
-        msg.get("content").is_none(),
-        "`content` 该是**删掉**而不是给空值（给空值等于说这一条没有正文，那是假话）：{msg}"
+        a1["record"].get("blocks").is_none(),
+        "`blocks` 该是**删掉**而不是给空值（给空值等于说这一条没有正文，那是假话）：{a1}"
     );
 
-    // ── 两形之间：条数 · 行号 · 身份 · 行摘要那几格一格不变 ──
     assert_eq!(fold_next, full_next, "剥正文不许动行号");
     assert_eq!(fold_lines.len(), full_lines.len(), "剥正文不许少出一条");
     assert_eq!(fold_lines.len(), FOLD_PAGE.len(), "夹具每一行都该出成品");
@@ -231,9 +252,9 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
                     l["session_id"].clone(),
                     l["path"].clone(),
                     l["cwd"].clone(),
-                    l["message"]["uuid"].clone(),
-                    l["message"]["type"].clone(),
-                    l["message"]["timeText"].clone(),
+                    l["record"]["id"].clone(),
+                    l["record"]["t"].clone(),
+                    l["record"]["timeText"].clone(),
                 ])
             })
             .collect()
@@ -253,21 +274,95 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
         ends(&full_rows),
         "行摘要的 `end` / `hash` / `cwd` 变了（续传要靠它们核「还是不是那一行」）"
     );
-    // 剩不下**一个** `content` 键：三处剥（`message.content` · `queue-operation` 的 `content`）漏一处就红。
-    // 比「小了多少」强：省多少是夹具的函数（真数据上的读数是交回时量的一次，约省七成），
-    // 而「这个键名一个都不剩」是形状上的话，跟夹具大小无关。
     assert!(
-        !fold_text.contains("\"content\""),
-        "折起那一形里还剩 `content` 这个键：{fold_text}"
+        !fold_text.contains("\"blocks\""),
+        "折起那一形里还剩 `blocks`：{fold_text}"
     );
     assert!(
-        full_text.contains("\"content\""),
-        "不给开关时连 `content` 键都没有 —— 上面那一条会恒绿"
+        full_text.contains("\"blocks\""),
+        "不给开关时连 `blocks` 都没有 —— 上面那一条会恒绿"
     );
-    assert!(
-        fold_text.len() < full_text.len(),
-        "折起那一形没比全文小（{} vs {}）",
-        fold_text.len(),
-        full_text.len()
+}
+
+const ENQ: &str = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-01-02T03:00:00.000Z","content":"also this"}"#;
+const REM: &str = r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:02:00.000Z","content":"also this"}"#;
+
+fn queued_at(lines: &[serde_json::Value]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l["record"]["t"] == "queued")
+        .map(|l| l["record"]["at"].as_str().unwrap_or("").to_string())
+        .collect()
+}
+
+/// 排队那一句的 `at` 是**打字时刻**（打字那一行的时刻），不是被插进那一轮的时刻；打字那一行自己不出记录。
+/// 同一页里、和打字那一行落在上一页（往回看的那一段）两种都配得上；配不上 ⇒ 照用它自己的时刻（不空着）。
+#[test]
+fn a_queued_line_carries_the_moment_it_was_typed() {
+    let face = claude();
+    let at = std::path::Path::new("/p/q.jsonl");
+    let page = format!("{ENQ}\n{USER}\n{REM}\n");
+    let (lines, _) = record_lines_of_page(&mut rd(&face, false), at, 0, 0, page.as_bytes());
+    assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
+    assert_eq!(lines.len(), 2, "打字那一行不出记录：{lines:?}");
+
+    // 打字那一行在这一页之前：往回看的那一段交进来就配得上。
+    let lead = format!("{{\"torn\": 1}}\n{ENQ}\n");
+    let tail = format!("{REM}\n");
+    let mut r = Reader::new(&face, 40, lead.as_bytes(), false);
+    let (lines, _) = record_lines_of_page(&mut r, at, 9, 40 + lead.len() as u64, tail.as_bytes());
+    assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
+    let (rows_with, rows_without) = (
+        rows_v(
+            &mut Reader::new(&face, 40, lead.as_bytes(), false),
+            99,
+            tail.as_bytes(),
+        ),
+        rows_v(&mut rd(&face, false), 99, tail.as_bytes()),
     );
+    assert_eq!(rows_with[0]["record"]["at"], "2026-01-02T03:00:00.000Z");
+    // 没有往回看那一段 ⇒ 用它自己的时刻。
+    assert_eq!(rows_without[0]["record"]["at"], "2026-01-02T03:02:00.000Z");
+}
+
+/// 没有自己身份的那几条（标题 · 排队）`id` 按这一行的起点偏移合成：各条读路（按页 · 按行摘要）给出的一样、互不相撞。
+#[test]
+fn records_without_their_own_id_get_one_from_where_the_line_starts() {
+    let face = claude();
+    let title = r#"{"type":"ai-title","aiTitle":"x","sessionId":"s"}"#;
+    let page = format!("{title}\n{REM}\n");
+    let rows = rows_v(&mut rd(&face, false), 1000, page.as_bytes());
+    let (lines, _) = record_lines_of_page(
+        &mut rd(&face, false),
+        std::path::Path::new("/p/s.jsonl"),
+        0,
+        1000,
+        page.as_bytes(),
+    );
+    let ids: Vec<_> = rows.iter().map(|r| r["record"]["id"].clone()).collect();
+    assert_eq!(
+        ids,
+        [
+            serde_json::json!("@1000"),
+            serde_json::json!(format!("@{}", 1001 + title.len()))
+        ]
+    );
+    let ids2: Vec<_> = lines.iter().map(|l| l["record"]["id"].clone()).collect();
+    assert_eq!(ids, ids2);
+}
+
+/// 往回看的那一段从文件里取：起点之前至多 [`QUEUE_LOOKBACK_BYTES`]；从文件头读 ⇒ 空。
+#[test]
+fn the_lead_is_the_bounded_stretch_just_before_the_page() {
+    let dir = std::env::temp_dir().join(format!("ccm-lead-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    std::fs::write(&p, b"0123456789").unwrap();
+    assert_eq!(lead_of(&p, 0), (0, Vec::new()));
+    assert_eq!(lead_of(&p, 4), (0, b"0123".to_vec()));
+    let big = QUEUE_LOOKBACK_BYTES + 10;
+    std::fs::write(&p, vec![b'x'; big as usize]).unwrap();
+    let (at, bytes) = lead_of(&p, big);
+    assert_eq!((at, bytes.len() as u64), (10, QUEUE_LOOKBACK_BYTES));
+    let _ = std::fs::remove_dir_all(&dir);
 }

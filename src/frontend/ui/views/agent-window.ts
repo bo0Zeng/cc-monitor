@@ -14,7 +14,7 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { copyText } from "../copy-table";
-import { renderMessage, type JsonlRecord, type RenderContext } from "../cards";
+import { renderMessage, type LineRecord, type RenderContext } from "../cards";
 import { markRunCard, markRunWindow } from "../cards/subagent";
 import { REVEAL_RUN_EVENT } from "../cards/speaker-bar";
 import { speakerNameOf } from "../agent-profile";
@@ -192,7 +192,7 @@ export class AgentWindow {
       origin: this.origin,
       parent: row.jsonlPath,
       which: { run: this.run },
-      render: (rec: JsonlRecord) => renderMessage(rec, this.ctx),
+      render: (rec: LineRecord) => renderMessage(rec, this.ctx),
       enhanceRoot: this.scrollEl,
     });
     this.wrap.appendChild(this.timeline.element);

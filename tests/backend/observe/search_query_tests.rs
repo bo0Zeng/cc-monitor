@@ -491,3 +491,14 @@ fn merged_sessions_carry_row_and_span_texts() {
         (Some("09:05"), Some("09:05–09:05"))
     );
 }
+
+impl crate::guard_support::Shaped for Merged {
+    fn samples() -> Vec<Self> {
+        vec![Merged {
+            total_hits: 2,
+            session_count: 1,
+            truncated: false,
+            sessions: vec![serde_json::json!({ "updatedAt": 1, "hitCount": 2 })],
+        }]
+    }
+}

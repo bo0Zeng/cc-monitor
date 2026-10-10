@@ -15,7 +15,14 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "LineRecord",
+        export_to = "../../frontend/ui/generated/"
+    )
+)]
 pub struct Record {
     /// 哪一家（注册表里那一家的 `kind`）。
     pub agent: String,
@@ -27,8 +34,8 @@ pub struct Record {
     pub at: Option<String>,
     /// `at` 在这台本地钟上的钟面 `HH:MM`（界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub time_text: Option<String>,
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub time_text: Option<crate::common::cells::Words>,
     /// 哪一类与它自己的格。
     #[serde(flatten)]
     pub body: Body,
@@ -38,7 +45,14 @@ pub struct Record {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "LineRecordBody",
+        export_to = "../../frontend/ui/generated/"
+    )
+)]
 pub enum Body {
     /// 人那一侧说的一条（人打的字 · 斜杠命令 · 工具结果 · 系统注入 … 谁说的由 `who` 说）。
     #[serde(rename_all = "camelCase")]
@@ -100,6 +114,30 @@ pub enum Body {
     Queued { who: UserText },
 }
 
+/// 通用记录的类（记录上 `t` 那一格的五个词；骨架行 `t` 也是它）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RecordClass {
+    Said,
+    Reply,
+    Retry,
+    Title,
+    Queued,
+}
+
+impl Body {
+    /// 这条记录的类。
+    pub fn class(&self) -> RecordClass {
+        match self {
+            Self::Said { .. } => RecordClass::Said,
+            Self::Reply { .. } => RecordClass::Reply,
+            Self::Retry { .. } => RecordClass::Retry,
+            Self::Title { .. } => RecordClass::Title,
+            Self::Queued { .. } => RecordClass::Queued,
+        }
+    }
+}
+
 /// 报错回复的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -154,6 +192,40 @@ pub enum Block {
         #[cfg_attr(test, ts(type = "unknown"))]
         source: serde_json::Value,
     },
+}
+
+/// 排队消息的打字时刻表（一份会话一张；上界固定，挤掉最老的）。通用：只认 [`super::QueueMark`]，不认哪一家的字段。
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TypedTimes {
+    /// (原句, 打字时刻)，越往后越新。
+    seen: std::collections::VecDeque<(String, String)>,
+}
+
+impl TypedTimes {
+    /// 表的上界（条数）。
+    pub(crate) const CAP: usize = 200;
+
+    /// 这一行过一遍表：打字那一刻 ⇒ 记下；被插进那一轮的那一条 ⇒ `at` / `timeText` 换成打字时刻（配不上 ⇒ 原样）。
+    pub(crate) fn pass(&mut self, t: &mut super::Translated) {
+        match &t.queue {
+            Some(super::QueueMark::Typed { text, at }) => {
+                self.seen.retain(|(k, _)| k != text);
+                self.seen.push_back((text.clone(), at.clone()));
+                while self.seen.len() > Self::CAP {
+                    self.seen.pop_front();
+                }
+            }
+            Some(super::QueueMark::Taken { text }) => {
+                let typed = self.seen.iter().rev().find(|(k, _)| k == text);
+                if let (Some((_, at)), Some(r)) = (typed, t.record.as_mut()) {
+                    r.time_text =
+                        crate::common::time::iso_hm_here(at).map(crate::common::cells::Words);
+                    r.at = Some(at.clone());
+                }
+            }
+            None => {}
+        }
+    }
 }
 
 #[cfg(test)]

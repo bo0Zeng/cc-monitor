@@ -56,7 +56,7 @@ pub(crate) enum LocalStep {
         session_id: String,
         path: String,
         seq: u64,
-        message: Option<crate::ui_contract::RecordBody>,
+        record: Option<crate::ui_contract::RecordBody>,
         cwd: Option<String>,
         end: Option<u64>,
         rid: Option<String>,
@@ -75,6 +75,12 @@ pub(crate) enum LocalStep {
     Quota { sid: Option<String> },
     /// 本机的轮换规则表变了 ⇒ 同上那张订阅表一格 `{"rules":true}`。
     Rules,
+    /// 本机某个 pb 工作区的计划变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `plan_changed`）。
+    Plan {
+        workspace: String,
+        rev: String,
+        needs: u64,
+    },
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -115,6 +121,8 @@ pub(crate) fn local_product(
             project_dir,
             name,
             activity,
+            activity_text,
+            activity_tone,
             waiting_for,
             container,
             pid,
@@ -129,6 +137,8 @@ pub(crate) fn local_product(
                 project_dir: project_dir.clone(),
                 name: name.clone(),
                 activity: *activity,
+                activity_text: activity_text.clone(),
+                activity_tone: activity_tone.clone(),
                 waiting_for: waiting_for.clone(),
                 container: container.clone(),
                 pid: *pid,
@@ -137,19 +147,25 @@ pub(crate) fn local_product(
         LocalItem::Frame(InboundFrame::SessionStatus {
             sid,
             activity,
+            activity_text,
+            activity_tone,
             waiting_for,
         }) => (!hidden.contains(sid)).then(|| BookIn::Status {
             origin: origin(),
             sid: sid.clone(),
             activity: *activity,
+            activity_text: activity_text.clone(),
+            activity_tone: activity_tone.clone(),
             waiting_for: waiting_for.clone(),
         }),
-        LocalItem::Frame(InboundFrame::SessionState { sid, state }) => (!hidden.contains(sid))
-            .then(|| BookIn::Left {
+        LocalItem::Frame(InboundFrame::SessionState { sid, state, words }) => {
+            (!hidden.contains(sid)).then(|| BookIn::Left {
                 origin: origin(),
                 sid: sid.clone(),
                 fate: *state,
-            }),
+                words: Some(words.clone()),
+            })
+        }
         LocalItem::Frame(InboundFrame::SessionsReplayed) => {
             Some(BookIn::Listed { origin: origin() })
         }
@@ -159,6 +175,12 @@ pub(crate) fn local_product(
                 sid: sid.clone(),
                 runs: runs.clone(),
                 ended: ended.clone(),
+            }),
+        LocalItem::Frame(InboundFrame::SessionBranch { sid, off, .. }) => (!hidden.contains(sid))
+            .then(|| BookIn::Branch {
+                origin: crate::origin::Origin::local(),
+                sid: sid.clone(),
+                off: off.clone(),
             }),
         LocalItem::Frame(_) => None,
     }
@@ -184,7 +206,7 @@ pub(crate) fn local_step(
             session_id,
             path,
             seq,
-            message,
+            record,
             cwd,
             end,
             rid,
@@ -196,7 +218,7 @@ pub(crate) fn local_step(
                     session_id,
                     path,
                     seq,
-                    message,
+                    record,
                     cwd,
                     end: Some(end),
                     rid,
@@ -241,6 +263,15 @@ pub(crate) fn local_step(
             LocalStep::Quota { sid: Some(sid) }
         }
         LocalItem::Frame(InboundFrame::RotationRulesChanged) => LocalStep::Rules,
+        LocalItem::Frame(InboundFrame::PlanChanged {
+            workspace,
+            rev,
+            needs,
+        }) => LocalStep::Plan {
+            workspace,
+            rev,
+            needs,
+        },
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -297,7 +328,7 @@ pub(crate) async fn consume_local(
                     session_id,
                     path,
                     seq,
-                    message,
+                    record,
                     cwd,
                     end,
                     rid,
@@ -307,7 +338,7 @@ pub(crate) async fn consume_local(
                             session_id,
                             path: std::path::PathBuf::from(path),
                             seq,
-                            message,
+                            record,
                             cwd,
                             end,
                             rid,
@@ -329,6 +360,16 @@ pub(crate) async fn consume_local(
                 LocalStep::Rules => {
                     replay.rotation_rules_changed(&crate::origin::Origin(label.clone()))
                 }
+                LocalStep::Plan {
+                    workspace,
+                    rev,
+                    needs,
+                } => replay.plan_changed(
+                    &crate::origin::Origin(label.clone()),
+                    &workspace,
+                    &rev,
+                    needs,
+                ),
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,
                 LocalStep::StreamEnded => {

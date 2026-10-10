@@ -49,17 +49,6 @@ vi.mock("../../../src/frontend/ui/record-timeline", () => ({
     }
   },
 }));
-vi.mock("../../../src/frontend/ui/branch-fold", () => ({
-  BranchFolder: class {
-    constructor(_e: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
-    recordAdded(): void {}
-    unwrapAll(): void {}
-    rebuildNow(): void {}
-    dispose(): void {}
-  },
-}));
 vi.mock("../../../src/frontend/ui/tasks-panel", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/tasks-panel")>()),
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
@@ -365,7 +354,7 @@ function page(from: number, n: number): unknown {
     path: "/p/r.jsonl",
     end: from + n,
     more: false,
-    rows: Array.from({ length: n }, (_, i) => ({ message: { i: from + i } })),
+    rows: Array.from({ length: n }, (_, i) => ({ record: { t: "said", id: `r${from + i}`, i: from + i } })),
   };
 }
 const renderNum = (rec: unknown): { kind: "card"; element: HTMLElement } => {
@@ -392,6 +381,28 @@ describe("子 agent 的时间线：读失败一次不丢之前显示过的", () 
     await t.refresh();
     expect(nums(t.body)).toEqual(["0", "1", "2", "3", "4"]);
     expect(t.body.querySelector(".block-agent-error")).toBeNull();
+  });
+});
+
+describe("子 agent 的时间线：回退掉的那几条按那份记录的主线外清单折起来", () => {
+  it("读到第一页 ⇒ 问一次那份记录的清单；清单里那几张卡折成一段，之后续读来的不再问", async () => {
+    const asked: string[] = [];
+    const load = async (from: number) => page(from, from === 0 ? 4 : 1) as never;
+    const t = new RunTimeline({
+      origin: LOCAL_ORIGIN,
+      parent: "x",
+      which: { run: "r" },
+      load,
+      render: renderNum,
+      branch: async (path) => (asked.push(path), ["r1", "r2"]),
+    });
+    await t.refresh();
+    await t.refresh();
+    expect(asked).toEqual(["/p/r.jsonl"]);
+    const wrap = t.body.querySelector(".branch-fold-wrap");
+    expect(wrap, "清单里那两条该折成一段").not.toBeNull();
+    expect(nums(wrap as HTMLElement)).toEqual(["1", "2"]);
+    expect(nums(t.body)).toEqual(["0", "1", "2", "3", "4"]);
   });
 });
 
@@ -460,7 +471,7 @@ describe("切走再切回一个 tab：回到离开时的位置", () => {
   });
 });
 
-describe("上下文占用：状态栏与监控板读同一个上限（后端定的）", () => {
+describe("上下文那一格：状态栏与监控板照抄同一份核心成品", () => {
   const facts = (limit: number, limitFrom: "relay" | "assumed"): SessionFacts => ({
     agent: "claude",
     end: 1,
@@ -476,23 +487,37 @@ describe("上下文占用：状态栏与监控板读同一个上限（后端定�
     permissionMode: null,
     tokens: null,
     cost: null,
-    usage: { promptTokens: 350_000, model: "claude-opus-5-5", peakPromptTokens: 350_000, limit, limitFrom },
+    mcp: [],
+    bgTasks: [],
+    background: null,
+    usage: {
+      promptTokens: 350_000,
+      model: "claude-opus-5-5",
+      peakPromptTokens: 350_000,
+      limit,
+      limitFrom,
+      percent: limitFrom === "assumed" ? null : 35,
+      contextText: limitFrom === "assumed" ? "核心·350k" : "核心·35%",
+      contextTone: "plain",
+      promptTokensText: "核心·350k",
+      limitText: "核心·1M",
+      limitFromText: limitFrom === "assumed" ? null : "核心·中转",
+    },
   });
-  it("中转说是 1M：35%（不是 175%）；状态栏与监控板同一个数", () => {
+  it("判得出：监控板那一格照抄核心的字与百分比；状态栏拿到的是同一份成品", () => {
     const tm = makeTabs(["a"]);
     const t = inside(tm).store.tabs.get("a") as Tab;
     applyFacts(t, facts(1_000_000, "relay"));
-    expect(tm.snapshotSessions()[0].contextPct).toBe(35);
+    expect(tm.snapshotSessions()[0].context).toEqual({ text: "核心·35%", tone: "plain", percent: 35 });
     (tm as unknown as { publishActive(): void }).publishActive();
-    expect(tm.active.get().contextLimit).toBe(1_000_000);
+    expect(tm.active.get().usage?.contextText).toBe("核心·35%");
   });
-  it("判不出（assumed）：不出百分比，只交用了多少", () => {
+  it("判不出（assumed）：核心没给百分比，两处照抄只写用了多少的那个字", () => {
     const tm = makeTabs(["a"]);
     const t = inside(tm).store.tabs.get("a") as Tab;
     applyFacts(t, facts(1_000_000, "assumed"));
-    const snap = tm.snapshotSessions()[0];
-    expect([snap.contextPct, snap.contextTokens]).toEqual([null, 350_000]);
+    expect(tm.snapshotSessions()[0].context).toEqual({ text: "核心·350k", tone: "plain", percent: null });
     (tm as unknown as { publishActive(): void }).publishActive();
-    expect(tm.active.get().contextLimit).toBeNull();
+    expect(tm.active.get().usage?.percent).toBeNull();
   });
 });

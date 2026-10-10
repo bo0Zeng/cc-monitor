@@ -10,13 +10,50 @@
 //! | 其余（别的 `system` · `attachment` · 看不懂的 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
+use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy};
 use serde_json::Value;
 
 /// 这一家在线上的 `agent` 值。
 const AGENT: &str = "claude";
 /// 代理那一侧自动写的应答，型号名写成这个。
 const AUTO_REPLY_MODEL: &str = "<synthetic>";
+
+/// 一条已解析的记录（`Value`）⇒ [`record_of`] 会给它的类，不走整条翻译（骨架索引每行一问）。
+/// 只看判别字段与那几类的必填格（缺了 ⇒ 盘上形状认不出、不出记录）；排队那一条还要认出是人说的。
+pub(crate) fn class_of(v: &Value) -> Option<RecordClass> {
+    let s = |k: &str| v.get(k).and_then(Value::as_str);
+    let message = || {
+        v.get("message").is_some_and(|m| {
+            m.get("role").is_some_and(Value::is_string) && m.get("content").is_some()
+        })
+    };
+    let said_or_reply = || s("uuid").is_some() && s("timestamp").is_some() && message();
+    match s("type")? {
+        "user" if said_or_reply() => Some(RecordClass::Said),
+        "assistant" if said_or_reply() => Some(RecordClass::Reply),
+        "system" if s("subtype") == Some("api_error") && s("timestamp").is_some() => {
+            Some(RecordClass::Retry)
+        }
+        "ai-title" if s("aiTitle").is_some() && s("sessionId").is_some() => {
+            Some(RecordClass::Title)
+        }
+        "custom-title" if s("customTitle").is_some() && s("sessionId").is_some() => {
+            Some(RecordClass::Title)
+        }
+        "queue-operation"
+            if s("operation") == Some("remove")
+                && s("content").is_some_and(|c| {
+                    matches!(
+                        super::text::queued_text(c).speaker,
+                        crate::agents::Speaker::Human
+                    )
+                }) =>
+        {
+            Some(RecordClass::Queued)
+        }
+        _ => None,
+    }
+}
 
 /// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。没有身份的那几类（标题 · 排队）`id` 用 `fallback_id`（调用方给，会话内唯一）。
 pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
@@ -28,7 +65,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             id
         },
         at,
-        time_text,
+        time_text: time_text.map(crate::common::cells::Words),
         body,
     };
     match rec {

@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -277,12 +277,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "用户角色记录是谁说的（人 · CLI 注入 · agent 来话 · 后台通知 · 斜杠命令 · `!` 输入输出 · 压缩摘要 · 中断标记……）",
     // 规则一份住适配层 `user_text`；后端读者（搜索 · 历史摘录 · 大纲 · 骨架索引）经注册表 `agents::user_text_of` 够它。
     //   前端：后端解析 user 记录与排队消息时填 `userText`（`speaker` ＋ 要显示的 `text`），渲染 / 排队消息建卡 /
-    //   compact 检测 / 分叉折叠 / 估高只读成品；TS 那几份认标签的（注入噪声 · 排队消息 · 斜杠 · bash · compact 前缀）都删了。
+    //   compact 检测 / 估高只读成品；TS 那几份认标签的（注入噪声 · 排队消息 · 斜杠 · bash · compact 前缀）都删了。
     homes: ["src/backend/agents/claudecode/text.rs::user_text"],
     status: "zero",
     defs: ["stripInternalNoise", "isQueuedUserSpeech", "parseSlashCommand", "parseBashInput", "parseBashOutput", "isCompactSummary"],
     needles: [
-      { text: 'startsWith("[Request interrupted by user")', count: 0, file: "src/frontend/ui/branching.ts" },
       { text: "Request interrupted by user", count: 0 },
       { text: "<task-notification", count: 0 },
       { text: "<agent-message", count: 0 },
@@ -540,6 +539,32 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "复制详情条带 §5「合流 ×N 复制出全部段」—— 两个前端各拼自己那几段，排法同一条",
   },
+  J27: {
+    what: "一件失败复制出去的整段（那一句 ＋ 下面原样接详情；详情空白 ⇒ 只剩那一句）",
+    homes: ["copy-core::one"],
+    // 认可的双读口（同 J26）：界面拼［复制详情］复制出去的那一段，后端拼 CLI `--text` 失败那一形，排法一条规则，各对同一份金样。
+    status: "mirror",
+    defs: ["detailBody"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/detail-many.golden.json",
+      tests: ["tests/common/copy-core/detail_tests.rs", "tests/frontend/ui/kit/detail.vitest.ts"],
+    },
+    why: "复制详情条带「首行永远就是屏上那句」—— CLI 面的失败给人看那一形与界面复制出去的那一段是同一段字",
+  },
+  J28: {
+    what: "短时长（N5：45s · 6m · 1h50m · 3d）⇒ 会话状态一句里会走的那一截",
+    homes: ["copy-core::short_duration"],
+    // 认可的双读口（与 J24 同理）：核心写状态一句那一刻填一次（手机 · CLI 照抄、按节拍重问），桌面秒级走字只留这一个读口，各对同一份金样。
+    status: "mirror",
+    defs: ["fmtDur"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/short-duration.golden.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/short-duration.vitest.ts"],
+    },
+    why: "ARCHITECTURE §2.9「会走的钟」：桌面秒级走的那几处只留一个时长读口，与 Rust 那一份对同一份金样",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -584,6 +609,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     copy_text: "J11",
     format_duration: "J24",
     format_elapsed: "J24",
+    short_duration: "J28",
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
@@ -608,6 +634,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     with_raw: NONE,
     wrap: NONE,
     many: "J26",
+    one: "J27",
     // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
     parse: NONE,
     value: NONE,
@@ -688,6 +715,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
   "filewin-contract": {
     BIN_ENV: NONE,
+    // 就绪那一行打头的记号与认它的那一判（窗口进程在 stderr 上说那一行）；TS 侧零孪生。
+    READY_MARK: NONE,
+    is_ready_line: NONE,
     TERMINAL_OPEN_OP: NONE,
     decode_ready: NONE,
     decode_request: NONE,
@@ -704,6 +734,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     LINK_RETRY_OP: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
+    // 「在计划里看」那一问（窗口 → monitor → 主窗口），参数形状只在这里；TS 侧收的是壳发的事件（`window-events.ts`），零孪生。
+    PLAN_OPEN_OP: NONE,
+    plan_open_args: NONE,
+    plan_open_target: NONE,
     // 窗口的样子：令牌解成数只在这里（主界面那一侧只按名单读计算值、原样交过来，不解析；
     //   名单两边相等由 `theme_tests::the_token_list_is_the_same_on_both_sides` 钉）。
     THEME_TOKENS: NONE,
@@ -729,6 +763,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     win32_long_path: NONE,
     win32_path: NONE,
   },
+  // 本人通道（Unix 套接字 ＋ 对端 uid）：后端 · monitor 同一份平台原语，不判业务；TS 侧没有孪生。
+  "own-chan": {
+    try_hold: NONE,
+    bind: NONE,
+    connect_blocking: NONE,
+    set_read_timeout: NONE,
+    set_write_timeout: NONE,
+    into_async: NONE,
+    someone_listening: NONE,
+  },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
     ALL: NONE,
@@ -740,7 +784,18 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ACCOUNTS_MANIFEST_NAME: NONE,
     BACKEND_POLICY_REL: NONE,
     file_name_of: NONE,
-    listen_pid_file_name: NONE,
+    // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
+    LISTEN_DIR_REL: NONE,
+    LISTEN_SOCKET_NAME: NONE,
+    LISTEN_PID_NAME: NONE,
+    listen_dir_for: NONE,
+    listen_socket_for: NONE,
+    listen_pid_for: NONE,
+    // 升级那一跳找旧版常驻后端用（跨过 4.1.x 之后删）；TS 侧没有孪生。
+    legacy_listen_pid_for: NONE,
+    LEGACY_LISTEN_TOKEN_NAME: NONE,
+    // 「这是一次沙箱跑」的标记（测试 / 台架起后端时带上）；TS 侧没有孪生。
+    SANDBOX_ENV: NONE,
     POSIX_ALIASES_REL: NONE,
     PROFILES_REL: NONE,
     PROFILES_MIGRATED_REL: NONE,
@@ -756,6 +811,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,
+    // 会话血缘（后端 `lineage.rs` 写；数据位置页按它列）。
+    LINEAGE_REL: NONE,
+    // 起会话地址尾上的来处段（会话血缘：ccm 拼 · 中转切 · 门牌那几个函数认）；TS 侧没有孪生。
+    ORIGIN_MARK: NONE,
+    parse_origin: NONE,
+    with_origin: NONE,
     // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
     LAUNCH_ACCOUNTS_REL: NONE,
     LAUNCH_NOTES_DIR_REL: NONE,
@@ -767,14 +828,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
-    // 只许直通的那把钥匙住哪（中转的门 · ccm 起地址拼进参数的那一家 · 直接敲的也走中转）；TS 侧没有孪生。
-    PASS_KEY_FILE_REL: NONE,
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
     keyed_base_url: NONE,
-    // 常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
-    listen_port_for: NONE,
-    LISTEN_TOKEN_FILE_REL: NONE,
     parse_target: NONE,
     PORT: NONE,
     prefix: NONE,
@@ -809,11 +865,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_name_ok: "J18",
     // cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
     bus_id_ok: "J12",
-    // 握手目录名（PowerShell 别名块的 `__ccm_bind` 写、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
+    // 握手目录名（bash / zsh 接入块写终端记录、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
     AWAIT_SUBDIR: NONE,
-    // 「monitor 起来了 / 还活着」那两样系统对象的名字（monitor 挂、别名块渲染时填进 PowerShell 模板）：TS 侧零处碰它 ⇒ NONE。
-    MONITOR_UP_NAME: NONE,
-    MONITOR_ALIVE_NAME: NONE,
     // 启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,

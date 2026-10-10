@@ -211,6 +211,7 @@ fn the_launch_faces_agree_with_the_golden_table() {
             "nested_env" => f.nested_env.join(" "),
             "launch_args" => f.launch_args.join(" "),
             "preset_sid" => f.preset_sid.unwrap_or_default().to_string(),
+            "self_sid_env" => f.self_sid_env.unwrap_or_default().to_string(),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
         if &got != want {
@@ -630,13 +631,13 @@ fn beta_mcp_file() -> Option<PathBuf> {
 fn no_sightings(_: &[String], _: Option<&Path>) -> Sightings {
     Sightings::default()
 }
-fn alpha_mcp(_: Option<&Path>) -> McpRead {
+fn alpha_mcp(_: Option<&Path>, _: &McpLook) -> McpRead {
     McpRead {
         dirs: vec!["alpha".into()],
         ..McpRead::default()
     }
 }
-fn beta_mcp(_: Option<&Path>) -> McpRead {
+fn beta_mcp(_: Option<&Path>, _: &McpLook) -> McpRead {
     McpRead {
         dirs: vec!["beta".into()],
         ..McpRead::default()
@@ -658,7 +659,7 @@ fn shared_root(home: &Path) -> PathBuf {
 fn no_email(_: &Path) -> Option<String> {
     None
 }
-fn no_line(_: &str) -> Result<Option<ParsedLine>, String> {
+fn no_line(_: &str, _: u64) -> Result<Option<Translated>, String> {
     Ok(None)
 }
 fn no_sid(_: &Path) -> Option<String> {
@@ -672,6 +673,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         is_session_file: |_| false,
         tree: None,
         turn_end: None,
+        class: None,
         chain: None,
         find_session: Some(find),
         branch: None,
@@ -683,6 +685,8 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         child_link: None,
         children: None,
         project_dir: None,
+        background: None,
+        mcp_said: None,
     }
 }
 
@@ -693,7 +697,6 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
         user_mcp_key: "servers",
         shared_root,
         email_in: no_email,
-        watched: &[],
         session_env: crate::agents::SessionEnvKeys {
             config_dir: "",
             base_url: "",
@@ -707,7 +710,7 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
 fn two_families() -> Vec<Adapter> {
     let row = |kind: &'static str,
                assets: AssetFace,
-               mcp: fn(Option<&Path>) -> McpRead,
+               mcp: fn(Option<&Path>, &McpLook) -> McpRead,
                acc: AccountsFace,
                find: fn(&Path, &str) -> Result<PathBuf, String>| Adapter {
         kind,
@@ -716,7 +719,10 @@ fn two_families() -> Vec<Adapter> {
         assets: Some(assets),
         history: None,
         upstream: None,
-        mcp: Some(McpFace { read: mcp }),
+        mcp: Some(McpFace {
+            read: mcp,
+            login_command: "/m",
+        }),
         footprint: None,
         accounts: Some(acc),
         records: Some(records(find)),
@@ -776,7 +782,7 @@ fn each_question_lands_on_the_family_it_names_not_the_first_one() {
         Some(PathBuf::from("/alpha/skills"))
     );
     assert_eq!(
-        mcp_read_among(&reg, "beta", None).map(|r| r.dirs),
+        mcp_read_among(&reg, "beta", None, &McpLook::default()).map(|r| r.dirs),
         Some(vec!["beta".to_string()])
     );
     assert_eq!(
@@ -785,7 +791,7 @@ fn each_question_lands_on_the_family_it_names_not_the_first_one() {
     );
     // 认不出的那一家 ⇒ 没有，不落到第一家。
     assert_eq!(skill_root_among(&reg, "gamma", None), None);
-    assert!(mcp_read_among(&reg, "gamma", None).is_none());
+    assert!(mcp_read_among(&reg, "gamma", None, &McpLook::default()).is_none());
     assert!(accounts_face_among(&reg, "gamma").is_none());
 }
 

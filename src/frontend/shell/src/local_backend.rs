@@ -1449,7 +1449,7 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
 /// - `--with-pid`：`session_added` 带上 `pid`（`wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
-///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
+///   本机 ↗ 点那一刻从 agent 进程往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
 ///
 /// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。
@@ -1573,8 +1573,12 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionFileNotice { .. }
         // 任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
         | InboundFrame::TasksChanged { .. }
+        // 计划变了 ⇒ 同上（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+        | InboundFrame::PlanChanged { .. }
         // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
-        | InboundFrame::SessionRuns { .. }) => return Some(f),
+        | InboundFrame::SessionRuns { .. }
+        // 主线外清单 ⇒ 同上（排在那个会话的宣告之后；交会话账）。
+        | InboundFrame::SessionBranch { .. }) => return Some(f),
         // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }

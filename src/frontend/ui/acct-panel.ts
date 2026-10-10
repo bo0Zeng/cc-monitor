@@ -98,6 +98,10 @@ export interface AcctPanelHost {
   openResume(sid: string): void;
   /** 这条会话是哪一家（线上的 kind，会话事实给的）；还不知道 ⇒ `null`。 */
   agentOf(sid: string): string | null;
+  /** 打开一条会话（「打开父会话」）：切到它的标签页（同历史页在跑那一行的「切过去」）。 */
+  openSession(sid: string): void;
+  /** 这条会话在不在会话列表里（不在 ⇒「打开父会话」灰）。 */
+  canOpenSession(sid: string): boolean;
 }
 
 type Present = Extract<SessionRotationState, { state: "present" }>;
@@ -510,18 +514,28 @@ function rowUsage(
 /** 规则多过这么多条 ⇒ 来源下拉顶上出筛选框（选项里另有「跟随默认」「本会话」两项）。 */
 const SRC_FILTER_OVER = 10;
 
+/** 「跟随父会话」那一项右侧灰字里父标题至多几个字（后面还要放规则名）。 */
+const PARENT_NOTE_CHARS = 12;
+
+/** 截到 `n` 个字，截了补 `…`。 */
+function clip(t: string, n: number): string {
+  const cs = [...t];
+  return cs.length > n ? `${cs.slice(0, n - 1).join("")}…` : t;
+}
+
 /** 来源下拉面板的宽（项右侧带规则摘要，比框宽）。 */
 const SRC_MENU_W = 340;
 
-/** 会话的来源在下拉里那一项的值：`follow` · `custom` · `rule:<id>`。 */
-type SrcKey = "follow" | "custom" | `rule:${string}`;
+/** 会话的来源在下拉里那一项的值：`follow` · `parent` · `custom` · `rule:<id>`。 */
+type SrcKey = "follow" | "parent" | "custom" | `rule:${string}`;
 
 function srcKeyOf(src: RotationSource): SrcKey {
-  return typeof src === "string" ? src : `rule:${src.rule}`;
+  if (typeof src === "string") return src;
+  return "rule" in src ? `rule:${src.rule}` : "parent";
 }
 
 function srcWrite(k: SrcKey): SessionRotationWrite {
-  return k === "follow" || k === "custom"
+  return k === "follow" || k === "custom" || k === "parent"
     ? k
     : { rule: k.slice("rule:".length) };
 }
@@ -538,8 +552,11 @@ function rotationBlock(
   const own = read.source === "custom";
   const follow = !own;
   const src = read.source;
-  const ruleRow =
-    typeof src === "object"
+  const parentSrc = typeof src === "object" && "parent" in src;
+  // 跟随父会话：后端顺着父解析出此刻那条规则的名字（父是本会话那份 ⇒ 没有名字，只排那一行、不画列表）。
+  const ruleRow = parentSrc
+    ? (rules?.rules.find((x) => x.name === read.ruleName) ?? null)
+    : typeof src === "object" && "rule" in src
       ? (rules?.rules.find((x) => x.id === src.rule) ?? def)
       : src === "follow"
         ? def
@@ -557,15 +574,35 @@ function rotationBlock(
   const label = (k: SrcKey): string =>
     k === "follow"
       ? copyText("rot.src.follow")
-      : k === "custom"
-        ? copyText("rot.src.custom")
-        : copyText("rot.src.rule", { name: nameOf(k) });
+      : k === "parent"
+        ? copyText("rot.src.parent")
+        : k === "custom"
+          ? copyText("rot.src.custom")
+          : copyText("rot.src.rule", { name: nameOf(k) });
+  const parentTitle = read.parent ? host.sessionTitle(read.parent) : "";
   // 来源：下拉，只有在面板里明确点一项才写（合着时方向键一概不做）；写成了 toast 带撤销。
   // 项：跟随默认（灰字默认那条的名字）· 组名「规则」下每条一项（默认那条带「默认」、右侧摘要）· 本会话 · 分隔 · 存为规则… · 管理规则…
   const srcSel = select({
     label: copyText("rot.src.label"),
     options: [
       { value: "follow", label: copyText("rot.src.follow"), note: def?.name },
+      // 跟随父会话：只在血缘里有父时列（没有就不出，不画灰项）；右侧灰字 ＝ 父标题 · 父此刻那条规则（父是本会话那份 ⇒ 本会话）。
+      ...(read.parent
+        ? [
+            {
+              value: "parent",
+              label: copyText("rot.src.parent"),
+              note: [
+                clip(parentTitle, PARENT_NOTE_CHARS),
+                read.ruleName ?? copyText("rot.src.custom"),
+              ]
+                .filter((x) => x !== "")
+                .join(copyText("kit.text.sep")),
+              // 合着时框里只写「跟随父会话」（父标题常很长，挤掉左边的「来源」）；父是谁写在下面那一行。
+              shownNote: "",
+            },
+          ]
+        : []),
       ...(rules?.rules ?? []).map((x) => ({
         value: `rule:${x.id}`,
         label: x.name,
@@ -667,7 +704,39 @@ function rotationBlock(
       banner("error", copyText("acct.rot.saveFail"), [retry]),
     );
   }
-  if (follow && ruleRow) {
+  if (parentSrc) {
+    // `跟随父会话 orders · 规则 日常`（父是本会话那份 ⇒ `· 本会话`；父没经过中转 ⇒ `· 父会话未经中转 · 按默认 日常`）
+    // ＋［打开父会话］［转为本会话］。列表只读（同来源是规则）。
+    const name = parentTitle;
+    const rule = read.ruleName ?? "";
+    const said = read.parentMissing
+      ? copyText("rot.src.leadParentMissing", { name, rule })
+      : read.ruleName
+        ? copyText("rot.src.leadParent", { name, rule })
+        : copyText("rot.src.leadParentOwn", { name });
+    const lead = el("div", s.acctLead);
+    lead.dataset.acctLead = "true";
+    lead.append(el("span", s.acctSpacer, said));
+    const p = read.parent ?? "";
+    const can = p !== "" && host.canOpenSession(p);
+    const openBtn = button({
+      label: copyText("rot.src.openParent"),
+      kind: "secondary",
+      size: "compact",
+      onClick: () => host.openSession(p),
+    });
+    if (!can) setDisabled(openBtn, copyText("rot.src.openParentOff"));
+    lead.append(
+      openBtn,
+      button({
+        label: copyText("rot.src.detach"),
+        kind: "secondary",
+        size: "compact",
+        onClick: () => void detach(o, host, name, was),
+      }),
+    );
+    sec.content.appendChild(lead);
+  } else if (follow && ruleRow) {
     // `规则 日常 · 默认 · 在用 4 会话`（跟随时 `跟随默认 · 规则 日常`）＋［编辑规则…］［转为本会话］。列表只读：共享的规则去设置里改。
     const parts = [
       src === "follow"

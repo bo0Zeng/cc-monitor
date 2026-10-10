@@ -227,7 +227,7 @@ struct Tail {
 
 /// 一行在留存里算多少字节：成品原文 ＋ 两格路径（结构体本身的开销不算，量纲见 [`HELD_BYTES_CAP`]）。
 fn held_size(p: &JsonlLinePayload) -> usize {
-    p.message.0.get().len() + p.path.len() + p.cwd.as_ref().map_or(0, String::len)
+    p.record.0.get().len() + p.path.len() + p.cwd.as_ref().map_or(0, String::len)
 }
 
 /// 一行记在哪条留存下。
@@ -1188,6 +1188,22 @@ impl EventReplay {
         let body = serde_json::json!({ "rules": true })
             .to_string()
             .into_bytes();
+        self.fan_out(SubKind::Quota, origin, None, Body(body));
+    }
+
+    /// 那台机器的后端说「这个工作区的计划变了」（`plan_changed`）⇒ 订了那台 `quota-changed` 的每条订阅收一格
+    /// `{"plan": {"workspace", "rev", "needs"}}`（同上几条那一套：「那台某样东西变了」只走这一条流，不另开）。界面收到就重问 `plan-read`。
+    pub fn plan_changed(
+        &self,
+        origin: &crate::origin::Origin,
+        workspace: &str,
+        rev: &str,
+        needs: u64,
+    ) {
+        let body =
+            serde_json::json!({ "plan": { "workspace": workspace, "rev": rev, "needs": needs } })
+                .to_string()
+                .into_bytes();
         self.fan_out(SubKind::Quota, origin, None, Body(body));
     }
 

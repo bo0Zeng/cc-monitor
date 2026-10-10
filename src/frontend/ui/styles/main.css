@@ -206,6 +206,15 @@
   border-color: var(--warn);
 }
 
+/* 后台任务运行中：命令那一格（等宽，放不下截尾；悬停给整句）。 */
+.grid-monitor-badge.badge-bgwork {
+  overflow: hidden;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .grid-monitor-empty {
   padding: 40px 14px;
   text-align: center;

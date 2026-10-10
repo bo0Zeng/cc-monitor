@@ -1,6 +1,6 @@
 /**
- * 会话活动态 ⇒ 点 / 灯（标签栏 · 状态点 · 总览共用这一张表）＋ 跨会话监控快照 DTO。
- * 活动态是后端翻好的（`SessionActivity`）；这里只排版，不认任何一家的状态词。
+ * 活着的会话那颗点 / 灯（标签栏 · 状态点 · 监控板 · 轮换名单共用这一张表）＋ 跨会话监控快照 DTO。
+ * 按核心写好的**语气**排（`activity_tone`：`now` 在跑 · `need` 需手动 · 其余常规），不认活动态的码、不认任何一家的状态词。
  * 零运行期 import（只有会被擦除的 `import type`），node 可测。
  */
 
@@ -8,23 +8,41 @@ import type { Origin } from "./generated/Origin";
 import type { SessionState } from "./tab-session-state";
 import type { RunState } from "./generated/RunState";
 import type { SessionActivity } from "./generated/SessionActivity";
+import type { DotState } from "./kit/status-dot";
+import type { BackgroundWork } from "./session-reads";
 
 /** tab/cell 上叠的活动灯类名。空串 = 不叠类（默认绿点）。 */
 export type ActivityLightClass = "" | "act-idle" | "act-waiting";
 
-/** 活着的会话那颗点的颜色（`kit/status-dot` 的 `DotState` 里活着的那三态）。 */
-export type ActivityDot = "running" | "needs-you" | "idle";
+/** 活着的会话那颗点的颜色（`kit/status-dot` 的 `DotState` 里活着的那四态）。 */
+export type ActivityDot = "running" | "needs-you" | "background" | "idle";
 
-/** 活动态 ⇒ 点 · 灯。说不清（`null`）⇒ 默认：在运行的点、不叠灯。 */
-const ACTIVITY_FACE: Record<SessionActivity, { dot: ActivityDot; light: ActivityLightClass }> = {
-  working: { dot: "running", light: "" },
-  needs_you: { dot: "needs-you", light: "act-waiting" },
-  idle: { dot: "idle", light: "act-idle" },
-};
+/** 语气 ⇒ 点 · 灯（标签栏 · 状态点 · 监控板 · 轮换名单只从这里取）。还没收到那一格（`null`）⇒ 在运行的点、不叠灯。 */
+export function activityFace(tone: string | null): { dot: ActivityDot; light: ActivityLightClass } {
+  switch (tone) {
+    case null:
+    case "now":
+      return { dot: "running", light: "" };
+    case "need":
+      return { dot: "needs-you", light: "act-waiting" };
+    // 一轮停了、后台命令还在跑：单独一色（`--bgwork`），不呼吸。
+    case "busy":
+      return { dot: "background", light: "" };
+    default:
+      return { dot: "idle", light: "act-idle" };
+  }
+}
 
-/** 活动态 ⇒ 点 · 灯（标签栏 · 状态点 · 总览只从这里取）。 */
-export function activityFace(a: SessionActivity | null): { dot: ActivityDot; light: ActivityLightClass } {
-  return a === null ? { dot: "running", light: "" } : ACTIVITY_FACE[a];
+/** 状态点：颜色 ＝ 在干什么（核心的语气），形状 ＝ 进程还在不在（两轴）。标签栏 · 会话头 · 监控板同一份。 */
+export function sessionDot(s: SessionState, tone: string | null): DotState {
+  switch (s.liveness) {
+    case "unseen":
+      return "unknown";
+    case "dead":
+      return s.recoverability === "attachable" ? "exited" : s.recoverability === "gone" ? "gone" : "ended";
+    case "live":
+      return activityFace(tone).dot;
+  }
 }
 
 /**
@@ -45,22 +63,26 @@ export interface GridSessionSnapshot {
    * 原先是 `status: "live" | "archived"` ＋ `tmuxIdle: boolean`（可重连的会话在前者里是 live）。
    */
   state: SessionState;
-  /** 此刻在干什么（后端翻好的）；null = 说不清。 */
+  /** 此刻在干什么（后端翻好的）；null = 说不清。排序按它（等人的先），字与点按下面两格。 */
   activity: SessionActivity | null;
-  /** 在等人时那一家给的细分（原样）；否则 null。 */
-  waitingFor: string | null;
+  /** 那一态核心写好的字（运行中 · 需手动 · 空闲 · 后台在跑 …）；还没收到 ⇒ null。 */
+  activityText: string | null;
+  /** 那一态的语气（点的颜色按它）；还没收到 ⇒ null。 */
+  activityTone: string | null;
+  /** 在等人时等的是什么（核心写好的字：等批准 · 等回答 …，`needs.text`）；不在等 ⇒ null。 */
+  needs: string | null;
   /** 本会话仍在跑的 subagent 数。 */
   runningAgents: number;
   /** 本会话 subagent 总数（含已结束）。 */
   totalAgents: number;
-  /** context 占用近似%（最新一轮 prompt token ÷ 模型上限）；上限未知 / 无 usage → null。 */
-  contextPct: number | null;
-  /** 最新一轮用了多少 token（上限判不出、`contextPct` 为空时只写它）。 */
-  contextTokens: number | null;
+  /** 上下文那一格（核心写好的字 · 语气 · 百分比；百分比为 null ＝ 上限判不出）；还没有用量 ⇒ null。 */
+  context: { text: string; tone: string; percent: number | null } | null;
   /** 未读消息数（非活跃 tab 累积）。 */
   unread: number;
   /** 后台会话（⚙）。 */
   background: boolean;
+  /** 后台任务运行中那一句（`Tab.backgroundWork` 原样，核心写的）；不是这一态 ⇒ null。 */
+  backgroundWork: BackgroundWork | null;
   /** A3：该会话所属账号名（live 探测）；null = 本地会话 / 未知（不猜）。 */
   account: string | null;
 }

@@ -158,8 +158,7 @@ if (args.eval) {
         document.addEventListener('keydown', () => { mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true }); setTimeout(() => { mo.disconnect(); window.__dbg.push(areas); }, 400); }, { once: true });
       } else document.addEventListener('keydown', () => requestAnimationFrame(() => { try { window.__dbg.push(eval(ex)); } catch (e) { window.__dbg.push(String(e)); } }), { once: true });
       res(0); })`);
-    await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
-    await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+    await page.key("]");
     await sleep(600);
     console.log(JSON.stringify(await page.eval("window.__dbg")));
   }
@@ -463,8 +462,7 @@ async function benchKeys(run) {
     const press = async () => {
       for (let k = 0; k < 30; k++) {
         const t = Date.now();
-        await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
-        await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+        await page.key("]");
         await sleep(Math.max(0, 40 - (Date.now() - t)));
       }
       return page.eval("__perf.quiet(300, 15000)");
@@ -507,7 +505,7 @@ async function benchKeys(run) {
 async function benchViewer(run) {
   const page = await Page.open(cdp, 1280, 800);
   await page.send("Page.addScriptToEvaluateOnNewDocument", {
-    source: `${probe}\n;(() => { const mo = new MutationObserver(() => { if (document.querySelector('.session-viewer [data-uuid]')) { window.__firstCard = performance.now(); mo.disconnect(); } }); document.addEventListener('DOMContentLoaded', () => mo.observe(document.body, { childList: true, subtree: true })); })();`,
+    source: `${probe}\n;(() => { const mo = new MutationObserver(() => { if (document.querySelector('.session-viewer [data-id]')) { window.__firstCard = performance.now(); mo.disconnect(); } }); document.addEventListener('DOMContentLoaded', () => mo.observe(document.body, { childList: true, subtree: true })); })();`,
   });
   await page.send("Performance.enable", { timeDomain: "timeTicks" });
   const c0 = cpuMs(browser.pid);
@@ -522,7 +520,7 @@ async function benchViewer(run) {
   const quiet = args.trace === "viewer" && run === 0 ? await traced(page, "trace-viewer.json", openIt) : await openIt();
   const openCpu = cpuMs(browser.pid) - c0;
   // 长任务只数 DOMContentLoaded 之后的：之前那一段是假后端在页里造合成世界（几万条记录），不是产品
-  const open = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { first: window.__firstCard ?? null, dcl, ltN: lt.length, ltMs: lt.reduce((a, x) => a + x.d, 0), ltMax: lt.reduce((a, x) => Math.max(a, x.d), 0), cards: document.querySelectorAll('.session-viewer [data-uuid]').length, nodes: document.getElementsByTagName('*').length }; })()");
+  const open = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { first: window.__firstCard ?? null, dcl, ltN: lt.length, ltMs: lt.reduce((a, x) => a + x.d, 0), ltMax: lt.reduce((a, x) => Math.max(a, x.d), 0), cards: document.querySelectorAll('.session-viewer [data-id]').length, nodes: document.getElementsByTagName('*').length }; })()");
   const at = await page.eval(`(() => { const s = document.querySelector('.session-viewer-stream'); const b = s.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   const since = await page.eval("performance.now()");
   await page.eval("__perf.frameStart()");

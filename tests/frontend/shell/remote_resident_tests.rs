@@ -61,34 +61,53 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
 /// 要求：「非 unix 远端（Windows 远端，不承诺）连不上常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
-    let ok = parse_answer(
-        &exec(r#"{"port":51000,"token":"ab","pid":7}"#, "", Some(0)),
-        "devbox",
-    )
-    .unwrap();
-    assert_eq!(parse_ensured(&ok).unwrap().port, 51000);
-    assert_eq!(
-        parse_answer(
-            &exec(
-                "",
-                r#"{"code":"unsupported","message":"不是 unix"}"#,
-                Some(2)
-            ),
-            "devbox"
-        ),
-        Err(AttachErr::Unsupported(
-            Said::with_raw(
-                copy_text("rsRemoteResident.ensure.unsupported", &[]),
-                "不是 unix"
-            ),
-            crate::machine_state::NOT_UNIX
-        ))
-    );
-    // 那台带了原话（`raw`）⇒ 句子照那台那一句，原话进复制详情、不上句子。
+    let ok = parse_answer(&exec(r#"{"pid":7}"#, "", Some(0)), "devbox").unwrap();
+    assert_eq!(parse_ensured(&ok), Ok(()));
+    // 那台的失败信封只有一种（`{code, message, detail, data?}`）：`detail` 是那台写好的一整份复制详情，原样转交（补「本机」一行）。
+    use copy_core::detail::{Detail, Label};
+    let wrote = |code: &str, raw: &str| {
+        Detail::new()
+            .item(Label::Command, "resident-ensure")
+            .item(Label::Code, code)
+            .item(Label::Raw, raw)
+            .render()
+    };
+    let envelope = |code: &str, message: &str, detail: &str| {
+        serde_json::json!({"code": code, "message": message, "detail": detail}).to_string()
+    };
+    // 脱离不了（非 unix）⇒ 句子由这边说「远端只支持 Unix」；那台的那一句（它就是系统原话）与那台的详情都进复制详情。
     match parse_answer(
         &exec(
             "",
-            r#"{"code":"spawn_failed","message":"x","raw":"Permission denied (os error 13)"}"#,
+            &envelope("unsupported", "不是 unix", &wrote("unsupported", "")),
+            Some(2),
+        ),
+        "devbox",
+    ) {
+        Err(AttachErr::Unsupported(s, code)) => {
+            assert_eq!(code, crate::machine_state::NOT_UNIX);
+            assert_eq!(
+                s.said,
+                copy_text("rsRemoteResident.ensure.unsupported", &[])
+            );
+            assert!(s.detail.contains("不是 unix"), "{}", s.detail);
+            assert!(
+                s.detail.contains("resident-ensure"),
+                "那台写的那份没带上：{}",
+                s.detail
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    // 别的失败 ⇒ 句子照那台那一句；那台的详情（含下层原话）整份进复制详情，句子里没有原话。
+    match parse_answer(
+        &exec(
+            "",
+            &envelope(
+                "spawn_failed",
+                "x",
+                &wrote("spawn_failed", "Permission denied (os error 13)"),
+            ),
             Some(2),
         ),
         "devbox",
@@ -98,6 +117,11 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             assert!(
                 s.detail.contains("Permission denied (os error 13)"),
                 "{}",
+                s.detail
+            );
+            assert!(
+                s.detail.contains(&copy_text("detail.label.local", &[])),
+                "远端那份没补「本机」一行：{}",
                 s.detail
             );
         }
@@ -114,25 +138,21 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
         parse_answer(&exec(&hello("p1a-old"), "", None), "devbox"),
         Err(AttachErr::Failed(copy_core::backend_old("devbox").into()))
     );
-    // 刚起了一个 ⇒ 钥匙是它绑上口之后自己写的，答里没有（读到 hello 之后再问一次）；缺端口才算答不全。
-    let fresh = parse_ensured(&serde_json::json!({"port":51000,"token":null,"pid":7})).unwrap();
-    assert_eq!((fresh.port, fresh.token), (51000, None));
-    assert_eq!(parse_ensured(&ok).unwrap().token.as_deref(), Some("ab"));
-    assert!(parse_ensured(&serde_json::json!({"token":"ab"})).is_err());
-    assert!(
-        !format!("{:?}", parse_ensured(&ok).unwrap()).contains("ab"),
-        "钥匙进了 Debug 输出"
-    );
+    // 已有人在听 ⇒ pid 可能是 null；不是对象才算认不得。
+    assert_eq!(parse_ensured(&serde_json::json!({"pid":null})), Ok(()));
+    assert!(parse_ensured(&serde_json::json!("7")).is_err());
 }
 
-/// attach 行是远端 `listen::attach_flags` 读得懂的形状：钥匙 ＋ 这条连接的旗标。
+/// attach 行是远端 `listen::attach_verdict` / `attach_flags` 读得懂的形状：「我要流」＋ 这条连接的旗标，没有钥匙。
 #[test]
-fn the_attach_line_carries_the_token_and_exactly_the_negotiated_flags() {
-    let l = attach_line("t0k", (false, true));
+fn the_attach_line_asks_for_the_stream_with_exactly_the_negotiated_flags() {
+    let l = attach_line((false, true));
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
-    assert_eq!(v["attach"], "t0k");
-    assert_eq!(v["flags"], serde_json::json!(["--tail-only"]));
+    assert_eq!(
+        v,
+        serde_json::json!({"attach": true, "flags": ["--tail-only"]})
+    );
 }
 
 /// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；
@@ -228,61 +248,90 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
     );
 }
 
-/// （`AllowTcpForwarding no` ⇒ 控制隧道被回拒、每分钟新拨 33 条 SSH）·
-/// 要求「认出这个拒绝、停止重试、界面明说」。替身开隧道：
-/// ① 回拒码是「不许端口转发」⇒ **恰好开 1 次**就停、回 `Unsupported`（`after_round` 据它不再重连）、话是那一句；
-/// ② 正控：口上还没人（`connect_failed`）两次、第三次通 ⇒ 照旧等着再开，恰好 3 次、接成。
+/// 小中继的第一行：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
+#[test]
+fn the_relay_refusal_line_is_read_and_its_words_match_the_backend() {
+    assert_eq!(
+        relay_refusal(r#"{"attach":"refused","reason":"absent"}"#).as_deref(),
+        Some(RELAY_ABSENT)
+    );
+    assert_eq!(
+        relay_refusal(r#"{"attach":"refused","reason":"unreachable"}"#).as_deref(),
+        Some("unreachable")
+    );
+    assert_eq!(relay_refusal(&hello("p1")), None);
+    let be = include_str!("../../../src/backend/stream/listen.rs");
+    assert!(
+        be.contains(&format!(
+            "pub const REFUSE_ABSENT: &str = \"{RELAY_ABSENT}\";"
+        )),
+        "后端那一侧「没人在听」的理由词与这里不同了"
+    );
+}
+
+/// 中继的编排（替身接中继）：① `absent`（刚起的还没绑上）两次、第三次接上 ⇒ 等着再接、恰好 3 次、接成；
+/// ② 别的理由 ⇒ 接 1 次就停、那一句说「连不上 · 需重启」；③ 一直 `absent` ⇒ 封顶次数后说「后端没在运行」。
 #[tokio::test]
-async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
+async fn the_relay_waits_only_while_nobody_listens() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let tries = AtomicUsize::new(0);
-    let got = retry_tunnel(
-        || {
-            tries.fetch_add(1, Ordering::SeqCst);
-            async {
-                Err::<(), _>((
-                    crate::detail::Said::from("远端 127.0.0.1:4 连不上"),
-                    Some(FORWARDING_PROHIBITED.to_string()),
-                ))
-            }
-        },
-        4,
-    )
-    .await;
-    assert_eq!(tries.load(Ordering::SeqCst), 1, "被拒转发还在重开隧道");
-    let said = copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]);
-    assert_eq!(
-        got,
-        Err(AttachErr::Unsupported(
-            said.clone().into(),
-            crate::machine_state::NO_FORWARDING
-        ))
-    );
-    assert_eq!(
-        crate::stream_source::after_round(Some(said.clone()), std::time::Duration::from_secs(2)),
-        crate::stream_source::AfterRound::Stop(said),
-        "这一形之后整条流还按退避重连"
-    );
-
-    let tries = AtomicUsize::new(0);
-    let got = retry_tunnel(
+    let got = retry_relay(
         || {
             let n = tries.fetch_add(1, Ordering::SeqCst);
             async move {
-                if n < 2 {
-                    Err((
-                        crate::detail::Said::from("没人在听"),
-                        Some("connect_failed".to_string()),
-                    ))
+                Ok::<_, AttachErr>(if n < 2 {
+                    Err(RELAY_ABSENT.to_string())
                 } else {
                     Ok(n)
-                }
+                })
             }
         },
+        "devbox",
         4,
+        std::time::Duration::from_millis(1),
     )
     .await;
     assert_eq!((got, tries.load(Ordering::SeqCst)), (Ok(2), 3));
+
+    let tries = AtomicUsize::new(0);
+    let got = retry_relay(
+        || {
+            tries.fetch_add(1, Ordering::SeqCst);
+            async { Ok::<Result<(), String>, AttachErr>(Err("unreachable".to_string())) }
+        },
+        "devbox",
+        4,
+        std::time::Duration::from_millis(1),
+    )
+    .await;
+    assert_eq!(tries.load(Ordering::SeqCst), 1, "再接也一样的理由还在重接");
+    assert_eq!(
+        got.map_err(AttachErr::said).map_err(|s| s.said),
+        Err(copy_text(
+            "rsRemoteResident.relay.unreachable",
+            &[("machine", "devbox")]
+        ))
+    );
+
+    let tries = AtomicUsize::new(0);
+    let got = retry_relay(
+        || {
+            tries.fetch_add(1, Ordering::SeqCst);
+            async { Ok::<Result<(), String>, AttachErr>(Err(RELAY_ABSENT.to_string())) }
+        },
+        "devbox",
+        4,
+        std::time::Duration::from_millis(1),
+    )
+    .await;
+    assert_eq!(tries.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        got.map_err(AttachErr::said).map_err(|s| s.said),
+        Err(copy_text(
+            "rsRemoteResident.relay.absent",
+            &[("machine", "devbox")]
+        ))
+    );
 }
 
 /// ④ 手上没带后端字节（「我这一版」是 `None`）⇒ `resident-verdict` **不问**、照接、不判旧（换装无从发起）；

@@ -153,6 +153,25 @@ function ruleEditor(): string[] {
   const texts = whys.map((m) => m.querySelector<HTMLElement>("span:last-child")).filter((t): t is HTMLElement => t !== null && visible(t));
   for (let i = 1; i < texts.length; i++)
     if (intersects(texts[i - 1].getBoundingClientRect(), texts[i].getBoundingClientRect())) out.push(`时间轴：原因字 ${name(texts[i - 1])} 与 ${name(texts[i])} 叠在一起`);
+  // 收了字的那颗菱形不挪：同一条轨上各颗菱形的高低一样。
+  for (const layer of new Set(whys.map((m) => m.parentElement!))) {
+    const ys = [...layer.querySelectorAll<HTMLElement>("[data-tl-why] > span:first-child")].filter(visible).map((d) => {
+      const r = d.getBoundingClientRect();
+      return Math.round(r.top + r.height / 2);
+    });
+    if (ys.length > 1 && Math.max(...ys) - Math.min(...ys) > EPS) out.push(`时间轴：同一条轨上的菱形高低不齐（中线 ${[...new Set(ys)].join(" / ")}）`);
+  }
+  // 原因字不许盖住任何一颗菱形，离右边下一颗也要留够 6px（界面小修 10-09 · B）。
+  for (const m of whys) {
+    const t = m.querySelector<HTMLElement>("span:last-child");
+    if (!t || t === m.firstElementChild || !visible(t)) continue;
+    const tr = t.getBoundingClientRect();
+    for (const d of document.querySelectorAll<HTMLElement>("[data-tl-why] > span:first-child")) {
+      if (d.parentElement === m || !visible(d) || d.closest("[data-tl-why]")!.parentElement !== m.parentElement) continue;
+      const dr = d.getBoundingClientRect();
+      if (dr.right > tr.left + EPS && dr.left < tr.right + 6 - EPS) out.push(`时间轴：原因字 ${name(t)} 盖住或离菱形不足 6px（字 ${Math.round(tr.left)}–${Math.round(tr.right)} · 菱形 ${Math.round(dr.left)}）`);
+    }
+  }
   const narrow = innerWidth < 640;
   for (const row of document.querySelectorAll<HTMLElement>("[data-ed-cap-row]")) {
     if (!visible(row)) continue;
@@ -191,8 +210,25 @@ function foldHeads(): string[] {
   return out;
 }
 
+/** 「消息」一条带两颗以上动作 ⇒ 动作换到第二行，句子那一行不排按钮（界面小修 10-09 · C）。 */
+function messageRows(): string[] {
+  const out: string[] = [];
+  for (const row of document.querySelectorAll<HTMLElement>('[data-role="messages-list"] > *')) {
+    const lead = row.firstElementChild;
+    if (!lead || !visible(row)) continue;
+    const lr = lead.getBoundingClientRect();
+    const btns = [...row.querySelectorAll<HTMLElement>("button")].filter(visible);
+    const inline = btns.filter((b) => {
+      const r = b.getBoundingClientRect();
+      return r.top < lr.bottom - EPS && r.bottom > lr.top + EPS;
+    });
+    if (btns.length >= 2 && inline.length > 0) out.push(`消息：${name(row)} 带 ${btns.length} 颗动作，句子那一行还排着 ${inline.length} 颗（应换到第二行）`);
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...messageRows()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

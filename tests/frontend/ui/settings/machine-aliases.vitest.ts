@@ -18,7 +18,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   let seen: Array<{ cmd: string; args?: unknown }>;
   const toasted: string[] = [];
   let blockAt: Set<string>;
-  let oldAt: Set<string>;
   let clashes: NameClash[];
   let autoLaunchFail: string | null;
   let userPathErr: { said: string; detail: string } | null;
@@ -34,8 +33,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     blockLines: 4,
     block: {
       present: blockAt.has(path),
-      version: oldAt.has(path) ? "v2" : null,
-      outdated: oldAt.has(path),
       conflictingFunctions: path === "/h/rc-a" ? clashes : [],
       manualCleanupHint: "",
     },
@@ -44,7 +41,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   beforeEach(() => {
     seen = [];
     blockAt = new Set();
-    oldAt = new Set();
     clashes = [];
     autoLaunchFail = null;
     userPathErr = null;
@@ -105,7 +101,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
         installAliasBlock: (origin: string, rcPath: string) => {
           seen.push({ cmd: "aliases_block_install", args: { origin, rcPath } });
           blockAt.add(rcPath);
-          oldAt.delete(rcPath);
           return Promise.resolve();
         },
         removeAliasBlock: (origin: string, rcPath: string) => {
@@ -129,10 +124,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
         local_ccm_entry_status: () => {
           seen.push({ cmd: "local_ccm_entry_status" });
           return Promise.resolve({ message: "" });
-        },
-        bound_terminal_count: () => {
-          seen.push({ cmd: "bound_terminal_count" });
-          return Promise.resolve(2);
         },
         cc_get_auto_launch: () => {
           seen.push({ cmd: "cc_get_auto_launch" });
@@ -184,12 +175,12 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   /** 重读：别名那一份 ＋ 本机 ccm 那一格；PowerShell 那几格跟着重问（用户级 PATH 那一格有自己的「刷新」）。 */
   const REREAD: Record<Plat, string[]> = {
     posix: ["aliases_read", "local_ccm_entry_status", "profiles_read"],
-    powershell: ["aliases_read", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status", "profiles_read"],
+    powershell: ["aliases_read", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status", "profiles_read"],
   };
 
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "local_ccm_entry_status", "profiles_read"],
-    powershell: ["aliases_read", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status", "profiles_read"],
+    powershell: ["aliases_read", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status", "profiles_read"],
   };
 
   it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多；别名那几发都带这个平台的 shell", async () => {
@@ -248,10 +239,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(access.textContent).toContain(off);
   });
 
-  it("同名那一行照后端给的码说谁生效（界面不比行号）· 旧版块给「换成新版」", async () => {
+  it("同名那一行照后端给的码说谁生效（界面不比行号）", async () => {
     clashes = [{ name: "cc", line: 5, wins: "yours" }];
     blockAt.add("/h/rc-a");
-    oldAt.add("/h/rc-a");
     const el = await mount();
     await open(el);
     // 同名函数交给清单那一块画（三个选择）：标题里说生效的是哪一个（按后端给的码取句）。
@@ -259,11 +249,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(clash.dataset.anchor, "「待办」同名那一件［去定…］落不到这里").toBe("clash");
     expect(clash.textContent).toContain(copyText("machineAliases.clash.nowYours"));
     expect(clash.textContent).toContain("~/rc-a");
-    const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
-    expect(access.textContent).toContain(copyText("machineAliases.access.outdated", { path: "~/rc-a" }));
-    clickText(access, copyText("machineAliases.access.reconnect"));
-    await flush();
-    expect(access.textContent).not.toContain(copyText("machineAliases.access.outdated", { path: "~/rc-a" }));
     // 码换成「清单那条」⇒ 句子跟着换（同一份界面，只认码）。
     clashes = [{ name: "cc", line: 5, wins: "list" }];
     built.get(el)!.load();
@@ -360,7 +345,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(el.textContent).not.toContain(copyText("machineAliases.access.notLoaded", { path: "~/rc-a", ps }));
   });
 
-  it("收着时那一行：没接上 ⇒ 主动作「接上 …」；旧版块 ⇒ 主动作「更新」；已接上 ⇒ 不给主动作；有同名 ⇒ 点变黄、尾巴点名", async () => {
+  it("收着时那一行：没接上 ⇒ 主动作「接上 …」；已接上 ⇒ 不给主动作；有同名 ⇒ 点变黄、尾巴点名", async () => {
     const statusOf = (el: HTMLElement): { text: string; dot: string; acts: string[] } => {
       const row = el.querySelector<HTMLElement>('[data-role="access"]')!.closest<HTMLElement>(".cfg-row")!;
       if (!row.querySelector<HTMLElement>(".cfg-body")!.hidden) row.querySelector<HTMLButtonElement>(".cfg-toggle")!.click();
@@ -372,12 +357,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(statusOf(el)).toMatchObject({ dot: "off", acts: [copyText("machineAliases.status.connect", { path: "~/rc-a" })] });
     document.body.replaceChildren();
     blockAt.add("/h/rc-a");
-    oldAt.add("/h/rc-a");
-    el = await mount();
-    await open(el);
-    expect(statusOf(el)).toMatchObject({ dot: "warn", acts: [copyText("machineAliases.status.update")] });
-    document.body.replaceChildren();
-    oldAt.clear();
     clashes = [{ name: "cc", line: 5, wins: "yours" }];
     el = await mount();
     await open(el);

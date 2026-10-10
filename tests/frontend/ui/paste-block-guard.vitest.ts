@@ -9,9 +9,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 
 /** 族 A：待贴进配置文件才生效。**必须**走统一组件。 */
-const FAMILY_A = [
+const FAMILY_A: string[] = [
   // 别名那一行的「我自己贴」不再就地弹代码：点了去「待办」里那一件（`data-page.ts`，见族 B 那一行）。
-  "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子 → 那台的 agent 设置文件
+  // `ext-section.ts`（cc-bus 那一行每台要加的钩子）加了 MCP［去登录］之后挪进族 AB。
 ];
 
 /**
@@ -38,6 +38,9 @@ const FAMILY_B = [
   // 「待办」：要贴的那几行 / 合好的整份。贴到哪 · 改哪一行 · 何时生效由那台后端成品的编号步骤与 diff 给
   //   （`机器配置-v2.md` §3 定稿的样子，不是三槽组件那一形），复制之后那一件标「已复制 · 等你贴」、存盘后后端自己认出。
   "src/frontend/ui/settings/data-page.ts",
+  "src/frontend/ui/views/plan.ts", // 计划页：认不出的接手 / 签收人那一枚点了复制那个 id（给人看，不贴进任何配置）
+  "src/frontend/ui/views/plan-review.ts", // 退回框：送不了时［复制这一行］（给人自己去会话里贴，不贴进任何配置）
+  "src/frontend/ui/views/plan-cell.ts", // 一格详情：复制「跟 agent 说时用」的编号（给人看，不贴进任何配置）
 ];
 
 /**
@@ -54,7 +57,14 @@ const FAMILY_B = [
  */
 // 今天没有成员（唯一那一员 `accounts-section.ts` 的待贴块随 rc 片段那一段删了，回到族 B）。表留着：
 // 下一处「既复制命令又出待贴块」的文件照这个形状登记。
-const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [];
+const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [
+  {
+    file: "src/frontend/ui/settings/ext-section.ts",
+    // 引入一处 ＋ 调用一处：MCP 那一行的［去登录］复制那台后端给的那条命令（给人自己去会话里敲，不贴进任何配置）。
+    writeTextUses: 2,
+    why: "cc-bus 那一行每台要加的钩子 → 那台的 agent 设置文件（待贴块）；MCP［去登录］复制登录命令（族 B）",
+  },
+];
 
 /**
  * 收集源文件，**路径一律用 `/`**。
@@ -99,7 +109,10 @@ describe("待贴配置文本只有一个实现", () => {
   });
 
   it("族 A 两处都必须走 buildPasteBlock，不许再自己拼复制按钮", () => {
-    for (const f of FAMILY_A) {
+    // 族 A 今天是空的（唯一那一员挪进了族 AB）⇒ 连族 AB 一起量，免得这一条零命中地绿。
+    const withPaste = [...FAMILY_A, ...FAMILY_AB.map((x) => x.file)];
+    expect(withPaste.length).toBeGreaterThan(0);
+    for (const f of withPaste) {
       const src = readFileSync(f, "utf8");
       expect(src, `${f} 应引入统一组件`).toContain("buildPasteBlock");
     }

@@ -89,6 +89,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "history-run",
     // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
     "machine-interrupts",
+    // 这台上需手动的会话清单（一次问一台；手机端要的，桌面这一侧今天不发它）。
+    "sessions-needs",
 ];
 
 // 按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。
@@ -270,7 +272,7 @@ pub(crate) struct Row {
     /// 这一行正文的摘要（后端算，跨进程稳定）—— 续传前核「还是不是那一行」。
     pub hash: u64,
     /// 这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
-    pub message: Option<crate::ui_contract::RecordBody>,
+    pub record: Option<crate::ui_contract::RecordBody>,
     /// 这条记录自己的 `cwd`。
     pub cwd: Option<String>,
 }
@@ -291,7 +293,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
         Value::Null => None,
         e => Some(e.as_u64()?),
     };
-    let message = match v.get("message") {
+    let record = match v.get("record") {
         None => None,
         Some(m) if m.is_object() => Some(crate::ui_contract::RecordBody::from_json(m.to_string())?),
         Some(_) => return None,
@@ -303,7 +305,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
     Some(Row {
         end,
         hash: v.get("hash")?.as_u64()?,
-        message,
+        record,
         cwd,
     })
 }

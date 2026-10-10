@@ -72,6 +72,17 @@ function extList(w: World): unknown {
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": (_o, _r, w) => extList(w),
+    // 各台的 MCP 列表（形状同 `tests/__fixtures__/mcp-read.golden.json` 的 marked）：本机 github 两个号要登录（黄标）· devbox 上一个活会话说它连不上（红标）。
+    "mcp-read": (origin) => {
+      const entry = (over: Record<string, unknown>) => ({ scope: "user", name: "github", server: { type: "http", url: "https://example.invalid/mcp" }, sourcePath: `${HOME}/.claude.json`, status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
+      const entries =
+        origin === "<local>"
+          ? [entry({ status: "needsLogin", loginIn: ["personal", "work"], seenAt: 1791542520000, mark: "needsLogin", login: { said: copyText("beMcp.mark.login", { accounts: "personal、work", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "personal、work" }), copy: "/mcp" } })]
+          : origin === "devbox"
+            ? [entry({ mark: "failed", failed: { said: copyText("beMcp.mark.failed", { title: "整理工单", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "Connection failed: connect ECONNREFUSED 127.0.0.1:7801" } })]
+            : [];
+      return { entries, dirs: [], problems: [] };
+    },
     // 「装到 N 台」那一张卡（本机后端并好的）：MCP 那一条要一个 token，win-laptop 上已经有了。
     "ext-hub-preview": (_o, req) => {
       const to = req.to as (string | null)[];
@@ -156,8 +167,6 @@ export function machineOps(): Record<string, OpHandler> {
           exists: true,
           block: {
             present: true,
-            version: "v2",
-            outdated: false,
             conflictingFunctions: [
               { name: "cc", line: 125, wins: "yours" },
               { name: "cct", line: 129, wins: "yours" },
@@ -285,7 +294,6 @@ export function machineOps(): Record<string, OpHandler> {
         own: [
           { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
-          { id: "relayPassKey", path: "~/.cc-monitor/relay-pass-key", dir: false, class: "truth", exists: true, size: 64 },
           { id: "policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size: null },
           { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 1840 },
           { id: "aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size: 512 },
@@ -367,7 +375,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       ok: true,
       summary: "",
     }),
-    bound_terminal_count: () => 2,
     get_data_paths: () => ({
       monitorDataDir: `${HOME}/.cc-monitor`,
       entries: [

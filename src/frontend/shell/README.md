@@ -40,7 +40,7 @@ src/frontend/shell/
     ├── parser.rs      # 按行解析 + BOM
     ├── local_lines.rs # 本机会话内容的入口通道（本机后端的 line 帧 → 与远端同一个 LineIntake，CF1）
     ├── session_map.rs # 直读 ~/.claude/sessions/<PID>.json + 进程探活
-    ├── bind.rs        # cc 集成绑定：ps-await/ps-registry 文件 IPC + EnumWindows 找 marker + SidHwndCache + bring_terminal_to_front
+    ├── bind.rs        # ↗ 认终端窗口：点那一刻沿进程链现找（Windows 问控制台 · Linux 认 bash / zsh 接入块那一份）＋ 校验 ＋ 拉前
     ├── profile_installer.rs # PowerShell profile 块插入/卸载 + 命令冲突扫描
     ├── auto_launch.rs # auto-launch monitor 开关持久化（~/.cc-monitor/auto-launch.json）
     ├── event_replay.rs # F5 重放（v2.6 起出锁 emit、顺序靠前端按 seq 排；非旧「持锁严格按序」）
@@ -72,7 +72,7 @@ src/frontend/shell/
 | ~~messages.rs~~ · ~~parser.rs~~ | **已删**：记录的形状与逐行解析搬进后端适配层（`src/backend/agents/claudecode/schema.rs` 的 `JsonlRecord::is_displayable()` · `parse.rs` 的 `parse_line`），`line` 帧与 `history-read` 带的就是它解好的成品，monitor 不再自己解析 | — |
 | **local_lines.rs** (CF1) | 本机会话内容的入口通道：本机两条读循环（常驻 TCP · stdio 监护）把本机后端发来的内容帧（`line` / `session_added` / `session_removed`）送进来，交给 `stream_source::consume_local`，再进与远端同一个 `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）。有界通道 ⇒ 消费者跟不上时读循环停读、后端写阻塞（背压，不丢）。原先 monitor 自己那套 jsonl watcher（第二套游标与 seq）随 CF1 删了 | `install / deliver / deliver_blocking / stream_ended` |
 | **session_map.rs** | **本机活会话表**：由本机常驻后端那条流的起停帧喂（`session_added` / `session_status` / `session_removed` / `sessions_replayed`，经 `stream_source::consume_local`），纯核 `LocalTable::step` 出 `SessionChange` 给本机 emitter（与远端同一套裁决）；本机流断 ⇒ 活会话 ∪ 可重连一律 `Unseen`（与远端断连 flush 同一个函数）。从前这里是 monitor 自己的判活（读 pidfile ＋ Win32 / `/proc` 探活 ＋ 2 s 心跳），整份删了 | `local() / feed() / install_sink() / LocalTable::step` |
-| **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
+| **bind.rs** | ↗ 认终端窗口：点那一刻沿进程链每一级问「它显示在哪个窗口」（Windows 借它的控制台问属主，`platform/console.rs`；Linux 查 bash / zsh 接入块认下的 `ps-registry/`），再看属主的可见顶层窗口；三重校验后拉前。不缓存 | `BindRegistry::spawn() / bring_local_window / bring_chain_window / bring_labeled_window` |
 | **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | ~~adapter.rs~~ (F-MA) | **已删**：起会话事实（默认启动器 · wrapper · resume 字面量 · 嵌套标记）只住后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；monitor 起前清洗读生成物 `src/frontend/ui/generated/agent-profile-table.ts`（`lib.rs::nested_env_markers`） | — |
@@ -91,7 +91,7 @@ src/frontend/shell/
 | **tmux_reconcile.rs** (F74c issue #60-A) | tmux 存活对账 poller：补一条独立 tmux 存活信号，让带外（`Ctrl-b &` / `tmux kill-session`）杀掉某会话 tmux 后端时对应 tab 有界变灰。**§24 单写者不破**——retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx` 的一个 clone、由唯一写者处理；source-agnostic（`reconcile_step` 吃裸 HashSet，F90 可整段 lift）；三重防误判（ever_bound 门 + debounce + /branch 漂移剔除） | `reconcile_step()`（纯函数）+ poller |
 | **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 stream_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）（F10 远端别名块搬去了 `profile_installer.rs`）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/`src/doc/INVARIANTS.md` §1` + 模块文档 | `ensure_backend_deployed() / remove_remote_file() / upload_atomic()` + 远端别名块已并进 `aliases_block_*`（带 origin；更早叫 `install_remote_ccm_helper`〔散文墓碑〕；原先这里还列着 `write_remote_mcp_server`，它**已不是 IPC** —— 今天是 `mcp::write_project_mcp_server` 的远端分支） |
 | **tasks.rs** (v2.3.0 issue #11；读法归后端) | Claude Code CLI 的 task 列表：按 `origin` 问那台机器的后端 `tasks-list`（本机与远端同一条路；读 `<tasks>/<sid>/<数字>.json` 那一段住后端 `observe/tasks_query.rs`），本侧只剩字段语义与本机 watcher：notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 经本机后端重读 → emit `task-update`。tasks_root 不存在时静默不 spawn | `parse_task_lines() / spawn_task_watcher()` + IPC `get_session_tasks(origin, sessionId)` |
-| **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
+| **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子）。写只有 `patch_config_at` 一个函数（进程级锁内现读 → 逐条 set/remove → 原子替换；读不懂不写），`logging.rs` 的诊断写口也经它 | `patch_config_at()` + IPC `load_config / patch_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
 | **ui_contract.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
@@ -125,11 +125,11 @@ src/frontend/shell/
 | 端口转发那三条命令（起 · 停 · 列）删了 | — | — | 界面经通道问本机常驻后端 `forward-*`（`IPC-PROTOCOL.md` 那三节） |
 | 历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/frontend/ui/views/history-search.ts`）；monitor 进程内那份索引一起没了 |
 | `bring_terminal_to_front` | `{ sessionId }` | 结局族 `FrontOutcome` | Tab ↗ / `Ctrl+\`` 跳焦（Windows 走 Win32 · Linux 的 X11 会话走 EWMH · Wayland 会话回 `desktop-wont-switch`） |
-| `bring_remote_terminal_to_front` (issue #18) | `{ terminals: [...] }` 或 `{ chain: [{ pid, name, start }] }` | 结局族 `FrontOutcome`；按标签那一问没对上 ⇒ `null` | 远端 Tab ↗ 的两跳：交那台 `session-terminals` 的 `terminals` ⇒ 按窗口标签查握手表；没对上再交本机后端 `terminal-processes` 的进程链 ⇒ 沿链找属主的可见顶层窗口（恰好一个才认；默认终端交接那一档借控制台挂记号标题找）、校验三重指纹后拉到前台；Linux 同一套判定，窗口那一跳走 EWMH（`platform/ewmh.rs`），Wayland 会话回 `desktop-wont-switch` |
+| `bring_remote_terminal_to_front` (issue #18) | `{ terminals: [...] }` 或 `{ chain: [{ pid, name, start }] }` | 结局族 `FrontOutcome`；按标签那一问没对上 ⇒ `null` | 远端 Tab ↗ 的两跳：交那台 `session-terminals` 的 `terminals` ⇒ 按窗口标签问那个 shell 显示在哪个窗口；没对上再交本机后端 `terminal-processes` 的进程链 ⇒ 沿链找属主的可见顶层窗口（每一级先问它的控制台显示在哪个窗口；没有再看属主，恰好一个才认）、校验三重指纹后拉到前台；Linux 同一套判定，窗口那一跳走 EWMH（`platform/ewmh.rs`），Wayland 会话回 `desktop-wont-switch` |
 | `list_session_activity`〔散文墓碑〕 (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
 | `list_active_sessions`〔散文墓碑〕 (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |
-| `aliases_read` (并进了原「终端集成」的状态 / 扫一份) | `{ origin, shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
+| `aliases_read` (并进了原「终端集成」的状态 / 扫一份) | `{ origin, shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状） |
 | `aliases_block_render` | `{ origin, rcPath, withCc }` | `string` | [预览别名块] 按钮（方言按那份文件的扩展名定） |
 | `aliases_block_install` | `{ origin, rcPath, withCc }` | `()` | [装别名块] 按钮（写入 BEGIN/END 块，经那台后端；本机远端同一条） |
 | `aliases_block_remove` | `{ origin, rcPath }` | `()` | [卸载别名块] / 远端卡「卸载 ccm」按钮（删除 BEGIN/END 块，经那台后端） |
@@ -221,20 +221,16 @@ monitor 不再自己判本机会话活不活：本机活会话表由本机常驻
 Windows 的死亡事件，RT1 F9 真机读数：强杀 claude 之后后端 1 ms 就醒）。这一节原来论证的「强杀时 pidfile 不删 ⇒ 要心跳兜底」
 那一形由后端的进程级看守接住，monitor 那条 2 s 心跳连同 notify 监听一起删了。
 
-### `bind.rs` 用 marker 字符串而非 PID 反查窗口
-PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进程；conhost 是另一个进程；VSCode integrated terminal 又是另一个）。`EnumWindows + GetWindowThreadProcessId` 反查 owner 会找到 WT / conhost / VSCode 进程，不会找到 PS 自己。改让 PS 把自己窗口标题改成 unique marker（`ccm-bind-<PID>-<8 字符 GUID>`）+ monitor `EnumWindows` 反查 title `contains(marker)` 是唯一可靠的跨进程握手方式。
-
-### cc 集成走文件 IPC 而非命名管道 / TCP
-- 简单（PS 写文件 + Rust notify 两边都 trivial）
-- 可追溯（用户 / 开发者出问题时可以 `Get-Content` 直接看）
-- 无连接管理（管道有 connect / disconnect 状态机，文件是 set-and-forget）
-- 跨进程权限简单（用户态读写自己 home 目录的文件不需要任何 ACL 配置）
+### `bind.rs` 按控制台的属主认窗口（Windows）
+PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进程、一个进程开几个窗口）。按进程只分得出「Windows Terminal 有两个窗口」。
+借那个进程的控制台问一句（`AttachConsole` → `GetConsoleWindow` → `GetWindow(GW_OWNER)`）：Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的窗口，
+经典控制台就是控制台窗口自己。不要接入块、不要登记、不改标题；点 ↗ 那一刻现读。
 
 ### 焦点同步功能完全移除
 原 `SetWinEventHook` 监听 `EVENT_SYSTEM_FOREGROUND` 然后切对应 Tab 的方向：在 Win11 默认 WT 单进程多窗口/多 tab 架构下，`GetForegroundWindow` 只能拿到 WT 主进程的 HWND，**无法区分同一 WT 窗口内哪个 tab active**。已彻底删除 `FOCUS_SWITCH` IPC 和相关代码。Tab 切换走手动点击 + `Ctrl+Tab` 快捷键。
 
 ### `bring_terminal_to_front` 从启发式改为注入式绑定
-旧的 "4-tier 启发式"（parent chain + WT 进程 + 终端类进程 + ai-title 匹配）在 explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下不可靠：claude 祖先链与 WT 窗口完全脱节（claude 的 parent 是 PS，PS 的 parent 是 explorer；WT 是另一个独立进程，跟 claude/PS 没有 parent 关系）。改为 cc 命令注入式绑定（`__ccm_bind` 主动通知 monitor "我是哪个 PID + HWND"）。
+旧的 "4-tier 启发式"（parent chain + WT 进程 + 终端类进程 + ai-title 匹配）在 explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下不可靠：claude 祖先链与 WT 窗口完全脱节（claude 的 parent 是 PS，PS 的 parent 是 explorer；WT 是另一个独立进程，跟 claude/PS 没有 parent 关系）。今天沿进程链每一级问它的控制台显示在哪个窗口（见上一节）。
 
 详细模块设计见各 `.rs` 文件顶部的 `//!` doc comment。
 

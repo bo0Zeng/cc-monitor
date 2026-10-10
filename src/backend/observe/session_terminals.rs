@@ -10,7 +10,7 @@
 
 use crate::platform::child::{Child, Deadline};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::platform::proc::{proc_env_var, EnvRead};
 
@@ -80,16 +80,31 @@ pub(crate) fn answer_at(home: &std::path::Path, args: &Value) -> Answer {
                 "no running session with that `sid` on this machine",
             ),
         ))?;
-    Ok(product(&shown_by(pid)?))
+    crate::stream::inbound::spec::wire(&product(&shown_by(pid)?))
+}
+
+/// `session-terminals` 的应答：此刻显示它的终端（一个都没有 ⇒ 空 ＋ 为什么）。
+#[derive(Serialize)]
+pub(crate) struct Showing {
+    pub(crate) terminals: Vec<Terminal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) why: Option<&'static str>,
 }
 
 /// 事实 ⇒ 线上成品。
-pub(crate) fn product(shown: &Shown) -> Value {
+pub(crate) fn product(shown: &Shown) -> Showing {
+    let empty = |why| Showing {
+        terminals: Vec::new(),
+        why: Some(why),
+    };
     match shown {
-        Shown::By(t) => json!({ "terminals": t }),
-        Shown::Detached => json!({ "terminals": [], "why": "detached" }),
-        Shown::NoTerminal => json!({ "terminals": [], "why": "no-terminal" }),
-        Shown::Unreadable => json!({ "terminals": [], "why": "unreadable" }),
+        Shown::By(t) => Showing {
+            terminals: t.clone(),
+            why: None,
+        },
+        Shown::Detached => empty("detached"),
+        Shown::NoTerminal => empty("no-terminal"),
+        Shown::Unreadable => empty("unreadable"),
     }
 }
 

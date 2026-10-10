@@ -153,11 +153,17 @@ pub(crate) fn list_projects_to(
 /// `--list-projects` 在「记录树根不在」时信封里的码（生产方住这里；问它的那一方认码，不认话）。
 pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
 
-/// 带码的那一行：CLI 错误信封（`{code, message}`，与 `cli_control::emit_err` 同一对键；那边读信封的是 `remote_ask::settle_pulled`）。
+/// 带码的那一行：CLI 错误信封（与 CLI 控制面同一份失败载体 `stream::detail::Failed`：`{code, message, detail}`；读信封的是 `remote_ask::settle_pulled`）。
 /// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
 fn coded_failure(code: &str, said: &str) -> i32 {
-    eprintln!("{}", serde_json::json!({ "code": code, "message": said }));
-    2
+    let f = crate::stream::detail::Failed::new(
+        Some("list-projects"),
+        code,
+        said.to_string(),
+        None,
+        None,
+    );
+    f.emit()
 }
 
 /// 一次性查询失败的那一行（无码的旧形）。
@@ -367,42 +373,16 @@ pub(crate) fn sessions_by_dir_for(
         .filter(|e| e.path().is_dir())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
-    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）。
-    // 每条线程从同一个计数器领下一个目录；结果最后按目录名排，与单线程逐字相同。
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let workers = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
-        .clamp(1, LISTING_WORKERS)
-        .min(dirs.len().max(1));
-    let mut out: Vec<_> = std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut mine = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let Some(dir_name) = dirs.get(i) else {
-                            break;
-                        };
-                        if let Some(got) = rows_of_dir(agent_home, dir_name, only) {
-                            mine.push((dir_name.clone(), got));
-                        }
-                    }
-                    mine
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .flat_map(|h| h.join().unwrap_or_default())
-            .collect()
-    });
+    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）；结果最后按目录名排，与单线程逐字相同。
+    let mut out: Vec<_> = crate::observe::par::par_in_order(dirs, |dir_name| {
+        rows_of_dir(agent_home, &dir_name, only).map(|got| (dir_name, got))
+    })
+    .into_iter()
+    .flatten()
+    .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Some(out))
 }
-
-/// 扫清单时最多几条线程（[`sessions_by_dir`]）。
-const LISTING_WORKERS: usize = 8;
 
 /// 一个记录目录的会话行（`None` ＝ 这一目录一行都没有，不出）。
 fn rows_of_dir(
@@ -528,6 +508,16 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
         tracing::warn!("历史清单缓存：后台热缓存读不了记录树（{e}）");
     }
     SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
+}
+
+/// 一份会话记录的标题（同历史清单那一格：起的名字 · 首条用户输入摘要 · sid 前 8 位三选一），走清单缓存（没变不重扫、变长只扫尾巴）。
+pub(crate) fn session_title_of(p: &Path) -> String {
+    let row = analyze_session_cached(p);
+    super::search_rules::session_title(
+        row["aiTitle"].as_str(),
+        row["firstUserExcerpt"].as_str().unwrap_or(""),
+        row["sessionId"].as_str().unwrap_or(""),
+    )
 }
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
@@ -1219,9 +1209,10 @@ pub(crate) struct IndexRow {
     pub(crate) o: u64,
     /// 行字节长（**含**结尾 `\n`）。
     pub(crate) n: u64,
-    /// 记录 `type`；解析不出（非 JSON / 没有 type）⇒ 省略。
+    /// 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；
+    /// 不进界面（元数据 · 解析不出 · 认不出）⇒ 省略。判定在适配层（注册表 `RecordFace.class`，与它的翻译表对拍）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) t: Option<String>,
+    pub(crate) t: Option<crate::agents::record::RecordClass>,
     /// `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) u: Option<String>,
@@ -1289,10 +1280,10 @@ pub(crate) fn index_row_of(v: Option<&serde_json::Value>, offset: u64, len: u64)
     let Some(v) = v else {
         return row;
     };
-    row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     // 骨架索引读的是记录树那一家的记录。
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    row.t = crate::agents::record_class_of(kind, v);
     row.sc = crate::agents::run_of_record(kind, &v).is_some();
     let said = crate::agents::user_text_of(kind, &v);
     row.sp = said
@@ -1410,7 +1401,7 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
 /// 抽出来是因为帧面那条（`history-tail`）只要**这张图**，
 /// 正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话，
 /// 而 CLI 这条仍然一口气印完。**两条路扫的是同一个函数**，行号口径因此只有一份。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
     pub total: u64,
@@ -1645,17 +1636,21 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
 ) -> Result<LinesPage, (&'static str, String)> {
     let until = until.unwrap_or(u64::MAX);
     let mut lines: Vec<String> = Vec::new();
+    let mut starts: Vec<u64> = Vec::new();
     let mut bytes: usize = 0;
     let mut n: u64 = 0; // 下一个可计行的行号
+    let mut pos: u64 = 0; // 这一行的起点字节偏移
     let mut buf: Vec<u8> = Vec::new();
     let eof = loop {
         if n >= until {
             break false;
         }
         buf.clear();
+        let start = pos;
         let read = r
             .read_until(b'\n', &mut buf)
             .map_err(|e| ("failed", format!("scan failed: {e}")))?;
+        pos += read as u64;
         if read == 0 || buf.last() != Some(&b'\n') {
             break true; // 文件到头；torn 残尾不计（同 `tail_plan`）
         }
@@ -1679,6 +1674,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         }
         bytes += body.len();
         lines.push(String::from_utf8_lossy(body).into_owned());
+        starts.push(start);
         if bytes >= page {
             break false;
         }
@@ -1687,6 +1683,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
     Ok(LinesPage {
         from,
         lines,
+        starts,
         next,
         eof,
     })
@@ -1699,6 +1696,8 @@ pub(crate) struct LinesPage {
     pub from: u64,
     /// 可计行的原文（不含行尾 `\n`；`\r` 与 BOM 原样留着，调用方剥）。
     pub lines: Vec<String>,
+    /// 每一条在文件里的起点字节偏移（与 `lines` 逐条对齐）。
+    pub starts: Vec<u64>,
     /// 下一段从这一行起。
     pub next: u64,
     /// 读到了最后一个完整行之后（后面没有了）。
@@ -1767,7 +1766,7 @@ pub(crate) fn record_for(
 }
 
 /// [`record_in`] 的答案。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct RecordProbe {
     /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
     pub present: bool,

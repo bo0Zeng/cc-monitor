@@ -20,25 +20,18 @@ import type { UsageFact } from "./session-reads";
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
 export interface ActiveView {
   sid: string | null;
-  model: string | null;
-  promptTokens: number | null;
-  /** 上下文上限（后端定的）。 */
-  contextLimit: number | null;
-  /** 上限从哪来（后端那一格）。 */
-  limitFrom: UsageFact["limitFrom"];
+  /** 当前会话的用量与上下文（后端那一份成品，照抄）。 */
+  usage: UsageFact | null;
   /** 会话事实要不到的原因（`null` = 可用）。 */
   unavailable: string | null;
   /** 当前 tab 的项目目录（`Tab.projectDir`，后端给的那一格；独立窗口的顶栏标题读它）。 */
   projectDir: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, contextLimit: null, limitFrom: "assumed", unavailable: null, projectDir: null };
+const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
-  a.model === b.model &&
-  a.promptTokens === b.promptTokens &&
-  a.contextLimit === b.contextLimit &&
-  a.limitFrom === b.limitFrom &&
+  JSON.stringify(a.usage) === JSON.stringify(b.usage) &&
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
@@ -75,7 +68,7 @@ export class TabStore {
   /** origin → 当前账号名：会话账号 == 它 → 不挂徽章。只放 isSelectable 的账号（main.ts 过滤）：拿不可选的号说「你不一致」是假信息。 */
   currentByOrigin = new Map<string, string>();
   activeId: string | null = null;
-  /** 是否在批模式（启动重放期间）。控两件事：惰性高亮、BranchFolder.batchMode（批里新建的 Tab 也设成 batch）。 */
+  /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */
   inBatch = false;
   /**
    * 此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），

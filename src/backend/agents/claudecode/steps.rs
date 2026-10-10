@@ -85,8 +85,8 @@ const ARG_TOOLS: &[(&str, &str)] = &[
 const BARE_TOOLS: &[&str] = &["TodoWrite", "ExitPlanMode", "AskUserQuestion", "LS"];
 /// 说明那一格（Bash 的 `description`）。
 const NOTE_FIELD: &str = "description";
-/// 主参数至多留多少字（一行）。
-const ARG_MAX: usize = 400;
+/// 主参数至多留多少字（一行；协议上的定长，两个前端都不再截）。
+const ARG_MAX: usize = 200;
 
 /// 一次工具调用 ⇒ 它的一行人话（工具名 · 主参数 · 说明 · 认不认得）。
 pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {

@@ -71,7 +71,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
         rx.has_changed().expect("通道在"),
         "第一次看到这个号 ⇒ 推一下"
     );
-    let w = answer_of(Some(&path), 1_800_000_100);
+    let w = answered(Some(&path), 1_800_000_100);
     assert_eq!(w["state"], "present");
     assert_eq!(w["now"], 1_800_000_100u64);
     assert_eq!(
@@ -157,12 +157,9 @@ fn a_file_it_cannot_read_is_left_alone_and_said_so() {
     let (l, _rx) = ringing(Some(path.clone()));
     record_seen(&l, "claude-code", "q", reading(0.1, false), 10);
     assert_eq!(std::fs::read_to_string(&path).expect("read"), "not json");
-    assert_eq!(answer_of(Some(&path), 0)["state"], "unreadable");
-    assert_eq!(
-        answer_of(Some(&d.join("absent.json")), 0)["state"],
-        "absent"
-    );
-    assert_eq!(answer_of(None, 0)["state"], "unreadable");
+    assert_eq!(answered(Some(&path), 0)["state"], "unreadable");
+    assert_eq!(answered(Some(&d.join("absent.json")), 0)["state"], "absent");
+    assert_eq!(answered(None, 0)["state"], "unreadable");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -238,7 +235,7 @@ fn a_probe_merges_windows_into_the_same_entry_and_headers_do_not_wash_them_out()
         }
     );
     // 线上：只有来源 / 时刻与这一条不同的窗口才列出来。
-    let wire = answer_of(Some(&path), 300);
+    let wire = answered(Some(&path), 300);
     assert_eq!(
         wire["accounts"][0]["windowsSeen"],
         serde_json::json!({"seven_day_fable": {"at": 200, "from": "usage"}})
@@ -318,7 +315,7 @@ fn an_unreadable_book_answers_a_sentence_and_a_detail() {
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("quota.json");
     std::fs::write(&p, b"{not json").unwrap();
-    let v = answer_of(Some(&p), 1);
+    let v = answered(Some(&p), 1);
     assert_eq!(v["state"], "unreadable");
     let reason = v["reason"].as_str().expect("reason");
     assert_eq!(
@@ -337,7 +334,7 @@ fn an_unreadable_book_answers_a_sentence_and_a_detail() {
         detail.contains("key must be a string"),
         "解析器原话没进详情：{detail}"
     );
-    let fine = answer_of(Some(&dir.join("absent.json")), 1);
+    let fine = answered(Some(&dir.join("absent.json")), 1);
     assert!(fine["detail"].is_null(), "不在那一形多出了详情：{fine}");
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -464,4 +461,9 @@ fn the_estimate_needs_two_samples_in_one_window_and_recent_growth() {
     );
     let o = down.entry("claude-code", "q").expect("entry");
     assert_eq!(o.eta("five_hour", 0.90, t + 700), None, "不涨");
+}
+
+/// 额度账读答过真序列化器（判它的各格）。
+fn answered(path: Option<&Path>, now: u64) -> serde_json::Value {
+    serde_json::to_value(answer_of(path, now)).expect("json")
 }

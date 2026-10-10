@@ -2,7 +2,7 @@
  * 截图工具的合成世界：几台机器、几个会话、各个面板要的成品。全是结构占位，不含任何真会话正文。
  * 形状挂在产品生成物类型上 ⇒ 后端改了线上形状，这里当场编不过。
  */
-import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
 import type { SessionContainer } from "../../../src/frontend/ui/generated/SessionContainer";
 import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
@@ -31,11 +31,13 @@ export interface SessionSpec {
   waitingFor: string | null;
   /** 在等你时从何时起等（epoch ms；`history-facts` 的 `needs.sinceMs`）。缺 ⇒ 不知道。 */
   waitingSinceMs?: number;
+  /** 后台任务运行中时还在跑的后台命令（最早起的在前；`history-facts` 的 `background` 照后端 `facts_query::background_of` 拼）。缺 ⇒ 记录里一条都对不上。 */
+  bgCommands?: { cmd: string; sinceMs: number }[];
   container: SessionContainer;
-  records: JsonlRecord[];
+  records: LineRecord[];
   runs: RunInfo[];
   /** 子运行的记录（agent 面板点开那一条时按行取）：run → 记录。 */
-  runRecords: Record<string, JsonlRecord[]>;
+  runRecords: Record<string, LineRecord[]>;
   tasks: TaskSpec[];
   /** 会话已结束（灰掉、归档）。 */
   ended: boolean;

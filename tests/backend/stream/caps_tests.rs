@@ -42,6 +42,41 @@ fn every_capped_command_is_a_registered_blocking_command() {
     }
 }
 
+/// 装了总期限的命令，到点回的码只有一种（`child_timed_out`），并且登记在它的码表里：发起方（手机 · CLI · 界面）
+/// 按这一个码认「后端在我放手之前答了：超时」，不按命令各认一套。
+/// 例外只有这三条，各自的超时不整条失败：`aliases-read` / `powershell-policy-set` 落在成品那一格 `policy.error`（逐份说）、
+/// `ssh-config-import` 到点交已解析的那几个（尽力而为，见 `dial::ssh_config::SSH_IMPORT_CAP`）。
+#[test]
+fn every_capped_command_answers_its_timeout_with_the_one_registered_code() {
+    const IN_PRODUCT: &[&str] = &["aliases-read", "powershell-policy-set", "ssh-config-import"];
+    let mut missing = Vec::new();
+    for (name, _) in caps::CAPS {
+        if IN_PRODUCT.contains(name) {
+            continue;
+        }
+        let spec = REGISTRY.iter().find(|s| s.name == *name).expect("登记了");
+        if !spec.codes.contains(&crate::platform::child::TIMED_OUT) {
+            missing.push(*name);
+        }
+        for c in spec.codes {
+            assert!(
+                *c == crate::platform::child::TIMED_OUT || !c.contains("timed_out"),
+                "{name} 的码表里有第二种超时码 {c}"
+            );
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "这几条装了总期限、码表里却没有 child_timed_out：{missing:?}"
+    );
+    for name in IN_PRODUCT {
+        assert!(
+            caps::CAPS.iter().any(|(n, _)| n == name),
+            "例外表里的 {name} 不在上限表里了，删掉这一项"
+        );
+    }
+}
+
 /// 子进程那一半：假 tmux 放在 PATH 最前（只在这个子进程里），过门那一发照答、之后每发都卡。
 const CAPS_CHILD_MARK: &str = "CCM_CAPS_CHILD";
 

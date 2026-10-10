@@ -30,6 +30,8 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
+// 后台命令在记录里的样子（起 · 任务号 · 收场通知）。
+pub(crate) mod background;
 // 分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
 pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
@@ -135,6 +137,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
@@ -169,13 +172,17 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     tasks_dir: Some(paths::tasks_root),
     background_of: pidfile::background_of,
     activity_of: pidfile::activity_of,
+    wait_of: pidfile::wait_of,
 };
 
-pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
+pub(crate) const MCP: super::McpFace = super::McpFace {
+    read: mcp::read,
+    login_command: mcp::LOGIN_COMMAND,
+};
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
-    parse: parse::parsed_line,
+    parse: parse::translated,
     sid: records::session_id_of,
     is_session_file: records::is_session_file,
     tree: Some(super::RecordTree {
@@ -183,6 +190,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         file_name: records::session_file_name,
     }),
     turn_end: Some(turn::turn_end_uuid_of),
+    class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
@@ -200,6 +208,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     response_id: Some(runs::response_id),
     run_of: Some(runs::run_of),
     child_link: Some(runs::child_link),
+    background: Some(background::marks),
     children: Some(super::ChildFace {
         sources: runs::sources,
         owner: runs::owner,
@@ -208,6 +217,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         written: runs::written,
     }),
     project_dir: Some(parse::project_dir),
+    mcp_said: Some(mcp::said_of),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

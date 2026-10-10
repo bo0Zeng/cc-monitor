@@ -9,7 +9,6 @@
  * | 执行策略设成当前用户 `RemoteSigned`（用户确认后） | `powershell-policy-set` | [`PolicySet`] |
  *
  * 规则 · 方言 · 围栏整族在那台后端（`src/backend/assets/aliases/`），这里只按形状严格收。**前端不做安全判断**。
- * 「这台已握手的终端数」不是那台盘上的事实（住 monitor 进程里）⇒ 不在成品里，另问 monitor（`commands.bound_terminal_count`）。
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
@@ -31,8 +30,6 @@ export interface NameClash {
 /** 一份启动文件里别名块的现状。 */
 export interface BlockState {
   present: boolean;
-  version: string | null;
-  outdated: boolean;
   conflictingFunctions: NameClash[];
   /** 「你 rc 里这几行是旧的」那段话；空串 = 没有要清的。 */
   manualCleanupHint: string;
@@ -110,18 +107,14 @@ function decodeClash(v: unknown): NameClash {
 function decodeBlockState(v: unknown): BlockState {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["present", "version", "outdated", "conflictingFunctions", "manualCleanupHint"]) ||
+    !sameKeys(v, ["present", "conflictingFunctions", "manualCleanupHint"]) ||
     typeof v.present !== "boolean" ||
-    !optStr(v.version) ||
-    typeof v.outdated !== "boolean" ||
     !Array.isArray(v.conflictingFunctions) ||
     typeof v.manualCleanupHint !== "string"
   )
     throw bad();
   return {
     present: v.present,
-    version: v.version,
-    outdated: v.outdated,
     conflictingFunctions: v.conflictingFunctions.map(decodeClash),
     manualCleanupHint: v.manualCleanupHint,
   };

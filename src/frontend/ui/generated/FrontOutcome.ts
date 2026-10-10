@@ -3,4 +3,4 @@
 /**
  * ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数。
  */
-export type FrontOutcome = { "kind": "switched" } | { "kind": "several", program: string, count: number, } | { "kind": "unbound" } | { "kind": "window-gone" } | { "kind": "unclear" } | { "kind": "refused" } | { "kind": "hosted-by-wt", program: string, } | { "kind": "background-tab", program: string, } | { "kind": "no-window", program: string, } | { "kind": "desktop-wont-switch", desktop: string, } | { "kind": "unsupported" };
+export type FrontOutcome = { "kind": "switched" } | { "kind": "several", program: string, count: number, } | { "kind": "unbound" } | { "kind": "window-gone" } | { "kind": "unclear" } | { "kind": "refused" } | { "kind": "no-window", program: string, } | { "kind": "desktop-wont-switch", desktop: string, } | { "kind": "unsupported" };

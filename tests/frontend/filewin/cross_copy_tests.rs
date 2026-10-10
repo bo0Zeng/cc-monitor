@@ -87,26 +87,13 @@ impl comms_inward::chan::router::Backends for Rig {
 
 async fn rig(push_fails: bool) -> (crate::source::Line, Log) {
     let log: Log = Default::default();
-    let h = crate::find::testing::start_host(
+    let line = crate::find::testing::wire(
         std::sync::Arc::new(Rig {
             log: log.clone(),
             push_fails,
         }),
-        crate::find::testing::test_key(),
         1 << 20,
-        std::time::Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    let line = comms_inward::chan::dial::dial(
-        &h,
-        comms_inward::chan::wire::Budget {
-            until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: CancelToken::new(),
-        },
-    )
-    .await
-    .expect("拨得通");
+    );
     (line, log)
 }
 

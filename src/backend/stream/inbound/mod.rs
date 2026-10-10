@@ -47,6 +47,10 @@ mod sniff;
 pub(crate) mod spec;
 
 pub(crate) use caps::install as install_total;
+pub(crate) use caps::until_of;
+// 协议参考逐条写总期限（生成器是判据，只在测试构建里）。
+#[cfg(test)]
+pub(crate) use caps::{cap_of, MARGIN_MS};
 pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
 pub use doors::{watch_account_mcp, watch_rotation};
@@ -371,9 +375,10 @@ fn dispatch(
                             .await
                             .map(|()| None)
                             .map_err(|mut f| {
-                                f.data = Some(serde_json::json!({
-                                    "live": crate::control::terminal_follow::live_after_refusal(&f.code),
-                                }));
+                                f.data = serde_json::to_value(
+                                    crate::control::terminal_follow::live_after_refusal(&f.code),
+                                )
+                                .ok();
                                 f
                             })
                     })
@@ -483,6 +488,7 @@ pub(crate) mod registry {
     pub(super) mod aliases;
     pub(super) mod assets;
     pub(super) mod bus;
+    pub(super) mod cells;
     // 文件管理那一族不叫 `files`：那是后端顶层文件读面的模块名，族名与它同名会让「谁够得到 `files::`」那条边界判据认错人。
     pub(super) mod file_manager;
     pub(super) mod history;
@@ -500,6 +506,7 @@ pub(crate) mod registry {
         assets::SPECS,
         aliases::SPECS,
         bus::SPECS,
+        cells::SPECS,
         terminals::SPECS,
         machine::SPECS,
         plan::SPECS,

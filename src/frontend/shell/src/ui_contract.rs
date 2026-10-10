@@ -78,10 +78,10 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    /// 这一行在渲染模型里的样子 —— 那台后端的成品（`agents/claudecode/schema.rs::JsonlRecord`，
-    /// ts-rs 从后端导出），monitor **原样转交、一个字段都不读**。
-    #[cfg_attr(test, ts(type = "import(\"./JsonlRecord\").JsonlRecord"))]
-    pub message: RecordBody,
+    /// 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+    /// monitor **原样转交、一个字段都不读**。
+    #[cfg_attr(test, ts(type = "import(\"./LineRecord\").LineRecord"))]
+    pub record: RecordBody,
     /// `[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
     /// 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨。缺 = 没有这一段或不确知（不猜）。
     #[cfg_attr(test, ts(optional, type = "number"))]
@@ -154,6 +154,8 @@ pub enum SessionStreamFrame {
     SnapshotInflight(SnapshotInflightPayload),
     /// 一个会话的运行表（那台后端给，原样转）：列在 agent 面板里，状态标到派出它的那张工具卡上。
     Runs(SessionRunsPayload),
+    /// 一个会话的主线外清单（那台后端给，原样转）：清单里的那几条卡折成一段（ESC 回退掉的）。
+    Branch(SessionBranchPayload),
 }
 
 impl SessionStreamFrame {
@@ -173,7 +175,8 @@ impl SessionStreamFrame {
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_)
-            | SessionStreamFrame::Runs(_) => false,
+            | SessionStreamFrame::Runs(_)
+            | SessionStreamFrame::Branch(_) => false,
         }
     }
 
@@ -198,6 +201,7 @@ impl SessionStreamFrame {
             SessionStreamFrame::Idle(p) => Some(&p.session_id),
             SessionStreamFrame::Ended(p) => Some(&p.session_id),
             SessionStreamFrame::Runs(p) => Some(&p.session_id),
+            SessionStreamFrame::Branch(p) => Some(&p.session_id),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
@@ -216,6 +220,16 @@ pub struct SessionRunsPayload {
     pub runs: RecordBody,
     #[cfg_attr(test, ts(type = "Array<import(\"./RunEnded\").RunEnded>"))]
     pub ended: RecordBody,
+}
+
+/// [`SessionStreamFrame::Branch`] 的体：那台后端 `session_branch` 帧的 `off`（整份，原样，不解释）。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct SessionBranchPayload {
+    pub session_id: String,
+    #[cfg_attr(test, ts(type = "Array<string>"))]
+    pub off: RecordBody,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。
@@ -254,6 +268,10 @@ pub enum BatchEdge {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionEndedPayload {
     pub session_id: String,
+    /// 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）；壳自己补的「已结束」没有 ⇒ `None`。
+    pub text: Option<String>,
+    pub hint: Option<String>,
+    pub tone: Option<String>,
 }
 
 /// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
@@ -263,6 +281,10 @@ pub struct SessionEndedPayload {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
+    /// 同 [`SessionEndedPayload`] 那三格。
+    pub text: Option<String>,
+    pub hint: Option<String>,
+    pub tone: Option<String>,
 }
 
 /// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
@@ -386,5 +408,8 @@ pub struct RemoteHealthPayload {
 pub struct SessionActivityPayload {
     pub session_id: String,
     pub activity: Option<crate::session_book::SessionActivity>,
+    /// `activity` 那一态写好的字与语气（那台核心写的：运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）。
+    pub activity_text: String,
+    pub activity_tone: String,
     pub waiting_for: Option<String>,
 }

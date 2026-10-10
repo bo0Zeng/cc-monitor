@@ -1,17 +1,16 @@
 /**
  * 卡片渲染的总分发器。
  *
- * `renderMessage(rec, ctx)` 是核心纯函数：给定一条 JsonlRecord + RenderContext，
+ * `renderMessage(rec, ctx)` 是核心纯函数：给定一条通用记录（`LineRecord`，ts-rs 从后端导出）+ RenderContext，
  * 返回 `RenderResult`（`card` 普通卡 / `tool-group` 工具组单元 / `skip` 不渲染）。
  * 实时 Tab、历史只读视图、subagent 卡三处共用它，保证视觉一致（详 render-stream-record.ts）。
  *
  * 职责边界：
- * - 本文件持有 Rust `JsonlRecord` 的 TS 镜像类型（ApiMessage / ContentBlock 等）。
- * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
+ * - 按记录的类别 `t` + 内容块分发：said 气泡 / reply 卡 / 纯工具 → tool-group /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
- * - user 记录是谁说的（人 · 斜杠命令 · `!` 输入/输出 · 压缩摘要 · 派给子 agent 的活 · 系统注入 · agent 来话 · 后台通知……，
- *   INVARIANT § 20）：判定只在后端，随记录成品带来（`userText.speaker` ＋ 要显示的 `userText.text`），这里只按它画。
+ * - said 记录是谁说的（人 · 斜杠命令 · `!` 输入/输出 · 压缩摘要 · 派给子 agent 的活 · 系统注入 · agent 来话 · 后台通知……，
+ *   INVARIANT § 20）：判定只在后端，随记录成品带来（`who.speaker` ＋ 要显示的 `who.text`），这里只按它画。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
@@ -31,7 +30,7 @@ import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
-import { awaitedFor, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
+import { waitedNow, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
 import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
@@ -43,62 +42,53 @@ import { isRemoteOrigin, type Origin } from "../ipc/origin";
 
 /**
  * 〔判定只在后端〕记过的一次 tool_use：工具名（标注用、存偏好用）＋ 后端给的卡型（没有 ＝ 普通工具卡）。
- * 界面**不认工具名**：哪个工具画成哪种卡由那台后端的适配层判（`agents/<名>/cards.rs`），随 assistant 记录的 `toolCards` 带来。
+ * 界面**不认工具名**：哪个工具画成哪种卡由那台后端的适配层判（`agents/<名>/cards.rs`），随 reply 记录的 `cards` 带来。
  */
 export interface ToolUseSeen {
   name: string;
   card: ToolCard | undefined;
-  /** 后端给的一行人话（`toolSteps`；老后端没有）与发出那条记录的时刻（结果到了相减成耗时）。 */
+  /** 后端给的一行人话（`steps`）与发出那条记录的时刻（结果到了相减成耗时）。 */
   step?: ToolStep;
   at?: string;
 }
 
-/** 一条记录带来的、过程那一行要的成品：assistant 的 `toolSteps` · user 的 `toolResults` · 记录时刻。 */
+/** 一条记录带来的、过程那一行要的成品：reply 的 `steps` · said 的 `results` · 记录时刻。 */
 interface StepFacts {
   steps: Readonly<Record<string, ToolStep>>;
   results: Readonly<Record<string, StepResult>>;
   at: string;
 }
 const NO_FACTS: StepFacts = Object.freeze({ steps: Object.freeze({}), results: Object.freeze({}), at: "" });
-function stepFactsOf(rec: JsonlRecord): StepFacts {
-  if (rec.type === "assistant") return { steps: rec.toolSteps ?? NO_FACTS.steps, results: NO_FACTS.results, at: rec.timestamp };
-  if (rec.type === "user") return { steps: NO_FACTS.steps, results: rec.toolResults ?? NO_FACTS.results, at: rec.timestamp };
+function stepFactsOf(rec: LineRecord): StepFacts {
+  if (rec.t === "reply") return { steps: rec.steps ?? NO_FACTS.steps, results: NO_FACTS.results, at: rec.at ?? "" };
+  if (rec.t === "said") return { steps: NO_FACTS.steps, results: rec.results ?? NO_FACTS.results, at: rec.at ?? "" };
   return NO_FACTS;
 }
 
-/** 一条记录带来的卡型表（`tool_use.id` → 卡型）；只有 assistant 记录带，别的一律空。 */
+/** 一条记录带来的卡型表（`tool_use.id` → 卡型）；只有 reply 记录带，别的一律空。 */
 type ToolCards = Readonly<Record<string, ToolCard>>;
 const NO_CARDS: ToolCards = Object.freeze({});
-function toolCardsOf(rec: JsonlRecord): ToolCards {
-  return rec.type === "assistant" ? rec.toolCards ?? NO_CARDS : NO_CARDS;
+function toolCardsOf(rec: LineRecord): ToolCards {
+  return rec.t === "reply" ? rec.cards ?? NO_CARDS : NO_CARDS;
 }
-/** 派出子运行的那几次调用的通用标签（后端随记录成品带出的 `childRuns`）。 */
+/** 派出子运行的那几次调用的通用标签（后端随记录成品带出的 `runs`）。 */
 type ChildRuns = Readonly<Record<string, ChildRunTag>>;
 const NO_RUNS: ChildRuns = Object.freeze({});
-function childRunsOf(rec: JsonlRecord): ChildRuns {
-  return rec.type === "assistant" ? rec.childRuns ?? NO_RUNS : NO_RUNS;
+function childRunsOf(rec: LineRecord): ChildRuns {
+  return rec.t === "reply" ? rec.runs ?? NO_RUNS : NO_RUNS;
 }
 
-// `JsonlRecord` / `ApiMessage` / `Usage` 由 ts-rs 从 `src/frontend/shell/src/messages.rs` 生成（那个 enum 就是线定义）。
-// `ContentBlock` 刻意手写：线上 `ApiMessage.content` 是 `serde_json::Value`，这是前端对 `content: unknown` 的解释模型。
-import type { ApiMessage } from "../generated/ApiMessage";
-import type { JsonlRecord } from "../generated/JsonlRecord";
-import type { Usage } from "../generated/Usage";
+// `LineRecord`（通用记录）/ `Block`（内容块）由 ts-rs 从后端 `agents/record.rs` 生成（那就是线定义）。
+import type { LineRecord } from "../generated/LineRecord";
+import type { Block } from "../generated/Block";
 import { copyText } from "../copy-table";
 
 // 本文件内部也用这些名字，所以 import + re-export 都要有：只写 `export type { … } from` 不会把名字带进本地作用域。
-export type { ApiMessage, JsonlRecord, Usage };
-
-export type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "thinking"; thinking: string; signature?: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
-  | {
-      type: "tool_result";
-      tool_use_id: string;
-      content: unknown;
-      is_error?: boolean;
-    };
+export type { Block, LineRecord };
+/** 代理的回复。 */
+type ReplyRecord = Extract<LineRecord, { t: "reply" }>;
+/** 一个工具结果块。 */
+export type ToolResultBlock = Extract<Block, { type: "tool_result" }>;
 
 
 /**
@@ -113,9 +103,9 @@ export interface RenderContext {
    */
   /** 这一步还没结果时的样子（会话事实 `pending[]` 里它那一条的 `state` · `why`）；事实里还没有它 ⇒ `undefined`（不画）。 */
   stepWait?: (call: string) => Pick<PendingCall, "state" | "why"> | undefined;
-  /** 一串重试的结局（会话事实 `retries`，按首条重试记录的 uuid）；事实里还没有 ⇒ `undefined`。 */
+  /** 一串重试的结局（会话事实 `retries`，按首条重试记录的 `id`）；事实里还没有 ⇒ `undefined`。 */
   retryOutcome?: (id: string) => RetryOutcome | undefined;
-  needs?: { kind: string; call: string | null; sinceMs: number | null } | null;
+  needs?: { kind: string; call: string | null; waitedMs: number | null; receivedAt: number } | null;
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
   /**
@@ -129,7 +119,7 @@ export interface RenderContext {
    * tool_use_id → 那一次 tool_use 的工具名与卡型。tool_use 出现在 assistant 消息，tool_result
    * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
    * 渲染）持有这张 Map 跨 renderMessage 调用累积。renderBlock 在 tool_use
-   * 时写入，在 tool_result 时读取来标注工具名、挑结果默认怎么画（卡型是后端随记录成品带出的 `toolCards`）。
+   * 时写入，在 tool_result 时读取来标注工具名、挑结果默认怎么画（卡型是后端随记录成品带出的 `cards`）。
    */
   toolUseNames: Map<string, ToolUseSeen>;
   /**
@@ -148,13 +138,13 @@ export interface RenderContext {
   runLabelOf?: (run: string) => string | undefined;
   /**
    * 切块读时 tool_result 可能先于它的 tool_use 到（head 块含 result，older 块才有 use）：
-   * 那时 `injectOrBuildToolResult` 先画独立卡，把 block 记在这里（key = tool_use_id）；
+   * 那时 `injectOrBuildToolResult` 先画独立卡，把 block 记在这里（key = 它对的那次工具调用 id）；
    * 全部块读完后 `reconcilePendingToolResults` 再配一次，配上了就注入、删独立卡。
    * 必填：漏传 ⇒ 那条结果永远是独立卡；不需要配的调用方传空 Map。
    */
   pendingToolResults: Map<
     string,
-    { block: Extract<ContentBlock, { type: "tool_result" }>; element: HTMLElement }
+    { block: ToolResultBlock; element: HTMLElement }
   >;
   /**
    * 代码块高亮推迟到露出来（占位 ＋ IntersectionObserver）：批量建卡时用，免得 N 个代码块同步卡住主线程。
@@ -178,14 +168,13 @@ export type RenderResult =
    */
   | { kind: "tool-group"; time: string; units: HTMLElement[] };
 
-export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResult {
-  switch (rec.type) {
-    case "user": {
-      // 谁说的由后端判好（`userText.speaker`）；不建卡的那几种（系统注入 · agent 来话 · 后台通知 · 中断标记……）
-      // 仍在 timeline 里占链节点（同 attachment），只是不建卡。
-      const said = rec.userText;
+export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult {
+  const time = rec.timeText ?? "";
+  switch (rec.t) {
+    case "said": {
+      // 谁说的由后端判好（`who.speaker`）；不建卡的那几种（系统注入 · agent 来话 · 后台通知 · 中断标记……）只是不建卡。
+      const said = rec.who;
       const speaker = said.speaker;
-      const time = rec.timeText ?? "";
       if (!drawsCard(speaker.kind)) return { kind: "skip" };
       switch (speaker.kind) {
         case "slashCommand":
@@ -209,7 +198,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         case "coordinator":
           return { kind: "card", element: buildCoordinatorBar(speaker, time) };
         case "taskNotification":
-          return { kind: "card", element: buildNoticeLine(speaker, rec.timestamp, time) };
+          return { kind: "card", element: buildNoticeLine(speaker, rec.at ?? "", time) };
         case "interrupt":
           return { kind: "card", element: buildInterruptLine(time) };
         case "agentTask":
@@ -219,47 +208,37 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         default:
           // 人说的话：用户气泡；没有正文（只有图片之类）不建卡。
           if (!said.text) return { kind: "skip" };
-          return { kind: "card", element: buildUserCard(rec, said.text, said.pasted) };
+          return { kind: "card", element: buildUserCard(time, said.text, said.pasted) };
       }
 
       // 工具结果回灌：注入到对应 tool_use 折叠条内部，返回 null；
       // 只有找不到匹配 tool_use 的 fallback 才产生独立 element。
-      const blocks = normalizeBlocks(rec.message.content).filter(
-        (b) => b.type === "tool_result",
-      );
+      const blocks = rec.blocks.filter((b) => b.type === "tool_result");
       if (blocks.length === 0) return { kind: "skip" };
       const facts = stepFactsOf(rec);
       const units = blocks
         .map((b) => renderBlock(b, ctx, NO_CARDS, NO_RUNS, facts))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
-      return {
-        kind: "tool-group",
-        time: rec.timeText ?? "",
-        units,
-      };
+      return { kind: "tool-group", time, units };
     }
-    case "assistant": {
-      // API 最终失败的合成消息 → 红色报错卡（当普通回复画会让人以为还在跑）。在 meaningful 过滤前判，免得被 synthetic 过滤吞掉。
-      if (rec.isApiErrorMessage) {
+    case "reply": {
+      // 上游最终失败写的报错 → 红色报错卡（当普通回复画会让人以为还在跑）。
+      if (rec.error) {
         return {
           kind: "card",
           element: buildApiErrorCard({
-            timeLabel: rec.timeText ?? "",
-            reason: rec.apiReason,
-            text: extractText(rec.message.content).trim(),
-            status: rec.apiErrorStatus,
+            timeLabel: time,
+            reason: rec.error.reason,
+            text: textOf(rec.blocks).trim(),
+            status: rec.error.status ?? null,
           }),
         };
       }
-      const blocks = normalizeBlocks(rec.message.content);
-      const meaningful = blocks.filter((b) => {
-        if (b.type === "text") {
-          // 过滤 `<synthetic>` 包裹的自动应答（claude 内部 "No response
-          // requested." 之类），非真回复
-          return b.text.trim().length > 0 && !isSyntheticReply(b.text);
-        }
-        if (b.type === "thinking") return b.thinking.trim().length > 0;
+      // 代理那一侧自动写的应答（不是模型说的）：不建卡。
+      if (rec.autoReply) return { kind: "skip" };
+      const meaningful = rec.blocks.filter((b) => {
+        if (b.type === "text" || b.type === "thinking") return b.text.trim().length > 0;
         return true;
       });
       if (meaningful.length === 0) return { kind: "skip" };
@@ -267,7 +246,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       const hasText = meaningful.some((b) => b.type === "text");
       // issue #21：含交互等待工具（AskUserQuestion / ExitPlanMode）的消息走
       // kind:"card"——它们要默认可见，不能折进 card-tool-group（进组判定在
-      // message 级，kind:"card" 是唯一的不进组通路）。
+      // 记录级，kind:"card" 是唯一的不进组通路）。
       const cards = toolCardsOf(rec);
       const hasInteractive = meaningful.some(
         (b) => b.type === "tool_use" && cards[b.id] === "interactive",
@@ -284,44 +263,35 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         .map((b) => renderBlock(b, ctx, cards, childRunsOf(rec), facts))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
-      return {
-        kind: "tool-group",
-        time: rec.timeText ?? "",
-        units,
-      };
+      return { kind: "tool-group", time, units };
     }
-    case "system":
-      // API 调用失败、将重试的中间态 → 细条提示（不画的话重试风暴时只看到「卡住」）。其余 system 不画。
-      if (rec.subtype === "api_error") {
-        return {
-          kind: "card",
-          element: buildApiRetryCard({
-            timeLabel: rec.timeText ?? "",
-            reason: rec.apiReason,
-            retryAttempt: rec.retryAttempt,
-            maxRetries: rec.maxRetries,
-            id: rec.uuid ?? undefined,
-            outcome: rec.uuid ? ctx.retryOutcome?.(rec.uuid) : undefined,
-          }),
-        };
-      }
+    case "retry":
+      // 上游失败、将重试的中间态 → 细条提示（不画的话重试风暴时只看到「卡住」）。
+      return {
+        kind: "card",
+        element: buildApiRetryCard({
+          timeLabel: time,
+          reason: rec.reason,
+          retryAttempt: rec.attempt ?? null,
+          maxRetries: rec.max ?? null,
+          id: rec.id,
+          outcome: ctx.retryOutcome?.(rec.id),
+        }),
+      };
+    case "title":
       return { kind: "skip" };
-    case "ai-title":
-    case "custom-title":
-      return { kind: "skip" };
-    // `remove` 那一支是用户打断时说的那句话在 jsonl 里唯一的存在（没有 `user` 记录、没有 uuid）：不在这里建卡，那句话就整条消失。
-    // 走到这里的只有 `remove` 且后端判为人说的那一格（`enqueue` / `dequeue` 与别的来源 `routeMetaAndBranch` 都判 `"consumed"`）。
-    case "queue-operation": {
-      const text = rec.userText?.speaker.kind === "human" ? rec.userText.text : "";
+    // 插进正在跑的那一轮的一句（那一轮里没有它自己的 said 记录）：不在这里建卡，那句话就整条消失。
+    case "queued": {
+      const text = rec.who.speaker.kind === "human" ? rec.who.text : "";
       if (!text) return { kind: "skip" };
-      return { kind: "card", element: buildQueuedUserCard(text, rec.timeText ?? "") };
+      return { kind: "card", element: buildQueuedUserCard(text, time) };
     }
     default:
       return { kind: "skip" };
   }
 }
 
-/** 排队消息的用户卡：多一个「排队」标记 —— 这条消息在会话链上没有位置（无 uuid），先后只由 `seq` 保证，得让人看出它是插进来的。 */
+/** 排队消息的用户卡：多一个「排队」标记 —— 这条消息是插进正在跑的那一轮的，先后只由 `seq` 保证，得让人看出它是插进来的。 */
 function buildQueuedUserCard(text: string, time: string): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user card-user-queued";
@@ -400,7 +370,7 @@ export const PASTE_FOLD_LINES = 12;
 
 /**
  * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；超过 [`PASTE_FOLD_LINES`] 行折成一行「粘贴的内容 · N 行」，点开就地展开。
- * 块的边界、正文那一截与行数都是后端的 `userText.pasted`（UTF-16 下标），界面不认标记的写法。
+ * 块的边界、正文那一截与行数都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法。
  */
 function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | undefined): void {
   if (!pasted || pasted.length === 0) {
@@ -441,13 +411,13 @@ function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | u
 }
 
 function buildUserCard(
-  rec: Extract<JsonlRecord, { type: "user" }>,
+  time: string,
   text: string,
   pasted?: readonly Pasted[],
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
-  card.appendChild(cardHeader(copyText("cards.user.title"), rec.timeText ?? ""));
+  card.appendChild(cardHeader(copyText("cards.user.title"), time));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -457,14 +427,14 @@ function buildUserCard(
 }
 
 function buildAssistantCard(
-  rec: Extract<JsonlRecord, { type: "assistant" }>,
-  meaningful: ContentBlock[],
+  rec: ReplyRecord,
+  meaningful: Block[],
   ctx: RenderContext,
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-assistant";
   // 卡头那一家的名字：会话是哪一家由后端说（标签页 · 历史行的 `agent`），名字取画像里的短名；不按文件名猜。
-  card.appendChild(cardHeader(ctx.speaker ?? "", rec.timeText ?? "", rec.message.model));
+  card.appendChild(cardHeader(ctx.speaker ?? "", rec.timeText ?? "", rec.model));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -483,7 +453,7 @@ function buildAssistantCard(
  * 当前 tool_result 命中已存在的 tool_use 折叠条时直接注入其内部，会返 null。
  */
 function renderBlock(
-  block: ContentBlock,
+  block: Block,
   ctx: RenderContext,
   cards: ToolCards,
   runs: ChildRuns = NO_RUNS,
@@ -496,12 +466,12 @@ function renderBlock(
       // 思考是一步（§5.2.3）：「思考」＋ 第一行斜体预览，点开看全文。
       return makeCollapsible(
         "block-thinking",
-        buildThinkingLine(copyText("cards.thinking.title"), firstLineOf(block.thinking.trim(), 160).line),
+        buildThinkingLine(copyText("cards.thinking.title"), firstLineOf(block.text.trim(), 160).line),
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
           // 展开那一刻才建（点开 ＝ 就在眼前）⇒ 一律当场高亮：批里建的卡早被 `enhanceCard` 标过，这时才长出来的占位没人再补。
-          body.innerHTML = renderMarkdown(block.thinking);
+          body.innerHTML = renderMarkdown(block.text);
           return body;
         },
       );
@@ -512,7 +482,7 @@ function renderBlock(
       const step = facts.steps[block.id];
       ctx.toolUseNames.set(block.id, { name: block.name, card, step, at: facts.at || undefined });
 
-      // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 派出卡（卡头点了开那个子运行自己的窗口）
+      // 卡型是那台后端判的（`cards`）；派出子运行的那次调用 → 派出卡（卡头点了开那个子运行自己的窗口）
       if (card === "agent") {
         const runCard = buildAgentCard(block.id, block.name, runs[block.id]);
         ctx.runCards?.set(block.id, runCard);
@@ -538,8 +508,7 @@ function renderBlock(
       return injectOrBuildToolResult(block, ctx, facts);
     }
     default: {
-      // 未知 block.type（如 server_tool_use / web_search_tool_result 等扩展类型）
-      // 不抛异常，给出可识别占位以便诊断。
+      // 图片块（只在结果里有意义）· 往后新加的块：不抛异常，给出可识别占位以便诊断。
       const unknownType = (block as { type?: unknown }).type;
       console.warn("renderBlock: unknown block type", unknownType, block);
       const placeholder = document.createElement("div");
@@ -561,7 +530,7 @@ function renderBlock(
  *   </details>
  */
 function buildToolUseCard(
-  block: Extract<ContentBlock, { type: "tool_use" }>,
+  block: Extract<Block, { type: "tool_use" }>,
   ctx: RenderContext,
   card: ToolCard | undefined,
   step?: ToolStep,
@@ -571,7 +540,7 @@ function buildToolUseCard(
   const d = document.createElement("details");
   d.className = "block-collapsible block-tool-use";
 
-  // 一步一行（§5.2.3）：主参数与说明是后端给的（`toolSteps`）；没有那一格（老后端）⇒ 工具名 ＋ 入参一句兜底。
+  // 一步一行（§5.2.3）：主参数与说明是后端给的（`steps`）；没有那一格 ⇒ 工具名 ＋ 入参一句兜底。
   const s = document.createElement("summary");
   s.className = "block-summary block-step";
   const line = buildStepLine(block.name, step, summary, block.id);
@@ -580,7 +549,7 @@ function buildToolUseCard(
   // 会话事实已经说了这一步是什么样子 ⇒ 建出来就照画；还没说 ⇒ 不画状态，等事实（不按「没有结果」当在跑）。
   const w = ctx.stepWait?.(block.id);
   const n = ctx.needs;
-  if (w) paintWaiting(line, w.state, n?.call === block.id ? awaitedFor(n.sinceMs, Date.now()) : null, n?.kind === "approve", w.why);
+  if (w) paintWaiting(line, w.state, n?.call === block.id ? waitedNow(n, Date.now()) : null, n?.kind === "approve", w.why);
 
   const wrap = document.createElement("div");
   wrap.className = "block-body-wrap";
@@ -727,7 +696,7 @@ export function resetResultTextLedger(): void {
  * fallback 渲染独立折叠条。
  */
 function injectOrBuildToolResult(
-  block: Extract<ContentBlock, { type: "tool_result" }>,
+  block: ToolResultBlock,
   ctx: RenderContext,
   facts: StepFacts = NO_FACTS,
 ): HTMLElement | null {
@@ -738,23 +707,23 @@ function injectOrBuildToolResult(
   if (text.length > resultTextLedger.maxUnits) {
     resultTextLedger.maxUnits = text.length;
   }
-  const exitCode = facts.results[block.tool_use_id]?.exitCode ?? null;
+  const exitCode = facts.results[block.for]?.exitCode ?? null;
   const preview = firstLinePreview(text, 60);
-  const seen = ctx.toolUseNames.get(block.tool_use_id);
+  const seen = ctx.toolUseNames.get(block.for);
   const toolName = seen?.name ?? "tool";
   // 结果默认怎么画按后端给的卡型（`md`），不按工具名自己判。
   const mdByDefault = seen?.card === "md";
-  const errTag = block.is_error
+  const errTag = block.isError
     ? exitCode !== null
       ? ` · exit ${exitCode}`
       : " · error"
     : "";
 
-  const host = ctx.toolUseElements.get(block.tool_use_id);
+  const host = ctx.toolUseElements.get(block.for);
   // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
-  if (host && settleRunCard(host, text, block.is_error === true)) return null;
+  if (host && settleRunCard(host, text, block.isError === true)) return null;
   // 提问 / 计划答了之后：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
-  const answered = facts.results[block.tool_use_id];
+  const answered = facts.results[block.for];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {
     settleInteractive(host, answered);
     return null;
@@ -774,13 +743,13 @@ function injectOrBuildToolResult(
       } else {
         resultEl.replaceChildren();
       }
-      if (block.is_error) {
+      if (block.isError) {
         resultEl.classList.add("block-error");
         host.classList.add("block-has-error");
         refreshGroupAround(host); // 收着的工具组那一行要说出「1 个失败」
       }
 
-      const labelPrefix = block.is_error
+      const labelPrefix = block.isError
         ? exitCode !== null
           ? `Error · exit ${exitCode}`
           : "Error"
@@ -802,13 +771,13 @@ function injectOrBuildToolResult(
 
       // 同步那一步的一行：状态图标与右侧小字（后端给的结果一句 ＋ 两条记录的时刻相减）。再来一次结果就再改一次。
       const line = host.querySelector<HTMLElement>(":scope > .block-summary > .step-line");
-      if (line) settleStepLine(line, seen?.step, facts.results[block.tool_use_id], block.is_error === true, durBetween(seen?.at, facts.at));
+      if (line) settleStepLine(line, seen?.step, facts.results[block.for], block.isError === true, durBetween(seen?.at, facts.at));
     }
     return null;
   }
 
   // fallback：tool_use 没找到 → 独立折叠条
-  const cls = block.is_error
+  const cls = block.isError
     ? "block-tool-result block-error"
     : "block-tool-result";
   const summaryText = preview
@@ -820,9 +789,9 @@ function injectOrBuildToolResult(
     return container;
   });
   // 标记 + 登记到 pending map，给切块场景的 reconcile 用
-  fallback.setAttribute("data-tool-use-id", block.tool_use_id);
+  fallback.setAttribute("data-tool-use-id", block.for);
   if (ctx.pendingToolResults) {
-    ctx.pendingToolResults.set(block.tool_use_id, { block, element: fallback });
+    ctx.pendingToolResults.set(block.for, { block, element: fallback });
   }
   return fallback;
 }
@@ -859,10 +828,10 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
     const reInjected = injectOrBuildToolResult(block, ctx);
     if (reInjected === null) {
       // fallback 身上的落点标记（`render-stream-record.ts::markMemberUuids` 记的）跟着搬到注入出来的结果区块上
-      const member = element.dataset.memberUuid;
+      const member = element.dataset.memberId;
       if (member) {
         const inline = ctx.toolUseElements.get(toolUseId)?.querySelector<HTMLElement>(".block-tool-result-inline");
-        if (inline) inline.dataset.memberUuid = member;
+        if (inline) inline.dataset.memberId = member;
       }
       // 注入成功 → 删除原 fallback;宿主组必须在 remove **之前**取(摘除后 closest 断链)
       const host = element.closest<HTMLElement>(".card-tool-group");
@@ -1240,30 +1209,21 @@ function prettyJson(v: unknown): string {
   }
 }
 
-/** tool_result.content 可能是 string / ContentBlock[] / object */
-function renderResultContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const parts: string[] = [];
-    for (const item of content) {
-      if (!item || typeof item !== "object") {
-        parts.push(prettyJson(item));
-        continue;
-      }
-      const t = (item as { type?: string }).type;
-      if (t === "text" && typeof (item as { text?: unknown }).text === "string") {
-        parts.push((item as { text: string }).text);
-      } else if (t === "image") {
-        // 图片是给模型看的 base64，监控视图不展开
-        const src = (item as { source?: { media_type?: string } }).source;
-        parts.push(`[image ${src?.media_type ?? "unknown"}]`);
-      } else {
-        parts.push(prettyJson(item));
-      }
+/** 工具结果的内容块（正文 / 图片）⇒ 一段文字。 */
+function renderResultContent(content: readonly Block[]): string {
+  const parts: string[] = [];
+  for (const item of content) {
+    if (item.type === "text") {
+      parts.push(item.text);
+    } else if (item.type === "image") {
+      // 图片是给模型看的 base64，监控视图不展开
+      const src = item.source as { media_type?: string } | null;
+      parts.push(`[image ${src?.media_type ?? "unknown"}]`);
+    } else {
+      parts.push(prettyJson(item));
     }
-    return parts.join("\n");
   }
-  return prettyJson(content);
+  return parts.join("\n");
 }
 
 /** 第一行非空预览，截到 max 字符（不整条 `split`，见 `format.ts::firstLineOf`） */
@@ -1273,25 +1233,13 @@ function firstLinePreview(text: string, max: number): string {
   return copyText("cards.truncate.ellipsis", { text: line.slice(0, max - 1) });
 }
 
-/**
- * 识别 assistant 自动应答（claude 在收到 task-notification 之类时回的 `<synthetic>`
- * 包裹的"无内容应答"），不是真实对话内容。
- */
-function isSyntheticReply(text: string): boolean {
-  const t = text.trim();
-  if (!t.startsWith("<synthetic>")) return false;
-  // 简短 synthetic（如 "No response requested."）一律视为内部应答
-  return t.length < 300;
-}
-
 // === helpers ===
 
 function cardHeader(
   role: string,
   /** 记录的钟面（后端写好的 `timeText`）。 */
   time: string,
-  // `| null`：`ApiMessage.model` 是 `Option<String>` 且没有 skip_serializing_if ⇒ 线上是显式 null。
-  model?: string | null,
+  model?: string,
 ): HTMLElement {
   const h = document.createElement("div");
   h.className = "card-header";
@@ -1312,31 +1260,12 @@ function cardHeader(
   return h;
 }
 
-function normalizeBlocks(content: unknown): ContentBlock[] {
-  if (typeof content === "string") {
-    return [{ type: "text", text: content }];
-  }
-  if (Array.isArray(content)) {
-    return content.filter((c): c is ContentBlock =>
-      Boolean(c) && typeof (c as { type?: unknown }).type === "string",
-    );
-  }
-  return [];
-}
-
-function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((b) =>
-        b && typeof b === "object" && (b as { type?: string }).type === "text"
-          ? String((b as { text?: unknown }).text ?? "")
-          : "",
-      )
-      .filter(Boolean)
-      .join("\n");
-  }
-  return "";
+/** 正文块连成一段（报错卡的正文）。 */
+function textOf(blocks: readonly Block[]): string {
+  return blocks
+    .map((b) => (b.type === "text" ? b.text : ""))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function summarizeInput(input: unknown): string {
@@ -1354,9 +1283,9 @@ function truncate(s: string, n: number): string {
   return s.length > n ? copyText("cards.truncate.ellipsis", { text: s.slice(0, n) }) : s;
 }
 
-function approximateSize(content: unknown): string {
-  if (typeof content === "string") {
-    return `${content.length} chars`;
+function approximateSize(content: readonly Block[]): string {
+  if (content.every((b) => b.type === "text")) {
+    return `${textOf(content).length} chars`;
   }
   try {
     return `${JSON.stringify(content).length} chars`;

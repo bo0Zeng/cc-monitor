@@ -209,6 +209,17 @@ impl Said {
         Said::of_parts(said, Detail::parse(detail))
     }
 
+    /// 一句话 ＋ 远端后端写好的一整份详情（原样一块，不拆项），后面补「本机」一行；`raw` 是这边另知道的原话（可缺，排最后）。
+    pub(crate) fn relayed_from(said: String, written: &str, raw: Option<&str>) -> Said {
+        Said::of_parts(
+            said,
+            Detail::new()
+                .block(written)
+                .item(Label::Local, local_line())
+                .maybe(Label::Raw, raw),
+        )
+    }
+
     /// 换一句给人看的话，复制详情照旧（外层接手下层那一形失败时说得更具体）。
     pub(crate) fn restate(said: String, from: Said) -> Said {
         Said::of_parts(said, from.parts)

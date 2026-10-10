@@ -317,7 +317,19 @@ pub fn answer_annotate_at(
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(path, &raw).map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
-    Ok(json!({ "entry": entry }))
+    crate::stream::inbound::spec::wire(&Annotated { entry })
+}
+
+/// `history-annotate` 的应答：改完的那一条。
+#[derive(Debug, Serialize)]
+pub(crate) struct Annotated {
+    pub(crate) entry: Entry,
+}
+
+/// `history-forget` 的应答：真删了一条没有（`false` = 本来就没有这一条，文件没动）。
+#[derive(Debug, Serialize)]
+pub(crate) struct Forgotten {
+    pub(crate) removed: bool,
 }
 
 /// `history-forget {sid}`：删那一条（删会话时连带）。不在 ⇒ 不写。回 `{removed}`。
@@ -334,11 +346,11 @@ pub fn answer_forget_at(
     let _g = lock_for_write(path)?;
     let (doc, mut raw) = read_for_write(path)?;
     if !doc.entries.contains_key(sid) {
-        return Ok(json!({ "removed": false }));
+        return crate::stream::inbound::spec::wire(&Forgotten { removed: false });
     }
     put_entry(&mut raw, sid, None);
     write_at(path, &raw).map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
-    Ok(json!({ "removed": true }))
+    crate::stream::inbound::spec::wire(&Forgotten { removed: true })
 }
 
 #[cfg(test)]

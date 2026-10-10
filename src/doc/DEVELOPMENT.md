@@ -63,7 +63,7 @@ cargo clippy --all-targets
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数套件（`tests/**/*.test.ts`） | `npm test` 的前段（每套一个 `test:*` 脚本，`tsx` 跑） | diff · branching · 报错卡 · bash 卡 · 格式化 · 历史缓存等纯逻辑。清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES` |
+| node 纯函数套件（`tests/**/*.test.ts`） | `npm test` 的前段（每套一个 `test:*` 脚本，`tsx` 跑） | diff · 报错卡 · bash 卡 · 格式化 · 历史缓存等纯逻辑。清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES` |
 | vitest ＋ jsdom（`tests/**/*.vitest.ts`） | `npm run test:dom`；单跑一份 `npx vitest run <文件>`；覆盖率 `npm run coverage` | DOM · 生命周期 · 通道替身协作：tab 门控与物化、账本、估高、设置面板等 |
 | 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求 `src/frontend/ui/generated/` 无差异） | 全部源码与测试文件 |
 | lint | `npm run lint` · `npm run lint:css` | CI 里只作参考；eslint 基线由 `tests/frontend/ui/eslint-baseline.vitest.ts` 钉着 |
@@ -161,10 +161,11 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 边界：它只管 monitor 自己起的进程链。Windows Terminal 设成「附着到已有窗口」时，新 tab 的 shell 继承的是那个 WT 进程的环境；那个 WT 若本身是从 claude 会话里起的，resume 出的 claude 照样带着标记。判别法：`sessions/` 里没有那个 claude 的 `<PID>.json`，jsonl 的修改时间冻结，而同一条 `claude --resume` 在自己开的终端里正常。
 
-### `cc` 集成握手不成功（Windows）
+### ↗ 切不到终端窗口
 
-- `~/.cc-monitor/ps-await/<PID>.json` 写了又被删 ⇒ monitor 收到了；写了没被删 ⇒ monitor 没看到或解析失败。
-- dev 终端里找 `bind: parse … failed`。握手顺序与时序见 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
+- Windows：monitor 自己挂着控制台（从一个终端里 `cargo run` 起的 dev 构建）时借不到别人的控制台，↗ 只剩按进程找窗口那一档；从开始菜单 / 资源管理器起就好。
+- Linux：本机桌面上开的 shell 要装了 bash / zsh 接入块，`~/.cc-monitor/ps-await/<PID>.tty` 落地后 monitor 认窗口；dev 终端里找 `bind: registered shell_pid=`。
+  机制见 [IPC-PROTOCOL.md § 切到终端](IPC-PROTOCOL.md)。
 
 ### 会话内容在底部整段重复
 
@@ -172,7 +173,7 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 ### 大段消息被误折成「已被 ESC 回退」
 
-重复的 uuid 会毒化分支拓扑的计数，让折叠信号全错。四道防线：`computeMainBranch` 入口按 uuid 去重；`BranchFolder` 拒重；console 出现 `[branching] Kahn leftover` warn（带嫌疑 uuid）说明遇到了新形态的异常输入；后端日志的 `jsonl truncated … full re-read` 说明发生过截断重投。回归用 `npm run test:branching`。
+哪几条算回退掉的由后端判（`agents/mainline.rs`，Claude 的链事实在 `agents/claudecode/chain.rs`），界面只按清单折。先问后端那份清单（`ccm -- --history-branch`，stdin 给 `{"path": …}`）：清单里就有那几条 ⇒ 查主线判定（回归在 `tests/backend/agents/mainline_tests.rs`）；清单里没有、界面却折了 ⇒ 查 `branch-fold.ts`（卡上的 `data-id` 与清单对不上）。后端日志的 `jsonl truncated … full re-read` 说明发生过截断重投。
 
 ### 启动重放时最新消息上下微抖
 

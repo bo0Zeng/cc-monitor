@@ -483,7 +483,12 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             "{}",
             a.kind
         );
-        assert_eq!(d.nested, face.nested_env.to_vec(), "{} 的嵌套标记", a.kind);
+        assert_eq!(
+            d.nested,
+            crate::control::ccm::plan::nested_of(face.nested_env),
+            "{} 的嵌套标记",
+            a.kind
+        );
         assert_eq!(
             d.bus_id_recipe, face.needs_bus_id,
             "{} 的 cc-bus 身份",
@@ -645,7 +650,12 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         compact_request: None,
         local: None,
     };
-    let got = crate::agents::mcp_read_among(std::slice::from_ref(&adapter), AGENT_KIND, Some(&dir));
+    let got = crate::agents::mcp_read_among(
+        std::slice::from_ref(&adapter),
+        AGENT_KIND,
+        Some(&dir),
+        &crate::agents::McpLook::default(),
+    );
     let _ = std::fs::remove_dir_all(&dir);
     let got = got.expect("注册表里有 MCP 读面，通用层却没读它");
     assert_eq!(got.entries.len(), 1, "{got:?}");
@@ -661,7 +671,8 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
     assert!(crate::agents::mcp_read_among(
         std::slice::from_ref(&bare),
         AGENT_KIND,
-        Some(std::path::Path::new("/"))
+        Some(std::path::Path::new("/")),
+        &crate::agents::McpLook::default(),
     )
     .is_none());
 }

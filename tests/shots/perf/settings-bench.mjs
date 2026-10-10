@@ -202,10 +202,6 @@ async function clickAt(page, x, y) {
   await page.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 }
 
-async function key(page, k, code, vk, modifiers = 0) {
-  await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers, ...(k.length === 1 && !modifiers ? { text: k } : {}) });
-  await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers });
-}
 
 /** 某个元素滚进视野、给出中心坐标（看不见 ⇒ null）。 */
 async function centerOf(page, sel) {
@@ -340,15 +336,15 @@ async function benchFilter(run) {
   const c0 = cpuMs(browser.pid);
   for (const ch of "tool-01") {
     const t = Date.now();
-    await key(page, ch, ch === "-" ? "Minus" : /\d/.test(ch) ? `Digit${ch}` : `Key${ch.toUpperCase()}`, ch.toUpperCase().charCodeAt(0));
+    await page.key(ch);
     await sleep(Math.max(0, 80 - (Date.now() - t)));
   }
   await page.eval("__perf.quiet(300, 5000)");
   const rowsLeft = await page.eval("document.querySelectorAll('.settings-page:not([hidden]) .ext-row:not(.ext-head)').length");
   // 一键清空（全选 ＋ 退格）：整张表回来
-  await key(page, "a", "KeyA", 65, 2);
+  await page.key("a", { ctrl: true });
   const t1 = await page.eval("performance.now()");
-  await key(page, "Backspace", "Backspace", 8);
+  await page.key("Backspace");
   await page.eval("__perf.quiet(300, 5000)");
   const cpu = cpuMs(browser.pid) - c0;
   const w = await page.eval(`__perf.since(${since})`);
@@ -376,7 +372,7 @@ async function benchReopen() {
   const { page } = await openWin("settings", "perf-settings");
   const rows = [{ cycle: 0, ...(await memAfterGc(page)) }];
   for (let c = 1; c <= cycles; c++) {
-    await key(page, "w", "KeyW", 87, 2);
+    await page.key("w", { ctrl: true });
     await sleep(150);
     await page.eval("window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'tauri://focus', payload: true })");
     await page.eval("__perf.quiet(300, 8000)");
@@ -410,13 +406,13 @@ async function benchSoak() {
   const t0 = Date.now();
   for (let c = 1; c <= cycles; c++) {
     for (let k = 0; k < n; k++) {
-      await key(page, "]", "BracketRight", 221);
+      await page.key("]");
       await sleep(120);
     }
     await page.eval("__perf.quiet(300, 8000)");
-    await key(page, "k", "KeyK", 75, 2);
+    await page.key("k", { ctrl: true });
     await sleep(300);
-    await key(page, "Escape", "Escape", 27);
+    await page.key("Escape");
     await page.eval("__perf.quiet(300, 8000)");
     rows.push({ cycle: c, t: Date.now() - t0, ...(await memAfterGc(page)) });
   }

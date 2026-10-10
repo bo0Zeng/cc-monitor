@@ -7,6 +7,7 @@
  * | 装到一台之前那张确认卡 / 装 | 本机后端（枢纽，向来源取、交被写那台写） | `ext-hub-preview` / `ext-hub-apply` |
  * | 从一台的某一处卸之前那张卡 / 卸 | 被卸的那一台 | `ext-uninstall-preview` / `ext-uninstall-apply` |
  * | 写 / 改 / 清一个条目的备注 | 本机后端（记进它的目录，随目录同步） | `ext-note-set` |
+ * | MCP 那几行每台的小标（需登录 · 连不上）与抽屉里那一行的字 | 那一台（判定与写字都在它的后端：`mcp-read`） | `mcp-read` |
  *
  * 判定全在后端：这里只按形状严格收（形状由后端的类型生成，`generated/Ext*.ts`；线上形状由金样
  * `tests/__fixtures__/ext-flow.golden.json` 钉），不比较、不推断。形状不对 ⇒ 抛「两端版本对不上」。
@@ -281,4 +282,78 @@ export function decodeExtNote(v: unknown): string | null {
 /** 写 / 改 / 清（空串）一个条目的备注（记进本机后端的目录，随目录同步到别的后端）。 */
 export function extNoteSet(kind: ExtKind, name: string, text: string): Promise<string | null> {
   return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-note-set", body, budget), { kind, name, text }, LIST_BUDGET_MS, decodeExtNote);
+}
+
+/** `mcp-read` 一条的「需登录」那几格（后端写好的字：抽屉那一句 · 悬停那一截 · ［去登录］复制的那条命令）。 */
+export interface McpLoginMark {
+  said: string;
+  tip: string;
+  copy: string;
+}
+
+/** `mcp-read` 一条的「连不上」那几格（后端从这台活会话里最近说它的那一条写好：抽屉那一句 · 悬停那一截 · 原话）。 */
+export interface McpFailedMark {
+  said: string;
+  tip: string;
+  detail: string | null;
+}
+
+/** `mcp-read` 的一条（形状由金样 `tests/__fixtures__/mcp-read.golden.json` 钉）。`mark` = 小标画哪一种（后端定）。 */
+export interface McpEntry {
+  scope: "user" | "local" | "project";
+  name: string;
+  server: unknown;
+  sourcePath: string;
+  status: "needsLogin" | "disabled" | "unknown";
+  loginIn: string[];
+  seenAt: number | null;
+  mark: "needsLogin" | "failed" | null;
+  login: McpLoginMark | null;
+  failed: McpFailedMark | null;
+}
+
+export interface McpRead {
+  entries: McpEntry[];
+  dirs: string[];
+  problems: string[];
+}
+
+const MCP_SCOPES = ["user", "local", "project"] as const;
+const MCP_STATUSES = ["needsLogin", "disabled", "unknown"] as const;
+const MCP_MARKS = ["needsLogin", "failed"] as const;
+const optNum = (v: unknown): number | null => {
+  if (v === null) return null;
+  if (typeof v !== "number") throw bad();
+  return v;
+};
+
+/** `mcp-read` 的成品 → {@link McpRead}：按恰好的键集合收，不解释。 */
+export function decodeMcpRead(v: unknown): McpRead {
+  const o = obj(v, ["entries", "dirs", "problems"]);
+  return {
+    entries: arr(o.entries, (x) => {
+      const e = obj(x, ["scope", "name", "server", "sourcePath", "status", "loginIn", "seenAt", "mark", "login", "failed"]);
+      const login = e.login === null ? null : obj(e.login, ["said", "tip", "copy"]);
+      const failed = e.failed === null ? null : obj(e.failed, ["said", "tip", "detail"]);
+      return {
+        scope: oneOf(e.scope, MCP_SCOPES),
+        name: str(e.name),
+        server: e.server,
+        sourcePath: str(e.sourcePath),
+        status: oneOf(e.status, MCP_STATUSES),
+        loginIn: arr(e.loginIn, str),
+        seenAt: optNum(e.seenAt),
+        mark: e.mark === null ? null : oneOf(e.mark, MCP_MARKS),
+        login: login && { said: str(login.said), tip: str(login.tip), copy: str(login.copy) },
+        failed: failed && { said: str(failed.said), tip: str(failed.tip), detail: optStr(failed.detail) },
+      };
+    }),
+    dirs: arr(o.dirs, str),
+    problems: arr(o.problems, str),
+  };
+}
+
+/** 问那台它的 MCP 列表（全局那一段；每条带后端写好的需登录 / 连不上那几格）。本机远端同一条命令。 */
+export function mcpRead(on: Origin): Promise<McpRead> {
+  return ask((body, budget) => chan.call(on, "mcp-read", body, budget), {}, LIST_BUDGET_MS, decodeMcpRead);
 }

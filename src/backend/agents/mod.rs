@@ -168,6 +168,9 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
+    /// 这一家不导 ⇒ `None`。
+    pub(crate) self_sid_env: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
@@ -279,6 +282,27 @@ pub(crate) fn wrapper_alias(kind: &str) -> Option<&'static str> {
     launch_face_among(REGISTRY, kind).and_then(|f| f.launcher_alias)
 }
 
+/// 各家导给子进程的「我是哪个会话」变量（注册序、去重；[`LaunchFace::self_sid_env`]）。`ccm` 按它认父；
+/// 后端自己起的子进程不该带着它们（常驻后端若是在某个会话里起的，环境里就有那个会话的编号）。
+pub(crate) fn self_sid_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for e in REGISTRY
+        .iter()
+        .filter_map(|a| a.launch.as_ref()?.self_sid_env)
+    {
+        if !v.contains(&e) {
+            v.push(e);
+        }
+    }
+    v
+}
+
+/// 把各家「我是哪个会话」的变量登记进起子进程原语的不往下传名单（`platform::child_env::also_internal`）。
+/// 入口（`main.rs`）在分流之前调一次：之后这个进程起的每个子进程都看不见它们。
+pub fn install_child_env_filter() {
+    crate::platform::child_env::also_internal(self_sid_envs());
+}
+
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
 pub(crate) fn launchable_kinds() -> Vec<&'static str> {
     REGISTRY
@@ -361,8 +385,9 @@ pub(crate) fn is_agent_process(command: &str) -> bool {
 /// 一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
 #[derive(Clone, Copy)]
 pub(crate) struct RecordFace {
-    /// 一行原文 ⇒ 渲染模型那一条（空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
-    pub(crate) parse: fn(&str) -> Result<Option<ParsedLine>, String>,
+    /// 一行原文（与它在文件里的起点字节偏移，没有自己身份的记录拿它合成 id，[`line_id`]）⇒ 通用记录那一形
+    /// （空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
+    pub(crate) parse: fn(&str, u64) -> Result<Option<Translated>, String>,
     /// 会话文件 ⇒ 它的 sid（这一家的文件命名）。
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这个路径是不是这一家的一份会话记录（按文件形态判：后缀 / 命名）。
@@ -371,6 +396,9 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
+    /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
+    pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
     pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
@@ -391,8 +419,12 @@ pub(crate) struct RecordFace {
     pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
     /// 子运行的记录住哪（由父记录路径推出）。`None` ＝ 这一家没有单独存放的子运行记录。
     pub(crate) children: Option<ChildFace>,
+    /// 一条记录里说到后台命令的那几笔（起了一条 · 它拿到了任务号 · 它收场了）。`None` ＝ 这一家没有后台命令。
+    pub(crate) background: Option<fn(&serde_json::Value) -> Vec<BgMark>>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
+    pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -419,6 +451,8 @@ pub(crate) struct LocalFace {
     pub(crate) background_of: fn(&serde_json::Value) -> bool,
     /// 进程状态文件 ⇒ 此刻在干什么；说不清 ⇒ `None`。
     pub(crate) activity_of: fn(&serde_json::Value) -> Option<SessionActivity>,
+    /// 进程状态文件 ⇒ 在等人时等的是什么框；没说 / 说不清 ⇒ `None`。
+    pub(crate) wait_of: fn(&serde_json::Value) -> Option<WaitOn>,
 }
 
 /// 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
@@ -432,6 +466,26 @@ pub enum SessionActivity {
     NeedsYou,
     /// 闲着，等下一句输入。
     Idle,
+    /// 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）。
+    BackgroundWork,
+}
+
+/// 一条会话在等人时，**等的是什么框**（与哪一家无关；适配层从那一家的词翻过来，翻不出 ⇒ 不给）。
+/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::facts_query::needs_of`），不在这里判。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WaitOn {
+    /// 批准框（工具调用 · 提问 · 计划都弹在这一类里，分哪种看那一步是什么工具）。
+    Permission,
+    /// 沙箱里的命令要联网，等放行。
+    Network,
+    /// 协作的另一个运行（worker）发来的批准请求。
+    Worker,
+    /// 它提了一个会话目标，等确认。
+    Goal,
+    /// 要填 / 要答（提问 · MCP 那一侧要的输入）。
+    Input,
+    /// 别的对话框开着（选项 · 提示 · 设置），等选。
+    Dialog,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）·
@@ -486,6 +540,34 @@ pub(crate) struct ChildLink {
     pub(crate) background: bool,
 }
 
+/// 后台命令的一笔账（适配层从那一家的记录翻过来，与哪一家无关）：
+/// 起了一条（工具调用 id · 那条命令原样）· 它当场拿到了任务号 · 它收场了（完成 / 失败 / 被叫停都算，只认是哪一条）。
+/// 哪几条此刻还在跑、句子怎么写在核心（`observe::facts_query`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BgMark {
+    Started {
+        call: String,
+        cmd: Option<String>,
+    },
+    Named {
+        call: String,
+        task: String,
+    },
+    Ended {
+        call: Option<String>,
+        task: Option<String>,
+    },
+}
+
+/// 一条已解析的记录里说到后台命令的那几笔（[`RecordFace::background`]，按记录树那一家问；那一家没有 ⇒ 空）。
+pub(crate) fn background_marks(v: &serde_json::Value) -> Vec<BgMark> {
+    record_tree_kind()
+        .and_then(record_face)
+        .and_then(|r| r.background)
+        .map(|f| f(v))
+        .unwrap_or_default()
+}
+
 /// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -505,7 +587,7 @@ pub struct ChildRunTag {
 pub struct ToolStep {
     /// 工具名（原样）。
     pub tool: String,
-    /// 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格）。认不出主参数 ⇒ 缺。
+    /// 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub arg: Option<String>,
@@ -902,6 +984,11 @@ pub(crate) fn run_faces(kind: &str) -> RunFaces {
 }
 
 /// `kind` 那一家的一条已解析记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
+/// `kind` 那一家这条记录会翻成哪一类通用记录（骨架行的 `t`）；那一家答不了 ⇒ `None`。
+pub(crate) fn record_class_of(kind: &str, v: &serde_json::Value) -> Option<record::RecordClass> {
+    record_face(kind).and_then(|r| r.class).and_then(|f| f(v))
+}
+
 pub(crate) fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark> {
     run_faces(kind).run_of(v)
 }
@@ -993,15 +1080,29 @@ pub(crate) fn is_session_record(p: &Path) -> bool {
         .is_some_and(|d| (d.is_record)(p))
 }
 
-/// 一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
+/// 一行原文翻成的那一形 —— 适配层给，通用层只搬（[`record::Record`] 的格通用层一个都不读，只按 [`QueueMark`] 配打字时刻）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedLine {
-    /// 渲染模型那一条（界面收到的就是它）。
-    pub(crate) message: serde_json::Value,
-    /// 进不进界面：`false` ＝ 照占号、不出成品（没有读者的元数据记录）。
-    pub(crate) displayable: bool,
+pub(crate) struct Translated {
+    /// 这一行在界面里是什么；缺 ＝ 不进界面（照占号、不出成品）。
+    pub(crate) record: Option<record::Record>,
     /// 这条记录自己的 `cwd`（带它的那一类才有）。
     pub(crate) cwd: Option<String>,
+    /// 排队那一对：打字那一刻（不出记录）· 被插进那一轮的那一条（它的 `at` 要换成打字时刻）。
+    pub(crate) queue: Option<QueueMark>,
+}
+
+/// 排队消息的两头。配对按 `text`（人打的那句原文）：同一句重打 ⇒ 取最近一次。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum QueueMark {
+    /// 人在一轮跑着时打了这一句（`at` ＝ 打字时刻）。
+    Typed { text: String, at: String },
+    /// 这一条 `queued` 记录插的是这一句。
+    Taken { text: String },
+}
+
+/// 一行在文件里的起点字节偏移 ⇒ 没有自己身份的记录用的那个 id（会话内唯一、各条读路给出的都一样）。
+pub(crate) fn line_id(start: u64) -> String {
+    format!("@{start}")
 }
 
 /// 注册表里 `kind` 那一家。认不出 ⇒ `None`。
@@ -1118,6 +1219,11 @@ pub(crate) fn pidfile_background(v: &serde_json::Value) -> bool {
 /// 后端盯着的那一家的进程状态文件 `v` 说此刻在干什么（[`LocalFace::activity_of`]）。没有那一家 / 说不清 ⇒ `None`。
 pub(crate) fn pidfile_activity(v: &serde_json::Value) -> Option<SessionActivity> {
     tree_local_face().and_then(|f| (f.activity_of)(v))
+}
+
+/// 后端盯着的那一家的进程状态文件 `v` 说在等什么框（[`LocalFace::wait_of`]）。没有那一家 / 没说 / 说不清 ⇒ `None`。
+pub(crate) fn pidfile_wait(v: &serde_json::Value) -> Option<WaitOn> {
+    tree_local_face().and_then(|f| (f.wait_of)(v))
 }
 
 /// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。
@@ -1266,8 +1372,6 @@ pub(crate) struct AccountsFace {
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
     pub(crate) email_in: fn(&Path) -> Option<String>,
-    /// 后端看会话用的那几项（会话起停 · 会话记录）：常驻后端只看共享库里的这一份 ⇒ 各号必须链回去，不许隔离。
-    pub(crate) watched: &'static [&'static str],
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -1327,10 +1431,50 @@ pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
     REGISTRY.iter().filter_map(|a| a.footprint)
 }
 
-/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
+/// 一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）＋ 判状态要看的那几个家。
 #[derive(Clone, Copy)]
 pub(crate) struct McpFace {
-    pub(crate) read: fn(Option<&Path>) -> McpRead,
+    pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
+    /// 在那一家的会话里登录 MCP 服务器要敲的那条命令（扩展页「去登录」· 待办那一件复制它）。
+    pub(crate) login_command: &'static str,
+}
+
+/// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
+/// 账号库是通用层的知识，由通用层收齐交给那一家；那一家只认自己家目录里的文件。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct McpLook {
+    pub homes: Vec<(Option<String>, PathBuf)>,
+    pub now_ms: u64,
+}
+
+/// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它；线上名即 serde 名，闭集）。
+/// 配置层（`mcp-read`）只说说得准的：停用（配置里写着）· 要登录（那一家最近一次连它时记下的、还在有效期内）· 其余 `Unknown`；
+/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 连不上 · 还在连。两处都不说「连上了」。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum McpStatus {
+    NeedsLogin,
+    Failed,
+    Pending,
+    Disabled,
+    #[default]
+    Unknown,
+}
+
+/// 一条记录里那一家说的各 MCP 服务器此刻的样子：三张表各一格；这一条没写的那一格 ⇒ `None`（沿用上一条说的）。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct McpSaid {
+    pub pending: Option<Vec<String>>,
+    pub needs_login: Option<Vec<String>>,
+    /// 连不上的：名字 · 那一家写的原话（没写 ⇒ `None`）。
+    pub failed: Option<Vec<(String, Option<String>)>>,
+}
+
+/// `kind` 那一家在这条记录里说的 MCP 样子。那一家不说 / 不是这种记录 ⇒ `None`。
+pub(crate) fn mcp_said_of(kind: &str, v: &serde_json::Value) -> Option<McpSaid> {
+    record_face(kind)
+        .and_then(|r| r.mcp_said)
+        .and_then(|f| f(v))
 }
 
 /// 一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
@@ -1348,6 +1492,11 @@ pub(crate) struct McpEntry {
     pub name: String,
     pub server: serde_json::Value,
     pub source: String,
+    pub status: McpStatus,
+    /// 要登录：在哪几个号里（账号库里的名字，排好序）；没设账号的那一份不出名字。别的状态恒空。
+    pub login_in: Vec<String>,
+    /// 要登录：最近一次看到是何时（epoch ms）；别的状态 `None`。
+    pub seen_ms: Option<u64>,
 }
 
 /// `kind` 那一家的 MCP 读面，读一遍。`None` = 那一家不认得 MCP。
@@ -1355,15 +1504,28 @@ pub(crate) fn mcp_read_among(
     registry: &[Adapter],
     kind: &str,
     project_dir: Option<&Path>,
+    look: &McpLook,
 ) -> Option<McpRead> {
     adapter_among(registry, kind)
         .and_then(|a| a.mcp)
-        .map(|f| (f.read)(project_dir))
+        .map(|f| (f.read)(project_dir, look))
+}
+
+/// `kind` 那一家登录 MCP 服务器的那条命令（[`McpFace::login_command`]）。那一家不认得 MCP ⇒ `None`。
+pub(crate) fn mcp_login_command(kind: &str) -> Option<&'static str> {
+    adapter_among(REGISTRY, kind)
+        .and_then(|a| a.mcp)
+        .map(|f| f.login_command)
+}
+
+/// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。
+pub(crate) fn home_of_kind(kind: &str) -> Option<PathBuf> {
+    adapter_among(REGISTRY, kind).and_then(|a| (a.home)())
 }
 
 /// [`mcp_read_among`] 对本机注册表 —— 帧命令 `mcp-read` 的读法入口。
-pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>) -> Option<McpRead> {
-    mcp_read_among(REGISTRY, kind, project_dir)
+pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>, look: &McpLook) -> Option<McpRead> {
+    mcp_read_among(REGISTRY, kind, project_dir, look)
 }
 
 /// 一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起

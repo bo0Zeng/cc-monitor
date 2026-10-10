@@ -24,8 +24,11 @@ import {
   extNoteSet,
   extUninstallApply,
   extUninstallPreview,
+  decodeMcpRead,
+  mcpRead,
 } from "../../../src/frontend/ui/ext-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -87,7 +90,7 @@ describe("装只问本机（枢纽）；内层命令界面一条都不直问", (
   it("ext-reads.ts：枢纽那两条的第一参恰是 LOCAL_ORIGIN，内层命令零出现", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/ext-reads.ts"), "utf8");
     const calls = [...src.matchAll(/chan\.call\(\s*([^,]+),\s*"([^"]+)"/g)].map((m) => [m[1].trim(), m[2]]);
-    expect(calls.map(([, op]) => op).sort()).toEqual(["ext-hub-apply", "ext-hub-preview", "ext-list", "ext-note-set", "ext-uninstall-apply", "ext-uninstall-preview"]);
+    expect(calls.map(([, op]) => op).sort()).toEqual(["ext-hub-apply", "ext-hub-preview", "ext-list", "ext-note-set", "ext-uninstall-apply", "ext-uninstall-preview", "mcp-read"]);
     expect(calls.filter(([, op]) => op.startsWith("ext-hub-") || op === "ext-list" || op === "ext-note-set").every(([o]) => o === "LOCAL_ORIGIN")).toBe(true);
     const inner = ["mcp-sync-source", "mcp-sync-preview", "mcp-sync-apply", "skill-read", "skill-install-plan", "skill-install-apply", "cc-bus-install", "cc-bus-install-state"];
     expect(inner.filter((op) => src.includes(`"${op}"`))).toEqual([]);
@@ -145,5 +148,34 @@ describe("请求：问对那台、说对那条", () => {
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "" }],
     ]);
   });
+});
 
+// 要求：用户 10-09 认的 MCP 状态稿甲 1 / 甲 2 —— 小标与抽屉那一行的字都是那台后端 `mcp-read` 写好的，界面按形状收、照抄。
+describe("mcp-read：每台问它自己的后端，写好的字照收", () => {
+  const MCP = golden("mcp-read");
+  it("金样两份（不带字的 · 带需登录 / 连不上那几格的）都读得懂；字原样带出", () => {
+    expect(decodeMcpRead(MCP.reply).entries.map((e) => [e.name, e.mark])).toEqual([
+      ["u1", null],
+      ["l1", null],
+      ["p1", null],
+    ]);
+    const m = decodeMcpRead(MCP.marked).entries;
+    expect(m.map((e) => e.mark)).toEqual(["needsLogin", "failed", "failed", null, null]);
+    expect(m[0].login).toEqual({ said: copyText("beMcp.mark.login", { accounts: "acct-a、acct-b", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a、acct-b" }), copy: "/mcp" });
+    expect(m[1].failed).toEqual({ said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err-1" });
+  });
+  it("严格收：多一格 / 小标不是认得的那两种 ⇒ 收不下", () => {
+    const one = (MCP.marked as { entries: Record<string, unknown>[] }).entries[1];
+    const wrap = (e: unknown) => ({ entries: [e], dirs: [], problems: [] });
+    expect(decodeMcpRead(wrap(one)).entries).toHaveLength(1);
+    expect(() => decodeMcpRead(wrap({ ...one, extra: 1 }))).toThrow();
+    expect(() => decodeMcpRead(wrap({ ...one, mark: "connected" }))).toThrow();
+    expect(() => decodeMcpRead(wrap({ ...one, failed: { said: "x", tip: "y" } }))).toThrow();
+  });
+  it("问的是那一台、不带项目目录", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply(MCP.marked));
+    await mcpRead("laptop");
+    const a = invokeMock.mock.calls[0][1] as ChanCallArgs;
+    expect([a.origin, a.op, chanArgsJson(a)]).toEqual(["laptop", "mcp-read", {}]);
+  });
 });

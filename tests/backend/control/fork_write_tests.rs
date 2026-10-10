@@ -329,3 +329,33 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// `--fork-session` 失败那一份与帧面失败应答同一种信封（`stream::detail::Failed`：码 · 那一句 · 复制详情）：
+/// 详情的「命令」那一项是这条 CLI 的名字，码原样。用法错（缺 uuid）与找不到源会话两支都走它。
+#[test]
+fn the_cli_failure_is_the_one_failed_envelope() {
+    let root = tmp("cli-failed");
+    let f = cli(&root, &sargs(&["--fork-session", "nope"])).unwrap_err();
+    assert_eq!(f.code, "fork_failed");
+    assert!(f.message.contains("usage"), "got: {}", f.message);
+    let v = serde_json::to_value(&f).unwrap();
+    assert_eq!(
+        v.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
+        ["code", "detail", "message"],
+        "信封三格（没有按码定形的 data）"
+    );
+    assert!(
+        f.detail.contains("fork-session"),
+        "详情里要有命令名：{}",
+        f.detail
+    );
+    assert!(
+        f.detail.contains("fork_failed"),
+        "详情里要有码：{}",
+        f.detail
+    );
+    let f = cli(&root, &sargs(&["--fork-session", "nope", "u1"])).unwrap_err();
+    assert_eq!(f.code, "fork_failed");
+    assert!(f.message.contains("not found"), "got: {}", f.message);
+    std::fs::remove_dir_all(&root).ok();
+}

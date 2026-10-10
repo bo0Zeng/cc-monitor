@@ -733,3 +733,136 @@ fn stale_follow_sessions_without_history_are_dropped_when_a_new_one_shows_up() {
     assert!(b.saw("old", "claude-code", "a", t0 + 9 * DAY));
     assert_eq!(b.sessions["old"].source, Source::Follow);
 }
+
+fn night_rule(b: &mut Book) {
+    b.rules.insert(
+        "r_night000".into(),
+        Rule {
+            name: "夜间".into(),
+            rotation: Rotation {
+                preempt: true,
+                ..Rotation::default()
+            },
+            rev: 1,
+            updated_at: 0,
+        },
+    );
+}
+
+/// ★ 跟随父会话：新会话第一次被看见、血缘里有同一家的父 ⇒ 来源 ＝ 跟随父会话，生效那份 ＝ 父此刻那份（父换来源子跟着变）；
+/// 规则「在用」顺着父解析。
+#[test]
+fn a_new_child_follows_its_parent_and_moves_when_the_parent_moves() {
+    let mut b = Book::default();
+    night_rule(&mut b);
+    b.saw("p-1", "claude-code", "a", 1);
+    b.sessions.get_mut("p-1").expect("p").source = Source::Rule("r_night000".into());
+    assert!(b.saw_child("k-1", "claude-code", "a", 2, Some("p-1")));
+    let k = b.sessions["k-1"].clone();
+    assert_eq!(k.source, Source::Parent("p-1".into()));
+    assert_eq!(b.rule_of(&k), Some("r_night000"), "规则顺着父解析");
+    assert!(b.rotation_of(&k).preempt, "生效那份不是父的");
+    let own = Rotation {
+        enabled: vec!["z".into()],
+        ..Rotation::default()
+    };
+    let p = b.sessions.get_mut("p-1").expect("p");
+    p.source = Source::Custom;
+    p.custom = Some(own.clone());
+    assert_eq!(b.rotation_of(&k), own, "父换成本会话那份，子没跟着变");
+    assert_eq!(b.rule_of(&k), None);
+    assert!(
+        !b.saw_child("k-1", "claude-code", "a", 3, Some("p-2")),
+        "已记下的会话又按父改了来源"
+    );
+}
+
+/// ★ 不同家的父不继承（Claude 起的 Codex 照旧跟随默认）· 父不在账本里 ⇒ 跟随默认 · 没有父 ⇒ 跟随默认。
+#[test]
+fn a_parent_of_another_family_or_unseen_is_not_followed() {
+    let mut b = Book::default();
+    b.saw("p-1", "claude-code", "a", 1);
+    b.saw_child("k-x", "codex", "a", 2, Some("p-1"));
+    assert_eq!(b.sessions["k-x"].source, Source::Follow, "不同家的继承了");
+    b.saw_child("k-u", "claude-code", "a", 2, Some("p-unseen"));
+    assert_eq!(
+        b.sessions["k-u"].source,
+        Source::Follow,
+        "父不在账本里也继承了"
+    );
+    b.saw_child("k-n", "claude-code", "a", 2, None);
+    assert_eq!(b.sessions["k-n"].source, Source::Follow);
+}
+
+/// ★ 追父追不到（父后来不在账本 · 绕回来）⇒ 按默认；追得到的最多追 [`PARENT_DEPTH`] 层。
+#[test]
+fn a_parent_chain_that_breaks_or_loops_falls_back_to_the_default() {
+    let mut b = Book::default();
+    night_rule(&mut b);
+    for sid in ["a-1", "a-2", "gone"] {
+        b.saw(sid, "claude-code", "a", 1);
+    }
+    b.sessions.get_mut("a-1").expect("s").source = Source::Parent("a-2".into());
+    b.sessions.get_mut("a-2").expect("s").source = Source::Parent("a-1".into());
+    b.sessions.get_mut("gone").expect("s").source = Source::Parent("nobody".into());
+    for sid in ["a-1", "gone"] {
+        let s = b.sessions[sid].clone();
+        assert_eq!(
+            b.rule_of(&s),
+            Some(b.default_rule.as_str()),
+            "{sid} 没落回默认"
+        );
+        assert_eq!(b.rotation_of(&s), b.default_rotation());
+    }
+    // 一条正好 PARENT_DEPTH 层的链追得到头。
+    b.saw("c-0", "claude-code", "a", 1);
+    b.sessions.get_mut("c-0").expect("s").source = Source::Rule("r_night000".into());
+    for i in 1..=PARENT_DEPTH {
+        let sid = format!("c-{i}");
+        b.saw(&sid, "claude-code", "a", 1);
+        b.sessions.get_mut(&sid).expect("s").source = Source::Parent(format!("c-{}", i - 1));
+    }
+    let tail = b.sessions[&format!("c-{PARENT_DEPTH}")].clone();
+    assert_eq!(
+        b.rule_of(&tail),
+        Some("r_night000"),
+        "{PARENT_DEPTH} 层的链没追到头"
+    );
+}
+
+/// ★ 跟随父会话 · 没换过号 · 没有自己那份的旧会话与跟随默认的一样清；线上形 `{"parent": sid}`。
+#[test]
+fn a_stale_child_following_its_parent_is_dropped_and_the_wire_shape_is_parent() {
+    let mut b = Book::default();
+    b.saw("p-1", "claude-code", "a", 0);
+    b.saw_child("k-1", "claude-code", "a", 0, Some("p-1"));
+    assert_eq!(
+        serde_json::to_value(&b.sessions["k-1"].source).expect("json"),
+        json!({"parent": "p-1"})
+    );
+    b.saw("late", "claude-code", "a", DROP_AFTER + 1);
+    assert!(!b.sessions.contains_key("k-1"), "跟随父会话的旧会话没清");
+}
+
+/// ★ 父那一条变了 ⇒ 跟随它的子会话也响（它此刻生效的那份变了）。
+#[test]
+fn a_parent_moving_rings_its_children() {
+    let path = sandbox("ring-parent");
+    let st = RotationStore::at(Some(path.clone()));
+    st.change(|b| {
+        night_rule(b);
+        b.saw("rp-p", "claude-code", "a", 1);
+        b.saw_child("rp-k", "claude-code", "a", 1, Some("rp-p"));
+        b.saw("rp-other", "claude-code", "a", 1);
+    })
+    .expect("write");
+    let mut rx = changes().subscribe();
+    st.change(|b| {
+        b.sessions.get_mut("rp-p").expect("p").source = Source::Rule("r_night000".into())
+    })
+    .expect("write");
+    let mut got = drain(&mut rx, "rp-");
+    got.sort();
+    assert_eq!(got, vec!["rp-k".to_string(), "rp-p".to_string()]);
+    let _ = std::fs::remove_dir_all(path.parent().expect("dir"));
+}

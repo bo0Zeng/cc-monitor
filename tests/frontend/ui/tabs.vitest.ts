@@ -11,21 +11,12 @@ import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 import { clipboardWrites } from "../../test-support/clipboard-fake";
 
-// ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
-//
-// 这个文件此前把 `BranchFolder` 整个 stub 成空壳（每个方法 no-op），于是全仓**没有任何东西**
-// 能证明 live 模式下每来一行调了几次 —— 而复核已经指出这条性质「行为上与不改完全等价
-// （同样的行、同样的结果）」，**慢不会让任何测试变红**。
-// ⇒ 不先建量具就动性能，改完无从证明改对了。计数器挂在既有 stub 上，成本近零。
-//
-// ⚠⚠ **但本轮实测：光有计数器还建不起判据** —— 见 `audit-0805/features/F15-*.md §2`。
-//   `routeMetaAndBranch` 在本文件里被 mock 成**不调 `sink.onBranchRecord`**（`:77-84`），
-//   于是 `recordAdded` 在这套 mock 下**永远是 0**。
-//   ★ **让 tabs.ts 可测的那批 mock，恰好把「调了几次」这件事也 mock 没了。**
-//   计数器先留着（零成本、零行为影响），判据要等那批 mock 被改成「保真到调用次数」那一层。
+// ★ audit-0805 F15：**「每行调了几次」要可测** —— 折叠层的 stub 带计数器（`cardsAdded` · `rebuildNow` · 收到的主线外清单），
+// `renderContentRecord` 的 mock 真往 timeline 里塞（否则 `inserted` 恒假，计数恒零）。
 const f15 = vi.hoisted(() => ({
-  recordAdded: 0,
+  cardsAdded: 0,
   rebuildNow: 0,
+  setOff: [] as string[][],
   /**
    * ★ `renderContentRecord` 的**保真默认实现**（往 timeline 里塞一条）。
    *
@@ -102,11 +93,14 @@ vi.mock("../../../src/frontend/ui/record-timeline", () => ({
 vi.mock("../../../src/frontend/ui/branch-fold", () => ({
   BranchFolder: class {
     constructor(_el: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
+    offCount = 0;
+    setOff(off: ReadonlySet<string>): void {
+      f15.setOff.push([...off]);
+      this.offCount = off.size;
+    }
     // F15：计数，不做事 —— 量的是「被调了几次」，不是它做了什么。
-    recordAdded(): void {
-      f15.recordAdded++;
+    cardsAdded(): void {
+      f15.cardsAdded++;
     }
     unwrapAll(): void {}
     rebuildNow(): void {
@@ -115,39 +109,10 @@ vi.mock("../../../src/frontend/ui/branch-fold", () => ({
     dispose(): void {}
   },
 }));
-// F40a:tabs.ts 消费两段式入口(routeMetaAndBranch 判 meta / renderContentRecord 建卡)。
-// mock 按 message.type 粗判 consumed/content,与真实现语义对齐(防未来 meta 用例静默走错路)
+// F40a:tabs.ts 消费两段式入口(routeMeta 判 meta / renderContentRecord 建卡)。
+// mock 按 record.t 粗判 consumed/content,与真实现语义对齐(防未来 meta 用例静默走错路)
 vi.mock("../../../src/frontend/ui/render-stream-record", () => ({
-  // ★ F15 第 1 步：mock 必须**真调 `sink.onBranchRecord`**。
-  //
-  // 此前它只返回 `"consumed"`/`"content"`、一次都不碰 sink ⇒ `tab.branchFolder.recordAdded`
-  // （`tabs.ts:810` 挂在 sink 上）在本文件里**永远是 0 次** ⇒ 「live 每来一行喂一次
-  // BranchFolder」这条性质**无法被任何判据看见**。
-  // 这里镜像真实现的**分支判定**（`branching.ts:282-291`：类型在集合内 + 有 uuid + 有 timestamp），
-  // 不复刻它构造出的 `BranchRecord` 内容 —— 本文件量的是**次数**，不是那条记录长什么样。
-  routeMetaAndBranch: vi.fn(
-    (
-      payload: {
-        message?: { type?: string; uuid?: string | null; timestamp?: string | null };
-      },
-      sink?: { onBranchRecord?: (rec: unknown) => void },
-    ) => {
-      const m = payload.message;
-      const t = m?.type ?? "";
-      if (["ai-title", "custom-title", "queue-operation"].includes(t)) return "consumed";
-      const isBranchKind = [
-        "user",
-        "assistant",
-        "attachment",
-        "system",
-        "cc-monitor-unrecognized",
-      ].includes(t);
-      if (isBranchKind && m?.uuid && m?.timestamp) {
-        sink?.onBranchRecord?.({ uuid: m.uuid, parentUuid: null, timestamp: m.timestamp });
-      }
-      return "content";
-    },
-  ),
+  routeMeta: vi.fn((payload: { record?: { t?: string } }) => (payload.record?.t === "title" ? "consumed" : "content")),
   // ★ F15 第 3 步：mock 必须**真往 timeline 里塞**。
   //
   // 上面把 `RecordTimeline.size` 改成真会涨之后还不够 —— 真正调 `timeline.insert` 的是
@@ -202,7 +167,7 @@ import {
   withSessionReads,
   recordReadCalls,
 } from "../../test-support/chan-fake";
-import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
+import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
 import { failToast, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
@@ -256,16 +221,23 @@ import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-act
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
-const usageOf = (promptTokens: number, model: string | null) => ({
+const usageOf = (promptTokens: number, model: string | null): UsageFact => ({
   promptTokens,
   model,
   peakPromptTokens: promptTokens,
   limit: 1_000_000,
-  limitFrom: "assumed" as const,
+  limitFrom: "assumed",
+  percent: null,
+  contextText: `核心·${promptTokens}`,
+  contextTone: "plain",
+  promptTokensText: `核心·${promptTokens}`,
+  limitText: "核心·1M",
+  limitFromText: null,
 });
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
@@ -370,7 +342,7 @@ describe("TabManager 生命周期", () => {
         cwd: "/a/proj/sub",
         path: `/p/${sid}.jsonl`,
         seq,
-        message: { type: "assistant", uuid: `${sid}-${seq}` } as never,
+        record: { t: "reply", id: `${sid}-${seq}` } as never,
       } as never);
     tm.createSkeletonTab("proj-sid", "/a/proj", LOCAL_ORIGIN);
     for (let seq = 40; seq < 45; seq++) tail("proj-sid", seq);
@@ -436,7 +408,7 @@ describe("TabManager 生命周期", () => {
       cwd: "/p",
       path: "/p/dup-sid.jsonl",
       seq,
-      message: { type: "assistant", uuid } as never,
+      record: { t: "reply", id: uuid } as never,
     });
     tm.onLine(mkPayload(7, "u-1") as never);
     const after1 = spy.mock.calls.length;
@@ -481,7 +453,7 @@ describe("TabManager 生命周期", () => {
 
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {
     const tab = tm.ensureTab("s3", "/home", "p", LOCAL_ORIGIN);
-    tab.activity = { doing: "working", waitingFor: null };
+    tab.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };
     tm.archiveTab("s3");
     expect(tab.state).toEqual(ENDED);
     expect(tab.activity).toBeNull();
@@ -492,15 +464,15 @@ describe("TabManager 生命周期", () => {
     // 对立类（若哪天把两个 classList.toggle 之一改成条件执行，本测会红）。
     tm.ensureTab("lt", "/x", "p", LOCAL_ORIGIN);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
-    tm.updateActivity("lt", "needs_you", "permission prompt");
+    tm.updateActivity("lt", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
     expect(btn().classList.contains("act-waiting")).toBe(true);
     expect(btn().classList.contains("act-idle")).toBe(false);
     // waiting → idle：陈旧 act-waiting 必须清、换 act-idle
-    tm.updateActivity("lt", "idle", null);
+    tm.updateActivity("lt", "idle", null, copyText("beSession.activity.idle"), "plain");
     expect(btn().classList.contains("act-waiting")).toBe(false);
     expect(btn().classList.contains("act-idle")).toBe(true);
     // idle → busy：两类都清（默认绿点）
-    tm.updateActivity("lt", "working", null);
+    tm.updateActivity("lt", "working", null, copyText("beSession.activity.working"), "now");
     expect(btn().classList.contains("act-idle")).toBe(false);
     expect(btn().classList.contains("act-waiting")).toBe(false);
   });
@@ -522,7 +494,7 @@ describe("TabManager 生命周期", () => {
     // ⚠ 只断言**可观察行为**，不戳内部 `pendingActivity`：那个字段当年不在探针接口（今天的 `TMHomes`）上，
     // 戳它会让本文件 `tsc --noEmit` 红（第一版就是这么写的，当场被基线 tsc 逮住）。
     // 而且断行为本来就更强 —— 它不关心暂存用什么数据结构实现。
-    tm.updateActivity("early-light", "idle", null);
+    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
     // 远端骨架 Tab 走 createSkeletonTab → ensureTab（顺序不能反：它必须落实暂存的灯）
     tm.createSkeletonTab("early-light", "/proj", "devbox", null, null);
     const btn = document.querySelector<HTMLElement>(".tab")!;
@@ -532,7 +504,7 @@ describe("TabManager 生命周期", () => {
         "`pendingActivity` 没被 `ensureTab` 落实，而默认值是绿，所以这个洞不会自己暴露。",
     ).toBe(true);
     // 落实之后再来一次同值信号不该出问题（幂等）。
-    tm.updateActivity("early-light", "idle", null);
+    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
     expect(btn.classList.contains("act-idle")).toBe(true);
   });
 
@@ -580,8 +552,8 @@ describe("TabManager 生命周期", () => {
       expect(c.firstElementChild?.textContent).toBe(fullTitle(t));
       return c.querySelector(".tab-hover-state")?.textContent;
     };
-    tm.updateActivity("tt1", "needs_you", "permission prompt");
-    expect(said(), "活着、在等：种类还没到 ⇒ 只说需手动（不猜，也不印英文原样）").toBe(copyText("tabBar.needsKind.unknown"));
+    tm.updateActivity("tt1", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
+    expect(said(), "活着、在等：种类还没到 ⇒ 只说需手动（不猜，也不印英文原样）").toBe(copyText("beSession.activity.needsYou"));
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
     expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
     tm.archiveTab("tt1");
@@ -622,12 +594,12 @@ describe("TabManager 生命周期", () => {
 
   it("F03.2 收到活动信号回到活（claude 复活）——activity 值不变也回且重绘", () => {
     const tab = tm.ensureTab("gi2", "/x", "p", "pi");
-    tm.updateActivity("gi2", "working", null); // 先有一次 busy
+    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now"); // 先有一次 busy
     tm.markTmuxIdle("gi2");
     expect(tab.state).toEqual(RECONNECTABLE);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     // 同值 busy 再来一次（activity 无变化）——仍须回到活、类须去掉（早退前转移的守护）
-    tm.updateActivity("gi2", "working", null);
+    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now");
     expect(tab.state).toEqual(LIVE);
     expect(btn().classList.contains("reconnectable")).toBe(false);
   });
@@ -745,7 +717,7 @@ describe("TabManager 生命周期", () => {
       cwd: "/p",
       path: `/p/${sid}.jsonl`,
       seq,
-      message: { type: "assistant", uuid } as never,
+      record: { t: "reply", id: uuid } as never,
     }) as never;
 
   async function spyRender() {
@@ -1236,7 +1208,7 @@ describe("TabManager 生命周期", () => {
       cwd: "/p",
       path: "/p/meta-bg.jsonl",
       seq: 60,
-      message: { type: "ai-title", aiTitle: "标题" } as never,
+      record: { t: "title", text: "标题" } as never,
     } as never);
     const t = home(tm).store.tabs.get("meta-bg")!;
     expect(t.window.pendingCount).toBe(0); // consumed,不收纳
@@ -1254,11 +1226,11 @@ describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终�
     const tm = new TabManager(barEl, streamRootEl, (s) => seen.push(s.total));
     tm.ensureTab("st1", "/home/u", "p", LOCAL_ORIGIN);
     tm.ensureTab("st2", "/home/u", "p", LOCAL_ORIGIN);
-    tm.updateActivity("st1", "working", null);
+    tm.updateActivity("st1", "working", null, copyText("beSession.activity.working"), "now");
     const before = seen.length;
-    tm.updateActivity("st1", "idle", null);
+    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain");
     expect(seen.length, "运行中 → 空闲，订阅者没收到（会话头停在「运行中」）").toBe(before + 1);
-    tm.updateActivity("st1", "idle", null);
+    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain");
     expect(seen.length, "同一状态再来不该通知").toBe(before + 1);
   });
 });
@@ -2136,7 +2108,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   it("运行中 subagent 排在前，同档保插入序；model / 改过的文件透传", () => {
     const tm = makeTM();
     const tab = tm.ensureTab("s1", "/proj", "/p/s1.jsonl", LOCAL_ORIGIN);
-    tab.latestModel = "claude-opus-4-8";
+    tab.usage = usageOf(1, "claude-opus-4-8");
     tab.touchedFiles.add("/proj/a.ts");
     tab.touchedFiles.add("/proj/b.ts");
     // 运行表（后端的成品）序：done, running, stopped, running —— 期望 running 提前、组内保表序
@@ -2562,10 +2534,10 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       tab.needs = needs;
       (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000 });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs: 125_000, waitedText: formatDuration(125_000), receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
-    expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe("2m05s");
+    expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(formatDuration(125_000));
     paint([call("b1", "running"), call("b2", "awaiting")], approve("b2"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "awaiting"]);
     paint([call("b2", "unclear", "noWriter")], null);
@@ -2705,7 +2677,7 @@ describe("F15 每行代价的现状基线", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     tm = makeTM();
-    f15.recordAdded = 0;
+    f15.cardsAdded = 0;
     f15.rebuildNow = 0;
   });
   afterEach(() => {
@@ -2717,25 +2689,24 @@ describe("F15 每行代价的现状基线", () => {
     cwd: "/w",
     path: `/w/${sid}.jsonl`,
     seq,
-    message: { type: "assistant", uuid: `u-${seq}`, timestamp: "2026-08-06T00:00:00Z" },
+    record: { t: "reply", id: `u-${seq}`, timestamp: "2026-08-06T00:00:00Z" },
   });
 
-  it("★ live 每来一行，BranchFolder 就被喂一次", () => {
+  it("★ live 每来一行建了卡，折叠层就听一次「有新卡」（帧末合批在它里面）", () => {
     tm.ensureTab("s1", "/w", "/w/s1.jsonl", LOCAL_ORIGIN);
     for (let i = 1; i <= 5; i++) tm.onLine(line("s1", i) as never);
-    // 抽取器自检：三处 mock 只要有一处退回空壳，这里就是 0 —— 那不是「合批做好了」。
     expect(
-      f15.recordAdded,
-      "`recordAdded` 一次都没被调到 —— 不是合批生效了，是 `routeMetaAndBranch` 的 mock " +
-        "又不调 `sink.onBranchRecord` 了（F15 §2 那个坑）。先修量具再读这个数。",
-    ).toBeGreaterThan(0);
-    expect(
-      f15.recordAdded,
-      "喂 5 行、BranchFolder 被调的次数变了（该是 5）。⚠ 这个数**不因合批而降**：" +
-        "F15 的合批做在 `BranchFolder` **内部**（帧末只算一次主线），而本文件把 " +
-        "`BranchFolder` 整个 stub 掉了，量到的是「被喂了几次」。" +
-        "真正省下的那次 O(N) 由 `branch-fold-batching.vitest.ts` 钉。",
+      f15.cardsAdded,
+      "喂 5 行、折叠层听到的次数变了（该是 5）。0 ⇒ 多半是 `renderContentRecord` 的 mock 又退回空壳（`inserted` 恒假）。",
     ).toBe(5);
+  });
+
+  it("★ 会话流的 branch 格 ⇒ 那个 tab 的折叠层按整份清单重折；没有那个 tab ⇒ 不收", () => {
+    tm.ensureTab("s1", "/w", "/w/s1.jsonl", LOCAL_ORIGIN);
+    f15.setOff.length = 0;
+    tm.onSessionBranch({ session_id: "s1", off: ["u-2", "u-3"] });
+    tm.onSessionBranch({ session_id: "nope", off: ["x"] });
+    expect(f15.setOff).toEqual([["u-2", "u-3"]]);
   });
 
   it("★ 后台 tab 每来一行，tab bar 就整刷一次", () => {
@@ -4064,7 +4035,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       cwd: "/p",
       path: `/p/${sid}.jsonl`,
       seq,
-      message: { type: "assistant", uuid } as never,
+      record: { t: "reply", id: uuid } as never,
     }) as never;
   /** 索引：第 i 行 uuid = `u{i + shift}`（shift ≠ 0 模拟「seq 空间对不上」） */
   const idx = (n: number, shift = 0) => ({
@@ -4074,7 +4045,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     rows: Array.from({ length: n }, (_, i) => ({
       o: i * 10,
       n: 10,
-      t: "assistant",
+      t: "reply",
       u: `u${i + shift}`,
       ch: 100,
       pl: 1,
@@ -4781,7 +4752,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       path: `/p/${sid}.jsonl`,
       seq,
       ...(origin ? { origin } : {}),
-      message: { type: "assistant", uuid: `${sid}-${seq}` } as never,
+      record: { t: "reply", id: `${sid}-${seq}` } as never,
     }) as never;
   // ⚠ 等的是 rAF（`fillAbove` 补完一批靠 `requestAnimationFrame` 自链复检，jsdom 里约 16ms 一拍）——
   //   只让几个 0ms 宏任务过去等不到它：上一条的自链会漏进下一条的计数（首跑现打过一次）。
@@ -5041,7 +5012,7 @@ describe("〔CF2〕前端账本的上界", () => {
     w.pinFloor(100_000);
     w.markFetchedBelow(0); // 先当作「到顶了」
     expect(w.belowState).toEqual({ kind: "none" });
-    const mk = (seq: number) => ({ session_id: "s", cwd: null, path: "/p/s.jsonl", seq, message: {} }) as never;
+    const mk = (seq: number) => ({ session_id: "s", cwd: null, path: "/p/s.jsonl", seq, record: {} }) as never;
     // 尾部优先那种到达序：高的一段先到，低的一段后到
     for (let s = PENDING_CAP; s < PENDING_CAP * 2; s++) w.defer(mk(s));
     expect(w.pendingCount, "刚好 CAP 条不修").toBe(PENDING_CAP);
@@ -5164,6 +5135,9 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     permissionMode: null,
     tokens: null,
     cost: null,
+    bgTasks: [],
+    background: null,
+    mcp: [],
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
@@ -5173,7 +5147,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
       path: `/home/u/proj/${sid}.jsonl`,
       seq,
       origin,
-      message: { type: "user", uuid: `${sid}-${seq}` },
+      record: { t: "said", id: `${sid}-${seq}` },
     }) as never;
   /** 等在途的那几趟通道往返落完（每趟是若干个微任务 ＋ 一次宏任务，多等几轮）。 */
   const settle = async (): Promise<void> => {
@@ -5342,7 +5316,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
     const seen: [string | null, number | null][] = [];
-    tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 订阅 store（原先是回调）
+    tm.active.subscribe((a) => seen.push([a.usage?.model ?? null, a.usage?.promptTokens ?? null])); // 订阅 store（原先是回调）
     answerFacts((path) =>
       facts({ usage: path.includes("u1") ? usageOf(42, "m-a") : usageOf(7, null) }),
     );
@@ -5354,7 +5328,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(seen.some(([, t]) => t === 7)).toBe(false); // 后台 tab 的事实到了不推
     tm.switchTo("u2");
     await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
-    expect(home(tm).store.tabs.get("u2")!.latestPromptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
+    expect(home(tm).store.tabs.get("u2")!.usage?.promptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
   });
 
@@ -5364,14 +5338,14 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("v1", 0));
     tm.onLine(line("v2", 0));
     await settle();
-    await vi.waitFor(() => expect(tm.active.get().promptTokens).toBe(5));
+    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5));
     const seen: unknown[] = [];
     tm.active.subscribe((a) => seen.push(a));
     (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1));
-    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, contextLimit: null, limitFrom: "assumed", unavailable: null, projectDir: null }]);
+    expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null }]);
   });
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {
@@ -5406,7 +5380,7 @@ describe("〔FW1〕记录文件的出声", () => {
     cwd: "/p",
     path: "/p/rf-sid.jsonl",
     seq,
-    message: { type: "assistant", uuid: `rf-${seq}` } as never,
+    record: { t: "reply", id: `rf-${seq}` } as never,
   });
   const noticeText = (tm: TabManager): string | null => {
     const first = tm.streamElOf("rf-sid")?.firstElementChild as HTMLElement | null | undefined;
@@ -5610,11 +5584,11 @@ describe("组员关系是 tab 自己的属性", () => {
 // 入口只剩按 seq 那一道去重 ⇒ 不重来的话，新的一代的第 0 行会被旧的一代的第 0 行挡掉（渲染内核在本文件里是替身，数它收到了谁）。
 describe("〔RENDER2〕从头重读 ⇒ tab 整份重来", () => {
   const mk = (seq: number, uuid: string) =>
-    ({ session_id: "rr-sid", cwd: "/p", path: "/p/rr-sid.jsonl", seq, message: { type: "assistant", uuid } }) as never;
+    ({ session_id: "rr-sid", cwd: "/p", path: "/p/rr-sid.jsonl", seq, record: { t: "reply", id: uuid } }) as never;
   const rendered = async (): Promise<string[]> => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     return (renderContentRecord as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
-      (c) => (c[0] as { message: { uuid: string } }).message.uuid,
+      (c) => (c[0] as { record: { id: string } }).record.id,
     );
   };
 
@@ -5674,7 +5648,7 @@ describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () 
             cwd: "/p",
             path: "/p/sq.jsonl",
             seq: s,
-            message: { type: "assistant", uuid: `sq-${s}` },
+            record: { t: "reply", id: `sq-${s}` },
             ...(say && run !== undefined ? { skipped_from: run } : {}),
           } as never);
           run = undefined;
@@ -5694,7 +5668,7 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     const tm = makeTM();
-    tm.onLine({ session_id: "bgA", cwd: "/p", path: "/p/bgA.jsonl", seq: 0, message: { type: "assistant", uuid: "a0" } } as never);
+    tm.onLine({ session_id: "bgA", cwd: "/p", path: "/p/bgA.jsonl", seq: 0, record: { t: "reply", id: "a0" } } as never);
     tm.onBatchStart();
     const big = 40 * 1024; // 两条合起来超过 64 Ki，各自一条不超
     for (let s = 0; s < 150; s++) {
@@ -5704,7 +5678,7 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
         cwd: "/p",
         path: "/p/bgB.jsonl",
         seq: s,
-        message: { type: "assistant", uuid: `b${s}`, message: { role: "assistant", content: [{ type: "text", text }] } },
+        record: { t: "reply", id: `b${s}`, blocks: [{ type: "text", text }] },
       } as never);
     }
     tm.onBatchEnd();
@@ -5868,9 +5842,9 @@ describe("组头", () => {
     home(tm).prefs.collectionsLoaded = true;
     for (const sid of ["x", "a", "b", "c", "y"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
-    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt" };
-    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null };
-    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null };
+    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need" };
+    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };
+    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain" };
     tm.switchTo("x");
     flushBar();
   });

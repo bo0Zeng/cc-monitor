@@ -11,7 +11,7 @@
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
-| 常驻监听口 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"tunnel"` 走过去，不开公网口） | 回环 TCP，口按家（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）算；第一行 attach 带钥匙文件里那一把，可带 `"flags":[…]`（起流旗标的子集）；每条连接各一份 watcher / 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；先读 hello，再交一行 `{"attach":true}`（可带 `"flags":[…]`，起流旗标的子集），回 `{"attach":"ok"}` 或 `{"attach":"refused","reason":"malformed-attach"}`；中继连不上时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；每条连接各一份 watcher / 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
@@ -28,7 +28,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `--with-bg` | 放行 `kind:"bg"` 的后台任务会话 |
 | `--tail-only` | 不重放历史：各文件从当前行数起只尾随新行；历史由客户端另取（`history-read` / `--read-session-tail`） |
 | `--with-pid` | `session_added` 带 `pid`（只本机那条流发；默认关，关时字节与加它之前一字不差） |
-| `--with-raw` | `line` 带 `raw`（那一行记录的原文）；给自己解析记录的客户端。默认关 |
+| `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
 
 ## 3. hello：先读它，再说话
 
@@ -53,7 +53,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ```
 
 - **`id`** 由客户端发号、后端只回显（不解析、不校验）。monitor 的发法是 `<连接 nonce>-<单调序号>`，重连不撞号。同一个 `id` 的命令还在跑 ⇒ `duplicate_id`。
-- **`within_ms`**：发起方愿意等多久。后端从收到这一行起减 2 秒余量换成截止时刻，阻塞档命令里装总期限的各处都收紧到它。不是正整数 ⇒ 当没带。
+- **`within_ms`**：发起方愿意等多久。后端从收到这一行起减 2 秒余量换成截止时刻，阻塞档命令里装总期限的各处都收紧到它（到点回 `child_timed_out`，见 §CLI 面「期限」那一条）。不是正整数 ⇒ 当没带。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
@@ -67,9 +67,9 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ## 5. 会话流：帧的先后与续传
 
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
-2. 内容：每条记录一帧 `line`，带成品 `message`（缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
+2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed` / `plan_changed`（只带 sid、工作区与摘要，或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed` / `plan_changed`（只带 sid、工作区与摘要，或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` / `turn_end` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / `tasks_changed` 这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
@@ -94,21 +94,55 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）·
-  `session_added` `sid` `path` `session_kind` `cwd` `name` `lines` `status` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
-  `session_status` `sid` `status` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
+  `session_added` `sid` `path` `cwd` `name` `lines` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
+  `session_status` `sid` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
   `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
-  请求信封 `id` `cmd` `args` `within_ms`（可缺）。`line` 里成品那一格（今天叫 `message`）不在这张冻结表里：记录帧换形之后按新形状另立。
+  请求信封 `id` `cmd` `args` `within_ms`（可缺）。
+- 成品面：`line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）—— 通用记录的公共格、五类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
+  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。冻结的就是格目录里 `frozen` 的那几件成品（`record` · `read_row`）：格只许加，新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型重写也不放行）。
+  `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
 - 一次性子命令（叫法 · 位置参数个数 · 输出里它读的那几格）：`--list-projects`（`dirName` `projectPath` `sessionCount` `lastActivityMs`）·
   `--list-sessions <项目目录名>`（`sessionId` `aiTitle` `cwd` `jsonlPath` `messageCountApprox` `startedAtMs` `updatedAtMs` `isBg`）· `--read-session <路径>` ·
   `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin 或 `--args-b64`）·
   `--backend-probe` · `--find-in-session --query <q> <路径>` · `--list-user-inputs <路径>` ·
   帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
   会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
-- `session_kind` · `status` 是那一家的原词，monitor 不读（读后端判好的 `background` · `activity`），只为第二个前端留着。
-- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
+- 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词（`session_kind` · `status`）10-09 起不再上线。
+- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（成品面：格目录里冻结的 `record` · `read_row`）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `--resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。
 - 部署：第二个前端从 GitHub Release 下后端字节（两个 musl 目标），按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验；资产名登记在 [RELEASING.md](RELEASING.md)。
+
+### 通用记录
+
+会话记录里一行在界面里是什么，由那一家的适配层翻成这一形（`agents/record.rs`；Claude 的翻译表 `agents/claudecode/record_of.rs`，Codex 的 `agents/codex/record.rs`）。
+两个前端都只按 `t` 与格排版，不认任何一家的盘上格式。每类全格 ＋ 最少格的样本：`tests/__fixtures__/record.golden.jsonl`（后端真序列化器写，`record_of_tests` 钉着）。
+
+公共格（每类都有）：
+
+| 格 | 类型 | 说明 |
+|---|---|---|
+| `agent` | string | 哪一家（`claude` · `codex` …） |
+| `id` | string | 这条记录在本会话里的身份：**不透明串**（非空、会话内唯一；主线外清单、分叉、跳转都按它认），前端不解析、不拼。那一家的记录自己有身份就用它（Claude 的 `uuid`）；没有的合成「`@<这一行起点的字节偏移>`」 |
+| `at` | string? | 记录时刻（ISO-8601 原样）；插进正在跑的那一轮的 `queued` 是打字那一刻 |
+| `timeText` | string? | `at` 在那台本地钟上的钟面 `HH:MM`（界面照抄、不换算） |
+| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `queued` |
+
+各类的格：
+
+| 类 | 格 |
+|---|---|
+| `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?` `patchTruncated?`；`patch` 至多 32 KiB、整段不劈）· `cwd?` |
+| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `endsTurn`（一轮的结束，与帧 `turn_end` 同一个判定）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
+| `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
+| `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
+| `queued`（人在一轮跑着时插进去的一句） | `who`（同 `said`） |
+
+内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError}` · `image {source}`。
+
+- **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
+- 出口开关：`history-read` / `history-page` 的 `summaryOnly` 剥掉 `blocks` 与 `results` 里的 `patch` / `patchTruncated`，折起那一行要的格照给；`--with-raw` 才带 `line.raw`。
+- 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch`（整份）· 冷读 `history-branch`。没有链的那一家恒空。
 
 ## 8. CLI 一次性调用
 
@@ -121,7 +155,13 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
     同一个上限管整行；Windows 整行 ≤ 32767 个字符。超过系统那一道，后端根本起不来，调用方看到的是 shell / sshd 那一层的错（如 `Argument list too long`），不是下面的信封 ⇒ 更大的载荷走 stdin。
   - 两个都给（`--args-b64` 与 `--stdin-line`）· `--args-b64` 缺值 / 给两次 · 不收入参的命令带 `--args-b64` ⇒ `bad_args`；base64 坏 / 解出来不是 UTF-8 / 不是 JSON ⇒ `bad_request`；
     超上限（哪一个口都一样）⇒ `args_too_large`，拒收、不截断。
-- 失败：stderr 一行 `{code, message}`、退出 2。
+- **期限**：`--within-ms <毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义：减 2 秒余量换成截止时刻，装总期限的命令都收紧到它，到点回的码与帧面相同（`child_timed_out`）。
+  哪几条装总期限、上限多少，协议参考里逐条写（「总期限上限 N 秒」）；没写的那几条不装，带了期限对它不起作用。到点只回 `child_timed_out` 这一个码，三条例外不整条失败：`aliases-read` · `powershell-policy-set` 落在成品的 `policy.error`，`ssh-config-import` 交已解析的那几个。
+  缺值 · 给两次 ⇒ `bad_args`；值不是正整数 ⇒ 当没带（同帧面那一格）。
+- 失败：stderr 一行 `{code, message, detail}`（少数码另带 `data`）、退出 2 —— 与帧面失败应答出自同一份：同一个失败两个面上 `code` · `message` · `detail` · `data` 逐字相同（`detail` 恒在）。
+  带 `--text` ⇒ stderr 是那一句 ＋ 下面原样接 `detail` 那几行（同界面「复制详情」复制出去的那一段），不是 JSON。
+  手写的几条一次性子命令（`--list-projects` · `--fork-session` · `--account-trust` · `--account-trust-zero`）失败也是这一份（详情里的「命令」是那条子命令名，不收 `--text`）；
+  只有 `--resolve` 另是一形（`{code, message}` 两格，冻结给第二个前端，见 §10）。
 - 出清单的那几条（骨架索引 · 你说过的话 · 会话内查找）是**三段**：首行头（认得出对面会出这份东西）· 每条一行 · 尾行带 `count` 与续点。**没有尾行 ⇒ 输出被截断**，调用方不许当全量。
   选项写在位置参数**前面**：老后端不认新选项时会快速失败（stdout 0 字节、退出 2），而不是把整份会话透传回来；客户端认「首行不是那个头」⇒ 诚实降级。
 - 路径参数过同一套路径围栏（只许落在那台的会话记录树里）。
@@ -138,10 +178,9 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | 文件 | 写 | 读 | 是什么 |
 |---|---|---|---|
 | `config.json` | monitor（唯一写口 `config.rs::patch_config_at`：交「改哪几条路径」，进程级锁里现读、逐条应用、原子替换；盘上读不懂就拒写） | monitor 前端 · `logging` · 起本机后端时取 `claudeDir` | 主题 · 字体 · `claudeDir` 覆盖 · 诊断 · 机器表 `remote.hosts`（改认人的那几格时整张表要成立：`config.rs::check_machine_table`） |
-| `ps-await/<PID>.json` | PowerShell `__ccm_bind` | monitor `bind.rs` | `{ps_pid, marker, proc_start}`：「去找标题 = marker 的窗口」；短暂 |
-| `ps-registry/<PID>.json` | monitor `bind.rs` | PowerShell · monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：绑上了；与 PS 进程同寿 |
-| `sid-hwnd-cache.json` | monitor `SidHwndCache` | monitor 启动恢复 · 拉前 | `{<sid>: 同上那几格}`：会话 → 窗口；拉前时三重校验（窗口在 · owner pid · owner 起始时刻），过期自动清 |
-| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
+| `ps-await/<PID>.tty` | Linux bash / zsh 接入块（`src/shared/ccm-aliases.sh`，本机桌面上开的 shell） | monitor `bind.rs` | `{shell_pid, proc_start, tty}`：「去认这个终端的窗口」；认上 / 认不出就删 |
+| `ps-registry/<PID>.json` | monitor `bind.rs` | monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：那个 shell 显示在哪个窗口；与 shell 进程同寿 |
+| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell 接入块 `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
 | `history-metadata.json` | 本机常驻后端（`history-annotate` / `history-forget`；读不懂就拒写、只改那一条） | 本机常驻后端（`history-list` 并进成品） | `{<sid>: {starred, custom_title, hidden}}` |
 | `logs/monitor/` · `logs/backend/` | monitor · 常驻后端 | 人 · `backend-log` | 诊断日志（按天滚 · 有上限） |
 | `backend.json` | `exit-policy-set` | `exit-policy-read` · monitor 退出时 | 「退出行为」：monitor 退出时结束不结束本机常驻后端 |
@@ -154,39 +193,18 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `attachable: false` ⇒ 不提供 attach / 拉前 / 「杀死空 tmux」，缺席 ＝ `true`。`procStart` 参与 PID 复用检测：缺了就退化成只看进程在不在。
 - `<claude_dir>/tasks/<sid>/<id>.json`：任务清单（`<digits>.json` 才算，`.lock` / `.highwatermark` 忽略；读到半截 JSON 单条跳过）。后端盯这棵树，变了发 `tasks_changed{sid}`，客户端重问 `tasks-list`。
 
-## 跨进程握手时序图（cc 集成）
+## 切到终端：此刻显示这个会话的是哪个窗口
 
-敲 `cc`（或开一个 PowerShell）时，PowerShell 让 monitor 认出自己的终端窗口：
+点 ↗ 那一刻现查，不缓存：本机会话从 agent 进程往上走进程链；远端会话先问那台此刻谁连着它（带窗口标签 `LC_CCM_WINDOW` 就先按标签），
+再问本机后端开着那条连接的是哪串进程（`terminal-processes`）。最后一跳在 monitor（`bind.rs::pick_chain_window`）：沿链从下往上，
+每一级先问「它显示在哪个窗口」，再看它名下的可见顶层窗口，碰到终端本身就停（恰好一个窗口 ⇒ 它，几个 ⇒ 照实说分不清）。
 
-```
-PS (__ccm_bind)                          文件                            monitor (bind.rs)
-1. ps-registry/<PID>.json 在且 ps_proc_start 对得上 ⇒ 已绑，返回
-2. auto-launch 开着且 monitor 不在 ⇒ 后台起 monitor（不抢焦点、不死等）
-3. marker = "ccm-bind-<PID>-<8 位 GUID>"
-4. ★ 先设窗口标题 WindowTitle = marker
-5. 后写 ps-await/<PID>.json ──────────►  ps-await/<PID>.json
-                                                     │ notify（合并一小段）
-                                                     ▼
-                                                  6. 读它（剥 BOM）
-                                                  7. EnumWindows 找标题含 marker 的窗口
-                                                     找不到 ⇒ 短重试
-                                                  8. 取窗口属主进程与它的起始时刻
-                                                  9. 写 ps-registry/<PID>.json
-6'. 轮询，直到 ps-await 被删或 ps-registry 落地且指纹对上 ◄──
-                                                 10. 删 ps-await/<PID>.json
-7'. 退出：标题还是 marker 就恢复原标题；循环外再补查一次 registry；ps-await 还在就自删
-```
-
-开 PowerShell 那一份（`__ccm_bind -Background`）第 1 步之后不做第 2 步，第 3–7' 步交给后台一个空 runspace：等到「monitor 起来了」（`Local\cc-monitor-up` 事件）且看得出它真在跑（`Local\cc-monitor-alive` 互斥量被占着）时才做，不出声。
-轮询步长与总期限住 `src/shared/cc.ps1.tpl`，monitor 侧的合并与重试节奏住 `bind.rs`（`handshake_timings_match_their_pinned_values` 钉着）。
-
-**为什么第 4 步必须在第 5 步之前**：monitor 在 await 文件落地那一瞬就去找窗口；先写文件、后设标题的话，monitor 越快越找不到，每个新 shell 的首次 `cc` 都会烧满超时。
-两侧各修一半：PowerShell 侧反转顺序 ⇒ 首次即中；monitor 侧的短重试兜住旧模板与慢标题传播。
-
-**退出条件是二选一**：await 文件被删，**或** registry 落地且指纹对上 —— monitor 的清理时序怎么变都走得通。
-
-**为什么这样设计**：文件 ＋ notify 两边都简单、出问题能直接看文件、不用管连接；await 用 PID 当文件名，多个 PowerShell 同时绑互不覆盖；marker 带 GUID，PID 被复用也不会认错窗口；
-窗口缓存持久化，monitor 重启不丢绑定；auto-launch 记 monitor 的路径，monitor 搬了家下次启动自己更新。
+「它显示在哪个窗口」：
+- **Windows**：借那个进程的控制台问一句（`platform::console::console_window`：`AttachConsole` → `GetConsoleWindow` → 属主）。
+  Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的那个窗口；经典控制台就是控制台窗口自己。不要接入块、不要登记、不改标题。
+  只认到窗口，认不到窗口里的哪个标签。
+- **Linux（X11）**：bash / zsh 接入块在本机桌面上开的 shell 里留 `ps-await/<PID>.tty`，monitor 往那个终端写改标题序列挂记号、按标题找窗口，
+  写进 `ps-registry/`（标题出栈还原）。
 
 ## 加一条协议
 

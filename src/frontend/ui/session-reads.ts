@@ -102,7 +102,10 @@ export interface SessionIndexResult {
   failure?: OutlineFailure;
 }
 
-/** 最新 usage ＋ 上下文上限（后端 `facts_query::UsageFact`，上限的唯一判定在后端；百分比是排版，`views/context-limit.ts`）。 */
+/** 一格字的语气（后端 `common::cells::Tone`）：出口按它选颜色。 */
+export type Tone = "plain" | "fail" | "now" | "need" | "warn";
+
+/** 最新 usage ＋ 上下文上限 ＋ 写好的字（后端 `facts_query::UsageFact`：上限、百分比、字都由后端定，界面照抄）。 */
 export interface UsageFact {
   promptTokens: number;
   model: string | null;
@@ -112,6 +115,18 @@ export interface UsageFact {
   limit: number;
   /** 上限从哪来：中转看见的请求 · 设置 · 模型名 · 见过超过 200k 的一轮 · 判不出（`limit` 只是占位，界面不算百分比）。 */
   limitFrom: "relay" | "setting" | "model" | "observed" | "assumed";
+  /** 最新一轮占上限的百分比（0–100）；上限判不出 ⇒ `null`。 */
+  percent: number | null;
+  /** 上下文那一格的字（判得出写 `35%`，判不出写 `350k`）。 */
+  contextText: string;
+  /** 那一格的语气（快满 ⇒ `warn`）。 */
+  contextTone: Tone;
+  /** 最新一轮用了多少（`350k`）。 */
+  promptTokensText: string;
+  /** 上限（`1M`）。 */
+  limitText: string;
+  /** 上限从哪来的字；判不出 ⇒ `null`。 */
+  limitFromText: string | null;
 }
 
 const LIMIT_FROM: ReadonlySet<string> = new Set(["relay", "setting", "model", "observed", "assumed"]);
@@ -150,6 +165,38 @@ export interface SessionFacts {
   tokens: TokenUse | null;
   /** 全会话花费（记录里那一家自己记的；`text` 是写好的成品）。记录里没有 ⇒ `null`。 */
   cost: { micros: number; partial: boolean; text: string } | null;
+  /** 还没收场的后台命令（后端累加的那份账，续传时原样交回；界面不读）。 */
+  bgTasks: BgTask[];
+  /** 后台任务运行中那一句（后端 `facts_query::background_of` 写；界面照抄、时长那一截按会走的那一句走字）。不是这一态 ⇒ `null`。 */
+  background: BackgroundWork | null;
+  /** 这个会话里那一家说有毛病的 MCP 服务器（按名字排；没列的不等于连上了）。`detail` 是连不上时的原话（复制详情用）。 */
+  mcp: McpTrouble[];
+}
+
+/** 一条还没收场的后台命令（续传令牌的一部分）。 */
+export interface BgTask {
+  call: string;
+  task: string | null;
+  cmd: string | null;
+  at: string | null;
+}
+
+/** 后台任务运行中那一态的成品：`text` 发出那一刻写好的一句 · `clock` 同一句时长留 `{dur}`（填 现在 − `from`）· `what` 命令那一格 · `count` 几条。 */
+export interface BackgroundWork {
+  text: string;
+  clock: { text: string; from: number } | null;
+  what: string | null;
+  count: number;
+  tone: string;
+}
+
+/** 会话里一个有毛病的 MCP 服务器（后端 `facts_query::McpTrouble`）。 */
+export interface McpTrouble {
+  name: string;
+  status: "needsLogin" | "failed" | "pending";
+  detail: string | null;
+  /** 说它的那条记录的时刻原样；没有 ⇒ `null`。 */
+  at: string | null;
 }
 
 /** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
@@ -196,9 +243,10 @@ const UNCLEAR_WHY: ReadonlySet<string> = new Set<UnclearWhy>(["noWriter", "untra
 /** 一步还没结果时的样子（后端 `facts_query::StepWait`）。 */
 export type StepWait = "running" | "awaiting" | "unclear";
 const STEP_WAIT: ReadonlySet<string> = new Set<StepWait>(["running", "awaiting", "unclear"]);
+const MCP_TROUBLE: ReadonlySet<string> = new Set<McpTrouble["status"]>(["needsLogin", "failed", "pending"]);
 
-/** 「需手动」的种类：批准一步 · 回答一问 · 批准计划 · 判不出（只说在等你）。 */
-export type NeedsKind = "approve" | "answer" | "plan" | "unknown";
+/** 「需手动」的种类（后端 `facts_query::NeedsKind` 判好）：批准一步 · 回答一问 · 批准计划 · 放行联网 · 批准协作请求 · 确认会话目标 · 在对话框里选 · 判不出。 */
+export type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 
 /** 「需手动」的成品（后端 `facts_query::Needs`）。 */
 export interface Needs {
@@ -211,9 +259,21 @@ export interface Needs {
   what: string | null;
   /** 何时起等（epoch ms）；没有 ⇒ `null`。 */
   sinceMs: number | null;
+  /** 核心写好的字（等批准 · 等回答 · 需手动），照抄。 */
+  text: string;
+  /** 语气（恒 `need`）。 */
+  tone: string;
+  /** 先答哪个（0 最先：顶上的框先答，再按危险度；后端 `facts_query::NEEDS_BY_DANGER`）。 */
+  rank: number;
+  /** 到那台答出那一刻已等多久（毫秒，那台的钟上算的；不拿本机钟减 `sinceMs`）；没有起点 ⇒ `null`。 */
+  waitedMs: number | null;
+  /** `waitedMs` 写好的字（答出那一刻）；没有起点 ⇒ `null`。 */
+  waitedText: string | null;
+  /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`cards/step-line.ts::waitedNow`）。 */
+  receivedAt: number;
 }
 
-const NEEDS_KIND: ReadonlySet<string> = new Set(["approve", "answer", "plan", "unknown"]);
+const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
 export type FactsResult =
@@ -323,7 +383,7 @@ export interface TurnSpan {
 
 const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "ending", "fails", "parts", "peers", "phase", "reply", "retries", "said", "span", "start", "startText", "thinking", "tools", "uuid"] as const;
 const PHASES: readonly string[] = ["idle", "running", "awaiting"];
-const TONES: readonly string[] = ["plain", "fail", "now", "need"];
+const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn"] satisfies readonly Tone[];
 const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
 
 /** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
@@ -396,11 +456,11 @@ export function decodeIndex(v: unknown): { from: number; end: number; rows: Skel
  * `history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
  * 「两端契约对不上」）—— 这份成品要原样当续传令牌交回去，后端那一侧收它时同样按恰好的键集合拒（`prior_from`）。
  */
-export function decodeFacts(v: unknown): SessionFacts {
+export function decodeFacts(v: unknown, receivedAt: number = Date.now()): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "mcp", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
   if (!strOrNull(v.permissionMode)) return bad();
   let tokens: TokenUse | null = null;
   if (v.tokens !== null) {
@@ -438,6 +498,12 @@ export function decodeFacts(v: unknown): SessionFacts {
     if (!(isStr(p.state) && STEP_WAIT.has(p.state)) || !(p.why === null || (isStr(p.why) && UNCLEAR_WHY.has(p.why)))) return bad();
     pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, state: p.state as StepWait, why: p.why as UnclearWhy | null });
   }
+  if (!Array.isArray(v.mcp)) return bad();
+  const mcp: McpTrouble[] = [];
+  for (const m of v.mcp) {
+    if (!isObj(m) || !exactKeys(m, ["at", "detail", "name", "status"]) || !isStr(m.name) || !strOrNull(m.detail) || !strOrNull(m.at) || !(isStr(m.status) && MCP_TROUBLE.has(m.status))) return bad();
+    mcp.push({ name: m.name, status: m.status as McpTrouble["status"], detail: m.detail, at: m.at });
+  }
   if (!Array.isArray(v.retries)) return bad();
   const retries: RetryRun[] = [];
   for (const r of v.retries) {
@@ -453,8 +519,26 @@ export function decodeFacts(v: unknown): SessionFacts {
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null };
+    if (!isObj(n) || !exactKeys(n, ["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
+  }
+  if (!Array.isArray(v.bgTasks)) return bad();
+  const bgTasks: BgTask[] = [];
+  for (const t of v.bgTasks) {
+    if (!isObj(t) || !exactKeys(t, ["at", "call", "cmd", "task"]) || !isStr(t.call) || !strOrNull(t.task) || !strOrNull(t.cmd) || !strOrNull(t.at)) return bad();
+    bgTasks.push({ call: t.call, task: t.task, cmd: t.cmd, at: t.at });
+  }
+  let background: BackgroundWork | null = null;
+  if (v.background !== null) {
+    const b = v.background;
+    if (!isObj(b) || !exactKeys(b, ["clock", "count", "text", "tone", "what"]) || !isStr(b.text) || !strOrNull(b.what) || !isNum(b.count) || !isStr(b.tone)) return bad();
+    let clock: BackgroundWork["clock"] = null;
+    if (b.clock !== null) {
+      const c = b.clock;
+      if (!isObj(c) || !exactKeys(c, ["from", "text"]) || !isStr(c.text) || !isNum(c.from)) return bad();
+      clock = { text: c.text, from: c.from };
+    }
+    background = { text: b.text, clock, what: b.what, count: b.count, tone: b.tone };
   }
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
@@ -467,12 +551,18 @@ export function decodeFacts(v: unknown): SessionFacts {
     const u = v.usage;
     if (
       !isObj(u) ||
-      !exactKeys(u, ["limit", "limitFrom", "model", "peakPromptTokens", "promptTokens"]) ||
+      !exactKeys(u, ["contextText", "contextTone", "limit", "limitFrom", "limitFromText", "limitText", "model", "peakPromptTokens", "percent", "promptTokens", "promptTokensText"]) ||
       !isNum(u.promptTokens) ||
       !(u.model === null || isStr(u.model)) ||
       !isNum(u.peakPromptTokens) ||
       !isNum(u.limit) ||
-      !(isStr(u.limitFrom) && LIMIT_FROM.has(u.limitFrom))
+      !(isStr(u.limitFrom) && LIMIT_FROM.has(u.limitFrom)) ||
+      !numOrNull(u.percent) ||
+      !isStr(u.contextText) ||
+      !(isStr(u.contextTone) && TONES.includes(u.contextTone)) ||
+      !isStr(u.promptTokensText) ||
+      !isStr(u.limitText) ||
+      !(u.limitFromText === null || isStr(u.limitFromText))
     ) {
       return bad();
     }
@@ -482,6 +572,12 @@ export function decodeFacts(v: unknown): SessionFacts {
       peakPromptTokens: u.peakPromptTokens,
       limit: u.limit,
       limitFrom: u.limitFrom as UsageFact["limitFrom"],
+      percent: u.percent as number | null,
+      contextText: u.contextText,
+      contextTone: u.contextTone as Tone,
+      promptTokensText: u.promptTokensText,
+      limitText: u.limitText,
+      limitFromText: u.limitFromText as string | null,
     };
   }
   return {
@@ -500,6 +596,9 @@ export function decodeFacts(v: unknown): SessionFacts {
     permissionMode: v.permissionMode as string | null,
     tokens,
     cost,
+    bgTasks,
+    background,
+    mcp,
   };
 }
 

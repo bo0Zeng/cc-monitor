@@ -12,6 +12,8 @@
 //! | 每个工作区留上一次读好的那一份（某片读不成 ⇒ 那一片给旧的 ＋ 原因 ＋ 时刻）· 输出摘要 | [`book`] |
 //! | 盯计划仓与工作区 `.env`，输出摘要或要你看的数变了才推一帧 `plan_changed` | [`watch`] |
 //! | 要你看的四种（顶块走到看全局 · 判据红 · 接手的会话停了 · 接手的会话在等你）· 退回落没落地 · 送进会话的那一行 | [`needs`] |
+//! | 文件窗口反查：一个目录落在哪一片的仓库里、每份文件归哪一格（`plan-files`）| [`owners`] |
+//! | 线上形状（界面的类型由它经 ts-rs 生成；帧面出口过一遍）| [`wire`] |
 //! | 认可与退回的记录（后端自己的 `~/.cc-monitor/plan-review.json`）· 照它给成品标认可与退回的状态 | [`review`] |
 //!
 //! # 计划仓一个字节都不写
@@ -21,12 +23,15 @@
 //! 认可与退回只记在后端自己家里（[`review`]，第四层逐份登记），不回写 pb。
 
 pub(crate) mod book;
+pub(crate) mod command;
 pub(crate) mod dump;
 pub(crate) mod locate;
 pub(crate) mod needs;
+pub(crate) mod owners;
 pub(crate) mod product;
 pub(crate) mod review;
 pub(crate) mod watch;
+pub(crate) mod wire;
 
 /// 一个 id（块的接手 · 签收的「由」）对到的会话：主会话 ＝ 它自己那个标签页；子 agent ＝ 父会话那个标签页。
 #[derive(Debug, Clone, PartialEq, Eq)]

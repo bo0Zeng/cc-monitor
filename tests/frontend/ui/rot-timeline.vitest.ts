@@ -9,6 +9,7 @@ import {
   headLine,
   timelineAxis,
   whyShort,
+  whyTextKeeps,
 } from "../../../src/frontend/ui/rot-timeline";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -185,5 +186,24 @@ describe("换号点短码", () => {
   it("离开兜底 ⇒ 自己的短码，不与抢回混", () => {
     expect(whyShort("leaveFallback")).toBe(copyText("rot.why.leave"));
     expect(whyShort("leaveFallback")).not.toBe(whyShort("preempt"));
+  });
+});
+
+describe("换号点挤时谁收字", () => {
+  // 菱形宽 10（转 45° 的外框），字紧跟在菱形右边。
+  const mk = (at: number, textW: number) => ({ diamond: { left: at, right: at + 10 }, text: { left: at + 12, right: at + 12 + textW } });
+  it("★ 两颗挨着：前一颗的字会盖到后一颗菱形 ⇒ 前一颗收字、后一颗留字（菱形都不动）", () => {
+    expect(whyTextKeeps([mk(10, 70), mk(26, 70)])).toEqual([false, true]);
+  });
+  it("★ 字的右缘离下一颗菱形不足 6px ⇒ 收；正好 6px ⇒ 留", () => {
+    expect(whyTextKeeps([mk(0, 30), mk(47, 20)])).toEqual([false, true]);
+    expect(whyTextKeeps([mk(0, 30), mk(48, 20)])).toEqual([true, true]);
+  });
+  it("★ 一排里各条单独判：中间那条的字够到第三颗 ⇒ 只收中间那条，第三条照写", () => {
+    expect(whyTextKeeps([mk(0, 40), mk(60, 30), mk(100, 20)])).toEqual([true, false, true]);
+  });
+  it("最后一颗后面没有菱形 ⇒ 字照写", () => {
+    expect(whyTextKeeps([mk(0, 500)])).toEqual([true]);
+    expect(whyTextKeeps([])).toEqual([]);
   });
 });

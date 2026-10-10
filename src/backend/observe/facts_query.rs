@@ -30,6 +30,9 @@
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
 //! | `retries` | 一串相邻的 API 重试（`system` · `api_error`）按首条的 `uuid` 记一件，结局看它后面第一条 `assistant` / 人发的 `user`（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
+//! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
+//! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
+//! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 连不上 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -38,6 +41,7 @@
 //! 工具结果那一大类（常是整份文件内容）连解析都不做。**只省时间、不改结果**：
 //! 能改动事实的记录必然带着那几个键名（Claude Code 写 JSON 不转义 ASCII 字母），由判据逐行对拍「过滤 / 不过滤」两向相等。
 
+use crate::common::cells::Words;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -90,6 +94,9 @@ pub(crate) const PENDING_KEEP: usize = 16;
 
 /// 重试至多留多少串（超 ⇒ 丢最早的）。
 pub(crate) const RETRY_KEEP: usize = 200;
+
+/// 还没收场的后台命令至多留几条（超 ⇒ 丢最早的）。
+pub(crate) const BG_KEEP: usize = 16;
 
 /// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
@@ -165,6 +172,162 @@ pub(crate) struct SessionFacts {
     pub(crate) tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
     pub(crate) cost: Option<Cost>,
+    /// 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+    pub(crate) bg_tasks: Vec<BgTask>,
+    /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+    pub(crate) background: Option<Background>,
+    /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 连不上 · 还在连），按名字排；没列的不等于连上了。
+    pub(crate) mcp: Vec<McpTrouble>,
+}
+
+/// 一条还没收场的后台命令。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BgTask {
+    /// 起它的那次工具调用 id。
+    pub(crate) call: String,
+    /// 它当场拿到的任务号；还没回 ⇒ `null`。
+    pub(crate) task: Option<String>,
+    /// 那条命令原样（适配层给的）；没有 ⇒ `null`。
+    pub(crate) cmd: Option<String>,
+    /// 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+    pub(crate) at: Option<String>,
+}
+
+/// 后台任务运行中那一态的成品：写好的一句（发出那一刻的钟）· 会走的那一句（`{dur}` 由桌面那一个读口填）·
+/// 命令那一格（监控板徽标用）· 几条 · 语气。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Background {
+    /// 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
+    pub(crate) text: Words,
+    /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`quota-lines.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
+    /// 命令或起始时刻拿不到 ⇒ `null`。
+    pub(crate) clock: Option<Clock>,
+    /// 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。
+    pub(crate) what: Option<Words>,
+    /// 还在跑的后台命令几条（这一次进程起来之后起的；记录里一条都对不上 ⇒ 0）。
+    pub(crate) count: u32,
+    /// 语气（恒 `busy`）。
+    pub(crate) tone: crate::common::cells::Tone,
+}
+
+/// 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Clock {
+    pub(crate) text: Words,
+    pub(crate) from: u64,
+}
+
+/// 时长那一截的占位（桌面那一个读口填）。
+const DUR_SLOT: &str = "{dur}";
+
+/// **后台任务运行中那一句的唯一一处**：`tasks` ＝ 记录里还没收场的后台命令；`born_ms` ＝ 那台持着这条会话、说这一态的进程何时起的
+/// （后台命令活不过它的进程：更早起的那几条是上一个进程留下的、早被掐了，不算）；`now_ms` ＝ 这台此刻。
+/// 命令取最早起的那条（主参数一行，同悬停卡 peek 的截法）；不止一条 ⇒ 「{cmd} 等 {n} 条」；时长 ＝ 它起了多久。
+pub(crate) fn background_of(tasks: &[BgTask], born_ms: Option<u64>, now_ms: u64) -> Background {
+    let at = |t: &BgTask| {
+        t.at.as_deref()
+            .and_then(crate::common::time::parse_iso8601_ms)
+            .and_then(|ms| u64::try_from(ms).ok())
+    };
+    let mut open: Vec<(&BgTask, Option<u64>)> = tasks
+        .iter()
+        .map(|t| (t, at(t)))
+        .filter(|(_, a)| match (a, born_ms) {
+            (Some(a), Some(b)) => *a >= b,
+            _ => true,
+        })
+        .collect();
+    open.sort_by_key(|(_, a)| a.unwrap_or(u64::MAX));
+    let count = u32::try_from(open.len()).unwrap_or(u32::MAX);
+    let word = || {
+        Words(copy_core::copy_text(
+            "beSession.activity.backgroundWork",
+            &[],
+        ))
+    };
+    let first = open.first();
+    let cmd = first.and_then(|(t, _)| t.cmd.as_deref()).and_then(one_line);
+    let what = cmd.map(|c| {
+        if count > 1 {
+            copy_core::copy_text(
+                "beSession.activity.backgroundMany",
+                &[("cmd", &c), ("n", &count.to_string())],
+            )
+        } else {
+            c
+        }
+    });
+    let from = first.and_then(|(_, a)| *a);
+    let (text, clock) = match (&what, from) {
+        (Some(w), Some(from)) => {
+            let line = |dur: &str| {
+                Words(copy_core::copy_text(
+                    "beSession.activity.backgroundFor",
+                    &[("cmd", w), ("dur", dur)],
+                ))
+            };
+            (
+                line(&copy_core::short_duration(now_ms.saturating_sub(from))),
+                Some(Clock {
+                    text: line(DUR_SLOT),
+                    from,
+                }),
+            )
+        }
+        _ => (word(), None),
+    };
+    Background {
+        text,
+        clock,
+        what: what.map(Words),
+        count,
+        tone: crate::common::cells::Tone::Busy,
+    }
+}
+
+/// 一笔后台命令的账记到 `f` 上（口径见头注那张表）。
+fn note_background(f: &mut SessionFacts, v: &Value, at: Option<&String>) {
+    use crate::agents::BgMark;
+    for m in crate::agents::background_marks(v) {
+        match m {
+            BgMark::Started { call, cmd } => {
+                f.bg_tasks.retain(|t| t.call != call);
+                f.bg_tasks.push(BgTask {
+                    call,
+                    task: None,
+                    cmd,
+                    at: at.cloned(),
+                });
+                if f.bg_tasks.len() > BG_KEEP {
+                    f.bg_tasks.remove(0);
+                }
+            }
+            BgMark::Named { call, task } => {
+                if let Some(t) = f.bg_tasks.iter_mut().find(|t| t.call == call) {
+                    t.task = Some(task);
+                }
+            }
+            BgMark::Ended { call, task } => f.bg_tasks.retain(|t| {
+                !(call.as_deref() == Some(t.call.as_str()) || (task.is_some() && task == t.task))
+            }),
+        }
+    }
+}
+
+/// 会话里一个有毛病的 MCP 服务器。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct McpTrouble {
+    pub(crate) name: String,
+    /// `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
+    pub(crate) status: crate::agents::McpStatus,
+    /// 连不上时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
+    pub(crate) detail: Option<String>,
+    /// 说它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+    pub(crate) at: Option<String>,
 }
 
 /// 全会话用量：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
@@ -182,7 +345,7 @@ pub(crate) struct TokenUse {
     /// 算进来的请求数。
     pub(crate) requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
-    pub(crate) text: String,
+    pub(crate) text: Words,
     /// 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
     pub(crate) last: Option<LastRequest>,
 }
@@ -201,7 +364,7 @@ pub(crate) struct LastRequest {
 pub(crate) struct Cost {
     pub(crate) micros: u64,
     pub(crate) partial: bool,
-    pub(crate) text: String,
+    pub(crate) text: Words,
 }
 
 /// 一串相邻的 API 重试。
@@ -287,16 +450,24 @@ pub(crate) struct LastSay {
     pub(crate) at: Option<String>,
 }
 
-/// 「需手动」的种类。判不出 ⇒ `Unknown`（只说在等你，不猜）。
+/// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum NeedsKind {
-    /// 批准一个工具调用。
+    /// 批准一个工具调用（或别的批准框）。
     Approve,
-    /// 回答一个问题。
+    /// 回答一个问题 / 填那一侧要的输入。
     Answer,
     /// 批准计划。
     Plan,
+    /// 放行沙箱里的命令联网。
+    Network,
+    /// 批准协作的另一个运行发来的请求。
+    Worker,
+    /// 确认它提的会话目标。
+    Goal,
+    /// 在开着的对话框里选一项。
+    Choose,
     Unknown,
 }
 
@@ -313,21 +484,37 @@ pub(crate) struct Needs {
     pub(crate) what: Option<String>,
     /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
     pub(crate) since_ms: Option<u64>,
+    /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+    pub(crate) text: Words,
+    /// 语气（恒 `need`）。
+    pub(crate) tone: crate::common::cells::Tone,
+    /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+    pub(crate) rank: u8,
+    /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+    pub(crate) waited_ms: Option<u64>,
+    /// `waitedMs` 写好的字（时长那一处 `copy_core::format_duration`）；没有起点 ⇒ `null`。
+    pub(crate) waited_text: Option<Words>,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PidWait {
-    /// `waitingFor` 原样（`permission prompt` · `dialog open` …）。
-    pub(crate) waiting_for: Option<String>,
+    /// 在等什么框（适配层翻好的 [`crate::agents::WaitOn`]）；没说 / 说不清 ⇒ `None`。
+    pub(crate) waiting_for: Option<crate::agents::WaitOn>,
     pub(crate) since_ms: Option<u64>,
+    /// 读那份 pidfile 的时刻（epoch ms，**同一台的钟**）：「已等多久」＝ 它减 `since_ms`。
+    pub(crate) read_at_ms: u64,
 }
 
-/// **「需手动」的唯一判定**：那台说在等 ＋ 记录里最早一个还没结果的调用。
-/// - 那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
-/// - 别的工具、且那台说是批准框（`waitingFor` 带 `permission`）⇒ 批准（那一步的主参数）；
-/// - 其余（没有没结果的调用 · 说不出是哪种框）⇒ 判不出，不猜。
+/// **「需手动」的唯一判定**：那台说在等什么框 ＋ 记录里最早一个还没结果的调用。
+/// - 批准框（或没说是哪种框）：那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
+///   批准框里别的工具 ⇒ 批准（那一步的主参数）；没说是哪种框且不是那两种工具 ⇒ 判不出，不猜；
+/// - 要填 / 要答 ⇒ 回答；联网 ⇒ 放行（那一步多半就是要联网的那条命令）；
+/// - 协作请求 · 会话目标 · 别的对话框 ⇒ 各一种，不挂记录里的哪一步（那一步不在这份记录里 / 不是一步工具调用）。
+///   这几种是顶上那个框：底下就算有提问 / 计划，也是先答它。
 pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+    use crate::agents::WaitOn as W;
     let wait = wait?;
     let first = pending.first();
     let asks = pending
@@ -336,29 +523,77 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
     let plan = pending
         .iter()
         .find(|p| PLAN_TOOLS.contains(&p.name.as_str()));
-    let permission = wait
-        .waiting_for
-        .as_deref()
-        .is_some_and(|w| w.to_ascii_lowercase().contains("permission"));
-    let (kind, call) = if let Some(a) = asks {
-        (NeedsKind::Answer, Some(a))
-    } else if let Some(p) = plan {
-        (NeedsKind::Plan, Some(p))
-    } else if let (Some(p), true) = (first, permission) {
-        (NeedsKind::Approve, Some(p))
-    } else {
-        (NeedsKind::Unknown, None)
+    let (kind, call) = match wait.waiting_for {
+        Some(W::Permission) | None if asks.is_some() => (NeedsKind::Answer, asks),
+        Some(W::Permission) | None if plan.is_some() => (NeedsKind::Plan, plan),
+        Some(W::Permission) => (NeedsKind::Approve, first),
+        None => (NeedsKind::Unknown, None),
+        Some(W::Input) => (NeedsKind::Answer, asks.or(first)),
+        Some(W::Network) => (NeedsKind::Network, first),
+        Some(W::Worker) => (NeedsKind::Worker, None),
+        Some(W::Goal) => (NeedsKind::Goal, None),
+        Some(W::Dialog) => (NeedsKind::Choose, None),
     };
+    let rank = NEEDS_BY_DANGER
+        .iter()
+        .position(|k| *k == kind)
+        .map_or(u8::MAX, |i| i as u8);
+    let waited_ms = wait.since_ms.map(|t| wait.read_at_ms.saturating_sub(t));
     Some(Needs {
         kind,
         tool: call.map(|c| c.name.clone()),
         call: call.map(|c| c.id.clone()),
         what: call.and_then(|c| c.what.clone()),
         since_ms: wait.since_ms,
+        text: needs_words(kind),
+        tone: crate::common::cells::Tone::Need,
+        rank,
+        waited_ms,
+        waited_text: waited_ms.map(|ms| Words(copy_core::format_duration(ms))),
     })
 }
 
-/// 最新 usage ＋ 这份会话的上下文上限（状态栏与监控板读同一个数；百分比是排版，在前端）。
+/// 一种「需手动」写好的字（唯一一处：会话事实的 `needs.text` · 轮换在用名单都由它写）。
+pub(crate) fn needs_words(kind: NeedsKind) -> Words {
+    Words(match kind {
+        NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
+        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
+        NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
+        NeedsKind::Worker => copy_core::copy_text("beSession.needs.worker", &[]),
+        NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
+    })
+}
+
+/// 「需手动」先答哪个（[`Needs::rank`] 的来历，唯一一处）：种类已按顶上那个框判（顶上的先答），这里再按危险度 ——
+/// 放行联网（沙箱里的命令要出网）· 批准一步（工具要动手）在前；协作请求 · 会话目标 · 计划次之；回答 · 选一项 · 判不出最后。
+pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
+    NeedsKind::Network,
+    NeedsKind::Approve,
+    NeedsKind::Worker,
+    NeedsKind::Goal,
+    NeedsKind::Plan,
+    NeedsKind::Answer,
+    NeedsKind::Choose,
+    NeedsKind::Unknown,
+];
+
+/// **几条「需手动」先答哪个**（唯一一处：`sessions-needs` 按它排）：危险度序在前（[`Needs::rank`]）；同一档里等得久的在前
+/// （[`Needs::waited_ms`]，各自在那台算的）；不知道等了多久的排这一档最后。
+pub(crate) fn needs_first(a: &Needs, b: &Needs) -> std::cmp::Ordering {
+    a.rank
+        .cmp(&b.rank)
+        .then_with(|| match (a.waited_ms, b.waited_ms) {
+            (Some(x), Some(y)) => y.cmp(&x),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        })
+}
+
+/// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UsageFact {
@@ -370,6 +605,79 @@ pub(crate) struct UsageFact {
     /// 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
     pub(crate) limit: u64,
     pub(crate) limit_from: LimitFrom,
+    /// 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
+    pub(crate) percent: Option<u8>,
+    /// 上下文那一格的字：上限判得出写百分比（`35%`），判不出只写用了多少（`350k`）。
+    pub(crate) context_text: Words,
+    /// 那一格的语气：到了 [`CONTEXT_WARN_AT`] ⇒ `warn`，否则 `plain`（判不出上限 ⇒ 恒 `plain`）。
+    pub(crate) context_tone: crate::common::cells::Tone,
+    /// 最新一轮用了多少（`350k`）。
+    pub(crate) prompt_tokens_text: Words,
+    /// 上限（`1M`）。
+    pub(crate) limit_text: Words,
+    /// 上限从哪来的字（中转请求 · 设置 · 模型名 · 用量超过 200k）；判不出 ⇒ `null`。
+    pub(crate) limit_from_text: Option<Words>,
+}
+
+/// 到这个百分比，上下文那一格的语气是 `warn`。
+pub(crate) const CONTEXT_WARN_AT: u8 = 80;
+
+impl UsageFact {
+    /// 一份用量：上限与来源已定 ⇒ 字与语气随之写好（唯一一处）。
+    pub(crate) fn new(
+        prompt_tokens: u64,
+        model: Option<String>,
+        peak_prompt_tokens: u64,
+        (limit, limit_from): (u64, LimitFrom),
+    ) -> UsageFact {
+        let mut u = UsageFact {
+            prompt_tokens,
+            model,
+            peak_prompt_tokens,
+            limit,
+            limit_from,
+            percent: None,
+            context_text: Words::default(),
+            context_tone: crate::common::cells::Tone::Plain,
+            prompt_tokens_text: Words::default(),
+            limit_text: Words::default(),
+            limit_from_text: None,
+        };
+        u.settle((limit, limit_from));
+        u
+    }
+
+    /// 上限换了（按调用方的上限表 / 中转标记重判）⇒ 连同字一起换。
+    pub(crate) fn settle(&mut self, (limit, limit_from): (u64, LimitFrom)) {
+        use crate::common::cells::Tone;
+        self.limit = limit;
+        self.limit_from = limit_from;
+        self.percent = (limit_from != LimitFrom::Assumed && limit > 0).then(|| {
+            let pct = (self.prompt_tokens as f64 / limit as f64 * 100.0).round();
+            pct.min(100.0) as u8
+        });
+        self.prompt_tokens_text = Words(short_tokens(self.prompt_tokens));
+        self.limit_text = Words(short_tokens(limit));
+        self.context_text = match self.percent {
+            Some(n) => Words(copy_core::copy_text(
+                "beUsage.context.pct",
+                &[("n", &n.to_string())],
+            )),
+            None => self.prompt_tokens_text.clone(),
+        };
+        self.context_tone = match self.percent {
+            Some(n) if n >= CONTEXT_WARN_AT => Tone::Warn,
+            _ => Tone::Plain,
+        };
+        self.limit_from_text = match limit_from {
+            LimitFrom::Relay => Some(copy_core::copy_text("beUsage.from.relay", &[])),
+            LimitFrom::Setting => Some(copy_core::copy_text("beUsage.from.setting", &[])),
+            LimitFrom::Model => Some(copy_core::copy_text("beUsage.from.model", &[])),
+            LimitFrom::Observed => Some(copy_core::copy_text("beUsage.from.observed", &[])),
+            LimitFrom::Assumed => None,
+        }
+        .map(Words);
+    }
 }
 
 /// 上限从哪来。
@@ -454,11 +762,14 @@ pub(crate) fn context_limit(
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
         "agent",
+        "background",
+        "bgTasks",
         "cost",
         "end",
         "forkedFrom",
         "handedBack",
         "lastSay",
+        "mcp",
         "needs",
         "pending",
         "permissionMode",
@@ -470,11 +781,17 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "writers",
     ];
     const USAGE: &[&str] = &[
+        "contextText",
+        "contextTone",
         "limit",
         "limitFrom",
+        "limitFromText",
+        "limitText",
         "model",
         "peakPromptTokens",
+        "percent",
         "promptTokens",
+        "promptTokensText",
     ];
     exact_keys(v, TOP, "prior")?;
     if !v["tokens"].is_null() {
@@ -508,7 +825,18 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["call", "kind", "sinceMs", "tool", "what"],
+            &[
+                "call",
+                "kind",
+                "rank",
+                "sinceMs",
+                "text",
+                "tone",
+                "tool",
+                "waitedMs",
+                "waitedText",
+                "what",
+            ],
             "prior.needs",
         )?;
     }
@@ -521,6 +849,26 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     }
     for r in v["retries"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
         exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
+    }
+    for t in v["bgTasks"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        exact_keys(t, &["at", "call", "cmd", "task"], "prior.bgTasks[]")?;
+    }
+    if !v["background"].is_null() {
+        exact_keys(
+            &v["background"],
+            &["clock", "count", "text", "tone", "what"],
+            "prior.background",
+        )?;
+        if !v["background"]["clock"].is_null() {
+            exact_keys(
+                &v["background"]["clock"],
+                &["from", "text"],
+                "prior.background.clock",
+            )?;
+        }
+    }
+    for m in v["mcp"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        exact_keys(m, &["at", "detail", "name", "status"], "prior.mcp[]")?;
     }
     serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
 }
@@ -565,11 +913,35 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
     Ok(facts)
 }
 
+/// 说 MCP 样子的那种记录行里必有的字（快路只放过带它的行；[`could_matter`] 与 [`mcp_of`] 同一个口径）。
+const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
+
+/// 只要 `mcp` 那一格：读 `r` 整份，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 累加（口径与整份事实那一格同一处）。
+/// 扩展页问「这台活会话里谁连不上」用（`observe::accounts_query::live_mcp_failed`）。
+pub(crate) fn mcp_of<R: std::io::BufRead>(mut r: R) -> std::io::Result<Vec<McpTrouble>> {
+    let mut f = SessionFacts::default();
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        let read = r.read_until(b'\n', &mut buf)?;
+        if read == 0 || buf.last() != Some(&b'\n') {
+            break;
+        }
+        let line = &buf[..buf.len() - 1];
+        if contains(line, MCP_MARK) {
+            if let Some(v) = super::record_scan::parse_record(line) {
+                note_mcp(&mut f, &v);
+            }
+        }
+    }
+    Ok(f.mcp)
+}
+
 /// 扫完之后按上限表与中转标记定上下文上限（每次按调用方给的表重判，不进扫描）。
 pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, relay: Option<bool>) {
     if let Some(u) = facts.usage.as_mut() {
-        (u.limit, u.limit_from) =
-            context_limit(u.model.as_deref(), u.peak_prompt_tokens, limits, relay);
+        let limit = context_limit(u.model.as_deref(), u.peak_prompt_tokens, limits, relay);
+        u.settle(limit);
     }
 }
 
@@ -583,11 +955,19 @@ pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
         // 交回：记录级 `origin.handback`（键名在行里）。
         || contains(line, b"\"handback\"")
+        // MCP 状态：「延后加载的工具变了」那种附件（行里带它的类型名）。
+        || contains(line, MCP_MARK)
         // 重试：它本身（`api_error`）· 一串还没下文时，它后面的回复 / 人发的一句。
         || contains(line, b"\"api_error\"")
         || (open_retry(facts) && (contains(line, b"\"assistant\"") || contains(line, b"\"user\"")))
         // 有没结果的调用：它的结果（行里带着它的 id）· 你又发了一句（`user` 记录、没有工具结果）。
         // 别人的工具结果（常是整份文件内容）照旧连解析都不做。
+        // 后台命令：起它的调用 · 当场回的任务号 · 有没收场的 ⇒ 收场通知（三处都带着那个框）与出错的当场结果（行里带着它的 id）。
+        || contains(line, b"\"run_in_background\"")
+        || contains(line, b"\"backgroundTaskId\"")
+        || (!facts.bg_tasks.is_empty()
+            && (contains(line, b"task-notification")
+                || facts.bg_tasks.iter().any(|t| contains(line, t.call.as_bytes()))))
         || (!facts.pending.is_empty()
             && contains(line, b"\"user\"")
             && (!contains(line, b"\"tool_result\"")
@@ -615,6 +995,48 @@ fn note_handback(f: &mut SessionFacts, v: &Value) {
     if f.handed_back.len() > HANDED_BACK_KEEP {
         f.handed_back.remove(0);
     }
+}
+
+/// 那一家这一条说了 MCP 的哪几张表 ⇒ 那几种整种换掉（没说的那几种沿用）。
+fn note_mcp(f: &mut SessionFacts, v: &Value) {
+    use crate::agents::McpStatus as S;
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let Some(said) = crate::agents::mcp_said_of(kind, v) else {
+        return;
+    };
+    let at = v
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let named = |names: Vec<String>, status| {
+        let at = at.clone();
+        names.into_iter().map(move |name| McpTrouble {
+            name,
+            status,
+            detail: None,
+            at: at.clone(),
+        })
+    };
+    let mut put = |status: S, now: Vec<McpTrouble>| {
+        f.mcp.retain(|m| m.status != status);
+        f.mcp.extend(now);
+    };
+    if let Some(n) = said.pending {
+        put(S::Pending, named(n, S::Pending).collect());
+    }
+    if let Some(n) = said.needs_login {
+        put(S::NeedsLogin, named(n, S::NeedsLogin).collect());
+    }
+    if let Some(n) = said.failed {
+        let now = n.into_iter().map(|(name, detail)| McpTrouble {
+            name,
+            status: S::Failed,
+            detail,
+            at: at.clone(),
+        });
+        put(S::Failed, now.collect());
+    }
+    f.mcp.sort_by(|a, b| a.name.cmp(&b.name));
 }
 
 fn open_retry(f: &SessionFacts) -> bool {
@@ -710,6 +1132,8 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
         .map(str::to_string);
     let kind = v.get("type").and_then(Value::as_str);
     note_retry(f, kind, v);
+    note_background(f, v, at.as_ref());
+    note_mcp(f, v);
     match kind {
         Some("user") => note_user(f, v),
         Some("assistant") => {
@@ -834,14 +1258,8 @@ fn note_usage(f: &mut SessionFacts, v: &Value) {
         .and_then(|m| m.get("model"))
         .and_then(Value::as_str)
         .map(str::to_string);
-    let (limit, limit_from) = context_limit(model.as_deref(), peak, &Vec::new(), None);
-    f.usage = Some(UsageFact {
-        prompt_tokens: prompt,
-        model,
-        peak_prompt_tokens: peak,
-        limit,
-        limit_from,
-    });
+    let limit = context_limit(model.as_deref(), peak, &Vec::new(), None);
+    f.usage = Some(UsageFact::new(prompt, model, peak, limit));
 }
 
 /// 一条回复的用量记进全会话用量：同一次请求（`requestId`）紧跟着的后一条替掉前一条的数。
@@ -905,7 +1323,7 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
     }
     add(true, &tokens);
     s.last = Some(LastRequest { id, tokens });
-    s.text = copy_core::copy_text(
+    s.text = Words(copy_core::copy_text(
         "beSpend.tokens.line",
         &[
             ("input", &short_tokens(s.input)),
@@ -913,7 +1331,7 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
             ("read", &short_tokens(s.cache_read)),
             ("write", &short_tokens(s.cache_write5m + s.cache_write1h)),
         ],
-    );
+    ));
 }
 
 /// 花费那一条（`totalCostUSD` 是到此刻为止的全会话总数；`hasUnknownModelCost` 为真 ⇒ 有型号定不了价、数只是下限）。
@@ -936,16 +1354,22 @@ fn note_cost(f: &mut SessionFacts, v: &Value) {
     f.cost = Some(Cost {
         micros,
         partial,
-        text,
+        text: Words(text),
     });
 }
 
-/// 用量 token 数写成短串（1234 ⇒ 1.2k · 1234567 ⇒ 1.2M）。
+/// token 数写成短串（唯一一处：用量那一行 · 上下文那一格）：`800` · `1.2k` · `8k` · `350k` · `1M` · `1.3M`。
+/// 一万以下的 k 与 M 留一位小数（`.0` 不写），一万到一百万的 k 取整。
 fn short_tokens(n: u64) -> String {
+    let one = |x: f64, unit: &str| {
+        let t = format!("{:.1}", (x * 10.0).round() / 10.0);
+        format!("{}{unit}", t.strip_suffix(".0").unwrap_or(&t))
+    };
     match n {
         0..=999 => n.to_string(),
-        1_000..=999_999 => format!("{:.1}k", n as f64 / 1e3),
-        _ => format!("{:.1}M", n as f64 / 1e6),
+        1_000..=9_999 => one(n as f64 / 1e3, "k"),
+        10_000..=999_999 => format!("{}k", (n as f64 / 1e3).round() as u64),
+        _ => one(n as f64 / 1e6, "M"),
     }
 }
 

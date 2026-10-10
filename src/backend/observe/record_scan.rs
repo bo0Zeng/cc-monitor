@@ -43,12 +43,7 @@ pub(crate) struct ScanMap {
 }
 
 impl ScanMap {
-    /// 从字节 0 读 `r`，至多读 `len` 字节。
-    pub(crate) fn scan<R: std::io::BufRead>(r: R, len: u64) -> std::io::Result<ScanMap> {
-        Self::scan_with(r, len, None)
-    }
-
-    /// 同 [`Self::scan`]，`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
+    /// 从字节 0 读 `r`，至多读 `len` 字节；`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
     pub(crate) fn scan_with<R: std::io::BufRead>(
         r: R,
         len: u64,
@@ -139,7 +134,7 @@ impl ScanMap {
         let index: usize = self
             .index
             .iter()
-            .map(|r| 96 + opt(&r.t) + opt(&r.u) + opt(&r.x) + opt(&r.ts))
+            .map(|r| 96 + opt(&r.u) + opt(&r.x) + opt(&r.ts))
             .sum();
         let off: usize = self.off.iter().map(|o| 24 + o.len()).sum();
         let inputs: usize = off

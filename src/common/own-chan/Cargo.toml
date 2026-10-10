@@ -1,0 +1,15 @@
+[package]
+name = "own-chan"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "本人通道：两头都是我们、又不是父子的那几条连接，只走只有本账号连得上的系统通道（Unix 套接字 ＋ 对端 uid；Windows 命名管道），不发钥匙。后端 · monitor · 文件窗口同一份。"
+
+[dependencies]
+tokio = { version = "1", features = ["net", "io-util"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["net", "io-util", "macros", "rt-multi-thread"] }

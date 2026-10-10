@@ -44,11 +44,11 @@
 
 以 claude 新加一种 `type=memory_recall` 记录为例。
 
-1. 后端 `src/backend/agents/claudecode/schema.rs` 的 `JsonlRecord` 加变体（`#[serde(rename = "memory_recall")]`，字段一律 `#[serde(default)]`）。记录解释只住后端，界面只收成品。
-2. `is_displayable()` 决定它进不进渲染。⚠ 带 `uuid` ＋ `parentUuid`（参与 parent 链）的必须返回 true，并且同时进前端 `src/frontend/ui/branching.ts` 的 `extractBranchRecord` 白名单——否则 parent 链断在这条记录上，它后面的消息被判成孤儿 root，整段误折成「已被 ESC 回退」。只是会话级元数据、不带链身份的可以返回 false。未知 type 由 `parse_line` 抢救成 `Unrecognized`，别退回静默丢弃（INVARIANTS §18.1）。
-3. 在 `tests/backend/agents/claudecode/parse_tests.rs` 加一条能解析成功的样本。样本只采结构、不采真会话正文。
-4. `npm run gen:types` 重生成 `src/frontend/ui/generated/JsonlRecord.ts`（`npm run check:types` 会查它与 Rust 一致）。
-5. 前端 `src/frontend/ui/cards/index.ts` 的 `renderMessage` 加分支，卡片本身写在 `src/frontend/ui/cards/` 下。
+1. 后端 `src/backend/agents/claudecode/schema.rs` 的 `JsonlRecord` 加变体（`#[serde(rename = "memory_recall")]`，字段一律 `#[serde(default)]`）。这是 Claude 盘上格式的读法，只住这一家的适配层，不导出给界面。
+2. `record_of.rs` 决定它翻成哪一类通用记录（`agents/record.rs`：said / reply / retry / title / queued），不进界面的就不出记录（缺 ＝ 不进界面、照占号）。能用已有的类与格表达就不加类；非加不可的新格随格目录金样重写（`record` 在格目录里是冻结的成品，见 IPC-PROTOCOL.md §7），两个前端同拍。
+3. 链：带 `uuid` ＋ `parentUuid` 的记录由 `chain.rs` 自动进链（不进界面也进），主线外清单才不会在它这里断；别让它在 `parse_line` 里静默丢（未知 type 抢救成 `Unrecognized`，INVARIANTS §18.1）。
+4. 在 `tests/backend/agents/claudecode/parse_tests.rs` 加一条能解析成功的样本、在 `record_of_tests.rs` 加它翻出来的成品。样本只采结构、不采真会话正文。
+5. 通用记录的形状变了才要 `npm run gen:types`（重生成 `src/frontend/ui/generated/LineRecord.ts` 一族；`npm run check:types` 会查它与 Rust 一致）。界面 `src/frontend/ui/cards/index.ts` 的 `renderMessage` 只按 `t` 与格排版。
 6. **检查**：后端 `cargo test`（在 `src/backend`）· `npm run test:dom` · 拿一份含这种记录的 jsonl 看显示与折叠。
 
 ### 2.4 加一个外观设置项
@@ -121,13 +121,13 @@
 
 ### 3.1 撤一条 Tauri 命令或一个 State
 
-以撤掉 `BindRegistry` 与它的消费者之一 `bound_terminal_count` 为例：
+以撤掉 `BindRegistry` 与它的消费者之一 `bring_remote_terminal_to_front` 为例：
 
 ```bash
 cd src/frontend/shell
 grep -rn 'State<.*BindRegistry>' src/                        # State 的全部消费者
 grep -rn 'app.manage(bind_registry' src/lib.rs                # manage 调用
-grep -rln 'bound_terminal_count' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
+grep -rln 'bring_remote_terminal_to_front' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
 cargo test --workspace
 ```
 
@@ -137,12 +137,12 @@ cargo test --workspace
 
 从它那一族的命令表（`registry/<族>.rs`）里摘掉、重生成协议参考、处理 CLI 面（派生的子命令跟着没了，登记过的从 `STREAM_ONLY` 摘）、删界面的调用处与通道替身里的那一格，bump `BUILD_ID`。
 
-### 3.3 改跨进程文件的格式（`ps-await` · `ps-registry` · `sid-hwnd-cache` · `auto-launch`）
+### 3.3 改跨进程文件的格式（`ps-await` · `ps-registry` · `auto-launch`）
 
-- 写入方（PS 模板 `src/shared/cc.ps1.tpl`，或 Rust 的 `bind.rs` 等）与读取方（serde 结构）同拍改；
+- 写入方（接入块模板 `src/shared/cc.ps1.tpl` · `src/shared/ccm-aliases.sh`，或 Rust 的 `bind.rs` 等）与读取方（serde 结构）同拍改；
 - 更新 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 第 9 节那张表；
 - 编码 UTF-8 无 BOM（[INVARIANTS § 3](INVARIANTS.md#3-所有跨进程-json-文件--utf-8-无-bom)），双端原子写；
-- 新增字段 `#[serde(default)]`。老 profile 里的 PS 模板不会自动更新，monitor 那一侧找窗口的重试就是留给它们的。
+- 新增字段 `#[serde(default)]`。
 
 ### 3.4 删掉或改名一个符号，而散文还提着它
 

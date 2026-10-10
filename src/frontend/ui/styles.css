@@ -62,6 +62,22 @@
   cursor: pointer;
 }
 
+/* 顶栏「计划」：计划那一侧有需手动的 ⇒ 右上一颗琥珀点（`main.ts` 照 `PlanNeedsBook` 挂 `data-needs`）。 */
+.plan-trigger {
+  position: relative;
+}
+
+.plan-trigger[data-needs="true"]::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  content: "";
+}
+
 .tab-bar-icon:focus-visible {
   outline-offset: calc(-1 * var(--focus-ring));
 }
@@ -272,42 +288,6 @@
 .tab-pin {
   display: inline-flex;
   color: var(--text-faint);
-}
-
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--live);
-  flex-shrink: 0;
-}
-
-/* F91：mission-control grid 的红绿灯点——类直接叠在 .live-dot 上（cell 无 .tab 祖先），
-   语义/配色与 tab-bar 一致（同 var token，用户改主题一起跟）。 */
-.live-dot.act-idle {
-  background: var(--error);
-}
-
-.live-dot.act-waiting {
-  background: var(--warn);
-  animation: act-waiting-pulse 1.2s ease-in-out infinite;
-}
-
-/* audit-fixes F03.2：grid cell 的可重连暗色灯（同 tab-bar，覆写红绿黄、停呼吸）。 */
-.live-dot.reconnectable,
-.live-dot.unseen {
-  background: var(--text-faint);
-  animation: none;
-}
-
-@keyframes act-waiting-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
 }
 
 /* issue #23：agent 页的行。态类 `agent-<态>` 由后端的运行表给（五态）。 */
@@ -704,7 +684,7 @@
   contain-intrinsic-size: auto 120px;
 }
 
-/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-uuid,恒为首子)。
+/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-id,恒为首子)。
    contain-intrinsic-size 显式覆盖 120px 兜底(它匹配 .stream-content > *)。 */
 .stream-more-above {
   text-align: center;
@@ -2634,8 +2614,9 @@
 }
 
 .tab-group-name {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
+  max-width: 50%;
   overflow: hidden;
   padding: 0;
   border: 0;
@@ -2654,14 +2635,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 汇总放不下时它收（截掉尾上那几枚），组名留着（组名自己至多占一半宽）。 */
 .tab-group-sum {
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .tab-group-chip {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 3px;
   font-variant-numeric: tabular-nums;

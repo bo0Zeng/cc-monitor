@@ -17,6 +17,21 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
+    "tests/backend/plan/book_tests.rs": [
+      { "text": "没做完", "use": "输入" }
+    ],
+    "tests/backend/plan/fixture.rs": [
+      { "text": "没做完", "use": "输入" },
+      { "text": "没签", "use": "输入" },
+      { "text": "不做了", "use": "输入" }
+    ],
+    "tests/backend/plan/needs_tests.rs": [
+      { "text": "不做了", "use": "输入" }
+    ],
+    "tests/backend/plan/product_tests.rs": [
+      { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" }
+    ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
     ],
@@ -30,6 +45,7 @@
       { "text": "失败", "use": "词义" }
     ],
     "tests/backend/ratchet_guard.rs": [
+      { "text": "退回", "use": "词义" },
       { "text": "兜底", "use": "非文案" },
       { "text": "刷新", "use": "非文案" }
     ],
@@ -91,9 +107,6 @@
     ],
     "tests/frontend/ui/agent-window.vitest.ts": [
       { "text": "主会话", "use": "输入" }
-    ],
-    "tests/frontend/ui/branching.test.ts": [
-      { "text": "其他", "use": "输入" }
     ],
     "tests/frontend/ui/cc-bus-control.vitest.ts": [
       { "text": "被拒", "use": "用例名" }
@@ -166,7 +179,8 @@
       { "text": "刷新", "use": "输入" }
     ],
     "tests/frontend/ui/main-window-fixes.vitest.ts": [
-      { "text": "结束", "use": "输入" }
+      { "text": "结束", "use": "输入" },
+      { "text": "切到会话", "use": "输入" }
     ],
     "tests/frontend/ui/new-session.vitest.ts": [
       { "text": "原话", "use": "输入" }
@@ -258,6 +272,17 @@
     ],
     "tests/naming/account-vs-relay-naming.vitest.ts": [
       { "text": "类型", "use": "非文案" }
+    ],
+    "tests/shots/fake/plan.ts": [
+      { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" },
+      { "text": "没签", "use": "输入" },
+      { "text": "对账", "use": "输入" },
+      { "text": "执行", "use": "输入" },
+      { "text": "来源", "use": "输入" },
+      { "text": "订阅", "use": "输入" },
+      { "text": "未装 planned-build", "use": "回显" },
+      { "text": "无 agent 视角 · 重读计划后再看", "use": "回显" }
     ],
     "tests/shots/fake/history.ts": [
       { "text": "重试", "use": "输入" }

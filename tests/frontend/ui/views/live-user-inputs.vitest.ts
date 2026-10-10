@@ -102,11 +102,11 @@ const rowsOf = (sid = "s1"): HTMLButtonElement[] => [
 /** 大纲入口那颗钮（不摆进 DOM —— 入口是查找面板的「大纲」页签；它仍是清单可用与否、几条的那一格状态）。 */
 const toggleOf = (sid = "s1"): HTMLButtonElement => peek(sid).inputsPanel.toggle;
 /**
- * 🔴 找卡**只在那个 tab 自己的流里找**。`[data-uuid]` 在本仓只有一个意思
+ * 🔴 找卡**只在那个 tab 自己的流里找**。`[data-id]` 在本仓只有一个意思
  * （渲染出来的消息卡）；清单行用的是 `data-input-uuid`，两者不许混着数。
  */
 const cardOf = (uuid: string, sid = "s1"): HTMLElement | null =>
-  peek(sid).streamEl.querySelector<HTMLElement>(`[data-uuid="${uuid}"]`);
+  peek(sid).streamEl.querySelector<HTMLElement>(`[data-id="${uuid}"]`);
 
 beforeEach(() => {
   vi.mocked(invoke).mockClear();
@@ -325,7 +325,7 @@ describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", (
     return Array.from({ length: n }, (_, k) => ({
       o: k,
       n: 1,
-      t: "user",
+      t: "said",
       u: `u${k}`,
       ...(inputs[k] !== undefined ? { x: inputs[k], ts: `t${k}` } : {}),
     }));

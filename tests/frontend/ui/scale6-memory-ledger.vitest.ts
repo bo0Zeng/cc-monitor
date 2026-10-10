@@ -5,6 +5,7 @@
  *   ①「`buildResultBody` 闭包持有的文本总字节」——「`cards/index.ts:570` 累加 `text.length`」
  *   ②「`branchFolder.records` / `tab.userInputs` / `TailWindow.pending` 三个账本大小」
  *      ——「三个账本进 `debugSnapshot`」
+ *      （记录换形之后第一个账本没了：界面不再自己攒一份链账，只留后端给的主线外清单 ⇒ 量的是清单条数 `branchOff`。）
  *   ③「验 `§2.8`、`§5.5`，**并核对 `tabs.ts` 那句「文本前端零处留存」**」
  *
  * 第 ③ 件才是这杆秤真正值钱的地方：那是一句**声称**，本文件要给出它成不成立的**读数**。
@@ -21,7 +22,7 @@
  *    本轮**没做** —— jsdom 里没有 retainer 图）。
  * 3. **单位是 UTF-16 码元不是字节。** V8 里非 Latin-1 字符串每码元 2 字节 ⇒
  *    `§2.8` 那句「7 MB ⇒ UTF-16 下 ~14 MB」就是这么换的。下面读数两个单位都给。
- * 4. **三个账本量的是条数，不是字节。** 一条 `BranchRecord` 是三个短字符串、
+ * 4. **三个账本量的是条数，不是字节。** 主线外清单一条是一个短 id、
  *    一条 `UserInputEntry` 是截断到 80 字的摘要、而 `TailWindow.pending` 一条是
  *    **整条 payload**（这一份才是真的文本驻留）。⇒ **三个数不可加**，加起来没有意义。
  * 5. **语料是 69 条的定长夹具，不是真机会话。** 会话越长 `produced` 越大，
@@ -29,7 +30,8 @@
  *
  * # 语料
  *
- * `tests/__fixtures__/scale2-height-records.jsonl` —— **结构采自真机、正文全部合成**
+ * `tests/__fixtures__/scale2-height-line-records.jsonl`（原文语料 `scale2-height-records.jsonl` 过后端翻译表的成品）——
+ * **结构采自真机、正文全部合成**
  * （数据源纪律 2026-09-18 改判，用户逐字「这是测试啊 / 不应该进」）。
  * 本文件**不读** `~/.claude/projects`，也不新造含真实会话正文的夹具。
  *
@@ -84,7 +86,7 @@ import {
   addToToolGroup,
   resultTextLedger,
   resetResultTextLedger,
-  type JsonlRecord,
+  type LineRecord,
   type RenderContext,
 } from "../../../src/frontend/ui/cards/index";
 import { buildCorpus } from "./scale2-height-corpus";
@@ -99,8 +101,9 @@ import {
 } from "../../test-support/session-viewer-rig";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import type { SessionBranchPayload } from "../../../src/frontend/ui/generated/SessionBranchPayload";
 
-const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-records.jsonl");
+const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
 
 function freshCtx(): RenderContext {
   return {
@@ -114,7 +117,7 @@ function freshCtx(): RenderContext {
 }
 
 /** 渲染一条记录并把产物挂进 `document.body`（tool-group 那一支照生产包外壳）。 */
-function renderInto(rec: JsonlRecord, ctx: RenderContext): HTMLElement | null {
+function renderInto(rec: LineRecord, ctx: RenderContext): HTMLElement | null {
   const res = renderMessage(rec, ctx);
   if (res.kind === "skip") return null;
   if (res.kind === "card") {
@@ -127,35 +130,27 @@ function renderInto(rec: JsonlRecord, ctx: RenderContext): HTMLElement | null {
   return group.root;
 }
 
-function toolUseRec(id: string, name: string, uuid: string): JsonlRecord {
+function toolUseRec(id: string, name: string, recId: string): LineRecord {
   return {
-    type: "assistant",
-    uuid,
-    parentUuid: null,
-    timestamp: "2026-09-18T12:00:00.000Z",
-    message: {
-      role: "assistant",
-      content: [{ type: "tool_use", id, name, input: { command: "echo hi" } }],
-    },
-  } as unknown as JsonlRecord;
+    agent: "claude",
+    t: "reply",
+    id: recId,
+    at: "2026-09-18T12:00:00.000Z",
+    blocks: [{ type: "tool_use", id, name, input: { command: "echo hi" } }],
+    autoReply: false,
+    endsTurn: false,
+  };
 }
 
-function toolResultRec(
-  toolUseId: string,
-  text: string,
-  uuid: string,
-): JsonlRecord {
+function toolResultRec(toolUseId: string, text: string, recId: string): LineRecord {
   return {
-    type: "user",
-    uuid,
-    parentUuid: null,
-    timestamp: "2026-09-18T12:00:01.000Z",
-    message: {
-      role: "user",
-      content: [{ type: "tool_result", tool_use_id: toolUseId, content: text }],
-    },
-    userText: { speaker: { kind: "toolResult" }, text: "" },
-  } as unknown as JsonlRecord;
+    agent: "claude",
+    t: "said",
+    id: recId,
+    at: "2026-09-18T12:00:01.000Z",
+    who: { speaker: { kind: "toolResult" }, text: "" },
+    blocks: [{ type: "tool_result", for: toolUseId, content: [{ type: "text", text }], isError: false }],
+  };
 }
 
 /**
@@ -238,10 +233,9 @@ describe("秤 6 甲：69 条语料上的读数（那 7 MB 的现打版）", () =
     let n = 0;
     for (const raw of jsonl.split("\n")) {
       if (!raw.trim()) continue;
-      const rec = JSON.parse(raw) as { message?: { content?: unknown } };
-      const content = rec.message?.content;
-      if (!Array.isArray(content)) continue;
-      for (const b of content) {
+      const rec = JSON.parse(raw) as { blocks?: unknown };
+      if (!Array.isArray(rec.blocks)) continue;
+      for (const b of rec.blocks) {
         if (
           b &&
           typeof b === "object" &&
@@ -297,7 +291,7 @@ describe("秤 6 甲：69 条语料上的读数（那 7 MB 的现打版）", () =
     // 读数
     console.log(
       [
-        "[S6-甲] 语料=tests/__fixtures__/scale2-height-records.jsonl（69 条，结构真/正文合成）",
+        "[S6-甲] 语料=tests/__fixtures__/scale2-height-line-records.jsonl（69 条，结构真/正文合成）",
         `[S6-甲] tool_result 块 ${expected} 条；配得上的 tool_use 0 个 ⇒ 全走 fallback`,
         `[S6-甲] 闭包持有文本 ${unitsProduced} UTF-16 码元 ≈ ${((unitsProduced * 2) / 1024).toFixed(1)} KiB（V8 双字节口径）`,
         `[S6-甲] 单条最长 ${resultTextLedger.maxUnits} 码元；均值 ${Math.round(unitsProduced / expected)} 码元`,
@@ -385,7 +379,7 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
     const kept = ctx.pendingToolResults.get("never-came");
     expect(kept, "表里没有它 ⇒ 这一格量错了住址").toBeTruthy();
     // 相等断言：留的是**原文**，不是摘要
-    expect((kept!.block as { content?: unknown }).content).toBe(LONG_TEXT);
+    expect((kept!.block as { content?: unknown }).content).toEqual([{ type: "text", text: LONG_TEXT }]);
   });
 
   /**
@@ -400,13 +394,13 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
     const ctx = freshCtx();
     renderInto(
       {
-        type: "user",
-        uuid: "u1",
-        parentUuid: null,
-        timestamp: "2026-09-18T12:00:00.000Z",
-        message: { role: "user", content: LONG_TEXT },
-        userText: { speaker: { kind: "human" }, text: LONG_TEXT.trim() }, // 后端那一格成品
-      } as unknown as JsonlRecord,
+        agent: "claude",
+        t: "said",
+        id: "u1",
+        at: "2026-09-18T12:00:00.000Z",
+        who: { speaker: { kind: "human" }, text: LONG_TEXT.trim() }, // 后端那一格成品
+        blocks: [{ type: "text", text: LONG_TEXT }],
+      },
       ctx,
     );
 
@@ -429,12 +423,10 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
   let tm: TabManager;
 
   const feed = (p: RigPayload): void => tm.onLine(p as never);
+  /** 后端给的主线外清单（会话流里的 `branch` 格，整份）。 */
+  const branch = (off: string[]): void => tm.onSessionBranch({ session_id: "s1", off } satisfies SessionBranchPayload);
   const peek = (sid: string): Tab =>
     (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
-  /** 直读 `BranchFolder` 的私有账本 —— 判据侧的**第二条路**，用来跟快照对数。 */
-  const realBranchRecords = (sid: string): number =>
-    (peek(sid).branchFolder as unknown as { records: unknown[] }).records
-      .length;
   const snap = (): Record<string, unknown> =>
     JSON.parse(tm.debugSnapshot()) as Record<string, unknown>;
 
@@ -450,11 +442,10 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
   /**
    * 造一个**三个账本同时非空、而且三个数互不相同**的局面。
    *
-   * 数互不相同是刻意的：若三个都是 2，把 `branchRecords` 错接成 `userInputs`
+   * 数互不相同是刻意的：若三个都是 2，把 `branchOff` 错接成 `userInputs`
    * 这类「接错线」的错**照样会绿**。三个数分开 ⇒ 接错线当场红。
    *
-   * - `branchRecords = 4`：4 条带 uuid 的记录（收纳的那两条也喂 —— `routeMetaAndBranch`
-   *   是两条路径的单一来源）
+   * - `branchOff    = 4`：后端那一帧清单里 4 个 id（界面不自己攒链账，喂多少行都不动它）
    * - `userInputs   = 3`：大纲的条数 = **后端**说的那 3 条（清单问后端要，前端不攒）
    * - `pending      = 2`：尾块先到钉住 floor=100 ⇒ seq 1/2 进收纳账本
    */
@@ -464,6 +455,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
     feed(assistantLine(101, "a101", "回复一句")); // 渲染；不进清单
     feed(userLine(1, "u1", "很久以前那一句")); // seq<floor ⇒ 收纳
     feed(userLine(2, "u2", "也是很久以前")); // seq<floor ⇒ 收纳
+    branch(["u1", "u2", "a101", "gone-1"]);
     await settleOutline();
   }
 
@@ -472,14 +464,14 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
     const s = snap();
 
     // ① 先证明三个账本真的都被喂到了（任一恒空，下面的相等断言就是装饰）
-    expect(realBranchRecords("s1"), "branchFolder 恒空 ⇒ 这张表是空真").toBe(4);
+    expect(peek("s1").branchFolder.offCount, "主线外清单恒空 ⇒ 这张表是空真").toBe(4);
     expect(peek("s1").outline.count, "大纲恒空 ⇒ 这张表是空真").toBe(3);
     expect(peek("s1").window.pendingCount, "pending 恒空 ⇒ 这张表是空真").toBe(
       2,
     );
 
     // ② 快照读出来的必须**等于**它们 —— 相等断言，不是下界
-    expect(s.branchRecords).toBe(4);
+    expect(s.branchOff).toBe(4);
     expect(s.userInputs).toBe(3);
     expect(s.pending).toBe(2);
 
@@ -488,24 +480,29 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   it("快照里的三个数与三个账本**同源**（不是各自写死的常数）", async () => {
     await threeLedgersNonEmpty();
-    expect(snap().branchRecords).toBe(realBranchRecords("s1"));
+    expect(snap().branchOff).toBe(peek("s1").branchFolder.offCount);
     expect(snap().userInputs).toBe(peek("s1").outline.count);
     expect(snap().pending).toBe(peek("s1").window.pendingCount);
 
     // 再喂两条 ⇒ 三个数各自该怎么动就怎么动（写死的常数在这里当场红）
     outlineBackend.entries.push(outlineEntry("u102"));
-    feed(userLine(102, "u102", "再说一句")); // 渲染：branch+1、inputs+1（后端多了一条）、pending 不动
-    feed(userLine(3, "u3", "又一条旧的")); // 收纳：branch+1、pending+1；inputs 只看后端说什么 ⇒ 不动
+    feed(userLine(102, "u102", "再说一句")); // 渲染：inputs+1（后端多了一条）、pending 不动、清单不动（只听后端）
+    feed(userLine(3, "u3", "又一条旧的")); // 收纳：pending+1；inputs 只看后端说什么 ⇒ 不动
     await settleOutline();
-    const s = snap();
-    expect(s.branchRecords).toBe(6);
+    let s = snap();
+    expect(s.branchOff).toBe(4);
     expect(s.userInputs).toBe(4);
     expect(s.pending).toBe(3);
+    // 清单是整份换，不是累加：再来一帧 ⇒ 数就是新那一份的条数
+    branch(["u1", "u3"]);
+    s = snap();
+    expect(s.branchOff).toBe(2);
   });
 
-  it("`branchRecords` 不许是 -1 —— -1 = 那根尺子断了（字段被改名读不到）", async () => {
+  it("别的会话的清单不动这个会话的数", async () => {
     await threeLedgersNonEmpty();
-    expect(snap().branchRecords).not.toBe(-1);
+    tm.onSessionBranch({ session_id: "s-other", off: ["x", "y", "z", "w", "v"] });
+    expect(snap().branchOff).toBe(4);
   });
 
   it("重投（换 seq 的同一条 uuid）不许让任何一个账本涨", async () => {
@@ -514,7 +511,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
     feed({ ...userLine(100, "u100", "最新那一句"), seq: 999 });
     await settleOutline();
     const after = snap();
-    expect(after.branchRecords).toBe(before.branchRecords);
+    expect(after.branchOff).toBe(before.branchOff);
     expect(after.userInputs).toBe(before.userInputs);
     expect(after.pending).toBe(before.pending);
   });
@@ -525,7 +522,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
     const s = snap();
     expect(s.pending, "补批没真的跑 ⇒ 这一格是空真").toBe(0);
-    expect(s.branchRecords, "账本不该随渲染缩水").toBe(4);
+    expect(s.branchOff, "清单不该随渲染缩水").toBe(4);
     expect(s.userInputs, "清单不该随渲染缩水").toBe(3);
   });
 });

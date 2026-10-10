@@ -38,7 +38,7 @@ describe("机器状态成品", () => {
     expect(face("要更新").fixes.map(fixLabel)).toEqual([copyText("machineState.fix.update")]);
     expect(face("较新").problem).toBe(copyText("machineState.problem.newer", { machine: "gpu-01" }));
     expect(face("版本不可比")).toMatchObject({ dot: "up", word: copyText("machineState.word.incomparable"), problem: "" });
-    expect(face("不让转发").problem).toBe(copyText("machineState.problem.noForwarding"));
+    expect(face("不是 Unix").problem).toBe(copyText("machineState.problem.notUnix", { machine: "gpu-01" }));
     expect(face("停用")).toMatchObject({ dot: "exited", problem: copyText("machinePage.problem.disabled") });
     expect(face("本机没连上").problem).toBe(copyText("machineState.down.local"));
   });

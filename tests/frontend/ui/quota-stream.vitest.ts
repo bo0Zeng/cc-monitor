@@ -10,14 +10,14 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 describe("quota-changed 流", () => {
   it("额度账一格 ⇒ quota；会话一格 ⇒ 那个 sid；规则表一格 ⇒ rules；读不出 / seen / gap ⇒ 整台重问", () => {
-    expect(quotaChangedItems([{ t: "frame", seq: 1, body: '{"quota":true}' }])).toEqual({ quota: true, sids: [], all: false, rules: false, frames: 1 });
+    expect(quotaChangedItems([{ t: "frame", seq: 1, body: '{"quota":true}' }])).toEqual({ quota: true, sids: [], all: false, rules: false, plans: [], frames: 1 });
     expect(
       quotaChangedItems([
         { t: "frame", seq: 1, body: '{"sid":"s1"}' },
         { t: "frame", seq: 2, body: '{"sid":"s1"}' },
       ]),
-    ).toEqual({ quota: false, sids: ["s1"], all: false, rules: false, frames: 2 });
-    expect(quotaChangedItems([{ t: "frame", seq: 1, body: '{"rules":true}' }]), "规则表变了 ⇒ 只重读规则表").toEqual({ quota: false, sids: [], all: false, rules: true, frames: 1 });
+    ).toEqual({ quota: false, sids: ["s1"], all: false, rules: false, plans: [], frames: 2 });
+    expect(quotaChangedItems([{ t: "frame", seq: 1, body: '{"rules":true}' }]), "规则表变了 ⇒ 只重读规则表").toEqual({ quota: false, sids: [], all: false, rules: true, plans: [], frames: 1 });
     expect(quotaChangedItems([{ t: "frame", seq: 1, body: "not json" }])).toMatchObject({ quota: true, all: true, frames: 1 });
     expect(quotaChangedItems([{ t: "seen", from: null }])).toMatchObject({ quota: true, all: true, rules: true, frames: 0 });
   });
@@ -25,5 +25,22 @@ describe("quota-changed 流", () => {
   it("两侧同一个串：Rust `event_replay.rs::QUOTA_CHANGED_KIND` == TS", () => {
     const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
     expect(rs).toContain(`pub const QUOTA_CHANGED_KIND: &str = "${QUOTA_CHANGED_KIND}";`);
+  });
+  it("计划变了也走这条流：`{plan: {workspace, rev, needs}}` ⇒ 那个工作区（同一个留后一格），不连带额度账；缺工作区 ⇒ 整台重问", () => {
+    expect(quotaChangedItems([{ t: "frame", seq: 1, body: '{"plan":{"workspace":"/w","rev":"r1","needs":2}}' }])).toEqual({
+      quota: false,
+      sids: [],
+      all: false,
+      rules: false,
+      plans: [{ workspace: "/w", rev: "r1", needs: 2 }],
+      frames: 1,
+    });
+    expect(
+      quotaChangedItems([
+        { t: "frame", seq: 1, body: '{"plan":{"workspace":"/w","rev":"r1","needs":null}}' },
+        { t: "frame", seq: 2, body: '{"plan":{"workspace":"/w","rev":"r2"}}' },
+      ]).plans,
+    ).toEqual([{ workspace: "/w", rev: "r2", needs: null }]);
+    expect(quotaChangedItems([{ t: "frame", seq: 1, body: '{"plan":{"rev":"r1"}}' }]), "缺工作区 ⇒ 不猜").toMatchObject({ plans: [], all: true });
   });
 });

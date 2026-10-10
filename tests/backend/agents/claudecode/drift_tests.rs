@@ -129,6 +129,8 @@ fn every_face_states_its_consequence() {
         DriftFace::KnownTypeParseFailed,
         DriftFace::UnknownSessionKind,
         DriftFace::UnknownSessionStatus,
+        DriftFace::UnknownWaitingFor,
+        DriftFace::UnknownMcpList,
     ];
     for f in faces {
         assert!(f.consequence().len() > 10, "{f:?} 的后果说明太短");

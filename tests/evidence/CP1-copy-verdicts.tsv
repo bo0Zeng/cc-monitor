@@ -72,12 +72,10 @@ src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 同上�
 src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`peer/refused` 那一档的日志句）
 src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
 src/frontend/ui/settings/remote-section.ts:163	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一页的路由键（头注：刻意取一个用户填不出的名字防撞车），显示时换成「本机」
-src/comms/inward/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/router.rs:232	客户端发来了一帧只该由路由器发的头	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
-src/comms/inward/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面不显示
 src/backend/control/exit_policy.rs:118	{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
@@ -96,8 +94,7 @@ src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	�
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
 src/frontend/filewin/src/fonts.rs:305	启格求码象	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表那一拍 ＋9 −3 之后的现文）
-src/frontend/filewin/src/fonts.rs:333	·…→、「」一上下不与丢两个中串为主了交亮代以件份会传位作侧保做先全关内再写出列刚删别到制刷前动勾化原去发取口只可台合同名后含命器回围在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/frontend/filewin/src/fonts.rs:347	因明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案十四：「原因不明」进文件窗口那几句的字）
+src/frontend/filewin/src/fonts.rs:328	·…→、「」一上下不与丢两个中串为主了交亮代以件份会传位作侧保做先全关内再写出列刚删别到制刷前动勾化原去发取口只可台合同名后含命器回围在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:329	大失字存它完容对小尔就屏已布帧并序建开当录往径态成或截打扫把拒拖按换据排接搜撤操改数整文断新时是更最有本机权条样根框次此段比没法消点物状	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:330	用的盖目相看着确称程空窗端符第答类索约级组终经结绝编者能节范行表被要覆览认请读负败起超路跳载辑输过这进远连那部里重销错闭问限除非须首高（），：	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:339	值择置间需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
@@ -153,7 +150,7 @@ src/frontend/filewin/src/fonts.rs:364	三人填照致	保留	[不对外] 字体�
 src/frontend/filewin/src/fonts.rs:366	例待等	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（改权限「例 644」·「进度」表断线「等待重连」）
 src/frontend/filewin/src/fonts.rs:368	松	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（拖进来那一层「松开上传」）
 src/frontend/filewin/src/fonts.rs:371	应方析知	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第三段 C 类：一族一句换新写法进来的字）
-src/frontend/filewin/src/fonts.rs:374	于入及均定持支绪识该身适途	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第四段 D 类：壳 / 文件窗口那一面压缩新进的字）
+src/frontend/filewin/src/fonts.rs:374	于入及均定持支识该身适途	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第四段 D 类：壳 / 文件窗口那一面压缩新进的字）
 src/frontend/filewin/src/fonts.rs:377	见询	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第五段：壳 / 文件窗口改调用点那段压缩新进的字）
 src/frontend/filewin/src/fonts.rs:381	分如	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第八段：壳 / 文件窗口那面洗欠账 ——「如名字加 (2)」「存到段 N / M 时中断」等新进的字）
 src/backend/control/files_commit.rs:112	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
@@ -201,6 +198,17 @@ src/backend/accounts/oauth/store.rs:65	里面那把	保留	[不对外] 续期锁
 src/backend/accounts/oauth/store.rs:78	旁边那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
 src/backend/plan/product.rs:19	做完了	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来跟 pb 给的状态比、数顶层进度
 src/backend/plan/product.rs:20	不做了	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来跟 pb 给的状态比、数顶层进度
+src/backend/plan/product.rs:26	没做完	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来翻成 statusCode
+src/backend/plan/product.rs:37	没签	保留	[不对外] pb dump 的 why 原话（协议值，不是界面文案）：只拿来翻成 whyCode
+src/backend/plan/product.rs:38	等上一级收下	保留	[不对外] pb dump 的 why 原话（协议值，不是界面文案）：只拿来翻成 whyCode
+src/backend/plan/product.rs:42	里面 	保留	[不对外] pb dump 的 why 原话的两头（协议值，不是界面文案）：只拿来拆出 whyCode 的 d/m
+src/backend/plan/product.rs:43	 做完了	保留	[不对外] pb dump 的 why 原话的两头（协议值，不是界面文案）：只拿来拆出 whyCode 的 d/m
+src/backend/plan/product.rs:55	在	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
+src/backend/plan/product.rs:56	缺	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
+src/backend/plan/product.rs:57	空	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
+src/backend/plan/product.rs:58	坏	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
 src/backend/lib.rs:1733	计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\n              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1741	与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/plan/needs.rs:22	看全局	保留	[不对外] pb dump 的阶段标（phases[].marks 里那个协议值，不是界面文案）：只拿来认顶块是不是走到交回的关口
+src/backend/plan/command.rs:24	写了 	保留	[不对外] pb view 成了时那一句的开头（协议值，不是界面文案）：只拿来拆出页面路径
+src/frontend/filewin/src/fonts.rs:390	—也切划因块声明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查 plan.rs 那几句新进的字）

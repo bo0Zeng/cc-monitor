@@ -505,7 +505,7 @@ function builtClasses(win: Win): Set<string> {
 }
 
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
-const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold", "live-dot"];
+const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold"];
 /** viewer 的 CSS 里不许出现的类族。 */
 const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "grid-monitor-cell", "ext-", "acct-row-"];
 function familyHits(classes: Set<string>, fam: string): string[] {
@@ -741,6 +741,10 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/new-session.module.css": { stacked: false, why: "起新会话框：外框是 kit 表单对话框，里面全是自己的类" },
   "src/frontend/ui/launch-slot.module.css": { stacked: true, why: "起会话之后的占位标签页：栏里那一行挂全局的 `.tab`（与真标签页同一个样子 · `.tab-dot` / `.tab-title` 那几格），那一页与报错卡只挂自己的哈希类" },
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
+  "src/frontend/ui/views/plan-bits.module.css": { stacked: false, why: "计划页小件：阶段框与类色那几档，全是自己的类" },
+  "src/frontend/ui/views/plan-cell.module.css": { stacked: true, why: "一格详情：给 kit 建的按钮 · 徽标 · 提示条挂本页的版位类" },
+  "src/frontend/ui/views/plan-review.module.css": { stacked: false, why: "计划需手动那一条 · 退回框：全是自己的类（按钮用 kit 原样）" },
+  "src/frontend/ui/views/plan.module.css": { stacked: true, why: "计划页：给 kit 建的按钮 · 开关 · 状态点挂本页的版位类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
   "src/frontend/ui/rot-timeline.module.css": { stacked: false, why: "轮换时间轴（面板 · 设置「轮换」栏 · 编辑器预览共用）：只挂自己的哈希类（挂法同 rot-editor；段的号色走内联 `--tl-c` / `var(--acct-inkN)`，不叠全局头像类）" },

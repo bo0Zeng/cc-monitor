@@ -106,6 +106,7 @@ export class StatusMessages {
       const row = document.createElement("div");
       row.className = s.smRow;
       row.dataset.level = r.level;
+      row.dataset.smRow = "";
       const time = document.createElement("span");
       time.className = s.smTime;
       time.textContent = toastClock(r.at);
@@ -135,13 +136,18 @@ export class StatusMessages {
         });
         text.prepend(foldCaret());
       }
+      // 行尾：合流计数 ＋ 动作。动作只有一颗 ⇒ 摆在行尾；两颗及以上 ⇒ 换到第二行（与 toast 同一种排法），句子拿整行宽。
+      const end = document.createElement("span");
+      end.className = s.smEnd;
       if (r.count > 1) {
         const n = document.createElement("span");
         n.className = s.smTime;
         n.textContent = copyText("kit.toast.count", { n: r.count });
-        row.appendChild(n);
+        end.appendChild(n);
       }
-      for (const a of r.actions.filter((x) => !x.toastOnly)) row.appendChild(button({ label: a.label, kind: "ghost", size: "compact", onClick: () => runRecordAction(r, a) }));
+      const acts: HTMLElement[] = r.actions
+        .filter((x) => !x.toastOnly)
+        .map((a) => button({ label: a.label, kind: "ghost", size: "compact", onClick: () => runRecordAction(r, a) }));
       // 带复制详情的那条：［详情］展开 / 收起（只读可选中）＋ 同一颗［复制详情］（复制出全部段；本次运行内都在）。
       const showDetail = r.copy.length > 0 && this.detailOpen.has(r);
       if (r.copy.length > 0) {
@@ -156,9 +162,19 @@ export class StatusMessages {
           },
         });
         flipDetail.setAttribute("aria-expanded", String(showDetail));
-        row.appendChild(flipDetail);
+        acts.push(flipDetail);
         const copy = copyDetailButton(() => recordDetail(r), r.copy[0][1]);
-        if (copy) row.appendChild(copy);
+        if (copy) acts.push(copy);
+      }
+      if (acts.length >= 2) {
+        const below = document.createElement("div");
+        below.className = s.smActs;
+        below.dataset.smActs = "";
+        below.append(...acts);
+        row.append(end, below);
+      } else {
+        end.append(...acts);
+        row.appendChild(end);
       }
       list.appendChild(row);
       if (showDetail) {

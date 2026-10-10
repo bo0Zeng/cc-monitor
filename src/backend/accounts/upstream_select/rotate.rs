@@ -127,6 +127,8 @@ pub(crate) struct Turn<'a> {
     pub(crate) start: &'a str,
     /// 会话 id（流标签）。
     pub(crate) sid: &'a str,
+    /// 会话血缘里它的父（`lineage.rs`；中转那一路每一发先认过）。新会话第一次被看见时按它默认跟随父会话。
+    pub(crate) parent: Option<String>,
     pub(crate) body: &'a [u8],
     /// 这个号在这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
     pub(crate) row: &'a dyn Fn(&str) -> Option<bool>,
@@ -209,6 +211,7 @@ impl Hop {
             agent: &s.agent,
             start: &s.start,
             sid: "",
+            parent: None,
             body: b"",
             row,
             now,
@@ -396,14 +399,14 @@ impl Hop {
         if !known {
             let base = self.baseline_of(a.agent, a.start, a.now);
             let mut next = book.clone();
-            next.saw(a.sid, a.agent, a.start, a.now);
+            next.saw_child(a.sid, a.agent, a.start, a.now, a.parent.as_deref());
             let above = next
                 .sessions
                 .get(a.sid)
                 .map(|s| self.above_at(&next, s, a.start, a.row, a.now))
                 .unwrap_or_default();
             match rotation::relay_change(&self.store, |b| {
-                b.saw(a.sid, a.agent, a.start, a.now);
+                b.saw_child(a.sid, a.agent, a.start, a.now, a.parent.as_deref());
                 b.rebase(a.sid, &base);
                 b.block_above(a.sid, &above);
                 b.clone()
@@ -698,6 +701,7 @@ impl Hop {
             agent,
             start,
             sid: "",
+            parent: None,
             body: b"",
             row,
             now,
@@ -768,6 +772,7 @@ impl Hop {
             agent,
             start,
             sid: "",
+            parent: None,
             body: b"",
             row,
             now,
@@ -854,6 +859,7 @@ impl Hop {
         &self,
         book: &Book,
         sid: &str,
+        parent: Option<&str>,
         row: &dyn Fn(&str) -> Option<bool>,
         live: &dyn Fn(&str) -> bool,
         now: u64,
@@ -877,6 +883,7 @@ impl Hop {
             agent: &s.agent,
             start: &s.start,
             sid,
+            parent: None,
             body: b"",
             row,
             now,
@@ -967,6 +974,11 @@ impl Hop {
                 .and_then(|id| book.rules.get(id))
                 .map(|r| r.name.clone()),
             explain: crate::accounts::quota::rule_text::explain(&rot),
+            parent: parent.map(str::to_string),
+            parent_missing: matches!(
+                s.source,
+                crate::accounts::quota::rotation::Source::Parent(_)
+            ) && book.decider(s).is_none(),
             custom: s.custom.clone(),
             account: AccountCell {
                 since_text: None,

@@ -32,14 +32,18 @@ import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
   AGENT_WINDOWS_ASK_EVENT,
+  PLAN_OPEN_EVENT,
   SHOW_RUN_CARD_EVENT,
   SWITCH_TO_SESSION_EVENT,
   type AgentWindowSaid,
+  type PlanOpenSaid,
   type ShowRunCard,
   type SwitchToSession,
 } from "./window-events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
+import { PlanView } from "./views/plan";
+import { PlanNeedsBook } from "./plan-needs";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -237,6 +241,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 启动时记住的那一格（上次所在的 tab）：只在那个会话出现时恢复、就绪前不许被覆盖、没等到就明说（`startup-active.ts`）。
   let startup: StartupActive | null = null;
+  // 计划那一侧的「需手动」的账（会话头那一枚标 · 标签栏的数 · Ctrl J 都读它；计划页问到的交给它）。
+  const planNeeds = new PlanNeedsBook();
 
   // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
@@ -249,6 +255,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
       attach: (sid) => tabs.attachInTerminal(sid),
       reconnect: (origin) => tabs.reconnect(origin),
+      planMark: (tab) => {
+        const b = planNeeds.sessionBlock(tab.origin, tab.sessionId);
+        if (!b) return null;
+        const label = [b.slice, b.top ? copyText("plan.head.top") : (b.title ?? b.block), b.phase ?? ""].filter((x) => x !== "").join(copyText("kit.text.sep"));
+        return { slice: b.slice, label, open: () => void planView.openAt(tab.origin, b.workspace, b.slice, b.top ? null : b.cell) };
+      },
   });
   document.getElementById("session-head")?.replaceWith(sessionHead.el);
   const needsBar = new NeedsBar({
@@ -309,6 +321,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
     agentOf: (sid) => tabs.agentOf(sid),
+    openSession: (sid) => tabs.switchTo(sid),
+    canOpenSession: (sid) => tabs.snapshotSessions().some((x) => x.sessionId === sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
     openRules: (origin, rule) => void openSettingsWindow(undefined, dest.rulesOf(origin, rule)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
@@ -448,7 +462,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     paintTerminalActs();
     needsBar.render();
-    usageHud.setActive(a.model, a.promptTokens, a.contextLimit, a.limitFrom);
+    usageHud.setActive(a.usage);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);
@@ -546,6 +560,25 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyView.switchTo = (sid) => tabs.switchTo(sid);
   const historyTrigger = headButton("history-trigger", "history", copyText("main.cmd.openHistory"), hintWithKey(copyText("main.topbar.historyHint"), "app.toggle-history"), () => overlays.toggle("history"));
 
+  // 计划页（planned-build 的工作区 · 片 · 格）：跟历史同形的顶层视图；接手 / 签收人的标签与「切到会话」看主窗口此刻的标签页。
+  const planView = new PlanView();
+  overlays.register("plan", planView);
+  planView.tabOf = (sid) => tabs.tabsInOrder().find((t) => t.sessionId === sid) ?? null;
+  planView.switchTo = (sid) => tabs.switchTo(sid);
+  planView.reconnect = (origin) => tabs.reconnect(origin);
+  planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
+  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后（不发系统通知）。
+  planView.book = planNeeds;
+  // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
+  void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
+  tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i) });
+  const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
+  planNeeds.subscribe(() => {
+    tabs.planNeedsChanged();
+    sessionHead.render();
+    planTrigger.dataset.needs = String(planNeeds.total() > 0);
+  });
+
   // 多 agent 并排监控入口：跨机器只读状态板（一屏看所有会话实时状态，点卡片跳会话；不派发、不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
   overlays.register("grid", gridMonitorView);
@@ -553,7 +586,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 远端文件入口：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台选单（openSftpFromTopbar）；终点是原生文件窗口（`file-window.ts`）。
   const sftpTrigger = headButton("sftp-trigger", "files", copyText("main.cmd.openFiles"), hintWithKey(copyText("main.topbar.filesHint"), null), () => void toggleSftpFromTopbar(sftpTrigger));
-  tabs.mountHeadActions([gridTrigger, sftpTrigger, historyTrigger, settingsTrigger]);
+  tabs.mountHeadActions([gridTrigger, sftpTrigger, planTrigger, historyTrigger, settingsTrigger]);
 
   // cc-bus 驾驶舱是顶层运营视图，入口在命令面板里、不另占顶栏图标（低频视图；理由见 `views/cc-bus-view.ts` 头注）。
   const ccBusView = new CcBusView();
@@ -622,6 +655,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         },
       },
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
+      { id: "open-plan", group: "open", icon: "plan", title: copyText("main.cmd.openPlan"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
       { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
       { id: "open-settings", group: "open", icon: "settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
@@ -738,6 +772,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   onSession("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // 开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
+  dispatcher.bind("app.toggle-plan", () => overlays.toggle("plan"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", toggleFullscreen);
@@ -804,8 +839,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
     onSessionEnded: (sessionId) => {
+      const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
       tabs.archiveTab(sessionId);
       accountsRefresher.request(); // 会话结束了
+      if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
@@ -821,6 +858,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
+    onSessionBranch: (p) => tabs.onSessionBranch(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
     // 那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,
@@ -844,7 +882,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
     },
-    // 启动重放期间走批模式（惰性高亮 ＋ BranchFolder.batchMode），结束时 flush。
+    // 启动重放期间走批模式（惰性高亮），结束时 flush。
     // DEV 抖动探针跨在批窗口上（生产 probe 恒 null）。
     onBatchStart: () => {
       e2eProbe?.startReplayJitterProbe();
@@ -858,9 +896,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
     // 那台的额度账 / 某个会话的轮换变了 ⇒ 重问（`acct-center.ts`；画的那几处订 store）。
     onQuotaChanged,
+    // 那台某个 pb 工作区的计划变了 ⇒ 计划页开着就重问（摘要没变不问）。
+    onPlanChanged: (origin, change) => {
+      planView.onChanged(origin, change);
+      planNeeds.onChanged(origin, change);
+    },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone),
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
@@ -894,6 +937,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
   //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
   onAccountsChanged();
+  // 计划那一侧的「需手动」：起来每台问一次（之后靠「计划变了」与会话结束再问）。
+  for (const m of machines) void planNeeds.refresh(m);
 
   // 后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();

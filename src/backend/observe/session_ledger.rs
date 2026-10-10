@@ -46,10 +46,7 @@ pub(crate) struct SessionLedger {
 }
 
 fn state(sid: &str, state: SessionFate) -> Frame {
-    Frame::SessionState {
-        sid: sid.to_string(),
-        state,
-    }
+    Frame::session_state(sid.to_string(), state)
 }
 
 fn bound_in(view: &BTreeMap<String, BTreeSet<String>>, sid: &str) -> bool {

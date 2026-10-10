@@ -79,13 +79,12 @@ fn the_three_facts_follow_the_moved_rules() {
     assert_eq!(f.touched_files, vec!["/p/n.ipynb", "/p/b.ts", "/p/a.ts"]);
     assert_eq!(
         f.usage,
-        Some(UsageFact {
-            prompt_tokens: 12,
-            model: Some("m-x".into()),
-            peak_prompt_tokens: 12,
-            limit: CONTEXT_EXTENDED,
-            limit_from: LimitFrom::Assumed,
-        }),
+        Some(UsageFact::new(
+            12,
+            Some("m-x".into()),
+            12,
+            (CONTEXT_EXTENDED, LimitFrom::Assumed)
+        )),
         "全 0 的那条不算；model 缺 ⇒ null 的那条没出现在最后"
     );
 }
@@ -159,9 +158,13 @@ fn the_fast_path_never_changes_the_answer() {
     recs.push(result("g2"));
     recs.push(json!({"type": "attachment", "x": 1}));
     recs.push(handback("fp-1", true));
+    recs.push(mcp_delta(
+        json!({"failedMcpServers": [{"name": "m-f", "error": "e"}]}),
+    ));
     let text = jsonl(&recs);
     let fast = scan_all(&text);
     assert_eq!(fast.handed_back, ["fp-1"], "交回那一行没漏过快路");
+    assert_eq!(fast.mcp.len(), 1, "MCP 那一行没漏过快路");
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
@@ -491,9 +494,11 @@ fn last_say_is_the_first_line_of_the_last_text() {
     assert!(t.ends_with('…'));
 }
 
-/// ★ 需手动：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
+/// ★ 需手动：那台说在等才有；种类由「在等什么」（适配层翻好的 [`WaitOn`]）配记录里没结果的那一步判，判不出不猜。
+/// 那一家的六个词逐个落到一种（不再有五个落进判不出）。
 #[test]
 fn needs_is_decided_from_the_wait_and_the_pending_call() {
+    use crate::agents::WaitOn as W;
     let call = |id: &str, name: &str, what: Option<&str>| PendingCall {
         id: id.into(),
         name: name.into(),
@@ -502,54 +507,81 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         state: StepWait::Unclear,
         why: None,
     };
-    let wait = |w: Option<&str>| PidWait {
-        waiting_for: w.map(str::to_string),
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
         since_ms: Some(42),
+        read_at_ms: 43,
     };
     let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
+    let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
+    let plan = vec![call("p", "ExitPlanMode", None)];
     // 不在等 ⇒ 没有。
     assert_eq!(needs_of(&bash, None), None);
     // 批准框 ＋ 一步没结果 ⇒ 批准那一步。
     assert_eq!(
-        needs_of(&bash, Some(&wait(Some("permission prompt")))),
+        needs_of(&bash, Some(&wait(Some(W::Permission)))),
         Some(Needs {
             kind: NeedsKind::Approve,
             tool: Some("Bash".into()),
             call: Some("b".into()),
             what: Some("rm -rf build/".into()),
-            since_ms: Some(42)
+            since_ms: Some(42),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
+            rank: 1,
+            waited_ms: Some(1),
+            waited_text: Some(crate::common::cells::Words(copy_core::format_duration(1))),
         })
     );
-    // 提问 ⇒ 回答（不看 waitingFor）；计划 ⇒ 批准计划。
-    let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
-    assert_eq!(
-        needs_of(&ask, Some(&wait(Some("dialog open"))))
-            .unwrap()
-            .kind,
-        NeedsKind::Answer
-    );
-    assert_eq!(
-        needs_of(&ask, Some(&wait(None))).unwrap().what.as_deref(),
-        Some("要不要？")
-    );
-    let plan = vec![call("p", "ExitPlanMode", None)];
-    let n = needs_of(&plan, Some(&wait(None))).unwrap();
-    assert_eq!(
-        (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
-        (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
-    );
-    // 说不出是哪种框 · 没有没结果的调用 ⇒ 判不出（不猜成批准）。
-    for (pending, w) in [
-        (bash.clone(), Some("dialog open")),
-        (bash.clone(), None),
-        (vec![], Some("permission prompt")),
+    // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
+    for w in [Some(W::Permission), None] {
+        let n = needs_of(&ask, Some(&wait(w))).unwrap();
+        assert_eq!(
+            (n.kind, n.what.as_deref()),
+            (NeedsKind::Answer, Some("要不要？"))
+        );
+        let n = needs_of(&plan, Some(&wait(w))).unwrap();
+        assert_eq!(
+            (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
+            (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
+        );
+    }
+    // 每个「在等什么」一种；表一行一个，`call` 列是那一种认不认记录里没结果的那一步。
+    let kinds = [
+        (W::Permission, NeedsKind::Approve, true),
+        (W::Network, NeedsKind::Network, true),
+        (W::Worker, NeedsKind::Worker, false),
+        (W::Goal, NeedsKind::Goal, false),
+        (W::Input, NeedsKind::Answer, true),
+        (W::Dialog, NeedsKind::Choose, false),
+    ];
+    for (w, kind, with_call) in kinds {
+        let n = needs_of(&bash, Some(&wait(Some(w)))).unwrap();
+        assert_eq!(n.kind, kind, "{w:?}");
+        assert_eq!(n.call.is_some(), with_call, "{w:?}");
+        // 记录里没有没结果的调用：种类照旧，只是说不出是哪一步。
+        let n = needs_of(&[], Some(&wait(Some(w)))).unwrap();
+        assert_eq!((n.kind, n.call), (kind, None), "{w:?}");
+    }
+    // 弹着别的框（选项框 · 联网 · 协作 · 目标）时，底下那个提问 / 计划轮不到：先答的是顶上那个框。
+    for (w, kind) in [
+        (W::Dialog, NeedsKind::Choose),
+        (W::Network, NeedsKind::Network),
+        (W::Worker, NeedsKind::Worker),
+        (W::Goal, NeedsKind::Goal),
     ] {
-        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(
+            needs_of(&ask, Some(&wait(Some(w)))).unwrap().kind,
+            kind,
+            "{w:?}"
+        );
+    }
+    // 那台没说在等什么（或说了认不出的词）· 也没有提问 / 计划 ⇒ 判不出（不猜成批准）。
+    for pending in [bash.clone(), vec![]] {
+        let n = needs_of(&pending, Some(&wait(None))).unwrap();
         assert_eq!(
             (n.kind, n.tool, n.call, n.what),
-            (NeedsKind::Unknown, None, None, None),
-            "{w:?} / {}",
-            pending.len()
+            (NeedsKind::Unknown, None, None, None)
         );
     }
 }
@@ -643,6 +675,11 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             call: Some("b1".into()),
             what: None,
             since_ms: Some(1),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
+            rank: 1,
+            waited_ms: Some(1),
+            waited_text: Some(crate::common::cells::Words(copy_core::format_duration(1))),
         }),
         ..SessionFacts::default()
     };
@@ -683,8 +720,9 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
     f.needs = needs_of(
         &f.pending,
         Some(&PidWait {
-            waiting_for: Some("permission prompt".into()),
+            waiting_for: Some(crate::agents::WaitOn::Permission),
             since_ms: None,
+            read_at_ms: 0,
         }),
     );
     assert_eq!(f.needs.as_ref().and_then(|n| n.call.as_deref()), Some("s1"));
@@ -825,13 +863,13 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
         (17, 57, 1000, 1100, 200, 3)
     );
     assert_eq!(
-        t.text,
+        t.text.0,
         copy_core::copy_text(
             "beSpend.tokens.line",
             &[
                 ("input", "17"),
                 ("output", "57"),
-                ("read", "1.0k"),
+                ("read", "1k"),
                 ("write", "1.3k")
             ]
         )
@@ -860,12 +898,15 @@ fn cost_is_the_last_cost_record_as_written() {
         Some(Cost {
             micros: 1_234_000,
             partial: false,
-            text: copy_core::copy_text("beSpend.cost.exact", &[("usd", "1.23")])
+            text: crate::common::cells::Words(copy_core::copy_text(
+                "beSpend.cost.exact",
+                &[("usd", "1.23")]
+            ))
         })
     );
     let f = scan_all(&jsonl(&[cost(2.0, true)]));
     assert_eq!(
-        f.cost.as_ref().map(|c| c.text.clone()),
+        f.cost.as_ref().map(|c| c.text.0.clone()),
         Some(copy_core::copy_text(
             "beSpend.cost.about",
             &[("usd", "2.00")]
@@ -873,7 +914,7 @@ fn cost_is_the_last_cost_record_as_written() {
     );
     let f = scan_all(&jsonl(&[cost(0.001, false)]));
     assert_eq!(
-        f.cost.map(|c| c.text),
+        f.cost.map(|c| c.text.0),
         Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
     );
 }
@@ -915,4 +956,422 @@ fn every_permission_mode_value_passes_through_as_written() {
             jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
         assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
     }
+}
+
+/// 一条「延后加载的工具变了」附件（Claude Code 写的那一形；名字与原因都是占位）。只放给了的那几格。
+fn mcp_delta(fields: Value) -> Value {
+    let mut a = json!({"type": "deferred_tools_delta", "addedNames": [], "addedLines": [], "removedNames": [], "wireHiddenNames": [], "readdedNames": []});
+    for (k, v) in fields.as_object().unwrap() {
+        a[k] = v.clone();
+    }
+    json!({"type": "attachment", "attachment": a})
+}
+
+/// 这个会话的 MCP 有毛病的那几个：那一家最后一次说的为准，一格一格地换（这一条没写的那一格沿用上一条）；
+/// 写了空表 ⇒ 那一种清空。连不上的带原话。没列的不等于连上了 ⇒ 不出。
+/// 要求：用户 10-09 定「乙：从会话记录的 deferred_tools_delta 读出这个会话的 MCP 状态，failed 带原因，作为会话事实里的一格」。
+#[test]
+fn the_sessions_mcp_trouble_is_the_last_thing_said_per_list() {
+    use crate::agents::McpStatus;
+    let recs = vec![
+        mcp_delta(
+            json!({"pendingMcpServers": ["m-p"], "failedMcpServers": [{"name": "m-f", "error": "e-1"}]}),
+        ),
+        mcp_delta(json!({"pendingMcpServers": [], "needsAuthMcpServers": ["m-n2", "m-n1"]})),
+        assistant(vec![]),
+    ];
+    let got = scan_all(&jsonl(&recs)).mcp;
+    let t = |n: &str, s, d: Option<&str>| McpTrouble {
+        name: n.into(),
+        status: s,
+        detail: d.map(str::to_string),
+        at: None,
+    };
+    assert_eq!(
+        got,
+        vec![
+            t("m-f", McpStatus::Failed, Some("e-1")),
+            t("m-n1", McpStatus::NeedsLogin, None),
+            t("m-n2", McpStatus::NeedsLogin, None),
+        ]
+    );
+    let later = [recs, vec![mcp_delta(json!({"failedMcpServers": []}))]].concat();
+    assert_eq!(
+        scan_all(&jsonl(&later)).mcp,
+        vec![
+            t("m-n1", McpStatus::NeedsLogin, None),
+            t("m-n2", McpStatus::NeedsLogin, None),
+        ],
+        "清空连不上的那一种，要登录的沿用"
+    );
+}
+
+/// 只读 MCP 那一格的快扫（扩展页问「这台活会话里谁连不上」用）：与整份事实扫出来的 `mcp` 一格逐项相等。
+/// 要求：用户 10-09 认的 MCP 状态稿甲 1 / 甲 2「连不上的原因取这台活会话里最近一条」。
+#[test]
+fn the_mcp_only_scan_says_what_the_full_facts_say() {
+    let recs = vec![
+        mcp_delta(json!({"failedMcpServers": [{"name": "m-f", "error": "e-1"}]})),
+        assistant(vec![]),
+        mcp_delta(json!({"needsAuthMcpServers": ["m-n"]})),
+        mcp_delta(json!({"failedMcpServers": [{"name": "m-g", "error": "e-2"}]})),
+    ];
+    let text = jsonl(&recs);
+    let got = mcp_of(text.as_bytes()).unwrap();
+    assert_eq!(got, scan_all(&text).mcp);
+    assert_eq!(
+        got.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+        ["m-g", "m-n"]
+    );
+}
+
+/// 〔G2〕「需手动」带写好的字与语气：八种各一句（等批准 / 等回答 / 等批准（计划）/ 等放行 / 等批准（协作请求）/ 等确认 / 等选择 / 需手动）；语气恒 `need`。出口照抄。
+#[test]
+fn needs_carries_its_words_and_tone() {
+    use crate::agents::WaitOn as W;
+    let call = |name: &str| PendingCall {
+        id: "c".into(),
+        name: name.into(),
+        what: None,
+        at: None,
+        state: StepWait::Running,
+        why: None,
+    };
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
+        since_ms: None,
+        read_at_ms: 0,
+    };
+    let cases = [
+        (
+            vec![call("Bash")],
+            Some(W::Permission),
+            NeedsKind::Approve,
+            "beSession.needs.approve",
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            None,
+            NeedsKind::Answer,
+            "beSession.needs.answer",
+        ),
+        (
+            vec![call("ExitPlanMode")],
+            None,
+            NeedsKind::Plan,
+            "beSession.needs.plan",
+        ),
+        (
+            vec![call("Bash")],
+            Some(W::Network),
+            NeedsKind::Network,
+            "beSession.needs.network",
+        ),
+        (
+            vec![],
+            Some(W::Worker),
+            NeedsKind::Worker,
+            "beSession.needs.worker",
+        ),
+        (
+            vec![],
+            Some(W::Goal),
+            NeedsKind::Goal,
+            "beSession.needs.goal",
+        ),
+        (
+            vec![],
+            Some(W::Dialog),
+            NeedsKind::Choose,
+            "beSession.needs.choose",
+        ),
+        (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
+    ];
+    for (pending, w, kind, key) in cases {
+        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(n.kind, kind);
+        let v = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
+        assert_eq!(v["tone"], "need", "{kind:?}");
+    }
+}
+
+fn bg_launch(id: &str, cmd: &str, at: &str) -> Value {
+    json!({"type": "assistant", "timestamp": at, "message": {"content": [tool_use(id, "Bash", json!({"command": cmd, "run_in_background": true}))]}})
+}
+
+fn bg_named(id: &str, task: &str) -> Value {
+    json!({"type": "user", "toolUseResult": {"backgroundTaskId": task}, "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "x"}]}})
+}
+
+fn bg_done(task: &str, call: &str) -> Value {
+    json!({"type": "queue-operation", "operation": "enqueue", "content": format!("<task-notification>\n<task-id>{task}</task-id>\n<tool-use-id>{call}</tool-use-id>\n<status>completed</status>\n</task-notification>")})
+}
+
+/// 后台命令的账：起了 ⇒ 记下；拿到任务号 ⇒ 补上；收场通知（按任务号或调用 id 都认）⇒ 摘；前台命令不进账；
+/// 接力扫 == 一次扫完；快路不漏这几种行。
+#[test]
+fn background_commands_are_kept_until_their_end_notice() {
+    let recs = vec![
+        bg_launch("b1", "make test-all", "2026-10-09T08:00:00.000Z"),
+        bg_named("b1", "k1"),
+        bg_launch("b2", "python train.py", "2026-10-09T08:05:00.000Z"),
+        bg_named("b2", "k2"),
+        assistant(vec![tool_use("f1", "Bash", json!({"command": "ls"}))]),
+        result("f1"),
+        bg_launch("b3", "sleep 9", "2026-10-09T08:06:00.000Z"),
+        bg_named("b3", "k3"),
+        bg_done("k3", ""),
+    ];
+    let text = jsonl(&recs);
+    let f = scan_all(&text);
+    let calls: Vec<&str> = f.bg_tasks.iter().map(|t| t.call.as_str()).collect();
+    assert_eq!(calls, ["b1", "b2"]);
+    assert_eq!(f.bg_tasks[0].task.as_deref(), Some("k1"));
+    assert_eq!(f.bg_tasks[0].cmd.as_deref(), Some("make test-all"));
+    assert_eq!(
+        f.bg_tasks[0].at.as_deref(),
+        Some("2026-10-09T08:00:00.000Z")
+    );
+    // 按调用 id 收场（通知里没写任务号的那一形）。
+    let mut more = recs.clone();
+    more.push(json!({"type": "attachment", "attachment": {"type": "queued_command", "prompt": "<task-notification>\n<tool-use-id>b1</tool-use-id>\n<status>killed</status>\n</task-notification>"}}));
+    let g = scan_all(&jsonl(&more));
+    assert_eq!(
+        g.bg_tasks
+            .iter()
+            .map(|t| t.call.as_str())
+            .collect::<Vec<_>>(),
+        ["b2"]
+    );
+    // 接力：从每个行边界续扫都等于一次扫完。
+    let mut at = 0usize;
+    for line in text.split_inclusive('\n') {
+        at += line.len();
+        let head = scan_all(&text[..at]);
+        let tail = scan_facts(text[at..].as_bytes(), head, &Vec::new(), None).unwrap();
+        assert_eq!(tail.bg_tasks, f.bg_tasks, "续点 {at}");
+    }
+    // 快路：每行都解析与先过滤再解析结果一样。
+    let mut slow = SessionFacts::default();
+    for line in text.lines() {
+        slow.end += line.len() as u64 + 1;
+        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
+            note_record(&mut slow, &v);
+        }
+    }
+    assert_eq!(f, slow);
+}
+
+/// ★ 后台任务运行中那一句的唯一判定：一条 ⇒「后台任务运行中 · 命令 · 时长」；几条 ⇒ 命令取最早起的、「等 N 条」、
+/// 时长按它算；进程起来之前起的不算（被掐了）；命令拿不到 ⇒ 只写那个字；会走的那一句留 `{dur}`、起点是那一条起的时刻。
+#[test]
+fn the_background_line_is_written_here() {
+    let t = |call: &str, cmd: Option<&str>, at: Option<&str>| BgTask {
+        call: call.into(),
+        task: None,
+        cmd: cmd.map(str::to_string),
+        at: at.map(str::to_string),
+    };
+    let t0 = crate::common::time::parse_iso8601_ms("2026-10-09T08:00:00.000Z").unwrap() as u64;
+    let one = [t(
+        "a",
+        Some("make test-all\nsecond line"),
+        Some("2026-10-09T08:00:00.000Z"),
+    )];
+    let b = background_of(&one, None, t0 + 12 * 60_000 + 30_000);
+    let line = |cmd: &str, dur: &str| {
+        copy_core::copy_text(
+            "beSession.activity.backgroundFor",
+            &[("cmd", cmd), ("dur", dur)],
+        )
+    };
+    let many_of = |cmd: &str, n: &str| {
+        copy_core::copy_text(
+            "beSession.activity.backgroundMany",
+            &[("cmd", cmd), ("n", n)],
+        )
+    };
+    assert_eq!(b.text.0, line("make test-all", "12m"));
+    assert_eq!(b.what.as_ref().unwrap().0, "make test-all");
+    assert_eq!(b.count, 1);
+    assert_eq!(b.tone, crate::common::cells::Tone::Busy);
+    let c = b.clock.unwrap();
+    assert_eq!(
+        (c.text.0.as_str(), c.from),
+        ("后台任务运行中 · make test-all · {dur}", t0)
+    );
+
+    let many = [
+        t("late", Some("make lint"), Some("2026-10-09T08:30:00.000Z")),
+        t(
+            "early",
+            Some("python train.py"),
+            Some("2026-10-09T08:00:00.000Z"),
+        ),
+    ];
+    let b = background_of(&many, None, t0 + 64 * 60_000);
+    assert_eq!(b.text.0, line(&many_of("python train.py", "2"), "1h4m"));
+    assert_eq!(b.count, 2);
+
+    // 进程 08:10 起的 ⇒ 08:00 那条是上一个进程留下的，不算。
+    let born = t0 + 10 * 60_000;
+    let b = background_of(&many, Some(born), t0 + 40 * 60_000);
+    assert_eq!(b.text.0, line("make lint", "10m"));
+    assert_eq!(b.count, 1);
+
+    // 一条都对不上 · 命令拿不到 ⇒ 只写那个字，不出会走的那一句。
+    for tasks in [vec![], vec![t("x", None, Some("2026-10-09T08:00:00.000Z"))]] {
+        let b = background_of(&tasks, None, t0);
+        assert_eq!(
+            b.text.0,
+            copy_core::copy_text("beSession.activity.backgroundWork", &[])
+        );
+        assert!(b.clock.is_none() && b.what.is_none());
+    }
+}
+
+/// 〔G4〕上下文的字由核心写：上限判得出 ⇒ 百分比（四舍五入）· 到 80% 语气 `warn`；判不出（`assumed`）⇒ 只写用了多少、
+/// 没有百分比、语气 `plain`、没有来源的字。上限换了（按上限表重判）字跟着换。出口照抄。
+#[test]
+fn usage_carries_its_words_and_tone() {
+    use crate::common::cells::Tone;
+    let u = UsageFact::new(
+        350_000,
+        Some("m".into()),
+        350_000,
+        (1_000_000, LimitFrom::Relay),
+    );
+    assert_eq!(u.percent, Some(35));
+    assert_eq!(
+        u.context_text.0,
+        copy_core::copy_text("beUsage.context.pct", &[("n", "35")])
+    );
+    assert_eq!(u.context_tone, Tone::Plain);
+    assert_eq!(u.prompt_tokens_text.0, "350k");
+    assert_eq!(u.limit_text.0, "1M");
+    assert_eq!(
+        u.limit_from_text.as_ref().map(|w| w.0.clone()),
+        Some(copy_core::copy_text("beUsage.from.relay", &[]))
+    );
+
+    let hot = UsageFact::new(169_600, None, 169_600, (200_000, LimitFrom::Setting));
+    assert_eq!((hot.percent, hot.context_tone), (Some(85), Tone::Warn));
+
+    let mut blind = UsageFact::new(350_000, None, 350_000, (1_000_000, LimitFrom::Assumed));
+    assert_eq!(blind.percent, None);
+    assert_eq!(blind.context_text.0, "350k");
+    assert_eq!(blind.context_tone, Tone::Plain);
+    assert_eq!(blind.limit_from_text, None);
+
+    blind.settle((400_000, LimitFrom::Setting));
+    assert_eq!(blind.percent, Some(88));
+    assert_eq!(
+        blind.context_text.0,
+        copy_core::copy_text("beUsage.context.pct", &[("n", "88")])
+    );
+    assert_eq!(blind.context_tone, Tone::Warn);
+    assert_eq!(blind.limit_text.0, "400k");
+
+    for (n, want) in [
+        (800, "800"),
+        (1_234, "1.2k"),
+        (8_000, "8k"),
+        (12_345, "12k"),
+        (1_000_000, "1M"),
+        (1_250_000, "1.3M"),
+    ] {
+        assert_eq!(short_tokens(n), want, "{n}");
+    }
+}
+
+/// 〔G3b〕每件「需手动」带一个序：顶上的框先答（种类已按顶上那个框判），再按危险度 —— 放行联网 · 批准一步在前，
+/// 然后协作请求 · 会话目标 · 计划 · 回答 · 选一项 · 判不出。序与种类在同一处判（`needs_of`）。
+#[test]
+fn needs_carry_a_rank_riskier_first() {
+    use crate::agents::WaitOn as W;
+    let call = |name: &str| PendingCall {
+        id: "c".into(),
+        name: name.into(),
+        what: None,
+        at: None,
+        state: StepWait::Running,
+        why: None,
+    };
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
+        since_ms: None,
+        read_at_ms: 0,
+    };
+    let order = [
+        (vec![call("Bash")], Some(W::Network), NeedsKind::Network),
+        (vec![call("Bash")], Some(W::Permission), NeedsKind::Approve),
+        (vec![], Some(W::Worker), NeedsKind::Worker),
+        (vec![], Some(W::Goal), NeedsKind::Goal),
+        (
+            vec![call("ExitPlanMode")],
+            Some(W::Permission),
+            NeedsKind::Plan,
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            Some(W::Input),
+            NeedsKind::Answer,
+        ),
+        (vec![], Some(W::Dialog), NeedsKind::Choose),
+        (vec![], None, NeedsKind::Unknown),
+    ];
+    let ranks: Vec<u8> = order
+        .into_iter()
+        .map(|(p, w, kind)| {
+            let n = needs_of(&p, Some(&wait(w))).unwrap();
+            assert_eq!(n.kind, kind);
+            n.rank
+        })
+        .collect();
+    assert_eq!(
+        ranks,
+        (0..8).collect::<Vec<u8>>(),
+        "序按危险度从 0 起、一种一个"
+    );
+    let v = serde_json::to_value(needs_of(&[], Some(&wait(Some(W::Goal)))).unwrap()).unwrap();
+    assert_eq!(v["rank"], 3);
+}
+
+/// ★ **「已等多久」在那台算**：起点（`sinceMs`，那台 pidfile 的钟）与读 pidfile 那一刻（同一台的钟）相减，
+/// 不拿别的机器的钟减（手机 · 桌面的钟与服务器不同步）；写好的字由时长那一处写（`copy_core::format_duration`，与界面那个读口对同一份金样）。
+/// 起点缺 ⇒ 两格都缺；起点比读的那一刻还晚（那台的钟往回拨过）⇒ 记 0，不写负数。
+#[test]
+fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
+    use crate::agents::WaitOn as W;
+    let bash = vec![PendingCall {
+        id: "b".into(),
+        name: "Bash".into(),
+        what: Some("ls".into()),
+        at: None,
+        state: StepWait::Unclear,
+        why: None,
+    }];
+    let at = |since: Option<u64>, read: u64| {
+        let n = needs_of(
+            &bash,
+            Some(&PidWait {
+                waiting_for: Some(W::Permission),
+                since_ms: since,
+                read_at_ms: read,
+            }),
+        )
+        .expect("在等");
+        (n.waited_ms, n.waited_text.map(|w| w.0))
+    };
+    assert_eq!(
+        at(Some(1_000), 91_000),
+        (Some(90_000), Some(copy_core::format_duration(90_000)))
+    );
+    assert_eq!(at(Some(1_000), 91_000).1.as_deref(), Some("1 分 30 秒"));
+    assert_eq!(at(None, 91_000), (None, None));
+    assert_eq!(
+        at(Some(95_000), 91_000),
+        (Some(0), Some(copy_core::format_duration(0)))
+    );
 }

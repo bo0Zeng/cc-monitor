@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::control::session_batch::TmuxEntry;
+use serde_json::json;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 
@@ -54,7 +55,9 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(self.rows.clone()) };
+        let list = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
+            Ok(self.rows.clone())
+        };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
@@ -381,8 +384,9 @@ fn a_tilde_directory_is_read_under_this_machines_home() {
 #[test]
 fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint() {
     let caps = BTreeSet::new();
-    let none = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(None) };
-    let some = || -> Result<Option<Vec<TmuxEntry>>, String> {
+    let none =
+        || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> { Ok(None) };
+    let some = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
         Ok(Some(vec![row("orders-cc", Some(SRC), true)]))
     };
     let mint = |b: NameBase| -> Result<String, crate::control::session_batch::CmdErr> {
@@ -398,26 +402,29 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         library: &library,
         last: &|_| None,
     };
-    let run = |list: &dyn Fn() -> Result<Option<Vec<TmuxEntry>>, String>, args: Value| {
-        let deps = Deps {
-            list,
-            record: &no,
-            kill: &|_, _| unreachable!(),
-            send_into: &|_, _, _| unreachable!(),
-            run_ccm: &|_| unreachable!(),
-            mint: &mint,
-            caps: &caps,
-            local_facts: local::Facts {
-                windows: false,
-                is_dir: |p| p == "/h/srv",
-                entry: || None,
-            },
-            accounts: &accounts,
-            writers: &|_| vec![],
-            pretrust: &|_, _| unreachable!("核目录不起会话"),
+    let run =
+        |list: &dyn Fn()
+            -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr>,
+         args: Value| {
+            let deps = Deps {
+                list,
+                record: &no,
+                kill: &|_, _| unreachable!(),
+                send_into: &|_, _, _| unreachable!(),
+                run_ccm: &|_| unreachable!(),
+                mint: &mint,
+                caps: &caps,
+                local_facts: local::Facts {
+                    windows: false,
+                    is_dir: |p| p == "/h/srv",
+                    entry: || None,
+                },
+                accounts: &accounts,
+                writers: &|_| vec![],
+                pretrust: &|_, _| unreachable!("核目录不起会话"),
+            };
+            dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
         };
-        dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
-    };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
         json!({ "exists": true, "tmuxName": "cwd:/h/srv" })
@@ -572,4 +579,45 @@ fn a_rule_at_launch_that_fails_leaves_nothing_behind() {
         rig.call(req(json!({"rotation": 3}))).expect_err("形状").0,
         "bad_args"
     );
+}
+
+impl crate::guard_support::Shaped for SessionNew {
+    fn samples() -> Vec<Self> {
+        vec![SessionNew {
+            outcome: SessionNewOutcome::Started,
+            session: Some("proj-cc".into()),
+            sid: Some("s-1".into()),
+            cmd: Some("ccm --new".into()),
+            account: Some(LaunchedAccount {
+                name: "work".into(),
+                config_dir: "/home/u/.claude-work".into(),
+                model: Some("opus".into()),
+            }),
+            agent: "claude".into(),
+            cwd: "/home/u/proj".into(),
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for SessionNewRefusal {
+    fn samples() -> Vec<Self> {
+        vec![SessionNewRefusal {
+            field: Some(SessionNewField::Account),
+            unavailable: Some(la::AccountUnavailable {
+                requested: "work".into(),
+                pinned: false,
+                list_known: true,
+                alternative: None,
+            }),
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for DirChecked {
+    fn samples() -> Vec<Self> {
+        vec![DirChecked {
+            exists: true,
+            tmux_name: Some("proj-cc".into()),
+        }]
+    }
 }

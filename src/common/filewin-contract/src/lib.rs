@@ -1,7 +1,8 @@
 //! monitor 与文件窗口进程之间两边必须对上的那几样（契约类，两边分属两个 crate，形状只许有这一份）：
-//! - [`OpenRequest`] —— 开窗种子，整份走窗口进程的 stdin（一份 JSON，写完关掉 = EOF = 给完了）；
-//! - [`Ready`] —— 窗口进程列完第一屏在 stdout 上说的那一行；
+//! - [`OpenRequest`] —— 开窗种子：窗口进程 stdin 的第一行（一份 JSON）；之后同一对 stdin / stdout 就是通道（`chan`，没有钥匙：父子管道）；
+//! - [`Ready`] —— 窗口进程列完第一屏在 stderr 上说的那一行（带 [`READY_MARK`] 打头；stderr 上别的行是诊断）；
 //! - [`TERMINAL_OPEN_OP`] —— 「在此打开终端」：窗口在它那条通道上 `call` 的、由 monitor 自己接下来的那一条（只带意图：那台 ＋ 当前目录）；
+//! - [`PLAN_OPEN_OP`] —— 「在计划里看」：同上那一形（只带意图：那台 ＋ 工作区 · 片 · 格），monitor 交给主窗口；
 //! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量。
 
 use copy_core::copy_text;
@@ -18,8 +19,7 @@ pub use theme::{parse_css_color, parse_shadow, Rgba, Shadow, Theme, THEME_TOKENS
 /// ⚠ 它**不是** fail-open 的开关：给了但那份文件不在，照旧是一条响亮的失败。
 pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
 
-/// 一次开窗的全部输入 —— 它整份过一次进程边界（走 stdin）。[`Self::handoff`] 是通道的交接件（回环地址 ＋ 钥匙 ＋ 帧长），只走 stdin
-/// （理由同 `chan/host.rs` 头注「钥匙怎么交接」）；`Handoff` / `Key` 的 `Debug` 都手写成不打印钥匙。
+/// 一次开窗的全部输入 —— 它整份过一次进程边界（stdin 的第一行）。之后那一对管子就是通道，帧长上限是 [`Self::frame`]。
 /// 字段与窗口那一侧 `shell::FileWindow::seeded` ＋ `set_reveal` 的入参一一对应、不多不少（多一个就是「窗口那侧能有、而开窗这条路给不了」的缝）；
 /// 例外两格由窗口进程自己补：`rows`（那一屏，`proc::first_screen` 列）与 `cwd` 缺席时的 home。
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -30,8 +30,8 @@ pub struct OpenRequest {
     pub cwd: Option<String>,
     /// 开窗就高亮这一行（`None` = 不高亮）。
     pub reveal: Option<String>,
-    /// 🔴窗口进程拿它拨回 monitor 那个通道口（`chan::dial::dial`）。
-    pub handoff: comms_inward::chan::handoff::Handoff,
+    /// 通道帧头 / 帧体各自的字节上限（两端同一个数；通道就是窗口进程自己的 stdin / stdout）。
+    pub frame: usize,
     /// 书签文件的全路径（monitor 算好：它住 monitor 的数据目录）。
     /// `None` ＝ 数据目录解不出来 ⇒ 窗口的书签栏上出声，不静默不画。
     pub bookmarks: Option<std::path::PathBuf>,
@@ -80,7 +80,8 @@ pub fn decode_request(raw: &str) -> Result<OpenRequest, Said> {
         .map_err(|e| Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e))
 }
 
-/// 窗口进程在 stdout 上说的那一行：第一屏列到几行，或列不出来的原话。线上形 `{"listed":N}` / `{"failed":"…"}`，一行一个 JSON。
+/// 窗口进程在 stderr 上说的那一行：第一屏列到几行，或列不出来的原话。线上形 `ccm-filewin-ready {"listed":N}` / `… {"failed":"…"}`。
+/// 走 stderr 是因为 stdout 已经是通道（列第一屏那几问就在它上面，先于这一行）；打头那个记号把它与 stderr 上的诊断分开。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Ready {
@@ -90,26 +91,34 @@ pub enum Ready {
     Failed(String),
 }
 
-/// [`Ready`] → 那一行（带换行）。**纯函数**。
+/// 就绪那一行打头的记号（stderr 上带它的那一行才是 [`Ready`]）。
+pub const READY_MARK: &str = "ccm-filewin-ready ";
+
+/// [`Ready`] → 那一行（带记号、带换行）。**纯函数**。
 pub fn encode_ready(r: &Ready) -> String {
     // `Ready` 只有一个整数或一个字符串，序列化不会失败；万一失败也得是一行、而且说清。
-    let mut s = serde_json::to_string(r).unwrap_or_else(|e| {
+    let json = serde_json::to_string(r).unwrap_or_else(|e| {
         format!(
             "{{\"failed\":{}}}",
             serde_json::Value::String(e.to_string())
         )
     });
-    s.push('\n');
-    s
+    format!("{READY_MARK}{json}\n")
 }
 
-/// 那一行 → [`Ready`]。**纯函数**；解不出来就是错（不猜）。
+/// stderr 上这一行是不是就绪那一行（带 [`READY_MARK`] 打头）。**纯函数**。
+pub fn is_ready_line(line: &str) -> bool {
+    line.starts_with(READY_MARK)
+}
+
+/// 那一行 → [`Ready`]。**纯函数**；没有记号 / 解不出来就是错（不猜）。
 ///
 /// # Errors
 ///
 /// 不是约定的那两种形状。
 pub fn decode_ready(line: &str) -> Result<Ready, Said> {
-    serde_json::from_str(line.trim())
+    let json = line.strip_prefix(READY_MARK).unwrap_or("");
+    serde_json::from_str(json.trim())
         .map_err(|e| Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e))
 }
 
@@ -130,6 +139,28 @@ pub const LINK_KIND: &str = "link";
 /// 「重新连接」：窗口那一条警告条上的按钮 ⇒ 在通道上 `call` 这一条（寻址 ＝ 那台，参数空），
 /// **monitor 自己接**：叫醒那台的连接循环，不等退避睡满。回 `{}`；连没连上看 [`LINK_KIND`] 那条流。
 pub const LINK_RETRY_OP: &str = "link-retry";
+
+/// 「在计划里看」（计划反查，设计稿 planned-build 06）：窗口在通道上 `call` 这一条（寻址 ＝ 那台），**monitor 自己接**：
+/// 把主窗口拉到前面、切到计划页、选中那一格（片按机器区分：寻址就是那台）。参数 `{workspace, slice, id}`（[`plan_open_args`]）。
+pub const PLAN_OPEN_OP: &str = "plan-open";
+
+/// 「在计划里看」交给主窗口的那一份（monitor 照它发事件）。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlanOpen {
+    pub workspace: String,
+    pub slice: String,
+    pub id: String,
+}
+
+/// [`PLAN_OPEN_OP`] 的参数。
+pub fn plan_open_args(workspace: &str, slice: &str, id: &str) -> serde_json::Value {
+    serde_json::json!({ "workspace": workspace, "slice": slice, "id": id })
+}
+
+/// [`PLAN_OPEN_OP`] 的参数 → 那一格（缺了 / 形状不对 ⇒ `None`：调用方用错了）。
+pub fn plan_open_target(args: &serde_json::Value) -> Option<PlanOpen> {
+    serde_json::from_value(args.clone()).ok()
+}
 
 /// [`FILEWIN_OPEN_OP`] 的参数：发起那扇窗正在用的样子（新窗口照它画）。
 pub fn filewin_open_args(theme: &Theme) -> serde_json::Value {

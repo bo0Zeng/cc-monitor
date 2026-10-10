@@ -36,9 +36,14 @@ pub(crate) fn until_of(within_ms: Option<u64>) -> Option<Until> {
     within_ms.and_then(|ms| Until::after(Deadline::millis(ms.saturating_sub(MARGIN_MS))))
 }
 
+/// 这条命令登记的总期限上限（不在表里 ⇒ `None`：不装，发起方带的期限对它不起作用）。协议参考按它逐条写。
+pub(crate) fn cap_of(cmd: &str) -> Option<Deadline> {
+    CAPS.iter()
+        .find(|(name, _)| *name == cmd)
+        .map(|&(_, cap)| cap)
+}
+
 /// 给这条命令装总期限（不在表里 ⇒ 不装）。守卫活着期间有效：在执行这条命令的那根线程上调、跑完才放。
 pub(crate) fn install(req: &Request) -> Option<Budget> {
-    CAPS.iter()
-        .find(|(name, _)| *name == req.cmd)
-        .map(|&(_, cap)| Budget::capped(cap, req.until))
+    cap_of(&req.cmd).map(|cap| Budget::capped(cap, req.until))
 }

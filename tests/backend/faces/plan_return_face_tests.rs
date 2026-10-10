@@ -171,3 +171,24 @@ fn bad_shapes_and_missing_cells_are_errors() {
     a["slice"] = json!("beta");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_such_cell");
 }
+
+/// 顶块（project）在 pb 里可寻址（`pb see project`）⇒ 退回它 ＝ 送给顶块的接手；那一行与普通格同一处拼，标题是片名；
+/// 记下的子格是顶层那几格（落地看顶层多出新的一格）。project 谁都签不了 ⇒ 没有「签它的」那一项。
+#[test]
+fn the_top_block_is_addressed_as_project_and_goes_to_its_owner() {
+    let doc = doc_with(&live(crate::agents::SessionActivity::Working));
+    let (out, sent, kept) = run(&doc, args("project"), json!({"result": "delivered"}));
+    let out = out.unwrap();
+    assert_eq!(out["result"], "delivered");
+    assert_eq!(out["line"], "人 · project alpha：单位写错了");
+    assert_eq!(out["to"]["kind"], "session");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0]["sid"], MAIN);
+    assert_eq!(sent[0]["text"], "人 · project alpha：单位写错了");
+    let (_, sl, id, r) = &kept[0];
+    assert_eq!((sl.as_str(), id.as_str()), ("alpha", "project"));
+    assert_eq!(r.children, vec!["A1".to_string(), "A2".to_string()]);
+    let mut a = args("project");
+    a["to"] = json!("signer");
+    assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_target");
+}

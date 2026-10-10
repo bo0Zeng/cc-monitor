@@ -171,6 +171,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
+    ("plan-list", "新帧命令：这台的 pb 工作区与片（找 pb · 跑 pb dump 在后端）；计划页只排版"),
+    ("plan-read", "新帧命令：一个工作区的成品（接手 / 签收人对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),
+    ("plan-cell-view", "新帧命令：一格的 agent 视角（pb 原样那一段）；计划页详情折着的那一段只排版"),
+    ("plan-ack", "新帧命令：认可一条需手动（只记在 cc-monitor，键带条目版本，后端判）；计划页那一条只排版"),
+    ("plan-unack", "新帧命令：撤掉认可（toast［撤销］那一下）；计划页只排版"),
+    ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
+    // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
+    ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · view（退出码与 pb 那一句在后端认）；计划页开关与［整张图］只排版"),
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
     ("rotation-rules-read", "新帧命令：那台的轮换规则表（默认指向哪条 · 每条谁在用 · 摘要与说明由后端写），面板来源下拉与设置里规则管理只排版"),
     ("rotation-plan", "新帧命令：一份轮换草稿逐格校验（封顶时段重叠 · 起止相同 · 时刻写错 · 越界），浮层只照它标红"),
@@ -487,6 +496,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-annotate",
         "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
+    ),
+    (
+        "history-branch",
+        "主线外清单冷读：查看器与子运行窗口打开时问一次（`record-reads.ts::decodeBranch` 按形状收），之后跟实时帧 `branch`",
     ),
     (
         "history-forget",
@@ -1405,13 +1418,13 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
         rows.iter().map(|r| r.end).collect::<Vec<_>>(),
         vec![Some(54), Some(152), Some(273)]
     );
-    assert!(rows[0].message.is_none(), "不进界面的元数据记录不该带成品");
+    assert!(rows[0].record.is_none(), "不进界面的元数据记录不该带成品");
     assert_eq!(rows[1].cwd.as_deref(), Some("/w"));
-    let m: Value = serde_json::from_str(rows[1].message.as_ref().unwrap().0.get()).unwrap();
+    let m: Value = serde_json::from_str(rows[1].record.as_ref().unwrap().0.get()).unwrap();
     assert_eq!(
-        m, golden["history-read"]["rows"][1]["message"],
+        m, golden["history-read"]["rows"][1]["record"],
         "成品没原样转交"
     );
     // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
-    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "message": "x"})).is_none());
+    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "record": "x"})).is_none());
 }

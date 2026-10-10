@@ -221,11 +221,12 @@ SINKS = [
          re=re.compile(r"\.style\.setProperty\s*\(")),
 
     # ── 元素文本（kind 靠回溯 createElement 的 tag 推） ────────────────────
-    dict(id="dom.textContent", lang="ts", bucket="dom-text", mode="assign", kind=None,
+    # `needle`：正则里写死的那个词，全文没有它就跳过这条（只是快路，命中面不变）。
+    dict(id="dom.textContent", lang="ts", bucket="dom-text", mode="assign", kind=None, needle="textContent",
          re=re.compile(r"([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\.\s*textContent\s*=(?!=)")),
-    dict(id="dom.innerText", lang="ts", bucket="dom-text", mode="assign", kind=None,
+    dict(id="dom.innerText", lang="ts", bucket="dom-text", mode="assign", kind=None, needle="innerText",
          re=re.compile(r"([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\.\s*innerText\s*=(?!=)")),
-    dict(id="dom.innerHTML", lang="ts", bucket="dom-html", mode="assign", kind="unresolved",
+    dict(id="dom.innerHTML", lang="ts", bucket="dom-html", mode="assign", kind="unresolved", needle="innerHTML",
          re=re.compile(r"([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\.\s*innerHTML\s*=(?!=)")),
 
     # ── 属性面 ──────────────────────────────────────────────────────────
@@ -436,6 +437,10 @@ DECLINED_CTX = re.compile(
 # ═══════════════════════════════════════════════════════════════════════════
 #  词法：遮注释（保留字符串）· 剥 `#[cfg(test)]`
 # ═══════════════════════════════════════════════════════════════════════════
+# `mask_comments` 的跳读：字面量 / 注释之外要看的字符（引号 · `/` ·（Rust）原始串的 `r"` / `r#`）。
+_MASK_SPECIAL = {"ts": re.compile(r"[\"'`/]"), "rs": re.compile(r"[\"'/]|r[#\"]")}
+
+
 def mask_comments(src: str, lang: str) -> str:
     """把注释换成空格（长度、行号不变），**字符串原样保留**。
 
@@ -452,7 +457,17 @@ def mask_comments(src: str, lang: str) -> str:
             if out[k] != "\n":
                 out[k] = " "
 
+    special = _MASK_SPECIAL["rs" if lang == "rs" else "ts"]
     while i < n:
+        # 跳读：要看的只有引号 · `/` ·（Rust）`r"` / `r#`；别的字符逐个走只会把 `prev_sig` 记成最后那个非空白字符。
+        m = special.search(src, i)
+        j = m.start() if m else n
+        if j > i:
+            seg = src[i:j].rstrip()
+            if seg:
+                prev_sig = seg[-1]
+            i = j
+            continue
         c = src[i]
         nxt = src[i + 1] if i + 1 < n else ""
 
@@ -483,8 +498,14 @@ def mask_comments(src: str, lang: str) -> str:
 
         if c in ('"', "'") or (lang == "ts" and c == "`"):
             q = c
+            stop = _STR_STOP[q]
             j = i + 1
             while j < n:
+                sm = stop.search(src, j, n)
+                if sm is None:
+                    j = n
+                    break
+                j = sm.start()
                 ch = src[j]
                 if ch == "\\":
                     j += 2
@@ -720,6 +741,14 @@ def cfg_test_module_files(root: Path) -> set:
     return out
 
 
+# `iter_strings` 的两处跳读：字面量之外只有引号（Rust 另有 `r"` / `r#` 起头的原始串）才要看，别的字符逐个走过去什么都不做；
+#   字面量里只有反斜杠 · 收尾的引号 ·（单行串的）换行 ·（模板串的）`$` 要看，别的字符原样进 buf。
+#   ⇒ 用正则一步跳到下一个要看的字符，读数与逐字走逐位相同（10-09 负载下 CP1 撞期限一半：这份逐字循环是整仓扫的大头）。
+_STR_OPEN = {"ts": re.compile(r"[\"'`]"), "rs": re.compile(r"[\"']|r[#\"]")}
+_STR_STOP = {'"': re.compile(r'[\\"\n]'), "'": re.compile(r"[\\'\n]"), "`": re.compile(r"[\\`$]")}
+_ESC = {"n": "\n", "t": "\t"}
+
+
 def iter_strings(src: str, lang: str, lo: int, hi: int):
     """在 [lo,hi) 里列出字符串字面量：(start, end, 归一化文本)。
 
@@ -727,7 +756,12 @@ def iter_strings(src: str, lang: str, lo: int, hi: int):
     """
     i = lo
     n = min(hi, len(src))
+    opener = _STR_OPEN["rs" if lang == "rs" else "ts"]
     while i < n:
+        m = opener.search(src, i, n)
+        if m is None:
+            break
+        i = m.start()
         c = src[i]
         if lang == "rs" and c == "r" and i + 1 < n and src[i + 1] in '#"':
             j = i + 1
@@ -749,35 +783,48 @@ def iter_strings(src: str, lang: str, lo: int, hi: int):
             continue
         if c in ('"', "'") or (lang == "ts" and c == "`"):
             q = c
+            stop = _STR_STOP[q]
             j = i + 1
             buf = []
             while j < n:
+                sm = stop.search(src, j, n)
+                if sm is None:
+                    buf.append(src[j:n])
+                    j = n
+                    break
+                k = sm.start()
+                if k > j:
+                    buf.append(src[j:k])
+                    j = k
                 ch = src[j]
                 if ch == "\\":
-                    buf.append({"n": "\n", "t": "\t"}.get(src[j + 1: j + 2], src[j + 1: j + 2]))
+                    nx = src[j + 1: j + 2]
+                    buf.append(_ESC.get(nx, nx))
                     j += 2
                     continue
                 if ch == q:
                     j += 1
                     break
-                if q == "`" and ch == "$" and j + 1 < n and src[j + 1] == "{":
-                    d = 0
-                    k = j + 1
-                    while k < n:
-                        if src[k] == "{":
-                            d += 1
-                        elif src[k] == "}":
-                            d -= 1
-                            if d == 0:
-                                break
-                        k += 1
-                    buf.append("{…}")
-                    j = k + 1
+                if q == "`" and ch == "$":
+                    if j + 1 < n and src[j + 1] == "{":
+                        d = 0
+                        k = j + 1
+                        while k < n:
+                            if src[k] == "{":
+                                d += 1
+                            elif src[k] == "}":
+                                d -= 1
+                                if d == 0:
+                                    break
+                            k += 1
+                        buf.append("{…}")
+                        j = k + 1
+                        continue
+                    buf.append(ch)
+                    j += 1
                     continue
-                if q in ('"', "'") and ch == "\n":
-                    break
-                buf.append(ch)
-                j += 1
+                # 单行串遇换行：到此为止（不收这个换行）
+                break
             yield (i, j, "".join(buf))
             i = j
             continue
@@ -1074,6 +1121,9 @@ def scan(root: Path):
             if sink["lang"] not in (lang, "both"):
                 continue
             if sink.get("only") and not rel.startswith(sink["only"]):
+                continue
+            # 正则里写死了这个词：全文没有它就不可能命中（这三条以标识符链打头，每个标识符起点都要试一遍，空跑是整仓扫的一大块）。
+            if sink.get("needle") and sink["needle"] not in masked:
                 continue
             for m in sink["re"].finditer(masked):
                 if sink["mode"] == "field":

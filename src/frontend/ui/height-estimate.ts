@@ -8,7 +8,7 @@
  * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）。
  * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准）。
  */
-import type { JsonlRecord } from "./generated/JsonlRecord";
+import type { LineRecord } from "./generated/LineRecord";
 import { drawsCard } from "./speaker";
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
@@ -351,8 +351,8 @@ export interface SkeletonFacts {
   o: number;
   /** 行字节长（含 `\n`） */
   n: number;
-  /** 记录 `type`（解析不出 ⇒ 缺） */
-  t?: string;
+  /** 这一行会翻成的通用记录的类（与读正文时那条记录的 `t` 同一个词；不进界面 ⇒ 缺） */
+  t?: LineRecord["t"];
   u?: string;
   sc?: boolean;
   /** user 记录是谁说的（后端判好的来源；人说的与工具结果省略） */
@@ -373,7 +373,7 @@ export interface SkeletonFacts {
 
 /**
  * 一条记录在骨架里算哪一类：
- * - `none`：**不建卡**（meta / attachment / ai-title / 解析不出的…）——高 0，**也不打断**工具组的连续
+ * - `none`：**不建卡**（不进界面的行 · 标题 · 不画的来源 …）——高 0，**也不打断**工具组的连续
  *   （渲染时它们根本不进 timeline，`peekPrev` 看得见的左邻居仍是上一个工具组）；
  * - `tool`：只有折叠单元的记录（纯 tool_use / 纯 tool_result）——连续的一串并成**一张**工具组卡；
  * - `card`：其余。
@@ -422,9 +422,9 @@ function factCode(f: SkeletonFacts): number {
 
 /** 一条记录属于哪一类（不看邻居）。 */
 export function skeletonKind(f: SkeletonFacts): SkeletonKind {
-  if (f.t !== "user" && f.t !== "assistant" && f.t !== "system") return "none";
+  if (f.t !== "said" && f.t !== "reply" && f.t !== "retry" && f.t !== "queued") return "none";
   if (f.sp && !drawsCard(f.sp)) return "none";
-  if (f.t === "system") return "card";
+  if (f.t === "retry" || f.t === "queued") return "card";
   const hasBody = (f.ch ?? 0) > 0 || (f.cb ?? 0) > 0;
   if (!hasBody) return (f.fd ?? 0) > 0 ? "tool" : "none";
   return "card";
@@ -450,9 +450,9 @@ export function estimateFromFacts(
   if (f.sp === "system") return injectedShown ? SKEL_INJECTED_H : 0;
   if (kind === "none") return 0;
   if (kind === "tool") return prevKind === "tool" ? 0 : SKEL_TOOL_GROUP_H;
-  if (f.t === "system") return SKEL_SYSTEM_H;
+  if (f.t === "retry") return SKEL_SYSTEM_H;
   const folded = (f.fd ?? 0) * SUMMARY_H;
-  if (f.t === "user") {
+  if (f.t === "said" || f.t === "queued") {
     const userW = colW * 0.8 - 34;
     return factLines(f, 14, userW) * LH_BASE + factCode(f) + folded + SKEL_USER_CHROME;
   }
@@ -470,24 +470,19 @@ export function estimateFromFacts(
 
 /**
  * 〔「字节不是成本轴，卡型才是 …… 同一种卡正文越长越贵」〕**这条记录建卡时要当场物化的正文字符数**：
- * user 的文本（字符串 content 或 text 块）· assistant 的 text 块 · queue-operation 的 content。thinking / 工具调用 / 工具结果
- * 是折叠卡（展开才物化）、元数据不建卡 ⇒ 0。O(块数)：只取 `.length`，不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
+ * said / reply 的正文块 · queued 的正文。thinking / 工具调用 / 工具结果
+ * 是折叠卡（展开才物化）、别的不建卡 ⇒ 0。O(块数)：只取 `.length`，不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
  */
-export function eagerBodyChars(message: JsonlRecord): number {
-  switch (message.type) {
-    case "user":
-    case "assistant": {
-      const c: unknown = (message.message as { content?: unknown } | undefined)?.content; // 残缺记录（夹具）不抛
-      if (typeof c === "string") return message.type === "user" ? c.length : 0;
-      if (!Array.isArray(c)) return 0;
+export function eagerBodyChars(record: LineRecord): number {
+  switch (record.t) {
+    case "said":
+    case "reply": {
       let n = 0;
-      for (const b of c as Array<{ type?: unknown; text?: unknown }>) {
-        if (b && b.type === "text" && typeof b.text === "string") n += b.text.length;
-      }
+      for (const b of record.blocks ?? []) if (b.type === "text") n += b.text.length; // 残缺记录（夹具）不抛
       return n;
     }
-    case "queue-operation":
-      return message.content?.length ?? 0;
+    case "queued":
+      return record.who?.text.length ?? 0;
     default:
       return 0;
   }
@@ -533,28 +528,23 @@ function splitFences(md: string): { prose: string; codeLines: number; codeBlocks
  * 一条记录 ⇒ 第二级那一件；不值得精算的（不建卡 · 工具组 · 细条卡 · 没有正文）⇒ `null`（第一级就是它的高）。
  * 与 `estimateFromFacts` 逐项同形：只把 `factLines(…) × 行高` 换成 pretext 排出来的高。`colW` 同第一级。
  */
-export function refineItemOf(rec: JsonlRecord, colW: number = COL_W): RefineItem | null {
-  if (rec.type !== "user" && rec.type !== "assistant") return null;
-  if (rec.type === "user" && !drawsCard(rec.userText.speaker.kind)) return null;
-  const c: unknown = (rec.message as { content?: unknown } | undefined)?.content;
-  let md = "";
+export function refineItemOf(rec: LineRecord, colW: number = COL_W): RefineItem | null {
+  if (rec.t !== "said" && rec.t !== "reply") return null;
+  if (rec.t === "said" && !drawsCard(rec.who.speaker.kind)) return null;
   let folded = 0;
-  if (typeof c === "string") md = c;
-  else if (Array.isArray(c)) {
-    const texts: string[] = [];
-    for (const b of c as Array<{ type?: unknown; text?: unknown }>) {
-      if (b?.type === "text" && typeof b.text === "string") texts.push(b.text);
-      else if (b?.type === "tool_use" || b?.type === "tool_result" || b?.type === "thinking" || b?.type === "image") folded++;
-    }
-    md = texts.join("\n");
+  const texts: string[] = [];
+  for (const b of rec.blocks ?? []) {
+    if (b.type === "text") texts.push(b.text);
+    else folded++;
   }
+  const md = texts.join("\n");
   const { prose, codeLines, codeBlocks, paras } = splitFences(md);
   if (!prose.trim()) return null; // 纯工具 / 纯代码：第一级那份算术已经是它
   const code = codeLines * LH_MONO + codeBlocks * (CODE_BAR_H + CODE_PAD_V + CODE_MARGIN);
   const over = prose.length > MEASURE_PREFIX_CHARS;
   const text = over ? prose.slice(0, MEASURE_PREFIX_CHARS) : prose;
   const scale = over ? prose.length / MEASURE_PREFIX_CHARS : 1;
-  if (rec.type === "user") {
+  if (rec.t === "said") {
     return {
       text,
       scale,

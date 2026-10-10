@@ -18,7 +18,7 @@ fn jline(
         session_id: session_id.to_string(),
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,
-        message: message.map(|m| {
+        record: message.map(|m| {
             crate::ui_contract::RecordBody::from_json(m.to_string()).expect("成品是 JSON")
         }),
         cwd: cwd.map(str::to_string),
@@ -30,8 +30,7 @@ fn jline(
 /// batch_to_payloads：有成品的才出 payload、成品与 `cwd` 原样转交、seq/session_id 透传；没成品的照占号不出。
 #[test]
 fn only_lines_with_a_product_become_payloads_and_the_product_passes_through() {
-    let user =
-        r#"{"type":"user","uuid":"u-1","timestamp":"t","message":{"role":"user","content":"hi"}}"#;
+    let user = r#"{"agent":"claude","id":"u-1","t":"said","who":{"speaker":{"kind":"human"},"text":"hi"},"blocks":[{"type":"text","text":"hi"}]}"#;
     let lines = vec![
         jline("s-abc", 5, Some(user), Some("/home/me/proj")),
         jline("s-abc", 6, None, None),
@@ -50,7 +49,7 @@ fn only_lines_with_a_product_become_payloads_and_the_product_passes_through() {
         "cwd 是后端给的，原样带"
     );
     assert_eq!(
-        payloads[0].message.0.get(),
+        payloads[0].record.0.get(),
         user,
         "成品原样转交（一个字节都不改）"
     );
@@ -58,7 +57,7 @@ fn only_lines_with_a_product_become_payloads_and_the_product_passes_through() {
     assert_eq!(payloads[0].origin, None, "本地行 origin 应为 None");
     let wire = serde_json::to_string(&payloads[0]).unwrap();
     assert!(
-        wire.contains(&format!("\"message\":{user}")),
+        wire.contains(&format!("\"record\":{user}")),
         "序列化时成品原样嵌进去：{wire}"
     );
 }

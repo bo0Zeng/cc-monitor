@@ -138,7 +138,7 @@ fn report_with(
     Ok(ConfigSurfaceReport {
         rows,
         settings_scopes,
-        claude_config_dir: agent_home.display().to_string(),
+        agent_home: agent_home.display().to_string(),
         home: home.display().to_string(),
     })
 }

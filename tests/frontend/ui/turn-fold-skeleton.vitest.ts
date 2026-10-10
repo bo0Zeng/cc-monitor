@@ -56,7 +56,7 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement, linePx = 0):
   return state;
 }
 
-const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "user" : "assistant", u: `u${i}`, ch: 120, pl: 2 });
+const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "said" : "reply", u: `u${i}`, ch: 120, pl: 2 });
 
 const turn = (k: number): TurnSummary => ({
   at: k * PER_TURN * 100,
@@ -96,7 +96,7 @@ async function rig() {
         const el = document.createElement("div");
         el.dataset.h = "60";
         el.dataset.seq = String(s);
-        el.setAttribute("data-uuid", `u${s}`);
+        el.setAttribute("data-id", `u${s}`);
         timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
       }
     },
@@ -197,7 +197,7 @@ describe("冷切停住那一帧：骨架后到", () => {
       const el = document.createElement("div");
       el.dataset.h = "60";
       el.dataset.seq = String(s);
-      el.setAttribute("data-uuid", `u${s}`);
+      el.setAttribute("data-id", `u${s}`);
       timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
     };
     for (let s = floor; s < total; s++) card(s);

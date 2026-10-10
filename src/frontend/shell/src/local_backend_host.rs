@@ -1,6 +1,6 @@
 //! P2s（定框 `C8`）：**本机后端的生命周期** —— 起 / 停 / 状态。
 //!
-//! 违反此约束见 `src/doc/INVARIANTS.md` § 48（本机常驻后端的宿主三条：钥匙 · 不留僵尸 · 测试隔离用户 tmux；照「修改本文档」第 2 条补的反指）。
+//! 违反此约束见 `src/doc/INVARIANTS.md` § 48（本机常驻后端的宿主三条：门由内核给 · 不留僵尸 · 测试隔离用户 tmux；照「修改本文档」第 2 条补的反指）。
 //!
 //! # 为什么它不住 `lib.rs`
 //!
@@ -133,65 +133,23 @@ impl StartOutcome {
 /// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 
-/// backend 那侧收「听哪个口」的 env 名。
+/// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
+/// 两边同一个函数。
 ///
-/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/stream/listen.rs::ENV_PORT`。
+/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/stream/listen.rs::ENV_RESIDENT`。
 /// 两边漂了**不会报错** —— 起出来的后端会当成「没设」而走 stdio 那条路，
-/// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「连不上」。
-/// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍
-/// （形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。
-pub(crate) const LISTEN_PORT_ENV: &str = "CCM_LISTEN_PORT";
-
-/// 同上，钥匙文件**路径**那一个（backend 侧 `listen::ENV_TOKEN_FILE`）。钥匙本身不进环境：
-/// 常驻后端起的 tmux server 会把它的环境拷成全局环境，之后每个窗格里的 shell · ccm · claude 都会带着它。
-pub(crate) const LISTEN_TOKEN_FILE_ENV: &str = "CCM_LISTEN_TOKEN_FILE";
+/// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「连不上」。
+/// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。
+pub(crate) const RESIDENT_ENV: &str = "CCM_RESIDENT";
 
 /// 关掉「脱离」的逃生口。**存在的理由不是好心，是判据**：
 /// `KPY5` 要一格「起的时候**没走**脱离那条路 ⇒ `detached` 必须为假」的**负例**，
 /// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
 pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 
-// 监听口取值区间（`49152..=65535`）与「撞了出声拒绝、绝不换口」的理由随实现搬进 `relay_route_core::listen_port_for`。
-
-/// `K-P1`：这台机器 ＋ 这个家（`~/.cc-monitor`）对应的监听口。实现住共享 crate（后端 `--resident-ensure` / `--resident-stop`
-/// 用同一个函数，一台机器一个常驻后端）；算法与「为什么由一处算」的理由住 `relay_route_core::listen_port_for` 头注。
-pub use relay_route_core::listen_port_for;
-
-/// 钥匙文件的住址。常驻后端**绑上口之后**自己换一把新的写进去（后端 `control/resident.rs::rotate_token`），
-/// 本宿主只交路径、只读：每次连都现读这一份。
-fn token_path(dir: &std::path::Path) -> std::path::PathBuf {
-    dir.join("listen-token")
-}
-
-/// 「谁在听那个口」的住址。**按口分文件**：同一台机上不同数据目录各有各的后端。
-fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
-    dir.join(relay_route_core::listen_pid_file_name(port))
-}
-
-/// 读钥匙（每次连都现读：常驻后端每次起都换一把，读到的就是此刻在听的那一位认的那一把）。
-/// 读不动 / 空 ⇒ `Err`，那句话说得出是哪个文件、下一步怎么办（接不上就不接，出声）。
-fn read_listen_token(p: &std::path::Path) -> Result<String, Said> {
-    let s = std::fs::read_to_string(p).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "rsLocalBackendHost.fs.readFailed",
-                &[
-                    ("path", &(p.display()).to_string()),
-                    ("why", &copy_core::io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
-    })?;
-    let t = s.trim();
-    if t.is_empty() {
-        return Err(copy_text(
-            "rsLocalBackendHost.token.empty",
-            &[("path", &(p.display()).to_string())],
-        )
-        .into());
-    }
-    Ok(t.to_string())
+/// 「谁在听」的住址（常驻后端拿到锁之后自己写；本宿主只读）。
+fn pid_path(dir: &std::path::Path) -> std::path::PathBuf {
+    relay_route_core::listen_pid_for(dir)
 }
 
 // `~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
@@ -212,8 +170,8 @@ pub(crate) fn parse_listen_owner(body: &str) -> Option<(u32, std::path::PathBuf)
     Some((pid, std::path::PathBuf::from(bin)))
 }
 
-fn read_listen_owner(dir: &std::path::Path, port: u16) -> Option<(u32, std::path::PathBuf)> {
-    parse_listen_owner(&std::fs::read_to_string(pid_path(dir, port)).ok()?)
+fn read_listen_owner(dir: &std::path::Path) -> Option<(u32, std::path::PathBuf)> {
+    parse_listen_owner(&std::fs::read_to_string(pid_path(dir)).ok()?)
 }
 
 /// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
@@ -221,19 +179,19 @@ fn read_listen_owner(dir: &std::path::Path, port: u16) -> Option<(u32, std::path
 pub(crate) enum HelloVerdict {
     /// 是我们的后端：build_id 与宿主交给它的那几格（中转口 · 家）都对得上。
     Ours,
-    /// 有人占着这个口，但**不是**我们要找的那个。带上说得清的理由。
+    /// 有人在听，但**不是**我们要找的那个（另一份构建 · 另一个家）。带上说得清的理由。
     Stranger(String),
 }
 
 /// 判那一行 hello。
 ///
-/// ⚠ **`EADDRINUSE` / 连得上，只说明「有人占着这个口」，不说明占着它的是我们的后端。**
+/// ⚠ **连得上只说明「有一个后端在听」，不说明它是我们要的那一版、住我们这个家。**
 /// ⇒ 连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
 /// （`P2t §1` 第 3 问「陈旧端点怎么识别」问的正是这一格）。
 ///
 /// 第三项：`want_env` = 这一趟要交给后端的那份环境；其中名在 [`HANDED_ENVS`] 的那几格必须与 hello 的
 /// `host_env`（后端原样回显它被交的那几格）**两向相等** —— 其中 `CCM_DATA_DIR` 那一格就是「它住哪个家」：
-/// 口虽按家算，撞口的仍可能是另一个家的后端，接上它就会把凭据与历史注解写进那个家。
+/// 套接字虽按家算，接上另一个家的后端就会把凭据与历史注解写进那个家（两向比是兜底）。
 ///
 /// 第二项：`want_build` = 「我这一版」（`byte_table::my_backend_id`）。`None`（手上没带后端字节）⇒ 不比 build、
 /// 照那台报的接（没有对照物，比了也只是拿一个不存在的值去拒人）；家与中转口那几格照比。
@@ -323,13 +281,13 @@ fn host_env_mismatch(line: &str, want_env: &[(String, String)]) -> Option<String
     ))
 }
 
-/// 探那个口上有没有一个**我们的** backend。
+/// 探那个套接字上有没有一个**我们的** backend。
 pub(crate) enum Probe {
     /// 没人在听。
     Nobody,
     /// 是我们的那个。把连接与它的 hello 行原样交出来（**别再连第二次** ——
     /// 第二次连的可能已经是另一个进程了）。
-    Ours(std::net::TcpStream, String),
+    Ours(own_chan::BlockingStream, String),
     /// 有人占着，但不是我们的。**出声**。
     Stranger(Said),
 }
@@ -338,17 +296,35 @@ pub(crate) enum Probe {
 ///
 /// 它**不是定时器**：`SO_RCVTIMEO`/`SO_SNDTIMEO` 说的是「**这一次**阻塞的读写最多等多久」，
 /// 有字节就立刻返回、没字节就报错返回，不让任何线程自己醒来、不驱动任何循环。
-/// 形状与理由与 `relay/listen.rs::DOWNSTREAM_DEADLINE` 逐字同源。
-/// 值给 3 秒：对端**就在本机**，一行 ~1 KB 的 hello 在回环上是微秒级的事；
-/// 3 秒比它高五六个量级，而它同时保证「起 monitor 时不会被一个哑口卡住」。
+/// 值给 3 秒：对端**就在本机**，一行 ~1 KB 的 hello 是微秒级的事；
+/// 3 秒比它高五六个量级，而它同时保证「起 monitor 时不会被一个哑的后端卡住」。
 const HANDSHAKE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(3_000);
 
-fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
-    let addr = std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port);
-    let sock = match std::net::TcpStream::connect_timeout(&addr, HANDSHAKE_DEADLINE) {
+fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)]) -> Probe {
+    let sock = match own_chan::connect_blocking(sock_path) {
         Ok(s) => s,
-        // 连不上 = 没人在听。这是**最常见**的那一格（第一次起 monitor）。
-        Err(_) => return Probe::Nobody,
+        // 文件不在 / 拒连 = 没人在听。这是**最常见**的那一格（第一次起 monitor）。
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            return Probe::Nobody
+        }
+        // 别的（不归本人 · 路径坏了）：不是「没人」—— 起一个也抢不到那个家，出声。
+        Err(e) => {
+            return Probe::Stranger(Said::with_raw(
+                copy_text(
+                    "rsLocalBackendHost.probe.cannotConnect",
+                    &[
+                        ("path", &sock_path.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
+        }
     };
     if let Err(e) = sock
         .set_read_timeout(Some(HANDSHAKE_DEADLINE))
@@ -368,7 +344,7 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
             return Probe::Stranger(Said::restate(
                 copy_text(
                     "rsLocalBackendHost.probe.noAnswer",
-                    &[("port", &port.to_string()), ("why", &e.said)],
+                    &[("path", &sock_path.display().to_string()), ("why", &e.said)],
                 ),
                 e,
             ))
@@ -381,7 +357,7 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
             Probe::Ours(sock, line)
         }
         HelloVerdict::Stranger(why) => {
-            // 占着口的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
+            // 在听的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
             if let Ok(crate::stream_source::InboundFrame::Hello { build_id, .. }) =
                 crate::stream_source::parse_frame(&line)
             {
@@ -400,7 +376,7 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
 /// 读过头的那些字节留在 `BufReader` 里，而这条 socket 之后要原样交给流那一档，
 /// 那几个字节就凭空丢了（第一版就是这么写的）。
 /// 形状抄 `relay/http1::read_head` 的 `r.read(&mut one)?`。
-fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, Said> {
+fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Said> {
     use std::io::Read;
     let mut out: Vec<u8> = Vec::new();
     let mut one = [0u8; 1];
@@ -437,82 +413,44 @@ fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, Said> {
     }
 }
 
-/// backend 那侧「这条流已经有人占着」的拒绝理由。
-///
-/// ⚠ **跨 crate 字面量**（backend 侧 `listen::REFUSE_BUSY`）。它与另外两个 env 名一起
-/// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。
-/// 漂了的后果很具体：「上一个 monitor 刚退、对面还没反应过来」会被当成一个
-/// **不可恢复**的拒绝，于是新 monitor 直接报失败 —— 而它本来只要再等 20 毫秒。
-pub(crate) const REFUSE_BUSY_REASON: &str = "stream-busy";
-
-/// attach 被拒的两张脸。**分开是因为处置不同**：
-/// 「占着」会自己好（上一个宿主的那条流正在断），别的不会。
-enum AttachErr {
-    /// 那一条流此刻被占着 —— **可重试**。
-    Busy(Said),
-    /// 别的（token 不对 / 协议对不上 / 写不出去）—— **不重试**，重试只是把坏消息拖晚。
-    Fatal(Said),
-}
-
-/// 把 token 递过去，换一句「可以」。
-fn send_attach(sock: &std::net::TcpStream, token: &str) -> Result<(), AttachErr> {
+/// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
+fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    let req = format!("{{\"attach\":\"{token}\"}}\n");
-    w.write_all(req.as_bytes())
+    w.write_all(b"{\"attach\":true}\n")
         .and_then(|()| w.flush())
         .map_err(|e| {
-            AttachErr::Fatal(Said::with_raw(
+            Said::with_raw(
                 copy_text(
                     "rsLocalBackendHost.attach.sendFailed",
                     &[("why", &copy_core::io_reason(e.kind()))],
                 ),
                 &e,
-            ))
+            )
         })?;
-    let line = read_handshake_line(sock).map_err(AttachErr::Fatal)?;
+    let line = read_handshake_line(sock)?;
     let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
-        AttachErr::Fatal(Said::with_raw(
+        Said::with_raw(
             copy_text("rsLocalBackendHost.attach.notJson", &[]),
             format!("{e}\n{line}"),
-        ))
+        )
     })?;
     match v.get("attach").and_then(|x| x.as_str()) {
         Some("ok") => Ok(()),
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
         Some("refused") => {
             let reason = v.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
-            let msg: Said = copy_text(
+            Err(copy_text(
                 "rsLocalBackendHost.attach.refused",
                 &[("reason", &reason.to_string())],
             )
-            .into();
-            if reason == REFUSE_BUSY_REASON {
-                AttachErr::Busy(msg)
-            } else {
-                AttachErr::Fatal(msg)
-            }
-            .into_err()
+            .into())
         }
-        _ => Err(AttachErr::Fatal(
-            copy_text(
-                "rsLocalBackendHost.attach.unreadable",
-                &[("line", &line.to_string())],
-            )
-            .into(),
-        )),
-    }
-}
-
-impl AttachErr {
-    fn into_err(self) -> Result<(), Self> {
-        Err(self)
-    }
-
-    fn into_said(self) -> Said {
-        match self {
-            AttachErr::Busy(m) | AttachErr::Fatal(m) => m,
-        }
+        _ => Err(copy_text(
+            "rsLocalBackendHost.attach.unreadable",
+            &[("line", &line.to_string())],
+        )
+        .into()),
     }
 }
 
@@ -523,7 +461,7 @@ impl AttachErr {
 ///   monitor 和它一起走。
 /// - **stdio 全 null** —— 今天它死掉的**真正原因**就在这儿：`Stdio::piped()` 之后
 ///   宿主一退读端就断，它在 **153 毫秒**内 broken-pipe 退出（`backend_policy.rs` 头注实测）。
-/// - **协议改走监听口** —— 管子没了就得有别的说话方式，那正是 `listen::ENV_PORT`。
+/// - **协议改走这台家里的套接字** —— 管子没了就得有别的说话方式，那正是 `listen::ENV_RESIDENT`。
 ///
 /// ⚠ **`process_group` 不改变父子关系** ⇒ **不 `wait` 就留僵尸**
 /// （`launch.rs:196-198` 头注逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
@@ -532,8 +470,6 @@ impl AttachErr {
 /// 哪些平台能脱离由 `platform::proc::CAN_DETACH` 答（原先是这里两份 `cfg` 分身）；不能 ⇒ 那句「不支持」照旧。
 fn spawn_detached(
     bin: &std::path::Path,
-    port: u16,
-    token_file: &std::path::Path,
     extra_env: &[(String, String)],
 ) -> Result<crate::spawn_managed::ManagedChild, Said> {
     use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
@@ -555,8 +491,7 @@ fn spawn_detached(
         //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。
         //   漏这一条，被起的后端会去改「monitor 恰好从哪个 tmux 里被启动」的那个 server。
         .env_remove("TMUX")
-        .env(LISTEN_PORT_ENV, port.to_string())
-        .env(LISTEN_TOKEN_FILE_ENV, token_file)
+        .env(RESIDENT_ENV, "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null());
     // stderr 仍是 null（理由见下），但交它一份自己的诊断文件路径 ⇒ 它把 fd 2
@@ -662,9 +597,9 @@ pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
 /// 而在**自动起**那条路上（`lib.rs` 的 `setup`，用户每天真正走的那条）
 /// 回修前只进了 `tracing::info!` —— **不是 `warn`，也没有任何东西到用户眼前。**
 ///
-/// 它有一个具体的触发场景，不是理论：端口按家目录确定性算（[`listen_port_for`]），
+/// 它有一个具体的触发场景，不是理论：套接字按家目录确定性算（`relay_route_core::listen_socket_for`），
 /// 而 `hello_verdict` 拿「我这一版」（`byte_table::my_backend_id`）逐字比 —— **升级 monitor 之后，
-/// 上一次脱离留下的那个后端还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
+/// 上一次脱离留下的那个后端还在听同一个套接字** ⇒ `Stranger` ⇒ `Adopt::Refused`
 /// ⇒ **本机后端起不来，而界面上什么都不说。**
 /// ⚠ 这一格是**常驻带来的新场景**：翻面之前 backend 153ms 就死了，根本不存在「上一个还在听」。
 ///
@@ -886,11 +821,11 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 ///
 /// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
 ///
-/// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条 socket 的两半。
+/// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条套接字的两半。
 /// **复用的是纯零件**（`parse_frame` · `BackendHello::from_hello_frame` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
-fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Said> {
+fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
     let frame = crate::stream_source::parse_frame(hello_line)
         .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
@@ -898,19 +833,12 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Said
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
-    sock.set_nonblocking(true).map_err(|e| {
-        Said::with_raw(
-            copy_text("rsLocalBackendHost.stream.nonblockingFailed", &[]),
-            &e,
-        )
-    })?;
-    // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断。
-    let _ = sock.set_read_timeout(None);
-    let _ = sock.set_write_timeout(None);
-    let (rd, wr) = tauri::async_runtime::block_on(async move {
-        tokio::net::TcpStream::from_std(sock).map(tokio::net::TcpStream::into_split)
-    })
-    .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.stream.asyncFailed", &[]), &e))?;
+    // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断（`into_async` 摘掉）。
+    let (rd, wr) =
+        tauri::async_runtime::block_on(async move { sock.into_async().map(tokio::io::split) })
+            .map_err(|e| {
+                Said::with_raw(copy_text("rsLocalBackendHost.stream.asyncFailed", &[]), &e)
+            })?;
     let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
     crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
     tracing::info!(
@@ -1018,21 +946,18 @@ fn start_detached(
     let Some(home) = crate::config::resolve_monitor_data_dir() else {
         return DetachOutcome::NotTaken;
     };
-    let port = listen_port_for(&home);
-    // 钥匙与「谁在听」也住这个家（后端 `--resident-stop` 在同一个家里找同一份）。
+    // 套接字与「谁在听」都住这个家（后端 `--resident-stop` 在同一个家里找同一份）。
     let dir = home;
-    // 钥匙只交路径、每次连都现读（常驻后端绑上口之后自己写一把新的）。
-    let token_file = token_path(&dir);
+    let sock = relay_route_core::listen_socket_for(&dir);
 
     // ── ① 起时先认已有实例 ────────────────────────────────────────────
     //
     // ★★ 这一条是硬的：backend 一起来就**无条件**往它连得到的 tmux server 装三条全局 hook、
     //    **固定槽位 `[50]`**、**没有关掉它的开关**，载荷里烤着那一个后端的 pid+starttime。
     //    ⇒ **脱离而不认已有实例 = 每台机 N 个后端互相盖槽位，比今天更糟。**
-    match adopt_existing(port, &token_file, extra_env) {
+    match adopt_existing(&sock, extra_env) {
         Adopt::Attached => {
-            let (pid, bin) =
-                read_listen_owner(&dir, port).unwrap_or((0, std::path::PathBuf::new()));
+            let (pid, bin) = read_listen_owner(&dir).unwrap_or((0, std::path::PathBuf::new()));
             let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
             *g = Some(DetachedHandle {
                 pid,
@@ -1049,20 +974,19 @@ fn start_detached(
             note_start_refusal(copy_text(
                 "rsLocalBackendHost.start.refusedNotice",
                 &[
-                    ("port", &port.to_string()),
                     ("why", &why.said),
-                    ("pidPath", &(pid_path(&dir, port).display()).to_string()),
+                    ("pidPath", &(pid_path(&dir).display()).to_string()),
                 ],
             ));
             return DetachOutcome::Done(StartOutcome::Failed {
                 reason: Said::restate(
                     copy_text(
                         "rsLocalBackendHost.start.refused",
-                        &[("port", &port.to_string()), ("why", &why.said)],
+                        &[("path", &sock.display().to_string()), ("why", &why.said)],
                     ),
                     why,
                 ),
-                looked_at: vec![pid_path(&dir, port), token_path(&dir)],
+                looked_at: vec![pid_path(&dir), sock.clone()],
             });
         }
         // 〔HOST 余项〕常驻后端多客户之后不再有「被另一个 monitor 占着」那一臂（连同两句话删了）。
@@ -1076,7 +1000,7 @@ fn start_detached(
             return DetachOutcome::Done(StartOutcome::Failed { reason, looked_at })
         }
     };
-    let child = match spawn_detached(&bin, port, &token_file, extra_env) {
+    let child = match spawn_detached(&bin, extra_env) {
         Ok(c) => c,
         Err(e) => {
             return DetachOutcome::Done(StartOutcome::Failed {
@@ -1096,7 +1020,7 @@ fn start_detached(
         });
     }
     // 起来了之后自己连上去 —— **走与「接管」完全同一条路**，不另写一份。
-    match probe_and_attach_after_spawn(port, &token_file, extra_env) {
+    match probe_and_attach_after_spawn(&sock, extra_env) {
         Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
         Err(e) => {
             // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
@@ -1115,80 +1039,60 @@ fn start_detached(
     }
 }
 
-/// 等刚起的那个后端把口 bind 上 —— **次数与间隔都有上限**。
+/// 等刚起的那个后端把套接字绑上 —— **次数与间隔都有上限**。
 ///
-/// # 为什么非等不可（以及为什么 `connect_timeout` 不管用）
-///
-/// `spawn()` 返回时子进程可能还没跑到 `bind`。而 `connect_timeout` 在**没人在听**的口上
-/// 拿到的是 `ECONNREFUSED`，**内核立刻返回**，它压根不等 —— 我第一版把这一格写反了，
-/// 注释里写着「让内核等」，实测 0.00 秒就红了。**读数是这样来的，不是推的。**
+/// `spawn()` 返回时子进程可能还没跑到绑那一步；没人在听的套接字上连一下是**立刻**失败的，不等。
 ///
 /// # 它是 `wait-for-condition`，不是节拍器
 ///
-/// 等的是**一次性条件**（那个口起没起来），有明确上限（`LISTEN_WAIT_TRIES` ×
+/// 等的是**一次性条件**（那个套接字起没起来），有明确上限（`LISTEN_WAIT_TRIES` ×
 /// `LISTEN_WAIT_INTERVAL_MS` ≈ 1 秒），等到就走、等不到就如实报错，**不无限重试**。
 /// **登记住址** `src/frontend/shell/src/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
 /// 这一类要求「说清等什么、上限是多少」）。
 ///
-/// ⚠ 上限为什么是这个量级：对端**就在本机**，从 `execve` 到 `bind` 是毫秒级；
+/// ⚠ 上限为什么是这个量级：对端**就在本机**，从 `execve` 到绑上是毫秒级；
 /// 1 秒高两个量级。给得再大只会让「那个进程起来就崩了」这一格拖着不报错。
 const LISTEN_WAIT_TRIES: u32 = 50;
 const LISTEN_WAIT_INTERVAL_MS: u64 = 20;
 
 /// 接管已有实例的结果。
 enum Adopt {
-    /// 那个口上没人 —— 该起一个了。
+    /// 没人在听 —— 该起一个了。
     None,
     /// 接上了。
     Attached,
-    /// 有东西，但接不上。**出声**，绝不静默复用、也绝不换个口再起一个。
+    /// 有人在听，但接不上。**出声**，绝不静默复用、也绝不换个地方再起一个。
     Refused(Said),
 }
 
-/// 认已有实例并接上它。
-///
-/// # 只有两支会重试，而且理由不一样
-///
-/// - **口上还没人**（`Probe::Nobody`）：只在「刚亲手 spawn 完」那条路上会遇到
-///   （`accept_new` = true）。接管路上遇到它就是「真没人」，立刻回 [`Adopt::None`]。
-/// - **那一条流被占着**（`stream-busy`）：**上一个 monitor 刚退、对面还没反应过来**。
-///   这一格是真的：backend 那侧要等 `writer_task` 拿到写错误、`done` 信号回到 accept 循环，
-///   才会把那张牌放回去。⇒ 有界重试。**不重试它，用户会看到「换台电脑重开 monitor 就没后端了」。**
-///
-/// 别的一律不重试 —— token 不对、口上是别人，重试只是把一个确定的坏消息拖晚。
-fn adopt_existing(port: u16, token_file: &std::path::Path, env: &[(String, String)]) -> Adopt {
-    adopt_with(port, token_file, env, false)
+/// 认已有实例并接上它。只有一支会等：**还没人在听**、而我们刚亲手 spawn 完（`wait_for_bind` = true）。
+/// 接管路上遇到它就是「真没人」，立刻回 [`Adopt::None`]。别的一律不重试 —— 对不上、接不上，重试只是把一个确定的坏消息拖晚。
+fn adopt_existing(sock: &std::path::Path, env: &[(String, String)]) -> Adopt {
+    adopt_with(sock, env, false)
 }
 
 /// 刚起完之后连上去。**与接管走同一条路**，差别只有一句：
-/// 这一次「没人在听」是**还没 bind 完**（我们刚亲手起了一个），要等。
+/// 这一次「没人在听」是**还没绑完**（我们刚亲手起了一个），要等。
 fn probe_and_attach_after_spawn(
-    port: u16,
-    token_file: &std::path::Path,
+    sock: &std::path::Path,
     env: &[(String, String)],
 ) -> Result<(), Said> {
-    match adopt_with(port, token_file, env, true) {
+    match adopt_with(sock, env, true) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
         Adopt::None => Err(copy_text(
             "rsLocalBackendHost.afterSpawn.neverListened",
-            &[("port", &port.to_string())],
+            &[("path", &sock.display().to_string())],
         )
         .into()),
     }
 }
 
 /// `env` = 这一趟交给（或会交给）后端的那份环境 —— 身份比对的第三项（[`hello_verdict`]）。
-/// 钥匙在读到 hello 之后才读（那时那一位已经把它那一把写下了）。
-fn adopt_with(
-    port: u16,
-    token_file: &std::path::Path,
-    env: &[(String, String)],
-    wait_for_bind: bool,
-) -> Adopt {
+fn adopt_with(sock: &std::path::Path, env: &[(String, String)], wait_for_bind: bool) -> Adopt {
     let mut last: Said = copy_text("rsLocalBackendHost.adopt.nobody", &[]).into();
     for _ in 0..LISTEN_WAIT_TRIES {
-        match probe_listen_port(port, env) {
+        match probe_listen_socket(sock, env) {
             Probe::Stranger(why) => return Adopt::Refused(why),
             Probe::Nobody => {
                 if !wait_for_bind {
@@ -1196,23 +1100,16 @@ fn adopt_with(
                 }
                 last = copy_text(
                     "rsLocalBackendHost.adopt.notYet",
-                    &[("port", &port.to_string())],
+                    &[("path", &sock.display().to_string())],
                 )
                 .into();
             }
-            Probe::Ours(sock, hello) => match read_listen_token(token_file)
-                .map_err(AttachErr::Fatal)
-                .and_then(|token| send_attach(&sock, &token))
-            {
-                Ok(()) => {
-                    return match attach_stream(sock, &hello) {
-                        Ok(()) => Adopt::Attached,
-                        Err(e) => Adopt::Refused(e),
-                    }
+            Probe::Ours(conn, hello) => {
+                return match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
+                    Ok(()) => Adopt::Attached,
+                    Err(e) => Adopt::Refused(e),
                 }
-                Err(AttachErr::Busy(m)) => last = m,
-                Err(e) => return Adopt::Refused(e.into_said()),
-            },
+            }
         }
         std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
     }

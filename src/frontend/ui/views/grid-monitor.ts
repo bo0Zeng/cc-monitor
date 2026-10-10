@@ -8,15 +8,11 @@
  */
 import { dispatcher } from "../keybindings/registry";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import {
-  activityFace,
-  type GridSessionSnapshot,
-  type SessionPeek,
-} from "../session-status";
-import { dotLabel } from "../session-words";
+import { sessionDot, type GridSessionSnapshot, type SessionPeek } from "../session-status";
+import { backgroundLine } from "../session-face";
 import { isLive, isResumeOnly, stateView } from "../tab-session-state";
 import { copyText } from "../copy-table";
-import { contextTokensText } from "./context-limit";
+import { setDot, statusDot } from "../kit/status-dot";
 
 /** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
 export interface GridSource {
@@ -53,7 +49,7 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
   return groups;
 }
 
-/** 组内排序优先级：活会话先于归档；活会话内 等人（要你操作）> 在干活 > 闲着 > 说不清。
+/** 组内排序优先级：活会话先于归档；活会话内 等人（要你操作）> 在干活 > 后台任务运行中 > 闲着 > 说不清（同后端 `accounts_query::live_doing` 的档）。
  *  同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
   const rank = (s: GridSessionSnapshot): number => {
@@ -65,10 +61,12 @@ export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessio
         return 0;
       case "working":
         return 1;
-      case "idle":
+      case "background_work":
         return 2;
-      case null:
+      case "idle":
         return 3;
+      case null:
+        return 4;
     }
   };
   return sessions
@@ -110,8 +108,8 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.cwd,
     selected.state.liveness, // 两轴都签：「状态」一格从两轴派生
     selected.state.recoverability,
-    selected.activity,
-    selected.waitingFor,
+    selected.activityText,
+    selected.needs,
     peek?.model ?? null,
     peek?.agents.length ?? 0,
     peek?.agents.slice(0, 8).map((a) => `${a.label}:${a.status}`) ?? null,
@@ -144,19 +142,20 @@ interface GroupRefs {
  * 徽标行画成什么样只取决于这几项（下面 `renderBadges` 逐字照原 `renderCell` 那一段）⇒ 拿它们当签名，
  * 一样就不重画。纯函数。
  */
-function badgesInputs(s: GridSessionSnapshot): string {
+function badgesInputs(s: GridSessionSnapshot, now: number): string {
   return [
     s.runningAgents,
     s.totalAgents,
-    s.contextPct == null ? "" : Math.round(s.contextPct),
-    s.contextPct == null && s.contextTokens != null ? contextTokensText(s.contextTokens) : "",
+    s.context?.text ?? "",
+    s.context?.tone ?? "",
     s.unread,
-    s.activity === "needs_you" && s.waitingFor ? s.waitingFor : "",
+    s.needs ?? "",
+    s.activity === "background_work" && s.backgroundWork ? `${s.backgroundWork.what ?? ""}\u0000${backgroundLine(s.backgroundWork, now)}` : "",
   ].join("\u0000");
 }
 
-/** 徽标行的内容（运行中 agent 数 / context% / unread / 等待）。原 `renderCell` 那一段，逐字。 */
-function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
+/** 徽标行的内容（运行中 agent 数 / context% / unread / 等待 / 后台任务）。 */
+function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number): void {
   if (s.runningAgents > 0) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-agents";
@@ -164,20 +163,13 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     b.title = copyText("gridMonitor.renderBadges.agents", { runningAgents: s.runningAgents, totalAgents: s.totalAgents });
     badges.appendChild(b);
   }
-  if (s.contextPct != null) {
-    const rounded = Math.round(s.contextPct);
+  if (s.context !== null) {
+    // 字与语气照抄核心（上限判不出时核心只写用了多少、语气常规）。
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-ctx";
-    if (rounded >= 80) b.classList.add("is-high");
-    b.textContent = copyText("gridMonitor.renderBadges.ctxPct", { pct: rounded });
-    b.title = copyText("gridMonitor.renderBadges.ctxHint");
-    badges.appendChild(b);
-  } else if (s.contextTokens != null) {
-    // 上限判不出：只写用了多少（与状态栏同一个说法），不预警。
-    const b = document.createElement("span");
-    b.className = "grid-monitor-badge badge-ctx";
-    b.textContent = copyText("gridMonitor.renderBadges.ctxTokens", { tokens: contextTokensText(s.contextTokens) });
-    b.title = copyText("gridMonitor.renderBadges.ctxTokensHint");
+    if (s.context.tone === "warn") b.classList.add("is-high");
+    b.textContent = copyText("gridMonitor.renderBadges.ctx", { ctx: s.context.text });
+    b.title = s.context.percent === null ? copyText("gridMonitor.renderBadges.ctxTokensHint") : copyText("gridMonitor.renderBadges.ctxHint");
     badges.appendChild(b);
   }
   if (s.unread > 0) {
@@ -187,11 +179,20 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     b.title = copyText("gridMonitor.renderBadges.unread", { unread: s.unread });
     badges.appendChild(b);
   }
-  if (s.activity === "needs_you" && s.waitingFor) {
+  if (s.needs !== null) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-waiting";
-    b.textContent = copyText("gridMonitor.renderBadges.waiting", { waitingFor: s.waitingFor });
-    b.title = copyText("gridMonitor.renderBadges.waitingHover", { waitingFor: s.waitingFor });
+    b.textContent = s.needs;
+    b.title = s.needs;
+    badges.appendChild(b);
+  }
+  // 后台任务运行中：徽标写命令那一格（核心写的），悬停给整句（时长那一截按此刻走）。
+  const bg = s.activity === "background_work" ? s.backgroundWork : null;
+  if (bg?.what) {
+    const b = document.createElement("span");
+    b.className = "grid-monitor-badge badge-bgwork";
+    b.textContent = copyText("gridMonitor.renderBadges.background", { cmd: bg.what });
+    b.title = backgroundLine(bg, now);
     badges.appendChild(b);
   }
 }
@@ -469,12 +470,12 @@ export class GridMonitorView {
       facts.appendChild(row);
     };
     if (selected.cwd) addFact(copyText("gridMonitor.fact.dir"), selected.cwd);
-    const doing = selected.activity === null ? null : dotLabel(activityFace(selected.activity).dot);
+    const doing = selected.activityText;
     const act =
       doing === null
         ? copyText("gridMonitor.renderPeek.unknown")
-        : selected.waitingFor
-          ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, waitingFor: selected.waitingFor })
+        : selected.needs
+          ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, needs: selected.needs })
           : doing;
     // 活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）—— 死会话的活动是陈旧的。
     addFact(copyText("gridMonitor.fact.status"), stateView(selected.state).name ?? act);
@@ -545,8 +546,7 @@ export class GridMonitorView {
       // 头行：红绿灯点 + 标题
       const head = document.createElement("div");
       head.className = "grid-monitor-cell-head";
-      const dot = document.createElement("span");
-      dot.className = "live-dot";
+      const dot = statusDot("running", "", "compact");
       const name = document.createElement("span");
       name.className = "grid-monitor-cell-title";
       head.append(dot, name);
@@ -569,10 +569,10 @@ export class GridMonitorView {
     cell.classList.toggle("cell-bg", s.background);
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // 选中高亮
 
-    // 红绿灯点：可重连 · 说不清的暗色灯盖过红绿黄（.live-dot.reconnectable / .unseen，与 tab 栏同义）。
-    const light = activityFace(s.activity).light;
-    const dotClass = `live-dot${light ? ` ${light}` : ""}${view.reconnectable ? " reconnectable" : ""}${view.unseen ? " unseen" : ""}`;
-    if (refs.dot.className !== dotClass) refs.dot.className = dotClass;
+    // 状态点：与标签栏同一个点（颜色 ＝ 核心的语气，形状 ＝ 两轴）；名字：活着照抄核心的字，否则那一态的名字。
+    const dot = sessionDot(s.state, s.activityTone);
+    const label = (isLive(s.state) ? s.activityText : null) ?? view.name ?? "";
+    if (refs.dot.dataset.state !== dot || refs.dot.title !== label) setDot(refs.dot, dot, label);
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;
 
     // cwd（暗）：有才在 DOM 里，位置恒在头行之后。
@@ -593,12 +593,13 @@ export class GridMonitorView {
 
     // 徽标行：整行作为一个单位比 —— 输入变了才重画，而且先在一个不挂 DOM 的新行里画好，
     // 再一次换上去（一次 `replaceWith` / `appendChild`）。一个徽标都没有 ⇒ 这一行不在 DOM 里。
-    const drawn = badgesInputs(s);
+    const now = Date.now();
+    const drawn = badgesInputs(s, now);
     if (drawn === refs.badgesDrawn) return;
     refs.badgesDrawn = drawn;
     const badges = document.createElement("div");
     badges.className = "grid-monitor-cell-badges";
-    renderBadges(s, badges);
+    renderBadges(s, badges, now);
     if (badges.childElementCount === 0) {
       refs.badges?.remove();
       refs.badges = null;

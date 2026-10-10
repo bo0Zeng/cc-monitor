@@ -81,6 +81,9 @@ impl Home {
                 library,
                 Some(dead_token_endpoint()),
             ),
+            lineage: Arc::new(crate::lineage::LineageStore::at(Some(
+                self.root.join(crate::lineage::FILE_NAME),
+            ))),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
             live: {
                 let live = Arc::clone(&self.live);
@@ -106,7 +109,7 @@ impl Home {
 
 /// 改默认规则那一份（经 `rotation-rule-save`，名字照旧）；回那条规则（线上形状）。
 fn answer_set_with(ctx: &Ctx, args: &Value) -> Answer {
-    let rules = answer_rules_read_with(ctx);
+    let rules = answer_rules_read_with(ctx).expect("read");
     let id = rules["defaultRule"].as_str().expect("default").to_string();
     let name = rules["rules"]
         .as_array()
@@ -496,7 +499,7 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
     seen(&ctx, "a", 0.5, None);
     seen(&ctx, "b", 0.86, None);
     seen(&ctx, "api", 0.0, Some(now() + 600));
-    let got = quota_read_with(&ctx, now());
+    let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
     let row = |acct: &str| {
         got["accounts"]
             .as_array()
@@ -557,7 +560,7 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
         &json!({"rotation": {"order": [{"start": true}], "enabled": [], "when": {"threshold": {"n": 90}}}}),
     )
     .expect("ok");
-    let got = quota_read_with(&ctx, now());
+    let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
     let b = got["accounts"]
         .as_array()
         .expect("accounts")
@@ -587,7 +590,7 @@ fn the_same_subscription_on_two_machines_gets_the_same_id() {
     .expect("identity");
     let id = |h: &Home, acct: &str| {
         let ctx = h.ctx();
-        quota_read_with(&ctx, now())["unseen"]
+        serde_json::to_value(quota_read_with(&ctx, now())).expect("json")["unseen"]
             .as_array()
             .expect("unseen")
             .iter()
@@ -611,7 +614,7 @@ fn followers_count_only_live_sessions_on_the_default() {
     home.end("s-2");
     answer_session_set_with(&ctx, &json!({"sids": ["s-3"], "rotation": "custom"}), now())
         .expect("ok");
-    let rules = answer_rules_read_with(&ctx);
+    let rules = answer_rules_read_with(&ctx).expect("read");
     assert_eq!(rules["rules"][0]["users"]["follow"], 1);
     assert_eq!(rules["rules"][0]["users"]["live"], 1);
     assert_eq!(rules["rules"][0]["users"]["ended"], 1);
@@ -628,7 +631,9 @@ fn rule_users_carry_each_sessions_state() {
     use crate::observe::facts_query::NeedsKind as K;
     let home = Home::new("doing");
     let ctx = home.ctx();
-    for sid in ["s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-gone"] {
+    for sid in [
+        "s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-bg", "s-gone",
+    ] {
         home.saw(&ctx, sid);
     }
     home.end("s-gone");
@@ -644,18 +649,23 @@ fn rule_users_carry_each_sessions_state() {
         d.insert("s-wait".into(), at(A::NeedsYou, None));
         // 已结束的会话 pidfile 还留着说「在跑」：已结束为准。
         d.insert("s-gone".into(), at(A::Working, None));
+        d.insert("s-bg".into(), at(A::BackgroundWork, None));
     }
-    let rules = answer_rules_read_with(&ctx);
+    let rules = answer_rules_read_with(&ctx).expect("read");
     let doing = &rules["rules"][0]["users"]["doing"];
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    // 字与语气与主窗口同一处写（`wire::activity_cells` · `needs_words` · 去向的字）：界面照抄，不按 `state` 取字。
+    // `state` 是轮换那一侧的判（后台命令在跑按「在跑」算：重启会掐掉它），显示的字照 activity 来。
     assert_eq!(
         doing,
         &json!({
-            "s-run": {"state": "working", "needs": null},
-            "s-idle": {"state": "idle", "needs": null},
-            "s-ask": {"state": "needsYou", "needs": "approve"},
-            "s-wait": {"state": "needsYou", "needs": "unknown"},
-            "s-quiet": {"state": "working", "needs": null},
-            "s-gone": {"state": "ended", "needs": null},
+            "s-run": {"state": "working", "needs": null, "text": t("beSession.activity.working"), "tone": "now"},
+            "s-idle": {"state": "idle", "needs": null, "text": t("beSession.activity.idle"), "tone": "plain"},
+            "s-ask": {"state": "needsYou", "needs": "approve", "text": t("beSession.needs.approve"), "tone": "need"},
+            "s-wait": {"state": "needsYou", "needs": "unknown", "text": t("beSession.needs.unknown"), "tone": "need"},
+            "s-quiet": {"state": "working", "needs": null, "text": t("beSession.activity.unclear"), "tone": "now"},
+            "s-bg": {"state": "working", "needs": null, "text": t("beSession.activity.backgroundWork"), "tone": "busy"},
+            "s-gone": {"state": "ended", "needs": null, "text": t("sessionState.ended.name"), "tone": "plain"},
         }),
         "{rules}"
     );
@@ -707,7 +717,7 @@ fn an_api_account_without_a_key_needs_a_key_not_a_login() {
     let home = Home::new("needs-key");
     let mut ctx = home.ctx();
     ctx.rows = Box::new(|_, _| None);
-    let got = quota_read_with(&ctx, now());
+    let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
     let api = got["unseen"]
         .as_array()
         .expect("unseen")
@@ -812,7 +822,7 @@ fn errors_of(v: &Value) -> Vec<(String, String)> {
 fn rules_round_trip_and_a_stale_rev_is_refused() {
     let home = Home::new("rules");
     let ctx = home.ctx();
-    let first = answer_rules_read_with(&ctx);
+    let first = answer_rules_read_with(&ctx).expect("read");
     assert_eq!(first["rules"].as_array().expect("rules").len(), 1);
     assert_eq!(
         first["rules"][0]["name"],
@@ -820,7 +830,7 @@ fn rules_round_trip_and_a_stale_rev_is_refused() {
     );
     assert_eq!(first["rules"][0]["isDefault"], true);
     let id = new_rule(&ctx, "夜间", &["b"]);
-    let read = answer_rules_read_with(&ctx);
+    let read = answer_rules_read_with(&ctx).expect("read");
     let night = read["rules"]
         .as_array()
         .expect("rules")
@@ -1099,7 +1109,7 @@ fn deleting_a_rule_moves_its_sessions_as_told() {
         now(),
     )
     .expect("ok");
-    let def = answer_rules_read_with(&ctx)["defaultRule"]
+    let def = answer_rules_read_with(&ctx).expect("read")["defaultRule"]
         .as_str()
         .expect("def")
         .to_string();
@@ -1119,7 +1129,7 @@ fn deleting_a_rule_moves_its_sessions_as_told() {
     answer_rule_delete_with(&ctx, &json!({"ids": [b], "then": "follow"})).expect("ok");
     assert_eq!(source_of(&ctx, "s-2"), Source::Follow);
     assert_eq!(
-        answer_rules_read_with(&ctx)["rules"]
+        answer_rules_read_with(&ctx).expect("read")["rules"]
             .as_array()
             .expect("rules")
             .len(),
@@ -1217,7 +1227,7 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
         json!({"v": 0, "layer": "all", "below": {"v": 0, "layer": "all"}})
     );
     // 规则：默认那条（只有起始账号）⇒ 一整段起始账号。
-    let rules = answer_rules_read_with(&ctx);
+    let rules = answer_rules_read_with(&ctx).expect("read");
     let id = rules["defaultRule"].as_str().expect("id");
     let got = answer_plan_with(&ctx, &json!({"rule": id}), t).expect("ok");
     assert_eq!(got["plan"].as_array().expect("plan").len(), 1);
@@ -1519,7 +1529,10 @@ fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
     std::fs::write(home.root.join(rotation::FILE_NAME), b"{not json").expect("write");
     let raw = "key must be a string";
     let reads = [
-        ("rotation-rules-read", answer_rules_read_with(&ctx)),
+        (
+            "rotation-rules-read",
+            answer_rules_read_with(&ctx).expect("read"),
+        ),
         (
             "rotation-session-read",
             answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("read"),
@@ -1557,7 +1570,7 @@ fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
         b"{not json"
     );
     let fresh = Home::new("readable");
-    let ok = answer_rules_read_with(&fresh.ctx());
+    let ok = answer_rules_read_with(&fresh.ctx()).expect("read");
     assert!(ok["detail"].is_null(), "不在那一形多出了详情：{ok}");
     let _ = std::fs::remove_dir_all(&home.root);
     let _ = std::fs::remove_dir_all(&fresh.root);
@@ -1634,4 +1647,204 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
             .is_none(),
         "涨在 30 分钟以前还给估"
     );
+}
+
+fn seed_parent(ctx: &Ctx, kid: &str, parent: &str) {
+    crate::lineage::relay_saw(
+        &ctx.lineage,
+        Some(crate::lineage::Origin {
+            token: "0a1b2c3d4e5f6071",
+            parent: Some(parent),
+        }),
+        kid,
+        "claude-code",
+        now(),
+    );
+}
+
+/// ★ 跟随父会话：`"parent"` 按血缘填父、生效那份 ＝ 父的；没有父 ⇒ `no_parent`、一个字节不写；`detach` 照父此刻那份拷。
+#[test]
+fn following_the_parent_is_set_from_lineage_and_refused_without_one() {
+    let home = Home::new("parent-set");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    home.saw(&ctx, "p-1");
+    home.saw(&ctx, "k-1");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["p-1"], "rotation": {"rule": id}}),
+        now(),
+    )
+    .expect("ok");
+    let before = ctx.hop.store.now();
+    let e = answer_session_set_with(&ctx, &json!({"sids": ["k-1"], "rotation": "parent"}), now())
+        .expect_err("没有父却收了");
+    assert_eq!(e.code, "no_parent");
+    assert_eq!(ctx.hop.store.now(), before, "拒了还写了");
+    seed_parent(&ctx, "k-1", "p-1");
+    answer_session_set_with(&ctx, &json!({"sids": ["k-1"], "rotation": "parent"}), now())
+        .expect("ok");
+    let b = ctx.hop.store.now();
+    assert_eq!(b.sessions["k-1"].source, Source::Parent("p-1".into()));
+    assert_eq!(b.rule_of(&b.sessions["k-1"]), Some(id.as_str()));
+    answer_session_set_with(&ctx, &json!({"sids": ["k-1"], "rotation": "detach"}), now())
+        .expect("ok");
+    let s = ctx.hop.store.now().sessions["k-1"].clone();
+    assert_eq!(
+        (s.source, s.custom.expect("own").enabled),
+        (Source::Custom, vec!["b".to_string()]),
+        "转为本会话没照父此刻那份拷"
+    );
+}
+
+/// ★ 读：血缘里有父就给 `parent`（不管来源是不是跟随它）；跟随父会话而父不在账本里 ⇒ `parentMissing`、规则名是默认那条。
+#[test]
+fn reading_a_session_says_its_parent_and_whether_the_parent_is_missing() {
+    let home = Home::new("parent-read");
+    let ctx = home.ctx();
+    home.saw(&ctx, "k-1");
+    seed_parent(&ctx, "k-1", "p-gone");
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["k-1"]}), now()).expect("ok");
+    let k = &got["sessions"]["k-1"];
+    assert_eq!(k["parent"], "p-gone");
+    assert!(
+        k.get("parentMissing").is_none(),
+        "来源不是跟随父会话也说父不在"
+    );
+    rotation::face_change(&ctx.hop.store, |b| {
+        b.sessions.get_mut("k-1").expect("k").source = Source::Parent("p-gone".into());
+    })
+    .expect("write");
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["k-1"]}), now()).expect("ok");
+    let k = &got["sessions"]["k-1"];
+    assert_eq!(k["source"], json!({"parent": "p-gone"}));
+    assert_eq!(k["parentMissing"], true);
+    assert_eq!(
+        k["ruleName"],
+        json!(ctx.hop.store.now().rules[&ctx.hop.store.now().default_rule].name)
+    );
+}
+
+// ── 应答类型的样本（`every_command_declares_exactly_the_fields_it_puts_out` 读；每一支一个，可缺的格都填上）──
+
+use crate::guard_support::Shaped;
+
+fn cell_error() -> CellError {
+    CellError {
+        cell: "order".into(),
+        code: "empty".into(),
+        with: Some(1),
+    }
+}
+
+impl Shaped for RulesRead {
+    fn samples() -> Vec<Self> {
+        vec![RulesRead {
+            state: "unreadable",
+            reason: json!("why"),
+            detail: json!("detail lines"),
+            path: Some("/x/rotation.json".into()),
+            default_rule: "default".into(),
+            rules: vec![json!({"id": "default"})],
+        }]
+    }
+}
+
+impl Shaped for RuleSaved {
+    fn samples() -> Vec<Self> {
+        vec![
+            RuleSaved::Saved {
+                rule: json!({"id": "r1"}),
+            },
+            RuleSaved::Refused {
+                errors: vec![cell_error()],
+            },
+            RuleSaved::Conflict { rev: 3 },
+        ]
+    }
+}
+
+impl Shaped for RuleDeleted {
+    fn samples() -> Vec<Self> {
+        let mut moved = Map::new();
+        moved.insert("s-1".into(), json!("follow"));
+        vec![RuleDeleted { moved }]
+    }
+}
+
+impl Shaped for DefaultSet {
+    fn samples() -> Vec<Self> {
+        vec![DefaultSet {
+            default_rule: "r1".into(),
+            followers: 2,
+        }]
+    }
+}
+
+impl Shaped for SessionRead {
+    fn samples() -> Vec<Self> {
+        let mut sessions = Map::new();
+        sessions.insert("s-1".into(), json!({}));
+        vec![SessionRead {
+            state: "present",
+            reason: Value::Null,
+            detail: Value::Null,
+            now: 1,
+            sessions,
+        }]
+    }
+}
+
+impl Shaped for SessionSet {
+    fn samples() -> Vec<Self> {
+        let mut sessions = Map::new();
+        sessions.insert("s-1".into(), json!({"state": "done"}));
+        vec![SessionSet { sessions }]
+    }
+}
+
+impl Shaped for PlanReply {
+    fn samples() -> Vec<Self> {
+        vec![
+            PlanReply::Draft {
+                errors: vec![cell_error()],
+            },
+            PlanReply::Plan(Box::new(Plan {
+                errors: Vec::new(),
+                state: "present",
+                reason: Value::Null,
+                detail: Value::Null,
+                now: 1,
+                now_text: "00:00".into(),
+                from: 1,
+                from_text: "00:00".into(),
+                until: 2,
+                plan: vec![json!({})],
+                lanes: vec![json!({})],
+                effective: Map::new(),
+                grid: Some(json!([])),
+                head: Some(json!({})),
+                past: Some(vec![json!({})]),
+            })),
+        ]
+    }
+}
+
+impl Shaped for QuotaRead {
+    fn samples() -> Vec<Self> {
+        vec![QuotaRead {
+            state: "present",
+            reason: Value::Null,
+            detail: Value::Null,
+            path: Some("/x/quota.json".into()),
+            now: 1,
+            accounts: vec![json!({})],
+            unseen: vec![json!({})],
+            usable_now: vec!["a".into()],
+            earliest_return: Some(EarliestReturn {
+                account: "b".into(),
+                at: 2,
+            }),
+        }]
+    }
 }

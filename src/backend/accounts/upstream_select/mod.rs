@@ -261,13 +261,17 @@ impl Ready for Booted {
             crate::accounts::quota::rotation::path_from(get),
         );
         let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
-        accounts = accounts.rotating_with(rotate::Hop::new(
-            std::sync::Arc::new(store),
-            quota,
-            home,
-            library,
-            None,
-        ));
+        accounts = accounts
+            .rotating_with(rotate::Hop::new(
+                std::sync::Arc::new(store),
+                quota,
+                home,
+                library,
+                None,
+            ))
+            .tracing_lineage(std::sync::Arc::new(crate::lineage::LineageStore::at(
+                crate::lineage::path_from(get),
+            )));
         std::sync::Arc::new(match source {
             Some((path, stamp)) => accounts.reloading_from(Reload::new(path, stamp)),
             None => accounts,
@@ -293,6 +297,8 @@ pub(crate) struct Accounts {
     quota: std::sync::Arc<Ledger>,
     /// 换号（不装 ⇒ 永远走起会话的号）。
     hop: Option<rotate::Hop>,
+    /// 会话血缘（`lineage.rs`）：地址里的来处段 ＋ 头里的会话 ⇒ 谁起的谁。不装 ⇒ 不认。
+    lineage: Option<std::sync::Arc<crate::lineage::LineageStore>>,
     /// 换号与额度账那一侧这一发的「此刻」（unix 秒）。产品恒是真钟；只有判据经 [`Accounts::clocked`] 换（判「隔没隔一天」）。
     clock: Clock,
 }
@@ -309,6 +315,7 @@ impl Accounts {
             reload: None,
             quota: std::sync::Arc::new(Ledger::at(None)),
             hop: None,
+            lineage: None,
             clock: std::sync::Arc::new(crate::accounts::quota::now_unix),
         }
     }
@@ -316,6 +323,15 @@ impl Accounts {
     /// 装上换号（额度满了换到轮换里下一个号）。
     pub(crate) fn rotating_with(mut self, hop: rotate::Hop) -> Self {
         self.hop = Some(hop);
+        self
+    }
+
+    /// 装上会话血缘（每一发换号之前先认「谁起的谁」）。
+    pub(crate) fn tracing_lineage(
+        mut self,
+        store: std::sync::Arc<crate::lineage::LineageStore>,
+    ) -> Self {
+        self.lineage = Some(store);
         self
     }
 
@@ -342,6 +358,10 @@ impl Accounts {
             agent: key.seg1.as_str(),
             start: key.seg2.as_str(),
             sid: ask.label,
+            parent: self
+                .lineage
+                .as_ref()
+                .and_then(|l| l.now().parent_of(ask.label).map(str::to_string)),
             body: ask.body,
             row,
             now: (self.clock)(),
@@ -453,6 +473,14 @@ impl Destinations for Accounts {
         // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
         // 而不重启的症状是一个静默的 404（与「账号 id 打错」同形）。
         self.refresh_if_changed();
+        // 会话血缘先认（换号那一问要读它：新会话默认跟随父会话）。
+        if let Some(l) = &self.lineage {
+            let origin = ask.origin.map(|o| crate::lineage::Origin {
+                token: &o.token,
+                parent: o.parent.as_deref(),
+            });
+            crate::lineage::relay_saw(l, origin, ask.label, &key.seg1, (self.clock)());
+        }
         // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
         //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
         // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。

@@ -27,6 +27,57 @@ pub(crate) fn of_run(cmd: &str, raw: Option<&str>) -> String {
         .render()
 }
 
+/// **一次失败投出去的那一份**：帧面的失败应答与 CLI 面的失败信封都从它出（两个面只是装运不同：一帧 `reply` · stderr 一行）。
+/// `code` 给程序认；`message` 是给人看的那一句；`detail` 是复制详情那几行（恒在）；`data` 只给按码定了形的那几个码。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub(crate) struct Failed {
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) data: Option<serde_json::Value>,
+}
+
+impl Failed {
+    /// `cmd` 缺 ＝ 协议级失败（还没落到哪条命令上）；`raw` 是下层原话（进详情、不进句子）。
+    pub(crate) fn new(
+        cmd: Option<&str>,
+        code: &str,
+        message: String,
+        raw: Option<&str>,
+        data: Option<serde_json::Value>,
+    ) -> Failed {
+        Failed {
+            code: code.to_string(),
+            detail: of(cmd, code, raw),
+            message,
+            data,
+        }
+    }
+
+    /// 给人看那一形（CLI 的 `--text`）：那一句 ＋ 下面原样接复制详情（同界面［复制详情］复制出去的那一段）。
+    pub(crate) fn text(&self) -> String {
+        copy_core::detail::one(&self.message, &self.detail)
+    }
+
+    /// 投到 CLI 面（**唯一一处**：CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 都经这里）：
+    /// stderr 一行 `{code, message, detail, data?}`，退出 2；`text`（[`crate::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
+    pub(crate) fn emit_to(&self, err: &mut dyn std::io::Write, text: bool) -> i32 {
+        let line = if text {
+            self.text()
+        } else {
+            serde_json::to_string(self).unwrap_or_else(|_| self.text())
+        };
+        let _ = writeln!(err, "{line}");
+        2
+    }
+
+    /// [`Failed::emit_to`] 的 stderr · JSON 那一形（不收 `--text` 的那几条 CLI）。
+    pub(crate) fn emit(&self) -> i32 {
+        self.emit_to(&mut std::io::stderr(), false)
+    }
+}
+
 /// 读不出来那一形在成功应答里的两格：`reason` 是那一句（不带原话）· `detail` 是复制详情（排法同失败应答，码 `unreadable`）。
 /// 读得到 / 不在 ⇒ 两格都是 `null`。各读答（额度账 · 轮换 · 退出策略 · 额度探针）都经这里，不各拼一份。
 pub(crate) fn unreadable(

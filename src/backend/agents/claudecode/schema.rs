@@ -1,6 +1,6 @@
-//! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema —— **这些类型就是界面收到的记录的线上形状**
-//! （ts-rs 从这里导出 `src/frontend/ui/generated/`）。它从 monitor 的 `messages.rs` 搬进来：
-//! 记录解释只住后端，monitor 只把成品原样转交。
+//! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema —— **Claude 盘上格式的读法，只住这一家的适配层**。
+//! 线上不出这些类型：记录帧与历史读出的是通用记录（`agents/record.rs`），由 `record_of.rs` 从这里翻过去；
+//! 界面不认这一层（没有 ts 导出）。
 //!
 //! `JsonlRecord` enum 按 `type` 字段反序列化（user / assistant / system / summary /
 //! ai-title / attachment / permission-mode / last-prompt / file-history-snapshot 等）。
@@ -11,8 +11,6 @@
 //! `#[serde(other)] Unknown`（仅 serde 内部落点），但 **`Unknown` 绝不出 `parse::parse_line`**
 //! ——它连同「已知 type 解析失败但仍是合法 JSON」的行一起被抢救成 `Unrecognized`
 //! （留原文 + uuid/parentUuid/timestamp），进链防孤儿化误折叠。详见 `Unrecognized` 变体注释。
-//!
-//! 前端 `cards/index.ts` 读的是这里导出的生成物（`ContentBlock` 那一层解释模型在前端）。
 
 use serde::{Deserialize, Serialize};
 
@@ -207,8 +205,6 @@ impl JsonlRecord {
 /// = 自身 uuid（**不是**"整段共享同一个 messageUuid"——早期注释误述，勿据此把 F62 改回错的）。
 /// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ForkedFrom {
     #[serde(rename = "sessionId")]
     pub session_id: String,
@@ -217,8 +213,6 @@ pub struct ForkedFrom {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "type")]
 pub enum JsonlRecord {
     #[serde(rename = "user")]
@@ -232,7 +226,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         time_text: Option<String>,
         message: ApiMessage,
         #[serde(default)]
@@ -241,17 +234,13 @@ pub enum JsonlRecord {
         session_id: Option<String>,
         // 子运行归属由适配层的 `run_of` 判、经运行表与 `history-run` 给界面；记录成品不带这一格（界面不认它）。
         #[serde(rename = "isSidechain", default, skip_serializing)]
-        #[cfg_attr(test, ts(skip))]
         is_sidechain: bool,
         // 下面三格只喂「谁说的」那一判（`text.rs::user_text`），不上线：界面只读成品 `userText`。
         #[serde(rename = "isMeta", default, skip_serializing)]
-        #[cfg_attr(test, ts(skip))]
         is_meta: bool,
         #[serde(rename = "isCompactSummary", default, skip_serializing)]
-        #[cfg_attr(test, ts(skip))]
         is_compact_summary: bool,
         #[serde(default, skip_serializing)]
-        #[cfg_attr(test, ts(skip))]
         origin: Option<serde_json::Value>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
@@ -264,7 +253,6 @@ pub enum JsonlRecord {
         user_text: UserText,
         // 只喂结果一句那一判（`steps.rs::result_of`），不上线。
         #[serde(rename = "toolUseResult", default, skip_serializing)]
-        #[cfg_attr(test, ts(skip))]
         tool_use_result: Option<serde_json::Value>,
         /// 〔判定只在后端〕这条里每个 `tool_result` 的结果一句：`tool_use_id` → [`StepResult`]（读了几行 · `+N −M` · 被拒 · 提问 / 计划答了什么）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面只按它拼字，不认 `toolUseResult` 的形状。
@@ -274,7 +262,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "BTreeMap::is_empty"
         )]
-        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, StepResult>>"))]
         tool_results: BTreeMap<String, StepResult>,
     },
     #[serde(rename = "assistant")]
@@ -288,14 +275,12 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         time_text: Option<String>,
         message: ApiMessage,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
         // 子运行归属由适配层的 `run_of` 判、经运行表与 `history-run` 给界面；记录成品不带这一格（界面不认它）。
         #[serde(rename = "isSidechain", default, skip_serializing)]
-        #[cfg_attr(test, ts(skip))]
         is_sidechain: bool,
         #[serde(rename = "requestId", default)]
         request_id: Option<String>,
@@ -307,8 +292,8 @@ pub enum JsonlRecord {
         // issue #21: API 最终失败时 CLI 写的合成 assistant 消息（重试耗尽 / 不可重试）。
         // isApiErrorMessage:true 是判定主键；error 是机器可读分类（"authentication_failed"
         // / "invalid_request" / "server_error" / "unknown" 等，勿穷举）；apiErrorStatus
-        // 仅 HTTP 类错误有。报错文本在 message.content[0].text。前端据此渲染红色报错卡，
-        // 否则会被当普通 assistant 回复（用户误以为 LLM 还在跑）。
+        // 仅 HTTP 类错误有。报错文本在 message.content[0].text。翻成通用记录的 `error`，界面据此画红色报错卡，
+        // 否则会被当普通 assistant 回复（以为 LLM 还在跑）。
         //
         // error 用 Value 而非 String：实测 47 条全是 string，但 system 侧同名字段就是
         // 对象——若某版 CLI 把它写成对象而这里钉死 String，serde 整行失败 → 这条报错
@@ -316,9 +301,7 @@ pub enum JsonlRecord {
         #[serde(rename = "isApiErrorMessage", default)]
         is_api_error_message: bool,
         #[serde(default)]
-        // `serde_json::Value` 没有天然的 TS 对应；用 `unknown` 而不是 `any`——
-        // 前端必须先 typeof/形状守卫才能读，这与 §18「宽容 schema」的读法一致。
-        #[cfg_attr(test, ts(type = "unknown"))]
+        // 形状随 CLI 版本漂，用 Value 收（§18「宽容 schema」），读的一方先判形状。
         error: Option<serde_json::Value>,
         #[serde(rename = "apiErrorStatus", default)]
         api_error_status: Option<u32>,
@@ -330,10 +313,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "std::collections::BTreeMap::is_empty"
         )]
-        #[cfg_attr(
-            test,
-            ts(optional, as = "Option<std::collections::BTreeMap<String, ToolCard>>")
-        )]
         tool_cards: std::collections::BTreeMap<String, ToolCard>,
         /// 这条消息里派出子运行的那几次工具调用：`tool_use.id` ⇒ 标签与类别（通用形，界面按它给卡起名，不读工具入参）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家的派出链接（`runs::links_in_content`）填。
@@ -343,7 +322,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "std::collections::BTreeMap::is_empty"
         )]
-        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, ChildRunTag>>"))]
         child_runs: BTreeMap<String, ChildRunTag>,
         /// 〔判定只在后端〕这条消息里每个 `tool_use` 的一行人话：`tool_use.id` → [`ToolStep`]（工具名 · 主参数 · 说明 · 认不认得）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面不认入参结构。
@@ -353,7 +331,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "BTreeMap::is_empty"
         )]
-        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, ToolStep>>"))]
         tool_steps: BTreeMap<String, ToolStep>,
         /// 〔判定只在后端〕`isApiErrorMessage` 的那条：原因种类（[`ApiReason`]）。别的记录缺。
         #[serde(
@@ -362,7 +339,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         api_reason: Option<ApiReason>,
     },
 
@@ -374,8 +350,7 @@ pub enum JsonlRecord {
         session_id: String,
     },
     // Claude Code v2.1.x 起把 ai-title schema 改为 custom-title / customTitle
-    // （旧 ai-title 在历史 jsonl 里仍可能出现，两个都保留）。前端按相同语义
-    // 处理 —— 写到同一个 Tab 标题字段。
+    // （旧 ai-title 在历史 jsonl 里仍可能出现，两个都保留）。两个都翻成通用记录的 `title`（`by` 分谁起的）。
     #[serde(rename = "custom-title")]
     CustomTitle {
         #[serde(rename = "customTitle")]
@@ -387,16 +362,6 @@ pub enum JsonlRecord {
     System {
         #[serde(default)]
         subtype: Option<String>,
-        // **C03 大整数策略**（默认 `number`，但绝不许是 ts-rs 的默认 `bigint`）。
-        // 上限论证**按量纲单独算**，不套用字节数/时间戳那两条：这里的量纲是**时长(ms)**，
-        // `Number.MAX_SAFE_INTEGER` = 2^53-1 ms ≈ **28.5 万年**。单条 system 记录的
-        // 耗时不可能接近它 ⇒ f64 精度足够，且 Tauri 的 IPC 是 `serde_json::to_string`
-        // ⇒ 线上是 JSON 文本 ⇒ `JSON.parse` 永远给不出 BigInt，写 `bigint` 才是错的。
-        // **注意 Option 的外层**：`ts(type = …)` 覆盖的是**整个**类型，不只是内层。
-        // 写 `"number"` 会生成 `durationMs: number` —— 丢掉 `| null`，而这个字段
-        // **没有** `skip_serializing_if` ⇒ None 会被序列化成 `null`（不是省略）。
-        // 我本轮就先写错了一次，是盯生成物发现的 ⇒ 已补一条守卫机检这个形状。
-        #[cfg_attr(test, ts(type = "number | null"))]
         #[serde(rename = "durationMs", default)]
         duration_ms: Option<u64>,
         #[serde(rename = "messageCount", default)]
@@ -409,20 +374,18 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         time_text: Option<String>,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
         // issue #8: system 记录大多有 uuid+parentUuid 并参与 jsonl 链 ——
-        // 前端 BranchFolder 需要拿到它才能完整算 ESC 回退主线。Option 兜没有这些字段的少数情况。
+        // 主线外清单（`chain.rs`）要拿到它才能完整算 ESC 回退主线。Option 兜没有这些字段的少数情况。
         #[serde(default)]
         uuid: Option<String>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
         // issue #21: subtype="api_error"（每次 API 调用失败将重试时写一条）。level
-        // 实测只有 "error"；retryAttempt/maxRetries 给前端渲染「重试中 N/M」；error
-        // 对象有两种 shape（随 CLI 版本变化，新版有现成的 .formatted 一行文案）——
-        // 用 Value 透传，前端防御性取字段。
+        // 实测只有 "error"；retryAttempt/maxRetries 翻成通用记录 `retry` 的 attempt / max（界面「重试中 N/M」）；error
+        // 对象有两种 shape（随 CLI 版本变化，新版有现成的 .formatted 一行文案）——用 Value 收，原因种类由 `steps::api_reason` 判。
         #[serde(default)]
         level: Option<String>,
         #[serde(rename = "retryAttempt", default)]
@@ -430,9 +393,7 @@ pub enum JsonlRecord {
         #[serde(rename = "maxRetries", default)]
         max_retries: Option<u32>,
         #[serde(default)]
-        // `serde_json::Value` 没有天然的 TS 对应；用 `unknown` 而不是 `any`——
-        // 前端必须先 typeof/形状守卫才能读，这与 §18「宽容 schema」的读法一致。
-        #[cfg_attr(test, ts(type = "unknown"))]
+        // 形状随 CLI 版本漂，用 Value 收（§18「宽容 schema」），读的一方先判形状。
         error: Option<serde_json::Value>,
         /// 〔判定只在后端〕`subtype == "api_error"`（要重试的那一次）的原因种类。别的记录缺。
         #[serde(
@@ -441,14 +402,13 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         api_reason: Option<ApiReason>,
     },
 
     // issue #8: attachment 不渲染卡片，但有 uuid+parentUuid 并夹在 user→assistant
-    // 之间（实测 5% 的 user/assistant 直接 parent 是 attachment）。如果不把它
-    // emit 给前端，前端的 parent 链就断在 attachment 处 → 主线检测全部失败 →
-    // 整段消息被错误折叠到"已被 ESC 回退"。所以本变体含完整字段且进 is_displayable()。
+    // 之间（实测 5% 的 user/assistant 直接 parent 是 attachment）。如果主线检测不认它，
+    // parent 链就断在 attachment 处 → 主线检测全部失败 → 整段消息被错误折叠到"已被 ESC 回退"。
+    // 所以本变体含完整字段、出链事实（`chain.rs`）；不出通用记录。
     #[serde(rename = "attachment")]
     Attachment {
         uuid: String,
@@ -460,14 +420,13 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         time_text: Option<String>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
     },
-    /// Batch10-F31 (issue #36)：CC 2.1.x 队列操作记录。enqueue 带 content——前端
+    /// Batch10-F31 (issue #36)：CC 2.1.x 队列操作记录。enqueue 带 content —— 主线判定
     /// 用它豁免"被消费的队列消息"（永久裸 user 叶，CC 的回复链挂在 interrupt 叶
-    /// 下而非队列消息下）不被 ESC 回退折叠。无 uuid/parentUuid，不渲染卡片。
+    /// 下而非队列消息下）不被 ESC 回退折叠；remove 那一条翻成通用记录的 `queued`。无 uuid/parentUuid。
     #[serde(rename = "queue-operation")]
     QueueOperation {
         #[serde(default)]
@@ -489,7 +448,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         time_text: Option<String>,
         /// `content` 是谁说的（排队消息没有记录级字段，只认具名框与固定句）；没有 `content` ⇒ 缺。
         /// 只有人说的那一支建卡（`remove`：插进正在跑的那一轮、没有 user 记录的那句话）。
@@ -499,7 +457,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         user_text: Option<UserText>,
     },
     #[serde(rename = "permission-mode")]
@@ -520,12 +477,11 @@ pub enum JsonlRecord {
     /// （实测 `error: #[serde(other)] must be on a unit variant`）。故 `Unknown` 只当
     /// serde 落点，抢救在 `parse_line` 做——那里手里正好有原始字符串。
     ///
-    /// **为什么要留 uuid/parentUuid**：`branching.ts:100-106` 判 root 的依据是
+    /// **为什么要留 uuid/parentUuid**：主线判定（`chain.rs`）判 root 的依据是
     /// 「parentUuid 不在集合里」。记录一旦丢失，它的 children 就成孤儿 root →
-    /// `branching.ts:48-50` 多 root 时死胡同 plain user root **整棵折叠**。
-    /// `branching.ts:24` 早预警过：「必须 track 它们的 uuid+parentUuid，否则 parent
-    /// 链断成碎片 → 大量误折叠」；同类故障咬过一次（1 条重复 attachment 折掉
-    /// 1541/4331 条，见 2026-06-13 排查总结）。
+    /// 多 root 时死胡同那一支**整棵判成回退掉的**。不 track 它们的 uuid+parentUuid，
+    /// parent 链断成碎片 → 大量误折叠；同类故障咬过一次（1 条重复 attachment 折掉
+    /// 1541/4331 条，2026-06-13）。
     ///
     /// **实测（2026-07-16，本机 771 会话 / 157,385 行）**：当前 7 个未知 type
     /// （mode 6472 / agent-name 2020 / file-history-delta 181 / pr-link 58 /
@@ -533,11 +489,10 @@ pub enum JsonlRecord {
     /// parentUuid 全为 0** —— 即此刻并没有在误折叠，本变体是**保险 + 诚实**：
     /// ①不再静默丢 5.6% 的行；②Claude 哪天发一个带链身份的新类型时自动扛住。
     ///
-    /// **带链身份的**进 `is_displayable()`（照 `Attachment` 先例：**不渲染卡片但进链**）；
-    /// 前端 `cards/index.ts::renderMessage` 的 `default => skip` 已能优雅跳过，无需建卡。
+    /// **带链身份的**出链事实（照 `Attachment` 先例：**不进界面但进链**，`chain.rs`）；
+    /// 不出通用记录（`record_of` 认不出 ⇒ 缺，界面照占号）。
     /// **没有链身份的**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种今天全是）
-    /// 在这里就滤掉、不出 payload：它们不建卡、不进链，前端没有任何读者，却要付每条的固定开销（去重入集合 · sink · 门控），
-    /// 还带着整行原文 `raw` 过线。「不静默」那一半由 `drift_ledger`（`UnknownRecordType` 面，解析时记）接着管 ——
+    /// 在这里就滤掉：它们不建卡、不进链，没有任何读者，却要付每条的固定开销（去重入集合 · sink · 门控）。「不静默」那一半由 `drift_ledger`（`UnknownRecordType` 面，解析时记）接着管 ——
     /// 诊断面照旧看得见「多了一种没见过的类型」。
     #[serde(rename = "cc-monitor-unrecognized")]
     Unrecognized {
@@ -554,7 +509,6 @@ pub enum JsonlRecord {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        #[cfg_attr(test, ts(optional))]
         time_text: Option<String>,
         /// 原文里的 `type`（若有）——诊断 / 记账按它分类
         #[serde(rename = "originalType", default)]
@@ -579,12 +533,9 @@ pub enum JsonlRecord {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ApiMessage {
     pub role: String,
-    // 同上：`unknown` 逼前端先做形状判断（`cards/index.ts` 的 `ContentBlock` 就是那层解释模型）。
-    #[cfg_attr(test, ts(type = "unknown"))]
+    // 字符串或块数组两形都有（§18 宽容 schema）；翻成通用记录的内容块在 `record_of::blocks_of`。
     pub content: serde_json::Value,
     #[serde(default)]
     pub model: Option<String>,
@@ -592,18 +543,11 @@ pub struct ApiMessage {
     pub usage: Option<Usage>,
     /// Batch14-F42：一轮结束判定（assistant 终结记录带 `end_turn`；
     /// aterm/HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
-    // 同 `JsonlLinePayload.origin`：`skip_serializing_if` ⇒ 必须 `ts(optional)`。
-    // 这里还叠了 C02 实测过的一层：`default` + `skip_serializing_if` 会走 ts-rs 的
-    // `maybe_omitted && has_default` 回退，生成**过宽**的 `stop_reason?: string | null`。
-    // 显式 `ts(optional)` 才得到诚实的 `stop_reason?: string`。
-    #[cfg_attr(test, ts(optional))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct Usage {
     #[serde(default)]
     pub input_tokens: u32,
@@ -616,46 +560,12 @@ pub struct Usage {
 }
 
 impl JsonlRecord {
-    /// 是否应该被 emit 到前端。
-    ///
-    /// 两类记录都返回 true：
-    /// 1. 渲染目标：User / Assistant / AiTitle / System —— 前端会建卡 / 改标题等
-    /// 2. 仅链路用：Attachment / **带链身份的** Unrecognized —— 不渲染，但 issue #8 ESC 回退主线检测
-    ///    需要完整 uuid+parentUuid 链，attachment 夹在 user/assistant 之间，
-    ///    不 emit 会让前端 parent 链断成碎片 → 主线全错 → 全部消息被错折叠
-    ///
-    /// 〔「纯元数据记录在解析阶段滤掉，不进管线」〕**没有链身份的** Unrecognized
-    /// （`mode` / `atis-latch` / `pr-link` / … 一族，真机普查 9.8% 行 / 0.4% 字节）返回 false：前端零读者。
-    /// 仍进前端的元数据都有读者：`ai-title` / `custom-title`（标题）· `queue-operation`（`enqueue` 喂折叠豁免、`remove` 建卡）。
-    ///
-    /// **返回 false 的两类要分清**（F63/#49「零信息损失」的口径）：
-    /// - `PermissionMode` / `LastPrompt` / `FileHistorySnapshot` = **已知类型的明示
-    ///   决定**（我们认识它、判断它不该显示）→ 不算「丢」。实测 16,121 条。
-    /// - `Unknown` = **不认识**，曾经从这里被静默丢弃（实测 8,774 条 / 5.6%）。
-    ///   F63 起它不再出 `parse_line`（被抢救成 `Unrecognized`），此处 false 只是
-    ///   兜底——真走到说明 `parse_line` 的后处理漏了，属 bug。
     /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（原 monitor `lib·rs` 那个 `extract_cwd`〔散文墓碑〕）。
     pub fn cwd(&self) -> Option<&str> {
         match self {
             Self::User { cwd, .. } => cwd.as_deref(),
             _ => None,
         }
-    }
-
-    pub fn is_displayable(&self) -> bool {
-        matches!(
-            self,
-            Self::User { .. }
-                | Self::Assistant { .. }
-                | Self::AiTitle { .. }
-                | Self::CustomTitle { .. }
-                | Self::System { .. }
-                | Self::Attachment { .. }
-                | Self::QueueOperation { .. }
-        ) || matches!(
-            self,
-            Self::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some()
-        )
     }
 }
 

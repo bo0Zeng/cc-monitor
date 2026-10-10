@@ -122,15 +122,13 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
-    "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf` · `needsWord`）
-    "src/frontend/ui/session-words.ts", // 「需手动」徽标那个词（`needsWord`：标签页行 · 设置里轮换规则的在用名单同一份）
+    "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf`，字照抄核心写的）
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
     "src/frontend/ui/terminal-front.ts", // bringActiveTerminalToFront 的 OS 门
     "src/frontend/ui/turn-notify.ts", // onLine：轮次结束通知
-    "src/frontend/ui/views/context-limit.ts", // snapshotSessions 的 context%
     "src/frontend/ui/views/facts-source.ts", // ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
   ],
   // ① 形状：只有类型。
@@ -196,7 +194,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）
-    "src/frontend/ui/session-words.ts", // 状态点的读屏名 · 等的是什么（`dotLabel` · `needsWord`，与设置里轮换规则的在用名单同一份）
     "src/frontend/ui/tab-drop.ts", // 照 `barRows` 一趟摆组与散的（组员聚在第一个组员那一格）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式
@@ -211,8 +208,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/keybindings/registry.ts", // 拖拽中 Esc ＝ 取消：走弹层栈
     "src/frontend/ui/kit/status-dot.ts", // 影子：状态点 ＋ 标题（同行上的写法）
-    "src/frontend/ui/session-face.ts", // 影子那一行读成什么（`dotOf` · `titleParts`）
-    "src/frontend/ui/session-words.ts", // 影子状态点的读屏名
+    "src/frontend/ui/session-face.ts", // 影子那一行读成什么（`dotOf` · `titleParts` · 点的名字 `stateWord`）
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-drop.ts",

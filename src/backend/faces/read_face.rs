@@ -29,6 +29,7 @@
 //!
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
+use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
@@ -119,7 +120,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let from = u64_arg(args, "from")?.unwrap_or(0);
             let (source, run) = history_query::run_source(home, parent, run, tool)?;
             let source_str = source.to_string_lossy().into_owned();
-            let (_, face) = record_face(home, &source_str)?;
+            let (target, face) = record_face(home, &source_str)?;
             let page = history_query::read_page(
                 home,
                 &source_str,
@@ -128,7 +129,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
-            let rows = crate::observe::record_page::run_rows(&face, &page.bytes);
+            let rows = crate::observe::record_page::run_rows(
+                &mut reader(&face, &target, from, false),
+                from,
+                &page.bytes,
+            );
             capped(json!({
                 "run": run,
                 "path": source_str,
@@ -154,14 +159,16 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             // 只比标题与第一句：帧面才有的一格（CLI 面没有这个选项）。
             let titles = args.get("titles").and_then(Value::as_bool) == Some(true);
             let mut unreadable = 0usize;
-            let mut v = lines(|out| {
+            let lines = rows(|out| {
                 unreadable = search_query::search_into(home, query, &rest, titles, out)
                     .map_err(|e| ("failed", e))?;
                 Ok(())
             })?;
-            v["unreadable"] = json!(unreadable);
-            v["skipped"] = json!(crate::agents::content_search_skips());
-            Ok(v)
+            wire(&Searched {
+                lines,
+                unreadable,
+                skipped: crate::agents::content_search_skips(),
+            })
         }
         // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
         //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
@@ -222,14 +229,14 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             };
             accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
         }
-        // 按字节分页读，出**行摘要**（monitor 旁路快照那一页）：`{rows: [{end, hash, message?, cwd?}], next, eof}`，
+        // 按字节分页读，出**行摘要**（monitor 旁路快照那一页）：`{rows: [{end, hash, record?, cwd?}], next, eof}`，
         //   每个可计行一条（`observe/record_page.rs::rows_of`）。原先回 `text`、由 monitor 切行解析。
         "history-read" => {
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
             let summary_only = summary_only(args);
-            let (_, face) = record_face(home, path)?;
+            let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
                 path,
@@ -239,7 +246,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 LINE_CAP_BYTES,
             )?;
             Ok(json!({
-                "rows": crate::observe::record_page::rows_of(&face, offset, &page.bytes, summary_only),
+                "rows": crate::observe::record_page::rows_of(
+                    &mut reader(&face, &target, offset, summary_only),
+                    offset,
+                    &page.bytes,
+                ),
                 "next": page.next,
                 "eof": page.eof,
             }))
@@ -277,11 +288,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 ));
             }
             let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
-                &face,
+                &mut reader(&face, &target, offset, summary_only),
                 &target,
                 seq,
+                offset,
                 &page.bytes,
-                summary_only,
             );
             Ok(json!({
                 "lines": lines,
@@ -306,12 +317,15 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
+            let first = page.starts.first().copied().unwrap_or(0);
             let (lines, _) = crate::observe::record_page::record_lines(
-                &face,
+                &mut reader(&face, &target, first, summary_only),
                 &target,
                 page.from,
-                page.lines.iter().map(|l| l.as_bytes()),
-                summary_only,
+                page.lines
+                    .iter()
+                    .map(|l| l.as_bytes())
+                    .zip(page.starts.iter().copied()),
             );
             Ok(json!({
                 "from": page.from,
@@ -480,6 +494,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 &facts.pending,
                 accounts_query::session_wait(home, sid).as_ref(),
             );
+            // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
+            facts.background = accounts_query::session_background(home, sid).map(|born| {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+                facts_query::background_of(&facts.bg_tasks, born, now)
+            });
             // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。这一家不留 pidfile ⇒ 判不了活。
             let tracked = facts
                 .agent
@@ -494,11 +515,18 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             }
             Ok(v)
         }
+        // 这台上需手动的会话清单（一次问一台）：活着、那台说在等人的每一个，带它在等什么（同 `history-facts.needs`，不另判）。
+        "sessions-needs" => crate::stream::inbound::spec::wire(&NeedsList {
+            waiting: accounts_query::live_needs(home),
+        }),
         // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
         "history-branch" => {
             let path = str_arg(args, "path")?;
             let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-            capped(json!({ "off": map.off, "end": map.end }))
+            capped(wire(&Branch {
+                off: map.off.clone(),
+                end: map.end,
+            })?)
         }
         "history-tail" => {
             let path = str_arg(args, "path")?;
@@ -508,12 +536,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             ))?;
             let plan =
                 history_query::tail_now(home, path, n as usize).map_err(|e| ("failed", e))?;
-            Ok(json!({
-                "total": plan.total,
-                "tail_from": plan.tail_from,
-                "split_at": plan.split_at,
-                "end": plan.end,
-            }))
+            wire(&plan)
         }
         // 这条会话的记录还在不在（resume 之前问；本体住 `history_query::record_in`）。
         // 可选 `configDir`：这次 resume 要用的那个账号根（缺席 / `null` ⇒ 这台的家目录）。
@@ -533,7 +556,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             };
             let probe =
                 history_query::record_for(home, config_dir, sid).map_err(|e| ("bad_args", e))?;
-            Ok(json!({ "present": probe.present, "root": probe.root }))
+            wire(&probe)
         }
         other => Err((
             "bad_args",
@@ -556,6 +579,17 @@ fn record_face(
     Ok((target, face))
 }
 
+/// 从 `offset` 起读那一份记录的读法：起点之前那一段一起喂进去配排队消息的打字时刻（`record_page::lead_of`）。
+fn reader<'a>(
+    face: &'a crate::agents::RecordFace,
+    target: &std::path::Path,
+    offset: u64,
+    summary_only: bool,
+) -> crate::observe::record_page::Reader<'a> {
+    let (lead_at, lead) = crate::observe::record_page::lead_of(target, offset);
+    crate::observe::record_page::Reader::new(face, lead_at, &lead, summary_only)
+}
+
 /// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 fn capped(v: Value) -> Answer {
     let size = v.to_string().len();
@@ -565,21 +599,48 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// 跑一个「往 `out` 里逐行写」的查询，收成 `{"lines": [...]}`。
-fn lines(f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>) -> Answer {
+/// 跑一个「往 `out` 里逐行写」的查询，收成非空的那几行。
+fn rows(
+    f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>,
+) -> Result<Vec<String>, (&'static str, String)> {
     let mut out = CappedBuf::default();
     let res = f(&mut out);
     if out.over {
         return Err(too_large(out.seen));
     }
     res?;
-    let text = String::from_utf8_lossy(&out.buf);
-    let rows: Vec<&str> = text
+    Ok(String::from_utf8_lossy(&out.buf)
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
-        .collect();
-    Ok(json!({ "lines": rows }))
+        .map(str::to_string)
+        .collect())
+}
+
+/// `history-search` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Searched {
+    /// 每命中会话一行 `SessionHits`（JSON 串），形状与行序同 `--search`。
+    pub(crate) lines: Vec<String>,
+    /// 这一趟有几份会话记录读不动、没搜到。
+    pub(crate) unreadable: usize,
+    /// 内容搜索不覆盖、这台上又有它的会话记录的那几家。
+    pub(crate) skipped: Vec<&'static str>,
+}
+
+/// `sessions-needs` 的应答：这台上需手动的会话，先答的在前。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct NeedsList {
+    pub(crate) waiting: Vec<crate::observe::accounts_query::NeedsRow>,
+}
+
+/// `history-branch` 的应答。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct Branch {
+    /// 回退掉的那几条记录的 `id`（文件序）。
+    pub(crate) off: Vec<String>,
+    /// 最后一个完整行的末字节。
+    pub(crate) end: u64,
 }
 
 /// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `stream/inbound/registry/accounts.rs`
@@ -688,8 +749,7 @@ fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'sta
 }
 
 /// `summaryOnly`：客户端**显式只要折起那一行的成品** —— 读记录那三条（`history-read` · `history-page` ·
-/// `history-lines`）每条的 `message` 剥掉正文那几格（哪几格、为什么留 `message` 这个对象见
-/// `observe/record_page.rs::fold_body`）。缺 / 不是 `true` ⇒ 默认 `false` ＝ 今天的行为，一切照旧。
+/// `history-lines`）每条的 `record` 剥掉正文那几格（哪几格见 `observe/record_page.rs::fold_body`）。缺 / 不是 `true` ⇒ 默认 `false` ＝ 今天的行为，一切照旧。
 ///
 /// # 为什么是**一次一问的入参**，不是 `ReaderState` 的一位
 ///

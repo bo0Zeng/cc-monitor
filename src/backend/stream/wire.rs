@@ -97,6 +97,58 @@ pub enum SessionFate {
     Ended,
 }
 
+impl SessionFate {
+    /// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
+    pub(crate) fn cells(self) -> (Words, Words, Tone) {
+        match self {
+            SessionFate::Reconnectable => (
+                Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
+                Words(copy_core::copy_text(
+                    "sessionState.reconnectable.tooltip",
+                    &[],
+                )),
+                Tone::Plain,
+            ),
+            SessionFate::Ended => (
+                Words(copy_core::copy_text("sessionState.ended.name", &[])),
+                Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
+                Tone::Plain,
+            ),
+        }
+    }
+}
+
+/// **活会话此刻在干什么的字与语气的唯一一处**（`session_added` · `session_status` 都由它填）：
+/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
+/// 活着、那一家没说在干什么（`None`）⇒ 运行中 · `now`（出口照画，不自己补一种默认）。
+pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Words, Tone) {
+    let Some(a) = a else {
+        return (
+            Words(copy_core::copy_text("beSession.activity.unclear", &[])),
+            Tone::Now,
+        );
+    };
+    let (text, tone) = match a {
+        SessionActivity::Working => (
+            copy_core::copy_text("beSession.activity.working", &[]),
+            Tone::Now,
+        ),
+        SessionActivity::NeedsYou => (
+            copy_core::copy_text("beSession.activity.needsYou", &[]),
+            Tone::Need,
+        ),
+        SessionActivity::Idle => (
+            copy_core::copy_text("beSession.activity.idle", &[]),
+            Tone::Plain,
+        ),
+        SessionActivity::BackgroundWork => (
+            copy_core::copy_text("beSession.activity.backgroundWork", &[]),
+            Tone::Busy,
+        ),
+    };
+    (Words(text), tone)
+}
+
 /// 一条**丢了就不可恢复**的帧的身份。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
@@ -119,6 +171,7 @@ fn is_false(b: &bool) -> bool {
 /// `hello.homes` 的一项（类型住 agent 注册表那一侧，帧面只引用它）。
 pub use crate::agents::AgentHome;
 pub use crate::agents::SessionActivity;
+use crate::common::cells::{Tone, Words};
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
 ///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
@@ -296,7 +349,7 @@ pub enum Frame {
         ///
         /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
         /// （`wire_tests.rs::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
-        /// 🔴 **监听口的钥匙永远不在这里**：名单只有两格、钥匙文件路径不在名单里（`wire_tests.rs::hx2_the_listen_token_is_never_echoed` 钉）——
+        /// 🔴 **名单只有两格**、常驻开关不在名单里（`wire_tests.rs::hx2_the_echo_list_is_exactly_the_two_handed_names` 钉）——
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,
@@ -307,9 +360,14 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
     },
-    /// One JSONL line tailed from a session file —— 带的是**成品**：
-    /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
-    /// monitor 只原样转交。原文 `raw` 只给发了 `--with-raw` 的客户端（第二个前端自己解析记录）。
+    /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
+    /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
+    /// 原文 `raw` 是过渡格，只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）；
+    /// 两个前端读的是 `record`，手机那一侧的缺格补齐之后 `raw` 删。
+    ///
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
+    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。`raw` 逐字节等于那一行
+    /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
     Line {
         /// 会话 id。
         session_id: String,
@@ -317,9 +375,9 @@ pub enum Frame {
         path: String,
         /// 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset`。
         seq: u64,
-        /// 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号。
+        /// 这一行的通用记录；缺 ＝ 不进界面、照占号。
         #[serde(skip_serializing_if = "Option::is_none")]
-        message: Option<serde_json::Value>,
+        record: Option<crate::agents::record::Record>,
         /// 这条记录自己的工作目录。
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
@@ -335,8 +393,9 @@ pub enum Frame {
         /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
-        /// 〔additive〕这一行记录的**原文**（去掉行尾换行）。只在客户端发了 `--with-raw` 时才带
-        /// （`ReaderState::with_raw`）—— 第二个前端自己解析记录，要它；没索要的客户端收到的字节与本字段加进来之前一字不差。
+        /// 〔additive〕这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。只在客户端发了 `--with-raw` 时才带
+        /// （`ReaderState::with_raw`）。**过渡格**：两个前端都读核心的成品（`record`）；手机那一侧还缺的几格补齐之前它点着这一格，
+        /// 补齐（缺格清单清零）之后从它的声明里摘掉、这一格随之删。没索要的客户端收到的字节与本字段加进来之前一字不差。
         #[serde(skip_serializing_if = "Option::is_none")]
         raw: Option<String>,
     },
@@ -397,6 +456,10 @@ pub enum Frame {
         /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
+        /// 此刻在干什么写好的字（[`activity_cells`]；说不清也有一格）。
+        activity_text: Words,
+        /// 那一态的语气（同上）。
+        activity_tone: Tone,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -409,7 +472,7 @@ pub enum Frame {
         /// 〔additive〕那个 claude 进程的 **pid**。
         ///
         /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
-        /// 它按 pid 找父 PowerShell 去绑窗口（`bind::SidHwndCache::record`，Windows）只能从这一格拿 pid。
+        /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
         ///
         /// 只在客户端发了 `--with-pid` 时才带（`ReaderState::with_pid`；只有本机那条流发）—— 没索要的客户端
         /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。
@@ -424,6 +487,10 @@ pub enum Frame {
         /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
+        /// 同 `session_added.activity_text`。
+        activity_text: Words,
+        /// 同 `session_added.activity_tone`。
+        activity_tone: Tone,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -441,6 +508,12 @@ pub enum Frame {
         sid: String,
         /// 离开「活」之后的去向。
         state: SessionFate,
+        /// 那一种写好的短名（[`SessionFate::cells`]）。
+        state_text: Words,
+        /// 悬停那一句。
+        state_hint: Words,
+        /// 语气。
+        state_tone: Tone,
     },
     /// A session file went away.
     SessionRemoved {
@@ -968,41 +1041,53 @@ impl Frame {
         }
     }
 
-    /// 协议级失败应答（还没落到哪条命令上）：码 ＋ 一句话 ＋ 详情。
+    /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）。
+    pub(crate) fn session_state(sid: String, state: SessionFate) -> Frame {
+        let (state_text, state_hint, state_tone) = state.cells();
+        Frame::SessionState {
+            sid,
+            state,
+            state_text,
+            state_hint,
+            state_tone,
+        }
+    }
+
+    /// 失败应答：那一份失败（[`crate::stream::detail::Failed`]，CLI 面的信封出自同一份）装进 `reply`。
+    pub(crate) fn failed(id: String, f: crate::stream::detail::Failed) -> Frame {
+        Frame::Reply {
+            id,
+            ok: false,
+            code: Some(f.code),
+            message: Some(f.message),
+            detail: Some(f.detail),
+            data: f.data,
+        }
+    }
+
     /// 一条命令当场失败、带下层原话的那一种应答（原话进复制详情，句子 `message` 里没有它）。
     pub(crate) fn err_raw(id: &str, cmd: &str, code: &str, message: &str, raw: &str) -> Frame {
-        Frame::Reply {
-            id: id.to_string(),
-            ok: false,
-            code: Some(code.to_string()),
-            message: Some(message.to_string()),
-            detail: Some(crate::stream::detail::of(Some(cmd), code, Some(raw))),
-            data: None,
-        }
+        let f = crate::stream::detail::Failed::new(
+            Some(cmd),
+            code,
+            message.to_string(),
+            Some(raw),
+            None,
+        );
+        Frame::failed(id.to_string(), f)
     }
 
     /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
     pub(crate) fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
-        Frame::Reply {
-            id: id.to_string(),
-            ok: false,
-            code: Some(code.to_string()),
-            message: Some(message.to_string()),
-            detail: Some(crate::stream::detail::of(Some(cmd), code, None)),
-            data: None,
-        }
+        let f =
+            crate::stream::detail::Failed::new(Some(cmd), code, message.to_string(), None, None);
+        Frame::failed(id.to_string(), f)
     }
 
     /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
-        Frame::Reply {
-            id: id.to_string(),
-            ok: false,
-            code: Some(code.to_string()),
-            message: Some(message.to_string()),
-            detail: Some(crate::stream::detail::of(None, code, None)),
-            data: None,
-        }
+        let f = crate::stream::detail::Failed::new(None, code, message.to_string(), None, None);
+        Frame::failed(id.to_string(), f)
     }
 
     /// **丢了还能不能恢复**。
@@ -1246,7 +1331,12 @@ pub struct Request {
 /// `within_ms` 的宽读：只认正整数，别的（字符串 · 负数 · 小数 · 零 · null）一律当没带。
 fn lenient_ms<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
-    Ok(v.as_u64().filter(|&n| n > 0))
+    Ok(within_ms_of(&v))
+}
+
+/// `within_ms` 那一格的读法（帧面信封 · CLI 面的期限口同一处读）：只认正整数，别的当没带。
+pub(crate) fn within_ms_of(v: &serde_json::Value) -> Option<u64> {
+    v.as_u64().filter(|&n| n > 0)
 }
 
 /// Serialize a frame to its compact one-line wire form with a trailing `\n`.

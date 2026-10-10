@@ -169,13 +169,15 @@ export class FakeBackend {
       });
       frames.push({ container: { session_id: s.sid, container: s.container } });
       const from = this.world.replayTail === undefined ? 0 : Math.max(0, s.records.length - this.world.replayTail);
-      s.records.slice(from).forEach((message, i) => {
-        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, message } });
+      s.records.slice(from).forEach((record, i) => {
+        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, record } });
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, waiting_for: s.waitingFor } });
-      if (s.ended) frames.push({ ended: { session_id: s.sid } });
-      else if (s.idle) frames.push({ idle: { session_id: s.sid } });
+      // 字与语气照后端 `wire::activity_cells` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
+      const act = s.activity === null ? (["unclear", "now"] as const) : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["backgroundWork", "busy"] } as const)[s.activity];
+      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: copyText(`beSession.activity.${act[0]}`), activity_tone: act[1], waiting_for: s.waitingFor } });
+      if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("sessionState.ended.name"), hint: copyText("sessionState.ended.tooltip"), tone: "plain" } });
+      else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("sessionState.reconnectable.name"), hint: copyText("sessionState.reconnectable.tooltip"), tone: "plain" } });
     }
     this.listedOrigins.add(origin);
     frames.push({ listed: { origin, all: this.world.machines.every((m) => this.listedOrigins.has(m)) } });
