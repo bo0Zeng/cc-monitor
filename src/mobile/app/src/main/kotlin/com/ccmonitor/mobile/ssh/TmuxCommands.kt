@@ -6,7 +6,7 @@ import com.ccmonitor.mobile.core.remote.shellQuote
 
 /**
  * tmux 这一面的唯一命令产地。纯函数，只造串不执行，别处只拿造好的结果；谁来跑、跑在哪是
- * `TmuxBackend` / `PipeLauncher` 的事。
+ * `TmuxBackend` 的事。聊天屏不经这里：起会话、往会话里打字走那台核心的 `session-new` · `terminal-input`。
  *
  * 收的是 tmux 语法（子命令、flag、格式串、哨兵），不收用户的字：种子按钮的默认命令（如 `"tmux new -A -s main"`）、
  * 按钮显示名、菜单文案都是用户可改的内容，不和远端说话，不放这里。
@@ -15,10 +15,8 @@ import com.ccmonitor.mobile.core.remote.shellQuote
  * 改格式串要一起改。
  *
  * 不做的事：
- * - 不造会话名，名字由调用方给；会话名前缀常量也不在这里（`PIPE_SESSION_PREFIX` 在 `PipeLauncher`，`cc-` / `cx-`
- *   在各家 invocation）。
+ * - 不造会话名，名字由调用方给；会话名前缀常量也不在这里（`cc-` / `cx-` 在各家 invocation）。
  * - 不管 agent 载荷：`--resume` 那截向 `AgentProfile.invocation` 要。
- * - 不判 `SendOutcome`：翻成给人看的话是 `TmuxSendKeysSink.classify` 的事。
  * - 不改 tmux server 的全局状态：每条 `set` 都带 `-t` 指名一个会话，不许 `-g` / `-s`，不碰服务器级选项。
  *   那台机器上的 tmux server 是共享的，cc-monitor 的 `cc-*` 会话和电脑上开的会话都在上面。
  */
@@ -92,8 +90,6 @@ object TmuxCommands {
      * 用「建 shell 会话 + send-keys」而不是 `new-session -d -s n claude` 直接 exec：claude 这类命令常只在交互 shell 的
      * PATH 或别名里，直接 exec 找不到，命令立刻退出，会话跟着没了。send-keys 在交互 shell 里敲，环境完整。
      * 键写进 pane 的 pty，shell 起来后读走，所以不用在两段之间等。
-     *
-     * 聊天管道（`atermpipe-*`，经 [tmuxStartOnceCommand]）也这么起；它没有客户端挂着看，不设移动端选项。
      */
     fun tmuxNewDetachedRunning(
         name: String,
@@ -101,39 +97,6 @@ object TmuxCommands {
     ): String =
         "tmux new-session -d -s ${shQuote(name)}; " +
             "tmux send-keys -t ${shQuote(name)} ${shQuote(command)} Enter"
-
-    /**
-     * [tmuxNewDetachedRunning] 的幂等版：只在会话还不存在时才起。
-     *
-     * [tmuxNewDetachedRunning] 的两段是 `;` 分隔不是 `&&`：会话已存在时 `new-session` 失败、`send-keys` 照发，
-     * 把 `command` 当输入敲进正在跑的 pane 并回车。对管道来说，pane 前台是 `tail -f … | claude …`，没人读 pty，
-     * 字节滞留在行规程缓冲里；管道一退、shell 回到提示符就执行它，第二条管道往同一个 `events.ndjson` 追加，
-     * 一条消息被两个 claude 各处理一遍。
-     *
-     * 探测和动作折进同一条命令：分两次往返，中间的窗口正好是别人可能把会话建起来的时候。
-     * 成功证据绑在会话真的存在上：起完再问一次。注意：这仍不证明里面的命令在跑，它可能秒退。
-     *
-     * @return 一条命令，stdout 恰好含 [TMUX_ALREADY_MARKER]（本来就在跑，什么都没做）、[TMUX_STARTED_MARKER]（建起来了），
-     *   或两者都没有（失败）。
-     */
-    fun tmuxStartOnceCommand(
-        name: String,
-        command: String,
-    ): String {
-        // `=` 前缀 = 精确匹配。裸 `-t <名>` 按「精确 → 名字开头 → glob」解析，
-        // 只有 `cc-abc12345` 存在时 `-t cc-abc1234` 会命中它。
-        val exact = shQuote("=$name")
-        val exists = "tmux has-session -t $exact 2>/dev/null"
-        return "if $exists; then printf '$TMUX_ALREADY_MARKER\\n'; else " +
-            "${tmuxNewDetachedRunning(name, command)}; " +
-            "if $exists; then printf '$TMUX_STARTED_MARKER\\n'; fi; fi"
-    }
-
-    /** [tmuxStartOnceCommand]：本来就在跑，这次什么都没做。 */
-    const val TMUX_ALREADY_MARKER = "__aterm_already__"
-
-    /** [tmuxStartOnceCommand]：会话确实建出来了（不代表里面那条命令还活着）。 */
-    const val TMUX_STARTED_MARKER = "__aterm_started__"
 
     // ---- resume：探测、定位、起、补送 ----
     // agent 载荷（sid 校验、启动命令解析、resume invocation、会话名、切模型）在 core-claude；这里只管 tmux 编排。
@@ -293,110 +256,15 @@ object TmuxCommands {
     fun tmuxListCommand(): String =
         "tmux ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}' 2>/dev/null"
 
-    // ---- 上行：身份门 + 模态探测 + send-keys ----
-
-    /** 屏幕上出现编号选择行，说明有模态在等输入。用 `ATERM_` 前缀，不占 cc-monitor 的命名空间。 */
-    const val MODAL_SENTINEL = "ATERM_MODAL_WAIT"
-
-    /**
-     * 送达的肯定证据，没有它就不算送到。注意：不能把「没看到失败」当成功：会话没了时 `can't find session: …`
-     * 落进 stdout，再加上 `echoesBack=true`（成功就撤下本地那条等回声），打的字会无声消失。
-     */
-    const val SENT_MARKER = "ATERM_SENT"
-
-    /** 模态只会在光标附近，只看屏幕末尾几行，免得历史回显里的文字一直锁死发送。 */
-    private const val MODAL_TAIL_LINES = 12
-
-    /**
-     * 模态判据，刻意窄：只认 `❯` + 数字 + `.` 的编号选择行（照真实弹窗的形状）。
-     * 窄会漏判，但误判会让消息根本发不出去，那更糟。
-     */
-    private const val MODAL_PATTERN = "❯[ ]*[0-9][0-9]*\\."
-
-    /** 我们自己的 tmux buffer 名；`paste-buffer -d` 用完即删，不在用户的 buffer 栈里留东西。 */
-    private const val BUFFER_NAME = "aterm-uplink"
-
-    /** ASCII 字母数字、`-`、`_`（与 cc-monitor 接受的字符集一致）。 */
-    private val SAFE_NAME = Regex("^[A-Za-z0-9_-]+$")
-
-    /**
-     * 名字本身就证明这是 cc-monitor 管的会话，不必再查 `@ccm_sid`。认两种形状：`cc-` 前缀（没有 `@ccm_sid` 的老会话
-     * 只能靠它），和 `<X>-cc` / `<X>-cc-<N>` 后缀。只认不造，造 `cc-` 名只在 `ClaudeInvocation.resumeSessionName`。
-     */
-    fun isCcmTmuxName(name: String): Boolean {
-        if (!SAFE_NAME.matches(name)) return false
-        val oldPrefix = name.startsWith("cc-") && name.length > 3
-        return oldPrefix || hasNewCcSuffix(name)
-    }
-
-    /** `<X>-cc` 或撞名避让的 `<X>-cc-<N>`；`<X>` 必须非空，否则裸 `-cc` 也会命中。 */
-    private fun hasNewCcSuffix(name: String): Boolean {
-        val head = name.substringBeforeLast("-cc", missingDelimiterValue = "")
-        if (head.isEmpty()) return false
-        val tail = name.removePrefix("$head-cc")
-        if (tail.isEmpty()) return true
-        return tail.length > 1 && tail.startsWith("-") && tail.drop(1).all(Char::isDigit)
-    }
-
     /**
      * tmux `-t` 的精确匹配包装，别简化。
      *
-     * 裸 `-t <名>` 依次按「精确名 → 名字开头 → glob」解析：只有 `sib-2` 存在时 `send-keys -t sib` 会投进 `sib-2`，
+     * 裸 `-t <名>` 依次按「精确名 → 名字开头 → glob」解析：只有 `sib-2` 存在时 `-t sib` 会落到 `sib-2`，
      * `cc-abc1234` 会命中 `cc-abc12345`。
      *
-     * 尾冒号不能省：`=` 前缀只在 target-session 的解析路径上认，`send-keys` / `capture-pane` 收的是 target-pane，
-     * 那条路径上 `=name` 直接 `can't find pane`。尾冒号把串变成 `session:`（当前 window、活动 pane），`=` 才落在会话名上。
+     * 尾冒号不能省：`=` 前缀只在 target-session 的解析路径上认；尾冒号把串变成 `session:`（当前 window、活动 pane），`=` 才落在会话名上。
      *
      * @return `null` = target 为空，必须拒：`=:` 会被解析成「当前会话」。门在函数里，调用方绕不过去。
      */
     fun exactTarget(target: String): String? = if (target.isEmpty()) null else shellQuote("=$target:")
-
-    /**
-     * 身份门和动作折进一条远端命令：查、判、动在同一次往返里，不留被抢跑的窗口。
-     *
-     * 格式串里总放 `session_windows`：对存在的会话它恒为正整数，于是「目标不存在」（整串为空）和
-     * 「存在但没设 `@ccm_sid`」能用同一个 `[ -z "$info" ]` 分开。
-     * send-keys 不要求 `windows==1`（那只给 kill 这类破坏性动作），所以拒绝消息不带 `windows=`。
-     */
-    fun buildGuardedCommand(
-        target: String,
-        needSid: Boolean,
-        action: (String) -> String,
-    ): String? {
-        val t = exactTarget(target) ?: return null
-        val body = action(t)
-        if (!needSid) {
-            return "if command -v tmux >/dev/null 2>&1; then $body; else printf 'NO_TMUX\\n'; fi"
-        }
-        return "if command -v tmux >/dev/null 2>&1; then " +
-            "info=\"\$(tmux display-message -p -t $t '#{session_windows}\t#{@ccm_sid}' 2>/dev/null)\"; " +
-            "if [ -z \"\$info\" ]; then printf 'CCM_NO_SESSION\\n'; else " +
-            "sid=\"\$(printf '%s' \"\$info\" | cut -f2)\"; " +
-            "if [ -n \"\$sid\" ]; then $body; " +
-            "else printf 'CCM_GUARD_REJECTED sid=%s\\n' \"\$sid\"; fi; fi; " +
-            "else printf 'NO_TMUX\\n'; fi"
-    }
-
-    /**
-     * 完整上行命令：身份门 → 模态探测 → send-keys，全在一条 shell 里。
-     *
-     * 模态探测必须与发送在同一条命令里：先 capture 一次再 send 一次，中间正是弹窗可能弹出来的时候，
-     * 盲发最坏会替人点「是，我信任」。认出模态就打哨兵，并把屏幕原文原样带回（不翻译，读不懂每种弹窗）。
-     *
-     * @return `null` = target 不合法。
-     */
-    fun buildSendCommand(
-        target: String,
-        text: String,
-    ): String? {
-        val body = shellQuote(text)
-        return buildGuardedCommand(target, needSid = !isCcmTmuxName(target)) { t ->
-            "scr=\"\$(tmux capture-pane -p -t $t 2>/dev/null)\"; " +
-                "if printf '%s' \"\$scr\" | tail -n $MODAL_TAIL_LINES | grep -q ${shellQuote(MODAL_PATTERN)}; then " +
-                "printf '$MODAL_SENTINEL\\n%s\\n' \"\$scr\"; " +
-                "else tmux set-buffer -b $BUFFER_NAME -- $body 2>&1 && " +
-                "tmux paste-buffer -d -b $BUFFER_NAME -p -t $t 2>&1 && " +
-                "tmux send-keys -t $t Enter 2>&1 && printf '$SENT_MARKER\\n'; fi"
-        }
-    }
 }

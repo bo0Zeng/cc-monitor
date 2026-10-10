@@ -73,14 +73,6 @@ interface SessionBackend {
         command: String,
     ): String
 
-    /**
-     * [newDetachedRunningCommand] 的幂等版：会话已存在就什么都不做，不把命令当输入敲进正在跑的 pane。
-     */
-    fun startOnceCommand(
-        sessionName: String,
-        command: String,
-    ): String
-
     fun sessionCwdCommand(sessionName: String): String
 
     fun sendModelCommand(

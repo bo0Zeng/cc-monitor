@@ -18,7 +18,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -27,12 +26,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.bridge.CommandCatalog
 import com.ccmonitor.mobile.core.claude.model.searchableText
-import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
-import com.ccmonitor.mobile.ui.session.CommandPalette
-import kotlinx.coroutines.launch
 
 /**
  * 聊天面。渲染直接用 [ClaudeReadingPane]：两个生产者、一个渲染器，`RenderUnit` 加一种只改一处。
@@ -48,13 +43,6 @@ fun ChatScreen(
     onLoadOlder: () -> Unit = {},
     /** 重发一条失败的消息（传本地 key）。 */
     onRetrySend: (String) -> Unit = {},
-    /**
-     * 加附件。回调返回要插进草稿的引用（`@远端路径 `），null = 取消或失败。
-     * 插草稿而不直接发：附件几乎总要配一句话。为 null 时不出这个键。
-     */
-    onAttach: (suspend () -> String?)? = null,
-    /** 重新接上下行。为 null 时不出那个入口；没有它，内容接收结束或停止显示后只能退出重进。 */
-    onReattach: (() -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -70,9 +58,7 @@ fun ChatScreen(
             info.visibleItemsInfo.isNotEmpty() && listState.firstVisibleItemIndex == 0
         }
     }
-    // 空列表也要能载：`--resume` 不回放历史，打开已有对话时列表是空的，[readyToLoadOlder] 恒假。
-    // 空判据放在这里而不进 [readyToLoadOlder]：那个 `derivedStateOf` 没有 key，捕进 `state` 就是过时快照；
-    // `state.units.size` 本来就在这里的 key 里。
+    // 尾段里一条进界面的记录都没有时列表是空的，[readyToLoadOlder] 恒假：空判据放在这里（`state.units.size` 在 key 里）。
     LaunchedEffect(readyToLoadOlder, state.canLoadOlder, state.loadingOlder, state.units.size) {
         // 「该不该现在去载」= 到顶了（或还没有内容）且允许载且没在载
         val atTop = readyToLoadOlder || state.units.isEmpty()
@@ -104,114 +90,13 @@ fun ChatScreen(
         )
 
         state.failedWhy?.let {
-            // 失败不能静默：中断或报错要看得见。
-            Text(
-                text = "本轮未正常结束：$it",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
+            // 会话那一层的失败：核心那一句原样（起不来 · 读不出记录）。
+            Text(text = it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
         }
 
-        // 注意：这里刻意没有「发送失败」的横幅，失败原因贴在那条消息旁边（`UserText.deliveryError`）。
-        // 单槽横幅会说假话：A 失败、B 成功后槽被清空，A 仍挂着「未送达」。
-
-        BlockedLine(state.blocked)
-
-        SessionModeLine(state)
-        ReattachRow(state, onReattach)
-
-        PermissionModeChip(state.permissionMode)
-
-        ChatInputRow(
-            streaming = state.streaming,
-            sending = state.sending,
-            catalog = state.catalog,
-            onAttach = onAttach,
-            onSend = onSend,
-            onStop = onStop,
-        )
+        // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
+        ChatInputRow(running = state.running, onSend = onSend, onStop = onStop)
     }
-}
-
-/**
- * 「它想做的一件事被挡住了」。不是等待态：那件事已经过去，Claude 已接着往下走。
- *
- * 形态：`system/permission_denied` 帧带 `tool_name` 与一句英文 `message`。这条帧还没在真实会话里见过，
- * 帧不来就什么都不画。`message` 是远端原文，不翻译：它是用户唯一能自己判断的东西。
- */
-@Composable
-private fun BlockedLine(blocked: BlockedSignal?) {
-    if (blocked == null) return
-    val what = blocked.toolName?.let { "它想用 $it，被挡住了" } ?: "它想做的一件事被挡住了"
-    Text(
-        text = blocked.humanText?.let { "$what：$it" } ?: what,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatTestTags.BLOCKED),
-    )
-}
-
-/**
- * 会话状态行：说出用户不知道就会误解屏幕的事。没接上行时说「只回显」：点发送只在本地上屏。
- * 停止有四态，互不冒充：
- *
- * | 状态 | 说什么 | 为什么不能合并 |
- * |---|---|---|
- * | [RemoteStop.Requested] | [REMOTE_STOP_PENDING] | 中断只是投出去了，说「已经停下」是假报 |
- * | [RemoteStop.Confirmed] | [REMOTE_STOP_CONFIRMED] | 证据是远端产出的字节（`res.terminal_reason=aborted_streaming`） |
- * | [RemoteStop.Failed] | [STOPPED_LOCALLY_ONLY] + 原因 | 投不出去 ⇒ 退回本地停显示，原因不许吞 |
- * | [RemoteStop.None] + `stoppedByUser` | [STOPPED_LOCALLY_ONLY] | 没接上行，或用户按第二下不等了 |
- *
- * `stoppedByUser` 排在两条远端态之前：走到它的两条路都表示本地已不再跟着看，
- * 再说「正在让远端停下…」会让用户以为屏幕还会自己动。
- */
-@Composable
-private fun SessionModeLine(state: ChatUiState) {
-    val text = sessionModeText(state) ?: return
-    Text(
-        text = text,
-        style = monoSmall,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp).testTag(ChatTestTags.SESSION_MODE),
-    )
-}
-
-/** 会话状态行说哪句话，null = 什么都不说。抽成纯函数好让单元测试钉住四态不被合并。 */
-internal fun sessionModeText(state: ChatUiState): String? =
-    when {
-        // 下行断了排最前：比「已停止」「只回显」更要紧，不能静默。已收到的内容仍留在屏上。
-        // 文案不出现「连接 / SSH / tmux / 会话」等技术词。
-        state.downlinkError != null -> "内容中断了：${state.downlinkError} —— 上面已经收到的还在"
-        // 投不出去时补上原因，否则 `TmuxSendKeysSink` 那句「这条路停不了」就被吞了。
-        state.stoppedByUser ->
-            (state.remoteStop as? RemoteStop.Failed)
-                ?.let { "$STOPPED_LOCALLY_ONLY（${it.why}）" } ?: STOPPED_LOCALLY_ONLY
-        state.remoteStop is RemoteStop.Confirmed -> REMOTE_STOP_CONFIRMED
-        state.remoteStop is RemoteStop.Requested -> REMOTE_STOP_PENDING
-        !state.uplinkAttached -> "只回显：未接上行，消息不会送到远端"
-        else -> null
-    }
-
-/** 只停到本地时说的话。走到它的两条路（没接上行、中断投不出去或用户不等了）都让它字面为真。 */
-internal const val STOPPED_LOCALLY_ONLY = "已停止显示 —— 远端那一轮可能还在跑"
-
-/** 中断投出去了、还没等到确认时的话。注意：说「正在让」而不是「已经」，否则就是假报。 */
-internal const val REMOTE_STOP_PENDING = "正在让远端停下…"
-
-/** 远端自己说这一轮停了（`res.terminal_reason=aborted_streaming`）时的话；背后是远端产出的字节。 */
-internal const val REMOTE_STOP_CONFIRMED = "远端那一轮已经停下了"
-
-/**
- * 权限模式指示，只显示、不能选。
- *
- * `init` 帧里只有当前的 `permissionMode`（单数），没有可选模式列表，也没有会话中途改模式的上行动作。
- * 硬编码一份列表会在远端加了新模式时谎报。
- */
-@Composable
-private fun PermissionModeChip(current: String?) {
-    if (current.isNullOrBlank()) return
-    Text(
-        text = current,
-        style = monoSmall,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp).testTag(ChatTestTags.PERMISSION_MODE),
-    )
 }
 
 /** 顶部状态条：正在载 / 已到最早 / 失败，三态互斥。到顶必须说出来，否则用户会以为卡了。 */
@@ -228,103 +113,43 @@ private fun HistoryStatusBar(state: ChatUiState) {
         state.loadingOlder ->
             Text("正在载入更早的对话…", modifier = base.testTag(ChatTestTags.LOADING_OLDER))
 
-        // 只有接了翻页才谈得上「到顶」，没接的屏不该常驻一条假横幅。
-        state.historyPagingAttached && !state.canLoadOlder && state.units.isNotEmpty() ->
+        // 只有读着一条会话才谈得上「到顶」；新建会话不出这一条。
+        state.sid != null && !state.canLoadOlder && state.units.isNotEmpty() ->
             Text("已是最早", modifier = base.testTag(ChatTestTags.NO_MORE_HISTORY))
     }
 }
 
-/** 输入行：输入框 + 发送/停止（二选一，不并存）。 */
+/** 输入行：输入框 ＋ 发送 / 停止（运行中且框里没字 ⇒ 停止；二选一，不并存）。输入框永远不锁。 */
 @Composable
 private fun ChatInputRow(
-    streaming: Boolean,
-    sending: Boolean,
-    catalog: CommandCatalog,
-    onAttach: (suspend () -> String?)?,
+    running: Boolean,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
 ) {
     // `rememberSaveable`：转屏会重建 Activity，`remember` 的草稿会丢光。
     var draft by rememberSaveable { mutableStateOf("") }
-    // 选择器开关；转屏不该把已打开的面板关掉。
-    var paletteOpen by rememberSaveable { mutableStateOf(false) }
-    if (paletteOpen) {
-        // 按 catalog `remember`，否则草稿每变一个字就重建整份列表；插入回调读 `draft` 的当前值，lambda 不用进 key。
-        val actions =
-            remember(catalog) {
-                // 选中插进草稿而不直接发：斜杠命令常要带参数（`/model <名>`、`/compact <说明>`）。
-                catalog.toPaletteActions { draft = draft.appendToken(it) }
-            }
-        CommandPalette(actions = actions, onDismiss = { paletteOpen = false })
-    }
     Surface(tonalElevation = 2.dp) {
-        Column(Modifier.fillMaxWidth()) {
-            InputControls(
-                streaming = streaming,
-                sending = sending,
-                hasCatalog = !catalog.isEmpty,
-                draft = draft,
-                onDraft = { draft = it },
-                onPalette = { paletteOpen = true },
-                onAttach = onAttach,
-                onSend = onSend,
-                onStop = onStop,
-            )
-        }
-    }
-}
-
-/** 输入行本体。 */
-@Composable
-private fun InputControls(
-    streaming: Boolean,
-    sending: Boolean,
-    hasCatalog: Boolean,
-    draft: String,
-    onDraft: (String) -> Unit,
-    onPalette: () -> Unit,
-    onAttach: (suspend () -> String?)?,
-    onSend: (String) -> Unit,
-    onStop: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        run {
-            // catalog 为空（还没收到 `init`）就不出这个键。
-            if (hasCatalog) {
-                TextButton(
-                    onClick = onPalette,
-                    modifier = Modifier.testTag(ChatTestTags.CATALOG),
-                ) {
-                    Text("/")
-                }
-            }
-            AttachButton(onAttach) { onDraft(draft.appendToken(it)) }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             OutlinedTextField(
                 value = draft,
-                onValueChange = onDraft,
+                onValueChange = { draft = it },
                 modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
                 placeholder = { Text("说点什么…") },
                 singleLine = false,
                 maxLines = INPUT_MAX_LINES,
             )
-            // 用文字按钮，不为两个图标引入 material-icons。
-            // 判据是 `streaming || sending`：`streaming` 是轮次状态（由 `res` 决定），只看它的话
-            // `res` 到达后再发一条时界面上没有停止键。
-            if (streaming || sending) {
-                TextButton(onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP)) {
-                    Text("停止")
-                }
+            if (running && draft.isBlank()) {
+                TextButton(onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text("停止") }
             } else {
                 TextButton(
                     onClick = {
                         onSend(draft)
-                        onDraft("")
+                        draft = ""
                     },
-                    // 等待态下发送键也灰。注意：真正的拦截在 `ChatSession.send()`，这里只是外观。
                     enabled = draft.isNotBlank(),
                     modifier = Modifier.testTag(ChatTestTags.SEND),
                 ) {
@@ -336,36 +161,3 @@ private fun InputControls(
 }
 
 private const val INPUT_MAX_LINES = 4
-
-/** 加附件的键。没接就不出；引用插进草稿而不直接发。 */
-@Composable
-private fun AttachButton(
-    onAttach: (suspend () -> String?)?,
-    onReference: (String) -> Unit,
-) {
-    if (onAttach == null) return
-    val scope = rememberCoroutineScope()
-    TextButton(
-        onClick = { scope.launch { onAttach()?.let(onReference) } },
-        modifier = Modifier.testTag(ChatTestTags.ATTACH),
-    ) {
-        Text("＋")
-    }
-}
-
-/** 下行断了或停了之后「重新接上」的入口。文案不说「连接 / 重连」。 */
-@Composable
-private fun ReattachRow(
-    state: ChatUiState,
-    onReattach: (() -> Unit)?,
-) {
-    if (onReattach == null || !state.canReattach) return
-    // 只在「确实断了或停了」时出 —— 一条还没开始的对话不该显示它
-    if (state.downlinkError == null && !state.stoppedByUser) return
-    TextButton(
-        onClick = onReattach,
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(ChatTestTags.REATTACH),
-    ) {
-        Text("重新接上内容")
-    }
-}

@@ -82,8 +82,8 @@ class ConversationsViewModel(
     ): Fetched<T> =
         when (reply) {
             // 同一个 BUILD_ID 下解不出 ＝ 应答缺必填格：同帧上缺格的应答一个说法（详情里是哪一条命令）。
-            is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(unreadableReply(command))
-            else -> Fetched.Failed(reply.problem(machine) ?: unreadableReply(command))
+            is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(unreadableReply(machine, command, reply.data.toString()))
+            else -> Fetched.Failed(reply.problem(machine, command) ?: unreadableReply(machine, command, reply.toString()))
         }
 
     private companion object {

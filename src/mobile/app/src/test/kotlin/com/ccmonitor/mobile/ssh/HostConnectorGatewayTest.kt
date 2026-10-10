@@ -279,7 +279,6 @@ class HostConnectorGatewayTest {
         private const val SESSION_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionViewModel.kt"
         private const val SFTP_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/sftp/SftpViewModel.kt"
         private const val HOST_LINK = "app/src/main/kotlin/com/ccmonitor/mobile/ui/common/HostLink.kt"
-        private const val ATTACHMENT_PICKER = "app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/AttachmentPicker.kt"
         private const val KEEP_ALIVE = "app/src/main/kotlin/com/ccmonitor/mobile/service/SshKeepAliveService.kt"
         private const val HOST_BACKENDS = "app/src/main/kotlin/com/ccmonitor/mobile/link/HostBackends.kt"
 
@@ -301,7 +300,7 @@ class HostConnectorGatewayTest {
          * | `connect` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
          * | `retain` | `AppModule`（`ChatController` 的 `ConnectionHolder` 端口）+ 三个屏 |
          * | `release` | `AppModule`（同上）+ 两个 VM + `HostLink` |
-         * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` · `AttachmentPicker` |
+         * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` · `HostBackends` |
          * | `disconnectAll` | `SshKeepAliveService.onTaskRemoved` |
          * | `linkOf` · `probeStale` | `HostBackends`（常驻流跟着 SSH 的连接重接 · 流断了先叫 SSH 探活） |
          *
@@ -314,7 +313,7 @@ class HostConnectorGatewayTest {
                 "retain" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
                 "release" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
                 // HOST_BACKENDS：常驻流开在那条连接上（`liveExecutor` / `liveDuplex` 每次现取）。
-                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK, ATTACHMENT_PICKER, HOST_BACKENDS),
+                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK, HOST_BACKENDS),
                 "disconnectAll" to setOf(KEEP_ALIVE),
                 "linkOf" to setOf(HOST_BACKENDS),
                 "probeStale" to setOf(HOST_BACKENDS),
@@ -332,8 +331,6 @@ class HostConnectorGatewayTest {
          * | `app/…/AtermApp.kt` | `probeAndReconnectStale` 接线（前台跟踪 ⇒ 后台重连，不是建/断） |
          * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 / `probeAndReconnectStale` |
          * | `app/…/ui/session/SessionViewModel.kt` | 通道工厂 + `sessions` |
-         * | `app/…/ui/chat/AttachmentPicker.kt` | `commandExecutor` |
-         * | `app/…/ui/chat/ChatRoute.kt` | `commandChannel` 接线点 |
          * | `app/…/ui/sftp/SftpScreen.kt` | 只有一行 import，供 KDoc 链接用；代码里不碰 |
          *
          * 没有一条在拿「连接的生死与句柄」。
@@ -343,8 +340,6 @@ class HostConnectorGatewayTest {
                 "app/src/main/kotlin/com/ccmonitor/mobile/AtermApp.kt",
                 KEEP_ALIVE,
                 GATEWAY,
-                ATTACHMENT_PICKER,
-                "app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatRoute.kt",
                 SESSION_VM,
                 "app/src/main/kotlin/com/ccmonitor/mobile/ui/sftp/SftpScreen.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/CommandChannel.kt",

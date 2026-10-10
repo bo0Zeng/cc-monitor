@@ -67,18 +67,13 @@ fun AppNavHost() {
     // 初值是 null（还不知道），不是 false：写 false 的话第一帧就把「关」送进落地判定，
     // 导航去服务器列表并弹掉 Launch，真值到了也没人再看。
     val newUi by settings.newUiEnabled().collectAsStateWithLifecycle<Boolean?>(null)
-    // 新对话的权限模式，白名单校验在 `ClaudeInvocation.permissionModeFlag`，这里只透传。
-    // 注意：初值 null 是合法值（不带 `--permission-mode`）。若真值到之前管道就起了，第二趟会命中
-    // `startOnceCommand` 的幂等支，第一趟的模式永久胜出而界面报成功。够不够得着 `startPipeFor`
-    // 取决于 `ChatRoute` 的早退门，单元测试量不了。
-    val permissionMode by settings.permissionMode().collectAsStateWithLifecycle(null)
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         // 全应用的操作反馈与撤销宿主。装在根部：撤销要跨屏活着。
         AppSnackbarHostScaffold {
-            AppNavGraph(nav, tabManager, newUi, chatController, permissionMode)
+            AppNavGraph(nav, tabManager, newUi, chatController)
         }
     }
 }
@@ -90,7 +85,6 @@ private fun AppNavGraph(
     /** 三值：`null` = 开关还没读到。只有 [launchRoute] 处理这个第三态。 */
     newUi: Boolean?,
     chatController: ChatController,
-    permissionMode: String?,
 ) {
     // 开终端 tab 并给出路由，作为参数交给 [onConnectDestination]。
     val openTerminal: (String) -> String = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Terminal())}" }
@@ -102,7 +96,7 @@ private fun AppNavGraph(
     NavHost(navController = nav, startDestination = Screen.Launch.route) {
         launchRoute(nav, newUi)
         hostsRoute(nav, tabManager, onConnect)
-        chatRoutes(nav, tabManager, chatController, permissionMode)
+        chatRoutes(nav, tabManager, chatController)
         composable(Screen.SessionsOverview.route) {
             // 终端会话总览；「+新会话」进「新建会话 · 选主机」页。
             SessionsOverviewScreen(
@@ -402,38 +396,20 @@ private fun NavGraphBuilder.launchRoute(
     }
 }
 
-/** 点一台主机之后去哪儿。开着新界面时要先挂起读「上次那个对话」；关着时不进协程，保持原时序。 */
+/** 点一台主机之后去哪儿（见 [onConnectDestination]）。 */
 @Composable
 private fun rememberConnectAction(
     nav: NavHostController,
     newUi: Boolean,
     openTerminal: (String) -> String,
-): (String, AgentKind) -> Unit {
-    val settings = koinInject<SettingsRepository>()
-    val scope = rememberCoroutineScope()
-    // 种类由调用方同步交进来，不在这里查主机表：关着开关的那条路不能多一次挂起读。
-    return { hostId, agentKind ->
-        if (newUi) {
-            scope.launch {
-                val last = settings.getLastConversation(hostId)
-                // 只有确认过的编号才允许 `--resume`，见 `chatLanding`。
-                val confirmed = settings.getConfirmedConversation(hostId)
-                nav.navigate(
-                    onConnectDestination(hostId, true, agentKind, last, ::newConversationId, confirmed, openTerminal),
-                )
-            }
-        } else {
-            nav.navigate(onConnectDestination(hostId, false, agentKind, null, ::newConversationId, null, openTerminal))
-        }
-    }
-}
+): (String, AgentKind) -> Unit =
+    { hostId, agentKind -> nav.navigate(onConnectDestination(hostId, newUi, agentKind, ::newConversationId, openTerminal)) }
 
 /** 对话总览与单个对话两条路由。 */
 private fun NavGraphBuilder.chatRoutes(
     nav: NavHostController,
     tabManager: SessionTabManager,
     chatController: ChatController,
-    permissionMode: String?,
 ) {
     // Claude 对话总览，从抽屉「对话」进。注意：与 `sessions`（终端 tab 总览）是两件事。
     composable(Screen.Conversations.route) { entry ->
@@ -457,19 +433,15 @@ private fun NavGraphBuilder.chatRoutes(
         val hostId = entry.arguments?.getString("hostId").orEmpty()
         val sid = entry.arguments?.getString("sid").orEmpty()
         val isNew = entry.arguments?.getBoolean(Screen.Chat.ARG_NEW) ?: false
-        // 记下当前服务器（打开 app 时取上次那台）。对话编号也记一份：点服务器列表一行时 `chatLanding` 还读它。
+        // 记下当前服务器（打开 app 时取上次那台）；不记上次那条会话（打开 app 落在空的新建会话）。
         val settings = koinInject<SettingsRepository>()
-        LaunchedEffect(hostId, sid) {
-            settings.setLastHost(hostId)
-            settings.setLastConversation(hostId, sid)
-        }
+        LaunchedEffect(hostId) { settings.setLastHost(hostId) }
         // 「离开这个对话」的唯一判据：这一条出了返回栈（返回、或被抽屉换掉）；进设置再回来、转屏都不算。
         // 挂在这一条上的 VM 只在那一刻被清掉。对话是应用级的，不 release 就只能等上限逐出。
         viewModel(viewModelStoreOwner = entry, key = "leave-chat") { OnLeftBackStack { chatController.release(chatKey(hostId, sid)) } }
         ChatRoute(
             hostId = hostId,
             sessionId = sid,
-            permissionMode = permissionMode,
             isNew = isNew,
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
         )
@@ -554,76 +526,19 @@ private fun AddHostRoute(nav: NavHostController) {
  * | `newUi` | `agentKind` | 去处 |
  * |---|---|---|
  * | 关 | 任意 | 开一个终端 tab |
- * | 开 | ClaudeCode | 直接进聊天屏（见 [chatLanding]） |
+ * | 开 | ClaudeCode | 这台上空的新建会话（见 [freshLanding]）；不回上次那条 |
  * | 开 | Codex | 对话总览（只读档），不进聊天屏 |
- *
- * Codex 不落聊天屏：上行（`ChatSession` / `UplinkSink` / `PipeLauncher`）只按 Claude CLI 的管道形状写，
- * 落聊天屏等于默认走一条必然失败的路；读那半（`CodexSessionCatalog`）是通的，只读档给得出东西。
  */
 internal fun onConnectDestination(
     hostId: String,
     newUi: Boolean,
     /** 这台服务器的 agent 种类。注意：刻意无默认值，漏传要编译不过，而不是静默按 Claude 处理。 */
     agentKind: AgentKind,
-    /**
-     * 这台主机上次进的对话（`SettingsRepository.getLastConversation`），null = 没进过 ⇒ 开新的。
-     * 无默认值：漏传会静默退化成每次都新开。
-     */
-    lastConversationId: String?,
-    /** 新对话的编号工厂。做成参数是因为 [newConversationId] 每次调用都不同，测试没法钉住它。 */
+    /** 新建会话那张草稿的票的工厂。做成参数是因为 [newConversationId] 每次调用都不同，测试没法钉住它。 */
     newConversationId: () -> String,
-    /**
-     * 被远端确认过的编号，见 [chatLanding]。
-     *
-     * 注意：它必须排在 [openTerminal] 之前。调用方用尾随 lambda，最后一个位置留给函数型参数。
-     */
-    confirmedConversationId: String? = null,
     /** 开一个终端 tab 并给出路由。做成参数：`SessionTabManager.open` 会真建 tab，测试不该为此去建。 */
     openTerminal: (String) -> String,
-): String =
-    when {
-        !newUi -> openTerminal(hostId)
-        // 输入行都不出现的档不拿聊天屏当落地点；判定读 `AgentProfile.landsOnChatScreen`，它派生自 `supportsUplink`。
-        !AgentProfile.of(agentKind).landsOnChatScreen -> Screen.Conversations.of(hostId)
-        else -> chatLanding(hostId, lastConversationId, newConversationId, confirmedConversationId)
-    }
-
-/**
- * 点进去就是聊天界面，历史对话退一步才看。
- *
- * 落地路由必须当场定，不能先问远端「最近的对话是哪个」，所以用本地记的 `lastConversationId`：
- *
- * | 上次进过 | 去处 |
- * |---|---|
- * | 有 | 那个对话（`isNew = false` ⇒ `--resume` 接着跑） |
- * | 没有 | 新开一个（`isNew = true` ⇒ 带 `--session-id`） |
- *
- * 记的编号可能在远端已经没了，那时打开的是空对话，与新开几乎一样，可接受；不为此做同步远端探测。
- * 对话列表从抽屉「对话」进（见 `drawerDestination`）。
- */
-internal fun chatLanding(
-    hostId: String,
-    lastConversationId: String?,
-    newConversationId: () -> String,
-    /**
-     * 被远端确认存在过的编号（`SettingsRepository.getConfirmedConversation`），只决定带不带 `--resume`：
-     * 记住的编号与它相等才带，否则按新对话起。
-     *
-     * 注意：连接失败那次也会记下编号，resume 远端没有的编号会让 Claude 当场退出（`No conversation found`）。
-     */
-    confirmedConversationId: String? = null,
-): String =
-    lastConversationId
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
-            // 判据是逐字相等，不是「确认过的非空」：后者会把换了的对话也当成确认过。
-            if (it == confirmedConversationId) {
-                Screen.Chat.of(hostId, it)
-            } else {
-                Screen.Chat.of(hostId, it, isNew = true)
-            }
-        }
-        ?: Screen.Chat.of(hostId, newConversationId(), isNew = true)
+): String = if (newUi) freshLanding(hostId, agentKind, newConversationId) else openTerminal(hostId)
 
 /**
  * 打开 app 那一刻去哪儿。

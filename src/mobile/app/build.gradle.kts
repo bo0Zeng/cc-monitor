@@ -17,13 +17,6 @@ val keystoreProps =
 android {
     namespace = "com.ccmonitor.mobile"
 
-    // debug 变体直接读 `bridge/vectors/` 的金样，不另存一份副本（两份会各自漂移）。
-    // 注意：不能把整个目录 srcDir 进去，那样 README 与原始录制也会进 APK，往那里放的任何东西都会自动进包。
-    // 所以只同步 app 会读的 `*.frames.ndjson`。
-    sourceSets.getByName("debug") {
-        assets.srcDir(layout.buildDirectory.dir("generated/vectorAssets"))
-    }
-
     // 共享测试源目录 `testing/src/test/kotlin`（源码词法扫描器 KotlinSourceScanner）接进 test 源集。
     // `:core-claude` 接的是同一个目录，全仓只有一份实现；目录里的自检在两个模块各跑一遍，哪边接线掉了哪边编译不过。
     sourceSets.getByName("test") {
@@ -130,19 +123,4 @@ dependencies {
     androidTestImplementation(libs.androidx.test.rules) // GrantPermissionRule
     // ui-test-manifest 提供测试宿主 Activity 的 manifest 条目，必须落 debug 变体（不是 androidTest）。
     debugImplementation(libs.androidx.ui.test.manifest)
-}
-
-/**
- * 把金样里 app 会读的那部分同步进 debug assets：只挑 `*.frames.ndjson`（帧流），不含原始录制、daemon 线样本与 README。
- */
-val syncVectorAssets by tasks.registering(Sync::class) {
-    from(rootProject.file("bridge/vectors")) { include("*.frames.ndjson") }
-    into(layout.buildDirectory.dir("generated/vectorAssets"))
-}
-
-tasks.matching { it.name.startsWith("merge") && it.name.contains("DebugAssets") }.configureEach {
-    dependsOn(syncVectorAssets)
-}
-tasks.matching { it.name == "generateDebugAssets" || it.name == "preDebugBuild" }.configureEach {
-    dependsOn(syncVectorAssets)
 }
