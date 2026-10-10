@@ -295,10 +295,13 @@ pub(crate) fn servers_of(
     let v: Value = serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|e| {
         (
             "bad_file",
-            copy_text(
-                "beMcpSync.serversOf.badJson",
-                &[("side", &side.to_string()), ("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text(
+                    "beMcpSync.serversOf.badJson",
+                    &[("side", &side.to_string())],
+                ),
+                e,
+            )),
         )
     })?;
     let root = v.as_object().ok_or((

@@ -131,20 +131,23 @@ pub(crate) fn accounts_enabled_here() -> bool {
 
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
+    // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
     let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
-        copy_text(
-            "beAccountsQuery.loadManifest.unreadable",
-            &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
-        )
+        crate::common::said::IntoNote::into_note(e.wrap(|why| {
+            copy_text(
+                "beAccountsQuery.loadManifest.unreadable",
+                &[("path", &(p.display()).to_string()), ("why", why)],
+            )
+        }))
     })?;
     // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，`serde_json` 不吃它 ⇒ 不剥就是账号页整块空。
     // 同一份文件的另一个读者是 `control/ccm/plan.rs::AccountTable::load`，两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉。
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
     let root: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
-        copy_text(
-            "beAccountsQuery.loadManifest.badJson",
-            &[("e", &e.to_string())],
-        )
+        crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            copy_text("beAccountsQuery.loadManifest.badJson", &[]),
+            e,
+        ))
     })?;
     match root.get("version").and_then(|v| v.as_u64()) {
         Some(SUPPORTED_SCHEMA) => {}
@@ -860,10 +863,10 @@ pub(crate) fn trust_product_at(
     let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
         (
             "failed".to_string(),
-            copy_text(
-                "beAccountsQuery.trustProductAt.unparsable",
-                &[("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beAccountsQuery.trustProductAt.unparsable", &[]),
+                e,
+            )),
         )
     })?;
     match (v["trusted"].as_bool(), v["known"].as_bool()) {

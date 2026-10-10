@@ -105,10 +105,16 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         (
             "io_failed",
-            copy_text(
-                "beLastSeen.store.mkdirFailed",
-                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text(
+                    "beLastSeen.store.mkdirFailed",
+                    &[
+                        ("dir", &dir.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                e,
+            )),
         )
     })?;
     locked_edit(dir, path, |all| {

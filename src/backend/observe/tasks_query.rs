@@ -75,10 +75,16 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     let entries = std::fs::read_dir(&dir).map_err(|e| {
         (
             "failed",
-            copy_text(
-                "beTasksQuery.sessionTaskLines.unreadable",
-                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text(
+                    "beTasksQuery.sessionTaskLines.unreadable",
+                    &[
+                        ("dir", &(dir.display()).to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                e,
+            )),
         )
     })?;
 

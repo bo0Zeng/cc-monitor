@@ -265,8 +265,8 @@
     "beAcctExec.apply.stopped": {
       "kind": "error",
       "role": "报错",
-      "zh": "步骤 {step}/{of} 失败 · {what} · {e}\n已做的步骤都记在备份 {backup} · 可按它回滚",
-      "args": ["step", "of", "what", "e", "backup"]
+      "zh": "步骤 {step}/{of} 失败 · {what} · {why}\n已做的步骤都记在备份 {backup} · 可按它回滚",
+      "args": ["step", "of", "what", "why", "backup"]
     },
     "beAcctExec.copy.kind": {
       "kind": "error",
@@ -698,8 +698,8 @@
     "beAcctVerify.global.badManifest": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取账号清单失败 · {e}",
-      "args": ["e"]
+      "zh": "{why}",
+      "args": ["why"]
     },
     "beAcctVerify.global.homeConfig": {
       "kind": "body",
@@ -740,8 +740,8 @@
     "beAcctVerify.global.roots": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{e}",
-      "args": ["e"]
+      "zh": "{why}",
+      "args": ["why"]
     },
     "beAcctVerify.global.unknown": {
       "kind": "error",
@@ -1120,20 +1120,20 @@
     "beClaudePaths.delete.notFound": {
       "kind": "error",
       "role": "原因格",
-      "zh": "删除会话 {id} 失败 · {e}",
-      "args": ["id", "e"]
+      "zh": "删除会话 {id} 失败 · 记录已不在",
+      "args": ["id"]
     },
     "beClaudePaths.delete.rootUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除会话 {id} 失败 · {e} · 取不到会话记录目录 {path} 的实际路径",
-      "args": ["id", "path", "e"]
+      "zh": "删除会话 {id} 失败 · {why} · 取不到会话记录目录 {path} 的实际路径",
+      "args": ["id", "why", "path"]
     },
     "beClaudePaths.delete.fileUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除会话 {id} 失败 · {e} · 取不到 {path} 的实际路径",
-      "args": ["id", "path", "e"]
+      "zh": "删除会话 {id} 失败 · {why} · 取不到 {path} 的实际路径",
+      "args": ["id", "why", "path"]
     },
     "beClaudePaths.delete.outsideRoot": {
       "kind": "error",
@@ -1474,8 +1474,8 @@
     "beStderrFd.point.dupFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "错误输出写入日志失败 · {e}",
-      "args": ["e"]
+      "zh": "错误输出写入日志失败 · {why}",
+      "args": ["why"]
     },
     "beStderrFd.point.notUnix": {
       "kind": "error",
@@ -1504,20 +1504,20 @@
     "beStderrLog.roll.moveFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "上一份日志移走失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "上一份日志移走失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beStderrLog.roll.createFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "新建日志失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "新建日志失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "credsStore.error.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "凭据文件不是合法 JSON · 未改动 · {e} · 手编文件 · 查逗号与引号后再试",
-      "args": ["e"]
+      "zh": "凭据文件内容无法解析 · 未改动 · 查逗号与引号",
+      "args": []
     },
     "credsStore.error.notObject": {
       "kind": "error",
@@ -15778,8 +15778,8 @@
     "beHistoryAnnotations.parse.unparsable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取星标和改名记录 {path} 失败 · 内容无法解析 · 未覆盖 · {e}",
-      "args": ["path", "e"]
+      "zh": "读取星标和改名记录 {path} 失败 · 内容无法解析 · 未覆盖",
+      "args": ["path"]
     },
     "beHistoryJoin.blocking.unfinished": {
       "kind": "error",
@@ -16058,8 +16058,8 @@
     "beMcpSync.serversOf.badJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "{side}不是合法 JSON · 未比对 · 未改动 · {e}",
-      "args": ["side", "e"]
+      "zh": "{side}内容无法解析 · 未比对 · 未改动",
+      "args": ["side"]
     },
     "beReadFace.tooLarge.say": {
       "kind": "error",
@@ -16100,8 +16100,8 @@
     "beAccountsQuery.trustProductAt.unparsable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "信任状态无法解析 · {e}",
-      "args": ["e"]
+      "zh": "信任状态无法解析",
+      "args": []
     },
     "beAccountsQuery.accountTrustZero.noHome": {
       "kind": "error",
@@ -16136,20 +16136,20 @@
     "beAccountsQuery.loadManifest.badJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号清单不是合法 JSON · {e}",
-      "args": ["e"]
+      "zh": "账号清单内容无法解析",
+      "args": []
     },
     "beAccountsQuery.loadManifest.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取账号清单失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取账号清单失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beTasksQuery.sessionTaskLines.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取任务目录失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "读取任务目录失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",
@@ -16214,8 +16214,8 @@
     "beUpstreamCreds.load.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取凭据文件失败 · {e}",
-      "args": ["e"]
+      "zh": "读取凭据文件失败 · {why}",
+      "args": ["why"]
     },
     "beUpstreamCreds.path.noDataDir": {
       "kind": "error",
@@ -18436,8 +18436,8 @@
     "beMcpEdit.plan.parseFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {what} 失败 · 内容无法解析 · 未改动 · {e}",
-      "args": ["what", "e"]
+      "zh": "读取 {what} 失败 · 内容无法解析 · 未改动",
+      "args": ["what"]
     },
     "beAssets.door.editGaveUp": {
       "kind": "error",
@@ -19560,8 +19560,8 @@
     "beAcctJsonKey.render.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "新内容生成失败 · {e}",
-      "args": ["e"]
+      "zh": "新内容生成失败 · 程序出错",
+      "args": []
     },
     "beAcctJsonKey.verify.failed": {
       "kind": "error",
@@ -28390,8 +28390,8 @@
     "beLastSeen.store.mkdirFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "创建 {dir} 失败 · {e}",
-      "args": ["dir", "e"]
+      "zh": "创建 {dir} 失败 · {why}",
+      "args": ["dir", "why"]
     },
     "beLastSeen.store.noHome": {
       "kind": "error",
@@ -29100,6 +29100,12 @@
       "role": "报错",
       "zh": "读取机器列表失败 · 内容无法解析",
       "args": []
+    },
+    "beClaudePaths.delete.badId": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "删除会话 {id} 失败 · 目标无效",
+      "args": ["id"]
     }
   }
 }

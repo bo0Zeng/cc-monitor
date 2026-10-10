@@ -95,13 +95,14 @@ fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, crate::common::said::Said> {
 /// 严格读。
 fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
     serde_json::from_slice::<Doc>(bytes).map_err(|e| {
-        copy_text(
-            "beHistoryAnnotations.parse.unparsable",
-            &[
-                ("path", &(path.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beHistoryAnnotations.parse.unparsable",
+                &[("path", &(path.display()).to_string())],
+            ),
+            e,
         )
+        .into_note()
     })
 }
 
