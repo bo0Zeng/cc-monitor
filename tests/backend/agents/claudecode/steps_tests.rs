@@ -3,6 +3,7 @@
 use super::*;
 use crate::agents::claudecode::parse::parse_line;
 use crate::agents::claudecode::schema::JsonlRecord;
+use crate::common::cells::Words;
 use serde_json::json;
 
 #[test]
@@ -84,6 +85,11 @@ fn a_result_reads_counts_from_the_structured_result() {
         StepResult {
             ok: false,
             exit_code: Some(127),
+            text: Words(copy_core::copy_text("stream.step.failed", &[])),
+            timed: Some(Words(copy_core::copy_text(
+                "stream.step.failedFor",
+                &[("dur", "{dur}")]
+            ))),
             ..Default::default()
         }
     );
@@ -215,7 +221,10 @@ fn the_record_product_carries_steps_results_and_reasons() {
     );
     let u = parse_line(r#"{"type":"user","uuid":"u2","timestamp":"t","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"…"}]},"toolUseResult":{"file":{"numLines":7}}}"#).unwrap().unwrap();
     let v = serde_json::to_value(&u).unwrap();
-    assert_eq!(v["toolResults"]["tu1"], json!({"ok": true, "lines": 7}));
+    assert_eq!(
+        v["toolResults"]["tu1"],
+        json!({"ok": true, "lines": 7, "text": copy_core::copy_text("stream.step.lines", &[("n", "7")])})
+    );
     assert!(v.get("toolUseResult").is_none(), "原样那一格不上线");
     let e = parse_line(r#"{"type":"assistant","uuid":"u3","timestamp":"t","isApiErrorMessage":true,"apiErrorStatus":529,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: 529"}]}}"#).unwrap().unwrap();
     assert_eq!(serde_json::to_value(&e).unwrap()["apiReason"], "overloaded");
@@ -276,4 +285,44 @@ fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
         (Some(2), Some(0), Some("/w/n.rs"))
     );
     assert!(r.patch.is_none());
+}
+
+/// ★★ 过程那一行右侧那一句由核心写（`StepResult::written`）：改动 `+a −r` · 读了几行只给读文件那一类 · 几个文件 ·
+/// 失败（带耗时那一形留 `{dur}`）· 未批准；都说不上 ⇒ 空串 ＋ 只有耗时那一形。
+#[test]
+fn the_right_hand_sentence_is_written_by_the_core() {
+    let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
+    let t = |r: &StepResult| (r.text.0.clone(), r.timed.as_ref().map(|w| w.0.clone()));
+    let lines = |n: &str| copy_core::copy_text("stream.step.lines", &[("n", n)]);
+    // 读文件：读了几行。
+    let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
+    assert_eq!(t(&r), (lines("12"), None));
+    // 命令输出几行、搜索命中几行：数照记（`lines`），右侧不说行数，只出耗时那一形。
+    let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
+    assert_eq!(
+        (r.lines, t(&r)),
+        (Some(2), (String::new(), Some("{dur}".to_string())))
+    );
+    let r = result_of(&ok("…"), Some(&json!({"numLines": 5, "mode": "content"})));
+    assert_eq!(t(&r).0, String::new(), "搜索命中几行不说成读了几行");
+    // 改动：`+a −r`（为零的那一半不写）。
+    let r = result_of(
+        &ok("…"),
+        Some(
+            &json!({"filePath": "/w/a", "structuredPatch": [{"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 2, "lines": ["-a", "+b", "+c"]}]}),
+        ),
+    );
+    assert_eq!(t(&r), ("+2 −1".to_string(), None));
+    // 几个文件。
+    let r = result_of(&ok("…"), Some(&json!({"numFiles": 4, "filenames": []})));
+    assert_eq!(
+        t(&r).0,
+        copy_core::copy_text("stream.step.files", &[("n", "4")])
+    );
+    // 未批准。
+    let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true, "content": "User rejected tool use"});
+    assert_eq!(
+        t(&result_of(&rej, None)),
+        (copy_core::copy_text("stream.step.rejected", &[]), None)
+    );
 }

@@ -30,7 +30,7 @@ const CASES: &[(&str, &str)] = &[
     ),
     (
         "reply-full",
-        r#"{"type":"assistant","uuid":"a-full","parentUuid":"u-full","timestamp":"2026-10-09T01:30:02.000Z","requestId":"req-1","message":{"role":"assistant","model":"model-x","stop_reason":"end_turn","usage":{"input_tokens":1},"content":[{"type":"thinking","thinking":"plan it"},{"type":"text","text":"done"},{"type":"tool_use","id":"call-2","name":"Task","input":{"description":"scan","subagent_type":"Explore","prompt":"p"}},{"type":"tool_use","id":"call-3","name":"Edit","input":{"file_path":"/w/a.txt","old_string":"a","new_string":"b"}}]}}"#,
+        r#"{"type":"assistant","uuid":"a-full","parentUuid":"u-full","timestamp":"2026-10-09T01:30:02.000Z","requestId":"req-1","message":{"role":"assistant","model":"model-x","stop_reason":"end_turn","usage":{"input_tokens":1},"content":[{"type":"thinking","thinking":"plan it"},{"type":"text","text":"done"},{"type":"tool_use","id":"call-2","name":"Task","input":{"description":"scan","subagent_type":"Explore","prompt":"p"}},{"type":"tool_use","id":"call-3","name":"Edit","input":{"file_path":"/w/a.txt","old_string":"a","new_string":"b"}},{"type":"tool_use","id":"call-4","name":"mcp__x__y","input":{}}]}}"#,
     ),
     (
         "reply-min",

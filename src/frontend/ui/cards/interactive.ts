@@ -154,14 +154,8 @@ export function settleInteractive(host: HTMLElement, res: StepResult): void {
       if (chosen.has(li.dataset.optionLabel ?? "")) li.classList.add("is-chosen");
     });
   }
-  const done =
-    res.rejected || !res.ok
-      ? copyText("interactive.done.rejected")
-      : picked.length > 0
-        ? copyText("interactive.done.picked", { option: picked.join(" / ") })
-        : res.answer?.kind === "approved"
-          ? copyText("interactive.done.approved")
-          : "";
+  // 答了什么那一句是核心写的（`StepResult.text`：已选「…」· 已批准）；没成 ⇒ 未批准（卡片这一形的叫法）。
+  const done = res.rejected || !res.ok ? copyText("interactive.done.rejected") : res.text;
   let line = host.querySelector<HTMLElement>(":scope > .block-interactive-done");
   if (!done) {
     line?.remove();

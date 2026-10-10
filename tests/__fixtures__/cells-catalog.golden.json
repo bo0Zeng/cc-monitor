@@ -191,6 +191,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.tool",
           "type": "string"
@@ -362,6 +368,18 @@
           "kind": "value",
           "path": "{t=said}.results.*.removed",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.timed",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -790,6 +808,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "pending[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].what",
           "type": "string"
@@ -799,6 +823,12 @@
           "kind": "value",
           "path": "pending[].why",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pending[].whyText",
+          "type": "string"
         },
         {
           "frozen": false,

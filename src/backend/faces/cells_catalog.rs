@@ -913,6 +913,8 @@ mod specimens {
                 lines: vec![s("+a")],
             }]),
             patch_truncated: true,
+            text: Words(s("t")),
+            timed: Some(Words(s("{dur}"))),
         }
     }
 
@@ -978,6 +980,7 @@ mod specimens {
                         path: true,
                         note: some("n"),
                         known: true,
+                        text: Some(Words(s("t"))),
                     },
                 ),
                 runs: one(
@@ -1054,6 +1057,8 @@ mod specimens {
                         at: some("t"),
                         state: StepWait::Unclear,
                         why: Some(UnclearWhy::NoWriter),
+                        text: Some(Words(s("t"))),
+                        why_text: Some(Words(s("w"))),
                     }],
                     last_say: Some(LastSay {
                         text: s("t"),

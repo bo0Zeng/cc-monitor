@@ -506,6 +506,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         at: None,
         state: StepWait::Unclear,
         why: None,
+        text: None,
+        why_text: None,
     };
     let wait = |w: Option<W>| PidWait {
         waiting_for: w,
@@ -1036,6 +1038,8 @@ fn needs_carries_its_words_and_tone() {
         at: None,
         state: StepWait::Running,
         why: None,
+        text: None,
+        why_text: None,
     };
     let wait = |w: Option<W>| PidWait {
         waiting_for: w,
@@ -1297,6 +1301,8 @@ fn needs_carry_a_rank_riskier_first() {
         at: None,
         state: StepWait::Running,
         why: None,
+        text: None,
+        why_text: None,
     };
     let wait = |w: Option<W>| PidWait {
         waiting_for: w,
@@ -1351,6 +1357,8 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
         at: None,
         state: StepWait::Unclear,
         why: None,
+        text: None,
+        why_text: None,
     }];
     let at = |since: Option<u64>, read: u64| {
         let n = needs_of(

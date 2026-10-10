@@ -90,6 +90,14 @@ const ARG_MAX: usize = 200;
 
 /// 一次工具调用 ⇒ 它的一行人话（工具名 · 主参数 · 说明 · 认不认得）。
 pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
+    let mut s = named(name, input);
+    s.text = (!s.known)
+        .then(|| crate::common::cells::Words(copy_core::copy_text("stream.step.unknown", &[])));
+    s
+}
+
+/// [`step_of`] 的认法那一半（认不出的工具那一句由 [`step_of`] 添）。
+fn named(name: &str, input: &Value) -> ToolStep {
     let field = |k: &str| {
         input
             .get(k)
@@ -104,6 +112,7 @@ pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
             path: true,
             note: None,
             known: true,
+            text: None,
         };
     }
     if let Some((_, k)) = ARG_TOOLS.iter().find(|(t, _)| *t == name) {
@@ -115,6 +124,7 @@ pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
             path: false,
             note,
             known: true,
+            text: None,
         };
     }
     ToolStep {
@@ -123,6 +133,7 @@ pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
         path: false,
         note: None,
         known: BARE_TOOLS.contains(&name),
+        text: None,
     }
 }
 
@@ -147,6 +158,15 @@ const ANSWERED_LEAD: &str = "User has answered your questions:";
 
 /// 一个 `tool_result` 块（＋ 记录级 `toolUseResult`）⇒ 结果一句。
 pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
+    let read = tur
+        .and_then(|t| t.get("file"))
+        .and_then(|f| f.get("numLines"))
+        .is_some();
+    counted(block, tur).written(read)
+}
+
+/// [`result_of`] 的数那一半（右侧那一句由 [`StepResult::written`] 写）。读文件那一类 ＝ 结果里有 `file.numLines`。
+fn counted(block: &Value, tur: Option<&Value>) -> StepResult {
     let text = super::text::stringify_json(block.get("content").unwrap_or(&Value::Null));
     let is_error = block.get("is_error").and_then(Value::as_bool) == Some(true);
     let mut r = StepResult {

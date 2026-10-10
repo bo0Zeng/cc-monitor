@@ -402,6 +402,10 @@ pub(crate) struct PendingCall {
     pub(crate) state: StepWait,
     /// `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
     pub(crate) why: Option<UnclearWhy>,
+    /// 过程那一行右侧那一句（状态不明 ⇒「状态不明」；在跑 · 在等你 ⇒ `null`，在等你那一格出口写已等多久）。
+    pub(crate) text: Option<Words>,
+    /// 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
+    pub(crate) why_text: Option<Words>,
 }
 
 /// 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile（判不了活）。
@@ -438,6 +442,14 @@ pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
         } else {
             (StepWait::Unclear, Some(UnclearWhy::Untracked))
         };
+        p.text = (p.state == StepWait::Unclear)
+            .then(|| Words(copy_core::copy_text("stream.step.unclear", &[])));
+        p.why_text = p.why.map(|w| {
+            Words(match w {
+                UnclearWhy::NoWriter => copy_core::copy_text("stream.step.unclearNoWriter", &[]),
+                UnclearWhy::Untracked => copy_core::copy_text("stream.step.unclearUntracked", &[]),
+            })
+        });
     }
 }
 
@@ -843,7 +855,9 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     for p in v["pending"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
         exact_keys(
             p,
-            &["at", "id", "name", "state", "what", "why"],
+            &[
+                "at", "id", "name", "state", "text", "what", "why", "whyText",
+            ],
             "prior.pending[]",
         )?;
     }
@@ -1168,6 +1182,8 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
                             at: at.clone(),
                             state: StepWait::default(),
                             why: None,
+                            text: None,
+                            why_text: None,
                         });
                         if f.pending.len() > PENDING_KEEP {
                             f.pending.remove(0);

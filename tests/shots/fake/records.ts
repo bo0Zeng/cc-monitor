@@ -32,7 +32,12 @@ function fakeStep(name: string, input: Record<string, unknown>): ToolStep {
   if (MAIN_ARG[name]) return { tool: name, arg: str(MAIN_ARG[name]), note: MAIN_ARG[name] === "description" ? undefined : str("description"), known: true };
   return { tool: name, known: BARE.has(name) };
 }
+// 右侧那一句（`text` · `timed`）是核心写的（`StepResult::written`）：假后端不替它写，只给「都说不上 ⇒ 写耗时」那一形；记录换成真后端出之后才有真句子。
+const UNSAID = { text: "", timed: "{dur}" };
 function fakeResult(name: string, input: Record<string, unknown>, content: string, isError: boolean): StepResult {
+  return { ...counts(name, input, content, isError), ...UNSAID };
+}
+function counts(name: string, input: Record<string, unknown>, content: string, isError: boolean): Omit<StepResult, "text"> {
   if (isError) return { ok: false };
   const lines = (s: unknown) => (typeof s === "string" && s.length > 0 ? s.split("\n").length : 0);
   if (name === "Edit") return { ok: true, added: lines(input.new_string), removed: lines(input.old_string) };
@@ -192,7 +197,7 @@ export class Convo {
       t: "said",
       who: { speaker: { kind: "toolResult" }, text: "" },
       blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: content }], isError }],
-      results: { [id]: res ?? { ok: !isError } },
+      results: { [id]: res ?? { ok: !isError, ...UNSAID } },
       cwd: this.cwd,
     });
     return this;

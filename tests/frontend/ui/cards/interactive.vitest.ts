@@ -95,14 +95,14 @@ describe("交互卡：畸形输入一律 throw，由调用方回退通用折叠�
 
   it("★ 答了之后（B7）：标题换「提问」/「计划」、底行写后端读出的结果（已选「…」· 已批准 · 未批准），被选项高亮；不印英文原句", () => {
     const ask = buildInteractiveCard("AskUserQuestion", { questions: [{ question: "选哪个方案", options: [{ label: "甲案" }, { label: "乙案" }] }] }, opts);
-    settleInteractive(ask, { ok: true, answer: { kind: "picked", options: ["乙案"] } });
+    settleInteractive(ask, { ok: true, answer: { kind: "picked", options: ["乙案"] }, text: copyText("interactive.done.picked", { option: "乙案" }) });
     expect(ask.querySelector(".block-ask-title")?.textContent).toBe(copyText("interactive.ask.done"));
     expect(ask.querySelector(".block-interactive-done")?.textContent).toBe(copyText("interactive.done.picked", { option: "乙案" }));
     expect([...ask.querySelectorAll(".ask-option.is-chosen")].map((li) => (li as HTMLElement).dataset.optionLabel)).toEqual(["乙案"]);
     const plan = buildInteractiveCard("ExitPlanMode", { plan: "甲" }, opts);
-    settleInteractive(plan, { ok: true, answer: { kind: "approved" } });
+    settleInteractive(plan, { ok: true, answer: { kind: "approved" }, text: copyText("interactive.done.approved") });
     expect([plan.querySelector(".block-plan-title")?.textContent, plan.querySelector(".block-interactive-done")?.textContent]).toEqual([copyText("interactive.plan.done"), copyText("interactive.done.approved")]);
-    settleInteractive(plan, { ok: false, rejected: true });
+    settleInteractive(plan, { ok: false, rejected: true, text: "" });
     expect(plan.querySelector(".block-interactive-done")?.textContent).toBe(copyText("interactive.done.rejected"));
     expect(plan.textContent).not.toMatch(/User has/);
   });
