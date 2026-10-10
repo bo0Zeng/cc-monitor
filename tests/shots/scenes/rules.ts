@@ -1,112 +1,37 @@
 /**
  * 设置 → 机器 →「轮换」栏：规则列表 · ⋯ · 在用展开 · 批量条 · 新建 · 删除框 · 空态 · 窄窗（稿 `轮换规则.md` §5.5、截图 05）。
- * 假后端答 `rotation-rules-read`（三条规则，名字与摘要是编的）；会话标题取图集那份会话清单（`history-list`）。
+ * 规则表落在本机的轮换账本里（三条规则，名字是编的），摘要 · 说明 · 在用名单 · 预览都是真后端读它算的；会话标题取图集那份会话清单（`history-list`）。
  */
-import { copyText } from "../../../src/frontend/ui/copy-table";
 import { emit } from "@tauri-apps/api/event";
-import { fakePlan } from "../fake/timeline";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
+import { defaultWorld, LOCAL } from "../fake/world";
+import { putAccounts, putBrokenRotation, putQuota, putRotation, putWarm, type QuotaSpec } from "../disk";
 import { click, hover, sleep, type, waitFor } from "./helpers";
 
 const S1 = "5e550001-0000-4000-8000-000000000001";
 const S2 = "5e550002-0000-4000-8000-000000000002";
 const S3 = "5e550003-0000-4000-8000-000000000003";
 
-/** 在用名单里各会话此刻的状态（后端判；这里编的：一个在跑、一个等批准，已结束的照写已结束）。 */
-const DOING: Record<string, { state: string; needs: string | null; text: string; tone: string }> = {
-  [S1]: { state: "working", needs: null, text: copyText("beSession.activity.working"), tone: "now" },
-  [S2]: { state: "needsYou", needs: "approve", text: copyText("beSession.needs.approve"), tone: "need" },
-};
-
 interface R {
   id: string;
   name: string;
-  summary: string;
-  live?: string[];
-  ended?: string[];
+  /** 用这条规则的会话（默认那条 ⇒ 跟随默认；其余 ⇒ 指定这条）。活没活着看那台的 pidfile（默认世界里 S3 已结束）。 */
+  users?: string[];
   isDefault?: boolean;
-  follow?: number;
+  rotation?: Record<string, unknown>;
 }
 
 const ROT = {
-  order: [{ start: true }, "personal", "work"],
-  enabled: ["personal", "work"],
+  order: [{ start: true }, "personal", "work", "team"],
+  enabled: ["personal", "work", "team"],
   atLimit: "continue",
   wait: 40,
+  cap: { "*": { "5h": 90 } },
+  stint: { "*": 2 },
 };
 
-const THREE: R[] = [
-  {
-    id: "r_daily",
-    name: "日常",
-    summary: "personal → work → team · 5h ≥90% · 停 · 封顶 2",
-    live: [S1, S2],
-    ended: [S3],
-    isDefault: true,
-    follow: 2,
-  },
-  {
-    id: "r_night",
-    name: "夜间",
-    summary: "team → lab → work · 满 · 抢回 · work 17:00–02:00 停用",
-    live: [S2],
-  },
-  {
-    id: "r_saver",
-    name: "省额度",
-    summary: "lab → team → api · 5h ≥80% · 7d ≥95% · 单段 10",
-  },
-];
-
-function rulesWorld(list: R[] = THREE): () => World {
-  return () => {
-    const w = defaultWorld();
-    w.ops["rotation-plan"] = (_o, req) =>
-      req.machine
-        ? fakePlan({ view: (req.view as "6h" | "24h" | "7d") ?? "24h", session: false, warm: true })
-        : { errors: [] };
-    w.ops["rotation-rules-read"] = () => ({
-      state: "present",
-      reason: null,
-      path: "/home/user/.cc-monitor/rotation.json",
-      defaultRule: list.find((r) => r.isDefault)?.id ?? list[0].id,
-      rules: list.map((r) => ({
-        id: r.id,
-        name: r.name,
-        rotation: ROT,
-        rev: 2,
-        updatedAt: 0,
-        isDefault: r.isDefault ?? false,
-        users: {
-          live: r.live?.length ?? 0,
-          ended: r.ended?.length ?? 0,
-          follow: r.follow ?? 0,
-          doing: Object.fromEntries([
-            ...(r.live ?? []).map((sid) => [
-              sid,
-              DOING[sid] ?? { state: "working", needs: null, text: copyText("beSession.activity.working"), tone: "now" },
-            ]),
-            ...(r.ended ?? []).map((sid) => [
-              sid,
-              { state: "ended", needs: null, text: copyText("sessionState.ended.name"), tone: "plain" },
-            ]),
-          ]),
-          sids: r.live ?? [],
-          endedSids: r.ended ?? [],
-        },
-        summary: r.summary,
-        explain: "",
-        missing: [],
-        atLimitApplies: false,
-      })),
-    });
-    return w;
-  };
-}
-
-/** 编辑器那一组：夜间的轮换（抢回 · work 17:00–02:00 停用）、这台三个号的此刻用量、后端算好的预览（编的）。 */
+/** 夜间的轮换（抢回 · work 只兜底、17:00–02:00 停用 · lab 单独的线）。 */
 const NIGHT_ROT = {
   order: [{ start: true }, "team", "lab", "work", "personal"],
   enabled: ["team", "lab", "work"],
@@ -126,200 +51,62 @@ const NIGHT_ROT = {
   },
 };
 
+const SAVER_ROT = {
+  order: [{ start: true }, "lab", "team", "api"],
+  enabled: ["lab", "team", "api"],
+  atLimit: "continue",
+  wait: 40,
+  cap: { "*": { "5h": 80, "7d": 95 } },
+  stint: { "*": 10 },
+};
+
+const THREE: R[] = [
+  { id: "r_daily", name: "日常", users: [S1, S3], isDefault: true, rotation: ROT },
+  { id: "r_night", name: "夜间", users: [S2], rotation: NIGHT_ROT },
+  { id: "r_saver", name: "省额度", rotation: SAVER_ROT },
+];
+
+/** 这台的号（规则里提到的都在库里）。 */
+const ACCTS = ["work", "personal", "team", "lab"];
+
+/** 规则表落成本机的轮换账本：规则 ＋ 用它的那几个会话记下的那一份；账号库按规则里提到的号建；quota-warm 在跑。 */
+function rulesWorld(list: R[] = THREE): () => World {
+  return () => {
+    const w = defaultWorld();
+    const d = w.disk[LOCAL];
+    const t = Math.floor(Date.now() / 1000);
+    putAccounts(d, [...ACCTS.map((name, i) => ({ name, kind: "sub" as const, isDefault: i === 0 })), { name: "api", kind: "api" }]);
+    const dflt = list.find((r) => r.isDefault) ?? list[0];
+    putRotation(d, {
+      defaultRule: dflt.id,
+      rules: Object.fromEntries(list.map((r) => [r.id, { name: r.name, rotation: r.rotation ?? ROT, rev: 2, updatedAt: t - 86_400 }])),
+      sessions: Object.fromEntries(
+        list.flatMap((r) => (r.users ?? []).map((sid) => [sid, { start: "work", current: "work", since: t - 3600, source: r === dflt ? "follow" : { rule: r.id } }])),
+      ),
+    });
+    putWarm(d, [{ account: "lab", at: t + 2.5 * 3600 }]);
+    return w;
+  };
+}
+
+/** 编辑器那一组：这台四个号此刻的用量（team 快到线 · 其余有余量）。 */
 function editorWorld(): () => World {
   const base = rulesWorld();
   return () => {
     const w = base();
     const t = Math.floor(Date.now() / 1000);
     const H = 3600;
-    const at = (x: number): { at: number; atText: string } => ({
-      at: t + x,
-      atText: hm(t + x),
-    });
-    const hm = (x: number): string => {
-      const d = new Date(x * 1000);
-      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    };
-    const span = (a: number, b: number) => ({
-      from: t + a,
-      fromText: hm(t + a),
-      to: t + b,
-      toText: hm(t + b),
-    });
-    const rulesRead = w.ops["rotation-rules-read"];
-    w.ops["rotation-rules-read"] = (o, req, world) => {
-      const r = rulesRead(o, req, world) as {
-        rules: {
-          id: string;
-          rotation: unknown;
-          explain: string;
-          atLimitApplies: boolean;
-        }[];
-      };
-      for (const x of r.rules)
-        if (x.id === "r_night") {
-          x.rotation = NIGHT_ROT;
-          x.explain =
-            "起始账号先用 · 5h 到 90% 从头取首个可用 · 7d 被拒才换 · 前面的号有额度就换回它 · work 只兜底 · 别的号有额度就不用 work · 40 分钟内有号恢复就先等 · work 17:00-02:00 停用 · 都到上限仍发";
-          x.atLimitApplies = true;
-        }
-      return r;
-    };
-    const slot = (pct: number, resetsIn: number) => [
-      {
-        slot: "5h",
-        pct,
-        resetsAt: t + resetsIn,
-        resetsAtText: hm(t + resetsIn),
-      },
-      { slot: "7d", pct: Math.round(pct / 3), resetsAt: t + 4 * 86_400 },
-    ];
-    w.ops["quota-read"] = () => ({
-      state: "present",
-      reason: null,
-      path: "/home/user/.cc-monitor/quota.json",
-      now: t,
-      accounts: [
-        {
-          agent: "claude-code",
-          account: "team",
-          seenAt: t - 60,
-          reading: {},
-          kind: "sub",
-          state: "near",
-          stale: false,
-          limiting: "5h",
-          slots: slot(88, 2 * H),
-          login: "ok",
-        },
-        {
-          agent: "claude-code",
-          account: "lab",
-          seenAt: t - 60,
-          reading: {},
-          kind: "sub",
-          state: "ok",
-          stale: false,
-          limiting: "5h",
-          slots: slot(22, 4 * H),
-          login: "ok",
-        },
-        {
-          agent: "claude-code",
-          account: "work",
-          seenAt: t - 60,
-          reading: {},
-          kind: "sub",
-          state: "ok",
-          stale: false,
-          limiting: "5h",
-          slots: slot(40, 3 * H),
-          login: "ok",
-        },
-        {
-          agent: "claude-code",
-          account: "personal",
-          seenAt: t - 60,
-          reading: {},
-          kind: "sub",
-          state: "ok",
-          stale: false,
-          limiting: "5h",
-          slots: slot(63, H),
-          login: "ok",
-        },
+    const acct = (account: string, pct: number, resetsIn: number): QuotaSpec => ({
+      account,
+      seenAt: t - 60,
+      status: "allowed",
+      limiting: "five_hour",
+      windows: [
+        { name: "five_hour", used: pct / 100, resetsAt: t + resetsIn },
+        { name: "seven_day", used: Math.round(pct / 3) / 100, resetsAt: t + 4 * 86_400 },
       ],
-      unseen: [],
-      usableNow: ["team", "lab", "work", "personal"],
-      earliestReturn: null,
     });
-    w.ops["rotation-plan"] = (_o, req) => {
-      if (req.machine)
-        return fakePlan({ view: (req.view as "6h" | "24h" | "7d") ?? "24h", session: false, warm: true });
-      if (req.rotation)
-        return {
-          errors: [],
-          now: t,
-          nowText: hm(t),
-          until: t + 12 * H,
-          plan: [],
-          lanes: [],
-          effective: {
-            work: {
-              "*": {
-                v: 0,
-                layer: "all",
-                below: { v: null, layer: "none" },
-                list: "5h ≤0 · 7d ≤0",
-                belowList: "5h ≤90 · 7d 不封顶",
-              },
-            },
-          },
-        };
-      const end =
-        (req.span === "6h"
-          ? 6
-          : req.span === "24h"
-            ? 24
-            : req.span === "7d"
-              ? 168
-              : 12) * H;
-      return {
-        errors: [],
-        now: t,
-        nowText: hm(t),
-        until: t + end,
-        plan: [
-          { ...span(0, 0.6 * H), account: "team", why: null },
-          {
-            ...span(0.6 * H, 2 * H),
-            account: "lab",
-            why: { threshold: { n: 90, w: "5h" } },
-          },
-          { ...span(2 * H, 5 * H), account: "team", why: "preempt" },
-          {
-            ...span(5 * H, end),
-            account: "lab",
-            why: { threshold: { n: 90, w: "5h" } },
-          },
-        ],
-        lanes: [
-          {
-            account: "team",
-            spans: [
-              { ...span(0.6 * H, 2 * H), state: "capped", n: 90, w: "5h" },
-              { ...span(5 * H, Math.min(end, 7 * H)), state: "capped", n: 90, w: "5h" },
-            ],
-            resets: [{ w: "5h", ...at(2 * H) }],
-          },
-          { account: "lab", spans: [], resets: [{ w: "5h", ...at(4 * H) }] },
-          {
-            account: "work",
-            spans: [
-              { ...span(0, Math.min(end, 6 * H)), state: "off", n: null },
-            ],
-            resets: [{ w: "5h", ...at(3 * H) }],
-          },
-        ],
-        effective: {
-          team: {
-            "5h": { v: 90, layer: "trigger", w: "5h", below: { v: 90, layer: "trigger", w: "5h" } },
-            "7d": { v: null, layer: "none", below: { v: null, layer: "none" } },
-            "*": { v: null, layer: "none", below: { v: null, layer: "none" }, list: "5h ≤90 · 7d 不封顶", belowList: "5h ≤90 · 7d 不封顶" },
-          },
-          lab: {
-            "5h": { v: 80, layer: "window", below: { v: 90, layer: "trigger", w: "5h" } },
-            "7d": { v: 95, layer: "window", below: { v: null, layer: "none" } },
-            "*": { v: null, layer: "none", below: { v: null, layer: "none" }, list: "5h ≤80 · 7d ≤95", belowList: "5h ≤80 · 7d ≤95" },
-          },
-          work: {
-            "5h": { v: 0, layer: "all", below: { v: 0, layer: "all" } },
-            "7d": { v: 0, layer: "all", below: { v: 0, layer: "all" } },
-            "*": { v: 0, layer: "all", below: { v: null, layer: "none" }, list: "5h ≤0 · 7d ≤0", belowList: "5h ≤90 · 7d 不封顶" },
-          },
-        },
-      };
-    };
+    putQuota(w.disk[LOCAL], [acct("team", 88, 2 * H), acct("lab", 22, 4 * H), acct("work", 40, 3 * H), acct("personal", 63, H)]);
     return w;
   };
 }
@@ -375,13 +162,7 @@ export const RULES_SCENES: Scene[] = [
     goRules,
     () => {
       const w = rulesWorld([THREE[0]])();
-      const read = w.ops["rotation-rules-read"];
-      w.ops["rotation-rules-read"] = (o, req, world) => ({
-        ...(read(o, req, world) as Record<string, unknown>),
-        state: "unreadable",
-        reason: "读取 /home/user/.cc-monitor/rotation.json 失败 · 内容无法解析",
-        detail: "时刻 2026-10-10 01:00:00 +08:00\n机器 Linux x86_64 · 后端 fake\n命令 rotation-rules-read\n码 unreadable\n原话 expected value at line 1 column 1",
-      });
+      putBrokenRotation(w.disk[LOCAL]);
       return w;
     },
   ),
@@ -494,16 +275,7 @@ export const RULES_SCENES: Scene[] = [
     "设置 · 轮换 · 只有默认那一条",
     "空态：表下一行灰字「会话面板里『存为规则…』也能建」＋［新建规则］",
     goRules,
-    rulesWorld([
-      {
-        id: "r_daily",
-        name: "默认",
-        summary: "起始 · 满",
-        isDefault: true,
-        live: [S1],
-        follow: 1,
-      },
-    ]),
+    rulesWorld([{ id: "r_daily", name: "默认", isDefault: true, users: [S1], rotation: { order: [{ start: true }], enabled: [], atLimit: "continue", wait: 40 } }]),
   ),
   scene(
     "rules-editor",
@@ -542,12 +314,7 @@ export const RULES_SCENES: Scene[] = [
       await sleep(300);
     },
     () => {
-      const w = editorWorld()();
-      w.ops["rotation-rule-save"] = () => ({
-        state: "refused",
-        errors: [{ cell: "cap.*.5h", code: "range" }],
-      });
-      return w;
+      return editorWorld()();
     },
     960,
     620,
@@ -595,23 +362,19 @@ export const RULES_SCENES: Scene[] = [
       await sleep(400);
     },
     () => {
+      // work 被拒、两小时后回来；其余几个号有余量。
       const w = rulesWorld()();
       const t = Math.floor(Date.now() / 1000);
-      const back = t + 2 * 3600;
-      const d = new Date(back * 1000);
-      w.ops["quota-read"] = () => ({
-        state: "present",
-        reason: null,
-        now: t,
-        accounts: [],
-        unseen: [],
-        usableNow: ["personal", "team", "lab", "api"],
-        earliestReturn: {
-          account: "work",
-          at: back,
-          atText: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
-        },
-      });
+      const win = (pct: number, resetsIn: number) => [
+        { name: "five_hour", used: pct / 100, resetsAt: t + resetsIn },
+        { name: "seven_day", used: 0.3, resetsAt: t + 4 * 86_400 },
+      ];
+      putQuota(w.disk[LOCAL], [
+        { account: "work", seenAt: t - 300, status: "rejected", refused: true, limiting: "five_hour", resetsAt: t + 2 * 3600, windows: win(100, 2 * 3600) },
+        { account: "personal", seenAt: t - 300, status: "allowed", limiting: "five_hour", windows: win(35, 3 * 3600) },
+        { account: "team", seenAt: t - 300, status: "allowed", limiting: "five_hour", windows: win(12, 4 * 3600) },
+        { account: "lab", seenAt: t - 300, status: "allowed", limiting: "five_hour", windows: win(50, 1.5 * 3600) },
+      ]);
       return w;
     },
     960,

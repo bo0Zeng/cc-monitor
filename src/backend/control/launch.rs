@@ -626,8 +626,8 @@ fn run_with(
             //
             // [`super::identity_tag`]：pidfile 出现 **＋** 过 `procStart` 冒名检查之后才写
             //（那份文件逐字「打错就是杀错」）。本处一个字都不写 `@ccm_sid`
-            // —— 由 monitor 侧 `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
-            // 的 `(写点, 读点, 意图)` 三元组钉住（写点必须恒为 0）。
+            // —— 今天由 `readonly_guard`（写 tmux 变量那一族只许 `control/identity_tag.rs`）与
+            // `ccm/plan_tests.rs::the_container_path_carries_every_intent_inward`（渲出的命令只写意图键）钉住。
             //
             // ⚠ **为什么可以现在就改**：这条臂今天**零生产调用方** ——
             //   `launch_wire::the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path`

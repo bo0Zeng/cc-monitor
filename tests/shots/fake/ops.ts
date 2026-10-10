@@ -6,7 +6,6 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
-import { fakePlan } from "./timeline";
 import type { OpHandler, SessionSpec, World } from "./types";
 
 export const jsonlPathOf = (s: SessionSpec): string => `${s.cwd}/${s.sid}.jsonl`;
@@ -54,35 +53,10 @@ export function defaultOps(): Record<string, OpHandler> {
   return {
     // 计划清单：默认世界里没有计划（计划页的世界 `plan.ts::planWorld` 换掉这一条）。
     "plan-list": () => ({ pb: { state: "ok", said: null }, workspaces: [] }),
-    // 轮换预览 / 时间轴：照稿那一份（场景要别的样子自己换掉这一条）。
-    "rotation-plan": (_o, req) => fakePlan({ view: (req.view as "6h" | "24h" | "7d" | undefined) ?? "24h", session: typeof req.sid === "string" && !req.machine }),
-    "accounts-list": (origin) => ({
-      accounts: ACCOUNTS.map((a) => ({
-        name: a.name,
-        email: a.email,
-        configDir: `/home/user/.cc-monitor/accounts/${a.name}`,
-        isDefault: a.isDefault,
-        mode: "isolated",
-        exists: true,
-        loggedIn: a.authKind === "subscription",
-        authKind: a.authKind,
-        authReady: true,
-        keyMasked: a.keyMasked ?? null,
-        baseUrl: a.baseUrl ?? null,
-      })),
-      meta: {
-        enabled: true,
-        acctsDir: "/home/user/.cc-monitor/accounts",
-        manifestPath: "/home/user/.cc-monitor/accounts/accounts.json",
-        updatedAt: "2026-10-01T08:00:00Z",
-        sharedStore: "/home/user/.cc-monitor/accounts/shared",
-        count: ACCOUNTS.length,
-        error: null,
-        // 那台 Windows：做不了多账号（后端那一句）。
-        unsupported: origin === "win-laptop" ? "Windows 不支持多账号" : null,
-        nextDefault: ACCOUNTS.find((a) => !a.isDefault)?.name ?? null,
-        home: "/home/user",
-      },
+    // 账号库只有 win-laptop 那台由这里答（`backend.ts::WINDOWS_ONLY`：Linux 编的真后端演不出 Windows 那一支）：那台做不了多账号。
+    "accounts-list": () => ({
+      accounts: [],
+      meta: { enabled: false, acctsDir: null, manifestPath: null, updatedAt: null, sharedStore: null, count: 0, error: null, unsupported: "Windows 不支持多账号", nextDefault: null, home: "C:\\Users\\user" },
       notice: null,
     }),
     "accounts-sessions": (origin, _req, w) => ({
@@ -125,35 +99,6 @@ export function defaultOps(): Record<string, OpHandler> {
         },
       ]),
     ),
-    // 额度与轮换：缺省世界里中转还没见过任何回包、任何会话（额度场景在 `scenes/acct.ts` 整条覆盖）。
-    "quota-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/quota.json", now: Math.floor(Date.now() / 1000), accounts: [], unseen: [], usableNow: [], earliestReturn: null }),
-    "rotation-rules-read": () => ({
-      state: "absent",
-      reason: null,
-      path: "/home/user/.cc-monitor/rotation.json",
-      defaultRule: "r_00000000",
-      rules: [
-        {
-          id: "r_00000000",
-          name: "日常",
-          rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 40 },
-          rev: 1,
-          updatedAt: 0,
-          isDefault: true,
-          users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
-          summary: "起始 · 满",
-          explain: "起始账号先用 · 被拒才换 · 不主动换回",
-          missing: [],
-          atLimitApplies: false,
-        },
-      ],
-    }),
-    "rotation-session-read": (_o, req) => ({
-      state: "absent",
-      reason: null,
-      now: Math.floor(Date.now() / 1000),
-      sessions: Object.fromEntries((req.sids as string[]).map((sid) => [sid, { state: "absent", inPlace: "noRelay" }])),
-    }),
     "history-last-accounts": (_o, _r, w) => ({
       accounts: Object.fromEntries(w.sessions.map((s, i) => [s.sid, ACCOUNTS[i % 2].name])),
     }),

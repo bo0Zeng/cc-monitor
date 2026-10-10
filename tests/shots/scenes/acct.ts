@@ -2,11 +2,11 @@
  * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（当前 · 轮换 · 无号可换两态 · 切换 · 记录 · 时间轴）·
  * 消息流换号条 · 会话头下提示条 · 标签页 `✕ 5h` · 右键「账号…」。
  *
- * 假后端答 `quota-read` · `rotation-rules-read` · `rotation-session-read/-set` · `rotation-switch`（形状照 IPC-PROTOCOL.md 与生成的类型），
- * 号名是编的。时刻按页里此刻的钟现算（「还有多久」只在画的那一刻算）。
+ * 账号库 · 额度账 · 轮换账本 · 血缘落成本机家目录里的原始文件（`acctDisk`），额度 · 轮换 · 时间轴的成品全是真后端读它们算的；
+ * 只有切换（要真 tmux / 中转）由场景替那台答。号名是编的。时刻按此刻的钟现算。
  */
 import type { Scene } from "./index";
-import { fakePlan } from "../fake/timeline";
+import { putAccounts, putBrokenQuota, putLineage, putQuota, putRotation, putWarm, type QuotaSpec, type RotationSessionSpec } from "../disk";
 import type { OpHandler, World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import {
@@ -45,10 +45,6 @@ interface Sess {
   rule?: string;
   custom?: Record<string, unknown>;
   history: Record<string, unknown>[];
-  inPlace: string;
-  next?: string;
-  blocked?: Record<string, unknown>;
-  fallbackApi?: string;
   absent?: boolean;
   /** 会话血缘里的父（tab 序号）；`followParent` ⇒ 来源 ＝ 跟随父会话。 */
   parent?: number;
@@ -69,7 +65,8 @@ interface AcctWorld {
   /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
   restartReply?: Record<string, unknown>;
   /** 时间轴：卡住（池里都被拒）· quota-warm 在跑。 */
-  tl?: { blocked?: boolean; warm?: boolean; fallback?: boolean };
+  /** quota-warm 在跑：号 → 下一次开窗（距此刻多少秒）。 */
+  warm?: { account: string; at: number }[];
 }
 
 const now = (): number => Math.floor(Date.now() / 1000);
@@ -136,8 +133,6 @@ function swappedSess(over: Partial<Sess> = {}): Sess {
         fromResetsAt: 2.3 * H1,
       },
     ],
-    inPlace: "ok",
-    next: "team",
     ...over,
   };
 }
@@ -146,285 +141,76 @@ function abs(t: number | undefined): number | undefined {
   return t === undefined ? undefined : now() + Math.round(t);
 }
 
-function showOf(a: Acct): Record<string, unknown> {
-  const slots = a.slots.map((x) => ({
-    slot: x.slot,
-    ...(x.pct === undefined ? {} : { pct: x.pct }),
-    ...(x.resetsAt === undefined ? {} : { resetsAt: abs(x.resetsAt) }),
-  }));
+/** 稿里的语义位 → claude 回包头里那个窗口的原名（额度账按原名记）。 */
+const RAW_WINDOW: Record<string, string> = { "5h": "five_hour", "7d": "seven_day" };
+
+/** 一个号在额度账上那一条（中转从回包头记下的原始几格）：被拒 · 超额 · 预警只写回包说了什么，显示成什么样由真后端判。 */
+function ledgerOf(a: Acct): QuotaSpec {
+  const t = now();
+  const lim = a.limiting ? RAW_WINDOW[a.limiting] : undefined;
+  const limSlot = a.slots.find((x) => x.slot === a.limiting);
   return {
-    kind: a.kind,
-    state: a.unseen ? "unseen" : a.state,
-    stale: a.stale ?? false,
-    ...(a.limiting ? { limiting: a.limiting } : {}),
-    slots,
-    login: a.login ?? "ok",
+    account: a.account,
+    seenAt: t - (a.seenAgo ?? 120),
+    status: a.state === "refused" || a.state === "overageInUse" ? "rejected" : a.state === "near" ? "warning" : "allowed",
+    refused: a.state === "refused",
+    ...(lim ? { limiting: lim } : {}),
+    ...(a.readingReset !== undefined ? { resetsAt: abs(a.readingReset) } : a.state === "overageInUse" && limSlot?.resetsAt !== undefined ? { resetsAt: abs(limSlot.resetsAt) } : {}),
+    windows: a.slots.map((x) => ({ name: RAW_WINDOW[x.slot] ?? x.slot, ...(x.pct === undefined ? {} : { used: x.pct / 100 }), ...(x.resetsAt === undefined ? {} : { resetsAt: abs(x.resetsAt) }) })),
+    ...(a.state === "overageInUse" ? { overage: { status: "allowed" as const, inUse: true } } : {}),
   };
 }
 
-/** 规则表里的一行（摘要 · 说明是编的，形状照 `rotation-rules-read`）。 */
-function ruleRow(
-  id: string,
-  name: string,
-  rotation: Record<string, unknown>,
-  isDefault: boolean,
-  live: number,
-): Record<string, unknown> {
-  return {
-    id,
-    name,
-    rotation,
-    rev: 3,
-    updatedAt: now() - 3600,
-    isDefault,
-    users: {
-      live,
-      ended: 2,
-      follow: isDefault ? live : 0,
-      doing: {},
-      sids: [],
-      endedSids: [],
-    },
-    summary: isDefault
-      ? "起始 → personal · 满"
-      : "team → personal · ≥90% · 抢回",
-    explain: "起始账号先用 · 被拒才换 · 不主动换回",
-    missing: [],
-    atLimitApplies: Object.keys(rotation.cap ?? {}).length > 0,
-  };
-}
-
-function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
-  const sidAt = (i: number): string => w().sessions[i].sid;
-  const byAcct = (name: string): Acct | undefined =>
-    aw.accounts.find((a) => a.account === name);
-  const sessOf = (sid: string): Sess | undefined => {
-    const i = w().sessions.findIndex((s) => s.sid === sid);
-    return aw.sessions[i];
-  };
-  return {
-    "accounts-list": () => ({
-      accounts: aw.accounts.map((a, i) => ({
-        name: a.account,
-        email: a.kind === "api" ? "" : `${a.account}@example.com`,
-        configDir: `/home/user/.cc-monitor/accounts/${a.account}`,
-        isDefault: i === 0,
-        mode: "isolated",
-        exists: true,
-        loggedIn: a.kind === "sub",
-        authKind: a.kind === "api" ? "api-key" : "subscription",
-        authReady: true,
-        keyMasked: a.kind === "api" ? "••••••••a1b2" : null,
-        baseUrl: a.kind === "api" ? "https://api.example.com" : null,
-      })),
-      meta: {
-        enabled: true,
-        acctsDir: "/home/user/.cc-monitor/accounts",
-        manifestPath: "/home/user/.cc-monitor/accounts/accounts.json",
-        updatedAt: "2026-10-01T08:00:00Z",
-        sharedStore: null,
-        count: aw.accounts.length,
-        error: null,
-        unsupported: null,
-        nextDefault: null,
-        home: "/home/user",
-      },
-      notice: null,
-    }),
-    "quota-read": () => ({
-      state: "present",
-      reason: null,
-      path: "/home/user/.cc-monitor/quota.json",
-      now: now(),
-      accounts: aw.accounts
-        .filter((a) => !a.unseen)
-        .map((a) => ({
-          agent: "claude-code",
-          account: a.account,
-          seenAt: now() - (a.seenAgo ?? 120),
-          reading: {
-            refused: a.state === "refused",
-            ...(a.readingReset ? { resetsAt: abs(a.readingReset) } : {}),
-          },
-          ...showOf(a),
-        })),
-      unseen: aw.accounts
-        .filter((a) => a.unseen)
-        .map((a) => ({
-          agent: "claude-code",
-          account: a.account,
-          kind: a.kind,
-          login: a.login ?? "ok",
-        })),
-      usableNow: aw.accounts
-        .filter(
-          (a) =>
-            !["refused", "overageInUse"].includes(a.state) &&
-            (a.login ?? "ok") === "ok",
-        )
-        .map((a) => a.account),
-      earliestReturn: aw.accounts.some((a) => a.state === "refused")
-        ? { account: "work", at: abs(2.3 * H1) }
-        : null,
-    }),
-    "rotation-rules-read": () => ({
-      state: aw.default ? "present" : "absent",
-      reason: null,
-      path: "/home/user/.cc-monitor/rotation.json",
+/** 账号世界落成本机家目录里的原始文件：账号库 · 额度账 · 轮换账本（规则 ＋ 每个会话记下的那一份）· 会话血缘。 */
+function acctDisk(aw: AcctWorld, w: World): void {
+  const d = w.disk[LOCAL];
+  const t = now();
+  putAccounts(d, aw.accounts.map((a, i) => ({ name: a.account, kind: a.kind, isDefault: i === 0, signedIn: (a.login ?? "ok") === "ok" })));
+  putQuota(d, aw.accounts.filter((a) => !a.unseen).map(ledgerOf));
+  const sidAt = (i: number): string | undefined => w.sessions[i]?.sid;
+  const sessions: Record<string, RotationSessionSpec> = {};
+  const parents: Record<string, string> = {};
+  for (const [k, s] of Object.entries(aw.sessions)) {
+    const sid = sidAt(Number(k));
+    if (sid === undefined) continue;
+    const parent = s.parent === undefined ? undefined : sidAt(s.parent);
+    if (parent !== undefined) parents[sid] = parent;
+    if (s.absent) continue;
+    sessions[sid] = {
+      start: s.start,
+      current: s.current,
+      since: t - 1800,
+      source: s.followParent && parent !== undefined ? { parent } : s.rule ? { rule: s.rule } : s.follow ? "follow" : "custom",
+      ...(s.custom ? { custom: s.custom } : {}),
+      history: s.history.map((h) => ({ ...h, at: abs(h.at as number), ...(h.fromResetsAt === undefined ? {} : { fromResetsAt: abs(h.fromResetsAt as number) }) })),
+    };
+  }
+  if (aw.default) {
+    putRotation(d, {
       defaultRule: "r_daily",
-      rules: [
-        ruleRow(
-          "r_daily",
-          "日常",
-          aw.default ?? {
-            order: [{ start: true }],
-            enabled: [],
-            atLimit: "continue",
-            wait: 40,
-          },
-          true,
-          4,
-        ),
-        ...(aw.rules ?? []).map((r) =>
-          ruleRow(r.id, r.name, r.rotation, false, r.users ?? 0),
-        ),
-      ],
-    }),
-    "rotation-session-read": (_o, req) => {
-      const sessions: Record<string, unknown> = {};
-      for (const sid of req.sids as string[]) {
-        const s = sessOf(sid);
-        if (!s || s.absent) {
-          sessions[sid] = { state: "absent", inPlace: "noRelay" };
-          continue;
-        }
-        const cur = byAcct(s.current);
-        const parentSid = s.parent === undefined ? undefined : sidAt(s.parent);
-        const decider = s.followParent && s.parent !== undefined ? aw.sessions[s.parent] : s;
-        sessions[sid] = {
-          state: "present",
-          agent: "claude-code",
-          source: s.followParent && parentSid
-            ? { parent: parentSid }
-            : s.rule
-              ? { rule: s.rule }
-              : s.follow
-                ? "follow"
-                : "custom",
-          ...(parentSid ? { parent: parentSid } : {}),
-          ...(decider && (decider.rule || decider.follow)
-            ? {
-                ruleName:
-                  (aw.rules ?? []).find((r) => r.id === decider.rule)?.name ?? "日常",
-              }
-            : {}),
-          explain:
-            "起始账号先用 · 到 90% 从头取首个可用 · 不主动换回 · 都到上限仍发",
-          ...(s.custom ? { custom: s.custom } : {}),
-          account: {
-            start: s.start,
-            current: s.current,
-            since: now() - 1800,
-            history: s.history.map((h) => ({
-              ...h,
-              at: abs(h.at as number),
-              ...(h.fromResetsAt === undefined
-                ? {}
-                : { fromResetsAt: abs(h.fromResetsAt as number) }),
-            })),
-            inPlace: s.inPlace,
-          },
-          ...(s.next ? { next: s.next } : {}),
-          ...(s.blocked
-            ? {
-                blocked: {
-                  earliest: {
-                    account: (s.blocked as { account: string }).account,
-                    at: abs((s.blocked as { at: number }).at),
-                  },
-                },
-              }
-            : {}),
-          ...(s.fallbackApi ? { fallbackApi: s.fallbackApi } : {}),
-          atLimit:
-            (s.custom as { atLimit?: string } | undefined)?.atLimit ??
-            "continue",
-          quota: cur
-            ? showOf(cur)
-            : {
-                kind: "sub",
-                state: "unseen",
-                stale: false,
-                slots: [],
-                login: "ok",
-              },
-        };
-      }
-      return { state: "present", reason: null, now: now(), sessions };
-    },
-    "rotation-session-set": (_o, req) => {
-      const out: Record<string, unknown> = {};
-      for (const sid of req.sids as string[]) {
-        const s = sessOf(sid);
-        if (!s) continue;
-        const r = req.rotation as unknown;
-        s.rule = undefined;
-        s.followParent = false;
-        if (r === "follow") s.follow = true;
-        else if (r === "parent") s.followParent = true;
-        else if (r === "custom" || r === "detach") {
-          s.follow = false;
-          s.custom ??= structuredClone(aw.default ?? ROT_CUSTOM);
-        } else if (typeof r === "object" && r !== null && "rule" in r) {
-          s.follow = false;
-          s.rule = (r as { rule: string }).rule;
-        } else {
-          s.follow = false;
-          s.custom = (r as { custom: Record<string, unknown> }).custom;
-        }
-        out[sid] = { state: "done" };
-      }
-      return { sessions: out };
-    },
-    "rotation-plan": (_o, req) =>
-      req.view
-        ? fakePlan({
-            view: req.view as "6h" | "24h" | "7d",
-            session: true,
-            blocked: aw.tl?.blocked,
-            warm: aw.tl?.warm,
-            fallback: aw.tl?.fallback,
-          })
-        : { errors: [] },
-    "rotation-rule-save": (_o, req) => ({
-      state: "refused",
-      errors: [{ cell: "name", code: "dup" }],
-      ...(req.name === "x" ? {} : {}),
-    }),
+      rules: {
+        r_daily: { name: "日常", rotation: aw.default, rev: 3, updatedAt: t - 3600 },
+        ...Object.fromEntries((aw.rules ?? []).map((r) => [r.id, { name: r.name, rotation: r.rotation, rev: 3, updatedAt: t - 3600 }])),
+      },
+      sessions,
+    });
+  }
+  if (Object.keys(parents).length > 0) putLineage(d, parents, t - 1800);
+  if (aw.warm) putWarm(d, aw.warm.map((x) => ({ account: x.account, at: t + x.at })));
+}
+
+/**
+ * 真后端够不着的那一条：切换。重启切换要真 tmux 起新会话、热切换要这台的中转正经手那个会话的请求 —— 台架里都没有，
+ * 所以由这里替那台答（重启那一形照 `rotation-switch-restart` 金样）。切过之后盘上那份不变（读还是切之前的样子）。
+ */
+function acctOps(aw: AcctWorld): Record<string, OpHandler> {
+  return {
     "rotation-switch": (_o, req) => {
       const out: Record<string, unknown> = {};
       for (const it of req.sessions as unknown[]) {
         const sid = typeof it === "string" ? it : (it as { sid: string }).sid;
-        const s = sessOf(sid);
-        if (!s) continue;
-        if (req.mode === "restart") {
-          const reply = aw.restartReply ?? {
-            state: "done",
-            terminal: "proj-cc",
-          };
-          out[sid] = reply;
-          if (reply.state === "failed") continue;
-        }
-        s.history.push({
-          at: 0,
-          from: s.current,
-          to: req.target,
-          why: req.mode === "hot" ? "manualHot" : "manualRestart",
-        });
-        s.current = String(req.target);
-        out[sid] ??= { state: "done" };
+        out[sid] = req.mode === "restart" ? (aw.restartReply ?? { state: "done", terminal: "proj-cc" }) : { state: "done" };
       }
-      void sidAt;
       return { sessions: out };
     },
   };
@@ -447,10 +233,8 @@ function world(
       sessions: { 0: swappedSess() },
     };
     build(aw);
-    Object.assign(
-      w.ops,
-      acctOps(aw, () => w),
-    );
+    acctDisk(aw, w);
+    Object.assign(w.ops, acctOps(aw));
     return w;
   };
 }
@@ -582,9 +366,6 @@ export const ACCT_SCENES: Scene[] = [
         follow: false,
         custom: { ...ROT_CUSTOM, enabled: ["personal"] },
         history: [],
-        inPlace: "ok",
-        blocked: { account: "personal", at: 1.83 * H1 },
-        fallbackApi: "api",
       };
       aw.accounts[1] = {
         ...aw.accounts[1],
@@ -619,7 +400,6 @@ export const ACCT_SCENES: Scene[] = [
         current: "work",
         follow: true,
         history: [],
-        inPlace: "ok",
       };
     }),
   ),
@@ -637,7 +417,6 @@ export const ACCT_SCENES: Scene[] = [
         current: "api",
         follow: true,
         history: [],
-        inPlace: "ok",
       };
     }),
   ),
@@ -660,7 +439,6 @@ export const ACCT_SCENES: Scene[] = [
         current: "api",
         follow: true,
         history: [],
-        inPlace: "ok",
       };
     }),
   ),
@@ -688,7 +466,6 @@ export const ACCT_SCENES: Scene[] = [
         current: "team",
         follow: true,
         history: [],
-        inPlace: "ok",
       };
     }),
   ),
@@ -741,19 +518,7 @@ export const ACCT_SCENES: Scene[] = [
     openPanel,
     () => {
       const w = world(() => {})();
-      const why = "读取 /home/user/.cc-monitor/quota.json 失败 · 内容无法解析";
-      w.ops["quota-read"] = () => ({
-        state: "unreadable",
-        reason: why,
-        detail: "时刻 2026-10-10 01:00:00 +08:00\n机器 Linux x86_64 · 后端 fake\n命令 quota-read\n码 unreadable\n原话 expected value at line 1 column 1",
-        text: why,
-        path: "/home/user/.cc-monitor/quota.json",
-        now: now(),
-        accounts: [],
-        unseen: [],
-        usableNow: [],
-        earliestReturn: null,
-      });
+      putBrokenQuota(w.disk[LOCAL]);
       return w;
     },
   ),
@@ -1178,8 +943,6 @@ export const ACCT_SCENES: Scene[] = [
         follow: false,
         custom: { ...ROT_CUSTOM },
         history: [],
-        inPlace: "ok",
-        next: "personal",
       };
     }),
   ),
@@ -1345,7 +1108,7 @@ export const ACCT_SCENES: Scene[] = [
       await openTimeline();
     },
     world((aw) => {
-      aw.tl = { warm: true };
+      aw.warm = [{ account: "team", at: 2.5 * H1 }];
     }),
     [W, 1000],
   ),
@@ -1361,7 +1124,8 @@ export const ACCT_SCENES: Scene[] = [
       await sleep(300);
     },
     world((aw) => {
-      aw.tl = { blocked: true };
+      // 轮换里的号都被拒（personal · team 都满了）⇒ 卡住。
+      for (const i of [1, 2]) aw.accounts[i] = { ...aw.accounts[i], state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: (1.2 + i * 0.4) * H1 }, aw.accounts[i].slots[1]], readingReset: (1.2 + i * 0.4) * H1 };
     }),
     [W, 1000],
   ),
@@ -1375,7 +1139,9 @@ export const ACCT_SCENES: Scene[] = [
       await sleep(900);
     },
     world((aw) => {
-      aw.tl = { fallback: true };
+      // team 是兜底：work 被拒、personal 被拒且快恢复 ⇒ 先等 personal（兜底顶上）再接回 personal。
+      aw.accounts[1] = { ...aw.accounts[1], state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: 0.5 * H1 }, aw.accounts[1].slots[1]], readingReset: 0.5 * H1 };
+      aw.sessions[0] = { ...swappedSess(), current: "team", custom: { ...ROT_CUSTOM, order: [{ start: true }, "personal"], enabled: ["personal"], fallback: ["team"] } };
     }),
     [W, 1000],
   ),
