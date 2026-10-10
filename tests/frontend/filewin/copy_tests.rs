@@ -216,7 +216,7 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
 }
 
 /// 成功那一句说出**复制了几个字节**与**在哪儿复制的**，而且**不是**警告档；
-/// 失败那一句带原文、**是**警告档（阴性对照：两档不许画成一样）。
+/// 失败那一句带对端那一句（原话在它的复制详情里）、**是**警告档（阴性对照：两档不许画成一样）。
 ///
 /// 🔴 第三刀那条「退路要原样出声」随 SFTP 那条路一起没了（模块头注逐条）：
 /// 后端在那台机器上复制，没有会过网的第二条路，也就没有「慢路」这句话可喊。
@@ -231,10 +231,11 @@ fn the_done_notice_says_how_many_bytes_and_where_and_is_quiet() {
         copy_core::copy_text("rsFilewinCopy.outcome.done", &[("bytes", "8388608")])
     );
     assert!(!n.loud, "复制成了是它该有的样子，不是警告");
-    let f = outcome_notice(&CopyOutcome::Failed("原话".into()));
+    let that = copy_core::copy_text("reason.io.denied", &[]);
+    let f = outcome_notice(&CopyOutcome::Failed(that.clone().into()));
     assert_eq!(
         f.text,
-        copy_core::copy_text("rsFilewinCopy.outcome.failed", &[("e", "原话")])
+        copy_core::copy_text("rsFilewinCopy.outcome.failed", &[("said", &that)])
     );
     assert!(f.loud, "失败不是警告档 —— 那一行会混在普通提示里");
 }

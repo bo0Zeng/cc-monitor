@@ -74,10 +74,10 @@ impl Manifest {
     pub(crate) fn parse(text: &str) -> Result<Manifest, String> {
         let body = text.strip_prefix('\u{feff}').unwrap_or(text);
         let root: Value = serde_json::from_str(body).map_err(|e| {
-            copy_core::copy_text(
-                "beAccountsQuery.loadManifest.badJson",
-                &[("e", &e.to_string())],
-            )
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_core::copy_text("beAccountsQuery.loadManifest.badJson", &[]),
+                e,
+            ))
         })?;
         let Value::Object(obj) = root else {
             return Err(copy_core::copy_text("beAcctModel.parse.notObject", &[]));

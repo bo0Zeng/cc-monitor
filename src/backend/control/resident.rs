@@ -19,6 +19,7 @@ use crate::platform::child_env::OWN_ENVS;
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// `--resident-ensure` 起子进程时给的流模式默认旗标（空转那份 watcher 用；每条连接按 attach 行自己的 `flags`）。
 /// 与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
@@ -362,7 +363,7 @@ pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
 }
 
 /// 按 pid 文件停在听的那一位。没有记录 ⇒ `NotRunning`。
-fn stop_owner(data_home: &Path, grace_ms: u32) -> Result<Stopped, String> {
+fn stop_owner(data_home: &Path, grace_ms: u32) -> Result<Stopped, Said> {
     let path = relay_route_core::listen_pid_for(data_home);
     let Some((pid, bin)) = read_owner(data_home) else {
         return Ok(Stopped::NotRunning);
@@ -382,7 +383,7 @@ pub(crate) fn stop_pid(
     bin: &Path,
     grace_ms: u32,
     kill_wait_ms: u32,
-) -> Result<Stopped, String> {
+) -> Result<Stopped, Said> {
     let Some(target) = crate::platform::signal::stoppable(pid)? else {
         return Ok(Stopped::NotRunning);
     };
@@ -392,7 +393,8 @@ pub(crate) fn stop_pid(
         return Err(copy_text(
             "beResident.stop.notOurs",
             &[("pid", &pid.to_string()), ("exe", &seen)],
-        ));
+        )
+        .into());
     }
     match target.ask_to_finish() {
         Ok(()) => {
@@ -401,16 +403,13 @@ pub(crate) fn stop_pid(
             }
         }
         // 发不出「请你收尾」（Windows 没有这一格）⇒ 等也等不来它自己退，直接强杀、如实报「强杀」。
-        Err(e) => tracing::warn!("{e}"),
+        Err(e) => tracing::warn!("{}", e.logged()),
     }
     target.kill()?;
     if target.exited_within(kill_wait_ms)? {
         Ok(Stopped::Killed(pid))
     } else {
-        Err(copy_text(
-            "beResident.stop.stuck",
-            &[("pid", &pid.to_string())],
-        ))
+        Err(copy_text("beResident.stop.stuck", &[("pid", &pid.to_string())]).into())
     }
 }
 
@@ -522,7 +521,7 @@ pub fn retire_legacy(data_home: &Path) -> Option<String> {
         ),
         Err(e) => copy_text(
             "beResident.legacy.stuck",
-            &[("pid", &pid.to_string()), ("why", &e)],
+            &[("pid", &pid.to_string()), ("why", &e.logged())],
         ),
     };
     let _ = std::fs::remove_file(&rec);

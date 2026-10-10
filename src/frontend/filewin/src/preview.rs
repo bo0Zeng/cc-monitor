@@ -761,25 +761,21 @@ async fn read_image(
     decode_image(&bytes)
 }
 
-/// 字节 → 一张界面能画的图（过大先缩到最长边 [`IMAGE_MAX_SIDE`]）。解不开 ⇒ 原话。
+/// 解不开：句子只说解不开，解码器的原话记一行日志。
+fn undecodable(e: impl std::fmt::Display) -> String {
+    tracing::warn!("filewin: image undecodable: {e}");
+    copy_text("rsFilewinPreview.image.undecodable", &[])
+}
+
+/// 字节 → 一张界面能画的图（过大先缩到最长边 [`IMAGE_MAX_SIDE`]）。解不开 ⇒ 一句（原话进日志）。
 pub fn decode_image(bytes: &[u8]) -> Result<egui::ColorImage, String> {
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| {
-            copy_text(
-                "rsFilewinPreview.image.undecodable",
-                &[("e", &e.to_string())],
-            )
-        })?;
+        .map_err(undecodable)?;
     let mut limits = image::Limits::default();
     limits.max_alloc = Some(256 * 1024 * 1024);
     reader.limits(limits);
-    let img = reader.decode().map_err(|e| {
-        copy_text(
-            "rsFilewinPreview.image.undecodable",
-            &[("e", &e.to_string())],
-        )
-    })?;
+    let img = reader.decode().map_err(undecodable)?;
     let img = if img.width().max(img.height()) > IMAGE_MAX_SIDE {
         img.thumbnail(IMAGE_MAX_SIDE, IMAGE_MAX_SIDE)
     } else {

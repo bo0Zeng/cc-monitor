@@ -177,9 +177,11 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Cm
         ])
         .run(PROBE_TMUX_WITHIN)
         .map_err(|e| {
-            e.into_cmd_err("no_tmux", |e| {
-                copy_text("beGate.probe.noTmux", &[("e", &e.to_string())])
-            })
+            // 句子只说原因词；系统原话记一行日志（门这一层的失败形是「码 ＋ 一句」，没有原话位）。
+            let (c, s) = e.into_cmd_said("no_tmux", |why| {
+                copy_text("beGate.probe.noTmux", &[("why", why)])
+            });
+            (c, crate::common::said::IntoNote::into_note(s))
         })?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.trim_end_matches(['\n', '\r']);
@@ -303,10 +305,9 @@ pub(crate) fn admit(
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
-            copy_text("beGate.admit.noSession", &[("name", &format!("{name:?}"))]),
+            copy_text("beGate.admit.noSession", &[("name", name)]),
         ));
     };
-    let shown = format!("{name:?}");
     // 给了 sid ⇒ 落在挂着它的那个窗格、身份也按它判（活动窗格是谁不算数）；哪个窗格都不挂它 ⇒ 此刻跑的已经不是那条会话。
     let (who, at) = match sid {
         None => (p.clone(), None),
@@ -315,7 +316,7 @@ pub(crate) fn admit(
             let Some(c) = carrier(&panes, s) else {
                 return Err((
                     "wrong_owner",
-                    copy_text("beGate.admit.otherSession", &[("name", &shown)]),
+                    copy_text("beGate.admit.otherSession", &[("name", name)]),
                 ));
             };
             let at = Probed {
@@ -329,11 +330,11 @@ pub(crate) fn admit(
         Who::Pass => Ok(at.unwrap_or(p.session_id)),
         Who::NotOurs => Err((
             "wrong_owner",
-            copy_text("beGate.admit.notOurs", &[("name", &shown)]),
+            copy_text("beGate.admit.notOurs", &[("name", name)]),
         )),
         Who::OtherClient => Err((
             "wrong_owner",
-            copy_text("beGate.admit.otherClient", &[("name", &shown)]),
+            copy_text("beGate.admit.otherClient", &[("name", name)]),
         )),
     }
 }
@@ -355,10 +356,7 @@ pub(crate) fn admit_destructive(
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
-            copy_text(
-                "beGate.admitDestructive.noSession",
-                &[("name", &format!("{name:?}"))],
-            ),
+            copy_text("beGate.admitDestructive.noSession", &[("name", name)]),
         ));
     };
     let (who, only) = match sid {
@@ -373,10 +371,7 @@ pub(crate) fn admit_destructive(
             if carrying.is_empty() {
                 return Err((
                     "wrong_owner",
-                    copy_text(
-                        "beGate.admitDestructive.otherSession",
-                        &[("name", &format!("{name:?}"))],
-                    ),
+                    copy_text("beGate.admitDestructive.otherSession", &[("name", name)]),
                 ));
             }
             let others = tags.iter().any(|t| !t.sid.is_empty() && t.sid != s);
@@ -392,19 +387,13 @@ pub(crate) fn admit_destructive(
         Who::NotOurs => {
             return Err((
                 "wrong_owner",
-                copy_text(
-                    "beGate.admitDestructive.notOurs",
-                    &[("name", &format!("{name:?}"))],
-                ),
+                copy_text("beGate.admitDestructive.notOurs", &[("name", name)]),
             ))
         }
         Who::OtherClient => {
             return Err((
                 "wrong_owner",
-                copy_text(
-                    "beGate.admitDestructive.otherClient",
-                    &[("name", &format!("{name:?}"))],
-                ),
+                copy_text("beGate.admitDestructive.otherClient", &[("name", name)]),
             ))
         }
     }
@@ -416,10 +405,7 @@ pub(crate) fn admit_destructive(
             "too_many_windows",
             copy_text(
                 "beGate.admitDestructive.manyWindows",
-                &[
-                    ("name", &format!("{name:?}")),
-                    ("n", &p.windows.to_string()),
-                ],
+                &[("name", name), ("n", &p.windows.to_string())],
             ),
         ));
     }

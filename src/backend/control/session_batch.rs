@@ -44,9 +44,12 @@ pub(crate) struct Deps<'a> {
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
-    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, CmdErr>,
+    /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
+    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, crate::stream::inbound::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
-    pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), CmdErr>,
+    /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
+    pub(crate) send_into:
+        &'a dyn Fn(&str, &str, &str) -> Result<(), crate::stream::inbound::spec::Fail>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
     /// 基名从哪来 ⇒ 这台铸的新会话名（同 `terminal-name-mint`：按这台此刻的会话名避让）。
@@ -369,10 +372,13 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
             bus: Some(bus),
             ..Answer::done(sid)
         },
-        Err(e) => Answer {
-            session: Some(name),
-            ..Answer::failed(sid, e)
-        },
+        Err(f) => {
+            let code = f.code.clone();
+            Answer {
+                session: Some(name),
+                ..Answer::failed(sid, (&code, crate::common::said::Said::from(f).logged()))
+            }
+        }
     }
 }
 
@@ -665,7 +671,13 @@ fn start_in_tmux(
                     pretrust(account, &it.cwd, deps);
                     match (deps.send_into)(&n, &it.sid, &line) {
                         Ok(()) => Answer::done(&it.sid),
-                        Err(e) => Answer::failed(&it.sid, e),
+                        Err(f) => {
+                            let code = f.code.clone();
+                            Answer::failed(
+                                &it.sid,
+                                (&code, crate::common::said::Said::from(f).logged()),
+                            )
+                        }
                     }
                 }
             };

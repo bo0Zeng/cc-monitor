@@ -16,10 +16,16 @@ pub(crate) fn point_stderr_at(f: &std::fs::File) -> Result<(), String> {
     use std::os::fd::AsRawFd;
     // SAFETY: `f` 在本函数里活着，它的 fd 有效；`dup2` 只把它复制到 2，不动 `f` 本身。
     if unsafe { libc::dup2(f.as_raw_fd(), libc::STDERR_FILENO) } < 0 {
-        return Err(copy_text(
-            "beStderrFd.point.dupFailed",
-            &[("e", &std::io::Error::last_os_error().to_string())],
-        ));
+        // 只进 stderr 那一行：那一句 ＋ 系统原话一起。
+        let e = std::io::Error::last_os_error();
+        return Err(copy_core::said::Said::with_raw(
+            copy_text(
+                "beStderrFd.point.dupFailed",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+            e,
+        )
+        .logged());
     }
     Ok(())
 }

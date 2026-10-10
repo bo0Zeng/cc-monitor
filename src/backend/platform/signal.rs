@@ -1,6 +1,8 @@
 //! 发信号这一族平台原语（`platform/` 是唯一允许平台原语与平台 cfg 的层）。
 //! 身份校验留在调用方（`control/tmux_hook.rs`）：「这个 pid 是不是我那个后端」是域判断，不是平台能力。本层只负责把信号发出去。
 
+use copy_core::said::Said;
+
 /// **等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs` 下沉（那里原有一个同形的等信号函数，已删）——
 /// 那一段带平台 cfg，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
 ///
@@ -75,20 +77,30 @@ pub(crate) struct Stoppable {
     h: std::os::windows::io::OwnedHandle,
 }
 
+/// 停进程那几步没做成：句子只带原因词（[`copy_core::io_reason`]），系统原话另带（进日志 / 复制详情）。
+/// `said` 拿到原因词、造那一句（取文口的键要字面量，留在调用处）。
+fn said_with(
+    kind: std::io::ErrorKind,
+    raw: impl std::fmt::Display,
+    said: impl FnOnce(&str) -> String,
+) -> Said {
+    Said::with_raw(said(&copy_core::io_reason(kind)), raw)
+}
+
 /// 拿 `pid` 的把手。`Ok(None)` = 它已经不在了。
-pub(crate) fn stoppable(pid: u32) -> Result<Option<Stoppable>, String> {
-    let failed = |e: String| {
-        copy_core::copy_text(
-            "beStop.handle.failed",
-            &[("pid", &pid.to_string()), ("e", &e)],
-        )
+pub(crate) fn stoppable(pid: u32) -> Result<Option<Stoppable>, Said> {
+    let pid_s = pid.to_string();
+    let failed = |kind: std::io::ErrorKind, raw: &dyn std::fmt::Display| {
+        said_with(kind, raw, |why| {
+            copy_core::copy_text("beStop.handle.failed", &[("pid", &pid_s), ("why", why)])
+        })
     };
     #[cfg(target_os = "linux")]
     {
         match super::pidwatch::pidfd_open(pid) {
             Ok(fd) => Ok(Some(Stoppable { fd })),
             Err(e) if e.raw_os_error() == Some(libc::ESRCH) => Ok(None),
-            Err(e) => Err(failed(e.to_string())),
+            Err(e) => Err(failed(e.kind(), &e)),
         }
     }
     #[cfg(windows)]
@@ -97,20 +109,23 @@ pub(crate) fn stoppable(pid: u32) -> Result<Option<Stoppable>, String> {
         match super::win_proc::open_for_stop(pid) {
             Opened::Handle(h) => Ok(Some(Stoppable { h })),
             Opened::Gone(_) => Ok(None),
-            Opened::Denied => Err(failed("access denied".into())),
+            Opened::Denied => Err(failed(
+                std::io::ErrorKind::PermissionDenied,
+                &"access denied",
+            )),
         }
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = failed;
-        Err(copy_core::copy_text("beStop.platform.unsupported", &[]))
+        Err(copy_core::copy_text("beStop.platform.unsupported", &[]).into())
     }
 }
 
 impl Stoppable {
     /// Linux：经 pidfd 发一个信号。进程已退 ⇒ 当发到了（它本来就不在了）。
     #[cfg(target_os = "linux")]
-    fn send(&self, sig: libc::c_int) -> Result<(), String> {
+    fn send(&self, sig: libc::c_int) -> Result<(), Said> {
         use std::os::fd::AsRawFd;
         // SAFETY：`pidfd_send_signal(2)`：fd 是本把手独占的 pidfd，info 传空指针 = 与 kill(2) 同义，flags 0。
         let rc = unsafe {
@@ -129,26 +144,28 @@ impl Stoppable {
         if e.raw_os_error() == Some(libc::ESRCH) {
             return Ok(());
         }
-        Err(copy_core::copy_text(
-            "beStop.signal.failed",
-            &[("sig", &sig.to_string()), ("e", &e.to_string())],
-        ))
+        Err(said_with(e.kind(), &e, |why| {
+            copy_core::copy_text(
+                "beStop.signal.failed",
+                &[("sig", &sig.to_string()), ("why", why)],
+            )
+        }))
     }
 
     /// 请它收尾（SIGTERM）。Windows 没有这一格 ⇒ `Err`，调用方直接走强杀并如实报「强杀」。
-    pub(crate) fn ask_to_finish(&self) -> Result<(), String> {
+    pub(crate) fn ask_to_finish(&self) -> Result<(), Said> {
         #[cfg(target_os = "linux")]
         {
             self.send(libc::SIGTERM)
         }
         #[cfg(not(target_os = "linux"))]
         {
-            Err(copy_core::copy_text("beStop.term.none", &[]))
+            Err(copy_core::copy_text("beStop.term.none", &[]).into())
         }
     }
 
     /// 强杀（SIGKILL / `TerminateProcess`）。
-    pub(crate) fn kill(&self) -> Result<(), String> {
+    pub(crate) fn kill(&self) -> Result<(), Said> {
         #[cfg(target_os = "linux")]
         {
             self.send(libc::SIGKILL)
@@ -156,22 +173,28 @@ impl Stoppable {
         #[cfg(windows)]
         {
             super::win_proc::terminate(&self.h).map_err(|e| {
-                copy_core::copy_text(
-                    "beStop.signal.failed",
-                    &[("sig", "TerminateProcess"), ("e", &e.to_string())],
-                )
+                said_with(e.kind(), &e, |why| {
+                    copy_core::copy_text(
+                        "beStop.signal.failed",
+                        &[("sig", "TerminateProcess"), ("why", why)],
+                    )
+                })
             })
         }
         #[cfg(not(any(target_os = "linux", windows)))]
         {
-            Err(copy_core::copy_text("beStop.platform.unsupported", &[]))
+            Err(copy_core::copy_text("beStop.platform.unsupported", &[]).into())
         }
     }
 
     /// **至多等 `ms` 毫秒**看它退没退：阻塞在内核事件上（pidfd 可读 / 句柄被触发），不轮询、不醒来看。
     /// `Ok(true)` = 退了（Linux 上退了还没被收尸的也算）；`Ok(false)` = 期限到了还在。
-    pub(crate) fn exited_within(&self, ms: u32) -> Result<bool, String> {
-        let failed = |e: String| copy_core::copy_text("beStop.wait.failed", &[("e", &e)]);
+    pub(crate) fn exited_within(&self, ms: u32) -> Result<bool, Said> {
+        let failed = |e: std::io::Error| {
+            said_with(e.kind(), &e, |why| {
+                copy_core::copy_text("beStop.wait.failed", &[("why", why)])
+            })
+        };
         #[cfg(target_os = "linux")]
         {
             use std::os::fd::AsRawFd;
@@ -190,19 +213,25 @@ impl Stoppable {
                 }
                 let e = std::io::Error::last_os_error();
                 if e.kind() != std::io::ErrorKind::Interrupted {
-                    return Err(failed(e.to_string()));
+                    return Err(failed(e));
                 }
             }
-            Err(failed("EINTR".into()))
+            Err(failed(std::io::Error::from(
+                std::io::ErrorKind::Interrupted,
+            )))
         }
         #[cfg(windows)]
         {
-            super::win_proc::wait_within(&self.h, ms).map_err(|e| failed(e.to_string()))
+            super::win_proc::wait_within(&self.h, ms).map_err(failed)
         }
         #[cfg(not(any(target_os = "linux", windows)))]
         {
             let _ = (ms, failed);
-            Err(copy_core::copy_text("beStop.platform.unsupported", &[]))
+            Err(copy_core::copy_text("beStop.platform.unsupported", &[]).into())
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/signal_tests.rs"]
+mod tests;

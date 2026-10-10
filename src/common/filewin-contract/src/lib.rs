@@ -6,6 +6,7 @@
 //! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量。
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 pub mod theme;
 pub use theme::{parse_css_color, parse_shadow, Rgba, Shadow, Theme, THEME_TOKENS};
@@ -55,9 +56,9 @@ pub struct OpenRequest {
 /// # Errors
 ///
 /// 序列化失败（今天各格都是 serde 表达得了的，这一支只是不许 `unwrap`）。
-pub fn encode_request(r: &OpenRequest) -> Result<String, String> {
+pub fn encode_request(r: &OpenRequest) -> Result<String, Said> {
     serde_json::to_string(r)
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))
+        .map_err(|e| Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e))
 }
 
 /// 字节 → 种子。**纯函数**。
@@ -68,15 +69,15 @@ pub fn encode_request(r: &OpenRequest) -> Result<String, String> {
 /// # Errors
 ///
 /// 不是合法 JSON / 字段形状不对 / 空输入。
-pub fn decode_request(raw: &str) -> Result<OpenRequest, String> {
+pub fn decode_request(raw: &str) -> Result<OpenRequest, Said> {
     if raw.trim().is_empty() {
-        return Err(copy_text(
+        return Err(Said::from(copy_text(
             "rsFilewinProc.seed.empty",
             &[("binEnv", &BIN_ENV.to_string())],
-        ));
+        )));
     }
     serde_json::from_str(raw)
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))
+        .map_err(|e| Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e))
 }
 
 /// 窗口进程在 stderr 上说的那一行：第一屏列到几行，或列不出来的原话。线上形 `ccm-filewin-ready {"listed":N}` / `… {"failed":"…"}`。
@@ -115,10 +116,10 @@ pub fn is_ready_line(line: &str) -> bool {
 /// # Errors
 ///
 /// 不是约定的那两种形状。
-pub fn decode_ready(line: &str) -> Result<Ready, String> {
+pub fn decode_ready(line: &str) -> Result<Ready, Said> {
     let json = line.strip_prefix(READY_MARK).unwrap_or("");
     serde_json::from_str(json.trim())
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))
+        .map_err(|e| Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e))
 }
 
 /// 「在此打开终端」：窗口在它那条通道上 `call`（寻址 ＝ 那台机器的 `origin`）、

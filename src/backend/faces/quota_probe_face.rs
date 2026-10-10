@@ -108,12 +108,12 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
         child = child.env("PATH", p);
     }
     let out = child.run(PROBE_WITHIN).map_err(|e| {
-        e.into_cmd_err("failed", |e| {
+        crate::stream::inbound::spec::Fail::from(e.into_cmd_said("failed", |why| {
             copy_text(
                 "beQuotaProbe.run.failed",
-                &[("program", face.program), ("e", &e.to_string())],
+                &[("program", face.program), ("why", why)],
             )
-        })
+        }))
     })?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
@@ -130,18 +130,12 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
             .status
             .code()
             .map_or_else(|| "-".to_string(), |c| c.to_string());
-        return Err((
+        // 退出码与它说的那一行是原话：进复制详情，不上句子。
+        return Err(crate::stream::inbound::spec::Fail::new(
             "failed",
-            copy_text(
-                "beQuotaProbe.run.exit",
-                &[
-                    ("program", face.program),
-                    ("exit", &code),
-                    ("said", &stderr),
-                ],
-            ),
+            copy_text("beQuotaProbe.run.exit", &[("program", face.program)]),
         )
-            .into());
+        .with_raw(Some(&format!("exit {code}: {stderr}"))));
     }
     let shown = book.map(|p| p.display().to_string());
     let probed = |state, reason, windows| Probed {

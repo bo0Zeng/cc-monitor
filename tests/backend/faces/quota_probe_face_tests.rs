@@ -158,7 +158,7 @@ fn account_zero_runs_without_a_config_dir() {
     assert!(home.seen().contains("dir=unset"), "{}", home.seen());
 }
 
-/// ★ 读不懂 ⇒ 照实回 `unreadable` ＋ 哪一处，不写账；没登录（退出码非零）⇒ `failed` 带它自己那句话。
+/// ★ 读不懂 ⇒ 照实回 `unreadable` ＋ 哪一处，不写账；没登录（退出码非零）⇒ `failed`，它自己那句话进原话。
 #[cfg(unix)]
 #[test]
 fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
@@ -179,12 +179,21 @@ fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
         "不写账"
     );
     let crate::stream::inbound::spec::Fail {
-        code, message: msg, ..
+        code,
+        message: msg,
+        raw,
+        ..
     } = home
         .probe(&ctx, json!({"agent": "claude-code", "account": "c"}))
         .expect_err("没登录");
     assert_eq!(code, "failed");
-    assert!(msg.contains("Please run /login"), "{msg}");
+    // 它自己那句话 ＋ 退出码是原话：进复制详情，不上句子。
+    assert!(!msg.contains("Please run /login"), "{msg}");
+    assert!(
+        raw.as_deref()
+            .is_some_and(|r| r.contains("Please run /login") && r.contains("exit 1")),
+        "{raw:?}"
+    );
     assert!(ctx.hop.quota.entry("claude-code", "c").is_none());
 }
 

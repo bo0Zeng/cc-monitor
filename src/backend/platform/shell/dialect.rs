@@ -193,7 +193,14 @@ pub(crate) type PsAliases = Result<std::collections::BTreeMap<String, String>, S
 /// 这台那一份（起一次、进程内缓存；这台没有 PowerShell ⇒ 说问不到，不当成「没撞」）。
 fn ps_builtin_aliases() -> &'static PsAliases {
     static ONE: std::sync::OnceLock<PsAliases> = std::sync::OnceLock::new();
-    ONE.get_or_init(ask_get_alias)
+    ONE.get_or_init(|| {
+        let r = ask_get_alias();
+        // 问不到的原因（含 PowerShell 的原话）只记这一次日志；撞名提示那一句不带它。
+        if let Err(e) = &r {
+            tracing::warn!("PowerShell 自带别名问不到: {e}");
+        }
+        r
+    })
 }
 
 /// `Get-Alias` 那一段的输出（每行 `名字<TAB>指向`）→ 表。名字按 PowerShell 的口径不分大小写（存小写）。
@@ -214,9 +221,9 @@ pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<Stri
                 &[("name", &name.to_string()), ("target", target)],
             )
         }),
-        Err(e) => Some(copy_text(
+        Err(_) => Some(copy_text(
             "rsShellDialect.ps.builtinAliasUnknown",
-            &[("name", &name.to_string()), ("e", e)],
+            &[("name", &name.to_string())],
         )),
     }
 }

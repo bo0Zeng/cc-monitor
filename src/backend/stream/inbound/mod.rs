@@ -264,10 +264,12 @@ async fn handle_line(
                 .await
                 {
                     Ok(res) => res,
+                    // 线程没回来（panic / 被取消）：句子说「程序出错」，那条 JoinError 进复制详情。
                     Err(e) => Err(Fail::from((
                         "handler_panicked".to_string(),
-                        copy_text("beInbound.handleLine.internal", &[("e", &e.to_string())]),
-                    ))),
+                        copy_text("beInbound.handleLine.internal", &[]),
+                    ))
+                    .with_raw(Some(&e.to_string()))),
                 }
             };
             spawn_handler(req, replies.clone(), running.clone(), fut, false).await

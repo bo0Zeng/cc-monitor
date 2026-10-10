@@ -287,7 +287,7 @@ async fn slot_of(
                 "unreachable",
                 copy_text(
                     "rsSftp.deploy.unameFailed",
-                    &[("machine", machine), ("e", &e)],
+                    &[("machine", machine), ("why", &e)],
                 ),
             )
         })?;

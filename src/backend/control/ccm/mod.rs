@@ -643,7 +643,7 @@ fn execute(plan: Plan) -> i32 {
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
             let req = match crate::control::launch::parse_request(&launch_args(c)) {
                 Ok(r) => r,
-                Err((code, msg)) => return die(&format!("{code}: {msg}")),
+                Err(f) => return die(&format!("{}: {}", f.code, f.message)),
             };
             match crate::control::launch::run(&req) {
                 Ok(out) if out.created => {}
@@ -657,12 +657,14 @@ fn execute(plan: Plan) -> i32 {
                     );
                     return 3;
                 }
-                Err((code, msg)) => {
+                Err(f) => {
+                    // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
+                    let msg = crate::common::said::Said::from(f.clone()).logged();
                     eprintln!(
                         "{}",
                         copy_text(
                             "beCcm.execute.launchFailed",
-                            &[("kind", &code), ("message", &msg)]
+                            &[("kind", &f.code), ("message", &msg)]
                         )
                     );
                     return 4;

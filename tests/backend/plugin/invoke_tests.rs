@@ -84,3 +84,26 @@ fn the_diagnosis_prefers_stderr_and_falls_back_to_stdout() {
 fn invalid_utf8_output_still_yields_a_line() {
     assert_eq!(first_line(&[0xff, 0xfe, b'\n', b'x']), "\u{fffd}\u{fffd}");
 }
+
+/// 起不来：句子只带原因词（未装），系统原话另带、不上句子。
+#[test]
+fn a_program_that_is_not_there_is_said_with_a_reason_word() {
+    let gone = std::env::temp_dir().join(format!("ccm-invoke-gone-{}", std::process::id()));
+    let Err(NotRun::Failed(s)) = run(&gone, &[], 5, &[]) else {
+        panic!("不存在的程序起来了");
+    };
+    assert_eq!(
+        s.said,
+        copy_text(
+            "beInvoke.notRun.failed",
+            &[
+                ("bin", &gone.display().to_string()),
+                (
+                    "why",
+                    &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+                )
+            ]
+        )
+    );
+    assert!(s.raw.is_some(), "系统原话丢了");
+}

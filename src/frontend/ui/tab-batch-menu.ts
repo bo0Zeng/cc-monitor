@@ -77,7 +77,7 @@ export function sayBatch(action: string | ((done: number, failed: number) => str
     return t ? fullTitle(t) : sid;
   };
   const n = (k: BatchOutcome["outcome"]) => outcomes.filter((o) => o.outcome === k).length;
-  // 一句结果（`已结束 11 · 失败 1`）；第二行起逐条写没做的为什么（出错的不自己走）。
+  // 一句结果（`已结束 11 · 失败 ×1`）；第二行起逐条写没做的为什么（出错的不自己走）。
   const head =
     typeof action === "function"
       ? action(n("done"), n("failed"))

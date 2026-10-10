@@ -171,7 +171,7 @@ pub fn spawn_window(
 ) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), ProcFail> {
     use crate::spawn_managed::{ConsolePolicy, Lifetime, StderrSink};
     let bin = resolve_window_bin()?;
-    let seed = encode_request(req).map_err(crashed)?;
+    let seed = encode_request(req).map_err(|s| crashed(s.logged()))?;
     // argv 上一个字都没有（理由住头注）；接 stdin（种子 ＋ 通道写）与 stdout（通道读）两根，stderr 上有就绪那一行。
     let mut cmd = std::process::Command::new(&bin);
     cmd.stdin(std::process::Stdio::piped());
@@ -228,7 +228,7 @@ impl StderrTail {
                     if is_ready_line(&line) {
                         if let Some(tx) = tx.take() {
                             // 开窗那一趟已经不等了也无妨（它当场回过错）。
-                            drop(tx.send(decode_ready(&line)));
+                            drop(tx.send(decode_ready(&line).map_err(|s| s.logged())));
                             continue;
                         }
                     }

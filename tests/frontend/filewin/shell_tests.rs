@@ -553,7 +553,7 @@ const WINDOW_NEEDLE: &str = XVFB_ORIGIN;
 /// panic 只落在那条线程的 stderr 上。
 #[cfg(not(windows))]
 fn join_verdict(
-    h: std::thread::JoinHandle<Result<(), String>>,
+    h: std::thread::JoinHandle<Result<(), copy_core::said::Said>>,
     budget_ms: u64,
 ) -> (&'static str, String) {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -562,7 +562,7 @@ fn join_verdict(
     });
     match rx.recv_timeout(std::time::Duration::from_millis(budget_ms)) {
         Ok(Ok(Ok(()))) => ("ok", String::new()),
-        Ok(Ok(Err(e))) => ("err", e),
+        Ok(Ok(Err(e))) => ("err", e.logged()),
         Ok(Err(p)) => {
             let why = p
                 .downcast_ref::<String>()
