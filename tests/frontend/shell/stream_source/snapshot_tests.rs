@@ -43,7 +43,9 @@ async fn snapshot_queue_close_wakes_waiting_pop() {
     let q = SnapshotQueue::new();
     let q2 = q.clone();
     let waiter = tokio::spawn(async move { q2.pop(None).await });
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // 单线程运行时：让一拍 ⇒ 它跑到 `pop` 里停住（没东西可取）；没停住就不是在测「唤醒」。
+    tokio::task::yield_now().await;
+    assert!(!waiter.is_finished(), "空队列上的 pop 没停住");
     q.close();
     assert!(
         tokio::time::timeout(std::time::Duration::from_secs(2), waiter)
