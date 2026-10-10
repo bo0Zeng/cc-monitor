@@ -878,7 +878,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/agents/claudecode/mcp.rs",
         "MAX_CACHE_BYTES",
         "判 MCP 状态时读一个号家目录里的那份「要登录」缓存",
-        "跳过+说清",
+        "降级+说清",
     ),
     (
         "src/backend/agents/claudecode/assets.rs",

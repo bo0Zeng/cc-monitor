@@ -86,16 +86,14 @@ pub(crate) fn read_at(
 
 /// 逐条判状态：停用压过要登录（Claude 先看停用、停用的根本不连）。
 fn judge(out: &mut McpRead, disabled: &[String], look: &McpLook) {
+    // 超上限 / 读不出 ⇒ 那一句进返回值的 `problems`，这个号的状态照旧判不出。
+    let errors = &mut out.problems;
     let caches: Vec<(Option<&str>, Value)> = look
         .homes
         .iter()
         .filter_map(|(who, home)| {
-            read_json(
-                &home.join(NEEDS_AUTH_CACHE),
-                MAX_CACHE_BYTES,
-                &mut out.problems,
-            )
-            .map(|v| (who.as_deref(), v))
+            read_json(&home.join(NEEDS_AUTH_CACHE), MAX_CACHE_BYTES, errors)
+                .map(|v| (who.as_deref(), v))
         })
         .collect();
     for e in &mut out.entries {
