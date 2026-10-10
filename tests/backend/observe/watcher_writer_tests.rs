@@ -153,13 +153,7 @@ fn a_record_being_written_is_announced_with_its_lines_and_turn_end() {
     let frames = drain(&mut r.rx);
     assert_eq!(
         brief(&frames),
-        vec![
-            "added:codex:-",
-            "line:0",
-            "line:1",
-            "line:2",
-            "turn_end:t1"
-        ]
+        vec!["added:codex:-", "line:0", "line:1", "line:2", "turn_end:t1"]
     );
     let Some(Frame::SessionAdded {
         path,
@@ -248,10 +242,7 @@ fn a_closed_record_retires_the_session_and_a_reopen_brings_it_back() {
     let w2 = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let again = brief(&drain(&mut r.rx));
-    assert_eq!(
-        again.first().map(String::as_str),
-        Some("added:codex:-")
-    );
+    assert_eq!(again.first().map(String::as_str), Some("added:codex:-"));
     gone(w);
     gone(w2);
     std::fs::remove_dir_all(&r.dir).ok();
@@ -309,4 +300,65 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     assert_eq!(got.removed, 1);
     assert_eq!(brief(&drain(&mut r.rx)), vec!["removed:Gone"]);
     std::fs::remove_dir_all(&r.dir).ok();
+}
+
+/// 造好的 Codex 样本（宣告 · 三行 · 一轮结束 · 第二轮）真走一遍 watcher，线上那几行就是这份金样（路径里的临时目录换成 `/r`）。
+/// 壳（`tests/frontend/shell/codex_stream_tests.rs`）与界面（`tests/frontend/ui/codex-turn-notify.vitest.ts`）读同一份往下走到系统通知。
+/// 重打是显式动作：`REGOLD_CODEX_STREAM=1` 跑本条写盘；不设就只比。时刻的本地写法（`timeText`）随跑的那台机器的时区，换成 `HH:MM`。
+pub(crate) const CODEX_STREAM_GOLDEN: &str = "tests/__fixtures__/codex-session-stream.golden.jsonl";
+
+#[test]
+fn the_codex_sample_walks_into_the_golden_frames() {
+    let mut r = rig("golden");
+    let w = writer(&r.record);
+    on_writers(opened(&r.record), &mut r.state, &mut r.sink);
+    let more = "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"t2\"}}\n";
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&r.record)
+        .unwrap()
+        .write_all(more.as_bytes())
+        .unwrap();
+    process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    let root = r.dir.to_string_lossy().into_owned();
+    let produced: String = drain(&mut r.rx)
+        .iter()
+        .map(|f| {
+            local_clock_out(
+                &crate::stream::wire::to_line(f)
+                    .unwrap()
+                    .replace(&root, "/r"),
+            )
+        })
+        .collect();
+    gone(w);
+    std::fs::remove_dir_all(&r.dir).ok();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(CODEX_STREAM_GOLDEN);
+    if std::env::var_os("REGOLD_CODEX_STREAM").is_some() {
+        std::fs::write(&path, &produced).expect("写金样");
+    }
+    let on_disk =
+        std::fs::read_to_string(&path).expect("读金样（没有就 REGOLD_CODEX_STREAM=1 打一份）");
+    assert_eq!(
+        on_disk, produced,
+        "Codex 样本的帧变了：形状是有意改的 ⇒ REGOLD_CODEX_STREAM=1 重打，连同壳与界面那两条一起对"
+    );
+}
+
+/// `"timeText":"17:00"` ⇒ `"timeText":"HH:MM"`（本地时区写出来的那一格，金样里不留）。
+fn local_clock_out(line: &str) -> String {
+    let key = "\"timeText\":\"";
+    let mut out = String::new();
+    let mut rest = line;
+    while let Some(i) = rest.find(key) {
+        let after = &rest[i + key.len()..];
+        let end = after.find('"').unwrap_or(after.len());
+        out.push_str(&rest[..i + key.len()]);
+        out.push_str("HH:MM");
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
 }
