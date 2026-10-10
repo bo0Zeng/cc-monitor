@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.Json
+import com.ccmonitor.mobile.core.claude.link.RecordLine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -88,6 +89,23 @@ class CodexRecordGoldenTest {
                 }
             assertTrue("单元 ${u.key} 的字不在记录里：$text", cells.contains(Json.line(text)))
         }
+    }
+
+    @Test
+    fun `流上那一路：Codex 会话的 line 帧带的记录解成同一种渲染单元`() {
+        // 金样 `codex-session-stream.golden.jsonl`：后端 watcher 跟一份造的 Codex rollout 发出来的帧（cxstream 那路钉着）。
+        val frames =
+            File(repoRoot(), "tests/__fixtures__/codex-session-stream.golden.jsonl")
+                .readLines()
+                .filter { it.isNotBlank() }
+                .mapNotNull(Json::obj)
+                .filter { it["kind"] == "line" }
+        val lines = frames.map { requireNotNull(RecordLine.of(it)) { "line 帧解不出：$it" } }
+        val records = lines.mapNotNull { it.record }
+        assertTrue("金样里得有带记录的 line 帧", records.isNotEmpty())
+        assertEquals(setOf("codex"), records.map { it["agent"] }.toSet())
+        val said = records.single()
+        assertEquals(listOf(RenderUnit.UserText(said["id"] as String, "hello", said["id"] as String)), RecordUnits.of(records))
     }
 
     private fun repoRoot(): File =
