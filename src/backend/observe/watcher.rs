@@ -1,6 +1,7 @@
-//! Phase-0 backend watcher: tails `<claude_dir>/projects/**.jsonl` plus the
-//! `<claude_dir>/sessions/<PID>.json` files and turns filesystem activity into
-//! [`Frame`]s on a bounded channel.
+//! Phase-0 backend watcher: tails every followed agent's session records (`agents::followed`: the record-tree
+//! agent's `projects/**.jsonl` with its `sessions/<PID>.json` pidfiles, plus the agents whose sessions are alive
+//! while a process holds their record open for writing — 「开着即活」那一路) and turns filesystem activity into
+//! [`Frame`]s on a bounded channel. 各家的差别只在适配层（记录住哪 · 怎么切行 · 怎么判一轮 · 靠什么判活）。
 //!
 //! # Architecture (the §5.4 slow-consumer guard)
 //!
@@ -134,6 +135,8 @@ enum WatchEvent {
     /// 发它。没有它的话，删掉 ticker 之后 reader 线程会一直阻塞在 `recv()`
     ///（进程退出时才随之消亡——不是泄漏，但「没人听就停读」这条性质会丢）。
     Shutdown,
+    /// 「开着即活」那几家的记录根下，一批文件被新建 / 打开 / 写完关闭（`platform::writers::watch_opens` 交的一批）。
+    Writers(crate::platform::writers::OpenBatch),
     /// 用户按了「重新对齐」：与起步同一套（耳朵重挂 · pidfile 对表 · 重探 tmux · 账号清单），
     /// 做完把差异回给 `done`。`only` = 只对这一个 sid（关卡 2「对齐后重试」：重验 ＋ 重打）。
     Resync {
@@ -949,12 +952,23 @@ fn watch_loop(
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
     let mut state = ReaderState::new(projects.clone(), wants.with_bg, wants.tail_only);
+    // 别的那几家（记录不住记录树、判活认写者）：一并跟上。
+    for f in crate::agents::followed(&agent_home) {
+        state.follow(&f);
+    }
+    // 「开着即活」那几家的记录根：行由 debouncer 那道耳朵读（与记录树同一条路），谁在写由 `writers` 那道耳朵报。
+    let writer_roots: Vec<PathBuf> = state
+        .roots
+        .iter()
+        .filter(|r| r.by_writer)
+        .map(|r| r.root.clone())
+        .collect();
     // 注入「客户端索要了 pid / 原文」这两位（不进 `new` 的签名，理由在那两个字段的头注里）。
     state.with_pid = wants.with_pid;
     state.with_raw = wants.with_raw;
     state.launch_home = crate::platform::paths::data_home();
     // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
-    state.runs.book = book;
+    state.set_book(book);
     // All frames go out through a FrameSink: a bounded-channel sender that counts
     // frames dropped on a full channel and emits a single `Overflow` signal once
     // the channel drains enough to accept it (#32). Never blocks this reader.
@@ -1009,6 +1023,21 @@ fn watch_loop(
         if let Some(ear) = profiles_ear.as_mut() {
             ear.arm(&mut debouncer);
         }
+        // 「开着即活」那几家：记录根挂上 debouncer（读行；根还不在 ⇒ 等写者那道耳朵报它出现时再挂）＋ 写者那道耳朵。
+        let mut writer_watch: Vec<(PathBuf, bool)> =
+            writer_roots.iter().map(|r| (r.clone(), false)).collect();
+        for (root, watched) in &mut writer_watch {
+            rewatch_dir(&mut debouncer, root, watched, RecursiveMode::Recursive);
+        }
+        let writer_ears: Vec<crate::platform::writers::OpenEar> = writer_roots
+            .iter()
+            .filter_map(|r| {
+                let tx = events_tx.clone();
+                crate::platform::writers::watch_opens(r, move |b| {
+                    tx.send(WatchEvent::Writers(b)).is_ok()
+                })
+            })
+            .collect();
         arm_ears(
             &mut debouncer,
             &mut ears,
@@ -1022,11 +1051,18 @@ fn watch_loop(
             sock_dir_watched,
             accounts_ear,
             profiles_ear,
+            (writer_watch, writer_ears),
         ))
     });
     // --- Phase 2: live watch. ---
-    let Some((mut debouncer, mut ears, mut sock_dir_watched, mut accounts_ear, mut profiles_ear)) =
-        armed
+    let Some((
+        mut debouncer,
+        mut ears,
+        mut sock_dir_watched,
+        mut accounts_ear,
+        mut profiles_ear,
+        (mut writer_watch, _writer_ears),
+    )) = armed
     else {
         return;
     };
@@ -1053,12 +1089,12 @@ fn watch_loop(
     // 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
     loop {
         // 每一拍（事件之后 · 到点）都按此刻把全部会话的「久未动静」判一遍，表变了的才发帧。
-        for f in state.runs.due_frames(std::time::SystemTime::now()) {
+        for f in state.book.due_frames(std::time::SystemTime::now()) {
             sink.send(f);
         }
         let event = match crate::observe::runs::next_event(
             &events_rx,
-            state.runs.next_due(),
+            state.book.next_due(),
             std::time::SystemTime::now(),
         ) {
             Ok(Some(e)) => e,
@@ -1096,9 +1132,7 @@ fn watch_loop(
                 }
                 // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
                 for ev in &events {
-                    if is_jsonl(&ev.path) {
-                        note_jsonl(&mut state, &ev.path);
-                    }
+                    note_jsonl(&mut state, &ev.path);
                 }
                 // 子运行记录动过的会话（批内合并：一批里同一个会话的运行表只发一帧）。
                 let mut runs_touched = std::collections::BTreeSet::new();
@@ -1132,16 +1166,16 @@ fn watch_loop(
                         continue;
                     }
                     // 子运行的记录（适配层说住哪）：读新行进运行簿、表变了发一帧；不发 `line`（它们不属于主时间线）。
-                    let child = if p.starts_with(&state.projects) {
-                        state.runs.on_path(p)
-                    } else {
-                        None
-                    };
+                    let child = state
+                        .roots
+                        .iter_mut()
+                        .find(|r| p.starts_with(&r.root))
+                        .and_then(|r| r.runs.on_path(p));
                     if let Some((sid, changed)) = child {
                         if changed {
                             runs_touched.insert(sid);
                         }
-                    } else if is_jsonl(p) {
+                    } else if state.root_of(p).is_some() {
                         // process_jsonl skips sids not in active_sids.
                         process_jsonl(p, &mut state, &mut sink);
                     } else if is_session_json(p) {
@@ -1165,7 +1199,7 @@ fn watch_loop(
                     }
                 }
                 for sid in runs_touched {
-                    sink.send(state.runs.frame(&sid));
+                    sink.send(state.runs_frame(&sid));
                 }
                 // ★ S0：一批事件处理完再决定探不探（批内多次漂移只探一次；`tmux_inflight`
                 // 再兜一层去重）。**注意这只让快照更新鲜，不是本 bug 的修复** ——
@@ -1191,6 +1225,13 @@ fn watch_loop(
                 }
             }
             WatchEvent::Notify(Err(errs)) => tracing::warn!("debouncer failed: {errs:?}"),
+            // 「开着即活」那几家：根刚出现 ⇒ 挂上读行那道耳朵；这一批候选扫一趟进程表对上账。
+            WatchEvent::Writers(batch) => {
+                for (root, watched) in writer_watch.iter_mut().filter(|(_, w)| !*w) {
+                    rewatch_dir(&mut debouncer, root, watched, RecursiveMode::Recursive);
+                }
+                on_writers(batch, &mut state, &mut sink);
+            }
             // P2：pidfd 醒了 = 该 pidfile 当时追踪的**那个进程实例**已退出。取代原先
             // 每 2s 遍历 `state.sessions` 调 `session_alive` 的判活扫描。
             // **pid 比对挡陈旧唤醒**（同路径已换 pid / 已被移除）⇒ 幂等。
@@ -1339,10 +1380,6 @@ struct ReaderState {
     /// 「sid → 它的记录文件」那张表：第一次宣告会话时整棵 `projects/` 走一遍建起来，之后跟着记录文件的事件改
     /// （[`note_jsonl`]）；整机重对表时作废（下一次宣告再建）。`None` = 还没建。
     sid_files: Option<HashMap<String, HashSet<PathBuf>>>,
-    /// `<claude_dir>/projects` — used to rescan a session's jsonl when it becomes
-    /// active (so its existing lines stream the moment the session is announced;
-    /// monitor 那一侧从前的「会话出现就强制重扫」随它自己的读者 CF1 删了，今天只剩这一处).
-    projects: PathBuf,
     /// Per-file consumed byte offset, keyed by [`path_key`]. Reset to 0 on
     /// truncation; the seq lives separately in [`Self::seqs`] and is restarted
     /// together with it by [`process_jsonl`] (seq = 当前文件里的行号).
@@ -1393,8 +1430,12 @@ struct ReaderState {
     with_pid: bool,
     /// `--with-raw`：客户端显式索要 `line` 上的 `raw`（那一行原文）。默认 false，注入方式同 `with_pid`。
     with_raw: bool,
-    /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
-    runs: crate::observe::runs::RunTrack,
+    /// 这条流跟的那几家（[`Root`]）：家目录记录树那一家在 [`ReaderState::new`] 里就有；别的由 [`ReaderState::follow`] 加。
+    roots: Vec<Root>,
+    /// pidfile 那一路宣告的会话是哪一家的（家目录记录树那一家；没有 ⇒ 空串）。
+    pidfile_kind: &'static str,
+    /// 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本，[`ReaderState::set_book`]；夹具用自带的一本）。各家的子运行跟踪共用它。
+    book: std::sync::Arc<crate::observe::runs::RunBook>,
     /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
     branches: HashMap<PathBuf, crate::agents::mainline::Chain>,
     /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
@@ -1406,9 +1447,91 @@ struct ReaderState {
 
 impl ReaderState {
     fn new(projects: PathBuf, with_bg: bool, tail_only: bool) -> Self {
+        let mut st = Self::bare(with_bg, tail_only);
+        // 家目录记录树那一家（判活认 pidfile）：根就是 `projects`。
+        if let Some(kind) = crate::agents::record_tree_kind() {
+            if let Some(face) = crate::agents::record_face(kind) {
+                st.pidfile_kind = kind;
+                st.add_root(kind, projects, face, false);
+            }
+        }
+        st
+    }
+
+    /// 跟上一家（[`crate::agents::followed`] 里的一条）；已在跟的那一家不重加。
+    fn follow(&mut self, f: &crate::agents::Followed) {
+        if self.roots.iter().any(|r| r.kind == f.kind) {
+            return;
+        }
+        let by_writer = f.live == crate::agents::LiveBy::Writer;
+        // 写者那一路认的路径是进程表里读出来的（规范化过）：根也照同一个规范化（`platform::writers::absolute`）。
+        let root = crate::platform::writers::absolute(&f.root);
+        self.add_root(f.kind, root, f.face, by_writer);
+    }
+
+    fn add_root(
+        &mut self,
+        kind: &'static str,
+        root: PathBuf,
+        face: crate::agents::RecordFace,
+        by_writer: bool,
+    ) {
+        let runs = crate::observe::runs::RunTrack::new(
+            crate::agents::RunFaces::of(&face),
+            self.book.clone(),
+        );
+        self.roots.push(Root {
+            kind,
+            root,
+            face,
+            by_writer,
+            runs,
+        });
+    }
+
+    /// 换上这条连接的运行簿（各家的子运行跟踪一起换）。
+    fn set_book(&mut self, book: std::sync::Arc<crate::observe::runs::RunBook>) {
+        for r in &mut self.roots {
+            r.runs.book = book.clone();
+        }
+        self.book = book;
+    }
+
+    /// 这份路径是哪一家的一份会话记录（落在它的根下、形态也对）。
+    fn root_of(&self, p: &Path) -> Option<usize> {
+        self.roots
+            .iter()
+            .position(|r| p.starts_with(&r.root) && (r.face.is_session_file)(p))
+    }
+
+    /// 这份会话记录的 sid（那一家的文件命名）。
+    fn sid_of(&self, p: &Path) -> Option<String> {
+        let r = &self.roots[self.root_of(p)?];
+        (r.face.sid)(p)
+    }
+
+    /// 这份路径是不是某一家「开着即活」的会话记录。
+    fn writer_record(&self, p: &Path) -> bool {
+        self.root_of(p).is_some_and(|i| self.roots[i].by_writer)
+    }
+
+    /// 这个会话此刻的运行表那一帧。
+    fn runs_frame(&self, sid: &str) -> Frame {
+        self.book.frame(sid)
+    }
+
+    /// 会话退休：还算在跑的子运行改成状态不明（表变了就回那一帧），各家的子运行跟踪一起忘掉它。
+    fn retire_runs(&mut self, sid: &str) -> Option<Frame> {
+        let f = self.book.retire(sid);
+        for r in &mut self.roots {
+            r.runs.forget(sid);
+        }
+        f
+    }
+
+    fn bare(with_bg: bool, tail_only: bool) -> Self {
         ReaderState {
             sid_files: None,
-            projects,
             offsets: HashMap::new(),
             tails: HashMap::new(),
             gone: HashSet::new(),
@@ -1421,15 +1544,24 @@ impl ReaderState {
             tail_only,
             with_pid: false,
             with_raw: false,
-            runs: crate::observe::runs::RunTrack::new(
-                crate::agents::run_faces(stream_kind()),
-                std::sync::Arc::default(),
-            ),
+            roots: Vec::new(),
+            pidfile_kind: "",
+            book: std::sync::Arc::default(),
             launch_home: None,
             branches: HashMap::new(),
             typed: HashMap::new(),
         }
     }
+}
+
+/// 流跟的一家在这条流上的那一份（[`crate::agents::Followed`]）：记录根 · 解释面 · 判活认不认写者 · 它的子运行跟踪。
+struct Root {
+    kind: &'static str,
+    root: PathBuf,
+    face: crate::agents::RecordFace,
+    /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::Writer`]）。
+    by_writer: bool,
+    runs: crate::observe::runs::RunTrack,
 }
 
 /// An ACTIVE session tracked by the reader, keyed in [`ReaderState::sessions`]
@@ -1855,7 +1987,7 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
 
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（补读计数用）。
 fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> usize {
-    let Some(session_id) = file_stem_str(path) else {
+    let Some(session_id) = state.sid_of(path) else {
         return 0;
     };
     // Active-session filter: only stream sessions whose PID is alive.
@@ -1928,19 +2060,27 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
         });
     }
     let n = lines.len();
-    let mut runs_changed = state.runs.adopt(&session_id, path);
+    let mut runs_changed = adopt_runs(state, &session_id, path);
     for line in lines {
         let (r, b) = send_line(&session_id, &path_str, line, state, sink);
         runs_changed |= r;
         branch_changed |= b;
     }
     if runs_changed {
-        sink.send(state.runs.frame(&session_id));
+        sink.send(state.runs_frame(&session_id));
     }
     if branch_changed {
         sink.send(branch_frame(state, &session_id, path));
     }
     n
+}
+
+/// 这份主记录交给它那一家的子运行跟踪收（宣告 / 每次读到它时都说）。回：运行表变没变。
+fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
+    match state.root_of(path) {
+        Some(i) => state.roots[i].runs.adopt(sid, path),
+        None => false,
+    }
 }
 
 /// **流只发要看的会话**：这条流报了它此刻在看 `sids`（整份换）。
@@ -1969,11 +2109,11 @@ fn watch_sessions(
         let mut mine: Vec<PathBuf> = state
             .offsets
             .keys()
-            .filter(|k| file_stem_str(k).as_deref() == Some(sid.as_str()))
+            .filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str()))
             .cloned()
             .collect();
         mine.sort();
-        sink.send(state.runs.frame(&sid));
+        sink.send(state.runs_frame(&sid));
         for p in &mine {
             sink.send(branch_frame(state, &sid, p));
             from.push(crate::stream::wire::WatchFrom {
@@ -2001,18 +2141,14 @@ fn branch_frame(state: &ReaderState, sid: &str, path: &Path) -> Frame {
 
 /// 一行喂进这份记录的链索引（这一家有链才喂）；回：主线外清单变没变。
 fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) -> bool {
-    let Some(fact) = crate::agents::record_face(stream_kind())
-        .and_then(|f| f.chain)
+    let Some(fact) = state
+        .root_of(path)
+        .and_then(|i| state.roots[i].face.chain)
         .and_then(|c| c(raw))
     else {
         return false;
     };
     state.branches.entry(path_key(path)).or_default().push(fact)
-}
-
-/// 流式 watcher 跟的那一家：今天只跟记录树那一家（`agents::record_tree_kind`）；Codex 的发现与判活随实时流那一路接。
-fn stream_kind() -> &'static str {
-    crate::agents::record_tree_kind().unwrap_or_default()
 }
 
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
@@ -2027,10 +2163,13 @@ fn send_line(
     sink: &mut FrameSink,
 ) -> (bool, bool) {
     let branch_changed = feed_chain(state, Path::new(path_str), &line.raw);
-    let face = crate::agents::record_face(stream_kind());
+    let root = state.root_of(Path::new(path_str));
+    let face = root.map(|i| state.roots[i].face);
     let translated = face.and_then(|f| (f.parse)(&line.raw, line.start).ok().flatten());
     // §2.1 不变量并存：Line 逐行照发**每一条**；turn-end 是额外的边沿信号，不替代、不过滤 Line。
-    let rec = state.runs.main_record(session_id, &line.raw);
+    let rec = root
+        .map(|i| state.roots[i].runs.main_record(session_id, &line.raw))
+        .unwrap_or_default();
     // 子运行的记录（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束 ⇒ 不报轮次边沿。
     let turn_uuid = face
         .and_then(|f| f.turn_end)
@@ -2086,7 +2225,7 @@ fn catch_up_session(
     let mine: Vec<PathBuf> = state
         .offsets
         .keys()
-        .filter(|k| file_stem_str(k).as_deref() == Some(sid))
+        .filter(|k| state.sid_of(k).as_deref() == Some(sid))
         .cloned()
         .collect();
     let mut n = 0;
@@ -2130,7 +2269,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
     };
     let (runs_changed, branch_changed) = send_line(sid, &path.to_string_lossy(), line, state, sink);
     if runs_changed {
-        sink.send(state.runs.frame(sid));
+        sink.send(state.runs_frame(sid));
     }
     if branch_changed {
         sink.send(branch_frame(state, sid, path));
@@ -2334,6 +2473,58 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             return false;
         }
     };
+    let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
+    announce(
+        key,
+        Announce {
+            pid,
+            start,
+            sid,
+            kind: state.pidfile_kind,
+            background,
+            // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
+            //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
+            attachable: meta
+                .as_ref()
+                .and_then(|v| v.get("attachable"))
+                .and_then(|x| x.as_bool()),
+            cwd: meta_str("cwd"),
+            name: meta_str("name"),
+            status: meta_str("status"),
+            waiting_for: meta_str("waitingFor"),
+            activity,
+            // pidfile 是判活的权威 ⇒ 不标。
+            liveness_confidence: None,
+        },
+        state,
+        sink,
+    )
+}
+
+/// 一条会话的宣告要的事实（判活那一路各自读出来的；之后的事都走 [`announce`] 这一份）。
+struct Announce {
+    pid: u32,
+    /// 那个进程的启动时刻（挂 pidfd 看守时挡 PID 复用）。
+    start: Option<u64>,
+    sid: String,
+    /// 这条会话是哪一家的（线上 `agent_kind`）。
+    kind: &'static str,
+    background: bool,
+    attachable: Option<bool>,
+    cwd: Option<String>,
+    name: Option<String>,
+    status: Option<String>,
+    waiting_for: Option<String>,
+    activity: Option<crate::agents::SessionActivity>,
+    liveness_confidence: Option<String>,
+}
+
+/// 记一条活会话 ＋ 宣告它（判活那一路已经认定它活着）：记账 · 打标 · 挂 pidfd 看守 · 找它的记录 · `session_added` · 已有的行 / 运行表 / 主线外清单。
+/// `key` 是判活那一路认它的那份文件（pidfile，或开着写的那份记录）。同一个 sid 已经宣告过 ⇒ 只记账、打标、挂看守。回真 = 这一次真往 tmux 里写了身份标签。
+fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut FrameSink) -> bool {
+    let Announce {
+        pid, start, sid, ..
+    } = a;
     // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
     let key_for_watch = key.clone();
     state.sessions.insert(
@@ -2341,8 +2532,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         SessionEntry {
             pid,
             sid: sid.clone(),
-            status: meta_str("status"),
-            waiting_for: meta_str("waitingFor"),
+            status: a.status,
+            waiting_for: a.waiting_for.clone(),
         },
     );
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
@@ -2357,12 +2548,11 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     let (container, wrote) = tag_identity(pid, &sid);
     adopt_launch_note(state, pid, &sid);
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
-    // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
     if announced {
         return wrote;
     }
-    // Batch8-F25：先定位该 sid 的 jsonl（帧要带 path 供 monitor 旁路快照；
+    // Batch8-F25：先定位该 sid 的记录（帧要带 path 供 monitor 旁路快照；
     // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
     // 此时无历史可拉，后续行天然从 tail 全量到达）。
     let jsonls = sid_jsonls(state, &sid);
@@ -2370,8 +2560,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // - tail-only：**先 prime**（推进 cursor/seq 到当前完整行数 L，零行帧）——
     //   帧要带 first 文件的 L 供 monitor 校验快照完整性（审计 D-I2），prime
     //   无行帧故"帧先于行"契约不受影响；
-    // - 全量（默认，旧 monitor 兼容）：帧先行，再照旧全量推流（镜像本地
-    //   session-added 触发的 force-rescan）。
+    // - 全量（默认）：帧先行，再照旧全量推流。
     let mut first_lines: Option<u64> = None;
     if state.tail_only {
         for (i, p) in jsonls.iter().enumerate() {
@@ -2381,36 +2570,28 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             }
         }
     }
-    let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
-    let (activity_text, activity_tone) = crate::stream::wire::activity_cells(activity);
+    let (activity_text, activity_tone) = crate::stream::wire::activity_cells(a.activity);
     sink.send(Frame::SessionAdded {
         sid: sid.clone(),
-        // 本 producer = Claude pidfile 发现路 → agent_kind/liveness_confidence 省略（缺=claude/authoritative）。
-        // DG1 Codex 发现路才发 agent_kind="codex"+liveness_confidence="heuristic"。
-        agent_kind: None,
-        liveness_confidence: None,
-        background,
-        // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
-        //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
-        attachable: meta
-            .as_ref()
-            .and_then(|v| v.get("attachable"))
-            .and_then(|x| x.as_bool()),
-        cwd: meta_str("cwd"),
+        agent_kind: a.kind.to_string(),
+        liveness_confidence: a.liveness_confidence,
+        background: a.background,
+        attachable: a.attachable,
+        cwd: a.cwd.clone(),
         project_dir: jsonls
             .first()
             .and_then(|p| crate::agents::project_dir_of(p))
-            .or_else(|| meta_str("cwd")),
-        name: meta_str("name"),
+            .or(a.cwd),
+        name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
-        activity,
+        activity: a.activity,
         activity_text,
         activity_tone,
-        waiting_for: meta_str("waitingFor"),
+        waiting_for: a.waiting_for,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
-        // 只给索要了的客户端（见 `wire::Frame::SessionAdded::pid`）。pid 与 verdict 核过的是同一个进程。
+        // 只给索要了的客户端（见 `wire::Frame::SessionAdded::pid`）。pid 与判活那一路核过的是同一个进程。
         pid: state.with_pid.then_some(pid),
     });
     if !state.tail_only {
@@ -2421,10 +2602,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
     let mut runs_changed = false;
     for p in &jsonls {
-        runs_changed |= state.runs.adopt(&sid, p);
+        runs_changed |= adopt_runs(state, &sid, p);
     }
-    if runs_changed || state.runs.has_runs(&sid) {
-        sink.send(state.runs.frame(&sid));
+    if runs_changed || state.book.has_runs(&sid) {
+        sink.send(state.runs_frame(&sid));
     }
     // 冷接（只推游标）时历史里已经有主线外的 ⇒ 宣告之后整份发一次（之后变了才发；全量重放那一路读的时候已经说过）。
     for p in jsonls.iter().filter(|_| state.tail_only) {
@@ -2437,6 +2618,153 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         }
     }
     wrote
+}
+
+// ============ 「开着即活」那一路：没有 pidfile 的那几家 ============
+//
+// 有进程开着一份会话记录写 ⇒ 这条会话活着（适配层 `RecordFace::held_open` 声明这一家是这样）。认写者看打开方式（`platform::writers`），
+// 不看进程名。扫进程表只在三种时候：记录根下新建 / 打开了一份还没认的记录（耳朵交的一批，一批一趟）· 起步与对齐（整树一趟）·
+// 内核事件队列溢出过（整树一趟）。摘除：写的那个进程退了（pidfd，与 pidfile 那一路同一个 `PidDied`）· 那份记录被写完关闭、
+// 复核已没人开着写。本平台认不出写者（`writers_of` 答 `None`）⇒ 什么都不宣告、什么都不摘（判不了，不冒充判过）。
+
+/// 耳朵交的一批：没认的打开了 ⇒ 候选；认了的被写完关闭 ⇒ 复核。一批只扫一趟进程表。溢出过 ⇒ 整树一趟。
+fn on_writers(
+    batch: crate::platform::writers::OpenBatch,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    if batch.overflowed {
+        settle_all_writers(state, sink, None);
+        return;
+    }
+    let tracked = |st: &ReaderState, p: &Path| st.sessions.contains_key(&path_key(p));
+    let mut cands: Vec<PathBuf> = batch
+        .opened
+        .into_iter()
+        .filter(|p| state.writer_record(p) && !tracked(state, p))
+        .collect();
+    cands.extend(
+        batch
+            .closed
+            .into_iter()
+            .filter(|p| state.writer_record(p) && tracked(state, p)),
+    );
+    if cands.is_empty() {
+        return;
+    }
+    cands.sort();
+    cands.dedup();
+    let wanted: HashSet<PathBuf> = cands.iter().cloned().collect();
+    let Some(found) = crate::platform::writers::writers_of(&|p| wanted.contains(p)) else {
+        return;
+    };
+    for p in cands {
+        let w = found.get(&p).and_then(|v| v.first().copied());
+        settle_writer(&p, w, state, sink);
+    }
+}
+
+/// 整树一趟（起步 · 对齐 · 溢出）：各家「开着即活」的记录根下此刻被开着写的 ∪ 在跟的，逐份对上。`only` = 只对这一个 sid。
+fn settle_all_writers(state: &mut ReaderState, sink: &mut FrameSink, only: Option<&str>) {
+    let roots: Vec<PathBuf> = state
+        .roots
+        .iter()
+        .filter(|r| r.by_writer)
+        .map(|r| r.root.clone())
+        .collect();
+    if roots.is_empty() {
+        return;
+    }
+    let Some(found) =
+        crate::platform::writers::writers_of(&|p| roots.iter().any(|r| p.starts_with(r)))
+    else {
+        return;
+    };
+    let mut paths: Vec<PathBuf> = found
+        .keys()
+        .filter(|p| state.writer_record(p))
+        .cloned()
+        .collect();
+    paths.extend(
+        state
+            .sessions
+            .keys()
+            .filter(|k| state.writer_record(k))
+            .cloned(),
+    );
+    paths.sort();
+    paths.dedup();
+    for p in paths {
+        if only.is_some_and(|o| state.sid_of(&p).as_deref() != Some(o)) {
+            continue;
+        }
+        let w = found.get(&p).and_then(|v| v.first().copied());
+        settle_writer(&p, w, state, sink);
+    }
+}
+
+/// 一份记录此刻的写者（`None` ＝ 没人开着它写）对上账：没认 ＋ 有写者 ⇒ 宣告；认了 ＋ 没写者 ⇒ 摘；认了 ＋ 换了个写者 ⇒ 改看那一个。
+fn settle_writer(
+    p: &Path,
+    w: Option<crate::platform::writers::Writer>,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    let key = path_key(p);
+    match (state.sessions.get(&key).map(|e| e.pid), w) {
+        (None, Some(w)) => {
+            announce_writer(p, w, state, sink);
+        }
+        (Some(_), None) => process_session_removed(p, state, sink),
+        (Some(pid), Some(w)) if pid != w.pid => {
+            if let Some(e) = state.sessions.get_mut(&key) {
+                e.pid = w.pid;
+            }
+            arm_pid_watcher(&key, w.pid, w.start, state);
+        }
+        _ => {}
+    }
+}
+
+/// 一份有人开着写的记录 ⇒ 宣告它那条会话（工作目录是这台家里不出会话的那个目录 ⇒ 不成 tab，与 pidfile 那一路同一处判）。
+fn announce_writer(
+    p: &Path,
+    w: crate::platform::writers::Writer,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) -> bool {
+    let Some(i) = state.root_of(p) else {
+        return false;
+    };
+    let (kind, face) = (state.roots[i].kind, state.roots[i].face);
+    let Some(sid) = (face.sid)(p) else {
+        return false;
+    };
+    let dir = face.project_dir.and_then(|f| f(p));
+    if dir.as_deref().is_some_and(super::history_query::hidden_cwd) {
+        return false;
+    }
+    announce(
+        path_key(p),
+        Announce {
+            pid: w.pid,
+            start: w.start,
+            sid,
+            kind,
+            background: false,
+            attachable: None,
+            cwd: dir,
+            name: None,
+            status: None,
+            waiting_for: None,
+            activity: None,
+            // 「这个进程开着这份记录写」是系统给的事实，再挂上 pidfd 看守 ⇒ 与 pidfile 那一路同一档（不标）。
+            // 不确定的那一头是漏认（这一家要是中途关了记录，我们会当它走了），不是把死的认成活的。
+            liveness_confidence: None,
+        },
+        state,
+        sink,
+    )
 }
 
 /// 「这条会话用哪个号起的」：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt`）。
@@ -2574,6 +2902,8 @@ fn reconcile_sessions(
             }
         }
     }
+    // 没有 pidfile 的那几家：整树一趟（起步与对齐同一个）。
+    settle_all_writers(state, sink, only);
     let after = &state.active_sids;
     Reconciled {
         added: after.difference(&before).count(),
@@ -2610,51 +2940,52 @@ fn retire_sid_if_unreferenced(
     }
     catch_up_session(sid, true, state, sink); // 写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
-    if let Some(f) = state.runs.retire(sid) {
+    if let Some(f) = state.retire_runs(sid) {
         sink.send(f);
     }
-    state.runs.forget(sid);
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
         cause,
     });
 }
 
-/// Walk `projects/` for this session's jsonl (`<sid>.jsonl`, non-subagent) and
-/// stream its already-present lines. Called when a session becomes active so an
-/// already-running session snapshots on session-added (mirrors local force-rescan).
-fn find_sid_jsonls(projects: &Path, sid: &str) -> Vec<std::path::PathBuf> {
-    if !projects.is_dir() {
-        return Vec::new();
-    }
-    let mut v: Vec<std::path::PathBuf> = WalkDir::new(projects)
-        .into_iter()
-        .filter_map(Result::ok)
-        .map(|e| e.into_path())
-        .filter(|p| is_jsonl(p) && p.file_stem().and_then(|s| s.to_str()) == Some(sid))
+/// 每一家的记录根走一遍，找这个 sid 的记录文件（宣告会话时把它已有的那几行带上）。
+/// 同 sid 多份（项目目录改名后 resume）时修改时刻新的在前（帧的 `path` / `lines` 取第一份，快照拉错陈文件 = 当前历史全缺）。
+fn find_sid_jsonls(state: &ReaderState, sid: &str) -> Vec<std::path::PathBuf> {
+    let mut v: Vec<std::path::PathBuf> = record_files(state)
+        .filter(|p| state.sid_of(p).as_deref() == Some(sid))
         .collect();
-    // Batch8 审计（缝合-R4）：同 sid 多 jsonl（项目目录改名后 resume）时
-    // WalkDir 顺序未定义——按 mtime 降序让 first = 当前活跃文件（帧的 path/
-    // lines 取 first，快照拉错陈文件 = 当前历史全缺）。
     v.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
     v
 }
 
-/// 宣告会话时找它的记录文件：先查 [`ReaderState::sid_files`]（没建 ⇒ 整棵走一遍建起来）；表里没有这个 sid ⇒ 整棵走一遍
+/// 每一家记录根下此刻的全部会话记录文件。
+fn record_files(state: &ReaderState) -> impl Iterator<Item = PathBuf> + '_ {
+    state
+        .roots
+        .iter()
+        .filter(|r| r.root.is_dir())
+        .flat_map(|r| WalkDir::new(&r.root).into_iter().filter_map(Result::ok))
+        .map(|e| e.into_path())
+        .filter(|p| state.root_of(p).is_some())
+}
+
+/// 宣告会话时找它的记录文件：先查 [`ReaderState::sid_files`]（没建 ⇒ 各家的根整棵走一遍建起来）；表里没有这个 sid ⇒ 再走一遍
 /// （会话刚起、记录文件的事件还没到）。交出来的同 [`find_sid_jsonls`]：此刻还在的那几份，修改时刻新的在前。
 fn sid_jsonls(state: &mut ReaderState, sid: &str) -> Vec<std::path::PathBuf> {
-    let projects = state.projects.clone();
-    let table = state
+    if state.sid_files.is_none() {
+        state.sid_files = Some(walk_sid_files(state));
+    }
+    let mut v: Vec<std::path::PathBuf> = state
         .sid_files
-        .get_or_insert_with(|| walk_sid_files(&projects));
-    let mut v: Vec<std::path::PathBuf> = table
-        .get(sid)
+        .as_ref()
+        .and_then(|t| t.get(sid))
         .map(|set| set.iter().filter(|p| p.is_file()).cloned().collect())
         .unwrap_or_default();
     if v.is_empty() {
-        let found = find_sid_jsonls(&projects, sid);
-        if !found.is_empty() {
-            table.insert(sid.to_string(), found.iter().cloned().collect());
+        let found = find_sid_jsonls(state, sid);
+        if let (false, Some(t)) = (found.is_empty(), state.sid_files.as_mut()) {
+            t.insert(sid.to_string(), found.iter().cloned().collect());
         }
         return found;
     }
@@ -2662,28 +2993,23 @@ fn sid_jsonls(state: &mut ReaderState, sid: &str) -> Vec<std::path::PathBuf> {
     v
 }
 
-/// 整棵 `projects/` 走一遍：每个 sid 的记录文件。
-fn walk_sid_files(projects: &Path) -> HashMap<String, HashSet<PathBuf>> {
+/// 各家的根整棵走一遍：每个 sid 的记录文件。
+fn walk_sid_files(state: &ReaderState) -> HashMap<String, HashSet<PathBuf>> {
     let mut t: HashMap<String, HashSet<PathBuf>> = HashMap::new();
-    if !projects.is_dir() {
-        return t;
-    }
-    for p in WalkDir::new(projects)
-        .into_iter()
-        .filter_map(Result::ok)
-        .map(|e| e.into_path())
-        .filter(|p| is_jsonl(p))
-    {
-        if let Some(sid) = file_stem_str(&p) {
+    for p in record_files(state) {
+        if let Some(sid) = state.sid_of(&p) {
             t.entry(sid).or_default().insert(p);
         }
     }
     t
 }
 
-/// 一份记录文件动了（事件）⇒ 表跟上：在 ⇒ 记下；不在 ⇒ 摘掉。表还没建 ⇒ 不管（建的时候整棵走）。
+/// 一份路径动了（事件）：是某一家的会话记录 ⇒ 表跟上（在 ⇒ 记下；不在 ⇒ 摘掉）。表还没建 ⇒ 不管（建的时候整棵走）。
 fn note_jsonl(state: &mut ReaderState, p: &Path) {
-    let (Some(table), Some(sid)) = (state.sid_files.as_mut(), file_stem_str(p)) else {
+    let Some(sid) = state.sid_of(p) else {
+        return;
+    };
+    let Some(table) = state.sid_files.as_mut() else {
         return;
     };
     if p.exists() {
@@ -2702,9 +3028,11 @@ fn note_jsonl(state: &mut ReaderState, p: &Path) {
 /// 与 monitor 快照侧的 0..L'-1 编号同处一个行号空间，重叠区被 (sid,seq)
 /// 去重精确吸收（-batch8 §2）。
 fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
-    let Some(session_id) = file_stem_str(path) else {
+    let Some(session_id) = state.sid_of(path) else {
         return 0;
     };
+    let root = state.root_of(path);
+    let chain = root.and_then(|i| state.roots[i].face.chain);
     if !state.active_sids.contains(&session_id) {
         return 0;
     }
@@ -2751,9 +3079,11 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
         n_lines += n;
         cursor = next;
         // 这一块里派出 / 收场过的子运行补进运行簿（宣告之后那一帧运行表带出去）。
-        state.runs.prime(&session_id, &block);
+        if let Some(i) = root {
+            state.roots[i].runs.prime(&session_id, &block);
+        }
         // 链事实补进链索引（宣告之后那一帧主线外清单带出去）。
-        if let Some(chain) = crate::agents::record_face(stream_kind()).and_then(|f| f.chain) {
+        if let Some(chain) = chain {
             let c = state.branches.entry(key.clone()).or_default();
             for line in block.split(|&b| b == b'\n') {
                 if let Some(f) = std::str::from_utf8(line).ok().and_then(chain) {
@@ -3214,11 +3544,6 @@ impl FrameSink {
     }
 }
 
-/// `true` for a regular `*.jsonl` file.
-fn is_jsonl(p: &Path) -> bool {
-    crate::agents::is_tree_session_file(p)
-}
-
 /// `true` for a `sessions/<PID>.json` file. We only ever feed this paths under
 /// the sessions dir, so an extension check suffices.
 fn is_session_json(p: &Path) -> bool {
@@ -3240,3 +3565,7 @@ mod lines_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_watch_tests.rs"]
 mod watch_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../../../tests/backend/observe/watcher_writer_tests.rs"]
+mod writer_tests;

@@ -600,6 +600,29 @@ impl RunBook {
         self.with(|m| m.remove(sid));
     }
 
+    /// 会话退休：还算在跑的子运行改成状态不明，表变了就回最后那一帧（交出去之后各家的跟踪再 `RunTrack::forget`）。
+    pub(crate) fn retire(&self, sid: &str) -> Option<Frame> {
+        self.orphan(sid).then(|| self.frame(sid))
+    }
+
+    /// 这个会话此刻有没有子运行（宣告那一刻有就发一帧运行表）。
+    pub(crate) fn has_runs(&self, sid: &str) -> bool {
+        !self.runs(sid).is_empty()
+    }
+
+    /// 这个会话此刻的运行表那一帧（出帧前按此刻判一次久未动静）。
+    pub(crate) fn frame(&self, sid: &str) -> Frame {
+        self.frame_at(sid, SystemTime::now())
+    }
+
+    /// 全部会话按 `now` 判一次久未动静：表变了的那几个各一帧。
+    pub(crate) fn due_frames(&self, now: SystemTime) -> Vec<Frame> {
+        self.settle_all(now)
+            .into_iter()
+            .map(|sid| self.frame_at(&sid, now))
+            .collect()
+    }
+
     /// 等下一次「学到了对账键的归属」（之前已学到而没人在等 ⇒ 立刻返回一次）。
     pub(crate) async fn learned(&self) {
         self.wake.notified().await;
@@ -787,40 +810,11 @@ impl RunTrack {
         changed
     }
 
-    /// 会话退休：还算在跑的子运行改成状态不明，表变了就回最后那一帧（交出去之后再 [`Self::forget`]）。
-    pub(crate) fn retire(&self, sid: &str) -> Option<Frame> {
-        self.book.orphan(sid).then(|| self.frame(sid))
-    }
-
     /// 会话走了：它的主记录路径、子运行游标、运行簿那一页一起摘。
     pub(crate) fn forget(&mut self, sid: &str) {
         self.parents.remove(sid);
         self.children.retain(|_, c| c.sid != sid);
         self.book.forget(sid);
-    }
-
-    /// 这个会话此刻有没有子运行（宣告那一刻有就发一帧运行表）。
-    pub(crate) fn has_runs(&self, sid: &str) -> bool {
-        !self.book.runs(sid).is_empty()
-    }
-
-    /// 这个会话此刻的运行表那一帧（出帧前按此刻判一次久未动静）。
-    pub(crate) fn frame(&self, sid: &str) -> Frame {
-        self.book.frame_at(sid, SystemTime::now())
-    }
-
-    /// 全部会话按 `now` 判一次久未动静：表变了的那几个各一帧。
-    pub(crate) fn due_frames(&self, now: SystemTime) -> Vec<Frame> {
-        self.book
-            .settle_all(now)
-            .into_iter()
-            .map(|sid| self.book.frame_at(&sid, now))
-            .collect()
-    }
-
-    /// 下一个「久未动静」的期限（没有在跑的子运行 ⇒ `None`：watcher 无期限地等事件）。
-    pub(crate) fn next_due(&self) -> Option<SystemTime> {
-        self.book.next_due()
     }
 }
 

@@ -1511,3 +1511,52 @@ async fn a_turn_end_reaches_that_machines_subscribers_of_that_session_without_cr
         .collect();
     assert_eq!(got, vec![("w".to_string(), "a".to_string())]);
 }
+
+/// 造好的 Codex 样本真走过后端 watcher 的那几帧（`tests/__fixtures__/codex-session-stream.golden.jsonl`，后端
+/// `watcher_writer_tests::the_codex_sample_walks_into_the_golden_frames` 写）：壳逐行解得开（宣告 · 行 · 一轮结束），
+/// 两次一轮结束各成这台会话流的一格 `turn_end`（系统通知认它）—— 与 Claude 那一家同一条路，壳里不认是哪一家。
+#[tokio::test]
+async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
+    const GOLDEN: &str = include_str!("../../__fixtures__/codex-session-stream.golden.jsonl");
+    use crate::stream_source::{parse_frame, InboundFrame};
+    let mut added = Vec::new();
+    let mut lines = 0;
+    let mut ends = Vec::new();
+    for l in GOLDEN.lines() {
+        match parse_frame(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}")) {
+            InboundFrame::SessionAdded { sid, path, .. } => added.push((sid, path)),
+            InboundFrame::Line { .. } => lines += 1,
+            InboundFrame::TurnEnd { sid } => ends.push(sid),
+            _ => {}
+        }
+    }
+    assert_eq!(added.len(), 1, "一条宣告");
+    let (sid, path) = &added[0];
+    assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
+    assert_eq!(lines, 4);
+    assert_eq!(ends, vec![sid.clone(), sid.clone()], "两轮各一次一轮结束");
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 0);
+    r.ready_point(None).await;
+    rec.clear();
+    for s in ends {
+        r.on_turn_end(&local(), s);
+    }
+    let got: Vec<String> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, _, items)| {
+            items.iter().filter_map(|i| match i {
+                WItem::Frame { body, .. } => {
+                    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                    Some(v.get("turn_end")?["session_id"].as_str()?.to_string())
+                }
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(got, vec![sid.clone(), sid.clone()]);
+}
