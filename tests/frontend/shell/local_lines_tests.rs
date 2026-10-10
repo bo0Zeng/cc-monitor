@@ -146,6 +146,11 @@ const FRAMES: &[(&str, &str)] = &[
         "rotation_rules_changed",
         r#"{"kind":"rotation_rules_changed"}"#,
     ),
+    // 某个 pb 工作区的计划变了 —— 这一侧认得、还不消费：吸收点照收照丢，不交回。
+    (
+        "plan_changed",
+        r#"{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}"#,
+    ),
     (
         "link_data",
         r#"{"kind":"link_data","link":"cf1-no-such-link","data":"aGk="}"#,
