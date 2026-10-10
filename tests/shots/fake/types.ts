@@ -90,6 +90,8 @@ export interface World {
   quiet?: string[];
   /** 帧命令晚多少毫秒才答（按 op 名；不给 ⇒ 当场答）。性能台架用它演「后端读大文件 / 远端那一跳要时间」：快速连切时，切走之后才回来的那几问还干不干活。 */
   opDelayMs?: Record<string, number>;
+  /** 不带声明的那一问（展开那一下取回全文）的延时（op ⇒ 毫秒）；缺 ⇒ 照 `opDelayMs`。 */
+  fullFetchDelayMs?: Record<string, number>;
   /** 重放时每个会话只交尾部这么多条（照真壳 `event_replay.rs::REPLAY_TAIL_KEEP`；更早的由骨架索引按偏移取）。不给 ⇒ 整份交。 */
   replayTail?: number;
   /** Tauri 命令的答法（`load_config` 之类），按命令名；场景可以整条覆盖。 */

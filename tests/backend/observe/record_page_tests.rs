@@ -300,6 +300,42 @@ fn the_folded_view_drops_every_body_cell_and_keeps_every_folded_cell() {
     );
 }
 
+/// ★ 桌面交的那份声明（`src/shared/views/folded-record.json`，界面 `record-reads.ts` 与壳的旁路快照读同一份）：
+/// 核心认得它的每一格（`parse_view` 不拒）；照它投影 ⇒ 工具入参 · 结果正文 · 逐段改动没了，思考 · 说的话 · 预览 · 主参数那一句还在。
+#[test]
+fn the_desktop_folded_view_in_shared_parses_and_drops_only_the_tool_bodies() {
+    let decl: serde_json::Value =
+        serde_json::from_str(include_str!("../../../src/shared/views/folded-record.json"))
+            .expect("那份声明是 JSON");
+    let view = crate::faces::project::parse_view(&decl)
+        .unwrap_or_else(|e| panic!("核心不认那份声明：{e}"))
+        .expect("声明不是空的");
+    let page = FOLD_PAGE.join("\n") + "\n";
+    let at = std::path::Path::new("/p/zq.jsonl");
+    let face = claude();
+    let (mut lines, _) = record_lines_of_page(&mut rd(&face), at, 5, 0, page.as_bytes());
+    let full = serde_json::to_string(&lines).unwrap();
+    for l in &mut lines {
+        if let Some(r) = l.get_mut("record") {
+            crate::faces::project::project("record", r, &view);
+        }
+    }
+    let fold = serde_json::to_string(&lines).unwrap();
+    for m in ["ZQBODY-input", "ZQBODY-result", "ZQBODY-patch"] {
+        assert!(full.contains(m), "不投影时 `{m}` 不在 —— 下面那一条会恒绿");
+        assert!(!fold.contains(m), "照桌面那份声明投影，`{m}` 还在：{fold}");
+    }
+    for m in [
+        "ZQBODY-think",
+        "ZQBODY-say",
+        "ZQKEEP-user",
+        "ZQKEEP-preview",
+        "/w/f.txt",
+    ] {
+        assert!(fold.contains(m), "桌面那份声明把 `{m}` 也剥了");
+    }
+}
+
 const ENQ: &str = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-01-02T03:00:00.000Z","content":"also this"}"#;
 const REM: &str = r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:02:00.000Z","content":"also this"}"#;
 

@@ -33,6 +33,7 @@ impl comms_inward::chan::router::Backends for Rig {
         origin: Origin,
         op: Op,
         payload: Body,
+        _view: Option<serde_json::Value>,
         _left: std::time::Duration,
         _cancel: CancelToken,
     ) -> futures::future::BoxFuture<'static, Result<Body, CallError>> {

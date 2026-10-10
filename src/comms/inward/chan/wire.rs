@@ -491,6 +491,10 @@ pub enum Head {
         origin: Origin,
         op: String,
         left: Duration,
+        /// 出口的声明（要哪几格 · 哪几格不要），原样搬进后端的请求信封（`view`）；路由器不解释它，也不进载荷。
+        /// 没有 ⇒ 头里不写这一格（全量）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        view: Option<serde_json::Value>,
     },
     Cancel {
         id: u64,

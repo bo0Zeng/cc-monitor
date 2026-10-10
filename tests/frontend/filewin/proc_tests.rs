@@ -84,6 +84,7 @@ impl comms_inward::chan::router::Backends for FakeBackendHost {
         _origin: comms_inward::chan::wire::Origin,
         op: comms_inward::chan::wire::Op,
         _payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
         _left: std::time::Duration,
         _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<
@@ -126,6 +127,7 @@ impl comms_inward::chan::router::Backends for ScreenHost {
         _origin: comms_inward::chan::wire::Origin,
         op: comms_inward::chan::wire::Op,
         payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
         _left: std::time::Duration,
         _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<

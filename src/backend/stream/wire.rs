@@ -1141,6 +1141,38 @@ impl Frame {
         }
     }
 
+    /// 这一帧是不是**某个会话的整行内容**（回那个会话的 id）：流只发要看的会话（`stream-watch`），
+    /// 不在这条流的名单里的会话，这几种帧不上流；别的（宣告 · 状态 · 轮次边沿 · 去向 · 文件重读 / 不在了 · 推送 …）照发。
+    ///
+    /// 穷尽 `match`，同 [`Self::loss_is_recoverable`]：新增帧种时编译期就得表态。
+    pub fn content_of(&self) -> Option<&str> {
+        match self {
+            Frame::Line { session_id, .. } => Some(session_id),
+            Frame::SessionRuns { sid, .. } => Some(sid),
+            Frame::SessionBranch { sid, .. } => Some(sid),
+            Frame::Hello { .. }
+            | Frame::SessionAdded { .. }
+            | Frame::SessionStatus { .. }
+            | Frame::SessionState { .. }
+            | Frame::SessionRemoved { .. }
+            | Frame::TurnEnd { .. }
+            | Frame::Overflow { .. }
+            | Frame::Reply { .. }
+            | Frame::Cancelled { .. }
+            | Frame::Changed { .. }
+            | Frame::SessionsReplayed
+            | Frame::SessionFileGone { .. }
+            | Frame::SessionFileReread { .. }
+            | Frame::LinkData { .. }
+            | Frame::LinkEnd { .. }
+            | Frame::Transfer { .. }
+            | Frame::Probe { .. }
+            | Frame::Tap { .. }
+            | Frame::TerminalScreen { .. }
+            | Frame::TerminalFollowEnd { .. } => None,
+        }
+    }
+
     /// 丢帧时给客户端用来**重同步**的身份：帧种 + 主体（sid / tmux 会话名）。
     ///
     /// ⚠ 与 [`Self::loss_is_recoverable`] 同样是穷尽 `match`：新增帧种时两处一起被逼着表态。
@@ -1286,6 +1318,25 @@ impl Frame {
             _ => {}
         }
     }
+}
+
+/// `stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流
+/// （`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WatchFrom {
+    /// 会话 id。
+    pub sid: String,
+    /// 这份会话记录在那台机器上的绝对路径。
+    pub path: String,
+    /// 这条流从这一行起发它。
+    pub seq: u64,
+}
+
+/// `stream-watch` 的应答。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WatchReply {
+    /// 刚进名单的会话每份记录一格（先前就在名单里的不回）。
+    pub from: Vec<WatchFrom>,
 }
 
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。

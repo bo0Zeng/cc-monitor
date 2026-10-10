@@ -668,6 +668,7 @@ impl comms_inward::chan::router::Backends for XferHost {
         _origin: comms_inward::chan::wire::Origin,
         op: comms_inward::chan::wire::Op,
         payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
         _left: std::time::Duration,
         _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<

@@ -64,7 +64,7 @@
 use crate::chan::wire::{Body, By, Cursor, HopFault, HopId, Item};
 use crate::ui_contract::{BatchEdge, JsonlLinePayload, SessionStreamFrame};
 use parking_lot::Mutex;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 /// 订阅流的出口：把一串格交给某个 webview 上的某条订阅。
@@ -107,6 +107,9 @@ pub struct EventReplay {
     book: &'static parking_lot::RwLock<crate::session_book::Book>,
     /// 有订阅拿到了 credit（或被撤了）—— 等 credit 的重放在这上面醒。
     credit_changed: tokio::sync::Notify,
+    /// 「在看哪几个会话」可能变了（主窗口报了一份 · 会话订阅来了 / 走了）：每变一次 +1，
+    /// `stream_watch` 据它醒、重算每台的名单（[`EventReplay::watched`]）。
+    watch_tick: tokio::sync::watch::Sender<u64>,
 }
 
 struct Inner {
@@ -136,6 +139,8 @@ struct Inner {
     sink: Option<Arc<dyn ItemSink>>,
     /// 终端画面流（`terminal-screen/<票>`）撤掉时替界面退订的那一口（`lib.rs` 起步时装：向那台发退订）。
     screen_dropped: Option<ScreenDropped>,
+    /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。`None` ＝ 还没报过 ⇒ 不替任何一台报名单（那台全看）。
+    main_watch: Option<BTreeSet<TailKey>>,
 }
 
 /// 终端画面流撤掉了：`(哪台, 票)`。
@@ -510,8 +515,10 @@ impl EventReplay {
                 seen: HashMap::new(),
                 sink: None,
                 screen_dropped: None,
+                main_watch: None,
             }),
             credit_changed: tokio::sync::Notify::new(),
+            watch_tick: tokio::sync::watch::channel(0).0,
             book: crate::session_book::book(),
         }
     }
@@ -533,6 +540,9 @@ impl EventReplay {
 
     /// 撤下来的那几条订阅里的终端画面流 ⇒ 替界面退订（锁外调）。
     fn unfollow_dropped(&self, gone: Vec<Sub>) {
+        if gone.iter().any(|s| s.kind == SubKind::Lines) {
+            self.watch_moved();
+        }
         let gone: Vec<(String, String)> = gone
             .into_iter()
             .filter(|s| s.kind == SubKind::Screen)
@@ -931,6 +941,9 @@ impl EventReplay {
             )
         };
         self.unfollow_dropped(replaced);
+        if kind == SubKind::Lines {
+            self.watch_moved();
+        }
         if let Some(item) = first {
             sink.deliver(label, id, vec![item]);
         }
@@ -1173,6 +1186,86 @@ impl EventReplay {
         }
     }
 
+    /// 主窗口报「此刻在看这几个会话」（整份换；`(origin 线上串, sid)`）。没变就不惊动谁。
+    pub fn set_main_watch(&self, sessions: impl IntoIterator<Item = (String, String)>) {
+        let next: BTreeSet<TailKey> = sessions.into_iter().collect();
+        let moved = {
+            let mut inner = self.inner.lock();
+            let moved = inner.main_watch.as_ref() != Some(&next);
+            inner.main_watch = Some(next);
+            moved
+        };
+        if moved {
+            self.watch_moved();
+        }
+    }
+
+    /// 那台那条流该报的「在看」名单：主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话。
+    /// 主窗口还没报过 ⇒ `None`（不报 ＝ 那台全看，与从没报过的流同一个口径）。
+    pub fn watched(&self, origin: &crate::origin::Origin) -> Option<BTreeSet<String>> {
+        let origin = origin.as_wire_str();
+        let inner = self.inner.lock();
+        let main = inner.main_watch.as_ref()?;
+        let mut out: BTreeSet<String> = main
+            .iter()
+            .filter(|(o, _)| o == origin)
+            .map(|(_, sid)| sid.clone())
+            .collect();
+        out.extend(
+            inner
+                .subs
+                .iter()
+                .filter(|s| s.kind == SubKind::Lines && s.origin == origin)
+                .filter_map(|s| s.only.clone()),
+        );
+        Some(out)
+    }
+
+    /// 「在看」可能变了就醒的那个收端（`stream_watch` 拿它等）。
+    pub fn watch_changes(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.watch_tick.subscribe()
+    }
+
+    fn watch_moved(&self) {
+        self.watch_tick.send_modify(|t| *t += 1);
+    }
+
+    /// 那台那条流回了「刚进名单的会话从第几行起上流」（`stream-watch` 应答的 `from[]`）：
+    ///
+    /// ① 留存修成**连着的**：这个会话留存里 `seq` 之下那段要是与 `seq` 之间有缺口（没在看的那段没上流），整段丢、
+    ///   底线抬到 `seq`（之后到的更低的行不进）⇒ F5 / 开窗重放出来的永远是连着的一段，往下的由界面按行号 / 按骨架取回；
+    /// ② 交那台的会话流一格 `watch`（不吃 credit、不丢）：主窗口的 tab 与那个会话的查看窗据它补上 `[已有, seq)`。
+    pub fn on_watch_from(
+        &self,
+        origin: &crate::origin::Origin,
+        from: Vec<crate::ui_contract::SessionWatchPayload>,
+    ) {
+        let origin = origin.as_wire_str();
+        {
+            let mut inner = self.inner.lock();
+            for w in &from {
+                cut_to_contiguous(
+                    &mut inner,
+                    &(origin.to_string(), w.session_id.clone()),
+                    w.seq,
+                );
+            }
+        }
+        let frames: Vec<SessionStreamFrame> =
+            from.into_iter().map(SessionStreamFrame::Watch).collect();
+        self.on_lifecycle(origin, frames);
+    }
+
+    /// 那台一个会话一轮结束（后端 `turn_end`，在不在看都来）：交那台的会话流一格（不吃 credit、不丢、不进留存）。
+    pub fn on_turn_end(&self, origin: &crate::origin::Origin, session_id: String) {
+        self.on_lifecycle(
+            origin.as_wire_str(),
+            vec![SessionStreamFrame::TurnEnd(
+                crate::ui_contract::SessionTurnEndPayload { session_id },
+            )],
+        );
+    }
+
     /// 把那个 sid 的留存整条丢（各台上同名的都丢：界面关 tab 只说 sid）。
     /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新会重放出来"复活" Tab。
     pub fn forget(&self, session_id: &str) {
@@ -1252,6 +1345,27 @@ fn drop_tail(inner: &mut Inner, key: &TailKey) -> usize {
         );
     }
     t.lines.len()
+}
+
+/// 「从 `seq` 起上流」那一拍修留存（[`EventReplay::on_watch_from`] ①）：`seq` 之下那段与 `seq` 之间有缺口 ⇒ 整段丢、底线抬到 `seq`。
+/// 连着的（最高那条就是 `seq − 1`）不动。没留存的也立底线（之后到的更低的行与 `seq` 之间照样可能隔着没上流的那段）。
+fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
+    let t = inner.tails.entry(key.clone()).or_default();
+    let below = t.lines.iter().map(|p| p.seq).filter(|&s| s < seq).max();
+    if below.is_some_and(|b| b + 1 >= seq) {
+        return;
+    }
+    let mut freed = 0;
+    t.lines.retain(|p| {
+        let keep = p.seq >= seq;
+        if !keep {
+            freed += held_size(p);
+        }
+        keep
+    });
+    t.bytes -= freed;
+    t.floor = Some(t.floor.map_or(seq, |f| f.max(seq)));
+    inner.held_bytes -= freed;
 }
 
 /// 进留存的唯一入口：修尾巴（[`push_and_trim`]）＋ 总量超了就丢（[`evict_over_cap`]）。
