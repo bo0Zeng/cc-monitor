@@ -5,8 +5,9 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
-import { putQuota } from "../disk";
-import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
+import { putAccounts, putQuota } from "../disk";
+import { ACCOUNTS } from "../fake/ops";
+import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfileAccounts, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, waitFor } from "./helpers";
 
@@ -50,9 +51,11 @@ function acctWorld(verifyFail = false): () => World {
   };
 }
 
-/** 配置文件那一页（devbox）照一种样子放好原文（`disk/profiles.ts`；读法与成品全在真后端）。 */
+/** 配置文件那一页（devbox）照一种样子放好原文、账号库换成表单那几个号（`disk/profiles.ts`；读法与成品全在真后端）。默认世界那台放的是照设计稿的那一份。 */
 const profilesWorld = (look: ProfilesLook) => (): World => {
   const w = defaultWorld();
+  putProfileAccounts(w.disk.devbox);
+  delete w.disk.devbox.files[PROFILES_FILE];
   putProfiles(w.disk.devbox, look);
   return w;
 };
@@ -333,6 +336,14 @@ export const SETTINGS_SCENES: Scene[] = [
     await click('[data-account="api"] .acct-row');
     await sleep(600);
   }, acctWorld()),
+  settings("settings-acct-no-zero", "设置 · 账号 · 清单缺默认账号", "devbox 的账号清单里没有账号 0：顶上一行提示去账号页维护里点修复", async () => {
+    await go("machine:devbox", "machine:devbox#acct");
+    await sleep(600);
+  }, () => {
+    const w = acctWorld()();
+    putAccounts(w.disk.devbox, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })), { zero: false });
+    return w;
+  }),
   settings("settings-acct-new", "设置 · 账号 · 新建（API key）", "［新建账号］就地展开：名字 team · 选 API key", async () => {
     await go("machine:devbox", "machine:devbox#acct");
     await click(await byText(".settings-page:not([hidden]) button", "新建账号"));

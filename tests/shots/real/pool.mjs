@@ -25,6 +25,12 @@ import { createInterface } from "node:readline";
 /** 同时留着的世界数（截图是一页一页串着截的；多留几份给预热页与下一页交接）。 */
 const KEEP = 4;
 
+/**
+ * 截图里每一台的时区（IANA 名）：各台后端 · 无头壳 · 浏览器（`run.mjs` 起它时同样给）一律按它，不随跑截图那台机器的设置走。
+ * 「现在」还没给死：后端那一侧没有假钟的入口（要核心补），页面单方面拨钟会和后端算的「距今」对不上。
+ */
+export const SHOTS_TZ = "Asia/Shanghai";
+
 /** 无头壳那一份：壳的包里一个只在特性 `shots` 下编的例子（判据 `tests/frontend/shell/shots_feature_guard_tests.rs`）。 */
 const SHELL_EXAMPLE = "ccm-shots-shell";
 
@@ -99,7 +105,7 @@ export function backendPool({ repo, sandbox }) {
       TMUX_TMPDIR: `${H}/.shots-tmux`,
       XDG_RUNTIME_DIR: `${H}/.shots-run`,
       CCM_BACKEND_STDERR_LOG: "/tmp/stderr.log",
-      ...(process.env.TZ ? { TZ: process.env.TZ } : {}),
+      TZ: SHOTS_TZ,
     };
     const box = [
       "--ro-bind", "/", "/",
@@ -126,7 +132,7 @@ export function backendPool({ repo, sandbox }) {
     const child = spawn(shellBin, [], {
       detached: true,
       cwd: dir,
-      env: { PATH: "/usr/bin:/bin", HOME: path.join(dir, "shell-home"), LANG: "C.UTF-8", ...(process.env.TZ ? { TZ: process.env.TZ } : {}) },
+      env: { PATH: "/usr/bin:/bin", HOME: path.join(dir, "shell-home"), LANG: "C.UTF-8", TZ: SHOTS_TZ },
       stdio: ["pipe", "pipe", process.env.CCM_SHOTS_DEBUG ? "inherit" : "ignore"],
     });
     const replies = new Map();

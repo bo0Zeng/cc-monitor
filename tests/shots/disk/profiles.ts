@@ -63,9 +63,13 @@ export const PROFILES_FILE = ".cc-monitor/profiles.toml";
 /** 照设计稿那台的那一份原文（「保存时被别处改过」那一张在它后面补一行）。 */
 export const staleBook = (): string => BOOK(false);
 
-/** 那一台照这个样子放好配置文件（账号库换成表单里那几个号）。 */
-export function putProfiles(d: MachineDisk, look: ProfilesLook): void {
+/** 那一台的账号库换成表单里那几个号（配置文件那几张图：表单的账号格照它排）。 */
+export function putProfileAccounts(d: MachineDisk): void {
   putAccounts(d, PROFILE_ACCOUNTS.map((name, i) => ({ name, kind: "sub", isDefault: i === 0 })));
+}
+
+/** 那一台照这个样子放好配置文件。 */
+export function putProfiles(d: MachineDisk, look: ProfilesLook): void {
   if (look === "empty") return;
   d.files[PROFILES_FILE] = look === "syntax" ? BOOK(false).replace("[pcc]", "[pcc") : BOOK(look === "broken");
   if (look === "edited") d.files[".cc-monitor/profiles-written.json"] = JSON.stringify({ fingerprint: "0-0000000000000000" }) + "\n";
