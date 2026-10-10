@@ -161,6 +161,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
     ("src/backend/stderr_log.rs", "let _ = self.fresh();", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
+    ("src/backend/stderr_log.rs", "let _ = append_line(p, &self.0);", Why::Diag, "一次性模式的诊断行：写不进诊断文件也不许回落 stderr（stderr 是协议通道），丢这一行、命令照常"),
     ("src/common/creds-core/src/perm.rs", "let _ = CloseHandle(token);", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", Why::Reap, "Windows 句柄 / 内存释放"),
