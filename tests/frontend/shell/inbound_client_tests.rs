@@ -14,7 +14,6 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         // backend-split `S4`：`hello.homes` 与本用例无关（它测的是入方向命令协商），
         // 空表 = 今天所有已部署后端的形态。
         homes: vec![],
-        capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],

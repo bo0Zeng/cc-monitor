@@ -400,7 +400,6 @@ export function machineCommands(): Record<string, CommandHandler> {
     }),
     cc_get_auto_launch: () => ({ auto_launch_enabled: false, monitor_exe_path: "/opt/cc-monitor/cc-monitor" }),
     ccm_user_path_status: () => ({ supported: false, dir: null, onUserPath: false, addCommand: null, removeCommand: null, error: null }),
-    drift_ledger_report: (a) => ({ origin: String(a.origin ?? "<local>"), faces: [] }),
     diagnostics_report: (a) => {
       const keys = (a.configUnknown as string[] | undefined) ?? [];
       return {

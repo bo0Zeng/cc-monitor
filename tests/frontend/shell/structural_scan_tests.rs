@@ -2789,11 +2789,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 那份判据模块随 monitor 适配表退役，`mod` 那一行换成一块
         ("src/frontend/shell/src/lib.rs", "agent_profile_parity", 1), // 跨轨对拍锚点随 monitor 适配表退役（它最后一处活提名在金样头注里，头注随之改成今天的住址）
-        (
-            "tests/frontend/shell/drift_ledger_tests.rs",
-            "parse_for_kind",
-            1,
-        ), // 它最后一处活着的提名（`agent_dispatch_registry_tests.rs` 里的串）随那份文件删了
         // 远端 `ccm` 探针那几行摘了：主线里 `probe_ccm_cli` 这个名字还活在一份测试替身的字符串里
         //   （`remote-launch-run.vitest.ts`），不算死名 ⇒ 挂在它上面的墓碑不进本表。
         // 删会话 · 分叉 · 钩子诊断三件转交退役（界面经通道直说那台后端）：散文里点那几个旧名讲来历的，逐处挂墓碑。
@@ -2851,11 +2846,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // monitor `search.rs` 删了 ⇒ 它体里还提着的旧名 `search_remote_all` 全仓只剩散文（remote_history.rs 那块 C4a 墓碑）。
         // 只为本机读盘服务的适配器门面删了；按本机根前缀判种类的那一个只剩散文（换成按文件名形态判）。
         // `adapter.rs` 的 `kind_of_path` 那一行摘了：那份文件删了。
-        (
-            "tests/frontend/shell/drift_ledger_tests.rs",
-            "stream_read_remote_session",
-            1,
-        ),
         (
             "tests/comms/inward/origin_tests.rs",
             "stream_read_remote_session",
@@ -4378,7 +4368,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         // 本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
-        ("tests/frontend/shell/drift_ledger_tests.rs", 2), // 1 → 2：`parse_for_kind` 那一句挂一块（它最后的活提名随 monitor 适配表的判据删了）
         // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
             "tests/frontend/shell/local_read_surface_registry_tests.rs",

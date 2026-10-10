@@ -68,8 +68,7 @@ use wire::Frame;
 //
 // **未知 flag 在流位置 ⇒ exit 2、一个字节都不输出、没有 hello。** monitor 那头看到的
 // 和「backend 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**。这正是 2026-07-09
-// 事故的形状。`every_capability_token_is_strippable` 挡不住它——那条只覆盖**与已声明
-// 能力绑定**的 flag，「monitor 因为别的原因发了个新 flag」不在它的判据里。
+// 事故的形状。
 //
 // # 这张表**漏一项**的后果比旧行为更糟，所以必须有完备性机检
 //
@@ -339,11 +338,6 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `the_backend_can_already_discover_homes_it_just_does_not_send_them`
         // 钉的是另一半 —— 空表不等于没能力。
         homes: Vec::new(),
-        // 流旗标只剩 `--stream` · `--tz` · `--view`（这条流要什么由声明说）⇒ 契约 crate 那一份今天是空的。
-        capabilities: deploy_contract::STREAM_CAPABILITIES
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::command_names()
             .into_iter()

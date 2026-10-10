@@ -262,7 +262,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     agent_kind: s("claude"),
                     path: s("/home/u/.claude"),
                 }],
-                capabilities: vec![s("bg"), s("tail-only")],
                 emits: vec![s("line")],
                 commands: vec![s("ping")],
                 unavailable: vec![Unavailable {
@@ -278,7 +277,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_arch: s("x86_64"),
                 claude_dir: s("/home/u/.claude"),
                 homes: vec![],
-                capabilities: vec![],
                 emits: vec![],
                 commands: vec![],
                 unavailable: vec![],
@@ -969,22 +967,13 @@ fn overflow_frame_serializes_with_dropped_count() {
 
 // `tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
 
-/// F66（#58③）wire 契约：hello 的 `capabilities`。
-/// ① 非空 → 序列化为数组（monitor 据此发 flag）。
-/// ② 空集 → `skip_serializing_if` 省略字段（additive：等价旧 hello，旧 monitor
-///    收到即空集缺省——向后兼容的关键）。
-fn hello(caps: Vec<String>) -> Frame {
-    hello_with(caps, vec![])
-}
-
-fn hello_with(caps: Vec<String>, emits: Vec<String>) -> Frame {
+fn hello_with(emits: Vec<String>) -> Frame {
     Frame::Hello {
         v: 1,
         build_id: "b".into(),
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: caps,
         emits,
         commands: vec![],
         unavailable: vec![],
@@ -993,43 +982,21 @@ fn hello_with(caps: Vec<String>, emits: Vec<String>) -> Frame {
     }
 }
 
+/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。aterm 门控读 emits 判「backend 发不发某帧」。
 #[test]
-fn hello_capabilities_serializes_when_present_and_omits_when_empty() {
-    // ① 非空 → 数组在线上
-    let line = to_line(&hello(vec!["bg".into(), "tail-only".into()])).expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert_eq!(v["kind"], "hello");
-    assert_eq!(v["capabilities"], serde_json::json!(["bg", "tail-only"]));
-    // ② 空集 → 字段省略（旧 hello 等价形态，旧 monitor 忽略缺失 = 空集缺省）
-    let line = to_line(&hello(vec![])).expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert!(
-        v.get("capabilities").is_none(),
-        "空 capabilities 必须被 skip（additive 向后兼容）"
-    );
-}
-
-/// phase②：Hello.emits 与 capabilities 同 additive 规律、且**独立正交**（一个非空一个空时
-/// 各自序列化/省略互不牵连）。aterm 门控读 emits 判「backend 发不发某帧」。
-#[test]
-fn hello_emits_serializes_orthogonally_to_capabilities() {
-    // emits 非空、capabilities 空 → 只 emits 在线上、capabilities 省略。
-    let line = to_line(&hello_with(
-        vec![],
-        vec!["session_status".into(), "turn_end".into()],
-    ))
+fn hello_emits_serializes_when_present_and_omits_when_empty() {
+    let line = to_line(&hello_with(vec![
+        "session_status".into(),
+        "turn_end".into(),
+    ]))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+    assert_eq!(v["kind"], "hello");
     assert_eq!(
         v["emits"],
         serde_json::json!(["session_status", "turn_end"])
     );
-    assert!(
-        v.get("capabilities").is_none(),
-        "capabilities 空 → 省略（不受 emits 非空牵连）"
-    );
-    // 空 emits → 字段省略（additive：旧 client 忽略缺失 = 不依赖任何 α 专属帧）。
-    let line = to_line(&hello_with(vec!["bg".into()], vec![])).expect("serialize");
+    let line = to_line(&hello_with(vec![])).expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
     assert!(v.get("emits").is_none(), "空 emits 必须被 skip（additive）");
 }
@@ -1203,7 +1170,6 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: discovered,
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1266,7 +1232,6 @@ fn dg3_codex_fields_serialize_when_present() {
                 path: "/home/u/.codex".into(),
             },
         ],
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1331,7 +1296,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1407,7 +1371,6 @@ fn hello_unavailable_is_additive_present_and_absent() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
@@ -1431,7 +1394,6 @@ fn hello_unavailable_is_additive_present_and_absent() {
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: vec![],
-        capabilities: vec![],
         emits: vec![],
         commands: vec!["kill".into(), "ping".into()],
         unavailable: vec![Unavailable {
@@ -1650,7 +1612,6 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
             homes: vec![],
-            capabilities: vec![],
             emits: vec![],
             commands: vec![],
             unavailable: vec![],
@@ -1695,7 +1656,6 @@ fn net2_uncancellable_is_additive_and_last() {
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
             homes: vec![],
-            capabilities: vec![],
             emits: vec![],
             commands: vec![],
             unavailable: vec![],
@@ -1726,7 +1686,6 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("hello", "build_id", "string"),
     ("hello", "host_arch", "string"),
     ("hello", "claude_dir", "string"),
-    ("hello", "capabilities", "array"),
     ("hello", "emits", "array"),
     ("line", "session_id", "string"),
     ("line", "path", "string"),
@@ -1767,7 +1726,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
     let frames = vec![
-        hello_with(vec!["bg".into()], vec!["turn_end".into()]),
+        hello_with(vec!["turn_end".into()]),
         Frame::Line {
             session_id: "s".into(),
             path: "/p".into(),
