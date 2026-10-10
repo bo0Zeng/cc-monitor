@@ -8,8 +8,9 @@
 //! |---|---|
 //! | S1 | `Cargo.toml`：有特性 `shots`、它不开任何依赖的特性；`default` 里没有它；例子 `ccm-shots-shell` 带 `required-features = ["shots"]`；没有任何 `[[bin]]` 指向那个模块 |
 //! | S2 | `lib.rs`：`shots_shell` 那一行模块声明紧跟在 `#[cfg(feature = "shots")]` 下面；生产源码里别处不提这个模块 |
-//! | S3 | 全仓里点名特性 `shots` 去编的地方只有台架（`tests/shots/`）；发版 / CI 工作流与门禁脚本里没有 `--features …shots…`，也没有 `--all-features` |
+//! | S3 | 全仓里点名特性 `shots` 去编的地方只有台架（`tests/shots/`）与门禁那一格（`shotsshell`，只编例子、不带 `--release`）；发版 / CI 工作流与别的门禁脚本里没有 `--features …shots…`，也没有 `--all-features` |
 //! | S4 | 默认构建（本测试自己这一档）里特性没开 |
+//! | S5 | 门禁的格名单里有 `shotsshell`：与台架同一条编法（特性 · 例子名，在本包目录下）、归在让路表里 —— 改了无头壳调的签名，门禁当场编不过，不等跑截图台架才知道 |
 
 use crate::guard_support::{crate_root, crate_src_root, repo_root};
 use std::path::Path;
@@ -17,6 +18,29 @@ use std::path::Path;
 const FEATURE: &str = "shots";
 const MODULE: &str = "shots_shell";
 const EXAMPLE: &str = "ccm-shots-shell";
+/// 门禁里编无头壳的那一格。
+const GATE_CELL: &str = "shotsshell";
+
+/// 门禁那一格的编法（与台架 `tests/shots/real/pool.mjs` 同一条：特性 · 例子名）。
+fn gate_build() -> String {
+    format!("cargo build --features {FEATURE} --example {EXAMPLE}")
+}
+
+/// `run_gate <名> …` 那一格的整条（续行拼起来）；没有 ⇒ `None`。
+fn gate_cell(gate: &str, name: &str) -> Option<String> {
+    let lines: Vec<&str> = gate.lines().collect();
+    let i = lines
+        .iter()
+        .position(|l| l.starts_with(&format!("run_gate {name} ")))?;
+    let mut cmd = lines[i].to_string();
+    let mut j = i;
+    while lines[j].trim_end().ends_with('\\') && j + 1 < lines.len() {
+        j += 1;
+        cmd.push('\n');
+        cmd.push_str(lines[j]);
+    }
+    Some(cmd)
+}
 
 fn read(p: &Path) -> String {
     std::fs::read_to_string(p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
@@ -141,6 +165,7 @@ fn s3_only_the_screenshot_rig_builds_with_the_feature() {
     let root = repo_root();
     // 会去编发版 / 跑 CI / 跑门禁的那几处：一处都不许点名这个特性，也不许 `--all-features`。
     let mut scanned = 0;
+    let mut allowed = 0;
     let mut bad = Vec::new();
     for dir in [".github/workflows", "tests/scripts"] {
         for (p, src) in guard_core::scan_tree!(&root.join(dir), &["yml", "yaml", "sh", "py", "mjs"])
@@ -149,7 +174,13 @@ fn s3_only_the_screenshot_rig_builds_with_the_feature() {
             for (i, l) in src.lines().enumerate() {
                 let feat = guard_core::contains_word(l, "--features")
                     && guard_core::contains_word(l, FEATURE);
-                if feat || guard_core::contains_word(l, "--all-features") {
+                // 门禁那一格只编例子（不进任何发出去的二进制），S5 另钉它的形状。
+                let gate_cell = p.ends_with("tests/scripts/gate.sh")
+                    && l.contains(&gate_build())
+                    && !l.contains("--release");
+                if gate_cell {
+                    allowed += 1;
+                } else if feat || guard_core::contains_word(l, "--all-features") {
                     bad.push(format!("{}:{}: {}", p.display(), i + 1, l.trim()));
                 }
             }
@@ -160,6 +191,10 @@ fn s3_only_the_screenshot_rig_builds_with_the_feature() {
         "人群不空（工作流与门禁脚本读到了 {scanned} 份）"
     );
     assert!(bad.is_empty(), "发版 / CI / 门禁里点名了台架特性：{bad:#?}");
+    assert_eq!(
+        allowed, 1,
+        "门禁里编无头壳的恰好一处（`{GATE_CELL}` 那一格）"
+    );
     // 台架自己那一处是真的在编它（不然上面那条是在守一个不存在的东西）。
     let pool = read(&root.join("tests/shots/real/pool.mjs"));
     assert!(
@@ -173,5 +208,34 @@ fn s4_default_build_has_the_feature_off() {
     assert!(
         !cfg!(feature = "shots"),
         "默认构建（cargo test 这一档）里特性 `shots` 没开"
+    );
+}
+
+#[test]
+fn s5_the_gate_has_a_cell_that_builds_the_headless_shell() {
+    let gate = read(&repo_root().join("tests/scripts/gate.sh"));
+    let cmd = gate_cell(&gate, GATE_CELL)
+        .unwrap_or_else(|| panic!("门禁的格名单里没有 `{GATE_CELL}`（`run_gate {GATE_CELL} …`）"));
+    assert!(
+        cmd.contains("cd src/frontend/shell") && cmd.contains(&gate_build()),
+        "`{GATE_CELL}` 在本包目录下照台架那一条编（`{}`）：{cmd}",
+        gate_build()
+    );
+    assert!(!cmd.contains("--release"), "只编 dev 档的例子：{cmd}");
+    let yields = gate
+        .lines()
+        .find_map(|l| l.strip_prefix("GATE_YIELD_CELLS=\""))
+        .expect("gate.sh 里有让路表");
+    assert!(
+        yields.split_whitespace().any(|c| c == GATE_CELL),
+        "`{GATE_CELL}` 只看编不编得过、不按墙钟判 ⇒ 归在让路表（GATE_YIELD_CELLS）里"
+    );
+    // 台架那一处与门禁那一格是同一条编法（不然门禁编的不是台架起的那个）。
+    let pool = read(&repo_root().join("tests/shots/real/pool.mjs"));
+    assert!(
+        pool.contains(&format!(
+            "\"build\", \"--quiet\", \"--features\", \"{FEATURE}\", \"--example\", SHELL_EXAMPLE"
+        )) && pool.contains(&format!("const SHELL_EXAMPLE = \"{EXAMPLE}\";")),
+        "台架那一处的编法变了 ⇒ 门禁那一格跟着改"
     );
 }
