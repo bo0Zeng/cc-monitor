@@ -44,13 +44,35 @@
     padding: 0 var(--space-3) var(--space-3);
   }
 
+  /* 一条：时刻 · 图标 · 句子 · 行尾（合流计数 ＋ 一颗动作）；两颗及以上动作换到第二行，与句子左缘对齐。 */
   .smRow {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(30px, auto);
     align-items: center;
-    gap: var(--space-4);
-    min-height: 30px;
+    column-gap: var(--space-4);
     padding: 0 var(--space-3);
     font-size: var(--font-size-small);
+  }
+
+  .smEnd {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .smEnd:empty {
+    display: none;
+  }
+
+  /* 按钮字与句子左缘对齐：抵掉 ghost 按钮自己的左内距。 */
+  .smActs {
+    grid-column: 3 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0 0 var(--space-2) calc(-1 * var(--control-pad-x-compact));
   }
 
   .smText > svg {
