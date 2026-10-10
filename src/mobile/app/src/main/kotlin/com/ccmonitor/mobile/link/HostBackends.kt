@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.OneShot
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.ResidentLink
 import com.ccmonitor.mobile.core.claude.link.SessionTable
+import com.ccmonitor.mobile.core.claude.link.TurnEnd
 import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.ssh.liveDuplex
 import com.ccmonitor.mobile.core.ssh.liveExecutor
@@ -64,6 +65,11 @@ class HostBackend internal constructor(
     /** 每来一帧发它的 `kind`：出口据此重问（`quota_changed` ⇒ 重问 `quota-read` …）。 */
     val changes: SharedFlow<String> = changeFlow.asSharedFlow()
 
+    private val turnEndFlow = MutableSharedFlow<TurnEnd>(extraBufferCapacity = CHANGE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** 流上的 `turn_end` 帧（逐帧，未折；折成一轮一条在 [com.ccmonitor.mobile.core.claude.link.TurnEnds]）。 */
+    val turnEnds: SharedFlow<TurnEnd> = turnEndFlow.asSharedFlow()
+
     @Volatile private var client: FrameClient? = null
 
     @Volatile private var run: Job? = null
@@ -117,6 +123,7 @@ class HostBackend internal constructor(
             val next = tableFlow.value.step(frame, ::onBreak)
             tableFlow.value = next
             frame.str("kind")?.let(changeFlow::tryEmit)
+            TurnEnd.of(frame)?.let(turnEndFlow::tryEmit)
             if (next.needsResync) {
                 // 丢了会话帧：这张表不可信了 ⇒ 重接，后端整份重报。
                 c.close()

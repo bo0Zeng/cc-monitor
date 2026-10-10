@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.bridge
 
 import com.ccmonitor.mobile.core.claude.command.PipeCommands
-import com.ccmonitor.mobile.core.claude.transport.DaemonCommands
 import com.ccmonitor.mobile.core.claude.transport.JsonlFrame
 import com.ccmonitor.mobile.core.claude.transport.TailTransport
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
@@ -122,7 +121,7 @@ class PipeSession(
         /**
          * 读 [idempotentAppendCommand] 的 stdout，判是哪一档。
          *
-         * @param body `DaemonCommands.bodyOrNullIfFailed` 剥掉成功标记之后的正文。
+         * @param body `PipeCommands.bodyOrNullIfFailed` 剥掉成功标记之后的正文。
          * @return `null` = 认不出两个哨兵中的任何一个；调用方必须当失败。
          */
         fun appendResultOf(body: String): UplinkAppendOutcome? =
@@ -220,7 +219,7 @@ class PipeUplinkSink(
     /** 带三档结局的发送；[send] 把它折回两档。 */
     suspend fun sendReporting(request: SendRequest): UplinkAppendOutcome {
         // 闸门量的是拼好之后的最终命令串（含查重外壳与针），不是正文。
-        val command = DaemonCommands.guarded(session.idempotentAppendCommand(request.text, identity.idFor(request)))
+        val command = PipeCommands.guarded(session.idempotentAppendCommand(request.text, identity.idFor(request)))
         UplinkLimits.rejectIfTooLong(command, request.text)?.let {
             return UplinkAppendOutcome.Failed(it.reason, it.retryable)
         }
@@ -232,7 +231,7 @@ class PipeUplinkSink(
      */
     override suspend fun interrupt(): SendOutcome {
         val requestId = PipeSession.newInterruptRequestId(controlSeq.incrementAndGet())
-        return appendGuarded(DaemonCommands.guarded(session.interruptCommand(requestId)))
+        return appendGuarded(PipeCommands.guarded(session.interruptCommand(requestId)))
     }
 
     /** 跑 [PipeSession.idempotentAppendCommand]，读哨兵分「追加了」与「本来就在」。远端只跑一次。 */
@@ -287,9 +286,9 @@ class PipeUplinkSink(
                 return RemoteBody.Failed(e.message ?: e.javaClass.simpleName)
             }
         // 要肯定的成功证据：`exec` 拿不到退出码，stdout 空也可能是目录不存在或磁盘满。
-        // `DaemonCommands.guarded` 的标记机制是通用的「shell 成功才打标记」。
+        // `PipeCommands.guarded`：shell 成功才打标记。
         val body =
-            DaemonCommands.bodyOrNullIfFailed(stdout)
+            PipeCommands.bodyOrNullIfFailed(stdout)
                 ?: return RemoteBody.Failed(stdout.trim().ifBlank { "没写进去，也没说为什么" })
         return RemoteBody.Ok(body)
     }

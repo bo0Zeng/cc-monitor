@@ -91,7 +91,7 @@ class GoldenVectorsTest {
     }
 
     /**
-     * 未知帧型上抛为 `ev` 而非丢弃（未知即透传），与 `DaemonTransport`「未知 kind → null 跳过」有意不同。
+     * 未知帧型上抛为 `ev` 而非丢弃（未知即透传）。
      *
      * bridge 无版本协商，静默丢帧的表现是 UI 永远等不到 result、一直转圈、日志什么都没有。
      */
