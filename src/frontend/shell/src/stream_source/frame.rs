@@ -215,6 +215,9 @@ pub enum InboundFrame {
     RotationChanged { sid: String },
     /// 那台的轮换规则表 / 默认指向变了（`rotation_rules_changed`，无载荷）⇒ 同上一格 `{"rules":true}`；界面要就发 `rotation-rules-read`。
     RotationRulesChanged,
+    /// 那台某个 pb 工作区的计划变了（`plan_changed`：工作区 · 新摘要 · 要看的数）。
+    /// 这一侧认得、还不消费（界面还没有订它的那一格）：形状照判（缺哪一格都算形状不对），收下即丢，不算「不认识的种类」。
+    PlanChanged,
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -671,6 +674,13 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         },
         // 同上一格 `{"rules":true}`：界面要就发 `rotation-rules-read`。
         "rotation_rules_changed" => InboundFrame::RotationRulesChanged,
+        // 认得、不消费：只判形状。
+        "plan_changed" => {
+            req_str(obj, k, "workspace")?;
+            req_str(obj, k, "rev")?;
+            req_u64(obj, k, "needs")?;
+            InboundFrame::PlanChanged
+        }
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

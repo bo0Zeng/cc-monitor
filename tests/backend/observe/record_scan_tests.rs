@@ -58,7 +58,7 @@ fn index_direct(bytes: &[u8]) -> (Vec<String>, u64) {
 fn r1_one_pass_equals_each_scan_on_its_own() {
     let text = fixture(3);
     let bytes = text.as_bytes();
-    let map = ScanMap::scan(bytes, bytes.len() as u64).expect("scan");
+    let map = ScanMap::scan_with(bytes, bytes.len() as u64, None).expect("scan");
 
     let (want_index, want_end) = index_direct(bytes);
     let got_index: Vec<String> = map

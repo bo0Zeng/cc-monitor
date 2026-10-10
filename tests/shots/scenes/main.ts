@@ -290,8 +290,19 @@ export const MAIN_SCENES: Scene[] = [
   }, injectWorld),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
-    await scrollStream(".card-api-retry");
-    document.querySelector<HTMLElement>(".card-api-retry")!.scrollIntoView({ block: "start" });
+    // 重试细条在那一轮的过程里（完成的轮默认收起）⇒ 先点开那一轮的过程行，再滚到细条。
+    const retry = await waitFor(".stream.active .card-api-retry");
+    const turn = retry.dataset.procOf;
+    if (turn && retry.classList.contains("proc-hidden")) {
+      document.querySelector<HTMLElement>(`.stream.active .proc-line[data-turn="${CSS.escape(turn)}"]`)?.click();
+      await sleep(300);
+    }
+    await scrollStream(".stream.active .card-api-retry");
+    retry.scrollIntoView({ block: "start" });
+    // 顶上留一点上文（细条上面那一句），细条不贴着会话头。
+    let box: HTMLElement | null = retry.parentElement;
+    while (box && box.scrollHeight <= box.clientHeight + 4) box = box.parentElement;
+    if (box) box.scrollTop -= 80;
     await sleep(300);
   }),
   main("main-waiting", "主窗口 · 等授权的会话", "第二个 tab：会话在等用户点授权（黄灯）", async () => {

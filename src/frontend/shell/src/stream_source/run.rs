@@ -508,7 +508,7 @@ async fn stream_loop(
                 cell,
             ),
             // 认识但不消费（理由在变体上）。
-            Some(InboundFrame::TurnEnd) => {}
+            Some(InboundFrame::TurnEnd | InboundFrame::PlanChanged) => {}
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
             None => {}
         }

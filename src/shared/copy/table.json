@@ -15550,7 +15550,7 @@
       "zh": "会话在等批准或回答 · 先去会话里答",
       "args": []
     },
-    "bePlan.return.ended": {
+    "sessionState.planReturn.ended": {
       "kind": "error",
       "role": "原因格",
       "zh": "会话已结束 · 复制此行，恢复会话后贴入",

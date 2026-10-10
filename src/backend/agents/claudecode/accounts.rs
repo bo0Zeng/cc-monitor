@@ -71,7 +71,6 @@ pub(crate) const FACE: AccountsFace = AccountsFace {
     user_mcp_key: super::assets::SERVERS_KEY,
     shared_root: shared_root_in,
     email_in: |root| oauth_email_in(&config_path_in(root)),
-    watched: &[super::paths::SESSIONS_DIR, super::paths::PROJECTS_DIR],
     session_env: super::paths::SESSION_ENV_KEYS,
     trust_in: |root, cwd| trust_of_config(&config_path_in(root), cwd),
     trust: Some(TRUST_CELLS),

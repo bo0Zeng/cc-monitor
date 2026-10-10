@@ -102,7 +102,7 @@ pub(crate) fn return_with(
             &to,
             "copy",
             Some("ended"),
-            Some(copy_text("bePlan.return.ended", &[])),
+            Some(copy_text("sessionState.planReturn.ended", &[])),
         ));
     }
     if to.get("activity").and_then(Value::as_str) == Some("needs_you") {
