@@ -349,7 +349,7 @@ impl Ledger {
     }
 }
 
-/// 进程里那条「额度账显示变了」的通道（流连接订它推 `quota_changed`）。
+/// 进程里那条「额度账显示变了」的通道（流连接订它推 `changed {quota}`）。
 pub(crate) fn bell() -> Arc<tokio::sync::watch::Sender<u64>> {
     static BELL: std::sync::OnceLock<Arc<tokio::sync::watch::Sender<u64>>> =
         std::sync::OnceLock::new();

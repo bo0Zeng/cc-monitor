@@ -187,12 +187,9 @@ pub enum InboundFrame {
     },
     /// 某条在跑的入方向命令已被取消。
     Cancelled { id: String },
-    /// 那台机器上的账号清单变了（后端 `wire::Frame::AccountsChanged`，无载荷）。
-    AccountsChanged,
-    /// 那台机器上的配置文件变了（后端 `wire::Frame::ProfilesChanged`，无载荷）。
-    ProfilesChanged,
-    /// 那台机器上某个会话的任务清单变了（后端 `wire::Frame::TasksChanged`，只带 sid）。
-    TasksChanged { sid: String },
+    /// 那台的某样东西变了（后端 `wire::Frame::Changed`）。主题不在这里认（后端主题表是唯一一处）：`topic` 原样、
+    /// `cell` ＝ 帧去掉 `kind` / `topic` 的那一份 `{key?, rev?, body?}` 的文本，交订了那台 `changed/<topic>` 的订阅（界面按主题读）。
+    Changed { topic: String, cell: String },
     /// 一条链路的下行字节（后端 `wire::Frame::LinkData`；`data` 在解帧这一步就解开了 base64）。
     /// 只有**本机后端**那条流上会有（monitor 只在那条流上开链路），交 `link_mux`。
     LinkData { link: String, data: Vec<u8> },
@@ -219,19 +216,6 @@ pub enum InboundFrame {
     TerminalFollowEnd { ticket: String, cell: String },
     /// 一轮对话收尾（`turn_end`）。认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。
     TurnEnd,
-    /// 那台的额度账变了（`quota_changed`）⇒ 交订了 `quota-changed` 的订阅一格；界面要额度就发 `quota-read` 读整份。
-    QuotaChanged,
-    /// 那台某个会话的轮换 / 「账号」格变了（`rotation_changed`，只带 sid）⇒ 同上一格 `{sid}`；界面要就发 `rotation-session-read`。
-    RotationChanged { sid: String },
-    /// 那台的轮换规则表 / 默认指向变了（`rotation_rules_changed`，无载荷）⇒ 同上一格 `{"rules":true}`；界面要就发 `rotation-rules-read`。
-    RotationRulesChanged,
-    /// 那台某个 pb 工作区的计划变了（`plan_changed`：工作区 · 新摘要 · 需手动的数）⇒
-    /// 交订了那台 `plan-changed` 的订阅一格 `{workspace, rev, needs}`；界面要就发 `plan-read`。
-    PlanChanged {
-        workspace: String,
-        rev: String,
-        needs: u64,
-    },
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -594,11 +578,29 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "cancelled" => InboundFrame::Cancelled {
             id: req_str(obj, k, "id")?,
         },
-        "accounts_changed" => InboundFrame::AccountsChanged,
-        "profiles_changed" => InboundFrame::ProfilesChanged,
-        "tasks_changed" => InboundFrame::TasksChanged {
-            sid: req_str(obj, k, "sid")?,
-        },
+        // 主题原样（非空串）；`key` / `rev` 在就得是串、`body` 在就原样 —— 别的格不认、不带。
+        "changed" => {
+            let topic = req_str(obj, k, "topic")?;
+            if topic.is_empty() || topic.contains('/') {
+                return Err(bad(k, "`topic` is empty or has a `/`"));
+            }
+            let mut cell = serde_json::Map::new();
+            for f in ["key", "rev"] {
+                if let Some(v) = obj.get(f) {
+                    if !v.is_string() {
+                        return Err(bad(k, &format!("`{f}` is not a string")));
+                    }
+                    cell.insert(f.to_string(), v.clone());
+                }
+            }
+            if let Some(v) = obj.get("body") {
+                cell.insert("body".to_string(), v.clone());
+            }
+            InboundFrame::Changed {
+                topic,
+                cell: serde_json::Value::Object(cell).to_string(),
+            }
+        }
         // 链路两帧。`data` 解不开 ⇒ 坏帧，不交一段猜出来的字节。
         "link_data" => InboundFrame::LinkData {
             link: req_str(obj, k, "link")?,
@@ -689,20 +691,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             req_str(obj, k, "uuid")?;
             InboundFrame::TurnEnd
         }
-        // 交订了 `quota-changed` 的订阅：界面要额度就发 `quota-read` 读整份。
-        "quota_changed" => InboundFrame::QuotaChanged,
-        // 同上一格 `{sid}`：界面要就发 `rotation-session-read`。
-        "rotation_changed" => InboundFrame::RotationChanged {
-            sid: req_str(obj, k, "sid")?,
-        },
-        // 同上一格 `{"rules":true}`：界面要就发 `rotation-rules-read`。
-        "rotation_rules_changed" => InboundFrame::RotationRulesChanged,
-        // 交订了 `plan-changed` 的订阅：界面要就发 `plan-read`。三格都必填（缺哪一格都算形状不对）。
-        "plan_changed" => InboundFrame::PlanChanged {
-            workspace: req_str(obj, k, "workspace")?,
-            rev: req_str(obj, k, "rev")?,
-            needs: req_u64(obj, k, "needs")?,
-        },
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

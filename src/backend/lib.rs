@@ -54,7 +54,7 @@ pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
-pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `plan_changed`（只读，一个字节都不写）
+pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写）
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
@@ -638,7 +638,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// skill 接入面与 SKILLS 表进 `agents/claudecode/` · MCP 推拉 / skill 装改本机后端当枢纽（`assets/hub.rs`，写前再核来源）· cc-bus 由后端装、装卸账复用 skill 装记录。
 ///
 /// ★★★ **p5d-deploy-plan-in-backend**（2026-09-28，MIG-3b 合并那一拍）：新帧命令 `hooks-diag` · `deploy-plan`（纯判定在共享 crate `deploy-core`）·
-/// 任务推送走 `session-tasks` 流（`tasks_changed{sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
+/// 任务推送走 `changed/tasks` 流（`changed {tasks, key: sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
 ///
 /// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
 /// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（aterm 不读）。
@@ -2140,20 +2140,8 @@ pub const EMITS: &[&str] = &[
     "overflow",
     "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     // `tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
-    // 账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
-    "accounts_changed",
-    // 配置文件变了（watcher 盯它所在目录，登记 = 承诺真发，已接线）。
-    "profiles_changed",
-    // 这台的额度账显示得出来的那几格变了（中转记账那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "quota_changed",
-    // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "rotation_changed",
-    // 这台的轮换规则表 / 默认指向变了（帧面写规则那一路与盯盘那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "rotation_rules_changed",
-    // 某个 pb 工作区的计划变了（plan 读面盯它读过的工作区，重读后输出摘要变了才发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "plan_changed",
-    // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
-    "tasks_changed",
+    // 「X 变了 ⇒ 重读」那一种（主题表 `stream/topic.rs`：账号清单 · 配置文件 · 任务清单由 watcher 发，额度 · 轮换 · 规则 · 计划走 tap 那条；登记 = 承诺真发，已接线）。
+    "changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」。
     "sessions_replayed",

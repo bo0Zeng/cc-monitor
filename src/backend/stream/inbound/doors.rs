@@ -79,7 +79,7 @@ pub(super) fn hub_here() -> std::sync::Arc<dyn crate::assets::hub::Here> {
     std::sync::Arc::new(LocalFrames)
 }
 
-/// 流那一路的后端里盯这台的 `rotation.json`（别的进程写了也推 `rotation_changed`）。
+/// 流那一路的后端里盯这台的 `rotation.json`（别的进程写了也推 `changed {rotation}`）。
 pub fn watch_rotation() {
     crate::accounts::quota::rotation::watch_here();
 }

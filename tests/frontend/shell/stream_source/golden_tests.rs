@@ -31,9 +31,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::Overflow { .. } => "overflow",
         InboundFrame::Reply { .. } => "reply",
         InboundFrame::Cancelled { .. } => "cancelled",
-        InboundFrame::AccountsChanged => "accounts_changed",
-        InboundFrame::ProfilesChanged => "profiles_changed",
-        InboundFrame::TasksChanged { .. } => "tasks_changed",
+        InboundFrame::Changed { .. } => "changed",
         InboundFrame::LinkData { .. } => "link_data",
         InboundFrame::LinkEnd { .. } => "link_end",
         InboundFrame::Transfer { .. } => "transfer",
@@ -42,10 +40,6 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::TerminalScreen { .. } => "terminal_screen",
         InboundFrame::TerminalFollowEnd { .. } => "terminal_follow_end",
         InboundFrame::TurnEnd => "turn_end",
-        InboundFrame::QuotaChanged => "quota_changed",
-        InboundFrame::RotationChanged { .. } => "rotation_changed",
-        InboundFrame::RotationRulesChanged => "rotation_rules_changed",
-        InboundFrame::PlanChanged { .. } => "plan_changed",
     }
 }
 

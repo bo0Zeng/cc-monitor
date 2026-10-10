@@ -16,7 +16,6 @@ import {
   decodeImpact,
   decodeResolved,
   decodeWriteDone,
-  PROFILES_CHANGED_KIND,
   ProfilesStale,
   writeProfiles,
 } from "../../../src/frontend/ui/profiles-reads";
@@ -58,10 +57,5 @@ describe("profiles-* 五问的成品按金样严格收", () => {
     invokeMock.mockRejectedValueOnce(refusedReply("refused", "多出坏处"));
     const e = await writeProfiles("devbox", [], "fp").catch((x: unknown) => x);
     expect(e).not.toBeInstanceOf(ProfilesStale);
-  });
-
-  it("流名与壳那一侧同一个串", () => {
-    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
-    expect(rs).toContain(`pub const PROFILES_CHANGED_KIND: &str = "${PROFILES_CHANGED_KIND}";`);
   });
 });

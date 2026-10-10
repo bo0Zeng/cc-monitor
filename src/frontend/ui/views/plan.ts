@@ -32,7 +32,7 @@ import type { Tab } from "../tab-model";
 import { dotOf, titleParts } from "../session-face";
 import { dotLabel } from "../session-words";
 import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, PlanMiss, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
-import type { PlanMoved } from "../quota-stream";
+import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
   cellIndex,

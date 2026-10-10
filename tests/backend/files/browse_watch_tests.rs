@@ -260,7 +260,7 @@ fn the_real_watcher_arms_and_delivers() {
              ⇒ 这不是「本机没有 inotify」就能带过的：保鲜那一半整个压在这一跳上。"
         ),
     };
-    let (armed, failures) = w.arm();
+    let (armed, failures) = w.sync();
     assert!(
         failures.is_empty(),
         "watch 挂不上（这与「挂上了但事件没来」是两件事）：{failures:?}"

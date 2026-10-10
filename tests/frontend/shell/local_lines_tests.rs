@@ -6,7 +6,7 @@
 //!
 //! | # | 判什么 | 异源 / 两向 |
 //! |---|---|---|
-//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪{session_status, sessions_replayed} ∪{session_file_gone, session_file_reread} ∪{quota_changed, rotation_changed, rotation_rules_changed}；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
+//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪{session_status, sessions_replayed} ∪{session_file_gone, session_file_reread} ∪{changed}（全部主题，本机账号清单 / 配置文件变了从前在这里被丢）；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
 //! | F2 | 本机消费者的纯分派核真值表 | 期望手写 |
 //! | F3 | 两条读循环各恰好一处把交回的帧送进本机内容通道（送法各按载体）、各恰好一处送「流结束」 | 源码锚，恰好一处 |
 //! | F4 | 内容出口的调用方集合（`batch_to_payloads` / `on_line_batch_awaited` / `flush_lines` / `LineIntake::open` / `Batcher::new` / `SnapshotQueue::new`） | 全仓生产段扫描，两向集合相等 |
@@ -14,7 +14,7 @@
 //! | F6 | 快照被撤时的补偿归档：本机不补、远端补 | — |
 //! | F7 | monitor 生产段里那套 watcher 的名字零命中（带正控） | — |
 //! | L1 | 本机起停帧 ⇒ 本机活会话表的起停事实（藏起来的 bg 不进；流断带上可重连那一摞） | 期望手写 |
-//! | Q1 | 本机后端推来的额度 / 轮换 / 轮换规则三帧走生产那一串（吸收点 → 本机通道 → `consume_local`）⇒ `<local>` 上 `quota-changed` 订阅逐格收到；交这三格的生产调用方 == {远端 `stream_loop`, 本机 `consume_local`} | 期望手写；全仓生产段扫描，两向集合相等 |
+//! | Q1 | 本机后端推来的 `changed`（账号清单 · 额度 · 轮换 · 规则）走生产那一串（吸收点 → 本机通道 → `consume_local`）⇒ `<local>` 上各主题的 `changed/<主题>` 订阅逐格收到；交这一格的生产调用方 == {远端 `stream_loop`, 本机 `consume_local`} | 期望手写；全仓生产段扫描，两向集合相等 |
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
@@ -134,17 +134,10 @@ const FRAMES: &[(&str, &str)] = &[
         r#"{"kind":"reply","id":"cf1-no-such-id","ok":true}"#,
     ),
     ("cancelled", r#"{"kind":"cancelled","id":"cf1-no-such-id"}"#),
-    ("accounts_changed", r#"{"kind":"accounts_changed"}"#),
-    ("profiles_changed", r#"{"kind":"profiles_changed"}"#),
-    // 额度账 / 某个会话的轮换 / 轮换规则变了 —— 交回读循环（本机消费者交 `quota-changed` 订阅，与远端同一个口）。
-    ("quota_changed", r#"{"kind":"quota_changed"}"#),
+    // 「X 变了」（全部主题）—— 交回读循环（本机消费者交 `changed/<主题>` 订阅，与远端同一个口）。
     (
-        "rotation_changed",
-        r#"{"kind":"rotation_changed","sid":"s1"}"#,
-    ),
-    (
-        "rotation_rules_changed",
-        r#"{"kind":"rotation_rules_changed"}"#,
+        "changed",
+        r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r1","body":{"needs":2}}"#,
     ),
     (
         "link_data",
@@ -170,8 +163,6 @@ const FRAMES: &[(&str, &str)] = &[
         "transfer",
         r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
     ),
-    // 某个会话的任务清单变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
-    ("tasks_changed", r#"{"kind":"tasks_changed","sid":"s1"}"#),
     // 测试连接的进度格 —— 不是会话内容，就地交中继（`probe_relay`），不进内容通道。
     (
         "probe",
@@ -190,11 +181,6 @@ const FRAMES: &[(&str, &str)] = &[
     (
         "tap",
         r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"ev":{"t":"stop","ok":true}}"#,
-    ),
-    // 某个 pb 工作区的计划变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
-    (
-        "plan_changed",
-        r#"{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}"#,
     ),
     // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
     (
@@ -228,19 +214,12 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             let same = matches!(
                 (kind, &back),
                 (&"line", InboundFrame::Line { .. })
-                    | (&"quota_changed", InboundFrame::QuotaChanged)
-                    | (&"rotation_changed", InboundFrame::RotationChanged { .. })
-                    | (
-                        &"rotation_rules_changed",
-                        InboundFrame::RotationRulesChanged
-                    )
+                    | (&"changed", InboundFrame::Changed { .. })
                     | (&"session_added", InboundFrame::SessionAdded { .. })
                     | (&"session_removed", InboundFrame::SessionRemoved { .. })
                     | (&"session_state", InboundFrame::SessionState { .. })
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
-                    | (&"tasks_changed", InboundFrame::TasksChanged { .. })
-                    | (&"plan_changed", InboundFrame::PlanChanged { .. })
                     | (&"session_runs", InboundFrame::SessionRuns { .. })
                     | (&"session_branch", InboundFrame::SessionBranch { .. })
                     | (
@@ -258,20 +237,14 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "line",
             "session_added",
             "session_removed",
-            // 额度 / 轮换 / 轮换规则变了（本机消费者交 `quota-changed` 订阅）。
-            "quota_changed",
-            "rotation_changed",
-            "rotation_rules_changed",
+            // 「X 变了」（本机消费者交 `changed/<主题>` 订阅）。
+            "changed",
             "session_state",
             "session_status",
             "sessions_replayed",
             // 记录文件的出声（同一条内容通道，与行同序）。
             "session_file_gone",
             "session_file_reread",
-            // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
-            "tasks_changed",
-            // 计划变了（同上，本机消费者交重放缓冲那张订阅表）。
-            "plan_changed",
             // 运行表 · 主线外清单（会话成品，交会话账）。
             "session_runs",
             "session_branch",
@@ -279,7 +252,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
         .iter()
         .map(|s| s.to_string())
         .collect::<BTreeSet<_>>(),
-        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（红绿灯 · 清单报完了：本机活会话表由这条流喂）＋ 记录文件出声两种 ＋ 额度 / 轮换三种：\
+        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（红绿灯 · 清单报完了：本机活会话表由这条流喂）＋ 记录文件出声两种 ＋ `changed`：\
          多交 ⇒ 别的帧混进来；少交 ⇒ 本机那一种又被就地丢了"
     );
 }
@@ -864,27 +837,27 @@ fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
     );
 }
 
-// ─── Q1 本机那条路上的额度 / 轮换 / 轮换规则推送 ⇒ 界面那条订阅收得到 ───────────────────────
+// ─── Q1 本机那条路上的 `changed` ⇒ 界面那条订阅收得到 ───────────────────────
 //
 // 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 远端那条读循环（`stream_loop`）
-// 收到这三种帧就交 `quota-changed` 订阅；本机这条从前在吸收点就被丢了，界面只能等别的事件顺带重读。
+// 收到 `changed` 就交 `changed/<主题>` 订阅；本机这条从前在吸收点丢过额度 · 账号清单 · 配置文件，界面只能等别的事件顺带重读。
 
 /// 手写线上帧走生产那一串：`parse_frame` → 吸收点 → 本机内容通道 → `consume_local` → 重放缓冲；
-/// 订了 `<local>` 上 `quota-changed` 的那条订阅逐格收到 `{"quota":true}` · `{"sid"}` · `{"rules":true}`（期望手写）。
+/// 订了 `<local>` 上 `changed/quota` · `changed/rotation` · `changed/accounts` 的订阅各逐格收到自己那一格（期望手写）。
 #[tokio::test]
-async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
+async fn local_changed_pushes_reach_the_ui_subscription() {
     use crate::chan::wire::Item as WItem;
     use crate::event_replay::{EventReplay, ItemSink};
     #[derive(Default)]
-    struct Rec(std::sync::Mutex<Vec<serde_json::Value>>);
+    struct Rec(std::sync::Mutex<Vec<(u64, serde_json::Value)>>);
     impl ItemSink for Rec {
-        fn deliver(&self, _: &str, _: u64, items: Vec<WItem>) {
+        fn deliver(&self, _: &str, sub: u64, items: Vec<WItem>) {
             for i in items {
                 if let WItem::Frame { body, .. } = i {
                     self.0
                         .lock()
                         .unwrap()
-                        .push(serde_json::from_slice(&body.0).unwrap());
+                        .push((sub, serde_json::from_slice(&body.0).unwrap()));
                 }
             }
         }
@@ -892,14 +865,16 @@ async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
     let replay = std::sync::Arc::new(EventReplay::new());
     let rec = std::sync::Arc::new(Rec::default());
     replay.attach_sink(rec.clone());
-    replay.subscribe(
-        "w",
-        1,
-        &crate::origin::Origin::local(),
-        crate::event_replay::QUOTA_CHANGED_KIND,
-        None,
-        16,
-    );
+    for (id, topic) in [(1, "quota"), (2, "rotation"), (3, "accounts")] {
+        replay.subscribe(
+            "w",
+            id,
+            &crate::origin::Origin::local(),
+            &format!("{}/{topic}", crate::event_replay::CHANGED_KIND),
+            None,
+            16,
+        );
+    }
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(16);
     let health: crate::stream_source::HealthOut = std::sync::Arc::new(|_| Ok(()));
     let consumer = tokio::spawn(crate::stream_source::consume_local(
@@ -908,9 +883,9 @@ async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
         health,
     ));
     for line in [
-        r#"{"kind":"quota_changed"}"#,
-        r#"{"kind":"rotation_changed","sid":"s1"}"#,
-        r#"{"kind":"rotation_rules_changed"}"#,
+        r#"{"kind":"changed","topic":"quota"}"#,
+        r#"{"kind":"changed","topic":"rotation","key":"s1"}"#,
+        r#"{"kind":"changed","topic":"accounts"}"#,
     ] {
         let f = parse_frame(line).expect("手写帧解不出来");
         if let Some(f) = crate::local_backend::absorb_local_frame(f, None) {
@@ -925,23 +900,23 @@ async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
     assert_eq!(
         *rec.0.lock().unwrap(),
         vec![
-            serde_json::json!({"quota": true}),
-            serde_json::json!({"sid": "s1"}),
-            serde_json::json!({"rules": true}),
+            (1, serde_json::json!({})),
+            (2, serde_json::json!({"key": "s1"})),
+            (3, serde_json::json!({})),
         ],
-        "本机后端推来的额度 / 轮换 / 轮换规则变了，界面那条 `quota-changed` 订阅没收到（远端那条路收得到）"
+        "本机后端推来的 `changed`，界面那几条 `changed/<主题>` 订阅没收到（远端那条路收得到）"
     );
 }
 
-/// 两条路交界面的是同一个口：额度 / 轮换 / 轮换规则那三格在 monitor 生产段里恰好由
+/// 两条路交界面的是同一个口：`changed` 那一格在 monitor 生产段里恰好由
 /// 远端读循环与本机消费者各调一处（多一处 ⇒ 又长出第三条路；少一处 ⇒ 那条路又把它丢了）。
 #[test]
-fn both_paths_hand_quota_pushes_to_the_same_replay_entry() {
+fn both_paths_hand_changed_pushes_to_the_same_replay_entry() {
     let want = set(&[
         ("stream_source/local.rs", "consume_local"),
         ("stream_source/run.rs", "stream_loop"),
     ]);
-    for needle in ["quota_changed(", "rotation_rules_changed("] {
+    for needle in ["replay.changed("] {
         assert_eq!(callers_of(needle), want, "`{needle}` 的生产调用方对不上");
     }
 }

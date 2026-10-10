@@ -769,15 +769,15 @@ async fn stop_and_resubscribe_leave_no_orphans() {
     assert_eq!(r.inner.lock().subs.len(), 1, "旧的那条还挂着");
 }
 
-/// ★**`accounts-changed` 那条流**（替掉裸事件 `remote-backend-ready`）只收三样：那台看不看得见（`Unseen` / `Seen`，
+/// ★**`changed/accounts` 那条流**（替掉裸事件 `remote-backend-ready`）只收三样：那台看不看得见（`Unseen` / `Seen`，
 /// 与同台 `session-lines` **同一个来源** `origin_seen`）· 那台账号清单变了（恰好一格 `Frame`，体是约定那一串）· 丢过几格（`Gap`）。
 ///
 /// 守的要求：「前端只有两个动作」· 看不见 ⇒ 第一格 `Unseen`，订阅照样成立 ·
 /// `§3.3.4`（丢必须说，`Gap` 在原位）· `§15.3`（kind 由宿主注入的那一侧认）。
-/// 两向隔离：会话行**不进** `accounts-changed`；账号那一格**不进** `session-lines`；别台的都不收。
+/// 两向隔离：会话行**不进** `changed/accounts`；账号那一格**不进** `session-lines`；别台的都不收。
 /// 期望手写（位置、格的种类、体的原文），不从被测的计划函数派生。
 #[tokio::test]
-async fn the_accounts_changed_stream_carries_only_reachability_and_account_notices() {
+async fn the_changed_accounts_stream_carries_only_reachability_and_account_notices() {
     let (r, rec) = hub();
     let box_a = crate::origin::Origin("box-a".into());
     let box_b = crate::origin::Origin("box-b".into());
@@ -792,7 +792,7 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
                         let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
                         let kind = if v.get("line").is_some() {
                             "line"
-                        } else if v == serde_json::json!({"accounts_changed": true}) {
+                        } else if v == serde_json::json!({}) {
                             "accounts"
                         } else {
                             "other-frame"
@@ -813,9 +813,9 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
     };
 
     // 看不见时订 ⇒ 每条第一格都是 `Unseen`（订阅照样成立）。
-    r.subscribe("w", 1, &box_a, "accounts-changed", None, 1);
+    r.subscribe("w", 1, &box_a, "changed/accounts", None, 1);
     r.subscribe("w", 2, &box_a, "session-lines", None, 10);
-    r.subscribe("w", 3, &box_b, "accounts-changed", None, 5);
+    r.subscribe("w", 3, &box_b, "changed/accounts", None, 5);
     assert_eq!(
         by_sub(&rec),
         vec![(1, "unseen", 0), (2, "unseen", 0), (3, "unseen", 0)]
@@ -827,12 +827,12 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
     assert_eq!(by_sub(&rec), vec![(1, "seen", 0), (2, "seen", 0)]);
     rec.clear();
 
-    // 账号清单变了 ⇒ 只有这台的 `accounts-changed` 收一格、位置 0、体是约定那一串。
-    r.accounts_changed(&box_a);
+    // 账号清单变了 ⇒ 只有这台的 `changed/accounts` 收一格、位置 0、体是约定那一串。
+    r.changed(&box_a, "accounts", "{}".into());
     assert_eq!(by_sub(&rec), vec![(1, "accounts", 0)]);
     rec.clear();
 
-    // 会话行 ⇒ 只进 `session-lines`（它过了就绪点之后）；`accounts-changed` 一格都不收，就绪点也不给它重放。
+    // 会话行 ⇒ 只进 `session-lines`（它过了就绪点之后）；`changed/accounts` 一格都不收，就绪点也不给它重放。
     r.ready_point(None).await;
     let mut remote_lines = lines("s", 0..2);
     for p in &mut remote_lines {
@@ -844,12 +844,12 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
 
     // credit：第 1 条一开始只给了 1 格（已被上面那一格用掉）⇒ 再来一次就丢、位置照占；
     // `want` 回来 ⇒ 原位说 `Gap[1, 2)`；之后那一格从位置 2 起。
-    r.accounts_changed(&box_a);
+    r.changed(&box_a, "accounts", "{}".into());
     assert!(by_sub(&rec).is_empty(), "没 credit 却交了");
     r.want("w", 1, 3);
     assert_eq!(by_sub(&rec), vec![(1, "gap", 102)]);
     rec.clear();
-    r.accounts_changed(&box_a);
+    r.changed(&box_a, "accounts", "{}".into());
     assert_eq!(by_sub(&rec), vec![(1, "accounts", 2)]);
     rec.clear();
 
@@ -1202,80 +1202,26 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
     assert!(!other.reaches(Some("mine")) && other.reaches(Some("other")));
 }
 
-/// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`」〕`session-tasks` 流：
-/// 这台某个会话的任务变了 ⇒ 只有订了这台 `session-tasks` 的收一格、体恰是 `{"sid": …}`；别台的 · 同台 `accounts-changed` 的都不收。期望手写。
+/// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`」〕`changed/<主题>` 流：这台某样东西变了 ⇒ 只有订了这台这个主题的收一格、
+/// 体恰是交进来的那一份格体（壳不解释）；别台的 · 同台别的主题的都不收。主题不在壳里认：新主题照收。期望手写。
 #[tokio::test]
-async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else() {
+async fn a_changed_cell_reaches_only_its_own_machine_and_topic() {
     let (r, rec) = hub();
     let box_a = crate::origin::Origin("box-a".into());
     let box_b = crate::origin::Origin("box-b".into());
-    r.subscribe("w", 1, &box_a, "session-tasks", None, 4);
-    r.subscribe("w", 2, &box_a, "accounts-changed", None, 4);
-    r.subscribe("w", 3, &box_b, "session-tasks", None, 4);
+    r.subscribe("w", 1, &box_a, "changed/tasks", None, 4);
+    r.subscribe("w", 2, &box_a, "changed/accounts", None, 4);
+    r.subscribe("w", 3, &box_b, "changed/tasks", None, 4);
+    r.subscribe("w", 4, &box_a, "changed/plan", None, 4);
+    r.subscribe("w", 5, &box_a, "changed/some_new_topic", None, 4);
     rec.clear();
-    r.tasks_changed(&box_a, "s1");
-    let got: Vec<(u64, serde_json::Value)> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, id, items)| {
-            items.iter().filter_map(move |i| match i {
-                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
-                _ => None,
-            })
-        })
-        .collect();
-    assert_eq!(got, vec![(1, serde_json::json!({"sid": "s1"}))]);
-}
-
-/// `quota-changed` 流：这台额度账变了 ⇒ 体 `{"quota":true}`；这台某个会话的轮换变了 ⇒ 体 `{"sid": …}`。
-/// 只有订了这台 `quota-changed` 的收；别台的 · 同台 `session-tasks` 的都不收。期望手写。
-#[tokio::test]
-async fn the_quota_stream_carries_ledger_and_rotation_changes_to_its_own_machine_only() {
-    let (r, rec) = hub();
-    let box_a = crate::origin::Origin("box-a".into());
-    let box_b = crate::origin::Origin("box-b".into());
-    r.subscribe("w", 1, &box_a, "quota-changed", None, 4);
-    r.subscribe("w", 2, &box_a, "session-tasks", None, 4);
-    r.subscribe("w", 3, &box_b, "quota-changed", None, 4);
-    rec.clear();
-    r.quota_changed(&box_a, None);
-    r.quota_changed(&box_a, Some("s1"));
-    let got: Vec<(u64, serde_json::Value)> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, id, items)| {
-            items.iter().filter_map(move |i| match i {
-                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
-                _ => None,
-            })
-        })
-        .collect();
-    assert_eq!(
-        got,
-        vec![
-            (1, serde_json::json!({"quota": true})),
-            (1, serde_json::json!({"sid": "s1"}))
-        ]
+    r.changed(&box_a, "tasks", r#"{"key":"s1"}"#.into());
+    r.changed(
+        &box_a,
+        "plan",
+        r#"{"key":"/work/ledger","rev":"r1","body":{"needs":3}}"#.into(),
     );
-}
-
-/// 计划变了走 `quota-changed` 那一条流（「那台某样东西变了」不另开流）：体 `{"plan": {"workspace", "rev", "needs"}}`
-/// （`needs` 是那台写好的数，`0` 照发）。只有订了这台 `quota-changed` 的收；别台的 · 同台别的流都不收。期望手写。
-#[tokio::test]
-async fn a_plan_change_rides_the_quota_stream_to_its_own_machine_only() {
-    let (r, rec) = hub();
-    let box_a = crate::origin::Origin("box-a".into());
-    let box_b = crate::origin::Origin("box-b".into());
-    r.subscribe("w", 1, &box_a, "quota-changed", None, 4);
-    r.subscribe("w", 2, &box_a, "session-tasks", None, 4);
-    r.subscribe("w", 3, &box_b, "quota-changed", None, 4);
-    rec.clear();
-    r.plan_changed(&box_a, "/work/ledger", "r1", 3);
-    r.plan_changed(&box_a, "/work/site", "r2", 0);
+    r.changed(&box_a, "some_new_topic", "{}".into());
     let got: Vec<(u64, serde_json::Value)> = rec
         .0
         .lock()
@@ -1291,50 +1237,26 @@ async fn a_plan_change_rides_the_quota_stream_to_its_own_machine_only() {
     assert_eq!(
         got,
         vec![
+            (1, serde_json::json!({"key": "s1"})),
             (
-                1,
-                serde_json::json!({"plan": {"workspace": "/work/ledger", "rev": "r1", "needs": 3}})
+                4,
+                serde_json::json!({"key": "/work/ledger", "rev": "r1", "body": {"needs": 3}})
             ),
-            (
-                1,
-                serde_json::json!({"plan": {"workspace": "/work/site", "rev": "r2", "needs": 0}})
-            )
+            (5, serde_json::json!({})),
         ]
     );
 }
 
-/// 〔「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
-/// 体原样（monitor 不解释）；别的票 · 别台同名 · 空票都不收（空票那一形订不上：`no-such-stream`）。期望手写。
-#[tokio::test]
-async fn the_probe_progress_stream_carries_the_cell_to_the_one_ticket_only() {
-    let (r, rec) = hub();
-    let local = crate::origin::Origin::local();
-    let box_a = crate::origin::Origin("box-a".into());
-    r.subscribe("w", 1, &local, "probe-progress/t-1", None, 4);
-    r.subscribe("w", 2, &local, "probe-progress/t-2", None, 4);
-    r.subscribe("w", 3, &box_a, "probe-progress/t-1", None, 4);
-    rec.clear();
-    r.subscribe("w", 4, &local, "probe-progress/", None, 4);
-    let refused =
-        rec.0.lock().unwrap().iter().any(|(_, id, items)| {
-            *id == 4 && items.iter().any(|i| matches!(i, WItem::Closed { .. }))
-        });
-    assert!(refused, "空票那一形该当场说没有这条流");
-    rec.clear();
-    r.on_probe("t-1", r#"{"reached":"ssh"}"#.to_string());
-    let got: Vec<(u64, serde_json::Value)> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, id, items)| {
-            items.iter().filter_map(move |i| match i {
-                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
-                _ => None,
-            })
-        })
-        .collect();
-    assert_eq!(got, vec![(1, serde_json::json!({"reached": "ssh"}))]);
+/// 流名 `changed/<主题>`：主题空 / 带 `/` / 没有主题 ⇒ 没有这条流（`Closed` 原位说不行）。
+#[test]
+fn a_changed_stream_needs_one_topic() {
+    for bad in ["changed", "changed/", "changed/a/b"] {
+        assert_eq!(parse_kind(bad), Err(()), "{bad}");
+    }
+    assert_eq!(
+        parse_kind("changed/quota"),
+        Ok(Stream::Changed("quota".into()))
+    );
 }
 
 /// 终端实时预览 `terminal-screen/<票>` 流：那台推来一格 ⇒ 只有订了**那台的那张票**的收、体原样（monitor 不解释）；
@@ -1395,7 +1317,7 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
     let take = || std::mem::take(&mut *dropped.lock().unwrap());
     // ① 界面撤单。
     r.subscribe("w", 1, &box_a, "terminal-screen/t-1", None, 2);
-    r.subscribe("w", 2, &box_a, "accounts-changed", None, 2);
+    r.subscribe("w", 2, &box_a, "changed/accounts", None, 2);
     r.stop("w", 1);
     r.stop("w", 2);
     r.stop("w", 1);
@@ -1425,34 +1347,4 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
     assert_eq!(take(), vec![], "清过的不再退");
     r.stop("v", 1);
     assert_eq!(take(), vec![("box-a".to_string(), "t-5".to_string())]);
-}
-
-/// 配置文件那一种流（`profiles-changed`）：「配置文件变了」只进订了那台这一种流的订阅，账号那一种不收；体是约定那一串。
-#[tokio::test]
-async fn the_profiles_changed_stream_gets_only_profile_notices_of_its_own_origin() {
-    let (r, rec) = hub();
-    let box_a = crate::origin::Origin("box-a".into());
-    let box_b = crate::origin::Origin("box-b".into());
-    r.subscribe("w", 1, &box_a, "profiles-changed", None, 4);
-    r.subscribe("w", 2, &box_a, "accounts-changed", None, 4);
-    r.subscribe("w", 3, &box_b, "profiles-changed", None, 4);
-    r.origin_seen(&box_a, true);
-    rec.clear();
-    r.profiles_changed(&box_a);
-    let got: Vec<(u64, serde_json::Value)> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, id, items)| {
-            items.iter().filter_map(move |i| match i {
-                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
-                _ => None,
-            })
-        })
-        .collect();
-    assert_eq!(
-        got,
-        vec![(1, serde_json::json!({"profiles_changed": true}))]
-    );
 }

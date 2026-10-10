@@ -138,55 +138,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `id` | string | 被取消的那条命令的 `id` |
 
-### `accounts_changed`
+### `changed`
 
-**这台机器上的账号清单变了**（账号 manifest 被改写）。
-
-（无字段）
-
-### `profiles_changed`
-
-**这台机器上的配置文件（`~/.cc-monitor/profiles.toml`）变了**（别处改了它，或设置窗刚写了它）。
-
-（无字段）
-
-### `quota_changed`
-
-**这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
-
-（无字段）
-
-### `rotation_changed`
-
-**这台某个会话的轮换或「账号」格变了**（换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。
+**这台的某样东西变了，客户端重读那一份**（账号清单 · 配置文件 · 额度账 · 会话轮换 · 规则表 · 计划 · 任务清单 —— 主题表 `Topic`）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sid` | string | 轮换或「账号」格变了的会话 |
-
-### `rotation_rules_changed`
-
-**这台的轮换规则表或默认指向变了**（新建 · 改 · 改名 · 删 · 设为默认；本进程或别的进程写的都推）。
-
-（无字段）
-
-### `plan_changed`
-
-**这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要或要你看的数变了；认可 / 撤销认可也推一帧新的数）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `workspace` | string | 工作区根 |
-| `rev` | string | 新的输出摘要（同 `plan-read` 的 `rev`） |
-| `needs` | number | 这个工作区此刻要你看的数（没认可的，不含 agent 问人那一种 —— 那一条由会话那一侧数；同 `plan-read` 的 `needCount`） |
-
-### `tasks_changed`
-
-**这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sid` | string | 任务清单变了的会话 |
+| `topic` | Topic | 哪一样变了 |
+| `key` | string? | 哪一个（会话 id · 工作区根）；主题不带 ⇒ 缺 |
+| `rev` | string? | 变成了哪一版；主题不带 ⇒ 缺 |
+| `body` | JSON? | 那一样的小成品；主题不带或超了上限 ⇒ 缺（客户端重问） |
 
 ### `sessions_replayed`
 
@@ -352,6 +313,18 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `needs_you` —— 在等人（批准 · 回答 · 弹窗）
 - `idle` —— 闲着，等下一句输入
 - `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
+
+#### `Topic`
+
+推送主题（线上 `changed.topic`）。
+
+- `accounts` —— 这台的账号清单（账号 manifest 被改写）
+- `profiles` —— 这台的配置文件（`~/.cc-monitor/profiles.toml`）
+- `quota` —— 这台的额度账显示得出来的那几格
+- `rotation` —— 这台某个会话的轮换或「账号」格（`key` ＝ sid）
+- `rotation_rules` —— 这台的轮换规则表或默认指向
+- `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
+- `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 
 #### `Unavailable`
 
@@ -3756,7 +3729,7 @@ cc-bus 钩子诊断。
 
 #### `plan-ack`
 
-认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数。
+认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-ack`
 
@@ -3773,7 +3746,7 @@ cc-bus 钩子诊断。
 
 #### `plan-unack`
 
-撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数。
+撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-unack`
 
@@ -3937,14 +3910,14 @@ cc-bus 钩子诊断。
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
-| `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数 |
+| `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
 | `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径） |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |
-| `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数 |
+| `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |

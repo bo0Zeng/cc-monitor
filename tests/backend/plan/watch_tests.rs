@@ -1,4 +1,4 @@
-//! `plan_changed`：只认计划仓与工作区 `.env`；摘要变了才推，没变不推。
+//! `changed {plan}`：只认计划仓与工作区 `.env`；摘要变了才推，没变不推。
 
 use super::*;
 use crate::plan::fixture::scratch;

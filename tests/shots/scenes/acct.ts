@@ -1256,7 +1256,7 @@ export const ACCT_SCENES: Scene[] = [
       await scrollPanelTo("切换");
       await click(await byText('aside[role="dialog"] button', "切换"));
       await sleep(400);
-      ctx.backend.pushQuota(LOCAL, { sid: ctx.backend.world.sessions[0].sid });
+      ctx.backend.pushChanged(LOCAL, "rotation", { key: ctx.backend.world.sessions[0].sid });
       await sleep(800);
       await key("Escape");
       await key("Escape");

@@ -565,7 +565,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "tasks-list",
         "后端出成品 `{tasks}`（字段语义挪进后端 `tasks_query.rs::task_entry`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
-推送那一路也不经 monitor 问了：后端 `tasks_changed` 帧 ⇒ 通道 `session-tasks`，界面收到自己重问",
+推送那一路也不经 monitor 问了：后端 `changed {tasks}` 帧 ⇒ 通道 `changed/tasks`，界面收到自己重问",
     ),
     (
         "session-interrupts",
@@ -677,7 +677,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
-    // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`tasks_changed` 帧 ⇒ 通道 `session-tasks`），
+    // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
     //   monitor 零处再问它。
     // `files-ls` · `files-stat` 不在这里：界面不再问它们（见上表），文件窗口列目录 · 看属性
     //   （`filewin/source.rs::CMD_LS` · `filewin/props.rs::CMD_STAT` …）是另一个前端自己的事。

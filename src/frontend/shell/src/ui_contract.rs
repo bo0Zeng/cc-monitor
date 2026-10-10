@@ -16,7 +16,7 @@ pub mod events {
     // 会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
     //   `-activity` · `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进了会话流 `subscribe(origin, "session-lines")`：
     //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），不吃 credit、不丢（[`super::SessionStreamFrame::takes_credit`]）。
-    // `task-update` 事件退役：任务变更经通道 `subscribe(origin, "session-tasks")`（后端 `tasks_changed` 帧）。
+    // `task-update` 事件退役：任务变更经通道 `subscribe(origin, "changed/tasks")`（后端 `changed {tasks}` 帧）。
     /// **方向相反的那一个**（前端 emit、Rust `app.listen` 收）：前端注册完 listener 后
     /// 通知后端开始 replay 历史，payload 见 [`FrontendReadyPayload`]。
     ///
@@ -38,7 +38,7 @@ pub mod events {
     pub const UI_ERROR: &str = "monitor-error";
     // 窗到窗的 `open-account-panel`（设置窗账号页指路框 ⇒ 主窗口账号面板）随指路框退役：默认轮换与规则在设置「轮换」栏里管。
     // 「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
-    //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
+    //   前端经通道 `subscribe(origin, "changed/accounts")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
     //   句柄是 `event_replay`（头注那张 kind 表）。「前端只有两个动作」。
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
