@@ -2,7 +2,7 @@
 
 Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— ~12K 行 TS 的中型应用（根 README 口径），原生 DOM 依旧足够——分层靠模块边界与本导览维持。
 
-本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/frontend/shell/README.md`](../src/frontend/shell/README.md)。
+本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/frontend/shell/README.md`](../src/frontend/shell/README.md)。手机端 app（Android，Gradle）在 [`mobile/`](mobile/README.md)，构建与测试见那里的 README。
 
 ## 入口
 

@@ -81,6 +81,15 @@ const POWERSHELL_TODAY: &[(&str, &str)] = &[
         "RT1 真机台架：窗口枚举 / DPI / WM_CLOSE / 控制台事件",
     ),
     ("tests/evidence/RT1-winwatch.ps1", "RT1 真机台架：窗口哨兵"),
+    // 手机端的两份：只在 Windows 开发机上装 / 激活 Android 工具链，不进产品、不进门禁，仍零 lint。
+    (
+        "src/mobile/scripts/bootstrap-android-env.ps1",
+        "手机端：在 Windows 开发机上装一套隔离的 Android 工具链（JDK ＋ SDK）",
+    ),
+    (
+        "src/mobile/scripts/env.ps1",
+        "手机端：在当前 PowerShell 里激活那套工具链（env.sh 的 Windows 版）",
+    ),
 ];
 
 #[test]
