@@ -239,7 +239,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 }
 ```
 
-- **成品**：`record`（通用记录）· `facts`（会话事实，`history-facts`）· `index_row`（骨架行，`history-index` 的 `rows[]`）· `read_row`（行摘要，`history-read` 的 `rows[]`）· 会话帧按帧的 `kind`（`session_added` · `session_status` · `session_state` · `session_removed`）。其余成品随各批换形时登记进来。
+- **成品**：`record`（通用记录）· `facts`（会话事实，`history-facts`）· `needs_row`（需手动清单的一行，`sessions-needs` 的 `waiting[]`）· `index_row`（骨架行，`history-index` 的 `rows[]`）· `read_row`（行摘要，`history-read` 的 `rows[]`）· 会话帧按帧的 `kind`（`session_added` · `session_status` · `session_state` · `session_removed`）。其余成品随各批换形时登记进来。
 - **格**：`path` 的写法与出口声明里点格的写法同一种 —— `a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面。`kind` 是 `value` · `text` · `tone`；`type` 是 `string` · `number` · `bool` · `enum`（闭集的词）· `object`（原样透传的一团，不再往里分格）。
 - **从哪来**：不手写第二份。每件成品登记一组**样本**（用成品自己的 Rust 类型造的值：可缺的格都填上、列表不空、每种变体各一个），目录 ＝ 样本经 serde 交给一个走查序列化器得到的格路径；`Words` / `Tone` 两个类型名就是 `text` / `tone` 的来源。线上的 `serde_json` 与它走的是同一份 `Serialize` 实现。
 - **`pending`**：已判了要补、还没落地的格。落地那一刻它进了 `products`，这一行就得删。判了不补的（如骨架行的时刻：手机改吃 `history-branch.off` 拿主线之后就没有用处）不登记，理由写在 `PENDING` 的头注里。

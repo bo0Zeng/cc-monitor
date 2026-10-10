@@ -576,6 +576,16 @@
         },
         {
           "kind": "value",
+          "path": "needs.waitedMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.waitedText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
           "path": "needs.what",
           "type": "string"
         },
@@ -742,6 +752,67 @@
       ],
       "frozen": false,
       "name": "facts"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "needs.call",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.kind",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "needs.rank",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "needs.sinceMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "needs.tone",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "needs.tool",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.waitedMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.waitedText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.what",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "sid",
+          "type": "string"
+        }
+      ],
+      "frozen": false,
+      "name": "needs_row"
     },
     {
       "cells": [

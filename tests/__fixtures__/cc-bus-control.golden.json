@@ -22,34 +22,34 @@
         { "id": "x_cc", "target": "x_cc:0.0", "unread": 1, "live": true, "ccm_sid": null }
       ]
     },
-    "codes": ["not_installed", "timed_out", "failed"]
+    "codes": ["not_installed", "child_timed_out", "failed"]
   },
   "bus-send": {
     "request": { "to": "alpha_cc", "text": "hi", "from": "cc-monitor" },
     "reply": { "to": "alpha_cc", "sent": true, "registered": true, "live": true, "from": "cc-monitor" },
-    "codes": ["bad_args", "bad_id", "not_installed", "rejected", "timed_out", "too_long", "failed"]
+    "codes": ["bad_args", "bad_id", "not_installed", "rejected", "child_timed_out", "too_long", "failed"]
   },
   "bus-kill": {
     "request": { "id": "alpha_cc" },
     "reply": { "id": "alpha_cc", "killed": true, "stale_only": false },
-    "codes": ["bad_args", "bad_id", "not_installed", "timed_out", "failed"]
+    "codes": ["bad_args", "bad_id", "not_installed", "child_timed_out", "failed"]
   },
   "bus-spawn": {
     "request": { "tool": "claude", "dir": "/w/proj", "task": "t", "base": true },
     "requestAccount": { "tool": "claude", "dir": "/w/proj", "task": "t", "account": "z" },
     "said": "已 spawn: proj_cc   (目录: /w/proj)",
     "reply": { "spawned": true, "id": "proj_cc", "said": "已 spawn: proj_cc   (目录: /w/proj)" },
-    "codes": ["bad_args", "bad_id", "not_installed", "timed_out", "failed"]
+    "codes": ["bad_args", "bad_id", "not_installed", "child_timed_out", "failed"]
   },
   "bus-broadcast": {
     "request": { "text": "hi", "from": "cc-monitor" },
-    "failedOne": { "id": "x_cc", "error": "timed_out", "detail": "d" },
+    "failedOne": { "id": "x_cc", "error": "child_timed_out", "detail": "d" },
     "reply": {
       "sent": 1,
       "skipped_offline": 1,
       "liveness_unknown": false,
-      "failed": [{ "id": "x_cc", "error": "timed_out", "detail": "d" }]
+      "failed": [{ "id": "x_cc", "error": "child_timed_out", "detail": "d" }]
     },
-    "codes": ["bad_args", "not_installed", "timed_out", "failed", "bad_id"]
+    "codes": ["bad_args", "not_installed", "child_timed_out", "failed", "bad_id"]
   }
 }

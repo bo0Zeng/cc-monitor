@@ -17,11 +17,12 @@ import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { dotLabel } from "./session-words";
 import { fmtDur } from "./quota-lines";
+import { waitedNow } from "./cards/step-line";
 
 /** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 };
 }
 
 /**
@@ -63,7 +64,7 @@ export function machineOf(tab: Tab): string {
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
   const n = needsOf(tab);
   if (n) {
-    const waited = sinceText(n.sinceMs, now);
+    const waited = waitedNow(n, now);
     const word = n.text;
     return { text: waited ? copyText("sessionFace.state.waiting", { kind: word, waited }) : word, needs: true };
   }

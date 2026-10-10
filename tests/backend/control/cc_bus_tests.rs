@@ -519,13 +519,13 @@ fn bus_spawn_reads_the_id_from_what_cc_spawn_said_and_never_guesses() {
     }
 }
 
-/// 退出码分档：2 ⇒ bad_args · 124 ⇒ timed_out **且说清「可能已经起来了、别直接重试」** · 其它 ⇒ failed。
+/// 退出码分档：2 ⇒ bad_args · 124 ⇒ child_timed_out **且说清「可能已经起来了、别直接重试」** · 其它 ⇒ failed。
 #[test]
 fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
     assert!(classify_spawn(Some(0), "", 10).is_ok());
     assert_eq!(classify_spawn(Some(2), "x", 10).unwrap_err().0, "bad_args");
     let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x", 10).unwrap_err();
-    assert_eq!(c, "timed_out");
+    assert_eq!(c, "child_timed_out");
     assert!(
         copy_core::copy_matches("beCcBus.spawn.timedOut", &m)
             && copy_core::copy_matches("beCcBus.spawn.timedOut", &m),
@@ -800,7 +800,7 @@ fn a_timeout_says_how_long_it_actually_waited() {
     assert!(out.timed_out());
     assert_eq!(out.waited_secs, Some(1), "原语交回的不是截短后的那个时长");
     let (code, said) = classify_send(out.code, "", waited_secs(&out)).unwrap_err();
-    assert_eq!(code, "timed_out");
+    assert_eq!(code, "child_timed_out");
     assert!(
         copy_core::copy_matches_with("beCcBus.timedOut.say", &[("secs", "1")], &said)
             && !said.contains("10"),

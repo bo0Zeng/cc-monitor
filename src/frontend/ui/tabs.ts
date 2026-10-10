@@ -67,7 +67,7 @@ import {
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
 import { updateBackendOf } from "./backend-deploy";
-import { awaitedFor, paintWaiting } from "./cards/step-line";
+import { waitedNow, paintWaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
@@ -1322,7 +1322,7 @@ export class TabManager {
     const n = tab.needs;
     for (const row of tab.streamEl.querySelectorAll<HTMLElement>(WAITING_ROWS)) {
       const call = row.dataset.call ?? "";
-      const waited = n?.call === call ? awaitedFor(n.sinceMs, Date.now()) : null;
+      const waited = n?.call === call ? waitedNow(n, Date.now()) : null;
       const p = by.get(call);
       paintWaiting(row, p?.state ?? "unclear", waited, n?.kind === "approve", p?.why ?? null);
     }

@@ -512,6 +512,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             }
             Ok(v)
         }
+        // 这台上需手动的会话清单（一次问一台）：活着、那台说在等人的每一个，带它在等什么（同 `history-facts.needs`，不另判）。
+        "sessions-needs" => Ok(json!({ "waiting": accounts_query::live_needs(home) })),
         // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
         "history-branch" => {
             let path = str_arg(args, "path")?;

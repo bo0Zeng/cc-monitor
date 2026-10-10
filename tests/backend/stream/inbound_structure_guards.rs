@@ -267,6 +267,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-turns" // 一轮的摘要：扫一段会话，同档
                 | "history-branch" // 主线外清单：扫一份会话（共用扫描图），同档
                 | "history-facts" // 会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
+                | "sessions-needs" // 需手动的清单：读这台的 pidfile、在等的那几份各扫一份会话（共用扫描图），同档
                 | "history-read"
                 | "history-lines" // 按行号取回：从文件头数，同档
                 | "history-record" // 记录还在不在：一次目录枚举，同档
@@ -535,6 +536,7 @@ fn every_registered_command_declares_its_run_kind() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "sessions-needs",
         "history-branch",
         "history-read",
         "history-lines",  //
@@ -1515,6 +1517,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "session-new-facts",
         "session-restart",
         "session-terminals",
+        // 非空的清单要活进程的 pidfile，金样生成那一处不起进程；一行的形状由格目录 `needs_row` 的样本与真判定现造的那一份两向钉。
+        "sessions-needs",
         "sessions-start",
         "sessions-stop",
         "sessions-where",

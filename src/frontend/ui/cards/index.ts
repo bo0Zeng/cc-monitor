@@ -30,7 +30,7 @@ import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
-import { awaitedFor, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
+import { waitedNow, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
 import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
@@ -105,7 +105,7 @@ export interface RenderContext {
   stepWait?: (call: string) => Pick<PendingCall, "state" | "why"> | undefined;
   /** 一串重试的结局（会话事实 `retries`，按首条重试记录的 `id`）；事实里还没有 ⇒ `undefined`。 */
   retryOutcome?: (id: string) => RetryOutcome | undefined;
-  needs?: { kind: string; call: string | null; sinceMs: number | null } | null;
+  needs?: { kind: string; call: string | null; waitedMs: number | null; receivedAt: number } | null;
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
   /**
@@ -549,7 +549,7 @@ function buildToolUseCard(
   // 会话事实已经说了这一步是什么样子 ⇒ 建出来就照画；还没说 ⇒ 不画状态，等事实（不按「没有结果」当在跑）。
   const w = ctx.stepWait?.(block.id);
   const n = ctx.needs;
-  if (w) paintWaiting(line, w.state, n?.call === block.id ? awaitedFor(n.sinceMs, Date.now()) : null, n?.kind === "approve", w.why);
+  if (w) paintWaiting(line, w.state, n?.call === block.id ? waitedNow(n, Date.now()) : null, n?.kind === "approve", w.why);
 
   const wrap = document.createElement("div");
   wrap.className = "block-body-wrap";

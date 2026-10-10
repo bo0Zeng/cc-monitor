@@ -458,7 +458,7 @@ fn start(
 
 /// tmux 那一形的会话名。这台没 tmux ⇒ `place` 那一格不行；看不见名单 ⇒ 整体不行（不拿空名单铸：那是不避让）。
 fn tmux_name(req: &NewRequest, cwd: &str, deps: &Deps) -> Result<String, Failed> {
-    let rows = match (deps.list)() {
+    let rows = match super::session_batch::listed(deps) {
         Ok(Some(rows)) => rows,
         Ok(None) => {
             return Err(fail(
@@ -467,7 +467,7 @@ fn tmux_name(req: &NewRequest, cwd: &str, deps: &Deps) -> Result<String, Failed>
                 Some(SessionNewField::Place),
             ))
         }
-        Err(m) => return Err(fail("unobservable", m, None)),
+        Err((code, m)) => return Err(fail(code, m, None)),
     };
     let taken = |n: &str| rows.iter().any(|r| r.name == n);
     if let Some(n) = req

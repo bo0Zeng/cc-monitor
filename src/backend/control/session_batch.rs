@@ -39,8 +39,8 @@ pub(crate) struct TmuxEntry {
 
 /// 做事要用到的几样。生产那一份由入口拼（`stream/inbound/mod.rs`），判据给替身。
 pub(crate) struct Deps<'a> {
-    /// 这台的 tmux 名单；`Ok(None)` = 这台没装 tmux；`Err` = 看不见（不是零会话）。
-    pub(crate) list: &'a dyn Fn() -> Result<Option<Vec<TmuxEntry>>, String>,
+    /// 这台的 tmux 名单；`Ok(None)` = 这台没装 tmux；`Err` = 列不成（码照列名单那一发的：过了期限是 `child_timed_out`）。
+    pub(crate) list: &'a dyn Fn() -> Result<Option<Vec<TmuxEntry>>, CmdErr>,
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
@@ -71,6 +71,18 @@ pub(crate) fn pretrust(account: &Settled, cwd: &str, deps: &Deps) {
             (deps.pretrust)(&a.config_dir, cwd);
         }
     }
+}
+
+/// 这台的名单（一批一次）：列名单那一发过了期限（总期限用完了）⇒ 整条 `child_timed_out`（同别的装了总期限的命令）；
+/// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
+pub(crate) fn listed(deps: &Deps) -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+    (deps.list)().map_err(|(code, said)| {
+        if code == crate::platform::child::TIMED_OUT {
+            (code, said)
+        } else {
+            ("unobservable", said)
+        }
+    })
 }
 
 /// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
@@ -240,7 +252,7 @@ pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
 /// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`）。
 pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let sids = sids_of(args.get("sids"))?;
-    let rows = (deps.list)().map_err(|m| ("unobservable", m))?;
+    let rows = listed(deps)?;
     let host = crate::stream::wire::TerminalHost::Tmux.as_wire();
     let results: Vec<Value> = sids
         .iter()
@@ -266,7 +278,7 @@ pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
 /// `sessions-stop`：`{sids}` ⇒ `{results}`。
 pub(crate) fn stop(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let sids = sids_of(args.get("sids"))?;
-    let rows = (deps.list)().map_err(|m| ("unobservable", m))?;
+    let rows = listed(deps)?;
     let results: Vec<Value> = sids
         .iter()
         .map(|sid| stop_one(sid, rows.as_deref(), deps).to_json("sessions-stop"))
@@ -460,7 +472,7 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     // tmux 那一形先看一眼这台的名单（一批一次）；开终端那一形只有本机要铸新名的那几项用得着（核新名不落在已有的名字上）。
     let fresh_here = here && !deps.local_facts.windows && items.iter().any(|i| i.fresh);
     let rows = if tmux || fresh_here {
-        Some((deps.list)().map_err(|m| ("unobservable", m))?)
+        Some(listed(deps)?)
     } else {
         None
     };

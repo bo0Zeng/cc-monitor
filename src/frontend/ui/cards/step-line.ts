@@ -11,6 +11,7 @@ import type { StepResult } from "../generated/StepResult";
 import { icon, type IconName } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyText } from "../copy-table";
+import { formatDuration } from "../duration-format";
 import type { StepWait, UnclearWhy } from "../session-reads";
 
 /**
@@ -160,9 +161,13 @@ export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res
   return state;
 }
 
-/** 已等多久（起等时刻 epoch ms；没有 ⇒ `null`），与耗时同一种写法。 */
-export function awaitedFor(sinceMs: number | null, now: number): string | null {
-  return sinceMs === null ? null : fmtStepDur(now - sinceMs) || null;
+/**
+ * **已等多久（会走的钟，桌面唯一的读口）**：后端在那台算好的 `waitedMs`（答出那一刻，起点与读 pidfile 同一台的钟）
+ * ＋ 本机从收到那一份起走过的时间（两段各在一台钟上量，不跨机器减）。写法同 Rust `copy_core::format_duration`（同一份金样，
+ * 后端写的 `waitedText` 就是收到那一刻这里写出来的字）。没有起点 ⇒ `null`。
+ */
+export function waitedNow(n: { waitedMs: number | null; receivedAt: number }, now: number): string | null {
+  return n.waitedMs === null ? null : formatDuration(n.waitedMs + Math.max(0, now - n.receivedAt));
 }
 
 /**

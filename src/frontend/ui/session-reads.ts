@@ -253,6 +253,12 @@ export interface Needs {
   tone: string;
   /** 先答哪个（0 最先：顶上的框先答，再按危险度；后端 `facts_query::NEEDS_BY_DANGER`）。 */
   rank: number;
+  /** 到那台答出那一刻已等多久（毫秒，那台的钟上算的；不拿本机钟减 `sinceMs`）；没有起点 ⇒ `null`。 */
+  waitedMs: number | null;
+  /** `waitedMs` 写好的字（答出那一刻）；没有起点 ⇒ `null`。 */
+  waitedText: string | null;
+  /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`cards/step-line.ts::waitedNow`）。 */
+  receivedAt: number;
 }
 
 const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
@@ -438,7 +444,7 @@ export function decodeIndex(v: unknown): { from: number; end: number; rows: Skel
  * `history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
  * 「两端契约对不上」）—— 这份成品要原样当续传令牌交回去，后端那一侧收它时同样按恰好的键集合拒（`prior_from`）。
  */
-export function decodeFacts(v: unknown): SessionFacts {
+export function decodeFacts(v: unknown, receivedAt: number = Date.now()): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
@@ -495,8 +501,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone) || !isNum(n.rank)) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone, rank: n.rank };
+    if (!isObj(n) || !exactKeys(n, ["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
   }
   if (!Array.isArray(v.bgTasks)) return bad();
   const bgTasks: BgTask[] = [];

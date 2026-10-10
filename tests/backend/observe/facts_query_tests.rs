@@ -506,6 +506,7 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
     let wait = |w: Option<W>| PidWait {
         waiting_for: w,
         since_ms: Some(42),
+        read_at_ms: 43,
     };
     let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
     let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
@@ -524,6 +525,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
             tone: crate::common::cells::Tone::Need,
             rank: 1,
+            waited_ms: Some(1),
+            waited_text: Some(crate::common::cells::Words(copy_core::format_duration(1))),
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
@@ -671,6 +674,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
             tone: crate::common::cells::Tone::Need,
             rank: 1,
+            waited_ms: Some(1),
+            waited_text: Some(crate::common::cells::Words(copy_core::format_duration(1))),
         }),
         ..SessionFacts::default()
     };
@@ -713,6 +718,7 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
         Some(&PidWait {
             waiting_for: Some(crate::agents::WaitOn::Permission),
             since_ms: None,
+            read_at_ms: 0,
         }),
     );
     assert_eq!(f.needs.as_ref().and_then(|n| n.call.as_deref()), Some("s1"));
@@ -963,6 +969,7 @@ fn needs_carries_its_words_and_tone() {
     let wait = |w: Option<W>| PidWait {
         waiting_for: w,
         since_ms: None,
+        read_at_ms: 0,
     };
     let cases = [
         (
@@ -1223,6 +1230,7 @@ fn needs_carry_a_rank_riskier_first() {
     let wait = |w: Option<W>| PidWait {
         waiting_for: w,
         since_ms: None,
+        read_at_ms: 0,
     };
     let order = [
         (vec![call("Bash")], Some(W::Network), NeedsKind::Network),
@@ -1257,4 +1265,42 @@ fn needs_carry_a_rank_riskier_first() {
     );
     let v = serde_json::to_value(needs_of(&[], Some(&wait(Some(W::Goal)))).unwrap()).unwrap();
     assert_eq!(v["rank"], 3);
+}
+
+/// ★ **「已等多久」在那台算**：起点（`sinceMs`，那台 pidfile 的钟）与读 pidfile 那一刻（同一台的钟）相减，
+/// 不拿别的机器的钟减（手机 · 桌面的钟与服务器不同步）；写好的字由时长那一处写（`copy_core::format_duration`，与界面那个读口对同一份金样）。
+/// 起点缺 ⇒ 两格都缺；起点比读的那一刻还晚（那台的钟往回拨过）⇒ 记 0，不写负数。
+#[test]
+fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
+    use crate::agents::WaitOn as W;
+    let bash = vec![PendingCall {
+        id: "b".into(),
+        name: "Bash".into(),
+        what: Some("ls".into()),
+        at: None,
+        state: StepWait::Unclear,
+        why: None,
+    }];
+    let at = |since: Option<u64>, read: u64| {
+        let n = needs_of(
+            &bash,
+            Some(&PidWait {
+                waiting_for: Some(W::Permission),
+                since_ms: since,
+                read_at_ms: read,
+            }),
+        )
+        .expect("在等");
+        (n.waited_ms, n.waited_text.map(|w| w.0))
+    };
+    assert_eq!(
+        at(Some(1_000), 91_000),
+        (Some(90_000), Some(copy_core::format_duration(90_000)))
+    );
+    assert_eq!(at(Some(1_000), 91_000).1.as_deref(), Some("1 分 30 秒"));
+    assert_eq!(at(None, 91_000), (None, None));
+    assert_eq!(
+        at(Some(95_000), 91_000),
+        (Some(0), Some(copy_core::format_duration(0)))
+    );
 }

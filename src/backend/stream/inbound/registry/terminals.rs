@@ -214,7 +214,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "sessions-stop",
         summary: "停一批会话（逐个答，一个不成不挡下一个）",
-        codes: &["bad_args", "unobservable"],
+        codes: &["bad_args", "unobservable", "child_timed_out"],
         fields: &[out("bus", "同 `kill`"), arg("client", "自报的前端，同 `kill`"), both("cmd", "只有开终端那一形有"), out("copyDetail", "失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）"), out("detail", "那一个的原话"), out("said", "停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`"), out("outcome", "`done` · `skipped` · `failed`"), out("results", "逐个结果，与入参同序"), out("session", "落在哪个 tmux 会话上"), both("sid", "会话 id"), arg("sids", "要停的会话（1–64 个，不重复）"), out("why", "`skipped` / `failed` 的码")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -226,7 +226,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "sessions-where",
         summary: "一批会话各在这台哪个终端里",
-        codes: &["bad_args", "unobservable"],
+        codes: &["bad_args", "unobservable", "child_timed_out"],
         fields: &[arg("client", "自报的前端，同 `kill`"), out("host", "终端宿主"), out("names", "带着它的 tmux 会话名"), out("results", "逐个结果，与入参同序"), both("sid", "会话 id"), arg("sids", "要问的会话（1–64 个，不重复）"), out("standing", "`running` · `ambiguous` · `idle` · `none` · `no_tmux`"), out("terminal", "名单里那一行的句柄"), out("terminals", "与 `names` 同序同数，每项 `{host, terminal}`")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -238,7 +238,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "sessions-start",
         summary: "起 / 接回一批会话（逐个答）",
-        codes: &["bad_args", "unobservable"],
+        codes: &["bad_args", "unobservable", "child_timed_out"],
         fields: &[both("account", "那一项用哪个号：缺 ＝ 跟随 · `{kind:\"base\"}` · `{kind:\"named\", name}`；应答里是实际用的号"), arg("client", "自报的前端，同 `kill`"), both("cmd", "开终端那一形要跑的那一行"), out("configDir", "`account` 里：那个号的配置目录"), arg("cwd", "那一项的工作目录"), arg("defaultLauncher", "整批一份：那一家的默认启动器"), arg("fork_of", "可缺：源会话 sid（只许与 `fresh_terminal: true` 一起）"), out("copyDetail", "失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）"), out("detail", "那一个的原话"), out("said", "停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`"), arg("fresh_terminal", "可缺：分叉出来的那一条 ⇒ 必铸新终端名"), arg("items", "要起的会话，每项 `{sid, cwd, account?, fresh_terminal?, fork_of?}`"), both("kind", "`account` 的种类"), arg("launcher", "整批一份：用户设置的 resume 命令原值"), arg("local", "这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）"), arg("mode", "`tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）"), out("model", "`account` 里：用的模型"), both("name", "`account` 为 `named` 时的号名"), out("outcome", "`done` · `skipped` · `failed`"), out("results", "逐个结果，与入参同序"), out("session", "落在哪个 tmux 会话上"), both("sid", "会话 id"), out("unavailable", "选不了号的那一项：`{requested, pinned, listKnown, alternative}`"), out("why", "`skipped` / `failed` 的码")],
         takes_input: true,
         run: Run::Blocking(|r| {

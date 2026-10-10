@@ -92,6 +92,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import { toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
 import { buildToolGroup, addToToolGroup, renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
@@ -594,13 +595,13 @@ describe("一步还没结果时：照会话事实画", () => {
   });
 
   it("★ 会话事实比那一步的卡先到：建卡时就照它画（事实里没有的那一步不画，等下一份事实）", () => {
-    const c = { ...ctx(), needs: { kind: "approve", call: "t2", sinceMs: Date.now() - 65_000 }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
+    const c = { ...ctx(), needs: { kind: "approve", call: "t2", waitedMs: 65_000, receivedAt: Date.now() }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
     const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }, { id: "t3", name: "Bash", input: {} }]) as object) } as unknown as LineRecord;
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const st = [0, 1, 2].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
     expect(st).toEqual(["running", "awaiting", "pending"]);
-    expect(r.units[1].querySelector(".step-right")?.textContent).toBe("1m05s");
+    expect(r.units[1].querySelector(".step-right")?.textContent).toBe(formatDuration(65_000));
   });
 });
 

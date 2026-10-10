@@ -221,6 +221,7 @@ import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-act
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
@@ -2533,10 +2534,10 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       tab.needs = needs;
       (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need", rank: 1 });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs: 125_000, waitedText: formatDuration(125_000), receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
-    expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe("2m05s");
+    expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(formatDuration(125_000));
     paint([call("b1", "running"), call("b2", "awaiting")], approve("b2"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "awaiting"]);
     paint([call("b2", "unclear", "noWriter")], null);

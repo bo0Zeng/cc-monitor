@@ -140,7 +140,7 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
         deps.accounts,
     )
     .map_err(super::launch_render::unavailable)?;
-    let rows = (deps.list)().map_err(|m| ("unobservable", m, None))?;
+    let rows = batch::listed(deps).map_err(|(code, m)| (code, m, None))?;
     let not_here = || {
         (
             "not_in_terminal",
