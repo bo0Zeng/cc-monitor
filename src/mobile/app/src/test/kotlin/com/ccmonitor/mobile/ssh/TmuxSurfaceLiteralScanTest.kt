@@ -10,7 +10,7 @@ import java.io.File
  * tmux 那半的每一个 shell 片段，只许住在网关里。
  *
  * 每个协议面一个网关类：别处只拿结构化结果，不拼字符串；网关之外的文件里不许出现 `"tmux "` 这类拼串。
- * 本文件是 tmux 这一面的机检落点（管道那一面是 `PipeSurfaceLiteralScanTest`）。
+ * 本文件是 tmux 这一面的机检落点。
  *
  * 白名单里有两类文件：网关 `ssh/TmuxCommands.kt`；以及用户内容（`ui/session/ButtonBuiltins.kt` ·
  * `ui/session/SessionScreen.kt` · `ui/session/TmuxManager.kt` · `core-data/.../DefaultButtons.kt` · `dev/DevSeeder.kt`）。
@@ -19,7 +19,7 @@ import java.io.File
  * 白名单给它们逐文件钉了次数：哪天某个 UI 文件里冒出第二处 `tmux …`，这条照样红一次
  * （重新过一遍眼：那到底是新文案，还是有人在 UI 层拼了条命令）。
  *
- * 扫的是字符串字面量里面，不是整份源码（同 `PipeSurfaceLiteralScanTest`）：拼给远端的东西一定在字面量里，
+ * 扫的是字符串字面量里面，不是整份源码：拼给远端的东西一定在字面量里，
  * 标识符与注释不在。全仓源码扫描类判据一律住 `app`，理由见 `NamespaceLiteralScanTest` 头注。
  *
  * ### 判别力边界
@@ -172,7 +172,6 @@ class TmuxSurfaceLiteralScanTest {
         private const val GATEWAY = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt"
 
         // ---- 用户内容（不是协议面，逐条写着这是谁的字）----
-        private const val SINK_COPY = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxSendKeysSink.kt"
         private const val SEEDER = "app/src/main/kotlin/com/ccmonitor/mobile/dev/DevSeeder.kt"
         private const val BUILTIN_LABELS = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/ButtonBuiltins.kt"
         private const val SESSION_SCREEN = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionScreen.kt"
@@ -184,8 +183,7 @@ class TmuxSurfaceLiteralScanTest {
          *
          * | 文件 | 次 | 那是什么 |
          * |---|---|---|
-         * | `TmuxCommands.kt` | 27/4/2/4/1 | 网关本身 |
-         * | `TmuxSendKeysSink.kt` | 3 | 给用户看的三句话：「没有可投递的 tmux 会话」·「这个 tmux 会话不归我们管」·「tmux 没给任何回应…」。不是命令，是 [SendOutcome] 的文案 |
+         * | `TmuxCommands.kt` | 19/3/1/3/1 | 网关本身 |
          * | `DevSeeder.kt` | 1 | 种子按钮的默认命令 `CustomButton("btn-tmux", null, "tmux", "tmux new -A -s main")`：用户进按钮编辑就能改掉，是用户的字 |
          * | `ButtonBuiltins.kt` | 1 | 内建动作的显示名 `"tmux_sessions" to "tmux 会话"` |
          * | `SessionScreen.kt` | 2 | Toast「无 tmux 会话可抓屏」+ 命令面板项「tmux 会话管理」 |
@@ -193,7 +191,7 @@ class TmuxSurfaceLiteralScanTest {
          * | `DefaultButtons.kt` | 1 | 种子按钮的显示名 `SeedButton("ak-tb-tmux", "tmux 会话", …)` |
          *
          * 四个子命令锚点在网关之外一次都没有（这一格才是真正的「零拼串」读数）：
-         * 用户内容那七处全是 `tmux` + 空格 + 中文，一个 tmux 子命令都不带，
+         * 用户内容那几处全是 `tmux` + 空格 + 中文，一个 tmux 子命令都不带，
          * 唯一的例外是 `DevSeeder` 那条种子命令（`new -A`，不在这四个锚点里）。
          */
         private val PINNED_FRAGMENT_COUNTS =
@@ -201,16 +199,15 @@ class TmuxSurfaceLiteralScanTest {
                 TMUX_VERB to
                     mapOf(
                         SEEDER to 1,
-                        GATEWAY to 27,
-                        SINK_COPY to 3,
+                        GATEWAY to 19,
                         BUILTIN_LABELS to 1,
                         SESSION_SCREEN to 2,
                         TMUX_DIALOG to 2,
                         SEED_BUTTONS to 1,
                     ),
-                SEND_KEYS to mapOf(GATEWAY to 4),
-                CAPTURE_PANE to mapOf(GATEWAY to 2),
-                DISPLAY_MESSAGE to mapOf(GATEWAY to 4),
+                SEND_KEYS to mapOf(GATEWAY to 3),
+                CAPTURE_PANE to mapOf(GATEWAY to 1),
+                DISPLAY_MESSAGE to mapOf(GATEWAY to 3),
                 KILL_SESSION to mapOf(GATEWAY to 1),
             )
     }

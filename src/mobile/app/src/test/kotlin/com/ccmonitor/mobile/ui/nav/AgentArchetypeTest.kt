@@ -2,8 +2,6 @@ package com.ccmonitor.mobile.ui.nav
 
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
-import com.ccmonitor.mobile.ui.chat.accountChosenFor
-import com.ccmonitor.mobile.ui.chat.hasChosenAccount
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -27,9 +25,7 @@ class AgentArchetypeTest {
             hostId = "h1",
             newUi = newUi,
             agentKind = kind,
-            lastConversationId = "s7",
             newConversationId = { "s-new" },
-            confirmedConversationId = "s7",
             openTerminal = ::terminalOf,
         )
 
@@ -37,7 +33,7 @@ class AgentArchetypeTest {
      * `newUi × agentKind` 四格都要走到。
      *
      * 防的是 `onConnectDestination` 不看 `agentKind`：新界面开着时 Codex 服务器照样落进 `ChatRoute`。
-     * 把 `agentKind` 那一格删掉、让两种服务器都走 `chatLanding`，第四行当场红。
+     * 把 `agentKind` 那一格删掉、让两种服务器都走 `freshLanding`，第四行当场红。
      *
      * 非得四格都造：只造 `(开, Codex)` 的话，一个「把所有输入都返回总览面」的实现全绿；
      * 四格都造则另外三行同时红。`(开, Claude)` 那一行保证 Claude 没被一起推去总览面；
@@ -49,7 +45,7 @@ class AgentArchetypeTest {
         assertEquals("（关, Claude）必须还是终端那条路", "session/tab-h1", destination(false, AgentKind.ClaudeCode))
         assertEquals("（关, Codex）同样是终端：开关关着时不认 agent 种类", "session/tab-h1", destination(false, AgentKind.Codex))
         // ③：新界面 + Claude ⇒ 聊天屏
-        assertEquals("（开, Claude）必须还是聊天屏", Screen.Chat.of("h1", "s7"), destination(true, AgentKind.ClaudeCode))
+        assertEquals("（开, Claude）必须还是聊天屏", Screen.Chat.of("h1", "s-new", isNew = true), destination(true, AgentKind.ClaudeCode))
         // ④：新界面 + Codex ⇒ 只读档（对话总览），不是聊天屏
         val codex = destination(true, AgentKind.Codex)
         assertEquals("（开, Codex）必须落只读档（对话总览）", Screen.Conversations.of("h1"), codex)
@@ -122,35 +118,6 @@ class AgentArchetypeTest {
                 chatInputMode(AgentKind.ClaudeCode, waitingOnDesktop = true),
             )
         assertEquals("三档都要有输入能走到：$reachable", ChatInputMode.entries.toSet(), reachable)
-    }
-
-    /**
-     * 账号那道门只对 Claude 档生效。
-     *
-     * Codex 服务器进了聊天屏之后被叫去填「Claude 账号目录」，而服务器编辑页上写的是
-     * 「Codex 配置目录（可选）」：同一件事两处说法冲突，其中一处是假要求。
-     * 让 Codex 也走 `hasChosenAccount` ⇒ 第一句当场红。
-     *
-     * 最后那个循环钉的是 Claude 档的门与 `hasChosenAccount` 逐点相同（原始字段、应用级默认也算选过）。
-     * 有人顺手把门的判定改了（例如改成 `explicitClaudeDir(...) != null`），那个循环会红。
-     */
-    @Test
-    fun theAccountGateOnlyAppliesToTheClaudeArchetype() {
-        assertTrue("Codex + 两个目录都空 ⇒ 门不该关（不产生 NO_ACCOUNT_CHOSEN）", accountChosenFor(AgentKind.Codex, null, null))
-        assertTrue("空白串也算空", accountChosenFor(AgentKind.Codex, "", "   "))
-        assertFalse("Claude + 两个目录都空 ⇒ 门照常关着", accountChosenFor(AgentKind.ClaudeCode, null, null))
-        assertFalse("读不出种类时按保守的一侧（当 Claude 档，宁可多问一次）", accountChosenFor(null, null, null))
-
-        val dirs = listOf(null, "", "  ", "/home/u/.claude")
-        for (h in dirs) {
-            for (a in dirs) {
-                assertEquals(
-                    "Claude 档的判定必须与 hasChosenAccount 逐点相同：host=$h app=$a",
-                    hasChosenAccount(h, a),
-                    accountChosenFor(AgentKind.ClaudeCode, h, a),
-                )
-            }
-        }
     }
 
     /**
@@ -274,7 +241,7 @@ class AgentArchetypeTest {
          *
          * | 文件 | 为什么还在 |
          * |---|---|
-         * | `SettingsScreen.kt` | 应用级设置说的是远端那个 Claude（账号目录 / 权限判定归谁），不是「这台服务器叫什么」，与 kind 无关 |
+         * | `SettingsScreen.kt` | 应用级设置说的是远端那个 Claude（账号目录），不是「这台服务器叫什么」，与 kind 无关 |
          * | `HostScreens.kt` | 「Claude 账号目录」是 `if (isCodex)` 的 else 支（已按 kind 分档）；Windows 那句说的是「哪些功能在 Windows 上不可用」 |
          * | `ClaudeReadingPaneConnected.kt` · `ClaudeHistorySheet.kt` · `SessionScreen.kt` | 终端面那套的文案，还没按 kind 分档 |
          */
@@ -294,9 +261,9 @@ class AgentArchetypeTest {
                     ),
                 // 终端面的 tab 名
                 "SessionScreen.kt" to listOf("Claude 阅读"),
-                // 前两条是应用级的话（账号目录 / 权限判定归谁），说的是「远端那个 Claude」
+                // 第一条是应用级的话（账号目录），说的是「远端那个 Claude」
                 // 而不是「这台服务器叫什么」，与 agentKind 无关。
-                // 第三条是扫描器的产物、不是上屏的字：那句话上屏时是
+                // 第二条是扫描器的产物、不是上屏的字：那句话上屏时是
                 // 「留空 = 内置默认 /home/…/.claude」，一个产品名都没有，
                 // 「Claude」来自 `${...}` 里那个标识符 `ClaudePaths`。
                 // 扫描器不解析模板，`${}` 那一段原样留在字面里（见 [KotlinSourceScanner] 头注那一格），
@@ -304,7 +271,6 @@ class AgentArchetypeTest {
                 "SettingsScreen.kt" to
                     listOf(
                         "应用级默认 Claude 配置目录",
-                        "权限判定由远端那个 Claude 自己做，aterm 只是把这里的选择传过去 —— 它不是沙箱，也不声称是。",
                         "留空 = 内置默认 \${ClaudePaths.DEFAULT_CLAUDE_DIR}",
                     ),
             )

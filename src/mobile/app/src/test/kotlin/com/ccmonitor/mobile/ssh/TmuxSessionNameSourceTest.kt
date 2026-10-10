@@ -12,10 +12,9 @@ import org.junit.Test
 import java.io.File
 
 /**
- * `tmux new-session` 的名字只来自三个点名的来源。
+ * `tmux new-session` 的名字只来自两个点名的来源（聊天屏的会话由那台核心起，不在这里）。
  *
- * tmux 会话名分三类：
- * ① 管道会话只许 `PipeLauncher.PIPE_SESSION_PREFIX`（`atermpipe-`）；
+ * tmux 会话名分两类：
  * ② 终端 resume 那条路按与后端的约定起 `cc-<sid8>`（Codex `cx-`），那是后端认的前缀，不是越界；
  *    唯一定义处是 `AgentInvocation.resumeSessionName` 的两个实现；
  * ③ 用户显式给的名字：`HostConnect.resolveTmuxSession`（`LaunchSpec.tmuxSession` > `DEFAULT_TMUX_SESSION="main"`）
@@ -74,24 +73,6 @@ class TmuxSessionNameSourceTest {
     // ---- ③b：四支各自的名字来源 -------------------------------------------
 
     /**
-     * ③b-①：管道那支的名字逐字等于 `PIPE_SESSION_PREFIX + sid`。
-     *
-     * 期望值一半用常量、一半用手写定值 [PIPE_PREFIX_LITERAL] —— 只用常量的话，
-     * 「有人把常量改成 `cc-`」这一刀会恒绿。
-     */
-    @Test
-    fun thePipeSessionNameComesFromThePipePrefixAndNothingElse() {
-        assertEquals("管道前缀", PIPE_PREFIX_LITERAL, PipeLauncher.PIPE_SESSION_PREFIX)
-
-        val cmd = PipeLauncher.startCommand(TmuxBackend, sid, null)
-        assertNotNull("前提：命令没造出来（sid 被判非法？）⇒ 本条量不到东西", cmd)
-        val names = newSessionNames(cmd!!)
-        assertEquals("前提：这条串里得恰好有一支 `$NEW_SESSION`：\n$cmd", 1, names.size)
-        assertEquals("管道会话名只许是 `$PIPE_PREFIX_LITERAL` + 完整 sid（不许截、不许换前缀）", "$PIPE_PREFIX_LITERAL$sid", names[0])
-        assertEquals("而且要与 `tmuxNameFor` 同源（别处不许再拼一份）", PipeLauncher.tmuxNameFor(sid), names[0])
-    }
-
-    /**
      * ③b-②：resume 那两支的名字逐字等于 `resumeSessionName(sid)`。
      *
      * `cc-<sid8>` / Codex `cx-<sid8>` 是与后端约定的前缀（后端的 `findClaudeTmux` 认它）。
@@ -126,7 +107,7 @@ class TmuxSessionNameSourceTest {
      * （`TmuxBackend.enter` 在表里量了两遍：带/不带工作目录。）
      *
      * 那三支收的名字是用户显式值（`LaunchSpec.tmuxSession` > `DEFAULT_TMUX_SESSION`，
-     * 或 tmux 管理器新建行里手敲的那个）。防的是有人在这三支里「顺手」给会话名加个 `cc-` / `atermpipe-`
+     * 或 tmux 管理器新建行里手敲的那个）。防的是有人在这三支里「顺手」给会话名加个 `cc-`
      * 前缀：那会让终端的自由会话撞进后端或我们自己的名字空间，而调用方一无所知。
      *
      * 探针名 [PROBE_NAME] 刻意选一个既不像我们也不像后端的串：
@@ -140,7 +121,6 @@ class TmuxSessionNameSourceTest {
                 "TmuxBackend.enter(带工作目录)" to TmuxBackend.enter(PROBE_NAME, "/home/u/proj"),
                 "TmuxBackend.newDetachedCommand" to TmuxBackend.newDetachedCommand(PROBE_NAME),
                 "TmuxBackend.newDetachedRunningCommand" to TmuxBackend.newDetachedRunningCommand(PROBE_NAME, "claude"),
-                "TmuxBackend.startOnceCommand" to TmuxBackend.startOnceCommand(PROBE_NAME, "claude"),
             )
         for ((who, cmd) in passthrough) {
             val names = newSessionNames(cmd)
@@ -161,7 +141,6 @@ class TmuxSessionNameSourceTest {
      * | 文件 | 侧 | 为什么它可以有 |
      * |---|---|---|
      * | `ClaudeInvocation.kt` | 写 | `resumeSessionName = "cc-<sid8>"`，唯一定义处 |
-     * | `TmuxCommands.kt` | 读 | `isCcmTmuxName` 认老前缀（没有 `@ccm_sid` 的老会话只能靠名字认），纯识别，不构名 |
      *
      * 二进制名 `"cc-monitor-…"` 不是会话名，由 [countSessionCcPrefix] 按「后面是不是 `monitor`」排除掉。
      */
@@ -180,8 +159,7 @@ class TmuxSessionNameSourceTest {
         }
         assertTrue("前提：会话名前缀 `\"cc-` 整份语料零命中 ⇒ 扫描器瞎了、本条恒绿", hits > 0)
         assertEquals(
-            "构造 `cc-` 会话名只许 `ClaudeInvocation.resumeSessionName` 一处；" +
-                "读侧识别老前缀只许 `TmuxCommands`。别处要用请调那个函数。",
+            "构造 `cc-` 会话名只许 `ClaudeInvocation.resumeSessionName` 一处。别处要用请调那个函数。",
             PINNED_CC_PREFIX_FILES,
             found.toSet(),
         )
@@ -192,9 +170,7 @@ class TmuxSessionNameSourceTest {
     /**
      * app 侧会写远端的命令串，其真实输出里的落点逐格钉死。
      *
-     * 只有两条：
-     * - `PipeLauncher.startCommand`：tmux 那一层只碰 `/dev/null`（`has-session` 的噪声），
-     *   真正的写在被单引号包住的载荷里，那一层归 `NamespacePrefixTest` 管（`pipeInvocation`）；
+     * 只有一条：
      * - `RemoteCommands.appendAuthorizedKeyCommand`：落 `~/.ssh/`，第三个名字空间，
      *   既不是我们的 `.aterm` 也不是后端的 `.cc-monitor`，而是 OpenSSH 的标准位。多一格红。
      *
@@ -203,13 +179,6 @@ class TmuxSessionNameSourceTest {
      */
     @Test
     fun theAppSideWriteCommandsLandInPinnedNamespaces() {
-        val pipe = PipeLauncher.startCommand(TmuxBackend, sid, null)!!
-        assertFalse("管道那条命令串里出现了后端的名字空间：\n$pipe", pipe.contains(CC_MONITOR))
-        assertFalse("管道那条命令串里出现了共享的 `/tmp`：\n$pipe", pipe.contains("/tmp"))
-        for (t in writeTargets(pipe)) {
-            assertTrue("管道那条 tmux 层往 `$t` 写东西 —— 只该碰 `/dev/null`：\n$pipe", t in ALLOWED_SINKS)
-        }
-
         val keys = appendAuthorizedKeyCommand("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 probe")
         assertFalse("推公钥那条命令串里出现了后端的名字空间：\n$keys", keys.contains(CC_MONITOR))
         val keyTargets = writeTargets(keys)
@@ -399,14 +368,8 @@ class TmuxSessionNameSourceTest {
         private const val CC_NAME_PREFIX = "\"cc-"
         private const val CC_MONITOR = ".cc-monitor"
 
-        /** 管道前缀：手写定值，刻意不引 `PipeLauncher.PIPE_SESSION_PREFIX`。 */
-        private const val PIPE_PREFIX_LITERAL = "atermpipe-"
-
-        /** 透传探针名：刻意既不像我们（`atermpipe-`）也不像后端（`cc-`），否则「透传」与「加前缀」分不开。 */
+        /** 透传探针名：刻意不像后端（`cc-`），否则「透传」与「加前缀」分不开。 */
         private const val PROBE_NAME = "probe_session_1"
-
-        /** 允许出现的非路径写落点（丢弃噪声用，不留下任何东西）。 */
-        private val ALLOWED_SINKS = setOf("/dev/null")
 
         /**
          * 定值钉：`new-session` 在生产代码里的 file -> 次数。
@@ -422,7 +385,6 @@ class TmuxSessionNameSourceTest {
          */
         private val PINNED_CC_PREFIX_FILES =
             setOf(
-                "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt",
                 "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/command/ClaudeInvocation.kt",
             )
 

@@ -177,6 +177,22 @@ class BackendFeedTest {
         }
 
     @Test
+    fun `line 帧原样往下给：sid · 偏移 · 记录，按到达顺序，一条不丢`() =
+        runTest {
+            val remote = Remote()
+            val d = remote.next()
+            val f = feed(remote, MutableStateFlow(TOKEN_1))
+            val got = mutableListOf<RecordLine>()
+            backgroundScope.launch { f.lines.collect { got += it } }
+            f.ensure()
+            runCurrent()
+            repeat(300) { i -> d.push("""{"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":$i,"byte_offset":${i * 10},"record":{"id":"r$i","t":"said"}}""") }
+            runCurrent()
+            assertEquals((0 until 300).map { it * 10L }, got.map { it.byteOffset })
+            assertEquals("r299", got.last().record?.str("id"))
+        }
+
+    @Test
     fun `退避：从一秒起翻倍，封顶半分钟`() {
         val b = BackendFeed.Backoff()
         assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), (0..6).map(b::delayMs))

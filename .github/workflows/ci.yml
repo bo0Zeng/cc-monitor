@@ -457,7 +457,7 @@ jobs:
           GATE_ONLY: weak-net
         run: bash tests/scripts/gate.sh
 
-  # 手机端 app（`src/mobile`，Gradle）：构建 ＋ JVM 单测 ＋ release（R8）＋ bridge 金样，命令住门禁的 `mobile` 格。
+  # 手机端 app（`src/mobile`，Gradle）：构建 ＋ JVM 单测 ＋ release（R8），命令住门禁的 `mobile` 格。
   # 不起模拟器：要设备的 androidTest 不在 CI（入口 `src/mobile/scripts/android-test.sh`，接设备手跑）。
   mobile:
     name: Mobile app (Gradle build + JVM tests, gate)
