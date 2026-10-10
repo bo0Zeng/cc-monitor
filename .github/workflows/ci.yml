@@ -11,8 +11,7 @@ on:
 #   ⇒ main 只收 CI 绿过的提交。本文件因此不许按分支 / 事件分叉（不写 `if:` · `github.ref`），也不写仓、不打标签、不发版
 #   （发版只走 release.yml 的标签触发）。判据：`shared_crate_registry_tests.rs::ci_runs_the_same_jobs_on_the_candidate_branch_and_never_releases_from_it`。
 
-# Windows-only：cc-monitor v1 不支持 Linux/macOS（核心 Win32 调用）。
-# 跨平台支持是 v2 计划，届时这里再加 matrix.os。
+# 两种 runner：Windows（monitor 那棵 · 前端）与 Linux（后端 · Linux 版界面 · 静态格 · 手机端）；Linux 版 L0–L4 已做。macOS 不在支持面里。
 
 # 显式 bash：GitHub 对显式指定的 bash 注入 `-eo pipefail`（默认 shell 只有 -e）。
 # 防未来某步加 `cargo test | tee` 这类管道时静默吞掉左侧失败（本仓踩过：裸管道
