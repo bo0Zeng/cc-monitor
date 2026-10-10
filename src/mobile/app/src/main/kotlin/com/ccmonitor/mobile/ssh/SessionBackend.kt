@@ -73,8 +73,6 @@ interface SessionBackend {
         command: String,
     ): String
 
-    fun sessionCwdCommand(sessionName: String): String
-
     fun sendModelCommand(
         sessionName: String,
         model: String,

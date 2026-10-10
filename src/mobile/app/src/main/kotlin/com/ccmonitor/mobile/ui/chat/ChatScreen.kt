@@ -30,7 +30,7 @@ import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 
 /**
- * 聊天面：正文（[ChatTranscript]）＋ 输入行。终端屏的「阅读」子页用的是同一个 [ChatTranscript]、同一条 [ChatSession]。
+ * 聊天面：正文（[ChatTranscript]）＋ 输入行。
  */
 @Composable
 fun ChatScreen(
@@ -52,7 +52,7 @@ fun ChatScreen(
 
 /**
  * 一条会话的正文：渲染直接用 [ClaudeReadingPane]，单元来自 [ChatSession]（核心的通用记录 ⇒ `RecordUnits`）。
- * 聊天屏与终端屏的「阅读」子页都只画它，不另做一份阅读。
+ * 手机上看正文只有这一处（终端屏不带阅读子页，`界面.md`「终端」）。
  */
 @Suppress("DEPRECATION") // LocalClipboard 是新 API 但只有 suspend 接口
 @Composable

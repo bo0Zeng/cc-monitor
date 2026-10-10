@@ -174,7 +174,7 @@ class DrawerTest {
     private fun row(
         id: String,
         title: String,
-    ) = HistoryItem(sessionId = id, label = title, atText = "09:00", agentTag = null, projectPath = null, status = null)
+    ) = HistoryItem(sessionId = id, label = title, atText = "09:00", agentTag = null, status = null)
 
     private fun codeOnly(text: String): String = KotlinSourceScanner.codeOnlyKeepingLiterals(text)
 

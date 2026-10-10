@@ -63,8 +63,6 @@ object TmuxBackend : SessionBackend {
         command: String,
     ): String = TmuxCommands.tmuxNewDetachedRunning(sessionName, command)
 
-    override fun sessionCwdCommand(sessionName: String): String = TmuxCommands.tmuxSessionCwdCommand(sessionName)
-
     override fun sendModelCommand(
         sessionName: String,
         model: String,

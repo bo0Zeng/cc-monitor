@@ -167,24 +167,6 @@ private fun NavGraphBuilder.sessionRoute(
                     }
                 }
             },
-            // resume 开新终端 tab，按 sid 去重；shell 里跑 `<cc/cct> --resume <sid>`，cwd 由远端按 sid 定。
-            // launcherId 继承发起 tab；title 作 tab 名，command 是长按选定的命令，都不进去重键。
-            // 同 sid 再 resume 会命中当前 tab，照上面的规则短路。
-            onOpenResumeTab = { hid, cwd, sid, launcherId, title, command ->
-                val k =
-                    tabManager.open(
-                        hid,
-                        SessionTabManager.TabTarget.Terminal(cd = cwd, launcherId = launcherId, resumeSessionId = sid),
-                        label = title,
-                        resumeCommand = command,
-                    )
-                if (k != key) {
-                    nav.navigate("session/$k") {
-                        launchSingleTop = true
-                        popUpTo(Screen.Hosts.route)
-                    }
-                }
-            },
             // 面板点击切 tab。
             onSwitchTab = { k ->
                 if (k != key) {
@@ -256,9 +238,6 @@ private fun HostedSession(
     onGone: () -> Unit,
     onOpenTerminalTab: (hostId: String, path: String) -> Unit,
     onOpenTmuxTab: (hostId: String, tmuxName: String) -> Unit,
-    // resume 开新终端 tab。launcherId 定 cc/cct；title 查不到时为 null；cwd 可为 null，由远端按 sid 兜底；
-    // command 是长按选定的命令，默认链为 null。
-    onOpenResumeTab: (hostId: String, cwd: String?, sessionId: String, launcherId: String?, title: String?, command: String?) -> Unit,
     onSwitchTab: (key: String) -> Unit,
     onNewTerminalTab: (hostId: String) -> Unit,
     onNewSftpTab: (hostId: String) -> Unit,
@@ -290,8 +269,6 @@ private fun HostedSession(
                     target.resumeSessionId, // resume tab 首连即起 tmux 跑 <cc> --resume
                     open.resumeCommand, // 长按选定的 resume 命令，是 tab 元数据，不在 target 里
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
-                    // 续接开新 resume tab，launcherId 继承本 tab。
-                    onResumeInNewTab = { cwd, sid, title, command -> onOpenResumeTab(open.hostId, cwd, sid, target.launcherId, title, command) },
                     onShowTabs = { showTabs = true },
                 )
             // 「在此打开终端」开新终端 tab，不替换当前 SFTP tab。

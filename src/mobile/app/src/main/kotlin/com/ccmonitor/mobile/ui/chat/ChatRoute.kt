@@ -94,7 +94,7 @@ data class ChatOpen(
     val machine: String,
 )
 
-/** 读一条已有的会话（从列表点进来 · 终端屏的「阅读」子页）：同一条会话在两处是同一个 key。 */
+/** 读一条已有的会话（从列表点进来）。 */
 fun existingChat(
     hostId: String,
     sid: String,
@@ -102,8 +102,7 @@ fun existingChat(
 ): ChatOpen = ChatOpen(hostId, chatKey(hostId, sid), ChatTarget.Existing(sid), machine)
 
 /**
- * 一条会话的 [ChatSession]：聊天屏与终端屏的「阅读」子页都经这里取 —— 同一个 key ⇒ 同一条、同一份数据。
- * [linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上）。
+ * 一条会话的 [ChatSession]（应用级，同一个 key ⇒ 同一条）。[linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上）。
  */
 fun ChatController.sessionOf(
     open: ChatOpen,
@@ -111,13 +110,13 @@ fun ChatController.sessionOf(
 ): ChatSession = sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), open.target, open.machine, scope) }
 
 /** 这台在手机上的名字 ＋ 新建会话起在哪（这台的默认工作目录，没填 ⇒ `~`）；还没读到 ⇒ `null`。 */
-internal data class ChatHost(
+private data class ChatHost(
     val machine: String,
     val cwd: String,
 )
 
 @Composable
-internal fun rememberChatHost(hostId: String): ChatHost? {
+private fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
         val h = runCatching { hosts.get(hostId) }.getOrNull()

@@ -98,46 +98,12 @@ class CommandPaletteTest {
                 onCapture = {},
                 onShowTmux = {},
                 onPushKey = {},
-                onHistory = {},
                 onCustom = { received = it },
             )
         val custom = acts.single { it.group == "自定义" }
         assertEquals("副标题应显示组合键而非裸键", "Ctrl+c", custom.subtitle)
         custom.run!!() // 触发（面板点击）：run 可空（null=只读），终端面的动作恒非空
         assertSame("面板动作应把整个按钮（含修饰键）交给 onCustom，供 customButtonBytes 编码", btn, received)
-    }
-
-    // === 命令面板「历史记录」动作（Claude 历史按项目分组 + resume）===
-
-    @Test
-    fun paletteHistoryActionPresentAndGatedByTmux() {
-        var opened = false
-        val withTmux =
-            terminalPaletteActions(
-                supportsTmux = true,
-                customButtons = emptyList(),
-                onModel = {},
-                onCapture = {},
-                onShowTmux = {},
-                onPushKey = {},
-                onHistory = { opened = true },
-                onCustom = {},
-            )
-        val history = withTmux.single { it.group == "历史" }
-        history.run!!() // run 可空；终端面的动作恒非空，!! 就是这条断言
-        assertEquals("点「历史记录」应触发 onHistory", true, opened)
-        val withoutTmux =
-            terminalPaletteActions(
-                supportsTmux = false, // resume 依赖 tmux/POSIX → 无 tmux 不显历史
-                customButtons = emptyList(),
-                onModel = {},
-                onCapture = {},
-                onShowTmux = {},
-                onPushKey = {},
-                onHistory = {},
-                onCustom = {},
-            )
-        assertEquals("无 tmux 能力不该有历史动作", 0, withoutTmux.count { it.group == "历史" })
     }
 
     @Test
