@@ -907,7 +907,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9w-history-listing-tail-mobile：history-list 换问法——入参 fresh 删、listing 加（界面经长连接问那台常驻 history-list {raw}，把那份原样交本机后端注解 · 筛 · 排；本机后端记着它给敲字用），码 unreachable 换 no_listing；本机后端不再经 remote_ask 在那台起一次性进程冷扫。
 /// 连上只拉尾段：旁路快照只读每会话最后 REPLAY_TAIL_KEEP 个可计行，头段由界面往上翻时按行号 / 偏移取回（壳侧 Read::Full 改名 Read::Tail，tail_seq 删）。
 /// 手机端 app 并进本仓 src/mobile（门禁 mobile 格 · CI mobile job · 第三方许可登记手机端二进制）；CI 认候选分支 next，winlink 那格加查 lib 测试程序带进程清单。
-pub const BUILD_ID: &str = "p9w-history-listing-tail-mobile";
+///
+/// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
+/// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
+/// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；轮换规则 CellError 与机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
+pub const BUILD_ID: &str = "p9x-changed-topic-view";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
