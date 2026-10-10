@@ -52,7 +52,7 @@ kotlin {
     }
 }
 
-// 判据读仓根的跨语言金样（`tests/__fixtures__/record*.golden.jsonl` 等）：登记成测试任务的输入，金样一变就重跑，不吃缓存的绿。
+// 判据读仓根夹具目录里的跨语言金样（通用记录那几份等）：整个目录登记成测试任务的输入，金样一变就重跑，不吃缓存的绿。
 tasks.named<Test>("test") {
     inputs.dir(rootProject.file("../../tests/__fixtures__")).withPathSensitivity(PathSensitivity.RELATIVE)
 }
