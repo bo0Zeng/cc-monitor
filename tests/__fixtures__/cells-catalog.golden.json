@@ -275,6 +275,11 @@
         },
         {
           "kind": "value",
+          "path": "{t=said}.results.*.chars",
+          "type": "number"
+        },
+        {
+          "kind": "value",
           "path": "{t=said}.results.*.exitCode",
           "type": "number"
         },

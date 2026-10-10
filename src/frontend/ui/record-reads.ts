@@ -16,6 +16,9 @@
  * 1. **按形状收**：外层键集合恰好是后端出的那一形；记录本身**不解释**（只验「是对象」）。形状不对 ⇒ 抛。
  * 2. **给载荷打上它从哪台来**（`origin`：本机不带、远端是那台的名字 —— 与实时流那一条同一个口径，这是地址不是解释）。
  * 3. **期限与翻页**：一件事一个期限，翻页只把后端交回的续点（`next` / `nextSeq`）原样交回去。
+ *
+ * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动；
+ * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
@@ -24,6 +27,7 @@ import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
 import { exactKeys, isObj } from "./ipc/decode";
 import { copyText } from "./copy-table";
+import FOLDED from "../../shared/views/folded-record.json";
 
 /** 一个子运行记录里的一条：通用记录 ＋ 它的对账键（撤那个子运行的活卡用）。 */
 export interface RunRecordRow {
@@ -193,7 +197,7 @@ async function answered<T>(origin: Origin, reply: Promise<Uint8Array>, decode: (
   }
 }
 
-/** **按偏移取一段** `[offset, until)`（两端、`seqBase` 取自骨架索引）：一段可能跨页，取到这一段的末尾。 */
+/** **按偏移取一段** `[offset, until)`（两端、`seqBase` 取自骨架索引）：一段可能跨页，取到这一段的末尾。交折起那一行的声明。 */
 export async function readRange(
   origin: Origin,
   jsonlPath: string,
@@ -201,13 +205,25 @@ export async function readRange(
   until: number,
   seqBase: number,
 ): Promise<JsonlLinePayload[]> {
+  return await readRangeAs(origin, jsonlPath, offset, until, seqBase, FOLDED);
+}
+
+/** [`readRange`] 的本体：`view` ＝ 交给后端的声明（`null` ＝ 全文）。 */
+async function readRangeAs(
+  origin: Origin,
+  jsonlPath: string,
+  offset: number,
+  until: number,
+  seqBase: number,
+  view: object | null,
+): Promise<JsonlLinePayload[]> {
   const budget = budgetWithin(PIECE_BUDGET_MS);
   const out: JsonlLinePayload[] = [];
   let at = offset;
   let seq = seqBase;
   for (;;) {
     const body = jsonBody({ path: jsonlPath, offset: at, until, seq });
-    const page = await answered(origin, chan.call(origin, "history-page", body, budget), (v) => decodePage(origin, v));
+    const page = await answered(origin, chan.call(origin, "history-page", body, budget, view), (v) => decodePage(origin, v));
     out.push(...page.payloads);
     if (page.eof || page.next <= at) return out;
     at = page.next;
@@ -234,11 +250,11 @@ export async function readRecordById(
   const seq = places?.uuidToSeq.get(id);
   const at = seq === undefined ? undefined : places?.factsOf(seq);
   if (seq === undefined || !at) throw new Error(copyText("recordReads.byId.notIndexed"));
-  const rows = await readRange(origin, jsonlPath, at.o, at.o + at.n, seq);
+  const rows = await readRangeAs(origin, jsonlPath, at.o, at.o + at.n, seq, null);
   return rows.find((p) => p.record.id === id)?.record ?? null;
 }
 
-/** **按行号取一段** `[from, until)`（`until` 缺 ＝ 到末尾，一段 ≤ 1 MiB）。`leftMs` ＝ 那一件事还剩多少。 */
+/** **按行号取一段** `[from, until)`（`until` 缺 ＝ 到末尾，一段 ≤ 1 MiB）。`leftMs` ＝ 那一件事还剩多少。交折起那一行的声明。 */
 export async function readLines(
   origin: Origin,
   jsonlPath: string,
@@ -250,7 +266,7 @@ export async function readLines(
   if (until !== undefined) args.until = until;
   const body = jsonBody(args);
   const budget = budgetWithin(leftMs);
-  return await answered(origin, chan.call(origin, "history-lines", body, budget), (v) => decodeLines(origin, v));
+  return await answered(origin, chan.call(origin, "history-lines", body, budget, FOLDED), (v) => decodeLines(origin, v));
 }
 
 /** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */

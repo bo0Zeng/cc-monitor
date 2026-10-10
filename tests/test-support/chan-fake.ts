@@ -12,6 +12,8 @@ export interface ChanCallArgs {
   origin: string;
   op: string;
   payload: number[];
+  /** 出口的声明（`chan.call` 的 `view`）；没给 ⇒ `null`。 */
+  view?: unknown;
   leftMs: number;
   /** 带撤单的那一问的编号（撤单那一条 `chan_cancel` 按它找）；不带撤单 ⇒ `null`。 */
   callId?: string | null;

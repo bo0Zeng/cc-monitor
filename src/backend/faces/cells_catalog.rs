@@ -806,6 +806,7 @@ mod specimens {
             }]),
             patch_truncated: true,
             preview: some("p"),
+            chars: Some(1),
         }
     }
 

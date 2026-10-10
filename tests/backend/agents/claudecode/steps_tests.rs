@@ -85,6 +85,7 @@ fn a_result_reads_counts_from_the_structured_result() {
             ok: false,
             exit_code: Some(127),
             preview: Some("Exit code 127".into()),
+            chars: Some(32),
             ..Default::default()
         }
     );
@@ -218,7 +219,7 @@ fn the_record_product_carries_steps_results_and_reasons() {
     let v = serde_json::to_value(&u).unwrap();
     assert_eq!(
         v["toolResults"]["tu1"],
-        json!({"ok": true, "lines": 7, "preview": "…"})
+        json!({"ok": true, "lines": 7, "preview": "…", "chars": 1})
     );
     assert!(v.get("toolUseResult").is_none(), "原样那一格不上线");
     let e = parse_line(r#"{"type":"assistant","uuid":"u3","timestamp":"t","isApiErrorMessage":true,"apiErrorStatus":529,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: 529"}]}}"#).unwrap().unwrap();
@@ -347,6 +348,24 @@ fn questions_and_plans_come_out_as_their_own_cell() {
     );
     assert_eq!(step_of("ExitPlanMode", &json!({"plan": "  "})).ask, None);
     assert_eq!(step_of("Bash", &json!({"command": "ls"})).ask, None);
+}
+
+/// ★ 结果正文多少字（按字符）是核心出的一格（`chars`）：派出子运行那张卡写「交回结果 · N 字」读它 ——
+/// 出口省掉 `blocks[type=tool_result].content` 之后界面手里只剩预览，拿预览数字就是假话。空的 ⇒ 缺。
+#[test]
+fn a_result_carries_how_many_chars_its_body_has() {
+    let r = result_of(
+        &json!({"type": "tool_result", "content": [{"type": "text", "text": "交回\n第二行"}]}),
+        None,
+    );
+    assert_eq!(r.chars, Some(6));
+    let r = result_of(&json!({"type": "tool_result", "content": ""}), None);
+    assert_eq!(r.chars, None);
+    let r = result_of(
+        &json!({"type": "tool_result", "is_error": true, "content": "boom"}),
+        None,
+    );
+    assert_eq!(r.chars, Some(4), "报错那一支也带");
 }
 
 /// ★ 结果那一行的首行预览是核心出的一格（`preview`）：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾。
