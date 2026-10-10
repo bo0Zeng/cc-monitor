@@ -3005,6 +3005,36 @@
       "zh": "✕",
       "args": []
     },
+    "cards.omitted.loading": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "读取中…",
+      "args": []
+    },
+    "cards.omitted.noSource": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法取回全文",
+      "args": []
+    },
+    "cards.omitted.gone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "记录中已无此块",
+      "args": []
+    },
+    "cards.omitted.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "全文没取到 · {why} · 再展开一次重试",
+      "args": ["why"]
+    },
+    "recordReads.byId.notIndexed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "会话索引未就绪",
+      "args": []
+    },
     "cards.truncate.ellipsis": {
       "kind": "body",
       "role": "片段",

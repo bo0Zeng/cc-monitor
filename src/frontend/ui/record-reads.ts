@@ -23,6 +23,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
 import { exactKeys, isObj } from "./ipc/decode";
+import { copyText } from "./copy-table";
 
 /** 一个子运行记录里的一条：通用记录 ＋ 它的对账键（撤那个子运行的活卡用）。 */
 export interface RunRecordRow {
@@ -212,6 +213,29 @@ export async function readRange(
     at = page.next;
     seq = page.nextSeq;
   }
+}
+
+/** 骨架里认得一行在哪的那一半（`live-window.ts::SkeletonLedger` 的这两件）。 */
+interface RowPlaces {
+  uuidToSeq: ReadonlyMap<string, number>;
+  factsOf(seq: number): { o: number; n: number } | undefined;
+}
+
+/**
+ * **按记录 id 取回那一行全文**（出口省掉的正文展开那一下，`RenderContext.fullRecord`）：骨架里那一行的字节边界，
+ * 取 `[o, o + n)`、不带声明。骨架还没接上 / 骨架里没有这一行 ⇒ 抛（说清为什么），下次展开再取。主窗口 tab 与查看器同一处。
+ */
+export async function readRecordById(
+  origin: Origin,
+  jsonlPath: string,
+  places: RowPlaces | null,
+  id: string,
+): Promise<LineRecord | null> {
+  const seq = places?.uuidToSeq.get(id);
+  const at = seq === undefined ? undefined : places?.factsOf(seq);
+  if (seq === undefined || !at) throw new Error(copyText("recordReads.byId.notIndexed"));
+  const rows = await readRange(origin, jsonlPath, at.o, at.o + at.n, seq);
+  return rows.find((p) => p.record.id === id)?.record ?? null;
 }
 
 /** **按行号取一段** `[from, until)`（`until` 缺 ＝ 到末尾，一段 ≤ 1 MiB）。`leftMs` ＝ 那一件事还剩多少。 */

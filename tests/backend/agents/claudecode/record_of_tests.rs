@@ -148,6 +148,10 @@ const CASES: &[(&str, &str)] = &[
         "queued-pasted",
         r#"{"type":"queue-operation","operation":"remove","content":"see <pasted_content id=\"p2\">\nA\n</pasted_content id=\"p2\">","timestamp":"2026-10-09T01:31:29.000Z"}"#,
     ),
+    (
+        "reply-ask",
+        r#"{"type":"assistant","uuid":"a-ask","timestamp":"2026-10-09T01:30:02.500Z","message":{"role":"assistant","model":"model-x","content":[{"type":"tool_use","id":"call-ask","name":"AskUserQuestion","input":{"questions":[{"header":"h","question":"q?","multiSelect":true,"options":[{"label":"a","description":"d"},{"label":"b"}]}]}},{"type":"tool_use","id":"call-plan","name":"ExitPlanMode","input":{"plan":"1. p"}}]}}"#,
+    ),
 ];
 
 #[test]

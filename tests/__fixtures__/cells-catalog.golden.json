@@ -145,6 +145,41 @@
         },
         {
           "kind": "value",
+          "path": "{t=reply}.steps.*.ask.kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].header",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].multi",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].options[].description",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].options[].label",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.questions[].question",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.ask.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
           "path": "{t=reply}.steps.*.known",
           "type": "bool"
         },
@@ -292,6 +327,11 @@
           "kind": "value",
           "path": "{t=said}.results.*.patch[].oldStart",
           "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.preview",
+          "type": "string"
         },
         {
           "kind": "value",

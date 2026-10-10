@@ -46,4 +46,8 @@ patch?: Array<PatchHunk>,
 /**
  * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
  */
-patchTruncated?: boolean, };
+patchTruncated?: boolean, 
+/**
+ * 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+ */
+preview?: string, };

@@ -20,7 +20,7 @@ import { SkeletonView, ledgerFromIndex, rowRuns } from "../skeleton-view";
 import type { SkeletonLedger } from "../live-window";
 import { skeletonKind } from "../height-estimate";
 import { findInSession, readSessionIndex } from "../session-reads";
-import { readBranch, readLines, readRange } from "../record-reads";
+import { readBranch, readLines, readRange, readRecordById } from "../record-reads";
 import { followSession, type FollowEvent } from "../events";
 import { attachBranchButton } from "../branch-button";
 import { openNewSession } from "../new-session";
@@ -381,6 +381,8 @@ export class SessionViewer {
       pendingToolResults: new Map(),
       // 远端会话展开子 agent 要带上 origin
       origin: opts.origin,
+      // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文
+      fullRecord: (id) => readRecordById(opts.origin, opts.jsonlPath, this.skeleton?.ledger ?? null, id),
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);

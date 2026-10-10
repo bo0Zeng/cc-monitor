@@ -56,6 +56,7 @@ import { TabRouter } from "./tab-router";
 import { applyFacts } from "./tab-session-facts";
 import { FactsSource } from "./views/facts-source";
 import type { SessionFacts } from "./session-reads";
+import { readRecordById } from "./record-reads";
 import {
   TabSessionActions,
   bringMonitorToFront,
@@ -716,6 +717,8 @@ export class TabManager {
       runCards: new Map(),
       branchFolder,
       pendingToolResults: new Map(),
+      // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文（骨架还没接上 ⇒ 说清、下次再取）。
+      fullRecord: (id: string) => readRecordById(origin, sourcePath, this.store.tabs.get(sessionId)?.skeleton?.ledger ?? null, id),
       seenSeqs: new SeqSet(),
       window: new TailWindow(),
       skeleton: null,
