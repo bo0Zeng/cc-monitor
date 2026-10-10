@@ -9,11 +9,19 @@
 export const HOME = "/home/user";
 const ACCTS = ".cc-monitor/accounts";
 
-/** 一个活会话（`real/pool.mjs` 给它配一个替身进程、写 `.claude/sessions/<pid>.json`）。 */
+/**
+ * 一个活会话（`real/pool.mjs` 给它配一个替身进程、写 `.claude/sessions/<pid>.json`）。替身缺省住在那台私有 tmux 的一个窗格里。
+ * `fate`：开页之前就收场的那两种 —— `ended`（替身在世界起好之后被杀、不在 tmux 里了）· `reconnectable`（claude 退了、窗格还在、标签还挂着，没有 pidfile）。
+ */
 export interface LiveSession {
   sid: string;
   cwd: string;
   kind?: "interactive" | "bg";
+  /** 会话名（pidfile 的 `name`）。 */
+  name?: string;
+  /** 不住 tmux（替身是个光进程 ⇒ 容器那一格「不在终端宿主里」）。缺 ⇒ 住。 */
+  tmux?: false;
+  fate?: "ended" | "reconnectable";
   startedAt?: number;
   /** claude 写在 pidfile 里的那几格（原词）：`busy` · `waiting` · `idle` · `shell`；在等什么框；状态几点写的（ms）。 */
   status?: "busy" | "waiting" | "idle" | "shell";

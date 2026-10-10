@@ -50,12 +50,11 @@ export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
   c.user(`第 ${i} 轮：把 ${mod} 里的分页逻辑改成游标分页，顺带补测试。`);
   c.think(`先看 ${mod} 现在的分页实现与调用点，再决定游标放在哪一层。第 ${i} 轮。`, `我先看一下 ${mod} 的现状。`);
   c.tool("Grep", { pattern: `paginate${i % 9}`, path: mod }, Array.from({ length: 6 }, (_, k) => `${mod}/src/file${k}.ts:${10 + k * 7}:  paginate${i % 9}(items, ${k})`).join("\n"));
-  c.tool("Read", { file_path: `${cwd}/${mod}/src/page.ts` }, numbered(code(heavy ? 120 : 60, i)), { card: "md" });
+  c.tool("Read", { file_path: `${cwd}/${mod}/src/page.ts` }, numbered(code(heavy ? 120 : 60, i)));
   c.tool(
     "Edit",
     { file_path: `${cwd}/${mod}/src/page.ts`, old_string: code(heavy ? 18 : 8, i), new_string: code(heavy ? 26 : 12, i + 1) },
-    "The file has been updated.",
-    { card: "diff" },
+    "The file has been updated."
   );
   c.say(`调用点改完了，接着跑 ${mod} 的测试。`, 30_000 + (i % 50) * 1000);
   const fail = i % 7 === 3;
@@ -63,17 +62,17 @@ export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
     "Bash",
     { command: `npm test -- ${mod}`, description: "跑测试" },
     Array.from({ length: heavy ? 40 : 15 }, (_, k) => (fail && k === 3 ? `FAIL ${mod}/test/page.test.ts > cursor ${k}` : `  ✓ ${mod} > case ${k} (${(k * 3) % 17}ms)`)).join("\n"),
-    { card: "command", error: fail },
+    { error: fail },
   );
   if (i % 5 === 0) {
     c.tool(
       "Task",
       { description: `检查 ${mod} 的同类调用`, prompt: `在 ${mod} 之外找所有还在用偏移分页的地方。`, subagent_type: "Explore" },
       `找到 ${i % 4} 处，已列在清单里。`,
-      { card: "agent", child: { label: `检查 ${mod} 的同类调用`, kind: "Explore" } },
+      { child: { label: `检查 ${mod} 的同类调用`, kind: "Explore" } },
     );
   }
-  if (fail) c.tool("Bash", { command: `npm test -- ${mod}`, description: "重跑" }, "  ✓ all 15 passed", { card: "command" });
+  if (fail) c.tool("Bash", { command: `npm test -- ${mod}`, description: "重跑" }, "  ✓ all 15 passed");
   c.say(
     [
       `第 ${i} 轮完成：${mod} 改成游标分页。`,

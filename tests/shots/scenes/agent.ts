@@ -30,7 +30,7 @@ export function agentWorld(): World {
   a2.say("先找所有 httpx 的调用点。");
   a2.tool("Grep", { pattern: "httpx\\.(get|post)\\(", path: "services" }, "services/search/client.py:22\nservices/mailer/send.py:41");
   a2.say("找到两处。mailer 那处交给另一路看超时配置，我接着看 search。");
-  a2.tool("Agent", { description: "看 mailer 的超时配置", prompt: "看 services/mailer/send.py 第 41 行那次调用有没有超时", subagent_type: "Explore" }, null, { card: "agent", child: { label: "看 mailer 的超时配置", kind: "Explore" } });
+  a2.tool("Agent", { description: "看 mailer 的超时配置", prompt: "看 services/mailer/send.py 第 41 行那次调用有没有超时", subagent_type: "Explore" }, null, { child: { label: "看 mailer 的超时配置", kind: "Explore" } });
   a2.tool("Grep", { pattern: "timeout", path: "services/search" }, null);
   const a3 = briefed(new Convo(sid, CWD, "2026-10-01T09:08:00Z"), "看 services/mailer/send.py 第 41 行那次调用有没有超时。");
   a3.say("先读这个文件。");
@@ -41,7 +41,7 @@ export function agentWorld(): World {
   a4.tool("Grep", { pattern: "copyText\\(", path: "src" }, "…");
   const a5 = briefed(new Convo(sid, CWD, "2026-10-01T09:04:00Z"), "复现「很多 agent 在跑」：在一个安静的会话里派三个后台 agent，等它们结束后不再动会话，看面板多久之后改口。");
   a5.say("派了三个后台 agent，等它们写完。");
-  a5.tool("Bash", { command: "sleep 60" }, "", { card: "command" });
+  a5.tool("Bash", { command: "sleep 60" }, "");
   a5.say("三个都还写着在跑。再等一会儿看它会不会改口。");
   const a2tool = s.runs.find((r) => r.run === "agent-a2")?.tool;
   const runs: RunInfo[] = [

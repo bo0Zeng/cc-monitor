@@ -4,10 +4,9 @@
  * 其余的还是场景合成的。
  * 答不上的一律记进 `unhandled`（工具最后列出来），并按真后端「不认」那一形拒绝 —— 不悄悄给空。
  */
-import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
 import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { MachineDisk } from "../disk";
+import { diskOf } from "./world";
 
 /**
  * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
@@ -26,14 +25,24 @@ export const REAL_OPS = new Set([
   "rotation-session-set",
   "rotation-rule-save",
   "rotation-plan",
+  "history-page",
+  "history-lines",
+  "history-index",
+  "history-user-inputs",
+  "history-turns",
+  "history-facts",
+  "history-branch",
+  "history-run",
 ]);
 
 /**
- * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）。其余几种还是这里合成：会话流（等会话记录落盘那一刀）·
- * `session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；换号那几条帧命令还是合成的）·
- * 终端画面（要真 tmux）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
+ * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
+ * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那三种 `changed/<topic>`。
+ * 其余几种还是这里合成：`session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
+ * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["changed/accounts", "changed/profiles", "changed/tasks"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks"]);
+const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
 
 /** 真后端够不着的那几台：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支（例：账号库「Windows 不支持多账号」）演不出来。 */
 const WINDOWS_ONLY: Record<string, Set<string>> = { "win-laptop": new Set(["accounts-list"]) };
@@ -53,10 +62,12 @@ export class FakeBackend {
   readonly unhandled: string[] = [];
   private emit: Emit = () => undefined;
   private readonly subs = new Map<number, Sub>();
-  /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
+  /** 交给无头壳的那几条订阅：编号 → 哪台、哪一种。 */
+  private readonly shellSubs = new Map<number, Sub>();
+  /** 开页之后台架还在那几台上演的事（已结束的收场 · 断了）：截图等它们都落定（[`settled`]）。 */
+  private readonly pending: Promise<unknown>[] = [];
+  /** 收到过清单的那几台（每台只演一次）。 */
   private readonly listedOrigins = new Set<string>();
-  /** 交给无头壳的那几条订阅的编号。 */
-  private readonly shellSubs = new Set<number>();
   private screenSeq = 0;
 
   /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
@@ -67,12 +78,15 @@ export class FakeBackend {
     for (const op of REAL_OPS) {
       if (op in world.ops && !Object.values(WINDOWS_ONLY).some((x) => x.has(op))) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
-    const machines: Record<string, MachineDisk> = {};
-    for (const m of world.machines) machines[m] = world.disk[m] ?? { files: {}, live: [] };
+    const machines = diskOf(world);
     this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now() }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
-      new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`).onmessage = (m) => void this.emit("chan-items", JSON.parse(m.data as string));
+      new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`).onmessage = (m) => {
+        const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
+        this.watch(d.sub, d.items);
+        void this.emit("chan-items", d);
+      };
     });
   }
 
@@ -93,8 +107,35 @@ export class FakeBackend {
   }
 
   /** 订阅那几样交给无头壳。 */
-  private tell(what: "sub" | "want" | "stop", body: Record<string, unknown>): void {
-    void this.ready.then(() => fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) }));
+  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end", body: Record<string, unknown>): Promise<void> {
+    return this.ready.then(async () => {
+      const r = await fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
+      if (!r.ok) throw new Error(`/__ccm/${what}：${await r.text()}`);
+    });
+  }
+
+  /** 主界面发 `frontend-ready`（就绪点：壳照它重放会话流，带上次所在的 tab）。 */
+  frontendReady(payload: { prioritySid?: string | null } | null): void {
+    void this.tell("ready", { priority_sid: payload?.prioritySid ?? null });
+  }
+
+  /**
+   * 那台的会话流报完清单了（主界面那一条）：开页之后才演的那两样这时演 —— 已结束的那几个收场（[`SessionSpec.ended`]）·
+   * 断了的那几台过一会儿后端被杀（[`World.droppedMachines`]：壳那一侧照真的那一套作废那台的成品、通道说断了）。
+   */
+  private watch(id: number, items: { t: string; body?: string }[]): void {
+    const sub = this.shellSubs.get(id);
+    if (!sub || sub.kind !== "session-lines" || this.listedOrigins.has(sub.origin)) return;
+    if (!items.some((it) => it.t === "frame" && it.body?.startsWith('{"listed"'))) return;
+    this.listedOrigins.add(sub.origin);
+    this.pending.push(this.tell("end", { origin: sub.origin }));
+    if (this.world.droppedMachines?.includes(sub.origin)) this.pending.push(new Promise((r) => setTimeout(r, 1500)).then(() => this.tell("kill", { origin: sub.origin })));
+  }
+
+  /** 开页之后台架在演的那几样都落定了（截图在这之后量、截）。 */
+  async settled(): Promise<void> {
+    await this.ready;
+    for (let n = 0; n < this.pending.length; n = this.pending.length) await Promise.all(this.pending.slice(n));
   }
 
   attachEmitter(emit: Emit): void {
@@ -116,10 +157,10 @@ export class FakeBackend {
         this.subscribe(args);
         return null;
       case "chan_want":
-        if (this.shellSubs.has(Number(args.id))) this.tell("want", { id: Number(args.id), more: Number(args.more) });
+        if (this.shellSubs.has(Number(args.id))) void this.tell("want", { id: Number(args.id), more: Number(args.more) });
         return null;
       case "chan_stop":
-        if (this.shellSubs.delete(Number(args.id))) this.tell("stop", { id: Number(args.id) });
+        if (this.shellSubs.delete(Number(args.id))) void this.tell("stop", { id: Number(args.id) });
         return null;
       case "chan_cancel":
         return null;
@@ -162,9 +203,9 @@ export class FakeBackend {
 
   private subscribe(args: Record<string, unknown>): void {
     const sub: Sub = { id: Number(args.id), origin: String(args.origin), kind: String(args.kind) };
-    if (SHELL_KINDS.has(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
-      this.shellSubs.add(sub.id);
-      this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
+    if (shellKind(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
+      this.shellSubs.set(sub.id, sub);
+      void this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
       return;
     }
     this.subs.set(sub.id, sub);
@@ -177,21 +218,11 @@ export class FakeBackend {
       this.send(sub, [{ t: "unseen", idx: 1, tag: "open", why: "Unreachable" }]);
       return;
     }
-    if (this.world.closedMachines.includes(sub.origin) && sub.kind === "session-lines") {
+    if (this.world.closedMachines.includes(sub.origin) && sub.kind.startsWith("session-lines")) {
       this.send(sub, [{ t: "closed_by_peer", body: JSON.stringify({ code: "busy", message: "这台机器上的会话太多，先关掉几个再连" }) }]);
       return;
     }
-    if (sub.kind === "session-lines" || sub.kind.startsWith("session-lines/")) {
-      const only = sub.kind.startsWith("session-lines/") ? sub.kind.slice("session-lines/".length) : null;
-      this.sendFrames(sub, this.sessionFrames(sub.origin, only));
-      if (this.world.droppedMachines?.includes(sub.origin)) {
-        // 断了：壳那一侧的会话账本把这台的成品作废（会话流里一格 `unseen`：那台还活着的 / 可重连的一律状态不明），通道再说一声。
-        setTimeout(() => {
-          this.sendFrames(sub, [{ unseen: { origin: sub.origin } } as SessionStreamFrame]);
-          this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]);
-        }, 1500);
-      }
-    } else if (sub.kind.startsWith("terminal-screen/")) {
+    if (sub.kind.startsWith("terminal-screen/")) {
       // 终端实时画面：订上之后推一屏（就是那一刻的 `terminal-preview` 成品）；按场景随后停（画面中断 · 那台断开）。
       // 那一屏抓不到（场景让 `terminal-preview` 拒）⇒ 不推：真后端那边是 `terminal-follow` 那一问被拒，流上什么都不来。
       const mode = this.world.terminalLive ?? "live";
@@ -212,55 +243,8 @@ export class FakeBackend {
     }
   }
 
-  /** 一台机器的会话流：成批那一段里先宣告、再交行，最后报「清单报完了」。 */
-  sessionFrames(origin: string, only: string | null = null): SessionStreamFrame[] {
-    const frames: SessionStreamFrame[] = [{ batch: "start" }];
-    for (const s of this.world.sessions.filter((x) => x.origin === origin && (only === null || x.sid === only))) {
-      frames.push({
-        live: {
-          session_id: s.sid,
-          origin,
-          background: s.background,
-          attachable: true,
-          cwd: s.cwd,
-          project_dir: s.cwd,
-          name: s.name,
-        },
-      });
-      frames.push({ container: { session_id: s.sid, container: s.container } });
-      const from = this.world.replayTail === undefined ? 0 : Math.max(0, s.records.length - this.world.replayTail);
-      s.records.slice(from).forEach((record, i) => {
-        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, record } });
-      });
-      if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
-      // 字与语气照后端 `wire::activity_cells` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
-      const act = s.activity === null ? (["unclear", "now"] as const) : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["backgroundWork", "busy"] } as const)[s.activity];
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: copyText(`beSession.activity.${act[0]}`), activity_tone: act[1], waiting_for: s.waitingFor } });
-      if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("sessionState.ended.name"), hint: copyText("sessionState.ended.tooltip"), tone: "plain" } });
-      else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("sessionState.reconnectable.name"), hint: copyText("sessionState.reconnectable.tooltip"), tone: "plain" } });
-    }
-    this.listedOrigins.add(origin);
-    frames.push({ listed: { origin, all: this.world.machines.every((m) => this.listedOrigins.has(m)) } });
-    frames.push({ batch: "end" });
-    return frames;
-  }
-
-  private sendFrames(sub: Sub, frames: SessionStreamFrame[]): void {
-    this.send(
-      sub,
-      frames.map((f, seq) => ({ t: "frame", seq, body: JSON.stringify(f) })),
-    );
-  }
-
   private send(sub: Sub, items: unknown[]): void {
     void this.emit("chan-items", { sub: sub.id, items });
-  }
-
-  /** 场景在开页之后再推一格（例如活卡、某会话结束）。 */
-  pushFrames(origin: string, frames: SessionStreamFrame[]): void {
-    for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind.startsWith("session-lines")) this.sendFrames(sub, frames);
-    }
   }
 
   /** 场景在开页之后推一格 `changed/<topic>`（格体 `{key?, rev?, body?}`，同壳交的那一份）。 */

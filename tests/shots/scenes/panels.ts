@@ -148,7 +148,11 @@ function unseenPinnedWorld(): World {
 /** 「表格分页」那个会话有一个子 agent、没有任务。 */
 function agentsOnlyWorld(): World {
   const w = defaultWorld();
-  w.sessions[1].runs = [{ run: "agent-b1", label: "量一下现在的渲染耗时", kind: "general-purpose", state: "running", last: { t: "tool", name: "Bash" } }];
+  const c = w.sessions[1].convo!;
+  const b1 = c.child("b1");
+  b1.user("量一下现在的渲染耗时。");
+  b1.tool("Bash", { command: "npm run bench -- table" }, null);
+  c.tool("Task", { description: "量一下现在的渲染耗时", prompt: "量一下现在的渲染耗时。", subagent_type: "general-purpose" }, null, { child: b1 });
   return w;
 }
 

@@ -2,10 +2,8 @@
  * 截图工具的合成世界：几台机器、几个会话、各个面板要的成品。全是结构占位，不含任何真会话正文。
  * 形状挂在产品生成物类型上 ⇒ 后端改了线上形状，这里当场编不过。
  */
-import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
-import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
-import type { SessionContainer } from "../../../src/frontend/ui/generated/SessionContainer";
 import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
+import type { Convo } from "./records";
 
 export interface TaskSpec {
   id: string;
@@ -23,28 +21,25 @@ export interface SessionSpec {
   /** 哪一家（会话事实的 `agent`）；缺 ⇒ claude。 */
   agent?: string;
   cwd: string;
+  /** 会话名（pidfile 的 `name`）。 */
   name: string | null;
-  /** 后台会话。 */
+  /** 后台会话（pidfile 的 `kind: "bg"`）。 */
   background: boolean;
-  /** 此刻在干什么（后端翻好的那一格）；`null` = 说不清。 */
+  /** 此刻在干什么（写进 pidfile 的 `status`，后端照它翻）；`null` = 没写（说不清）。 */
   activity: SessionActivity | null;
+  /** 在等什么框（pidfile 的 `waitingFor`）。 */
   waitingFor: string | null;
-  /** 在等你时从何时起等（epoch ms；`history-facts` 的 `needs.sinceMs`）。缺 ⇒ 不知道。 */
+  /** 在等你时从何时起等（epoch ms；pidfile 的 `statusUpdatedAt`）。缺 ⇒ 不知道。 */
   waitingSinceMs?: number;
-  /** 后台任务运行中时还在跑的后台命令（最早起的在前；`history-facts` 的 `background` 照后端 `facts_query::background_of` 拼）。缺 ⇒ 记录里一条都对不上。 */
-  bgCommands?: { cmd: string; sinceMs: number }[];
-  container: SessionContainer;
-  records: LineRecord[];
-  runs: RunInfo[];
-  /** 子运行的记录（agent 面板点开那一条时按行取）：run → 记录。 */
-  runRecords: Record<string, LineRecord[]>;
+  /** 不住 tmux（直接在终端里起的）：替身是个光进程。缺 ⇒ 住在那台私有 tmux 的一个窗格里。 */
+  outsideTmux?: boolean;
+  /** 会话记录（盘上的原始 jsonl ＋ 派出的子 agent 那几份）；`null` ＝ 还没写过一行。 */
+  convo: Convo | null;
   tasks: TaskSpec[];
-  /** 会话已结束（灰掉、归档）。 */
+  /** 会话已结束：开页时还活着，页里收到那台的清单之后替身收场（灰掉、归档）。 */
   ended: boolean;
-  /** claude 退出、tmux 还在（灰灯）。 */
+  /** claude 退出、tmux 还在（灰灯）：只有挂着标签的那个窗格，没有 pidfile。 */
   idle: boolean;
-  /** 那台的中转看见过这个会话的请求：带过扩展上下文那一项（`wide`）/ 没带过（`std`）；缺 ＝ 中转没看见过。 */
-  relay?: "wide" | "std";
 }
 
 /** 一条帧命令怎么答：给值 ⇒ 当 JSON 答；抛 `Refuse` ⇒ 对端说不行；不在表里 ⇒ 对端说不认。 */
@@ -78,7 +73,7 @@ export interface World {
   hostKeyChanged?: string[];
   /** 正在把 cc-monitor 装上去的那几台（状态成品 `installing`）。 */
   installingMachines?: string[];
-  /** 订阅时看得见、交完会话之后断了的那几台（随后一格 `unseen`，断在读那一跳）。 */
+  /** 订阅时看得见、交完会话之后断了的那几台（交完清单一会儿之后那台后端被杀：壳那一侧照真的那一套作废它的成品、通道说断了）。 */
   droppedMachines?: string[];
   config: Record<string, unknown>;
   sessions: SessionSpec[];
@@ -90,8 +85,6 @@ export interface World {
   quiet?: string[];
   /** 帧命令晚多少毫秒才答（按 op 名；不给 ⇒ 当场答）。性能台架用它演「后端读大文件 / 远端那一跳要时间」：快速连切时，切走之后才回来的那几问还干不干活。 */
   opDelayMs?: Record<string, number>;
-  /** 重放时每个会话只交尾部这么多条（照真壳 `event_replay.rs::REPLAY_TAIL_KEEP`；更早的由骨架索引按偏移取）。不给 ⇒ 整份交。 */
-  replayTail?: number;
   /** Tauri 命令的答法（`load_config` 之类），按命令名；场景可以整条覆盖。 */
   commands: Record<string, (args: Record<string, unknown>, world: World) => unknown>;
 }
