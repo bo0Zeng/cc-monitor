@@ -1335,8 +1335,8 @@ impl SkipRuns {
 // `read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`
 //   （`src/frontend/ui/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
 
-// `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
-//   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
+// `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：「表里有哪几行」与「中转在不在」两样事实都是那台后端的，
+//   并进账号清单那一枚徽章（`accounts-list` 每号 `badge`，`observe/accounts_query.rs::badge_of`），人群只有一份。
 
 // 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 // 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`

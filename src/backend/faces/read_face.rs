@@ -204,6 +204,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 &rows,
                 agent,
                 crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+                crate::relay::our_relay_listening(relay_route_core::PORT),
             );
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {

@@ -15,8 +15,6 @@ import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
-// API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
-import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
 import { recallSeen, rememberSeen } from "./last-seen";
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
@@ -128,11 +126,6 @@ export function accountsAgentProfile(): AgentProfileRow | null {
     return null;
   }
   return AGENT_PROFILE_TABLE.find((r) => r.adapterId === id) ?? null;
-}
-
-/** 那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */
-export async function fetchMachineApikeyRouting(origin: Origin, configDirs: string[]): Promise<ApikeyRoutingView> {
-  return await fetchApikeyRouting(origin, launchAgentId(), configDirs);
 }
 
 /**

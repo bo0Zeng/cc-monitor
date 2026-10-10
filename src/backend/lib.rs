@@ -993,7 +993,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
     // ⚠ 它们与 `--list-accounts` / `--session-accounts` 是**同一个函数的两个宿主**，
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
-    "--accounts-list",
+    //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
     "--accounts-sessions",
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
