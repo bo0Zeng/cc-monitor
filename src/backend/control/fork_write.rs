@@ -87,7 +87,7 @@ fn read_jsonl(path: &Path) -> Result<Vec<serde_json::Value>, String> {
 /// 唯一性不靠这个串本身保证 —— **靠 `O_EXCL`**：撞了就直接失败，绝不覆盖。
 fn new_session_id(source_sid: &str) -> String {
     use std::hash::{Hash, Hasher};
-    let nanos = std::time::SystemTime::now()
+    let nanos = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);

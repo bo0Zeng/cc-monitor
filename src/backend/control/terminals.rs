@@ -735,7 +735,7 @@ fn bool_arg(args: &Value, k: &str, default: bool) -> Result<bool, CmdErr> {
 }
 
 fn now_secs() -> u64 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)

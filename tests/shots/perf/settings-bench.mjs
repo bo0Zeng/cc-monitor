@@ -23,6 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "../cdp.mjs";
+import { pinDateSource, SHOTS_TZ } from "../real/pool.mjs";
 import { cpuMs, devtoolsUrl, findChrome, freePort, pct } from "./harness.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -56,7 +57,7 @@ mkdirSync(path.join(sandbox, "home"), { recursive: true });
 mkdirSync(out, { recursive: true });
 
 function isolatedEnv(extra = {}) {
-  const env = { ...process.env, HOME: path.join(sandbox, "home"), ...extra };
+  const env = { ...process.env, HOME: path.join(sandbox, "home"), TZ: SHOTS_TZ, ...extra };
   for (const k of Object.keys(env)) if (/^(CCM_|CLAUDE_|ANTHROPIC_|TMUX)/.test(k) && !k.startsWith("CCM_SHOTS_")) delete env[k];
   for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"]) delete env[k];
   return env;
@@ -183,7 +184,7 @@ async function memAfterGc(page) {
 
 /** 开设置窗（或主窗口），等场景说开好了、主线程安静。 */
 async function openWin(file, scene, extraProbe = "") {
-  const page = await Page.open(cdp, file === "settings" ? 960 : 1280, file === "settings" ? 740 : 800);
+  const page = await Page.open(cdp, file === "settings" ? 960 : 1280, file === "settings" ? 740 : 800, 1, { boot: pinDateSource() });
   await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `${probe}\n${extraProbe}` });
   await page.send("Performance.enable", { timeDomain: "timeTicks" });
   const t0 = Date.now();

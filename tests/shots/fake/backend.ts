@@ -69,7 +69,7 @@ export class FakeBackend {
     }
     const machines: Record<string, MachineDisk> = {};
     for (const m of world.machines) machines[m] = world.disk[m] ?? { files: {}, live: [] };
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines }) }).then(async (r) => {
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now() }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
       new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`).onmessage = (m) => void this.emit("chan-items", JSON.parse(m.data as string));

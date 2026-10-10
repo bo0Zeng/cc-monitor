@@ -649,7 +649,7 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
 
 /// 此刻（epoch ms，这台的钟）：读 pidfile 那一刻，「已等多久」拿它减同一份 pidfile 里的起点。
 fn read_at_ms() -> u64 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }

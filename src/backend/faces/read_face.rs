@@ -475,7 +475,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             );
             // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
             facts.background = accounts_query::session_background(home, sid).map(|born| {
-                let now = std::time::SystemTime::now()
+                let now = crate::common::time::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
                 facts_query::background_of(&facts.bg_tasks, born, now)

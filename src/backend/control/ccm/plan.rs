@@ -121,7 +121,7 @@ pub(crate) fn parent_from(get: &dyn Fn(&str) -> Option<String>) -> Option<(Strin
 pub(crate) fn mint_origin() -> String {
     use std::hash::{BuildHasher, Hash, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    std::time::SystemTime::now().hash(&mut h);
+    crate::common::time::now().hash(&mut h);
     std::process::id().hash(&mut h);
     format!("{:016x}", h.finish())
 }

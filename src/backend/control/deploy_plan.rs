@@ -455,7 +455,7 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, Fail> {
                 crate::common::contract::malformed("missing `machine` (string)"),
             )
         })?;
-    let now = std::time::SystemTime::now()
+    let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);

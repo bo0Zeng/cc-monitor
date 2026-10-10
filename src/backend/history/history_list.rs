@@ -545,7 +545,7 @@ fn groups_of(rows: &[Value], listing: &Value, origin: Option<&str>) -> Vec<Value
 // ───────────────────────── 帧面 ─────────────────────────
 
 fn now_ms() -> i64 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64)
 }

@@ -12,7 +12,7 @@ use crate::common::said::Said;
 use copy_core::copy_text;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 /// 读一次凭据文件。三态：不在 / 是个 JSON 对象 / 读不出来或不是 JSON 对象（只给一句原因，不带内容）。
 pub(crate) type Read = crate::common::own_state::Read<Map<String, Value>>;
@@ -103,7 +103,7 @@ fn take(
     let age = std::fs::metadata(p)
         .and_then(|m| m.modified())
         .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok());
+        .and_then(|t| crate::common::time::now().duration_since(t).ok());
     if !age.is_some_and(|a| a > stale) || std::fs::remove_dir(p).is_err() || !make(p)? {
         return Ok(None);
     }

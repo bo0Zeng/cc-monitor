@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "./cdp.mjs";
 import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
 import { writeIndex } from "./index-page.mjs";
-import { buildBins, SHOTS_TZ } from "./real/pool.mjs";
+import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseArgs(process.argv.slice(2));
@@ -145,7 +145,7 @@ async function shootWeb() {
   const cdp = await Cdp.connect(wsUrl);
 
   // 清单
-  const probe = await Page.open(cdp, 800, 600);
+  const probe = await Page.open(cdp, 800, 600, 1, { boot: pinDateSource(), reducedMotion: true });
   await probe.goto(`${base}/tests/shots/manifest.html`);
   await probe.waitFor("window.__shotsManifest", 30_000);
   const manifest = await probe.eval("window.__shotsManifest");
@@ -154,7 +154,7 @@ async function shootWeb() {
   const scenes = manifest.filter((s) => !only || only.test(s.id));
   console.log(`网页场景 ${scenes.length} 个`);
   // 先热一次：vite 第一次按需编译整张模块图要几秒，别算进第一张图的时限。
-  const warm = await Page.open(cdp, 1280, 800);
+  const warm = await Page.open(cdp, 1280, 800, 1, { boot: pinDateSource(), reducedMotion: true });
   await warm.goto(`${base}/index.html?scene=`);
   await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", 60_000).catch(() => {});
   await warm.goto(`${base}/settings.html?scene=`);
@@ -164,7 +164,7 @@ async function shootWeb() {
   for (const s of scenes) {
     const file = path.join(out, s.dir, `${s.id}.png`);
     mkdirSync(path.dirname(file), { recursive: true });
-    const page = await Page.open(cdp, s.width, s.height, s.scale ?? 1);
+    const page = await Page.open(cdp, s.width, s.height, s.scale ?? 1, { boot: pinDateSource(), reducedMotion: true });
     let ok = true;
     let note = "";
     try {
