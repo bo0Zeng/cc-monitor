@@ -28,7 +28,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             id
         },
         at,
-        time_text,
+        time_text: time_text.map(crate::common::cells::Words),
         body,
     };
     match rec {

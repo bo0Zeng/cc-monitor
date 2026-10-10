@@ -6,10 +6,11 @@
 //!   （认过的目录不再问，`fresh: true` 全部重问）。
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
 //! - `plan-cell-view {workspace, slice, id}`：一格的 `agent_view`（上一次读好的那一份里的）。
+//! - `plan-command {workspace, cmd: continue|pause|view}`：以人的身份代敲 pb 的用户命令（写盘的是 pb）。
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `plan_changed`。
 
-use crate::plan::{book, locate, watch, Live, Whose};
+use crate::plan::{book, locate, watch, wire, Live, Whose};
 use crate::stream::inbound::spec::Fail;
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -100,8 +101,12 @@ fn review_now() -> crate::plan::review::Review {
 }
 
 /// 给本子出的成品标上认可 · 要你看的数 · 退回的状态（每次答之前现读那份记录，本子里存的是没标的）。
+/// 时刻也在这里写成给人看的字（这台此刻的本地钟）。
 pub(crate) fn annotated(mut doc: Value) -> Value {
     review_now().annotate(&mut doc);
+    let now = now_ms();
+    let tz_min = crate::platform::local_tz::offset_secs(now / 1000).unwrap_or(0) / 60;
+    crate::plan::product::with_time_texts(&mut doc, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
     doc
 }
 
@@ -158,6 +163,12 @@ pub(crate) fn read_fresh(ws: &str) -> Result<Value, Fail> {
     read_dir(&entry, Path::new(ws)).map(annotated).map_err(miss)
 }
 
+/// 出口过一遍线上类型（[`crate::plan::wire::checked`]）；对不上是拼的那一侧的错 ⇒ `failed`。
+pub(crate) fn wired<T: serde::Serialize + serde::de::DeserializeOwned>(v: Value) -> Answer {
+    wire::checked::<T>(v)
+        .map_err(|e| Fail::new("failed", copy_text("bePlan.face.shape", &[])).with_raw(Some(&e)))
+}
+
 fn miss(m: book::Miss) -> Fail {
     match m {
         book::Miss::NotWorkspace(said) => {
@@ -178,7 +189,7 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
                 .get("workspace")
                 .and_then(Value::as_str)
                 .ok_or_else(|| bad("missing `workspace` (a string)"))?;
-            read_fresh(ws)
+            read_fresh(ws).and_then(wired::<wire::PlanRead>)
         }
         "plan-cell-view" => {
             let get = |k: &str| {
@@ -192,11 +203,30 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
                 .map(|v| json!({ "view": v }))
                 .ok_or_else(|| Fail::new("no_view", copy_text("bePlan.face.noView", &[])))
         }
+        "plan-command" => command(args),
         other => Err(Fail::new(
             "bad_args",
             crate::common::contract::malformed(&format!("unknown command `{other}`")),
         )),
     }
+}
+
+/// `plan-command {workspace, cmd}`：以人的身份代敲 pb 的一条用户命令（[`crate::plan::command`]）。
+/// 写盘的是 pb；`continue` / `pause` 改了工作区 `.env` ⇒ 盯盘那一路照常推 `plan_changed`（`auto` 在成品里）。
+fn command(args: &Value) -> Answer {
+    let ws = args
+        .get("workspace")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("missing `workspace` (a string)"))?;
+    let cmd = args
+        .get("cmd")
+        .and_then(Value::as_str)
+        .filter(|c| crate::plan::command::VERBS.contains(c))
+        .ok_or_else(|| bad("`cmd` must be one of continue · pause · view"))?;
+    let entry = entry()?;
+    crate::plan::command::run(&entry, Path::new(ws), cmd)
+        .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+        .and_then(wired::<wire::PlanCmdReply>)
 }
 
 fn list(args: &Value) -> Answer {
@@ -220,7 +250,9 @@ fn list(args: &Value) -> Answer {
     let entry = match entry() {
         Ok(e) => e,
         Err(f) => {
-            return Ok(json!({ "pb": { "state": "missing", "said": f.message }, "workspaces": [] }))
+            return wired::<wire::PlanList>(
+                json!({ "pb": { "state": "missing", "said": f.message }, "workspaces": [] }),
+            )
         }
     };
     let b = book::book();
@@ -258,24 +290,11 @@ fn list(args: &Value) -> Answer {
             Err(book::Miss::Failed { .. }) => {}
         }
     }
-    let workspaces: Vec<Value> = seen
-        .values()
-        .map(|v| {
-            json!({
-                "workspace": v["workspace"],
-                "repo": v["repo"],
-                "auto": v["auto"],
-                "rev": v["rev"],
-                "stale": v["stale"],
-                "needCount": v["needCount"],
-                "slices": v["slices"].as_array().map(|a| a.iter().map(crate::plan::product::slice_summary).collect::<Vec<_>>()).unwrap_or_default(),
-            })
-        })
-        .collect();
+    let workspaces: Vec<Value> = seen.values().map(crate::plan::product::list_row).collect();
     if let Some(v) = seen.values().next() {
         pb["version"] = v["pb"].clone();
     }
-    Ok(json!({ "pb": pb, "workspaces": workspaces }))
+    wired::<wire::PlanList>(json!({ "pb": pb, "workspaces": workspaces }))
 }
 
 #[cfg(test)]

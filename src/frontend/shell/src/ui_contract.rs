@@ -268,6 +268,10 @@ pub enum BatchEdge {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionEndedPayload {
     pub session_id: String,
+    /// 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）；壳自己补的「已结束」没有 ⇒ `None`。
+    pub text: Option<String>,
+    pub hint: Option<String>,
+    pub tone: Option<String>,
 }
 
 /// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
@@ -277,6 +281,10 @@ pub struct SessionEndedPayload {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
+    /// 同 [`SessionEndedPayload`] 那三格。
+    pub text: Option<String>,
+    pub hint: Option<String>,
+    pub tone: Option<String>,
 }
 
 /// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
@@ -400,5 +408,8 @@ pub struct RemoteHealthPayload {
 pub struct SessionActivityPayload {
     pub session_id: String,
     pub activity: Option<crate::session_book::SessionActivity>,
+    /// `activity` 那一态写好的字与语气（那台核心写的：运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）。
+    pub activity_text: Option<String>,
+    pub activity_tone: Option<String>,
     pub waiting_for: Option<String>,
 }

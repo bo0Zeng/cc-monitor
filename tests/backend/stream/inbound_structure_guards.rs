@@ -418,6 +418,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "plan-list"
                 | "plan-read"
                 | "plan-cell-view"
+                // 代敲 pb 的用户命令：起一次 pb 子进程（`view` 画整张图）。
+                | "plan-command"
                 // 计划审面三条：读—改—写后端自己的小文件（跨进程锁）· 退回现读一次计划（起 pb）再送字（起 tmux）。
                 | "plan-ack"
                 | "plan-unack"
@@ -476,6 +478,8 @@ fn every_registered_command_declares_its_run_kind() {
         "terminal-ssh",
         // `history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
         "history-search-merge",
+        // `cells-catalog`：格目录，纯计算 ⇒ 不进阻塞档。
+        "cells-catalog",
         // 资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
@@ -657,6 +661,8 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-list",
         "plan-read",
         "plan-cell-view",
+        // 代敲 pb 的用户命令：阻塞（起 pb 子进程）。
+        "plan-command",
         // 计划审面三条：阻塞（小文件 I/O · 起 pb · 起 tmux）。
         "plan-ack",
         "plan-unack",

@@ -293,7 +293,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 seq: 3,
                 record: Some(crate::agents::record::Record {
                     at: Some(s("2026-10-09T01:30:00.000Z")),
-                    time_text: Some(s("09:30")),
+                    time_text: Some(crate::common::cells::Words(s("09:30"))),
                     ..said_record("u1", "q")
                 }),
                 cwd: Some(s("/w")),
@@ -325,6 +325,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: Some(s("/p/s1.jsonl")),
                 lines: Some(9),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
+                activity_text: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .0,
+                activity_tone: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .1,
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
                     host: TerminalHost::Tmux,
@@ -344,6 +352,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
                 lines: None,
                 activity: None,
+                activity_text: crate::stream::wire::activity_cells(None).0,
+                activity_tone: crate::stream::wire::activity_cells(None).1,
                 waiting_for: None,
                 container: None,
                 pid: None,
@@ -353,20 +363,27 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionStatus {
                 sid: s("s1"),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
+                activity_text: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .0,
+                activity_tone: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .1,
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
                 activity: None,
+                activity_text: crate::stream::wire::activity_cells(None).0,
+                activity_tone: crate::stream::wire::activity_cells(None).1,
                 waiting_for: None,
                 liveness_confidence: None,
             },
         ],
-        both(Frame::SessionState {
-            sid: s("s1"),
-            state: SessionFate::Reconnectable,
-        }),
+        both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
         [
             Frame::SessionRemoved {
                 sid: s("s1"),
@@ -1281,6 +1298,8 @@ fn dg3_codex_fields_serialize_when_present() {
         path: None,
         lines: None,
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
         pid: None,
@@ -1294,6 +1313,8 @@ fn dg3_codex_fields_serialize_when_present() {
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
     })
@@ -1343,6 +1364,8 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         path: None,
         lines: None,
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
         pid: None,
@@ -1356,6 +1379,8 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         liveness_confidence: None,
     })
@@ -1486,6 +1511,8 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             path: None,
             lines: None,
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: None,
             container: c,
             pid: None,
@@ -1511,22 +1538,32 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
     );
 }
 
-/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
+/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；写好的字与语气跟在 `state` 后面。
 /// monitor `stream_source::parse_frame` 照这两个字面量认它。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::stream::wire::SessionFate;
-    for (state, word) in [
-        (SessionFate::Reconnectable, "reconnectable"),
-        (SessionFate::Ended, "ended"),
+    for (state, word, name, hint) in [
+        (
+            SessionFate::Reconnectable,
+            "reconnectable",
+            "sessionState.reconnectable.name",
+            "sessionState.reconnectable.tooltip",
+        ),
+        (
+            SessionFate::Ended,
+            "ended",
+            "sessionState.ended.name",
+            "sessionState.ended.tooltip",
+        ),
     ] {
+        let (name, hint) = (
+            copy_core::copy_text(name, &[]),
+            copy_core::copy_text(hint, &[]),
+        );
         assert_eq!(
-            to_line(&Frame::SessionState {
-                sid: "abc".into(),
-                state
-            })
-            .unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\"}}\n")
+            to_line(&Frame::session_state("abc".into(), state)).unwrap(),
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\"}}\n")
         );
     }
 }
@@ -1557,6 +1594,8 @@ fn loc1b_session_added_pid_is_additive() {
             path: None,
             lines: None,
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: None,
             container: None,
             pid,
@@ -1770,6 +1809,8 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             path: s.clone(),
             lines: Some(3),
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: s.clone(),
             container: None,
             pid: None,
@@ -1777,6 +1818,8 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         Frame::SessionStatus {
             sid: "s".into(),
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: s.clone(),
             liveness_confidence: s.clone(),
         },
@@ -2259,4 +2302,54 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
         assert_eq!(json_type(got), *ty, "{flag}.{field} 换了类型：{row}");
     }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔G2〕会话状态带写好的字与语气（对所有出口一次补齐）：活着的三态在 `session_added` · `session_status` 上
+/// （`activity_text` · `activity_tone`，没有 `activity` ⇒ 两格都不上线）；离开「活」之后的两种在 `session_state` 上
+/// （`state_text` 短名 · `state_hint` 悬停那一句 · `state_tone`）。字走文案表，出口照抄、不按码取字。
+#[test]
+fn session_frames_carry_the_state_written_and_toned() {
+    use crate::agents::SessionActivity as A;
+    use crate::stream::wire::{activity_cells, SessionFate};
+    let status = |a: Option<A>| {
+        let (activity_text, activity_tone) = activity_cells(a);
+        serde_json::to_value(Frame::SessionStatus {
+            sid: "s".into(),
+            activity: a,
+            activity_text,
+            activity_tone,
+            waiting_for: None,
+            liveness_confidence: None,
+        })
+        .unwrap()
+    };
+    for (a, key, tone) in [
+        (A::Working, "beSession.activity.working", "now"),
+        (A::NeedsYou, "beSession.activity.needsYou", "need"),
+        (A::Idle, "beSession.activity.idle", "plain"),
+    ] {
+        let v = status(Some(a));
+        assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
+        assert_eq!(v["activity_tone"], tone, "{a:?}");
+    }
+    let none = status(None);
+    assert!(none.get("activity_text").is_none() && none.get("activity_tone").is_none());
+
+    for (f, name, hint) in [
+        (
+            SessionFate::Reconnectable,
+            "sessionState.reconnectable.name",
+            "sessionState.reconnectable.tooltip",
+        ),
+        (
+            SessionFate::Ended,
+            "sessionState.ended.name",
+            "sessionState.ended.tooltip",
+        ),
+    ] {
+        let v = serde_json::to_value(Frame::session_state("s".into(), f)).unwrap();
+        assert_eq!(v["state_text"], copy_core::copy_text(name, &[]), "{f:?}");
+        assert_eq!(v["state_hint"], copy_core::copy_text(hint, &[]), "{f:?}");
+        assert_eq!(v["state_tone"], "plain", "{f:?}");
+    }
 }

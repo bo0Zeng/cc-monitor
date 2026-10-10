@@ -4,8 +4,7 @@
  */
 import type { Command } from "./views/command-bar";
 import type { Tab } from "./tab-model";
-import { dotOf, needsOf, titleParts } from "./session-face";
-import { dotLabel, needsWord } from "./session-words";
+import { dotOf, needsOf, stateWord, titleParts } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
@@ -20,7 +19,7 @@ export function sessionCommands(tabs: readonly Tab[], switchTo: (sid: string) =>
       title: p.proj ? `${p.proj} ${p.title}` : p.title,
       keywords: copyText("main.cmd.switchSessionKeywords", { cwd: t.projectDir ?? "", machine: machine ?? "" }),
       hint: i < 9 ? keyOf(i + 1) : undefined,
-      session: { dot, dotLabel: dotLabel(dot), machine, project: p.proj, title: p.title, waiting: n ? needsWord(n.kind) : null },
+      session: { dot, dotLabel: stateWord(t), machine, project: p.proj, title: p.title, waiting: n ? n.text : null },
       run: () => switchTo(t.sessionId),
     };
   });

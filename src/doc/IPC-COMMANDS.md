@@ -58,6 +58,8 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
+| `activity_text` | Words? | `activity` 那一态写好的字（`activity_cells`）；没有 `activity` ⇒ 不上线 |
+| `activity_tone` | Tone? | `activity` 那一态的语气（同上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -70,6 +72,8 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
+| `activity_text` | Words? | 同 `session_added.activity_text` |
+| `activity_tone` | Tone? | 同 `session_added.activity_tone` |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -81,6 +85,9 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
+| `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
+| `state_hint` | Words | 悬停那一句 |
+| `state_tone` | Tone | 语气 |
 
 ### `session_removed`
 
@@ -2814,7 +2821,20 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
 
-### 4.8 终端与会话
+### 4.8 成品的格
+
+#### `cells-catalog`
+
+每件成品有哪些格。
+
+不收 `args` · 可撤 · CLI：`ccm -- --cells-catalog`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 骨架行 `index_row` · 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+
+### 4.9 终端与会话
 
 #### `launch-local`
 
@@ -3280,7 +3300,7 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
 
-### 4.9 机器
+### 4.10 机器
 
 #### `ccm-print`
 
@@ -3619,7 +3639,7 @@ cc-bus 钩子诊断。
 
 码：`bad_args`
 
-### 4.10 计划
+### 4.11 计划
 
 #### `plan-list`
 
@@ -3632,7 +3652,7 @@ cc-bus 钩子诊断。
 | `dirs` | → | 可选：另要问的目录（串的数组） |
 | `fresh` | → | 可选布尔：`true` ⇒ 认过的目录也重问 |
 | `pb` | ← | `{state: ok\|missing\|unsupported, said, version}`：pb 装没装、认不认得它的输出 |
-| `workspaces` | ← | 每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, slices: [{name, domain, current, progress, needCount, error, stale}]}` |
+| `workspaces` | ← | 每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, bySession, slices: [{name, domain, current, progress, needCount, error, stale}]}` |
 
 码：`bad_args`
 
@@ -3648,6 +3668,7 @@ cc-bus 钩子诊断。
 | `rev` | ← | 这一份输出的摘要：变了才算计划变了 |
 | `readAt` | ← | 读到的时刻（epoch ms） |
 | `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
+| `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
 | `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null` |
 | `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
 
@@ -3667,6 +3688,22 @@ cc-bus 钩子诊断。
 | `workspace` | → | 工作区根 |
 
 码：`bad_args` · `no_view`
+
+#### `plan-command`
+
+以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cmd` | → | `continue` · `pause` · `view` |
+| `workspace` | → | 工作区根 |
+| `rc` | ← | pb 的退出码（成了才回，恒 0） |
+| `said` | ← | pb 说的第一句 |
+| `path` | ← | `view` 写的那一页（那台机器上的路径）；别的 ⇒ `null` |
+
+码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported` · `refused`
 
 #### `plan-ack`
 
@@ -3772,6 +3809,7 @@ cc-bus 钩子诊断。
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
+| `--cells-catalog` | ＝ 帧命令 `cells-catalog`：每件成品有哪些格 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
@@ -3852,6 +3890,7 @@ cc-bus 钩子诊断。
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
+| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |

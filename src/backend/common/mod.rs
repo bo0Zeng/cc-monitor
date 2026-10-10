@@ -5,6 +5,9 @@
 //! ② 平台无关（不含平台 cfg、不依赖某个 OS 的文件布局或 ABI —— 那是 `platform/` 的事）；做 I/O 不算违反（`std::fs` 在哪都一样）
 //! ③ 无域知识（不认识 `WatchEvent` / `ResumeSpec` 这类东西）
 
+/// 成品格的两种标记类型（写好的字 · 语气）。① observe（会话事实 · 过程行）· agents（通用记录）· stream（会话帧）都用 · ② 纯数据 ·
+/// ③ 只认「这一格是写好的字 / 语气」。
+pub(crate) mod cells;
 pub(crate) mod contract;
 pub(crate) mod fs;
 /// 只听回环的那一个地址。① stream（常驻监听口）· relay（中转的宿主）· control（本机探口）都绑 / 连它 · ② `std::net` 的常量 · ③ 只认「回环」。

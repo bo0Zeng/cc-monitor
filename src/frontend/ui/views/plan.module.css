@@ -1,0 +1,577 @@
+/* 计划页（设计稿 planned-build 01 · 02）：页头 44 · 子头 36 · 大纲 480 ｜ 概览 / 详情；窄窗（< 1100）大纲 360、类的词收起只留颜色。 */
+@layer components {
+  .pv {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-view);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+    container-type: inline-size;
+    container-name: plan;
+  }
+
+  .pvHead {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-5);
+    height: 44px;
+    padding: 0 var(--space-5) 0 var(--space-6);
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--bg-2);
+  }
+
+  .pvTitle {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-4);
+    font-size: var(--font-size-title);
+    font-weight: 600;
+  }
+
+  .pvSlices {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .pvSlice {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    height: 26px;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pvSlice:hover {
+    background: var(--state-hover);
+  }
+
+  .pvSlice[aria-current="true"] {
+    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .pvSlice[data-down="true"] {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .pvSliceName {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .pvNum {
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pvMachine {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    line-height: 14px;
+  }
+
+  .pvNdot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warn);
+  }
+
+  .pvSpacer {
+    flex: 1;
+  }
+
+  .pvSearch {
+    display: flex;
+    flex: 0 1 190px;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 120px;
+    height: 28px;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text-2);
+  }
+
+  .pvSearch:focus-within {
+    border-color: var(--field-border-focus);
+  }
+
+  .pvSearch input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-small);
+  }
+
+  .pvSearch input::placeholder {
+    color: var(--field-placeholder);
+  }
+
+  .pvAuto {
+    flex: none;
+  }
+
+  .pvAutoFail {
+    flex: none;
+    max-width: 260px;
+    padding: 0 var(--space-4);
+    overflow: hidden;
+    border-left: 3px solid var(--error);
+    border-radius: var(--radius-s);
+    background: var(--bg-2);
+    color: var(--error-text);
+    font-size: var(--font-size-small);
+    line-height: 22px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pvSub {
+    flex: none;
+    align-items: center;
+    gap: var(--space-5);
+    height: 36px;
+    padding: 0 var(--space-5) 0 var(--space-6);
+    overflow: hidden;
+    border-bottom: 1px solid var(--border-faint);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+  .pvSub:not([hidden]) {
+    display: flex;
+  }
+
+
+  .pvSep {
+    flex: none;
+    width: 1px;
+    height: 14px;
+    background: var(--border-medium);
+  }
+
+  .pvRed {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--error-text);
+  }
+
+  .pvChips {
+    display: flex;
+    flex: none;
+    gap: var(--space-2);
+  }
+
+  .pvChip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 22px;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: 11px;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .pvChip[aria-pressed="true"] {
+    border-color: var(--border-medium);
+    background: var(--state-active);
+    color: var(--text);
+  }
+
+  .pvChip[data-tone="needs"] {
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+    color: var(--warn);
+  }
+
+  .pvStrips {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .pvStrips:not(:empty) {
+    padding: var(--space-4) var(--space-6) 0;
+  }
+
+  .pvBody {
+    display: grid;
+    flex: 1;
+    grid-template-columns: 480px minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .pvBody[data-stale="true"] {
+    opacity: 0.6;
+  }
+
+  .pvWhole {
+    display: grid;
+    flex: 1;
+    place-items: center;
+    min-height: 0;
+  }
+
+  .pvTree {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--border-strong);
+  }
+
+  .pvRows {
+    flex: 1;
+    min-height: 0;
+    padding: var(--space-3) 0 var(--space-5);
+    overflow-y: auto;
+    outline: none;
+  }
+
+  .pvRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 30px;
+    padding-right: var(--space-5);
+    border-left: 2px solid transparent;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pvRow:hover {
+    background: var(--state-hover);
+  }
+
+  .pvRow[aria-selected="true"] {
+    border-left-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .pvRow[data-block="true"] {
+    height: 34px;
+  }
+
+  .pvRowHead {
+    height: 34px;
+    font-weight: 600;
+  }
+
+  .pvChev {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 14px;
+    color: var(--text-2);
+  }
+
+  .pvSt {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 16px;
+  }
+
+  .pvSt[data-look="done"] {
+    color: var(--success);
+  }
+
+  .pvSt[data-look="open"] {
+    color: var(--text-2);
+  }
+
+  .pvSt[data-look="dropped"] {
+    color: var(--text-faint);
+  }
+
+  .pvKbar {
+    flex: none;
+    width: 3px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--kc, var(--text-faint));
+  }
+
+  .pvTt {
+    flex: 0 1 auto;
+    min-width: 4em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pvRow[data-look="done"] .pvTt {
+    color: var(--text-2);
+  }
+
+  .pvRow[data-look="dropped"] .pvTt {
+    color: var(--text-faint);
+    text-decoration: line-through;
+  }
+
+  .pvKw {
+    flex: none;
+    color: var(--kc, var(--text-2));
+    font-size: var(--font-size-xs);
+  }
+
+  .pvTrail {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pvWhy[data-wait="true"] {
+    color: var(--text);
+  }
+
+  .pvOwner {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 220px;
+    height: 20px;
+    padding: 0 var(--space-4);
+    overflow: hidden;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--overlay-hover);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pvOwner[data-kind="unknown"] {
+    border-style: dashed;
+    background: transparent;
+    color: var(--text-2);
+  }
+
+  .pvOwnerText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pvOwnerMt {
+    color: var(--text-2);
+  }
+
+
+  .pvLegend {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-5);
+    padding: var(--space-4) var(--space-6);
+    border-top: 1px solid var(--border-faint);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .pvLegendKind {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .pvLegendKind::before {
+    width: 3px;
+    height: 11px;
+    border-radius: 1px;
+    background: var(--kc);
+    content: "";
+  }
+
+  .pvLink {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-link);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .pvPane {
+    min-width: 0;
+    min-height: 0;
+    padding: var(--space-6) 22px var(--space-7);
+    overflow-y: auto;
+  }
+
+  .pvH1 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .pvH1Text {
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  .pvMeta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+
+  .pvSec {
+    margin-top: 18px;
+  }
+
+  .pvSecHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin: 0 0 var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: 600;
+  }
+
+  .pvTbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-small);
+  }
+
+  .pvTbl th {
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .pvTbl td {
+    padding: 5px var(--space-4);
+    border-bottom: 1px solid var(--border-faint);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .pvTbl tr[data-click="true"]:hover td {
+    background: var(--state-hover);
+    cursor: pointer;
+  }
+
+  .pvR {
+    text-align: right;
+  }
+
+  .pvTbl th.pvR {
+    text-align: right;
+  }
+
+  .pvCellName {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .pvStw {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .pvSign {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-5);
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-faint);
+    font-size: var(--font-size-small);
+  }
+
+  .pvSignTm {
+    flex: none;
+    width: 78px;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pvSignBody {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pvSignTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .pvSignWhy {
+    margin-top: 1px;
+    overflow: hidden;
+    color: var(--text-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+
+  @container plan (max-width: 1099px) {
+    .pvBody {
+      grid-template-columns: 360px minmax(0, 1fr);
+    }
+
+    .pvKw,
+    .pvOwnerMt,
+    .pvSearch {
+      display: none;
+    }
+
+    .pvOwner {
+      max-width: 140px;
+    }
+  }
+}

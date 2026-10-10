@@ -271,6 +271,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
         origin: "<local>".into(),
         sid: "done".into(),
         fate: Fate::Ended,
+        words: None,
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -1056,6 +1057,7 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
         origin: "<local>".into(),
         sid: "b".into(),
         fate: Fate::Ended,
+        words: None,
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
@@ -1077,6 +1079,9 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
         vec![crate::ui_contract::SessionStreamFrame::Ended(
             crate::ui_contract::SessionEndedPayload {
                 session_id: "c".into(),
+                text: None,
+                hint: None,
+                tone: None,
             },
         )],
     );
@@ -1118,14 +1123,26 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         F::Activity(b::SessionActivityPayload {
             session_id: sid(),
             activity: None,
+            activity_text: None,
+            activity_tone: None,
             waiting_for: None,
         }),
         F::Container(b::SessionContainerPayload {
             session_id: sid(),
             container: crate::session_book::SessionContainer::None,
         }),
-        F::Idle(b::SessionIdlePayload { session_id: sid() }),
-        F::Ended(b::SessionEndedPayload { session_id: sid() }),
+        F::Idle(b::SessionIdlePayload {
+            session_id: sid(),
+            text: None,
+            hint: None,
+            tone: None,
+        }),
+        F::Ended(b::SessionEndedPayload {
+            session_id: sid(),
+            text: None,
+            hint: None,
+            tone: None,
+        }),
         F::Unseen(b::SessionUnseenPayload {
             origin: crate::origin::Origin::local(),
         }),
@@ -1176,6 +1193,9 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
     });
     let other = F::Ended(b::SessionEndedPayload {
         session_id: "other".into(),
+        text: None,
+        hint: None,
+        tone: None,
     });
     assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
     assert!(!listed.reaches(Some("mine")) && listed.reaches(None));
@@ -1239,6 +1259,46 @@ async fn the_quota_stream_carries_ledger_and_rotation_changes_to_its_own_machine
         vec![
             (1, serde_json::json!({"quota": true})),
             (1, serde_json::json!({"sid": "s1"}))
+        ]
+    );
+}
+
+/// 计划变了走 `quota-changed` 那一条流（「那台某样东西变了」不另开流）：体 `{"plan": {"workspace", "rev", "needs"}}`
+/// （`needs` 是那台写好的数，`0` 照发）。只有订了这台 `quota-changed` 的收；别台的 · 同台别的流都不收。期望手写。
+#[tokio::test]
+async fn a_plan_change_rides_the_quota_stream_to_its_own_machine_only() {
+    let (r, rec) = hub();
+    let box_a = crate::origin::Origin("box-a".into());
+    let box_b = crate::origin::Origin("box-b".into());
+    r.subscribe("w", 1, &box_a, "quota-changed", None, 4);
+    r.subscribe("w", 2, &box_a, "session-tasks", None, 4);
+    r.subscribe("w", 3, &box_b, "quota-changed", None, 4);
+    rec.clear();
+    r.plan_changed(&box_a, "/work/ledger", "r1", 3);
+    r.plan_changed(&box_a, "/work/site", "r2", 0);
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                1,
+                serde_json::json!({"plan": {"workspace": "/work/ledger", "rev": "r1", "needs": 3}})
+            ),
+            (
+                1,
+                serde_json::json!({"plan": {"workspace": "/work/site", "rev": "r2", "needs": 0}})
+            )
         ]
     );
 }

@@ -113,6 +113,9 @@ pub enum InboundFrame {
         lines: Option<u64>,
         /// 宣告时此刻在干什么 ＋ 在等什么（连接建立灯就对）。
         activity: Option<crate::session_book::SessionActivity>,
+        /// `activity` 那一态写好的字与语气（那台核心写的，原样转交）。
+        activity_text: Option<String>,
+        activity_tone: Option<String>,
         waiting_for: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
         /// 不认识的宿主 ⇒ `Other`（不吞）。
@@ -135,13 +138,20 @@ pub enum InboundFrame {
     SessionStatus {
         sid: String,
         activity: Option<crate::session_book::SessionActivity>,
+        activity_text: Option<String>,
+        activity_tone: Option<String>,
         waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。monitor 只拿它当内容流的边界（残批先冲、快照作废）；
     /// 它离开之后是可重连还是已结束，紧跟着的 [`InboundFrame::SessionState`] 说（后端裁）。
     SessionRemoved { sid: String },
     /// 后端会话账本的成品：这条会话离开「活」之后是什么（`session_state`）。
-    SessionState { sid: String, state: Fate },
+    SessionState {
+        sid: String,
+        state: Fate,
+        /// 那一种写好的短名 · 悬停那一句 · 语气（核心写的，必有）。
+        words: crate::session_book::FateWords,
+    },
     /// 一个会话的运行表（`session_runs`；`runs` · `ended` 是 JSON 数组原文，不解释）。
     SessionRuns {
         sid: String,
@@ -215,9 +225,13 @@ pub enum InboundFrame {
     RotationChanged { sid: String },
     /// 那台的轮换规则表 / 默认指向变了（`rotation_rules_changed`，无载荷）⇒ 同上一格 `{"rules":true}`；界面要就发 `rotation-rules-read`。
     RotationRulesChanged,
-    /// 那台某个 pb 工作区的计划变了（`plan_changed`：工作区 · 新摘要 · 要看的数）。
-    /// 这一侧认得、还不消费（界面还没有订它的那一格）：形状照判（缺哪一格都算形状不对），收下即丢，不算「不认识的种类」。
-    PlanChanged,
+    /// 那台某个 pb 工作区的计划变了（`plan_changed`：工作区 · 新摘要 · 需手动的数）⇒
+    /// 交订了那台 `plan-changed` 的订阅一格 `{workspace, rev, needs}`；界面要就发 `plan-read`。
+    PlanChanged {
+        workspace: String,
+        rev: String,
+        needs: u64,
+    },
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -468,6 +482,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     "activity",
                     crate::session_book::SessionActivity::from_wire,
                 )?,
+                activity_text: opt("activity_text"),
+                activity_tone: opt("activity_tone"),
                 waiting_for: opt("waiting_for"),
                 // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
                 container: match obj.get("container") {
@@ -505,6 +521,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     "activity",
                     crate::session_book::SessionActivity::from_wire,
                 )?,
+                activity_text: opt("activity_text"),
+                activity_tone: opt("activity_tone"),
                 waiting_for: opt("waiting_for"),
             }
         }
@@ -524,6 +542,11 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "session_state" => InboundFrame::SessionState {
             sid: req_str(obj, k, "sid")?,
             state: req_word(obj, k, "state", Fate::from_wire)?,
+            words: crate::session_book::FateWords {
+                text: req_str(obj, k, "state_text")?,
+                hint: req_str(obj, k, "state_hint")?,
+                tone: req_str(obj, k, "state_tone")?,
+            },
         },
         "overflow" => {
             // `lost` / `lost_truncated` 是可选格（缺 ⇒ 空 / false）；坏项逐项丢。
@@ -674,13 +697,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         },
         // 同上一格 `{"rules":true}`：界面要就发 `rotation-rules-read`。
         "rotation_rules_changed" => InboundFrame::RotationRulesChanged,
-        // 认得、不消费：只判形状。
-        "plan_changed" => {
-            req_str(obj, k, "workspace")?;
-            req_str(obj, k, "rev")?;
-            req_u64(obj, k, "needs")?;
-            InboundFrame::PlanChanged
-        }
+        // 交订了 `plan-changed` 的订阅：界面要就发 `plan-read`。三格都必填（缺哪一格都算形状不对）。
+        "plan_changed" => InboundFrame::PlanChanged {
+            workspace: req_str(obj, k, "workspace")?,
+            rev: req_str(obj, k, "rev")?,
+            needs: req_u64(obj, k, "needs")?,
+        },
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

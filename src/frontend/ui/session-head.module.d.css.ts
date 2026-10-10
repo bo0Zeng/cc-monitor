@@ -6,6 +6,8 @@ declare const classes: {
   readonly shHead: string;
   readonly shIb: string;
   readonly shNeed: string;
+  readonly shPlan: string;
+  readonly shPlanSlot: string;
   readonly shSp: string;
   readonly shState: string;
   readonly shTitle: string;
