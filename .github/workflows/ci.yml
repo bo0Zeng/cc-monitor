@@ -2,10 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
     tags: ['v*']
   pull_request:
     branches: [main]
+
+# `next` 是候选分支（10-10 起）：合并树先强推到 `next`，这里跑与 main 同一套 job；全绿了才把 main 快进到同一个提交。
+#   ⇒ main 只收 CI 绿过的提交。本文件因此不许按分支 / 事件分叉（不写 `if:` · `github.ref`），也不写仓、不打标签、不发版
+#   （发版只走 release.yml 的标签触发）。判据：`shared_crate_registry_tests.rs::ci_runs_the_same_jobs_on_the_candidate_branch_and_never_releases_from_it`。
 
 # Windows-only：cc-monitor v1 不支持 Linux/macOS（核心 Win32 调用）。
 # 跨平台支持是 v2 计划，届时这里再加 matrix.os。
