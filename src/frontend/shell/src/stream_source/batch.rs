@@ -165,6 +165,7 @@ impl LineIntake {
     }
 
     /// 一个会话被宣告了：带 `path` 就排一份旁路快照（无 path = 会话刚起还没写 jsonl ⇒ 无历史可拉）。
+    /// 拉不拉在出队那一刻按那台的「在看」名单定（`snapshot::wants_snapshot`）：排队时名单可能还没到、到了也会变。
     pub(super) fn announced(&self, sid: &str, path: Option<String>, lines: Option<u64>) {
         if let Some(p) = path {
             self.snapshots.push(SnapshotItem {
