@@ -76,15 +76,25 @@ private fun attachProblem(
         is AttachOutcome.Attached -> Problem(copyText("front.body.offline", "machine" to machine), "")
     }
 
-/** 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。 */
-fun Reply.problem(machine: String): Problem? =
+/** 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。 */
+fun Reply.problem(
+    machine: String,
+    command: String,
+): Problem? =
     when (this) {
         is Reply.Ok -> null
         is Reply.Failed -> core(failure)
         Reply.TimedOut -> Problem(copyText("front.body.timeout", "machine" to machine), "")
         Reply.Cancelled, Reply.LinkDown -> Problem(copyText("front.body.offline", "machine" to machine), "")
-        is Reply.Unreadable -> unreadableReply(raw)
+        is Reply.Unreadable -> unreadableReply(machine, command, raw)
     }
 
-/** 应答缺必填格（帧上的 · 成品里的同一个说法）；[raw] 进详情。 */
-fun unreadableReply(raw: String): Problem = Problem(copyText("rsRemoteResident.hello.notOurs"), raw)
+/**
+ * 回包解不出（帧上缺格 · 成品形状对不上，同一个说法）。门槛核过同一个 `BUILD_ID`，那头就是 cc-monitor 后端，
+ * 所以说「读取那台后端回复失败 · 内容无法解析」，不说「不是 cc-monitor 后端」；详情带命令名与原文。
+ */
+fun unreadableReply(
+    machine: String,
+    command: String,
+    raw: String,
+): Problem = Problem(copyText("peerVersion.said.unreadable", "machine" to machine), "command: $command\nreply: $raw")
