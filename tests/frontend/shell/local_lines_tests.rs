@@ -112,11 +112,11 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "session_added",
-        r#"{"kind":"session_added","sid":"s1","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
+        r#"{"kind":"session_added","sid":"s1","activity_text":"T","activity_tone":"now","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
     ),
     (
         "session_status",
-        r#"{"kind":"session_status","sid":"s1","status":"idle","activity":"idle"}"#,
+        r#"{"kind":"session_status","sid":"s1","activity_text":"T","activity_tone":"now","status":"idle","activity":"idle"}"#,
     ),
     (
         "session_removed",
@@ -269,12 +269,12 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"record":{"x":1},"byte_offset":50}"#;
     const LINE_B: &str =
         r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"byte_offset":10}"#;
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
-    const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","sid":"a"}"#;
-    const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg","background":true,"path":"/p/b.jsonl","lines":9}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","activity_text":"T","activity_tone":"now","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
+    const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","sid":"a","activity_text":"T","activity_tone":"now"}"#;
+    const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","activity_text":"T","activity_tone":"now","session_kind":"bg","background":true,"path":"/p/b.jsonl","lines":9}"#;
     const REM_B: &str = r#"{"kind":"session_removed","sid":"b"}"#;
     const STATUS: &str =
-        r#"{"kind":"session_status","sid":"a","status":"busy","activity":"working"}"#;
+        r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","status":"busy","activity":"working"}"#;
 
     let line_a = LocalStep::Line {
         session_id: "a".into(),
@@ -718,13 +718,13 @@ fn the_local_product_core_matches_the_hand_written_table() {
     use crate::session_book::{Fate, In, LiveMeta};
     use crate::stream_source::local_product;
     // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","activity":"working","pid":42,"container":{"host":"tmux","terminal":"tmux-3-7"}}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","activity_text":"T","activity_tone":"now","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","activity":"working","pid":42,"container":{"host":"tmux","terminal":"tmux-3-7"}}"#;
     const ADD_B_BG: &str =
-        r#"{"kind":"session_added","sid":"b","session_kind":"bg","background":true}"#;
+        r#"{"kind":"session_added","sid":"b","activity_text":"T","activity_tone":"now","session_kind":"bg","background":true}"#;
     const STATUS_A: &str =
-        r#"{"kind":"session_status","sid":"a","status":"idle","activity":"idle"}"#;
+        r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","status":"idle","activity":"idle"}"#;
     const STATUS_B: &str =
-        r#"{"kind":"session_status","sid":"b","status":"idle","activity":"idle"}"#;
+        r#"{"kind":"session_status","sid":"b","activity_text":"T","activity_tone":"now","status":"idle","activity":"idle"}"#;
     const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
     const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
     const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
@@ -744,6 +744,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
                 project_dir: Some("/w/p".into()),
                 name: Some("n".into()),
                 activity: Some(crate::session_book::SessionActivity::Working),
+                activity_text: "T".into(),
+                activity_tone: "now".into(),
                 container: Some(crate::session_book::SessionContainer::Hosted {
                     host: crate::session_book::TerminalHost::Tmux,
                     terminal: Some("tmux-3-7".into()),
@@ -759,8 +761,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
             origin: local(),
             sid: "a".into(),
             activity: Some(crate::session_book::SessionActivity::Idle),
-            activity_text: None,
-            activity_tone: None,
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: None
         })
     );
@@ -818,7 +820,7 @@ fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
     const REREAD_B: &str =
         r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated"}"#;
     const ADD_B_BG: &str =
-        r#"{"kind":"session_added","sid":"b","session_kind":"bg","background":true}"#;
+        r#"{"kind":"session_added","sid":"b","activity_text":"T","activity_tone":"now","session_kind":"bg","background":true}"#;
     let mut h = HashSet::new();
     assert_eq!(
         local_step(frame(GONE), false, &mut h),

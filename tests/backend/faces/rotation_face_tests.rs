@@ -616,7 +616,9 @@ fn rule_users_carry_each_sessions_state() {
     use crate::observe::facts_query::NeedsKind as K;
     let home = Home::new("doing");
     let ctx = home.ctx();
-    for sid in ["s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-gone"] {
+    for sid in [
+        "s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-bg", "s-gone",
+    ] {
         home.saw(&ctx, sid);
     }
     home.end("s-gone");
@@ -632,18 +634,23 @@ fn rule_users_carry_each_sessions_state() {
         d.insert("s-wait".into(), at(A::NeedsYou, None));
         // 已结束的会话 pidfile 还留着说「在跑」：已结束为准。
         d.insert("s-gone".into(), at(A::Working, None));
+        d.insert("s-bg".into(), at(A::BackgroundWork, None));
     }
     let rules = answer_rules_read_with(&ctx);
     let doing = &rules["rules"][0]["users"]["doing"];
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    // 字与语气与主窗口同一处写（`wire::activity_cells` · `needs_words` · 去向的字）：界面照抄，不按 `state` 取字。
+    // `state` 是轮换那一侧的判（后台命令在跑按「在跑」算：重启会掐掉它），显示的字照 activity 来。
     assert_eq!(
         doing,
         &json!({
-            "s-run": {"state": "working", "needs": null},
-            "s-idle": {"state": "idle", "needs": null},
-            "s-ask": {"state": "needsYou", "needs": "approve"},
-            "s-wait": {"state": "needsYou", "needs": "unknown"},
-            "s-quiet": {"state": "working", "needs": null},
-            "s-gone": {"state": "ended", "needs": null},
+            "s-run": {"state": "working", "needs": null, "text": t("beSession.activity.working"), "tone": "now"},
+            "s-idle": {"state": "idle", "needs": null, "text": t("beSession.activity.idle"), "tone": "plain"},
+            "s-ask": {"state": "needsYou", "needs": "approve", "text": t("beSession.needs.approve"), "tone": "need"},
+            "s-wait": {"state": "needsYou", "needs": "unknown", "text": t("beSession.needs.unknown"), "tone": "need"},
+            "s-quiet": {"state": "working", "needs": null, "text": t("beSession.activity.unclear"), "tone": "now"},
+            "s-bg": {"state": "working", "needs": null, "text": t("beSession.activity.backgroundWork"), "tone": "busy"},
+            "s-gone": {"state": "ended", "needs": null, "text": t("beSession.fate.ended"), "tone": "plain"},
         }),
         "{rules}"
     );

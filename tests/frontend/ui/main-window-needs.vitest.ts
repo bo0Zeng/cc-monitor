@@ -57,7 +57,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
 
 const bgAct = { doing: "background_work" as const, waitingFor: null, text: copyText("beSession.activity.backgroundWork"), tone: "busy" };
 const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need" };
-const approve = (sinceMs: number | null = NOW - 120_000): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), tone: "need" });
+const approve = (sinceMs: number | null = NOW - 120_000): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), tone: "need", rank: 1 });
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -82,7 +82,7 @@ describe("状态的字照抄核心写好的（G2：界面不按码取字）", ()
 
 describe("一个会话读成什么（session-face）", () => {
   it("★ 需要你：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需要你」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
-    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), tone: "need" });
+    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), tone: "need", rank: Number.MAX_SAFE_INTEGER });
     expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
     expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" }, needs: approve() })), "已经答完：不留一条需要你").toBeNull();
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
@@ -114,8 +114,9 @@ describe("一个会话读成什么（session-face）", () => {
       tab("h", { activity: bgAct }),
       tab("i", { state: RECONNECTABLE, activity: bgAct }),
     ];
-    expect(groupSummary(members)).toEqual({ needs: 1, running: 2, background: 1 });
-    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0, background: 0 });
+    // 几颗点的名字照抄组员身上核心写的字。
+    expect(groupSummary(members)).toEqual({ needs: 1, running: 2, background: 1, needsWord: copyText("beSession.activity.needsYou"), runningWord: copyText("beSession.activity.working"), backgroundWord: bgAct.text });
+    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0, background: 0, needsWord: "", runningWord: "", backgroundWord: "" });
   });
 
   it("后台任务运行中：点单独一档 · 状态一句照抄核心、时长那一截按此刻走 · 拿不到 ⇒ 核心写的那个字 · peek 照空闲（它最后一句）", () => {
@@ -132,7 +133,7 @@ describe("一个会话读成什么（session-face）", () => {
   });
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
-    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("tabBar.needsKind.approve"), waited: "2m" }), needs: true });
+    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: "2m" }), needs: true });
     const running = tab("b", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
     expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
     const idle = (unread: number) => tab("c", { unread, activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain" }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
@@ -214,7 +215,7 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
     const b = r.view.tabButtons.get("b")!;
-    expect([b.needs.textContent, b.badge.textContent]).toEqual([copyText("tabBar.needsKind.approve"), ""]);
+    expect([b.needs.textContent, b.badge.textContent]).toEqual([copyText("beSession.needs.approve"), ""]);
     strip.click();
     expect(r.host.switchTo).toHaveBeenCalledWith("b");
     // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
@@ -279,12 +280,12 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
 describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
   it("★ 钉条第一行：批准写工具名 ＋ 那一步；回答写问题；计划 · 等批准；判不出只写需要你", () => {
     expect(needsHeadline(approve())).toEqual({ label: copyText("needs.bar.approve", { tool: "Bash" }), code: "rm -rf build/" });
-    expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null, text: "", tone: "need" })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
-    expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null, text: "", tone: "need" }).label).toBe(copyText("needs.bar.plan"));
-    expect(needsHeadline({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: "", tone: "need" })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
+    expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null, text: "", tone: "need", rank: 0 })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
+    expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null, text: "", tone: "need", rank: 0 }).label).toBe(copyText("needs.bar.plan"));
+    expect(needsHeadline({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: "", tone: "need", rank: 0 })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
     // 后端多判出的四种：放行联网带那条命令；协作请求 · 会话目标 · 对话框不挂哪一步。
-    expect(needsHeadline({ kind: "network", tool: "Bash", call: "b", what: "curl x", sinceMs: null, text: "", tone: "need" })).toEqual({ label: copyText("needs.bar.network"), code: "curl x" });
-    const bare = (kind: "worker" | "goal" | "choose") => needsHeadline({ kind, tool: null, call: null, what: null, sinceMs: null, text: "", tone: "need" });
+    expect(needsHeadline({ kind: "network", tool: "Bash", call: "b", what: "curl x", sinceMs: null, text: "", tone: "need", rank: 0 })).toEqual({ label: copyText("needs.bar.network"), code: "curl x" });
+    const bare = (kind: "worker" | "goal" | "choose") => needsHeadline({ kind, tool: null, call: null, what: null, sinceMs: null, text: "", tone: "need", rank: 0 });
     expect(bare("worker")).toEqual({ label: copyText("needs.bar.worker"), code: null });
     expect(bare("goal")).toEqual({ label: copyText("needs.bar.goal"), code: null });
     expect(bare("choose")).toEqual({ label: copyText("needs.bar.choose"), code: null });
@@ -349,7 +350,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
       await vi.runAllTimersAsync();
       r.w.observe([t]);
       await vi.runAllTimersAsync();
-      expect(r.sent).toEqual([[copyText("needs.notify.title", { title: "a", machine: copyText("sessionFace.machine.local"), kind: copyText("tabBar.needsKind.approve") }), "rm -rf build/"]]);
+      expect(r.sent).toEqual([[copyText("needs.notify.title", { title: "a", machine: copyText("sessionFace.machine.local"), kind: copyText("beSession.needs.approve") }), "rm -rf build/"]]);
       // 种类一直不来 ⇒ 等满 NOTIFY_WAIT_MS 照发活动信号带来的那个字（核心写的）。
       const old = tab("b", { activity: waiting });
       r.w.observe([old]);

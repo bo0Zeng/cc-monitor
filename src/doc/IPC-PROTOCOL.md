@@ -28,7 +28,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `--with-bg` | 放行 `kind:"bg"` 的后台任务会话 |
 | `--tail-only` | 不重放历史：各文件从当前行数起只尾随新行；历史由客户端另取（`history-read` / `--read-session-tail`） |
 | `--with-pid` | `session_added` 带 `pid`（只本机那条流发；默认关，关时字节与加它之前一字不差） |
-| `--with-raw` | `line` 带 `raw`（那一行记录的原文）；给自己解析记录的客户端。默认关 |
+| `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
 
 ## 3. hello：先读它，再说话
 

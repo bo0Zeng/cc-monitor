@@ -1,8 +1,8 @@
 /**
- * 上下文占用的排版那一半。**纯模块**（零 import，node 可测）。
+ * 上下文那一格界面这边剩下的两件：读设置里那张上限表（交给后端）· 模型名的展示归一化。**纯模块**（零 import，node 可测）。
  *
- * 上限由后端定（`history-facts` 的 `usage.limit`：中转看见的请求 ＞ 设置里的上限表 ＞ 模型名带 `[1m]` ＞ 见过超过 200k 的一轮；
- * 判不出时 `limitFrom` 是 `assumed`，界面不算百分比），状态栏与监控板读同一个数；这里只把「用了多少 ÷ 上限」排成百分比，并读设置里那张上限表交给后端。
+ * 上限、百分比、写好的字全由后端定（`history-facts` 的 `usage`：中转看见的请求 ＞ 设置里的上限表 ＞ 模型名带 `[1m]` ＞ 见过超过 200k 的一轮；
+ * 判不出时只写用了多少），状态栏与监控板照抄同一份。
  */
 
 /** 模型上限用户覆盖表：模型串**子串**（大小写不敏感）→ 上限 tokens。存 config.json `contextLimits`，随 `history-facts` 交给后端应用。 */
@@ -30,17 +30,4 @@ export function normalizeModel(id: string | null | undefined): string {
       .replace(/-\d{8}$/, "")
       .trim() || "unknown"
   );
-}
-
-/** 用了多少 token 的短写（上限判不出时只写它）：`350k` · `1.2M` · `800`。 */
-export function contextTokensText(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-  return String(tokens);
-}
-
-/** 最新一轮 prompt 占上限的百分比（上限是后端给的）。没有上限 ⇒ `null`；永远不超过 100。 */
-export function contextPercentOf(promptTokens: number, limit: number | null): number | null {
-  if (limit === null || limit <= 0) return null;
-  return Math.min(100, (promptTokens / limit) * 100);
 }

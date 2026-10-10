@@ -370,6 +370,7 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
         since_ms: Some(1234),
         text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
         tone: crate::common::cells::Tone::Need,
+        rank: 1,
     };
     dress_live(&mut awaiting, Some(&needs), true);
     assert_eq!(awaiting.phase, Phase::Awaiting);

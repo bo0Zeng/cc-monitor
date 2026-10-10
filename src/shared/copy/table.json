@@ -2748,8 +2748,8 @@
     "gridMonitor.renderPeek.statusWaiting": {
       "kind": "body",
       "role": "片段",
-      "zh": "{activityStatus} · 等 {waitingFor}",
-      "args": ["activityStatus", "waitingFor"]
+      "zh": "{activityStatus} · {needs}",
+      "args": ["activityStatus", "needs"]
     },
     "gridMonitor.renderPeek.unknown": {
       "kind": "body",
@@ -2811,23 +2811,11 @@
       "zh": "返回",
       "args": []
     },
-    "gridMonitor.renderBadges.waitingHover": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "等 {waitingFor}",
-      "args": ["waitingFor"]
-    },
     "gridMonitor.renderBadges.background": {
       "kind": "body",
       "role": "片段",
       "zh": "后台任务 · {cmd}",
       "args": ["cmd"]
-    },
-    "gridMonitor.renderBadges.waiting": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "等 {waitingFor}",
-      "args": ["waitingFor"]
     },
     "gridMonitor.renderBadges.unread": {
       "kind": "body",
@@ -2841,23 +2829,17 @@
       "zh": "最新一轮用量 · 上限未知 · 不算百分比",
       "args": []
     },
-    "gridMonitor.renderBadges.ctxTokens": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "上下文 {tokens}",
-      "args": ["tokens"]
-    },
     "gridMonitor.renderBadges.ctxHint": {
       "kind": "body",
       "role": "说明",
       "zh": "上下文占用 · 按最新一轮估算",
       "args": []
     },
-    "gridMonitor.renderBadges.ctxPct": {
+    "gridMonitor.renderBadges.ctx": {
       "kind": "body",
-      "role": "状态",
-      "zh": "上下文 {pct}%",
-      "args": ["pct"]
+      "role": "片段",
+      "zh": "上下文 {ctx}",
+      "args": ["ctx"]
     },
     "gridMonitor.renderBadges.agents": {
       "kind": "body",
@@ -17420,6 +17402,36 @@
       "zh": "{path} 非会话记录 · 未删除",
       "args": ["path"]
     },
+    "beUsage.context.pct": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}%",
+      "args": ["n"]
+    },
+    "beUsage.from.relay": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "中转请求",
+      "args": []
+    },
+    "beUsage.from.setting": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "设置",
+      "args": []
+    },
+    "beUsage.from.model": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "模型名",
+      "args": []
+    },
+    "beUsage.from.observed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用量超过 200k",
+      "args": []
+    },
     "beSpend.cost.exact": {
       "kind": "body",
       "role": "片段",
@@ -17473,6 +17485,12 @@
       "role": "片段",
       "zh": "{cmd} 等 {n} 条",
       "args": ["cmd", "n"]
+    },
+    "beSession.activity.unclear": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "运行中",
+      "args": []
     },
     "beSession.fate.reconnectable": {
       "kind": "body",
@@ -24417,54 +24435,6 @@
       "args": ["machine"],
       "limited": ["tmux"]
     },
-    "tabBar.needsKind.approve": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等批准",
-      "args": []
-    },
-    "tabBar.needsKind.answer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等回答",
-      "args": []
-    },
-    "tabBar.needsKind.plan": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等批准",
-      "args": []
-    },
-    "tabBar.needsKind.network": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等放行",
-      "args": []
-    },
-    "tabBar.needsKind.worker": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等批准",
-      "args": []
-    },
-    "tabBar.needsKind.goal": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等确认",
-      "args": []
-    },
-    "tabBar.needsKind.choose": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等选择",
-      "args": []
-    },
-    "tabBar.needsKind.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "需要你",
-      "args": []
-    },
     "cssMarks.sep.dot": {
       "kind": "body",
       "role": "图标",
@@ -24483,23 +24453,17 @@
       "zh": "agent {n}",
       "args": ["n"]
     },
-    "usageHud.chip.pct": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上下文 {n}%",
-      "args": ["n"]
+    "usageHud.chip.ctx": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "上下文 {ctx}",
+      "args": ["ctx"]
     },
     "usageHud.chip.none": {
       "kind": "body",
       "role": "空态",
       "zh": "上下文 —",
       "args": []
-    },
-    "usageHud.chip.tokens": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上下文 {tokens}",
-      "args": ["tokens"]
     },
     "usageHud.panel.label": {
       "kind": "title",
@@ -24808,30 +24772,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "列表",
-      "args": []
-    },
-    "usageHud.from.relay": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "中转请求",
-      "args": []
-    },
-    "usageHud.from.setting": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "设置",
-      "args": []
-    },
-    "usageHud.from.model": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "模型名",
-      "args": []
-    },
-    "usageHud.from.observed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "用量超过 200k",
       "args": []
     },
     "statusBar.tasks.chip": {

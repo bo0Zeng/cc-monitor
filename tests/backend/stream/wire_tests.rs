@@ -1307,7 +1307,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1321,7 +1321,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1372,7 +1372,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\"}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
         "agent_kind(缺=claude)/liveness_confidence(缺=authoritative) 省略，字节等价旧形"
     );
 
@@ -1386,7 +1386,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1523,18 +1523,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
@@ -1602,10 +1602,10 @@ fn loc1b_session_added_pid_is_additive() {
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
     );
 }
 
@@ -2330,13 +2330,19 @@ fn session_frames_carry_the_state_written_and_toned() {
         (A::Working, "beSession.activity.working", "now"),
         (A::NeedsYou, "beSession.activity.needsYou", "need"),
         (A::Idle, "beSession.activity.idle", "plain"),
+        (A::BackgroundWork, "beSession.activity.backgroundWork", "busy"),
     ] {
         let v = status(Some(a));
         assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
         assert_eq!(v["activity_tone"], tone, "{a:?}");
     }
+    // 说不清在干什么（活着、那一家没说）⇒ 核心也给一格字与语气（出口不自己补「运行中」）。
     let none = status(None);
-    assert!(none.get("activity_text").is_none() && none.get("activity_tone").is_none());
+    assert_eq!(
+        none["activity_text"],
+        copy_core::copy_text("beSession.activity.unclear", &[])
+    );
+    assert_eq!(none["activity_tone"], "now");
 
     for (f, name, hint) in [
         (

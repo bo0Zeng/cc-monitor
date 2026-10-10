@@ -4,26 +4,6 @@
       "kind": "value",
       "path": "activity",
       "product": "session_status"
-    },
-    {
-      "kind": "text",
-      "path": "waitingForText",
-      "product": "session_status"
-    },
-    {
-      "kind": "value",
-      "path": "waitingForRank",
-      "product": "session_status"
-    },
-    {
-      "kind": "text",
-      "path": "usage.contextText",
-      "product": "facts"
-    },
-    {
-      "kind": "value",
-      "path": "at",
-      "product": "index_row"
     }
   ],
   "products": [
@@ -576,6 +556,11 @@
         },
         {
           "kind": "value",
+          "path": "needs.rank",
+          "type": "number"
+        },
+        {
+          "kind": "value",
           "path": "needs.sinceMs",
           "type": "number"
         },
@@ -700,6 +685,16 @@
           "type": "string"
         },
         {
+          "kind": "text",
+          "path": "usage.contextText",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "usage.contextTone",
+          "type": "enum"
+        },
+        {
           "kind": "value",
           "path": "usage.limit",
           "type": "number"
@@ -708,6 +703,16 @@
           "kind": "value",
           "path": "usage.limitFrom",
           "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "usage.limitFromText",
+          "type": "string"
+        },
+        {
+          "kind": "text",
+          "path": "usage.limitText",
+          "type": "string"
         },
         {
           "kind": "value",
@@ -721,8 +726,18 @@
         },
         {
           "kind": "value",
+          "path": "usage.percent",
+          "type": "number"
+        },
+        {
+          "kind": "value",
           "path": "usage.promptTokens",
           "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "usage.promptTokensText",
+          "type": "string"
         },
         {
           "kind": "value",

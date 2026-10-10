@@ -79,13 +79,12 @@ fn the_three_facts_follow_the_moved_rules() {
     assert_eq!(f.touched_files, vec!["/p/n.ipynb", "/p/b.ts", "/p/a.ts"]);
     assert_eq!(
         f.usage,
-        Some(UsageFact {
-            prompt_tokens: 12,
-            model: Some("m-x".into()),
-            peak_prompt_tokens: 12,
-            limit: CONTEXT_EXTENDED,
-            limit_from: LimitFrom::Assumed,
-        }),
+        Some(UsageFact::new(
+            12,
+            Some("m-x".into()),
+            12,
+            (CONTEXT_EXTENDED, LimitFrom::Assumed)
+        )),
         "全 0 的那条不算；model 缺 ⇒ null 的那条没出现在最后"
     );
 }
@@ -524,6 +523,7 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             since_ms: Some(42),
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
             tone: crate::common::cells::Tone::Need,
+            rank: 1,
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
@@ -670,6 +670,7 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             since_ms: Some(1),
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
             tone: crate::common::cells::Tone::Need,
+            rank: 1,
         }),
         ..SessionFacts::default()
     };
@@ -858,7 +859,7 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
             &[
                 ("input", "17"),
                 ("output", "57"),
-                ("read", "1.0k"),
+                ("read", "1k"),
                 ("write", "1.3k")
             ]
         )
@@ -1107,8 +1108,11 @@ fn the_background_line_is_written_here() {
             &[("cmd", cmd), ("dur", dur)],
         )
     };
-    let many = |cmd: &str, n: &str| {
-        copy_core::copy_text("beSession.activity.backgroundMany", &[("cmd", cmd), ("n", n)])
+    let many_of = |cmd: &str, n: &str| {
+        copy_core::copy_text(
+            "beSession.activity.backgroundMany",
+            &[("cmd", cmd), ("n", n)],
+        )
     };
     assert_eq!(b.text.0, line("make test-all", "12m"));
     assert_eq!(b.what.as_ref().unwrap().0, "make test-all");
@@ -1129,7 +1133,7 @@ fn the_background_line_is_written_here() {
         ),
     ];
     let b = background_of(&many, None, t0 + 64 * 60_000);
-    assert_eq!(b.text.0, line(&many("python train.py", "2"), "1h4m"));
+    assert_eq!(b.text.0, line(&many_of("python train.py", "2"), "1h4m"));
     assert_eq!(b.count, 2);
 
     // 进程 08:10 起的 ⇒ 08:00 那条是上一个进程留下的，不算。
@@ -1147,4 +1151,110 @@ fn the_background_line_is_written_here() {
         );
         assert!(b.clock.is_none() && b.what.is_none());
     }
+}
+
+/// 〔G4〕上下文的字由核心写：上限判得出 ⇒ 百分比（四舍五入）· 到 80% 语气 `warn`；判不出（`assumed`）⇒ 只写用了多少、
+/// 没有百分比、语气 `plain`、没有来源的字。上限换了（按上限表重判）字跟着换。出口照抄。
+#[test]
+fn usage_carries_its_words_and_tone() {
+    use crate::common::cells::Tone;
+    let u = UsageFact::new(
+        350_000,
+        Some("m".into()),
+        350_000,
+        (1_000_000, LimitFrom::Relay),
+    );
+    assert_eq!(u.percent, Some(35));
+    assert_eq!(
+        u.context_text.0,
+        copy_core::copy_text("beUsage.context.pct", &[("n", "35")])
+    );
+    assert_eq!(u.context_tone, Tone::Plain);
+    assert_eq!(u.prompt_tokens_text.0, "350k");
+    assert_eq!(u.limit_text.0, "1M");
+    assert_eq!(
+        u.limit_from_text.as_ref().map(|w| w.0.clone()),
+        Some(copy_core::copy_text("beUsage.from.relay", &[]))
+    );
+
+    let hot = UsageFact::new(169_600, None, 169_600, (200_000, LimitFrom::Setting));
+    assert_eq!((hot.percent, hot.context_tone), (Some(85), Tone::Warn));
+
+    let mut blind = UsageFact::new(350_000, None, 350_000, (1_000_000, LimitFrom::Assumed));
+    assert_eq!(blind.percent, None);
+    assert_eq!(blind.context_text.0, "350k");
+    assert_eq!(blind.context_tone, Tone::Plain);
+    assert_eq!(blind.limit_from_text, None);
+
+    blind.settle((400_000, LimitFrom::Setting));
+    assert_eq!(blind.percent, Some(88));
+    assert_eq!(
+        blind.context_text.0,
+        copy_core::copy_text("beUsage.context.pct", &[("n", "88")])
+    );
+    assert_eq!(blind.context_tone, Tone::Warn);
+    assert_eq!(blind.limit_text.0, "400k");
+
+    for (n, want) in [
+        (800, "800"),
+        (1_234, "1.2k"),
+        (8_000, "8k"),
+        (12_345, "12k"),
+        (1_000_000, "1M"),
+        (1_250_000, "1.3M"),
+    ] {
+        assert_eq!(short_tokens(n), want, "{n}");
+    }
+}
+
+/// 〔G3b〕每件「需手动」带一个序：顶上的框先答（种类已按顶上那个框判），再按危险度 —— 放行联网 · 批准一步在前，
+/// 然后协作请求 · 会话目标 · 计划 · 回答 · 选一项 · 判不出。序与种类在同一处判（`needs_of`）。
+#[test]
+fn needs_carry_a_rank_riskier_first() {
+    use crate::agents::WaitOn as W;
+    let call = |name: &str| PendingCall {
+        id: "c".into(),
+        name: name.into(),
+        what: None,
+        at: None,
+        state: StepWait::Running,
+        why: None,
+    };
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
+        since_ms: None,
+    };
+    let order = [
+        (vec![call("Bash")], Some(W::Network), NeedsKind::Network),
+        (vec![call("Bash")], Some(W::Permission), NeedsKind::Approve),
+        (vec![], Some(W::Worker), NeedsKind::Worker),
+        (vec![], Some(W::Goal), NeedsKind::Goal),
+        (
+            vec![call("ExitPlanMode")],
+            Some(W::Permission),
+            NeedsKind::Plan,
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            Some(W::Input),
+            NeedsKind::Answer,
+        ),
+        (vec![], Some(W::Dialog), NeedsKind::Choose),
+        (vec![], None, NeedsKind::Unknown),
+    ];
+    let ranks: Vec<u8> = order
+        .into_iter()
+        .map(|(p, w, kind)| {
+            let n = needs_of(&p, Some(&wait(w))).unwrap();
+            assert_eq!(n.kind, kind);
+            n.rank
+        })
+        .collect();
+    assert_eq!(
+        ranks,
+        (0..8).collect::<Vec<u8>>(),
+        "序按危险度从 0 起、一种一个"
+    );
+    let v = serde_json::to_value(needs_of(&[], Some(&wait(Some(W::Goal)))).unwrap()).unwrap();
+    assert_eq!(v["rank"], 3);
 }

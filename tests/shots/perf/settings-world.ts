@@ -4,6 +4,7 @@
  *
  * 量法与读数住 `settings-bench.mjs` 头注；这里只造数据。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { fakePlan } from "../fake/timeline";
 import type { OpHandler, World } from "../fake/types";
 import { defaultConfig, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
@@ -127,7 +128,7 @@ export function settingsPerfWorld(): World {
           live: live.length,
           ended: k % 3,
           follow: k === 0 ? live.length : 0,
-          doing: Object.fromEntries(live.map((sid) => [sid, { state: "working", needs: null }])),
+          doing: Object.fromEntries(live.map((sid) => [sid, { state: "working", needs: null, text: copyText("beSession.activity.working"), tone: "now" }])),
           sids: live,
           endedSids: [],
         },

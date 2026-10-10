@@ -472,6 +472,8 @@ pub(crate) struct Needs {
     pub(crate) text: Words,
     /// 语气（恒 `need`）。
     pub(crate) tone: crate::common::cells::Tone,
+    /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+    pub(crate) rank: u8,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -509,28 +511,51 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         Some(W::Goal) => (NeedsKind::Goal, None),
         Some(W::Dialog) => (NeedsKind::Choose, None),
     };
-    let text = match kind {
-        NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
-        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
-        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
-        NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
-        NeedsKind::Worker => copy_core::copy_text("beSession.needs.worker", &[]),
-        NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
-        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
-        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
-    };
+    let rank = NEEDS_BY_DANGER
+        .iter()
+        .position(|k| *k == kind)
+        .map_or(u8::MAX, |i| i as u8);
     Some(Needs {
         kind,
         tool: call.map(|c| c.name.clone()),
         call: call.map(|c| c.id.clone()),
         what: call.and_then(|c| c.what.clone()),
         since_ms: wait.since_ms,
-        text: Words(text),
+        text: needs_words(kind),
         tone: crate::common::cells::Tone::Need,
+        rank,
     })
 }
 
-/// 最新 usage ＋ 这份会话的上下文上限（状态栏与监控板读同一个数；百分比是排版，在前端）。
+/// 一种「需手动」写好的字（唯一一处：会话事实的 `needs.text` · 轮换在用名单都由它写）。
+pub(crate) fn needs_words(kind: NeedsKind) -> Words {
+    let key = match kind {
+        NeedsKind::Approve => "beSession.needs.approve",
+        NeedsKind::Answer => "beSession.needs.answer",
+        NeedsKind::Plan => "beSession.needs.plan",
+        NeedsKind::Network => "beSession.needs.network",
+        NeedsKind::Worker => "beSession.needs.worker",
+        NeedsKind::Goal => "beSession.needs.goal",
+        NeedsKind::Choose => "beSession.needs.choose",
+        NeedsKind::Unknown => "beSession.needs.unknown",
+    };
+    Words(copy_core::copy_text(key, &[]))
+}
+
+/// 「需手动」先答哪个（[`Needs::rank`] 的来历，唯一一处）：种类已按顶上那个框判（顶上的先答），这里再按危险度 ——
+/// 放行联网（沙箱里的命令要出网）· 批准一步（工具要动手）在前；协作请求 · 会话目标 · 计划次之；回答 · 选一项 · 判不出最后。
+pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
+    NeedsKind::Network,
+    NeedsKind::Approve,
+    NeedsKind::Worker,
+    NeedsKind::Goal,
+    NeedsKind::Plan,
+    NeedsKind::Answer,
+    NeedsKind::Choose,
+    NeedsKind::Unknown,
+];
+
+/// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UsageFact {
@@ -542,6 +567,79 @@ pub(crate) struct UsageFact {
     /// 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
     pub(crate) limit: u64,
     pub(crate) limit_from: LimitFrom,
+    /// 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
+    pub(crate) percent: Option<u8>,
+    /// 上下文那一格的字：上限判得出写百分比（`35%`），判不出只写用了多少（`350k`）。
+    pub(crate) context_text: Words,
+    /// 那一格的语气：到了 [`CONTEXT_WARN_AT`] ⇒ `warn`，否则 `plain`（判不出上限 ⇒ 恒 `plain`）。
+    pub(crate) context_tone: crate::common::cells::Tone,
+    /// 最新一轮用了多少（`350k`）。
+    pub(crate) prompt_tokens_text: Words,
+    /// 上限（`1M`）。
+    pub(crate) limit_text: Words,
+    /// 上限从哪来的字（中转请求 · 设置 · 模型名 · 用量超过 200k）；判不出 ⇒ `null`。
+    pub(crate) limit_from_text: Option<Words>,
+}
+
+/// 到这个百分比，上下文那一格的语气是 `warn`。
+pub(crate) const CONTEXT_WARN_AT: u8 = 80;
+
+impl UsageFact {
+    /// 一份用量：上限与来源已定 ⇒ 字与语气随之写好（唯一一处）。
+    pub(crate) fn new(
+        prompt_tokens: u64,
+        model: Option<String>,
+        peak_prompt_tokens: u64,
+        (limit, limit_from): (u64, LimitFrom),
+    ) -> UsageFact {
+        let mut u = UsageFact {
+            prompt_tokens,
+            model,
+            peak_prompt_tokens,
+            limit,
+            limit_from,
+            percent: None,
+            context_text: Words::default(),
+            context_tone: crate::common::cells::Tone::Plain,
+            prompt_tokens_text: Words::default(),
+            limit_text: Words::default(),
+            limit_from_text: None,
+        };
+        u.settle((limit, limit_from));
+        u
+    }
+
+    /// 上限换了（按调用方的上限表 / 中转标记重判）⇒ 连同字一起换。
+    pub(crate) fn settle(&mut self, (limit, limit_from): (u64, LimitFrom)) {
+        use crate::common::cells::Tone;
+        self.limit = limit;
+        self.limit_from = limit_from;
+        self.percent = (limit_from != LimitFrom::Assumed && limit > 0).then(|| {
+            let pct = (self.prompt_tokens as f64 / limit as f64 * 100.0).round();
+            pct.min(100.0) as u8
+        });
+        self.prompt_tokens_text = Words(short_tokens(self.prompt_tokens));
+        self.limit_text = Words(short_tokens(limit));
+        self.context_text = match self.percent {
+            Some(n) => Words(copy_core::copy_text(
+                "beUsage.context.pct",
+                &[("n", &n.to_string())],
+            )),
+            None => self.prompt_tokens_text.clone(),
+        };
+        self.context_tone = match self.percent {
+            Some(n) if n >= CONTEXT_WARN_AT => Tone::Warn,
+            _ => Tone::Plain,
+        };
+        let from = |k: &str| Some(Words(copy_core::copy_text(k, &[])));
+        self.limit_from_text = match limit_from {
+            LimitFrom::Relay => from("beUsage.from.relay"),
+            LimitFrom::Setting => from("beUsage.from.setting"),
+            LimitFrom::Model => from("beUsage.from.model"),
+            LimitFrom::Observed => from("beUsage.from.observed"),
+            LimitFrom::Assumed => None,
+        };
+    }
 }
 
 /// 上限从哪来。
@@ -644,11 +742,17 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "writers",
     ];
     const USAGE: &[&str] = &[
+        "contextText",
+        "contextTone",
         "limit",
         "limitFrom",
+        "limitFromText",
+        "limitText",
         "model",
         "peakPromptTokens",
+        "percent",
         "promptTokens",
+        "promptTokensText",
     ];
     exact_keys(v, TOP, "prior")?;
     if !v["tokens"].is_null() {
@@ -682,7 +786,9 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["call", "kind", "sinceMs", "text", "tone", "tool", "what"],
+            &[
+                "call", "kind", "rank", "sinceMs", "text", "tone", "tool", "what",
+            ],
             "prior.needs",
         )?;
     }
@@ -759,8 +865,8 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
 /// 扫完之后按上限表与中转标记定上下文上限（每次按调用方给的表重判，不进扫描）。
 pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, relay: Option<bool>) {
     if let Some(u) = facts.usage.as_mut() {
-        (u.limit, u.limit_from) =
-            context_limit(u.model.as_deref(), u.peak_prompt_tokens, limits, relay);
+        let limit = context_limit(u.model.as_deref(), u.peak_prompt_tokens, limits, relay);
+        u.settle(limit);
     }
 }
 
@@ -1032,14 +1138,8 @@ fn note_usage(f: &mut SessionFacts, v: &Value) {
         .and_then(|m| m.get("model"))
         .and_then(Value::as_str)
         .map(str::to_string);
-    let (limit, limit_from) = context_limit(model.as_deref(), peak, &Vec::new(), None);
-    f.usage = Some(UsageFact {
-        prompt_tokens: prompt,
-        model,
-        peak_prompt_tokens: peak,
-        limit,
-        limit_from,
-    });
+    let limit = context_limit(model.as_deref(), peak, &Vec::new(), None);
+    f.usage = Some(UsageFact::new(prompt, model, peak, limit));
 }
 
 /// 一条回复的用量记进全会话用量：同一次请求（`requestId`）紧跟着的后一条替掉前一条的数。
@@ -1138,12 +1238,18 @@ fn note_cost(f: &mut SessionFacts, v: &Value) {
     });
 }
 
-/// 用量 token 数写成短串（1234 ⇒ 1.2k · 1234567 ⇒ 1.2M）。
+/// token 数写成短串（唯一一处：用量那一行 · 上下文那一格）：`800` · `1.2k` · `8k` · `350k` · `1M` · `1.3M`。
+/// 一万以下的 k 与 M 留一位小数（`.0` 不写），一万到一百万的 k 取整。
 fn short_tokens(n: u64) -> String {
+    let one = |x: f64, unit: &str| {
+        let t = format!("{:.1}", (x * 10.0).round() / 10.0);
+        format!("{}{unit}", t.strip_suffix(".0").unwrap_or(&t))
+    };
     match n {
         0..=999 => n.to_string(),
-        1_000..=999_999 => format!("{:.1}k", n as f64 / 1e3),
-        _ => format!("{:.1}M", n as f64 / 1e6),
+        1_000..=9_999 => one(n as f64 / 1e3, "k"),
+        10_000..=999_999 => format!("{}k", (n as f64 / 1e3).round() as u64),
+        _ => one(n as f64 / 1e6, "M"),
     }
 }
 

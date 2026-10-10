@@ -113,7 +113,7 @@ function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
       live: 1,
       ended: 0,
       follow: 1,
-      doing: { s1: { state: "working", needs: null } },
+      doing: { s1: { state: "working", needs: null, text: "核心·运行中", tone: "now" } },
       sids: ["s1"],
       endedSids: [],
     },

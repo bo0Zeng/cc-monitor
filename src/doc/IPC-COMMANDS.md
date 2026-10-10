@@ -58,8 +58,8 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
-| `activity_text` | Words? | `activity` 那一态写好的字（`activity_cells`）；没有 `activity` ⇒ 不上线 |
-| `activity_tone` | Tone? | `activity` 那一态的语气（同上） |
+| `activity_text` | Words | 此刻在干什么写好的字（`activity_cells`；说不清也有一格） |
+| `activity_tone` | Tone | 那一态的语气（同上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -72,8 +72,8 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
-| `activity_text` | Words? | 同 `session_added.activity_text` |
-| `activity_tone` | Tone? | 同 `session_added.activity_tone` |
+| `activity_text` | Words | 同 `session_added.activity_text` |
+| `activity_tone` | Tone | 同 `session_added.activity_tone` |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -1134,7 +1134,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
-| `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs}`，与主窗口标签页同一判：`state` 是 `working` · `idle` · `needsYou` · `ended`，`needs` 只在 `needsYou` 时有：`approve` · `answer` · `plan` · `unknown`），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
+| `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
 | `state` | ← | `"present"` · `"absent"`（没动过：只有缺省的「默认」一条）· `"unreadable"` |
 
 #### `rotation-rule-save`

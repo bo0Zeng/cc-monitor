@@ -471,7 +471,7 @@ describe("切走再切回一个 tab：回到离开时的位置", () => {
   });
 });
 
-describe("上下文占用：状态栏与监控板读同一个上限（后端定的）", () => {
+describe("上下文那一格：状态栏与监控板照抄同一份核心成品", () => {
   const facts = (limit: number, limitFrom: "relay" | "assumed"): SessionFacts => ({
     agent: "claude",
     end: 1,
@@ -489,23 +489,34 @@ describe("上下文占用：状态栏与监控板读同一个上限（后端定�
     cost: null,
     bgTasks: [],
     background: null,
-    usage: { promptTokens: 350_000, model: "claude-opus-5-5", peakPromptTokens: 350_000, limit, limitFrom },
+    usage: {
+      promptTokens: 350_000,
+      model: "claude-opus-5-5",
+      peakPromptTokens: 350_000,
+      limit,
+      limitFrom,
+      percent: limitFrom === "assumed" ? null : 35,
+      contextText: limitFrom === "assumed" ? "核心·350k" : "核心·35%",
+      contextTone: "plain",
+      promptTokensText: "核心·350k",
+      limitText: "核心·1M",
+      limitFromText: limitFrom === "assumed" ? null : "核心·中转",
+    },
   });
-  it("中转说是 1M：35%（不是 175%）；状态栏与监控板同一个数", () => {
+  it("判得出：监控板那一格照抄核心的字与百分比；状态栏拿到的是同一份成品", () => {
     const tm = makeTabs(["a"]);
     const t = inside(tm).store.tabs.get("a") as Tab;
     applyFacts(t, facts(1_000_000, "relay"));
-    expect(tm.snapshotSessions()[0].contextPct).toBe(35);
+    expect(tm.snapshotSessions()[0].context).toEqual({ text: "核心·35%", tone: "plain", percent: 35 });
     (tm as unknown as { publishActive(): void }).publishActive();
-    expect(tm.active.get().contextLimit).toBe(1_000_000);
+    expect(tm.active.get().usage?.contextText).toBe("核心·35%");
   });
-  it("判不出（assumed）：不出百分比，只交用了多少", () => {
+  it("判不出（assumed）：核心没给百分比，两处照抄只写用了多少的那个字", () => {
     const tm = makeTabs(["a"]);
     const t = inside(tm).store.tabs.get("a") as Tab;
     applyFacts(t, facts(1_000_000, "assumed"));
-    const snap = tm.snapshotSessions()[0];
-    expect([snap.contextPct, snap.contextTokens]).toEqual([null, 350_000]);
+    expect(tm.snapshotSessions()[0].context).toEqual({ text: "核心·350k", tone: "plain", percent: null });
     (tm as unknown as { publishActive(): void }).publishActive();
-    expect(tm.active.get().contextLimit).toBeNull();
+    expect(tm.active.get().usage?.percent).toBeNull();
   });
 });

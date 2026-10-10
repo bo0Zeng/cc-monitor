@@ -9,11 +9,9 @@
  */
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork, Needs } from "./session-reads";
-import type { SessionState } from "./tab-session-state";
-import type { SessionActivity } from "./generated/SessionActivity";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
-import { activityFace } from "./session-status";
+import { sessionDot } from "./session-status";
 import { isLive } from "./tab-session-state";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
@@ -23,7 +21,7 @@ import { fmtDur } from "./quota-lines";
 /** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text ?? "", tone: tab.activity.tone ?? "need" };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER };
 }
 
 /**
@@ -37,19 +35,7 @@ export function stateWord(tab: Tab): string {
 
 /** 状态点：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
 export function dotOf(tab: Tab): DotState {
-  return dotFrom(tab.state, tab.activity?.doing ?? null);
-}
-
-/** 同 [`dotOf`]，从两轴状态 ＋ 活动态取（监控板的快照没有整个 tab）。 */
-export function dotFrom(s: SessionState, activity: SessionActivity | null): DotState {
-  switch (s.liveness) {
-    case "unseen":
-      return "unknown";
-    case "dead":
-      return s.recoverability === "attachable" ? "exited" : s.recoverability === "gone" ? "gone" : "ended";
-    case "live":
-      return activityFace(activity).dot;
-  }
+  return sessionDot(tab.state, tab.activity?.tone ?? null);
 }
 
 /** 后台任务运行中那一句此刻的字：有会走的那一句 ⇒ 时长那一截按此刻填（`fmtDur`，与核心对同一份金样）；否则照抄核心写好的那一句。 */
@@ -147,17 +133,28 @@ export function fullTitle(tab: Tab): string {
 }
 
 /** 收着的组头上那一格汇总：几个在等你、几个在跑、几个后台任务运行中（按状态点数；空闲 · 已结束 · 状态不明 · Claude 已退出不算）。 */
-export function groupSummary(members: readonly Tab[]): { needs: number; running: number; background: number } {
+export function groupSummary(members: readonly Tab[]): { needs: number; running: number; background: number; needsWord: string; runningWord: string; backgroundWord: string } {
   let needs = 0;
   let running = 0;
   let background = 0;
+  // 那几颗点的名字照抄组员身上核心写的字（同一种语气的字是同一个），不按点自己取字。
+  let needsWord = "";
+  let runningWord = "";
+  let backgroundWord = "";
   for (const t of members) {
     const d = dotOf(t);
-    if (d === "needs-you") needs++;
-    else if (d === "running") running++;
-    else if (d === "background") background++;
+    if (d === "needs-you") {
+      needs++;
+      needsWord ||= stateWord(t);
+    } else if (d === "running") {
+      running++;
+      runningWord ||= stateWord(t);
+    } else if (d === "background") {
+      background++;
+      backgroundWord ||= stateWord(t);
+    }
   }
-  return { needs, running, background };
+  return { needs, running, background, needsWord, runningWord, backgroundWord };
 }
 
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
