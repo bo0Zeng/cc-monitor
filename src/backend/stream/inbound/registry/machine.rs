@@ -165,7 +165,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::faces::read_face::answer(&r.cmd, &r.args)
+                crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
@@ -256,7 +256,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[arg("maxBytes", "可选，缺省 = 封顶 256 KiB：只回尾部这么多字节"), out("path", "本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`"), out("size", "那份文件的总字节数"), out("text", "尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行"), out("truncated", "前面还有没回的字节")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args)
+            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

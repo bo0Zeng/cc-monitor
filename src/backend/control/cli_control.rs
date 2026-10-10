@@ -23,6 +23,7 @@
 //! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]（所有命令通用）：
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
+//! · 时区：[`crate::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ UTC。
 //! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
@@ -114,10 +115,12 @@ pub fn handles(flag: &str) -> bool {
 /// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
 /// `cmd` 进复制详情的「命令」那一项；`message` 可带下层原话（`Said.raw`），原话进复制详情、不上句子。
 pub fn emit_err(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
+    // 这几条（常驻起停那两问）不收 `--tz` ⇒ 详情那一行时刻按 UTC 填（同「没带按 UTC」）。
     emit_failed(
         &mut std::io::stderr(),
         &failed_of(cmd, code, message.into()),
         false,
+        &crate::Tz::default(),
     )
 }
 
@@ -127,8 +130,8 @@ pub(crate) fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Fail
 }
 
 /// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
-fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool) -> i32 {
-    f.emit_to(err, text)
+fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i32 {
+    f.emit_to(err, text, tz)
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。
@@ -148,9 +151,12 @@ fn probe() -> i32 {
 }
 
 /// CLI 控制面的一次性入口。返回进程退出码。
-pub async fn run(args: &[String]) -> i32 {
+///
+/// `tz` ＝ 看的那一台的时区（[`crate::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
+pub async fn run(args: &[String], tz: &crate::Tz) -> i32 {
     run_io(
         args,
+        tz,
         std::io::stdin(),
         STDIN_QUIET,
         &mut std::io::stdout(),
@@ -162,6 +168,7 @@ pub async fn run(args: &[String]) -> i32 {
 /// [`run`] 的本体：stdin / stdout / stderr 是入参（测试喂替身，逐字比两个口的应答）。
 pub(crate) async fn run_io<R: Read + Send + 'static>(
     args: &[String],
+    tz: &crate::Tz,
     stdin: R,
     quiet: Duration,
     out: &mut dyn Write,
@@ -184,13 +191,14 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             None,
             None,
         );
-        return emit_failed(err, &f, text);
+        return emit_failed(err, &f, text, tz);
     };
     let refuse = |err: &mut dyn Write, code: &str, message: String| {
         emit_failed(
             err,
             &Failed::new(Some(spec.name), code, message, None, None),
             text,
+            tz,
         )
     };
     let within_ms = match within_of(opts) {
@@ -203,7 +211,14 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         .and_then(|v| crate::stream::inbound::views::plan_for(spec.name, &v).map(|p| (v, p)))
     {
         Ok(vp) => vp,
-        Err(f) => return emit_failed(err, &f.settle(spec.name, &serde_json::Value::Null), text),
+        Err(f) => {
+            return emit_failed(
+                err,
+                &f.settle(spec.name, &serde_json::Value::Null),
+                text,
+                tz,
+            )
+        }
     };
     let mut input = String::new();
     if reads_stdin(spec) {
@@ -235,6 +250,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         within_ms,
         // 声明已在上面解过、拒过（`plan`）；信封里照样带着，与帧面同形。
         view,
+        tz: tz.clone(),
         // 与帧面同一处换算：发起方期限从收到起算、减余量换成截止时刻。
         until: crate::stream::inbound::until_of(within_ms),
     };
@@ -258,15 +274,17 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     match outcome {
         Ok(v) => {
             let v = plan.apply(v).unwrap_or_else(|| serde_json::json!({}));
-            if text {
-                let _ = writeln!(out, "{}", crate::control::ship_text::ship_text(&v));
+            // 成功的回包里也可能带复制详情（读不出那一形的 `detail`）：那一行时刻按 `--tz` 填。
+            let line = if text {
+                crate::control::ship_text::ship_text(&v)
             } else {
-                let _ = writeln!(out, "{v}");
-            }
+                v.to_string()
+            };
+            let _ = writeln!(out, "{}", crate::common::time::fill_at(&line, tz));
             0
         }
         // 失败那一份与帧面同一处出（「码 → 句」表 · 复制详情 · 按码定形的 `data`）。
-        Err(f) => emit_failed(err, &f.settle(spec.name, &cli_args), text),
+        Err(f) => emit_failed(err, &f.settle(spec.name, &cli_args), text, tz),
     }
 }
 

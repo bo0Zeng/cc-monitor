@@ -228,7 +228,8 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
 }
 
 /// attach 行：「我要流」＋ 这条连接要的流模式旗标（远端 `listen::attach_flags` 的逆）。
-pub(crate) fn attach_line(flags: (bool, bool)) -> String {
+/// `tz` ＝ 看的这一台的时区（[`host_core::viewer_tz`]）：跟在旁边一格，这条流推来的钟面按它写；`None` ⇒ 不带（那台按 UTC 写）。
+pub(crate) fn attach_line(flags: (bool, bool), tz: Option<&str>) -> String {
     let (with_bg, tail_only) = flags;
     let mut f: Vec<&str> = Vec::new();
     if with_bg {
@@ -237,7 +238,12 @@ pub(crate) fn attach_line(flags: (bool, bool)) -> String {
     if tail_only {
         f.push("--tail-only");
     }
-    let mut line = serde_json::json!({ "attach": true, "flags": f }).to_string();
+    // 看的这一台的时区跟在旁边一格（远端 `listen::attach_flags` 读它）：这条流推来的钟面按它写。
+    let mut line = match tz {
+        Some(tz) => serde_json::json!({ "attach": true, "flags": f, "tz": tz }),
+        None => serde_json::json!({ "attach": true, "flags": f }),
+    }
+    .to_string();
     line.push('\n');
     line
 }
@@ -417,7 +423,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
             )
         };
         r.get_mut()
-            .write_all(attach_line(flags).as_bytes())
+            .write_all(attach_line(flags, host_core::viewer_tz().as_deref()).as_bytes())
             .await
             .map_err(not_sent)?;
         r.get_mut().flush().await.map_err(not_sent)?;

@@ -191,6 +191,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     let v = crate::files::answer(
         "files.grep",
         &serde_json::json!({ "path": p, "needle": "needle" }),
+        &Default::default(),
     )
     .unwrap();
     let got: std::collections::BTreeSet<String> = v.as_object().unwrap().keys().cloned().collect();
@@ -219,7 +220,11 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         (v["truncated"].clone(), v["stopped"].clone()),
         (serde_json::json!(false), serde_json::Value::Null)
     );
-    let code = |a: serde_json::Value| crate::files::answer("files.grep", &a).unwrap_err().code;
+    let code = |a: serde_json::Value| {
+        crate::files::answer("files.grep", &a, &Default::default())
+            .unwrap_err()
+            .code
+    };
     assert_eq!(
         code(serde_json::json!({ "path": p, "needle": "" })),
         "bad_args"
@@ -247,6 +252,7 @@ fn the_product_matches_the_cross_half_golden() {
     let v = crate::files::answer(
         "files.grep",
         &serde_json::json!({ "path": root, "needle": "needle", "ignore_ascii_case": true }),
+        &Default::default(),
     )
     .unwrap();
     let text = serde_json::to_string_pretty(&v)

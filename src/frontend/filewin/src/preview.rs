@@ -394,8 +394,8 @@ impl Preview {
                         "rsFilewinPreview.decide.imageTooBig",
                         &[
                             ("name", &name.to_string()),
-                            ("size", &super::rows::human_size(r.size)),
-                            ("limit", &super::rows::human_size(IMAGE_MAX_BYTES)),
+                            ("size", &copy_core::size_text(r.size)),
+                            ("limit", &copy_core::size_text(IMAGE_MAX_BYTES)),
                         ],
                     ));
                     return;
@@ -422,10 +422,10 @@ impl Preview {
                 "rsFilewinPreview.decide.tooBig",
                 &[
                     ("name", &name.to_string()),
-                    ("size", &(super::rows::human_size(r.size)).to_string()),
+                    ("size", &(copy_core::size_text(r.size)).to_string()),
                     (
                         "limit",
-                        &(super::rows::human_size(PREVIEW_MAX_BYTES)).to_string(),
+                        &(copy_core::size_text(PREVIEW_MAX_BYTES)).to_string(),
                     ),
                 ],
             ));
@@ -526,7 +526,7 @@ impl Preview {
                         }
                     });
                 });
-                let mut meta = super::rows::human_size(h.size);
+                let mut meta = copy_core::size_text(h.size);
                 if let Some(t) = &h.mtime_text {
                     meta = copy_text("rsFilewinPreview.ui.meta", &[("size", &meta), ("time", t)]);
                 }
@@ -751,7 +751,7 @@ async fn read_image(
         if bytes.len() as u64 > IMAGE_MAX_BYTES {
             return Err(copy_text(
                 "rsFilewinPreview.image.grew",
-                &[("limit", &super::rows::human_size(IMAGE_MAX_BYTES))],
+                &[("limit", &copy_core::size_text(IMAGE_MAX_BYTES))],
             ));
         }
         if d["eof"].as_bool() != Some(false) || body.is_empty() {

@@ -378,7 +378,7 @@ describe("轮换栏 · 改名 · 复制 · 设为默认", () => {
 
   it("复制：交 `{name: 夜间 副本, from, dedupe}`（重名由那台加号），出来的那条直接在改名态", async () => {
     const copied = rule("r_copy", "夜间 副本");
-    saveRule.mockResolvedValueOnce({ state: "saved", rule: copied });
+    saveRule.mockResolvedValueOnce({ state: "saved", rule: copied, savedAtText: "04:30" });
     readRules
       .mockResolvedValueOnce(rules())
       .mockResolvedValue(rules([DAILY, NIGHT, SAVER, copied]));
@@ -447,7 +447,7 @@ describe("轮换栏 · 改名 · 复制 · 设为默认", () => {
 describe("轮换栏 · 删除", () => {
   it("没人在用 ⇒ 不问、直接删（then custom）；toast［撤销］＝ 照原样再存一条", async () => {
     deleteRules.mockResolvedValue({});
-    saveRule.mockResolvedValue({ state: "saved", rule: SAVER });
+    saveRule.mockResolvedValue({ state: "saved", rule: SAVER, savedAtText: "04:30" });
     const el = await mount();
     await openMore(el, "r_saver");
     menuItem(copyText("rot.act.delete")).click();

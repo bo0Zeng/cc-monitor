@@ -343,10 +343,12 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
             ev_rx,
             std::sync::Arc::new(crate::observe::runs::RunBook::default()),
         );
-        fn fake(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
-            Some(serde_json::json!({ "topic": topic.name(), "key": key }))
+        // 小成品按这条连接看的那一台的时区现算（同客户端带 `tz` 重问）。
+        fn fake(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde_json::Value> {
+            Some(serde_json::json!({ "topic": topic.name(), "key": key, "tz": tz.iana_name() }))
         }
         t.bodies = fake;
+        t.tz = crate::Tz::named("Asia/Shanghai").unwrap();
         let tx = tokio::sync::broadcast::channel::<String>(4).0;
         t.rotation = Some(tx.subscribe());
         tx.send("s1".to_string()).unwrap();
@@ -363,7 +365,9 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
                 (key.as_deref(), body),
                 (
                     Some("s1"),
-                    Some(serde_json::json!({"topic": "rotation", "key": "s1"}))
+                    Some(
+                        serde_json::json!({"topic": "rotation", "key": "s1", "tz": "Asia/Shanghai"})
+                    )
                 )
             ),
             other => panic!("{other:?}"),

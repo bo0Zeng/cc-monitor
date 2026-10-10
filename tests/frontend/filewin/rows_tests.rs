@@ -287,12 +287,18 @@ fn a_double_click_anywhere_on_the_row_opens_that_row() {
 }
 
 #[test]
-fn human_size_is_short_enough_for_a_column() {
-    assert_eq!(human_size(0), "0 B");
-    assert_eq!(human_size(512), "512 B");
-    assert_eq!(human_size(1024), "1.0 KB");
-    assert_eq!(human_size(1024 * 1024), "1.0 MB");
-    assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 GB");
+fn sizes_are_short_enough_for_a_column() {
+    // 写法只住 `copy_core::size_text`（整份对拍在 `tests/common/copy-core/lib_tests.rs`，读金样 size-text.golden.json）；这里只钉一列放得下。
+    for n in [
+        0,
+        512,
+        1024,
+        1024 * 1024,
+        3 * 1024 * 1024 * 1024,
+        1u64 << 50,
+    ] {
+        assert!(copy_core::size_text(n).chars().count() <= 12, "{n}");
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@
  * 过程里的一步一行：状态图标 · 工具名 · 主参数（等宽、一行、路径中间省略）· 说明 · 右侧小字。
  *
  * 判定都在后端：主参数与说明是 assistant 记录成品的 `toolSteps`，结果一句的数是 user 记录成品的 `toolResults`；
- * 这里只把它们排成一行、按 id 配对（同一步的两段拼回去）、把两条记录的时刻相减成耗时。界面不认入参与结果的结构。
+ * 这里只把它们排成一行、按 id 配对（同一步的两段拼回去）；耗时交那一个读口（`duration-format.ts::spanNow`，两条记录后端解好的 `atMs`）。界面不认入参与结果的结构。
  * 还没有结果的那一步是什么样子（在跑 · 在等你 · 状态不明）读会话事实的 `pending[].state`（[`paintWaiting`]）；事实到之前不画状态，
  * 不按「没有结果」当它在跑。
  */
@@ -11,7 +11,7 @@ import type { StepResult } from "../generated/StepResult";
 import { icon, type IconName } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyText } from "../copy-table";
-import { fmtDur } from "../duration-format";
+import { spanNow } from "../duration-format";
 import type { StepWait, UnclearWhy } from "../session-reads";
 
 /**
@@ -23,22 +23,9 @@ export type StepState = "pending" | "running" | "unclear" | "ok" | "failed" | "r
 /** 还没结果的那几种（会话事实一到就按它重画）。 */
 const WAITING = new Set(["pending", "running", "awaiting", "unclear"]);
 
-/** 耗时：< 10 秒一位小数（`0.3s`）· < 1 分整秒（`41s`）· 其余 `3m02s`。 */
-export function fmtStepDur(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "";
-  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m${String(s % 60).padStart(2, "0")}s`;
-}
-
-/** 两个记录时刻相减（任一读不出 ⇒ `null`）。 */
-export function durBetween(from: string | undefined, to: string | undefined): number | null {
-  if (!from || !to) return null;
-  const a = Date.parse(from);
-  const b = Date.parse(to);
-  return Number.isFinite(a) && Number.isFinite(b) && b >= a ? b - a : null;
+/** 两条记录之间多久（毫秒时刻，后端解好的 `atMs`；任一缺 ⇒ `null`）⇒ 那一个读口写的字。 */
+export function durBetween(from: number | undefined, to: number | undefined): string | null {
+  return from === undefined || to === undefined || to < from ? null : spanNow(from, to);
 }
 
 /** 结果到了 ⇒ 这一步的状态。 */
@@ -50,8 +37,8 @@ export function stateOf(step: ToolStep | undefined, res: StepResult | undefined,
 }
 
 /** 右侧小字：改动 `+38 −6` · 读了几行 · 几个文件 · 否则耗时；失败 `失败 · 41s` · 被拒「未批准」· 认不出「未识别结果 · 原文」。 */
-export function stepRight(step: ToolStep | undefined, res: StepResult | undefined, state: StepState, durMs: number | null): string {
-  const dur = durMs === null ? "" : fmtStepDur(durMs);
+export function stepRight(step: ToolStep | undefined, res: StepResult | undefined, state: StepState, durText: string | null): string {
+  const dur = durText ?? "";
   switch (state) {
     case "pending":
     case "running":
@@ -154,21 +141,13 @@ export function buildThinkingLine(label: string, preview: string): HTMLElement {
 }
 
 /** 结果到了：改那一行的状态图标与右侧小字（同一步再来一次结果就再改一次，幂等）。 */
-export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res: StepResult | undefined, isError: boolean, durMs: number | null): StepState {
+export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res: StepResult | undefined, isError: boolean, durText: string | null): StepState {
   row.querySelector(".step-await")?.remove();
   const state = stateOf(step, res, isError);
-  paint(row, state, stepRight(step, res, state, durMs));
+  paint(row, state, stepRight(step, res, state, durText));
   return state;
 }
 
-/**
- * **已等多久（会走的钟，桌面唯一的读口）**：后端在那台算好的 `waitedMs`（答出那一刻，起点与读 pidfile 同一台的钟）
- * ＋ 本机从收到那一份起走过的时间（两段各在一台钟上量，不跨机器减）。写法同 Rust `copy_core::short_duration`（同一份金样，
- * 后端写的 `waitedText` 就是收到那一刻这里写出来的字；与同一列里已完成步骤的耗时同一种短写法）。没有起点 ⇒ `null`。
- */
-export function waitedNow(n: { waitedMs: number | null; receivedAt: number }, now: number): string | null {
-  return n.waitedMs === null ? null : fmtDur((n.waitedMs + Math.max(0, now - n.receivedAt)) / 1000);
-}
 
 /**
  * 会话事实说这一步还没结果时是什么样子（`pending[].state`；不在 `pending` 里 ⇒ 状态不明）⇒ 照画。结果已经到了的不动。

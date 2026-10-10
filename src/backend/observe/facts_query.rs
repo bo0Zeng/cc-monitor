@@ -398,6 +398,8 @@ pub(crate) struct PendingCall {
     pub(crate) what: Option<String>,
     /// 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
+    /// `at` 的毫秒（自 1970）：出口算「已经跑了多久」只用这一格（交那一个读口走字），不自己解析 `at`；解不出 ⇒ `null`。
+    pub(crate) at_ms: Option<i64>,
     /// 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
     pub(crate) state: StepWait,
     /// `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
@@ -448,6 +450,8 @@ pub(crate) struct LastSay {
     pub(crate) text: String,
     /// 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
+    /// `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
+    pub(crate) at_ms: Option<i64>,
 }
 
 /// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
@@ -820,7 +824,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         exact_keys(&v["usage"], USAGE, "prior.usage")?;
     }
     if !v["lastSay"].is_null() {
-        exact_keys(&v["lastSay"], &["at", "text"], "prior.lastSay")?;
+        exact_keys(&v["lastSay"], &["at", "atMs", "text"], "prior.lastSay")?;
     }
     if !v["needs"].is_null() {
         exact_keys(
@@ -843,7 +847,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     for p in v["pending"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
         exact_keys(
             p,
-            &["at", "id", "name", "state", "what", "why"],
+            &["at", "atMs", "id", "name", "state", "what", "why"],
             "prior.pending[]",
         )?;
     }
@@ -1145,6 +1149,9 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
                             f.last_say = Some(LastSay {
                                 text,
                                 at: at.clone(),
+                                at_ms: at
+                                    .as_deref()
+                                    .and_then(crate::common::time::parse_iso8601_ms),
                             });
                         }
                         continue;
@@ -1166,6 +1173,9 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
                             name: name.to_string(),
                             what: what_of(name, b.get("input")),
                             at: at.clone(),
+                            at_ms: at
+                                .as_deref()
+                                .and_then(crate::common::time::parse_iso8601_ms),
                             state: StepWait::default(),
                             why: None,
                         });

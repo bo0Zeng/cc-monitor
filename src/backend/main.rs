@@ -24,6 +24,7 @@
 //    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
 // ⚠ 用 glob 而不是逐项列 —— 本拍是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
+use cc_monitor_backend::control::cli_control;
 use cc_monitor_backend::faces::read_face;
 use cc_monitor_backend::stream::{inbound, listen, tap, topic_body, topic_hook, wire};
 use cc_monitor_backend::*;
@@ -132,6 +133,8 @@ async fn main() {
     let agent_home = resolve_agent_home();
 
     if is_query_mode(&args) {
+        // 看的那一台的时区（`--tz`，剥流旗标那一步剥出来的）：一次性回包里的「几点」按它写。
+        let z = &wants.tz;
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
@@ -143,7 +146,7 @@ async fn main() {
             Some("--resolve") => control::resolve_query::run(&agent_home, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
-            Some("--fork-session") => control::fork_write::run(&agent_home, &args),
+            Some("--fork-session") => control::fork_write::run(&agent_home, &args, z),
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
@@ -161,7 +164,7 @@ async fn main() {
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
-            | Some("--account-trust-zero") => observe::accounts_query::run(&agent_home, &args),
+            | Some("--account-trust-zero") => observe::accounts_query::run(&agent_home, &args, z),
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
             // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
             // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
@@ -171,8 +174,8 @@ async fn main() {
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
-            Some(f) if control::cli_control::handles(f) => control::cli_control::run(&args).await,
-            _ => observe::history_query::run(&agent_home, &args),
+            Some(f) if cli_control::handles(f) => cli_control::run(&args, z).await,
+            _ => observe::history_query::run(&agent_home, &args, z),
         };
         std::process::exit(code);
     }
@@ -387,6 +390,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     // bounded frame channel.
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = observe::runs::RunBook::shared();
+    let tz = wants.tz.clone();
     let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -409,8 +413,8 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = inbound::shutdown_listener();
     // 这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
-    let tap_rx = tap::attach(book);
-    let writer = writer_task(stdout, rx, reply_rx, tap_rx);
+    let tap_rx = tap::attach(book, tz.clone());
+    let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz);
     tokio::pin!(writer);
     let signalled = tokio::select! {
         _ = &mut writer => {
@@ -696,8 +700,11 @@ async fn serve_listening(
     let _poke_task = spawn_sigusr1_task();
 
     let (mut idle_rx, mut idle_poke) = {
-        let (rx, poke) =
-            observe::watcher::spawn(agent_home.clone(), defaults, std::sync::Arc::default());
+        let (rx, poke) = observe::watcher::spawn(
+            agent_home.clone(),
+            defaults.clone(),
+            std::sync::Arc::default(),
+        );
         (Some(rx), Some(poke))
     };
 
@@ -738,17 +745,15 @@ async fn serve_listening(
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
                 let book = observe::runs::RunBook::shared();
-                let (rx, poke) = observe::watcher::spawn(
-                    agent_home.clone(),
-                    flags.unwrap_or(defaults),
-                    book.clone(),
-                );
+                let wants = flags.unwrap_or_else(|| defaults.clone());
+                let tz = wants.tz.clone();
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
                 // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
-                let tap_rx = tap::attach(book);
+                let tap_rx = tap::attach(book, tz.clone());
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（此刻 {} 条）", clients.count());
                 tokio::spawn(async move {
@@ -758,7 +763,7 @@ async fn serve_listening(
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx, tap_rx) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {
@@ -797,7 +802,7 @@ async fn serve_listening(
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 let (rx, poke) = observe::watcher::spawn(
                     agent_home.clone(),
-                    defaults,
+                    defaults.clone(),
                     std::sync::Arc::default(),
                 );
                 idle_rx = Some(rx);
@@ -830,11 +835,14 @@ async fn serve_listening(
 ///
 /// `reply_rx` 永远不会返回 `None`（`main` 自己留着一个 sender 到进程结束），
 /// 所以这个 select 不会退化成 `None` 忙转。
+///
+/// `tz` ＝ 这条流看的那一台的时区（起流的 `--tz` / attach 行的 `tz`）：出方向的每一帧写出去之前按它写钟面（[`Frame::stamp`]）。
 async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
     mut tap_rx: impl tap::TapSource,
+    tz: cc_monitor_backend::Tz,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -860,7 +868,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                 biased;
                 Some(f) = reply_rx.recv() => { burst += 1; f }
                 f = rx.recv() => match f {
-                    Some(f) => { burst = 0; f }
+                    Some(mut f) => { burst = 0; f.stamp(&tz); f }
                     None => return, // 出方向通道关了 = 寿终
                 },
                 Some(f) = tap_rx.next() => f,
@@ -870,14 +878,14 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
             tokio::select! {
                 biased;
                 f = rx.recv() => match f {
-                    Some(f) => f,
+                    Some(mut f) => { f.stamp(&tz); f }
                     None => return,
                 },
                 Some(f) = reply_rx.recv() => f,
                 Some(f) = tap_rx.next() => f,
             }
         };
-        if let Err(e) = write_frame(&mut out, &frame).await {
+        if let Err(e) = write_frame(&mut out, &frame, &tz).await {
             // Broken pipe (client gone) is the normal end-of-life; stop quietly.
             tracing::warn!("stdout write failed ({e}); stopping writer");
             return;
@@ -890,13 +898,16 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
 }
 
 /// Serialize one frame to its wire line and write it (no flush).
+/// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）。
 async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out: &mut W,
     frame: &Frame,
+    tz: &cc_monitor_backend::Tz,
 ) -> std::io::Result<()> {
     let line =
         to_line(frame).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    out.write_all(line.as_bytes()).await
+    out.write_all(cc_monitor_backend::stamp_detail_slots(&line, tz).as_bytes())
+        .await
 }
 
 /// 解析会话数据根：后端盯着的那一家的家目录（注册表 `LocalFace::home_at`）。

@@ -525,8 +525,8 @@ fn modified_of(d: &dyn Door, path: &str) -> Option<u64> {
         .and_then(|v| v.get("mtime_secs").and_then(Value::as_u64))
 }
 
-/// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按这台此刻的本地钟写好，界面照排）；没改过 ⇒ `None`。
-fn edited_at(d: &dyn Door, store: &super::Store, path: &str) -> Option<String> {
+/// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好，界面照排）；没改过 ⇒ `None`。
+fn edited_at(d: &dyn Door, store: &super::Store, path: &str, tz: &crate::Tz) -> Option<String> {
     if !super::edited_since_written(d, store) {
         return None;
     }
@@ -534,11 +534,10 @@ fn edited_at(d: &dyn Door, store: &super::Store, path: &str) -> Option<String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |x| x.as_secs());
     let at = modified_of(d, path).unwrap_or(now);
-    let tz_min = crate::platform::local_tz::offset_secs(at).unwrap_or(0) / 60;
     Some(crate::common::time::fmt_at(
         i64::try_from(at).unwrap_or(i64::MAX),
         i64::try_from(now).unwrap_or(i64::MAX),
-        tz_min,
+        tz,
     ))
 }
 
@@ -549,12 +548,13 @@ fn migrated_note(d: &dyn Door, home: &str) -> Option<Value> {
 }
 
 /// `profiles-read {}` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
-pub(crate) fn answer_read(d: &dyn Door, args: &Value) -> Answer {
-    read_with(d, args, crate::footprint::tmux_here())
+/// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。
+pub(crate) fn answer_read(d: &dyn Door, args: &Value, tz: &crate::Tz) -> Answer {
+    read_with(d, args, crate::footprint::tmux_here(), tz)
 }
 
 /// [`answer_read`] 的本体：有没有 tmux 是参数（判据喂定值，不去探这台）。
-pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>) -> Answer {
+pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>, tz: &crate::Tz) -> Answer {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
     let path = profile::path_in(&store.home);
@@ -593,7 +593,7 @@ pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>) -> Answ
         "path": path,
         "exists": store.text.is_some(),
         "fingerprint": super::fingerprint_of(store.text.as_deref()),
-        "editedAt": edited_at(d, &store, &path),
+        "editedAt": edited_at(d, &store, &path, tz),
         "fileProblem": file_problem,
         "profiles": profiles,
         "seed": seed,

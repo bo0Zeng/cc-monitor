@@ -10,7 +10,7 @@ fn golden_path() -> std::path::PathBuf {
 }
 
 /// 一份回包照真出口那几步走一遍（不写 `rows` 的那几格从回包里删掉再重写，金样里只留原数与显示态）。
-fn through_the_exit(reply: &Value, tz: i64) -> Value {
+fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
     use crate::accounts::quota::show::{slot_words, QuotaState};
     let mut v = reply.clone();
     let now = v["now"].as_i64().unwrap_or_default();
@@ -69,14 +69,14 @@ fn rows_text_and_warm_match_the_golden() {
     assert!(cases.len() >= 10, "金样读空了");
     let mut wrong = Vec::new();
     for c in cases.iter_mut() {
-        let tz = c["tzOffsetMin"].as_i64().unwrap_or(0);
-        let mut v = through_the_exit(&c["reply"], tz);
+        let tz = crate::Tz::of(&c["tz"]);
+        let mut v = through_the_exit(&c["reply"], &tz);
         let now = v["now"].as_i64().unwrap_or_default();
         // 开窗：照真出口（with_warm 按这台的钟写 `atText`；金样按它自己的偏移比，这里按偏移重写一遍）。
         for (list, seen) in [("accounts", true), ("unseen", false)] {
             for x in v[list].as_array_mut().into_iter().flatten() {
                 let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap();
-                crate::common::time::with_texts(&mut w, now, tz);
+                crate::common::time::with_texts(&mut w, now, &tz);
                 x["warm"] = w;
             }
         }
@@ -163,7 +163,7 @@ fn the_five_hour_cell_is_written_by_the_core() {
     let mut seen_unreadable = false;
     let mut seen_sub = false;
     for c in g["cases"].as_array().unwrap() {
-        let v = through_the_exit(&c["reply"], 0);
+        let v = through_the_exit(&c["reply"], &crate::Tz::default());
         let name = c["name"].as_str().unwrap_or("");
         if v["state"] == "unreadable" {
             seen_unreadable = true;
@@ -213,18 +213,18 @@ fn the_wire_golden_is_what_the_exit_writes() {
     let g: Value = serde_json::from_str(&raw).unwrap();
     let mut cases = Vec::new();
     for c in g["cases"].as_array().unwrap() {
-        let tz = c["tzOffsetMin"].as_i64().unwrap_or(0);
-        let mut v = through_the_exit(&c["reply"], tz);
+        let tz = crate::Tz::of(&c["tz"]);
+        let mut v = through_the_exit(&c["reply"], &tz);
         let now = v["now"].as_i64().unwrap_or_default();
         for (list, seen) in [("accounts", true), ("unseen", false)] {
             for x in v[list].as_array_mut().into_iter().flatten() {
                 let mut w = serde_json::to_value(warm_of(x, seen, now)).unwrap();
-                crate::common::time::with_texts(&mut w, now, tz);
+                crate::common::time::with_texts(&mut w, now, &tz);
                 x["warm"] = w;
             }
         }
         crate::accounts::quota::name_words::with_names(&mut v);
-        cases.push(serde_json::json!({"name": c["name"], "tzOffsetMin": tz, "reply": v}));
+        cases.push(serde_json::json!({"name": c["name"], "tz": c["tz"], "reply": v}));
     }
     let got = serde_json::json!({
         "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。",

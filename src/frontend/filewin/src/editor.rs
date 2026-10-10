@@ -232,10 +232,12 @@ struct RequestLine<'a> {
     cmd: &'a str,
     args: &'a serde_json::Value,
     within_ms: u64,
+    tz: &'a str,
 }
 
 /// 🔴 **真序列化一次**：这条命令发到后端时那一行有多少字节（**不含**行尾 `\n` ——
-/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]），发起方期限那一格按最长的数位算。
+/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]），发起方期限那一格按最长的数位算，
+/// 时区那一格按最长的名算（[`host_core::TZ_ROOM`]；比它长的那一台不带这一格）。
 pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
     let id = "0".repeat(REQUEST_ID_ROOM);
     serde_json::to_vec(&RequestLine {
@@ -243,6 +245,7 @@ pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
         cmd,
         args,
         within_ms: u64::MAX,
+        tz: &"Z".repeat(host_core::TZ_ROOM),
     })
     .map_or(usize::MAX, |v| v.len())
 }
@@ -365,10 +368,10 @@ pub fn why_not_editable(r: &Row) -> Option<String> {
         return Some(copy_text("rsFilewinEditor.notEditable.badName", &[]).into());
     }
     if r.size > MAX_EDIT_BYTES as u64 {
-        // 🔴 **报「多了多少」，不是报两个 `human_size`。**
+        // 🔴 **报「多了多少」，不是报两个 `copy_core::size_text`。**
         //
         // 第一版写的是「这份 {human(size)} 超过 {human(cap)} 的编辑上限」，
-        // 而判据当场逮到它退化：`256 KiB + 1` 字节被 `human_size` 四舍成 `256.0 K`
+        // 而判据当场逮到它退化：`256 KiB + 1` 字节被 `copy_core::size_text` 四舍成 `256.0 K`
         // ⇒ 那句话读出来是「这份 **256.0 K** 超过 **256.0 K** 的编辑上限」，
         // 两个数一模一样，**什么都没告诉用户**。
         // ⇒ 换成「多了 N 字节」：它在边界附近**永远不退化**，而且直接答
@@ -377,11 +380,11 @@ pub fn why_not_editable(r: &Row) -> Option<String> {
         return Some(copy_text(
             "rsFilewinEditor.notEditable.tooBig",
             &[
-                ("size", &(super::rows::human_size(r.size)).to_string()),
+                ("size", &(copy_core::size_text(r.size)).to_string()),
                 ("bytes", &r.size.to_string()),
                 (
                     "limit",
-                    &(super::rows::human_size(MAX_EDIT_BYTES as u64)).to_string(),
+                    &(copy_core::size_text(MAX_EDIT_BYTES as u64)).to_string(),
                 ),
                 ("over", &over.to_string()),
             ],

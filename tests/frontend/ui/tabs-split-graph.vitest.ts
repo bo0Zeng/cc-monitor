@@ -96,6 +96,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
     "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
     "src/frontend/ui/cards/step-line.ts", // 会话事实说在等批准的那一步：那一行画成「在等你批准」/ 不等了回到在跑
+    "src/frontend/ui/duration-format.ts", // 那一行右侧已等多久（会走的钟，那一个读口 `waitedNow`）
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
@@ -181,6 +182,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/frontend/ui/tab-bar-view.ts": [
     "src/frontend/ui/account-color.ts",
+    "src/frontend/ui/duration-format.ts", // 机器掉线那一行「多久前」没有起点时的 0（那一个读口写，单位不写死）
     "src/frontend/ui/accounts.ts",
     "src/frontend/ui/acct-view.ts", // 被卡住的会话标题后 `✕ 5h`：排版模型（判定是后端给的 `blocked`）
     "src/frontend/ui/app-store.ts", // 同上：会话的轮换格从 store 读
