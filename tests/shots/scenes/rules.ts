@@ -2,6 +2,7 @@
  * 设置 → 机器 →「轮换」栏：规则列表 · ⋯ · 在用展开 · 批量条 · 新建 · 删除框 · 空态 · 窄窗（稿 `轮换规则.md` §5.5、截图 05）。
  * 假后端答 `rotation-rules-read`（三条规则，名字与摘要是编的）；会话标题取图集那份会话清单（`history-list`）。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { emit } from "@tauri-apps/api/event";
 import { fakePlan } from "../fake/timeline";
 import type { Scene } from "./index";
@@ -14,9 +15,9 @@ const S2 = "5e550002-0000-4000-8000-000000000002";
 const S3 = "5e550003-0000-4000-8000-000000000003";
 
 /** 在用名单里各会话此刻的状态（后端判；这里编的：一个在跑、一个等批准，已结束的照写已结束）。 */
-const DOING: Record<string, { state: string; needs: string | null }> = {
-  [S1]: { state: "working", needs: null },
-  [S2]: { state: "needsYou", needs: "approve" },
+const DOING: Record<string, { state: string; needs: string | null; text: string; tone: string }> = {
+  [S1]: { state: "working", needs: null, text: copyText("beSession.activity.working"), tone: "now" },
+  [S2]: { state: "needsYou", needs: "approve", text: copyText("beSession.needs.approve"), tone: "need" },
 };
 
 interface R {
@@ -86,11 +87,11 @@ function rulesWorld(list: R[] = THREE): () => World {
           doing: Object.fromEntries([
             ...(r.live ?? []).map((sid) => [
               sid,
-              DOING[sid] ?? { state: "working", needs: null },
+              DOING[sid] ?? { state: "working", needs: null, text: copyText("beSession.activity.working"), tone: "now" },
             ]),
             ...(r.ended ?? []).map((sid) => [
               sid,
-              { state: "ended", needs: null },
+              { state: "ended", needs: null, text: copyText("sessionState.ended.name"), tone: "plain" },
             ]),
           ]),
           sids: r.live ?? [],

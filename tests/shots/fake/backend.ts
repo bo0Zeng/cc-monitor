@@ -174,8 +174,8 @@ export class FakeBackend {
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
       // 字与语气照后端 `wire::activity_cells` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
-      const act = s.activity === null ? null : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["idle", "plain"] } as const)[s.activity];
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: act ? copyText(`beSession.activity.${act[0]}`) : null, activity_tone: act ? act[1] : null, waiting_for: s.waitingFor } });
+      const act = s.activity === null ? (["unclear", "now"] as const) : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"], background_work: ["backgroundWork", "busy"] } as const)[s.activity];
+      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: copyText(`beSession.activity.${act[0]}`), activity_tone: act[1], waiting_for: s.waitingFor } });
       if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("sessionState.ended.name"), hint: copyText("sessionState.ended.tooltip"), tone: "plain" } });
       else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("sessionState.reconnectable.name"), hint: copyText("sessionState.reconnectable.tooltip"), tone: "plain" } });
     }

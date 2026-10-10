@@ -7,13 +7,13 @@
  */
 import { describe, expect, it } from "vitest";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
-import { estimateFromFacts, skeletonKind, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
+import { estimateFromFacts, SKEL_OUTER, skeletonKind, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
 import { SkeletonLedger, TailWindow } from "../../../src/frontend/ui/live-window";
 
 const user = (ch: number, extra: Partial<SkeletonFacts> = {}): SkeletonFacts => ({
   o: 0,
   n: 1,
-  t: "user",
+  t: "said",
   ch,
   pl: ch > 0 ? 1 : 0,
   ...extra,
@@ -21,20 +21,29 @@ const user = (ch: number, extra: Partial<SkeletonFacts> = {}): SkeletonFacts => 
 const asst = (ch: number, extra: Partial<SkeletonFacts> = {}): SkeletonFacts => ({
   o: 0,
   n: 1,
-  t: "assistant",
+  t: "reply",
   ch,
   pl: ch > 0 ? 1 : 0,
   ...extra,
 });
-const toolOnly = (t = "assistant"): SkeletonFacts => ({ o: 0, n: 1, t, fd: 1 });
-const none = (t = "attachment"): SkeletonFacts => ({ o: 0, n: 1, t });
+const toolOnly = (t: SkeletonFacts["t"] = "reply"): SkeletonFacts => ({ o: 0, n: 1, t, fd: 1 });
+const none = (t?: SkeletonFacts["t"]): SkeletonFacts => (t ? { o: 0, n: 1, t } : { o: 0, n: 1 });
 
 describe("estimateFromFacts / skeletonKind", () => {
-  it("不建卡的记录高 0：系统注入 · 本地命令回显 / attachment / ai-title / 解析不出的", () => {
-    for (const f of [user(10, { sp: "system" }), user(10, { sp: "commandOutput" }), none(), none("ai-title"), { o: 0, n: 1 }]) {
+  it("不建卡的记录高 0：系统注入 · 本地命令回显 / 不进界面的行 / 标题 / 解析不出的", () => {
+    for (const f of [user(10, { sp: "system" }), user(10, { sp: "commandOutput" }), none(), none("title"), { o: 0, n: 1 }]) {
       expect(skeletonKind(f)).toBe("none");
       expect(estimateFromFacts(f, "card")).toBe(0);
     }
+  });
+
+  it("认的是通用记录的类：said / queued 按人那一侧的气泡、reply 按回复卡、retry 是细条；盘上的原词不再认", () => {
+    expect(skeletonKind(user(10))).toBe("card");
+    expect(skeletonKind({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 })).toBe("card");
+    expect(estimateFromFacts({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 }, "none")).toBe(estimateFromFacts(user(10), "none"));
+    expect(skeletonKind(asst(10))).toBe("card");
+    expect(estimateFromFacts({ o: 0, n: 1, t: "retry" }, "none")).toBe(SKEL_OUTER.system);
+    for (const raw of ["user", "assistant", "system"]) expect(skeletonKind({ o: 0, n: 1, t: raw as never, ch: 10, pl: 1 })).toBe("none");
   });
 
   it("后端判为建卡的来源照常出高（斜杠命令 · 压缩摘要 · 派给子 agent 的活）", () => {
@@ -46,7 +55,7 @@ describe("estimateFromFacts / skeletonKind", () => {
   it("连续的纯工具记录只有第一条出高（并成一张工具组卡）", () => {
     const first = estimateFromFacts(toolOnly(), "card");
     expect(first).toBeGreaterThan(0);
-    expect(estimateFromFacts(toolOnly("user"), "tool")).toBe(0);
+    expect(estimateFromFacts(toolOnly("said"), "tool")).toBe(0);
   });
 
   it("正文越长越高；窄列比宽列高（宽度相关的那一半在前端算）", () => {
@@ -70,9 +79,9 @@ describe("SkeletonLedger", () => {
     asst(100, { u: "b" }),
     toolOnly(),
     none(),
-    toolOnly("user"),
+    toolOnly("said"),
     asst(50, { u: "f" }),
-    none("ai-title"),
+    none("title"),
     user(5, { u: "h" }),
   ];
 
@@ -138,7 +147,7 @@ describe("SkeletonLedger", () => {
   it("base ≠ 0（续传）：seq 从 base 起算；append 接上且工具串跨 append 边界仍连续", () => {
     const l = new SkeletonLedger(100, [toolOnly()]);
     expect(l.endSeq).toBe(101);
-    l.append([toolOnly("user"), user(3, { u: "z" })]);
+    l.append([toolOnly("said"), user(3, { u: "z" })]);
     expect(l.endSeq).toBe(103);
     expect(l.heightOf(101, 102)).toBe(0);
     expect(l.uuidToSeq.get("z")).toBe(102);

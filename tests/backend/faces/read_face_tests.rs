@@ -25,6 +25,8 @@ const FAMILY: &[&str] = &[
     "history-find",
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
+    // 这台上需手动的会话清单（异源是手机端的要求「一次问一台，不是一条一问」，不是 `stream/inbound/`）。
+    "sessions-needs",
     // 主线外清单的冷读（共用扫描图）。
     "history-branch",
     "history-turns",
@@ -476,11 +478,11 @@ fn golden_session(home: &Path) -> String {
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("g.jsonl");
     let body = [
-        r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"content":"alpha zqx beta"}}"#,
-        r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+        r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,
+        r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"role":"assistant","content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
         "",
-        r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"in-2","parentUuid":"meta-1","timestamp":"t2","message":{"content":"delta"}}"#,
+        r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"role":"user","content":"meta"}}"#,
+        r#"{"type":"user","uuid":"in-2","parentUuid":"meta-1","timestamp":"t2","message":{"role":"user","content":"delta"}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -503,6 +505,12 @@ fn golden_facts_session(home: &Path) -> String {
         r#"{"type":"user","uuid":"f-3","timestamp":"t3a","parentUuid":"f-2","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
         r#"{"type":"assistant","uuid":"f-4","parentUuid":"f-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
         r#"{"type":"assistant","uuid":"f-5","parentUuid":"f-4","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
+        // 后台命令两条：一条还在跑（make test-all），一条收到了收场通知（住 queue-operation）⇒ 账上只剩前一条。
+        r#"{"type":"assistant","uuid":"f-6","parentUuid":"f-5","timestamp":"2026-10-09T08:00:00.000Z","message":{"content":[{"type":"tool_use","id":"tu-b1","name":"Bash","input":{"command":"make test-all","run_in_background":true}}]}}"#,
+        r#"{"type":"user","uuid":"f-7","parentUuid":"f-6","timestamp":"2026-10-09T08:00:01.000Z","toolUseResult":{"stdout":"","backgroundTaskId":"bb1"},"message":{"content":[{"type":"tool_result","tool_use_id":"tu-b1","content":"Command running in background with ID: bb1."}]}}"#,
+        r#"{"type":"assistant","uuid":"f-8","parentUuid":"f-7","timestamp":"2026-10-09T08:10:00.000Z","message":{"content":[{"type":"tool_use","id":"tu-b2","name":"Bash","input":{"command":"python train.py","run_in_background":true}}]}}"#,
+        r#"{"type":"user","uuid":"f-9","parentUuid":"f-8","timestamp":"2026-10-09T08:10:01.000Z","toolUseResult":{"stdout":"","backgroundTaskId":"bb2"},"message":{"content":[{"type":"tool_result","tool_use_id":"tu-b2","content":"Command running in background with ID: bb2."}]}}"#,
+        r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-09T08:20:00.000Z","content":"<task-notification>\n<task-id>bb2</task-id>\n<tool-use-id>tu-b2</tool-use-id>\n<status>completed</status>\n<summary>Background command \"train\" completed (exit code 0)</summary>\n</task-notification>"}"#,
         r#"{"type":"system","subtype":"api_error","uuid":"rt-2","timestamp":"t5a","parentUuid":"f-5","retryAttempt":1,"maxRetries":10}"#,
         r#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s-g"}"#,
         r#"{"type":"cost-state","totalCostUSD":0.4242,"modelUsage":{},"hasUnknownModelCost":false}"#,
@@ -671,10 +679,20 @@ fn facts_say_what_the_session_is_waiting_for() {
     let _ = c.wait();
     let dead = needs();
     let _ = std::fs::remove_dir_all(&home);
+    let (waited, rest) = split_waited(&waiting);
     assert_eq!(
-        waiting,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "tone": "need"})
+        rest,
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "tone": "need", "rank": 1})
     );
+    // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
+    let ms = waited.expect("有起点就有已等多久");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let span = now - 1_700_000_000_000;
+    assert!(ms <= span && ms + 60_000 > span, "{ms}");
+    assert_eq!(waiting["waitedText"], copy_core::format_duration(ms));
     assert_eq!(busy, serde_json::Value::Null, "不在等却报了需手动");
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
@@ -1429,6 +1447,107 @@ impl crate::guard_support::Shaped for Branch {
         vec![Branch {
             off: vec!["u-1".into()],
             end: 99,
+        }]
+    }
+}
+
+/// ★ **这台上需手动的会话清单**（`sessions-needs`）：恰好是这台此刻活着、那台 pidfile 说在等人的那几个会话；
+/// 每一个的 `needs` 就是 `history-facts` 对同一份记录答的那一格（同一处判、同一份字，清单不另判）；
+/// 记录找不到的照列（判不出是哪一步，但框是哪种照那台说的）；在跑 · 空闲 · 进程死了的都不在。
+#[cfg(target_os = "linux")]
+#[test]
+fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs() {
+    let home = scratch("sessions-needs");
+    let ask = "dddddddd-1111-2222-3333-444444444444";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{ask}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let mut kids = Vec::new();
+    let mut put_as = |sid: &str, status: &str, wait: &str, since: u64| {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("起始时刻");
+        std::fs::write(
+            pids.join(format!("{}.json", c.id())),
+            format!(r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"{status}","waitingFor":"{wait}","statusUpdatedAt":{since}}}"#, c.id()),
+        )
+        .unwrap();
+        kids.push(c);
+    };
+    let at = 1_700_000_000_000u64;
+    put_as("s-busy", "busy", "permission prompt", at);
+    put_as("s-idle", "idle", "permission prompt", at);
+    put_as(ask, "waiting", "permission prompt", at);
+    // 同是批准、起等得晚一些 ⇒ 排在 `ask` 后面；要联网的那个起等得最晚，但危险度最高 ⇒ 排第一。
+    put_as("s-norecord", "waiting", "permission prompt", at + 60_000);
+    put_as("s-net", "waiting", "sandbox request", at + 120_000);
+    put_as("s-dead", "waiting", "permission prompt", at);
+    let mut dead = kids.pop().unwrap();
+    let _ = dead.kill();
+    let _ = dead.wait();
+    let list = answer_at(&home, "sessions-needs", &serde_json::json!({})).expect("答了");
+    let facts = answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap();
+    for mut c in kids {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = std::fs::remove_dir_all(&home);
+    let rows = list["waiting"].as_array().expect("waiting 是数组");
+    // 序照核心那一处（先答哪个：危险度 · 再等得久的在前），清单不另排。
+    let sids: Vec<&str> = rows.iter().map(|r| r["sid"].as_str().unwrap()).collect();
+    assert_eq!(sids, vec!["s-net", ask, "s-norecord"], "{list}");
+    let row = |sid: &str| rows.iter().find(|r| r["sid"] == sid).unwrap();
+    assert!(!facts["needs"].is_null(), "夹具：history-facts 该说在等");
+    // 两次问各自读一遍 pidfile ⇒ 已等多久差几毫秒；别的格逐字相同。
+    assert_eq!(
+        split_waited(&row(ask)["needs"]).1,
+        split_waited(&facts["needs"]).1,
+        "清单那一格与 history-facts 不是同一份"
+    );
+    assert_eq!(row("s-norecord")["needs"]["kind"], "approve");
+    assert_eq!(row("s-norecord")["needs"]["call"], serde_json::Value::Null);
+    for r in rows {
+        let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["needs", "sid"], "一行只有这两格：{r}");
+    }
+}
+
+/// 一份 `needs` 拆成「已等多久（毫秒）」与其余各格（已等的那两格随问的时刻变，单拿出来判）。
+fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
+    let mut rest = n.clone();
+    let o = rest.as_object_mut().expect("needs 是对象");
+    let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
+    o.remove("waitedText");
+    (ms, rest)
+}
+
+impl crate::guard_support::Shaped for NeedsList {
+    fn samples() -> Vec<Self> {
+        use crate::observe::facts_query::{needs_of, PidWait};
+        let needs = needs_of(
+            &[],
+            Some(&PidWait {
+                waiting_for: Some(crate::agents::WaitOn::Worker),
+                since_ms: Some(1),
+                read_at_ms: 2,
+            }),
+        )
+        .expect("在等就有需手动");
+        vec![NeedsList {
+            waiting: vec![crate::observe::accounts_query::NeedsRow {
+                sid: "s-1".into(),
+                needs,
+            }],
         }]
     }
 }

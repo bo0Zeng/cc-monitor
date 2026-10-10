@@ -129,7 +129,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
     "src/frontend/ui/terminal-front.ts", // bringActiveTerminalToFront 的 OS 门
     "src/frontend/ui/turn-notify.ts", // onLine：轮次结束通知
-    "src/frontend/ui/views/context-limit.ts", // snapshotSessions 的 context%
     "src/frontend/ui/views/facts-source.ts", // ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
   ],
   // ① 形状：只有类型。
@@ -195,7 +194,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）
-    "src/frontend/ui/session-words.ts", // 状态点的读屏名 · 等的是什么（`dotLabel` · `needsWord`，与设置里轮换规则的在用名单同一份）
     "src/frontend/ui/tab-drop.ts", // 照 `barRows` 一趟摆组与散的（组员聚在第一个组员那一格）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式

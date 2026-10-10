@@ -460,7 +460,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     paintTerminalActs();
     needsBar.render();
-    usageHud.setActive(a.model, a.promptTokens, a.contextLimit, a.limitFrom);
+    usageHud.setActive(a.usage);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);

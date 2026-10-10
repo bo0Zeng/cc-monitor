@@ -55,7 +55,9 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(self.rows.clone()) };
+        let list = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
+            Ok(self.rows.clone())
+        };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
@@ -382,8 +384,9 @@ fn a_tilde_directory_is_read_under_this_machines_home() {
 #[test]
 fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint() {
     let caps = BTreeSet::new();
-    let none = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(None) };
-    let some = || -> Result<Option<Vec<TmuxEntry>>, String> {
+    let none =
+        || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> { Ok(None) };
+    let some = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
         Ok(Some(vec![row("orders-cc", Some(SRC), true)]))
     };
     let mint = |b: NameBase| -> Result<String, crate::control::session_batch::CmdErr> {
@@ -399,26 +402,29 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         library: &library,
         last: &|_| None,
     };
-    let run = |list: &dyn Fn() -> Result<Option<Vec<TmuxEntry>>, String>, args: Value| {
-        let deps = Deps {
-            list,
-            record: &no,
-            kill: &|_, _| unreachable!(),
-            send_into: &|_, _, _| unreachable!(),
-            run_ccm: &|_| unreachable!(),
-            mint: &mint,
-            caps: &caps,
-            local_facts: local::Facts {
-                windows: false,
-                is_dir: |p| p == "/h/srv",
-                entry: || None,
-            },
-            accounts: &accounts,
-            writers: &|_| vec![],
-            pretrust: &|_, _| unreachable!("核目录不起会话"),
+    let run =
+        |list: &dyn Fn()
+            -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr>,
+         args: Value| {
+            let deps = Deps {
+                list,
+                record: &no,
+                kill: &|_, _| unreachable!(),
+                send_into: &|_, _, _| unreachable!(),
+                run_ccm: &|_| unreachable!(),
+                mint: &mint,
+                caps: &caps,
+                local_facts: local::Facts {
+                    windows: false,
+                    is_dir: |p| p == "/h/srv",
+                    entry: || None,
+                },
+                accounts: &accounts,
+                writers: &|_| vec![],
+                pretrust: &|_, _| unreachable!("核目录不起会话"),
+            };
+            dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
         };
-        dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
-    };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
         json!({ "exists": true, "tmuxName": "cwd:/h/srv" })

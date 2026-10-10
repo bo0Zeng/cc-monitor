@@ -397,7 +397,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     stub.indexRows = Array.from({ length: 1100 }, (_, k) => ({
       o: k * 10,
       n: 10,
-      t: "assistant",
+      t: "reply",
       u: `u${k}`,
       ch: 10,
       pl: 1,

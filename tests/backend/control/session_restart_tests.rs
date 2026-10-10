@@ -74,7 +74,9 @@ impl Rig {
             .map(str::to_string)
             .collect();
         let note = |s: String| self.calls.lock().unwrap().push(s);
-        let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(Some(self.rows.clone())) };
+        let list = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
+            Ok(Some(self.rows.clone()))
+        };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };

@@ -146,8 +146,8 @@ pub struct LiveMeta {
     pub name: Option<String>,
     pub activity: Option<SessionActivity>,
     /// `activity` 那一态写好的字与语气（那台核心写的，原样转交）。
-    pub activity_text: Option<String>,
-    pub activity_tone: Option<String>,
+    pub activity_text: String,
+    pub activity_tone: String,
     pub waiting_for: Option<String>,
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
@@ -173,8 +173,8 @@ pub enum In {
         origin: String,
         sid: String,
         activity: Option<SessionActivity>,
-        activity_text: Option<String>,
-        activity_tone: Option<String>,
+        activity_text: String,
+        activity_tone: String,
         waiting_for: Option<String>,
     },
     Left {
@@ -214,8 +214,8 @@ pub enum Out {
         origin: String,
         sid: String,
         activity: Option<SessionActivity>,
-        activity_text: Option<String>,
-        activity_tone: Option<String>,
+        activity_text: String,
+        activity_tone: String,
         waiting_for: Option<String>,
     },
     Left {

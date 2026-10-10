@@ -673,6 +673,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         is_session_file: |_| false,
         tree: None,
         turn_end: None,
+        class: None,
         chain: None,
         find_session: Some(find),
         branch: None,
@@ -684,6 +685,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         child_link: None,
         children: None,
         project_dir: None,
+        background: None,
     }
 }
 

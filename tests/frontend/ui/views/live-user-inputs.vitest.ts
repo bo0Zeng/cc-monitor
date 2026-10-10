@@ -325,7 +325,7 @@ describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", (
     return Array.from({ length: n }, (_, k) => ({
       o: k,
       n: 1,
-      t: "user",
+      t: "said",
       u: `u${k}`,
       ...(inputs[k] !== undefined ? { x: inputs[k], ts: `t${k}` } : {}),
     }));

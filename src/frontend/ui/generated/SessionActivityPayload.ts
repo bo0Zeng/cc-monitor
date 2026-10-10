@@ -9,4 +9,4 @@ export type SessionActivityPayload = { session_id: string, activity: SessionActi
 /**
  * `activity` 那一态写好的字与语气（那台核心写的：运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）。
  */
-activity_text: string | null, activity_tone: string | null, waiting_for: string | null, };
+activity_text: string, activity_tone: string, waiting_for: string | null, };

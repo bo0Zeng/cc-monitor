@@ -1,12 +1,21 @@
 {
   "history-facts": {
     "agent": "claude",
+    "background": null,
+    "bgTasks": [
+      {
+        "at": "2026-10-09T08:00:00.000Z",
+        "call": "tu-b1",
+        "cmd": "make test-all",
+        "task": "bb1"
+      }
+    ],
     "cost": {
       "micros": 424200,
       "partial": false,
       "text": "$0.42"
     },
-    "end": 1633,
+    "end": 2918,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -69,11 +78,17 @@
       "/w/a.ts"
     ],
     "usage": {
+      "contextText": "6",
+      "contextTone": "plain",
       "limit": 1000000,
       "limitFrom": "assumed",
+      "limitFromText": null,
+      "limitText": "1M",
       "model": "m-g",
       "peakPromptTokens": 6,
-      "promptTokens": 6
+      "percent": null,
+      "promptTokens": 6,
+      "promptTokensText": "6"
     },
     "writers": []
   },
@@ -103,15 +118,15 @@
     "total": 2
   },
   "history-index": {
-    "end": 476,
+    "end": 537,
     "from": 0,
     "rows": [
       {
         "ch": 14,
-        "n": 86,
+        "n": 100,
         "o": 0,
         "pl": 1,
-        "t": "user",
+        "t": "said",
         "ts": "t1",
         "u": "in-1",
         "x": "alpha zqx beta"
@@ -119,27 +134,27 @@
       {
         "ch": 9,
         "fd": 1,
-        "n": 175,
-        "o": 86,
+        "n": 194,
+        "o": 100,
         "pl": 1,
-        "t": "assistant",
+        "t": "reply",
         "u": "out-1"
       },
       {
         "ch": 4,
-        "n": 115,
-        "o": 262,
+        "n": 129,
+        "o": 295,
         "pl": 1,
         "sp": "system",
-        "t": "user",
+        "t": "said",
         "u": "meta-1"
       },
       {
         "ch": 5,
-        "n": 99,
-        "o": 377,
+        "n": 113,
+        "o": 424,
         "pl": 1,
-        "t": "user",
+        "t": "said",
         "ts": "t2",
         "u": "in-2",
         "x": "delta"
@@ -233,7 +248,7 @@
     ]
   },
   "history-user-inputs": {
-    "end": 476,
+    "end": 537,
     "entries": [
       {
         "excerpt": "alpha zqx beta",

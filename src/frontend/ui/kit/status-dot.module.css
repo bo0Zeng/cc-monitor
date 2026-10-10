@@ -32,6 +32,11 @@
     background: var(--warn);
   }
 
+  /* 后台任务运行中：单独一色、不呼吸（与「运行中」分在颜色那一轴，静止一帧也分得开）。 */
+  .dot[data-state="background"] {
+    background: var(--bgwork);
+  }
+
   .dot[data-state="idle"] {
     background: var(--text-2);
   }

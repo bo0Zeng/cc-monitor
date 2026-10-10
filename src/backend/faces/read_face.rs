@@ -494,6 +494,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 &facts.pending,
                 accounts_query::session_wait(home, sid).as_ref(),
             );
+            // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
+            facts.background = accounts_query::session_background(home, sid).map(|born| {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+                facts_query::background_of(&facts.bg_tasks, born, now)
+            });
             // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。这一家不留 pidfile ⇒ 判不了活。
             let tracked = facts
                 .agent
@@ -508,6 +515,10 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             }
             Ok(v)
         }
+        // 这台上需手动的会话清单（一次问一台）：活着、那台说在等人的每一个，带它在等什么（同 `history-facts.needs`，不另判）。
+        "sessions-needs" => crate::stream::inbound::spec::wire(&NeedsList {
+            waiting: accounts_query::live_needs(home),
+        }),
         // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
         "history-branch" => {
             let path = str_arg(args, "path")?;
@@ -620,6 +631,12 @@ pub(crate) struct Searched {
     pub(crate) unreadable: usize,
     /// 内容搜索不覆盖、这台上又有它的会话记录的那几家。
     pub(crate) skipped: Vec<&'static str>,
+}
+
+/// `sessions-needs` 的应答：这台上需手动的会话，先答的在前。
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct NeedsList {
+    pub(crate) waiting: Vec<crate::observe::accounts_query::NeedsRow>,
 }
 
 /// `history-branch` 的应答。

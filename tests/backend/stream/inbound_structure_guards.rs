@@ -267,6 +267,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-turns" // 一轮的摘要：扫一段会话，同档
                 | "history-branch" // 主线外清单：扫一份会话（共用扫描图），同档
                 | "history-facts" // 会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
+                | "sessions-needs" // 需手动的清单：读这台的 pidfile、在等的那几份各扫一份会话（共用扫描图），同档
                 | "history-read"
                 | "history-lines" // 按行号取回：从文件头数，同档
                 | "history-record" // 记录还在不在：一次目录枚举，同档
@@ -537,6 +538,7 @@ fn every_registered_command_declares_its_run_kind() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "sessions-needs",
         "history-branch",
         "history-read",
         "history-lines",  //
@@ -1138,6 +1140,12 @@ use typed_replies::*;
 #[allow(clippy::type_complexity)]
 const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     (
+        "sessions-needs",
+        sampled::<crate::faces::read_face::NeedsList>,
+        &["needs", "sid"],
+        &[],
+    ),
+    (
         "plan-command",
         sampled::<crate::plan::wire::PlanCmdReply>,
         &[],
@@ -1352,6 +1360,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const CC_BUS_CONTROL: &str = include_str!("../../__fixtures__/cc-bus-control.golden.json");
     const CC_BUS_READ: &str = include_str!("../../__fixtures__/cc-bus-read.golden.json");
     const CCM_PROBE: &str = include_str!("../../__fixtures__/ccm-probe.golden.json");
+    const CELLS_CATALOG: &str = include_str!("../../__fixtures__/cells-catalog.golden.json");
     const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
@@ -1377,6 +1386,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
         ("apikey-read", APIKEY, "/apikey-read", &[], &[]),
         ("apikey-routing", APIKEY, "/apikey-routing", &[], &[]),
+        ("cells-catalog", CELLS_CATALOG, "", &[], &[]),
         (
             "bus-list",
             CC_BUS_CONTROL,
@@ -1637,9 +1647,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "cc-bus-install",
         "cc-bus-install-state",
         "ccm-print",
-        // 〔mg37 合并〕下面两条是与本表并行的两路（core1 · pbui）带进来的新命令，合进来时本表已立「只许删」：
-        //   先列在这里（今天对不了，不说成对过了），各自的真序列化金样补上就挪进 `SHAPED`。
-        "cells-catalog",
         "chores-mark",
         "data-report",
         "drift-report",

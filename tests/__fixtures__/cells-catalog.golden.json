@@ -1,0 +1,1114 @@
+{
+  "pending": [],
+  "products": [
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "agent",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "at",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "t",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "timeText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.pasted[].bodyEnd",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.pasted[].bodyStart",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.pasted[].end",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.pasted[].id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.pasted[].lines",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.pasted[].start",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.speaker.kind",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=queued}.who.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.autoReply",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.blocks[].type",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.blocks[type=text].text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.blocks[type=thinking].text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.blocks[type=tool_use].id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.blocks[type=tool_use].input",
+          "type": "object"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.blocks[type=tool_use].name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.cards.*",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.endsTurn",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.error.reason",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.error.status",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.model",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.runs.*.kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.runs.*.label",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.arg",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.known",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.note",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.path",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=reply}.steps.*.tool",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=retry}.attempt",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=retry}.max",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=retry}.reason",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[].type",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=image].source",
+          "type": "object"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=text].text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[].type",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[type=image].source",
+          "type": "object"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[type=text].text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].for",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].isError",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.cwd",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.added",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.answer.kind",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.answer{kind=picked}.options[]",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.exitCode",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.file",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.files",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.lines",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.ok",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.patchTruncated",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.patch[].lines[]",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.patch[].newLines",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.patch[].newStart",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.patch[].oldLines",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.patch[].oldStart",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.rejected",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.results.*.removed",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.pasted[].bodyEnd",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.pasted[].bodyStart",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.pasted[].end",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.pasted[].id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.pasted[].lines",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.pasted[].start",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker.kind",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.from",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.handback",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashInput}.command",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stderr",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stdout",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=coordinator}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=peerSession}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=peerSession}.from",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=slashCommand}.args",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=slashCommand}.name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=system}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.status",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.summary",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.taskId",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.toolUseId",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=title}.by",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "{t=title}.text",
+          "type": "string"
+        }
+      ],
+      "frozen": true,
+      "name": "record"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "agent",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "background.clock.from",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "background.clock.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "background.count",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "background.text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "background.tone",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "background.what",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].at",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].call",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].cmd",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "bgTasks[].task",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "cost.micros",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "cost.partial",
+          "type": "bool"
+        },
+        {
+          "kind": "text",
+          "path": "cost.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "end",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "forkedFrom",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "handedBack[]",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "lastSay.at",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "lastSay.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.call",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.kind",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "needs.rank",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "needs.sinceMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "needs.tone",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "needs.tool",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.waitedMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.waitedText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.what",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].at",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].state",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].what",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].why",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "permissionMode",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "projectDir",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "retries[].id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "retries[].outcome",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.cacheRead",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.cacheWrite1h",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.cacheWrite5m",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.input",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.last.id",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.last.tokens[]",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.output",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "tokens.requests",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "tokens.text",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "touchedFiles[]",
+          "type": "string"
+        },
+        {
+          "kind": "text",
+          "path": "usage.contextText",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "usage.contextTone",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "usage.limit",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "usage.limitFrom",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "usage.limitFromText",
+          "type": "string"
+        },
+        {
+          "kind": "text",
+          "path": "usage.limitText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "usage.model",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "usage.peakPromptTokens",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "usage.percent",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "usage.promptTokens",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "usage.promptTokensText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "writers[]",
+          "type": "number"
+        }
+      ],
+      "frozen": false,
+      "name": "facts"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "needs.call",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.kind",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "needs.rank",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "needs.sinceMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "needs.tone",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "needs.tool",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.waitedMs",
+          "type": "number"
+        },
+        {
+          "kind": "text",
+          "path": "needs.waitedText",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "needs.what",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "sid",
+          "type": "string"
+        }
+      ],
+      "frozen": false,
+      "name": "needs_row"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "cb",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "ch",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "cj",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "cl",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "fd",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "n",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "o",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "pl",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "sc",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "sp",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "t",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "ts",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "u",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "x",
+          "type": "string"
+        }
+      ],
+      "frozen": false,
+      "name": "index_row"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "cwd",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "end",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "hash",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "record",
+          "type": "object"
+        }
+      ],
+      "frozen": true,
+      "name": "read_row"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "activity",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "activity_text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "activity_tone",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "agent_kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "attachable",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "background",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "container.host",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "container.terminal",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "cwd",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "lines",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "liveness_confidence",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "path",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pid",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "project_dir",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "sid",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "waiting_for",
+          "type": "string"
+        }
+      ],
+      "frozen": false,
+      "name": "session_added"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "activity",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "activity_text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "activity_tone",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "liveness_confidence",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "sid",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "waiting_for",
+          "type": "string"
+        }
+      ],
+      "frozen": false,
+      "name": "session_status"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "sid",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "state",
+          "type": "enum"
+        },
+        {
+          "kind": "text",
+          "path": "state_hint",
+          "type": "string"
+        },
+        {
+          "kind": "text",
+          "path": "state_text",
+          "type": "string"
+        },
+        {
+          "kind": "tone",
+          "path": "state_tone",
+          "type": "enum"
+        }
+      ],
+      "frozen": false,
+      "name": "session_state"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "cause",
+          "type": "enum"
+        },
+        {
+          "kind": "value",
+          "path": "kind",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "sid",
+          "type": "string"
+        }
+      ],
+      "frozen": false,
+      "name": "session_removed"
+    }
+  ]
+}

@@ -114,6 +114,30 @@ pub enum Body {
     Queued { who: UserText },
 }
 
+/// 通用记录的类（记录上 `t` 那一格的五个词；骨架行 `t` 也是它）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RecordClass {
+    Said,
+    Reply,
+    Retry,
+    Title,
+    Queued,
+}
+
+impl Body {
+    /// 这条记录的类。
+    pub fn class(&self) -> RecordClass {
+        match self {
+            Self::Said { .. } => RecordClass::Said,
+            Self::Reply { .. } => RecordClass::Reply,
+            Self::Retry { .. } => RecordClass::Retry,
+            Self::Title { .. } => RecordClass::Title,
+            Self::Queued { .. } => RecordClass::Queued,
+        }
+    }
+}
+
 /// 报错回复的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

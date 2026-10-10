@@ -128,11 +128,45 @@ fn corpus(name: &str) -> Vec<Value> {
             let wait = crate::observe::facts_query::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
+                read_at_ms: 0,
             };
             f["needs"] =
                 serde_json::to_value(crate::observe::facts_query::needs_of(&pending, Some(&wait)))
                     .unwrap();
+            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
+            let tasks: Vec<crate::observe::facts_query::BgTask> =
+                serde_json::from_value(f["bgTasks"].clone()).unwrap();
+            f["background"] = serde_json::to_value(crate::observe::facts_query::background_of(
+                &tasks,
+                None,
+                u64::MAX / 2,
+            ))
+            .unwrap();
             vec![f]
+        }
+        // 清单那一行用真判定现造（金样生成那一处不起进程，答不出非空的清单）。
+        "needs_row" => {
+            let pending = vec![crate::observe::facts_query::PendingCall {
+                id: "c".into(),
+                name: "Bash".into(),
+                what: Some("ls".into()),
+                at: None,
+                state: crate::observe::facts_query::StepWait::Running,
+                why: None,
+            }];
+            let wait = crate::observe::facts_query::PidWait {
+                waiting_for: Some(crate::agents::WaitOn::Permission),
+                since_ms: Some(1),
+                read_at_ms: 2,
+            };
+            let needs = crate::observe::facts_query::needs_of(&pending, Some(&wait)).unwrap();
+            vec![
+                serde_json::to_value(crate::observe::accounts_query::NeedsRow {
+                    sid: "s".into(),
+                    needs,
+                })
+                .unwrap(),
+            ]
         }
         "index_row" => {
             let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();
@@ -149,6 +183,20 @@ fn corpus(name: &str) -> Vec<Value> {
             );
             rows
         }
+        // 行摘要：真走读核（Claude 那一家）读金样记录的原文，再加一行不进界面的（只有 `{end, hash}`）与一截残尾（`end` 是 null）。
+        "read_row" => {
+            let page = format!(
+                "{}\n{}\n{{torn",
+                r#"{"type":"user","uuid":"u1","timestamp":"2026-10-09T01:30:00.000Z","cwd":"/w","message":{"role":"user","content":"q"}}"#,
+                r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
+            );
+            let face = crate::agents::claudecode::RECORDS;
+            let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], false);
+            crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
+                .into_iter()
+                .map(|r| serde_json::to_value(r).unwrap())
+                .collect()
+        }
         frame => golden("session-stream.golden.jsonl")
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap())
@@ -156,13 +204,6 @@ fn corpus(name: &str) -> Vec<Value> {
             .collect(),
     }
 }
-
-/// 反方向（目录 ⊆ 金样）不对拍的成品，写为什么。只许减不许增。
-const GOLDEN_TOO_THIN: &[(&str, &str)] = &[(
-    "record",
-    "记录金样只有 11 条样例（说话人十四种只见过一种）；目录 ⊆ 线上由 `the_catalog_is_what_serde_writes_for_the_specimens` 钉，\
-     金样扩全之后删掉这一行",
-)];
 
 /// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）。
 #[test]
@@ -174,8 +215,7 @@ fn every_specimen_fills_every_cell() {
     }
 }
 
-/// ★★ 目录对真代码写出来的成品（跨语言金样），两向：金样里见到的每一格都在目录里；目录里的每一格在金样里都见得到
-/// （金样太薄的成品登记在 [`GOLDEN_TOO_THIN`]，只查前一向）。
+/// ★★ 目录对真代码写出来的成品（跨语言金样），两向：金样里见到的每一格都在目录里；目录里的每一格在金样里都见得到。
 #[test]
 fn the_catalog_equals_the_cells_real_products_serialize() {
     for p in PRODUCTS {
@@ -197,20 +237,11 @@ fn the_catalog_equals_the_cells_real_products_serialize() {
             p.name
         );
         let unseen: Vec<&String> = cat.keys().filter(|k| !real.contains(*k)).collect();
-        let thin = GOLDEN_TOO_THIN.iter().any(|(n, _)| *n == p.name);
-        if thin {
-            assert!(
-                !unseen.is_empty(),
-                "成品 {} 的金样已经覆盖全了 —— 从 GOLDEN_TOO_THIN 里删掉它",
-                p.name
-            );
-        } else {
-            assert!(
-                unseen.is_empty(),
-                "成品 {} 目录里有、金样里见不到的格：{unseen:#?}",
-                p.name
-            );
-        }
+        assert!(
+            unseen.is_empty(),
+            "成品 {} 目录里有、金样里见不到的格：{unseen:#?}",
+            p.name
+        );
     }
 }
 
@@ -258,17 +289,20 @@ fn a_cell_is_text_only_when_its_type_says_so() {
     assert_eq!(catalog_of("facts")["usage.limitFrom"].ty, "enum");
 }
 
-/// 缺格表：每一行的成品在目录里、那一格还不在（落地了就删那一行）。
+/// 缺格表：每一行的成品在目录里、那一格还不在（落地了就删那一行）。表空着也是真话（今天一格都不缺）。
 #[test]
 fn pending_cells_are_not_in_the_catalog_yet() {
-    assert!(!PENDING.is_empty(), "缺格表空了 —— 删掉本条与 PENDING");
     for c in PENDING {
-        let cat = catalog_of(c.product);
-        let landed = cat.contains_key(c.path);
         assert!(
-            !landed,
+            PRODUCTS.iter().any(|p| p.name == c.product),
+            "缺格表里的成品 {} 不在目录里",
+            c.product
+        );
+        assert!(
+            !catalog_of(c.product).contains_key(c.path),
             "{}.{} 已经落地 —— 从 PENDING 里删掉那一行",
-            c.product, c.path
+            c.product,
+            c.path
         );
     }
 }
@@ -290,4 +324,53 @@ fn the_frame_command_answers_the_catalog() {
         .collect();
     assert_eq!(names, PRODUCTS.iter().map(|p| p.name).collect::<Vec<_>>());
     assert_eq!(v["pending"].as_array().unwrap().len(), PENDING.len());
+}
+
+/// 金样重写开关（人读过「现打」再落盘）。
+const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
+
+/// ★ 格目录的金样 ＝ 帧命令真写出来的那一份（出口不起后端也能读；注册表出参对拍也用它）。改了成品就重写：
+/// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
+///
+/// 冻结的成品（[`Product::frozen`]）只许加格：金样里它有的每一格，目录里还得在、类别与类型不变 —— 先于重写判，
+/// 所以删 / 改名 / 换类型重写金样也不放行（要删得先手改金样，那是一次有意的协议变化）。
+#[test]
+fn the_golden_is_what_the_command_writes() {
+    let now = catalog();
+    let got = format!("{}\n", serde_json::to_string_pretty(&now).unwrap());
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/__fixtures__/cells-catalog.golden.json");
+    let had: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_default())
+        .unwrap_or(Value::Null);
+    let cells = |v: &Value, name: &str| -> Vec<Value> {
+        v["products"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|p| p["name"] == name)
+            .and_then(|p| p["cells"].as_array().cloned())
+            .unwrap_or_default()
+    };
+    let frozen: Vec<&Product> = PRODUCTS.iter().filter(|p| p.frozen).collect();
+    assert!(!frozen.is_empty(), "一件冻结的成品都没有 —— 本条在空转");
+    for p in frozen {
+        let kept = cells(&had, p.name);
+        assert!(
+            !kept.is_empty(),
+            "冻结的成品 {} 在落盘的金样里一格都没有 —— 先把它连同格写进金样",
+            p.name
+        );
+        let now = cells(&now, p.name);
+        let lost: Vec<&Value> = kept.iter().filter(|c| !now.contains(c)).collect();
+        assert!(
+            lost.is_empty(),
+            "冻结的成品 {} 少了格或格换了样（两个前端在读，只许加）：{lost:#?}",
+            p.name
+        );
+    }
+    if std::env::var_os(REGEN).is_some() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(got == want, "格目录与金样不一致（{REGEN}=1 重写）");
 }

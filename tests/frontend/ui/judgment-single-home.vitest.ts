@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -552,6 +552,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "复制详情条带「首行永远就是屏上那句」—— CLI 面的失败给人看那一形与界面复制出去的那一段是同一段字",
   },
+  J28: {
+    what: "短时长（N5：45s · 6m · 1h50m · 3d）⇒ 会话状态一句里会走的那一截",
+    homes: ["copy-core::short_duration"],
+    // 认可的双读口（与 J24 同理）：核心写状态一句那一刻填一次（手机 · CLI 照抄、按节拍重问），桌面秒级走字只留这一个读口，各对同一份金样。
+    status: "mirror",
+    defs: ["fmtDur"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/short-duration.golden.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/short-duration.vitest.ts"],
+    },
+    why: "ARCHITECTURE §2.9「会走的钟」：桌面秒级走的那几处只留一个时长读口，与 Rust 那一份对同一份金样",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -596,6 +609,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     copy_text: "J11",
     format_duration: "J24",
     format_elapsed: "J24",
+    short_duration: "J28",
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",

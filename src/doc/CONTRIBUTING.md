@@ -45,7 +45,7 @@
 以 claude 新加一种 `type=memory_recall` 记录为例。
 
 1. 后端 `src/backend/agents/claudecode/schema.rs` 的 `JsonlRecord` 加变体（`#[serde(rename = "memory_recall")]`，字段一律 `#[serde(default)]`）。这是 Claude 盘上格式的读法，只住这一家的适配层，不导出给界面。
-2. `record_of.rs` 决定它翻成哪一类通用记录（`agents/record.rs`：said / reply / retry / title / queued），不进界面的就不出记录（缺 ＝ 不进界面、照占号）。能用已有的类与格表达就不加类；非加不可的新格先进冻结表（IPC-PROTOCOL.md §7），两个前端同拍。
+2. `record_of.rs` 决定它翻成哪一类通用记录（`agents/record.rs`：said / reply / retry / title / queued），不进界面的就不出记录（缺 ＝ 不进界面、照占号）。能用已有的类与格表达就不加类；非加不可的新格随格目录金样重写（`record` 在格目录里是冻结的成品，见 IPC-PROTOCOL.md §7），两个前端同拍。
 3. 链：带 `uuid` ＋ `parentUuid` 的记录由 `chain.rs` 自动进链（不进界面也进），主线外清单才不会在它这里断；别让它在 `parse_line` 里静默丢（未知 type 抢救成 `Unrecognized`，INVARIANTS §18.1）。
 4. 在 `tests/backend/agents/claudecode/parse_tests.rs` 加一条能解析成功的样本、在 `record_of_tests.rs` 加它翻出来的成品。样本只采结构、不采真会话正文。
 5. 通用记录的形状变了才要 `npm run gen:types`（重生成 `src/frontend/ui/generated/LineRecord.ts` 一族；`npm run check:types` 会查它与 Rust 一致）。界面 `src/frontend/ui/cards/index.ts` 的 `renderMessage` 只按 `t` 与格排版。

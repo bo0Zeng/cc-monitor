@@ -346,6 +346,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 各账号共用的用户级 MCP 此刻的样子：同上，问的就是「这台」，不收参数。
         "accounts-mcp-read",
         "accounts-sessions",
+        // 这台上需手动的会话清单：问的就是「这台」此刻在等人的那几个，不收参数（手机一次问一台）。
+        "sessions-needs",
         "bus-list",
         "bus-state",
         // `files-home`：问这台机器的 home，无入参、有输出字段 `path`。

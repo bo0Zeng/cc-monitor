@@ -290,42 +290,6 @@
   color: var(--text-faint);
 }
 
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--live);
-  flex-shrink: 0;
-}
-
-/* F91：mission-control grid 的红绿灯点——类直接叠在 .live-dot 上（cell 无 .tab 祖先），
-   语义/配色与 tab-bar 一致（同 var token，用户改主题一起跟）。 */
-.live-dot.act-idle {
-  background: var(--error);
-}
-
-.live-dot.act-waiting {
-  background: var(--warn);
-  animation: act-waiting-pulse 1.2s ease-in-out infinite;
-}
-
-/* audit-fixes F03.2：grid cell 的可重连暗色灯（同 tab-bar，覆写红绿黄、停呼吸）。 */
-.live-dot.reconnectable,
-.live-dot.unseen {
-  background: var(--text-faint);
-  animation: none;
-}
-
-@keyframes act-waiting-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
 /* issue #23：agent 页的行。态类 `agent-<态>` 由后端的运行表给（五态）。 */
 .agent-row {
   display: flex;
@@ -2650,8 +2614,9 @@
 }
 
 .tab-group-name {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
+  max-width: 50%;
   overflow: hidden;
   padding: 0;
   border: 0;
@@ -2670,14 +2635,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 汇总放不下时它收（截掉尾上那几枚），组名留着（组名自己至多占一半宽）。 */
 .tab-group-sum {
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .tab-group-chip {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 3px;
   font-variant-numeric: tabular-nums;

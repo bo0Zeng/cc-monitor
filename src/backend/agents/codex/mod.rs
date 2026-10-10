@@ -33,6 +33,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     // 会话按日期分、不住按项目分的记录树（历史由合成历史面并进来）。
     tree: None,
     turn_end: None,
+    class: None,
     chain: None,
     // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
     find_session: None,
@@ -45,6 +46,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     response_id: None,
     run_of: None,
     child_link: None,
+    background: None,
     children: None,
     project_dir: Some(history::project_dir),
 };

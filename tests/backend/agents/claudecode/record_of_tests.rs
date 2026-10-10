@@ -64,6 +64,90 @@ const CASES: &[(&str, &str)] = &[
         "queued",
         r#"{"type":"queue-operation","operation":"remove","content":"also do this","timestamp":"2026-10-09T01:30:08.000Z"}"#,
     ),
+    (
+        "said-pasted",
+        r#"{"type":"user","uuid":"u-said-pasted","timestamp":"2026-10-09T01:31:09.000Z","message":{"role":"user","content":"see <pasted_content id=\"p1\">\nA\nB\n</pasted_content id=\"p1\"> end"}}"#,
+    ),
+    (
+        "said-read",
+        r#"{"type":"user","uuid":"u-said-read","timestamp":"2026-10-09T01:31:10.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-4","content":[{"type":"text","text":"x"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}],"is_error":false}]},"toolUseResult":{"file":{"numLines":3},"numFiles":2}}"#,
+    ),
+    (
+        "said-exit",
+        r#"{"type":"user","uuid":"u-said-exit","timestamp":"2026-10-09T01:31:11.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-5","content":"Exit code 2\nboom","is_error":true}]}}"#,
+    ),
+    (
+        "said-rejected",
+        r#"{"type":"user","uuid":"u-said-rejected","timestamp":"2026-10-09T01:31:12.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-6","content":"User rejected tool use","is_error":false}]}}"#,
+    ),
+    (
+        "said-plan",
+        r#"{"type":"user","uuid":"u-said-plan","timestamp":"2026-10-09T01:31:13.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-7","content":"ok","is_error":false}]},"toolUseResult":{"plan":"p"}}"#,
+    ),
+    (
+        "said-picked",
+        r#"{"type":"user","uuid":"u-said-picked","timestamp":"2026-10-09T01:31:14.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-8","content":"ok","is_error":false}]},"toolUseResult":{"answers":{"Q":"A"}}}"#,
+    ),
+    (
+        "said-patch-partial",
+        r#"{"type":"user","uuid":"u-said-patch-partial","timestamp":"2026-10-09T01:31:15.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-9","content":"ok","is_error":false}]},"toolUseResult":{"filePath":"/w/b.txt","structuredPatch":[{"oldStart":1,"oldLines":1,"newStart":1,"newLines":1,"lines":["-a","+b"]},{"lines":["+c"]}]}}"#,
+    ),
+    (
+        "said-slash",
+        r#"{"type":"user","uuid":"u-said-slash","timestamp":"2026-10-09T01:31:16.000Z","message":{"role":"user","content":"<command-name>/review</command-name><command-args>x</command-args>"}}"#,
+    ),
+    (
+        "said-bash-input",
+        r#"{"type":"user","uuid":"u-said-bash-input","timestamp":"2026-10-09T01:31:17.000Z","message":{"role":"user","content":"<bash-input>ls</bash-input>"}}"#,
+    ),
+    (
+        "said-bash-output",
+        r#"{"type":"user","uuid":"u-said-bash-output","timestamp":"2026-10-09T01:31:18.000Z","message":{"role":"user","content":"<bash-stdout>o</bash-stdout><bash-stderr>e</bash-stderr>"}}"#,
+    ),
+    (
+        "said-command-output",
+        r#"{"type":"user","uuid":"u-said-command-output","timestamp":"2026-10-09T01:31:19.000Z","message":{"role":"user","content":"<local-command-stdout>done</local-command-stdout>"}}"#,
+    ),
+    (
+        "said-task-notification",
+        r#"{"type":"user","uuid":"u-said-task-notification","timestamp":"2026-10-09T01:31:20.000Z","message":{"role":"user","content":"<task-notification><task-id>t1</task-id><tool-use-id>call-1</tool-use-id><status>completed</status><summary>finished</summary></task-notification>"},"origin":{"kind":"task-notification"}}"#,
+    ),
+    (
+        "said-agent-message",
+        r#"{"type":"user","uuid":"u-said-agent-message","timestamp":"2026-10-09T01:31:21.000Z","message":{"role":"user","content":"<agent-message from=\"w1\">report</agent-message>"},"origin":{"kind":"peer","from":"w1","name":"worker","handback":true,"body":"report"}}"#,
+    ),
+    (
+        "said-peer-session",
+        r#"{"type":"user","uuid":"u-said-peer-session","timestamp":"2026-10-09T01:31:22.000Z","message":{"role":"user","content":"<cross-session-message from=\"s2\">hi</cross-session-message>"},"origin":{"kind":"peer","from":"s2","body":"hi"}}"#,
+    ),
+    (
+        "said-coordinator",
+        r#"{"type":"user","uuid":"u-said-coordinator","timestamp":"2026-10-09T01:31:23.000Z","message":{"role":"user","content":"x"},"origin":{"kind":"coordinator","body":"check"}}"#,
+    ),
+    (
+        "said-agent-task",
+        r#"{"type":"user","uuid":"u-said-agent-task","timestamp":"2026-10-09T01:31:24.000Z","message":{"role":"user","content":"go scan"},"isSidechain":true}"#,
+    ),
+    (
+        "said-system",
+        r#"{"type":"user","uuid":"u-said-system","timestamp":"2026-10-09T01:31:25.000Z","message":{"role":"user","content":"<system-reminder>r</system-reminder>"},"isMeta":true}"#,
+    ),
+    (
+        "said-compact-summary",
+        r#"{"type":"user","uuid":"u-said-compact-summary","timestamp":"2026-10-09T01:31:26.000Z","message":{"role":"user","content":"This session is being continued from a previous conversation. Summary."},"isCompactSummary":true}"#,
+    ),
+    (
+        "said-interrupt",
+        r#"{"type":"user","uuid":"u-said-interrupt","timestamp":"2026-10-09T01:31:27.000Z","message":{"role":"user","content":"[Request interrupted by user]"}}"#,
+    ),
+    (
+        "reply-step-note",
+        r#"{"type":"assistant","uuid":"a-note","timestamp":"2026-10-09T01:31:28.000Z","message":{"role":"assistant","model":"model-x","content":[{"type":"tool_use","id":"call-10","name":"Bash","input":{"command":"ls","description":"list"}}]}}"#,
+    ),
+    (
+        "queued-pasted",
+        r#"{"type":"queue-operation","operation":"remove","content":"see <pasted_content id=\"p2\">\nA\n</pasted_content id=\"p2\">","timestamp":"2026-10-09T01:31:29.000Z"}"#,
+    ),
 ];
 
 #[test]
@@ -90,6 +174,53 @@ fn every_kind_matches_the_golden_full_and_minimal() {
         got, want,
         "通用记录与金样不一致（{REGEN}=1 重写）。现打：\n{got}"
     );
+}
+
+/// ★ 便宜的判类（骨架行的 `t`）与整条翻译给的类逐条一致：金样每一条 · 不进界面的几类 · 各条去掉任意一格顶层字段
+/// （必填格缺了盘上形状就认不出、不出记录）· 秤的原文语料（`scale2-height-records.jsonl`）每一行。
+#[test]
+fn the_cheap_class_agrees_with_the_record() {
+    let root = crate::guard_support::repo_root();
+    let scale =
+        std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
+            .unwrap();
+    let mut lines: Vec<String> = CASES.iter().map(|(_, raw)| raw.to_string()).collect();
+    lines.extend(
+        [
+            r#"{"type":"attachment","uuid":"x","timestamp":"t","parentUuid":"p"}"#,
+            r#"{"type":"system","subtype":"local_command","uuid":"x","timestamp":"t"}"#,
+            r#"{"type":"permission-mode","permissionMode":"plan","sessionId":"s"}"#,
+            r#"{"type":"queue-operation","operation":"enqueue","content":"x","timestamp":"t"}"#,
+            r#"{"type":"queue-operation","operation":"remove","content":"<bash-input>ls</bash-input>"}"#,
+            r#"{"type":"some-new-kind","uuid":"x","timestamp":"t"}"#,
+        ]
+        .map(str::to_string),
+    );
+    for (_, raw) in CASES {
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for k in v.as_object().unwrap().keys().filter(|k| *k != "type") {
+            let mut cut = v.clone();
+            cut.as_object_mut().unwrap().remove(k);
+            lines.push(cut.to_string());
+        }
+    }
+    lines.extend(
+        scale
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(str::to_string),
+    );
+    let mut seen = std::collections::BTreeSet::new();
+    for raw in &lines {
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let want = crate::agents::claudecode::parse::parse_line(raw)
+            .unwrap()
+            .and_then(|r| record_of(r, "L1"))
+            .map(|r| r.body.class());
+        assert_eq!(class_of(&v), want, "{raw}");
+        seen.insert(format!("{want:?}"));
+    }
+    assert_eq!(seen.len(), 6, "五类 ＋ 不出记录都得见到：{seen:?}");
 }
 
 #[test]

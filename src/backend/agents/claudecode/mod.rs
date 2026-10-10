@@ -30,6 +30,8 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
+// 后台命令在记录里的样子（起 · 任务号 · 收场通知）。
+pub(crate) mod background;
 // 分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
 pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
@@ -185,6 +187,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         file_name: records::session_file_name,
     }),
     turn_end: Some(turn::turn_end_uuid_of),
+    class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
@@ -202,6 +205,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     response_id: Some(runs::response_id),
     run_of: Some(runs::run_of),
     child_link: Some(runs::child_link),
+    background: Some(background::marks),
     children: Some(super::ChildFace {
         sources: runs::sources,
         owner: runs::owner,

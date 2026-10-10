@@ -89,6 +89,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "history-run",
     // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
     "machine-interrupts",
+    // 这台上需手动的会话清单（一次问一台；手机端要的，桌面这一侧今天不发它）。
+    "sessions-needs",
 ];
 
 // 按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。

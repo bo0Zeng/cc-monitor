@@ -340,6 +340,7 @@ fn records_face(
         is_session_file,
         tree: Some(crate::agents::RecordTree { root, file_name }),
         turn_end: None,
+        class: None,
         chain: Some(chain_fact),
         find_session: None,
         branch: None,
@@ -349,6 +350,7 @@ fn records_face(
         response_id: None,
         run_of: None,
         child_link: None,
+        background: None,
         children: None,
         project_dir: None,
     }

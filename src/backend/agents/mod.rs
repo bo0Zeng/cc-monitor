@@ -396,6 +396,9 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
+    /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
+    pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
     pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
@@ -416,6 +419,8 @@ pub(crate) struct RecordFace {
     pub(crate) child_link: Option<fn(&serde_json::Value) -> Vec<ChildLink>>,
     /// 子运行的记录住哪（由父记录路径推出）。`None` ＝ 这一家没有单独存放的子运行记录。
     pub(crate) children: Option<ChildFace>,
+    /// 一条记录里说到后台命令的那几笔（起了一条 · 它拿到了任务号 · 它收场了）。`None` ＝ 这一家没有后台命令。
+    pub(crate) background: Option<fn(&serde_json::Value) -> Vec<BgMark>>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
 }
@@ -531,6 +536,34 @@ pub(crate) struct ChildLink {
     pub(crate) error: Option<String>,
     /// 后台派出：派出那一方当场拿到的只是「已启动」，没等它。
     pub(crate) background: bool,
+}
+
+/// 后台命令的一笔账（适配层从那一家的记录翻过来，与哪一家无关）：
+/// 起了一条（工具调用 id · 那条命令原样）· 它当场拿到了任务号 · 它收场了（完成 / 失败 / 被叫停都算，只认是哪一条）。
+/// 哪几条此刻还在跑、句子怎么写在核心（`observe::facts_query`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BgMark {
+    Started {
+        call: String,
+        cmd: Option<String>,
+    },
+    Named {
+        call: String,
+        task: String,
+    },
+    Ended {
+        call: Option<String>,
+        task: Option<String>,
+    },
+}
+
+/// 一条已解析的记录里说到后台命令的那几笔（[`RecordFace::background`]，按记录树那一家问；那一家没有 ⇒ 空）。
+pub(crate) fn background_marks(v: &serde_json::Value) -> Vec<BgMark> {
+    record_tree_kind()
+        .and_then(record_face)
+        .and_then(|r| r.background)
+        .map(|f| f(v))
+        .unwrap_or_default()
 }
 
 /// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。
@@ -949,6 +982,11 @@ pub(crate) fn run_faces(kind: &str) -> RunFaces {
 }
 
 /// `kind` 那一家的一条已解析记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
+/// `kind` 那一家这条记录会翻成哪一类通用记录（骨架行的 `t`）；那一家答不了 ⇒ `None`。
+pub(crate) fn record_class_of(kind: &str, v: &serde_json::Value) -> Option<record::RecordClass> {
+    record_face(kind).and_then(|r| r.class).and_then(|f| f(v))
+}
+
 pub(crate) fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark> {
     run_faces(kind).run_of(v)
 }

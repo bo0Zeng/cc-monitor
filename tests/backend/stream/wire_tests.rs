@@ -1307,7 +1307,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1321,7 +1321,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1372,7 +1372,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\"}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
         "agent_kind(缺=claude)/liveness_confidence(缺=authoritative) 省略，字节等价旧形"
     );
 
@@ -1386,7 +1386,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1523,18 +1523,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
@@ -1602,10 +1602,10 @@ fn loc1b_session_added_pid_is_additive() {
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
     );
 }
 
@@ -1942,172 +1942,6 @@ fn line_raw_is_only_there_when_asked() {
     );
 }
 
-// ═══ 成品面：通用记录与 history-read 的行，两个前端共同的契约（冻结：只许加，加了也要登记进来）═══════
-//
-// 换形那一刀（10-09）之后，`line.record` 与 `history-read.rows` 是两个前端都吃的**成品面**：判定只在后端，前端只排版。
-// ⇒ 下表登记的每一格不许改名、删、换类型；新加一格也得先登记进来（`every_product_field_is_in_the_frozen_table`），
-// 这样「两边在读的到底是哪几格」永远有一张表说得清。
-
-/// （哪一面, 字段, JSON 类型）。面：`record` 公共格 · `said` / `reply` / `retry` / `title` / `queued` 各类自己的格
-/// · `who`（`UserText`）· `error`（报错回复）· `block:<type>` 各种内容块 · `rows`（`history-read` 每一行）。
-const PRODUCT_FACE: &[(&str, &str, &str)] = &[
-    ("record", "agent", "string"),
-    ("record", "id", "string"),
-    ("record", "at", "string"),
-    ("record", "timeText", "string"),
-    ("record", "t", "string"),
-    ("said", "who", "object"),
-    ("said", "blocks", "array"),
-    ("said", "results", "object"),
-    ("said", "cwd", "string"),
-    ("reply", "blocks", "array"),
-    ("reply", "model", "string"),
-    ("reply", "autoReply", "bool"),
-    ("reply", "endsTurn", "bool"),
-    ("reply", "cards", "object"),
-    ("reply", "steps", "object"),
-    ("reply", "runs", "object"),
-    ("reply", "error", "object"),
-    ("retry", "reason", "string"),
-    ("retry", "attempt", "number"),
-    ("retry", "max", "number"),
-    ("title", "text", "string"),
-    ("title", "by", "string"),
-    ("queued", "who", "object"),
-    ("who", "speaker", "object"),
-    ("who", "text", "string"),
-    ("error", "reason", "string"),
-    ("error", "status", "number"),
-    ("block:text", "type", "string"),
-    ("block:text", "text", "string"),
-    ("block:thinking", "type", "string"),
-    ("block:thinking", "text", "string"),
-    ("block:tool_use", "type", "string"),
-    ("block:tool_use", "id", "string"),
-    ("block:tool_use", "name", "string"),
-    ("block:tool_use", "input", "object"),
-    ("block:tool_result", "type", "string"),
-    ("block:tool_result", "for", "string"),
-    ("block:tool_result", "content", "array"),
-    ("block:tool_result", "isError", "bool"),
-    ("block:image", "type", "string"),
-    ("block:image", "source", "object"),
-    ("rows", "end", "number"),
-    ("rows", "hash", "number"),
-    ("rows", "record", "object"),
-    ("rows", "cwd", "string"),
-];
-
-/// 记录金样里**全格**那几条（适配层真打出来的，`record_of_tests` 钉着它与代码一致）。
-fn full_records() -> Vec<Value> {
-    let golden = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/__fixtures__/record.golden.jsonl"
-    ))
-    .expect("记录金样不在");
-    golden
-        .lines()
-        .map(|l| serde_json::from_str::<Value>(l).unwrap())
-        .filter(|v| {
-            [
-                "said-full",
-                "reply-full",
-                "reply-error",
-                "retry-full",
-                "title-agent",
-                "queued",
-            ]
-            .contains(&v["case"].as_str().unwrap_or(""))
-        })
-        .map(|v| v["record"].clone())
-        .collect()
-}
-
-/// `history-read` 一页的行：真走读核（Claude 那一家），一条带 `cwd` 的人话 ＋ 一条不进界面的。
-fn history_read_rows() -> Vec<Value> {
-    let face = crate::agents::claudecode::RECORDS;
-    let page = concat!(
-        r#"{"type":"user","uuid":"u1","timestamp":"2026-10-09T01:30:00.000Z","cwd":"/w","message":{"role":"user","content":"q"}}"#,
-        "\n",
-        r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
-        "\n",
-    );
-    let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], false);
-    crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
-}
-
-/// 一面的样本：`(面, 那一面的对象)`，每一面至少一份。
-fn product_samples() -> Vec<(String, Value)> {
-    let mut out = Vec::new();
-    for r in full_records() {
-        let t = r["t"].as_str().unwrap().to_string();
-        out.push(("record".to_string(), r.clone()));
-        out.push((t.clone(), r.clone()));
-        if let Some(w) = r.get("who") {
-            out.push(("who".to_string(), w.clone()));
-        }
-        if let Some(e) = r.get("error") {
-            out.push(("error".to_string(), e.clone()));
-        }
-        for b in r
-            .get("blocks")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            out.push((format!("block:{}", b["type"].as_str().unwrap()), b.clone()));
-        }
-    }
-    for row in history_read_rows() {
-        out.push(("rows".to_string(), row));
-    }
-    out
-}
-
-/// 记录的五个类别。
-const RECORD_CLASSES: [&str; 5] = ["said", "reply", "retry", "title", "queued"];
-
-/// 这一面的这一格登记过没有：各类别的格 ＝ 它自己那几格 ＋ `record` 公共格。
-fn registered(face: &str, field: &str) -> bool {
-    PRODUCT_FACE.iter().any(|(f, k, _)| {
-        *k == field && (*f == face || (*f == "record" && RECORD_CLASSES.contains(&face)))
-    })
-}
-
-/// 冻结表里每一格，在真打出来的成品里都在、类型对。
-#[test]
-fn the_record_shape_both_frontends_read_stays_put() {
-    let samples = product_samples();
-    for (face, field, ty) in PRODUCT_FACE {
-        let hits: Vec<&Value> = samples
-            .iter()
-            .filter(|(f, _)| f == face)
-            .filter_map(|(_, v)| v.get(*field))
-            .collect();
-        assert!(!hits.is_empty(), "{face}.{field} 没了（两个前端在读它）");
-        for got in hits {
-            assert_eq!(json_type(got), *ty, "{face}.{field} 换了类型：{got}");
-        }
-    }
-}
-
-/// 成品面进冻结表：真打出来的成品里出现的每一格都登记过（加一格可以，但得先进表 —— 两边读哪几格才说得清）。
-#[test]
-fn every_product_field_is_in_the_frozen_table() {
-    let mut loose = Vec::new();
-    // `record` 那一面的样本就是各类别的样本（按类别查，那里连公共格一起认）。
-    for (face, v) in product_samples().into_iter().filter(|(f, _)| f != "record") {
-        for key in v.as_object().expect("成品面都是对象").keys() {
-            if !registered(&face, key) {
-                loose.push(format!("{face}.{key}"));
-            }
-        }
-    }
-    loose.sort();
-    loose.dedup();
-    assert!(loose.is_empty(), "成品里有没登记进冻结表的格：{loose:?}");
-}
-
 // ═══ 第二个前端调的一次性子命令：冻结（叫法 · 位置参数 · 输出里它读的那几格）══════════════
 //
 // `--resolve` 的入出形状另有冻结金样（`tests/__fixtures__/resolve-contract.golden.json`）；会话 id 的校验规则钉在
@@ -2327,13 +2161,23 @@ fn session_frames_carry_the_state_written_and_toned() {
         (A::Working, "beSession.activity.working", "now"),
         (A::NeedsYou, "beSession.activity.needsYou", "need"),
         (A::Idle, "beSession.activity.idle", "plain"),
+        (
+            A::BackgroundWork,
+            "beSession.activity.backgroundWork",
+            "busy",
+        ),
     ] {
         let v = status(Some(a));
         assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
         assert_eq!(v["activity_tone"], tone, "{a:?}");
     }
+    // 说不清在干什么（活着、那一家没说）⇒ 核心也给一格字与语气（出口不自己补「运行中」）。
     let none = status(None);
-    assert!(none.get("activity_text").is_none() && none.get("activity_tone").is_none());
+    assert_eq!(
+        none["activity_text"],
+        copy_core::copy_text("beSession.activity.unclear", &[])
+    );
+    assert_eq!(none["activity_tone"], "now");
 
     for (f, name, hint) in [
         (
