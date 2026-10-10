@@ -1338,9 +1338,9 @@ pub const SUBCOMMANDS: &[&str] = &[
 //
 // 🔴 **「硬塞进去会当场红」这句话本轮现打过，成立**：把 `"files.ls"` 加进上面那个
 //   流旗标那张能力表之后 `backend` 套 `769 passed / 1 failed`，**只红一条**，
-//   而且是 `main_stream_flag_tests::every_capability_token_is_strippable` 逐字点名
+//   而且是当时那条「每个能力 token 都有剥离分支」的判据逐字点名
 //   「无 flag 映射 …… 否则埋 §26 死循环」。⇒ 那一处的语义**保持不动**，
-//   它在本汇总里是**一个面**（`stream-flags`），不是汇总本身。
+//   它在本汇总里是**一个面**（`stream-flags`），不是汇总本身。（10-10 那张表与 hello 的 `capabilities` 一起删了。）
 //
 // # 这一层买到什么 · 买不到什么（那张三层表逐字）
 //

@@ -1,4 +1,4 @@
-{"kind":"hello","v":1,"build_id":"b1","host_arch":"x86_64","claude_dir":"/home/u/.claude","homes":[{"agent_kind":"claude","path":"/home/u/.claude"}],"capabilities":["bg","tail-only"],"emits":["line"],"commands":["ping"],"unavailable":[{"command":"tmux-list","code":"no_tmux"}],"host_env":{"CCM_RELAY_PORT":"47001"},"uncancellable":["ping"]}
+{"kind":"hello","v":1,"build_id":"b1","host_arch":"x86_64","claude_dir":"/home/u/.claude","homes":[{"agent_kind":"claude","path":"/home/u/.claude"}],"emits":["line"],"commands":["ping"],"unavailable":[{"command":"tmux-list","code":"no_tmux"}],"host_env":{"CCM_RELAY_PORT":"47001"},"uncancellable":["ping"]}
 {"kind":"hello","v":1,"build_id":"b1","host_arch":"x86_64","claude_dir":"/home/u/.claude"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"record":{"agent":"claude","id":"u1","at":"2026-10-09T01:30:00.000Z","timeText":"09:30","atMs":1791509400000,"t":"said","who":{"speaker":{"kind":"human"},"text":"q"},"blocks":[{"type":"text","text":"q"}]},"cwd":"/w","byte_offset":120,"rid":"r1"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"byte_offset":120}

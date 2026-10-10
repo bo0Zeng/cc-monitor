@@ -19,7 +19,6 @@ Handshake sent once when a client connects。
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
 | `claude_dir` | string | ⚠ **冻结兼容字段，不是欠账** |
 | `homes` | [AgentHome]? | 本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`） |
-| `capabilities` | [string]? | 本后端声明支持的**能力 token 集**（开放字符串，加法式） |
 | `emits` | [string]? | 本 backend **会发射的帧 kind 集** （snake_case，如 "session_status"/"turn_end"） |
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |

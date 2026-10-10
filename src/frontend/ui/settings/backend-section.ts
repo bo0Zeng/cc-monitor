@@ -635,14 +635,13 @@ export class BackendSection {
     }
   }
 
-  /** 那台记下的认不出的会话流：几种（两本账并起来数）；读不到 ⇒ 说读不到。 */
+  /** 那台后端记下的认不出的会话流：几种；读不到 ⇒ 说读不到。 */
   private async paintDrift(origin: string): Promise<void> {
     const el = this.cellHosts.get(origin)?.querySelector<HTMLElement>(".backend-row-drift");
     if (!el) return;
     try {
       const records = await readRecordDrift(origin);
-      const mine = await commands.drift_ledger_report({ origin });
-      const n = records.reduce((k, f) => k + f.entries.length, 0) + mine.unknown_tokens.length;
+      const n = records.reduce((k, f) => k + f.entries.length, 0);
       el.textContent = n > 0 ? copyText("backend.cc.driftSome", { n }) : copyText("backend.cc.driftNone");
     } catch {
       el.textContent = copyText("backend.cc.driftUnread");

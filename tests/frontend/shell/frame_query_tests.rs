@@ -1114,7 +1114,6 @@ fn client_for_test(
         host_arch: "x86_64".into(),
         claude_dir: "/tmp".into(),
         homes: vec![],
-        capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],

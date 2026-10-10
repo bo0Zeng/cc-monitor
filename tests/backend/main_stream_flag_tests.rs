@@ -4,17 +4,6 @@ fn v(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
 
-/// §26 死循环护栏：hello 的 `capabilities` 里每个 token 都要有剥离分支。流旗标只剩 `--stream` 之后这张表是空的 ——
-/// 谁往里加了 token 却没给它剥离分支，这一条红（发那个旗标 ⇒ 本后端不剥 ⇒ 当查询退出 ⇒ 无 hello ⇒ 重连死循环）。
-#[test]
-fn every_capability_token_is_strippable() {
-    assert!(
-        deploy_contract::STREAM_CAPABILITIES.is_empty(),
-        "hello.capabilities 又有了 token {:?}：流要什么由声明说（`view`），不再按能力协商旗标",
-        deploy_contract::STREAM_CAPABILITIES
-    );
-}
-
 /// 流模式起参只剩「我是流模式」那个词 ＋ `--tz` · `--view`：`--stream` 剥干净、什么都不置；
 /// 删掉的旧旗标不认（不剥 ⇒ 落到「未知 flag 照常进流」那条通用路，`wants` 里没有它们的位）。
 #[test]

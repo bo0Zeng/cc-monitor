@@ -932,7 +932,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     UNAME_CMD: NONE,
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）
     STAMP_CLOSE: NONE,
-    STREAM_CAPABILITIES: NONE, // 流模式能力 token（后端 hello 交 · monitor 认；TS 不认 token）
     build_order: NONE,
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,

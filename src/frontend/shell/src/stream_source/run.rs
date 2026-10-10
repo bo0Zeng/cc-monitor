@@ -299,7 +299,6 @@ async fn stream_loop(
                 host_arch,
                 claude_dir,
                 homes,
-                capabilities,
                 commands,
                 ..
             }) => on_hello(
@@ -312,7 +311,6 @@ async fn stream_loop(
                     // 日志报的是解析后的 Claude home（优先 `homes`、回退 `claude_dir`），同时把原样的 `homes` 一起打出来：排障时一眼看出这台后端发没发新字段。
                     claude_home: claude_home_from_hello(&homes, &claude_dir).to_string(),
                     homes,
-                    capabilities,
                     commands,
                 },
             ),
@@ -677,7 +675,6 @@ struct HelloSeen {
     /// 解析后的 Claude home（[`claude_home_from_hello`]）。
     claude_home: String,
     homes: Vec<AgentHome>,
-    capabilities: Vec<String>,
     commands: Vec<String>,
 }
 
@@ -696,15 +693,11 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
         host_arch,
         claude_home,
         homes,
-        capabilities,
         commands,
     } = hello;
     tracing::info!(
-        "stream_source backend hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} caps={capabilities:?} cmds={commands:?}"
+        "stream_source backend hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} cmds={commands:?}"
     );
-    // 记下我们不认识的能力 token（多半是远端后端比 monitor 新：手工装 / 关了自动部署的用户会长期不一致）。只记账，记在这台名下；
-    // 不认识的 token 本来就按保守缺省忽略。
-    note_unknown_capabilities(&crate::origin::Origin(host_label.clone()), &capabilities);
     // 标记本次连接已健康(收到 backend hello)，供 run() 重连循环判定是否重置退避。
     connected.store(true, Ordering::Release);
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。
@@ -731,8 +724,7 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
         }
     }
     tracing::info!(
-        "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自本轮连接开始）· \
-         caps={capabilities:?}",
+        "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自本轮连接开始）",
         t_connect_start.elapsed().as_millis()
     );
     // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。

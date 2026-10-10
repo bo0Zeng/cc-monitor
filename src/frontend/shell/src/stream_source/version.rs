@@ -39,19 +39,6 @@ pub(super) fn forget_verified_build(origin: &str) {
     }
 }
 
-/// monitor 认识的能力 token：契约 crate 那一份（后端 `CAPABILITIES` 取的也是它；今天是空的 —— 流要什么由声明说）。
-/// 有它才答得出「backend 声明了一个我们不认识的能力」（漂移记账的一个面）。
-const KNOWN_CAPABILITY_TOKENS: &[&str] = deploy_contract::STREAM_CAPABILITIES;
-
-/// hello 里不认识的能力 token 记一笔，记在 `origin`（那台远端）名下。只记账（不认识的 token 本来就按保守缺省忽略）。
-pub(super) fn note_unknown_capabilities(origin: &crate::origin::Origin, capabilities: &[String]) {
-    for t in capabilities {
-        if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
-            crate::drift_ledger::record(origin, &format!("capabilities:{t}"));
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/coldstart_preflight_guard.rs"]
 mod coldstart_preflight_guard;

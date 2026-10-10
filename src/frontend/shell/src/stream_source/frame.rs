@@ -72,9 +72,7 @@ pub enum InboundFrame {
         claude_dir: String,
         /// 远端各 agent 的 home 目录表（additive）。旧后端无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。非数组 / 元素缺字段一律滤掉，绝不 panic。
         homes: Vec<AgentHome>,
-        /// backend 声明的能力 token 集。旧后端无此字段 → 空集（按最小能力集待它，不发流模式 flag）；今天恒空（起流没有可协商的旗标），认不得的记账。
-        capabilities: Vec<String>,
-        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。`capabilities` 说出方向的流 flag，这一条说入方向 —— 两者正交。
+        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。
         /// 旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
         /// `hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
@@ -405,7 +403,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
     let k = kind;
     Ok(match kind {
         "hello" => {
-            // `homes` / `capabilities` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
+            // `homes` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
             // `homes` 空 ⇒ 消费侧回落 `claude_dir`（[`claude_home_from_hello`]；今天后端恒发空表）。
             let homes: Vec<AgentHome> = obj
                 .get("homes")
@@ -440,7 +438,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 host_arch: req_str(obj, k, "host_arch")?,
                 claude_dir: req_str(obj, k, "claude_dir")?,
                 homes,
-                capabilities: strings("capabilities"),
                 commands: strings("commands"),
                 unavailable,
                 uncancellable,

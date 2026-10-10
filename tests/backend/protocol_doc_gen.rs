@@ -889,7 +889,6 @@ fn the_parser_sees_every_frame_field() {
         "build_id",
         "host_arch",
         "claude_dir",
-        "capabilities",
         "emits",
         "commands",
         "unavailable",
