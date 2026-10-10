@@ -348,7 +348,7 @@ fn carried_rows_outside_table_a_or_without_an_id_are_bad_args() {
 }
 
 /// 原住 `tests/frontend/shell/sftp_tests.rs`（序键那时住 monitor）；序键搬进 `deploy-core` 之后放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
-/// 🔴 B1b：**出过的每一个 `BUILD_ID` 都有序、历史表按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源）。
+/// 🔴 B1b：**历史表里的两个 `BUILD_ID`（上一版 ＋ 当前版）都有序、按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源；更早的各版在 git 历史里，出过时已在这里验过）。
 /// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
 #[test]
 fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
@@ -363,10 +363,10 @@ fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
         .filter_map(|l| l.strip_prefix('"')?.split('"').next())
         .filter(|s| s.starts_with('p') && !s.contains('\n') && !s.starts_with("--"))
         .collect();
-    assert!(
-        ids.len() >= 30,
-        "历史表只抠出 {} 个 id —— 抠法坏了：{ids:?}",
-        ids.len()
+    assert_eq!(
+        ids.len(),
+        2,
+        "历史表应抠出「上一版 ＋ 当前版」两个 id —— 抠法坏了或表没瘦：{ids:?}"
     );
     let mut prev: Option<(u32, u8)> = None;
     for id in &ids {
