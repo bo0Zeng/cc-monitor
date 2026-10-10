@@ -1249,7 +1249,7 @@ fn the_record_products_match_the_cross_language_golden() {
     let path = p.to_string_lossy().into_owned();
     let got = serde_json::json!({
         "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path})).unwrap(),
-        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path})).unwrap(),
+        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true})).unwrap(),
         "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1})).unwrap(),
         "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path})).unwrap(),
         "history-run": answer_at(
@@ -1546,4 +1546,64 @@ impl crate::guard_support::Shaped for NeedsList {
             }],
         }]
     }
+}
+
+/// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles` 之后，下一问交回的是应答里那一格 `prior`（投影之前的整份），
+/// 续算出来的与不带声明那一路**逐字相同**（投影只是这一次不发）。拿去过格的应答本身当令牌 ⇒ 缺那一格 ⇒ 这里红。
+#[test]
+fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
+    let home = scratch("facts-token");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    let edit = |uuid: &str, file: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"2026-01-02T03:04:06.000Z","message":{{"role":"assistant","model":"m","content":[{{"type":"tool_use","id":"t-{uuid}","name":"Edit","input":{{"file_path":"{file}","old_string":"a","new_string":"b"}}}}],"usage":{{"input_tokens":3,"output_tokens":4}}}}}}"#
+        ) + "\n"
+    };
+    std::fs::write(&p, edit("a1", "/w/one.txt")).unwrap();
+    let path = p.to_string_lossy().to_string();
+    let view = serde_json::json!({"omit": {"facts": ["touchedFiles"]}});
+    let plan = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap();
+    let ask = |prior: Option<&serde_json::Value>| {
+        let mut args = serde_json::json!({ "path": path });
+        if let Some(p) = prior {
+            args["prior"] = p.clone();
+        }
+        answer_at(&home, "history-facts", &args).unwrap()
+    };
+
+    let whole1 = ask(None);
+    let seen1 = plan.apply(Some(whole1.clone())).unwrap();
+    assert!(seen1.get("touchedFiles").is_none(), "{seen1}");
+    assert_eq!(seen1["prior"], whole1, "令牌那一格该是投影之前的整份");
+    assert_eq!(
+        whole1["touchedFiles"],
+        serde_json::json!(["/w/one.txt"]),
+        "夹具没打到（下面那一半会恒绿）"
+    );
+
+    // 记录又长了一行，两路各自续算。
+    use std::io::Write as _;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(edit("a2", "/w/two.txt").as_bytes())
+        .unwrap();
+    let whole2 = ask(Some(&whole1));
+    let seen2 = plan.apply(Some(ask(Some(&seen1["prior"])))).unwrap();
+    assert_eq!(
+        seen2["prior"], whole2,
+        "带声明那一路续算出来的整份与不带的不一样"
+    );
+    let mut want = whole2.clone();
+    want.as_object_mut().unwrap().remove("touchedFiles");
+    want["prior"] = whole2.clone();
+    assert_eq!(seen2, want);
+    assert_eq!(
+        whole2["touchedFiles"],
+        serde_json::json!(["/w/one.txt", "/w/two.txt"])
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }

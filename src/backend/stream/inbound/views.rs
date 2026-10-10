@@ -21,6 +21,11 @@ pub(crate) const PLACES: &[(&str, &[(&str, &str)])] = &[
     ("history-facts", &[("", "facts")]),
 ];
 
+/// 命令 → 应答里**续算令牌**那一格的名字：这条命令的应答下一问要原样交回来接着算（`history-facts` 的 `prior`）。
+/// 投影会去格，去过格的应答当令牌就缺了那几格，下一次增量算出来是错的 ⇒ 带声明时把**投影之前的整份**放进这一格交出去，
+/// 这一格不受 `cells` / `omit` 管（出口当不透明的一团原样交回）。不带声明 ⇒ 没有这一格，整份应答本身就是令牌。
+pub(crate) const TOKENS: &[(&str, &str)] = &[("history-facts", "prior")];
+
 /// 这条命令的应答里成品住的那几处（没登记 ⇒ 空）。
 pub(crate) fn places_of(cmd: &str) -> &'static [(&'static str, &'static str)] {
     PLACES
@@ -33,14 +38,20 @@ pub(crate) fn places_of(cmd: &str) -> &'static [(&'static str, &'static str)] {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Plan {
     view: Option<(View, &'static [(&'static str, &'static str)])>,
+    /// 这条命令的续算令牌那一格（[`TOKENS`]）。
+    token: Option<&'static str>,
 }
 
 impl Plan {
-    /// 成功的应答照声明裁好。
+    /// 成功的应答照声明裁好；有续算令牌那一格的命令，先把整份放进那一格（不受投影管）。
     pub(crate) fn apply(&self, data: Option<Value>) -> Option<Value> {
         match (&self.view, data) {
             (Some((view, places)), Some(mut v)) => {
+                let whole = self.token.map(|_| v.clone());
                 project_reply(&mut v, places, view);
+                if let (Some(key), Some(whole), Some(o)) = (self.token, whole, v.as_object_mut()) {
+                    o.insert(key.to_string(), whole);
+                }
                 Some(v)
             }
             (_, d) => d,
@@ -88,6 +99,7 @@ pub(crate) fn plan_for(cmd: &str, view: &Value) -> Result<Plan, Fail> {
     }
     Ok(Plan {
         view: Some((view, places)),
+        token: TOKENS.iter().find(|(c, _)| *c == cmd).map(|(_, k)| *k),
     })
 }
 

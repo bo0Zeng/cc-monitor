@@ -62,6 +62,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   认不出的那几处写进 `detail`。今天出成品、收 `view` 的命令与成品住处：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
   `history-page` / `history-lines`（`lines[].record`）· `history-run`（`rows[].record`）· `history-facts`（整份应答是 `facts`）；别的命令带 `view` 一律 `bad_args`。
   投影只是「这一次不发」：成品与格目录（冻结的那几件也一样）一格不动。
+  应答下一问要原样交回接着算的（续算令牌：`history-facts` 的 `prior`）：带了 `view` 的那一问，应答里多一格 `prior` ＝ 投影之前的整份，这一格不受 `view` 管，
+  下一问交回它（交去过格的应答 ⇒ 形状不对、`bad_args`）。不带 `view` ⇒ 没有这一格，整份应答本身就是令牌。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。

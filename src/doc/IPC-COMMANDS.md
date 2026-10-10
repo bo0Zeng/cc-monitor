@@ -1815,8 +1815,9 @@ sid → 上次用哪个号起。
 | `path` | → | 同 `history-read` |
 | `seq` | → | `offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq` |
 | `until` | → | 同 `history-read` |
+| `whole` | → | 这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06） |
 
-码：`bad_args` · `failed` · `oversized_line` · `refused`
+码：`bad_args` · `failed` · `oversized_line` · `refused` · `too_large`
 
 #### `history-turns`
 
@@ -1867,7 +1868,7 @@ sid → 上次用哪个号起。
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
 | `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
-| `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌） |
+| `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答 |
 | `projectDir` | ← | 会话起在哪个目录（记录开头）；还没读到 ⇒ `null` |
 | `retries` | ← | 一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件 |
 | `tokens` | ← | 全会话用量（按请求去重）`{input, output, cacheRead, cacheWrite5m, cacheWrite1h, requests, text, last}`（写缓存分 5 分钟 / 1 小时两档；`text` 写好）；一条带用量的回复都没有 ⇒ `null` |

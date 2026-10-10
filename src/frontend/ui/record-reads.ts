@@ -65,7 +65,7 @@ export interface RecordDriftFace {
   overflowed: boolean;
 }
 
-/** 查看器整份读那一件的期限：同它上一个住址（monitor `frame_query::read_budget(256 MiB)` ＝ 60 ＋ 512 秒；那道 256 MiB 的明拒删了，期限照旧）。 */
+/** 查看器整份读那一件的期限：同它上一个住址（monitor `frame_query::read_budget(256 MiB)` ＝ 60 ＋ 512 秒）。 */
 const WHOLE_READ_BUDGET_MS = 572_000;
 /** 按偏移取一段 · 子 agent 那一份：同它上一个住址（一次性远端那一趟的天花板，120 秒）。 */
 const PIECE_BUDGET_MS = 120_000;
@@ -196,7 +196,7 @@ async function answered<T>(origin: Origin, reply: Promise<Uint8Array>, decode: (
 
 /**
  * **查看器读一整份会话**：从头按页取，每页交 `onChunk`（边读边发，首屏不等整份）；`cancelled()` 为真就停。
- * 回交出去的条数。不截断：多大都读完（中途失败原样抛出）。
+ * 回交出去的条数。读过 256 MiB 那一件由后端明拒（那句话说读到了哪），这里原样抛出。
  */
 export async function readWholeSession(
   origin: Origin,
@@ -209,7 +209,7 @@ export async function readWholeSession(
   let seq = 0;
   let total = 0;
   for (;;) {
-    const body = jsonBody({ path: jsonlPath, offset, seq });
+    const body = jsonBody({ path: jsonlPath, offset, seq, whole: true });
     const page = await answered(origin, chan.call(origin, "history-page", body, budget), (v) => decodePage(origin, v));
     if (cancelled()) return total;
     if (page.payloads.length > 0) onChunk(page.payloads);

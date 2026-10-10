@@ -231,7 +231,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/frontend/ui/record-reads.ts` 直问。
     (
         "history-page",
-        "按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段）：编号 · 进不进界面 · `cwd` 都是后端给的，要哪几格由界面交的声明（`view`）定",
+        "按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段）：编号 · 进不进界面 · `cwd` 都是后端给的，`whole` 那一件的上限判定也在后端",
     ),
     (
         "history-lines",
