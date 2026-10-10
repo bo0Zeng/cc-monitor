@@ -229,8 +229,8 @@ describe("〔STC〕第五问：会话事实", () => {
       },
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
       mcp: [
-        { name: "m-f", status: "failed", detail: "e-f" },
-        { name: "m-n", status: "needsLogin", detail: null },
+        { name: "m-f", status: "failed", detail: "e-f", at: null },
+        { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
     });
   });
@@ -265,7 +265,7 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(ReplyUnreadable);
     // 会话的 MCP：每项恰好三格，状态只认那三种（不收「连上了」）。
     expect(() => decodeFacts(without("mcp")), "缺 mcp").toThrow(ReplyUnreadable);
-    expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "connected", detail: null }] }), "状态只认那三种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "connected", detail: null, at: null }] }), "状态只认那三种").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, mcp: [{ name: "m", status: "failed" }] }), "缺 detail").toThrow(ReplyUnreadable);
     // 每步状态：state 只认那三种、why 只认那两种（或 null）；重试结局只认那四种，每件恰好两格。
     const step = { id: "x", name: "Bash", what: null, at: null, state: "unclear", why: "untracked" };

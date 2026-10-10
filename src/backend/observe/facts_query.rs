@@ -180,6 +180,8 @@ pub(crate) struct McpTrouble {
     pub(crate) status: crate::agents::McpStatus,
     /// 连不上时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
     pub(crate) detail: Option<String>,
+    /// 说它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+    pub(crate) at: Option<String>,
 }
 
 /// 全会话用量：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
@@ -564,7 +566,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
     }
     for m in v["mcp"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(m, &["detail", "name", "status"], "prior.mcp[]")?;
+        exact_keys(m, &["at", "detail", "name", "status"], "prior.mcp[]")?;
     }
     serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
 }
@@ -670,11 +672,17 @@ fn note_mcp(f: &mut SessionFacts, v: &Value) {
     let Some(said) = crate::agents::mcp_said_of(kind, v) else {
         return;
     };
+    let at = v
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let named = |names: Vec<String>, status| {
+        let at = at.clone();
         names.into_iter().map(move |name| McpTrouble {
             name,
             status,
             detail: None,
+            at: at.clone(),
         })
     };
     let mut put = |status: S, now: Vec<McpTrouble>| {
@@ -692,6 +700,7 @@ fn note_mcp(f: &mut SessionFacts, v: &Value) {
             name,
             status: S::Failed,
             detail,
+            at: at.clone(),
         });
         put(S::Failed, now.collect());
     }

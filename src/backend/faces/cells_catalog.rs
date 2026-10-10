@@ -968,6 +968,7 @@ mod specimens {
                             name: s("m"),
                             status,
                             detail: some("e"),
+                            at: some("t"),
                         })
                         .collect(),
                 };

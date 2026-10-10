@@ -159,6 +159,8 @@ export interface McpTrouble {
   name: string;
   status: "needsLogin" | "failed" | "pending";
   detail: string | null;
+  /** 说它的那条记录的时刻原样；没有 ⇒ `null`。 */
+  at: string | null;
 }
 
 /** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
@@ -455,8 +457,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   if (!Array.isArray(v.mcp)) return bad();
   const mcp: McpTrouble[] = [];
   for (const m of v.mcp) {
-    if (!isObj(m) || !exactKeys(m, ["detail", "name", "status"]) || !isStr(m.name) || !strOrNull(m.detail) || !(isStr(m.status) && MCP_TROUBLE.has(m.status))) return bad();
-    mcp.push({ name: m.name, status: m.status as McpTrouble["status"], detail: m.detail });
+    if (!isObj(m) || !exactKeys(m, ["at", "detail", "name", "status"]) || !isStr(m.name) || !strOrNull(m.detail) || !strOrNull(m.at) || !(isStr(m.status) && MCP_TROUBLE.has(m.status))) return bad();
+    mcp.push({ name: m.name, status: m.status as McpTrouble["status"], detail: m.detail, at: m.at });
   }
   if (!Array.isArray(v.retries)) return bad();
   const retries: RetryRun[] = [];

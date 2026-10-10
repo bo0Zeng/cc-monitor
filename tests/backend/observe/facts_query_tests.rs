@@ -978,6 +978,7 @@ fn the_sessions_mcp_trouble_is_the_last_thing_said_per_list() {
         name: n.into(),
         status: s,
         detail: d.map(str::to_string),
+        at: None,
     };
     assert_eq!(
         got,
