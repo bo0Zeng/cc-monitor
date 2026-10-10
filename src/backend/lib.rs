@@ -2227,8 +2227,8 @@ pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 /// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const ARGS_B64_FLAG: &str = "--args-b64";
 
-/// **「给人看」那一形**：跟在 `--quota-read` 后面（`--quota-read --text`）⇒ 同一份回包排成每号一段的字（`control/quota_text.rs`）。
-/// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+/// **「给人看」那一形**：跟在 CLI 控制面那一族（`--<帧命令>`）后面 ⇒ 回包里核心写好的格（顶上 `text` · 每一处 `rows`）拼成字
+/// （`control/ship_text.rs`，所有命令通用、不按业务写）。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
 
 /// **期限口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--terminals-list --within-ms 10000`）⇒ 与帧面请求信封的 `within_ms`
@@ -2265,7 +2265,7 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--scope",
     // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,
-    // `--quota-read` 的「给人看」那一形（只给这一条）。
+    // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
     TEXT_FLAG,
     "--until",
     // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。

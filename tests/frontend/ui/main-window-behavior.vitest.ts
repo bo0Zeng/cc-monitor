@@ -2,6 +2,7 @@
 // 顶栏远端文件选单 · 命令面板里的机器名 · 工具组收着时说出失败与子 agent · 命令卡展开显示命令本身。
 // 行为口径：同一时刻同一层只开一块；看得见 ⇔ 在 Esc 弹层栈上，Esc 一次只关最上一层；浮层躲窗口边、贴边内缩 8px；
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
+import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import { applyRetries, buildApiErrorCard, buildApiRetryCard, mergeRetry } from "../../../src/frontend/ui/cards/api-error";
 import { buildStepLine, fmtStepDur, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
 import { applyHandedBack, mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
@@ -92,7 +93,6 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import { toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
 import { buildToolGroup, addToToolGroup, renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
@@ -601,7 +601,7 @@ describe("一步还没结果时：照会话事实画", () => {
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const st = [0, 1, 2].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
     expect(st).toEqual(["running", "awaiting", "pending"]);
-    expect(r.units[1].querySelector(".step-right")?.textContent).toBe(formatDuration(65_000));
+    expect(r.units[1].querySelector(".step-right")?.textContent).toBe(fmtDur(65));
   });
 });
 

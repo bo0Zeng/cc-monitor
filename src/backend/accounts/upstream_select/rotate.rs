@@ -929,6 +929,7 @@ impl Hop {
                 earliest: Some(AccountAt {
                     at_text: None,
                     w: decide::line_window(&back.account, &f),
+                    at_rel_text: None,
                     account: back.account,
                     at: back.at,
                 }),
@@ -942,6 +943,7 @@ impl Hop {
                     .map(|(at, x)| AccountAt {
                         at_text: None,
                         w: decide::line_window(x, &f),
+                        at_rel_text: None,
                         account: x.clone(),
                         at,
                     }),

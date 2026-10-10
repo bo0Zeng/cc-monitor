@@ -41,10 +41,10 @@ import { timelineAxis } from "../rot-timeline";
 import {
   accountLabel,
   slotLabel,
-  slotValue,
+  slotText,
   type QuotaRead,
   type QuotaReadAccount,
-} from "../quota-lines";
+} from "../acct-words";
 import { button } from "../kit/button";
 import { banner } from "../kit/banner";
 import { foldCaret } from "../kit/fold";
@@ -588,7 +588,7 @@ export class RuleEditor {
       const at =
         q.state === "refused" ? null : lineNow(this.plan, row.account);
       const slot = at ?? q.limiting ?? "5h";
-      u.textContent = `${slotLabel(slot)} ${slotValue(q, slot)}`;
+      u.textContent = `${slotLabel(slot)} ${slotText(q, slot)}`;
       if (at) {
         const t = tag(copyText("acct.tag.atLine", { w: slotLabel(at) }));
         t.dataset.edAtLine = at;

@@ -187,23 +187,24 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       // 9 → 10：多选里的样子 `.selected` 那一个开关。
       // 10 → 11：说不清（那台看不见）`.unseen` 那一个开关。
       // 11 → 13：跑完你还没看（`.unseen-done`，标题 600）· 在等你（`.waiting-you`，窄窗字母琥珀）。
+      // 13 → 10：灯那一档 · 可重连改成 `data-*` 钩子（没有样式的三个类不再 toggle）。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
-      expect(spy).toHaveBeenCalledTimes(13);
+      expect(spy).toHaveBeenCalledTimes(10);
     } finally {
       spy.mockRestore();
     }
   });
 
-  it("一个 tab 的红绿灯变了 ⇒ 恰好 3 条记录、全落在那颗按钮上（类 · 状态点的样子 · 状态点的读屏名；两向：别的按钮 0 条）", () => {
+  it("一个 tab 的红绿灯变了 ⇒ 恰好 3 条记录、全落在那颗按钮上（灯那一档的钩子 · 状态点的样子 · 状态点的读屏名；两向：别的按钮 0 条）", () => {
     const r = make(20, 4);
     r.take();
     (r.store.tabs.get("s7") as { activity: unknown }).activity = { doing: "idle", waitingFor: null, text: "核心·空闲", tone: "plain" };
     r.view.refresh();
     const recs = r.take();
     expect(recs.map((x) => ownerSid(r, x))).toEqual(["s7", "s7", "s7"]);
-    expect(recs.map((x) => x.attributeName).sort()).toEqual(["aria-label", "class", "data-state"]);
-    expect(r.view.tabButtons.get("s7")!.root.classList.contains("act-idle")).toBe(true);
+    expect(recs.map((x) => x.attributeName).sort()).toEqual(["aria-label", "data-light", "data-state"]);
+    expect(r.view.tabButtons.get("s7")!.root.dataset.light === "idle").toBe(true);
   });
 
   it("账号快照换了（`refreshAccountBadges`）⇒ 只有账号真变了的那一颗重画徽章", () => {

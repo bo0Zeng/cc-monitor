@@ -6,8 +6,8 @@ import { ENDED, LIVE, RECONNECTABLE } from "../../../src/frontend/ui/tab-session
 describe("activityFace", () => {
   it("★ 核心的语气各对一颗点、一盏灯：now 在跑 · need 需手动 · 其余常规", () => {
     expect(activityFace("now")).toEqual({ dot: "running", light: "" });
-    expect(activityFace("need")).toEqual({ dot: "needs-you", light: "act-waiting" });
-    expect(activityFace("plain")).toEqual({ dot: "idle", light: "act-idle" });
+    expect(activityFace("need")).toEqual({ dot: "needs-you", light: "waiting" });
+    expect(activityFace("plain")).toEqual({ dot: "idle", light: "idle" });
   });
   it("还没收到那一格 ⇒ 在运行的点、不叠灯", () => {
     expect(activityFace(null)).toEqual({ dot: "running", light: "" });

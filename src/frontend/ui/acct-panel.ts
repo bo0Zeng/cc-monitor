@@ -58,12 +58,11 @@ import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
 import {
   accountLabel,
-  fmtRel,
   slotLabel,
-  slotValue,
+  slotText,
   type QuotaRead,
   type QuotaReadAccount,
-} from "./quota-lines";
+} from "./acct-words";
 import {
   checkRotation,
   readPlan,
@@ -296,7 +295,7 @@ function render(o: Open, host: AcctPanelHost): void {
   o.body.append(nowBlock(o, entry, quota, host));
   if (read?.state === "present" && entry) {
     o.body.append(
-      rotationBlock(o, entry, read, quota, host),
+      rotationBlock(o, read, quota, host),
       switchBlock(o, entry, read, quota, host),
       historyBlock(read),
     );
@@ -309,7 +308,7 @@ function render(o: Open, host: AcctPanelHost): void {
 
 // ─────────────────────────────── 当前
 
-function slotMeter(q: QuotaShow, slot: string, now: number): HTMLElement {
+function slotMeter(q: QuotaShow, slot: string): HTMLElement {
   const x = q.slots.find((v) => v.slot === slot);
   const here = q.limiting === slot;
   let state: MeterState = "normal";
@@ -318,9 +317,9 @@ function slotMeter(q: QuotaShow, slot: string, now: number): HTMLElement {
   else if (x.full || (here && q.state === "refused")) state = "refused";
   else if (here && (q.state === "near" || q.state === "overageInUse"))
     state = "near";
-  const value = slotValue(q, slot);
+  const value = slotText(q, slot);
   const at = x?.resetsAt;
-  const rel = at === undefined ? null : fmtRel(at, now);
+  const rel = at === undefined ? null : (x?.resetsAtRelText ?? null);
   const said = x?.resetsAtText ?? "";
   const reset =
     at === undefined
@@ -387,7 +386,6 @@ function nowBlock(
     );
     return sec.root;
   }
-  const now = entry.now;
   const led = ledgerOf(quota, read.agent, read.account.current);
   const seen = led ? (led.seenAtText ?? "") : null;
   const right =
@@ -443,8 +441,8 @@ function nowBlock(
     sec.content.appendChild(line);
   } else {
     sec.content.append(
-      slotMeter(read.quota, "5h", now),
-      slotMeter(read.quota, "7d", now),
+      slotMeter(read.quota, "5h"),
+      slotMeter(read.quota, "7d"),
     );
   }
   return sec.root;
@@ -471,7 +469,6 @@ function quotaOf(
 /** 只画卡着它的那一个窗口（轮换列表行尾有兜底 · 封顶，照稿只留一格用量；另一格在悬停卡与时间轴里）。 */
 function rowUsage(
   q: QuotaShow | null,
-  now: number,
   reading: QuotaReadAccount["reading"],
   atLine: string | null = null,
 ): HTMLElement {
@@ -501,9 +498,9 @@ function rowUsage(
     fill.style.transform = `scaleX(${Math.max(0, Math.min(1, (x?.pct ?? 0) / 100))})`;
     bar.appendChild(fill);
     cell.appendChild(bar);
-    cell.appendChild(el("span", s.acctRowSlotVal, slotValue(q, slot)));
+    cell.appendChild(el("span", s.acctRowSlotVal, slotText(q, slot)));
     if (here && x?.resetsAt !== undefined && slot === "5h") {
-      const rel = fmtRel(x.resetsAt, now);
+      const rel = x.resetsAtRelText ?? null;
       cell.appendChild(
         el(
           "span",
@@ -558,7 +555,6 @@ function srcWrite(k: SrcKey): SessionRotationWrite {
 
 function rotationBlock(
   o: Open,
-  entry: SessionRotationEntry,
   read: Present,
   quota: QuotaRead | null,
   host: AcctPanelHost,
@@ -581,7 +577,6 @@ function rotationBlock(
     ? (read.custom ?? def?.rotation ?? null)
     : (ruleRow?.rotation ?? null);
   const sec = section(copyText("acct.rot.title"));
-  const now = entry.now;
 
   const bar = el("div", s.acctRotBar);
   const was = srcKeyOf(read.source);
@@ -784,7 +779,7 @@ function rotationBlock(
   }
   if (r)
     sec.content.appendChild(
-      rotationList(o, host, read, r, quota, now, !follow, o.tl.plan),
+      rotationList(o, host, read, r, quota, !follow, o.tl.plan),
     );
   const tl = timelineFold(o, host, read, quota);
   sec.content.appendChild(tl);
@@ -859,7 +854,6 @@ function rotationList(
   read: Present,
   r: Rotation,
   quota: QuotaRead | null,
-  now: number,
   editable: boolean,
   plan: PlanRead | null,
 ): HTMLElement {
@@ -957,7 +951,6 @@ function rotationList(
     line.appendChild(
       rowUsage(
         q,
-        now,
         ledgerOf(quota, read.agent, row.account)?.reading,
         atLine,
       ),

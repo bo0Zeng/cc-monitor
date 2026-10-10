@@ -15,7 +15,7 @@ import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { refreshQuota } from "../../../src/frontend/ui/acct-center";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { QuotaRead } from "../../../src/frontend/ui/quota-lines";
+import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
 
 const acct = (name: string, selectable = true): Record<string, unknown> => ({
   name,
@@ -43,7 +43,8 @@ const quota = (accounts: { account: string; pct?: number; state?: string; kind?:
       state: a.state ?? "ok",
       stale: false,
       limiting: "5h",
-      slots: a.pct === undefined ? [] : [{ slot: "5h", pct: a.pct }],
+      // 那一格的字是核心写好的（被拒没标用满 ⇒「{pct}% · 被拒」），界面照抄。
+      slots: a.pct === undefined ? [] : [{ slot: "5h", pct: a.pct, text: a.state === "refused" ? copyText("acct.val.refusedPct", { pct: a.pct }) : `${a.pct}%`, tone: "plain" }],
       login: "ok",
     })),
     unseen: [],

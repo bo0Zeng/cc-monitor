@@ -2,11 +2,11 @@
  * 额度与账号几处界面的**排版模型**（纯函数）：状态栏那颗按钮 · 它的悬停卡 · 记录与换号条的那一句 · 提示条那一句。
  *
  * 输入全是后端的成品（`rotation-session-read` 一个会话那一份 ＋ `quota-read` 那台一份）；这里只按词选字、拼格，不判
- * 「能不能换 / 该不该换 / 快满没有」。时刻照后端写好的那一格（`…Text`），距今只经 `quota-lines.ts` 的 [`fmtRel`]（与金样同一处）。
+ * 「能不能换 / 该不该换 / 快满没有」。时刻照后端写好的那一格（`…Text`），距今照 `…RelText`；号那一段照 `quota-read` 每号的 `rows`。
  */
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import { accountLabel, fmtRel, seenBlock, slotLabel, unseenBlock, type QuotaRead, type QuotaReadAccount } from "./quota-lines";
+import { accountLabel, slotLabel, type QuotaRead, type QuotaReadAccount } from "./acct-words";
 import type { QuotaShow } from "./generated/QuotaShow";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { SwitchRecord } from "./generated/SwitchRecord";
@@ -54,25 +54,20 @@ export function usageOf(
   const slot = q.slots.find((s) => s.slot === w);
   const window = slotLabel(w);
   const resetAt = slot?.resetsAt !== undefined ? slot.resetsAtText : reading?.resetsAtText;
+  // 值那一格是核心写好的字（`slots[].text`，与额度每号几行同一处）；没有这一格 ⇒ 被拒写「被拒」、别的写「—」。
+  const value = slot?.text ?? (q.state === "refused" ? copyText("acct.val.refusedOnly") : copyText("acct.val.none"));
   switch (q.state) {
     case "refused":
-      return {
-        window,
-        value: slot?.full ? copyText("acct.val.full") : slot?.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: slot.pct }),
-        reset: resetAt === undefined ? null : copyText("acct.reset.at", { at: resetAt }),
-        tone: "refused",
-      };
+      return { window, value, reset: resetAt === undefined ? null : copyText("acct.reset.at", { at: resetAt }), tone: "refused" };
     case "overageInUse":
-      return { window, value: copyText("acct.val.over"), reset: null, tone: "over" };
+      return { window, value, reset: null, tone: "over" };
     case "resetSinceSeen":
     case "unseen":
-      return { window, value: copyText("acct.val.none"), reset: null, tone: "neutral" };
+      return { window, value, reset: null, tone: "neutral" };
     default:
       break;
   }
-  if (slot?.pct === undefined) return { window, value: copyText("acct.val.none"), reset: null, tone: "neutral" };
-  if (slot.full) return { window, value: copyText("acct.val.full"), reset: null, tone: "refused" };
-  return { window, value: copyText("acct.val.pct", { pct: slot.pct }), reset: null, tone: q.state === "near" ? "near" : "neutral" };
+  return { window, value, reset: null, tone: slot?.full ? "refused" : q.state === "near" && slot?.pct !== undefined ? "near" : "neutral" };
 }
 
 /**
@@ -129,13 +124,12 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
       [copyText("acct.hover.switch"), copyText("acct.hover.restartOnly")],
     ];
   }
-  const now = entry.now;
   const cur = read.account.current;
   const seen = ledgerOf(quota, read.agent, cur);
-  const block = seen
-    ? seenBlock(seen, now, machineLabel(entry.origin))
-    : unseenBlock({ agent: read.agent, account: cur, kind: read.quota.kind, login: read.quota.login });
-  const rows = block.rows.map((r) => [...r]);
+  const unseen = seen ? undefined : quota?.unseen.find((u) => u.agent === read.agent && u.account === cur);
+  // 号那一段照核心写好的几行；采样那一格后面接上是哪台采的（问的是哪台、那台叫什么是这一侧的事）。
+  const rows = (seen ?? unseen)?.rows.map((r) => r.map((c) => c.text)) ?? [[accountLabel(cur)]];
+  if (seen) rows[rows.length - 1].push(machineLabel(entry.origin));
   // 到了这号这一窗此刻的线的那一窗（后端按本会话那一份判）：那一行行尾写「到线」。
   for (const sl of read.quota.slots) {
     if (!sl.atLine) continue;
@@ -251,14 +245,14 @@ export function reasonLabel(code: string, ctx: { agent: string; target: string }
  * 本会话发不出去时那一条（会话头下的提示条）；能发 ⇒ `null`。`blocked` 是后端给的事实（最早回来的那个号与时刻）；
  * 画的那一刻那个时刻已过 ⇒ 中性的 `↻.. 已过 · 可续发`。
  */
-export function bannerOf(entry: SessionRotationEntry | undefined, nowSecs: number): { text: string; tone: "warn" | "neutral" } | null {
+export function bannerOf(entry: SessionRotationEntry | undefined): { text: string; tone: "warn" | "neutral" } | null {
   const read = entry?.read;
   if (!read || read.state === "absent" || read.blocked === undefined) return null;
   const e = read.blocked.earliest;
   if (e === undefined) return { text: copyText("acct.banner.allFullNoAt"), tone: "warn" };
   const name = accountLabel(e.account);
   const at = e.atText ?? "";
-  const rel = fmtRel(e.at, nowSecs);
+  const rel = e.atRelText ?? null;
   if (rel === null) return { text: copyText("acct.banner.back", { name, at }), tone: "neutral" };
   const last = read.account.history[read.account.history.length - 1];
   if (last && typeof last.why === "object" && "held" in last.why) {

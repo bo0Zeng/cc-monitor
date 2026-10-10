@@ -6,7 +6,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import type { QuotaRead } from "./quota-lines";
+import type { QuotaRead } from "./acct-words";
 import type { Rotation } from "./generated/Rotation";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { RestartOutcome } from "./generated/RestartOutcome";
@@ -413,7 +413,7 @@ export type PlanHead =
       /** 按目前涨法几点用到这号这窗口此刻的上限（后端有根据才给）。 */
       est?: { at: number; atText: string; pct: number; w: string };
     }
-  | { blocked: { account?: string; at?: number; atText?: string; w?: string } };
+  | { blocked: { account?: string; at?: number; atText?: string; atRelText?: string; w?: string } };
 
 export interface PlanRead {
   errors: CellError[];

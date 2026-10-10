@@ -1,0 +1,9 @@
+{
+  "what": "几条「需手动」先答哪个（核心 facts_query::needs_first；桌面 Ctrl+J 那一个读口 session-face.ts::needsFirst 对同一份）。waitedMs 是那台答出那一刻已等多久；手写，不由任一侧跑出来",
+  "cases": [
+    { "name": "危险度在前", "needs": [{ "id": "a", "rank": 3, "waitedMs": 900000 }, { "id": "b", "rank": 1, "waitedMs": 1000 }], "want": ["b", "a"] },
+    { "name": "同一档等得久的在前", "needs": [{ "id": "a", "rank": 1, "waitedMs": 1000 }, { "id": "b", "rank": 1, "waitedMs": 90000 }], "want": ["b", "a"] },
+    { "name": "不知道等了多久的排这一档最后", "needs": [{ "id": "a", "rank": 1, "waitedMs": null }, { "id": "b", "rank": 1, "waitedMs": 5 }, { "id": "c", "rank": 0, "waitedMs": null }], "want": ["c", "b", "a"] },
+    { "name": "全都一样照原来的次序", "needs": [{ "id": "a", "rank": 2, "waitedMs": null }, { "id": "b", "rank": 2, "waitedMs": null }, { "id": "c", "rank": 2, "waitedMs": 7 }, { "id": "d", "rank": 2, "waitedMs": 7 }], "want": ["c", "d", "a", "b"] }
+  ]
+}

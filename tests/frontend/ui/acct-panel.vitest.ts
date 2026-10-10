@@ -51,7 +51,7 @@ import {
   type AcctPanelHost,
 } from "../../../src/frontend/ui/acct-panel.ts";
 import { appStore } from "../../../src/frontend/ui/app-store.ts";
-import type { QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
+import type { QuotaRead } from "../../../src/frontend/ui/acct-words.ts";
 import type { Rotation } from "../../../src/frontend/ui/generated/Rotation.ts";
 import type { SessionRotation } from "../../../src/frontend/ui/generated/SessionRotation.ts";
 import type {
@@ -89,8 +89,10 @@ const LEDGER: QuotaRead = {
     stale: false,
     limiting: account === "api" ? undefined : "5h",
     slots:
-      account === "api" ? [] : [{ slot: "5h", pct: 30, resetsAt: NOW + 3600 }],
+      account === "api" ? [] : [{ slot: "5h", pct: 30, resetsAt: NOW + 3600, text: "30%", tone: "plain" }],
     login: "ok" as const,
+    rows: [],
+    warm: { act: "send" as const, text: "" },
   })),
   unseen: [],
   usableNow: ["work", "team", "api"],
@@ -933,7 +935,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
   });
 });
 
-describe("账号面板 · 额度格照后端显示态画", () => {
+describe("账号面板 · 额度格照抄核心写好的字", () => {
   const refused = (full: boolean) => ({
     ...LEDGER.accounts[0],
     state: "refused" as const,
@@ -942,6 +944,9 @@ describe("账号面板 · 额度格照后端显示态画", () => {
         slot: "5h",
         pct: full ? 100 : 58,
         resetsAt: NOW + 3600,
+        // 字由核心写好（`show.rs::slot_words`），界面照抄。
+        text: full ? "✕" : copyText("acct.val.refusedPct", { pct: "58" }),
+        tone: "fail" as const,
         ...(full ? { full: true } : {}),
       },
     ],
@@ -1179,7 +1184,7 @@ describe("账号面板 · 时间轴", () => {
 
   it("卡住（后端 head.blocked）⇒ 自动摊开、顶行写成琥珀条那一形", async () => {
     seed({}, { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40 });
-    readPlan.mockReset().mockResolvedValue(tlPlan({ blocked: { account: "team", at: T + 600, atText: "02:10", w: "5h" } }));
+    readPlan.mockReset().mockResolvedValue(tlPlan({ blocked: { account: "team", at: T + 600, atText: "02:10", atRelText: "+10m", w: "5h" } }));
     openAccountPanel("s1", "<local>", host);
     await settle();
     expect(foldHead().getAttribute("aria-expanded")).toBe("true");

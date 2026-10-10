@@ -11,7 +11,7 @@ import type { RunInfo } from "../generated/RunInfo";
 import type { RunState } from "../generated/RunState";
 import { runLastText, runStateMark, runStateText } from "../runs";
 import { copyText } from "../copy-table";
-import { fmtDur } from "../quota-lines";
+import { fmtDur } from "../duration-format";
 import { icon } from "../kit/icon";
 import { tag } from "../kit/badge";
 import { REVEAL_RUN_EVENT } from "./speaker-bar";

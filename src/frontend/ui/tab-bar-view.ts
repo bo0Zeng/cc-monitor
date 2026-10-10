@@ -278,7 +278,7 @@ export class TabBarView {
 
   /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：会话在前、计划项在后。没有 ⇒ 什么都不做。 */
   nextNeeds(): void {
-    const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
+    const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), Date.now());
     const at = this.plan.at();
     const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, this.plan.count());
     if (step === null) return;
@@ -579,7 +579,7 @@ export class TabBarView {
    *   1. 删除：tabButtons 缓存里有但 orderedIds 已没的 sid → 摘 DOM + 清缓存
    *   2. 创建：orderedIds 里有但缓存没的 sid → createTabButton 一次（含所有 5 个子
    *      元素 + 事件 listener），visibility 全交 CSS 控制
-   *   3. 更新：updateTabButton 同步 active / ended / reconnectable / has-unread class + label/badge 文本
+   *   3. 更新：updateTabButton 同步 active / ended / has-unread class · data-light / data-reconnectable 钩子 + label/badge 文本
    *   4. 排序：iterate orderedIds + insertBefore，确保 DOM 顺序 = orderedIds 顺序
    *
    * CSS 配合（styles.css）：
@@ -674,11 +674,11 @@ export class TabBarView {
     this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
   }
 
-  /** 「需手动」菜单：每个在等你的会话（等得最久的在前）· 状态 · 等的那一句；点一行切过去。 */
+  /** 「需手动」菜单：每个需手动的会话（照核心的先后：危险度在前、同档等得久的在前）· 状态 · 等的那一句；点一行切过去。 */
   private openNeedsMenu(): void {
-    const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
-    if (tabs.length === 0) return;
     const now = Date.now();
+    const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), now);
+    if (tabs.length === 0) return;
     const items: MenuItem[] = tabs.map((sid) => {
       const t = this.store.tabs.get(sid)!;
       return {
@@ -1150,10 +1150,10 @@ export class TabBarView {
     const titleText = `${parts.forked ? "↳ " : ""}${parts.title}`;
     const abbr = abbrOf(tab);
 
-    const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, lightClass === "act-idle", lightClass === "act-waiting", reconnectable, unreadText !== "", unseenDone, n !== null, parts.bg]
+    const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, reconnectable, unreadText !== "", unseenDone, n !== null, parts.bg]
       .map((b) => (b ? "1" : "0"))
       .join("");
-    const drawn = [flags, dot, titleText, parts.proj ?? "", unreadText, needsText, blocked?.text ?? "", abbr, remote ? tab.origin : ""].join("\u0000");
+    const drawn = [flags, lightClass, dot, titleText, parts.proj ?? "", unreadText, needsText, blocked?.text ?? "", abbr, remote ? tab.origin : ""].join("\u0000");
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -1163,9 +1163,10 @@ export class TabBarView {
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);
       refs.root.classList.toggle("remote", remote);
-      refs.root.classList.toggle("act-idle", lightClass === "act-idle");
-      refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
-      refs.root.classList.toggle("reconnectable", reconnectable);
+      // 状态钩子（没有样式、给判据与读屏读）：灯那一档 · 可重连。
+      if (lightClass) refs.root.dataset.light = lightClass;
+      else delete refs.root.dataset.light;
+      refs.root.toggleAttribute("data-reconnectable", reconnectable);
       refs.root.classList.toggle("has-unread", unreadText !== "");
       refs.root.classList.toggle("unseen-done", unseenDone);
       refs.root.classList.toggle("waiting-you", n !== null);

@@ -206,19 +206,25 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
         vec![
             SlotShow {
                 resets_at_text: None,
+                resets_at_rel_text: None,
                 slot: "5h".into(),
                 pct: Some(63),
                 resets_at: Some(LATER),
                 full: false,
                 at_line: false,
+                text: copy_core::copy_text("acct.val.pct", &[("pct", "63")]).into(),
+                tone: crate::common::cells::Tone::Plain,
             },
             SlotShow {
                 resets_at_text: None,
+                resets_at_rel_text: None,
                 slot: "7d".into(),
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),
                 full: false,
                 at_line: false,
+                text: copy_core::copy_text("acct.val.pct", &[("pct", "41")]).into(),
+                tone: crate::common::cells::Tone::Plain,
             },
         ]
     );
@@ -266,4 +272,47 @@ fn the_subscription_id_is_stable_and_never_the_identity_itself() {
             assert!(!got.contains(part), "{got} 含 {part}");
         }
     }
+}
+
+/// ★ 一格的字与语气只住 `slot_words`：卡人的那一格按显示态换字；用满不管是不是卡人的那一格都 `✕`。
+#[test]
+fn a_slot_cell_is_written_once_by_state() {
+    use crate::common::cells::Tone;
+    let w = |state, here, pct, full| {
+        let (t, tone) = slot_words(state, here, pct, full);
+        (t.0, tone)
+    };
+    let c = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    assert_eq!(
+        w(QuotaState::OverageInUse, true, Some(40), false),
+        (c("acct.val.over", &[]), Tone::Warn)
+    );
+    assert_eq!(
+        w(QuotaState::ResetSinceSeen, true, Some(40), false),
+        (c("acct.val.none", &[]), Tone::Plain)
+    );
+    assert_eq!(
+        w(QuotaState::Ok, false, Some(100), true),
+        (c("acct.val.full", &[]), Tone::Fail)
+    );
+    assert_eq!(
+        w(QuotaState::Refused, true, Some(58), false),
+        (c("acct.val.refusedPct", &[("pct", "58")]), Tone::Fail)
+    );
+    assert_eq!(
+        w(QuotaState::Refused, true, None, false),
+        (c("acct.val.refusedOnly", &[]), Tone::Fail)
+    );
+    assert_eq!(
+        w(QuotaState::Refused, false, Some(10), false),
+        (c("acct.val.pct", &[("pct", "10")]), Tone::Plain)
+    );
+    assert_eq!(
+        w(QuotaState::Near, true, Some(85), false),
+        (c("acct.val.pct", &[("pct", "85")]), Tone::Warn)
+    );
+    assert_eq!(
+        w(QuotaState::Ok, true, None, false),
+        (c("acct.val.none", &[]), Tone::Plain)
+    );
 }

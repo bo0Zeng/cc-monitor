@@ -3,10 +3,10 @@
  */
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { fmtDur } from "../../../src/frontend/ui/quota-lines";
-import { formatDuration } from "../../../src/frontend/ui/duration-format";
+import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
+import { fakePlan } from "./timeline";
 import type { OpHandler, SessionSpec, World } from "./types";
 
 export const jsonlPathOf = (s: SessionSpec): string => `${s.cwd}/${s.sid}.jsonl`;
@@ -52,6 +52,10 @@ export const ACCOUNTS = [
 
 export function defaultOps(): Record<string, OpHandler> {
   return {
+    // 计划清单：默认世界里没有计划（计划页的世界 `plan.ts::planWorld` 换掉这一条）。
+    "plan-list": () => ({ pb: { state: "ok", said: null }, workspaces: [] }),
+    // 轮换预览 / 时间轴：照稿那一份（场景要别的样子自己换掉这一条）。
+    "rotation-plan": (_o, req) => fakePlan({ view: (req.view as "6h" | "24h" | "7d" | undefined) ?? "24h", session: typeof req.sid === "string" && !req.machine }),
     "accounts-list": (origin) => ({
       accounts: ACCOUNTS.map((a) => ({
         name: a.name,
@@ -470,7 +474,7 @@ export function defaultOps(): Record<string, OpHandler> {
       // 已等多久在那台算（同后端 `needs_of`：读 pidfile 那一刻减起点，字由时长那一处写）；没有起点 ⇒ 两格 null。
       if (needs) {
         const waitedMs = needs.sinceMs === null ? null : Math.max(0, Date.now() - needs.sinceMs);
-        needs = { ...needs, rank: 0, waitedMs, waitedText: waitedMs === null ? null : formatDuration(waitedMs) } as typeof needs;
+        needs = { ...needs, rank: 0, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000) } as typeof needs;
       }
       // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
       const handedBack: string[] = [];

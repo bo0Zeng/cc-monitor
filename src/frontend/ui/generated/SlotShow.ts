@@ -9,10 +9,22 @@ export type SlotShow = { slot: string, pct?: number, resetsAt?: number,
  */
 resetsAtText?: string, 
 /**
+ * `resets_at` 距今（`+1h50m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
+ */
+resetsAtRelText?: string, 
+/**
  * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
  */
 full?: boolean, 
 /**
  * 到线：这一窗用到这号这一窗此刻的线、还没重置（没线 ⇒ 不出）。
  */
-atLine?: boolean, };
+atLine?: boolean, 
+/**
+ * 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ */
+text: string, 
+/**
+ * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };

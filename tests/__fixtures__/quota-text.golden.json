@@ -1,57 +1,6 @@
 {
-  "说明": [
-    "额度的行模型金样：quota-read 一份回包（每个时刻旁边那一格 …Text 是后端出口按那台的钟写好的；tzOffsetMin 是写它们时用的偏移，后端那一侧的判据核对这几格与它一致）＋ 此刻（回包里的 now）＋ 采样那台叫什么 ⇒ 每号一段（blocks：首行 名 · 类型 · 标签，其余每行一组格 键 · 值 · ↻ · 距今）＋ 终端 --text 的整段字（text）。",
-    "两个消费方各一条判据逐字对拍：界面（src/frontend/ui/quota-lines.ts，悬停卡读它）对 blocks；终端 --text（src/backend/control/quota_text.rs）对 blocks 与 text。想改写法先改这里。",
-    "回包只采结构，号名是编的。会话那两样（⇄ 换过号 · 下一个）不在 quota-read 里，不进本金样。",
-    "text 的排法：每号一段、段间空一行；首行各格隔两个空格；其余行缩进两格，非末格按本段同列最宽补齐（汉字记 2 宽），格间两个空格。"
-  ],
   "cases": [
     {
-      "name": "订阅 · 正常：当天写 HH:MM、非当天写 MM-DD HH:MM、距今 +1h50m / +3d",
-      "machine": "本机",
-      "tzOffsetMin": 480,
-      "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
-        "accounts": [
-          {
-            "agent": "claude-code",
-            "account": "personal",
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
-            "reading": {
-              "refused": false
-            },
-            "kind": "sub",
-            "state": "ok",
-            "stale": false,
-            "slots": [
-              {
-                "slot": "5h",
-                "pct": 63,
-                "resetsAt": 1791196200,
-                "resetsAtText": "18:30"
-              },
-              {
-                "slot": "7d",
-                "pct": 41,
-                "resetsAt": 1791507600,
-                "resetsAtText": "10-09 09:00"
-              }
-            ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
-          }
-        ],
-        "unseen": [],
-        "usableNow": [
-          "personal"
-        ],
-        "earliestReturn": null
-      },
       "blocks": [
         {
           "account": "personal",
@@ -78,59 +27,66 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791196260,
+            "atRelText": "+1h51m",
+            "atText": "18:31",
+            "text": "5h 63% ↻18:30"
+          }
         }
       ],
-      "text": "personal  订阅\n  5h    63%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "订阅 · 快满：字同正常（琥珀由界面按 state 上色，不进字）",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 正常：当天写 HH:MM、非当天写 MM-DD HH:MM、距今 +1h50m / +3d",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
-            "agent": "claude-code",
             "account": "personal",
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
+            "agent": "claude-code",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
             "reading": {
               "refused": false
             },
-            "kind": "sub",
-            "state": "near",
-            "stale": false,
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "slots": [
               {
-                "slot": "5h",
-                "pct": 86,
+                "pct": 63,
                 "resetsAt": 1791196200,
-                "resetsAtText": "18:30"
+                "resetsAtText": "18:30",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
                 "pct": 41,
                 "resetsAt": 1791507600,
-                "resetsAtText": "10-09 09:00"
+                "resetsAtText": "10-09 09:00",
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
         "usableNow": [
           "personal"
-        ],
-        "earliestReturn": null
+        ]
       },
+      "text": "personal  订阅\n  5h    63%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "personal",
@@ -157,64 +113,66 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791196260,
+            "atRelText": "+1h51m",
+            "atText": "18:31",
+            "text": "5h 86% ↻18:30"
+          }
         }
       ],
-      "text": "personal  订阅\n  5h    86%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "订阅 · 用满被拒：卡着的窗口用满（full）写 ✕ ＋ 几点重置",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 快满：字同正常（琥珀由界面按 state 上色，不进字）",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "personal",
             "agent": "claude-code",
-            "account": "work",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791198000,
-              "resetsAtText": "19:00"
-            },
-            "kind": "sub",
-            "state": "refused",
-            "stale": false,
             "slots": [
               {
-                "slot": "5h",
-                "pct": 100,
-                "resetsAt": 1791198000,
-                "resetsAtText": "19:00",
-                "full": true
+                "pct": 86,
+                "resetsAt": 1791196200,
+                "resetsAtText": "18:30",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
-                "pct": 78,
-                "resetsAt": 1791334800,
-                "resetsAtText": "10-07 09:00"
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "resetsAtText": "10-09 09:00",
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "near",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
-        "usableNow": [],
-        "earliestReturn": {
-          "account": "work",
-          "at": 1791198000,
-          "atText": "19:00"
-        }
+        "usableNow": [
+          "personal"
+        ]
       },
+      "text": "personal  订阅\n  5h    86%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "work",
@@ -241,63 +199,71 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791198060,
+            "atRelText": "+2h21m",
+            "atText": "19:01",
+            "text": "被拒（5h）↻19:00"
+          }
         }
       ],
-      "text": "work  订阅\n  5h    ✕    ↻19:00        +2h20m\n  7d    78%  ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "订阅 · 被拒而没用满（短时限流）：卡着的窗口写 {pct}% · 被拒 ＋ 几点重置",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 用满被拒：卡着的窗口用满（full）写 ✕ ＋ 几点重置",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
-            "agent": "claude-code",
             "account": "work",
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
+            "agent": "claude-code",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
             "reading": {
               "refused": true,
-              "resetsAt": 1791189660,
-              "resetsAtText": "16:41"
+              "resetsAt": 1791198000,
+              "resetsAtText": "19:00"
             },
-            "kind": "sub",
-            "state": "refused",
-            "stale": false,
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "slots": [
               {
-                "slot": "5h",
-                "pct": 58,
+                "full": true,
+                "pct": 100,
                 "resetsAt": 1791198000,
-                "resetsAtText": "19:00"
+                "resetsAtText": "19:00",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
                 "pct": 78,
                 "resetsAt": 1791334800,
-                "resetsAtText": "10-07 09:00"
+                "resetsAtText": "10-07 09:00",
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "refused",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "unseen": [],
-        "usableNow": [],
         "earliestReturn": {
           "account": "work",
           "at": 1791198000,
           "atText": "19:00"
-        }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "unseen": [],
+        "usableNow": []
       },
+      "text": "work  订阅\n  5h    ✕    ↻19:00        +2h20m\n  7d    78%  ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "work",
@@ -324,63 +290,70 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791198060,
+            "atRelText": "+2h21m",
+            "atText": "19:01",
+            "text": "被拒（5h）↻19:00"
+          }
         }
       ],
-      "text": "work  订阅\n  5h    58% · 被拒  ↻19:00        +2h20m\n  7d    78%         ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "订阅 · 超额在兜：卡着的窗口写 超额，超额一行 使用中 另计费",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 被拒而没用满（短时限流）：卡着的窗口写 {pct}% · 被拒 ＋ 几点重置",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
-            "agent": "claude-code",
             "account": "work",
+            "agent": "claude-code",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791189660,
+              "resetsAtText": "16:41"
+            },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
-            "reading": {
-              "refused": false,
-              "resetsAt": 1791198000,
-              "resetsAtText": "19:00"
-            },
-            "kind": "sub",
-            "state": "overageInUse",
-            "stale": false,
             "slots": [
               {
-                "slot": "5h",
-                "pct": 104,
+                "pct": 58,
                 "resetsAt": 1791198000,
-                "resetsAtText": "19:00"
+                "resetsAtText": "19:00",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
                 "pct": 78,
                 "resetsAt": 1791334800,
-                "resetsAtText": "10-07 09:00"
+                "resetsAtText": "10-07 09:00",
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "refused",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "unseen": [],
-        "usableNow": [],
         "earliestReturn": {
           "account": "work",
           "at": 1791198000,
           "atText": "19:00"
-        }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "unseen": [],
+        "usableNow": []
       },
+      "text": "work  订阅\n  5h    58% · 被拒  ↻19:00        +2h20m\n  7d    78%         ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "work",
@@ -408,59 +381,70 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791198060,
+            "atRelText": "+2h21m",
+            "atText": "19:01",
+            "text": "5h 104% ↻19:00"
+          }
         }
       ],
-      "text": "work  订阅\n  5h    超额    ↻19:00        +2h20m\n  7d    78%     ↻10-07 09:00  +1d\n  超额  使用中  另计费\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "订阅 · 上一窗已过 ＋ 数旧：卡着的窗口写 —、↻.. 已过；采样写 几点 · 旧",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 超额在兜：卡着的窗口写 超额，超额一行 使用中 另计费",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "work",
             "agent": "claude-code",
-            "account": "team",
-            "seenAt": 1791162120,
-            "seenAtText": "09:02",
-            "reading": {
-              "refused": false
-            },
             "kind": "sub",
-            "state": "resetSinceSeen",
-            "stale": true,
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false,
+              "resetsAt": 1791198000,
+              "resetsAtText": "19:00"
+            },
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "slots": [
               {
-                "slot": "5h",
-                "pct": 97,
-                "resetsAt": 1791177000,
-                "resetsAtText": "13:10"
+                "pct": 104,
+                "resetsAt": 1791198000,
+                "resetsAtText": "19:00",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
-                "pct": 12,
-                "resetsAt": 1791676800,
-                "resetsAtText": "10-11 08:00"
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "resetsAtText": "10-07 09:00",
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "overageInUse",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791198000,
+          "atText": "19:00"
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
-        "usableNow": [
-          "team"
-        ],
-        "earliestReturn": null
+        "usableNow": []
       },
+      "text": "work  订阅\n  5h    超额    ↻19:00        +2h20m\n  7d    78%     ↻10-07 09:00  +1d\n  超额  使用中  另计费\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "team",
@@ -488,47 +472,61 @@
               "采样",
               "09:02 · 旧"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "5h 窗口已过期"
+          }
         }
       ],
-      "text": "team  订阅\n  5h    —    ↻13:10 已过\n  7d    12%  ↻10-11 08:00  +5d\n  超额  —\n  采样  09:02 · 旧"
-    },
-    {
-      "name": "订阅 · 被拒却没有分窗口的数（回包只给了几点能再用）⇒ 状态 一行",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 上一窗已过 ＋ 数旧：卡着的窗口写 —、↻.. 已过；采样写 几点 · 旧",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "team",
             "agent": "claude-code",
-            "account": "work",
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791192300,
-              "resetsAtText": "17:25"
-            },
             "kind": "sub",
-            "state": "refused",
-            "stale": false,
-            "slots": [],
+            "limiting": "5h",
             "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "seenAt": 1791162120,
+            "seenAtText": "09:02",
+            "slots": [
+              {
+                "pct": 97,
+                "resetsAt": 1791177000,
+                "resetsAtText": "13:10",
+                "slot": "5h"
+              },
+              {
+                "pct": 12,
+                "resetsAt": 1791676800,
+                "resetsAtText": "10-11 08:00",
+                "slot": "7d"
+              }
+            ],
+            "stale": true,
+            "state": "resetSinceSeen",
             "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
-        "usableNow": [],
-        "earliestReturn": {
-          "account": "work",
-          "at": 1791192300,
-          "atText": "17:25"
-        }
+        "usableNow": [
+          "team"
+        ]
       },
+      "text": "team  订阅\n  5h    —    ↻13:10 已过\n  7d    12%  ↻10-11 08:00  +5d\n  超额  —\n  采样  09:02 · 旧",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "work",
@@ -557,56 +555,53 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "无 5h 窗口"
+          }
         }
       ],
-      "text": "work  订阅\n  5h    —\n  7d    —\n  状态  被拒  ↻17:25  +45m\n  超额  —\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "订阅 · 需登录 · 用满（full，用量超过 100%）照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "订阅 · 被拒却没有分窗口的数（回包只给了几点能再用）⇒ 状态 一行",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "work",
             "agent": "claude-code",
-            "account": "old",
+            "kind": "sub",
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791192300,
+              "resetsAtText": "17:25"
+            },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
-            "reading": {
-              "refused": false
-            },
-            "kind": "sub",
-            "state": "ok",
+            "slots": [],
             "stale": false,
-            "slots": [
-              {
-                "slot": "5h",
-                "pct": 30,
-                "resetsAt": 1791201600,
-                "resetsAtText": "20:00"
-              },
-              {
-                "slot": "7d",
-                "pct": 103,
-                "full": true
-              }
-            ],
-            "login": "needsLogin",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "state": "refused",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791192300,
+          "atText": "17:25"
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
-        "usableNow": [],
-        "earliestReturn": null
+        "usableNow": []
       },
+      "text": "work  订阅\n  5h    —\n  7d    —\n  状态  被拒  ↻17:25  +45m\n  超额  —\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "old",
@@ -632,59 +627,63 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791193200,
+            "atRelText": "+1h",
+            "atText": "17:40",
+            "text": "需登录"
+          }
         }
       ],
-      "text": "old  订阅  需登录\n  5h    30%  ↻20:00  +3h20m\n  7d    ✕\n  超额  —\n  采样  16:38 · 本机"
-    },
-    {
-      "name": "没指定号（_ ⇒ ~/.claude · 未指定账号）· 别台采样（机器名照写）· 距今整点 +2h 与 +45m",
-      "machine": "devbox",
-      "tzOffsetMin": 480,
+      "machine": "本机",
+      "name": "订阅 · 需登录 · 用满（full，用量超过 100%）照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "old",
             "agent": "claude-code",
-            "account": "_",
-            "seenAt": 1791189060,
-            "seenAtText": "16:31",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "needsLogin",
             "reading": {
               "refused": false
             },
-            "kind": "sub",
-            "state": "ok",
-            "stale": false,
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "slots": [
               {
-                "slot": "5h",
-                "pct": 31,
-                "resetsAt": 1791196800,
-                "resetsAtText": "18:40"
+                "pct": 30,
+                "resetsAt": 1791201600,
+                "resetsAtText": "20:00",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
-                "pct": 9,
-                "resetsAt": 1791192300,
-                "resetsAtText": "17:25"
+                "full": true,
+                "pct": 103,
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
-        "usableNow": [
-          "_"
-        ],
-        "earliestReturn": null
+        "usableNow": []
       },
+      "text": "old  订阅  需登录\n  5h    30%  ↻20:00  +3h20m\n  7d    ✕\n  超额  —\n  采样  16:38",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "_",
@@ -712,78 +711,66 @@
             ],
             [
               "采样",
-              "16:31 · devbox"
+              "16:31"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791196860,
+            "atRelText": "+2h1m",
+            "atText": "18:41",
+            "text": "5h 31% ↻18:40"
+          }
         }
       ],
-      "text": "~/.claude  订阅  未指定账号\n  5h    31%  ↻18:40  +2h\n  7d    9%   ↻17:25  +45m\n  超额  —\n  采样  16:31 · devbox"
-    },
-    {
-      "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻（写 被拒）/ 需 key",
-      "machine": "本机",
-      "tzOffsetMin": 480,
+      "machine": "devbox",
+      "name": "没指定号（_ ⇒ ~/.claude · 未指定账号）· 别台采样（机器名照写）· 距今整点 +2h 与 +45m",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "_",
             "agent": "claude-code",
-            "account": "api",
-            "seenAt": 1791189000,
-            "seenAtText": "16:30",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
             "reading": {
               "refused": false
             },
-            "kind": "api",
+            "seenAt": 1791189060,
+            "seenAtText": "16:31",
+            "slots": [
+              {
+                "pct": 31,
+                "resetsAt": 1791196800,
+                "resetsAtText": "18:40",
+                "slot": "5h"
+              },
+              {
+                "pct": 9,
+                "resetsAt": 1791192300,
+                "resetsAtText": "17:25",
+                "slot": "7d"
+              }
+            ],
+            "stale": false,
             "state": "ok",
-            "stale": false,
-            "slots": [],
-            "login": "ok"
-          },
-          {
-            "agent": "claude-code",
-            "account": "api2",
-            "seenAt": 1791189000,
-            "seenAtText": "16:30",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791190320,
-              "resetsAtText": "16:52"
-            },
-            "kind": "api",
-            "state": "refused",
-            "stale": false,
-            "slots": [],
-            "login": "ok"
-          },
-          {
-            "agent": "claude-code",
-            "account": "api4",
-            "seenAt": 1791189000,
-            "seenAtText": "16:30",
-            "reading": {
-              "refused": false
-            },
-            "kind": "api",
-            "state": "ok",
-            "stale": false,
-            "slots": [],
-            "login": "needsKey"
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
         "unseen": [],
         "usableNow": [
-          "api"
-        ],
-        "earliestReturn": {
-          "account": "api2",
-          "at": 1791190320,
-          "atText": "16:52"
-        }
+          "_"
+        ]
       },
+      "text": "~/.claude  订阅  未指定账号\n  5h    31%  ↻18:40  +2h\n  7d    9%   ↻17:25  +45m\n  超额  —\n  采样  16:31",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "api",
@@ -799,9 +786,13 @@
             ],
             [
               "采样",
-              "16:30 · 本机"
+              "16:30"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "无 5h 窗口"
+          }
         },
         {
           "account": "api2",
@@ -818,9 +809,13 @@
             ],
             [
               "采样",
-              "16:30 · 本机"
+              "16:30"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "无 5h 窗口"
+          }
         },
         {
           "account": "api4",
@@ -837,72 +832,85 @@
             ],
             [
               "采样",
-              "16:30 · 本机"
+              "16:30"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791193200,
+            "atRelText": "+1h",
+            "atText": "17:40",
+            "text": "需 key"
+          }
         }
       ],
-      "text": "api  按量\n  5h/7d  —  无限额\n  采样   16:30 · 本机\n\napi2  按量\n  状态  被拒  ↻16:52  +12m\n  采样  16:30 · 本机\n\napi4  按量  需 key\n  5h/7d  —  无限额\n  采样   16:30 · 本机"
-    },
-    {
-      "name": "没出过数：订阅（需登录）与按量各一（— 无采样，不出采样一行）",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻（写 被拒）/ 需 key",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
         "accounts": [
           {
+            "account": "api",
             "agent": "claude-code",
-            "account": "personal",
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
+            "kind": "api",
+            "login": "ok",
             "reading": {
               "refused": false
             },
-            "kind": "sub",
-            "state": "ok",
+            "seenAt": 1791189000,
+            "seenAtText": "16:30",
+            "slots": [],
             "stale": false,
-            "slots": [
-              {
-                "slot": "5h",
-                "pct": 4,
-                "resetsAt": 1791195000,
-                "resetsAtText": "18:10"
-              },
-              {
-                "slot": "7d",
-                "pct": 12,
-                "resetsAt": 1791594000,
-                "resetsAtText": "10-10 09:00"
-              }
-            ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
-          }
-        ],
-        "unseen": [
-          {
-            "agent": "claude-code",
-            "account": "team",
-            "kind": "sub",
-            "login": "needsLogin"
+            "state": "ok"
           },
           {
+            "account": "api2",
             "agent": "claude-code",
-            "account": "api",
             "kind": "api",
-            "login": "ok"
+            "login": "ok",
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791190320,
+              "resetsAtText": "16:52"
+            },
+            "seenAt": 1791189000,
+            "seenAtText": "16:30",
+            "slots": [],
+            "stale": false,
+            "state": "refused"
+          },
+          {
+            "account": "api4",
+            "agent": "claude-code",
+            "kind": "api",
+            "login": "needsKey",
+            "reading": {
+              "refused": false
+            },
+            "seenAt": 1791189000,
+            "seenAtText": "16:30",
+            "slots": [],
+            "stale": false,
+            "state": "ok"
           }
         ],
+        "earliestReturn": {
+          "account": "api2",
+          "at": 1791190320,
+          "atText": "16:52"
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "unseen": [],
         "usableNow": [
-          "personal"
-        ],
-        "earliestReturn": null
+          "api"
+        ]
       },
+      "text": "api  按量\n  5h/7d  —  无限额\n  采样   16:30\n\napi2  按量\n  状态  被拒  ↻16:52  +12m\n  采样  16:30\n\napi4  按量  需 key\n  5h/7d  —  无限额\n  采样   16:30",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "personal",
@@ -929,9 +937,16 @@
             ],
             [
               "采样",
-              "16:38 · 本机"
+              "16:38"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791195060,
+            "atRelText": "+1h31m",
+            "atText": "18:11",
+            "text": "5h 4% ↻18:10"
+          }
         },
         {
           "account": "team",
@@ -950,7 +965,14 @@
               "7d",
               "—"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791193200,
+            "atRelText": "+1h",
+            "atText": "17:40",
+            "text": "需登录"
+          }
         },
         {
           "account": "api",
@@ -964,87 +986,74 @@
               "—",
               "无采样"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "无采样 · 发一句才知道"
+          }
         }
       ],
-      "text": "personal  订阅\n  5h    4%   ↻18:10        +1h30m\n  7d    12%  ↻10-10 09:00  +4d\n  超额  —\n  采样  16:38 · 本机\n\nteam  订阅  需登录\n  5h  —  无采样\n  7d  —\n\napi  按量\n  5h/7d  —  无采样"
-    },
-    {
-      "name": "跨年：非当年写 YYYY-MM-DD HH:MM（过去的采样 · 将来的重置都一样）",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "没出过数：订阅（需登录）与按量各一（— 无采样，不出采样一行）",
       "reply": {
-        "state": "present",
-        "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1798718400,
         "accounts": [
           {
+            "account": "personal",
             "agent": "claude-code",
-            "account": "team",
-            "seenAt": 1798678920,
-            "seenAtText": "09:02",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
             "reading": {
               "refused": false
             },
-            "kind": "sub",
-            "state": "resetSinceSeen",
-            "stale": false,
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "slots": [
               {
-                "slot": "5h",
-                "pct": 97,
-                "resetsAt": 1798693800,
-                "resetsAtText": "13:10"
+                "pct": 4,
+                "resetsAt": 1791195000,
+                "resetsAtText": "18:10",
+                "slot": "5h"
               },
               {
-                "slot": "7d",
                 "pct": 12,
-                "resetsAt": 1798938000,
-                "resetsAtText": "2027-01-03 09:00"
+                "resetsAt": 1791594000,
+                "resetsAtText": "10-10 09:00",
+                "slot": "7d"
               }
             ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
-          },
-          {
-            "agent": "claude-code",
-            "account": "cold",
-            "seenAt": 1767196200,
-            "seenAtText": "2025-12-31 23:50",
-            "reading": {
-              "refused": false
-            },
-            "kind": "sub",
-            "state": "resetSinceSeen",
-            "stale": true,
-            "slots": [
-              {
-                "slot": "5h",
-                "pct": 2,
-                "resetsAt": 1767207600,
-                "resetsAtText": "01-01 03:00"
-              },
-              {
-                "slot": "7d",
-                "pct": 5,
-                "resetsAt": 1767661200,
-                "resetsAtText": "01-06 09:00"
-              }
-            ],
-            "login": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
-            "limiting": "5h"
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
           }
         ],
-        "unseen": [],
-        "usableNow": [
-          "team",
-          "cold"
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "unseen": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "kind": "sub",
+            "login": "needsLogin"
+          },
+          {
+            "account": "api",
+            "agent": "claude-code",
+            "kind": "api",
+            "login": "ok"
+          }
         ],
-        "earliestReturn": null
+        "usableNow": [
+          "personal"
+        ]
       },
+      "text": "personal  订阅\n  5h    4%   ↻18:10        +1h30m\n  7d    12%  ↻10-10 09:00  +4d\n  超额  —\n  采样  16:38\n\nteam  订阅  需登录\n  5h  —  无采样\n  7d  —\n\napi  按量\n  5h/7d  —  无采样",
+      "tzOffsetMin": 480
+    },
+    {
       "blocks": [
         {
           "account": "team",
@@ -1070,9 +1079,13 @@
             ],
             [
               "采样",
-              "09:02 · 本机"
+              "09:02"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "5h 窗口已过期"
+          }
         },
         {
           "account": "cold",
@@ -1099,44 +1112,129 @@
               "采样",
               "2025-12-31 23:50 · 旧"
             ]
-          ]
+          ],
+          "warm": {
+            "act": "send",
+            "text": "5h 窗口已过期"
+          }
         }
       ],
-      "text": "team  订阅\n  5h    —    ↻13:10 已过\n  7d    12%  ↻2027-01-03 09:00  +2d\n  超额  —\n  采样  09:02 · 本机\n\ncold  订阅\n  5h    —   ↻01-01 03:00 已过\n  7d    5%  ↻01-06 09:00 已过\n  超额  —\n  采样  2025-12-31 23:50 · 旧"
-    },
-    {
-      "name": "还没看到过任何回包、账号库也是空的",
       "machine": "本机",
-      "tzOffsetMin": 480,
+      "name": "跨年：非当年写 YYYY-MM-DD HH:MM（过去的采样 · 将来的重置都一样）",
       "reply": {
-        "state": "absent",
+        "accounts": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "seenAt": 1798678920,
+            "seenAtText": "09:02",
+            "slots": [
+              {
+                "pct": 97,
+                "resetsAt": 1798693800,
+                "resetsAtText": "13:10",
+                "slot": "5h"
+              },
+              {
+                "pct": 12,
+                "resetsAt": 1798938000,
+                "resetsAtText": "2027-01-03 09:00",
+                "slot": "7d"
+              }
+            ],
+            "stale": false,
+            "state": "resetSinceSeen",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
+          },
+          {
+            "account": "cold",
+            "agent": "claude-code",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false
+            },
+            "seenAt": 1767196200,
+            "seenAtText": "2025-12-31 23:50",
+            "slots": [
+              {
+                "pct": 2,
+                "resetsAt": 1767207600,
+                "resetsAtText": "01-01 03:00",
+                "slot": "5h"
+              },
+              {
+                "pct": 5,
+                "resetsAt": 1767661200,
+                "resetsAtText": "01-06 09:00",
+                "slot": "7d"
+              }
+            ],
+            "stale": true,
+            "state": "resetSinceSeen",
+            "subId": "3f9c0e1a2b3c4d5e6f708192"
+          }
+        ],
+        "earliestReturn": null,
+        "now": 1798718400,
+        "path": "/home/u/.cc-monitor/quota.json",
         "reason": null,
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
-        "accounts": [],
+        "state": "present",
         "unseen": [],
-        "usableNow": [],
-        "earliestReturn": null
+        "usableNow": [
+          "team",
+          "cold"
+        ]
       },
-      "blocks": [],
-      "text": "无采样"
+      "text": "team  订阅\n  5h    —    ↻13:10 已过\n  7d    12%  ↻2027-01-03 09:00  +2d\n  超额  —\n  采样  09:02\n\ncold  订阅\n  5h    —   ↻01-01 03:00 已过\n  7d    5%  ↻01-06 09:00 已过\n  超额  —\n  采样  2025-12-31 23:50 · 旧",
+      "tzOffsetMin": 480
     },
     {
-      "name": "额度账读不出来",
-      "machine": "本机",
-      "tzOffsetMin": 480,
-      "reply": {
-        "state": "unreadable",
-        "reason": "not JSON",
-        "path": "/home/u/.cc-monitor/quota.json",
-        "now": 1791189600,
-        "accounts": [],
-        "unseen": [],
-        "usableNow": [],
-        "earliestReturn": null
-      },
       "blocks": [],
-      "text": "读取失败 · 用量记录 · 原因不明"
+      "machine": "本机",
+      "name": "还没看到过任何回包、账号库也是空的",
+      "reply": {
+        "accounts": [],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "absent",
+        "unseen": [],
+        "usableNow": []
+      },
+      "text": "无采样",
+      "tzOffsetMin": 480
+    },
+    {
+      "blocks": [],
+      "machine": "本机",
+      "name": "额度账读不出来",
+      "reply": {
+        "accounts": [],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": "not JSON",
+        "state": "unreadable",
+        "unseen": [],
+        "usableNow": []
+      },
+      "text": "读取失败 · 用量记录 · 原因不明",
+      "tzOffsetMin": 480
     }
+  ],
+  "说明": [
+    "额度每号几行的金样：quota-read 一份回包（原数与显示态；语义位那一格的字由 show.rs::slot_words 写，时刻的字 …Text 与距今 …RelText 由出口 with_texts 按 tzOffsetMin 写）⇒ 每号一段 blocks（rows：首行 名 · 类型 · 标签，其余每行一组格 键 · 值 · ↻ · 距今；warm：开窗那一判）＋ --text 拼出来的整段字 text。",
+    "唯一的消费方判据：tests/backend/faces/quota_rows_tests.rs（行模型住 src/backend/faces/quota_rows.rs，拼字住 control/ship_text.rs）。界面 · 手机 · skill 照抄 rows / warm，不另排。",
+    "采样那一格只写几点（数旧带「旧」）：哪台采的是出口自己的事；machine 一格留作出口在悬停卡上接的那台名。回包只采结构，号名是编的。",
+    "text 的排法：顶上那一句先出；每号一段、段间空一行；首行各格隔两个空格；其余行缩进两格，非末格按本段同列最宽补齐（汉字记 2 宽），格间两个空格。"
   ]
 }

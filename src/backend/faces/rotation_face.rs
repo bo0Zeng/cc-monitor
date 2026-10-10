@@ -153,11 +153,14 @@ const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_A
 
 /// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
 /// 此刻发得出去的号、最早回来的那个。
-/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）。
+/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）、每号添好几行（`faces/quota_rows.rs`）
+/// 与开窗那一判（`warm`：quota-warm 照它发一句 / 睡到几点）。
 pub(crate) fn answer_quota_read() -> Answer {
     let now = crate::accounts::quota::now_unix();
     let mut v = wire::<_, Fail>(&quota_read_with(&Ctx::here(), now))?;
     crate::common::time::with_texts_here(&mut v, now);
+    crate::faces::quota_rows::with_rows(&mut v);
+    crate::faces::quota_rows::with_warm(&mut v);
     Ok(v)
 }
 
@@ -175,6 +178,8 @@ pub(crate) struct QuotaRead {
     unseen: Vec<Value>,
     usable_now: Vec<String>,
     earliest_return: Option<EarliestReturn>,
+    /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`crate::faces::quota_rows::head_text`]）。
+    text: Option<crate::common::cells::Words>,
 }
 
 /// 被拒 / 超额在兜的号里最早回来的那个。
@@ -246,7 +251,10 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
             one
         })
         .collect();
+    let text =
+        crate::faces::quota_rows::head_text(base.state, rows.is_empty() && unseen.is_empty());
     QuotaRead {
+        text,
         state: base.state,
         reason: base.reason.clone(),
         detail: base.detail.clone(),
@@ -1238,6 +1246,12 @@ fn head_of(
             return json!({"blocked": {}});
         };
         let mut b = json!({"account": l.account, "at": at, "atText": text(at)});
+        if let Some(rel) = crate::common::time::fmt_rel(
+            i64::try_from(at).unwrap_or(i64::MAX),
+            i64::try_from(now).unwrap_or(i64::MAX),
+        ) {
+            b["atRelText"] = json!(rel);
+        }
         if let Some((w, _)) = l.resets.iter().find(|(_, t)| *t == at) {
             b["w"] = json!(w);
         }

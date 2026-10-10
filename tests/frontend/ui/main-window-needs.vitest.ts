@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 /**
  * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
@@ -23,8 +25,7 @@ import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import type { TerminalSend, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
-import { fmtDur } from "../../../src/frontend/ui/quota-lines";
-import { formatDuration } from "../../../src/frontend/ui/duration-format";
+import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailable: vi.fn(() => false) }));
@@ -61,7 +62,7 @@ const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", 
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   const waitedMs = sinceMs === null ? null : NOW - sinceMs;
-  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs, waitedText: waitedMs === null ? null : formatDuration(waitedMs), receivedAt: NOW };
+  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000), receivedAt: NOW };
 };
 
 beforeEach(() => {
@@ -79,7 +80,7 @@ describe("状态的字照抄核心写好的（G2：界面不按码取字）", ()
   });
   it("在等人：种类的字 ＝ 会话事实带来的；事实还没到 ⇒ 活动信号带来的那个字", () => {
     const n: Needs = { ...approve(), text: "批·核心", tone: "need" };
-    expect(stateLine(tab("a", { activity: act("needs_you", "N·核心"), needs: n }), NOW).text).toBe(copyText("sessionFace.state.waiting", { kind: "批·核心", waited: formatDuration(120_000) }));
+    expect(stateLine(tab("a", { activity: act("needs_you", "N·核心"), needs: n }), NOW).text).toBe(copyText("sessionFace.state.waiting", { kind: "批·核心", waited: fmtDur(120) }));
     expect(stateLine(tab("b", { activity: act("needs_you", "N·核心") }), NOW).text).toBe("N·核心");
     expect(needsOf(tab("b", { activity: act("needs_you", "N·核心") }))?.text).toBe("N·核心");
   });
@@ -139,16 +140,16 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("★ 已等多久不拿本机钟减那台的起点：那台算好的已等多久 ＋ 本机从收到起走过的时间（两台钟差一小时也不变）", () => {
     // 那台的钟比本机快一小时：起点按那台的钟写，比本机此刻还晚；那台答出时已等了 2 分钟。
-    const n: Needs = { ...approve(), sinceMs: NOW + 3_600_000, waitedMs: 120_000, waitedText: formatDuration(120_000), receivedAt: NOW };
+    const n: Needs = { ...approve(), sinceMs: NOW + 3_600_000, waitedMs: 120_000, waitedText: fmtDur(120), receivedAt: NOW };
     const t = tab("a", { activity: waiting, needs: n });
     expect(stateLine(t, NOW).text, "收到那一刻 ＝ 那台写好的字").toBe(copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: n.waitedText! }));
-    expect(stateLine(t, NOW + 30_000).text, "之后按本机走过的时间接着加").toBe(copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: formatDuration(150_000) }));
+    expect(stateLine(t, NOW + 30_000).text, "之后按本机走过的时间接着加").toBe(copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: fmtDur(150) }));
     // 没有起点 ⇒ 不写已等多久。
     expect(stateLine(tab("b", { activity: waiting, needs: approve(null) }), NOW).text).toBe(copyText("beSession.needs.approve"));
   });
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
-    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: formatDuration(120_000) }), needs: true });
+    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: fmtDur(120) }), needs: true });
     const running = tab("b", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
     expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
     const idle = (unread: number) => tab("c", { unread, activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain" }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
@@ -165,16 +166,30 @@ describe("一个会话读成什么（session-face）", () => {
     expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null } }))).toBeNull();
   });
 
-  it("★ `Ctrl+J`：在等你的里面等得最久的在前（不知道何时起等的排后、同档按条上顺序）；当前就是 ⇒ 下一个、转回头；没有 ⇒ null", () => {
+  it("★ `Ctrl+J`：照核心的先后（危险度在前、同一档等得久的在前、不知道等了多久的排这一档最后、同档按条上顺序）；当前就是 ⇒ 下一个、转回头；没有 ⇒ null", () => {
     const tabs = [
       tab("a"),
-      tab("b", { activity: waiting, needs: approve(NOW - 10_000) }),
+      tab("b", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 10_000, receivedAt: NOW } }),
       tab("c", { activity: waiting }),
-      tab("d", { activity: waiting, needs: approve(NOW - 90_000) }),
+      tab("d", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 90_000, receivedAt: NOW } }),
+      tab("e", { activity: waiting, needs: { ...approve(), rank: 0, waitedMs: 1_000, receivedAt: NOW } }),
+      // 早收到的那一份：收到时等了 5s，之后本机又走了 120s ⇒ 此刻等了 125s，排在 d 前面（不拿别的机器的钟比）。
+      tab("f", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 5_000, receivedAt: NOW - 120_000 } }),
     ];
-    const order = needsOrder(tabs);
-    expect(order).toEqual(["d", "b", "c"]);
-    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "d", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "d" }, { sid: "b" }, { sid: "d" }, null]);
+    const order = needsOrder(tabs, NOW);
+    expect(order).toEqual(["e", "f", "d", "b", "c"]);
+    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "f" }, { sid: "e" }, null]);
+  });
+
+  it("★ 先后对核心那一处的共用金样（needs-order.golden.json，Rust needs_first 读同一份）", () => {
+    const golden = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-order.golden.json"), "utf8")) as {
+      cases: { name: string; needs: { id: string; rank: number; waitedMs: number | null }[]; want: string[] }[];
+    };
+    expect(golden.cases.length).toBeGreaterThanOrEqual(4);
+    for (const c of golden.cases) {
+      const tabs = c.needs.map((n) => tab(n.id, { activity: waiting, needs: { ...approve(), rank: n.rank, waitedMs: n.waitedMs, receivedAt: NOW } }));
+      expect(needsOrder(tabs, NOW), c.name).toEqual(c.want);
+    }
   });
 
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目名 ＋ 标题（没有 ai 标题 ⇒ 项目名当标题）", () => {
@@ -321,7 +336,7 @@ describe("「需手动」钉条 · 窗口标题 · 系统通知", () => {
     nb.render(NOW);
     expect(nb.el.style.display).toBe("");
     expect(nb.el.textContent).toContain("rm -rf build/");
-    expect(nb.el.textContent).toContain(copyText("needs.bar.sub", { waited: formatDuration(120_000) }));
+    expect(nb.el.textContent).toContain(copyText("needs.bar.sub", { waited: fmtDur(120) }));
     nb.el.querySelector("button")!.click();
     expect(attach).toHaveBeenCalledWith("a");
     cur.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };

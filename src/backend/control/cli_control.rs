@@ -20,8 +20,8 @@
 //!   - argv：[`crate::ARGS_B64_FLAG`] `<base64 的 JSON>`（任意位置；给写不了 stdin 的调用方：第二个前端的执行通道只有 stdout）。
 //!     给了它就**不碰 stdin**；与 [`crate::STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
 //!   上限：stdin [`super::cli_args::MAX_CLI_STDIN`]；argv [`super::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
-//! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]：只给 `quota-read`，
-//!   同一份回包排成给人看的字（`control/quota_text.rs`）；别的命令带它 ⇒ `bad_args`。
+//! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]（所有命令通用）：
+//!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
 //! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
@@ -172,7 +172,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         return probe();
     }
     let opts = &args[1..];
-    // 「给人看」那一形：成功只给 `quota-read`（`control/quota_text.rs`）；失败那一形不分命令（那一句 ＋ 复制详情）。
+    // 「给人看」那一形：成功 ＝ 回包里写好的格拼成字（`control/ship_text.rs`，不分命令）；失败那一形 ＝ 那一句 ＋ 复制详情。
     let text = opts.iter().any(|a| a == crate::TEXT_FLAG);
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：
@@ -193,13 +193,6 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             text,
         )
     };
-    if text && spec.name != "quota-read" {
-        return refuse(
-            err,
-            "bad_args",
-            copy_core::copy_text("acct.text.onlyQuota", &[]),
-        );
-    }
     let within_ms = match within_of(opts) {
         Ok(ms) => ms,
         Err((code, message)) => return refuse(err, code, message),
@@ -256,7 +249,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         Ok(v) => {
             let v = v.unwrap_or_else(|| serde_json::json!({}));
             if text {
-                let _ = writeln!(out, "{}", crate::control::quota_text::render_here(&v));
+                let _ = writeln!(out, "{}", crate::control::ship_text::ship_text(&v));
             } else {
                 let _ = writeln!(out, "{v}");
             }

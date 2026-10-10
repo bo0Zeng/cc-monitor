@@ -5,6 +5,7 @@
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
 import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { quotaFace, relText, slotWords } from "./quota-face";
 
 type Emit = (event: string, payload: unknown) => unknown;
 
@@ -26,6 +27,8 @@ function withTexts(v: unknown): unknown {
       const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
       const md = `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
       out[`${k}Text`] = d.toDateString() === now.toDateString() ? hm : d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md} ${hm}`;
+      const r = relText(x, Math.floor(now.getTime() / 1000));
+      if (r !== null) out[`${k}RelText`] = r;
     }
   }
   return out;
@@ -97,7 +100,7 @@ export class FakeBackend {
       return later.then(
         // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
         // 长会话整份读那一问有几 MB，数字数组那一形光假后端自己造就占掉页里几百 ms（性能台架量的是产品）
-        (value) => enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value)).buffer,
+        (value) => enc.encode(JSON.stringify(TIMED_OPS.has(op) ? (op === "quota-read" ? quotaFace(withTexts(slotWords(value))) : withTexts(slotWords(value))) : value)).buffer,
         (e: unknown) => Promise.reject(refusal(e, op)),
       );
     } catch (e) {

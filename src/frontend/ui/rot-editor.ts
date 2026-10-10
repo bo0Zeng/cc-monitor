@@ -12,7 +12,7 @@ import { button } from "./kit/button";
 import { field } from "./kit/field";
 import { closePopover, openPopover } from "./kit/popover";
 import { segmented } from "./kit/tabs";
-import { accountLabel, slotLabel } from "./quota-lines";
+import { accountLabel, slotLabel } from "./acct-words";
 import { attachTooltip } from "./kit/tooltip";
 import { accountAvatarEl } from "./account-color";
 import {
@@ -27,7 +27,7 @@ import type { CapValue } from "./generated/CapValue";
 import type { CellError } from "./generated/CellError";
 import type { Rotation } from "./generated/Rotation";
 import type { RotationSlot } from "./generated/RotationSlot";
-import type { QuotaRead } from "./quota-lines";
+import type { QuotaRead } from "./acct-words";
 import s from "./rot-editor.module.css";
 
 /** 所有号 / 所有窗口的那一格键。 */
