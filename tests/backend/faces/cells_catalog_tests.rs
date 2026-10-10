@@ -116,9 +116,11 @@ fn corpus(name: &str) -> Vec<Value> {
         .into_iter()
         .map(|e| serde_json::to_value(e).unwrap())
         .collect(),
-        "record" => golden("record.golden.jsonl")
-            .lines()
-            .map(|l| serde_json::from_str::<Value>(l).unwrap()["record"].clone())
+        // 两家各一份：Claude 那份按类造 · Codex 那份是一整份造的 rollout 走读页那一遍（同一件成品、同一份格目录）。
+        "record" => ["record.golden.jsonl", "record-codex.golden.jsonl"]
+            .iter()
+            .flat_map(|f| golden(f).lines().map(str::to_string).collect::<Vec<_>>())
+            .map(|l| serde_json::from_str::<Value>(&l).unwrap()["record"].clone())
             .collect(),
         "facts" => {
             let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();
