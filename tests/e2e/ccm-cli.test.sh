@@ -451,7 +451,7 @@ ck "「基于」绕成圈：报错退出 2" \
    "ccm: $(zh beProfile.chain.cycle "chain=loop1$(zh beProfile.chain.arrow)loop2$(zh beProfile.chain.arrow)loop1")" \
    "$(pccm "$PHOME" "$CCM" @loop1 -- --ccm-print)"
 ck "「基于」的那一段不存在：报到那一行" \
-   "ccm: $(zh beProfile.at.line line=19 "e=$(zh beProfile.chain.missingFrom name=orphan from=nobody)")" \
+   "ccm: $(zh beProfile.at.line line=19 "why=$(zh beProfile.chain.missingFrom name=orphan from=nobody)")" \
    "$(pccm "$PHOME" "$CCM" @orphan -- --ccm-print)"
 ck "没有这一段：说清" "ccm: $(zh beProfile.chain.unknown name=nope)" "$(pccm "$PHOME" "$CCM" @nope -- --ccm-print)"
 ck "@ 后面当不了配置名（@文件 那种提问）：整行原样交 claude" \

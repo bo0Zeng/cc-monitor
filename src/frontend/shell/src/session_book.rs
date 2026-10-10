@@ -178,7 +178,7 @@ pub enum In {
     },
     /// `session_branch`：那台后端给的一个会话的主线外清单（记录 `id` 的 JSON 数组原文，不解释）。
     Branch {
-        origin: String,
+        origin: crate::origin::Origin,
         sid: String,
         off: crate::ui_contract::RecordBody,
     },
@@ -217,7 +217,7 @@ pub enum Out {
     },
     /// 一个会话的主线外清单（原样转）。
     Branch {
-        origin: String,
+        origin: crate::origin::Origin,
         sid: String,
         off: crate::ui_contract::RecordBody,
     },
@@ -314,7 +314,7 @@ impl Book {
             }
             In::Branch { origin, sid, off } => {
                 self.origins
-                    .entry(origin.clone())
+                    .entry(origin.as_wire_str().to_string())
                     .or_default()
                     .branch
                     .insert(sid.clone(), off.clone());
@@ -413,7 +413,7 @@ impl Book {
                         }
                         if let Some(off) = b.branch.get(sid) {
                             r.before.push(Out::Branch {
-                                origin: (*o).clone(),
+                                origin: crate::origin::Origin((*o).clone()),
                                 sid: sid.clone(),
                                 off: off.clone(),
                             });
@@ -477,8 +477,8 @@ impl Out {
             | Out::Left { origin, .. }
             | Out::Listed { origin, .. }
             | Out::Unseen { origin, .. }
-            | Out::Runs { origin, .. }
-            | Out::Branch { origin, .. } => origin,
+            | Out::Runs { origin, .. } => origin,
+            Out::Branch { origin, .. } => origin.as_wire_str(),
         }
     }
 
