@@ -595,12 +595,22 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     use crate::select::Intent;
     // ① 没开双栏。
     let (wired, mut ws) = across_rig("fw34-across-no").await;
-    let mut one = Workspace::new(window_on(&wired, "/srv/a"));
+    // 每一形都拒在同步段里：拒完窗口一趟都不在路上（见 `SideRt`），最后线上零条。
+    let side = crate::find::testing::SideRt::new();
+    for i in 0..2 {
+        ws.pane_on_mut(i).rt = Some(side.handle());
+    }
+    let none_started = || assert_eq!(side.in_flight(), 0, "拒了却起了一趟往返");
+    let mut lone = window_on(&wired, "/srv/a");
+    lone.rt = Some(side.handle());
+    let mut one = Workspace::new(lone);
     assert!(!one.copy_to_other(None));
+    none_started();
     assert!(one.notice().is_some());
     // ② 一项都没选。
     ws.focus_side(0);
     assert!(!ws.copy_to_other(None));
+    none_started();
     assert!(ws.notice().is_some());
     // ③ 选中的一摞里有一个有损名 ⇒ 整摞不做。
     {
@@ -615,6 +625,7 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     }
     ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
     assert!(!ws.copy_to_other(None));
+    none_started();
     assert!(
         ws.notice().unwrap_or("").contains("\u{FFFD}odd"),
         "没点名是哪一项：{:?}",
@@ -623,9 +634,11 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     ws.pane_on(0).listing.rows.lock().unwrap().pop();
     // ④ 两栏同一个目录。
     ws.pane_on_mut(1).navigate_to("/srv/a".into());
+    // 换目录起了一趟列目录：等它走完再量。
+    side.idle().await;
     ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
     assert!(!ws.copy_to_other(None));
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    none_started();
     assert_eq!(
         wired.count("files-copy"),
         0,
@@ -778,6 +791,10 @@ fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing() {
     let (wired, mut ws) = across_rig("w5-drag").await;
+    let side = crate::find::testing::SideRt::new();
+    for i in 0..2 {
+        ws.pane_on_mut(i).rt = Some(side.handle());
+    }
     let mut d = Drive::new();
     let name_at = d.find(&mut ws, "x.txt");
     assert_eq!(name_at.len(), 1, "左栏那一行的名字没画出来");
@@ -795,9 +812,11 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
     let back = start + egui::vec2(0.0, 40.0);
     d.frame(&mut ws, vec![egui::Event::PointerMoved(back)]);
     assert!(ws.pane_on(0).dragging, "挪过拖动阈值之后没认成「在拖」");
+    // 松手那一帧是同步的：之前的帧起过什么先等它走完，松手之后窗口一趟都不在路上（见 `SideRt`）。
+    side.idle().await;
     d.frame(&mut ws, vec![press(back, false)]);
     assert!(!ws.pane_on(0).dragging, "松手之后「在拖」没收掉");
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(side.in_flight(), 0, "松在本栏却起了一趟往返");
     assert_eq!(
         wired.count("files-copy"),
         0,

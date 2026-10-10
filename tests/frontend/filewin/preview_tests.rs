@@ -136,6 +136,8 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
         ],
     )
     .await;
+    let side = crate::find::testing::SideRt::new();
+    w.rt = Some(side.handle());
     let mut p = Preview::default();
     p.follow(&w, None);
     assert_eq!(p.view(), &View::Idle(PICK_ONE.to_string()), "没选时那一句");
@@ -168,7 +170,9 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
         p.view(),
         &View::Idle(copy_core::copy_text("rsFilewinPreview.decide.many", &[("n", "4")]).into())
     );
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // 每一形都在 `follow` 那一下（同步）里答完：没起往返、没记一趟发，线上也没有。
+    assert_eq!(side.in_flight(), 0, "说了不读却起了一趟往返");
+    assert_eq!(p.fired(), 0, "说了不读却发了");
     assert!(
         reads(&wired).is_empty(),
         "不该读的那几形上了线：{:?}",

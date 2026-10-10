@@ -5,7 +5,6 @@ use crate::platform::terminal::{base64_encode, powershell_encoded_command};
 #[test]
 fn now_ms_increases_monotonically() {
     let a = now_ms();
-    std::thread::sleep(std::time::Duration::from_millis(2));
     let b = now_ms();
     assert!(b >= a);
 }
