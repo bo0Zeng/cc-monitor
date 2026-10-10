@@ -1712,6 +1712,9 @@ body.settings-window-mode .settings-panel {
   .ext-legend-item .ext-dot {
     width: auto;
   }
+  .ext-legend-item .ext-dot:has(.ext-dot-mark) {
+    margin-right: 4px;
+  }
   .ext-drawer-section {
     margin-top: 10px;
     font-weight: 600;
@@ -1769,6 +1772,10 @@ body.settings-window-mode .settings-panel {
     gap: 6px;
     align-items: center;
     margin-top: 6px;
+  }
+  .ext-mcp-acts > .settings-btn {
+    flex: none;
+    white-space: nowrap;
   }
   .ext-mcp-raw {
     margin: 6px 0 0;
