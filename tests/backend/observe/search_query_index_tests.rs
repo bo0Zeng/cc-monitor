@@ -547,7 +547,7 @@ fn many_batches_still_answer_most_recent_first() {
 /// 〔perfC4〕几条线程 ＝ min(8, 这台机器可用的并行数)，至少一条；问不出可用数 ⇒ 一条（远端可能是一两核的小机器，不按 8 条起）。
 #[test]
 fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
-    use crate::observe::fs::par_workers;
+    use crate::observe::par::par_workers;
     let got: Vec<(Option<usize>, usize)> = [
         None,
         Some(0),
@@ -576,7 +576,7 @@ fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
     );
 }
 
-/// 〔perfC4〕几条线程只在一处算：后端生产段里问机器并行数的只有 `observe/fs.rs` 那一处（[`crate::observe::fs::par_workers`]），
+/// 〔perfC4〕几条线程只在一处算：后端生产段里问机器并行数的只有 `observe/par.rs` 那一处（[`crate::observe::par::par_workers`]），
 /// 别处要分线程走 `par_in_order`，不自己再问一遍、再定一个上限。
 #[test]
 fn the_worker_count_is_asked_in_one_place() {
@@ -606,8 +606,8 @@ fn the_worker_count_is_asked_in_one_place() {
         .collect();
     assert_eq!(
         hits,
-        vec![("observe/fs.rs".to_string(), 1)],
-        "问机器并行数只许在 `observe/fs.rs::par_workers` 一处（别处分线程走 `par_in_order`）"
+        vec![("observe/par.rs".to_string(), 1)],
+        "问机器并行数只许在 `observe/par.rs::par_workers` 一处（别处分线程走 `par_in_order`）"
     );
 }
 
@@ -615,7 +615,7 @@ fn the_worker_count_is_asked_in_one_place() {
 #[test]
 fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
     let items: Vec<usize> = (0..500).collect();
-    let got = crate::observe::fs::par_in_order(items.clone(), |i| {
+    let got = crate::observe::par::par_in_order(items.clone(), |i| {
         if i % 37 == 0 {
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
@@ -623,7 +623,7 @@ fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
     });
     assert_eq!(got, items.iter().map(|i| i * 3).collect::<Vec<_>>());
     let caught = std::panic::catch_unwind(|| {
-        crate::observe::fs::par_in_order((0..64).collect::<Vec<usize>>(), |i| {
+        crate::observe::par::par_in_order((0..64).collect::<Vec<usize>>(), |i| {
             assert!(i != 40, "第 40 件坏了");
             i
         })

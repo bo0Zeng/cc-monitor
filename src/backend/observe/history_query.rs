@@ -368,7 +368,7 @@ pub(crate) fn sessions_by_dir_for(
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）；结果最后按目录名排，与单线程逐字相同。
-    let mut out: Vec<_> = crate::observe::fs::par_in_order(dirs, |dir_name| {
+    let mut out: Vec<_> = crate::observe::par::par_in_order(dirs, |dir_name| {
         rows_of_dir(agent_home, &dir_name, only).map(|got| (dir_name, got))
     })
     .into_iter()

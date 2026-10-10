@@ -702,7 +702,7 @@ impl SearchIndex {
                 .map(|(path, _)| (path.clone(), prev.remove(path)))
                 .collect();
             let tools = opts.include_tools;
-            let brought = crate::observe::fs::par_in_order(work, |(path, prev)| {
+            let brought = crate::observe::par::par_in_order(work, |(path, prev)| {
                 let mut last = Refresh::default();
                 let got = bring_up(&path, prev, tools, &mut last);
                 (got, last)
