@@ -696,19 +696,28 @@ fn session_added_container_is_an_open_union() {
         })
     );
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"tmux"}}"#),
+        get(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"tmux"}}"#
+        ),
         Some(SessionContainer::Hosted {
             host: TerminalHost::Tmux,
             terminal: None
         })
     );
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"none"}}"#),
+        get(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"none"}}"#
+        ),
         Some(SessionContainer::None)
     );
-    assert_eq!(get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now"}"#), None);
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"hosted","terminal":"h-1"}}"#),
+        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now"}"#),
+        None
+    );
+    assert_eq!(
+        get(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"hosted","terminal":"h-1"}}"#
+        ),
         Some(SessionContainer::Other {
             host: "hosted".into()
         })
@@ -904,20 +913,31 @@ fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
         other => panic!("解不出 session_added：{other:?}"),
     };
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":4242}"#),
+        pid_of(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":4242}"#
+        ),
         Some(4242)
     );
-    assert_eq!(pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now"}"#), None);
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":-1}"#),
+        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now"}"#),
         None
     );
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":"42"}"#),
+        pid_of(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":-1}"#
+        ),
         None
     );
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":4294967296}"#),
+        pid_of(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":"42"}"#
+        ),
+        None
+    );
+    assert_eq!(
+        pid_of(
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":4294967296}"#
+        ),
         None
     );
 }

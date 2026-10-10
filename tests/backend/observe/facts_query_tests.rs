@@ -965,13 +965,48 @@ fn needs_carries_its_words_and_tone() {
         since_ms: None,
     };
     let cases = [
-        (vec![call("Bash")], Some(W::Permission), NeedsKind::Approve, "beSession.needs.approve"),
-        (vec![call("AskUserQuestion")], None, NeedsKind::Answer, "beSession.needs.answer"),
-        (vec![call("ExitPlanMode")], None, NeedsKind::Plan, "beSession.needs.plan"),
-        (vec![call("Bash")], Some(W::Network), NeedsKind::Network, "beSession.needs.network"),
-        (vec![], Some(W::Worker), NeedsKind::Worker, "beSession.needs.worker"),
-        (vec![], Some(W::Goal), NeedsKind::Goal, "beSession.needs.goal"),
-        (vec![], Some(W::Dialog), NeedsKind::Choose, "beSession.needs.choose"),
+        (
+            vec![call("Bash")],
+            Some(W::Permission),
+            NeedsKind::Approve,
+            "beSession.needs.approve",
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            None,
+            NeedsKind::Answer,
+            "beSession.needs.answer",
+        ),
+        (
+            vec![call("ExitPlanMode")],
+            None,
+            NeedsKind::Plan,
+            "beSession.needs.plan",
+        ),
+        (
+            vec![call("Bash")],
+            Some(W::Network),
+            NeedsKind::Network,
+            "beSession.needs.network",
+        ),
+        (
+            vec![],
+            Some(W::Worker),
+            NeedsKind::Worker,
+            "beSession.needs.worker",
+        ),
+        (
+            vec![],
+            Some(W::Goal),
+            NeedsKind::Goal,
+            "beSession.needs.goal",
+        ),
+        (
+            vec![],
+            Some(W::Dialog),
+            NeedsKind::Choose,
+            "beSession.needs.choose",
+        ),
         (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
     ];
     for (pending, w, kind, key) in cases {
@@ -988,9 +1023,17 @@ fn needs_carries_its_words_and_tone() {
 #[test]
 fn usage_carries_its_words_and_tone() {
     use crate::common::cells::Tone;
-    let u = UsageFact::new(350_000, Some("m".into()), 350_000, (1_000_000, LimitFrom::Relay));
+    let u = UsageFact::new(
+        350_000,
+        Some("m".into()),
+        350_000,
+        (1_000_000, LimitFrom::Relay),
+    );
     assert_eq!(u.percent, Some(35));
-    assert_eq!(u.context_text.0, copy_core::copy_text("beUsage.context.pct", &[("n", "35")]));
+    assert_eq!(
+        u.context_text.0,
+        copy_core::copy_text("beUsage.context.pct", &[("n", "35")])
+    );
     assert_eq!(u.context_tone, Tone::Plain);
     assert_eq!(u.prompt_tokens_text.0, "350k");
     assert_eq!(u.limit_text.0, "1M");
@@ -1010,11 +1053,21 @@ fn usage_carries_its_words_and_tone() {
 
     blind.settle((400_000, LimitFrom::Setting));
     assert_eq!(blind.percent, Some(88));
-    assert_eq!(blind.context_text.0, copy_core::copy_text("beUsage.context.pct", &[("n", "88")]));
+    assert_eq!(
+        blind.context_text.0,
+        copy_core::copy_text("beUsage.context.pct", &[("n", "88")])
+    );
     assert_eq!(blind.context_tone, Tone::Warn);
     assert_eq!(blind.limit_text.0, "400k");
 
-    for (n, want) in [(800, "800"), (1_234, "1.2k"), (8_000, "8k"), (12_345, "12k"), (1_000_000, "1M"), (1_250_000, "1.3M")] {
+    for (n, want) in [
+        (800, "800"),
+        (1_234, "1.2k"),
+        (8_000, "8k"),
+        (12_345, "12k"),
+        (1_000_000, "1M"),
+        (1_250_000, "1.3M"),
+    ] {
         assert_eq!(short_tokens(n), want, "{n}");
     }
 }
@@ -1041,8 +1094,16 @@ fn needs_carry_a_rank_riskier_first() {
         (vec![call("Bash")], Some(W::Permission), NeedsKind::Approve),
         (vec![], Some(W::Worker), NeedsKind::Worker),
         (vec![], Some(W::Goal), NeedsKind::Goal),
-        (vec![call("ExitPlanMode")], Some(W::Permission), NeedsKind::Plan),
-        (vec![call("AskUserQuestion")], Some(W::Input), NeedsKind::Answer),
+        (
+            vec![call("ExitPlanMode")],
+            Some(W::Permission),
+            NeedsKind::Plan,
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            Some(W::Input),
+            NeedsKind::Answer,
+        ),
         (vec![], Some(W::Dialog), NeedsKind::Choose),
         (vec![], None, NeedsKind::Unknown),
     ];
@@ -1054,7 +1115,11 @@ fn needs_carry_a_rank_riskier_first() {
             n.rank
         })
         .collect();
-    assert_eq!(ranks, (0..8).collect::<Vec<u8>>(), "序按危险度从 0 起、一种一个");
+    assert_eq!(
+        ranks,
+        (0..8).collect::<Vec<u8>>(),
+        "序按危险度从 0 起、一种一个"
+    );
     let v = serde_json::to_value(needs_of(&[], Some(&wait(Some(W::Goal)))).unwrap()).unwrap();
     assert_eq!(v["rank"], 3);
 }
