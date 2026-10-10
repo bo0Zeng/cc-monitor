@@ -1296,7 +1296,7 @@
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · 会话不存在",
+      "zh": "tmux 读取画面失败 · tmux 会话不存在",
       "args": [],
       "limited": ["tmux"]
     },
@@ -1317,26 +1317,30 @@
     "beGate.admit.noSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 不存在 · 未发送",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 不存在 · 未发送",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admit.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 非 cc-monitor 启动 · 未发送",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 非 cc-monitor 启动 · 未发送",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.noSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 不存在 · 无可结束",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 不存在 · 无可结束",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admit.otherClient": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 由另一客户端启动 · 只能看 · 未发送",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 由另一客户端启动 · 只能看 · 未发送",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admit.otherSession": {
       "kind": "error",
@@ -1348,14 +1352,16 @@
     "beGate.admitDestructive.otherClient": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 由另一客户端启动 · 只能看 · 未结束",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 由另一客户端启动 · 只能看 · 未结束",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 非 cc-monitor 启动 · 未结束",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 非 cc-monitor 启动 · 未结束",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.otherSession": {
       "kind": "error",
@@ -1367,33 +1373,37 @@
     "beGate.admitDestructive.manyWindows": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 有窗口 ×{n} · 可能开着别的 · 未结束 · 到该 tmux 会话里自行处理",
+      "zh": "tmux 会话 {name} 有窗口 ×{n} · 可能开着别的 · 未结束 · 需手动处理",
       "args": ["name", "n"],
       "limited": ["tmux"]
     },
     "beKill.name.colon": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话名含冒号 · {name}",
-      "args": ["name"]
+      "zh": "tmux 会话名含冒号 · {name}",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beKill.name.empty": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话名为空",
-      "args": []
+      "zh": "tmux 会话名为空",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beKill.name.control": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话名含控制字符",
-      "args": []
+      "zh": "tmux 会话名含控制字符",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beKill.name.deceptive": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话名含像空格或反转文字方向的字符 · {cp}",
-      "args": ["cp"]
+      "zh": "tmux 会话名含像空格或反转文字方向的字符 · {cp}",
+      "args": ["cp"],
+      "limited": ["tmux"]
     },
     "beKill.run.noTmux": {
       "kind": "error",
@@ -1429,8 +1439,9 @@
     "beKill.run.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "结束会话失败 · {e}",
-      "args": ["e"]
+      "zh": "结束 tmux 会话失败 · {e}",
+      "args": ["e"],
+      "limited": ["tmux"]
     },
     "beLaunch.said.silent": {
       "kind": "body",
@@ -1449,7 +1460,7 @@
     "beLaunch.create.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "新建 tmux 会话失败 · {name} · 会话不存在 · {said}",
+      "zh": "新建 tmux 会话失败 · {name} · tmux 会话不存在 · {said}",
       "args": ["name", "said"],
       "limited": ["tmux"]
     },
@@ -2138,8 +2149,9 @@
     "terminalReads.preview.noSuchSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 会话不存在",
-      "args": []
+      "zh": "读取画面失败 · tmux 会话不存在",
+      "args": [],
+      "limited": ["tmux"]
     },
     "terminalReads.preview.childTimedOut": {
       "kind": "error",
@@ -2211,7 +2223,7 @@
     "tmuxControl.kill.wrongOwner": {
       "kind": "error",
       "role": "报错",
-      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的会话 · 不碰手动建的 tmux 会话",
+      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的 tmux 会话 · 不碰手动建的 tmux 会话",
       "args": ["target"],
       "limited": ["tmux"]
     },
@@ -2592,7 +2604,7 @@
     "ccBus.broadcast.doneFailed": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 {failed} · {who}",
+      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 ×{failed} · {who}",
       "args": ["sent", "skipped", "failed", "who"]
     },
     "ccBus.broadcast.doneUnknown": {
@@ -2604,7 +2616,7 @@
     "ccBus.broadcast.doneUnknownFailed": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 {failed} · {who}",
+      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 ×{failed} · {who}",
       "args": ["sent", "failed", "who"]
     },
     "portForward.onStop.failed": {
@@ -3130,7 +3142,7 @@
     "speaker.notice.fails": {
       "kind": "body",
       "role": "片段",
-      "zh": " · 失败 {n}",
+      "zh": " · 失败 ×{n}",
       "args": ["n"]
     },
     "speaker.system.title": {
@@ -6665,7 +6677,7 @@
     "profilesPage.form.reread": {
       "kind": "action",
       "role": "按钮",
-      "zh": "重新读",
+      "zh": "刷新",
       "args": []
     },
     "profilesPage.form.save": {
@@ -23660,7 +23672,7 @@
     "rsFilewinProgress.upload.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "上传失败 {n}",
+      "zh": "上传失败 ×{n}",
       "args": ["n"]
     },
     "rsFilewinProgress.upload.stopped": {
@@ -23726,7 +23738,7 @@
     "rsFilewinProgress.copy.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "复制失败 {n}",
+      "zh": "复制失败 ×{n}",
       "args": ["n"]
     },
     "rsFilewinProgress.cross.running": {
@@ -27540,7 +27552,7 @@
     "tabBatch.result.someFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{action} {done} · 失败 {failed}",
+      "zh": "{action} {done} · 失败 ×{failed}",
       "args": ["action", "done", "failed"]
     },
     "sessionState.batch.done": {
@@ -27552,7 +27564,7 @@
     "sessionState.batch.someFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已结束 {done} · 失败 {failed}",
+      "zh": "已结束 {done} · 失败 ×{failed}",
       "args": ["done", "failed"]
     },
     "sessionState.batch.skipped": {

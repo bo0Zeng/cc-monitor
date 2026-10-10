@@ -622,7 +622,7 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[aria-modal='true']");
     await sleep(400);
   }),
-  panel("panel-batch-result-view", "批量结束 · 结果［查看］", "确认之后：toast 只一句汇总（已结束 4 · 失败 2）＋［查看］；点了打开「消息」、展开那一条，逐条原因在那里", async () => {
+  panel("panel-batch-result-view", "批量结束 · 结果［查看］", "确认之后：toast 只一句汇总（已结束 4 · 失败 ×2）＋［查看］；点了打开「消息」、展开那一条，逐条原因在那里", async () => {
     await mainReady(ALL_TABS);
     const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
     for (const t of tabs) {
