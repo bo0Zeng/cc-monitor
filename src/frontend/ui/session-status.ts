@@ -63,12 +63,14 @@ export interface GridSessionSnapshot {
    * 原先是 `status: "live" | "archived"` ＋ `tmuxIdle: boolean`（可重连的会话在前者里是 live）。
    */
   state: SessionState;
-  /** 此刻在干什么（后端翻好的）；null = 说不清。排序按它（等人的先），字与点按下面两格。 */
+  /** 此刻在干什么（后端翻好的）；null = 说不清。字与点按下面两格，排序按 `activityOrder`。 */
   activity: SessionActivity | null;
   /** 那一态核心写好的字（运行中 · 需手动 · 空闲 · 后台在跑 …）；还没收到 ⇒ null。 */
   activityText: string | null;
   /** 那一态的语气（点的颜色按它）；还没收到 ⇒ null。 */
   activityTone: string | null;
+  /** 监控板组内的序（核心写的，小的在前：等人 · 在干活 · 后台在跑 · 闲着 · 说不清）；还没收到 ⇒ null。 */
+  activityOrder: number | null;
   /** 在等人时等的是什么（核心写好的字：等批准 · 等回答 …，`needs.text`）；不在等 ⇒ null。 */
   needs: string | null;
   /** 本会话仍在跑的 subagent 数。 */

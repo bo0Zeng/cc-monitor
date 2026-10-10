@@ -827,7 +827,7 @@ mod specimens {
     };
     use crate::observe::history_query::IndexRow;
     use crate::stream::wire::{
-        activity_cells, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
+        ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
     };
     use std::collections::BTreeMap;
 
@@ -1071,6 +1071,8 @@ mod specimens {
                         what: some("ls"),
                         since_ms: Some(1),
                         text: Words(s("t")),
+                        head: Words(s("h")),
+                        head_code: some("ls"),
                         tone: crate::common::cells::Tone::Need,
                         rank: 1,
                         waited_ms: Some(1),
@@ -1170,6 +1172,8 @@ mod specimens {
                 what: some("ls"),
                 since_ms: Some(1),
                 text: Words(s("t")),
+                head: Words(s("h")),
+                head_code: some("ls"),
                 tone: crate::common::cells::Tone::Need,
                 rank: 1,
                 waited_ms: Some(1),
@@ -1210,9 +1214,7 @@ mod specimens {
             name: some("n"),
             path: some("/p"),
             lines: Some(1),
-            activity: Some(activity),
-            activity_text: activity_cells(Some(activity)).0,
-            activity_tone: activity_cells(Some(activity)).1,
+            face: ActivityFace::of(Some(activity)),
             waiting_for: some("w"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
@@ -1239,9 +1241,7 @@ mod specimens {
             .map(|a| {
                 node_of(&Frame::SessionStatus {
                     sid: s("s"),
-                    activity: Some(a),
-                    activity_text: activity_cells(Some(a)).0,
-                    activity_tone: activity_cells(Some(a)).1,
+                    face: ActivityFace::of(Some(a)),
                     waiting_for: some("w"),
                     liveness_confidence: some("heuristic"),
                 })

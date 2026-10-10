@@ -529,6 +529,11 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             what: Some("rm -rf build/".into()),
             since_ms: Some(42),
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            head: crate::common::cells::Words(copy_core::copy_text(
+                "needs.bar.approve",
+                &[("tool", "Bash")]
+            )),
+            head_code: Some("rm -rf build/".into()),
             tone: crate::common::cells::Tone::Need,
             rank: 1,
             waited_ms: Some(1),
@@ -678,6 +683,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             what: None,
             since_ms: Some(1),
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            head: crate::common::cells::Words(String::new()),
+            head_code: None,
             tone: crate::common::cells::Tone::Need,
             rank: 1,
             waited_ms: Some(1),
@@ -1407,6 +1414,8 @@ fn needs_first_agrees_with_the_shared_order_golden() {
                         what: None,
                         since_ms: None,
                         text: crate::common::cells::Words(String::new()),
+                        head: crate::common::cells::Words(String::new()),
+                        head_code: None,
                         tone: crate::common::cells::Tone::Need,
                         rank: u8::try_from(n["rank"].as_u64().unwrap()).unwrap(),
                         waited_ms: n["waitedMs"].as_u64(),
@@ -1425,4 +1434,61 @@ fn needs_first_agrees_with_the_shared_order_golden() {
             .collect();
         assert_eq!(ids, want, "{}", c["name"]);
     }
+}
+
+/// 钉条第一行由核心写（`head`：种类 ＋ 工具名，「等批准 · Bash」），等宽那一段也由核心挑（`headCode`：批准 · 回答 · 放行带主参数，
+/// 别的不带）；短的那一格 `text` 照旧（别处用）。
+#[test]
+fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
+    use crate::agents::WaitOn as W;
+    let call = |id: &str, name: &str, what: Option<&str>| PendingCall {
+        id: id.into(),
+        name: name.into(),
+        what: what.map(str::to_string),
+        at: None,
+        state: StepWait::Unclear,
+        why: None,
+        text: None,
+        why_text: None,
+    };
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
+        since_ms: None,
+        read_at_ms: 0,
+    };
+    let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
+    let plan = vec![call("p", "ExitPlanMode", Some("计划正文头一行"))];
+    let n = needs_of(&bash, Some(&wait(Some(W::Permission)))).unwrap();
+    assert_eq!(
+        n.head.0,
+        copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")])
+    );
+    assert_eq!(n.head_code.as_deref(), Some("rm -rf build/"));
+    assert_eq!(
+        n.text.0,
+        copy_core::copy_text("beSession.needs.approve", &[]),
+        "短的那一格照旧"
+    );
+    let n = needs_of(&plan, Some(&wait(Some(W::Permission)))).unwrap();
+    assert_eq!(n.head.0, copy_core::copy_text("needs.bar.plan", &[]));
+    assert_eq!(n.head_code, None, "计划不带等宽那一段");
+    let n = needs_of(&bash, Some(&wait(Some(W::Network)))).unwrap();
+    assert_eq!(n.head.0, copy_core::copy_text("needs.bar.network", &[]));
+    assert_eq!(n.head_code.as_deref(), Some("rm -rf build/"));
+    for (w, key) in [
+        (Some(W::Worker), "needs.bar.worker"),
+        (Some(W::Goal), "needs.bar.goal"),
+        (Some(W::Dialog), "needs.bar.choose"),
+        (None, "needs.bar.unknown"),
+    ] {
+        let n = needs_of(&[], Some(&wait(w))).unwrap();
+        assert_eq!(n.head.0, copy_core::copy_text(key, &[]), "{w:?}");
+        assert_eq!(n.head_code, None, "{w:?}");
+    }
+    // 批准框但判不出工具名 ⇒ 第一行就是短的那一格。
+    let n = needs_of(&[], Some(&wait(Some(W::Permission)))).unwrap();
+    assert_eq!(
+        (n.kind, n.head.clone()),
+        (NeedsKind::Approve, n.text.clone())
+    );
 }

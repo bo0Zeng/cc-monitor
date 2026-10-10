@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 286,
+  "ceiling": 274,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -219,13 +219,6 @@
       "n": 2,
       "kind": "留",
       "why": "开发者日志（`[perf]` 行 / console），不上屏"
-    },
-    {
-      "file": "src/frontend/ui/needs-bar.ts",
-      "rule": "caseWord",
-      "n": 8,
-      "kind": "第 1 批",
-      "why": "需手动种类码 ⇒ 字（八种）：needs 已带 text（核心写好），这几处改读 needs.text 就删"
     },
     {
       "file": "src/frontend/ui/new-session.ts",
@@ -485,13 +478,6 @@
       "n": 7,
       "kind": "留",
       "why": "命令面板的分组标题（界面自己的分组闭集），骨架词"
-    },
-    {
-      "file": "src/frontend/ui/views/grid-monitor.ts",
-      "rule": "caseRank",
-      "n": 4,
-      "kind": "第 1 批",
-      "why": "V10：监控板组内排序照抄后端档（快照带核心的序）"
     },
     {
       "file": "src/frontend/ui/views/history-rows.ts",

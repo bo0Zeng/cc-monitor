@@ -730,6 +730,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "needs.head",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.headCode",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
@@ -999,6 +1011,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "needs.head",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.headCode",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
@@ -1187,6 +1211,12 @@
           "type": "enum"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "activity_order",
+          "type": "number"
+        },
+        {
           "frozen": true,
           "kind": "text",
           "path": "activity_text",
@@ -1298,6 +1328,12 @@
           "kind": "value",
           "path": "activity",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "activity_order",
+          "type": "number"
         },
         {
           "frozen": true,

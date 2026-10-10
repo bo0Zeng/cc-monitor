@@ -25,28 +25,6 @@ export interface NeedsBarHost {
   attach(sid: string): void;
 }
 
-/** 钉条第一行（种类 ＋ 工具名）与等宽那一段（主参数 / 问题）。 */
-export function needsHeadline(n: Needs): { label: string; code: string | null } {
-  switch (n.kind) {
-    case "approve":
-      return { label: n.tool ? copyText("needs.bar.approve", { tool: n.tool }) : n.text, code: n.what };
-    case "answer":
-      return { label: copyText("needs.bar.answer"), code: n.what };
-    case "plan":
-      return { label: copyText("needs.bar.plan"), code: null };
-    case "network":
-      return { label: copyText("needs.bar.network"), code: n.what };
-    case "worker":
-      return { label: copyText("needs.bar.worker"), code: null };
-    case "goal":
-      return { label: copyText("needs.bar.goal"), code: null };
-    case "choose":
-      return { label: copyText("needs.bar.choose"), code: null };
-    case "unknown":
-      return { label: copyText("needs.bar.unknown"), code: null };
-  }
-}
-
 /** 去哪答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里（活着的会话都在那台的某个终端里）⇒ 在终端里打开；都不行 ⇒ 不给。 */
 export function answerWhere(tab: Tab): "front" | "attach" | null {
   if (terminalFrontAvailable() && hasTerminal(tab.state)) return "front";
@@ -76,10 +54,9 @@ export class NeedsBar {
       }
       return;
     }
-    const head = needsHeadline(n);
     const waited = waitedNow(n, now);
     const where = answerWhere(tab);
-    const drawn = [tab.sessionId, head.label, head.code ?? "", waited ?? "", where ?? ""].join("\u0000");
+    const drawn = [tab.sessionId, n.head, n.headCode ?? "", waited ?? "", where ?? ""].join("\u0000");
     if (drawn === this.drawn) return;
     this.drawn = drawn;
     this.el.style.display = "";
@@ -87,13 +64,13 @@ export class NeedsBar {
     body.className = s.nbBody;
     const l1 = document.createElement("div");
     l1.className = s.nbLine;
-    l1.append(document.createTextNode(head.label));
-    if (head.code) {
+    l1.append(document.createTextNode(n.head));
+    if (n.headCode) {
       // 批准：那一步的主参数等宽；回答：问题原文照正文排。
       const asCode = n.kind === "approve" || n.kind === "network";
       const code = document.createElement(asCode ? "code" : "span");
       code.className = asCode ? s.nbCode : s.nbQuote;
-      code.textContent = head.code;
+      code.textContent = n.headCode;
       l1.append(code);
     }
     const l2 = document.createElement("div");

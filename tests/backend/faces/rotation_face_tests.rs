@@ -685,7 +685,7 @@ fn rule_users_carry_each_sessions_state() {
     let rules = answer_rules_read_with(&ctx).expect("read");
     let doing = &rules["rules"][0]["users"]["doing"];
     let t = |k: &str| copy_core::copy_text(k, &[]);
-    // 字与语气与主窗口同一处写（`wire::activity_cells` · `needs_words` · 去向的字）：界面照抄，不按 `state` 取字。
+    // 字与语气与主窗口同一处写（`wire::ActivityFace` · `needs_words` · 去向的字）：界面照抄，不按 `state` 取字。
     // `state` 是轮换那一侧的判（后台命令在跑按「在跑」算：重启会掐掉它），显示的字照 activity 来。
     assert_eq!(
         doing,

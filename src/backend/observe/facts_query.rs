@@ -498,6 +498,10 @@ pub(crate) struct Needs {
     pub(crate) since_ms: Option<u64>,
     /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
     pub(crate) text: Words,
+    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 计划 · 等批准 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+    pub(crate) head: Words,
+    /// 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
+    pub(crate) head_code: Option<String>,
     /// 语气（恒 `need`）。
     pub(crate) tone: crate::common::cells::Tone,
     /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
@@ -558,6 +562,13 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         what: call.and_then(|c| c.what.clone()),
         since_ms: wait.since_ms,
         text: needs_words(kind),
+        head: needs_head(kind, call.map(|c| c.name.as_str())),
+        head_code: match kind {
+            NeedsKind::Approve | NeedsKind::Answer | NeedsKind::Network => {
+                call.and_then(|c| c.what.clone())
+            }
+            _ => None,
+        },
         tone: crate::common::cells::Tone::Need,
         rank,
         waited_ms,
@@ -576,6 +587,23 @@ pub(crate) fn needs_words(kind: NeedsKind) -> Words {
         NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
         NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
         NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
+    })
+}
+
+/// 钉条第一行（[`Needs::head`] 的唯一一处）：种类 ＋ 工具名。批准判不出工具名 ⇒ 短的那一格（[`needs_words`]）。
+pub(crate) fn needs_head(kind: NeedsKind, tool: Option<&str>) -> Words {
+    Words(match kind {
+        NeedsKind::Approve => match tool {
+            Some(t) => copy_core::copy_text("needs.bar.approve", &[("tool", t)]),
+            None => return needs_words(kind),
+        },
+        NeedsKind::Answer => copy_core::copy_text("needs.bar.answer", &[]),
+        NeedsKind::Plan => copy_core::copy_text("needs.bar.plan", &[]),
+        NeedsKind::Network => copy_core::copy_text("needs.bar.network", &[]),
+        NeedsKind::Worker => copy_core::copy_text("needs.bar.worker", &[]),
+        NeedsKind::Goal => copy_core::copy_text("needs.bar.goal", &[]),
+        NeedsKind::Choose => copy_core::copy_text("needs.bar.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("needs.bar.unknown", &[]),
     })
 }
 
@@ -839,6 +867,8 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
             &v["needs"],
             &[
                 "call",
+                "head",
+                "headCode",
                 "kind",
                 "rank",
                 "sinceMs",

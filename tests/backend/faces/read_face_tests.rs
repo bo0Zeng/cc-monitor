@@ -696,7 +696,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "tone": "need", "rank": 1})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
