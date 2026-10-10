@@ -20,7 +20,14 @@ fn the_first_session_on_an_origin_owns_it_and_later_ones_are_its_children() {
     );
     assert!(b.saw(o(T, None), "s-kid", "claude-code", 101));
     assert_eq!(b.parent_of("s-kid"), Some("s-owner"));
-    assert_eq!(b.children_of("s-owner"), vec!["s-kid"]);
+    assert_eq!(
+        b.parents
+            .iter()
+            .filter(|(_, p)| p.parent == "s-owner")
+            .map(|(k, _)| k.as_str())
+            .collect::<Vec<_>>(),
+        vec!["s-kid"]
+    );
 }
 
 /// 同一个会话再发（subagent 带的也是父会话的编号，同一格）⇒ 不改、不写盘。
@@ -39,7 +46,10 @@ fn a_parent_in_the_address_is_recorded_for_the_owner() {
     let mut b = Book::default();
     assert!(b.saw(o(T, Some("s-p")), "s-new", "claude-code", 100));
     assert_eq!(b.parent_of("s-new"), Some("s-p"));
-    assert_eq!(b.agent_of("s-new"), Some("claude-code"));
+    assert_eq!(
+        b.parents.get("s-new").map(|p| p.agent.as_str()),
+        Some("claude-code")
+    );
 }
 
 /// 父只记第一次：之后换一条地址（续接时 `ccm` 新铸的来处）再来，父不改。

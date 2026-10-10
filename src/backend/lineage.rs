@@ -134,20 +134,6 @@ impl Book {
     pub(crate) fn parent_of(&self, sid: &str) -> Option<&str> {
         self.parents.get(sid).map(|p| p.parent.as_str())
     }
-
-    /// 记下的这个会话是哪一家。
-    pub(crate) fn agent_of(&self, sid: &str) -> Option<&str> {
-        self.parents.get(sid).map(|p| p.agent.as_str())
-    }
-
-    /// 这个会话的孩子（按会话编号排）。
-    pub(crate) fn children_of(&self, sid: &str) -> Vec<&str> {
-        self.parents
-            .iter()
-            .filter(|(_, p)| p.parent == sid)
-            .map(|(k, _)| k.as_str())
-            .collect()
-    }
 }
 
 // ── 落盘 ─────────────────────────────────────────────────────────────────

@@ -989,7 +989,11 @@ fn the_relay_records_who_started_whom_from_the_origin_tail() {
     assert_eq!(b.parent_of("s-kid"), Some("s-owner"));
     assert_eq!(b.parent_of("s-new"), Some("s-p"));
     assert_eq!(
-        b.children_of("s-owner"),
+        b.parents
+            .iter()
+            .filter(|(_, p)| p.parent == "s-owner")
+            .map(|(k, _)| k.as_str())
+            .collect::<Vec<_>>(),
         vec!["s-kid"],
         "subagent 那一发被记成了孩子"
     );
