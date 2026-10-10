@@ -161,10 +161,11 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 边界：它只管 monitor 自己起的进程链。Windows Terminal 设成「附着到已有窗口」时，新 tab 的 shell 继承的是那个 WT 进程的环境；那个 WT 若本身是从 claude 会话里起的，resume 出的 claude 照样带着标记。判别法：`sessions/` 里没有那个 claude 的 `<PID>.json`，jsonl 的修改时间冻结，而同一条 `claude --resume` 在自己开的终端里正常。
 
-### `cc` 集成握手不成功（Windows）
+### ↗ 切不到终端窗口
 
-- `~/.cc-monitor/ps-await/<PID>.json` 写了又被删 ⇒ monitor 收到了；写了没被删 ⇒ monitor 没看到或解析失败。
-- dev 终端里找 `bind: parse … failed`。握手顺序与时序见 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
+- Windows：monitor 自己挂着控制台（从一个终端里 `cargo run` 起的 dev 构建）时借不到别人的控制台，↗ 只剩按进程找窗口那一档；从开始菜单 / 资源管理器起就好。
+- Linux：本机桌面上开的 shell 要装了 bash / zsh 接入块，`~/.cc-monitor/ps-await/<PID>.tty` 落地后 monitor 认窗口；dev 终端里找 `bind: registered shell_pid=`。
+  机制见 [IPC-PROTOCOL.md § 切到终端](IPC-PROTOCOL.md)。
 
 ### 会话内容在底部整段重复
 

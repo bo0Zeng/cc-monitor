@@ -4596,12 +4596,6 @@
       "zh": "终端窗口已关闭",
       "args": []
     },
-    "front.title.hosted": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "未切换 · 终端由 Windows 托管",
-      "args": []
-    },
     "front.title.desktopWontSwitch": {
       "kind": "title",
       "role": "标题",
@@ -4629,23 +4623,20 @@
     "front.hint.several": {
       "kind": "body",
       "role": "说明",
-      "zh": "在目标窗口新开 PowerShell 标签页并重连后可识别",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "接上终端后新开的终端标签页可识别",
+      "args": []
     },
     "front.body.unbound": {
       "kind": "body",
       "role": "说明",
-      "zh": "启动于接上终端之前的 PowerShell",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "本会话所在终端未登记",
+      "args": []
     },
     "front.hint.unbound": {
       "kind": "body",
       "role": "说明",
-      "zh": "接上终端后新开的 PowerShell 可识别",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "接上终端后新开的终端标签页可识别",
+      "args": []
     },
     "front.body.detached": {
       "kind": "body",
@@ -4709,12 +4700,6 @@
       "zh": "系统阻止抢前台 · 点任务栏闪烁的窗口",
       "args": []
     },
-    "front.body.hosted": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Windows 交给「终端」应用托管 · 定位失败",
-      "args": []
-    },
     "front.body.desktopWontSwitch": {
       "kind": "body",
       "role": "说明",
@@ -4727,33 +4712,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "cc-monitor 在此 Wayland 桌面上无法查看或切换别的程序的窗口",
-      "args": []
-    },
-    "front.title.backgroundTab": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "未切换 · 终端在后台标签页",
-      "args": []
-    },
-    "front.body.backgroundTab": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "「终端」应用里该标签页不在前台 · 找不到窗口",
-      "args": []
-    },
-    "front.hint.backgroundTab": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "切到该标签页再点 ↗",
-      "args": [],
-      "waive": {
-        "C-W1": "↗ 指认界面上同形的那个按钮"
-      }
-    },
-    "front.hint.hosted": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在「终端」应用里新开标签页再连",
       "args": []
     },
     "front.body.unknown": {
@@ -5732,12 +5690,6 @@
       "zh": "未记录 · 启动一次 cc-monitor 后自动记录",
       "args": []
     },
-    "machineAliases.ps.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "—",
-      "args": []
-    },
     "machineAliases.ps.autoLaunchHint": {
       "kind": "body",
       "role": "说明",
@@ -6193,12 +6145,6 @@
       "zh": "{path} 未接上",
       "args": ["path"]
     },
-    "machineAliases.access.outdatedHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "替换 cc-monitor 加的那几行 · 写前备份",
-      "args": []
-    },
     "machineAliases.access.peek": {
       "kind": "action",
       "role": "按钮",
@@ -6309,12 +6255,6 @@
       "zh": "接上 {path}…",
       "args": ["path"]
     },
-    "machineAliases.status.update": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "更新…",
-      "args": []
-    },
     "machineAliases.userPath.offHelp": {
       "kind": "body",
       "role": "说明",
@@ -6327,20 +6267,6 @@
       "zh": "Windows 终端",
       "args": []
     },
-    "machineAliases.win.bindTitle": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "从标签页切回 PowerShell 窗口",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "machineAliases.win.bindHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "与别名一起接在 PowerShell 配置文件 · 可切回窗口 {n}",
-      "args": ["n"],
-      "limited": ["PowerShell"]
-    },
     "machineAliases.win.autoPath": {
       "kind": "body",
       "role": "片段",
@@ -6350,15 +6276,15 @@
     "machineAliases.win.statusPathOn": {
       "kind": "body",
       "role": "说明",
-      "zh": "可切回窗口 {n} · cmd 里有 ccm",
-      "args": ["n"],
+      "zh": "cmd 里有 ccm",
+      "args": [],
       "limited": ["ccm"]
     },
     "machineAliases.win.statusPathOff": {
       "kind": "body",
       "role": "说明",
-      "zh": "可切回窗口 {n} · cmd 里无 ccm",
-      "args": ["n"],
+      "zh": "cmd 里无 ccm",
+      "args": [],
       "limited": ["ccm"]
     },
     "machineAliases.writes.line": {
@@ -6386,23 +6312,11 @@
       "args": ["path"],
       "limited": ["ccm"]
     },
-    "machineAliases.access.outdated": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "要更新 · {path} 里 cc-monitor 加的那几行 · 新别名不可用",
-      "args": ["path"]
-    },
     "machineAliases.access.notLoaded": {
       "kind": "body",
       "role": "说明",
       "zh": "已接在 {path} · {ps} 不加载它",
       "args": ["path", "ps"]
-    },
-    "machineAliases.access.reconnect": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "更新",
-      "args": []
     },
     "machineAliases.access.off": {
       "kind": "body",
@@ -12726,12 +12640,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "开机自启开关与程序路径",
-      "args": []
-    },
-    "rsDataPaths.monitor.bindings": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "各会话所在终端窗口 · 切到终端用",
       "args": []
     },
     "rsDataPaths.monitor.bookmarks": {

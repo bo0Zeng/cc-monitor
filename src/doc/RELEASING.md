@@ -24,8 +24,7 @@
   - [ ] `H` 打开历史浏览器，resume 一个历史会话
   - [ ] `,` 打开设置，悬停各个 `?`，提示框在视口内
   - [ ] 机器页给一个有自定义内容的 profile / rc 装别名块：块外原内容保留，旁边生成 `.ccm-backup-…` 备份
-  - [ ] Windows：用 `cc` 起 claude，走通 `ps-await` → `ps-registry` → `sid-hwnd-cache`
-  - [ ] Windows：Windows Terminal 开两个窗口，各新开一个 PowerShell 标签页 `ssh` 到远端起会话；两个 tab 的 ↗ 各切到自己那个窗口
+  - [ ] Windows：Windows Terminal 开两个窗口，从标签栏 resume 一个远端会话、各新开一个 PowerShell 标签页 `ssh` 到远端起会话、本机起一个会话、再开一个经典控制台（conhost）里的会话；每个 tab 的 ↗ 各切到自己那个窗口（不装接入块也一样）
 
 ---
 

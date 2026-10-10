@@ -122,7 +122,7 @@ pub enum InboundFrame {
         /// 进 `session_book` 的活会话成品（本机那条流同一个口）。
         container: Option<crate::session_book::SessionContainer>,
         /// 〔additive〕那个 claude 进程的 pid。本机活会话的成品（`session_book::LiveMeta::pid`）
-        /// 拿它给本机 ↗ 绑窗口（`bind::SidHwndCache::record`）；老后端不带 ⇒ `None`。远端那一支不读它。
+        /// 拿它给本机 ↗ 点那一刻找窗口（`bind::bring_local_window`）；没带 ⇒ `None`。远端那一支不读它。
         pid: Option<u32>,
     },
     /// 后端的活会话清单报完了（Phase 1 走完）。无载荷。

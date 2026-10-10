@@ -301,9 +301,3 @@ pub fn user_path_remove() -> Result<(), Said> {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/profile_installer_tests.rs"]
 mod tests;
-
-/// 把 PS↔monitor 握手的顺序与数字钉在 `src/doc/IPC-PROTOCOL.md` 上：照一张画错的时序图重新实现一遍 PS 侧，会复刻「每个新 shell 首次 `cc` 固定烧满超时」的故障。
-/// 顺序是两个文件之间的时序约束，两边看起来都合理，只有合起来看才错 —— 不能只靠注释。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/profile_installer_handshake_doc_guard.rs"]
-mod handshake_doc_guard;

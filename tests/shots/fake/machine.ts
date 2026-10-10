@@ -167,8 +167,6 @@ export function machineOps(): Record<string, OpHandler> {
           exists: true,
           block: {
             present: true,
-            version: "v2",
-            outdated: false,
             conflictingFunctions: [
               { name: "cc", line: 125, wins: "yours" },
               { name: "cct", line: 129, wins: "yours" },
@@ -377,7 +375,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       ok: true,
       summary: "",
     }),
-    bound_terminal_count: () => 2,
     get_data_paths: () => ({
       monitorDataDir: `${HOME}/.cc-monitor`,
       entries: [

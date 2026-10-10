@@ -114,11 +114,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
-        "bound_terminal_count",
-        Own::Front,
-        "已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
-    ),
-    (
         "bring_remote_terminal_to_front",
         Own::Front,
         "拉前那条远端会话对应的本机终端窗口",

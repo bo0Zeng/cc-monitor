@@ -560,8 +560,9 @@ const PS_PARAM_OPEN: &str = "    [CmdletBinding()] param(";
 const PS_PARAM_ARG: &str =
     "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs";
 const PS_PARAM_CLOSE: &str = "    )";
-/// `__ccm_bind` 是**拉前的握手**，留适配层 —— 通用层一个字不知道它。
-/// 带守卫：终端集成块没装时它不存在，这一行就是空操作（与 POSIX 那一侧「没有握手」同效）。
+/// `__ccm_bind` 是终端集成块里那一下「勾了自动打开就先把 cc-monitor 开起来」（v9 起它只做这件事，名字沿用：
+/// 已生成的别名文件与一次性迁移读旧别名文件都按这一行逐字认），留适配层 —— 通用层一个字不知道它。
+/// 带守卫：终端集成块没装时它不存在，这一行就是空操作（与 POSIX 那一侧同效）。
 const PS_BIND: &str =
     "    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) { __ccm_bind }";
 /// 函数块的开与收。住常量而不是函数体里的字面量：`structural_scan` 那把「会剥注释的函数」尺子按大括号配平切函数体，
@@ -831,7 +832,7 @@ impl ShellDialect for PowerShell {
         a.eq_ignore_ascii_case(b)
     }
 
-    /// ① 终端集成块（`src/shared/cc.ps1.tpl`）里定义的函数（`__ccm_bind` ＋ 装了 wrapper 时的 `cc`）——
+    /// ① 终端集成块（`src/shared/cc.ps1.tpl`）里定义的函数（`__ccm_bind` · `ssh`）——
     ///    问的是那份模板本身（`profile_installer::render_cc_code` 渲染出来的那一份），不抄名单；
     /// ② `PATH` 上的同名程序（按 PowerShell 认的那几种扩展名）。函数的优先级高于外部程序 ⇒ 你这条会赢。
     ///

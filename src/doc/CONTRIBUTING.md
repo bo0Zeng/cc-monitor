@@ -121,13 +121,13 @@
 
 ### 3.1 撤一条 Tauri 命令或一个 State
 
-以撤掉 `BindRegistry` 与它的消费者之一 `bound_terminal_count` 为例：
+以撤掉 `BindRegistry` 与它的消费者之一 `bring_remote_terminal_to_front` 为例：
 
 ```bash
 cd src/frontend/shell
 grep -rn 'State<.*BindRegistry>' src/                        # State 的全部消费者
 grep -rn 'app.manage(bind_registry' src/lib.rs                # manage 调用
-grep -rln 'bound_terminal_count' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
+grep -rln 'bring_remote_terminal_to_front' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
 cargo test --workspace
 ```
 
@@ -137,12 +137,12 @@ cargo test --workspace
 
 从它那一族的命令表（`registry/<族>.rs`）里摘掉、重生成协议参考、处理 CLI 面（派生的子命令跟着没了，登记过的从 `STREAM_ONLY` 摘）、删界面的调用处与通道替身里的那一格，bump `BUILD_ID`。
 
-### 3.3 改跨进程文件的格式（`ps-await` · `ps-registry` · `sid-hwnd-cache` · `auto-launch`）
+### 3.3 改跨进程文件的格式（`ps-await` · `ps-registry` · `auto-launch`）
 
-- 写入方（PS 模板 `src/shared/cc.ps1.tpl`，或 Rust 的 `bind.rs` 等）与读取方（serde 结构）同拍改；
+- 写入方（接入块模板 `src/shared/cc.ps1.tpl` · `src/shared/ccm-aliases.sh`，或 Rust 的 `bind.rs` 等）与读取方（serde 结构）同拍改；
 - 更新 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 第 9 节那张表；
 - 编码 UTF-8 无 BOM（[INVARIANTS § 3](INVARIANTS.md#3-所有跨进程-json-文件--utf-8-无-bom)），双端原子写；
-- 新增字段 `#[serde(default)]`。老 profile 里的 PS 模板不会自动更新，monitor 那一侧找窗口的重试就是留给它们的。
+- 新增字段 `#[serde(default)]`。
 
 ### 3.4 删掉或改名一个符号，而散文还提着它
 

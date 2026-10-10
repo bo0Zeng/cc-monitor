@@ -28,20 +28,6 @@ describe("↗ 结局族", () => {
     expect(shape({ kind: "refused" })).toEqual({ title: copyText("front.title.flashing"), body: copyText("front.body.refused"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "window-gone" })?.acts, "不在 tmux 里：没有可接回的").toEqual([]);
     expect(shape({ kind: "window-gone" }, true)).toEqual({ title: copyText("front.title.gone"), body: "", hint: null, tone: "grey", acts: [copyText("front.act.openInTerminal")] });
-    expect(shape({ kind: "hosted-by-wt", program: "ssh.exe" })).toEqual({
-      title: copyText("front.title.hosted"),
-      body: copyText("front.body.hosted"),
-      hint: copyText("front.hint.hosted"),
-      tone: "amber",
-      acts: [],
-    });
-    expect(shape({ kind: "background-tab", program: "ssh.exe" })).toEqual({
-      title: copyText("front.title.backgroundTab"),
-      body: copyText("front.body.backgroundTab"),
-      hint: copyText("front.hint.backgroundTab"),
-      tone: "amber",
-      acts: [],
-    });
     expect(shape({ kind: "no-window", program: "ssh.exe" })).toEqual({ title: copyText("front.title.noTerminal"), body: copyText("front.body.background"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "unclear" }), "句柄 / 进程号复用：不上细节，并进「窗口无法确定」").toEqual({ title: copyText("front.title.unsure"), body: "", hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "desktop-wont-switch", desktop: "GNOME" }), "Wayland：照实说切不了、给在 cc-monitor 里打开").toEqual({
