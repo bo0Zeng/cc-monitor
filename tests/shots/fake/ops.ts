@@ -226,34 +226,48 @@ export function defaultOps(): Record<string, OpHandler> {
           .map((r) => ({ uuid: r.id, excerpt: r.who.text.slice(0, 120), timestamp: r.at })),
       };
     },
-    // 一轮的摘要：照后端 `observe/turns.rs` 那几条口径（人说的一句起、到下一句；结尾 ＝ 最后一次工具调用之后带正文的那几条，没有 ⇒ 中断标记 / 报错卡；
-    // 派 agent 不算工具；后台任务通知不数交回过的那个子 agent；行上的字与右端那一截后端写好；最后一轮还在跑 ⇒ 按会话事实补「现在 / 等你」）。
+    // 一轮的摘要：照后端 `observe/turns.rs` 那几条口径（人说的一句起、到下一句；带正文的与停下这一轮的中断标记 / 报错卡露着，
+    // 被它们隔开的连续的其余记录各成一段过程、一段一行；派 agent 不算工具；后台任务通知不数交回过的那个子 agent；
+    // 行上的字与右端那一截后端写好；最后一轮还在跑 ⇒ 按会话事实在尾巴那一段补「现在 / 等你」）。
     "history-turns": (o, req, w) => {
       const recs = sessionByPath(w, req.path)?.records ?? [];
       const { at, end } = layout(recs);
       type Part = { text: string; tone: string };
+      type Span = { text: string; from: number | null; to: number | null };
+      type Fold = { after: string; parts: Part[]; span: Span; phase: string };
       type T = {
         at: number; uuid: string; start: string; end: string; startText: string; endText: string; said: string;
         tools: number; thinking: number; agents: number; background: number; retries: number; peers: number; fails: number;
-        ending: string[]; reply: string; done: boolean; phase: string; parts: Part[]; span: { text: string; from: number | null; to: number | null };
+        shown: string[]; reply: string; done: boolean; phase: string; folds: Fold[];
       };
-      type Acc = { middles: number; compacts: number; stop: string | null; notices: { task: string | null; failed: boolean }[]; runs: string[]; agentCalls: string[]; pending: { id: string; name: string; what: string | null }[] };
+      type Item = { id: string; at: string; shown: boolean; tools: number; thinking: number; agents: number; retries: number; peers: number; fails: number; compacts: number; notices: { task: string | null; failed: boolean }[] };
+      type Acc = { items: Item[]; stop: number | null; runs: string[]; reply: string[]; pending: { id: string; name: string; what: string | null }[]; tail: boolean; tailStart: string };
       const turns: T[] = [];
       const accs: Acc[] = [];
       let cur: T | null = null;
       let acc: Acc | null = null;
       const n = (key: Parameters<typeof copyText>[0], v: number): string => copyText(key, { n: String(v) });
-      const close = (t: T, x: Acc): void => {
-        for (const no of x.notices) {
-          if (!(no.task && x.runs.includes(no.task))) t.background++;
-          if (no.failed) t.fails++;
+      const keys = ["tools", "thinking", "agents", "background", "retries", "peers"] as const;
+      const tally = (items: Item[], runs: string[]) => {
+        const c = { tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, compacts: 0 };
+        for (const it of items) {
+          c.tools += it.tools; c.thinking += it.thinking; c.agents += it.agents; c.retries += it.retries; c.peers += it.peers; c.fails += it.fails; c.compacts += it.compacts;
+          for (const no of it.notices) {
+            if (!(no.task && runs.includes(no.task))) c.background++;
+            if (no.failed) c.fails++;
+          }
         }
-        if (t.ending.length === 0 && x.stop) t.ending = [x.stop];
-        const body = recs.filter((r): r is Reply => isReply(r) && t.ending.includes(r.id)).flatMap(replyTexts);
+        return c;
+      };
+      const close = (t: T, x: Acc): void => {
+        if (x.stop !== null) x.items[x.stop].shown = true;
+        const all = tally(x.items, x.runs);
+        for (const k of keys) t[k] = all[k];
+        t.fails = all.fails;
         // 只取正文行：代码块整块不算；只有代码 ⇒「仅代码」（同后端 `turns.rs::reply_head`）。
         let fenced = false;
         let code = false;
-        const prose = body.join("\n").split("\n").map((l) => l.trim()).filter((l) => {
+        const prose = x.reply.join("\n").split("\n").map((l) => l.trim()).filter((l) => {
           if (l.startsWith("```")) {
             fenced = !fenced;
             code = true;
@@ -262,18 +276,44 @@ export function defaultOps(): Record<string, OpHandler> {
           return !fenced && l !== "";
         }).map((l) => l.replace(/^[#>]+\s*/, "").replace(/\*\*|__|`/g, "")).filter((l) => l !== "");
         t.reply = prose.length === 0 && code ? copyText("rsTurns.reply.codeOnly") : prose.slice(0, 3).join("\n").slice(0, 120);
-        const counted: [Parameters<typeof copyText>[0], number][] = [
-          ["rsTurns.proc.tools", t.tools], ["rsTurns.proc.thinking", t.thinking], ["rsTurns.proc.agents", t.agents],
-          ["rsTurns.proc.background", t.background], ["rsTurns.proc.retries", t.retries], ["rsTurns.proc.peers", t.peers],
-        ];
-        const items = counted.reduce((s, [, v]) => s + v, 0) + x.middles + x.compacts;
-        if (items > 0 && !(items === x.compacts && x.compacts === 1)) {
-          t.parts = [{ text: copyText("rsTurns.proc.head"), tone: "plain" }, ...counted.filter(([, v]) => v > 0).map(([k, v]) => ({ text: n(k, v), tone: "plain" }))];
-          if (t.fails > 0) t.parts.push({ text: n("rsTurns.proc.fails", t.fails), tone: "fail" });
+        // 划段（同后端 `Open::close`）。
+        let after = t.uuid;
+        let seg: Item[] = [];
+        const flush = (): void => {
+          if (seg.length === 0) return;
+          const c = tally(seg, x.runs);
+          const others = keys.reduce((s, k) => s + c[k], 0);
+          const stamps = seg.map((it) => it.at).filter((a) => a !== "");
+          seg = [];
+          if (others === 0 && c.compacts <= 1) return;
+          const parts: Part[] = [{ text: copyText("rsTurns.proc.head"), tone: "plain" }];
+          const counted: [Parameters<typeof copyText>[0], number][] = [
+            ["rsTurns.proc.tools", c.tools], ["rsTurns.proc.thinking", c.thinking], ["rsTurns.proc.agents", c.agents],
+            ["rsTurns.proc.background", c.background], ["rsTurns.proc.retries", c.retries], ["rsTurns.proc.peers", c.peers],
+          ];
+          parts.push(...counted.filter(([, v]) => v > 0).map(([k, v]) => ({ text: n(k, v), tone: "plain" })));
+          if (c.fails > 0) parts.push({ text: n("rsTurns.proc.fails", c.fails), tone: "fail" });
+          const [s0, s1] = [stamps[0] ?? "", stamps.at(-1) ?? ""];
+          const [f0, f1] = [hm(Date.parse(s0)), hm(Date.parse(s1))];
+          const when = f0 === f1 ? f0 : copyText("rsTurns.span.range", { from: f0, to: f1 });
+          const [a, b] = [Date.parse(s0), Date.parse(s1)];
+          const span = b - a >= 1000 ? { text: copyText("rsTurns.span.done", { when, dur: "{dur}" }), from: a, to: b } : { text: when, from: null, to: null };
+          t.folds.push({ after, parts, span, phase: "idle" });
+          x.tailStart = f0;
+        };
+        for (const it of x.items) {
+          if (it.shown) {
+            flush();
+            t.shown.push(it.id);
+            after = it.id;
+            continue;
+          }
+          seg.push(it);
         }
-        const when = t.startText === t.endText ? t.startText : copyText("rsTurns.span.range", { from: t.startText, to: t.endText });
-        const [a, b] = [Date.parse(t.start), Date.parse(t.end)];
-        t.span = b - a >= 1000 ? { text: copyText("rsTurns.span.done", { when, dur: "{dur}" }), from: a, to: b } : { text: when, from: null, to: null };
+        const open = seg.length > 0;
+        const before = t.folds.length;
+        flush();
+        x.tail = open && t.folds.length > before;
       };
       recs.forEach((r, i) => {
         const sp = isSaid(r) ? r.who.speaker : null;
@@ -287,16 +327,19 @@ export function defaultOps(): Record<string, OpHandler> {
           const when = r.at ?? "";
           cur = {
             at: at[i].o, uuid: r.id, start: when, end: when, startText: hm(Date.parse(when)), endText: hm(Date.parse(when)), said: said.split("\n")[0].slice(0, 50),
-            tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, ending: [], reply: "", done: false, phase: "idle", parts: [], span: { text: "", from: null, to: null },
+            tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, shown: [], reply: "", done: false, phase: "idle", folds: [],
           };
-          acc = { middles: 0, compacts: 0, stop: null, notices: [], runs: [], agentCalls: [], pending: [] };
+          acc = { items: [], stop: null, runs: [], reply: [], pending: [], tail: false, tailStart: "" };
           turns.push(cur);
           accs.push(acc);
           return;
         }
         if (!cur || !acc) return;
+        const it: Item = { id: "id" in r ? String(r.id) : "", at: ("at" in r ? r.at : undefined) ?? "", shown: false, tools: 0, thinking: 0, agents: 0, retries: 0, peers: 0, fails: 0, compacts: 0, notices: [] };
+        const here = acc.items.length;
+        acc.items.push(it);
         if (r.t === "retry") {
-          cur.retries++;
+          it.retries++;
           return;
         }
         if (!isSaid(r) && !isReply(r)) return;
@@ -305,70 +348,70 @@ export function defaultOps(): Record<string, OpHandler> {
         if (isReply(r)) {
           acc.stop = null;
           const kids = r.runs ?? {};
-          let called = false;
           for (const b of r.blocks) {
             if (b.type === "tool_use") {
-              called = true;
-              if (b.id in kids) {
-                cur.agents++;
-                acc.agentCalls.push(b.id);
-              } else cur.tools++;
+              if (b.id in kids) it.agents++;
+              else it.tools++;
               const input = (b.input ?? {}) as Record<string, unknown>;
               const what = [input.pattern, input.command, input.file_path].find((v): v is string => typeof v === "string") ?? null;
               acc.pending.push({ id: b.id, name: b.name, what });
-              acc.middles += cur.ending.length;
-              cur.ending = [];
+              acc.reply = [];
             }
-            if (b.type === "thinking") cur.thinking++;
+            if (b.type === "thinking") it.thinking++;
           }
           const hasText = r.blocks.some((b) => b.type === "text" && b.text.trim());
           if (r.error) {
-            acc.stop = r.id;
+            acc.stop = here;
             cur.done = true;
-          } else if (called && hasText) acc.middles++;
-          else if (hasText) cur.ending.push(r.id);
+          } else if (hasText) {
+            it.shown = true;
+            if (it.tools + it.agents === 0) acc.reply.push(...replyTexts(r));
+          }
           if (r.endsTurn) cur.done = true;
         } else {
           for (const b of r.blocks) {
             if (b.type !== "tool_result") continue;
             acc.pending = acc.pending.filter((p) => p.id !== b.for);
-            if (b.isError) cur.fails++;
+            if (b.isError) it.fails++;
           }
           const k = r.who.speaker as { kind: string; taskId?: string; status?: string; handback?: boolean; from?: string };
-          if (k.kind === "taskNotification") acc.notices.push({ task: k.taskId ?? null, failed: k.status === "failed" });
+          if (k.kind === "taskNotification") it.notices.push({ task: k.taskId ?? null, failed: k.status === "failed" });
           else if (k.kind === "agentMessage" && k.handback && k.from) acc.runs.push(k.from);
-          else if (k.kind === "agentMessage" || k.kind === "peerSession") cur.peers++;
-          else if (k.kind === "compactSummary") acc.compacts++;
+          else if (k.kind === "agentMessage" || k.kind === "peerSession") it.peers++;
+          else if (k.kind === "compactSummary") it.compacts++;
           else if (k.kind === "interrupt") {
-            acc.stop = r.id;
+            acc.stop = here;
             cur.done = true;
             acc.pending = [];
           }
         }
       });
       if (cur && acc) close(cur, acc);
-      // 最后一轮还没收尾：按会话事实补那一截（同后端 `turns.rs::dress_live`）。
+      // 最后一轮还没收尾：按会话事实在尾巴那一段补那一截（同后端 `turns.rs::dress_live`）。
       const last = turns.at(-1);
       const lastAcc = accs.at(-1);
       if (last && lastAcc && !last.done) {
         const f = (defaultOps()["history-facts"](o, { path: req.path }, w) as { needs: { kind: string; tool: string | null; what: string | null; sinceMs: number | null } | null; writers: number[] });
         const step = (name: string, what: string | null): string => (what ? `${name} ${what}` : name);
-        // 假后端的会话时刻是固定的几天前 ⇒「起了多久」按「此刻往前 42 秒」画（真后端是这一轮你那句的时刻）。
-        const since = { text: copyText("rsTurns.span.since", { hm: last.startText, dur: "{dur}" }), from: Date.now() - 42_000, to: null };
+        const tail = lastAcc.tail ? last.folds.at(-1) : undefined;
+        // 假后端的会话时刻是固定的几天前 ⇒「起了多久」按「此刻往前 42 秒」画（真后端是这一段第一条的时刻）。
+        const since = { text: copyText("rsTurns.span.since", { hm: lastAcc.tailStart, dur: "{dur}" }), from: Date.now() - 42_000, to: null };
         if (f.needs) {
           last.phase = "awaiting";
-          if (last.parts.length > 0) {
+          if (tail) {
+            tail.phase = "awaiting";
             const nd = f.needs;
             const text = (nd.kind === "approve" || nd.kind === "plan") && nd.tool ? copyText("rsTurns.proc.awaitApprove", { step: step(nd.tool, nd.what) }) : nd.kind === "answer" ? copyText("rsTurns.proc.awaitAnswer", { step: nd.what ?? nd.tool ?? "" }) : copyText("rsTurns.proc.awaitYou");
-            last.parts.push({ text, tone: "need" });
-            last.span = nd.sinceMs !== null ? { text: copyText("rsTurns.span.waited", { dur: "{dur}" }), from: nd.sinceMs, to: null } : since;
+            tail.parts.push({ text, tone: "need" });
+            tail.span = nd.sinceMs !== null ? { text: copyText("rsTurns.span.waited", { dur: "{dur}" }), from: nd.sinceMs, to: null } : since;
           }
         } else if (f.writers.length > 0) {
           last.phase = "running";
-          if (last.parts.length > 0) {
+          if (tail) {
+            tail.phase = "running";
             const p = lastAcc.pending.at(-1);
-            if (p) last.parts.push({ text: copyText("rsTurns.proc.now", { step: step(p.name, p.what) }), tone: "now" });
-            last.span = since;
+            if (p) tail.parts.push({ text: copyText("rsTurns.proc.now", { step: step(p.name, p.what) }), tone: "now" });
+            tail.span = since;
           }
         }
       }

@@ -372,7 +372,6 @@ export class SessionViewer {
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
     this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere, undefined, () => this.skeleton);
-    this.streamEl.addEventListener("scroll", this.turnFold.releaseOnScroll, { passive: true });
 
     // 读取中：骨架；状态行不说话。
     this.setLoading(true);
@@ -810,7 +809,6 @@ export class SessionViewer {
     this.loaded = false;
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
     if (this.turnFold) {
-      this.streamEl.removeEventListener("scroll", this.turnFold.releaseOnScroll);
       this.turnFold.dispose(); // 断观察、在途那趟作废
       this.turnFold = null;
     }

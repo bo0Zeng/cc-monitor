@@ -1,5 +1,5 @@
 //! 一轮的摘要（`turns.rs`）：子运行的记录不算进主线的轮 · 从某一轮的 `at` 接着取只出那一轮起的 · 你那句与回复头的截法（只取正文行：代码块整块不算，只有代码 ⇒「仅代码」）。
-//! 过程行那一行（各样计数 · 结尾是哪几条 · 整行的字与语气 · 右端那一截 · 正在跑 / 在等你时那一截）。
+//! 划段（露着的是哪几条 · 「工具 · 正文 · 工具」是两段 · 连续的工具是一段）与每段那一行（各样计数 · 字与语气 · 右端那一截 · 正在跑 / 在等你时那一截）。
 //! 夹具只造结构（占位词），不采会话正文。成品的整形由跨语言金样管（`read_face_tests.rs`）。
 
 use super::*;
@@ -36,7 +36,7 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
     let body = format!(
         "{}\n{}\n{}\n",
         line("2026-10-07T20:30:00.000Z", "user", "a"),
-        line("2026-10-07T20:31:00.000Z", "assistant", "b"),
+        r#"{"type":"assistant","uuid":"b","timestamp":"2026-10-07T20:31:00.000Z","message":{"content":[{"type":"tool_use","id":"x","name":"Read","input":{}}]}}"#,
         line("2026-10-07T20:40:00.000Z", "user", "c"),
     );
     let raw = raw_scan(&body, 0);
@@ -51,14 +51,18 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
         ("04:30", "04:31")
     );
     assert!(
-        sh.span.text.contains("04:30"),
+        sh.folds[0].span.text.contains("04:31"),
         "右端那一截随钟面写：{}",
-        sh.span.text
+        sh.folds[0].span.text
     );
     let mut utc = raw[0].clone();
     utc.stamp(&crate::Tz::default());
     assert_eq!(utc.start_text, "20:30");
-    assert!(utc.span.text.contains("20:30"), "{}", utc.span.text);
+    assert!(
+        utc.folds[0].span.text.contains("20:31"),
+        "{}",
+        utc.folds[0].span.text
+    );
 }
 
 #[test]
@@ -83,7 +87,8 @@ fn subrun_records_do_not_count_and_from_resumes_at_a_turn() {
         SAID_MAX + 1,
         "截到 50 字 ＋ 省略号"
     );
-    assert_eq!(all[1].ending, ["e"]);
+    assert_eq!(all[1].shown, ["e"]);
+    assert!(all[1].folds.is_empty(), "只有结论 ⇒ 不折");
     let again = scan(&body, all[1].at);
     assert_eq!(again.len(), 1);
     assert_eq!((again[0].uuid.as_str(), again[0].at), ("d", all[1].at));
@@ -179,12 +184,93 @@ fn result(uuid: &str, id: &str, error: bool) -> serde_json::Value {
     serde_json::json!({"type":"user","uuid":uuid,"timestamp":"2026-10-07T08:00:30Z","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":"r","is_error":error}]}})
 }
 
-fn texts(row: &TurnRow) -> Vec<(String, Tone)> {
-    row.parts.iter().map(|p| (p.text.clone(), p.tone)).collect()
+fn texts(fold: &Fold) -> Vec<(String, Tone)> {
+    fold.parts
+        .iter()
+        .map(|p| (p.text.clone(), p.tone))
+        .collect()
+}
+
+fn afters(row: &TurnRow) -> Vec<&str> {
+    row.folds.iter().map(|f| f.after.as_str()).collect()
 }
 
 fn n(key: &str, v: u32) -> String {
     copy_text(key, &[("n", &v.to_string())])
+}
+
+fn head() -> (String, Tone) {
+    (copy_text("rsTurns.proc.head", &[]), Tone::Plain)
+}
+
+fn tools(v: u32) -> (String, Tone) {
+    (n("rsTurns.proc.tools", v), Tone::Plain)
+}
+
+fn text(s: &str) -> serde_json::Value {
+    serde_json::json!([{"type":"text","text":s}])
+}
+
+fn calls(id: &str) -> serde_json::Value {
+    serde_json::json!([call(id, "Read", serde_json::json!({}))])
+}
+
+/// ★ 用户 10-10：只有连续的工具 / agent 段才折，中间说的话露在外面。「工具 · 正文 · 工具 · 正文」⇒ 两段过程，
+/// 第一段跟在你那句后面、第二段跟在那段正文后面；两段正文都露着（结尾那段照旧在外面）。
+#[test]
+fn prose_between_tools_stays_outside_and_splits_the_process() {
+    let t = "2026-10-07T08:00:00Z";
+    let lines = [
+        user("u1", t, "q"),
+        said("a1", t, calls("t1")),
+        result("r1", "t1", false),
+        said("a2", t, text("中间的话")),
+        said("a3", t, calls("t2")),
+        result("r2", "t2", true),
+        said("a4", t, text("结论")),
+    ];
+    let row = scan(&body_of(&lines), 0).remove(0);
+    assert_eq!(row.shown, ["a2", "a4"], "正文都露着");
+    assert_eq!(afters(&row), ["u1", "a2"], "工具 · 正文 · 工具 ⇒ 两段");
+    assert_eq!(texts(&row.folds[0]), [head(), tools(1)]);
+    assert_eq!(
+        texts(&row.folds[1]),
+        [head(), tools(1), (n("rsTurns.proc.fails", 1), Tone::Fail)]
+    );
+    assert_eq!((row.tools, row.fails), (2, 1), "整轮合计照旧");
+    assert_eq!(row.reply, "结论", "回复头取最后一次工具调用之后的那段");
+}
+
+/// 连续的工具（中间没有正文）照旧收成一段；结尾的总结在外面、后面不再有一段。
+#[test]
+fn consecutive_tools_fold_into_one_and_the_summary_stays_out() {
+    let t = "2026-10-07T08:00:00Z";
+    let lines = [
+        user("u1", t, "q"),
+        said(
+            "a1",
+            t,
+            serde_json::json!([{"type":"thinking","thinking":"x"}]),
+        ),
+        said("a2", t, calls("t1")),
+        result("r1", "t1", false),
+        said("a3", t, calls("t2")),
+        result("r2", "t2", false),
+        serde_json::json!({"type":"system","uuid":"e1","subtype":"api_error","timestamp":t}),
+        said("a4", t, text("总结")),
+    ];
+    let row = scan(&body_of(&lines), 0).remove(0);
+    assert_eq!(row.shown, ["a4"]);
+    assert_eq!(afters(&row), ["u1"], "一段");
+    assert_eq!(
+        texts(&row.folds[0]),
+        [
+            head(),
+            tools(2),
+            (n("rsTurns.proc.thinking", 1), Tone::Plain),
+            (n("rsTurns.proc.retries", 1), Tone::Plain),
+        ]
+    );
 }
 
 /// 派 agent 不算工具；后台任务通知数一条算一条，交回过的那个子 agent 的收场通知不重复数；重试数条数；另一会话来话单数；
@@ -195,9 +281,15 @@ fn counts_split_agents_background_retries_and_total_fails() {
     let lines = [
         user("u1", t0, "q"),
         said(
-            "a1",
+            "a0",
             "2026-10-07T08:00:01Z",
-            serde_json::json!([{"type":"thinking","thinking":"x"},{"type":"text","text":"先看看"},call("t1","Read",serde_json::json!({"file_path":"/p/a"}))]),
+            serde_json::json!([{"type":"thinking","thinking":"x"}]),
+        ),
+        said("a1", "2026-10-07T08:00:01Z", text("先看看")),
+        said(
+            "a1b",
+            "2026-10-07T08:00:01Z",
+            serde_json::json!([call("t1", "Read", serde_json::json!({"file_path":"/p/a"}))]),
         ),
         result("r1", "t1", true),
         said(
@@ -246,13 +338,17 @@ fn counts_split_agents_background_retries_and_total_fails() {
         ),
         (1, 2, 1, 2, 2, 1, 2)
     );
-    assert_eq!(row.ending, ["a4"]);
+    assert_eq!(row.shown, ["a1", "a4"]);
+    assert_eq!(afters(&row), ["u1", "a1"]);
     assert_eq!(
-        texts(&row),
+        texts(&row.folds[0]),
+        [head(), (n("rsTurns.proc.thinking", 1), Tone::Plain)]
+    );
+    assert_eq!(
+        texts(&row.folds[1]),
         [
-            (copy_text("rsTurns.proc.head", &[]), Tone::Plain),
-            (n("rsTurns.proc.tools", 1), Tone::Plain),
-            (n("rsTurns.proc.thinking", 1), Tone::Plain),
+            head(),
+            tools(1),
             (n("rsTurns.proc.agents", 2), Tone::Plain),
             (n("rsTurns.proc.background", 2), Tone::Plain),
             (n("rsTurns.proc.retries", 2), Tone::Plain),
@@ -262,23 +358,18 @@ fn counts_split_agents_background_retries_and_total_fails() {
     );
 }
 
-/// 右端那一截：起止钟面 ＋ 用时（用时由界面按 `from`/`to` 填进 `{dur}`）；不满一秒不写用时；起止同一个钟面只写一个。
+/// 每段右端那一截：这一段第一条到最后一条记录的起止钟面 ＋ 用时（用时由界面按 `from`/`to` 填进 `{dur}`）；
+/// 不满一秒不写用时；起止同一个钟面只写一个。
 #[test]
 fn span_is_written_with_a_duration_slot() {
     let (a, b) = ("2026-10-07T08:00:00Z", "2026-10-07T08:05:04Z");
+    let done = serde_json::json!({"type":"user","uuid":"r1","timestamp":b,"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"r"}]}});
     let lines = [
         user("u1", a, "q"),
-        said(
-            "a1",
-            b,
-            serde_json::json!([call("t1", "Read", serde_json::json!({}))]),
-        ),
+        said("a1", a, calls("t1")),
+        done,
         user("u2", b, "q2"),
-        said(
-            "a2",
-            b,
-            serde_json::json!([call("t2", "Read", serde_json::json!({}))]),
-        ),
+        said("a2", b, calls("t2")),
     ];
     let rows = scan(&body_of(&lines), 0);
     let face = |t: &str| crate::common::time::iso_hm(t, &crate::Tz::default()).unwrap();
@@ -288,7 +379,7 @@ fn span_is_written_with_a_duration_slot() {
         &[("from", &face(a)), ("to", &face(b))],
     );
     assert_eq!(
-        rows[0].span,
+        rows[0].folds[0].span,
         Span {
             text: copy_text("rsTurns.span.done", &[("when", &range), ("dur", "{dur}")]),
             from: Some(ms(a)),
@@ -296,7 +387,7 @@ fn span_is_written_with_a_duration_slot() {
         }
     );
     assert_eq!(
-        rows[1].span,
+        rows[1].folds[0].span,
         Span {
             text: face(b),
             from: None,
@@ -306,9 +397,9 @@ fn span_is_written_with_a_duration_slot() {
     );
 }
 
-/// 结尾：有结论正文 ⇒ 那几条；没有、是被你打断 / 报错停下的 ⇒ 那一条中断标记 / 报错卡（中断了这一轮就算收尾）。
+/// 停下这一轮的那一条（中断标记 / 报错卡）露着、把过程隔开；同一条里带正文又调了工具 ⇒ 整条露着（中断了这一轮就算收尾）。
 #[test]
-fn ending_falls_back_to_the_interrupt_or_error_card() {
+fn the_interrupt_or_error_card_stays_outside() {
     let t = "2026-10-07T08:00:00Z";
     let lines = [
         user("u1", t, "q"),
@@ -322,8 +413,12 @@ fn ending_falls_back_to_the_interrupt_or_error_card() {
     ];
     let row = scan(&body_of(&lines), 0).remove(0);
     assert_eq!(
-        (row.ending.clone(), row.done),
-        (vec!["x1".to_string()], true)
+        (row.shown.clone(), row.done),
+        (vec!["a1".to_string(), "x1".to_string()], true)
+    );
+    assert!(
+        row.folds.is_empty(),
+        "a1 的那次调用在露着的卡里；r1 一条什么都不数 ⇒ 不出行"
     );
 
     let lines = [
@@ -337,7 +432,8 @@ fn ending_falls_back_to_the_interrupt_or_error_card() {
         serde_json::json!({"type":"assistant","uuid":"z1","timestamp":t,"isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"API Error"}]}}),
     ];
     let row = scan(&body_of(&lines), 0).remove(0);
-    assert_eq!(row.ending, ["z1"]);
+    assert_eq!(row.shown, ["z1"]);
+    assert_eq!(afters(&row), ["u1"]);
 }
 
 /// 不出行：过程是空的（只有结论）· 过程只有一条压缩摘要（`/compact` 那一段，不套一层空壳）。段中自动压缩跟着别的一起进折叠。
@@ -361,13 +457,18 @@ fn no_line_for_an_empty_process_or_a_lone_compact_summary() {
         ]),
         0,
     );
-    assert!(rows[0].parts.is_empty(), "只有结论");
-    assert!(rows[1].parts.is_empty(), "只有一条压缩摘要");
-    assert_eq!(texts(&rows[2]).len(), 2, "过程 · 工具 ×1（压缩不另计数）");
+    assert!(rows[0].folds.is_empty(), "只有结论");
+    assert!(rows[1].folds.is_empty(), "只有一条压缩摘要");
+    assert_eq!(
+        texts(&rows[2].folds[0]).len(),
+        2,
+        "过程 · 工具 ×1（压缩不另计数）"
+    );
 }
 
-/// 正在跑的那一轮（后端从这台的会话事实拼进来）：在等批准 ⇒ 「等批准：那一步」需手动语气，右端「已等 {dur}」；
-/// 在跑 ⇒ 「现在：那一步」，右端「HH:MM 起 · {dur}」；没有活进程 ⇒ 不写「现在」。收尾了的轮不动。
+/// 正在跑的那一轮（后端从这台的会话事实拼进来），写在尾巴那一段上：在等批准 ⇒ 「等批准：那一步」需手动语气，右端「已等 {dur}」；
+/// 在跑 ⇒ 「现在：那一步」，右端「HH:MM 起 · {dur}」（那一段的起点）；没有活进程 ⇒ 不写「现在」。收尾了的轮不动；
+/// 尾巴是露着的正文（不是一段过程）⇒ 只改此刻，前面那几段不动。
 #[test]
 fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     use crate::observe::facts_query::{Needs, NeedsKind};
@@ -390,8 +491,12 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     let mut running = base.clone();
     dress_live(&mut running, None, true);
     assert_eq!(running.phase, Phase::Running);
+    assert_eq!(running.folds[0].phase, Phase::Running);
     assert_eq!(
-        running.parts.last().map(|p| (p.text.clone(), p.tone)),
+        running.folds[0]
+            .parts
+            .last()
+            .map(|p| (p.text.clone(), p.tone)),
         Some((
             copy_text("rsTurns.proc.now", &[("step", "Grep from .a import")]),
             Tone::Now
@@ -399,11 +504,11 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     );
     let face = crate::common::time::iso_hm(t, &crate::Tz::default()).unwrap();
     assert_eq!(
-        running.span.text,
+        running.folds[0].span.text,
         copy_text("rsTurns.span.since", &[("hm", &face), ("dur", "{dur}")])
     );
     assert_eq!(
-        (running.span.from, running.span.to),
+        (running.folds[0].span.from, running.folds[0].span.to),
         (crate::common::time::parse_iso8601_ms(t), None)
     );
 
@@ -423,7 +528,10 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     dress_live(&mut awaiting, Some(&needs), true);
     assert_eq!(awaiting.phase, Phase::Awaiting);
     assert_eq!(
-        awaiting.parts.last().map(|p| (p.text.clone(), p.tone)),
+        awaiting.folds[0]
+            .parts
+            .last()
+            .map(|p| (p.text.clone(), p.tone)),
         Some((
             copy_text(
                 "rsTurns.proc.awaitApprove",
@@ -433,7 +541,7 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
         ))
     );
     assert_eq!(
-        awaiting.span,
+        awaiting.folds[0].span,
         Span {
             text: copy_text("rsTurns.span.waited", &[("dur", "{dur}")]),
             from: Some(1234),
@@ -444,8 +552,26 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
     let mut idle = base.clone();
     dress_live(&mut idle, None, false);
     assert_eq!(
-        (idle.phase, idle.parts.clone()),
-        (Phase::Idle, base.parts.clone())
+        (idle.phase, idle.folds.clone()),
+        (Phase::Idle, base.folds.clone())
+    );
+
+    // 尾巴是正文：工具 · 正文，还在跑 ⇒ 只改此刻，那一段不动。
+    let mut said_last = scan(
+        &body_of(&[
+            user("u1", t, "q"),
+            said("a1", t, calls("t1")),
+            result("r1", "t1", false),
+            said("a2", t, text("看完了，接着改")),
+        ]),
+        0,
+    )
+    .remove(0);
+    let folds = said_last.folds.clone();
+    dress_live(&mut said_last, None, true);
+    assert_eq!(
+        (said_last.phase, said_last.folds.clone()),
+        (Phase::Running, folds)
     );
 
     let mut done = scan(

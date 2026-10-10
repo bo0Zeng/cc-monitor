@@ -152,9 +152,15 @@ impl ScanMap {
                     + t.end.len()
                     + t.said.len()
                     + t.reply.len()
-                    + t.ending.iter().map(|c| 24 + c.len()).sum::<usize>()
-                    + t.parts.iter().map(|p| 24 + p.text.len()).sum::<usize>()
-                    + t.span.text.len()
+                    + t.shown.iter().map(|c| 24 + c.len()).sum::<usize>()
+                    + t.folds
+                        .iter()
+                        .map(|f| {
+                            120 + f.after.len()
+                                + f.span.text.len()
+                                + f.parts.iter().map(|p| 24 + p.text.len()).sum::<usize>()
+                        })
+                        .sum::<usize>()
                     + t.pending
                         .iter()
                         .map(|p| {

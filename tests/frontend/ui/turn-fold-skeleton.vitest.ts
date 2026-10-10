@@ -73,12 +73,11 @@ const turn = (k: number): TurnSummary => ({
   retries: 0,
   peers: 0,
   fails: 0,
-  ending: [`u${k * PER_TURN + ENDING_AT}`],
+  shown: [`u${k * PER_TURN + ENDING_AT}`],
   reply: "",
   done: true,
   phase: "idle",
-  parts: [{ text: "p", tone: "plain" }],
-  span: { text: "", from: null, to: null },
+  folds: [{ after: `u${k * PER_TURN}`, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle" }],
 });
 
 async function rig() {
@@ -126,7 +125,8 @@ function misfolded(content: HTMLElement, view: SkeletonView, open: ReadonlySet<n
     if (hidden !== coveredByLedger(lo, hi)) bad.push(`${lo}-${hi} class ${hidden ? "藏" : "露"}、账本说${hidden ? "没折" : "折着"}`);
     const k = Math.floor(lo / PER_TURN);
     const e = k * PER_TURN + ENDING_AT;
-    const inProc = lo > k * PER_TURN && hi <= (k + 1) * PER_TURN && !(lo <= e && e < hi);
+    // 一段过程 ＝ 开头之后到结尾（露着的正文）之前；结尾之后到下一轮开头没有段（不折）。
+    const inProc = lo > k * PER_TURN && hi <= e;
     if (!inProc) continue;
     if (!open.has(k) && !hidden) bad.push(`${lo}-${hi} 折着却没藏`);
     if (open.has(k) && hidden) bad.push(`${lo}-${hi} 展开了还藏着`);
@@ -135,7 +135,7 @@ function misfolded(content: HTMLElement, view: SkeletonView, open: ReadonlySet<n
 }
 
 const lineOf = (content: HTMLElement, k: number): HTMLElement =>
-  content.querySelector<HTMLElement>(`.${PROC_LINE_CLASS}[data-turn="u${k * PER_TURN}"]`)!;
+  content.querySelector<HTMLElement>(`.${PROC_LINE_CLASS}[data-fold="u${k * PER_TURN}"]`)!;
 
 describe("大折叠 × 骨架：折没折只有一个来源", () => {
   it("滚动物化之后、展开别的轮、展开再折回去：折着的轮的过程占位都带 proc-hidden，展开的都不带", async () => {

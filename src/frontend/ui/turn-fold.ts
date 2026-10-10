@@ -1,38 +1,37 @@
 /**
- * **大折叠（按轮）**：两句人说的话之间，除了人说的，其余连续的东西收进一行「过程 · 工具 ×8 · 思考 ×1 · agent ×2 · 失败 ×1 · 02:01–02:04 · 3m02s」；
- * 只露这一段的**结尾**（结论正文；没有 ⇒ 停下它的中断标记 / 报错卡）。正在跑的那一轮也一样折着，行上写「现在：…」「等你批准：…」。
- * 一轮的边界、结尾是哪几条、行上的字与语气、右端那一截，**都是后端的 `history-turns`**（`session-reads.ts::readTurns`）；
- * 本模块只做两件事：要那份成品（续取从还没收尾的那一轮的 `at` 起，整轮重算），以及按它给流里已建好的卡排版。
+ * **大折叠（按段）**：一轮里连续的工具调用 · 思考 · 派 agent 与交回 · 后台通知 · 重试 · 来话收进一行
+ * 「过程 · 工具 ×8 · 思考 ×1 · agent ×2 · 失败 ×1 · 02:01–02:04 · 3m02s」；带正文的（中间说的话与结论）和停下这一轮的那一条
+ * （中断标记 / 报错卡）露着、把过程隔成几段，一段一行。正在跑的那一轮的尾巴那一段也一样折着，行上写「现在：…」「等你批准：…」。
+ * 一轮的边界、哪几条露着、怎么划段、行上的字与语气、右端那一截，**都是后端的 `history-turns`**（`session-reads.ts::readTurns`，
+ * 划段只住 `observe/turns.rs`）；本模块只做两件事：要那份成品（续取从还没收尾的那一轮的 `at` 起，整轮重算），以及按它给流里已建好的卡排版。
  *
- * # 排版的口径（界面不判谁是过程）
+ * # 排版的口径（界面不判谁是过程、不自己划段）
  *
- * - 顺着流的顶层子节点走：遇到 `data-id` 等于某一轮 `uuid` 的那张卡 ＝ 那一轮开头；之后的卡属于这一轮，直到下一轮开头。
- * - 这一轮有过程行（后端给的 `parts` 非空）⇒ 开头之后、结尾以外的顶层卡全收进去；没有 ⇒ 一张不折。
- * - 遇到骨架占位：归哪一轮、藏不藏不顺着 DOM 猜，按账本那一段认（`turnSpans`：开头之后、下一轮开头之前、结尾以外的行是过程）——
- *   整块是某一轮的过程 ⇒ 折着就藏（高 0、骨架也不物化它，同一个口径交给骨架）；里面有哪一轮的开头 ⇒ 后面的卡归最后那个开头的轮
- *   （开头那张还没建 ⇒ 行等它建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮，直到认出下一轮开头。
- * - ESC 回退的折叠段之后不再归轮（宁可不折，不折错；它后面的占位照样按账本认）。
- * - 过程行插在那一轮开头那张卡后面；它不是时间线条目（`RecordTimeline` 按后继锚插入，不受它影响），
+ * - 顺着流的顶层子节点走：一张卡的 `data-id` 是某一轮开头 / 露着的某一条 ⇒ 它是边界，露着；某一段的 `after` 是它 ⇒ 那一段的行插在它后面、
+ *   之后的卡归这一段，直到下一个边界。不是哪一段的 `after` ⇒ 之后的卡不归段（露着）。
+ * - 遇到骨架占位：归哪一段、藏不藏不顺着 DOM 猜，按账本认（`foldSpans`：一段 ＝ `after` 之后到下一个边界之前的那几行）——
+ *   整块落在某一段里 ⇒ 折着就藏（高 0、骨架也不物化它，同一个口径交给骨架）；里面夹着边界 ⇒ 露着；之后的卡归占位末尾所在的那一段
+ *   （那一段的 `after` 还没建 ⇒ 行等它建出来再画）；骨架没接上 ⇒ 之后不再归段，直到认出下一个边界。
+ * - ESC 回退的折叠段之后不再归段（宁可不折，不折错）。
+ * - 过程行插在那一段的 `after` 那张卡后面；它不是时间线条目（`RecordTimeline` 按后继锚插入，不受它影响），
  *   `BranchFolder` 认的是 `data-id`，过程行没有。
- * - 「暂定结论」被降级（露着的最后一段正文，Claude 又调了工具 ⇒ 它成了中间的话）：收尾那一刻视口正落在它上面 ⇒ 先不收，
- *   等滚出去（宿主转来的 scroll）或切走再收。
  *
  * # 折着的不建 DOM（骨架接上了的那一段历史）
  *
- * 折着的轮的过程行（`turnSpans` 的口径）交给骨架（`SkeletonView.setFolds`）：账本按 0 高、滚到那里也不物化，
- * 带过程行的轮的开头多算一条过程行的高 ⇒ 滚动条按「人话 ＋ 一行 ＋ 结尾」估。展开 ⇒ 撤掉那一段、叫骨架物化露出来的部分。
+ * 折着的段（`foldSpans` 的口径）交给骨架（`SkeletonView.setFolds`）：账本按 0 高、滚到那里也不物化，
+ * 每段的 `after` 那一行多算一条过程行的高 ⇒ 滚动条按「人话 ＋ 正文 ＋ 每段一行」估。展开 ⇒ 撤掉那一段、叫骨架物化露出来的部分。
  * 已经建了的卡（尾部窗口直渲的 · 展开过又收起的）照样由本模块藏（`display:none`），收起后不拆。
  *
  * # 展开状态
  *
  * 默认展开与否是每扇窗一个开关（会话头「⋯」·`Ctrl+O`，`LS_KEYS.processExpanded`），正在跑的与收尾了的同一个默认；
- * 点过程行 ⇒ 这一轮单独记住（这扇窗的内存，不落盘），实时更新与跑完都不重置——产品从不替你开合，
- * 除了跳卡 / 查找落在折着的过程里（`revealCard` 发 `PROC_REVEAL_EVENT`，本模块展开那一轮、记成手动开）。
- * 切开关 ⇒ 各轮单独记的作废（`Ctrl+O` ＝ 全部收起 / 全部展开）。
+ * 点过程行 ⇒ 这一段单独记住（这扇窗的内存，不落盘；键是段的 `after`），实时更新与跑完都不重置——产品从不替人开合，
+ * 除了跳卡 / 查找落在折着的过程里（`revealCard` 发 `PROC_REVEAL_EVENT`，本模块展开那一段、记成手动开）。
+ * 切开关 ⇒ 各段单独记的作废（`Ctrl+O` ＝ 全部收起 / 全部展开）。
  *
- * 本模块不排定时器（`polling_registry`）：触发全靠宿主（新记录到了 · 批结束 · 会话事实变了 · scroll · 切 tab）与 DOM 变动（`MutationObserver`）。
+ * 本模块不排定时器（`polling_registry`）：触发全靠宿主（新记录到了 · 批结束 · 会话事实变了 · 切 tab）与 DOM 变动（`MutationObserver`）。
  */
-import { readTurns, type TurnSummary, type TurnsResult, type TurnSpan } from "./session-reads";
+import { readTurns, type TurnSummary, type TurnsResult, type TurnSpan, type TurnFoldRow } from "./session-reads";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { clockNow } from "./duration-format";
@@ -61,15 +60,15 @@ const MAX_FAILURES = 3;
 export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
 type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
 /**
- * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有下一轮的开头按账本的 uuid→seq 认；折着的轮的过程那一段告诉它（按 0 高、不物化）；
- * 展开一轮后叫它物化露出来的那段。
+ * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有边界按账本的 uuid→seq 认；折着的段告诉它（按 0 高、不物化）；
+ * 展开一段后叫它物化露出来的那部分。
  */
 export type TurnsSkeleton = () => {
   ledger: TurnsLedger;
   fillVisible(): number;
   setFolds(f: TurnFolds): void;
 } | null;
-/** 骨架账本里本模块要的那几样：uuid→seq（认开头 / 结尾）、账本尾（最后一轮到哪）。 */
+/** 骨架账本里本模块要的那几样：uuid→seq（认边界）、账本尾（最后一轮到哪）。 */
 type TurnsLedger = { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
@@ -90,39 +89,44 @@ export function setProcessExpandedDefault(on: boolean): void {
   safeSet(LS_KEYS.processExpanded, on ? "1" : "0");
 }
 
-const hasLine = (t: TurnSummary): boolean => t.parts.length > 0;
 const isOurs = (el: Element): boolean => el.classList.contains(PROC_LINE_CLASS) || el.classList.contains(PROC_TAIL_CLASS);
 
-/** `revealCard` 用：`el` 落在某一轮折着的过程里 ⇒ 让那一轮展开（同步）。 */
+/** `revealCard` 用：`el` 落在某一段折着的过程里 ⇒ 让那一段展开（同步）。 */
 export function revealProcessOf(el: HTMLElement, container: HTMLElement): void {
   let top: HTMLElement | null = el;
   while (top && top.parentElement && top.dataset.procOf === undefined && top !== container) top = top.parentElement;
-  const turn = top?.dataset.procOf;
-  if (top && turn !== undefined && top.classList.contains("proc-hidden")) {
-    top.dispatchEvent(new CustomEvent(PROC_REVEAL_EVENT, { bubbles: true, detail: turn }));
+  const key = top?.dataset.procOf;
+  if (top && key !== undefined && top.classList.contains("proc-hidden")) {
+    top.dispatchEvent(new CustomEvent(PROC_REVEAL_EVENT, { bubbles: true, detail: key }));
   }
+}
+
+/** 一段过程：键是它的 `after`（一条记录只会是一段的 `after`）。 */
+interface FoldRef {
+  key: string;
+  turn: TurnSummary;
+  fold: TurnFoldRow;
 }
 
 export class TurnFold {
   private turns: TurnSummary[] = [];
-  private byUuid = new Map<string, TurnSummary>();
+  /** 边界：每一轮的开头 ＋ 露着的那几条（uuid）。 */
+  private bounds = new Set<string>();
+  /** 段的 `after` ⇒ 那一段。 */
+  private byAfter = new Map<string, FoldRef>();
   private lines = new Map<string, HTMLButtonElement>();
   private tails = new Map<string, HTMLButtonElement>();
-  /** 这一轮单独点过：`true` 展开 / `false` 收起。 */
+  /** 这一段单独点过：`true` 展开 / `false` 收起。 */
   private overrides = new Map<string, boolean>();
-  /** 上一次排版时露着当结尾的那几张卡（据此认出「暂定结论被降级」）。 */
-  private shownEnding = new Set<string>();
-  /** 被降级、但那一刻视口落在它上面 ⇒ 先不收的卡（uuid；等滚出去 / 切走）。 */
-  private held = new Set<string>();
   private inflight = false;
   private again = false;
   private gen = 0;
   private failures = 0;
   private gaveUp = false;
   private readonly mo: MutationObserver;
-  /** 流长高 / 变矮 ⇒ 展开那几轮左边的竖线跟着改高（不排定时器）。 */
+  /** 流长高 / 变矮 ⇒ 展开那几段左边的竖线跟着改高（不排定时器）。 */
   private readonly ro: ResizeObserver | null;
-  /** 上一次排版时每一轮过程里的最后一张卡（竖线画到它底下、收起行接在它后面）。 */
+  /** 上一次排版时每一段过程里的最后一张卡（竖线画到它底下、收起行接在它后面）。 */
   private lastOf = new Map<string, HTMLElement>();
   private expandedDefault: boolean;
   /**
@@ -190,7 +194,8 @@ export class TurnFold {
       }
       this.failures = 0;
       this.turns = [...this.turns.filter((t) => t.at < res.from), ...res.turns];
-      this.byUuid = new Map(this.turns.map((t) => [t.uuid, t]));
+      this.bounds = new Set(this.turns.flatMap((t) => [t.uuid, ...t.shown]));
+      this.byAfter = new Map(this.turns.flatMap((turn) => turn.folds.map((fold): [string, FoldRef] => [fold.after, { key: fold.after, turn, fold }])));
       this.apply();
       this.onTurns?.();
     } finally {
@@ -204,11 +209,10 @@ export class TurnFold {
     }
   }
 
-  /** `Ctrl+O` / 会话头开关：默认展开与否；各轮单独记的作废。 */
+  /** `Ctrl+O` / 会话头开关：默认展开与否；各段单独记的作废。 */
   setDefault(expanded: boolean, later = false): void {
     this.expandedDefault = expanded;
     this.overrides.clear();
-    this.held.clear();
     if (later) this.staleDefault = true;
     else this.apply();
   }
@@ -225,72 +229,55 @@ export class TurnFold {
     if (this.staleDefault) this.apply();
   }
 
-  /** scroll 监听（宿主挂 / 摘同一个引用）。 */
-  readonly releaseOnScroll = (): void => this.release();
-
-  /** 宿主转来的 scroll / 切走：先不收的那几张，视口已经不在它上面 ⇒ 收。 */
-  release(force = false): void {
-    if (this.held.size === 0) return;
-    for (const uuid of [...this.held]) if (force || !this.cardInView(uuid)) this.held.delete(uuid);
-    this.apply();
-  }
-
   /** 按手上的那份成品给流里的卡排版（O(顶层卡数)）。 */
   apply(): void {
     this.staleDefault = false;
     const seen = new Set<string>();
-    const ending = new Set<string>();
-    /** 每一轮过程里的最后一张卡（收起行接在它后面）。 */
+    /** 每一段过程里的最后一张卡（收起行接在它后面）。 */
     const lastOf = new Map<string, HTMLElement>();
-    let cur: TurnSummary | null = null;
-    let curEnding = new Set<string>();
-    const spans = this.turnSpans();
-    const heads: Head[] | null = spans && spans.map((r) => ({ seq: r.head, uuid: r.turn.uuid }));
+    let cur: FoldRef | null = null;
+    const spans = this.foldSpans();
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
       const uuid = el.getAttribute("data-id");
-      const turn = uuid ? this.byUuid.get(uuid) : undefined;
-      if (turn) {
-        cur = hasLine(turn) ? turn : null;
-        curEnding = new Set(turn.ending);
+      if (uuid !== null && (this.bounds.has(uuid) || this.byAfter.has(uuid))) {
+        cur = this.byAfter.get(uuid) ?? null;
         if (cur) {
-          seen.add(turn.uuid);
-          this.placeLine(el, turn);
+          seen.add(cur.key);
+          this.placeLine(el, cur);
         }
         this.unmark(el);
         continue;
       }
-      // 骨架占位：归哪一轮、藏不藏按账本那一段认（`turnSpans`，与交给骨架按 0 高的同一个口径），不顺着 DOM 猜：
-      // 整块落在某一轮的过程行里 ⇒ 它是那一轮的过程（折着就藏、骨架也不物化它）；里面有哪一轮的开头 ⇒ 后面的卡归最后那个开头的轮
-      // （开头那张还没建 ⇒ 行先不画，建出来再画）；含那一轮的结尾行 ⇒ 露着（结尾要物化出来）；骨架没接上认不出 ⇒ 之后不再归轮。
+      // 骨架占位：归哪一段、藏不藏按账本认（`foldSpans`，与交给骨架按 0 高的同一个口径），不顺着 DOM 猜。
       if (el.classList.contains(SKELETON_GAP_CLASS)) {
         const lo = Number(el.dataset.skeletonLo);
         const hi = Number(el.dataset.skeletonHi);
-        const inside = heads === null ? undefined : lastHeadIn(el, heads);
-        const owner = spans && inside === null ? spanAt(spans, lo) : null;
-        const t = inside === null ? owner?.turn : inside === undefined ? undefined : this.byUuid.get(inside);
-        cur = t && hasLine(t) ? t : null;
-        curEnding = new Set(t?.ending ?? []);
-        if (cur && owner && hi <= owner.next && !owner.endings.some((e) => e >= lo && e < hi)) {
-          this.mark(el, cur);
-          lastOf.set(cur.uuid, el);
+        if (!spans || !Number.isFinite(lo) || !Number.isFinite(hi)) {
+          cur = null;
+          this.unmark(el);
+          continue;
+        }
+        const owner = spanAt(spans, lo);
+        if (owner && hi <= owner.end) {
+          this.mark(el, owner.ref);
+          lastOf.set(owner.ref.key, el);
         } else this.unmark(el);
+        cur = spanAt(spans, hi)?.ref ?? null;
         continue;
       }
       if (el.classList.contains(FOLD_WRAP_CLASS)) cur = null;
-      if (!cur || (uuid !== null && curEnding.has(uuid))) {
-        if (uuid !== null && cur) ending.add(uuid);
+      if (!cur) {
         this.unmark(el);
         continue;
       }
       this.mark(el, cur);
-      lastOf.set(cur.uuid, el);
+      lastOf.set(cur.key, el);
     }
-    this.shownEnding = ending;
-    for (const [uuid, line] of this.lines) {
-      if (seen.has(uuid)) continue;
+    for (const [key, line] of this.lines) {
+      if (seen.has(key)) continue;
       line.remove();
-      this.lines.delete(uuid);
+      this.lines.delete(key);
     }
     this.lastOf = lastOf;
     this.foldSkeleton(spans);
@@ -309,31 +296,25 @@ export class TurnFold {
   }
 
   /**
-   * **每一轮在账本里占哪几行**（骨架没接上 ⇒ `null`）：开头的 seq（升序）、到下一轮开头（没有 ⇒ 账本尾）为止、其中结尾是哪几行。
-   * 「哪几行是过程」只住这里：开头之后、下一轮开头之前、结尾以外的行。账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）
-   * 都从它推出来 ⇒ 两边说法不会分家。
+   * **每一段在账本里占哪几行**（骨架没接上 ⇒ `null`，按起点升序）：`after` 那一行之后、到下一个边界（这一轮露着的下一条 /
+   * 下一轮开头 / 账本尾）之前。账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）都从它推出来 ⇒ 两边说法不会分家。
    */
-  private turnSpans(ledger: TurnsLedger | null = this.skeleton()?.ledger ?? null): TurnSpanRow[] | null {
+  private foldSpans(ledger: TurnsLedger | null = this.skeleton()?.ledger ?? null): FoldSpanRow[] | null {
     if (!ledger) return null;
     const seq = ledger.uuidToSeq;
-    const rows: TurnSpanRow[] = [];
-    for (const turn of this.turns) {
-      const head = seq.get(turn.uuid);
-      if (head !== undefined) rows.push({ turn, head, next: 0, endings: [] });
+    const bounds = [...this.bounds].map((u) => seq.get(u)).filter((s): s is number => s !== undefined).sort((a, b) => a - b);
+    const rows: FoldSpanRow[] = [];
+    for (const ref of this.byAfter.values()) {
+      const at = seq.get(ref.key);
+      if (at === undefined) continue;
+      const next = bounds.find((b) => b > at) ?? ledger.endSeq;
+      rows.push({ ref, line: at, start: at + 1, end: next });
     }
-    rows.sort((a, b) => a.head - b.head);
-    rows.forEach((r, i) => {
-      r.next = rows[i + 1]?.head ?? ledger.endSeq;
-      r.endings = r.turn.ending
-        .map((u) => seq.get(u))
-        .filter((e): e is number => e !== undefined && e > r.head && e < r.next)
-        .sort((a, b) => a - b);
-    });
-    return rows;
+    return rows.sort((a, b) => a.start - b.start);
   }
 
-  /** 折着的轮的过程行（`turnSpans` 的口径）交给骨架：按 0 高、滚到那里也不物化；带过程行的开头多算一条行高。 */
-  private foldSkeleton(spans: readonly TurnSpanRow[] | null): void {
+  /** 折着的段（`foldSpans` 的口径）交给骨架：按 0 高、滚到那里也不物化；每段的 `after` 那一行多算一条行高。 */
+  private foldSkeleton(spans: readonly FoldSpanRow[] | null): void {
     const sk = this.skeleton();
     if (!sk || !spans) return;
     sk.setFolds(this.foldsOf(spans));
@@ -345,21 +326,19 @@ export class TurnFold {
    * 冷切停住那一帧多排两次版。之后那一趟排版交的是同一份 ⇒ 账本说没变、什么都不动。
    */
   seedFolds(ledger: TurnsLedger & { setFolds(f: TurnFolds): boolean }): void {
-    const spans = this.turnSpans(ledger);
+    const spans = this.foldSpans(ledger);
     if (spans) ledger.setFolds(this.foldsOf(spans));
   }
 
-  private foldsOf(spans: readonly TurnSpanRow[]): TurnFolds {
+  private foldsOf(spans: readonly FoldSpanRow[]): TurnFolds {
     const folded: Array<[number, number]> = [];
     const lines: number[] = [];
     for (const r of spans) {
-      if (!hasLine(r.turn)) continue;
-      lines.push(r.head);
-      if (!this.expanded(r.turn)) folded.push(...processRanges(r));
+      lines.push(r.line);
+      if (!this.expanded(r.ref) && r.end > r.start) folded.push([r.start, r.end]);
     }
-    return { folded, lines, linePx: this.linePx() };
+    return { folded, lines: lines.sort((a, b) => a - b), linePx: this.linePx() };
   }
-
   /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。量过就记着（`linePxSeen`）。 */
   private linePx(): number {
     if (this.linePxSeen !== null) return this.linePxSeen;
@@ -371,36 +350,27 @@ export class TurnFold {
     return LINE_PX_FALLBACK;
   }
 
-  /** 这一轮从折着变成展开 ⇒ 露出来的占位要物化（没有 scroll 事件来叫）。 */
+  /** 这一段从折着变成展开 ⇒ 露出来的占位要物化（没有 scroll 事件来叫）。 */
   private opened(): void {
     this.skeleton()?.fillVisible();
   }
 
   private readonly onReveal = (e: Event): void => {
-    const uuid = (e as CustomEvent<string>).detail;
-    if (!this.byUuid.has(uuid)) return;
-    this.overrides.set(uuid, true);
+    const key = (e as CustomEvent<string>).detail;
+    if (!this.byAfter.has(key)) return;
+    this.overrides.set(key, true);
     this.apply();
     this.opened();
   };
 
-  private expanded(turn: TurnSummary): boolean {
-    return this.overrides.get(turn.uuid) ?? this.expandedDefault;
+  private expanded(ref: FoldRef): boolean {
+    return this.overrides.get(ref.key) ?? this.expandedDefault;
   }
 
-  /** 归属没变的卡一个属性都不写：`data-proc-of` / 工具组的 `open` 都有样式挂着，照写一遍同样的值也让那张卡重算样式（每次卡进出流全部过程卡一起算）。 */
-  private mark(el: HTMLElement, turn: TurnSummary): void {
-    if (el.dataset.procOf !== turn.uuid) el.dataset.procOf = turn.uuid;
-    const uuid = el.getAttribute("data-id");
-    let open = this.expanded(turn);
-    // 暂定结论被降级：此刻视口正落在它上面 ⇒ 先不收。
-    if (!open && uuid !== null && (this.held.has(uuid) || (this.shownEnding.has(uuid) && this.inView(el)))) {
-      this.held.add(uuid);
-      open = true;
-    }
-    el.classList.toggle("proc-hidden", !open);
-    // 过程里的工具组不再另起一层「工具 ×N」：展开的过程里它整组摊开（收着那一行由 CSS 藏掉）。
-    if (open && el instanceof HTMLDetailsElement && el.classList.contains("card-tool-group") && !el.open) el.open = true;
+  /** 归属没变的卡一个属性都不写：`data-proc-of` 有样式挂着，照写一遍同样的值也让那张卡重算样式（每次卡进出流全部过程卡一起算）。 */
+  private mark(el: HTMLElement, ref: FoldRef): void {
+    if (el.dataset.procOf !== ref.key) el.dataset.procOf = ref.key;
+    el.classList.toggle("proc-hidden", !this.expanded(ref));
   }
 
   private unmark(el: HTMLElement): void {
@@ -409,33 +379,33 @@ export class TurnFold {
     el.classList.remove("proc-hidden");
   }
 
-  /** 过程行紧跟在那一轮开头那张卡后面（已在就原地重写字）。 */
-  private placeLine(head: HTMLElement, turn: TurnSummary): void {
-    let line = this.lines.get(turn.uuid);
+  /** 过程行紧跟在那一段的 `after` 那张卡后面（已在就原地重写字）。 */
+  private placeLine(anchor: HTMLElement, ref: FoldRef): void {
+    let line = this.lines.get(ref.key);
     if (!line) {
+      const key = ref.key;
       line = document.createElement("button");
       line.type = "button";
       line.className = PROC_LINE_CLASS;
-      line.dataset.turn = turn.uuid;
-      line.addEventListener("click", (e) => this.onLineClick(turn.uuid, e));
-      this.lines.set(turn.uuid, line);
+      line.dataset.fold = key;
+      line.addEventListener("click", (e) => this.onLineClick(key, e));
+      this.lines.set(key, line);
     }
-    if (head.nextElementSibling !== line) head.after(line);
-    paintLine(line, turn, this.expanded(turn), Date.now());
+    if (anchor.nextElementSibling !== line) anchor.after(line);
+    paintLine(line, ref.fold, this.expanded(ref), Date.now());
   }
-
   /**
-   * 展开的那几轮：过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」（别的轮的收起行摘掉）；过程行下面那道竖线画到这一轮过程（含收起行）的底。
-   * 先量后写、成块：量一下写一下 ＝ 每一轮都逼一次整页重排（`Ctrl+O` 全展开时几百轮，一下几百毫秒）。
-   * 新插进去 / 挪了位置的收起行要插完才量得到 ⇒ 再量一块；没动的沿用头一块的读数（它前面插 / 摘别的轮的收起行，
+   * 展开的那几段：过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」（别的段的收起行摘掉）；过程行下面那道竖线画到这一段过程（含收起行）的底。
+   * 先量后写、成块：量一下写一下 ＝ 每一段都逼一次整页重排（`Ctrl+O` 全展开时几百段，一下几百毫秒）。
+   * 新插进去 / 挪了位置的收起行要插完才量得到 ⇒ 再量一块；没动的沿用头一块的读数（它前面插 / 摘别的段的收起行，
    * 过程行与它一起挪，差不变；竖线是绝对定位的，插它不动排版）。
    */
   private placeTailsAndRules(lastOf: Map<string, HTMLElement>): void {
     const open: Array<{ uuid: string; line: HTMLElement; last: HTMLElement; span: number; tailSpan: number | null }> = [];
     for (const [uuid, line] of this.lines) {
-      const turn = this.byUuid.get(uuid);
+      const ref = this.byAfter.get(uuid);
       const last = lastOf.get(uuid);
-      if (turn && last && this.expanded(turn)) open.push({ uuid, line, last, span: 0, tailSpan: null });
+      if (ref && last && this.expanded(ref)) open.push({ uuid, line, last, span: 0, tailSpan: null });
     }
     // 头一块：量（视口高 · 每一轮过程的跨度 · 已在原位的收起行底）
     const view = open.length > 0 ? this.scroller.clientHeight : 0;
@@ -505,8 +475,8 @@ export class TurnFold {
   }
 
   private onLineClick(uuid: string, e: MouseEvent): void {
-    const turn = this.byUuid.get(uuid);
-    if (!turn) return;
+    const ref = this.byAfter.get(uuid);
+    if (!ref) return;
     // 点「失败 ×N」那一段 ⇒ 展开并滚到第一处失败；整行其余地方点 ＝ 开合。
     const onFail = e.target instanceof Element && e.target.closest(".proc-fails") !== null;
     if (onFail) {
@@ -516,9 +486,8 @@ export class TurnFold {
       this.firstFailure(uuid)?.scrollIntoView({ block: "center" });
       return;
     }
-    const open = !this.expanded(turn);
+    const open = !this.expanded(ref);
     this.overrides.set(uuid, open);
-    for (const u of [...this.held]) if (this.cardOf(u)?.dataset.procOf === uuid) this.held.delete(u);
     this.apply();
     if (open) this.opened();
   }
@@ -533,79 +502,27 @@ export class TurnFold {
     return null;
   }
 
-  /** 流里 `data-id` 是它的那张顶层卡。 */
-  private cardOf(uuid: string): HTMLElement | null {
-    for (const el of Array.from(this.content.children)) if (el instanceof HTMLElement && el.getAttribute("data-id") === uuid) return el;
-    return null;
-  }
-
-  private cardInView(uuid: string): boolean {
-    const el = this.cardOf(uuid);
-    return el !== null && this.inView(el);
-  }
-
-  /** 这张卡与视口相交。 */
-  private inView(el: HTMLElement): boolean {
-    const box = this.scroller.getBoundingClientRect();
-    if (box.height === 0) return false; // 后台 tab：不在眼前
-    const r = el.getBoundingClientRect();
-    return r.bottom > box.top && r.top < box.bottom;
-  }
 }
 
-interface Head {
-  seq: number;
-  uuid: string;
+/** 一段在账本里：`after` 那一行 · 过程那几行 `[start, end)`。 */
+interface FoldSpanRow {
+  ref: FoldRef;
+  line: number;
+  start: number;
+  end: number;
 }
 
-/** 一轮在账本里：开头 · 下一轮开头（半开上界）· 结尾那几行（升序）。 */
-interface TurnSpanRow {
-  turn: TurnSummary;
-  head: number;
-  next: number;
-  endings: number[];
-}
-
-/** 这一轮的过程行：`(head, next)` 里扣掉结尾那几行。 */
-function processRanges(r: TurnSpanRow): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  let at = r.head + 1;
-  for (const e of r.endings) {
-    if (e > at) out.push([at, e]);
-    at = Math.max(at, e + 1);
-  }
-  if (r.next > at) out.push([at, r.next]);
-  return out;
-}
-
-/** `seq` 落在哪一轮里（开头 < seq < 下一轮开头）；在第一轮开头之前 ⇒ `null`。 */
-function spanAt(spans: readonly TurnSpanRow[], seq: number): TurnSpanRow | null {
+/** `seq` 落在哪一段里（`start ≤ seq < end`；各段不相交、按起点升序）；不在任何一段里 ⇒ `null`。 */
+function spanAt(spans: readonly FoldSpanRow[], seq: number): FoldSpanRow | null {
   let l = 0;
   let r = spans.length;
   while (l < r) {
     const m = (l + r) >>> 1;
-    if (spans[m].head < seq) l = m + 1;
+    if (spans[m].start <= seq) l = m + 1;
     else r = m;
   }
   const s = spans[l - 1];
-  return s !== undefined && seq < s.next ? s : null;
-}
-
-/** 占位 `[lo, hi)` 里最后一个开头是哪一轮（`heads` 按 seq 升序）：没有 ⇒ `null`；占位的区间读不出 ⇒ `undefined`（当作认不出）。 */
-function lastHeadIn(gap: HTMLElement, heads: readonly Head[]): string | null | undefined {
-  const lo = Number(gap.dataset.skeletonLo);
-  const hi = Number(gap.dataset.skeletonHi);
-  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return undefined;
-  // 第一个 seq ≥ hi 的位置，前一个若 ≥ lo 就是占位里最后那个开头。
-  let l = 0;
-  let r = heads.length;
-  while (l < r) {
-    const m = (l + r) >>> 1;
-    if (heads[m].seq < hi) l = m + 1;
-    else r = m;
-  }
-  const h = heads[l - 1];
-  return h !== undefined && h.seq >= lo ? h.uuid : null;
+  return s !== undefined && seq < s.end ? s : null;
 }
 
 /** 右端那一截：后端写好的字，`{dur}` 填用时（`to` 缺 ⇒ 到 `now`）。 */
@@ -620,28 +537,28 @@ const painted = new WeakMap<HTMLElement, string>();
  * 过程行：`›`（＋ 在跑转圈 / 在等你琥珀点）＋ 后端写好的各段（按语气上色、段间分隔）＋ 靠右那一截。
  * 要画的跟上一次一字不差 ⇒ 不动（每趟排版都会走到这里；整行拆了重建会作废这几行的样式与排版，在跑的转圈也从头转）。
  */
-export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean, now: number): void {
-  const dur = fillDur(turn.span, now);
+export function paintLine(line: HTMLElement, fold: TurnFoldRow, open: boolean, now: number): void {
+  const dur = fillDur(fold.span, now);
   const sep = copyText("kit.text.sep");
-  const key = JSON.stringify([open, turn.phase, turn.parts, dur, sep]);
+  const key = JSON.stringify([open, fold.phase, fold.parts, dur, sep]);
   if (painted.get(line) === key) return;
   painted.set(line, key);
   line.setAttribute("aria-expanded", String(open));
-  line.dataset.phase = turn.phase;
+  line.dataset.phase = fold.phase;
   line.replaceChildren();
   line.appendChild(foldCaret());
   // 在跑：转圈取「运行中」那一色（规范 V10 · --success），用 currentColor 跟着 .proc-run。
-  if (turn.phase === "running") {
+  if (fold.phase === "running") {
     const run = document.createElement("span");
     run.className = "proc-run";
     run.appendChild(spinner());
     line.appendChild(run);
   }
-  if (turn.phase === "awaiting") line.appendChild(statusDot("needs-you", turn.parts[turn.parts.length - 1]?.text ?? "", "compact"));
+  if (fold.phase === "awaiting") line.appendChild(statusDot("needs-you", fold.parts[fold.parts.length - 1]?.text ?? "", "compact"));
   const text = document.createElement("span");
   text.className = "proc-text";
   line.appendChild(text);
-  for (const p of turn.parts) {
+  for (const p of fold.parts) {
     if (text.childNodes.length > 0) text.append(sep);
     const s = document.createElement("span");
     if (p.tone === "fail") s.className = "proc-fails";

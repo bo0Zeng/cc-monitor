@@ -295,8 +295,6 @@ export class TabStreamView {
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
     };
     streamEl.addEventListener("scroll", fillHandler, { passive: true });
-    // 收尾时视口落在过程里、先没收的那一轮：滚出去了再收（同一个监听，摘的时候一起摘）。
-    streamEl.addEventListener("scroll", tab.turnFold.releaseOnScroll, { passive: true });
     streamEl.addEventListener("scroll", tab.turnRail.onScroll, { passive: true }); // 刻度上「当前」那一格
     tab.fillHandler = fillHandler;
     // ★ 步 3：**视口自己变大 ⇒ 重新补批。**
@@ -334,7 +332,6 @@ export class TabStreamView {
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
     tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
-    tab.streamEl.removeEventListener("scroll", tab.turnFold.releaseOnScroll);
     tab.streamEl.removeEventListener("scroll", tab.turnRail.onScroll);
     tab.turnRail.el.remove(); // 刻度挂在流外，不随 `streamEl.remove()` 一起走
     tab.turnFold.dispose(); // 按轮折叠：断观察、在途那趟作废
@@ -395,7 +392,6 @@ export class TabStreamView {
       t.inputsEl.classList.toggle("active", sid === sessionId);
       // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
       if (sid !== sessionId) this.finds.get(sid)?.close();
-      if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
       t.turnRail.el.classList.toggle("active", sid === sessionId);
       if (sid === sessionId) t.turnFold.flushStale(); // Ctrl+O 之后还没按新默认排过（后台只记了一笔）⇒ 当场排
       if (sid === sessionId) t.turnRail.shown(); // 收起期间没量过 ⇒ 下一帧量一次
