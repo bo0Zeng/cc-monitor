@@ -898,7 +898,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9u-needs-bgwork-mcp：核心补格——facts.needs 加 rank（先答哪个）· waitedMs · waitedText（已等多久在那台算）；facts.usage 带写好的字（contextText · limitText · promptTokensText · percent · contextTone · limitFromText）；activity 说不清也带字（运行中 · now），background_work 写「后台任务运行中」· 语气 busy；facts 多 bgTasks · background（后台命令与时长，会走的那一句 clock{text, from}）· mcp（要登录 · 连不上 · 还在连）；格目录缺格清空、记录金样扩全、冻结表并进格目录。
 /// 新命令 sessions-needs（这台上需手动的会话 {waiting:[{sid, needs}]}，先答的在前）· plan-files（计划格 ⇄ 文件反查）；阻塞命令总期限的超时码统一 child_timed_out（bus-* 原 timed_out，sessions-where/stop/start 列名单超时原回 unobservable）；session-restart 失败 data 与 rotation-* 等应答改 typed（线上形状不变）；sessions-start 的 kind 只入。
 /// ccm 直路打印那一行与真跑同清各家会话号变量（codex 的 --ccm-print 多一段 unset CLAUDE_CODE_SESSION_ID）；关窗 / 列不出来之后文件窗口进程照样退；Windows 摘子进程环境不分大小写；常驻开关先判不支持（--resident-ensure 在不支持的平台先回 unsupported、不建目录）；tmux 控制模式客户端关 stdin 断开（不 SIGKILL）；全文搜索 mimalloc ＋ 多线程重读。
-pub const BUILD_ID: &str = "p9u-needs-bgwork-mcp";
+///
+/// p9v-trigger-split-quota-rows：rotation.json 换形——Rotation 删 when，规则一级的线收进 cap["*"]（只收 5h · 7d，值 1–99 或按时段；一格空着 ＝ 那一窗满了才换；旧文件里的 when 不认、不迁移 ⇒ 升级后照「满了才换」跑，要重设一次）；判定只一处 decide::layers（这号这窗口 → 这号这语义位 → 这号全部窗口 → 所有号这语义位）；SwitchWhy::Threshold / Held 带 w，时段停用另立 Off { w? }；AccountAt（blocked.earliest）带 w；SlotShow 多 atLine；rotation-plan 的 head.toTrigger 改 toLine {w, n}、lanes.spans 带 w；effective 列只 5h · 7d · *，trigger 层带 w，* 那一格多 list · belowList；逐格错的格名 cap.*.5h · cap.*.7d。
+/// 额度成品进核心：quota-read 每号（含 unseen）带 rows [[{text, tone}]] 与 warm {act, at?, text}（quota-warm 的开窗判定挪进核心），顶上多 text（读不出 · 一个号都没有那一句，照读答的原因说）；slots[] 每格带 text · tone；出口给还没到的时刻另添 <键>RelText（距今），rotation-plan 的 head.blocked 同带 atRelText；CLI --text 改成通用拼字、所有命令都收。
+/// 文案十四 14–16 批：契约错只回「请求格式不对」；powershell-policy-set 的 setError 与 aliases-read 候选 policy.error 由原话改为原因词；rotation-rules-read 的 reason / detail 收进界面；exit-policy-read 读不出时 said 带原因（盘上原值只进原话）；壳 spawn_blocking 没回来一律 crashed。子命令指纹没变（不加历史行）。
+pub const BUILD_ID: &str = "p9v-trigger-split-quota-rows";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
