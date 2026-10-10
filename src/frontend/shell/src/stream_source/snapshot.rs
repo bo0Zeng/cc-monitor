@@ -141,6 +141,14 @@ impl SnapshotQueue {
     }
 }
 
+/// 排到的这一份快照拉不拉：那台报过名单（`Some`）⇒ 只拉在看的；没报过（`None` ＝ 全看，与后端同一个口径）⇒ 都拉。**纯函数**。
+pub(super) fn wants_snapshot(
+    watched: Option<&std::collections::BTreeSet<String>>,
+    sid: &str,
+) -> bool {
+    watched.is_none_or(|w| w.contains(sid))
+}
+
 /// 分发器：每连接一个 task。并发 ≤SNAPSHOT_CONCURRENCY 地把队列里的会话交给
 /// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → remote-health toast
 /// （该 tab 只有实时行，历史浏览器兜底可看全量）。取消（会话 removed/断连）
@@ -159,6 +167,13 @@ pub(super) async fn snapshot_dispatcher(
         let Some(item) = q.pop(replay.priority_sid()).await else {
             return; // 队列已关（排队项作废，重连重拉）
         };
+        // 没在看的会话不拉（它的行也不上流）：进名单那一刻由 `stream-watch` 的 `from[]` 叫界面自己补。
+        let origin = crate::origin::Origin(host_label.clone());
+        if !wants_snapshot(replay.watched(&origin).as_ref(), &item.sid) {
+            tracing::debug!("snapshot [{host_label}] {}: 没在看，不拉", item.sid);
+            drop(permit);
+            continue;
+        }
         let q = q.clone();
         let replay = replay.clone();
         let health = health.clone();

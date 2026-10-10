@@ -498,3 +498,29 @@ fn a_resume_reads_from_the_cursor_line_itself() {
     assert!(matches!(how, Read::Resume { skip_below: 171, first_seq, .. } if first_seq < 171));
     forget(o, s);
 }
+
+/// 报了名单 ⇒ 那台不在看的会话续点作废（重连时它只读尾段，不从停住的旧续点补读一段）；在看的与别台的照留。
+#[test]
+fn unwatched_sessions_lose_their_cursor() {
+    let here = Origin("proj9-keep-only-a".into());
+    let there = Origin("proj9-keep-only-b".into());
+    let plan = TailPlan {
+        total: 10,
+        tail_from: 0,
+        split_at: 0,
+        end: 100,
+    };
+    for sid in ["seen", "unseen"] {
+        note_snapshot_done(&here, sid, "/p.jsonl", &plan);
+    }
+    note_snapshot_done(&there, "unseen", "/p.jsonl", &plan);
+    keep_only(&here, &["seen".to_string()].into());
+    assert!(cursor_of(&here, "seen").is_some(), "在看的续点被作废了");
+    assert!(cursor_of(&here, "unseen").is_none(), "不在看的续点还留着");
+    assert!(
+        cursor_of(&there, "unseen").is_some(),
+        "别台的续点被连带作废"
+    );
+    forget(&here, "seen");
+    forget(&there, "unseen");
+}

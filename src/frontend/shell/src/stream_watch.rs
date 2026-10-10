@@ -39,6 +39,8 @@ async fn run(replay: Arc<EventReplay>) {
             let Some(want) = replay.watched(&origin) else {
                 continue;
             };
+            // 不在看的会话：续点作废（它们的行不来，续点停住了；重连时别从旧续点补读一段）。
+            crate::snapshot_resume::keep_only(&origin, &want);
             let same = sent.get(&wire).is_some_and(|(c, s)| {
                 c.upgrade().is_some_and(|c| Arc::ptr_eq(&c, &client)) && *s == want
             });
