@@ -37,10 +37,11 @@ pub fn console_window(pid: u32) -> Option<isize> {
     let _one = LENDING.lock().unwrap_or_else(|e| e.into_inner());
 
     // 挂控制台会把本进程空着的三个标准句柄换成那个控制台的，摘下后它们就失效了 ⇒ 挂之前记下、摘下之后放回。
-    const STD: [u32; 3] = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+    // 三个标准句柄的编号（Win32 `STD_INPUT_HANDLE` · `STD_OUTPUT_HANDLE` · `STD_ERROR_HANDLE`：-10 · -11 · -12）。
+    let std_ids: [u32; 3] = [-10i32 as u32, -11i32 as u32, -12i32 as u32];
     // SAFETY：挂上之后只调一个取句柄的、立刻摘下；Ctrl+C 忽略只在挂着的这一小段；标准句柄原样放回。
     let console = unsafe {
-        let saved = STD.map(|n| GetStdHandle(n));
+        let saved = std_ids.map(|n| GetStdHandle(n));
         if AttachConsole(pid) == 0 {
             None
         } else {
@@ -48,7 +49,7 @@ pub fn console_window(pid: u32) -> Option<isize> {
             let h = GetConsoleWindow();
             FreeConsole();
             SetConsoleCtrlHandler(None, 0);
-            for (n, old) in STD.into_iter().zip(saved) {
+            for (n, old) in std_ids.into_iter().zip(saved) {
                 SetStdHandle(n, old);
             }
             Some(h)
@@ -126,10 +127,3 @@ extern "system" {
     fn GetStdHandle(which: u32) -> isize;
     fn SetStdHandle(which: u32, handle: isize) -> i32;
 }
-
-#[cfg(windows)]
-const STD_INPUT_HANDLE: u32 = -10i32 as u32;
-#[cfg(windows)]
-const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
-#[cfg(windows)]
-const STD_ERROR_HANDLE: u32 = -12i32 as u32;

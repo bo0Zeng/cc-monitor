@@ -399,7 +399,7 @@ function frontByLabel(terminals: unknown[]): Promise<FrontResult | null> {
 }
 
 /**
- * 拉本机会话的终端到前台：壳按 sid → 窗口缓存找、三重指纹校验、拉前；壳说「没登记」⇒ 再按窗口标签找一次（本机后端答谁在显示它，
+ * 拉本机会话的终端到前台：壳点那一刻从会话的 agent 进程往上沿进程链找窗口、三重指纹校验、拉前；壳说「没登记」⇒ 再按窗口标签找一次（本机后端答谁在显示它，
  * `remote-terminal-front.ts::frontByLocalLabel`），对上了用那一次的结局，否则照旧「没登记」。回结局族（界面照族排版，`front-result.ts`）。
  */
 export async function bringTerminalToFront(sessionId: string): Promise<FrontResult> {

@@ -1592,7 +1592,7 @@ async fn bring_terminal_to_front(
 /// 拉对应**远端** Tab 的本地终端窗口，两问各一次（界面按顺序调）：
 /// ① 交那台 `session-terminals` 的 `terminals` 原样 ⇒ 按窗口标签找（`bind::bring_labeled_window`）：对上了回那一次的结局，
 ///    没有标签 / 对不上回 `None`（界面接着问第二问）；
-/// ② 交本机后端 `terminal-processes` 的成品 `chain` ⇒ 先查握手表、再沿链找属主的窗口（链断在控制台 shell 上 ⇒ 挂记号标题按标题找），
+/// ② 交本机后端 `terminal-processes` 的成品 `chain` ⇒ 沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，
 ///    校验、拉前（`bind::bring_chain_window`），回结局。两样都空 ⇒ `None`。
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
 #[tauri::command]
