@@ -136,3 +136,20 @@ pub(crate) fn registry_sources() -> Vec<(String, String)> {
 #[cfg(test)]
 #[path = "../../tests/backend/guard_support_tests.rs"]
 mod tests;
+
+/// 一条命令应答的 typed 结构体（serde 序列化；处理器经 `stream::inbound::spec::wire` 把它变成应答 `data`）。
+/// 判据（`every_command_declares_exactly_the_fields_it_puts_out`）从它真序列化的样本拿键，与登记的出参两向对拍：
+/// `samples` 每一支（枚举的每个变体 · 只在某一支才有的格）给一个，可缺的格都填上 —— 漏了哪一支，那一支的格登了就红在「登了没出」。
+pub(crate) trait Shaped: serde::Serialize + Sized {
+    fn samples() -> Vec<Self>;
+}
+
+/// [`Shaped`] 的样本过真序列化器（判据那一侧读）。
+pub(crate) fn sampled<T: Shaped>() -> serde_json::Value {
+    serde_json::Value::Array(
+        T::samples()
+            .iter()
+            .map(|s| serde_json::to_value(s).expect("样本序列化不出"))
+            .collect(),
+    )
+}

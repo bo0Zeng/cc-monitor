@@ -154,7 +154,7 @@ fn the_quota_headers_of_an_answer_land_in_the_ledger_under_the_account_that_answ
     );
     assert!(book.entry("claude-code", "_").is_none());
     let on_disk = ledger::answer_of(Some(&d.join(ledger::FILE_NAME)), 0);
-    assert_eq!(on_disk["accounts"][0]["account"], "q");
+    assert_eq!(on_disk.accounts[0].account, "q");
     let _ = std::fs::remove_dir_all(&d);
 }
 

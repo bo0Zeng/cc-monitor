@@ -1128,11 +1128,14 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 /// 每条命令三选一，三张表两两不交、并起来恰好是注册表：
 /// ① [`SHAPED`]：有真序列化的样本 ⇒ 登的 out ∪ both ＝ 样本顶层的键 ∪ 登了但住在下层的（`below`，必须在样本更深处见得到）
 ///    ∪ 登了但这份样本走不到的那一支（`elsewhere`，逐条写为什么）；
+/// ①′ [`TYPED`]：出参是 typed 结构体 ⇒ 样本由那个类型真序列化（每一支一个，`Shaped::samples`），比法同 ①；
 /// ② [`UNSHAPED`]：出参是现拼的 `json!`、仓里还没有真序列化器写的样本 ⇒ 今天对不了，逐条列名（只许删、不许加：
 ///    新命令要么带金样进 ①，要么零出参）；
 /// ③ [`ZERO_OUT`]：零出参（`fields` 里没有 out / both），逐条写结果走哪儿。
 #[test]
 fn every_command_declares_exactly_the_fields_it_puts_out() {
+    use crate::faces::rotation_face as rf;
+    use crate::guard_support::sampled;
     const FOOTPRINT_REPORT: &str = include_str!("../../__fixtures__/footprint-report.golden.json");
     const ROTATION_SWITCH_RESTART: &str =
         include_str!("../../__fixtures__/rotation-switch-restart.golden.json");
@@ -1402,7 +1405,33 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("transfer-stop", "只回 ok（幂等）"),
         ("transfer-upload", "只回 ok；进度与终局走 `transfer` 帧"),
     ];
-    /// 有出参、还没有真序列化样本的命令（见头注 ②）。
+    /// 出参是 typed 结构体的命令（头注 ①′）：样本由那个类型真序列化（[`crate::guard_support::Shaped`]），列同 [`SHAPED`] 的后两格。
+    #[allow(clippy::type_complexity)]
+    const TYPED: &[(&str, fn() -> serde_json::Value, &[&str], &[(&str, &str)])] = &[
+        (
+            "quota-probe",
+            sampled::<crate::faces::quota_probe_face::Probed>,
+            &[],
+            &[],
+        ),
+        ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
+        ("rotation-default-set", sampled::<rf::DefaultSet>, &[], &[]),
+        ("rotation-plan", sampled::<rf::PlanReply>, &[], &[]),
+        ("rotation-rule-delete", sampled::<rf::RuleDeleted>, &[], &[]),
+        ("rotation-rule-rename", sampled::<rf::RuleSaved>, &[], &[]),
+        ("rotation-rule-save", sampled::<rf::RuleSaved>, &[], &[]),
+        ("rotation-rules-read", sampled::<rf::RulesRead>, &[], &[]),
+        (
+            "rotation-session-read",
+            sampled::<rf::SessionRead>,
+            &[],
+            &[],
+        ),
+        ("rotation-session-set", sampled::<rf::SessionSet>, &[], &[]),
+    ];
+    /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
+    /// 多一条就红；删了一批就把它降到现数（不降也红）。
+    const UNSHAPED_CEILING: usize = 108;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1492,19 +1521,9 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-return",
         "plan-unack",
         "powershell-policy-set",
-        "quota-probe",
-        "quota-read",
         "remote-probe",
         "remote-reach",
         "resident-verdict",
-        "rotation-default-set",
-        "rotation-plan",
-        "rotation-rule-delete",
-        "rotation-rule-rename",
-        "rotation-rule-save",
-        "rotation-rules-read",
-        "rotation-session-read",
-        "rotation-session-set",
         "session-interrupts",
         "session-new",
         "session-new-dir",
@@ -1550,15 +1569,28 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             .collect()
     };
     let mut bad = Vec::new();
-    for (cmd, golden, ptr, below, elsewhere) in SHAPED {
+    #[allow(clippy::type_complexity)]
+    let mut samples: Vec<(&str, serde_json::Value, &[&str], &[(&str, &str)])> = SHAPED
+        .iter()
+        .map(|(cmd, golden, ptr, below, elsewhere)| {
+            let g: serde_json::Value = serde_json::from_str(golden).unwrap();
+            let sample = g
+                .pointer(ptr)
+                .unwrap_or_else(|| panic!("{cmd}：金样里没有 `{ptr}`"))
+                .clone();
+            (*cmd, sample, *below, *elsewhere)
+        })
+        .collect();
+    samples.extend(
+        TYPED
+            .iter()
+            .map(|(cmd, of, below, elsewhere)| (*cmd, of(), *below, *elsewhere)),
+    );
+    for (cmd, sample, below, elsewhere) in &samples {
         let spec = super::REGISTRY
             .iter()
             .find(|s| s.name == *cmd)
-            .unwrap_or_else(|| panic!("`SHAPED` 里的 `{cmd}` 不在注册表里"));
-        let g: serde_json::Value = serde_json::from_str(golden).unwrap();
-        let sample = g
-            .pointer(ptr)
-            .unwrap_or_else(|| panic!("{cmd}：金样里没有 `{ptr}`"));
+            .unwrap_or_else(|| panic!("`SHAPED` / `TYPED` 里的 `{cmd}` 不在注册表里"));
         let top = top_keys(sample);
         assert!(
             !top.is_empty(),
@@ -1596,9 +1628,19 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         bad.join("\n")
     );
     // 三张表两两不交、并起来恰好是注册表。
-    let shaped: std::collections::BTreeSet<&str> = SHAPED.iter().map(|r| r.0).collect();
+    let shaped: std::collections::BTreeSet<&str> = samples.iter().map(|r| r.0).collect();
     let unshaped: std::collections::BTreeSet<&str> = UNSHAPED.iter().copied().collect();
-    assert_eq!(shaped.len(), SHAPED.len(), "`SHAPED` 有重复");
+    assert_eq!(shaped.len(), samples.len(), "`SHAPED` / `TYPED` 有重复");
+    assert!(
+        UNSHAPED.len() <= UNSHAPED_CEILING,
+        "`UNSHAPED` 有 {} 条，比上一批删完的 {UNSHAPED_CEILING} 条多 —— 这张名单只许删：新命令要么出 typed 结构体进 `TYPED`、要么带金样进 `SHAPED`",
+        UNSHAPED.len()
+    );
+    assert!(
+        UNSHAPED.len() >= UNSHAPED_CEILING,
+        "`UNSHAPED` 删到了 {} 条 ⇒ 把 `UNSHAPED_CEILING` 降到这个数（不降，下一个人就能悄悄加回去）",
+        UNSHAPED.len()
+    );
     assert_eq!(unshaped.len(), UNSHAPED.len(), "`UNSHAPED` 有重复");
     let mut want_shaped_or_listed = std::collections::BTreeSet::new();
     let mut zero_out = std::collections::BTreeSet::new();

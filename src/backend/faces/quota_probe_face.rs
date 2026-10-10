@@ -11,8 +11,9 @@ use crate::accounts::quota::ledger;
 use crate::accounts::upstream_select::rotate::account_ok;
 use crate::faces::rotation_face::Ctx;
 use crate::platform::child::{Child, Deadline};
+use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::ffi::OsStr;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
@@ -139,20 +140,41 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
             .into());
     }
     let shown = book.map(|p| p.display().to_string());
+    let probed = |state, reason, windows| Probed {
+        agent: agent.to_string(),
+        account: account.to_string(),
+        from: "usage",
+        now,
+        state,
+        reason,
+        windows,
+        path: shown.clone(),
+    };
     match (face.read)(&text, now) {
-        Err(why) => Ok(json!({
-            "agent": agent, "account": account, "from": "usage", "now": now,
-            "state": "unreadable", "reason": why, "windows": [], "path": shown,
-        })),
+        Err(why) => wire(&probed("unreadable", Some(why), Vec::new())),
         Ok(windows) => {
             ledger::record_probe(&ctx.hop.quota, agent, account, windows.clone(), now)
                 .map_err(|e| ("io_failed", e))?;
-            Ok(json!({
-                "agent": agent, "account": account, "from": "usage", "now": now,
-                "state": "read", "reason": null, "windows": windows, "path": shown,
-            }))
+            wire(&probed("read", None, windows))
         }
     }
+}
+
+/// `quota-probe` 的应答（各格的意思见注册表那一条）。
+#[derive(serde::Serialize)]
+pub(crate) struct Probed {
+    agent: String,
+    account: String,
+    /// 恒 `"usage"`。
+    from: &'static str,
+    now: u64,
+    /// `"read"` · `"unreadable"`。
+    state: &'static str,
+    /// 只在 `unreadable` 时有（英文诊断）；`read` ⇒ `null`。
+    reason: Option<String>,
+    /// `unreadable` ⇒ `[]`。
+    windows: Vec<crate::agents::QuotaWindow>,
+    path: Option<String>,
 }
 
 #[cfg(test)]

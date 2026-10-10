@@ -47,6 +47,7 @@ use crate::accounts::quota::rotation::{
 };
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::{account_ok, Hop};
+use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -150,17 +151,39 @@ const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_A
 /// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
 /// 此刻发得出去的号、最早回来的那个。
 /// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）。
-pub(crate) fn answer_quota_read() -> Value {
+pub(crate) fn answer_quota_read() -> Answer {
     let now = crate::accounts::quota::now_unix();
-    let mut v = quota_read_with(&Ctx::here(), now);
+    let mut v = wire::<_, Fail>(&quota_read_with(&Ctx::here(), now))?;
     crate::common::time::with_texts_here(&mut v, now);
-    v
+    Ok(v)
 }
 
-pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
-    let mut v = ledger::answer_of(ctx.hop.quota.path(), now);
-    let seen: Vec<ledger::Observed> =
-        serde_json::from_value(v["accounts"].clone()).unwrap_or_default();
+/// `quota-read` 的应答（各格的意思见注册表那一条；时刻旁的 `…Text` 由出口那一下添）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct QuotaRead {
+    state: &'static str,
+    reason: Value,
+    detail: Value,
+    path: Option<String>,
+    now: u64,
+    /// 每条 ＝ 那一条账 ＋ 显示态（两份对象并成一份）。
+    accounts: Vec<Value>,
+    unseen: Vec<Value>,
+    usable_now: Vec<String>,
+    earliest_return: Option<EarliestReturn>,
+}
+
+/// 被拒 / 超额在兜的号里最早回来的那个。
+#[derive(serde::Serialize)]
+pub(crate) struct EarliestReturn {
+    account: String,
+    at: u64,
+}
+
+pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
+    let base = ledger::answer_of(ctx.hop.quota.path(), now);
+    let seen = &base.accounts;
     let lib = ctx.hop.library();
     let n = show::near_of(ctx.hop.store.now().default_rotation().when);
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
@@ -182,7 +205,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
     let mut usable: Vec<String> = Vec::new();
     let mut earliest: Option<(u64, String)> = None;
     let mut rows: Vec<Value> = Vec::new();
-    for o in &seen {
+    for o in seen {
         let sh = shown(&o.agent, &o.account, Some(o));
         if show::usable(&sh) {
             usable.push(o.account.clone());
@@ -217,14 +240,17 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
             one
         })
         .collect();
-    v["accounts"] = Value::Array(rows);
-    v["unseen"] = Value::Array(unseen);
-    v["usableNow"] = json!(usable);
-    v["earliestReturn"] = earliest.map_or(
-        Value::Null,
-        |(at, account)| json!({"account": account, "at": at}),
-    );
-    v
+    QuotaRead {
+        state: base.state,
+        reason: base.reason.clone(),
+        detail: base.detail.clone(),
+        path: base.path.clone(),
+        now: base.now,
+        accounts: rows,
+        unseen,
+        usable_now: usable,
+        earliest_return: earliest.map(|(at, account)| EarliestReturn { account, at }),
+    }
 }
 
 // ── 规则表：读 · 存 · 改名 · 删 · 设为默认 ────────────────────────────────────────────
@@ -306,7 +332,20 @@ fn doing_wire(d: Option<&Doing>) -> Value {
     }
 }
 
-fn rules_wire(ctx: &Ctx) -> Value {
+/// `rotation-rules-read` 的应答。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RulesRead {
+    state: &'static str,
+    reason: Value,
+    detail: Value,
+    path: Option<String>,
+    default_rule: String,
+    /// 每条一项，形状见 [`rule_wire`]。
+    rules: Vec<Value>,
+}
+
+fn rules_wire(ctx: &Ctx) -> RulesRead {
     let (state, why, book) = read_book(ctx);
     let (reason, detail) = crate::stream::detail::unreadable("rotation-rules-read", why.as_ref());
     let live = (ctx.live)();
@@ -318,23 +357,26 @@ fn rules_wire(ctx: &Ctx) -> Value {
             .cmp(&(b.0 != &book.default_rule))
             .then_with(|| a.1.name.cmp(&b.1.name))
     });
-    json!({
-        "state": state,
-        "reason": reason,
-        "detail": detail,
-        "path": ctx.hop.store.path().map(|p| p.display().to_string()),
-        "defaultRule": book.default_rule,
-        "rules": rules.iter().map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing)).collect::<Vec<_>>(),
-    })
+    RulesRead {
+        state,
+        reason,
+        detail,
+        path: ctx.hop.store.path().map(|p| p.display().to_string()),
+        rules: rules
+            .iter()
+            .map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing))
+            .collect(),
+        default_rule: book.default_rule,
+    }
 }
 
 /// `rotation-rules-read`：这台的规则表。
 pub(crate) fn answer_rules_read() -> Answer {
-    Ok(answer_rules_read_with(&Ctx::here()))
+    answer_rules_read_with(&Ctx::here())
 }
 
-pub(crate) fn answer_rules_read_with(ctx: &Ctx) -> Value {
-    rules_wire(ctx)
+pub(crate) fn answer_rules_read_with(ctx: &Ctx) -> Answer {
+    wire(&rules_wire(ctx))
 }
 
 /// 名称那一格的错：空 · 超长 · 与这台别的规则重名（不分大小写、去首尾空白）。
@@ -376,12 +418,24 @@ fn free_name(book: &Book, id: Option<&str>, name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// `rotation-rule-save` / `rotation-rule-rename` 的应答：按 `state` 分三支。
+#[derive(serde::Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub(crate) enum RuleSaved {
+    /// 写成了：那一条（形状同 `rotation-rules-read` 的一项）。
+    Saved { rule: Value },
+    /// 逐格错，没写。
+    Refused { errors: Vec<CellError> },
+    /// 读到之后别处改过：此刻的版本，没写。
+    Conflict { rev: u64 },
+}
+
 fn refused(errors: Vec<CellError>) -> Answer {
-    Ok(json!({"state": "refused", "errors": errors}))
+    wire(&RuleSaved::Refused { errors })
 }
 
 fn conflict(rev: u64) -> Answer {
-    Ok(json!({"state": "conflict", "rev": rev}))
+    wire(&RuleSaved::Conflict { rev })
 }
 
 fn if_rev(args: &Value) -> Result<Option<u64>, Fail> {
@@ -417,7 +471,9 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
         .get(id)
         .ok_or_else(|| ("failed", format!("rule {id} vanished after write")))?;
     let doing = (ctx.doing)();
-    Ok(json!({"state": "saved", "rule": rule_wire(ctx, &book, id, r, &live, &doing)}))
+    wire(&RuleSaved::Saved {
+        rule: rule_wire(ctx, &book, id, r, &live, &doing),
+    })
 }
 
 /// `rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ `ifRev`）。`{id?, name, rotation?, ifRev?, from?, dedupe?}`：
@@ -604,7 +660,13 @@ pub(crate) fn answer_rule_delete_with(ctx: &Ctx, args: &Value) -> Answer {
         moved
     })
     .map_err(|e| ("io_failed", e))?;
-    Ok(json!({"moved": moved}))
+    wire(&RuleDeleted { moved })
+}
+
+/// `rotation-rule-delete` 的应答：用着被删那几条的会话落到了哪。
+#[derive(serde::Serialize)]
+pub(crate) struct RuleDeleted {
+    moved: Map<String, Value>,
 }
 
 /// `rotation-default-set`：`{rule}` 设为这台的默认；回 `{defaultRule, followers}`（跟随默认、此刻活着的会话有几个）。
@@ -629,7 +691,19 @@ pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
         .iter()
         .filter(|(sid, s)| s.source == Source::Follow && live.contains(*sid))
         .count();
-    Ok(json!({"defaultRule": id, "followers": followers}))
+    wire(&DefaultSet {
+        default_rule: id,
+        followers,
+    })
+}
+
+/// `rotation-default-set` 的应答。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DefaultSet {
+    default_rule: String,
+    /// 跟随默认、此刻活着的会话有几个。
+    followers: usize,
 }
 
 /// `session-new` 带 `rotation: {rule}`：起之前在这台的账本里给那个定好的 sid 记一条、来源 ＝ 那条规则（会话一报到就已经是它）。
@@ -816,7 +890,7 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let (rot, agent, start, current, above, asked) = if let Some(v) = args.get("rotation") {
         let errors = rotation::cell_errors(v);
         if !errors.is_empty() {
-            return Ok(json!({ "errors": errors }));
+            return wire(&PlanReply::Draft { errors });
         }
         let rot = rotation::rotation_from(
             v,
@@ -972,33 +1046,70 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             (a.clone(), Value::Object(m))
         })
         .collect();
-    let mut out = json!({
-        "errors": [],
-        "state": state,
-        "reason": reason,
-        "detail": detail,
-        "now": now,
-        "nowText": text(now),
-        "from": from,
-        "fromText": text(from),
-        "until": until,
-        "plan": plan,
-        "lanes": lanes,
-        "effective": effective,
-    });
-    if let Some((before, _)) = view {
-        out["grid"] = grid_of(before, from, until, tz_min * 60, &text);
-    }
-    if view.is_some() && !machine {
-        out["head"] = head_of(ctx, &rot, &agent, &view_obj, now, &text);
-    }
-    if let (Some(_), Asked::Session(sid)) = (view, &asked) {
-        out["past"] = past_of(&book.sessions[*sid], from, now)
-            .into_iter()
-            .map(|(a, b, acct, why)| seg(a, b, &Some(acct), &why))
-            .collect();
-    }
-    Ok(out)
+    let grid = view.map(|(before, _)| grid_of(before, from, until, tz_min * 60, &text));
+    let head =
+        (view.is_some() && !machine).then(|| head_of(ctx, &rot, &agent, &view_obj, now, &text));
+    let past = match (view, &asked) {
+        (Some(_), Asked::Session(sid)) => Some(
+            past_of(&book.sessions[*sid], from, now)
+                .into_iter()
+                .map(|(a, b, acct, why)| seg(a, b, &Some(acct), &why))
+                .collect(),
+        ),
+        _ => None,
+    };
+    wire(&PlanReply::Plan(Box::new(Plan {
+        errors: Vec::new(),
+        state,
+        reason,
+        detail,
+        now,
+        now_text: text(now),
+        from,
+        from_text: text(from),
+        until,
+        plan,
+        lanes,
+        effective,
+        grid,
+        head,
+        past,
+    })))
+}
+
+/// `rotation-plan` 的应答：草稿有错 ⇒ 只回逐格错；否则整份预览。
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum PlanReply {
+    Draft { errors: Vec<CellError> },
+    Plan(Box<Plan>),
+}
+
+/// `rotation-plan` 的整份预览（各格的意思见注册表那一条）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Plan {
+    errors: Vec<CellError>,
+    state: &'static str,
+    reason: Value,
+    detail: Value,
+    now: u64,
+    now_text: String,
+    from: u64,
+    from_text: String,
+    until: u64,
+    plan: Vec<Value>,
+    lanes: Vec<Value>,
+    effective: Map<String, Value>,
+    /// 只在带 `view` 时有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grid: Option<Value>,
+    /// 只在带 `view`、问的不是 `machine` 时有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    head: Option<Value>,
+    /// 只在 `sid` ＋ `view` 时有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    past: Option<Vec<Value>>,
 }
 
 /// 时间轴的刻度：按这台本地钟对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
@@ -1141,9 +1252,24 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
         );
     }
-    Ok(
-        json!({"state": state, "reason": reason, "detail": detail, "now": now, "sessions": sessions}),
-    )
+    wire(&SessionRead {
+        state,
+        reason,
+        detail,
+        now,
+        sessions,
+    })
+}
+
+/// `rotation-session-read` 的应答。
+#[derive(serde::Serialize)]
+pub(crate) struct SessionRead {
+    state: &'static str,
+    reason: Value,
+    detail: Value,
+    now: u64,
+    /// 每个 sid 一份。
+    sessions: Map<String, Value>,
 }
 
 /// `rotation-session-set`：一批会话的轮换来源（`{sids, rotation}`；`rotation` ＝ `"follow"` · `{"rule": id}` ·
@@ -1259,7 +1385,13 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
     for (sid, _, _) in plan {
         outcomes.insert(sid, outcome(SwitchOutcome::Switched)?);
     }
-    Ok(json!({ "sessions": outcomes }))
+    wire(&SessionSet { sessions: outcomes })
+}
+
+/// `rotation-session-set` 的应答：逐个结果。
+#[derive(serde::Serialize)]
+pub(crate) struct SessionSet {
+    sessions: Map<String, Value>,
 }
 
 pub(crate) fn outcome(o: SwitchOutcome) -> Result<Value, (&'static str, String)> {
