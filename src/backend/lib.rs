@@ -24,6 +24,9 @@ mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ +
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+#[cfg(test)]
+#[path = "../../tests/backend/allocator_guard.rs"]
+mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
 pub mod assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
 #[cfg(test)]
 #[path = "../../tests/backend/build_features_tests.rs"]

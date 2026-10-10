@@ -337,6 +337,12 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "FRAME_BUDGET_US",
         "**时间**（一帧的预算，微秒），不是字节。两个门槛从它推出来。",
     ),
+    (
+        "TRIM_AFTER_BYTES",
+        "**还内存的门槛**，不是上限：全文搜索一问读盘超过它，才把分配器放掉的空页还给系统\
+             （`observe/search_query.rs` → `platform/proc.rs::return_freed_memory`）。没有任何东西被拒、被截 —— \
+             每份照样读、照样搜；限常驻多少的是同文件的 `RESIDENT_MAX_BYTES`（`CAPS` 里那一行）。",
+    ),
     // ── 后端 Windows 判活（`platform/win_proc.rs` · `platform/proc.rs`）带进来的五个 ──
     //    全是 Win32 常量与时间换算，没有一个量字节。
     (

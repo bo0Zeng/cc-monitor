@@ -22,6 +22,8 @@ pub(crate) mod fs;
 pub mod history_query;
 pub(crate) mod listing_scan; // 历史清单那一行的逐行扫描（累计的那几格 · 读每一行的窄探针）
 pub(crate) mod one_wait;
+// 分线程做、按原序交回（线程数只在这里算）：历史清单与全文搜索共用。
+pub(crate) mod par;
 pub mod search_query;
 // 搜索的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）。
 pub(crate) mod search_rules;

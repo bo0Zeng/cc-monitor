@@ -373,42 +373,16 @@ pub(crate) fn sessions_by_dir_for(
         .filter(|e| e.path().is_dir())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
-    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）。
-    // 每条线程从同一个计数器领下一个目录；结果最后按目录名排，与单线程逐字相同。
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let workers = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
-        .clamp(1, LISTING_WORKERS)
-        .min(dirs.len().max(1));
-    let mut out: Vec<_> = std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut mine = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let Some(dir_name) = dirs.get(i) else {
-                            break;
-                        };
-                        if let Some(got) = rows_of_dir(agent_home, dir_name, only) {
-                            mine.push((dir_name.clone(), got));
-                        }
-                    }
-                    mine
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .flat_map(|h| h.join().unwrap_or_default())
-            .collect()
-    });
+    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）；结果最后按目录名排，与单线程逐字相同。
+    let mut out: Vec<_> = crate::observe::par::par_in_order(dirs, |dir_name| {
+        rows_of_dir(agent_home, &dir_name, only).map(|got| (dir_name, got))
+    })
+    .into_iter()
+    .flatten()
+    .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Some(out))
 }
-
-/// 扫清单时最多几条线程（[`sessions_by_dir`]）。
-const LISTING_WORKERS: usize = 8;
 
 /// 一个记录目录的会话行（`None` ＝ 这一目录一行都没有，不出）。
 fn rows_of_dir(
