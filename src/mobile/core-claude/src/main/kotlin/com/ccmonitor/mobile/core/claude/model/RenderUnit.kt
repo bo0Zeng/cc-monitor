@@ -1,25 +1,20 @@
 package com.ccmonitor.mobile.core.claude.model
 
-/** 本地消息的投递状态（只对本地待发消息有意义，历史记录恒为 null）。 */
+/**
+ * 手机这边送出去、记录里还没出现的那一句的投递状态（`界面.md`「投递状态」；历史记录恒为 `null`）。
+ * 送到了的不挂标；记录里出现了这句人话 ⇒ 整句换成记录里那一条。
+ */
 enum class DeliveryState {
-    /** 已上屏、正在送 —— 乐观回显（点发送立刻显示，不等对端）。 */
+    /** 正在送。 */
     SENDING,
 
-    /**
-     * 已发出，还没看到远端的反应；`SendOutcome.Accepted` 的默认落点。
-     *
-     * Accepted 只是「送出去了但未确认」（pane 在 copy-mode 时 `send-keys` 照样退 0），
-     * 不能显示得和成功一样。升到已确认（回到 `null`）只认远端产出的字节：回声通道认内容匹配的回声记录，
-     * 常驻管道认该对话上晚于发送时刻的 assistant 帧或 `turn_end`。
-     *
-     * 超时只换文案不换状态：20 秒后仍未确认就说一直没有反应，不猜失败也不猜成功。
-     */
-    SENT_UNCONFIRMED,
+    /** 那台回 `unsure`（或期限到了）：不知道送没送到，不重发。 */
+    UNSURE,
 
-    /** 送失败，消息仍在 transcript 里、可重试，绝不静默消失。 */
+    /** 没送到、原因改得了：内容保留，可再发一次。 */
     FAILED,
 
-    /** 失败且重试也没用（权限被拒 / 会话已结束），不给重试按钮。 */
+    /** 没送到、重试没用（会话已结束 · 不归这里管）：不给重试。 */
     FAILED_PERMANENT,
 }
 
@@ -41,13 +36,10 @@ sealed interface RenderUnit {
         override val key: String,
         val text: String,
         override val sourceUuid: String?,
-        /**
-         * 本地发送状态；`null` = 不是本地待发消息（历史记录 / 远端回声）。
-         * 放在这里，历史与实时两个生产者共用一个渲染器，每加一种卡片不用改两处。
-         */
+        /** 本地发送状态；`null` ＝ 记录里的那一条，或已送到。 */
         val delivery: DeliveryState? = null,
-        /** 发送失败的原因，贴在这条消息旁边（全屏横幅说不清是哪条失败了）。 */
-        val deliveryError: String? = null,
+        /** 气泡下那一句（文案表 `terminal.input.*` 那一族写好的），贴在这条消息旁边。 */
+        val deliveryText: String? = null,
     ) : RenderUnit
 
     /** 助手正文，按 markdown 渲染。 */
@@ -112,6 +104,13 @@ sealed interface RenderUnit {
         override val sourceUuid: String?,
     ) : RenderUnit
 
+    /** 「已中断本轮 · {time}」那一道细线（记录里 `speaker.interrupt` 那一条）；[timeText] 是核心写好的钟面。 */
+    data class Interrupt(
+        override val key: String,
+        val timeText: String?,
+        override val sourceUuid: String?,
+    ) : RenderUnit
+
     /**
      * 连续（非交互）工具调用合并成的一张外层折叠组卡（`工具调用 · N 个`）。
      * [calls] ≥2（单个 ToolCall 不入组）。[key] = 首 call 的 key（稳定）。交互工具（AskUserQuestion/ExitPlanMode）不入组。
@@ -134,6 +133,7 @@ fun RenderUnit.searchableText(): String =
         is RenderUnit.BashInput -> command
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
         is RenderUnit.CompactSummary -> text
+        is RenderUnit.Interrupt -> ""
         is RenderUnit.ToolGroup -> calls.joinToString("\n") { it.toolCallSearchable() }
     }
 

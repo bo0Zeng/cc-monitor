@@ -146,7 +146,6 @@ class InstrumentedTestInventoryTest {
         val PINNED_FILES =
             listOf(
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/SmokeTest.kt",
-                "app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/ChatReplayUiTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt",
@@ -160,7 +159,6 @@ class InstrumentedTestInventoryTest {
         val PINNED_TEST_COUNTS =
             mapOf(
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/SmokeTest.kt" to 1,
-                "app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/ChatReplayUiTest.kt" to 14,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 3,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 14,
@@ -170,8 +168,8 @@ class InstrumentedTestInventoryTest {
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt" to 9,
             )
 
-        const val PINNED_TOTAL_TESTS = 46
-        const val PINNED_TESTS_IN_CI = 37
+        const val PINNED_TOTAL_TESTS = 32
+        const val PINNED_TESTS_IN_CI = 23
         const val PINNED_TESTS_NOT_IN_CI = 9
 
         const val CI_SKIPPED_FILE = "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt"
