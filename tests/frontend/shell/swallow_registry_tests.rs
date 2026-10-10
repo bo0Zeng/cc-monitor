@@ -105,10 +105,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=capture without `cap", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=forward without `for", Why::DeadLink, ""),
-    // 隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=tunnel without `tunn", Why::DeadLink, ""),
-    // 开 direct-tcpip 失败那一条改成先按回拒码组 ack（`open_refused`）再写；写不进去同上。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &ack).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", Why::DeadLink, ""),
     // 开 sftp 子系统没成那一条（同上：写不进去说明界面已经走了；SFTP 那一下的原话先进了日志）。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp).because(stages.why())).await;", Why::DeadLink, ""),
@@ -201,7 +197,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "w.send(()).ok();", Why::Signal, ""),
     ("src/comms/inward/chan/router.rs", "tx.send(out).await.ok();", Why::PeerGone, ""),
-    ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", Why::DeadLink, ""),
+    ("src/frontend/filewin/src/proc.rs", "let _ = err.write_all(encode_ready(r).as_bytes()).and_then(|()| err.flush());", Why::DeadLink, "就绪那一行写不出去 = 起它的 monitor 已经不在了（stderr 管子断了），没人收"),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", Why::Signal, ""),
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
@@ -231,8 +227,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_core::backend_old(&copy_core::local_machine()))));", Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(error));", Why::PeerGone, ""),
-    ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_read_timeout(None);", Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
-    ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_write_timeout(None);", Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(crate::ui_error::EVENT, p);", Why::Diag, "把一条要让用户知道的出错推给界面；推不上它照样进了日志文件"),
     // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", Why::Reap, "Windows 句柄 / 内存释放"),
@@ -244,6 +238,10 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.exec.stdinLost\", &[]), &e),", Why::DeadLink, ""),
     // `agent_home` 的可重入挂法（`rewatch_agent_home`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
+    ("src/backend/control/resident.rs", "let _ = tokio::io::copy(&mut down, &mut stdout).await;", Why::DeadLink, "小中继下行：套接字那头走了 / stdout 写不出去（ssh 通道关了），两种都是这一趟结束，退出就是交代"),
+    ("src/backend/control/resident.rs", "let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;", Why::DeadLink, "小中继收尾 flush：ssh 通道已经关了就写不出去，退出就是交代"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&rec);", Why::Reap, "升级那一跳停完旧版之后收掉它的旧记录：结局已经写进日志；删不掉只剩一份陈记录，下一个新版起来会再核一次身份（ESRCH / exe 对不上照样答对）"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(data_home.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME));", Why::Reap, "升级那一跳顺手收掉旧版的钥匙文件：新版不读它，删不掉只是留一个没人用的文件"),
     ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 

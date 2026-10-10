@@ -296,7 +296,7 @@ pub enum Frame {
         ///
         /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
         /// （`wire_tests.rs::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
-        /// 🔴 **监听口的钥匙永远不在这里**：名单只有两格、钥匙文件路径不在名单里（`wire_tests.rs::hx2_the_listen_token_is_never_echoed` 钉）——
+        /// 🔴 **名单只有两格**、常驻开关不在名单里（`wire_tests.rs::hx2_the_echo_list_is_exactly_the_two_handed_names` 钉）——
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,

@@ -775,27 +775,14 @@ pub(crate) async fn xfer_rig(
     std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
 ) {
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let h = crate::find::testing::start_host(
+    let line = crate::find::testing::wire(
         std::sync::Arc::new(XferHost {
             ends,
             log: log.clone(),
             commits: Default::default(),
         }),
-        crate::find::testing::test_key(),
         1 << 20,
-        std::time::Duration::from_secs(5),
-    )
-    .await
-    .expect("回环口绑得上");
-    let line = comms_inward::chan::dial::dial(
-        &h,
-        comms_inward::chan::wire::Budget {
-            until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: comms_inward::chan::wire::CancelToken::new(),
-        },
-    )
-    .await
-    .expect("拨得通");
+    );
     (
         line,
         comms_inward::chan::wire::Origin("判据机器·窗口传输".into()),

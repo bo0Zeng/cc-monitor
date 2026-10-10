@@ -61,6 +61,8 @@ for gate_v in $(compgen -e); do
   esac
 done
 unset gate_v
+# 摘完之后带上「这是一次沙箱跑」的标记（`relay_route_core::SANDBOX_ENV`）：门禁里起的常驻后端若要占本账号真家目录里的门牌就拒绝起。
+export CCM_SANDBOX=1
 set -uo pipefail
 
 # 仓根 = 本脚本的上两级（`tests/scripts/gate.sh` ⇒ `../..`）。
@@ -1110,7 +1112,7 @@ gate_lane env-sandbox after e2e-prep
 
 # ── `env-sandbox`：在一台假开发机上，带着指向「真目录」「真口」的会话环境起一趟门禁 ─────────────
 # 假开发机 = bwrap 撑着的一个新网络命名空间（命令用 nsenter 进去），默认中转口（`relay-route-core` 的 `PORT`）在里面听着；
-# 「真目录」是一棵临时假家（日志目录 ＋ 哨兵 stderr.log ＋ 监听口令牌文件），另有现找的三个空闲口。
+# 「真目录」是一棵临时假家（日志目录 ＋ 哨兵 stderr.log ＋ 常驻后端的门牌目录），另有现找的三个空闲口。
 # 带着指向它们的 `CCM_*` / `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `TMUX` 起内层门禁，跑 `backend-tmux-late-server` · `restart` 两套。
 # 判：① 内层门禁绿；② 假家前后逐份（路径 · 大小 · mtime）相同；③ 那三个口全程没有监听（`ss` 每 0.1 秒看一次）；
 #   ④ 假开发机上 TCP 主动建连计数（`/proc/<pid>/net/snmp` 的 `ActiveOpens`）前后不变、假真口零连接。
@@ -1122,7 +1124,7 @@ gate_env_sandbox() {
   d="$(mktemp -d "${TMPDIR:-/tmp}/gate-env-sandbox.XXXXXX")" || return 1
   mkdir -p "$d/cc/logs/backend" "$d/claude"
   printf 'sentinel\n' > "$d/cc/logs/backend/stderr.log"
-  printf 'sentinel-token\n' > "$d/cc/listen.token"
+  mkdir -p "$d/cc/run"
   if [ "${#GATE_NONET[@]}" -gt 0 ]; then
     rport="$(sed -nE 's/^pub const PORT: u16 = ([0-9]+);$/\1/p' src/common/relay-route-core/src/lib.rs)"
     case "$rport" in ''|*[!0-9]*) printf 'env-sandbox: relay-route-core 里抠不出默认中转口 —— 判不了\n'; rm -rf -- "$d"; return 1 ;; esac
@@ -1148,7 +1150,7 @@ print(*[x.getsockname()[1] for x in s])')
   before="$(find "$d" -printf '%P %s %T@\n' | sort)"
   ( while :; do ${ns[@]+"${ns[@]}"} ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E ":($p1|$p2|$p3)\$"; sleep 0.1; done ) > "$d.listen" 2>/dev/null &
   w=$!
-  out="$(${ns[@]+"${ns[@]}"} env CCM_LISTEN_PORT="$p1" CCM_LISTEN_TOKEN_FILE="$d/cc/listen.token" CCM_RELAY_PORT="$p2" \
+  out="$(${ns[@]+"${ns[@]}"} env CCM_RESIDENT=1 CCM_DATA_DIR="$d/cc" CCM_RELAY_PORT="$p2" \
              CCM_BACKEND_STDERR_LOG="$d/cc/logs/backend/stderr.log" CCM_HISTORY_METADATA="$d/cc/history.json" \
              CCM_APIKEY_CREDENTIALS="$d/cc/apikey.json" CLAUDE_CONFIG_DIR="$d/claude" \
              ANTHROPIC_BASE_URL="http://127.0.0.1:$p3" TMUX="$d/tmux.sock,1,0" \

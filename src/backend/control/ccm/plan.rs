@@ -98,6 +98,32 @@ pub(crate) struct Env {
     pub(crate) running_sessions: Option<super::RunningScan>,
     /// 这一发指到哪个中转地址（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
     pub(crate) relay: Option<RelayAsk>,
+    /// 〔会话血缘〕调用方是哪个会话的 shell：（那一家导的变量名, 会话编号）—— 某一家的「我是哪个会话」变量
+    /// （`agents::self_sid_envs`）在环境里、值过段闸。`None` ＝ 不在任何会话里（或预览）。
+    pub(crate) inherited_parent: Option<(String, String)>,
+    /// 〔会话血缘〕这一趟现铸的来处（拼进中转地址尾上，中转第一次看见就绑给这个新会话）。`None` ＝ 不铸（预览 / 判据）。
+    pub(crate) origin_token: Option<String>,
+    /// 这台盘上根钥匙派生出来的只许直通那一把（地址只能拼进参数的那一家要它）：非得经 shell 那一趟照字面写进那个词
+    /// （它本来就进 argv）。读不到 ⇒ `None`（那个词写成不带钥匙的地址）。预览那一份不读（界面上不出现钥匙）。
+    pub(crate) relay_pass_key: Option<String>,
+}
+
+/// 环境里认出调用方那个会话（[`Env::inherited_parent`]）：各家登记的变量按注册序，头一个有值、值过段闸的。
+pub(crate) fn parent_from(get: &dyn Fn(&str) -> Option<String>) -> Option<(String, String)> {
+    crate::agents::self_sid_envs().into_iter().find_map(|k| {
+        get(k)
+            .filter(|v| relay_route_core::segment_is_safe(v))
+            .map(|v| (k.to_string(), v))
+    })
+}
+
+/// 现铸一个来处：16 位小写十六进制（时刻 · 进程 · 随机种子；只要一台机器上不撞）。
+pub(crate) fn mint_origin() -> String {
+    use std::hash::{BuildHasher, Hash, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    std::time::SystemTime::now().hash(&mut h);
+    std::process::id().hash(&mut h);
+    format!("{:016x}", h.finish())
 }
 
 /// 问中转地址的那一只手：`(适配器 id, 这一发用哪个号)` ⇒ 不带钥匙的地址（`None` = 不注入）或拒的那一句。
@@ -143,6 +169,11 @@ impl Env {
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
+            inherited_parent: parent_from(&|k| std::env::var(k).ok()),
+            origin_token: Some(mint_origin()),
+            relay_pass_key: crate::accounts::upstream_select::endpoint::pass_key_for_shell(
+                std::path::Path::new(&home),
+            ),
             home,
         }
     }
@@ -180,6 +211,11 @@ impl Env {
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_preview),
+            // 预览是「从这台家目录里的一个新终端敲」：不在任何会话里，也不铸来处（每次预览都一样）。
+            inherited_parent: None,
+            origin_token: None,
+            // 预览不读钥匙：界面上不出现任何一把（参数里那个词写成不带钥匙的地址）。
+            relay_pass_key: None,
             home,
         }
     }
@@ -519,6 +555,8 @@ pub(crate) struct Direct {
     pub(crate) keeps_user_base_url: bool,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
     pub(crate) clears_inherited_relay: bool,
+    /// 地址拼进参数的那一家：非得经 shell 那一趟照字面插进那个词的只许直通那一把（[`Env::relay_pass_key`]；别的形 ⇒ `None`）。
+    pub(crate) relay_pass_key: Option<String>,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -1071,7 +1109,24 @@ pub(crate) fn build_among(
         //    两条都从这一个 `inner` 渲出来，不许在别处另拼一份。
         let mut dry = inner.clone();
         dry.push(flag::CCM_PRINT.into());
-        let mut payload = inner.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ");
+        // 〔会话血缘〕父只给内层这一条命令（不 export 进窗格的 shell：之后在那个窗格里敲的不该都算成它的孩子）；
+        // 外层没有父 ⇒ 显式摘掉，窗格从 tmux server 全局环境里继承来的旧值（别的会话起 server 时留下的）读不到。
+        let scoped = match &env.inherited_parent {
+            Some((k, v)) => format!("{k}={} ", sq(v)),
+            None => {
+                let vars = crate::agents::self_sid_envs();
+                if vars.is_empty() {
+                    String::new()
+                } else {
+                    let us: Vec<String> = vars.iter().map(|k| format!("-u {k}")).collect();
+                    format!("env {} ", us.join(" "))
+                }
+            }
+        };
+        let mut payload = format!(
+            "{scoped}{}",
+            inner.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
+        );
         let bare = payload.clone();
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
         // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
@@ -1092,7 +1147,7 @@ pub(crate) fn build_among(
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
         let exports = &payload[..payload.len() - bare.len()];
         let self_check = format!(
-            "{exports}{}",
+            "{exports}{scoped}{}",
             dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
         );
 
@@ -1185,6 +1240,18 @@ pub(crate) fn build_among(
         }
         _ => None,
     };
+    // 〔会话血缘〕地址尾上带这一趟的来处（＋ 调用方那个会话当父）：中转第一次看见就绑给新会话，它里面再起的都继承这条地址。
+    let relay = match (relay, env.origin_token.as_deref()) {
+        (Some(url), Some(token)) => Some(
+            relay_route_core::with_origin(
+                &url,
+                token,
+                env.inherited_parent.as_ref().map(|(_, v)| v.as_str()),
+            )
+            .unwrap_or(url),
+        ),
+        (relay, _) => relay,
+    };
     let clears_inherited_relay = relay.is_none()
         && !keeps_user_base_url
         && matches!(relay_via, RelayVia::Env(_))
@@ -1224,6 +1291,9 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
+        relay_pass_key: (relay_via == RelayVia::Args)
+            .then(|| env.relay_pass_key.clone())
+            .flatten(),
         relay,
         relay_via,
         keeps_user_base_url,
@@ -1372,6 +1442,14 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     seq
 }
 
+/// 地址拼进参数的那一家：argv 里装着那条地址的那个词，照字面插上只许直通那一把（它本来就进 argv）。
+/// 不是那个词 / 没有那一把 ⇒ `None`（照原样写，地址不带钥匙）。
+fn args_word(d: &Direct, word: &str) -> Option<String> {
+    let (head, tail) = args_relay(d).and_then(|u| split_at_key(word, u))?;
+    let key = d.relay_pass_key.as_deref()?;
+    Some(format!("{head}{key}{tail}"))
+}
+
 /// 地址拼进参数的那一趟要注入的那条不带钥匙的地址（别的形 ⇒ `None`）。
 pub(crate) fn args_relay(d: &Direct) -> Option<&str> {
     match (&d.relay, &d.relay_via) {
@@ -1413,14 +1491,7 @@ fn render_direct(d: &Direct) -> String {
     let words: Vec<String> = d
         .argv
         .iter()
-        .map(|a| match args_relay(d).and_then(|u| split_at_key(a, u)) {
-            Some((head, tail)) => posix::home_file_between(
-                &sq(&head),
-                relay_route_core::PASS_KEY_FILE_REL,
-                &sq(&tail),
-            ),
-            None => qarg(a),
-        })
+        .map(|a| args_word(d, a).map_or_else(|| qarg(a), |w| qarg(&w)))
         .collect();
     line.push_str(&posix::exec(&words));
     line
@@ -1466,12 +1537,7 @@ fn render_direct_ps(d: &Direct) -> String {
     let words: Vec<String> = d
         .argv
         .iter()
-        .map(|a| match args_relay(d).and_then(|u| split_at_key(a, u)) {
-            Some((head, tail)) => {
-                ps::home_file_between(&pq(&head), relay_route_core::PASS_KEY_FILE_REL, &pq(&tail))
-            }
-            None => pq(a),
-        })
+        .map(|a| args_word(d, a).map_or_else(|| pq(a), |w| pq(&w)))
         .collect();
     line.push_str(&ps::call(&words));
     line

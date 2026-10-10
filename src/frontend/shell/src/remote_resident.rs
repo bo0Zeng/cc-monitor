@@ -1,16 +1,15 @@
 //! **远端常驻后端，monitor 这一侧**（「远端常驻、本机远端同形」·）。
 //!
 //! 与本机宿主（`local_backend_host`）同形的四件：起 · 找 · 只升不降 · 停。设计住仓外。
-//! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（口上已有常驻后端 ⇒ 回 `{port, token}`；没有 ⇒ 起一个脱离的自己、
-//!   回 `{port, token: null}`，钥匙由它绑上口之后自己写）→ 经链路 `tunnel`（本机常驻后端开 direct-tcpip 到远端回环口）
-//!   连上去读 hello；手上没钥匙就再问一次 `--resident-ensure`（此刻口上有人 ⇒ 回盘上那一把）；交 attach 行。
+//! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（没人在听 ⇒ 起一个脱离的自己）→ 经链路 `stream`
+//!   在远端 exec `--resident-attach`（**小中继**：连那台家里的套接字、原样双向对拷）→ 读 hello → 交 attach 行。
+//!   门由 ssh 与那台的内核给：ssh 证明了是本人，中继在那台以本人身份连只给本人的套接字。没有钥匙。
 //! - 只升不降：hello 的 build 比手上这一版旧 ⇒ `--resident-ensure --replace` 一次；比我新 ⇒ 照接。
 //! 「换不换」由本机常驻后端判（帧命令 `resident-verdict`，与 `deploy-plan` 一家；判定只在后端），这里只照做。
 //! - 停：`--resident-stop`（那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
 //!
 //! 远端只有常驻这一形：那台答「脱离不了」（非 unix）⇒ 明说不支持；太旧不认这条子命令 ⇒ 出声报错。
 //! 不回落到随 SSH 生死的流模式。
-//! ⚠ 钥匙只在内存里过一趟（ensure 的 stdout → attach 行），不进日志、不进报错。
 
 use std::time::Duration;
 
@@ -21,33 +20,19 @@ use crate::detail::Said;
 use crate::dial_host::DialStream;
 use crate::stream_source::RemoteConfig;
 
-/// 起子进程之后等它把口 bind 上：开隧道失败（远端口上还没人）⇒ 隔一会儿再开，封顶这么多次。
-const TUNNEL_TRIES: u32 = 30;
-const TUNNEL_WAIT: Duration = Duration::from_millis(200);
+/// 刚起的那一个还没绑上套接字：中继回 `absent` ⇒ 隔一会儿再接，封顶这么多次。
+const RELAY_TRIES: u32 = 30;
+const RELAY_WAIT: Duration = Duration::from_millis(200);
 
 /// 不认 `--resident-ensure` 的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就收工、当「太旧」。
 const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
-
-/// `--resident-ensure` 的答。`token` 缺席 = 刚起了一个，钥匙由它绑上口之后自己写（读到 hello 之后再问一次）。
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct Ensured {
-    pub port: u16,
-    token: Option<String>,
-}
-
-impl std::fmt::Debug for Ensured {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Ensured {{ port: {}, token: … }}", self.port)
-    }
-}
 
 /// 为什么没接上那台的常驻后端（那一句 ＋ 复制详情）。比较只比那一句与码（详情里有时刻）。
 #[derive(Debug, Clone)]
 pub(crate) enum AttachErr {
     /// 那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
     /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
-    /// 那台 sshd 不许端口转发（控制隧道被回拒 `administratively_prohibited`）同属这一形：重试不会变，要那台改配置。
-    /// 第二格是那台状态成品里的原因码（`machine_state::NOT_UNIX` · `NO_FORWARDING`）。
+    /// 第二格是那台状态成品里的原因码（`machine_state::NOT_UNIX`）。
     Unsupported(Said, &'static str),
     /// 别的失败 ⇒ 照常按退避重连。
     Failed(Said),
@@ -139,22 +124,16 @@ pub(crate) fn parse_answer(
     }
 }
 
-fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, String> {
-    let port = v["port"]
-        .as_u64()
-        .and_then(|p| u16::try_from(p).ok())
-        .filter(|p| *p != 0);
-    let token = v["token"].as_str().filter(|t| !t.is_empty());
-    match port {
-        Some(port) => Ok(Ensured {
-            port,
-            token: token.map(str::to_string),
-        }),
-        None => Err(copy_text("rsRemoteResident.ensure.answerIncomplete", &[])),
+/// `--resident-ensure` 的答：恰是一个对象（`{"pid":n|null}`）。别的形状 ⇒ 说不认得。
+fn parse_ensured(v: &serde_json::Value) -> Result<(), String> {
+    if v.is_object() {
+        Ok(())
+    } else {
+        Err(copy_text("rsRemoteResident.ensure.answerIncomplete", &[]))
     }
 }
 
-async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr> {
+async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<(), AttachErr> {
     // `ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
     let mut cmd = format!(
         "{} {} --resident-ensure",
@@ -169,7 +148,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
     Ok(parse_ensured(&parse_answer(&exec, &cfg.origin_label())?)?)
 }
 
-/// hello 那一行里那台报的 build（纯函数，只读线上形状）。口上不是常驻后端（第一行不是 hello）⇒ `Err`（那句话）。
+/// hello 那一行里那台报的 build（纯函数，只读线上形状）。第一行不是 hello ⇒ `Err`（那句话）。
 /// 从前这里还判「换不换」（`hello_decision`〔散文墓碑〕调共享判定 `is_newer`，今天住后端 `control/deploy_plan.rs`）：判定进了本机常驻后端（[`ask_verdict`]）。
 pub(crate) fn hello_build(line: &str) -> Result<String, String> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
@@ -246,8 +225,8 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
     decode_verdict(&data.unwrap_or_default())
 }
 
-/// attach 行：钥匙 ＋ 这条连接要的流模式旗标（远端 `listen::attach_flags` 的逆）。
-pub(crate) fn attach_line(token: &str, flags: (bool, bool)) -> String {
+/// attach 行：「我要流」＋ 这条连接要的流模式旗标（远端 `listen::attach_flags` 的逆）。
+pub(crate) fn attach_line(flags: (bool, bool)) -> String {
     let (with_bg, tail_only) = flags;
     let mut f: Vec<&str> = Vec::new();
     if with_bg {
@@ -256,7 +235,7 @@ pub(crate) fn attach_line(token: &str, flags: (bool, bool)) -> String {
     if tail_only {
         f.push("--tail-only");
     }
-    let mut line = serde_json::json!({ "attach": token, "flags": f }).to_string();
+    let mut line = serde_json::json!({ "attach": true, "flags": f }).to_string();
     line.push('\n');
     line
 }
@@ -340,57 +319,77 @@ impl tokio::io::AsyncWrite for Replayed {
     }
 }
 
-/// 开隧道：远端口上还没人（子进程刚起、还没 bind）⇒ 隔 [`TUNNEL_WAIT`] 再开，至多 [`TUNNEL_TRIES`] 次。
-async fn tunnel_when_bound(cfg: &RemoteConfig, port: u16) -> Result<DialStream, AttachErr> {
-    retry_tunnel(|| crate::dial_host::tunnel(cfg, port), port).await
+/// 中继回的第一行（纯函数）：`{"attach":"refused","reason":…}` ⇒ 那一格理由（`absent` 可等、别的不可等）；别的 ⇒ `None`（照 hello 读）。
+pub(crate) fn relay_refusal(first: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(first.trim()).ok()?;
+    (v["attach"] == "refused").then(|| v["reason"].as_str().unwrap_or_default().to_string())
 }
 
-/// 远端回拒开通道、原因码是这个 ⇒ 那台 sshd 不许端口转发（`AllowTcpForwarding no` · `DisableForwarding` ·
-/// authorized_keys 的 `no-port-forwarding` / `permitopen` 都回它；口上没人听回的是 `connect_failed`）。
-pub(crate) const FORWARDING_PROHIBITED: &str = "administratively_prohibited";
+/// 中继说「没人在听」的那个理由词（后端 `listen::REFUSE_ABSENT`，跨 crate 字面量，`the_relay_refusal_line_is_read_and_its_words_match_the_backend` 对拍）。
+pub(crate) const RELAY_ABSENT: &str = "absent";
 
-/// [`tunnel_when_bound`] 的编排（`open` = 开一次隧道；判据用替身）。回拒码是
-/// [`FORWARDING_PROHIBITED`] ⇒ **当场停**、[`AttachErr::Unsupported`]（重试不会变：从前这里照样再开 29 次，每次一条新 SSH，
-/// 接着整条流按退避重连 —— 真机每分钟 33 条拨号）；别的失败（口上还没人）照旧隔一会儿再开。
-pub(crate) async fn retry_tunnel<T, F, Fut>(mut open: F, port: u16) -> Result<T, AttachErr>
+/// 接中继、读第一行：回「那条链路 ＋ 第一行」，或回一句「接不上」（`Ok(Err(reason))` 留给调用方判可不可以等）。
+async fn relay_once(
+    cfg: &RemoteConfig,
+) -> Result<Result<(tokio::io::BufReader<DialStream>, String), String>, AttachErr> {
+    let cmd = format!(
+        "{} {} --resident-attach",
+        crate::stream_source::BACKEND_CMD,
+        crate::local_backend::BACKEND_SEP
+    );
+    let link = crate::dial_host::stream(cfg, &cmd).await?;
+    let mut r = tokio::io::BufReader::new(link);
+    let first = read_line(&mut r, true).await?;
+    Ok(match relay_refusal(&first) {
+        Some(reason) => Err(reason),
+        None => Ok((r, first)),
+    })
+}
+
+/// [`relay_once`] 的编排（`open` = 接一次中继；判据用替身）：`absent`（刚起的还没绑上）⇒ 隔 [`RELAY_WAIT`] 再接，
+/// 至多 [`RELAY_TRIES`] 次，还是没有 ⇒ 「那台后端没在运行」；别的理由 ⇒ 当场停（再接也一样）。
+pub(crate) async fn retry_relay<T, F, Fut>(
+    mut open: F,
+    machine: &str,
+    tries: u32,
+    wait: Duration,
+) -> Result<T, AttachErr>
 where
     F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, (Said, Option<String>)>>,
+    Fut: std::future::Future<Output = Result<Result<T, String>, AttachErr>>,
 {
-    let mut last: Option<Said> = None;
-    for _ in 0..TUNNEL_TRIES {
-        match open().await {
-            Ok(s) => return Ok(s),
-            Err((_, Some(code))) if code == FORWARDING_PROHIBITED => {
-                return Err(AttachErr::Unsupported(
-                    copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]).into(),
-                    crate::machine_state::NO_FORWARDING,
-                ));
+    for _ in 0..tries {
+        match open().await? {
+            Ok(t) => return Ok(t),
+            Err(reason) if reason == RELAY_ABSENT => {}
+            Err(reason) => {
+                return Err(Said::with_raw(
+                    copy_text(
+                        "rsRemoteResident.relay.unreachable",
+                        &[("machine", machine)],
+                    ),
+                    reason,
+                )
+                .into())
             }
-            Err((e, _)) => last = Some(e),
         }
-        tokio::time::sleep(TUNNEL_WAIT).await;
+        tokio::time::sleep(wait).await;
     }
-    // 那一句只说一直连不上；最后一次没开成的详情（本机后端写的原话）跟着走。
-    let said = copy_text(
-        "rsRemoteResident.tunnel.unreachable",
-        &[("port", &port.to_string())],
-    );
-    Err(AttachErr::Failed(match last {
-        Some(l) => Said::restate(said, l),
-        None => said.into(),
-    }))
+    Err(Said::with_raw(
+        copy_text("rsRemoteResident.relay.absent", &[("machine", machine)]),
+        format!("{tries} × {}ms", wait.as_millis()),
+    )
+    .into())
 }
 
-/// **接上那台的常驻后端**（没有就起一个）：起 · 找 → 隧道 → hello（旧 ⇒ 换一次）→ attach。
+/// **接上那台的常驻后端**（没有就起一个）：起 · 找 → 中继 → hello（旧 ⇒ 换一次）→ attach。
 pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Replayed, AttachErr> {
     let origin = cfg.origin_label();
     let mut replaced = false;
-    let mut ensured = ensure(cfg, false).await?;
+    ensure(cfg, false).await?;
     loop {
-        let link = tunnel_when_bound(cfg, ensured.port).await?;
-        let mut r = tokio::io::BufReader::new(link);
-        let hello = read_line(&mut r, true).await?;
+        let (mut r, hello) =
+            retry_relay(|| relay_once(cfg), &origin, RELAY_TRIES, RELAY_WAIT).await?;
         let theirs = hello_build(&hello)?;
         // 换不换问本机常驻后端（判定只在后端），这里只照做；手上没带后端字节 ⇒ 不问、照接。
         let verdict = verdict_for(crate::byte_table::my_backend_id(), |mine| {
@@ -403,16 +402,9 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
             );
             drop(r);
             replaced = true;
-            ensured = ensure(cfg, true).await?;
+            ensure(cfg, true).await?;
             continue;
         }
-        // 刚起的那一个：钥匙是它绑上口之后自己写的（每次起都换一把）⇒ 读到 hello 之后再问一次，读盘上那一份。
-        let token = match ensured.token.take() {
-            Some(t) => t,
-            None => ensure(cfg, false).await?.token.ok_or_else(|| {
-                Said::from(copy_text("rsRemoteResident.ensure.answerIncomplete", &[]))
-            })?,
-        };
         let not_sent = |e: std::io::Error| {
             Said::with_raw(
                 copy_text(
@@ -423,7 +415,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
             )
         };
         r.get_mut()
-            .write_all(attach_line(&token, flags).as_bytes())
+            .write_all(attach_line(flags).as_bytes())
             .await
             .map_err(not_sent)?;
         r.get_mut().flush().await.map_err(not_sent)?;
@@ -441,10 +433,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
         head.push(b'\n');
         head.extend_from_slice(r.buffer());
         r.consume(r.buffer().len());
-        tracing::info!(
-            "remote_resident [{origin}] 接上常驻后端（口 {}）",
-            ensured.port
-        );
+        tracing::info!("remote_resident [{origin}] 接上常驻后端");
         return Ok(Replayed {
             head: std::io::Cursor::new(head),
             // 接成了就是订阅：摘掉一次性总时限（同流模式那一条）。

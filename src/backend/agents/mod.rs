@@ -168,6 +168,9 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
+    /// 这一家不导 ⇒ `None`。
+    pub(crate) self_sid_env: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
@@ -277,6 +280,27 @@ pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
 /// 别名清单的名字由它派生：`<它>`（当前目录起）· `<它>t`（tmux 里起）· `<它>a`（接回）· 每个号 `<号><它>` / `<号><它>t`。
 pub(crate) fn wrapper_alias(kind: &str) -> Option<&'static str> {
     launch_face_among(REGISTRY, kind).and_then(|f| f.launcher_alias)
+}
+
+/// 各家导给子进程的「我是哪个会话」变量（注册序、去重；[`LaunchFace::self_sid_env`]）。`ccm` 按它认父；
+/// 后端自己起的子进程不该带着它们（常驻后端若是在某个会话里起的，环境里就有那个会话的编号）。
+pub(crate) fn self_sid_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for e in REGISTRY
+        .iter()
+        .filter_map(|a| a.launch.as_ref()?.self_sid_env)
+    {
+        if !v.contains(&e) {
+            v.push(e);
+        }
+    }
+    v
+}
+
+/// 把各家「我是哪个会话」的变量登记进起子进程原语的不往下传名单（`platform::child_env::also_internal`）。
+/// 入口（`main.rs`）在分流之前调一次：之后这个进程起的每个子进程都看不见它们。
+pub fn install_child_env_filter() {
+    crate::platform::child_env::also_internal(self_sid_envs());
 }
 
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。

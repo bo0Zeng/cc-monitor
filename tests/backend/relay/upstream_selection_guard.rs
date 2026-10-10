@@ -135,6 +135,8 @@ pub(super) mod tests {
         "host",
         // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
         "keyed_with_key_on_disk",
+        // 非得经 shell 那一趟、地址拼进参数的那一家：照字面插的只许直通那一把（根钥匙派生，`ccm` 拼那一行时要）。
+        "pass_key_on_disk",
         // 插哪一把：全权 / 只许直通（`ccm` 起会话 · 直接敲的也走中转按那一家的注入格选）。
         "KeyKind",
         "KeyKind::Full",

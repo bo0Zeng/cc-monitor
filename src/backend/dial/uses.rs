@@ -37,7 +37,6 @@ fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
         winner: Some(l.winner.clone()),
         strict,
         jump_strict,
-        open_refused: None,
         reason: None,
         v: ACK_V,
         uses: USES,
@@ -111,7 +110,7 @@ pub(crate) fn lane_of(u: Use) -> Lane {
     match u {
         Use::Stream => Lane::Stream,
         Use::Capture | Use::Files => Lane::Query,
-        Use::Forward | Use::Tunnel => Lane::Tunnel,
+        Use::Forward => Lane::Tunnel,
     }
 }
 
@@ -453,61 +452,6 @@ async fn serve<R, W>(
                 return;
             }
             forward(Arc::clone(&lease.linked), listener, spec, &mut input, out).await
-        }
-        Use::Tunnel => {
-            let fp = lease.linked.fingerprint.clone();
-            let Some(port) = req.tunnel_port else {
-                let _ = write_stages_then_ack(
-                    out,
-                    stages,
-                    &DialAck::failed(
-                        crate::common::contract::malformed("use=tunnel without `tunnel_port`")
-                            .into(),
-                        fp,
-                    ),
-                )
-                .await;
-                return;
-            };
-            // 只到远端自己的回环（`common::net::LOOPBACK` 那一格在远端）：连不上 = 那台上没人在听，落在 ack 里。
-            let opened = lease
-                .linked
-                .session
-                .channel_open_direct_tcpip("127.0.0.1", u32::from(port), "127.0.0.1", 0)
-                .await;
-            let channel = match opened {
-                Ok(c) => c,
-                Err(e) => {
-                    let said = Said::with_raw(
-                        copy_text("beUses.tunnel.unreachable", &[("port", &port.to_string())]),
-                        &e,
-                    );
-                    // 远端回拒开通道 ⇒ 原因码随 ack 交回（`AllowTcpForwarding no` 回的是
-                    //   `administratively_prohibited`，口上没人听回的是 `connect_failed`）；界面据它决定停不停。
-                    let ack = match super::open_failure_word(&e) {
-                        Some(why) => DialAck::open_refused(said, fp, why),
-                        None => DialAck::failed(said, fp),
-                    };
-                    let _ = write_stages_then_ack(out, stages, &ack).await;
-                    return;
-                }
-            };
-            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            // 哪一边先结束就收工（与 `stream` 那一臂同一条理由）。
-            let (mut down, mut up) = tokio::io::split(channel.into_stream());
-            tokio::select! {
-                r = tokio::io::copy(&mut input, &mut up) => {
-                    tracing::info!("dial: 隧道上行结束（界面那头断了）：{r:?}");
-                }
-                r = tokio::io::copy(&mut down, out) => {
-                    tracing::info!("dial: 隧道下行结束（远端那头断了）：{r:?}");
-                }
-            }
         }
         Use::Files => {
             // sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。

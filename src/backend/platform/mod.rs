@@ -29,7 +29,7 @@ pub(crate) mod acct_view;
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
 pub(crate) mod child;
-/// 常驻后端自有的那几格环境的名字（监听口 · 钥匙文件 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
+/// 常驻后端自有的那几格环境的名字（常驻开关 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
 pub(crate) mod child_env;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]

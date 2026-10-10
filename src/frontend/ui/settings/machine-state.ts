@@ -112,10 +112,7 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
     case "disabled":
       return face(copyText("machinePage.state.disabled"), copyText("machinePage.problem.disabled"));
     case "unsupported":
-      return face(
-        copyText("machineState.word.unsupported"),
-        m.reason === "no_forwarding" ? copyText("machineState.problem.noForwarding") : copyText("machineState.problem.notUnix", { machine }),
-      );
+      return face(copyText("machineState.word.unsupported"), copyText("machineState.problem.notUnix", { machine }));
   }
 }
 

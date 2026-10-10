@@ -687,6 +687,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
   "filewin-contract": {
     BIN_ENV: NONE,
+    // 就绪那一行打头的记号与认它的那一判（窗口进程在 stderr 上说那一行）；TS 侧零孪生。
+    READY_MARK: NONE,
+    is_ready_line: NONE,
     TERMINAL_OPEN_OP: NONE,
     decode_ready: NONE,
     decode_request: NONE,
@@ -728,6 +731,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     win32_long_path: NONE,
     win32_path: NONE,
   },
+  // 本人通道（Unix 套接字 ＋ 对端 uid）：后端 · monitor 同一份平台原语，不判业务；TS 侧没有孪生。
+  "own-chan": {
+    try_hold: NONE,
+    bind: NONE,
+    connect_blocking: NONE,
+    set_read_timeout: NONE,
+    set_write_timeout: NONE,
+    into_async: NONE,
+    someone_listening: NONE,
+  },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
     ALL: NONE,
@@ -739,7 +752,18 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ACCOUNTS_MANIFEST_NAME: NONE,
     BACKEND_POLICY_REL: NONE,
     file_name_of: NONE,
-    listen_pid_file_name: NONE,
+    // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
+    LISTEN_DIR_REL: NONE,
+    LISTEN_SOCKET_NAME: NONE,
+    LISTEN_PID_NAME: NONE,
+    listen_dir_for: NONE,
+    listen_socket_for: NONE,
+    listen_pid_for: NONE,
+    // 升级那一跳找旧版常驻后端用（跨过 4.1.x 之后删）；TS 侧没有孪生。
+    legacy_listen_pid_for: NONE,
+    LEGACY_LISTEN_TOKEN_NAME: NONE,
+    // 「这是一次沙箱跑」的标记（测试 / 台架起后端时带上）；TS 侧没有孪生。
+    SANDBOX_ENV: NONE,
     POSIX_ALIASES_REL: NONE,
     PROFILES_REL: NONE,
     PROFILES_MIGRATED_REL: NONE,
@@ -755,6 +779,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,
+    // 会话血缘（后端 `lineage.rs` 写；数据位置页按它列）。
+    LINEAGE_REL: NONE,
+    // 起会话地址尾上的来处段（会话血缘：ccm 拼 · 中转切 · 门牌那几个函数认）；TS 侧没有孪生。
+    ORIGIN_MARK: NONE,
+    parse_origin: NONE,
+    with_origin: NONE,
     // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
     LAUNCH_ACCOUNTS_REL: NONE,
     LAUNCH_NOTES_DIR_REL: NONE,
@@ -766,14 +796,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
-    // 只许直通的那把钥匙住哪（中转的门 · ccm 起地址拼进参数的那一家 · 直接敲的也走中转）；TS 侧没有孪生。
-    PASS_KEY_FILE_REL: NONE,
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
     keyed_base_url: NONE,
-    // 常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
-    listen_port_for: NONE,
-    LISTEN_TOKEN_FILE_REL: NONE,
     parse_target: NONE,
     PORT: NONE,
     prefix: NONE,

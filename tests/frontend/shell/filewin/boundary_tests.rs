@@ -254,7 +254,7 @@ fn rel(root: &Path, p: &Path) -> String {
 /// `Channel` / `Wire` 两类之外的每一类都是一笔**有住址的欠账**，各自写清卡在谁手里。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
-    /// 通道客户端那一侧（`chan::client` / `chan::dial` / 交接件那个类型）。**要的就是它。**
+    /// 通道客户端那一侧（`chan::client`）。**要的就是它。**
     Channel,
     /// 线上类型（`chan::wire::*`，那一套）。**要的就是它。**
     Wire,
@@ -295,20 +295,18 @@ enum Kind {
     Said,
 }
 
-// 两张点名表（monitor 那一侧的函数 · 整份算那一侧的文件）删了：窗口进程那一侧（`proc::child_main` · `dial_back` · `first_screen`）随躯体搬进窗口包，
+// 两张点名表（monitor 那一侧的函数 · 整份算那一侧的文件）删了：窗口进程那一侧（`proc::child_main` · `line_over_stdio` · `first_screen`）随躯体搬进窗口包，
 //   壳里 `filewin/` 整棵都是 monitor 那一侧。
 
 /// ★ **窗口进程**够得到的 app 侧符号，逐条。
 ///
 /// 🔴 那句判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
 /// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；「后端缺命令」那一类清零删了）。
-/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `comms_inward::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`；
-///   交接件那个类型随交接件住 `comms_inward::chan::handoff`（从前挂在壳 `chan::host` 上）。
+/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `comms_inward::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
-    ("comms_inward::chan::dial::dial", Kind::Channel),
-    ("comms_inward::chan::handoff::Handoff", Kind::Channel),
+    ("comms_inward::chan::client::Client::over", Kind::Channel),
     // ── 线上类型 ──
     ("comms_inward::chan::wire::Body", Kind::Wire),
     ("comms_inward::chan::wire::Budget", Kind::Wire),
@@ -369,8 +367,10 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
 /// ★ **monitor 那一侧**（壳里 `filewin/` 整棵）够得到的 app 侧符号，逐条。
 const MONITOR_SIDE: &[(&str, Kind)] = &[
     // 开窗前那两问（`files-home` / `files-ls`）进了窗口进程 ⇒ monitor 这一侧问后端的五样
-    //   （宿主句柄 `InboundBackends` · `router::Backends` · `wire::Body` / `CancelToken` / `Op`）退役，只剩交接件那一样。
-    ("chan::host::handoff", Kind::Host),
+    //   （宿主句柄 `InboundBackends` · `router::Backends` · `wire::Body` / `CancelToken` / `Op`）退役；
+    //   剩下的是把窗口进程那一对管子交给通道（`serve_window`）与两端同一个帧长（`FRAME`，随种子交过去）。
+    ("chan::host::FRAME_MAX_BYTES", Kind::Host),
+    ("chan::host::serve_window", Kind::Host),
     // 开窗那条命令失败时回的那一形（全仓壳命令同一形）。
     ("detail::Said", Kind::Said),
     // 开窗种子里那一格「本机」（窗口自己写的复制详情带它，同主界面那一行）。
@@ -565,7 +565,6 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
     // 两类「要的」确实在（否则上面那条零命中可能只是因为窗口什么都不够了）。
     for must in [
         "comms_inward::chan::client::Client",
-        "comms_inward::chan::dial::dial",
         "comms_inward::chan::wire::Comms",
     ] {
         assert!(
