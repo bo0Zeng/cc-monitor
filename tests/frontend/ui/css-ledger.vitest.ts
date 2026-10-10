@@ -312,8 +312,6 @@ const PREFIX_MASKED: readonly string[] = [
  * 有人删了一条 CSS 规则而代码还在挂那个类 ⇒ 也红（那是真回归）；修掉一个 ⇒ 删那一行。
  */
 const DANGLING: readonly string[] = [
-  // act-idle · act-waiting · reconnectable：标签页根上的状态钩子（点本身用 kit 状态点画）；样式随旧 `.live-dot` 删了，钩子留给判据读。
-  "act-idle", "act-waiting", "reconnectable",
   "acct-enable", "acct-form-slot", "acct-new-cell", "agent-older", "agents-page", "all",
   "api-error-next-text", "backend-list", "backend-row-drift", "backend-row-name", "backend-section", "badge-agents",
   "badge-unread", "block-body-json", "block-body-result", "block-text", "card-user-queued", "cc-bus-broadcast",

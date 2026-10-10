@@ -465,16 +465,16 @@ describe("TabManager 生命周期", () => {
     tm.ensureTab("lt", "/x", "p", LOCAL_ORIGIN);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     tm.updateActivity("lt", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
-    expect(btn().classList.contains("act-waiting")).toBe(true);
-    expect(btn().classList.contains("act-idle")).toBe(false);
-    // waiting → idle：陈旧 act-waiting 必须清、换 act-idle
+    expect(btn().dataset.light === "waiting").toBe(true);
+    expect(btn().dataset.light === "idle").toBe(false);
+    // waiting → idle：陈旧 waiting 那一档必须清、换 idle
     tm.updateActivity("lt", "idle", null, copyText("beSession.activity.idle"), "plain");
-    expect(btn().classList.contains("act-waiting")).toBe(false);
-    expect(btn().classList.contains("act-idle")).toBe(true);
+    expect(btn().dataset.light === "waiting").toBe(false);
+    expect(btn().dataset.light === "idle").toBe(true);
     // idle → busy：两类都清（默认绿点）
     tm.updateActivity("lt", "working", null, copyText("beSession.activity.working"), "now");
-    expect(btn().classList.contains("act-idle")).toBe(false);
-    expect(btn().classList.contains("act-waiting")).toBe(false);
+    expect(btn().dataset.light === "idle").toBe(false);
+    expect(btn().dataset.light === "waiting").toBe(false);
   });
 
   it("★ 活动信号早于 Tab 建立：远端骨架 Tab 建出来时灯必须已经是对的", () => {
@@ -499,13 +499,13 @@ describe("TabManager 生命周期", () => {
     tm.createSkeletonTab("early-light", "/proj", "devbox", null, null);
     const btn = document.querySelector<HTMLElement>(".tab")!;
     expect(
-      btn.classList.contains("act-idle"),
+      btn.dataset.light === "idle",
       "灯先到、Tab 后建 ⇒ 建出来就该是红的。现在是默认绿 —— " +
         "`pendingActivity` 没被 `ensureTab` 落实，而默认值是绿，所以这个洞不会自己暴露。",
     ).toBe(true);
     // 落实之后再来一次同值信号不该出问题（幂等）。
     tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
-    expect(btn.classList.contains("act-idle")).toBe(true);
+    expect(btn.dataset.light === "idle").toBe(true);
   });
 
   it("归档信号早于 Tab 建立：进 pendingArchive，ensureTab 时落实归档", () => {
@@ -538,7 +538,7 @@ describe("TabManager 生命周期", () => {
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     tm.markTmuxIdle("gi1");
     expect(tab.state).toEqual(RECONNECTABLE);
-    expect(btn().classList.contains("reconnectable")).toBe(true);
+    expect(btn().hasAttribute("data-reconnectable")).toBe(true);
     expect(btn().classList.contains("ended")).toBe(false);
   });
 
@@ -558,7 +558,7 @@ describe("TabManager 生命周期", () => {
     expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
     tm.archiveTab("tt1");
     expect(said()).toBe(copyText("sessionState.ended.tooltip"));
-    expect([btn().classList.contains("ended"), btn().classList.contains("reconnectable")]).toEqual([true, false]);
+    expect([btn().classList.contains("ended"), btn().hasAttribute("data-reconnectable")]).toEqual([true, false]);
   });
 
   it("〔U4 · S6〕e2e 探针真吐的行 ↔ graylight-suite.sh 的两条 grep（shell 语料 vs 运行输出，两向）", () => {
@@ -601,7 +601,7 @@ describe("TabManager 生命周期", () => {
     // 同值 busy 再来一次（activity 无变化）——仍须回到活、类须去掉（早退前转移的守护）
     tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now");
     expect(tab.state).toEqual(LIVE);
-    expect(btn().classList.contains("reconnectable")).toBe(false);
+    expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
 
   it("F03.2 远端复活（主信号）：可重连的 tab 又收后端重宣告/行 → ensureTab 回到活", () => {
@@ -4450,7 +4450,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     tm.ensureTab("c2", "/x", "p", "pi");
     tm.noteContainer("c2", { form: "none" });
     expect(btn().classList.contains("ended")).toBe(false);
-    expect(btn().classList.contains("reconnectable")).toBe(false);
+    expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
 
   it("★ 说不清：固定复活、那台还没报完 ⇒ 说不清（字里零处「已结束」）；报完了没有它 ⇒ 已结束；报完了有它 ⇒ 活", async () => {
