@@ -58,6 +58,7 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
+| `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -70,6 +71,7 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
+| `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -102,7 +104,7 @@ turn-end 边沿（一轮 assistant 完成）。
 |---|---|---|
 | `session_id` | string | 会话 id |
 | `uuid` | string | 这一轮最后那条 assistant 记录的 uuid |
-| `title` | Words | 通知的标题（写好的字，桌面与手机照抄）：「本轮完成 · 会话名」，没起名用项目名，再没有用 sid 前 8 位 |
+| `title` | Words | 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（`NameFace`） |
 | `body` | Words | 通知的正文（写好的字） |
 
 ### `overflow`
@@ -295,6 +297,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `activity_text` | Words |  |
 | `activity_tone` | Tone |  |
 | `activity_order` | number |  |
+
+#### `NameFace`
+
+**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::observe::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截，只在名字是起出来的（改过的名 · 标题 · 第一句）时带 —— 界面拼「[项目] 名字」；名字本身就是项目名 / sid ⇒ 不带。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `label` | Words |  |
+| `label_project` | Words? |  |
 
 #### `LostFrame`
 

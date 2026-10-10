@@ -269,17 +269,46 @@ pub(crate) fn truncate_excerpt(s: &str, n: usize) -> String {
     out
 }
 
-/// 会话标题：ai-title / 首条 user 摘要 / sid 前 8 位，三选一（两侧同一口径）。
-pub(crate) fn session_title(
-    ai_title: Option<&str>,
-    first_user_excerpt: &str,
-    session_id: &str,
-) -> String {
-    ai_title
-        .filter(|s| !s.trim().is_empty())
+/// 叫一条会话什么时用到的那几样（[`session_label`] 的入参）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LabelFacts {
+    /// 在 monitor 里改的名（那台的注解）。
+    pub(crate) custom: Option<String>,
+    /// 最后一条标题记录（代理起的 · 在代理里改的）。
+    pub(crate) title: Option<String>,
+    /// 首条人说的话的摘录（[`truncate_excerpt`] 过的；没有 ⇒ 空串）。
+    pub(crate) first: String,
+    /// 项目目录。
+    pub(crate) project_dir: Option<String>,
+}
+
+/// 叫这条会话什么：回（名字，名字是不是起出来的 —— 改过的名 · 标题 · 第一句是，项目名 · sid 前 8 位不是）。
+/// 只此一处：标签页（`session_added` / `session_status` 的 `label`）· 历史清单的 `label` · 全文搜索的标题 · 一轮结束的通知都是它出的。
+/// 顺序：改过的名 → 标题记录 → 第一句 → 项目目录最后一截 → sid 前 8 位；空白的当没有。
+pub(crate) fn session_label(facts: &LabelFacts, session_id: &str) -> (String, bool) {
+    let given = |s: &Option<String>| {
+        s.as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string)
+    };
+    if let Some(named) = given(&facts.custom)
+        .or_else(|| given(&facts.title))
+        .or_else(|| (!facts.first.trim().is_empty()).then(|| facts.first.clone()))
+    {
+        return (named, true);
+    }
+    let fallback = facts
+        .project_dir
+        .as_deref()
+        .and_then(project_name)
         .map(str::to_string)
-        .or_else(|| (!first_user_excerpt.is_empty()).then(|| first_user_excerpt.to_string()))
-        .unwrap_or_else(|| session_id.chars().take(8).collect())
+        .unwrap_or_else(|| session_id.chars().take(8).collect());
+    (fallback, false)
+}
+
+/// 项目目录的最后一截（两种分隔符都认，尾巴上的分隔符不算）；一截都没有 ⇒ `None`。
+pub(crate) fn project_name(dir: &str) -> Option<&str> {
+    dir.split(['/', '\\']).rfind(|s| !s.is_empty())
 }
 
 #[cfg(test)]

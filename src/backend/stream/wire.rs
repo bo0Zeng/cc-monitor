@@ -183,6 +183,37 @@ impl ActivityFace {
     }
 }
 
+/// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
+/// `label` ＝ [`crate::observe::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截，
+/// 只在名字是起出来的（改过的名 · 标题 · 第一句）时带 —— 界面拼「[项目] 名字」；名字本身就是项目名 / sid ⇒ 不带。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NameFace {
+    label: Words,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_project: Option<Words>,
+}
+
+impl NameFace {
+    /// 那几样 ⇒ 这两格。
+    pub(crate) fn of(facts: &crate::observe::search_rules::LabelFacts, sid: &str) -> Self {
+        let (label, named) = crate::observe::search_rules::session_label(facts, sid);
+        let label_project = named
+            .then_some(facts.project_dir.as_deref())
+            .flatten()
+            .and_then(crate::observe::search_rules::project_name)
+            .map(Words::from);
+        NameFace {
+            label: Words(label),
+            label_project,
+        }
+    }
+
+    /// 名字那一格。
+    pub(crate) fn label(&self) -> &str {
+        &self.label.0
+    }
+}
+
 /// 一条**丢了就不可恢复**的帧的身份。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
@@ -489,6 +520,9 @@ pub enum Frame {
         /// 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，[`ActivityFace`]，平铺在帧上）。
         #[serde(flatten)]
         face: ActivityFace,
+        /// 叫这条会话什么（[`NameFace`]，平铺在帧上）。
+        #[serde(flatten)]
+        name_face: NameFace,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -516,6 +550,9 @@ pub enum Frame {
         /// 此刻在干什么（同 `session_added` 那几格，[`ActivityFace`]）。
         #[serde(flatten)]
         face: ActivityFace,
+        /// 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧）。
+        #[serde(flatten)]
+        name_face: NameFace,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -576,7 +613,7 @@ pub enum Frame {
         session_id: String,
         /// 这一轮最后那条 assistant 记录的 uuid。
         uuid: String,
-        /// 通知的标题（写好的字，桌面与手机照抄）：「本轮完成 · 会话名」，没起名用项目名，再没有用 sid 前 8 位。只经 [`Frame::turn_end`] 来。
+        /// 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（[`NameFace`]）。只经 [`Frame::turn_end`] 来。
         title: Words,
         /// 通知的正文（写好的字）。
         body: Words,
@@ -1018,20 +1055,12 @@ impl TransferEnd {
 }
 
 impl Frame {
-    /// 一轮结束那一帧：通知的两行在这里一处写。叫这条会话什么 —— 会话名（空的当没有）→ 项目目录最后一截 → sid 前 8 位。
-    pub(crate) fn turn_end(
-        session_id: String,
-        uuid: String,
-        name: Option<&str>,
-        project_dir: Option<&str>,
-    ) -> Frame {
-        let project = project_dir.and_then(|d| d.split(['/', '\\']).rfind(|s| !s.is_empty()));
-        let short: String = session_id.chars().take(8).collect();
-        let tab = name.filter(|n| !n.is_empty()).or(project).unwrap_or(&short);
+    /// 一轮结束那一帧：通知的两行在这里一处写。叫这条会话什么用标签页那一格（[`NameFace`]，同一个 `session_label`）。
+    pub(crate) fn turn_end(session_id: String, uuid: String, name: &NameFace) -> Frame {
         Frame::TurnEnd {
             title: Words(copy_core::copy_text(
                 "turnNotify.finish.title",
-                &[("tab", tab)],
+                &[("tab", name.label())],
             )),
             body: Words(copy_core::copy_text("turnNotify.finish.body", &[])),
             session_id,

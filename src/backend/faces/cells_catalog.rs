@@ -1234,6 +1234,18 @@ mod specimens {
         vec![node_of(&row)]
     }
 
+    /// 名字是起出来的那一形（`label_project` 也带）。
+    fn named() -> crate::stream::wire::NameFace {
+        crate::stream::wire::NameFace::of(
+            &crate::observe::search_rules::LabelFacts {
+                title: some("t"),
+                project_dir: some("/w"),
+                ..Default::default()
+            },
+            "s",
+        )
+    }
+
     fn added(activity: SessionActivity) -> Frame {
         Frame::SessionAdded {
             sid: s("s"),
@@ -1247,6 +1259,7 @@ mod specimens {
             path: some("/p"),
             lines: Some(1),
             face: ActivityFace::of(Some(activity)),
+            name_face: named(),
             waiting_for: some("w"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
@@ -1274,6 +1287,7 @@ mod specimens {
                 node_of(&Frame::SessionStatus {
                     sid: s("s"),
                     face: ActivityFace::of(Some(a)),
+                    name_face: named(),
                     waiting_for: some("w"),
                     liveness_confidence: some("heuristic"),
                 })

@@ -328,6 +328,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 face: crate::stream::wire::ActivityFace::of(Some(
                     crate::agents::SessionActivity::NeedsYou,
                 )),
+                name_face: crate::stream::wire::NameFace::of(
+                    &crate::observe::search_rules::LabelFacts {
+                        title: Some(s("t")),
+                        project_dir: Some(s("/w")),
+                        ..Default::default()
+                    },
+                    "s1",
+                ),
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
                     host: TerminalHost::Tmux,
@@ -347,6 +355,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
                 lines: None,
                 face: crate::stream::wire::ActivityFace::of(None),
+                name_face: crate::stream::wire::NameFace::of(&Default::default(), "s1"),
                 waiting_for: None,
                 container: None,
                 pid: None,
@@ -358,12 +367,21 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 face: crate::stream::wire::ActivityFace::of(Some(
                     crate::agents::SessionActivity::NeedsYou,
                 )),
+                name_face: crate::stream::wire::NameFace::of(
+                    &crate::observe::search_rules::LabelFacts {
+                        title: Some(s("t")),
+                        project_dir: Some(s("/w")),
+                        ..Default::default()
+                    },
+                    "s1",
+                ),
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
                 face: crate::stream::wire::ActivityFace::of(None),
+                name_face: crate::stream::wire::NameFace::of(&Default::default(), "s1"),
                 waiting_for: None,
                 liveness_confidence: None,
             },
@@ -379,7 +397,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cause: RemovalCause::Gone,
             },
         ],
-        both(Frame::turn_end(s("s1"), s("u1"), None, None)),
+        both(Frame::turn_end(
+            s("s1"),
+            s("u1"),
+            &crate::stream::wire::NameFace::of(&Default::default(), "s1"),
+        )),
         [
             Frame::Overflow {
                 dropped: 7,
@@ -924,11 +946,14 @@ fn b64_matches_the_rfc_4648_test_vectors() {
 /// （只 Line 带）。uuid = 客户端 dedup 键；title · body 是通知那两行（核心写好，桌面与手机照抄）。
 #[test]
 fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
+    let named = crate::observe::search_rules::LabelFacts {
+        title: Some("notes".into()),
+        ..Default::default()
+    };
     let line = to_line(&Frame::turn_end(
         "sid-9".into(),
         "u-abc".into(),
-        Some("notes"),
-        None,
+        &crate::stream::wire::NameFace::of(&named, "sid-9"),
     ))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
@@ -946,24 +971,33 @@ fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
     assert!(v.get("byte_offset").is_none(), "TurnEnd 不带 byte_offset");
 }
 
-/// 通知标题里叫这条会话什么：会话名 → 项目名（项目目录最后一截，两种分隔符都认）→ sid 前 8 位。空名当没有。
+/// 叫这条会话什么那两格：名字是起出来的（改的名 · 标题 · 第一句）才带项目那一格；名字本身就是项目名 / sid ⇒ 只有名字。
 #[test]
-fn turn_end_title_names_the_session_then_the_project_then_the_sid() {
-    let title = |name: Option<&str>, project: Option<&str>| match Frame::turn_end(
-        "0123456789ab".into(),
-        "u".into(),
-        name,
-        project,
-    ) {
-        Frame::TurnEnd { title, .. } => title.0,
-        _ => unreachable!(),
+fn the_name_face_carries_the_project_only_beside_a_given_name() {
+    use crate::observe::search_rules::LabelFacts;
+    let face = |f: LabelFacts| {
+        serde_json::to_value(crate::stream::wire::NameFace::of(&f, "0123456789ab")).unwrap()
     };
-    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
-    assert_eq!(title(Some("notes"), Some("/w/proj")), finish("notes"));
-    assert_eq!(title(None, Some("/w/proj/")), finish("proj"));
-    assert_eq!(title(Some(""), Some("C:\\w\\proj")), finish("proj"));
-    assert_eq!(title(None, Some("/")), finish("01234567"));
-    assert_eq!(title(None, None), finish("01234567"));
+    let proj = || Some("/w/proj".to_string());
+    assert_eq!(
+        face(LabelFacts {
+            first: "修一下".into(),
+            project_dir: proj(),
+            ..Default::default()
+        }),
+        serde_json::json!({"label": "修一下", "label_project": "proj"})
+    );
+    assert_eq!(
+        face(LabelFacts {
+            project_dir: proj(),
+            ..Default::default()
+        }),
+        serde_json::json!({"label": "proj"})
+    );
+    assert_eq!(
+        face(LabelFacts::default()),
+        serde_json::json!({"label": "01234567"})
+    );
 }
 
 #[test]
@@ -1307,6 +1341,7 @@ fn dg3_codex_fields_serialize_when_present() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -1314,19 +1349,20 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
     })
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1369,25 +1405,27 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n",
         "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1512,6 +1550,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             path: None,
             lines: None,
             face: crate::stream::wire::ActivityFace::of(None),
+            name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
             waiting_for: None,
             container: c,
             pid: None,
@@ -1522,18 +1561,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
@@ -1593,16 +1632,17 @@ fn loc1b_session_added_pid_is_additive() {
             path: None,
             lines: None,
             face: crate::stream::wire::ActivityFace::of(None),
+            name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
             waiting_for: None,
             container: None,
             pid,
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"pid\":4242}\n"
     );
 }
 
@@ -1794,7 +1834,11 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             }],
             lost_truncated: true,
         },
-        Frame::turn_end("s".into(), "u".into(), None, None),
+        Frame::turn_end(
+            "s".into(),
+            "u".into(),
+            &crate::stream::wire::NameFace::of(&Default::default(), "s"),
+        ),
         Frame::Tap {
             stream: "s".into(),
             run: s.clone(),
@@ -1973,6 +2017,7 @@ fn session_frames_carry_the_state_written_and_toned() {
         serde_json::to_value(Frame::SessionStatus {
             sid: "s".into(),
             face: ActivityFace::of(a),
+            name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
             waiting_for: None,
             liveness_confidence: None,
         })

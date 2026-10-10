@@ -1343,6 +1343,18 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "text",
+          "path": "label",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "label_project",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "lines",
@@ -1423,6 +1435,18 @@
           "frozen": false,
           "kind": "value",
           "path": "kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "label",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "label_project",
           "type": "string"
         },
         {

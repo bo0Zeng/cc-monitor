@@ -1361,9 +1361,10 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 一轮结束那一帧的标题叫这条会话什么，按宣告时记下的会话名 · 项目目录（pidfile 改了名，下一轮就用新名）。
+/// 叫这条会话什么跟着读到的记录走（没在看的会话行不上流，照读、照记）：人说的第一句 ⇒ 名字变成它（一帧 `session_status`）；
+/// 来了标题记录 ⇒ 换成标题；一轮结束的通知标题用同一个名字。没起名时是项目名，名字是起出来的才带项目那一格。
 #[test]
-fn the_turn_end_title_uses_what_the_session_was_announced_with() {
+fn the_session_name_follows_the_records_even_when_nobody_watches() {
     let dir = std::env::temp_dir().join(format!("ccm-turnend-title-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
@@ -1378,26 +1379,47 @@ fn the_turn_end_title_uses_what_the_session_was_announced_with() {
             sid: "sess-1".into(),
             status: None,
             waiting_for: None,
-            name: None,
-            project: Some("/w/proj".into()),
+            activity: None,
+            facts: crate::observe::search_rules::LabelFacts {
+                project_dir: Some("/w/proj".into()),
+                ..Default::default()
+            },
         },
     );
-    let end = r#"{"type":"assistant","uuid":"u-2","message":{"stop_reason":"end_turn"}}"#;
-    std::fs::write(&path, format!("{end}\n")).unwrap();
-    process_jsonl(&path, &mut state, &mut sink);
-    let title = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| loop {
-        match rx.try_recv() {
-            Ok(Frame::TurnEnd { title, .. }) => break title.0,
-            Ok(_) => continue,
-            Err(_) => panic!("没出 turn_end"),
+    watch_sessions(vec!["other".into()], &mut state, &mut sink);
+    let names = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
+        let mut got = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            match f {
+                Frame::SessionStatus { name_face, .. } => {
+                    got.push(serde_json::to_value(&name_face).unwrap())
+                }
+                Frame::TurnEnd { title, .. } => got.push(serde_json::json!(title.0)),
+                Frame::Line { .. } => panic!("没在看的会话行上了流"),
+                _ => {}
+            }
         }
+        got
     };
-    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
-    assert_eq!(title(&mut rx), finish("proj"), "没起名 ⇒ 项目名");
-    state.sessions.get_mut(&dir.join("1.json")).unwrap().name = Some("notes".into());
-    std::fs::write(&path, format!("{end}\n{}\n", end.replace("u-2", "u-3"))).unwrap();
+    names(&mut rx);
+    assert_eq!(state.name_face("sess-1").label(), "proj", "没起名 ⇒ 项目名");
+    let lines = [
+        r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-09T01:30:01.000Z","message":{"role":"user","content":"修一下登录"}}"#,
+        r#"{"type":"user","uuid":"u-2","timestamp":"2026-10-09T01:30:02.000Z","message":{"role":"user","content":"第二句不算"}}"#,
+        r#"{"type":"custom-title","customTitle":"登录修复","sessionId":"sess-1"}"#,
+        r#"{"type":"assistant","uuid":"a-3","message":{"stop_reason":"end_turn"}}"#,
+    ];
+    std::fs::write(&path, lines.map(|l| format!("{l}\n")).concat()).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(title(&mut rx), finish("notes"), "起了名 ⇒ 会话名");
+    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
+    assert_eq!(
+        names(&mut rx),
+        vec![
+            serde_json::json!({"label": "修一下登录", "label_project": "proj"}),
+            serde_json::json!({"label": "登录修复", "label_project": "proj"}),
+            serde_json::json!(finish("登录修复")),
+        ]
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -1566,10 +1588,11 @@ fn status_diff_emits_session_status_frame() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// pidfile 改了名（`/rename`）：不发帧，记账那一格跟上（一轮结束的通知标题读它）；项目目录宣告时记下（没有记录 ⇒ cwd）。
+/// 在 monitor 里改的名（这台的注解）是第一档：注解那份文件动了重读 ⇒ 改了名的活会话一帧 `session_status`；没变的不发。
+/// 宣告时也并上注解（记录里的标题 · 第一句走清单缓存，与历史清单同一份扫描）。
 #[cfg(target_os = "linux")]
 #[test]
-fn a_renamed_pidfile_updates_the_name_the_turn_end_title_reads() {
+fn a_custom_title_in_the_annotations_renames_a_live_session() {
     let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-rename-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("projects")).unwrap();
@@ -1578,26 +1601,53 @@ fn a_renamed_pidfile_updates_the_name_the_turn_end_title_reads() {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"), false, true);
+    let note = |t: Option<&str>| {
+        let mut table = crate::history::history_annotations::Table::new();
+        table.insert(
+            "rn-sid".into(),
+            crate::history::history_annotations::Entry {
+                custom_title: t.map(str::to_string),
+                ..Default::default()
+            },
+        );
+        table
+    };
+    state.annotations = note(Some("甲"));
     let pidfile = dir.join(format!("{pid}.json"));
-    let write = |name: &str| {
-        std::fs::write(
-            &pidfile,
-            format!(r#"{{"pid":{pid},"sessionId":"rn-sid","cwd":"/w/proj","procStart":"{ticks}","status":"busy","name":"{name}"}}"#),
-        )
-        .unwrap();
-    };
-    write("a");
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"rn-sid","cwd":"/w/proj","procStart":"{ticks}","status":"busy"}}"#),
+    )
+    .unwrap();
     process_session_added(&pidfile, &mut state, &mut sink);
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
-    let entry = |state: &ReaderState| {
-        let e = state.sessions.get(&pidfile).expect("记着");
-        (e.name.clone(), e.project.clone())
-    };
-    assert_eq!(entry(&state), (Some("a".into()), Some("/w/proj".into())));
-    write("b");
-    process_session_added(&pidfile, &mut state, &mut sink);
-    assert!(rx.try_recv().is_err(), "改名不发帧");
-    assert_eq!(entry(&state).0.as_deref(), Some("b"));
+    match rx.try_recv() {
+        Ok(Frame::SessionAdded { name_face, .. }) => assert_eq!(
+            serde_json::to_value(&name_face).unwrap(),
+            serde_json::json!({"label": "甲", "label_project": "proj"})
+        ),
+        other => panic!("expected SessionAdded, got {other:?}"),
+    }
+    state.reload_annotations(note(Some("甲")), &mut sink);
+    assert!(rx.try_recv().is_err(), "名字没变不发帧");
+    state.reload_annotations(note(Some("乙")), &mut sink);
+    match rx.try_recv() {
+        Ok(Frame::SessionStatus {
+            name_face, face, ..
+        }) => {
+            assert_eq!(name_face.label(), "乙");
+            assert_eq!(
+                face.activity(),
+                Some(crate::agents::SessionActivity::Working),
+                "活动那几格照记着的带全"
+            );
+        }
+        other => panic!("expected SessionStatus, got {other:?}"),
+    }
+    state.reload_annotations(note(None), &mut sink);
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionStatus { name_face, .. }) if name_face.label() == "proj"),
+        "改的名删了 ⇒ 落回下一档"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -2107,6 +2157,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2123,6 +2174,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2145,6 +2197,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2161,6 +2214,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2177,6 +2231,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2216,6 +2271,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
         waiting_for: None,
         container: None,
         pid: None,
@@ -2500,7 +2556,11 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
 
     // 排空后下一次 send 会先补 Overflow。
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::turn_end("x".into(), "u".into(), None, None));
+    sink.send(Frame::turn_end(
+        "x".into(),
+        "u".into(),
+        &crate::stream::wire::NameFace::of(&Default::default(), "s"),
+    ));
     match rx.try_recv() {
         Ok(Frame::Overflow {
             dropped,
@@ -2551,7 +2611,11 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     assert!(sink.lost_truncated, "截断了就要说出来，不许静默");
 
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::turn_end("x".into(), "u".into(), None, None));
+    sink.send(Frame::turn_end(
+        "x".into(),
+        "u".into(),
+        &crate::stream::wire::NameFace::of(&Default::default(), "s"),
+    ));
     match rx.try_recv() {
         Ok(Frame::Overflow {
             lost,
