@@ -3,7 +3,7 @@
  */
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { fmtDur } from "../../../src/frontend/ui/quota-lines";
+import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
 import type { OpHandler, SessionSpec, World } from "./types";

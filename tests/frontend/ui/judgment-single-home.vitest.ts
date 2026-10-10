@@ -494,15 +494,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J24: {
     what: "时长 ⇒ 给人看的一格（表里只放 {dur}）",
     homes: ["copy-core::format_duration", "copy-core::format_elapsed"],
-    // 认可的双读口（与 J11 同理）：两侧各一份同形实现，单位格取表里同几条键（`durationFormat.unit.*`），各对同一份金样。
-    status: "mirror",
+    // 界面那一份 `duration-format.ts::formatDuration` 删了（已等多久改用短时长，它没了读者）：长写法只在核心写，界面照抄。
+    status: "zero",
     defs: ["formatDuration"],
     needles: [],
-    parity: {
-      via: "tests/__fixtures__/duration-format.golden.json",
-      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/duration-format.vitest.ts"],
-    },
-    why: "文案规范 C-W6「时长与时刻由格式化函数出，表里只放占位符」—— 两个取文口各补一个",
   },
   J25: {
     what: "一个时刻写成给人看的字（记录卡 · 轮次起止 · 子运行开始 · 分叉那一轮 · 终端快照 · 历史页分段 / 行尾 / 时间段 · 会话内查找的时刻）",

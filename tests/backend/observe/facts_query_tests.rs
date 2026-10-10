@@ -526,7 +526,7 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             tone: crate::common::cells::Tone::Need,
             rank: 1,
             waited_ms: Some(1),
-            waited_text: Some(crate::common::cells::Words(copy_core::format_duration(1))),
+            waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
@@ -675,7 +675,7 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             tone: crate::common::cells::Tone::Need,
             rank: 1,
             waited_ms: Some(1),
-            waited_text: Some(crate::common::cells::Words(copy_core::format_duration(1))),
+            waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
         }),
         ..SessionFacts::default()
     };
@@ -1268,7 +1268,7 @@ fn needs_carry_a_rank_riskier_first() {
 }
 
 /// ★ **「已等多久」在那台算**：起点（`sinceMs`，那台 pidfile 的钟）与读 pidfile 那一刻（同一台的钟）相减，
-/// 不拿别的机器的钟减（手机 · 桌面的钟与服务器不同步）；写好的字由时长那一处写（`copy_core::format_duration`，与界面那个读口对同一份金样）。
+/// 不拿别的机器的钟减（手机 · 桌面的钟与服务器不同步）；写好的字由时长那一处写（`copy_core::short_duration`，与桌面那个读口 `fmtDur` 对同一份金样）。
 /// 起点缺 ⇒ 两格都缺；起点比读的那一刻还晚（那台的钟往回拨过）⇒ 记 0，不写负数。
 #[test]
 fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
@@ -1295,12 +1295,55 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
     };
     assert_eq!(
         at(Some(1_000), 91_000),
-        (Some(90_000), Some(copy_core::format_duration(90_000)))
+        (Some(90_000), Some(copy_core::short_duration(90_000)))
     );
-    assert_eq!(at(Some(1_000), 91_000).1.as_deref(), Some("1 分 30 秒"));
+    assert_eq!(at(Some(1_000), 91_000).1.as_deref(), Some("1m"));
     assert_eq!(at(None, 91_000), (None, None));
     assert_eq!(
         at(Some(95_000), 91_000),
-        (Some(0), Some(copy_core::format_duration(0)))
+        (Some(0), Some(copy_core::short_duration(0)))
     );
+}
+
+/// ★ 先答哪个只住 [`needs_first`]：对共用金样 `tests/__fixtures__/needs-order.golden.json` 逐条排（桌面 `Ctrl+J`
+/// 那一个读口 `session-face.ts::needsFirst` 读同一份）。
+#[test]
+fn needs_first_agrees_with_the_shared_order_golden() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/needs-order.golden.json")).unwrap();
+    let cases = golden["cases"].as_array().unwrap();
+    assert!(cases.len() >= 4, "金样读空了");
+    for c in cases {
+        let mut got: Vec<(String, Needs)> = c["needs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| {
+                (
+                    n["id"].as_str().unwrap().to_string(),
+                    Needs {
+                        kind: NeedsKind::Approve,
+                        tool: None,
+                        call: None,
+                        what: None,
+                        since_ms: None,
+                        text: crate::common::cells::Words(String::new()),
+                        tone: crate::common::cells::Tone::Need,
+                        rank: u8::try_from(n["rank"].as_u64().unwrap()).unwrap(),
+                        waited_ms: n["waitedMs"].as_u64(),
+                        waited_text: None,
+                    },
+                )
+            })
+            .collect();
+        got.sort_by(|a, b| needs_first(&a.1, &b.1));
+        let ids: Vec<&str> = got.iter().map(|(i, _)| i.as_str()).collect();
+        let want: Vec<&str> = c["want"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(ids, want, "{}", c["name"]);
+    }
 }

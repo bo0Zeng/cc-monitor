@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { fmtDur } from "../../src/frontend/ui/quota-lines.ts";
+import { fmtDur } from "../../src/frontend/ui/duration-format.ts";
 
 const golden = JSON.parse(readFileSync(resolve(__dirname, "../__fixtures__/short-duration.golden.json"), "utf8")) as {
   cases: { ms: number; want: string }[];

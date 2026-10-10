@@ -72,18 +72,6 @@ export function fmtRel(t: number, now: number): string | null {
   return m === 0 ? `+${h}h` : `+${h}h${m}m`;
 }
 
-/** 时长（秒）：`45s` · `6m` · `1h50m` · `2h` · `3d`（满 24h 只写天）。负数当 0。 */
-export function fmtDur(secs: number): string {
-  const d = Math.max(0, Math.floor(secs));
-  if (d < 60) return `${d}s`;
-  if (d >= DAY) return `${Math.floor(d / DAY)}d`;
-  const mins = Math.floor(d / 60);
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m === 0 ? `${h}h` : `${h}h${m}m`;
-}
-
 /** 号在界面上叫什么（`_` ＝ 起会话时没说是哪个号 ⇒ `~/.claude`）。 */
 export function accountLabel(account: string): string {
   return account === "_" ? copyText("acct.home.name") : account;

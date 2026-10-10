@@ -272,7 +272,7 @@ export class TabBarView {
 
   /** 跳到下一个需要你的会话（`Ctrl+J` · 点「需要你」那一条）。没有 ⇒ 什么都不做。 */
   nextNeedsSid(): string | null {
-    const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
+    const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), Date.now());
     return nextNeeds(order, this.store.activeId);
   }
 
@@ -660,11 +660,11 @@ export class TabBarView {
     this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
   }
 
-  /** 「需要你」菜单：每个在等你的会话（等得最久的在前）· 状态 · 等的那一句；点一行切过去。 */
+  /** 「需手动」菜单：每个需手动的会话（照核心的先后：危险度在前、同档等得久的在前）· 状态 · 等的那一句；点一行切过去。 */
   private openNeedsMenu(): void {
-    const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
-    if (tabs.length === 0) return;
     const now = Date.now();
+    const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), now);
+    if (tabs.length === 0) return;
     const items: MenuItem[] = tabs.map((sid) => {
       const t = this.store.tabs.get(sid)!;
       return {

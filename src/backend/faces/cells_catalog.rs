@@ -954,7 +954,7 @@ mod specimens {
                         tone: crate::common::cells::Tone::Need,
                         rank: 1,
                         waited_ms: Some(1),
-                        waited_text: Some(crate::common::cells::Words(copy_core::format_duration(
+                        waited_text: Some(crate::common::cells::Words(copy_core::short_duration(
                             1,
                         ))),
                     }),

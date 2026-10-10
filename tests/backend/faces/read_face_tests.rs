@@ -692,7 +692,11 @@ fn facts_say_what_the_session_is_waiting_for() {
         .as_millis() as u64;
     let span = now - 1_700_000_000_000;
     assert!(ms <= span && ms + 60_000 > span, "{ms}");
-    assert_eq!(waiting["waitedText"], copy_core::format_duration(ms));
+    assert_eq!(
+        waiting["waitedText"],
+        copy_core::short_duration(ms),
+        "与过程行耗时同一种短写法"
+    );
     assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");
 }
