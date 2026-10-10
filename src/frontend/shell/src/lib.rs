@@ -248,7 +248,7 @@ mod sync_command_registry;
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/frontend/ui/session-reads.ts`）。
 // 远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
-// `tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
+// `tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `changed/tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
                              // `tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
 mod utils;
@@ -776,7 +776,7 @@ pub fn run() {
             // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
             // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
-            // 任务变更的监视进了后端（`tasks_changed` 帧 ⇒ 通道 `subscribe(origin, "session-tasks")`），
+            // 任务变更的监视进了后端（`changed {tasks}` 帧 ⇒ 通道 `subscribe(origin, "changed/tasks")`），
             //   monitor 这边那条 notify 线程与 `task-update` 事件删了；本机远端同形。
 
             // 这里原来起「历史全文搜索索引」那条后台线程（延迟 1.5 s 扫 projects/**/*.jsonl 建内存索引）。

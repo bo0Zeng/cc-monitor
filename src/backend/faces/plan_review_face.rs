@@ -1,7 +1,7 @@
 //! 计划审面认可那一半（`plan-ack` · `plan-unack`）的帧面宿主；退回那一半（`plan-return`，要起 tmux）住 [`super::plan_return_face`]。
 //! 判定在 [`crate::plan::needs`]，认可的记录住后端自己那份文件（[`crate::plan::review`] 的认可写口只从本文件进）；计划仓一个字节都不写。
 //!
-//! - `plan-ack {workspace, slice, key}`：认可一条要你看（键此刻在、不是问人那一种才收）；推一帧 `plan_changed` 带新的数。
+//! - `plan-ack {workspace, slice, key}`：认可一条要你看（键此刻在、不是问人那一种才收）；推一帧 `changed {plan}` 带新的数。
 //! - `plan-unack {workspace, slice, key}`：撤掉（8 秒撤销那一下）；同上推一帧。
 
 use crate::plan::needs;
@@ -50,7 +50,7 @@ fn last(ws: &str) -> Result<Value, Fail> {
         .ok_or_else(|| Fail::new("not_read", copy_text("bePlan.review.notRead", &[])))
 }
 
-/// 认可改了之后：这个工作区此刻要你看的数，推一帧 `plan_changed`（别的窗口跟着改数）。
+/// 认可改了之后：这个工作区此刻要你看的数，推一帧 `changed {plan}`（别的窗口跟着改数）。
 fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
     let doc = crate::faces::plan_face::annotated(last(ws)?);
     let n = doc.get("needCount").and_then(Value::as_u64).unwrap_or(0);

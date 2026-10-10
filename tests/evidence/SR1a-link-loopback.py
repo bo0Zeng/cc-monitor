@@ -23,7 +23,7 @@
   ⑦ agent_sock：后端自己的环境里没有 SSH_AUTH_SOCK，界面交过去的那个套接字照样鉴权得过
   ⑧ forward：本地口经隧道到一台回环 HTTP；每接一条报一行 {"accepted":n}；link-close ⇒ 本地口释放
   ⑨ 子系统留口不开：use=subsystem ⇒ unsupported_use
-  ⑪ 账号清单变了：改写 manifest ⇒ 恰好一帧 accounts_changed；同目录别的文件 ⇒ 零帧
+  ⑪ 账号清单变了：改写 manifest ⇒ 恰好一帧 changed {accounts}；同目录别的文件 ⇒ 零帧
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
 """
@@ -89,7 +89,7 @@ class Backend:
                     self.data.setdefault(f["link"], bytearray()).extend(base64.b64decode(f["data"]))
                 elif k == "link_end":
                     self.ends[f["link"]] = f.get("error")
-                elif k == "accounts_changed":
+                elif k == "changed" and f.get("topic") == "accounts":
                     self.accounts_changed += 1
                 self.cv.notify_all()
 
@@ -305,7 +305,7 @@ def main():
             fh.write('{"version":1,"accounts":[{"name":"x","configDir":"/tmp/x"}]}\n')
         be.wait(lambda: be.accounts_changed > base_n or None, 10)
         time.sleep(2)
-        check("改写 manifest ⇒ 恰好一帧 accounts_changed", be.accounts_changed - base_n == 1, be.accounts_changed - base_n)
+        check("改写 manifest ⇒ 恰好一帧 changed {accounts}", be.accounts_changed - base_n == 1, be.accounts_changed - base_n)
         mid = be.accounts_changed
         with open(os.path.join(accts, "notes.txt"), "w") as fh:
             fh.write("x\n")
