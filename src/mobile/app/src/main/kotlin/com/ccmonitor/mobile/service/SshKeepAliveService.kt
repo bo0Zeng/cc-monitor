@@ -18,12 +18,12 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.ccmonitor.mobile.MainActivity
+import com.ccmonitor.mobile.core.claude.link.BackendFeed
 import com.ccmonitor.mobile.core.claude.link.TurnEnd
 import com.ccmonitor.mobile.core.claude.link.TurnEnds
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.countsAsActive
 import com.ccmonitor.mobile.core.ui.copy.copyText
-import com.ccmonitor.mobile.link.HostBackend
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ui.chat.ChatController
@@ -209,7 +209,7 @@ class SshKeepAliveService : Service() {
     private fun notifyRoundDone(
         hostId: String,
         round: TurnEnd,
-        backend: HostBackend,
+        backend: BackendFeed,
     ) {
         // 标题里的 {tab}：会话名（流上宣告时带的），没有就用机器名。
         val tab =

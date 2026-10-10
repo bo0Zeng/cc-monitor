@@ -11,7 +11,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | 模块 | 管什么 |
 |---|---|
 | `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关、起路 A |
-| `core-claude` | `link/`：常驻流的帧客户端（门槛 · 起常驻 · attach · 一问一答 · 格目录）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条）；其余是还没删的路 A 与自读原文那一族 |
+| `core-claude` | `link/`：常驻流的帧客户端（门槛 · 起常驻 · attach · 一问一答 · 格目录 · 断了自己接回去）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条）；其余是还没删的路 A 与自读原文那一族 |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
 | `core-ssh` | SSH（sshj）：连接池、多地址竞速、跳板、SFTP、`~/.ssh/config`、known_hosts、密钥 |
 | `core-data` | Room 库 |
