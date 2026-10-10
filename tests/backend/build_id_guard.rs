@@ -616,4 +616,46 @@ mod tests {
         );
         assert_eq!(guard, guard0);
     }
+
+    /// 脚本认的新 id 形状与部署判新旧的序键（`deploy_contract::build_order`）同一个口径：
+    /// 序键解得出的才放过（代号可以是多位数，代号后面恰好一个小写字母），解不出的当场拒 ——
+    /// 不然打出一个序键认不得的版本号，部署出去永远不会被判「更新」而换上。
+    #[cfg(unix)]
+    #[test]
+    fn the_bump_script_takes_exactly_the_ids_the_order_key_reads() {
+        use std::process::Command;
+        let script = crate::guard_support::repo_root().join("tests/scripts/bump-build-id.sh");
+        let d = std::env::temp_dir().join(format!("bump-shape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert!(Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success());
+        let mut seen = (0, 0);
+        for id in ["p9c-x", "p10a-next", "p123z-a-b", "p9za-x", "pa-x", "p9-x", "p9A-x", "p9a-"] {
+            let out = Command::new("bash")
+                .arg(&script)
+                .arg(id)
+                .current_dir(&d)
+                .env_remove("TMUX")
+                .env_remove("TMUX_PANE")
+                .output()
+                .unwrap();
+            let said = String::from_utf8_lossy(&out.stdout).into_owned();
+            let refused = said.contains("的形状");
+            let reads = deploy_contract::build_order(id).is_some();
+            assert_eq!(
+                !refused, reads,
+                "{id}：序键{}，脚本却{}：{said}",
+                if reads { "解得出" } else { "解不出" },
+                if refused { "拒了" } else { "放过了" }
+            );
+            if reads { seen.0 += 1 } else { seen.1 += 1 }
+        }
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(seen.0 >= 3 && seen.1 >= 4, "两边的例子都要有：{seen:?}");
+    }
 }
