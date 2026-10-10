@@ -58,13 +58,13 @@ mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod event_replay;
 mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
-// 🔴原生文件管理窗口。进程形态＝**同进程**、
-// egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-// （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
-// ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-//   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
-//   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
-//   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
+                      // 🔴原生文件管理窗口。进程形态＝**同进程**、
+                      // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+                      // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+                      // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
+                      //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
+                      //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
+                      //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
 // `hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
@@ -337,7 +337,7 @@ use tauri::{Emitter, Listener, Manager};
 ///
 /// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 backend **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由后端的 kind 交互性过滤处理
-/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::local_hides`），与本处嵌套环境清洗无关。
+/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::BgHide`），与本处嵌套环境清洗无关。
 /// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
