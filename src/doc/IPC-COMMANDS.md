@@ -57,9 +57,7 @@ A new session file appeared。
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
-| `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
-| `activity_text` | Words | 此刻在干什么写好的字（`activity_cells`；说不清也有一格） |
-| `activity_tone` | Tone | 那一态的语气（同上） |
+| `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -71,9 +69,7 @@ A new session file appeared。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
-| `activity_text` | Words | 同 `session_added.activity_text` |
-| `activity_tone` | Tone | 同 `session_added.activity_tone` |
+| `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -286,6 +282,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 - `reconnectable` —— claude 退了、它的 tmux 会话还在（`@ccm_sid` 仍挂着它）⇒ 接得回去
 - `ended` —— 进程没了、容器也没了（或被顶替了）⇒ 只能 resume
+
+#### `ActivityFace`
+
+**活会话此刻在干什么的那几格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上）：那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `activity` | SessionActivity? |  |
+| `activity_text` | Words |  |
+| `activity_tone` | Tone |  |
+| `activity_order` | number |  |
 
 #### `LostFrame`
 
@@ -1820,7 +1827,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `head` 钉条第一行、`headCode` 它等宽那一段 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
 | `sid` | ← | 会话 id |
 | `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
 
@@ -1842,7 +1849,7 @@ sid → 上次用哪个号起。
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
 | `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
-| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
+| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
 | `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |

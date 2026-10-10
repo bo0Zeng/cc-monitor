@@ -265,6 +265,10 @@ export interface Needs {
   sinceMs: number | null;
   /** 核心写好的字（等批准 · 等回答 · 需手动），照抄。 */
   text: string;
+  /** 钉条第一行（核心写好的种类 ＋ 工具名：「等批准 · Bash」），照抄；短的那一格是 `text`。 */
+  head: string;
+  /** 钉条里等宽那一段（批准 · 回答 · 放行带主参数；别的种类 ⇒ `null`），照抄。 */
+  headCode: string | null;
   /** 语气（恒 `need`）。 */
   tone: string;
   /** 先答哪个（0 最先：顶上的框先答，再按危险度；后端 `facts_query::NEEDS_BY_DANGER`）。 */
@@ -523,8 +527,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
+    if (!isObj(n) || !exactKeys(n, ["call", "head", "headCode", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
   }
   if (!Array.isArray(v.bgTasks)) return bad();
   const bgTasks: BgTask[] = [];

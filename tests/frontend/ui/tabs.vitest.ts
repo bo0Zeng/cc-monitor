@@ -453,7 +453,7 @@ describe("TabManager 生命周期", () => {
 
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {
     const tab = tm.ensureTab("s3", "/home", "p", LOCAL_ORIGIN);
-    tab.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };
+    tab.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
     tm.archiveTab("s3");
     expect(tab.state).toEqual(ENDED);
     expect(tab.activity).toBeNull();
@@ -464,15 +464,15 @@ describe("TabManager 生命周期", () => {
     // 对立类（若哪天把两个 classList.toggle 之一改成条件执行，本测会红）。
     tm.ensureTab("lt", "/x", "p", LOCAL_ORIGIN);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
-    tm.updateActivity("lt", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
+    tm.updateActivity("lt", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need", 1);
     expect(btn().dataset.light === "waiting").toBe(true);
     expect(btn().dataset.light === "idle").toBe(false);
     // waiting → idle：陈旧 waiting 那一档必须清、换 idle
-    tm.updateActivity("lt", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("lt", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(btn().dataset.light === "waiting").toBe(false);
     expect(btn().dataset.light === "idle").toBe(true);
     // idle → busy：两类都清（默认绿点）
-    tm.updateActivity("lt", "working", null, copyText("beSession.activity.working"), "now");
+    tm.updateActivity("lt", "working", null, copyText("beSession.activity.working"), "now", 1);
     expect(btn().dataset.light === "idle").toBe(false);
     expect(btn().dataset.light === "waiting").toBe(false);
   });
@@ -494,7 +494,7 @@ describe("TabManager 生命周期", () => {
     // ⚠ 只断言**可观察行为**，不戳内部 `pendingActivity`：那个字段当年不在探针接口（今天的 `TMHomes`）上，
     // 戳它会让本文件 `tsc --noEmit` 红（第一版就是这么写的，当场被基线 tsc 逮住）。
     // 而且断行为本来就更强 —— 它不关心暂存用什么数据结构实现。
-    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     // 远端骨架 Tab 走 createSkeletonTab → ensureTab（顺序不能反：它必须落实暂存的灯）
     tm.createSkeletonTab("early-light", "/proj", "devbox", null, null);
     const btn = document.querySelector<HTMLElement>(".tab")!;
@@ -504,7 +504,7 @@ describe("TabManager 生命周期", () => {
         "`pendingActivity` 没被 `ensureTab` 落实，而默认值是绿，所以这个洞不会自己暴露。",
     ).toBe(true);
     // 落实之后再来一次同值信号不该出问题（幂等）。
-    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(btn.dataset.light === "idle").toBe(true);
   });
 
@@ -552,7 +552,7 @@ describe("TabManager 生命周期", () => {
       expect(c.firstElementChild?.textContent).toBe(fullTitle(t));
       return c.querySelector(".tab-hover-state")?.textContent;
     };
-    tm.updateActivity("tt1", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
+    tm.updateActivity("tt1", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need", 1);
     expect(said(), "活着、在等：种类还没到 ⇒ 只说需手动（不猜，也不印英文原样）").toBe(copyText("beSession.activity.needsYou"));
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
     expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
@@ -594,12 +594,12 @@ describe("TabManager 生命周期", () => {
 
   it("F03.2 收到活动信号回到活（claude 复活）——activity 值不变也回且重绘", () => {
     const tab = tm.ensureTab("gi2", "/x", "p", "pi");
-    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now"); // 先有一次 busy
+    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now", 1); // 先有一次 busy
     tm.markTmuxIdle("gi2");
     expect(tab.state).toEqual(RECONNECTABLE);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     // 同值 busy 再来一次（activity 无变化）——仍须回到活、类须去掉（早退前转移的守护）
-    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now");
+    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now", 1);
     expect(tab.state).toEqual(LIVE);
     expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
@@ -1226,11 +1226,11 @@ describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终�
     const tm = new TabManager(barEl, streamRootEl, (s) => seen.push(s.total));
     tm.ensureTab("st1", "/home/u", "p", LOCAL_ORIGIN);
     tm.ensureTab("st2", "/home/u", "p", LOCAL_ORIGIN);
-    tm.updateActivity("st1", "working", null, copyText("beSession.activity.working"), "now");
+    tm.updateActivity("st1", "working", null, copyText("beSession.activity.working"), "now", 1);
     const before = seen.length;
-    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(seen.length, "运行中 → 空闲，订阅者没收到（会话头停在「运行中」）").toBe(before + 1);
-    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(seen.length, "同一状态再来不该通知").toBe(before + 1);
   });
 });
@@ -2534,7 +2534,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       tab.needs = needs;
       (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), receivedAt: Date.now() });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(fmtDur(125));
@@ -5842,9 +5842,9 @@ describe("组头", () => {
     home(tm).prefs.collectionsLoaded = true;
     for (const sid of ["x", "a", "b", "c", "y"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
-    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need" };
-    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };
-    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain" };
+    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need", order: 1 };
+    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
+    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 };
     tm.switchTo("x");
     flushBar();
   });

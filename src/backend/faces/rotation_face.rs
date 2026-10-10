@@ -324,7 +324,7 @@ fn doing_wire(d: Option<&Doing>) -> Value {
     use crate::agents::SessionActivity as A;
     use crate::observe::facts_query::{needs_words, NeedsKind};
     let activity = d.and_then(|d| d.activity);
-    let (text, tone) = crate::stream::wire::activity_cells(activity);
+    let (text, tone) = crate::stream::wire::ActivityFace::of(activity).words();
     match activity {
         Some(A::NeedsYou) => {
             let kind = d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown);

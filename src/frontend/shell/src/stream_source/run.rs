@@ -362,8 +362,6 @@ async fn stream_loop(
                 path,
                 lines,
                 activity,
-                activity_text,
-                activity_tone,
                 waiting_for,
                 container,
                 // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
@@ -379,8 +377,6 @@ async fn stream_loop(
                     project_dir,
                     name,
                     activity,
-                    activity_text,
-                    activity_tone,
                     waiting_for,
                     container,
                     pid: None,
@@ -391,8 +387,6 @@ async fn stream_loop(
             Some(InboundFrame::SessionStatus {
                 sid,
                 activity,
-                activity_text,
-                activity_tone,
                 waiting_for,
             }) => {
                 // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
@@ -404,8 +398,6 @@ async fn stream_loop(
                     origin: host_label.clone(),
                     sid,
                     activity,
-                    activity_text,
-                    activity_tone,
                     waiting_for,
                 });
             }

@@ -118,35 +118,69 @@ impl SessionFate {
     }
 }
 
-/// **活会话此刻在干什么的字与语气的唯一一处**（`session_added` · `session_status` 都由它填）：
+/// **活会话此刻在干什么的那几格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上）：
+/// 那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）。
+/// 字段私有：帧上这几格只能经 [`ActivityFace::of`] 来，不许哪一处另拼。
+///
 /// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
 /// 活着、那一家没说在干什么（`None`）⇒ 运行中 · `now`（出口照画，不自己补一种默认）。
-pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Words, Tone) {
-    let Some(a) = a else {
-        return (
-            Words(copy_core::copy_text("beSession.activity.unclear", &[])),
-            Tone::Now,
-        );
-    };
-    let (text, tone) = match a {
-        SessionActivity::Working => (
-            copy_core::copy_text("beSession.activity.working", &[]),
-            Tone::Now,
-        ),
-        SessionActivity::NeedsYou => (
-            copy_core::copy_text("beSession.activity.needsYou", &[]),
-            Tone::Need,
-        ),
-        SessionActivity::Idle => (
-            copy_core::copy_text("beSession.activity.idle", &[]),
-            Tone::Plain,
-        ),
-        SessionActivity::BackgroundWork => (
-            copy_core::copy_text("beSession.activity.backgroundWork", &[]),
-            Tone::Busy,
-        ),
-    };
-    (Words(text), tone)
+/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 3 · 说不清 4（要人操作的先看）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ActivityFace {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    activity: Option<SessionActivity>,
+    activity_text: Words,
+    activity_tone: Tone,
+    activity_order: u8,
+}
+
+impl ActivityFace {
+    /// 那一态 ⇒ 这几格。
+    pub(crate) fn of(a: Option<SessionActivity>) -> Self {
+        let (text, tone, order) = match a {
+            Some(SessionActivity::NeedsYou) => (
+                copy_core::copy_text("beSession.activity.needsYou", &[]),
+                Tone::Need,
+                0,
+            ),
+            Some(SessionActivity::Working) => (
+                copy_core::copy_text("beSession.activity.working", &[]),
+                Tone::Now,
+                1,
+            ),
+            Some(SessionActivity::BackgroundWork) => (
+                copy_core::copy_text("beSession.activity.backgroundWork", &[]),
+                Tone::Busy,
+                2,
+            ),
+            Some(SessionActivity::Idle) => (
+                copy_core::copy_text("beSession.activity.idle", &[]),
+                Tone::Plain,
+                3,
+            ),
+            None => (
+                copy_core::copy_text("beSession.activity.unclear", &[]),
+                Tone::Now,
+                4,
+            ),
+        };
+        ActivityFace {
+            activity: a,
+            activity_text: Words(text),
+            activity_tone: tone,
+            activity_order: order,
+        }
+    }
+
+    /// 那一态（说不清 ⇒ `None`）。
+    pub(crate) fn activity(&self) -> Option<SessionActivity> {
+        self.activity
+    }
+
+    /// 写好的字与语气（轮换那一侧的会话状态照抄这两格）。
+    pub(crate) fn words(&self) -> (Words, Tone) {
+        (self.activity_text.clone(), self.activity_tone)
+    }
 }
 
 /// 一条**丢了就不可恢复**的帧的身份。
@@ -454,13 +488,9 @@ pub enum Frame {
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
-        /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity: Option<SessionActivity>,
-        /// 此刻在干什么写好的字（[`activity_cells`]；说不清也有一格）。
-        activity_text: Words,
-        /// 那一态的语气（同上）。
-        activity_tone: Tone,
+        /// 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，[`ActivityFace`]，平铺在帧上）。
+        #[serde(flatten)]
+        face: ActivityFace,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -485,13 +515,9 @@ pub enum Frame {
     SessionStatus {
         /// 会话 id。
         sid: String,
-        /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity: Option<SessionActivity>,
-        /// 同 `session_added.activity_text`。
-        activity_text: Words,
-        /// 同 `session_added.activity_tone`。
-        activity_tone: Tone,
+        /// 此刻在干什么（同 `session_added` 那几格，[`ActivityFace`]）。
+        #[serde(flatten)]
+        face: ActivityFace,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,

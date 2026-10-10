@@ -2218,12 +2218,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             entry.status = new_status.clone();
             entry.waiting_for = new_waiting.clone();
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
-            let (activity_text, activity_tone) = crate::stream::wire::activity_cells(activity);
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
-                activity,
-                activity_text,
-                activity_tone,
+                face: crate::stream::wire::ActivityFace::of(activity),
                 waiting_for: new_waiting,
                 // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
                 // Codex 会话时才发 heuristic。
@@ -2321,7 +2318,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         }
     }
     let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
-    let (activity_text, activity_tone) = crate::stream::wire::activity_cells(activity);
     sink.send(Frame::SessionAdded {
         sid: sid.clone(),
         // 本 producer = Claude pidfile 发现路 → agent_kind/liveness_confidence 省略（缺=claude/authoritative）。
@@ -2343,9 +2339,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         name: meta_str("name"),
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
-        activity,
-        activity_text,
-        activity_tone,
+        face: crate::stream::wire::ActivityFace::of(activity),
         waiting_for: meta_str("waitingFor"),
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
