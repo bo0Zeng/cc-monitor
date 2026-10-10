@@ -100,6 +100,8 @@ export interface RulesRead {
   reason: string | null;
   detail: string | null;
   defaultRule: string;
+  /** 「跟随默认」那一项核心写好的字（默认那条没起名 ⇒「跟随默认」，起了名 ⇒「跟随默认（名字）」），照抄。 */
+  followText: string;
   rules: RuleRow[];
 }
 
@@ -149,6 +151,7 @@ export function decodeRulesRead(v: unknown): RulesRead {
   const o = obj(v, "reply");
   if (!STATES.has(o.state as string)) bad(`state ${JSON.stringify(o.state)}`);
   if (typeof o.defaultRule !== "string") bad("defaultRule");
+  if (typeof o.followText !== "string") bad("followText");
   const rules = arr(o.rules, "rules").map((r, i) =>
     decodeRuleRow(r, `rules[${i}]`),
   );
@@ -159,6 +162,7 @@ export function decodeRulesRead(v: unknown): RulesRead {
     reason: str(o.reason),
     detail: str(o.detail),
     defaultRule: o.defaultRule,
+    followText: o.followText,
     rules,
   };
 }

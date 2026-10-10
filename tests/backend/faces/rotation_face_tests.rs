@@ -1817,6 +1817,7 @@ impl Shaped for RulesRead {
             detail: json!("detail lines"),
             path: Some("/x/rotation.json".into()),
             default_rule: "default".into(),
+            follow_text: crate::common::cells::Words("f".into()),
             rules: vec![json!({"id": "default"})],
         }]
     }
@@ -1977,4 +1978,30 @@ fn every_product_that_names_accounts_carries_the_names() {
     assert_eq!(plan["names"], want, "rotation-plan");
     let quota = answer_quota_read_with(&ctx, now()).expect("quota");
     assert_eq!(quota["names"], want, "quota-read");
+}
+
+/// ★ 「跟随默认」那一句由核心写（`followText`，新建会话面板 · 批量菜单照抄）：默认那条还是起始的名字（没起名）⇒「跟随默认」；
+/// 起了名 ⇒「跟随默认（名字）」。
+#[test]
+fn rules_read_writes_the_follow_default_line() {
+    let home = Home::new("followtext");
+    let ctx = home.ctx();
+    let rules = answer_rules_read_with(&ctx).expect("read");
+    assert_eq!(
+        rules["followText"],
+        copy_core::copy_text("rot.src.follow", &[])
+    );
+    let id = rules["defaultRule"].as_str().expect("default").to_string();
+    let got = answer_rule_save_with(
+        &ctx,
+        &json!({"id": id, "name": "夜里省着用", "rotation": rules["rules"][0]["rotation"]}),
+        now(),
+    )
+    .expect("save");
+    assert_eq!(got["state"], "saved", "{got}");
+    let rules = answer_rules_read_with(&ctx).expect("read");
+    assert_eq!(
+        rules["followText"],
+        copy_core::copy_text("rot.src.followOf", &[("name", "夜里省着用")])
+    );
 }

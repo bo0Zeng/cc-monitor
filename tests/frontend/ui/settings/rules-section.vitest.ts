@@ -113,6 +113,7 @@ function rules(list: RuleRow[] = [DAILY, NIGHT, SAVER]): RulesRead {
     reason: null,
     detail: null,
     defaultRule: list.find((r) => r.isDefault)?.id ?? "r_daily",
+    followText: "核心·跟随默认",
     rules: list,
   };
 }

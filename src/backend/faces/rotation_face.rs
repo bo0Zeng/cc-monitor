@@ -47,6 +47,7 @@ use crate::accounts::quota::rotation::{
 };
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::{account_ok, Hop};
+use crate::common::cells::Words;
 use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
@@ -357,8 +358,21 @@ pub(crate) struct RulesRead {
     detail: Value,
     path: Option<String>,
     default_rule: String,
+    /// 「跟随默认」那一项写好的字（[`follow_words`]）：新建会话面板 · 批量菜单照抄。
+    follow_text: Words,
     /// 每条一项，形状见 [`rule_wire`]。
     rules: Vec<Value>,
+}
+
+/// 「跟随默认」那一句（唯一一处）：默认那条没起名（名字空，或还是起始那条的名字）⇒「跟随默认」；起了名 ⇒「跟随默认（名字）」。
+fn follow_words(default_name: Option<&str>) -> Words {
+    let seed = copy_core::copy_text("beRotation.rule.defaultName", &[]);
+    Words(match default_name.map(str::trim) {
+        Some(n) if !n.is_empty() && n != seed => {
+            copy_core::copy_text("rot.src.followOf", &[("name", n)])
+        }
+        _ => copy_core::copy_text("rot.src.follow", &[]),
+    })
 }
 
 fn rules_wire(ctx: &Ctx) -> RulesRead {
@@ -382,6 +396,7 @@ fn rules_wire(ctx: &Ctx) -> RulesRead {
             .iter()
             .map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing))
             .collect(),
+        follow_text: follow_words(book.rules.get(&book.default_rule).map(|r| r.name.as_str())),
         default_rule: book.default_rule,
     }
 }

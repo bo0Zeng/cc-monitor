@@ -560,14 +560,14 @@ describe("起新会话框 · 轮换", () => {
     rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 40 },
     users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
   });
-  const RULES = { state: "present", reason: null, defaultRule: "r_daily", rules: [rule("r_daily", "日常", true), rule("r_night", "夜间", false)] };
+  const RULES = { state: "present", reason: null, defaultRule: "r_daily", followText: "核心·跟随默认（日常）", rules: [rule("r_daily", "日常", true), rule("r_night", "夜间", false)] };
 
   it("账号下一行「轮换」：跟随默认（默认那条的名字）· 各条规则（没有本会话）；缺省跟随默认 ⇒ 请求里不带 rotation", async () => {
     replies.set("rotation-rules-read", RULES);
     void openNewSession({ origin: "devbox" });
     await flush();
     const b = sel(copyText("newSession.label.rot"));
-    expect(optionsOf(b)).toEqual([copyText("rot.src.followOf", { name: "日常" }), `日常${copyText("rot.src.tagDefault")}`, "夜间"]);
+    expect(optionsOf(b)).toEqual(["核心·跟随默认（日常）", `日常${copyText("rot.src.tagDefault")}`, "夜间"]);
     createBtn().click();
     await flush();
     expect(newRequests()[0].rotation).toBeUndefined();

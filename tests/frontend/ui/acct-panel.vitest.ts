@@ -134,6 +134,7 @@ function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
     reason: null,
     detail: null,
     defaultRule: "r_def",
+    followText: "核心·跟随默认",
     rules: [row("r_def", "日常", rotation, true), ...more],
   };
 }
