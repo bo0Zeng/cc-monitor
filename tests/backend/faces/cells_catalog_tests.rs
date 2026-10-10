@@ -178,9 +178,18 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
         }
         "index_row" => {
-            let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();
-            let mut rows = g["history-index"]["rows"].as_array().unwrap().clone();
-            // 金样那份会话里没有子运行、没有代码块与全宽字 ⇒ 这一行用真函数现算。
+            // 逐行那一形只在 CLI 那一臂（帧面按列排，`read_face.rs::pack_index`）⇒ 用真函数逐行现算：
+            // 用户说的话（摘要 · 时刻）· 带工具调用的回复 · 系统注入 · 子运行里带代码块与全宽字的一行。
+            let mut rows: Vec<Value> = [
+                r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,
+                r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"role":"assistant","content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+                r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"role":"user","content":"meta"}}"#,
+            ]
+            .iter()
+            .map(|l| {
+                serde_json::to_value(crate::observe::history_query::index_row(l.as_bytes(), 0, l.len() as u64)).unwrap()
+            })
+            .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
                 serde_json::to_value(crate::observe::history_query::index_row(

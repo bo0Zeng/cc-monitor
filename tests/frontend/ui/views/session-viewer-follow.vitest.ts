@@ -150,4 +150,26 @@ describe("查看器跟着长", () => {
     v.dispose();
     expect(follow.stopped).toBe(1);
   });
+
+  it("刚进「在看」名单（from）⇒ 已有的最后一行之后按行号补到上流点；期间流里先来的上流点之后的行等补完再接（不丢前面那段）", async () => {
+    const v = await mount([userLine(1, "u1", "a")], { follow: { sid: "s1", live: true } });
+    let release!: () => void;
+    vi.mocked(readLines).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          release = () => r({ from: 2, next: 4, eof: false, payloads: [assistantLine(2, "a2", "b"), userLine(3, "u3", "c")] } as never);
+        }),
+    );
+    emit({ t: "from", path: "/p/s1.jsonl", seq: 4 });
+    emit({ t: "lines", lines: [assistantLine(4, "a4", "d")] }); // 上流点那一行比补的先到
+    expect(cards(v), "补完之前不该先接后面的").toEqual(["u1"]);
+    release();
+    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2", "u3", "a4"]));
+    expect(vi.mocked(readLines).mock.calls.map((c) => [c[2], c[3]])).toEqual([[2, 4]]);
+    emit({ t: "from", path: "/p/other.jsonl", seq: 9 }); // 别的那份记录
+    emit({ t: "lines", lines: [userLine(5, "u5", "e")] });
+    expect(cards(v)).toEqual(["u1", "a2", "u3", "a4", "u5"]);
+    expect(vi.mocked(readLines)).toHaveBeenCalledTimes(1);
+  });
 });
+

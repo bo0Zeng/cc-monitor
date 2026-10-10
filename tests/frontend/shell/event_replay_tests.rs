@@ -461,6 +461,8 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
                     "unseen",
                     "listed",
                     "snapshot_inflight",
+                    "watch",
+                    "turn_end",
                 ]
                 .into_iter()
                 .find(|k| v.get(*k).is_some())
@@ -1160,6 +1162,14 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             session_id: "s".into(),
             off: b::RecordBody::from_json("[]".into()).unwrap(),
         }),
+        F::Watch(b::SessionWatchPayload {
+            session_id: "s".into(),
+            path: "/p".into(),
+            seq: 3,
+        }),
+        F::TurnEnd(b::SessionTurnEndPayload {
+            session_id: "s".into(),
+        }),
     ];
     let key = |f: &F| -> String {
         let v = serde_json::to_value(f).unwrap();
@@ -1347,4 +1357,157 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
     assert_eq!(take(), vec![], "清过的不再退");
     r.stop("v", 1);
     assert_eq!(take(), vec![("box-a".to_string(), "t-5".to_string())]);
+}
+
+// ==== 「在看哪几个会话」（`stream-watch`）====
+
+fn watch_from(sid: &str, seq: u64) -> crate::ui_contract::SessionWatchPayload {
+    crate::ui_contract::SessionWatchPayload {
+        session_id: sid.into(),
+        path: format!("/p/{sid}.jsonl"),
+        seq,
+    }
+}
+
+/// 名单 ＝ 主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话；主窗口没报过 ⇒ 不报（全看）。
+/// 报了一份不一样的 · 查看窗来了 / 走了 ⇒ 醒一次；同一份再报一遍不醒。
+#[tokio::test]
+async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_machine() {
+    let (r, _rec) = hub();
+    let mut ticks = r.watch_changes();
+    r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 10);
+    assert_eq!(r.watched(&local()), None, "主窗口没报过就不该替那台报名单");
+    assert!(ticks.has_changed().unwrap());
+    ticks.mark_unchanged();
+
+    r.set_main_watch([
+        ("<local>".to_string(), "a".to_string()),
+        ("box".to_string(), "c".to_string()),
+    ]);
+    assert!(ticks.has_changed().unwrap());
+    ticks.mark_unchanged();
+    let set = |v: &[&str]| {
+        v.iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>()
+    };
+    assert_eq!(r.watched(&local()), Some(set(&["a", "b"])));
+    assert_eq!(
+        r.watched(&crate::origin::Origin("box".into())),
+        Some(set(&["c"]))
+    );
+    assert_eq!(
+        r.watched(&crate::origin::Origin("far".into())),
+        Some(set(&[])),
+        "报过了 ⇒ 没在看的那台报空名单"
+    );
+
+    r.set_main_watch([
+        ("<local>".to_string(), "a".to_string()),
+        ("box".to_string(), "c".to_string()),
+    ]);
+    assert!(!ticks.has_changed().unwrap(), "同一份再报一遍不该醒");
+
+    r.stop("viewer-b", 1);
+    assert!(ticks.has_changed().unwrap());
+    assert_eq!(r.watched(&local()), Some(set(&["a"])));
+}
+
+/// 「从第 seq 行起上流」：留存里 seq 之下那段与 seq 隔着缺口 ⇒ 整段丢、之后更低的行不进（F5 重放的是连着的一段）；
+/// 连着的不动。会话流里交一格 `watch`（不吃 credit），只给那台、订了那个会话的订阅。
+#[tokio::test]
+async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_session() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 0);
+    r.subscribe("viewer-a", 1, &local(), "session-lines/a", None, 0);
+    r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 0);
+    r.ready_point(None).await;
+    let mut held = lines("a", 0..3);
+    held.extend(lines("b", 0..3));
+    r.on_line_batch_awaited(held).await;
+    rec.clear();
+
+    r.on_watch_from(&local(), vec![watch_from("a", 10), watch_from("b", 3)]);
+    assert_eq!(seqs_of(&r, "a"), Vec::<u64>::new(), "隔着缺口的旧尾巴该丢");
+    assert_eq!(seqs_of(&r, "b"), vec![0, 1, 2], "连着的不该动");
+    r.on_line_batch_awaited(lines("a", 5..6)).await; // 迟到的、比上流点低的
+    assert_eq!(
+        seqs_of(&r, "a"),
+        Vec::<u64>::new(),
+        "上流点之下的不该再进留存"
+    );
+
+    let got: Vec<(String, u64, String, u64)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(label, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => {
+                    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                    let w = v.get("watch")?;
+                    Some((
+                        label.clone(),
+                        *id,
+                        w["session_id"].as_str().unwrap().to_string(),
+                        w["seq"].as_u64().unwrap(),
+                    ))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+    let mut got = got;
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            ("viewer-a".to_string(), 1, "a".to_string(), 10),
+            ("viewer-b".to_string(), 1, "b".to_string(), 3),
+            ("w".to_string(), 1, "a".to_string(), 10),
+            ("w".to_string(), 1, "b".to_string(), 3),
+        ],
+        "credit 0 也该交到（不吃 credit），且只给订了那个会话的"
+    );
+}
+
+/// 一轮结束（那台的 `turn_end` 帧，在不在看都来）⇒ 会话流一格 `turn_end`（credit 0 也交），只给那台、订了那个会话的订阅。
+#[tokio::test]
+async fn a_turn_end_reaches_that_machines_subscribers_of_that_session_without_credit() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 0);
+    r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 0);
+    r.subscribe(
+        "far",
+        1,
+        &crate::origin::Origin("box".into()),
+        "session-lines",
+        None,
+        0,
+    );
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_turn_end(&local(), "a".to_string());
+    let got: Vec<(String, String)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(label, _, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => {
+                    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                    Some((
+                        label.clone(),
+                        v.get("turn_end")?["session_id"].as_str()?.to_string(),
+                    ))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(got, vec![("w".to_string(), "a".to_string())]);
 }

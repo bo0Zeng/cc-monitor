@@ -146,8 +146,9 @@ export class FakeBackend {
       return Promise.reject({ err: "Unsupported", body: [] });
     }
     try {
-      const v = handler(origin, req, this.world);
-      const delay = this.world.opDelayMs?.[op] ?? 0;
+      const v = foldByView(op, handler(origin, req, this.world), args.view);
+      // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。
+      const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
       const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
       return later.then(
         // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
@@ -324,3 +325,41 @@ function pluginDefault(cmd: string, args: Record<string, unknown>): unknown {
   if (cmd === "plugin:dialog|open" || cmd === "plugin:dialog|save") return null;
   return null;
 }
+
+/**
+ * 照出口交的声明裁记录（真后端 `faces/project.rs` 那一处的小抄：只认桌面交的那几种路径 ——
+ * `blocks[type=X].Y` · `results.*.Y`）。认不出的路径 ⇒ 抛（宁可这张图截失败，也不交一份没裁的冒充裁过）。
+ */
+function foldByView(op: string, v: unknown, view: unknown): unknown {
+  const paths = (view as { omit?: { record?: string[] } } | null | undefined)?.omit?.record;
+  if (!paths || (op !== "history-page" && op !== "history-lines")) return v;
+  const lines = (v as { lines?: Array<{ record: Record<string, unknown> }> }).lines ?? [];
+  const folded = lines.map((l) => ({ ...l, record: omitCells(l.record, paths) }));
+  return { ...(v as object), lines: folded };
+}
+
+function omitCells(rec: Record<string, unknown>, paths: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...rec };
+  for (const p of paths) {
+    const block = /^blocks\[type=([a-z_]+)\]\.(\w+)$/.exec(p);
+    const result = /^results\.\*\.(\w+)$/.exec(p);
+    if (block && Array.isArray(out.blocks)) {
+      out.blocks = (out.blocks as Array<Record<string, unknown>>).map((b) => {
+        if (b.type !== block[1]) return b;
+        const { [block[2]]: _gone, ...rest } = b;
+        return rest;
+      });
+    } else if (result && out.results && typeof out.results === "object") {
+      out.results = Object.fromEntries(
+        Object.entries(out.results as Record<string, Record<string, unknown>>).map(([k, r]) => {
+          const { [result[1]]: _gone, ...rest } = r;
+          return [k, rest];
+        }),
+      );
+    } else if (!block && !result) {
+      throw new Error(`shots: 假后端认不出声明里的路径 ${p}`);
+    }
+  }
+  return out;
+}
+

@@ -22,8 +22,14 @@ use futures::stream::BoxStream;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// 句柄看见的一次 `call`：`(origin, op, payload, cancel)`。
-type Seen = (String, String, Vec<u8>, CancelToken);
+/// 句柄看见的一次 `call`：`(origin, op, payload, view, cancel)`。
+type Seen = (
+    String,
+    String,
+    Vec<u8>,
+    Option<serde_json::Value>,
+    CancelToken,
+);
 
 /// 合成句柄：按 `op` 演三种对端 —— 回声 · 永不回答 · 说「不行」。
 #[derive(Default)]
@@ -37,6 +43,7 @@ impl Backends for Fake {
         origin: Origin,
         op: Op,
         payload: Body,
+        view: Option<serde_json::Value>,
         _left: Duration,
         cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
@@ -44,6 +51,7 @@ impl Backends for Fake {
             origin.as_wire_str().to_string(),
             op.0.clone(),
             payload.0.clone(),
+            view,
             cancel,
         ));
         match op.0.as_str() {
@@ -86,6 +94,7 @@ async fn payload_origin_and_op_reach_the_backend_verbatim() {
         Origin("devbox".into()),
         "echo".into(),
         payload.clone(),
+        Some(serde_json::json!({"omit": {"record": ["results.*.patch"]}})),
         Duration::from_secs(5),
         None,
     )
@@ -97,6 +106,11 @@ async fn payload_origin_and_op_reach_the_backend_verbatim() {
     assert_eq!(seen[0].0, "devbox", "origin 没原样到句柄");
     assert_eq!(seen[0].1, "echo", "op 没原样到句柄");
     assert_eq!(seen[0].2, payload, "句柄看见的载荷与发出的不同");
+    assert_eq!(
+        seen[0].3,
+        Some(serde_json::json!({"omit": {"record": ["results.*.patch"]}})),
+        "出口声明没原样到句柄"
+    );
 }
 
 #[tokio::test]
@@ -108,6 +122,7 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
         Origin("<local>".into()),
         "hang".into(),
         Vec::new(),
+        None,
         Duration::from_millis(80),
         None,
     )
@@ -129,7 +144,7 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
     assert!(started.elapsed() < Duration::from_secs(3), "没被截断");
     let seen = fake.seen.lock().unwrap();
     assert!(
-        seen[0].3.is_cancelled(),
+        seen[0].4.is_cancelled(),
         "超时了却没拨句柄的撤单手柄 —— 对端撤活那一下（尽力）丢了"
     );
 }
@@ -142,6 +157,7 @@ async fn backend_errors_pass_through_unchanged() {
         Origin("devbox".into()),
         "refuse".into(),
         Vec::new(),
+        None,
         Duration::from_secs(5),
         None,
     )
@@ -161,6 +177,7 @@ async fn backend_errors_pass_through_unchanged() {
         Origin("devbox".into()),
         "other".into(),
         Vec::new(),
+        None,
         Duration::from_secs(5),
         None,
     )
@@ -419,6 +436,7 @@ async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
         Origin("devbox".into()),
         "hang".to_string(),
         Vec::new(),
+        None,
         Duration::from_secs(30),
         Some(id.clone()),
     );
@@ -444,7 +462,7 @@ async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
         "{got:?}"
     );
     assert!(
-        fake.seen.lock().unwrap()[0].3.is_cancelled(),
+        fake.seen.lock().unwrap()[0].4.is_cancelled(),
         "交给句柄的撤单手柄没拨下 —— 后端那一侧不会知道"
     );
     assert!(!cancel_inflight(&id), "有了结局之后在飞表里还挂着它");
@@ -458,6 +476,7 @@ async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
         Origin("devbox".into()),
         "hang".to_string(),
         Vec::new(),
+        None,
         Duration::from_secs(30),
         Some(early),
     )

@@ -417,6 +417,24 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `state: "failed"`，带 `why` string · `code` string? · `detail` string? —— 失败（那一句 ＋ 复制详情）
 - `state: "cancelled"` —— 撤了（`transfer-stop` / 本机流断了）
 
+#### `WatchFrom`
+
+`stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流（`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `path` | string | 这份会话记录在那台机器上的绝对路径 |
+| `seq` | number | 这条流从这一行起发它 |
+
+#### `WatchReply`
+
+`stream-watch` 的应答。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `from` | [WatchFrom] | 刚进名单的会话每份记录一格（先前就在名单里的不回） |
+
 #### `Request`
 
 **入方向**请求信封。
@@ -460,6 +478,22 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `target` | → | 要撤的那条命令的 `id` |
+
+#### `stream-watch`
+
+这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单不上这条流，宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sids` | → | 在看的会话 id（串数组；空 ＝ 一个都不看） |
+| `from` | ← | 刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回） |
+| `path` | ← | `from[]`：那份记录在那台机器上的绝对路径 |
+| `seq` | ← | `from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补 |
+| `sid` | ← | `from[]`：会话 id |
+
+码：`bad_args`
 
 #### `link-open`
 
@@ -1897,11 +1931,20 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `body` | ← | 稀疏表：正文那五个数（`at` 行号差 · `ch` `cj` `pl` `cb` `cl`；五个全 0 的行不进表） |
+| `classes` | ← | 本份里出现过的记录类（`t` 列的号从 1 起指它） |
+| `count` | ← | 行数（每一列都这么长） |
 | `end` | ← | 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset` |
+| `fd` | ← | 列：折叠单元数（0 ＝ 没有） |
 | `from` | ← | 起点字节 |
+| `inputs` | ← | 稀疏表：用户输入的摘要 `x` 与时刻 `ts`（`at` 行号差；没有时刻 ⇒ 空串） |
+| `n` | ← | 列：行字节长（含换行） |
+| `o` | ← | 列：行起点与上一行末尾的字节差（第一行与 `from` 比；连着 ＝ 0） |
 | `offset` | → | 从哪个字节起（缺省 0；续传带上次尾行的 `end`） |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `rows` | ← | 每个可计行一条 `IndexRow`（见第 6 节） |
+| `sp` | ← | 稀疏表：来源（`at` 行号差 · `v`） |
+| `t` | ← | 列：记录类的号（0 ＝ 不进界面） |
+| `u` | ← | 列：记录 id（没有 ⇒ null） |
 | `until` | → | 可选：只收起点 `< until` 的行 |
 
 码：`bad_args` · `failed` · `too_large`

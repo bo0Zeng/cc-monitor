@@ -1,4 +1,4 @@
 {
   "credit": ["batch", "file_notice", "line"],
-  "exempt": ["activity", "branch", "container", "ended", "idle", "listed", "live", "runs", "snapshot_inflight", "unseen"]
+  "exempt": ["activity", "branch", "container", "ended", "idle", "listed", "live", "runs", "snapshot_inflight", "turn_end", "unseen", "watch"]
 }

@@ -31,6 +31,15 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
 | `--tz <IANA 名>` | 看的那一台的时区（如 `Asia/Shanghai`）：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。常驻那条连接在 attach 行旁边带同名一格 `tz`（不进 `flags`）。见 §4「时刻按谁的钟」 |
 
+### 流只发要看的会话
+
+一条流用 `stream-watch {sids}` 报它此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · `turn_end` · 文件重读 / 不在了 · `changed` 照发。
+应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
+
+桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
+`from[]` 原样进会话流（`watch` 格，不吃 credit）：tab 与查看窗补上 `[已有, seq)`（缺得不多按行号取到 `seq`；缺得多 ⇒ tab 整份重来、只取 `seq` 之下一截尾巴，更早的往上翻再取）；壳的留存同一拍修成连着的一段（F5 重放不出洞）。
+一轮结束的系统通知认 `turn_end`（会话流的 `turn_end` 格），不认行。
+
 ## 3. hello：先读它，再说话
 
 连上之后后端先发一帧 `hello`，**客户端读到它之前不许写命令**（后端侧 reader 要一个只有 flush 过 hello 才拿得到的见证才起得来）。几个面各管一件事：

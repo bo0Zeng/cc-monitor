@@ -1,28 +1,18 @@
 /**
- * 代理完成一轮的系统通知：实时到达（非批量重放）的回复记录带 `endsTurn`（判定只在后端，与帧 `turn_end` 同一个）→ 窗口在后台时发系统通知把用户叫回来。
+ * 代理完成一轮的系统通知：会话流里的 `turn_end` 格（那台后端的帧 `turn_end`，在不在看都来 —— 没在看的会话行不上流，
+ * 通知不能再认行）→ 窗口在后台时发系统通知把用户叫回来。一轮结束的判定只在后端（`agents/<名>/turn.rs`）。
  *
- * 误报防线（顺序即短路序，前五道全同步、零热路径成本）：
- * 1. inBatch 跳过——启动重放 / SSH 重连 chunked 重放 / 历史灌入全走批量路径；
- * 2. 不是回复 / 不是一轮结束跳过；
- * 3. 时间戳新鲜度（|now−ts| ≤ 90s）——批外漏网的旧行（如乱序补发）兜底；
- * 4. per-会话防抖 10s；
- * 5. 窗口聚焦跳过（用户正看着，不打扰）；
- * 6.（异步尾）设置开关 `notifyTurnEnd`——只在真 turn-end 才读配置，无需缓存失效;
+ * 误报防线（顺序即短路序）：
+ * 1. per-会话防抖 10s；
+ * 2. 窗口聚焦跳过（用户正看着，不打扰）；
+ * 3.（异步尾）设置开关 `notifyTurnEnd`——只在真 turn-end 才读配置，无需缓存失效;
+ * 那一格不进留存、不重放 ⇒ 启动重放 · 按行号取回的历史都不会经过这里（从前认行时要靠批模式 · 时间戳新鲜度挡）。
  *
  * 依赖注入（deps）纯为可测：生产用默认实现，vitest 全量替换。
  */
 import { getBehavior } from "./behavior";
 import { commands } from "./ipc/commands";
 import { copyText } from "./copy-table";
-
-/**
- * onLine payload 的最小形状（生成的 `JsonlLinePayload` 结构兼容）。
- * 不直接用生成的那个：这里只要「够不够判一轮结束」那几格（最小契约，依赖注入全量替换才可测）。
- * 子运行的记录不走主会话的行（它们进运行表），这里见到的全是主运行的记录。
- */
-export interface TurnNotifyPayload {
-  record?: { t?: string; at?: string; atMs?: number; endsTurn?: boolean };
-}
 
 export interface TurnNotifyDeps {
   isFocused(): boolean;
@@ -31,9 +21,6 @@ export interface TurnNotifyDeps {
   send(title: string, body: string): Promise<void>;
 }
 
-// 已知限制：新鲜度用本机时钟对记录时间戳——远端主机时钟漂移 >90s 时该主机的
-// 通知会被整体吞掉（只漏报不误报，方向安全）。
-const FRESH_MS = 90_000;
 const DEBOUNCE_MS = 10_000;
 
 export class TurnEndNotifier {
@@ -62,15 +49,10 @@ export class TurnEndNotifier {
     };
   }
 
-  /** tabs.onLine 每行调用；内部自筛，非 turn-end 的行零开销返回。 */
-  observe(sid: string, tabTitle: string, payload: TurnNotifyPayload, inBatch: boolean): void {
-    if (this.disabled || inBatch) return;
-    const rec = payload?.record;
-    if (!rec || rec.t !== "reply" || rec.endsTurn !== true) return;
+  /** 会话流的 `turn_end` 格（`TabManager.onTurnEnd`）：那个会话一轮结束了。 */
+  observe(sid: string, tabTitle: string): void {
+    if (this.disabled) return;
     const now = this.deps.now();
-    // 那条记录的时刻：后端解好的毫秒（`atMs`），界面不解析 `at`。
-    const ts = rec.atMs;
-    if (ts === undefined || Math.abs(now - ts) > FRESH_MS) return;
     const last = this.lastNotify.get(sid) ?? 0;
     if (now - last < DEBOUNCE_MS) return;
     if (this.deps.isFocused()) return;

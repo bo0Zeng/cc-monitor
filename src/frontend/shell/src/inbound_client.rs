@@ -283,7 +283,7 @@ impl InboundClient {
         args: Value,
         timeout: Duration,
     ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, tokio::time::Instant::now() + timeout)
+        self.send_until(cmd, args, None, tokio::time::Instant::now() + timeout)
             .await
     }
 
@@ -299,14 +299,27 @@ impl InboundClient {
         args: Value,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, deadline).await
+        self.send_until(cmd, args, None, deadline).await
     }
 
-    /// [`Self::call`] 与 [`Self::call_until`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
+    /// 与 [`Self::call_until`] 同一件事，外加出口的声明（`view`：要哪几格 · 哪几格不要）——
+    /// 原样放进请求信封的 `view` 那一格，后端照它把成品裁好再装运（`stream/inbound/views.rs`）。本侧不读它。
+    pub async fn call_until_viewed(
+        &self,
+        cmd: &str,
+        args: Value,
+        view: &Value,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
+        self.send_until(cmd, args, Some(view), deadline).await
+    }
+
+    /// [`Self::call`] · [`Self::call_until`] · [`Self::call_until_viewed`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
     async fn send_until(
         &self,
         cmd: &str,
         args: Value,
+        view: Option<&Value>,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
         // 只为报错里那一格「等了多久」（`Timeout.after`）：这一问开始时还剩多少。
@@ -334,6 +347,7 @@ impl InboundClient {
             &args,
             Some(timeout),
             tz.as_deref(),
+            view,
         ));
         match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
             Ok(Ok(())) => {}
@@ -567,6 +581,7 @@ impl InboundClient {
             &serde_json::json!({ "target": target }),
             None,
             None,
+            None,
         );
         // `try_send`：这是 best-effort 的收尾，绝不为它阻塞调用方。
         if self.writes.try_send(WriteJob::Line(line)).is_err() {
@@ -606,13 +621,17 @@ struct RequestLine<'a> {
     /// 看的这一台的时区（IANA 名）：后端按它写回包里的「几点」（`IPC-PROTOCOL.md` §4）。
     #[serde(skip_serializing_if = "Option::is_none")]
     tz: Option<&'a str>,
+    /// 出口的声明（要哪几格 · 哪几格不要），原样搬上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    view: Option<&'a Value>,
 }
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
 ///
-/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?, tz?}`，`args` 可缺省）。
+/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?, tz?, view?}`，`args` 可缺省）。
 /// `within`：发起方这一发还愿意等多久（调用方给的，这里只换成毫秒搬上线；不足 1 ms 记 1）；`None` ⇒ 不带这一格。
 /// `tz`：看的这一台的时区（[`host_core::viewer_tz`]）；`None` ⇒ 不带（后端按 UTC 写）。
+/// `view`：出口的声明，原样搬上线；`None` ⇒ 不带这一格（＝ 全量）。
 ///
 /// # 为什么可以 `expect`
 ///
@@ -624,6 +643,7 @@ pub fn encode_request(
     args: &Value,
     within: Option<Duration>,
     tz: Option<&str>,
+    view: Option<&Value>,
 ) -> String {
     let within_ms = within.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1));
     let mut s = serde_json::to_string(&RequestLine {
@@ -632,6 +652,7 @@ pub fn encode_request(
         args,
         within_ms,
         tz,
+        view,
     })
     .expect("RequestLine 只含 &str/&Value/u64，序列化不可失败");
     s.push('\n');
@@ -677,6 +698,9 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
         old.shutdown();
     }
     set_link(origin, Link::Up);
+    // 换了一条新连接 ⇒ 不论那台原先是不是 `Up`（新的先登记、旧的后摘时一直是）都醒一次订阅者：
+    //   `stream_watch` 据它给新连接重报「在看」名单（新连接 ＝ 没报过）。
+    lock(link_book()).tick.send_modify(|t| *t += 1);
     // 断线时按过、还没用掉的「重新连接」许可作废（见 [`kick`]）。
     lock(link_book()).kicks.remove(origin);
     // 本机那一台的状态成品看的就是这条通道在不在。
@@ -802,6 +826,14 @@ pub const LOCAL_ORIGIN: &str = "<local>";
 pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
     L.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 此刻连着的每一台与它的客户端（`stream_watch` 据它给每条新连接报名单）。
+pub fn connected() -> Vec<(String, Arc<InboundClient>)> {
+    lock(registry())
+        .iter()
+        .map(|(o, c)| (o.clone(), c.clone()))
+        .collect()
 }
 
 /// 取某台主机当前的入方向客户端。没连上 / 还没收到 hello → `None`。

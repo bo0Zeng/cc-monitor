@@ -6,12 +6,15 @@
  * 各判据 mock 的是 `@tauri-apps/api/core` 的 `invoke` —— 本文件只帮它们造「那一跳会回什么」。
  */
 import { copyText } from "../../src/frontend/ui/copy-table";
+import { packIndex } from "./pack-index";
 
 /** `chan_call` 的实参（判据按 `op` 分派）。 */
 export interface ChanCallArgs {
   origin: string;
   op: string;
   payload: number[];
+  /** 出口的声明（`chan.call` 的 `view`）；没给 ⇒ `null`。 */
+  view?: unknown;
   leftMs: number;
   /** 带撤单的那一问的编号（撤单那一条 `chan_cancel` 按它找）；不带撤单 ⇒ `null`。 */
   callId?: string | null;
@@ -203,7 +206,7 @@ export async function sessionReadReply(which: SessionRead, res: unknown): Promis
   }
   switch (which) {
     case "read_session_index":
-      return chanReply({ from: r.from, end: r.end, rows: r.rows });
+      return chanReply(packIndex(r.from as number, r.end as number, r.rows as Array<Record<string, unknown>>));
     case "list_user_inputs":
       return chanReply({ from: r.from, end: r.end, entries: r.entries });
     case "find_in_session":

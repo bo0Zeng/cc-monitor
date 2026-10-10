@@ -1431,3 +1431,41 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
     // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
     assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "record": "x"})).is_none());
 }
+
+/// ★ 旁路快照那一页（`read_page` → `history-read`）交「折起那一行」那份声明：就是 `src/shared/views/folded-record.json`
+/// （界面 `record-reads.ts` 用同一份），放在请求信封的 `view` 那一格、不进 `args`。
+#[tokio::test]
+async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
+    let origin = Origin("proj6-folded-view".into());
+    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
+    let o = origin.clone();
+    let asking = tokio::spawn(async move {
+        read_page(
+            &o,
+            "/p/s.jsonl",
+            0,
+            Some(90),
+            Deadline::within(Duration::from_secs(5)),
+        )
+        .await
+    });
+    let req = next_request(&mut peer, Duration::from_secs(5))
+        .await
+        .expect("一行都没发");
+    let shared: Value =
+        serde_json::from_str(include_str!("../../../src/shared/views/folded-record.json"))
+            .expect("那份声明是 JSON");
+    assert_eq!(req["cmd"], "history-read");
+    assert_eq!(req["view"], shared, "旁路快照没交那份声明：{req}");
+    assert!(req["args"].get("view").is_none(), "声明塞进了 args");
+    client.route_reply(
+        req["id"].as_str().expect("id"),
+        true,
+        None,
+        None,
+        None,
+        Some(json!({"rows": [], "next": 90, "eof": true})),
+    );
+    assert!(asking.await.expect("task").is_ok());
+    inbound_client::unregister(origin.as_wire_str(), &client);
+}

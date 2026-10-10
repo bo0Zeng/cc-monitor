@@ -84,22 +84,26 @@ function fetchOmitted<T>(
   into: HTMLElement,
   pick: (rec: LineRecord) => T | undefined,
   then: (got: T) => void,
-): void {
+): Promise<boolean> {
+  // 上一次取失败留下的那一句换成这一次的「读取中」。
+  for (const old of into.querySelectorAll(":scope > .block-omitted[data-failed]")) old.remove();
   const note = document.createElement("div");
   note.className = "block-body block-omitted";
   note.textContent = copyText("cards.omitted.loading");
   into.insertBefore(note, into.firstChild);
   const ask = ctx.fullRecord ? ctx.fullRecord(id) : Promise.reject(new Error(copyText("cards.omitted.noSource")));
-  void ask
+  return ask
     .then((rec) => {
       const got = rec ? pick(rec) : undefined;
       if (got === undefined) throw new Error(copyText("cards.omitted.gone"));
       note.remove();
       then(got);
+      return true;
     })
     .catch((e: unknown) => {
       note.dataset.failed = "";
       note.textContent = copyText("cards.omitted.failed", { why: e instanceof Error ? e.message : String(e) });
+      return false;
     });
 }
 
@@ -608,21 +612,19 @@ function buildToolUseCard(
   d.addEventListener("toggle", () => {
     if (!d.open || argsRendered || fetching) return;
     if (omitted) {
+      // 在飞那一问落地之前不再问（收起再展开 · 一次点开来两个 toggle 都不许画两份）；取不到 ⇒ 下次展开再取。
       fetching = true;
-      fetchOmitted(
+      void fetchOmitted(
         ctx,
         recordId,
         wrap,
         (rec) => blocksOf(rec).find((b): b is Extract<Block, { type: "tool_use" }> => b.type === "tool_use" && b.id === callId),
         (full) => {
-          fetching = false;
           argsRendered = true;
           buildArgs(full, card === "command" ? commandOf(full.input) : null);
         },
-      );
-      // 取不到 ⇒ 下次展开再取
-      void Promise.resolve().then(() => {
-        if (!argsRendered) fetching = false;
+      ).then(() => {
+        fetching = false;
       });
       return;
     }
@@ -793,7 +795,7 @@ function injectOrBuildToolResult(
     const open = (): void => {
       if (done || !(host as HTMLDetailsElement).open) return;
       done = true;
-      fetchOmitted(
+      void fetchOmitted(
         ctx,
         facts.id,
         el,
@@ -821,7 +823,7 @@ function injectOrBuildToolResult(
   const host = ctx.toolUseElements.get(block.for);
   // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
   // 正文被省掉了 ⇒ 派出卡里先写核心给的预览（展开那张卡时它自己读那个子运行的记录）。
-  if (host && settleRunCard(host, text ?? preview, block.isError === true)) return null;
+  if (host && settleRunCard(host, text ?? preview, block.isError === true, facts.results[block.for]?.chars ?? 0)) return null;
   // 提问 / 计划答了之后：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
   const answered = facts.results[block.for];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {

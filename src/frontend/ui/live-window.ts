@@ -38,6 +38,13 @@ export class SeqSet {
     return this.edges.length === 0 ? -1 : this.edges[this.edges.length - 1] - 1;
   }
 
+  /** 见过的、比 `x` 小的最大行号（没有 ⇒ -1）。 */
+  maxBelow(x: number): number {
+    const i = this.segAtOrAfter(x - 1);
+    if (i < this.edges.length / 2 && this.edges[2 * i] <= x - 1) return x - 1;
+    return i === 0 ? -1 : this.edges[2 * i - 1] - 1;
+  }
+
   /** 第一个 `hi > x` 的段的下标（段号，不是 edges 下标）。 */
   private segAtOrAfter(x: number): number {
     let l = 0;

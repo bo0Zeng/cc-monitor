@@ -110,8 +110,11 @@ export function markRunWindow(card: HTMLElement, open: boolean): void {
   st.head.title = open ? copyText("agentsPanel.row.openedHint") : copyText("agentsPanel.row.openHint");
 }
 
-/** 派出那一方拿到的那次结果：交回的结果（几个字）或报错，收在卡里、可展开。是这种卡 ⇒ `true`。 */
-export function settleRunCard(card: HTMLElement, text: string, failed: boolean): boolean {
+/**
+ * 派出那一方拿到的那次结果：交回的结果（几个字）或报错，收在卡里、可展开。是这种卡 ⇒ `true`。
+ * `chars` 是核心出的那一格（`results[id].chars`）—— 出口省掉结果正文时 `text` 只是预览，字数不从它数。
+ */
+export function settleRunCard(card: HTMLElement, text: string, failed: boolean, chars: number): boolean {
   const st = cardState.get(card);
   if (!st) return false;
   for (const old of card.querySelectorAll('[data-role="run-result"]')) old.remove();
@@ -120,7 +123,7 @@ export function settleRunCard(card: HTMLElement, text: string, failed: boolean):
   d.dataset.role = "run-result";
   d.dataset.failed = failed ? "1" : "0";
   const sum = document.createElement("summary");
-  sum.textContent = failed ? copyText("runCard.result.failed") : copyText("runCard.result.done", { n: [...text].length });
+  sum.textContent = failed ? copyText("runCard.result.failed") : copyText("runCard.result.done", { n: chars });
   d.appendChild(sum);
   // 正文展开时才建（交回的结果可能很长；收着的卡不为它付排版）。
   d.addEventListener("toggle", () => {

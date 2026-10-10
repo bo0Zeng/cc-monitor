@@ -220,11 +220,13 @@ impl Client {
         let runs_on = self.runs_on_after_cancel(origin, op);
         let (o, name) = (origin.clone(), op.0.clone());
         self.exchange(
+            // 进程外前端（文件窗口）不交出口声明：它要的都是全量。
             move |id| Head::Call {
                 id,
                 origin: o,
                 op: name,
                 left,
+                view: None,
             },
             payload,
             budget,
