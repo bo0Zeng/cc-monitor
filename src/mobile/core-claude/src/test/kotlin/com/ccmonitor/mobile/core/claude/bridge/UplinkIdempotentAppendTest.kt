@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.bridge
 
 import com.ccmonitor.mobile.core.claude.command.PipeCommands
-import com.ccmonitor.mobile.core.claude.transport.DaemonCommands
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -179,7 +178,7 @@ class UplinkIdempotentAppendTest {
     @Test
     fun theWholeSendIsExactlyOneRemoteExec() =
         runTest {
-            val ch = CountingChannel("${PipeCommands.APPENDED_MARKER}\n\n${DaemonCommands.QUERY_OK_MARKER}\n")
+            val ch = CountingChannel("${PipeCommands.APPENDED_MARKER}\n\n${PipeCommands.OK_MARKER}\n")
             val sink = PipeUplinkSink(ch, session()) { null }
 
             sink.send(SendRequest("local#0", "一条消息"))
@@ -199,7 +198,7 @@ class UplinkIdempotentAppendTest {
     @Test
     fun theSecondSendLandsInItsOwnAlreadyThereBucket() =
         runTest {
-            val marker = DaemonCommands.QUERY_OK_MARKER
+            val marker = PipeCommands.OK_MARKER
             val added = CountingChannel("${PipeCommands.APPENDED_MARKER}\n\n$marker\n")
             val dup = CountingChannel("${PipeCommands.DUPLICATE_MARKER}\n\n$marker\n")
 

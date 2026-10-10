@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.core.claude.bridge
 
-import com.ccmonitor.mobile.core.claude.transport.DaemonCommands
+import com.ccmonitor.mobile.core.claude.command.PipeCommands
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -27,7 +27,7 @@ class PipeSessionInterruptTest {
     private val sid = "abc123-DEF_456"
 
     private class RecordingChannel(
-        private val stdout: String = "\n${DaemonCommands.QUERY_OK_MARKER}\n",
+        private val stdout: String = "\n${PipeCommands.OK_MARKER}\n",
     ) : RemoteCommandChannel {
         val commands = mutableListOf<String>()
 
@@ -77,7 +77,7 @@ class PipeSessionInterruptTest {
             assertTrue("追进 in.ndjson：$cmd", cmd.contains("'.aterm/s/$sid/in.ndjson'"))
             assertTrue("用 printf 不用 echo：$cmd", cmd.startsWith("printf '%s\\n' "))
             assertTrue("追加不是覆盖：$cmd", cmd.contains(">>"))
-            assertTrue("要肯定的成功证据（exec 拿不到退出码）：$cmd", cmd.contains(DaemonCommands.QUERY_OK_MARKER))
+            assertTrue("要肯定的成功证据（exec 拿不到退出码）：$cmd", cmd.contains(PipeCommands.OK_MARKER))
         }
 
     /**

@@ -16,7 +16,7 @@ import java.io.File
  * |---|---|
  * | ① | `const val ATERM_HOME` / `const val PIPE_SESSION_PREFIX` 各恰好定义一处 |
  * | ② | `.aterm` 与 `atermpipe-` 两个字面在生产代码里的每文件命中数逐字钉死 |
- * | ③ | `.cc-monitor` 只出现在 `DaemonLocator` 的只读候选表 |
+ * | ③ | `.cc-monitor` 只出现在 `BackendBin`（部署落点）那一处 |
  *
  * 行为那一道（会写远端的命令串，其真实输出里的路径落在哪）住 `core-claude` 的 `NamespacePrefixTest`。
  * 扫描防「新长出来一处写路径」，真实输出防「这几支偷偷改了落点」。
@@ -93,16 +93,13 @@ class NamespaceLiteralScanTest {
     }
 
     /**
-     * `.cc-monitor` 这个字面在生产代码里只许出现在 `DaemonLocator`。
+     * `.cc-monitor` 这个字面在生产代码里只许出现在 `BackendBin`：那里它是 `"$HOME"/.cc-monitor/bin/ccm`，
+     * 拼后端命令只在那一处，手机不往后端的名字空间写别的东西。
      *
-     * 那里它是 `SHARED_BIN_DIR = ".cc-monitor/bin/"`，唯一用途是 `DaemonLocator.candidates`
-     * 拼出 `[ -x "$HOME"/.cc-monitor/bin/… ]` 这种存在性探测，纯读
-     * （「它真的没写东西」由 `NamespacePrefixTest.theDaemonLocatorCandidatesOnlyProbeAndNeverWrite` 拿真实输出证）。
-     *
-     * 定值钉：多一个文件红（有人往后端名字空间伸手了），少一个也红（候选表挪窝，要重新过眼）。
+     * 定值钉：多一个文件红（有人往后端名字空间伸手了），少一个也红（落点挪窝，要重新过眼）。
      */
     @Test
-    fun theCcMonitorLiteralOnlyLivesInTheReadOnlyLocator() {
+    fun theCcMonitorLiteralOnlyLivesInBackendBin() {
         val root = repoRoot()
         val sources = productionSources(root)
         assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 150)
@@ -117,7 +114,7 @@ class NamespaceLiteralScanTest {
         assertTrue("前提：`$CC_MONITOR` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", hits > 0)
         assertEquals(
             "`$CC_MONITOR` 是后端的名字空间：我们只读、绝不写。" +
-                "合法住处是 `BackendBin`（部署落点）与 `DaemonLocator` 的只读候选表。",
+                "合法住处只有 `BackendBin`（部署落点）。",
             PINNED_CC_MONITOR_FILES,
             found.toSet(),
         )
@@ -239,13 +236,11 @@ class NamespaceLiteralScanTest {
             )
 
         /**
-         * 定值钉：`.cc-monitor` 的合法住处——`BackendBin`（部署落点 `~/.cc-monitor/bin/ccm`，拼后端命令只在那里），
-         * 以及还没删的 `DaemonLocator` 只读候选表（α 一轮完成那条流还用，随它一起删）。
+         * 定值钉：`.cc-monitor` 的合法住处——`BackendBin`（部署落点 `~/.cc-monitor/bin/ccm`，拼后端命令只在那里）。
          */
         private val PINNED_CC_MONITOR_FILES =
             setOf(
                 "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/OneShot.kt",
-                "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonLocator.kt",
             )
     }
 }

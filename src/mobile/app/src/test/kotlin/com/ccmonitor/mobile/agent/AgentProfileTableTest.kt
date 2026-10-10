@@ -36,7 +36,6 @@ class AgentProfileTableTest {
             "dirSetting=${p.appDefaultDirSetting}",
             p.invocation::class.simpleName,
             p.recordParser::class.simpleName,
-            p.turnEndDetector::class.simpleName,
             p.sessionLocator::class.simpleName,
             p.newSessionCatalog(fakeChannel, "/d")::class.simpleName,
         ).joinToString(" | ")
@@ -105,8 +104,7 @@ class AgentProfileTableTest {
     /**
      * wire 串 → 档案：`"codex"` 是 Codex，其余都是 Claude。
      *
-     * 这四行就是 `DaemonTransportTest` 里那四行的同义词（那边打的是薄读法 `agentKindFromWire`），
-     * 在这里再打一遍是因为表在这边：改 `wireName` 那一格时，这边先红。
+     * 表在这边：改 `wireName` 那一格时，这边先红。
      */
     @Test
     fun theWireNameMappingIsVerbatimWhatItWasBefore() {
@@ -150,10 +148,10 @@ class AgentProfileTableTest {
             listOf(
                 "ClaudeCode | Claude | claude | uplink=true | chatScreen=true | accountGate=true | parentUuid=true | " +
                     "ccmIdentity=true | dirSetting=AppDefaultClaudeDir | ClaudeInvocation | JsonlParser | " +
-                    "ClaudeTurnEndDetector | ClaudeSessionLocator | ClaudeSessionCatalog",
+                    "ClaudeSessionLocator | ClaudeSessionCatalog",
                 "Codex | Codex | codex | uplink=false | chatScreen=false | accountGate=false | parentUuid=false | " +
                     "ccmIdentity=false | dirSetting=null | CodexInvocation | CodexRecordParser | " +
-                    "CodexTurnEndDetector | CodexSessionLocator | CodexSessionCatalog",
+                    "CodexSessionLocator | CodexSessionCatalog",
             )
     }
 }

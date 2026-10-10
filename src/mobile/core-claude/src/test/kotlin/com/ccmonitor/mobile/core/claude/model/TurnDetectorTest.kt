@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.core.claude.model
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** parser 捕获 `stop_reason`。回合结束的判定本身在 [TurnEndDetectorTest]。 */
+/** parser 捕获 `stop_reason`。 */
 class TurnDetectorTest {
     @Test fun parserCapturesStopReason() {
         val r =

@@ -105,7 +105,7 @@ class PipeLauncherTest {
     /**
      * 成功证据绑在「会话真的存在」上，不是「send-keys 返回了」。
      *
-     * 用 `DaemonCommands.guarded` 包整条命令的话，那个 `&&` 只绑得住最后那条 send-keys：
+     * 用 `PipeCommands.guarded` 包整条命令的话，那个 `&&` 只绑得住最后那条 send-keys：
      * 会话没建出来、send-keys 发了，照样报「起成功」。
      */
     @Test
