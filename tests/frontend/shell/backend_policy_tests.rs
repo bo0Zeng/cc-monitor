@@ -395,7 +395,7 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
                 reader: ReaderEnd::CleanEof,
                 start_failure: None,
             },
-            "退出码 2",
+            "码=2",
         ),
         (
             "异常终止",
@@ -541,7 +541,7 @@ fn the_production_sink_takes_a_line_without_complaining() {
         rec.sink_error
     );
     assert!(
-        rec.line.contains("退出码 3"),
+        rec.line.contains("码=3"),
         "生产落点收到的那一行没带退出状态：{}",
         rec.line
     );
@@ -1187,16 +1187,27 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
                 "rsBackendPolicy.death.brief",
                 &[
                     ("kind", death_kind(&d).as_str()),
-                    ("status", exit_status(&d).as_str())
+                    ("ended", exit_status(&d).as_str())
                 ]
             ),
             "「{what}」的短摘要没走文案表"
         );
-        // 判定词与退出状态都在（界面上要读得出「怎么死的、退出码多少」）。
+        // 判定词与退出状态那句人话都在；裸码不上这一格（它进死亡账那一行 ＋ 复制详情）。
         assert!(
             brief.contains(&death_kind(&d)) && brief.contains(&exit_status(&d)),
             "「{what}」的短摘要丢了判定或退出状态：{brief}"
         );
+        if let Some(code) = exit_code(&d) {
+            assert!(
+                !brief.contains(&code),
+                "「{what}」的短摘要带了裸码 {code}：{brief}"
+            );
+            assert!(
+                ledger_line("o", &d).contains(&format!("码={code}")),
+                "「{what}」的码没进账行：{}",
+                ledger_line("o", &d)
+            );
+        }
         // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但要后端「停止产」）。
         let copy = death_detail(&d);
         assert!(
@@ -1232,10 +1243,9 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
 #[test]
 fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     let origin = "st2-读数接短摘要-甲";
-    // 这里原来用 `-1073741510` 当「任意崩溃码」—— 那个码今天有自己的人话（见下一族判据），
-    //   换一个没有人话的码（Windows 访问越界 `0xC0000005`），本条要的仍是「裸码照实报」。
+    // 一个闭集外的码（`0xC0000006`）：读数里说「原因不明」，裸码不上句子（它在账行 `码=` 与复制详情里）。
     let ev = DeathEvidence {
-        outcome: Outcome::Exited(-1073741819),
+        outcome: Outcome::Exited(-1073741818),
         handshake: Handshake::Spoke,
         reader: ReaderEnd::CleanEof,
         start_failure: None,
@@ -1252,8 +1262,13 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     assert_eq!(h.last_brief.as_deref(), Some(last_brief(&d).as_str()));
     let said = health_face(&h).summary;
     assert!(
-        said.contains("退出码 -1073741819"),
-        "读数里没有退出状态：{said}"
+        said.contains(&exit_status(&d)) && !said.contains("1073741818"),
+        "读数里没有退出状态那句人话，或带了裸码：{said}"
+    );
+    assert!(
+        rec.line.contains("码=-1073741818 (0xC0000006)"),
+        "账行没带码：{}",
+        rec.line
     );
     assert_eq!(
         ui_copy_violations(&said),
@@ -1331,7 +1346,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
                     "kind",
                     copy_core::copy_static!("rsBackendPolicy.death.crashed")
                 ),
-                ("status", said)
+                ("ended", said)
             ]
         )
     );
@@ -1345,7 +1360,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
                     "kind",
                     copy_core::copy_static!("rsBackendPolicy.death.refused")
                 ),
-                ("status", said)
+                ("ended", said)
             ]
         )
     );
@@ -1360,7 +1375,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
             Vec::<&str>::new(),
             "那句人话自己带了界面禁用的形状：{brief}"
         );
-        // 日志那一行同一个来源：也说人话（日志里要看码，去 `exit_status` 的判定一处看）。
+        // 日志那一行同一个来源：也说人话（码另起一格 `码=`）。
         assert!(
             ledger_line("o", d).contains(&format!("退出状态={said}")),
             "日志那一行没跟上：{}",
@@ -1369,30 +1384,31 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     }
 }
 
-/// 邻格对照：**只认那一个码**。差一的码、POSIX 的码、信号，照旧是裸码 ——
-/// 防「一律换成人话」那种写法让上一条也绿。
+/// 邻格对照：**只认闭集里那几个码**（控制台事件 · 访问越界）。差一的码、POSIX 的码说「原因不明」，
+/// 裸码只进 [`exit_code`]（死亡账那一行 ＋ 复制详情）—— 防「一律换成同一句人话」那种写法让上一条也绿。
 #[test]
-fn only_that_one_code_gets_words_the_neighbours_stay_bare() {
-    for code in [-1073741509, -1073741511, -1073741819, 1, 2, 255] {
+fn only_the_known_codes_get_words_the_neighbours_say_unknown() {
+    let av = Death::Crashed {
+        how: Outcome::Exited(-1073741819),
+    };
+    assert_eq!(
+        exit_status(&av),
+        copy_text("rsBackendPolicy.death.accessViolation", &[])
+    );
+    assert_eq!(exit_code(&av).as_deref(), Some("-1073741819 (0xC0000005)"));
+    for code in [-1073741509, -1073741511, -1073741818, 1, 2, 255] {
         let d = Death::Crashed {
             how: Outcome::Exited(code),
         };
-        assert_eq!(
-            exit_status(&d),
-            copy_text(
-                "rsBackendPolicy.status.exit",
-                &[("status", &code.to_string())]
-            ),
-            "码 {code} 被说成了别的"
-        );
+        let unknown = copy_text("reason.io.unknown", &[]);
+        assert_eq!(exit_status(&d), unknown, "码 {code} 被说成了别的");
         assert_eq!(
             exit_status(&Death::Refused { code }),
-            copy_text(
-                "rsBackendPolicy.status.exit",
-                &[("status", &code.to_string())]
-            ),
+            unknown,
             "被拒那一臂的码 {code} 被说成了别的"
         );
+        let raw = exit_code(&d).expect("有码却没交出码");
+        assert!(raw.starts_with(&code.to_string()), "码 {code} 交成了 {raw}");
     }
     let sig = Death::Crashed {
         how: Outcome::Signalled(9),

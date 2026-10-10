@@ -21,12 +21,13 @@ const POLICY_ALLOW_LOCAL: &str =
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExecPolicy {
     pub host: PsHost,
-    /// 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原话在 `error`。
+    /// 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
     pub effective: Option<String>,
     /// 按这一档，这一代会不会加载本地、未签名的 profile；说不清 ⇒ `None`。
     pub loads: Option<bool>,
     /// 组策略（`MachinePolicy` / `UserPolicy`）钉着 ⇒ 改当前用户那一档没用。
     pub group_policy: bool,
+    /// 问不到的原因词（原因词闭集里的一个；PowerShell / 系统的原话只记一行日志，不随应答走）。
     pub error: Option<String>,
 }
 
@@ -40,7 +41,7 @@ pub(crate) fn policy_loads_local_script(policy: &str) -> Option<bool> {
     }
 }
 
-/// [`POLICY_QUERY`] 那三行 → 现状。行数不对 ⇒ 说认不出（原话带上）。
+/// [`POLICY_QUERY`] 那三行 → 现状。行数不对 ⇒ 「内容无法解析」（那几行原话记一行日志）。
 pub(crate) fn read_policy_listing(host: PsHost, text: &str) -> ExecPolicy {
     let words: Vec<&str> = text
         .lines()
@@ -48,13 +49,8 @@ pub(crate) fn read_policy_listing(host: PsHost, text: &str) -> ExecPolicy {
         .filter(|l| !l.is_empty())
         .collect();
     let [effective, machine, user] = words[..] else {
-        return policy_unknown(
-            host,
-            copy_core::copy_text(
-                "rsPsPolicy.listing.unreadable",
-                &[("out", &text.trim().to_string())],
-            ),
-        );
+        tracing::warn!("powershell: policy listing unreadable: {:?}", text.trim());
+        return policy_unknown(host, copy_core::copy_text("reason.content.unparsable", &[]));
     };
     let pinned = |w: &str| !w.eq_ignore_ascii_case("undefined");
     ExecPolicy {
@@ -81,17 +77,28 @@ fn policy_unknown(host: PsHost, error: String) -> ExecPolicy {
 /// 问 / 设执行策略那一趟的期限：界面等别名那一族的预算是 30 s，收一档到 15 s。
 const POLICY_WITHIN: Deadline = Deadline::secs(15);
 
-/// 起那一代跑一段固定脚本：`Ok(stdout)`；起不来 / 非零退出 / 过了期限 ⇒ `Err(原话)`。这台不说 PowerShell ⇒ `Err`。
+/// 起那一代跑一段固定脚本：`Ok(stdout)`；起不来 / 非零退出 / 过了期限 ⇒ `Err(原因词)`，原话（系统报错 · 退出码 ＋ stderr）
+/// 在这里记一行日志、不随回。这台不说 PowerShell ⇒ 「未装」。
 fn run_fixed(host: PsHost, script: &str, within: Deadline) -> Result<String, String> {
     let cmd = super::powershell_on(host, script)
-        .ok_or_else(|| copy_core::copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
-    let out = cmd.run(within).map_err(|e| e.to_string())?;
+        .ok_or_else(|| copy_core::copy_text("reason.spawn.notInstalled", &[]))?;
+    let out = cmd.run(within).map_err(|e| {
+        tracing::warn!("powershell: {host:?} did not run: {e}");
+        match &e {
+            crate::platform::child::ChildFail::NotFound(io)
+            | crate::platform::child::ChildFail::Io(io) => copy_core::spawn_reason(io.kind()),
+            crate::platform::child::ChildFail::TimedOut { .. } => {
+                copy_core::io_reason(std::io::ErrorKind::TimedOut)
+            }
+        }
+    })?;
     if !out.status.success() {
-        return Err(format!(
-            "exit {:?}: {}",
+        tracing::warn!(
+            "powershell: {host:?} exit {:?}: {}",
             out.status.code(),
             String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        );
+        return Err(copy_core::io_reason(std::io::ErrorKind::Other));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -104,7 +111,7 @@ pub(crate) fn execution_policy(host: PsHost) -> ExecPolicy {
     }
 }
 
-/// 设成当前用户 `RemoteSigned`（[`POLICY_ALLOW_LOCAL`]）再现问一次。设的那一下报错（组策略压着时 PowerShell 会报）⇒ 原话随回。
+/// 设成当前用户 `RemoteSigned`（[`POLICY_ALLOW_LOCAL`]）再现问一次。设的那一下报错（组策略压着时 PowerShell 会报）⇒ 原因词随回（原话记日志）。
 pub(crate) fn allow_local_scripts(host: PsHost) -> (ExecPolicy, Option<String>) {
     let set = run_fixed(host, POLICY_ALLOW_LOCAL, POLICY_WITHIN).err();
     (execution_policy(host), set)

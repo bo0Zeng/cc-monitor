@@ -34,19 +34,8 @@
 
     ],
     "C-W18": [
-      "beContract.malformed.say",
-      "credsPerm.currentUserSid.noToken",
-      "machineAliases.policy.setFailed",
-      "machineAliases.policy.unknown",
-      "machineCard.stage.authFailed",
-      "resync.call.refused",
-      "rsBackendPolicy.call.failed",
-      "rsBackendPolicy.death.brief",
-      "rsBackendPolicy.status.exit",
       "rsChanHost.start.bindFailed",
-      "rsFilewinProc.dialBack.failed",
-      "rsLaunch.local.spawnFailed",
-      "tabBatch.why.batchRefused"
+      "rsFilewinProc.dialBack.failed"
     ]
   }
 }

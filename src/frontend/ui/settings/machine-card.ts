@@ -156,7 +156,7 @@ export function describeStage(st: ConnectStage): { text: string } {
     case "won":
       return { text: copyText("machineCard.stage.won", { endpoint: st.endpoint }) };
     case "auth":
-      return st.ok ? { text: copyText("machineCard.stage.authOk") } : { text: copyText("machineCard.stage.authFailed", { detail: st.detail ?? "" }) };
+      return st.ok ? { text: copyText("machineCard.stage.authOk") } : { text: copyText("machineCard.stage.authFailed", { said: st.detail ?? copyText("reason.io.unknown") }) };
     case "established":
       return { text: copyText("machineCard.stage.ready") };
     default: {

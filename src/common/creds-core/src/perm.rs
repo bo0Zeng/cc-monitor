@@ -186,7 +186,7 @@ fn windows_create_owner_only(p: &std::path::Path) -> std::io::Result<std::fs::Fi
         CreateFileW, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_WRITE, FILE_SHARE_MODE,
     };
 
-    let sid = current_user_sid().map_err(std::io::Error::other)?;
+    let sid = current_user_sid()?;
     let sddl: Vec<u16> = owner_only_sddl(&sid)
         .encode_utf16()
         .chain(std::iter::once(0))
@@ -230,7 +230,8 @@ fn owner_only_sddl(user_sid: &str) -> String {
 }
 
 #[cfg(all(windows, feature = "harden"))]
-fn current_user_sid() -> Result<String, String> {
+/// 当前进程那个用户的 SID 串。失败 ⇒ 系统那个错原样（带 OS 码，调用方按种类出原因词；不在这里拼句子）。
+fn current_user_sid() -> std::io::Result<String> {
     use windows::core::PWSTR;
     use windows::Win32::Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL};
     use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
@@ -239,12 +240,8 @@ fn current_user_sid() -> Result<String, String> {
 
     unsafe {
         let mut token = HANDLE::default();
-        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).map_err(|e| {
-            copy_text(
-                "credsPerm.currentUserSid.noToken",
-                &[("e", &(e.message()).to_string())],
-            )
-        })?;
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
+            .map_err(std::io::Error::from)?;
         let mut need = 0u32;
         let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);
         let mut buf = vec![0u8; need.max(1) as usize];
@@ -256,23 +253,13 @@ fn current_user_sid() -> Result<String, String> {
             &mut need,
         );
         let _ = CloseHandle(token);
-        got.map_err(|e| {
-            copy_text(
-                "credsPerm.currentUserSid.noToken",
-                &[("e", &(e.message()).to_string())],
-            )
-        })?;
+        got.map_err(std::io::Error::from)?;
         let tu = &*(buf.as_ptr() as *const TOKEN_USER);
         let mut s = PWSTR::null();
-        ConvertSidToStringSidW(tu.User.Sid, &mut s).map_err(|e| {
-            copy_text(
-                "credsPerm.currentUserSid.noToken",
-                &[("e", &(e.message()).to_string())],
-            )
-        })?;
+        ConvertSidToStringSidW(tu.User.Sid, &mut s).map_err(std::io::Error::from)?;
         let out = s
             .to_string()
-            .map_err(|e| copy_text("credsPerm.currentUserSid.noToken", &[("e", &e.to_string())]))?;
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
         Ok(out)
     }

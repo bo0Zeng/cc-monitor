@@ -316,7 +316,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       [pol({}), copyText("machineAliases.policy.blocks", { ps, policy: "Restricted" }), true],
       [pol({ loads: null }), copyText("machineAliases.policy.unclear", { ps, policy: "Restricted" }), false],
       [pol({ groupPolicy: true }), copyText("machineAliases.policy.groupPolicy", { ps, policy: "Restricted" }), false],
-      [pol({ effective: null, loads: null, error: "问不到" }), copyText("machineAliases.policy.unknown", { ps, e: "问不到" }), false],
+      [pol({ effective: null, loads: null, error: copyText("reason.io.unknown") }), copyText("machineAliases.policy.unknown", { ps, why: copyText("reason.io.unknown") }), false],
     ];
     for (const [p, said, btn] of cases) {
       policyA = p;

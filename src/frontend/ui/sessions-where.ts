@@ -31,8 +31,8 @@ const STANDING_BUDGET_MS = 10_000;
 
 function refusals(origin: Origin): Refusals {
   return {
-    byCode: (_code, detail) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), detail }),
-    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), detail: "" }),
+    byCode: (_code, said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said }),
+    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said: copyText("reason.io.unknown") }),
   };
 }
 

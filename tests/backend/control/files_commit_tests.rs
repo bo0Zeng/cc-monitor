@@ -217,13 +217,15 @@ fn a_bad_key_is_refused_before_anything_lands() {
 /// 未知命令名 ⇒ `bad_args`；命令表与分派两向对得上。
 #[test]
 fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
-    let e = answer_wire(
-        "files-commit-upload",
-        &serde_json::json!({"key": KEY, "root": "/tmp", "rel": "a"}),
-    )
-    .expect_err("没给 overwrite 该拒");
+    let (e, diag) = crate::common::contract::tests::diag(|| {
+        answer_wire(
+            "files-commit-upload",
+            &serde_json::json!({"key": KEY, "root": "/tmp", "rel": "a"}),
+        )
+        .expect_err("没给 overwrite 该拒")
+    });
     assert_eq!(e.code, "bad_args");
-    assert!(e.said.contains("overwrite"), "{}", e.said);
+    assert!(diag.contains("overwrite"), "{}", e.said);
     let e = answer_wire("files-create", &serde_json::json!({})).expect_err("不是这一面的");
     assert_eq!(e.code, "bad_args");
     assert_eq!(

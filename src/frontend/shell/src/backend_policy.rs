@@ -87,9 +87,10 @@ async fn exit_policy_call(
             |_code, message| {
                 copy_text(
                     "rsBackendPolicy.call.failed",
+                    // 对端那一句（原话在应答 detail 里，不在这一格）。
                     &[
                         ("machine", &origin.to_string()),
-                        ("message", &message.to_string()),
+                        ("said", &message.to_string()),
                     ],
                 )
             },
@@ -348,20 +349,42 @@ pub const STATUS_CONTROL_C_EXIT: u32 = 0xC000013A;
 pub static CONSOLE_CTRL_EXIT_SAID: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsBackendPolicy.death.consoleCtrl", &[]));
 
-/// 一个退出码的说法：认得的码说人话，其余是「退出码 N」。**判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
+/// Windows 的 `STATUS_ACCESS_VIOLATION`（读写了不归它的内存）。按 `i32` 读是 `-1073741819`。
+pub const STATUS_ACCESS_VIOLATION: u32 = 0xC0000005;
+
+/// 一个退出码的说法：闭集里认得的码说人话，其余「原因不明」（裸码不上句子，见 [`exit_code`]）。
+/// **判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
 fn exit_code_said(code: i32) -> String {
     // `as u32` 是按位重解释，不是数值换算：-1073741510_i32 的位型就是 0xC000013A。
-    if code as u32 == STATUS_CONTROL_C_EXIT {
-        CONSOLE_CTRL_EXIT_SAID.to_string()
-    } else {
-        copy_text(
-            "rsBackendPolicy.status.exit",
-            &[("status", &code.to_string())],
-        )
+    match code as u32 {
+        STATUS_CONTROL_C_EXIT => CONSOLE_CTRL_EXIT_SAID.to_string(),
+        STATUS_ACCESS_VIOLATION => copy_text("rsBackendPolicy.death.accessViolation", &[]),
+        _ => copy_text("reason.io.unknown", &[]),
     }
 }
 
-/// 那一行上的**退出状态**（`KP3A`① 要的两样之一）。
+/// 那一次的**裸码**（退出码；Windows 那几种负码另附十六进制 · 信号号）—— 只进死亡账那一行与复制详情的「码」，不上句子。
+/// 没有码的几形（从来没起来 · 没起成 · 读坏）⇒ `None`。
+pub fn exit_code(d: &Death) -> Option<String> {
+    let of = |code: i32| {
+        if code < 0 {
+            format!("{code} (0x{:08X})", code as u32)
+        } else {
+            code.to_string()
+        }
+    };
+    match d {
+        Death::Refused { code } => Some(of(*code)),
+        Death::Crashed { how } => match how {
+            Outcome::Exited(code) => Some(of(*code)),
+            Outcome::Signalled(sig) => Some(format!("signal {sig}")),
+            Outcome::NeverSpawned => None,
+        },
+        Death::NeverStarted { .. } | Death::Misread { .. } => None,
+    }
+}
+
+/// 那一行上的**退出状态**那句人话（`KP3A`① 要的两样之一；裸码另见 [`exit_code`]）。
 pub fn exit_status(d: &Death) -> String {
     match d {
         Death::NeverStarted { .. } => copy_text("rsBackendPolicy.status.neverExisted", &[]),
@@ -398,8 +421,8 @@ pub fn death_detail(d: &Death) -> String {
     }
 }
 
-/// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741819」；
-/// 认得的码说人话，见 [`exit_code_said`]）。
+/// 界面上「最后一次」那一格：**判定 ＋ 退出状态那句人话**（如「崩溃 · 访问越界」；闭集里认得的码说人话、
+/// 认不出说「原因不明」，见 [`exit_code_said`]）。裸码不上这一格：它在死亡账那一行（`码=`）与复制详情里。
 ///
 /// 它替掉的是原来直接进界面的整条 [`ledger_line`]：那是**日志行格式**
 ///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），禁它进界面。
@@ -407,7 +430,7 @@ pub fn death_detail(d: &Death) -> String {
 pub fn last_brief(d: &Death) -> String {
     copy_text(
         "rsBackendPolicy.death.brief",
-        &[("kind", &death_kind(d)), ("status", &exit_status(d))],
+        &[("kind", &death_kind(d)), ("ended", &exit_status(d))],
     )
 }
 
@@ -422,8 +445,9 @@ pub fn last_brief(d: &Death) -> String {
 /// （现打逐字 `[21:14:36.212230477] exit rc=0 argv=[--with-bg --tail-only]`）
 /// ⇒ 「它上一次崩在哪一天」这句话在那本账上问不出来。**别把落点换成一个不打时刻的。**
 pub fn ledger_line(origin: &str, d: &Death) -> String {
+    let code = exit_code(d).map(|c| format!(" 码={c}")).unwrap_or_default();
     format!(
-        "[死亡账] origin={origin} 判定={} 退出状态={} —— {}",
+        "[死亡账] origin={origin} 判定={} 退出状态={}{code} —— {}",
         death_kind(d),
         exit_status(d),
         death_detail(d)

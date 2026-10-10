@@ -337,6 +337,7 @@ pub enum Stage {
     },
     Auth {
         ok: bool,
+        /// 没登上时那一句（`Said::said`，已带原因词；原话随拨号应答那一格走，不在这里）。线上名沿用 `detail`。
         detail: Option<String>,
     },
     Established,

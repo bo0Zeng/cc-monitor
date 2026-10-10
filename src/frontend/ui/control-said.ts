@@ -67,9 +67,9 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
   }
 }
 
-/** 一个动作怎么说「被拒」：拒绝码 ⇒ 一句 · 拒绝体读不出来 ⇒ 一句。 */
+/** 一个动作怎么说「被拒」：拒绝码 ⇒ 一句（`said` ＝ 那台写好的那一句；原话在它的复制详情里）· 拒绝体读不出来 ⇒ 一句。 */
 export interface Refusals {
-  byCode(code: string, detail: string): string;
+  byCode(code: string, said: string): string;
   noReason(): string;
 }
 

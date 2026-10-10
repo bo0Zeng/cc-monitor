@@ -342,7 +342,7 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "common::contract::malformed",
         Kind::Common,
-        "契约错只进表一句（「请求格式不对：{detail}」）",
+        "契约错只进表一句（「请求格式不对」，诊断记日志）",
     ),
     (
         "common::own_dir::ensure_private_dir",

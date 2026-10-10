@@ -272,8 +272,35 @@ pub(crate) fn open_window_via(
     term: Option<&[String]>,
 ) -> Result<TerminalOpen, String> {
     match term {
-        Some(t) => launch_local_posix_via(cmd, cwd, t).map(|()| TerminalOpen::Opened),
+        Some(t) => launch_local_posix_via(cmd, cwd, t)
+            .map(|()| TerminalOpen::Opened)
+            .map_err(LaunchFail::into_said),
         None => Ok(TerminalOpen::NoWindow),
+    }
+}
+
+/// [`launch_local_posix_via`] 没成的两种：命令过不了校验（那一句已写好）· 起进程那一下没成（系统那个错原样，判据按种类认 `ETXTBSY`）。
+#[cfg(not(windows))]
+#[derive(Debug)]
+pub(crate) enum LaunchFail {
+    Plan(String),
+    Spawn(std::io::Error),
+}
+
+#[cfg(not(windows))]
+impl LaunchFail {
+    /// 给人看的那一句：起不来 ⇒ 「启动本机命令失败 · <原因词>」，系统原话记一行日志。
+    pub(crate) fn into_said(self) -> String {
+        match self {
+            LaunchFail::Plan(s) => s,
+            LaunchFail::Spawn(e) => {
+                tracing::warn!("launch: spawn terminal failed: {e}");
+                crate::copy_table::copy_text(
+                    "rsLaunch.local.spawnFailed",
+                    &[("why", &copy_core::spawn_reason(e.kind()))],
+                )
+            }
+        }
     }
 }
 
@@ -283,11 +310,11 @@ pub(crate) fn launch_local_posix_via(
     cmd: &str,
     cwd: Option<&str>,
     term: &[String],
-) -> Result<(), String> {
+) -> Result<(), LaunchFail> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     use std::process::{Command, Stdio};
 
-    let (program, args) = local_posix_spawn_plan(cmd, term)?;
+    let (program, args) = local_posix_spawn_plan(cmd, term).map_err(LaunchFail::Plan)?;
     let mut builder = Command::new(&program);
     builder.args(&args);
     // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
@@ -309,9 +336,7 @@ pub(crate) fn launch_local_posix_via(
         Lifetime::Detached,
         StderrSink::Null,
     )
-    .map_err(|e| {
-        crate::copy_table::copy_text("rsLaunch.local.spawnFailed", &[("e", &e.to_string())])
-    })?;
+    .map_err(LaunchFail::Spawn)?;
     // `process_group` 不改父子关系 ⇒ 收尸线程（终端程序多半很快把窗口交给自己的服务进程就退）。
     std::thread::spawn(move || {
         let _ = child.wait();

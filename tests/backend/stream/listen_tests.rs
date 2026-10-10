@@ -29,18 +29,22 @@ fn no_env_means_todays_stdio_path() {
 /// 补回来的只有这一把钥匙。
 #[test]
 fn a_port_without_a_token_is_refused() {
-    let e = mode_from(&env_of(&[(ENV_PORT, "51000")])).unwrap_err();
+    let (e, diag) = crate::common::contract::tests::diag(|| {
+        mode_from(&env_of(&[(ENV_PORT, "51000")])).unwrap_err()
+    });
     assert!(
-        e.contains(ENV_TOKEN_FILE),
-        "拒绝的理由里没点名 {ENV_TOKEN_FILE} —— 那句诊断说不清该去补什么：{e}"
+        diag.contains(ENV_TOKEN_FILE),
+        "拒绝的诊断里没点名 {ENV_TOKEN_FILE} —— 说不清该去补什么：{e} / {diag}"
     );
 }
 
 /// 有钥匙文件没口 ⇒ 也拒，且**不静默退回 stdio**。
 #[test]
 fn a_token_without_a_port_is_refused_loudly() {
-    let e = mode_from(&env_of(&[(ENV_TOKEN_FILE, "/h/.cc-monitor/listen-token")])).unwrap_err();
-    assert!(e.contains(ENV_PORT), "{e}");
+    let (e, diag) = crate::common::contract::tests::diag(|| {
+        mode_from(&env_of(&[(ENV_TOKEN_FILE, "/h/.cc-monitor/listen-token")])).unwrap_err()
+    });
+    assert!(diag.contains(ENV_PORT), "{e}");
 }
 
 /// 端口 0 与不是数字的都要拒 —— 0 会让内核随机挑口，而宿主等在算好的那个口上。

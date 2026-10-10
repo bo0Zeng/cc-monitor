@@ -30,16 +30,16 @@ fn parses_a_well_formed_create_request() {
 /// **没有 `attach-only`** —— attach 是平面 ③，backend 开不了你面前的窗。
 #[test]
 fn attach_is_not_a_mode_here() {
-    let e = parse_request(&args(serde_json::json!({
-        "mode": "attach-only", "name": "x", "payload": "y"
-    })))
-    .unwrap_err();
+    let (e, diag) = crate::common::contract::tests::diag(|| {
+        parse_request(&args(serde_json::json!({
+            "mode": "attach-only", "name": "x", "payload": "y"
+        })))
+        .unwrap_err()
+    });
     assert_eq!(e.code, "bad_args");
-    assert!(
-        e.message.contains("unknown mode"),
-        "错误没说清楚为什么：{}",
-        e.message
-    );
+    // 句子只说「请求格式不对」；为什么记在日志那一行诊断里。
+    assert_eq!(e.message, crate::common::contract::malformed("x"));
+    assert!(diag.contains("unknown mode"), "诊断没说清楚为什么：{diag}");
 }
 
 #[test]
@@ -504,20 +504,20 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
     ] {
         assert_eq!(Mode::parse(unknown), None, "{unknown:?} 不该被认出来");
     }
-    let e = parse_request(&serde_json::json!({
-        "mode": "send-keys-raw", "name": "x-cc", "payload": "Escape"
-    }))
-    .expect_err("删掉的 mode 必须被拒");
+    let (e, diag) = crate::common::contract::tests::diag(|| {
+        parse_request(&serde_json::json!({
+            "mode": "send-keys-raw", "name": "x-cc", "payload": "Escape"
+        }))
+        .expect_err("删掉的 mode 必须被拒")
+    });
     assert_eq!(e.code, "bad_args");
-    let listed = e
-        .message
+    let listed = diag
         .split("expected")
         .nth(1)
-        .unwrap_or_else(|| panic!("错误文案没列 mode 集合：{}", e.message));
+        .unwrap_or_else(|| panic!("诊断没列 mode 集合：{diag}"));
     assert!(
         listed.contains("create-or-attach / send-into") && !listed.contains("send-keys-raw"),
-        "错误文案列的不是真正的 mode 集合：{}",
-        e.message
+        "诊断列的不是真正的 mode 集合：{diag}"
     );
 }
 

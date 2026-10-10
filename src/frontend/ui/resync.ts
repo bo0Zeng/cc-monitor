@@ -51,7 +51,7 @@ export function decodeResynced(origin: Origin, v: unknown): Resynced {
 }
 
 const refusals: Refusals = {
-  byCode: (_code, detail) => copyText("resync.call.refused", { detail }),
+  byCode: (_code, said) => copyText("resync.call.refused", { said }),
   noReason: () => copyText("resync.call.noReason"),
 };
 

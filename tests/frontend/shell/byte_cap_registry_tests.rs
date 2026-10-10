@@ -188,6 +188,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （内核 `TCP_INFO` 量到的握手往返 ≥ 它才压）。它不限任何字节总量、不截任何东西。",
     ),
     (
+        "STATUS_ACCESS_VIOLATION",
+        "**退出码**不是体量：Windows 的 NTSTATUS `0xC0000005`（访问越界）。`backend_policy·rs::exit_status` 拿它认出那一种死法、说人话，\
+             不限任何东西的大小。",
+    ),
+    (
         "STATUS_CONTROL_C_EXIT",
         "**退出码**不是体量：Windows 的 NTSTATUS \
              `0xC000013A`（被控制台事件打死）。`backend_policy·rs::exit_status` 拿它认出那一种死法、说人话，\
