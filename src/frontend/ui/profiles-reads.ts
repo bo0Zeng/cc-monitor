@@ -109,7 +109,10 @@ export interface MergeRow {
 export interface Resolved {
   chain: string[];
   rows: MergeRow[];
+  /** 整条脚本（「复制整条」交它）。 */
   line: string | null;
+  /** 「敲 xx 等于」那一格的短形（核心写好，照抄）；算不出 ⇒ `null`。 */
+  lineShort: string | null;
   lineError: string | null;
   problem: string | null;
 }
@@ -279,7 +282,7 @@ export function decodeBook(v: unknown): ProfilesBook {
 
 /** `profiles-resolve` 的成品。严格收。 */
 export function decodeResolved(v: unknown): Resolved {
-  if (!isObj(v) || !exactKeys(v, ["chain", "rows", "line", "lineError", "problem"]) || !strs(v.chain) || !Array.isArray(v.rows) || !optStr(v.line) || !optStr(v.lineError) || !optStr(v.problem))
+  if (!isObj(v) || !exactKeys(v, ["chain", "rows", "line", "lineShort", "lineError", "problem"]) || !strs(v.chain) || !Array.isArray(v.rows) || !optStr(v.line) || !optStr(v.lineShort) || !optStr(v.lineError) || !optStr(v.problem))
     throw bad();
   const rows = v.rows.map((r) => {
     if (
@@ -296,7 +299,7 @@ export function decodeResolved(v: unknown): Resolved {
       throw bad();
     return { key: r.key, slot: r.slot, label: r.label, vals: r.vals, said: r.said, from: r.from, overriddenBy: r.overriddenBy };
   });
-  return { chain: v.chain, rows, line: v.line, lineError: v.lineError, problem: v.problem };
+  return { chain: v.chain, rows, line: v.line, lineShort: v.lineShort, lineError: v.lineError, problem: v.problem };
 }
 
 /** `profiles-impact` 的成品。严格收。 */

@@ -452,6 +452,19 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf("[data-role=tree]"));
     await sleep(300);
   }, profilesWorld("normal"), 860, 1180),
+  settings("profiles-02-copied", "设置 · 别名 · 02 点「复制整条」", "点 teamcct 再点「敲 teamcct 等于」那一行右端的复制整条：整条脚本进剪贴板、出一条「已复制整条命令」", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="teamcct"]'));
+    await sleep(700);
+    top(pf("[data-role=tree]"));
+    await click(pf("[data-role=equals-copy]"));
+    await sleep(400);
+  }, () => {
+    // 这一张要看写进去之后那一下：剪贴板当作写得进（默认的台架当写不进）。
+    const w = profilesWorld("normal")();
+    w.commands.clipboard_write = () => null;
+    return w;
+  }, 860, 1180),
   settings("profiles-02-merge-narrow", "设置 · 别名 · 02 点一行看合并表（窄窗）", "窄窗：合并表落到那一行下面", async () => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="teamcct"]'));

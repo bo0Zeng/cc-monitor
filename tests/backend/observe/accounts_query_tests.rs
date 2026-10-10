@@ -1462,14 +1462,14 @@ fn c4c_fixture(tag: &str, with_zero: bool) -> (PathBuf, PathBuf) {
 fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
     let (root, accts) = c4c_fixture("c4c-same", true);
     let cli = list_accounts(&accts);
-    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
+    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
     let mut cli_meta = meta(&cli);
     let o = cli_meta.as_object_mut().unwrap();
     assert_eq!(o.remove("kind"), Some(serde_json::json!("accounts-meta")));
     assert_eq!(o.remove("accountZeroAware"), Some(serde_json::json!(true)));
-    // 成品比 CLI 多出的只有帧面那三格（家目录 · 每号 key 掩码与端点），其余逐格同一份扫描。
+    // 成品比 CLI 多出的只有帧面那几格（家目录 · 每号 key 掩码与端点 · 徽章），其余逐格同一份扫描。
     let mut product = product;
     assert_eq!(
         product["meta"].as_object_mut().unwrap().remove("home"),
@@ -1479,6 +1479,7 @@ fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
         let o = a.as_object_mut().unwrap();
         assert_eq!(o.remove("keyMasked"), Some(serde_json::Value::Null));
         assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
+        assert!(o.remove("badge").is_some(), "帧面每个号带徽章");
     }
     assert_eq!(product["meta"], cli_meta, "成品 meta 与 CLI 首行不是同一份");
     let cli_rows: Vec<serde_json::Value> = cli[1..]
@@ -1516,6 +1517,7 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
         &[],
         "claude-code",
         "claude-code",
+        false,
     );
     let b = row_b(&merged);
     assert_eq!(
@@ -1550,6 +1552,7 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
             &[],
             agent,
             "claude-code",
+            false,
         ));
         assert_eq!(b["authKind"], acct_core::AUTH_KIND_SUBSCRIPTION, "{why}");
         assert_eq!(b["authReady"], false, "{why}");
@@ -1561,7 +1564,7 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
 #[test]
 fn the_list_product_says_when_account_zero_is_missing() {
     let (root, accts) = c4c_fixture("c4c-nozero", false);
-    let v = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
+    let v = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
     assert!(
         n.contains(copy_core::copy_static!(
@@ -1576,6 +1579,7 @@ fn the_list_product_says_when_account_zero_is_missing() {
         &[],
         "claude-code",
         "claude-code",
+        false,
     );
     assert_eq!(off["meta"]["enabled"], false);
     assert!(off["notice"].is_null(), "没启用谈不上缺账号 0");
@@ -1645,6 +1649,7 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
         &facts,
         "claude-code",
         "claude-code",
+        false,
     );
     assert!(!v.to_string().contains("0123456789"), "回了明文：{v}");
     let row = |n: &str| {
@@ -1674,6 +1679,7 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
         &[],
         "claude-code",
         "claude-code",
+        false,
     );
     let b = none["accounts"]
         .as_array()
@@ -1706,6 +1712,7 @@ fn the_account_products_match_the_cross_language_golden() {
             &golden_key_facts(&root),
             "claude-code",
             "claude-code",
+            true,
         ),
         "accounts-trust": trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
     });
@@ -2163,10 +2170,10 @@ fn the_machine_product_matches_the_cross_language_golden() {
 #[test]
 fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
     let (root, accts) = c4c_fixture("next-default", false);
-    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
+    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     assert_eq!(product["meta"]["nextDefault"], serde_json::json!("b"));
     let empty = tmpdir("next-default-none");
-    let none = list_product_with(&empty, None, &[], &[], "claude-code", "claude-code");
+    let none = list_product_with(&empty, None, &[], &[], "claude-code", "claude-code", false);
     assert!(
         none["meta"]["nextDefault"].is_null(),
         "没有清单却答出了接班的号"
@@ -2368,7 +2375,8 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
     for (i, case) in cases.iter().enumerate() {
         let what = case["what"].as_str().unwrap();
         let (root, accts) = golden_library(&format!("dflt{i}"), case);
-        let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
+        let product =
+            list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
         let got: Vec<&str> = product["accounts"]
             .as_array()
             .unwrap()
@@ -2403,4 +2411,70 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
         }
         let _ = fs::remove_dir_all(&root);
     }
+}
+
+/// ★★ 徽章一格只出自这一处（`badge_of`，界面照抄）：原地模式 · API key 号按「key 表里有没有它那一行」×「这台的中转在不在」·
+/// 账号 0 的 API key 号说不出有没有那一行 ⇒ 不替它下判断 · 订阅号按登录了没有。
+#[test]
+fn the_badge_is_written_by_the_core() {
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let hint = |why: &str| {
+        copy_core::copy_text("accounts.badge.apikeyNoEndpointHint", &[("why", &t(why))])
+    };
+    let b = |in_place, api, ready, routed, running| {
+        let x = badge_of(in_place, api, ready, routed, running);
+        (x.text.0, x.warn, x.title.0)
+    };
+    assert_eq!(
+        b(true, true, true, Some(true), true),
+        (
+            t("accounts.badge.inPlace"),
+            true,
+            t("accounts.badge.inPlaceHint")
+        )
+    );
+    assert_eq!(
+        b(false, true, false, Some(true), true),
+        (
+            t("accounts.badge.apikeyRelayed"),
+            false,
+            t("accounts.badge.apikeyRelayedHint")
+        )
+    );
+    assert_eq!(
+        b(false, true, false, Some(true), false),
+        (
+            t("accounts.badge.apikeyRelayDown"),
+            true,
+            t("accounts.badge.apikeyRelayDownHint")
+        )
+    );
+    assert_eq!(
+        b(false, true, false, Some(false), true),
+        (
+            t("accounts.badge.apikeyNoEndpoint"),
+            true,
+            hint("accounts.badge.whyNoRow")
+        )
+    );
+    assert_eq!(
+        b(false, true, false, None, true),
+        (
+            t("accounts.badge.apikeyNoEndpoint"),
+            true,
+            hint("accounts.badge.whyUnknown")
+        )
+    );
+    assert_eq!(
+        b(false, false, false, None, true),
+        (
+            t("accounts.badge.notSignedIn"),
+            true,
+            t("accounts.badge.notSignedInHint")
+        )
+    );
+    assert_eq!(
+        b(false, false, true, None, false),
+        (t("accounts.badge.signedIn"), false, String::new())
+    );
 }

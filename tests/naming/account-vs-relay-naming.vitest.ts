@@ -136,15 +136,6 @@ export const ACCOUNT_NAMES: AccountName[] = [
     state: "done",
   },
   {
-    old: "RelayCredentialsStatus",
-    re: ident("RelayCredentialsStatus"),
-    fresh: "ApikeyCredentialsStatus",
-    freshRe: ident("ApikeyCredentialsStatus"),
-    kind: "类型",
-    why: "上一条命令的返回形状",
-    state: "done",
-  },
-  {
     old: "relay.routing",
     re: ident("relay.routing"),
     fresh: "apikey.routing",
@@ -163,42 +154,6 @@ export const ACCOUNT_NAMES: AccountName[] = [
     state: "done",
   },
   // ── 前端 ───────────────────────────────────────────────────────────────────
-  {
-    old: "fetchLocalRelayRouting",
-    re: ident("fetchLocalRelayRouting"),
-    fresh: "fetchMachineApikeyRouting",
-    freshRe: ident("fetchMachineApikeyRouting"),
-    kind: "函数",
-    why: "`apikey_routing_for` 的前端取数口",
-    state: "done",
-  },
-  {
-    old: "localRelayStateFor",
-    re: ident("localRelayStateFor"),
-    fresh: "apikeyEndpointStateFor",
-    freshRe: ident("apikeyEndpointStateFor"),
-    kind: "函数",
-    why: "把上一条的读数落到一个账号上：这个号的端点改写成不成（有没有行 ＋ 中转在不在跑）",
-    state: "done",
-  },
-  {
-    old: "AccountRelayState",
-    re: ident("AccountRelayState"),
-    fresh: "ApikeyEndpointState",
-    freshRe: ident("ApikeyEndpointState"),
-    kind: "类型",
-    why: "api-key 号徽章那几档的入参：说的是「cc-monitor 能不能替这个号改写端点」",
-    state: "done",
-  },
-  {
-    old: "relayRouting",
-    re: ident("relayRouting"),
-    fresh: "apikeyRouting",
-    freshRe: ident("apikeyRouting"),
-    kind: "字段",
-    why: "账号 chip 缓存的那份 `ApikeyRoutingView`",
-    state: "done",
-  },
   // ── 后端里过期的住址（上游选择早已搬出 `relay/`）──────────────────────────────────
   {
     old: "relay::table",

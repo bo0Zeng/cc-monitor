@@ -118,35 +118,69 @@ impl SessionFate {
     }
 }
 
-/// **活会话此刻在干什么的字与语气的唯一一处**（`session_added` · `session_status` 都由它填）：
+/// **活会话此刻在干什么的那几格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上）：
+/// 那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）。
+/// 字段私有：帧上这几格只能经 [`ActivityFace::of`] 来，不许哪一处另拼。
+///
 /// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
 /// 活着、那一家没说在干什么（`None`）⇒ 运行中 · `now`（出口照画，不自己补一种默认）。
-pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Words, Tone) {
-    let Some(a) = a else {
-        return (
-            Words(copy_core::copy_text("beSession.activity.unclear", &[])),
-            Tone::Now,
-        );
-    };
-    let (text, tone) = match a {
-        SessionActivity::Working => (
-            copy_core::copy_text("beSession.activity.working", &[]),
-            Tone::Now,
-        ),
-        SessionActivity::NeedsYou => (
-            copy_core::copy_text("beSession.activity.needsYou", &[]),
-            Tone::Need,
-        ),
-        SessionActivity::Idle => (
-            copy_core::copy_text("beSession.activity.idle", &[]),
-            Tone::Plain,
-        ),
-        SessionActivity::BackgroundWork => (
-            copy_core::copy_text("beSession.activity.backgroundWork", &[]),
-            Tone::Busy,
-        ),
-    };
-    (Words(text), tone)
+/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 3 · 说不清 4（要人操作的先看）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ActivityFace {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    activity: Option<SessionActivity>,
+    activity_text: Words,
+    activity_tone: Tone,
+    activity_order: u8,
+}
+
+impl ActivityFace {
+    /// 那一态 ⇒ 这几格。
+    pub(crate) fn of(a: Option<SessionActivity>) -> Self {
+        let (text, tone, order) = match a {
+            Some(SessionActivity::NeedsYou) => (
+                copy_core::copy_text("beSession.activity.needsYou", &[]),
+                Tone::Need,
+                0,
+            ),
+            Some(SessionActivity::Working) => (
+                copy_core::copy_text("beSession.activity.working", &[]),
+                Tone::Now,
+                1,
+            ),
+            Some(SessionActivity::BackgroundWork) => (
+                copy_core::copy_text("beSession.activity.backgroundWork", &[]),
+                Tone::Busy,
+                2,
+            ),
+            Some(SessionActivity::Idle) => (
+                copy_core::copy_text("beSession.activity.idle", &[]),
+                Tone::Plain,
+                3,
+            ),
+            None => (
+                copy_core::copy_text("beSession.activity.unclear", &[]),
+                Tone::Now,
+                4,
+            ),
+        };
+        ActivityFace {
+            activity: a,
+            activity_text: Words(text),
+            activity_tone: tone,
+            activity_order: order,
+        }
+    }
+
+    /// 那一态（说不清 ⇒ `None`）。
+    pub(crate) fn activity(&self) -> Option<SessionActivity> {
+        self.activity
+    }
+
+    /// 写好的字与语气（轮换那一侧的会话状态照抄这两格）。
+    pub(crate) fn words(&self) -> (Words, Tone) {
+        (self.activity_text.clone(), self.activity_tone)
+    }
 }
 
 /// 一条**丢了就不可恢复**的帧的身份。
@@ -452,13 +486,9 @@ pub enum Frame {
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
-        /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity: Option<SessionActivity>,
-        /// 此刻在干什么写好的字（[`activity_cells`]；说不清也有一格）。
-        activity_text: Words,
-        /// 那一态的语气（同上）。
-        activity_tone: Tone,
+        /// 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，[`ActivityFace`]，平铺在帧上）。
+        #[serde(flatten)]
+        face: ActivityFace,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -483,13 +513,9 @@ pub enum Frame {
     SessionStatus {
         /// 会话 id。
         sid: String,
-        /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity: Option<SessionActivity>,
-        /// 同 `session_added.activity_text`。
-        activity_text: Words,
-        /// 同 `session_added.activity_tone`。
-        activity_tone: Tone,
+        /// 此刻在干什么（同 `session_added` 那几格，[`ActivityFace`]）。
+        #[serde(flatten)]
+        face: ActivityFace,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -539,7 +565,8 @@ pub enum Frame {
     },
     /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
     /// 不 dedup**——每见一条 turn-end 记录（判词住适配层，见 `agents/claudecode/turn.rs`）
-    /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
+    /// 发一帧；手机端（`src/mobile`：`TurnEndDebouncer.kt` 的 rolling-latest + debounce(1200ms) ＋ `SshKeepAliveService.kt` 的
+    /// `baselineByPath`）塌合同 turn 的多记录、
     /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
     /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
@@ -552,7 +579,7 @@ pub enum Frame {
     },
     // 这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
     //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
-    //   仓外 aterm 的 `DaemonTransport.parseFrame` 从来按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
+    //   手机端 `DaemonTransport.kt::parseFrame` 按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live

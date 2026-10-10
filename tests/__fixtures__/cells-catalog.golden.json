@@ -239,6 +239,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.tool",
           "type": "string"
@@ -422,6 +428,18 @@
           "kind": "value",
           "path": "{t=said}.results.*.removed",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.timed",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -778,6 +796,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "needs.head",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.headCode",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
@@ -862,6 +892,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "pending[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "pending[].what",
           "type": "string"
@@ -871,6 +907,12 @@
           "kind": "value",
           "path": "pending[].why",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pending[].whyText",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -1037,6 +1079,18 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.call",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.head",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.headCode",
           "type": "string"
         },
         {
@@ -1229,6 +1283,12 @@
           "type": "enum"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "activity_order",
+          "type": "number"
+        },
+        {
           "frozen": true,
           "kind": "text",
           "path": "activity_text",
@@ -1342,6 +1402,12 @@
           "type": "enum"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "activity_order",
+          "type": "number"
+        },
+        {
           "frozen": true,
           "kind": "text",
           "path": "activity_text",
@@ -1443,6 +1509,784 @@
         }
       ],
       "name": "session_removed"
+    },
+    {
+      "cells": [
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "accounts[].account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "accounts[].fiveHour",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].kind",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].limiting",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].login",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading",
+          "type": "object"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "accounts[].rows[][].text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "accounts[].rows[][].tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].seenAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].seenAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].seenAtText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].slots[].atLine",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].slots[].full",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].slots[].pct",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].slots[].resetsAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].slots[].resetsAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].slots[].resetsAtText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].slots[].slot",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].slots[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "accounts[].slots[].tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].stale",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].state",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].subId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.reset",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].usage.slot",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "accounts[].usage.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.value",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.window",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "accounts[].warm.act",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "accounts[].warm.at",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].warm.atRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].warm.atText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "accounts[].warm.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windowsSeen",
+          "type": "object"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].key",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].pct",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].resetSinceSeen",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].resetsAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windows[].resetsAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windows[].resetsAtText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windows[].seenAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windows[].seenAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windows[].seenAtText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "detail",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "earliestReturn.account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "earliestReturn.at",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "earliestReturn.atRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "earliestReturn.atText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "fiveHour",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "names.accounts.*",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "names.slots.*",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "now",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "path",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "reason",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "state",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "unseen[].account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "unseen[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "unseen[].fiveHour",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "unseen[].kind",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "unseen[].login",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "unseen[].rows[][].text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "tone",
+          "path": "unseen[].rows[][].tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "unseen[].subId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "unseen[].usage.slot",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].usage.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "unseen[].usage.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].usage.value",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].usage.window",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "unseen[].warm.act",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "unseen[].warm.at",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].warm.atRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].warm.atText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "unseen[].warm.text",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "usableNow[]",
+          "type": "string"
+        }
+      ],
+      "name": "quota_read"
+    },
+    {
+      "cells": [
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].count",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].failed",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].hasLive",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].key",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].lastActivity",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].order",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].origin",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].projectDir",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].projectName",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].projectPath",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].starred",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "notice",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].agentTag",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].aiTitle",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].at",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].atText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].can.accounts",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].can.delete",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].can.fork",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].can.resume",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].context",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].customTitle",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].firstUserExcerpt",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].forkedFromMessageUuid",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].forkedFromSessionId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].group",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].hidden",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].isBg",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].jsonlPath",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].label",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].lastAccount",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].messageCountApprox",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].origin",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].projectDir",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].projectName",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].projectPath",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "rows[].sectionText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].sessionId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].spanText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].starred",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].startedAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].status",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].title",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].untitled",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "rows[].updatedAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "total",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "truncated",
+          "type": "bool"
+        }
+      ],
+      "name": "history_list"
     },
     {
       "cells": [

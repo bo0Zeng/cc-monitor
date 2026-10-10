@@ -1,30 +1,20 @@
 /**
- * API key 那一问（`apikey-routing`）改走通道、后端出成品之后的判据（`apikey-read` 界面不问，解码口删了）。
+ * 写 key 那一问（`apikey-key-set`）走通道、后端出成品之后的判据（`apikey-read` · `apikey-routing` 两条没有读者，删了）。
  *
- * 要求：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
- * 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」· B 组 `creds.apikey` · `apikey.routing`。
+ * 要求：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）」· B 组 `creds.apikey`。
  *
  * | 性质 | 判据 |
  * |---|---|
- * | TS 解码器读得懂**后端真出的**成品 —— 同一份金样，后端 `endpoint_tests::us1_the_apikey_products_match_the_cross_language_golden` 写它（异源：Rust 造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛，不替后端补值（尤其：多一格装明文那一形被拒） | 「严格收」 |
- * | 两问各自经通道说对的帧命令、对的请求体，失败折成一句人话（不退化成「没配」/「没行」） | 「请求」「失败」 |
+ * | 经通道说对的帧命令、对的请求体，失败折成一句人话 | 「请求」「失败」 |
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import {
-  decodeApikeyRouting,
-  decodeApikeyWritten,
-  fetchApikeyRouting,
-  writeApikeyKey,
-} from "../../../src/frontend/ui/apikey-reads";
-import { REPO_ROOT } from "../../test-support/repo-root";
+import { decodeApikeyWritten, writeApikeyKey } from "../../../src/frontend/ui/apikey-reads";
 import {
   chanArgsJson,
   chanReply,
@@ -34,61 +24,9 @@ import {
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
-const golden = JSON.parse(
-  readFileSync(
-    resolve(REPO_ROOT, "tests/__fixtures__/apikey.golden.json"),
-    "utf8",
-  ),
-) as Record<string, unknown>;
 
 beforeEach(() => {
   invokeMock.mockReset();
-});
-
-describe("金样：后端出的成品，TS 这一侧读得懂", () => {
-  it("apikey-routing：表里有行的那一个原样回 · 中转在听", () => {
-    expect(decodeApikeyRouting(golden["apikey-routing"])).toEqual({
-      routed: ["/h/.claude-alt/work"],
-      running: true,
-    });
-  });
-});
-
-describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
-  const rt = golden["apikey-routing"] as Record<string, unknown>;
-  it.each([
-    ["多一格", { ...rt, x: 1 }],
-    ["缺 running", { routed: [] }],
-    ["routed 里不是字符串", { routed: [1], running: true }],
-    ["running 不是布尔", { routed: [], running: 1 }],
-  ])("apikey-routing · %s", (_n, v) => {
-    expect(() => decodeApikeyRouting(v)).toThrow(ReplyUnreadable);
-  });
-});
-
-describe("请求：经通道问那台机器的后端", () => {
-  it("apikey-routing：op 对、agent 与 configDirs 随请求带", async () => {
-    invokeMock.mockResolvedValue(chanReply(golden["apikey-routing"]));
-    const got = await fetchApikeyRouting("<local>", "claude-code", [
-      "/h/.claude-alt/work",
-    ]);
-    const a = invokeMock.mock.calls[0][1] as ChanCallArgs;
-    expect([a.origin, a.op]).toEqual(["<local>", "apikey-routing"]);
-    expect(chanArgsJson(a)).toEqual({
-      agent: "claude-code",
-      configDirs: ["/h/.claude-alt/work"],
-    });
-    expect(got.routed).toEqual(["/h/.claude-alt/work"]);
-  });
-});
-
-describe("失败：一句人话，不退化成「没配」/「没行」", () => {
-  it("没有控制通道 ⇒ 说够不着（不是空表）", async () => {
-    invokeMock.mockRejectedValue(NO_CHANNEL);
-    await expect(
-      fetchApikeyRouting("host-a", "claude-code", ["/d"]),
-    ).rejects.toThrow(copyText("chanCaller.said.unreachable"));
-  });
 });
 
 // ═══ 写 key 也走通道（`apikey-key-set`）═══════════════════════════════════
