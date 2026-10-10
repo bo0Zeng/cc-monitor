@@ -42,7 +42,7 @@ pub const ATTACH_OK_LINE: &str = "{\"attach\":\"ok\"}\n";
 
 /// 一行 attach 请求的字节上限。请求形如 `{"attach":true,"flags":[…]}`（几十字节），8 KiB 给了两个量级余量。
 /// 少了它就是一个无界堆分配：对端可以一直发字节不发换行。
-/// 超限：拒收 + 回错（关连接并出声，不静默截断成一行看起来对的 JSON）。登记住址 `src/frontend/shell/src/byte_cap_registry.rs`。
+/// 超限：拒收 + 回错（关连接并出声，不静默截断成一行看起来对的 JSON）。登记住址 `tests/frontend/shell/byte_cap_registry.rs`。
 pub const ATTACH_LINE_CAP: usize = 8 * 1024;
 
 /// 读一行 attach 请求的三种结局。

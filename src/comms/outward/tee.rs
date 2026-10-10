@@ -121,7 +121,7 @@ pub type RequestMark = ((&'static str, &'static str), bool);
 ///
 /// 值怎么定的：上游的 SSE 是 token 级增量，增量事件在 KiB 级；开头 / 收尾那一件在有的协议里带整份应答对象（含整段系统提示），
 /// 远超这个数，但接收侧从它要的只有开头那几格。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
-/// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
+/// 登记住址 `tests/frontend/shell/byte_cap_registry.rs`（尺寸类常量不登记就红）。
 pub const TAP_DATA_CAP: usize = 16 * 1024;
 
 /// 一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，

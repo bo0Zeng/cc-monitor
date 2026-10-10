@@ -12,12 +12,9 @@ fn now() -> u64 {
     crate::accounts::quota::now_unix()
 }
 
-/// 续令牌一律发到本机一个刚关掉的口（连不上 ⇒ 续不上），绝不发到那一家的真端点。
+/// 续令牌一律发到本机一个绑着不听的口（拨了必被拒 ⇒ 续不上），绝不发到那一家的真端点。
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
-        .and_then(|l| l.local_addr())
-        .expect("bind")
-        .port();
+    let port = crate::refusing_port::refusing_port();
     crate::accounts::oauth::TokenEndpoint {
         base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),

@@ -2,7 +2,7 @@
 //!
 //! 本模块一个文件系统调用都没有，刻意的：
 //! 1. backend 的写面逐模块登记（`readonly_guard`，账号域那一份凭据写口在第四层），那张表扫不到本 crate ⇒ 写调用放进来是给护栏挖洞；
-//! 2. `src/frontend/shell/src/write_site_registry.rs` 与 `atomic_replace_registry.rs` 的扫描根都是 `src/frontend/shell/src`，`src/common/` 不在它们的人群里；
+//! 2. `tests/frontend/shell/write_site_registry.rs` 与 `atomic_replace_registry.rs` 的扫描根都是 `src/frontend/shell/src`，`src/common/` 不在它们的人群里；
 //! 3. 纯函数好测：要测的是交错（人改了 A，程序写 B，A 还在不在），而「写的那一刻才去读」由调用方兑现，
 //!    本模块只保证「给我旧内容 + 新 key，我还你一份没吃掉任何东西的新内容」。
 //!
