@@ -1000,8 +1000,8 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 # ── `muslbuild`：远端 Linux 那一格 —— 两个 musl target 编得出静态字节 ──
 # 用 `cargo zigbuild`，版本与 `release.yml` 对齐（`release-gate` 两向对拍）：版本一漂，本格的绿就不代表发版那趟会绿。
 # 买不到「在真远端上跑得起来」，也不编 test 档（只编 bin）。
-run_gate muslbuild '不是数出来的数：两个 musl target（`x86_64` ＋ `aarch64`）各一趟 `cargo zigbuild`，只有绿/红两态。⚠ 买的是「编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
-         bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，zig $(zig version)）\n" "$n"'
+run_gate muslbuild '不是数出来的数：两个 musl target（`x86_64` ＋ `aarch64`）各一趟 `cargo zigbuild`，只有绿/红两态。⚠ 买的是「编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。每个 arch 的字节里要认得出 mimalloc（远端版换过分配器：源码那一半由 `allocator_guard` 判，字节这一半本格判，认法是它自带的报错前缀 `mimalloc: `）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
+         bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; grep -qa "mimalloc: " "../../.build/backend/$t/debug/cc-monitor-backend" || { echo "musl: $t 的字节里认不出 mimalloc（分配器没换上）"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，字节里都认得出 mimalloc，zig $(zig version)）\n" "$n"'
 
 # ── 「前端」道（与下面「覆盖率」道）：读 `src/frontend/ui/generated/` 的那几格，等 `cargo` 与 `backend` 两格写完它 ──
 gate_lane 前端 after cargo backend

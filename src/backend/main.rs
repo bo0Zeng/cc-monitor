@@ -80,6 +80,12 @@ use wire::{to_line, Frame};
 // 本测块紧邻被测的 split_stream_flags（就近可读）、不挪文件尾；显式 allow 让 clippy
 // --all-targets 净（审计：门槛此前只跑默认 target、漏 test-target lint）。
 
+// 远端 musl 版换分配器：musl 自带的那个放掉的内存不还给系统（理由与读数住 `Cargo.toml` 那一段）。
+// 只在本二进制定，不在库面定：本机 GUI 进程把后端当库链进去，库里定会连壳一起换。判据 `allocator_guard`。
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**

@@ -4775,7 +4775,9 @@ mod g6_dependency_signoff {
     /// 哪天有了，本模块要先出声。
     const DEPS: &str = "[dependencies]";
     const DEV_DEPS: &str = "[dev-dependencies]";
-    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS];
+    /// 只在远端 musl 版才链的那一段（今天只有分配器 `mimalloc`，判据 `allocator_guard`）。
+    const MUSL_DEPS: &str = "[target.'cfg(target_env = \"musl\")'.dependencies]";
+    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS, MUSL_DEPS];
 
     /// 判档：**闭集**，名字只有这一处住址（表里与签字行都引这几个常量，不写第二遍字面量）。
     const MEASURED_WRITES: &str = "已量·有写面";
@@ -5073,6 +5075,14 @@ mod g6_dependency_signoff {
         // `codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
         //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
         // `agent-tools-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/cards.rs`，纯数据映射，0 处写面）。
+        (
+            "mimalloc",
+            MUSL_DEPS,
+            UNMEASURED,
+            "远端 musl 版的全局分配器（`main.rs` 那一处 `#[global_allocator]`）：它只管进程自己的堆 —— \
+             向内核要页、还页（mmap / madvise），不开文件、不起进程；缺省 feature 为空（不开 override / secure）。\
+             写不写盘：分配器的接口里没有路径这一样东西（用法签字，没扫它带的 C 源）",
+        ),
         (
             "walkdir",
             DEPS,
