@@ -6,8 +6,7 @@
 //! | `wire.rs` | 两端共用 | ✅ | 全部类型 ＋ 拆帧 |
 //! | `router.rs` | monitor 进程 | ✅ | 按 `origin` 转给注入的句柄 ＋ 撤单 ＋ credit |
 //! | `client.rs` | 外部前端进程 | ✅ | `Comms` 的实现：`call` / `subscribe` |
-//! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 绑回环 · 造钥匙 · `accept` · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
-//! | `dial.rs` | 外部前端进程 | ✅ | 按交接件拨号（连出去、出示钥匙；不绑口） |
+//! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 起窗口进程、接上它那对父子管道 · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
 //! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | 主界面（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄 |
 //!
 //! 成员（线上词汇 · 路由器 · 客户端）住通信层 crate `comms-inward`，宿主住本目录 ——「接管子在外、`serve` 在内」这条分界就是 crate 的边界。
