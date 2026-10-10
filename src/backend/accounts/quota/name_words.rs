@@ -4,8 +4,10 @@
 //! `{accounts: {码: 字}, slots: {码: 字}}`，`accounts` 只列与原名不同的那几个 —— 不在表里的号就叫它自己的名字）。
 //! 出口不认 `_`、不认 `5h` / `7d`。
 
+use crate::common::cells::Words;
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// 起会话时没说是哪个号 ⇒ 记成这个（`~/.claude`）。
 pub(crate) const HOME_ACCOUNT: &str = "_";
@@ -29,16 +31,29 @@ pub(crate) fn slot_text(w: &str) -> String {
 }
 
 /// 成品上的 `names` 那一格：`accounts` 只列与原名不同的号（今天只有 `_`），`slots` 列每个语义位。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Names {
+    pub(crate) accounts: BTreeMap<String, Words>,
+    pub(crate) slots: BTreeMap<String, Words>,
+}
+
+/// 唯一一处造 [`Names`]。
+pub(crate) fn names() -> Names {
+    Names {
+        accounts: [HOME_ACCOUNT]
+            .iter()
+            .map(|a| (a.to_string(), Words(account_text(a))))
+            .collect(),
+        slots: super::rotation::LINE_SLOTS
+            .iter()
+            .map(|w| (w.to_string(), Words(slot_text(w))))
+            .collect(),
+    }
+}
+
+/// [`names`] 的线上样子（还没改成类型的成品由出口那一遍添，[`with_names`]）。
 pub(crate) fn names_cell() -> Value {
-    let accounts: Map<String, Value> = [HOME_ACCOUNT]
-        .iter()
-        .map(|a| (a.to_string(), json!(account_text(a))))
-        .collect();
-    let slots: Map<String, Value> = super::rotation::LINE_SLOTS
-        .iter()
-        .map(|w| (w.to_string(), json!(slot_text(w))))
-        .collect();
-    json!({"accounts": accounts, "slots": slots})
+    serde_json::to_value(names()).unwrap_or(Value::Null)
 }
 
 /// 出口那一遍：成品顶层添上 `names`（不是对象的成品不动）。

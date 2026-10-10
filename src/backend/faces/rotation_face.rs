@@ -159,44 +159,16 @@ pub(crate) fn answer_quota_read() -> Answer {
     answer_quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix())
 }
 
-/// [`answer_quota_read`] 的本体（出口那几遍都在这里：时刻字 · 每号几行 · 开窗那一判 · 号名 / 位名）。
+/// [`answer_quota_read`] 的本体（出口在 [`crate::faces::quota_read::reply_of`]：时刻字 · 每号几行 · 开窗那一判 · 号名 / 位名）。
 pub(crate) fn answer_quota_read_with(ctx: &Ctx, now: u64) -> Answer {
-    let mut v = wire::<_, Fail>(&quota_read_with(ctx, now))?;
-    crate::common::time::with_texts_here(&mut v, now);
-    crate::faces::quota_rows::with_rows(&mut v);
-    crate::faces::quota_rows::with_warm(&mut v);
-    crate::accounts::quota::name_words::with_names(&mut v);
-    Ok(v)
+    wire::<_, Fail>(&quota_read_with(ctx, now))
 }
 
-/// `quota-read` 的应答（各格的意思见注册表那一条；时刻旁的 `…Text` 由出口那一下添）。
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct QuotaRead {
-    state: &'static str,
-    reason: Value,
-    detail: Value,
-    path: Option<String>,
-    now: u64,
-    /// 每条 ＝ 那一条账 ＋ 显示态（两份对象并成一份）。
-    accounts: Vec<Value>,
-    unseen: Vec<Value>,
-    usable_now: Vec<String>,
-    earliest_return: Option<EarliestReturn>,
-    /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`crate::faces::quota_rows::head_text`]）。
-    text: Option<crate::common::cells::Words>,
-    /// 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`crate::faces::quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
-    five_hour: Option<crate::common::cells::Words>,
-}
+pub(crate) use crate::faces::quota_read::QuotaRead;
 
-/// 被拒 / 超额在兜的号里最早回来的那个。
-#[derive(serde::Serialize)]
-pub(crate) struct EarliestReturn {
-    account: String,
-    at: u64,
-}
-
+/// 读这台的额度账、给每个号判显示态，交出口写成成品（时刻字按这台此刻的本地钟）。
 pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
+    use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
     let base = ledger::answer_of(ctx.hop.quota.path(), now);
     let seen = &base.accounts;
     let lib = ctx.hop.library();
@@ -222,7 +194,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
     };
     let mut usable: Vec<String> = Vec::new();
     let mut earliest: Option<(u64, String)> = None;
-    let mut rows: Vec<Value> = Vec::new();
+    let mut rows: Vec<Seen> = Vec::new();
     for o in seen {
         let sh = shown(&o.agent, &o.account, Some(o));
         if show::usable(&sh) {
@@ -233,49 +205,52 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
                 earliest = Some((at, o.account.clone()));
             }
         }
-        let mut row = serde_json::to_value(o).unwrap_or_default();
-        if let (Some(r), Value::Object(m)) = (
-            row.as_object_mut(),
-            serde_json::to_value(&sh).unwrap_or_default(),
-        ) {
-            r.extend(m);
-        }
-        rows.push(row);
+        rows.push(Seen {
+            agent: o.agent.clone(),
+            account: o.account.clone(),
+            seen_at: o.seen_at,
+            reading: serde_json::to_value(&o.reading).unwrap_or(Value::Null),
+            windows_seen: (!o.windows_seen.is_empty())
+                .then(|| serde_json::to_value(&o.windows_seen).unwrap_or(Value::Null)),
+            show: sh,
+        });
     }
-    let unseen: Vec<Value> = lib
+    let unseen: Vec<UnseenHead> = lib
         .accounts
         .iter()
-        .filter(|a| !seen.iter().any(|o| o.agent == LIBRARY_AGENT && o.account == a.id))
+        .filter(|a| {
+            !seen
+                .iter()
+                .any(|o| o.agent == LIBRARY_AGENT && o.account == a.id)
+        })
         .map(|a| {
             let sh = shown(LIBRARY_AGENT, &a.id, None);
             if show::usable(&sh) {
                 usable.push(a.id.clone());
             }
-            let mut one = json!({"agent": LIBRARY_AGENT, "account": a.id, "kind": sh.kind, "login": sh.login});
-            if let Some(id) = sh.sub_id {
-                one["subId"] = json!(id);
+            UnseenHead {
+                agent: LIBRARY_AGENT.to_string(),
+                account: a.id.clone(),
+                kind: sh.kind,
+                login: sh.login,
+                sub_id: sh.sub_id,
             }
-            one
         })
         .collect();
-    let text = crate::faces::quota_rows::head_text(
-        base.state,
-        rows.is_empty() && unseen.is_empty(),
-        base.reason.as_str(),
-    );
-    QuotaRead {
-        text,
-        five_hour: crate::faces::quota_rows::head_five_hour(base.state),
-        state: base.state,
-        reason: base.reason.clone(),
-        detail: base.detail.clone(),
-        path: base.path.clone(),
-        now: base.now,
-        accounts: rows,
+    reply_of(
+        Base {
+            state: base.state,
+            reason: base.reason.clone(),
+            detail: base.detail.clone(),
+            path: base.path.clone(),
+            now: base.now,
+            usable_now: usable,
+            earliest: earliest.map(|(at, account)| (account, at)),
+        },
+        rows,
         unseen,
-        usable_now: usable,
-        earliest_return: earliest.map(|(at, account)| EarliestReturn { account, at }),
-    }
+        &crate::common::time::TextClock::here(now),
+    )
 }
 
 // ── 规则表：读 · 存 · 改名 · 删 · 设为默认 ────────────────────────────────────────────

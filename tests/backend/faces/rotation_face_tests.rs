@@ -520,8 +520,22 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
     assert_eq!(
         keys,
         [
-            "agent", "account", "seenAt", "reading", "kind", "state", "stale", "limiting", "slots",
-            "login", "subId", "windows"
+            "agent",
+            "account",
+            "seenAt",
+            "seenAtText",
+            "reading",
+            "kind",
+            "state",
+            "stale",
+            "limiting",
+            "slots",
+            "login",
+            "subId",
+            "windows",
+            "rows",
+            "fiveHour",
+            "warm"
         ]
         .into_iter()
         .collect()
@@ -542,14 +556,29 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
         (&api["kind"], &api["state"], &api["login"]),
         (&json!("api"), &json!("refused"), &json!("ok"))
     );
+    let unseen = got["unseen"].as_array().expect("unseen");
+    assert_eq!(unseen.len(), 1);
     assert_eq!(
-        got["unseen"],
-        json!([{"agent": "claude-code", "account": "c", "kind": "sub", "login": "needsLogin"}])
+        (
+            &unseen[0]["agent"],
+            &unseen[0]["account"],
+            &unseen[0]["kind"],
+            &unseen[0]["login"]
+        ),
+        (
+            &json!("claude-code"),
+            &json!("c"),
+            &json!("sub"),
+            &json!("needsLogin")
+        )
     );
     assert_eq!(got["usableNow"], json!(["b"]));
     assert_eq!(
-        got["earliestReturn"],
-        json!({"account": "api", "at": now() + 600})
+        (
+            &got["earliestReturn"]["account"],
+            &got["earliestReturn"]["at"]
+        ),
+        (&json!("api"), &json!(now() + 600))
     );
     let text = got.to_string();
     for secret in [UUID_B, B_TOKEN, "fake-refresh-of-b"] {
@@ -1874,22 +1903,7 @@ impl Shaped for PlanReply {
 
 impl Shaped for QuotaRead {
     fn samples() -> Vec<Self> {
-        vec![QuotaRead {
-            state: "present",
-            reason: Value::Null,
-            detail: Value::Null,
-            path: Some("/x/quota.json".into()),
-            now: 1,
-            accounts: vec![json!({})],
-            unseen: vec![json!({})],
-            usable_now: vec!["a".into()],
-            earliest_return: Some(EarliestReturn {
-                account: "b".into(),
-                at: 2,
-            }),
-            text: Some("t".into()),
-            five_hour: Some("f".into()),
-        }]
+        vec![crate::faces::quota_read::specimen()]
     }
 }
 

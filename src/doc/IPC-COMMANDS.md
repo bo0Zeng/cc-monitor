@@ -4066,6 +4066,17 @@ stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities�
 
 ### `--read-session-from-offset … --index` 的出参行
 
+#### `Can`
+
+`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（`can_of` 的成品）：闭集的词与两个开关。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `resume` | string | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
+| `accounts` | bool | 恢复时能不能选号 |
+| `fork` | bool | 能不能从某一轮分叉 |
+| `delete` | string | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
+
 #### `IndexRow`
 
 骨架索引的一行：**位置 ＋ 身份 ＋ 宽度无关料**（第一格 · `§2.5b 路 D`）。

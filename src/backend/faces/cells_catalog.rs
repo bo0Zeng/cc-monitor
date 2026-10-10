@@ -737,6 +737,55 @@ pub(crate) const PRODUCTS: &[Product] = &[
         specimens: specimens::session_removed,
         frozen: Frozen::Cells(&["sid", "cause"]),
     },
+    // 额度账（`quota-read`）：手机照每号写好的几行 · 5h 那一格 · 开窗那一句与号名表读。
+    Product {
+        name: "quota_read",
+        tags: &[],
+        specimens: specimens::quota_read,
+        frozen: Frozen::Cells(&[
+            "state",
+            "text",
+            "detail",
+            "usableNow[]",
+            "names.accounts.*",
+            "names.slots.*",
+            "accounts[].account",
+            "accounts[].rows[][].text",
+            "accounts[].rows[][].tone",
+            "accounts[].fiveHour",
+            "accounts[].warm.act",
+            "accounts[].warm.at",
+            "accounts[].warm.text",
+            "unseen[].account",
+            "unseen[].rows[][].text",
+            "unseen[].rows[][].tone",
+            "unseen[].fiveHour",
+            "unseen[].warm.act",
+            "unseen[].warm.at",
+            "unseen[].warm.text",
+        ]),
+    },
+    // 历史清单（`history-list`）：手机照每行写好的标题 · 时刻 · 段头与注解三格读。
+    Product {
+        name: "history_list",
+        tags: &[],
+        specimens: specimens::history_list,
+        frozen: Frozen::Cells(&[
+            "rows[].sessionId",
+            "rows[].label",
+            "rows[].atText",
+            "rows[].sectionText",
+            "rows[].projectPath",
+            "rows[].jsonlPath",
+            "rows[].agent",
+            "rows[].agentTag",
+            "rows[].starred",
+            "rows[].customTitle",
+            "rows[].hidden",
+            "notice",
+            "truncated",
+        ]),
+    },
     Product {
         name: "cell_error",
         tags: &[],
@@ -1096,6 +1145,14 @@ mod specimens {
             "overlap",
             Some(0),
         ))]
+    }
+
+    pub(super) fn quota_read() -> Vec<Specimen> {
+        vec![node_of(&crate::faces::quota_read::specimen())]
+    }
+
+    pub(super) fn history_list() -> Vec<Specimen> {
+        vec![node_of(&crate::history::history_list::specimen())]
     }
 
     pub(super) fn needs_row() -> Vec<Specimen> {

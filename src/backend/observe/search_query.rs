@@ -740,7 +740,10 @@ impl SearchIndex {
                     let kind = session["agent"].as_str().unwrap_or_default().to_string();
                     session["isBg"] = serde_json::json!(bg);
                     session["status"] = serde_json::json!(status);
-                    session["can"] = crate::observe::history_query::can_of(&kind, status, bg);
+                    session["can"] = serde_json::to_value(crate::observe::history_query::can_of(
+                        &kind, status, bg,
+                    ))
+                    .unwrap_or(Value::Null);
                     writeln!(out, "{session}").map_err(|e| format!("stdout write failed: {e}"))?;
                 }
             }
@@ -1234,7 +1237,7 @@ pub(crate) fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)
 }
 
 /// [`answer_merge`] 的可喂钟那一半：每行再添行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`；`local` 同
-/// [`crate::common::time::history_texts`]）。
+/// [`crate::common::time::history_times`]）。
 pub(crate) fn merge_at(
     args: &Value,
     now_ms: i64,
@@ -1263,12 +1266,11 @@ pub(crate) fn merge_at(
             .ok_or_else(|| bad("a session without a boolean `hitsTruncated`"))?;
         total_hits = total_hits.saturating_add(hits);
         truncated |= cut;
-        let mut t =
-            serde_json::json!({ "at": updated, "startedAt": updated, "updatedAt": updated });
-        crate::common::time::history_texts(&mut t, now_ms, local);
+        let (at_text, _, span_text) =
+            crate::common::time::history_times(updated, updated, updated, now_ms, local);
         let mut row = row.clone();
-        row["atText"] = t["atText"].take();
-        row["spanText"] = t["spanText"].take();
+        row["atText"] = serde_json::Value::String(at_text.0);
+        row["spanText"] = serde_json::Value::String(span_text.0);
         sessions.push((updated, row));
     }
     search_rules::sort_by_recency(&mut sessions, |(updated, _)| *updated);

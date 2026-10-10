@@ -633,6 +633,11 @@ mod tests {
             ),
             (
                 "observe/history_query.rs",
+                "Can",
+                "`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」那一格：命令应答里的一块，不是流协议帧",
+            ),
+            (
+                "observe/history_query.rs",
                 "IndexRow",
                 "一次性子命令 `--read-session-from-offset … --index` 的**出参行**（骨架索引），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",

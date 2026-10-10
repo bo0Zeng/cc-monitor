@@ -69,14 +69,14 @@ pub struct SlotShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
-    /// `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    /// `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub resets_at_text: Option<String>,
-    /// `resets_at` 距今（`+1h50m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub resets_at_text: Option<Words>,
+    /// `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub resets_at_rel_text: Option<String>,
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub resets_at_rel_text: Option<Words>,
     /// 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
@@ -206,21 +206,59 @@ pub struct WindowShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
-    /// `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    /// `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub resets_at_text: Option<String>,
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub resets_at_text: Option<Words>,
+    /// `resets_at` 距今（同上，只在还没到时有）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub resets_at_rel_text: Option<Words>,
     #[cfg_attr(test, ts(type = "number"))]
     pub seen_at: u64,
-    /// `seen_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    /// `seen_at` 写给人看的样子（同上）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub seen_at_text: Option<String>,
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub seen_at_text: Option<Words>,
+    /// `seen_at` 距今（别台的钟走在前面时才有）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub seen_at_rel_text: Option<Words>,
     pub from: super::ledger::Source,
     /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub reset_since_seen: bool,
+}
+
+impl SlotShow {
+    /// 出口那一下：按钟写 `resets_at` 旁边那两格。
+    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+        if let Some(t) = self.resets_at {
+            self.resets_at_text = Some(clock.text(t));
+            self.resets_at_rel_text = clock.rel(t);
+        }
+    }
+}
+
+impl WindowShow {
+    /// 出口那一下：按钟写 `resets_at` · `seen_at` 旁边那几格。
+    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+        if let Some(t) = self.resets_at {
+            self.resets_at_text = Some(clock.text(t));
+            self.resets_at_rel_text = clock.rel(t);
+        }
+        self.seen_at_text = Some(clock.text(self.seen_at));
+        self.seen_at_rel_text = clock.rel(self.seen_at);
+    }
+}
+
+impl QuotaShow {
+    /// 出口那一下：每一格的时刻字按钟写好。
+    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+        self.slots.iter_mut().for_each(|s| s.stamp(clock));
+        self.windows.iter_mut().for_each(|w| w.stamp(clock));
+    }
 }
 
 /// 额度账上一条的各窗口（照原名、照出现的次序）。
@@ -237,7 +275,9 @@ pub(crate) fn windows_of(
             let reset = super::reset_since_seen(w.resets_at, now);
             WindowShow {
                 resets_at_text: None,
+                resets_at_rel_text: None,
                 seen_at_text: None,
+                seen_at_rel_text: None,
                 name: w.name.clone(),
                 key: key(&w.name),
                 pct: w

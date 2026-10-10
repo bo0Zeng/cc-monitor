@@ -116,6 +116,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -255,6 +256,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -398,6 +400,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": {
           "account": "work",
           "at": 1791198000,
@@ -543,6 +546,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": {
           "account": "work",
           "at": 1791198000,
@@ -692,6 +696,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": {
           "account": "work",
           "at": 1791198000,
@@ -826,6 +831,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -947,6 +953,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": {
           "account": "work",
           "at": 1791192300,
@@ -1083,6 +1090,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -1224,6 +1232,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -1431,6 +1440,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": {
           "account": "api2",
           "at": 1791190320,
@@ -1575,6 +1585,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -1896,6 +1907,7 @@
             }
           }
         ],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -1924,6 +1936,7 @@
       "name": "还没看到过任何回包、账号库也是空的",
       "reply": {
         "accounts": [],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
         "names": {
@@ -1949,6 +1962,7 @@
       "name": "额度账读不出来",
       "reply": {
         "accounts": [],
+        "detail": null,
         "earliestReturn": null,
         "fiveHour": "5h 读不到",
         "names": {

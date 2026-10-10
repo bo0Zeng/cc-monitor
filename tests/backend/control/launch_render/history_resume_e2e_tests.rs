@@ -118,7 +118,9 @@ fn history_resume_child_entry_point() {
     let Ok(sid) = std::env::var(CHILD_MARK) else {
         return;
     };
-    let listing = crate::history::history_list::machine_listing().expect("历史清单");
+    let listing =
+        serde_json::to_value(crate::history::history_list::machine_listing().expect("历史清单"))
+            .expect("历史清单");
     let row = listing["rows"]
         .as_array()
         .expect("rows")

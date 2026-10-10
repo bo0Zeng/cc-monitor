@@ -1209,15 +1209,7 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    (
-        "quota-read",
-        sampled::<rf::QuotaRead>,
-        &[],
-        &[(
-            "names",
-            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
-        )],
-    ),
+    ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
         "session-terminals",
         sampled::<crate::observe::session_terminals::Showing>,

@@ -121,10 +121,45 @@ pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz_min: i64) {
     }
 }
 
-/// [`with_texts`] 按这台此刻的本地钟（帧面答 `quota-read` · `rotation-session-read` 那一下）。
+/// [`with_texts`] 按这台此刻的本地钟（帧面答 `rotation-session-read` 那一下）。
 pub(crate) fn with_texts_here(v: &mut serde_json::Value, now: u64) {
-    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
-    with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
+    TextClock::here(now).on(v);
+}
+
+/// 成品写时刻字的那一把钟：此刻 ＋ 时区偏移（分钟，东正）。有类型的成品逐格按它写 `…Text` / `…RelText`（同 [`with_texts`] 一个写法）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TextClock {
+    pub(crate) now: i64,
+    pub(crate) tz_min: i64,
+}
+
+impl TextClock {
+    /// 这台此刻的本地钟。
+    pub(crate) fn here(now: u64) -> Self {
+        TextClock {
+            now: i64::try_from(now).unwrap_or(i64::MAX),
+            tz_min: crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60,
+        }
+    }
+
+    /// 那一刻写给人看的样子（[`fmt_at`]）。
+    pub(crate) fn text(&self, t: u64) -> crate::common::cells::Words {
+        crate::common::cells::Words(fmt_at(
+            i64::try_from(t).unwrap_or(i64::MAX),
+            self.now,
+            self.tz_min,
+        ))
+    }
+
+    /// 那一刻距今（[`fmt_rel`]；已过 ⇒ `None`）。
+    pub(crate) fn rel(&self, t: u64) -> Option<crate::common::cells::Words> {
+        fmt_rel(i64::try_from(t).unwrap_or(i64::MAX), self.now).map(crate::common::cells::Words)
+    }
+
+    /// 透传的一团（原数）里认得的时刻格旁边添字（[`with_texts`]）。
+    pub(crate) fn on(&self, v: &mut serde_json::Value) {
+        with_texts(v, self.now, self.tz_min);
+    }
 }
 
 /// 一个时刻（unix 秒）在这台本地钟上的秒数：偏移按**那一刻**算（夏令时跟着那一刻）；问不到时区 ⇒ 按 UTC。
@@ -288,20 +323,26 @@ pub(crate) fn hit_text_here(ts_ms: i64) -> String {
     hit_time(local_secs(ts_ms.div_euclid(1_000)), local_secs(now))
 }
 
-/// **历史页回包出口那一遍**（一行）：`at` ⇒ 行尾 `atText` ＋ 分段 `sectionText`；`startedAt` → `updatedAt` ⇒ 内容头 `spanText`。
-/// 时刻是毫秒；`local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是 [`local_secs`]）。缺哪一格就不添哪一格。
-pub(crate) fn history_texts(row: &mut serde_json::Value, now_ms: i64, local: &dyn Fn(i64) -> i64) {
+/// **历史页一行的三格**：`at` ⇒ 行尾那一格 ＋ 分段头；`from` → `to` ⇒ 内容头那一段。
+/// 时刻是毫秒；`local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是 [`local_secs`]）。
+pub(crate) fn history_times(
+    at: i64,
+    from: i64,
+    to: i64,
+    now_ms: i64,
+    local: &dyn Fn(i64) -> i64,
+) -> (
+    crate::common::cells::Words,
+    crate::common::cells::Words,
+    crate::common::cells::Words,
+) {
     let l = |ms: i64| local(ms.div_euclid(1_000));
     let now = l(now_ms);
-    let ms = |k: &str| row.get(k).and_then(serde_json::Value::as_i64);
-    let (at, from, to) = (ms("at"), ms("startedAt"), ms("updatedAt"));
-    if let Some(at) = at {
-        row["atText"] = row_time(l(at), now).into();
-        row["sectionText"] = section_text(l(at), now).into();
-    }
-    if let (Some(from), Some(to)) = (from, to) {
-        row["spanText"] = span_text(l(from), l(to), now).into();
-    }
+    (
+        crate::common::cells::Words(row_time(l(at), now)),
+        crate::common::cells::Words(section_text(l(at), now)),
+        crate::common::cells::Words(span_text(l(from), l(to), now)),
+    )
 }
 
 #[cfg(test)]

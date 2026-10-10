@@ -5,11 +5,11 @@
  */
 export type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ * `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
  */
 resetsAtText?: string, 
 /**
- * `resets_at` 距今（`+1h50m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
+ * `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
  */
 resetsAtRelText?: string, 
 /**
