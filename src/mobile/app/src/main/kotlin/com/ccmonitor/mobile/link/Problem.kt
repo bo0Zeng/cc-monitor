@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.AttachOutcome
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.GateVerdict
 import com.ccmonitor.mobile.core.claude.link.LinkOutcome
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.OneShotOutcome
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.ui.copy.copyText

@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.overview
 
 import com.ccmonitor.mobile.core.claude.link.HistoryList
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Needs
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.link.LinkState
 import com.ccmonitor.mobile.link.Problem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
