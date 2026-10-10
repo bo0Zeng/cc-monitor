@@ -142,9 +142,7 @@ async fn main() {
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
-            _ if bad_view.is_some() => {
-                cli_control::refuse_stream_view(bad_view.as_deref().unwrap_or_default(), z)
-            }
+            _ if bad_view.is_some() => cli_control::refuse_stream_view(bad_view.as_deref(), z),
             // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
             // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
