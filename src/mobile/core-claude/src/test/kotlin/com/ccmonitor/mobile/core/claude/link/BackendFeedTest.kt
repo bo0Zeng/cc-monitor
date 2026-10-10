@@ -50,7 +50,7 @@ class BackendFeedTest {
                 val d = remote.duplexes.removeFirst()
                 d.push(hello)
                 d.push("""{"attach":"ok"}""")
-                when (val a = FrameClient.attach(d, listOf("--tail-only"), s, HANDSHAKE_MS, "n${remote.opens}", "UTC") {}) {
+                when (val a = FrameClient.attach(d, s, HANDSHAKE_MS, "n${remote.opens}", "UTC") {}) {
                     is AttachOutcome.Attached -> LinkOutcome.Up(a.client)
                     else -> LinkOutcome.Attach(a)
                 }
