@@ -45,12 +45,6 @@ pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 /// 要转义（引号、反斜杠）—— 留一半余量。
 pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
 
-/// 「整份读进查看器」那一件读到多少字节就明拒（原 monitor `history·rs` 那个 `MAX_SESSION_BYTES`〔散文墓碑〕，F06）。
-///
-/// ⚠实测本机最大会话 **270,103,105 字节**，已经越过这条线 ⇒ 上限会被真实数据打到，
-/// 打到之后不能是静默：`history-page` 带 `whole` 时读过它就回 `too_large`，那句话说清读到了哪。
-pub(crate) const WHOLE_SESSION_MAX_BYTES: u64 = 256 * 1024 * 1024;
-
 /// 按行那六条整份输出的上限（同上，留一半余量）。
 pub(crate) const LINES_CAP_BYTES: usize = 32 << 20;
 
@@ -130,7 +124,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 LINE_CAP_BYTES,
             )?;
             let rows = crate::observe::record_page::run_rows(
-                &mut reader(&face, &target, from, false),
+                &mut reader(&face, &target, from),
                 from,
                 &page.bytes,
             );
@@ -235,7 +229,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
-            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
@@ -247,7 +240,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             )?;
             Ok(json!({
                 "rows": crate::observe::record_page::rows_of(
-                    &mut reader(&face, &target, offset, summary_only),
+                    &mut reader(&face, &target, offset),
                     offset,
                     &page.bytes,
                 ),
@@ -257,14 +250,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         }
         // 按字节分页读，出**记录行**（界面直接问：查看器整份读 · 骨架按偏移取一段）：
         //   `{lines, next, nextSeq, eof}`；`seq` ＝ `offset` 那一行的行号（缺 ＝ 0）、`nextSeq` 原样交回下一问。
-        //   `whole` ＝ 这是「整份读进查看器」那一件：读过 [`WHOLE_SESSION_MAX_BYTES`] 就明拒（不许静默截断，F06）。
         "history-page" => {
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
             let seq = u64_arg(args, "seq")?.unwrap_or(0);
-            let whole = args.get("whole").and_then(Value::as_bool).unwrap_or(false);
-            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
@@ -274,21 +264,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
-            if whole && page.next > WHOLE_SESSION_MAX_BYTES {
-                return Err((
-                    "too_large",
-                    copy_text(
-                        "rsHistory.session.truncated",
-                        &[
-                            ("max", &WHOLE_SESSION_MAX_BYTES.to_string()),
-                            ("read", &page.next.to_string()),
-                            ("lines", &seq.to_string()),
-                        ],
-                    ),
-                ));
-            }
             let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
-                &mut reader(&face, &target, offset, summary_only),
+                &mut reader(&face, &target, offset),
                 &target,
                 seq,
                 offset,
@@ -307,7 +284,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
-            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_lines(
                 home,
@@ -319,7 +295,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             )?;
             let first = page.starts.first().copied().unwrap_or(0);
             let (lines, _) = crate::observe::record_page::record_lines(
-                &mut reader(&face, &target, first, summary_only),
+                &mut reader(&face, &target, first),
                 &target,
                 page.from,
                 page.lines
@@ -588,10 +564,9 @@ fn reader<'a>(
     face: &'a crate::agents::RecordFace,
     target: &std::path::Path,
     offset: u64,
-    summary_only: bool,
 ) -> crate::observe::record_page::Reader<'a> {
     let (lead_at, lead) = crate::observe::record_page::lead_of(target, offset);
-    crate::observe::record_page::Reader::new(face, lead_at, &lead, summary_only)
+    crate::observe::record_page::Reader::new(face, lead_at, &lead)
 }
 
 /// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
@@ -752,31 +727,6 @@ fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'sta
             crate::common::contract::malformed(&format!("{key} must be a string")),
         )),
     }
-}
-
-/// `summaryOnly`：客户端**显式只要折起那一行的成品** —— 读记录那三条（`history-read` · `history-page` ·
-/// `history-lines`）每条的 `record` 剥掉正文那几格（哪几格见 `observe/record_page.rs::fold_body`）。缺 / 不是 `true` ⇒ 默认 `false` ＝ 今天的行为，一切照旧。
-///
-/// # 为什么是**一次一问的入参**，不是 `ReaderState` 的一位
-///
-/// `watcher.rs` 的 `with_raw` / `with_pid` 住连接上，是因为它们管的是**推**出去的帧
-/// （`line` / `session_added` 没有「这一问」可以带标志，只有连接可带）。这三条是**拉**的
-/// 一问一答，`args` 本来就在手上 ⇒ 入参是它唯一自然的家；而且更有表达力：同一条连接
-/// 可以「列表问折起的、查看器问全文的」，连接级的一位做不到这件事。
-///
-/// # 「反向开关」这个不对称
-///
-/// `with_*` 那两位是「客户端显式**索要**一格」（加数据），这一位看着像「客户端显式**不要**一坨」（减数据）。
-/// 名字按**它给什么**起而不按它拿掉什么起（`summaryOnly`，不是 `withoutContent`），不对称就落回原处：
-/// 它是**选成品的形状**（折起那一形 ‖ 全文那一形），与 `with_*` 同样是 additive 的一位 ——
-/// 默认那一形一个字节都不动，老客户端不受影响。真正残留的不对称只有一处、且是性质决定的：
-/// 索要型拿到的是超集，选形型拿到的是**另一形**（要正文得再问一次全文那一形）。
-/// ⇒ 它只属于「知道自己在折」的客户端；**不许**变成默认，也不许由后端替谁猜。
-///
-/// 宽松收（不是 `true` 就当 `false`，不回 `bad_args`）：与同族的 `whole` / `titles` / `appExit` 同一个口径；
-/// 这一位上「收宽了」的后果是**多给了正文**（对但费流量），不是少给。
-fn summary_only(args: &Value) -> bool {
-    args.get("summaryOnly").and_then(Value::as_bool) == Some(true)
 }
 
 fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {

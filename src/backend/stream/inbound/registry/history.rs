@@ -151,7 +151,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-lines",
         summary: "按行号取回一段",
         codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "读到了最后一个完整行之后"), both("from", "第一行的行号（缺省 0）"), out("lines", "**记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现）"), out("next", "下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), arg("summaryOnly", "只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文"), arg("until", "可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止")],
+        fields: &[out("eof", "读到了最后一个完整行之后"), both("from", "第一行的行号（缺省 0）"), out("lines", "**记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现）"), out("next", "下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), arg("until", "可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -163,7 +163,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-read",
         summary: "按字节分页读一份会话",
         codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd`"), arg("summaryOnly", "只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
+        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd`"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -175,14 +175,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "history-page",
         summary: "按字节分页读，出记录行",
-        codes: &[
-            "bad_args",
-            "failed",
-            "oversized_line",
-            "refused",
-            "too_large",
-        ],
-        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("summaryOnly", "同 `history-read`"), arg("until", "同 `history-read`"), arg("whole", "这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06）")],
+        codes: &["bad_args", "failed", "oversized_line", "refused"],
+        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("until", "同 `history-read`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

@@ -4485,7 +4485,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `launch_wire_f07_main_path_tests.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         // `backend_tests.rs` 那一行摘了：改名重写成 `backend_client_guard_tests.rs`（下一行）。
         ("tests/frontend/shell/backend_client_guard_tests.rs", 3), // 新行：头注里三块（旧文件名 · 旧登记表 · 旧层判据文件）
-        ("tests/frontend/shell/byte_cap_registry_tests.rs", 6),
+        ("tests/frontend/shell/byte_cap_registry_tests.rs", 5), // 6 → 5：查看器整份读那一道上限那一行出列（随 `whole` 删了）
         // `hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
         ("src/backend/footprint/rows.rs", 2), // 3 → 2：成品那一格改名 `agent_home` 之后旧名彻底死了，点它的那句改成现状。1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
         // `tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行随整份判据文件删了（它守的围栏与部署命令一起退役）。
@@ -4559,7 +4559,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/keybindings/actions.vitest.ts", 1),
         // 账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
         //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。
-        ("src/backend/faces/read_face.rs", 2), // 1 → 2
+        ("src/backend/faces/read_face.rs", 1), // 2 → 1：「整份读进查看器」那一道上限随 `whole` 删了，点 monitor 旧名的那句一起走 // 1 → 2
         // `tests/frontend/shell/accounts_tests.rs` 那一行去掉：整份随 `accounts.rs` 删了（守的那条 serde 名对拍随 Rust 枚举一起退役，字面量今天由后端金样 ＋ TS 解码器钉）。
         // 记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
         ("src/frontend/shell/src/frame_query.rs", 6), // 7 → 6：点全景旧发送点那一句随代码全景整条摘掉删了 // 3 → 7 // 2 → 3：点 `panorama_call.rs` 旧住址那一句 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑

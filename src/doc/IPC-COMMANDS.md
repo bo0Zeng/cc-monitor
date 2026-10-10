@@ -454,6 +454,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `cmd` | string | 命令名（`hello.commands` 里的一个） |
 | `args` | JSON? | 命令的参数对象；缺 ＝ `null` |
 | `within_ms` | number? | 发起方这一发愿意等多久（毫秒） |
+| `view` | JSON? | 出口的声明（要哪几格 · 哪几格不要）；缺 ＝ `null` ＝ 全量 |
 
 ## 3. 协议级错误码
 
@@ -1734,7 +1735,7 @@ sid → 上次用哪个号起。
 
 一个子运行的记录。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-run`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`rows[].record` 是 `record`） · CLI：`ccm -- --history-run`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1768,7 +1769,7 @@ sid → 上次用哪个号起。
 
 按行号取回一段。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-lines`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`lines[].record` 是 `record`） · CLI：`ccm -- --history-lines`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1777,7 +1778,6 @@ sid → 上次用哪个号起。
 | `lines` | ← | **记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现） |
 | `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数） |
 | `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
-| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文 |
 | `until` | → | 可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止 |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1786,7 +1786,7 @@ sid → 上次用哪个号起。
 
 按字节分页读一份会话。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-read`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`rows[]` 是 `read_row`，`rows[].record` 是 `record`） · CLI：`ccm -- --history-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1795,7 +1795,6 @@ sid → 上次用哪个号起。
 | `offset` | → | 从这个字节起（缺省 0） |
 | `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
 | `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd` |
-| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文 |
 | `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1804,7 +1803,7 @@ sid → 上次用哪个号起。
 
 按字节分页读，出记录行。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-page`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`lines[].record` 是 `record`） · CLI：`ccm -- --history-page`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -1815,11 +1814,9 @@ sid → 上次用哪个号起。
 | `offset` | → | 同 `history-read` |
 | `path` | → | 同 `history-read` |
 | `seq` | → | `offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq` |
-| `summaryOnly` | → | 同 `history-read` |
 | `until` | → | 同 `history-read` |
-| `whole` | → | 这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06） |
 
-码：`bad_args` · `failed` · `oversized_line` · `refused` · `too_large`
+码：`bad_args` · `failed` · `oversized_line` · `refused`
 
 #### `history-turns`
 
@@ -1852,7 +1849,7 @@ sid → 上次用哪个号起。
 
 会话事实。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-facts`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（整份是 `facts`） · CLI：`ccm -- --history-facts`
 
 | 字段 | 向 | 说明 |
 |---|---|---|

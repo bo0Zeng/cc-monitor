@@ -228,9 +228,13 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 只读帧命令 `cells-catalog`（本体 `faces/cells_catalog.rs`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口据它就知道有没有那一格，不必读核心代码。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以命令本身的输出与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的成品（`record` · `read_row`）格只许加。
 
-#### 出口怎么挑格（今天）
+#### 出口怎么挑格：请求信封里的声明
 
-出口按需定形的声明（挑格 · 筛排 · 预算 · 装运）还没做；今天出口的形状靠这几样开关：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `summaryOnly` · `whole` · `--index` · `raw`，`quota-read --text`。新的出口需求不再往核心里加开关，照下表判。
+出口在请求信封里交自己的声明 `view`（帧面那一格 · CLI 面 `--view`，同一份）：今天的词是 `cells`（只要这几格）与 `omit`（这几格不要），路径照格目录写。
+核心只一个通用投影（`faces/project.rs::project`）：声明先按格目录校验（认不出的词 · 成品 · 格 ⇒ `bad_args`，不静默放过），每条命令的应答里哪几处住着哪件成品登记一次
+（`stream/inbound/views.rs::PLACES`），成功的应答照声明裁好再装运；各命令不再自己认「要不要正文」一类的开关（`summaryOnly` · `whole` 删了）。
+还靠开关定形的：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `--index` · `raw`，`quota-read --text` —— 收进声明是后面几刀。
+新的出口需求不再往核心里加开关，照下表判。
 
 #### 一个出口的新需求：只改出口，还是动核心
 

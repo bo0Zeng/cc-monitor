@@ -14197,12 +14197,6 @@
       "zh": "启动命令 {launcher} 含 {c} · 未恢复 · 只许字母、数字、空格、-_./ 与开头的 ~/",
       "args": ["launcher", "c"]
     },
-    "rsHistory.session.truncated": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "会话超过 {max} 字节上限 · 后面内容未显示\n只读前 {read} 字节 · {lines} 行 · 完整会话记录仍在该机器上",
-      "args": ["max", "read", "lines"]
-    },
     "rsFrameQuery.readPage.stuck": {
       "kind": "error",
       "role": "报错",

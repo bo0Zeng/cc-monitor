@@ -248,7 +248,8 @@ export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<st
   const origin = a.origin;
   if (a.op === "history-page") {
     const b = chanArgsJson(a) as Record<string, unknown>;
-    if (b.whole === true) return ["stream_read_session_jsonl", { origin, jsonlPath: b.path }];
+    // 整份读不给右端（`readWholeSession`）；按偏移取一段恒给 `until`（`readRange`）。
+    if (b.until === undefined) return ["stream_read_session_jsonl", { origin, jsonlPath: b.path }];
     return ["read_session_range", { origin, jsonlPath: b.path, offset: b.offset, until: b.until, seqBase: b.seq }];
   }
   if (a.op === "history-branch") {
