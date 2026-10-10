@@ -175,14 +175,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "history-page",
         summary: "按字节分页读，出记录行",
-        codes: &[
-            "bad_args",
-            "failed",
-            "oversized_line",
-            "refused",
-            "too_large",
-        ],
-        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("until", "同 `history-read`"), arg("whole", "这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06）")],
+        codes: &["bad_args", "failed", "oversized_line", "refused"],
+        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("until", "同 `history-read`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

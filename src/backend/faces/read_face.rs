@@ -45,12 +45,6 @@ pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 /// 要转义（引号、反斜杠）—— 留一半余量。
 pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
 
-/// 「整份读进查看器」那一件读到多少字节就明拒（原 monitor `history·rs` 那个 `MAX_SESSION_BYTES`〔散文墓碑〕，F06）。
-///
-/// ⚠实测本机最大会话 **270,103,105 字节**，已经越过这条线 ⇒ 上限会被真实数据打到，
-/// 打到之后不能是静默：`history-page` 带 `whole` 时读过它就回 `too_large`，那句话说清读到了哪。
-pub(crate) const WHOLE_SESSION_MAX_BYTES: u64 = 256 * 1024 * 1024;
-
 /// 按行那六条整份输出的上限（同上，留一半余量）。
 pub(crate) const LINES_CAP_BYTES: usize = 32 << 20;
 
@@ -256,13 +250,11 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         }
         // 按字节分页读，出**记录行**（界面直接问：查看器整份读 · 骨架按偏移取一段）：
         //   `{lines, next, nextSeq, eof}`；`seq` ＝ `offset` 那一行的行号（缺 ＝ 0）、`nextSeq` 原样交回下一问。
-        //   `whole` ＝ 这是「整份读进查看器」那一件：读过 [`WHOLE_SESSION_MAX_BYTES`] 就明拒（不许静默截断，F06）。
         "history-page" => {
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
             let seq = u64_arg(args, "seq")?.unwrap_or(0);
-            let whole = args.get("whole").and_then(Value::as_bool).unwrap_or(false);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
@@ -272,19 +264,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
-            if whole && page.next > WHOLE_SESSION_MAX_BYTES {
-                return Err((
-                    "too_large",
-                    copy_text(
-                        "rsHistory.session.truncated",
-                        &[
-                            ("max", &WHOLE_SESSION_MAX_BYTES.to_string()),
-                            ("read", &page.next.to_string()),
-                            ("lines", &seq.to_string()),
-                        ],
-                    ),
-                ));
-            }
             let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
                 &mut reader(&face, &target, offset),
                 &target,

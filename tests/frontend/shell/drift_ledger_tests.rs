@@ -93,7 +93,7 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
     // `("history.rs", "analyze_jsonl")` 那一行摘了：本机历史清单搬进本机常驻后端（会话行由后端摘要，
     //   与远端同一个函数），monitor 不再为了列清单逐行解析本机 jsonl。
     // 本机远端的冷读合成一条：记账那一跳挪进 `SessionPager::page`（`history.rs`），
-    //   `stream_read_session_jsonl` 本身不再解析；远端那一支 `stream_read_remote_session`〔散文墓碑〕那一行随它删了。
+    //   查看器整份读那一条本身不再解析；远端那一支 `stream_read_remote_session`〔散文墓碑〕那一行随它删了。
     // `lib.rs::run`（`Local`，「本机 jsonl watcher 那一批」）那一行摘了：
     //   本机会话的行从此是本机后端的 `line` 帧，经 `stream_source/batch·rs::flush_lines`（`Given`，origin 是本机）进账。
     // `("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。

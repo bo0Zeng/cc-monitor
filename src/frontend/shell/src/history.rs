@@ -1,5 +1,5 @@
 //! 历史会话的 monitor 这一侧：已经一件事都不做了（只剩判据）。
-//! 读一整份会话（`stream_read_session_jsonl`〔散文墓碑〕与它的分页器 `SessionPager`〔散文墓碑〕）退役：
+//! 读一整份会话（那条 Tauri 命令与它的分页器 `SessionPager`〔散文墓碑〕）退役：
 //! 那台后端出记录行（`history-page`），界面经通道直问（`src/frontend/ui/record-reads.ts`）；那句「超过上限」随判定进了后端。
 //! 删一份会话与 **F62 从某轮建分支** 不在这里了：界面经通道直说那台机器的后端（`src/frontend/ui/session-writes.ts`）。
 //!

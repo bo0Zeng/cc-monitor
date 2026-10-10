@@ -29,15 +29,14 @@
  * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高（`applyIntrinsicSize` ＋ `contain-intrinsic-size: auto`）；
  * 视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
  *   更远的一直是第一级。
- * - **正文仍从前端账本取**：宿主的 `materialize` 今天从 `TailWindow.pending` 拿 payload（重放已经推过来了）；
- *   没到的行先空着，到了由宿主按 `isPending` 判定直接建卡。「骨架不带正文、按偏移取」那一半
- *   （`read_session_range`）命令已通，宿主侧的接线留给下一刀。
+ * - **正文从哪来归宿主**：主窗口 tab 先从 `TailWindow.pending` 拿（重放推过来的），没有的按偏移取；
+ *   查看器不留正文，交来的每一段都按偏移取（两边同一处切段：`rowRuns`），取不到的那一段 `restore` 放回占位。
  * - 本模块**不排任何定时器**（`polling_registry` 对 rAF/setTimeout 逐文件计数）：
  *   触发全靠宿主转来的 scroll / resize 事件，一次调用内有界地多跑几轮收敛。
  */
 import type { RecordTimeline } from "./record-timeline";
 import { SkeletonLedger, type TurnFolds } from "./live-window";
-import { initialColumnWidth, type SkeletonFacts } from "./height-estimate";
+import { initialColumnWidth, skeletonKind, type SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
 
 /** 视口上下各多物化多少屏（相对视口高）。 */
@@ -184,19 +183,7 @@ export class SkeletonView {
 
   /** 账本的高变了：占位改高，钉住视口 —— 视口里有已渲染的卡 ⇒ 钉它；整个落在占位里 ⇒ 钉那块占位的顶。 */
   private reheightPinned(): void {
-    const el = this.scrollEl;
-    const anchor = this.visibleRenderedAnchor() ?? this.visibleGap();
-    const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
-    try {
-      el.style.overflowAnchor = "none";
-      this.refreshHeights();
-      if (anchor && anchor.isConnected) {
-        const delta = anchor.getBoundingClientRect().top - anchorTop;
-        if (delta !== 0) el.scrollTop += delta;
-      }
-    } finally {
-      el.style.overflowAnchor = "";
-    }
+    this.pinned(() => this.refreshHeights());
   }
 
   /**
@@ -249,8 +236,13 @@ export class SkeletonView {
 
   /** 跳转用：确保 seq 附近 `±radius` 行已物化（不管在不在视口里）。 */
   ensure(seq: number, radius = 30): void {
-    const lo = Math.max(this.ledger.base, seq - radius);
-    const hi = Math.min(this.ledger.endSeq, seq + radius + 1);
+    this.ensureRange(seq - radius, seq + radius + 1);
+  }
+
+  /** 确保 seq ∈ `[lo, hi)` 已物化（不管在不在视口里；查看器首屏的尾巴与深链岛走这里）。 */
+  ensureRange(from: number, to: number): void {
+    const lo = Math.max(this.ledger.base, from);
+    const hi = Math.min(this.ledger.endSeq, to);
     const ranges: Array<[Gap, number, number]> = [];
     for (const g of this.gaps) {
       const a = Math.max(g.lo, lo);
@@ -258,6 +250,66 @@ export class SkeletonView {
       if (b > a) ranges.push([g, a, b]);
     }
     this.materializeRanges(ranges, false);
+  }
+
+  /**
+   * 物化过、正文却没取到的 `[lo, hi)` 放回占位（宿主按偏移取那一段失败了）：下次滚到 / 跳到再交给宿主。
+   * 只放回还没被占位盖着的那几段；视口钉法同 `applyRefined`。
+   */
+  restore(lo: number, hi: number): void {
+    if (this.disposed) return;
+    const a = Math.max(this.ledger.base, lo);
+    const b = Math.min(this.ledger.endSeq, hi);
+    const free: Array<[number, number]> = [];
+    let at = a;
+    for (const g of this.gaps) {
+      if (g.hi <= at || g.lo >= b) continue;
+      if (g.lo > at) free.push([at, g.lo]);
+      at = Math.max(at, g.hi);
+    }
+    if (at < b) free.push([at, b]);
+    if (free.length === 0) return;
+    this.pinned(() => {
+      for (const [x, y] of free) {
+        // 与紧挨着的占位并成一块（一段取不到就该回到取之前的样子，不留几块拼起来的占位）
+        let lo = x;
+        let hi = y;
+        for (const g of [...this.gaps]) {
+          if (g.hi !== lo && g.lo !== hi) continue;
+          lo = Math.min(lo, g.lo);
+          hi = Math.max(hi, g.hi);
+          this.dropGap(g);
+        }
+        this.addGap(lo, hi);
+      }
+    });
+  }
+
+  private dropGap(g: Gap): void {
+    this.timeline.removeByElement(g.el);
+    g.el.remove();
+    const i = this.gaps.indexOf(g);
+    if (i >= 0) this.gaps.splice(i, 1);
+  }
+
+  /**
+   * 在视口上方 / 里面插卡（宿主按偏移取回的正文落地）：**钉住视口里最上面那张已渲染卡的屏幕位置**，
+   * 视口里没有已渲染的卡 ⇒ 钉住与视口相交的那块占位。期间关原生锚定、`finally` 还原（同 `fillAbove` 的纪律）。
+   */
+  pinned(fn: () => void): void {
+    const el = this.scrollEl;
+    const anchor = this.visibleRenderedAnchor() ?? this.visibleGap();
+    const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
+    try {
+      el.style.overflowAnchor = "none";
+      fn();
+      if (anchor && anchor.isConnected) {
+        const delta = anchor.getBoundingClientRect().top - anchorTop;
+        if (delta !== 0) el.scrollTop += delta;
+      }
+    } finally {
+      el.style.overflowAnchor = "";
+    }
   }
 
   dispose(): void {
@@ -351,7 +403,7 @@ export class SkeletonView {
 
   /** 视口里最上面那张**已渲染**的元素（不是占位）；没有 ⇒ null。 */
   private visibleRenderedAnchor(): HTMLElement | null {
-    return this.firstVisibleIn(this.gaps[0]?.el.parentElement ?? null);
+    return this.firstVisibleIn(this.gaps[0]?.el.parentElement ?? this.scrollEl.querySelector<HTMLElement>(".stream-content"));
   }
 
   private firstVisibleIn(content: HTMLElement | null): HTMLElement | null {
@@ -400,6 +452,44 @@ export class SkeletonView {
     if (at < 0) this.gaps.push(gap);
     else this.gaps.splice(at, 0, gap);
   }
+}
+
+/** 骨架里要按偏移取回的一段：seq `[a, b)` ＝ 字节 `[offset, until)`（`record-reads.ts::readRange` 的入参）。 */
+export interface RowRun {
+  a: number;
+  b: number;
+  offset: number;
+  until: number;
+}
+
+/**
+ * **`[lo, hi)` 里要按偏移取回的那几段**（主窗口 tab 与查看器同一处）：会建卡、`have` 里没有的行连成段，
+ * 夹在中间不建卡的行（不进界面 · 标题 · 不画的来源）不切段（多几十字节，省一次往返），已经有的行切段；段的两头都是要的行。
+ * 回来的载荷里也就可能带着夹在中间那几行 —— 宿主只认要的那几行时按 `skeletonKind` 自己筛。
+ */
+export function rowRuns(ledger: SkeletonLedger, lo: number, hi: number, have: (seq: number) => boolean): RowRun[] {
+  const out: RowRun[] = [];
+  let open: [number, number] | null = null;
+  const close = (): void => {
+    if (!open) return;
+    const first = ledger.factsOf(open[0])!;
+    const last = ledger.factsOf(open[1] - 1)!;
+    out.push({ a: open[0], b: open[1], offset: first.o, until: last.o + last.n });
+    open = null;
+  };
+  for (let s = lo; s < hi; s++) {
+    const f = ledger.factsOf(s);
+    if (f === undefined) continue;
+    if (have(s)) {
+      close();
+      continue;
+    }
+    if (skeletonKind(f) === "none") continue;
+    if (open) open[1] = s + 1;
+    else open = [s, s + 1];
+  }
+  close();
+  return out;
 }
 
 /** 从后端拿骨架索引的结局。 */

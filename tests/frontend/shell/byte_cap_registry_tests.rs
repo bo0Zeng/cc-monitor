@@ -392,8 +392,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 这两条随读实现搬去了后端，后来随插件只读列表一起删了。
     // `local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
     //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
-    // 住址 `remote_history.rs` → `history.rs`；→ 后端 `read_face.rs::WHOLE_SESSION_MAX_BYTES`
-    //   （「整份读进查看器」那一件的上限判定随记录解释进了后端，登记在后端那一段）。
+    // 住址 `remote_history.rs` → `history.rs`；→ 后端 `read_face.rs` → 删了（查看器整份读那一道上限，见后端那一段）。
     // 🔴**它管的不是字节，是条目数** —— 如实登记这一点。
     //    本表的抽取器按「具名常量 ＋ 一个够大的数」取人群，不看单位；
     //    而「一屏最多多少行」与本表别的那几项**不是同一种量**，
@@ -646,13 +645,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     // ---- backend 侧 ----
-    // 从 monitor `history·rs` 那个 `MAX_SESSION_BYTES`〔散文墓碑〕搬来：「整份读进查看器」那一件读过它就明拒、那句话说读到了哪（F06）。
-    (
-        "src/backend/faces/read_face.rs",
-        "WHOLE_SESSION_MAX_BYTES",
-        "查看器读一整份会话 jsonl（`history-page` 带 `whole`；本机远端同一条）",
-        "拒收+回错",
-    ),
+    // 后端 `read_face.rs` 那一行（「整份读进查看器」读过 256 MiB 就明拒）出列：那一道连同 `history-page` 的 `whole` 入参一起删了
+    //   （查看器不再整份读：骨架 ＋ 按视口取，一问一段，那一段有自己的上限 `READ_PAGE_BYTES` / `LINE_CAP_BYTES`）。
     (
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
@@ -1427,18 +1421,9 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //   `MANIFEST_CAP`，本机账号 manifest 参照实现）随那份实现删了 ⇒ 读 manifest 的上限只剩后端
     //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
-    // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
-    let b1 = by("src/backend/faces/read_face.rs", "WHOLE_SESSION_MAX_BYTES");
-    let b2 = by(
-        "src/backend/control/fork_write.rs",
-        "MAX_SESSION_JSONL_BYTES",
-    );
-    assert_eq!(
-        b1, b2,
-        "「一整份会话 jsonl」的上限两处漂开了（查看器整份读 {b1} / 分叉 {b2}）。\
-             ⚠ `fork_write.rs` 的注释写的是「同一**量级**」，而本条钉的是**相等** —— \
-             因为它们是同一个量。要刻意分开就把这条判据与那句注释**一起**改。"
-    );
+    // 对 B 🔴 **这一对没了，是被解决掉的**：查看器整份读那一道上限（「一整份会话 jsonl」读过 256 MiB 就明拒）
+    //   随 `history-page` 的 `whole` 入参一起删了（查看器改成骨架 ＋ 按视口取，没有「整份读」这件事了）⇒ 「一整份会话 jsonl」的上限只剩分叉那一处
+    //   `control/fork_write.rs::MAX_SESSION_JSONL_BYTES`，「两侧漂开」在结构上不再可能（同对 A、对 D 的处置）。
 
     // 对 D（搜索索引封顶）🔴 **这一对没了，是被解决掉的，不是被删掉的**。
     //

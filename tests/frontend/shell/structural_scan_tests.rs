@@ -2846,7 +2846,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
-        // 读一整份会话本机远端合成一条（`history·rs::stream_read_session_jsonl`），远端那一支的函数删了；
+        // 读一整份会话本机远端合成一条（后来整份读这件事随查看器改成骨架 ＋ 按视口取没了），远端那一支的函数删了；
         //   点它旧名讲来历的散文逐处挂墓碑。
         // monitor `search.rs` 删了 ⇒ 它体里还提着的旧名 `search_remote_all` 全仓只剩散文（remote_history.rs 那块 C4a 墓碑）。
         // 只为本机读盘服务的适配器门面删了；按本机根前缀判种类的那一个只剩散文（换成按文件名形态判）。
@@ -4454,7 +4454,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/frontend/filewin/src/source.rs", 5), // 4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/frontend/filewin/src/fonts.rs", 2), // 0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
-        ("src/frontend/shell/src/history.rs", 7),
+        ("src/frontend/shell/src/history.rs", 6), // 7 → 6：读一整份会话那条 Tauri 命令不再点名（整份读随查看器改成骨架 ＋ 按视口取没了）
         ("src/frontend/shell/src/launch.rs", 2), // 8 → 2：六处随开窗的平台臂进了 `platform/terminal.rs` //7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 1 → 7
         ("src/frontend/shell/src/lib.rs", 35), // 36 → 35：`push_public_key` 注册旁那块删了 // 37 → 36：全景问 · 写 · 撤那一跳的墓碑随代码全景整条摘掉删了 // 35 → 37：`mod agent_dispatch_registry;` 那一行换成一块墓碑 ＋ 跨轨对拍锚点 `agent_profile_parity` 那一句挂一块 // 31 → 35 // 30 → 31：足迹三个 mod 删了那一块 // 29 → 30：`mod panorama_call;` 换成一块墓碑 // +2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // +1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 16 → 17
         ("src/frontend/shell/src/local_backend_host.rs", 3), // 〔🔴-3〕+1：中转「在不在」那一行原先点着已删的回环探针，改成今天由后端答、旧名留一块 // +1：`relay_running` 一族退役那一块 // +1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）// −1：宿主不再铸钥匙，`fresh_token` 连同那一块删了
@@ -4485,7 +4485,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `launch_wire_f07_main_path_tests.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         // `backend_tests.rs` 那一行摘了：改名重写成 `backend_client_guard_tests.rs`（下一行）。
         ("tests/frontend/shell/backend_client_guard_tests.rs", 3), // 新行：头注里三块（旧文件名 · 旧登记表 · 旧层判据文件）
-        ("tests/frontend/shell/byte_cap_registry_tests.rs", 6),
+        ("tests/frontend/shell/byte_cap_registry_tests.rs", 5), // 6 → 5：查看器整份读那一道上限那一行出列（随 `whole` 删了）
         // `hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
         ("src/backend/footprint/rows.rs", 2), // 3 → 2：成品那一格改名 `agent_home` 之后旧名彻底死了，点它的那句改成现状。1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
         // `tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行随整份判据文件删了（它守的围栏与部署命令一起退役）。
@@ -4559,11 +4559,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/keybindings/actions.vitest.ts", 1),
         // 账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
         //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。
-        ("src/backend/faces/read_face.rs", 2), // 1 → 2
+        ("src/backend/faces/read_face.rs", 1), // 2 → 1：「整份读进查看器」那一道上限随 `whole` 删了，点 monitor 旧名的那句一起走 // 1 → 2
         // `tests/frontend/shell/accounts_tests.rs` 那一行去掉：整份随 `accounts.rs` 删了（守的那条 serde 名对拍随 Rust 枚举一起退役，字面量今天由后端金样 ＋ TS 解码器钉）。
         // 记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
         ("src/frontend/shell/src/frame_query.rs", 6), // 7 → 6：点全景旧发送点那一句随代码全景整条摘掉删了 // 3 → 7 // 2 → 3：点 `panorama_call.rs` 旧住址那一句 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("tests/frontend/shell/frame_query_tests.rs", 16), // 19 → 16：界面不再问的那几行（`ssh-config-aliases` / `-resolve` · `footprint-report` · `apikey-read` · `launch` · `files-ls`）删了，挂着的墓碑随之没了 // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
+        ("tests/frontend/shell/frame_query_tests.rs", 15), // 16 → 15：历史浏览器读整份那一句改成现状（查看器改成骨架 ＋ 按视口取） // 19 → 16：界面不再问的那几行（`ssh-config-aliases` / `-resolve` · `footprint-report` · `apikey-read` · `launch` · `files-ls`）删了，挂着的墓碑随之没了 // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
         // 「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/frontend/shell/src/backend_policy.rs", 2),
         // 改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块

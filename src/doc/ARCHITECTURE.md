@@ -232,8 +232,8 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 出口在请求信封里交自己的声明 `view`（帧面那一格 · CLI 面 `--view`，同一份）：今天的词是 `cells`（只要这几格）与 `omit`（这几格不要），路径照格目录写。
 核心只一个通用投影（`faces/project.rs::project`）：声明先按格目录校验（认不出的词 · 成品 · 格 ⇒ `bad_args`，不静默放过），每条命令的应答里哪几处住着哪件成品登记一次
-（`stream/inbound/views.rs::PLACES`），成功的应答照声明裁好再装运；各命令不再自己认「要不要正文」一类的开关（`summaryOnly` 删了）。
-还靠开关定形的：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `whole` · `--index` · `raw`，`quota-read --text` —— 收进声明是后面几刀。
+（`stream/inbound/views.rs::PLACES`），成功的应答照声明裁好再装运；各命令不再自己认「要不要正文」一类的开关（`summaryOnly` 删了；`whole` 随查看器改成「骨架 ＋ 按视口取」删了）。
+还靠开关定形的：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `--index` · `raw`，`quota-read --text` —— 收进声明是后面几刀。
 新的出口需求不再往核心里加开关，照下表判。
 
 #### 一个出口的新需求：只改出口，还是动核心

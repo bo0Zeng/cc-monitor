@@ -233,13 +233,13 @@ export function withSessionReads(
 // 会话正文那四问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 从前是四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` · `load_subagent`〔散文墓碑〕），
+// 从前是四条 Tauri 命令（查看器整份读那一条 · `read_session_range` · `read_session_lines` · `load_subagent`〔散文墓碑〕），
 // 判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
 // `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/frontend/ui/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
 
-/** 四问各自的名字（判据里的叫法 = 旧命令名）。 */
-export type RecordRead = "stream_read_session_jsonl" | "read_session_range" | "read_session_lines" | "load_subagent" | "history-branch";
+/** 各问的名字（判据里的叫法 = 旧命令名）。查看器整份读那一问随查看器改成骨架 ＋ 按视口取删了。 */
+export type RecordRead = "read_session_range" | "read_session_lines" | "load_subagent" | "history-branch";
 
 /** 一发 `chan_call` 若是这四问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
 export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<string, unknown>] | null {
@@ -248,7 +248,6 @@ export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<st
   const origin = a.origin;
   if (a.op === "history-page") {
     const b = chanArgsJson(a) as Record<string, unknown>;
-    if (b.whole === true) return ["stream_read_session_jsonl", { origin, jsonlPath: b.path }];
     return ["read_session_range", { origin, jsonlPath: b.path, offset: b.offset, until: b.until, seqBase: b.seq }];
   }
   if (a.op === "history-branch") {
@@ -283,28 +282,19 @@ function recordLine(p: Record<string, unknown>): Record<string, unknown> {
   return { session_id: p.session_id, path: p.path, seq: p.seq, cwd: p.cwd ?? null, record: p.record };
 }
 
-/**
- * 判据手里那份旧回包 ⇒ 通道那一跳的结局。整份读那一问从前经 `Channel` 交块：这里给 `answer` 一个假 `Channel`、
- * 收下它灌进来的块，再一次交成一页（`eof`）。回包是一次拒绝 ⇒ 对端说不行（`failed`，原因原样）。
- */
+/** 判据手里那份旧回包 ⇒ 通道那一跳的结局。回包是一次拒绝 ⇒ 对端说不行（`failed`，原因原样）。 */
 export async function recordReadReply(
   which: RecordRead,
   args: Record<string, unknown>,
   answer: (cmd: string, args: Record<string, unknown>) => unknown,
 ): Promise<ArrayBuffer | undefined> {
-  const chunks: Record<string, unknown>[] = [];
-  const onChunk = { onmessage: (v: unknown) => chunks.push(...(v as Record<string, unknown>[])) };
   let r: unknown;
   try {
-    r = await answer(which, which === "stream_read_session_jsonl" ? { ...args, onChunk } : args);
+    r = await answer(which, args);
   } catch (e) {
     throw refusedReply("failed", e instanceof Error ? e.message : String(e));
   }
   switch (which) {
-    case "stream_read_session_jsonl": {
-      const lines = chunks.map(recordLine);
-      return chanReply({ lines, next: 1, nextSeq: lines.length, eof: true });
-    }
     case "read_session_range": {
       if (r === undefined) return undefined;
       const lines = (r as Record<string, unknown>[]).map(recordLine);
