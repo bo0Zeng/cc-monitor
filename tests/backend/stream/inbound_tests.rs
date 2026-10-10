@@ -395,6 +395,7 @@ fn req(id: &str, cmd: &str) -> Request {
         cmd: cmd.into(),
         args: serde_json::Value::Null,
         within_ms: None,
+        view: serde_json::Value::Null,
         until: None,
     }
 }
@@ -1025,6 +1026,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
             Ok(None)
         },
         false, // ← 不可取消
+        views::Plan::default(),
     )
     .await;
 
@@ -1087,6 +1089,7 @@ async fn the_running_table_never_leaks_finished_handles() {
             running.clone(),
             |_r| async move { Ok(None) },
             true,
+            views::Plan::default(),
         )
         .await;
     }
@@ -1125,6 +1128,7 @@ async fn a_duplicate_id_is_rejected_instead_of_silently_overwriting() {
             Ok(None)
         },
         true,
+        views::Plan::default(),
     )
     .await;
     // 第二条：同一个 id。
@@ -1134,6 +1138,7 @@ async fn a_duplicate_id_is_rejected_instead_of_silently_overwriting() {
         running.clone(),
         |_r| async move { Ok(None) },
         true,
+        views::Plan::default(),
     )
     .await;
     drop(tx);
@@ -1169,6 +1174,7 @@ async fn a_panicking_handler_still_answers_the_client() {
             panic!("处理器炸了");
         },
         true,
+        views::Plan::default(),
     )
     .await;
     drop(tx);

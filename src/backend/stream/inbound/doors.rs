@@ -23,6 +23,7 @@ impl crate::assets::door::Door for LocalFiles {
             cmd: cmd.to_string(),
             args,
             within_ms: None,
+            view: serde_json::Value::Null,
             until: None,
         };
         // 写面那几条失败带下层原话（`BlockingData`）：门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。
@@ -69,6 +70,7 @@ impl crate::assets::hub::Here for LocalFrames {
             cmd: cmd.to_string(),
             args,
             within_ms: None,
+            view: serde_json::Value::Null,
             until: None,
         };
         run(req).map(|v| v.unwrap_or(serde_json::Value::Null))

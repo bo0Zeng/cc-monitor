@@ -13,8 +13,8 @@ fn claude() -> RecordFace {
 }
 
 /// 从文件头读的那一种读法（没有往回看的那一段）。
-fn rd(face: &RecordFace, summary_only: bool) -> Reader<'_> {
-    Reader::new(face, 0, &[], summary_only)
+fn rd(face: &RecordFace) -> Reader<'_> {
+    Reader::new(face, 0, &[])
 }
 
 const USER: &str = r#"{"type":"user","uuid":"u1","timestamp":"t","cwd":"/w","message":{"role":"user","content":"q"}}"#;
@@ -26,7 +26,7 @@ const MODE: &str = r#"{"type":"mode","mode":"normal"}"#;
 fn rows_carry_exact_ends_and_only_displayable_messages() {
     let page = format!("{USER}\r\n\n  \n{MODE}\n{{torn");
     let face = claude();
-    let rows = rows_v(&mut rd(&face, false), 100, page.as_bytes());
+    let rows = rows_v(&mut rd(&face), 100, page.as_bytes());
     assert_eq!(rows.len(), 3, "{rows:?}");
     let u = USER.len() as u64 + 2;
     assert_eq!(rows[0]["end"], 100 + u);
@@ -48,7 +48,7 @@ fn record_lines_number_countable_lines_and_keep_only_displayable() {
     let page = format!("{MODE}\n\n{USER}\n");
     let face = claude();
     let (lines, next) = record_lines_of_page(
-        &mut rd(&face, false),
+        &mut rd(&face),
         std::path::Path::new("/p/abc.jsonl"),
         7,
         0,
@@ -140,7 +140,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
     assert!((claude().parse)("", 0).unwrap().is_none());
 }
 
-/// 夹具里只住**正文**那几格的标记（开关开 ⇒ 一个都不许剩）。
+/// 夹具里只住**正文**那几格的标记（照那份声明投影 ⇒ 一个都不许剩）。
 /// 每个标记只有一个出处：思考 · 说的话 · 工具入参里主参数之外的那一格 · 工具结果正文 · 逐段改动里的一行。
 const GONE: &[&str] = &[
     "ZQBODY-think",
@@ -150,12 +150,12 @@ const GONE: &[&str] = &[
     "ZQBODY-patch",
 ];
 
-/// **折起那一行自己要用的**那几格里的标记（开关开 ⇒ 一个都不许少）。
+/// **折起那一行自己要用的**那几格里的标记（照那份声明投影 ⇒ 一个都不许少）。
 /// 它们在原文里也住正文块，但后端判好的成品（`who.text`）里**另有一份** ⇒ 剥正文是**去重**，不是把人说的话弄丢。
 /// 这一半不立，「不许有正文」那一半把投影整个弄坏也能恒绿。
 const KEPT: &[&str] = &["ZQKEEP-user", "ZQKEEP-queued"];
 
-/// 折起那一行要用的格（开关开 ⇒ 逐个还在、值不变；它们正是界面画那一行读的那几格）。
+/// 折起那一行要用的格（照那份声明投影 ⇒ 逐个还在、值不变；它们正是界面画那一行读的那几格）。
 const FOLDED_CELLS: &[(&str, &str)] = &[
     ("u1", "who"),
     ("a1", "steps"),
@@ -171,22 +171,37 @@ const FOLD_PAGE: &[&str] = &[
     r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:04:08.000Z","content":"ZQKEEP-queued"}"#,
 ];
 
-/// ★ **两头都断**：`summary_only` 开 ⇒ 正文那几格一个不剩、折起那一行要用的一格不少；关 ⇒ 正文**必须**在。
+/// 「折起那一行」那份声明（出口交的 `omit`）：正文住的那几格。
+fn folded_view() -> crate::faces::project::View {
+    crate::faces::project::parse_view(&serde_json::json!({"omit": {"record": [
+        "blocks", "results.*.patch", "results.*.patchTruncated",
+    ]}}))
+    .unwrap()
+    .unwrap()
+}
+
+/// ★ **两头都断**：照「折起那一行」那份声明投影 ⇒ 正文那几格一个不剩、折起那一行要用的一格不少；不投影 ⇒ 正文**必须**在。
 ///
-/// 两头各自都不够：只断「开 ⇒ 不许有正文」的话，把投影整个弄坏（一条都不出成品）也能让它绿；
-/// 只断「关 ⇒ 有正文」的话，开关根本没接上也能绿。⇒ 本条逐标记两向都判，再加上**条数 · 行号 · 身份一格不变**。
+/// 两头各自都不够：只断「投影 ⇒ 不许有正文」的话，把投影整个弄坏（一条都不出成品）也能让它绿；
+/// 只断「不投影 ⇒ 有正文」的话，声明根本没接上也能绿。⇒ 本条逐标记两向都判，再加上**条数 · 行号 · 身份一格不变**。
+/// 记录成品真出的格（本页）与声明里写的格名（格目录那一套）对不上 ⇒ 投影落空 ⇒ 红。
 #[test]
-fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() {
+fn the_folded_view_drops_every_body_cell_and_keeps_every_folded_cell() {
     let page = FOLD_PAGE.join("\n") + "\n";
     let at = std::path::Path::new("/p/zq.jsonl");
     let face = claude();
-    let shape = |summary_only: bool| {
-        let (lines, next) =
-            record_lines_of_page(&mut rd(&face, summary_only), at, 5, 0, page.as_bytes());
-        let (rows, text) = (
-            rows_v(&mut rd(&face, summary_only), 0, page.as_bytes()),
-            serde_json::to_string(&lines).unwrap(),
-        );
+    let view = folded_view();
+    let shape = |fold: bool| {
+        let (mut lines, next) = record_lines_of_page(&mut rd(&face), at, 5, 0, page.as_bytes());
+        let mut rows = rows_v(&mut rd(&face), 0, page.as_bytes());
+        if fold {
+            for l in lines.iter_mut().chain(rows.iter_mut()) {
+                if let Some(r) = l.get_mut("record") {
+                    crate::faces::project::project("record", r, &view);
+                }
+            }
+        }
+        let text = serde_json::to_string(&lines).unwrap();
         (lines, next, rows, text)
     };
     let (full_lines, full_next, full_rows, full_text) = shape(false);
@@ -195,19 +210,19 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
     for m in GONE.iter().chain(KEPT) {
         assert!(
             full_text.contains(m),
-            "不给开关时 `{m}` 不在成品里 —— 夹具或投影坏了，下面那一半会恒绿"
+            "不投影时 `{m}` 不在成品里 —— 夹具或投影坏了，下面那一半会恒绿"
         );
     }
     for m in GONE {
         assert!(
             !fold_text.contains(m),
-            "`summary_only` 置真，正文标记 `{m}` 还在成品里：{fold_text}"
+            "投影过，正文标记 `{m}` 还在成品里：{fold_text}"
         );
     }
     for m in KEPT {
         assert!(
             fold_text.contains(m),
-            "`summary_only` 置真把折起那一行要显示的 `{m}` 也剥掉了"
+            "投影把折起那一行要显示的 `{m}` 也剥掉了"
         );
     }
     let cell = |lines: &[serde_json::Value], id: &str, key: &str| {
@@ -280,7 +295,7 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
     );
     assert!(
         full_text.contains("\"blocks\""),
-        "不给开关时连 `blocks` 都没有 —— 上面那一条会恒绿"
+        "不投影时连 `blocks` 都没有 —— 上面那一条会恒绿"
     );
 }
 
@@ -302,23 +317,23 @@ fn a_queued_line_carries_the_moment_it_was_typed() {
     let face = claude();
     let at = std::path::Path::new("/p/q.jsonl");
     let page = format!("{ENQ}\n{USER}\n{REM}\n");
-    let (lines, _) = record_lines_of_page(&mut rd(&face, false), at, 0, 0, page.as_bytes());
+    let (lines, _) = record_lines_of_page(&mut rd(&face), at, 0, 0, page.as_bytes());
     assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
     assert_eq!(lines.len(), 2, "打字那一行不出记录：{lines:?}");
 
     // 打字那一行在这一页之前：往回看的那一段交进来就配得上。
     let lead = format!("{{\"torn\": 1}}\n{ENQ}\n");
     let tail = format!("{REM}\n");
-    let mut r = Reader::new(&face, 40, lead.as_bytes(), false);
+    let mut r = Reader::new(&face, 40, lead.as_bytes());
     let (lines, _) = record_lines_of_page(&mut r, at, 9, 40 + lead.len() as u64, tail.as_bytes());
     assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
     let (rows_with, rows_without) = (
         rows_v(
-            &mut Reader::new(&face, 40, lead.as_bytes(), false),
+            &mut Reader::new(&face, 40, lead.as_bytes()),
             99,
             tail.as_bytes(),
         ),
-        rows_v(&mut rd(&face, false), 99, tail.as_bytes()),
+        rows_v(&mut rd(&face), 99, tail.as_bytes()),
     );
     assert_eq!(rows_with[0]["record"]["at"], "2026-01-02T03:00:00.000Z");
     // 没有往回看那一段 ⇒ 用它自己的时刻。
@@ -331,9 +346,9 @@ fn records_without_their_own_id_get_one_from_where_the_line_starts() {
     let face = claude();
     let title = r#"{"type":"ai-title","aiTitle":"x","sessionId":"s"}"#;
     let page = format!("{title}\n{REM}\n");
-    let rows = rows_v(&mut rd(&face, false), 1000, page.as_bytes());
+    let rows = rows_v(&mut rd(&face), 1000, page.as_bytes());
     let (lines, _) = record_lines_of_page(
-        &mut rd(&face, false),
+        &mut rd(&face),
         std::path::Path::new("/p/s.jsonl"),
         0,
         1000,

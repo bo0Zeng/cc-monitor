@@ -197,6 +197,14 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         Ok(ms) => ms,
         Err((code, message)) => return refuse(err, code, message),
     };
+    // 出口的声明：与帧面同一处解、同一处拒（开跑之前）、同一处裁（成功的应答）。
+    let (view, plan) = match view_of(opts)
+        .map_err(crate::stream::inbound::spec::Fail::from)
+        .and_then(|v| crate::stream::inbound::views::plan_for(spec.name, &v).map(|p| (v, p)))
+    {
+        Ok(vp) => vp,
+        Err(f) => return emit_failed(err, &f.settle(spec.name, &serde_json::Value::Null), text),
+    };
     let mut input = String::new();
     if reads_stdin(spec) {
         match read_args(opts, stdin, quiet) {
@@ -225,6 +233,8 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         cmd: spec.name.to_string(),
         args: cli_args.clone(),
         within_ms,
+        // 声明已在上面解过、拒过（`plan`）；信封里照样带着，与帧面同形。
+        view,
         // 与帧面同一处换算：发起方期限从收到起算、减余量换成截止时刻。
         until: crate::stream::inbound::until_of(within_ms),
     };
@@ -247,7 +257,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     drop(total);
     match outcome {
         Ok(v) => {
-            let v = v.unwrap_or_else(|| serde_json::json!({}));
+            let v = plan.apply(v).unwrap_or_else(|| serde_json::json!({}));
             if text {
                 let _ = writeln!(out, "{}", crate::control::ship_text::ship_text(&v));
             } else {
@@ -258,6 +268,38 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         // 失败那一份与帧面同一处出（「码 → 句」表 · 复制详情 · 按码定形的 `data`）。
         Err(f) => emit_failed(err, &f.settle(spec.name, &cli_args), text),
     }
+}
+
+/// 声明口 [`crate::VIEW_FLAG`]（位置不限）⇒ 声明那一团（缺 ＝ `null` ＝ 全量）。值以 `{` 打头 ＝ JSON 原样，否则当 base64 解。
+/// 缺值 · 给两次 · 解不出 ⇒ `bad_args`；声明本身认不认得由登记处那一处判（`stream/inbound/views.rs`，同帧面）。
+pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static str, String)> {
+    let flag = crate::VIEW_FLAG;
+    let mut seen: Option<&str> = None;
+    let mut i = 0;
+    while i < opts.len() {
+        if opts[i] == flag {
+            let Some(v) = opts.get(i + 1).filter(|v| !v.starts_with("--")) else {
+                return Err(bad_args(&format!("{flag} needs a value")));
+            };
+            if seen.replace(v.as_str()).is_some() {
+                return Err(bad_args(&format!("{flag} given twice")));
+            }
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    let Some(v) = seen else {
+        return Ok(serde_json::Value::Null);
+    };
+    let text = if v.trim_start().starts_with('{') {
+        v.to_string()
+    } else {
+        let bytes = crate::stream::wire::b64_decode(v)
+            .map_err(|e| bad_args(&format!("{flag}: neither JSON nor base64 ({e})")))?;
+        String::from_utf8(bytes).map_err(|e| bad_args(&format!("{flag} is not UTF-8: {e}")))?
+    };
+    serde_json::from_str(&text).map_err(|e| bad_args(&format!("{flag}: not JSON ({e})")))
 }
 
 /// 期限口 [`crate::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::ARGS_B64_FLAG`]）；

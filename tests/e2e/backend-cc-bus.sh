@@ -588,6 +588,15 @@ for _cmd in history-read history-facts; do
 done
 # 成品行是通用记录（`record`：`t` ∈ said · reply …，`id` 是那一行自己的身份）；空包 / 换了格名读不到 ⇒ 这里拿到的是 `null:null`。
 chk "  history-read 出的是成品行（不是空包）" "$(jq -r '[.rows[] | "\(.record.t):\(.record.id)"] | join(",")' < "$SANDBOX/c2-history-read.txt")" "said:u1,reply:a1"
+# 出口的声明（--view，与帧面信封的 view 同一处解、同一处裁）：只要行摘要的 end ⇒ 每行只剩 end；JSON 原样与 base64 两种写法逐字一样；
+#   认不出的格 ⇒ bad_args（不静默放过）。
+_v='{"cells":{"read_row":["end"]}}'
+jq -cn --arg p "$J" '{path:$p}' | d --history-read --view "$_v" >"$SANDBOX/c2-view.txt"
+chk "★ --view 挑格：每行只剩 end" "$(jq -r '[.rows[] | keys | join("+")] | unique | join(",")' < "$SANDBOX/c2-view.txt")" "end"
+jq -cn --arg p "$J" '{path:$p}' | d --history-read --view "$(printf %s "$_v" | base64 | tr -d '\n')" >"$SANDBOX/c2-view64.txt"
+chk "  --view 的 base64 写法与 JSON 原样逐字一样" "$(cmp -s "$SANDBOX/c2-view.txt" "$SANDBOX/c2-view64.txt" && echo 同 || echo 不同)" "同"
+jq -cn --arg p "$J" '{path:$p}' | d --history-read --view '{"omit":{"record":["blcoks"]}}' >/dev/null
+chk "★ --view 点了目录里没有的格：bad_args" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
 # stdin 开着、一直不写：两种读法都立即回 no_input，不挂到被掐。
 for _extra in "" --stdin-line; do
   _t0=$(c2ms); d --history-read $_extra < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
@@ -598,7 +607,7 @@ done
 d --history-read </dev/null >/dev/null
 chk "★ stdin 是 EOF：命令自己回缺入参（bad_args）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
 # --stdin-line 不在第二格也认：读到换行就动手，stdin 后面不关也不挂。
-_t0=$(c2ms); { printf '%s\n' "$(jq -cn --arg p "$J" '{path:$p}')"; sleep 30; } | d --history-read --summaryOnly-ignored --stdin-line >"$SANDBOX/c2-sl.txt" &
+_t0=$(c2ms); { printf '%s\n' "$(jq -cn --arg p "$J" '{path:$p}')"; sleep 30; } | d --history-read --no-such-option --stdin-line >"$SANDBOX/c2-sl.txt" &
 _pid=$!; _ok=否; for _ in $(seq 1 50); do [ -s "$SANDBOX/c2-sl.txt" ] && { _ok=是; break; }; sleep 0.1; done; kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null
 chk "★ --stdin-line 在后面也认（5 s 内答出、不等 EOF）" "$_ok" "是"
 # 两个口都给 ⇒ bad_args。

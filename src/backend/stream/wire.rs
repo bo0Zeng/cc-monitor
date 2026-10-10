@@ -1271,7 +1271,7 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text
-/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000}
+/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000,"view":{"omit":{"record":["blocks[type=tool_use].input"]}}}
 /// ```
 ///
 /// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
@@ -1288,6 +1288,9 @@ pub struct Request {
     /// 发起方这一发愿意等多久（毫秒）。可缺；不是正整数 ⇒ 当没带（不拒）。
     #[serde(default, deserialize_with = "lenient_ms")]
     pub within_ms: Option<u64>,
+    /// 出口的声明（要哪几格 · 哪几格不要）；缺 ＝ `null` ＝ 全量。登记处统一解、统一拒、统一投影（`stream/inbound/views.rs`）。
+    #[serde(default)]
+    pub view: serde_json::Value,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
     #[serde(skip)]
     pub(crate) until: Option<crate::platform::child::Until>,
