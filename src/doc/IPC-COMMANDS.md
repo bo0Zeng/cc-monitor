@@ -1845,7 +1845,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `needs` | ← | 它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
 | `sid` | ← | 会话 id |
 | `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
 
@@ -2860,7 +2860,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
-| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `frozen`（两个前端照它读的成品面：格只许加，不删不改名不换类型）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团）· `frozen`（两个前端照它读的格：不删不改名不换类型；`record` · `read_row` 整件冻结，会话三帧只冻手机读的那几格） |
 
 ### 4.9 终端与会话
 

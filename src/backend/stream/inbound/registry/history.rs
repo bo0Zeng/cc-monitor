@@ -212,7 +212,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "sessions-needs",
         summary: "这台上需手动的会话清单",
         codes: &[],
-        fields: &[out("needs", "它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框"), out("sid", "会话 id"), out("waiting", "此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组")],
+        fields: &[out("needs", "它在等什么 `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框"), out("sid", "会话 id"), out("waiting", "此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组")],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

@@ -1726,6 +1726,7 @@ fn net2_uncancellable_is_additive_and_last() {
 //
 // 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
 // （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
+// 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::Frozen::Cells`），不在这张表。
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
 const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
@@ -1740,20 +1741,9 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
     ("line", "raw", "string"),
-    ("session_added", "sid", "string"),
-    ("session_added", "path", "string"),
-    ("session_added", "cwd", "string"),
-    ("session_added", "name", "string"),
-    ("session_added", "lines", "number"),
-    ("session_added", "waiting_for", "string"),
-    ("session_added", "agent_kind", "string"),
-    ("session_added", "liveness_confidence", "string"),
-    ("session_added", "attachable", "bool"),
-    ("session_status", "sid", "string"),
-    ("session_status", "waiting_for", "string"),
-    ("session_status", "liveness_confidence", "string"),
-    ("session_removed", "sid", "string"),
-    ("session_removed", "cause", "string"),
+    // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
+    // （`faces/cells_catalog.rs` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
+    ("line", "record", "object"),
     ("overflow", "dropped", "number"),
     ("overflow", "lost", "array"),
     ("overflow", "lost_truncated", "bool"),
@@ -1791,41 +1781,11 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 1,
-            record: None,
+            record: Some(said_record("u1", "hi")),
             cwd: None,
             byte_offset: 9,
             rid: None,
             raw: Some("{}".into()),
-        },
-        Frame::SessionAdded {
-            sid: "s".into(),
-            agent_kind: s.clone(),
-            liveness_confidence: s.clone(),
-            background: false,
-            attachable: Some(false),
-            cwd: s.clone(),
-            project_dir: None,
-            name: s.clone(),
-            path: s.clone(),
-            lines: Some(3),
-            activity: None,
-            activity_text: crate::stream::wire::activity_cells(None).0,
-            activity_tone: crate::stream::wire::activity_cells(None).1,
-            waiting_for: s.clone(),
-            container: None,
-            pid: None,
-        },
-        Frame::SessionStatus {
-            sid: "s".into(),
-            activity: None,
-            activity_text: crate::stream::wire::activity_cells(None).0,
-            activity_tone: crate::stream::wire::activity_cells(None).1,
-            waiting_for: s.clone(),
-            liveness_confidence: s.clone(),
-        },
-        Frame::SessionRemoved {
-            sid: "s".into(),
-            cause: RemovalCause::Superseded,
         },
         Frame::Overflow {
             dropped: 2,
