@@ -596,36 +596,36 @@ fn rapid_follow_unfollow_never_fills_the_desk() {
     iso.session("q-cc");
     let h = iso.handle_of("q-cc");
     let (d, mut rx) = desk(&iso);
+    let server = || iso.tmux(&["display-message", "-p", "#{pid}"]).stdout;
+    let server_before = server();
     // 连按 Ctrl+Tab · 重载：一轮订一轮退，有时退订先到。
+    let ask = |cmd: &str, args: Value| {
+        let r = d.answer_wire(cmd, "q", &args);
+        assert!(
+            reply_ok(&r),
+            "{cmd} 那一问没回 ok：{r:?}（那台 tmux 的 server 还是原来那个：{}）",
+            server() == server_before
+        );
+    };
     for i in 0..(3 * MAX_FOLLOWS_PER_CONNECTION) {
         let t = format!("r{i}");
         if i % 2 == 0 {
-            assert!(reply_ok(&d.answer_wire(
-                FOLLOW,
-                "f",
-                &json!({ "terminal": h, "ticket": t })
-            )));
-            assert!(reply_ok(&d.answer_wire(
-                UNFOLLOW,
-                "u",
-                &json!({ "ticket": t })
-            )));
+            ask(FOLLOW, json!({ "terminal": h, "ticket": t }));
+            ask(UNFOLLOW, json!({ "ticket": t }));
         } else {
-            assert!(reply_ok(&d.answer_wire(
-                UNFOLLOW,
-                "u",
-                &json!({ "ticket": t })
-            )));
-            assert!(reply_ok(&d.answer_wire(
-                FOLLOW,
-                "f",
-                &json!({ "terminal": h, "ticket": t })
-            )));
+            ask(UNFOLLOW, json!({ "ticket": t }));
+            ask(FOLLOW, json!({ "terminal": h, "ticket": t }));
         }
     }
     assert!(
         eventually(|| iso.control_clients() == 0),
         "订 / 退几十轮之后还挂着客户端"
+    );
+    // 订阅那一方自己收客户端时不许把那台 tmux 弄没（直接杀控制模式客户端 ⇒ tmux 3.6a 的 server 段错误，那台上所有会话一起没）。
+    assert_eq!(
+        server(),
+        server_before,
+        "那台 tmux 的 server 中途没了（内核日志里找 `tmux: server … segfault`）"
     );
     while next_frame(&mut rx, Duration::from_millis(50)).is_some() {}
     fill(&d, &h, &mut rx, "n");
