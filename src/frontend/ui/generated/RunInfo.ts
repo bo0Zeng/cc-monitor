@@ -24,7 +24,7 @@ waiting?: string,
  */
 started_ms?: number, 
 /**
- * `started_ms` 在这台本地钟上的钟面 `HH:MM`（跟着 `started_ms` 一起写；界面照抄、不换算）。
+ * `started_ms` 在看的那一台钟上的钟面 `HH:MM`（推出去那一下按这条流的时区写，[`Frame::stamp`]；界面照抄、不换算）。
  */
 started_text?: string, 
 /**

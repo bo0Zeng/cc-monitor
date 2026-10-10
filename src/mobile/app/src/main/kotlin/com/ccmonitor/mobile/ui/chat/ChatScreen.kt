@@ -29,9 +29,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.bridge.CommandCatalog
 import com.ccmonitor.mobile.core.claude.model.searchableText
-import com.ccmonitor.mobile.core.claude.transport.BlockedSignal
-import com.ccmonitor.mobile.core.claude.transport.RateLimitReading
-import com.ccmonitor.mobile.core.claude.transport.WaitingCopy
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import com.ccmonitor.mobile.ui.session.CommandPalette
@@ -58,12 +55,6 @@ fun ChatScreen(
     onAttach: (suspend () -> String?)? = null,
     /** 重新接上下行。为 null 时不出那个入口；没有它，内容接收结束或停止显示后只能退出重进。 */
     onReattach: (() -> Unit)? = null,
-    /**
-     * 「我知道，还是发」：等待态下随时可用的出口。
-     *
-     * 注意：为 null 时输入框也不禁（见 [inputBlockedBy]）。禁用与出口绑死，摘掉出口禁用也一起没了。
-     */
-    onSendAnyway: ((String) -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -101,8 +92,6 @@ fun ChatScreen(
     }
 
     Column(modifier.fillMaxSize()) {
-        // 等待条钉在最上面、不可关：关掉之后就不知道为什么发不出去。
-        WaitingBar(state.waiting)
         HistoryStatusBar(state)
 
         ClaudeReadingPane(
@@ -131,43 +120,15 @@ fun ChatScreen(
         ReattachRow(state, onReattach)
 
         PermissionModeChip(state.permissionMode)
-        QuotaLine(state.quota)
 
         ChatInputRow(
             streaming = state.streaming,
             sending = state.sending,
             catalog = state.catalog,
-            // 只禁上行，不冻整屏：停止、上翻、返回、重新接上都照常。没有逃生口就不禁，见 [inputBlockedBy]。
-            blocked = inputBlockedBy(state, onSendAnyway != null),
             onAttach = onAttach,
             onSend = onSend,
-            onSendAnyway = onSendAnyway,
             onStop = onStop,
         )
-    }
-}
-
-/**
- * 输入框该不该禁：手上的等待态真要拦（[WaitingNotice.blocksSending]，过期读数只提示不拦），且有逃生口。
- * 后一条把禁用与出口绑死，摘掉出口不会留下走不出去的屏。
- */
-internal fun inputBlockedBy(
-    state: ChatUiState,
-    hasEscape: Boolean,
-): WaitingNotice? = state.waiting?.takeIf { it.blocksSending && hasEscape }
-
-/**
- * 等待条：钉在顶栏下、不可关。文案映射在 [WaitingCopy] 里做（[WaitingCopy.headlineFor] +
- * [WaitingCopy.ANSWER_IT_ON_THE_COMPUTER]），英文机器码不上屏。读数过期、不拦时也要显示。
- */
-@Composable
-private fun WaitingBar(notice: WaitingNotice?) {
-    if (notice == null) return
-    Surface(tonalElevation = 3.dp) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).testTag(ChatTestTags.WAITING)) {
-            Text("◆ ${notice.headline}", style = MaterialTheme.typography.bodyMedium)
-            Text(notice.detail, style = MaterialTheme.typography.bodySmall)
-        }
     }
 }
 
@@ -187,40 +148,6 @@ private fun BlockedLine(blocked: BlockedSignal?) {
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatTestTags.BLOCKED),
     )
 }
-
-/**
- * 配额行。[RateLimitReading.windows] 为空时整条不渲染：「没有百分比」不等于 0%，不编 0%，也不画空进度条。
- * 快满时不弹窗，只在行尾加一句（见 [quotaTailFor]）：配额是渐变的事实，弹窗会打断读回复。
- */
-@Composable
-private fun QuotaLine(quota: RateLimitReading?) {
-    val window = quota?.tightest ?: return
-    val pct = (window.utilization * PERCENT).toInt()
-    Text(
-        text = "配额：${window.name} 已用 $pct%${quotaTailFor(window.utilization)}",
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp).testTag(ChatTestTags.QUOTA),
-    )
-}
-
-private const val PERCENT = 100
-
-/**
- * 配额行末尾那句。超过 100% 是真实形状（同一帧 `rate_limit_info.status = "rejected"`），
- * 已被拒的账号不该读到「快用完了」，所以分三档。
- */
-internal fun quotaTailFor(utilization: Double): String =
-    when {
-        utilization >= QUOTA_OVER -> " · 已经超了，得等它重置"
-        utilization >= QUOTA_TIGHT -> " · 快用完了"
-        else -> ""
-    }
-
-/** 「快用完了」的门槛。低于它提醒太频，高于它来不及。 */
-private const val QUOTA_TIGHT = 0.9
-
-/** 「已经超了」的门槛：1.0 就是用满。 */
-private const val QUOTA_OVER = 1.0
 
 /**
  * 会话状态行：说出用户不知道就会误解屏幕的事。没接上行时说「只回显」：点发送只在本地上屏。
@@ -313,10 +240,8 @@ private fun ChatInputRow(
     streaming: Boolean,
     sending: Boolean,
     catalog: CommandCatalog,
-    blocked: WaitingNotice?,
     onAttach: (suspend () -> String?)?,
     onSend: (String) -> Unit,
-    onSendAnyway: ((String) -> Unit)?,
     onStop: () -> Unit,
 ) {
     // `rememberSaveable`：转屏会重建 Activity，`remember` 的草稿会丢光。
@@ -334,35 +259,10 @@ private fun ChatInputRow(
     }
     Surface(tonalElevation = 2.dp) {
         Column(Modifier.fillMaxWidth()) {
-            // 输入框上方那句与模态拒绝路径共用同一个常量：同一事实的两个时刻，说两句会被当成两种故障。
-            if (blocked != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        WaitingCopy.SENDING_NOW_ANSWERS_THE_QUESTION,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // 出口随时可用，不等等待态自己解除。
-                    TextButton(
-                        onClick = {
-                            onSendAnyway?.invoke(draft)
-                            draft = ""
-                        },
-                        enabled = draft.isNotBlank(),
-                        modifier = Modifier.testTag(ChatTestTags.SEND_ANYWAY),
-                    ) {
-                        Text("我知道，还是发")
-                    }
-                }
-            }
             InputControls(
                 streaming = streaming,
                 sending = sending,
                 hasCatalog = !catalog.isEmpty,
-                blocked = blocked != null,
                 draft = draft,
                 onDraft = { draft = it },
                 onPalette = { paletteOpen = true },
@@ -374,13 +274,12 @@ private fun ChatInputRow(
     }
 }
 
-/** 输入行本体。[blocked] 只关输入与发送，停止键照常：等待不是断线。 */
+/** 输入行本体。 */
 @Composable
 private fun InputControls(
     streaming: Boolean,
     sending: Boolean,
     hasCatalog: Boolean,
-    blocked: Boolean,
     draft: String,
     onDraft: (String) -> Unit,
     onPalette: () -> Unit,
@@ -407,8 +306,6 @@ private fun InputControls(
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraft,
-                // 禁用而不隐藏：这个状态会好起来（电脑上答完就恢复）。
-                enabled = !blocked,
                 modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
                 placeholder = { Text("说点什么…") },
                 singleLine = false,
@@ -428,7 +325,7 @@ private fun InputControls(
                         onDraft("")
                     },
                     // 等待态下发送键也灰。注意：真正的拦截在 `ChatSession.send()`，这里只是外观。
-                    enabled = draft.isNotBlank() && !blocked,
+                    enabled = draft.isNotBlank(),
                     modifier = Modifier.testTag(ChatTestTags.SEND),
                 ) {
                     Text("发送")

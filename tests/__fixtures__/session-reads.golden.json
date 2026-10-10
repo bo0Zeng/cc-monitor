@@ -22,6 +22,7 @@
     ],
     "lastSay": {
       "at": "t5",
+      "atMs": null,
       "text": "done"
     },
     "mcp": [
@@ -42,6 +43,7 @@
     "pending": [
       {
         "at": "t3",
+        "atMs": null,
         "id": "tu-1",
         "name": "Edit",
         "state": "unclear",
@@ -52,6 +54,7 @@
       },
       {
         "at": "t4",
+        "atMs": null,
         "id": "tu-3",
         "name": "Agent",
         "state": "unclear",

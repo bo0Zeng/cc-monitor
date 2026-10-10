@@ -133,6 +133,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
+                at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
                 text: None,
@@ -164,6 +165,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
+                at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
                 text: None,
@@ -206,7 +208,8 @@ fn corpus(name: &str) -> Vec<Value> {
                 r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
             );
             let face = crate::agents::claudecode::RECORDS;
-            let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[]);
+            let mut reader =
+                crate::observe::record_page::Reader::new(&face, 0, &[], Default::default());
             crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
                 .into_iter()
                 .map(|r| serde_json::to_value(r).unwrap())
@@ -297,10 +300,7 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             sub_id: u.sub_id,
             usage: u.usage.into(),
         }],
-        &crate::common::time::TextClock {
-            now: now as i64,
-            tz_min: 0,
-        },
+        &crate::common::time::TextClock::new(now, &crate::Tz::default()),
     )
 }
 

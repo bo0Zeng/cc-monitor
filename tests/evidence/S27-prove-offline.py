@@ -18,7 +18,7 @@
 # 🔴 为什么它是 `.py` 而不是更自然的 `.sh`
 
 `ci.yml` 的 `e2e-smoke` job 把 `tests/evidence/*.sh` 纳进 shellcheck，并且那条覆盖面
-地板被 `src/frontend/shell/src/shell_lint_registry.rs` 钉成**恒等式**（不是「≥」）——
+地板被 `tests/frontend/shell/shell_lint_registry.rs` 钉成**恒等式**（不是「≥」）——
 本目录多一个 `.sh`，那条判据当场红并逐字报「地板写着 69，而那条表达式今天真实覆盖 70」。
 实测过：先写成 `.sh` 时它就是这么红的。改地板要同时动 `ci.yml` 与那棵 Rust 树，
 不在本件的写区里 ⇒ 换成 `.py`（`tests/evidence/*.py` 没有同形的人群地板，

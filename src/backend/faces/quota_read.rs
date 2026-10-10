@@ -1,7 +1,7 @@
 //! **`quota-read` 的成品**（有类型的一份）：每个出过数的号一条 ＝ 那一条账的原数 ＋ 显示态 ＋ 写好的几行 · 「5h 那一格」· 开窗那一判；
 //! 没出过数的号一条 ＝ 种类 · 登录 · 写好的几行 · 开窗那一判；顶上 ＝ 读答三态 · 那一句 · 号名 / 位名表。
 //!
-//! 时刻字逐格按一把钟写（[`TextClock`]）：生产里是这台的本地钟，金样按它自己的偏移。账上的原数（`reading` · `windowsSeen`）
+//! 时刻字逐格按一把钟写（[`TextClock`]）：按看的那一台的时区（请求信封的 `tz`，缺了按 UTC），金样按 UTC。账上的原数（`reading` · `windowsSeen`）
 //! 是透传的一团，旁边的时刻字由同一把钟按 `common::time::with_texts` 那个写法添。
 //! 每号几行与开窗那一判照「不含这几格的那一截」的线上样子算（`faces/quota_rows.rs`，唯一的行模型）。
 
@@ -239,10 +239,7 @@ pub(crate) fn specimen() -> QuotaRead {
     use crate::accounts::quota::ledger::Source;
     use crate::accounts::quota::show::{QuotaState, SlotShow, WindowShow};
     use crate::common::cells::Tone;
-    let clock = TextClock {
-        now: 1_000,
-        tz_min: 0,
-    };
+    let clock = TextClock::new(1_000, &crate::Tz::default());
     let show = QuotaShow {
         kind: Kind::Sub,
         state: QuotaState::Ok,

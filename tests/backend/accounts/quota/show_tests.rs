@@ -322,10 +322,7 @@ fn a_slot_cell_is_written_once_by_state() {
 #[test]
 fn the_usage_cell_is_written_by_the_core() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
-    let clock = crate::common::time::TextClock {
-        now: NOW as i64,
-        tz_min: 0,
-    };
+    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
     let shown = |r: Option<&QuotaReading>, kind: Kind| {
         let mut q = show(r.map(|r| (r, NOW)), facts(kind), &no_line, NOW, &slot);
         q.stamp(&clock);

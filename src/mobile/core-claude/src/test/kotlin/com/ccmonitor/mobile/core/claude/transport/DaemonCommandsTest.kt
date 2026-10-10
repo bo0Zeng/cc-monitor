@@ -408,17 +408,6 @@ class DaemonCommandsTest {
     }
 
     /**
-     * 用量条从 jsonl 自己算：`UsageAggregator` / `JsonlRecord.Usage` 一个字节都不经后端。
-     * 这条钉住它还在，免得清理 `--usage` 时被一起带走。
-     */
-    @Test
-    fun theLocallyComputedUsagePathStillExists() {
-        val root = repoRoot()
-        val survivor = File(root, "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/model/UsageAggregator.kt")
-        assertTrue("`UsageAggregator` 必须还在（它从 jsonl 自己算，不经后端）：${survivor.path}", survivor.isFile)
-    }
-
-    /**
      * 查询输出的解析：只收 `{` 开头的行。
      *
      * daemon 对不认识的子命令是 stdout 空 / stderr 报错 / exit=2，

@@ -118,6 +118,40 @@ export async function mainReady(tabs: number): Promise<void> {
   await sleep(900);
 }
 
+/**
+ * 等一个滚动容器的内容落定：连续 20 帧 `scrollHeight` 与 `scrollTop` 都没动（懒建卡 · 骨架换实高 · 按尾部贴底都做完了）。
+ * 用它代替「睡一个固定的时长再截」：后端应答早晚几十毫秒，睡固定时长截到的是排版进行到哪一步（长会话那几张差一屏滚动就是这么来的）。
+ */
+export async function settled(el: HTMLElement, ms = 10_000): Promise<void> {
+  const t0 = performance.now();
+  let last = "";
+  let still = 0;
+  while (still < 20) {
+    if (performance.now() - t0 > ms) throw new Error(`排版 ${ms}ms 没落定（scrollHeight 一直在变）`);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const now = `${el.scrollHeight}:${el.scrollTop}`;
+    still = now === last ? still + 1 : 0;
+    last = now;
+  }
+}
+
+/** 等 `get()` 给出东西（每帧问一次）。 */
+export async function until<T>(get: () => T | null | undefined, ms = 10_000): Promise<T> {
+  const t0 = performance.now();
+  for (;;) {
+    const v = get();
+    if (v !== null && v !== undefined) return v;
+    if (performance.now() - t0 > ms) throw new Error(`${ms}ms 没等到`);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+  }
+}
+
+/** 消息流此刻那一个滚动容器。 */
+export function streamScroller(): HTMLElement | null {
+  const box = document.querySelector<HTMLElement>("#message-stream");
+  return [...(box?.querySelectorAll<HTMLElement>("*") ?? [])].find((e) => e.scrollHeight > e.clientHeight + 100) ?? null;
+}
+
 /** 点第 i 个 tab（从 0 数）。 */
 export async function openTab(i: number): Promise<void> {
   const tabs = document.querySelectorAll<HTMLElement>("#tab-bar .tab");

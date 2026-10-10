@@ -5,15 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
 import com.ccmonitor.mobile.core.claude.catalog.SessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.SessionLight
-import com.ccmonitor.mobile.core.claude.catalog.lightForStatus
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.model.JsonlParser
 import com.ccmonitor.mobile.core.claude.model.JsonlRecord
 import com.ccmonitor.mobile.core.claude.model.MainBranch
 import com.ccmonitor.mobile.core.claude.model.RecordClassifier
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.claude.model.UsageSummary
 import com.ccmonitor.mobile.core.claude.model.codexSessionMetaCwd
 import com.ccmonitor.mobile.core.claude.model.groupTools
 import com.ccmonitor.mobile.core.claude.model.withUuid
@@ -153,7 +150,6 @@ sealed interface ClaudeReadState {
         val lastUnits: List<RenderUnit> = emptyList(),
         val lastPath: String? = null,
         val windowed: Boolean = false,
-        val usage: UsageSummary? = null,
     ) : ClaudeReadState
 
     data class Ready(
@@ -161,8 +157,6 @@ sealed interface ClaudeReadState {
         val path: String,
         // 是否有界窗口首载：true 表示还有更早历史未载，UI 显「载完整会话」。
         val windowed: Boolean = false,
-        // 本会话（或已载窗口）的用量汇总；null 表示没有 usage 记录。
-        val usage: UsageSummary? = null,
         // 已翻到最早。UI 据此显示「已是最早」而不是无限转圈。
         val historyExhausted: Boolean = false,
     ) : ClaudeReadState
@@ -218,7 +212,6 @@ class ReadingPaneViewModel(
     private val agentKind: AgentKind = agentKindArg
     private val profile = AgentProfile.of(agentKind)
     private val parser = profile.recordParser
-    private val usageAggregator = profile.usageAggregator
     private val locator = profile.sessionLocator
 
     // Codex 没有 parentUuid，不能走 MainBranch/骨架链：按文件序排，并补合成 uuid 保 unitKey 唯一。
@@ -249,11 +242,6 @@ class ReadingPaneViewModel(
     private val _liveSessionIds = MutableStateFlow<Set<String>>(emptySet())
     val liveSessionIds: StateFlow<Set<String>> = _liveSessionIds.asStateFlow()
 
-    // 每个发现会话的状态灯（由 pidfile status 派生，[refreshSessions] 在每次 tailFlow 起点刷新）。
-    // 不在表内的 sid 由调用方按 [SessionLight.Stopped] 处理（没有活 pidfile）。
-    private val _sessionLights = MutableStateFlow<Map<String, SessionLight>>(emptyMap())
-    val sessionLights: StateFlow<Map<String, SessionLight>> = _sessionLights.asStateFlow()
-
     // 会话目录：判活与可读标题（无 pidfile 时兜底最近 mtime 列表）。哪种 agent 配哪个实现，问档案的 `newSessionCatalog`。
     private val catalog: SessionCatalog = profile.newSessionCatalog(channel, claudeDir)
 
@@ -270,8 +258,6 @@ class ReadingPaneViewModel(
         val refs = catalog.liveSessionRefs(cwd)
         // 活会话 sid 集，覆盖式快照（见 _liveSessionIds）。
         _liveSessionIds.value = refs.filter { it.live }.mapTo(HashSet()) { it.sessionId }
-        // 每个 sid 的状态灯快照。
-        _sessionLights.value = refs.associate { it.sessionId to lightForStatus(it.status, it.live) }
         // 占位可读名（pidfile name ?? sid8）即刻上屏；tail 目标随即返回，不等标题探针。
         _sessions.value = mergePinned(refs.map { JsonlSession(it.path, it.provisionalTitle) })
         titleJob?.cancel()
@@ -335,7 +321,6 @@ class ReadingPaneViewModel(
             lastUnits = lr?.units ?: emptyList(),
             lastPath = lr?.path,
             windowed = lr?.windowed ?: false,
-            usage = lr?.usage,
         )
     }
 
@@ -503,7 +488,6 @@ class ReadingPaneViewModel(
                         collectOrphans = st.windowed,
                     )
                 // 连续工具分组是视图变换，作用在分类输出上，不碰 classifyState 缓存，增量复用不受影响。
-                // 用量从全部累积记录聚合（Claude 按 requestId 取 MAX；Codex 累计 token_count）。
                 val ready =
                     ClaudeReadState.Ready(
                         groupTools(st.classifyState.units),
@@ -511,7 +495,6 @@ class ReadingPaneViewModel(
                         // 翻到最早之后就不再是「有界窗口」了 —— 否则 UI 继续显示「↑ 载完整会话」，
                         // 点了会从 byte 0 重下一遍已经全在内存里的东西
                         st.windowed && !st.historyExhausted,
-                        usageAggregator.aggregate(st.records),
                         historyExhausted = st.historyExhausted,
                     )
                 lastReady = ready // 记住最后一屏，供断连保留内容与重订阅跳过 Loading

@@ -93,7 +93,7 @@ describe("按轮折叠", () => {
     expect(line.getAttribute("aria-expanded")).toBe("false");
     expect(line.querySelector(".proc-text")?.textContent).toBe(["头", "agent ×2", "失败 ×1"].join(copyText("kit.text.sep")));
     expect(line.querySelector(".proc-fails")?.textContent).toBe("失败 ×1");
-    expect(line.querySelector(".proc-span")?.textContent).toBe("02:01–02:04 · 3m02s");
+    expect(line.querySelector(".proc-span")?.textContent).toBe("02:01–02:04 · 3m");
   });
 
   it("正在跑的那一轮也折着：转圈 ＋「现在：…」；在等你 ⇒ 琥珀点；右端用时到现在", async () => {

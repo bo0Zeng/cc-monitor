@@ -834,6 +834,9 @@ fn declaring_zero_fields_needs_a_reason() {
 /// （出方向字段是**真调一次**比出来的）。本条只钉「两张表没有分叉」。
 #[test]
 fn the_files_read_family_is_online_exactly_as_it_is_declared() {
+    // ④ 那一步真调每一条读能力：`files-index-rebuild` 不给 `path` 就重走家目录、装上常驻那一份 ⇒ 拿那把唯一的锁
+    //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，mg41 CI 现红过）。
+    let _lock = crate::files::index::tests::resident_lock();
     // ① 名字：能力名把 `.` 换成 `-` 就是线上名（反向那一半住 `files::answer_wire`）。
     let declared: std::collections::BTreeSet<String> = crate::files::capability_names()
         .into_iter()
@@ -1016,7 +1019,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         // ④ 真的调一次：`run` 必须**够得到**那条能力。
         //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
         //    落到 `unknown_capability` 就说明翻译或名字接错了。
-        let out = crate::files::answer_wire(&online, &serde_json::json!({}));
+        let out = crate::files::answer_wire(&online, &serde_json::json!({}), &Default::default());
         if let Err(crate::files::Refused {
             code, said: msg, ..
         }) = out

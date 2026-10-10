@@ -50,7 +50,7 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
 
 fn find(data: &[u8], q: &str, tools: bool, limit: usize) -> Vec<Value> {
     let mut out = Vec::new();
-    write_session_find(data, q, tools, limit, &mut out).expect("find ok");
+    write_session_find(data, q, tools, limit, &Default::default(), &mut out).expect("find ok");
     let v: Vec<Value> = String::from_utf8(out)
         .unwrap()
         .lines()
@@ -239,7 +239,10 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
             tools,
             crate::observe::search_query::FindPage::first(500),
             |h| {
-                hits.push(h.clone());
+                hits.push(crate::observe::search_query::with_hit_text(
+                    h,
+                    &Default::default(),
+                ));
                 Ok(())
             },
         )
@@ -251,6 +254,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "include_tools": tools, "limit": 500}),
+            &Default::default(),
         )
         .unwrap()
     };
@@ -314,7 +318,10 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         let page = crate::observe::search_query::FindPage { skip, limit };
         let (_, total) =
             crate::observe::search_query::scan_session_find(r, "zqx", false, page, |h| {
-                hits.push(h.clone());
+                hits.push(crate::observe::search_query::with_hit_text(
+                    h,
+                    &Default::default(),
+                ));
                 Ok(())
             })
             .unwrap();
@@ -325,6 +332,7 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "skip": skip, "limit": limit}),
+            &Default::default(),
         )
         .unwrap()
     };

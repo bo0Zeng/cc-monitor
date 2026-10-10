@@ -145,7 +145,7 @@
           "personal"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 快满：字同正常（琥珀由界面按 state 上色，不进字）",
@@ -292,7 +292,7 @@
           "personal"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 用满被拒：卡着的窗口用满（full）写 ✕ ＋ 几点重置",
@@ -447,7 +447,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 被拒而没用满（短时限流）：卡着的窗口写 {pct}% · 被拒 ＋ 几点重置",
@@ -601,7 +601,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 超额在兜：卡着的窗口写 超额，超额一行 使用中 另计费",
@@ -758,7 +758,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 上一窗已过 ＋ 数旧：卡着的窗口写 —、↻.. 已过；采样写 几点 · 旧",
@@ -897,7 +897,7 @@
           "team"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 被拒却没有分窗口的数（回包只给了几点能再用）⇒ 状态 一行",
@@ -1030,7 +1030,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "订阅 · 需登录 · 用满（full，用量超过 100%）照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
@@ -1169,7 +1169,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "没指定号（_ ⇒ ~/.claude · 未指定账号）· 别台采样（机器名照写）· 距今整点 +2h 与 +45m",
@@ -1320,7 +1320,7 @@
           "_"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻（写 被拒）/ 需 key",
@@ -1549,7 +1549,7 @@
           "api"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "没出过数：订阅（需登录）与按量各一（— 无采样，不出采样一行）",
@@ -1800,7 +1800,7 @@
           "personal"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "跨年：非当年写 YYYY-MM-DD HH:MM（过去的采样 · 将来的重置都一样）",
@@ -2045,7 +2045,7 @@
           "cold"
         ]
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "还没看到过任何回包、账号库也是空的",
@@ -2071,7 +2071,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "name": "额度账读不出来",
@@ -2097,7 +2097,7 @@
         "unseen": [],
         "usableNow": []
       },
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     }
   ],
   "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。"

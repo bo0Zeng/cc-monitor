@@ -477,16 +477,10 @@ fn hits(f: &Finished, q: &str) -> bool {
 }
 
 /// 一行成品（活不活只出 `status` 一格：`isLive` 是它的来路，两格并存读的人就得猜听哪一格）。
-fn row_of<'o>(
-    f: Finished,
-    at: i64,
-    context: bool,
-    now_ms: i64,
-    local: &dyn Fn(i64) -> i64,
-) -> HistoryRow<'o> {
+fn row_of<'o>(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> HistoryRow<'o> {
     let r = f.raw;
     let (at_text, section_text, span_text) =
-        crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, local);
+        crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
     HistoryRow {
         can: can_of(&r.agent, f.status, r.is_bg),
         agent_tag: agent_tag(&r.agent).map(Words::from),
@@ -523,14 +517,14 @@ fn row_of<'o>(
 }
 
 /// 一台的清单（`raw` 那一形）＋ 注解 ＋ 入参 ⇒ 成品。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
-/// `local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是这台的 [`crate::common::time::local_secs`]）：每行的行尾 · 分段 · 时间段三格按它写好。
+/// `tz` ＝ 看的那一台的时区（请求信封带来的）：每行的行尾 · 分段 · 时间段三格按它写好（偏移按各自那一刻）。
 pub(crate) fn answer_from<'o>(
     listing: &Listing,
     origin: Option<&'o str>,
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
-    local: &dyn Fn(i64) -> i64,
+    tz: &crate::Tz,
 ) -> HistoryList<'o> {
     let t = ann.as_ref().ok().copied();
     let all: Vec<Finished> = listing
@@ -579,7 +573,7 @@ pub(crate) fn answer_from<'o>(
         .zip(context)
         .map(|(f, cx)| {
             let at = key(&f);
-            row_of(f, at, cx, now_ms, local)
+            row_of(f, at, cx, now_ms, tz)
         })
         .collect();
     rows.sort_by(|a, b| {
@@ -755,8 +749,8 @@ async fn blocking<T: Send + 'static>(
     })?
 }
 
-/// 帧面 `history-list`。
-pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
+/// 帧面 `history-list`（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写）。
+pub async fn answer(args: Value, tz: crate::Tz) -> Result<Value, (&'static str, String)> {
     if args.get("raw").and_then(Value::as_bool) == Some(true) {
         return blocking(|| {
             machine_listing().map(|l| serde_json::to_value(l).unwrap_or(Value::Null))
@@ -792,7 +786,7 @@ pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
             ann.as_ref().map_err(Clone::clone),
             &ask,
             now_ms(),
-            &crate::common::time::local_secs,
+            &tz,
         );
         Ok(serde_json::to_value(got).unwrap_or(Value::Null))
     })

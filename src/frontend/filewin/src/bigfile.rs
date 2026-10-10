@@ -843,7 +843,7 @@ impl Doc {
     /// 编辑面顶上那一行：为什么进了这个模式。
     pub fn notice(&self) -> String {
         let w = self.why;
-        let size = super::rows::human_size(w.total as u64);
+        let size = copy_core::size_text(w.total as u64);
         match (w.total_over(), w.line_over()) {
             (true, true) => copy_text(
                 "rsFilewinBigfile.notice.both",

@@ -2,7 +2,7 @@
 
 Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户自己服务器上的 Claude Code。不做云同步。
 
-它是 cc-monitor 的一个**输出适配层**（出口）：判定与写字都在后端核心，手机端只挑格、排版、装运（见 [`../doc/ARCHITECTURE.md`](../doc/ARCHITECTURE.md)「核心与适配层」一节）。它经 SSH 调服务器上那份常驻后端（`~/.cc-monitor/bin/ccm`）的 CLI 面与流，与桌面端共用同一份后端，一台服务器装一次。
+它是 cc-monitor 的一个**输出适配层**（出口）：判定与写字都在后端核心，手机端只挑格、排版、装运（见 [`../doc/ARCHITECTURE.md`](../doc/ARCHITECTURE.md)「核心与适配层」一节）。它经 SSH 连服务器上那份常驻后端（`~/.cc-monitor/bin/ccm`）：先 `--backend-probe` 核同一个 `BUILD_ID`、`--resident-ensure` 起常驻，再开一条长连接 `--resident-attach`（双向帧协议，和桌面连远端同一条路），一问一答与会话帧都走它；与桌面端共用同一份后端，一台服务器装一次。
 
 当前版本 0.6.1（versionCode 11）。包名与 `applicationId` 是 `com.ccmonitor.mobile`（与桌面端的 `com.ccmonitor.app` 同一个根）。
 
@@ -11,12 +11,12 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | 模块 | 管什么 |
 |---|---|
 | `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关、起路 A |
-| `core-claude` | 路 A 的帧与上行、记录模型与判定、α / β / Q 三种传输、起 claude 的命令 |
-| `core-remote` | 中立的远端命令通道与 shell 引号 |
+| `core-claude` | `link/`：常驻流的帧客户端（门槛 · 起常驻 · attach · 一问一答 · 格目录）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read`）；其余是还没删的路 A 与自读原文那一族 |
+| `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
 | `core-ssh` | SSH（sshj）：连接池、多地址竞速、跳板、SFTP、`~/.ssh/config`、known_hosts、密钥 |
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
-| `core-ui` | 共用主题与反馈 |
+| `core-ui` | 共用主题与反馈 · 取文口 `copyText`（构建时从 `src/shared/copy/table.json` 抄手机代码引到的那几条） |
 | `bridge/` | 路 A 上下行的线协议（`PROTOCOL.md`）与金样（`vectors/`） |
 
 ## 技术栈

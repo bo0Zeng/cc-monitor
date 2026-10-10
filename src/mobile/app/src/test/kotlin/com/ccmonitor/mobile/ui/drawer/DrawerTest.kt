@@ -6,8 +6,7 @@ import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
 import com.ccmonitor.mobile.ui.nav.Screen
 import com.ccmonitor.mobile.ui.nav.drawerDestination
 import com.ccmonitor.mobile.ui.nav.freshLanding
-import com.ccmonitor.mobile.ui.overview.ConversationRow
-import com.ccmonitor.mobile.ui.overview.HistoryPaging
+import com.ccmonitor.mobile.ui.overview.HistoryItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -92,14 +91,10 @@ class DrawerTest {
     // ---- 「最近」 -----------------------------------------------------------------
 
     @Test
-    fun recentShowsOnlyTitlesNewestFirst() {
-        val rows =
-            listOf(
-                row("a", "旧的", 100),
-                row("b", "新的", 300),
-                row("c", "中间", 200),
-            )
-        assertEquals(listOf("新的", "中间", "旧的"), recentEntries(HistoryPaging(rows = rows, attached = true))!!.map { it.title })
+    fun recentShowsOnlyTitlesInTheCoresOrder() {
+        // 核心 `history-list` 已按最后活动排好：「最近」照它的先后，不按自己的时间重排。
+        val rows = listOf(row("b", "新的"), row("c", "中间"), row("a", "旧的"))
+        assertEquals(listOf("新的", "中间", "旧的"), recentEntries(rows)!!.map { it.title })
         assertEquals(
             "一行只有标题（和打开它要的编号），没有时间、状态、消息数",
             setOf("sessionId", "title"),
@@ -113,8 +108,7 @@ class DrawerTest {
     @Test
     fun recentIsAbsentUntilTheListArrives() {
         assertNull("列表还没拿到 ⇒ 整段不出", recentEntries(null))
-        assertNull("拿到了但一条都没有 ⇒ 也不出", recentEntries(HistoryPaging(attached = true, loading = true)))
-        assertNull(recentEntries(HistoryPaging(attached = true, exhausted = true)))
+        assertNull("拿到了但一条都没有 ⇒ 也不出", recentEntries(emptyList()))
     }
 
     @Test
@@ -180,8 +174,7 @@ class DrawerTest {
     private fun row(
         id: String,
         title: String,
-        at: Long,
-    ) = ConversationRow(sessionId = id, title = title, cwd = null, jsonlPath = null, messageCount = 3, updatedAtMs = at)
+    ) = HistoryItem(sessionId = id, label = title, atText = "09:00", agentTag = null, status = null)
 
     private fun codeOnly(text: String): String = KotlinSourceScanner.codeOnlyKeepingLiterals(text)
 

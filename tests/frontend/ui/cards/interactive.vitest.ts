@@ -26,6 +26,7 @@ import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import type { StepAsk } from "../../../../src/frontend/ui/generated/StepAsk";
 
 describe("交互等待类工具：不许被折进通用工具组", () => {
   const ctx = () => ({
@@ -57,34 +58,21 @@ describe("交互等待类工具：不许被折进通用工具组", () => {
   });
 });
 
-describe("交互卡：畸形输入一律 throw，由调用方回退通用折叠卡", () => {
-  // 头注逐字：「输入畸形一律 throw，由调用方（renderBlock）回退通用折叠卡
-  // （INVARIANT § 17a/18 双层防御惯例）」。**双层防御的外层是 throw** ——
-  // 若它改成「静默渲染一张空卡」，用户会看到一张什么都没有的卡而不是通用工具卡。
+describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参；没有那一格一律 throw，由调用方回退通用折叠卡", () => {
+  // **双层防御的外层是 throw** —— 若它改成「静默渲染一张空卡」，用户会看到一张什么都没有的卡而不是通用工具卡。
+  // 入参形状不对时核心不出那一格（`tests/backend/agents/claudecode/steps_tests.rs::questions_and_plans_come_out_as_their_own_cell`）。
   const opts = { lazy: false };
-
-  it("不是交互工具的名字 → throw（调用方据此走通用路径）", () => {
-    expect(() => buildInteractiveCard("Bash", {}, opts)).toThrow(/not an interactive tool/);
+  const asked = (question: string, labels: string[]): StepAsk => ({
+    kind: "questions",
+    questions: [{ question, multi: false, options: labels.map((label) => ({ label })) }],
   });
 
-  it("AskUserQuestion：questions 缺失 / 空数组 / 非数组 → throw", () => {
-    for (const bad of [{}, { questions: [] }, { questions: "nope" }, null, undefined]) {
-      expect(() => buildInteractiveCard("AskUserQuestion", bad, opts)).toThrow(
-        /malformed input\.questions/,
-      );
-    }
-  });
-
-  it("ExitPlanMode：plan 缺失 → throw", () => {
-    expect(() => buildInteractiveCard("ExitPlanMode", {}, opts)).toThrow(/malformed input\.plan/);
+  it("没有那一格 → throw（调用方据此走通用路径）", () => {
+    expect(() => buildInteractiveCard(undefined, opts)).toThrow(/no ask cell/);
   });
 
   it("★ 正路要真渲染出来（否则上面全是 throw，等于只测了失败路径）", () => {
-    const el = buildInteractiveCard(
-      "AskUserQuestion",
-      { questions: [{ question: "选哪个方案", options: [{ label: "甲案" }, { label: "乙案" }] }] },
-      opts,
-    );
+    const el = buildInteractiveCard(asked("选哪个方案", ["甲案", "乙案"]), opts);
     const text = el.textContent ?? "";
     expect(text).toContain("选哪个方案");
     expect(text).toContain("甲案");
@@ -93,13 +81,32 @@ describe("交互卡：畸形输入一律 throw，由调用方回退通用折叠�
     expect(text).toContain(copyText("interactive.ask.title"));
   });
 
+  it("★ 出口省掉 `tool_use.input` 之后（`omit` 声明）：交互卡照样建成提问卡，不退成通用工具卡", () => {
+    const rec = {
+      agent: "claude",
+      t: "reply",
+      id: "a",
+      at: "2026-01-01T00:00:00.000Z",
+      blocks: [{ type: "tool_use", id: "t1", name: "AskUserQuestion" }],
+      cards: { t1: "interactive" },
+      steps: { t1: { tool: "AskUserQuestion", known: true, ask: asked("改哪一处", ["甲"]) } },
+      autoReply: false,
+      endsTurn: false,
+    } as unknown as LineRecord;
+    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false };
+    const r = renderMessage(rec, ctx as never);
+    expect(r.kind).toBe("card");
+    const el = (r as { element: HTMLElement }).element;
+    expect(el.querySelector(".block-ask")?.textContent).toContain("改哪一处");
+  });
+
   it("★ 答了之后（B7）：标题换「提问」/「计划」、底行写后端读出的结果（已选「…」· 已批准 · 未批准），被选项高亮；不印英文原句", () => {
-    const ask = buildInteractiveCard("AskUserQuestion", { questions: [{ question: "选哪个方案", options: [{ label: "甲案" }, { label: "乙案" }] }] }, opts);
+    const ask = buildInteractiveCard(asked("选哪个方案", ["甲案", "乙案"]), opts);
     settleInteractive(ask, { ok: true, answer: { kind: "picked", options: ["乙案"] }, text: copyText("interactive.done.picked", { option: "乙案" }) });
     expect(ask.querySelector(".block-ask-title")?.textContent).toBe(copyText("interactive.ask.done"));
     expect(ask.querySelector(".block-interactive-done")?.textContent).toBe(copyText("interactive.done.picked", { option: "乙案" }));
     expect([...ask.querySelectorAll(".ask-option.is-chosen")].map((li) => (li as HTMLElement).dataset.optionLabel)).toEqual(["乙案"]);
-    const plan = buildInteractiveCard("ExitPlanMode", { plan: "甲" }, opts);
+    const plan = buildInteractiveCard({ kind: "plan", text: "甲" }, opts);
     settleInteractive(plan, { ok: true, answer: { kind: "approved" }, text: copyText("interactive.done.approved") });
     expect([plan.querySelector(".block-plan-title")?.textContent, plan.querySelector(".block-interactive-done")?.textContent]).toEqual([copyText("interactive.plan.done"), copyText("interactive.done.approved")]);
     settleInteractive(plan, { ok: false, rejected: true, text: "" });

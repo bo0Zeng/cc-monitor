@@ -888,7 +888,7 @@ pub struct RunInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub started_ms: Option<u64>,
-    /// `started_ms` 在这台本地钟上的钟面 `HH:MM`（跟着 `started_ms` 一起写；界面照抄、不换算）。
+    /// `started_ms` 在看的那一台钟上的钟面 `HH:MM`（推出去那一下按这条流的时区写，[`Frame::stamp`]；界面照抄、不换算）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub started_text: Option<String>,
@@ -1295,10 +1295,30 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+impl Frame {
+    /// **推出去那一下**按这条流看的那一台的时区写钟面（`main.rs::writer_task` 对出方向每一帧调它；应答在答的那一下已按请求的 `tz` 写好）：
+    /// `line.record.timeText` · `session_runs.runs[].startedText`。产这些帧的那几层不写钟面（同一份状态可能推给几个时区不同的看的人）。
+    pub fn stamp(&mut self, tz: &crate::common::time::Tz) {
+        match self {
+            Frame::Line {
+                record: Some(r), ..
+            } => r.stamp(tz),
+            Frame::SessionRuns { runs, .. } => {
+                for r in runs {
+                    r.started_text = r.started_ms.map(|ms| {
+                        crate::common::time::ms_hm(i64::try_from(ms).unwrap_or(i64::MAX), tz)
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text
-/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000,"view":{"omit":{"record":["blocks[type=tool_use].input"]}}}
+/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000,"tz":"Asia/Shanghai","view":{"omit":{"record":["blocks[type=tool_use].input"]}}}
 /// ```
 ///
 /// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
@@ -1318,6 +1338,9 @@ pub struct Request {
     /// 出口的声明（要哪几格 · 哪几格不要）；缺 ＝ `null` ＝ 全量。登记处统一解、统一拒、统一投影（`stream/inbound/views.rs`）。
     #[serde(default)]
     pub view: serde_json::Value,
+    /// 看的那一台的时区（IANA 名）：回包里「几点」「今天 / 昨天」按它写。可缺；缺 · 认不得 ⇒ UTC（不拒）。
+    #[serde(default, deserialize_with = "lenient_tz")]
+    pub(crate) tz: crate::common::time::Tz,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
     #[serde(skip)]
     pub(crate) until: Option<crate::platform::child::Until>,
@@ -1327,6 +1350,13 @@ pub struct Request {
 fn lenient_ms<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(within_ms_of(&v))
+}
+
+/// `tz` 的宽读（[`crate::common::time::Tz::of`]）：认不得 ⇒ UTC。
+fn lenient_tz<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::common::time::Tz, D::Error> {
+    Ok(crate::common::time::Tz::of(
+        &serde_json::Value::deserialize(d)?,
+    ))
 }
 
 /// `within_ms` 那一格的读法（帧面信封 · CLI 面的期限口同一处读）：只认正整数，别的当没带。

@@ -23,9 +23,9 @@ struct SeenIn {
     show: crate::accounts::quota::show::QuotaShow,
 }
 
-/// 一份回包照真出口走一遍（[`crate::faces::quota_read::reply_of`]，钟按金样那一份的偏移）：金样里只留原数与显示态，
+/// 一份回包照真出口走一遍（[`crate::faces::quota_read::reply_of`]，钟按金样那一份的时区）：金样里只留原数与显示态，
 /// 语义位那一格的字由显示态那一处写（`slot_words`），其余由出口写。
-fn through_the_exit(reply: &Value, tz: i64) -> Value {
+fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
     use crate::accounts::quota::show::slot_words;
     use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
     let now = reply["now"].as_u64().unwrap_or_default();
@@ -97,10 +97,7 @@ fn through_the_exit(reply: &Value, tz: i64) -> Value {
             )
         }),
     };
-    let clock = crate::common::time::TextClock {
-        now: i64::try_from(now).unwrap_or_default(),
-        tz_min: tz,
-    };
+    let clock = crate::common::time::TextClock::new(now, tz);
     serde_json::to_value(reply_of(base, seen, unseen, &clock)).unwrap()
 }
 
@@ -131,8 +128,8 @@ fn rows_text_and_warm_match_the_golden() {
     assert!(cases.len() >= 10, "金样读空了");
     let mut wrong = Vec::new();
     for c in cases.iter_mut() {
-        let tz = c["tzOffsetMin"].as_i64().unwrap_or(0);
-        let v = through_the_exit(&c["reply"], tz);
+        let tz = crate::Tz::of(&c["tz"]);
+        let v = through_the_exit(&c["reply"], &tz);
         let blocks: Vec<Value> = ["accounts", "unseen"]
             .iter()
             .flat_map(|l| v[*l].as_array().cloned().unwrap_or_default())
@@ -216,7 +213,7 @@ fn the_five_hour_cell_is_written_by_the_core() {
     let mut seen_unreadable = false;
     let mut seen_sub = false;
     for c in g["cases"].as_array().unwrap() {
-        let v = through_the_exit(&c["reply"], 0);
+        let v = through_the_exit(&c["reply"], &crate::Tz::default());
         let name = c["name"].as_str().unwrap_or("");
         if v["state"] == "unreadable" {
             seen_unreadable = true;
@@ -266,9 +263,9 @@ fn the_wire_golden_is_what_the_exit_writes() {
     let g: Value = serde_json::from_str(&raw).unwrap();
     let mut cases = Vec::new();
     for c in g["cases"].as_array().unwrap() {
-        let tz = c["tzOffsetMin"].as_i64().unwrap_or(0);
-        let v = through_the_exit(&c["reply"], tz);
-        cases.push(serde_json::json!({"name": c["name"], "tzOffsetMin": tz, "reply": v}));
+        let tz = crate::Tz::of(&c["tz"]);
+        let v = through_the_exit(&c["reply"], &tz);
+        cases.push(serde_json::json!({"name": c["name"], "tz": c["tz"], "reply": v}));
     }
     let got = serde_json::json!({
         "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。",

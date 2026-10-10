@@ -110,7 +110,10 @@ function readOrWarn(tag: string): Reports | null {
   return r;
 }
 
-const RUN_MS = 120_000;
+// 期限：一趟普查把整仓生产源码扫一遍（三份量具已共用这一趟），扫法本身是逐文件跑一串出口正则，没有便宜的近路。
+//   量过：负载 3 时 4.4 s（扫 4.2 s）；带覆盖率 · 高负载时 36–58 s（120 s 期限过半）。放宽到 240 s；机器换了、或 quick-check
+//   三步并行跑起来之后复量一次。
+const RUN_MS = 240_000;
 
 it("量具 · 台账 · 待办表 · 人群的定义都在盘上", () => {
   for (const f of [RUNNER, CENSUS, CP1_METER, CP1_LEDGER, CP2B_METER, CP2B_PENDING, CP2C_METER, CP2C_PENDING]) {

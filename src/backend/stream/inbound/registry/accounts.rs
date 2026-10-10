@@ -18,9 +18,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "quota-read",
         summary: "这台的额度账",
         codes: &[],
-        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("fiveHour", "「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null`"), out("names", "号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn）"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`）"), out("text", "读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
+        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("fiveHour", "「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null`"), out("names", "号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn）"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`）"), out("text", "读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
         takes_input: false,
-        run: Run::BlockingData(|_r| crate::faces::rotation_face::answer_quota_read().map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_quota_read(&r.tz).map(Some)),
     },
     // 用某个号查一次额度（帧面宿主 `faces/quota_probe_face.rs`）：起官方客户端、等它 ⇒ 阻塞档，总期限登记在 `caps.rs`。
     CommandSpec {
@@ -52,15 +52,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-rule-save",
         summary: "新建或整份改一条轮换规则",
         codes: &["bad_args", "io_failed", "no_such_rule"],
-        fields: &[arg("dedupe", "可缺席：`true` ⇒ 重名不拒，名后加 ` 2` · ` 3` … 取第一个不重的（复制 · 复制到别的机器）"), out("errors", "只在 `refused` 时有：`[{cell, code, with?}]`：哪一格（触发那一行是 `cap.*.5h` · `cap.*.7d`）· 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段"), arg("from", "新建时不给 `rotation`：从哪条规则拷（`\"blank\"` ＝ 只有起始账号）"), arg("id", "改哪条；不给 ＝ 新建"), arg("ifRev", "改之前读到的 `rev`；对不上 ⇒ `{state:\"conflict\", rev}`、不写"), arg("name", "规则名（1–24 字，这台不重名：去首尾空白、不分大小写）"), out("rev", "只在 `conflict` 时有：此刻的版本"), arg("rotation", "整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap[\"*\"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）"), out("rule", "只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项）"), out("state", "`\"saved\"`（写成了）· `\"refused\"`（逐格错，没写）· `\"conflict\"`（读到之后别处改过，没写）")],
+        fields: &[arg("dedupe", "可缺席：`true` ⇒ 重名不拒，名后加 ` 2` · ` 3` … 取第一个不重的（复制 · 复制到别的机器）"), out("errors", "只在 `refused` 时有：`[{cell, code, with?}]`：哪一格（触发那一行是 `cap.*.5h` · `cap.*.7d`）· 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段"), arg("from", "新建时不给 `rotation`：从哪条规则拷（`\"blank\"` ＝ 只有起始账号）"), arg("id", "改哪条；不给 ＝ 新建"), arg("ifRev", "改之前读到的 `rev`；对不上 ⇒ `{state:\"conflict\", rev}`、不写"), arg("name", "规则名（1–24 字，这台不重名：去首尾空白、不分大小写）"), out("rev", "只在 `conflict` 时有：此刻的版本"), arg("rotation", "整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap[\"*\"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）"), out("rule", "只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项）"), out("savedAtText", "只在 `saved` 时有：写成那一刻的钟面 `HH:MM`（按请求的 `tz`；编辑器「已保存」照抄）"), out("state", "`\"saved\"`（写成了）· `\"refused\"`（逐格错，没写）· `\"conflict\"`（读到之后别处改过，没写）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_rule_save(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_rule_save(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "rotation-rule-rename",
         summary: "给一条轮换规则改名",
         codes: &["bad_args", "io_failed", "no_such_rule"],
-        fields: &[out("errors", "同 `rotation-rule-save`"), arg("id", "哪条"), arg("ifRev", "同 `rotation-rule-save`"), arg("name", "新名字"), out("rev", "同 `rotation-rule-save`"), out("rule", "同 `rotation-rule-save`"), out("state", "同 `rotation-rule-save`")],
+        fields: &[out("errors", "同 `rotation-rule-save`"), arg("id", "哪条"), arg("ifRev", "同 `rotation-rule-save`"), arg("name", "新名字"), out("rev", "同 `rotation-rule-save`"), out("rule", "同 `rotation-rule-save`"), out("savedAtText", "同 `rotation-rule-save`"), out("state", "同 `rotation-rule-save`")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::rotation_face::answer_rule_rename(&r.args).map(Some)),
     },
@@ -84,17 +84,17 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-plan",
         summary: "一份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写）",
         codes: &["bad_args", "no_such_rule"],
-        fields: &[out("detail", "同 `rotation-rules-read`"), out("names", "同 `rotation-rules-read`"), out("effective", "号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句）"), out("errors", "逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格"), out("from", "视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now`"), out("fromText", "`from` 按这台本地钟写好的字"), out("grid", "只在带 `view` 时有：刻度 `[{at, atText, label?}]`，按这台本地钟对齐（`6h` 一格 15m · `24h` 1h · `7d` 6h；悬停与键盘按格走），轴上写字的那几格带 `label`（`6h` 每小时 · `24h` 每 3h 写 `HH:MM`；`7d` 每天零点写 `MM-DD`）"), out("head", "只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toLine?: {w, n}, est?}`（此刻用的号 · 卡人的窗口与用了多少 % · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线算，取差得最少的那一窗，都没线 ⇒ 缺 · `est` ＝ 按目前涨法几点用到这号这窗口此刻取的上限 `{at, atText, pct, w}`：只在额度账上这一窗有两次不同的采样、最近 30 分钟在涨时给，按这两点的斜率外推，到之前先重置就不给）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置）"), out("lanes", "池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n, w}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那条线 · `w` ＝ 那一窗的语义位）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键）"), out("now", "这台此刻的 unix 秒"), out("nowText", "`now` 按这台本地钟写好的字"), out("past", "只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`）"), out("plan", "`[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；`view` 是 `7d` 时只到此刻 +1d；每个时刻旁有 `…Text`"), out("reason", "同 `rotation-rules-read`"), out("state", "那份文件的三态（同 `rotation-rules-read`）；`unreadable` 时照缺省那一份算"), out("until", "视窗止（unix 秒）"), arg("machine", "`true`：这台全部号（设置里的时间轴），按默认规则判封顶"), arg("rotation", "草稿 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap[\"*\"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一"), arg("rule", "这台的一条规则 id（从池里排第一的号起）"), arg("sid", "一个会话：此刻生效的那一份，从它此刻的号起"), arg("span", "可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d`（从此刻起；带 `view` 时不看）"), arg("view", "可缺：时间轴视窗 `6h`（前 2h · 后 4h）· `24h`（前 6h · 后 18h）· `7d`（前 1d · 后 6d）")],
+        fields: &[out("detail", "同 `rotation-rules-read`"), out("names", "同 `rotation-rules-read`"), out("effective", "号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句）"), out("errors", "逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格"), out("from", "视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now`"), out("fromText", "`from` 按看的那一台的时区（请求的 `tz`）写好的字"), out("grid", "只在带 `view` 时有：刻度 `[{at, atText, label?}]`，按看的那一台的时区对齐（`6h` 一格 15m · `24h` 1h · `7d` 6h；悬停与键盘按格走），轴上写字的那几格带 `label`（`6h` 每小时 · `24h` 每 3h 写 `HH:MM`；`7d` 每天零点写 `MM-DD`）"), out("head", "只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toLine?: {w, n}, est?}`（此刻用的号 · 卡人的窗口与用了多少 % · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线算，取差得最少的那一窗，都没线 ⇒ 缺 · `est` ＝ 按目前涨法几点用到这号这窗口此刻取的上限 `{at, atText, pct, w}`：只在额度账上这一窗有两次不同的采样、最近 30 分钟在涨时给，按这两点的斜率外推，到之前先重置就不给）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置）"), out("lanes", "池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n, w}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那条线 · `w` ＝ 那一窗的语义位）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键）"), out("now", "这台此刻的 unix 秒"), out("nowText", "`now` 按看的那一台的时区（请求的 `tz`）写好的字"), out("past", "只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`）"), out("plan", "`[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；`view` 是 `7d` 时只到此刻 +1d；每个时刻旁有 `…Text`"), out("reason", "同 `rotation-rules-read`"), out("state", "那份文件的三态（同 `rotation-rules-read`）；`unreadable` 时照缺省那一份算"), out("until", "视窗止（unix 秒）"), arg("machine", "`true`：这台全部号（设置里的时间轴），按默认规则判封顶"), arg("rotation", "草稿 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap[\"*\"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一"), arg("rule", "这台的一条规则 id（从池里排第一的号起）"), arg("sid", "一个会话：此刻生效的那一份，从它此刻的号起"), arg("span", "可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d`（从此刻起；带 `view` 时不看）"), arg("view", "可缺：时间轴视窗 `6h`（前 2h · 后 4h）· `24h`（前 6h · 后 18h）· `7d`（前 1d · 后 6d）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_plan(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_plan(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "rotation-session-read",
         summary: "一批会话的轮换与「账号」格",
         codes: &["bad_args", "failed"],
-        fields: &[out("detail", "同 `rotation-rules-read`"), out("names", "同 `rotation-rules-read`"), out("now", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒")],
+        fields: &[out("detail", "同 `rotation-rules-read`"), out("names", "同 `rotation-rules-read`"), out("now", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_read(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_read(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "rotation-session-set",
@@ -102,7 +102,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed", "io_failed", "no_parent", "no_such_rule"],
         fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `\"parent\"`（跟随父会话：父按会话血缘填；有一个没有父或父是别的一家 ⇒ 整批 `no_parent`）· `{\"rule\": id}` · `\"custom\"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `\"detach\"`（照此刻生效的那份拷成本会话的）· `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "rotation-switch",
@@ -143,7 +143,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("accounts", "每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）"), out("notice", "「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null`")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args)
+            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -156,7 +156,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[arg("appExit", "可缺；`true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零"), out("forwards", "见 `machine`"), out("liveStreams", "这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）"), arg("machine", "可缺"), out("relayedMaybe", "活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）"), out("relayedSessions", "这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args)
+            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -168,7 +168,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("lines", "同 `--session-accounts`：每条运行中会话一行")],
         takes_input: false,
         run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args)
+            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -189,7 +189,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[arg("configDir", "目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 agent 自己那份用户级配置，不收路径）"), arg("cwd", "要预检的工作目录（必填）"), out("known", "这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）"), out("trusted", "这个账号接受过该目录的信任对话框")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args)
+            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

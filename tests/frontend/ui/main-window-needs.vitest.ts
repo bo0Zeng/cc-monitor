@@ -128,7 +128,7 @@ describe("一个会话读成什么（session-face）", () => {
   it("后台任务运行中：点单独一档 · 状态一句照抄核心、时长那一截按此刻走 · 拿不到 ⇒ 核心写的那个字 · peek 照空闲（它最后一句）", () => {
     const from = NOW - 64 * 60_000;
     const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" };
-    const t = tab("a", { activity: bgAct, backgroundWork: bw, lastSay: { text: "最后一句", at: null } });
+    const t = tab("a", { activity: bgAct, backgroundWork: bw, lastSay: { text: "最后一句", at: null, atMs: null } });
     expect(dotOf(t)).toBe("background");
     expect(stateWord(t)).toBe(bgAct.text);
     expect(stateLine(t, NOW)).toEqual({ text: "L · 1h4m", needs: false });
@@ -150,9 +150,9 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
     expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("beSession.needs.approve"), waited: fmtDur(120) }), needs: true });
-    const running = tab("b", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null, text: null, whyText: null }] });
+    const running = tab("b", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), atMs: NOW - 65_000, state: "running", why: null, text: null, whyText: null }] });
     expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
-    const idle = (unread: number) => tab("c", { unread, activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
+    const idle = (unread: number) => tab("c", { unread, activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString(), atMs: NOW - 240_000 } });
     expect(stateLine(idle(0), NOW).text).toBe(copyText("sessionFace.state.idleSeen", { ago: "4m" }));
     expect(stateLine(idle(2), NOW).text).toBe(copyText("sessionFace.state.idleUnseen", { ago: "4m" }));
     expect(stateLine(tab("d", { state: UNSEEN, origin: "gpu-01" as never }), NOW).text).toBe(copyText("sessionFace.state.unseen", { machine: "gpu-01" }));
@@ -161,9 +161,9 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("peek：在等你 ⇒ 等的那一句；在跑 ⇒ 正在做的那一步；空闲 ⇒ 最后一句；拿不到 ⇒ 不出", () => {
     expect(peekLine(tab("a", { activity: waiting, needs: approve() }))).toBe("rm -rf build/");
-    expect(peekLine(tab("b", { pending: [{ id: "x", name: "Read", what: "src/a.ts", at: null, state: "running", why: null, text: null, whyText: null }] }))).toBe("src/a.ts");
-    expect(peekLine(tab("c", { activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 }, lastSay: { text: "结论", at: null } }))).toBe("结论");
-    expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null } }))).toBeNull();
+    expect(peekLine(tab("b", { pending: [{ id: "x", name: "Read", what: "src/a.ts", at: null, state: "running", why: null, text: null, whyText: null, atMs: null }] }))).toBe("src/a.ts");
+    expect(peekLine(tab("c", { activity: { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 }, lastSay: { text: "结论", at: null, atMs: null } }))).toBe("结论");
+    expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null, atMs: null } }))).toBeNull();
   });
 
   it("★ `Ctrl+J`：照核心的先后（危险度在前、同一档等得久的在前、不知道等了多久的排这一档最后、同档按条上顺序）；当前就是 ⇒ 下一个、转回头；没有 ⇒ null", () => {

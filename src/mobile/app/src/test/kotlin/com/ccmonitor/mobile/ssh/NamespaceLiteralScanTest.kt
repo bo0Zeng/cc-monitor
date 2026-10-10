@@ -117,7 +117,7 @@ class NamespaceLiteralScanTest {
         assertTrue("前提：`$CC_MONITOR` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", hits > 0)
         assertEquals(
             "`$CC_MONITOR` 是后端的名字空间：我们只读、绝不写。" +
-                "唯一合法住处是 `DaemonLocator` 的只读候选表。",
+                "合法住处是 `BackendBin`（部署落点）与 `DaemonLocator` 的只读候选表。",
             PINNED_CC_MONITOR_FILES,
             found.toSet(),
         )
@@ -239,10 +239,13 @@ class NamespaceLiteralScanTest {
             )
 
         /**
-         * 定值钉：`.cc-monitor` 唯一合法住处是 `DaemonLocator` 的只读候选表
-         * （`SHARED_BIN_DIR`，`candidates` 拿它拼 `[ -x … ]` 存在性探测）。
+         * 定值钉：`.cc-monitor` 的合法住处——`BackendBin`（部署落点 `~/.cc-monitor/bin/ccm`，拼后端命令只在那里），
+         * 以及还没删的 `DaemonLocator` 只读候选表（α 一轮完成那条流还用，随它一起删）。
          */
         private val PINNED_CC_MONITOR_FILES =
-            setOf("core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonLocator.kt")
+            setOf(
+                "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/OneShot.kt",
+                "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonLocator.kt",
+            )
     }
 }

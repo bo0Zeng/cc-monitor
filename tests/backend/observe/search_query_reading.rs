@@ -10,9 +10,12 @@ const LIMIT: u64 = 300;
 
 fn ask(phase: &str, round: usize, q: &str) {
     let t = std::time::Instant::now();
-    let v =
-        crate::faces::read_face::answer("history-search", &json!({ "query": q, "limit": LIMIT }))
-            .unwrap_or_else(|(c, m)| panic!("history-search 答错了（{c}）：{m}"));
+    let v = crate::faces::read_face::answer(
+        "history-search",
+        &json!({ "query": q, "limit": LIMIT }),
+        &Default::default(),
+    )
+    .unwrap_or_else(|(c, m)| panic!("history-search 答错了（{c}）：{m}"));
     let ms = t.elapsed().as_secs_f64() * 1000.0;
     let lines: Vec<&str> = v["lines"]
         .as_array()

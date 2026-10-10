@@ -294,11 +294,8 @@ fn the_scan_actually_reads_the_monitor_tree() {
             files.len()
         );
     }
-    let me = files
-        .iter()
-        .find(|(n, _)| n == "src/local_read_surface_registry.rs")
-        .map(|(_, s)| s.as_str())
-        .expect("扫不到本文件");
+    // 本模块的头（`local_read_surface_registry.rs`）10-10 搬进了 `tests/`，不在被扫的生产树里 ⇒ 剥法自检直接读它。
+    let me: &str = include_str!("local_read_surface_registry.rs");
     assert!(
         guard_core::production_code(me).len() < me.len() / 2,
         "本文件剥完还剩一半以上 —— 剥法没生效，说明文字会被当成命中"

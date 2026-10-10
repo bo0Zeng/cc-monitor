@@ -186,7 +186,8 @@ fn first_frame_comes_at_once_with_the_preview_product() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r1",
-        &json!({ "terminal": h, "ticket": "t1" })
+        &json!({ "terminal": h, "ticket": "t1" }),
+        &Default::default()
     )));
     let f = next_frame(&mut rx, Duration::from_secs(5)).expect("订上之后没推第一帧");
     let (ticket, seq, view) = screen_of(&f);
@@ -226,7 +227,8 @@ fn one_frame_in_flight_until_acked() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r1",
-        &json!({ "terminal": h, "ticket": "t1" })
+        &json!({ "terminal": h, "ticket": "t1" }),
+        &Default::default()
     )));
     let (_, s1, _) = screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧"));
     // 没回执：画面变了也不推。
@@ -240,7 +242,8 @@ fn one_frame_in_flight_until_acked() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW_ACK,
         "r2",
-        &json!({ "ticket": "t1", "seq": s1 })
+        &json!({ "ticket": "t1", "seq": s1 }),
+        &Default::default()
     )));
     let (_, s2, v2) =
         screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("回执之后没推"));
@@ -253,7 +256,8 @@ fn one_frame_in_flight_until_acked() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW_ACK,
         "r3",
-        &json!({ "ticket": "t1", "seq": s2 })
+        &json!({ "ticket": "t1", "seq": s2 }),
+        &Default::default()
     )));
     assert!(
         next_frame(&mut rx, Duration::from_millis(600)).is_none(),
@@ -285,7 +289,8 @@ fn the_follower_is_not_counted_as_a_terminal_window() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r1",
-        &json!({ "terminal": h, "ticket": "t1" })
+        &json!({ "terminal": h, "ticket": "t1" }),
+        &Default::default()
     )));
     next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧");
     assert!(
@@ -346,14 +351,16 @@ fn unfollow_and_drop_reap_the_client() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r1",
-        &json!({ "terminal": h, "ticket": "t1" })
+        &json!({ "terminal": h, "ticket": "t1" }),
+        &Default::default()
     )));
     next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧");
     assert!(eventually(|| iso.control_clients() == 1));
     assert!(reply_ok(&d.answer_wire(
         UNFOLLOW,
         "r2",
-        &json!({ "ticket": "t1" })
+        &json!({ "ticket": "t1" }),
+        &Default::default()
     )));
     assert!(
         eventually(|| iso.control_clients() == 0),
@@ -365,19 +372,26 @@ fn unfollow_and_drop_reap_the_client() {
         "退订之后还在推"
     );
     assert!(
-        reply_ok(&d.answer_wire(UNFOLLOW, "r3", &json!({ "ticket": "t1" }))),
+        reply_ok(&d.answer_wire(
+            UNFOLLOW,
+            "r3",
+            &json!({ "ticket": "t1" }),
+            &Default::default()
+        )),
         "退订是幂等的"
     );
     // 连接走了（票表随连接丢）⇒ 全收。
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r4",
-        &json!({ "terminal": h, "ticket": "t2" })
+        &json!({ "terminal": h, "ticket": "t2" }),
+        &Default::default()
     )));
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r5",
-        &json!({ "terminal": h, "ticket": "t3" })
+        &json!({ "terminal": h, "ticket": "t3" }),
+        &Default::default()
     )));
     assert!(eventually(|| iso.control_clients() == 2));
     drop(d);
@@ -397,13 +411,15 @@ fn a_closed_pane_ends_the_follow() {
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r1",
-        &json!({ "terminal": h, "ticket": "t1" })
+        &json!({ "terminal": h, "ticket": "t1" }),
+        &Default::default()
     )));
     let (_, s1, _) = screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧"));
     assert!(reply_ok(&d.answer_wire(
         FOLLOW_ACK,
         "r2",
-        &json!({ "ticket": "t1", "seq": s1 })
+        &json!({ "ticket": "t1", "seq": s1 }),
+        &Default::default()
     )));
     iso.tmux(&["kill-session", "-t", "=g-cc"]);
     let f = next_frame(&mut rx, Duration::from_secs(5)).expect("窗格没了却没说");
@@ -416,8 +432,13 @@ fn a_closed_pane_ends_the_follow() {
         other => panic!("等的是结束帧，来的是 {other:?}"),
     }
     assert!(
-        reply_code(&d.answer_wire(FOLLOW_ACK, "r3", &json!({ "ticket": "t1", "seq": s1 })))
-            .is_some(),
+        reply_code(&d.answer_wire(
+            FOLLOW_ACK,
+            "r3",
+            &json!({ "ticket": "t1", "seq": s1 }),
+            &Default::default()
+        ))
+        .is_some(),
         "结束了的票还认"
     );
 }
@@ -429,12 +450,14 @@ fn shape_and_limits() {
     let h = iso.handle_of("s-cc");
     let (d, mut rx) = desk(&iso);
     assert_eq!(
-        reply_code(&d.answer_wire(FOLLOW, "r0", &json!({ "terminal": h }))).as_deref(),
+        reply_code(&d.answer_wire(FOLLOW, "r0", &json!({ "terminal": h }), &Default::default()))
+            .as_deref(),
         Some("bad_args"),
         "没给票"
     );
     assert_eq!(
-        reply_code(&d.answer_wire(FOLLOW, "r0", &json!({ "ticket": "x" }))).as_deref(),
+        reply_code(&d.answer_wire(FOLLOW, "r0", &json!({ "ticket": "x" }), &Default::default()))
+            .as_deref(),
         Some("bad_target"),
         "没给目标"
     );
@@ -442,24 +465,36 @@ fn shape_and_limits() {
         reply_code(&d.answer_wire(
             FOLLOW,
             "r0",
-            &json!({ "terminal": "tmux-999", "ticket": "x" })
+            &json!({ "terminal": "tmux-999", "ticket": "x" }),
+            &Default::default()
         ))
         .as_deref(),
         Some("not_known")
     );
     assert_eq!(
-        reply_code(&d.answer_wire(FOLLOW_ACK, "r0", &json!({ "ticket": "nope", "seq": 1 })))
-            .as_deref(),
+        reply_code(&d.answer_wire(
+            FOLLOW_ACK,
+            "r0",
+            &json!({ "ticket": "nope", "seq": 1 }),
+            &Default::default()
+        ))
+        .as_deref(),
         Some("not_known")
     );
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
         "r1",
-        &json!({ "terminal": h, "ticket": "t1" })
+        &json!({ "terminal": h, "ticket": "t1" }),
+        &Default::default()
     )));
     assert_eq!(
-        reply_code(&d.answer_wire(FOLLOW, "r2", &json!({ "terminal": h, "ticket": "t1" })))
-            .as_deref(),
+        reply_code(&d.answer_wire(
+            FOLLOW,
+            "r2",
+            &json!({ "terminal": h, "ticket": "t1" }),
+            &Default::default()
+        ))
+        .as_deref(),
         Some("bad_args"),
         "票重复"
     );
@@ -467,12 +502,18 @@ fn shape_and_limits() {
         assert!(reply_ok(&d.answer_wire(
             FOLLOW,
             "r",
-            &json!({ "terminal": h, "ticket": format!("t{i}") })
+            &json!({ "terminal": h, "ticket": format!("t{i}") }),
+            &Default::default()
         )));
     }
     assert_eq!(
-        reply_code(&d.answer_wire(FOLLOW, "r9", &json!({ "terminal": h, "ticket": "over" })))
-            .as_deref(),
+        reply_code(&d.answer_wire(
+            FOLLOW,
+            "r9",
+            &json!({ "terminal": h, "ticket": "over" }),
+            &Default::default()
+        ))
+        .as_deref(),
         Some("too_many_follows")
     );
     while next_frame(&mut rx, Duration::from_millis(50)).is_some() {}
@@ -485,6 +526,7 @@ fn fill(d: &Desk, h: &str, rx: &mut tokio::sync::mpsc::Receiver<Frame>, prefix: 
             FOLLOW,
             "f",
             &json!({ "terminal": h, "ticket": format!("{prefix}{i}") }),
+            &Default::default(),
         );
         assert!(reply_ok(&r), "第 {i} 张订不上：{r:?}");
     }
@@ -501,10 +543,16 @@ fn an_unfollow_that_comes_first_is_final() {
     assert!(reply_ok(&d.answer_wire(
         UNFOLLOW,
         "r1",
-        &json!({ "ticket": "t1" })
+        &json!({ "ticket": "t1" }),
+        &Default::default()
     )));
     assert!(
-        reply_ok(&d.answer_wire(FOLLOW, "r2", &json!({ "terminal": h, "ticket": "t1" }))),
+        reply_ok(&d.answer_wire(
+            FOLLOW,
+            "r2",
+            &json!({ "terminal": h, "ticket": "t1" }),
+            &Default::default()
+        )),
         "退过的票再来订：照实回 ok（看的那一方早已不在）"
     );
     assert!(
@@ -528,9 +576,13 @@ fn an_unfollow_while_starting_reaps_what_was_started() {
     assert!(reply_ok(&d.answer_wire(
         UNFOLLOW,
         "r1",
-        &json!({ "ticket": "t1" })
+        &json!({ "ticket": "t1" }),
+        &Default::default()
     )));
-    assert!(d.take_seat(&seat, &args).is_ok(), "起好了才发现退过：回 ok");
+    assert!(
+        d.take_seat(&seat, &args, &Default::default()).is_ok(),
+        "起好了才发现退过：回 ok"
+    );
     assert!(
         next_frame(&mut rx, Duration::from_millis(500)).is_none(),
         "退过的票还推了帧"
@@ -556,8 +608,13 @@ fn a_seat_being_started_counts() {
         })
         .collect();
     assert_eq!(
-        reply_code(&d.answer_wire(FOLLOW, "r1", &json!({ "terminal": h, "ticket": "over" })))
-            .as_deref(),
+        reply_code(&d.answer_wire(
+            FOLLOW,
+            "r1",
+            &json!({ "terminal": h, "ticket": "over" }),
+            &Default::default()
+        ))
+        .as_deref(),
         Some("too_many_follows"),
         "正在起的也占名额"
     );
@@ -572,15 +629,18 @@ fn a_seat_being_started_counts() {
     let bad = json!({ "terminal": "tmux-999", "ticket": "s0" });
     assert!(d.reserve(&bad).is_err());
     assert_eq!(
-        d.follow(&bad).err().map(|e| e.code),
+        d.follow(&bad, &Default::default()).err().map(|e| e.code),
         Some("bad_args".to_string()),
         "s0 还占着（重复）"
     );
     d.release(&seats[0]);
     assert_eq!(
-        d.follow(&json!({ "terminal": "tmux-999", "ticket": "x" }))
-            .err()
-            .map(|e| e.code),
+        d.follow(
+            &json!({ "terminal": "tmux-999", "ticket": "x" }),
+            &Default::default()
+        )
+        .err()
+        .map(|e| e.code),
         Some("not_known".to_string()),
         "让出名额之后、目标不在名单 ⇒ not_known"
     );
@@ -602,7 +662,7 @@ fn rapid_follow_unfollow_never_fills_the_desk() {
     let server_before = server();
     // 连按 Ctrl+Tab · 重载：一轮订一轮退，有时退订先到。
     let ask = |cmd: &str, args: Value| {
-        let r = d.answer_wire(cmd, "q", &args);
+        let r = d.answer_wire(cmd, "q", &args, &Default::default());
         assert!(
             reply_ok(&r),
             "{cmd} 那一问没回 ok：{r:?}（那台 tmux 的 server 还是原来那个：{}）",

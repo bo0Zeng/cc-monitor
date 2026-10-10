@@ -605,6 +605,50 @@ pub struct ToolStep {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional, type = "string"))]
     pub text: Option<crate::common::cells::Words>,
+    /// 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
+    /// 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub ask: Option<StepAsk>,
+}
+
+/// 提问 / 计划卡的内容（[`ToolStep::ask`]）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StepAsk {
+    /// 在问人：一道或几道题，每道题几个选项。
+    Questions { questions: Vec<AskQuestion> },
+    /// 交一份计划等人批（正文是 Markdown 原文）。
+    Plan { text: String },
+}
+
+/// 一道题（[`StepAsk::Questions`]）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct AskQuestion {
+    /// 题前那一小格（原文）。没有 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub header: Option<String>,
+    /// 题目（原文）。
+    pub question: String,
+    /// 可以选几项（`true` ＝ 多选）。
+    pub multi: bool,
+    pub options: Vec<AskOption>,
+}
+
+/// 一个选项（原文）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct AskOption {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub description: Option<String>,
 }
 
 /// 过程里一步的结果一句（B5 后一半 ＋ B7）：user 记录成品的 `toolResults`（`tool_result.tool_use_id` ⇒ 它）。
@@ -662,6 +706,10 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional, type = "string"))]
     pub timed: Option<crate::common::cells::Words>,
+    /// 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub preview: Option<String>,
 }
 
 /// 耗时那一截的占位（出口填）。

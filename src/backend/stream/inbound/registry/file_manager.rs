@@ -333,7 +333,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("added", "这一趟新挂上几个"), out("browse_watch_cap", "上限（今天 64）"), arg("dirs", "**此刻的整份名单**（数组，每项是字符串或 `{\"b16\":…}`）"), out("rejected", "超过上限被**拒掉**几个"), out("removed", "这一趟卸掉几个（用户不再看它们了）"), out("watch_error", "这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了）"), out("watch_failed", "这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了）"), out("watching", "此刻**真挂着** watch 的目录数（进程里那一个监听器，跟着名单挂 / 卸）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -346,7 +346,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("entries", "这一趟走出来多少条（目录 ＋ 文件 ＋ 符号链接，根自己不算）"), both("path", "要走的那个**根**"), out("resident_bytes", "新那份索引在后端内存里占多少字节（路径总长 ＋ 5×条数：每条 4 字节界桩 ＋ 1 字节类型，**算得出的量**）"), out("skipped_mounts", "根底下挂着的**别的文件系统**没走进去的个数（设备号比对；那个目录本身照样在索引里，它底下的不在）"), out("truncated", "撞到条目上限、没走完 ⇒ 这份索引是**不完整**的"), out("unreadable_dirs", "这一趟有几个子目录读不进去（权限等）"), out("unreadable_paths", "那几个子目录（前 20 个，同 `files-index-status` 那一格）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -373,10 +373,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "files-find",
         summary: "在常驻索引里查",
         codes: &["bad_args", "bad_path", "bad_query", "superseded"],
-        fields: &[out("cover_root", "要搜全这一趟，重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身（都说不出 ⇒ `null`）"), both("desc", "`true` ⇒ 倒过来（默认 `false`）"), out("hits", "这一屏的命中，每条一个对象：`path` · `kind` · `location` · `size` · `mtime_secs` · `mtime_text`（修改时间的短写法，这台本地钟写好）· `marks`"), out("index_age_secs", "答这一趟用的那份索引，是多久以前建的"), out("index_missing", "索引还没建过 ⇒ 几个计数全是 0，而那不是「没搜到」；客户端要自己发 `files-index-rebuild`"), out("index_root", "手上那份索引的根（没建过 ⇒ `null`）"), arg("limit", "这一屏最多回几条"), both("offset", "从第几条命中起回（前面的只数不回）"), out("out_of_index", "这一趟的范围（`under` 或家目录）不在手上那份索引里 ⇒ 结果只是索引里碰巧有的那一部分"), arg("query", "原样的搜索词（字符串）"), out("scanned", "这一趟扫了几条（= 索引条目数）"), arg("scope", "`\"under\"`（默认，照 `under`）/ `\"machine\"`（整台机器：范围由这台自己定 —— unix `/`，Windows 家目录那块盘的根；`under` 不看）"), both("seq", "这一趟的号（非负整数，可不给）"), both("sort", "按哪一列排：`relevance`（默认）· `name` · `location` · `mtime` · `size`"), out("stale", "该重走了（`index_age_secs > rewalk_interval_secs`）"), out("start", "这一趟的搜索起点（`location` 相对它算；说不出 ⇒ `null`）"), arg("stream", "这个号属于哪一个搜索框（字符串，不给 ⇒ 空串）"), out("total_hits", "一共命中几条，**不受分页影响**"), out("truncated", "这一屏之后还有（往下翻：同号、`offset` 加上这一屏的条数）"), arg("under", "只搜这个目录**底下**（不含它自己；字符串或 `{\"b16\":…}`）")],
+        fields: &[out("cover_root", "要搜全这一趟，重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身（都说不出 ⇒ `null`）"), both("desc", "`true` ⇒ 倒过来（默认 `false`）"), out("hits", "这一屏的命中，每条一个对象：`path` · `kind` · `location` · `size` · `mtime_secs` · `mtime_text`（修改时间的短写法，按看的那一台的时区（请求的 `tz`）写好）· `marks`"), out("index_age_secs", "答这一趟用的那份索引，是多久以前建的"), out("index_missing", "索引还没建过 ⇒ 几个计数全是 0，而那不是「没搜到」；客户端要自己发 `files-index-rebuild`"), out("index_root", "手上那份索引的根（没建过 ⇒ `null`）"), arg("limit", "这一屏最多回几条"), both("offset", "从第几条命中起回（前面的只数不回）"), out("out_of_index", "这一趟的范围（`under` 或家目录）不在手上那份索引里 ⇒ 结果只是索引里碰巧有的那一部分"), arg("query", "原样的搜索词（字符串）"), out("scanned", "这一趟扫了几条（= 索引条目数）"), arg("scope", "`\"under\"`（默认，照 `under`）/ `\"machine\"`（整台机器：范围由这台自己定 —— unix `/`，Windows 家目录那块盘的根；`under` 不看）"), both("seq", "这一趟的号（非负整数，可不给）"), both("sort", "按哪一列排：`relevance`（默认）· `name` · `location` · `mtime` · `size`"), out("stale", "该重走了（`index_age_secs > rewalk_interval_secs`）"), out("start", "这一趟的搜索起点（`location` 相对它算；说不出 ⇒ `null`）"), arg("stream", "这个号属于哪一个搜索框（字符串，不给 ⇒ 空串）"), out("total_hits", "一共命中几条，**不受分页影响**"), out("truncated", "这一屏之后还有（往下翻：同号、`offset` 加上这一屏的条数）"), arg("under", "只搜这个目录**底下**（不含它自己；字符串或 `{\"b16\":…}`）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -388,7 +388,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("age_secs", "这份索引建好到现在多少秒"), out("browse_watch_cap", "最多挂几个"), out("browse_watches", "此刻给「用户正在浏览的那几个目录」挂着几个 watch"), out("cold_first_build_secs", "后端**声明**的冷启动首建大约要几秒（今天 10，出处见 `index.rs::COLD_FIRST_BUILD_SECS`：一台 NVMe 上 `find` 的冷缓存读数取上整，**代理指标、不是实测**）"), out("entries", "索引里有几条"), out("index_missing", "还没建过"), out("resident_bytes", "它在后端内存里占多少字节（索引**只在内存里，重启重建**）"), out("rewalk_interval_secs", "🔴 **后端声明的重走周期**（今天 300）"), out("skipped_mounts", "根底下挂着的**别的文件系统**没走进去的个数（设备号比对；那个目录本身照样在索引里，它底下的不在）"), out("stale", "`age_secs > rewalk_interval_secs`"), out("truncated", "上一趟遍历撞到了条目数上限，没走完"), out("unreadable_dirs", "上一趟遍历里有几个目录读不进去（权限等）"), out("unreadable_paths", "那几个读不进去的目录（前 20 个，按遍历先后；字符串或 `{\"b16\":…}`；根自己不在里面 —— 根读不进去是 `files-index-rebuild` 的 `unreadable`）")],
         takes_input: false,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -397,10 +397,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "files-ls",
         summary: "列一个目录的直接子项",
         codes: &["bad_path", "denied", "not_dir", "not_found", "unreadable"],
-        fields: &[out("entries", "每项一个对象：`path`（原始字节形）· `kind` · `size` · `mtime_secs`（后两个拿不到就**不出这个键**，不填 0）· `mtime_text` · `mtime_full`（跟着 `mtime_secs` 出）"), out("kind", "**闭集四个词**：`dir` / `file` / `symlink` / `other`"), arg("limit", "这一趟最多回几条"), out("link_dir", "只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次）"), out("link_to", "只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到）"), out("mtime_full", "修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（这台本地钟写好，窗口照抄）"), out("mtime_secs", "Unix 纪元秒"), out("mtime_text", "修改时间列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年 `YYYY-MM-DD`（这台本地钟写好，窗口照抄）"), arg("path", "要列的那个目录"), out("size", "字节数"), out("total", "目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」）"), out("truncated", "目录里的项数多于回送的条数（被 `limit` 截了）"), out("unreadable", "目录打开了、其中几项读不出来（没有回送、不算进 `truncated`）")],
+        fields: &[out("entries", "每项一个对象：`path`（原始字节形）· `kind` · `size` · `mtime_secs`（后两个拿不到就**不出这个键**，不填 0）· `mtime_text` · `mtime_full`（跟着 `mtime_secs` 出）"), out("kind", "**闭集四个词**：`dir` / `file` / `symlink` / `other`"), arg("limit", "这一趟最多回几条"), out("link_dir", "只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次）"), out("link_to", "只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到）"), out("mtime_full", "修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（按看的那一台的时区（请求的 `tz`）写好，窗口照抄）"), out("mtime_secs", "Unix 纪元秒"), out("mtime_text", "修改时间列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年 `YYYY-MM-DD`（按看的那一台的时区（请求的 `tz`）写好，窗口照抄）"), arg("path", "要列的那个目录"), out("size", "字节数"), out("total", "目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」）"), out("truncated", "目录里的项数多于回送的条数（被 `limit` 截了）"), out("unreadable", "目录打开了、其中几项读不出来（没有回送、不算进 `truncated`）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -410,10 +410,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "一个路径的元数据",
         codes: &["bad_path", "unreadable"],
         // +`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）· `owner` · `link_target`（文件窗口「属性」）。
-        fields: &[out("kind", "`dir` · `file` · `symlink` · `other`"), out("link_target", "路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{\"b16\":…}`）；不是链接 ⇒ `null`"), out("mode", "unix 权限位的低 12 位（十进制数；`420` = `0o644`）"), out("mtime_full", "修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（这台本地钟写好；跟着 `mtime_secs` 出）"), out("mtime_secs", "Unix 纪元秒（`mtime_secs` 拿不到就不出这个键）"), out("mtime_text", "修改时间的短写法（今天 `HH:MM` · 今年 `MM-DD` · 往年带年；跟着 `mtime_secs` 出）"), out("owner", "属主（跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null`"), both("path", "入方向是要问的那个路径；出方向原样回送（原始字节形）"), out("readonly", "这个路径此刻是不是只读"), out("size", "字节数")],
+        fields: &[out("kind", "`dir` · `file` · `symlink` · `other`"), out("link_target", "路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{\"b16\":…}`）；不是链接 ⇒ `null`"), out("mode", "unix 权限位的低 12 位（十进制数；`420` = `0o644`）"), out("mtime_full", "修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（按看的那一台的时区（请求的 `tz`）写好；跟着 `mtime_secs` 出）"), out("mtime_secs", "Unix 纪元秒（`mtime_secs` 拿不到就不出这个键）"), out("mtime_text", "修改时间的短写法（今天 `HH:MM` · 今年 `MM-DD` · 往年带年；跟着 `mtime_secs` 出）"), out("owner", "属主（跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null`"), both("path", "入方向是要问的那个路径；出方向原样回送（原始字节形）"), out("readonly", "这个路径此刻是不是只读"), out("size", "字节数")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -437,7 +437,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("bytes", "字节数"), arg("max_bytes", "🔴 **必须给**：编辑上限是**调用方**的（它答的是「这个文本控件打字卡不卡」）"), both("path", "要读的那份文件"), out("sha256", "交出去的那份字节的 SHA-256（64 位小写十六进制）"), out("text", "整份内容（合法 UTF-8）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -450,7 +450,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("content", "这一块的原始字节，恒为 `{\"b16\": …}`"), out("eof", "这一块读到了末尾（`offset` 越过末尾 ⇒ 空块、`eof: true`）"), arg("len", "从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小"), arg("offset", "从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小"), both("path", "一份普通文件（字符串或 `{\"b16\": …}`；非 UTF-8 名的下载就走这一形，SFTP 库的路径是 `String` 寻址不到）"), out("size", "此刻整份多大（调用方据此报进度、判读完）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -463,7 +463,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("bytes", "普通文件的**表观大小**之和（与 `files-ls` 的 `size` 同口径，不是占盘块数）"), out("dirs", "目录数（含顶上那个目录自己）"), out("files", "普通文件数"), out("links", "符号链接数 —— **不跟、不算字节**（它指向的东西不一定在这棵树里）"), out("other", "设备 / 管道 / 套接字之类"), both("path", "要算的那个路径（字符串或 `{\"b16\":…}`）；出方向原样回送（原始字节形）"), out("skipped_mounts", "底下挂着的**别的文件系统**，没走进去的个数（设备号比对）"), out("unreadable_dirs", "读不进去、跳过的目录数（不中断）")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
@@ -475,7 +475,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("path", "后端这个进程环境里的 home（原始字节形）")],
         takes_input: false,
         run: Run::BlockingData(|r| {
-            crate::files::answer_wire(&r.cmd, &r.args)
+            crate::files::answer_wire(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),

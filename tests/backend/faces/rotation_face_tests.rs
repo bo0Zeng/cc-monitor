@@ -12,12 +12,9 @@ fn now() -> u64 {
     crate::accounts::quota::now_unix()
 }
 
-/// 续令牌一律发到本机一个刚关掉的口（连不上 ⇒ 续不上），绝不发到那一家的真端点。
+/// 续令牌一律发到本机一个绑着不听的口（拨了必被拒 ⇒ 续不上），绝不发到那一家的真端点。
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
-        .and_then(|l| l.local_addr())
-        .expect("bind")
-        .port();
+    let port = crate::refusing_port::refusing_port();
     crate::accounts::oauth::TokenEndpoint {
         base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),
@@ -93,6 +90,7 @@ impl Home {
                 let doing = Arc::clone(&self.doing);
                 Box::new(move || doing.lock().expect("lock").clone())
             },
+            tz: Default::default(),
         }
     }
 
@@ -150,7 +148,8 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     .expect("ok");
     assert_eq!(
         got["rotation"],
-        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "cap": {"*": {"5h": 90, "7d": 90}}, "atLimit": "continue", "wait": 40})
+        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "cap": {"*": {"5h": 90, "7d": 90}}, "atLimit": "continue", "wait": 40, "tz": "UTC"}),
+        "写的那一下盖上看的那一台的时区（这里没带 ⇒ UTC）"
     );
     assert_eq!(got["isDefault"], true);
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
@@ -199,7 +198,13 @@ fn a_batch_read_answers_every_session_and_marks_the_unknown() {
     )
     .expect("ok");
     home.saw(&ctx, "s-1");
-    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1", "s-2"]}), now()).expect("ok");
+    let got = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["s-1", "s-2"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok");
     assert_eq!(
         got["sessions"]["s-2"],
         json!({"state": "absent", "inPlace": "noRelay"})
@@ -217,7 +222,13 @@ fn a_batch_read_answers_every_session_and_marks_the_unknown() {
     assert_eq!(v.next.as_deref(), Some("b"), "c 没登录 ⇒ 跳过它");
     assert_eq!(v.blocked, None);
     assert_eq!(v.fallback_api.as_deref(), Some("api"));
-    assert!(answer_session_read_with(&ctx, &json!({"sids": ["bad id"]}), now()).is_err());
+    assert!(answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["bad id"]}),
+        now(),
+        &crate::Tz::default()
+    )
+    .is_err());
 }
 
 /// ★ 「下一个」跳过用不了的号：没登录的（c）· 被拒着的（b：一发没带限额头、也没说几点再试的 429，照适配层读成的那一形记进额度账）；
@@ -236,7 +247,9 @@ fn next_skips_an_account_without_login_and_one_refused_without_a_reset() {
     let r = crate::agents::claudecode::quota::read(429, &[], t).expect("被拒");
     ledger::record_seen(&ctx.hop.quota, "claude-code", "b", r, t);
     let next_at = |at: u64| {
-        let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), at).expect("ok");
+        let got =
+            answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), at, &crate::Tz::default())
+                .expect("ok");
         let SessionRotationState::Present(v) =
             serde_json::from_value(got["sessions"]["s-1"].clone()).expect("shape")
         else {
@@ -341,9 +354,14 @@ fn a_hot_switch_pins_the_session_or_says_why_not() {
             code: "noRelay".into()
         }
     );
-    let read = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now())
-        .expect("ok")
-        .to_string();
+    let read = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["s-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok")
+    .to_string();
     let disk = std::fs::read_to_string(home.root.join(rotation::FILE_NAME)).expect("read");
     for text in [read, disk] {
         assert!(text.contains("manualHot"), "正控");
@@ -500,7 +518,8 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
     seen(&ctx, "a", 0.5, None);
     seen(&ctx, "b", 0.86, None);
     seen(&ctx, "api", 0.0, Some(now() + 600));
-    let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
+    let got =
+        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json");
     let row = |acct: &str| {
         got["accounts"]
             .as_array()
@@ -591,7 +610,8 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
         &json!({"rotation": {"order": [{"start": true}], "enabled": [], "cap": {"*": {"5h": 90, "7d": 90}}}}),
     )
     .expect("ok");
-    let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
+    let got =
+        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json");
     let b = got["accounts"]
         .as_array()
         .expect("accounts")
@@ -621,7 +641,8 @@ fn the_same_subscription_on_two_machines_gets_the_same_id() {
     .expect("identity");
     let id = |h: &Home, acct: &str| {
         let ctx = h.ctx();
-        serde_json::to_value(quota_read_with(&ctx, now())).expect("json")["unseen"]
+        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json")
+            ["unseen"]
             .as_array()
             .expect("unseen")
             .iter()
@@ -709,7 +730,13 @@ fn an_ended_session_says_so_and_is_not_hot_switched() {
     let ctx = home.ctx();
     home.saw(&ctx, "s-1");
     home.end("s-1");
-    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("ok");
+    let got = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["s-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok");
     assert_eq!(got["sessions"]["s-1"]["account"]["inPlace"], "ended");
     assert_eq!(
         hot_one(&ctx, "s-1", "b", now()),
@@ -728,8 +755,8 @@ fn a_session_shows_its_current_account_by_its_own_n() {
     home.saw(&ctx, "s-1");
     seen(&ctx, "a", 0.86, None);
     let state = |ctx: &Ctx| {
-        answer_session_read_with(ctx, &json!({"sids": ["s-1"]}), now()).expect("ok")["sessions"]
-            ["s-1"]["quota"]["state"]
+        answer_session_read_with(ctx, &json!({"sids": ["s-1"]}), now(), &crate::Tz::default())
+            .expect("ok")["sessions"]["s-1"]["quota"]["state"]
             .clone()
     };
     assert_eq!(state(&ctx), "near");
@@ -748,7 +775,8 @@ fn an_api_account_without_a_key_needs_a_key_not_a_login() {
     let home = Home::new("needs-key");
     let mut ctx = home.ctx();
     ctx.rows = Box::new(|_, _| None);
-    let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
+    let got =
+        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json");
     let api = got["unseen"]
         .as_array()
         .expect("unseen")
@@ -796,7 +824,13 @@ fn a_switch_records_the_baseline_and_the_session_read_says_how_much_this_stretch
         "换进 b 那一刻挡在前面的：被拒着的 a"
     );
     seen(&ctx, "b", 0.33, None);
-    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("ok");
+    let got = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["s-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok");
     assert_eq!(
         got["sessions"]["s-1"]["account"]["segment"],
         json!([{"w": "5h", "base": 30, "spent": 3, "stint": 5}])
@@ -993,7 +1027,8 @@ fn the_trigger_line_is_checked_per_window() {
         ]
     );
     r["cap"] = json!({"*": {"5h": 90}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
+    let got =
+        answer_plan_with(&ctx, &json!({"rotation": r}), now(), &Default::default()).expect("ok");
     assert_eq!(
         got["effective"]["b"]["5h"],
         json!({"v": 90, "layer": "trigger", "w": "5h", "below": {"v": 90, "layer": "trigger", "w": "5h"}}),
@@ -1079,7 +1114,13 @@ fn a_session_on_a_rule_follows_its_edits() {
     )
     .expect("ok");
     assert_eq!(pool(&ctx), ["a", "c"], "规则改了，用它的会话下一发就按新的");
-    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("ok");
+    let got = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["s-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok");
     assert_eq!(got["sessions"]["s-1"]["source"], json!({"rule": id}));
     assert_eq!(got["sessions"]["s-1"]["ruleName"], "夜间");
     assert!(got["sessions"]["s-1"]["explain"]
@@ -1224,20 +1265,31 @@ fn a_draft_is_checked_cell_by_cell_without_writing() {
     let before = ctx.hop.store.now();
     let mut r = rot_json(&["b"]);
     r["cap"] = json!({"b": {"*": [{"at": "22:00-03:00", "n": 0}, {"at": "02:00-04:00", "n": 50}]}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
+    let got =
+        answer_plan_with(&ctx, &json!({"rotation": r}), now(), &Default::default()).expect("ok");
     assert_eq!(
         got["errors"],
         json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0, "said": copy_core::copy_text("rot.capErr.overlap", &[("i", "1")])}])
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("ok")
-            ["errors"],
+        answer_plan_with(
+            &ctx,
+            &json!({"rotation": rot_json(&["b"])}),
+            now(),
+            &Default::default()
+        )
+        .expect("ok")["errors"],
         json!([])
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}), now())
-            .expect_err("形状")
-            .code,
+        answer_plan_with(
+            &ctx,
+            &json!({"rotation": {"order": 3}}),
+            now(),
+            &Default::default()
+        )
+        .expect_err("形状")
+        .code,
         "bad_args"
     );
     assert_eq!(ctx.hop.store.now(), before, "一个字节不写");
@@ -1251,7 +1303,13 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
     let ctx = home.ctx();
     let t = now();
     let draft = json!({"order": ["b", {"start": true}], "enabled": ["b"], "atLimit": "continue", "cap": {"b": {"*": 0}}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": draft, "span": "6h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"rotation": draft, "span": "6h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     let end = t + 6 * 3600;
     assert_eq!(got["errors"], json!([]));
     assert_eq!(
@@ -1294,21 +1352,26 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
     // 规则：默认那条（只有起始账号）⇒ 一整段起始账号。
     let rules = answer_rules_read_with(&ctx).expect("read");
     let id = rules["defaultRule"].as_str().expect("id");
-    let got = answer_plan_with(&ctx, &json!({"rule": id}), t).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"rule": id}), t, &Default::default()).expect("ok");
     assert_eq!(got["plan"].as_array().expect("plan").len(), 1);
     assert_eq!(got["plan"][0]["to"], json!(t + 12 * 3600), "缺省 12h");
     // 会话：从它此刻的号起。
     home.saw(&ctx, "s-1");
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t, &Default::default()).expect("ok");
     assert_eq!(got["plan"][0]["account"], "a");
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rule": id, "span": "3h"}), t)
-            .expect_err("视窗")
-            .code,
+        answer_plan_with(
+            &ctx,
+            &json!({"rule": id, "span": "3h"}),
+            t,
+            &Default::default()
+        )
+        .expect_err("视窗")
+        .code,
         "bad_args"
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t)
+        answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t, &Default::default())
             .expect_err("不在")
             .code,
         "no_such_rule"
@@ -1357,7 +1420,13 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         },
     );
     seen(&ctx, "b", 0.63, None);
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "24h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"sid": "s-1", "view": "24h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert_eq!(got["from"], json!(t - 6 * 3600), "{got}");
     assert_eq!(got["until"], json!(t + 18 * 3600));
     assert!(got["fromText"].is_string());
@@ -1410,7 +1479,13 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         labels.iter().all(|l| l.len() == 5 && l.ends_with(":00")),
         "{labels:?}"
     );
-    let week = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "7d"}), t).expect("ok");
+    let week = answer_plan_with(
+        &ctx,
+        &json!({"sid": "s-1", "view": "7d"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert_eq!(week["until"], json!(t + 6 * 86_400));
     let last = week["plan"]
         .as_array()
@@ -1437,13 +1512,18 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         .expect("b");
     assert_eq!(lane_b["pct"], json!(63));
     // 不带 view ＝ 编辑器那一问：照旧从此刻起、没有 past。
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t, &Default::default()).expect("ok");
     assert_eq!(got["from"], json!(t));
     assert!(got.get("past").is_none(), "{got}");
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "12h"}), t)
-            .expect_err("视窗")
-            .code,
+        answer_plan_with(
+            &ctx,
+            &json!({"sid": "s-1", "view": "12h"}),
+            t,
+            &Default::default()
+        )
+        .expect_err("视窗")
+        .code,
         "bad_args"
     );
 }
@@ -1458,7 +1538,13 @@ fn the_timeline_head_says_when_the_earliest_one_comes_back() {
     home.saw(&ctx, "s-1");
     seen(&ctx, "a", 0.0, Some(t + 7200));
     seen(&ctx, "b", 0.0, Some(t + 3600));
-    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "6h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"sid": "s-1", "view": "6h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert_eq!(got["from"], json!(t - 2 * 3600), "{got}");
     assert_eq!(got["until"], json!(t + 4 * 3600));
     assert_eq!(got["head"]["blocked"]["account"], "b", "{got}");
@@ -1484,7 +1570,13 @@ fn the_machine_timeline_lists_every_account_and_who_uses_it() {
         json!({"pid": std::process::id(), "next": [{"account": "b", "at": t + 1800}]}).to_string(),
     )
     .expect("warm");
-    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"machine": true, "view": "24h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     let lanes = got["lanes"].as_array().expect("lanes");
     assert_eq!(
         lanes
@@ -1519,7 +1611,13 @@ fn the_machine_timeline_lists_every_account_and_who_uses_it() {
         json!({"pid": u32::MAX - 7, "next": [{"account": "b", "at": t + 1800}]}).to_string(),
     )
     .expect("warm");
-    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    let got = answer_plan_with(
+        &ctx,
+        &json!({"machine": true, "view": "24h"}),
+        t,
+        &Default::default(),
+    )
+    .expect("ok");
     assert!(
         got["lanes"]
             .as_array()
@@ -1603,11 +1701,18 @@ fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
         ),
         (
             "rotation-session-read",
-            answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("read"),
+            answer_session_read_with(
+                &ctx,
+                &json!({"sids": ["s-1"]}),
+                now(),
+                &crate::Tz::default(),
+            )
+            .expect("read"),
         ),
         (
             "rotation-plan",
-            answer_plan_with(&ctx, &json!({"machine": true}), now()).expect("plan"),
+            answer_plan_with(&ctx, &json!({"machine": true}), now(), &Default::default())
+                .expect("plan"),
         ),
     ];
     for (cmd, v) in &reads {
@@ -1688,13 +1793,13 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
     let resets = t + 5 * 3600;
     seen_at(&ctx, "b", 0.40, t - 900, resets);
     let ask = json!({"sid": "s-1", "view": "24h"});
-    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let got = answer_plan_with(&ctx, &ask, t, &Default::default()).expect("ok");
     assert!(
         got["head"].get("est").is_none(),
         "只有一次采样就给了估：{got}"
     );
     seen_at(&ctx, "b", 0.46, t - 300, resets);
-    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let got = answer_plan_with(&ctx, &ask, t, &Default::default()).expect("ok");
     // 600 秒涨 6 点 ⇒ 到 90% 还差 44 点 ＝ 4400 秒。
     let est = &got["head"]["est"];
     assert_eq!(
@@ -1705,7 +1810,7 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
     assert!(est["atText"].is_string());
     r["cap"] = json!({"b": {"5h": 70}});
     answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
-    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let got = answer_plan_with(&ctx, &ask, t, &Default::default()).expect("ok");
     let est = &got["head"]["est"];
     assert_eq!(
         (est["at"].clone(), est["pct"].clone()),
@@ -1713,7 +1818,7 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
         "到的应是封顶：{got}"
     );
     assert!(
-        answer_plan_with(&ctx, &ask, t + 1_800).expect("ok")["head"]
+        answer_plan_with(&ctx, &ask, t + 1_800, &Default::default()).expect("ok")["head"]
             .get("est")
             .is_none(),
         "涨在 30 分钟以前还给估"
@@ -1775,7 +1880,13 @@ fn reading_a_session_says_its_parent_and_whether_the_parent_is_missing() {
     let ctx = home.ctx();
     home.saw(&ctx, "k-1");
     seed_parent(&ctx, "k-1", "p-gone");
-    let got = answer_session_read_with(&ctx, &json!({"sids": ["k-1"]}), now()).expect("ok");
+    let got = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["k-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok");
     let k = &got["sessions"]["k-1"];
     assert_eq!(k["parent"], "p-gone");
     assert!(
@@ -1786,7 +1897,13 @@ fn reading_a_session_says_its_parent_and_whether_the_parent_is_missing() {
         b.sessions.get_mut("k-1").expect("k").source = Source::Parent("p-gone".into());
     })
     .expect("write");
-    let got = answer_session_read_with(&ctx, &json!({"sids": ["k-1"]}), now()).expect("ok");
+    let got = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["k-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("ok");
     let k = &got["sessions"]["k-1"];
     assert_eq!(k["source"], json!({"parent": "p-gone"}));
     assert_eq!(k["parentMissing"], true);
@@ -1828,6 +1945,7 @@ impl Shaped for RuleSaved {
         vec![
             RuleSaved::Saved {
                 rule: json!({"id": "r1"}),
+                saved_at_text: "04:30".into(),
             },
             RuleSaved::Refused {
                 errors: vec![cell_error()],
@@ -1972,11 +2090,23 @@ fn every_product_that_names_accounts_carries_the_names() {
     let rules = answer_rules_read_with(&ctx).expect("rules");
     assert_eq!(rules["names"], want, "rotation-rules-read");
     home.saw(&ctx, "s-1");
-    let one = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("session");
+    let one = answer_session_read_with(
+        &ctx,
+        &json!({"sids": ["s-1"]}),
+        now(),
+        &crate::Tz::default(),
+    )
+    .expect("session");
     assert_eq!(one["names"], want, "rotation-session-read");
-    let plan = answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("plan");
+    let plan = answer_plan_with(
+        &ctx,
+        &json!({"rotation": rot_json(&["b"])}),
+        now(),
+        &Default::default(),
+    )
+    .expect("plan");
     assert_eq!(plan["names"], want, "rotation-plan");
-    let quota = answer_quota_read_with(&ctx, now()).expect("quota");
+    let quota = answer_quota_read_with(&ctx, now(), &Default::default()).expect("quota");
     assert_eq!(quota["names"], want, "quota-read");
 }
 
@@ -2003,5 +2133,91 @@ fn rules_read_writes_the_follow_default_line() {
     assert_eq!(
         rules["followText"],
         copy_core::copy_text("rot.src.followOf", &[("name", "夜里省着用")])
+    );
+}
+
+/// ★ 按时段的上限按**规则自己的时区**判：写规则那一下盖上请求信封的 `tz`（拷来的 · 照旧的也重盖；入参里带的那一格不认），
+/// 判的时候按它取偏移 —— 后端那台在哪个时区都一样（判的那几处不读这台的钟）。缺 ⇒ UTC；`local` 盖不进来。
+#[test]
+fn time_of_day_caps_follow_the_zone_stamped_into_the_rule() {
+    let home = Home::new("rule-tz");
+    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let ctx = home.ctx().viewing(&sh);
+    let mut rot = rot_json(&["b"]);
+    rot["tz"] = json!("America/Los_Angeles");
+    let got = answer_rule_save_with(&ctx, &json!({"name": "带时区", "rotation": rot}), now())
+        .expect("ok");
+    assert_eq!(got["state"], "saved", "{got}");
+    let id = got["rule"]["id"].as_str().unwrap().to_string();
+    let stored = ctx.hop.store.now().rules[&id].rotation.clone();
+    assert_eq!(
+        stored.tz.as_deref(),
+        Some("Asia/Shanghai"),
+        "盖的是信封的时区，不是入参里那一格"
+    );
+    assert_eq!(stored.offset_at(1_791_405_000), 8 * 3_600);
+    // 换一个看的人改它（不给 `rotation`，照旧的那份）⇒ 重盖成他的。
+    let utc = home.ctx();
+    let again = answer_rule_save_with(
+        &utc,
+        &json!({"id": id, "name": "带时区", "ifRev": got["rule"]["rev"]}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(again["state"], "saved", "{again}");
+    assert_eq!(
+        utc.hop.store.now().rules[&id].rotation.tz.as_deref(),
+        Some("UTC")
+    );
+    // 缺 · 「这一台」 ⇒ UTC（不随后端那台的钟）。
+    let bare = crate::accounts::quota::rotation::Rotation::default();
+    assert_eq!(bare.offset_at(1_791_405_000), 0);
+    let here = bare.clone().stamped(&crate::Tz::named("local").unwrap());
+    assert_eq!(here.tz, None);
+    let odd = crate::accounts::quota::rotation::Rotation {
+        tz: Some("local".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        odd.offset_at(1_791_405_000),
+        0,
+        "盘上的 `local` 不认（判的不许随后端那台变）"
+    );
+}
+
+/// 判轮换的那几处一处都不读这台后端的钟（同一条规则、后端换个时区跑，判出来的一样）。
+#[test]
+fn rotation_judging_never_reads_this_machines_clock() {
+    for (file, src) in [
+        (
+            "accounts/upstream_select/rotate.rs",
+            include_str!("../../../src/backend/accounts/upstream_select/rotate.rs"),
+        ),
+        (
+            "faces/rotation_face.rs",
+            include_str!("../../../src/backend/faces/rotation_face.rs"),
+        ),
+        (
+            "accounts/quota/rotation.rs",
+            include_str!("../../../src/backend/accounts/quota/rotation.rs"),
+        ),
+        (
+            "accounts/quota/show.rs",
+            include_str!("../../../src/backend/accounts/quota/show.rs"),
+        ),
+    ] {
+        let code = guard_core::production_code(src);
+        assert!(
+            !code.contains("local_tz"),
+            "{file} 读了这台的钟（按时段的上限要按规则自己的时区）"
+        );
+        assert!(
+            !code.contains("TZ_HERE") && !code.contains("Tz::named(\"local\")"),
+            "{file}"
+        );
+    }
+    assert!(
+        include_str!("../../../src/backend/accounts/quota/rotation.rs").contains("fn offset_at("),
+        "反空真：判的那一处在"
     );
 }

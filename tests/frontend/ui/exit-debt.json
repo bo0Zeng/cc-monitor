@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 274,
+  "ceiling": 247,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -74,41 +74,6 @@
       "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
     },
     {
-      "file": "src/frontend/ui/cards/index.ts",
-      "rule": "toFixed",
-      "n": 3,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/cards/index.ts",
-      "rule": "size",
-      "n": 3,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "durUnit",
-      "n": 4,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（两条记录相减成耗时、写耗时（右侧那一句 10-10 已收进核心 `StepResult.text`，只剩耗时那一截））"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "clock",
-      "n": 2,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（两条记录相减成耗时、写耗时（右侧那一句 10-10 已收进核心 `StepResult.text`，只剩耗时那一截））"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "toFixed",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
       "file": "src/frontend/ui/cc-bus-hooks-reads.ts",
       "rule": "caseWord",
       "n": 5,
@@ -116,18 +81,18 @@
       "why": "cc-bus 钩子安装状态码 ⇒ 字（not-installed · installed-via-path …）：hooks-diag 成品带写好的状态字"
     },
     {
+      "file": "src/frontend/ui/clock-face.ts",
+      "rule": "clock",
+      "n": 2,
+      "kind": "留",
+      "why": "界面自己出的事（状态栏提示）的钟面：那件事生在这一台、不经后端，看的人就在这一台 ⇒ 按这一台的钟本来就对；写法与核心 `common/time.rs::hm` 同一套、对同一份金样 `clock-face.golden.json`。界面里只此一处换算时刻"
+    },
+    {
       "file": "src/frontend/ui/control-said.ts",
       "rule": "caseWord",
       "n": 2,
       "kind": "第 1 批",
       "why": "这台不可用的原因码（no_tmux · no_unix_mode）⇒ 字：后端回包带 said"
-    },
-    {
-      "file": "src/frontend/ui/duration-format.ts",
-      "rule": "durUnit",
-      "n": 6,
-      "kind": "留",
-      "why": "桌面秒级走字唯一读口 `fmtDur`（DUP1 J28 登记的镜像，与 Rust `short_duration` 对同一份金样）"
     },
     {
       "file": "src/frontend/ui/e2e-probe.ts",
@@ -156,20 +121,6 @@
       "n": 15,
       "kind": "留",
       "why": "开发者日志（`[perf]` 行 / console），不上屏"
-    },
-    {
-      "file": "src/frontend/ui/format.ts",
-      "rule": "toFixed",
-      "n": 3,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/format.ts",
-      "rule": "size",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
     },
     {
       "file": "src/frontend/ui/front-result.ts",
@@ -305,13 +256,6 @@
       "why": "V7：状态一句自己拼（核心写这一句，会走的那一截走 `{dur}`）"
     },
     {
-      "file": "src/frontend/ui/session-face.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（V7：状态一句自己拼（核心写这一句，会走的那一截走 `{dur}`））"
-    },
-    {
       "file": "src/frontend/ui/session-words.ts",
       "rule": "caseWord",
       "n": 9,
@@ -403,20 +347,6 @@
       "why": "规则编辑器按层码取字；时刻那两处（`savedAt` 等）归第 3 批"
     },
     {
-      "file": "src/frontend/ui/settings/rule-editor.ts",
-      "rule": "clock",
-      "n": 2,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（规则编辑器按层码取字；时刻那两处（`savedAt` 等）归第 3 批）"
-    },
-    {
-      "file": "src/frontend/ui/status-messages.ts",
-      "rule": "clock",
-      "n": 2,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
       "file": "src/frontend/ui/tab-batch-menu.ts",
       "rule": "codeWord",
       "n": 1,
@@ -453,13 +383,6 @@
     },
     {
       "file": "src/frontend/ui/terminal-page.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/turn-notify.ts",
       "rule": "clock",
       "n": 1,
       "kind": "第 3 批",
@@ -525,8 +448,8 @@
       "file": "src/frontend/shell/src/remote_resident.rs",
       "rule": "durUnit",
       "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
+      "kind": "留",
+      "why": "复制详情里的原话（`raw`：「试了几次 × 每次等多久」那一行诊断），不是给人看的句子；原话照原样进详情、不上句子（同 C-W18）"
     }
   ]
 }

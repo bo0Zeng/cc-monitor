@@ -77,7 +77,8 @@ def clean_env():
 
 def quota_read():
     p = subprocess.run(
-        [CCM, "--", "--quota-read"],
+        # 看的人就在这一台：回包里的「几点」按这台的钟写（不带 ⇒ 后端按 UTC 写）。
+        [CCM, "--", "--quota-read", "--tz", "local"],
         env=clean_env(), cwd=HOME, capture_output=True, text=True, timeout=60,
     )
     if p.returncode != 0:

@@ -72,12 +72,12 @@ pub(crate) struct Can {
 }
 
 /// 查询模式入口。返回进程退出码。
-pub fn run(agent_home: &Path, args: &[String]) -> i32 {
+pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
     let result = match args.first().map(String::as_str) {
         Some("--list-projects") => {
             return match list_projects_to(agent_home, &mut std::io::stdout().lock()) {
                 Ok(()) => 0,
-                Err((Some(code), said)) => coded_failure(code, &said),
+                Err((Some(code), said)) => coded_failure(code, &said, tz),
                 Err((None, e)) => query_failed(&e),
             }
         }
@@ -119,7 +119,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
         },
         // 会话内查找（口径与 `--search` 同一份，内核住 `observe::search_query`）。
         Some("--find-in-session") => match parse_find_args(&args[1..]) {
-            Ok(a) => find_in_session(agent_home, &a),
+            Ok(a) => find_in_session(agent_home, &a, tz),
             Err(e) => Err(e),
         },
         Some(other) => Err(format!("unknown argument: {other}")),
@@ -166,7 +166,7 @@ pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
 
 /// 带码的那一行：CLI 错误信封（与 CLI 控制面同一份失败载体 `stream::detail::Failed`：`{code, message, detail}`；读信封的是 `remote_ask::settle_pulled`）。
 /// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
-fn coded_failure(code: &str, said: &str) -> i32 {
+fn coded_failure(code: &str, said: &str, tz: &crate::Tz) -> i32 {
     let f = crate::stream::detail::Failed::new(
         Some("list-projects"),
         code,
@@ -174,7 +174,7 @@ fn coded_failure(code: &str, said: &str) -> i32 {
         None,
         None,
     );
-    f.emit()
+    f.emit(tz)
 }
 
 /// 一次性查询失败的那一行（无码的旧形）。
@@ -1039,7 +1039,7 @@ pub(crate) fn parse_find_args(rest: &[String]) -> Result<FindArgs<'_>, String> {
 
 /// `--find-in-session`：在**一份**会话里找（路径守卫与 `--read-session` 同一套）。形状见
 /// [`crate::observe::search_query::write_session_find`] 的头注。
-fn find_in_session(agent_home: &Path, a: &FindArgs<'_>) -> Result<(), String> {
+fn find_in_session(agent_home: &Path, a: &FindArgs<'_>, tz: &crate::Tz) -> Result<(), String> {
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     find_in_session_into(
@@ -1048,6 +1048,7 @@ fn find_in_session(agent_home: &Path, a: &FindArgs<'_>) -> Result<(), String> {
         a.query,
         a.include_tools,
         a.limit,
+        tz,
         &mut out,
     )?;
     out.flush().map_err(|e| format!("stream failed: {e}"))?;
@@ -1062,6 +1063,7 @@ pub(crate) fn find_in_session_into(
     query: &str,
     include_tools: bool,
     limit: usize,
+    tz: &crate::Tz,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
     crate::observe::search_query::write_session_find(
@@ -1069,6 +1071,7 @@ pub(crate) fn find_in_session_into(
         query,
         include_tools,
         limit,
+        tz,
         &mut out,
     )
     .map_err(|e| format!("stream failed: {e}"))?;

@@ -1,4 +1,4 @@
-//! **业务路径零裸吞** —— 人群判据与登记表（设计与射程住 `src/frontend/shell/src/swallow_registry.rs` 头注）。
+//! **业务路径零裸吞** —— 人群判据与登记表（设计与射程住 `tests/frontend/shell/swallow_registry.rs` 头注）。
 //!
 //! （逐字）「**处置不是别吞，是吞了要留一行日志**」。
 //!
@@ -75,8 +75,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/stream/detail.rs", "let _ = writeln!(err, \"{line}\");", Why::Diag, "CLI 面的失败信封写 stderr（各 CLI 出口都经 `Failed::emit_to` 这一处）：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
     ("src/backend/control/resolve_query.rs", "let _ = writeln!(out, \"{json}\");", Why::Diag, "`--resolve` 的成品写 stdout：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/resolve_query.rs", "let _ = writeln!(err, \"{}\", error_envelope(code, message));", Why::Diag, "`--resolve` 的失败信封写 stderr：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
-    ("src/backend/control/cli_control.rs", "let _ = writeln!(out, \"{v}\");", Why::Diag, "CLI 面的应答写 stdout：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
-    ("src/backend/control/cli_control.rs", "let _ = writeln!(out, \"{}\", crate::control::ship_text::ship_text(&v));", Why::Diag, "同上：`--text` 那一形写 stdout"),
+    ("src/backend/control/cli_control.rs", "let _ = writeln!(out, \"{}\", crate::common::time::fill_at(&line, tz));", Why::Diag, "CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/launch_account.rs", "let _ = std::fs::remove_file(&path);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&at);", Why::CleanupAfterFailure, "写块失败 / 收拾旧块：主错误已在回；删不掉等孤儿扫（7 天）"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&side);", Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),
@@ -662,7 +661,7 @@ fn w5vis_test_only_modules_are_derived_and_excluded() {
     let derived = test_only_modules(&files);
     for known in [
         "src/backend/alloc_probe.rs",
-        "src/frontend/shell/src/needle_anchor_registry.rs",
+        "tests/frontend/shell/needle_anchor_registry.rs",
     ] {
         let real = std::fs::canonicalize(root.join(known)).expect("已知的那份不在了 —— 改本条");
         assert!(

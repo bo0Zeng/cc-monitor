@@ -1,0 +1,61 @@
+{
+  "_": "大小（字节 ⇒ 给人看的一格）的对拍金样：Rust copy-core::size_text（后端 · 壳 · 文件窗口写大小都经它）与 TS format.ts::sizeText（界面那一个读口）· Kotlin SizeFormat（手机端）各自读这一份。不满 1 KB 写整数字节；往上按 1024 进位、最多到 TB，一位小数（四舍五入，整数化之后算：tenths = (n·10 + 单位/2) / 单位；舍入到 1024.0 的进一档）。单位格住文案表 sizeFormat.unit.*。",
+  "cases": [
+    {
+      "bytes": 0,
+      "want": "0 B"
+    },
+    {
+      "bytes": 1,
+      "want": "1 B"
+    },
+    {
+      "bytes": 1023,
+      "want": "1023 B"
+    },
+    {
+      "bytes": 1024,
+      "want": "1.0 KB"
+    },
+    {
+      "bytes": 1536,
+      "want": "1.5 KB"
+    },
+    {
+      "bytes": 10239,
+      "want": "10.0 KB"
+    },
+    {
+      "bytes": 1048575,
+      "want": "1.0 MB"
+    },
+    {
+      "bytes": 1048576,
+      "want": "1.0 MB"
+    },
+    {
+      "bytes": 5550080,
+      "want": "5.3 MB"
+    },
+    {
+      "bytes": 1073741824,
+      "want": "1.0 GB"
+    },
+    {
+      "bytes": 2415919104,
+      "want": "2.3 GB"
+    },
+    {
+      "bytes": 1099511627776,
+      "want": "1.0 TB"
+    },
+    {
+      "bytes": 3298534883329,
+      "want": "3.0 TB"
+    },
+    {
+      "bytes": 2251799813685248,
+      "want": "2048.0 TB"
+    }
+  ]
+}

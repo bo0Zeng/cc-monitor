@@ -625,12 +625,6 @@ class ReadingPaneViewModelTest {
             assertEquals("3 条渲染记录（2 user + 1 assistant）", 3, keys.size)
             assertEquals("无 null-uuid 撞键（unitKey 唯一，否则 LazyColumn 崩）", keys.size, keys.toSet().size)
             assertTrue("无 \"_#0\" 占位键（已补合成 uuid）", keys.none { it.startsWith("_#") })
-            // 用量走 Codex 聚合：contextWindow=真上限、input 去缓存、cacheRead=cached。
-            val usage = ready.usage
-            assertEquals("Codex 真上下文上限", 258_400L, usage?.contextWindow)
-            assertEquals("当前占用=last_token_usage.total", 80L, usage?.lastContextTokens) // Long? → 需 L
-            assertEquals("input 去缓存 100-40", 60L, usage?.input)
-            assertEquals("cacheRead=cached_input", 40L, usage?.cacheRead)
             job.cancel()
         }
 

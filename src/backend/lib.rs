@@ -72,6 +72,9 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+#[cfg(test)]
+#[path = "../../tests/backend/refusing_port.rs"]
+pub(crate) mod refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用）
 pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
 #[cfg(test)]
 #[path = "../../tests/backend/runs_guard.rs"]
@@ -911,7 +914,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
 /// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
 /// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；轮换规则 CellError 与机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
-pub const BUILD_ID: &str = "p9x-changed-topic-view";
+///
+/// p9y-viewer-tz-skeleton：时刻按看的人那一台的钟——请求信封 · CLI `--tz` · attach 行带 tz（IANA 名，缺 · 认不得 ⇒ UTC），回包的「几点」「今天 / 昨天」与复制详情那一行都按它写；
+/// 推送帧里现算的小成品按这条连接 attach 带来的 tz 写；轮换规则盖上 rotation.tz、按规则自己的时区判；rotation-rule-save / rename 回 savedAtText；记录带 atMs。
+/// 查看器改「骨架 ＋ 按视口取」：history-page 的 whole 与 too_large 删、界面整份读删；ToolStep.ask · StepResult.preview 由核心出（出口省掉工具入参 / 结果正文）。
+/// 通用记录多一类 unread（认不出的行，相邻同类并一条）；号名 / 位名由核心写（四件成品带 names）；history-list 的 raw 带那台自己那份注解；冻结格进版本号指纹；
+/// 手机接核心第一批（常驻长连接 --resident-ensure → --resident-attach）。
+pub const BUILD_ID: &str = "p9y-viewer-tz-skeleton";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -2193,7 +2202,7 @@ pub const STREAM_FLAGS: &[&str] = &[
 ];
 
 /// 一条流的客户端索要了什么（流模式旗标剥出来的那几位）。全关 ＝ 默认：没索要的客户端收到的字节不变。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct StreamWants {
     /// `--with-bg`：放行 bg 会话。
     pub with_bg: bool,
@@ -2203,6 +2212,22 @@ pub struct StreamWants {
     pub with_pid: bool,
     /// `--with-raw`：`line` 带 `raw`。
     pub with_raw: bool,
+    /// [`TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
+    /// 一次性 CLI 面的回包同样按它写。缺 · 认不得 ⇒ UTC。
+    pub tz: Tz,
+}
+
+/// **看的人那一台的时区**：`--tz <IANA 名>`（任意位置；流模式与一次性 CLI 面同一个旗标）与帧面请求信封的 `tz` 同名同义：
+/// 回包与推送里「几点」「今天 / 昨天」按它写，不按这台后端的钟。缺 · 缺值 · 认不得 ⇒ UTC（不拒）。
+/// 常驻那条连接的 attach 行带同名一格 `tz`（[`stream::listen::attach_flags`]）。
+pub const TZ_FLAG: &str = "--tz";
+
+/// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
+pub use common::time::Tz;
+
+/// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
+pub fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
+    common::time::fill_at(line, tz)
 }
 
 /// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
@@ -2270,6 +2295,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     STDIN_LINE_FLAG,
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
     TEXT_FLAG,
+    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 [`split_stream_flags`]）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    TZ_FLAG,
     "--until",
     // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
     VIEW_FLAG,
@@ -2287,8 +2314,15 @@ pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, StreamWants) {
         tail_only: has("--tail-only"),
         with_pid: has("--with-pid"),
         with_raw: has("--with-raw"),
+        tz: Default::default(),
     };
     args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
+    let mut wants = wants;
+    if let Some(i) = args.iter().position(|a| a == TZ_FLAG) {
+        let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
+        args.drain(i..i + 1 + usize::from(v.is_some()));
+        wants.tz = v.as_deref().and_then(Tz::named).unwrap_or_default();
+    }
     (args, wants)
 }
 

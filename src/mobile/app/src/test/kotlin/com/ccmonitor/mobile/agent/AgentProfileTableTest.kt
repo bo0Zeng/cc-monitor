@@ -38,7 +38,6 @@ class AgentProfileTableTest {
             p.recordParser::class.simpleName,
             p.turnEndDetector::class.simpleName,
             p.sessionLocator::class.simpleName,
-            p.usageAggregator::class.simpleName,
             p.newSessionCatalog(fakeChannel, "/d")::class.simpleName,
         ).joinToString(" | ")
 
@@ -151,10 +150,10 @@ class AgentProfileTableTest {
             listOf(
                 "ClaudeCode | Claude | claude | uplink=true | chatScreen=true | accountGate=true | parentUuid=true | " +
                     "ccmIdentity=true | dirSetting=AppDefaultClaudeDir | ClaudeInvocation | JsonlParser | " +
-                    "ClaudeTurnEndDetector | ClaudeSessionLocator | ClaudeUsageAggregator | ClaudeSessionCatalog",
+                    "ClaudeTurnEndDetector | ClaudeSessionLocator | ClaudeSessionCatalog",
                 "Codex | Codex | codex | uplink=false | chatScreen=false | accountGate=false | parentUuid=false | " +
                     "ccmIdentity=false | dirSetting=null | CodexInvocation | CodexRecordParser | " +
-                    "CodexTurnEndDetector | CodexSessionLocator | CodexUsageAggregator | CodexSessionCatalog",
+                    "CodexTurnEndDetector | CodexSessionLocator | CodexSessionCatalog",
             )
     }
 }

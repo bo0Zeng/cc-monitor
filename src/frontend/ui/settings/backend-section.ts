@@ -25,7 +25,7 @@ import { RESYNC_DONE_EVENT } from "./events";
 import { makeInfoIcon } from "./info-icon";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
-import { formatBytes } from "../format";
+import { sizeText } from "../format";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { machineName } from "../control-said";
 import { askInterrupts, interruptRows, type Interrupts } from "./interrupts";
@@ -134,7 +134,7 @@ async function askBackendLog(origin: Origin): Promise<BackendLog> {
 /** 那一份怎么摆：头一行（路径 · 大小 · 截没截）＋ 正文；没落文件 ⇒ 只一行说清。 */
 export function backendLogLines(log: BackendLog): { head: string; body: string } {
   if (log.path === null) return { head: copyText("backend.log.none"), body: "" };
-  const head = copyText("backend.log.head", { path: log.path, size: formatBytes(log.size) });
+  const head = copyText("backend.log.head", { path: log.path, size: sizeText(log.size) });
   return {
     head: log.truncated ? `${head} ${copyText("backend.log.truncated")}` : head,
     body: log.text === "" ? copyText("backend.log.empty") : log.text,

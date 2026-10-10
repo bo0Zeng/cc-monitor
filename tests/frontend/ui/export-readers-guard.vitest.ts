@@ -83,5 +83,7 @@ describe("零读者导出：产品代码里每个导出都有产品读者", () =
     expect(unexplained, "这些导出产品里没人读：真没人用就删（连带只为它的测试与文案）；有理由留就进 EXEMPT 写一句为什么").toEqual([]);
     const stale = Object.keys(EXEMPT).filter((k) => !found.some((f) => f.key === k));
     expect(stale, "这几条豁免已经有产品读者 / 已经删了：从 EXEMPT 摘掉").toEqual([]);
-  }, 120_000);
+  // 期限：全仓建一份 TS program（要类型检查器认读者），没有便宜的近路。量过：负载 3 时 3.5 s；带覆盖率 · 负载 89–150 时 62–81 s
+  //   （120 s 期限过半）。放宽到 240 s；机器换了、或 quick-check 三步并行跑起来之后复量一次。
+  }, 240_000);
 });

@@ -817,8 +817,8 @@ mod specimens {
     use super::{node_of, Specimen};
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
-        Answer, ApiReason, ChildRunTag, McpStatus, Pasted, PatchHunk, SessionActivity, Speaker,
-        StepResult, ToolCard, ToolStep, UserText,
+        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
+        SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
     };
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
@@ -915,6 +915,7 @@ mod specimens {
             patch_truncated: true,
             text: Words(s("t")),
             timed: Some(Words(s("{dur}"))),
+            preview: some("p"),
         }
     }
 
@@ -924,6 +925,7 @@ mod specimens {
             id: s("r"),
             at: some("2026-10-09T00:00:00Z"),
             time_text: Some(Words(s("08:00"))),
+            at_ms: Some(1_791_504_000_000),
             body,
         }
     }
@@ -972,17 +974,44 @@ mod specimens {
                 auto_reply: false,
                 ends_turn: true,
                 cards: one("c", ToolCard::Command),
-                steps: one(
-                    "c",
-                    ToolStep {
-                        tool: s("Bash"),
-                        arg: some("ls"),
-                        path: true,
-                        note: some("n"),
-                        known: true,
-                        text: Some(Words(s("t"))),
-                    },
-                ),
+                steps: [
+                    (
+                        s("c"),
+                        ToolStep {
+                            tool: s("Bash"),
+                            arg: some("ls"),
+                            path: true,
+                            note: some("n"),
+                            known: true,
+                            text: Some(Words(s("t"))),
+                            ask: Some(StepAsk::Questions {
+                                questions: vec![AskQuestion {
+                                    header: some("h"),
+                                    question: s("q"),
+                                    multi: true,
+                                    options: vec![AskOption {
+                                        label: s("l"),
+                                        description: some("d"),
+                                    }],
+                                }],
+                            }),
+                        },
+                    ),
+                    (
+                        s("d"),
+                        ToolStep {
+                            tool: s("ExitPlanMode"),
+                            arg: some("a"),
+                            path: true,
+                            note: some("n"),
+                            known: true,
+                            text: Some(Words(s("t"))),
+                            ask: Some(StepAsk::Plan { text: s("p") }),
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
                 runs: one(
                     "c",
                     ChildRunTag {
@@ -1055,6 +1084,7 @@ mod specimens {
                         name: s("Bash"),
                         what: some("ls"),
                         at: some("t"),
+                        at_ms: Some(0),
                         state: StepWait::Unclear,
                         why: Some(UnclearWhy::NoWriter),
                         text: Some(Words(s("t"))),
@@ -1063,6 +1093,7 @@ mod specimens {
                     last_say: Some(LastSay {
                         text: s("t"),
                         at: some("t"),
+                        at_ms: Some(0),
                     }),
                     needs: Some(Needs {
                         kind,
