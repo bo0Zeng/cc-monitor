@@ -412,7 +412,7 @@ export function defaultOps(): Record<string, OpHandler> {
           if (b.type === "tool_use" && (b.name === "Edit" || b.name === "Write") && typeof fp === "string") touched.add(fp);
         }
       }
-      let usage: { promptTokens: number; model: string | null; peakPromptTokens: number; limit: number; limitFrom: string } | null = null;
+      let usage: Record<string, unknown> | null = null;
       const lastUsage = last ? usageOf.get(last) : undefined;
       if (last && lastUsage) {
         const sum = (u: { input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }) =>
@@ -427,7 +427,12 @@ export function defaultOps(): Record<string, OpHandler> {
         const model = last.model ?? null;
         const from = relay ? "relay" : (model ?? "").includes("[1m]") ? "model" : peak > 200_000 ? "observed" : "assumed";
         const limit = relay === "std" && peak <= 200_000 ? 200_000 : 1_000_000;
-        usage = { promptTokens: sum(lastUsage), model, peakPromptTokens: peak, limit, limitFrom: from };
+        // 字照后端 `facts_query::UsageFact::settle_words`（百分比 · 用了多少 · 上限 · 来源；同一张文案表的 `beUsage.*`）。
+        const prompt = sum(lastUsage);
+        const short = (n: number) => (n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+        const percent = from === "assumed" ? null : Math.min(100, Math.round((prompt / limit) * 100));
+        const fromText = from === "assumed" ? null : copyText(`beUsage.from.${from}` as "beUsage.from.relay");
+        usage = { promptTokens: prompt, model, peakPromptTokens: peak, limit, limitFrom: from, percent, contextText: percent === null ? short(prompt) : copyText("beUsage.context.pct", { n: String(percent) }), contextTone: percent !== null && percent >= 80 ? "warn" : "plain", promptTokensText: short(prompt), limitText: short(limit), limitFromText: fromText };
       }
       // 没结果的调用 · 最后一句 · 需要你：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
       const what = (name: string, input: Record<string, unknown> | undefined): string | null => {
@@ -451,7 +456,7 @@ export function defaultOps(): Record<string, OpHandler> {
           pending = results.length > 0 ? pending.filter((p) => !results.includes(p.id)) : [];
         }
       }
-      let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null; text: string; tone: string } | null = null;
+      let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null; text: string; tone: string; rank?: number } | null = null;
       // 字照后端 `facts_query::needs_of`（同一张文案表的 `beSession.needs.*`）。
       const said = (kind: "approve" | "answer" | "plan" | "unknown") => ({ text: copyText(`beSession.needs.${kind}`), tone: "need" });
       if (s?.activity === "needs_you") {
@@ -463,6 +468,7 @@ export function defaultOps(): Record<string, OpHandler> {
         else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs, ...said("approve") };
         else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs, ...said("unknown") };
       }
+      if (needs) needs = { ...needs, rank: 0 };
       // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
       const handedBack: string[] = [];
       for (const r of recs) {
