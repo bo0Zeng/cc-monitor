@@ -892,7 +892,7 @@ mod tests {
             "脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
              `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
              是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
-             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走命令注册的门）",
+             不建目录、不截断；一次性模式另有一个只追加整行的句柄（`OWN_STATE_APPEND_ONLY`）。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer` · 一次性模式的 `oneshot_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走命令注册的门）",
         ),
         (
             "control/resident.rs",
@@ -1001,6 +1001,22 @@ mod tests {
     fn is_own_state_lock_dir(rel: &str) -> bool {
         OWN_STATE_LOCK_DIRS.iter().any(|(p, _)| *p == rel)
     }
+
+    /// 第四层里**只追加一行**的那几份日志落点（`(模块, 为什么)`）：许它们恰好一个写句柄写成 `.append(true).create(true)`
+    /// （`O_APPEND`、不在就新建、不截断、不建目录），`append(true)` · `create(true)` 只在那一个句柄上豁免；别的句柄照旧 `O_EXCL`。
+    const OWN_STATE_APPEND_ONLY: &[(&str, &str)] = &[(
+        "stderr_log.rs",
+        "一次性模式（CLI 子命令）的诊断：stderr 是协议通道（成功一个字节都没有、失败正好一行信封），诊断改追加进这台后端的 \
+         stderr 诊断文件（常驻后端 fd 2 指着的那一份）。几个一次性进程与常驻后端同写一份 ⇒ 只能追加、一次写一整行；\
+         它是日志不是状态，没有读—改—写；不截断、不建目录（目录不在就丢这一行）",
+    )];
+
+    fn is_own_state_append_only(rel: &str) -> bool {
+        OWN_STATE_APPEND_ONLY.iter().any(|(p, _)| *p == rel)
+    }
+
+    /// 只追加那一个句柄的写法（逐字；[`OWN_STATE_APPEND_ONLY`] 的模块恰好一处）。
+    const APPEND_ONLY_HANDLE: &str = ".append(true).create(true)";
 
     /// 第四层模块**仍然不许**出现的东西。`create(true)` 不含于 `create_new(true)`，不自伤；
     /// `remove_dir` 同时挡住 `remove_dir_all`。
@@ -1187,6 +1203,7 @@ mod tests {
         //  （`stderr_log::ENV`，不是写口）就被当成够到了写口 ⇒ 改成逐个点写口；这个模块今天对外的函数就这两个会写。〕
         ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
         ("stderr_log.rs", "stderr_log::stderr_writer", "main.rs"),
+        ("stderr_log.rs", "stderr_log::oneshot_writer", "main.rs"),
         // 一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
         (
             "assets/skill_ledger.rs",
@@ -1350,7 +1367,12 @@ mod tests {
     ///
     /// 配对计数把这个洞堵上：想再开一个写句柄，就必须再配一个 `O_EXCL`。
     fn open_calls_are_all_exclusive(prod: &str) -> Result<(), String> {
-        let opens = prod.matches(".open(").count();
+        open_calls_are_all_exclusive_but(prod, 0)
+    }
+
+    /// 同上，另许 `appends` 个只追加的句柄（[`OWN_STATE_APPEND_ONLY`]）。
+    fn open_calls_are_all_exclusive_but(prod: &str, appends: usize) -> Result<(), String> {
+        let opens = prod.matches(".open(").count() - appends.min(prod.matches(".open(").count());
         let excl = prod.matches(".create_new(true)").count();
         if opens != excl {
             return Err(format!(
@@ -1463,9 +1485,24 @@ mod tests {
             // 第四层：后端自有状态文件。
             if is_own_state(&rel) {
                 own += 1;
-                if let Err(why) = open_calls_are_all_exclusive(&prod) {
+                // 只追加的那一份：恰好一个 `APPEND_ONLY_HANDLE` 句柄，判别的写句柄时把它摘掉。
+                let appends = if is_own_state_append_only(&rel) {
+                    let n = prod.matches(APPEND_ONLY_HANDLE).count();
+                    assert_eq!(
+                        n,
+                        1,
+                        "第四层只追加的模块 {}：`{APPEND_ONLY_HANDLE}` 该恰好一处，实得 {n}",
+                        path.display()
+                    );
+                    n
+                } else {
+                    0
+                };
+                let rest = prod.replacen(APPEND_ONLY_HANDLE, "", appends);
+                if let Err(why) = open_calls_are_all_exclusive_but(&prod, appends) {
                     panic!("第四层模块 {}：{why}", path.display());
                 }
+                let prod = rest;
                 if let Some(pat) = OWN_STATE_STILL_FORBIDDEN.iter().find(|p| {
                     if **p == "fs::remove_dir" && is_own_state_lock_dir(&rel) {
                         prod.contains("fs::remove_dir_all")
@@ -1749,8 +1786,8 @@ mod tests {
     /// 第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
     const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[(
         "stderr_log.rs",
-        "这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：写它的只有 fd 2 指着它的那一个进程\
-         （路径由 monitor 起脱离那条载体时交，一台一个常驻后端 ⇒ 一份一个写者），`O_EXCL` 新建 ＋ 滚动时原子挪；\
+        "这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：fd 2 指着它的那一个常驻进程 `O_EXCL` 新建 ＋ 滚动时原子挪，\
+         一次性进程只 `O_APPEND` 一次写一整行（几个进程同写一份不会写进彼此中间）；\
          没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
     ),
     (

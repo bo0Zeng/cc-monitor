@@ -158,6 +158,9 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 - **期限**：`--within-ms <毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义：减 2 秒余量换成截止时刻，装总期限的命令都收紧到它，到点回的码与帧面相同（`child_timed_out`）。
   哪几条装总期限、上限多少，协议参考里逐条写（「总期限上限 N 秒」）；没写的那几条不装，带了期限对它不起作用。到点只回 `child_timed_out` 这一个码，三条例外不整条失败：`aliases-read` · `powershell-policy-set` 落在成品的 `policy.error`，`ssh-config-import` 交已解析的那几个。
   缺值 · 给两次 ⇒ `bad_args`；值不是正整数 ⇒ 当没带（同帧面那一格）。
+- **stderr 是协议通道**：成功 ⇒ stderr 一个字节都没有；失败 ⇒ 正好一行信封（下一条）。后端自己的诊断日志一行都不写 stderr，
+  整行追加进那台后端的 stderr 诊断文件（宿主交了 `CCM_BACKEND_STDERR_LOG` 就是那一份，否则 `~/.cc-monitor/logs/backend/stderr.log`，常驻后端的 stderr 落的也是它；
+  那一层目录不在 ⇒ 诊断丢掉，不替它建）。调用方可以整段 JSON-parse stderr。
 - 失败：stderr 一行 `{code, message, detail}`（少数码另带 `data`）、退出 2 —— 与帧面失败应答出自同一份：同一个失败两个面上 `code` · `message` · `detail` · `data` 逐字相同（`detail` 恒在）。
   带 `--text` ⇒ stderr 是那一句 ＋ 下面原样接 `detail` 那几行（同界面「复制详情」复制出去的那一段），不是 JSON。
   手写的几条一次性子命令（`--list-projects` · `--fork-session` · `--account-trust` · `--account-trust-zero`）失败也是这一份（详情里的「命令」是那条子命令名，不收 `--text`）；

@@ -12,7 +12,8 @@
 //!   盘上恒 ≤ 两份。起来那一刻已有当前那份 ⇒ 先挪成旧的。两行 `tracing` 之间别人写的字节不触发检查 ⇒ 一份可以略超上限，不会无界。
 //! - 换不过去不拖垮后端：建不了文件 / 换不了 fd ⇒ stderr 原样，照常服务。
 //!
-//! 后端自有状态（`readonly_guard` 第四层）：动词只用 `O_EXCL` 新建 · 原子挪（不建目录、不截断、不追加），对外口只从 `main.rs` 进。
+//! 后端自有状态（`readonly_guard` 第四层）：动词只用 `O_EXCL` 新建 · 原子挪（不建目录、不截断）；一次性模式另有一个只追加整行的句柄
+//! （[`oneshot_writer`]，`readonly_guard::OWN_STATE_APPEND_ONLY`）。对外口只从 `main.rs` 进。
 //! 买不到：远端后端的 stderr · 真 Windows（非 unix 臂回 `Failed`）。
 
 use copy_core::copy_text;
@@ -184,6 +185,63 @@ pub fn stderr_writer() -> std::io::Stderr {
         }
     }
     std::io::stderr()
+}
+
+/// 一次性模式（CLI 子命令）那几行诊断落哪：宿主交了 [`ENV`] ⇒ 那一份；否则这台后端自己的诊断文件
+/// （`~/` ＋ [`crate::control::resident::STDERR_LOG_REL`]，常驻后端的 stderr 落的就是它）。家推不出来 ⇒ `None`（不写）。
+pub(crate) fn oneshot_log_path(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(p) = get(ENV).filter(|v| !v.trim().is_empty()) {
+        return Some(PathBuf::from(p));
+    }
+    crate::platform::paths::home_dir().map(|h| h.join(crate::control::resident::STDERR_LOG_REL))
+}
+
+/// 一次性模式里本进程那几行诊断的落点（进程起来时定一次）。
+static ONESHOT_PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+/// 一次性模式的 `tracing` 写者（`main.rs` 在一次性模式里装给它，代替 [`stderr_writer`]）。
+/// 一次性模式的 stderr 是协议通道：成功一个字节都没有，失败正好一行信封 ⇒ 诊断一行都不进 stderr，
+/// 改追加进诊断文件：`O_APPEND` 打开、一条一次整行写下去（几个一次性进程 ＋ 常驻后端同写一份不会写到彼此中间去）。
+/// 只建文件、不建目录：那一层目录不在 ⇒ 这一行丢掉（不拖垮命令、不回落 stderr）。滚动归常驻那一份的 [`Roller`]。
+pub fn oneshot_writer() -> OneShotLine {
+    OneShotLine(Vec::new())
+}
+
+/// [`oneshot_writer`] 交出去的那一个：攒下一条 `tracing` 输出，放手那一刻整行追加进诊断文件。
+pub struct OneShotLine(Vec<u8>);
+
+impl std::io::Write for OneShotLine {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Drop for OneShotLine {
+    fn drop(&mut self) {
+        if self.0.is_empty() {
+            return;
+        }
+        let path = ONESHOT_PATH.get_or_init(|| oneshot_log_path(&|k| std::env::var(k).ok()));
+        if let Some(p) = path {
+            let _ = append_line(p, &self.0);
+        }
+    }
+}
+
+/// `O_APPEND`（不在就新建，只给本人）一次写下 `line`。目录不在 ⇒ `Err`，不替它建。
+pub(crate) fn append_line(path: &Path, line: &[u8]) -> std::io::Result<()> {
+    let mut o = std::fs::OpenOptions::new();
+    o.append(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o600);
+    }
+    o.open(path)?.write_all(line)
 }
 
 #[cfg(test)]

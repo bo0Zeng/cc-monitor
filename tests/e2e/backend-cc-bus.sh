@@ -622,6 +622,28 @@ chk "  --resolve 成品是那条恢复命令" "$(jq -r .command < "$SANDBOX/c2-r
 _t0=$(c2ms); d --resolve < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
 chk "★ --resolve 开着不写：立即回 no_input" "$([ "$_rc" -eq 2 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")|$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "是|no_input"
 
+echo "[CLI3] ★ 一次性模式的 stderr 是协议通道：成功 ⇒ 一个字节都没有；失败 ⇒ 正好一行信封 {code, message, detail}；诊断进后端日志文件"
+# 日志落点 = 那台后端自己的 stderr 诊断文件（`~/.cc-monitor/logs/backend/stderr.log`，宿主交了 CCM_BACKEND_STDERR_LOG 就用交的那份）。
+LH="$SANDBOX/lh"; mkdir -p "$LH/.cc-monitor/logs/backend"; LOGF="$LH/.cc-monitor/logs/backend/stderr.log"
+one() { HOME="$LH" d "$@"; }
+# 成功两族：历史查询那条臂（history-read）· 控制面那条臂（bus-list）。
+printf '%s' "$(jq -cn --arg p "$J" '{path:$p}')" | one --history-read >/dev/null; _rc=$?
+chk "★ history-read 成功：退出 0 · stderr 0 字节" "$_rc|$(wc -c < "$SANDBOX/err.txt")" "0|0"
+one --bus-list </dev/null >/dev/null; _rc=$?
+chk "★ bus-list 成功：退出 0 · stderr 0 字节" "$_rc|$(wc -c < "$SANDBOX/err.txt")" "0|0"
+# 失败两族：缺入参（契约错，会记一行诊断）· 控制面拒（bad_id）。
+one --history-read </dev/null >/dev/null; _rc=$?
+chk "★ history-read 缺 path：非 0 · stderr 正好一行 · 那一行是带 code 的信封" \
+  "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | .code' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_args"
+chk "  契约错的诊断进了日志文件（不在 stderr）" "$(grep -c 'contract: malformed request: missing `path`' "$LOGF" 2>/dev/null)|$(grep -c 'malformed request' "$SANDBOX/err.txt")" "1|0"
+printf '{"to":"a/b","text":"x"}' | one --bus-send >/dev/null; _rc=$?
+chk "★ bus-send 拒：非 0 · stderr 正好一行信封" \
+  "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | (.code)' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_id"
+# 诊断文件那一层目录不在 ⇒ 不替它建（只建文件不建目录），stderr 照样干净。
+NL="$SANDBOX/nolog"; mkdir -p "$NL"
+HOME="$NL" d --history-read </dev/null >/dev/null
+chk "  没有日志目录：stderr 照样一行 · 不建目录" "$(wc -l < "$SANDBOX/err.txt")|$([ -e "$NL/.cc-monitor" ] && echo 建了 || echo 没建)" "1|没建"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

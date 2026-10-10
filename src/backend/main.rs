@@ -118,21 +118,6 @@ async fn main() {
         }
     };
 
-    // Log to stderr so it never corrupts the stdout wire stream.
-    tracing_subscriber::fmt()
-        // 仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
-        .with_writer(stderr_log::stderr_writer)
-        // 〔NT2 问 3 ＋ RT1 F3〕只在 stderr 是终端（人在手跑）时上色：进 monitor 日志的管子、
-        //   进脱离载体那份 stderr 文件的，转义码原样落盘、而且让 monitor 那一侧认不出行首的级别字。
-        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
-
-    let agent_home = resolve_agent_home();
-
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧后端不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
@@ -140,6 +125,10 @@ async fn main() {
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args, wants) = split_stream_flags(args);
+    init_tracing(is_query_mode(&args));
+
+    let agent_home = resolve_agent_home();
+
     if is_query_mode(&args) {
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
@@ -912,6 +901,30 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 ///
 /// 要的是**恒定**答得出的那个 home（流式 watcher 与所有一次性子命令都拿它当根），
 /// 不是 `agents::visible_homes()`（那只报目录已存在的几家；新机器上 home 还没建出来时后端照样起、等第一个会话）。
+/// 装 `tracing`。流模式：写 stderr（stdout 是线上的流；stderr 进 monitor 的滚动日志，脱离载体时进诊断文件）。
+/// 一次性模式：stderr 是协议通道（成功一个字节都没有、失败正好一行信封）⇒ 一行都不写 stderr，
+/// 整行追加进这台后端的诊断文件（`stderr_log::oneshot_writer`）。
+fn init_tracing(oneshot: bool) {
+    let writer = if oneshot {
+        tracing_subscriber::fmt::writer::BoxMakeWriter::new(stderr_log::oneshot_writer)
+    } else {
+        // 仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
+        tracing_subscriber::fmt::writer::BoxMakeWriter::new(stderr_log::stderr_writer)
+    };
+    // Log to stderr so it never corrupts the stdout wire stream.
+    tracing_subscriber::fmt()
+        .with_writer(writer)
+        // 〔NT2 问 3 ＋ RT1 F3〕只在 stderr 是终端（人在手跑）时上色：进 monitor 日志的管子、
+        //   进脱离载体那份 stderr 文件的，转义码原样落盘、而且让 monitor 那一侧认不出行首的级别字。
+        //   一次性模式写的是诊断文件 ⇒ 不上色。
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()) && !oneshot)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+}
+
 fn resolve_agent_home() -> PathBuf {
     agent_home(None, true)
 }

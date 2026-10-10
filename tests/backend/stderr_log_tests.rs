@@ -302,15 +302,43 @@ fn without_the_env_the_child_installs_nothing_and_writes_no_file() {
 }
 
 /// 接线（文本，如实登记：按行为量要起真二进制写满 4 MiB）：滚动靠 `tracing` 的写者 —— `main.rs` 装给 `tracing` 的恰是
-/// [`stderr_writer`]、恰好一处；装它的 [`install_from_env`] 也恰好一处。任一处被换回 `std::io::stderr`，生产上就**永远不滚**（上限失守）。
+/// [`stderr_writer`]（流模式那一臂；一次性模式那一臂是 [`oneshot_writer`]）、恰好一处；装它的 [`install_from_env`] 也恰好一处。任一处被换回 `std::io::stderr`，生产上就**永远不滚**（上限失守）。
 #[test]
 fn main_hands_tracing_the_rolling_writer_and_installs_it_once() {
     let main = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
     for needle in [
-        ".with_writer(stderr_log::stderr_writer)",
+        // 流模式那一臂交的写者（一次性模式那一臂交 `oneshot_writer`，两臂合成一个 `.with_writer(writer)`）。
+        "BoxMakeWriter::new(stderr_log::stderr_writer)",
+        "BoxMakeWriter::new(stderr_log::oneshot_writer)",
+        ".with_writer(writer)",
         "stderr_log::install_from_env(",
     ] {
         guard_core::find_pinned(&main, needle)
             .unwrap_or_else(|e| panic!("`main.rs` 里 `{needle}` 不是恰好一处：{e}"));
     }
+}
+
+/// 一次性模式的诊断落点：宿主交了 `ENV` ⇒ 那一份；没交 ⇒ 家里那一份（常驻后端的 stderr 落的就是它）。
+#[test]
+fn oneshot_lines_land_in_the_backend_log() {
+    let given = oneshot_log_path(&|k| (k == ENV).then(|| "/x/given.log".to_string()));
+    assert_eq!(given, Some(PathBuf::from("/x/given.log")));
+    let blank = oneshot_log_path(&|k| (k == ENV).then(|| "  ".to_string()));
+    if let Some(p) = blank {
+        assert!(
+            p.ends_with(crate::control::resident::STDERR_LOG_REL),
+            "{}",
+            p.display()
+        );
+    }
+    // 追加一整行、不截断；目录不在 ⇒ Err、不替它建。
+    let d = std::env::temp_dir().join(format!("ccm-oneshot-{}", std::process::id()));
+    std::fs::create_dir_all(&d).unwrap();
+    let f = d.join("stderr.log");
+    append_line(&f, b"a\n").unwrap();
+    append_line(&f, b"b\n").unwrap();
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "a\nb\n");
+    assert!(append_line(&d.join("no/such/stderr.log"), b"c\n").is_err());
+    assert!(!d.join("no").exists(), "替它建了目录");
+    let _ = std::fs::remove_dir_all(&d);
 }

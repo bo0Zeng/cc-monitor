@@ -559,7 +559,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
 
 /// 〔NT2 问 3 ＋ RT1 F3〕后端 `tracing` 只在 stderr 是终端时上色。
 /// 守的要求：「写进文件 / monitor 日志的 stderr 关 ANSI 颜色」。
-/// 形状：`main.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」；`fmt()` 恰好一处（没有第二个不设它的初始化）。
+/// 形状：`main.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」（一次性模式另与上「不是一次性」：它写诊断文件）；`fmt()` 恰好一处（没有第二个不设它的初始化）。
 #[test]
 fn a1_the_backend_log_is_colored_only_on_a_terminal() {
     let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
@@ -567,9 +567,15 @@ fn a1_the_backend_log_is_colored_only_on_a_terminal() {
     assert_eq!(at.len(), 1, "`.with_ansi(` 不是恰好一处：{at:?}");
     let arg = &main[at[0] + ".with_ansi(".len()..];
     let arg = &arg[..arg.find('\n').unwrap_or(arg.len())];
+    // 一次性模式写的是诊断文件（不是 stderr）⇒ 那一形恒不上色：`… && !oneshot)`。
     assert!(
-        arg.starts_with("std::io::IsTerminal::is_terminal(&std::io::stderr()))"),
-        "上不上色不再看 stderr 是不是终端：{arg}"
+        [
+            "std::io::IsTerminal::is_terminal(&std::io::stderr()))",
+            "std::io::IsTerminal::is_terminal(&std::io::stderr()) && !oneshot)"
+        ]
+        .iter()
+        .any(|w| arg.starts_with(w)),
+        "上不上色不再看 stderr 是不是终端（或一次性模式写文件也上色）：{arg}"
     );
     assert_eq!(
         main.matches("tracing_subscriber::fmt()").count(),
