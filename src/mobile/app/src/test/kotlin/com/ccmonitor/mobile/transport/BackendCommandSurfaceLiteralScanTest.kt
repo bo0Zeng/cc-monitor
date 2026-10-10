@@ -63,7 +63,7 @@ class BackendCommandSurfaceLiteralScanTest {
     fun everyBackendSubcommandLiteralLivesOnlyInTheNamedFiles() {
         val root = repoRoot()
         val sources = scannedSources(root)
-        assertTrue("前提①：得真扫到源文件，否则本条恒绿（实得 ${sources.size} 个）", sources.size > 150)
+        assertTrue("前提①：得真扫到源文件，否则本条恒绿（实得 ${sources.size} 个）", sources.size > 100)
 
         val literalsOf = sources.associate { it.relativeTo(root).invariantSeparatorsPath to backendLiteralsOf(it.readText()) }
         assertTrue(
@@ -129,7 +129,7 @@ class BackendCommandSurfaceLiteralScanTest {
 
         val root = repoRoot()
         val sources = scannedSources(root)
-        assertTrue("前提：得真扫到源文件（实得 ${sources.size} 个）", sources.size > 150)
+        assertTrue("前提：得真扫到源文件（实得 ${sources.size} 个）", sources.size > 100)
         val hits =
             sources
                 .filter { countOccurrences(backendLiteralsOf(it.readText()), GATE_NEXT_TO_WORD) > 0 }

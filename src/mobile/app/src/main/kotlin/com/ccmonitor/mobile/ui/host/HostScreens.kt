@@ -457,7 +457,7 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text("分组（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // agent 种类：Claude Code（默认）或 Codex CLI，决定会话定位、解析、turn-end、用量、resume 走哪套实现。
+        // agent 种类：Claude Code（默认）或 Codex CLI，决定落点、resume 的载荷与定位走哪套。
         Text("Agent 种类", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             // 遍历档案，产品名取档案的 `displayName`，不硬写；加一种 agent 这里自然多一项。

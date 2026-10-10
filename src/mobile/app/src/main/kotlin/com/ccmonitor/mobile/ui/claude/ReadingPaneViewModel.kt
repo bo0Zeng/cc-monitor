@@ -2,18 +2,14 @@ package com.ccmonitor.mobile.ui.claude
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.SessionCatalog
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.model.JsonlParser
 import com.ccmonitor.mobile.core.claude.model.JsonlRecord
 import com.ccmonitor.mobile.core.claude.model.MainBranch
 import com.ccmonitor.mobile.core.claude.model.RecordClassifier
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.claude.model.codexSessionMetaCwd
 import com.ccmonitor.mobile.core.claude.model.groupTools
-import com.ccmonitor.mobile.core.claude.model.withUuid
+import com.ccmonitor.mobile.core.claude.transport.ClaudeSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.JsonlFrame
 import com.ccmonitor.mobile.core.claude.transport.ResumeOffset
 import com.ccmonitor.mobile.core.claude.transport.SkeletonRecord
@@ -197,8 +193,6 @@ class ReadingPaneViewModel(
     // 下拉并入钉住项（label=pinnedLabel）。空或 null 时自动发现最新或活动会话。
     pinnedPathArg: String? = null,
     pinnedLabelArg: String? = null,
-    // 本会话的 agent 种类，决定 parser / usage / locator 与排序策略。
-    agentKindArg: AgentKind = AgentProfile.DEFAULT.kind,
     // CPU 管线必须单线程：onEach(records.add) 与 map(resolve/classify 遍历 records) 被 debounce 拆到不同协程，
     // 多线程会并发访问 records/classifyState，抛 ConcurrentModificationException。limitedParallelism(1) 把二者串行。
     private val cpu: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
@@ -208,16 +202,9 @@ class ReadingPaneViewModel(
     /** [channel] 的别名：在 `channelFlow` 里 `channel` 会被 ProducerScope 的同名成员遮蔽。 */
     private val remoteChannel: RemoteCommandChannel get() = channel
 
-    // 按种类取的 SPI 一律问档案（`AgentProfile.of(kind)`），本文件不出现种类字面。locator 须先于 claudeDir 初始化。
-    private val agentKind: AgentKind = agentKindArg
-    private val profile = AgentProfile.of(agentKind)
-    private val parser = profile.recordParser
-    private val locator = profile.sessionLocator
+    private val locator = ClaudeSessionLocator // locator 须先于 claudeDir 初始化
 
-    // Codex 没有 parentUuid，不能走 MainBranch/骨架链：按文件序排，并补合成 uuid 保 unitKey 唯一。
-    private val usesParentUuidChain = profile.usesParentUuidChain
-
-    private val claudeDir: String = locator.resolveAgentDir(claudeDirArg, null) // 按种类解析的 agent 配置目录前缀
+    private val claudeDir: String = locator.resolveAgentDir(claudeDirArg, null) // Claude 配置目录前缀
     private val pinnedPath: String? = pinnedPathArg?.ifBlank { null } // 空串哨兵 → null
     private val pinnedLabel: String? = pinnedLabelArg?.ifBlank { null }
 
@@ -242,8 +229,8 @@ class ReadingPaneViewModel(
     private val _liveSessionIds = MutableStateFlow<Set<String>>(emptySet())
     val liveSessionIds: StateFlow<Set<String>> = _liveSessionIds.asStateFlow()
 
-    // 会话目录：判活与可读标题（无 pidfile 时兜底最近 mtime 列表）。哪种 agent 配哪个实现，问档案的 `newSessionCatalog`。
-    private val catalog: SessionCatalog = profile.newSessionCatalog(channel, claudeDir)
+    // 会话目录：判活与可读标题（无 pidfile 时兜底最近 mtime 列表）。
+    private val catalog = ClaudeSessionCatalog(channel, claudeDir)
 
     // 标题探针的异步补全；每次 refresh 取消上一个，防叠加。
     private var titleJob: kotlinx.coroutines.Job? = null
@@ -423,30 +410,17 @@ class ReadingPaneViewModel(
             // 写进那个 if 里，首载（offset==0，恰是重连后最常见的情形）就永远不清。
             // 注意：这里不要再套 `withContext(Dispatchers.IO)`，`execCapture` 内部已切 IO，多套一层会让测试的虚拟时间失效。
             ResumeOffset.killStaleTail(executor, path)
-            // 骨架窗口首载靠 parentUuid 链，只有 Claude 走；Codex 跳过（st 仍 fresh，从 0 全量 tail）。
-            // 失败或取消时清掉半填充的 records，免得下次 tail 从 0 重下叠加；取消必须重抛。
-            if (usesParentUuidChain) {
-                runCatching { skeletonWindowLoad(srcChannel, path, s) }
-                    .onFailure {
-                        if (!s.windowed) s.reset()
-                        if (it is CancellationException) throw it
-                    }
-            }
+            // 骨架窗口首载靠 parentUuid 链。失败或取消时清掉半填充的 records，免得下次 tail 从 0 重下叠加；取消必须重抛。
+            runCatching { skeletonWindowLoad(srcChannel, path, s) }
+                .onFailure {
+                    if (!s.windowed) s.reset()
+                    if (it is CancellationException) throw it
+                }
             s
         }
 
-    /**
-     * 给解析后的记录定渲染 id。Codex 记录多半没有 uuid，按文件序补合成 uuid（`cx-<index>`，append-only 下稳定），
-     * 保 unitKey 唯一；否则多条 null uuid 撞 `"_#0"`，LazyColumn 的 key 重复会崩。Claude 恒有 uuid，不动。
-     */
-    private fun withRenderId(
-        rec: JsonlRecord,
-        index: Int,
-    ): JsonlRecord = if (!usesParentUuidChain && rec.uuid == null) rec.withUuid("cx-$index") else rec
-
-    /** 从记录取会话 cwd（供 resume）。Claude 取 User.cwd；Codex 取 session_meta.cwd（Codex 的 User 没有 cwd）。 */
-    private fun cwdFromRecord(rec: JsonlRecord): String? =
-        if (usesParentUuidChain) (rec as? JsonlRecord.User)?.cwd?.takeIf { it.isNotBlank() } else codexSessionMetaCwd(rec)
+    /** 从记录取会话 cwd（供 resume）：User.cwd。 */
+    private fun cwdFromRecord(rec: JsonlRecord): String? = (rec as? JsonlRecord.User)?.cwd?.takeIf { it.isNotBlank() }
 
     private fun tailFlow(selected: String?): Flow<ClaudeReadState> =
         channelFlow {
@@ -470,7 +444,7 @@ class ReadingPaneViewModel(
             if (st.pendingOlderPage) runOlderPageIfPending(srcChannel, path, st)
             // resume 目标：sessionId 由文件名算出；cwd 已缓存就立即可 resume，否则等记录解出。
             // `_resumeTarget` 的写统一放 cpu 单 worker，与记录循环里的写全序串行。
-            val sessionId = locator.sessionIdOf(path) // 按种类：Claude 取文件名 stem，Codex 取末尾 UUID
+            val sessionId = locator.sessionIdOf(path) // 文件名 stem
             withContext(cpu) { _resumeTarget.value = st.cwd?.let { ResumeTarget(sessionId, it) } }
             var lastCount = -1
             val trigger = MutableSharedFlow<Unit>(extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -482,7 +456,7 @@ class ReadingPaneViewModel(
                 st.classifyState =
                     RecordClassifier.classifyIncremental(
                         st.classifyState,
-                        resolvedRecords(st, usesParentUuidChain),
+                        resolvedRecords(st),
                         // 窗口首载必然把一部分 tool_use 切在窗口外，对应的 tool_result 成了孤儿；
                         // 只有会翻页的会话才挂起它们（见 classifyIncremental）。
                         collectOrphans = st.windowed,
@@ -518,7 +492,7 @@ class ReadingPaneViewModel(
                         .frames()
                         .filterIsInstance<JsonlFrame.Line>()
                         .collect { frame ->
-                            val rec = withRenderId(parser.parse(frame.raw), st.records.size) // 解析，Codex 补合成 uuid
+                            val rec = JsonlParser.parse(frame.raw)
                             st.records.add(rec) // 逐行累积（cpu 单 worker，不丢）
                             st.offsetBytes = transport.currentOffset // 逐行推进 resume 点，与 records.add 原子（同 worker）
                             if (st.cwd == null) {
@@ -564,12 +538,9 @@ class ReadingPaneViewModel(
  * 重复记录产出重复 `unitKey`，LazyColumn `items(key)` 会抛 IllegalArgumentException 直接崩。
  * 保首见对 append-only 输入仍前缀稳定，[RecordClassifier.classifyIncremental] 的增量复用不破。
  */
-private fun resolvedRecords(
-    st: TailState,
-    canMainBranch: Boolean,
-): List<JsonlRecord> =
-    if (st.windowed || !canMainBranch) {
-        // 窗口模式 / Codex（无 parentUuid）：文件序 + 按 uuid 保首见去重（Codex 记录已在累积时补合成 uuid，故不被滤掉）。
+private fun resolvedRecords(st: TailState): List<JsonlRecord> =
+    if (st.windowed) {
+        // 窗口模式：文件序 + 按 uuid 保首见去重。
         val seen = HashSet<String>(st.records.size * 2)
         st.records.filter { r ->
             val id = r.uuid ?: return@filter false

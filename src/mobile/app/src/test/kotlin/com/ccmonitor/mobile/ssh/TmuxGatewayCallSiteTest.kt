@@ -38,7 +38,7 @@ class TmuxGatewayCallSiteTest {
     fun everyOutwardGatewayFunctionHasPinnedProductionCallers() {
         val root = repoRoot()
         val sources = productionSources(root).filter { it.relativeTo(root).invariantSeparatorsPath != GATEWAY }
-        assertTrue("前提：得真扫到源文件（且已排除网关自己），实得 ${sources.size} 个", sources.size > 150)
+        assertTrue("前提：得真扫到源文件（且已排除网关自己），实得 ${sources.size} 个", sources.size > 100)
         val codeOf = sources.associate { it.relativeTo(root).invariantSeparatorsPath to codeOnly(it.readText()) }
 
         for ((fn, pinned) in PINNED_OUTWARD_CALLERS) {

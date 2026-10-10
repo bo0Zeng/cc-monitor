@@ -1,8 +1,6 @@
 package com.ccmonitor.mobile.di
 
 import android.util.Log
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
@@ -88,8 +86,6 @@ val appModule =
                 claudeDirArg = params.get(2),
                 pinnedPathArg = params.get(3),
                 pinnedLabelArg = params.get(4),
-                // agent 种类，按类型取；缺省走档案的缺省档。
-                agentKindArg = params.getOrNull<AgentKind>() ?: AgentProfile.DEFAULT.kind,
             )
         }
         // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession, resumeSessionId, resumeCommand)`

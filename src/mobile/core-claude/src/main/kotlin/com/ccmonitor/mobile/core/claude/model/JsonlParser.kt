@@ -7,11 +7,11 @@ import com.squareup.moshi.Moshi
  *
  * parse 永不抛异常：坏行/缺字段/类型不符 → [JsonlRecord.Unknown]。tail 到半截行或 Claude 改 schema 都不拖垮渲染管线。
  */
-object JsonlParser : RecordParser {
+object JsonlParser {
     private val moshi = Moshi.Builder().build()
     private val anyAdapter = moshi.adapter(Any::class.java)
 
-    override fun parse(line: String): JsonlRecord {
+    fun parse(line: String): JsonlRecord {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return JsonlRecord.Unknown("(blank)")
         val obj =

@@ -202,13 +202,13 @@ class SessionViewModel(
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
     /**
-     * 本主机解析后的 agent 配置目录（host.claudeDir > 应用默认 > 内置默认），阅读面据此定位 JSONL。
+     * 本主机解析后的 agent 配置目录（host.claudeDir > 应用默认 > 内置默认），阅读面（只 Claude 有）与 resume 据此定位 JSONL。
      * 含义随 [agentKind]：ClaudeCode 是 ~/.claude，Codex 是 ~/.codex（字段名仍叫 claudeDir）。
      */
     private val _claudeDir = MutableStateFlow<String?>(null)
     val claudeDir: StateFlow<String?> = _claudeDir.asStateFlow()
 
-    /** 本主机的 agent 种类（缺省 `AgentProfile.DEFAULT`）。定位、解析、回合结束、用量、resume 都按它取档案。 */
+    /** 本主机的 agent 种类（缺省 `AgentProfile.DEFAULT`）。目录定位、有没有阅读子页、resume 都按它取档案。 */
     private val _agentKind = MutableStateFlow(AgentProfile.DEFAULT.kind)
     val agentKind: StateFlow<AgentKind> = _agentKind.asStateFlow()
 

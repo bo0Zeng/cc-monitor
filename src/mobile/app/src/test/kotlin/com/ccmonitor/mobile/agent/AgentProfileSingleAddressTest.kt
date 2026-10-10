@@ -37,7 +37,7 @@ class AgentProfileSingleAddressTest {
         val roots = productionSourceRoots(root)
         assertTrue("前提：得找到扫描面（app + core-*），实得 ${roots.map { it.name }}", roots.size >= 2)
         val sources = roots.flatMap { r -> r.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
-        assertTrue("前提：得真扫到源文件，否则这条测试是空跑（实得 ${sources.size} 个）", sources.size > 150)
+        assertTrue("前提：得真扫到源文件，否则这条测试是空跑（实得 ${sources.size} 个）", sources.size > 100)
 
         var hits = 0
         val found = sortedSetOf<String>()
