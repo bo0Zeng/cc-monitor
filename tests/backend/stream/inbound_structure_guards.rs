@@ -1415,6 +1415,31 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
+        (
+            "session-terminals",
+            sampled::<crate::observe::session_terminals::Showing>,
+            &[
+                "activity",
+                "clientAddr",
+                "clientPort",
+                "serverAddr",
+                "serverPort",
+                "ssh",
+            ],
+            &[],
+        ),
+        (
+            "terminal-processes",
+            sampled::<crate::dial::terminal_processes::Processes>,
+            &["name", "pid", "start"],
+            &[],
+        ),
+        (
+            "terminal-ssh",
+            sampled::<crate::dial::terminal::SshCommand>,
+            &[],
+            &[],
+        ),
         ("rotation-default-set", sampled::<rf::DefaultSet>, &[], &[]),
         ("rotation-plan", sampled::<rf::PlanReply>, &[], &[]),
         ("rotation-rule-delete", sampled::<rf::RuleDeleted>, &[], &[]),
@@ -1431,7 +1456,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 108;
+    const UNSHAPED_CEILING: usize = 105;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1529,7 +1554,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "session-new-dir",
         "session-new-facts",
         "session-restart",
-        "session-terminals",
         "sessions-start",
         "sessions-stop",
         "sessions-where",
@@ -1539,8 +1563,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "skill-read",
         "terminal-follow",
         "terminal-name-mint",
-        "terminal-processes",
-        "terminal-ssh",
     ];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {

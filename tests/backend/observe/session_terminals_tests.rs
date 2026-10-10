@@ -287,8 +287,26 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
         "bad_args"
     );
     assert_eq!(
-        product(&Shown::Detached),
+        serde_json::to_value(product(&Shown::Detached)).expect("json"),
         serde_json::json!({ "terminals": [], "why": "detached" })
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+impl crate::guard_support::Shaped for Showing {
+    fn samples() -> Vec<Self> {
+        vec![Showing {
+            terminals: vec![Terminal {
+                ssh: Some(SshConnection {
+                    client_addr: "203.0.113.2".into(),
+                    client_port: 50000,
+                    server_addr: "203.0.113.1".into(),
+                    server_port: 22,
+                }),
+                activity: Some(1),
+                window: Some("1-2".into()),
+            }],
+            why: Some("detached"),
+        }]
+    }
 }
