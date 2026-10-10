@@ -261,3 +261,51 @@ fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
         format!("{hop:?}")
     );
 }
+
+/// 壳命令里 `spawn_blocking` 那根线程没回来（崩了 / 被取消）：那一句一律是 [`Said::crashed`]（「程序出错」那一形），
+/// join 的原话只进复制详情 —— 不许 `e.to_string()` / `format!` 把英文原话直接当那一句。
+/// 人群：壳生产段全部 `.rs`，`spawn_blocking(` 之后第一个 `.await` 紧跟的 `.map_err(…)`。
+#[test]
+fn a_blocking_thread_that_never_came_back_is_said_as_crashed() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(files.len() > 50, "扫描面塌了：{}", files.len());
+    let mut bad = Vec::new();
+    let mut seen = 0;
+    for (p, text) in &files {
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            if !guard_core::contains_word(l, "spawn_blocking(") || l.trim_start().starts_with("//")
+            {
+                continue;
+            }
+            // 那根线程的结局：本行起第一个 `.await` 之后紧跟的那一个 `.map_err(…)`（闭包体可以有好几行）。
+            let Some(k) = (i..lines.len().min(i + 90))
+                .find(|&k| guard_core::contains_word(lines[k], ".await"))
+            else {
+                continue;
+            };
+            for (j, m) in lines.iter().enumerate().skip(k).take(2) {
+                if !guard_core::contains_word(m, ".map_err(") {
+                    continue;
+                }
+                seen += 1;
+                if guard_core::contains_word(m, "|e| e.to_string()")
+                    || guard_core::contains_word(m, "join error")
+                {
+                    bad.push(format!("{}:{}  {}", p.display(), j + 1, m.trim()));
+                }
+                break;
+            }
+        }
+    }
+    assert!(
+        seen >= 10,
+        "一处 `spawn_blocking … .map_err` 都没量到（{seen}）—— 扫法坏了"
+    );
+    assert!(
+        bad.is_empty(),
+        "这几处把 join 的原话当那一句（改 `.map_err(Said::crashed)`）：\n{}",
+        bad.join("\n")
+    );
+}

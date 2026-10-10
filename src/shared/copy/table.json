@@ -12684,6 +12684,30 @@
       "zh": "最外层不是一个对象",
       "args": []
     },
+    "rsWindow.front.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "拉到前台失败 · 程序出错",
+      "args": []
+    },
+    "rsWindow.front.refused": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "拉到前台失败 · 被拒",
+      "args": []
+    },
+    "rsLogging.level.invalid": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "切换日志级别失败 · 名称无效",
+      "args": []
+    },
+    "rsLogging.level.reloadFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "切换日志级别失败 · 程序出错",
+      "args": []
+    },
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "role": "报错",

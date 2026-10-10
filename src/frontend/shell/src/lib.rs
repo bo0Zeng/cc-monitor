@@ -1094,7 +1094,7 @@ async fn remote_reconcile() -> Result<backend_control::Reconciled, Said> {
         Ok(
             tauri::async_runtime::spawn_blocking(reconcile_remote_streams)
                 .await
-                .map_err(|e| e.to_string())?,
+                .map_err(Said::crashed)?,
         )
     }
     .await;

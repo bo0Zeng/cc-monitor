@@ -64,6 +64,19 @@ fn build_env_filter_rejects_garbage() {
     assert!(build_env_filter("nonsense=42=42=").is_none());
 }
 
+/// 改级别那一下认不出级别：那一句是文案表的「切换日志级别失败 · 名称无效」，那个值只进复制详情（原话），不上句子。
+#[test]
+fn a_bad_level_is_said_in_copy_and_the_value_goes_to_the_detail() {
+    let e = level_filter("zz-bad=42=42=").expect_err("认不出的级别该拒");
+    assert_eq!(e.said, copy_text("rsLogging.level.invalid", &[]));
+    assert!(
+        e.detail.contains("zz-bad"),
+        "那个值没进复制详情：{}",
+        e.detail
+    );
+    assert!(level_filter("info").is_ok());
+}
+
 #[test]
 fn write_then_read_diagnostics_roundtrip() {
     let tmp = std::env::temp_dir().join(format!("ccm-log-test-{}", std::process::id()));

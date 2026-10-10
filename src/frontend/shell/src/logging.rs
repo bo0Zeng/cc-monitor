@@ -200,11 +200,10 @@ impl LoggingState {
 
         // 1. log_level 改变 → 即时 reload
         if new_cfg.log_level != old.log_level {
-            let filter = build_env_filter(&new_cfg.log_level)
-                .ok_or_else(|| format!("invalid log level: {:?}", new_cfg.log_level))?;
+            let filter = level_filter(&new_cfg.log_level)?;
             self.reload_handle
                 .modify(|f| *f = filter)
-                .map_err(|e| format!("reload filter failed: {e}"))?;
+                .map_err(|e| Said::with_raw(copy_text("rsLogging.level.reloadFailed", &[]), e))?;
             tracing::info!(
                 "log level changed: {} → {}",
                 old.log_level,
@@ -324,6 +323,16 @@ fn build_rolling_appender(
 /// GUI 框架，DEBUG 输出量极大但跟业务无关）。
 ///
 /// 返回 None 表示 level 字符串非法。
+/// 改级别那一下用的：认不出 ⇒「切换日志级别失败 · 名称无效」，那个值只进原话（复制详情）。
+fn level_filter(level: &str) -> Result<EnvFilter, Said> {
+    build_env_filter(level).ok_or_else(|| {
+        Said::with_raw(
+            copy_text("rsLogging.level.invalid", &[]),
+            format!("invalid log level: {level:?}"),
+        )
+    })
+}
+
 fn build_env_filter(level: &str) -> Option<EnvFilter> {
     let combined = format!("{level},tao=warn,wry=warn,tracing=off");
     EnvFilter::try_new(combined).ok()
