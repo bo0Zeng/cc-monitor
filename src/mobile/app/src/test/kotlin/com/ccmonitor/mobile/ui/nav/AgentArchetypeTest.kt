@@ -242,25 +242,12 @@ class AgentArchetypeTest {
          * | 文件 | 为什么还在 |
          * |---|---|
          * | `SettingsScreen.kt` | 应用级设置说的是远端那个 Claude（账号目录），不是「这台服务器叫什么」，与 kind 无关 |
-         * | `HostScreens.kt` | 「Claude 账号目录」是 `if (isCodex)` 的 else 支（已按 kind 分档）；Windows 那句说的是「哪些功能在 Windows 上不可用」 |
-         * | `ClaudeReadingPaneConnected.kt` · `ClaudeHistorySheet.kt` · `SessionScreen.kt` | 终端面那套的文案，还没按 kind 分档 |
+         * | `HostScreens.kt` | 「Claude 账号目录」是 `if (isCodex)` 的 else 支（已按 kind 分档） |
          */
         private val PINNED_HARDCODED_PRODUCT_NAMES: Map<String, List<String>> =
             mapOf(
-                // 终端面的历史抽屉
-                "ClaudeHistorySheet.kt" to listOf("无历史会话（该主机 Claude 数据目录下没有 .jsonl）"),
-                // 终端面的阅读面
-                "ClaudeReadingPaneConnected.kt" to listOf("未找到 Claude 会话（该工作目录下无 .jsonl）"),
-                // 前两条是服务器编辑页那个目录框的标签，已按 kind 分档（`if (isCodex) … else …`），
-                // 第三条说的是「哪些功能在 Windows 上不可用」，与这台服务器叫什么无关。
-                "HostScreens.kt" to
-                    listOf(
-                        "Claude 账号目录",
-                        "Codex 配置目录（可选）",
-                        "Windows：走 PowerShell、跳过 tmux；tmux/Claude 阅读面/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）。",
-                    ),
-                // 终端面的 tab 名
-                "SessionScreen.kt" to listOf("Claude 阅读"),
+                // 服务器编辑页那个目录框的标签，已按 kind 分档（`if (isCodex) … else …`）。
+                "HostScreens.kt" to listOf("Claude 账号目录", "Codex 配置目录（可选）"),
                 // 第一条是应用级的话（账号目录），说的是「远端那个 Claude」
                 // 而不是「这台服务器叫什么」，与 agentKind 无关。
                 // 第二条是扫描器的产物、不是上屏的字：那句话上屏时是

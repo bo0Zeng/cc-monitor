@@ -30,9 +30,8 @@ import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 
 /**
- * 聊天面。渲染直接用 [ClaudeReadingPane]：两个生产者、一个渲染器，`RenderUnit` 加一种只改一处。
+ * 聊天面：正文（[ChatTranscript]）＋ 输入行。终端屏的「阅读」子页用的是同一个 [ChatTranscript]、同一条 [ChatSession]。
  */
-@Suppress("DEPRECATION") // LocalClipboard 是新 API 但只有 suspend 接口
 @Composable
 fun ChatScreen(
     state: ChatUiState,
@@ -42,6 +41,25 @@ fun ChatScreen(
     /** 上滑到顶时请求再载更早的一段。 */
     onLoadOlder: () -> Unit = {},
     /** 重发一条失败的消息（传本地 key）。 */
+    onRetrySend: (String) -> Unit = {},
+) {
+    Column(modifier.fillMaxSize()) {
+        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend)
+        // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
+        ChatInputRow(running = state.running, onSend = onSend, onStop = onStop)
+    }
+}
+
+/**
+ * 一条会话的正文：渲染直接用 [ClaudeReadingPane]，单元来自 [ChatSession]（核心的通用记录 ⇒ `RecordUnits`）。
+ * 聊天屏与终端屏的「阅读」子页都只画它，不另做一份阅读。
+ */
+@Suppress("DEPRECATION") // LocalClipboard 是新 API 但只有 suspend 接口
+@Composable
+fun ChatTranscript(
+    state: ChatUiState,
+    modifier: Modifier = Modifier,
+    onLoadOlder: () -> Unit = {},
     onRetrySend: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
@@ -77,7 +95,7 @@ fun ChatScreen(
         if (atBottom && state.units.isNotEmpty()) listState.animateScrollToItem(state.units.lastIndex)
     }
 
-    Column(modifier.fillMaxSize()) {
+    Column(modifier.fillMaxWidth()) {
         HistoryStatusBar(state)
 
         ClaudeReadingPane(
@@ -93,9 +111,6 @@ fun ChatScreen(
             // 会话那一层的失败：核心那一句原样（起不来 · 读不出记录）。
             Text(text = it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
         }
-
-        // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
-        ChatInputRow(running = state.running, onSend = onSend, onStop = onStop)
     }
 }
 

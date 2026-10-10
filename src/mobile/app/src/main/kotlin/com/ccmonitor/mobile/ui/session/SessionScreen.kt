@@ -64,7 +64,6 @@ import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ssh.SessionBackend
 import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
 import com.ccmonitor.mobile.ui.claude.ClaudeHistorySheet
-import com.ccmonitor.mobile.ui.claude.ClaudeReadingPaneConnected
 import com.ccmonitor.mobile.ui.claude.ResumeLauncherOption
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
@@ -79,7 +78,7 @@ import kotlin.math.roundToInt
 
 /**
  * 连接指定主机并渲染实时终端。连接编排在 [SessionViewModel]，这里只渲染。
- * 连上后可在终端与 Claude 阅读面之间切换；阅读面走同一连接上的另一条 exec 通道，实时 tail 远端 JSONL。
+ * 连上后可在终端与「阅读」子页之间切换；阅读子页读那台核心（同聊天屏那一条会话，见 `ReadingTab`）。
  */
 @Composable
 fun SessionScreen(
@@ -176,12 +175,6 @@ private fun ErrorContent(
         TextButton(onClick = { vm.retry() }) { Text("重连") }
     }
 }
-
-/** 历史页点击要阅读的会话：阅读器据此 tail 该 JSONL，[title] 供下拉与标题。 */
-private data class ReadPin(
-    val path: String,
-    val title: String,
-)
 
 /**
  * 非连接态（连接中 / 失败 / 选身份）顶部的 tab 按钮。这些态没有工具条，靠它在慢连、连不上、待选身份时
@@ -321,7 +314,7 @@ private fun ConnectLogView(
 }
 
 /**
- * 终端与 Claude 阅读面切换。两者共用同一连接：终端在 shell 通道，阅读面在另一条 exec 通道。
+ * 终端与「阅读」子页切换。终端在 shell 通道；阅读子页读那台核心的常驻流。
  * 这里只持跨子树共享的状态（tab、对话框开关、readCwd、抓屏文本）与动作；渲染在 [ConnectedScaffold]
  * 与 [ConnectedDialogs]。
  */
@@ -339,11 +332,11 @@ private fun ConnectedContent(
     var tab by rememberSaveable { mutableStateOf(0) }
     var showTmux by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
-    // 阅读面当前 tail 的工作目录：默认是主机默认目录，从 tmux 会话「读」可改到那个会话的 cwd（不 attach）。
+    // 阅读子页按哪个目录挑会话：默认是主机默认目录，从 tmux 会话「读」可改到那个会话的 cwd（不 attach）。
     // 以 s.cwd 为键：重连或 resume 后 cwd 变了就重置；cwd 没变则保留「读」的重定向。
     var readCwd by remember(s.cwd) { mutableStateOf(s.cwd) }
-    // 历史页点击钉住的 JSONL，同样以 s.cwd 为键。tmux「读」会清掉它：两条阅读入口互斥，后触发的生效。
-    var pinnedRead by remember(s.cwd) { mutableStateOf<ReadPin?>(null) }
+    // 历史页点的那一条会话，同样以 s.cwd 为键。tmux「读」会清掉它：两条阅读入口互斥，后触发的生效。
+    var pinnedRead by remember(s.cwd) { mutableStateOf<String?>(null) }
     // 抓当前 tmux 会话的可见屏为纯文本，弹窗看并可复制。
     var captureText by remember { mutableStateOf<String?>(null) }
     // 公钥推送：命令面板「推送公钥」触发，选一个身份，把它的 OpenSSH 公钥追加到这台主机的 authorized_keys。
@@ -366,12 +359,13 @@ private fun ConnectedContent(
         onShowTabs = onShowTabs,
     )
     ConnectedDialogs(
+        hostId = hostId,
         vm = vm,
         showTmux = showTmux,
         onDismissTmux = { showTmux = false },
         onAttachInNewTab = onAttachInNewTab,
         onReadSession = { cwd ->
-            // 不 attach 终端，只把阅读面重定向到该会话的工作目录，并清掉钉住的 JSONL。
+            // 不 attach 终端，只把阅读面重定向到该会话的工作目录，并清掉钉住的那一条。
             pinnedRead = null
             readCwd = cwd
             tab = 1
@@ -379,10 +373,9 @@ private fun ConnectedContent(
         },
         showHistory = showHistory,
         onDismissHistory = { showHistory = false },
-        // 历史页点击：钉住该 JSONL，cwd 已解出则一并重定向，切到阅读 tab。
-        onReadHistory = { path, cwd, _, title ->
-            pinnedRead = ReadPin(path, title)
-            cwd?.let { readCwd = it }
+        // 历史页点击：钉住那一条，切到阅读 tab。
+        onReadHistory = { sid ->
+            pinnedRead = sid
             tab = 1
             showHistory = false
         },
@@ -403,7 +396,7 @@ private fun ConnectedScaffold(
     tab: Int,
     onTab: (Int) -> Unit,
     readCwd: String?,
-    pinnedRead: ReadPin?, // 历史页钉住的阅读目标；null 走常规发现
+    pinnedRead: String?, // 历史页点的那一条；null ＝ 按目录挑
     onReconnect: () -> Unit,
     onShowTmux: () -> Unit,
     onShowHistory: () -> Unit,
@@ -412,8 +405,6 @@ private fun ConnectedScaffold(
     onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    // 阅读面、tmux、切模型依赖 tail -F 与 tmux，按远端方言的能力位（supportsClaudeReading / supportsTmux）开关。
-    val dialect = s.dialect
     // 只订阅本会话的状态。
     val status by vm.status.collectAsState()
     // shell 流断了（reader EOF 或 keepalive 探到对端已死）：即使连接状态仍是 CONNECTED（静默半开），也就地显示重连。
@@ -421,12 +412,9 @@ private fun ConnectedScaffold(
     val dropped = terminalDropped || (status != null && status != SessionStatus.CONNECTED)
     // statusBarsPadding：边到边下 TabRow 不被系统状态栏遮挡（否则 tab 与时钟重叠且点不到）。
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        // 不支持 Claude 阅读（没有 tail -F，如 Windows / PowerShell）：隐藏 Claude tab，只留终端，不渲染 TabRow。
-        if (dialect.supportsClaudeReading) {
-            TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { onTab(0) }, text = { Text("终端") })
-                Tab(selected = tab == 1, onClick = { onTab(1) }, text = { Text("Claude 阅读") })
-            }
+        TabRow(selectedTabIndex = tab) {
+            Tab(selected = tab == 0, onClick = { onTab(0) }, text = { Text("终端") })
+            Tab(selected = tab == 1, onClick = { onTab(1) }, text = { Text("阅读") })
         }
         if (dropped) DroppedBanner(status, onReconnect)
         Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -437,7 +425,6 @@ private fun ConnectedScaffold(
                 tab = tab,
                 readCwd = readCwd,
                 pinnedRead = pinnedRead,
-                onReconnect = onReconnect,
                 onShowTmux = onShowTmux,
                 onShowHistory = onShowHistory,
                 onPushKey = onPushKey,
@@ -476,8 +463,7 @@ private fun SessionTabContent(
     vm: SessionViewModel,
     tab: Int,
     readCwd: String?,
-    pinnedRead: ReadPin?,
-    onReconnect: () -> Unit,
+    pinnedRead: String?,
     onShowTmux: () -> Unit,
     onShowHistory: () -> Unit,
     onPushKey: () -> Unit,
@@ -485,6 +471,7 @@ private fun SessionTabContent(
     onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
+    // tmux、切模型依赖 tmux，按远端方言的能力位（supportsTmux）开关；阅读子页读那台核心，哪种 shell 都一样。
     val dialect = s.dialect
     // 当前是否已在 tmux 内（决定 attach 用 switch-client，免得嵌套）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
@@ -493,7 +480,7 @@ private fun SessionTabContent(
     val onCapture = rememberCaptureAction(vm, dialect.sessionBackend, { currentTmux }, onCaptured)
     // 切走终端不杀会话：emulator/TerminalSession 状态留存（reader 线程持续写 emulator），切回原样。
     when {
-        !dialect.supportsClaudeReading || tab == 0 -> // 没有阅读能力就只显示终端（防 rememberSaveable 残留 tab=1）
+        tab == 0 ->
             TerminalTab(
                 session = s.session,
                 hostId = hostId,
@@ -505,37 +492,18 @@ private fun SessionTabContent(
                 onShowTabs = onShowTabs,
                 supportsTmux = dialect.supportsTmux,
             )
-        else -> ClaudeReadingTab(vm, readCwd, pinnedRead, onReconnect, onResumeSession, onShowHistory)
+        else ->
+            // 底部补导航条 inset，否则末条消息被系统手势条挡住；上层只垫了顶部，不会叠两层。
+            ReadingTab(
+                hostId = hostId,
+                cwd = readCwd,
+                pinnedSid = pinnedRead,
+                resumedSid = vm.resumeSessionId,
+                onResume = onResumeSession,
+                onShowHistory = onShowHistory,
+                modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+            )
     }
-}
-
-/** Claude 阅读 tab。 */
-@Composable
-private fun ClaudeReadingTab(
-    vm: SessionViewModel,
-    readCwd: String?,
-    pinnedRead: ReadPin?,
-    onReconnect: () -> Unit,
-    onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
-    onShowHistory: () -> Unit,
-) {
-    val claudeDir by vm.claudeDir.collectAsState() // 解析后的 agent 配置目录，阅读面据此定位 JSONL
-    val agentKind by vm.agentKind.collectAsState() // agent 种类（Claude / Codex），阅读面按它选实现
-    // 阅读面用该连接的 exec 通道（sshj 多路复用，不影响终端 shell 通道）。
-    // 底部补导航条 inset，否则末条消息和「↓ 最新」被系统手势条挡住；上层只垫了顶部，不会叠两层。
-    ClaudeReadingPaneConnected(
-        channel = vm.channel,
-        executor = vm.executor,
-        cwd = readCwd, // 可被 tmux 会话「读」重定向
-        claudeDir = claudeDir,
-        agentKind = agentKind,
-        modifier = Modifier.fillMaxSize().navigationBarsPadding(),
-        onReconnectSsh = onReconnect, // 连接死了（由阅读面的错误态判出）时整条重连
-        pinnedPath = pinnedRead?.path, // 历史页钉住的 JSONL
-        pinnedLabel = pinnedRead?.title,
-        onResume = onResumeSession, // 「续接」走统一的 resume tab 路径
-        onShowHistory = onShowHistory,
-    )
 }
 
 /**
@@ -613,6 +581,7 @@ private fun rememberResumeAction(
 /** 已连接态的四个对话框（tmux 管理 / 历史面板 / 抓屏 / 公钥推送），显隐状态在上层。 */
 @Composable
 private fun ConnectedDialogs(
+    hostId: String,
     vm: SessionViewModel,
     showTmux: Boolean,
     onDismissTmux: () -> Unit,
@@ -620,8 +589,8 @@ private fun ConnectedDialogs(
     onReadSession: (cwd: String) -> Unit,
     showHistory: Boolean,
     onDismissHistory: () -> Unit,
-    // 历史页点击：钉住 JSONL 并切阅读 tab（关面板在上层回调里做）。
-    onReadHistory: (path: String, cwd: String?, sessionId: String, title: String) -> Unit,
+    // 历史页点击：钉住那一条并切阅读 tab（关面板在上层回调里做）。
+    onReadHistory: (sessionId: String) -> Unit,
     onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     captureText: String?,
     onDismissCapture: () -> Unit,
@@ -649,14 +618,12 @@ private fun ConnectedDialogs(
         )
     }
     if (showHistory) {
-        // 历史记录面板：复用当前连接与 claudeDir 浏览全部项目的历史。点击阅读；长按选命令 resume
+        // 历史记录面板：这台核心的清单（`history-list`）。点击阅读；长按选命令 resume
         // （选项来自本主机的 launcher，自定义命令记住上次输入）。
-        val claudeDir by vm.claudeDir.collectAsState()
         val hostLaunchers by vm.hostLaunchers.collectAsState()
         val lastCustomCommand by vm.lastResumeCustomCommand.collectAsState()
         ClaudeHistorySheet(
-            channel = channel,
-            claudeDir = claudeDir,
+            hostId = hostId,
             launchers =
                 hostLaunchers.mapNotNull { l ->
                     l.command

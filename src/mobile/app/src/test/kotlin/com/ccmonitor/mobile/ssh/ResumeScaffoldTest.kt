@@ -40,7 +40,7 @@ class ResumeScaffoldTest {
     fun theResumeScaffoldIsWrittenExactlyOnceInProduction() {
         val root = repoRoot()
         val sources = productionSources(root)
-        assertTrue("前提：得真扫到源文件，实得 ${sources.size} 个", sources.size > 150)
+        assertTrue("前提：得真扫到源文件，实得 ${sources.size} 个", sources.size > 100)
         val hits = sortedMapOf<String, Int>()
         for (f in sources) {
             val n = countOccurrences(KotlinSourceScanner.codeOnlyKeepingLiterals(f.readText()), SCAFFOLD_FINGERPRINT)

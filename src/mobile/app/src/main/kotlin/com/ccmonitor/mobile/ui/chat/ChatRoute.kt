@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
@@ -60,10 +61,10 @@ fun ChatRoute(
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
     KeepAliveWhileLinked(link)
     val host = rememberChatHost(hostId) ?: return
-    val target = if (isNew) ChatTarget.Draft(ticket = sessionId, cwd = host.cwd) else ChatTarget.Existing(sessionId)
+    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = host.cwd), host.machine) else existingChat(hostId, sessionId, host.machine)
     val vm: ChatViewModel =
         org.koin.androidx.compose
-            .koinViewModel(key = chatKey(hostId, sessionId)) { parametersOf(ChatOpen(hostId, chatKey(hostId, sessionId), target, host.machine)) }
+            .koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -93,14 +94,30 @@ data class ChatOpen(
     val machine: String,
 )
 
+/** 读一条已有的会话（从列表点进来 · 终端屏的「阅读」子页）：同一条会话在两处是同一个 key。 */
+fun existingChat(
+    hostId: String,
+    sid: String,
+    machine: String,
+): ChatOpen = ChatOpen(hostId, chatKey(hostId, sid), ChatTarget.Existing(sid), machine)
+
+/**
+ * 一条会话的 [ChatSession]：聊天屏与终端屏的「阅读」子页都经这里取 —— 同一个 key ⇒ 同一条、同一份数据。
+ * [linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上）。
+ */
+fun ChatController.sessionOf(
+    open: ChatOpen,
+    linkOf: (hostId: String) -> CoreLink,
+): ChatSession = sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), open.target, open.machine, scope) }
+
 /** 这台在手机上的名字 ＋ 新建会话起在哪（这台的默认工作目录，没填 ⇒ `~`）；还没读到 ⇒ `null`。 */
-private data class ChatHost(
+internal data class ChatHost(
     val machine: String,
     val cwd: String,
 )
 
 @Composable
-private fun rememberChatHost(hostId: String): ChatHost? {
+internal fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
         val h = runCatching { hosts.get(hostId) }.getOrNull()

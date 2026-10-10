@@ -40,7 +40,6 @@ import com.ccmonitor.mobile.core.claude.diff.structuredPatchToDiff
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
-import com.ccmonitor.mobile.core.claude.model.isInteractiveTool
 import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
@@ -81,7 +80,6 @@ fun ClaudeReadingPane(
                     is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
                     is RenderUnit.Thinking -> ThinkingCard(unit, matched)
                     is RenderUnit.ToolCall -> ToolCallCard(unit, matched)
-                    is RenderUnit.ToolGroup -> ToolGroupCard(unit, matched)
                     // 斜杠命令、bash 输入输出、compact 摘要各有自己的卡片。
                     is RenderUnit.SlashCommand -> SlashCommandCard(unit, matched)
                     is RenderUnit.BashInput -> BashInputCard(unit, matched)
@@ -261,45 +259,6 @@ private fun rememberExpandable(
     return state
 }
 
-/** 连续工具组卡：外层折叠为 `工具调用 · N 个`，展开显各 ToolCall（复用 ToolCallCard）。 */
-@Composable
-private fun ToolGroupCard(
-    unit: RenderUnit.ToolGroup,
-    matched: Boolean,
-) {
-    val tokens = LocalAppTokens.current
-    var expanded by rememberExpandable(matched)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(tokens.surfaceHigh)
-            .matchHighlight(matched),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(tokens.spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("工具调用", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Text("· ${unit.calls.size} 个", style = monoSmall, color = tokens.textFaint)
-            Spacer(Modifier.weight(1f))
-            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
-        }
-        AnimatedVisibility(expanded) {
-            Column(
-                Modifier.padding(start = tokens.spacing.sm, end = tokens.spacing.sm, bottom = tokens.spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-            ) {
-                unit.calls.forEach { call -> ToolCallCard(call, matched = false) }
-            }
-        }
-    }
-}
-
 /** 搜索命中卡片的高亮边框。 */
 @Composable
 private fun Modifier.matchHighlight(matched: Boolean): Modifier =
@@ -404,8 +363,7 @@ private fun ToolCallCard(
             unit.isError -> MaterialTheme.colorScheme.error
             else -> tokens.success
         }
-    val diffs = remember(unit) { toolDiffs(unit) }
-    // 有 structuredPatch（tool_result 给的权威 diff）就转成 DiffResult 优先渲染（真行号、带上下文，Write 不会被当成全增）；没有再用 diffs。
+    // 核心给的 patch（真行号、带上下文）就画 diff；没给就不画，手机不自己从入参算 diff。
     val patchDiff = remember(unit) { unit.structuredPatch?.takeIf { it.isNotEmpty() }?.let { structuredPatchToDiff(it) } }
     val summary = remember(unit) { toolSummary(unit) }
 
@@ -454,18 +412,10 @@ private fun ToolCallCard(
                         Text(path, style = monoSmall, color = tokens.textFaint, modifier = Modifier.padding(bottom = tokens.spacing.xs))
                     }
                     DiffView(patchDiff)
-                } else if (diffs.isNotEmpty()) {
-                    diffs.first().path?.let { path ->
-                        Text(path, style = monoSmall, color = tokens.textFaint, modifier = Modifier.padding(bottom = tokens.spacing.xs))
-                    }
-                    diffs.forEachIndexed { idx, d ->
-                        if (idx > 0) Spacer(Modifier.padding(top = tokens.spacing.xs))
-                        DiffView(d.old, d.new)
-                    }
                 }
                 val result = unit.resultText
                 if (result != null && result.isNotBlank()) {
-                    if (patchDiff != null || diffs.isNotEmpty()) Spacer(Modifier.padding(top = tokens.spacing.xs))
+                    if (patchDiff != null) Spacer(Modifier.padding(top = tokens.spacing.xs))
                     Text(
                         result.take(MAX_RESULT_CHARS),
                         style = monoBody,
@@ -484,39 +434,6 @@ private fun ToolCallCard(
 
 private const val MAX_RESULT_CHARS = 4000
 
-private data class ToolDiff(
-    val path: String?,
-    val old: String,
-    val new: String,
-)
-
-/** Edit/Write/MultiEdit → 行 diff（MultiEdit 拆成多段）；其他 → 空（走输出渲染）。 */
-private fun toolDiffs(call: RenderUnit.ToolCall): List<ToolDiff> {
-    val i = call.input
-    val path = i["file_path"] as? String
-    return when (call.name) {
-        "Edit" -> {
-            val old = i["old_string"] as? String
-            val new = i["new_string"] as? String
-            if (old != null && new != null) listOf(ToolDiff(path, old, new)) else emptyList()
-        }
-        "Write" -> {
-            val content = i["content"] as? String
-            if (content != null) listOf(ToolDiff(path, "", content)) else emptyList()
-        }
-        "MultiEdit" -> {
-            val edits = i["edits"] as? List<*> ?: return emptyList()
-            edits.mapNotNull { e ->
-                val m = e as? Map<*, *> ?: return@mapNotNull null
-                val old = m["old_string"] as? String ?: return@mapNotNull null
-                val new = m["new_string"] as? String ?: return@mapNotNull null
-                ToolDiff(path, old, new)
-            }
-        }
-        else -> emptyList()
-    }
-}
-
 /** 工具头部的一行输入摘要。 */
 private fun toolSummary(call: RenderUnit.ToolCall): String {
     val i = call.input
@@ -534,3 +451,8 @@ private fun prettyValue(v: Any?): String =
         is Double -> if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
         else -> v.toString()
     }
+
+/** 交互工具（AskUserQuestion / ExitPlanMode）在等人决定：默认展开，否则折起来看着像模型还在跑。 */
+private val INTERACTIVE_TOOLS = setOf("AskUserQuestion", "ExitPlanMode")
+
+private fun isInteractiveTool(name: String): Boolean = name in INTERACTIVE_TOOLS

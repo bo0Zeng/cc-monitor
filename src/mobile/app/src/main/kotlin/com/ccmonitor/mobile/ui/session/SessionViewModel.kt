@@ -124,7 +124,9 @@ class SessionViewModel(
     @Volatile
     private var cd: String? = cdArg?.ifBlank { null } // Koin 参数不传 null，空串当 null
     private val launcherId: String? = launcherIdArg?.ifBlank { null } // 启动配置 id
-    private val resumeSessionId: String? = resumeArg?.ifBlank { null } // 非空即 resume tab
+
+    /** resume 标签那条会话的 sid（阅读子页默认读它）；普通标签 ⇒ `null`。 */
+    val resumeSessionId: String? = resumeArg?.ifBlank { null }
 
     @Volatile
     private var resumeCommand: String? = resumeCommandArg?.ifBlank { null } // 候选链首位（选定 > launcher > 主机 > claude）

@@ -53,7 +53,7 @@ private fun rememberMachineName(hostId: String): String? {
 
 /** 一台的清单 VM。「对话」这一屏与抽屉「最近」取同一个（同一个 key）。 */
 @Composable
-private fun conversationsViewModel(
+internal fun conversationsViewModel(
     hostId: String,
     machine: String,
 ): ConversationsViewModel = koinViewModel(key = "conversations-$hostId") { parametersOf(hostId, machine) }

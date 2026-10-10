@@ -147,6 +147,8 @@ data class HistoryItem(
     val label: String,
     val atText: String?,
     val agentTag: String?,
+    /** 那条会话的工作目录（核心展开好的）；终端屏的「阅读」子页按它找这个目录最近的那条。 */
+    val projectPath: String?,
     /** 此刻活着 ⇒ 状态字与语气（会话帧）；不在流上 ⇒ `null`（不画）。 */
     val status: Toned?,
 )
@@ -165,7 +167,7 @@ internal fun view(
     // 段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。
     val sections = mutableListOf<HistorySection>()
     for (r in answer?.rows.orEmpty()) {
-        val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, table.sessions[r.sessionId]?.activity)
+        val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, r.projectPath, table.sessions[r.sessionId]?.activity)
         val last = sections.lastOrNull()
         if (last != null && last.title == r.sectionText) {
             sections[sections.size - 1] = last.copy(rows = last.rows + item)

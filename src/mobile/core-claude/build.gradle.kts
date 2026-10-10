@@ -53,7 +53,7 @@ kotlin {
 }
 
 dependencies {
-    // 用 api：RemoteCommandChannel 出现在公开构造参数里（TailTransport / DaemonTransport / ClaudeSessionCatalog /
+    // 用 api：RemoteCommandChannel 出现在公开构造参数里（ClaudeSessionCatalog /
     // CodexSessionCatalog），消费方的 compile classpath 上要见到它。
     api(project(":core-remote"))
     implementation(libs.moshi)

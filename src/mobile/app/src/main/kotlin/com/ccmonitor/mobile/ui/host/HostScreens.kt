@@ -480,7 +480,7 @@ fun HostEditorScreen(
         SwitchRow("打开就直接进那台上的工作区", useTmux) { useTmux = it }
         SwitchRow("断线自动重连", autoReconnect) { autoReconnect = it }
 
-        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux 与 Claude 阅读面）。
+        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
         Text("远端系统", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = !isWindows, onClick = { isWindows = false })
@@ -490,7 +490,7 @@ fun HostEditorScreen(
         }
         if (isWindows) {
             Text(
-                "Windows：走 PowerShell、跳过 tmux；tmux/Claude 阅读面/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）。",
+                "Windows：走 PowerShell、跳过 tmux；tmux/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

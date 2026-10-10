@@ -17,16 +17,14 @@ class ShellDialectTest {
         assertEquals(HostOs.WINDOWS, HostOs.of("Windows")) // 忽略大小写
     }
 
-    // 能力位——POSIX 支持 tmux + Claude 阅读（tail -F 工具链），PowerShell 都不支持。UI 门控据此。
+    // 能力位——POSIX 支持 tmux，PowerShell 不支持。UI 门控据此（阅读子页读那台核心，不看 shell）。
     @Test
     fun capabilityBits() {
         assertTrue("POSIX 支持 tmux", PosixDialect.supportsTmux)
-        assertTrue("POSIX 支持 Claude 阅读", PosixDialect.supportsClaudeReading)
         assertFalse("PowerShell 无 tmux", PowerShellDialect.supportsTmux)
-        assertFalse("PowerShell 无 Claude 阅读", PowerShellDialect.supportsClaudeReading)
         // 门控判据经 dialectFor：POSIX 主机全显、Windows 主机全隐。
-        assertTrue(dialectFor(null).supportsTmux && dialectFor("linux").supportsClaudeReading)
-        assertFalse(dialectFor("windows").supportsTmux || dialectFor("windows").supportsClaudeReading)
+        assertTrue(dialectFor(null).supportsTmux && dialectFor("linux").supportsTmux)
+        assertFalse(dialectFor("windows").supportsTmux)
     }
 
     @Test
