@@ -488,4 +488,72 @@ mod tests {
             "同一个子命令被数了两次 —— 去重坏了"
         );
     }
+
+    /// 打版本号的脚本（`tests/scripts/bump-build-id.sh`）在、能跑：拿一棵假仓 ＋ 假 `cargo`，
+    /// **没变**（指纹那条绿）与**变了**（指纹那条红、印 NEW-ROW）两条路各走一次。
+    /// 假 cargo 只替掉「跑测试」那一步；改 `BUILD_ID` · 认 NEW-ROW · 删最老那行追加新行都是真脚本在做。
+    #[cfg(unix)]
+    #[test]
+    fn the_bump_script_walks_both_paths() {
+        use std::process::Command;
+        let script = crate::guard_support::repo_root().join("tests/scripts/bump-build-id.sh");
+        assert!(script.is_file(), "打版本号的脚本不在：{}", script.display());
+        // 脚本认的那一行与本文件红时印的那一行是同一个形状。
+        assert!(
+            include_str!("build_id_guard.rs").contains(r#"NEW-ROW: (\"<新 id>\", {now:?})"#),
+            "指纹那条红时不再印 NEW-ROW 那一行 —— 脚本会认不出新行"
+        );
+        let lib0 = "pub const BUILD_ID: &str = \"p9b-two\";\n";
+        let guard0 = "    const SUBCOMMAND_HISTORY: &[(&str, &str)] = &[\n        (\n            \"p9a-one\",\n            \"--a\",\n        ),\n        (\n            \"p9b-two\",\n            \"--a\\n--b\",\n        ),\n    ];\n";
+        let run = |tag: &str, first: &str| -> (String, String, String) {
+            let d = std::env::temp_dir().join(format!("bump-script-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            for sub in ["src/backend", "tests/backend", "bin"] {
+                std::fs::create_dir_all(d.join(sub)).unwrap();
+            }
+            std::fs::write(d.join("src/backend/lib.rs"), lib0).unwrap();
+            std::fs::write(d.join("tests/backend/build_id_guard.rs"), guard0).unwrap();
+            std::fs::write(d.join("first.txt"), first).unwrap();
+            let fake = format!(
+                "#!/bin/sh\ncase \"$*\" in *adding_a_subcommand*) cat '{}' ;; *) echo 'test result: ok. 9 passed' ;; esac\n",
+                d.join("first.txt").display()
+            );
+            std::fs::write(d.join("bin/cargo"), fake).unwrap();
+            assert!(Command::new("chmod").arg("+x").arg(d.join("bin/cargo")).status().unwrap().success());
+            assert!(Command::new("git").args(["init", "-q"]).current_dir(&d).status().unwrap().success());
+            let path = format!("{}:{}", d.join("bin").display(), std::env::var("PATH").unwrap_or_default());
+            let out = Command::new("bash")
+                .arg(&script)
+                .arg("p9c-three")
+                .current_dir(&d)
+                .env("PATH", path)
+                .env_remove("TMUX")
+                .env_remove("TMUX_PANE")
+                .output()
+                .unwrap();
+            let said = String::from_utf8_lossy(&out.stdout).into_owned();
+            let lib = std::fs::read_to_string(d.join("src/backend/lib.rs")).unwrap();
+            let guard = std::fs::read_to_string(d.join("tests/backend/build_id_guard.rs")).unwrap();
+            let _ = std::fs::remove_dir_all(&d);
+            (said, lib, guard)
+        };
+        // 没变：只改 BUILD_ID，表一个字节不动。
+        let (said, lib, guard) = run("same", "test result: ok. 1 passed\n");
+        assert!(said.trim_end().ends_with("BUMP: OK"), "没变那条路没走通：{said}");
+        assert_eq!(lib, "pub const BUILD_ID: &str = \"p9c-three\";\n");
+        assert_eq!(guard, guard0, "子命令集没变，表却被改了");
+        // 变了：删最老那行（p9a）、追加新行（p9c，指纹取自 NEW-ROW）。
+        let red = "thread 'x' panicked at build_id_guard.rs:1:1:\nNEW-ROW: (\"<新 id>\", \"--a\\n--b\\n--c\")\ntest result: FAILED. 0 passed; 1 failed\n";
+        let (said, lib, guard) = run("changed", red);
+        assert!(said.trim_end().ends_with("BUMP: OK"), "变了那条路没走通：{said}");
+        assert_eq!(lib, "pub const BUILD_ID: &str = \"p9c-three\";\n");
+        assert_eq!(
+            guard,
+            "    const SUBCOMMAND_HISTORY: &[(&str, &str)] = &[\n        (\n            \"p9b-two\",\n            \"--a\\n--b\",\n        ),\n        (\n            \"p9c-three\",\n            \"--a\\n--b\\n--c\",\n        ),\n    ];\n"
+        );
+        // 红时既不绿也不印 NEW-ROW ⇒ 脚本报红、不改表。
+        let (said, _, guard) = run("broken", "error[E0425]: cannot find value\n");
+        assert!(said.contains("BUMP: 红"), "指纹那条编不过时脚本没报红：{said}");
+        assert_eq!(guard, guard0);
+    }
 }

@@ -9,6 +9,7 @@
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零） |
 | [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
 | [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
+| [`bump-build-id.sh`](bump-build-id.sh) | 合并那一拍打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就把指纹历史表（只留上一版 ＋ 当前版两行）最老那行删掉、追加新行（新行取自指纹那条红时印的 `NEW-ROW`）。版本谱系那段说明照旧人写，下一步是 `re-embed.sh` |
 | [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
 | [`apt-install.sh`](apt-install.sh) | CI 上装 apt 包的唯一写法（两份 workflow 每一处都调它）：每趟 update / install 套 `timeout`、apt 下载带重试、一趟没成歇一下再来、最多 3 趟；调它的那一步自带 `timeout-minutes` |
 | [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的正文生成器：从 `CHANGELOG.md` 里本版那一段生成正文，`release.yml` 两处发布步骤都用它；`--check` 只验不写，门禁 `release-gate` 那一格调它 |
