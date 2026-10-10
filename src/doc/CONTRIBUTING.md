@@ -121,13 +121,13 @@
 
 ### 3.1 撤一条 Tauri 命令或一个 State
 
-以撤掉 `BindRegistry` 与它的消费者之一 `bound_terminal_count` 为例：
+以撤掉 `BindRegistry` 与它的消费者之一 `bring_remote_terminal_to_front` 为例：
 
 ```bash
 cd src/frontend/shell
 grep -rn 'State<.*BindRegistry>' src/                        # State 的全部消费者
 grep -rn 'app.manage(bind_registry' src/lib.rs                # manage 调用
-grep -rln 'bound_terminal_count' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
+grep -rln 'bring_remote_terminal_to_front' src/ ../ui/ ../../../tests/  # 注册 · 包装 · 调用处 · 测试
 cargo test --workspace
 ```
 
