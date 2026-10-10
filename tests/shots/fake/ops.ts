@@ -67,6 +67,7 @@ export function defaultOps(): Record<string, OpHandler> {
         loggedIn: a.authKind === "subscription",
         authKind: a.authKind,
         authReady: true,
+        selectable: true,
         keyMasked: a.keyMasked ?? null,
         baseUrl: a.baseUrl ?? null,
       })),
@@ -81,6 +82,7 @@ export function defaultOps(): Record<string, OpHandler> {
         // 那台 Windows：做不了多账号（后端那一句）。
         unsupported: origin === "win-laptop" ? "Windows 不支持多账号" : null,
         nextDefault: ACCOUNTS.find((a) => !a.isDefault)?.name ?? null,
+        effectiveDefault: "work",
         home: "/home/user",
       },
       notice: null,

@@ -27,6 +27,7 @@ const acct = (name: string, selectable = true): Record<string, unknown> => ({
   loggedIn: true,
   authKind: "subscription",
   authReady: true,
+  selectable,
 });
 
 const quota = (accounts: { account: string; pct?: number; state?: string; kind?: string }[]): QuotaRead =>

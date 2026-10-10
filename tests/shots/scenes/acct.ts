@@ -214,6 +214,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         loggedIn: a.kind === "sub",
         authKind: a.kind === "api" ? "api-key" : "subscription",
         authReady: true,
+        selectable: true,
         keyMasked: a.kind === "api" ? "••••••••a1b2" : null,
         baseUrl: a.kind === "api" ? "https://api.example.com" : null,
       })),
@@ -227,6 +228,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         error: null,
         unsupported: null,
         nextDefault: null,
+        effectiveDefault: aw.accounts[0]?.account ?? null, // 夹具第一个标了默认（isDefault: i === 0）
         home: "/home/user",
       },
       notice: null,

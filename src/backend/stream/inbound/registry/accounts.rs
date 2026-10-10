@@ -161,7 +161,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "accounts-list",
         summary: "账号清单",
         codes: &["bad_args", "too_large"],
-        fields: &[out("accounts", "每账号一个对象，字段同 `--list-accounts` 的账号行"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, home}`"), out("notice", "「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null`")],
+        fields: &[out("accounts", "每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）"), out("notice", "「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

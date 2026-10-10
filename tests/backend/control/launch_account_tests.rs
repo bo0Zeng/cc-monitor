@@ -16,10 +16,24 @@ fn acct(name: &str, f: impl FnOnce(&mut Value)) -> Value {
 fn ok(name: &str) -> Value {
     acct(name, |_| {})
 }
-fn lib(accounts: Vec<Value>) -> Library {
-    Library::of_product(
-        &json!({ "meta": { "enabled": true }, "accounts": accounts, "notice": null }),
-    )
+/// 成品那两格（`selectable` · `meta.effectiveDefault`）照清单成品的写法补上（规则住 `acct_core`；成品真写这两格由
+/// `accounts_query_tests::the_list_product_says_who_is_selectable_and_who_is_the_default` 钉）。
+fn lib(mut accounts: Vec<Value>) -> Library {
+    for a in &mut accounts {
+        a["selectable"] = json!(acct_core::account_selectable(
+            a["mode"].as_str().unwrap_or(""),
+            a["authReady"] == json!(true),
+            a["exists"] == json!(true),
+            a["configDir"].is_string(),
+        ));
+    }
+    let default = acct_core::effective_default(&accounts, |a| a["isDefault"] == json!(true))
+        .map_or(Value::Null, |a| a["name"].clone());
+    Library::of_product(&json!({
+        "meta": { "enabled": true, "effectiveDefault": default },
+        "accounts": accounts,
+        "notice": null,
+    }))
 }
 fn take(name: &str) -> Picked {
     Picked::Account {
