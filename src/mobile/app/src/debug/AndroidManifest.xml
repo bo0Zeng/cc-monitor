@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- debug 预览：adb shell am start -n com.ccmonitor.mobile/.ui.claude.ClaudePreviewActivity -->
+        <activity
+            android:name=".ui.claude.ClaudePreviewActivity"
+            android:exported="true"
+            android:label="Claude 阅读面预览" />
+
+        <!-- 聊天面重放隐藏入口：adb shell am start -n com.ccmonitor.mobile/.ui.chat.ChatReplayActivity -e case demo-debug -->
+        <activity
+            android:name=".ui.chat.ChatReplayActivity"
+            android:exported="true"
+            android:label="聊天面重放" />
+
+        <!-- 会话总览隐藏入口：不带 extra = 桩数据；-e host <id> -e daemon <路径> = 真 daemon -->
+        <activity
+            android:name=".ui.overview.SessionOverviewActivity"
+            android:exported="true"
+            android:label="会话总览" />
+    </application>
+</manifest>
