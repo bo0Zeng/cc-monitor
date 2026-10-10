@@ -2735,7 +2735,7 @@ fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
     assert!(!manifest_touched(std::iter::empty(), &m));
 }
 
-/// 接线：`Notify` 那一臂里**恰好一处**问 `manifest_touched`、真了发 `Frame::AccountsChanged`，
+/// 接线：`Notify` 那一臂里**恰好一处**问 `manifest_touched`、真了发 `changed {accounts}`，
 /// 而且它排在逐条处理事件的 `for` **之前**（逐条那一段里有 `continue`，放进去会被跳过）。
 #[test]
 fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
@@ -2745,9 +2745,9 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
         .expect("Notify 那一臂里不是恰好一处问 manifest_touched");
     // 「重新对齐」那一臂也发一帧（整机时）⇒ 全文两处；这里只认 Notify 那一臂里、问完之后的那一处。
     let emit = prod[ask..]
-        .find("sink.send(Frame::AccountsChanged);")
+        .find("sink.send(Frame::changed(Topic::Accounts, None, None, None));")
         .map(|k| ask + k)
-        .expect("问完之后没有发 accounts_changed");
+        .expect("问完之后没有发 changed {accounts}");
     let per_event = prod[ask..]
         .find("for ev in events {")
         .map(|k| ask + k)
@@ -3793,7 +3793,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     );
 }
 
-/// 接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `Frame::TasksChanged`，排在逐条处理事件的 `for` 之前。
+/// 接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `changed {tasks}`，排在逐条处理事件的 `for` 之前。
 #[test]
 fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     let prod = crate::guard_support::production_code(include_str!(
@@ -3802,9 +3802,9 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
         .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
     let emit = prod[ask..]
-        .find("sink.send(Frame::TasksChanged { sid });")
+        .find("sink.send(Frame::changed(Topic::Tasks, Some(sid), None, None));")
         .map(|k| ask + k)
-        .expect("问完之后没有发 tasks_changed");
+        .expect("问完之后没有发 changed {tasks}");
     let per_event = prod[ask..]
         .find("for ev in events {")
         .map(|k| ask + k)

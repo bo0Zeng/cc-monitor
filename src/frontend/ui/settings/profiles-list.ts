@@ -20,9 +20,8 @@ import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { sayWithDetail } from "../kit/detail";
 import type { Origin } from "../generated/Origin";
 import type { ClashWins } from "../alias-reads";
-import { accountsChangedItems } from "../session-accounts-poll";
+import { changedItems, changedStream } from "../changed-stream";
 import {
-  PROFILES_CHANGED_KIND,
   ProfilesStale,
   profileBases,
   profileImpact,
@@ -273,12 +272,12 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     if (sub) return;
     // 订上那一刻的第一格 `seen` 不算变（读回那一下刚做过）；之后的 `seen`（断了又接上）· 帧 · `gap` 都算。
     let first = true;
-    sub = await chan.subscribe(opts.origin(), PROFILES_CHANGED_KIND, null, 8, (items) => {
+    sub = await chan.subscribe(opts.origin(), changedStream("profiles"), null, 8, (items) => {
       const fresh = first ? items.filter((it, i) => !(i === 0 && it.t === "seen")) : items;
       first = false;
-      const { changed, frames } = accountsChangedItems(fresh);
+      const { cells, all, frames } = changedItems(fresh);
       if (frames > 0) sub?.want(frames);
-      if (!changed) return;
+      if (!all && cells.length === 0) return;
       // 开着表单 / 删的选择时不换清单（不拽人）：只问一次后端那一格、亮那一句；关掉之后重读。
       if (form || removing) {
         behind = true;

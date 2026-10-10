@@ -1565,16 +1565,10 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionRemoved { .. }
         | InboundFrame::SessionState { .. }
         | InboundFrame::SessionStatus { .. }
-        // 额度账 / 某个会话的轮换 / 轮换规则变了 ⇒ 交回读循环（`consume_local` 交 `quota-changed` 订阅，与远端同一个口）。
-        | InboundFrame::QuotaChanged
-        | InboundFrame::RotationChanged { .. }
-        | InboundFrame::RotationRulesChanged
+        // 「X 变了」（全部主题）⇒ 交回读循环（`consume_local` 交 `changed/<topic>` 订阅，与远端同一个口）。
+        | InboundFrame::Changed { .. }
         | InboundFrame::SessionsReplayed
         | InboundFrame::SessionFileNotice { .. }
-        // 任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
-        | InboundFrame::TasksChanged { .. }
-        // 计划变了 ⇒ 同上（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
-        | InboundFrame::PlanChanged { .. }
         // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
         | InboundFrame::SessionRuns { .. }
         // 主线外清单 ⇒ 同上（排在那个会话的宣告之后；交会话账）。

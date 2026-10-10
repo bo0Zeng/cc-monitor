@@ -21,7 +21,7 @@
 //! [`TAP_CAPACITY`] 件 × 每件原文 ≤ `relay::TAP_DATA_CAP` ⇒ 这一跳最坏 4 MiB。满了落级 2（丢，位置号原位说）。
 
 use crate::relay::{TapEvent, TapPort};
-use crate::stream::wire::Frame;
+use crate::stream::wire::{Frame, Topic};
 
 /// tap 通道能排多少**件**（每条流连接一条）。
 ///
@@ -124,13 +124,13 @@ pub trait TapSource {
 /// 只交出**帧** —— tee 的事件类型不出本 crate。
 pub struct TapRx {
     rx: tokio::sync::mpsc::Receiver<TapEvent>,
-    /// 额度账显示变了的通道（变了推一帧 `quota_changed`）；`None` ＝ 不订（判据自己接的那一形）。
+    /// 额度账显示变了的通道（变了推一帧 `changed {quota}`）；`None` ＝ 不订（判据自己接的那一形）。
     quota: Option<tokio::sync::watch::Receiver<u64>>,
-    /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `rotation_changed`）；`None` ＝ 不订。
+    /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `changed {rotation, key: sid}`）；`None` ＝ 不订。
     rotation: Option<tokio::sync::broadcast::Receiver<String>>,
-    /// 这台的规则表 / 默认指向变了的通道（变了推一帧 `rotation_rules_changed`）；`None` ＝ 不订。
+    /// 这台的规则表 / 默认指向变了的通道（变了推一帧 `changed {rotation_rules}`）；`None` ＝ 不订。
     rules: Option<tokio::sync::broadcast::Receiver<()>>,
-    /// 某个 pb 工作区的计划变了的通道（变了推一帧 `plan_changed`）；`None` ＝ 不订。
+    /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
@@ -158,24 +158,29 @@ impl TapSource for TapRx {
                 }
                 alive = quota_moved(&mut self.quota) => {
                     if alive {
-                        self.out.push_back(Frame::QuotaChanged);
+                        self.out.push_back(Frame::changed(Topic::Quota, None, None, None));
                     } else {
                         self.quota = None;
                     }
                 }
                 moved = rotation_moved(&mut self.rotation) => match moved {
-                    Some(Some(sid)) => self.out.push_back(Frame::RotationChanged { sid }),
+                    Some(Some(sid)) => self.out.push_back(Frame::changed(Topic::Rotation, Some(sid), None, None)),
                     // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.rotation = None,
                 },
                 moved = rules_moved(&mut self.rules) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
-                    Some(()) => self.out.push_back(Frame::RotationRulesChanged),
+                    Some(()) => self.out.push_back(Frame::changed(Topic::RotationRules, None, None, None)),
                     None => self.rules = None,
                 },
                 moved = plan_moved(&mut self.plan) => match moved {
-                    Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::PlanChanged { workspace, rev, needs }),
+                    Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::changed(
+                        Topic::Plan,
+                        Some(workspace),
+                        Some(rev),
+                        Some(serde_json::json!({ "needs": needs })),
+                    )),
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.plan = None,

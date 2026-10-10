@@ -2,13 +2,14 @@
  * 额度与轮换的**取数**：什么时候问哪台、问回来放进 `appStore` 哪一格。画的那几处（状态栏按钮 · 悬停卡 · 账号面板 ·
  * 换号条 · 提示条 · 标签页）只订 `appStore.quota` / `sessionRotation` / `rotationRules`，不自己问。
  *
- * - 问的时机全是事件：tab 来了（新 sid）· 那台推 `quota-changed`（额度账 ⇒ 重读 `quota-read`；某个 sid ⇒ 重问那一个；
+ * - 问的时机全是事件：tab 来了（新 sid）· 那台推 `changed {quota | rotation | rotation_rules}`（额度账 ⇒ 重读 `quota-read`；某个 sid ⇒ 重问那一个；
  *   又接上了 / 丢了格 ⇒ 那台全部重问）· 面板打开 · 写了之后。零定时器。
  * - 判定全在后端；这里不判「能不能换 / 该不该换」。
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
 import { readQuota, readRules, readSessionRotation } from "./quota-reads";
+import { changedKeys, type Changed } from "./changed-stream";
 
 /** 每台此刻有 tab 的会话（rotation-session-read 一批问这么多）。 */
 const known = new Map<Origin, Set<string>>();
@@ -64,11 +65,14 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
   for (const [origin, sids] of fresh) void refreshSessions(origin, sids);
 }
 
-/** 那台推来 `quota-changed`（`events.ts` 的 `onQuotaChanged`）。 */
-export function onQuotaChanged(origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean; rules: boolean }): void {
-  if (change.quota) void refreshQuota(origin);
-  const sids = change.all ? [...(known.get(origin) ?? [])] : change.sids.filter((s) => known.get(origin)?.has(s));
-  void refreshSessions(origin, sids);
-  // 规则表 / 默认指向变了那台推 `{"rules":true}`（本进程或别的进程写的都推）。
-  if (change.rules) void refreshRules(origin);
+/** 那台推来额度 / 会话轮换 / 规则表变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_rules`）。`change.all` ⇒ 那一样整份重问。 */
+export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_rules", change: Changed): void {
+  if (topic === "quota") void refreshQuota(origin);
+  else if (topic === "rotation_rules") void refreshRules(origin);
+  else {
+    const keys = changedKeys(change);
+    const all = change.all || keys.length !== change.cells.length;
+    const sids = all ? [...(known.get(origin) ?? [])] : keys.filter((s) => known.get(origin)?.has(s));
+    void refreshSessions(origin, sids);
+  }
 }

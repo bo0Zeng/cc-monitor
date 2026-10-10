@@ -1197,13 +1197,13 @@ fn ring_changed(before: &Book, after: &Book) {
     }
 }
 
-/// 进程里那条「这台的规则表 / 默认指向变了」的通道（流连接订它推 `rotation_rules_changed`）。
+/// 进程里那条「这台的规则表 / 默认指向变了」的通道（流连接订它推 `changed {rotation_rules}`）。
 pub(crate) fn rules_changes() -> &'static tokio::sync::broadcast::Sender<()> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> = std::sync::OnceLock::new();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<()>(16).0)
 }
 
-/// 进程里那条「某个会话的轮换 / 账号格变了」的通道（流连接订它推 `rotation_changed`）。
+/// 进程里那条「某个会话的轮换 / 账号格变了」的通道（流连接订它推 `changed {rotation}`）。
 pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
         std::sync::OnceLock::new();

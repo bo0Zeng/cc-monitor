@@ -148,7 +148,7 @@ export class FakeBackend {
       setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
       if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
       if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
+    } else if (sub.kind === "session-tap" || sub.kind.startsWith("changed/")) {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);
@@ -206,10 +206,10 @@ export class FakeBackend {
     }
   }
 
-  /** 场景在开页之后推一格 `quota-changed`（`{"quota":true}` / `{"sid": …}`）。 */
-  pushQuota(origin: string, body: unknown): void {
+  /** 场景在开页之后推一格 `changed/<topic>`（格体 `{key?, rev?, body?}`，同壳交的那一份）。 */
+  pushChanged(origin: string, topic: string, cell: unknown): void {
     for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind === "quota-changed") this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(body) }]);
+      if (sub.origin === origin && sub.kind === `changed/${topic}`) this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(cell) }]);
     }
   }
 

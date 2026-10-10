@@ -246,9 +246,9 @@ fn tap_capacity_reading_with_a_dozen_concurrent_streams() {
     }
 }
 
-/// ★ 订阅计划：某个工作区的计划变了 ⇒ 这条流连接推一帧 `plan_changed {workspace, rev}`；没再变 ⇒ 不再推。
+/// ★ 订阅计划：某个工作区的计划变了 ⇒ 这条流连接推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`；没再变 ⇒ 不再推。
 #[test]
-fn a_plan_change_becomes_one_plan_changed_frame() {
+fn a_plan_change_becomes_one_changed_frame() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -266,11 +266,19 @@ fn a_plan_change_becomes_one_plan_changed_frame() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::PlanChanged {
-                workspace,
+            Some(Frame::Changed {
+                topic: Topic::Plan,
+                key,
                 rev,
-                needs,
-            }) => assert_eq!((workspace.as_str(), rev.as_str(), needs), ("/w", "r2", 3)),
+                body,
+            }) => assert_eq!(
+                (key.as_deref(), rev.as_deref(), body),
+                (
+                    Some("/w"),
+                    Some("r2"),
+                    Some(serde_json::json!({"needs": 3}))
+                )
+            ),
             other => panic!("{other:?}"),
         }
         assert!(
@@ -281,10 +289,10 @@ fn a_plan_change_becomes_one_plan_changed_frame() {
     });
 }
 
-/// ★ 订阅额度：额度账那条通道响一下 ⇒ 这条流连接推一帧 `quota_changed`（不带载荷，客户端去重拉 `quota-read`）；
+/// ★ 订阅额度：额度账那条通道响一下 ⇒ 这条流连接推一帧 `changed {quota}`（客户端去重拉 `quota-read`）；
 /// 没订那条通道的连接永远不推。
 #[test]
-fn a_ring_on_the_quota_bell_becomes_one_quota_changed_frame() {
+fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -301,7 +309,18 @@ fn a_ring_on_the_quota_bell_becomes_one_quota_changed_frame() {
         let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
             .await
             .expect("该推一帧");
-        assert_eq!(f.map(|f| f.loss_identity().kind), Some("quota_changed"));
+        assert!(
+            matches!(
+                f,
+                Some(Frame::Changed {
+                    topic: Topic::Quota,
+                    key: None,
+                    rev: None,
+                    body: None
+                })
+            ),
+            "{f:?}"
+        );
         // 没再响 ⇒ 不再推。
         assert!(
             tokio::time::timeout(std::time::Duration::from_millis(50), t.next())

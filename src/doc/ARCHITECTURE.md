@@ -67,7 +67,8 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录 `agents/record.rs`，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
-- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
+- **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `stream/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
+- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `changed {tasks, key: sid}`，界面订 `changed/tasks`，收到就重问 `tasks-list`。
 
 ### 1.3 每条线的源头
 

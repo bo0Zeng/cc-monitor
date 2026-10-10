@@ -1,5 +1,5 @@
-//! `plan_changed`：盯认过的工作区（计划仓 `.planned-build/` 整棵 ＋ 工作区根上那份 `.env`），
-//! 有动静就重跑一次 dump，**输出摘要或要你看的数变了**才推一帧 `{workspace, rev, needs}`；界面收到再来 `plan-read`。
+//! `changed {plan}`：盯认过的工作区（计划仓 `.planned-build/` 整棵 ＋ 工作区根上那份 `.env`），
+//! 有动静就重跑一次 dump，**输出摘要或要你看的数变了**才推一帧 `{key: 工作区, rev, body: {needs}}`；界面收到再来 `plan-read`。
 //! 认可 / 撤销认可不动盘上的计划，由那条命令自己经 [`changes`] 推一帧新的数。
 //!
 //! 合并不靠定时器（后端零定时器）：一次重读期间来的事件全攒着，重读完一并吞掉、再读一次。
@@ -23,10 +23,10 @@ pub(crate) type Seen = (String, u64);
 /// 重读一次、回新的样子（读不成 ⇒ `None`，不推）。生产由帧面宿主给（真 pb ＋ 会话表 ＋ 认可记录），判据喂假的。
 pub(crate) type Reread = Arc<dyn Fn(&Path) -> Option<Seen> + Send + Sync>;
 
-/// 一帧 `plan_changed`：`(工作区, 摘要, 要你看的数)`。
+/// 一帧 `changed {plan}`：`(工作区, 摘要, 要你看的数)`。
 pub(crate) type Change = (String, String, u64);
 
-/// 进程里那条「某个工作区的计划变了」的通道（流连接订它推 `plan_changed`）。
+/// 进程里那条「某个工作区的计划变了」的通道（流连接订它推 `changed {plan}`）。
 pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<Change> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<Change>> =
         std::sync::OnceLock::new();

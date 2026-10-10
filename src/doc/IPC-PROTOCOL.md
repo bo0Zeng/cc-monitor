@@ -69,10 +69,33 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
 2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed` / `plan_changed`（只带 sid、工作区与摘要，或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
-6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` / `turn_end` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / `tasks_changed` 这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
+6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` / `turn_end` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / 不可丢主题的 `changed`（`lost` 里 `kind: "changed"`、`subject` ＝ `主题` 或 `主题/key`）这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
+
+### `changed` 主题表
+
+「X 变了 ⇒ 重读」只一种帧：`{"kind":"changed","topic":…, "key"?, "rev"?, "body"?}`。`topic` 是哪一样；`key` 是哪一个；`rev` 是变成了哪一版；
+`body` 是那一样的小成品（带了就不用重问，超了上限就不带）。没拿到 `body` ⇒ 重问表里那条查询（那一份的唯一出口仍是那条查询）。
+表只住后端一处（`stream/topic.rs`）；壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅（格体 ＝ 帧去掉 `kind` / `topic`：`{key?, rev?, body?}`）。
+10-10 起这一种替掉了从前每样东西各一种的七种「某某变了」帧（不留旧形）。
+
+<!-- topic-table:begin -->
+| topic | 可丢 | key | rev | body | 重问 |
+|---|---|---|---|---|---|
+| `accounts` | 否 | — | — | — | `accounts-list` |
+| `profiles` | 否 | — | — | — | `profiles-read` |
+| `quota` | 是 | — | — | — | `quota-read` |
+| `rotation` | 是 | 带 | — | — | `rotation-session-read` |
+| `rotation_rules` | 是 | — | — | — | `rotation-rules-read` |
+| `plan` | 是 | 带 | 带 | 带（≤ 64 B） | `plan-read` |
+| `tasks` | 否 | 带 | — | — | `tasks-list` |
+<!-- topic-table:end -->
+
+`key`：`rotation` · `tasks` 是会话 id，`plan` 是工作区根。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
+`body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
+可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）。带了 `body` 不改可丢性。
 
 `--tail-only` 时客户端先取快照（尾部优先：`--read-session-tail` / `history-tail`），`session_added.lines` 是宣告那一刻的完整行数，用来核快照拉全了没有。
 
@@ -194,7 +217,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 - `<claude_dir>/sessions/<PID>.json`：活会话登记表。`kind` 是**排他式**的 —— 缺席或 `"interactive"` 放行、`"bg"` 只在 `--with-bg` 时放行、**其它任何值都被隐藏**（想让会话可见，`kind` 要么不写、要么写 `interactive`；同一个 pidfile 的 `kind` 翻成别的值等于让会话消失）。
   `attachable: false` ⇒ 不提供 attach / 拉前 / 「杀死空 tmux」，缺席 ＝ `true`。`procStart` 参与 PID 复用检测：缺了就退化成只看进程在不在。
-- `<claude_dir>/tasks/<sid>/<id>.json`：任务清单（`<digits>.json` 才算，`.lock` / `.highwatermark` 忽略；读到半截 JSON 单条跳过）。后端盯这棵树，变了发 `tasks_changed{sid}`，客户端重问 `tasks-list`。
+- `<claude_dir>/tasks/<sid>/<id>.json`：任务清单（`<digits>.json` 才算，`.lock` / `.highwatermark` 忽略；读到半截 JSON 单条跳过）。后端盯这棵树，变了发 `changed {tasks, key: sid}`，客户端重问 `tasks-list`。
 
 ## 切到终端：此刻显示这个会话的是哪个窗口
 
