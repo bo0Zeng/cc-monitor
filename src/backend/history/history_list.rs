@@ -5,9 +5,11 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, raw?, fresh?, sid?, query?, sort?, within_days?, hidden?, limit?}
-//!   raw: true      这台自己的清单（不并注解、不筛不排）——远端那一支问的就是它（那台的 CLI 面 `--history-list`）
-//!   origin 缺席    这台；给了 = 可达表里那一台：问那台 `raw`（它自己判活、自己读上次的号），结果在本进程记着、`fresh` 才再问
+//! history-list {origin?, listing?, raw?, sid?, query?, sort?, within_days?, hidden?, limit?}
+//!   raw: true      这台自己的清单 `{rows, failed}`（不并注解、不筛不排）—— 远端那一份就是那台常驻答的它（热缓存）
+//!   origin 缺席    这台；给了 = 那一台：`listing` 是界面经已开着的长连接问那台 `raw` 拿回来的原样（那台自己判活、自己读上次的号），
+//!                  本进程记着它；不带 `listing` ⇒ 用记着的那份（敲字搜索），没记着 ⇒ `no_listing`（界面先问那台、再带着来）
+//!   ⚠ 这台**不替界面去问那台**（原先经 `remote_ask` 在那台起一次性进程、每次开页冷扫一遍；那台常驻早就热着同一份）
 //!   ⇒ 并上这台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
 //!   sid: 只要那一个会话那一行（独立查看窗按会话 ID 开任意一个会话，含已结束的、隐藏的）：别的筛一概不看、不补父会话
 //!   ⇒ {rows, groups, total, truncated, notice}
@@ -31,8 +33,8 @@ use crate::observe::history_query::{can_of, status_of, Can};
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
 
-/// 远端清单的缓存：那台的名字 ⇒ 那台 `raw` 的回答。搜索框每敲一下都问一次，不能每次都去那台整份扫；
-/// 不按时间过期（这一层不看钟）：界面开页与「刷新」带 `fresh`，那时才再问那台。
+/// 远端清单的缓存：那台的名字 ⇒ 界面交进来的那台 `raw` 的回答。搜索框每敲一下都问一次，不能每次都再交一整份；
+/// 不按时间过期（这一层不看钟）：界面开页与「刷新」再问那台、带着新的 `listing` 来，那时才换。
 static REMOTE_CACHE: std::sync::Mutex<BTreeMap<String, Listing>> =
     std::sync::Mutex::new(BTreeMap::new());
 
@@ -753,22 +755,8 @@ async fn blocking<T: Send + 'static>(
     })?
 }
 
-/// 帧面 `history-list`（生产入口：进程里那张可达表 ＋ 真拨号）。
+/// 帧面 `history-list`。
 pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
-    answer_with(
-        args,
-        &crate::dial::remote_ask::REACH,
-        &crate::dial::remote_ask::DialRemote,
-    )
-    .await
-}
-
-/// [`answer`] 的可喂夹具那一半。
-pub async fn answer_with(
-    args: Value,
-    table: &crate::dial::remote_ask::Table,
-    remote: &dyn crate::dial::remote_ask::Remote,
-) -> Result<Value, (&'static str, String)> {
     if args.get("raw").and_then(Value::as_bool) == Some(true) {
         return blocking(|| {
             machine_listing().map(|l| serde_json::to_value(l).unwrap_or(Value::Null))
@@ -781,13 +769,19 @@ pub async fn answer_with(
         Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
         Some(_) => return Err(bad("`origin` must be a non-empty string")),
     };
-    let fresh = args.get("fresh").and_then(Value::as_bool) == Some(true);
-    let listing = match &origin {
-        None => {
+    let handed = match args.get("listing") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(serde_json::from_value::<Listing>(v.clone()).map_err(|_| {
+            bad("`listing` must be a machine's raw listing `{rows, failed, annotations | annotationsNotice}`")
+        })?),
+    };
+    let listing = match (&origin, handed) {
+        (None, None) => {
             let only = ask.sid.clone();
             blocking(move || machine_listing_for(only.as_deref())).await?
         }
-        Some(o) => remote_listing(o, fresh, table, remote).await?,
+        (None, Some(_)) => return Err(bad("`listing` needs the `origin` it came from")),
+        (Some(o), handed) => remote_listing(o, handed)?,
     };
     blocking(move || {
         // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。
@@ -805,36 +799,22 @@ pub async fn answer_with(
     .await
 }
 
-/// 那一台的 `raw` 清单：记着的就用（`fresh` 不用），否则问那台（`--history-list`，它自己判活、读上次的号）。
-async fn remote_listing(
+/// 那一台的 `raw` 清单：交进来了 ⇒ 记下、就用它；没交 ⇒ 记着的那份；都没有 ⇒ `no_listing`。
+fn remote_listing(
     machine: &str,
-    fresh: bool,
-    table: &crate::dial::remote_ask::Table,
-    remote: &dyn crate::dial::remote_ask::Remote,
+    handed: Option<Listing>,
 ) -> Result<Listing, (&'static str, String)> {
-    let lock = || REMOTE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if !fresh {
-        if let Some(v) = lock().get(machine) {
-            return Ok(v.clone());
-        }
+    let mut held = REMOTE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(v) = handed {
+        held.insert(machine.to_string(), v.clone());
+        return Ok(v);
     }
-    let v = crate::dial::remote_ask::ask_json(
-        machine,
-        "history-list",
-        &json!({"raw": true}),
-        table,
-        remote,
-    )
-    .await
-    .map_err(|s| ("unreachable", s.message))?;
-    let listing: Listing = serde_json::from_value(v).map_err(|_| {
+    held.get(machine).cloned().ok_or_else(|| {
         (
-            "unreachable",
-            copy_text("beHistoryList.remote.unreadable", &[("machine", machine)]),
+            "no_listing",
+            copy_text("beHistoryList.remote.notHeld", &[("machine", machine)]),
         )
-    })?;
-    lock().insert(machine.to_string(), listing.clone());
-    Ok(listing)
+    })
 }
 
 #[cfg(test)]

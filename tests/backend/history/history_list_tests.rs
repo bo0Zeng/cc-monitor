@@ -14,22 +14,18 @@
 //! 5. **分叉父会话被筛掉** ⇒ 照样带上、标 `context`，不算进 `total`。
 //! 6. **排与截**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`limit` 截 ⇒ `truncated`。
 //! 7. **分组**：有在跑的 → 有星标的 → 最近动过的；读不了的目录是一组、带原因。
-//! 8. **远端**：问那台的 `--history-list`（`raw`）一次，之后用记着的；`fresh` 再问；够不到 ⇒ `unreachable`。
+//! 8. **远端**：那台的 `raw` 清单由界面问那台常驻、带着交进来（`listing`），这台并 · 筛 · 排并记着；敲字用记着的；没记着 ⇒ `no_listing`；\n//!    这台不再替界面去问那台（生产段里没有 `remote_ask`）。
 //! 10. **按会话 ID 要一行**（`sid`：独立查看窗开任意一个会话）：只回那一行（隐藏的、出了时间窗的也回）、不补父会话；
 //!     形状不对 ⇒ `bad_args`（先于 IO）；没有这个会话 ⇒ 空清单。
 //! 9. **跨语言金样** `tests/__fixtures__/history-list.golden.json`（TS 严格解码器读同一份，`tests/frontend/ui/history-list-reads.vitest.ts`）。
 //!
 //! # 买不到
 //!
-//! - 🔴 真远端（`DialRemote` 那一跳）· 真盘上上万份记录时的耗时。
+//! - 🔴 真远端（界面经长连接问那台的那一跳）· 真盘上上万份记录时的耗时。
 
 use super::*;
-use crate::dial::remote_ask::{Remote, Table as ReachTable};
 use crate::history::history_annotations::{Entry, Table};
-use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::Mutex;
 
 // 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
 
@@ -459,45 +455,26 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 }
 
 /// 对面：数被问了几次、问的是什么；答 `raw` 那一份。
-#[derive(Default)]
-struct Far {
-    seen: Mutex<Vec<String>>,
-}
-
-impl Remote for Far {
-    fn run<'a>(
-        &'a self,
-        _dial: &'a Value,
-        command: String,
-        stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
-        self.seen.lock().unwrap().push(format!(
-            "{command} <stdin {}>",
-            stdin.unwrap_or_default().trim_end()
-        ));
-        let out = listing().to_string();
-        Box::pin(async move { Ok(out) })
-    }
-}
-
-fn reach(table: &ReachTable, origin: &str) {
-    crate::dial::remote_ask::answer_reach_with(
-        &json!({"origin": origin, "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}}),
-        table,
-    )
-    .unwrap();
-}
-
-/// ★ 判据 8：远端问那台 `raw` 一次，之后用记着的，`fresh` 再问；行与组带 `origin`；够不到 ⇒ `unreachable`、一次都不问。
+/// ★ 判据 8：远端的清单由界面经已开着的长连接问那台常驻（`raw`，那台热缓存）、带着交进来（`listing`）；
+/// 这台只并注解、筛、排，并记着它 —— 敲字搜索（不带 `listing`）用记着的；没记着 ⇒ `no_listing`（界面再问那台）。
+/// 行与组带 `origin`；`listing` 不带 `origin` / 形状不对 ⇒ `bad_args`。
 #[tokio::test]
-async fn a_remote_is_asked_raw_once_and_cached_until_fresh() {
-    let table = ReachTable::default();
+async fn a_remote_listing_is_handed_in_and_kept_for_typing() {
+    let ask = |args: Value| crate::history::history_list::answer(args);
     // 每个判据用自己的机器名（缓存是进程级的一张表）。
-    reach(&table, "list-dev");
-    let far = Far::default();
-    let v = answer_with(json!({"origin": "list-dev"}), &table, &far)
+    let e = ask(json!({"origin": "list-dev"})).await.unwrap_err();
+    assert_eq!(e.0, "no_listing", "没记着那台的清单却答了：{e:?}");
+    let v = ask(json!({"origin": "list-dev", "listing": listing()}))
         .await
         .unwrap();
+    // 出的行全来自交进来的那份（注解按这台的盘：判据环境里没有 ⇒ 一行不藏）。
+    let handed: BTreeSet<String> = sids(&json!({"rows": listing()["rows"]}))
+        .into_iter()
+        .collect();
+    assert!(
+        !sids(&v).is_empty() && sids(&v).iter().all(|s| handed.contains(s)),
+        "{v}"
+    );
     assert!(v["rows"]
         .as_array()
         .unwrap()
@@ -518,30 +495,46 @@ async fn a_remote_is_asked_raw_once_and_cached_until_fresh() {
         .unwrap()
         .iter()
         .all(|g| g["origin"] == "list-dev"));
-    let _ = answer_with(json!({"origin": "list-dev", "query": "回调"}), &table, &far)
+    // 敲字：不带 `listing` ⇒ 用记着的那份。
+    let typed = ask(json!({"origin": "list-dev", "query": "回调"}))
         .await
         .unwrap();
-    assert_eq!(
-        *far.seen.lock().unwrap(),
-        vec![format!(
-            "{} <stdin {{\"raw\":true}}>",
-            crate::dial::remote_ask::command_line(&["--history-list", "--stdin-line"])
-        )],
-        "敲字搜索不该每次都去那台整份扫"
+    let rows = typed["rows"].as_array().unwrap();
+    assert!(!rows.is_empty() && rows.len() < v["rows"].as_array().unwrap().len());
+    assert!(
+        rows.iter()
+            .all(|r| ["label", "firstUserExcerpt", "projectName"]
+                .iter()
+                .any(|k| r[*k].as_str().is_some_and(|t| t.contains("回调")))),
+        "敲字那一问没按记着的那份筛：{typed}"
     );
-    let _ = answer_with(json!({"origin": "list-dev", "fresh": true}), &table, &far)
-        .await
-        .unwrap();
-    assert_eq!(far.seen.lock().unwrap().len(), 2, "刷新 ⇒ 再问一次");
-    let e = answer_with(json!({"origin": "list-nowhere"}), &table, &far)
-        .await
-        .unwrap_err();
-    assert_eq!(e.0, "unreachable");
-    assert_eq!(far.seen.lock().unwrap().len(), 2);
-    let e = answer_with(json!({"origin": ""}), &table, &far)
-        .await
-        .unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    for bad in [
+        json!({"listing": listing()}),
+        json!({"origin": "list-dev", "listing": {"rows": 1}}),
+        json!({"origin": "list-dev", "listing": [1]}),
+        json!({"origin": ""}),
+    ] {
+        let e = ask(bad.clone()).await.unwrap_err();
+        assert_eq!(e.0, "bad_args", "{bad} 应是 bad_args：{e:?}");
+    }
+}
+
+/// ★ 判据 8′：这台不再替界面去问那台（不起一次性进程、不拨号）—— `history_list.rs` 的生产段里没有 `remote_ask`。
+/// 正控：把旧那一支塞回去的合成语料要被认出。
+#[test]
+fn the_remote_listing_never_spawns_a_oneshot_process() {
+    fn dials(prod: &str) -> bool {
+        prod.contains("remote_ask")
+    }
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/history/history_list.rs"));
+    assert!(
+        !dials(&prod),
+        "history-list 又在这台替界面去问那台了（远端那一支经已开着的长连接问那台常驻）"
+    );
+    assert!(dials(&format!(
+        "{prod}\nfn x() {{ crate::dial::remote_ask::ask_json(); }}"
+    )));
 }
 
 /// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。`CCM_BLESS=1` 重写。

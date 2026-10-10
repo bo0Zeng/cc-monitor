@@ -172,6 +172,7 @@ fn is_false(b: &bool) -> bool {
 pub use crate::agents::AgentHome;
 pub use crate::agents::SessionActivity;
 use crate::common::cells::{Tone, Words};
+pub use crate::stream::topic::Topic;
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
 ///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
@@ -605,64 +606,23 @@ pub enum Frame {
         id: String,
     },
 
-    /// **这台机器上的账号清单变了**（账号 manifest 被改写）。
+    /// **这台的某样东西变了，客户端重读那一份**（账号清单 · 配置文件 · 额度账 · 会话轮换 · 规则表 · 计划 · 任务清单 —— 主题表 [`Topic`]）。
     ///
-    /// 无载荷：客户端收到就重拉一次账号清单（`accounts-list`），不在帧里带清单本身 ——
-    /// 清单的唯一出口仍是那条查询，别让同一份数据有两个出口。watcher 盯 manifest 所在目录，
-    /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    AccountsChanged,
-
-    /// **这台机器上的配置文件（`~/.cc-monitor/profiles.toml`）变了**（别处改了它，或设置窗刚写了它）。
-    ///
-    /// 无载荷：客户端收到就重拉一次 `profiles-read`（那一份的唯一出口仍是那条查询，同 `accounts_changed`）。
-    /// watcher 盯它所在的目录，一批文件事件里动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    ProfilesChanged,
-
-    /// **这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
-    ///
-    /// 无载荷：客户端收到就重拉一次 `quota-read`（额度账的唯一出口仍是那条查询，同 `accounts_changed`）。
-    /// 走 tap 那条可丢的通道（额度账在盘上，丢了下一次变化或重拉就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    QuotaChanged,
-
-    /// **这台某个会话的轮换或「账号」格变了**（换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。
-    /// 别的进程写的也推（命令行 `ccm -- --rotation-session-set` · quota-warm）：流那一路的后端盯着 `rotation.json`，
-    /// 盘上那一份变了且不是本进程写的 ⇒ 重读、比对、改到的会话各推一次。
-    ///
-    /// 只带 sid：客户端收到就重问一次 `rotation-session-read`（那一份的唯一出口仍是那条查询，同 `quota_changed`）。
-    /// 走 tap 那条可丢的通道（轮换在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    RotationChanged {
-        /// 轮换或「账号」格变了的会话。
-        sid: String,
-    },
-
-    /// **这台的轮换规则表或默认指向变了**（新建 · 改 · 改名 · 删 · 设为默认；本进程或别的进程写的都推）。
-    ///
-    /// 无载荷：客户端收到就重问一次 `rotation-rules-read`。用着改到的规则的会话另各推一帧 `rotation_changed`。
-    /// 走 tap 那条可丢的通道（规则在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    RotationRulesChanged,
-
-    /// **这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要或要你看的数变了；
-    /// 认可 / 撤销认可也推一帧新的数）。
-    ///
-    /// 只带工作区 · 新摘要 · 要你看的数：客户端收到就重问一次 `plan-read`（那一份的唯一出口仍是那条查询）；摘要与手上那一份相同 ⇒ 不用问。
-    /// 只盯这条后端读过的工作区（`plan-list` / `plan-read` 认过的）。走 tap 那条可丢的通道（计划在盘上，丢了重问就补上）。
-    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    PlanChanged {
-        /// 工作区根。
-        workspace: String,
-        /// 新的输出摘要（同 `plan-read` 的 `rev`）。
-        rev: String,
-        /// 这个工作区此刻要你看的数（没认可的，不含 agent 问人那一种 —— 那一条由会话那一侧数；同 `plan-read` 的 `needCount`）。
-        needs: u64,
-    },
-
-    /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
-    ///
-    /// 只带 sid：客户端收到就重问一次 `tasks-list`（清单的唯一出口仍是那条查询，同 `accounts_changed`）。
-    /// 一批文件事件里同一个 sid 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    TasksChanged {
-        /// 任务清单变了的会话。
-        sid: String,
+    /// 「X 变了 ⇒ 重读」只这一种帧：`topic` 说是哪一样；`key` 说是哪一个（会话 · 工作区，主题表写着带不带）；`rev` 说变成了哪一版；
+    /// `body` 是那一样的小成品（主题表写着带什么、上限多少；超了就不带）。客户端没拿到 `body` 就重问主题表里那条查询（那一份的唯一出口仍是那条查询）。
+    /// 可不可丢按主题（主题表的 `lossy`）：可丢的走 tap 那条，不可丢的走 watcher 的出方向。只经 [`Frame::changed`] 造。
+    Changed {
+        /// 哪一样变了。
+        topic: Topic,
+        /// 哪一个（会话 id · 工作区根）；主题不带 ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        /// 变成了哪一版；主题不带 ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rev: Option<String>,
+        /// 那一样的小成品；主题不带或超了上限 ⇒ 缺（客户端重问）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        body: Option<serde_json::Value>,
     },
 
     /// **这台机器的活会话清单报完了**：`observe::watcher::watch_loop` 的 Phase 1
@@ -1041,6 +1001,23 @@ impl Frame {
         }
     }
 
+    /// `changed` 帧（只此一处造）：`body` 序列化后超了主题表那一格的上限 ⇒ 不带（客户端重问）；主题不带 `body` 的给了也不带。
+    pub(crate) fn changed(
+        topic: Topic,
+        key: Option<String>,
+        rev: Option<String>,
+        body: Option<serde_json::Value>,
+    ) -> Frame {
+        let cap = topic.spec().body_cap;
+        let body = body.filter(|b| serde_json::to_vec(b).is_ok_and(|v| v.len() <= cap));
+        Frame::Changed {
+            topic,
+            key,
+            rev,
+            body,
+        }
+    }
+
     /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）。
     pub(crate) fn session_state(sid: String, state: SessionFate) -> Frame {
         let (state_text, state_hint, state_tone) = state.cells();
@@ -1134,21 +1111,9 @@ impl Frame {
             //   按不可恢复算是保守的那一侧。
             Frame::Reply { .. } => false,
             Frame::Cancelled { .. } => false,
-            // 一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
-            Frame::AccountsChanged => false,
-            // 同上一行：一次变化的通知，丢了那一页就停在旧清单（重开那一页会重读）。
-            Frame::ProfilesChanged => false,
-            // 额度账在盘上（`quota-read` 随时重拉得到），下一次变化也会再推 ⇒ 丢了可恢复。
-            // ⚠ 它**不走**出方向那条通道（走 tap 那条），列在这里只为穷尽。
-            Frame::QuotaChanged => true,
-            // 同上：轮换在盘上（`rotation-session-read` 随时重问得到）；也不走出方向那条通道。
-            Frame::RotationChanged { .. } => true,
-            // 同上：规则表在盘上（`rotation-rules-read` 随时重问得到）；也不走出方向那条通道。
-            Frame::RotationRulesChanged => true,
-            // 同上：计划在盘上（`plan-read` 随时重问得到）；也不走出方向那条通道。
-            Frame::PlanChanged { .. } => true,
-            // 同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
-            Frame::TasksChanged { .. } => false,
+            // 「X 变了」：按主题表答。可丢的那几样在盘上（重问随时拿得到）、走 tap 那条；
+            //   不可丢的（账号清单 · 配置文件 · 任务清单）是一次变化的通知，没有「下一次必然重发」⇒ 丢了按身份报，客户端重问。
+            Frame::Changed { topic, .. } => topic.spec().lossy,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
             //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复报身份，客户端才知道要重连。
             Frame::SessionsReplayed => false,
@@ -1191,13 +1156,13 @@ impl Frame {
             Frame::Overflow { .. } => ("overflow", None),
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
-            Frame::AccountsChanged => ("accounts_changed", None),
-            Frame::ProfilesChanged => ("profiles_changed", None),
-            Frame::QuotaChanged => ("quota_changed", None),
-            Frame::RotationChanged { sid } => ("rotation_changed", Some(sid.clone())),
-            Frame::RotationRulesChanged => ("rotation_rules_changed", None),
-            Frame::PlanChanged { workspace, .. } => ("plan_changed", Some(workspace.clone())),
-            Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
+            Frame::Changed { topic, key, .. } => (
+                "changed",
+                Some(match key {
+                    Some(k) => format!("{}/{k}", topic.name()),
+                    None => topic.name().to_string(),
+                }),
+            ),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {
                 ("session_file_gone", Some(session_id.clone()))
@@ -1306,7 +1271,7 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text
-/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000}
+/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000,"view":{"omit":{"record":["blocks[type=tool_use].input"]}}}
 /// ```
 ///
 /// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
@@ -1323,6 +1288,9 @@ pub struct Request {
     /// 发起方这一发愿意等多久（毫秒）。可缺；不是正整数 ⇒ 当没带（不拒）。
     #[serde(default, deserialize_with = "lenient_ms")]
     pub within_ms: Option<u64>,
+    /// 出口的声明（要哪几格 · 哪几格不要）；缺 ＝ `null` ＝ 全量。登记处统一解、统一拒、统一投影（`stream/inbound/views.rs`）。
+    #[serde(default)]
+    pub view: serde_json::Value,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
     #[serde(skip)]
     pub(crate) until: Option<crate::platform::child::Until>,

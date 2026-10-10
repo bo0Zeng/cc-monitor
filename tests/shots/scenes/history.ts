@@ -3,7 +3,8 @@
  */
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
-import { defaultWorld } from "../fake/world";
+import { defaultWorld, LOCAL } from "../fake/world";
+import { putQuota, type QuotaSpec } from "../disk";
 import { SEARCH_WORD } from "../fake/history";
 import { byText, click, key, mainReady, sleep, type, waitFor } from "./helpers";
 
@@ -32,31 +33,18 @@ const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), his
 function withQuota(): ReturnType<typeof defaultWorld> {
   const w = defaultWorld();
   const now = (): number => Math.floor(Date.now() / 1000);
-  const acct = (account: string, pct5: number, pct7: number): Record<string, unknown> => ({
-    agent: "claude-code",
+  const t = now();
+  const acct = (account: string, pct5: number, pct7: number): QuotaSpec => ({
     account,
-    seenAt: now() - 120,
-    reading: { refused: false },
-    kind: "sub",
-    state: "ok",
-    stale: false,
-    limiting: "5h",
-    slots: [
-      { slot: "5h", pct: pct5, resetsAt: now() + 5400 },
-      { slot: "7d", pct: pct7, resetsAt: now() + 86_400 * 3 },
+    seenAt: t - 120,
+    status: "allowed",
+    limiting: "five_hour",
+    windows: [
+      { name: "five_hour", used: pct5 / 100, resetsAt: t + 5400 },
+      { name: "seven_day", used: pct7 / 100, resetsAt: t + 86_400 * 3 },
     ],
-    login: "ok",
   });
-  w.ops["quota-read"] = () => ({
-    state: "present",
-    reason: null,
-    path: "/home/user/.cc-monitor/quota.json",
-    now: now(),
-    accounts: [acct("work", 41, 18), acct("personal", 12, 30)],
-    unseen: [],
-    usableNow: ["work", "personal"],
-    earliestReturn: null,
-  });
+  putQuota(w.disk[LOCAL], [acct("work", 41, 18), acct("personal", 12, 30)]);
   return w;
 }
 

@@ -246,9 +246,9 @@ fn tap_capacity_reading_with_a_dozen_concurrent_streams() {
     }
 }
 
-/// ★ 订阅计划：某个工作区的计划变了 ⇒ 这条流连接推一帧 `plan_changed {workspace, rev}`；没再变 ⇒ 不再推。
+/// ★ 订阅计划：某个工作区的计划变了 ⇒ 这条流连接推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`；没再变 ⇒ 不再推。
 #[test]
-fn a_plan_change_becomes_one_plan_changed_frame() {
+fn a_plan_change_becomes_one_changed_frame() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -266,11 +266,19 @@ fn a_plan_change_becomes_one_plan_changed_frame() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::PlanChanged {
-                workspace,
+            Some(Frame::Changed {
+                topic: Topic::Plan,
+                key,
                 rev,
-                needs,
-            }) => assert_eq!((workspace.as_str(), rev.as_str(), needs), ("/w", "r2", 3)),
+                body,
+            }) => assert_eq!(
+                (key.as_deref(), rev.as_deref(), body),
+                (
+                    Some("/w"),
+                    Some("r2"),
+                    Some(serde_json::json!({"needs": 3}))
+                )
+            ),
             other => panic!("{other:?}"),
         }
         assert!(
@@ -281,10 +289,10 @@ fn a_plan_change_becomes_one_plan_changed_frame() {
     });
 }
 
-/// ★ 订阅额度：额度账那条通道响一下 ⇒ 这条流连接推一帧 `quota_changed`（不带载荷，客户端去重拉 `quota-read`）；
+/// ★ 订阅额度：额度账那条通道响一下 ⇒ 这条流连接推一帧 `changed {quota}`（客户端去重拉 `quota-read`）；
 /// 没订那条通道的连接永远不推。
 #[test]
-fn a_ring_on_the_quota_bell_becomes_one_quota_changed_frame() {
+fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -301,12 +309,64 @@ fn a_ring_on_the_quota_bell_becomes_one_quota_changed_frame() {
         let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
             .await
             .expect("该推一帧");
-        assert_eq!(f.map(|f| f.loss_identity().kind), Some("quota_changed"));
+        assert!(
+            matches!(
+                f,
+                Some(Frame::Changed {
+                    topic: Topic::Quota,
+                    key: None,
+                    rev: None,
+                    body: None
+                })
+            ),
+            "{f:?}"
+        );
         // 没再响 ⇒ 不再推。
         assert!(
             tokio::time::timeout(std::time::Duration::from_millis(50), t.next())
                 .await
                 .is_err()
         );
+    });
+}
+
+/// 帧里的小成品经这条连接的 `bodies` 现算（生产 ＝ 重问那条命令的处理器；这里喂假的）：轮换那一帧带上那个会话的那一份。
+#[test]
+fn a_rotation_change_carries_the_body_the_table_asks_for() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+    rt.block_on(async {
+        let (_ev_tx, ev_rx) = tokio::sync::mpsc::channel::<TapEvent>(4);
+        let mut t = attach_rx(
+            ev_rx,
+            std::sync::Arc::new(crate::observe::runs::RunBook::default()),
+        );
+        fn fake(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
+            Some(serde_json::json!({ "topic": topic.name(), "key": key }))
+        }
+        t.bodies = fake;
+        let tx = tokio::sync::broadcast::channel::<String>(4).0;
+        t.rotation = Some(tx.subscribe());
+        tx.send("s1".to_string()).unwrap();
+        let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
+            .await
+            .expect("该推一帧");
+        match f {
+            Some(Frame::Changed {
+                topic: Topic::Rotation,
+                key,
+                body,
+                ..
+            }) => assert_eq!(
+                (key.as_deref(), body),
+                (
+                    Some("s1"),
+                    Some(serde_json::json!({"topic": "rotation", "key": "s1"}))
+                )
+            ),
+            other => panic!("{other:?}"),
+        }
     });
 }

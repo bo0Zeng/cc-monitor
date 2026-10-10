@@ -9,7 +9,7 @@
 //! - `plan-command {workspace, cmd: continue|pause|view}`：以人的身份代敲 pb 的用户命令（写盘的是 pb）。
 //! - `plan-files {dir}`：文件窗口反查（[`crate::plan::owners`]）：这个目录落在哪一片的仓库里、每份文件归哪一格。
 //!
-//! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `plan_changed`。
+//! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
 use crate::plan::{book, locate, watch, wire, Live, Whose};
 use crate::stream::inbound::spec::Fail;
@@ -150,7 +150,7 @@ fn arm(entry: &Path, ws: &Path) {
     watch::arm(ws, last, reread);
 }
 
-/// 一份标过的成品此刻的样子（`plan_changed` 比的那两样）。
+/// 一份标过的成品此刻的样子（`changed {plan}` 比的那两样）。
 pub(crate) fn seen_of(v: &Value) -> Option<watch::Seen> {
     Some((
         v.get("rev")?.as_str()?.to_string(),
@@ -214,7 +214,7 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 }
 
 /// `plan-command {workspace, cmd}`：以人的身份代敲 pb 的一条用户命令（[`crate::plan::command`]）。
-/// 写盘的是 pb；`continue` / `pause` 改了工作区 `.env` ⇒ 盯盘那一路照常推 `plan_changed`（`auto` 在成品里）。
+/// 写盘的是 pb；`continue` / `pause` 改了工作区 `.env` ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` 在成品里）。
 fn command(args: &Value) -> Answer {
     let ws = args
         .get("workspace")

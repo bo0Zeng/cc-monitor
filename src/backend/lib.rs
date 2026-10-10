@@ -54,7 +54,7 @@ pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
-pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `plan_changed`（只读，一个字节都不写）
+pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写）
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
@@ -638,7 +638,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// skill 接入面与 SKILLS 表进 `agents/claudecode/` · MCP 推拉 / skill 装改本机后端当枢纽（`assets/hub.rs`，写前再核来源）· cc-bus 由后端装、装卸账复用 skill 装记录。
 ///
 /// ★★★ **p5d-deploy-plan-in-backend**（2026-09-28，MIG-3b 合并那一拍）：新帧命令 `hooks-diag` · `deploy-plan`（纯判定在共享 crate `deploy-core`）·
-/// 任务推送走 `session-tasks` 流（`tasks_changed{sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
+/// 任务推送走 `changed/tasks` 流（`changed {tasks, key: sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
 ///
 /// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
 /// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（aterm 不读）。
@@ -903,7 +903,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// 额度成品进核心：quota-read 每号（含 unseen）带 rows [[{text, tone}]] 与 warm {act, at?, text}（quota-warm 的开窗判定挪进核心），顶上多 text（读不出 · 一个号都没有那一句，照读答的原因说）；slots[] 每格带 text · tone；出口给还没到的时刻另添 <键>RelText（距今），rotation-plan 的 head.blocked 同带 atRelText；CLI --text 改成通用拼字、所有命令都收。
 /// 文案十四 14–16 批：契约错只回「请求格式不对」；powershell-policy-set 的 setError 与 aliases-read 候选 policy.error 由原话改为原因词；rotation-rules-read 的 reason / detail 收进界面；exit-policy-read 读不出时 said 带原因（盘上原值只进原话）；壳 spawn_blocking 没回来一律 crashed。aliases-read 候选的 block 删 manualCleanupHint（POSIX rc 裸行指名那一族删了，别名块现状只剩 present · conflictingFunctions）。
 /// 一次性 CLI 模式的 stderr 只剩协议：成功 0 字节、失败正好一行信封；tracing 诊断整行追加进那台后端的 stderr 诊断文件（宿主交的 CCM_BACKEND_STDERR_LOG，否则 ~/.cc-monitor/logs/backend/stderr.log），不写 stderr；契约错（malformed）只在真错那条路上记日志。子命令指纹没变（不加历史行）。
-pub const BUILD_ID: &str = "p9v-trigger-split-quota-rows";
+///
+/// p9w-history-listing-tail-mobile：history-list 换问法——入参 fresh 删、listing 加（界面经长连接问那台常驻 history-list {raw}，把那份原样交本机后端注解 · 筛 · 排；本机后端记着它给敲字用），码 unreachable 换 no_listing；本机后端不再经 remote_ask 在那台起一次性进程冷扫。
+/// 连上只拉尾段：旁路快照只读每会话最后 REPLAY_TAIL_KEEP 个可计行，头段由界面往上翻时按行号 / 偏移取回（壳侧 Read::Full 改名 Read::Tail，tail_seq 删）。
+/// 手机端 app 并进本仓 src/mobile（门禁 mobile 格 · CI mobile job · 第三方许可登记手机端二进制）；CI 认候选分支 next，winlink 那格加查 lib 测试程序带进程清单。
+///
+/// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
+/// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
+/// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；轮换规则 CellError 与机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
+pub const BUILD_ID: &str = "p9x-changed-topic-view";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -2136,20 +2144,8 @@ pub const EMITS: &[&str] = &[
     "overflow",
     "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     // `tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
-    // 账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
-    "accounts_changed",
-    // 配置文件变了（watcher 盯它所在目录，登记 = 承诺真发，已接线）。
-    "profiles_changed",
-    // 这台的额度账显示得出来的那几格变了（中转记账那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "quota_changed",
-    // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "rotation_changed",
-    // 这台的轮换规则表 / 默认指向变了（帧面写规则那一路与盯盘那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "rotation_rules_changed",
-    // 某个 pb 工作区的计划变了（plan 读面盯它读过的工作区，重读后输出摘要变了才发，走 tap 那条可丢的通道；登记 = 承诺真发）。
-    "plan_changed",
-    // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
-    "tasks_changed",
+    // 「X 变了 ⇒ 重读」那一种（主题表 `stream/topic.rs`：账号清单 · 配置文件 · 任务清单由 watcher 发，额度 · 轮换 · 规则 · 计划走 tap 那条；登记 = 承诺真发，已接线）。
+    "changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」。
     "sessions_replayed",
@@ -2241,6 +2237,11 @@ pub const TEXT_FLAG: &str = "--text";
 /// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const WITHIN_MS_FLAG: &str = "--within-ms";
 
+/// **出口的声明口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--history-read --args-b64 <…> --view <…>`）⇒ 与帧面请求信封的
+/// `view` 同名同义（要哪几格 · 哪几格不要，`faces/project.rs`）。值是声明的 JSON 原样（`{` 打头），或它的 base64（过哪一家登录 shell 都不变形，
+/// 同 [`ARGS_B64_FLAG`]）。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const VIEW_FLAG: &str = "--view";
+
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
 /// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
@@ -2273,6 +2274,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
     TEXT_FLAG,
     "--until",
+    // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    VIEW_FLAG,
     // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
     WITHIN_MS_FLAG,
 ];

@@ -4,7 +4,8 @@
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
+import { defaultWorld, LOCAL } from "../fake/world";
+import { putQuota } from "../disk";
 import { PROFILE_ACCOUNTS } from "../fake/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, waitFor } from "./helpers";
@@ -32,24 +33,16 @@ function acctWorld(verifyFail = false): () => World {
   return () => {
     const w = defaultWorld();
     const now = Math.floor(Date.now() / 1000);
-    const slots = (p5: number, p7: number) => [
-      { slot: "5h", pct: p5, resetsAt: now + 5400, ...(p5 >= 100 ? { full: true } : {}) },
-      { slot: "7d", pct: p7, resetsAt: now + 4 * 86400, ...(p7 >= 100 ? { full: true } : {}) },
+    const win = (p5: number, p7: number) => [
+      { name: "five_hour", used: p5 / 100, resetsAt: now + 5400 },
+      { name: "seven_day", used: p7 / 100, resetsAt: now + 4 * 86400 },
     ];
-    w.ops["quota-read"] = () => ({
-      state: "present",
-      reason: null,
-      path: "/home/user/.cc-monitor/quota.json",
-      now,
-      accounts: [
-        { agent: "claude-code", account: "work", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(100, 78), login: "ok" },
-        { agent: "claude-code", account: "personal", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(58, 41), login: "ok" },
-        { agent: "claude-code", account: "api", seenAt: now - 120, kind: "api", state: "ok", stale: false, slots: [], login: "ok" },
-      ],
-      unseen: [],
-      usableNow: ["personal", "api"],
-      earliestReturn: null,
-    });
+    // work 用满被拒 · personal 被拒而没用满 · api 按量（窗口都没有）。
+    putQuota(w.disk[LOCAL], [
+      { account: "work", seenAt: now - 120, status: "rejected", refused: true, limiting: "five_hour", resetsAt: now + 5400, windows: win(100, 78) },
+      { account: "personal", seenAt: now - 120, status: "rejected", refused: true, limiting: "five_hour", resetsAt: now + 5400, windows: win(58, 41) },
+      { account: "api", seenAt: now - 120, status: "allowed", windows: [] },
+    ]);
     if (verifyFail) {
       w.ops["accounts-verify"] = () => ({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     }

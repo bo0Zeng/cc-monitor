@@ -69,18 +69,8 @@ pub(crate) enum LocalStep {
     },
     /// 冲掉残批，再进 [`LineIntake::removed`]。
     Remove { sid: String },
-    /// 本机某个会话的任务清单变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `tasks_changed`）。
-    Tasks { sid: String },
-    /// 本机的额度账变了（`None`）/ 某个会话的轮换变了（`Some(sid)`）⇒ 交重放缓冲那张订阅表（与远端同一个口）。
-    Quota { sid: Option<String> },
-    /// 本机的轮换规则表变了 ⇒ 同上那张订阅表一格 `{"rules":true}`。
-    Rules,
-    /// 本机某个 pb 工作区的计划变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `plan_changed`）。
-    Plan {
-        workspace: String,
-        rev: String,
-        needs: u64,
-    },
+    /// 本机的某样东西变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `changed`）。
+    Changed { topic: String, cell: String },
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -255,23 +245,10 @@ pub(crate) fn local_step(
                 LocalStep::Notice { sid, path, change }
             }
         }
-        // 任务清单变了：与 bg 藏不藏无关（任务面板按 sid 取，藏起来的会话本来就没有 tab）。
-        LocalItem::Frame(InboundFrame::TasksChanged { sid }) => LocalStep::Tasks { sid },
-        // 额度 / 轮换变了：与 bg 藏不藏无关（界面按 sid 取）。
-        LocalItem::Frame(InboundFrame::QuotaChanged) => LocalStep::Quota { sid: None },
-        LocalItem::Frame(InboundFrame::RotationChanged { sid }) => {
-            LocalStep::Quota { sid: Some(sid) }
+        // 「X 变了」：与 bg 藏不藏无关（界面按主题 · key 取，藏起来的会话本来就没有 tab）。
+        LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
+            LocalStep::Changed { topic, cell }
         }
-        LocalItem::Frame(InboundFrame::RotationRulesChanged) => LocalStep::Rules,
-        LocalItem::Frame(InboundFrame::PlanChanged {
-            workspace,
-            rev,
-            needs,
-        }) => LocalStep::Plan {
-            workspace,
-            rev,
-            needs,
-        },
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -351,25 +328,9 @@ pub(crate) async fn consume_local(
                     intake.removed(&sid);
                 }
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
-                LocalStep::Tasks { sid } => {
-                    replay.tasks_changed(&crate::origin::Origin(label.clone()), &sid)
+                LocalStep::Changed { topic, cell } => {
+                    replay.changed(&crate::origin::Origin(label.clone()), &topic, cell)
                 }
-                LocalStep::Quota { sid } => {
-                    replay.quota_changed(&crate::origin::Origin(label.clone()), sid.as_deref())
-                }
-                LocalStep::Rules => {
-                    replay.rotation_rules_changed(&crate::origin::Origin(label.clone()))
-                }
-                LocalStep::Plan {
-                    workspace,
-                    rev,
-                    needs,
-                } => replay.plan_changed(
-                    &crate::origin::Origin(label.clone()),
-                    &workspace,
-                    &rev,
-                    needs,
-                ),
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,
                 LocalStep::StreamEnded => {

@@ -43,7 +43,7 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 
 对发版流程的影响，三条：
 
-1. **先推 `main` 等它绿，再推 tag**——这道门接受这个 commit 上任意一条绿的 CI run，main 那次与 tag 那次跑的是同一棵树、同一份 `ci.yml`；main 已经绿了，它立刻放行。
+1. **先推 `main` 等它绿，再推 tag**——main 只收 CI 绿过的提交：合并树先推候选分支 `next`（`ci.yml` 在它上面跑与 main 同一套 job，不打标签、不发版），全绿了才把 main 快进过去。这道门接受这个 commit 上任意一条绿的 CI run，main 那次与 tag 那次跑的是同一棵树、同一份 `ci.yml`；main 已经绿了，它立刻放行。
 2. **CI 红 ⇒ 发不出去，这是设计意图，不是故障。** 修 CI，然后在 GitHub 的 Release run 页面只重跑 `ci-gate` 这一个 job（Re-run failed jobs），不必重打 tag。
 3. **超时也拦**：查不到 CI run 等 10 分钟、CI 还在跑等 45 分钟，到点判红。
 

@@ -1453,3 +1453,85 @@ fn every_job_that_installs_apt_packages_restores_the_deb_cache_first() {
         "两份 workflow 里装 apt 包的 job 只认出 {jobs_seen} 个"
     );
 }
+
+/// **候选分支 `next`：推 main 之前 CI 先在它上面跑同一套，绿了 main 才快进过去**（用户 10-10 定）。
+///
+/// 推送脚本（仓外）把合并树强推到 `origin/next`、等这一趟 CI 全绿才 `merge --ff-only` 并推 main；
+/// main 于是只收 CI 绿过的提交。这条钉住那条路在仓里的一半：
+/// ① `ci.yml` 的 push 触发同时认 `main` 与 `next`（少了 `next` ⇒ 推候选分支什么都不跑，脚本等到超时）；
+/// ② `ci.yml` 里没有一条按分支 / 事件分叉的条件（`if:` · `github.ref` · `github.event_name` …）——
+///    有了它，`next` 上跑的就不再是 main 上那一套，「候选绿 ⇒ main 绿」不成立；
+/// ③ 候选分支上不打标签、不发版：`ci.yml` 不写仓（没有 `contents: write` · `git tag` · `git push` · `gh release`），
+///    `release.yml` 的 push 触发只认标签、不认任何分支。
+#[test]
+fn ci_runs_the_same_jobs_on_the_candidate_branch_and_never_releases_from_it() {
+    let ci = ci_yaml::live_lines();
+    let trigger: Vec<&str> = ci.lines().take_while(|l| l.trim_end() != "jobs:").collect();
+    let push_branches: Vec<String> = trigger
+        .iter()
+        .skip_while(|l| l.trim_end() != "  push:")
+        .skip(1)
+        .take_while(|l| l.len() - l.trim_start().len() >= 4)
+        .filter_map(|l| l.trim().strip_prefix("branches:"))
+        .flat_map(|v| {
+            v.trim()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|s| s.trim().trim_matches(|c| c == '\'' || c == '"').to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for want in ["main", "next"] {
+        assert!(
+            push_branches.iter().any(|b| b == want),
+            "`ci.yml` 的 `on.push.branches` 里没有 `{want}`（抽到 {push_branches:?}）—— \
+             候选分支 `next` 是推 main 之前让 CI 先跑的那一趟；少了它，推送脚本等不到任何 run"
+        );
+    }
+    for needle in [
+        "if:",
+        "github.ref",
+        "github.event_name",
+        "github.head_ref",
+        "github.base_ref",
+    ] {
+        assert!(
+            !guard_core::contains_word(&ci, needle),
+            "`ci.yml` 里出现了（未注释的）`{needle}` —— 按分支 / 事件分叉之后，`next` 上跑的就不是 main 上那一套，\
+             「候选分支绿了才快进 main」那条路失去意义"
+        );
+    }
+    for needle in [
+        "contents: write",
+        "git tag",
+        "git push",
+        "gh release",
+        "action-gh-release",
+    ] {
+        assert!(
+            !guard_core::contains_word(&ci, needle),
+            "`ci.yml` 里出现了（未注释的）`{needle}` —— CI 在 main 与候选分支 `next` 上跑同一套，它不许写仓、打标签、发版（发版只走 release.yml 的标签触发）"
+        );
+    }
+    let rel = guard_core::strip_hash_comment_lines(
+        &fs::read_to_string(
+            crate::guard_support::repo_root().join(".github/workflows/release.yml"),
+        )
+        .expect("release.yml 读不到"),
+    );
+    let rel_push: Vec<&str> = rel
+        .lines()
+        .skip_while(|l| l.trim_end() != "  push:")
+        .skip(1)
+        .take_while(|l| l.len() - l.trim_start().len() >= 4)
+        .collect();
+    assert!(
+        rel_push.iter().any(|l| l.trim().starts_with("tags:")),
+        "`release.yml` 的 push 触发里抽不到 `tags:`（抽到 {rel_push:?}）—— 抽取器坏了或触发器形状变了"
+    );
+    assert!(
+        !rel_push.iter().any(|l| l.trim().starts_with("branches")),
+        "`release.yml` 的 push 触发认了分支（{rel_push:?}）—— 推候选分支 / main 就会起发版；发版只许由标签触发"
+    );
+}
