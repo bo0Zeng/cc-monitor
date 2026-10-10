@@ -72,6 +72,9 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+#[cfg(test)]
+#[path = "../../tests/backend/refusing_port.rs"]
+pub(crate) mod refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用）
 pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
 #[cfg(test)]
 #[path = "../../tests/backend/runs_guard.rs"]
