@@ -26,7 +26,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 import { RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
 
 /** 上一批收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。 */
-const CEILING_AT_MOST = 296;
+const CEILING_AT_MOST = 294;
 
 interface Debt {
   roots: { dir: string; lang: "ts" | "rs" }[];
@@ -34,7 +34,8 @@ interface Debt {
   entries: { file: string; rule: string; n: number; kind: string; why: string }[];
 }
 
-const KINDS = new Set(["第 1 批", "第 3 批", "第 7 批", "待分", "留"]);
+// 10-10 起没有「待分」：每格都分清了归哪一批、还是留（留的写凭什么）。
+const KINDS = new Set(["第 1 批", "第 3 批", "第 7 批", "留"]);
 
 const debt = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/frontend/ui/exit-debt.json"), "utf8")) as Debt;
 

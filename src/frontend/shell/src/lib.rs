@@ -893,7 +893,7 @@ pub fn run() {
             get_log_file_info,
             open_log_file,
             open_log_dir,
-            // 历史清单与注解住本机常驻后端（`history-list` / `history-annotate` / `history-last-accounts`），
+            // 历史清单住本机常驻后端（`history-list`，远端那一支代问）；注解与上次的号跟着会话住在那台（`history-annotate` / `history-last-accounts` 问那台），
             //   界面经通道问（`history-list-reads.ts` · `history-reads.ts`）。
             // 会话正文四条（整份读 · 子 agent · 按偏移 · 按行号）退役：那台后端出记录行，
             //   界面经通道直问（`src/frontend/ui/record-reads.ts`：`history-page` · `history-subagent` · `history-lines`）。

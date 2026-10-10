@@ -229,7 +229,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 #### 格目录 `cells-catalog`
 
-只读帧命令 `cells-catalog`（本体 `faces/cells_catalog.rs`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口据它就知道有没有那一格，不必读核心代码。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以命令本身的输出与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的成品（`record` · `read_row`）格只许加。
+只读帧命令 `cells-catalog`（本体 `faces/cells_catalog.rs`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口据它就知道有没有那一格，不必读核心代码。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以命令本身的输出与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_removed` 只冻手机读的那几格）不删、不改名、不换类型。
 
 #### 出口怎么挑格：请求信封里的声明
 

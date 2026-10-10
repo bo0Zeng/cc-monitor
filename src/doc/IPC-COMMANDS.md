@@ -1071,6 +1071,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
+| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
@@ -1108,6 +1109,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `defaultRule` | ← | 默认规则的 id |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
+| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
 | `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
@@ -1189,6 +1191,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
+| `names` | ← | 同 `rotation-rules-read` |
 | `effective` | ← | 号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句） |
 | `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
 | `from` | ← | 视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
@@ -1221,6 +1224,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
+| `names` | ← | 同 `rotation-rules-read` |
 | `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
@@ -1661,7 +1665,7 @@ sid → 上次用哪个号起。
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 | `origin` | → | 可缺席：那台的名字（`listing` 是它的；行与组都标上它） |
 | `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一份就是那台常驻答的它 |
+| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一支问的就是它；注解跟着会话住在那台，本机代问时照那台带来的并、不拿本机那份去盖 |
 | `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄 |
 | `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |
@@ -1816,7 +1820,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `needs` | ← | 它在等什么：与 `history-facts` 对同一份记录答的 `needs` 是同一份（种类 · 字 · 语气 · 起点都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
 | `sid` | ← | 会话 id |
 | `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
 
@@ -2831,7 +2835,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
-| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `frozen`（两个前端照它读的成品面：格只许加，不删不改名不换类型）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 需手动清单的一行 `needs_row` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团）· `frozen`（两个前端照它读的格：不删不改名不换类型；`record` · `read_row` 整件冻结，会话三帧只冻手机读的那几格） |
 
 ### 4.9 终端与会话
 

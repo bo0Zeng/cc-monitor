@@ -85,6 +85,8 @@ pub(super) mod tests {
         "manage/trust_share_exec.rs",
         "manage/verify.rs",
         "manage/wire.rs",
+        // 号名与语义位名的字（`_` · `5h` / `7d` 叫什么）：后端拼句与成品 `names` 共用这一处；与上游选择零引用。
+        "quota/name_words.rs",
         // 订阅号令牌：读 · 续 · 加锁整份写回。上游选择换到别的订阅号时问它要令牌；它不许认识上游选择与账号库管理。
         "oauth/mod.rs",
         "oauth/store.rs",

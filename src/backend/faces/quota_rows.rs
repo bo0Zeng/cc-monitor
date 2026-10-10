@@ -37,21 +37,13 @@ fn s<'a>(v: &'a Value, key: &str) -> &'a str {
 }
 
 fn slot_label(slot: &str) -> Cell {
-    match slot {
-        "5h" => c(copy_text("acct.slot.fiveHour", &[])),
-        "7d" => c(copy_text("acct.slot.sevenDay", &[])),
-        other => c(other.to_string()),
-    }
+    c(crate::accounts::quota::name_words::slot_text(slot))
 }
 
 fn head(v: &Value) -> Vec<Cell> {
     let account = s(v, "account");
     let mut row = vec![
-        if account == "_" {
-            c(copy_text("acct.home.name", &[]))
-        } else {
-            c(account.to_string())
-        },
+        c(crate::accounts::quota::name_words::account_text(account)),
         c(if s(v, "kind") == "api" {
             copy_text("acct.kind.api", &[])
         } else {
@@ -200,7 +192,7 @@ fn five_hour(value: &str) -> String {
     copy_text(
         "resumeMenu.account.quota",
         &[
-            ("slot", &copy_text("acct.slot.fiveHour", &[])),
+            ("slot", &crate::accounts::quota::name_words::slot_text("5h")),
             ("value", value),
         ],
     )
