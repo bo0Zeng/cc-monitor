@@ -6,6 +6,7 @@
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
  *   POST /__ccm/call   {key, origin, op, args}                ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
+ *   POST /__ccm/write  {key, origin, rel, text}             ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录）
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
  *
  *   世界里的 `warm`（quota-warm 在跑）：同样配一个替身进程，写 `.cc-monitor/quota-warm.json` 带它的 pid。
@@ -187,9 +188,10 @@ export function backendPool({ repo, sandbox }) {
     const dir = path.join(sandbox, "worlds", key.replace(/[^A-Za-z0-9_.-]/g, "_"));
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(path.join(dir, "shell-home"), { recursive: true });
-    const w = { dir, sleepers: [], listeners: [], backlog: [], shell: null };
+    const w = { dir, homes: new Map(), sleepers: [], listeners: [], backlog: [], shell: null };
     worlds.set(key, w);
     const list = Object.entries(machines).map(([origin, m], i) => {
+      w.homes.set(origin, path.join(dir, `m${i}`, "home"));
       const { argv, sleepers } = start(path.join(dir, `m${i}`), origin, m);
       w.sleepers.push(...sleepers);
       return { origin, argv };
@@ -217,6 +219,13 @@ export function backendPool({ repo, sandbox }) {
     else if (url === "/__ccm/stop") w.sh.send({ t: "stop", id: body.id });
     else if (url === "/__ccm/ready") w.sh.send({ t: "ready", priority_sid: body.priority_sid ?? null });
     else if (url === "/__ccm/kill") w.sh.send({ t: "kill", origin: body.origin });
+    else if (url === "/__ccm/write") {
+      const home = w.homes.get(body.origin);
+      const rel = String(body.rel);
+      if (!home || rel.startsWith("/") || rel.split("/").includes("..")) throw new Error(`改不了：${body.origin} · ${rel}`);
+      mkdirSync(path.dirname(path.join(home, rel)), { recursive: true });
+      writeFileSync(path.join(home, rel), String(body.text));
+    }
   }
 
   const readBody = (req) =>
@@ -228,7 +237,7 @@ export function backendPool({ repo, sandbox }) {
       req.on("error", reject);
     });
 
-  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill"]);
+  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/write"]);
 
   async function serve(req, res, next) {
     if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {

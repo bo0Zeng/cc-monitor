@@ -6,7 +6,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import { putQuota } from "../disk";
-import { PROFILE_ACCOUNTS } from "../fake/profiles";
+import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, waitFor } from "./helpers";
 
@@ -50,8 +50,12 @@ function acctWorld(verifyFail = false): () => World {
   };
 }
 
-/** 配置文件那一页换一种样子（`fake/profiles.ts`）。 */
-const profilesWorld = (state: NonNullable<World["profiles"]>) => (): World => ({ ...defaultWorld(), profiles: state });
+/** 配置文件那一页（devbox）照一种样子放好原文（`disk/profiles.ts`；读法与成品全在真后端）。 */
+const profilesWorld = (look: ProfilesLook) => (): World => {
+  const w = defaultWorld();
+  putProfiles(w.disk.devbox, look);
+  return w;
+};
 
 /** 别名那一行露出来、清单读回之后（树或卡片画好）。 */
 async function profilesPage(): Promise<void> {
@@ -429,21 +433,21 @@ export const SETTINGS_SCENES: Scene[] = [
     await profilesPage();
     top(".settings-page:not([hidden]) .machine-aliases");
     await sleep(300);
-  }, defaultWorld, 860),
+  }, profilesWorld("normal"), 860),
   settings("profiles-02-merge", "设置 · 别名 · 02 点一行看合并表（宽窗）", "点 teamcct：右栏合并表（项 · 值 · 来自哪一段）· 假设在这个目录敲 · 等于", async () => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="teamcct"]'));
     await sleep(700);
     top(pf("[data-role=tree]"));
     await sleep(300);
-  }, defaultWorld, 860, 1180),
+  }, profilesWorld("normal"), 860, 1180),
   settings("profiles-02-merge-narrow", "设置 · 别名 · 02 点一行看合并表（窄窗）", "窄窗：合并表落到那一行下面", async () => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="teamcct"]'));
     await sleep(700);
     top(pf('.prof-trow[data-name="cct"]'));
     await sleep(300);
-  }, defaultWorld, 860, 860),
+  }, profilesWorld("normal"), 860, 860),
   settings("profiles-03-new", "设置 · 别名 · 03 新建", "＋ 新增别名：名字 bcct2 · 基于 cct · 账号 team；在哪起 / 按目录灰着写继承值；等于问后端", async () => {
     await profilesPage();
     await click(await byText(pf(".prof-head button"), "新增别名"));
@@ -458,7 +462,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(700);
     top(pf("[data-role=profile-form]"));
     await sleep(300);
-  }, defaultWorld, 900),
+  }, profilesWorld("normal"), 900),
   settings("profiles-04-impact", "设置 · 别名 · 04 改父那一条先看连带谁", "改 cct 的在哪起：表单上方列出会跟着变的子、树里那几行淡黄、存旁写会连带 3 条", async () => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="cct"] .cfg-link'));
@@ -471,14 +475,14 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(400);
     top(pf(".prof-notes"));
     await sleep(300);
-  }, defaultWorld, 1000),
+  }, profilesWorld("normal"), 1000),
   settings("profiles-05-remove", "设置 · 别名 · 05 删一条被别人基于的", "删 cct：三个选择，推荐改成基于 cc；看改前改后", async () => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="cct"] .cfg-link-danger'));
     await sleep(700);
     top(pf(".prof-notes"));
     await sleep(300);
-  }, defaultWorld, 900),
+  }, profilesWorld("normal"), 900),
   settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "后端说上次 cc-monitor 写过之后有人改过：清单头一行小字 ＋ 看配置文件", async () => {
     await profilesPage();
     top(pf(".prof-notes"));
@@ -494,13 +498,15 @@ export const SETTINGS_SCENES: Scene[] = [
     top(".settings-page:not([hidden]) .machine-aliases");
     await sleep(300);
   }, profilesWorld("syntax"), 760),
-  settings("profiles-08-stale", "设置 · 别名 · 08 保存时被别处改过", "改 teamcct 的账号存：配置文件已不是打开时那一份 ⇒ 一个字节不写、填的还在、重新读", async () => {
+  settings("profiles-08-stale", "设置 · 别名 · 08 保存时被别处改过", "改 teamcct 的账号存：配置文件已不是打开时那一份 ⇒ 一个字节不写、填的还在、重新读", async (ctx) => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="teamcct"] .cfg-link'));
     await sleep(600);
     // 换成库里最后一个号（teamcct 原来是 team，换哪个都行，只要不是它）。
     await click(await byText(pf("[data-role=profile-form] .prof-segb"), PROFILE_ACCOUNTS[PROFILE_ACCOUNTS.length - 1]));
     await sleep(500);
+    // 打开之后、存之前，别处（手改 / 另一扇窗）改了配置文件。
+    await ctx.backend.writeFile("devbox", PROFILES_FILE, `${staleBook()}\n# 别处补的一行\n`);
     await click(pf("[data-role=profile-form] [data-role=save]"));
     await sleep(700);
     top(pf("[data-role=profile-form]"));
@@ -512,7 +518,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(700);
     top(pf("[data-role=tree]"));
     await sleep(300);
-  }, defaultWorld, 860, 1180),
+  }, profilesWorld("normal"), 860, 1180),
   settings("profiles-10-migrated", "设置 · 别名 · 10 第一次升级后", "页首绿卡：11 条已转进配置文件（知道了）；.bashrc 里同名函数三个选择", async () => {
     await profilesPage();
     top(pf(".prof-notes"));

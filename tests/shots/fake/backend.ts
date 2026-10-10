@@ -15,6 +15,11 @@ import type { MachineDisk } from "../disk";
  */
 export const REAL_OPS = new Set([
   "accounts-list",
+  "profiles-read",
+  "profiles-resolve",
+  "profiles-impact",
+  "profiles-bases",
+  "profiles-write",
   "quota-read",
   "rotation-rules-read",
   "rotation-session-read",
@@ -78,6 +83,13 @@ export class FakeBackend {
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
+  }
+
+  /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */
+  async writeFile(origin: string, rel: string, text: string): Promise<void> {
+    await this.ready;
+    const r = await fetch("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text }) });
+    if (!r.ok) throw new Error(`改不了 ${origin} 上的 ${rel}：${await r.text()}`);
   }
 
   /** 订阅那几样交给无头壳。 */

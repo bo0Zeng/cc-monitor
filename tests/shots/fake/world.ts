@@ -7,7 +7,6 @@ import { defaultOps } from "./ops";
 import { defaultCommands } from "./commands";
 import { historyOps } from "./history";
 import { machineCommands, machineOps } from "./machine";
-import { profilesOps } from "./profiles";
 import { ACCOUNTS } from "./ops";
 import { blankDisk, putAccounts, type LiveSession, type MachineDisk } from "../disk";
 
@@ -215,7 +214,7 @@ export function defaultWorld(): World {
     staleMachines: [],
     config: defaultConfig(),
     sessions,
-    ops: { ...defaultOps(), ...historyOps(), ...machineOps(), ...profilesOps() },
+    ops: { ...defaultOps(), ...historyOps(), ...machineOps() },
     commands: { ...defaultCommands(), ...machineCommands() },
   };
 }
