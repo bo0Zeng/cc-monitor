@@ -43,6 +43,8 @@ class ResidentLink(
     suspend fun open(
         scope: CoroutineScope,
         nonce: String,
+        /** 看的这一台的时区（IANA 名，`ZoneId.systemDefault().id`）。 */
+        tz: String,
         timeouts: Timeouts,
         onBreak: (String) -> Unit,
     ): LinkOutcome {
@@ -50,7 +52,7 @@ class ResidentLink(
         if (gate != GateVerdict.Same) return LinkOutcome.Gate(gate)
         val ensured = oneShot.run(ENSURE)
         if (ensured !is OneShotOutcome.Ok) return LinkOutcome.Ensure(ensured)
-        val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), FLAGS, scope, timeouts.handshakeMs, nonce, onBreak)
+        val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), FLAGS, scope, timeouts.handshakeMs, nonce, tz, onBreak)
         return if (attached is AttachOutcome.Attached) checked(attached.client) else LinkOutcome.Attach(attached)
     }
 

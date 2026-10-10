@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -40,7 +41,7 @@ class HostBackends(
         return BackendFeed(
             scope = scope,
             ssh = connector.linkOf(hostId),
-            open = { s -> ResidentLink(OneShot(liveExecutor(conn)), liveDuplex(conn)).open(s, nonce(), TIMEOUTS, ::onBreak) },
+            open = { s -> ResidentLink(OneShot(liveExecutor(conn)), liveDuplex(conn)).open(s, nonce(), ZoneId.systemDefault().id, TIMEOUTS, ::onBreak) },
             onLost = { connector.probeStale() },
             onBreak = ::onBreak,
         )
