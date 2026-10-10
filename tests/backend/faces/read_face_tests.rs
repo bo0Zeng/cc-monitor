@@ -1443,7 +1443,7 @@ fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
     let body = [
         r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-asked"}]}}"#,
         r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ZQKEEP-think"},{"type":"text","text":"ZQKEEP-said"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}]}}"#,
-        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]}}"#,
+        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQKEEP-preview\nZQBODY-result"}]}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -1451,7 +1451,13 @@ fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
     std::fs::write(&p, &body).unwrap();
     let path = p.to_string_lossy().to_string();
     const GONE: &[&str] = &["ZQBODY-input", "ZQBODY-result"];
-    const KEPT: &[&str] = &["ZQKEEP-asked", "ZQKEEP-think", "ZQKEEP-said"];
+    // 结果的首行预览（`results.*.preview`）是核心另出的一格：省掉结果正文之后它照样在。
+    const KEPT: &[&str] = &[
+        "ZQKEEP-asked",
+        "ZQKEEP-think",
+        "ZQKEEP-said",
+        "ZQKEEP-preview",
+    ];
     let view = serde_json::json!({"omit": {"record": [
         "blocks[type=tool_use].input",
         "blocks[type=tool_result].content",

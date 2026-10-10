@@ -1998,6 +1998,15 @@
   margin: 0;
 }
 
+/* 出口省掉的正文展开那一下：取回之前那一行（读取中 / 没取到） */
+.block-omitted {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+.block-omitted[data-failed] {
+  color: var(--error);
+}
+
 .block-tool-use.block-has-error > .block-summary {
   color: var(--error);
 }

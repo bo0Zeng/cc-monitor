@@ -1796,9 +1796,8 @@ sid → 上次用哪个号起。
 | `path` | → | 同 `history-read` |
 | `seq` | → | `offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq` |
 | `until` | → | 同 `history-read` |
-| `whole` | → | 这是「整份读进查看器」那一件：读过 256 MiB 就明拒 `too_large`（那句话说读到了哪；不许静默截断，F06） |
 
-码：`bad_args` · `failed` · `oversized_line` · `refused` · `too_large`
+码：`bad_args` · `failed` · `oversized_line` · `refused`
 
 #### `history-turns`
 

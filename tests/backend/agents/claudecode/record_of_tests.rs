@@ -156,6 +156,10 @@ const CASES: &[(&str, &str)] = &[
         "unread-parse-failed",
         r#"{"type":"ai-title","sessionId":"s"}"#,
     ),
+    (
+        "reply-ask",
+        r#"{"type":"assistant","uuid":"a-ask","timestamp":"2026-10-09T01:30:02.500Z","message":{"role":"assistant","model":"model-x","content":[{"type":"tool_use","id":"call-ask","name":"AskUserQuestion","input":{"questions":[{"header":"h","question":"q?","multiSelect":true,"options":[{"label":"a","description":"d"},{"label":"b"}]}]}},{"type":"tool_use","id":"call-plan","name":"ExitPlanMode","input":{"plan":"1. p"}}]}}"#,
+    ),
 ];
 
 #[test]

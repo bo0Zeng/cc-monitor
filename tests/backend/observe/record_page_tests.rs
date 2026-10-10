@@ -153,7 +153,8 @@ const GONE: &[&str] = &[
 /// **折起那一行自己要用的**那几格里的标记（照那份声明投影 ⇒ 一个都不许少）。
 /// 它们在原文里也住正文块，但后端判好的成品（`who.text`）里**另有一份** ⇒ 剥正文是**去重**，不是把人说的话弄丢。
 /// 这一半不立，「不许有正文」那一半把投影整个弄坏也能恒绿。
-const KEPT: &[&str] = &["ZQKEEP-user", "ZQKEEP-queued"];
+/// 结果的首行预览（`results.*.preview`）是核心另出的一格：剥了结果正文它照样在（折起那一行写它）。
+const KEPT: &[&str] = &["ZQKEEP-user", "ZQKEEP-queued", "ZQKEEP-preview"];
 
 /// 折起那一行要用的格（照那份声明投影 ⇒ 逐个还在、值不变；它们正是界面画那一行读的那几格）。
 const FOLDED_CELLS: &[(&str, &str)] = &[
@@ -166,7 +167,7 @@ const FOLDED_CELLS: &[(&str, &str)] = &[
 const FOLD_PAGE: &[&str] = &[
     r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","cwd":"/w","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-user"}]}}"#,
     r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-say"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}],"usage":{"input_tokens":11,"output_tokens":22}}}"#,
-    r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]},"toolUseResult":{"type":"text","file":{"numLines":7}}}"#,
+    r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQKEEP-preview\nZQBODY-result"}]},"toolUseResult":{"type":"text","file":{"numLines":7}}}"#,
     r#"{"type":"user","uuid":"u3","parentUuid":"u2","timestamp":"2026-01-02T03:04:07.500Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]},"toolUseResult":{"filePath":"/w/f.txt","structuredPatch":[{"oldStart":1,"oldLines":1,"newStart":1,"newLines":1,"lines":["-a","+ZQBODY-patch"]}]}}"#,
     r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:04:08.000Z","content":"ZQKEEP-queued"}"#,
 ];

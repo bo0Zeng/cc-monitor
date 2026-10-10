@@ -6,48 +6,28 @@
  * 这两个工具走本模块：问题+选项 / plan 正文直接可见，且 renderMessage 把含
  * 它们的消息按 `kind:"card"` 处理（不进 card-tool-group 折叠，见 index.ts）。
  *
- * DOM 惯例同 diff.ts：纯 createElement + textContent（label/description 任意
- * 字符按字面安全），唯 ExitPlanMode 的 plan 是 markdown → renderMarkdown
- * （内建 DOMPurify）。输入畸形一律 throw，由调用方（renderBlock）回退通用折叠卡
- * （INVARIANT § 17a/18 双层防御惯例）。
+ * 题目 / 选项 / 计划正文是核心从入参里读好的一格（`ToolStep.ask`，各家的格式知识在 `agents/<名>/steps.rs`）：
+ * 出口省掉 `tool_use.input` 之后照样建得出来。DOM 惯例同 diff.ts：纯 createElement + textContent，
+ * 唯计划正文是 markdown → renderMarkdown（内建 DOMPurify）。没有那一格 throw，由调用方（renderBlock）回退通用折叠卡。
  */
 import { renderMarkdown } from "../render";
 import { copyText } from "../copy-table";
 import type { StepResult } from "../generated/StepResult";
-
-/** AskUserQuestion 的 input.questions[]（Claude Code 端 schema，实测 2026-06）。 */
-interface AskOption {
-  label: string;
-  description?: string;
-}
-interface AskQuestion {
-  question: string;
-  header?: string;
-  multiSelect?: boolean;
-  options: AskOption[];
-}
+import type { StepAsk } from "../generated/StepAsk";
+import type { AskQuestion } from "../generated/AskQuestion";
 
 /**
- * 分发入口。返回的元素内含 `.block-body-wrap`（tool_result 注入靶点，结构同
- * buildToolUseCard），调用方负责 `ctx.toolUseElements.set(block.id, el)`。
- * 畸形 input → throw，调用方回退。
+ * 分发入口：按核心给的那一格（`ToolStep.ask`，从入参里读出来的提问 / 计划）建卡，不认入参结构。
+ * 返回的元素内含 `.block-body-wrap`（tool_result 注入靶点，结构同 buildToolUseCard），调用方负责 `ctx.toolUseElements.set(block.id, el)`。
+ * 没有那一格 → throw，调用方回退通用折叠卡。
  */
-export function buildInteractiveCard(
-  name: string,
-  input: unknown,
-  opts: { lazy?: boolean },
-): HTMLElement {
-  if (name === "AskUserQuestion") return buildAskCard(input);
-  if (name === "ExitPlanMode") return buildPlanCard(input, opts);
-  throw new Error(`not an interactive tool: ${name}`);
+export function buildInteractiveCard(ask: StepAsk | undefined, opts: { lazy?: boolean }): HTMLElement {
+  if (ask?.kind === "questions") return buildAskCard(ask.questions);
+  if (ask?.kind === "plan") return buildPlanCard(ask.text, opts);
+  throw new Error("interactive card: no ask cell");
 }
 
-function buildAskCard(input: unknown): HTMLElement {
-  const questions = (input as { questions?: unknown })?.questions;
-  if (!Array.isArray(questions) || questions.length === 0) {
-    throw new Error("AskUserQuestion: malformed input.questions");
-  }
-
+function buildAskCard(questions: AskQuestion[]): HTMLElement {
   const root = document.createElement("div");
   root.className = "block-ask";
 
@@ -56,17 +36,13 @@ function buildAskCard(input: unknown): HTMLElement {
   title.textContent = copyText("interactive.ask.title");
   root.appendChild(title);
 
-  for (const raw of questions) {
-    const q = raw as AskQuestion;
-    if (typeof q?.question !== "string" || !Array.isArray(q?.options)) {
-      throw new Error("AskUserQuestion: malformed question entry");
-    }
+  for (const q of questions) {
     const qEl = document.createElement("div");
     qEl.className = "ask-question";
 
     const qLine = document.createElement("div");
     qLine.className = "ask-q-line";
-    if (typeof q.header === "string" && q.header) {
+    if (q.header) {
       const chip = document.createElement("span");
       chip.className = "ask-header-chip";
       chip.textContent = q.header;
@@ -74,17 +50,13 @@ function buildAskCard(input: unknown): HTMLElement {
     }
     const qText = document.createElement("span");
     qText.className = "ask-q-text";
-    qText.textContent = q.multiSelect ? copyText("interactive.ask.multi", { question: q.question }) : q.question;
+    qText.textContent = q.multi ? copyText("interactive.ask.multi", { question: q.question }) : q.question;
     qLine.appendChild(qText);
     qEl.appendChild(qLine);
 
     const ul = document.createElement("ul");
     ul.className = "ask-options";
-    for (const rawOpt of q.options) {
-      const opt = rawOpt as AskOption;
-      if (typeof opt?.label !== "string") {
-        throw new Error("AskUserQuestion: malformed option");
-      }
+    for (const opt of q.options) {
       const li = document.createElement("li");
       li.className = "ask-option";
       li.dataset.optionLabel = opt.label;
@@ -92,7 +64,7 @@ function buildAskCard(input: unknown): HTMLElement {
       label.className = "ask-option-label";
       label.textContent = opt.label;
       li.appendChild(label);
-      if (typeof opt.description === "string" && opt.description) {
+      if (opt.description) {
         const desc = document.createElement("span");
         desc.className = "ask-option-desc";
         desc.textContent = opt.description;
@@ -111,12 +83,7 @@ function buildAskCard(input: unknown): HTMLElement {
   return root;
 }
 
-function buildPlanCard(input: unknown, opts: { lazy?: boolean }): HTMLElement {
-  const plan = (input as { plan?: unknown })?.plan;
-  if (typeof plan !== "string" || plan.trim().length === 0) {
-    throw new Error("ExitPlanMode: malformed input.plan");
-  }
-
+function buildPlanCard(plan: string, opts: { lazy?: boolean }): HTMLElement {
   const root = document.createElement("div");
   root.className = "block-plan";
 

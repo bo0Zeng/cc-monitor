@@ -84,6 +84,7 @@ fn a_result_reads_counts_from_the_structured_result() {
         StepResult {
             ok: false,
             exit_code: Some(127),
+            preview: Some("Exit code 127".into()),
             ..Default::default()
         }
     );
@@ -215,7 +216,10 @@ fn the_record_product_carries_steps_results_and_reasons() {
     );
     let u = parse_line(r#"{"type":"user","uuid":"u2","timestamp":"t","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"…"}]},"toolUseResult":{"file":{"numLines":7}}}"#).unwrap().unwrap();
     let v = serde_json::to_value(&u).unwrap();
-    assert_eq!(v["toolResults"]["tu1"], json!({"ok": true, "lines": 7}));
+    assert_eq!(
+        v["toolResults"]["tu1"],
+        json!({"ok": true, "lines": 7, "preview": "…"})
+    );
     assert!(v.get("toolUseResult").is_none(), "原样那一格不上线");
     let e = parse_line(r#"{"type":"assistant","uuid":"u3","timestamp":"t","isApiErrorMessage":true,"apiErrorStatus":529,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: 529"}]}}"#).unwrap().unwrap();
     assert_eq!(serde_json::to_value(&e).unwrap()["apiReason"], "overloaded");
@@ -276,4 +280,102 @@ fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
         (Some(2), Some(0), Some("/w/n.rs"))
     );
     assert!(r.patch.is_none());
+}
+
+/// ★ 提问 / 计划那几张卡要画的东西是核心出的一格（`ask`），界面不再从入参里自己解析：
+/// 出口省掉 `blocks[type=tool_use].input` 之后交互卡照样建得出来。
+#[test]
+fn questions_and_plans_come_out_as_their_own_cell() {
+    let s = step_of(
+        "AskUserQuestion",
+        &json!({"questions": [
+            {"header": "范围", "question": "改哪一处？", "multiSelect": true,
+             "options": [{"label": "甲", "description": "只改甲"}, {"label": "乙"}]},
+            {"question": "还要吗？", "options": [{"label": "要"}]}
+        ]}),
+    );
+    assert_eq!(
+        s.ask,
+        Some(crate::agents::StepAsk::Questions {
+            questions: vec![
+                crate::agents::AskQuestion {
+                    header: Some("范围".into()),
+                    question: "改哪一处？".into(),
+                    multi: true,
+                    options: vec![
+                        crate::agents::AskOption {
+                            label: "甲".into(),
+                            description: Some("只改甲".into())
+                        },
+                        crate::agents::AskOption {
+                            label: "乙".into(),
+                            description: None
+                        },
+                    ],
+                },
+                crate::agents::AskQuestion {
+                    header: None,
+                    question: "还要吗？".into(),
+                    multi: false,
+                    options: vec![crate::agents::AskOption {
+                        label: "要".into(),
+                        description: None
+                    }],
+                },
+            ]
+        })
+    );
+    let p = step_of("ExitPlanMode", &json!({"plan": "## 计划\n1. 先做甲"}));
+    assert_eq!(
+        p.ask,
+        Some(crate::agents::StepAsk::Plan {
+            text: "## 计划\n1. 先做甲".into()
+        })
+    );
+    // 形状不对 ⇒ 没有这一格（界面退成普通工具卡），别的工具也没有
+    assert_eq!(
+        step_of("AskUserQuestion", &json!({"questions": []})).ask,
+        None
+    );
+    assert_eq!(
+        step_of(
+            "AskUserQuestion",
+            &json!({"questions": [{"question": "q"}]})
+        )
+        .ask,
+        None
+    );
+    assert_eq!(step_of("ExitPlanMode", &json!({"plan": "  "})).ask, None);
+    assert_eq!(step_of("Bash", &json!({"command": "ls"})).ask, None);
+}
+
+/// ★ 结果那一行的首行预览是核心出的一格（`preview`）：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾。
+/// 出口省掉 `blocks[type=tool_result].content` 之后预览照样有。
+#[test]
+fn a_result_carries_its_first_line_preview() {
+    let r = result_of(
+        &json!({"type": "tool_result", "content": "\n   \n  第一行  \n第二行"}),
+        None,
+    );
+    assert_eq!(r.preview.as_deref(), Some("第一行"));
+    let long = "字".repeat(61);
+    let r = result_of(
+        &json!({"type": "tool_result", "content": [{"type": "text", "text": long}]}),
+        None,
+    );
+    assert_eq!(r.preview, Some(format!("{}…", "字".repeat(59))));
+    let exact = "字".repeat(60);
+    let r = result_of(
+        &json!({"type": "tool_result", "content": exact.clone()}),
+        None,
+    );
+    assert_eq!(r.preview, Some(exact));
+    let r = result_of(&json!({"type": "tool_result", "content": "  \n "}), None);
+    assert_eq!(r.preview, None);
+    // 报错那一支也带（结果行写「Error · …」）
+    let r = result_of(
+        &json!({"type": "tool_result", "is_error": true, "content": "boom\nexit 1"}),
+        None,
+    );
+    assert_eq!(r.preview.as_deref(), Some("boom"));
 }
