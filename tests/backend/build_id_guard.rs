@@ -214,8 +214,10 @@ mod tests {
                  报同一个 id ⇒ 不判 stale ⇒ 不自动重装 ⇒ **你这一轮的改动在已部署的远端休眠**，\n\
                  用户只会拿到「版本过旧」。本仓已经因为这个栽过三次（p1r / p1t / G2）。\n\
                  \n\
-                 正确动作：① 在 main.rs 里 bump `BUILD_ID`（并在版本谱系里加一段说清改了什么）；\n\
-                 ② 在 `SUBCOMMAND_HISTORY` **追加**一行 `(\"<新 id>\", \"{now}\")`，并删掉最老那一行（表恒为两行）。",
+                 正确动作：① 在 lib.rs 里 bump `BUILD_ID`（并在版本谱系里加一段说清改了什么）；\n\
+                 ② 在 `SUBCOMMAND_HISTORY` **追加**一行、并删掉最老那一行（表恒为两行）；\
+                 要追加的就是下面 NEW-ROW 那一行（打版本号的脚本按它改表）：\n\
+                 NEW-ROW: (\"<新 id>\", {now:?})",
                 super::super::BUILD_ID
             );
         }
