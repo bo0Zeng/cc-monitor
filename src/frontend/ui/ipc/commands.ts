@@ -341,6 +341,7 @@ export const commands = {
     origin: Origin;
     op: string;
     payload: number[];
+    view: object | null;
     leftMs: number;
     callId: string | null;
   }) => invoke<ArrayBuffer>("chan_call", args),

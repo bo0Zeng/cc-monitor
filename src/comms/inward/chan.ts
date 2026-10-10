@@ -331,8 +331,9 @@ export const chan = {
   /**
    * 一次性请求。失败一定抛一个 [`ChanError`]，**永远不会**「返回一个空答案」。
    * 载荷两个方向都原样：本文件不 `JSON.parse`、不 `JSON.stringify`。
+   * `view`：出口的声明（要哪几格 · 哪几格不要），原样搬进后端的请求信封、不进载荷；本文件不读它。没给 ⇒ 全量。
    */
-  async call(origin: Origin, op: string, payload: Uint8Array, budget: Budget): Promise<Uint8Array> {
+  async call(origin: Origin, op: string, payload: Uint8Array, budget: Budget, view: object | null = null): Promise<Uint8Array> {
     if (budget.cancel?.aborted === true) throw new ChanError({ layer: "ours", why: "Cancelled" });
     const left = remaining(budget);
     if (left <= 0) {
@@ -346,7 +347,7 @@ export const chan = {
     // 撤得掉的那一问带一个编号（撤单那一条按它找到在飞的那一问）。
     const callId = budget.cancel ? crypto.randomUUID() : null;
     const sent = commands
-      .chan_call({ origin, op, payload: Array.from(payload), leftMs: left, callId })
+      .chan_call({ origin, op, payload: Array.from(payload), view, leftMs: left, callId })
       .then(
         (buf) => new Uint8Array(buf),
         (raw: unknown) => {

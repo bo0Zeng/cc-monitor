@@ -283,7 +283,7 @@ impl InboundClient {
         args: Value,
         timeout: Duration,
     ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, tokio::time::Instant::now() + timeout)
+        self.send_until(cmd, args, None, tokio::time::Instant::now() + timeout)
             .await
     }
 
@@ -299,14 +299,27 @@ impl InboundClient {
         args: Value,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, deadline).await
+        self.send_until(cmd, args, None, deadline).await
     }
 
-    /// [`Self::call`] 与 [`Self::call_until`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
+    /// 与 [`Self::call_until`] 同一件事，外加出口的声明（`view`：要哪几格 · 哪几格不要）——
+    /// 原样放进请求信封的 `view` 那一格，后端照它把成品裁好再装运（`stream/inbound/views.rs`）。本侧不读它。
+    pub async fn call_until_viewed(
+        &self,
+        cmd: &str,
+        args: Value,
+        view: &Value,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
+        self.send_until(cmd, args, Some(view), deadline).await
+    }
+
+    /// [`Self::call`] · [`Self::call_until`] · [`Self::call_until_viewed`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
     async fn send_until(
         &self,
         cmd: &str,
         args: Value,
+        view: Option<&Value>,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
         // 只为报错里那一格「等了多久」（`Timeout.after`）：这一问开始时还剩多少。
@@ -327,7 +340,7 @@ impl InboundClient {
         let id = self.next_id();
         let rx = self.register(&id, None).ok_or(CallError::TooManyPending)?;
         // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
-        let line = WriteJob::Line(encode_request(&id, cmd, &args, Some(timeout)));
+        let line = WriteJob::Line(encode_request(&id, cmd, &args, Some(timeout), view));
         match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
@@ -559,6 +572,7 @@ impl InboundClient {
             WITHDRAW_OP,
             &serde_json::json!({ "target": target }),
             None,
+            None,
         );
         // `try_send`：这是 best-effort 的收尾，绝不为它阻塞调用方。
         if self.writes.try_send(WriteJob::Line(line)).is_err() {
@@ -595,24 +609,34 @@ struct RequestLine<'a> {
     args: &'a Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     within_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    view: Option<&'a Value>,
 }
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
 ///
-/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?}`，`args` 可缺省）。
+/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?, view?}`，`args` 可缺省）。
 /// `within`：发起方这一发还愿意等多久（调用方给的，这里只换成毫秒搬上线；不足 1 ms 记 1）；`None` ⇒ 不带这一格。
+/// `view`：出口的声明，原样搬上线；`None` ⇒ 不带这一格（＝ 全量）。
 ///
 /// # 为什么可以 `expect`
 ///
 /// `serde_json::Value` 在类型上就装不下会让序列化失败的东西：`Number` 不可能是 NaN/Inf，
 /// `Map` 的键恒为 `String`。字段只有 `&str`/`&Value`/`u64` ⇒ 这个 `to_string` 不可失败。
-pub fn encode_request(id: &str, cmd: &str, args: &Value, within: Option<Duration>) -> String {
+pub fn encode_request(
+    id: &str,
+    cmd: &str,
+    args: &Value,
+    within: Option<Duration>,
+    view: Option<&Value>,
+) -> String {
     let within_ms = within.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1));
     let mut s = serde_json::to_string(&RequestLine {
         id,
         cmd,
         args,
         within_ms,
+        view,
     })
     .expect("RequestLine 只含 &str/&Value/u64，序列化不可失败");
     s.push('\n');

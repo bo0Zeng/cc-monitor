@@ -316,7 +316,8 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
             "e2e-ping-1",
             "ping",
             &Value::Null,
-            Some(Duration::from_millis(10_000))
+            Some(Duration::from_millis(10_000)),
+            None
         ),
         "\ne2e 脚本喂给真后端的行与 monitor 编码器的产物不一致。\n\
              改了编码器就把脚本里那条 `INBOUND_PING_LINE` 一起改（反之亦然）——\n\
@@ -416,7 +417,8 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
             line["id"].as_str().expect("id"),
             "launch",
             &line["args"],
-            line["within_ms"].as_u64().map(Duration::from_millis)
+            line["within_ms"].as_u64().map(Duration::from_millis),
+            None
         ),
         "e2e 那一行的信封不是 monitor 那一跳会产出的那一行（键序 / 空白对不上）"
     );
@@ -493,14 +495,26 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 #[test]
 fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     let args = serde_json::json!({});
-    let line = encode_request("abc-0", "ping", &args, None);
+    let line = encode_request("abc-0", "ping", &args, None, None);
     assert_eq!(line, "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{}}\n");
-    let carried = encode_request("abc-0", "ping", &args, Some(Duration::from_millis(1_500)));
+    let carried = encode_request(
+        "abc-0",
+        "ping",
+        &args,
+        Some(Duration::from_millis(1_500)),
+        None,
+    );
     assert_eq!(
         carried,
         "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{},\"within_ms\":1500}\n"
     );
-    let tiny = encode_request("abc-0", "ping", &args, Some(Duration::from_micros(300)));
+    let tiny = encode_request(
+        "abc-0",
+        "ping",
+        &args,
+        Some(Duration::from_micros(300)),
+        None,
+    );
     assert!(
         tiny.contains("\"within_ms\":1}"),
         "不足 1 ms 该记 1：{tiny}"
@@ -510,6 +524,56 @@ fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     for k in ["id", "cmd", "args", "within_ms"] {
         assert!(v.get(k).is_some(), "信封缺字段 `{k}`：{carried}");
     }
+}
+
+/// 出口声明（`view`）是信封里的一格，跟在 `within_ms` 后面；没给 ⇒ 不写这一格（不写 `null`）。
+#[test]
+fn encode_request_carries_the_view_as_its_own_envelope_field() {
+    let args = serde_json::json!({"sid": "s"});
+    let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
+    let line = encode_request(
+        "abc-0",
+        "history-read",
+        &args,
+        Some(Duration::from_millis(1_500)),
+        Some(&view),
+    );
+    assert_eq!(
+        line,
+        "{\"id\":\"abc-0\",\"cmd\":\"history-read\",\"args\":{\"sid\":\"s\"},\"within_ms\":1500,\"view\":{\"omit\":{\"record\":[\"blocks[type=tool_use].input\"]}}}\n"
+    );
+    let bare = encode_request("abc-0", "history-read", &args, None, None);
+    assert!(!bare.contains("view"), "没给声明却写了 view：{bare}");
+}
+
+/// 带声明的那个入口把声明原样放进信封；`call` / `call_until` 不带。
+#[tokio::test]
+async fn the_view_entry_puts_the_view_in_the_envelope_and_the_plain_entries_do_not() {
+    let (client, mut peer) = client_on_duplex(&["ping"]);
+    let view = serde_json::json!({"omit": {"record": ["results.*.patch"]}});
+    let (c, v) = (client.clone(), view.clone());
+    let viewed = tokio::spawn(async move {
+        c.call_until_viewed(
+            "ping",
+            Value::Null,
+            &v,
+            tokio::time::Instant::now() + Duration::from_secs(5),
+        )
+        .await
+    });
+    let line = next_line(&mut peer).await;
+    let req: Value = serde_json::from_str(line.trim_end()).expect("请求是合法 JSON");
+    assert_eq!(req["view"], view, "带声明的入口没把声明放进信封：{line}");
+    viewed.abort();
+    let c = client.clone();
+    let plain =
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_secs(5)).await });
+    let line = next_line(&mut peer).await;
+    assert!(
+        !line.contains("\"view\""),
+        "不带声明的入口写了 view：{line}"
+    );
+    plain.abort();
 }
 
 /// 信封里带的期限就是这一发的等待：发起方给多久，那一行的 `within_ms` 就是多久（写出去之前花掉的那一点除外）。

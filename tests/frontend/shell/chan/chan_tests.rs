@@ -22,9 +22,9 @@ use super::client::Client;
 use super::host::{self, InboundBackends};
 use super::router::{self, Backends, Terms};
 use super::wire::{
-    err_from_wire, err_to_wire, item_from_wire, item_to_wire, Body, Budget, By, CallError,
-    CancelToken, Comms, Cursor, HopFault, HopId, Item, Kind, Offer, Op, Origin, OursFault,
-    PeerFault, Reach, Sub, HOP_TAGS,
+    err_from_wire, err_to_wire, item_from_wire, item_to_wire, read_frame, write_frame, Body,
+    Budget, By, CallError, CancelToken, Comms, Cursor, Head, HopFault, HopId, Item, Kind, Offer,
+    Op, Origin, OursFault, PeerFault, Reach, Sub, HOP_TAGS,
 };
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
@@ -52,6 +52,8 @@ struct Fake {
     calls: Mutex<Vec<Seen>>,
     /// 无尽流那一种已经被取走了几格。
     pulled: Arc<AtomicUsize>,
+    /// 每一次 `call` 带来的出口声明。
+    views: Mutex<Vec<Option<serde_json::Value>>>,
 }
 
 impl Backends for Fake {
@@ -60,9 +62,11 @@ impl Backends for Fake {
         origin: Origin,
         op: Op,
         payload: Body,
+        view: Option<serde_json::Value>,
         left: Duration,
         cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
+        self.views.lock().unwrap().push(view);
         self.calls.lock().unwrap().push((
             origin.0.clone(),
             op.0.clone(),
@@ -189,6 +193,58 @@ async fn a_synthetic_frontend_connects_over_a_pipe_pair_and_calls_through() {
         "句柄拿到的期限（{:?}）比调用者给的还宽 —— 期限在路上被放宽了",
         seen[0].3
     );
+}
+
+/// ★ 出口声明（`view`）是 `Call` 帧头上的一格：帧上带了 ⇒ 句柄原样拿到（路由器不解释它）；
+/// 没带 ⇒ 头里没有这一格（不写 `null`），句柄拿到 `None`。进程外客户端（文件窗口）不交声明。
+#[tokio::test]
+async fn a_view_on_the_call_head_reaches_the_handle_verbatim() {
+    let (fake, c) = rig();
+    c.call(
+        &Origin("<local>".into()),
+        &Op("echo".into()),
+        Body(b"x".to_vec()),
+        budget(5_000),
+    )
+    .await
+    .expect("echo 走得通");
+    assert_eq!(
+        *fake.views.lock().unwrap(),
+        vec![None],
+        "进程外客户端交了声明"
+    );
+
+    let fake = Arc::new(Fake::default());
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let (host_rd, host_wr) = tokio::io::split(theirs);
+    host::serve_with(host_rd, host_wr, fake.clone());
+    let (mut rd, mut wr) = tokio::io::split(ours);
+    let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
+    let head = Head::Call {
+        id: 1,
+        origin: Origin("<local>".into()),
+        op: "echo".into(),
+        left: Duration::from_secs(5),
+        view: Some(view.clone()),
+    };
+    write_frame(&mut wr, &head, b"x").await.expect("写得出去");
+    let (back, body) = read_frame(&mut rd, FRAME).await.expect("读得回来");
+    assert_eq!((back, body), (Head::Done { id: 1 }, b"x".to_vec()));
+    assert_eq!(
+        *fake.views.lock().unwrap(),
+        vec![Some(view)],
+        "声明没原样到句柄"
+    );
+
+    let bare = serde_json::to_string(&Head::Call {
+        id: 2,
+        origin: Origin("<local>".into()),
+        op: "echo".into(),
+        left: Duration::from_secs(5),
+        view: None,
+    })
+    .unwrap();
+    assert!(!bare.contains("view"), "没声明却写了 view：{bare}");
 }
 
 /// 对端错（`Peer{Refused}`）与路由那一跳的传输错（`Hop{第 1 跳}`）**原样**过线，
@@ -483,6 +539,7 @@ async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
             Origin("判据里不存在的机器·chan".into()),
             Op("files-ls".into()),
             Body(b"{}".to_vec()),
+            None,
             Duration::from_secs(1),
             CancelToken::new(),
         )
