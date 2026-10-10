@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.ui.drawer
 
-import com.ccmonitor.mobile.ui.overview.HistoryPaging
+import com.ccmonitor.mobile.ui.overview.HistoryItem
 
 /** 抽屉里有什么：项、顺序、文案都住这里，[ChatDrawer] 只负责画。没路可走的项不列。 */
 enum class DrawerItem {
@@ -69,16 +69,13 @@ data class RecentEntry(
 )
 
 /**
- * 「最近」列什么。数据与「对话」那一屏同一个来源（`SessionOverviewViewModel.conversationHistory`）。
+ * 「最近」列什么。数据与「对话」那一屏同一个来源（核心 `history-list`，已按最后活动排好，这里不重排）。
  *
- * @return null = 整段不出（列表还没拿到，或拿到了一条都没有）；否则按最后活动倒序。
+ * @return null = 整段不出（列表还没拿到，或拿到了一条都没有）。
  */
-fun recentEntries(history: HistoryPaging?): List<RecentEntry>? =
+fun recentEntries(history: List<HistoryItem>?): List<RecentEntry>? =
     history
-        ?.rows
-        ?.sortedByDescending { it.updatedAtMs }
-        ?.distinctBy { it.sessionId }
-        ?.map { RecentEntry(it.sessionId, it.title) }
+        ?.map { RecentEntry(it.sessionId, it.label) }
         ?.takeIf { it.isNotEmpty() }
 
 /**

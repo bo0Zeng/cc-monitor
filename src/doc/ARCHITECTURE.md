@@ -201,7 +201,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
  输入适配层（每家 agent 一个）        核心（后端，一处）                     输出适配层（每个出口一个）
  claudecode · codex · fake    ──▶  通用会话 / 记录模型                ──▶  桌面：帧 → 壳（只转运）→ 界面（只排版）
  盘上原始格式 ⇒ 通用模型              所有判定、所有成品只算一次              CLI：--json / --text
-                                     成品 ＝ 值 ＋ 写好的字 ＋ 语气            手机（src/mobile）：经 CLI 面或流
+                                     成品 ＝ 值 ＋ 写好的字 ＋ 语气            手机（src/mobile）：经常驻流（--resident-attach）
                                                                             对端后端：扇出时问远端
 ```
 

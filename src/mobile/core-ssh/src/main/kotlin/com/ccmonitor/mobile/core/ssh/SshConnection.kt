@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.remote.ExecResult
+import com.ccmonitor.mobile.core.remote.RemoteDuplex
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.SendChannel
@@ -407,6 +408,19 @@ class SshConnection(
             }
             // buffer(N) 与 callbackFlow 的通道融合，生产者通道容量即 N。
         }.buffer(EXEC_STREAM_BUFFER_CHUNKS).flowOn(Dispatchers.IO) // startSession / exec 是阻塞调用，离开主线程
+
+    override suspend fun execDuplex(command: String): RemoteDuplex =
+        withContext(Dispatchers.IO) {
+            val session = client().startSession()
+            val cmd =
+                try {
+                    session.exec(command)
+                } catch (t: IOException) {
+                    runCatching { session.close() }
+                    throw t
+                }
+            SshDuplex(session, cmd)
+        }
 
     /** 列目录（滤掉 `.` 与 `..`；目录在前，再按名排序）。 */
     override suspend fun sftpList(path: String): List<SftpEntry> =

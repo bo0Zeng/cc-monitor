@@ -33,11 +33,10 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.transport.ClaudePaths
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
-import com.ccmonitor.mobile.ui.overview.DEFAULT_SOURCE_PATH
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * 应用级设置屏：默认用哪个号、对话列表的来源、新对话的权限，以及终端那一节的入口。
+ * 应用级设置屏：默认用哪个号、新对话的权限，以及终端那一节的入口。
  * 入口不写在本文件里，住 [settingsEntries]，本屏只负责渲染。
  *
  * @param onNavigate 去某条路由。没有默认值：漏接就等于那些入口全成了死键，「点了没反应」比「没有那个键」更糟。
@@ -87,7 +86,7 @@ fun SettingsScreen(
                 vm.save(text)
                 Toast.makeText(context, "已保存", Toast.LENGTH_SHORT).show()
             }) { Text("保存") }
-            OverviewSourceSection(vm, tokens.textFaint)
+            PermissionModeSection(vm, tokens.textFaint)
             // 终端那一节：每一行都从 [settingsEntries] 来，本文件不写死任何一条。
             EntrySections(onNavigate)
         }
@@ -107,34 +106,6 @@ private fun EntrySections(onNavigate: (String) -> Unit) {
             TextButton(onClick = { onNavigate(entry.route) }) { Text(entry.title) }
         }
     }
-}
-
-/**
- * 对话列表的来源：对话列表要问哪个远端程序。
- *
- * 文案按词表：不出现「连接 / SSH / tmux / 会话（技术义）/ 后台程序名」，对用户一律说「对话」。
- */
-@Composable
-private fun OverviewSourceSection(
-    vm: SettingsViewModel,
-    faint: Color,
-) {
-    val source by vm.overviewSourcePath.collectAsState()
-    var sourceText by remember(source) { mutableStateOf(source ?: "") }
-
-    Text("对话列表的来源", style = MaterialTheme.typography.titleMedium)
-    OutlinedTextField(
-        value = sourceText,
-        onValueChange = { sourceText = it },
-        label = { Text("对话列表的来源") },
-        // 回退值显式写出来：留空不是「没有来源」，是「用这个默认值」，别让人以为留空就关掉了。
-        placeholder = { Text("留空 = $DEFAULT_SOURCE_PATH") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().testTag(TAG_SOURCE_FIELD),
-    )
-    Button(onClick = { vm.saveOverviewSourcePath(sourceText) }) { Text("保存来源") }
-
-    PermissionModeSection(vm, faint)
 }
 
 /**
@@ -192,8 +163,5 @@ private fun PermissionModeRow(
         }
     }
 }
-
-/** 测试标签：与 `ChatTestTags` 同款，UI 测试靠标签定位而不靠文案。 */
-const val TAG_SOURCE_FIELD = "settings-overview-source"
 
 const val TAG_PERMISSION_MODE = "settings-permission-mode"

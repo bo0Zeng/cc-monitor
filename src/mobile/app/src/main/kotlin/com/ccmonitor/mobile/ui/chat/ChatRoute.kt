@@ -156,7 +156,6 @@ fun ChatRoute(
                 state = state,
                 onSend = vm::send,
                 // 等待态下的逃生动作，必须接：不接的话 `inputBlockedBy` 会连禁用一起关掉，只剩一条拦不住任何东西的提示。
-                onSendAnyway = vm::sendAnyway,
                 onRetrySend = vm::retry,
                 onStop = vm::stop,
                 onLoadOlder = vm::loadOlder,
@@ -246,9 +245,7 @@ private suspend fun startPipeFor(
 /**
  * 聊天面 VM 的取法。
  *
- * 参数按类型取，其中两个都是对话编号、含义不同：
- * [ChatSessionKey] 是本进程里的 `<hostId>/<sid>`（`ChatController` 的键），
- * [ClaudeSessionId] 是 daemon 与 pidfile 都认的 sid，跨通路信号汇按它索引；混用则信号恒 null 且不报错。
+ * 参数按类型取：[ChatSessionKey] 是本进程里的 `<hostId>/<sid>`（`ChatController` 的键）。
  */
 @Composable
 private fun rememberChatViewModel(
@@ -261,7 +258,6 @@ private fun rememberChatViewModel(
             ChatSessionKey(chatKey(hostId, sessionId)),
             sink,
             HostId(hostId),
-            ClaudeSessionId(sessionId),
         )
     }
 
