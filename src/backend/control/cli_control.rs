@@ -135,11 +135,11 @@ fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i
 }
 
 /// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
-pub fn refuse_stream_view(why: &str, tz: &crate::Tz) -> i32 {
-    let detail = why.to_string();
+pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
+    let detail = why.unwrap_or_default().to_string();
     let f = crate::stream::inbound::spec::Fail::new(
         "bad_args",
-        crate::common::contract::malformed(&format!("stream: {why}")),
+        crate::common::contract::malformed(&format!("stream: {detail}")),
     )
     .with_raw(Some(&detail));
     emit_failed(

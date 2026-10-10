@@ -268,9 +268,8 @@ async fn stream_loop(
         };
         let line = line.as_str();
 
-        let frame = unread
-            .take(line, &mut tally, &say_health)
-            .filter(|f| !bg.hides(f));
+        let frame = unread.take(line, &mut tally, &say_health);
+        let frame = frame.filter(|f| !bg.hides(f));
         // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则归档后迟到的行把 Tab 复活成僵尸 live。
         // SessionAdded / Hello / Overflow / 坏帧不作边界（多个小会话的 snapshot 才能聚成大批；行先于 Added 到达无妨：前端 ensureTab 见行即建）。
         // `session_state`（可重连 / 已结束的成品）同理：它说的「离开了」必须排在这个会话的行之后。
