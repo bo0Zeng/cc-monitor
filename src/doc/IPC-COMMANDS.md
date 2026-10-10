@@ -1245,12 +1245,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 这台没见过的会话要另给：哪一家 |
-| `rotation` | → | `"follow"` · `{"rule": id}` · `"custom"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的）· `{"custom":{…}}` |
+| `rotation` | → | `"follow"` · `"parent"`（跟随父会话：父按会话血缘填；有一个没有父或父是别的一家 ⇒ 整批 `no_parent`）· `{"rule": id}` · `"custom"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的）· `{"custom":{…}}` |
 | `sessions` | ← | 逐个结果 `{sid: {state:"done"} \| {state:"skipped", code}}` |
 | `sids` | → | 要改的会话 |
 | `start` | → | 起它的号 |
 
-码：`bad_args` · `failed` · `io_failed` · `no_such_rule`
+码：`bad_args` · `failed` · `io_failed` · `no_parent` · `no_such_rule`
 
 #### `rotation-switch`
 

@@ -24,6 +24,8 @@ export interface SelectOption {
   why?: string;
   /** 框上画的字（缺 ⇒ `label`）：面板里只写名字、框上要带上它是哪一类时用（`夜间` ⇒ `规则 夜间`）。 */
   shown?: string;
+  /** 合着时框里右侧那一格灰字（缺 ⇒ 同 `note`；`""` ⇒ 合着时不写）。 */
+  shownNote?: string;
   /** 面板里这一项右侧的灰字（摘要之类）。 */
   detail?: string;
   /** 面板里悬停 / 焦点停 300ms ⇒ 项右侧的只读小卡（`menu.ts` 的 `peek`）。 */
@@ -80,7 +82,7 @@ export function select(spec: SelectSpec): SelectHandle {
     const o = current();
     lead.replaceChildren(...(o?.lead ? [o.lead()] : []));
     text.textContent = o?.shown ?? o?.label ?? "";
-    note.textContent = o?.note ?? "";
+    note.textContent = o?.shownNote ?? o?.note ?? "";
     el.dataset.value = value;
   };
   const pick = (v: string): void => {

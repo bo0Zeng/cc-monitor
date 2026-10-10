@@ -1008,3 +1008,37 @@ fn the_relay_records_who_started_whom_from_the_origin_tail() {
         got.iter().map(|g| g.target.clone()).collect::<Vec<_>>()
     );
 }
+
+/// ★ 跟随父会话整趟：父会话用着规则「夜间」，在它里面起的会话（同一条地址、不同会话头）第一发就记成跟随父会话、按父那份走；
+/// 带 agent-id 头的 subagent 那一发不另起一条。
+#[test]
+fn a_session_started_inside_another_follows_its_rotation_from_the_first_request() {
+    let home = Home::new("lineage-follow");
+    let (up, _got) = spawn_judging_upstream(serves);
+    let relay = home.relay_tracing(up);
+    let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
+    assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
+    rotation::face_change(&RotationStore::at(Some(home.rotation_path())), |b| {
+        b.rules.insert(
+            "r_night000".into(),
+            rotation::Rule {
+                name: "夜间".into(),
+                rotation: rotation::Rotation {
+                    preempt: true,
+                    ..rotation::Rotation::default()
+                },
+                rev: 1,
+                updated_at: 0,
+            },
+        );
+        b.sessions.get_mut("s-owner").expect("owner").source =
+            rotation::Source::Rule("r_night000".into());
+    })
+    .expect("write");
+    assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
+    let book = RotationStore::at(Some(home.rotation_path())).now();
+    let kid = &book.sessions["s-kid"];
+    assert_eq!(kid.source, rotation::Source::Parent("s-owner".into()));
+    assert_eq!(book.rule_of(kid), Some("r_night000"));
+    assert!(book.rotation_of(kid).preempt);
+}

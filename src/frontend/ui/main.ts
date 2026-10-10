@@ -309,6 +309,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
     agentOf: (sid) => tabs.agentOf(sid),
+    openSession: (sid) => tabs.switchTo(sid),
+    canOpenSession: (sid) => tabs.snapshotSessions().some((x) => x.sessionId === sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
     openRules: (origin, rule) => void openSettingsWindow(undefined, dest.rulesOf(origin, rule)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),

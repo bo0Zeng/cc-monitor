@@ -264,8 +264,8 @@ pub fn segment_is_safe(seg: &str) -> bool {
 /// 拼 `/<前缀>/<seg1>/<seg2>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：
 /// 拼错一段的症状是中转回一个查不出来的 404，所以宁可当场拒）。
 ///
-/// 没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份 ⇒ 这条地址**不随会话变**，
-/// 中转从 agent 请求里自带的头认会话。
+/// 没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份，中转从 agent 请求里自带的头认会话。
+/// 起会话那一跳另在尾上拼一段来处（[`with_origin`]，会话血缘）：那是一次起会话的号，不是会话 id，也不进路由键。
 pub fn route_path(mode: RouteMode, seg1: &str, seg2: &str) -> Option<String> {
     (segment_is_safe(seg1) && segment_is_safe(seg2))
         .then(|| format!("{}{seg1}/{seg2}", mode.prefix()))

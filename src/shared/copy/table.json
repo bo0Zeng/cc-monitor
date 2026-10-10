@@ -20770,6 +20770,12 @@
       "zh": "默认规则 · 先设别的为默认",
       "args": []
     },
+    "beRotation.parent.none": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无父会话 · 不是在别的会话里起的",
+      "args": []
+    },
     "beLineage.write.noParent": {
       "kind": "error",
       "role": "原因格",
@@ -21627,6 +21633,42 @@
       "kind": "control",
       "role": "标签",
       "zh": "跟随默认",
+      "args": []
+    },
+    "rot.src.parent": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "跟随父会话",
+      "args": []
+    },
+    "rot.src.leadParent": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随父会话 {name} · 规则 {rule}",
+      "args": ["name", "rule"]
+    },
+    "rot.src.leadParentOwn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随父会话 {name} · 本会话",
+      "args": ["name"]
+    },
+    "rot.src.leadParentMissing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随父会话 {name} · 父会话未经中转 · 按默认 {rule}",
+      "args": ["name", "rule"]
+    },
+    "rot.src.openParent": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "打开父会话",
+      "args": []
+    },
+    "rot.src.openParentOff": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "父会话不在会话列表里",
       "args": []
     },
     "rot.src.followOf": {
