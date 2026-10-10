@@ -87,6 +87,9 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
+    ("build.rs", "manifest_for_every_artifact", None,
+     "往 `OUT_DIR` 写一行 `.rc`（指向 `windows/app.manifest`），编成 Windows 进程清单资源，\
+          链进本包每一个产物（测试程序也要）。写的是 cargo 自己的构建目录，不碰用户环境"),
     // ── 这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。要求「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
@@ -431,6 +434,11 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnDeployment,
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),
+    (
+        "build.rs",
+        "manifest_for_every_artifact",
+        Lands::BuildOutput,
+    ),
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_tty_file", Lands::OwnState),
     ("console.rs", "tty_title", Lands::TerminalDevice),

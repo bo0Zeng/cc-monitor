@@ -1855,6 +1855,11 @@ mod remote_config_tests;
 #[path = "../../../../tests/frontend/shell/lib_window_lifecycle_tests.rs"]
 mod window_lifecycle_tests;
 
+// Windows 应用清单进了本包每一个链接产物（`build.rs::manifest_for_every_artifact`），测试程序读回自己那一份。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/lib_app_manifest_tests.rs"]
+mod app_manifest_tests;
+
 // `INVARIANTS §47` / `§49` 的人群判据（盘上全集派生，与登记表两向相等）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_invariant_population_tests.rs"]
