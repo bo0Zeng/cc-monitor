@@ -419,7 +419,7 @@ async fn stream_loop(
             }
             Some(InboundFrame::SessionBranch { sid, off, .. }) => {
                 crate::session_book::feed(BookIn::Branch {
-                    origin: host_label.clone(),
+                    origin: crate::origin::Origin(host_label.clone()),
                     sid,
                     off,
                 });

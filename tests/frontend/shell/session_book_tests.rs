@@ -120,7 +120,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
                 Out::Status { sid, .. } => format!("status {sid}"),
                 Out::Runs { origin, sid, .. } => format!("runs {origin}/{sid}"),
-                Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
+                Out::Branch { origin, sid, .. } => format!("branch {}/{sid}", origin.as_wire_str()),
             })
             .collect()
     };
@@ -261,7 +261,7 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
 fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     let off = |ids: &str| crate::ui_contract::RecordBody::from_json(ids.to_string()).unwrap();
     let branch = |s: &str, ids: &str| In::Branch {
-        origin: "pi".into(),
+        origin: crate::origin::Origin("pi".into()),
         sid: s.into(),
         off: off(ids),
     };
@@ -271,7 +271,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     assert_eq!(
         b.step(branch("a", r#"["u1"]"#)),
         vec![Out::Branch {
-            origin: "pi".into(),
+            origin: crate::origin::Origin("pi".into()),
             sid: "a".into(),
             off: off(r#"["u1"]"#)
         }]

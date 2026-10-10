@@ -178,7 +178,7 @@ pub(crate) fn local_product(
             }),
         LocalItem::Frame(InboundFrame::SessionBranch { sid, off, .. }) => (!hidden.contains(sid))
             .then(|| BookIn::Branch {
-                origin: origin(),
+                origin: crate::origin::Origin::local(),
                 sid: sid.clone(),
                 off: off.clone(),
             }),
