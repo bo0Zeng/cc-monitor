@@ -43,13 +43,14 @@ const LEDGER: QuotaRead = {
   path: null,
   now: NOW,
   accounts: [
-    { agent: "claude-code", account: "personal", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [["personal", copyText("acct.kind.sub")], ["5h", "63%", "↻13:50", "+1h50m"], ["7d", "41%", "↻10-07 12:00", "+3d"], [copyText("acct.row.over"), "—"], [copyText("acct.row.seen"), "11:58"]].map((r) => r.map((text) => ({ text, tone: "plain" as const }))), warm: { act: "wait" as const, text: "" }, ...quota() },
-    { agent: "claude-code", account: "team", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [], warm: { act: "wait" as const, text: "" }, ...quota({ slots: [{ slot: "5h", pct: 4, resetsAt: NOW + 5400, resetsAtText: "13:30", text: "4%", tone: "plain" }] }) },
-    { agent: "claude-code", account: "api", seenAt: NOW - 120, seenAtText: "11:58", reading: { resetsAt: NOW + 720, resetsAtText: "12:12" }, rows: [], warm: { act: "wait" as const, text: "" }, ...quota({ kind: "api", state: "refused", slots: [], limiting: undefined }) },
+    { agent: "claude-code", account: "personal", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [["personal", copyText("acct.kind.sub")], ["5h", "63%", "↻13:50", "+1h50m"], ["7d", "41%", "↻10-07 12:00", "+3d"], [copyText("acct.row.over"), "—"], [copyText("acct.row.seen"), "11:58"]].map((r) => r.map((text) => ({ text, tone: "plain" as const }))), warm: { act: "wait" as const, text: "" }, fiveHour: "5h 63%", ...quota() },
+    { agent: "claude-code", account: "team", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: "5h 4%", ...quota({ slots: [{ slot: "5h", pct: 4, resetsAt: NOW + 5400, resetsAtText: "13:30", text: "4%", tone: "plain" }] }) },
+    { agent: "claude-code", account: "api", seenAt: NOW - 120, seenAtText: "11:58", reading: { resetsAt: NOW + 720, resetsAtText: "12:12" }, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: null, ...quota({ kind: "api", state: "refused", slots: [], limiting: undefined }) },
   ],
   unseen: [],
   usableNow: ["personal", "team"],
   earliestReturn: null,
+  fiveHour: null,
 };
 
 describe("状态栏账号按钮：各态", () => {
@@ -157,11 +158,12 @@ describe("记录 · 提示条 · 标签页", () => {
 });
 
 describe("每号 5h 那一格（恢复菜单 · 新建会话的账号项）", () => {
-  it("额度账读不出 ⇒ 那一格说「读不到」，不是悄悄不出（原因与复制详情在账号面板那一条）", () => {
-    const r = { state: "unreadable", reason: "x", detail: null, path: null, now: 0, accounts: [], unseen: [], usableNow: [], earliestReturn: null } as QuotaRead;
-    expect(fiveHourCell(r, "claude-code", "work")).toBe(
-      copyText("resumeMenu.account.quota", { slot: copyText("acct.slot.fiveHour"), value: copyText("acct.val.unreadable") }),
-    );
+  it("照抄核心写好的那一格：读不出 ⇒ 顶上那一格；读得出 ⇒ 那个号那一格；按量号 / 账上没有 ⇒ 不出", () => {
+    const r = { state: "unreadable", reason: "x", detail: null, path: null, now: 0, accounts: [], unseen: [], usableNow: [], earliestReturn: null, fiveHour: "那台写的读不到" } as QuotaRead;
+    expect(fiveHourCell(r, "claude-code", "work")).toBe("那台写的读不到");
+    expect(fiveHourCell(LEDGER, "claude-code", "personal")).toBe("5h 63%");
+    expect(fiveHourCell(LEDGER, "claude-code", "api")).toBeNull();
+    expect(fiveHourCell(LEDGER, "claude-code", "nobody")).toBeNull();
     expect(fiveHourCell(null, "claude-code", "work"), "没问过 ⇒ 照旧不出").toBeNull();
   });
 });

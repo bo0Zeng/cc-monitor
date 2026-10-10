@@ -73,9 +73,9 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
 
 function acct(p: Partial<Account>): Account {
-  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, ...p };
+  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, ...p };
 }
-const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", home: "/h" };
+const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", effectiveDefault: "work", home: "/h" };
 function state(p: Partial<AccountsState> = {}): AccountsState {
   return {
     origin: "devbox",
@@ -281,7 +281,7 @@ describe("账号表", () => {
     document.body.replaceChildren(s.element);
     s.loadNow();
     await settle();
-    fetchAccounts.mockResolvedValue(state({ origin: "gpu-01", accounts: [acct({ name: "team", isDefault: true })] }));
+    fetchAccounts.mockResolvedValue(state({ origin: "gpu-01", meta: { ...META, effectiveDefault: "team" }, accounts: [acct({ name: "team", isDefault: true })] }));
     setCurrentMachine("gpu-01");
     expect(s.element.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: "gpu-01" }));
     await settle();
@@ -369,7 +369,7 @@ describe("各态", () => {
 
 describe("登录与指路", () => {
   it("开不了终端窗口 ⇒ 那一行说「本机无法开终端窗口」＋［在 tmux 里登录］，点了用这个号起 tmux 会话", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     loginInTmux.mockResolvedValue(undefined);
     const el = await mount();
@@ -387,7 +387,7 @@ describe("登录与指路", () => {
 
   it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］", async () => {
     noteMachineTmux("devbox", false);
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     const el = await mount();
     buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();

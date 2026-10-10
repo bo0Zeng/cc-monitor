@@ -580,18 +580,9 @@ export function restText(c: CapAt): string {
   return copyText("rot.cap.rest", { what });
 }
 
-/** 后端那一格的短码 ⇒ 红字。 */
-function errText(e: CellError): string {
-  switch (e.code) {
-    case "same":
-      return copyText("rot.capErr.same");
-    case "overlap":
-      return copyText("rot.capErr.overlap", { i: (e.with ?? 0) + 1 });
-    case "range":
-      return copyText("rot.capErr.range");
-    default:
-      return copyText("rot.capErr.time");
-  }
+/** 名称那一格的错（核心写好的那一句）；那台拒了却没点名称这一格 ⇒「未保存」。规则列表改名 · 规则编辑器 · 新建规则同读这一处。 */
+export function nameError(errors: CellError[]): string {
+  return errors.find((x) => x.cell === "name")?.said ?? copyText("rot.save.failed");
 }
 
 /**
@@ -709,7 +700,7 @@ export function openCapEditor(
       for (const e of cellErr(null)) {
         n.dataset.error = "true";
         root.appendChild(
-          el("div", (e) => (e.className = s.rotErr), errText(e)),
+          el("div", (e) => (e.className = s.rotErr), e.said),
         );
       }
     }
@@ -779,7 +770,7 @@ export function openCapEditor(
               : [f, t])
             box.dataset.error = "true";
           root.appendChild(
-            el("div", (e) => (e.className = s.rotErr), errText(e)),
+            el("div", (e) => (e.className = s.rotErr), e.said),
           );
         }
       });
@@ -824,7 +815,8 @@ export function openCapEditor(
   const commit = async (): Promise<void> => {
     const v = draft();
     if (v === null) {
-      errors = [{ cell: `cap.${account}.${w}`, code: "range" }];
+      // 框里填的不是数（还交不了核心）⇒ 就地标这一格，那一句与核心「越界」那一句同一条。
+      errors = [{ cell: `cap.${account}.${w}`, code: "range", said: copyText("rot.capErr.range") }];
       paint();
       return;
     }
@@ -956,16 +948,7 @@ export function openSaveAsRule(
       return;
     }
     if (got.state === "refused") {
-      const e = got.errors.find((x) => x.cell === "name");
-      name.setError(
-        e?.code === "dup"
-          ? copyText("rot.save.dup")
-          : e?.code === "tooLong"
-            ? copyText("rot.save.tooLong")
-            : e?.code === "empty"
-              ? copyText("rot.save.empty")
-              : copyText("rot.save.failed"),
-      );
+      name.setError(nameError(got.errors));
       return;
     }
     name.setError(copyText("rot.save.failed"));

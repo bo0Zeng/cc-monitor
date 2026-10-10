@@ -693,6 +693,12 @@ pub(crate) const PRODUCTS: &[Product] = &[
         specimens: specimens::session_removed,
         frozen: false,
     },
+    Product {
+        name: "cell_error",
+        tags: &[],
+        specimens: specimens::cell_error,
+        frozen: false,
+    },
 ];
 
 /// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, frozen, cells: [{path, kind, type}]}], pending: [{product, path, kind}]}`。
@@ -1023,6 +1029,15 @@ mod specimens {
     }
 
     /// `sessions-needs` 的一行：会话 id ＋ 那一份 `needs`（与 `facts.needs` 同一个类型）。
+    /// 轮换编辑器里一格填错了（`rotation-rule-save` · `rotation-plan` 的 `errors[]`）：那一句 `said` 由核心写。
+    pub(super) fn cell_error() -> Vec<Specimen> {
+        vec![node_of(&crate::accounts::quota::rotation::cell_err(
+            s("cap.b.*[1]"),
+            "overlap",
+            Some(0),
+        ))]
+    }
+
     pub(super) fn needs_row() -> Vec<Specimen> {
         vec![node_of(&crate::observe::accounts_query::NeedsRow {
             sid: s("s"),

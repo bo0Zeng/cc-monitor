@@ -1070,6 +1070,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
+| `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
@@ -1310,9 +1311,9 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行 |
+| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`） |
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`） |
-| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, home}` |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`） |
 | `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
 
 码：`bad_args` · `too_large`
@@ -3894,7 +3895,7 @@ cc-bus 钩子诊断。
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
-| `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn}`；没启用多账号 ⇒ `enabled:false`、退出 0 |
+| `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable}`；没启用多账号 ⇒ `enabled:false`、退出 0 |
 | `--list-projects` | 项目清单：每行 `{dirName, projectPath, sessionCount, lastActivityMs}`；工作目录在 `~/.cc-monitor/autostart/` 下的会话不出 |
 | `--list-sessions` `<project_dir>` | 一个项目的会话：每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}` |
 | `--list-user-inputs` `[--from <offset>] <jsonl>` | 「你说过的话」：头 `{kind:"user_inputs",v:1,from}` · 每条 `{uuid, timestamp, excerpt}`（对话序）· 尾 `{kind:"user_inputs_end",count,end}`；`end` 是下次增量的 `--from`；`offset` 过了文件尾 ⇒ 退出 2 |

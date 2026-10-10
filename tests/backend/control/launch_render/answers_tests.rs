@@ -8,9 +8,9 @@ use crate::control::launch_account::{Facts, Library};
 fn facts_of<T>(f: impl FnOnce(&Facts) -> T) -> T {
     let library = || {
         Library::of_product(
-            &serde_json::json!({ "meta": {"enabled": true}, "accounts": [{
+            &serde_json::json!({ "meta": {"enabled": true, "effectiveDefault": "z"}, "accounts": [{
                 "name": "z", "configDir": "/h/z", "isDefault": true, "mode": "isolated",
-                "exists": true, "authReady": true,
+                "exists": true, "authReady": true, "selectable": true,
             }]}),
         )
     };

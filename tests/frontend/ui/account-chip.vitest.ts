@@ -72,10 +72,12 @@ function acct(p: Partial<Account>): Account {
     loggedIn: true,
     authKind: "subscription",
     authReady: true,
+    selectable: true,
     ...p,
   };
 }
-function state(p: Partial<AccountsState>): AccountsState {
+/** `def` ＝ 那台写好的默认号（`meta.effectiveDefault`，夹具照成品给）。 */
+function state(p: Partial<AccountsState>, def: string | null = null): AccountsState {
   return {
     origin: "devbox",
     available: true,
@@ -90,6 +92,7 @@ function state(p: Partial<AccountsState>): AccountsState {
       sharedStore: null,
       count: 0,
       error: null,
+      effectiveDefault: def,
     },
     accounts: [],
     ...p,
@@ -127,11 +130,11 @@ describe("chipLabel", () => {
   });
   it("未启用 → 未启用", () => {
     expect(
-      chipLabel(state({ meta: { enabled: false, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 0, error: null } })),
+      chipLabel(state({ meta: { enabled: false, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 0, error: null, effectiveDefault: null } })),
     ).toBe(copyText("accountChip.label.disabled"));
   });
   it("ready → 显示那台清单里的默认号（isDefault）", () => {
-    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] });
+    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] }, "b");
     expect(chipLabel(s)).toBe("b");
   });
 });
@@ -153,7 +156,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
   it("下拉列出账号 + 点非当前项 → 问那台 `accounts-set-default` 切这台的默认号（DoD 正路）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }),
+      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"),
     );
     const setDef = vi.spyOn(opsMod, "accountsSetDefault").mockResolvedValue({} as never);
     vi.spyOn(readsMod, "invalidateAccountsCache").mockImplementation(() => {});
@@ -183,7 +186,7 @@ describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
   };
   async function mounted(): Promise<AccountChip> {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     const chip = new AccountChip({ openSettings: () => {} });
     document.body.appendChild(chip.element);
     await chip.refresh();
@@ -239,23 +242,23 @@ describe("account-ux U8 chip 头像休眠", () => {
 
   it("≥2 可选账号 → 显彩色头像", async () => {
     const chip = await mountWith(
-      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }),
+      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"),
     );
     expect(icon(chip).querySelector(".acct-avatar")).not.toBeNull();
   });
 
   // chip 不再自存一份账号清单：store 里它那台换了一份（本窗口任何一次取回），它同一拍重画，不等自己 refresh。
   it("★ 〔GAP1〕store 里 chip 那台的账号清单换了 ⇒ 同一拍重画（不调 refresh、不再取）", async () => {
-    const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }));
+    const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     expect(chip.element.textContent).toContain("wei");
     const fetches = fetchAccountsMock.mock.calls.length;
-    putAccounts("devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }));
+    putAccounts("devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
     expect(chip.element.textContent).toContain("amy");
     expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });
 
   it("只有 1 个可选账号 → 退回账号图标（颜色此时区分不了任何东西）", async () => {
-    const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true })] }));
+    const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true })] }, "wei"));
     expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
     expect(icon(chip).textContent, "代码画的 Phosphor，不是字符").toBe("");
     expect(icon(chip).querySelector<SVGElement>("svg")?.dataset.icon).toBe("account");
@@ -264,8 +267,8 @@ describe("account-ux U8 chip 头像休眠", () => {
   it("2 个账号但只有 1 个可选 → 仍休眠（数可选数，不是总数）", async () => {
     const chip = await mountWith(
       state({
-        accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy", loggedIn: false, authReady: false })],
-      }),
+        accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy", loggedIn: false, authReady: false, selectable: false })],
+      }, "wei"),
     );
     expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
   });
@@ -279,7 +282,7 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
   it("展开菜单不发任何 invoke，且没有「刷新用量」这个动作", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }),
+      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"),
     );
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
@@ -368,7 +371,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
   });
 
   it("Y3 阴性对照①：in-place ⇒「逃生口」", async () => {
-    const esc = acct({ name: "esc", mode: "in-place" });
+    const esc = acct({ name: "esc", mode: "in-place", selectable: false });
     const items = await menuRows([esc, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "esc");
     expect(statusOf(row)).toBe(copyText("accounts.badge.inPlace"));
@@ -381,7 +384,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
   });
 
   it("Y3 阴性对照②：订阅号缺凭据 ⇒ 仍是「未登录」那一档（没被这次改动一起放宽）", async () => {
-    const old = acct({ name: "old", loggedIn: false, authReady: false });
+    const old = acct({ name: "old", loggedIn: false, authReady: false, selectable: false });
     const items = await menuRows([old, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "old");
     expect(statusOf(row)).toBe(copyText("accounts.badge.notSignedIn"));
@@ -430,8 +433,8 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     // `text`（比如为了让 chip「看起来像旧版」），下面 `not.toBe("未登录 ⚠")` 当场红。
     // 那不再是 delta 登记，是一条**反悔要显式**的护栏。同理第二句钉住 in-place 那句 title
     // 不许悄悄退回旧文案（要退就得改这一行，那是显式动作）。
-    const esc = acct({ name: "esc", mode: "in-place" });
-    const old = acct({ name: "old", loggedIn: false, authReady: false });
+    const esc = acct({ name: "esc", mode: "in-place", selectable: false });
+    const old = acct({ name: "old", loggedIn: false, authReady: false, selectable: false });
     const items = await menuRows([esc, old], "old");
     // Δ① text：⚠ 没了
     expect(statusOf(rowOf(items, "old"))).not.toBe(`${copyText("accounts.badge.notSignedIn")} ⚠`);
@@ -582,7 +585,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
-      state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }),
+      state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }, "acct-a"),
     );
     vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
@@ -652,7 +655,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     const A = acct({ name: "acct-a", configDir: "/h/.claude-alt/acct-a" });
     const B = acct({ name: "acct-b", configDir: "/h/.claude-alt/acct-b" });
     // 阴性侧就在同一趟里：`exists:false` 那个号两边都不该出现。
-    const gone = acct({ name: "acct-gone", configDir: "/h/.claude-alt/acct-gone", exists: false });
+    const gone = acct({ name: "acct-gone", configDir: "/h/.claude-alt/acct-gone", exists: false, selectable: false });
     const chip = await localChip([A, B, gone], "acct-b");
     const menu = await pickableInMenu(chip);
     const bar = pickableInCommandBar(chip);
@@ -672,7 +675,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ host: "hostA" })] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z", isDefault: true, configDir: "/h/.claude-alt/z" })] }),
+      state({ accounts: [acct({ name: "z", isDefault: true, configDir: "/h/.claude-alt/z" })] }, "z"),
     );
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();

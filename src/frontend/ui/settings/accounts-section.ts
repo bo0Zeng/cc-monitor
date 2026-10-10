@@ -14,7 +14,7 @@ import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
 import { machineHasTmux } from "../resume-defaults";
-import { accountRowKind, deriveUi, effectiveDefault, type Account, type AccountsState } from "../accounts";
+import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
@@ -255,8 +255,8 @@ export class AccountsSection {
         : copyText("acctPage.offline.noLast", { machine, why: s.error ?? "" });
       out.push(banner("warn", text, [retry]));
       if (last && last.accounts.length > 0) {
-        const def = last.accounts.find((a) => a.isDefault) ?? last.accounts[0];
-        this.subEl.textContent = copyText("acctPage.head.default", { name: def.name });
+        const def = last.meta.effectiveDefault;
+        this.subEl.textContent = def === null ? "" : copyText("acctPage.head.default", { name: def });
         out.push(this.table({ ...f, state: { ...s, meta: last.meta, accounts: last.accounts } }, true));
       }
       this.body.replaceChildren(...out);
@@ -276,7 +276,7 @@ export class AccountsSection {
       this.body.replaceChildren(...out);
       return;
     }
-    const def = effectiveDefault(s);
+    const def = defaultAccount(s);
     this.subEl.textContent = def ? copyText("acctPage.head.default", { name: def.name }) : "";
     const v = this.verifyBar(f);
     if (v) out.push(v);
@@ -451,7 +451,8 @@ export class AccountsSection {
     const nm = document.createElement("span");
     nm.textContent = a.name;
     line1.appendChild(nm);
-    if (a.isDefault) line1.appendChild(tag(copyText("acctPage.row.default")));
+    const isDef = a.name === f.state.meta?.effectiveDefault;
+    if (isDef) line1.appendChild(tag(copyText("acctPage.row.default")));
     const waiting = this.waiting.has(key) && accountRowKind(a) === "notLoggedIn";
     if (waiting) line1.appendChild(spinner());
     if (q?.login === "needsKey") {
@@ -486,7 +487,7 @@ export class AccountsSection {
         if (machineHasTmux(origin) !== false) act.appendChild(button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
       } else if (waiting) {
         act.appendChild(button({ label: copyText("acctPage.login.reopen"), size: "compact", onClick: stop(() => void this.login(origin, a)) }));
-      } else if (!a.isDefault) {
+      } else if (!isDef) {
         const setDef = button({ label: copyText("acctPage.row.setDefault"), size: "compact", onClick: stop(() => void this.setDefault(origin, a)) });
         setDef.classList.add("acct-row-hoverbtn");
         act.appendChild(setDef);
@@ -525,7 +526,7 @@ export class AccountsSection {
     const origin = f.origin;
     const off = readonly ? { enabled: false, title: copyText("acctPage.offline.hover") } : {};
     const items: MenuItem[] = [];
-    if (!a.isDefault) items.push({ label: copyText("acctPage.row.setDefault"), onClick: () => void this.setDefault(origin, a), ...off });
+    if (a.name !== f.state.meta?.effectiveDefault) items.push({ label: copyText("acctPage.row.setDefault"), onClick: () => void this.setDefault(origin, a), ...off });
     if (accountRowKind(a) === "apikey") items.push({ label: copyText("acctPage.menu.changeKey"), onClick: () => this.openDetail(a.name), ...off });
     else if (a.configDir !== null) items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => void this.login(origin, a), ...off });
     const cmds = f.commands.get(a.name) ?? [];

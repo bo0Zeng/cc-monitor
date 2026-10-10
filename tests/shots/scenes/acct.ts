@@ -5,6 +5,7 @@
  * 假后端答 `quota-read` · `rotation-rules-read` · `rotation-session-read/-set` · `rotation-switch`（形状照 IPC-PROTOCOL.md 与生成的类型），
  * 号名是编的。时刻按页里此刻的钟现算（「还有多久」只在画的那一刻算）。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import { fakePlan } from "../fake/timeline";
 import type { OpHandler, World } from "../fake/types";
@@ -214,6 +215,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         loggedIn: a.kind === "sub",
         authKind: a.kind === "api" ? "api-key" : "subscription",
         authReady: true,
+        selectable: true,
         keyMasked: a.kind === "api" ? "••••••••a1b2" : null,
         baseUrl: a.kind === "api" ? "https://api.example.com" : null,
       })),
@@ -227,6 +229,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         error: null,
         unsupported: null,
         nextDefault: null,
+        effectiveDefault: aw.accounts[0]?.account ?? null, // 夹具第一个标了默认（isDefault: i === 0）
         home: "/home/user",
       },
       notice: null,
@@ -398,7 +401,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         : { errors: [] },
     "rotation-rule-save": (_o, req) => ({
       state: "refused",
-      errors: [{ cell: "name", code: "dup" }],
+      errors: [{ cell: "name", code: "dup", said: copyText("rot.save.dup") }],
       ...(req.name === "x" ? {} : {}),
     }),
     "rotation-switch": (_o, req) => {

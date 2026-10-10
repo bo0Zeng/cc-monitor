@@ -6,6 +6,7 @@
  * `tests/frontend/shell/config_tests.rs::the_golden_cases_hold` 跑那边）⇒ 用它的测试看到的「盘上终态」就是 Rust 会落的那份。
  */
 import { vi } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 export type Edit =
   | { op: "set"; path: string[]; value: unknown }
@@ -167,7 +168,18 @@ export async function mockedConfigModule(
  * 把补丁应用到 `fakeCfg.load()` 那一份上，按名字不重 · 端口 1–65535 · 地址 / 用户非空判第一处。
  * 规则本身的判据在 Rust 那一侧（`tests/frontend/shell/config_tests.rs`）。
  */
-export async function fakeMachineTableTry(edits: readonly Edit[]): Promise<{ code: string; name: string } | null> {
+/** 壳那一侧写好的那一句（`config.rs::MachineFault::new`，键同；这里只为替身回包带上那一格）。 */
+const faultOf = (code: string, name: string): { code: string; name: string; said: string } => ({
+  code,
+  name,
+  said:
+    code === "name_taken" ? copyText("addMachine.err.taken", { name })
+    : code === "port" ? copyText("addMachine.err.port")
+    : code === "no_host" ? copyText("addMachine.err.host")
+    : copyText("addMachine.err.user"),
+});
+
+export async function fakeMachineTableTry(edits: readonly Edit[]): Promise<{ code: string; name: string; said: string } | null> {
   const base = ((await fakeCfg.load()) ?? {}) as Record<string, unknown>;
   let doc: { remote?: { hosts?: Record<string, unknown>[] } };
   try {
@@ -175,18 +187,18 @@ export async function fakeMachineTableTry(edits: readonly Edit[]): Promise<{ cod
   } catch (e) {
     // 往机器表里加一台、同名的已在 ⇒ 同名（同壳那一侧）；别的认不出留给写口去拒。
     const ins = edits.find((x) => x.op === "insertin" && x.path[0] === "remote");
-    if (e instanceof ConfigRefused && e.kind === "element_exists" && ins && "where" in ins) return { code: "name_taken", name: ins.where[0]?.equals ?? "" };
+    if (e instanceof ConfigRefused && e.kind === "element_exists" && ins && "where" in ins) return faultOf("name_taken", ins.where[0]?.equals ?? "");
     return null;
   }
   const seen = new Set<string>();
   for (const h of doc.remote?.hosts ?? []) {
     const t = (k: string) => String(h[k] ?? "").trim();
     const name = t("label") || t("host");
-    if (t("host") === "") return { code: "no_host", name };
-    if (t("user") === "") return { code: "no_user", name };
+    if (t("host") === "") return faultOf("no_host", name);
+    if (t("user") === "") return faultOf("no_user", name);
     const port = h.port === undefined || h.port === null ? 22 : Number(h.port);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) return { code: "port", name };
-    if (seen.has(name)) return { code: "name_taken", name };
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return faultOf("port", name);
+    if (seen.has(name)) return faultOf("name_taken", name);
     seen.add(name);
   }
   return null;

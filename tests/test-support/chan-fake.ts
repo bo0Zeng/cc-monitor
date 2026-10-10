@@ -376,6 +376,8 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.loggedIn = a.loggedIn ?? false;
   out.authKind = a.authKind ?? "subscription";
   out.authReady = a.authReady ?? out.loggedIn;
+  // 能不能选是那台后端写好的格（`acct_core::account_selectable`）：夹具不写 ⇒ 当选得了（这里不另判，选不了的判据自己写 `selectable: false`）。
+  out.selectable = a.selectable ?? true;
   out.keyMasked = a.keyMasked ?? null;
   out.baseUrl = a.baseUrl ?? null;
   return out;
@@ -408,6 +410,8 @@ export async function accountReadReply(which: AccountRead, res: unknown): Promis
     error: m?.error ?? null,
     unsupported: m?.unsupported ?? null,
     nextDefault: m?.nextDefault ?? null,
+    // 默认号是那台后端写好的格（`acct_core::effective_default`）：夹具不写 ⇒ 没有。
+    effectiveDefault: m?.effectiveDefault ?? null,
     home: m?.home ?? null,
   };
   return chanReply({ meta, accounts, notice: r.notice ?? null });

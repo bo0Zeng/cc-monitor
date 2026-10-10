@@ -37,11 +37,16 @@ export function quotaFace(v: unknown): unknown {
       ? [head, [cell(copyText("acct.slot.both")), cell(copyText("acct.val.none")), cell(copyText("acct.val.noLimit"))], [cell(copyText("acct.row.seen")), cell(String(a.seenAtText ?? ""))]]
       : [head, slotRow(a, "5h", now), slotRow(a, "7d", now), [cell(copyText("acct.row.over")), cell(copyText("acct.val.none"))], [cell(copyText("acct.row.seen")), cell(String(a.seenAtText ?? ""))]];
     a.warm ??= { act: "wait", text: "" };
+    // 「5h 那一格」（真的那一处 `faces/quota_rows.rs::with_rows`）。
+    const five = ((a.slots as Obj[] | undefined) ?? []).find((x) => x.slot === "5h");
+    a.fiveHour ??= a.kind === "api" ? null : copyText("resumeMenu.account.quota", { slot: copyText("acct.slot.fiveHour"), value: String(five?.text ?? copyText("acct.val.none")) });
   }
   for (const u of (q.unseen as Obj[] | undefined) ?? []) {
     u.rows ??= [[cell(String(u.account)), cell(copyText(u.kind === "api" ? "acct.kind.api" : "acct.kind.sub"))], [cell(copyText("acct.slot.fiveHour")), cell(copyText("acct.val.none")), cell(copyText("acct.seen.none"))]];
     u.warm ??= { act: "send", text: "" };
+    u.fiveHour ??= null;
   }
+  q.fiveHour ??= q.state === "unreadable" ? copyText("resumeMenu.account.quota", { slot: copyText("acct.slot.fiveHour"), value: copyText("acct.val.unreadable") }) : null;
   return q;
 }
 

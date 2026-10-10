@@ -35,6 +35,7 @@ import {
   withHow,
   type How,
   type Row,
+  nameError,
 } from "../rot-editor";
 import { accountAvatarEl } from "../account-color";
 import { timelineAxis } from "../rot-timeline";
@@ -215,7 +216,7 @@ export class RuleEditor {
       });
     } catch (e) {
       console.warn("[rules] rotation-rule-save 失败：", e);
-      this.errors = [{ cell: "rotation", code: "io" } as CellError];
+      this.errors = [{ cell: "rotation", code: "io", said: copyText("rot.save.failed") }];
       this.paint();
       return;
     }
@@ -991,14 +992,3 @@ export class RuleEditor {
   }
 }
 
-/** 名称那一格的错 ⇒ 红字（与列表改名同一套）。 */
-function nameError(errors: CellError[]): string {
-  const e = errors.find((x) => x.cell === "name");
-  return e?.code === "dup"
-    ? copyText("rot.save.dup")
-    : e?.code === "tooLong"
-      ? copyText("rot.save.tooLong")
-      : e?.code === "empty"
-        ? copyText("rot.save.empty")
-        : copyText("rot.save.failed");
-}

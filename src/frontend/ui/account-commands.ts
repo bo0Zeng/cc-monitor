@@ -9,7 +9,7 @@
 //
 // F09：对齐类命令（acct-align-active/acct-align-all）随对齐全套一并删除——批量/一键对齐是
 // 组合层便利，不做等价替代，用户改走 tab 右键的 Restart flyout 逐会话操作。
-import { isSelectable, type Account } from "./accounts";
+import type { Account } from "./accounts";
 import { copyText } from "./copy-table";
 
 /** 与 views/command-bar.ts 的 Command 结构对齐（这里不 import 以免把 DOM 依赖拖进纯函数模块）。 */
@@ -43,7 +43,7 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
 
   if (snapshot) {
     for (const a of snapshot.accounts) {
-      if (!isSelectable(a)) continue; // 单一来源，随 isSelectable 演进
+      if (!a.selectable) continue; // 那台后端写好的那一格（`acct_core::account_selectable`）
       const isCur = snapshot.defaultName === a.name;
       cmds.push({
         id: `acct-default-${a.name}`,

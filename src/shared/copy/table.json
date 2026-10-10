@@ -7355,18 +7355,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "machineCard.field.nameTaken": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已有「{name}」 · 未保存",
-      "args": ["name"]
-    },
-    "machineCard.field.portRange": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "端口限 1–65535 · 未保存",
-      "args": []
-    },
     "machineCard.field.resumeCmd": {
       "kind": "control",
       "role": "标签",

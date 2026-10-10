@@ -227,19 +227,13 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   let verdict: { asked: string; fault: MachineFault | null } | null = null;
   let seq = 0;
 
-  const faultSaid = (f: MachineFault): string =>
-    f.code === "name_taken" ? copyText("addMachine.err.taken", { name: f.name })
-    : f.code === "port" ? copyText("addMachine.err.port")
-    : f.code === "no_host" ? copyText("addMachine.err.host")
-    : copyText("addMachine.err.user");
-
   /** 这一框里要加的那几台，以及第一处错（`null` ⇒ 可以加）。错由后端的回答定；还没答回来 ⇒ 先挡着。 */
   const check = (): { cfgs: RemoteHostConfig[]; why: string | null } => {
     const cfgs = tab === "manual" ? [manualCfg()] : pickedCfgs();
     if (cfgs.length === 0) return { cfgs, why: copyText("addMachine.err.none") };
     const fault = verdict !== null && verdict.asked === JSON.stringify(cfgs) ? verdict.fault : undefined;
     if (fault === undefined) return { cfgs, why: copyText("addMachine.err.checking") };
-    return { cfgs, why: fault === null ? null : faultSaid(fault) };
+    return { cfgs, why: fault === null ? null : fault.said };
   };
 
   /** 把后端那一处落到那一格下面（名字撞了 · 端口越界才落格；地址 / 用户空着只挡按钮，不在没碰过的格下标红）。 */
@@ -249,11 +243,11 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
     fPort.setError(null);
     if (fault === null) return;
     if (tab === "manual") {
-      if (fault.code === "name_taken") fName.setError(faultSaid(fault));
-      if (fault.code === "port" && fPort.input.value.trim() !== "") fPort.setError(faultSaid(fault));
+      if (fault.code === "name_taken") fName.setError(fault.said);
+      if (fault.code === "port" && fPort.input.value.trim() !== "") fPort.setError(fault.said);
       return;
     }
-    if (fault.code === "name_taken") rows.find((r) => !r.split && r.name?.input.value.trim() === fault.name)?.name?.setError(faultSaid(fault));
+    if (fault.code === "name_taken") rows.find((r) => !r.split && r.name?.input.value.trim() === fault.name)?.name?.setError(fault.said);
   };
 
   /** 问后端（每改一次问一次，晚到的旧回答丢掉）。 */

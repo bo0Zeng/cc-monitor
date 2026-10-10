@@ -436,7 +436,7 @@ export class MachineCard {
       const fault = label || host ? await tryCells({ ...this.collect(), label, host }) : null;
       if (mine !== asking) return;
       if (fault?.code === "name_taken") {
-        showFieldError(this.labelInput, copyText("machineCard.field.nameTaken", { name: fault.name }));
+        showFieldError(this.labelInput, fault.said);
         this.updateLegend();
         return;
       }
@@ -460,7 +460,7 @@ export class MachineCard {
       const fault = await tryCells({ ...this.collect(), port });
       if (mine !== asking) return;
       if (fault?.code === "port") {
-        showFieldError(this.portInput, copyText("machineCard.field.portRange"));
+        showFieldError(this.portInput, fault.said);
         return;
       }
       showFieldError(this.portInput, null);

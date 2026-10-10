@@ -12,7 +12,8 @@
         "keyMasked": null,
         "loggedIn": false,
         "mode": "isolated",
-        "name": "zero"
+        "name": "zero",
+        "selectable": false
       },
       {
         "authKind": "subscription",
@@ -25,7 +26,8 @@
         "keyMasked": null,
         "loggedIn": true,
         "mode": "isolated",
-        "name": "a"
+        "name": "a",
+        "selectable": true
       },
       {
         "authKind": "api-key",
@@ -38,12 +40,14 @@
         "keyMasked": "••••••••a1b2",
         "loggedIn": false,
         "mode": "isolated",
-        "name": "b"
+        "name": "b",
+        "selectable": true
       }
     ],
     "meta": {
       "acctsDir": "<root>/accts",
       "count": 3,
+      "effectiveDefault": "a",
       "enabled": true,
       "error": null,
       "home": "<root>/home",

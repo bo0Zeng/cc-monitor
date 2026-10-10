@@ -9,7 +9,7 @@ const { calls, store, reachable } = vi.hoisted(() => ({
   store: new Map<string, Record<string, { atMs: number; value: unknown }>>(),
   reachable: new Set<string>(),
 }));
-const accountsReply = { meta: { enabled: true, acctsDir: "/h/.cc-monitor/accounts", manifestPath: "/h/.cc-monitor/accounts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null, unsupported: null, nextDefault: null, home: "/h" }, accounts: [], notice: null };
+const accountsReply = { meta: { enabled: true, acctsDir: "/h/.cc-monitor/accounts", manifestPath: "/h/.cc-monitor/accounts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null, unsupported: null, nextDefault: null, effectiveDefault: null, home: "/h" }, accounts: [], notice: null };
 vi.mock("../../../src/comms/inward/chan", () => ({
   ChanError: class extends Error {},
   chan: {

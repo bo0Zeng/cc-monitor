@@ -1129,6 +1129,32 @@
       ],
       "frozen": false,
       "name": "session_removed"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "cell",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "code",
+          "type": "string"
+        },
+        {
+          "kind": "text",
+          "path": "said",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "with",
+          "type": "number"
+        }
+      ],
+      "frozen": false,
+      "name": "cell_error"
     }
   ]
 }
