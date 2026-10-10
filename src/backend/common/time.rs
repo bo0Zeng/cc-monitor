@@ -291,7 +291,11 @@ mod shots_clock {
     pub(super) fn now() -> Option<SystemTime> {
         let sys = SystemTime::now();
         let (ahead, d) = (*SHIFT.get_or_init(|| {
-            let ms: u64 = std::env::var("CCM_SHOTS_NOW_MS").ok()?.trim().parse().ok()?;
+            let ms: u64 = std::env::var("CCM_SHOTS_NOW_MS")
+                .ok()?
+                .trim()
+                .parse()
+                .ok()?;
             let at = SystemTime::UNIX_EPOCH + Duration::from_millis(ms);
             Some(match at.duration_since(sys) {
                 Ok(d) => (true, d),
