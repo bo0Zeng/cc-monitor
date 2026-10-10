@@ -913,7 +913,7 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 #   必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
 #   为什么：mg38 推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
 #   `TaskDialogIndirect` 一族，而清单当时只进 `[[bin]]`。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来（`build.rs::manifest_for_every_artifact`）。
-# 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；内嵌后端字节不在（`native-backend/` 没铺），链的是不带后端那一形。
+# 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；链的是不带本机后端那一形：`native-backend/` 没铺，或铺着本机 linux 那份（清单写着别的 target ⇒ `build.rs` 这一趟当它不在，判据 `native_bytes_staged_for_another_target_are_left_out_not_fatal`）。
 # 判资源表的那段 python 读 `llvm-readobj` 的输出（stdin），$1 是给人看的名字；绿时印一行 `清单 ok`，红时说缺什么并退 1。
 GATE_PE_MANIFEST_PY='
 import re, sys
