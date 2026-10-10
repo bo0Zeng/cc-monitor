@@ -533,6 +533,7 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
             "login",
             "subId",
             "windows",
+            "usage",
             "rows",
             "fiveHour",
             "warm"

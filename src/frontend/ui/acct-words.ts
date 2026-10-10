@@ -9,6 +9,7 @@ import type { LoginState } from "./generated/LoginState";
 import type { QuotaKind } from "./generated/QuotaKind";
 import type { QuotaState } from "./generated/QuotaState";
 import type { SlotShow } from "./generated/SlotShow";
+import type { Usage } from "./generated/Usage";
 
 /** 行里的一格（核心写好的字 ＋ 语气）。 */
 export interface RowCell {
@@ -39,6 +40,8 @@ export interface QuotaReadAccount {
   slots: SlotShow[];
   login: LoginState;
   subId?: string;
+  /** 用量那一格（窗口 · 值 · 重置 · 连成的一句 · 语气，核心写）。 */
+  usage: Usage;
   /** 这个号那一段（首行 名 · 类型 · 标签；其余每行一组格）。 */
   rows: RowCell[][];
   warm: Warm;
@@ -53,6 +56,8 @@ export interface QuotaReadUnseen {
   kind: QuotaKind;
   login: LoginState;
   subId?: string;
+  /** 用量那一格（没出过数：`5h —` / `按量`；没有重置那一格）。 */
+  usage: Omit<Usage, "reset">;
   rows: RowCell[][];
   warm: Warm;
   /** 没出过数 ⇒ 恒 `null`（不出那一格）。 */

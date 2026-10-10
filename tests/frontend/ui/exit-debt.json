@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 294,
+  "ceiling": 291,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -40,17 +40,10 @@
     },
     {
       "file": "src/frontend/ui/acct-view.ts",
-      "rule": "codeWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "V4：按显示态定颜色档 · 自己拼按钮那几格（核心给 tone 与写好的格）"
-    },
-    {
-      "file": "src/frontend/ui/acct-view.ts",
       "rule": "caseWord",
-      "n": 21,
+      "n": 20,
       "kind": "第 1 批",
-      "why": "V4：按显示态定颜色档 · 自己拼按钮那几格（核心给 tone 与写好的格）"
+      "why": "记录原因（whyOf：换号原因码 ⇒ 字）· 热切换不成立的原因码 ⇒ 原因词（reasonLabel）：核心给记录与失败带写好的字（V4 颜色档与按钮那几格 10-10 已收进核心 usage）"
     },
     {
       "file": "src/frontend/ui/agent-window-text.ts",

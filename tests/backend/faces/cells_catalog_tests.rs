@@ -291,6 +291,7 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             kind: u.kind,
             login: u.login,
             sub_id: u.sub_id,
+            usage: u.usage.into(),
         }],
         &crate::common::time::TextClock {
             now: now as i64,

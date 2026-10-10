@@ -234,6 +234,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
                 kind: sh.kind,
                 login: sh.login,
                 sub_id: sh.sub_id,
+                usage: sh.usage.into(),
             }
         })
         .collect();
@@ -1304,14 +1305,19 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
     let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
     let live = (ctx.live)();
     let lineage = ctx.lineage.now();
+    let clock = crate::common::time::TextClock::here(now);
     let mut sessions = Map::new();
     for sid in sids {
         let agent = book.sessions.get(&sid).map(|s| s.agent.clone());
         let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
         let parent = lineage.parent_of(&sid);
-        let one = ctx
+        let mut one = ctx
             .hop
             .view(&book, &sid, parent, &row, &|x| live.contains(x), now);
+        // 此刻那个号的显示态：时刻字与用量那一格按这台此刻的本地钟写（同 `quota-read` 那一处）。
+        if let crate::accounts::quota::rotation::SessionRotationState::Present(p) = &mut one {
+            p.quota.stamp(&clock);
+        }
         sessions.insert(
             sid,
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,

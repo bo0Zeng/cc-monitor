@@ -45,6 +45,7 @@ export function quotaFace(v: unknown): unknown {
     u.rows ??= [[cell(String(u.account)), cell(copyText(u.kind === "api" ? "acct.kind.api" : "acct.kind.sub"))], [cell(copyText("acct.slot.fiveHour")), cell(copyText("acct.val.none")), cell(copyText("acct.seen.none"))]];
     u.warm ??= { act: "send", text: "" };
     u.fiveHour ??= null;
+    u.usage ??= u.kind === "api" ? { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } : { slot: "5h", window: copyText("acct.slot.fiveHour"), value: copyText("acct.val.none"), text: copyText("acct.usage.wv", { w: copyText("acct.slot.fiveHour"), v: copyText("acct.val.none") }), tone: "plain" };
   }
   q.fiveHour ??= q.state === "unreadable" ? copyText("resumeMenu.account.quota", { slot: copyText("acct.slot.fiveHour"), value: copyText("acct.val.unreadable") }) : null;
   return q;
@@ -73,4 +74,34 @@ export function slotWords(v: unknown): unknown {
     Object.values(o).forEach(slotWords);
   }
   return v;
+}
+
+/** 回包里每一处显示态（带 `kind` 与 `slots[]` 的那一形）补上用量那一格（时刻字已写好之后走）。 */
+export function usageCells(v: unknown): unknown {
+  if (Array.isArray(v)) v.forEach(usageCells);
+  else if (v !== null && typeof v === "object") {
+    const o = v as Obj;
+    if (Array.isArray(o.slots) && typeof o.kind === "string") o.usage ??= usageWords(o);
+    Object.values(o).forEach(usageCells);
+  }
+  return v;
+}
+
+/** 用量那一格（真的那一处 `show.rs::usage_of`）：场景没写才补，长得像就行。 */
+function usageWords(o: Obj): Obj {
+  const reset = (at: unknown) => (typeof at === "string" ? copyText("acct.reset.at", { at }) : undefined);
+  const reading = o.reading as Obj | undefined;
+  if (o.kind === "api") {
+    if (o.state !== "refused") return { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" };
+    const r = reset(reading?.resetsAtText);
+    const value = copyText("acct.val.refusedOnly");
+    return { value, reset: r, text: r ? copyText("acct.usage.wv", { w: value, v: r }) : value, tone: "fail" };
+  }
+  const slot = String(o.limiting ?? "5h");
+  const x = (o.slots as Obj[]).find((v) => v.slot === slot);
+  const window = slot === "5h" ? copyText("acct.slot.fiveHour") : copyText("acct.slot.sevenDay");
+  const value = String(x?.text ?? (o.state === "refused" ? copyText("acct.val.refusedOnly") : copyText("acct.val.none")));
+  const r = o.state === "refused" ? reset(x?.resetsAtText ?? reading?.resetsAtText) : undefined;
+  const tone = o.state === "refused" || x?.full ? "fail" : o.state === "overageInUse" || (o.state === "near" && x?.pct !== undefined) ? "warn" : "plain";
+  return { slot, window, value, reset: r, text: r ? copyText("acct.usage.wvr", { w: window, v: value, r }) : copyText("acct.usage.wv", { w: window, v: value }), tone };
 }

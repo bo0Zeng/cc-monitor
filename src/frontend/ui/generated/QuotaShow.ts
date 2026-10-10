@@ -3,6 +3,7 @@ import type { LoginState } from "./LoginState";
 import type { QuotaKind } from "./QuotaKind";
 import type { QuotaState } from "./QuotaState";
 import type { SlotShow } from "./SlotShow";
+import type { Usage } from "./Usage";
 import type { WindowShow } from "./WindowShow";
 
 /**
@@ -28,4 +29,8 @@ subId?: string,
 /**
  * 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
  */
-windows?: Array<WindowShow>, };
+windows?: Array<WindowShow>, 
+/**
+ * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
+ */
+usage: Usage, };

@@ -34,11 +34,21 @@ fn through_the_exit(reply: &Value, tz: i64) -> Value {
         .into_iter()
         .flatten()
         .map(|a| {
-            let mut x: SeenIn = serde_json::from_value(a.clone()).unwrap();
+            // 用量那一格由显示态那一处写（`usage_of`）：金样里没有，先占个位再照真判定写。
+            let mut a = a.clone();
+            a["usage"] = serde_json::json!({"value": "", "text": ""});
+            let mut x: SeenIn = serde_json::from_value(a).unwrap();
             for s in &mut x.show.slots {
                 let here = x.show.limiting.as_deref() == Some(s.slot.as_str());
                 (s.text, s.tone) = slot_words(x.show.state, here, s.pct, s.full);
             }
+            x.show.usage = crate::accounts::quota::show::usage_of(
+                x.show.kind,
+                x.show.state,
+                x.show.limiting.as_deref(),
+                &x.show.slots,
+                x.reading["resetsAt"].as_u64(),
+            );
             Seen {
                 agent: x.agent,
                 account: x.account,
@@ -53,7 +63,20 @@ fn through_the_exit(reply: &Value, tz: i64) -> Value {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|u| serde_json::from_value(u.clone()).unwrap())
+        .map(|u| {
+            let mut u = u.clone();
+            u["usage"] = serde_json::json!({"value": "", "text": "", "tone": "plain"});
+            let mut h: UnseenHead = serde_json::from_value(u).unwrap();
+            h.usage = crate::accounts::quota::show::usage_of(
+                h.kind,
+                crate::accounts::quota::show::QuotaState::Unseen,
+                None,
+                &[],
+                None,
+            )
+            .into();
+            h
+        })
         .collect();
     let state = match reply["state"].as_str() {
         Some("present") => "present",

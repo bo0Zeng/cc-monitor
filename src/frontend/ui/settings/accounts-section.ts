@@ -842,7 +842,7 @@ function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | 
   const led = quota.accounts.find((x) => x.agent === agent && x.account === account);
   if (led) return led;
   const u = quota.unseen.find((x) => x.agent === agent && x.account === account);
-  return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login } : null;
+  return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login, usage: u.usage } : null;
 }
 
 /** 第二行：`订阅 · {email}` ／ `API key · {地址}` ／ `订阅 · 等待终端登录…` ／ `订阅 · 未登录`。 */
@@ -867,7 +867,7 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: n
     ["7d", u7],
   ] as const) {
     const x = q.slots.find((v) => v.slot === slot);
-    const here = (q.limiting ?? "5h") === slot;
+    const here = q.usage.slot === slot;
     const parts = [slotLabel(slot), slotText(q, slot)];
     if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: x.resetsAtText ?? "" }));
     cell.textContent = parts.join(" ");

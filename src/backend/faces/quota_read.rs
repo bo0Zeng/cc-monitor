@@ -89,6 +89,33 @@ pub(crate) struct UnseenHead {
     pub(crate) login: LoginState,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) sub_id: Option<String>,
+    /// 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
+    pub(crate) usage: UnseenUsage,
+}
+
+/// 没出过数的号用量那一格：[`Usage`](crate::accounts::quota::show::Usage) 去掉重置那一格（没出过数就说不出几点重置）。
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UnseenUsage {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) slot: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) window: Option<Words>,
+    pub(crate) value: Words,
+    pub(crate) text: Words,
+    pub(crate) tone: crate::common::cells::Tone,
+}
+
+impl From<crate::accounts::quota::show::Usage> for UnseenUsage {
+    fn from(u: crate::accounts::quota::show::Usage) -> Self {
+        UnseenUsage {
+            slot: u.slot,
+            window: u.window,
+            value: u.value,
+            text: u.text,
+            tone: u.tone,
+        }
+    }
 }
 
 /// 被拒 / 超额在兜的号里最早回来的那个。
@@ -247,6 +274,15 @@ pub(crate) fn specimen() -> QuotaRead {
             from: Source::Headers,
             reset_since_seen: true,
         }],
+        usage: crate::accounts::quota::show::Usage {
+            slot: Some("5h".into()),
+            window: Some(Words("5h".into())),
+            value: Words("1%".into()),
+            reset: None,
+            text: Words("5h 1%".into()),
+            tone: Tone::Plain,
+            resets_at: Some(2_000),
+        },
     };
     let mut r = reply_of(
         Base {
@@ -273,6 +309,13 @@ pub(crate) fn specimen() -> QuotaRead {
             kind: Kind::Sub,
             login: LoginState::NeedsLogin,
             sub_id: Some("s".into()),
+            usage: UnseenUsage {
+                slot: Some("5h".into()),
+                window: Some(Words("5h".into())),
+                value: Words("v".into()),
+                text: Words("5h v".into()),
+                tone: Tone::Plain,
+            },
         }],
         &clock,
     );

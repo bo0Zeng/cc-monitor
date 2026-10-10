@@ -1519,6 +1519,42 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.reset",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].usage.slot",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "accounts[].usage.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.value",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].usage.window",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "accounts[].warm.act",
@@ -1744,6 +1780,36 @@
           "frozen": false,
           "kind": "value",
           "path": "unseen[].subId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "unseen[].usage.slot",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].usage.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "unseen[].usage.tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].usage.value",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "unseen[].usage.window",
           "type": "string"
         },
         {

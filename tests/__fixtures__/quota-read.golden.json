@@ -107,6 +107,13 @@
             "stale": false,
             "state": "ok",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 63%",
+              "tone": "plain",
+              "value": "63%",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791196260,
@@ -247,6 +254,13 @@
             "stale": false,
             "state": "near",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 86%",
+              "tone": "warn",
+              "value": "86%",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791196260,
@@ -391,6 +405,14 @@
             "stale": false,
             "state": "refused",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "reset": "↻19:00",
+              "slot": "5h",
+              "text": "5h ✕ ↻19:00",
+              "tone": "fail",
+              "value": "✕",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791198060,
@@ -537,6 +559,14 @@
             "stale": false,
             "state": "refused",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "reset": "↻19:00",
+              "slot": "5h",
+              "text": "5h 58% · 被拒 ↻19:00",
+              "tone": "fail",
+              "value": "58% · 被拒",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791198060,
@@ -687,6 +717,13 @@
             "stale": false,
             "state": "overageInUse",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 超额",
+              "tone": "warn",
+              "value": "超额",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791198060,
@@ -825,6 +862,13 @@
             "stale": true,
             "state": "resetSinceSeen",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h —",
+              "tone": "plain",
+              "value": "—",
+              "window": "5h"
+            },
             "warm": {
               "act": "send",
               "text": "5h 窗口已过期"
@@ -947,6 +991,14 @@
             "stale": false,
             "state": "refused",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "reset": "↻17:25",
+              "slot": "5h",
+              "text": "5h 被拒 ↻17:25",
+              "tone": "fail",
+              "value": "被拒",
+              "window": "5h"
+            },
             "warm": {
               "act": "send",
               "text": "无 5h 窗口"
@@ -1081,6 +1133,13 @@
             "stale": false,
             "state": "ok",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 30%",
+              "tone": "plain",
+              "value": "30%",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791193200,
@@ -1223,6 +1282,13 @@
             "stale": false,
             "state": "ok",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 31%",
+              "tone": "plain",
+              "value": "31%",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791196860,
@@ -1310,6 +1376,11 @@
             "slots": [],
             "stale": false,
             "state": "ok",
+            "usage": {
+              "text": "按量",
+              "tone": "plain",
+              "value": "按量"
+            },
             "warm": {
               "act": "send",
               "text": "无 5h 窗口"
@@ -1372,6 +1443,12 @@
             "slots": [],
             "stale": false,
             "state": "refused",
+            "usage": {
+              "reset": "↻16:52",
+              "text": "被拒 ↻16:52",
+              "tone": "fail",
+              "value": "被拒"
+            },
             "warm": {
               "act": "send",
               "text": "无 5h 窗口"
@@ -1431,6 +1508,11 @@
             "slots": [],
             "stale": false,
             "state": "ok",
+            "usage": {
+              "text": "按量",
+              "tone": "plain",
+              "value": "按量"
+            },
             "warm": {
               "act": "wait",
               "at": 1791193200,
@@ -1576,6 +1658,13 @@
             "stale": false,
             "state": "ok",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 4%",
+              "tone": "plain",
+              "value": "4%",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791195060,
@@ -1649,6 +1738,13 @@
                 }
               ]
             ],
+            "usage": {
+              "slot": "5h",
+              "text": "5h —",
+              "tone": "plain",
+              "value": "—",
+              "window": "5h"
+            },
             "warm": {
               "act": "wait",
               "at": 1791193200,
@@ -1689,6 +1785,11 @@
                 }
               ]
             ],
+            "usage": {
+              "text": "按量",
+              "tone": "plain",
+              "value": "按量"
+            },
             "warm": {
               "act": "send",
               "text": "无采样 · 发一句才知道"
@@ -1803,6 +1904,13 @@
             "stale": false,
             "state": "resetSinceSeen",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h —",
+              "tone": "plain",
+              "value": "—",
+              "window": "5h"
+            },
             "warm": {
               "act": "send",
               "text": "5h 窗口已过期"
@@ -1901,6 +2009,13 @@
             "stale": true,
             "state": "resetSinceSeen",
             "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h —",
+              "tone": "plain",
+              "value": "—",
+              "window": "5h"
+            },
             "warm": {
               "act": "send",
               "text": "5h 窗口已过期"

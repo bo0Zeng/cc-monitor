@@ -19,7 +19,7 @@ import { copyPattern } from "../../test-support/copy-pattern";
 const NOW = 1_791_189_600;
 
 function quota(p: Partial<QuotaShow> = {}): QuotaShow {
-  return { kind: "sub", state: "ok", stale: false, limiting: "5h", slots: [{ slot: "5h", pct: 63, resetsAt: NOW + 6600, resetsAtText: "13:50", text: "63%", tone: "plain" }, { slot: "7d", pct: 41, resetsAt: NOW + 3 * 86400, resetsAtText: "10-07 12:00", text: "41%", tone: "plain" }], login: "ok", ...p };
+  return { kind: "sub", state: "ok", stale: false, limiting: "5h", usage: { slot: "5h", window: "5h", value: "63%", text: "5h 63%", tone: "plain" }, slots: [{ slot: "5h", pct: 63, resetsAt: NOW + 6600, resetsAtText: "13:50", text: "63%", tone: "plain" }, { slot: "7d", pct: 41, resetsAt: NOW + 3 * 86400, resetsAtText: "10-07 12:00", text: "41%", tone: "plain" }], login: "ok", ...p };
 }
 
 function entry(p: Partial<SessionRotation> = {}, q: Partial<QuotaShow> = {}): SessionRotationEntry {
@@ -46,8 +46,8 @@ const LEDGER: QuotaRead = {
   now: NOW,
   accounts: [
     { agent: "claude-code", account: "personal", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [["personal", copyText("acct.kind.sub")], ["5h", "63%", "↻13:50", "+1h50m"], ["7d", "41%", "↻10-07 12:00", "+3d"], [copyText("acct.row.over"), "—"], [copyText("acct.row.seen"), "11:58"]].map((r) => r.map((text) => ({ text, tone: "plain" as const }))), warm: { act: "wait" as const, text: "" }, fiveHour: "5h 63%", ...quota() },
-    { agent: "claude-code", account: "team", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: "5h 4%", ...quota({ slots: [{ slot: "5h", pct: 4, resetsAt: NOW + 5400, resetsAtText: "13:30", text: "4%", tone: "plain" }] }) },
-    { agent: "claude-code", account: "api", seenAt: NOW - 120, seenAtText: "11:58", reading: { resetsAt: NOW + 720, resetsAtText: "12:12" }, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: null, ...quota({ kind: "api", state: "refused", slots: [], limiting: undefined }) },
+    { agent: "claude-code", account: "team", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: "5h 4%", ...quota({ slots: [{ slot: "5h", pct: 4, resetsAt: NOW + 5400, resetsAtText: "13:30", text: "4%", tone: "plain" }], usage: { slot: "5h", window: "5h", value: "4%", text: "5h 4%", tone: "plain" } }) },
+    { agent: "claude-code", account: "api", seenAt: NOW - 120, seenAtText: "11:58", reading: { resetsAt: NOW + 720, resetsAtText: "12:12" }, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: null, ...quota({ kind: "api", state: "refused", slots: [], limiting: undefined, usage: { value: copyText("acct.val.refusedOnly"), reset: "↻12:12", text: "↻12:12", tone: "fail" } }) },
   ],
   unseen: [],
   usableNow: ["personal", "team"],
@@ -55,39 +55,23 @@ const LEDGER: QuotaRead = {
   fiveHour: null,
 };
 
-describe("状态栏账号按钮：各态", () => {
-  const chip = (e: SessionRotationEntry) => sessionChip(e, null, LEDGER)!;
-  it("正常 `personal 5h 63%` · 中性；换过号带 ⇄", () => {
-    expect(chip(entry())).toMatchObject({ name: "personal", window: "5h", value: "63%", reset: null, tone: "neutral", swapped: false });
+describe("状态栏账号按钮：照抄核心写好的用量那一格", () => {
+  const chip = (e: SessionRotationEntry) => sessionChip(e, null)!;
+  it("窗口 · 值 · 重置 · 语气都照 `usage`（颜色档在核心 `show.rs::usage_of`）；换过号带 ⇄", () => {
+    expect(chip(entry())).toMatchObject({ name: "personal", window: "5h", value: "63%", reset: null, tone: "plain", swapped: false });
+    const refused = chip(entry({}, { state: "refused", usage: { slot: "5h", window: "5h", value: "✕", reset: "↻13:00", text: "5h ✕ ↻13:00", tone: "fail" } }));
+    expect(refused).toMatchObject({ window: "5h", value: "✕", reset: "↻13:00", tone: "fail" });
+    expect(chip(entry({}, { kind: "api", usage: { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } }))).toMatchObject({ window: null, value: copyText("acct.kind.api"), reset: null });
     const sw = entry({ account: { start: "work", current: "personal", since: NOW - 600, sinceText: "11:50", history: [], inPlace: "ok" } });
     expect(chip(sw).swapped).toBe(true);
-  });
-  it("到阈值数字琥珀 · 用满 ✕ / 被拒没用满 `58% · 被拒`，都红带 ↻ · 超额琥珀 · 无数 `—` · 数旧降透明度", () => {
-    expect(chip(entry({}, { state: "near", slots: [{ slot: "5h", pct: 86, text: "86%", tone: "plain" }] }))).toMatchObject({ value: "86%", tone: "near" });
-    const refused = chip(entry({}, { state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: NOW + 3600, resetsAtText: "13:00", full: true, text: "✕", tone: "fail" }] }));
-    expect(refused).toMatchObject({ value: "✕", tone: "refused" });
-    expect(refused.reset).toBe(copyText("acct.reset.at", { at: "13:00" }));
-    const brief = chip(entry({}, { state: "refused", slots: [{ slot: "5h", pct: 58, resetsAt: NOW + 3600, resetsAtText: "13:00", text: copyText("acct.val.refusedPct", { pct: "58" }), tone: "fail" }] }));
-    expect(brief).toMatchObject({ value: copyText("acct.val.refusedPct", { pct: "58" }), tone: "refused" });
-    expect(chip(entry({}, { state: "refused", slots: [] })).value).toBe(copyText("acct.val.refusedOnly"));
-    expect(chip(entry({}, { slots: [{ slot: "5h", pct: 103, full: true, text: "✕", tone: "fail" }] }))).toMatchObject({ value: "✕", tone: "refused" });
-    expect(chip(entry({}, { state: "overageInUse", slots: [{ slot: "5h", pct: 63, text: copyText("acct.val.over"), tone: "warn" }] }))).toMatchObject({ value: copyText("acct.val.over"), tone: "over" });
-    expect(chip(entry({}, { state: "resetSinceSeen", slots: [{ slot: "5h", pct: 63, text: "—", tone: "plain" }] })).value).toBe("—");
-    expect(chip(entry({}, { state: "unseen", slots: [], limiting: undefined })).value).toBe("—");
     expect(chip(entry({}, { stale: true })).stale).toBe(true);
-  });
-  it("按量 `按量`；按量被拒 `被拒 ↻..`（时刻取额度账那一条）", () => {
-    expect(chip(entry({}, { kind: "api", slots: [], limiting: undefined }))).toMatchObject({ window: null, value: copyText("acct.kind.api"), tone: "neutral" });
-    const e = entry({ account: { start: "api", current: "api", since: NOW, sinceText: "12:00", history: [], inPlace: "ok" } }, { kind: "api", state: "refused", slots: [], limiting: undefined });
-    expect(chip(e)).toMatchObject({ value: copyText("acct.val.refusedOnly"), tone: "refused" });
-    expect(chip(e).reset).toBe(copyText("acct.reset.at", { at: "12:12" }));
   });
   it("中转没见过这个会话 ⇒ 只画归属的号、无用量；什么都不知道 ⇒ 不画；`_` 写 ~/.claude", () => {
     const absent: SessionRotationEntry = { origin: "<local>", now: NOW, read: { state: "absent", inPlace: "noRelay" } };
-    expect(sessionChip(absent, "work", LEDGER)).toMatchObject({ name: "work", value: null });
-    expect(sessionChip(undefined, null, LEDGER)).toBeNull();
+    expect(sessionChip(absent, "work")).toMatchObject({ name: "work", value: null });
+    expect(sessionChip(undefined, null)).toBeNull();
     takeNames(NAMES);
-    expect(sessionChip(entry({ account: { start: "_", current: "_", since: NOW, sinceText: "12:00", history: [], inPlace: "ok" } }), null, null)?.name).toBe(NAMES.accounts._);
+    expect(sessionChip(entry({ account: { start: "_", current: "_", since: NOW, sinceText: "12:00", history: [], inPlace: "ok" } }), null)?.name).toBe(NAMES.accounts._);
   });
 });
 

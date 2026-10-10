@@ -21,7 +21,7 @@ const entry = (history: SwitchRecord[], blocked?: { account: string; at: number;
     account: { start: "work", current: history.at(-1)?.to ?? "work", since: NOW, history, inPlace: "ok" },
     atLimit: "continue",
     ...(blocked ? { blocked: { earliest: blocked } } : {}),
-    quota: { kind: "sub", state: blocked ? "refused" : "ok", stale: false, limiting: "5h", slots: [], login: "ok" },
+    quota: { kind: "sub", state: blocked ? "refused" : "ok", stale: false, limiting: "5h", slots: [], login: "ok", usage: { slot: "5h", window: "5h", value: "—", text: "5h —", tone: blocked ? "fail" : "plain" } },
   },
 });
 

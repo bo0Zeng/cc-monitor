@@ -91,6 +91,7 @@ const LEDGER: QuotaRead = {
     slots:
       account === "api" ? [] : [{ slot: "5h", pct: 30, resetsAt: NOW + 3600, text: "30%", tone: "plain" }],
     login: "ok" as const,
+    usage: account === "api" ? { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" as const } : { slot: "5h", window: "5h", value: "30%", text: "5h 30%", tone: "plain" as const },
     rows: [],
     warm: { act: "send" as const, text: "" },
     fiveHour: account === "api" ? null : "5h 30%",

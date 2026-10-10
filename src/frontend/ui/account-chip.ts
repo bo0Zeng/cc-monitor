@@ -16,7 +16,7 @@ import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
 import { attachTooltip } from "./kit/tooltip";
 import { icon } from "./kit/icon";
 import { acctAvatar, hoverTable } from "./acct-dom";
-import { sessionChip, sessionHoverRows, usageOf, usageText, type ChipModel } from "./acct-view";
+import { sessionChip, sessionHoverRows, type ChipModel } from "./acct-view";
 import s from "./acct.module.css";
 
 // ------------------------------------------------------------ 纯函数（可测）
@@ -142,7 +142,7 @@ export class AccountChip {
     const a = this.active;
     if (!a) return null;
     const entry = appStore.sessionRotation.get().get(a.sid);
-    return sessionChip(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+    return sessionChip(entry, this.fallbackAccount(a.sid));
   }
 
   private hoverCard(): HTMLElement | null {
@@ -153,7 +153,7 @@ export class AccountChip {
     if (!rows) return null;
     const tone = this.chipModel.tone;
     const tones: Record<number, "refused" | "warn"> = {};
-    if (tone !== "neutral") tones[1] = tone === "refused" ? "refused" : "warn";
+    if (tone !== "plain") tones[1] = tone === "fail" ? "refused" : "warn";
     return hoverTable(this.chipModel.account, rows, tones);
   }
 
@@ -333,15 +333,15 @@ export class AccountChip {
     const badge = accountStatusBadge(a, this.apikeyRouting && origin === this.origin ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
     // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
     const led = appStore.quota.get().get(origin)?.accounts.find((x) => x.account === a.name);
-    const u = led && badge.warn !== true ? usageOf(led, led.reading) : null;
-    const usage = u ? usageText(u) : null;
+    const u = led && badge.warn !== true ? led.usage : null;
+    const usage = u ? u.text : null;
     return {
       label: a.name,
       checked: isCurrent,
       avatar: accountAvatarEl(a.name, { size: 16 }),
       note: a.email || undefined,
       detail: usage ?? badge.text,
-      detailTone: (u && u.tone !== "neutral") || badge.warn ? "warn" : undefined,
+      detailTone: (u && u.tone !== "plain") || badge.warn ? "warn" : undefined,
       title: badge.title,
       enabled: selectable,
       onClick: selectable && !isCurrent ? () => void this.selectDefault(a, origin) : undefined,

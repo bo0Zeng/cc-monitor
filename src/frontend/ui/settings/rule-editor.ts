@@ -588,7 +588,7 @@ export class RuleEditor {
       // 此刻过线的那一窗（后端预览泳道此刻那一格）⇒ 改显那一窗、行尾带「7d 到线」；被拒照今天优先。
       const at =
         q.state === "refused" ? null : lineNow(this.plan, row.account);
-      const slot = at ?? q.limiting ?? "5h";
+      const slot = at ?? q.usage.slot ?? "";
       u.textContent = `${slotLabel(slot)} ${slotText(q, slot)}`;
       if (at) {
         const t = tag(copyText("acct.tag.atLine", { w: slotLabel(at) }));
