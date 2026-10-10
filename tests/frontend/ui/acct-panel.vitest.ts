@@ -93,10 +93,12 @@ const LEDGER: QuotaRead = {
     login: "ok" as const,
     rows: [],
     warm: { act: "send" as const, text: "" },
+    fiveHour: account === "api" ? null : "5h 30%",
   })),
   unseen: [],
   usableNow: ["work", "team", "api"],
   earliestReturn: null,
+  fiveHour: null,
 };
 
 /** 一张只有默认那一条的规则表（名字 `默认`）。 */

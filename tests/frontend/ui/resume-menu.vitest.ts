@@ -47,10 +47,19 @@ const quota = (accounts: { account: string; pct?: number; state?: string; kind?:
       // 那一格的字是核心写好的（被拒没标用满 ⇒「{pct}% · 被拒」），界面照抄。
       slots: a.pct === undefined ? [] : [{ slot: "5h", pct: a.pct, text: a.state === "refused" ? copyText("acct.val.refusedPct", { pct: a.pct }) : `${a.pct}%`, tone: "plain" }],
       login: "ok",
+      // 「5h 那一格」是核心写好的字（`faces/quota_rows.rs::with_rows`）；夹具照成品给。
+      fiveHour:
+        (a.kind ?? "sub") === "api"
+          ? null
+          : copyText("resumeMenu.account.quota", {
+              slot: copyText("acct.slot.fiveHour"),
+              value: a.pct === undefined ? copyText("acct.val.none") : a.state === "refused" ? copyText("acct.val.refusedPct", { pct: a.pct }) : `${a.pct}%`,
+            }),
     })),
     unseen: [],
     usableNow: [],
     earliestReturn: null,
+    fiveHour: null,
   }) as unknown as QuotaRead;
 
 beforeEach(() => {

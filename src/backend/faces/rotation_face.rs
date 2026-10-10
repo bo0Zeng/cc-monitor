@@ -180,6 +180,8 @@ pub(crate) struct QuotaRead {
     earliest_return: Option<EarliestReturn>,
     /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`crate::faces::quota_rows::head_text`]）。
     text: Option<crate::common::cells::Words>,
+    /// 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`crate::faces::quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
+    five_hour: Option<crate::common::cells::Words>,
 }
 
 /// 被拒 / 超额在兜的号里最早回来的那个。
@@ -258,6 +260,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
     );
     QuotaRead {
         text,
+        five_hour: crate::faces::quota_rows::head_five_hour(base.state),
         state: base.state,
         reason: base.reason.clone(),
         detail: base.detail.clone(),
