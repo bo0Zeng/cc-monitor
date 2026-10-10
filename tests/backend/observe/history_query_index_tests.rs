@@ -44,7 +44,7 @@ fn split(
 /// 数出来的 `total` 相等、每行起点相等。空行不占号、torn 残尾不计。
 #[test]
 fn index_rows_share_the_seq_space_with_the_tail_counter() {
-    let data: &[u8] = b"{\"type\":\"user\",\"uuid\":\"a\"}\n\n   \n{\"type\":\"assistant\",\"uuid\":\"b\"}\n\xEF\xBB\xBF{\"type\":\"system\"}\n{\"type\":\"torn";
+    let data: &[u8] = b"{\"type\":\"user\",\"uuid\":\"a\"}\n\n   \n{\"type\":\"assistant\",\"uuid\":\"b\"}\n\xEF\xBB\xBF{\"type\":\"system\",\"subtype\":\"api_error\",\"timestamp\":\"t\"}\n{\"type\":\"torn";
     let v = index_of(data, 0, None);
     let (_, rows, tail) = split(&v);
     let (meta, _, _) = split_tail(data, 1_000);
@@ -63,7 +63,7 @@ fn index_rows_share_the_seq_space_with_the_tail_counter() {
     assert_eq!(rows[1]["u"], "b");
     let second_end = rows[1]["o"].as_u64().unwrap() + rows[1]["n"].as_u64().unwrap();
     assert_eq!(rows[2]["o"], second_end);
-    assert_eq!(rows[2]["t"], "system", "BOM 行照常解析");
+    assert_eq!(rows[2]["t"], "retry", "BOM 行照常解析");
     // end = 最后一个完整行的末字节（torn 那截不算）＝ 下次续传的 offset
     let torn_at = data.len() as u64 - b"{\"type\":\"torn".len() as u64;
     assert_eq!(tail["end"].as_u64().unwrap(), torn_at);
@@ -104,6 +104,7 @@ fn facts_count_prose_code_and_folded_units_separately() {
     let line = serde_json::json!({
         "type": "assistant",
         "uuid": "u1",
+        "timestamp": "2026-10-09T00:00:00Z",
         "message": {"role": "assistant", "content": [
             {"type": "thinking", "thinking": "很长很长的思考不该算进正文"},
             {"type": "text", "text": "第一段ab\n\n```rust\nfn a() {}\nfn b() {}\n```\n结尾"},
@@ -113,7 +114,11 @@ fn facts_count_prose_code_and_folded_units_separately() {
     .to_string();
     let r = index_row(line.as_bytes(), 10, line.len() as u64 + 1);
     assert_eq!(r.o, 10);
-    assert_eq!(r.t.as_deref(), Some("assistant"));
+    assert_eq!(
+        r.t,
+        Some(crate::agents::record::RecordClass::Reply),
+        "骨架行的类是通用记录的类"
+    );
     assert_eq!(r.u.as_deref(), Some("u1"));
     assert_eq!(r.fd, 2, "thinking + tool_use 两个折叠单元");
     assert_eq!(r.cb, 1);
@@ -142,7 +147,7 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
     assert_eq!(index_row(sys.as_bytes(), 0, 0).ch, 9);
     // 🔴 非 JSON：**行仍在**（占一个 seq），只是没有料 —— 丢了它后面全错一位
     let bad = index_row(b"{\"type\":\"user\"", 5, 15);
-    assert_eq!((bad.o, bad.n, bad.t.as_deref()), (5, 15, None));
+    assert_eq!((bad.o, bad.n, bad.t), (5, 15, None));
 }
 
 /// 零值不上线：索引每条一行，省下来的是乘以条数的字节。
@@ -150,7 +155,7 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
 fn zero_facts_are_not_serialized() {
     let r = index_row(br#"{"type":"attachment"}"#, 0, 22);
     let s = serde_json::to_string(&r).unwrap();
-    assert_eq!(s, r#"{"o":0,"n":22,"t":"attachment"}"#);
+    assert_eq!(s, r#"{"o":0,"n":22}"#, "不进界面的行连类都不带");
 }
 
 /// `--until` 让透传收成半开区间 `[offset, end)`；`None` 字节一个不变（老调用方零回归，

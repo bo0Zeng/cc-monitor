@@ -496,6 +496,141 @@ fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+/// 〔perfC2〕几批、几条线程带出来的答案，行序仍是最近优先（跨批也不乱）：七十份、每份一条命中、修改时刻各不同。
+#[test]
+fn many_batches_still_answer_most_recent_first() {
+    let home = std::env::temp_dir().join(format!("ccm-sx-batches-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let n = SEARCH_BATCH * 2 + 6;
+    for i in 0..n {
+        let f = p(&home, &format!("-w-b{}/s{i:03}.jsonl", i % 7));
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(
+            &f,
+            line(&format!("u-{i}"), &format!("cursor 第 {i} 份")) + "\n",
+        )
+        .unwrap();
+        // 名字越大越旧：最近优先的序与名字序、目录序都不同。
+        touch(&f, 1_800_000_000_000 - (i as i64) * 1_000);
+    }
+    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let mut buf = Vec::new();
+    SearchIndex::default()
+        .search(
+            &fence,
+            "cursor",
+            &parse_opts(&[]),
+            &crate::observe::accounts_query::live_session_ids(&home),
+            &mut buf,
+        )
+        .expect("search ok");
+    let got: Vec<String> = String::from_utf8(buf)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let v = serde_json::from_str::<Value>(l).unwrap();
+            format!(
+                "{} {}",
+                v["sessionId"].as_str().unwrap(),
+                v["title"].as_str().unwrap()
+            )
+        })
+        .collect();
+    // 标题取自那一份自己的第一句 ⇒ 线程交回的序乱了、读出来的那一格与它的路径对不上就红。
+    let want: Vec<String> = (0..n)
+        .map(|i| format!("s{i:03} cursor 第 {i} 份"))
+        .collect();
+    assert_eq!(got, want);
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔perfC4〕几条线程 ＝ min(8, 这台机器可用的并行数)，至少一条；问不出可用数 ⇒ 一条（远端可能是一两核的小机器，不按 8 条起）。
+#[test]
+fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
+    use crate::observe::par::par_workers;
+    let got: Vec<(Option<usize>, usize)> = [
+        None,
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(3),
+        Some(8),
+        Some(9),
+        Some(64),
+    ]
+    .into_iter()
+    .map(|a| (a, par_workers(a)))
+    .collect();
+    assert_eq!(
+        got,
+        vec![
+            (None, 1),
+            (Some(0), 1),
+            (Some(1), 1),
+            (Some(2), 2),
+            (Some(3), 3),
+            (Some(8), 8),
+            (Some(9), 8),
+            (Some(64), 8),
+        ]
+    );
+}
+
+/// 〔perfC4〕几条线程只在一处算：后端生产段里问机器并行数的只有 `observe/par.rs` 那一处（[`crate::observe::par::par_workers`]），
+/// 别处要分线程走 `par_in_order`，不自己再问一遍、再定一个上限。
+#[test]
+fn the_worker_count_is_asked_in_one_place() {
+    let root = crate::guard_support::src_root();
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(
+        files.len() >= 100,
+        "只扫到 {} 份 `.rs` —— 走树坏了，本条在空转",
+        files.len()
+    );
+    let hits: Vec<(String, usize)> = files
+        .iter()
+        .map(|(p, src)| {
+            let n = crate::guard_support::production_code(src)
+                .matches("available_parallelism")
+                .count();
+            (
+                p.strip_prefix(&root)
+                    .unwrap_or(p)
+                    .display()
+                    .to_string()
+                    .replace('\\', "/"),
+                n,
+            )
+        })
+        .filter(|(_, n)| *n > 0)
+        .collect();
+    assert_eq!(
+        hits,
+        vec![("observe/par.rs".to_string(), 1)],
+        "问机器并行数只许在 `observe/par.rs::par_workers` 一处（别处分线程走 `par_in_order`）"
+    );
+}
+
+/// 〔perfC2〕分给几条线程的那一套（历史清单与全文搜索共用）：结果按原序交回；某一件 panic 原样抛出来，不悄悄少一件。
+#[test]
+fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
+    let items: Vec<usize> = (0..500).collect();
+    let got = crate::observe::par::par_in_order(items.clone(), |i| {
+        if i % 37 == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        i * 3
+    });
+    assert_eq!(got, items.iter().map(|i| i * 3).collect::<Vec<_>>());
+    let caught = std::panic::catch_unwind(|| {
+        crate::observe::par::par_in_order((0..64).collect::<Vec<usize>>(), |i| {
+            assert!(i != 40, "第 40 件坏了");
+            i
+        })
+    });
+    assert!(caught.is_err(), "有一件 panic 却交回了结果");
+}
+
 /// 〔perfC2〕常驻上界钉在 128 MB：口径是「多常驻 ≤ 200 MB 换每问 ≤ 1 s」，按 `drive.mjs --only search` 在 680 MB 合成世界量
 /// （进程 CPU 毫秒，不按墙钟）—— 正文整份装得下的最小一档；含工具那一形 128 / 256 都装不下、调大只多常驻不变快。要改它先重量这一组读数。
 #[test]

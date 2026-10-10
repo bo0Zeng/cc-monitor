@@ -711,10 +711,9 @@ pub async fn read_frame<R: AsyncRead + Unpin>(
     let head = read_segment(r, cap, true).await?;
     let body = read_segment(r, cap, false).await?;
     let head: Head = serde_json::from_slice(&head).map_err(|e| {
-        ReadFault::Bad(copy_text(
-            "rsChanWire.frame.badHead",
-            &[("e", &e.to_string())],
-        ))
+        // 解析器的原话记一行日志；这一格交的是一句话（链路断的原因）。
+        tracing::warn!("chan: frame head unreadable: {e}");
+        ReadFault::Bad(copy_text("rsChanWire.frame.badHead", &[]))
     })?;
     Ok((head, body))
 }

@@ -198,17 +198,19 @@ pub(super) async fn snapshot_dispatcher(
                     }
                 }
             }
+            // 那一句不夹下层原话；最后一次的原话进复制详情（remote-health 的 detail 格）。
+            let said = crate::detail::Said::with_raw(
+                copy_text(
+                    "rsSshSource.snapshot.failed",
+                    &[("sid", &sid_short.to_string())],
+                ),
+                &last_err,
+            );
             let payload = crate::ui_contract::RemoteHealthPayload {
                 origin: host_label.clone(),
                 kind: "snapshot".to_string(),
-                message: copy_text(
-                    "rsSshSource.snapshot.failed",
-                    &[
-                        ("sid", &sid_short.to_string()),
-                        ("err", &last_err.to_string()),
-                    ],
-                ),
-                detail: String::new(),
+                message: said.said,
+                detail: said.detail,
             };
             if let Err(e) = health(payload) {
                 tracing::warn!("snapshot remote-health emit failed: {e}");

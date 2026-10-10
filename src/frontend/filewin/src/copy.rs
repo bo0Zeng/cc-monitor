@@ -310,7 +310,7 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
             loud: false,
         },
         CopyOutcome::Failed(e) => Notice {
-            text: copy_text("rsFilewinCopy.outcome.failed", &[("e", &e.said)]),
+            text: copy_text("rsFilewinCopy.outcome.failed", &[("said", &e.said)]),
             loud: true,
         },
         CopyOutcome::Done { bytes, asked: _ } => Notice {

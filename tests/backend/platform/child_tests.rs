@@ -301,13 +301,20 @@ fn a_reused_thread_carries_no_budget_into_the_next_command() {
 /// 全局环境里的监听口与钥匙文件 · 常驻开关 · 诊断文件）—— 起出来的每个子进程（agent 会话就在里面）一个都看不见；
 /// 真要往下传的那几格（中转口 · 家）照旧到得了。外层带着这些变量把本测试二进制当子进程起、跑内层（进程环境不能在多线程测试里改）。
 #[test]
-#[cfg(unix)]
 fn a_child_never_inherits_the_backend_internal_families() {
     assert!(crate::platform::child_env::is_internal("CCM_LISTEN_PORT"));
     assert!(crate::platform::child_env::is_internal("CCM_BACKEND_BIN"));
     assert!(crate::platform::child_env::is_internal("CCM_RESIDENT"));
     assert!(!crate::platform::child_env::is_internal("CCM_RELAY_PORT"));
     assert!(!crate::platform::child_env::is_internal("CCM_DATA_DIR"));
+    // Windows 上名字不分大小写：外层故意用大小写混写的那一形交（真机上漏下去的就是这一形），内层照样一个都不许看见。
+    let spell = |k: &str| -> String {
+        if cfg!(windows) {
+            mixed_case(k)
+        } else {
+            k.to_string()
+        }
+    };
     let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
         .args([
             "platform::child::tests::internal_families_inner",
@@ -317,20 +324,23 @@ fn a_child_never_inherits_the_backend_internal_families() {
             "--test-threads=1",
         ])
         .env(INTERNAL_MARK, "1")
-        .env("CCM_LISTEN_PORT", "52917")
-        .env("CCM_LISTEN_TOKEN_FILE", "/h/.cc-monitor/listen-token")
+        .env(spell("CCM_LISTEN_PORT"), "52917")
         .env(
-            "CCM_BACKEND_STDERR_LOG",
+            spell("CCM_LISTEN_TOKEN_FILE"),
+            "/h/.cc-monitor/listen-token",
+        )
+        .env(
+            spell("CCM_BACKEND_STDERR_LOG"),
             "/h/.cc-monitor/logs/backend/stderr.log",
         )
-        .env("CCM_BACKEND_BIN", "/h/.cc-monitor/bin/ccm")
-        .env("CCM_RESIDENT", "1")
+        .env(spell("CCM_BACKEND_BIN"), "/h/.cc-monitor/bin/ccm")
+        .env(spell("CCM_RESIDENT"), "1")
         .env("CCM_RELAY_PORT", "8788")
         .env("CCM_DATA_DIR", "/iso/home")
         .envs(
             crate::agents::self_sid_envs()
                 .into_iter()
-                .map(|k| (k, "parent-sid")),
+                .map(|k| (spell(k), "parent-sid")),
         )
         .output()
         .expect("起内层");
@@ -343,11 +353,70 @@ fn a_child_never_inherits_the_backend_internal_families() {
     assert!(out.status.success(), "内层红了：{text}");
 }
 
+/// `CCM_LISTEN_PORT` → `Ccm_lIsTeN_…`：逐字母交替大小写（下划线不动），保证与全大写、全小写都不逐字相等。
+fn mixed_case(k: &str) -> String {
+    k.chars()
+        .enumerate()
+        .map(|(i, c)| {
+            if i % 2 == 0 {
+                c.to_ascii_uppercase()
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
+        .collect()
+}
+
+/// 🔴**摘环境按本平台的大小写规矩比**：Windows 不分大小写（`ccm_listen_port` · `Claude_Code_Session_Id` 照样摘），
+/// Unix 分（小写那一格是另一个变量，不归这层管）。两种规矩都量（不靠跑在哪个平台上），再钉住本平台用的是哪一种。
+#[test]
+fn internal_names_are_compared_the_way_this_platform_compares_env_names() {
+    use crate::platform::child_env::{is_internal_as, NAMES_FOLD_CASE};
+    let sid = ["CLAUDE_CODE_SESSION_ID"];
+    for name in [
+        "ccm_listen_port",
+        "Ccm_Listen_Token_File",
+        "ccm_backend_bin",
+        "Ccm_Resident",
+        "ccm_backend_stderr_log",
+        "Claude_Code_Session_Id",
+    ] {
+        assert!(
+            is_internal_as(name, &sid, true),
+            "不分大小写时 {name} 没被摘"
+        );
+        assert!(
+            !is_internal_as(name, &sid, false),
+            "分大小写时 {name} 竟被当成了同一格"
+        );
+    }
+    for name in [
+        "ccm_relay_port",
+        "Ccm_Data_Dir",
+        "claude_config_dir",
+        "ccm_listen",
+    ] {
+        assert!(
+            !is_internal_as(name, &sid, true),
+            "不分大小写时 {name} 被摘错了（它该往下传）"
+        );
+    }
+    assert!(
+        is_internal_as("CCM_LISTEN_PORT", &sid, false),
+        "正控：逐字相等那一形没摘"
+    );
+    assert_eq!(NAMES_FOLD_CASE, cfg!(windows), "本平台的大小写规矩钉错了");
+    assert_eq!(
+        crate::platform::child_env::is_internal("ccm_listen_port"),
+        cfg!(windows),
+        "is_internal 没按本平台的规矩比"
+    );
+}
+
 const INTERNAL_MARK: &str = "CCM_CHILD_INTERNAL_INNER";
 const INTERNAL_READING: &str = "INTERNAL-FAMILIES-READ";
 
 #[test]
-#[cfg(unix)]
 #[ignore = "内层入口：只在被外层用 CCM_CHILD_INTERNAL_INNER 拉起时才做断言"]
 fn internal_families_inner() {
     if std::env::var(INTERNAL_MARK).is_err() {
@@ -355,7 +424,13 @@ fn internal_families_inner() {
     }
     // 与 `main.rs` 同一个入口：登记会话号变量。
     crate::agents::install_child_env_filter();
-    let out = Child::new("env").run(Deadline::secs(10)).expect("起 env");
+    let out = if cfg!(windows) {
+        Child::new("cmd").args(["/C", "set"])
+    } else {
+        Child::new("env")
+    }
+    .run(Deadline::secs(10))
+    .expect("起 env");
     let text = String::from_utf8_lossy(&out.stdout);
     let names: std::collections::BTreeMap<&str, &str> =
         text.lines().filter_map(|l| l.split_once('=')).collect();
@@ -370,7 +445,14 @@ fn internal_families_inner() {
         !sids.is_empty(),
         "适配层一个「我是哪个会话」的变量都没登记 —— 下面那一格空转"
     );
-    let leaked_sid: Vec<&str> = names.keys().copied().filter(|k| sids.contains(k)).collect();
+    let leaked_sid: Vec<&str> = names
+        .keys()
+        .copied()
+        .filter(|k| {
+            sids.iter()
+                .any(|s| crate::platform::child_env::same_name(s, k))
+        })
+        .collect();
     assert_eq!(
         leaked_sid,
         Vec::<&str>::new(),
@@ -387,4 +469,26 @@ fn internal_families_inner() {
         "正控：家没到"
     );
     println!("{INTERNAL_READING}");
+}
+
+/// 长寿子进程：关掉它的 stdin ⇒ 读到头就自己退的程序自己退了（输出读到头、退出码 0，不是被杀的）——拿着它的那一方还没放手。
+/// （终端订阅收 tmux 控制模式客户端就走这一条：直接杀会让 tmux 3.6a 的 server 段错误。）
+#[cfg(unix)]
+#[test]
+fn closing_a_streaming_childs_stdin_lets_it_leave_on_its_own() {
+    use std::io::Read;
+    let mut s = Child::new("sh")
+        .args(["-c", "cat; echo bye-zq"])
+        .stream()
+        .expect("起得来");
+    let mut out = s.take_stdout().expect("输出流");
+    s.close_stdin();
+    let mut got = String::new();
+    out.read_to_string(&mut got).expect("读到头");
+    assert_eq!(
+        got, "bye-zq\n",
+        "stdin 关了，cat 读到头之后那一行该印出来、再退"
+    );
+    let status = s.child.wait().expect("收尸");
+    assert!(status.success(), "它是自己退的，不是被杀的：{status:?}");
 }

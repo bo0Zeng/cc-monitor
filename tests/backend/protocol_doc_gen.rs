@@ -676,6 +676,13 @@ fn traits_of(spec: &CommandSpec) -> String {
         }
         .to_string(),
     );
+    if let Some(cap) = crate::stream::inbound::cap_of(spec.name) {
+        t.push(format!(
+            "总期限上限 {} 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 {} 秒）",
+            cap.shown_secs(),
+            crate::stream::inbound::MARGIN_MS / 1000
+        ));
+    }
     if crate::control::cli_control::cli_exposed(spec) {
         t.push(format!("CLI：`ccm -- {}`", crate::cli_flag(spec.name)));
     } else {

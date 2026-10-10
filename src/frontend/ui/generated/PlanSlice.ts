@@ -7,6 +7,7 @@ import type { PlanKind } from "./PlanKind";
 import type { PlanNeed } from "./PlanNeed";
 import type { PlanPhase } from "./PlanPhase";
 import type { PlanProgress } from "./PlanProgress";
+import type { PlanReturned } from "./PlanReturned";
 import type { PlanStale } from "./PlanStale";
 
 /**
@@ -20,4 +21,8 @@ error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanK
 /**
  * 这一片要你看的数（没认可的，不含问人）。
  */
-needCount: number, };
+needCount: number, 
+/**
+ * 顶块（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
+ */
+returned: PlanReturned | null, };

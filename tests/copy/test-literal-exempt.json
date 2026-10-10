@@ -57,9 +57,6 @@
       { "text": "模型", "use": "输入" },
       { "text": "账号", "use": "输入" }
     ],
-    "tests/frontend/filewin/copy_tests.rs": [
-      { "text": "原话", "use": "输入" }
-    ],
     "tests/frontend/filewin/editor_tests.rs": [
       { "text": "上限", "use": "词义" },
       { "text": "原话", "use": "输入" }

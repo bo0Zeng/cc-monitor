@@ -645,3 +645,23 @@ fn background_warmers_run_at_low_priority() {
         );
     }
 }
+
+impl crate::guard_support::Shaped for TailPlan {
+    fn samples() -> Vec<Self> {
+        vec![TailPlan {
+            total: 10,
+            tail_from: 7,
+            split_at: 300,
+            end: 420,
+        }]
+    }
+}
+
+impl crate::guard_support::Shaped for RecordProbe {
+    fn samples() -> Vec<Self> {
+        vec![RecordProbe {
+            present: true,
+            root: "/home/u/.claude".into(),
+        }]
+    }
+}

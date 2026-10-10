@@ -8,7 +8,7 @@
  */
 import s from "./status-dot.module.css";
 
-export type DotState = "running" | "needs-you" | "idle" | "exited" | "ended" | "unknown" | "gone" | "failed";
+export type DotState = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "unknown" | "gone" | "failed";
 
 /** 机器的点：`up` 已连接 · `failed` 离线 · `needs-you` 要你处理 · `exited` 已停用 · `unknown` 连接中 / 状态不明。 */
 export type MachineDotState = "up" | "failed" | "needs-you" | "exited" | "unknown";

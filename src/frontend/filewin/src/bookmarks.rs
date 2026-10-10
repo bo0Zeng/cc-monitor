@@ -108,34 +108,40 @@ pub fn read_book(file: &Path) -> Result<Book, String> {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Book::new()),
         Err(e) => {
+            // 句子只带原因词；系统原话记一行日志。
+            tracing::warn!("filewin: bookmarks read {}: {e}", file.display());
             return Err(copy_text(
                 "rsFilewinBookmarks.read.failed",
-                &[("e", &e.to_string())],
-            ))
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ));
         }
     };
     serde_json::from_str(&raw).map_err(|e| {
+        tracing::warn!("filewin: bookmarks unreadable {}: {e}", file.display());
         copy_text(
             "rsFilewinBookmarks.read.unreadable",
-            &[
-                ("file", &(file.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
+            &[("file", &(file.display()).to_string())],
         )
     })
+}
+
+/// 存不进去（建目录 · 上锁 · 原子换）：句子只带原因词，系统原话记一行日志。
+fn save_failed(e: std::io::Error) -> String {
+    tracing::warn!("filewin: bookmarks save: {e}");
+    copy_text(
+        "rsFilewinBookmarks.mutate.failed",
+        &[("why", &copy_core::io_reason(e.kind()))],
+    )
 }
 
 /// 拿锁。锁旁件没有就建一个（空文件，只拿来上锁）；锁随回值那个句柄一起放。
 fn lock_store(file: &Path) -> Result<std::fs::File, String> {
     let lock = lock_path(file);
     if let Some(dir) = lock.parent() {
-        std::fs::create_dir_all(dir)
-            .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
+        std::fs::create_dir_all(dir).map_err(save_failed)?;
     }
-    let f = std::fs::File::create(&lock)
-        .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
-    f.lock()
-        .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
+    let f = std::fs::File::create(&lock).map_err(save_failed)?;
+    f.lock().map_err(save_failed)?;
     Ok(f)
 }
 
@@ -147,8 +153,7 @@ pub fn mutate<R>(file: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book
     let mut book = read_book(file)?;
     let r = f(&mut book);
     book.retain(|_, v| !v.is_empty());
-    host_core::atomic_write_json(file, &book)
-        .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
+    host_core::atomic_write_json(file, &book).map_err(save_failed)?;
     Ok((r, book))
 }
 

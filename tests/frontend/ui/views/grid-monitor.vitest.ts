@@ -28,13 +28,15 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   cwd: null,
   state: LIVE,
   activity: null,
-  waitingFor: null,
+  activityText: null,
+  activityTone: null,
+  needs: null,
   runningAgents: 0,
   totalAgents: 0,
-  contextPct: null,
-  contextTokens: null,
+  context: null,
   unread: 0,
   background: false,
+  backgroundWork: null,
   account: null,
   ...over,
 });
@@ -63,20 +65,22 @@ describe("F91 groupSessionsByOrigin", () => {
 });
 
 describe("F91 sortSessionsInGroup", () => {
-  it("活会话先于归档；活内 等人>在干活>闲着>说不清；同档稳定", () => {
+  it("活会话先于归档；活内 等人>在干活>后台任务运行中>闲着>说不清；同档稳定", () => {
     const sorted = sortSessionsInGroup([
       snap({ sessionId: "arch", state: ENDED }),
       snap({ sessionId: "idle", activity: "idle" }),
       snap({ sessionId: "unknown", activity: null }),
+      snap({ sessionId: "shell", activity: "background_work" }),
       snap({ sessionId: "wait", activity: "needs_you" }),
       snap({ sessionId: "busy", activity: "working" }),
-      snap({ sessionId: "shell", activity: "idle" }),
+      snap({ sessionId: "idle2", activity: "idle" }),
     ]);
     expect(sorted.map((s) => s.sessionId)).toEqual([
       "wait",
       "busy",
-      "idle",
       "shell",
+      "idle",
+      "idle2",
       "unknown",
       "arch",
     ]);
@@ -125,7 +129,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const source = mkSource([
       snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, activity: "working", runningAgents: 2 }),
-      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", activity: "needs_you", waitingFor: "permission prompt" }),
+      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", activity: "needs_you", needs: "核心·等批准" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -138,7 +142,7 @@ describe("F91 GridMonitorView", () => {
     expect(groupTitles).toEqual([`${copyText("gridMonitor.groups.local")}（1）`, "pi（1）"]);
     let cells = document.querySelectorAll<HTMLElement>(".grid-monitor-cell");
     expect(cells.length).toBe(2);
-    expect(document.querySelector(".badge-waiting")?.textContent).toContain("permission prompt");
+    expect(document.querySelector(".badge-waiting")?.textContent).toBe("核心·等批准");
     // peek 初始收起
     expect(document.querySelector(".grid-monitor-peek")?.classList.contains("is-empty")).toBe(true);
 
@@ -156,17 +160,40 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
-  it("audit-fixes F03.2：可重连 cell 的 .live-dot 加 .reconnectable 类（覆写红绿黄；〔U4〕原名 .tmux-idle）", () => {
+  it("★ 格子的点与标签栏同一个点：颜色按核心的语气、形状按两轴；名字活着照抄核心的字（空闲不画成红）", () => {
     document.body.replaceChildren();
     const source = mkSource([
-      // activityStatus=busy（会加 act 类）但 tmuxIdle=true → 灰类必须叠上、CSS 源序覆写。
-      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activity: "working" }),
+      // 可重连：语气还是旧的「在跑」，形状按两轴盖过它。
+      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activity: "working", activityText: "核心·运行中", activityTone: "now" }),
+      snap({ sessionId: "id", title: "闲", activity: "idle", activityText: "核心·空闲", activityTone: "plain" }),
+      snap({ sessionId: "bg", title: "bg", activity: "background_work", activityText: "核心·后台", activityTone: "busy" }),
+      snap({ sessionId: "nk", title: "说不清", activity: null, activityText: "核心·说不清", activityTone: "now" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
-    const dot = document.querySelector<HTMLElement>(".grid-monitor-cell .live-dot")!;
-    // 删 updateCell 里 `view.reconnectable ? " reconnectable"` 那一截则此断言红。
-    expect(dot.classList.contains("reconnectable")).toBe(true);
+    const dot = (sid: string): HTMLElement => document.querySelector<HTMLElement>(`.grid-monitor-cell[data-sid="${sid}"] [role=img]`)!;
+    expect(dot("gi").dataset.state).toBe("exited");
+    expect([dot("id").dataset.state, dot("id").title]).toEqual(["idle", "核心·空闲"]);
+    expect([dot("bg").dataset.state, dot("bg").title], "后台任务运行中：单独一色").toEqual(["background", "核心·后台"]);
+    expect([dot("nk").dataset.state, dot("nk").title]).toEqual(["running", "核心·说不清"]);
+    expect(document.querySelector(".live-dot")).toBeNull();
+    view.close();
+  });
+
+  it("后台任务运行中：徽标写命令那一格（核心写的），悬停给整句、时长按此刻走；不是这一态不出", () => {
+    document.body.replaceChildren();
+    const from = Date.now() - 12 * 60_000 - 5_000;
+    const bw = { text: "x", clock: { text: "L · {dur}", from }, what: "make test-all", count: 1, tone: "busy" };
+    const source = mkSource([
+      snap({ sessionId: "bw", origin: "pi", activity: "background_work", activityTone: "busy", backgroundWork: bw }),
+      snap({ sessionId: "id", origin: "pi", activity: "idle", backgroundWork: bw }),
+    ]);
+    const view = new GridMonitorView(source);
+    view.open();
+    const badge = document.querySelector<HTMLElement>('.grid-monitor-cell[data-sid="bw"] .badge-bgwork')!;
+    expect(badge.textContent).toBe(copyText("gridMonitor.renderBadges.background", { cmd: "make test-all" }));
+    expect(badge.title).toBe("L · 12m");
+    expect(document.querySelector('.grid-monitor-cell[data-sid="id"] .badge-bgwork')).toBeNull();
     view.close();
   });
 
@@ -218,19 +245,20 @@ describe("F91 GridMonitorView", () => {
     }
   });
 
-  it("上限判不出（contextPct 为空、有用量）⇒ 格子上只写用了多少，不标红", () => {
+  it("上限判不出（核心没给百分比）⇒ 格子上照抄核心那一格的字，不标红，悬停说上限未知", () => {
     document.body.replaceChildren();
-    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", contextPct: null, contextTokens: 350_000 })]));
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", context: { text: "核心·350k", tone: "plain", percent: null } })]));
     view.open();
-    const b = document.querySelector(".badge-ctx");
-    expect(b?.textContent).toBe(copyText("gridMonitor.renderBadges.ctxTokens", { tokens: "350k" }));
+    const b = document.querySelector<HTMLElement>(".badge-ctx");
+    expect(b?.textContent).toBe(copyText("gridMonitor.renderBadges.ctx", { ctx: "核心·350k" }));
+    expect(b?.title).toBe(copyText("gridMonitor.renderBadges.ctxTokensHint"));
     expect(b?.classList.contains("is-high")).toBe(false);
     view.close();
   });
 
   it("F91b peekSession 缺省（旧桩）→ peek 仍显 snapshot 字段、不报错", () => {
     document.body.replaceChildren();
-    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", title: "a", cwd: "/x/y", contextPct: 42 })]));
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", title: "a", cwd: "/x/y", context: { text: "42%", tone: "plain", percent: 42 } })]));
     view.open();
     document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
     const facts = document.querySelector(".grid-monitor-peek-facts")?.textContent ?? "";
@@ -309,7 +337,7 @@ describe("F91 GridMonitorView", () => {
       let unread = 0;
       let contextPct = 40;
       const source = {
-        snapshotSessions: () => [snap({ sessionId: "l1", title: "a", unread, contextPct })],
+        snapshotSessions: () => [snap({ sessionId: "l1", title: "a", unread, context: { text: `${contextPct}%`, tone: "plain", percent: contextPct } })],
         switchTo: vi.fn(),
         peekSession: () => ({ model: "m", recentFiles: [] as string[], agents: [] as never[] }),
       };
@@ -367,19 +395,19 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
-  it("context% ≥80 加 is-high；<80 不加", () => {
+  it("核心说 warn 才加 is-high（界面不按百分比自己判）", () => {
     document.body.replaceChildren();
     const view = new GridMonitorView(
       mkSource([
-        snap({ sessionId: "hot", contextPct: 88 }),
-        snap({ sessionId: "cool", contextPct: 30 }),
+        snap({ sessionId: "hot", context: { text: "核心·88", tone: "warn", percent: 88 } }),
+        snap({ sessionId: "cool", context: { text: "核心·95", tone: "plain", percent: 95 } }),
       ]),
     );
     view.open();
     const ctx = [...document.querySelectorAll<HTMLElement>(".badge-ctx")];
     expect(ctx.length).toBe(2);
-    const hot = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctxPct", { pct: 88 }));
-    const cool = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctxPct", { pct: 30 }));
+    const hot = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctx", { ctx: "核心·88" }));
+    const cool = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctx", { ctx: "核心·95" }));
     expect(hot?.classList.contains("is-high")).toBe(true);
     expect(cool?.classList.contains("is-high")).toBe(false);
     view.close();
@@ -462,12 +490,12 @@ describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
     snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activity: "working", runningAgents: 2, totalAgents: 3 }),
-    snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", contextPct: 85, unread: 4 }),
+    snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
     snap({ sessionId: "l3", title: "本机三", state: ENDED }),
-    snap({ sessionId: "p1", title: "派一", origin: "pi", activity: "needs_you", waitingFor: "permission prompt" }),
+    snap({ sessionId: "p1", title: "派一", origin: "pi", activity: "needs_you", needs: "核心·等批准" }),
     snap({ sessionId: "p2", title: "派二", origin: "pi", state: RECONNECTABLE, background: true }),
     snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
-    snap({ sessionId: "n2", title: "诺二", origin: "nano", contextPct: 12 }),
+    snap({ sessionId: "n2", title: "诺二", origin: "nano", context: { text: "12%", tone: "plain", percent: 12 } }),
   ];
   const setup = (): {
     view: GridMonitorView;
@@ -543,8 +571,9 @@ describe("UP1 机器总览按行更新", () => {
       const before = new Map(["l1", "l2", "l3", "p1", "p2", "n1", "n2"].map((sid) => [sid, t.cellOf(sid)]));
       t.set((s) => {
         s[1].activity = "needs_you"; // l2 排到本机组最前
-        s[1].waitingFor = "worker request";
+        s[1].needs = "核心·等批准";
         s[3].activity = "working"; // p1 不再等
+        s[3].needs = null;
         s[5].cwd = null; // n1 的 cwd 行摘掉
         s[6].unread = 1;
       });
@@ -554,7 +583,7 @@ describe("UP1 机器总览按行更新", () => {
       expect(order).toEqual(["l2", "l1", "l3", "n1", "n2", "p1", "p2"]); // 远端组按名字升序：nano 在 pi 前
       expect(t.cellOf("n1").querySelector(".grid-monitor-cell-cwd")).toBeNull();
       expect(t.cellOf("p1").querySelector(".badge-waiting")).toBeNull();
-      expect(t.cellOf("l2").querySelector(".badge-waiting")?.textContent).toBe(copyText("gridMonitor.renderBadges.waiting", { waitingFor: "worker request" }));
+      expect(t.cellOf("l2").querySelector(".badge-waiting")?.textContent).toBe("核心·等批准");
     } finally {
       t.done();
     }
@@ -570,7 +599,7 @@ describe("UP1 机器总览按行更新", () => {
         },
         (s) => {
           s.splice(4, 1); // p2 没了
-          s[1].contextPct = null;
+          s[1].context = null;
           s.push(snap({ sessionId: "z1", title: "新机", origin: "zeta", cwd: "/z", unread: 2 }));
         },
         (s) => {
@@ -617,7 +646,7 @@ describe("UP1 机器总览按行更新", () => {
       expect(document.activeElement).toBe(t.cellOf("n2"));
       t.set((s) => {
         s[6].activity = "needs_you"; // n2 排到 nano 组最前（被 insertBefore 挪动）
-        s[6].waitingFor = "x";
+        s[6].needs = "x";
       });
       vi.advanceTimersByTime(1000);
       expect(document.activeElement).toBe(t.cellOf("n2"));

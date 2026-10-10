@@ -287,6 +287,8 @@ pub mod props;
 pub mod picker;
 // 本包的平台层（平台 cfg 只许住这里）。
 pub mod platform;
+// **计划反查**（稿 06）：目录落在某一片的仓库里 ⇒「格」一列 · 预览头「归属」· 右键「在计划里看」（后端 `plan-files` 判，这里只排版）。
+pub mod plan;
 pub mod rows;
 pub mod scale;
 // 🔴**选中态 · 键位 · 右键菜单那张表**。

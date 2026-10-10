@@ -542,6 +542,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "sessions-needs",
         "history-branch",
         "history-read",
         "history-lines",  //
@@ -672,6 +673,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "plan-cell-view",
         // 代敲 pb continue · pause · view：起一次 pb 并等它退出。
         "plan-command",
+        // 计划格 ⇄ 文件反查：现读一次计划（起 pb）。
+        "plan-files",
         // 计划审面三条：认可 / 撤认可读—改—写后端那份小文件（跨进程锁）；退回现读一次计划（起 pb）再起 tmux 送字。
         "plan-ack",
         "plan-unack",
@@ -870,6 +873,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
+        // 这台上需手动的会话清单：读 pidfile、扫在等的那几份会话（同步文件 I/O），阻塞档。
+        "sessions-needs",
         // 批量停 / 起：逐个起 tmux 子进程（同 `kill` / `launch`），阻塞档。
         "sessions-stop",
         "sessions-start",
@@ -896,6 +901,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "plan-read",
         "plan-cell-view",
         "plan-command",
+        "plan-files",
         "plan-ack",
         "plan-unack",
         "plan-return",

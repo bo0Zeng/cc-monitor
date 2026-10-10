@@ -58,6 +58,8 @@ struct Rig {
     fork_name: Option<&'static str>,
     /// 此刻持着某个 sid 的活进程（替身的 pidfile）。
     live: Vec<(&'static str, u32)>,
+    /// 列名单那一发失败的码（`None` ⇒ 照 `rows` 答）。
+    list_err: Option<&'static str>,
     /// 预标信任那几下：`pretrust <号目录> <工作目录> @<此前已交的 ccm 数>/<此前已键入的数>`。
     marks: RefCell<Vec<String>>,
 }
@@ -75,31 +77,41 @@ impl Rig {
             cwd_name: "proj-cc-2",
             fork_name: None,
             live: vec![],
+            list_err: None,
             marks: RefCell::new(vec![]),
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
         let caps = caps();
-        let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(self.rows.clone()) };
+        let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+            match self.list_err {
+                Some(c) => Err((c, "said".to_string())),
+                None => Ok(self.rows.clone()),
+            }
+        };
         let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
             self.calls
                 .borrow_mut()
                 .push(format!("record {sid} {dir:?}"));
             Ok((!self.gone.contains(&sid), "/root/x".to_string()))
         };
-        let kill = |name: &str, sid: &str| -> Result<Value, CmdErr> {
+        let kill = |name: &str, sid: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
             self.calls.borrow_mut().push(format!("kill {name} {sid}"));
             match self.kill_err {
-                Some(c) => Err((c, "said".to_string())),
+                Some(c) => Err(crate::stream::inbound::spec::Fail::new(
+                    c,
+                    "said".to_string(),
+                )),
                 None => Ok(json!({ "removed": [], "failed": [], "unread": null })),
             }
         };
-        let send_into = |name: &str, sid: &str, line: &str| -> Result<(), CmdErr> {
-            self.launched.borrow_mut().push(
-                json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid }),
-            );
-            Ok(())
-        };
+        let send_into =
+            |name: &str, sid: &str, line: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
+                self.launched.borrow_mut().push(
+                    json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid }),
+                );
+                Ok(())
+            };
         // 真 ccm：建会话撞名 ⇒ 退出码 3（响亮失败）。
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), CmdErr> {
             self.ccm.borrow_mut().push(argv.to_vec());
@@ -519,19 +531,20 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         row("c-cc", Some(C), true),
     ];
     let caps = caps();
-    let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(Some(rows.clone())) };
+    let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> { Ok(Some(rows.clone())) };
     let record =
         |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
     // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限 5 s）。
-    let kill = |name: &str, _: &str| -> Result<Value, CmdErr> {
+    let kill = |name: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
         let mark = dir.join(name);
         Child::new("sh")
             .args(["-c", &format!("touch {}; sleep 30", mark.display())])
             .run(Deadline::secs(5))
             .map(|_| json!({}))
-            .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()))
+            .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()).into())
     };
-    let send_into = |_: &str, _: &str, _: &str| -> Result<(), CmdErr> { Ok(()) };
+    let send_into =
+        |_: &str, _: &str, _: &str| -> Result<(), crate::stream::inbound::spec::Fail> { Ok(()) };
     let run_ccm = |_: &[String]| -> Result<(i32, String, String), CmdErr> {
         Ok((0, String::new(), String::new()))
     };
@@ -791,6 +804,88 @@ fn every_start_marks_the_cwd_trusted_in_its_account_before_it_starts() {
             *rig.marks.borrow(),
             vec!["pretrust /h/.cc/work /w/proj @0/0".to_string()],
             "开窗（local={local}）交回那一行之前标"
+        );
+    }
+}
+
+fn launched_sample() -> LaunchedAccount {
+    LaunchedAccount {
+        name: "work".into(),
+        config_dir: "/home/u/.claude-work".into(),
+        model: Some("opus".into()),
+    }
+}
+
+impl crate::guard_support::Shaped for Batched {
+    fn samples() -> Vec<Self> {
+        let all = Outcome {
+            sid: "s-1".into(),
+            outcome: "failed",
+            why: Some("record_gone".into()),
+            detail: "/home/u/.claude-work".into(),
+            said: Some("x".into()),
+            copy_detail: "y".into(),
+            session: Some("proj-cc".into()),
+            bus: Some(serde_json::json!({ "removed": 1 })),
+            cmd: Some("ccm --resume s-1".into()),
+            account: Some(launched_sample()),
+            unavailable: Some(AccountUnavailable {
+                requested: "work".into(),
+                pinned: true,
+                list_known: true,
+                alternative: Some("home".into()),
+            }),
+        };
+        vec![Batched { results: vec![all] }]
+    }
+}
+
+impl crate::guard_support::Shaped for Whereabouts {
+    fn samples() -> Vec<Self> {
+        vec![Whereabouts {
+            results: vec![Whereabout {
+                sid: "s-1".into(),
+                standing: StandingWord::Ambiguous,
+                names: vec!["proj-cc".into()],
+                terminals: vec![TerminalAt {
+                    host: "tmux",
+                    terminal: "$1".into(),
+                }],
+            }],
+        }]
+    }
+}
+
+/// 列名单那一发过了期限（总期限用完了）⇒ 三条都整条回 `child_timed_out`（同别的装了总期限的命令）；
+/// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
+#[test]
+fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
+    for (err, want) in [
+        (
+            crate::platform::child::TIMED_OUT,
+            crate::platform::child::TIMED_OUT,
+        ),
+        ("no_tmux", "unobservable"),
+        ("failed", "unobservable"),
+    ] {
+        let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
+        rig.list_err = Some(err);
+        let code = |r: Result<Value, CmdErr>| r.expect_err("该整条失败").0;
+        assert_eq!(
+            code(rig.run(|d| where_(&json!({ "sids": [A] }), d))),
+            want,
+            "where {err}"
+        );
+        assert_eq!(
+            code(rig.run(|d| stop(&json!({ "sids": [A] }), d))),
+            want,
+            "stop {err}"
+        );
+        let items = vec![item(A, json!({ "kind": "base" }))];
+        assert_eq!(
+            code(rig.run(|d| start(&batch("tmux", false, items), d))),
+            want,
+            "start {err}"
         );
     }
 }

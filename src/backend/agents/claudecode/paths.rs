@@ -305,31 +305,43 @@ pub fn is_session_record_path(target: &Path) -> bool {
 /// 判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
 pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, String> {
     let root = projects_root(home);
+    // 这几句只带原因词；下层原话记一行日志（删历史会话的失败形是一句话，没有原话位）。
+    use crate::common::said::{IntoNote as _, Said};
     let found = super::branch::find_session_file(&root, sid).map_err(|e| {
-        copy_text(
-            "beClaudePaths.delete.notFound",
-            &[("id", sid), ("e", &e.to_string())],
-        )
+        let said = if shell_quote_core::session_id_ok(sid) {
+            copy_text("beClaudePaths.delete.notFound", &[("id", sid)])
+        } else {
+            copy_text("beClaudePaths.delete.badId", &[("id", sid)])
+        };
+        Said::with_raw(said, e).into_note()
     })?;
     let real_root = std::fs::canonicalize(&root).map_err(|e| {
-        copy_text(
-            "beClaudePaths.delete.rootUnresolved",
-            &[
-                ("id", sid),
-                ("path", &root.display().to_string()),
-                ("e", &e.to_string()),
-            ],
+        Said::with_raw(
+            copy_text(
+                "beClaudePaths.delete.rootUnresolved",
+                &[
+                    ("id", sid),
+                    ("path", &root.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            e,
         )
+        .into_note()
     })?;
     let real = std::fs::canonicalize(&found).map_err(|e| {
-        copy_text(
-            "beClaudePaths.delete.fileUnresolved",
-            &[
-                ("id", sid),
-                ("path", &found.display().to_string()),
-                ("e", &e.to_string()),
-            ],
+        Said::with_raw(
+            copy_text(
+                "beClaudePaths.delete.fileUnresolved",
+                &[
+                    ("id", sid),
+                    ("path", &found.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            e,
         )
+        .into_note()
     })?;
     let rel = real.strip_prefix(&real_root).map_err(|_| {
         copy_text(

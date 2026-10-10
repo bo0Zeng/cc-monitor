@@ -9,7 +9,7 @@
 //! | `ended` | 某块的接手对到的会话已结束、那一块没全做完（子 agent 当接手看父会话：父会话也停了才算） | `ended:<块>@<接手 id>` |
 //! | `ask` | 某块的接手对到的会话此刻在等你 | `ask:<块>@<接手 id>`（不收认可：答了自己消失；计数由会话那一侧算） |
 //!
-//! 另有「退回」落地的判法（[`landing`]）与送进会话的那一行（[`line`]）。
+//! 另有「退回」落地的判法（[`landing`]）· 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或顶块 `project`）。
 
 use super::product::{DONE, DROPPED};
 use copy_core::copy_text;
@@ -230,6 +230,27 @@ pub(crate) fn count_slice(sl: &Value) -> u64 {
         .flatten()
         .filter(|x| x.get("kind").and_then(Value::as_str) != Some(ASK) && x["acked"] != true)
         .count() as u64
+}
+
+/// 退回 / 说给负责的那一个对象（成品里的形状）：一格 ⇒ 那一格；`project`（顶块，pb 里与格同样可寻址：`pb see project`）⇒
+/// 拼出与格同形的一份 —— 标题是片名 · 子是顶层那几格 · 在长它的是顶块接手 · 没有正文 · 没有签它的（project 谁都签不了）。
+/// 落地照格的判法（[`landing`]）：顶层多出退回之后新建的一格。这一片没有这一格 ⇒ `None`。
+pub(crate) fn target(sl: &Value, id: &str) -> Option<Value> {
+    if id == TOP_BLOCK {
+        let owner = find(sl.get("blocks"), TOP_BLOCK)?
+            .get("owner")
+            .cloned()
+            .unwrap_or(Value::Null);
+        return Some(json!({
+            "id": TOP_BLOCK,
+            "title": sl.get("name").cloned().unwrap_or(Value::Null),
+            "children": sl.get("top").cloned().unwrap_or_else(|| json!([])),
+            "body": null,
+            "owner": owner,
+            "signer": null,
+        }));
+    }
+    find(sl.get("cells"), id).cloned()
 }
 
 /// 一格正文的摘要（只用来分辨「改没改」）。

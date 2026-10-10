@@ -86,14 +86,19 @@ impl<T: Target> Roller<T> {
         let moved = match std::fs::rename(&self.cur, &self.old) {
             Ok(()) => true,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            // 这几句只进 stderr 那一行（[`Installed::said`]）：那一句 ＋ 原话一起（`Said::logged`）。
             Err(e) => {
-                return Err(copy_text(
-                    "beStderrLog.roll.moveFailed",
-                    &[
-                        ("path", &self.cur.display().to_string()),
-                        ("e", &e.to_string()),
-                    ],
-                ))
+                return Err(crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beStderrLog.roll.moveFailed",
+                        &[
+                            ("path", &self.cur.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    e,
+                )
+                .logged())
             }
         };
         let mut f = std::fs::OpenOptions::new()
@@ -101,13 +106,17 @@ impl<T: Target> Roller<T> {
             .create_new(true)
             .open(&self.cur)
             .map_err(|e| {
-                copy_text(
-                    "beStderrLog.roll.createFailed",
-                    &[
-                        ("path", &self.cur.display().to_string()),
-                        ("e", &e.to_string()),
-                    ],
+                crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beStderrLog.roll.createFailed",
+                        &[
+                            ("path", &self.cur.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    e,
                 )
+                .logged()
             })?;
         if moved {
             let _ = f.write_all(roll_note(&self.old).as_bytes());

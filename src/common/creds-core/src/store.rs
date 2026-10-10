@@ -152,16 +152,18 @@ pub enum StoreError {
 }
 
 impl StoreError {
-    /// 给人看的那一句（`path` = 读的是哪一份文件）。不再把整份模板插进报错。
-    pub fn said(&self, path: &std::path::Path) -> String {
+    /// 给人看的那一句（`path` = 读的是哪一份文件）＋ 解析器的原话（进复制详情 / 日志，不上句子）。不再把整份模板插进报错。
+    pub fn said(&self, path: &std::path::Path) -> copy_core::said::Said {
         match self {
-            StoreError::NotJson(e) => {
-                copy_core::copy_text("credsStore.error.notJson", &[("e", &e.to_string())])
-            }
+            StoreError::NotJson(e) => copy_core::said::Said::with_raw(
+                copy_core::copy_text("credsStore.error.notJson", &[]),
+                e,
+            ),
             StoreError::NotAnObject => copy_core::copy_text(
                 "credsStore.error.notObject",
                 &[("path", &path.display().to_string()), ("shape", "{ … }")],
-            ),
+            )
+            .into(),
         }
     }
 }

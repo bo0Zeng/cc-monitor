@@ -265,8 +265,8 @@
     "beAcctExec.apply.stopped": {
       "kind": "error",
       "role": "报错",
-      "zh": "步骤 {step}/{of} 失败 · {what} · {e}\n已做的步骤都记在备份 {backup} · 可按它回滚",
-      "args": ["step", "of", "what", "e", "backup"]
+      "zh": "步骤 {step}/{of} 失败 · {what} · {why}\n已做的步骤都记在备份 {backup} · 可按它回滚",
+      "args": ["step", "of", "what", "why", "backup"]
     },
     "beAcctExec.copy.kind": {
       "kind": "error",
@@ -698,8 +698,8 @@
     "beAcctVerify.global.badManifest": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取账号清单失败 · {e}",
-      "args": ["e"]
+      "zh": "{why}",
+      "args": ["why"]
     },
     "beAcctVerify.global.homeConfig": {
       "kind": "body",
@@ -740,8 +740,8 @@
     "beAcctVerify.global.roots": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{e}",
-      "args": ["e"]
+      "zh": "{why}",
+      "args": ["why"]
     },
     "beAcctVerify.global.unknown": {
       "kind": "error",
@@ -1120,20 +1120,20 @@
     "beClaudePaths.delete.notFound": {
       "kind": "error",
       "role": "原因格",
-      "zh": "删除会话 {id} 失败 · {e}",
-      "args": ["id", "e"]
+      "zh": "删除会话 {id} 失败 · 记录已不在",
+      "args": ["id"]
     },
     "beClaudePaths.delete.rootUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除会话 {id} 失败 · {e} · 取不到会话记录目录 {path} 的实际路径",
-      "args": ["id", "path", "e"]
+      "zh": "删除会话 {id} 失败 · {why} · 取不到会话记录目录 {path} 的实际路径",
+      "args": ["id", "why", "path"]
     },
     "beClaudePaths.delete.fileUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除会话 {id} 失败 · {e} · 取不到 {path} 的实际路径",
-      "args": ["id", "path", "e"]
+      "zh": "删除会话 {id} 失败 · {why} · 取不到 {path} 的实际路径",
+      "args": ["id", "why", "path"]
     },
     "beClaudePaths.delete.outsideRoot": {
       "kind": "error",
@@ -1296,7 +1296,7 @@
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · 会话不存在",
+      "zh": "tmux 读取画面失败 · tmux 会话不存在",
       "args": [],
       "limited": ["tmux"]
     },
@@ -1310,33 +1310,37 @@
     "beGate.probe.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beGate.admit.noSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 不存在 · 未发送",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 不存在 · 未发送",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admit.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 非 cc-monitor 启动 · 未发送",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 非 cc-monitor 启动 · 未发送",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.noSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 不存在 · 无可结束",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 不存在 · 无可结束",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admit.otherClient": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 由另一客户端启动 · 只能看 · 未发送",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 由另一客户端启动 · 只能看 · 未发送",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admit.otherSession": {
       "kind": "error",
@@ -1348,14 +1352,16 @@
     "beGate.admitDestructive.otherClient": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 由另一客户端启动 · 只能看 · 未结束",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 由另一客户端启动 · 只能看 · 未结束",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 非 cc-monitor 启动 · 未结束",
-      "args": ["name"]
+      "zh": "tmux 会话 {name} 非 cc-monitor 启动 · 未结束",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.otherSession": {
       "kind": "error",
@@ -1367,39 +1373,43 @@
     "beGate.admitDestructive.manyWindows": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话 {name} 有窗口 ×{n} · 可能开着别的 · 未结束 · 到该 tmux 会话里自行处理",
+      "zh": "tmux 会话 {name} 有窗口 ×{n} · 可能开着别的 · 未结束 · 需手动处理",
       "args": ["name", "n"],
       "limited": ["tmux"]
     },
     "beKill.name.colon": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话名含冒号 · {name}",
-      "args": ["name"]
+      "zh": "tmux 会话名含冒号 · {name}",
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beKill.name.empty": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话名为空",
-      "args": []
+      "zh": "tmux 会话名为空",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beKill.name.control": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话名含控制字符",
-      "args": []
+      "zh": "tmux 会话名含控制字符",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beKill.name.deceptive": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话名含像空格或反转文字方向的字符 · {cp}",
-      "args": ["cp"]
+      "zh": "tmux 会话名含像空格或反转文字方向的字符 · {cp}",
+      "args": ["cp"],
+      "limited": ["tmux"]
     },
     "beKill.run.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beSessionRestart.locate.notInTerminal": {
@@ -1429,8 +1439,9 @@
     "beKill.run.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "结束会话失败 · {e}",
-      "args": ["e"]
+      "zh": "结束 tmux 会话失败 · tmux 报错",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beLaunch.said.silent": {
       "kind": "body",
@@ -1442,29 +1453,29 @@
     "beLaunch.run.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beLaunch.create.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "新建 tmux 会话失败 · {name} · 会话不存在 · {said}",
-      "args": ["name", "said"],
+      "zh": "新建 tmux 会话失败 · {name} · tmux 报错",
+      "args": ["name"],
       "limited": ["tmux"]
     },
     "beLaunch.type.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 往 {target} 发送失败 · {said} · 内容可能未进去",
-      "args": ["target", "said"],
+      "zh": "tmux 往 {target} 发送失败 · tmux 报错 · 内容可能未进去",
+      "args": ["target"],
       "limited": ["tmux"]
     },
     "beStderrFd.point.dupFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "错误输出写入日志失败 · {e}",
-      "args": ["e"]
+      "zh": "错误输出写入日志失败 · {why}",
+      "args": ["why"]
     },
     "beStderrFd.point.notUnix": {
       "kind": "error",
@@ -1493,20 +1504,20 @@
     "beStderrLog.roll.moveFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "上一份日志移走失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "上一份日志移走失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beStderrLog.roll.createFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "新建日志失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "新建日志失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "credsStore.error.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "凭据文件不是合法 JSON · 未改动 · {e} · 手编文件 · 查逗号与引号后再试",
-      "args": ["e"]
+      "zh": "凭据文件内容无法解析 · 未改动 · 查逗号与引号",
+      "args": []
     },
     "credsStore.error.notObject": {
       "kind": "error",
@@ -1787,20 +1798,20 @@
     "beStop.handle.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "未停止进程 {pid} · 拿不到句柄 · {e}",
-      "args": ["pid", "e"]
+      "zh": "未停止进程 {pid} · 拿不到句柄 · {why}",
+      "args": ["pid", "why"]
     },
     "beStop.signal.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "发送信号 {sig} 失败 · {e}",
-      "args": ["sig", "e"]
+      "zh": "发送信号 {sig} 失败 · {why}",
+      "args": ["sig", "why"]
     },
     "beStop.wait.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "等进程退出出错 · {e}",
-      "args": ["e"]
+      "zh": "等进程退出失败 · {why}",
+      "args": ["why"]
     },
     "beStop.term.none": {
       "kind": "body",
@@ -2163,8 +2174,9 @@
     "terminalReads.preview.noSuchSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · 会话不存在",
-      "args": []
+      "zh": "读取画面失败 · tmux 会话不存在",
+      "args": [],
+      "limited": ["tmux"]
     },
     "terminalReads.preview.childTimedOut": {
       "kind": "error",
@@ -2236,7 +2248,7 @@
     "tmuxControl.kill.wrongOwner": {
       "kind": "error",
       "role": "报错",
-      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的会话 · 不碰手动建的 tmux 会话",
+      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的 tmux 会话 · 不碰手动建的 tmux 会话",
       "args": ["target"],
       "limited": ["tmux"]
     },
@@ -2617,7 +2629,7 @@
     "ccBus.broadcast.doneFailed": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 {failed} · {who}",
+      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 ×{failed} · {who}",
       "args": ["sent", "skipped", "failed", "who"]
     },
     "ccBus.broadcast.doneUnknown": {
@@ -2629,7 +2641,7 @@
     "ccBus.broadcast.doneUnknownFailed": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 {failed} · {who}",
+      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 ×{failed} · {who}",
       "args": ["sent", "failed", "who"]
     },
     "portForward.onStop.failed": {
@@ -2780,8 +2792,8 @@
     "gridMonitor.renderPeek.statusWaiting": {
       "kind": "body",
       "role": "片段",
-      "zh": "{activityStatus} · 等 {waitingFor}",
-      "args": ["activityStatus", "waitingFor"]
+      "zh": "{activityStatus} · {needs}",
+      "args": ["activityStatus", "needs"]
     },
     "gridMonitor.renderPeek.unknown": {
       "kind": "body",
@@ -2843,17 +2855,11 @@
       "zh": "返回",
       "args": []
     },
-    "gridMonitor.renderBadges.waitingHover": {
+    "gridMonitor.renderBadges.background": {
       "kind": "body",
-      "role": "悬停",
-      "zh": "等 {waitingFor}",
-      "args": ["waitingFor"]
-    },
-    "gridMonitor.renderBadges.waiting": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "等 {waitingFor}",
-      "args": ["waitingFor"]
+      "role": "片段",
+      "zh": "后台任务 · {cmd}",
+      "args": ["cmd"]
     },
     "gridMonitor.renderBadges.unread": {
       "kind": "body",
@@ -2867,23 +2873,17 @@
       "zh": "最新一轮用量 · 上限未知 · 不算百分比",
       "args": []
     },
-    "gridMonitor.renderBadges.ctxTokens": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "上下文 {tokens}",
-      "args": ["tokens"]
-    },
     "gridMonitor.renderBadges.ctxHint": {
       "kind": "body",
       "role": "说明",
       "zh": "上下文占用 · 按最新一轮估算",
       "args": []
     },
-    "gridMonitor.renderBadges.ctxPct": {
+    "gridMonitor.renderBadges.ctx": {
       "kind": "body",
-      "role": "状态",
-      "zh": "上下文 {pct}%",
-      "args": ["pct"]
+      "role": "片段",
+      "zh": "上下文 {ctx}",
+      "args": ["ctx"]
     },
     "gridMonitor.renderBadges.agents": {
       "kind": "body",
@@ -3155,7 +3155,7 @@
     "speaker.notice.fails": {
       "kind": "body",
       "role": "片段",
-      "zh": " · 失败 {n}",
+      "zh": " · 失败 ×{n}",
       "args": ["n"]
     },
     "speaker.system.title": {
@@ -4596,12 +4596,6 @@
       "zh": "终端窗口已关闭",
       "args": []
     },
-    "front.title.hosted": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "未切换 · 终端由 Windows 托管",
-      "args": []
-    },
     "front.title.desktopWontSwitch": {
       "kind": "title",
       "role": "标题",
@@ -4629,23 +4623,20 @@
     "front.hint.several": {
       "kind": "body",
       "role": "说明",
-      "zh": "在目标窗口新开 PowerShell 标签页并重连后可识别",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "接上终端后新开的终端标签页可识别",
+      "args": []
     },
     "front.body.unbound": {
       "kind": "body",
       "role": "说明",
-      "zh": "启动于接上终端之前的 PowerShell",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "本会话所在终端未登记",
+      "args": []
     },
     "front.hint.unbound": {
       "kind": "body",
       "role": "说明",
-      "zh": "接上终端后新开的 PowerShell 可识别",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "接上终端后新开的终端标签页可识别",
+      "args": []
     },
     "front.body.detached": {
       "kind": "body",
@@ -4709,12 +4700,6 @@
       "zh": "系统阻止抢前台 · 点任务栏闪烁的窗口",
       "args": []
     },
-    "front.body.hosted": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Windows 交给「终端」应用托管 · 定位失败",
-      "args": []
-    },
     "front.body.desktopWontSwitch": {
       "kind": "body",
       "role": "说明",
@@ -4727,33 +4712,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "cc-monitor 在此 Wayland 桌面上无法查看或切换别的程序的窗口",
-      "args": []
-    },
-    "front.title.backgroundTab": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "未切换 · 终端在后台标签页",
-      "args": []
-    },
-    "front.body.backgroundTab": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "「终端」应用里该标签页不在前台 · 找不到窗口",
-      "args": []
-    },
-    "front.hint.backgroundTab": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "切到该标签页再点 ↗",
-      "args": [],
-      "waive": {
-        "C-W1": "↗ 指认界面上同形的那个按钮"
-      }
-    },
-    "front.hint.hosted": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在「终端」应用里新开标签页再连",
       "args": []
     },
     "front.body.unknown": {
@@ -5732,12 +5690,6 @@
       "zh": "未记录 · 启动一次 cc-monitor 后自动记录",
       "args": []
     },
-    "machineAliases.ps.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "—",
-      "args": []
-    },
     "machineAliases.ps.autoLaunchHint": {
       "kind": "body",
       "role": "说明",
@@ -6193,12 +6145,6 @@
       "zh": "{path} 未接上",
       "args": ["path"]
     },
-    "machineAliases.access.outdatedHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "替换 cc-monitor 加的那几行 · 写前备份",
-      "args": []
-    },
     "machineAliases.access.peek": {
       "kind": "action",
       "role": "按钮",
@@ -6309,12 +6255,6 @@
       "zh": "接上 {path}…",
       "args": ["path"]
     },
-    "machineAliases.status.update": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "更新…",
-      "args": []
-    },
     "machineAliases.userPath.offHelp": {
       "kind": "body",
       "role": "说明",
@@ -6327,20 +6267,6 @@
       "zh": "Windows 终端",
       "args": []
     },
-    "machineAliases.win.bindTitle": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "从标签页切回 PowerShell 窗口",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "machineAliases.win.bindHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "与别名一起接在 PowerShell 配置文件 · 可切回窗口 {n}",
-      "args": ["n"],
-      "limited": ["PowerShell"]
-    },
     "machineAliases.win.autoPath": {
       "kind": "body",
       "role": "片段",
@@ -6350,15 +6276,15 @@
     "machineAliases.win.statusPathOn": {
       "kind": "body",
       "role": "说明",
-      "zh": "可切回窗口 {n} · cmd 里有 ccm",
-      "args": ["n"],
+      "zh": "cmd 里有 ccm",
+      "args": [],
       "limited": ["ccm"]
     },
     "machineAliases.win.statusPathOff": {
       "kind": "body",
       "role": "说明",
-      "zh": "可切回窗口 {n} · cmd 里无 ccm",
-      "args": ["n"],
+      "zh": "cmd 里无 ccm",
+      "args": [],
       "limited": ["ccm"]
     },
     "machineAliases.writes.line": {
@@ -6386,23 +6312,11 @@
       "args": ["path"],
       "limited": ["ccm"]
     },
-    "machineAliases.access.outdated": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "要更新 · {path} 里 cc-monitor 加的那几行 · 新别名不可用",
-      "args": ["path"]
-    },
     "machineAliases.access.notLoaded": {
       "kind": "body",
       "role": "说明",
       "zh": "已接在 {path} · {ps} 不加载它",
       "args": ["path", "ps"]
-    },
-    "machineAliases.access.reconnect": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "更新",
-      "args": []
     },
     "machineAliases.access.off": {
       "kind": "body",
@@ -6690,7 +6604,7 @@
     "profilesPage.form.reread": {
       "kind": "action",
       "role": "按钮",
-      "zh": "重新读",
+      "zh": "刷新",
       "args": []
     },
     "profilesPage.form.save": {
@@ -9429,8 +9343,8 @@
     "bePubkey.exec.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "往该机 authorized_keys 追加公钥失败 · {said}",
-      "args": ["said"]
+      "zh": "往该机 authorized_keys 追加公钥失败 · 原因不明",
+      "args": []
     },
     "bePubkey.read.tooBig": {
       "kind": "error",
@@ -9441,8 +9355,8 @@
     "rsPubkey.pushPublicKey.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "rsPubkey.pushPublicKey.noKey": {
       "kind": "error",
@@ -9586,8 +9500,8 @@
     "rsSftp.deploy.unameFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {machine} 机型失败 · {e} · 未安装后端",
-      "args": ["machine", "e"]
+      "zh": "读取 {machine} 机型失败 · {why} · 未安装后端",
+      "args": ["machine", "why"]
     },
     "bePlaceVerdict.why.rebuilt": {
       "kind": "body",
@@ -9694,8 +9608,8 @@
     "rsFilewinShell.window.openFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "打开文件窗口失败 · {e}",
-      "args": ["e"]
+      "zh": "打开文件窗口失败 · 原因不明",
+      "args": []
     },
     "rsFilewinShell.menu.unavailableHere": {
       "kind": "error",
@@ -10255,20 +10169,20 @@
     "rsFilewinFind.round.findFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "搜索失败 · {e}",
-      "args": ["e"]
+      "zh": "搜索失败 · 程序出错",
+      "args": []
     },
     "rsFilewinFind.round.statusFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取文件清单状态失败 · {e}",
-      "args": ["e"]
+      "zh": "读取文件清单状态失败 · 程序出错",
+      "args": []
     },
     "rsFilewinFind.refusal.line": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{hint} · {message}",
-      "args": ["hint", "message"]
+      "zh": "{hint} · {said}",
+      "args": ["hint", "said"]
     },
     "rsFilewinFind.refusal.other": {
       "kind": "error",
@@ -10423,20 +10337,20 @@
     "rsFilewinBookmarks.mutate.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "保存书签失败 · {e}",
-      "args": ["e"]
+      "zh": "保存书签失败 · {why}",
+      "args": ["why"]
     },
     "rsFilewinBookmarks.read.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取书签文件 {file} 失败 · 内容无法解析 · {e}",
-      "args": ["file", "e"]
+      "zh": "读取书签文件 {file} 失败 · 内容无法解析",
+      "args": ["file"]
     },
     "rsFilewinBookmarks.read.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取书签失败 · {e}",
-      "args": ["e"]
+      "zh": "读取书签失败 · {why}",
+      "args": ["why"]
     },
     "rsFilewinTransfer.ui.redone": {
       "kind": "error",
@@ -10888,8 +10802,8 @@
     "rsFilewinCopy.outcome.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "复制失败 · {e}",
-      "args": ["e"]
+      "zh": "复制失败 · {said}",
+      "args": ["said"]
     },
     "rsFilewinCopy.outcome.skipped": {
       "kind": "body",
@@ -11307,8 +11221,8 @@
     "rsInboundClient.error.refused": {
       "kind": "error",
       "role": "原因格",
-      "zh": "远端拒绝 · {message}",
-      "args": ["message"]
+      "zh": "远端拒绝 · {said}",
+      "args": ["said"]
     },
     "rsInboundClient.error.refusedNoReason": {
       "kind": "error",
@@ -11509,8 +11423,8 @@
     "rsConfigSurface.row.declMismatch": {
       "kind": "error",
       "role": "报错",
-      "zh": "登记的路径与安装位置对不上 · {e}",
-      "args": ["e"]
+      "zh": "登记的路径与安装位置对不上 · {why}",
+      "args": ["why"]
     },
     "rsConfigSurface.effect.indirectWrite": {
       "kind": "body",
@@ -11639,8 +11553,8 @@
     "rsConfigSurface.observe.eitherPresent": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机存在（{detail}）",
-      "args": ["detail"]
+      "zh": "本机存在（{what}）",
+      "args": ["what"]
     },
     "rsConfigSurface.observe.eitherAbsent": {
       "kind": "error",
@@ -11990,8 +11904,8 @@
     "rsShellDialect.ps.builtinAliasUnknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "PowerShell 自带别名未知 · {name} 是否撞名未知 · {e}",
-      "args": ["name", "e"],
+      "zh": "PowerShell 自带别名未知 · {name} 是否撞名未知",
+      "args": ["name"],
       "limited": ["PowerShell"]
     },
     "rsShellDialect.ps.nameTakenPath": {
@@ -12319,8 +12233,8 @@
     "rsAssetSync.call.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 · {message}",
-      "args": ["message"]
+      "zh": "本机后端 · {said}",
+      "args": ["said"]
     },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
@@ -12433,8 +12347,8 @@
     "rsDialHost.ask.writeFenced": {
       "kind": "error",
       "role": "报错",
-      "zh": "{message} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
-      "args": ["message"]
+      "zh": "{said} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
+      "args": ["said"]
     },
     "rsDialHost.ask.timeout": {
       "kind": "error",
@@ -12501,8 +12415,8 @@
     "rsLinkMux.flight.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "发送任务未完成 · {e}",
-      "args": ["e"]
+      "zh": "发送任务未完成 · 程序出错",
+      "args": []
     },
     "rsLinkMux.open.refused": {
       "kind": "error",
@@ -12514,8 +12428,8 @@
     "rsLinkMux.said.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端拒绝连接 · {message}",
-      "args": ["message"],
+      "zh": "本机后端拒绝连接 · {said}",
+      "args": ["said"],
       "limited": ["连接"]
     },
     "rsSftpPool.watch.lost": {
@@ -12570,8 +12484,8 @@
     "rsChanWire.frame.badHead": {
       "kind": "error",
       "role": "原因格",
-      "zh": "收到的数据头无法解析 · {e}",
-      "args": ["e"]
+      "zh": "收到的数据头无法解析",
+      "args": []
     },
     "rsChanWire.segment.tooLong": {
       "kind": "error",
@@ -12728,12 +12642,6 @@
       "zh": "开机自启开关与程序路径",
       "args": []
     },
-    "rsDataPaths.monitor.bindings": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "各会话所在终端窗口 · 切到终端用",
-      "args": []
-    },
     "rsDataPaths.monitor.bookmarks": {
       "kind": "body",
       "role": "说明",
@@ -12785,8 +12693,8 @@
     "rsLaunch.remote.taskFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "打开终端失败 · {e}",
-      "args": ["e"]
+      "zh": "打开终端失败 · 程序出错",
+      "args": []
     },
     "rsLaunch.terminalDial.local": {
       "kind": "error",
@@ -13412,15 +13320,15 @@
     "beSshConfig.host.sshGExit": {
       "kind": "error",
       "role": "报错",
-      "zh": "ssh -G {alias} 退出非 0 · {detail}",
-      "args": ["alias", "detail"],
+      "zh": "ssh -G {alias} 失败 · 原因不明",
+      "args": ["alias"],
       "limited": ["SSH"]
     },
     "beSshConfig.host.sshGFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "运行 ssh -G 失败 · {e}",
-      "args": ["e"],
+      "zh": "运行 ssh -G 失败 · {why}",
+      "args": ["why"],
       "limited": ["SSH"]
     },
     "beSshConfig.host.dashAlias": {
@@ -13527,8 +13435,8 @@
     "rsSshSource.snapshot.failed": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话 {sid} 的历史快照未拉下 · {err}\n此标签页暂只有实时消息 · 完整内容到历史浏览器查看",
-      "args": ["sid", "err"]
+      "zh": "会话 {sid} 的历史快照未拉下\n此标签页暂只有实时消息 · 完整内容到历史浏览器查看",
+      "args": ["sid"]
     },
     "rsRemoteBranch.what.messageId": {
       "kind": "body",
@@ -13581,8 +13489,8 @@
     "rsAssetSync.reach.said": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 · {message}",
-      "args": ["message"]
+      "zh": "本机后端 · {said}",
+      "args": ["said"]
     },
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
@@ -14315,8 +14223,8 @@
     "rsFrameQuery.call.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}查询失败 · {message}",
-      "args": ["who", "message"]
+      "zh": "{who}查询失败 · {said}",
+      "args": ["who", "said"]
     },
     "rsFrameQuery.call.failedNoReason": {
       "kind": "error",
@@ -15489,8 +15397,8 @@
     "beInvoke.notRun.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{bin} 启动失败 · {e}",
-      "args": ["bin", "e"]
+      "zh": "{bin} 启动失败 · {why}",
+      "args": ["bin", "why"]
     },
     "bePlan.dump.noPythonHint": {
       "kind": "body",
@@ -15706,22 +15614,22 @@
     "beSshAgent.connect.pipe": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接 {pipe} 失败 · {e} · 查 SSH agent 是否在运行",
-      "args": ["pipe", "e"],
+      "zh": "连接 {pipe} 失败 · 原因不明 · 查 SSH agent 是否在运行",
+      "args": ["pipe"],
       "limited": ["SSH", "连接"]
     },
     "beSshAgent.connect.authSock": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接 SSH agent 失败 · {e} · 查 SSH_AUTH_SOCK 是否已设、agent 是否在运行",
-      "args": ["e"],
+      "zh": "连接 SSH agent 失败 · 原因不明 · 查 SSH_AUTH_SOCK 是否已设、agent 是否在运行",
+      "args": [],
       "limited": ["SSH", "连接"]
     },
     "beSshAgent.connect.givenSocket": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接 SSH agent {path} 失败 · {e} · 查它是否在运行",
-      "args": ["path", "e"],
+      "zh": "连接 SSH agent {path} 失败 · 原因不明 · 查它是否在运行",
+      "args": ["path"],
       "limited": ["SSH", "连接"]
     },
     "beFs.readRegularCapped.tooBig": {
@@ -15745,8 +15653,8 @@
     "beSessionSnapshot.probeTmux.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beHistoryQuery.readLinesFrom.lineTooLong": {
@@ -15842,14 +15750,14 @@
     "beHistoryAnnotations.parse.unparsable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取星标和改名记录 {path} 失败 · 内容无法解析 · 未覆盖 · {e}",
-      "args": ["path", "e"]
+      "zh": "读取星标和改名记录 {path} 失败 · 内容无法解析 · 未覆盖",
+      "args": ["path"]
     },
     "beHistoryJoin.blocking.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机查询未完成 · {e}",
-      "args": ["e"]
+      "zh": "本机查询未完成 · 程序出错",
+      "args": []
     },
     "beHistoryList.remote.unreadable": {
       "kind": "error",
@@ -15878,8 +15786,8 @@
     "beRemoteAsk.run.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "后端报错 · {said}",
-      "args": ["said"]
+      "zh": "后端报错",
+      "args": []
     },
     "beRemoteAsk.run.failedNoReason": {
       "kind": "error",
@@ -15890,8 +15798,8 @@
     "beRemoteAsk.run.resultUnreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "对端交回的结果无法解析 · {e}",
-      "args": ["e"]
+      "zh": "对端交回的结果无法解析",
+      "args": []
     },
     "beRemoteAsk.run.droppedBeforeResult": {
       "kind": "error",
@@ -15928,8 +15836,8 @@
     "beRemoteAsk.cappedLine.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接读取中断 · {e}",
-      "args": ["e"],
+      "zh": "连接读取中断",
+      "args": [],
       "limited": ["连接"]
     },
     "beMachine.jump.loop": {
@@ -16122,8 +16030,8 @@
     "beMcpSync.serversOf.badJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "{side}不是合法 JSON · 未比对 · 未改动 · {e}",
-      "args": ["side", "e"]
+      "zh": "{side}内容无法解析 · 未比对 · 未改动",
+      "args": ["side"]
     },
     "beReadFace.tooLarge.say": {
       "kind": "error",
@@ -16152,8 +16060,8 @@
     "beInbound.handleLine.internal": {
       "kind": "error",
       "role": "报错",
-      "zh": "程序出错 · 命令未做完 · {e}",
-      "args": ["e"]
+      "zh": "程序出错 · 命令未做完",
+      "args": []
     },
     "beInbound.drain.shuttingDown": {
       "kind": "error",
@@ -16164,8 +16072,8 @@
     "beAccountsQuery.trustProductAt.unparsable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "信任状态无法解析 · {e}",
-      "args": ["e"]
+      "zh": "信任状态无法解析",
+      "args": []
     },
     "beAccountsQuery.accountTrustZero.noHome": {
       "kind": "error",
@@ -16200,20 +16108,20 @@
     "beAccountsQuery.loadManifest.badJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号清单不是合法 JSON · {e}",
-      "args": ["e"]
+      "zh": "账号清单内容无法解析",
+      "args": []
     },
     "beAccountsQuery.loadManifest.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取账号清单失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取账号清单失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beTasksQuery.sessionTaskLines.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取任务目录失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "读取任务目录失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",
@@ -16278,8 +16186,8 @@
     "beUpstreamCreds.load.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取凭据文件失败 · {e}",
-      "args": ["e"]
+      "zh": "读取凭据文件失败 · {why}",
+      "args": ["why"]
     },
     "beUpstreamCreds.path.noDataDir": {
       "kind": "error",
@@ -16589,8 +16497,8 @@
     "beRelayListen.key.unavailable": {
       "kind": "error",
       "role": "报错",
-      "zh": "取中转钥匙失败 · {e} · 中转未起（无钥匙则谁都能用）",
-      "args": ["e"]
+      "zh": "取中转钥匙失败 · {why} · 中转未起（无钥匙则谁都能用）",
+      "args": ["why"]
     },
     "localResume.launch.failed": {
       "kind": "error",
@@ -17533,6 +17441,36 @@
       "zh": "{path} 非会话记录 · 未删除",
       "args": ["path"]
     },
+    "beUsage.context.pct": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}%",
+      "args": ["n"]
+    },
+    "beUsage.from.relay": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "中转请求",
+      "args": []
+    },
+    "beUsage.from.setting": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "设置",
+      "args": []
+    },
+    "beUsage.from.model": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "模型名",
+      "args": []
+    },
+    "beUsage.from.observed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用量超过 200k",
+      "args": []
+    },
     "beSpend.cost.exact": {
       "kind": "body",
       "role": "片段",
@@ -17567,6 +17505,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "空闲",
+      "args": []
+    },
+    "beSession.activity.backgroundWork": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台任务运行中",
+      "args": []
+    },
+    "beSession.activity.backgroundFor": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "后台任务运行中 · {cmd} · {dur}",
+      "args": ["cmd", "dur"]
+    },
+    "beSession.activity.backgroundMany": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cmd} 等 {n} 条",
+      "args": ["cmd", "n"]
+    },
+    "beSession.activity.unclear": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "运行中",
       "args": []
     },
     "beSession.needs.approve": {
@@ -18404,8 +18366,8 @@
     "beLink.gone.withError": {
       "kind": "error",
       "role": "原因格",
-      "zh": "与远端的连接已中断 · {e}",
-      "args": ["e"],
+      "zh": "与远端的连接已中断",
+      "args": [],
       "limited": ["连接"]
     },
     "beLink.gone.bug": {
@@ -18559,8 +18521,8 @@
     "beMcpEdit.plan.parseFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {what} 失败 · 内容无法解析 · 未改动 · {e}",
-      "args": ["what", "e"]
+      "zh": "读取 {what} 失败 · 内容无法解析 · 未改动",
+      "args": ["what"]
     },
     "beAssets.door.editGaveUp": {
       "kind": "error",
@@ -18747,8 +18709,8 @@
     "rsFilewinProc.child.noRuntime": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口启动失败 · 程序出错 · {e}",
-      "args": ["e"]
+      "zh": "文件窗口启动失败 · 程序出错",
+      "args": []
     },
     "beFilesWrite.rename.dirNoNoreplace": {
       "kind": "error",
@@ -18867,8 +18829,8 @@
     "extPage.status.syncRow": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {machine} 失败 · {e} · 该列为上次结果",
-      "args": ["machine", "e"]
+      "zh": "读取 {machine} 失败 · {said} · 该列为上次结果",
+      "args": ["machine", "said"]
     },
     "extPage.card.cancel": {
       "kind": "action",
@@ -19364,8 +19326,8 @@
     "extPage.status.syncFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取其他机器失败 · {e} · 表里为上次结果",
-      "args": ["e"]
+      "zh": "读取其他机器失败 · {said} · 表里为上次结果",
+      "args": ["said"]
     },
     "extPage.card.confirmRemove": {
       "kind": "action",
@@ -19726,8 +19688,8 @@
     "beAcctJsonKey.render.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "新内容生成失败 · {e}",
-      "args": ["e"]
+      "zh": "新内容生成失败 · 程序出错",
+      "args": []
     },
     "beAcctJsonKey.verify.failed": {
       "kind": "error",
@@ -20237,8 +20199,8 @@
     "rsFilewinPreview.image.undecodable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "图片无法解码 · {e}",
-      "args": ["e"]
+      "zh": "图片无法解码",
+      "args": []
     },
     "rsFilewinProps.box.title": {
       "kind": "title",
@@ -21045,14 +21007,14 @@
     "beQuotaProbe.run.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动 {program} 失败 · {e}",
-      "args": ["program", "e"]
+      "zh": "启动 {program} 失败 · {why}",
+      "args": ["program", "why"]
     },
     "beQuotaProbe.run.exit": {
       "kind": "error",
       "role": "报错",
-      "zh": "{program} 退出码 {exit} · {said}",
-      "args": ["program", "exit", "said"]
+      "zh": "{program} 查询用量失败 · 原因不明",
+      "args": ["program"]
     },
     "rsDataPaths.backend.quota": {
       "kind": "body",
@@ -21135,8 +21097,8 @@
     "beOauth.unusable.rejected": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号 {account} 登录续期失败 · {status} · 要重新登录",
-      "args": ["account", "status"]
+      "zh": "账号 {account} 登录续期失败 · 被拒 · 要重新登录",
+      "args": ["account"]
     },
     "beOauth.unusable.failed": {
       "kind": "error",
@@ -21153,8 +21115,8 @@
     "beOauth.refresh.status": {
       "kind": "error",
       "role": "原因格",
-      "zh": "令牌端点返回 {status}",
-      "args": ["status"]
+      "zh": "令牌端点报错",
+      "args": []
     },
     "beOauth.refresh.notJson": {
       "kind": "error",
@@ -23904,7 +23866,7 @@
     "rsFilewinProgress.upload.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "上传失败 {n}",
+      "zh": "上传失败 ×{n}",
       "args": ["n"]
     },
     "rsFilewinProgress.upload.stopped": {
@@ -23970,7 +23932,7 @@
     "rsFilewinProgress.copy.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "复制失败 {n}",
+      "zh": "复制失败 ×{n}",
       "args": ["n"]
     },
     "rsFilewinProgress.cross.running": {
@@ -24417,6 +24379,12 @@
       "zh": "需手动",
       "args": []
     },
+    "sessionFace.dot.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台任务运行中",
+      "args": []
+    },
     "sessionFace.dot.idle": {
       "kind": "body",
       "role": "片段",
@@ -24599,54 +24567,6 @@
       "args": ["machine"],
       "limited": ["tmux"]
     },
-    "tabBar.needsKind.approve": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等批准",
-      "args": []
-    },
-    "tabBar.needsKind.answer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等回答",
-      "args": []
-    },
-    "tabBar.needsKind.plan": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等批准",
-      "args": []
-    },
-    "tabBar.needsKind.network": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等放行",
-      "args": []
-    },
-    "tabBar.needsKind.worker": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等批准",
-      "args": []
-    },
-    "tabBar.needsKind.goal": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等确认",
-      "args": []
-    },
-    "tabBar.needsKind.choose": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "等选择",
-      "args": []
-    },
-    "tabBar.needsKind.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "需手动",
-      "args": []
-    },
     "cssMarks.sep.dot": {
       "kind": "body",
       "role": "图标",
@@ -24665,23 +24585,17 @@
       "zh": "agent {n}",
       "args": ["n"]
     },
-    "usageHud.chip.pct": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上下文 {n}%",
-      "args": ["n"]
+    "usageHud.chip.ctx": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "上下文 {ctx}",
+      "args": ["ctx"]
     },
     "usageHud.chip.none": {
       "kind": "body",
       "role": "空态",
       "zh": "上下文 —",
       "args": []
-    },
-    "usageHud.chip.tokens": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上下文 {tokens}",
-      "args": ["tokens"]
     },
     "usageHud.panel.label": {
       "kind": "title",
@@ -24990,30 +24904,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "列表",
-      "args": []
-    },
-    "usageHud.from.relay": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "中转请求",
-      "args": []
-    },
-    "usageHud.from.setting": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "设置",
-      "args": []
-    },
-    "usageHud.from.model": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "模型名",
-      "args": []
-    },
-    "usageHud.from.observed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "用量超过 200k",
       "args": []
     },
     "statusBar.tasks.chip": {
@@ -27826,7 +27716,7 @@
     "tabBatch.result.someFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{action} {done} · 失败 {failed}",
+      "zh": "{action} {done} · 失败 ×{failed}",
       "args": ["action", "done", "failed"]
     },
     "sessionState.batch.done": {
@@ -27838,7 +27728,7 @@
     "sessionState.batch.someFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已结束 {done} · 失败 {failed}",
+      "zh": "已结束 {done} · 失败 ×{failed}",
       "args": ["done", "failed"]
     },
     "sessionState.batch.skipped": {
@@ -28024,6 +27914,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "在跑 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.sumBackground": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "后台任务 {n}",
       "args": ["n"]
     },
     "tabBar.group.more": {
@@ -28694,8 +28590,8 @@
     "beLastSeen.store.mkdirFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "创建 {dir} 失败 · {e}",
-      "args": ["dir", "e"]
+      "zh": "创建 {dir} 失败 · {why}",
+      "args": ["dir", "why"]
     },
     "beLastSeen.store.noHome": {
       "kind": "error",
@@ -29470,7 +29366,7 @@
     "plan.review.topDone": {
       "kind": "title",
       "role": "标题",
-      "zh": "整片做完 · 待过目",
+      "zh": "整片做完 · 需过目",
       "args": []
     },
     "plan.review.topDoneWhat": {
@@ -30197,6 +30093,96 @@
       "zh": "指向它的",
       "args": []
     },
+    "plan.signs.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "签收",
+      "args": []
+    },
+    "plan.signs.meta": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{slice} · {n} 条 · 新的在上",
+      "args": ["slice", "n"]
+    },
+    "plan.signs.none": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "没有对得上的签收",
+      "args": []
+    },
+    "rsFilewinPlan.col.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "格",
+      "args": []
+    },
+    "rsFilewinPlan.cell.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "rsFilewinPlan.cell.dup": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{title} 也声明此文件",
+      "args": ["title"]
+    },
+    "rsFilewinPlan.cell.listSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "rsFilewinPlan.owner.block": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块「{block}」",
+      "args": ["block"]
+    },
+    "rsFilewinPlan.owner.signed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "签 {time}",
+      "args": ["time"]
+    },
+    "rsFilewinPlan.menu.open": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在计划里看 · {title}",
+      "args": ["title"]
+    },
+    "rsFilewinPlan.owner.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在计划里看",
+      "args": []
+    },
+    "rsFilewinPlan.open.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "切到计划页失败 · {why}",
+      "args": ["why"]
+    },
+    "rsFilewinPlan.cell.unreadableHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "读取失败 · {slice} · {said}",
+      "args": ["slice", "said"]
+    },
+    "rsChanHost.plan.noMain": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "主窗口不在 · 计划页未打开",
+      "args": []
+    },
+    "rsChanHost.plan.emitFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "主窗口未收到 · 计划页未打开",
+      "args": []
+    },
     "detail.target.session": {
       "kind": "body",
       "role": "片段",
@@ -30245,6 +30231,12 @@
       "role": "报错",
       "zh": "读取机器列表失败 · 内容无法解析",
       "args": []
+    },
+    "beClaudePaths.delete.badId": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "删除会话 {id} 失败 · 目标无效",
+      "args": ["id"]
     }
   }
 }

@@ -8,7 +8,7 @@
 //! - 几个终端按交来的顺序（最近动静在前）逐个试，第一个对上的就是它；都对不上 ⇒ 报第一个的原因。
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
@@ -94,17 +94,39 @@ pub(crate) fn answer_with(
             Found::QueryFailed
         }
     };
-    Ok(product(&found))
+    crate::stream::inbound::spec::wire(&product(&found))
+}
+
+/// `terminal-processes` 的应答：进程链（对不上 ⇒ 空链 ＋ 为什么，`elsewhere` 另带对面地址）。
+#[derive(Serialize)]
+pub(crate) struct Processes {
+    pub(crate) chain: Vec<Link>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) why: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) addr: Option<String>,
 }
 
 /// 事实 ⇒ 线上成品。
-pub(crate) fn product(found: &Found) -> Value {
+pub(crate) fn product(found: &Found) -> Processes {
+    let empty = |why| Processes {
+        chain: Vec::new(),
+        why: Some(why),
+        addr: None,
+    };
     match found {
-        Found::Chain(c) => json!({ "chain": c }),
-        Found::NotSsh => json!({ "chain": [], "why": "not-ssh" }),
-        Found::Elsewhere(a) => json!({ "chain": [], "why": "elsewhere", "addr": a }),
-        Found::Mismatch => json!({ "chain": [], "why": "mismatch" }),
-        Found::QueryFailed => json!({ "chain": [], "why": "query-failed" }),
+        Found::Chain(c) => Processes {
+            chain: c.clone(),
+            why: None,
+            addr: None,
+        },
+        Found::NotSsh => empty("not-ssh"),
+        Found::Elsewhere(a) => Processes {
+            addr: Some(a.clone()),
+            ..empty("elsewhere")
+        },
+        Found::Mismatch => empty("mismatch"),
+        Found::QueryFailed => empty("query-failed"),
     }
 }
 

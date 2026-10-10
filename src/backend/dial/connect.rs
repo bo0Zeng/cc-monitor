@@ -514,7 +514,8 @@ async fn agent_auth(
         .map_err(|e| {
             (
                 why::AUTH,
-                Said::with_raw(copy_text("beConnect.agent.unreachable", &[]), &e),
+                // 原话格收 agent 那一层的那一句 ＋ 它的原话。
+                Said::with_raw(copy_text("beConnect.agent.unreachable", &[]), e.logged()),
             )
         })?;
     let identities = agent.request_identities().await.map_err(|e| {

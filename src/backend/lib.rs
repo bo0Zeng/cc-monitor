@@ -24,6 +24,9 @@ mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ +
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+#[cfg(test)]
+#[path = "../../tests/backend/allocator_guard.rs"]
+mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
 pub mod assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
 #[cfg(test)]
 #[path = "../../tests/backend/build_features_tests.rs"]
@@ -891,7 +894,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// 会话血缘：起会话地址尾上带来处段 ~<来处>[~<父>]（语法只在 relay-route-core）；中转认谁起的谁，记 ~/.cc-monitor/lineage.json；起子进程不往下传各家「我是哪个会话」的变量（self_sid_env）；子会话默认跟随父会话（{"parent": sid}）。
 /// CLI 失败信封只剩一种：stderr 一行 {code, message, detail, data?}（与帧面失败应答同一份 stream::detail::Failed），下层原话进 detail，不再有 raw 格；--text 的失败是那一句 ＋ 复制详情；CLI 面开 --within-ms（同帧面 within_ms）。needs.kind 八种（approve · answer · plan · network · worker · goal · choose · unknown）；activity 多 background_work；足迹那一份 claude_config_dir 改叫 agent_home。
 /// 状态的字进核心：session_added / session_status 带 activity_text · activity_tone，session_state 带 state_text · state_hint · state_tone（必有），facts.needs 带 text · tone；新帧命令 cells-catalog（每件成品有哪些格）。计划：plan-command（代敲 pb continue · pause · view），plan_changed 三格必填、壳转进界面。全文搜索分层（正文层优先留、工具层先放，常驻上界 128 MB）。
-pub const BUILD_ID: &str = "p9t-resident-socket-cells";
+///
+/// p9u-needs-bgwork-mcp：核心补格——facts.needs 加 rank（先答哪个）· waitedMs · waitedText（已等多久在那台算）；facts.usage 带写好的字（contextText · limitText · promptTokensText · percent · contextTone · limitFromText）；activity 说不清也带字（运行中 · now），background_work 写「后台任务运行中」· 语气 busy；facts 多 bgTasks · background（后台命令与时长，会走的那一句 clock{text, from}）· mcp（要登录 · 连不上 · 还在连）；格目录缺格清空、记录金样扩全、冻结表并进格目录。
+/// 新命令 sessions-needs（这台上需手动的会话 {waiting:[{sid, needs}]}，先答的在前）· plan-files（计划格 ⇄ 文件反查）；阻塞命令总期限的超时码统一 child_timed_out（bus-* 原 timed_out，sessions-where/stop/start 列名单超时原回 unobservable）；session-restart 失败 data 与 rotation-* 等应答改 typed（线上形状不变）；sessions-start 的 kind 只入。
+/// ccm 直路打印那一行与真跑同清各家会话号变量（codex 的 --ccm-print 多一段 unset CLAUDE_CODE_SESSION_ID）；关窗 / 列不出来之后文件窗口进程照样退；Windows 摘子进程环境不分大小写；常驻开关先判不支持（--resident-ensure 在不支持的平台先回 unsupported、不建目录）；tmux 控制模式客户端关 stdin 断开（不 SIGKILL）；全文搜索 mimalloc ＋ 多线程重读。
+pub const BUILD_ID: &str = "p9u-needs-bgwork-mcp";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -976,6 +983,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-list",
     "--accounts-sessions",
     "--machine-interrupts",
+    // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
+    "--sessions-needs",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
     //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
     "--accounts-trust",
@@ -1033,6 +1042,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-return",
     // 代敲 pb 的用户命令（`plan-command`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--plan-command",
+    // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-files",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。

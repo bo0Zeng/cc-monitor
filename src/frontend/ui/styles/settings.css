@@ -2638,17 +2638,6 @@ body.settings-window-mode .settings-panel {
   font-size: var(--font-size-small);
 }
 
-.cfg-sw-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-5) 0;
-}
-
-.cfg-sw-name {
-  font-size: var(--font-size-mono);
-}
-
 .cfg-form {
   margin: var(--space-4) 0;
   padding: var(--space-6) var(--space-7);

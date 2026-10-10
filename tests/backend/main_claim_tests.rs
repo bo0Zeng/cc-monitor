@@ -154,3 +154,50 @@ async fn a_sandboxed_start_refuses_the_real_home() {
     let _ = std::fs::remove_dir_all(&real);
     let _ = std::fs::remove_dir_all(&fake_home);
 }
+
+/// 🔴**本平台没有常驻 ⇒ 先说「本平台不支持」，一个目录都不建**（Win11 真机 10-09：带 `CCM_RESIDENT=1` 起流模式
+/// 原先退 4、说「后端无法打开连接入口 …\run · 原因不明」，而且退之前已经建出空的 `run\`）。
+/// 那句话与 `--resident-ensure` 回 `unsupported` 的同一句、同一处判（`control::resident::unsupported_here`）。
+/// 平台这一格是入参（Linux 上也量得到 Windows 那一形）；再钉住真平台上它在哪儿成立。
+#[tokio::test]
+async fn a_platform_without_a_resident_says_so_before_building_anything() {
+    let home = scratch("noresident");
+    let data = home.join("data");
+    let data_s = data.to_string_lossy().into_owned();
+    let home_s = home.to_string_lossy().into_owned();
+    let env = |k: &str| match k {
+        listen::ENV_RESIDENT => Some("1".to_string()),
+        creds_core::store::DATA_DIR_ENV => Some(data_s.clone()),
+        "HOME" => Some(home_s.clone()),
+        _ => None,
+    };
+    let installs = std::cell::Cell::new(0);
+    let install = || {
+        installs.set(installs.get() + 1);
+        stderr_log::Installed::NotAsked
+    };
+    let said = copy_core::copy_text("beDetach.detach.notUnix", &[]);
+    assert_eq!(
+        claim_then_log_as(Some(said.clone()), &env, None, install)
+            .await
+            .err(),
+        Some(listen::EXIT_BAD_LISTEN_CONFIG)
+    );
+    assert_eq!(installs.get(), 0, "本平台不支持常驻也接了日志");
+    assert!(
+        !data.exists(),
+        "说「不支持」之前已经建了家（{}）",
+        data.display()
+    );
+    // 不走常驻的那条载体不受影响。
+    let (l, _) = claim_then_log_as(Some(said.clone()), &|_| None, None, install)
+        .await
+        .expect("stdio 那条被平台那一格挡了");
+    assert!(l.is_none());
+    // 真平台：Windows 上不支持，Unix 上支持；不支持时那句话就是 `--resident-ensure` 回 unsupported 的那一句。
+    assert_eq!(
+        control::resident::unsupported_here(),
+        cfg!(windows).then_some(said)
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

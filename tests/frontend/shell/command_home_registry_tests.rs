@@ -114,11 +114,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
-        "bound_terminal_count",
-        Own::Front,
-        "已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
-    ),
-    (
         "bring_remote_terminal_to_front",
         Own::Front,
         "拉前那条远端会话对应的本机终端窗口",
@@ -287,6 +282,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         "link-retry",
         Own::Window,
         "文件窗口断线条上「重新连接」：连接循环住 monitor（`stream_source::run`），叫醒它不等退避睡满；连没连上看 `link` 那条流",
+    ),
+    (
+        "plan-open",
+        Own::Window,
+        "文件窗口「在计划里看」只交意图 `{workspace, slice, id}`：monitor 把主窗口拉到前面、发事件给它开计划页选中那一格（主窗口住 monitor）",
     ),
 ];
 

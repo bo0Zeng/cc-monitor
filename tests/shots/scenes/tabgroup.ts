@@ -96,17 +96,6 @@ function keepMoving(x: number, y: number): void {
   }, 60);
 }
 
-/**
- * 焦点环：截图工具发的是合成键盘事件，Chromium 不因它们把焦点算成「键盘来的」（`:focus-visible` 不亮）；
- * 真按键时样式表里那一条会亮。截图里照那一条的样子给焦点那一行描上，看得出焦点停在哪。
- */
-function ring(): void {
-  const el = document.activeElement as HTMLElement | null;
-  if (!el) return;
-  el.style.outline = "var(--focus-ring) solid var(--accent)";
-  el.style.outlineOffset = "calc(-1 * var(--focus-ring))";
-}
-
 async function drop(x: number, y: number): Promise<void> {
   document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 0 }));
   await sleep(400);
@@ -296,20 +285,18 @@ export const TABGROUP_SCENES: Scene[] = [
     await sleep(300);
   }, () => tabWorld(true, ["g2", "g3"])),
   // ── 第四批：键盘 · 右键「分组 ▸」· 命令 ──
-  tg("tg-28-key-walk", "键盘走行（焦点在栏里）", "F6 进栏（落在当前标签页「部署文档」），↑ 七下：停在「订单」组头上（组头也是一行）；焦点环照样式表那一条描出", async () => {
+  tg("tg-28-key-walk", "键盘走行（焦点在栏里）", "F6 进栏（落在当前标签页「部署文档」），↑ 七下：停在「订单」组头上（组头也是一行）", async () => {
     await mainReady(N);
     await click(tabOf("部署文档"));
     (document.activeElement as HTMLElement | null)?.blur();
     await key("F6");
     for (let i = 0; i < 7; i++) await key("ArrowUp");
-    ring();
     await sleep(200);
   }),
   tg("tg-29-key-move-in", "Alt+↑ 从组下面挪进组", "焦点在「周报草稿」（「订单」组下面第一个散的）按 Alt+↑：进「订单」排最后，焦点跟着它；toast「已移到「订单」」", async () => {
     await mainReady(N);
     tabOf("周报草稿").focus();
     await key("ArrowUp", { alt: true });
-    ring();
     await sleep(300);
   }),
   tg("tg-30-key-move-out", "Alt+↑ 组里第一个再往上", "焦点在「排序模型训练」（「训练」组第一个）按 Alt+↑：出组放到组前面；toast「已移出分组」", async () => {
@@ -322,7 +309,6 @@ export const TABGROUP_SCENES: Scene[] = [
     await mainReady(N);
     [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("训练"))!.focus();
     await key("ArrowUp", { alt: true });
-    ring();
     await sleep(300);
   }),
   tg("tg-32-key-join", "Alt+→ 与上一个成组", "焦点在「暗色主题」按 Alt+→：和「表格虚拟滚动」（同目录）建组，名字框已打开", async () => {

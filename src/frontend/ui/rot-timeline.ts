@@ -415,7 +415,7 @@ function hover(
   });
 }
 
-/** 段里的号名、换号点的原因字：放不下 / 挤到前一个就收起（悬停 / 读屏照样念全句）。没排版的环境（量不出宽）一律留着。 */
+/** 段里的号名、换号点的原因字：放不下就收起（悬停 / 读屏照样念全句）。没排版的环境（量不出宽）一律留着。 */
 function fit(track: HTMLElement): void {
   const measure = (): void => {
     for (const n of track.querySelectorAll<HTMLElement>("[data-tl-seg-name]")) {
@@ -424,17 +424,36 @@ function fit(track: HTMLElement): void {
       if (seg.clientWidth > 0 && n.scrollWidth > seg.clientWidth - 4)
         n.dataset.fit = "no";
     }
-    let right = -Infinity;
-    for (const m of track.querySelectorAll<HTMLElement>("[data-tl-why]")) {
-      delete m.dataset.fit;
-      const r = m.getBoundingClientRect();
-      if (r.width === 0) continue;
-      if (r.left < right + 4) m.dataset.fit = "no";
-      else right = r.right;
-    }
+    // 先全部放开量一遍（收起的字也要量出宽），再一起定谁收；菱形永远在原处。
+    const marks = [...track.querySelectorAll<HTMLElement>("[data-tl-why]")];
+    for (const m of marks) delete m.dataset.fit;
+    const boxes = marks.map((m) => ({
+      diamond: m.firstElementChild!.getBoundingClientRect(),
+      text: m.lastElementChild!.getBoundingClientRect(),
+    }));
+    whyTextKeeps(boxes).forEach((keep, i) => {
+      if (!keep && boxes[i].text.width > 0) marks[i].dataset.fit = "no";
+    });
   };
   if (typeof ResizeObserver === "undefined") return;
   new ResizeObserver(measure).observe(track);
+}
+
+/** 换号点之间留的最小空：原因字的右缘离任何一颗菱形不足这么多就不写字。 */
+const WHY_GAP = 6;
+
+/**
+ * 换号点挤时谁收字（界面小修 10-09 · B）：一条的字盖住任何一颗（别的）菱形，或右缘离右边那颗不足 6px ⇒ 这一条不写字，
+ * 只留菱形；原因照样在段的悬停与读屏里。两颗挨着时结果是前一颗收字、后一颗留字。
+ */
+export function whyTextKeeps(
+  marks: readonly { diamond: { left: number; right: number }; text: { left: number; right: number } }[],
+): boolean[] {
+  return marks.map(({ text: t }, i) =>
+    marks.every(
+      ({ diamond: d }, j) => j === i || !(d.right > t.left && d.left < t.right + WHY_GAP),
+    ),
+  );
 }
 
 /** 刻度字压着「现在」那个时刻（或彼此叠了）⇒ 那一格的字不写（`现在` 的字优先）。 */

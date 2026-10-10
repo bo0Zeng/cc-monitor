@@ -56,7 +56,7 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement, linePx = 0):
   return state;
 }
 
-const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "user" : "assistant", u: `u${i}`, ch: 120, pl: 2 });
+const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "said" : "reply", u: `u${i}`, ch: 120, pl: 2 });
 
 const turn = (k: number): TurnSummary => ({
   at: k * PER_TURN * 100,

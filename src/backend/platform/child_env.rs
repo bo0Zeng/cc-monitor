@@ -34,9 +34,44 @@ pub(crate) fn also_internal(names: Vec<&'static str>) {
     ALSO_INTERNAL.get_or_init(|| names);
 }
 
-/// 这个名字是不是不往下传的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族 ∪ 上层登记的会话号变量）。
+/// 本平台环境变量名比不比大小写。Windows 不分：`Claude_Code_Session_Id` 与 `CLAUDE_CODE_SESSION_ID` 是同一格，
+/// 子进程照样拿得到 ⇒ 摘的时候必须不分大小写比（Win11 真机 10-09 查出：按大小写比时这两种写法都漏下去了）。
+/// Unix 上名字分大小写，`ccm_listen_port` 是另一格、不归本层管。
+pub(crate) const NAMES_FOLD_CASE: bool = cfg!(windows);
+
+/// 两个环境变量名在本平台上是不是同一格（[`NAMES_FOLD_CASE`]）。
+pub(crate) fn same_name(a: &str, b: &str) -> bool {
+    same_name_as(a, b, NAMES_FOLD_CASE)
+}
+
+fn same_name_as(a: &str, b: &str, fold: bool) -> bool {
+    if fold {
+        a.eq_ignore_ascii_case(b)
+    } else {
+        a == b
+    }
+}
+
+fn has_prefix_as(name: &str, prefix: &str, fold: bool) -> bool {
+    name.len() >= prefix.len()
+        && name.is_char_boundary(prefix.len())
+        && same_name_as(&name[..prefix.len()], prefix, fold)
+}
+
+/// 这个名字是不是不往下传的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族 ∪ 上层登记的会话号变量）；按本平台的大小写规矩比。
 pub(crate) fn is_internal(name: &str) -> bool {
-    OWN_ENVS.contains(&name)
-        || INTERNAL_PREFIXES.iter().any(|p| name.starts_with(p))
-        || ALSO_INTERNAL.get().is_some_and(|v| v.contains(&name))
+    is_internal_as(
+        name,
+        ALSO_INTERNAL.get().map_or(&[][..], Vec::as_slice),
+        NAMES_FOLD_CASE,
+    )
+}
+
+/// [`is_internal`] 的里子：登记表与大小写规矩显式给（判据两种规矩都量，不靠跑在哪个平台上）。
+pub(crate) fn is_internal_as(name: &str, also: &[&str], fold: bool) -> bool {
+    OWN_ENVS.iter().any(|k| same_name_as(k, name, fold))
+        || INTERNAL_PREFIXES
+            .iter()
+            .any(|p| has_prefix_as(name, p, fold))
+        || also.iter().any(|k| same_name_as(k, name, fold))
 }

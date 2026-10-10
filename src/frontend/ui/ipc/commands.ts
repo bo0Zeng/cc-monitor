@@ -146,7 +146,6 @@ export const commands = {
     invoke<RestartHint>("set_diagnostics_config", args),
 
   /** 这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`）。 */
-  bound_terminal_count: () => invoke<number>("bound_terminal_count"),
 
   /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上按设置 / 探到的终端 / Windows 上 PowerShell。
    *  结局同 `open_terminal_window`（`"noWindow"` ＝ 这台找不到终端）。只经 `src/frontend/ui/terminal-open.ts` 调。桶①。 */

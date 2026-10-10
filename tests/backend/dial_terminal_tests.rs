@@ -527,3 +527,11 @@ fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
         assert_ne!(said, copy_text(missing, &[]));
     }
 }
+
+impl crate::guard_support::Shaped for SshCommand {
+    fn samples() -> Vec<Self> {
+        vec![SshCommand {
+            command: "ssh -t host".into(),
+        }]
+    }
+}

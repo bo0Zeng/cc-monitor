@@ -623,6 +623,11 @@ mod tests {
             ),
             (
                 "observe/accounts_query.rs",
+                "NeedsRow",
+                "`sessions-needs` 一行的出参（会话 id ＋ `history-facts` 那一份 `needs`），命令应答不是流协议帧",
+            ),
+            (
+                "observe/accounts_query.rs",
                 "RawAccount",
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),
@@ -631,6 +636,22 @@ mod tests {
                 "IndexRow",
                 "一次性子命令 `--read-session-from-offset … --index` 的**出参行**（骨架索引），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
+            ),
+            (
+                "observe/history_query.rs",
+                "TailPlan",
+                "帧命令 `history-tail` 的应答 `data`（请求-应答，不是推送帧）；出参登在命令注册表，\
+                 由 `every_command_declares_exactly_the_fields_it_puts_out` 与真序列化对拍",
+            ),
+            (
+                "observe/history_query.rs",
+                "RecordProbe",
+                "同上，帧命令 `history-record` 的应答 `data`",
+            ),
+            (
+                "observe/search_query.rs",
+                "Merged",
+                "同上，帧命令 `history-search-merge` 的应答 `data`",
             ),
             (
                 "observe/listing_scan.rs",

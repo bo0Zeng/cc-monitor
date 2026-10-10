@@ -176,12 +176,11 @@ fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
         .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
         .run(LIST_SESSIONS_WITHIN)
         .map_err(|e| {
-            e.into_cmd_err("no_tmux", |e| {
-                copy_text(
-                    "beSessionSnapshot.probeTmux.noTmux",
-                    &[("e", &e.to_string())],
-                )
-            })
+            // 句子只说原因词；系统原话记一行日志（快照的失败形是「码 ＋ 一句」，没有原话位）。
+            let (c, s) = e.into_cmd_said("no_tmux", |why| {
+                copy_text("beSessionSnapshot.probeTmux.noTmux", &[("why", why)])
+            });
+            (c, crate::common::said::IntoNote::into_note(s))
         })?;
     Ok(parse_rows(&String::from_utf8_lossy(&out.stdout)))
 }

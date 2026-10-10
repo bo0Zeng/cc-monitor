@@ -119,10 +119,14 @@ impl SessionFate {
 }
 
 /// **活会话此刻在干什么的字与语气的唯一一处**（`session_added` · `session_status` 都由它填）：
-/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 / 只剩后台命令在跑 ⇒ 空闲 · `plain`。说不清（`None`）⇒ 两格都不上线。
-pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Option<Words>, Option<Tone>) {
+/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
+/// 活着、那一家没说在干什么（`None`）⇒ 运行中 · `now`（出口照画，不自己补一种默认）。
+pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Words, Tone) {
     let Some(a) = a else {
-        return (None, None);
+        return (
+            Words(copy_core::copy_text("beSession.activity.unclear", &[])),
+            Tone::Now,
+        );
     };
     let (text, tone) = match a {
         SessionActivity::Working => (
@@ -133,13 +137,16 @@ pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Option<Words>, Opti
             copy_core::copy_text("beSession.activity.needsYou", &[]),
             Tone::Need,
         ),
-        // 一轮停了、后台命令还在跑：界面上与闲着同一个点同一个字（它不在等人，也没有一轮在跑）。
-        SessionActivity::Idle | SessionActivity::BackgroundWork => (
+        SessionActivity::Idle => (
             copy_core::copy_text("beSession.activity.idle", &[]),
             Tone::Plain,
         ),
+        SessionActivity::BackgroundWork => (
+            copy_core::copy_text("beSession.activity.backgroundWork", &[]),
+            Tone::Busy,
+        ),
     };
-    (Some(Words(text)), Some(tone))
+    (Words(text), tone)
 }
 
 /// 一条**丢了就不可恢复**的帧的身份。
@@ -355,11 +362,11 @@ pub enum Frame {
     },
     /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
     /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
-    /// 原文 `raw` 只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。
+    /// 原文 `raw` 是过渡格，只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）；
+    /// 两个前端读的是 `record`，手机那一侧的缺格补齐之后 `raw` 删。
     ///
-    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里，只增不改
-    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`；
-    /// 新加的格也得先登记，`every_product_field_is_in_the_frozen_table`）。`raw` 逐字节等于那一行
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
+    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。`raw` 逐字节等于那一行
     /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
     Line {
         /// 会话 id。
@@ -387,7 +394,8 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
         /// 〔additive〕这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。只在客户端发了 `--with-raw` 时才带
-        /// （`ReaderState::with_raw`）—— 第二个前端自己解析记录，要它；没索要的客户端收到的字节与本字段加进来之前一字不差。
+        /// （`ReaderState::with_raw`）。**过渡格**：两个前端都读核心的成品（`record`）；手机那一侧还缺的几格补齐之前它点着这一格，
+        /// 补齐（缺格清单清零）之后从它的声明里摘掉、这一格随之删。没索要的客户端收到的字节与本字段加进来之前一字不差。
         #[serde(skip_serializing_if = "Option::is_none")]
         raw: Option<String>,
     },
@@ -448,12 +456,10 @@ pub enum Frame {
         /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
-        /// `activity` 那一态写好的字（[`activity_cells`]）；没有 `activity` ⇒ 不上线。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity_text: Option<Words>,
-        /// `activity` 那一态的语气（同上）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity_tone: Option<Tone>,
+        /// 此刻在干什么写好的字（[`activity_cells`]；说不清也有一格）。
+        activity_text: Words,
+        /// 那一态的语气（同上）。
+        activity_tone: Tone,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -466,7 +472,7 @@ pub enum Frame {
         /// 〔additive〕那个 claude 进程的 **pid**。
         ///
         /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
-        /// 它按 pid 找父 PowerShell 去绑窗口（`bind::SidHwndCache::record`，Windows）只能从这一格拿 pid。
+        /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
         ///
         /// 只在客户端发了 `--with-pid` 时才带（`ReaderState::with_pid`；只有本机那条流发）—— 没索要的客户端
         /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。
@@ -482,11 +488,9 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
         /// 同 `session_added.activity_text`。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity_text: Option<Words>,
+        activity_text: Words,
         /// 同 `session_added.activity_tone`。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        activity_tone: Option<Tone>,
+        activity_tone: Tone,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,

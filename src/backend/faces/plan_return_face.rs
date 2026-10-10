@@ -1,4 +1,4 @@
-//! 计划审面退回那一半（`plan-return`）的帧面宿主：拼「人 · {编号} {标题}：{原话}」，先判目标能不能送 ——
+//! 计划审面退回那一半（`plan-return`）的帧面宿主：拼「人 · {编号} {标题}：{原话}」（对象是一格，或顶块 `project`：标题是片名），先判目标能不能送 ——
 //! 在等你（批准 · 回答 · 计划）⇒ 拒；已结束 / 认不出 ⇒ 只给这一行去复制；能送就走 `terminal-input` 的本体（同一道身份门、
 //! 同一个「画面变了不送」，不另造路），送到了 / 送达未知 ⇒ 记一条「已退回」（[`crate::plan::review`] 的退回写口只从本文件进），
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
@@ -67,14 +67,8 @@ pub(crate) fn return_with(
     };
     let no_cell = || Fail::new("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
     let sl = slice_of(doc, slice).ok_or_else(no_cell)?;
-    let cell = sl
-        .get("cells")
-        .and_then(Value::as_array)
-        .and_then(|a| {
-            a.iter()
-                .find(|c| c.get("id").and_then(Value::as_str) == Some(id))
-        })
-        .ok_or_else(no_cell)?;
+    // 一格，或顶块 `project`（与格同形，[`needs::target`]）。
+    let cell = &needs::target(sl, id).ok_or_else(no_cell)?;
     let title = cell
         .get("title")
         .and_then(Value::as_str)

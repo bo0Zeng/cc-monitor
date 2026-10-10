@@ -44,7 +44,7 @@
     },
     "codes": [
       "not_installed",
-      "timed_out",
+      "child_timed_out",
       "failed"
     ]
   },
@@ -79,7 +79,7 @@
       "bad_args",
       "bad_id",
       "not_installed",
-      "timed_out",
+      "child_timed_out",
       "failed"
     ]
   }

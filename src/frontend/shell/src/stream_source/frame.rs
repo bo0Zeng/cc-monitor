@@ -114,15 +114,15 @@ pub enum InboundFrame {
         /// 宣告时此刻在干什么 ＋ 在等什么（连接建立灯就对）。
         activity: Option<crate::session_book::SessionActivity>,
         /// `activity` 那一态写好的字与语气（那台核心写的，原样转交）。
-        activity_text: Option<String>,
-        activity_tone: Option<String>,
+        activity_text: String,
+        activity_tone: String,
         waiting_for: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
         /// 不认识的宿主 ⇒ `Other`（不吞）。
         /// 进 `session_book` 的活会话成品（本机那条流同一个口）。
         container: Option<crate::session_book::SessionContainer>,
         /// 〔additive〕那个 claude 进程的 pid。本机活会话的成品（`session_book::LiveMeta::pid`）
-        /// 拿它给本机 ↗ 绑窗口（`bind::SidHwndCache::record`）；老后端不带 ⇒ `None`。远端那一支不读它。
+        /// 拿它给本机 ↗ 点那一刻找窗口（`bind::bring_local_window`）；没带 ⇒ `None`。远端那一支不读它。
         pid: Option<u32>,
     },
     /// 后端的活会话清单报完了（Phase 1 走完）。无载荷。
@@ -138,8 +138,8 @@ pub enum InboundFrame {
     SessionStatus {
         sid: String,
         activity: Option<crate::session_book::SessionActivity>,
-        activity_text: Option<String>,
-        activity_tone: Option<String>,
+        activity_text: String,
+        activity_tone: String,
         waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。monitor 只拿它当内容流的边界（残批先冲、快照作废）；
@@ -482,8 +482,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     "activity",
                     crate::session_book::SessionActivity::from_wire,
                 )?,
-                activity_text: opt("activity_text"),
-                activity_tone: opt("activity_tone"),
+                activity_text: req_str(obj, k, "activity_text")?,
+                activity_tone: req_str(obj, k, "activity_tone")?,
                 waiting_for: opt("waiting_for"),
                 // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
                 container: match obj.get("container") {
@@ -521,8 +521,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     "activity",
                     crate::session_book::SessionActivity::from_wire,
                 )?,
-                activity_text: opt("activity_text"),
-                activity_tone: opt("activity_tone"),
+                activity_text: req_str(obj, k, "activity_text")?,
+                activity_tone: req_str(obj, k, "activity_tone")?,
                 waiting_for: opt("waiting_for"),
             }
         }

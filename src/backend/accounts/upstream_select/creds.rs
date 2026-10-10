@@ -69,10 +69,17 @@ pub(crate) fn load(path: &Path) -> Loaded {
                 path: path.to_path_buf(),
                 accounts: Vec::new(),
                 verdict,
-                problem: Some(copy_text(
-                    "beUpstreamCreds.load.unreadable",
-                    &[("e", &e.to_string())],
-                )),
+                // 只进日志（`[apikey]` 那一行）：那一句 ＋ 原话一起。
+                problem: Some(
+                    crate::common::said::Said::with_raw(
+                        copy_text(
+                            "beUpstreamCreds.load.unreadable",
+                            &[("why", &copy_core::io_reason(e.kind()))],
+                        ),
+                        e,
+                    )
+                    .logged(),
+                ),
             };
         }
     };
@@ -89,7 +96,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
             path: path.to_path_buf(),
             accounts: Vec::new(),
             verdict,
-            problem: Some(e.said(path)),
+            problem: Some(e.said(path).logged()),
         },
     }
 }

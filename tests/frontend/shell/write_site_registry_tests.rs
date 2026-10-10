@@ -103,9 +103,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    本表（monitor 进程的写盘人群）里**不再有它们** —— 那正是用户那一裁要的形状。
     // ── 不是安装动作：写的是 monitor 自己的东西
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
-    ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
     ("bind.rs", "process_tty_file", None, "monitor 自己的握手表（bash / zsh 那一份认上了写一条登记）· 删用完的那份等待记录"),
-    ("console_title.rs", "tty_title", None, "不是盘上的文件：往本机 bash / zsh 接入块记下的那个终端设备写改标题的控制序列（终端程序据此改窗口标题）"),
+    ("console.rs", "tty_title", None, "不是盘上的文件：往本机 bash / zsh 接入块记下的那个终端设备写改标题的控制序列（终端程序据此改窗口标题）"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
     ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
@@ -433,9 +432,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),
     ("bind.rs", "spawn", Lands::OwnState),
-    ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "process_tty_file", Lands::OwnState),
-    ("console_title.rs", "tty_title", Lands::TerminalDevice),
+    ("console.rs", "tty_title", Lands::TerminalDevice),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "patch_config_at", Lands::OwnState),
     // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。

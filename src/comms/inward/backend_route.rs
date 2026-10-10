@@ -106,7 +106,7 @@ impl std::fmt::Display for CallError {
                 "{}",
                 copy_text(
                     "rsInboundClient.error.refused",
-                    &[("message", &message.to_string())]
+                    &[("said", &message.to_string())]
                 )
             ),
         }

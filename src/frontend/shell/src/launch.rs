@@ -99,7 +99,7 @@ pub async fn open_terminal_window(
             Ok::<_, String>(opened)
         })
         .await
-        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
+        .map_err(|e| Said::with_raw(copy_text("rsLaunch.remote.taskFailed", &[]), e))??)
     }
     .await;
     r.map_err(|s| s.named("open_terminal_window"))
@@ -147,7 +147,7 @@ pub async fn open_local_terminal(
             crate::platform::terminal::open_local(&cmd, cwd.as_deref())
         })
         .await
-        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
+        .map_err(|e| Said::with_raw(copy_text("rsLaunch.remote.taskFailed", &[]), e))??)
     }
     .await;
     r.map_err(|s| s.named("open_local_terminal"))

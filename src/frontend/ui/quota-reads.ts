@@ -59,10 +59,12 @@ export function decodeQuotaRead(v: unknown): QuotaRead {
   return o as unknown as QuotaRead;
 }
 
-/** 在用名单里一个会话此刻的状态（后端判，与主窗口标签页同一套）；`needs` 只在 `needsYou` 时有。 */
+/** 在用名单里一个会话此刻的状态（后端判）：`state` 是轮换那一侧的判，`needs` 只在 `needsYou` 时有；`text` · `tone` 是显示用的字与语气（核心写的，照抄）。 */
 export interface RuleUserDoing {
   state: "working" | "idle" | "needsYou" | "ended";
   needs: NeedsKind | null;
+  text: string;
+  tone: string;
 }
 
 const DOING_STATES = new Set(["working", "idle", "needsYou", "ended"]);
@@ -126,9 +128,14 @@ export function decodeRuleRow(v: unknown, what: string): RuleRow {
     !Array.isArray(u.endedSids)
   )
     bad(`${what}.users`);
-  for (const [sid, d] of Object.entries(obj(u.doing, `${what}.users.doing`))) {
-    if (!DOING_STATES.has(obj(d, `${what}.users.doing.${sid}`).state as string))
-      bad(`${what}.users.doing.${sid}.state`);
+  const doing = obj(u.doing, `${what}.users.doing`);
+  for (const sid of [...(u.sids as unknown[]), ...(u.endedSids as unknown[])]) {
+    if (typeof sid !== "string" || !(sid in doing)) bad(`${what}.users.doing`);
+  }
+  for (const [sid, d] of Object.entries(doing)) {
+    const one = obj(d, `${what}.users.doing.${sid}`);
+    if (!DOING_STATES.has(one.state as string)) bad(`${what}.users.doing.${sid}.state`);
+    if (typeof one.text !== "string" || typeof one.tone !== "string") bad(`${what}.users.doing.${sid}.text`);
   }
   arr(x.missing, `${what}.missing`);
   return x as unknown as RuleRow;

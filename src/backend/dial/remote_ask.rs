@@ -226,10 +226,11 @@ pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
         .read_until(b'\n', &mut buf)
         .await
         .map_err(|e| {
-            copy_text(
-                "beRemoteAsk.cappedLine.readFailed",
-                &[("e", &e.to_string())],
-            )
+            // 这一形的失败只有一句话的位：系统原话记一行日志。
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beRemoteAsk.cappedLine.readFailed", &[]),
+                e,
+            ))
         })?;
     if n == 0 {
         return Ok(None);
@@ -397,8 +398,12 @@ where
     let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
         .await?
         .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
-    let got = serde_json::from_str(&got)
-        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+    let got = serde_json::from_str(&got).map_err(|e| {
+        crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            copy_text("beRemoteAsk.run.resultUnreadable", &[]),
+            e,
+        ))
+    })?;
     Ok((ack, got))
 }
 
@@ -431,7 +436,11 @@ fn settle_pulled(got: &Value) -> Result<String, Said> {
         let message = match envelope.and_then(|e| e.message) {
             Some(m) if !m.trim().is_empty() => m,
             _ if stderr.trim().is_empty() => copy_text("beRemoteAsk.run.failedNoReason", &[]),
-            _ => copy_text("beRemoteAsk.run.failed", &[("said", stderr.trim())]),
+            // 不是信封的原样 stderr：句子只说「后端报错」，那台的原话记一行日志（这一跳的失败形没有原话位）。
+            _ => crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beRemoteAsk.run.failed", &[]),
+                stderr.trim(),
+            )),
         };
         return Err(Said { code, message });
     }

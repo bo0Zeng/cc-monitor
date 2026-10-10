@@ -520,14 +520,23 @@ pub(crate) fn preview_resolved(p: Parsed, home: &str, at: Option<&str>) -> Resul
 pub(crate) fn answer_terminal_name_mint(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {
-    terminal_name_mint_with(args, crate::common::session_snapshot::global())
+    crate::stream::inbound::spec::wire(&terminal_name_mint_with(
+        args,
+        crate::common::session_snapshot::global(),
+    )?)
+}
+
+/// `terminal-name-mint` 的应答：铸出来的那个名字。
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Minted {
+    pub(crate) name: String,
 }
 
 /// [`answer_terminal_name_mint`] 的内核（快照是入参：测试拿脚本化探测器造一份）。
 pub(crate) fn terminal_name_mint_with(
     args: &serde_json::Value,
     snap: &crate::common::session_snapshot::SessionSnapshot,
-) -> Result<serde_json::Value, (&'static str, String)> {
+) -> Result<Minted, (&'static str, String)> {
     let text = |k: &str| args.get(k).and_then(serde_json::Value::as_str);
     let base = match (text("cwd"), text("forkOf")) {
         (Some(cwd), None) => plan::derive_tmux_name(cwd),
@@ -547,7 +556,7 @@ pub(crate) fn terminal_name_mint_with(
         Err(("no_tmux", _)) => base,
         Err(e) => return Err(e),
     };
-    Ok(serde_json::json!({ "name": name }))
+    Ok(Minted { name })
 }
 
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
@@ -634,7 +643,7 @@ fn execute(plan: Plan) -> i32 {
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
             let req = match crate::control::launch::parse_request(&launch_args(c)) {
                 Ok(r) => r,
-                Err((code, msg)) => return die(&format!("{code}: {msg}")),
+                Err(f) => return die(&format!("{}: {}", f.code, f.message)),
             };
             match crate::control::launch::run(&req) {
                 Ok(out) if out.created => {}
@@ -648,12 +657,14 @@ fn execute(plan: Plan) -> i32 {
                     );
                     return 3;
                 }
-                Err((code, msg)) => {
+                Err(f) => {
+                    // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
+                    let msg = crate::common::said::Said::from(f.clone()).logged();
                     eprintln!(
                         "{}",
                         copy_text(
                             "beCcm.execute.launchFailed",
-                            &[("kind", &code), ("message", &msg)]
+                            &[("kind", &f.code), ("message", &msg)]
                         )
                     );
                     return 4;

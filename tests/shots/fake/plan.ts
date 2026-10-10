@@ -349,12 +349,14 @@ export interface PlanWorldOpts {
   autoRefuse?: boolean;
   /** 本机读计划要多久（演首次加载）。 */
   slowMs?: number;
-  /** 顶块走到看全局（需手动多一条「整片做完 · 待过目」）。 */
+  /** 顶块走到看全局（需手动多一条「整片做完 · 需过目」）。 */
   topDone?: boolean;
   /** 已认可的几条（键）。 */
   acked?: string[];
   /** 「检查脚本」退回过：等它改 / 已落地。 */
   returned?: "returned" | "landed";
+  /** 顶块（project）退回过：等它改 / 已落地（记在片上）。 */
+  topReturned?: "returned" | "landed";
 }
 
 export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
@@ -365,6 +367,10 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
     if (o.returned) {
       const c = (sl.cells as Record<string, unknown>[]).find((x) => x.id === "A4-1")!;
       c.returned = { at: Date.now() - 4 * 60_000, to: who(PLAN_SIDS.base), state: o.returned, by: o.returned === "landed" ? "child" : null, child: o.returned === "landed" ? { id: "A4-1-1", title: "收集 0 条时退 5" } : null };
+    }
+    if (o.topReturned) {
+      const landed = o.topReturned === "landed";
+      sl.returned = { at: Date.now() - 6 * 60_000, to: who(PLAN_SIDS.lead), state: o.topReturned, by: landed ? "child" : null, child: landed ? { id: "A6", title: "导出与导入对拍" } : null };
     }
     if (o.sliceStale) sl.stale = { said: "图.md 第 142 行：元行缺 kind", raw: null, since: Date.now() - 5 * 60_000 };
     return sl;
@@ -398,8 +404,8 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
       return { acked: false, key: req.key, needCount: 0 };
     },
     "plan-return": (_origin, req) => {
-      const line = `人 · ${String(req.id)} 检查脚本：${String(req.text).split(/\s+/).filter(Boolean).join(" ")}`;
-      return { line, to: who(req.to === "signer" ? PLAN_SIDS.lead : PLAN_SIDS.base), result: "delivered", why: null, said: null, screen: null };
+      const line = `人 · ${String(req.id)} ${req.id === "project" ? "ledger" : "检查脚本"}：${String(req.text).split(/\s+/).filter(Boolean).join(" ")}`;
+      return { line, to: who(req.to === "signer" || req.id === "project" ? PLAN_SIDS.lead : PLAN_SIDS.base), result: "delivered", why: null, said: null, screen: null };
     },
     "plan-command": (_origin, req) => {
       if (req.cmd === "view") return { rc: 0, said: null, path: "/tmp/pb-读图-0000.html" };

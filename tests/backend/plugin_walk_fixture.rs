@@ -447,7 +447,7 @@ mod tests {
                 "参数塞不进一次命令调用（内核的单参数上限）—— 我给的东西太大，不是那个程序坏了"
                     .to_string()
             }
-            crate::plugin::invoke::NotRun::Failed(msg) => msg,
+            crate::plugin::invoke::NotRun::Failed(s) => s.logged(),
         }
     }
 
@@ -466,7 +466,9 @@ mod tests {
         let mut r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
         for _ in 0..50 {
             match &r {
-                Err(crate::plugin::invoke::NotRun::Failed(m)) if m.contains("os error 26") => {
+                Err(crate::plugin::invoke::NotRun::Failed(m))
+                    if m.raw.as_deref().is_some_and(|r| r.contains("os error 26")) =>
+                {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                     r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
                 }

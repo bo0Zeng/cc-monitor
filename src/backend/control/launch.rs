@@ -125,7 +125,8 @@ pub(crate) struct LaunchOutcome {
     pub(crate) typed: bool,
 }
 
-type CmdErr = (&'static str, String);
+/// 失败：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。
+pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
 
 /// `=name:` —— tmux 的**精确匹配**目标形式（F01）。
 ///
@@ -227,12 +228,12 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            return Err((
+            return Err(CmdErr::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`ccm_sid` must match [A-Za-z0-9_-]: {s:?}"
                 )),
-            ));
+            )));
         }
     }
 
@@ -258,11 +259,11 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         }
         (None, None) => {}
         _ => {
-            return Err((
+            return Err(CmdErr::from((
                 "bad_args",
                 crate::common::contract::malformed("`width` and `height` must be given together")
                     .to_string(),
-            ))
+            )))
         }
     }
 
@@ -288,43 +289,43 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
 /// 而错误信息里看不出是谁给的。
 fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.is_empty() || v.len() > 4 || !v.chars().all(|c| c.is_ascii_digit()) {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` must be 1-4 decimal digits: {v:?}"
             )),
-        ));
+        )));
     }
     Ok(())
 }
 
 fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.trim().is_empty() {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!("`{what}` is empty")),
-        ));
+        )));
     }
     check_len(what, v)?;
     // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
     if v.chars().any(char::is_control) {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!("`{what}` contains a control character")),
-        ));
+        )));
     }
     Ok(())
 }
 
 fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.len() > MAX_FIELD_BYTES {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
             )),
-        ));
+        )));
     }
     Ok(())
 }
@@ -341,31 +342,31 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
     // 这样「空」「过长」「别的控制字符」三条判法**逐字复用**，且长度判的仍是原串
     // （下面那次 `check_field` 收到的是抹过的串，只用来判控制字符）。
     if v.trim().is_empty() {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed("`payload` is empty"),
-        ));
+        )));
     }
     if v.len() > MAX_FIELD_BYTES {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
             )),
-        ));
+        )));
     }
     if let Some(bad) = v
         .chars()
         .find(|c| c.is_control() && *c != '\n' && *c != '\t')
     {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` has a control character other than \\n / \\t (U+{:04X})",
                 bad as u32
             )),
-        ));
+        )));
     }
     Ok(())
 }
@@ -415,9 +416,9 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
             ok: out.status.success(),
             stderr: said_of(&out.stderr),
         }),
-        Err(e) => Err(e.into_cmd_err("no_tmux", |e| {
-            copy_text("beLaunch.run.noTmux", &[("e", &e.to_string())])
-        })),
+        Err(e) => Err(CmdErr::from(e.into_cmd_said("no_tmux", |why| {
+            copy_text("beLaunch.run.noTmux", &[("why", why)])
+        }))),
     }
 }
 
@@ -470,7 +471,7 @@ pub(crate) fn secondary_note(
     let why = match r {
         Ok(Ran { ok: true, .. }) => return None,
         Ok(Ran { ok: false, stderr }) => stderr.clone(),
-        Err((_, msg)) => msg.clone(),
+        Err(f) => crate::common::said::Said::from(f.clone()).logged(),
     };
     Some(format!(
         "会话 {session:?} 建好了，但{}没做成：{why} —— {}",
@@ -557,7 +558,7 @@ fn run_with(
                         typed: false,
                     });
                 }
-                return Err(("bad_args", said));
+                return Err(CmdErr::from(("bad_args", said)));
             }
             let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", &req.name];
             if let Some(cwd) = &req.cwd {
@@ -586,13 +587,11 @@ fn run_with(
                     });
                 }
                 // 带上 tmux 自己说的原因（cwd 不在 / 名字不合法 / server 起不来 …），不再让人猜。
-                return Err((
+                return Err(CmdErr::new(
                     "create_failed",
-                    copy_text(
-                        "beLaunch.create.failed",
-                        &[("name", &format!("{:?}", req.name)), ("said", &made.stderr)],
-                    ),
-                ));
+                    copy_text("beLaunch.create.failed", &[("name", &req.name)]),
+                )
+                .with_raw(Some(&made.stderr)));
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
             // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律
@@ -677,13 +676,11 @@ fn type_payload(
     if r.ok {
         return Ok(());
     }
-    Err((
+    Err(CmdErr::new(
         "typed_unconfirmed",
-        copy_text(
-            "beLaunch.type.failed",
-            &[("target", &format!("{target:?}")), ("said", &r.stderr)],
-        ),
-    ))
+        copy_text("beLaunch.type.failed", &[("target", target)]),
+    )
+    .with_raw(Some(&r.stderr)))
 }
 
 /// 终端管理送字的那一段字面字过不过形状：非空、不超长、除 `\n` / `\t` 外没有控制字符（按键走 [`press_key`]）。
@@ -731,12 +728,10 @@ pub(crate) fn press_key(
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。
-pub(crate) fn launch_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let req = parse_request(args).map_err(|(c, m)| (c.to_string(), m))?;
+pub(crate) fn launch_for_inbound(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
+    let req = parse_request(args)?;
     let session = req.name.clone();
-    let out = run(&req).map_err(|(c, m)| (c.to_string(), m))?;
+    let out = run(&req)?;
     Ok(reply(&session, out.created, out.typed))
 }
 

@@ -9,6 +9,7 @@ declare const classes: {
   readonly pvChip: string;
   readonly pvChips: string;
   readonly pvH1: string;
+  readonly pvH1Meta: string;
   readonly pvH1Text: string;
   readonly pvHead: string;
   readonly pvKbar: string;
@@ -35,6 +36,7 @@ declare const classes: {
   readonly pvSep: string;
   readonly pvSign: string;
   readonly pvSignBody: string;
+  readonly pvSignFind: string;
   readonly pvSignTitle: string;
   readonly pvSignTm: string;
   readonly pvSignWhy: string;

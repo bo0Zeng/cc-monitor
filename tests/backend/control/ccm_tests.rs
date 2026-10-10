@@ -1041,7 +1041,9 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
             })
             .collect())
     });
-    let mint = |a: serde_json::Value| terminal_name_mint_with(&a, &snap);
+    let mint = |a: serde_json::Value| {
+        terminal_name_mint_with(&a, &snap).map(|m| serde_json::to_value(m).unwrap())
+    };
     assert_eq!(
         mint(json!({"cwd": "/home/u/proj"})).unwrap(),
         json!({"name": "proj-cc-2"})
@@ -1060,8 +1062,10 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     );
     let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
     assert_eq!(
-        terminal_name_mint_with(&json!({"cwd": "/home/u/proj"}), &no_tmux).unwrap(),
-        json!({"name": "proj-cc"})
+        terminal_name_mint_with(&json!({"cwd": "/home/u/proj"}), &no_tmux)
+            .unwrap()
+            .name,
+        "proj-cc"
     );
     for bad in [
         json!({}),
@@ -1291,4 +1295,12 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
         "{}",
         line("codex")
     );
+}
+
+impl crate::guard_support::Shaped for Minted {
+    fn samples() -> Vec<Self> {
+        vec![Minted {
+            name: "proj-cc-2".into(),
+        }]
+    }
 }

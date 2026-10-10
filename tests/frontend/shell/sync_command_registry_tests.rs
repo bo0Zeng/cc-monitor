@@ -107,10 +107,6 @@ const SYNC_ALLOWED: &[(&str, &str)] = &[
         "读本进程的家目录与 PATH 两格（内存）",
     ),
     (
-        "lib.rs::bound_terminal_count",
-        "读进程内绑定表的条数（内存）",
-    ),
-    (
         "lib.rs::cc_get_auto_launch",
         "读 monitor 自己的 auto-launch.json（本机小文件）",
     ),

@@ -807,7 +807,7 @@ impl RemoteFs {
             let said = if code == "fenced" {
                 copy_text(
                     "rsDialHost.ask.writeFenced",
-                    &[("message", &message.to_string())],
+                    &[("said", &message.to_string())],
                 )
             } else {
                 message.to_string()

@@ -60,7 +60,7 @@ pub(crate) fn with_deps_as<T>(
             &args,
             crate::common::session_snapshot::global(),
         )
-        .map(|v| v["name"].as_str().unwrap_or_default().to_string())
+        .map(|m| m.name)
     };
     let writers = |sid: &str| {
         crate::observe::accounts_query::session_writers(
@@ -91,8 +91,16 @@ pub(crate) fn with_deps_as<T>(
 }
 
 /// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Ok(None)` ＝ 这台没装 tmux；`Err` ＝ 看不见。分叉那一格也读它。
-pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, String> {
-    let rows = crate::control::terminals::rows_here().map_err(|f| f.into_note())?;
+pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, (&'static str, String)> {
+    // 码只留「过了期限」这一种（`listed` 按它整条回超时）；别的列不成一律当看不见。
+    let rows = crate::control::terminals::rows_here().map_err(|f| {
+        let code = if f.code == crate::platform::child::TIMED_OUT {
+            crate::platform::child::TIMED_OUT
+        } else {
+            "failed"
+        };
+        (code, f.into_note())
+    })?;
     Ok(rows.map(|rows| {
         rows.into_iter()
             .map(|r| TmuxEntry {

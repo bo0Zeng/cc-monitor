@@ -64,7 +64,7 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement): { scrollTop
   return state;
 }
 
-const asst = (u: string): SkeletonFacts => ({ o: 0, n: 1, t: "assistant", u, ch: 200, pl: 2 });
+const asst = (u: string): SkeletonFacts => ({ o: 0, n: 1, t: "reply", u, ch: 200, pl: 2 });
 
 /** 宿主：建卡 = 往 timeline 里插一个带 `data-h`（真高）的 div；记下每次被要了哪一段。 */
 function makeHost(timeline: RecordTimeline, realH: (seq: number) => number) {
@@ -238,7 +238,7 @@ describe("大折叠：折着的过程不物化", () => {
 
   it("只剩不占高的行（工具结果并进工具组那种）的占位落在视口里 ⇒ 照样物化（不因高 0 永远留着）；扣掉折着的那几段", () => {
     const s = setup(30, 20);
-    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "user", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "assistant", fd: 1 } : asst(`u${i}`)));
+    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "said", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "reply", fd: 1 } : asst(`u${i}`)));
     const ledger = new SkeletonLedger(0, rows);
     const view = new SkeletonView(ledger, s.scrollEl, s.timeline, s.host);
     view.attach(20);
@@ -335,7 +335,7 @@ describe("〔RENDER2〕第二级估高", () => {
     let x = 7;
     const rnd = (n: number): number => ((x = (x * 1103515245 + 12345) % 2147483648) % n);
     const rows: SkeletonFacts[] = Array.from({ length: 400 }, (_, i) =>
-      i % 5 === 0 ? { o: i, n: 1, t: "attachment" } : { o: i, n: 1, t: "assistant", u: `r${i}`, ch: 30 + rnd(900), pl: 1 + rnd(4) },
+      i % 5 === 0 ? { o: i, n: 1 } : { o: i, n: 1, t: "reply", u: `r${i}`, ch: 30 + rnd(900), pl: 1 + rnd(4) },
     );
     const ledger = new SkeletonLedger(0, rows);
     const first = Array.from({ length: 400 }, (_, i) => ledger.heightOf(i, i + 1));
@@ -344,7 +344,7 @@ describe("〔RENDER2〕第二级估高", () => {
       const s = rnd(400);
       const h = 10 + rnd(500);
       ledger.refine([[s, h]]);
-      if (rows[s].t !== "attachment") want[s] = h; // 不建卡的行不收
+      if (rows[s].t !== undefined) want[s] = h; // 不建卡的行不收
     }
     for (let k = 0; k < 100; k++) {
       const a = rnd(400);
@@ -407,7 +407,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
     const cases: Array<[unknown, SkeletonFacts]> = [
       [
         { agent: "claude", t: "said", id: "a", who: { speaker: { kind: "human" }, text: "第一行abc\nsecond line" }, blocks: [{ type: "text", text: "第一行abc\nsecond line" }] },
-        { o: 0, n: 1, t: "user", u: "a", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
+        { o: 0, n: 1, t: "said", u: "a", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
       ],
       [
         {
@@ -421,7 +421,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
           autoReply: false,
           endsTurn: false,
         },
-        { o: 0, n: 1, t: "assistant", u: "b", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
+        { o: 0, n: 1, t: "reply", u: "b", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
       ],
     ];
     for (const [rec, facts] of cases) {

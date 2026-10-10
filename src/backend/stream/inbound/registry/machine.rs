@@ -290,11 +290,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_alias", "failed", "child_timed_out"],
         fields: &[arg("alias", "必填"), out("host", "`ssh -G` 的 `hostname`（缺省回退别名）"), out("keyPath", "第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null`"), out("port", "`port`（缺省 22）"), out("proxyJump", "`proxyjump`（`none` ⇒ `null`）"), out("user", "`user`（缺省空串）")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::dial::ssh_config::answer_resolve(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::dial::ssh_config::answer_resolve(&r.args).map(Some)),
     },
     CommandSpec {
         name: "ssh-config-import",
@@ -302,10 +298,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args"],
         fields: &[out("addresses", "其余地址，端口不同则 `host:port`"), out("alias", "成员的别名"), out("groups", "聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}`"), both("host", "组首的 host"), out("inList", "组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比"), out("jump", "组内首个非空 proxyjump"), out("keyPath", "组首"), arg("known", "机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args`"), out("label", "单成员组 = 完整别名，多成员 = 基名"), out("members", "`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原"), both("port", "组首的端口"), out("proxyJump", "成员的跳板"), both("user", "组首的用户")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::dial::ssh_config::answer_import(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::dial::ssh_config::answer_import(&r.args).map(Some)),
     },
 ];

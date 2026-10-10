@@ -131,20 +131,33 @@ pub(crate) fn accounts_enabled_here() -> bool {
 
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
-    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
-        copy_text(
+    // 没有清单 ＝ 没启用多账号（正常状态）：只回那一句，不记日志（记了就是每次列账号都多一行 WARN，CLI 的 stderr 也跟着脏）。
+    if matches!(p.try_exists(), Ok(false)) {
+        return Err(copy_text(
             "beAccountsQuery.loadManifest.unreadable",
-            &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
-        )
+            &[
+                ("path", &(p.display()).to_string()),
+                ("why", &copy_core::io_reason(std::io::ErrorKind::NotFound)),
+            ],
+        ));
+    }
+    // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
+    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
+        crate::common::said::IntoNote::into_note(e.wrap(|why| {
+            copy_text(
+                "beAccountsQuery.loadManifest.unreadable",
+                &[("path", &(p.display()).to_string()), ("why", why)],
+            )
+        }))
     })?;
     // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，`serde_json` 不吃它 ⇒ 不剥就是账号页整块空。
     // 同一份文件的另一个读者是 `control/ccm/plan.rs::AccountTable::load`，两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉。
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
     let root: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
-        copy_text(
-            "beAccountsQuery.loadManifest.badJson",
-            &[("e", &e.to_string())],
-        )
+        crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            copy_text("beAccountsQuery.loadManifest.badJson", &[]),
+            e,
+        ))
     })?;
     match root.get("version").and_then(|v| v.as_u64()) {
         Some(SUPPORTED_SCHEMA) => {}
@@ -615,8 +628,33 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
         .map(|(_, v)| super::facts_query::PidWait {
             waiting_for: crate::agents::pidfile_wait(&v),
             since_ms: v.get("statusUpdatedAt").and_then(serde_json::Value::as_u64),
+            read_at_ms: read_at_ms(),
         })
         .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
+}
+
+/// 此刻（epoch ms，这台的钟）：读 pidfile 那一刻，「已等多久」拿它减同一份 pidfile 里的起点。
+fn read_at_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// 那台 pidfile 说这条会话**一轮停了、后台命令还在跑**（适配层翻成 [`crate::agents::SessionActivity::BackgroundWork`]）⇒
+/// `Some(那个进程何时起的，epoch ms；没写 ⇒ None)`；不是这一态 / 没有活进程持着它 ⇒ `None`。判活同 [`session_writers`]；
+/// 几个进程同时持着 ⇒ 取起得最早的那个（它留下的后台命令最多）。
+pub(crate) fn session_background(agent_home: &Path, sid: &str) -> Option<Option<u64>> {
+    pidfiles(agent_home)
+        .into_iter()
+        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
+        .filter(|(_, v)| {
+            crate::agents::pidfile_activity(v)
+                == Some(crate::agents::SessionActivity::BackgroundWork)
+        })
+        .filter(|(_, v)| !crate::agents::pidfile_background(v))
+        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .map(|(_, v)| v.get("startedAt").and_then(serde_json::Value::as_u64))
+        .min_by_key(|b| b.unwrap_or(u64::MAX))
 }
 
 /// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（pidfile，适配层翻好的）· 在等你时等的是什么。
@@ -629,8 +667,50 @@ pub(crate) struct Doing {
 }
 
 /// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等人 ＞ 在跑 ＞ 后台命令在跑 ＞ 空闲 ＞ 说不清。
-/// 在等你 ⇒ 读那条会话的记录（扫描图缓存）配上没结果的调用判种类；记录找不到 ⇒ 判不出（`Unknown`）。
+/// 在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
 pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
+    live_activity(agent_home)
+        .into_iter()
+        .map(|(sid, activity)| {
+            let needs = (activity == Some(crate::agents::SessionActivity::NeedsYou))
+                .then(|| waiting_needs(agent_home, &sid).map(|n| n.kind))
+                .flatten();
+            (sid, Doing { activity, needs })
+        })
+        .collect()
+}
+
+/// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct NeedsRow {
+    pub(crate) sid: String,
+    pub(crate) needs: super::facts_query::Needs,
+}
+
+/// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
+/// 先答的在前（[`super::facts_query::needs_first`]）。
+pub(crate) fn live_needs(agent_home: &Path) -> Vec<NeedsRow> {
+    let mut rows = live_activity(agent_home)
+        .into_iter()
+        .filter(|(_, a)| *a == Some(crate::agents::SessionActivity::NeedsYou))
+        .filter_map(|(sid, _)| {
+            Some(NeedsRow {
+                needs: waiting_needs(agent_home, &sid)?,
+                sid,
+            })
+        })
+        .collect::<Vec<_>>();
+    // 先答哪个照核心那一处（同一档、同样久 ⇒ 按会话 id，稳定）。
+    rows.sort_by(|a, b| {
+        super::facts_query::needs_first(&a.needs, &b.needs).then_with(|| a.sid.cmp(&b.sid))
+    });
+    rows
+}
+
+/// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。
+fn live_activity(
+    agent_home: &Path,
+) -> std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>> {
     use crate::agents::SessionActivity as A;
     let rank = |a: Option<A>| match a {
         Some(A::NeedsYou) => 4,
@@ -639,7 +719,7 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
         Some(A::Idle) => 1,
         None => 0,
     };
-    let mut out: std::collections::BTreeMap<String, Doing> = std::collections::BTreeMap::new();
+    let mut out: std::collections::BTreeMap<String, Option<A>> = std::collections::BTreeMap::new();
     for (pid, v) in pidfiles(agent_home) {
         if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
             continue;
@@ -653,26 +733,27 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
         };
         let activity = crate::agents::pidfile_activity(&v);
         let cell = out.entry(sid.to_string()).or_default();
-        if rank(activity) > rank(cell.activity) {
-            cell.activity = activity;
+        if rank(activity) > rank(*cell) {
+            *cell = activity;
         }
-    }
-    for (sid, cell) in out.iter_mut() {
-        if cell.activity != Some(A::NeedsYou) {
-            continue;
-        }
-        let pending = super::history_query::session_record(agent_home, sid)
-            .ok()
-            .and_then(|p| super::history_query::cold_scan(agent_home, &p.to_string_lossy()).ok())
-            .map(|m| m.pending().to_vec())
-            .unwrap_or_default();
-        let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
-            waiting_for: None,
-            since_ms: None,
-        });
-        cell.needs = super::facts_query::needs_of(&pending, Some(&wait)).map(|n| n.kind);
     }
     out
+}
+
+/// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::facts_query::needs_of`] 判（同 `history-facts.needs`）；
+/// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的（那台说在等 ⇒ 恒有一份）。
+fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::facts_query::Needs> {
+    let pending = super::history_query::session_record(agent_home, sid)
+        .ok()
+        .and_then(|p| super::history_query::cold_scan(agent_home, &p.to_string_lossy()).ok())
+        .map(|m| m.pending().to_vec())
+        .unwrap_or_default();
+    let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
+        waiting_for: None,
+        since_ms: None,
+        read_at_ms: 0,
+    });
+    super::facts_query::needs_of(&pending, Some(&wait))
 }
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
@@ -926,10 +1007,10 @@ pub(crate) fn trust_product_at(
     let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
         (
             "failed".to_string(),
-            copy_text(
-                "beAccountsQuery.trustProductAt.unparsable",
-                &[("e", &e.to_string())],
-            ),
+            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                copy_text("beAccountsQuery.trustProductAt.unparsable", &[]),
+                e,
+            )),
         )
     })?;
     match (v["trusted"].as_bool(), v["known"].as_bool()) {
@@ -941,6 +1022,32 @@ pub(crate) fn trust_product_at(
             crate::common::contract::malformed("trust line lacks `trusted` / `known`"),
         )),
     }
+}
+
+/// `--account-trust <configDir> <cwd>` / `--account-trust-zero <cwd>` 的 CLI 一趟：成 ⇒ 那一行 `{trusted, known, error}`；
+/// 败 ⇒ 那一份失败（与帧面失败应答同一种信封 [`crate::stream::detail::Failed`]；拒绝码原样，详情的「命令」那一项是这条 CLI 的名字）。
+pub(crate) fn trust_cli(
+    accts_dir: &Path,
+    args: &[String],
+) -> Result<String, crate::stream::detail::Failed> {
+    let flag = args.first().map(String::as_str).unwrap_or_default();
+    let cmd = flag.trim_start_matches("--");
+    let got = match (flag, args.get(1), args.get(2)) {
+        ("--account-trust", Some(cfg), Some(cwd)) => account_trust(accts_dir, cfg, cwd),
+        ("--account-trust-zero", Some(cwd), _) => account_trust_zero(cwd),
+        _ => Err((
+            "bad_args".to_string(),
+            if flag == "--account-trust" {
+                "--account-trust requires <configDir> <cwd>"
+            } else {
+                "--account-trust-zero requires <cwd>"
+            }
+            .to_string(),
+        )),
+    };
+    got.map_err(|(code, message)| {
+        crate::stream::detail::Failed::new(Some(cmd), &code, message, None, None)
+    })
 }
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
@@ -959,50 +1066,13 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             }
             0
         }
-        Some("--account-trust") => match (args.get(1), args.get(2)) {
-            (Some(cfg), Some(cwd)) => match account_trust(&accts_dir, cfg, cwd) {
-                Ok(line) => {
-                    println!("{line}");
-                    0
-                }
-                Err((code, message)) => {
-                    // 结构化错误：stderr 纯 JSON，客户端可整段 parse（同 --resolve 约定）
-                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
-                    2
-                }
-            },
-            _ => {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "code": "bad_args",
-                        "message": "--account-trust requires <configDir> <cwd>"
-                    })
-                );
-                2
+        Some("--account-trust") | Some("--account-trust-zero") => match trust_cli(&accts_dir, args)
+        {
+            Ok(line) => {
+                println!("{line}");
+                0
             }
-        },
-        Some("--account-trust-zero") => match args.get(1) {
-            Some(cwd) => match account_trust_zero(cwd) {
-                Ok(line) => {
-                    println!("{line}");
-                    0
-                }
-                Err((code, message)) => {
-                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
-                    2
-                }
-            },
-            None => {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "code": "bad_args",
-                        "message": "--account-trust-zero requires <cwd>"
-                    })
-                );
-                2
-            }
+            Err(f) => f.emit(),
         },
         other => {
             eprintln!("cc-monitor-backend accounts error: unknown argument: {other:?}");

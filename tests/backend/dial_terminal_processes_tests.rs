@@ -159,3 +159,17 @@ fn a_linux_shaped_table_reads_the_same_way() {
         json!({ "chain": [], "why": "mismatch" })
     );
 }
+
+impl crate::guard_support::Shaped for Processes {
+    fn samples() -> Vec<Self> {
+        vec![Processes {
+            chain: vec![Link {
+                pid: 1,
+                name: "sshd".into(),
+                start: 2,
+            }],
+            why: Some("elsewhere"),
+            addr: Some("203.0.113.2".into()),
+        }]
+    }
+}

@@ -100,3 +100,14 @@ fn a_running_child_in_any_live_book_is_named() {
     });
     assert!(gone, "簿已经没了，查到的还是它");
 }
+
+impl crate::guard_support::Shaped for SessionInterrupts {
+    fn samples() -> Vec<Self> {
+        vec![SessionInterrupts {
+            families: vec![InterruptFamily {
+                family: InterruptKind::Agent,
+                names: vec!["review".into()],
+            }],
+        }]
+    }
+}

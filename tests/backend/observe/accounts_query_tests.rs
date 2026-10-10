@@ -2254,3 +2254,52 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
     .collect();
     assert_eq!(got, want);
 }
+
+/// `--account-trust` / `--account-trust-zero` 的失败与帧面失败应答同一种信封（`stream::detail::Failed`）：
+/// 拒绝码原样、详情的「命令」那一项是这条 CLI 的名字；参数不齐那一支同形（码 `bad_args`）。
+#[test]
+fn the_trust_cli_failures_are_the_one_failed_envelope() {
+    let root = tmpdir("trust-cli");
+    let accts = root.join("accts");
+    write_manifest(&accts, r#"{"version":1,"accounts":[]}"#);
+    let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for (args, code, cmd) in [
+        (
+            a(&["--account-trust", "/etc", "/w"]),
+            "unknown_config_dir",
+            "account-trust",
+        ),
+        (
+            a(&["--account-trust", "/a'b", "/w"]),
+            "unsafe_config_dir",
+            "account-trust",
+        ),
+        (a(&["--account-trust", "/etc"]), "bad_args", "account-trust"),
+        (
+            a(&["--account-trust-zero"]),
+            "bad_args",
+            "account-trust-zero",
+        ),
+    ] {
+        let f = trust_cli(&accts, &args).unwrap_err();
+        assert_eq!(f.code, code, "{args:?}");
+        assert!(!f.message.is_empty(), "{args:?} 没有那一句");
+        assert!(
+            f.detail.contains(cmd),
+            "{args:?} 详情里要有命令名：{}",
+            f.detail
+        );
+        assert!(
+            f.detail.contains(code),
+            "{args:?} 详情里要有码：{}",
+            f.detail
+        );
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(
+            v.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
+            ["code", "detail", "message"],
+            "{args:?}"
+        );
+    }
+    let _ = fs::remove_dir_all(&root);
+}

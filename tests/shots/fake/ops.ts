@@ -3,6 +3,8 @@
  */
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { fmtDur } from "../../../src/frontend/ui/quota-lines";
+import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
 import type { OpHandler, SessionSpec, World } from "./types";
@@ -41,8 +43,6 @@ const isReply = (r: LineRecord): r is Reply => r.t === "reply";
 /** 回复里的正文块（按块）。 */
 const replyTexts = (r: Reply): string[] => r.blocks.flatMap((b) => (b.type === "text" ? [b.text] : []));
 const textOf = (r: LineRecord): string => (isSaid(r) ? r.who.text : isReply(r) ? replyTexts(r).join("\n") : "");
-/** 骨架索引的 `t` 是那一家记录原文的类别（Claude：user / assistant / system …）。 */
-const RAW_KIND: Record<LineRecord["t"], string> = { said: "user", reply: "assistant", retry: "system", title: "ai-title", queued: "queue-operation" };
 
 export const ACCOUNTS = [
   { name: "work", email: "work@example.com", authKind: "subscription", isDefault: true },
@@ -230,7 +230,7 @@ export function defaultOps(): Record<string, OpHandler> {
       const { at, end } = layout(recs);
       const rows = recs.map((r, i) => {
         const t = textOf(r);
-        const row: Record<string, unknown> = { o: at[i].o, n: at[i].n, t: RAW_KIND[r.t], ch: t.length, pl: t.split("\n").filter((l) => l.trim() !== "").length };
+        const row: Record<string, unknown> = { o: at[i].o, n: at[i].n, t: r.t, ch: t.length, pl: t.split("\n").filter((l) => l.trim() !== "").length };
         row.u = r.id;
         if (isSaid(r) && t) {
           row.x = t;
@@ -411,7 +411,7 @@ export function defaultOps(): Record<string, OpHandler> {
           if (b.type === "tool_use" && (b.name === "Edit" || b.name === "Write") && typeof fp === "string") touched.add(fp);
         }
       }
-      let usage: { promptTokens: number; model: string | null; peakPromptTokens: number; limit: number; limitFrom: string } | null = null;
+      let usage: Record<string, unknown> | null = null;
       const lastUsage = last ? usageOf.get(last) : undefined;
       if (last && lastUsage) {
         const sum = (u: { input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }) =>
@@ -426,7 +426,12 @@ export function defaultOps(): Record<string, OpHandler> {
         const model = last.model ?? null;
         const from = relay ? "relay" : (model ?? "").includes("[1m]") ? "model" : peak > 200_000 ? "observed" : "assumed";
         const limit = relay === "std" && peak <= 200_000 ? 200_000 : 1_000_000;
-        usage = { promptTokens: sum(lastUsage), model, peakPromptTokens: peak, limit, limitFrom: from };
+        // 字照后端 `facts_query::UsageFact::settle_words`（百分比 · 用了多少 · 上限 · 来源；同一张文案表的 `beUsage.*`）。
+        const prompt = sum(lastUsage);
+        const short = (n: number) => (n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+        const percent = from === "assumed" ? null : Math.min(100, Math.round((prompt / limit) * 100));
+        const fromText = from === "assumed" ? null : copyText(`beUsage.from.${from}` as "beUsage.from.relay");
+        usage = { promptTokens: prompt, model, peakPromptTokens: peak, limit, limitFrom: from, percent, contextText: percent === null ? short(prompt) : copyText("beUsage.context.pct", { n: String(percent) }), contextTone: percent !== null && percent >= 80 ? "warn" : "plain", promptTokensText: short(prompt), limitText: short(limit), limitFromText: fromText };
       }
       // 没结果的调用 · 最后一句 · 需手动：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
       const what = (name: string, input: Record<string, unknown> | undefined): string | null => {
@@ -450,7 +455,7 @@ export function defaultOps(): Record<string, OpHandler> {
           pending = results.length > 0 ? pending.filter((p) => !results.includes(p.id)) : [];
         }
       }
-      let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null; text: string; tone: string } | null = null;
+      let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null; text: string; tone: string; rank?: number } | null = null;
       // 字照后端 `facts_query::needs_of`（同一张文案表的 `beSession.needs.*`）。
       const said = (kind: "approve" | "answer" | "plan" | "unknown") => ({ text: copyText(`beSession.needs.${kind}`), tone: "need" });
       if (s?.activity === "needs_you") {
@@ -461,6 +466,11 @@ export function defaultOps(): Record<string, OpHandler> {
         else if (plan) needs = { kind: "plan", tool: plan.name, call: plan.id, what: null, sinceMs, ...said("plan") };
         else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs, ...said("approve") };
         else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs, ...said("unknown") };
+      }
+      // 已等多久在那台算（同后端 `needs_of`：读 pidfile 那一刻减起点，字由时长那一处写）；没有起点 ⇒ 两格 null。
+      if (needs) {
+        const waitedMs = needs.sinceMs === null ? null : Math.max(0, Date.now() - needs.sinceMs);
+        needs = { ...needs, rank: 0, waitedMs, waitedText: waitedMs === null ? null : formatDuration(waitedMs) } as typeof needs;
       }
       // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
       const handedBack: string[] = [];
@@ -485,7 +495,18 @@ export function defaultOps(): Record<string, OpHandler> {
           if (!r.blocks.some((b) => b.type === "tool_result")) retries.at(-1)!.outcome = "interrupted";
         }
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, mcp: [] };
+      // 后台任务运行中那一句：照后端 `facts_query::background_of`（命令取最早起的 · 几条 ⇒「等 N 条」· 时长 ＝ 它起了多久；同一张文案表的 `beSession.activity.*`）。
+      let background: { text: string; clock: { text: string; from: number } | null; what: string | null; count: number; tone: string } | null = null;
+      if (s?.activity === "background_work") {
+        const cmds = s.bgCommands ?? [];
+        const first = cmds[0];
+        const what = first ? (cmds.length > 1 ? copyText("beSession.activity.backgroundMany", { cmd: first.cmd, n: String(cmds.length) }) : first.cmd) : null;
+        const line = (dur: string) => copyText("beSession.activity.backgroundFor", { cmd: what ?? "", dur });
+        background = first
+          ? { text: line(fmtDur((Date.now() - first.sinceMs) / 1000)), clock: { text: line("{dur}"), from: first.sinceMs }, what, count: cmds.length, tone: "busy" }
+          : { text: copyText("beSession.activity.backgroundWork"), clock: null, what: null, count: 0, tone: "busy" };
+      }
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, tokens: null, cost: null, bgTasks: [], background, mcp: [] };
     },
     // 主线外清单：假世界的会话都没有回退过。
     "history-branch": (_o, req, w) => ({ off: [], end: layout(sessionByPath(w, req.path)?.records ?? []).end }),

@@ -9,7 +9,7 @@
 //! - Claude Code CLI 自己写的数据（projects / sessions / tasks）：那是用户数据源不归 monitor 管
 //!
 //! 包含：
-//! - monitor_data_dir 下所有持久化文件（config / sid-hwnd-cache / auto-launch / history-metadata）
+//! - monitor_data_dir 下所有持久化文件（config / auto-launch / history-metadata）
 //! - cc 集成短期 IPC 目录（ps-await / ps-registry）
 //! - 滚动 log 目录 + 当前 log 文件
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
@@ -133,14 +133,6 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             "config.json",
             &copy_text("rsDataPaths.monitor.config", &[]),
             DataClass::Truth,
-        ),
-        // 🔴 原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
-        //   都是我们这侧的词。换成用户看得懂的说法。
-        probe_file(
-            monitor_data_dir.join("sid-hwnd-cache.json"),
-            "sid-hwnd-cache.json",
-            &copy_text("rsDataPaths.monitor.bindings", &[]),
-            DataClass::Cache,
         ),
         probe_file(
             monitor_data_dir.join("auto-launch.json"),

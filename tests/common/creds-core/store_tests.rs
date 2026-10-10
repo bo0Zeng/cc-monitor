@@ -177,9 +177,11 @@ fn a_broken_file_is_reported_instead_of_being_read_as_not_configured() {
         .unwrap_err()
         .said(std::path::Path::new("/p"));
     assert!(
-        copy_core::copy_matches("credsStore.error.notJson", &msg),
+        copy_core::copy_matches("credsStore.error.notJson", &msg.said),
         "错误说法没告诉人这文件是手编的：{msg}"
     );
+    // 解析器的原话不上句子，另带（进复制详情 / 日志）。
+    assert!(msg.raw.is_some(), "解析器原话丢了");
 }
 
 /// key 字段的几种「等于没配」的写法。
@@ -653,7 +655,9 @@ fn the_template_notes_come_from_the_copy_table_and_the_error_names_the_file() {
         "{acc}"
     );
     assert_eq!(doc.len(), 5, "骨架多了 / 少了键：{t}");
-    let said = StoreError::NotAnObject.said(std::path::Path::new("/h/c/apikey-credentials.json"));
+    let said = StoreError::NotAnObject
+        .said(std::path::Path::new("/h/c/apikey-credentials.json"))
+        .said;
     assert!(said.contains("/h/c/apikey-credentials.json"), "{said}");
     assert!(!said.contains("_note"), "报错里又贴了整份模板：{said}");
 }

@@ -366,15 +366,16 @@ export class ExtSection {
     return this.mcp.get(machineKey(m))?.entries.find((e) => e.name === r.name) ?? null;
   }
 
-  /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。 */
+  /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。
+   * 每台那一格是后端写好的那一句（原话它记进日志，不随应答来）；整趟没成那一句是通道那一层的（{@link syncAssets}）。 */
   private async syncOnce(on: Origin): Promise<string> {
     try {
       const s = await syncAssets(on);
       return s.synced
-        .flatMap((x) => (x.error === null ? [] : [copyText("extPage.status.syncRow", { machine: x.origin, e: x.error })]))
+        .flatMap((x) => (x.error === null ? [] : [copyText("extPage.status.syncRow", { machine: x.origin, said: x.error })]))
         .join(" ");
     } catch (e) {
-      return copyText("extPage.status.syncFailed", { e: e instanceof Error ? e.message : String(e) });
+      return copyText("extPage.status.syncFailed", { said: e instanceof Error ? e.message : String(e) });
     }
   }
 

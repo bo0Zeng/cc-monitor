@@ -8,20 +8,21 @@
  * 先写「需手动」（分不出是哪种，不猜）。
  */
 import type { DotState } from "./kit/status-dot";
-import type { Needs } from "./session-reads";
+import type { BackgroundWork, Needs } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
-import { activityFace } from "./session-status";
+import { sessionDot } from "./session-status";
 import { isLive } from "./tab-session-state";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { dotLabel } from "./session-words";
 import { fmtDur } from "./quota-lines";
+import { waitedNow } from "./cards/step-line";
 
 /** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text ?? "", tone: tab.activity.tone ?? "need" };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 };
 }
 
 /**
@@ -35,15 +36,12 @@ export function stateWord(tab: Tab): string {
 
 /** 状态点：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
 export function dotOf(tab: Tab): DotState {
-  const s = tab.state;
-  switch (s.liveness) {
-    case "unseen":
-      return "unknown";
-    case "dead":
-      return s.recoverability === "attachable" ? "exited" : s.recoverability === "gone" ? "gone" : "ended";
-    case "live":
-      return activityFace(tab.activity?.doing ?? null).dot;
-  }
+  return sessionDot(tab.state, tab.activity?.tone ?? null);
+}
+
+/** 后台任务运行中那一句此刻的字：有会走的那一句 ⇒ 时长那一截按此刻填（`fmtDur`，与核心对同一份金样）；否则照抄核心写好的那一句。 */
+export function backgroundLine(b: BackgroundWork, now: number): string {
+  return b.clock ? b.clock.text.replace("{dur}", fmtDur((now - b.clock.from) / 1000)) : b.text;
 }
 
 /** 时刻（ISO / epoch ms）⇒ 距 `now` 多久（`fmtDur`）；读不出 ⇒ `null`。 */
@@ -60,13 +58,13 @@ export function machineOf(tab: Tab): string {
 }
 
 /**
- * 状态一句（会话头 · 悬停卡第三行）：`运行中 · Bash 2m` · `等批准 · 2m` · `空闲 · 完成 3m 前` · `已结束` ·
+ * 状态一句（会话头 · 悬停卡第三行）：`运行中 · Bash 2m` · `等批准 · 2m` · `后台任务运行中 · make test-all · 12m` · `空闲 · 完成 3m 前` · `已结束` ·
  * `Claude 已退出` · `状态不明 · gpu-01 不可见` · `记录已不在`。`needs` ＝ 这一句是不是「需手动」（琥珀）。
  */
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
   const n = needsOf(tab);
   if (n) {
-    const waited = sinceText(n.sinceMs, now);
+    const waited = waitedNow(n, now);
     const word = n.text;
     return { text: waited ? copyText("sessionFace.state.waiting", { kind: word, waited }) : word, needs: true };
   }
@@ -76,6 +74,11 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
       if (!p) return { text: stateWord(tab), needs: false };
       const dur = sinceText(p.at, now);
       return { text: dur ? copyText("sessionFace.state.runningFor", { tool: p.name, dur }) : copyText("sessionFace.state.running", { tool: p.name }), needs: false };
+    }
+    case "background": {
+      // 那一句由核心写（命令 · 几条 · 时长）；时长那一截按会走的那一句走字（`fmtDur`，与核心对同一份金样）。拿不到 ⇒ 核心写的那个字。
+      const b = tab.backgroundWork;
+      return { text: b ? backgroundLine(b, now) : stateWord(tab), needs: false };
     }
     case "idle": {
       const ago = sinceText(tab.lastSay?.at ?? null, now);
@@ -96,13 +99,13 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
   }
 }
 
-/** 悬停卡里那一句 peek：在等你 ⇒ 它在等的那一句；在跑 ⇒ 正在做的那一步；空闲 ⇒ 它最后一句。拿不到 ⇒ `null`（不出这一行）。 */
+/** 悬停卡里那一句 peek：在等你 ⇒ 它在等的那一句；在跑 ⇒ 正在做的那一步；空闲 · 后台任务运行中 ⇒ 它最后一句。拿不到 ⇒ `null`（不出这一行）。 */
 export function peekLine(tab: Tab): string | null {
   const n = needsOf(tab);
   if (n) return n.what;
   const d = dotOf(tab);
   if (d === "running") return tab.pending[0]?.what ?? null;
-  if (d === "idle") return tab.lastSay?.text ?? null;
+  if (d === "idle" || d === "background") return tab.lastSay?.text ?? null;
   return null;
 }
 
@@ -130,16 +133,29 @@ export function fullTitle(tab: Tab): string {
   return p.proj ? `${p.proj} ${t}` : t;
 }
 
-/** 收着的组头上那一格汇总：几个在等你、几个在跑（按状态点数；空闲 · 已结束 · 状态不明 · Claude 已退出不算）。 */
-export function groupSummary(members: readonly Tab[]): { needs: number; running: number } {
+/** 收着的组头上那一格汇总：几个在等你、几个在跑、几个后台任务运行中（按状态点数；空闲 · 已结束 · 状态不明 · Claude 已退出不算）。 */
+export function groupSummary(members: readonly Tab[]): { needs: number; running: number; background: number; needsWord: string; runningWord: string; backgroundWord: string } {
   let needs = 0;
   let running = 0;
+  let background = 0;
+  // 那几颗点的名字照抄组员身上核心写的字（同一种语气的字是同一个），不按点自己取字。
+  let needsWord = "";
+  let runningWord = "";
+  let backgroundWord = "";
   for (const t of members) {
     const d = dotOf(t);
-    if (d === "needs-you") needs++;
-    else if (d === "running") running++;
+    if (d === "needs-you") {
+      needs++;
+      needsWord ||= stateWord(t);
+    } else if (d === "running") {
+      running++;
+      runningWord ||= stateWord(t);
+    } else if (d === "background") {
+      background++;
+      backgroundWord ||= stateWord(t);
+    }
   }
-  return { needs, running };
+  return { needs, running, background, needsWord, runningWord, backgroundWord };
 }
 
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */

@@ -6,8 +6,8 @@
 //! （`tests/frontend/shell/platform/platform_home_guard.rs`）。住这里的只是「读法」；判定规则留在调用方。
 
 pub mod console_text;
-// 借别的进程的控制台挂一次记号标题（↗ 默认终端交接那一档）。
-pub mod console_title;
+// 别的进程的控制台显示在哪个窗口（↗ 认窗口）· Linux 往终端设备写改标题序列。
+pub mod console;
 // X11 上找 / 验 / 拉前窗口的 EWMH 读法（`hwnd` 的 Linux 那一臂）。
 #[cfg(target_os = "linux")]
 pub mod ewmh;

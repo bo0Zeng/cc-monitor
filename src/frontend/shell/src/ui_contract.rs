@@ -409,7 +409,7 @@ pub struct SessionActivityPayload {
     pub session_id: String,
     pub activity: Option<crate::session_book::SessionActivity>,
     /// `activity` 那一态写好的字与语气（那台核心写的：运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）。
-    pub activity_text: Option<String>,
-    pub activity_tone: Option<String>,
+    pub activity_text: String,
+    pub activity_tone: String,
     pub waiting_for: Option<String>,
 }

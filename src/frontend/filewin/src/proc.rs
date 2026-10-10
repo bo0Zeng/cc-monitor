@@ -4,6 +4,7 @@
 //! `src/frontend/shell/src/filewin/proc.rs` 的头注；两边对上的形状住 `filewin-contract`。
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 use super::source::{Listed, Source};
 use filewin_contract::{decode_request, encode_ready, Ready};
@@ -84,6 +85,13 @@ fn refuse(said: String, code: i32) -> i32 {
     code
 }
 
+/// 同 [`refuse`]，带下层原话：原话只上 stderr（monitor 接进日志与复制详情），就绪那一行只说那一句。
+fn refuse_raw(said: Said, code: i32) -> i32 {
+    eprintln!("{}", said.logged());
+    say(&Ready::Failed(said.said));
+    code
+}
+
 /// 种子解不出来时的退出码。
 pub const EXIT_BAD_SEED: i32 = 2;
 /// 窗口没立起来时的退出码。
@@ -104,15 +112,15 @@ pub fn child_main() -> i32 {
     let raw = match read_seed_line(&mut std::io::stdin()) {
         Ok(r) => r,
         Err(e) => {
-            return refuse(
-                copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]),
+            return refuse_raw(
+                Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e),
                 EXIT_BAD_SEED,
             )
         }
     };
     let req = match decode_request(&raw) {
         Ok(r) => r,
-        Err(e) => return refuse(e, EXIT_BAD_SEED),
+        Err(e) => return refuse_raw(e, EXIT_BAD_SEED),
     };
     super::source::set_local_line(&req.local_line);
     // 🔴 这个进程里要有一个 tokio 运行时 —— 窗口那一侧的每一次列目录 / 传输 / 搜索
@@ -125,12 +133,26 @@ pub fn child_main() -> i32 {
     {
         Ok(rt) => rt,
         Err(e) => {
-            return refuse(
-                copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]),
+            return refuse_raw(
+                Said::with_raw(copy_text("rsFilewinProc.child.noRuntime", &[]), e),
                 EXIT_WINDOW_FAILED,
             )
         }
     };
+    let code = run_on(&rt, req);
+    // 🔴 **收尾放运行时用 `shutdown_background`，不用 drop。**
+    //    通道的读半边是 `tokio::io::stdin()`：它在运行时的**阻塞线程**上卡在读 stdin，而父进程（monitor 的路由器）
+    //    要等本进程的 stdout 收到 EOF 才放那根管子 —— 本进程不退，stdin 就永远不关。
+    //    普通的 drop 要等每条阻塞线程收工 ⇒ 两边互等，关一扇窗就留一个进程（Win11 真机与 Linux 同形）。
+    //    `shutdown_background` 不等阻塞线程；接着 `[[bin]]` 那一行 `process::exit` 把它们一起带走。
+    //    放在这里（而不是只放在关窗那一支）：「第一屏列不出来」那一支同样已经起了通道、同样会卡。
+    rt.shutdown_background();
+    code
+}
+
+/// [`child_main`] 拿到运行时之后的那一段：起通道 → 列第一屏 → 说就绪 → 开窗、等它关。回退出码。
+/// 运行时由调用方放（理由住 [`child_main`] 收尾那一段）。
+fn run_on(rt: &tokio::runtime::Runtime, req: filewin_contract::OpenRequest) -> i32 {
     // 通道就是自己的 stdin / stdout（`D11`：没有退路 —— 不许「连不上就退回 SFTP 自己列」）。
     let line = {
         let _in_rt = rt.enter();
@@ -160,7 +182,7 @@ pub fn child_main() -> i32 {
     match h.join() {
         Ok(Ok(())) => 0,
         Ok(Err(e)) => {
-            eprintln!("{e}");
+            eprintln!("{}", e.logged());
             EXIT_WINDOW_FAILED
         }
         Err(_) => {

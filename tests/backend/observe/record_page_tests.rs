@@ -1,5 +1,13 @@
 use super::*;
 
+/// 行摘要按线上的样子看（`ReadRow` 经 serde）。
+fn rows_v(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+    rows_of(reader, offset, bytes)
+        .into_iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect()
+}
+
 fn claude() -> RecordFace {
     crate::agents::claudecode::RECORDS
 }
@@ -18,7 +26,7 @@ const MODE: &str = r#"{"type":"mode","mode":"normal"}"#;
 fn rows_carry_exact_ends_and_only_displayable_messages() {
     let page = format!("{USER}\r\n\n  \n{MODE}\n{{torn");
     let face = claude();
-    let rows = rows_of(&mut rd(&face, false), 100, page.as_bytes());
+    let rows = rows_v(&mut rd(&face, false), 100, page.as_bytes());
     assert_eq!(rows.len(), 3, "{rows:?}");
     let u = USER.len() as u64 + 2;
     assert_eq!(rows[0]["end"], 100 + u);
@@ -176,7 +184,7 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
         let (lines, next) =
             record_lines_of_page(&mut rd(&face, summary_only), at, 5, 0, page.as_bytes());
         let (rows, text) = (
-            rows_of(&mut rd(&face, summary_only), 0, page.as_bytes()),
+            rows_v(&mut rd(&face, summary_only), 0, page.as_bytes()),
             serde_json::to_string(&lines).unwrap(),
         );
         (lines, next, rows, text)
@@ -305,12 +313,12 @@ fn a_queued_line_carries_the_moment_it_was_typed() {
     let (lines, _) = record_lines_of_page(&mut r, at, 9, 40 + lead.len() as u64, tail.as_bytes());
     assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
     let (rows_with, rows_without) = (
-        rows_of(
+        rows_v(
             &mut Reader::new(&face, 40, lead.as_bytes(), false),
             99,
             tail.as_bytes(),
         ),
-        rows_of(&mut rd(&face, false), 99, tail.as_bytes()),
+        rows_v(&mut rd(&face, false), 99, tail.as_bytes()),
     );
     assert_eq!(rows_with[0]["record"]["at"], "2026-01-02T03:00:00.000Z");
     // 没有往回看那一段 ⇒ 用它自己的时刻。
@@ -323,7 +331,7 @@ fn records_without_their_own_id_get_one_from_where_the_line_starts() {
     let face = claude();
     let title = r#"{"type":"ai-title","aiTitle":"x","sessionId":"s"}"#;
     let page = format!("{title}\n{REM}\n");
-    let rows = rows_of(&mut rd(&face, false), 1000, page.as_bytes());
+    let rows = rows_v(&mut rd(&face, false), 1000, page.as_bytes());
     let (lines, _) = record_lines_of_page(
         &mut rd(&face, false),
         std::path::Path::new("/p/s.jsonl"),

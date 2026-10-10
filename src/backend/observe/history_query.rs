@@ -163,8 +163,7 @@ fn coded_failure(code: &str, said: &str) -> i32 {
         None,
         None,
     );
-    eprintln!("{}", serde_json::to_string(&f).unwrap_or_else(|_| f.text()));
-    2
+    f.emit()
 }
 
 /// 一次性查询失败的那一行（无码的旧形）。
@@ -374,42 +373,16 @@ pub(crate) fn sessions_by_dir_for(
         .filter(|e| e.path().is_dir())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
-    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）。
-    // 每条线程从同一个计数器领下一个目录；结果最后按目录名排，与单线程逐字相同。
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let workers = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
-        .clamp(1, LISTING_WORKERS)
-        .min(dirs.len().max(1));
-    let mut out: Vec<_> = std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut mine = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let Some(dir_name) = dirs.get(i) else {
-                            break;
-                        };
-                        if let Some(got) = rows_of_dir(agent_home, dir_name, only) {
-                            mine.push((dir_name.clone(), got));
-                        }
-                    }
-                    mine
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .flat_map(|h| h.join().unwrap_or_default())
-            .collect()
-    });
+    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）；结果最后按目录名排，与单线程逐字相同。
+    let mut out: Vec<_> = crate::observe::par::par_in_order(dirs, |dir_name| {
+        rows_of_dir(agent_home, &dir_name, only).map(|got| (dir_name, got))
+    })
+    .into_iter()
+    .flatten()
+    .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Some(out))
 }
-
-/// 扫清单时最多几条线程（[`sessions_by_dir`]）。
-const LISTING_WORKERS: usize = 8;
 
 /// 一个记录目录的会话行（`None` ＝ 这一目录一行都没有，不出）。
 fn rows_of_dir(
@@ -1236,9 +1209,10 @@ pub(crate) struct IndexRow {
     pub(crate) o: u64,
     /// 行字节长（**含**结尾 `\n`）。
     pub(crate) n: u64,
-    /// 记录 `type`；解析不出（非 JSON / 没有 type）⇒ 省略。
+    /// 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；
+    /// 不进界面（元数据 · 解析不出 · 认不出）⇒ 省略。判定在适配层（注册表 `RecordFace.class`，与它的翻译表对拍）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) t: Option<String>,
+    pub(crate) t: Option<crate::agents::record::RecordClass>,
     /// `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) u: Option<String>,
@@ -1306,10 +1280,10 @@ pub(crate) fn index_row_of(v: Option<&serde_json::Value>, offset: u64, len: u64)
     let Some(v) = v else {
         return row;
     };
-    row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     // 骨架索引读的是记录树那一家的记录。
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    row.t = crate::agents::record_class_of(kind, v);
     row.sc = crate::agents::run_of_record(kind, &v).is_some();
     let said = crate::agents::user_text_of(kind, &v);
     row.sp = said
@@ -1427,7 +1401,7 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
 /// 抽出来是因为帧面那条（`history-tail`）只要**这张图**，
 /// 正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话，
 /// 而 CLI 这条仍然一口气印完。**两条路扫的是同一个函数**，行号口径因此只有一份。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
     pub total: u64,
@@ -1792,7 +1766,7 @@ pub(crate) fn record_for(
 }
 
 /// [`record_in`] 的答案。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct RecordProbe {
     /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
     pub present: bool,

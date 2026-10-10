@@ -80,6 +80,12 @@ use wire::{to_line, Frame};
 // 本测块紧邻被测的 split_stream_flags（就近可读）、不挪文件尾；显式 allow 让 clippy
 // --all-targets 净（审计：门槛此前只跑默认 target、漏 test-target lint）。
 
+// 远端 musl 版换分配器：musl 自带的那个放掉的内存不还给系统（理由与读数住 `Cargo.toml` 那一段）。
+// 只在本二进制定，不在库面定：本机 GUI 进程把后端当库链进去，库里定会连壳一起换。判据 `allocator_guard`。
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
@@ -597,6 +603,28 @@ async fn claim_then_log(
     ),
     i32,
 > {
+    claim_then_log_as(
+        control::resident::unsupported_here(),
+        env,
+        account_home,
+        install,
+    )
+    .await
+}
+
+/// [`claim_then_log`] 的里子：「本平台有没有常驻」那一格是入参（`unsupported` = 没有时那一句），判据两形都量得到。
+async fn claim_then_log_as(
+    unsupported: Option<String>,
+    env: &dyn Fn(&str) -> Option<String>,
+    account_home: Option<&std::path::Path>,
+    install: impl FnOnce() -> stderr_log::Installed,
+) -> Result<
+    (
+        Option<(own_chan::Listener, own_chan::Held)>,
+        stderr_log::Installed,
+    ),
+    i32,
+> {
     let mode = match listen::mode_from(env) {
         Ok(m) => m,
         Err(e) => {
@@ -606,6 +634,11 @@ async fn claim_then_log(
     };
     if mode == listen::Mode::Stdio {
         return Ok((None, install()));
+    }
+    // 本平台没有常驻 ⇒ 先说「不支持」（与 `--resident-ensure` 同一句），家与门牌目录一个都不建。
+    if let Some(why) = unsupported {
+        tracing::error!("{why}");
+        return Err(listen::EXIT_BAD_LISTEN_CONFIG);
     }
     let Some(dh) = control::resident::data_home_from(env) else {
         tracing::error!("找不到这台的家 ⇒ 拒绝起常驻");

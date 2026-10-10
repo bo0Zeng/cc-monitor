@@ -1,0 +1,32 @@
+{
+  "workspace": "/w",
+  "slice": "alpha",
+  "unreadable": null,
+  "entries": [
+    {
+      "name": "read.txt",
+      "id": "A1-1",
+      "title": "甲的读入",
+      "statusCode": "done",
+      "status": "做完了",
+      "block": "甲功能",
+      "signAtText": "01-02 00:00",
+      "fileState": "ok",
+      "fileNote": "12 字",
+      "dup": [{ "id": "A1-2", "title": "甲的写出" }]
+    },
+    {
+      "name": "write.txt",
+      "id": "A1-2",
+      "title": "甲的写出",
+      "statusCode": "open",
+      "status": "没做完",
+      "block": "甲功能",
+      "signAtText": null,
+      "fileState": "missing",
+      "fileNote": null,
+      "dup": []
+    }
+  ],
+  "unowned": null
+}
