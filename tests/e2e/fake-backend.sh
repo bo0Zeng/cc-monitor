@@ -81,7 +81,7 @@ command -v jq >/dev/null 2>&1 || {
   exit 3; }
 
 # `tmux` 的唯一出口 —— **永远带选择器**（`-L`）。见头注那段「fail-closed」的理由。
-_tmux() { tmux -L "$FAKE_BACKEND_TMUX_SOCK" "$@"; }
+_tmux() { env -u TMUX -u TMUX_PANE tmux -L "$FAKE_BACKEND_TMUX_SOCK" "$@"; }
 
 case "$_sub" in
   --list-accounts)

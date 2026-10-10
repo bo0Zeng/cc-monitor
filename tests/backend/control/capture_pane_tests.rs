@@ -19,6 +19,8 @@ fn iso_socket(tag: &str) -> std::path::PathBuf {
 /// 在隔离 socket 上跑一条 tmux 命令。**无 `-S` 一律不跑** —— 本测试自己带。
 fn tmux_on(sock: &std::path::Path, args: &[&str]) -> std::process::Output {
     Command::new("tmux")
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
         .arg("-S")
         .arg(sock)
         .args(args)
