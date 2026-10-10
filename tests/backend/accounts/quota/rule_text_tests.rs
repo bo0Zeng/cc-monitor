@@ -35,7 +35,7 @@ fn the_explanation_follows_preempt() {
     assert!(!has(&on, "beRotation.explain.noPreempt", &[]));
 }
 
-/// 兜底：标了才说「b 兜底 · 其余号 40m 内恢复则不切兜底」，等待关掉（0）只说兜底；没标兜底不提等待。时段停用的号写出时段；
+/// 兜底：标了才说「b 兜底 · … · 40m 内恢复则不切兜底」，等待关掉（0）只说兜底；没标兜底不提等待。时段停用的号写出时段；
 /// 有上限才说「都到上限即停 / 仍发」。
 #[test]
 fn the_explanation_names_wait_off_slots_and_at_limit_only_when_they_apply() {
@@ -80,6 +80,24 @@ fn the_explanation_names_wait_off_slots_and_at_limit_only_when_they_apply() {
         "满了才换又没封顶 ⇒ 不说无号可换"
     );
     assert!(has(&explain(&r), "beRotation.explain.onRefused", &[]));
+}
+
+/// ★ 标了兜底就说「其余号恢复即切回」，紧跟兜底那一段、在等待之前（不管换法：兜底只临时用）；没标不说。
+#[test]
+fn the_explanation_says_the_fallback_hands_back() {
+    let mut r = base();
+    assert!(!has(&explain(&r), "beRotation.explain.leave", &[]));
+    r.fallback = vec!["w".into()];
+    let forty = copy_core::format_duration(40 * 60_000);
+    let want = [
+        copy_text("beRotation.explain.fallback", &[("list", "w")]),
+        copy_text("beRotation.explain.leave", &[]),
+        copy_text("beRotation.explain.wait", &[("dur", &forty)]),
+    ]
+    .join(&copy_text("kit.text.sep", &[]));
+    assert!(explain(&r).contains(&want), "{}", explain(&r));
+    r.wait = 0;
+    assert!(has(&explain(&r), "beRotation.explain.leave", &[]));
 }
 
 /// 摘要：顺序（勾上的、前三个）· 触发 · 抢回 · 停 · 封顶几个号。
