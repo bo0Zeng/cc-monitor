@@ -81,15 +81,8 @@ pub(crate) struct Part {
     pub(crate) tone: Tone,
 }
 
-/// 一段字的语气：常规 · 失败 · 现在在做的那一步 · 需要你。
-#[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Tone {
-    Plain,
-    Fail,
-    Now,
-    Need,
-}
+/// 一段字的语气（闭集住 `common/cells.rs`，格目录按这个类型认「语气」格）。
+pub(crate) use crate::common::cells::Tone;
 
 /// 右端那一截：字里若有 `{dur}`，界面填 `to − from`（`to` 缺 ⇒ 现在 − `from`，毫秒）的用时；别的照抄。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]

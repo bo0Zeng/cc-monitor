@@ -1,198 +1,52 @@
 /**
- * Batch13-F40c:routeMetaAndBranch 路由表单测(清偿 F39「收集路由 parity」欠账)。
- * viewer 收集段与渲染路径现在共用本函数——单测钉住路由语义本身即钉住两路一致性。
+ * `routeMeta` 路由表单测（「收集路由 parity」）：收纳（不建卡）与渲染两条路共用这一份。
+ * 标题记录（`t: "title"`）⇒ consumed ＋ 交标题；其余各类 ⇒ content（排队那一句的打字时刻、主线外清单都是后端给的，这里不配、不喂）。
  */
-import { describe, expect, it } from "vitest";
-import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
-import { routeMetaAndBranch, type MetaSink } from "../../../src/frontend/ui/render-stream-record";
+import { describe, it, expect } from "vitest";
+import { routeMeta, type MetaSink } from "../../../src/frontend/ui/render-stream-record";
+import { renderMessage } from "../../../src/frontend/ui/cards";
+import type { JsonlLinePayload } from "../../../src/frontend/ui/generated/JsonlLinePayload";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
-function mk(message: Record<string, unknown>): JsonlLinePayload {
-  return { session_id: "s", cwd: null, path: "/p", seq: 1, message } as unknown as JsonlLinePayload;
+function mk(record: Record<string, unknown>): JsonlLinePayload {
+  return { session_id: "s", cwd: null, path: "/p", seq: 1, record: { agent: "claude", id: "r1", ...record } } as unknown as JsonlLinePayload;
 }
 
-/** 排队消息带上后端判好的「谁说的」（夹具里显式写；前端不判）。 */
-function queued(
-  operation: string,
-  content: string | null,
-  timestamp: string,
-  kind = "human",
-): JsonlLinePayload {
-  const userText = content === null ? undefined : { speaker: { kind }, text: kind === "human" ? content.trim() : "" };
-  return mk({ type: "queue-operation", operation, content, timestamp, userText });
+function recordingSink(): { titles: string[]; sink: MetaSink } {
+  const titles: string[] = [];
+  return { titles, sink: { onTitleUpdate: (t) => titles.push(t) } };
 }
 
-function recordingSink() {
-  const got = { titles: [] as string[], queued: [] as string[], branches: 0 };
-  const sink: MetaSink = {
-    onTitleUpdate: (t) => got.titles.push(t),
-    onQueueOperation: (c) => got.queued.push(c),
-    onBranchRecord: () => (got.branches += 1),
-  };
-  return { got, sink };
-}
-
-// ★★ P0c：打断我时说的那句话，在 jsonl 里**只有 queue-operation 一条记录**。
-//
-// 三条判据的失败方式完全不同，所以正反都钉：
-// ① `remove` 要建卡 —— 不建就整条消失（本会话实测丢 16 条用户真实输入）；
-// ② `dequeue` **不许**建卡 —— 它随后就有 `user` 记录，建了就是同一句显示两遍
-//    （光钉①，改成「三种都渲染」它照样绿，而那会让 101 条正常消息各显示两遍）；
-// ③ 一条都不许喂 branch —— 它没有 uuid/parentUuid，喂进去等于给分叉折叠算法
-//    一个没有父子关系的节点（issue #8 链完整性）。
-describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
-  const qop = (operation: string, content: string | null, kind = "human") =>
-    queued(operation, content, "2026-08-12T09:51:06.664Z", kind);
-
-  it("remove + 用户真实输入 → content（会走到建卡那条路）", () => {
-    const { got, sink } = recordingSink();
-    expect(routeMetaAndBranch(qop("remove", "现在的计划还是围绕 Windows 前端对吧?"), sink)).toBe(
-      "content",
-    );
-    // ★ 建卡归建卡，**链一条都不许多**。
-    expect(got.branches).toBe(0);
+describe("routeMeta 路由表", () => {
+  it("标题（代理起的 · 人改的）→ consumed + onTitleUpdate", () => {
+    const { titles, sink } = recordingSink();
+    expect(routeMeta(mk({ t: "title", text: "甲", by: "agent" }), sink)).toBe("consumed");
+    expect(routeMeta(mk({ t: "title", text: "乙", by: "user" }), sink)).toBe("consumed");
+    expect(titles).toEqual(["甲", "乙"]);
   });
 
-  it("dequeue → consumed（它随后有 user 记录，建卡就是同一句显示两遍）", () => {
-    const { got, sink } = recordingSink();
-    expect(routeMetaAndBranch(qop("dequeue", "同一句话"), sink)).toBe("consumed");
-    expect(got.queued).toEqual([]); // 也不该喂折叠豁免集合（那是 enqueue 的活）
-  });
-
-  it("enqueue → consumed + 喂折叠豁免集合（issue #36 那条，行为不变）", () => {
-    const { got, sink } = recordingSink();
-    expect(routeMetaAndBranch(qop("enqueue", "排队的话"), sink)).toBe("consumed");
-    expect(got.queued).toEqual(["排队的话"]);
-  });
-
-  // ★★ D 阶段补审：卡上的时间必须是**用户打字的时刻**，不是被插进去的时刻。
-  //
-  // 实测本会话 16 条：两者中位数差 **25.4s**，最大 **125.4s**。
-  // 标一个晚两分钟的时间 = 告诉读的人「他是那时候说的」，那是假的。
-  it("卡上的时间取 enqueue（打字时刻），不是 remove（被插入时刻）", () => {
-    const { sink } = recordingSink();
-    const text = "打断说的话";
-    routeMetaAndBranch(
-      mk({ type: "queue-operation", operation: "enqueue", content: text, timestamp: "2026-08-12T09:51:06.664Z" }),
-      sink,
-    );
-    const rm = queued("remove", text, "2026-08-12T09:51:51.359Z"); // 晚 45 秒
-    expect(routeMetaAndBranch(rm, sink)).toBe("content");
-    expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T09:51:06.664Z");
-  });
-
-  it("配不上 enqueue（那条没到）→ 退回用 remove 的时刻，不空着", () => {
-    const { sink } = recordingSink();
-    const rm = queued("remove", "没有对应 enqueue 的话", "2026-08-12T10:00:00.000Z");
-    expect(routeMetaAndBranch(rm, sink)).toBe("content");
-    // 晚 25 秒的时间仍比没有时间有用，且卡上「排队时发出」已在提示读者。
-    expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
-  });
-
-  // ★ 上界是**真的有界**，不是注释里说说。
-  //
-  // 这条是 D 阶段变异逼出来的：去掉裁剪那一行，上面两条判据**照样绿** ——
-  // 也就是「有界」这个说法当时没有任何东西守着，而一个无上界的进程内 map
-  // 在长会话里就是慢性泄漏。
-  it("打字时刻缓存有上界：撑爆之后最老的那条被丢掉，退回用 remove 的时刻", () => {
-    const { sink } = recordingSink();
-    const oldest = "最老的那句话";
-    routeMetaAndBranch(
-      mk({ type: "queue-operation", operation: "enqueue", content: oldest, timestamp: "2026-01-01T00:00:00.000Z" }),
-      sink,
-    );
-    // 再灌 200 条把它挤出去（上界 200）。
-    for (let i = 0; i < 200; i++) {
-      routeMetaAndBranch(
-        mk({ type: "queue-operation", operation: "enqueue", content: `填充-${i}`, timestamp: "2026-01-02T00:00:00.000Z" }),
-        sink,
-      );
-    }
-    const rm = queued("remove", oldest, "2026-08-12T10:00:00.000Z");
-    expect(routeMetaAndBranch(rm, sink)).toBe("content");
-    // 配不上了 ⇒ 退回 remove 的时刻（而不是拿到那个 2026-01-01）。
-    expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
-  });
-
-  // ★ E 阶段补：排队消息**也算真用户输入** —— 它是用户在这个会话里说的话，
-  // 只是被插进了正在跑的那一轮。不触发的话，打断时说的话不会把 tab 切过来，
-  // 而那恰恰是最需要切过去的时刻。
-  //
-  // ⚠ 本条钉的是**路由层把它当 content 放行**（`renderContentRecord` 才是真正调
-  // `onRealUserInput` 的地方，那一层由 `tabs.vitest.ts` 的 DOM 用例覆盖）。
-  it("remove 走 content ⇒ 它会进到调 onRealUserInput 的那条路", () => {
-    const { sink } = recordingSink();
-    expect(routeMetaAndBranch(qop("remove", "打断时说的话"), sink)).toBe("content");
-  });
-
-  it("remove + 后端判为非人（后台通知 · agent 来话）→ consumed（不是用户说的话）", () => {
-    const { sink } = recordingSink();
-    const note = "<task-notification>\n<task-id>abc</task-id>\n</task-notification>";
-    expect(routeMetaAndBranch(qop("remove", note, "taskNotification"), sink)).toBe("consumed");
-    expect(routeMetaAndBranch(qop("remove", "甲乙", "agentMessage"), sink)).toBe("consumed");
-  });
-
-  it("前端不看正文：后端说是人就是人，说不是就不是（正文长什么样都一样）", () => {
-    const { sink } = recordingSink();
-    expect(routeMetaAndBranch(qop("remove", "<agent-message from=\"a\">甲</agent-message>", "human"), sink)).toBe("content");
-    expect(routeMetaAndBranch(qop("remove", "普通的一句话", "system"), sink)).toBe("consumed");
-  });
-
-  it("remove + 空/纯空白 → consumed（没有内容就没有卡）", () => {
-    const { sink } = recordingSink();
-    expect(routeMetaAndBranch(qop("remove", "   "), sink)).toBe("consumed");
-    expect(routeMetaAndBranch(qop("remove", null), sink)).toBe("consumed");
+  it("said / reply / retry / queued → content，不交标题", () => {
+    const { titles, sink } = recordingSink();
+    for (const t of ["said", "reply", "retry", "queued"]) expect(routeMeta(mk({ t }), sink), t).toBe("content");
+    expect(titles).toEqual([]);
   });
 });
 
-describe("routeMetaAndBranch 路由表", () => {
-  it("ai-title / custom-title → consumed + onTitleUpdate", () => {
-    const { got, sink } = recordingSink();
-    expect(routeMetaAndBranch(mk({ type: "ai-title", aiTitle: "甲" }), sink)).toBe("consumed");
-    expect(routeMetaAndBranch(mk({ type: "custom-title", customTitle: "乙" }), sink)).toBe(
-      "consumed",
-    );
-    expect(got.titles).toEqual(["甲", "乙"]);
-    expect(got.branches).toBe(0);
+// 排队那一句（插进正在跑那一轮的一句）：后端只给人说的那一支、时刻已是打字时刻 ⇒ 界面照画，不配对、不改时刻。
+describe("排队那一句照后端给的画", () => {
+  const ctx = () => ({ parentPath: "/p", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() });
+  const queued = (kind: string, text: string) =>
+    ({ agent: "claude", t: "queued", id: "@9", at: "2026-08-12T09:51:06.664Z", timeText: "09:51", who: { speaker: { kind }, text } }) as never;
+
+  it("人说的 ⇒ 排队卡，卡头时刻就是记录的 timeText", () => {
+    const r = renderMessage(queued("human", "现在的计划还是围绕 Windows 前端对吧?"), ctx());
+    if (r.kind !== "card") throw new Error(r.kind);
+    expect(r.element.classList.contains("card-user-queued")).toBe(true);
+    expect(r.element.querySelector(".card-header .ts")?.textContent).toBe("09:51");
   });
 
-  it("queue-operation enqueue 带 content → consumed + 喂豁免;dequeue/空 content 只 consumed", () => {
-    const { got, sink } = recordingSink();
-    expect(
-      routeMetaAndBranch(mk({ type: "queue-operation", operation: "enqueue", content: "排队消息" }), sink),
-    ).toBe("consumed");
-    expect(
-      routeMetaAndBranch(mk({ type: "queue-operation", operation: "dequeue" }), sink),
-    ).toBe("consumed");
-    expect(got.queued).toEqual(["排队消息"]);
-  });
-
-  it("user/assistant(带 uuid)→ content + branch 喂送;attachment 也喂(链完整性 #8)", () => {
-    const { got, sink } = recordingSink();
-    // extractBranchRecord 门卫要求 uuid+timestamp 齐备
-    expect(
-      routeMetaAndBranch(
-        mk({ type: "user", uuid: "u1", timestamp: "2026-01-01T00:00:00Z", message: { content: "hi" } }),
-        sink,
-      ),
-    ).toBe("content");
-    expect(
-      routeMetaAndBranch(
-        mk({
-          type: "assistant",
-          uuid: "a1",
-          parentUuid: "u1",
-          timestamp: "2026-01-01T00:00:01Z",
-          message: { content: [] },
-        }),
-        sink,
-      ),
-    ).toBe("content");
-    expect(got.branches).toBe(2);
-  });
-
-  it("无 uuid 的杂项记录 → content 且不喂 branch(extractBranchRecord 门卫)", () => {
-    const { got, sink } = recordingSink();
-    expect(routeMetaAndBranch(mk({ type: "summary" }), sink)).toBe("content");
-    expect(got.branches).toBe(0);
+  it("不是人说的 / 没有正文 ⇒ 不建卡", () => {
+    expect(renderMessage(queued("system", "x"), ctx()).kind).toBe("skip");
+    expect(renderMessage(queued("human", ""), ctx()).kind).toBe("skip");
   });
 });

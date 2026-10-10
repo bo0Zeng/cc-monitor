@@ -32,8 +32,7 @@ import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { foldCaret } from "./kit/fold";
-import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
-import { dotLabel, needsWord } from "./session-words";
+import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -820,9 +819,9 @@ export class TabBarView {
   private paintGroupHead(g: GroupEls, col: TabCollection): void {
     const members = [...this.store.tabs.values()].filter((t) => t.group === col.id);
     const collapsed = col.collapsed === true;
-    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0 };
+    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0, needsWord: "", runningWord: "" };
     const current = collapsed && members.some((t) => t.sessionId === this.store.activeId);
-    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${current ? 1 : 0}`;
+    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${sum.needsWord}\u0000${sum.runningWord}\u0000${current ? 1 : 0}`;
     if (g.drawn === drawn) return;
     g.drawn = drawn;
     if (g.name.textContent !== col.name) g.name.textContent = col.name;
@@ -833,11 +832,12 @@ export class TabBarView {
     g.wrap.classList.toggle("is-collapsed", collapsed);
     g.head.classList.toggle("is-current", current);
     const chips: HTMLElement[] = [];
+    const word = (dot: "needs-you" | "running"): string => (dot === "needs-you" ? sum.needsWord : sum.runningWord);
     const chip = (dot: "needs-you" | "running", text: string): HTMLElement => {
       const c = document.createElement("span");
       c.className = "tab-group-chip";
       c.dataset.dot = dot;
-      c.append(statusDot(dot, dotLabel(dot), "compact"), document.createTextNode(text));
+      c.append(statusDot(dot, word(dot), "compact"), document.createTextNode(text));
       return c;
     };
     if (sum.needs > 0) chips.push(chip("needs-you", copyText("tabBar.group.sumNeeds", { n: sum.needs })));
@@ -845,7 +845,7 @@ export class TabBarView {
     g.sum.replaceChildren(...chips);
     // 窄栏只放得下一个点：有等你的画琥珀，否则有在跑的画绿。
     const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : null;
-    g.mini.replaceChildren(...(urgent ? [statusDot(urgent, dotLabel(urgent), "compact")] : []));
+    g.mini.replaceChildren(...(urgent ? [statusDot(urgent, word(urgent), "compact")] : []));
   }
 
   /** 收起 / 展开一个组（落盘）。 */
@@ -1093,7 +1093,7 @@ export class TabBarView {
     const state = document.createElement("div");
     state.className = st.needs ? "tab-hover-state tab-hover-need" : "tab-hover-state";
     const d = dotOf(tab);
-    state.append(statusDot(d, dotLabel(d), "compact"), document.createTextNode(st.text));
+    state.append(statusDot(d, stateWord(tab), "compact"), document.createTextNode(st.text));
     card.appendChild(state);
     const peek = peekLine(tab);
     if (peek) card.appendChild(line("tab-hover-peek", peek));
@@ -1120,11 +1120,11 @@ export class TabBarView {
     const pinned = tab.pinned;
     const hasCwd = !!tab.projectDir;
     const remote = isRemoteOrigin(tab.origin);
-    const lightClass = isLive(tab.state) ? activityFace(tab.activity?.doing ?? null).light : "";
+    const lightClass = isLive(tab.state) ? activityFace(tab.activity?.tone ?? null).light : "";
     const reconnectable = view.reconnectable;
     const dot = dotOf(tab);
     const n = needsOf(tab);
-    const needsText = n ? needsWord(n.kind) : "";
+    const needsText = n ? n.text : "";
     const parts = titleParts(tab);
     const unread = tab.unread > 0 && !active;
     // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
@@ -1155,9 +1155,10 @@ export class TabBarView {
       refs.root.classList.toggle("unseen-done", unseenDone);
       refs.root.classList.toggle("waiting-you", n !== null);
       // 只写真变了的那几格（一个状态变了 ⇒ 这颗按钮上恰好：类 · 点的样子 · 点的读屏名）。
-      if (refs.dot.dataset.state !== dot) {
+      const dotName = stateWord(tab);
+      if (refs.dot.dataset.state !== dot || refs.dot.getAttribute("aria-label") !== dotName) {
         refs.dot.dataset.state = dot;
-        refs.dot.setAttribute("aria-label", dotLabel(dot));
+        refs.dot.setAttribute("aria-label", dotName);
       }
       if (refs.label.textContent !== titleText) refs.label.textContent = titleText;
       setText(refs.proj, parts.proj ?? "");

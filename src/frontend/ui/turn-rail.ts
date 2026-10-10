@@ -144,7 +144,7 @@ export class TurnRail {
     const index = this.indexOf.map;
     const heads: Array<[Element, number]> = [];
     for (const el of Array.from(this.content.children)) {
-      const i = index.get(el.getAttribute("data-uuid") ?? "");
+      const i = index.get(el.getAttribute("data-id") ?? "");
       if (i !== undefined) heads.push([el, i]);
     }
     if (heads.length === 0) return -1;

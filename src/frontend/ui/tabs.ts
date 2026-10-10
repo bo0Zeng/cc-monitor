@@ -14,6 +14,7 @@ import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
 
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -23,12 +24,11 @@ import { toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
-import { needsWord } from "./session-words";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
-import { contextPercentOf, type ContextLimitOverrides } from "./views/context-limit";
+import { type ContextLimitOverrides } from "./views/context-limit";
 import {
   terminalFrontAvailable,
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
@@ -423,14 +423,10 @@ export class TabManager {
   }
 
   /**
-   * 启动重放开始时调一次：现有 Tab 的分支折叠切到批模式（只收不算主线）；重放期新建的 Tab 也进批模式（看 `store.inBatch`）。
+   * 启动重放开始时调一次：进批模式（惰性高亮；重放期的旧记录不建卡，收纳进 `tab.window` ⇒ 视口上方零插入）。
    */
   onBatchStart(): void {
     this.store.inBatch = true;
-    for (const t of this.store.tabs.values()) {
-      t.branchFolder.setBatchMode(true);
-      // 重放期的旧记录不建卡（收纳进 `tab.window`）⇒ 视口上方零插入。
-    }
   }
 
   /** 重放批完结：各 Tab 一次性算完、切回实时。 */
@@ -463,7 +459,7 @@ export class TabManager {
     if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
-    // jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
+    // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
@@ -540,14 +536,12 @@ export class TabManager {
         cwd: tab.projectDir,
         state: tab.state, // 两轴原样交出去：cell 与 tab-bar 读同一份、经同一组谓词
         activity: tab.activity?.doing ?? null,
-        waitingFor: tab.activity?.waitingFor ?? null,
+        activityText: tab.activity?.text ?? null,
+        activityTone: tab.activity?.tone ?? null,
+        needs: needsOf(tab)?.text ?? null,
         runningAgents: runs.filter((r) => r.state === "running").length,
         totalAgents: runs.length,
-        contextPct:
-          tab.latestPromptTokens != null
-            ? contextPercentOf(tab.latestPromptTokens, tab.latestContextLimit)
-            : null,
-        contextTokens: tab.latestPromptTokens,
+        context: tab.usage === null ? null : { text: tab.usage.contextText, tone: tab.usage.contextTone, percent: tab.usage.percent },
         unread: tab.unread,
         background: tab.background,
         account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
@@ -584,7 +578,7 @@ export class TabManager {
       .map((r) => ({ label: runLabel(r), status: r.state }))
       .sort((x, y) => (x.status === "running" ? 0 : 1) - (y.status === "running" ? 0 : 1));
     return {
-      model: tab.latestModel,
+      model: tab.usage?.model ?? null,
       recentFiles: [...tab.touchedFiles],
       agents,
     };
@@ -617,10 +611,7 @@ export class TabManager {
     const t = sid === null ? undefined : this.store.tabs.get(sid);
     this.store.active.set({
       sid: t ? sid : null,
-      model: t?.latestModel ?? null,
-      promptTokens: t?.latestPromptTokens ?? null,
-      contextLimit: t?.latestContextLimit ?? null,
-      limitFrom: t?.latestLimitFrom ?? "assumed",
+      usage: t?.usage ?? null,
       unavailable: t?.facts.unavailableReason ?? null,
       projectDir: t?.projectDir ?? null,
     });
@@ -739,10 +730,7 @@ export class TabManager {
       activity: this.store.pendingActivity.get(sessionId) ?? null,
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // 会话改动集
-      latestPromptTokens: null, // HUD 的上下文占用
-      latestModel: null,
-      latestContextLimit: null,
-      latestLimitFrom: "assumed",
+      usage: null, // HUD 与监控板的上下文那一格
       needs: null,
       pending: [],
       lastSay: null,
@@ -923,6 +911,13 @@ export class TabManager {
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
   }
 
+  /**
+   * 一个会话的主线外清单到了（会话流里的 `branch` 格，整份）：那个 tab 的折叠层按它重折。没有这个 tab ⇒ 不收。
+   */
+  onSessionBranch(p: SessionBranchPayload): void {
+    this.store.tabs.get(p.session_id)?.branchFolder.setOff(new Set(p.off));
+  }
+
   /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */
   setRunWindow(sid: string, run: string, open: boolean): void {
     const k = `${sid}\u0000${run}`;
@@ -975,7 +970,7 @@ export class TabManager {
   needsWordOf(sessionId: string): string | null {
     const tab = this.store.tabs.get(sessionId);
     const n = tab ? needsOf(tab) : null;
-    return n ? needsWord(n.kind) : null;
+    return n ? n.text : null;
   }
 
   /**
@@ -1252,32 +1247,35 @@ export class TabManager {
     this.emitTabStateProbe(tab);
   }
 
-  /** 红绿灯（会话流的 activity 格）。`doing = null` ⇒ 回默认绿点。Tab 未建 ⇒ 暂存。无变化不重绘。 */
+  /** 红绿灯（会话流的 activity 格）：那一态 ＋ 核心写好的字与语气（`doing = null` ＝ 那一家没说，字与语气照样有）。Tab 未建 ⇒ 暂存。无变化不重绘。 */
   updateActivity(
     sessionId: string,
     doing: SessionActivity | null,
     waitingFor: string | null,
+    text: string,
+    tone: string,
   ): void {
-    const act = doing === null ? null : { doing, waitingFor };
+    const act = { doing, waitingFor, text, tone };
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      if (act) this.store.pendingActivity.set(sessionId, act);
-      else this.store.pendingActivity.delete(sessionId);
+      this.store.pendingActivity.set(sessionId, act);
       return;
     }
     // 已结束不更新：磁盘残留的 PID 文件被重扫会推陈旧 activity。
     if (isResumeOnly(tab.state)) return;
     // 有活动 ＝ claude 活着 ⇒ 可重连回到活。必须在下面「无变化早退」之前：复活后首个 activity 未必与陈旧值不同。
-    const clearedIdle = act !== null && this.applyState(tab, "activity");
+    const clearedIdle = doing !== null && this.applyState(tab, "activity");
     if (
-      tab.activity?.doing === act?.doing &&
-      tab.activity?.waitingFor === act?.waitingFor
+      tab.activity?.doing === act.doing &&
+      tab.activity?.waitingFor === act.waitingFor &&
+      tab.activity?.text === act.text &&
+      tab.activity?.tone === act.tone
     ) {
       if (clearedIdle) this.refreshTabBar();
       return;
     }
     // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
-    if (act?.doing !== "needs_you") tab.needs = null;
+    if (act.doing !== "needs_you") tab.needs = null;
     tab.facts.markStale();
     void tab.facts.refresh();
     tab.activity = act;

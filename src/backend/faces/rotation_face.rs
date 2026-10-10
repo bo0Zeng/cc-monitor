@@ -278,7 +278,7 @@ fn rule_wire(
             "ended": ended_sids.len(),
             "follow": follow,
             "doing": sids.iter().map(|sid| ((*sid).clone(), doing_wire(doing.get(*sid))))
-                .chain(ended_sids.iter().map(|sid| ((*sid).clone(), json!({"state": "ended", "needs": null}))))
+                .chain(ended_sids.iter().map(|sid| ((*sid).clone(), ended_wire())))
                 .collect::<Map<String, Value>>(),
             "sids": sids,
             "endedSids": ended_sids,
@@ -290,20 +290,35 @@ fn rule_wire(
     })
 }
 
-/// 一个活会话的状态（主窗口标签页同一套）：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · network · worker · goal · choose · unknown）。
-/// 说不清在干什么 ⇒ `working`（主窗口那颗点同样画成在跑）。
+/// 一个活会话的状态：`state`（轮换那一侧的判：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · network ·
+/// worker · goal · choose · unknown）· `ended`）＋ 显示用的 `text` · `tone`（与主窗口同一处写：活动态的字 · 那一种「需手动」的字 ·
+/// 去向的字）。说不清在干什么 ⇒ `working`；后台命令还在跑 ⇒ 也按 `working`（重启会把它掐掉），字照 activity 写。
 fn doing_wire(d: Option<&Doing>) -> Value {
     use crate::agents::SessionActivity as A;
-    use crate::observe::facts_query::NeedsKind;
-    match d.and_then(|d| d.activity) {
-        Some(A::NeedsYou) => json!({
-            "state": "needsYou",
-            "needs": d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown),
-        }),
-        Some(A::Idle) => json!({"state": "idle", "needs": null}),
-        // 后台命令还在跑：重启会把它掐掉 ⇒ 按「在跑」报（与说不清同一侧，不当空闲）。
-        Some(A::Working | A::BackgroundWork) | None => json!({"state": "working", "needs": null}),
+    use crate::observe::facts_query::{needs_words, NeedsKind};
+    let activity = d.and_then(|d| d.activity);
+    let (text, tone) = crate::stream::wire::activity_cells(activity);
+    match activity {
+        Some(A::NeedsYou) => {
+            let kind = d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown);
+            json!({
+                "state": "needsYou",
+                "needs": kind,
+                "text": needs_words(kind),
+                "tone": crate::common::cells::Tone::Need,
+            })
+        }
+        Some(A::Idle) => json!({"state": "idle", "needs": null, "text": text, "tone": tone}),
+        Some(A::Working | A::BackgroundWork) | None => {
+            json!({"state": "working", "needs": null, "text": text, "tone": tone})
+        }
     }
+}
+
+/// 名单里一个已结束的会话（字与语气同 `session_state` 的去向）。
+fn ended_wire() -> Value {
+    let (text, _, tone) = crate::stream::wire::SessionFate::Ended.cells();
+    json!({"state": "ended", "needs": null, "text": text, "tone": tone})
 }
 
 fn rules_wire(ctx: &Ctx) -> Value {

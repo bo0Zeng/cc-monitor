@@ -448,7 +448,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     paintTerminalActs();
     needsBar.render();
-    usageHud.setActive(a.model, a.promptTokens, a.contextLimit, a.limitFrom);
+    usageHud.setActive(a.usage);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);
@@ -821,6 +821,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
+    onSessionBranch: (p) => tabs.onSessionBranch(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
     // 那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,
@@ -844,7 +845,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
     },
-    // 启动重放期间走批模式（惰性高亮 ＋ BranchFolder.batchMode），结束时 flush。
+    // 启动重放期间走批模式（惰性高亮），结束时 flush。
     // DEV 抖动探针跨在批窗口上（生产 probe 恒 null）。
     onBatchStart: () => {
       e2eProbe?.startReplayJitterProbe();
@@ -860,7 +861,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onQuotaChanged,
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone),
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号

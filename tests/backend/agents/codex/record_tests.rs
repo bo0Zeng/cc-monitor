@@ -2,6 +2,7 @@ use super::super::parse::session_meta_cwd;
 use super::CodexRecordKind as K;
 use super::*;
 use crate::agents::Speaker;
+use crate::agents::UserText;
 use serde_json::json;
 
 fn env(top: &str, payload: Value) -> Value {
@@ -212,47 +213,80 @@ fn tool_input_and_call_id() {
     );
 }
 
-// ─── F2b-2：to_jsonl_record 组装 ───
+// ─── 翻成通用记录 ───
 
-fn content_of(r: &JsonlRecord) -> Value {
-    match r {
-        JsonlRecord::User { message, .. } | JsonlRecord::Assistant { message, .. } => {
-            message.content.clone()
+/// 翻一条（起点偏移随便给一个）。
+fn rec(v: &Value) -> Option<Record> {
+    record_of(v, 40)
+}
+
+fn blocks_of(r: &Record) -> Value {
+    match &r.body {
+        Body::Said { blocks, .. } | Body::Reply { blocks, .. } => {
+            serde_json::to_value(blocks).unwrap()
         }
         _ => Value::Null,
     }
 }
 
-/// message：assistant→Assistant+text block；developer→User(isMeta)；user 空→User content []。
+fn who_of(r: &Record) -> Option<&UserText> {
+    match &r.body {
+        Body::Said { who, .. } => Some(who),
+        _ => None,
+    }
+}
+
+/// message：assistant ⇒ reply ＋ 正文块；developer ⇒ said（系统注入）；user 空 ⇒ said、没有块。
+/// 记录上自带 id 就用它；没有 ⇒ 按起点偏移合成，从不给空串。
 #[test]
-fn maps_message_to_user_assistant() {
+fn maps_message_to_said_and_reply() {
     let asst = env(
         "response_item",
         json!({"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "回复"}]}),
     );
-    let r = to_jsonl_record(&asst, "raw");
-    assert!(matches!(&r, JsonlRecord::Assistant { uuid, .. } if uuid == "m1"));
-    assert_eq!(content_of(&r), json!([{"type": "text", "text": "回复"}]));
+    let r = rec(&asst).unwrap();
+    assert!(matches!(
+        &r.body,
+        Body::Reply {
+            auto_reply: false,
+            ends_turn: false,
+            ..
+        }
+    ));
+    assert_eq!((r.agent.as_str(), r.id.as_str()), ("codex", "m1"));
+    assert_eq!(blocks_of(&r), json!([{"type": "text", "text": "回复"}]));
 
-    // developer → 系统注入、无 id → uuid ""。
     let dev = env(
         "response_item",
         json!({"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "sys"}]}),
     );
-    assert!(
-        matches!(to_jsonl_record(&dev, "r"), JsonlRecord::User { user_text, uuid, .. } if uuid.is_empty() && matches!(user_text.speaker, Speaker::System { .. }))
-    );
+    let r = rec(&dev).unwrap();
+    assert_eq!(r.id, "@40");
+    assert!(matches!(
+        who_of(&r).map(|w| &w.speaker),
+        Some(Speaker::System { .. })
+    ));
 
-    // user 空 content → User，content []（免空气泡）。
     let u = env(
         "response_item",
         json!({"type": "message", "role": "user", "content": []}),
     );
-    let r = to_jsonl_record(&u, "r");
-    assert!(
-        matches!(&r, JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::Human && user_text.text.is_empty())
+    let r = rec(&u).unwrap();
+    assert!(who_of(&r).is_some_and(|w| w.speaker == Speaker::Human && w.text.is_empty()));
+    assert_eq!(blocks_of(&r), json!([]));
+}
+
+/// 没有自己 id 的几条：合成的 id 各不相同（按行的起点偏移），同一行从哪条读路读都一样。
+#[test]
+fn synthesized_ids_are_distinct_and_stable() {
+    let out = env(
+        "response_item",
+        json!({"type": "function_call_output", "call_id": "c1", "output": "x"}),
     );
-    assert_eq!(content_of(&r), json!([]));
+    let a = record_of(&out, 0).unwrap().id;
+    let b = record_of(&out, 812).unwrap().id;
+    assert!(!a.is_empty() && a != b);
+    assert_eq!(record_of(&out, 812).unwrap().id, b);
 }
 
 /// F7 去噪：role=user 但正文是 CLI 注入的上下文块（3 标记）→ 系统注入（界面不画）；
@@ -265,53 +299,47 @@ fn denoise_injected_context_user_messages() {
             json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}),
         )
     };
-    // 注入块（含前导空白）→ 系统注入。
     for inj in [
         "<environment_context>\n  <cwd>/home/user</cwd>\n</environment_context>",
         "  <recommended_plugins>\nHere is a list of plugins…",
         "# AGENTS.md instructions\n\n<INSTRUCTIONS>\n# AGENTS.md\n本文件…",
     ] {
+        let r = rec(&mk(inj)).unwrap();
         assert!(
-            matches!(
-                to_jsonl_record(&mk(inj), "r"),
-                JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::System { body: None }
-            ),
+            who_of(&r).is_some_and(|w| w.speaker == Speaker::System { body: None }),
             "注入块应去噪当系统注入: {inj:?}"
         );
     }
-    // 真用户输入 → 人（碰巧提及标签名但非以之起头的、及裸 markdown 标题 → 不误伤）。
     for real in [
         "codex怎么换行",
         "帮我看看 <environment_context> 是什么",
-        "# 我的笔记\n随便写的",  // 裸 # 标题 ≠ `# AGENTS.md instructions`
-        "# AGENTS.md 里写了啥?", // 提及但非机器注入整串前缀
+        "# 我的笔记\n随便写的",
+        "# AGENTS.md 里写了啥?",
     ] {
+        let r = rec(&mk(real)).unwrap();
         assert!(
-            matches!(
-                to_jsonl_record(&mk(real), "r"),
-                JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::Human && user_text.text == real.trim()
-            ),
+            who_of(&r).is_some_and(|w| w.speaker == Speaker::Human && w.text == real.trim()),
             "真用户输入不应被去噪: {real:?}"
         );
     }
 }
 
-/// reasoning：空 summary→Assistant content []（免 Thinking 噪音）；有 text→thinking block。
+/// reasoning：空 summary ⇒ reply、没有块（免空推理块）；有 text ⇒ 推理块。
 #[test]
 fn maps_reasoning_empty_and_nonempty() {
     let empty = env("response_item", json!({"type": "reasoning", "summary": []}));
-    assert_eq!(content_of(&to_jsonl_record(&empty, "r")), json!([]));
+    assert_eq!(blocks_of(&rec(&empty).unwrap()), json!([]));
     let think = env(
         "response_item",
         json!({"type": "reasoning", "summary": [{"text": "想了想"}]}),
     );
     assert_eq!(
-        content_of(&to_jsonl_record(&think, "r")),
-        json!([{"type": "thinking", "thinking": "想了想"}])
+        blocks_of(&rec(&think).unwrap()),
+        json!([{"type": "thinking", "text": "想了想"}])
     );
 }
 
-/// tool_call→Assistant+tool_use；tool_output(数组)→User+tool_result（content=拼接文本、守丢文本坑）。
+/// 工具调用 ⇒ reply ＋ 调用块；工具输出（数组）⇒ said ＋ 结果块（内容是拼好的正文块，守丢文本坑）。
 #[test]
 fn maps_tool_call_and_output() {
     let call = env(
@@ -319,19 +347,18 @@ fn maps_tool_call_and_output() {
         json!({"type": "custom_tool_call", "call_id": "c1", "name": "shell", "input": {"cmd": "ls"}}),
     );
     assert_eq!(
-        content_of(&to_jsonl_record(&call, "r")),
+        blocks_of(&rec(&call).unwrap()),
         json!([{"type": "tool_use", "id": "c1", "name": "shell", "input": {"cmd": "ls"}}])
     );
-    // output 真机数组 → tool_result.content 拼接文本（非空！守坑）。
     let out = env(
         "response_item",
         json!({"type": "custom_tool_call_output", "call_id": "c1", "output": [{"type": "input_text", "text": "文件列表"}]}),
     );
-    let r = to_jsonl_record(&out, "r");
-    assert!(matches!(&r, JsonlRecord::User { .. }));
+    let r = rec(&out).unwrap();
+    assert!(who_of(&r).is_some_and(|w| w.speaker == Speaker::ToolResult));
     assert_eq!(
-        content_of(&r),
-        json!([{"type": "tool_result", "tool_use_id": "c1", "content": "文件列表"}])
+        blocks_of(&r),
+        json!([{"type": "tool_result", "for": "c1", "content": [{"type": "text", "text": "文件列表"}], "isError": false}])
     );
 }
 
@@ -348,36 +375,27 @@ fn session_meta_cwd_is_read_from_session_meta_only() {
     assert_eq!(session_meta_cwd(&tc), None);
 }
 
-/// 事件/元记录 → Unrecognized（保 raw、original_type、reason=codex-event；turn-end/用量 per-kind 从 raw 读）。
+/// 事件 · 元记录 ⇒ 不出记录（不上线；看不懂的那一半归漂移账）。
 #[test]
-fn maps_events_to_unrecognized_preserving_raw() {
-    let raw = r#"{"type":"event_msg","payload":{"type":"task_complete","turn_id":"t1"}}"#;
-    let v: Value = serde_json::from_str(raw).unwrap();
-    match to_jsonl_record(&v, raw) {
-        JsonlRecord::Unrecognized {
-            raw: r,
-            original_type,
-            reason,
-            ..
-        } => {
-            assert_eq!(r, raw, "raw 原样保留（turn-end 从中读 turn_id）");
-            assert_eq!(original_type.as_deref(), Some("event_msg/task_complete"));
-            assert_eq!(reason, "codex-event");
-        }
-        other => panic!("event 应落 Unrecognized，得 {other:?}"),
+fn events_and_meta_records_do_not_come_out() {
+    for v in [
+        json!({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t1"}}),
+        env("event_msg", json!({"type": "token_count"})),
+        env("session_meta", json!({"id": "s"})),
+        env("turn_context", json!({"cwd": "/w"})),
+        json!({"type": "some_future_kind", "payload": {"id": "x"}}),
+    ] {
+        assert!(rec(&v).is_none(), "{v}");
+        let t = translated(&v.to_string(), 0).unwrap().unwrap();
+        assert!(t.record.is_none() && t.queue.is_none(), "{v}");
     }
-    // session_meta 也 → Unrecognized。
-    assert!(matches!(
-        to_jsonl_record(&env("session_meta", json!({"id": "s"})), "r"),
-        JsonlRecord::Unrecognized { .. }
-    ));
 }
 
 // ─── 谁说的：金样（只采结构：字段名 · 类型 · 判别值；正文全是占位）───
 
 const SPEAKER_GOLDEN: &str = include_str!("../../../__fixtures__/codex-speaker.golden.jsonl");
 
-/// 金样每一行：一条 rollout 记录 ⇒ 成品里的 `userText`（不是用户角色的记录 ⇒ `null`）。
+/// 金样每一行：一条 rollout 记录 ⇒ 通用记录 `said` 的 `who`（不是人那一侧的记录 ⇒ `null`）。
 #[test]
 fn speaker_golden() {
     let mut n = 0;
@@ -385,9 +403,11 @@ fn speaker_golden() {
         let row: Value = serde_json::from_str(row).unwrap();
         let case = row["case"].as_str().unwrap();
         let raw = row["line"].to_string();
-        let got = parsed_line(&raw).unwrap().unwrap().message;
+        let got = translated(&raw, 0).unwrap().unwrap().record;
         assert_eq!(
-            got.get("userText").cloned().unwrap_or(Value::Null),
+            got.as_ref()
+                .and_then(who_of)
+                .map_or(Value::Null, |w| serde_json::to_value(w).unwrap()),
             row["userText"],
             "金样 {case} 判错了"
         );
@@ -448,9 +468,14 @@ fn codex_records_carry_the_clock_face_too() {
     let ts = "2026-10-07T20:30:15.123Z";
     let want = crate::common::time::iso_hm_here(ts).unwrap();
     let msg = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "ok"}]}});
-    let ev = json!({"timestamp": ts, "type": "event_msg", "payload": {"type": "token_count"}});
-    for v in [msg, ev] {
-        let got = parsed_line(&v.to_string()).unwrap().unwrap().message;
-        assert_eq!(got["timeText"], want.as_str(), "{v}");
+    let out = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c", "output": "x"}});
+    for v in [msg, out] {
+        let got = translated(&v.to_string(), 0)
+            .unwrap()
+            .unwrap()
+            .record
+            .unwrap();
+        assert_eq!(got.time_text.as_ref().map(|w| w.0.as_str()), Some(want.as_str()), "{v}");
+        assert_eq!(got.at.as_deref(), Some(ts), "{v}");
     }
 }

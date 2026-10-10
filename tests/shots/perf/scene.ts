@@ -37,7 +37,7 @@ export const PERF_SCENES: Scene[] = [
     height: 800,
     world: perfWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-uuid]", 180_000);
+      await waitFor(".session-viewer [data-id]", 180_000);
     },
   },
   {

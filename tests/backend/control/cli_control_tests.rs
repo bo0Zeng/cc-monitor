@@ -355,6 +355,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "rotation-rules-read", // 这台的规则表（纯读、不收输入）
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
+        "cells-catalog", // 格目录（纯计算、不收输入）
         // `apikey-read`：这台机器上那份凭据文件的状态，无入参。
         // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
         "apikey-read",

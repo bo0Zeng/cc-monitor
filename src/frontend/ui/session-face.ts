@@ -11,30 +11,31 @@ import type { DotState } from "./kit/status-dot";
 import type { Needs } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
-import { activityFace } from "./session-status";
+import { sessionDot } from "./session-status";
 import { isLive } from "./tab-session-state";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { dotLabel, needsWord } from "./session-words";
+import { dotLabel } from "./session-words";
 import { fmtDur } from "./quota-lines";
 
-/** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。 */
+/** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text, tone: tab.activity.tone, rank: Number.MAX_SAFE_INTEGER };
+}
+
+/**
+ * 状态点的名字（读屏名 / 悬停名）：活着 ⇒ 那台核心写好的那个字（活动信号带来的，照抄）；
+ * 活动信号说不清、或不是活着的那几种 ⇒ 状态点那一档的名字（`session-words.ts::dotLabel`）。
+ */
+export function stateWord(tab: Tab): string {
+  const text = isLive(tab.state) ? tab.activity?.text : null;
+  return text ?? dotLabel(dotOf(tab));
 }
 
 /** 状态点：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
 export function dotOf(tab: Tab): DotState {
-  const s = tab.state;
-  switch (s.liveness) {
-    case "unseen":
-      return "unknown";
-    case "dead":
-      return s.recoverability === "attachable" ? "exited" : s.recoverability === "gone" ? "gone" : "ended";
-    case "live":
-      return activityFace(tab.activity?.doing ?? null).dot;
-  }
+  return sessionDot(tab.state, tab.activity?.tone ?? null);
 }
 
 /** 时刻（ISO / epoch ms）⇒ 距 `now` 多久（`fmtDur`）；读不出 ⇒ `null`。 */
@@ -58,19 +59,19 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
   const n = needsOf(tab);
   if (n) {
     const waited = sinceText(n.sinceMs, now);
-    const word = needsWord(n.kind);
+    const word = n.text;
     return { text: waited ? copyText("sessionFace.state.waiting", { kind: word, waited }) : word, needs: true };
   }
   switch (dotOf(tab)) {
     case "running": {
       const p = tab.pending[0];
-      if (!p) return { text: copyText("sessionFace.dot.running"), needs: false };
+      if (!p) return { text: stateWord(tab), needs: false };
       const dur = sinceText(p.at, now);
       return { text: dur ? copyText("sessionFace.state.runningFor", { tool: p.name, dur }) : copyText("sessionFace.state.running", { tool: p.name }), needs: false };
     }
     case "idle": {
       const ago = sinceText(tab.lastSay?.at ?? null, now);
-      if (!ago) return { text: copyText("sessionFace.dot.idle"), needs: false };
+      if (!ago) return { text: stateWord(tab), needs: false };
       return { text: tab.unread > 0 ? copyText("sessionFace.state.idleUnseen", { ago }) : copyText("sessionFace.state.idleSeen", { ago }), needs: false };
     }
     case "unknown":
@@ -83,7 +84,7 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
       return { text: copyText("sessionState.gone.tooltip"), needs: false };
     case "needs-you":
     case "failed":
-      return { text: dotLabel(dotOf(tab)), needs: false };
+      return { text: stateWord(tab), needs: false };
   }
 }
 
@@ -122,15 +123,23 @@ export function fullTitle(tab: Tab): string {
 }
 
 /** 收着的组头上那一格汇总：几个在等你、几个在跑（按状态点数；空闲 · 已结束 · 状态不明 · Claude 已退出不算）。 */
-export function groupSummary(members: readonly Tab[]): { needs: number; running: number } {
+export function groupSummary(members: readonly Tab[]): { needs: number; running: number; needsWord: string; runningWord: string } {
   let needs = 0;
   let running = 0;
+  // 那两颗点的名字照抄组员身上核心写的字（同一种语气的字是同一个），不按点自己取字。
+  let needsWord = "";
+  let runningWord = "";
   for (const t of members) {
     const d = dotOf(t);
-    if (d === "needs-you") needs++;
-    else if (d === "running") running++;
+    if (d === "needs-you") {
+      needs++;
+      needsWord ||= stateWord(t);
+    } else if (d === "running") {
+      running++;
+      runningWord ||= stateWord(t);
+    }
   }
-  return { needs, running };
+  return { needs, running, needsWord, runningWord };
 }
 
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */

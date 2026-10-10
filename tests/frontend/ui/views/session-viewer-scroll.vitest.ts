@@ -49,7 +49,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 /** 一条 user 记录，`parentUuid` 串成链（本套件要 BranchFolder 看到一条正常主线）。 */
 function chained(seq: number, uuid: string, text: string): RigPayload {
-  return userLine(seq, uuid, text, { parentUuid: seq > 1 ? `u${seq - 1}` : null });
+  return userLine(seq, uuid, text);
 }
 
 /** 取 viewer 的私有 `scrollToMessage`（不改被测函数的可见性，见头注）。 */
@@ -86,14 +86,14 @@ afterEach(() => {
 });
 
 describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个函数", () => {
-  // ★ 台子自检：先证明「卡上真有 data-uuid」，再谈下面三条钉什么。
+  // ★ 台子自检：先证明「卡上真有 data-id」，再谈下面三条钉什么。
   //   渲染管线哪天被 mock 空心化（`tabs.vitest.ts` 头注那族病），这一条先红，
   //   而不是让下面三条静默地「查不到卡 ⇒ 走 fallback ⇒ 照样绿」。
-  it("台子自检：真渲染管线给每条 user 记录写了 data-uuid（不是 mock 出来的）", async () => {
+  it("台子自检：真渲染管线给每条 user 记录写了 data-id（不是 mock 出来的）", async () => {
     const v = await mount([chained(1, "u1", "第一句"), chained(2, "u2", "第二句")]);
-    const cards = v.element.querySelectorAll("[data-uuid]");
+    const cards = v.element.querySelectorAll("[data-id]");
     expect(cards.length).toBe(2);
-    expect([...cards].map((c) => c.getAttribute("data-uuid"))).toEqual(["u1", "u2"]);
+    expect([...cards].map((c) => c.getAttribute("data-id"))).toEqual(["u1", "u2"]);
     // 卡是真 user 气泡（renderMessage 的 buildUserCard），不是随便一个 div
     expect(cards[0].classList.contains("card-user")).toBe(true);
     expect(cards[0].textContent).toContain("第一句");
@@ -101,7 +101,7 @@ describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个�
 
   it("给一个存在的 uuid ⇒ 找到那张卡 + 请求滚动到它 + 挂上 search-hit-flash", async () => {
     const v = await mount([chained(1, "u1", "第一句"), chained(2, "u2", "第二句")], "u1");
-    const target = v.element.querySelector<HTMLElement>('[data-uuid="u1"]')!;
+    const target = v.element.querySelector<HTMLElement>('[data-id="u1"]')!;
     expect(rig.scrollIntoView).toHaveBeenCalledTimes(1);
     // 点名「滚给了谁」——不是「滚了几次」。this 就是那张卡。
     expect(rig.scrollIntoView.mock.instances[0]).toBe(target);
@@ -113,7 +113,7 @@ describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个�
 
   it("双 rAF 之后幂等重发一次 scrollIntoView（content-visibility 估值几何那条修复）", async () => {
     const v = await mount([chained(1, "u1", "第一句")], "u1");
-    const target = v.element.querySelector<HTMLElement>('[data-uuid="u1"]')!;
+    const target = v.element.querySelector<HTMLElement>('[data-id="u1"]')!;
     expect(rig.scrollIntoView).toHaveBeenCalledTimes(1); // 首发
     rig.flushRaf(2);
     expect(rig.scrollIntoView).toHaveBeenCalledTimes(2); // 双 rAF 后精确落点
@@ -128,7 +128,7 @@ describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个�
 
   it("卡落在 <details> 里 ⇒ 祖先被展开", async () => {
     const v = await mount([chained(1, "u1", "第一句"), chained(2, "u2", "第二句")]);
-    const target = v.element.querySelector<HTMLElement>('[data-uuid="u2"]')!;
+    const target = v.element.querySelector<HTMLElement>('[data-id="u2"]')!;
     const det = document.createElement("details");
     target.parentElement!.insertBefore(det, target);
     det.appendChild(target);
@@ -148,7 +148,7 @@ describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个�
   //   是 `div.branch-fold-wrap` ⇒ 只钉 details 那一条会让这个 bug 悄悄回归。
   it("卡落在 ESC 回退段 div.branch-fold-wrap 里 ⇒ 也要被展开（不只 details）", async () => {
     const v = await mount([chained(1, "u1", "第一句"), chained(2, "u2", "第二句")]);
-    const target = v.element.querySelector<HTMLElement>('[data-uuid="u2"]')!;
+    const target = v.element.querySelector<HTMLElement>('[data-id="u2"]')!;
     const wrap = document.createElement("div");
     wrap.className = "branch-fold-wrap";
     const header = document.createElement("div");
@@ -205,7 +205,7 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root", ()
     const io = FakeIO.all[0];
     expect(io.opts.root).toBe(root);
     expect(io.opts.rootMargin).toBe("300px");
-    const cards = [...v.element.querySelectorAll("[data-uuid]")];
+    const cards = [...v.element.querySelectorAll("[data-id]")];
     expect(cards.length).toBe(2);
     expect(new Set(io.observed)).toEqual(new Set(cards));
     v.dispose();
@@ -215,7 +215,7 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root", ()
 
 /**
  * 「命中落在工具结果里（`--include-tools`）时那条记录可能被并进工具组卡、
- * 找不到 `[data-uuid]` ⇒ 标『跳不过去』」。修法：被并入 / 被注入的记录给落点记 `data-member-uuid`，`revealCard` 两种键都认。
+ * 找不到 `[data-id]` ⇒ 标『跳不过去』」。修法：被并入 / 被注入的记录给落点记 `data-member-id`，`revealCard` 两种键都认。
  * 判据（集合相等）：一条典型工具链（tool_use → tool_result → 又一个 tool_use 并进同一组 → 它的 tool_result）里，
  * 四条记录的 uuid 全都跳得到，而且跳到的元素是它自己那一块（不是整组外壳）。
  */
@@ -223,24 +223,20 @@ describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => 
   const ts = (s: number): string => `2026-09-10T00:00:${String(s).padStart(2, "0")}.000Z`;
   const use = (seq: number, uuid: string, id: string, cmd: string): RigPayload =>
     line(seq, {
-      type: "assistant",
-      uuid,
-      timestamp: ts(seq),
-      message: { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }] },
-      sessionId: "s1",
-      isSidechain: false,
-      parentUuid: null,
+      t: "reply",
+      id: uuid,
+      at: ts(seq),
+      blocks: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }],
+      autoReply: false,
+      endsTurn: false,
     });
   const res = (seq: number, uuid: string, id: string, out: string): RigPayload =>
     line(seq, {
-      type: "user",
-      uuid,
-      timestamp: ts(seq),
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: out }] },
-      sessionId: "s1",
-      isSidechain: false,
-      isMeta: false,
-      parentUuid: null,
+      t: "said",
+      id: uuid,
+      at: ts(seq),
+      who: { speaker: { kind: "toolResult" }, text: "" },
+      blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: out }], isError: false }],
     });
 
   it("四条记录的 uuid 全跳得到，落点是各自那一块", async () => {

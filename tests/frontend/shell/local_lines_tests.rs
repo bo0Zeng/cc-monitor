@@ -112,11 +112,11 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "session_added",
-        r#"{"kind":"session_added","sid":"s1","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
+        r#"{"kind":"session_added","sid":"s1","activity_text":"T","activity_tone":"now","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
     ),
     (
         "session_status",
-        r#"{"kind":"session_status","sid":"s1","status":"idle","activity":"idle"}"#,
+        r#"{"kind":"session_status","sid":"s1","activity_text":"T","activity_tone":"now","status":"idle","activity":"idle"}"#,
     ),
     (
         "session_removed",
@@ -125,7 +125,7 @@ const FRAMES: &[(&str, &str)] = &[
     // 后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
     (
         "session_state",
-        r#"{"kind":"session_state","sid":"s1","state":"ended"}"#,
+        r#"{"kind":"session_state","sid":"s1","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#,
     ),
     ("overflow", r#"{"kind":"overflow","dropped":3}"#),
     (
@@ -185,6 +185,11 @@ const FRAMES: &[(&str, &str)] = &[
         "session_runs",
         r#"{"kind":"session_runs","sid":"s1","runs":[],"ended":[]}"#,
     ),
+    // 一个会话的主线外清单 —— 会话成品，同上。
+    (
+        "session_branch",
+        r#"{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","off":["u2"]}"#,
+    ),
 ];
 
 #[test]
@@ -217,6 +222,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
                     | (&"session_runs", InboundFrame::SessionRuns { .. })
+                    | (&"session_branch", InboundFrame::SessionBranch { .. })
                     | (
                         &("session_file_gone" | "session_file_reread"),
                         InboundFrame::SessionFileNotice { .. }
@@ -240,8 +246,9 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_file_reread",
             // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
             "tasks_changed",
-            // 运行表（会话成品，交会话账）。
+            // 运行表 · 主线外清单（会话成品，交会话账）。
             "session_runs",
+            "session_branch",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -259,21 +266,21 @@ fn frame(line: &str) -> LocalItem {
 
 #[test]
 fn the_local_dispatch_core_matches_the_hand_written_table() {
-    const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"message":{"x":1},"byte_offset":50}"#;
+    const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"record":{"x":1},"byte_offset":50}"#;
     const LINE_B: &str =
         r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"byte_offset":10}"#;
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
-    const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","sid":"a"}"#;
-    const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg","background":true,"path":"/p/b.jsonl","lines":9}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","activity_text":"T","activity_tone":"now","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
+    const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","sid":"a","activity_text":"T","activity_tone":"now"}"#;
+    const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","activity_text":"T","activity_tone":"now","session_kind":"bg","background":true,"path":"/p/b.jsonl","lines":9}"#;
     const REM_B: &str = r#"{"kind":"session_removed","sid":"b"}"#;
     const STATUS: &str =
-        r#"{"kind":"session_status","sid":"a","status":"busy","activity":"working"}"#;
+        r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","status":"busy","activity":"working"}"#;
 
     let line_a = LocalStep::Line {
         session_id: "a".into(),
         path: "/p/a.jsonl".into(),
         seq: 4,
-        message: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
+        record: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
         cwd: None,
         end: Some(50),
         rid: None,
@@ -282,7 +289,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         session_id: "b".into(),
         path: "/p/b.jsonl".into(),
         seq: 0,
-        message: None,
+        record: None,
         cwd: None,
         end: Some(10),
         rid: None,
@@ -336,7 +343,9 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     assert!(h.contains("b"), "摘除那一帧就忘了藏 ⇒ 紧跟的去向会漏出去");
     assert_eq!(
         local_step(
-            frame(r#"{"kind":"session_state","sid":"b","state":"ended"}"#),
+            frame(
+                r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#
+            ),
             false,
             &mut h
         ),
@@ -662,9 +671,9 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
             Some(LocalItem::Frame(InboundFrame::Line {
                 session_id,
                 seq,
-                message,
+                record,
                 ..
-            })) if session_id == sid => break (seq, message),
+            })) if session_id == sid => break (seq, record),
             Some(_) => continue,
             None => {
                 nudges += 1;
@@ -709,15 +718,15 @@ fn the_local_product_core_matches_the_hand_written_table() {
     use crate::session_book::{Fate, In, LiveMeta};
     use crate::stream_source::local_product;
     // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","activity":"working","pid":42,"container":{"host":"tmux","terminal":"tmux-3-7"}}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","activity_text":"T","activity_tone":"now","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","activity":"working","pid":42,"container":{"host":"tmux","terminal":"tmux-3-7"}}"#;
     const ADD_B_BG: &str =
-        r#"{"kind":"session_added","sid":"b","session_kind":"bg","background":true}"#;
+        r#"{"kind":"session_added","sid":"b","activity_text":"T","activity_tone":"now","session_kind":"bg","background":true}"#;
     const STATUS_A: &str =
-        r#"{"kind":"session_status","sid":"a","status":"idle","activity":"idle"}"#;
+        r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","status":"idle","activity":"idle"}"#;
     const STATUS_B: &str =
-        r#"{"kind":"session_status","sid":"b","status":"idle","activity":"idle"}"#;
-    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable"}"#;
-    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended"}"#;
+        r#"{"kind":"session_status","sid":"b","activity_text":"T","activity_tone":"now","status":"idle","activity":"idle"}"#;
+    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
+    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
     const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
     const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
     const LINE: &str =
@@ -735,6 +744,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
                 project_dir: Some("/w/p".into()),
                 name: Some("n".into()),
                 activity: Some(crate::session_book::SessionActivity::Working),
+                activity_text: "T".into(),
+                activity_tone: "now".into(),
                 container: Some(crate::session_book::SessionContainer::Hosted {
                     host: crate::session_book::TerminalHost::Tmux,
                     terminal: Some("tmux-3-7".into()),
@@ -750,6 +761,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
             origin: local(),
             sid: "a".into(),
             activity: Some(crate::session_book::SessionActivity::Idle),
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: None
         })
     );
@@ -758,9 +771,14 @@ fn the_local_product_core_matches_the_hand_written_table() {
         Some(In::Left {
             origin: local(),
             sid: "a".into(),
-            fate: Fate::Reconnectable
+            fate: Fate::Reconnectable,
+            words: Some(crate::session_book::FateWords {
+                text: "t".into(),
+                hint: "h".into(),
+                tone: "plain".into(),
+            }),
         }),
-        "去向原样交（后端裁的）"
+        "去向原样交（后端裁的，连写好的字一起）"
     );
     assert_eq!(
         local_product(&frame(REM_A), true, &none),
@@ -802,7 +820,7 @@ fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
     const REREAD_B: &str =
         r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated"}"#;
     const ADD_B_BG: &str =
-        r#"{"kind":"session_added","sid":"b","session_kind":"bg","background":true}"#;
+        r#"{"kind":"session_added","sid":"b","activity_text":"T","activity_tone":"now","session_kind":"bg","background":true}"#;
     let mut h = HashSet::new();
     assert_eq!(
         local_step(frame(GONE), false, &mut h),

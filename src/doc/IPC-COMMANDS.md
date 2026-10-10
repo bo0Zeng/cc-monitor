@@ -28,18 +28,18 @@ Handshake sent once when a client connects。
 
 ### `line`
 
-One JSONL line tailed from a session file —— 带的是**成品**：这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
+会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `session_id` | string | 会话 id |
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
 | `seq` | number | 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset` |
-| `message` | JSON? | 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号 |
+| `record` | Record? | 这一行的通用记录；缺 ＝ 不进界面、照占号 |
 | `cwd` | string? | 这条记录自己的工作目录 |
 | `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
 | `rid` | string? | 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值） |
-| `raw` | string? | 这一行记录的**原文**（去掉行尾换行） |
+| `raw` | string? | 这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去） |
 
 ### `session_added`
 
@@ -58,6 +58,8 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
+| `activity_text` | Words | 此刻在干什么写好的字（`activity_cells`；说不清也有一格） |
+| `activity_tone` | Tone | 那一态的语气（同上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -70,6 +72,8 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
+| `activity_text` | Words | 同 `session_added.activity_text` |
+| `activity_tone` | Tone | 同 `session_added.activity_tone` |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -81,6 +85,9 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
+| `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
+| `state_hint` | Words | 悬停那一句 |
+| `state_tone` | Tone | 语气 |
 
 ### `session_removed`
 
@@ -1127,7 +1134,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
-| `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs}`，与主窗口标签页同一判：`state` 是 `working` · `idle` · `needsYou` · `ended`，`needs` 只在 `needsYou` 时有：`approve` · `answer` · `plan` · `unknown`），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
+| `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
 | `state` | ← | `"present"` · `"absent"`（没动过：只有缺省的「默认」一条）· `"unreadable"` |
 
 #### `rotation-rule-save`
@@ -1726,7 +1733,7 @@ sid → 上次用哪个号起。
 | `more` | ← | 这一页没读到头（再从 `end` 读） |
 | `parent` | → | 父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`） |
 | `path` | ← | 那份子运行记录（不透明，给查看器整份打开用） |
-| `rows` | ← | 这一页里每一条认得出的记录：`message` 在渲染模型里的样子（与主会话同一套记录成品）· `rid` 它的对账键（没有 ⇒ 省略） |
+| `rows` | ← | 这一页里每一条进界面的记录：`record` 通用记录（与主会话同一形）· `rid` 它的对账键（没有 ⇒ 省略） |
 | `run` | → ← | 子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准 |
 | `tool` | → | 派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found` |
 
@@ -1760,7 +1767,7 @@ sid → 上次用哪个号起。
 | `lines` | ← | **记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现） |
 | `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数） |
 | `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
-| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为） |
+| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文 |
 | `until` | → | 可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止 |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1777,8 +1784,8 @@ sid → 上次用哪个号起。
 | `next` | ← | 下一页从这里起（= `offset` ＋ 这一页的原始字节数） |
 | `offset` | → | 从这个字节起（缺省 0） |
 | `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
-| `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准 |
-| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `message` 剥掉正文那几格（`message.content` —— 正文 · 思考 · 工具入参 · 工具结果；`cc-monitor-unrecognized` 的 `raw`；`queue-operation` 的 `content`），折起那一行要用的那几格照给（`timeText` · `userText` · `toolSteps` · `toolCards` · `toolResults` · 链上身份）。缺省 `false` ＝ 给全文（今天的行为） |
+| `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd` |
+| `summaryOnly` | → | 只要**折起那一行的成品**：每条的 `record` 删掉正文那几格（`blocks` —— 正文 · 推理 · 工具入参 · 工具结果；`results` 里每条的逐段改动 `patch` / `patchTruncated`），折起那一行要用的那几格照给（`timeText` · `who` · `steps` · `cards` · `results` 的一句 · `error` · `model`）。缺省 `false` ＝ 给全文 |
 | `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -1792,7 +1799,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `eof` | ← | 同 `history-read` |
-| `lines` | ← | 只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `message`（`JsonlRecord`） |
+| `lines` | ← | 只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节） |
 | `next` | ← | 同 `history-read` |
 | `nextSeq` | ← | 下一页第一行的行号 |
 | `offset` | → | 同 `history-read` |
@@ -2822,7 +2829,20 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
-### 4.8 终端与会话
+### 4.8 成品的格
+
+#### `cells-catalog`
+
+每件成品有哪些格。
+
+不收 `args` · 可撤 · CLI：`ccm -- --cells-catalog`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 骨架行 `index_row` · 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+
+### 4.9 终端与会话
 
 #### `launch-local`
 
@@ -3289,7 +3309,7 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
 
-### 4.9 机器
+### 4.10 机器
 
 #### `ccm-print`
 
@@ -3628,7 +3648,7 @@ cc-bus 钩子诊断。
 
 码：`bad_args`
 
-### 4.10 计划
+### 4.11 计划
 
 #### `plan-list`
 
@@ -3781,6 +3801,7 @@ cc-bus 钩子诊断。
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
+| `--cells-catalog` | ＝ 帧命令 `cells-catalog`：每件成品有哪些格 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「要你动手」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |

@@ -291,7 +291,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
-                message: Some(serde_json::json!({"role": "user"})),
+                record: Some(crate::agents::record::Record {
+                    at: Some(s("2026-10-09T01:30:00.000Z")),
+                    time_text: Some(crate::common::cells::Words(s("09:30"))),
+                    ..said_record("u1", "q")
+                }),
                 cwd: Some(s("/w")),
                 byte_offset: 120,
                 rid: Some(s("r1")),
@@ -301,7 +305,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
-                message: None,
+                record: None,
                 cwd: None,
                 byte_offset: 120,
                 rid: None,
@@ -321,6 +325,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: Some(s("/p/s1.jsonl")),
                 lines: Some(9),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
+                activity_text: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .0,
+                activity_tone: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .1,
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
                     host: TerminalHost::Tmux,
@@ -340,6 +352,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
                 lines: None,
                 activity: None,
+                activity_text: crate::stream::wire::activity_cells(None).0,
+                activity_tone: crate::stream::wire::activity_cells(None).1,
                 waiting_for: None,
                 container: None,
                 pid: None,
@@ -349,20 +363,27 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionStatus {
                 sid: s("s1"),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
+                activity_text: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .0,
+                activity_tone: crate::stream::wire::activity_cells(Some(
+                    crate::agents::SessionActivity::NeedsYou,
+                ))
+                .1,
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
                 activity: None,
+                activity_text: crate::stream::wire::activity_cells(None).0,
+                activity_tone: crate::stream::wire::activity_cells(None).1,
                 waiting_for: None,
                 liveness_confidence: None,
             },
         ],
-        both(Frame::SessionState {
-            sid: s("s1"),
-            state: SessionFate::Reconnectable,
-        }),
+        both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
         [
             Frame::SessionRemoved {
                 sid: s("s1"),
@@ -1038,6 +1059,27 @@ fn seq_counter_is_monotonic_per_path_and_independent_across_paths() {
     assert_eq!(d.next("/x"), 1);
 }
 
+/// 一条最少格的 `said` 通用记录（结构占位）。
+fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
+    use crate::agents::record::{Block, Body, Record};
+    Record {
+        agent: "claude".into(),
+        id: id.into(),
+        at: None,
+        time_text: None,
+        body: Body::Said {
+            who: crate::agents::UserText {
+                speaker: crate::agents::Speaker::Human,
+                text: text.into(),
+                pasted: Vec::new(),
+            },
+            blocks: vec![Block::Text { text: text.into() }],
+            results: Default::default(),
+            cwd: None,
+        },
+    }
+}
+
 #[test]
 fn line_with_quotes_backslashes_and_newline_roundtrips() {
     let raw = "before\"quote\\backslash\nafter-newline";
@@ -1045,7 +1087,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         session_id: "sid".into(),
         path: "/some/path.jsonl".into(),
         seq: 42,
-        message: Some(serde_json::json!({ "text": raw })),
+        record: Some(said_record("u1", raw)),
         cwd: None,
         byte_offset: 99,
         rid: None,
@@ -1066,7 +1108,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     // Parses back and the raw field is recovered byte-for-byte.
     let v: Value = serde_json::from_str(body).expect("parse");
     assert_eq!(v["kind"], "line");
-    assert_eq!(v["message"]["text"], raw);
+    assert_eq!(v["record"]["blocks"][0]["text"], raw);
     assert_eq!(v["seq"], 42);
 }
 
@@ -1256,6 +1298,8 @@ fn dg3_codex_fields_serialize_when_present() {
         path: None,
         lines: None,
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
         pid: None,
@@ -1263,19 +1307,21 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
     })
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1318,25 +1364,29 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         path: None,
         lines: None,
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         container: None,
         pid: None,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\"}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
         "agent_kind(缺=claude)/liveness_confidence(缺=authoritative) 省略，字节等价旧形"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         activity: None,
+        activity_text: crate::stream::wire::activity_cells(None).0,
+        activity_tone: crate::stream::wire::activity_cells(None).1,
         waiting_for: None,
         liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1461,6 +1511,8 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             path: None,
             lines: None,
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: None,
             container: c,
             pid: None,
@@ -1471,37 +1523,47 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
-/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
+/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；写好的字与语气跟在 `state` 后面。
 /// monitor `stream_source::parse_frame` 照这两个字面量认它。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::stream::wire::SessionFate;
-    for (state, word) in [
-        (SessionFate::Reconnectable, "reconnectable"),
-        (SessionFate::Ended, "ended"),
+    for (state, word, name, hint) in [
+        (
+            SessionFate::Reconnectable,
+            "reconnectable",
+            "beSession.fate.reconnectable",
+            "beSession.fate.reconnectableHint",
+        ),
+        (
+            SessionFate::Ended,
+            "ended",
+            "beSession.fate.ended",
+            "beSession.fate.endedHint",
+        ),
     ] {
+        let (name, hint) = (
+            copy_core::copy_text(name, &[]),
+            copy_core::copy_text(hint, &[]),
+        );
         assert_eq!(
-            to_line(&Frame::SessionState {
-                sid: "abc".into(),
-                state
-            })
-            .unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\"}}\n")
+            to_line(&Frame::session_state("abc".into(), state)).unwrap(),
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\"}}\n")
         );
     }
 }
@@ -1532,16 +1594,18 @@ fn loc1b_session_added_pid_is_additive() {
             path: None,
             lines: None,
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: None,
             container: None,
             pid,
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
     );
 }
 
@@ -1730,7 +1794,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 1,
-            message: None,
+            record: None,
             cwd: None,
             byte_offset: 9,
             rid: None,
@@ -1748,6 +1812,8 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             path: s.clone(),
             lines: Some(3),
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: s.clone(),
             container: None,
             pid: None,
@@ -1755,6 +1821,8 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         Frame::SessionStatus {
             sid: "s".into(),
             activity: None,
+            activity_text: crate::stream::wire::activity_cells(None).0,
+            activity_tone: crate::stream::wire::activity_cells(None).1,
             waiting_for: s.clone(),
             liveness_confidence: s.clone(),
         },
@@ -1859,7 +1927,7 @@ fn line_raw_is_only_there_when_asked() {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 0,
-            message: None,
+            record: None,
             cwd: None,
             byte_offset: 5,
             rid: None,
@@ -1875,6 +1943,172 @@ fn line_raw_is_only_there_when_asked() {
         line(Some("{\"a\":1}".into())),
         "{\"kind\":\"line\",\"session_id\":\"s\",\"path\":\"/p\",\"seq\":0,\"byte_offset\":5,\"raw\":\"{\\\"a\\\":1}\"}\n"
     );
+}
+
+// ═══ 成品面：通用记录与 history-read 的行，两个前端共同的契约（冻结：只许加，加了也要登记进来）═══════
+//
+// 换形那一刀（10-09）之后，`line.record` 与 `history-read.rows` 是两个前端都吃的**成品面**：判定只在后端，前端只排版。
+// ⇒ 下表登记的每一格不许改名、删、换类型；新加一格也得先登记进来（`every_product_field_is_in_the_frozen_table`），
+// 这样「两边在读的到底是哪几格」永远有一张表说得清。
+
+/// （哪一面, 字段, JSON 类型）。面：`record` 公共格 · `said` / `reply` / `retry` / `title` / `queued` 各类自己的格
+/// · `who`（`UserText`）· `error`（报错回复）· `block:<type>` 各种内容块 · `rows`（`history-read` 每一行）。
+const PRODUCT_FACE: &[(&str, &str, &str)] = &[
+    ("record", "agent", "string"),
+    ("record", "id", "string"),
+    ("record", "at", "string"),
+    ("record", "timeText", "string"),
+    ("record", "t", "string"),
+    ("said", "who", "object"),
+    ("said", "blocks", "array"),
+    ("said", "results", "object"),
+    ("said", "cwd", "string"),
+    ("reply", "blocks", "array"),
+    ("reply", "model", "string"),
+    ("reply", "autoReply", "bool"),
+    ("reply", "endsTurn", "bool"),
+    ("reply", "cards", "object"),
+    ("reply", "steps", "object"),
+    ("reply", "runs", "object"),
+    ("reply", "error", "object"),
+    ("retry", "reason", "string"),
+    ("retry", "attempt", "number"),
+    ("retry", "max", "number"),
+    ("title", "text", "string"),
+    ("title", "by", "string"),
+    ("queued", "who", "object"),
+    ("who", "speaker", "object"),
+    ("who", "text", "string"),
+    ("error", "reason", "string"),
+    ("error", "status", "number"),
+    ("block:text", "type", "string"),
+    ("block:text", "text", "string"),
+    ("block:thinking", "type", "string"),
+    ("block:thinking", "text", "string"),
+    ("block:tool_use", "type", "string"),
+    ("block:tool_use", "id", "string"),
+    ("block:tool_use", "name", "string"),
+    ("block:tool_use", "input", "object"),
+    ("block:tool_result", "type", "string"),
+    ("block:tool_result", "for", "string"),
+    ("block:tool_result", "content", "array"),
+    ("block:tool_result", "isError", "bool"),
+    ("block:image", "type", "string"),
+    ("block:image", "source", "object"),
+    ("rows", "end", "number"),
+    ("rows", "hash", "number"),
+    ("rows", "record", "object"),
+    ("rows", "cwd", "string"),
+];
+
+/// 记录金样里**全格**那几条（适配层真打出来的，`record_of_tests` 钉着它与代码一致）。
+fn full_records() -> Vec<Value> {
+    let golden = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/__fixtures__/record.golden.jsonl"
+    ))
+    .expect("记录金样不在");
+    golden
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|v| {
+            [
+                "said-full",
+                "reply-full",
+                "reply-error",
+                "retry-full",
+                "title-agent",
+                "queued",
+            ]
+            .contains(&v["case"].as_str().unwrap_or(""))
+        })
+        .map(|v| v["record"].clone())
+        .collect()
+}
+
+/// `history-read` 一页的行：真走读核（Claude 那一家），一条带 `cwd` 的人话 ＋ 一条不进界面的。
+fn history_read_rows() -> Vec<Value> {
+    let face = crate::agents::claudecode::RECORDS;
+    let page = concat!(
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-10-09T01:30:00.000Z","cwd":"/w","message":{"role":"user","content":"q"}}"#,
+        "\n",
+        r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
+        "\n",
+    );
+    let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], false);
+    crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
+}
+
+/// 一面的样本：`(面, 那一面的对象)`，每一面至少一份。
+fn product_samples() -> Vec<(String, Value)> {
+    let mut out = Vec::new();
+    for r in full_records() {
+        let t = r["t"].as_str().unwrap().to_string();
+        out.push(("record".to_string(), r.clone()));
+        out.push((t.clone(), r.clone()));
+        if let Some(w) = r.get("who") {
+            out.push(("who".to_string(), w.clone()));
+        }
+        if let Some(e) = r.get("error") {
+            out.push(("error".to_string(), e.clone()));
+        }
+        for b in r
+            .get("blocks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            out.push((format!("block:{}", b["type"].as_str().unwrap()), b.clone()));
+        }
+    }
+    for row in history_read_rows() {
+        out.push(("rows".to_string(), row));
+    }
+    out
+}
+
+/// 记录的五个类别。
+const RECORD_CLASSES: [&str; 5] = ["said", "reply", "retry", "title", "queued"];
+
+/// 这一面的这一格登记过没有：各类别的格 ＝ 它自己那几格 ＋ `record` 公共格。
+fn registered(face: &str, field: &str) -> bool {
+    PRODUCT_FACE.iter().any(|(f, k, _)| {
+        *k == field && (*f == face || (*f == "record" && RECORD_CLASSES.contains(&face)))
+    })
+}
+
+/// 冻结表里每一格，在真打出来的成品里都在、类型对。
+#[test]
+fn the_record_shape_both_frontends_read_stays_put() {
+    let samples = product_samples();
+    for (face, field, ty) in PRODUCT_FACE {
+        let hits: Vec<&Value> = samples
+            .iter()
+            .filter(|(f, _)| f == face)
+            .filter_map(|(_, v)| v.get(*field))
+            .collect();
+        assert!(!hits.is_empty(), "{face}.{field} 没了（两个前端在读它）");
+        for got in hits {
+            assert_eq!(json_type(got), *ty, "{face}.{field} 换了类型：{got}");
+        }
+    }
+}
+
+/// 成品面进冻结表：真打出来的成品里出现的每一格都登记过（加一格可以，但得先进表 —— 两边读哪几格才说得清）。
+#[test]
+fn every_product_field_is_in_the_frozen_table() {
+    let mut loose = Vec::new();
+    // `record` 那一面的样本就是各类别的样本（按类别查，那里连公共格一起认）。
+    for (face, v) in product_samples().into_iter().filter(|(f, _)| f != "record") {
+        for key in v.as_object().expect("成品面都是对象").keys() {
+            if !registered(&face, key) {
+                loose.push(format!("{face}.{key}"));
+            }
+        }
+    }
+    loose.sort();
+    loose.dedup();
+    assert!(loose.is_empty(), "成品里有没登记进冻结表的格：{loose:?}");
 }
 
 // ═══ 第二个前端调的一次性子命令：冻结（叫法 · 位置参数 · 输出里它读的那几格）══════════════
@@ -2071,4 +2305,60 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
         assert_eq!(json_type(got), *ty, "{flag}.{field} 换了类型：{row}");
     }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔G2〕会话状态带写好的字与语气（对所有出口一次补齐）：活着的三态在 `session_added` · `session_status` 上
+/// （`activity_text` · `activity_tone`，没有 `activity` ⇒ 两格都不上线）；离开「活」之后的两种在 `session_state` 上
+/// （`state_text` 短名 · `state_hint` 悬停那一句 · `state_tone`）。字走文案表，出口照抄、不按码取字。
+#[test]
+fn session_frames_carry_the_state_written_and_toned() {
+    use crate::agents::SessionActivity as A;
+    use crate::stream::wire::{activity_cells, SessionFate};
+    let status = |a: Option<A>| {
+        let (activity_text, activity_tone) = activity_cells(a);
+        serde_json::to_value(Frame::SessionStatus {
+            sid: "s".into(),
+            activity: a,
+            activity_text,
+            activity_tone,
+            waiting_for: None,
+            liveness_confidence: None,
+        })
+        .unwrap()
+    };
+    for (a, key, tone) in [
+        (A::Working, "beSession.activity.working", "now"),
+        (A::NeedsYou, "beSession.activity.needsYou", "need"),
+        (A::Idle, "beSession.activity.idle", "plain"),
+        (A::BackgroundWork, "beSession.activity.background", "plain"),
+    ] {
+        let v = status(Some(a));
+        assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
+        assert_eq!(v["activity_tone"], tone, "{a:?}");
+    }
+    // 说不清在干什么（活着、那一家没说）⇒ 核心也给一格字与语气（出口不自己补「运行中」）。
+    let none = status(None);
+    assert_eq!(
+        none["activity_text"],
+        copy_core::copy_text("beSession.activity.unclear", &[])
+    );
+    assert_eq!(none["activity_tone"], "now");
+
+    for (f, name, hint) in [
+        (
+            SessionFate::Reconnectable,
+            "beSession.fate.reconnectable",
+            "beSession.fate.reconnectableHint",
+        ),
+        (
+            SessionFate::Ended,
+            "beSession.fate.ended",
+            "beSession.fate.endedHint",
+        ),
+    ] {
+        let v = serde_json::to_value(Frame::session_state("s".into(), f)).unwrap();
+        assert_eq!(v["state_text"], copy_core::copy_text(name, &[]), "{f:?}");
+        assert_eq!(v["state_hint"], copy_core::copy_text(hint, &[]), "{f:?}");
+        assert_eq!(v["state_tone"], "plain", "{f:?}");
+    }
 }

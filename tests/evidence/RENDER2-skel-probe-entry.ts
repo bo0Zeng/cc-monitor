@@ -13,7 +13,7 @@ import "../../src/frontend/ui/styles/tokens.css";
 import "../../src/frontend/ui/styles/layout.css";
 import "../../src/frontend/ui/styles/shared.css";
 import "../../src/frontend/ui/styles.css";
-import fixtureJsonl from "../__fixtures__/scale2-height-records.jsonl?raw";
+import fixtureJsonl from "../__fixtures__/scale2-height-line-records.jsonl?raw";
 import { buildCorpus } from "../frontend/ui/scale2-height-corpus";
 
 declare global {

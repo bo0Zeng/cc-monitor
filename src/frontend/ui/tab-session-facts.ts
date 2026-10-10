@@ -35,16 +35,8 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const touchedFiles = files.length !== f.touchedFiles.length || files.some((p, i) => p !== f.touchedFiles[i]);
   tab.touchedFiles = new Set(f.touchedFiles);
 
-  const tokens = f.usage?.promptTokens ?? null;
-  const model = f.usage?.model ?? null;
-  // 上限判不出（后端说 `assumed`）⇒ 没有上限：界面只写用了多少，不算百分比、不预警。
-  const limit = f.usage && f.usage.limitFrom !== "assumed" ? f.usage.limit : null;
-  const from = f.usage?.limitFrom ?? "assumed";
-  const usage = tab.latestPromptTokens !== tokens || tab.latestModel !== model || tab.latestContextLimit !== limit || tab.latestLimitFrom !== from;
-  tab.latestPromptTokens = tokens;
-  tab.latestModel = model;
-  tab.latestContextLimit = limit;
-  tab.latestLimitFrom = from;
+  const usage = JSON.stringify(tab.usage) !== JSON.stringify(f.usage);
+  tab.usage = f.usage;
 
   const projectDir = f.projectDir !== null && f.projectDir !== tab.projectDir;
   if (projectDir) tab.projectDir = f.projectDir;

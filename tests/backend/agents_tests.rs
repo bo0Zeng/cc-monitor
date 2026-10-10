@@ -658,7 +658,7 @@ fn shared_root(home: &Path) -> PathBuf {
 fn no_email(_: &Path) -> Option<String> {
     None
 }
-fn no_line(_: &str) -> Result<Option<ParsedLine>, String> {
+fn no_line(_: &str, _: u64) -> Result<Option<Translated>, String> {
     Ok(None)
 }
 fn no_sid(_: &Path) -> Option<String> {

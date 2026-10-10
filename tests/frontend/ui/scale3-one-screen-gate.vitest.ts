@@ -181,7 +181,7 @@ function simulateGate(
 // ⚠ 手工构造的代价写在这里,不许忘:**真实的重试风暴长什么样,我们没有样本**。
 // 下面的「每 150 条里几条 retry、其余几条是 skip」是**假设**,不是实测的会话形状。
 
-/** `system` 且 `subtype !== "api_error"` → `cards/index.ts:276 return {kind:"skip"}`，占配额不产卡 */
+/** 不建卡的那种记录（自动应答）→ `renderMessage` 交 `{kind:"skip"}`，占配额不产卡 */
 const SKIP: Record = null;
 
 function retryRecord(i: number): NonNullable<Record> {
@@ -468,22 +468,12 @@ describe("秤 3 · 丁：生产门控（驱动真 TabStreamView ＋ 假布局）
 
   const retry = (seq: number): RigPayload =>
     withSession(
-      rigLine(seq, {
-        type: "system",
-        subtype: "api_error",
-        level: "error",
-        retryAttempt: (seq % 5) + 1,
-        maxRetries: 5,
-        error: { formatted: "Connection error (ECONNRESET)" },
-        timestamp: "2026-09-10T00:00:00.000Z",
-        uuid: `r${seq}`,
-        parentUuid: null,
-      }),
+      rigLine(seq, { t: "retry", id: `r${seq}`, at: "2026-09-10T00:00:00.000Z", reason: "network", attempt: (seq % 5) + 1, max: 5 }),
       "s2",
     );
   const skip = (seq: number): RigPayload =>
     withSession(
-      rigLine(seq, { type: "system", subtype: "informational", timestamp: "2026-09-10T00:00:00.000Z", uuid: `k${seq}` }),
+      rigLine(seq, { t: "reply", id: `k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true, endsTurn: false }),
       "s2",
     );
 
@@ -607,21 +597,20 @@ describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
       rigLine(
         seq,
         retryCard
-          ? { type: "system", subtype: "api_error", level: "error", retryAttempt: 1, maxRetries: 5, error: { formatted: "x" }, timestamp: "2026-09-10T00:00:00.000Z", uuid: `${sid}-r${seq}`, parentUuid: null }
-          : { type: "system", subtype: "informational", timestamp: "2026-09-10T00:00:00.000Z", uuid: `${sid}-k${seq}` },
+          ? { t: "retry", id: `${sid}-r${seq}`, at: "2026-09-10T00:00:00.000Z", reason: "network", attempt: 1, max: 5 }
+          : { t: "reply", id: `${sid}-k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true, endsTurn: false },
       ),
       sid,
     );
   const tall = (sid: string, seq: number): RigPayload =>
     withSession(
       rigLine(seq, {
-        type: "assistant",
-        uuid: `${sid}-a${seq}`,
-        timestamp: "2026-09-10T00:00:00.000Z",
-        message: { role: "assistant", content: [{ type: "text", text: "一张很高的卡" }] },
-        sessionId: sid,
-        isSidechain: false,
-        parentUuid: null,
+        t: "reply",
+        id: `${sid}-a${seq}`,
+        at: "2026-09-10T00:00:00.000Z",
+        blocks: [{ type: "text", text: "一张很高的卡" }],
+        autoReply: false,
+        endsTurn: false,
       }),
       sid,
     );

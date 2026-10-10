@@ -36,7 +36,7 @@ import { closePopover, openPopover } from "../kit/popover";
 import { select } from "../kit/select";
 import { tag } from "../kit/badge";
 import { statusDot, type DotState } from "../kit/status-dot";
-import { dotLabel, needsWord } from "../session-words";
+import { activityFace } from "../session-status";
 import { attachTooltip } from "../kit/tooltip";
 import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
@@ -57,21 +57,11 @@ interface Who {
   label: string;
 }
 
-/** 名单里一个会话的点与那一句（与主窗口标签页同一套：点 ＝ `dotLabel`，在等你 ⇒ 等的是什么）。 */
-function userFace(d: RuleUserDoing): { dot: DotState; word: string } {
-  const dot: DotState =
-    d.state === "working"
-      ? "running"
-      : d.state === "idle"
-        ? "idle"
-        : d.state === "needsYou"
-          ? "needs-you"
-          : "ended";
-  return {
-    dot,
-    word:
-      d.state === "needsYou" ? needsWord(d.needs ?? "unknown") : dotLabel(dot),
-  };
+/** 名单里一个会话的点与那一句（与主窗口同一套：字照抄核心写的，点的颜色按语气、已结束画空心）。 */
+function userFace(d: RuleUserDoing | null): { dot: DotState; word: string } {
+  // 后端对名单里每个 sid 都给一格（解码时查过）；万一没有 ⇒ 不画状态，不替它判。
+  if (d === null) return { dot: "unknown", word: "" };
+  return { dot: d.state === "ended" ? "ended" : activityFace(d.tone).dot, word: d.text };
 }
 
 /** 别处要这一栏开某条规则的编辑器（面板「编辑规则…」带目的地落过来）：按机器记一条，这一栏读到那台的表时开。 */
@@ -679,7 +669,7 @@ export class RulesSection {
     }
     const all = [...rule.users.sids, ...rule.users.endedSids];
     for (const sid of [...picked]) if (!all.includes(sid)) picked.delete(sid);
-    const line = (sid: string, ended: boolean): HTMLElement => {
+    const line = (sid: string): HTMLElement => {
       const w = this.whoOf(sid);
       const l = document.createElement("label");
       l.className = s.rulesUser;
@@ -692,12 +682,7 @@ export class RulesSection {
         else picked.delete(sid);
         this.paint();
       });
-      const { dot, word } = userFace(
-        rule.users.doing[sid] ?? {
-          state: ended ? "ended" : "working",
-          needs: null,
-        },
-      );
+      const { dot, word } = userFace(rule.users.doing[sid] ?? null);
       const t = document.createElement("span");
       t.className = s.rulesUserName;
       t.textContent = w.label;
@@ -707,7 +692,7 @@ export class RulesSection {
       l.append(c, statusDot(dot, word, "compact"), t, st);
       return l;
     };
-    for (const sid of rule.users.sids) box.appendChild(line(sid, false));
+    for (const sid of rule.users.sids) box.appendChild(line(sid));
     if (rule.users.endedSids.length > 0) {
       const opened = this.endedOpen.has(rule.id);
       const fold = button({
@@ -728,7 +713,7 @@ export class RulesSection {
       box.appendChild(fold);
       if (opened)
         for (const sid of rule.users.endedSids)
-          box.appendChild(line(sid, true));
+          box.appendChild(line(sid));
     }
     const foot = document.createElement("div");
     foot.className = s.rulesUsersFoot;

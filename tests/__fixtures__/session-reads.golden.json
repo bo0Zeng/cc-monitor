@@ -69,11 +69,17 @@
       "/w/a.ts"
     ],
     "usage": {
+      "contextText": "6",
+      "contextTone": "plain",
       "limit": 1000000,
       "limitFrom": "assumed",
+      "limitFromText": null,
+      "limitText": "1M",
       "model": "m-g",
       "peakPromptTokens": 6,
-      "promptTokens": 6
+      "percent": null,
+      "promptTokens": 6,
+      "promptTokensText": "6"
     },
     "writers": []
   },

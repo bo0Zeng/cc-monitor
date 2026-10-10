@@ -675,7 +675,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let _ = std::fs::remove_dir_all(&home);
     assert_eq!(
         waiting,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "tone": "need", "rank": 1})
     );
     assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");
@@ -1203,7 +1203,7 @@ fn golden_record_session(home: &Path) -> PathBuf {
     p
 }
 
-/// ★★**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-run`
+/// ★★**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-branch` · `history-run`
 /// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
 ///
 /// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/frame_query_tests.rs`）·
@@ -1217,6 +1217,7 @@ fn the_record_products_match_the_cross_language_golden() {
         "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path})).unwrap(),
         "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true})).unwrap(),
         "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1})).unwrap(),
+        "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path})).unwrap(),
         "history-run": answer_at(
             &home,
             "history-run",

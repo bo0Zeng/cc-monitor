@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 
 const rendered: number[] = [];
 vi.mock("../../../../src/frontend/ui/render", async (orig) => {
@@ -81,12 +81,15 @@ describe("长回复建卡", () => {
     pendingToolResults: new Map(),
     lazy: false,
   });
-  const asst = (text: string): JsonlRecord =>
+  const asst = (text: string): LineRecord =>
     ({
-      type: "assistant",
-      uuid: "a",
-      timestamp: "2026-01-01T00:00:00.000Z",
-      message: { role: "assistant", content: [{ type: "text", text }] },
+      agent: "claude",
+      t: "reply",
+      id: "a",
+      at: "2026-01-01T00:00:00.000Z",
+      blocks: [{ type: "text", text }],
+      autoReply: false,
+      endsTurn: false,
     }) as never;
 
   it("建卡时只同步排第一片；点「显示全部」之后一片一跳地补（点的那一下同步零片），补完按钮收掉、正文一字不少", async () => {
