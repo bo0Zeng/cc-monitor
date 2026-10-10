@@ -5,7 +5,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,10 +14,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -462,15 +463,9 @@ private fun NavGraphBuilder.chatRoutes(
             settings.setLastHost(hostId)
             settings.setLastConversation(hostId, sid)
         }
-        // 「离开这个对话」的唯一判据：这一条已不在返回栈里（返回、或被抽屉换掉）；进设置再回来不算。
-        // 对话是应用级的，不 release 就只能等上限逐出。
-        DisposableEffect(entry.id) {
-            onDispose {
-                if (nav.currentBackStack.value.none { it.id == entry.id }) {
-                    chatController.release(chatKey(hostId, sid))
-                }
-            }
-        }
+        // 「离开这个对话」的唯一判据：这一条出了返回栈（返回、或被抽屉换掉）；进设置再回来、转屏都不算。
+        // 挂在这一条上的 VM 只在那一刻被清掉。对话是应用级的，不 release 就只能等上限逐出。
+        viewModel(viewModelStoreOwner = entry, key = "leave-chat") { OnLeftBackStack { chatController.release(chatKey(hostId, sid)) } }
         ChatRoute(
             hostId = hostId,
             sessionId = sid,
@@ -667,3 +662,10 @@ internal fun freshLanding(
     } else {
         Screen.Conversations.of(hostId)
     }
+
+/** 挂在一条返回栈记录上：那一条出栈时（且只在那时）[onCleared] 跑 [action]。 */
+private class OnLeftBackStack(
+    private val action: () -> Unit,
+) : ViewModel() {
+    override fun onCleared() = action()
+}

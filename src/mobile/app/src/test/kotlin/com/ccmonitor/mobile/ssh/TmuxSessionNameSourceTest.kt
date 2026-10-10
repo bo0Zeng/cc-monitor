@@ -163,8 +163,7 @@ class TmuxSessionNameSourceTest {
      * | `ClaudeInvocation.kt` | 写 | `resumeSessionName = "cc-<sid8>"`，唯一定义处 |
      * | `TmuxCommands.kt` | 读 | `isCcmTmuxName` 认老前缀（没有 `@ccm_sid` 的老会话只能靠名字认），纯识别，不构名 |
      *
-     * `DaemonLocator` 里那三个 `"cc-monitor-…"` 是二进制名不是会话名，由 [countSessionCcPrefix]
-     * 按「后面是不是 `monitor`」排除掉（它们的名字空间归属由 `NamespacePrefixTest` 管）。
+     * 二进制名 `"cc-monitor-…"` 不是会话名，由 [countSessionCcPrefix] 按「后面是不是 `monitor`」排除掉。
      */
     @Test
     fun theCcPrefixIsWrittenOnlyByResumeSessionName() {

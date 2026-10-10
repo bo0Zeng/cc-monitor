@@ -53,7 +53,7 @@ class FrameClientTest {
     ): FrameClient {
         d.push(hello)
         d.push("""{"attach":"ok"}""")
-        val got = FrameClient.attach(d, listOf("--tail-only"), scope, 1_000, "n1") { breaks += it }
+        val got = FrameClient.attach(d, listOf("--tail-only"), scope, 1_000, "n1", TZ) { breaks += it }
         return (got as AttachOutcome.Attached).client
     }
 
@@ -62,7 +62,7 @@ class FrameClientTest {
         runTest {
             val d = FakeDuplex()
             val c = attached(d, backgroundScope)
-            assertEquals("""{"attach":true,"flags":["--tail-only"]}""", d.written.receive())
+            assertEquals("attach 行旁边带看的这一台的时区（不进 flags）", """{"attach":true,"flags":["--tail-only"],"tz":"$TZ"}""", d.written.receive())
             assertEquals(EmbeddedBuild.ID, c.hello.str("build_id"))
         }
 
@@ -76,6 +76,7 @@ class FrameClientTest {
             val req1 = Json.obj(d.written.receive())!!
             assertEquals("sessions-needs", req1.str("cmd"))
             assertEquals(5_000L, req1.num("within_ms"))
+            assertEquals("请求信封带看的这一台的时区：回包里的「几点」按它写", TZ, req1.str("tz"))
             val bad = async { c.call("history-list", mapOf("limit" to 3), 5_000) }
             val req2 = Json.obj(d.written.receive())!!
             // 倒着答：按 id 对，不按先后
@@ -142,7 +143,7 @@ class FrameClientTest {
         runTest {
             val d = FakeDuplex()
             d.push("""{"attach":"refused","reason":"absent"}""")
-            val got = FrameClient.attach(d, emptyList(), backgroundScope, 1_000, "n") {}
+            val got = FrameClient.attach(d, emptyList(), backgroundScope, 1_000, "n", TZ) {}
             assertEquals(AttachOutcome.Refused("absent"), got)
             assertTrue(d.closed)
         }
@@ -152,11 +153,11 @@ class FrameClientTest {
         runTest {
             val a = FakeDuplex()
             a.push("""{"hello":"world"}""")
-            assertTrue(FrameClient.attach(a, emptyList(), backgroundScope, 1_000, "n") {} is AttachOutcome.NotOurs)
+            assertTrue(FrameClient.attach(a, emptyList(), backgroundScope, 1_000, "n", TZ) {} is AttachOutcome.NotOurs)
             val b = FakeDuplex()
             b.push(hello)
             b.end()
-            val got = FrameClient.attach(b, emptyList(), backgroundScope, 1_000, "n") {}
+            val got = FrameClient.attach(b, emptyList(), backgroundScope, 1_000, "n", TZ) {}
             assertEquals(AttachOutcome.Stage.ATTACH_REPLY, (got as AttachOutcome.Cut).stage)
         }
 
@@ -174,3 +175,5 @@ class FrameClientTest {
         assertTrue(decoded.toString(), decoded.none { it is Reply.Unreadable })
     }
 }
+
+private const val TZ = "Asia/Shanghai"

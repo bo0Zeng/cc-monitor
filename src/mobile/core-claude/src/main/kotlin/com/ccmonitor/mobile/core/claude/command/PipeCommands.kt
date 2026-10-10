@@ -172,4 +172,20 @@ object PipeCommands {
     const val ENVELOPE_LOOP: String =
         "{ ATERM_T0=\$(date +%s); ATERM_N=0; while IFS= read -r l; do ATERM_N=\$((ATERM_N+1)); " +
             "printf '{\"t_ns\":%s%09d,\"event\":%s}\\n' \"\$ATERM_T0\" \"\$ATERM_N\" \"\$l\"; done; }"
+
+    /**
+     * 写成功的肯定证据：远端执行通道只搬 stdout，拿不到退出码 ⇒ 空 stdout 既可能是「写进去了」也可能是
+     * 「目录不在 · 磁盘满」。见到标记才算 shell 成功。
+     */
+    const val OK_MARKER: String = "ATERM_Q_OK"
+
+    /** 给一条命令加正向成功标记；标记前补换行，免得黏在没换行的最后一行上。 */
+    fun guarded(command: String): String = "$command && printf '\\n$OK_MARKER\\n'"
+
+    /** 从 [guarded] 包过的输出里取正文；没见到标记 ⇒ `null`（命令没跑成，别当空结果）。 */
+    fun bodyOrNullIfFailed(stdout: String): String? {
+        val trimmed = stdout.trimEnd()
+        if (!trimmed.endsWith(OK_MARKER)) return null
+        return trimmed.removeSuffix(OK_MARKER).removeSuffix("\n")
+    }
 }

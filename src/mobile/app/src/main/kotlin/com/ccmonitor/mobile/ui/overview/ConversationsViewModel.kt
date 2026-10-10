@@ -2,16 +2,16 @@ package com.ccmonitor.mobile.ui.overview
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.BackendFeed
 import com.ccmonitor.mobile.core.claude.link.HistoryList
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.link.HostBackend
-import com.ccmonitor.mobile.link.LinkState
 import com.ccmonitor.mobile.link.Problem
-import com.ccmonitor.mobile.link.contractProblem
 import com.ccmonitor.mobile.link.problem
+import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(FlowPreview::class)
 class ConversationsViewModel(
-    private val backend: HostBackend,
+    private val backend: BackendFeed,
     private val machine: String,
 ) : ViewModel() {
     private val list = MutableStateFlow<Fetched<HistoryList.Answer>>(Fetched.Loading)
@@ -62,17 +62,17 @@ class ConversationsViewModel(
     }
 
     private fun refetchAll() {
-        viewModelScope.launch { fetchList() }
-        viewModelScope.launch { fetchNeeds() }
+        fetchList()
+        fetchNeeds()
     }
 
-    private suspend fun fetchList() {
+    private fun fetchList() {
         // 手机只连这一台、直接问它的常驻：不带 origin / listing ⇒ 那台自己的清单并上它的注解（`history_list.rs` 头注）。
-        list.value = fetched(backend.call(HistoryList.COMMAND, null), HistoryList.COMMAND, HistoryList::of)
+        viewModelScope.launch { list.value = fetched(backend.call(HistoryList.COMMAND, null), HistoryList.COMMAND, HistoryList::of) }
     }
 
-    private suspend fun fetchNeeds() {
-        needs.value = fetched(backend.call(SessionsNeeds.COMMAND, null), SessionsNeeds.COMMAND, SessionsNeeds::of)
+    private fun fetchNeeds() {
+        viewModelScope.launch { needs.value = fetched(backend.call(SessionsNeeds.COMMAND, null), SessionsNeeds.COMMAND, SessionsNeeds::of) }
     }
 
     private fun <T> fetched(
@@ -81,8 +81,9 @@ class ConversationsViewModel(
         decode: (Any?) -> T?,
     ): Fetched<T> =
         when (reply) {
-            is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(contractProblem(machine, command))
-            else -> Fetched.Failed(reply.problem(machine) ?: contractProblem(machine, command))
+            // 同一个 BUILD_ID 下解不出 ＝ 应答缺必填格：同帧上缺格的应答一个说法（详情里是哪一条命令）。
+            is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(unreadableReply(command))
+            else -> Fetched.Failed(reply.problem(machine) ?: unreadableReply(command))
         }
 
     private companion object {

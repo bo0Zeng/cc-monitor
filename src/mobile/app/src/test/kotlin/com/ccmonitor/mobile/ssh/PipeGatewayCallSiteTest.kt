@@ -145,6 +145,7 @@ class PipeGatewayCallSiteTest {
          * | 读 | `diagnosticsReadCommand` | `PipeDiagnostics` |
          * | 读 | `eventsPath` | `PipeSession.frames`（交给 `TailTransport` 的落点；那条 tail 命令归 `TailTransport`） |
          * | 布局 | `sessionDir` | `ChatAttachment` · `PipeLauncher`（UI 提示/排查用的转发） |
+         * | 证据 | `guarded` · `bodyOrNullIfFailed` | `PipeSession`（`PipeUplinkSink`：写成功的肯定证据，见 `OK_MARKER`） |
          */
         private val PINNED_OUTWARD_CALLERS =
             linkedMapOf(
@@ -155,6 +156,8 @@ class PipeGatewayCallSiteTest {
                 "diagnosticsReadCommand" to setOf(PIPE_DIAGNOSTICS),
                 "eventsPath" to setOf(PIPE_SESSION),
                 "sessionDir" to setOf(CHAT_ATTACHMENT, PIPE_LAUNCHER),
+                "guarded" to setOf(PIPE_SESSION),
+                "bodyOrNullIfFailed" to setOf(PIPE_SESSION),
             )
 
         /**

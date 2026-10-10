@@ -89,6 +89,8 @@ class FrameClient private constructor(
     private val lines: ReceiveChannel<String>,
     private val scope: CoroutineScope,
     private val nonce: String,
+    /** 看的这一台的时区（IANA 名）：每条请求信封都带（回包里写成字的时刻按它写）。 */
+    private val tz: String,
     private val onBreak: (String) -> Unit,
 ) {
     private val seq = AtomicLong(0)
@@ -175,6 +177,7 @@ class FrameClient private constructor(
                 put("cmd", cmd)
                 if (args != null) put("args", args)
                 put("within_ms", withinMs)
+                put("tz", tz)
             }
         try {
             writeLine(request)
@@ -225,6 +228,7 @@ class FrameClient private constructor(
             parent: CoroutineScope,
             handshakeMs: Long,
             nonce: String,
+            tz: String,
             onBreak: (String) -> Unit,
         ): AttachOutcome {
             val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
@@ -241,8 +245,8 @@ class FrameClient private constructor(
             }
 
             return try {
-                val hello = handshake(duplex, lines, flags, handshakeMs)
-                AttachOutcome.Attached(FrameClient(duplex, hello, lines, scope, nonce, onBreak).also { it.start() })
+                val hello = handshake(duplex, lines, flags, tz, handshakeMs)
+                AttachOutcome.Attached(FrameClient(duplex, hello, lines, scope, nonce, tz, onBreak).also { it.start() })
             } catch (stop: Stop) {
                 duplex.close()
                 scope.cancel()
@@ -255,12 +259,14 @@ class FrameClient private constructor(
             val outcome: AttachOutcome,
         ) : RuntimeException()
 
+        /** attach 行：流旗标 ＋ 旁边一格 `tz`（不进 `flags`；这条流推出去的钟面按它写）。 */
         private suspend fun sendAttach(
             duplex: RemoteDuplex,
             flags: List<String>,
+            tz: String,
         ) {
             try {
-                duplex.write((Json.line(mapOf("attach" to true, "flags" to flags)) + "\n").toByteArray(Charsets.UTF_8))
+                duplex.write((Json.line(mapOf("attach" to true, "flags" to flags, "tz" to tz)) + "\n").toByteArray(Charsets.UTF_8))
             } catch (_: IOException) {
                 throw Stop(AttachOutcome.Cut(AttachOutcome.Stage.ATTACH_REPLY, duplex.stderrTail))
             }
@@ -271,6 +277,7 @@ class FrameClient private constructor(
             duplex: RemoteDuplex,
             lines: ReceiveChannel<String>,
             flags: List<String>,
+            tz: String,
             handshakeMs: Long,
         ): Map<String, Any?> {
             suspend fun next(stage: AttachOutcome.Stage): Pair<String, Map<String, Any?>?> {
@@ -289,7 +296,7 @@ class FrameClient private constructor(
             ): Map<String, Any?> = m?.takeIf(ok) ?: throw Stop(AttachOutcome.NotOurs(line))
             val (first, m1) = next(AttachOutcome.Stage.HELLO)
             val hello = ours(first, m1) { it.str("kind") == "hello" }
-            sendAttach(duplex, flags)
+            sendAttach(duplex, flags, tz)
             val (second, m2) = next(AttachOutcome.Stage.ATTACH_REPLY)
             ours(second, m2) { it.str("attach") == "ok" }
             return hello
