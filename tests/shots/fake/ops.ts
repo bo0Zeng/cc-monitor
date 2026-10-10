@@ -4,6 +4,7 @@
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { fmtDur } from "../../../src/frontend/ui/quota-lines";
+import { formatDuration } from "../../../src/frontend/ui/duration-format";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
 import type { OpHandler, SessionSpec, World } from "./types";
@@ -466,7 +467,11 @@ export function defaultOps(): Record<string, OpHandler> {
         else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs, ...said("approve") };
         else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs, ...said("unknown") };
       }
-      if (needs) needs = { ...needs, rank: 0 };
+      // 已等多久在那台算（同后端 `needs_of`：读 pidfile 那一刻减起点，字由时长那一处写）；没有起点 ⇒ 两格 null。
+      if (needs) {
+        const waitedMs = needs.sinceMs === null ? null : Math.max(0, Date.now() - needs.sinceMs);
+        needs = { ...needs, rank: 0, waitedMs, waitedText: waitedMs === null ? null : formatDuration(waitedMs) } as typeof needs;
+      }
       // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
       const handedBack: string[] = [];
       for (const r of recs) {
