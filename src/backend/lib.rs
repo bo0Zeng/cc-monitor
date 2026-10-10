@@ -920,7 +920,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// 查看器改「骨架 ＋ 按视口取」：history-page 的 whole 与 too_large 删、界面整份读删；ToolStep.ask · StepResult.preview 由核心出（出口省掉工具入参 / 结果正文）。
 /// 通用记录多一类 unread（认不出的行，相邻同类并一条）；号名 / 位名由核心写（四件成品带 names）；history-list 的 raw 带那台自己那份注解；冻结格进版本号指纹；
 /// 手机接核心第一批（常驻长连接 --resident-ensure → --resident-attach）。
-pub const BUILD_ID: &str = "p9y-viewer-tz-skeleton";
+///
+/// p9z-stream-watch-codex：流只发要看的会话——入方向新命令 stream-watch {sids}（整份换；没报过 ＝ 全看），名单外会话的 line · session_runs · session_branch 拦在 FrameSink::send，
+/// 应答 from[] {sid, path, seq} 给刚进名单的会话（[0, seq) 客户端按骨架补）；壳新命令 watch_sessions（主窗口报当前 tab，壳按机器合名单）。
+/// 通道 Call 帧头带 view（请求信封同一格）；StepResult 多 chars（冻结）；骨架索引帧面按列排。一轮结束的系统通知认 turn_end 帧，Codex 适配层补 turn_end（task_complete）。
+/// Codex 会话进流：watcher 跟注册表里能跟的每一家，没有 pidfile 的那一家按写者判活（platform/writers，Linux）；session_added.agent_kind 每条都带。
+/// 手机：一轮完成改读常驻流 turn_end、断了自己接回去、只核 BUILD_ID（删逐格核格目录）、信封与 attach 行带 tz。
+pub const BUILD_ID: &str = "p9z-stream-watch-codex";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
