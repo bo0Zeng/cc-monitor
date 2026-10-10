@@ -132,16 +132,14 @@ pub(crate) fn accounts_enabled_here() -> bool {
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
     // 没有清单 ＝ 没启用多账号（正常状态）：只回那一句，不记日志（记了就是每次列账号都多一行 WARN，CLI 的 stderr 也跟着脏）。
-    if let Err(e) = std::fs::symlink_metadata(&p) {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            return Err(copy_text(
-                "beAccountsQuery.loadManifest.unreadable",
-                &[
-                    ("path", &(p.display()).to_string()),
-                    ("why", &copy_core::io_reason(e.kind())),
-                ],
-            ));
-        }
+    if matches!(p.try_exists(), Ok(false)) {
+        return Err(copy_text(
+            "beAccountsQuery.loadManifest.unreadable",
+            &[
+                ("path", &(p.display()).to_string()),
+                ("why", &copy_core::io_reason(std::io::ErrorKind::NotFound)),
+            ],
+        ));
     }
     // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
     let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
