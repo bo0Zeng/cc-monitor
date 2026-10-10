@@ -7,7 +7,7 @@
  * **一份不标这个的规范会和散文一起腐**，而且腐了没人会发现」。所以本文件判三件事：
  *
  * 1. ★ **规矩 ↔ 实现两向相等**：`rules.json` 里标「机检」的规矩号 ==
- *    本文件 `CHECKS` 的键 ∪ `copy-table.vitest.ts` 里以 `[C-xx]` 开头的测试标题。
+ *    九条检法（`copy-checks.ts` 的 `CHECKS`）各自管的规矩号之并 ∪ `copy-table.vitest.ts` 里以 `[C-xx]` 开头的测试标题。
  *    标了机检却没实现 ⇒ 红（规范在吹牛）；实现了却标主观 / 没登记 ⇒ 红（规范漏记）。
  *    两侧异源：一侧是 JSON 里人写的标签，一侧是代码里真存在的检查。
  * 2. ★ **文案表逐条过全部机检规矩**：违反的要么改，要么在该条 `waive` 里登记理由；
@@ -28,8 +28,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
-import { censusList, loadTable, loadTerms, r1Hits, speech, type Entry, type Table, type Term } from "./copy-support.ts";
-import { TIGHTENED, W_CHECKS, type WRule } from "./copy-rules-w.ts";
+import { censusList, loadTable, loadTerms, type Entry, type Table, type Term } from "./copy-support.ts";
+import { CHECKS, hitsOf, ruleHit, type CheckCtx, type WRule } from "./copy-checks.ts";
 import { rawFedArgs, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
 
 const RULES_PATH = resolve(REPO_ROOT, "src", "shared", "copy", "rules.json");
@@ -62,7 +62,7 @@ interface Rule extends WRule {
 }
 
 /**
- * 欠账名单：命中多的规矩不大批进豁免，而是把「今天还违反着的键」一次列全 ——
+ * 欠账名单（按检法号记，`J1`–`J9`）：命中多的检法不大批进豁免，而是把「今天还违反着的键」一次列全 ——
  * 名单 == 现打（两向）：改好一条就得删一行（否则死账红），新长出一条越界当场红。
  */
 export type Debt = Record<string, string[]>;
@@ -74,21 +74,7 @@ export function loadRules(): Rule[] {
   return (JSON.parse(readFileSync(RULES_PATH, "utf8")) as { rules?: Rule[] }).rules ?? [];
 }
 
-interface Ctx {
-  terms: Term[];
-  colloquial: string[];
-  imperative: string[];
-  /** 问号与口语词只查这几档 —— 从 `rules.json` 的 `C-Y3.kinds` 读。 */
-  labelKinds: string[];
-  /** 祈使动词那一条只查这几档 —— 从 `rules.json` 的 `C-Y3.imperativeKinds` 读，检法不写死。 */
-  imperativeKinds: string[];
-  /** 规矩号 → 那一条（W 系检法从这里读词表 / 闭集）。 */
-  byId: Map<string, WRule>;
-  /** 全表（C-W13 指路核对拿「」里的字对表里的名字）。 */
-  table: Table;
-  /** C-W18：生产 Rust 里值是下层原话的那几个占位（按值认，`rust-refs.ts::isRawValue`）：key → 占位名。 */
-  rawFed: Map<string, Set<string>>;
-}
+type Ctx = CheckCtx;
 
 /** 生产 Rust 里「哪条的哪几个占位喂的是原话」（扫一遍全树，本文件只扫一次）。 */
 let rawFedByKey: Map<string, Set<string>> | null = null;
@@ -112,76 +98,14 @@ export function y3Ctx(rules: Rule[], terms: Term[], table: Table = loadTable()):
   };
 }
 
-const NARROW = new Set(["title", "control", "action", "aria"]);
-const DASH = /——|—/g;
-const PAREN = /（([^（）]*)）|\(([^()]*)\)/g;
-const HAN = /[一-鿿]/g;
-const hanCount = (s: string): number => (s.match(HAN) ?? []).length;
-
-/** 一条机检规矩 = 对一条文案给出「违反了什么」（`null` = 没违反）。`key` 给了 ⇒ 按生产代码怎么用它判的那几条（C-W18）也判。 */
-type Check = (e: Entry, ctx: Ctx, key?: string) => string | null;
-
-export const CHECKS: Record<string, Check> = {
-  "C-Y2": (e) => (/\*\*|`|⇒|🔴/.test(e.zh) ? "有 markdown / 论证符号" : null),
-  "C-Y3": (e, ctx) => {
-    // 问号与口语词的射程读 `C-Y3.kinds`（title ＋ aria）。
-    if (!ctx.labelKinds.includes(e.kind)) return null;
-    const s = speech(e.zh);
-    if (/[？?]/.test(s)) return `${e.kind} 档里有问号`;
-    const c = ctx.colloquial.find((w) => s.indexOf(w) >= 0);
-    if (c) return `${e.kind} 档里有口语词「${c}」`;
-    // 祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
-    //   ⚠ 上面那一句 `labelKinds` 管的是问号与口语词，这一句管的是动词开头 —— 两件事，
-    //   后者的射程住 `rules.json`，改规矩就是改那一格，检法跟着走。
-    if (!ctx.imperativeKinds.includes(e.kind)) return null;
-    const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
-    return v ? `${e.kind} 档以祈使动词「${v}」开头` : null;
-  },
-  // 允许动词开头（问句仍禁）：control 档不许问句。
-  "C-Y4": (e) => (e.kind === "control" && /[？?]/.test(speech(e.zh)) ? "control 档是问句" : null),
-  // 错误码不上屏：占位名是 code（或以 code / Code 结尾）的一律不许 —— 码留在日志与诊断里。
-  "C-Y5": (e) => {
-    const m = /\{([A-Za-z_]*(?:code|Code))\}/.exec(e.zh);
-    return m ? `把错误码插进了话里（{${m[1]}}）` : null;
-  },
-  "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
-  "C-T1": (e, ctx) => {
-    const hits = r1Hits(speech(e.zh), ctx.terms);
-    return hits.length ? `命中术语表禁档：${hits.join(" · ")}` : null;
-  },
-  "C-L1": (e) => {
-    const first = speech(e.zh).split(/[。！？!?；;\n]/)[0];
-    const n = hanCount(first);
-    return n > 24 ? `首句 ${n} 个汉字 > 24` : null;
-  },
-  "C-L2": (e) => {
-    const n = (e.zh.match(DASH) ?? []).length;
-    if (NARROW.has(e.kind) && n > 0) return `${e.kind} 档里有破折号`;
-    return n > 1 ? `破折号 ${n} 个 > 1` : null;
-  },
-  "C-L3": (e) => {
-    const groups = [...speech(e.zh).matchAll(PAREN)].map((m) => m[1] ?? m[2] ?? "");
-    if (NARROW.has(e.kind)) {
-      // 「（可选）」标的是选填，不是说明（rules.json C-L3 的规矩文字同拍改）。
-      const g = groups.find((x) => hanCount(x) >= 2 && x.trim() !== "可选");
-      return g !== undefined ? `${e.kind} 档的括号里装了说明「${g}」` : null;
-    }
-    const n = groups.filter((x) => x.trim().length >= 2).length;
-    return n > 1 ? `括号补充 ${n} 处 > 1` : null;
-  },
-  "C-L4": (e) => (/^\s*(?:（[^（）]*）|\([^()]*\))\s*$/.test(e.zh) ? "整条被括号包住" : null),
-  // 收严的两条（C-L2 · C-Y4）替掉上面的旧实现；W 系（新写法 N 系）跟在后面。
-  ...TIGHTENED,
-  ...W_CHECKS,
-};
-
 /** 文案表逐条过全部机检规矩，带豁免：违反未豁免 · 豁免不可豁免的 · 死豁免 · 豁免了不存在的规矩，都是问题。 */
 export function tableViolations(table: Record<string, Entry>, rules: Rule[], ctx: Ctx, debt: Debt = {}): string[] {
   const out: string[] = [];
   const byId = new Map(rules.map((r) => [r.id, r]));
+  const checkIds = new Set(CHECKS.map((c) => c.id));
   const owed = new Map(Object.entries(debt).map(([id, keys]) => [id, new Set(keys)]));
   for (const [id, keys] of Object.entries(debt)) {
-    if (!CHECKS[id]) out.push(`欠账名单里的 ${id} 不是一条有检法的规矩`);
+    if (!checkIds.has(id)) out.push(`欠账名单里的 ${id} 不是一条检法`);
     if (keys.join("\n") !== [...new Set(keys)].sort().join("\n")) out.push(`欠账名单 ${id} 没排序或有重复`);
     for (const k of keys) if (!(k in table)) out.push(`欠账名单 ${id} 的 ${k} 不在表里 —— 删掉这一行`);
   }
@@ -193,14 +117,20 @@ export function tableViolations(table: Record<string, Entry>, rules: Rule[], ctx
       else if (!r.waivable) out.push(`${key}：${id} 不可豁免`);
       else if (r.unwaivableKinds?.includes(e.kind)) out.push(`${key}：${id} 在 ${e.kind} 档不可豁免`);
       if (!waive[id]?.trim()) out.push(`${key}：豁免 ${id} 没写理由`);
-      if (owed.get(id)?.has(key)) out.push(`${key}：${id} 既在欠账名单又登记了豁免 —— 二选一`);
     }
-    for (const [id, check] of Object.entries(CHECKS)) {
-      const v = check(e, ctx, key);
-      const inDebt = owed.get(id)?.has(key) ?? false;
-      if (v && !(id in waive) && !inDebt) out.push(`${key}：违反 ${id}（${v}）`);
-      if (!v && id in waive) out.push(`${key}：${id} 的豁免是死的 —— 它没违反这一条，删掉豁免`);
-      if (!v && inDebt) out.push(`${key}：${id} 已经不违反了 —— 从欠账名单里删掉这一行`);
+    const hits = hitsOf(e, ctx, key);
+    const hitRules = new Set(hits.map((h) => h.rule));
+    const open = new Set<string>();
+    for (const h of hits) {
+      if (h.rule in waive) continue;
+      if (owed.get(h.check)?.has(key)) open.add(h.check);
+      else out.push(`${key}：违反 ${h.rule}（${h.msg}）`);
+    }
+    for (const id of Object.keys(waive)) if (!hitRules.has(id)) out.push(`${key}：${id} 的豁免是死的 —— 它没违反这一条，删掉豁免`);
+    for (const c of CHECKS) {
+      if (!owed.get(c.id)?.has(key)) continue;
+      if (!open.has(c.id)) out.push(`${key}：${c.id}（${c.name}）已经不违反了 —— 从欠账名单里删掉这一行`);
+      for (const id of Object.keys(waive)) if (c.covers.includes(id)) out.push(`${key}：${c.id} 在欠账名单里，又豁免了它管的 ${id} —— 二选一`);
     }
   }
   return out;
@@ -243,10 +173,10 @@ describe("CP2a · 文案规范", () => {
     expect(new Set(rules.map((r) => r.check))).toEqual(new Set(["机检", "主观"]));
   });
 
-  it("★ 规矩 ↔ 实现两向相等：标机检的规矩号 == CHECKS ∪ copy-table.vitest.ts 的 [C-xx] 标题", () => {
+  it("★ 规矩 ↔ 实现两向相等：标机检的规矩号 == 各检法管的规矩号之并 ∪ copy-table.vitest.ts 的 [C-xx] 标题", () => {
     const titled = titledIds(readFileSync(TABLE_TESTS, "utf8"));
     expect(titled.length, "copy-table.vitest.ts 里一条带规矩号的标题都没抽到 —— 抽取器坏了").toBeGreaterThan(0);
-    const implemented = new Set([...Object.keys(CHECKS), ...titled]);
+    const implemented = new Set([...CHECKS.flatMap((c) => c.covers), ...titled]);
     const declared = new Set(rules.filter((r) => r.check === "机检").map((r) => r.id));
     expect([...declared].filter((x) => !implemented.has(x)), "标了机检、却没有实现").toEqual([]);
     expect([...implemented].filter((x) => !declared.has(x)), "有实现、规范里却没登记成机检").toEqual([]);
@@ -270,25 +200,23 @@ describe("CP2a · 文案规范", () => {
   it("规范里的正反例与实现一致：bad 被逮住、good 被放过", () => {
     const p: string[] = [];
     for (const r of rules) {
-      const check = CHECKS[r.id];
-      if (!check) continue;
+      if (!CHECKS.some((c) => c.covers.includes(r.id))) continue;
       const kind = r.probeKind ?? "body";
       const role = r.probeRole;
       for (const zh of r.bad)
-        if (!check({ kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 放过了自己的反例「${zh}」`);
+        if (!ruleHit(r.id, { kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 放过了自己的反例「${zh}」`);
       for (const zh of r.good)
-        if (check({ kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 逮住了自己的正例「${zh}」`);
+        if (ruleHit(r.id, { kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 逮住了自己的正例「${zh}」`);
     }
     expect(p).toEqual([]);
   });
 
   it("★ 正例不和「原话进详情」打架：每条规矩的正例都过 C-W18，规矩正文说到原话的都说它进详情", () => {
-    const w18 = CHECKS["C-W18"];
-    expect(w18, "C-W18 没有机检").toBeTruthy();
+    expect(CHECKS.some((c) => c.covers.includes("C-W18")), "C-W18 没有机检").toBe(true);
     const p: string[] = [];
     for (const r of rules) {
       for (const zh of r.good)
-        if (w18({ kind: r.probeKind ?? "body", role: r.probeRole, zh, args: [] }, ctx)) p.push(`${r.id} 的正例「${zh}」句子里接了原话`);
+        if (ruleHit("C-W18", { kind: r.probeKind ?? "body", role: r.probeRole, zh, args: [] }, ctx)) p.push(`${r.id} 的正例「${zh}」句子里接了原话`);
       if (r.id !== "C-W18" && /原话/.test(r.rule) && !/详情/.test(r.rule)) p.push(`${r.id} 的正文说到原话却没说它进详情`);
     }
     expect(p).toEqual([]);
@@ -296,14 +224,14 @@ describe("CP2a · 文案规范", () => {
 
   it("★ 新写法那几条（C-W*）每条都带正控：至少一条反例、一条正例", () => {
     const w = rules.filter((r) => r.id.startsWith("C-W"));
-    expect(w.length, "rules.json 里一条 C-W 都没有").toBe(Object.keys(W_CHECKS).length);
+    expect(w.length, "rules.json 里一条 C-W 都没有").toBe(new Set(CHECKS.flatMap((c) => c.covers).filter((id) => id.startsWith("C-W"))).size);
     expect(w.filter((r) => r.bad.length === 0 || r.good.length === 0).map((r) => r.id)).toEqual([]);
   });
 
   it("C-W14 的 roleTemplates：原因格「<对象> 无法解析」放过，同一串换个角色照逮；对象里夹「 · 」的原因格照逮", () => {
     const fam = rules.find((r) => r.id === "C-W14")?.families?.find((f) => f.roleTemplates);
     expect(fam?.roleTemplates?.["原因格"], "C-W14 没有原因格的 roleTemplates —— 下面零命中地绿").toBeDefined();
-    const run = (role: string, zh: string) => CHECKS["C-W14"]({ kind: "error", role, zh, args: [] }, ctx);
+    const run = (role: string, zh: string) => ruleHit("C-W14", { kind: "error", role, zh, args: [] }, ctx);
     for (const zh of ["登录信息无法解析", "行 {line} 无法解析", "对端回的目录无法解析 · {e}", "内容无法解析 · 已跳过"]) {
       expect(run("原因格", zh), `原因格逮住了「${zh}」`).toBeNull();
       expect(run("报错", zh), `报错放过了「${zh}」`).not.toBeNull();
@@ -311,8 +239,8 @@ describe("CP2a · 文案规范", () => {
     expect(run("原因格", "回的内容读不懂 · 无法解析")).not.toBeNull();
   });
 
-  it("C-W8：状态句打头的「失败」是状态格（运行结局），不是「<动作>失败 · <原因>」；别的角色、或「失败」不打头，照逮", () => {
-    const run = (role: string, zh: string) => CHECKS["C-W8"]({ kind: "body", role, zh, args: [] }, ctx);
+  it("C-W8：状态句打头的「失败」由状态读走（运行结局），不是「<动作>失败 · <原因>」；别的角色、或「失败」不打头，照逮", () => {
+    const run = (role: string, zh: string) => ruleHit("C-W8", { kind: "body", role, zh, args: [] }, ctx);
     expect(run("状态", "失败 · 报错已交回")).toBeNull();
     expect(run("说明", "失败 · 报错已交回"), "不是状态句：缺主语照逮").not.toBeNull();
     expect(run("状态", "重启失败 · 报错已交回"), "「<动作>失败」照判原因格").not.toBeNull();
@@ -338,14 +266,14 @@ describe("复选框 / 开关标签允许动词开头 —— 规矩与检法同�
     expect(good.length, "controlGood 是空的 —— 下面的「放过」零命中地绿").toBeGreaterThan(0);
     const p: string[] = [];
     for (const zh of good) {
-      if (CHECKS["C-Y3"]({ kind: "control", zh, args: [] }, ctx)) p.push(`control 档逮住了「${zh}」`);
+      if (ruleHit("C-Y3", { kind: "control", zh, args: [] }, ctx)) p.push(`control 档逮住了「${zh}」`);
     }
     expect(p).toEqual([]);
     // 正控：以祈使词开头的那几条换成 title 档必须红（否则「放过」可能是检法整个瞎了）。
     const verbStart = good.filter((zh) => ctx.imperative.some((w) => zh.startsWith(w)));
     expect(verbStart.length, "controlGood 里没有一条以祈使词开头 —— 这组正例证不了裁决").toBeGreaterThan(0);
     for (const zh of verbStart) {
-      expect(CHECKS["C-Y3"]({ kind: "title", zh, args: [] }, ctx), `title 档放过了「${zh}」`).toMatch(/祈使动词/);
+      expect(ruleHit("C-Y3", { kind: "title", zh, args: [] }, ctx), `title 档放过了「${zh}」`).toMatch(/祈使动词/);
     }
   });
 });
@@ -359,10 +287,10 @@ describe("〔FIX2〕aria 档（只进 aria-label 的无障碍名）按标签面�
   it("★ 问号与口语词管它、祈使动词不管它、破折号 / 括号说明按窄档管", () => {
     expect(ctx.labelKinds).toEqual(["title", "aria"]);
     expect(ctx.imperativeKinds).not.toContain("aria");
-    expect(CHECKS["C-Y3"](aria("关闭"), ctx), "按钮的无障碍名以动词开头是标准形").toBeNull();
-    expect(CHECKS["C-Y3"](aria("要关掉吗？"), ctx)).toMatch(/aria 档里有问号/);
-    expect(CHECKS["C-Y3"](aria("还差什么"), ctx)).toMatch(/aria 档里有口语词/);
-    expect(CHECKS["C-L2"](aria("关闭 — 提示"), ctx)).toMatch(/aria 档里有破折号/);
+    expect(ruleHit("C-Y3", aria("关闭"), ctx), "按钮的无障碍名以动词开头是标准形").toBeNull();
+    expect(ruleHit("C-Y3", aria("要关掉吗？"), ctx)).toMatch(/aria 档里有问号/);
+    expect(ruleHit("C-Y3", aria("还差什么"), ctx)).toMatch(/aria 档里有口语词/);
+    expect(ruleHit("C-L2", aria("关闭 — 提示"), ctx)).toMatch(/aria 档里有破折号/);
   });
 });
 
@@ -382,16 +310,16 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     const bad = { kind: "body", zh: "这台已坏", args: [] };
     const run = (t: Record<string, Entry>, d: Debt): string => tableViolations(t, rules, ctx, d).join("\n");
     expect(run({ "a.b.c": bad }, {})).toMatch(/违反 C-W17/);
-    expect(run({ "a.b.c": bad }, { "C-W17": ["a.b.c"] })).toBe("");
-    expect(run({ "a.b.c": { kind: "body", zh: "已坏", args: [] } }, { "C-W17": ["a.b.c"] })).toMatch(/从欠账名单里删掉/);
-    expect(run({ "a.b.c": bad }, { "C-W17": ["a.b.c", "x.y.z"] })).toMatch(/x\.y\.z 不在表里/);
-    expect(run({ "a.b.c": bad, "a.b.d": bad }, { "C-W17": ["a.b.d", "a.b.c"] })).toMatch(/没排序/);
-    expect(run({ "a.b.c": { ...bad, waive: { "C-W17": "理由" } } }, { "C-W17": ["a.b.c"] })).toMatch(/二选一/);
+    expect(run({ "a.b.c": bad }, { J2: ["a.b.c"] })).toBe("");
+    expect(run({ "a.b.c": { kind: "body", zh: "已坏", args: [] } }, { J2: ["a.b.c"] })).toMatch(/从欠账名单里删掉/);
+    expect(run({ "a.b.c": bad }, { J2: ["a.b.c", "x.y.z"] })).toMatch(/x\.y\.z 不在表里/);
+    expect(run({ "a.b.c": bad, "a.b.d": bad }, { J2: ["a.b.d", "a.b.c"] })).toMatch(/没排序/);
+    expect(run({ "a.b.c": { ...bad, waive: { "C-W17": "理由" } } }, { J2: ["a.b.c"] })).toMatch(/二选一/);
     expect(run({ "a.b.c": { kind: "title", zh: "这台", args: [], waive: { "C-W17": "理由" } } }, {})).toMatch(/title 档不可豁免/);
   });
 
   it("C-W18 句子里不许有原话 / 码：按占位符的语义判（原话型占位红，原因词 · 对象型不红；命令行豁免）", () => {
-    const run = (e: Entry): string | null => CHECKS["C-W18"](e, ctx);
+    const run = (e: Entry): string | null => ruleHit("C-W18", e, ctx);
     expect(run({ kind: "error", zh: "结束 {target} 失败 · tmux 报 {e}", args: ["target", "e"] })).toMatch(/\{e\}/);
     expect(run({ kind: "error", zh: "应答无法解析 · 「{reply}」", args: ["reply"] })).toMatch(/\{reply\}/);
     expect(run({ kind: "error", zh: "进程退出 {st}", args: ["st"] })).toMatch(/\{st\}/);
@@ -400,7 +328,7 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     expect(run({ kind: "error", zh: "{e}", args: ["e"], role: "命令行" })).toBeNull();
     // 按值认：占位名不在原话型名单里（`{kind}`），生产代码喂的却是 `e.to_string()` ⇒ 一样红（审计二第 2 条那一族）。
     const fedRaw: Entry = { kind: "error", zh: "目录打不开 · {kind}", args: ["kind"] };
-    const fed = (e: Entry, phs: string[]): string | null => CHECKS["C-W18"](e, { ...ctx, rawFed: new Map([["a.b.c", new Set(phs)]]) }, "a.b.c");
+    const fed = (e: Entry, phs: string[]): string | null => ruleHit("C-W18", e, { ...ctx, rawFed: new Map([["a.b.c", new Set(phs)]]) }, "a.b.c");
     expect(fed(fedRaw, ["kind"])).toMatch(/\{kind\}/);
     expect(fed(fedRaw, [])).toBeNull();
     expect(run(fedRaw), "没喂原话的同形那一条不红").toBeNull();
@@ -413,8 +341,8 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
   });
 
   it("占位符名不算文字：{origin} 不会被术语表的 origin 禁词扫红", () => {
-    expect(CHECKS["C-T1"]({ kind: "title", zh: "[{origin}] 预览", args: ["origin"] }, ctx)).toBeNull();
-    expect(CHECKS["C-T1"]({ kind: "title", zh: "origin 预览", args: [] }, ctx)).not.toBeNull();
+    expect(ruleHit("C-T1", { kind: "title", zh: "[{origin}] 预览", args: ["origin"] }, ctx)).toBeNull();
+    expect(ruleHit("C-T1", { kind: "title", zh: "origin 预览", args: [] }, ctx)).not.toBeNull();
   });
 
   it("两个抽取器在合成语料上各抽得出东西", () => {
