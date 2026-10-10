@@ -129,6 +129,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Notify(event));", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Watch { sids, done });", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sids, &mut state, &mut sink));", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", Why::PeerGone, ""),
     // +2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", Why::PeerGone, ""),

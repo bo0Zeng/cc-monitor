@@ -131,14 +131,6 @@ impl WatchDesk {
     }
 }
 
-#[cfg(test)]
-impl WatchDesk {
-    /// 测试里的连接：没有 watcher，`stream-watch` 回空。
-    pub(crate) fn for_tests() -> Self {
-        WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)
-    }
-}
-
 /// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）。别的形状 ⇒ `bad_args`。
 fn watch_sids(args: &serde_json::Value) -> Option<Vec<String>> {
     args.get("sids")?
