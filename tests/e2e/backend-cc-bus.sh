@@ -585,7 +585,8 @@ for _cmd in history-read history-facts; do
   chk "  $_cmd：退出码 · stderr 也一样" "$_rc_av|$(cat "$SANDBOX/err.txt")" "$_rc_in|$(cat "$SANDBOX/c2-in.err")"
   cp "$SANDBOX/c2-in.txt" "$SANDBOX/c2-$_cmd.txt"
 done
-chk "  history-read 出的是成品行（不是空包）" "$(jq -r '[.rows[].message.type] | join(",")' < "$SANDBOX/c2-history-read.txt")" "user,assistant"
+# 成品行是通用记录（`record`：`t` ∈ said · reply …，`id` 是那一行自己的身份）；空包 / 换了格名读不到 ⇒ 这里拿到的是 `null:null`。
+chk "  history-read 出的是成品行（不是空包）" "$(jq -r '[.rows[] | "\(.record.t):\(.record.id)"] | join(",")' < "$SANDBOX/c2-history-read.txt")" "said:u1,reply:a1"
 # stdin 开着、一直不写：两种读法都立即回 no_input，不挂到被掐。
 for _extra in "" --stdin-line; do
   _t0=$(c2ms); d --history-read $_extra < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
