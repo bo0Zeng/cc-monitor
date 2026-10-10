@@ -23,6 +23,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ccmonitor.mobile.agent.agentKindOrDefault
+import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
@@ -61,7 +63,7 @@ fun ChatRoute(
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
     KeepAliveWhileLinked(link)
     val host = rememberChatHost(hostId) ?: return
-    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = host.cwd), host.machine) else existingChat(hostId, sessionId, host.machine)
+    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = host.cwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
     val vm: ChatViewModel =
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
@@ -72,7 +74,7 @@ fun ChatRoute(
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(
             modifier = modifier,
-            topBar = { ChatTopBar(onOpenDrawer = { scope.launch { drawerState.open() } }) },
+            topBar = { ChatTopBar(title = host.product, onOpenDrawer = { scope.launch { drawerState.open() } }) },
         ) { inner ->
             ChatScreen(
                 state = state,
@@ -113,6 +115,9 @@ fun ChatController.sessionOf(
 private data class ChatHost(
     val machine: String,
     val cwd: String,
+    /** 这台的种类：新建会话起哪一家（线上名）· 顶栏叫什么。 */
+    val agent: String,
+    val product: String,
 )
 
 @Composable
@@ -120,7 +125,14 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
         val h = runCatching { hosts.get(hostId) }.getOrNull()
-        value = ChatHost(machine = h?.label ?: hostId, cwd = h?.defaultWorkingDir?.trim()?.ifEmpty { null } ?: HOME_DIR)
+        val profile = AgentProfile.of(h?.agentKindOrDefault() ?: AgentProfile.DEFAULT.kind)
+        value =
+            ChatHost(
+                machine = h?.label ?: hostId,
+                cwd = h?.defaultWorkingDir?.trim()?.ifEmpty { null } ?: HOME_DIR,
+                agent = profile.wireName,
+                product = profile.displayName,
+            )
     }
     return got
 }
@@ -135,7 +147,11 @@ private const val HOME_DIR = "~"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatTopBar(onOpenDrawer: () -> Unit) {
+private fun ChatTopBar(
+    /** 这台那一家的产品名（`AgentProfile.displayName`）。不写主机名，界面上不出现「连接」那套说法。 */
+    title: String,
+    onOpenDrawer: () -> Unit,
+) {
     TopAppBar(
         navigationIcon = {
             IconButton(
@@ -145,12 +161,9 @@ private fun ChatTopBar(onOpenDrawer: () -> Unit) {
                 Text(DRAWER_OPEN_GLYPH, style = MaterialTheme.typography.titleLarge)
             }
         },
-        title = { Text(CHAT_TITLE) },
+        title = { Text(title) },
     )
 }
-
-/** 落地屏的标题。不写主机名，界面上不出现「连接」那套说法。 */
-internal const val CHAT_TITLE = "Claude"
 
 /**
  * 连上主机就起前台保活服务。

@@ -42,9 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.agent.agentKindOrDefault
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
@@ -77,7 +75,7 @@ const val IDENTITY_SCREEN_TITLE = "钥匙"
  */
 @Composable
 fun HostListScreen(
-    onConnect: (String, AgentKind) -> Unit,
+    onConnect: (String) -> Unit,
     onAddHost: () -> Unit,
     onIdentities: () -> Unit,
     onFiles: (String) -> Unit = {},
@@ -125,7 +123,7 @@ fun HostListScreen(
                                 host,
                                 launchers = launchersByHost[host.id].orEmpty(),
                                 // 种类跟着 hostId 一起交出去，见本屏头注。
-                                onClick = { onConnect(host.id, host.agentKindOrDefault()) },
+                                onClick = { onConnect(host.id) },
                                 onLaunch = { launcherId -> onLaunch(host.id, launcherId) },
                                 onFiles = { onFiles(host.id) },
                                 onEdit = { onEdit(host.id) },

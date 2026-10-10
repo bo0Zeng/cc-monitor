@@ -12,9 +12,9 @@ class SessionsTest {
     private val frames = Fixtures.text("session-stream.golden.jsonl").lines().mapNotNull(Json::obj)
 
     @Test
-    fun `session-new：在那台 tmux 里起 Claude，带票；不带模型 · 权限 · 账号（跟随默认）`() {
-        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1")
-        assertEquals(mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1"), args)
+    fun `session-new：在那台 tmux 里起那一家，带票；不带模型 · 权限 · 账号（跟随默认）`() {
+        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "codex")
+        assertEquals(mapOf("agent" to "codex", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1"), args)
     }
 
     @Test

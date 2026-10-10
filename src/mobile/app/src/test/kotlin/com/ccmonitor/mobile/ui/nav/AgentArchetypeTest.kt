@@ -10,114 +10,34 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Codex 服务器不落进 Claude 的聊天屏。
- *
- * 判据分四条，各自防的 bug 写在每个测试的头注里。
+ * 两家都落聊天屏、都能送字（送字走 `terminal-input`，不分哪家）；落点只看新界面开没开。产品名按种类各说各的。
  */
 class AgentArchetypeTest {
     private fun terminalOf(hostId: String): String = "session/tab-$hostId"
 
-    private fun destination(
-        newUi: Boolean,
-        kind: AgentKind,
-    ): String =
+    private fun destination(newUi: Boolean): String =
         onConnectDestination(
             hostId = "h1",
             newUi = newUi,
-            agentKind = kind,
             newConversationId = { "s-new" },
             openTerminal = ::terminalOf,
         )
 
-    /**
-     * `newUi × agentKind` 四格都要走到。
-     *
-     * 防的是 `onConnectDestination` 不看 `agentKind`：新界面开着时 Codex 服务器照样落进 `ChatRoute`。
-     * 把 `agentKind` 那一格删掉、让两种服务器都走 `freshLanding`，第四行当场红。
-     *
-     * 非得四格都造：只造 `(开, Codex)` 的话，一个「把所有输入都返回总览面」的实现全绿；
-     * 四格都造则另外三行同时红。`(开, Claude)` 那一行保证 Claude 没被一起推去总览面；
-     * `(关, ·)` 两行钉的是开关关着时与 agent 种类无关。
-     */
     @Test
-    fun theLandingIsDecidedByBothTheFlagAndTheAgentKind() {
-        // ①②：开关关着：两种服务器都开终端 tab（与 agent 种类无关）
-        assertEquals("（关, Claude）必须还是终端那条路", "session/tab-h1", destination(false, AgentKind.ClaudeCode))
-        assertEquals("（关, Codex）同样是终端：开关关着时不认 agent 种类", "session/tab-h1", destination(false, AgentKind.Codex))
-        // ③：新界面 + Claude ⇒ 聊天屏
-        assertEquals("（开, Claude）必须还是聊天屏", Screen.Chat.of("h1", "s-new", isNew = true), destination(true, AgentKind.ClaudeCode))
-        // ④：新界面 + Codex ⇒ 只读档（对话总览），不是聊天屏
-        val codex = destination(true, AgentKind.Codex)
-        assertEquals("（开, Codex）必须落只读档（对话总览）", Screen.Conversations.of("h1"), codex)
-        assertFalse("Codex 服务器落进了 Claude 的聊天屏：$codex", codex.startsWith("chat/"))
-        // 两种服务器在新界面上必须去不同的地方：这一句在「忽略 agentKind」时也红，是上面那条的兜底
-        assertNotEquals(
-            "新界面下两种服务器的落点不许相同（相同就说明 agentKind 没被读）",
-            destination(true, AgentKind.ClaudeCode),
-            destination(true, AgentKind.Codex),
-        )
+    fun theLandingOnlyFollowsTheNewUiFlag() {
+        assertEquals("关着：开终端 tab", "session/tab-h1", destination(false))
+        assertEquals("开着：这台上空的新建会话（Claude、Codex 一样）", Screen.Chat.of("h1", "s-new", isNew = true), destination(true))
     }
 
-    /**
-     * 启动那一刻的落点同样按种类分档。
-     *
-     * `launchDestination` 是同一个 bug 的另一道门：打开 app 直接落到上次那台服务器上，
-     * 那台若是 Codex 就照样进 Claude 的聊天屏。
-     */
     @Test
-    fun theStartupLandingAlsoRespectsTheAgentKind() {
+    fun theStartupLandingIsTheSameForEveryAgent() {
         fun launch(
             newUi: Boolean,
             host: String?,
-            kind: AgentKind,
-        ) = launchDestination(
-            newUi = newUi,
-            landingHostId = host,
-            agentKind = kind,
-            newConversationId = { "s-new" },
-        )
-        assertEquals("关着时去服务器列表", Screen.Hosts.route, launch(false, "h1", AgentKind.ClaudeCode))
-        assertEquals("关着时去服务器列表（Codex 同）", Screen.Hosts.route, launch(false, "h1", AgentKind.Codex))
-        assertEquals("没有上次那台机器时先去服务器列表", Screen.Hosts.route, launch(true, null, AgentKind.ClaudeCode))
-        assertEquals("开着 + Claude ⇒ 聊天屏上空的新对话", Screen.Chat.of("h1", "s-new", isNew = true), launch(true, "h1", AgentKind.ClaudeCode))
-        assertEquals("开着 + Codex ⇒ 只读档", Screen.Conversations.of("h1"), launch(true, "h1", AgentKind.Codex))
-    }
-
-    /**
-     * Codex 的输入行是「不出现」，不是「灰掉」。
-     *
-     * 灰掉的输入框是一个会好起来的承诺（用户会等它恢复），而 Codex 的上行根本没有
-     * （`ChatSession` / `UplinkSink` / `PipeLauncher` 全按 Claude CLI 的管道形状写）。
-     * 把 Codex 也判成 `Disabled` ⇒ 第一行当场红。
-     *
-     * 判别力边界：这条断的是枚举值，不是「屏上真的没有那一行」。聊天屏里那个 `when`
-     * 把 `Hidden` 也画成一个灰输入框的话，本条全绿；渲染要 `androidTest` 或真机。
-     */
-    @Test
-    fun theCodexInputRowIsHiddenNotMerelyDisabled() {
-        assertEquals("Codex ⇒ 整条不渲染", ChatInputMode.Hidden, chatInputMode(AgentKind.Codex))
-        assertEquals(
-            "Codex 撞上等待态也不许退回「灰掉」——灰掉在语义上是「等会儿就能发」，对它是假的",
-            ChatInputMode.Hidden,
-            chatInputMode(AgentKind.Codex, waitingOnDesktop = true),
-        )
-        assertEquals("Claude 正常时能打字", ChatInputMode.Editable, chatInputMode(AgentKind.ClaudeCode))
-        assertEquals(
-            "Claude 在电脑上等回答时是灰掉：那一档会好起来",
-            ChatInputMode.Disabled,
-            chatInputMode(AgentKind.ClaudeCode, waitingOnDesktop = true),
-        )
-        // 两者不许是同一个值：合并了就分不出「会好起来」与「不会好起来」
-        assertNotEquals("Hidden 与 Disabled 必须可辨", ChatInputMode.Hidden, ChatInputMode.Disabled)
-        assertEquals("三档必须是三个互不相同的值", 3, ChatInputMode.entries.toSet().size)
-        // 三档都够得着：有一档永远返回不了的话，它就是个摆设，判据也就守不住任何东西
-        val reachable =
-            setOf(
-                chatInputMode(AgentKind.Codex),
-                chatInputMode(AgentKind.ClaudeCode),
-                chatInputMode(AgentKind.ClaudeCode, waitingOnDesktop = true),
-            )
-        assertEquals("三档都要有输入能走到：$reachable", ChatInputMode.entries.toSet(), reachable)
+        ) = launchDestination(newUi = newUi, landingHostId = host, newConversationId = { "s-new" })
+        assertEquals("关着时去服务器列表", Screen.Hosts.route, launch(false, "h1"))
+        assertEquals("没有上次那台机器时先去服务器列表", Screen.Hosts.route, launch(true, null))
+        assertEquals("开着 ⇒ 聊天屏上空的新对话", Screen.Chat.of("h1", "s-new", isNew = true), launch(true, "h1"))
     }
 
     /**
@@ -153,7 +73,7 @@ class AgentArchetypeTest {
      * |---|---|
      * | `Text("…Claude…")` 新增一句 | 红 |
      * | `"Cla" + "ude"` 拼接 | 抓不到 |
-     * | 产品名住一个常量再 `Text(那个常量)` | 抓不到。有这一形：`ChatRoute.CHAT_TITLE == "Claude"` 是聊天屏顶栏的标题 |
+     * | 产品名住一个常量再 `Text(那个常量)` | 抓不到（聊天屏顶栏的标题已改读 `AgentProfile.displayName`） |
      * | `strings.xml` 里的任何一句 | 扫不到 |
      */
     @Test

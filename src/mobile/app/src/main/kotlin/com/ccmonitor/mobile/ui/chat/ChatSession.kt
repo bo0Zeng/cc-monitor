@@ -60,6 +60,8 @@ sealed interface ChatTarget {
         val ticket: String,
         /** 在哪个目录起（开头的 `~` 那台按它的家目录读）。 */
         val cwd: String,
+        /** 起哪一家（线上名，这台的种类：`claude` · `codex`）。 */
+        val agent: String,
     ) : ChatTarget
 }
 
@@ -215,7 +217,7 @@ class ChatSession(
         _state.value = _state.value.copy(failedWhy = null)
         val before = link.table.value.sessions.keys
         val answer =
-            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket), NEW_MS)) {
+            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, d.agent), NEW_MS)) {
                 is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
             }

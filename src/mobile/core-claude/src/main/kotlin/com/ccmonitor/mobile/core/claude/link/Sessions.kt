@@ -8,13 +8,14 @@ object SessionNew {
     const val COMMAND: String = "session-new"
 
     /**
-     * 新起一条 Claude 会话。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认（中途换模型送 `/model <名>`）。
+     * 新起一条会话（[agent] 是哪一家的线上名：`claude` · `codex`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认（中途换模型送 `/model <名>`）。
      * [ticket] 一个草稿一张：期限到了同一张再问，那台认出是同一趟、不起第二个。
      */
     fun args(
         cwd: String,
         ticket: String,
-    ): Map<String, Any?> = mapOf("agent" to AGENT, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket)
+        agent: String,
+    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket)
 
     data class Answer(
         /** `started`（tmux 里起好了）· `open`（要开终端窗口：手机不走这一形）。 */
@@ -39,8 +40,6 @@ object SessionNew {
         cwd: String,
         before: Set<String>,
     ): LiveSession? = table.sessions.values.firstOrNull { it.cwd == cwd && it.sid !in before }
-
-    private const val AGENT = "claude"
 }
 
 /** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */

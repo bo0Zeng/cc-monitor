@@ -24,7 +24,10 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionTest {
-    private fun TestScope.draft(link: FakeCoreLink) = ChatSession(link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj"), "box", backgroundScope)
+    private fun TestScope.draft(
+        link: FakeCoreLink,
+        agent: String = "claude",
+    ) = ChatSession(link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj", agent = agent), "box", backgroundScope)
 
     private fun TestScope.existing(link: FakeCoreLink) = ChatSession(link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
 
@@ -71,6 +74,28 @@ class ChatSessionTest {
                 s.state.value.units
                     .map { it.key },
             )
+        }
+
+    @Test
+    fun `Codex 那台也落聊天屏：新建会话起的是 Codex，字同样经 terminal-input 进那条会话`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-new" -> ok(started + ("agent" to "codex"))
+                    "terminal-input" -> ok(mapOf("result" to "delivered"))
+                    "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0))
+                    else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
+                }
+            }
+            val s = draft(link, agent = "codex")
+            s.send("看一下")
+            runCurrent()
+            assertEquals("codex", link.calls("session-new").single()?.get("agent"))
+            link.report("cx", "/h/proj")
+            runCurrent()
+            assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下")), link.calls("terminal-input"))
+            assertNull("送到了的不挂标", s.local().single().delivery)
         }
 
     @Test
