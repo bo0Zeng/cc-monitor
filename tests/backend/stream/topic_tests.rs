@@ -126,3 +126,73 @@ fn every_reask_is_a_registered_command() {
         );
     }
 }
+
+/// 现算小成品的那几样 ⇒ 表里写着带 `body`（反过来不必：计划的 `body` 由发端给）。
+#[test]
+fn a_computed_body_is_a_declared_body() {
+    for t in Topic::ALL {
+        let s = t.spec();
+        if s.ask != Ask::None {
+            assert!(s.body, "{t:?} 现算小成品，表里却写不带 body");
+        }
+    }
+}
+
+/// 帧里的小成品就是重问那条命令的应答（同一个处理器跑出来的，实现只一处）：规则表 · 一个会话的任务清单 · 额度账；
+/// 不现算的主题（账号清单要带 agent · 配置文件大 · 计划由发端给）⇒ 不带。沙箱家目录里那几份都是空的 / 不在。
+#[test]
+fn a_computed_body_is_the_reask_reply() {
+    assert_eq!(
+        crate::stream::topic_body::body_now(Topic::RotationRules, None),
+        crate::faces::rotation_face::answer_rules_read().ok(),
+        "规则表的小成品不是 rotation-rules-read 的应答"
+    );
+    assert_eq!(
+        crate::stream::topic_body::body_now(Topic::Tasks, Some("no-such-sid")),
+        crate::faces::feature_face::answer(
+            "tasks-list",
+            &serde_json::json!({"sid": "no-such-sid"})
+        )
+        .ok(),
+        "任务清单的小成品不是 tasks-list 的应答"
+    );
+    assert_eq!(
+        crate::stream::topic_body::body_now(Topic::Tasks, None),
+        None,
+        "没 key 的任务清单没得问"
+    );
+    for t in [Topic::Accounts, Topic::Profiles, Topic::Plan] {
+        assert_eq!(
+            crate::stream::topic_body::body_now(t, Some("x")),
+            None,
+            "{t:?} 不该现算"
+        );
+    }
+}
+
+/// 生产进程真把现算装上了：`main` 恰好一处装 `topic_body::body_now`（没装 ⇒ 帧里永远不带小成品、客户端照旧重问，不红任何别的判据）；
+/// 发端只经那一层调，不直接引命令表那一份。
+#[test]
+fn main_installs_the_body_and_emitters_go_through_the_hook() {
+    let root = crate::guard_support::src_root();
+    let main = std::fs::read_to_string(root.join("main.rs")).expect("读 main.rs");
+    let prod = crate::guard_support::production_code(&main);
+    let install = format!("{}::install({})", "topic_hook", "topic_body::body_now");
+    assert_eq!(
+        prod.matches(&install).count(),
+        1,
+        "main.rs 不是恰好一处装上现算"
+    );
+    for rel in ["stream/tap.rs", "observe/watcher.rs"] {
+        let src = std::fs::read_to_string(root.join(rel)).expect("读发端");
+        let code = crate::guard_support::production_code(&src);
+        assert!(
+            !code.contains("topic_body"),
+            "{rel} 直接引了现算那一份（该经 topic_hook）"
+        );
+        assert!(
+            code.contains("topic_hook::body"),
+            "{rel} 没经 topic_hook 现算"
+        );
+    }
+}

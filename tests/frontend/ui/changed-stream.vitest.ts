@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { changedItems, changedKeys, changedStream, planMoves } from "../../../src/frontend/ui/changed-stream.ts";
+import { changedItems, changedStream, planMoves, pushedProducts } from "../../../src/frontend/ui/changed-stream.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 const f = (seq: number, body: string) => ({ t: "frame" as const, seq, body });
@@ -26,7 +26,6 @@ describe("changed 流", () => {
     expect(changedItems([{ t: "seen", from: null }])).toEqual({ cells: [], all: true, frames: 0 });
     expect(changedItems([{ t: "gap", fromSeq: 1, toSeq: 3 }])).toEqual({ cells: [], all: true, frames: 0 });
     expect(changedItems([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }])).toEqual({ cells: [], all: false, frames: 0 });
-    expect(changedKeys({ cells: [{ key: "a", rev: null, body: undefined }, { key: null, rev: null, body: undefined }], all: false })).toEqual(["a"]);
   });
 
   it("计划：key ＝ 工作区、rev ＝ 摘要、body.needs ＝ 要你看的数（没给 ⇒ null）；缺工作区或摘要的不猜", () => {
@@ -35,6 +34,17 @@ describe("changed 流", () => {
       { workspace: "/w", rev: "r1", needs: 2 },
       { workspace: "/v", rev: "r2", needs: null },
     ]);
+  });
+
+  it("帧里的成品按给的解码器收：解得开的进 got、没带 / 解不开的 key 进 ask；all 照传", () => {
+    const dec = (v: unknown): number => {
+      if (typeof v !== "number") throw new Error("not a number");
+      return v;
+    };
+    const p = pushedProducts({ cells: [{ key: "a", rev: null, body: 1 }, { key: "b", rev: null, body: undefined }, { key: "c", rev: null, body: "x" }], all: false }, dec);
+    expect([...p.got]).toEqual([["a", 1]]);
+    expect(p.ask).toEqual(["b", "c"]);
+    expect(pushedProducts({ cells: [], all: true }, dec).all).toBe(true);
   });
 
   it("流名 changed/<topic>；主题名就是后端生成的那一份（从 Rust 主题表抠，异源）", () => {

@@ -62,11 +62,6 @@ export function changedItems(items: readonly Item[]): Changed & { frames: number
   return { cells: [...byKey.values()], all, frames };
 }
 
-/** 变了的那几格里带 `key` 的（会话 id · 工作区根）。 */
-export function changedKeys(c: Changed): string[] {
-  return c.cells.flatMap((x) => (x.key === null ? [] : [x.key]));
-}
-
 /** 一个 pb 工作区变成了哪一份（`rev`）、那一刻要你看几条（`changed {plan}` 的 `body.needs`；没给 ⇒ `null`）。 */
 export interface PlanMoved {
   workspace: string;
@@ -81,4 +76,27 @@ export function planMoves(c: Changed): PlanMoved[] {
     const b = x.body as { needs?: unknown } | undefined;
     return [{ workspace: x.key, rev: x.rev, needs: typeof b?.needs === "number" ? b.needs : null }];
   });
+}
+
+/**
+ * 一批里帧带来的小成品按 `decode`（重问那条命令的同一个解码器）收：解得开的进 `got`（`key` ⇒ 成品）；
+ * 没带 · 解不开的那几格的 `key` 进 `ask`（照旧重问）。`all` 照传（期间可能漏了 ⇒ 调用方整份重问）。
+ * 不带 `key` 的主题（额度账 · 规则表）用 `key === null` 那一项：同一批留后一格。
+ */
+export function pushedProducts<T>(c: Changed, decode: (v: unknown) => T): { got: Map<string | null, T>; ask: (string | null)[]; all: boolean } {
+  const got = new Map<string | null, T>();
+  const ask: (string | null)[] = [];
+  for (const cell of c.cells) {
+    if (cell.body === undefined) {
+      ask.push(cell.key);
+      continue;
+    }
+    try {
+      got.set(cell.key, decode(cell.body));
+    } catch (e) {
+      console.warn("[changed] 帧里的小成品解不开，照旧重问：", e);
+      ask.push(cell.key);
+    }
+  }
+  return { got, ask, all: c.all };
 }

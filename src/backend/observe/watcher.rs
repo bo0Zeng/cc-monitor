@@ -1076,7 +1076,8 @@ fn watch_loop(
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
-                    sink.send(Frame::changed(Topic::Tasks, Some(sid), None, None));
+                    let body = crate::stream::topic_hook::body(Topic::Tasks, Some(&sid));
+                    sink.send(Frame::changed(Topic::Tasks, Some(sid), None, body));
                 }
                 // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
                 for ev in &events {

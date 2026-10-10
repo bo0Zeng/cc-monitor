@@ -49,6 +49,21 @@ pub struct TopicSpec {
     pub body_cap: usize,
     /// 客户端收到之后重问哪条（`body` 带着的时候可以不问）。
     pub reask: &'static str,
+    /// 小成品怎么现算：照 `reask` 那条命令、按这几样参数问它自己的处理器（[`super::topic_body::body_now`]）；[`Ask::None`] ＝ 不现算（不带，或由发端给）。
+    pub ask: Ask,
+}
+
+/// 现算小成品时给重问那条命令的参数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ask {
+    /// 不现算。
+    None,
+    /// 不带参数（`{}`）。
+    NoArgs,
+    /// `{sid: key}`。
+    Sid,
+    /// `{sids: [key]}`。
+    Sids,
 }
 
 impl Topic {
@@ -74,6 +89,7 @@ impl Topic {
                 body: false,
                 body_cap: 0,
                 reask: "accounts-list",
+                ask: Ask::None,
             },
             Topic::Profiles => TopicSpec {
                 name: "profiles",
@@ -83,33 +99,37 @@ impl Topic {
                 body: false,
                 body_cap: 0,
                 reask: "profiles-read",
+                ask: Ask::None,
             },
             Topic::Quota => TopicSpec {
                 name: "quota",
                 lossy: true,
                 key: false,
                 rev: false,
-                body: false,
-                body_cap: 0,
+                body: true,
+                body_cap: 8192,
                 reask: "quota-read",
+                ask: Ask::NoArgs,
             },
             Topic::Rotation => TopicSpec {
                 name: "rotation",
                 lossy: true,
                 key: true,
                 rev: false,
-                body: false,
-                body_cap: 0,
+                body: true,
+                body_cap: 4096,
                 reask: "rotation-session-read",
+                ask: Ask::Sids,
             },
             Topic::RotationRules => TopicSpec {
                 name: "rotation_rules",
                 lossy: true,
                 key: false,
                 rev: false,
-                body: false,
-                body_cap: 0,
+                body: true,
+                body_cap: 8192,
                 reask: "rotation-rules-read",
+                ask: Ask::NoArgs,
             },
             Topic::Plan => TopicSpec {
                 name: "plan",
@@ -119,15 +139,17 @@ impl Topic {
                 body: true,
                 body_cap: 64,
                 reask: "plan-read",
+                ask: Ask::None,
             },
             Topic::Tasks => TopicSpec {
                 name: "tasks",
                 lossy: false,
                 key: true,
                 rev: false,
-                body: false,
-                body_cap: 0,
+                body: true,
+                body_cap: 8192,
                 reask: "tasks-list",
+                ask: Ask::Sid,
             },
         }
     }

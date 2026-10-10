@@ -8,8 +8,8 @@
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
-import { readQuota, readRules, readSessionRotation } from "./quota-reads";
-import { changedKeys, type Changed } from "./changed-stream";
+import { decodeQuotaRead, decodeRulesRead, decodeSessionRotationRead, readQuota, readRules, readSessionRotation } from "./quota-reads";
+import { pushedProducts, type Changed } from "./changed-stream";
 
 /** 每台此刻有 tab 的会话（rotation-session-read 一批问这么多）。 */
 const known = new Map<Origin, Set<string>>();
@@ -65,14 +65,30 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
   for (const [origin, sids] of fresh) void refreshSessions(origin, sids);
 }
 
-/** 那台推来额度 / 会话轮换 / 规则表变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_rules`）。`change.all` ⇒ 那一样整份重问。 */
+/**
+ * 那台推来额度 / 会话轮换 / 规则表变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_rules`）。
+ * 帧里带了成品（同重问那条命令的应答）⇒ 用同一个解码器收、直接放进 store，不再问；没带 · 解不开 · `all`（期间可能漏了）⇒ 照旧重问。
+ */
 export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_rules", change: Changed): void {
-  if (topic === "quota") void refreshQuota(origin);
-  else if (topic === "rotation_rules") void refreshRules(origin);
-  else {
-    const keys = changedKeys(change);
-    const all = change.all || keys.length !== change.cells.length;
-    const sids = all ? [...(known.get(origin) ?? [])] : keys.filter((s) => known.get(origin)?.has(s));
+  if (topic === "quota") {
+    const p = pushedProducts(change, decodeQuotaRead);
+    const q = p.got.get(null);
+    if (q !== undefined) putIn(appStore.quota, origin, q);
+    if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);
+  } else if (topic === "rotation_rules") {
+    const p = pushedProducts(change, decodeRulesRead);
+    const r = p.got.get(null);
+    if (r !== undefined) putIn(appStore.rotationRules, origin, r);
+    if (p.all || (r === undefined && p.ask.length > 0)) void refreshRules(origin);
+  } else {
+    const p = pushedProducts(change, decodeSessionRotationRead);
+    if (p.got.size > 0) {
+      const next = new Map(appStore.sessionRotation.get());
+      for (const got of p.got.values()) for (const [sid, read] of Object.entries(got.sessions)) next.set(sid, { origin, now: got.now, read });
+      appStore.sessionRotation.set(next);
+    }
+    const mine = known.get(origin);
+    const sids = p.all || p.ask.includes(null) ? [...(mine ?? [])] : p.ask.filter((s): s is string => s !== null && (mine?.has(s) ?? false));
     void refreshSessions(origin, sids);
   }
 }

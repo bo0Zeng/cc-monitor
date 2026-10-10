@@ -132,9 +132,24 @@ pub struct TapRx {
     rules: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
+    /// 帧里的小成品怎么现算（生产 ＝ [`crate::stream::topic_hook::body`]；判据自己接的那一形不现算）。
+    bodies: fn(Topic, Option<&str>) -> Option<serde_json::Value>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
+}
+
+impl TapRx {
+    /// 一帧 `changed`，小成品照主题表现算（同步：读这台自己的盘，毫秒级；算完才进 `out`，被别的分支抢先也不丢）。
+    fn changed(&self, topic: Topic, key: Option<String>) -> Frame {
+        let body = (self.bodies)(topic, key.as_deref());
+        Frame::changed(topic, key, None, body)
+    }
+}
+
+/// 不现算小成品（判据自己接的那一形）。
+fn no_bodies(_: Topic, _: Option<&str>) -> Option<serde_json::Value> {
+    None
 }
 
 impl TapSource for TapRx {
@@ -158,20 +173,26 @@ impl TapSource for TapRx {
                 }
                 alive = quota_moved(&mut self.quota) => {
                     if alive {
-                        self.out.push_back(Frame::changed(Topic::Quota, None, None, None));
+                        self.out.push_back(self.changed(Topic::Quota, None));
                     } else {
                         self.quota = None;
                     }
                 }
                 moved = rotation_moved(&mut self.rotation) => match moved {
-                    Some(Some(sid)) => self.out.push_back(Frame::changed(Topic::Rotation, Some(sid), None, None)),
+                    Some(Some(sid)) => {
+                        let f = self.changed(Topic::Rotation, Some(sid));
+                        self.out.push_back(f);
+                    }
                     // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.rotation = None,
                 },
                 moved = rules_moved(&mut self.rules) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
-                    Some(()) => self.out.push_back(Frame::changed(Topic::RotationRules, None, None, None)),
+                    Some(()) => {
+                        let f = self.changed(Topic::RotationRules, None);
+                        self.out.push_back(f);
+                    }
                     None => self.rules = None,
                 },
                 moved = plan_moved(&mut self.plan) => match moved {
@@ -198,6 +219,7 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
     rx.rules = Some(crate::accounts::quota::rotation::rules_changes().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
+    rx.bodies = crate::stream::topic_hook::body;
     rx
 }
 
@@ -265,6 +287,7 @@ pub(crate) fn attach_rx(
         rotation: None,
         rules: None,
         plan: None,
+        bodies: no_bodies,
     }
 }
 

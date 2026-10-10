@@ -3802,7 +3802,7 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
         .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
     let emit = prod[ask..]
-        .find("sink.send(Frame::changed(Topic::Tasks, Some(sid), None, None));")
+        .find("sink.send(Frame::changed(Topic::Tasks, Some(sid), None, body));")
         .map(|k| ask + k)
         .expect("问完之后没有发 changed {tasks}");
     let per_event = prod[ask..]

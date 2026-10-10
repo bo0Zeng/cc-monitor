@@ -86,15 +86,16 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 |---|---|---|---|---|---|
 | `accounts` | 否 | — | — | — | `accounts-list` |
 | `profiles` | 否 | — | — | — | `profiles-read` |
-| `quota` | 是 | — | — | — | `quota-read` |
-| `rotation` | 是 | 带 | — | — | `rotation-session-read` |
-| `rotation_rules` | 是 | — | — | — | `rotation-rules-read` |
+| `quota` | 是 | — | — | 带（≤ 8192 B） | `quota-read` |
+| `rotation` | 是 | 带 | — | 带（≤ 4096 B） | `rotation-session-read` |
+| `rotation_rules` | 是 | — | — | 带（≤ 8192 B） | `rotation-rules-read` |
 | `plan` | 是 | 带 | 带 | 带（≤ 64 B） | `plan-read` |
-| `tasks` | 否 | 带 | — | — | `tasks-list` |
+| `tasks` | 否 | 带 | — | 带（≤ 8192 B） | `tasks-list` |
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` 是会话 id，`plan` 是工作区根。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
-`body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
+`body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`rotation` 问 `{sids: [key]}`、`tasks` 问 `{sid: key}`、另两样不带参数），由同一个处理器在发帧时现算，超了上限或答不成就不带。
+账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）。带了 `body` 不改可丢性。
 
 `--tail-only` 时客户端先取快照（尾部优先：`--read-session-tail` / `history-tail`），`session_added.lines` 是宣告那一刻的完整行数，用来核快照拉全了没有。

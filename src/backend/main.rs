@@ -25,7 +25,7 @@
 // ⚠ 用 glob 而不是逐项列 —— 本拍是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
 use cc_monitor_backend::faces::read_face;
-use cc_monitor_backend::stream::{inbound, listen, tap, wire};
+use cc_monitor_backend::stream::{inbound, listen, tap, topic_body, topic_hook, wire};
 use cc_monitor_backend::*;
 
 use std::path::PathBuf;
@@ -88,6 +88,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() {
+    // 帧里的小成品（`changed.body`）照主题表现算：装进发端调的那一层（理由住 `stream/topic_body.rs` 头注）。
+    topic_hook::install(topic_body::body_now);
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」

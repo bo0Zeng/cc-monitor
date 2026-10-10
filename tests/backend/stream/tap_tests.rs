@@ -329,3 +329,44 @@ fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
         );
     });
 }
+
+/// 帧里的小成品经这条连接的 `bodies` 现算（生产 ＝ 重问那条命令的处理器；这里喂假的）：轮换那一帧带上那个会话的那一份。
+#[test]
+fn a_rotation_change_carries_the_body_the_table_asks_for() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+    rt.block_on(async {
+        let (_ev_tx, ev_rx) = tokio::sync::mpsc::channel::<TapEvent>(4);
+        let mut t = attach_rx(
+            ev_rx,
+            std::sync::Arc::new(crate::observe::runs::RunBook::default()),
+        );
+        fn fake(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
+            Some(serde_json::json!({ "topic": topic.name(), "key": key }))
+        }
+        t.bodies = fake;
+        let tx = tokio::sync::broadcast::channel::<String>(4).0;
+        t.rotation = Some(tx.subscribe());
+        tx.send("s1".to_string()).unwrap();
+        let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
+            .await
+            .expect("该推一帧");
+        match f {
+            Some(Frame::Changed {
+                topic: Topic::Rotation,
+                key,
+                body,
+                ..
+            }) => assert_eq!(
+                (key.as_deref(), body),
+                (
+                    Some("s1"),
+                    Some(serde_json::json!({"topic": "rotation", "key": "s1"}))
+                )
+            ),
+            other => panic!("{other:?}"),
+        }
+    });
+}
