@@ -18,10 +18,7 @@
 //! ⚠ 那里还记着两条别在这里重复、但**必须一起读**的：DPAPI 那条「拷走也解不开」的性质**今天没有**，
 //! 以及**远端那一侧不许从 SFTP 的 mode 参数拿机密性**。
 
-// 读侧掩码（`ApikeyCredentialsStatus` · `read_status` · `read_status_at` · `notice_of`）〔散文墓碑〕退役：
-//   本机那份文件的状态由本机常驻后端答（帧面 `apikey-read`，`src/backend/accounts/upstream_select/file_face.rs::read_at`），
-//   界面经 `chan.call` 直接问、按形状收（`src/frontend/ui/apikey-reads.ts`，「永远只有掩码」那一格由后端应答的形状与跨语言金样钉着）。
-//   本机与远端同一条路 —— monitor 这一侧从此不读这份文件。
+// monitor 这一侧不读这份文件：每个 API 号的掩码与「表里有没有行」由那台常驻后端并进账号清单（`accounts-list`）。
 
 // **这里原来是本机那一份的写口**（`write_key`〔散文墓碑〕 / `write_key_at`〔散文墓碑〕 /
 // `check_base_url`〔散文墓碑〕）。「每台机器一个写者 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写

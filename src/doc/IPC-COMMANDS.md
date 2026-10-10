@@ -1288,33 +1288,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 码：`bad_args` · `bad_file` · `io_failed`
 
-#### `apikey-read`
-
-上游选择凭据文件在这台的状态。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --apikey-read`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `configured` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 |
-| `masked` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 |
-| `notice` | ← | 权限过宽 / 查不出来时的一句话（文件不在时 `null`） |
-| `path` | ← | 那份文件的绝对路径 |
-| `problem` | ← | 读不动 / 解析不了时的一句话 |
-
-#### `apikey-routing`
-
-这几个号在这台的表里有没有行 · 这台的中转在不在。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `routed` | ← | 传进来的里面、**表里有对应行**的那几个（原样回） |
-| `running` | ← | 这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里） |
-
-码：`bad_args`
-
 #### `accounts-list`
 
 账号清单。
@@ -2621,6 +2594,7 @@ cc-bus 钩子诊断。
 | `chain` | ← | 继承链（父 → 子） |
 | `edit` | → | 未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算） |
 | `line` | ← | 这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null` |
+| `lineShort` | ← | 「等于」那一行的短形（设置页那一格照抄；tmux 那一形只写建哪个会话 ＋ 里面跑的命令，直路只写进哪个目录 ＋ 跑什么，家目录写 `~`）；整条在 `line`；算不出 ⇒ `null` |
 | `lineError` | ← | 算不出那一行时 ccm 的原话 |
 | `name` | → | 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字） |
 | `problem` | ← | 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null` |
@@ -3825,7 +3799,6 @@ cc-bus 钩子诊断。
 | `--aliases-block-render` | ＝ 帧命令 `aliases-block-render`：别名块预览 |
 | `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
-| `--apikey-read` | ＝ 帧命令 `apikey-read`：上游选择凭据文件在这台的状态 |
 | `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
 | `--assets-catalog-merge` | ＝ 帧命令 `assets-catalog-merge`：把另一台后端的整份目录并进来 |
 | `--assets-sync` | ＝ 帧命令 `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录 |

@@ -135,27 +135,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::BlockingData(|r| crate::accounts::upstream_select::file_face::answer_set(&r.args).map(Some)),
     },
-    CommandSpec {
-        name: "apikey-read",
-        summary: "上游选择凭据文件在这台的状态",
-        codes: &[],
-        // `rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
-        fields: &[out("configured", "**顶层那一把**（历史格式那一行）配没配、掩码"), out("masked", "**顶层那一把**（历史格式那一行）配没配、掩码"), out("notice", "权限过宽 / 查不出来时的一句话（文件不在时 `null`）"), out("path", "那份文件的绝对路径"), out("problem", "读不动 / 解析不了时的一句话")],
-        takes_input: false,
-        run: Run::BlockingData(|_r| crate::accounts::upstream_select::file_face::answer_read().map(Some)),
-    },
-    CommandSpec {
-        name: "apikey-routing",
-        summary: "这几个号在这台的表里有没有行 · 这台的中转在不在",
-        codes: &["bad_args"],
-        fields: &[out("routed", "传进来的里面、**表里有对应行**的那几个（原样回）"), out("running", "这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::accounts::upstream_select::endpoint::answer_routing(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
     // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
     CommandSpec {
         name: "accounts-list",

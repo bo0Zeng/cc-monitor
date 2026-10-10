@@ -212,7 +212,7 @@ fn note_listening(port: u16) {
 
 /// **这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
 /// （中转就住在这个进程里，；一个事实一个家）。读者：上游选择出的两份成品
-/// （`apikey-routing` 的 `running` · `relay-optin` 的 `listening` · 别名预览）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
+/// （账号清单徽章的 `relay_running` · `relay-optin` 的 `listening` · 别名预览）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
 pub(crate) fn our_relay_listening(port: u16) -> bool {
     HOSTED_PORTS
         .lock()

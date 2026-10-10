@@ -3,15 +3,14 @@
 //! | 口 | 答什么 | 谁问 |
 //! |---|---|---|
 //! | [`relay_for_exec`] | 这个号这一发指到哪个中转地址（或不指；地址不随会话变，不带会话段；怎么交给那一家由它的注入格定）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
-//! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
 //! | `relay-optin` | 直接敲的那一家（入参 `agent`）也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
 //! 起会话只有 `ccm` 一处：环境、中转地址由那台机器上的 `ccm` 自己定，界面只交一行 `ccm …`。
 //!
 //! # 人群只有一份：[`super::file_face::rows_at`]
 //!
-//! 「表里有哪几行」= `table::build` 真收进表的那几行（与中转装表同一个函数）。`accounts-list` 并表、
-//! `apikey-routing`、`ccm` 起会话三处读的都是它。
+//! 「表里有哪几行」= `table::build` 真收进表的那几行（与中转装表同一个函数）。`accounts-list` 并表（每号的徽章）、
+//! `ccm` 起会话两处读的都是它。
 //!
 //! # 决策表
 //!
@@ -272,47 +271,6 @@ pub(crate) fn base_url_halves(base_url: &str) -> Option<(&str, &str)> {
     let rest = base_url.strip_prefix("http://")?;
     let at = "http://".len() + rest.find('/')?;
     Some((&base_url[..=at], &base_url[at..]))
-}
-
-/// `apikey-routing`：入参 `{agent, configDirs}` → `{routed, running}`（界面账号页那两格事实）。
-///
-/// - `routed`：传进来的那些 configDir 里，这台表里**有对应行**的那几个（原样回，规则住 `acct-core`）。
-///   ⚠ 它答「表里有这一行」，不答「那把 key 能不能用」。
-/// - `running`：这个进程里**我们的**中转在不在听（读宿主自己的监听状态 `relay::our_relay_listening`，与别名预览同一个判准）。
-pub(crate) fn answer_routing(args: &Value) -> EndpointAnswer {
-    answer_routing_with(
-        args,
-        &super::file_face::machine_rows(),
-        &crate::relay::our_relay_listening,
-    )
-}
-
-/// [`answer_routing`] 的本体（同上，事实注入）。
-pub(crate) fn answer_routing_with(
-    args: &Value,
-    routed: &[String],
-    listening: &dyn Fn(u16) -> bool,
-) -> EndpointAnswer {
-    let agent = agent_arg(args)?;
-    let dirs: Vec<String> = args
-        .get("configDirs")
-        .and_then(Value::as_array)
-        .and_then(|a| {
-            a.iter()
-                .map(|v| v.as_str().map(str::to_string))
-                .collect::<Option<Vec<_>>>()
-        })
-        .ok_or((
-            "bad_args",
-            copy_text(
-                "beUpstreamEndpoint.args.missingStrings",
-                &[("k", "configDirs")],
-            ),
-        ))?;
-    Ok(json!({
-        "routed": acct_core::apikey_routed_subset(&dirs, routed, agent, CREDENTIALS_FILE_AGENT),
-        "running": listening(PORT),
-    }))
 }
 
 /// 那份设置文件里的地址和现在该贴的那一条比，是哪一态。

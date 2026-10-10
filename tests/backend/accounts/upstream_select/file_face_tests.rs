@@ -137,17 +137,7 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
         broken,
         "解析不了的文件被动过了"
     );
-    // 读口同样**不退化成「没配」**：说出读坏了。
-    let r = read_at(&f);
-    assert!(
-        r["problem"].is_string(),
-        "读口把读坏了的文件报成了没问题：{r}"
-    );
-    // 「表里有哪几行」不再出线（`rows_at` 一份）：读坏了 ⇒ 零条。
-    assert!(
-        r.get("rows").is_none(),
-        "`rows` 又回到了 `apikey-read` 的应答里：{r}"
-    );
+    // 「表里有哪几行」（`rows_at` 一份）：读坏了 ⇒ 零条。
     assert!(rows_at_with(&f, &|_| None).is_empty());
     assert_no_residue(f.parent().unwrap());
     let _ = std::fs::remove_dir_all(&home);
@@ -204,12 +194,11 @@ fn bad_arguments_are_refused_before_a_single_byte_is_written() {
 }
 
 #[test]
-fn the_plaintext_never_leaves_in_either_answer() {
+fn the_plaintext_never_leaves_in_the_answer() {
     let home = temp_dir("plain");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
     let set = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap();
-    let read = read_at(&f);
     // 正控：同一把尺子（子串）在盘上那份文件里**数得到**它 —— 否则下面的零命中可能是尺子瞎了。
     let on_disk = std::fs::read_to_string(&f).unwrap();
     assert_eq!(
@@ -217,7 +206,7 @@ fn the_plaintext_never_leaves_in_either_answer() {
         1,
         "正控：盘上那份应当恰好含一次明文"
     );
-    for (name, v) in [("apikey-key-set", &set), ("apikey-read", &read)] {
+    for (name, v) in [("apikey-key-set", &set)] {
         let wire = serde_json::to_string(v).unwrap();
         assert_eq!(
             wire.matches(PLAIN).count(),
@@ -235,10 +224,6 @@ fn the_plaintext_never_leaves_in_either_answer() {
         }
     }
     assert_eq!(rows_at_with(&f, &|_| None), vec!["work".to_string()]);
-    assert_eq!(
-        read["configured"], false,
-        "顶层那一把没配，`configured` 说的是顶层那一把"
-    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -261,11 +246,6 @@ fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
             & 0o777;
         assert_eq!(dir, 0o700, "数据目录建出来不是只给本人：{dir:o}");
     }
-    // 读口的权限判断在这份文件上不出声（只给本人 ⇒ `notice` 为空）。
-    assert!(
-        read_at(&f)["notice"].is_null(),
-        "只给本人的文件被报了权限问题"
-    );
     assert_no_residue(f.parent().unwrap());
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -278,18 +258,6 @@ fn a_missing_home_is_said_and_not_created_for_you() {
     let err = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap_err();
     assert_eq!(err.code, "io_failed", "实得 {err:?}");
     assert!(!home.join("not-there").exists(), "替人建了家目录");
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
-fn the_read_face_on_an_absent_file_says_nothing_is_there() {
-    let home = temp_dir("absent");
-    let r = read_at(&file_in(&home));
-    assert_eq!(r["configured"], false);
-    assert_eq!(r["masked"], "");
-    assert!(r["notice"].is_null(), "文件不在时不该报权限问题：{r}");
-    assert!(r["problem"].is_null(), "文件不在不是读坏了：{r}");
-    assert!(rows_at_with(&file_in(&home), &|_| None).is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -559,64 +527,12 @@ fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 〔4D，原 monitor `creds_store_tests` 同名一条搬来〕`KS11` 门①那半：那份文件被放宽了，读口**出声**；只给本人时**不出声**（两向）。
-/// 守的要求：`INVARIANTS §42`（凭据文件的读写）· `KS11`「权限过宽要在界面上显出来」—— 界面那一格今天就是这台后端 `apikey-read` 的 `notice`。
-#[cfg(unix)]
-#[test]
-fn us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = temp_dir("us1-perm");
-    let p = dir.join("apikey-credentials.json");
-    std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-HAND-PLACED\"\n}\n").expect("写夹具");
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).expect("收窄");
-    assert!(
-        read_at(&p)["notice"].is_null(),
-        "只给本人的文件被报了权限问题 —— 那条提醒会变成噪音"
-    );
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-    let notice = read_at(&p)["notice"]
-        .as_str()
-        .expect("过宽了必须出声")
-        .to_string();
-    assert!(notice.contains("chmod 600"), "没说清怎么修：{notice}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// 〔4D，原 monitor `creds_store_tests` 同名一条搬来〕三态：没配 · 配了 · 文件读坏了。**「读坏了」不许退化成「没配」**；
-/// 配了 ⇒ 只回掩码（`KS6`：应答整串里零明文，带正控：掩码里有遮蔽符）。
-#[test]
-fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
-    let dir = temp_dir("us1-three");
-    let p = dir.join("apikey-credentials.json");
-    let s0 = read_at(&p);
-    assert!(s0["configured"] == json!(false) && s0["problem"].is_null() && s0["notice"].is_null());
-    std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-0123456789ABCDEF\"\n}\n").expect("写夹具");
-    let s1 = read_at(&p);
-    assert_eq!(s1["configured"], json!(true));
-    assert!(!s1.to_string().contains("0123456789"), "回了明文：{s1}");
-    assert!(
-        s1["masked"].as_str().unwrap().contains('•'),
-        "掩码里没有遮蔽符：{s1}"
-    );
-    std::fs::write(&p, b"{\"api_key\": }").expect("改坏");
-    let s2 = read_at(&p);
-    assert_eq!(s2["configured"], json!(false));
-    assert!(
-        copy_core::copy_matches(
-            "credsStore.error.notJson",
-            s2["problem"].as_str().expect("读坏了必须有说法")
-        ),
-        "没告诉人这是一份手编的文件：{s2}"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
 /// 〔US1 · 4D，原 monitor `creds_store_tests::what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕〕
 /// **写口真写下的那一行，正是起会话那一发的成品用上的那一行**（跨两个读者：写口 `answer_set_at` → 人群 `rows_at` → 决策 `decide_launch`）。
 /// 两侧异源：写的是写口，读的是上游选择装表那一条 ＋ 决策表。只配了一个号 ⇒ 另一个号不许被顺带配上；不落 `default` 那一行。
 #[test]
 fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
-    use super::super::endpoint::{answer_routing_with, relay_with, LaunchAccount};
+    use super::super::endpoint::{relay_with, LaunchAccount};
     let dir = temp_dir("us1-same-source");
     let p = dir.join("apikey-credentials.json");
     let ask = |d: &str| LaunchAccount::Named {
@@ -658,9 +574,18 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
             .unwrap()
             .is_none()
     );
+    // 账号清单徽章那一格（`accounts-list` 并表）问的同一个人群判定。
     assert_eq!(
-        answer_routing_with(&json!({"agent":"claude-code","configDirs":["/h/.claude-alt/acct-one","/h/.claude-alt/acct-two"]}), &rows, &|_| true).unwrap()["routed"],
-        json!(["/h/.claude-alt/acct-one"])
+        acct_core::apikey_routed_subset(
+            &[
+                "/h/.claude-alt/acct-one".to_string(),
+                "/h/.claude-alt/acct-two".to_string()
+            ],
+            &rows,
+            "claude-code",
+            super::super::CREDENTIALS_FILE_AGENT
+        ),
+        vec!["/h/.claude-alt/acct-one".to_string()]
     );
     assert!(
         !rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),

@@ -6,10 +6,10 @@
  * | 写 key（`creds.apikey`） | `apikey-key-set` | `{account, path, masked, baseUrl}` |
  *
  * 「这几个号在这台表里有没有行 · 这台的中转在不在」两格并进了账号清单那一枚徽章（`accounts-list` 每号 `badge`，那台后端判），
- * 界面不再单问 `apikey-routing`；凭据文件的状态那一问（`apikey-read`）界面也不问。两条帧命令的形状由后端金样钉着。
+ * 界面不单问这两样。
  *
  * 界面经 `chan.call` 直接问那台机器的后端（本机那台由 `<local>` 那条长连接答）、按形状严格收 —— 多一格 / 缺一格 / 类型不对 ⇒
- * 抛「两端契约对不上」，不替后端补值。读凭据文件、探回环口都在后端（`accounts/upstream_select/endpoint.rs` · `file_face.rs`）。跨语言金样 `tests/__fixtures__/apikey.golden.json` 钉着后端出的形状与这里收的形状。
+ * 抛「两端契约对不上」，不替后端补值。读凭据文件、探回环口都在后端（`accounts/upstream_select/endpoint.rs` · `file_face.rs`）。
  *
  * 写 key（`creds.apikey` 写）也走通道：`apikey-key-set`（[`writeApikeyKey`]）。「本机后端写的那份 == 这个 monitor 用的那份」
  * 由连接本身保证：常驻后端的身份带着数据目录（`local_backend_host.rs::hello_verdict` 比 hello 的 `host_env`），

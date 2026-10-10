@@ -1,14 +1,12 @@
 /**
- * API key 那一问（`apikey-routing`）改走通道、后端出成品之后的判据（`apikey-read` 界面不问，解码口删了）。
+ * 写 key 那一问（`apikey-key-set`）走通道、后端出成品之后的判据（`apikey-read` · `apikey-routing` 两条没有读者，删了）。
  *
- * 要求：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
- * 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」· B 组 `creds.apikey` · `apikey.routing`。
+ * 要求：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）」· B 组 `creds.apikey`。
  *
  * | 性质 | 判据 |
  * |---|---|
- * | TS 解码器读得懂**后端真出的**成品 —— 同一份金样，后端 `endpoint_tests::us1_the_apikey_products_match_the_cross_language_golden` 写它（异源：Rust 造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛，不替后端补值（尤其：多一格装明文那一形被拒） | 「严格收」 |
- * | 两问各自经通道说对的帧命令、对的请求体，失败折成一句人话（不退化成「没配」/「没行」） | 「请求」「失败」 |
+ * | 经通道说对的帧命令、对的请求体，失败折成一句人话 | 「请求」「失败」 |
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";

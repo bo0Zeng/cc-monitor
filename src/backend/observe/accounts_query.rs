@@ -416,7 +416,7 @@ fn next_default(accts_dir: &Path) -> Option<String> {
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
 /// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。措辞不说「远端」：本机远端同一条路。
-/// `relay_running` ＝ 这台的中转在不在（徽章要它；调用方读本进程的监听状态，与 `apikey-routing` 同一个判准 ⇒
+/// `relay_running` ＝ 这台的中转在不在（徽章要它；调用方读本进程的监听状态，与 `relay-optin` 的 `listening` 同一个判准 ⇒
 /// 只有常驻进程答得出真话，`accounts-list` 在 `STREAM_ONLY`）。
 pub(crate) fn list_product(
     rows: &[String],

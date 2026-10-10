@@ -149,8 +149,8 @@ uuid = { version = "1", features = ["v4"] }
 # 对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
 copy-core = { path = "../../common/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
-# **不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
-#   由本机常驻后端答 `apikey-read`）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
+# **不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（本机那份的状态
+#   由本机常驻后端并进账号清单）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
 #   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private`）只在 `harden` 下存在。
 # 〔墓碑 —— GP1 那一版开着它「只为 Windows 上读 DACL」（`perm::probe` 那一臂）：读者随 `creds_store::read_status`〔散文墓碑〕一起没了。〕
 creds-core = { path = "../../common/creds-core" }

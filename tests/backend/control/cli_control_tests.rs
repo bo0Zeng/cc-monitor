@@ -125,10 +125,6 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
         "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话。",
     ),
     (
-        "apikey-routing",
-        "「中转在不在」读本进程的监听状态；一次性进程里没有中转（中转住常驻后端进程里），只能答 `running: false` —— 那是假话。",
-    ),
-    (
         "accounts-list",
         "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
     ),
@@ -368,9 +364,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
         "cells-catalog", // 格目录（纯计算、不收输入）
-        // `apikey-read`：这台机器上那份凭据文件的状态，无入参。
-        // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
-        "apikey-read",
         "files-index-status",
         "ping",
         // 问这台机器登记了哪些插件市场：无入参，输出 `lines`。
