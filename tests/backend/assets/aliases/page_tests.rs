@@ -491,11 +491,14 @@ fn profiles_golden() -> Value {
     serde_json::from_str(include_str!("../../../__fixtures__/profiles.golden.json")).unwrap()
 }
 
-/// 机器上会变的几格换成占位：家目录 · 「等于」那一行（它跟这台的 tmux 会话、账号库、cc-bus 脚本走）。
+/// 机器上会变的几格换成占位：家目录 · 「等于」那一行与它的短形（它跟这台的 tmux 会话、账号库、cc-bus 脚本走）。
 fn normalized(v: &Value, home: &str) -> Value {
     let mut v: Value = serde_json::from_str(&v.to_string().replace(home, "<HOME>")).unwrap();
     if v.get("line").is_some_and(Value::is_string) {
         v["line"] = json!("<LINE>");
+    }
+    if v.get("lineShort").is_some_and(Value::is_string) {
+        v["lineShort"] = json!("<LINE_SHORT>");
     }
     v
 }
@@ -613,4 +616,29 @@ fn a_batch_sees_its_own_earlier_changes() {
     assert_eq!(from("cc"), None);
     assert_eq!(from("cct").as_deref(), Some("cc"));
     assert_eq!(from("side").as_deref(), Some("cct"));
+}
+
+/// 「敲 xx 等于」那一格的短形由核心写（`lineShort`：tmux 那一形只写建哪个会话 ＋ 里面跑的那条命令，直路只写进哪个目录 ＋ 跑什么；
+/// 家目录写成 `~`、不加引号）；整条脚本照旧在 `line`（界面放进［复制］）。
+#[test]
+fn resolve_writes_a_short_form_beside_the_whole_script() {
+    let t = tmp("short", Some(BOOK));
+    let cct = answer_resolve(&t.door(), &json!({"name": "cct", "at": "/tmp"})).unwrap();
+    let short = cct["lineShort"].as_str().unwrap_or_else(|| panic!("{cct}"));
+    assert_eq!(
+        short,
+        "tmux new-session -s tmp-cc … ccm -- --cwd /tmp --ccm-agent claude --launcher claude"
+    );
+    assert!(
+        cct["line"].as_str().unwrap().contains("send-keys"),
+        "整条还在 line：{cct}"
+    );
+    let cc = answer_resolve(&t.door(), &json!({"name": "cc", "at": "~"})).unwrap();
+    assert_eq!(cc["lineShort"], "cd ~/projects/notes && claude", "{cc}");
+    // 算不出 ⇒ 两格都没有。
+    let team = answer_resolve(&t.door(), &json!({"name": "teamcct"})).unwrap();
+    assert!(
+        team["line"].is_null() && team["lineShort"].is_null(),
+        "{team}"
+    );
 }

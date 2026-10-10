@@ -6827,6 +6827,18 @@
       "zh": "值",
       "args": []
     },
+    "profilesPage.merge.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制整条命令",
+      "args": []
+    },
+    "profilesPage.merge.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制整条",
+      "args": []
+    },
     "profilesPage.merge.equals": {
       "kind": "body",
       "role": "片段",

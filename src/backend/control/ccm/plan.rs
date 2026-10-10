@@ -484,6 +484,8 @@ pub(crate) struct Container {
     /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
+    /// 送进容器那条内层命令的词（不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，载荷由同一串渲出。
+    pub(crate) inner: Vec<String>,
     // ★★ **`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
     //
     // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
@@ -1204,6 +1206,7 @@ pub(crate) fn build_among(
             detach: o.detach,
             payload,
             self_check,
+            inner,
             bus,
         }));
     }
@@ -1309,6 +1312,47 @@ pub(crate) fn render_for(plan: &Plan, shell: crate::platform::shell::dialect::Sh
             render_direct_ps(d)
         }
         _ => render(plan),
+    }
+}
+
+/// **「等于」那一行的短形（唯一一处）**：设置页「敲 xx 等于」那一格照抄，整条脚本另在［复制］里（[`render_for`]）。
+/// tmux 那一形只写建哪个会话 ＋ 里面跑的那条命令（`tmux new-session -s 名 … 内层命令`）；直路只写进哪个目录、用哪份账号目录、跑什么
+/// （环境的清与设、中转、cc-bus 身份那几段不写）；接回 ⇒ 接哪个会话。家目录写成 `~`；只给人看，词不加引号（带空白的才加）。
+pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
+    let word = |w: &str| -> String {
+        let w = match w.strip_prefix(home) {
+            Some(rest) if !home.is_empty() && (rest.is_empty() || rest.starts_with('/')) => {
+                format!("~{rest}")
+            }
+            _ => w.to_string(),
+        };
+        if w.is_empty() || w.chars().any(char::is_whitespace) {
+            sq(&w)
+        } else {
+            w
+        }
+    };
+    let words = |ws: &[String]| ws.iter().map(|w| word(w)).collect::<Vec<_>>().join(" ");
+    match plan {
+        Plan::Attach { name } | Plan::Rejoin { name, .. } => {
+            format!("tmux attach -t {}", word(name))
+        }
+        Plan::Container(c) => format!(
+            "tmux new-session -s {} \u{2026} {}",
+            word(&c.name),
+            words(&c.inner)
+        ),
+        Plan::Direct(d) => {
+            let mut line = String::new();
+            if !d.cwd.is_empty() {
+                line.push_str(&format!("cd {} && ", word(&d.cwd)));
+            }
+            if !d.config_dir.is_empty() && !d.account_env.is_empty() {
+                line.push_str(&format!("{}={} ", d.account_env, word(&d.config_dir)));
+            }
+            line.push_str(&words(&d.argv));
+            line
+        }
     }
 }
 
