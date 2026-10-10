@@ -11,8 +11,8 @@ pub struct JsonlLine {
     pub session_id: String,
     pub path: std::path::PathBuf,
     pub seq: u64,
-    /// 那台后端给的成品：这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
-    pub message: Option<crate::ui_contract::RecordBody>,
+    /// 那台后端给的成品：这一行的通用记录；`None` ＝ 不进界面（照占号）。
+    pub record: Option<crate::ui_contract::RecordBody>,
     /// 这条记录自己的 `cwd`（后端给的）。
     pub cwd: Option<String>,
     /// 这一行之后（含它的 `\n`）那一个字节的偏移 = 下一行的起点（后端 `line.byte_offset` ·
@@ -87,8 +87,8 @@ pub enum InboundFrame {
         session_id: String,
         path: String,
         seq: u64,
-        /// 成品（`message`，缺 ＝ 不进界面）与这条记录自己的 `cwd`。
-        message: Option<crate::ui_contract::RecordBody>,
+        /// 成品（`record`，缺 ＝ 不进界面）与这条记录自己的 `cwd`。
+        record: Option<crate::ui_contract::RecordBody>,
         cwd: Option<String>,
         /// 后端的 `byte_offset`（这一行末尾含 `\n` 的累计字节）。
         end: u64,
@@ -157,6 +157,13 @@ pub enum InboundFrame {
         sid: String,
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
+    },
+    /// 一个会话的主线外清单（`session_branch`，整份、变了才发；`off` 是 JSON 数组原文，记录 `id` 串，不解释）。
+    SessionBranch {
+        sid: String,
+        /// 那份会话记录（必填格，形状校验用；会话账按 `sid` 记，不往下传）。
+        path: String,
+        off: crate::ui_contract::RecordBody,
     },
     /// 远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）；monitor 收到后经 remote-health 通道提示用户。
     /// `lost` / `lost_truncated`（additive）：那批丢帧里不可恢复的那些的身份 —— 决定了要对用户说哪句话：丢内容帧「重开会话可看完整历史」是真的，
@@ -356,7 +363,7 @@ fn opt_bool(o: &Obj, kind: &str, key: &str) -> Result<Option<bool>, Unread> {
     }
 }
 
-/// `line` 帧的解码结构（最热的那一种：按类型直解，成品 `message` 以原文收下、不建 `Value`）。
+/// `line` 帧的解码结构（最热的那一种：按类型直解，成品 `record` 以原文收下、不建 `Value`）。
 /// 必填格不带 `#[serde(default)]`：缺了就是契约对不上。
 #[derive(serde::Deserialize)]
 struct LineFrame {
@@ -365,7 +372,7 @@ struct LineFrame {
     seq: u64,
     byte_offset: u64,
     #[serde(default)]
-    message: Option<Box<serde_json::value::RawValue>>,
+    record: Option<Box<serde_json::value::RawValue>>,
     #[serde(default)]
     cwd: Option<String>,
     #[serde(default)]
@@ -378,7 +385,7 @@ fn decode_line(line: &str) -> Result<InboundFrame, Unread> {
         session_id: f.session_id,
         path: f.path,
         seq: f.seq,
-        message: f.message.map(crate::ui_contract::RecordBody),
+        record: f.record.map(crate::ui_contract::RecordBody),
         cwd: f.cwd,
         end: f.byte_offset,
         rid: f.rid,
@@ -516,6 +523,11 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             sid: req_str(obj, k, "sid")?,
             runs: req_array_text(obj, k, "runs")?,
             ended: req_array_text(obj, k, "ended")?,
+        },
+        "session_branch" => InboundFrame::SessionBranch {
+            sid: req_str(obj, k, "sid")?,
+            path: req_str(obj, k, "path")?,
+            off: req_array_text(obj, k, "off")?,
         },
         "session_removed" => InboundFrame::SessionRemoved {
             sid: req_str(obj, k, "sid")?,

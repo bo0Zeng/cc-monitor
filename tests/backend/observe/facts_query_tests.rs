@@ -958,35 +958,20 @@ fn needs_carries_its_words_and_tone() {
         state: StepWait::Running,
         why: None,
     };
-    let wait = |w: Option<&str>| PidWait {
-        waiting_for: w.map(str::to_string),
+    use crate::agents::WaitOn as W;
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
         since_ms: None,
     };
     let cases = [
-        (
-            vec![call("Bash")],
-            Some("permission prompt"),
-            NeedsKind::Approve,
-            "beSession.needs.approve",
-        ),
-        (
-            vec![call("AskUserQuestion")],
-            None,
-            NeedsKind::Answer,
-            "beSession.needs.answer",
-        ),
-        (
-            vec![call("ExitPlanMode")],
-            None,
-            NeedsKind::Plan,
-            "beSession.needs.plan",
-        ),
-        (
-            vec![],
-            Some("dialog open"),
-            NeedsKind::Unknown,
-            "beSession.needs.unknown",
-        ),
+        (vec![call("Bash")], Some(W::Permission), NeedsKind::Approve, "beSession.needs.approve"),
+        (vec![call("AskUserQuestion")], None, NeedsKind::Answer, "beSession.needs.answer"),
+        (vec![call("ExitPlanMode")], None, NeedsKind::Plan, "beSession.needs.plan"),
+        (vec![call("Bash")], Some(W::Network), NeedsKind::Network, "beSession.needs.network"),
+        (vec![], Some(W::Worker), NeedsKind::Worker, "beSession.needs.worker"),
+        (vec![], Some(W::Goal), NeedsKind::Goal, "beSession.needs.goal"),
+        (vec![], Some(W::Dialog), NeedsKind::Choose, "beSession.needs.choose"),
+        (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
     ];
     for (pending, w, kind, key) in cases {
         let n = needs_of(&pending, Some(&wait(w))).unwrap();

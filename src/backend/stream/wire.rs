@@ -119,7 +119,7 @@ impl SessionFate {
 }
 
 /// **活会话此刻在干什么的字与语气的唯一一处**（`session_added` · `session_status` 都由它填）：
-/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`。说不清（`None`）⇒ 两格都不上线。
+/// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台在跑 · `plain`。说不清（`None`）⇒ 两格都不上线。
 pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Option<Words>, Option<Tone>) {
     let Some(a) = a else {
         return (None, None);
@@ -135,6 +135,10 @@ pub(crate) fn activity_cells(a: Option<SessionActivity>) -> (Option<Words>, Opti
         ),
         SessionActivity::Idle => (
             copy_core::copy_text("beSession.activity.idle", &[]),
+            Tone::Plain,
+        ),
+        SessionActivity::BackgroundWork => (
+            copy_core::copy_text("beSession.activity.background", &[]),
             Tone::Plain,
         ),
     };
@@ -352,9 +356,14 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
     },
-    /// One JSONL line tailed from a session file —— 带的是**成品**：
-    /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
-    /// monitor 只原样转交。原文 `raw` 只给发了 `--with-raw` 的客户端（第二个前端自己解析记录）。
+    /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
+    /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
+    /// 原文 `raw` 只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。
+    ///
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里，只增不改
+    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`；
+    /// 新加的格也得先登记，`every_product_field_is_in_the_frozen_table`）。`raw` 逐字节等于那一行
+    /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
     Line {
         /// 会话 id。
         session_id: String,
@@ -362,9 +371,9 @@ pub enum Frame {
         path: String,
         /// 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset`。
         seq: u64,
-        /// 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号。
+        /// 这一行的通用记录；缺 ＝ 不进界面、照占号。
         #[serde(skip_serializing_if = "Option::is_none")]
-        message: Option<serde_json::Value>,
+        record: Option<crate::agents::record::Record>,
         /// 这条记录自己的工作目录。
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
@@ -380,7 +389,7 @@ pub enum Frame {
         /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
-        /// 〔additive〕这一行记录的**原文**（去掉行尾换行）。只在客户端发了 `--with-raw` 时才带
+        /// 〔additive〕这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。只在客户端发了 `--with-raw` 时才带
         /// （`ReaderState::with_raw`）—— 第二个前端自己解析记录，要它；没索要的客户端收到的字节与本字段加进来之前一字不差。
         #[serde(skip_serializing_if = "Option::is_none")]
         raw: Option<String>,

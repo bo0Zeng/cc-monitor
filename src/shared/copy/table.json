@@ -17450,6 +17450,12 @@
       "zh": "空闲",
       "args": []
     },
+    "beSession.activity.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台在跑",
+      "args": []
+    },
     "beSession.fate.reconnectable": {
       "kind": "body",
       "role": "片段",

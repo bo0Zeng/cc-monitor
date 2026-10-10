@@ -126,7 +126,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 why: None,
             }];
             let wait = crate::observe::facts_query::PidWait {
-                waiting_for: Some("permission prompt".into()),
+                waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
             };
             f["needs"] =
@@ -296,4 +296,21 @@ fn the_frame_command_answers_the_catalog() {
         .collect();
     assert_eq!(names, PRODUCTS.iter().map(|p| p.name).collect::<Vec<_>>());
     assert_eq!(v["pending"].as_array().unwrap().len(), PENDING.len());
+}
+
+/// 金样重写开关（人读过「现打」再落盘）。
+const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
+
+/// ★ 格目录的金样 ＝ 帧命令真写出来的那一份（出口不起后端也能读；注册表出参对拍也用它）。改了成品就重写：
+/// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
+#[test]
+fn the_golden_is_what_the_command_writes() {
+    let got = format!("{}\n", serde_json::to_string_pretty(&catalog()).unwrap());
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/__fixtures__/cells-catalog.golden.json");
+    if std::env::var_os(REGEN).is_some() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(got == want, "格目录与金样不一致（{REGEN}=1 重写）");
 }

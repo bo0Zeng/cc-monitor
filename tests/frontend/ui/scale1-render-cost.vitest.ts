@@ -13,7 +13,7 @@
  *
  * # 语料
  *
- * `tests/__fixtures__/scale2-height-records.jsonl`（**与秤 2 同一份，不另造**）。
+ * `tests/__fixtures__/scale2-height-line-records.jsonl`（**与秤 2 同一份，不另造**）。
  * 🔴 **结构采自真机、正文一个字都不是真的** —— 数据源纪律
  * 2026-09-18 已改判成「结构照真的，内容一律合成」（用户逐字「这是测试啊 / 不应该进」）。
  * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 两道自检）。
@@ -45,14 +45,13 @@
  *    数的是**物化进 DOM 的字符数**（`domChars`，确定量），理由与等价性写在那一组的头注；
  *    墙钟读数（四段 p50 · 占比 · 残余）照旧印进报表，只当读数。
  * 6. **探针自己要钱。** 分桶轴要「记录字节」，而 payload 上没有该字段 ⇒
- *    只能 `JSON.stringify(message)` 现算（它自己就是 §2.4 那一形）。
+ *    只能 `JSON.stringify(record)` 现算（它自己就是 §2.4 那一形）。
  *    ⇒ 探针默认关；开着时字节数在总时刻取完之后才算，**不进任何一段读数**，
  *    但整体 wall time 确实被抬高了。生产常开会付这份钱。
  *
  * 复算：`npx vitest run tests/frontend/ui/scale1-render-cost.vitest.ts`
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { withUserText } from "../../test-support/user-text";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -76,12 +75,22 @@ import {
   type StreamSink,
 } from "../../../src/frontend/ui/render-stream-record";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
-import type { JsonlRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
+import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale2-height-truth.vitest.ts` 的用法）
-const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-records.jsonl");
+const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
 const fixtureLines = readFileSync(FIXTURE, "utf8")
+  .split("\n")
+  .filter((l) => l.trim().length > 0);
+/**
+ * S2 的膨胀语料：**原文**语料每个 ≥ 64 字的串尾部接换行 ＋ 1024 个填充字，再过后端的翻译表（一行对一行）。
+ * 膨胀和翻译都在后端那一侧（`record_of_tests.rs` 的 `the_scale_corpora_are_what_this_translator_gives`，
+ * 两份语料不是那张翻译表现打的就红）⇒ 后端从原文算出的那几格（过程一行的主参数 · 结果几行）照真的跟着变，
+ * 本秤不再自己挑哪格不膨胀。
+ */
+const INFLATED = resolve(__dirname, "../../__fixtures__/scale1-inflated-line-records.jsonl");
+const inflatedLines = readFileSync(INFLATED, "utf8")
   .split("\n")
   .filter((l) => l.trim().length > 0);
 
@@ -110,10 +119,10 @@ function bucketOf(n: number): string {
 const EXPECTED_RECORDS = 69;
 /** 每跑一遍语料，各桶应得的样本条数 */
 const EXPECTED_PER_PASS: Readonly<Record<string, number>> = {
-  "<2K": 30,
-  "2-8K": 20,
-  "8-32K": 17,
-  "32-128K": 2,
+  "<2K": 35,
+  "2-8K": 17,
+  "8-32K": 14,
+  "32-128K": 3,
   // 空不是漏采 —— 真语料里就没有 >128K 的记录（头注射程边界第 3 条）
   ">128K": 0,
 };
@@ -129,10 +138,10 @@ const PASSES = 8;
  * 这正是「判据在自己的登记表里找到自己」那一族。⇒ 绝对数必须独立出现一次。
  */
 const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {
-  "<2K": 240,
-  "2-8K": 160,
-  "8-32K": 136,
-  "32-128K": 16,
+  "<2K": 280,
+  "2-8K": 136,
+  "8-32K": 112,
+  "32-128K": 24,
   ">128K": 0,
 };
 /** 样本总数的绝对登记（同上，独立写死） */
@@ -142,25 +151,26 @@ const EXPECTED_SAMPLES = 552;
 //
 // 本秤自己的读数推翻了「字节即成本」（「装秤之后改过的三条判断」第 1 条），
 // 而判据一直拿 `branch === "card"` 当「建卡那条路」—— **分支比卡型粗一层**：
-// 现打 `card` 分支里混着 `card-compact`（23 KB 的记录只物化 27 个字，是一张**便宜**的卡），
-// 它落在 `8-32K` 桶里，和贵的 `card-assistant` 一起算 p50。
+// 现打 `card` 分支里混着 `card-compact`（46 KB 的记录只物化 23 个字，是一张**便宜**的卡），
+// 它落在 `32-128K` 桶里（记录换形前 23 KB、落在 `8-32K`，和贵的 `card-assistant` 一起算 p50）。
 // ⇒ 样本上多了 `card`（卡型）与 `domChars`（物化进 DOM 的字符数），下面三张表是这一轴的地基。
 // 设计与读数住。
 
 /**
  * 每个卡型的**绝对**样本数（69 条 × 8 遍；独立写死，理由同 `EXPECTED_SAMPLES_PER_BUCKET`）。
  * `card-tool-group` = 新建外壳 1 条 ＋ 并入已有外壳 22 条（两条分支，同一种卡）。
+ * 记录换形（10-09）：字节口径换成通用记录的 JSON（桶跟着挪）；那一条代理自动应答（`autoReply`）从 assistant 卡挪进 skip。
  */
 const EXPECTED_SAMPLES_PER_CARD: Readonly<Record<string, number>> = {
-  "card-assistant": 224,
+  "card-assistant": 216,
   "card-user": 80,
   "card-compact": 8,
   "card-tool-group": 184,
-  skip: 56,
+  skip: 64,
 };
 /**
  * **折叠卡型**：正文留在 DOM 外（惰性 body / compact 摘要），
- * 物化量**不随记录字节变** —— 这就是它们便宜的机制。
+ * 物化量**不随记录正文涨**（至多涨后端定长的那一行）—— 这就是它们便宜的机制。
  */
 const FOLDED_CARD_TYPES: ReadonlySet<string> = new Set([
   "card-tool-group",
@@ -173,31 +183,15 @@ const BODY_CARD_TYPES: ReadonlySet<string> = new Set([
 ]);
 const isBodyCard = (s: RenderCostSample): boolean => BODY_CARD_TYPES.has(s.card);
 
-/** 膨胀之后真的变大了的记录条数（现打，独立写死 —— S3 的非空对照）。 */
-const EXPECTED_INFLATED_RECORDS = 57;
-/** S2 的膨胀量：每个够长的串尾部追加的填充字符数。 */
-const INFLATE_CHARS = 8192;
-/** 多长的串才膨胀。短串（id / 时间戳 / 类型 / 短提示）不动，免得改到摘要行。 */
-const INFLATE_MIN_LEN = 64;
-
+/** 膨胀之后真的变大了的记录条数（现打，独立写死 —— S3 的非空对照）。只膨胀在 `toolUseResult` 里的那几条不进成品，不算。 */
+const EXPECTED_INFLATED_RECORDS = 50;
+/** 膨胀语料里每个够长的串接了多少填充字（后端那一侧 `INFLATE_CHARS`，两边对着改）。 */
+const INFLATE_CHARS = 1024;
 /**
- * **只加字节、不改结构**地膨胀一条记录：每个 ≥ `INFLATE_MIN_LEN` 的串尾部接 `"\n"` ＋ 填充。
- * 类型 / id / 父子链全不动（它们都短）；首行不变（填充接在换行之后）；
- * 工具入参的摘要取的是 `JSON.stringify(input)` 的头 60 个字，而被膨胀的串本身就 ≥ 64 ⇒ 摘要不变。
+ * 折叠卡的物化量最多随膨胀涨多少字：收着时那一行里后端给的两格（主参数 · 说明）各是定长一行
+ * （至多 200 字 ＋ 省略号，协议上的上界）⇒ 2 × 201。远小于 `INFLATE_CHARS` ⇒「有界」与「随正文涨」分得开。
  */
-function inflate(v: unknown): unknown {
-  if (typeof v === "string") {
-    return v.length >= INFLATE_MIN_LEN ? `${v}\n${"膨".repeat(INFLATE_CHARS)}` : v;
-  }
-  if (Array.isArray(v)) return v.map(inflate);
-  if (v && typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, x] of Object.entries(v)) out[k] = inflate(x);
-    return out;
-  }
-  return v;
-}
-
+const FOLDED_GROWTH_MAX = 2 * 201;
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale1/session.jsonl",
@@ -221,16 +215,16 @@ function drivePass(lines: string[]): void {
   const stream = new MessageStream(root);
   const timeline = new RecordTimeline(stream);
   const ctx = freshCtx();
-  const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+  const sink: StreamSink = { timeline };
   let seq = 0;
   for (const line of lines) {
-    const message = withUserText(JSON.parse(line) as JsonlRecord); // monitor 那一格成品
+    const record = JSON.parse(line) as LineRecord; // 后端的成品（通用记录）
     const payload: JsonlLinePayload = {
       session_id: "scale1",
       cwd: null,
       path: "/tmp/scale1/session.jsonl",
       seq: seq++,
-      message,
+      record,
     };
     renderContentRecord(payload, ctx, sink);
   }
@@ -292,7 +286,7 @@ beforeAll(() => {
 
   // S2 那一趟：同一份语料**膨胀之后**再驱一遍（只看物化量与路由，不看时间 ⇒ 一遍就够）。
   enableRenderCostProbe();
-  drivePass(fixtureLines.map((l) => JSON.stringify(inflate(JSON.parse(l)))));
+  drivePass(inflatedLines);
   inflatedSamples = readRenderCostSamples();
   disableRenderCostProbe();
 
@@ -575,12 +569,14 @@ describe("秤 1 · 〔SC1〕成本轴是卡型 —— 不看墙钟的那一半",
   });
 
   // 🔴 S2 就是「字节不是成本轴，卡型才是」的**可红形态**：
-  //   同一条记录只加字节，物化量变不变，由卡型决定 —— 折叠卡型不变，正文卡型跟着涨。
-  //   哪天工具结果改成急切把正文塞进 DOM ⇒ `card-tool-group` 从折叠集跳到正文集 ⇒ 红；
-  //   哪天正文卡型不再渲正文 ⇒ 反方向红。一毫秒墙钟都不用。
-  it("★ S2 · 物化量不随字节变的卡型 == 登记的折叠卡型；会变的 == 登记的正文卡型（两向）", () => {
-    const moved = new Set<string>();
-    const still = new Set<string>();
+  //   同一条记录只加正文，物化量怎么变由卡型决定 —— 折叠卡型至多涨后端定长的那一行（有界），正文卡型整段跟着涨。
+  //   膨胀的是原文、过的是后端翻译表 ⇒ 收着那一行（主参数 · 说明）照真的跟着变，上界是协议上的定长。
+  //   哪天工具结果改成急切把正文塞进 DOM ⇒ `card-tool-group` 涨过上界、跳到正文集 ⇒ 红；
+  //   哪天正文卡型不再渲正文 ⇒ 反方向红；后端那一行不再定长 ⇒ 涨幅落在两档之间 ⇒ 红。一毫秒墙钟都不用。
+  it("★ S2 · 物化量有界的卡型 == 登记的折叠卡型；随正文涨的 == 登记的正文卡型（两向）", () => {
+    const grows = new Set<string>();
+    const bounded = new Set<string>();
+    let foldedMax = 0;
     for (let i = 0; i < EXPECTED_RECORDS; i++) {
       const a = samples[i];
       const b = inflatedSamples[i];
@@ -588,19 +584,31 @@ describe("秤 1 · 〔SC1〕成本轴是卡型 —— 不看墙钟的那一半",
         expect([a.domChars, b.domChars], `#${i} skip 不该物化任何东西`).toEqual([0, 0]);
         continue;
       }
-      (b.domChars === a.domChars ? still : moved).add(a.card);
+      const d = b.domChars - a.domChars;
+      if (d >= INFLATE_CHARS) grows.add(a.card);
+      else {
+        expect(
+          d,
+          `#${i} ${a.card} 膨胀后物化量涨了 ${d} 字：既不是整段正文（≥ ${INFLATE_CHARS}），也不在定长一行的上界（≤ ${FOLDED_GROWTH_MAX}）里`,
+        ).toBeLessThanOrEqual(FOLDED_GROWTH_MAX);
+        expect(d, `#${i} ${a.card} 膨胀后物化量反而少了`).toBeGreaterThanOrEqual(0);
+        bounded.add(a.card);
+        if (FOLDED_CARD_TYPES.has(a.card)) foldedMax = Math.max(foldedMax, d);
+      }
     }
-    // 一种卡型只要有一条随字节涨，它就是正文卡型（短正文的那几条不膨胀、自然不涨）
-    const folded = [...still].filter((c) => !moved.has(c)).sort();
+    // 一种卡型只要有一条整段跟着涨，它就是正文卡型（短正文的那几条不膨胀、自然不涨）
+    const folded = [...bounded].filter((c) => !grows.has(c)).sort();
     expect(
       folded,
-      "物化量从头到尾不随字节变的卡型，与登记的折叠卡型对不上 ——" +
+      "物化量从头到尾有界的卡型，与登记的折叠卡型对不上 ——" +
         "折叠卡型把正文塞进了 DOM（便宜的卡变贵了），或者正文卡型不再渲正文",
     ).toEqual([...FOLDED_CARD_TYPES].sort());
     expect(
-      [...moved].sort(),
-      "物化量随字节涨的卡型，与登记的正文卡型对不上",
+      [...grows].sort(),
+      "物化量随正文涨的卡型，与登记的正文卡型对不上",
     ).toEqual([...BODY_CARD_TYPES].sort());
+    // 非空对照：收着那一行真的随原文变了（主参数没到上界的那几步），不然「有界」恒真、量的还是不膨胀的那一行。
+    expect(foldedMax, "折叠卡一条都没涨 —— 膨胀没走到后端算的那一行").toBeGreaterThan(0);
   });
 });
 
@@ -646,23 +654,23 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导�
     expect(big / small, `8-32K 的正文卡只比 <2K 多物化 ${(big / small).toFixed(1)} 倍 —— 「任何 O(单条长度) 的操作都要按长尾估」失去依据`).toBeGreaterThan(10);
   });
 
-  it("🔴 反例也要钉住：按**字节**取的「长尾桶」里全是折叠 tool-group，物化量比 2-8K 正文卡少一个量级", () => {
+  it("🔴 反例也要钉住：按**字节**取的「长尾桶」里全是折叠卡，物化量比 2-8K 正文卡少一个量级", () => {
     const tail = steady.filter((s) => bucketOf(s.bytes) === "32-128K");
     expect(tail.length, "长尾桶空着 —— 本格恒绿").toBeGreaterThan(0);
-    // ① 成分：这一桶 100% 是合并进已有外壳的 tool_result
-    const branches = [...new Set(tail.map((s) => s.branch))].sort();
-    expect(branches, "32-128K 桶的成分变了 —— 上面那段「轴选错了」的诊断要重做").toEqual(["tool-group-merged"]);
-    // ①′按卡型说同一件事：字节最重的那一桶里只有一种卡，而且是**折叠卡型**
+    // ① 成分（按卡型说）：字节最重的那一桶里全是**折叠卡型** —— 合并进已有外壳的 tool_result ＋ 那一条 46 KB 的压缩摘要。
+    //   分支上它们分属 `tool-group-merged` 与 `card` ⇒ 按分支看会以为桶里混着建卡那条贵路，按卡型看两种都便宜。
     const cards = [...new Set(tail.map((s) => s.card))].sort();
-    expect(cards, "32-128K 桶的卡型变了").toEqual(["card-tool-group"]);
-    expect(FOLDED_CARD_TYPES.has(cards[0])).toBe(true);
+    expect(cards, "32-128K 桶的卡型变了 —— 上面那段「轴选错了」的诊断要重做").toEqual(["card-compact", "card-tool-group"]);
+    for (const c of cards) expect(FOLDED_CARD_TYPES.has(c), `${c} 不是折叠卡型`).toBe(true);
+    const branches = [...new Set(tail.map((s) => s.branch))].sort();
+    expect(branches, "32-128K 桶的分支成分变了").toEqual(["card", "tool-group-merged"]);
     // ② 量级：物化字符比 2-8K 的正文卡少至少一个量级
     const tailDom = p(tail.map((s) => s.domChars), 0.5);
     const cardMid = bodyByBucket().find((b) => b.name === "2-8K")?.dom ?? 0;
     expect(tailDom).toBeGreaterThan(0);
     expect(
       cardMid / tailDom,
-      `2-8K 的正文卡（${cardMid} 字）只比 32-128K 的折叠 tool-group（${tailDom} 字）多 ${(cardMid / tailDom).toFixed(1)} 倍 —— 「字节不是成本轴、卡型才是」这条结论要重新量`,
+      `2-8K 的正文卡（${cardMid} 字）只比 32-128K 的折叠卡（${tailDom} 字）多 ${(cardMid / tailDom).toFixed(1)} 倍 —— 「字节不是成本轴、卡型才是」这条结论要重新量`,
     ).toBeGreaterThan(10);
   });
 });
@@ -676,7 +684,7 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
     const stream = new MessageStream(root);
     const timeline = new RecordTimeline(stream);
     const ctx = freshCtx();
-    const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+    const sink: StreamSink = { timeline };
     // 系统注入的 user 记录 → `renderMessage` 第一行就 skip，最便宜的一条真路径
     const n = RENDER_COST_RING_CAP + 17;
     for (let i = 0; i < n; i++) {
@@ -686,14 +694,14 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
           cwd: null,
           path: "/tmp/scale1/ring.jsonl",
           seq: i,
-          message: {
-            type: "user",
-            userText: { speaker: { kind: "system" }, text: "" },
-            uuid: `ring-${i}`,
-            parentUuid: null,
-            timestamp: "2026-09-18T00:00:00.000Z",
-            message: { role: "user", content: `${i}` },
-          } as unknown as JsonlRecord,
+          record: {
+            agent: "claude",
+            t: "said",
+            who: { speaker: { kind: "system" }, text: "" },
+            id: `ring-${i}`,
+            at: "2026-09-18T00:00:00.000Z",
+            blocks: [{ type: "text", text: `${i}` }],
+          } as LineRecord,
         },
         ctx,
         sink,

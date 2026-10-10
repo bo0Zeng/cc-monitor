@@ -7,17 +7,16 @@ import { speakerNameOf } from "../agent-profile";
 import type { Origin } from "../ipc/origin";
 import { MessageStream } from "../stream";
 import {
-  type JsonlRecord,
+  type LineRecord,
   type RenderContext,
   reconcilePendingToolResults,
 } from "../cards";
 import { BranchFolder } from "../branch-fold";
-import { type BranchRecord } from "../branching";
 import { RecordTimeline } from "../record-timeline";
 import { releaseEnhanceRoot } from "../render";
 import {
   renderStreamRecord,
-  routeMetaAndBranch,
+  routeMeta,
   type MetaSink,
   type StreamSink,
 } from "../render-stream-record";
@@ -25,7 +24,7 @@ import { UnrenderedRanges } from "../render-window";
 // 查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
 import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
 import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
-import { readLines, readWholeSession } from "../record-reads";
+import { readBranch, readLines, readWholeSession } from "../record-reads";
 import { followSession, type FollowEvent } from "../events";
 import { attachBranchButton } from "../branch-button";
 import { openNewSession } from "../new-session";
@@ -48,15 +47,15 @@ import { copyText } from "../copy-table";
 
 /**
  * 在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠（过程折叠 · `<details>` · ESC 回退段）、滚过去并闪一下；找不到 ⇒ `null`、什么都不做（兜底归调用方）。
- * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-uuid` 由同一处写。
+ * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-id` 由同一处写。
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
   const key = CSS.escape(uuid);
-  // 卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-uuid`）
+  // 卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-id`）
   const el =
-    container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
-    container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
+    container.querySelector<HTMLElement>(`[data-id="${key}"]`) ??
+    container.querySelector<HTMLElement>(`[data-member-id="${key}"]`);
   if (!el) return null;
   // 落在某一轮折着的过程里 ⇒ 先让那一轮展开（记成手动开；`turn-fold.ts`）。
   revealProcessOf(el, container);
@@ -96,7 +95,7 @@ interface JsonlLinePayload {
   path: string;
   /** 文件内单调的 seq；一次性读完时按它排进时间线。 */
   seq: number;
-  message: JsonlRecord;
+  record: LineRecord;
 }
 
 /** 内容头：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
@@ -172,7 +171,7 @@ function brokenCard(p: JsonlLinePayload, err: unknown): HTMLElement {
   card.dataset.seq = String(p.seq);
   const t = document.createElement("span");
   t.textContent = copyText("sessionViewer.card.broken");
-  const detail = `seq=${p.seq}\n${String(err)}\n${JSON.stringify(p.message, null, 2)}`;
+  const detail = `seq=${p.seq}\n${String(err)}\n${JSON.stringify(p.record, null, 2)}`;
   // 全产品那一颗［复制详情］（反馈 · 复制不了的回落都在那里）：首行是卡上那句，下面是 seq · 原因 · 那条原文（仍是用户自己的记录）。
   const copy = copyDetailButton(t.textContent, detail);
   card.dataset.detailHost = "";
@@ -200,7 +199,7 @@ export class SessionViewer {
   private uuidToIdx = new Map<string, number>();
   /**
    * 骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
-   * `null` ＝ 没接上（本机后端不在 / Codex 会话 / seq 对不上）。查看器仍全量收正文（大纲 / 分叉折叠要全量记录），
+   * `null` ＝ 没接上（本机后端不在 / Codex 会话 / seq 对不上）。查看器仍全量收正文，
    * 骨架买的是滚动条与「只建可见区」，不是内存。
    */
   private skeleton: SkeletonView | null = null;
@@ -209,7 +208,6 @@ export class SessionViewer {
   private folder: BranchFolder | null = null;
   /** 按轮折叠（与主窗口同一个）：一轮的边界与结论问后端 `history-turns`。 */
   private turnFold: TurnFold | null = null;
-  private branchRecords: BranchRecord[] = [];
   private renderingBatch = false;
   /** 读取世代号：异步间隙（rAF / 通道）之后核对，换了会话的残余操作直接丢掉。 */
   private loadGeneration = 0;
@@ -243,6 +241,8 @@ export class SessionViewer {
   private followSub: { stop(): void } | null = null;
   /** 读完之前流里先来的行（读完再按 `seq` 接上）。 */
   private followBuf: JsonlLinePayload[] = [];
+  /** 读完之前流里先来的主线外清单（比冷读那一份新：读完就用它）。 */
+  private followOff: string[] | null = null;
   private loaded = false;
   private live = false;
   private following = false;
@@ -333,6 +333,7 @@ export class SessionViewer {
     this.loaded = false;
     this.syncEmpty();
     this.followBuf = [];
+    this.followOff = null;
     this.showNewPill(false);
     // 先订、再读：读的这段时间里写出来的行在流里等着，读完按 `seq` 接上（一行都不漏、重叠的去重）。
     if (opts.follow) {
@@ -365,11 +366,8 @@ export class SessionViewer {
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);
-    // 增量渲染时 `renderStreamRecord` 会重复喂分支记录 ⇒ 分支 / 队列数据在收集阶段一次性预提取，sink 的对应回调置空。
     const sink: StreamSink = {
       timeline,
-      onBranchRecord: () => {},
-      onQueueOperation: () => {},
       enhanceRoot: this.streamEl, // IO 的 root = 查看器自己的滚动容器
       // 每张 user / assistant 卡挂「从这一轮分叉」（远端走后端的 `--fork-session`，只认 sid）；子 agent 记录不挂。
       onCardRendered: opts.suppressBranch
@@ -381,25 +379,24 @@ export class SessionViewer {
     this.renderSink = sink;
     this.payloads = [];
     this.uuidToIdx.clear();
-    this.branchRecords = [];
-    const queuedContents: string[] = [];
 
-    // 收集阶段只收 payload ＋ 预提取 meta / 分支数据，不渲染；提取与渲染共用 `routeMetaAndBranch` 一处。
-    const collectSink: MetaSink = {
-      onBranchRecord: (br) => this.branchRecords.push(br),
-      onQueueOperation: (content) => queuedContents.push(content),
-      onTitleUpdate: () => {}, // 查看器标题静态，不认 ai-title
-    };
+    // 收集阶段只收 payload，不渲染（标题记录照占一格；查看器标题静态，不认它）。
+    const collectSink: MetaSink = {};
     // 骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
     const origin = opts.origin;
     // 经通道直接问那台后端（`session-reads.ts`）；要不到 ⇒ `available:false`，它自己不抛。
     const indexP = readSessionIndex(origin, opts.jsonlPath, 0);
+    // 主线外清单（回退掉的那几条）与正文并行冷读一次；读不到 ⇒ 不折（之后跟着长的由流里的 `branch` 格说）。
+    const branchP = readBranch(origin, opts.jsonlPath).catch((e: unknown) => {
+      console.warn("[session-viewer] 主线外清单没读到（不折）：", e);
+      return null;
+    });
     const onChunk = (chunk: JsonlLinePayload[]): void => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
       for (const p of chunk) {
         // 逐条 try/catch：异形 message 抛错不能丢整页计数
         try {
-          routeMetaAndBranch(p, collectSink);
+          routeMeta(p, collectSink);
         } catch (err) {
           console.warn("[session-viewer] 收集阶段单条异常(跳过):", err);
         }
@@ -411,20 +408,20 @@ export class SessionViewer {
       // 经通道问那台后端（`history-page`，`record-reads.ts::readWholeSession`）：按页交 `onChunk`，同一个 Promise 链里交完。
       // 本机与远端同一条路（`origin` 必填）。
       await readWholeSession(opts.origin, opts.jsonlPath, onChunk, () => !this.stream || this.loadGeneration !== gen);
+      const branch = await branchP;
       if (this.loadGeneration !== gen) return; // 已换会话
       if (!this.stream) return;
       this.setLoading(false);
       // 排序兜底（页应有序）：让区间账本与 payload 下标对齐
       this.payloads.sort((a, b) => a.seq - b.seq);
       this.uuidToIdx.clear();
-      this.payloads.forEach((p, i) => {
-        const u = (p.message as { uuid?: string }).uuid;
-        if (u) this.uuidToIdx.set(u, i);
-      });
+      this.payloads.forEach((p, i) => this.uuidToIdx.set(p.record.id, i));
       this.unrendered = new UnrenderedRanges(this.payloads.length);
-      // 折叠组件建一次，增量批后幂等重建（分支记录全量已知）
+      // 折叠组件建一次，增量批后按清单重折（清单是整份的，读法不改它）
       this.folder = new BranchFolder(this.stream.contentElement);
-      for (const c of queuedContents) this.folder.addQueuedContent(c);
+      const off = this.followOff ?? branch?.off;
+      this.followOff = null;
+      if (off) this.folder.setOff(new Set(off));
 
       // 首屏:深链 → 目标岛 + 尾段;否则只尾段
       const total = this.payloads.length;
@@ -497,8 +494,7 @@ export class SessionViewer {
     const ledger = got.ledger;
     let checked = 0;
     for (const p of this.payloads) {
-      const u = (p.message as { uuid?: unknown }).uuid;
-      if (typeof u !== "string") continue;
+      const u = p.record.id;
       if (ledger.uuidToSeq.get(u) !== p.seq) {
         console.warn(`[session-viewer] 骨架未接：seq ${p.seq} 在索引里是 ${String(ledger.uuidToSeq.get(u))}`);
         return;
@@ -558,32 +554,25 @@ export class SessionViewer {
     }
   }
 
-  /** 给一张 user / assistant 卡挂「从这一轮分叉」（按钮本体 `branch-button.ts`，与实时 tab 同一份）：这里只管该不该挂、成功之后干什么。 */
+  /** 给一张 said / reply 卡挂「从这一轮分叉」（按钮本体 `branch-button.ts`，与实时 tab 同一份）：这里只管该不该挂、成功之后干什么。 */
   private attachBranchButton(
     cardEl: HTMLElement,
-    message: JsonlRecord,
+    record: LineRecord,
     jsonlPath: string,
     origin: Origin,
   ): void {
-    if (message.type !== "user" && message.type !== "assistant") return;
-    const uuid = message.uuid;
-    if (!uuid) return;
+    if (record.t !== "said" && record.t !== "reply") return;
     attachBranchButton(cardEl, {
-      uuid,
+      uuid: record.id,
       // 历史会话的文件名就是 sid（`sidFromJsonlPath`）；与实时 tab 开同一个框（分叉记录在框里点［新建］才写）。
       onFork: (at) =>
         void openNewSession({ origin, fork: { sid: sidFromJsonlPath(jsonlPath), uuid: at, title: this.titleEl.textContent ?? "" } }),
     });
   }
 
-  /** 增量批后幂等重建折叠（没渲染的卡不在 DOM，自然跳过）。 */
+  /** 增量批后按清单重折（没渲染的卡不在 DOM，自然跳过）。 */
   private rebuildFold(): void {
-    if (!this.folder || this.branchRecords.length === 0) return;
-    try {
-      this.folder.setRecordsAndRebuild(this.branchRecords);
-    } catch (err) {
-      console.error("[session-viewer] BranchFolder.setRecordsAndRebuild 抛错", err);
-    }
+    this.folder?.rebuildNow();
   }
 
   /** 底一行只说条数：`{n} 条` / `{n} 条 · 上翻加载更早`（显示不了的那一条在卡位上说）。 */
@@ -611,6 +600,10 @@ export class SessionViewer {
       if (this.loaded) this.updateStatus(this.payloads.length);
       this.syncEmpty();
       this.onLive?.(e.live);
+    } else if (e.t === "branch") {
+      // 主线外清单（整份）：读完了就当场重折；还没读完 ⇒ 记着，读完用它（比冷读那一份新）。
+      if (this.loaded && this.folder) this.folder.setOff(new Set(e.off));
+      else this.followOff = e.off;
     } else if (e.t === "sight") {
       this.following = e.seen;
       if (this.loaded) this.updateStatus(this.payloads.length);
@@ -652,22 +645,17 @@ export class SessionViewer {
     const fresh = [...lines].sort((a, b) => a.seq - b.seq).filter((p) => (p.seq > last ? ((last = p.seq), true) : false));
     if (fresh.length === 0) return;
     const atBottom = this.stream.stuckToBottom;
-    const meta: MetaSink = {
-      onBranchRecord: (br) => this.branchRecords.push(br),
-      onQueueOperation: (content) => this.folder?.addQueuedContent(content),
-      onTitleUpdate: () => {},
-    };
+    const meta: MetaSink = {};
     this.folder?.unwrapAll();
     this.stream.batchInsert(() => {
       for (const p of fresh) {
         try {
-          routeMetaAndBranch(p, meta);
+          routeMeta(p, meta);
         } catch (err) {
           console.warn("[session-viewer] 跟着长：单条收集异常(跳过):", err);
         }
         this.payloads.push(p);
-        const u = (p.message as { uuid?: string }).uuid;
-        if (u) this.uuidToIdx.set(u, this.payloads.length - 1);
+        this.uuidToIdx.set(p.record.id, this.payloads.length - 1);
         this.renderOne(p);
       }
     });
@@ -823,7 +811,7 @@ export class SessionViewer {
     let cur: HTMLElement | null = null;
     for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
       const uuid = row.dataset.inputUuid;
-      const card = uuid ? this.streamEl.querySelector<HTMLElement>(`[data-uuid="${CSS.escape(uuid)}"]`) : null;
+      const card = uuid ? this.streamEl.querySelector<HTMLElement>(`[data-id="${CSS.escape(uuid)}"]`) : null;
       if (!card) continue;
       if (card.getBoundingClientRect().top <= top || cur === null) cur = row;
       else break;
@@ -847,6 +835,7 @@ export class SessionViewer {
     this.followSub = null;
     this.following = false;
     this.followBuf = [];
+    this.followOff = null;
     this.loaded = false;
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
     if (this.turnFold) {
@@ -869,7 +858,6 @@ export class SessionViewer {
     this.renderCtx = null;
     this.renderSink = null;
     this.folder = null;
-    this.branchRecords = [];
     this.renderingBatch = false;
     // 清单也跟着释放：留着就是上一个会话的句子挂在下一个会话上、点下去找不到卡。`reset` 同时让在途那趟回来后不许回写。
     this.outline?.reset();

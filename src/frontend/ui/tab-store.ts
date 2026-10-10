@@ -75,7 +75,7 @@ export class TabStore {
   /** origin → 当前账号名：会话账号 == 它 → 不挂徽章。只放 isSelectable 的账号（main.ts 过滤）：拿不可选的号说「你不一致」是假信息。 */
   currentByOrigin = new Map<string, string>();
   activeId: string | null = null;
-  /** 是否在批模式（启动重放期间）。控两件事：惰性高亮、BranchFolder.batchMode（批里新建的 Tab 也设成 batch）。 */
+  /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */
   inBatch = false;
   /**
    * 此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），

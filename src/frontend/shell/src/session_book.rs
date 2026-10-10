@@ -194,6 +194,12 @@ pub enum In {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
+    /// `session_branch`：那台后端给的一个会话的主线外清单（记录 `id` 的 JSON 数组原文，不解释）。
+    Branch {
+        origin: String,
+        sid: String,
+        off: crate::ui_contract::RecordBody,
+    },
 }
 
 /// 交给出口的一件事（顺序就是意义：同一条流上的先后原样保留）。
@@ -230,6 +236,12 @@ pub enum Out {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
+    /// 一个会话的主线外清单（原样转）。
+    Branch {
+        origin: String,
+        sid: String,
+        off: crate::ui_contract::RecordBody,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -244,6 +256,8 @@ struct OriginBook {
             crate::ui_contract::RecordBody,
         ),
     >,
+    /// 活会话的最新主线外清单（F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
+    branch: BTreeMap<String, crate::ui_contract::RecordBody>,
 }
 
 /// F5 重放那一趟要发的东西：骨架先（`before`，在留存行之前），终局后（`after`，在留存行之后 —— 否则远端行会把刚归档的 tab 翻活）。
@@ -310,6 +324,7 @@ impl Book {
                 b.sessions
                     .insert(sid.clone(), Product::Left(fate, words.clone()));
                 b.runs.remove(&sid);
+                b.branch.remove(&sid);
                 vec![Out::Left {
                     origin,
                     sid,
@@ -334,6 +349,14 @@ impl Book {
                     runs,
                     ended,
                 }]
+            }
+            In::Branch { origin, sid, off } => {
+                self.origins
+                    .entry(origin.clone())
+                    .or_default()
+                    .branch
+                    .insert(sid.clone(), off.clone());
+                vec![Out::Branch { origin, sid, off }]
             }
             In::Listed { origin } => {
                 self.origins.entry(origin.clone()).or_default().listed = true;
@@ -395,6 +418,7 @@ impl Book {
         for b in self.origins.values_mut() {
             b.sessions.remove(sid);
             b.runs.remove(sid);
+            b.branch.remove(sid);
         }
     }
 
@@ -423,6 +447,13 @@ impl Book {
                                 sid: sid.clone(),
                                 runs: runs.clone(),
                                 ended: ended.clone(),
+                            });
+                        }
+                        if let Some(off) = b.branch.get(sid) {
+                            r.before.push(Out::Branch {
+                                origin: (*o).clone(),
+                                sid: sid.clone(),
+                                off: off.clone(),
                             });
                         }
                     }
@@ -487,7 +518,8 @@ impl Out {
             | Out::Left { origin, .. }
             | Out::Listed { origin, .. }
             | Out::Unseen { origin, .. }
-            | Out::Runs { origin, .. } => origin,
+            | Out::Runs { origin, .. }
+            | Out::Branch { origin, .. } => origin,
         }
     }
 
@@ -575,6 +607,10 @@ impl Out {
                 session_id: sid.clone(),
                 runs: runs.clone(),
                 ended: ended.clone(),
+            })],
+            Out::Branch { sid, off, .. } => vec![F::Branch(b::SessionBranchPayload {
+                session_id: sid.clone(),
+                off: off.clone(),
             })],
         }
     }

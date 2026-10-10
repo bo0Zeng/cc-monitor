@@ -54,6 +54,7 @@ vi.mock("../../../src/frontend/ui/record-reads", () => ({
     const page = h.pages.shift() ?? { rows: [] };
     return Promise.resolve({ run: "a1", path: "/p/s1/a1.jsonl", rows: page.rows, end: from + page.rows.length, more: page.more ?? false });
   },
+  readBranch: () => Promise.resolve({ off: [], end: 0 }),
 }));
 vi.mock("../../../src/frontend/ui/events", () => ({
   followSession: (_o: unknown, _sid: string, sink: (e: unknown) => void) => {
@@ -68,11 +69,11 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 const T0 = Date.parse("2026-10-01T10:00:00Z");
 
 function brief(text: string): unknown {
-  return { message: { type: "user", uuid: "u0", timestamp: "2026-10-01T10:00:00Z", message: { role: "user", content: text }, userText: { speaker: { kind: "agentTask" }, text } } };
+  return { record: { agent: "claude", t: "said", id: "u0", at: "2026-10-01T10:00:00Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "agentTask" }, text } } };
 }
 function say(uuid: string, text: string): unknown {
   return {
-    message: { type: "assistant", uuid, timestamp: "2026-10-01T10:01:00Z", message: { role: "assistant", content: [{ type: "text", text }], model: "m", usage: null } },
+    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "text", text }], model: "m", autoReply: false, endsTurn: false },
   };
 }
 
@@ -201,13 +202,17 @@ describe("agent 窗口", () => {
 
   it("孙 agent 回到这扇窗：派出它的那张卡闪一下；卡还没读到 ⇒ 读到了再闪", async () => {
     const agentCall = {
-      message: {
-        type: "assistant",
-        uuid: "c9",
-        timestamp: "2026-10-01T10:02:00Z",
-        message: { role: "assistant", content: [{ type: "tool_use", id: "t9", name: "Spawn", input: {} }], model: "m", usage: null },
-        toolCards: { t9: "agent" },
-        childRuns: { t9: { label: "孙", kind: "Explore" } },
+      record: {
+        agent: "claude",
+        t: "reply",
+        id: "c9",
+        at: "2026-10-01T10:02:00Z",
+        blocks: [{ type: "tool_use", id: "t9", name: "Spawn", input: {} }],
+        model: "m",
+        autoReply: false,
+        endsTurn: false,
+        cards: { t9: "agent" },
+        runs: { t9: { label: "孙", kind: "Explore" } },
       },
     };
     h.pages = [{ rows: [] }, { rows: [agentCall] }];

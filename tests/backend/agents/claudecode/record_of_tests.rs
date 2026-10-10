@@ -9,7 +9,7 @@ fn one(raw: &str) -> Option<Record> {
     let rec = crate::agents::claudecode::parse::parse_line(raw)
         .unwrap()
         .unwrap();
-    record_of(rec, "L7").map(|mut r| {
+    record_of(rec, &crate::agents::line_id(4096)).map(|mut r| {
         // 钟面随这台的时区变；金样里写成固定的样子（形状是「HH:MM」）。
         if r.time_text.is_some() {
             r.time_text = Some("09:30".into());
@@ -145,5 +145,76 @@ fn records_without_a_reader_do_not_come_out() {
             .unwrap()
             .unwrap();
         assert!(record_of(rec, "L1").is_none(), "{raw}");
+    }
+}
+
+/// 秤 1 / 2 / 6 喂界面的语料就是这一家翻译表对原文语料（`scale2-height-records.jsonl`）逐行的成品 ——
+/// 界面那边的秤量的是后端真会给的东西，不是手改的形状。钟面随时区变 ⇒ 都不带 `timeText`。
+/// 秤 1 的「膨胀」那一份也在这里出：膨胀的是**原文**（每个 ≥ [`INFLATE_MIN_LEN`] 字的串尾接换行 ＋ 填充），
+/// 再过翻译表 ⇒ 后端从原文算出的那几格（过程一行的主参数 · 结果几行）照真的变，界面那边不再自己挑哪格不膨胀。
+const REGEN_SCALE: &str = "CCM_REGEN_SCALE_RECORDS";
+/// 膨胀：多长的串才接填充（短串 —— id · 时刻 · 类型 · 型号 —— 不动）。
+const INFLATE_MIN_LEN: usize = 64;
+/// 膨胀：每个够长的串尾部接多少个填充字。
+const INFLATE_CHARS: usize = 1024;
+
+fn inflate(v: &mut serde_json::Value) {
+    match v {
+        serde_json::Value::String(s) if s.chars().count() >= INFLATE_MIN_LEN => {
+            s.push('\n');
+            s.push_str(&"膨".repeat(INFLATE_CHARS));
+        }
+        serde_json::Value::Array(a) => a.iter_mut().for_each(inflate),
+        serde_json::Value::Object(o) => o.values_mut().for_each(inflate),
+        _ => {}
+    }
+}
+
+/// 原文语料（可先膨胀）⇒ 逐行成品，一行一条。
+fn scale_records(inflated: bool) -> String {
+    let root = crate::guard_support::repo_root();
+    let raw = std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
+        .unwrap();
+    let mut got = String::new();
+    let mut off = 0u64;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        let line = if inflated {
+            let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
+            inflate(&mut v);
+            serde_json::to_string(&v).unwrap()
+        } else {
+            line.to_string()
+        };
+        let start = off;
+        off += line.len() as u64 + 1;
+        let Some(rec) = crate::agents::claudecode::parse::parse_line(&line).unwrap() else {
+            continue;
+        };
+        if let Some(mut r) = record_of(rec, &crate::agents::line_id(start)) {
+            r.time_text = None;
+            got.push_str(&serde_json::to_string(&r).unwrap());
+            got.push('\n');
+        }
+    }
+    got
+}
+
+#[test]
+fn the_scale_corpora_are_what_this_translator_gives() {
+    let root = crate::guard_support::repo_root();
+    for (name, inflated) in [
+        ("scale2-height-line-records.jsonl", false),
+        ("scale1-inflated-line-records.jsonl", true),
+    ] {
+        let got = scale_records(inflated);
+        let path = root.join("tests/__fixtures__").join(name);
+        if std::env::var_os(REGEN_SCALE).is_some() {
+            std::fs::write(&path, &got).unwrap();
+        }
+        let want = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            got == want,
+            "{name} 与翻译表现打的不一致（{REGEN_SCALE}=1 重写，再回界面那几杆秤改登记）"
+        );
     }
 }

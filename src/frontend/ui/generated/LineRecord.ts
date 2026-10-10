@@ -10,9 +10,25 @@ import type { ToolStep } from "./ToolStep";
 import type { UserText } from "./UserText";
 
 /**
- * [`Record`] 的类别（`t`）与各自的格。
+ * 一条通用记录。
  */
-export type Body = { "t": "said", 
+export type LineRecord = { 
+/**
+ * 哪一家（注册表里那一家的 `kind`）。
+ */
+agent: string, 
+/**
+ * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
+ */
+id: string, 
+/**
+ * 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
+ */
+at?: string, 
+/**
+ * `at` 在这台本地钟上的钟面 `HH:MM`（界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -52,4 +68,4 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, };
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, });

@@ -176,7 +176,7 @@ pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
-    parse: parse::parsed_line,
+    parse: parse::translated,
     sid: records::session_id_of,
     is_session_file: records::is_session_file,
     tree: Some(super::RecordTree {

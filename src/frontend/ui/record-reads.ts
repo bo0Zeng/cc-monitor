@@ -1,14 +1,14 @@
 /**
  * **会话正文经通道直接问那台机器的后端、按形状收成品**：
  * 查看器整份读 · 骨架按偏移取一段（`history-page`）· 按行号取一段（`history-lines`）· 一个子运行的记录（`history-run`，按运行读）·
- * 那台后端的漂移账（`drift-report`）。
+ * 主线外清单（`history-branch`，冷读；实时那一路是会话流的 `branch` 格）· 那台后端的漂移账（`drift-report`）。
  *
  * # 它顶掉了什么
  *
  * 此前是 monitor 的四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` ·
  * 按目录读子 agent 的那一条）：monitor 从那台后端取原文、自己解析记录（`messages.rs` / `parser.rs` / `codex_record.rs`）、
  * 编号、组载荷。记录解释搬进后端之后（`src/backend/agents/claudecode/`），后端的帧应答**就是成品** —— 每一行在渲染模型里
- * 是什么（`JsonlRecord`，ts-rs 从后端导出）、行号、`cwd`、进不进界面，都是后端给的；monitor 那一跳只搬字节。
+ * 是什么（通用记录 `LineRecord`，ts-rs 从后端导出）、行号、`cwd`、进不进界面，都是后端给的；monitor 那一跳只搬字节。
  * **本机与远端同一条路**（本机那台由 `<local>` 那条长连接答）。
  *
  * # 本文件做的只有三件（都是调用方那一侧的事）
@@ -21,12 +21,12 @@ import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
-import type { JsonlRecord } from "./generated/JsonlRecord";
+import type { LineRecord } from "./generated/LineRecord";
 import { exactKeys, isObj } from "./ipc/decode";
 
-/** 一个子运行记录里的一条：渲染模型里的样子 ＋ 它的对账键（撤那个子运行的活卡用）。 */
+/** 一个子运行记录里的一条：通用记录 ＋ 它的对账键（撤那个子运行的活卡用）。 */
 export interface RunRecordRow {
-  message: JsonlRecord;
+  record: LineRecord;
   rid?: string;
 }
 
@@ -49,6 +49,12 @@ export interface SessionLinesPage {
   next: number;
   eof: boolean;
   payloads: JsonlLinePayload[];
+}
+
+/** 主线外清单（后端 `history-branch`）：回退掉的那几条记录的 `id`（文件序）· 读到哪个字节（之后的由实时帧接着说）。 */
+export interface BranchOff {
+  off: string[];
+  end: number;
 }
 
 /** 那台后端漂移账的一个面（后端 `agents/claudecode/drift.rs::DriftFaceReport`，键名一字不差）。 */
@@ -79,12 +85,12 @@ function badShape(op: string): never {
 function payloadOf(op: string, origin: Origin, v: unknown): JsonlLinePayload {
   if (
     !isObj(v) ||
-    !exactKeys(v, ["session_id", "path", "seq", "cwd", "message"]) ||
+    !exactKeys(v, ["session_id", "path", "seq", "cwd", "record"]) ||
     !isStr(v.session_id) ||
     !isStr(v.path) ||
     !isNum(v.seq) ||
     !(v.cwd === null || isStr(v.cwd)) ||
-    !isObj(v.message)
+    !isObj(v.record)
   ) {
     return badShape(op);
   }
@@ -93,7 +99,7 @@ function payloadOf(op: string, origin: Origin, v: unknown): JsonlLinePayload {
     path: v.path,
     seq: v.seq,
     cwd: v.cwd as string | null,
-    message: v.message as unknown as JsonlRecord,
+    record: v.record as unknown as LineRecord,
   };
   if (!isLocalOrigin(origin)) p.origin = origin;
   return p;
@@ -134,12 +140,19 @@ export function decodeRun(v: unknown): RunPage {
     return badShape("history-run");
   }
   const rows = v.rows.map((r): RunRecordRow => {
-    if (!isObj(r) || !isObj(r.message) || !(r.rid === undefined || isStr(r.rid))) return badShape("history-run");
+    if (!isObj(r) || !isObj(r.record) || !(r.rid === undefined || isStr(r.rid))) return badShape("history-run");
     return r.rid === undefined
-      ? { message: r.message as unknown as JsonlRecord }
-      : { message: r.message as unknown as JsonlRecord, rid: r.rid };
+      ? { record: r.record as unknown as LineRecord }
+      : { record: r.record as unknown as LineRecord, rid: r.rid };
   });
   return { run: v.run, path: v.path, rows, end: v.end, more: v.more };
+}
+
+/** `history-branch` 的成品 ⇒ [`BranchOff`]。 */
+export function decodeBranch(v: unknown): BranchOff {
+  if (!isObj(v) || !exactKeys(v, ["off", "end"]) || !Array.isArray(v.off) || !isNum(v.end)) return badShape("history-branch");
+  if (!v.off.every(isStr)) return badShape("history-branch");
+  return { off: v.off, end: v.end };
 }
 
 /** `drift-report` 的成品 ⇒ 各面。 */
@@ -252,6 +265,13 @@ export async function loadRunPage(origin: Origin, parentJsonlPath: string, which
   const body = jsonBody({ parent: parentJsonlPath, ...which, from });
   const budget = budgetWithin(PIECE_BUDGET_MS);
   return await answered(origin, chan.call(origin, "history-run", body, budget), decodeRun);
+}
+
+/** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）。 */
+export async function readBranch(origin: Origin, jsonlPath: string): Promise<BranchOff> {
+  const body = jsonBody({ path: jsonlPath });
+  const budget = budgetWithin(PIECE_BUDGET_MS);
+  return await answered(origin, chan.call(origin, "history-branch", body, budget), decodeBranch);
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */

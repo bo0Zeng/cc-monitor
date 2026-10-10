@@ -388,10 +388,13 @@ describe("D1 · 数学也 lazy", () => {
   it("展开时才建的 thinking body 走急路：零占位", () => {
     const res = renderMessage(
       {
-        type: "assistant",
-        uuid: "u1",
-        timestamp: "2026-01-01T00:00:00Z",
-        message: { role: "assistant", content: [{ type: "thinking", thinking: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }] },
+        agent: "claude",
+        t: "reply",
+        id: "u1",
+        at: "2026-01-01T00:00:00Z",
+        blocks: [{ type: "thinking", text: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }],
+        autoReply: false,
+        endsTurn: false,
       } as never,
       { parentPath: "/p/s.jsonl", origin: "<local>", toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: true } as never,
     );

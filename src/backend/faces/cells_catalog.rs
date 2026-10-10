@@ -1008,7 +1008,7 @@ mod specimens {
             activity: Some(activity),
             activity_text: activity_cells(Some(activity)).0,
             activity_tone: activity_cells(Some(activity)).1,
-            waiting_for: some("permission prompt"),
+            waiting_for: some("w"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
                 terminal: some("tmux-1-1"),
@@ -1017,10 +1017,11 @@ mod specimens {
         }
     }
 
-    const ACTIVITIES: [SessionActivity; 3] = [
+    const ACTIVITIES: [SessionActivity; 4] = [
         SessionActivity::Working,
         SessionActivity::NeedsYou,
         SessionActivity::Idle,
+        SessionActivity::BackgroundWork,
     ];
 
     pub(super) fn session_added() -> Vec<Specimen> {
@@ -1036,7 +1037,7 @@ mod specimens {
                     activity: Some(a),
                     activity_text: activity_cells(Some(a)).0,
                     activity_tone: activity_cells(Some(a)).1,
-                    waiting_for: some("permission prompt"),
+                    waiting_for: some("w"),
                     liveness_confidence: some("heuristic"),
                 })
             })

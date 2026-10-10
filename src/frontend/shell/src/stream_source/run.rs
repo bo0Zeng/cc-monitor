@@ -334,7 +334,7 @@ async fn stream_loop(
                 session_id,
                 path,
                 seq,
-                message,
+                record,
                 cwd,
                 end,
                 rid,
@@ -345,7 +345,7 @@ async fn stream_loop(
                         session_id,
                         path: std::path::PathBuf::from(path),
                         seq,
-                        message,
+                        record,
                         cwd,
                         end: Some(end),
                         rid,
@@ -415,6 +415,13 @@ async fn stream_loop(
                     sid,
                     runs,
                     ended,
+                });
+            }
+            Some(InboundFrame::SessionBranch { sid, off, .. }) => {
+                crate::session_book::feed(BookIn::Branch {
+                    origin: host_label.clone(),
+                    sid,
+                    off,
                 });
             }
             Some(InboundFrame::SessionRemoved { sid }) => {

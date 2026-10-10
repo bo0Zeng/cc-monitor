@@ -1145,6 +1145,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const CC_BUS_CONTROL: &str = include_str!("../../__fixtures__/cc-bus-control.golden.json");
     const CC_BUS_READ: &str = include_str!("../../__fixtures__/cc-bus-read.golden.json");
     const CCM_PROBE: &str = include_str!("../../__fixtures__/ccm-probe.golden.json");
+    const CELLS_CATALOG: &str = include_str!("../../__fixtures__/cells-catalog.golden.json");
     const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
@@ -1170,6 +1171,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
         ("apikey-read", APIKEY, "/apikey-read", &[], &[]),
         ("apikey-routing", APIKEY, "/apikey-routing", &[], &[]),
+        ("cells-catalog", CELLS_CATALOG, "", &[], &[]),
         (
             "bus-list",
             CC_BUS_CONTROL,

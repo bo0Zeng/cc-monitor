@@ -2574,11 +2574,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔条 66〕原来这里还有一行 `tests/frontend/ui/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
         //   （1 处）—— 那条推送随值搬家退役，点名它的那段散文与那条判据一起删了 ⇒ 本行摘掉（存量 −1）。
         (
-            "src/frontend/ui/render-stream-record.ts",
-            "queued_user_message_never_enters_the_branch_chain",
-            1,
-        ),
-        (
             "tests/frontend/ui/settings/backend-section.vitest.ts",
             "the_unattended_wording_is_actually_present",
             1,

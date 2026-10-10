@@ -43,7 +43,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const cards = (v: SessionViewer): string[] =>
-  [...v.element.querySelectorAll<HTMLElement>("[data-uuid]")].map((e) => e.dataset.uuid ?? "");
+  [...v.element.querySelectorAll<HTMLElement>("[data-id]")].map((e) => e.dataset.id ?? "");
 const status = (v: SessionViewer): string => v.element.querySelector('[data-role="status"]')?.textContent ?? "";
 const pill = (v: SessionViewer): HTMLButtonElement => v.element.querySelector<HTMLButtonElement>('[data-role="new-content"]')!;
 const emit = (e: unknown): void => follow.sink!(e);

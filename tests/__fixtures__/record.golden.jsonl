@@ -5,7 +5,7 @@
 {"case":"reply-error","record":{"agent":"claude","at":"2026-10-09T01:30:04.000Z","autoReply":false,"blocks":[{"text":"API Error: 429 rate limited","type":"text"}],"endsTurn":false,"error":{"reason":"quota","status":429},"id":"a-err","t":"reply","timeText":"09:30"}}
 {"case":"reply-auto","record":{"agent":"claude","at":"2026-10-09T01:30:05.000Z","autoReply":true,"blocks":[{"text":"No response requested.","type":"text"}],"endsTurn":false,"id":"a-auto","t":"reply","timeText":"09:30"}}
 {"case":"retry-full","record":{"agent":"claude","at":"2026-10-09T01:30:06.000Z","attempt":2,"id":"r-full","max":10,"reason":"overloaded","t":"retry","timeText":"09:30"}}
-{"case":"retry-min","record":{"agent":"claude","at":"2026-10-09T01:30:07.000Z","id":"L7","reason":"unknown","t":"retry","timeText":"09:30"}}
-{"case":"title-agent","record":{"agent":"claude","by":"agent","id":"L7","t":"title","text":"Fix the parser"}}
-{"case":"title-user","record":{"agent":"claude","by":"user","id":"L7","t":"title","text":"my name"}}
-{"case":"queued","record":{"agent":"claude","at":"2026-10-09T01:30:08.000Z","id":"L7","t":"queued","timeText":"09:30","who":{"speaker":{"kind":"human"},"text":"also do this"}}}
+{"case":"retry-min","record":{"agent":"claude","at":"2026-10-09T01:30:07.000Z","id":"@4096","reason":"unknown","t":"retry","timeText":"09:30"}}
+{"case":"title-agent","record":{"agent":"claude","by":"agent","id":"@4096","t":"title","text":"Fix the parser"}}
+{"case":"title-user","record":{"agent":"claude","by":"user","id":"@4096","t":"title","text":"my name"}}
+{"case":"queued","record":{"agent":"claude","at":"2026-10-09T01:30:08.000Z","id":"@4096","t":"queued","timeText":"09:30","who":{"speaker":{"kind":"human"},"text":"also do this"}}}

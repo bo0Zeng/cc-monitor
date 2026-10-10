@@ -9,7 +9,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         path: format!("/fake/{sid}/{idx}.jsonl"),
         seq: idx as u64,
         origin: None,
-        message: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
+        record: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
         rid: None,
     }
@@ -221,8 +221,7 @@ fn the_highest_seqs_are_kept_even_when_the_tail_arrived_first() {
 fn sized(origin: Option<&str>, sid: &str, idx: usize, n: usize) -> JsonlLinePayload {
     let mut p = payload(sid, idx);
     p.origin = origin.map(str::to_string);
-    p.message =
-        crate::ui_contract::RecordBody::from_json(format!("\"{}\"", "x".repeat(n))).unwrap();
+    p.record = crate::ui_contract::RecordBody::from_json(format!("\"{}\"", "x".repeat(n))).unwrap();
     p
 }
 
@@ -1156,6 +1155,10 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             session_id: "s".into(),
             runs: b::RecordBody::from_json("[]".into()).unwrap(),
             ended: b::RecordBody::from_json("[]".into()).unwrap(),
+        }),
+        F::Branch(b::SessionBranchPayload {
+            session_id: "s".into(),
+            off: b::RecordBody::from_json("[]".into()).unwrap(),
         }),
     ];
     let key = |f: &F| -> String {

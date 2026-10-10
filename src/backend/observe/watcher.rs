@@ -1378,6 +1378,9 @@ struct ReaderState {
     runs: crate::observe::runs::RunTrack,
     /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
     branches: HashMap<PathBuf, crate::agents::mainline::Chain>,
+    /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
+    /// `--tail-only` 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
+    typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
     /// 起会话便条与账号记录住的那个家（`None` ⇒ 不认便条）。默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入。
     launch_home: Option<PathBuf>,
 }
@@ -1405,6 +1408,7 @@ impl ReaderState {
             ),
             launch_home: None,
             branches: HashMap::new(),
+            typed: HashMap::new(),
         }
     }
 }
@@ -1447,6 +1451,8 @@ pub struct ReadLine {
     /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐 aterm `LineFramer`
     /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
     pub byte_offset: u64,
+    /// 本行第一个字节在文件里的偏移（没有自己身份的记录拿它合成 id，`agents::line_id`）。
+    pub start: u64,
 }
 
 /// Per-file read cursor, mirroring the monitor watcher's `FileCursor`
@@ -1636,6 +1642,7 @@ fn scan_new_lines(
                         seq,
                         raw: raw.to_string(),
                         byte_offset: start + line_end as u64,
+                        start: start + pos as u64,
                     });
                 }
             }
@@ -1824,6 +1831,7 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.offsets.remove(key);
     state.tails.remove(key);
     state.branches.remove(key);
+    state.typed.remove(key);
 }
 
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（补读计数用）。
@@ -1957,21 +1965,24 @@ fn send_line(
     sink: &mut FrameSink,
 ) -> (bool, bool) {
     let branch_changed = feed_chain(state, Path::new(path_str), &line.raw);
-    let runs = &state.runs;
     let face = crate::agents::record_face(stream_kind());
-    let parsed = face.and_then(|f| match (f.parse)(&line.raw) {
-        Ok(Some(p)) if p.displayable => Some(p),
-        _ => None,
-    });
+    let translated = face.and_then(|f| (f.parse)(&line.raw, line.start).ok().flatten());
     // §2.1 不变量并存：Line 逐行照发**每一条**；turn-end 是额外的边沿信号，不替代、不过滤 Line。
-    let rec = runs.main_record(session_id, &line.raw);
+    let rec = state.runs.main_record(session_id, &line.raw);
     // 子运行的记录（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束 ⇒ 不报轮次边沿。
     let turn_uuid = face
         .and_then(|f| f.turn_end)
         .and_then(|t| t(&line.raw))
         .filter(|_| !rec.in_run);
-    let (message, cwd) = match parsed {
-        Some(p) => (Some(p.message), p.cwd),
+    let (record, cwd) = match translated {
+        Some(mut t) => {
+            state
+                .typed
+                .entry(path_key(Path::new(path_str)))
+                .or_default()
+                .pass(&mut t);
+            (t.record, t.cwd)
+        }
         None => (None, None),
     };
 
@@ -1979,7 +1990,7 @@ fn send_line(
         session_id: session_id.to_string(),
         path: path_str.to_string(),
         seq: line.seq,
-        message,
+        record,
         cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
         rid: rec.rid,
@@ -2053,6 +2064,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         seq: state.seqs.peek(&key_str),
         raw: raw.to_string(),
         byte_offset: cursor.consumed + rest.len() as u64,
+        start: cursor.consumed,
     };
     let (runs_changed, branch_changed) = send_line(sid, &path.to_string_lossy(), line, state, sink);
     if runs_changed {
@@ -2652,6 +2664,7 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     }
     if reader.from == 0 {
         state.branches.remove(&key);
+        state.typed.remove(&key);
     }
     let mut cursor = ReadCursor {
         consumed: reader.from,

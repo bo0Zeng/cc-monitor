@@ -42,7 +42,7 @@ import { buildCorpus, htmlFingerprint } from "./scale2-height-corpus";
 import { estimateStreamNodeHeight, appliedIntrinsicPx } from "../../../src/frontend/ui/height-estimate";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale3-one-screen-gate.vitest.ts` 的用法）
-const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-records.jsonl");
+const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
 const GOLDEN = resolve(__dirname, "../../evidence/U-scale2-truth-golden.json");
 
 interface GoldenRow {

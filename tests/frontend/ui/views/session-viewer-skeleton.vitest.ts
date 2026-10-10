@@ -35,7 +35,7 @@ const ROWS = 1000;
 /** payload：偶数 seq 的 user 记录（`u{i}` 在第 i 条可显示记录上） */
 const payloads = (): RigPayload[] =>
   Array.from({ length: ROWS / 2 }, (_, i) =>
-    userLine(2 * i, `u${i}`, `第 ${i} 句`, { parentUuid: i > 0 ? `u${i - 1}` : null }),
+    userLine(2 * i, `u${i}`, `第 ${i} 句`),
   );
 /** 索引：`shift` ≠ 0 模拟「seq 空间对不上」 */
 const index = (shift = 0) => ({
@@ -132,14 +132,14 @@ describe("〔U3b〕查看器接骨架", () => {
     viewerRig.index = { available: false, reason: "老后端", from: 0, end: 0, rows: [] };
     const v = await mount();
     expect(gaps(v.element)).toEqual([]);
-    expect(v.element.querySelector('[data-uuid="u10"]')).toBeNull();
+    expect(v.element.querySelector('[data-id="u10"]')).toBeNull();
   });
 
   it("跳到占位里的一条 ⇒ 经骨架物化：卡出来了、占位在它两边切开", async () => {
     viewerRig.index = index();
     const v = await mount();
     (v as unknown as { scrollToMessage(u: string): void }).scrollToMessage("u150"); // seq 300
-    expect(v.element.querySelector('[data-uuid="u150"]')).not.toBeNull();
+    expect(v.element.querySelector('[data-id="u150"]')).not.toBeNull();
     const g = gaps(v.element);
     expect(g.length).toBe(2);
     expect(g[0][0]).toBe(0);

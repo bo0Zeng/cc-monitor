@@ -341,7 +341,8 @@ fn session_side_effects(
         | Out::Unseen { .. }
         | Out::Status { .. }
         | Out::Listed { .. }
-        | Out::Runs { .. } => {}
+        | Out::Runs { .. }
+        | Out::Branch { .. } => {}
     }
 }
 
@@ -1297,7 +1298,7 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<stream_source::
 /// v2.4.2 issue #2 抽出的最小 seam。今天它**只有一个**生产调用方：`stream_source::flush_lines`
 /// （远端流 · 本机流 · 旁路快照三路的行都从那里出去）。
 ///
-/// **这里不解释记录**：这一行在渲染模型里是什么（`message`）、进不进界面（有没有 `message`）、
+/// **这里不解释记录**：这一行在界面里是什么（`record`）、进不进界面（有没有 `record`）、
 /// 它自己的 `cwd`，都是那台后端给的成品（`agents/claudecode/`）；本函数只组载荷、记「连着的不可显示那一段」，`seq` 透传。
 ///
 /// `origin`：数据来源。载荷上的 `origin` 字段由它派生：本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字
@@ -1311,8 +1312,8 @@ pub(crate) fn batch_to_payloads(
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
         let skipped = runs.pending(&line.session_id, line.seq);
-        match line.message {
-            Some(message) => {
+        match line.record {
+            Some(record) => {
                 runs.saw(&line.session_id, line.seq, None);
                 payloads.push(ui_contract::JsonlLinePayload {
                     session_id: line.session_id,
@@ -1321,7 +1322,7 @@ pub(crate) fn batch_to_payloads(
                     // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
-                    message,
+                    record,
                     skipped_from: skipped,
                     rid: line.rid,
                 });

@@ -16,7 +16,7 @@ import type { OutlineSource } from "./views/outline-source";
 import type { TurnFold } from "./turn-fold";
 import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
-import type { ToolUseSeen } from "./cards/index";
+import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionActivity } from "./generated/SessionActivity";
 import type { SessionState } from "./tab-session-state";
@@ -124,38 +124,34 @@ export interface Tab {
   /** 按 seq 排序的 timeline：renderStreamRecord 调 `insert / peekPrev` 决定挂载位置与工具组合并。 */
   timeline: RecordTimeline;
   /**
-   * tool_use_id → 那次 tool_use 的工具名与卡型（`cards/index.ts::ToolUseSeen`）。tool_use 在 assistant 消息出现时记下，
-   * 下一条 user 消息的 tool_result 反查显示工具名、挑默认怎么画。
+   * 工具调用 id → 那次调用的工具名与卡型（`cards/index.ts::ToolUseSeen`）。调用在回复记录出现时记下，
+   * 下一条 said 记录的工具结果反查显示工具名、挑默认怎么画。
    */
   toolUseNames: Map<string, ToolUseSeen>;
   /**
-   * tool_use_id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use 内部（cards/index.ts 的 injectOrBuildToolResult）。
+   * 工具调用 id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use 内部（cards/index.ts 的 injectOrBuildToolResult）。
    */
   toolUseElements: Map<string, HTMLElement>;
   /** 派出子运行的那几张卡：父侧工具调用 id → 卡（运行表到了按它给那张卡标上是哪个子运行、什么状态）。 */
   runCards: Map<string, HTMLElement>;
   /**
-   * ESC 回退分支折叠管理器。
-   * 跟踪本 Tab 内所有有 uuid 的卡片，监听 parentUuid 分叉，把"被回退"的连续段
-   * 包到可折叠容器里。工具组（tool-group）不参与折叠（无单一 uuid）。
+   * ESC 回退分支折叠管理器：按那台后端给的主线外清单（会话流的 `branch` 格）把「被回退」的连续段
+   * 包到可折叠容器里。
    */
   branchFolder: BranchFolder;
   /** tool_result 可能先于它的 tool_use 到：先画独立卡，批结束后 reconcilePendingToolResults 重新配、注入。 */
   pendingToolResults: Map<
     string,
-    {
-      block: { type: "tool_result"; tool_use_id: string; content: unknown; is_error?: boolean };
-      element: HTMLElement;
-    }
+    { block: ToolResultBlock; element: HTMLElement }
   >;
   /**
    * 按 seq 去重集合。一个 Tab == 一个 jsonl == 一个 seq 空间（seq ＝ 当前文件里的行号）：重连后后端从 0 重发 → 命中即丢，Tab 内容不翻倍。
    * 这是入口唯一一道去重：文件从头重读时后端先出声、行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配新的集合；INVARIANTS § 25）。
-   * 拓扑那一层的 uuid 幂等（computeMainBranch 入口去重 ＋ BranchFolder.seenUuids）照留。closeTab 时 clear。
+   * closeTab 时 clear。
    */
   seenSeqs: SeqSet;
   /**
-   * 尾部优先窗口账本（单洞后缀不变量，见 live-window.ts）：启动重放的旧记录不建卡、收在这里（meta / branch 已喂）；
+   * 尾部优先窗口账本（单洞后缀不变量，见 live-window.ts）：启动重放的旧记录不建卡、收在这里（标题已喂）；
    * floor = null（virgin）的后台 tab 在 onBatchEnd 后空闲物化尾段，switchTo 命中时同步物化。
    */
   window: TailWindow;

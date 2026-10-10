@@ -239,7 +239,7 @@ export function withSessionReads(
 // 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
 
 /** 四问各自的名字（判据里的叫法 = 旧命令名）。 */
-export type RecordRead = "stream_read_session_jsonl" | "read_session_range" | "read_session_lines" | "load_subagent";
+export type RecordRead = "stream_read_session_jsonl" | "read_session_range" | "read_session_lines" | "load_subagent" | "history-branch";
 
 /** 一发 `chan_call` 若是这四问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
 export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<string, unknown>] | null {
@@ -250,6 +250,10 @@ export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<st
     const b = chanArgsJson(a) as Record<string, unknown>;
     if (b.whole === true) return ["stream_read_session_jsonl", { origin, jsonlPath: b.path }];
     return ["read_session_range", { origin, jsonlPath: b.path, offset: b.offset, until: b.until, seqBase: b.seq }];
+  }
+  if (a.op === "history-branch") {
+    const b = chanArgsJson(a) as Record<string, unknown>;
+    return ["history-branch", { origin, jsonlPath: b.path }];
   }
   if (a.op === "history-lines") {
     const b = chanArgsJson(a) as Record<string, unknown>;
@@ -276,7 +280,7 @@ export function recordReadCalls(calls: ReadonlyArray<readonly unknown[]>, which:
 
 /** 旧载荷（`JsonlLinePayload`）⇒ 后端的一条记录行（恰好那五格；`origin` / `skipped_from` 不在后端的成品里）。 */
 function recordLine(p: Record<string, unknown>): Record<string, unknown> {
-  return { session_id: p.session_id, path: p.path, seq: p.seq, cwd: p.cwd ?? null, message: p.message };
+  return { session_id: p.session_id, path: p.path, seq: p.seq, cwd: p.cwd ?? null, record: p.record };
 }
 
 /**
@@ -314,6 +318,9 @@ export async function recordReadReply(
     }
     case "load_subagent":
       return r === undefined ? undefined : chanReply(r);
+    // 主线外清单：判据没答 ⇒ 没有回退掉的（`{off: [], end: 0}`）；答了 ⇒ 原样（`{off, end}`）。
+    case "history-branch":
+      return chanReply(r ?? { off: [], end: 0 });
   }
 }
 

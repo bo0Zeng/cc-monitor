@@ -15,8 +15,8 @@ const MIN = 60_000;
 /** 派活那段话：子运行记录里第一条（`agentTask`）。 */
 function briefed(c: Convo, text: string): Convo {
   c.user(text);
-  const first = c.records[c.records.length - 1] as { userText?: unknown };
-  first.userText = { speaker: { kind: "agentTask" }, text };
+  const first = c.records[c.records.length - 1] as { who?: unknown };
+  first.who = { speaker: { kind: "agentTask" }, text };
   return c;
 }
 
@@ -53,7 +53,7 @@ export function agentWorld(): World {
   ];
   s.runs = runs.map((r) => (r.started_ms === undefined ? r : { ...r, started_text: hm(r.started_ms) }));
   s.runRecords = { ...s.runRecords, "agent-a2": a2.records, "agent-a3": a3.records, "agent-a4": a4.records, "agent-a5": a5.records };
-  if (s.runRecords["agent-a1"]?.[0]) (s.runRecords["agent-a1"][0] as { userText?: unknown }).userText = { speaker: { kind: "agentTask" }, text: "为 InventoryClient._call 写单元测试：成功、重试后成功、重试耗尽三种。" };
+  if (s.runRecords["agent-a1"]?.[0]) (s.runRecords["agent-a1"][0] as { who?: unknown }).who = { speaker: { kind: "agentTask" }, text: "为 InventoryClient._call 写单元测试：成功、重试后成功、重试耗尽三种。" };
   return w;
 }
 

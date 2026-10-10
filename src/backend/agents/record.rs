@@ -15,7 +15,14 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "LineRecord",
+        export_to = "../../frontend/ui/generated/"
+    )
+)]
 pub struct Record {
     /// 哪一家（注册表里那一家的 `kind`）。
     pub agent: String,
@@ -38,7 +45,14 @@ pub struct Record {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "LineRecordBody",
+        export_to = "../../frontend/ui/generated/"
+    )
+)]
 pub enum Body {
     /// 人那一侧说的一条（人打的字 · 斜杠命令 · 工具结果 · 系统注入 … 谁说的由 `who` 说）。
     #[serde(rename_all = "camelCase")]
@@ -154,6 +168,40 @@ pub enum Block {
         #[cfg_attr(test, ts(type = "unknown"))]
         source: serde_json::Value,
     },
+}
+
+/// 排队消息的打字时刻表（一份会话一张；上界固定，挤掉最老的）。通用：只认 [`super::QueueMark`]，不认哪一家的字段。
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TypedTimes {
+    /// (原句, 打字时刻)，越往后越新。
+    seen: std::collections::VecDeque<(String, String)>,
+}
+
+impl TypedTimes {
+    /// 表的上界（条数）。
+    pub(crate) const CAP: usize = 200;
+
+    /// 这一行过一遍表：打字那一刻 ⇒ 记下；被插进那一轮的那一条 ⇒ `at` / `timeText` 换成打字时刻（配不上 ⇒ 原样）。
+    pub(crate) fn pass(&mut self, t: &mut super::Translated) {
+        match &t.queue {
+            Some(super::QueueMark::Typed { text, at }) => {
+                self.seen.retain(|(k, _)| k != text);
+                self.seen.push_back((text.clone(), at.clone()));
+                while self.seen.len() > Self::CAP {
+                    self.seen.pop_front();
+                }
+            }
+            Some(super::QueueMark::Taken { text }) => {
+                let typed = self.seen.iter().rev().find(|(k, _)| k == text);
+                if let (Some((_, at)), Some(r)) = (typed, t.record.as_mut()) {
+                    r.time_text =
+                        crate::common::time::iso_hm_here(at).map(crate::common::cells::Words);
+                    r.at = Some(at.clone());
+                }
+            }
+            None => {}
+        }
+    }
 }
 
 #[cfg(test)]
