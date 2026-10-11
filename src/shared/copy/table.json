@@ -17772,7 +17772,7 @@
     "beAsk.choice.deny": {
       "kind": "action",
       "role": "按钮",
-      "zh": "不允许",
+      "zh": "拒绝",
       "args": []
     },
     "beAsk.choice.denyNote": {

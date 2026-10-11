@@ -5,7 +5,8 @@
   ],
   "files": {
     "tests/backend/assets/cc_bus_install_tests.rs": [
-      { "text": "失败", "use": "词义" }
+      { "text": "失败", "use": "词义" },
+      { "text": "拒绝", "use": "词义" }
     ],
     "tests/backend/control/cc_bus_tests.rs": [
       { "text": "只读", "use": "非文案" },
