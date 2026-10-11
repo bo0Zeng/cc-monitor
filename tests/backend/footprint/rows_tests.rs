@@ -1693,7 +1693,7 @@ fn the_session_shell_finds_each_windows_install_form() {
     }
 }
 
-/// 缺陷（10-10，fix2 的尾巴）：足迹里按 `PATH` 找的那一族（git · bash · tmux …）在 Windows 上只认不带后缀的名字
+/// 缺陷：足迹里按 `PATH` 找的那一族（git · bash · tmux …）在 Windows 上只认不带后缀的名字
 /// ⇒ Git for Windows 的 `git.exe` / `bash.exe`、MSYS2 的 `tmux.exe` 装着也报缺。今天它们与 agent 命令行问同一个找法
 /// （`platform::shell::find_session_command`，只是 `PATH` 用后端进程自己那一份）。每样按 Windows 的装法各一格（夹具造的）。
 #[test]

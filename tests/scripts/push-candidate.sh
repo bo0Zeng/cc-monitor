@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 用法（用户手敲）：在本仓任一棵树里 `bash tests/scripts/push-candidate.sh <合并树名>`
+# 用法（用户手敲）：在本仓任一棵树里 `bash tests/scripts/push-candidate.sh <合并工作树名>`
 #   ① w8/<名> 强推到 origin/next（候选分支；ci.yml 在它上面跑与 main 同一套 job，不打标签、不发版）
 #   ② 用 gh 等这一趟 CI 跑完
 #   ③ 全部 job 绿 ⇒ 主仓 main `merge --ff-only w8/<名>` 并推 origin main；
@@ -11,7 +11,7 @@
 #   GATE_STATE_DIR 失败日志落在它下面的 logs/（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate）。
 set -euo pipefail
 case "${1:-}" in -h|--help) sed -n '2,11p' "$0"; exit 0 ;; esac
-name=${1:?用法：bash tests/scripts/push-candidate.sh <合并树名>（推的是 w8/<名>）}
+name=${1:?用法：bash tests/scripts/push-candidate.sh <合并工作树名>（推的是 w8/<名>）}
 br="w8/$name"
 find_min=${PUSH_FIND_MIN:-10}; wait_min=${PUSH_WAIT_MIN:-60}
 logdir=${GATE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate}/logs
@@ -22,9 +22,9 @@ cd "$main_tree"
 die() { echo "push: $*" >&2; exit 1; }
 [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = main ] || die "主仓不在 main 上（脚本不切分支），先回 main 再来"
 sha=$(git rev-parse --verify --quiet "$br^{commit}") || die "没有分支 $br"
-git merge-base --is-ancestor main "$sha" || die "$br 不是 main 的快进（先在合并树里 merge main）"
+git merge-base --is-ancestor main "$sha" || die "$br 不是 main 的快进（先在合并工作树里 merge main）"
 git fetch -q origin main
-git merge-base --is-ancestor origin/main "$sha" || die "$br 不是 origin/main 的快进（远端 main 动过，先在合并树里 merge 它）"
+git merge-base --is-ancestor origin/main "$sha" || die "$br 不是 origin/main 的快进（远端 main 动过，先在合并工作树里 merge 它）"
 git show "$sha:.github/workflows/ci.yml" | grep -qE '^    branches: \[[^]]*\bnext\b' \
   || die "$br 的 ci.yml 的 push 触发里没有 next ⇒ 推候选分支不会起 CI；这棵树要先带上「CI 认候选分支」那一改"
 gh auth status >/dev/null 2>&1 || die "gh 没登录（gh auth status）"

@@ -25,11 +25,8 @@ data class TurnEnd(
         /** 不是 `turn_end` 或缺格 ⇒ `null`。 */
         fun of(frame: Map<String, Any?>): TurnEnd? {
             if (frame.str("kind") != KIND) return null
-            val sid = frame.str("session_id") ?: return null
-            val uuid = frame.str("uuid") ?: return null
-            val title = frame.str("title") ?: return null
-            val body = frame.str("body") ?: return null
-            return TurnEnd(sid, uuid, title, body)
+            val f = listOf("session_id", "uuid", "title", "body").map { frame.str(it) ?: return null }
+            return TurnEnd(sid = f[0], uuid = f[1], title = f[2], body = f[3])
         }
     }
 }

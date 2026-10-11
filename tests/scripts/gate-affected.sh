@@ -3,7 +3,7 @@
 #   ＋ 恒跑的便宜格，用 gate.sh 的 GATE_ONLY 跑、出收据，再跑私人扫描。表不认识的路径 ⇒ 整趟退回全量（等于 gate-clean.sh）。
 # 用法：在干净的树里 `bash tests/scripts/gate-affected.sh [--base <ref>] [--trust-ci] [--dry-run]`
 #   --base <ref>  跟谁比（默认 main；取 merge-base，所以树上先 merge 过 main 也只算这棵树自己的改动）
-#   --trust-ci    合并树推候选分支 next 之前用（push-candidate.sh 推 next、等 CI 全绿才快进 main）：CI 会跑的格这一趟不跑，只跑
+#   --trust-ci    合并工作树推候选分支 next 之前用（push-candidate.sh 推 next、等 CI 全绿才快进 main）：CI 会跑的格这一趟不跑，只跑
 #                 恒跑的便宜格 ＋ 被改到的、本机才有的格（muslbuild 等）＋ @keep-local 那几格 ＋ 被改到被测对象的 e2e 套件（逐套现算）；
 #                 先跑一遍 tests/scripts/quick-check.sh（两棵树整套 cargo test --lib ＋ 整套 vitest）兜跨路冲突
 #   --dry-run     只印挑格的计划，不跑

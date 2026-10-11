@@ -21,7 +21,7 @@ use crate::common::said::Said;
 /// **不靠 inactivity 拆链**：russh 的 inactivity 计时在无 keepalive 时会拆掉一条健康的空闲连接
 /// （空闲一小时的会话很常见）。死链由 keepalive 超时 ＋ EOF 检出。
 ///
-/// 为什么是 10 秒（net4，从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
+/// 为什么是 10 秒（从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
 /// 要等它被判死才失败、才换到新连接上 —— 30 秒 × 3 时是 120 秒，界面 45 秒的握手期限先到。
 /// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
 const KEEPALIVE: Duration = Duration::from_millis(10_000);

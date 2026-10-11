@@ -34,7 +34,7 @@
 @weaknet weak-net
 # 覆盖率：只量 src/**/*.ts，与 npm 同一批 vitest 再带插桩跑一遍；TS 与它的测试不动，覆盖率就动不了。
 @coverage coverage
-# 截图台架的无头壳（例子 ccm-shots-shell，源在 tests/shots/real/shell_main.rs，链壳的 lib）编不编得过（10-10 mg43 加）：
+# 截图台架的无头壳（例子 ccm-shots-shell，源在 tests/shots/real/shell_main.rs，链壳的 lib）编不编得过：
 #   壳那棵被改到时随 @shellrs 一起跑；只动台架（tests/shots/）时单跑这一格。CI 不跑它 ⇒ --trust-ci 下被改到就本机照跑。
 @shots shotsshell
 @shellcheck shellcheck
@@ -47,12 +47,12 @@
 #     比 winchk / winlink 的 -gnu 交叉更真）· 生成物最新；frontend job：npm audit · tsc · npm test · coverage 两步；
 #   backend job：cargo check --all-targets --target x86_64-pc-windows-msvc（≈ winchk-backend，msvc 比本机的 -gnu 更真）。
 @ci-windows fmt clippy cargo generated winchk winlink audit tsc npm coverage winchk-backend
-# CI 也跑、但 --trust-ci 时只要被改到本机照跑的：便宜的编译格里，近两周合并树全量门禁上真红过、quick-check 又看不见的那几格。
-#   mg22 winchk-backend（Windows 上 *mut c_void 不是 Send）· mg29 deadcode-backend（非 Windows 的空桩没人用）；deadcode 与它同一类。
+# CI 也跑、但 --trust-ci 时只要被改到本机照跑的：便宜的编译格里，近两周合并工作树的全量门禁上真红过、quick-check 又看不见的那几格。
+#   winchk-backend（Windows 上 *mut c_void 不是 Send）· deadcode-backend（非 Windows 的空桩没人用）；deadcode 与它同一类。
 #   跑它们比推上去等 CI 红了再修一棵树便宜（编译格合计中位一分半）。
 #   e2e 套件不在这里写死（10-10 起）：--trust-ci 下被改到被测对象的那几套由 plan.py 逐套现算、本机照跑
 #   （套件入口顺着摸到的文件 ＋ 它起的后端二进制 / 它 cargo test 的那棵树的源）；从前写死的 backend-cc-bus · ccm-cli · ccm-contract-parity 随之撤下。
-#   winlink（10-10 加）：链两个二进制之外还查 lib 测试程序带不带进程清单（mg38 推上去 CI 才发现测试程序在 Windows 上起不来）；壳那棵被改到时本机照跑。
+#   winlink：链两个二进制之外还查 lib 测试程序带不带进程清单（缺了它，测试程序在 Windows 上起不来，推上去 CI 才看得见）；壳那棵被改到时本机照跑。
 @keep-local deadcode deadcode-backend winchk-backend winlink npm
 
 # ── 门禁自己 · CI 形状 · 依赖清单：动了就全量 ──────────────────────────────────────────
