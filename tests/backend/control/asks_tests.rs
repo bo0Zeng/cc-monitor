@@ -290,8 +290,8 @@ fn needs_without_a_pending_request_say_only_in_the_terminal() {
     let n = crate::observe::facts_query::dress_ask_with(n, None, 0).unwrap();
     assert!(n.ask.is_none());
     assert_eq!(
-        n.manual_text.as_ref().map(|w| w.0.as_str()),
-        Some("只能在终端里答")
+        n.manual_text.as_ref().map(|w| w.0.clone()),
+        Some(copy_core::copy_text("beAsk.manual.terminal", &[]))
     );
     assert!(crate::observe::facts_query::dress_ask_with(None, None, 0).is_none());
 }

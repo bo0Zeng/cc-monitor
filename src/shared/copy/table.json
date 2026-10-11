@@ -17718,7 +17718,7 @@
     "beAsk.scope.local": {
       "kind": "body",
       "role": "片段",
-      "zh": "本项目 · 只这台",
+      "zh": "本项目 · 本机",
       "args": []
     },
     "beAsk.scope.project": {
@@ -17772,7 +17772,7 @@
     "beAsk.choice.deny": {
       "kind": "action",
       "role": "按钮",
-      "zh": "拒绝",
+      "zh": "不允许",
       "args": []
     },
     "beAsk.choice.denyNote": {
@@ -17796,19 +17796,19 @@
     "beAsk.choice.planAuto": {
       "kind": "action",
       "role": "按钮",
-      "zh": "批准，用自动模式",
+      "zh": "自动模式",
       "args": []
     },
     "beAsk.choice.planEdits": {
       "kind": "action",
       "role": "按钮",
-      "zh": "批准，自动接受编辑",
+      "zh": "自动接受编辑",
       "args": []
     },
     "beAsk.choice.planManual": {
       "kind": "action",
       "role": "按钮",
-      "zh": "批准，逐个确认编辑",
+      "zh": "逐个确认",
       "args": []
     },
     "beAsk.choice.planKeep": {
@@ -17844,31 +17844,31 @@
     "beAsk.answer.already": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一条已经有人答过",
+      "zh": "已有人答过",
       "args": []
     },
     "beAsk.answer.closed": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一条已在终端里答过或已关掉",
+      "zh": "已在终端答过或已关闭",
       "args": []
     },
     "beAsk.answer.notFound": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到这一条请求",
+      "zh": "找不到该请求",
       "args": []
     },
     "beAsk.answer.badChoice": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一项不能选",
+      "zh": "该项不可选",
       "args": []
     },
     "beAsk.answer.noteRequired": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一项要写一句说明",
+      "zh": "该项需附说明",
       "args": []
     },
     "beAsk.answer.picks": {

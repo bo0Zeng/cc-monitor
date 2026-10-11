@@ -176,7 +176,7 @@ fn suggestion_of(s: &Value) -> Option<AskSuggestion> {
             }
             copy_text(
                 "beAsk.rule.dirs",
-                &[("dirs", &dirs.join("、")), ("scope", &scope)],
+                &[("dirs", &dirs.join(", ")), ("scope", &scope)],
             )
         }
         "setMode" => match s.get("mode").and_then(Value::as_str)? {
@@ -203,7 +203,7 @@ fn suggestion_of(s: &Value) -> Option<AskSuggestion> {
             }
             copy_text(
                 "beAsk.rule.rules",
-                &[("rules", &rules.join("、")), ("scope", &scope)],
+                &[("rules", &rules.join(", ")), ("scope", &scope)],
             )
         }
         _ => return None,
