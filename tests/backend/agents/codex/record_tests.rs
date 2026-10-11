@@ -624,7 +624,7 @@ fn codex_sample_rollout_reads_to_the_record_golden() {
 
 /// ★ 骨架那一问（注册表 `RecordFace.class`）与整条翻译逐条一致，骨架索引照**这份记录那一家**的认法判。
 /// 从前这一家没有它、骨架索引又照记录树那一家（Claude）的认法判 Codex 的行 ⇒ 每行都「不进界面」，
-/// 查看器打开有消息的 Codex 会话写「无消息 · 0 条」（shotreal6 main-codex-card；`history-page` 那一路照样出得来记录）。
+/// 查看器打开有消息的 Codex 会话写「无消息 · 0 条」（`history-page` 那一路照样出得来记录）。
 #[test]
 fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
     use crate::agents::record::RecordClass;

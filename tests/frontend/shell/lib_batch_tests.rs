@@ -128,7 +128,7 @@ fn every_payload_says_the_undisplayable_run_right_before_it() {
 }
 
 /// ★ 补历史（旁路快照：开页时 / 那台晚连上时把已有的记录补过来）与刚写进来的分开说：载荷带 `catch_up`。
-/// 界面据它不把旧记录里人说过的话当成「刚敲的」（不自动跟到那个 tab，shotreal6 card-unread 起页时 tab 乱跳）；
+/// 界面据它不把旧记录里人说过的话当成「刚敲的」（不自动跟到那个 tab，起页时 tab 乱跳）；
 /// 刚写进来的照旧不带（线上形状与原来逐字相同）。
 #[test]
 fn a_catch_up_line_says_so_on_the_payload_and_a_live_one_does_not() {

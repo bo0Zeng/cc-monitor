@@ -2,7 +2,7 @@
  * 要求（streamfix 第 4 条）：起页时 / 那台晚连上时补过来的旧记录不许把当前 tab 切走 —— 旧记录里人说过的话不是「用户刚敲的」。
  * 补历史与刚写进来的由 monitor 那一侧分开说（载荷的 `catch_up`，会话宣告那一刻的行数为界，`snapshot.rs::catch_up_at`）；
  * 界面只认它，不按时刻猜。刚写进来的人话照旧自动跟过去。
- * 起因：shotreal6 card-unread 的探针 —— 前端就绪之后各会话的记录才到，每个会话里最后那句人话都走了一次 `onRealUserInput`，tab 连跳七下。
+ * 起因：起页时的探针 —— 前端就绪之后各会话的记录才到，每个会话里最后那句人话都走了一次 `onRealUserInput`，tab 连跳七下。
  */
 import { describe, it, expect, vi } from "vitest";
 

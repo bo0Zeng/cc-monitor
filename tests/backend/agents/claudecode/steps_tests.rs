@@ -447,7 +447,7 @@ fn a_result_carries_its_first_line_preview() {
 }
 
 /// ★ 派出子 agent 那次调用的结果是哪一种是核心出的一格（`kind`）：后台派出当场回的「已启动」回执（`status: async_launched`）
-/// 不是交回 —— 界面从前见结果就写「交回结果 · N 字」，子 agent 还在跑卡上就说它交回了（shotreal6 agent-window-waiting）。
+/// 不是交回 —— 界面从前见结果就写「交回结果 · N 字」，子 agent 还在跑卡上就说它交回了。
 /// 带 `agentId` 的其余结果 ⇒ 交回；不是派出子 agent 的结果 ⇒ 缺。
 #[test]
 fn a_dispatch_result_says_whether_it_is_a_launch_receipt_or_a_handback() {
