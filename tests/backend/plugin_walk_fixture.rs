@@ -1484,7 +1484,7 @@ mod tests {
             "本文件的测试段里找不到 `{needle}` —— 抽取坏了，下面那条天花板在空转"
         );
         let mut others: Vec<String> = Vec::new();
-        // 〔搬测试 2026-09-17〕本条数的是**测试段**里经通用调用口起进程的文件，
+        // 本条数的是**测试段**里经通用调用口起进程的文件，
         // 而测试段今天有一半住 `tests/backend/` ⇒ 只扫 `src_root()` 会漏掉它们，
         // 下面那条集合相等当场红（这正是它该有的反应）。
         let mut pop: Vec<(std::path::PathBuf, String)> =

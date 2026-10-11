@@ -14,8 +14,8 @@ name: Release
 # 现打两条硬事实，它们是这一段存在的全部理由：
 #  ① 三个落点（`embedded-backends/` · `binaries/` · `native-backend/`）**全部 gitignore**
 #     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
-#     🔴 〔步 `19c` 订正 09-19〕**这一句在步 8（全仓改名 `daemon`→`backend`）到今天之间是假的**：
-#     `src/frontend/shell/.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/`，
+#     🔴 **这一句在全仓改名（`daemon`→`backend`）之后曾经是假的**：
+#     `src/frontend/shell/.gitignore` 里当时还写着 `/embedded-daemons/` 与 `/native-daemon/`，
 #     现打 `git check-ignore` **两条都不命中** ⇒ 三个落点里有两个从改名那天起就没被挡住。
 #     那两行已改对，并给它们加了机检锚（`K-R124-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
 #     —— 这句「硬事实」从此有人每趟核它。

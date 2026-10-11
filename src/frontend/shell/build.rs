@@ -127,7 +127,7 @@ fn emit_embedded_id(carried: &[(String, String)]) {
 /// `embedded_backends` cfg；任一缺失则不置 cfg（`byte_table::pick` 对 Linux 两格返回 None → 部署那一步说「这一版没带」）。
 /// 两份都在 ⇒ 各自自报的 id 记进 `carried`（[`emit_embedded_id`] 核它们与本机那一份同一版）。
 ///
-/// 🔴 〔步 `19c`〕**这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
+/// 🔴 **这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
 /// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
 /// 两者**逐字同一条配方**（`K-R124` ⑬b 两向对拍）。
 fn embed_backends(carried: &mut Vec<(String, String)>) {

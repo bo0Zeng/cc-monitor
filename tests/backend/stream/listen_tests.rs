@@ -243,7 +243,7 @@ fn every_file_this_head_note_points_at_really_exists() {
         // 后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
         // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
         crate::guard_support::src_root(),
-        // 〔搬测试 2026-09-17〕头注里点名的很多是判据文件，它们今天住第二棵树。
+        // 头注里点名的很多是判据文件，它们今天住第二棵树。
         crate::guard_support::tests_root(),
         crate::guard_support::repo_root(),
         crate::guard_support::repo_root().join("src/frontend/shell/src"),

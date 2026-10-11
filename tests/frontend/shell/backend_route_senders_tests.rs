@@ -40,7 +40,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   （`src/frontend/ui/tmux-control.ts::capturePane`），monitor 里那个发送端删了 ——
     //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
     //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
-    // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
+    // ★ **第七个发送端** —— 原生文件窗口那一侧的搜索
     //   （`filewin/find.rs`，`files-find` / `files-index-status` /
     //   `files-index-rebuild` / `files-browse` 四条）。
     //   它**没有第二条路可回落**，而且这一次那句话是硬的：

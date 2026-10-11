@@ -297,7 +297,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k 如实登记：这一半是**源码半**，
 ///   re-embed（CI 交叉编译）在发版时做，源码这一半**不做**。
 ///
-/// - p2m-files-read-online〔步 `24f` **第二刀**〕：
+/// - p2m-files-read-online：
 ///   **`files-read` 这一族上线** —— 四条**纯读**能力同拍进两个命令面
 ///   （[`SUBCOMMANDS`] 25 → 29：`--files-ls` / `--files-stat` / `--files-find` /
 ///   `--files-index-status`；`inbound::REGISTRY` 与 `inbound::COMMANDS` 10 → 14）。
@@ -1190,13 +1190,13 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
     //  ⚠ 摘这一行会让 `build_id_guard` 红 —— 这里**不 bump**，打版本号时统一做。
-    // 〔步 `24f` 第二刀 09-20〕`files-read` 这一族的 CLI 面。登记在这里的理由与上面
+    // `files-read` 这一族的 CLI 面。登记在这里的理由与上面
     // 那几条逐字相同 —— `is_query_mode` 那道**闸门**读的就是本表；不在表里 ⇒ 当未知 flag
     // ⇒ 打一行 warn 之后照常进流模式，调用方拿到的是一堆 jsonl 行而不是它要的应答。
     // ⚠ 线上名用 `-` 不用 `.`（能力名仍是 `files.ls` 那一套）：理由整段在
     // `files::answer_wire` 的头注 —— 一句话是 `"--files.ls"` 会被本仓两个 token
     // 取词器**静默丢弃**，那等于把这四条从三条判据底下同时抽走而三条都照常报绿。
-    // 〔步 `24f` 第三刀 09-21〕同族的第五、第六条。登记在这里的理由
+    // 同族的第五、第六条。登记在这里的理由
     // 与上面那四条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
     // 🔴 **本族第一条会往盘上写的命令。**
     //
