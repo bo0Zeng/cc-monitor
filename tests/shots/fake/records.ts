@@ -101,9 +101,11 @@ export class Convo {
     return out;
   }
 
-  /** 这一段与它派出的子 agent 那几段里给了写入时刻的：相对家目录的路径 → 修改时刻（epoch ms）。 */
+  /** 这一段与它派出的子 agent 那几段的修改时刻：相对家目录的路径 → epoch ms（给了写入时刻照它，没给照末一条那一刻）。 */
   mtimes(): Record<string, number> {
-    const out: Record<string, number> = this.writtenAt === undefined ? {} : { [this.file()]: this.writtenAt };
+    // 没给写入时刻 ⇒ 末一条那一刻（文件就是那时候写的）；一条带时刻的都没有 ⇒ 缺（开页那一刻）。
+    const at = this.writtenAt ?? this.lastStamp();
+    const out: Record<string, number> = at === undefined ? {} : { [this.file()]: at };
     for (const c of this.children.values()) Object.assign(out, c.mtimes());
     return out;
   }
@@ -131,6 +133,12 @@ export class Convo {
     this.t += delta;
     if (this.writtenAt !== undefined) this.writtenAt += delta;
     for (const c of this.children.values()) c.shift(delta);
+  }
+
+  private lastStamp(): number | undefined {
+    let last: number | undefined;
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") last = Math.max(last ?? -Infinity, Date.parse(l.timestamp));
+    return last;
   }
 
   /** 头一条带时刻的那条的时刻（epoch ms）；一条都没有 ⇒ 缺。 */
