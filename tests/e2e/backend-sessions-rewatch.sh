@@ -47,6 +47,10 @@ fail=0
 pass=0
 chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
 
+# 等后端自己说出某件事（它的 stderr 里那句话出现到第 n 次），不睡固定秒数：`said <文件> <原文> [n]`。
+said() { local _f="$1" _w="$2" _n="${3:-1}"; wall_until '[ "$(grep -cF -- "$_w" "$_f" 2>/dev/null)" -ge "$_n" ]'; }
+SESSIONS_ON='sessions 目录已（重新）挂上 watch'
+
 # $1=标签 $2=recreate|late|none
 probe() {
   local label="$1" mode="$2"
@@ -59,10 +63,13 @@ probe() {
 
   CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream < /dev/null > "$out" 2> "$W/$label.err" &
   local dpid=$!
-  sleep 2.5
+  # 后端挂好了才动目录：sessions/ 在的那几组等它说挂上了 sessions/，late 那组等它挂上 claude 目录本身。
+  if [ "$mode" = late ]; then said "$W/$label.err" "已挂上"; else said "$W/$label.err" "$SESSIONS_ON"; fi
   case "$mode" in
-    recreate) rm -rf -- "$F/sessions"; mkdir -p "$F/sessions"; sleep 0.5 ;;
-    late)     mkdir -p "$F/sessions"; sleep 0.5 ;;
+    # 先等它看见目录没了，再建回来、等它重新挂上（第二次说那句）⇒ 之后写的 pidfile 走的是新 inode 上的事件。
+    recreate) rm -rf -- "$F/sessions"; said "$W/$label.err" "sessions 目录消失了"
+              mkdir -p "$F/sessions"; said "$W/$label.err" "$SESSIONS_ON" 2 ;;
+    late)     mkdir -p "$F/sessions"; said "$W/$label.err" "$SESSIONS_ON" ;;
     # ★ 窗口期那一格：重建之后**立刻**写 pidfile，不给后端留重挂的时间
     #   ⇒ 那次写的事件永远不会来，只有「重挂时顺带重扫」才捞得回来。
     racy)     rm -rf -- "$F/sessions"; mkdir -p "$F/sessions"
@@ -72,7 +79,7 @@ probe() {
   printf '{"pid":%d,"sessionId":"sid-%s","cwd":"/tmp","kind":"interactive","procStart":"%s"}\n' \
     "$vpid" "$label" "$ticks" > "$F/sessions/$vpid.json"
   printf '{"type":"user","sessionId":"sid-%s"}\n' "$label" > "$F/projects/p/sid-$label.jsonl"
-  sleep 4
+  said "$out" '"kind":"session_added"'
   kill "$dpid" "$vpid" 2>/dev/null
   wait "$dpid" 2>/dev/null
   grep -c "\"kind\":\"session_added\"" "$out" 2>/dev/null || true
@@ -91,8 +98,8 @@ chk "late 仍有 session_added" "$(probe late late)" "1"
 
 echo "[4] 重建之后**立刻**写 pidfile（重挂前的窗口期）"
 # ★ 这一格是 D 阶段变异 M23 逼出来的：把「重挂时顺带重扫」删掉，前三格**全绿** ——
-#   因为它们都在重建与写文件之间留了 0.5s，事件驱动那条路够用。
-#   而真实台架/真实用户不会替我们留这半秒。
+#   因为它们都在重建与写文件之间等后端重新挂上（10-11 前是睡 0.5s），事件驱动那条路够用。
+#   而真实台架/真实用户不会替我们等这一下。
 chk "racy 仍有 session_added" "$(probe racy racy)" "1"
 
 echo "[5] ★ projects/ **被换 inode** 之后，行帧还得来（同族第三个）"
@@ -107,20 +114,22 @@ _proj_recreate() {
   sleep 200 & local vpid=$!
   local ticks; ticks=$(awk '{print $22}' "/proc/$vpid/stat")
   local sid="projre-1111-2222-3333-444455556666"
-  CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream < /dev/null > "$out" 2>/dev/null &
+  CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream < /dev/null > "$out" 2> "$W/projre.err" &
   local dp=$!
-  sleep 3
+  said "$W/projre.err" "$SESSIONS_ON"
   printf '{"pid":%d,"sessionId":"%s","cwd":"/tmp","kind":"interactive","procStart":"%s"}\n' \
     "$vpid" "$sid" "$ticks" > "$F/sessions/$vpid.json"
   printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"一"}}\n' "$sid" \
     > "$F/projects/p/$sid.jsonl"
-  sleep 4
-  rm -rf -- "$F/projects"; mkdir -p "$F/projects/p"; sleep 1     # ← 换 inode
+  said "$out" '"kind":"line"'
+  # ← 换 inode：等它看见目录没了、再建回来等它重新挂上，之后写的两行走新 inode 上的事件。
+  rm -rf -- "$F/projects"; said "$W/projre.err" "目录消失了 $F/projects"
+  mkdir -p "$F/projects/p"; said "$W/projre.err" "已（重新）挂上 watch: $F/projects" 2
   printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"一"}}\n' "$sid" \
     > "$F/projects/p/$sid.jsonl"
   printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"二"}}\n' "$sid" \
     >> "$F/projects/p/$sid.jsonl"
-  sleep 5
+  said "$out" '"kind":"line"' 2
   kill "$dp" "$vpid" 2>/dev/null; wait "$dp" 2>/dev/null
   grep -c '"kind":"line"' "$out" 2>/dev/null || true
 }

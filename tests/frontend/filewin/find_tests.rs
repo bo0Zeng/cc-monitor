@@ -461,7 +461,7 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     testing::settle(&w.search, 0, "连打那一趟").await;
     // 等到五趟全落地（`rounds` 会数到 5：`store_if_current` 只对号对得上的那一趟写，
     // 但 `rounds` 那个数是**落地过几份**，号不对的那几趟不加）。
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.search.rebuilds_sent() > 0 && !w.search.is_running() {
             break;
         }
@@ -720,7 +720,7 @@ async fn a_header_click_asks_the_backend_for_that_order_and_pages_keep_it() {
         "帧上的顺序不是后端回的顺序"
     );
     let mut more = serde_json::Value::Null;
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         more = find_calls(&wired).last().unwrap().clone();
         if more["offset"] != 0 {
             break;
@@ -896,13 +896,13 @@ async fn the_unreadable_dirs_can_be_listed_and_a_click_copies_the_path() {
 
 /// 等到那块板子挂上「冷启动首建正在走」。**带上限，绝不挂死**（同 [`testing::settle`]）。
 async fn until_first_build_shows(board: &SearchBoard, who: &str) -> u64 {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if let Some(n) = board.first_build() {
             return n;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("{who}：等了 3 秒板子上还没挂「首建正在走」—— 首建那一趟没挂上它");
+    panic!("{who}：到兜底上限板子上还没挂「首建正在走」—— 首建那一趟没挂上它");
 }
 
 /// **冷启动首建那一趟正在走时，帧上恰有「首建文件清单 · 机器 · 约 Ns」，
@@ -1032,7 +1032,7 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
     testing::type_into_search(&ctx, &mut w, NEEDLE);
     // 等到重走**真的发出去、而且还扣着**（线上记录先于应答进账）。
     let mut seen = false;
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if wired.count(CMD_INDEX_REBUILD) == 1 {
             seen = true;
             break;

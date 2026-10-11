@@ -87,7 +87,8 @@ make_idle() {  # <sid> <claude_dir>
   [ -n "$pf" ] && p="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$pf")"
   [ -n "${p:-}" ] || { echo "make_idle: fake-claude 未落 pidfile($dir)"; return 1; }
   kill "$p" 2>/dev/null || true       # claude 退 → idle(灰)
-  sleep 0.6
+  _mi_p="$p"   # 等它真的退了（进程表里没有，或只剩待收的僵尸）
+  wall_until '[ ! -d "/proc/$_mi_p" ] || grep -q ") Z " "/proc/$_mi_p/stat" 2>/dev/null' || true
   echo "$sess"
 }
 
@@ -200,8 +201,10 @@ SID6="$(cat /proc/sys/kernel/random/uuid)"; S6="cc-${SID6:0:8}"
 rm -f "$ACCT_A/argv.log"
 CMD6="$(drv tmux-new "$SID6" "/tmp/e2e-remote" "$FAKE" "$S6" a)"
 SESSIONS+=("$S6")
-fire_resume "$CMD6"; sleep 1
-fire_resume "$CMD6"; sleep 1     # 第二次:会话已存在 → new-session 2>/dev/null 失败 → && 短路跳过 send-keys
+fire_resume "$CMD6"; wait_argv_resume "$ACCT_A" "$SID6" >/dev/null || true
+# 第二次:会话已存在 → new-session 2>/dev/null 失败 → && 短路跳过 send-keys。tmux 那几步是同步的 ⇒
+#   它回来时建没建 `-N` 孤儿已经定了（不睡一会儿再看）。
+fire_resume "$CMD6"
 N6="$(grep -cE "sid=$SID6 .*argv=--resume" "$ACCT_A/argv.log" 2>/dev/null || true)"
 echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(session_exists "$S6")"
 [ "$N6" = 1 ] && [ "$(orphan_count "$S6")" = 0 ] && ok "B6a 幂等:仅 1 次 resume(第二次被 create-gate 短路)、0 孤儿" || bad "B6a 非幂等(resume 行数=$N6 或有孤儿)"
@@ -233,7 +236,7 @@ CMD7="$(drv tmux-new "$SID7" "/tmp/e2e-remote" "$FAKE" "$FRESH" -)"
 # 后面两条查的是**真被建出来的那个**（`$FRESH`），不是我们期望的那个 —— 否则命名断言
 # 一旦失败，这里会跟着报一条误导性的「没建会话」，把一个错误放大成两个。
 SESSIONS+=("$FRESH")
-fire_resume "$CMD7"; sleep 1
+fire_resume "$CMD7"   # new-session 是同步的：回来时会话建没建已经定了
 [ "$(session_exists "$FRESH")" = 1 ] && [ "$(orphan_count "$FRESH")" = 0 ] && ok "B6b 回退新建出 $FRESH、无孤儿" || bad "B6b 回退未建会话或有孤儿"
 
 # ── B6c:会话仍 live → 守卫不误动(create-gate 短路,不双 resume/不产孤儿)──────────────────────
@@ -243,10 +246,10 @@ rm -f "$ACCT_A/argv.log"
 # 先真起一个 live(fake-claude 常驻,不 kill)——模拟目标会话仍活
 CMD8A="$(drv tmux-new "$SID8" "/tmp/e2e-remote" "$FAKE" "$S8" a)"
 SESSIONS+=("$S8")
-fire_resume "$CMD8A"; sleep 1
+fire_resume "$CMD8A"; wait_argv_resume "$ACCT_A" "$SID8" >/dev/null || true
 N8_1="$(grep -cE "sid=$SID8 .*argv=--resume" "$ACCT_A/argv.log" 2>/dev/null || true)"
 # 会话 live 时再发一次 tmux-new resume:new-session 失败短路 → 不再 resume(守卫)
-fire_resume "$CMD8A"; sleep 1
+fire_resume "$CMD8A"   # 同 B6a 第二次：tmux 那几步同步，回来时短路没短路已经定了
 N8_2="$(grep -cE "sid=$SID8 .*argv=--resume" "$ACCT_A/argv.log" 2>/dev/null || true)"
 echo "   resume 行数 起始=$N8_1 再触发后=$N8_2  orphan=$(orphan_count "$S8")"
 [ "$N8_1" = 1 ] && [ "$N8_2" = 1 ] && [ "$(orphan_count "$S8")" = 0 ] && ok "B6c live 时再 resume 被守卫短路(行数仍=1)、0 孤儿" || bad "B6c 守卫误动(行数 $N8_1→$N8_2 或有孤儿)"

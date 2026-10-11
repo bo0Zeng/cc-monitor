@@ -441,7 +441,7 @@ impl Iso {
     }
     /// 有界等待（夹具侧）：那一屏里 `needle` 至少出现了 `times` 次。
     fn shows_times(&self, handle: &str, needle: &str, times: usize) -> bool {
-        (0..150).any(|_| {
+        guard_core::wall::rounds().any(|_| {
             let p = preview_on(
                 self.on(),
                 &json!({ "terminal": handle, "color": false }),
@@ -547,7 +547,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     // 送键：ctrl-c 把前台的 cat 停掉 ⇒ 那个会话随之结束、从名单里消失。
     let r = input_on(iso.on(), &json!({ "terminal": h, "key": "ctrl-c" })).unwrap();
     assert_eq!(r["result"], "delivered");
-    let gone = (0..150).any(|_| {
+    let gone = guard_core::wall::rounds().any(|_| {
         let l = list_on(iso.on(), &json!({})).unwrap();
         let still = l["terminals"].to_string().contains("mif-cc");
         if still {
@@ -736,7 +736,7 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
     //   只看 `comm` 不够：内核在 exec 里先换上新的地址空间、再改名，环境那几页要再往后才摆好 ⇒ 这中间
     //   `comm` 已是 `cat`、`/proc/<pid>/environ` 却读回 0 字节，打标那一下读环境落在这里就判 `PaneUnknown`
     //   （负载 100 时并发跑四百多趟红过一次）。改成名字对上、环境也读得出来才算起好。
-    let ready = (0..150).any(|_| {
+    let ready = guard_core::wall::rounds().any(|_| {
         let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
         let env = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
         let hit = comm.trim() == "cat" && !env.is_empty();

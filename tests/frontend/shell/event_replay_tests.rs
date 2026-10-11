@@ -574,7 +574,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     let r2 = r.clone();
     let done = tokio::spawn(async move { r2.ready_point(None).await });
     // 等它交掉 credit 那 3 格、停下来等 want
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if rec.all().len() >= 3 {
             break;
         }
@@ -612,7 +612,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     let boxo = crate::origin::Origin("box".to_string());
     r.origin_seen(&boxo, true);
     r.subscribe("main", 2, &boxo, "session-lines", None, 10);
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if rec.all().iter().any(|i| what(i).0 == "unseen") {
             break;
         }
@@ -641,7 +641,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     early.push(far.clone());
     r.on_line_batch_awaited(early).await;
     r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 100);
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if rec.all().iter().any(|i| what(i).0 == "unseen") {
             break;
         }
@@ -743,7 +743,7 @@ async fn stop_and_resubscribe_leave_no_orphans() {
     r.subscribe("main", 1, &local(), "session-lines", None, 1);
     let r2 = r.clone();
     let done = tokio::spawn(async move { r2.ready_point(None).await });
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if !rec.all().is_empty() {
             break;
         }
@@ -757,7 +757,7 @@ async fn stop_and_resubscribe_leave_no_orphans() {
     assert!(rec.all().is_empty(), "撤了之后还在交");
     // 重订同一个编号：新的那条从位置 0 起，旧的那条不再收
     r.subscribe("main", 1, &local(), "session-lines", None, 10);
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if rec.all().iter().any(|i| what(i).0 == "end") {
             break;
         }

@@ -589,7 +589,7 @@ fn drive_real_pointer(
         log.push("一个窗口都没等到".into());
         return log;
     };
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if shared.lock().unwrap().frames >= 5 {
             break;
         }
@@ -630,7 +630,7 @@ fn drive_real_pointer(
     if let Err(e) = xvfb::xdotool_on(display, &["click", "1"]) {
         log.push(format!("点不下去：{e}"));
     }
-    for _ in 0..60 {
+    for _ in guard_core::wall::rounds() {
         if shared.lock().unwrap().pick_clicks > 0 {
             break;
         }
@@ -666,6 +666,8 @@ fn drive_real_pointer(
             sleep(80);
         }
     }
+    // 双击那一维判不了（读数只印出来登记，见下面那条判据）：`row_clicks` 可能一直是 0 ⇒ 这里只给它一个看一眼的窗，
+    //   不能等到兜底的那个数（那样每趟都要白等五分钟）。
     for _ in 0..60 {
         if shared.lock().unwrap().row_clicks > 0 {
             break;

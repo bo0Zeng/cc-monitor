@@ -8,20 +8,26 @@
 //! | # | 判什么 |
 //! |---|---|
 //! | W1 | 同一个数到处一样：Rust `wall::CEILING_SECS` · TS `tests/test-support/wall-ceiling.ts` 的 `WALL_CEILING_MS` · Kotlin 测试源里每一处 `WALL_CEILING_MS` · e2e `sandbox-env.sh` 的 `WALL_CEILING_S` · 截图台架 `tests/shots/run.mjs` 的 `WALL_CEILING_MS`；vitest 的 `testTimeout` / `hookTimeout` 就是它 |
-//! | W2 | 门禁跑的测试源里，下面这几形的上限只许是那个数（[`FORMS`]），例外逐条登记理由（[`EXEMPT`]，死行也红） |
+//! | W2 | 门禁跑的测试源里，下面这几形的上限只许是那个数、也不许睡一会儿再断言（[`FORMS`]），例外逐条登记理由（[`EXEMPT`]，死行也红） |
 //! | W3 | 用到 `WALL_CEILING_S` 的 e2e 脚本都 source 了 `sandbox-env.sh`（不然变量是空的，`timeout ""` 当场报错） |
 //! | W4 | 每一形的认法在正反两个样本上判对（文件末尾） |
 //!
 //! 人群（门禁真跑的那些）：`tests/` 下 `*.vitest.ts` · `*.test.ts` · `vitest.config.ts`；
 //! `tests/` 下 `.rs` ＋ `src/` 下 `.rs` 的测试段（`test_source`）；手机端 `src/test` · `src/androidTest` · `testing/` 的 `.kt`；
 //! `tests/e2e/` 下 `.sh`。不在人群里：`tests/evidence/`（量具与读数）· `tests/benches/`（速度台，手跑）·
-//! `src/vendor/`（别人的代码）· 只能手跑的 [`HAND_ONLY`] 与门禁不跑的 e2e 脚本 [`SH_NOT_GATED`]。
+//! `src/vendor/`（别人的代码）· 只能手跑的 [`HAND_ONLY`] · 门禁不跑的 e2e 脚本 [`SH_NOT_GATED`] · 手跑的真机台架（`test_tiers` 的 `MANUAL_RIGS`）。
 //!
 //! 只抓**上限**：下限（`took >= 600ms`）与静窗（「这 400 毫秒里不许有事件」）机器忙只会让它更长 / 更弱，不会误红，不管。
 //! 一秒以下的等待当轮询片或静窗（逐条看过：`recv_timeout(400ms)` 后面都是 `.is_err()` / `Timeout =>`）。
 //!
+//! 「睡一会儿再断言」（10-11 tools2 补）：不在轮询圈里的 `sleep(…)`、同一块往后五句之内有断言（rs-sleep）·
+//! e2e 里前台的 `sleep N` 不在轮询圈里（sh-sleep）· 拿圈数 × 睡眠当期限的 Rust 轮询圈（rs-poll，换成 `wall::rounds()`）。
+//! 等一件事 ⇒ 等它成立；造时间差 ⇒ 直接写 mtime / 把钟拨给被测函数；看「没发生」⇒ 先等一个说明「定了」的正面迹象
+//! （收尾记号、同一条输入口打进去的记号、终局应答），等不到这种迹象的静窗才登记进例外表。
+//!
 //! 买不到：
-//! - 「睡一会儿再断言」（`sleep(50ms)` 之后 `assert!(called)`）认不出 —— 那一形没有可认的上限字面；
+//! - 睡眠藏在别的函数里（`settle()` 里睡、调用处断言）、隔了五句以上才断言的，认不出；TS 的 `await new Promise(r => setTimeout(r, N))`
+//!   之后 `expect` 那一形不在这里（`ts-poll` 只认圈）；
 //! - 期限藏进函数参数、跨文件常量、`format!` 拼出来的，认不出（同文件里 `let` / `const` 绑的认得出）；
 //! - 被测系统自己的期限（喂给被测代码的 `deadline: …`、`arrive_within_ms`、`connectTimeoutMs`）不是判据的期限，不在这几形里
 //!   （喂给 `set_read_timeout` / `Instant::now() + …` 的算，那几处要么换成兜底的数、要么登记成「被测期限」）；
@@ -115,6 +121,21 @@ const FORMS: &[(&str, &str, &str)] = &[
         "`for i in $(seq …)` / `for ((i=0; i<N; …))` ＋ `sleep`：拿圈数 × 睡眠当期限",
     ),
     (
+        "rs-poll",
+        "rs",
+        "`for _ in 0..N { … break … sleep(…) }` / `(0..N).any(|_| … sleep(…))`：拿圈数 × 睡眠当期限（换成 `guard_core::wall::rounds()`）",
+    ),
+    (
+        "rs-sleep",
+        "rs",
+        "不在轮询圈里的 `sleep(…)`，同一块里往后五句之内有断言：睡一会儿再断言（等事件 ⇒ 等条件；造时间差 ⇒ 注入钟 / 直接写 mtime）",
+    ),
+    (
+        "sh-sleep",
+        "sh",
+        "前台的 `sleep N` 不在轮询圈里：睡一会儿再看（等事件 ⇒ `wall_until`）",
+    ),
+    (
         "sh-upper",
         "sh",
         "量出来的耗时（`date` / `EPOCHREALTIME` 之差）拿去比上界",
@@ -146,6 +167,31 @@ const EXEMPT: &[(&str, &str, &str, &str)] = &[
         "rs-wait",
         "while t0.elapsed() < run_for",
         "`#[ignore]` 的读数（十几路并发时 tap 通道的占用），不是判据：灌数据的那段时长，门禁不跑",
+    ),
+    (
+        "tests/frontend/filewin/xvfb_rig.rs",
+        "rs-poll",
+        "let gone = (0..20).any(|_| {",
+        "收尾的宽限：请子进程自己退、两秒不退就强杀 —— 不是判据，等多久不影响红绿；换成兜底的数反倒让每次收尾可能挂五分钟",
+    ),
+    (
+        "tests/frontend/filewin/rows_tests.rs",
+        "rs-poll",
+        "for _ in 0..60 {",
+        "实景那一趟里「真双击认不认得出那一行」那一维判不了、只印读数登记：`row_clicks` 可能一直是 0，只给它看一眼的窗；不判红绿",
+    ),
+    (
+        "tests/frontend/shell/local_backend_tests.rs",
+        "rs-sleep",
+        "std::thread::sleep(std::time::Duration::from_millis(500));",
+        "静窗：判「关掉 stdin 写端之后后端不许死」——没有一个说明「它已经读到 EOF、要死早死了」的正面迹象可等；\
+         机器忙只会让这半秒更弱（漏报），不会误红",
+    ),
+    (
+        "tests/e2e/inbound-backend-frames.sh",
+        "sh-sleep",
+        "sleep 0.4",
+        "静窗：同上（关写端之后后端不许死），e2e 那一份",
     ),
     (
         "tests/frontend/shell/dial_host_tests.rs",
@@ -231,6 +277,8 @@ fn lang_of(rel: &str) -> Option<&'static str> {
     if rel.starts_with("tests/e2e/")
         && rel.ends_with(".sh")
         && !SH_NOT_GATED.iter().any(|(p, _)| rel.starts_with(p))
+        // 手跑的真机台架（`test_tiers` 那张表登记过为什么不进执行链）也不在人群里。
+        && !super::test_tiers::MANUAL_RIGS.iter().any(|(p, _)| rel == *p)
     {
         return Some("sh");
     }
@@ -685,7 +733,9 @@ pub(super) fn sh_hits(src: &str) -> Vec<Hit> {
         });
     }
     let lines: Vec<&str> = src.lines().collect();
-    let seq = re!(r"\bfor\s+\w+\s+in\s+\$\(seq\b|\bfor\s*\(\(");
+    let seq = re!(
+        r"\bfor\s+\w+\s+in\s+\$\(seq\b|\bfor\s*\(\(|\bfor\s+\w+\s+in\s+[0-9]+(?:\s+[0-9]+){2,}\s*;"
+    );
     for (i, l) in lines.iter().enumerate() {
         if !seq.is_match(l) {
             continue;
@@ -718,12 +768,256 @@ pub(super) fn sh_hits(src: &str) -> Vec<Hit> {
     v
 }
 
+/// 从 `open`（指着 `{`）起到配平的 `}` 为止那一段；不配平就取到文件尾。
+fn brace_span(src: &str, open: usize) -> &str {
+    let mut depth = 0i32;
+    for (i, c) in src[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &src[open..open + i + 1];
+                }
+            }
+            _ => {}
+        }
+    }
+    &src[open..]
+}
+
+/// rs-poll：`for _ in 0..N { … break … sleep(…) }` / `(0..N).any(|_| { … sleep(…) … })`：拿圈数 × 睡眠当期限
+/// （等的是圈里那个条件；圈数改成 `guard_core::wall::rounds()`，到兜底的那个数才停）。
+/// 圈里没有 `break` / `return` 的不是在等什么（固定做几遍），不算。虚拟时间里的不算。
+pub(super) fn rs_poll_hits(src: &str) -> Vec<Hit> {
+    let masked = crate::mask_all_literals(src).unwrap_or_else(|| src.to_string());
+    let sleep = re!(r"\bsleep\s*\(");
+    let mut v = Vec::new();
+    let mut push = |at: usize| {
+        v.push(Hit {
+            form: "rs-poll",
+            line: line_at(src, at),
+            text: line_text(src, at),
+        })
+    };
+    let for_n = re!(r"\bfor\s+_\w*\s+in\s+0\s*\.\.=?\s*[0-9][0-9_]*\s*\{");
+    for m in for_n.find_iter(&masked) {
+        let body = brace_span(&masked, m.end() - 1);
+        if sleep.is_match(body)
+            && re!(r"\bbreak\b|\breturn\b").is_match(body)
+            && !paused_tokio(src, m.start())
+        {
+            push(m.start());
+        }
+    }
+    let any_n =
+        re!(r"\(\s*0\s*\.\.=?\s*[0-9][0-9_]*\s*\)\s*\.\s*(?:any|find|find_map|position|all)\s*\(");
+    for m in any_n.find_iter(&masked) {
+        let body = paren_span(&masked, m.end() - 1);
+        if sleep.is_match(body) && !paused_tokio(src, m.start()) {
+            push(m.start());
+        }
+    }
+    v
+}
+
+// ───────────────────── 睡一会儿再断言（10-11 tools2 补） ─────────────────────
+
+/// `at` 往外一层层找包着它的 `{`（在抹掉串与注释的文本上数括号），返回每一层 `{` 前面那段头
+/// （从上一个 `;` / `{` / `}` 到这个 `{`），由里往外；碰到函数 / 闭包 / async 块那一层为止（含它）。
+fn rs_enclosing_heads(masked: &str, at: usize) -> Vec<String> {
+    let b = masked.as_bytes();
+    let mut heads = Vec::new();
+    let mut i = at;
+    loop {
+        let mut depth = 0i32;
+        let mut open = None;
+        while i > 0 {
+            i -= 1;
+            match b[i] {
+                b'}' => depth += 1,
+                b'{' => {
+                    if depth == 0 {
+                        open = Some(i);
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        let Some(o) = open else { return heads };
+        let from = masked[..o].rfind([';', '{', '}']).map_or(0, |k| k + 1);
+        let head = masked[from..o].to_string();
+        let stop = re!(r"\bfn\b|\||\basync\b").is_match(&head);
+        heads.push(head);
+        if stop {
+            return heads;
+        }
+        i = o;
+    }
+}
+
+/// `from` 起（一条语句的末尾之后）同一块里往后至多 `n` 句（块收尾就停）。
+fn rs_next_statements(masked: &str, from: usize, n: usize) -> &str {
+    let mut depth = 0i32;
+    let mut semis = 0;
+    for (k, c) in masked[from..].char_indices() {
+        match c {
+            '{' | '(' | '[' => depth += 1,
+            '}' | ')' | ']' => {
+                depth -= 1;
+                if depth < 0 {
+                    return &masked[from..from + k];
+                }
+            }
+            ';' if depth == 0 => {
+                semis += 1;
+                if semis >= n {
+                    return &masked[from..from + k];
+                }
+            }
+            _ => {}
+        }
+    }
+    &masked[from..]
+}
+
+/// rs-sleep：不在轮询圈里的一次 `sleep(…)`（`thread::sleep` · `tokio::time::sleep` · 绑成 `sleep` 的闭包），
+/// 同一块里往后五句之内有断言 ⇒ 「睡一会儿再断言」。虚拟时间（`start_paused` / `time::pause()`）里的不算。
+pub(super) fn rs_sleep_hits(src: &str) -> Vec<Hit> {
+    let masked = crate::mask_all_literals(src).unwrap_or_else(|| src.to_string());
+    let call = re!(r"\bsleep\s*\(");
+    let poll = re!(r"\b(loop|while|for)\b");
+    let assert = re!(r"\b(?:debug_|prop_)?assert(?:_eq|_ne|_matches)?!|\bpanic!");
+    let mut v = Vec::new();
+    for m in call.find_iter(&masked) {
+        let ls = masked[..m.start()].rfind('\n').map_or(0, |k| k + 1);
+        let before = &masked[ls..m.start()];
+        // 定义处（`fn sleep(` · `let sleep = |ms| …sleep(…)` 那一行）不是一次调用。
+        if before.trim_end().ends_with("fn") || re!(r"=\s*(?:move\s*)?\|").is_match(before) {
+            continue;
+        }
+        if paused_tokio(src, m.start()) {
+            continue;
+        }
+        if rs_enclosing_heads(&masked, m.start())
+            .iter()
+            .any(|h| poll.is_match(h))
+        {
+            continue; // 轮询圈里的一片：等的是圈的条件，上限归 rs-wait 那几形
+        }
+        let span = paren_span(&masked, m.end() - 1);
+        let after = m.end() - 1 + span.len();
+        let end = masked[after..]
+            .find(';')
+            .map_or(masked.len(), |e| after + e + 1);
+        if assert.is_match(rs_next_statements(&masked, end, 5)) {
+            v.push(Hit {
+                form: "rs-sleep",
+                line: line_at(src, m.start()),
+                text: line_text(src, m.start()),
+            });
+        }
+    }
+    v
+}
+
+/// 一行里 `at` 之前单引号 / 双引号各出现几次是奇数 ⇒ `at` 在引号里。
+fn sh_in_quotes(line: &str, at: usize) -> bool {
+    let head = &line[..at];
+    head.matches('\'').count() % 2 == 1 || head.matches('"').count() % 2 == 1
+}
+
+/// 脚本里每一圈 `do … done` 的行区间（含两头），与那一圈是不是轮询（体里有 `break` / `return`，或是 `until` / `while` 圈）。
+fn sh_loops(lines: &[&str]) -> Vec<(usize, usize, bool)> {
+    let word = re!(r"(?:^|[\s;&|])(do|done|until|while)(?:$|[\s;&|])");
+    let mut stack: Vec<(usize, bool)> = Vec::new();
+    let mut out = Vec::new();
+    let mut cond = false;
+    for (i, l) in lines.iter().enumerate() {
+        let mut k = 0;
+        while let Some(c) = word.captures_at(l, k) {
+            let w = c.get(1).unwrap();
+            k = w.end();
+            if sh_in_quotes(l, w.start()) {
+                continue;
+            }
+            match w.as_str() {
+                "until" | "while" => cond = true,
+                "do" => {
+                    stack.push((i, cond));
+                    cond = false;
+                }
+                _ => {
+                    if let Some((a, c)) = stack.pop() {
+                        let body = lines[a..=i].join("\n");
+                        let poll = c || re!(r"\bbreak\b|\breturn\b").is_match(&body);
+                        out.push((a, i, poll));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// sh-sleep：前台的 `sleep N`（不在引号里、不是 `… &` 放后台、不是 `<(sleep …)` 那根管子），不在轮询圈里 ⇒
+/// 「睡一会儿再看」。e2e 脚本里 sleep 之后就是去看结果（下一条命令、下一个用例），不再分后面是不是断言。
+pub(super) fn sh_sleep_hits(src: &str) -> Vec<Hit> {
+    let lines: Vec<&str> = src.lines().collect();
+    let loops = sh_loops(&lines);
+    let cmd = re!(r#"(?:^|[;&|]|\bthen|\bdo|\belse|\{)\s*sleep\s+("?\$\{?\w+\}?"?|[0-9][0-9.]*)"#);
+    let heredoc = re!(r#"<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?"#);
+    let mut v = Vec::new();
+    let mut doc_end: Option<String> = None;
+    for (i, l) in lines.iter().enumerate() {
+        // here-doc 的正文是写进文件 / 喂给命令的字，不是这份脚本自己跑的命令。
+        if let Some(end) = &doc_end {
+            if l.trim() == end {
+                doc_end = None;
+            }
+            continue;
+        }
+        if let Some(c) = heredoc.captures(l) {
+            if !sh_in_quotes(l, c.get(0).unwrap().start()) {
+                doc_end = Some(c[1].to_string());
+            }
+        }
+        for c in cmd.captures_iter(l) {
+            let at = c.get(0).unwrap().start();
+            let end = c.get(0).unwrap().end();
+            let pre = &l[..at];
+            if sh_in_quotes(l, at)
+                || pre.ends_with("<(")
+                || pre.ends_with("$(")
+                || re!(r"^\s*&(?:[^&]|$)").is_match(&l[end..])
+            {
+                continue;
+            }
+            let inner = loops
+                .iter()
+                .filter(|(a, b, _)| *a <= i && i <= *b)
+                .min_by_key(|(a, b, _)| b - a);
+            if inner.is_some_and(|(_, _, poll)| *poll) {
+                continue;
+            }
+            v.push(Hit {
+                form: "sh-sleep",
+                line: i + 1,
+                text: l.trim().to_string(),
+            });
+        }
+    }
+    v
+}
+
 fn hits_for(lang: &str, src: &str) -> Vec<Hit> {
     match lang {
-        "rs" => rs_hits(src),
+        "rs" => [rs_hits(src), rs_poll_hits(src), rs_sleep_hits(src)].concat(),
         "ts" => ts_hits(src),
         "kt" => kt_hits(src),
-        "sh" => sh_hits(src),
+        "sh" => [sh_hits(src), sh_sleep_hits(src)].concat(),
         _ => unreachable!(),
     }
 }
@@ -981,6 +1275,90 @@ fn w4_shell_forms_are_told_apart() {
     let green = "timeout \"$WALL_CEILING_S\" \"$X\" a\nfor i in $(seq 30); do echo $i; done\n# timeout 5 x\n\
         for ((i=0; i<WALL_CEILING_S*2; i++)); do sleep 0.5; done\nwall_until '[ -f x ]'\n";
     assert_eq!(sh_hits(&body("tests/e2e/x.sh", "sh", green)), vec![]);
+}
+
+#[test]
+fn w4_sleep_then_assert_is_told_apart() {
+    let red = "fn a() {\n\
+        std::thread::sleep(Duration::from_millis(50));\n\
+        assert!(done.load(SeqCst));\n\
+    }\n\
+    #[tokio::test]\nasync fn b() {\n\
+        tokio::time::sleep(Duration::from_millis(5)).await;\n\
+        let n = rx.len();\n\
+        assert_eq!(n, 0, \"{}\", \"x\");\n\
+    }\n\
+    fn c() {\n\
+        let sleep = |ms: u64| std::thread::sleep(Duration::from_millis(ms));\n\
+        sleep(300);\n\
+        assert_ne!(a, b);\n\
+    }\n";
+    assert_eq!(
+        forms_of(&rs_sleep_hits(red)),
+        vec!["rs-sleep", "rs-sleep", "rs-sleep"]
+    );
+    let green = "fn a() {\n\
+        loop {\n\
+            if ok() { break; }\n\
+            std::thread::sleep(Duration::from_millis(20));\n\
+        }\n\
+        assert!(ok());\n\
+        while t0.elapsed() < CEILING { match x() { Some(_) => std::thread::sleep(Duration::from_millis(5)), None => break } }\n\
+        assert!(y);\n\
+        let h = std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(50)); tx.send(1).unwrap(); });\n\
+        assert!(z);\n\
+        std::thread::sleep(Duration::from_millis(50));\n\
+        h.join().unwrap();\n\
+    }\n\
+    #[tokio::test(start_paused = true)]\nasync fn p() { tokio::time::sleep(Duration::from_secs(5)).await; assert!(fired()); }\n\
+    fn d() { let s = \"sleep(1); assert!(x)\"; }\n";
+    assert_eq!(rs_sleep_hits(green), vec![]);
+}
+
+#[test]
+fn w4_rust_poll_is_told_apart() {
+    let red = "fn a() {\n\
+        for _ in 0..600 {\n\
+            if done() { break; }\n\
+            std::thread::sleep(Duration::from_millis(5));\n\
+        }\n\
+        let gone = (0..200).any(|_| { if x() { return true; } std::thread::sleep(Duration::from_millis(5)); false });\n\
+    }\n";
+    assert_eq!(forms_of(&rs_poll_hits(red)), vec!["rs-poll", "rs-poll"]);
+    let green = "fn a() {\n\
+        for _ in guard_core::wall::rounds() {\n\
+            if done() { break; }\n\
+            std::thread::sleep(Duration::from_millis(5));\n\
+        }\n\
+        for _ in 0..30 { press(); std::thread::sleep(Duration::from_millis(167)); }\n\
+        for _ in 0..3 { if x() { break; } }\n\
+    }\n\
+    #[tokio::test(start_paused = true)]\nasync fn p() { for _ in 0..600 { if y() { break; } tokio::time::sleep(Duration::from_millis(5)).await; } }\n";
+    assert_eq!(rs_poll_hits(green), vec![]);
+}
+
+#[test]
+fn w4_shell_sleep_is_told_apart() {
+    let red =
+        "fire; sleep 1\n[ -f x ] || bad\nreset() { T kill-server; sleep 0.3; }\nsleep \"$GAP\"\n\
+        for c in a b; do run \"$c\"; sleep 0.5; check \"$c\"; done\nif x; then sleep 2; fi\n";
+    assert_eq!(
+        forms_of(&sh_sleep_hits(red)),
+        vec!["sh-sleep", "sh-sleep", "sh-sleep", "sh-sleep", "sh-sleep"]
+    );
+    let green = "tmux new-session -d -s a 'sleep 300'\nsleep 60 & pid=$!\nd --x < <(sleep 30) >o\n\
+        for _i in $(seq 1 WALL_CEILING_S); do [ -s f ] && break; sleep 0.3; done\n\
+        until [ -f x ]; do\n  sleep 0.05\ndone\nexec sleep 30\nprintf 'exec sleep 300\\n' > f\n\
+        while :; do\n  grep -q y f && return 0\n  sleep 0.1\ndone\n\
+        cat > f << 'EOF'\nsleep 300\nEOF\n";
+    assert_eq!(sh_sleep_hits(green), vec![]);
+    assert_eq!(
+        forms_of(&sh_hits(
+            "for _i in 1 2 3 4 5; do [ -s f ] && break; sleep 0.3; done\n"
+        )),
+        vec!["sh-poll"],
+        "拿字面的圈数当期限也是那一形"
+    );
 }
 
 #[test]

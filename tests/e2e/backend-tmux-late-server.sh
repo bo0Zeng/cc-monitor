@@ -65,20 +65,20 @@ run_case() {
   if [ "$mode" = early ]; then
     "$REALTMUX" -L "$sock" new-session -d -s "$label" -c /tmp 'sleep 300'
     "$REALTMUX" -L "$sock" set-option -t "=$label:" @ccm_sid "sid-$label"
-    sleep 1
   fi
 
   # backend 起（late 模式下此刻该 socket 上零 server）
   PATH="$bin:$PATH" CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream \
     < /dev/null > "$out" 2> "$W/$label.err" &
   local dp=$!
-  sleep 3
 
   if [ "$mode" = late ]; then
+    # 后端先挂上 socket 目录（零 server 时它唯一的耳朵）、再起 server：不然测的是「起来时就有」那一格。
+    wall_until 'grep -qF "已监视 tmux socket 目录" "$W/$label.err"'
     "$REALTMUX" -L "$sock" new-session -d -s "$label" -c /tmp 'sleep 300'
     "$REALTMUX" -L "$sock" set-option -t "=$label:" @ccm_sid "sid-$label"
   fi
-  sleep 8
+  wall_until 'grep -qF "sid-$label" "$out"'
 
   kill "$dp" 2>/dev/null; wait "$dp" 2>/dev/null
   e2e_tmux_reap "$REALTMUX" "$sock"

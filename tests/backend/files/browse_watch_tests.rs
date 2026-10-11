@@ -275,7 +275,7 @@ fn the_real_watcher_arms_and_delivers() {
 
     // 有界等待：每 20 毫秒看一眼，最多 5 秒。
     let mut found = false;
-    for _ in 0..250 {
+    for _ in guard_core::wall::rounds() {
         let r = crate::files::index::tests::query("pushed-by-the-kernel", 10);
         if r.total_hits == 1 {
             found = true;
@@ -285,7 +285,7 @@ fn the_real_watcher_arms_and_delivers() {
     }
     assert!(
         found,
-        "watch 挂上了、文件也造了，5 秒之内那条事件没有变成一次重列。\n\
+        "watch 挂上了、文件也造了，到兜底上限那条事件没有变成一次重列。\n\
          ⇒ 要么回调没接上，要么事件被内核丢了（后者本判据分不出来，如实登记）。"
     );
 }
@@ -320,7 +320,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     std::fs::File::create(dir.join("seen-live")).expect("造文件");
     let want = crate::files::raw::path_bytes(&dir.join("seen-live")).to_vec();
     let mut found = false;
-    for _ in 0..250 {
+    for _ in guard_core::wall::rounds() {
         if overlay_snapshot().iter().any(|(e, _)| e == want.as_slice()) {
             found = true;
             break;
@@ -329,7 +329,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     }
     assert!(
         found,
-        "登记之后新建的文件 5 秒内没进 overlay —— 没有人在后端进程里持有那个监听器"
+        "登记之后新建的文件到兜底上限还没进 overlay —— 没有人在后端进程里持有那个监听器"
     );
     let v = crate::files::answer_wire(
         "files-browse",

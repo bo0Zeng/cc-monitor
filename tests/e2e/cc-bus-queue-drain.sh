@@ -135,11 +135,13 @@ wait_inbox "$B/inbox/bob.jsonl" 1 || true
 chk "对照组：backend 在跑时正常投递" "$(wc -l < "$B/inbox/bob.jsonl" 2>/dev/null || echo 0)" "1"
 # SIGSTOP：backend 还活着（kill -0 通过、argv 没变、pidfile 还在）⇒ cc-send 判它在跑、只入队
 kill -STOP "$PID"
+# cc-send 判它在跑就只入队、入完才回 ⇒ 它回来时那条已经在队列里了，不用再等。
 "$S/cc-send" bob "B 卡住时发的" >/dev/null 2>&1
-sleep 0.6
 chk "backend 卡住 ⇒ 那条留在队列里" "$(qcount "$B")" "1"
 chk "  且**没有**进收件箱（这就是事故现场）" "$(wc -l < "$B/inbox/bob.jsonl")" "1"
-kill -9 "$PID" 2>/dev/null; sleep 0.3
+kill -9 "$PID" 2>/dev/null
+# 等它真的没了（进程表里没有，或只剩一个待收的僵尸）：下一条 cc-send 要判「cc-busd 不在」。
+wall_until '[ ! -d "/proc/$PID" ] || grep -q ") Z " "/proc/$PID/stat" 2>/dev/null' || true
 out1="$("$S/cc-send" bob "C 之后发的" 2>&1)"
 chk "★ 再发一条时**顺带补投**了滞留那条" "$(wc -l < "$B/inbox/bob.jsonl")" "3"
 chk "★ 顺序是入队序（滞留的先于自己那条）" "$(inbox_texts "$B/inbox/bob.jsonl")" "A 正常|B 卡住时发的|C 之后发的|"

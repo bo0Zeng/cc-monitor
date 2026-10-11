@@ -337,7 +337,7 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
     rt.block_on(async {
         let task = tokio::spawn(run(args(true, 60_000), None, host));
         // 等到那一句送出去（此刻正在等摘要），再撤。
-        for _ in 0..200 {
+        for _ in guard_core::wall::rounds() {
             if rig.did("send") == 1 {
                 break;
             }

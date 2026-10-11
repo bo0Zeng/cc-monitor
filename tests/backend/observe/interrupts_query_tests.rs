@@ -91,7 +91,7 @@ fn a_running_child_in_any_live_book_is_named() {
     );
     drop(book);
     // 同进程里别的判据并发查活簿表时会短暂升级这本 ⇒ 有界地等它真走。
-    let gone = (0..200).any(|_| {
+    let gone = guard_core::wall::rounds().any(|_| {
         if crate::observe::runs::running_names(sid).is_empty() {
             return true;
         }

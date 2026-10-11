@@ -464,7 +464,7 @@ mod tests {
         env: &[(&str, &str)],
     ) -> Result<crate::plugin::invoke::Done, crate::plugin::invoke::NotRun> {
         let mut r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
-        for _ in 0..50 {
+        for _ in guard_core::wall::rounds() {
             match &r {
                 Err(crate::plugin::invoke::NotRun::Failed(m))
                     if m.raw.as_deref().is_some_and(|r| r.contains("os error 26")) =>

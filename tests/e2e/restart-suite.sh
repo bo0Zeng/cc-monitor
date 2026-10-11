@@ -165,7 +165,7 @@ send "$(restart_req r3 "$SID3" znew false 1000 false)"
 if R3="$(frame_of r3)"; then
   [ "$(field "$R3" code)" = stop_failed ] && ok "R3 停失败 ⇒ stop_failed（why=$(field "$R3" data.why)）" || bad "R3 code=$(field "$R3" code)"
 else bad "R3 上限内没等到应答"; fi
-sleep 1
+# 应答是终局（停失败 ⇒ 当场回、不再往下起）⇒ 回来时「起没起新的」已经定了，不用再等一会儿。
 [ "$(resumed_in "$NEW" "$SID3")" = 0 ] && ok "R3 没起新的" || bad "R3 停失败还起了新的"
 [ "$(live_pids "$SID3")" = 1 ] && ok "R3 旧进程还活着" || bad "R3 旧进程数=$(live_pids "$SID3")"
 
@@ -178,14 +178,15 @@ else bad "R4 上限内没等到应答"; fi
 [ "$(live_pids "$SID4")" = 1 ] && ok "R4 旧进程还活着" || bad "R4 旧进程数=$(live_pids "$SID4")"
 
 # ── R5 等压缩时撤单 ⇒ 不停、不起 ────────────────────────────────────────────────────────
-read -r SID5 _NAME5 < <(make_live "CCM_FAKE_COMPACT=ignore")
+read -r SID5 NAME5 < <(make_live "CCM_FAKE_COMPACT=ignore")
 send "$(restart_req r5 "$SID5" znew true 30000 false)"
-sleep 2
+# 等它真的进了「等压缩」那一步（`/compact` 已经敲进会话里）再撤单。
+wall_until "tmux capture-pane -p -t '=$NAME5:' 2>/dev/null | grep -qF /compact" || true
 send '{"id":"c5","cmd":"cancel","args":{"target":"r5"}}'
 if R5="$(frame_of r5)"; then
   printf '%s' "$R5" | grep -qF '"kind":"cancelled"' && ok "R5 撤单生效（cancelled）" || bad "R5 不是 cancelled：$R5"
 else bad "R5 上限内没等到撤单那一帧"; fi
-sleep 1
+# 撤单那一帧是终局：发出来时它已经不停、不起了。
 [ "$(live_pids "$SID5")" = 1 ] && ok "R5 旧进程还活着（没停）" || bad "R5 旧进程数=$(live_pids "$SID5")"
 [ "$(resumed_in "$NEW" "$SID5")" = 0 ] && ok "R5 没起新的" || bad "R5 撤单之后还起了新的"
 

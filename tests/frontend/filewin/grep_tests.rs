@@ -23,13 +23,13 @@ fn ctx_ready() -> egui::Context {
 }
 
 async fn settle(board: &GrepBoard, before: u64, who: &str) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if board.rounds() > before {
             return;
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    panic!("{who}：等了 3 秒那块板子还是没有新答案");
+    panic!("{who}：到兜底上限那块板子还是没有新答案");
 }
 
 #[test]
@@ -193,7 +193,7 @@ async fn stop_withdraws_the_search_in_flight() {
     let before = w.grep.rounds();
     assert!(w.fire_grep(None));
     // 等它真的到了后端那一侧（扣着不回）。
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if wired.count(CMD_GREP) == 1 {
             break;
         }
@@ -210,7 +210,7 @@ async fn stop_withdraws_the_search_in_flight() {
     // 正控：同一台、不撤 ⇒ 放行之后收到命中。
     let before = w.grep.rounds();
     assert!(w.fire_grep(None));
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if wired.count(CMD_GREP) == 2 {
             break;
         }

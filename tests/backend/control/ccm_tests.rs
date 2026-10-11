@@ -953,7 +953,7 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
         String::from_utf8_lossy(&out.stderr)
     );
     // 夹具侧的有界等待（pane 里那条命令由另一个进程跑完）；等不到就失败，不静默跳过。
-    for _ in 0..250 {
+    for _ in guard_core::wall::rounds() {
         if dir.join("done").exists() {
             break;
         }

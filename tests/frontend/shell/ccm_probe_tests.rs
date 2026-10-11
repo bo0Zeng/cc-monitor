@@ -547,7 +547,7 @@ fn ask_once_reads_the_cli_envelope_both_ways() {
     // 别的结果原样交回判（同 `launch_tests` 起假终端那一处）。
     let once = |prog: &std::path::Path, cmd: &str, timeout: std::time::Duration| {
         let mut r = ask_once(prog, cmd, &args, timeout);
-        for _ in 0..50 {
+        for _ in guard_core::wall::rounds() {
             match &r {
                 Err(OnceErr::Spawn(e)) if e.contains("os error 26") => {
                     std::thread::sleep(std::time::Duration::from_millis(20));

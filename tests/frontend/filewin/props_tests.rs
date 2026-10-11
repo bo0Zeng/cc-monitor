@@ -50,7 +50,7 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
     // 目录里只有这一份 ⇒ 全选就是选中它。
     assert!(w.apply_intent(crate::select::Intent::SelectAll, 0.0, None));
     assert!(w.perform(Action::Properties, None), "菜单那一下该摆出框");
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         if !matches!(*w.props().unwrap().state.lock().unwrap(), State::Loading) {
             break;
         }

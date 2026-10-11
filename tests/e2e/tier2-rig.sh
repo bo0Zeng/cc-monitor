@@ -96,7 +96,8 @@ PY
     echo "  Xvfb $DISP 已在跑"
   else
     setsid /usr/bin/Xvfb "$DISP" -screen 0 1920x1080x24 >"$SBX/xvfb.log" 2>&1 < /dev/null &
-    sleep 2
+    # 等它的 socket 出来（手跑的台架，最多等一分钟）。
+    local _i; for ((_i=0; _i<1200; _i++)); do [ -S "/tmp/.X11-unix/X${DISP#:}" ] && break; sleep 0.05; done
     [ -S "/tmp/.X11-unix/X${DISP#:}" ] || die "Xvfb $DISP 起不来，看 $SBX/xvfb.log"
     echo "  起了 Xvfb $DISP"
   fi

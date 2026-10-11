@@ -165,7 +165,7 @@ impl Screen {
             _displayfd: fd,
         };
         // 最多等 5 秒（30 × 167ms）—— 就绪由「答得出几何」说了算。
-        for _ in 0..30 {
+        for _ in guard_core::wall::rounds() {
             if screen
                 .xdotool(&["getdisplaygeometry"])
                 .is_ok_and(|out| out.split_whitespace().count() == 2)
@@ -175,7 +175,7 @@ impl Screen {
             std::thread::sleep(std::time::Duration::from_millis(167));
         }
         Err(format!(
-            "Xvfb {} 起了但 5 秒内答不出屏幕几何",
+            "Xvfb {} 起了但到兜底上限还答不出屏幕几何",
             screen.display
         ))
     }

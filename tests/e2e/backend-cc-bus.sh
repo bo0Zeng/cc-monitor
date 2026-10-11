@@ -190,7 +190,6 @@ echo "[10] ★ 总线成员是**身份空间的子集**，不是第二套名单"
 # ⚠ live 是**三态**：true / false / null。判据三格全钉——只钉前两格的话，
 #   「问不到就当成不在」这种最坏的读法会溜过去（把一屋子活人判成死人）。
 tmux new-session -d -s alive_cc -c /tmp 'cat'
-sleep 0.4
 tmux set-option -t alive_cc @ccm_sid 'sid-1234' >/dev/null 2>&1
 new_bus_state() {
   printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
@@ -288,14 +287,14 @@ echo "[15] ★ bus-kill：收掉一个成员，且不许收错人"
 # ⚠ 真跑撞出来一条：我给 cc-kill 传了 `--`（那是 cc-send 的参数形状，cc-kill **不解析旗标**）
 #   ⇒ 它去杀一个名叫 `--` 的 agent（`-` 在它的白名单里，连报错都没有），
 #   三种情形全回 killed:false 而真 agent 好好活着。★ 抄参数形状前先看被调方怎么解析。
-tmux new-session -d -s kreal_cc -c /tmp 'sleep 300'; sleep 0.3
+tmux new-session -d -s kreal_cc -c /tmp 'sleep 300'
 TMUX_PANE="$(tmux list-panes -t '=kreal_cc' -F '#{pane_id}' | head -1)" \
   CC_BUS_HOME="$BUS" bash "$SCRIPTS/cc-register" kreal_cc >/dev/null 2>&1
-tmux new-session -d -s kocc_cc -c /tmp 'sleep 300'; sleep 0.3
+tmux new-session -d -s kocc_cc -c /tmp 'sleep 300'
 TMUX_PANE="$(tmux list-panes -t '=kocc_cc' -F '#{pane_id}' | head -1)" \
   CC_BUS_HOME="$BUS" bash "$SCRIPTS/cc-register" kocc_cc >/dev/null 2>&1
-tmux kill-session -t '=kocc_cc'; sleep 0.2
-tmux new-session -d -s kocc_cc -c /tmp 'sleep 999'; sleep 0.3     # 同名的无辜占用者
+tmux kill-session -t '=kocc_cc'
+tmux new-session -d -s kocc_cc -c /tmp 'sleep 999'     # 同名的无辜占用者
 _occpid="$(tmux list-panes -t '=kocc_cc' -F '#{pane_pid}' | head -1)"
 _dk() {
   printf '{"id":"%s"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
@@ -342,7 +341,7 @@ tmux set-environment -g HOME "$_SH"
 #   它的 PATH / HOME 就是下面 `_ds` 交给后端的那一份（后端按白名单原样传下去）。
 env HOME="$_SH" PATH="$_SPATH" \
   tmux new-session -d -s spawncanary -c /tmp "command -v claude > '$_SW/which.txt'; sleep 30"
-for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/which.txt" ] && break; sleep 0.3; done
+wall_until '[ -s "$_SW/which.txt" ]'
 tmux kill-session -t '=spawncanary' 2>/dev/null || true
 _which="$(cat "$_SW/which.txt" 2>/dev/null)"
 chk "起飞前：隔离服务端的 pane 里 claude 解析到假 agent" "$_which" "$_SB/claude"
@@ -358,7 +357,7 @@ _s1="$(_ds "{\"tool\":\"claude\",\"dir\":\"$_SW/proj\",\"task\":\"跑一遍门�
 chk "★ spawned=true" "$(printf '%s' "$_s1" | jq -r .spawned 2>/dev/null)" "true"
 chk "★ 回值里认出了新会话的 id" "$(printf '%s' "$_s1" | jq -r .id 2>/dev/null)" "proj_cc"
 chk "  会话真的起了（隔离 socket 上）" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo 在 || echo 没有)" "在"
-for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/agent-args.txt" ] && break; sleep 0.3; done
+wall_until '[ -s "$_SW/agent-args.txt" ]'
 chk "  初始任务作为参数送到了启动器" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "跑一遍门禁"
 chk "  登记进了总线名册" "$(cut -f1 "$BUS/agents.tsv" 2>/dev/null | grep -cx proj_cc || true)" "1"
 _ds '{"tool":"claude","dir":"/tmp"}' >/dev/null
@@ -467,7 +466,6 @@ echo "[18] ★ bus-broadcast：广播这个组合收进后端（C4e）—— 只
 # 名册：一个活着（隔离 socket 上真有会话）· 一个会话没了 · 一个是 `from` 自己（也活着）。
 tmux new-session -d -s bcast_cc -c /tmp 'cat' 2>/dev/null
 tmux new-session -d -s bcme_cc -c /tmp 'cat' 2>/dev/null
-sleep 0.3
 printf 'bcast_cc\tbcast_cc:0.0\tts\t1\nbgone_cc\tbgone_cc:0.0\tts\t2\nbcme_cc\tbcme_cc:0.0\tts\t3\n' > "$BUS/agents.tsv"
 : > "$BUS/inbox/bcast_cc.jsonl"; : > "$BUS/inbox/bgone_cc.jsonl"; : > "$BUS/inbox/bcme_cc.jsonl"
 _b="$(printf '{"text":"来自后端的广播","from":"bcme_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" \

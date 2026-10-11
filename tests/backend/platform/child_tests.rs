@@ -187,7 +187,7 @@ fn a_detached_child_leads_its_own_group() {
         .detach()
         .expect("脱离起");
     let mut got = String::new();
-    for _ in 0..250 {
+    for _ in guard_core::wall::rounds() {
         if let Ok(s) = std::fs::read_to_string(&f) {
             got = s;
             break;
@@ -288,7 +288,7 @@ fn a_reused_thread_carries_no_budget_into_the_next_command() {
             let _b = Budget::start(Deadline::millis(50));
             panic!("上一条命令中途炸了");
         });
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // 不用先睡过那 50 ms：残留的期限要是还挂着，下面那条要跑 200 ms 的命令自己就会被它掐掉。
         assert!(Span::here().is_none(), "上一条的总期限还挂在线程上");
         let out = Child::new("sh")
             .args(["-c", "sleep 0.2; exit 0"])

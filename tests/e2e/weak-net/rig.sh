@@ -44,6 +44,9 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# 兜底上限与 `wall_until`（等一件事成立，不睡固定秒数；判据 `wall_ceiling`）。
+# shellcheck source=tests/e2e/sandbox-env.sh
+. "$HERE/../sandbox-env.sh"
 IMG="${WEAKNET_IMAGE:-ccmon-weaknet:latest}"
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$HERE/../tmux-shim.sh" --names-only || exit 2
@@ -216,9 +219,12 @@ loss_pct() { # $1=包数 $2=间隔 $3=等待
   docker exec "$CA" sh -c "ping -c $1 -q -i $2 -W $3 $BIP 2>/dev/null" \
     | sed -n 's/.*, \([0-9]*\)% packet loss.*/\1/p'
 }
+# 删掉 loss 规则之后，等 A 到 B 的一个 ping 通了（链路回来了）再量：量的是「回得来」，不是「回来得够快」。
+link_back() { wall_until 'docker exec "$CA" ping -c 1 -W 1 "$BIP" >/dev/null 2>&1' || true; }
 xfer_ms() { # $1=端口
   docker exec -d "$CB" sh -c "nc -l -p $1 > /dev/null" >/dev/null 2>&1
-  sleep 1
+  _xf_port="$1"   # 等 B 那头真的在听了再传
+  wall_until 'docker exec "$CB" sh -c "ss -ltn 2>/dev/null | grep -q \":$_xf_port \""' || true
   docker exec "$CA" sh -c \
     "s=\$(date +%s%N); nc -q0 $BIP $1 < /tmp/payload >/dev/null 2>&1; e=\$(date +%s%N); echo \$(( (e - s) / 1000000 ))"
 }
@@ -265,7 +271,7 @@ C_BEFORE="$(loss_pct 3 0.2 2)"
 tc_add "$DEV" netem loss 100%
 C_AFTER="$(loss_pct 3 0.2 1)"
 tc_del "$DEV"
-sleep 1
+link_back
 C_BACK="$(loss_pct 3 0.2 2)"
 : "${C_BEFORE:=0}" "${C_AFTER:=0}" "${C_BACK:=100}"
 judge "断链（丢包百分点）" "100% 全断" "$C_BEFORE" "$C_AFTER" "$GATE_CUT_PCT" "%"
@@ -294,7 +300,7 @@ case "$PUB" in
 esac
 printf '%s\n' "$PUB" | docker exec -i "$CB" sh -c 'cat > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys'
 docker exec -d "$CB" /usr/sbin/sshd -D -e >/dev/null 2>&1
-sleep 2
+wall_until 'docker exec "$CB" sh -c "ss -ltn 2>/dev/null | grep -q \":22 \""' || true
 SSHD_LISTEN="$(docker exec "$CB" sh -c 'ss -ltn 2>/dev/null | grep -c ":22 "' 2>/dev/null)"
 : "${SSHD_LISTEN:=0}"
 if [ "$SSHD_LISTEN" -ge 1 ]; then
@@ -335,7 +341,7 @@ elif [ "$S_RC2" -ne 0 ]; then
 else
   no "断链：loss 100% 之下那条 ssh 居然还成功了（耗时 ${S_CUT}ms）—— 规则没打到这条连接上"
 fi
-sleep 1
+link_back
 read -r S_BACK S_RC3 <<<"$(ssh_probe)"
 : "${S_BACK:=0}" "${S_RC3:=1}"
 chk "删掉规则后重连成功（耗时 ${S_BACK}ms）" "$S_RC3" "0"
@@ -344,7 +350,7 @@ line
 # ══════════════════════════════════════════════════════════════════
 echo "== P9 收尾：自己清理，宿主逐字复原（WF1D4③④）"
 cleanup_rig
-sleep 1
+wall_until '[ -z "$(docker ps -aq -f "name=^${CA}$")$(docker ps -aq -f "name=^${CB}$")$(docker network ls -q -f "name=^${NET}$")" ]' || true
 chk "容器 A 跑完没了" "$(docker ps -aq -f "name=^${CA}$" | wc -l)" "0"
 chk "容器 B 跑完没了" "$(docker ps -aq -f "name=^${CB}$" | wc -l)" "0"
 chk "自建网络跑完没了" "$(docker network ls -q -f "name=^${NET}$" | wc -l)" "0"

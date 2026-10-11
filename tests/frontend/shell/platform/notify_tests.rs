@@ -116,15 +116,17 @@ fn n_notifications_share_one_connection_and_signals_are_dispatched_by_id() {
     feed(Signal::Action(ids[3], "default".into()));
     feed(Signal::Token(9999, "tok-x".into()));
     feed(Signal::Action(9999, "default".into()));
-    wait_until("点了那两条分发到", || {
-        clicked.lock().unwrap().len() >= 2
+    // 别人的那两条「不理」是个没发生：最后再点一条自己的（收尾记号），等它分发到 ⇒ 排在它前面的都已经过完了。
+    feed(Signal::Action(ids[4], "last".into()));
+    wait_until("收尾那一条分发到", || {
+        clicked.lock().unwrap().len() >= 3
     });
-    std::thread::sleep(Duration::from_millis(50));
     assert_eq!(
         *clicked.lock().unwrap(),
         vec![
             (ids[2], "default".to_string(), Some("tok-2".to_string())),
             (ids[3], "default".to_string(), None),
+            (ids[4], "last".to_string(), None),
         ]
     );
 

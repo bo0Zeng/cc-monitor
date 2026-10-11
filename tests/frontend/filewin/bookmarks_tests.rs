@@ -278,13 +278,13 @@ fn click_label(ctx: &egui::Context, ws: &mut Workspace, label: &str) -> Vec<Pain
 
 /// 等列目录落地（带上限，绝不挂死）。
 async fn settle_listing(w: &FileWindow, who: &str) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if !w.listing.is_loading() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("{who}：等了 3 秒目录还没列完");
+    panic!("{who}：到兜底上限目录还没列完");
 }
 
 /// 🔴 **真点一下**：☆ 加进去（盘上真有）→ 换目录 → 点那条书签跳回来 → × 删掉（盘上真没了）。

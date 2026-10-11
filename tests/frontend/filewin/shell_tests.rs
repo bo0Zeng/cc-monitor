@@ -1555,7 +1555,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
     let _ = paint(&mut w, 0.6, crate::rows::testing::click_at(at));
 
     // 那一摞是异步跑的 ⇒ 先等那一问摆出来（**不靠睡一个猜出来的时长**：等那个可观测的状态）。
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.is_asking() {
             break;
         }
@@ -1579,7 +1579,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
         "摆到人面前的不是那一件"
     );
     assert!(w.write_board.settle(true), "答复没送出去");
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.rounds() > 0 {
             break;
         }
@@ -1700,7 +1700,7 @@ async fn a_real_click_on_edit_fires_the_read() {
     let ctx = egui::Context::default();
     menu_pick(&ctx, &mut w, "app.conf", EDIT_LABEL.as_str());
     // 那一趟**发出去了** —— 要么还在飞，要么已经到货（`.invalid` 解析很快就失败）。
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if w.edits.opens() > 0 || w.edits.opening().is_some() {
             break;
         }
@@ -1712,7 +1712,7 @@ async fn a_real_click_on_edit_fires_the_read() {
         EDIT_LABEL = EDIT_LABEL.as_str()
     );
     // 等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         if w.edits.opens() > 0 {
             break;
         }
@@ -2087,7 +2087,7 @@ async fn ctrl_s_in_the_editor_saves() {
         crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), 9.0, vec![key], |ui| {
             w.frame_body(ui)
         });
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if w.edits.saves() > 0 {
             break;
         }
@@ -2232,7 +2232,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
 
     // 真发一趟存 —— 后端那一侧当场拒。
     assert!(w.save_edit(None), "那趟存一次都没发出去");
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if w.edits.saves() > 0 {
             break;
         }
@@ -2586,13 +2586,13 @@ fn click_label(ctx: &egui::Context, w: &mut FileWindow, label: &str, t0: f64) {
 }
 
 async fn until(what: &str, mut f: impl FnMut() -> bool) {
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         if f() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 2 秒还没等到：{what}");
+    panic!("到兜底上限还没等到：{what}");
 }
 
 /// ★★ **E §E11 那一形**：窗口开着一份文件 → 别人（机器页写别名块 / agent）在这期间写了它 → 回窗口存
@@ -2764,13 +2764,13 @@ fn hex(b: &[u8]) -> String {
 }
 
 async fn wait_for(wired: &crate::find::testing::Wired, cmd: &str, n: usize) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if wired.count(cmd) >= n {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 3 秒线上还没有第 {n} 条 `{cmd}`：{:?}", wired.cmds());
+    panic!("到兜底上限线上还没有第 {n} 条 `{cmd}`：{:?}", wired.cmds());
 }
 
 fn last_args(wired: &crate::find::testing::Wired, cmd: &str) -> serde_json::Value {
@@ -2830,13 +2830,13 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     wait_for(&wired, "files-ls", before + 1).await;
     assert_eq!(last_args(&wired, "files-ls")["path"], b16(b"/srv/d\xff"));
     // 先等这一趟列目录的应答落地：它晚到的话会盖掉下面摆进去的那一行（慢的机器上真发生过）。
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if !w.listing.is_loading() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    assert!(!w.listing.is_loading(), "等了 3 秒目录还没列完");
+    assert!(!w.listing.is_loading(), "到兜底上限目录还没列完");
     *w.listing.error.lock().unwrap() = None;
     // 里面一个有损名文件。
     let file = Listed {
@@ -2885,7 +2885,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     );
     // 删除（写面：根是当前目录的字节）。
     assert!(w.perform(Action::Delete, None));
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.is_asking() {
             break;
         }
@@ -3365,13 +3365,13 @@ fn entries_that_could_not_be_read_are_said() {
 
 /// 等就地那一趟回来。**带上限，绝不挂死**。
 async fn settle_inline_of(w: &mut FileWindow) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.settle_inline() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 3 秒就地那一趟还没回来");
+    panic!("到兜底上限就地那一趟还没回来");
 }
 
 /// 就地改名（稿 07 / 08）：名字被占了（后端 `exists`）⇒ 那一格留着、下面说「x 已存在」；
@@ -3439,7 +3439,7 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
     // 点撤销 ⇒ 改回去那一件上线（不问），做完不再出回执。
     let before = w.write_board.rounds();
     assert!(w.start_undo(undo, None));
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.rounds() > before {
             break;
         }
@@ -3478,7 +3478,7 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
     assert!(w.begin_chmod(0));
     w.write_prompt.as_mut().unwrap().text = "755".into();
     assert!(w.confirm_write(None));
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.rounds() >= 1 {
             break;
         }

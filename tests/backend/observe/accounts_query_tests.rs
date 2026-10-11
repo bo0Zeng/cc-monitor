@@ -825,7 +825,7 @@ fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
         let after = stat.rfind(')')? + 2;
         stat[after..].chars().next()
     };
-    for _ in 0..2_000 {
+    for _ in guard_core::wall::rounds() {
         if state_of(zpid) == Some('Z') {
             break;
         }
@@ -853,7 +853,7 @@ fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
         matches!(std::fs::read(format!("/proc/{pid}/environ")),
             Ok(b) if b.windows(5).any(|w| w == b"PATH="))
     };
-    for _ in 0..2_000 {
+    for _ in guard_core::wall::rounds() {
         // 乙也等：它要的 0 字节今天有两种来路（空环境 / exec 窗口），
         // 等一下让它落在**前者**上 —— 那格重合本身仍在（头注里登记着），
         // 但至少夹具是它自称的那个夹具。

@@ -53,14 +53,14 @@ fn reads(wired: &Wired) -> Vec<String> {
 
 /// 跟到面板上摆出 `Text` / `Said` 为止（带上限，绝不挂死）。
 async fn follow_until_settled(p: &mut Preview, w: &FileWindow) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         p.follow(w, None);
         if matches!(p.view(), View::Text { .. } | View::Said(_)) {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 3 秒预览还在 {:?}", p.view());
+    panic!("到兜底上限预览还在 {:?}", p.view());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -226,7 +226,7 @@ async fn the_text_on_the_panel_is_the_text_the_backend_sent() {
     );
     let ctx = egui::Context::default();
     let mut seen = false;
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
