@@ -848,7 +848,7 @@ fn an_overrun_tab_pick_still_puts_the_title_back_and_answers_once() {
     };
     let t0 = std::time::Instant::now();
     let main = std::thread::spawn(move || {
-        pick_tab_in_budget(
+        crate::platform::console::pick_tab_in_budget(
             &mut r,
             "ccm-front-1a2b3c4d",
             6,
@@ -880,7 +880,7 @@ fn a_tab_pick_within_budget_answers_its_own_result() {
     let mut t = FakeTabs::new(vec![Some(vec!["pwsh", "✳ claude"]), Some(vec!["pwsh", m])]);
     let answers = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let said = answers.clone();
-    pick_tab_in_budget(
+    crate::platform::console::pick_tab_in_budget(
         &mut t,
         m,
         6,

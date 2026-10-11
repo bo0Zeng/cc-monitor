@@ -47,7 +47,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              对上就停。**有上限**、只在点 ↗ 那一下跑，不是节拍器。（换成订根窗口的属性变更事件要一个带期限的事件等待，x11rb 不带，今天不做。）",
     ),
     (
-        "src/bind.rs",
+        "src/platform/console.rs",
         "pick_tab_in_budget",
         "wait-for-condition",
         "↗ 切标签页的看门那一支：等主线程做完，至多 `TAB_BUDGET`（2s，一次 `recv_timeout`）；到点就替它写回标题、答话。\

@@ -253,7 +253,7 @@ fn helper_tab(pid: u32, hwnd: isize) {
         return answer(TabPick::Miss(TabMiss::NoUia));
     };
     let answered = borrow(pid, || {
-        crate::bind::pick_tab_in_budget(
+        pick_tab_in_budget(
             &mut LentTitle {
                 tabs: &mut tabs,
                 deadline,
@@ -272,7 +272,7 @@ fn helper_tab(pid: u32, hwnd: isize) {
     }
 }
 
-/// 小助手切标签页那一件最多读多久（从它起来算）：到点就收尾 —— 写回标题、答「读不到标签页」、退出（[`crate::bind::pick_tab_in_budget`]）。monitor 不掐它。
+/// 小助手切标签页那一件最多读多久（从它起来算）：到点就收尾 —— 写回标题、答「读不到标签页」、退出（[`pick_tab_in_budget`]）。monitor 不掐它。
 #[cfg(windows)]
 const TAB_BUDGET: std::time::Duration = std::time::Duration::from_millis(2000);
 
@@ -412,6 +412,88 @@ impl crate::bind::TabReader for NoTabs {
     }
 }
 
+/// 切标签页一趟，最多 `budget`（小助手里调）：主线程做 [`crate::bind::pick_tab`]（规则在那里）；到点还没做完 ⇒ 看门那一支替它把标题写回
+/// （`put_back`，借着的控制台是整个进程的，哪条线程写都一样）、按「读不到标签页」答话 —— 主线程卡在 UI Automation
+/// 哪一个调用里都不等它（生产的 `answer` 答完就退出进程）。答话只一次、标题只写回一次（谁先到谁做）；
+/// 到点之后主线程才走到挂记号那一步 ⇒ 不挂。monitor 不掐小助手，记号就不会因为被掐断留在标题上。
+#[cfg(any(windows, test))]
+pub(crate) fn pick_tab_in_budget(
+    r: &mut impl crate::bind::TabReader,
+    marker: &str,
+    tries: usize,
+    budget: std::time::Duration,
+    put_back: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
+    answer: std::sync::Arc<dyn Fn(crate::bind::TabPick) + Send + Sync>,
+) {
+    use crate::bind::{pick_tab, TabMiss, TabPick, TabReader};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    struct Lease {
+        /// 挂着记号时那个原标题（写回了 ⇒ `None`）。
+        old: Mutex<Option<String>>,
+        /// 答过话了（看门那一支到点答 · 主线程做完答，谁先谁算）。
+        answered: AtomicBool,
+    }
+    /// 记号经租约挂、经租约写回：看门那一支写回过 ⇒ 主线程那一次不再写；答过话之后不再挂。
+    struct Leased<'a, R> {
+        r: &'a mut R,
+        lease: &'a Lease,
+    }
+    impl<R: TabReader> TabReader for Leased<'_, R> {
+        fn names(&mut self) -> Option<Vec<String>> {
+            self.r.names()
+        }
+        fn mark(&mut self, title: &str) -> Option<String> {
+            let mut old = self.lease.old.lock().unwrap();
+            if self.lease.answered.load(Ordering::SeqCst) {
+                return None;
+            }
+            let got = self.r.mark(title)?;
+            *old = Some(got.clone());
+            Some(got)
+        }
+        fn restore(&mut self, old: &str) {
+            if self.lease.old.lock().unwrap().take().is_some() {
+                self.r.restore(old);
+            }
+        }
+        fn select(&mut self, i: usize) -> bool {
+            self.r.select(i)
+        }
+        fn wait(&mut self) {
+            self.r.wait();
+        }
+        fn time_left(&self) -> bool {
+            self.r.time_left()
+        }
+    }
+    let lease = Arc::new(Lease {
+        old: Mutex::new(None),
+        answered: AtomicBool::new(false),
+    });
+    let (done, rx) = std::sync::mpsc::channel::<()>();
+    let watch = {
+        let (lease, answer) = (lease.clone(), answer.clone());
+        std::thread::spawn(move || {
+            if rx.recv_timeout(budget).is_ok() {
+                return;
+            }
+            if let Some(old) = lease.old.lock().unwrap().take() {
+                put_back(&old);
+            }
+            if !lease.answered.swap(true, Ordering::SeqCst) {
+                answer(TabPick::Miss(TabMiss::NoUia));
+            }
+        })
+    };
+    let pick = pick_tab(&mut Leased { r, lease: &lease }, marker, tries);
+    let _ = done.send(());
+    let _ = watch.join();
+    if !lease.answered.swap(true, Ordering::SeqCst) {
+        answer(pick);
+    }
+}
+
 /// 起一趟小助手（本二进制，带 [`helper_argv`]），等它答完（[`ask_helper`]：至多 [`HELPER_TIMEOUT`]，到点不掐），
 /// 回它的标准输出；起不来 / 没答完 ⇒ `None`。不随 monitor 死（`Detached`）：它自己有预算、到点收尾。
 #[cfg(windows)]
@@ -440,6 +522,7 @@ fn run_helper(req: &HelperRequest) -> Option<String> {
 /// 等小助手答完（至多 `wait`），回它的标准输出；起不来 / 到点没答完 ⇒ `None`。
 /// 🔴 **到点不掐它**：小助手自己有预算（[`TAB_BUDGET`]，到点写回标题、答话、退出），掐断它会把记号留在终端标题上；
 /// 它的输出由一条读线程收完、再替它收尸，monitor 这一侧只是不再等。
+#[cfg(any(windows, test))]
 pub(crate) fn ask_helper(
     wait: std::time::Duration,
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
