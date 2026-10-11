@@ -58,7 +58,7 @@ import { posix, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
@@ -819,6 +819,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     OS: NONE,
     ARCH: NONE,
   },
+  // 两个前端包的 Windows 进程清单：构建脚本里编成资源 · 测试程序读回；TS 侧没有孪生（界面不碰进程清单）。
+  "win-manifest": {
+    embed_for_every_artifact: NONE,
+    assert_own_process_carries_it: NONE,
+  },
   // 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份；TS 侧不碰 Win32。
   "win-path-core": {
     win32_long_path: NONE,
@@ -1170,7 +1175,7 @@ describe("DUP1 判定只有一个家", () => {
       bad,
       "zero 行出红 ⇒ TS 里又长出了那条判定的一份；open 行出红 ⇒ 孪生已经没了（翻成 zero）或多了一份。",
     ).toEqual([]);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("⑤ generated 行：生成物真的导出那几个名字 · 生产 TS 里读它们的文件 == 登记（两向）", () => {
     const bad: string[] = [];

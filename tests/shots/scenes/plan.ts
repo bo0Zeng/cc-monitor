@@ -17,7 +17,7 @@ function plan(id: string, title: string, desc: string, act: Scene["act"], o: Pla
 async function openPlan(wait = true): Promise<void> {
   await mainReady(TABS);
   await click(".plan-trigger");
-  if (wait) await waitFor(".plan-view .plan-row[data-cell]", 10_000);
+  if (wait) await waitFor(".plan-view .plan-row[data-cell]");
   await sleep(500);
 }
 
@@ -127,8 +127,8 @@ export const PLAN_SCENES: Scene[] = [
   }),
   plan("plan-31-needs-strip", "需手动 · 标签栏的数 ＋ 会话头那一枚标", "标签栏「需手动 N」含计划项（会话在前、计划项在后）；切到总负责：会话头多一枚「ledger · 顶块 · 执行」", async () => {
     await mainReady(TABS);
-    await click(await byText("#tab-bar .tab", "总负责"));
-    await waitFor(".session-plan-mark", 10_000);
+    await click(await byText("#tab-bar .tab", /^(?!.*站点).*总负责/));
+    await waitFor(".session-plan-mark");
     await sleep(400);
   }),
   plan("plan-32-top", "需手动 · 顶块走到看全局", "概览顶上一条「整片做完 · 需过目」：［认可］［退回…］· 需手动 1 / 3 · 下一条", async () => {

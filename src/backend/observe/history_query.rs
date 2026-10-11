@@ -18,8 +18,9 @@
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::{mtime_ms, split_whole_lines, Step, Tailed};
+use crate::observe::fs::{split_whole_lines, Step, Tailed};
 use crate::observe::listing_scan::SessionScan;
+use crate::platform::fs::{Ro, RoFile};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -190,7 +191,7 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
     let Some(root) = records_root(agent_home) else {
         return Ok(false);
     };
-    let entries = match std::fs::read_dir(&root) {
+    let entries = match Ro::read_dir(&root) {
         Ok(it) => it,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(unreadable_dir(&root, &e)),
@@ -273,11 +274,11 @@ fn project_rows_hiding(
 ) -> Vec<serde_json::Value> {
     // 目录与修改时刻与 `--list-sessions` 那条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
     let mut sessions: Vec<(Option<String>, i64)> = Vec::new();
-    if let Ok(files) = std::fs::read_dir(dir) {
+    if let Ok(files) = Ro::read_dir(dir) {
         for f in files.flatten() {
             let p = f.path();
             if p.is_file() && crate::agents::is_tree_session_file(&p) {
-                sessions.push((crate::agents::project_dir_of(&p), mtime_ms(&p)));
+                sessions.push((crate::agents::project_dir_of(&p), Ro::mtime_ms(&p)));
             }
         }
     }
@@ -336,7 +337,7 @@ fn list_sessions_for(
     // **改调共享围栏**（E3）：此前这里是一份内联副本，
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
     let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
-    let entries = std::fs::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
+    let entries = Ro::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
     for entry in entries.flatten() {
         let p = entry.path();
         if !p.is_file() || !crate::agents::is_tree_session_file(&p) {
@@ -346,7 +347,7 @@ fn list_sessions_for(
             Some(sid) if p.file_stem().is_none_or(|s| s != sid) => serde_json::json!({
                 "sessionId": p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
                 "cwd": crate::agents::project_dir_of(&p),
-                "updatedAtMs": mtime_ms(&p),
+                "updatedAtMs": Ro::mtime_ms(&p),
             }),
             _ => analyze_session_cached(&p),
         };
@@ -373,7 +374,7 @@ pub(crate) fn sessions_by_dir_for(
     let Some(root) = records_root(agent_home) else {
         return Ok(None);
     };
-    let entries = match std::fs::read_dir(&root) {
+    let entries = match Ro::read_dir(&root) {
         Ok(it) => it,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(unreadable_dir(&root, &e)),
@@ -457,7 +458,7 @@ impl ListingEntry {
             last_bytes: 0,
         };
         let mut end = 0u64;
-        if let Ok(file) = std::fs::File::open(p) {
+        if let Ok(file) = Ro::open(p) {
             let mut r = std::io::BufReader::new(file);
             let mut line = Vec::new();
             loop {
@@ -599,7 +600,8 @@ const NO_TREE: &str = "no agent here keeps a record tree";
 /// 一个子运行的记录住哪：父记录 ＋（子运行是哪个 ‖ 派出它的那次工具调用）⇒（那份记录, 子运行）。只问适配层给的那几格：
 /// 子运行的记录在哪几份（`ChildFace::sources`）· 一条记录属于哪个子运行（`run_of`）· 派出链接（`child_link`）。
 ///
-/// 给的是工具调用 id ⇒ 在父记录里找那次调用的派出链接（只解析含这个 id 的行）；还没对上（前台子运行跑完才回结果）⇒ `not_found`。
+/// 给的是工具调用 id ⇒ 先问子运行记录那一侧派出那一刻落盘的对上（`ChildFace::spawned`，前台派出的在跑时只有它），
+/// 再在父记录里找那次调用的派出链接（只解析含这个 id 的行）；都对不上 ⇒ `not_found`。
 pub(crate) fn run_source(
     agent_home: &Path,
     parent: &str,
@@ -629,10 +631,19 @@ pub(crate) fn run_source(
     Err(("not_found", copy_text("rsRun.load.notFound", &[])))
 }
 
-/// 父记录里「这次工具调用派出的是哪个子运行」（派出链接里带了子运行的那一条）。
+/// 「这次工具调用派出的是哪个子运行」：子运行记录那一侧落了盘的对上 ‖ 父记录里带了子运行的那一条派出链接。
 fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Option<String> {
     use std::io::BufRead;
-    let f = std::fs::File::open(parent).ok()?;
+    if let Some(r) = faces
+        .sources(parent)
+        .iter()
+        .filter_map(|c| faces.spawned(c))
+        .find(|l| l.tool.as_deref() == Some(tool))
+        .and_then(|l| l.run)
+    {
+        return Some(r);
+    }
+    let f = Ro::open(parent).ok()?;
     for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
         if !line.contains(tool) {
             continue;
@@ -658,7 +669,7 @@ fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Op
 fn first_run_of(path: &Path, faces: &crate::agents::RunFaces) -> Option<String> {
     use std::io::BufRead;
     const HEAD_LINES: usize = 8;
-    let f = std::fs::File::open(path).ok()?;
+    let f = Ro::open(path).ok()?;
     std::io::BufReader::new(f)
         .lines()
         .map_while(Result::ok)
@@ -709,7 +720,7 @@ fn validate_session_path_among(
 /// `history-read`（后端自己的 `agents/claudecode/parse.rs::parse_line`；monitor 侧早已没有自己的解析）。
 fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
@@ -732,7 +743,7 @@ fn read_session_from_offset(
     until: Option<u64>,
 ) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     stream_from_offset(&mut f, offset, until, &mut out)
@@ -749,7 +760,7 @@ fn read_session_from_offset(
 /// 「这一段正文」走它 —— 两端都取自索引里的行边界，所以切出来的恰好是整行。
 /// ⚠ **它不替调用方对齐行边界**：传一个行中间的数，切出来的就是半行（与 `offset` 同一口径）。
 fn stream_from_offset<W: std::io::Write>(
-    f: &mut std::fs::File,
+    f: &mut RoFile,
     offset: u64,
     until: Option<u64>,
     out: &mut W,
@@ -896,10 +907,10 @@ pub(crate) fn open_user_inputs_at(
     agent_home: &Path,
     jsonl_path: &str,
     from: u64,
-) -> Result<std::io::BufReader<std::fs::File>, String> {
+) -> Result<std::io::BufReader<RoFile>, String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
     if from > len {
         return Err(format!(
@@ -937,10 +948,10 @@ pub(crate) fn open_facts_at(
     agent_home: &Path,
     jsonl_path: &str,
     from: u64,
-) -> Result<std::io::BufReader<std::fs::File>, String> {
+) -> Result<std::io::BufReader<RoFile>, String> {
     use std::io::{Read, Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
     if from > len {
         return Err(format!(
@@ -1076,10 +1087,10 @@ pub(crate) fn open_session_at(
     agent_home: &Path,
     jsonl_path: &str,
     offset: u64,
-) -> Result<std::io::BufReader<std::fs::File>, String> {
+) -> Result<std::io::BufReader<RoFile>, String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
     f.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("seek failed: {e}"))?;
     Ok(std::io::BufReader::new(f))
@@ -1348,12 +1359,12 @@ pub(crate) fn tail_plan(
     agent_home: &Path,
     jsonl_path: &str,
     n: usize,
-) -> Result<(TailPlan, std::fs::File), String> {
+) -> Result<(TailPlan, RoFile), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
     // （旧 --read-session 是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
     // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。
-    let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let mut reader = std::io::BufReader::new(f);
     let plan = tail_plan_of(&mut reader, n).map_err(|e| format!("scan failed: {e}"))?;
     Ok((plan, reader.into_inner()))
@@ -1430,8 +1441,7 @@ pub(crate) fn read_page(
 ) -> Result<ReadPage, (&'static str, String)> {
     use std::io::{Read, Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
-    let mut f =
-        std::fs::File::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
+    let mut f = Ro::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
     let len = f
         .metadata()
         .map_err(|e| ("failed", format!("stat failed: {e}")))?
@@ -1552,7 +1562,7 @@ pub(crate) fn read_lines(
     line_cap: usize,
 ) -> Result<LinesPage, (&'static str, String)> {
     let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
-    let f = std::fs::File::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
+    let f = Ro::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
     read_lines_from(std::io::BufReader::new(f), from, until, page, line_cap)
 }
 
@@ -1779,7 +1789,7 @@ fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
 }
 
 pub(super) fn created_ms_or_mtime(p: &Path) -> i64 {
-    let meta = match std::fs::metadata(p) {
+    let meta = match Ro::metadata(p) {
         Ok(m) => m,
         Err(_) => return 0,
     };
@@ -1803,7 +1813,7 @@ fn analyze_session(p: &Path) -> serde_json::Value {
     // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**（[`ListingEntry::scan`] 逐行读）。原来是 `read_to_string(p)` 整读：
     // `--list-sessions` 对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
     // 一次列表就是把 2.4 GB 读进内存再逐行解析。扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
-    let mtime = std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mtime = Ro::metadata(p).and_then(|m| m.modified()).ok();
     ListingEntry::scan(p, mtime).row
 }
 

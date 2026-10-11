@@ -284,7 +284,7 @@ fn a_writer_exit_wakes_the_pidfd_for_its_record() {
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let _ = drain(&mut r.rx);
     gone(w);
-    match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+    match rx.recv_timeout(guard_core::wall::CEILING) {
         Ok(WatchEvent::PidDied { key, pid: p }) => {
             assert_eq!(key, path_key(&r.record));
             assert_eq!(p, pid);
@@ -310,7 +310,7 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     std::fs::remove_dir_all(&r.dir).ok();
 }
 
-/// 造好的 Codex 样本（宣告 · 之后两轮各一句话 ＋ 一轮结束）真走一遍 watcher，线上那几行就是这份金样
+/// 造好的 Codex 样本（宣告 · 之后两轮各：一轮开始 ＋ 一句话 ＋ 一轮结束；此刻在干什么跟着翻）真走一遍 watcher，线上那几行就是这份金样
 /// （路径里的临时目录换成 `/r`，宣告上写者的 pid 换成 0）。
 /// 壳（`tests/frontend/shell/codex_stream_tests.rs`）与界面（`tests/frontend/ui/codex-turn-notify.vitest.ts`）读同一份往下走到系统通知。
 /// 重打是显式动作：`REGOLD_CODEX_STREAM=1` 跑本条写盘；不设就只比。钟面（`timeText`）在推出去那一下才按看的那一台写（`Frame::stamp`），这里拿到的帧没有它。
@@ -324,6 +324,7 @@ fn the_codex_sample_walks_into_the_golden_frames() {
     let round = |text: &str, turn: &str| {
         format!(
             concat!(
+                "{{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_started\",\"turn_id\":\"{turn}\"}}}}\n",
                 "{{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"{text}\"}}]}}}}\n",
                 "{{\"timestamp\":\"2026-10-10T00:00:04.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_complete\",\"turn_id\":\"{turn}\"}}}}\n",
             ),
@@ -365,4 +366,81 @@ fn the_codex_sample_walks_into_the_golden_frames() {
         on_disk, produced,
         "Codex 样本的帧变了：形状是有意改的 ⇒ REGOLD_CODEX_STREAM=1 重打，连同壳与界面那两条一起对"
     );
+}
+
+/// 帧上那一态（`activity`；没上线 ⇒ `None`）：`session_added` · `session_status` 才有，别的帧不记。
+fn activities(frames: &[Frame]) -> Vec<Option<String>> {
+    frames
+        .iter()
+        .filter(|f| matches!(f, Frame::SessionAdded { .. } | Frame::SessionStatus { .. }))
+        .map(|f| {
+            let v: serde_json::Value =
+                serde_json::from_str(crate::stream::wire::to_line(f).unwrap().trim()).unwrap();
+            v.get("activity")
+                .and_then(|a| a.as_str())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// 这一家没有进程状态文件：此刻在干什么由适配层照记录里的事件翻（一轮开始 ⇒ 在跑；一轮完了 ⇒ 闲着）。
+/// 宣告时记录里最后一件已是「一轮完了」⇒ 宣告就说闲着；下一句进来（一轮开始）⇒ 在跑；这一轮完了 ⇒ 又闲着。
+#[test]
+fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_working() {
+    let mut r = rig("activity");
+    let w = writer(&r.record);
+    on_writers(opened(&r.record), &mut r.state, &mut r.sink);
+    assert_eq!(
+        activities(&drain(&mut r.rx)),
+        vec![Some("idle".to_string())],
+        "记录停在 task_complete ⇒ 宣告说闲着"
+    );
+    let append = |r: &Rig, s: &str| {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&r.record)
+            .unwrap()
+            .write_all(s.as_bytes())
+            .unwrap();
+    };
+    append(
+        &r,
+        concat!(
+            "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"t2\"}}\n",
+            "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"again\"}]}}\n",
+        ),
+    );
+    process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    let got = activities(&drain(&mut r.rx));
+    assert_eq!(
+        got.last(),
+        Some(&Some("working".to_string())),
+        "下一句进来 ⇒ 在跑：{got:?}"
+    );
+    append(
+        &r,
+        "{\"timestamp\":\"2026-10-10T00:00:04.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"t2\"}}\n",
+    );
+    process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    assert_eq!(
+        activities(&drain(&mut r.rx)),
+        vec![Some("idle".to_string())],
+        "一轮完了 ⇒ 闲着（只发一帧）"
+    );
+    // 中止的那一轮也回到等输入。
+    append(
+        &r,
+        concat!(
+            "{\"timestamp\":\"2026-10-10T00:00:05.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"t3\"}}\n",
+            "{\"timestamp\":\"2026-10-10T00:00:06.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"t3\"}}\n",
+        ),
+    );
+    process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    assert_eq!(
+        activities(&drain(&mut r.rx)).last(),
+        Some(&Some("idle".to_string())),
+        "中止 ⇒ 闲着"
+    );
+    gone(w);
+    std::fs::remove_dir_all(&r.dir).ok();
 }

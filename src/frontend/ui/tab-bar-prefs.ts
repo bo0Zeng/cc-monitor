@@ -71,7 +71,7 @@ export class TabBarPrefs {
   collections: TabCollection[] = [];
   /**
    * 盘上 `tabBar.groupOf` 里 tab 还没到的那些组 id（sid → 组 id）：一份意图，形同 `TabStore.savedOrder`。
-   * 不在读的那一拍按存活过滤：启动那一刻「已经没了的会话」与「还没宣告到的会话」分不开。
+   * 不在读的那一刻按存活过滤：启动那一刻「已经没了的会话」与「还没宣告到的会话」分不开。
    * tab 到达（[`adoptGroup`]）⇒ 组 id 挪到 `Tab.group`；组没了 ⇒ 指向它的条目连同盘上一起摘。从没到过的 tab 的条目留着。
    */
   savedGroupOf = new Map<string, string>();
@@ -504,7 +504,7 @@ export class TabBarPrefs {
    * 启动时把落盘的顺序拉回来（宿主在 `loadCollections` 之后调一次）。只重排已经存在的 tab、不凭空造；
    * 盘上没提到的排在后面、保持此刻的相对次序。
    * 读的时候不按存活过滤：前端没有任何一刻知道「会话到齐了」（几台远端陆续宣告、还会中途掉线重连），
-   * 读的那一拍「已删的」与「还没到的」分不开 ⇒ 顺序存成意图（`savedOrder`），每次应用时按此刻在的 tab 过滤
+   * 读的那一刻「已删的」与「还没到的」分不开 ⇒ 顺序存成意图（`savedOrder`），每次应用时按此刻在的 tab 过滤
    * （`applySavedOrder`），tab 陆续到达时由 `placeInOrder` 再应用一次。
    */
   async loadOrder(): Promise<void> {

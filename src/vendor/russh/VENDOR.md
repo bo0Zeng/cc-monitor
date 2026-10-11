@@ -22,7 +22,7 @@ SSH 压缩按已写好的判准开。
 
 ```rust
 loop {
-    let n_in_ = z.total_in() as usize - n_in;      // ← 本轮调用之前的进度
+    let n_in_ = z.total_in() as usize - n_in;      // ← 这一次调用之前的进度
     let n_out_ = z.total_out() as usize - n_out;
     let d = z.decompress(&input[n_in_..], &mut output[n_out_..], flush);
     match d? {
@@ -33,7 +33,7 @@ loop {
             ...
 ```
 
-**缺陷**：收尾判断用的是本轮调用**之前**的进度。输出缓冲起步 = 包长 L：第 1 次调用吃光输入、填满 L，判断看的是 `(0, 0)` ⇒ 继续；
+**缺陷**：收尾判断用的是这一次调用**之前**的进度。输出缓冲起步 = 包长 L：第 1 次调用吃光输入、填满 L，判断看的是 `(0, 0)` ⇒ 继续；
 第 2 次调用没空位（`BufError`），判断看的是 `(全部输入, L)` ⇒ 满 ⇒ 扩成 2L；第 3 次调用填满 2L，判断看的还是 `(全部输入, L)`
 ⇒「没满、输入吃光」⇒ **收工**。一包最多交出 2L，余下的留在解压器里、拼进下一包 ⇒ 包流错位。
 可压比 > 2 的包（会话 jsonl 3–5 倍）几乎每一包都中；真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上一开压缩，
@@ -184,7 +184,7 @@ a0097c9ca46d518d454328e26e4339fb813767befd17ca7bf6b2418f9748bf6b  tests/test_rek
 
 <!-- 改过的文件 起 -->
 ```text
-src/compression.rs  774b59e33ff0746e2898d896074bcf800ab167f7174750c20ddfca69ada03c2c  afda6a9883291af636d6f901cecbef9b5e7fd1dfb3f49b69e6d897b32fa619ad
+src/compression.rs  774b59e33ff0746e2898d896074bcf800ab167f7174750c20ddfca69ada03c2c  eea61d6325179aeeeee367f292ee87876e3d9d6f707e2d47d1ccc65b3ecd9cd6
 ```
 <!-- 改过的文件 止 -->
 

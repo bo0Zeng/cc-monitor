@@ -158,7 +158,7 @@ def main() -> int:
         # 而 `structural_failures` 要的是**人群/环境本身坏没坏**这一类。
         # 直接放引用的话两类会混在一起 —— 调用方（`tests/frontend/ui/offline-cargo-cache.vitest.ts`）
         # 先断言这一项为空，于是「缺谁」那条**具名**断言永远轮不到开口，
-        # 报出来的就成了一句不点名的话。那正是本件要治的那种病。
+        # 报出来的就成了一句不点名的话。那正是这里要治的那种病。
         "structural_failures": list(fail),
     }
 

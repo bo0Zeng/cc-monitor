@@ -53,7 +53,7 @@ rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-
 #     而那个池是 `sftp_pool.rs:539` 的**进程级 `OnceLock`** ⇒ 换进程 = 换一份池
 #     = 同一台远端第二条 SSH 连接，秤 F4 钉的「6 通道 − 4 车道 = 2」会被悄悄变成两份预算。
 #  ② 〔当时〕门禁 `cargo` 那一格把 workspace 包数恒等钉成一个手抄的数，新增成员要改 `gate.sh`，
-#     而那不在 24e 的写区 ⇒ 当时落成 `monitor` 自己的一个模块。今天那一格的成员集合从 `cargo metadata`
+#     而那不在当时的改动范围 ⇒ 当时落成 `monitor` 自己的一个模块。今天那一格的成员集合从 `cargo metadata`
 #     现取，这条理由已不成立（文件窗口后来也独立成了这个包）。
 #
 # ⚠ **代价如实记**：这两条把依赖树从 679 个包推到约 1080 个（winit / wgpu / naga / accesskit
@@ -62,7 +62,7 @@ rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-
 #      · `x86_64-pc-windows-gnu`（门禁 winchk 那一格用的 target）✅ 31.97 秒
 #      · `x86_64-unknown-linux-musl`          ✅（只是 `check`，不是静态链接）
 #    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
-#      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**没被本刀回答**。
+#      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**这里没回答**。
 egui = "0.36"
 # 🔴 **渲染后端必须是 `glow`，不能用 eframe 默认的 `wgpu`** —— 理由是现打出来的编译失败，
 #    不是口味。**这一条别顺手改回默认。**
@@ -91,7 +91,7 @@ egui = "0.36"
 # 逐个 manifest 现打：`winit` 与 `glutin` 都只要 `^0.2.1`，**只有 `wgpu` 要 `^0.2.2`**——
 # 而 **`Cargo.lock` 记的是所有 feature 的并集**，`egui-wgpu` 作为 eframe 的可选依赖仍留在 lock 里，
 # 把 `^0.2.2` 一起带着 ⇒ 换后端**改不了 lock**，`cargo update -p cfg_aliases --precise 0.2.1` 照样失败。
-# ⇒ 那条只有两条真出路，**都不在 24e 的写区，所以停下报备、不自作主张**：
+# ⇒ 那条只有两条真出路，**都不在当时的改动范围，所以停下报备、不自作主张**：
 #   ① 把 `src/backend/Cargo.lock` 的 `cfg_aliases` 抬到 0.2.2（它只是 `nix` 的 build-dependency，
 #      纯构建期、零运行时面）——**改的是 `src/backend/`**；
 #   ② 不用 `eframe`，自己拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`（scratchpad 现打：
@@ -125,9 +125,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 主界面字族里的名字 → 这台机器上的那份字体文件（MIT）。
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
 
-# Windows 上把进程清单与图标编成资源（`build.rs`）；与 monitor 同一个版本（锁里已有）。
 [build-dependencies]
+# Windows 进程清单编成资源、交给本包每一个链接产物（程序 · lib 的测试程序）：与 monitor 同一份清单、同一处编法。
+#   rfd 的 `common-controls-v6` 按名字引入 comctl32 的 `TaskDialogIndirect`，没清单的程序在 Windows 上 0xc0000139 起不来。
+win-manifest = { path = "../../common/win-manifest" }
+# 程序的图标（任务栏 · Alt-Tab）编成资源（`build.rs`）；与 win-manifest 同一个版本（锁里已有）。
 embed-resource = "3"
 
 [dev-dependencies]
 guard-core = { path = "../../common/guard-core" }
+# 测试程序在 Windows 上读回自己的进程清单（`tests/frontend/filewin/app_manifest_tests.rs`）。
+win-manifest = { path = "../../common/win-manifest" }

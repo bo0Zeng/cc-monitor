@@ -1,6 +1,6 @@
 // Tab 生命周期状态机的 DOM 单元测试（vitest + jsdom）。
 //
-// 为什么需要它：本轮迭代两个真 bug 都在 tabs.ts 的生命周期里——
+// 为什么需要它：那次迭代两个真 bug 都在 tabs.ts 的生命周期里——
 //   1) resume 后已归档**本地** Tab 不自动复活（reviveTab + origin 门控）；
 //   2) 关 Tab 只允许 archived（closeTab 守卫）。
 // tabs.ts 重度依赖 DOM + 一堆协作模块（MessageStream / RecordTimeline / BranchFolder /
@@ -242,6 +242,7 @@ import { applyConfigEdits, type Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 import { copyPattern } from "../../test-support/copy-pattern";
 import { factsOn } from "../../test-support/host-facts";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 // `TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -330,6 +331,20 @@ describe("TabManager 生命周期", () => {
     expect(after).toBe(skeleton);
     expect(after.parentPath).toBe("/fake/sk1.jsonl");
     expect(after.projectDir).toBe("/root/proj");
+  });
+
+  it("骨架 tab 先建、行后到：展开取回全文按回填的那份记录路径问（不是建骨架时那个空串）", async () => {
+    const asked: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      const a = args as { op?: string; payload?: number[] } | undefined;
+      if (cmd === "chan_call" && a?.op === "history-page") asked.push((JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? []))) as { path: string }).path);
+      return undefined;
+    });
+    tm.createSkeletonTab("sk2", "/root/proj", LOCAL_ORIGIN);
+    const tab = tm.ensureTab("sk2", null, "/fake/sk2.jsonl", LOCAL_ORIGIN);
+    tab.skeleton = { ledger: { uuidToSeq: new Map([["r1", 0]]), factsOf: () => ({ o: 0, n: 10 }) } } as unknown as typeof tab.skeleton;
+    await tab.fullRecord("r1").catch(() => null);
+    expect(asked).toEqual(["/fake/sk2.jsonl"]);
   });
 
   // 会话里 shell 进了子目录：之后的记录 cwd 都是子目录，而界面只读尾巴 ⇒ 流里「见过的最早那条」是近期的一条。
@@ -1404,7 +1419,7 @@ describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差
     expect(hit, "没有说清为什么没起").toBeTruthy();
     vi.mocked(callStart).mockResolvedValueOnce([reply("done", null, "proj-cc")] as never);
     hit![2]!.onClick!();
-    await vi.waitFor(() => expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc"));
+    await vi.waitFor(() => expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc"), UNTIL_CEILING);
     expect(vi.mocked(callStart).mock.calls[1][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "named", name: "b" } }]);
   });
 });
@@ -4709,8 +4724,8 @@ describe("〔U4b〕main.ts 接线", () => {
     expect([
       n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
-      n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一拍「各台都报完」
-      n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一拍：收空组 · 交「启动时记住的那一格」
+      n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一刻「各台都报完」
+      n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一刻：收空组 · 交「启动时记住的那一格」
     ]).toEqual([0, 1, 1, 1]);
   });
   // 「那台机器看不见了」主窗接一处（入口脚本没有 DOM 判据够得着）；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
@@ -5319,10 +5334,10 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("u2", 0));
     await settle();
     // 切换那一格的推送在 rAF 里（`switchTo`），与事实到达谁先谁后不定 ⇒ 等「最后一次」落定，不钉次序。
-    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", 42]));
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", 42]), UNTIL_CEILING);
     expect(seen.some(([, t]) => t === 7)).toBe(false); // 后台 tab 的事实到了不推
     tm.switchTo("u2");
-    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]), UNTIL_CEILING);
     expect(home(tm).store.tabs.get("u2")!.usage?.promptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
   });
@@ -5333,13 +5348,13 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("v1", 0));
     tm.onLine(line("v2", 0));
     await settle();
-    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5));
+    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5), UNTIL_CEILING);
     const seen: unknown[] = [];
     tm.active.subscribe((a) => seen.push(a));
     (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
-    await vi.waitFor(() => expect(seen.length).toBe(1));
+    await vi.waitFor(() => expect(seen.length).toBe(1), UNTIL_CEILING);
     expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null }]);
   });
 
@@ -5362,7 +5377,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("fine", 0));
     await settle();
     tm.switchTo("fine");
-    await vi.waitFor(() => expect(said.at(-1)).toBeNull()); // 切换那一格的推送在 rAF 里
+    await vi.waitFor(() => expect(said.at(-1)).toBeNull(), UNTIL_CEILING); // 切换那一格的推送在 rAF 里
   });
 });
 
@@ -6316,6 +6331,29 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     for (let s = 0; s <= 50; s++) expect(t.seenSeqs.has(s), `第 ${s} 行没补上`).toBe(true);
   });
 
+  it("★ 补上的那段落进 tab 之后，过程的划段重新要一次（不然新补的卡按补之前那一份归进还开着的那一段过程、折着看不见）", async () => {
+    answerLines();
+    const lines = vi.mocked(invoke).getMockImplementation()!;
+    vi.mocked(invoke).mockImplementation((async (cmd: string, args?: unknown) =>
+      isChanCall(cmd, args, "history-turns") ? chanReply({ from: 0, end: 0, turns: [] }) : lines(cmd, args as never)) as never);
+    const turnsAsks = () =>
+      vi.mocked(invoke).mock.calls.filter((c) => {
+        const a = c[1] as { op?: string; payload?: number[] };
+        return c[0] === "chan_call" && a.op === "history-turns" && (JSON.parse(new TextDecoder().decode(new Uint8Array(a.payload ?? []))) as { path?: string }).path === "/p/wf.jsonl";
+      }).length;
+    for (let s = 0; s < 10; s++) tm.onLine(line("wf", s));
+    for (let k = 0; k < 5; k++) await settle();
+    const before = turnsAsks();
+    tm.onLine(line("wf", 50));
+    for (let k = 0; k < 5; k++) await settle();
+    const live = turnsAsks();
+    expect(live, "实时来一行就要一次").toBeGreaterThan(before);
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wf", path: "/p/wf.jsonl", seq: 50 });
+    for (let k = 0; k < 5; k++) await settle();
+    expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
+    expect(turnsAsks(), "补上的那段落了以后没再要划段").toBeGreaterThan(live);
+  });
+
   it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴、取到末尾（重来时丢掉的实时行也在里面）", async () => {
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wbig", s));
@@ -6372,6 +6410,26 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(ends.every((f) => typeof f.title === "string" && f.title !== "" && typeof f.body === "string")).toBe(true);
     expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual(ends.map((f) => [codexSid, f.title, f.body]));
     expect(ends).toHaveLength(2);
+  });
+
+  it("Codex 样本 ⇒ 它那个 tab 的活动跟着一轮走：一轮开始在跑、一轮完了空闲（帧上那几格照抄）", () => {
+    type F = { kind: string; sid?: string; path?: string; activity?: string; waiting_for?: string; activity_text?: string; activity_tone?: string; activity_order?: number };
+    const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as F);
+    const announced = frames.find((f) => f.kind === "session_added")!;
+    const codexSid = announced.sid!;
+    tm.ensureTab(codexSid, null, announced.path!, LOCAL_ORIGIN);
+    const seen: (string | null)[] = [];
+    for (const f of frames.filter((x) => x.kind === "session_added" || x.kind === "session_status")) {
+      tm.updateActivity(codexSid, (f.activity ?? null) as never, f.waiting_for ?? null, f.activity_text!, f.activity_tone!, f.activity_order!);
+      const a = home(tm).store.tabs.get(codexSid)!.activity;
+      if (seen[seen.length - 1] !== (a?.doing ?? null)) seen.push(a?.doing ?? null);
+    }
+    expect(seen).toEqual(["idle", "working", "idle", "working", "idle"]);
+    const last = home(tm).store.tabs.get(codexSid)!.activity!;
+    expect([last.text, last.tone]).toEqual([copyText("beSession.activity.idle"), "plain"]);
   });
 });
 

@@ -42,8 +42,8 @@ data class ConnectionConfig(
     // 与只管 TCP 的 [connectTimeoutMs] 不同：黑洞对端连上 TCP 后 banner 读会无限阻塞，sshj 没有这一级超时。
     // 默认放宽到 45s，长于 sshj 内部跳板约 30s 的等待；manager 另以 connectTimeoutMs + 15s 为下限。
     val handshakeTimeoutMs: Long = 45_000,
-    // SSH keepalive 间隔（秒），连上后启用，用来发现静默死掉的对端（半开 TCP 没有 FIN）。
-    // sshj 默认连丢 5 次才断，死对端约 5 × interval 内被发现。
+    // SSH keepalive 间隔（秒），造 client 时、连之前就装上（见 `newSshClient`），用来发现静默死掉的对端（半开 TCP 没有 FIN）。
+    // sshj 默认连丢 5 次才断：实测 15 s 时对端不说话 90.1 s 判死（mobcore 10-11）。
     val keepAliveIntervalSec: Int = 15,
     // 经跳板机连接（ssh -J）：先连 [jumpVia] 并认证，再经其 direct-tcpip 隧道握手本目标。可嵌套成多跳；null 为直连。
     val jumpVia: ConnectionConfig? = null,

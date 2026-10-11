@@ -236,7 +236,7 @@ jobs:
 
       # 全部前端单测：① 纯函数 node 测试（branching 主线折叠 #8/#22/#25/#26、diff 渲染 #14、
       # API 报错卡 #21、remote-health 节流、remote-launch 命令构造）；② tabs 生命周期 DOM 测试
-      # （vitest+jsdom，守护 resume 复活 / 归档-only 关闭 / origin 门控等本轮 bug 高发区）。
+      # （vitest+jsdom，守护 resume 复活 / 归档-only 关闭 / origin 门控等 bug 高发区）。
       - name: unit tests (node pure-fn + vitest DOM)
         run: npm test
 
@@ -458,7 +458,7 @@ jobs:
         run: bash tests/scripts/gate.sh
 
   # 手机端 app（`src/mobile`，Gradle）：构建 ＋ JVM 单测 ＋ release（R8），命令住门禁的 `mobile` 格。
-  # 不起模拟器：要设备的 androidTest 不在 CI（入口 `src/mobile/scripts/android-test.sh`，接设备手跑）。
+  # 不起模拟器：要设备的 androidTest 不在 CI（runner 上没有 KVM 模拟器）；本机全量门禁的 `android-device` 格起模拟器跑它（入口 `src/mobile/scripts/android-test.sh`）。
   mobile:
     name: Mobile app (Gradle build + JVM tests, gate)
     runs-on: ubuntu-latest

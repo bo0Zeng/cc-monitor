@@ -316,7 +316,7 @@ export function hitsBlock(row: HTMLElement, sh: SessionHits, open: (uuid: string
   return el;
 }
 
-/** 列表顶的一条（连不上的那台 · 读不了 · 注解没并上 · Codex 只按标题）：警示条 ＋ 至多一颗按钮。 */
+/** 列表顶的一条（断开的那台 · 读不了 · 注解没并上 · Codex 只按标题）：警示条 ＋ 至多一颗按钮。 */
 export function strip(tone: "warn" | "error" | "info", text: string, act?: { label: string; run: () => void }): HTMLElement {
   const acts = act ? [button({ label: act.label, size: "compact", onClick: act.run })] : [];
   if (tone === "info") {

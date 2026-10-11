@@ -172,7 +172,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
         assert_eq!(
             text_from_reply(Err(failed(code, "那句原话"))).map_err(|f| f.said),
             Err("那句原话".to_string()),
-            "`{code:?}` 被压成了「不可编辑」—— 连不上与不是文本在屏幕上就分不开了"
+            "`{code:?}` 被压成了「不可编辑」—— 断开与不是文本在屏幕上就分不开了"
         );
     }
     assert!(
@@ -301,7 +301,7 @@ fn typing_past_the_cap_is_visible_before_the_save_fails() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 「这个量该多大」—— 本刀的答复是「保持 256 KiB」，而这一条是它的现打依据
+// 「这个量该多大」—— 答复是「保持 256 KiB」，而这一条是它的现打依据
 // ═══════════════════════════════════════════════════════════════════
 
 /// 🔴 **一整个上限的文字，在一帧里排得动。**
@@ -384,10 +384,9 @@ fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
         text.len(),
         dt
     );
-    // 唯一的硬闸：它**跑完了**（不是挂住）。给一个极宽的上界，
-    // 宽到任何一台能跑本仓门禁的机器都过得了，而「排到死」会撞它。
+    // 唯一的硬闸：它**跑完了**（不是挂住）。上界是兜底的那一个数（快慢只看上面那行读数，不在门禁里判）。
     assert!(
-        dt < std::time::Duration::from_secs(10),
+        dt < guard_core::wall::CEILING,
         "满上限那一段排一帧用了 {dt:?} —— 那不是「上限可以再大」，是**它已经太大了**，\
          回 `editor.rs` 头注重读「这个量该多大」那一节"
     );

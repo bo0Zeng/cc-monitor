@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.agent
 
-import com.ccmonitor.mobile.core.claude.agent.AgentDirSettingKey
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import org.junit.Assert.assertEquals
@@ -12,10 +11,9 @@ import org.junit.Test
  * 整张档案表钉住：改任何一格都要重新过一遍眼。
  *
  * 它不是「消费方真走档案」的证据：本条对每一刀变异都会红，因为它就是直接读档案。
- * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest`
- * · `SessionLocatorTest` 等）。
+ * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest` 等）。
  *
- * 本条的职责只有一个：改表要留痕（同 `NewUiSettingsTest.theDefaultSourceIsPinned…`）。
+ * 本条的职责只有一个：改表要留痕。
  */
 class AgentProfileTableTest {
     /** 一份档案压成一行（每一格都进串：少写一格，那一格的变异就溜过去了）。 */
@@ -25,10 +23,7 @@ class AgentProfileTableTest {
             p.displayName,
             p.wireName,
             "accountGate=${p.requiresAccountGate}",
-            "ccmIdentity=${p.hasCcmIdentity}",
-            "dirSetting=${p.appDefaultDirSetting}",
             p.invocation::class.simpleName,
-            p.sessionLocator::class.simpleName,
         ).joinToString(" | ")
 
     @Test
@@ -71,7 +66,6 @@ class AgentProfileTableTest {
     fun theDefaultProfileIsTheConservativeOne() {
         assertSame("缺省档必须是表里的一份，不是另造的", AgentProfile.of(AgentProfile.DEFAULT.kind), AgentProfile.DEFAULT)
         assertTrue("缺省档必须走账号门（保守的一侧：宁可多问一次）", AgentProfile.DEFAULT.requiresAccountGate)
-        assertEquals("缺省档的应用级默认目录键", AgentDirSettingKey.AppDefaultClaudeDir, AgentProfile.DEFAULT.appDefaultDirSetting)
     }
 
     /**
@@ -115,14 +109,11 @@ class AgentProfileTableTest {
          * 两份档案，每一格。改这张表 = 声明「我知道我在改行为」。
          *
          * 每一格的产品理由写在 `AgentProfile.kt` 里那一格自己的 KDoc 上，别在这里复述。
-         * `ccmIdentity`（`hasCcmIdentity`）那一格的消费方侧判据是 `ResumeScaffoldTest`。
          */
         private val PINNED_TABLE =
             listOf(
-                "ClaudeCode | Claude | claude | accountGate=true | ccmIdentity=true | dirSetting=AppDefaultClaudeDir | " +
-                    "ClaudeInvocation | ClaudeSessionLocator",
-                "Codex | Codex | codex | accountGate=false | ccmIdentity=false | dirSetting=null | " +
-                    "CodexInvocation | CodexSessionLocator",
+                "ClaudeCode | Claude | claude | accountGate=true | ClaudeInvocation",
+                "Codex | Codex | codex | accountGate=false | CodexInvocation",
             )
     }
 }

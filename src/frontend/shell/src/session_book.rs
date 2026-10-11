@@ -244,7 +244,7 @@ pub enum Out {
         fate: Fate,
         words: Option<FateWords>,
     },
-    /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一拍：前端据此收空组、说记住的那一格没出现）。
+    /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一刻：前端据此收空组、说记住的那一格没出现）。
     Listed { origin: String, all: bool },
     /// 那台看不见了（**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
     /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
@@ -407,7 +407,7 @@ impl Book {
         })
     }
 
-    /// 机器表换了（启动 · 热加载）：记下；此刻每一台都报完了 ⇒ 再说一次「报完了」带 `all`（那一拍不因为表变了而错过，
+    /// 机器表换了（启动 · 热加载）：记下；此刻每一台都报完了 ⇒ 再说一次「报完了」带 `all`（那一刻不因为表变了而错过，
     /// 例如摘掉的正是唯一没报完的那台）。
     pub fn set_machines(&mut self, machines: Vec<String>) -> Vec<Out> {
         self.machines = Some(machines);

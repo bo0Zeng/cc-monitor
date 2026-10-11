@@ -13,7 +13,7 @@
  *
  * # 判据形状
  *
- * - **两向相等**：扫出来的「带成对 `**` 的串」== `REGISTERED`（今天只有一条，是别的路的写区）。
+ * - **两向相等**：扫出来的「带成对 `**` 的串」== `REGISTERED`（今天只有一条，在别处）。
  * - **正控**：同一个抽取函数喂一段合成源码，字符串里的 `**` 必须逮到、注释里的不许逮、
  *   `console.*` 的参数不许逮（那是开发者日志，不上屏）。
  * - **人群锚**：可达集合必须含那几份已知住着界面文字的文件（否则「零命中」可能只是图没走通）。
@@ -27,7 +27,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 import { toPosix } from "../../../test-support/posix-path.ts";
-import { SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
 
 const ROOT = process.cwd();
 const ENTRY = resolve(ROOT, "src/frontend/ui/entry-settings.ts");
@@ -136,7 +135,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
   beforeAll(() => {
     trees = reachable(ENTRY);
     files = [...trees.keys()];
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("人群锚：可达集合真的走到了住着界面文字的那几份", () => {
     for (const f of [
@@ -150,7 +149,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
     ]) {
       expect(files, `${f} 不在设置窗的可达集合里 —— 图没走通，下面的零命中是空转`).toContain(f);
     }
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("🔴 正控：字符串里的逮到、注释里的不逮、console 参数不逮、模板片段也逮", () => {
     const src = [
@@ -172,5 +171,5 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
       "设置窗的字符串里出现了 markdown 星号 —— 界面不渲染 markdown，星号会原样显示给用户。\n" +
         "强调改由句子结构或 DOM 结构承担（`data-section.ts` 的 strong() 是样板）。",
     ).toEqual(Object.keys(REGISTERED).sort());
-  }, SCAN_TIMEOUT_MS);
+  });
 });

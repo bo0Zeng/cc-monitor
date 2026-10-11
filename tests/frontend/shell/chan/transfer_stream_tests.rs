@@ -48,7 +48,7 @@ async fn rig() -> crate::chan::client::Client {
 /// 收一条订阅直到 `Closed`（或期限到）。
 async fn drain(mut sub: impl Sub + Unpin) -> Vec<Item> {
     let mut out = Vec::new();
-    let r = tokio::time::timeout(Duration::from_secs(20), async {
+    let r = tokio::time::timeout(guard_core::wall::CEILING, async {
         while let Some(i) = sub.next().await {
             let last = matches!(i, Item::Closed { .. });
             out.push(i);
@@ -65,7 +65,7 @@ async fn drain(mut sub: impl Sub + Unpin) -> Vec<Item> {
 
 /// 取下一格（10 秒内），取到就再给一格 credit（与 [`drain`] 同一个节奏）。
 async fn one(sub: &mut (impl Sub + Unpin)) -> Item {
-    let i = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let i = tokio::time::timeout(guard_core::wall::CEILING, sub.next())
         .await
         .expect("10 秒内没等到下一格")
         .expect("流没断");
@@ -208,7 +208,7 @@ async fn stopping_the_subscription_cancels_the_transfer() {
         8,
     );
     be.next("transfer-start").await;
-    let first = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let first = tokio::time::timeout(guard_core::wall::CEILING, sub.next())
         .await
         .expect("第一格该来")
         .expect("流没断");
@@ -242,12 +242,12 @@ async fn a_bad_transfer_subscription_says_why_in_place() {
     let mut b = client.subscribe(&origin, &kind(&id), None, 4);
     let first = |i: Option<Item>| i.expect("流没断");
     let ia = first(
-        tokio::time::timeout(Duration::from_secs(10), a.next())
+        tokio::time::timeout(guard_core::wall::CEILING, a.next())
             .await
             .expect("a 第一格"),
     );
     let ib = first(
-        tokio::time::timeout(Duration::from_secs(10), b.next())
+        tokio::time::timeout(guard_core::wall::CEILING, b.next())
             .await
             .expect("b 第一格"),
     );

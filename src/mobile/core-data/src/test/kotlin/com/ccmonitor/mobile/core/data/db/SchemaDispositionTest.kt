@@ -198,7 +198,7 @@ class SchemaDispositionTest {
         const val DESTRUCTIVE = "destructive"
 
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 14
+        const val PINNED_VERSION = 15
 
         /** schema 处置：[MIGRATE]（写迁移、不丢数据）或 [DESTRUCTIVE]（重建、清库）。换处置必须改这一行。 */
         const val PINNED_DISPOSITION = MIGRATE

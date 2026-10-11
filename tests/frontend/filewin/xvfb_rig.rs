@@ -257,7 +257,7 @@ pub fn lock_path(num: u32) -> String {
 /// 这一族此前**事实上是串的**：只有 `scenario_a` 那一处起屏，而它用 `OnceLock`
 /// 保证只跑一趟。⇒「并行」这件事在这一族里没有被真正行使过。
 ///
-/// 而本拍新加的 `the_toolbox_hands_out_a_different_display_to_each_screen`
+/// 而新加的 `the_toolbox_hands_out_a_different_display_to_each_screen`
 /// 要**同时**起两台屏 ⇒ 它与 `scenario_a` 之间第一次出现了真竞争，
 /// 而这一族正是本仓已知最脆的那一族（／记着约 6–10 趟咬 1 次）。
 ///
@@ -386,9 +386,9 @@ pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
         .parse()
         .map_err(|e| format!("窗口 id {id:?} 不是十进制整数：{e}"))?;
     let path = socket_path(num);
-    let mut s = std::os::unix::net::UnixStream::connect(&path)
-        .map_err(|e| format!("连不上 {path}：{e}"))?;
-    s.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+    let mut s =
+        std::os::unix::net::UnixStream::connect(&path).map_err(|e| format!("{path} 断开：{e}"))?;
+    s.set_read_timeout(Some(guard_core::wall::CEILING))
         .map_err(|e| e.to_string())?;
     let io = |e: std::io::Error| format!("X11 连接读写失败：{e}");
 

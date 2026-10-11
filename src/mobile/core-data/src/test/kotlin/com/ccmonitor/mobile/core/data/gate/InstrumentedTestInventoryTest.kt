@@ -8,10 +8,11 @@ import java.io.File
 /**
  * 把 androidTest 的接线面钉住，纯 JVM、零设备。
  *
- * instrumented 测要模拟器或真机，本机门禁跑不到它们，所以这里守的是「它们还在、还接着 CI」：
+ * instrumented 测要模拟器或真机：全量门禁的 `android-device` 那一格起一台模拟器跑它们（10-11 起），CI 不跑；
+ * 这份 JVM 单测（门禁 `mobile` 格与 CI 都跑）守的是「它们还在、还接着那个入口」：
  * - 文件集与逐文件 `@Test` 数（行首 `@Test` 计数，不剥注释，写在注释里的也算）；
  * - 设备测的入口 `scripts/android-test.sh` 仍为每个有 instrumented 测的模块跑 `connectedDebugAndroidTest`
- *   （并进 cc-monitor 后 androidTest 暂不进门禁与 CI，这份脚本是它们唯一的入口）；
+ *   （门禁那一格调的就是它，它是设备测唯一的入口）；
  * - `SshConnectionTest` 要一台真 SSH 服务端，入口脚本刻意用 instrumentation 过滤跳过它，这个缺口写成断言。
  *
  * 它不知道那些测跑起来是红是绿，那要设备。
@@ -161,15 +162,15 @@ class InstrumentedTestInventoryTest {
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/SmokeTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 3,
-                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 14,
+                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 15,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultButtonsTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreSignerInstrumentedTest.kt" to 2,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt" to 9,
             )
 
-        const val PINNED_TOTAL_TESTS = 32
-        const val PINNED_TESTS_IN_CI = 23
+        const val PINNED_TOTAL_TESTS = 33
+        const val PINNED_TESTS_IN_CI = 24
         const val PINNED_TESTS_NOT_IN_CI = 9
 
         const val CI_SKIPPED_FILE = "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt"

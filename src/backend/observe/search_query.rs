@@ -22,8 +22,9 @@
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::{mtime_ms, split_whole_lines, Step, Tailed};
+use crate::observe::fs::{split_whole_lines, Step, Tailed};
 use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
+use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -297,7 +298,7 @@ fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
         .filter(|e| e.file_type().is_file() && crate::agents::is_tree_session_file(e.path()))
         .map(|e| {
             let p = e.into_path();
-            let m = mtime_ms(&p);
+            let m = Ro::mtime_ms(&p);
             (p, m)
         })
         .collect();

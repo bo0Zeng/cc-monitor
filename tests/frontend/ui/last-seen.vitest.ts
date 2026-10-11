@@ -30,7 +30,7 @@ vi.mock("../../../src/comms/inward/chan", () => ({
         return enc({ accounts: m.accounts ?? null, data: m.data ?? null });
       }
       if (op === "accounts-list" && reachable.has(origin)) return enc(accountsReply);
-      return Promise.reject(new Error(`${origin} 连不上`));
+      return Promise.reject(new Error(`${origin} 断开`));
     },
   },
 }));
@@ -69,7 +69,7 @@ describe("上次值交本机后端记", () => {
     expect(ok.available).toBe(true);
     await settle();
     expect(store.get("devbox")?.accounts?.value).toEqual(accountsReply);
-    // 「重启」：界面这一侧的记忆都没了，那台这回连不上。
+    // 「重启」：界面这一侧的记忆都没了，那台这回断开。
     __resetAccountsCacheForTest();
     __resetLastSeenForTests();
     reachable.clear();

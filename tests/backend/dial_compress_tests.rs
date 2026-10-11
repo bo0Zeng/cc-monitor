@@ -604,7 +604,7 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
                 .await
                 .unwrap();
             authenticate(&mut h, &user, Some(&key), None).await.unwrap();
-            let body = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let body = tokio::time::timeout(guard_core::wall::CEILING, async {
                 let mut ch = h.channel_open_session().await.ok()?;
                 ch.exec(true, "seq 1 400000").await.ok()?;
                 let mut body = Vec::new();
@@ -623,7 +623,7 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
             // 上行那一半：同一条连接上把 `upload` 喂给远端 `sha256sum`，回来的摘要 == 本侧算的才算收全
             // （客户端压、sshd 解 —— 与下行走的是两套代码）。上行字节另记（`sent`）。
             let sent_before = sent.load(std::sync::atomic::Ordering::SeqCst);
-            let up = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let up = tokio::time::timeout(guard_core::wall::CEILING, async {
                 let mut ch = h.channel_open_session().await.ok()?;
                 ch.exec(true, "sha256sum").await.ok()?;
                 ch.data(upload.as_slice()).await.ok()?;
@@ -754,7 +754,7 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
             let blob = incompressible(n, seed);
             let path = format!("{dir}/zr2-{compress}-{n}");
             let put = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
+                guard_core::wall::CEILING,
                 crate::dial::sftp::put_atomic(&s, &path, &blob, 0o600),
             )
             .await;

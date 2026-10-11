@@ -9,7 +9,7 @@
 import { describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "../../..", p), "utf8");
@@ -118,7 +118,7 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
             // ⚠ 名字刻意不叫 `l`：`const l = before[i]…` 会让那个名字被
             // `scanning-guard-registry::corpusVars` 认成**磁盘语料变量**，
             // 于是同文件里任何一处挂在它上面的裸成员检查都进那条递减棘轮的账
-            // （本件第一次跑就是这么把上限从 8 顶到 9 的）。
+            // （第一次跑就是这么把上限从 8 顶到 9 的）。
             const up = before[i].trim();
             attrLines.push(up);
             if (up.startsWith("#[")) break;
@@ -148,7 +148,7 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
  *
  * 守的要求：「起会话收成一处 —— 同一条命令串只留 Rust 那两份（CLI ＋ 载荷）；
  * TS 的只供对拍、排期删」。TS 那份 `ccm …` 渲染器（`launch-render-cli.ts::tryRenderCli`）
- * 删在本件；本组挡它以任何名字之外的最常见形状回来：原文件复活 · 生产段再 import 它 ·
+ * 已删；本组挡它以任何名字之外的最常见形状回来：原文件复活 · 生产段再 import 它 ·
  * 生产段再出现那个入口名。
  *
  * ⚠ 射程如实写：它认的是**名字**，不是「渲染 `ccm …` 这件事」—— 换个名字重写一份它看不见
@@ -177,5 +177,5 @@ describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
     const files = productionTsFiles();
     expect(files.length, "生产 TS 一份都没收到 —— 遍历坏了，下面的零命中不携带信息").toBeGreaterThan(100);
     expect(hits(files)).toEqual([]);
-  }, SCAN_TIMEOUT_MS);
+  });
 });

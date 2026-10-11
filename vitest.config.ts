@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vitest/config";
 import { nodeModulesAllow } from "./vite.config";
+import { WALL_CEILING_MS } from "./tests/test-support/wall-ceiling";
 
 // DOM 单元测试（jsdom 环境）。**只挑 *.vitest.ts**，与既有手写 node 测试（*.test.ts，
 // 由 `tsx tests/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
@@ -57,6 +58,10 @@ export default defineConfig({
   test: {
     ...(GATE_WORKERS === undefined ? {} : { maxWorkers: Number(GATE_WORKERS) }),
     environment: "jsdom",
+    // 每条用例 / 钩子的上限是那一个兜底的数（`tests/test-support/wall-ceiling.ts`）：vitest 默认的 5 秒 / 10 秒在忙机上会撞
+    // （10-11：`scale6-memory-ledger` 负载 95 下超时、单跑就绿）。用例里不再各写各的期限，判据 `wall_ceiling` 扫着。
+    testTimeout: WALL_CEILING_MS,
+    hookTimeout: WALL_CEILING_MS,
     include: ["tests/**/*.vitest.ts"],
     setupFiles: ["tests/test-support/pin-locale.ts", "tests/test-support/host-facts-default.ts"], // 默认 locale 钉在上面那行 `LANG` 上（Windows 那一半，见顶上）
     // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`

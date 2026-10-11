@@ -127,6 +127,7 @@ import COPY_TABLE from "../../../../src/shared/copy/table.json";
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { copyPattern } from "../../../test-support/copy-pattern";
+import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 // 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
@@ -190,7 +191,7 @@ describe("P2s backend 开关区", () => {
     }
     // ⚠ `K-P3b KP3W4`③：人群扩到 `HEALTH_*` 四句 —— 它们与那三句同一条规矩，
     //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_backend_policy_copy_has_exactly_one_home` 看着
-    //   （那份 vitest 当时不在它的写区）。两侧各有一条不是重复：
+    //   （那份 vitest 当时没跟着改）。两侧各有一条不是重复：
     //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
     // 人群 +1：「读不出来」那一句（三句变四句）。
     // HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
@@ -226,7 +227,7 @@ describe("P2s backend 开关区", () => {
 
   it("★★ 反向锚点：常驻那一句（`backendPolicy.exit.unattended`）在表里有字、且后端那一处真取它（KPY4③）", () => {
     // ⚠ 这一条在 `K-P1` **之前**的代码上是**红**的：那时常驻却一句不说。
-    //   它就是本轮翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
+    //   它就是翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
     expect(EXIT_UNATTENDED.trim().length, "常驻那一句在表里是空的 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半").toBeGreaterThan(0);
     const policy = readFileSync(resolve(srcDirOf(__dirname), "../../../backend/control/exit_policy.rs"), "utf8");
     expect(policy, "后端那一处不再取常驻那一句 —— 界面摆的 `said` 里就没有它了").toContain('copy_text("backendPolicy.exit.unattended"');
@@ -311,7 +312,7 @@ describe("P2s backend 开关区", () => {
           s.element.querySelector(".backend-row-state")?.textContent,
           "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
         ).toContain(copyText("backend.status.connected")),
-      { timeout: 10_000, interval: 20 },
+      UNTIL_CEILING,
     );
   });
 
@@ -580,10 +581,10 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
     s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!.click();
     // 等起完那一趟画完（两次 channel:false 都读过）再数；按条件等，上限只防挂死。
-    await vi.waitFor(() => expect(statusQueue.length).toBe(0), { timeout: 10_000, interval: 20 });
+    await vi.waitFor(() => expect(statusQueue.length).toBe(0), UNTIL_CEILING);
     await vi.waitFor(
       () => expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1),
-      { timeout: 10_000, interval: 20 },
+      UNTIL_CEILING,
     );
   });
 
@@ -646,10 +647,9 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     return b.find((x) => x.textContent === zh("backend.buildCells.stop"));
   };
   // 等条件成立；等不到就**红**（原先等满一百轮就默默往下走：按钮还禁用着就点下一下，那一下什么都没发生，
-  // 后面「没问」那条空着绿 —— 而且每次都白等一秒多，负载高时整格撞 5 s 默认期限）。
+  // 后面「没问」那条空着绿 —— 而且每次都白等一秒多，负载高时整格撞 5 s 默认期限）。上限是兜底的那一个数。
   const until = async (ok: () => boolean, what: string) => {
-    for (let i = 0; i < 200 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
-    expect(ok(), `等不到：${what}`).toBe(true);
+    await vi.waitFor(() => expect(ok(), `等不到：${what}`).toBe(true), UNTIL_CEILING);
   };
   const stops = () => calls.filter((c) => c.name === "backend_stop").length;
 
@@ -752,9 +752,8 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     ]) {
       stopAnswer = a;
       stop!.click();
-      for (let i = 0; i < 100 && said() !== stopSaid(a); i++) await new Promise((x) => setTimeout(x, 10));
-      expect(said()).toBe(stopSaid(a));
-      for (let i = 0; i < 100 && stop!.disabled; i++) await new Promise((x) => setTimeout(x, 10));
+      await vi.waitFor(() => expect(said()).toBe(stopSaid(a)), UNTIL_CEILING);
+      await vi.waitFor(() => expect(stop!.disabled, "停完按钮没放开").toBe(false), UNTIL_CEILING);
     }
   });
 });

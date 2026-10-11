@@ -3,7 +3,7 @@
 //! 守的要求（住址）：
 //! - 要求：「后端收 SIGTERM 先排空在飞写（有上限）再退」；
 //! - 审计 E §E2：「流模式后端 `exit(0)` 或被 SIGKILL 时，**不等正在跑的阻塞写做完**」；
-//! -：「**值**住后端 · **执行**住通信层」—— 本件的「上限」由叫它退的那一方执行（第二次停机信号 ⇒ 立刻退）。
+//! -：「**值**住后端 · **执行**住通信层」—— 这里的「上限」由叫它退的那一方执行（第二次停机信号 ⇒ 立刻退）。
 //! 设计与读数住 §1。
 //!
 //! | # | 判据 | 形状 |
@@ -16,7 +16,7 @@ use super::*;
 
 // ── D1 ────────────────────────────────────────────────────────────────────
 
-/// 不靠睡地 poll 一次：返回「这一拍完成没有」。
+/// 不靠睡地 poll 一次：返回「这一次完成没有」。
 fn polled_ready<F: std::future::Future>(f: std::pin::Pin<&mut F>) -> bool {
     let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
     f.poll(&mut cx).is_ready()
@@ -227,8 +227,8 @@ impl Drop for Child {
     }
 }
 
-/// 一个等待的上界（测试侧；后端生产段零定时器那条铁律不管测试段）。只为「坏了的时候别把 CI 挂死」。
-const PATIENCE: std::time::Duration = std::time::Duration::from_secs(30);
+/// 一个等待的上界（测试侧；后端生产段零定时器那条铁律不管测试段）。只为「坏了的时候别把 CI 挂死」：兜底的那一个数。
+const PATIENCE: std::time::Duration = guard_core::wall::CEILING;
 
 fn lines_of<R: std::io::Read + Send + 'static>(
     r: R,

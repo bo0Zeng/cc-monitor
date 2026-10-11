@@ -805,6 +805,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "win-manifest",
  "winit",
 ]
 
@@ -3351,7 +3352,6 @@ dependencies = [
  "creds-core",
  "deploy-contract",
  "dirs 5.0.1",
- "embed-resource",
  "filewin-contract",
  "futures",
  "gtk",
@@ -3379,6 +3379,7 @@ dependencies = [
  "upstream-url-core",
  "uuid",
  "walkdir",
+ "win-manifest",
  "win-path-core",
  "windows 0.56.0",
  "windows 0.61.3",
@@ -7156,6 +7157,13 @@ dependencies = [
  "raw-window-handle",
  "static_assertions",
  "web-sys",
+]
+
+[[package]]
+name = "win-manifest"
+version = "0.1.0"
+dependencies = [
+ "embed-resource",
 ]
 
 [[package]]

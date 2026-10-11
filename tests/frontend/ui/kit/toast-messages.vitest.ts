@@ -67,7 +67,7 @@ describe("toast 排版 ＋「消息」记录", () => {
     const undo = vi.fn();
     const commit = vi.fn();
     kit.undoToast(copyText("tabBar.close.done", { title: "周报草稿" }), undo, commit);
-    kit.toast(copyText("tabSessionActions.kill.failed", { title: "排序模型蒸馏" }), "gpu-01 连不上", { level: "error", action: { label: "重试", run: vi.fn() } });
+    kit.toast(copyText("tabSessionActions.kill.failed", { title: "排序模型蒸馏" }), "gpu-01 断开", { level: "error", action: { label: "重试", run: vi.fn() } });
     const [retry, closed] = kit.recentToasts();
     expect(closed.actions.map((a) => a.label)).toEqual([copyText("kit.toast.undo")]);
     expect(closed.at).toBeGreaterThan(0);

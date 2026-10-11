@@ -86,9 +86,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
-    ("build.rs", "manifest_for_every_artifact", None,
-     "往 `OUT_DIR` 写一行 `.rc`（指向 `windows/app.manifest`），编成 Windows 进程清单资源，\
-          链进本包每一个产物（测试程序也要）。写的是 cargo 自己的构建目录，不碰用户环境"),
+    // 进程清单的编法搬进 `src/common/win-manifest`（两个前端包的 `build.rs` 都调它）；它在人群里（`population`），文件名是 `lib.rs`。
+    ("lib.rs", "embed_for_every_artifact", None,
+     "构建期：往 `OUT_DIR` 写一行 `.rc`（指向 `win-manifest/app.manifest`），编成 Windows 进程清单资源，\
+          链进调它的那个包的每一个产物（测试程序也要）。写的是 cargo 自己的构建目录，不碰用户环境"),
     // ── 🔴 这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。只有后端的文件管理部分写文件，**本机也算** ⇒ 那几件改经本机后端
@@ -415,11 +416,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnDeployment,
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),
-    (
-        "build.rs",
-        "manifest_for_every_artifact",
-        Lands::BuildOutput,
-    ),
+    ("lib.rs", "embed_for_every_artifact", Lands::BuildOutput),
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_tty_file", Lands::OwnState),
     ("console.rs", "tty_title", Lands::TerminalDevice),

@@ -303,7 +303,7 @@ fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
     std::fs::write(&file, r#"{"userWrote":"手写的那一格","other":2}"#).unwrap();
     drop(held);
     assert!(rx
-        .recv_timeout(std::time::Duration::from_secs(10))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("放了锁还没写完"));
     racer.join().unwrap();
     assert_eq!(
@@ -367,8 +367,9 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
         1,
         "monitor 那一份不是排他锁"
     );
+    // 后端那一份读盘只经 `platform::fs::Ro`（后端除 `platform/fs/` 外不许点名 `std::fs`）⇒ 开目录那一下是 `Ro::open(dir)`，同一个只读开法。
     assert_eq!(
-        theirs.matches("std::fs::File::open(dir)").count(),
+        theirs.matches("crate::platform::fs::Ro::open(dir)").count(),
         1,
         "后端那一份不是锁目录"
     );

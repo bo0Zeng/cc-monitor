@@ -10,6 +10,7 @@
 #![cfg(target_os = "linux")]
 
 use super::{OpenBatch, Writer, Writers};
+use crate::platform::fs::Ro;
 use std::collections::{BTreeSet, HashMap};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -17,24 +18,24 @@ use std::path::{Path, PathBuf};
 /// 一趟扫完本机进程表：`wanted` 认的文件此刻各被哪些进程开着写。`/proc` 读不了 ⇒ `None`（判不了）。
 /// 别人的进程读不了它的 fd 表 ⇒ 跳过（同一个用户的 agent 进程总读得到）。
 pub(crate) fn writers_of(wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
-    let procs = std::fs::read_dir("/proc").ok()?;
+    let procs = Ro::read_dir("/proc").ok()?;
     let mut out: Writers = HashMap::new();
     for ent in procs.flatten() {
         let Some(pid) = ent.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
             continue;
         };
-        let Ok(fds) = std::fs::read_dir(ent.path().join("fd")) else {
+        let Ok(fds) = Ro::read_dir(ent.path().join("fd")) else {
             continue;
         };
         let mut start: Option<Option<u64>> = None;
         for fd in fds.flatten() {
-            let Ok(target) = std::fs::read_link(fd.path()) else {
+            let Ok(target) = Ro::read_link(fd.path()) else {
                 continue;
             };
             if !wanted(&target) {
                 continue;
             }
-            let info = std::fs::read_to_string(ent.path().join("fdinfo").join(fd.file_name()))
+            let info = Ro::read_to_string(ent.path().join("fdinfo").join(fd.file_name()))
                 .unwrap_or_default();
             if !opened_for_write(&info) {
                 continue;
@@ -171,7 +172,7 @@ pub(crate) fn absolute(root: &Path) -> PathBuf {
     let mut missing = Vec::new();
     let mut at = root.to_path_buf();
     loop {
-        if let Ok(c) = std::fs::canonicalize(&at) {
+        if let Ok(c) = Ro::canonicalize(&at) {
             let mut out = c;
             for m in missing.iter().rev() {
                 out.push(m);

@@ -23,11 +23,12 @@ data class TurnEnd(
         const val KIND: String = "turn_end"
 
         /** 不是 `turn_end` 或缺格 ⇒ `null`。 */
-        fun of(frame: Map<String, Any?>): TurnEnd? {
-            if (frame.str("kind") != KIND) return null
-            val f = listOf("session_id", "uuid", "title", "body").map { frame.str(it) ?: return null }
-            return TurnEnd(sid = f[0], uuid = f[1], title = f[2], body = f[3])
-        }
+        fun of(frame: Map<String, Any?>): TurnEnd? =
+            if (frame.str("kind") != KIND) {
+                null
+            } else {
+                decoding { TurnEnd(frame.str("session_id").need(), frame.str("uuid").need(), frame.str("title").need(), frame.str("body").need()) }
+            }
     }
 }
 

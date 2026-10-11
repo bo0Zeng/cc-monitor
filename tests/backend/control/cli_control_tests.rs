@@ -330,7 +330,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// `bus-state` 是第三条：它与 `bus-list` 同族 —— **无输入、有输出字段**，
     /// 正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
     ///
-    /// 〔步 `24f` 第二刀 09-20〕`files-index-status` 是第四条，**同一形**：
+    /// `files-index-status` 是第四条，**同一形**：
     /// 它一个入参都没有（`files::CAPABILITIES` 里那条 `args` 就是空的），
     /// 出方向却有十个字段。声明成收输入 ⇒ `--files-index-status` 会挂在那儿等 EOF，
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
@@ -655,7 +655,7 @@ fn a_silent_open_stdin_answers_at_once_instead_of_hanging() {
             let _ = tx.send(run_cli(&a, quiet));
         });
         let (rc, out, err) = rx
-            .recv_timeout(std::time::Duration::from_secs(10))
+            .recv_timeout(guard_core::wall::CEILING)
             .unwrap_or_else(|_| panic!("{args:?}：stdin 开着不写，10 s 还没回 —— 那是挂住"));
         assert_eq!((rc, out.as_str()), (2, ""), "{args:?}：该回失败信封");
         assert_eq!(err_code(&err), "no_input", "{args:?}：码不对：{err}");
@@ -681,8 +681,24 @@ fn the_one_line_flag_counts_wherever_it_sits() {
         ]),
         ThenPanic(Some(line)),
     );
-    assert_eq!(at_end, at_one, "`--stdin-line` 不在第二格时答得不一样");
+    // 信封的 detail 里带着出错那一刻（到秒）：两趟跨过整秒就不一样 —— 机器一忙就更容易跨。比之前先把那一格抹平，
+    // 判的是两处答的是同一件事，不是两次调用落在同一秒里。
+    let unclocked = |(rc, out, err): (i32, String, String)| {
+        let err = match err.find("时刻：") {
+            Some(a) => {
+                let b = err[a..].find("\\n").map_or(err.len(), |b| a + b);
+                format!("{}时刻：<抹平>{}", &err[..a], &err[b..])
+            }
+            None => err,
+        };
+        (rc, out, err)
+    };
     assert_ne!(err_code(&at_one.2), "no_input");
+    assert_eq!(
+        unclocked(at_end),
+        unclocked(at_one),
+        "`--stdin-line` 不在第二格时答得不一样"
+    );
 }
 
 /// ★ 两个口二选一；用法错一律 `bad_args`，坏载荷 `bad_request`，超大 `args_too_large` —— 都是立即回、不截断。

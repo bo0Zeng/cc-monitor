@@ -32,7 +32,7 @@ const slowFull = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), fu
 
 /** 查看窗里打开最后一个跑命令（Bash）那一步的结果（连同外面的折叠）；回那个结果的折叠。 */
 async function openLastResult(): Promise<HTMLDetailsElement> {
-  await waitFor(".session-viewer [data-id]", 15_000);
+  await waitFor(".session-viewer [data-id]");
   await sleep(1200);
   const all = [...document.querySelectorAll<HTMLDetailsElement>(".session-viewer .block-tool-result-inline")].filter((r) =>
     r.parentElement?.closest("details")?.querySelector(":scope > summary")?.textContent?.includes("Bash"),
@@ -57,7 +57,7 @@ async function openLastResult(): Promise<HTMLDetailsElement> {
   return res;
 }
 
-const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), historyDown: ["gpu-01"] });
+const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), hopDown: { "gpu-01": ["history-list"] } });
 
 /** 额度账里有这几台的号的数（恢复菜单每个号后面 `5h N%`）。 */
 function withQuota(): ReturnType<typeof defaultWorld> {
@@ -99,7 +99,7 @@ export const HISTORY_SCENES: Scene[] = [
     await openHistory();
     await type(".history-search", SEARCH_WORD);
     await key("Enter");
-    await waitFor(".history-view mark", 8000);
+    await waitFor(".history-view mark");
     await sleep(400);
   }),
   hist("history-07-row-menu", "历史 · 行菜单", "选中一行、点行尾 ⋯", async () => {
@@ -116,7 +116,7 @@ export const HISTORY_SCENES: Scene[] = [
     await sleep(300);
   }),
   {
-    ...hist("history-10-partial", "历史 · 部分连不上", "gpu-01 那台的清单没答上：列表顶一条［重新连接］，别的台照画", async () => {
+    ...hist("history-10-partial", "历史 · 部分断开", "gpu-01 那台的清单没答上：列表顶一条［重新连接］，别的台照画", async () => {
       await openHistory();
     }),
     world: offline,
@@ -195,9 +195,9 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
     await sleep(500);
   }),
-  hist("history-18-empty", "历史 · 0 条消息的会话", "点开一个没有消息的会话（排序模型评测脚本，Codex）：消息流那一格是空态「无消息」，不是一片空白", async () => {
+  hist("history-18-empty", "历史 · 0 条消息的会话", "点开一个没有消息的会话（本机那条 Codex 会话：开了没说话，清单里写「没有说过话的会话」）：消息流那一格是空态「无消息」，不是一片空白", async () => {
     await openHistory();
-    await click(await byText('.history-view [role="option"]', "排序模型评测脚本"));
+    await click(await byText('.history-view [role="option"]', "Codex"));
     await sleep(900);
   }),
   hist("history-09-said", "历史 · 你说过的话", "查看器工具行「你说过的话 · N ▾」：浮层列出你说过的每一句，当前读到的那句高亮", async () => {
@@ -252,7 +252,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1500);
     },
   },
@@ -299,7 +299,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1200);
     },
   },
@@ -314,7 +314,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 560,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1200);
     },
   },

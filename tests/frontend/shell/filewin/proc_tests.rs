@@ -634,7 +634,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
         std::env::remove_var(BIN_ENV);
-        (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
+        (r, rx.recv_timeout(guard_core::wall::CEILING))
     };
     let (r, said) = run(7);
     assert_eq!(r.map(|(_, n)| n), Ok(3), "活过预算的那一形该先回成功");
@@ -1010,7 +1010,7 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
         let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
         std::env::remove_var(BIN_ENV);
-        (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
+        (r, rx.recv_timeout(guard_core::wall::CEILING))
     };
     let (first, said) = run(
         "crash",

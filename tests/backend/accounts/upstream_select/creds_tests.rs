@@ -4,7 +4,7 @@ use super::*;
 ///
 /// ⚠ 它**故意在条数 != 1 时返回 `None`** —— 下面那几条判据的夹具都是单条文件，
 /// 哪天夹具变成多条而判据没跟着改，这里会把它变成一次**红**，
-/// 而不是悄悄拿第一条顶上（拿第一条顶上正是本件在治的那一形）。
+/// 而不是悄悄拿第一条顶上（拿第一条顶上正是这里在治的那一形）。
 fn single_key(loaded: &Loaded) -> Option<&creds_core::SecretKey> {
     if loaded.accounts.len() != 1 {
         return None;

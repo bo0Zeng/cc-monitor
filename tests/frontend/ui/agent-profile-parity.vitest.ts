@@ -51,7 +51,7 @@
  * # 🔴 `K-R93`（09-12）：**第四份没有了，前端那一份改成从后端取值**
  *
  * 上面那张表说的是「同一个事实住在三个地方」。**前端 `src/frontend/ui/agent-profile.ts` 是第四个地方**
- * —— 而它只认 claude（`K-R54` 表第 11 行）。本件把它的**取值来源**改成后端：
+ * —— 而它只认 claude（`K-R54` 表第 11 行）。它的**取值来源**已改成后端：
  *
  * ```text
  * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）〔从前是 monitor 那份适配表的取数口〕
@@ -87,7 +87,7 @@ import {
   type AgentProfileRow,
 } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { stripComments } from "../../test-support/strip-comments";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
+import { productionTsFiles } from "../../test-support/production-sources";
 import { copyPattern } from "../../test-support/copy-pattern";
 
 const REPO = resolve(__dirname, "../../..");
@@ -349,7 +349,7 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
     );
     expect(
       listAgents().length,
-      "前端认得的 agent 数变了 —— 这是本件单独给的那一格读数，改了要回件文件把数一起改",
+      "前端认得的 agent 数变了 —— 这是单独给的那一格读数，改了要把数一起改",
     ).toBe(2);
   });
 
@@ -417,7 +417,6 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
         expect(names.some((n) => quoted(n).test(code)), `${f} 已经不写名字了，摘掉它`).toBe(true);
       }
     },
-    SCAN_TIMEOUT_MS,
   );
 });
 
@@ -447,6 +446,5 @@ describe("起会话按会话的那一家取画像", () => {
         "src/frontend/ui/launch-types.ts",
       ]);
     },
-    SCAN_TIMEOUT_MS,
   );
 });

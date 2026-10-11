@@ -59,7 +59,7 @@ fn caps_with(home_ptr: fn() -> Option<PathBuf>) -> FakeCaps {
 
 /// `S6-Z1`：12 种能力**全部实现**，且**每一种都与两家真 agent 不同形**。
 ///
-/// # 为什么"不同形"是本件的地基，而不是趣味
+/// # 为什么"不同形"是这组判据的地基，而不是趣味
 ///
 /// 假 agent 若照抄 Claude 的布局（`projects/` + `.jsonl`），通用层拿 Claude 的知识
 /// 去解释它的 home **恰好也能读出东西** —— 那时"走通全流程"证明的是
@@ -195,7 +195,7 @@ fn every_fake_capability_differs_in_shape_from_both_real_agents() {
 /// 而通用层**一行没改**。
 ///
 /// ⚠ 这一段是**真的过通用层**：`agents::visible_among` 的判准与 `wire::Frame::Hello`
-/// 的序列化都是通用层的机器，本件没动它们一个字节。
+/// 的序列化都是通用层的机器，这里没动它们一个字节。
 /// 它是 `G1` 成功标准②今天**唯一真正成立**的那一格。
 #[test]
 fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change() {
@@ -331,7 +331,7 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `S6-Z3`（本件最要紧的一格）：**通用层今天怎么回答一个不是 Claude 的 agent** —— 实测。
+/// `S6-Z3`（最要紧的一格）：**通用层今天怎么回答一个不是 Claude 的 agent** —— 实测。
 ///
 /// # 它逮的是件里逐字禁掉的那种坏法，而且逮到了
 ///

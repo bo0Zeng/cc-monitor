@@ -25,7 +25,7 @@ fn fake_upstream() -> SocketAddr {
     std::thread::spawn(move || {
         for s in l.incoming() {
             let Ok(mut s) = s else { continue };
-            let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
+            let _ = s.set_read_timeout(Some(guard_core::wall::CEILING));
             // 读到请求头结束（本文件的请求带一个短体，读头就够判「来了一条」）。
             let mut head = Vec::new();
             let mut one = [0u8; 1];
@@ -102,7 +102,7 @@ fn through(addr: SocketAddr) -> String {
 /// 同上，多出来的请求头由调用方给（整行、带 `\r\n`）。
 fn through_with(addr: SocketAddr, extra: &str) -> String {
     let mut c = TcpStream::connect(addr).expect("connect 中转");
-    c.set_read_timeout(Some(Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("读期限（风险 5x）");
     let body = "{}";
     let req = format!(
@@ -355,7 +355,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     let mut said = String::new();
     while addr.is_none() || said.is_empty() {
         let line = rx
-            .recv_timeout(Duration::from_secs(20))
+            .recv_timeout(guard_core::wall::CEILING)
             .expect("子进程 20s 内没说出「在听」与宿主那句话 —— 它没跑到进程内中转那一支");
         if let Some(rest) = line.strip_prefix("[relay] listening on ") {
             addr = Some(rest.trim().parse().expect("listening 行末段是地址"));
@@ -446,7 +446,7 @@ fn fake_upstream_with(body: String) -> SocketAddr {
     std::thread::spawn(move || {
         for s in l.incoming() {
             let Ok(mut s) = s else { continue };
-            let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
+            let _ = s.set_read_timeout(Some(guard_core::wall::CEILING));
             let mut head = Vec::new();
             let mut one = [0u8; 1];
             while !head.ends_with(b"\r\n\r\n") {

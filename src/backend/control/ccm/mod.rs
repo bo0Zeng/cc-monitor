@@ -26,7 +26,7 @@
 //! 这个决定不是靠「没人查」成立的 —— `protocol_doc_guard::TERMINAL_SURFACE_FILES`
 //! 把它登记成一个受管例外，并**另立一格**（每个旗标都要能在 [`USAGE`] 里找到）。
 //!
-//! # 本轮**没有**做到的，逐条写在这里（别读成做到了）
+//! # **没有**做到的，逐条写在这里（别读成做到了）
 //!
 //! - **信任这个目录吗**：ccm 自己不替用户答 —— 不写 `~/.claude.json` / `~/.codex/config.toml`，
 //!   也不往会话里按键；用户在终端里直接敲的那一趟照样由 agent 自己问。cc-monitor 经后端起 / 重启会话时，
@@ -61,7 +61,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 ///
 /// ⚠ **这张表就是给下一个加 token 的人看的** ⇒ 它漏一行，下一个人就会被那一处打红一次。
 /// 〔`K-R61` 09-11 现打过一次：初版这里只写了四处，漏的正是 `plugin/probe.rs` 那一行 ——
-/// 而那一处本轮**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
+/// 而那一处**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
 ///
 /// - `tests/frontend/shell/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
 ///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
@@ -78,7 +78,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// - `src/frontend/shell/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
 ///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
 ///   抠的是 backend **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
-///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `BACKEND_CAPABILITIES` 逐字不变。〕
+///   〔这句话是实测的，不是推的：加了下面那个 token 之后 `BACKEND_CAPABILITIES` 逐字不变。〕
 ///
 /// ⇒ 归一句：**「数个数」的两处必须跟着改（前两行）· 「子集检查」的两处加 token 安全，
 /// 删 / 改名才危险 · `build.rs` 那一处与本常量无关。**

@@ -20,8 +20,8 @@
 //!
 //! # 四、图片：后端按上限给字节，窗口解码
 //!
-//! 认得的图片（png · jpg · gif · webp · bmp）经后端 `files-read-chunk` 逐块读回（每块到后端那一条的上限），
-//! 整份不超过 [`IMAGE_MAX_BYTES`]（超了不读、出声）；解码在后台那条线上做，过大的图缩到 [`IMAGE_MAX_SIDE`] 再交给界面。
+//! 认得的图片（png · jpg · gif · webp · bmp）列表那一行不超过 [`IMAGE_MAX_BYTES`] 才读（超了不读、出声）；
+//! 读与解码住 [`super::picture`]：与查看页共用那一份（同一张图只读一次、只解一次，谁先要谁读）。
 //!
 //! # ⚠ 买不到什么
 //!
@@ -41,9 +41,6 @@ pub const PREVIEW_MAX_BYTES: u64 = 64 * 1024;
 /// 预览一张图的上限（字节）。**唯一住址**；登记在 `byte_cap_registry`。超了：不读、出声。
 pub const IMAGE_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
-/// 解出来的图最长边超过它就先缩（面板里放不下更大的，也不往显存里塞一张大图）。
-pub const IMAGE_MAX_SIDE: u32 = 2048;
-
 /// 窗口自己解得开的图片扩展名。
 pub const DECODABLE: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
@@ -61,7 +58,7 @@ pub enum View {
         starts: Vec<usize>,
         lang: Option<String>,
     },
-    /// 一张图（到货那一拍交给显存）。
+    /// 一张图（与查看页共用那一份；`size` ＝ 原图多大）。
     Image {
         path: String,
         size: [usize; 2],
@@ -83,16 +80,8 @@ impl std::fmt::Debug for View {
     }
 }
 
-/// 读回来的是什么。
-pub enum Got {
-    /// 文本（`None` ＝ 后端说不是文本）。
-    Text(Option<String>),
-    /// 解好的一张图。
-    Image(egui::ColorImage),
-}
-
-/// 一趟读的结局，由 tokio 那条线写、UI 线程取。
-type Arrival = (String, Result<Got, String>);
+/// 一趟读文本的结局（`None` ＝ 后端说不是文本），由 tokio 那条线写、UI 线程取。
+type Arrival = (String, Result<Option<String>, String>);
 
 /// 要的这一份怎么读。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,6 +100,10 @@ pub struct Preview {
     wire: serde_json::Value,
     /// 那一份按文本读还是按图读。
     how: Want,
+    /// 按图读时那一张的钥匙（[`super::picture::Pictures`] 里认它）。
+    pic: Option<super::picture::PicKey>,
+    /// 起过读、还在读的那一张（同一时刻最多一张在读：最新的赢，同文本那一条）。
+    pic_wait: Option<super::picture::PicKey>,
     /// 上色那一套缓存：每一份文本到货时按行切好的上色结果（行号 → 那一行的排版）。
     painted: Vec<egui::text::LayoutJob>,
     /// 折行之后每一行的顶（键 ＝ 哪一份文本 ＋ 窗格多宽）：宽度变了 / 换了文本才重量。
@@ -133,6 +126,8 @@ pub struct Head {
     /// 修改时间的短写法（列表那一行上后端写好的那一格）。
     pub mtime_text: Option<String>,
     pub edit: bool,
+    /// 「查看」（窗口解得开的图：开一个查看页，顶替「编辑」）。
+    pub view: bool,
     pub download: bool,
     /// 计划反查（稿 06）：这一份归的那一格（`(片名, 那一格)`）；目录不在任何一片里 · 没人声明 ⇒ `None`。
     pub owner: Option<(String, super::plan::Owner)>,
@@ -149,6 +144,8 @@ fn owner_of(pane: &FileWindow, name: &str) -> Option<(String, super::plan::Owner
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PreviewAct {
     Edit,
+    /// 开一个查看页（图片）。
+    View,
     Download,
     /// 「归属」那一块上的［在计划里看］。
     OpenInPlan,
@@ -161,6 +158,8 @@ impl Default for Preview {
             want: None,
             wire: serde_json::Value::Null,
             how: Want::Text,
+            pic: None,
+            pic_wait: None,
             painted: Vec::new(),
             wrapped: Default::default(),
             view: View::Idle(PICK_ONE.to_string()),
@@ -281,7 +280,7 @@ impl Preview {
             if self.want.as_deref() == Some(path.as_str()) {
                 self.painted.clear();
                 self.view = match r {
-                    Ok(Got::Text(Some(text))) => {
+                    Ok(Some(text)) => {
                         let lang = code_lang(&path);
                         if let (Some(l), Some(c)) = (&lang, &ctx) {
                             self.painted = highlight_lines(c, &text, l);
@@ -293,19 +292,7 @@ impl Preview {
                             lang,
                         }
                     }
-                    Ok(Got::Image(img)) => match &ctx {
-                        Some(c) => View::Image {
-                            size: img.size,
-                            tex: c.load_texture(
-                                "filewin-preview-image",
-                                img,
-                                egui::TextureOptions::LINEAR,
-                            ),
-                            path,
-                        },
-                        None => View::Said(NO_LINE.to_string()),
-                    },
-                    Ok(Got::Text(None)) => View::Said(copy_text(
+                    Ok(None) => View::Said(copy_text(
                         "rsFilewinPreview.follow.notText",
                         &[("name", &(super::source::remote_basename(&path)).to_string())],
                     )),
@@ -316,6 +303,8 @@ impl Preview {
                 };
             }
         }
+        // ①′ 图：在读的那一张读完了没有；要的那一张好了 ⇒ 摆出来（共用那一份，不另解）。
+        self.settle_picture(pane, ctx.as_ref());
         // ② 要的是谁：选中的那一项换了才重新判（按名字，O(1)；找那一行的元数据是 O(n)，只在换了的那一帧做一次）。
         let key = (pane.cwd.clone(), pane.picked_name());
         if self.key.as_ref() != Some(&key) {
@@ -323,14 +312,57 @@ impl Preview {
             self.decide(pane, key.1);
         }
         // ③ 发：要一份、还没摆出来、也没有一趟在飞 ⇒ 发。
-        if let (Some(p), View::Loading(_), false) = (self.want.clone(), &self.view, self.inflight) {
+        let busy = self.inflight || self.pic_wait.is_some();
+        if let (Some(p), View::Loading(_), false) = (self.want.clone(), &self.view, busy) {
             self.fire(pane, p, ctx);
+        }
+    }
+
+    /// 此刻这块面板还摆着 / 还在等的那几张图（窗口每帧报给 [`super::picture::Pictures::keep_only`]）。
+    pub fn picture_keys(&self) -> Vec<super::picture::PicKey> {
+        self.pic
+            .iter()
+            .chain(self.pic_wait.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// 图那一支的收货：在读的那一张读完了（成了 / 没成 / 被扔了）⇒ 不再等它；要的那一张好了 ⇒ 摆出来。
+    fn settle_picture(&mut self, pane: &FileWindow, ctx: Option<&egui::Context>) {
+        use super::picture::Look;
+        if let Some(k) = &self.pic_wait {
+            if !matches!(pane.pictures.look(k, None), Some(Look::Reading { .. })) {
+                self.pic_wait = None;
+            }
+        }
+        let (Some(key), View::Loading(_)) = (self.pic.clone(), &self.view) else {
+            return;
+        };
+        let Some(path) = self.want.clone() else {
+            return;
+        };
+        match pane.pictures.look(&key, ctx) {
+            Some(Look::Ready(p)) => {
+                self.view = View::Image {
+                    path,
+                    size: [p.native[0] as usize, p.native[1] as usize],
+                    tex: p.tex,
+                };
+            }
+            Some(Look::Failed(why)) => {
+                self.view = View::Said(copy_text(
+                    "rsFilewinPreview.follow.failed",
+                    &[("why", &why)],
+                ));
+            }
+            _ => {}
         }
     }
 
     /// 选中的那一项 → 要不要读、不读的话说什么。
     fn decide(&mut self, pane: &FileWindow, picked: Result<String, usize>) {
         self.want = None;
+        self.pic = None;
         self.head = None;
         let name = match picked {
             Ok(n) => n,
@@ -360,6 +392,7 @@ impl Preview {
                 size: r.size,
                 mtime_text: r.mtime_text.clone(),
                 edit: can.contains(&super::select::Action::Edit),
+                view: can.contains(&super::select::Action::View),
                 download: can.contains(&super::select::Action::Download),
                 owner: owner_of(pane, &r.name),
             });
@@ -401,6 +434,7 @@ impl Preview {
                     return;
                 }
                 self.how = Want::Image;
+                self.pic = Some(super::picture::PicKey::of(&r));
                 self.wire = pane.row_path(&r).wire();
                 self.want = Some(r.path.clone());
                 self.view = View::Loading(r.path.clone());
@@ -445,30 +479,49 @@ impl Preview {
             return;
         };
         let origin = pane.source.origin();
+        if self.how == Want::Image {
+            // 图：交给共用那一份（已有 ⇒ 不再读，`fired` 不加）。
+            let Some(key) = self.pic.clone() else {
+                return;
+            };
+            let side = ctx
+                .as_ref()
+                .map_or(2048, |c| c.input(|i| i.max_texture_side))
+                .min(super::picture::MAX_SIDE as usize) as u32;
+            if pane.pictures.load(
+                &key,
+                super::picture::Load {
+                    rt: h,
+                    line,
+                    origin,
+                    wire: self.wire.clone(),
+                    cap: super::picture::PICTURE_MAX_BYTES,
+                    side,
+                    ctx,
+                },
+            ) {
+                self.fired += 1;
+            }
+            self.pic_wait = Some(key);
+            return;
+        }
         let slot = self.slot.clone();
         self.inflight = true;
         self.fired += 1;
-        let how = self.how;
         let wire = self.wire.clone();
         h.spawn(async move {
-            let r = match how {
-                Want::Text => {
-                    let args = serde_json::json!({ "path": wire, "max_bytes": PREVIEW_MAX_BYTES });
-                    super::editor::text_from_reply(
-                        super::source::ask_coded(
-                            &line,
-                            &origin,
-                            super::editor::CMD_READ_TEXT,
-                            &args,
-                            super::editor::READ_BUDGET,
-                        )
-                        .await,
-                    )
-                    .map(Got::Text)
-                    .map_err(|f| f.said)
-                }
-                Want::Image => read_image(&line, &origin, &wire).await.map(Got::Image),
-            };
+            let args = serde_json::json!({ "path": wire, "max_bytes": PREVIEW_MAX_BYTES });
+            let r = super::editor::text_from_reply(
+                super::source::ask_coded(
+                    &line,
+                    &origin,
+                    super::editor::CMD_READ_TEXT,
+                    &args,
+                    super::editor::READ_BUDGET,
+                )
+                .await,
+            )
+            .map_err(|f| f.said);
             *slot.lock().unwrap() = Some((path, r));
             if let Some(c) = ctx {
                 c.request_repaint();
@@ -511,6 +564,18 @@ impl Preview {
                             .clicked()
                         {
                             act = Some(PreviewAct::Download);
+                        }
+                        if h.view
+                            && super::kit::ghost(
+                                ui,
+                                egui_phosphor::regular::EYE,
+                                &super::imgview::VIEW_LABEL,
+                                true,
+                                "",
+                            )
+                            .clicked()
+                        {
+                            act = Some(PreviewAct::View);
                         }
                         if h.edit
                             && super::kit::ghost(
@@ -726,71 +791,6 @@ pub fn highlight_lines(ctx: &egui::Context, text: &str, lang: &str) -> Vec<egui:
     }
     out
 }
-
-/// 逐块读回一张图（每块到后端那一条的上限），整份超过 [`IMAGE_MAX_BYTES`] 就停、出声；读完在这条线上解码、过大就缩。
-async fn read_image(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    path: &serde_json::Value,
-) -> Result<egui::ColorImage, String> {
-    let mut bytes: Vec<u8> = Vec::new();
-    loop {
-        let d = super::source::ask(
-            line,
-            origin,
-            CMD_READ_CHUNK,
-            &serde_json::json!({ "path": path, "offset": bytes.len(), "len": super::lossy_pull::PULL_CHUNK }),
-            super::chunk_upload::CHUNK_BUDGET,
-        )
-        .await?;
-        let body = d["content"]["b16"]
-            .as_str()
-            .and_then(super::lossy_pull::unhex)
-            .ok_or_else(|| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
-        bytes.extend_from_slice(&body);
-        if bytes.len() as u64 > IMAGE_MAX_BYTES {
-            return Err(copy_text(
-                "rsFilewinPreview.image.grew",
-                &[("limit", &copy_core::size_text(IMAGE_MAX_BYTES))],
-            ));
-        }
-        if d["eof"].as_bool() != Some(false) || body.is_empty() {
-            break;
-        }
-    }
-    decode_image(&bytes)
-}
-
-/// 解不开：句子只说解不开，解码器的原话记一行日志。
-fn undecodable(e: impl std::fmt::Display) -> String {
-    tracing::warn!("filewin: image undecodable: {e}");
-    copy_text("rsFilewinPreview.image.undecodable", &[])
-}
-
-/// 字节 → 一张界面能画的图（过大先缩到最长边 [`IMAGE_MAX_SIDE`]）。解不开 ⇒ 一句（原话进日志）。
-pub fn decode_image(bytes: &[u8]) -> Result<egui::ColorImage, String> {
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(undecodable)?;
-    let mut limits = image::Limits::default();
-    limits.max_alloc = Some(256 * 1024 * 1024);
-    reader.limits(limits);
-    let img = reader.decode().map_err(undecodable)?;
-    let img = if img.width().max(img.height()) > IMAGE_MAX_SIDE {
-        img.thumbnail(IMAGE_MAX_SIDE, IMAGE_MAX_SIDE)
-    } else {
-        img
-    };
-    let rgba = img.to_rgba8();
-    let size = [rgba.width() as usize, rgba.height() as usize];
-    Ok(egui::ColorImage::from_rgba_unmultiplied(
-        size,
-        rgba.as_raw(),
-    ))
-}
-
-/// 按字节寻址分块读回（读族；图片预览用，与有损名下载同一条）。
-pub const CMD_READ_CHUNK: &str = "files-read-chunk";
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/preview_tests.rs"]

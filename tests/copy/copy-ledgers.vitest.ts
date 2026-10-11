@@ -110,10 +110,8 @@ function readOrWarn(tag: string): Reports | null {
   return r;
 }
 
-// 期限：一趟普查把整仓生产源码扫一遍（三份量具已共用这一趟），扫法本身是逐文件跑一串出口正则，没有便宜的近路。
-//   量过：负载 3 时 4.4 s（扫 4.2 s）；带覆盖率 · 高负载时 36–58 s（120 s 期限过半）。放宽到 240 s；机器换了、或 quick-check
-//   三步并行跑起来之后复量一次。
-const RUN_MS = 240_000;
+// 慢：一趟普查把整仓生产源码扫一遍（三份量具已共用这一趟），扫法本身是逐文件跑一串出口正则，没有便宜的近路。
+//   量过：负载 3 时 4.4 s（扫 4.2 s）；带覆盖率 · 高负载时 36–58 s。不另给期限：用兜底的那一个数（`tests/test-support/wall-ceiling.ts`）。
 
 it("量具 · 台账 · 待办表 · 人群的定义都在盘上", () => {
   for (const f of [RUNNER, CENSUS, CP1_METER, CP1_LEDGER, CP2B_METER, CP2B_PENDING, CP2C_METER, CP2C_PENDING]) {
@@ -146,7 +144,7 @@ describe("CP1 · 存疑带裁决台账与普查两向相等", () => {
       if (r === null) return;
       const report = r.CP1;
       // 反空真：正控在量具那边（临时树里现造恰好一句存疑带样本，普查必须恰好认出它，没过即退 3）。
-      // 原来是地板 300：全量抽表之后存疑带本来就该变小（合并那一拍 241），地板把「抽对了」读成「尺子坏了」。
+      // 原来是地板 300：全量抽表之后存疑带本来就该变小（合并时 241），地板把「抽对了」读成「尺子坏了」。
       expect(report.probe_ok, `正控没过：普查在临时树里认出的是 ${JSON.stringify(report.probe_got)} ⇒ 普查空转`).toBe(true);
       expect(report.band).toBeGreaterThan(0);
       expect(
@@ -162,7 +160,6 @@ describe("CP1 · 存疑带裁决台账与普查两向相等", () => {
       expect(report.ledger).toBe(report.band);
       expect(report.ok).toBe(true);
     },
-    RUN_MS,
   );
 });
 
@@ -206,7 +203,6 @@ describe("CP2b · 还有对外字面量的文件 == 待办表", () => {
       expect(report.problems, report.problems.join("\n")).toEqual([]);
       expect(report.ok).toBe(true);
     },
-    RUN_MS,
   );
 
   it(
@@ -225,7 +221,6 @@ describe("CP2b · 还有对外字面量的文件 == 待办表", () => {
       });
       expect(r.CP2b.via_table, "出口里一条 copyText / copy_text 都没认出来 —— 普查读表那一格瞎了").toBeGreaterThan(0);
     },
-    RUN_MS,
   );
 
   // 「`.css` 的 `content:` 与 `index.html` 的静态文本没扫」（裁：补进 CP1 语料）。
@@ -241,7 +236,6 @@ describe("CP2b · 还有对外字面量的文件 == 待办表", () => {
         "html.text:title:某窗口",
       ]);
     },
-    RUN_MS,
   );
 });
 
@@ -286,7 +280,6 @@ describe("CP2c · 后端与子 crate 里还有对外字面量的文件 == 待办
       expect(report.problems, report.problems.join("\n")).toEqual([]);
       expect(report.ok).toBe(true);
     },
-    RUN_MS,
   );
 
   it(
@@ -296,6 +289,5 @@ describe("CP2c · 后端与子 crate 里还有对外字面量的文件 == 待办
       if (r === null) return; // 判不了那一格上面那条已经说过
       expect(r.CP2c.probe).toEqual(["探针：这一句是对外字面量 {}"]);
     },
-    RUN_MS,
   );
 });

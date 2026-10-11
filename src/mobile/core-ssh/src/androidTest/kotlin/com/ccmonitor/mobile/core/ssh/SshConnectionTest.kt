@@ -21,7 +21,7 @@ import java.io.InputStream
  *
  * 认证用 androidTest/assets/test_key（本地放置，不提交）。服务器不可达时本测试失败。
  * 服务器地址用 instrumentation 参数 `sshHost` 给（`-Pandroid.testInstrumentationRunnerArguments.sshHost=<地址>`）；
- * 没给时落到文档段占位地址，必然连不上。
+ * 没给时落到文档段占位地址，必然断开。
  */
 @RunWith(AndroidJUnit4::class)
 class SshConnectionTest {

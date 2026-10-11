@@ -2,7 +2,7 @@
 
 怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `cc-monitor.exe`，Linux 的 `.deb` · 裸 `cc-monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
 
-开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。
+开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。手机端（Android APK）的构建在 [`src/mobile/README.md`](../mobile/README.md)，发版时由 `release.yml` 的 `build-mobile` 打签名包（RELEASING §2.3）。
 
 ---
 
@@ -22,7 +22,7 @@
 
 ### 内嵌字节与 `BUILD_ID`
 
-后端的身份是 `src/backend/lib.rs` 里的 `BUILD_ID`，编进字节里的身份戳。monitor 编译时（`src/frontend/shell/build.rs`）逐份读内嵌字节的戳，与源码对不上就让编译失败——装出去一份自报旧身份的后端，monitor 会永远判它过期、无限重装。
+后端的身份是 `src/backend/lib.rs` 里的 `BUILD_ID`，编进字节里的身份戳。monitor 编译时（`src/frontend/shell/build.rs`）不读后端源码，只逐份读内嵌字节的戳：问不出身份、几份内嵌字节不是同一版，就让编译失败；几份字节自报的那个共同 id 就是 monitor 的「我这一版」。「字节自报 == 源码 `BUILD_ID`」那条核对在发版那一侧（`release.yml` 的内嵌校验 · `re-embed.sh --check`）——开发中源码 bump 了、字节还没重铺，monitor 照样编得过，按手上那份旧字节说话；可这样的包装出去，连上就会判远端过期、反复重装。
 
 所以 bump 了 `BUILD_ID` 就同拍重铺内嵌字节：
 
@@ -132,7 +132,8 @@ msiexec /x cc-monitor_<version>_x64_en-US.msi /qn   # 静默卸载
 |---|---|---|
 | `linker link.exe not found` / 链接阶段崩 | 没注入 vcvars | 在 Developer PowerShell 里跑，或用 `tests\scripts\run.ps1` |
 | `Microsoft Visual C++ 14.0 is required` | 缺 MSVC 或 VCTools workload | VS Installer 里加 workload |
-| 编译期 panic「内嵌 backend … 问不出身份」/「半 bump」 | 内嵌字节与源码 `BUILD_ID` 对不上 | `bash tests/scripts/re-embed.sh`（重铺）或 `--clean`（删掉落点） |
+| 编译期 panic「内嵌 backend … 问不出身份」/「内嵌的几份后端字节不是同一版」 | 内嵌字节没有身份戳，或几份不是同一份源码编的 | `bash tests/scripts/re-embed.sh`（重铺）或 `--clean`（删掉落点） |
+| `re-embed.sh --check` / 门禁 `release-gate` 报「半 bump」 | 源码 `BUILD_ID` 改了、内嵌字节还是旧的 | 同上 |
 | `MakeNSIS exited with code 1` | 图标损坏或路径问题 | 检查 `src/frontend/shell/icons/icon.ico` |
 | `WiX is not installed` | 自动下载失败 | 检查网络或手装 WiX |
 | `EACCES: permission denied ::1:24174` | dev 端口落进了 Windows 的保留段 | 是 dev 的问题，见 [DEVELOPMENT.md § 端口冲突](DEVELOPMENT.md#端口冲突) |

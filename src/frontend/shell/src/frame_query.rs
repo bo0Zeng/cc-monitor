@@ -7,13 +7,13 @@
 //! `--read-session` / `--read-session-tail` / `--session-accounts` / `--list-accounts` /
 //! `--search` 等）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
 //! 读完 stdout 就断 —— 而同一台机器上**早就有一条**长连接（流模式那条），
-//! 入方向一问一答也早就通了（`inbound_client`）。后端那边这一拍把八条登记上了帧面
+//! 入方向一问一答也早就通了（`inbound_client`）。后端那边把八条登记上了帧面
 //! （`history-*` / `accounts-*`，`src/backend/faces/read_face.rs`），本模块是 monitor 这一侧的发送端。
 //!
 //! # 走哪条分流
 //!
 //! 发送端一律走 `backend_route` 的出口（`route_call_error` / `no_channel`），
-//! 登记在 `backend_route_tests::SENDERS`。**没有第二条路可回落**：逐次拨号那条就是本件要删的东西 ——
+//! 登记在 `backend_route_tests::SENDERS`。**没有第二条路可回落**：逐次拨号那条就是这里要删的东西 ——
 //! 长连接不在时这里**明说**「没有控制通道」，不悄悄再拨一次 SSH。
 //! 代价如实写：历史浏览从此依赖那台的流连接活着（此前它是独立拨号，流断了也能翻历史）。
 //!

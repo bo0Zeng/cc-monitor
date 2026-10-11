@@ -201,7 +201,7 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
     let root = tree.remote_root();
     // 🔴 它**不声明** `files-index-rebuild` ⇒ 客户端连发都发不出去
     //    （`InboundClient::call` 第一行的能力协商），索引永远建不起来。
-    //    这正是本刀之前真机上的那一态（「零生产调用方 ⇒ 恒回 index_missing」）。
+    //    这正是从前真机上的那一态（「零生产调用方 ⇒ 恒回 index_missing」）。
     let wired = testing::wire_up(
         "b1-find-noindex",
         FakeBackend::new(

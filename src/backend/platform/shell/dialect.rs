@@ -35,6 +35,7 @@
 //! PowerShell 解析过**。它买到的只有：函数体逐字照 `src/shared/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
 //! 那一形 `parse-errors=0`）· 黄金串 · 与 POSIX 臂同契约的对拍（同一份清单两边渲染再各自读回，得回同一份清单）。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
@@ -255,7 +256,7 @@ fn on_path(name: &str, windows: bool) -> Option<PathBuf> {
     // 我们自己放的别名链接（`~/.cc-monitor/bin/<名>` → `ccm`，`assets/aliases/links.rs`）不算撞名：那就是这条别名本身。
     let ccm = relay_route_core::BACKEND_LANDING_REL.rsplit('/').next();
     let theirs = |cand: &std::path::Path| {
-        cand.is_file() && !std::fs::read_link(cand).is_ok_and(|t| t.to_str() == ccm)
+        cand.is_file() && !Ro::read_link(cand).is_ok_and(|t| t.to_str() == ccm)
     };
     match super::find_session_command(name, path.as_deref(), windows, &theirs) {
         super::SessionCommand::Found { file, .. } => Some(file),

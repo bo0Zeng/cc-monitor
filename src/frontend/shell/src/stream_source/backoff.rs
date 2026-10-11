@@ -23,7 +23,7 @@ const RECONNECT_MAX: Duration = Duration::from_secs(30);
 /// 约 6 s @200ms RTT，见），又要短到不至于让一次真实的网络抖动被当成 flapping。
 const MIN_HEALTHY_UPTIME: Duration = Duration::from_secs(30);
 
-/// 纯函数：本轮连接结束后，退避该不该重置回 [`RECONNECT_MIN`]。
+/// 纯函数：这一轮连接结束后，退避该不该重置回 [`RECONNECT_MIN`]。
 ///
 /// 两个条件**都要满足**：握手成功过（`saw_hello`）**且**这条连接活过 [`MIN_HEALTHY_UPTIME`]。
 /// 只看前者就是 I-1 那个自激循环；只看后者会把「连了很久但从没握手成功」也当健康。

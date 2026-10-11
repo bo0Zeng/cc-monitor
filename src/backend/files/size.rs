@@ -18,6 +18,7 @@
 //! 与 `index::build` 同形（本族走整棵树的那一个先例也不设）：阻塞档、开跑之后取消不掉，
 //! 在一棵极大的树上就是一趟很长的往返 —— 调用方的期限是它唯一的上界。纯读，一个字节不写（边界①）。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 /// 一趟算下来的几个数。
@@ -43,7 +44,7 @@ pub fn measure_with(
     top: &Path,
     device_of: impl Fn(&Path) -> Option<u64>,
 ) -> std::io::Result<Measured> {
-    let md = std::fs::metadata(top)?;
+    let md = Ro::metadata(top)?;
     let mut m = Measured::default();
     if !md.is_dir() {
         if md.is_file() {
@@ -58,7 +59,7 @@ pub fn measure_with(
     m.dirs = 1;
     let mut stack: Vec<PathBuf> = vec![top.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(listing) = std::fs::read_dir(&dir) else {
+        let Ok(listing) = Ro::read_dir(&dir) else {
             m.unreadable_dirs += 1;
             continue;
         };

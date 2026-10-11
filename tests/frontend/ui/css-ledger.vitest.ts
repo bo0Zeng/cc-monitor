@@ -23,9 +23,9 @@
  * | ④b | `no-descending-specificity` 的命中 == 登记的例外 | **两向相等**（多一条红、修掉一条也红） | 登记表条数 |
  *
  * 🔴 **本文件不装第五格（`#app` 布局根）—— 它有自己的家。**
- * 本轮落地时它红在一个真缺陷上（`src/frontend/ui/tabs.ts` 的 `ensureArchiveUi()` 往 `#app` 插的
+ * 落地时它红在一个真缺陷上（`src/frontend/ui/tabs.ts` 的 `ensureArchiveUi()` 往 `#app` 插的
  * `.tab-archive` 是个没认领格子的 grid item，偷走消息流 35px，`S21 §6 ④` 有真引擎读数），
- * 而 `src/frontend/ui/tabs.ts` / `src/frontend/ui/styles.css` 都不在本轮写区。
+ * 而 `src/frontend/ui/tabs.ts` / `src/frontend/ui/styles.css` 这里都不改。
  * **同一棵树上另一路（`S24`）把缺陷修了、并把那一格装成了 `tests/frontend/ui/app-grid-claims.vitest.ts`** ——
  * 而且形态比字面写法更对：钉的不是「子元素 == 那三个」（`.tab-archive` 在步 17
  * 之前还得在，钉集合会持续假红），是「**每个 in-flow 直接子元素都认领了一个声明过的具名区域**」。
@@ -62,7 +62,7 @@
  *
  * - 量具买不到的东西逐条写在 `tests/evidence/S25-class-ledger.ts` 的头注里，这里不复述。
  * - **（变量对账）没装**：它要 `npm i -D stylelint-value-no-unknown-custom-properties`，
- *   而装包要改 `package-lock.json`，不在本轮写区。而且它今天**装上就红** ——
+ *   而装包要改 `package-lock.json`，这里不改。而且它今天**装上就红** ——
  *   `S21` 步 2 现打剩 1 个未定义变量（`--bg-1`，6 处），那一处正等用户在
  *   `--bg` / `--field-bg` 之间定（`S21 §6 ①`）。⇒ 不装，登记在此。
  * - ④ 跑的是**真 stylelint**（本仓少数几条在判据里起外部工具的，先例：`eslint-baseline.vitest.ts`）。
@@ -83,9 +83,6 @@ import {
   type Ledger,
 } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
-import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
-
-const TIMEOUT_MS = 120_000;
 
 /** `z-index` 唯一准写的形状。与 `.stylelintrc.json` 里那条 allowed-list 是同一个意思。 */
 const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
@@ -101,13 +98,13 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  * `ccm-alias-gen*` 共 7 个类，**而那 7 个其实各有真住址**（`src/frontend/ui/render.ts:77` 等）。
  * 一个越宽的前缀能掩掉越多真死规则 ⇒ **白名单必须是人写的，且每条要有理由**。
  *
- * 🔴 **与上一轮那份「11 个前缀」清单的关系（这是本轮最要紧的一条读数）**：
+ * 🔴 **与上一轮那份「11 个前缀」清单的关系（这是最要紧的一条读数）**：
  * 登记了 11 个前缀，`S21` 三处说「今天的 11 个不够，至少还要加
  * `FIRST_RUN_HINT_CLASS` 这类常量拼接、第三方 `katex-*`，以及现打到的 8 处模板拼接点
  * （`settings-btn-` · `cc-bus-hooks-` · `cc-bus-online-` · `remote-test-` · `history-chip` ·
  * `bash-output-body` · `block-collapsible` · `paste-block`）」。
  *
- * **本轮现打的答案不是"补到 19 个"，是"那三族根本不该由前缀来管"**：
+ * **现打的答案不是"补到 19 个"，是"那三族根本不该由前缀来管"**：
  * - 常量拼接 → 归 `const-concat`（把 `${CONST}` 填回去再扫），不占前缀格；
  * - 第三方 → 归 `vendor`（从 `import "<包>/….css"` 现读），不占前缀格；
  * - 那 8 处模板拼接点里有 7 处**根本不需要登记** —— 它们拼出来的类名（`settings-btn-secondary`、
@@ -153,7 +150,7 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
  * 登记在这儿不是赦免，是**把它变成一条会红的欠账**：修掉（删那几行 CSS）之后
  * 这张表里的条目会变成死条目，下面那条自检会红并叫人来删登记。
  *
- * ⚠ 〔当时〕本轮**不能自己修** —— `src/frontend/ui/styles.css` 在明令禁碰之列（另有一路正在改它）。
+ * ⚠ 〔当时〕**不能自己修** —— `src/frontend/ui/styles.css` 在明令禁碰之列（另有一路正在改它）。
  */
 // 〔D §D8〕唯一那条 `.paste-block-warning` 删了（规则在 `src/frontend/ui/styles/settings.css`，
 //   它的 `warning` 槽早先已移回消费者那儿，`src/frontend/ui/paste-block.ts` 头注写着）⇒ 规则与登记同拍删，本表空。
@@ -182,7 +179,7 @@ function lintKey(file: string, rule: string, text: string): string {
  *
  * 这条 lint 抓的是「后写的选择器特异度更低」：读源码的人以为后者覆盖前者，实际前者赢。
  * `@layer` 落地之后它终于可以打开（「`@layer` 本来要买的正是这条 lint 可以打开」）。
- * 打开时现打 **39** 条：写区内能**证明零级联变化**的 6 条当拍修掉（纯挪位，逐对核过先后翻转的规则，
+ * 打开时现打 **39** 条：本文件管得到、能**证明零级联变化**的 6 条当拍修掉（纯挪位，逐对核过先后翻转的规则，
  * 读数在），余下 **33** 条逐条登记在这里。
  *
  * 形态是**两向相等**（命中的多重集 == 本表）：
@@ -195,10 +192,10 @@ function lintKey(file: string, rule: string, text: string): string {
  * - `list`：同一条规则的选择器列表内部（声明一模一样，谁赢都一样）；
  * - `harmless`：逐条看过，结构上打不到同一个元素，或打到了也是作者要的结果（理由写在 `why`）；
  * - `defect?`：**真冲突，缺陷候选**，待定（改了会改变可见样式，本机无图形会话不能目视）；
- * - 〔历史〕`U4` / `ST3` 两档：当时在同波别的路的写区里、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
+ * - 〔历史〕`U4` / `ST3` 两档：当时在别处改着、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
  *   ST3 那 15 条逐条判完（全是 `harmless`），这两档从类型里删了 —— 今天没有「未判」。
  *
- * ⚠ 并发：别的路改到这些规则时，这张表会在合并那一拍红（多了或少了条目）——
+ * ⚠ 并发：别的路改到这些规则时，这张表会在合并时红（多了或少了条目）——
  *   那是本条要的红：按现打把对应条目增删并写理由即可。
  */
 const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
@@ -255,7 +252,7 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
     kind: "harmless",
     why: "结构上打不到同一个元素：diff 行不在 `.code-block pre` 里（后一条规则头注逐字：`.code-block` 的 transparent 覆盖不 scope 到 `.block-diff`，所以才单写一条防御）。",
   },
-  // ── src/frontend/ui/styles.css：tab 规则（U4 写区，未判）──
+  // ── src/frontend/ui/styles.css：tab 规则（U4 那一侧，未判）──
   { file: "src/frontend/ui/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   // ── src/frontend/ui/styles/settings.css：〔C §2.2 ·  待拍 2〕ST3 那 15 条逐条判完 ──
   //   读法：两条规则的声明逐条对（`postcss` 现打），再到 TS 里核两个选择器能不能落在同一个元素上。
@@ -354,7 +351,7 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
       led.cssClasses.size,
       `个 CSS 类名 · ${led.codeFiles.length} 份代码文件 · ${led.literals.size} 个代码侧 token`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("三条识别路径各自真的有货（任何一条空了，② 的正控就会靠别的机制蒙混过关）", () => {
     const led = ledger();
@@ -374,7 +371,7 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
       led.constConcat.size + led.vendorClasses.size + led.prefixCandidates.size,
       `条识别证据（常量拼接 ${led.constConcat.size} · 第三方 ${led.vendorClasses.size}（${led.vendorSpecs.length} 份） · 前缀候选 ${led.prefixCandidates.size}）`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   /**
    * 🔴 词法器的**正控 ＋ 死值验**，全部在内存里跑，不碰工作树。
@@ -429,7 +426,7 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
         "  所以 `npm run lint:css` 也看得见它（那条是 advisory，本条才是会红的那个）。",
     ).toEqual([]);
     denom("①", decls.length, "条 z-index 声明（全部走刻度）");
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("`.stylelintrc.json` 里那条规则还在（散文与判据是两处副本，必须同调）", () => {
     const raw = readFileSync(resolve(REPO_ROOT, ".stylelintrc.json"), "utf8");
@@ -476,7 +473,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       ).toBe(kind);
     }
     denom("②", want.length, "个已知假阳性（裁决与机制都对上了）");
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("每个 CSS 类名都说得出谁在用它（未解释的 == 登记的已知死规则）", () => {
     const led = ledger();
@@ -498,7 +495,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
         "\n★ 删之前**先确认它不是假阳性**（上一轮 13 个里有 3 个是活的，`S21` 步 3）：\n" +
         "  ① 是不是 `` `${某个常量}-后缀` `` 拼出来的？② 是不是第三方库自产的？\n" +
         "  ③ 是不是模板拼接？是的话把前缀连**理由**一起加进 `ALLOWED_PREFIXES`。\n" +
-        "  ④ 确实是死的 ⇒ 删掉那几行 CSS；删不了（不在写区）⇒ 加进 `KNOWN_DEAD` 并写清凭什么。",
+        "  ④ 确实是死的 ⇒ 删掉那几行 CSS；删不了（不归这里改）⇒ 加进 `KNOWN_DEAD` 并写清凭什么。",
     ).toEqual(registered.sort());
 
     denom(
@@ -506,7 +503,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       led.cssClasses.size,
       `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix} · 已登记死规则 ${KNOWN_DEAD.length}）`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("登记表不许有死条目（前缀要还派生得出来、还真解释着东西；已知死规则要还在 CSS 里）", () => {
     const led = ledger();
@@ -554,7 +551,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       ALLOWED_PREFIXES.length + KNOWN_DEAD.length,
       `条登记（前缀共掩 ${maskedAll.length} 个类 == 登记：${lines.join(" ")}）`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   /** 死值验：造一个**没人用**的类名，尺子必须判它死。判不出 ⇒ 上面那条是空的。 */
   it("死值验：造一个没人用的类名，尺子必须判它死；同一把尺子对活类要判活", () => {
@@ -569,7 +566,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       "literal",
     );
     denom("②", 2, "个变异体类名（1 个该死、1 个该活，都判对了）");
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登记）", () => {
@@ -588,7 +585,7 @@ describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登�
         "  少了的（-）：修掉了，删那一行。",
     ).toEqual([]);
     denom("③", led.usedClasses.size, `个代码侧类名引用（其中 ${dangling.length} 个 CSS 里没规则 == 登记）`);
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("S25 ④ stylelint 报错 == 登记", () => {
@@ -659,7 +656,7 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
         "或确认无害后登记并写理由。\n" +
         "★ 少了的（在 want 不在 got）：那一条修掉了 / 规则改写了 —— 把登记删掉（本表只许缩，除非新登记写了理由）。",
     ).toEqual(want);
-  }, TIMEOUT_MS);
+  });
 
   it("④b 〔UC2〕no-descending-specificity 真的开着，而且真能报（正控：一段降序特异度的夹具必须恰报 1 条）", async () => {
     const cfg = JSON.parse(readFileSync(resolve(REPO_ROOT, ".stylelintrc.json"), "utf8")) as { rules: Record<string, unknown> };
@@ -674,12 +671,12 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
     const kinds = new Map<string, number>();
     for (const e of DESCENDING_SPECIFICITY_EXCEPTIONS) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + (e.n ?? 1));
     denom("④b", [...kinds.values()].reduce((a, b) => a + b, 0), `条登记的例外（${[...kinds].map(([k, n]) => `${k} ${n}`).join(" · ")}），与真 stylelint 的命中两向相等`);
-  }, TIMEOUT_MS);
+  });
 });
 
 // ═══════════════════════════ ⑤ 层真包进去（件 2）═══════════════════════════
 //
-// 〔三入口拆分那一拍新装〕抬头的订正逐字：「7 个层只有 `reset`/`tokens` 真包进去
+// 〔三入口拆分时新装〕抬头的订正逐字：「7 个层只有 `reset`/`tokens` 真包进去
 // （**无层样式赢过所有有层的**，收益还没到手）」。本格钉的就是那一句的反面，两条：
 //
 // ⑤a **恒等**：`src` 下每一份 CSS 里的每一条规则，外层 at-rule 链上都有一个 `@layer` ——
@@ -799,7 +796,7 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
         "它们会悄悄压过层里的一切。放进它该在的那一层（多半是 `components`）。",
     ).toEqual([]);
     denom("⑤", rules, `条规则（${led.cssFiles.length} 份 CSS，无层 0）`);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("⑤b 层名都在声明里、声明次序 == 设计（拼错的层名会悄悄排到最后、压过一切）", () => {
     const led = ledger();
@@ -818,7 +815,7 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
     for (const must of ["reset", "tokens", "layout", "components"]) expect(used.has(must), `没有任何文件用到 \`${must}\` 层`).toBe(true);
     // `vendor` 不在源码里 —— 它由 `vite.config.ts` 的插件在构建时包上（产物那一侧由 entry-graphs 判）
     denom("⑤", used.size, `个层真装着规则（${[...used].sort().join(" · ")}），零野层名`);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   /**
    * 件 3：最小重置里要有表单控件那一族。订正里那句「`@layer reset` 里只有

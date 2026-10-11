@@ -335,10 +335,29 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→14 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    /** 14→15：hosts 去掉 claudeDir，其余列原样搬过去。 */
     @Test
-    fun migrateAll1To14Validates() {
+    fun migrate14To15DropsClaudeDirKeepsTheRest() {
+        helper.createDatabase(dbName, 14).apply {
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect,reconnectOnNetworkChange," +
+                    "maxReconnectAttempts,claudeDir,agentKind,os) VALUES ('h14','pi','example.com',22,'pi',0,1,1,0,'/x','Codex','posix')",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 15, true, MIGRATION_14_15)
+        db.query("SELECT label, agentKind, os FROM hosts WHERE id='h14'").use { c ->
+            assertTrue("旧主机应保留", c.moveToFirst())
+            assertEquals("pi", c.getString(0))
+            assertEquals("Codex", c.getString(1))
+            assertEquals("posix", c.getString(2))
+        }
+    }
+
+    /** 全链路 1→15 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    @Test
+    fun migrateAll1To15Validates() {
         helper.createDatabase(dbName, 1).close()
-        helper.runMigrationsAndValidate(dbName, 14, true, *ALL_MIGRATIONS)
+        helper.runMigrationsAndValidate(dbName, 15, true, *ALL_MIGRATIONS)
     }
 }

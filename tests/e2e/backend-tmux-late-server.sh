@@ -12,7 +12,7 @@
 # ## 为什么必须真跑
 #
 # 病在 **inotify 有没有那只耳朵**这个运行期事实上。单测钉得了「代码里有 watch 那一行」，
-# 钉不了「server 后来出现时它真的醒了」——本轮反复撞的同一句话。
+# 钉不了「server 后来出现时它真的醒了」——反复撞的同一句话。
 #
 # ## 本机安全
 #
@@ -69,7 +69,7 @@ run_case() {
   fi
 
   # backend 起（late 模式下此刻该 socket 上零 server）
-  PATH="$bin:$PATH" CLAUDE_CONFIG_DIR="$F" timeout 30 "$D" -- --stream \
+  PATH="$bin:$PATH" CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream \
     < /dev/null > "$out" 2> "$W/$label.err" &
   local dp=$!
   sleep 3

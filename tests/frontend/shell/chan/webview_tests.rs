@@ -140,8 +140,8 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
         },
         "第 1 跳超时的形状不对（那张表：Hop{{1 wait, Unknown, Overrun}}）"
     );
-    // 上界不是「永远」：给 80ms，允许调度抖动，但不许等到几秒。
-    assert!(started.elapsed() < Duration::from_secs(3), "没被截断");
+    // 上界不是「永远」：给 80ms；句柄永不回答，没截断就等到兜底上限、撞这一道。
+    assert!(started.elapsed() < guard_core::wall::CEILING, "没被截断");
     let seen = fake.seen.lock().unwrap();
     assert!(
         seen[0].4.is_cancelled(),
@@ -353,7 +353,7 @@ fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
 /// ★★**F14 那条「能不能回落」的规则两份实现对拍**：Rust `backend_route::route_call_error`
 /// 那一收拢 == TS `ipc/chan-caller.ts::provablyNotSent`，跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`。
 ///
-/// 守的要求：（面 A「连不上时怎么办」）与 `backend_route` 头注那条分界线逐字
+/// 守的要求：（面 A「断开时怎么办」）与 `backend_route` 头注那条分界线逐字
 /// 「**能不能证明这条命令根本没发出去**」—— 就地 resume 迁到界面之后（`src/frontend/ui/tmux-control.ts::sendInto`），
 /// 同一条规则在 TS 那一侧有了第二份（它读的是 webview 这一跳上线后的分层错误，不是 inbound 的枚举）。
 /// 两份一漂，后果就是 F14 记的那一形：一次「后端已键入但应答超时」被判成可回落 ⇒ 载荷第二次键入正在跑的 claude。
@@ -447,10 +447,11 @@ async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
         }
         assert!(cancel_inflight(&id), "在飞的那一问撤不到 —— 在飞表没登记它");
     };
-    let (got, ()) =
-        tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(call, cancel) })
-            .await
-            .expect("撤了 5 秒还没收场 —— 撤单没过这一跳");
+    let (got, ()) = tokio::time::timeout(guard_core::wall::CEILING, async {
+        tokio::join!(call, cancel)
+    })
+    .await
+    .expect("撤了 5 秒还没收场 —— 撤单没过这一跳");
     assert!(
         matches!(
             got,

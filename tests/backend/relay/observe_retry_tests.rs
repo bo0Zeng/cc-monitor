@@ -95,7 +95,7 @@ impl TapPort for Mute {
 /// 发一整发，读回整段回包。
 pub(super) fn shoot(addr: SocketAddr, target: &str, headers: &str, body: &str) -> String {
     let mut c = TcpStream::connect(addr).expect("connect relay");
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline");
     let req = format!(
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",
@@ -315,7 +315,7 @@ fn the_relay_stops_resending_at_its_hard_cap() {
     assert_eq!(got.lock().expect("lock").len(), cap + 1);
 }
 
-/// 重发那一发连不上 ⇒ 不再换，第一发那个拒绝原样交下去（不吞成 502）。
+/// 重发那一发断开 ⇒ 不再换，第一发那个拒绝原样交下去（不吞成 502）。
 #[test]
 fn a_resend_that_cannot_connect_hands_down_the_answer_in_hand() {
     fn answer(_auth: Option<&str>) -> String {
@@ -350,7 +350,7 @@ const AGENT_TOKEN: &str = "Bearer fake-token-of-a";
 const B_TOKEN: &str = "fake-access-of-b";
 const B_REFRESH: &str = "fake-refresh-of-b";
 
-/// 判据里续令牌一律发到这里：本机一个刚关掉的口（连不上 ⇒ 续不上），绝不发到那一家的真端点。
+/// 判据里续令牌一律发到这里：本机一个刚关掉的口（断开 ⇒ 续不上），绝不发到那一家的真端点。
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
     let port = TcpListener::bind(SocketAddr::new(LOOPBACK, 0))
         .and_then(|l| l.local_addr())

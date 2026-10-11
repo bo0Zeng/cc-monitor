@@ -5,13 +5,6 @@
     "res/values/strings.xml 不归这张表：app_name 由清单 android:label 引用，系统要求住在资源里，照留。"
   ],
   "files": {
-    "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt": [
-      {
-        "text": "echo 'ccm: resume 失败——无法确定工作目录（会话 {…}）'",
-        "use": "命令",
-        "why": "resume 守卫在远端 shell 里 echo 的一句，显示在远端终端里，不经手机界面"
-      }
-    ],
     "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatMenu.kt": [
       {
         "text": "管道",

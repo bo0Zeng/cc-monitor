@@ -13,7 +13,7 @@
  * - 备注：自带扩展的内置备注照画；用户写的经本机后端记进它的目录（`ext-note-set`），写完让本机后端同步一趟各台。
  * - 要加钩子的那一个（自带的 cc-bus）：抽屉里每台一行钩子状态与要加的内容，问那台后端（`hooks-diag`，抽屉打开时问一次），
  *   界面不读那份配置文件、也不写它。
- * - MCP 那几行每台的小标（需登录 · 连不上）与抽屉里那一行：问那一台自己的后端（`mcp-read`，每次读完表各台问一次），
+ * - MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行：问那一台自己的后端（`mcp-read`，每次读完表各台问一次），
  *   哪一种、那一句、悬停那一截、［去登录］复制的命令、原话都是它写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
@@ -230,7 +230,7 @@ export class ExtSection {
   private slots = new Map<string, Slot>();
   private install: Install = freshInstall();
   private hooks = new Map<string, HookSlot>();
-  /** 各台的 MCP 列表（按 `machineKey`；那台后端 `mcp-read` 答的，带写好的需登录 / 连不上）· 那一串（一字不差 ⇒ 不重画）。 */
+  /** 各台的 MCP 列表（按 `machineKey`；那台后端 `mcp-read` 答的，带写好的需登录 / 断开）· 那一串（一字不差 ⇒ 不重画）。 */
   private mcp = new Map<string, McpRead>();
   private mcpWire = new Map<string, string>();
   /** 备注正在改（那一段草稿；`null` = 没在改）· 写备注那一问没成时那一句。 */
@@ -315,7 +315,7 @@ export class ExtSection {
 
   /**
    * 表里有 MCP 行 ⇒ 各台（连得上的）问它自己的后端一次 `mcp-read`，小标与抽屉那一行照它画。
-   * 连不上的那台 · 问不成的那台：不画小标（没小标只说「装了」）。回来的一字不差 ⇒ 不重画；变了只重建 MCP 那几行与抽屉。
+   * 断开的那台 · 问不成的那台：不画小标（没小标只说「装了」）。回来的一字不差 ⇒ 不重画；变了只重建 MCP 那几行与抽屉。
    */
   private async readMcp(list: ExtList): Promise<void> {
     const wanted = list.rows.some((r) => r.kind === "mcp") ? list.machines.filter((m) => m.reachable) : [];
@@ -389,7 +389,7 @@ export class ExtSection {
       this.table.appendChild(el("div", "settings-hint", said));
       return;
     }
-    // 表头：名字 · 种类 · 做什么 · 每台一列（列头是机器名）；连不上的那台整列半透明 ＋ 表上方一条。
+    // 表头：名字 · 种类 · 做什么 · 每台一列（列头是机器名）；断开的那台整列半透明 ＋ 表上方一条。
     const head = el("div", "ext-row ext-head");
     head.append(el("span", "", copyText("extPage.table.headName")), el("span", "", copyText("extPage.table.headKind")), el("span", "", copyText("extPage.table.headAbout")));
     const cols = el("span", "ext-dots");
@@ -626,7 +626,7 @@ export class ExtSection {
   private machineRow(r: ExtRow, c: ExtCell, m: ExtMachine): HTMLElement {
     const key = machineKey(m);
     const slot = this.slots.get(key) ?? {};
-    // 连不上的那台：这一行照表上「离线整列半透明」那一套变淡、勾不了、卸不了，现状后面点明是上次同步的样子。
+    // 断开的那台：这一行照表上「离线整列半透明」那一套变淡、勾不了、卸不了，现状后面点明是上次同步的样子。
     const line = el("div", m.reachable ? "ext-machine" : "ext-machine is-offline");
     const top = el("label", "ext-machine-top");
     const bring = c.bring;
@@ -669,7 +669,7 @@ export class ExtSection {
     return line;
   }
 
-  /** 抽屉里那台下面的 MCP 那一行（两种都没有 ⇒ 不画）：需登录那一句 ＋［去登录］；连不上那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
+  /** 抽屉里那台下面的 MCP 那一行（两种都没有 ⇒ 不画）：需登录那一句 ＋［去登录］；断开那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
   private mcpLines(line: HTMLElement, r: ExtRow, e: McpEntry): void {
     const login = e.login;
     if (login) {

@@ -141,7 +141,7 @@ fi
 # backend 是 app 经 SSH exec 起的 ⇒ **杀 app 不会带走它**。反复起停 app 之后盘上会攒下
 # 一堆还挂着 SSH 会话的后端，实测攒到 5 个、每分钟贡献 8 次 SSH 登录 ——
 # 而那个现象**看起来像「产品在疯狂重连」**，我在它上面连猜错三次。
-# ⇒ 开跑前数一次；多于一个（本轮 app 自己那个）就 ABORT，让人先清干净。
+# ⇒ 开跑前数一次；多于一个（这一趟 app 自己那个）就 ABORT，让人先清干净。
 # ⚠⚠ **人群补齐**〔P0b 08-12 实测〕：本格原来只数 `.build/backend/...` 那一族，
 #     而实测盘上活着的后端走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-backend`
 #     （`sftp::ensure_backend_deployed` 的落点）——**那一族当时根本不在人群里**，
@@ -169,7 +169,7 @@ _count_our_backends() {
   for pid in $(pgrep -f '.build/backend/[^ ]*/cc-monitor-backend' 2>/dev/null) \
              $(pgrep -f '\.cc-monitor/bin/cc-monitor-backend' 2>/dev/null); do
     # ⚠ **按 exe 复核，不信 cmdline**：`pgrep -f` 会匹配到**任何命令行里含这个模式的进程**
-    #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与本轮五次 `pkill -f` 自伤
+    #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与那五次 `pkill -f` 自伤
     #   同一族（`reap-orphan-backends.sh` 早就改成按 exe 判，这里跟上）。
     case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
       *cc-monitor-backend) : ;;

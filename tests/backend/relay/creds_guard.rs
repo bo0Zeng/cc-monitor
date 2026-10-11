@@ -139,11 +139,11 @@ mod tests {
             "起线程失败",
         ),
         (
-            // 先前是 `[relay] upstream connect failed`，只管「连不上」一支；
+            // 先前是 `[relay] upstream connect failed`，只管「断开」一支；
             //   今天等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）与发到一半断了（FIX3）也走这一行 ⇒ 回 502 / 504。
             "comms-outward/server.rs",
             "[relay] upstream failed",
-            "上游连不上 / 没发完 / 没回应 / 回的不是 HTTP（中转自己的传输失败，超时回 504、其余 502）",
+            "上游断开 / 没发完 / 没回应 / 回的不是 HTTP（中转自己的传输失败，超时回 504、其余 502）",
         ),
         (
             "relay/listen.rs",
@@ -711,7 +711,7 @@ mod tests {
             LOG_SITES.len(),
             found
         );
-        // ★ 〔上游选择搬出 `relay/` 那一拍〕**两层的日志都在扫描面里**：盘上扫到日志的根
+        // ★ 〔上游选择已搬出 `relay/`〕**两层的日志都在扫描面里**：盘上扫到日志的根
         //   ⇔ 登记表里出现的根 ⇔ `LOG_ROOTS`，三方相等。少了一棵 = 那一层的日志掉出白名单。
         // 根不再都是一段（`accounts/upstream_select` 两段）⇒ 按 `LOG_ROOTS` 认前缀，不按第一段切。
         let root_of = |f: &str| {

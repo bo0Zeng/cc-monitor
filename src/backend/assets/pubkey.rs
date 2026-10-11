@@ -17,6 +17,7 @@
 //! - 纯密码冷 onboarding：拨号只做 publickey / agent 鉴权（F61 已取消）⇒ 已有 key / agent 访问权时追加 / 轮换新公钥。
 //! - `pubKeyPath` 是本机那台的路径（界面 · 本机后端同一台）；读它不经文件管理面（那是「这台自己的用户文件」的写面，读本机一份公钥不写）。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
@@ -319,11 +320,11 @@ pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String
             crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(m, e)),
         )
     };
-    let meta = std::fs::metadata(path).map_err(io)?;
+    let meta = Ro::metadata(path).map_err(io)?;
     if meta.len() > PUB_READ_MAX {
         return Err(said(&copy_text("bePubkey.read.tooBig", &[])));
     }
-    std::fs::read_to_string(path).map_err(io)
+    Ro::read_to_string(path).map_err(io)
 }
 
 #[cfg(test)]

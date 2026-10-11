@@ -91,7 +91,7 @@ async fn a_pick_that_lands_before_the_next_frame_is_taken_by_that_frame() {
     let l = landed.clone();
     knock.set_request_repaint_callback(move |_| l.notify_one());
     assert!(w.start_pick(Purpose::Upload, Some(knock)));
-    tokio::time::timeout(std::time::Duration::from_secs(3), landed.notified())
+    tokio::time::timeout(guard_core::wall::CEILING, landed.notified())
         .await
         .expect("等了 3 秒选择框的结局还没落下");
     assert_eq!(uploads(&w), 0, "还没画帧就起了上传");

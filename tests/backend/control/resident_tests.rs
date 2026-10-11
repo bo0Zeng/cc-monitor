@@ -101,7 +101,7 @@ fn the_sandbox_refusal_truth_table() {
     assert_eq!(sandbox_refusal(&env_of(&[marked]), real_dh, None), None);
 }
 
-/// 中继连不上的两种理由：没人在听（还没绑上 / 起来就退了）⇒ `absent`；别的 ⇒ `unreachable`。
+/// 中继断开的两种理由：没人在听（还没绑上 / 起来就退了）⇒ `absent`；别的 ⇒ `unreachable`。
 #[test]
 fn the_relay_says_absent_only_when_nobody_listens() {
     use std::io::ErrorKind as K;

@@ -101,7 +101,7 @@ pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketA
 /// 发一条原文请求，读到对端关为止（带期限：挂住换成红）。
 pub(super) fn send_raw(addr: SocketAddr, raw: &str) -> String {
     let mut c = TcpStream::connect(addr).expect("connect relay");
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline");
     c.write_all(raw.as_bytes()).expect("write");
     let mut out = Vec::new();

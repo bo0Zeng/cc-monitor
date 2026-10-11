@@ -102,7 +102,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     );
 }
 
-/// ack 说不成（口绑不上 / 连不上）⇒ `failed` 带原话、**不进账**；说成 ⇒ 进账，计数照抄链路那一侧报的数。
+/// ack 说不成（口绑不上 / 断开）⇒ `failed` 带原话、**不进账**；说成 ⇒ 进账，计数照抄链路那一侧报的数。
 /// **停 = 收**：摘掉那一条之后链路那一侧被丢（替身手里的 [`DropMark`] 记了一笔），再列就没有它；再停 ⇒ `not_found`。
 #[tokio::test]
 async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {

@@ -8,14 +8,14 @@
 
 # ── 🔴 **内嵌落点**：字节不进仓（从前还有第三个 `binaries/`，Tauri `externalBin` 的暂存区，size2 10-11 撤了）─────────────────────────────────────────────
 #
-# 〔步 `19c` · 2026-09-19 修〕**下面这三行在本拍之前有两行是指空的。** 步 8（全仓改名
+# **下面这三行曾经有两行是指空的。** 步 8（全仓改名
 # `daemon` → `backend`）把落点改成了 `embedded-backends/` / `native-backend/`，
 # 而本文件还写着 `/embedded-daemons/` 与 `/native-daemon/` ⇒ 现打验过：
 # `git check-ignore -v src/frontend/shell/embedded-backends/… src/frontend/shell/native-backend/…`
 # **两条都不命中**，`git status` 里它们是 `??`。
 # ⇒ 那条「三个落点**全部 gitignore** ⇒ 字节不进仓」的硬事实，
 #   以及 `release.yml` 文件头把它当成「这张表的门禁只能建在 release.yml 上」的
-#   全部理由 —— **在本拍之前是假的**。而 `19c` 要落的 re-embed 正是往这两个目录里
+#   全部理由 —— **那时是假的**。而 re-embed 正是往这两个目录里
 #   铺二十多 MB 字节的那一步：不修这两行，那条命令每跑一次就往工作树里倒一次垃圾。
 #
 # 🔴 **每一行落点上面那句 `⇐ 内嵌落点` 是机检锚**（`tests/evidence/K-R124-ruler.py` ⑬d）：
@@ -43,10 +43,10 @@
 # 为什么不铺进上面的 embedded-backends/：那个目录名是 `local_backend_host_tests.rs` 认
 # 「谁会起真后端」的来历串之一，字面量写进生产段会误伤那条判据
 # （理由住 build.rs 的 `NATIVE_BACKEND_DIR` 头注）。
-# ⚠ 本行原是 K-R42 交回时点名的写区外欠账（后果是卫生不是功能：CI 从不 git add，
+# ⚠ 本行原是 K-R42 点名的一笔欠账（后果是卫生不是功能：CI 从不 git add，
 # 但谁在本机铺过一次，那十几 MB 的二进制就以未跟踪状态挂在 git status 里）。
-# 〔`19c` 订正：那笔欠账 09-10 当天记作「已还」，**而它只还对了名字里没改名的那一半** ——
-#  步 8 改名之后这一行重新指空，本拍才真的还上，并同拍给了它一条机检。〕
+# 〔订正：那笔欠账 09-10 当天记作「已还」，**而它只还对了名字里没改名的那一半** ——
+#  步 8 改名之后这一行重新指空，后来才真的还上，并同时给了它一条机检。〕
 /native-backend/
 
 # 本机个人构建配置（dev 瘦身），不进 git —— 08-27 从 Cargo.toml 搬来

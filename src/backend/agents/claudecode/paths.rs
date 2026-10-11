@@ -1,5 +1,6 @@
 //! Claude 的目录布局：配置根怎么解析、根下面有哪两个子目录。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
@@ -34,7 +35,7 @@ pub(crate) fn settings_may_set_base_url(
         files.push(c.join(HOME_DIR_NAME).join("settings.json"));
         files.push(c.join(HOME_DIR_NAME).join("settings.local.json"));
     }
-    files.iter().any(|f| match std::fs::read_to_string(f) {
+    files.iter().any(|f| match Ro::read_to_string(f) {
         Err(e) => e.kind() != std::io::ErrorKind::NotFound,
         Ok(t) => match serde_json::from_str::<serde_json::Value>(&t) {
             Err(_) => true,
@@ -62,7 +63,7 @@ const SETTINGS_CAP_BYTES: u64 = 1 << 20;
 fn read_settings_base_url(home: &Path) -> (PathBuf, super::super::SettingsBaseUrl) {
     use super::super::{SettingsBaseUrl as S, SettingsUnreadable as Why};
     let file = home.join(HOME_DIR_NAME).join("settings.json");
-    let raw = match std::fs::metadata(&file) {
+    let raw = match Ro::metadata(&file) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (file, S::Unset),
         Err(e) => Err(Why::Io(e.to_string())),
         Ok(m) if !m.is_file() => Err(Why::NotFile),
@@ -70,7 +71,7 @@ fn read_settings_base_url(home: &Path) -> (PathBuf, super::super::SettingsBaseUr
             let error = Why::TooLarge(SETTINGS_CAP_BYTES);
             Err(error)
         }
-        Ok(_) => std::fs::read_to_string(&file).map_err(|e| Why::Io(e.to_string())),
+        Ok(_) => Ro::read_to_string(&file).map_err(|e| Why::Io(e.to_string())),
     };
     let found = match raw {
         Ok(text) => settings_base_url(&text),
@@ -158,7 +159,7 @@ pub(crate) const SESSIONS_DIR: &str = "sessions";
 /// `<home>/projects` —— 会话记录树的根。
 ///
 /// `S3` 从 `common/paths.rs` 搬来。⚠ 它当初被建出来是为了**去重**（U2 实测五处副本，
-/// 第五处是内联的、grep 函数名找不到），那个性质本件**原样保留** ——
+/// 第五处是内联的、grep 函数名找不到），那个性质**原样保留** ——
 /// 变的只是它住哪一层：目录名 `projects` 是 **Claude 的布局知识**，
 /// 而 `common/` 的三条门槛第③条逐字写着「无域知识」。它当初就不该在那儿。
 pub(crate) fn projects_root(home: &Path) -> PathBuf {
@@ -222,7 +223,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 ///
 /// 两个 crate 之间没有共享落点：`src/backend` **刻意不在** monitor 那个 workspace 里
 /// （它有自己的 `Cargo.lock`，那条隔离是真架构约束，见它 `Cargo.toml` 头注），
-/// 而当时新立一个共享 crate 要改门禁里手抄的包数（本刀写区之外；那个数今天已改成从 `cargo metadata` 现取），
+/// 而当时新立一个共享 crate 要改门禁里手抄的包数（那不归这个模块管；那个数今天已改成从 `cargo metadata` 现取），
 /// 并且记着上一次「把围栏搬成共享 crate」当天就被撤回。
 /// ⇒ 处置：**函数体逐字节相同**，并由判据把这件事钉成相等断言 ——
 /// 两侧任何一处改动、另一处不跟，当场红。桥那一份删了，那条相等判据随之退役（全仓只剩这一份）。
@@ -298,7 +299,7 @@ pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, Str
         };
         Said::with_raw(said, e).into_note()
     })?;
-    let real_root = std::fs::canonicalize(&root).map_err(|e| {
+    let real_root = Ro::canonicalize(&root).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beClaudePaths.delete.rootUnresolved",
@@ -312,7 +313,7 @@ pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, Str
         )
         .into_note()
     })?;
-    let real = std::fs::canonicalize(&found).map_err(|e| {
+    let real = Ro::canonicalize(&found).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beClaudePaths.delete.fileUnresolved",

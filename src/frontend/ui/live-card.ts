@@ -168,7 +168,7 @@ export class LiveCore {
       };
       if (!this.admit(r, touched)) return touched;
     }
-    // 缺口：号连不上 ⇒ 这个响应断了。不补（补是 jsonl 的事），撤卡。
+    // 缺口：号断开 ⇒ 这个响应断了。不补（补是 jsonl 的事），撤卡。
     if (p.n !== r.next) {
       this.kill(r, touched, "gap");
       return touched;

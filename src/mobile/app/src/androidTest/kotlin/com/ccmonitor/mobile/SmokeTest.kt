@@ -2,12 +2,13 @@ package com.ccmonitor.mobile
 
 import android.Manifest
 import android.os.Build
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import com.ccmonitor.mobile.core.copy.copyText
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestRule
@@ -64,14 +65,22 @@ class SmokeTest {
         // 断言链里的隐式 waitForIdle 只等「已注册的 compose root 变空闲」，此刻注册表里可能一个 root 都还没有
         // → 它认为无事可等、立即返回 → 断言扑空。
         // 用 runCatching 包住是因为 root 尚未注册时 fetchSemanticsNodes() 是抛异常而非返回空列表。
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            runCatching { composeRule.onAllNodesWithText("Hosts").fetchSemanticsNodes().isNotEmpty() }
-                .getOrDefault(false)
-        }
+        // 落点看这台手机上的状态：从没进过服务器 ⇒ 服务器列表；进过 ⇒ 那台上空的新对话（`AppNavHost.launchDestination`）。
+        // 两种根屏各认一个首次组合就无条件发出的锚（不经 DB）：列表的标题、聊天屏顶栏的抽屉按钮。字照文案表取。
+        val anchors = listOf(copyText("mobHosts.page.title"), copyText("mobDrawer.open.aria"))
 
-        // 锚点是 HostListScreen 的 `title` 参数默认值 "Hosts"：由 HostListHeader 首次组合就无条件发出
-        // （不经 collectAsState/LaunchedEffect、不依赖 DB 里有没有 host）。
-        // 注意：同名文案出现在两处时 onNodeWithText 会抛 "Expected exactly '1' node but found '2'"，那时改用 testTag。
-        composeRule.onNodeWithText("Hosts").assertIsDisplayed()
+        fun rendered(a: String) =
+            runCatching {
+                composeRule.onAllNodesWithText(a).fetchSemanticsNodes().isNotEmpty() ||
+                    composeRule.onAllNodesWithContentDescription(a).fetchSemanticsNodes().isNotEmpty()
+            }.getOrDefault(false)
+        composeRule.waitUntil(timeoutMillis = WALL_CEILING_MS) { anchors.any(::rendered) }
+        assertTrue("根屏没渲染出来（认的锚：$anchors）", anchors.any(::rendered))
     }
 }
+
+/**
+ * 等根屏出来的上限：只防挂死，等到了就走。与桌面那边同一个数（`guard_core::wall::CEILING_SECS`；
+ * 判据 `wall_ceiling` 逐份核）—— 门禁里模拟器与别的格抢 CPU，十五秒在忙机上会误红。
+ */
+private const val WALL_CEILING_MS = 300_000L

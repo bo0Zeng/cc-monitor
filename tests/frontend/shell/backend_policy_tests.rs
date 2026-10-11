@@ -822,7 +822,7 @@ fn body_after(prod: &str, head: &str) -> String {
 /// # 它守的是什么
 ///
 /// `K-P3` 第一档交付时这个数是 **0**：判据、账、文案全买了，**一个消费者都没有**
-/// （`K-P3` `§3-5` 第一行如实登记）。本件把它接成 3 处；
+/// （`K-P3` `§3-5` 第一行如实登记）。后来接成 3 处；
 /// [`the_death_ledger_is_wired_at_exactly_these_sites`] 让「接了几处就是几处」
 /// 变成一条相等断言 —— 摘掉任何一处**都会点名是哪一处少了**。
 ///
@@ -835,12 +835,12 @@ const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
     (
         "local_backend_host.rs",
         "fn note_detached_death(",
-        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍",
+        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一刻",
     ),
     (
         "local_backend_host.rs",
         "fn backend_supervise_events(",
-        "监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\
+        "监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一刻。\
          它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\
          —— 内联的闭包测试够不着，那条行为判据就只能退回读源码",
     ),

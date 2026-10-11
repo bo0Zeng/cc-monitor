@@ -1,18 +1,32 @@
 #!/usr/bin/env bash
 # android-test.sh — 要设备的 instrumentation 测（androidTest）的唯一入口。
 #
-# 用法：先接好一台模拟器或真机（adb devices 看得到），再
+# 用法：先接好一台模拟器或真机（adb devices 看得到；多台时设 ANDROID_SERIAL），再
 #   . ./scripts/env.sh && bash scripts/android-test.sh
 #
-# 不进本仓门禁、也不进 CI：门禁与 CI 的 mobile 格只跑 JVM 单测（不起模拟器）。
+# 进全量门禁（10-11 起）：`tests/scripts/gate.sh` 的 `android-device` 那一格经 `tests/mobile-smoke/emu.sh`
+#   起一台封了内存的模拟器再调本脚本。CI 不跑（runner 上没有 KVM 模拟器）；门禁 `mobile` 格只跑 JVM 单测。
 # 跑的是：:core-data 的 Room 迁移 / DB / Keystore、:app 的 UI 冒烟与重放、:core-ssh 的硬件 ECDSA 签名。
+# 跑之前先装上 app、`pm clear` 清它的数据（退出码 0 且回 `Success` 才往下跑，清不掉就停）：
+#   上一趟留下的数据会让冒烟落到「进过服务器」那一支，「从没连过 ⇒ 落在服务器列表」那一支就走不到了。
+# gradle 一律 --no-daemon：守护进程会留在 heavy 的 scope 里、一直占着槽位。
 # core-data 与 app 合进一次 gradlew 加 --continue：一个挂了另一个照跑，两份报告都在。
 # core-ssh 单开一条，因为 -P 的 instrumentation 过滤是全局的；它只跑 KeystoreSigner，
 # 要一台真 SSH 服务端的 SshConnectionTest 不在这里跑（留真机手测）。
-# 这份脚本的形状由 core-data 的 InstrumentedTestInventoryTest 钉着（JVM 单测，门禁里跑）。
+# 这份脚本的形状由 core-data 的 InstrumentedTestInventoryTest 钉着（JVM 单测，门禁里跑）；
+# 清数据与 --no-daemon 由后端那棵的 `flow_scripts_guard` 拿假 gradlew / adb 真跑一遍钉着。
 set -euo pipefail
 cd "$(dirname "$0")/.."
+pkg=com.ccmonitor.mobile
+./gradlew --no-daemon --console=plain :app:installDebug --stacktrace
+said="$(adb shell pm clear "$pkg" 2>&1)" && clear_rc=0 || clear_rc=$?
+said="${said//$'\r'/}"
+if [ "$clear_rc" -ne 0 ] || [ "$said" != Success ]; then
+  echo "android-test: pm clear $pkg 没成（退出码 $clear_rc，回话「$said」）—— 带着上一趟的数据跑判不了「从没连过」那一支，停" >&2
+  exit 1
+fi
+echo "android-test: pm clear $pkg ⇒ Success"
 rc=0
-./gradlew :core-data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --continue --stacktrace || rc=$?
-./gradlew :core-ssh:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest --stacktrace || rc=$?
+./gradlew --no-daemon --console=plain :core-data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --continue --stacktrace || rc=$?
+./gradlew --no-daemon --console=plain :core-ssh:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest --stacktrace || rc=$?
 exit "$rc"

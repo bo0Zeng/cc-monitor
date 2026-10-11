@@ -5,7 +5,8 @@
  *
  * 量法与读数住 `bench.mjs` 头注；这里只造数据。
  */
-import { Convo } from "../fake/records";
+import { Convo, jsonlOf } from "../fake/records";
+import { HOME } from "../disk";
 import type { SessionSpec, World } from "../fake/types";
 import { defaultWorld, LOCAL, REMOTES, session, sidOf } from "../fake/world";
 
@@ -50,12 +51,11 @@ export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
   c.user(`第 ${i} 轮：把 ${mod} 里的分页逻辑改成游标分页，顺带补测试。`);
   c.think(`先看 ${mod} 现在的分页实现与调用点，再决定游标放在哪一层。第 ${i} 轮。`, `我先看一下 ${mod} 的现状。`);
   c.tool("Grep", { pattern: `paginate${i % 9}`, path: mod }, Array.from({ length: 6 }, (_, k) => `${mod}/src/file${k}.ts:${10 + k * 7}:  paginate${i % 9}(items, ${k})`).join("\n"));
-  c.tool("Read", { file_path: `${cwd}/${mod}/src/page.ts` }, numbered(code(heavy ? 120 : 60, i)), { card: "md" });
+  c.tool("Read", { file_path: `${cwd}/${mod}/src/page.ts` }, numbered(code(heavy ? 120 : 60, i)));
   c.tool(
     "Edit",
     { file_path: `${cwd}/${mod}/src/page.ts`, old_string: code(heavy ? 18 : 8, i), new_string: code(heavy ? 26 : 12, i + 1) },
-    "The file has been updated.",
-    { card: "diff" },
+    "The file has been updated."
   );
   c.say(`调用点改完了，接着跑 ${mod} 的测试。`, 30_000 + (i % 50) * 1000);
   const fail = i % 7 === 3;
@@ -63,17 +63,21 @@ export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
     "Bash",
     { command: `npm test -- ${mod}`, description: "跑测试" },
     Array.from({ length: heavy ? 40 : 15 }, (_, k) => (fail && k === 3 ? `FAIL ${mod}/test/page.test.ts > cursor ${k}` : `  ✓ ${mod} > case ${k} (${(k * 3) % 17}ms)`)).join("\n"),
-    { card: "command", error: fail },
+    { error: fail },
   );
   if (i % 5 === 0) {
+    const ch = c.child(`t${i}`);
+    ch.user(`在 ${mod} 之外找所有还在用偏移分页的地方。`);
+    ch.tool("Grep", { pattern: "offset", path: "packages" }, `${mod}/src/page.ts:12`);
+    ch.say(`找到 ${i % 4} 处，已列在清单里。`, 20_000, "end_turn");
     c.tool(
       "Task",
       { description: `检查 ${mod} 的同类调用`, prompt: `在 ${mod} 之外找所有还在用偏移分页的地方。`, subagent_type: "Explore" },
       `找到 ${i % 4} 处，已列在清单里。`,
-      { card: "agent", child: { label: `检查 ${mod} 的同类调用`, kind: "Explore" } },
+      { child: ch },
     );
   }
-  if (fail) c.tool("Bash", { command: `npm test -- ${mod}`, description: "重跑" }, "  ✓ all 15 passed", { card: "command" });
+  if (fail) c.tool("Bash", { command: `npm test -- ${mod}`, description: "重跑" }, "  ✓ all 15 passed");
   c.say(
     [
       `第 ${i} 轮完成：${mod} 改成游标分页。`,
@@ -112,23 +116,6 @@ export function perfWorld(table: readonly number[] = PERF_TURNS): World {
     const cwd = `/home/user/work/w${k}t${turns}-perf`;
     return session(n, origin, cwd, convo(n, cwd, turns, turns >= 200), { activity: k % 3 === 0 ? "working" : "idle" });
   });
-  // 整份扫的那几问：造世界时（页面 DOMContentLoaded 之前）就按每个会话的路径各算一份，之后同一路径直接交 ——
-  // 假后端与产品同一条主线程，现算的话长会话每问都整份扫一遍，开窗那一段的长任务里一半是假后端（台架量的是产品）。
-  // 这几问的假实现本来就不看起点（一律从 0 交整份），按路径记不改答法。
-  for (const op of ["history-index", "history-turns", "history-user-inputs", "history-facts"]) {
-    const inner = w.ops[op];
-    if (!inner) continue;
-    const memo = new Map<string, unknown>();
-    for (const s of w.sessions) {
-      const path = `${s.cwd}/${s.sid}.jsonl`;
-      memo.set(path, inner(s.origin, { path }, w));
-    }
-    w.ops[op] = (origin, req, world) => {
-      const key = String(req.path);
-      if (!memo.has(key)) memo.set(key, inner(origin, req, world));
-      return memo.get(key);
-    };
-  }
   // 查看窗按 sid 问历史清单要那一条的记录路径：清单是 `fake/history.ts` 里写死的那几条 ⇒ 问到台架的会话时照第一条的形状补一条
   const list = w.ops["history-list"];
   if (list) {
@@ -138,14 +125,12 @@ export function perfWorld(table: readonly number[] = PERF_TURNS): World {
       if (!s || out.rows.some((r) => r.sessionId === s.sid)) return out;
       const tmpl = (list("<local>", {}, world) as { rows: Record<string, unknown>[] }).rows[0];
       const name = s.cwd.slice(s.cwd.lastIndexOf("/") + 1);
-      return { ...out, rows: [{ ...tmpl, sessionId: s.sid, jsonlPath: `${s.cwd}/${s.sid}.jsonl`, projectPath: s.cwd, projectName: name, aiTitle: null, firstUserExcerpt: name, title: name, label: name, messageCountApprox: s.records.length }] };
+      return { ...out, rows: [{ ...tmpl, sessionId: s.sid, jsonlPath: `${HOME}/${jsonlOf(s.cwd, s.sid)}`, projectPath: s.cwd, projectName: name, aiTitle: null, firstUserExcerpt: name, title: name, label: name, messageCountApprox: s.convo?.lines.length ?? 0 }] };
     };
   }
-  // 读整份会话的那几问要时间（真后端读几 MB 的记录文件、远端还隔一跳）：照本机常见的量级给一个延迟 ——
+  // 读整份会话的那几问（真后端读几 MB 的记录文件、远端还隔一跳）：照本机常见的量级给一个延迟 ——
   // 快速连切时「切走之后才回来」的那几问才演得出来（不给延迟，假后端当场答，旧切换的活全在切走之前干完了）。
   w.opDelayMs = { "history-index": 150, "history-turns": 150, "history-user-inputs": 120, "history-facts": 120, "history-page": 60 };
-  // 真壳的重放缓冲每会话只留尾部 600 条（`event_replay.rs::REPLAY_TAIL_KEEP`）；更早的由骨架索引按偏移取。
-  w.replayTail = 600;
   return w;
 }
 
@@ -163,17 +148,16 @@ export function perfMainWorld(table: readonly number[] = PERF_TURNS): World {
     s.waitingSinceMs = now - (j + 1) * 90_000;
   });
   const longest = w.sessions[0];
-  longest.runs = Array.from({ length: 12 }, (_, k) => ({
-    run: `agent-p${k}`,
-    label: `检查 packages/mod-${k} 的同类调用`,
-    kind: "Explore",
-    state: k < 3 ? "running" : "done",
-    last: { t: "tool", name: "Grep" },
-    started_ms: now - (40 - k) * 60_000,
-    active_ms: now - (20 - k) * 60_000,
-    calls: 10 + k,
-  }));
-  longest.runRecords = Object.fromEntries(longest.runs.map((r, k) => [r.run, convo(0x100, longest.cwd, k === 0 ? 300 : 20, false).records]));
+  // 一串子 agent：前三个还在跑（后台派的，当场回「已起」），其余做完了（前台派的，那次调用拿到结果）。
+  const c = longest.convo!;
+  for (let k = 0; k < 12; k++) {
+    const ch = new Convo(longest.sid, longest.cwd, new Date(now - (40 - k) * 60_000).toISOString(), undefined, `p${k}`);
+    ch.user(`检查 packages/mod-${k} 的同类调用。`);
+    for (let i = 0; i < (k === 0 ? 300 : 20); i++) turn(ch, longest.cwd, i + 1, false);
+    if (k >= 3) ch.say("查完了。", 20_000, "end_turn");
+    const input = { description: `检查 packages/mod-${k} 的同类调用`, prompt: `检查 packages/mod-${k} 的同类调用。`, subagent_type: "Explore" };
+    c.tool("Task", input, k < 3 ? "Async agent launched successfully." : "查完了。", { child: ch, launched: k < 3 });
+  }
   longest.tasks = Array.from({ length: 30 }, (_, k) => ({ id: String(k + 1), subject: `改 packages/mod-${k} 的分页`, status: k < 20 ? "completed" : k < 22 ? "in_progress" : "pending", blocks: [], blockedBy: [] }));
   return w;
 }

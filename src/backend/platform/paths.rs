@@ -1,6 +1,7 @@
 //! 路径的平台语义（`path_key` 处理 NTFS 的大小写不敏感 · 临时根 · uid · 设备号 · 文档目录 · 保留设备名）。
 //! 与 [`super::proc`] 分开：这些既不是 `/proc` 也不是进程身份，两边各自长平台分支。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 /// Case-fold the path on Windows so notify's NTFS case variance does not double
@@ -79,23 +80,15 @@ pub(crate) fn account_home() -> Option<PathBuf> {
 /// 一个路径（跟链接）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
 /// （`files::index::build` · `files::size`）。调用方只把它用在「不跟链接地看过、确是目录」的条目上，跟不跟链接在那里没有差别。
 /// 非 unix ⇒ `None`：那一判在那个平台上不开口（全当同一个文件系统），不编一个数。
-#[cfg(unix)]
 pub(crate) fn device_of(p: &Path) -> Option<u64> {
-    use std::os::unix::fs::MetadataExt as _;
-    std::fs::metadata(p).ok().map(|m| m.dev())
-}
-
-#[cfg(not(unix))]
-pub(crate) fn device_of(_p: &Path) -> Option<u64> {
-    None
+    Ro::dev(&Ro::metadata(p).ok()?)
 }
 
 /// 一个路径（**跟链接**，与 `files-stat` 其余几格同源）的属主：用户名；查不到名字 ⇒ uid 的数字串。
 /// 非 unix ⇒ `None`（那边的属主是另一套东西，不编一个）。
 #[cfg(unix)]
 pub(crate) fn owner_of(p: &Path) -> Option<String> {
-    use std::os::unix::fs::MetadataExt as _;
-    let uid = std::fs::metadata(p).ok()?.uid();
+    let uid = Ro::uid(&Ro::metadata(p).ok()?)?;
     Some(user_name(uid).unwrap_or_else(|| uid.to_string()))
 }
 
@@ -122,7 +115,7 @@ fn user_name(uid: u32) -> Option<String> {
 
 /// 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解、不跟）；不是链接 / 读不到 ⇒ `None`。
 pub(crate) fn link_target_of(p: &Path) -> Option<std::path::PathBuf> {
-    std::fs::read_link(p).ok()
+    Ro::read_link(p).ok()
 }
 
 /// 这台机器的「文档」目录（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。`$PROFILE` 在哪由那台后端问它自己的系统。

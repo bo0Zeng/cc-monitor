@@ -33,6 +33,7 @@
 //! - 第一次连一台没钉过指纹的机器：这一问在本机后端里拨，ack 里那枚指纹这一跳不交 monitor 去钉；
 //!   紧接着 monitor 开 `files` 链路（池里同一条连接）那一跳照旧钉（`dial_host::settle_host_key`）。
 
+use crate::platform::fs::Ro;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -560,7 +561,7 @@ pub fn answer_place(args: &Value) -> Result<Value, Fail> {
         .and_then(Value::as_str)
         .filter(|m| !m.is_empty())
         .ok_or_else(|| bad("missing `machine` (non-empty string)"))?;
-    let disk = match std::fs::read(dest) {
+    let disk = match Ro::read(dest) {
         Ok(b) => Ok(Some(b)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),

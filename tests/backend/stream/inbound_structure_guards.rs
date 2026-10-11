@@ -196,10 +196,10 @@ fn every_registered_command_declares_its_run_kind() {
         // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
         // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
         // `K-R104`：`capture-pane` / `oneshot-session` 起 tmux 子进程并等它退出。
-        // 〔步 `24f` 第二刀〕`files-read` 四条同为阻塞档：`files::answer` 是**同步**函数，
+        // `files-read` 四条同为阻塞档：`files::answer` 是**同步**函数，
         // 前两条真做文件系统 I/O，`files-find` 在 64 万条量纲上外推 20–50 ms。
         // 理由整段在 `inbound::REGISTRY` 上它们那一段（含「为什么不拆两档」）。
-        // 〔步 `24f` 第三刀〕新那两条同档，而且这一档对它们**更承重**：
+        // 新那两条同档，而且这一档对它们**更承重**：
         // `files-index-rebuild` 是**走一整棵树**（64 万条现打 0.99 秒，热缓存；冷缓存没量过），
         // `files-browse` 要把名单上那几个目录各 `read_dir` 一遍。
         // 放 `Run::Async` 就是拿 tokio worker 去跑一趟秒级遍历 —— 单核机上会把
@@ -817,7 +817,7 @@ fn declaring_zero_fields_needs_a_reason() {
     }
 }
 
-/// ★★ 〔步 `24f` 第二刀 09-20〕**`files-read` 上线的那四条，登记的就是它声明的那四条。**
+/// ★★ **`files-read` 上线的那四条，登记的就是它声明的那四条。**
 ///
 /// # 它治的是哪一形
 ///

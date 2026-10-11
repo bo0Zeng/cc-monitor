@@ -47,13 +47,11 @@ async fn snapshot_queue_close_wakes_waiting_pop() {
     tokio::task::yield_now().await;
     assert!(!waiter.is_finished(), "空队列上的 pop 没停住");
     q.close();
-    assert!(
-        tokio::time::timeout(std::time::Duration::from_secs(2), waiter)
-            .await
-            .expect("pop 必须被 close 唤醒")
-            .unwrap()
-            .is_none()
-    );
+    assert!(tokio::time::timeout(guard_core::wall::CEILING, waiter)
+        .await
+        .expect("pop 必须被 close 唤醒")
+        .unwrap()
+        .is_none());
 }
 
 /// 只拉在看的会话：那台报过名单 ⇒ 名单外的不拉；没报过（全看）⇒ 都拉。

@@ -37,7 +37,7 @@ pub(crate) fn read_bytes(path: &Path, cap: u64) -> Read<Vec<u8>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Read::Absent,
         _ => {}
     }
-    match crate::common::fs::read_regular_capped(path, cap) {
+    match crate::platform::fs::Ro::read_regular_capped(path, cap) {
         Ok(b) => Read::Present(b),
         Err(e) => Read::Unreadable(Said {
             said: copy_text(

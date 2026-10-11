@@ -374,7 +374,7 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     std::fs::write(&file, serde_json::to_string(&alpha).unwrap()).unwrap();
     drop(held);
     assert!(
-        rx.recv_timeout(std::time::Duration::from_secs(10))
+        rx.recv_timeout(guard_core::wall::CEILING)
             .expect("放了锁还没记完"),
         "另一趟记失败了"
     );

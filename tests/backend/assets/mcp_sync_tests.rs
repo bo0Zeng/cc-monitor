@@ -395,7 +395,7 @@ fn unreadable_inputs_are_refused_not_replaced_with_a_skeleton() {
 fn this_module_reads_no_file_content() {
     let needles = [
         "read_to_string",
-        "fs::read(",
+        "::read(",
         "File::open",
         "OpenOptions",
         "read_dir",
@@ -410,8 +410,8 @@ fn this_module_reads_no_file_content() {
     let src = include_str!("../../../src/backend/assets/mcp_sync.rs");
     assert_eq!(count(src), 0, "mcp_sync.rs 生产段出现了读文件内容的原语");
     let planted = src.replacen(
-        "match std::fs::metadata(p) {",
-        "let _ = std::fs::read_to_string(p); match std::fs::metadata(p) {",
+        "match Ro::metadata(p) {",
+        "let _ = Ro::read_to_string(p); match Ro::metadata(p) {",
         1,
     );
     assert_ne!(planted, src, "正控的锚没打中");

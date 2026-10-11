@@ -17,6 +17,7 @@
 //! - **按条目改**：设置窗改一段只动那一段（[`set_profile`] / [`remove_profile`]），手写的注释与排版留着。
 
 use crate::common::said::IntoNote as _;
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use toml_edit::{Array, DocumentMut, Item, Table, Value};
 
@@ -308,7 +309,7 @@ pub(crate) fn path_in(home: &str) -> String {
 /// ccm 那一趟直接读（一次性模式不经文件管理面）：不在 ⇒ 一段都没有；读不了 ⇒ 那一句。
 pub(crate) fn read_at(home: &str) -> Result<Book, String> {
     let path = path_in(home);
-    match std::fs::read_to_string(&path) {
+    match Ro::read_to_string(&path) {
         Ok(t) => Ok(parse_book(&t)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Book::default()),
         Err(e) => Err(crate::common::said::Said::with_raw(

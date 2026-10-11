@@ -4,6 +4,7 @@
 //! 本层进了 `agent_boundary_guard::CORE_FILES`，插件的候选路径里带着 agent 的名字 ⇒ 写死在这里当场会红。
 //! 不能只靠 `PATH`：backend 可能由 app 经 SSH exec 起（非登录 shell），用户级的 `bin` 目录未必在 `PATH` 里 ⇒ 固定候选先走一遍，`PATH` 只当兜底。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 /// 不返回「什么都算可执行」：那会让 [`find`] 把 `PATH` 上第一个同名文件当成插件交出去（[`crate::platform::cfgless_guard`] 钉着这一族）。
 /// 找不到的那条路上有 [`not_installed_message`]，它会说出查过哪些地方。
 pub(crate) fn is_executable(p: &Path) -> bool {
-    let Ok(md) = std::fs::metadata(p) else {
+    let Ok(md) = Ro::metadata(p) else {
         return false;
     };
     if !md.is_file() {
@@ -21,8 +22,7 @@ pub(crate) fn is_executable(p: &Path) -> bool {
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        md.permissions().mode() & 0o111 != 0
+        crate::platform::fs::Ro::mode(&md).is_some_and(|mode| mode & 0o111 != 0)
     }
     #[cfg(windows)]
     {

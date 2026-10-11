@@ -299,7 +299,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // ## 它是怎么被逮到的（不是推理出来的，是先修不动才回头查的）
 //
-// 本件先把 PATH 那一段加进块里，在 win11 真机上装好、开一个新 PowerShell ——
+// 先把 PATH 那一段加进块里，在 win11 真机上装好、开一个新 PowerShell ——
 // **`ccm` 照旧找不到**。回头查：`$ccmBinDir` 是空的，而 `$env:PATH` 前面多了一个 `;`
 // ⇒ 赋值那一行**根本没执行**，而 `if` 那一行执行了。
 //
@@ -318,7 +318,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
 // **落单的前导字节**，它把紧随其后的换行吃掉 ⇒ 下一行被并进注释。
 //
-// ## 🔴 它**不是本件引入的** —— 发出去的 `v3.8.0` 上就有，而且更重
+// ## 🔴 它**不是这段代码引入的** —— 发出去的 `v3.8.0` 上就有，而且更重
 //
 // 同一趟真机现打模板本身（`src/shared/cc.ps1.tpl`，逐字读数同住那份 evidence）：
 // PowerShell 的分析器在 `__ccm_bind` 里看到的 `$ccmDir` / `$deadline` / `$oldTitle`

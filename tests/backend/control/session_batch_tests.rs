@@ -536,12 +536,19 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> { Ok(Some(rows.clone())) };
     let record =
         |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
-    // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限 5 s）。
+    // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限是兜底上限的两倍、睡得更久 ⇒ 总期限不生效就撞下面那道）。
     let kill = |name: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
         let mark = dir.join(name);
         Child::new("sh")
-            .args(["-c", &format!("touch {}; sleep 30", mark.display())])
-            .run(Deadline::secs(5))
+            .args([
+                "-c",
+                &format!(
+                    "touch {}; sleep {}",
+                    mark.display(),
+                    4 * guard_core::wall::CEILING_SECS
+                ),
+            ])
+            .run(Deadline::secs(2 * guard_core::wall::CEILING_SECS))
             .map(|_| json!({}))
             .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()).into())
     };
@@ -587,7 +594,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     }
     assert_eq!(got.len(), 3);
     assert!(
-        took < std::time::Duration::from_millis(600 + 1_500),
+        took < guard_core::wall::CEILING,
         "整批没按总期限回：{took:?}"
     );
     assert!(dir.join("a-cc").exists(), "第一个该真起了");

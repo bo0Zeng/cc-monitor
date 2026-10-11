@@ -17,6 +17,16 @@ function panel(id: string, title: string, desc: string, act: Scene["act"], world
   return { id, page: "index", dir: "主窗口-面板", title, desc, width: 1280, height: 800, world, act };
 }
 
+/**
+ * 会话内查找「跳到找不到的那条」：第一个会话末尾用户再说一句、Claude Code 自己补写一句 `<synthetic>` 的「No response requested.」——
+ * 核心的查找照 assistant 那一种搜到它，消息流按 `autoReply` 不建卡，选中它就落到「无对应卡片」。
+ */
+function findMissingWorld(): World {
+  const w = defaultWorld();
+  w.sessions[0].convo!.user("另外库存接口的 response 里要是带 Retry-After，退避就按它给的秒数来。").autoReply();
+  return w;
+}
+
 /** 这几张要那台的规则表（多选右键「轮换规则 ▸」· 起新会话框「轮换」）：日常（默认）· 夜间 · 省额度。 */
 function rotRulesWorld(): World {
   const w = defaultWorld();
@@ -133,7 +143,7 @@ async function startNewSession(place: "tmux" | "window" = "tmux"): Promise<void>
   await click(await byText('[role="dialog"] button', "新建"));
 }
 
-/** gpu-01 连不上，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
+/** gpu-01 断开，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
 function unseenPinnedWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
@@ -148,7 +158,11 @@ function unseenPinnedWorld(): World {
 /** 「表格分页」那个会话有一个子 agent、没有任务。 */
 function agentsOnlyWorld(): World {
   const w = defaultWorld();
-  w.sessions[1].runs = [{ run: "agent-b1", label: "量一下现在的渲染耗时", kind: "general-purpose", state: "running", last: { t: "tool", name: "Bash" } }];
+  const c = w.sessions[1].convo!;
+  const b1 = c.child("b1");
+  b1.user("量一下现在的渲染耗时。");
+  b1.tool("Bash", { command: "npm run bench -- table" }, null);
+  c.tool("Task", { description: "量一下现在的渲染耗时", prompt: "量一下现在的渲染耗时。", subagent_type: "general-purpose" }, null, { child: b1 });
   return w;
 }
 
@@ -279,12 +293,12 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-new-slot-missed", "起新会话 · 20s 未报到", "那台起好了、20 秒没看到会话报到：占位标签页变红点「未报到」，那一页是报错卡 —— tmux 会话在不在 ＋ 画面末几行 ＋［终端画面］［在终端里打开］（远端才有）［结束 tmux 会话］·［关闭标签页］；之后报到了照样换成真的", async () => {
     await startNewSession();
-    await waitFor("#tab-bar [data-slot][data-state=missed]", 30_000);
+    await waitFor("#tab-bar [data-slot][data-state=missed]");
     await sleep(600);
   }, unarrivedWorld),
   panel("panel-new-slot-window", "起新会话 · 开窗起的未报到", "运行于「新的终端窗口」、20 秒没报到：只有「已发启动命令 · 20s 未报到」＋［关闭标签页］（原话在那个窗口里，这边读不到）", async () => {
     await startNewSession("window");
-    await waitFor("#tab-bar [data-slot][data-state=missed]", 30_000);
+    await waitFor("#tab-bar [data-slot][data-state=missed]");
     await sleep(600);
   }),
   panel("panel-fork-new", "从这一轮分叉", "已结束的会话里，用户那句话上的分叉按钮：开起新会话框的分叉那一形 —— 顶上说分叉自哪一轮；源会话的号说不出 ⇒ 账号那一格是「跟随原会话上次的号」；不给终端名那一格", async () => {
@@ -323,7 +337,7 @@ export const PANEL_SCENES: Scene[] = [
     await key("w");
     await sleep(600);
   }),
-  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 连不上、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
+  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 断开、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
     await mainReady(ALL_TABS);
     const t = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].find((x) => (x.textContent ?? "").includes("排序模型"));
     await rightClick(t ?? "#tab-bar .tab");
@@ -389,15 +403,22 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await sleep(500);
   }),
-  panel("panel-find-missing", "会话内查找 · 跳到找不到的那条", "选中最后一条（那张卡不在这份会话的流里）：那一行下面写一句", async () => {
-    await mainReady(ALL_TABS);
-    await key("f", { ctrl: true });
-    await waitFor("[data-role=find-input]");
-    await type("[data-role=find-input]", "重试");
-    await sleep(700);
-    await key("ArrowUp");
-    await sleep(700);
-  }),
+  panel(
+    "panel-find-missing",
+    "会话内查找 · 跳到找不到的那条",
+    "找「response」：一条是用户那句（有卡）· 一条是 Claude Code 自己补写的「No response requested.」（核心搜得到、消息流不给它建卡）；选中最后那条，那一行下面写「无对应卡片」",
+    async () => {
+      await mainReady(ALL_TABS);
+      await key("f", { ctrl: true });
+      await waitFor("[data-role=find-input]");
+      await type("[data-role=find-input]", "response");
+      await sleep(700);
+      await key("ArrowUp");
+      await waitFor("[data-role=session-find-panel] [data-unjumpable]");
+      await sleep(300);
+    },
+    findMissingWorld,
+  ),
   panel("panel-outline", "大纲", "Ctrl+F 面板的「大纲」页：本会话里你说过的每一句", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });
@@ -518,7 +539,7 @@ export const PANEL_SCENES: Scene[] = [
   }, remoteEndedWorld),
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
-    await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
+    await rightClick(await byText("#tab-bar .tab", "账单导出改成流式"));
     await click(await byText("[role^=menuitem]", copyText("tabMenu.item.resume")));
     await click(await byText("[role^=menuitem]", copyText("resumeMenu.run.direct")));
     await waitFor("#kit-toast-stack > [data-level=error]");
@@ -777,7 +798,7 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.ops["session-terminals"] = () => ({ terminals: [], why: "detached" });
   }),
-  frontScene("panel-front-remote-offline", "↗ · 连不上那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
+  frontScene("panel-front-remote-offline", "↗ · 断开那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
     await mainReady(ALL_TABS);
     await openTab(3);
     await sleep(400);

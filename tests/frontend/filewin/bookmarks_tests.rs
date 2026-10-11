@@ -3,7 +3,7 @@
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
 //! |---|---|---|
-//! | [`normalize_matches_the_old_panel_case_by_case`] | 归一与老面板 `normalize` 逐格相等 | 期望是老面板那份 vitest 里的原样例（F7b 删面板那一拍的父提交里现读）＋ 手推的几格 |
+//! | [`normalize_matches_the_old_panel_case_by_case`] | 归一与老面板 `normalize` 逐格相等 | 期望是老面板那份 vitest 里的原样例（删老面板那次的父提交里现读）＋ 手推的几格 |
 //! | [`normalize_agrees_with_the_two_step_rewrite_on_a_generated_corpus`] | 同上，在 4 096 条生成路径上 | 另一侧是老面板那两步替换的逐字移植（「折叠」与「去尾」分两趟做），与生产那一趟扫描不同写法 |
 //! | [`toggle_and_remove_follow_the_old_panel`] | 切换 / 删除的列表逐格相等（去重 · 保序 · 归一比较） | 期望手写 |
 //! | [`the_disk_holds_exactly_what_was_written`] | 盘上那份读回来逐格相等；文件不在 ⇒ 空；读不懂 ⇒ 报错且**不覆盖** | 盘上字节读回 |
@@ -33,7 +33,7 @@ fn scratch(tag: &str) -> PathBuf {
     d
 }
 
-/// 🔴 老面板 `src/sftp/paths.ts::normalize` 那份 vitest 的原样例（F7b 删面板那一拍的父提交里现读），
+/// 🔴 老面板 `src/sftp/paths.ts::normalize` 那份 vitest 的原样例（删老面板那次的父提交里现读），
 /// 外加几格手推（与老算法逐步推一遍得到的）。
 #[test]
 fn normalize_matches_the_old_panel_case_by_case() {
@@ -251,7 +251,7 @@ fn a_writer_waits_while_another_holds_the_lock() {
         "锁拿着的时候盘上就变了"
     );
     drop(held);
-    rx.recv_timeout(std::time::Duration::from_secs(10))
+    rx.recv_timeout(guard_core::wall::CEILING)
         .expect("锁放了还写不进去");
     t.join().unwrap();
     assert_eq!(read_book(&file).unwrap(), book(&[("devbox", &["/x"])]));

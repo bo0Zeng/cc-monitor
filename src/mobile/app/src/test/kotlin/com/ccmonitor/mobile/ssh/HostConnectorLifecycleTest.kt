@@ -150,7 +150,7 @@ class HostConnectorLifecycleTest {
             connector.connect(host(), expectedGen = epoch)
             assertNotNull(
                 "用当前纪元建连被守门拒掉了：`HostConnector.retain` 交回来的不是 manager 的真纪元。" +
-                    "真实后果：每次建连都被当成「纪元过期」弃用，连不上且无从查起。",
+                    "真实后果：每次建连都被当成「纪元过期」弃用，断开且无从查起。",
                 manager.connection(hostId),
             )
         }

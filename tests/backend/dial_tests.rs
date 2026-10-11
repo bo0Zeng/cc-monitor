@@ -4,7 +4,7 @@
 //!
 //! **「与远端跑 SSH 传输层握手」这件事，在本 crate 里只许发生在 `dial/` 底下。**
 //!
-//! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那一拍已经证过后者会量错集合
+//! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那次已经证过后者会量错集合
 //! （**14 份在往外拨的文件里，11 份的 `russh` 代码态是 0**）。
 //! 锚点取的是**真正把字节交给 SSH 状态机的那几个入口**，不是 crate 名、不是函数名。
 //!
@@ -13,7 +13,7 @@
 //! 甲半（界面这一侧：backend 那条长连接流不再自己拨号）住
 //! `../../frontend/shell/src/stream_source/` 的测试模块 —— **两侧各扫各的 crate**，
 //! 刻意不从这里 `include_str!` 伸到对面去（那会新增一条跨轨编译期边，
-//! 而那张登记表不在本轮写区里）。
+//! 而那张登记表这里不改）。
 
 use super::*;
 
@@ -921,26 +921,24 @@ async fn linked_over_road(
 }
 
 /// ★ 路断成黑洞之后开通道 —— 保活连着没回话就判死，挂在上面还在等的开通道**当场失败**（不等界面的 45 秒期限）。
-/// 判死的时刻 = 最后收包之后 `KEEPALIVE_MAX + 1` 轮保活（发出去的那一个又等了一整轮没回）。
-/// 时间按比例缩小：保活间隔换成 200 ms，判死门槛（连着几次没回话）照生产。量的是「第几轮判死」：
-/// 要在下一轮到点之前（留一整轮给机器忙时的调度抖动）；门槛若回到 3 ⇒ 第 4 轮才死，红。
+/// 时间按比例缩小：保活间隔换成 200 ms，判死门槛（连着几次没回话）照生产。
+/// 判的是**判没判死**与**门槛是哪个数**，不按墙钟数「第几轮判死」（10-11 起：从前比 `took < 3 轮`，
+/// 忙机上调度一慢就误红）：门槛是交给 russh 的计数（`keepalive_max`），在下面逐字核；等多久只兜底（兜底的那一个数）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
     let every = std::time::Duration::from_millis(200);
     let (h, frozen) = linked_over_road(every).await;
     frozen.store(true, std::sync::atomic::Ordering::SeqCst);
-    let t0 = std::time::Instant::now();
-    let got = tokio::time::timeout(every * 30, h.channel_open_session()).await;
-    let took = t0.elapsed();
-    let rounds = connect::KEEPALIVE_MAX as u32 + 1;
+    let got = tokio::time::timeout(guard_core::wall::CEILING, h.channel_open_session()).await;
     assert!(
         matches!(got, Ok(Err(_))),
-        "黑洞上的开通道过了 30 轮保活还挂着（或成了）—— 保活没判死这条连接"
+        "黑洞上的开通道到兜底上限还挂着（或成了）—— 保活没判死这条连接"
     );
-    assert!(
-        took < every * (rounds + 1),
-        "黑洞上的开通道 {took:?} 才失败，判死门槛应是 {rounds} 轮保活（{:?}）",
-        every * rounds
+    let cfg = connect::config_with(false, false, every);
+    assert_eq!(
+        (cfg.keepalive_max, cfg.keepalive_interval),
+        (connect::KEEPALIVE_MAX, Some(every)),
+        "长连接交给 russh 的判死门槛 / 保活间隔不是生产那两个"
     );
     assert!(
         h.is_closed(),
@@ -955,7 +953,7 @@ async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
     let (h, _frozen) = linked_over_road(every).await;
     tokio::time::sleep(every * 15).await;
     assert!(!h.is_closed(), "空闲 15 轮保活之后，健康的连接被判死了");
-    let ch = tokio::time::timeout(every * 30, h.channel_open_session()).await;
+    let ch = tokio::time::timeout(guard_core::wall::CEILING, h.channel_open_session()).await;
     assert!(
         matches!(ch, Ok(Ok(_))),
         "空闲之后开不出通道：{:?}",

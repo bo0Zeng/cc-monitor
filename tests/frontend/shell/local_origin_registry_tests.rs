@@ -149,7 +149,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
         offenders.is_empty(),
         "这些地方先去查远端配置、却没先分本机：\n  {}\n\n\
              对 `<local>` 它们会报「未找到远端配置: \"<local>\"」—— \n\
-             一句与真实原因毫无关系的话（本轮同族第五次）。\n\
+             一句与真实原因毫无关系的话（同族第五次）。\n\
              两条出路：① 在调用**之前**加一条本机分支，说真实原因；\n\
              ② 若本机结构性够不到这里，进 `REMOTE_ONLY` 逐条写明为什么。\n\
              已登记的：{registered:?}",

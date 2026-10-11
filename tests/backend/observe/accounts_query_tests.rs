@@ -129,7 +129,7 @@ fn unsafe_config_dirs_are_dropped() {
 /// 被 `is_safe_config_dir` 拒掉的 shell 元字符，**测试侧只有这一份**。
 ///
 /// 🔴 `N-F1c`：抽出来是因为它现在要被**两种路径形状**各用一次（POSIX 与 Windows）。
-/// 手抄两遍必漂，而漂掉的那一格恰恰是本件最怕的那一格 ——
+/// 手抄两遍必漂，而漂掉的那一格恰恰是这里最怕的那一格 ——
 /// 「为了让 Windows 路径过，顺手把安全那一半也放宽了」。
 ///
 /// ⚠ 如实说清它**不是**源头：生产那一侧是 `is_safe_config_dir` 里的一个
@@ -509,20 +509,20 @@ fn special_files_are_rejected_not_read() {
     // read_regular_capped 必须靠 is_file() 挡下（跟随 symlink 后目标是字符设备）。
     let link = root.join("evil.json");
     symlink("/dev/zero", &link).unwrap();
-    let r = read_regular_capped(&link, cc_accounts::MAX_CONFIG_BYTES);
+    let r = Ro::read_regular_capped(&link, cc_accounts::MAX_CONFIG_BYTES);
     assert!(
         r.is_err(),
         "指向 /dev/zero 的 symlink 必须被拒，而不是读爆内存"
     );
     // 目录也不是常规文件
-    assert!(read_regular_capped(&root, 1024).is_err());
+    assert!(Ro::read_regular_capped(&root, 1024).is_err());
     // 正常小文件放行
     let ok = root.join("ok.json");
     fs::write(&ok, "{}").unwrap();
-    assert_eq!(read_regular_capped(&ok, 1024).unwrap(), b"{}");
+    assert_eq!(Ro::read_regular_capped(&ok, 1024).unwrap(), b"{}");
     // 超上限的常规文件被拒
     fs::write(&ok, vec![b'x'; 100]).unwrap();
-    assert!(read_regular_capped(&ok, 50).is_err());
+    assert!(Ro::read_regular_capped(&ok, 50).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -679,7 +679,7 @@ fn bare_child() -> std::process::Child {
 /// `cmdline` 与环境是同一刻摆上的，看见它就一定读得到环境，而 `sleep` 不会再 exec ⇒ 窗口不会再开。
 #[cfg(target_os = "linux")]
 fn wait_exec_done(pid: u32, prog: &str) {
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let until = std::time::Instant::now() + guard_core::wall::CEILING;
     while !std::fs::read(format!("/proc/{pid}/cmdline"))
         .is_ok_and(|c| c.starts_with(prog.as_bytes()))
     {
@@ -1254,7 +1254,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
 /// `//` 开头的行），`structural_scan::every_comment_stripping_transformer_is_registered`
 /// 当场逮住它，逐字问：「先问共享原语为什么不够 —— 答得出来就登记，答不出来就改成调它」。
 /// **答不出来**（`production_code` 做的就是这两件事）⇒ 改成调它。
-/// ⚠ 那张登记表住 `src/frontend/shell/src/structural_scan.rs`，**不在本拍写区** ——
+/// ⚠ 那张登记表住 `src/frontend/shell/src/structural_scan.rs`，**这里不改** ——
 /// 而它给的第一条出路本来就不需要动登记表。
 fn production_text() -> String {
     let me = include_str!("../../../src/backend/observe/accounts_query.rs");
@@ -1808,9 +1808,9 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
     fs::create_dir_all(&dir).unwrap();
     let big = root.join("big.json");
     fs::write(&big, vec![b'x'; 10]).unwrap();
-    let e_missing = read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
-    let e_dir = read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
-    let e_big = read_regular_capped(&big, 4).expect_err("超限必须是 Err");
+    let e_missing = Ro::read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
+    let e_dir = Ro::read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
+    let e_big = Ro::read_regular_capped(&big, 4).expect_err("超限必须是 Err");
     assert!(e_big.said.contains("10"), "过大那句没带实际字节数：{e_big}");
     assert!(
         e_missing != e_dir && e_dir != e_big && e_missing != e_big,
@@ -1819,11 +1819,11 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
     let exact = root.join("exact.json");
     fs::write(&exact, vec![b'y'; 8]).unwrap();
     assert_eq!(
-        read_regular_capped(&exact, 8).expect("正好等于上限应当放行"),
+        Ro::read_regular_capped(&exact, 8).expect("正好等于上限应当放行"),
         vec![b'y'; 8]
     );
     assert!(
-        read_regular_capped(&exact, 7).is_err(),
+        Ro::read_regular_capped(&exact, 7).is_err(),
         "超出一个字节没被拒 —— 上限那一格滑了"
     );
     let _ = fs::remove_dir_all(&root);
@@ -1976,9 +1976,9 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
 /// 要求：「本机后端 … 并上注解、出成品」—— 本机那一支的
 /// 「活没活」从 monitor 的 `SessionMap` 换到这台后端自己答，答错就是历史列表上一个活会话不亮 / 一个死会话亮着。
 /// 夹具：本测试进程自己的 pid（活）· 一个超出 pid 上限的 pid（死）· 没有 `sessionId` 的（不算）· 文件名不是 pid 的（不看）。
-/// 这台活会话里说连不上的 MCP：每个名字取说它最晚的那一条（带那条会话的标题与原话）；死了的会话不算（那份原话已经过时），后台任务不算。
+/// 这台活会话里说断开的 MCP：每个名字取说它最晚的那一条（带那条会话的标题与原话）；死了的会话不算（那份原话已经过时），后台任务不算。
 /// 夹具：两个号的家各一个活会话（本测试进程的 pid）· 一个死会话（说得最晚，不许取）。
-/// 要求：MCP 状态稿：「连不上的原因取这台活会话里最近一条；会话都结束了就不画红标」。
+/// 要求：MCP 状态稿：「断开的原因取这台活会话里最近一条；会话都结束了就不画红标」。
 #[cfg(unix)]
 #[test]
 fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {

@@ -71,7 +71,7 @@ impl Palette {
         }
     }
 
-    /// 没装主题时：从 egui 当下的样子推（判据夹具走这一支；生产开窗那一拍就装了主题）。
+    /// 没装主题时：从 egui 当下的样子推（判据夹具走这一支；生产开窗那一帧就装了主题）。
     pub fn of_visuals(v: &egui::Visuals) -> Self {
         Self {
             bg: v.panel_fill,
@@ -296,6 +296,15 @@ pub fn apply(s: &mut egui::Style, t: &Theme, p: &Palette) {
     sp.menu_margin = margin(k[1]);
     sp.window_margin = margin(k[6]);
     sp.icon_spacing = k[1];
+
+    // 悬停提示：指针停够 `tooltip_delay`（0.5 秒）才出，挪开就收。
+    // - 不要「刚出过一个 ⇒ 下一个立刻出」的宽限（egui 缺省 0.2 秒）：有了它，提示出过一次之后往下一划，
+    //   一行冒一个、出了又收，看着就是一闪一闪（判据 `hover_sweep_tests::sliding_down_rows_after_a_tooltip_does_not_pop_one_per_row`）。
+    // - 等「停够」按上一次挪动起算、到点重画一次（`request_repaint_after`），不按「指针静止」那一支每帧请求重画
+    //   （那一支要等速度平滑到零，鼠标动着时每帧都请求一次，白转满帧）。
+    let it = &mut s.interaction;
+    it.tooltip_grace_time = 0.0;
+    it.show_tooltips_only_when_still = false;
 }
 
 /// 深一级底的那种条（工具条 · 命令栏 · 状态栏 · 侧栏）。

@@ -5,7 +5,7 @@
 //!   没人 ⇒ 起一个脱离的自己（常驻载体，只交 `CCM_RESIDENT=1`）。回一行 `{"pid":n|null}`。本进程不等任何东西（零定时器）。
 //!   `--replace`：先按下面那个停法停掉在听的那一位（它自己记的 pid 文件），再起（只升不降由 monitor 按 hello 判）。
 //! - `--resident-attach`：**小中继**。连这台的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退。
-//!   monitor 经 ssh exec 跑它（ssh 证明了本人，它在那台以本人身份连本人通道）；连不上 ⇒ stdout 回一行
+//!   monitor 经 ssh exec 跑它（ssh 证明了本人，它在那台以本人身份连本人通道）；断开 ⇒ stdout 回一行
 //!   `{"attach":"refused","reason":"absent"|"unreachable"}` 再退（monitor 读第一行就分得出）。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
@@ -123,7 +123,7 @@ pub fn unsupported_here() -> Option<String> {
 }
 
 /// `--resident-attach`：小中继。连这台的套接字，两向原样对拷，任一边断就退（退出码 0）；
-/// 连不上 ⇒ stdout 一行拒绝（理由闭集，`listen::refusal_line`）、退出 2。
+/// 断开 ⇒ stdout 一行拒绝（理由闭集，`listen::refusal_line`）、退出 2。
 pub async fn attach() -> i32 {
     let Some(dh) = data_home() else {
         return fail(ATTACH, "no_home", copy_text("beResident.home.missing", &[]));
@@ -150,7 +150,7 @@ pub async fn attach() -> i32 {
     0
 }
 
-/// 中继连不上的那一格（纯函数）：没人在听（文件不在 / 拒连）⇒ `absent`（刚起的还没绑上，monitor 隔一会儿再接）；
+/// 中继断开的那一格（纯函数）：没人在听（文件不在 / 拒连）⇒ `absent`（刚起的还没绑上，monitor 隔一会儿再接）；
 /// 别的（不归本人 · 路径坏了）⇒ `unreachable`（再接也一样）。
 pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
     match kind {

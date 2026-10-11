@@ -521,13 +521,13 @@ fn declarations_match_reality_not_intent() {
     // 而删它要动 `config_surface` 的行、UI 文案（`config-surface-section.ts:50`）与
     // `skill_host` 里那条钉着 `"installable: false"` 字面量的判据 —— **是一次跨文件重构**。
     //
-    // ⇒ 本件**不顺手做那次重构**（`PS1` 的正题是部署，不是字段治理），
+    // ⇒ 这里**不顺手做那次重构**（`PS1` 的正题是部署，不是字段治理），
     // 声明位暂留 `false`，代价如实登记在这里：**声明表比代码晚一格**。
     // ★ 解锁条件：删掉 `installable` 字段（或给它找回区分力）之后，把这条断言反过来。
     //
     // 🔴 **09-11 `K-R60`：上面那个解锁条件兑现了，本条按它自己写的话反过来。**
     // 走的是「**给它找回区分力**」那一支，不是删字段 —— 删了就再没有任何字段能申报
-    // 「cc-bus 装不装得了」，而这一格恰恰是本件在治的。
+    // 「cc-bus 装不装得了」，而这一格恰恰是这里在治的。
     // 区分力从哪儿回来的：`claude-code` 那条（装不了、只读）进表，
     // 理由写在它自己那个字面量上头。
     // ⚠ 那一整段「暂留 false」的理由**留着不删**：它是这处假申报活了一个月的来路，
@@ -543,7 +543,7 @@ fn declarations_match_reality_not_intent() {
     //      `true`，它会拦一次，而那时它拦的是一句真话。
     // ⇒ 本条今天只剩下**不属于那条性质**的那一格：`settings.json` 的 effect。
     // ⚠ 如实登记：本条的**名字**因此比它现在做的事宽了一格（改名要连带跑生成命令，
-    //   PM 的窗口开着时不许跑）⇒ 改名的事走上报口交回 PM，不在这一拍自批。
+    //   PM 的窗口开着时不许跑）⇒ 改名的事另走一次，不在这里自批。
     // settings.json 只生成待贴文本，绝不写
     let hooks = ccbus
         .touches()
@@ -650,7 +650,7 @@ fn landing_path_of(d: &ToolDestination) -> Option<String> {
     }
 }
 
-/// **这个工具说得出几个落点** —— 就是本件那条 dod 判的那个「关系」。
+/// **这个工具说得出几个落点** —— 就是那条验收判的那个「关系」。
 ///
 /// 🔴 **为什么数的是载体而不是枚举值**（`KR81D1` 逐字写死的失效方向）：
 /// `destination` 是单值的时候这个数**恒等于 1**，往 `ToolDestination` 里
@@ -849,7 +849,7 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
     let srcs: Vec<&ToolSource> = ccm.carriers.iter().map(|c| &c.source).collect();
     assert_ne!(
         srcs[0], srcs[1],
-        "`ccm` 两个载体的 `source` 逐字相同 —— 那正是本件治的那句假话：\n\
+        "`ccm` 两个载体的 `source` 逐字相同 —— 那正是这里治的那句假话：\n\
              远端那条是推过去的那份后端字节（`embedded-backends`），\n\
              本机那条是本机释放的那份（`extract_embedded_to`）。\n\
              一个 `source` 装不下两个来源，而「在注释里如实写清」不是一个字段。"
@@ -975,7 +975,7 @@ fn every_carrier_says_which_one_it_is() {
 enum Why {
     /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
     /// 改它要与 `structural_scan` 的逐字签名钉、`parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
-    /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
+    /// 那是一件纯符号改名件，与这里的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
     /// ✅ **那一件做了**（全仓冻结窗口）——
     /// 这一档降到 12 处，剩下的 12 处**不是符号改名问题**：它们全在「远端那份后端的路径」
@@ -1053,7 +1053,7 @@ const SITES: &[(&str, Why, usize)] = &[
 /// 会把量具自己算进被测量。
 ///
 /// **顺序即口径**：先把「crate 目录 / 包名的那个拼写」整个剥掉再数 ——
-/// 那是**住址**，不是名字（本拍刻意不碰，理由在下面那条判据的头注里）。
+/// 那是**住址**，不是名字（这里刻意不碰，理由在下面那条判据的头注里）。
 fn old_name_counts(text: &str) -> [usize; 3] {
     let d = "-";
     let u = "_";
@@ -1197,7 +1197,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # 🔴 射程与**刻意不管**的两样，写死在这里
 ///
-/// - **crate 目录（`…-proto`）与包名（`cc-monitor-backend`）本拍不碰**，
+/// - **crate 目录（`…-proto`）与包名（`cc-monitor-backend`）这里不碰**，
 ///   而且它们**根本不进这把尺子**（`old_name_counts` 第一步就把那个拼写剥掉了）。
 ///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-backends/`
 ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单
@@ -1324,7 +1324,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         unregistered.is_empty(),
         "\n这几处带着后端的**旧名字**而 `SITES` 里没有登记：\n  {}\n\n\
              ⇒ 两条出路：**把名字改对**（它是「后端」，在两台机器上各跑一份），\n\
-             或者往 `SITES` 里加一行、并在 `Why` 那个闭集里说清**为什么这一拍改不动**。\n\
+             或者往 `SITES` 里加一行、并在 `Why` 那个闭集里说清**为什么现在改不动**。\n\
              ⚠ 不许为了变绿就往表里塞一行了事 —— 那正是这条账要防的。",
         unregistered.join("\n  ")
     );
@@ -1471,7 +1471,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
     assert!(
         !remote.is_empty(),
         "远端那条 `ccm` 落点没了 —— 那是 `sftp::deploy_remote_backend` 推过去的那份，\n\
-             本件只**加**本机那条，不许把远端那条顺手弄丢（实得本机 {local:?}）"
+             这里只**加**本机那条，不许把远端那条顺手弄丢（实得本机 {local:?}）"
     );
     // 两条不许是同一个路径：同一个串出现两次说明有人把 host 抄错了，
     // 而那时「本机有一条」是**靠一条远端的记录冒充的**。
@@ -1547,7 +1547,7 @@ fn fenced_block_implies_uninstallable() {
 //     根本没有卸载实现）一条判据都没有。
 // PM 09-11 的刀 C 实打（量于 `cd26954`）：把 `cc-acct-iso` 的 `uninstallable`
 // 由 `false` 翻成 `true` ⇒ 全表 **1379 条一条没红**。
-// 〔`K-R63` 实现方 09-11 在本件分支尖上复打同一刀：**红 1 条，就是下面这一条**
+// 〔`K-R63` 实现方 09-11 复打同一刀：**红 1 条，就是下面这一条**
 //  （`-p monitor` 基线 1384 → 1383 passed / 1 failed）。〕
 //
 // # 为什么处方不是「再补一条专名 `assert`」
@@ -1913,7 +1913,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
 }
 
 /// ★★ `KR63D1` / `KR63D2` 把**失效方向**写死在名字上：
-/// **判据的名字里出现任何一个工具 id ⇒ 本件不算兑现。**
+/// **判据的名字里出现任何一个工具 id ⇒ 不算兑现。**
 ///
 /// 一条名字里带工具名的判据，读的人会以为「那一格有人守」，而它守的只有那一个工具 ——
 /// `K-R60` 留下的就是这样一颗钉子，`K-R63` 把它收掉了。这一条让那件事**别再回来**。

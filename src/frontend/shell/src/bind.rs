@@ -511,7 +511,7 @@ pub(crate) trait TabReader {
     fn select(&mut self, i: usize) -> bool;
     /// 两次读之间等一步（生产 50 ms）。
     fn wait(&mut self);
-    /// 这一趟的预算还有没有剩（生产：小助手起来之后 1.5 s）。
+    /// 这一趟的预算还有没有剩（生产：小助手起来之后 2 s，`TAB_BUDGET`）。
     fn time_left(&self) -> bool;
 }
 

@@ -6,6 +6,7 @@
 //! - [`RunTrack`]：watcher 那一侧的手 —— 子运行的记录文件在哪（`ChildFace::sources`）、读到哪了；与主记录走同一条文件事件管线，不轮询。
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
+use crate::platform::fs::Ro;
 use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
@@ -524,6 +525,15 @@ impl RunBook {
         })
     }
 
+    /// 子运行记录那一侧说出的对上（派出那一刻落盘的，[`crate::agents::ChildFace::spawned`]；`at` ＝ 那份记录的写入时刻）。回：运行表变没变。
+    pub(crate) fn spawned(&self, sid: &str, l: ChildLink, at: SystemTime) -> bool {
+        self.with(|m| {
+            m.entry(sid.to_string())
+                .or_default()
+                .link(l, at, ms(at), None)
+        })
+    }
+
     /// 这个会话此刻有几个在跑的子运行。
     pub(crate) fn running(&self, sid: &str) -> usize {
         self.with(|m| {
@@ -638,10 +648,11 @@ pub(crate) struct MainRecord {
     pub(crate) changed: bool,
 }
 
-/// 一份子运行记录读到哪了。
+/// 一份子运行记录读到哪了 · 派出那一刻落盘的对上（`ChildFace::spawned`）收到了没有。
 struct ChildCursor {
     sid: String,
     consumed: u64,
+    linked: bool,
 }
 
 /// watcher 那一侧的运行跟踪：运行面 ＋ 运行簿 ＋ 各会话的主记录路径 ＋ 子运行记录的游标。
@@ -734,6 +745,7 @@ impl RunTrack {
                     ChildCursor {
                         sid: sid.to_string(),
                         consumed: 0,
+                        linked: false,
                     },
                 );
                 changed |= self.read_child(&c);
@@ -773,7 +785,7 @@ impl RunTrack {
         let Some(cur) = self.children.get_mut(p) else {
             return false;
         };
-        let Ok(mut f) = std::fs::File::open(p) else {
+        let Ok(mut f) = Ro::open(p) else {
             return false;
         };
         let meta = f.metadata().ok();
@@ -781,22 +793,29 @@ impl RunTrack {
         let written = meta
             .and_then(|m| m.modified().ok())
             .unwrap_or_else(crate::common::time::now);
+        // 派出那一刻落盘的对上：卡（父侧那次调用）在父侧结果回来之前就对上这个运行；那一份比子记录晚落 ⇒ 下次读到再问。
+        let mut changed = false;
+        if !cur.linked {
+            if let Some(l) = self.faces.spawned(p) {
+                cur.linked = true;
+                changed |= self.book.spawned(&cur.sid, l, written);
+            }
+        }
         if len < cur.consumed {
             cur.consumed = 0;
         }
         if f.seek(SeekFrom::Start(cur.consumed)).is_err() {
-            return false;
+            return changed;
         }
         let mut buf = Vec::new();
         if f.read_to_end(&mut buf).is_err() {
-            return false;
+            return changed;
         }
         let Some(last_nl) = buf.iter().rposition(|&b| b == b'\n') else {
-            return false;
+            return changed;
         };
         cur.consumed += last_nl as u64 + 1;
         let sid = cur.sid.clone();
-        let mut changed = false;
         for line in buf[..last_nl].split(|&b| b == b'\n') {
             let text = String::from_utf8_lossy(line);
             let t = text.trim_start_matches('\u{feff}').trim();

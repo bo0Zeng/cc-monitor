@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 const REGISTERED: &[(&str, &str, &str)] = &[
     // 🔴 **这里原来的第一条出去了**：`src/frontend/ui/session-accounts-poll.ts` 那个
     //    10s `refreshSessionAccounts`（data-poll）。它自己的说法栏写着退役条件 ——「先有一种账号事件
-    //    （新帧或文件事件）」—— 这一拍兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
+    //    （新帧或文件事件）」—— 兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
     //    `accounts-list`，不再每拍握一次手），而「会话 ↔ 账号」只在会话起停时变、**起停本来就有帧**
     //    （`session_added` / `session_removed` ⇒ 远端 `live` 格 / `ended` 格），
     //    再加一个握手完成事件 `remote-backend-ready`（后来改经通道订 `accounts-changed`，那一格 `seen`）。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
@@ -387,7 +387,7 @@ fn every_data_poll_names_its_event_source_and_owner() {
         }
     }
     // 地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；`tab-session-actions.ts` 的
-    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那一拍少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
+    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那次少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
     assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }
@@ -489,7 +489,7 @@ fn scheduling_marks(raw: &str) -> Vec<(usize, &'static str, Option<String>)> {
 #[test]
 fn every_scheduling_call_site_carries_a_classification_mark() {
     // 匹配单位自检（两个方向都要钉）：
-    // 放松的那一侧 —— 带空白的调用要数进来（本轮的洞就在这里）。
+    // 放松的那一侧 —— 带空白的调用要数进来（洞就在这里）。
     assert_eq!(
         count_calls("requestAnimationFrame (tick);", "requestAnimationFrame"),
         1,
@@ -643,7 +643,7 @@ fn the_identity_poller_is_gone_for_good() {
             "`control/ccm/` 渲出去的 shell 里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
                  `U-NP④` 把身份通道 B 整条搬去了后端（`control/identity_tag.rs`），\n\
                  用户原话：「不要轮询」「ccm 做到必须走后端」。\n\
-                 ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是本件要根除的东西：\n\
+                 ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是这里要根除的东西：\n\
                  每会话一条、跑在**远端**机器上、与会话同寿。\n\
                  真需要一个新的等待，先回答「它的内核事件源是什么、为什么后端接不了」。"
         );
@@ -655,7 +655,7 @@ fn the_identity_poller_is_gone_for_good() {
     );
     // 反向锚点 ②：**抽取器没有空转** —— 渲给 shell 的那句键入载荷必须还看得见。
     assert!(
-        prod.contains("tmux send-keys -t {t}"),
+        prod.contains("tmux -u send-keys -t {t}"),
         "连容器路键入载荷那句 `tmux send-keys` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
     );
 }

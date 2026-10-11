@@ -75,7 +75,7 @@ cleanup() {
   # ★★ **这一步与下面删 shim 的顺序是承重的**〔`K-P1` 08-26 实测教训〕：
   #    漏网的 backend **还活着**，而 `tmux_shim_cleanup` 把 shim 目录 `rm -rf` 掉之后，
   #    它下一次装 tmux hook（watcher 换人时会重装）沿 PATH 找不到 shim ⇒ **落到真 tmux 上**
-  #    ⇒ 用户真实 server 的 `[50]` 槽位被盖成它的 pid。本轮真发生过一次。
+  #    ⇒ 用户真实 server 的 `[50]` 槽位被盖成它的 pid。真发生过一次。
   #    ⇒ 先收进程、等它真的走了，再删 shim。
   # shellcheck disable=SC2046
   kill $(ours_backends) 2>/dev/null
@@ -177,7 +177,7 @@ fi
 # 每条 ignore 测试至少产一个标记；标记数少于测试数 ⇒ 有测试提前 return 了。
 # ⚠ **这一条对「新接进来的测试」是有门槛的**：接进本套件的每一条
 #    都必须**至少打一个 `E2E-OK` 标记**，否则这条自检会红，而红的理由是**假的**
-#    （不是「断言没走完」，是「那条从来不打标记」）。本轮接进来的两条各补了标记。
+#    （不是「断言没走完」，是「那条从来不打标记」）。后接进来的两条各补了标记。
 if [ "$MARKS" -lt "$RAN" ]; then
   bad "标记数 $MARKS < 跑成的测试数 $RAN —— 有测试提前退出、断言没走完"
 fi
@@ -271,7 +271,7 @@ E1="$(rcm -- --resident-ensure 2>"$WORK/e1.err")"
 P1="$(printf '%s' "$E1" | jget pid)"
 if [ "$P1" != "null" ]; then ok "远端起常驻：起了一个（pid $P1），答里只有 pid"
 else bad "远端起常驻没起来：$E1 $(cat "$WORK/e1.err")"; fi
-for _ in $(seq 1 50); do [ -S "$SOCK" ] && break; sleep 0.1; done
+wall_until '[ -S "$SOCK" ]' || true
 MODE="$(stat -c %a "$RH/.cc-monitor/run" 2>/dev/null)"
 if [ -S "$SOCK" ] && [ "$MODE" = 700 ]; then ok "常驻后端听那台家里的套接字，所在目录只给本人（$MODE）"
 else bad "套接字没出现或目录不是只给本人：$(ls -la "$RH/.cc-monitor/run" 2>&1 | head -5)"; fi

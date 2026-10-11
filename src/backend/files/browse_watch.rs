@@ -18,6 +18,7 @@
 //! - 平台不对等：Linux `inotify` · Windows `ReadDirectoryChangesW` · macOS `FSEvents` 的语义（合并、延迟、丢事件的条件）不是一件事，
 //!   逐 target 的声明住 `super::FRESHNESS`，不许判成相等。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 /// 同时挂着的 watch 上限。64 相对每用户上限（默认 262 144）是 1/4096；判据用绝对量比（`64 * 4096 <= 262144`），
@@ -93,7 +94,7 @@ pub fn watched_count() -> usize {
 ///
 /// ⚠ 它**不递归**、不跟 symlink、不 `stat` —— 只要名字与目录项自带的类型。
 fn list_dir(dir: &Path) -> Option<Vec<(Vec<u8>, u8)>> {
-    let rd = std::fs::read_dir(dir).ok()?;
+    let rd = Ro::read_dir(dir).ok()?;
     let mut out = Vec::new();
     for e in rd {
         let Ok(e) = e else { continue };

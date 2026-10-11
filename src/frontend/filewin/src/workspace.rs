@@ -88,8 +88,8 @@ pub struct Workspace {
     pub(super) home_go: bool,
     /// 左栏「其他机器」那一问的结局。
     pub(super) other: super::chrome::OtherSlot,
-    /// 整窗缩放（记在视图文件里，下次开窗照它）。
-    pub zoom: Zoom,
+    /// 视图文件（整窗缩放 · 预览开没开，下次开窗照它）。
+    pub memo: ViewMemo,
     /// 右下角那一摞回执（一次性的那几句：键位做不成的原因 · 跳到隐藏文件 · 开另一台 …）。
     pub toasts: super::kit::Toasts,
     /// 带［撤销］的回执：记号 → 撤销要做的那几件（点了交给焦点那一栏直接做）。
@@ -109,6 +109,8 @@ pub struct Workspace {
     pub progress: super::progress::Progress,
     /// 那台此刻连没连着（每个标签页拿同一份）。
     pub link: super::chrome::LinkState,
+    /// 解好的图（每个标签页 · 预览 · 「看一眼」拿同一份，[`super::picture`]）。
+    pub pictures: super::picture::Pictures,
     /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
     link_ups: u64,
     /// 关窗那一问摆着（稿 17）。
@@ -131,44 +133,82 @@ pub const ZOOM_MAX: f32 = 2.0;
 /// 缩放的档位（规范 `I8` 与稿 ⑫）。
 pub const ZOOM_STOPS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
-/// 整窗缩放（egui 的 `zoom_factor`）：Ctrl + = / Ctrl + - / Ctrl + 0、Ctrl + 滚轮改它；
-/// 记在 monitor 交来的那份视图文件里（`{"zoom": 1.2}`），下次开窗照它。没有那份文件 ⇒ 照样能缩放，只是不记。
+/// 视图文件（monitor 交来的那一份，`{"zoom": 1.2, "preview": true}`）：记**整窗缩放**与**预览开没开**，下次开窗照它摆。
+/// 没有那份文件 ⇒ 照样能缩放、开预览，只是不记。
+///
+/// 缩放是 egui 的 `zoom_factor`：Ctrl + = / Ctrl + - / Ctrl + 0、Ctrl + 滚轮改它；
 /// 主界面的「字号」是另一回事（随开窗的样子交过来的绝对字号）；这里是在它之上整体放大缩小。
+/// 预览没记过 ⇒ 关着（缺省关）。两样同住一份文件，写哪一样都把另一样原样带上（互不覆盖）。
 #[derive(Clone, Debug, Default)]
-pub struct Zoom {
+pub struct ViewMemo {
     file: Option<std::path::PathBuf>,
-    /// 文件里记着的那个数（没记过 ⇒ 1）。
-    saved: Option<f32>,
+    /// 文件里记着的缩放（没记过 ⇒ 1）。
+    zoom: Option<f32>,
+    /// 文件里记着的预览开关（没记过 ⇒ 关）。
+    preview: Option<bool>,
 }
 
-impl Zoom {
-    /// 读那份文件（读不到 / 读不懂 ⇒ 按 1 起，下一次改了就写一份新的）。
+impl ViewMemo {
+    /// 读那份文件（读不到 / 读不懂 ⇒ 按缺省起，下一次改了就写一份新的）。
     pub fn open(file: Option<std::path::PathBuf>) -> Self {
-        let saved = file
+        let v = file
             .as_deref()
             .and_then(|f| std::fs::read(f).ok())
-            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+        let zoom = v
+            .as_ref()
             .and_then(|v| v.get("zoom").and_then(serde_json::Value::as_f64))
             .map(|z| (z as f32).clamp(ZOOM_MIN, ZOOM_MAX));
-        Self { file, saved }
+        let preview = v
+            .as_ref()
+            .and_then(|v| v.get("preview").and_then(serde_json::Value::as_bool));
+        Self {
+            file,
+            zoom,
+            preview,
+        }
     }
 
     /// 开窗时照哪个数缩放。
-    pub fn factor(&self) -> f32 {
-        self.saved.unwrap_or(1.0)
+    pub fn zoom(&self) -> f32 {
+        self.zoom.unwrap_or(1.0)
+    }
+
+    /// 开窗时预览开不开。
+    pub fn preview(&self) -> bool {
+        self.preview.unwrap_or(false)
     }
 
     /// 这一帧的缩放与记着的不同 ⇒ 记下来（两位小数，同一个数不重写）。
-    fn remember(&mut self, z: f32) {
+    fn remember_zoom(&mut self, z: f32) {
         let z = (z * 100.0).round() / 100.0;
-        if self.saved == Some(z) || (self.saved.is_none() && z == 1.0) {
+        if self.zoom == Some(z) || (self.zoom.is_none() && z == 1.0) {
             return;
         }
-        self.saved = Some(z);
-        if let Some(f) = &self.file {
-            if let Err(e) = host_core::atomic_write_json(f, &serde_json::json!({ "zoom": z })) {
-                tracing::warn!(error = %e, "zoom not saved");
-            }
+        self.zoom = Some(z);
+        self.write();
+    }
+
+    /// 预览开关与记着的不同 ⇒ 记下来。
+    fn remember_preview(&mut self, on: bool) {
+        if self.preview() == on {
+            return;
+        }
+        self.preview = Some(on);
+        self.write();
+    }
+
+    fn write(&self) {
+        let Some(f) = &self.file else { return };
+        let mut v = serde_json::Map::new();
+        if let Some(z) = self.zoom {
+            v.insert("zoom".into(), serde_json::json!(z));
+        }
+        if let Some(p) = self.preview {
+            v.insert("preview".into(), serde_json::json!(p));
+        }
+        if let Err(e) = host_core::atomic_write_json(f, &serde_json::Value::Object(v)) {
+            tracing::warn!(error = %e, "view memo not saved");
         }
     }
 }
@@ -253,6 +293,7 @@ impl Workspace {
         first.in_workspace = true;
         let progress = first.progress.clone();
         let link = first.link.clone();
+        let pictures = first.pictures.clone();
         let mut w = Self {
             sides: vec![Side {
                 tabs: vec![Tab { id: 0, pane: first }],
@@ -267,7 +308,7 @@ impl Workspace {
             home: Default::default(),
             home_go: false,
             other: Default::default(),
-            zoom: Zoom::default(),
+            memo: ViewMemo::default(),
             toasts: Default::default(),
             undo_for: Default::default(),
             undo_tag: 0,
@@ -278,6 +319,7 @@ impl Workspace {
             title: None,
             progress,
             link,
+            pictures,
             link_ups: 0,
             closing_ask: false,
             close_after_save: false,
@@ -431,6 +473,7 @@ impl Workspace {
         p.font = like.font.clone();
         p.progress = like.progress.clone();
         p.link = like.link.clone();
+        p.pictures = like.pictures.clone();
         p.in_workspace = true;
         p.reload();
         p
@@ -458,6 +501,7 @@ impl Workspace {
         }
         pane.progress = self.progress.clone();
         pane.link = self.link.clone();
+        pane.pictures = self.pictures.clone();
         pane.in_workspace = true;
         let id = self.mint_id();
         let s = &mut self.sides[side];
@@ -476,6 +520,7 @@ impl Workspace {
         }
         pane.progress = self.progress.clone();
         pane.link = self.link.clone();
+        pane.pictures = self.pictures.clone();
         pane.in_workspace = true;
         let id = self.mint_id();
         self.sides.push(Side {
@@ -521,6 +566,10 @@ impl Workspace {
                 self.sides[side].tabs[i].pane.close_edit();
                 return false;
             }
+            return self.drop_tab(side, i);
+        }
+        // 查看页：没有要存的 ⇒ 直接关（它起的下载挂在「进度」上照跑）。
+        if self.sides[side].tabs[i].pane.view_tab {
             return self.drop_tab(side, i);
         }
         if let Some(why) = self.sides[side].tabs[i].pane.busy_reason() {
@@ -571,12 +620,29 @@ impl Workspace {
                         }
                     }
                 }
+                if let Some(v) = self.sides[k].tabs[i].pane.want_view.take() {
+                    let open = self.sides[k].tabs.iter().position(|t| {
+                        t.pane.view_tab && t.pane.viewing().map(|w| w.path()) == Some(v.path())
+                    });
+                    match open {
+                        Some(at) => {
+                            self.select_tab(k, at);
+                        }
+                        None => {
+                            let mut p = Self::spawn_editor(&self.sides[k].tabs[i].pane);
+                            p.edit_tab = false;
+                            p.view_tab = true;
+                            p.viewing = Some(v);
+                            self.add_tab(k, p);
+                        }
+                    }
+                }
                 if let Some(dir) = self.sides[k].tabs[i].pane.want_dir.take() {
                     let reveal = self.sides[k].tabs[i].pane.want_reveal.take();
                     let there = self.sides[k]
                         .tabs
                         .iter()
-                        .position(|t| !t.pane.edit_tab && t.pane.cwd == dir);
+                        .position(|t| !t.pane.edit_tab && !t.pane.view_tab && t.pane.cwd == dir);
                     let at = match there {
                         Some(at) => {
                             self.select_tab(k, at);
@@ -620,6 +686,7 @@ impl Workspace {
         p.font = like.font.clone();
         p.progress = like.progress.clone();
         p.link = like.link.clone();
+        p.pictures = like.pictures.clone();
         p.in_workspace = true;
         p.edit_tab = true;
         p
@@ -718,9 +785,16 @@ impl Workspace {
         keys.len()
     }
 
-    /// 开 / 关预览。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
+    /// 开 / 关预览，并记进视图文件（下次开窗照它）。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
     pub fn set_preview(&mut self, on: bool) {
         self.preview = on.then(super::preview::Preview::default);
+        self.memo.remember_preview(on);
+    }
+
+    /// 开窗时照视图文件摆：预览照上次开没开（缩放由开窗那一处交给 egui）。
+    pub fn restore_view(&mut self, memo: ViewMemo) {
+        self.preview = memo.preview().then(super::preview::Preview::default);
+        self.memo = memo;
     }
 
     /// 🔴 **复制到另一栏**：焦点那一栏选中的**那一摞**（文件与目录都行）→ 另一栏当前目录、同名。
@@ -782,6 +856,9 @@ impl Workspace {
     pub fn tab_title(pane: &FileWindow) -> String {
         if pane.edit_tab {
             return pane.edit_name();
+        }
+        if let Some(v) = pane.viewing() {
+            return v.name().to_string();
         }
         let tail = super::source::remote_basename(&pane.cwd);
         let tail = if tail.is_empty() { "/" } else { tail };
@@ -947,7 +1024,7 @@ impl Workspace {
 
     /// 状态栏那颗「125%」点了：回 100% 并记下来。
     pub fn zoom_reset(&mut self) {
-        self.zoom.remember(1.0);
+        self.memo.remember_zoom(1.0);
     }
 
     /// 这一帧的缩放手势：Ctrl + = / + 放大一步 · Ctrl + - 缩小一步 · Ctrl + 0 回 100% · Ctrl + 滚轮按滚的量；
@@ -990,7 +1067,7 @@ impl Workspace {
         if z != ctx.zoom_factor() {
             ctx.set_zoom_factor(z);
         }
-        self.zoom.remember(z);
+        self.memo.remember_zoom(z);
         z
     }
 
@@ -1117,6 +1194,7 @@ impl Workspace {
             let f = self.focus;
             let action = match a {
                 super::preview::PreviewAct::Edit => Some(super::select::Action::Edit),
+                super::preview::PreviewAct::View => Some(super::select::Action::View),
                 super::preview::PreviewAct::Download => Some(super::select::Action::Download),
                 super::preview::PreviewAct::OpenInPlan => None,
             };
@@ -1212,6 +1290,21 @@ impl Workspace {
             self.toasts.items.iter().map(|t| t.tag).collect();
         self.undo_for.retain(|k, _| live.contains(k));
         self.close_ask_ui(&ctx);
+        self.keep_pictures();
+    }
+
+    /// 解好的图只留此刻还摆着的那几张（预览 · 「看一眼」· 每个查看页）：别的扔掉、显存跟着放。
+    pub fn keep_pictures(&self) {
+        let mut keep: std::collections::HashSet<super::picture::PicKey> = self
+            .sides
+            .iter()
+            .flat_map(|s| s.tabs.iter())
+            .filter_map(|t| t.pane.picture_key())
+            .collect();
+        for p in self.preview.iter().chain(self.peek.iter()) {
+            keep.extend(p.picture_keys());
+        }
+        self.pictures.keep_only(&keep);
     }
 
     /// 「看一眼」浮层（稿 24）：窗口正中一块（浮层底、圆角、最宽 720 · 最高 560，不超过窗口减 48），里面是焦点那一栏光标那一项的预览；
@@ -1263,6 +1356,10 @@ impl Workspace {
                 super::preview::PreviewAct::Edit => {
                     self.pane_on_mut(f)
                         .perform(super::select::Action::Edit, Some(ctx.clone()));
+                }
+                super::preview::PreviewAct::View => {
+                    self.pane_on_mut(f)
+                        .perform(super::select::Action::View, Some(ctx.clone()));
                 }
                 super::preview::PreviewAct::Download => {
                     self.pane_on_mut(f)
@@ -1394,6 +1491,7 @@ impl Workspace {
                     let busy = if t.pane.editing().is_some_and(|e| e.dirty()) {
                         Some(p.text2)
                     } else if !t.pane.edit_tab
+                        && !t.pane.view_tab
                         && (t.pane.has_running_jobs() || t.pane.busy_reason().is_some())
                     {
                         Some(p.success)
@@ -1402,6 +1500,8 @@ impl Workspace {
                     };
                     let icon = if t.pane.edit_tab {
                         egui_phosphor::regular::PENCIL_SIMPLE
+                    } else if t.pane.view_tab {
+                        egui_phosphor::regular::IMAGE
                     } else if t.pane.listing.is_loading() {
                         egui_phosphor::regular::CIRCLE_NOTCH
                     } else {
@@ -1429,21 +1529,24 @@ impl Workspace {
                 }
                 if !hidden.is_empty() {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        super::kit::menu(
+                        // 放不下的标签页：全部列出，当前那个打勾（同一种菜单项）。
+                        let entries: Vec<super::kit::Entry> = s
+                            .tabs
+                            .iter()
+                            .enumerate()
+                            .map(|(i, t)| {
+                                super::kit::Entry::Row(
+                                    super::kit::MenuRow::new("", Self::tab_title(&t.pane))
+                                        .checked(i == s.active),
+                                )
+                            })
+                            .collect();
+                        pick = super::kit::menu(
                             ui,
                             egui::RichText::new(egui_phosphor::regular::CARET_DOWN).color(p.text2),
-                            |ui| {
-                                for (i, t) in s.tabs.iter().enumerate() {
-                                    if ui
-                                        .selectable_label(i == s.active, Self::tab_title(&t.pane))
-                                        .clicked()
-                                    {
-                                        pick = Some(i);
-                                        ui.close();
-                                    }
-                                }
-                            },
-                        );
+                            &entries,
+                        )
+                        .1;
                     });
                 }
             },
@@ -1562,3 +1665,7 @@ impl eframe::App for Workspace {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/workspace_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/filewin/hover_sweep_tests.rs"]
+mod hover_sweep_tests;

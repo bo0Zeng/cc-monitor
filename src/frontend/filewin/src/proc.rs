@@ -153,7 +153,7 @@ pub fn child_main() -> i32 {
 /// [`child_main`] 拿到运行时之后的那一段：起通道 → 列第一屏 → 说就绪 → 开窗、等它关。回退出码。
 /// 运行时由调用方放（理由住 [`child_main`] 收尾那一段）。
 fn run_on(rt: &tokio::runtime::Runtime, req: filewin_contract::OpenRequest) -> i32 {
-    // 通道就是自己的 stdin / stdout（`D11`：没有退路 —— 不许「连不上就退回 SFTP 自己列」）。
+    // 通道就是自己的 stdin / stdout（`D11`：没有退路 —— 不许「断开就退回 SFTP 自己列」）。
     let line = {
         let _in_rt = rt.enter();
         line_over_stdio(req.frame)

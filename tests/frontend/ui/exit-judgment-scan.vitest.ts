@@ -11,7 +11,7 @@
  * 4. 阳性 / 阴性对照：每条规则对自己的样例各恰好命中一次 / 零次（探测器坏了 ⇒ 先红）。
  *
  * 手机端（`src/mobile`）并进来之后：`roots` 加了它（`kt`，规则见 `KT_RULES`），红出来的三格照实登进 `entries`，
- * `ceiling` 与 [`CEILING_AT_MOST`] 从 267 同改到 276 —— 那一拍是唯一一次「加」，之后同样只许删。
+ * `ceiling` 与 [`CEILING_AT_MOST`] 从 267 同改到 276 —— 那次是唯一一次「加」，之后同样只许删。
  *
  * 买不到：指纹只认登记过的写法（换个写法重写一遍看不见）；命中的也不全是违例（界面自己的骨架词表会撞 `caseWord`），
  * 名单里 `kind: "留"` 的格写明凭什么留。
@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { productionKtFiles, productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionKtFiles, productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { KT_RULES, RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
@@ -84,7 +84,6 @@ describe("出口零判定零格式化：扫描 ＋ 只减不增的欠账名单",
       for (const [k, w] of want) if (!got.has(k)) wrong.push(`${k}：一处都没有了，名单还登 ${w} —— 删掉那一格`);
       expect(wrong, wrong.join("\n")).toEqual([]);
     },
-    SCAN_TIMEOUT_MS,
   );
 
   it("★ 合计 == ceiling，ceiling 只许往下改", () => {

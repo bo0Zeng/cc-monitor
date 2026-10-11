@@ -799,6 +799,99 @@ fn a_tab_that_cannot_be_found_says_why_and_the_title_is_still_put_back() {
 }
 
 /// ★ 记号每次现铸（`ccm-front-` ＋ 8 位），两次不同；空记号不认任何标签名。
+/// 一个会卡住的标签页读法：挂上记号之后那一次读要 `stuck` 才回来（真机上 UI Automation 的一次调用能卡几秒）。
+struct StuckTabs {
+    reads: usize,
+    stuck: std::time::Duration,
+    title: std::sync::Arc<std::sync::Mutex<String>>,
+}
+
+impl TabReader for StuckTabs {
+    fn names(&mut self) -> Option<Vec<String>> {
+        self.reads += 1;
+        if self.reads > 1 {
+            std::thread::sleep(self.stuck);
+        }
+        Some(vec!["pwsh".into(), "✳ claude".into()])
+    }
+    fn mark(&mut self, title: &str) -> Option<String> {
+        Some(std::mem::replace(
+            &mut *self.title.lock().unwrap(),
+            title.to_string(),
+        ))
+    }
+    fn restore(&mut self, old: &str) {
+        *self.title.lock().unwrap() = old.to_string();
+    }
+    fn select(&mut self, _i: usize) -> bool {
+        true
+    }
+    fn wait(&mut self) {}
+    fn time_left(&self) -> bool {
+        true
+    }
+}
+
+/// 🔴 **小助手超了预算也写回标题、照样答话**：挂上记号之后卡在一次读里（1.5 秒），预算 300 毫秒 ⇒
+/// 到点（主线程还卡着）标题已经写回原样、答的是「读不到标签页」；卡完回来不再写第二次、不再答第二句。
+/// monitor 那一侧不掐它（`console::ask_helper` 那条判据），记号就不会因为被掐断留在标题上。
+#[test]
+fn an_overrun_tab_pick_still_puts_the_title_back_and_answers_once() {
+    let title = std::sync::Arc::new(std::sync::Mutex::new("✳ claude".to_string()));
+    let put = title.clone();
+    let answers = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let said = answers.clone();
+    let mut r = StuckTabs {
+        reads: 0,
+        stuck: std::time::Duration::from_millis(1500),
+        title: title.clone(),
+    };
+    let t0 = std::time::Instant::now();
+    let main = std::thread::spawn(move || {
+        crate::platform::console::pick_tab_in_budget(
+            &mut r,
+            "ccm-front-1a2b3c4d",
+            6,
+            std::time::Duration::from_millis(300),
+            std::sync::Arc::new(move |old: &str| *put.lock().unwrap() = old.to_string()),
+            std::sync::Arc::new(move |p| said.lock().unwrap().push((p, t0.elapsed()))),
+        )
+    });
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    assert!(!main.is_finished(), "量具：读法该还卡着");
+    assert_eq!(*title.lock().unwrap(), "✳ claude", "到点了标题还挂着记号");
+    let got = answers.lock().unwrap().clone();
+    assert_eq!(got.len(), 1, "到点了还没答话：{got:?}");
+    assert_eq!(got[0].0, TabPick::Miss(TabMiss::NoUia));
+    assert!(
+        got[0].1 < std::time::Duration::from_millis(700),
+        "答得太晚：{:?}",
+        got[0].1
+    );
+    main.join().unwrap();
+    assert_eq!(answers.lock().unwrap().len(), 1, "卡完回来又答了一句");
+    assert_eq!(*title.lock().unwrap(), "✳ claude");
+}
+
+/// 正控：预算之内做完 ⇒ 照常答（选中），标题写回一次。
+#[test]
+fn a_tab_pick_within_budget_answers_its_own_result() {
+    let m = "ccm-front-1a2b3c4d";
+    let mut t = FakeTabs::new(vec![Some(vec!["pwsh", "✳ claude"]), Some(vec!["pwsh", m])]);
+    let answers = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let said = answers.clone();
+    crate::platform::console::pick_tab_in_budget(
+        &mut t,
+        m,
+        6,
+        std::time::Duration::from_secs(5),
+        std::sync::Arc::new(|_: &str| panic!("预算之内不该由看门那一支写回")),
+        std::sync::Arc::new(move |p| said.lock().unwrap().push(p)),
+    );
+    assert_eq!(*answers.lock().unwrap(), vec![TabPick::Selected]);
+    assert_eq!(t.titles_set, vec![m.to_string(), "✳ claude".to_string()]);
+}
+
 #[test]
 fn front_markers_are_fresh_and_an_empty_marker_names_no_tab() {
     let (a, b) = (front_marker(), front_marker());

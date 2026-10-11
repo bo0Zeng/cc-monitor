@@ -51,7 +51,7 @@
 //!   不认识任何 OS 的文件布局或 ABI。tmux 的这条编码规矩在它跑得起来的每个系统上同形。
 //! - ③ **无域知识**：不认识 `WatchEvent` / `ResumeSpec` 这类本 crate 的类型。
 //!   ⚠ 它确实认识**一个外部程序的接口**（tmux 怎么打、怎么被要求按 UTF-8 打）——
-//!   与 `common/fs.rs` 认识 `std::fs` 同型：那是**外部接口知识**，不是本 crate 的域模型。
+//!   与 `platform/fs/ro.rs` 认识 `std::fs` 同型：那是**外部接口知识**，不是本 crate 的域模型。
 //!   这一条是判断，不是实测，写在这里让下一个人能反对。
 //!
 //! # ⚠ 家只有一个，而**镜子有三面**（如实登记边界）
@@ -66,6 +66,24 @@
 ///
 /// 用法与位置纪律见模块头注：**必须排在子命令之前**。
 pub(crate) const UTF8_CLIENT_FLAG: &str = "-u";
+
+/// **渲给客户端的「接进一个 tmux 会话」—— 全仓唯一一处**：`ccm --attach` · resume 接上在跑的 · 建完容器接进去（`control/ccm/plan.rs`）
+/// 与 `launch-render-cli` 就地 resume 键完那一行之后（`control/launch_render/ccm_invocation.rs`）都调它。
+///
+/// - 已经在 tmux 里 ⇒ 当前客户端切过去（`attach` 在 tmux 里是拒的）；不在 ⇒ `attach`。在不在 tmux 里不进 `--ccm-print`
+///   （`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
+/// - 两条都是 UTF-8 客户端（上表「跨 SSH 的命令串」那一行 ⇒ 旗，排在子命令之前）：这一行跑在用户那台终端里，
+///   那边常没有 UTF-8 locale（ssh 进来的手机终端），非 UTF-8 客户端把 tab 与中文画成 `_`。
+/// - 写成 `case` 不写 `if [ -n "…" ]`：这一行会被交给 Windows 本机终端开 ssh，那条路拒双引号（`dial/terminal.rs`，PowerShell 5.1 传参畸变）；
+///   `case` 的那个词不分词、不展开通配，不用引号也对；空的那一支写成 `x${TMUX:-}` 对 `x)`，连空串字面量 `''` 都不用
+///   （单引号字面量只许经 `dialect::ps_literal` 进 PowerShell 那一形，`shell_home_guard` 钉着）。
+/// 渲给客户端的每一条 tmux 子命令都带旗：判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`。
+pub(crate) fn join_session(name: &str) -> String {
+    let t = shell_quote_core::posix_quote(&format!("={name}:"));
+    format!(
+        "case x${{TMUX:-}} in x) tmux -u attach -t {t};; *) tmux -u switch-client -t {t};; esac"
+    )
+}
 
 /// **UTF-8 客户端 env（env 形）** —— 同一个口径的另一种表示，`(变量名, 值)`。
 ///

@@ -8,40 +8,14 @@ fn main() {
     embed_native_backend(&mut carried);
     emit_embedded_id(&carried);
     embed_native_filewin();
-    manifest_for_every_artifact();
+    // Windows 进程清单交给本包**每一个**链接产物 —— 两个程序，**也包括测试程序**（Tauri 自己编的那份资源只进 `[[bin]]`）；
+    // 清单与编法只住 `win-manifest`，文件窗口包调同一处。
+    win_manifest::embed_for_every_artifact();
     // 清单不交给 Tauri 编（它那份资源只进 `[[bin]]`）；图标与版本信息仍由它编。出错照 `tauri_build::build()` 原样说、退出。
     let tauri_attrs = tauri_build::Attributes::new()
         .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
     if let Err(e) = tauri_build::try_build(tauri_attrs) {
         println!("{e:#}");
-        std::process::exit(1);
-    }
-}
-
-/// Windows 进程清单（`windows/app.manifest`）编成资源、交给本包的**每一个**链接产物 —— 两个程序，**也包括测试程序**。
-///
-/// Tauri 自己编的那份资源只链进 `[[bin]]`（`embed-resource` 的 `rustc-link-arg-bins`），lib 的测试程序于是没有清单；
-/// 而 Tauri 的 Windows 运行时按名字引入 comctl32 的 `TaskDialogIndirect` · `SetWindowSubclass` 一族（只有通用控件 v6 按名字导出），
-/// 测试一碰到它（`chan::host::plan_open` 经 `raise_main` 拉主窗那一下，测试走生产句柄 `InboundBackends` 就够得到），
-/// 链接器就把它留进导入表，那份测试程序在 Windows 上第一行代码之前就死（`0xc0000139`）。清单只有这一份，程序与测试程序同一份。
-/// 判据：`tests/frontend/shell/lib_app_manifest_tests.rs`（测试程序在 Windows 上读回自己的清单）。
-fn manifest_for_every_artifact() {
-    let dir =
-        std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let manifest = dir.join("windows").join("app.manifest");
-    println!("cargo:rerun-if-changed={}", manifest.display());
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
-        return;
-    }
-    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-    let rc = out.join("app-manifest.rc");
-    // `1` ＝ CREATEPROCESS_MANIFEST_RESOURCE_ID，`24` ＝ RT_MANIFEST。rc 的字符串里反斜杠要成对。
-    let path = manifest.display().to_string().replace('\\', "\\\\");
-    std::fs::write(&rc, format!("1 24 \"{path}\"\n")).expect("写不出清单的 .rc");
-    if let Err(e) =
-        embed_resource::compile_for_everything(&rc, embed_resource::NONE).manifest_required()
-    {
-        println!("cargo:warning=清单没编成资源：{e}");
         std::process::exit(1);
     }
 }
@@ -127,7 +101,7 @@ fn emit_embedded_id(carried: &[(String, String)]) {
 /// `embedded_backends` cfg；任一缺失则不置 cfg（`byte_table::pick` 对 Linux 两格返回 None → 部署那一步说「这一版没带」）。
 /// 两份都在 ⇒ 各自自报的 id 记进 `carried`（[`emit_embedded_id`] 核它们与本机那一份同一版）。
 ///
-/// 🔴 〔步 `19c`〕**这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
+/// 🔴 **这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
 /// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
 /// 两者**逐字同一条配方**（`K-R124` ⑬b 两向对拍）。
 fn embed_backends(carried: &mut Vec<(String, String)>) {
@@ -199,7 +173,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 ///
 /// 因为消费侧那个 `include_bytes!` 的参数**必须是字面量**：
 /// `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason` 默认拒绝
-/// 非字面量的 `include_*!`，而它的登记表**不在本件写区**。
+/// 非字面量的 `include_*!`，而它的登记表**这里不改**。
 /// ⇒ 名字定死、**用一个旁挂清单把 triple 记下来再核**（`.target`，下面那条硬校验）。
 /// 这一换其实更强：文件名是**没人核的约定**，清单是**每次构建都核的断言**。
 ///
@@ -268,7 +242,7 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
     //   （读那份字节 stdout 的第一行，必须是一帧自报源码 `BUILD_ID` 的 hello；缺席即红）。
     // ⚠ 这里**仍然是 warning 不是 panic**，理由是硬的、不是手软：门禁与 CI 上每一格
     //   `cargo check/test/clippy` 都在**没铺字节**的树上跑（字节不进仓），panic 会把它们全拖红，
-    //   而那几处不在本件写区。**判词住那条命令上，不住这句 warning 上。**
+    //   而那几处这里不改。**判词住那条命令上，不住这句 warning 上。**
     if !src.exists() {
         println!(
             "cargo:warning=没有本机内嵌后端（src/frontend/shell/{}）⇒ **这一趟编出来的可执行文件起不了本机后端**\
@@ -334,7 +308,7 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
     // ⚠ **不往 `OUT_DIR` 拷一份**（`embed_backends` 那条是拷的）——消费侧那个 `include_bytes!`
     // 直接按**字面量相对路径**读得到，而拷贝会让本函数变成一个**写盘落点**，
     // 那要在 `write_site_registry::WRITE_SITES` 里申报（`fs::copy(` 是它的 needle 之一），
-    // 而那张表**不在本件写区**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
+    // 而那张表**这里不改**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
     println!("cargo:rustc-cfg=embedded_native_backend");
 }
 

@@ -41,6 +41,7 @@ import { SessionViewer, type ViewerOptions } from "../../../../src/frontend/ui/v
 import { readLines } from "../../../../src/frontend/ui/record-reads";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 const cards = (v: SessionViewer): string[] =>
   [...v.element.querySelectorAll<HTMLElement>("[data-id]")].map((e) => e.dataset.id ?? "");
@@ -98,7 +99,7 @@ describe("查看器跟着长", () => {
     const v = new SessionViewer();
     document.body.appendChild(v.element);
     const done = v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true, follow: { sid: "s1", live: true } });
-    await vi.waitFor(() => expect(follow.sink).not.toBeNull());
+    await vi.waitFor(() => expect(follow.sink).not.toBeNull(), UNTIL_CEILING);
     emit({ t: "lines", lines: [userLine(1, "u1", "a"), assistantLine(2, "a2", "b")] });
     expect(cards(v)).toEqual([]);
     await done;
@@ -122,7 +123,7 @@ describe("查看器跟着长", () => {
     expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: 1 }));
     vi.mocked(readLines).mockResolvedValueOnce({ from: 2, next: 3, eof: true, payloads: [assistantLine(2, "a2", "b")] } as never);
     emit({ t: "sight", seen: true });
-    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2"]));
+    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2"]), UNTIL_CEILING);
     expect(vi.mocked(readLines).mock.calls[0].slice(0, 3)).toEqual([LOCAL_ORIGIN, "/p/s1.jsonl", 2]);
     expect(status(v)).toBe(copyText("sessionViewer.status.live"));
     emit({ t: "live", live: false });
@@ -136,7 +137,7 @@ describe("查看器跟着长", () => {
       .mockResolvedValueOnce({ from: 2, next: 3, eof: false, payloads: [assistantLine(2, "a2", "b")] } as never)
       .mockResolvedValueOnce({ from: 3, next: 4, eof: true, payloads: [userLine(3, "u3", "c")] } as never);
     emit({ t: "gap" });
-    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2", "u3"]));
+    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2", "u3"]), UNTIL_CEILING);
     expect(vi.mocked(readLines).mock.calls.map((c) => c[2])).toEqual([2, 3]);
   });
 
@@ -164,7 +165,7 @@ describe("查看器跟着长", () => {
     emit({ t: "lines", lines: [assistantLine(4, "a4", "d")] }); // 上流点那一行比补的先到
     expect(cards(v), "补完之前不该先接后面的").toEqual(["u1"]);
     release();
-    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2", "u3", "a4"]));
+    await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2", "u3", "a4"]), UNTIL_CEILING);
     expect(vi.mocked(readLines).mock.calls.map((c) => [c[2], c[3]])).toEqual([[2, 4]]);
     emit({ t: "from", path: "/p/other.jsonl", seq: 9 }); // 别的那份记录
     emit({ t: "lines", lines: [userLine(5, "u5", "e")] });

@@ -6,7 +6,7 @@
 //!
 //! ⚠ **本段刻意不把那个宏的名字连着 `!` 写全** —— `parity_ledger` 的命令清单解析器取的是
 //! `lib.rs` 里**第一处**那个字面量，散文里写全会被它当成清单去解析（实测：只解析出 1 条命令）。
-//! 这已经是本轮第二次被自己的散文绊到（另一次是位置比较判据扫 `rfind` 带括号那个）。
+//! 这已经是第二次被自己的散文绊到（另一次是位置比较判据扫 `rfind` 带括号那个）。
 //!
 //! `backend_status` 是 `#[tauri::command]`，而 tauri 的 IPC 命令清单宏会把命令的辅助宏
 //! **`use` 回它所在的那个模块** ⇒ 命令与 `generate_handler!` 同住一个模块必然重名冲突
@@ -136,7 +136,7 @@ pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 ///
 /// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/stream/listen.rs::ENV_RESIDENT`。
 /// 两边漂了**不会报错** —— 起出来的后端会当成「没设」而走 stdio 那条路，
-/// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「连不上」。
+/// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「断开」。
 /// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。
 pub(crate) const RESIDENT_ENV: &str = "CCM_RESIDENT";
 
@@ -621,7 +621,7 @@ pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
 /// **只在真的走过那条路时才被写下**，写它的唯一入口是 [`note_start_refusal`]。
 ///
 /// ⚠ `StartOutcome` 的形状**不能动**（加一个变体或一个字段，`backend_control.rs`
-/// 那个 `match` 当场编不过，而它在本轮写区之外）⇒ 走这条旁路。
+/// 那个 `match` 当场编不过，而它这里不改）⇒ 走这条旁路。
 static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// 记下「这一次失败**用户动得了手**，而且下一步是什么」。**写 [`LAST_START_REFUSAL`] 的唯一入口。**
@@ -716,7 +716,7 @@ fn reap_detached(
         .name("ccm-detached-reaper".into())
         .spawn(move || {
             // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`launch.rs:198` 逐字）。
-            // ★ `K-P3b`：**`wait()` 回来那一拍就是这条路上唯一拿得到退出状态的时刻** ——
+            // ★ `K-P3b`：**`wait()` 回来那一刻就是这条路上唯一拿得到退出状态的时刻** ——
             //   在这里记账，不在别处猜。
             match c.wait() {
                 Ok(status) => note_detached_death(status, handshake, reader),
@@ -788,7 +788,7 @@ fn note_detached_death(
         // 这条路上进程真的起来过 ⇒ 没有「起不来」那一支的两个字段。
         start_failure: None,
     };
-    // 脱离那条路没有监护：它走了就没人再起它 ⇒ 本机连不上，等用户点［重新连接］。
+    // 脱离那条路没有监护：它走了就没人再起它 ⇒ 本机断开，等用户点［重新连接］。
     after_death(
         crate::backend_policy::record_death(
             crate::inbound_client::LOCAL_ORIGIN,
@@ -842,7 +842,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
         .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
-    //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
+    //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
     // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断（`into_async` 摘掉）。
     let (rd, wr) =
@@ -923,7 +923,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
-        // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一拍才拿得到第三维（退出状态）。
+        // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一刻才拿得到第三维（退出状态）。
         reap_detached(handshake, reader_end);
         tracing::info!("本机常驻后端的流结束（EOF）");
     });
@@ -1038,7 +1038,7 @@ fn start_detached(
     match probe_and_attach_after_spawn(&sock, extra_env) {
         Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
         Err(e) => {
-            // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
+            // 起来了但断开 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
             stop_detached();
             DetachOutcome::Done(StartOutcome::Failed {
                 reason: Said::restate(
