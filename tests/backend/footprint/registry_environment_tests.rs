@@ -309,7 +309,7 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
 /// `Provisioning::NotAnInstall`）⇒ 本条红。
 /// ⚠ **第二条死值验没有了** —— 它钉的是 `sidecars/` 那一层，
 /// 而那一层整棵删了。⇒ 今天这条判据**只剩一条死值验**（`cc-bus` 那条）。
-/// 如实记：射程比 09-11 那一拍窄了一格，不是"一样强"。
+/// 如实记：射程比 09-11 那次窄了一格，不是"一样强"。
 #[test]
 fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
     /// `(闭集里的 id, 谁在什么时候点的名)`。**只收逐字点过名的**，不收推断出来的。

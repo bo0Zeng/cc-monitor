@@ -835,12 +835,12 @@ const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
     (
         "local_backend_host.rs",
         "fn note_detached_death(",
-        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍",
+        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一刻",
     ),
     (
         "local_backend_host.rs",
         "fn backend_supervise_events(",
-        "监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\
+        "监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一刻。\
          它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\
          —— 内联的闭包测试够不着，那条行为判据就只能退回读源码",
     ),

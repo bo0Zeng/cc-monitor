@@ -265,7 +265,7 @@ fn frame(line: &str) -> LocalItem {
     LocalItem::Frame(parse_frame(line).expect("手写帧解不出来"))
 }
 
-/// `consume_local` 那一拍：先过 bg 那道门（[`BgHide::admit`]，远端那条流同一份），过得去的才分派；藏 ⇒ 记成 `Skip`。
+/// `consume_local` 那一刻：先过 bg 那道门（[`BgHide::admit`]，远端那条流同一份），过得去的才分派；藏 ⇒ 记成 `Skip`。
 fn step(bg: &mut BgHide, item: LocalItem) -> LocalStep {
     bg.admit(item).map(local_step).unwrap_or(LocalStep::Skip)
 }

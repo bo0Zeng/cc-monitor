@@ -1983,7 +1983,7 @@ fn sent(log: &crate::find::testing::WireLog, cmd: &str) -> usize {
 }
 
 /// 🔴 **读着一份时再开一份：不发第二趟、说为什么**（后到的那一份会把正在改的那一份换掉）。
-/// 读完了还没落进编辑面的那一拍同样不发。
+/// 读完了还没落进编辑面的那一刻同样不发。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_second_open_while_one_is_still_reading_is_not_sent() {
     let mut w = FileWindow::seeded(
@@ -2016,7 +2016,7 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         .expect("拒了却没说")
         .said;
     assert!(e.contains("/srv/data/a.txt"), "没说在等哪一份：{e}");
-    // 读完了、还没落进编辑面那一拍：同样不发。
+    // 读完了、还没落进编辑面那一刻：同样不发。
     w.edits.deliver(crate::editor::Arrived::Text {
         path: "/srv/data/a.txt".into(),
         name: "a.txt".into(),

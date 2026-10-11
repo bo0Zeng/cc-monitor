@@ -43,7 +43,7 @@ use crate::origin::*;
 
 // ── A：线上形状与今天逐字节相同 ────────────────────────────────────────────
 //
-// 🔴 **这一组是本文件存在的前提。** `Origin` 落地那一拍必须零行为变化 ——
+// 🔴 **这一组是本文件存在的前提。** `Origin` 落地时必须零行为变化 ——
 //   前端今天送 `null` / `"<local>"` / `"devbox"` 三种值，后端今天读得懂。
 //   若 `serde` 形状变了，这个类型就不能替换任何一处签名（换了就是改协议）。
 #[test]
@@ -233,7 +233,7 @@ fn local_and_remote_are_exactly_complementary() {
 //    · 降 1 处：`lib·rs::batch_to_payloads`（`origin: Option<String>`，`None` = 本机）→ `origin: &Origin`
 //      它同时是漂移记账的那台，缺省当本机正是「没说被悄悄当成本机」那一形。
 // ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
-// 🔴 **81 → 83 → 81（上限没动）**：主线外清单那一拍（`session_book` 的 `In::Branch` / `Out::Branch`）新写了两处 `origin: String`，
+// 🔴 **81 → 83 → 81（上限没动）**：主线外清单那次（`session_book` 的 `In::Branch` / `Out::Branch`）新写了两处 `origin: String`，
 //    推上去 CI 红；那两格改收 `crate::origin::Origin`（分本机仍在线上串那一层，账本键照旧是线上串）。
 // ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
 const ORIGIN_MIGRATION_CEILING: usize = 81;

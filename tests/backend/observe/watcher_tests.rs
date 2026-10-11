@@ -368,8 +368,8 @@ fn poke_shutdown_sends_shutdown_variant() {
 
 // ---------- P4（zero-poll-liveness）：外部 poke ⇒ 立刻重探 ----------
 
-/// P4：`Poke` 与 `TmuxProbeDue` 必须走**同一条**处理路径 —— 事件驱动的那一拍和
-/// 定时器那一拍，除了来源不同，后续行为应当逐字相同。
+/// P4：`Poke` 与 `TmuxProbeDue` 必须走**同一条**处理路径 —— 事件驱动的那一下和
+/// 定时器那一下，除了来源不同，后续行为应当逐字相同。
 ///
 /// 这条扫源码而不是跑循环：`watch_loop` 要真 spawn 线程 + 真跑 `tmux ls`，
 /// 在单测里不可控。**范围窄于性质，如实记**：它钉的是「两个变体在同一个 match 臂上」，

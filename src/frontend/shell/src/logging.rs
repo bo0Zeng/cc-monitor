@@ -274,7 +274,7 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
         (None, None)
     };
 
-    // 4. 出错出口的开关照配置（出口本身 setup 那一拍才装）
+    // 4. 出错出口的开关照配置（出口本身 setup 时才装）
     crate::ui_error::set_enabled(cfg.error_toast);
 
     // 5. 组装 + init

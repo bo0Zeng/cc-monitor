@@ -322,7 +322,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）。"
             "份数不变、换了住处：远端后端装 / 卸那两处调用从 `src/frontend/ui/settings/machine-card.ts` 抽进共用模块 "
             "`src/frontend/ui/backend-deploy.ts`，机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］都调它（↗ 浮层就地部署、不开设置）",
-            "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S1 收完远端半时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/frontend/ui/settings/machine-aliases.ts",),
@@ -334,14 +334,14 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`src/frontend/ui/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
             "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
             "**份数没变（3 → 3），是换了一份**：`launcher-diagnostics.ts` 今天一条 S2 调用都没有了",
-            "S2 收完本机半那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S2 收完本机半时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/frontend/ui/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
             "终端集成那几条，不是调用点（见 `§S5d` 第二档）")),
     ("S3", ((),
             "**1 → 0**：`src/frontend/ui/settings/accounts-section.ts` 那一处（一键部署账号库）改经通道问那台后端 `acct-iso-install`，"
             "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
-            "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S3 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
             "（`§3-3` 写「S3 今天 2」是把 `src/frontend/ui/accounts.ts` 那条**注释里的提名**"
@@ -351,7 +351,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S4 这一组没有 Tauri 命令了。**2 → 1**：`src/frontend/ui/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
             "量于 09-15 · 同上。`src/frontend/ui/launcher-diagnostics.ts` → "
             "`src/frontend/ui/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
-            "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S4 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
     ("S5", (("src/frontend/ui/settings/ext-section.ts",),
             "份数不变、换了住处：cc-bus 的装口从驾驶舱（`src/frontend/ui/settings/cc-bus-section.ts`）搬进扩展页（③ 那一处），"
@@ -359,7 +359,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "**2 → 1**：`src/frontend/ui/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。**3 → 2**：`src/frontend/ui/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",
-            "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S5 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S5']`")),
 ])
 
@@ -435,7 +435,7 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "**本机页那一份**。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
             "那条装命令归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
-            "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
+            "落地时，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
     ("S3", (("src/frontend/ui/settings/machine-card.ts",),
             "**没达标，前端这一半要做**：把「一键部署 cc-acct-iso」从「账号」栏的空态里"
             "搬进组件栏。R63 裁定三逐字点名「不许再按『…装账号隔离』这样按实现分」，"
@@ -521,7 +521,7 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
 # `src/frontend/ui/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
 # ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
 #   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
-# 〔LOC1b 合并那一拍〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
+# 〔LOC1b 合并时〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
 WRAPPER_KEY_FLOOR = 40  # 50 → 40：包装层按设计在缩（现打 49），地板只防形状塌
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1227,7 +1227,7 @@ def main() -> int:
     cmd_addr = scan_tauri_commands(src_dir)
 
     # ── R1 地板（反向自检）：扫不到东西一律 CRASH，不许当「零违例」 ──────────────
-    # 〔LOC1b 合并那一拍〕`LEDGER` 与 `#[tauri::command]` 两格地板 100 → 50：这两格的人群**按设计在缩**
+    # 〔LOC1b 合并时〕`LEDGER` 与 `#[tauri::command]` 两格地板 100 → 50：这两格的人群**按设计在缩**
     #   （Tauri 命令逐批迁到通道 `chan.call`），LOC1b 合并后 `LEDGER` 现打 99 撞了 100。地板只防「解析器塌了」——
     #   塌了读数是个位数，50 照样逮得住；它不是计数棘轮（计数由 parity_ledger / commands.vitest 两向钉着）。
     #   `WRITE_SITES` 同理 20 → 10（monitor 写点随 LOC1b / HX2 等收进后端而减，现打 19）。

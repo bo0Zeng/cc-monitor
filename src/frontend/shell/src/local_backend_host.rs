@@ -716,7 +716,7 @@ fn reap_detached(
         .name("ccm-detached-reaper".into())
         .spawn(move || {
             // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`launch.rs:198` 逐字）。
-            // ★ `K-P3b`：**`wait()` 回来那一拍就是这条路上唯一拿得到退出状态的时刻** ——
+            // ★ `K-P3b`：**`wait()` 回来那一刻就是这条路上唯一拿得到退出状态的时刻** ——
             //   在这里记账，不在别处猜。
             match c.wait() {
                 Ok(status) => note_detached_death(status, handshake, reader),
@@ -842,7 +842,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
         .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
-    //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
+    //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
     // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断（`into_async` 摘掉）。
     let (rd, wr) =
@@ -923,7 +923,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
-        // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一拍才拿得到第三维（退出状态）。
+        // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一刻才拿得到第三维（退出状态）。
         reap_detached(handshake, reader_end);
         tracing::info!("本机常驻后端的流结束（EOF）");
     });

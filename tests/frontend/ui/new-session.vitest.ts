@@ -9,7 +9,7 @@ const replies = new Map<string, unknown>();
 let refusal: { op: string; code: string; message: string; data: unknown; detail?: string } | null = null;
 /** 接下来几次 `session-new` 没等到回话（期限到）。 */
 let hang = 0;
-/** 期限到之后那一次再核：`true` ⇒ 一直不回（停在「正在核实」那一拍）。 */
+/** 期限到之后那一次再核：`true` ⇒ 一直不回（停在「正在核实」那一刻）。 */
 let stall = false;
 let boom: Error | null = null;
 

@@ -196,7 +196,7 @@ fn the_live_cell_carries_the_project_dir() {
     );
 }
 
-/// ★ 「各台都报完」那一拍：机器表里每一台都来过 `listed` 才立（少一台 ⇒ 不立；表还不知道 ⇒ 不立）；
+/// ★ 「各台都报完」那一刻：机器表里每一台都来过 `listed` 才立（少一台 ⇒ 不立；表还不知道 ⇒ 不立）；
 /// 机器表换了按新表重算（摘掉的正是唯一没报完的那台 ⇒ 当场再说一次「报完了」带 `all`）；F5 重放带同一份。
 #[test]
 fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
@@ -225,7 +225,7 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
         vec![("pi".into(), false)],
         "少一台（gpu-01）⇒ 不立"
     );
-    // gpu-01 从机器表里摘掉：剩下的都报完了 ⇒ 那一拍不错过。
+    // gpu-01 从机器表里摘掉：剩下的都报完了 ⇒ 那一刻不错过。
     assert_eq!(
         all_of(b.set_machines(vec!["<local>".into(), "pi".into()])),
         vec![("<local>".into(), true)]

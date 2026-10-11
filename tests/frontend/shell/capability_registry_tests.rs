@@ -787,7 +787,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 ///
 /// ### 🔴 `rust-toolchain.toml` —— 一个仓内文件，换掉 `cargo` 和 `rustc` **本身**
 ///
-/// 〔`K-G2` `D3` 08-28 逮到；下面的读数是 08-29 回修那一拍**我自己复打的**，
+/// 〔`K-G2` `D3` 08-28 逮到；下面的读数是 08-29 回修时**复打的**，
 /// 量具：一次性 crate `/home/user/.cache/kg2r4-probe-tc` + 透明代理假工具链
 /// `/home/user/.cache/kg2r4-fake-tc`（`bin/{cargo,rustc,rustdoc}` 各是「记一笔日志 →
 /// `exec` 真的那一个」），日志 `/home/user/.cache/kg2r4-tc.log`；`rustup 1.29.0`，
@@ -928,7 +928,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// **`run_gate_sum cargo 8 …` 那条 cargo 命令**与 **`run_gate_sum()` 那个函数**，
 /// ⚠ **连 `gate.sh` 顶上那一行 `set -uo pipefail` 一起复刻**，
 /// 被测对象是本工作树、`CARGO_TARGET_DIR` 独立）。
-/// ⚠ **`K-R5` 09-02 那一拍换了一把**（同样是复刻那三样，
+/// ⚠ **`K-R5` 09-02 那次换了一把**（同样是复刻那三样，
 /// 但**跑在沙箱里**、`CARGO_TARGET_DIR` 落 `.claude/pm-targets/`，
 /// 并且复刻了 `.claude/devbox/gate` 里那句 `mkdir -p "$HOME/.claude/projects"` ——
 /// 少了它 `history` 那条围栏判据会因为「目录不存在」被拒，基线**假红**；09-02 现打过这个反例）。

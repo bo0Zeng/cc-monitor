@@ -524,22 +524,22 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         (
             "wf1_real_powershell_add_then_remove_restores_the_user_path",
             "不是判据是**读数**：要一个 PowerShell（`CCM_PWSH`，收一个 `.ps1` 路径的程序；本机用容器里的 PowerShell 7）\
-             跑生成的用户级 PATH 加 / 撤两段（注册表换替身）。谁什么时候跑：改 `profile_installer.rs` 那两段渲染的那一拍，交付前跑一趟、把结果贴进报告。",
+             跑生成的用户级 PATH 加 / 撤两段（注册表换替身）。谁什么时候跑：改 `profile_installer.rs` 那两段渲染时，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
             "不是判据是**读数**：同上一条要一个 PowerShell（`CCM_PWSH`），跑 Windows 那一形的 ccm 探测串三种情形。\
-             谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 的那一拍，交付前跑一趟、把结果贴进报告。",
+             谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 时，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
             "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
-             谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 的那一拍，交付前跑一趟、把结果贴进报告。",
+             谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 时，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
             "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），核 `platform/console_text_tests.rs` 那段 936 替身字节就是 PowerShell 在 936 控制台下往 stderr 写的。\
-             谁什么时候跑：改那段替身字节或 `platform/console_text.rs` 的那一拍，交付前跑一趟、把结果贴进报告。",
+             谁什么时候跑：改那段替身字节或 `platform/console_text.rs` 时，交付前跑一趟、把结果贴进报告。",
         ),
         (
             "the_readings_behind_the_two_thresholds",
@@ -553,7 +553,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的后端二进制（起成本机常驻后端，\
              stdio 载体、私有 HOME / TMUX_TMPDIR）。触发器是读数脚本 `tests/evidence/SR1a-link-loopback.py --monitor`\
              （它起 sshd、设好 `SR1A_LOOPBACK` 再按名字跑这一条，并核输出里那句 `SR1A-LOOPBACK-MONITOR ok`）。\
-             门禁沙箱里起不了 sshd ⇒ 进不了门禁。谁什么时候跑：改 `dial_host` / `link_mux` / `ssh_link` / 后端 `dial/` 的那一拍，\
+             门禁沙箱里起不了 sshd ⇒ 进不了门禁。谁什么时候跑：改 `dial_host` / `link_mux` / `ssh_link` / 后端 `dial/` 时，\
              交付前跑一趟、把输出贴进报告。",
         ),
         (
@@ -561,7 +561,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
              触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
              核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `sftp.rs` 部署那几问 / `sftp_pool.rs` 中继 /\
-             `dial_host::RemoteFs` / 后端 `dial/sftp.rs` · `control/transfer.rs` 的那一拍，交付前跑一趟、把输出贴进报告。",
+             `dial_host::RemoteFs` / 后端 `dial/sftp.rs` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
         ),
         (
             "a_real_backend_feeds_local_lines_through_the_production_read_loop",
@@ -569,7 +569,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              `CLAUDE_CONFIG_DIR` / `TMUX_TMPDIR`）＋ `/proc`（冒充会话的 `sleep` 要有启动时刻）。触发器是读数脚本 \
              `tests/evidence/CF1-local-lines.py`（设好 `CF1_BACKEND` 再按名字跑这一条，并核输出里那句 `CF1-LOCAL-LINES ok`）。\
              门禁那一格不先编后端二进制 ⇒ 进不了门禁。谁什么时候跑：改本机内容那条路（`local_lines` · 两条本机读循环 · \
-             `stream_source::consume_local` / `LineIntake` · 后端 `observe/watcher.rs` 的 tail-only）的那一拍，交付前跑一趟、把输出贴进报告。",
+             `stream_source::consume_local` / `LineIntake` · 后端 `observe/watcher.rs` 的 tail-only）时，交付前跑一趟、把输出贴进报告。",
         ),
         (
             "screenshot_for_the_shots_tool",

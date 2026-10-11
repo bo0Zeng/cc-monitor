@@ -151,7 +151,7 @@ fn now_ms() -> i64 {
 
 type Emit = Box<dyn Fn(&UiErrorPayload) + Send + Sync>;
 
-/// 出口（`lib.rs` setup 那一拍由 `LoggingState::install_error_emitter` 装上；之前的只记日志）。
+/// 出口（`lib.rs` setup 时由 `LoggingState::install_error_emitter` 装上；之前的只记日志）。
 static EMIT: RwLock<Option<Emit>> = RwLock::new(None);
 /// 设置「日志」页那个开关（后台出错 · 弹提示）。
 static ENABLED: AtomicBool = AtomicBool::new(true);

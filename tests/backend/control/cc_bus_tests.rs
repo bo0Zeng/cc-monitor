@@ -147,7 +147,7 @@ fn every_shelled_out_command_carries_a_written_ruling() {
     assert!(
         ghosts.is_empty(),
         "`TRANSCALLS` 里这几条**今天已经不转调了**：{ghosts:?} —— 裁定过期了，\n\
-             收进后端的那一拍要**同轮**把它这一行删掉（不删就是一条幽灵，\n\
+             收进后端时要**同时**把它这一行删掉（不删就是一条幽灵，\n\
              下一个人会照着一份不成立的理由做判断）。"
     );
     for (cmd, face, why, unlock) in TRANSCALLS {

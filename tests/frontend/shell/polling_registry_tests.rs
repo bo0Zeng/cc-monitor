@@ -387,7 +387,7 @@ fn every_data_poll_names_its_event_source_and_owner() {
         }
     }
     // 地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；`tab-session-actions.ts` 的
-    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那一拍少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
+    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那次少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
     assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }

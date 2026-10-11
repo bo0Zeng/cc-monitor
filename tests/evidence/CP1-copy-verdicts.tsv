@@ -89,12 +89,12 @@ src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
-src/frontend/filewin/src/fonts.rs:305	启格求码象	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表那一拍 ＋9 −3 之后的现文）
+src/frontend/filewin/src/fonts.rs:305	启格求码象	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表时 ＋9 −3 之后的现文）
 src/frontend/filewin/src/fonts.rs:328	·…→、「」一上下不与丢两个中串为主了交亮代以件份会传位作侧保做先全关内再写出列刚删别到制刷前动勾化原去发取口只可台合同名后含命器回围在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:329	大失字存它完容对小尔就屏已布帧并序建开当录往径态成或截打扫把拒拖按换据排接搜撤操改数整文断新时是更最有本机权条样根框次此段比没法消点物状	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:330	用的盖目相看着确称程空窗端符第答类索约级组终经结绝编者能节范行表被要覆览认请读负败起超路跳载辑输过这进远连那部里重销错闭问限除非须首高（），：	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:339	值择置间需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/backend/lib.rs:1372	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              Windows 后台机制未定 ⇒ **暂时不做**；\n              将来选定机制的那一拍一并给出等价物。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1372	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              Windows 后台机制未定 ⇒ **暂时不做**；\n              将来选定机制时一并给出等价物。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1381	「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \n              ⇒ 等 Windows 后台机制选定（未定）时一并给出等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1389	「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 Windows 后台机制选定，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1396	给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；Windows 后台机制将来不论选哪种，\n              「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\n              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
@@ -203,7 +203,7 @@ src/backend/plan/product.rs:55	在	保留	[不对外] pb dump 的文件对账值
 src/backend/plan/product.rs:56	缺	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
 src/backend/plan/product.rs:57	空	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
 src/backend/plan/product.rs:58	坏	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
-src/backend/lib.rs:1733	计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\n              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1733	计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\n              Windows 后台机制定了、`terminal-input` 还上时一起还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1741	与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/plan/needs.rs:22	看全局	保留	[不对外] pb dump 的阶段标（phases[].marks 里那个协议值，不是界面文案）：只拿来认顶块是不是走到交回的关口
 src/backend/plan/command.rs:24	写了 	保留	[不对外] pb view 成了时那一句的开头（协议值，不是界面文案）：只拿来拆出页面路径

@@ -170,8 +170,8 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 // # ⚠ 今天**还没接线**的那一格，如实登记（不写在注释里就等于埋掉）
 //
 // [`record_death`] 的生产调用点该在宿主观测到它死掉的那一刻 ——
-// `local_backend_host.rs::reap_detached`（`c.wait()` 返回那一拍）与
-// `local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
+// `local_backend_host.rs::reap_detached`（`c.wait()` 返回那一刻）与
+// `local_backend.rs::supervise_with_stdio`（读到 EOF 那一刻）。
 // 两处**都不在本件写区** ⇒ 交回里逐字点名，由 PM 落。
 // ⇒ **本段今天证的是「判据分得开、账写得下、写不进去会出声」，证不了「它已经被调用过」。**
 // 上面那两处后来接上了（判据 `backend_policy_tests.rs` 的 `DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
@@ -460,7 +460,7 @@ pub trait DeathSink {
 /// `write_site_registry::WRITE_SITES` 里的落点。本模块一个 `fs::` 调用都没有。
 ///
 /// ⚠ **诚实边界**：`tracing` 的语义是「没有 subscriber 就丢掉」。
-/// `logging.rs` 在 setup 那一拍才装 subscriber ⇒ **在那之前记的一笔会被静默丢掉**，
+/// `logging.rs` 在 setup 时才装 subscriber ⇒ **在那之前记的一笔会被静默丢掉**，
 /// 而本落点看不见这件事（`tracing::error!` 没有返回值）。
 /// ⇒ 所以 [`record_death`] **不把账只交给落点**：那张进程内的表照样更新，
 /// 界面上的读数不跟着落点一起消失。

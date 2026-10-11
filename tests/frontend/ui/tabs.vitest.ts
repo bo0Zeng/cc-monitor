@@ -4709,8 +4709,8 @@ describe("〔U4b〕main.ts 接线", () => {
     expect([
       n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
-      n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一拍「各台都报完」
-      n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一拍：收空组 · 交「启动时记住的那一格」
+      n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一刻「各台都报完」
+      n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一刻：收空组 · 交「启动时记住的那一格」
     ]).toEqual([0, 1, 1, 1]);
   });
   // 「那台机器看不见了」主窗接一处（入口脚本没有 DOM 判据够得着）；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。

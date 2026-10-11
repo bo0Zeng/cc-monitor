@@ -53,7 +53,7 @@ export class FakeBackend {
   readonly unhandled: string[] = [];
   private emit: Emit = () => undefined;
   private readonly subs = new Map<number, Sub>();
-  /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
+  /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一刻按机器表算，这里照样算）。 */
   private readonly listedOrigins = new Set<string>();
   /** 交给无头壳的那几条订阅的编号。 */
   private readonly shellSubs = new Set<number>();

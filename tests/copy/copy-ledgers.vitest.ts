@@ -146,7 +146,7 @@ describe("CP1 · 存疑带裁决台账与普查两向相等", () => {
       if (r === null) return;
       const report = r.CP1;
       // 反空真：正控在量具那边（临时树里现造恰好一句存疑带样本，普查必须恰好认出它，没过即退 3）。
-      // 原来是地板 300：全量抽表之后存疑带本来就该变小（合并那一拍 241），地板把「抽对了」读成「尺子坏了」。
+      // 原来是地板 300：全量抽表之后存疑带本来就该变小（合并时 241），地板把「抽对了」读成「尺子坏了」。
       expect(report.probe_ok, `正控没过：普查在临时树里认出的是 ${JSON.stringify(report.probe_got)} ⇒ 普查空转`).toBe(true);
       expect(report.band).toBeGreaterThan(0);
       expect(

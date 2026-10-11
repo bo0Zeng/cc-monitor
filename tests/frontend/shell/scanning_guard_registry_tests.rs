@@ -493,7 +493,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
 ///
 /// ⚠ **诚实边界（别把这条读大）**：今天的口径是**按名字的闭集**，
 /// 按构造就不会过采 ⇒ 下面那几格**此刻是廉价的**，它们不是在证明今天的口径准。
-/// 它们承的是**将来**那一拍：谁把闭集换成一族形状，这几格当场红。
+/// 它们承的是**将来**那一刻：谁把闭集换成一族形状，这几格当场红。
 #[test]
 fn the_registry_table_recogniser_does_not_say_yes_to_every_const_slice() {
     // 正：闭集里的每一个名字都要真的被认出来 ——

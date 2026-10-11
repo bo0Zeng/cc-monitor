@@ -5231,7 +5231,7 @@ mod tests;
 #[path = "../../../../tests/frontend/filewin/shell_keys_tests.rs"]
 mod keys_tests;
 
-/// 开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
+/// 开窗后第一拍（窗口几何有了的那一帧）把窗口夹进 monitor 交来的工作区，之后原样转交。
 struct FitOnce<A> {
     inner: A,
     work: Option<host_core::WorkArea>,
@@ -5261,7 +5261,7 @@ impl<A: eframe::App> eframe::App for FitOnce<A> {
     }
 }
 
-/// [`FitOnce`] 那一拍发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
+/// [`FitOnce`] 那一帧发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
 /// `crate::fit_into_work_area`（Tauri 那几扇窗也用它），再换回逻辑点。本来就在里面 ⇒ 空。
 pub(crate) fn fit_commands(
     outer: egui::Rect,

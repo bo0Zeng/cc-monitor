@@ -71,7 +71,7 @@ impl Palette {
         }
     }
 
-    /// 没装主题时：从 egui 当下的样子推（判据夹具走这一支；生产开窗那一拍就装了主题）。
+    /// 没装主题时：从 egui 当下的样子推（判据夹具走这一支；生产开窗那一帧就装了主题）。
     pub fn of_visuals(v: &egui::Visuals) -> Self {
         Self {
             bg: v.panel_fill,

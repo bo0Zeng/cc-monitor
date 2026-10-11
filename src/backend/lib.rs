@@ -205,7 +205,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不重装（p1r / p1t / G2 / p2d 那四次的同一个形状）。
 ///   🔴 **别把这条读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里
 ///   这一版只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
-///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍。
+///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）在发版时做。
 ///
 /// - p2f-build-stamp：**这一份二进制第一次说得出自己是谁。**
 ///   两件事同拍落：① 下面那个 [`CC_MONITOR_BUILD_STAMP`] —— 一段**保证连续**的
@@ -225,7 +225,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   （落进 `unknown argument`），而调用方判「这台机有没有这条能力」看的是 build_id
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
-///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）在发版时做，
 ///   **没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
 ///   🔴 **别把它读成「远端画面预览通了」**：这一版只出后端这一侧的原语，
 ///   monitor 那条远端抓屏命令一个字节没动 —— 欠账换了个名字，没有被结掉。
@@ -240,7 +240,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
 ///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
+///   在发版时做，源码这一半**不做**（源码里不铺 `src/frontend/shell/embedded-backends/`）。
 ///   🔴 **别把它读成「用量探针搬进后端了」**：这一版只出后端这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
 ///
@@ -255,7 +255,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   是它的 `hello.commands` 里**根本没有这两条** ⇒ monitor 的 `InboundClient::accepts`
 ///   当场判 `CallError::Unsupported`、一个字节都不发（`bus-send` 是现成先例）。
 ///   ⇒ 探针在已部署的旧远端上整条不可用，而判 stale 只看 build_id。
-///   ★ 同 p2d / p2e / p2g / p2h：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**。
+///   ★ 同 p2d / p2e / p2g / p2h：这一半是**源码半**，re-embed 在发版时做，源码这一半**不做**。
 ///
 /// - p2j-bus-state：新增 `bus-state` —— cc-bus 的**具名读命令**，
 ///   总线名单 ＋ spawn 台账**一次回全**。两个命令面**同拍都动**（`SUBCOMMANDS` 26 → 27、
@@ -267,7 +267,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   那七次的 `unknown argument` + exit 2；帧面那半是 p2i 那次的 `hello.commands` 里没有它
 ///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/` ⇒ 不涉及 re-embed）。
+///   在发版时做，源码这一半**不做**（源码里不铺 `src/frontend/shell/embedded-backends/` ⇒ 不涉及 re-embed）。
 ///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：这一版只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
 ///
@@ -285,7 +285,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   判「这台机上的后端是不是我们这一版」看的就是 build_id ⇒ 减法同样要 bump，
 ///   否则「它变了」这件事在协议面上无人可知。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j 如实登记：这一半是**源码半**，
-///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
+///   re-embed（CI 交叉编译）在发版时做，源码这一半**不做**。
 /// - p2l-rename-daemon-to-backend〔全仓改名一刀〕：**第一次「只换口，不换能力」** ——
 ///   `--daemon-probe` → `--backend-probe`。`SUBCOMMANDS` 仍是 25 条，帧面那半一个字没动。
 ///   ⚠ **必须 bump**：同一条能力换了名字，**两个方向都会断** —— 旧后端不认 `--backend-probe`，
@@ -295,7 +295,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   机械替换第一版曾把它们全改成新名字，那等于宣布「历史上每一版都有 `--backend-probe`」，
 ///   而护栏照样绿（当前指纹与快照一起说了谎）。历史证据不是待同步的副本。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k 如实登记：这一半是**源码半**，
-///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
+///   re-embed（CI 交叉编译）在发版时做，源码这一半**不做**。
 ///
 /// - p2m-files-read-online〔步 `24f` **第二刀**〕：
 ///   **`files-read` 这一族上线** —— 四条**纯读**能力同拍进两个命令面
@@ -318,7 +318,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///      这是设计面的缺口（要补得先在那张表上裁第五条），**不在本刀里自己长出来**。
 ///   ② **消费侧还没有** —— `src/frontend/shell` 那一头一个字节没动。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k / p2l 如实登记：这一半是**源码半**，
-///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做** ——
+///   re-embed（CI 交叉编译）在发版时做，源码这一半**不做** ——
 ///   本工作树没铺 `src/frontend/shell/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的是「这棵树上没有一份对不上的字节」，
 ///   **不是**「字节是对的」（那条边界是它自己头注里逐字写的）。
@@ -341,7 +341,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///    ⇒ 「后端这棵树钉不住」仍然成立，而**那一格换成由壳（`src/frontend/shell`）那棵树钉着**。〕
 /// 上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
 ///   会让进程里那一个监听器跟上名单（`files::browse_watch::keep_watching`），浏览的目录此后一有动静 overlay 就重列。
-///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）在发版时做，
 ///   **不做** —— 源码里不铺 `src/frontend/shell/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
 ///
@@ -363,11 +363,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///    （「没有『已部署的远端缺这些能力』这笔欠账，而无谓的 bump 会让所有远端被判 stale、
 ///    白重装一轮」）。
 /// ② **这一波是多棵树并行**（步 1 在另一棵工作树上）。两棵树各 bump 一次 =
-///    一次合并冲突 ＋ 一个谁也说不清的版本号。**bump 是发版那一拍的动作，不是步的动作。**
+///    一次合并冲突 ＋ 一个谁也说不清的版本号。**bump 是发版时的动作，不是步的动作。**
 /// ③ 本工作树没铺 `src/frontend/shell/embedded-backends/`，`release-gate` 的 ⑬「bump 的同拍要
 ///    re-embed」在这里只答得出「这棵树上没有一份对不上的字节」⇒ 真 bump 也买不到那一半。
 ///
-/// ⇒ **解锁条件（发版那一拍，同轮做完）**：步 1／3 落地、monitor 侧开始发
+/// ⇒ **解锁条件（发版时，同轮做完）**：步 1／3 落地、monitor 侧开始发
 /// `--with-rbind-token` 之后，bump 到 `p2o-rbind-token`（或那一波的合并版本号）
 /// ＋ **同拍 re-embed**。**在那之前这条能力在已部署的远端上是休眠的 —— 这是刻意的。**
 ///
@@ -378,19 +378,19 @@ pub const PROTO_VERSION: u32 = 1;
 /// 线上面这一拍动了：① `files-create/-mkdir/-rename/-delete/-chmod/-write-text`
 /// 两个命令面各 ＋6（写面只从 `stream/inbound/` 那一扇门进，见 `files::module_boundary_guard`）；
 /// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
-/// ★ re-embed 归发版那一拍（同 p2d…p2n 的登记）；本机 `--native` 那份由合并那一拍重打。
+/// ★ re-embed 在发版时做（同 p2d…p2n 的登记）；本机 `--native` 那份发版时重打。
 ///
 /// ★★★ **p2p-readface-outline-acctiso-spawn-504**（2026-09-24）：
 /// 子命令 ＋21 —— C1 只读查询面八条上帧面（及其自动派生的 CLI 面）· SE1 `--list-user-inputs` ·
 /// A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `bus-spawn`（两个命令面）；
 /// ＋ 一处**行为**变更（R2：中转传输失败回 504 并说清卡在哪一步）。
-/// ★ re-embed 归发版那一拍（同 p2d…p2o）。
+/// ★ re-embed 在发版时做（同 p2d…p2o）。
 ///
 /// ★★★ **p2q-no-ccm-self**（2026-09-24）：**子命令集一个没变，是行为变了**
 /// —— 后端不再读 `CCM_SELF`，重起自己只认 `ccm::self_invocation`（CC1 那一刀之上）；远端 shim 回到一行裸 `exec`。
 /// ⚠ 旧后端配新 shim ⇒ 容器路内层缺 `ccm` 那个词（入口②的老病复发）⇒ **必须**让已部署的远端被判 stale。
 /// 照 p1v 的先例（只改行为/wire、不改子命令 ⇒ bump 但**不**往 `SUBCOMMAND_HISTORY` 加行）。
-/// ★ re-embed 归发版那一拍。
+/// ★ re-embed 在发版时做。
 ///
 /// ★★★ **p2r-apikey-naming**（2026-09-24）：**子命令集一个没变，是行为变了** ——
 /// 上游选择读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
@@ -564,42 +564,42 @@ pub const PROTO_VERSION: u32 = 1;
 /// 启动器一张白名单 `launcher_refused_char`（本机 / 远端载荷 / ccm 同一条）· base URL 写口与装表同一个谓词（新 crate `upstream-url-core`）· tmux Gate 1 并进 gate-core。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4h-search-index-hostkey**（2026-09-26，SX1 ＋ VIS2 合并那一拍）：行为 —— `history-search` 背后常驻内存增量索引（应答逐字节不变）·
+/// ★★★ **p4h-search-index-hostkey**（2026-09-26）：行为 —— `history-search` 背后常驻内存增量索引（应答逐字节不变）·
 /// watcher `agent_home` 不在先挂父目录、出现后挂它本身（`rewatch_agent_home`）· `DialAck` 多一格 `fingerprints`（additive，`ACK_V` 不动）。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4i-bus-mcp-tmux-reads**（2026-09-26）：子命令 ＋3 `--bus-inbox` · `--mcp-read` · `--tmux-list`（帧命令同名 ＋3）。
 /// ＋ 行为：`bus-state` 读 `cc-list --tsv`（应答形状变）· `kill` 成功后按 pane pid `cc-kill` 注销 · `BUS_ID_RECIPE` 读会话名走 UTF-8 客户端（`-u`）。
 ///
-/// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26，RELAY 合并那一拍）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关）·
+/// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关）·
 /// 注入地址不带会话段，路由 `/s|t/<agent>/<账号>` 两段（`relay_route_core`）· `launch-endpoint` 入参去掉 `key` · 中转从 claude 自己的请求头取流标签
 /// （头名登记在适配层 `DefaultUpstream::session_header`）。升级那一刻带旧三段地址的在飞会话会断（不留兼容）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4k-remote-resident**（2026-09-26，HOST 合并那一拍）：子命令 ＋2 `--resident-ensure [--replace]` / `--resident-stop`（远端后端常驻，与本机同形）。
+/// ★★★ **p4k-remote-resident**（2026-09-26）：子命令 ＋2 `--resident-ensure [--replace]` / `--resident-stop`（远端后端常驻，与本机同形）。
 /// ＋ 协议：链路新用法 `tunnel`（池里那条 SSH 上开 direct-tcpip 到远端回环口）· 常驻后端多客户（每条连接各一份 watcher / inbound / writer，tap 扇出）·
 /// attach 行可带 `flags` · 远端中转在远端常驻后端进程内起、远端 Tap 回 monitor。
 ///
-/// ★★★ **p4l-ccm-shell**（2026-09-26，AL3 合并那一拍）：行为 —— ccm 是 claude 的壳，壳层选项不加前缀、其余原样交 claude；
+/// ★★★ **p4l-ccm-shell**（2026-09-26）：行为 —— ccm 是 claude 的壳，壳层选项不加前缀、其余原样交 claude；
 /// `--tmux` / `--agent` 让给 claude、ccm 自己的改 `--ccm-tmux` / `--ccm-agent`；`ccm new` 保留、位置词 `attach` 交 claude、接 tmux 用 `--attach`；
 /// 启动器按空格拆词 ＋ 打头 `~/` 展开；相对 `--cwd` 补绝对再过 §47；诊断口 `--ccm-print` / `--ccm-help` / `--ccm-version`；`CCM_VERSION` 6。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4m-tail**（2026-09-26，TAIL 合并那一拍）：`build_id_guard` 指纹补数 `SUBCOMMAND_OPTIONS`（`#options` 段，W5-AUX `--stdin-line` 那次没红的漏洞）⇒ 追加历史行。
+/// ★★★ **p4m-tail**（2026-09-26）：`build_id_guard` 指纹补数 `SUBCOMMAND_OPTIONS`（`#options` 段，W5-AUX `--stdin-line` 那次没红的漏洞）⇒ 追加历史行。
 /// ＋ 行为：常驻后端按 `creds_core::store::monitor_data_dir` 自推数据目录两格（谁起都一样，那台自己的 monitor 可收养）· 多客户后 `Adopt::Busy` 删 ·
 /// 后端 Gate 1 并进 gate-core、不再拒 `=` · `http://[::1]` 不带端口按默认口读 · CP2c 续抽空 14 份后端文案。
 ///
-/// ★★★ **p4n-backend-log**（2026-09-26，GAP1 合并那一拍）：子命令 ＋1 `--backend-log`、帧命令 ＋1 `backend-log`（远端常驻后端的 stderr 落
+/// ★★★ **p4n-backend-log**（2026-09-26）：子命令 ＋1 `--backend-log`、帧命令 ＋1 `backend-log`（远端常驻后端的 stderr 落
 /// `~/.cc-monitor/logs/backend/stderr.log`，机器页「日志」经它读尾巴）。＋ 行为：`history-find` 走 SX1 常驻索引 · 账号目录不在 / 重建不再失聪 ·
 /// 远端历史判活由那台后端 `--session-accounts` 答。
 ///
-/// ★★★ **p4o-resident-stop**（2026-09-27，STOP 合并那一拍）：行为 —— `--resident-stop` 成为同机监督者（SIGTERM → 宽限期内按 pidfd 等 →
+/// ★★★ **p4o-resident-stop**（2026-09-27）：行为 —— `--resident-stop` 成为同机监督者（SIGTERM → 宽限期内按 pidfd 等 →
 /// 到点 SIGKILL → 回 `graceful` / `killed` / `not_running`），选项 ＋1 `--grace`；本机远端同一条停法，monitor 只发一次、拿回结局；停完收掉陈 pid 记录。
 ///
-/// ★★★ **p4p-copy-extract**（2026-09-27，COPY 合并那一拍）：行为 —— CP2c 余下 8 份的对外文字进文案表（后端 `files/mod` 等按码出话）·
+/// ★★★ **p4p-copy-extract**（2026-09-27）：行为 —— CP2c 余下 8 份的对外文字进文案表（后端 `files/mod` 等按码出话）·
 /// 拨号失败按类型分阶段（kex 失败归 `other`，不再报成 hostkey）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4q-hello-unavailable**（2026-09-27，NET2 合并那一拍）：协议 —— `hello.unavailable` 真填（按这台机器现算，含 unix 权限位一维 `unix_mode_unavailable`）;
+/// ★★★ **p4q-hello-unavailable**（2026-09-27）：协议 —— `hello.unavailable` 真填（按这台机器现算，含 unix 权限位一维 `unix_mode_unavailable`）;
 /// 中转在飞上界挪到宿主 `relay/listen.rs`。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4r-ccm-is-backend**（2026-09-27，E2 合并那一拍）：`ccm` 就是后端本体（本机远端各一个文件 `~/.cc-monitor/bin/ccm`，shim / 副本 / `backendPath` 删）·
+/// ★★★ **p4r-ccm-is-backend**（2026-09-27）：`ccm` 就是后端本体（本机远端各一个文件 `~/.cc-monitor/bin/ccm`，shim / 副本 / `backendPath` 删）·
 /// `ccm [交给 claude 的…] -- [ccm 自己的…]`（按最后一个 `--` 切，后端词只紧跟打头的 `--`；后端调自己一律带 `--`）· `--ccm-print` 归 ccm、帧命令 ＋1 `ccm-probe` ·
 /// 载荷先看用户自设的 `ANTHROPIC_BASE_URL`。
 ///
@@ -608,100 +608,100 @@ pub const PROTO_VERSION: u32 = 1;
 /// seq 跨截断换代（`session_file_reread` ＋ `SeqCounter::restart`）· `Gap.to_seq` 可缺 · A6 退休前补读 · 注入噪声规则一份（`search-core::user_text`）·
 /// 搜索索引起来就后台建、常驻 64 MiB 上界 · `--stdin-line` 扩到 argv 一族 · ack 带 `jump_fingerprints` · ccm resume 在跑就接上 · 全景 `--probe` 形状代号 · 凭据模板说明进文案表。
 ///
-/// ★★★ **p4t-ccm-new-right**（2026-09-27，E2 续合并那一拍）：行为 —— `new` 只能写在 `--` 右边第一个（`ccm new` 整行交 claude）·
+/// ★★★ **p4t-ccm-new-right**（2026-09-27）：行为 —— `new` 只能写在 `--` 右边第一个（`ccm new` 整行交 claude）·
 /// 路由不看 argv0（只有「打头 `--` ＋ 后端词」进后端，其余走 ccm；入口②「`<bin> ccm …`」删）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4u-resync-offer**（2026-09-27，RESYNC 续合并那一拍）：子命令 −1 `--resync`（CLI 面摘，只留帧面）· `resync` 应答带当下的
+/// ★★★ **p4u-resync-offer**（2026-09-27）：子命令 −1 `--resync`（CLI 面摘，只留帧面）· `resync` 应答带当下的
 /// `unavailable` / `uncancellable`（与 hello 同一个函数）· `resync{sid}` 顺手从游标补读 jsonl（tab「重新读取」）· SIGUSR1 按 `watcher::LIVE` 一张名单戳。
 ///
-/// ★★★ **p4v-resume-running-elsewhere**（2026-09-27，FIX 续合并那一拍）：行为 —— ccm resume 时那个会话在跑但不在 ccm 起的 tmux 里 ⇒ 拒并说 pid
+/// ★★★ **p4v-resume-running-elsewhere**（2026-09-27）：行为 —— ccm resume 时那个会话在跑但不在 ccm 起的 tmux 里 ⇒ 拒并说 pid
 /// （判活与 watcher 起步初扫同一份，由 `main` 注入）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4w-no-fallback**（2026-09-27，DEL 合并那一拍）：子命令 −3 `--relay` · `--relay-ensure` · `--relay-status`（帧命令 −2）· 远端只剩常驻（流模式回落删，
+/// ★★★ **p4w-no-fallback**（2026-09-27）：子命令 −3 `--relay` · `--relay-ensure` · `--relay-status`（帧命令 −2）· 远端只剩常驻（流模式回落删，
 /// 非 unix 远端明说不支持）· 中转只住常驻后端进程内 · tee 只剩 tap 口（NDJSON 落点删）。
 ///
-/// ★★★ **p4x-relay-state-in-process**（2026-09-27，DEL 续合并那一拍）：子命令 −2（`--apikey-routing` · `--launch-endpoint` 只留帧面）·
+/// ★★★ **p4x-relay-state-in-process**（2026-09-27）：子命令 −2（`--apikey-routing` · `--launch-endpoint` 只留帧面）·
 /// 「我们的中转在不在」读常驻后端进程内的监听状态（差分 HTTP 探针删）· 非 unix 远端归「永久不支持」、流收工不再按退避重连。
 ///
-/// ★★★ **p4y-no-raw-keys**（2026-09-27，RST 续合并那一拍）：协议 —— 后端 `launch` 的 `send-keys-raw` mode 删（之后零生产调用者）；
+/// ★★★ **p4y-no-raw-keys**（2026-09-27）：协议 —— 后端 `launch` 的 `send-keys-raw` mode 删（之后零生产调用者）；
 /// `launch` 只剩 `create-or-attach` / `send-into` 两个 mode。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p4z-assets-in-backend**（2026-09-27，MIG-3a 前半合并那一拍）：子命令 ＋7（MCP 增删 · MCP 同步三问 · skill 装卸），后端新模块 `assets/`；
+/// ★★★ **p4z-assets-in-backend**（2026-09-27）：子命令 ＋7（MCP 增删 · MCP 同步三问 · skill 装卸），后端新模块 `assets/`；
 /// `assets-sync` 多认只给 `origin` 的调用（查握手登记的可达表）。MCP 编辑 / 同步、skill 装卸的判定与写都在被写那台。
 ///
-/// ★★★ **p5a-resync-caught-up**（2026-09-28，REREAD 续合并那一拍）：协议 —— `resync` 应答 ＋1 格 `caught_up`（本次从游标补读出的行数合计），
+/// ★★★ **p5a-resync-caught-up**（2026-09-28）：协议 —— `resync` 应答 ＋1 格 `caught_up`（本次从游标补读出的行数合计），
 /// 给「重新读取」按台说补读了几条。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p5b-launch-in-backend**（2026-09-28，MIG-2 合并那一拍）：子命令 ＋2、帧命令 ＋3 —— 起会话渲染核心进后端 `control/launch_render/`
+/// ★★★ **p5b-launch-in-backend**（2026-09-28）：子命令 ＋2、帧命令 ＋3 —— 起会话渲染核心进后端 `control/launch_render/`
 /// （`launch-render-cli` · `launch-render-payload` · `launch-local`）；`launch-endpoint` 答 `{baseUrl}` 或拒 `relay_down`；㊴ `exit-policy-read` / `-set` 出成品 `said`。
 ///
-/// ★★★ **p5c-aliases-hub-in-backend**（2026-09-28，MIG-3a 后半合并那一拍）：别名整族进 `assets/aliases/`（方言按这台机器自己判）·
+/// ★★★ **p5c-aliases-hub-in-backend**（2026-09-28）：别名整族进 `assets/aliases/`（方言按这台机器自己判）·
 /// skill 接入面与 SKILLS 表进 `agents/claudecode/` · MCP 推拉 / skill 装改本机后端当枢纽（`assets/hub.rs`，写前再核来源）· cc-bus 由后端装、装卸账复用 skill 装记录。
 ///
-/// ★★★ **p5d-deploy-plan-in-backend**（2026-09-28，MIG-3b 合并那一拍）：新帧命令 `hooks-diag` · `deploy-plan`（纯判定在共享 crate `deploy-core`）·
+/// ★★★ **p5d-deploy-plan-in-backend**（2026-09-28）：新帧命令 `hooks-diag` · `deploy-plan`（纯判定在共享 crate `deploy-core`）·
 /// 任务推送走 `changed/tasks` 流（`changed {tasks, key: sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
 ///
-/// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
+/// ★★★ **p5e-session-ledger-in-backend**（2026-09-28）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
 /// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（手机端不读）。
 ///
-/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
+/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
 /// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
 ///
-/// ★★★ **p5g-acct-iso-in-backend**（2026-09-28，MIG-3a 续合并那一拍）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·
+/// ★★★ **p5g-acct-iso-in-backend**（2026-09-28）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·
 /// 枢纽远端那一跳按原码回（`stale` / `refused` …）· 文件窗口首屏由窗口进程自己问、回一行。
 ///
-/// ★★★ **p5h-footprint-panorama-in-backend**（2026-09-28，MIG-3b 续合并那一拍）：足迹申报与判定进后端 `footprint/`（Claude 布局那部分在 `agents/claudecode/footprint.rs`），`footprint-report` 替 `footprint-probe` ·
+/// ★★★ **p5h-footprint-panorama-in-backend**（2026-09-28）：足迹申报与判定进后端 `footprint/`（Claude 布局那部分在 `agents/claudecode/footprint.rs`），`footprint-report` 替 `footprint-probe` ·
 /// `panorama-edit` 进后端（CAS 落盘）· `pubkey-push` / `authorized-keys-add` · `deploy-plan` 首连指纹交 monitor 固化 · `files` 链路 `stat` 删。
 ///
-/// ★★★ **p5i-footprint-two-beats**（2026-09-28，MIG-3b 收口合并那一拍）：协议 —— `footprint-report` 入参 `{client?: {home, agentHome, path?}}`、应答即整份报告（`clientAsks` 删）；`HostScope::Client` 由本机后端按 monitor 交的环境自己 stat。子命令没变。
+/// ★★★ **p5i-footprint-two-beats**（2026-09-28）：协议 —— `footprint-report` 入参 `{client?: {home, agentHome, path?}}`、应答即整份报告（`clientAsks` 删）；`HostScope::Client` 由本机后端按 monitor 交的环境自己 stat。子命令没变。
 ///
-/// ★★★ **p5j-late-server-reconnectable**（2026-09-28，MIG-1 续四合并那一拍）：行为 —— 会话账本每一份可观测 tmux 快照都推「没报过的」可重连（后端先起、tmux server 后起不再漏报）。子命令没变。
+/// ★★★ **p5j-late-server-reconnectable**（2026-09-28）：行为 —— 会话账本每一份可观测 tmux 快照都推「没报过的」可重连（后端先起、tmux server 后起不再漏报）。子命令没变。
 ///
-/// ★★★ **p5k-records-in-backend**（2026-09-28，MOD 合并那一拍）：Claude 记录抽取进后端 `agents/claudecode/`，会话正文四条走通道、前端只收成品 · 窄探针 ＋ `end_turn` 子串闸（40 万行 1706 → 59 ms）·
+/// ★★★ **p5k-records-in-backend**（2026-09-28）：Claude 记录抽取进后端 `agents/claudecode/`，会话正文四条走通道、前端只收成品 · 窄探针 ＋ `end_turn` 子串闸（40 万行 1706 → 59 ms）·
 /// 顶层归 `assets/` `history/` `faces/` `stream/`（`remote_ask` 进 `stream/`）· 文件模块只依 platform / common / 基础设施 · argv 只在 `main` 读一次、退出口只 `main` 与 `exit_after_drain`。
 ///
-/// ★★★ **p5l-relay-codes-arrival**（2026-09-28，FIX3 合并那一拍）：中转状态码 —— 我们拒的 4xx（`/t/` 未登记 404）· 上游超时 504 / 其余 502 · `WriteFailed` 回 502 · 中转自答的响应带 `X-Cc-Monitor-Reason`；
+/// ★★★ **p5l-relay-codes-arrival**（2026-09-28）：中转状态码 —— 我们拒的 4xx（`/t/` 未登记 404）· 上游超时 504 / 其余 502 · `WriteFailed` 回 502 · 中转自答的响应带 `X-Cc-Monitor-Reason`；
 /// `live` 格带 `rbind_token`（起会话「真成功」认它）· 本机 ccm 探针补 `at=`。子命令没变。
 ///
-/// ★★★ **p5m-terminal-ssh-in-backend**（2026-09-28，FIX4 合并那一拍）：新帧命令 `terminal-ssh`（远端开终端的 ssh 外壳 / PowerShell 载荷由本机后端渲）· `tmux-name-mint`（tmux 名只在后端派生）· `panorama-uninstall`；
+/// ★★★ **p5m-terminal-ssh-in-backend**（2026-09-28）：新帧命令 `terminal-ssh`（远端开终端的 ssh 外壳 / PowerShell 载荷由本机后端渲）· `tmux-name-mint`（tmux 名只在后端派生）· `panorama-uninstall`；
 /// `kill` 应答 ＋ `bus: {removed, failed, unread}`。⑬「待迁」清空。
 ///
-/// ★★★ **p5n-files-toctou**（2026-09-28，FIX5 合并那一拍）：行为 —— 文件管理写面闭 TOCTOU：不覆盖改名 `platform::fs::rename_noreplace`（Linux `renameat2`）· 复制与新建先写旁名再不覆盖上位 · 第三层开文件全程 `O_NOFOLLOW`；文案扫描补 CSS `content:` / 入口 HTML 与 R1 认形状。子命令没变。
+/// ★★★ **p5n-files-toctou**（2026-09-28）：行为 —— 文件管理写面闭 TOCTOU：不覆盖改名 `platform::fs::rename_noreplace`（Linux `renameat2`）· 复制与新建先写旁名再不覆盖上位 · 第三层开文件全程 `O_NOFOLLOW`；文案扫描补 CSS `content:` / 入口 HTML 与 R1 认形状。子命令没变。
 ///
-/// ★★★ **p5o-files-grep-search-merge**（2026-09-28，J15 ＋ FILES3 合并那一拍）：新帧命令 `history-search-merge`（多机搜索合并排序进本机后端，`search-core::sort_by_recency`）·
+/// ★★★ **p5o-files-grep-search-merge**（2026-09-28）：新帧命令 `history-search-merge`（多机搜索合并排序进本机后端，`search-core::sort_by_recency`）·
 /// `files-grep`（文件管理器按内容搜：不跟链接、不跨文件系统、命中文件数与读字节有上界、可撤；另有 CLI 面）· 删无调用者的 `stream_source::winner_address`。
 ///
-/// ★★★ **p5p-probe-said-link-fallback**（2026-09-28，FIX5 续合并那一拍）：行为 / 协议 —— 盘不认 `RENAME_NOREPLACE` 时普通文件走 `link` ＋ `unlink`、目录拒并出声；
+/// ★★★ **p5p-probe-said-link-fallback**（2026-09-28）：行为 / 协议 —— 盘不认 `RENAME_NOREPLACE` 时普通文件走 `link` ＋ `unlink`、目录拒并出声；
 /// `remote-probe` 结局那一行改人话（版本 · 能用 / 做不到几项 · 往返毫秒）＋ `backendGaps`。子命令没变。
 ///
-/// ★★★ **p5q-panorama-self-report**（2026-09-29，PANO 合并那一拍）：协议 —— `panorama` / `panorama-edit` 请求必带 `shape`（期望的小程序形状由发起方带，后端比 `--probe` 自报的）；
+/// ★★★ **p5q-panorama-self-report**（2026-09-29）：协议 —— `panorama` / `panorama-edit` 请求必带 `shape`（期望的小程序形状由发起方带，后端比 `--probe` 自报的）；
 /// op 表 · 期限档 · 写表（算 op → 写成之后那一步）都由小程序自报，后端零引擎常量；`panorama-edit` 的 `op` 改成「算」op 名；op `subgraph` 删、`neighborhood` 加（跳数由小程序给，前端不算图）。形状代号换代 ⇒ 各台首次打开全景重放一次小程序字节。
 ///
-/// ★★★ **p5r-link-fixes-win3**（2026-09-29，WF2 合并那一拍，WIN3 上一趟读数）：行为 / 协议 —— russh 副本压缩循环 CZ2（撑满就扩、吃光且冲刷完才收工：压缩链路上大块不可压数据不再断）·
+/// ★★★ **p5r-link-fixes-win3**（2026-09-29）：行为 / 协议 —— russh 副本压缩循环 CZ2（撑满就扩、吃光且冲刷完才收工：压缩链路上大块不可压数据不再断）·
 /// `deploy-plan` 多 `leftovers`（部署残件每次连上照删）· 拨号 ack 多 `open_refused`（对端拒端口转发 ⇒ 停止重拨、明说）· `--list-projects` 没有记录树时出错行带码 `no_record_tree`（本机后端认它当零个项目）。子命令没变。
 ///
-/// ★★★ **p5s-win-shell-fixes**（2026-09-29，WF1 合并那一拍，WIN3 上一趟读数）：行为 / 协议 —— PowerShell 单引号字面量只留一个出口（认全五个引号字符）· 流进 Windows 开终端那条路的远端命令不带双引号 ·
+/// ★★★ **p5s-win-shell-fixes**（2026-09-29）：行为 / 协议 —— PowerShell 单引号字面量只留一个出口（认全五个引号字符）· 流进 Windows 开终端那条路的远端命令不带双引号 ·
 /// 执行策略挡住别名块时明说、给标准做法（新帧命令 `powershell-policy-set`，只在用户确认后执行）· 写用户 PATH 保持注册表原类型 · 后端家目录收成 `platform` 一个家 · Windows 上本机 ccm 也现测。
 ///
-/// ★★★ **p5t-monitor-thin**（2026-09-29，THIN 合并那一拍）：monitor 里残留的共享判定全部进后端 —— 远端常驻换不换（`resident-verdict`）· 那台要哪一格字节（`deploy-slot`）· 远端旧 `~/.local/bin/ccm` 认不认得出、删不删（`deploy-retired`）· agent 卡型与判活词表进 `agents/claudecode/cards.rs`（assistant 成品带 `toolCards`，`tmux-list` 每行带 `agent`）· Gate 1 前检删、gate-core 收成后端模块 · branch-core 进 `agents/claudecode/` · acct-core 夹具挪到 feature 后面；共享 crate 只放契约，monitor 只许链契约类。
+/// ★★★ **p5t-monitor-thin**（2026-09-29）：monitor 里残留的共享判定全部进后端 —— 远端常驻换不换（`resident-verdict`）· 那台要哪一格字节（`deploy-slot`）· 远端旧 `~/.local/bin/ccm` 认不认得出、删不删（`deploy-retired`）· agent 卡型与判活词表进 `agents/claudecode/cards.rs`（assistant 成品带 `toolCards`，`tmux-list` 每行带 `agent`）· Gate 1 前检删、gate-core 收成后端模块 · branch-core 进 `agents/claudecode/` · acct-core 夹具挪到 feature 后面；共享 crate 只放契约，monitor 只许链契约类。
 ///
-/// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
+/// ★★★ **p5u-one-data-home**（2026-09-29）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
 ///
-/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（今天全仓那一张表住 `copy_core::io_reason`）。子命令没变。
+/// ★★★ **p5v-plain-copy**（2026-09-29）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（今天全仓那一张表住 `copy_core::io_reason`）。子命令没变。
 ///
-/// ★★★ **p5w-readme-shots**（2026-09-29，SHOTS 合并那一拍）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端足迹那一处给结论；这一档后来随「认出旧装法并清掉」那条链删了）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
+/// ★★★ **p5w-readme-shots**（2026-09-29）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端足迹那一处给结论；这一档后来随「认出旧装法并清掉」那条链删了）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
 ///
-/// ★★★ **p5x-win-rtt-oem**（2026-09-29，P2 合并那一拍）：行为 —— Windows 上读得到连接往返时间（`SIO_TCP_INFO`，压缩判准不变：局域网远端不再压）· PATH 状态探针直写 UTF-8 字节 · 加 / 撤 PATH 失败时报错按控制台代码页解 · `ssh_config` 走统一的家目录 · 中转删无用参数 · 门读盘那一半只从宿主调有判据。子命令没变。
+/// ★★★ **p5x-win-rtt-oem**（2026-09-29）：行为 —— Windows 上读得到连接往返时间（`SIO_TCP_INFO`，压缩判准不变：局域网远端不再压）· PATH 状态探针直写 UTF-8 字节 · 加 / 撤 PATH 失败时报错按控制台代码页解 · `ssh_config` 走统一的家目录 · 中转删无用参数 · 门读盘那一半只从宿主调有判据。子命令没变。
 ///
-/// ★★★ **p5y-panorama-upstream-asks**（2026-09-29，P7 合并那一拍）：协议 —— 代码全景接上游四条：邻域跳数由引擎给 · 符号 id 结构化（`SymbolRef`）· 线上类型由上游导出、前端生成 · 建索引带进度（`panorama` 请求多 `ticket`，新出方向帧 `progress{ticket, cell}`，界面显示「阶段：已做 / 总数」）；re-vendor 到上游 `7eafe64`，形状代号换代 ⇒ 各台首次打开全景重放一次小程序。子命令没变。
+/// ★★★ **p5y-panorama-upstream-asks**（2026-09-29）：协议 —— 代码全景接上游四条：邻域跳数由引擎给 · 符号 id 结构化（`SymbolRef`）· 线上类型由上游导出、前端生成 · 建索引带进度（`panorama` 请求多 `ticket`，新出方向帧 `progress{ticket, cell}`，界面显示「阶段：已做 / 总数」）；re-vendor 到上游 `7eafe64`，形状代号换代 ⇒ 各台首次打开全景重放一次小程序。子命令没变。
 ///
-/// ★★★ **p5z-panorama-zoom-data-page**（2026-09-29，P3 合并那一拍）：行为 —— 全景图可缩放 / 拖拽、按视口适配 · 列宽变了重算行高 · 文案取文口按值在值与汉字之间补 / 去空格（C-L5，TS 与 Rust 同一套）· 数据位置页列出后端住在 `~/.cc-monitor` 里的全部东西（名字进 `relay_route_core` 契约）· CI 的 eslint 改成会拦。子命令没变。
+/// ★★★ **p5z-panorama-zoom-data-page**（2026-09-29）：行为 —— 全景图可缩放 / 拖拽、按视口适配 · 列宽变了重算行高 · 文案取文口按值在值与汉字之间补 / 去空格（C-L5，TS 与 Rust 同一套）· 数据位置页列出后端住在 `~/.cc-monitor` 里的全部东西（名字进 `relay_route_core` 契约）· CI 的 eslint 改成会拦。子命令没变。
 ///
-/// ★★★ **p6a-terminal-prelude-home**（2026-09-29，P5 合并那一拍）：协议 / 行为 —— 开终端的令牌握手前奏整段由后端渲（新帧命令 `terminal-local`；`terminal-ssh` 多收 `rbindToken`），monitor 只开窗 · 家目录规则收成 `creds-core` 唯一一个函数、两侧共用（Windows `USERPROFILE` → `HOME`，其余 `HOME` → `USERPROFILE`）。
+/// ★★★ **p6a-terminal-prelude-home**（2026-09-29）：协议 / 行为 —— 开终端的令牌握手前奏整段由后端渲（新帧命令 `terminal-local`；`terminal-ssh` 多收 `rbindToken`），monitor 只开窗 · 家目录规则收成 `creds-core` 唯一一个函数、两侧共用（Windows `USERPROFILE` → `HOME`，其余 `HOME` → `USERPROFILE`）。
 ///
-/// ★★★ **p6b-deploy-contract**（2026-09-30，P1 合并那一拍）：协议 / 行为 —— `deploy-core` 拆成契约 `deploy-contract` ＋ 后端 `control/deploy_plan.rs` 的判定；本机后端自举改问手上那份字节自己（新一次性子命令 `--place-verdict` · 帧 `place-verdict`）· `deploy-retired` 多入参形 `{text}`（monitor 不再判「是不是我们放的」）· search-core 拆进后端（`agents/claudecode/text.rs` · `observe/search_rules.rs`）· 起会话事实只剩后端一个家（`Adapter.launch`），monitor 画像代码删。
+/// ★★★ **p6b-deploy-contract**（2026-09-30）：协议 / 行为 —— `deploy-core` 拆成契约 `deploy-contract` ＋ 后端 `control/deploy_plan.rs` 的判定；本机后端自举改问手上那份字节自己（新一次性子命令 `--place-verdict` · 帧 `place-verdict`）· `deploy-retired` 多入参形 `{text}`（monitor 不再判「是不是我们放的」）· search-core 拆进后端（`agents/claudecode/text.rs` · `observe/search_rules.rs`）· 起会话事实只剩后端一个家（`Adapter.launch`），monitor 画像代码删。
 ///
-/// ★★★ **p6c-filewin-package**（2026-09-30，P4 合并那一拍）：结构 —— 文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，只说 call / subscribe；开终端经通道交 monitor、命令由后端渲）· 新契约 / 宿主 crate `chan-core` · `host-core` · `filewin-contract` · 壳里平台形态全部收进 `platform/`（阶段 H 收完）· 足迹里两个写点住址跟着新住址。行为不变。
+/// ★★★ **p6c-filewin-package**（2026-09-30）：结构 —— 文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，只说 call / subscribe；开终端经通道交 monitor、命令由后端渲）· 新契约 / 宿主 crate `chan-core` · `host-core` · `filewin-contract` · 壳里平台形态全部收进 `platform/`（阶段 H 收完）· 足迹里两个写点住址跟着新住址。行为不变。
 ///
 /// p6d-multiline-args：ccm 收的透传给 agent 的参数与登记备注可以跨行（只拒 NUL / CR），多行初始任务起得来。
 ///
@@ -1217,7 +1217,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-write-text",
     // 同一面第七条（同根内复制）。登记理由与上面逐字相同。
     "--files-copy",
-    // 解压。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
+    // 解压。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 发版时统一 bump。
     "--files-extract",
     // 上传的提交。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-commit-upload",
@@ -1239,7 +1239,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-read-text",
     // 读族第十条（按字节寻址分块读回）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "--files-read-chunk",
-    // 读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
+    // 读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 发版时统一 bump。
     "--files-size",
     // 读族第十一条（按内容搜）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "--files-grep",
@@ -1255,7 +1255,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // `history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
-    // 主线外清单的冷读（手机端不发帧命令，从 CLI 面问）。⚠ 新子命令 ⇒ BUILD_ID 由合并那一拍统一 bump。
+    // 主线外清单的冷读（手机端不发帧命令，从 CLI 面问）。⚠ 新子命令 ⇒ BUILD_ID 发版时统一 bump。
     "--history-branch",
     "--history-facts",
     "--history-find",
@@ -1327,7 +1327,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--tasks-list",
-    // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 合并那一拍统一 bump。
+    // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 发版时统一 bump。
     "--terminal-input",
     // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `cli_control` 那张「只有界面用得着」的表里，
     //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
@@ -1417,7 +1417,7 @@ pub enum CapabilityKind {
 /// 上一版本轴判的是「编不编得过」，并逐字论证过「ccm 声明了 `tmux` 却在 Windows 上
 /// 做不到」**不算假声明**，因为它编得过。**用户把这条判法推翻了。**
 ///
-/// 他那一拍是三句，合起来是一条完整裁决：
+/// 他那次是三句，合起来是一条完整裁决：
 /// ① 判「**做得到**」；② 「**除非暂时不做**」；③ 「**Windows 用 Windows 自己的后台服务，后面再做**」。
 /// ③ 的**机制**那半已收回：Windows 上「会话活在前端之外」用哪种机制
 /// （甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）都先不做、**机制未定**
@@ -1578,7 +1578,7 @@ pub enum GapKind {
 /// ⇒ 要么把整面从 Windows 上摘掉（**那会连 12 条真做得到的一起摘掉，是假的**），
 /// 要么逐条登记豁免。**只有后者说的是真话。**
 ///
-/// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
+/// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那次逐字
 /// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
 /// ⇒ [`TargetGap::rationale`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
 /// 「将来怎么办」那一半**不许预设机制**：「用哪种机制」未定（见 [`Target`] 头注）。
@@ -1631,7 +1631,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         kind: GapKind::Owed,
         rationale: "Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\
               Windows 后台机制未定 ⇒ **暂时不做**；\
-              将来选定机制的那一拍一并给出等价物。",
+              将来选定机制时一并给出等价物。",
     },
     TargetGap {
         family: "ccm-launcher",
@@ -1735,7 +1735,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               将来 Windows 后台机制选定时要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },    // ── 命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
     //
-    // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
+    // 这六行在 PR1 之前就是真的（`K-P4` 那时 `unavailable_from` 在 Windows 上就会列出这三条），
     // 只是没有任何东西把命令面放进 target 这根轴里对 —— PR1 把帧面 / CLI 面并进第 3 层的人群，
     // 那条两向相等当场点出它们，于是逐条登记。**差异是现推出来的**（命令自己声明的 `no_tmux` 码 ×
     // Windows 平台档），这里只补理由与档。
@@ -1796,7 +1796,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\
-              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。",
+              Windows 后台机制定了、`terminal-input` 还上时一起还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1911,7 +1911,7 @@ pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
 ///
 /// 本仓今天所有「这个 target 上做不到」的声明，归根到底只有一种机制：**载体是 tmux，
 /// 而那个 target 没有 tmux**。[`TmuxPlatform`] 已经把「Windows 上确证没有」这句话
-/// 做成了编译期的值（`K-P4` 那一拍，头注逐字「这一句在**编译期**就成立，不需要探针去证」）。
+/// 做成了编译期的值（`K-P4` 那时，头注逐字「这一句在**编译期**就成立，不需要探针去证」）。
 /// ⇒ 本函数只把 [`Target`] 这根轴接到那根轴上，**不另立一份平台知识**。
 ///
 /// ⚠ 两根轴对不对得上，由 `target_parity_guard::the_target_axis_agrees_with_the_host_tmux_platform`
@@ -2134,7 +2134,7 @@ pub const EMITS: &[&str] = &[
     "session_status",
     "session_removed",
     // 会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
-    // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "session_state",
     "overflow",
     "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
@@ -2156,17 +2156,17 @@ pub const EMITS: &[&str] = &[
     // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
     "transfer",
     // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
-    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "probe",
     // 中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",
-    // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "session_runs",
-    // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "session_branch",
     // 终端实时预览的一屏与收尾（`control/terminal_follow.rs` 的订阅线程真发，登记 = 承诺真发）。
-    // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "terminal_screen",
     "terminal_follow_end",
 ];
@@ -2395,7 +2395,7 @@ pub const NO_TMUX: &str = "no_tmux";
 /// target 轴（[`unix_mode_bits_on`] × 这个码）由此现推「Windows 上没有 `files-chmod`」
 /// —— 待拍 3 那一格（「得让它的声明带一个『这个平台没有』的码」）。
 ///
-/// 运行期那条轴（`hello.unavailable`）读的是同一个判准：[`unix_mode_unavailable`]（接线那一拍加进来）。
+/// 运行期那条轴（`hello.unavailable`）读的是同一个判准：[`unix_mode_unavailable`]（接线时加进来）。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 /// unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。

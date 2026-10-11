@@ -61,7 +61,7 @@ pub enum View {
         starts: Vec<usize>,
         lang: Option<String>,
     },
-    /// 一张图（到货那一拍交给显存）。
+    /// 一张图（到货那一帧交给显存）。
     Image {
         path: String,
         size: [usize; 2],

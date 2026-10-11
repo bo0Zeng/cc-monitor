@@ -1332,7 +1332,7 @@ fn drop_tail(inner: &mut Inner, key: &TailKey) -> usize {
     t.lines.len()
 }
 
-/// 「从 `seq` 起上流」那一拍修留存（[`EventReplay::on_watch_from`] ①）：`seq` 之下那段与 `seq` 之间有缺口 ⇒ 整段丢、底线抬到 `seq`。
+/// 「从 `seq` 起上流」那一刻修留存（[`EventReplay::on_watch_from`] ①）：`seq` 之下那段与 `seq` 之间有缺口 ⇒ 整段丢、底线抬到 `seq`。
 /// 连着的（最高那条就是 `seq − 1`）不动。没留存的也立底线（之后到的更低的行与 `seq` 之间照样可能隔着没上流的那段）。
 fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
     let t = inner.tails.entry(key.clone()).or_default();

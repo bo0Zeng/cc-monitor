@@ -207,7 +207,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
     // 另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
-    //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一拍当场从人群里消失，本条因此红过）。
+    //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一刻当场从人群里消失，本条因此红过）。
     let verb = format!(".call({}", "");
     let verb_until = format!(".call_until({}", "");
     let mut senders: Vec<String> = Vec::new();
