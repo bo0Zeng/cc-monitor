@@ -20,7 +20,7 @@ import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { readRules, type RulesRead } from "./quota-reads";
+import { readConfigs, type ConfigsShown } from "./rot-reads";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
@@ -60,7 +60,6 @@ export interface NewSessionSpec {
 
 /** 主窗口：起好了 ⇒ 长出占位标签页（`main.ts` 装一次；别的窗口没有它 ⇒ 等报到、说一句「已启动」）。 */
 /** 「轮换」那一行跟随默认那一项的值。 */
-const ROT_FOLLOW = "follow";
 
 let placeholder: ((spec: SlotSpec) => void) | null = null;
 export function setNewSessionPlaceholder(fn: ((spec: SlotSpec) => void) | null): void {
@@ -405,33 +404,33 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
-  // 轮换：跟随默认（核心写好的那一句 `followText`）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
+  // 轮换：打开哪份配置（缺省本机默认那份，带「本机默认」）· 那台的各份配置。读不出那台的配置表 ⇒ 不出这一行。
   const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
   const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
   rotRow.root.hidden = true;
   form.appendChild(rotRow.root);
   let rotSeq = 0;
+  let defaultConfig = "";
   const paintRotation = async (): Promise<void> => {
     const my = ++rotSeq;
-    let rules: RulesRead | null = null;
+    let configs: ConfigsShown | null = null;
     try {
-      rules = accounts === null ? null : await readRules(origin);
+      configs = accounts === null ? null : await readConfigs(origin);
     } catch {
-      rules = null;
+      configs = null;
     }
     if (my !== rotSeq) return;
-    rotRow.root.hidden = rules === null;
-    if (rules === null) return;
+    rotRow.root.hidden = configs === null;
+    if (configs === null) return;
+    defaultConfig = configs.defaultConfig;
     rotSel.setOptions(
-      [
-        { value: ROT_FOLLOW, label: rules.followText },
-        ...rules.rules.map((r) => ({
-          value: `rule:${r.id}`,
-          label: r.name,
-          note: r.isDefault ? copyText("rot.src.tagDefault") : undefined,
-        })),
-      ],
-      ROT_FOLLOW,
+      configs.configs.map((c) => ({
+        value: c.id,
+        label: c.name,
+        note: c.isDefault ? copyText("rot.cfg.tagDefault") : undefined,
+        detail: c.text,
+      })),
+      configs.defaultConfig,
     );
   };
 
@@ -597,8 +596,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
-    const rot = rotRow.root.hidden ? ROT_FOLLOW : rotSel.value();
-    if (rot.startsWith("rule:")) req.rotation = { rule: rot.slice("rule:".length) };
+    // 本机默认那份不写（新会话本来就打开它）；挑了别的 ⇒ 起之前写成打开那一份。
+    const rot = rotRow.root.hidden ? defaultConfig : rotSel.value();
+    if (rot !== "" && rot !== defaultConfig) req.rotation = { config: rot };
     return req;
   };
 

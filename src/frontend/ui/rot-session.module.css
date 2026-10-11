@@ -1,0 +1,278 @@
+/* 会话面板里的「轮换」：头一行（配置下拉 · 已改 · 保存三件）· 描述 · 列表头一排 · 行头 · 多选那一条 · 号详情 · 参数…。 */
+@layer components {
+  .rsBlock {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    container-type: inline-size;
+  }
+
+  .rsCfgLine,
+  .rsBackLine,
+  .rsTbar,
+  .rsStratLine,
+  .rsSubLine,
+  .rsNowHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .rsCfgLine {
+    min-height: 28px;
+  }
+
+  .rsTitle {
+    flex: none;
+    white-space: nowrap;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rsCfgPick {
+    flex: 0 1 200px;
+    min-width: 0;
+  }
+
+  .rsCfgName {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rsDirty {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 18px;
+    padding: 0 5px;
+    border: 1px solid color-mix(in srgb, var(--warn) 60%, transparent);
+    border-radius: var(--radius-s);
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .rsSpacer {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .rsActs {
+    display: inline-flex;
+    gap: var(--space-1);
+  }
+
+  .rsMore {
+    display: none;
+    align-items: center;
+    padding: 2px;
+    border: 0;
+    color: var(--text-2);
+    background: none;
+    cursor: pointer;
+  }
+
+  /* 窄窗（面板 360）：保存三件收进 ⋯。 */
+  @container (width < 340px) {
+    .rsActs {
+      display: none;
+    }
+
+    .rsMore {
+      display: inline-flex;
+    }
+  }
+
+  .rsDesc {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    line-height: 1.5;
+  }
+
+  .rsPeek {
+    max-width: 320px;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-small);
+    line-height: 1.5;
+  }
+
+  .rsTbar {
+    gap: var(--space-1);
+    margin: 2px 0 -2px;
+  }
+
+  .rsHead {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .rsL1,
+  .rsL2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .rsL1 {
+    font-size: var(--font-size-small);
+  }
+
+  .rsL2 {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rsHandle {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-faint);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .rsName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rsTag {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 16px;
+    padding: 0 4px;
+    border: 1px dashed var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rsTag[data-mode="first"] {
+    border-style: solid;
+    border-color: var(--color-link);
+    color: var(--color-link);
+  }
+
+  .rsCur {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 15px;
+    padding: 0 3px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-s);
+    color: var(--accent);
+    font-size: var(--font-size-xs);
+  }
+
+  .rsMini {
+    display: inline-block;
+    flex: none;
+    width: 26px;
+    height: 3px;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--border-medium);
+  }
+
+  .rsMiniFill {
+    display: block;
+    height: 100%;
+    background: var(--text-2);
+    transform-origin: left;
+  }
+
+  .rsUsage[data-tone="warn"] {
+    color: var(--warn);
+    font-weight: 600;
+  }
+
+  .rsUsage[data-tone="error"] {
+    color: var(--error-text);
+    font-weight: 600;
+  }
+
+  .rsBack {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    color: var(--color-link);
+    background: none;
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .rsDetName {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rsNav {
+    padding: 0 var(--space-1);
+    border: 0;
+    color: var(--text-2);
+    background: none;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .rsNav:disabled {
+    opacity: var(--state-disabled-opacity);
+    cursor: default;
+  }
+
+  .rsNote {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rsNow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .rsSub {
+    margin: var(--space-2) 0 0;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rsNowHead .rsSub {
+    margin: 0;
+  }
+
+  .rsRank {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rsApi {
+    font-size: var(--font-size-small);
+  }
+
+  .rsSubLine .rsSub {
+    margin: var(--space-2) 0 0;
+  }
+
+  .rsSubLine .rsNote {
+    margin-top: var(--space-2);
+  }
+}

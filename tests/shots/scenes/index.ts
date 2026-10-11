@@ -9,7 +9,7 @@ import { SETTINGS_SCENES } from "./settings";
 import { HISTORY_SCENES } from "./history";
 import { KIT_SCENES } from "./kit";
 import { ACCT_SCENES } from "./acct";
-import { RULES_SCENES } from "./rules";
+import { ROTATION_SCENES } from "./rotation";
 import { DRAWER_SCENES } from "./drawer";
 import { AGENT_SCENES } from "./agent";
 import { FOLDALL_SCENES } from "./foldall";
@@ -49,7 +49,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...RULES_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES, ...TABGROUP_SCENES, ...PLAN_SCENES, ...BGWORK_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...ROTATION_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES, ...TABGROUP_SCENES, ...PLAN_SCENES, ...BGWORK_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

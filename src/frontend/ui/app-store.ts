@@ -11,7 +11,8 @@
 import type { AccountsState, SessionAccount } from "./accounts";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { QuotaRead } from "./acct-words";
-import type { RulesRead } from "./quota-reads";
+import type { ConfigsShown } from "./rot-reads";
+import type { StrategiesRead } from "./generated/StrategiesRead";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 
 /** 一格状态：取值 · 置值（同值不通知）· 订阅（回退订函数；订阅那一刻不回放当前值）。 */
@@ -82,8 +83,10 @@ export const appStore = {
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
   /** 每个会话的轮换与「账号」格（按 sid）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
-  /** 每台的规则表（`rotation-rules-read` 那一份；`null` = 那一问没结果）。 */
-  rotationRules: new Slice<ReadonlyMap<Origin, RulesRead | null>>(new Map()),
+  /** 每台的配置表（`rotation-configs-read` 那一份；`null` = 那一问没结果）。 */
+  rotationConfigs: new Slice<ReadonlyMap<Origin, ConfigsShown | null>>(new Map()),
+  /** 每台加载的策略（`rotation-strategies-read` 那一份：表单照它的声明画；`null` = 那一问没结果）。 */
+  rotationStrategies: new Slice<ReadonlyMap<Origin, StrategiesRead | null>>(new Map()),
 };
 
 /** 往一张按键的表里换一格（整张换一份新的，订阅者按自己那一格取）。 */

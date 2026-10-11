@@ -1,0 +1,405 @@
+/* 合图（会话面板 · 配置编辑器预览）：行头一列 ＋ 轴一列 ＋ 行尾 ›；本会话一行在上，每号一行；行下一句为什么。 */
+@layer components {
+  .rcWrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .rcChart {
+    --rc-lc: 128px;
+
+    position: relative;
+    padding: var(--space-1) 0 var(--space-2);
+    border-radius: var(--radius-l);
+    background: var(--bg-2);
+  }
+
+  .rcChart[data-narrow="true"] {
+    --rc-lc: 104px;
+  }
+
+  .rcHead,
+  .rcRow {
+    display: grid;
+    grid-template-columns: var(--rc-lc) minmax(0, 1fr) 16px;
+    align-items: stretch;
+  }
+
+  .rcHead {
+    height: 26px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .rcRows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .rcRow {
+    position: relative;
+    border-bottom: 1px solid var(--border-faint);
+  }
+
+  .rcRow:last-child {
+    border-bottom: 0;
+  }
+
+  .rcRow[data-rc-session="true"] {
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .rcRow[data-ticked="true"] {
+    background: var(--selected-bg);
+  }
+
+  .rcRow[data-inuse="true"]::before {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 0;
+    width: 2px;
+    border-radius: var(--radius-s);
+    background: var(--accent);
+    content: "";
+  }
+
+  .rcRow[data-lifted="true"] {
+    opacity: 0.35;
+  }
+
+  .rcRow[data-drop="before"] {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+
+  .rcLc {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  }
+
+  .rcL1Title {
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rcL2 {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rcAxis {
+    position: relative;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rcTick {
+    position: absolute;
+    bottom: var(--space-1);
+    white-space: nowrap;
+    transform: translateX(-50%);
+  }
+
+  .rcTick::after {
+    position: absolute;
+    bottom: calc(-1 * var(--space-1));
+    left: 50%;
+    width: 1px;
+    height: 4px;
+    background: var(--border-medium);
+    content: "";
+  }
+
+  .rcNowText {
+    position: absolute;
+    bottom: var(--space-1);
+    padding: 0 3px;
+    color: var(--accent);
+    background: var(--bg-2);
+    font-weight: 700;
+    transform: translateX(-50%);
+  }
+
+  /* 轨里不写 z-index：后画的在上（底色 · 段 · 刻度 · 换号点 · 此刻那根线，照这个次序画）。 */
+  .rcTrack {
+    position: relative;
+    isolation: isolate;
+    min-width: 0;
+    min-height: 38px;
+  }
+  .rcHead .rcLc {
+    display: flex;
+    align-items: center;
+    padding-left: var(--space-2);
+  }
+
+  .rcRow[data-skip="true"] .rcLc,
+  .rcRow[data-skip="true"] .rcTrack {
+    opacity: 0.5;
+  }
+
+  .rcRow[data-rc-session="true"] .rcTrack {
+    min-height: 40px;
+  }
+
+  .rcPast {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--text-faint) 14%, transparent);
+  }
+
+  .rcNow {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--accent);
+    opacity: 0.9;
+  }
+
+  .rcBase {
+    position: absolute;
+    top: 18px;
+    height: 1px;
+    background: var(--text-faint);
+    opacity: 0.7;
+  }
+
+  .rcSeg {
+    position: absolute;
+    top: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 16px;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    color: var(--rc-ink);
+    background: var(--rc-c);
+    box-shadow: inset -2px 0 0 var(--bg-2);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .rcSeg[data-when="future"] {
+    color: var(--text);
+    background: color-mix(in srgb, var(--rc-c) 38%, transparent);
+    outline: 1px dashed var(--rc-c);
+    outline-offset: -1px;
+  }
+
+  .rcSegName {
+    padding: 0 var(--space-1);
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  .rcHeld {
+    position: absolute;
+    top: 13px;
+    height: 16px;
+    border: 1px dashed var(--warn);
+    border-radius: var(--radius-s);
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+  }
+
+  .rcSwitch {
+    position: absolute;
+    top: 17px;
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--bg-2);
+    background: var(--text);
+    transform: translateX(-50%) rotate(45deg);
+  }
+
+  .rcSwitch[data-est="true"] {
+    border-color: var(--text);
+    background: var(--bg-2);
+  }
+
+  .rcSwitch:focus-visible,
+  .rcSwitch:hover {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .rcBar {
+    position: absolute;
+    top: 12px;
+    height: 13px;
+    border-radius: var(--radius-s);
+  }
+
+  .rcBar[data-rc-bar="use"] {
+    background: var(--rc-c);
+  }
+
+  .rcBar[data-rc-bar="use"][data-est="true"] {
+    background: color-mix(in srgb, var(--rc-c) 60%, transparent);
+  }
+
+  .rcBar[data-rc-bar="line"],
+  .rcSwatch[data-k="line"] {
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 70%, transparent) 0 3px, transparent 3px 6px);
+    outline: 1px solid color-mix(in srgb, var(--warn) 60%, transparent);
+    outline-offset: -1px;
+  }
+
+  .rcBar[data-rc-bar="refused"],
+  .rcBar[data-rc-bar="full"],
+  .rcBar[data-rc-bar="login"],
+  .rcSwatch[data-k="refused"] {
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--error) 70%, transparent) 0 3px, transparent 3px 6px);
+    outline: 1px solid var(--error);
+    outline-offset: -1px;
+  }
+
+  .rcBar[data-rc-bar="overage"] {
+    background: radial-gradient(var(--warn) 1px, transparent 1.5px) 0 0 / 4px 4px;
+  }
+
+  .rcBar[data-rc-bar="off"],
+  .rcSwatch[data-k="off"] {
+    background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
+    outline: 1px solid var(--border-medium);
+    outline-offset: -1px;
+  }
+
+  .rcBar[data-rc-bar="skip"],
+  .rcSwatch[data-k="skip"] {
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-faint) 50%, transparent) 0 2px, transparent 2px 6px);
+  }
+
+  .rcReset {
+    position: absolute;
+    top: 9px;
+    width: 1px;
+    height: 19px;
+    background: var(--text);
+  }
+
+  .rcResetText {
+    position: absolute;
+    top: 25px;
+    padding: 0 2px;
+    border-radius: var(--radius-s);
+    color: var(--text);
+    background: var(--bg-2);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 12px;
+    white-space: nowrap;
+    transform: translateX(-50%);
+  }
+
+  .rcResetText[data-edge="end"] {
+    transform: translateX(-100%);
+  }
+
+  .rcGo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    color: var(--text-faint);
+    background: none;
+    font: inherit;
+    font-size: var(--font-size-base);
+    cursor: pointer;
+  }
+
+  .rcGo:disabled {
+    cursor: default;
+  }
+
+  .rcWhy {
+    grid-column: 1 / 4;
+    margin-top: -3px;
+    padding: 0 var(--space-2) var(--space-1) 22px;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rcWarn {
+    color: var(--warn);
+  }
+
+  .rcAdd {
+    margin: var(--space-1) 0 0 var(--space-5);
+    padding: 0;
+    border: 0;
+    color: var(--color-link);
+    background: none;
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .rcLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rcLgItem {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+  }
+
+  .rcSwatch {
+    display: inline-block;
+    width: 16px;
+    height: 8px;
+    border-radius: var(--radius-s);
+  }
+
+  .rcSwatch[data-k="use"] {
+    background: var(--acct-c4);
+  }
+
+  .rcSwatch[data-k="base"] {
+    height: 2px;
+    background: var(--text-2);
+    opacity: 0.6;
+  }
+
+  .rcSwatch[data-k="switch"],
+  .rcSwatch[data-k="est"] {
+    width: 7px;
+    height: 7px;
+    margin: 0 var(--space-1);
+    border: 1px solid var(--text);
+    border-radius: 0;
+    background: var(--text);
+    transform: rotate(45deg);
+  }
+
+  .rcSwatch[data-k="est"] {
+    background: transparent;
+  }
+
+  .rcSwatch[data-k="future"] {
+    outline: 1px dashed var(--text-2);
+  }
+}

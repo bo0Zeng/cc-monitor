@@ -130,13 +130,21 @@ export function putBrokenQuota(d: MachineDisk): void {
   d.files[".cc-monitor/quota.json"] = "";
 }
 
-// ── 轮换账本（`<家>/.cc-monitor/rotation.json`：规则 ＋ 每个会话记下的那一份）──
+// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第二版：配置表 ＋ 每个会话打开的那一份）· 本机策略目录（`<家>/.cc-monitor/strategies/`）──
 
-export interface RuleSpec {
+/** 配置的一行：起会话的号 · 其余的订阅号 · 点名的号（三者恰有其一），每行写全这份策略声明的每号参数。 */
+export type AcctRowSpec = ({ start: true } | { rest: true } | { id: string }) & { params: Record<string, unknown> };
+
+export interface ConfigSpec {
   name: string;
-  rotation: Record<string, unknown>;
+  strategy: string;
+  accounts: AcctRowSpec[];
+  params: Record<string, unknown>;
+  acctInit: Record<string, unknown>;
+  tz?: string;
   rev?: number;
   updatedAt: number;
+  savedBy?: string;
 }
 
 export interface RotationSessionSpec {
@@ -144,18 +152,33 @@ export interface RotationSessionSpec {
   start: string;
   current: string;
   since: number;
-  /** `"follow"` · `{rule: id}` · `"custom"` · `{parent: sid}`。 */
-  source: unknown;
-  custom?: Record<string, unknown>;
+  /** 打开的那一份（改过 ⇒ `copy` 是整份副本）。 */
+  config: { id: string; rev: number; copy?: Omit<ConfigSpec, "rev" | "updatedAt" | "savedBy"> };
+  /** 手动调整：热换到的号 · 拖过的号放在第几。 */
+  manual?: { hot?: { account: string; since: number }; place?: { account: string; at: number }[] };
+  memo?: Record<string, unknown>;
+  /** 换号记录（盘上那一形：`leave` 引擎这一侧 · `pick` 策略那一句）。 */
   history?: Record<string, unknown>[];
-  blockedAbove?: string[];
   seen?: number;
 }
 
-export function putRotation(d: MachineDisk, book: { defaultRule: string; rules: Record<string, RuleSpec>; sessions?: Record<string, RotationSessionSpec> }): void {
+const bodyOf = (c: Omit<ConfigSpec, "rev" | "updatedAt" | "savedBy">): Record<string, unknown> => ({
+  name: c.name,
+  strategy: c.strategy,
+  accounts: c.accounts,
+  params: c.params,
+  acctInit: c.acctInit,
+  parked: {},
+  tz: c.tz ?? "Asia/Shanghai",
+});
+
+export function putRotation(d: MachineDisk, book: { defaultConfig: string; configs: Record<string, ConfigSpec>; sessions?: Record<string, RotationSessionSpec> }): void {
   d.files[".cc-monitor/rotation.json"] = json({
-    defaultRule: book.defaultRule,
-    rules: Object.fromEntries(Object.entries(book.rules).map(([id, r]) => [id, { name: r.name, rotation: r.rotation, rev: r.rev ?? 1, updatedAt: Math.round(r.updatedAt) }])),
+    version: 2,
+    defaultConfig: book.defaultConfig,
+    configs: Object.fromEntries(
+      Object.entries(book.configs).map(([id, c]) => [id, { ...bodyOf(c), rev: c.rev ?? 1, updatedAt: Math.round(c.updatedAt), savedBy: c.savedBy ?? "settings" }]),
+    ),
     sessions: Object.fromEntries(
       Object.entries(book.sessions ?? {}).map(([sid, s]) => [
         sid,
@@ -164,11 +187,11 @@ export function putRotation(d: MachineDisk, book: { defaultRule: string; rules: 
           start: s.start,
           current: s.current,
           since: Math.round(s.since),
-          source: s.source,
-          ...(s.custom ? { custom: s.custom } : {}),
-          history: s.history ?? [],
-          ...(s.blockedAbove?.length ? { blockedAbove: s.blockedAbove } : {}),
           seen: Math.round(s.seen ?? s.since),
+          config: { id: s.config.id, rev: s.config.rev, ...(s.config.copy ? { copy: bodyOf(s.config.copy) } : {}) },
+          ...(s.manual ? { manual: s.manual } : {}),
+          ...(s.memo ? { memo: s.memo } : {}),
+          history: s.history ?? [],
         },
       ]),
     ),
@@ -177,6 +200,11 @@ export function putRotation(d: MachineDisk, book: { defaultRule: string; rules: 
 
 export function putBrokenRotation(d: MachineDisk): void {
   d.files[".cc-monitor/rotation.json"] = "{";
+}
+
+/** 本机策略目录里的一份（文件名去 `.rhai` 就是 id）。 */
+export function putStrategy(d: MachineDisk, id: string, source: string): void {
+  d.files[`.cc-monitor/strategies/${id}.rhai`] = source;
 }
 
 // ── 会话血缘（`<家>/.cc-monitor/lineage.json`）──

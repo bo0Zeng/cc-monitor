@@ -1,6 +1,6 @@
 /**
- * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（当前 · 轮换 · 无号可换两态 · 切换 · 记录 · 时间轴）·
- * 消息流换号条 · 会话头下提示条 · 标签页 `✕ 5h` · 右键「账号…」。
+ * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（头下那一句 · 读不出 · 未实时显示 · `切换…` 浮层：选号 · 重启切换）·
+ * 消息流换号条 · 会话头下提示条 · 标签页 `✕ 5h` · 右键「账号…」。轮换本身（配置 · 合图 · 号详情 · 设置窗）在 `rotation.ts`。
  *
  * 账号库 · 额度账 · 轮换账本 · 血缘落成本机家目录里的原始文件（`acctDisk`），额度 · 轮换 · 时间轴的成品全是真后端读它们算的；
  * 只有切换（要真 tmux / 中转）由场景替那台答。号名是编的。时刻按此刻的钟现算。
@@ -40,26 +40,16 @@ interface Acct {
 interface Sess {
   start: string;
   current: string;
-  follow: boolean;
-  /** 用某条规则（给了就不看 `follow`）。 */
-  rule?: string;
-  custom?: Record<string, unknown>;
+  /** 换号记录（盘上那一形：`leave` 引擎这一侧）。`at` 是距此刻多少秒。 */
   history: Record<string, unknown>[];
   absent?: boolean;
-  /** 会话血缘里的父（tab 序号）；`followParent` ⇒ 来源 ＝ 跟随父会话。 */
+  /** 会话血缘里的父（tab 序号）。 */
   parent?: number;
-  followParent?: boolean;
 }
 interface AcctWorld {
   accounts: Acct[];
-  default: Record<string, unknown> | null;
-  /** 默认那条（日常）之外的规则。 */
-  rules?: {
-    id: string;
-    name: string;
-    rotation: Record<string, unknown>;
-    users?: number;
-  }[];
+  /** 不写轮换账本（中转还没见过回包）。 */
+  noBook?: boolean;
   /** 按 tab 序号（0 起）。 */
   sessions: Record<number, Sess>;
   /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
@@ -110,26 +100,16 @@ function baseAccounts(): Acct[] {
   ];
 }
 
-const ROT_CUSTOM = {
-  order: [{ start: true }, "personal", "team", "api"],
-  enabled: ["personal", "team"],
-  cap: { "*": { "5h": 90 } },
-  atLimit: "continue",
-  wait: 40,
-};
-
 function swappedSess(over: Partial<Sess> = {}): Sess {
   return {
     start: "work",
     current: "personal",
-    follow: false,
-    custom: structuredClone(ROT_CUSTOM),
     history: [
       {
         at: -0.4 * H1,
         from: "work",
         to: "personal",
-        why: { full: { w: "5h" } },
+        leave: { k: "unusable", why: { k: "@full", at: 2.3 * H1 } },
         fromResetsAt: 2.3 * H1,
       },
     ],
@@ -161,7 +141,7 @@ function ledgerOf(a: Acct): QuotaSpec {
   };
 }
 
-/** 账号世界落成本机家目录里的原始文件：账号库 · 额度账 · 轮换账本（规则 ＋ 每个会话记下的那一份）· 会话血缘。 */
+/** 账号世界落成本机家目录里的原始文件：账号库 · 额度账 · 轮换账本（第二版：一份配置 ＋ 每个会话打开的那一份）· 会话血缘。 */
 function acctDisk(aw: AcctWorld, w: World): void {
   const d = w.disk[LOCAL];
   const t = now();
@@ -180,17 +160,29 @@ function acctDisk(aw: AcctWorld, w: World): void {
       start: s.start,
       current: s.current,
       since: t - 1800,
-      source: s.followParent && parent !== undefined ? { parent } : s.rule ? { rule: s.rule } : s.follow ? "follow" : "custom",
-      ...(s.custom ? { custom: s.custom } : {}),
-      history: s.history.map((h) => ({ ...h, at: abs(h.at as number), ...(h.fromResetsAt === undefined ? {} : { fromResetsAt: abs(h.fromResetsAt as number) }) })),
+      config: { id: "c_daily", rev: 3 },
+      history: s.history.map((h) => {
+        const leave = h.leave as { k: string; why?: { at?: number } };
+        const why = leave.why?.at === undefined ? leave.why : { ...leave.why, at: abs(leave.why.at) };
+        return { ...h, at: abs(h.at as number), leave: why === undefined ? leave : { ...leave, why }, ...(h.fromResetsAt === undefined ? {} : { fromResetsAt: abs(h.fromResetsAt as number) }) };
+      }),
     };
   }
-  if (aw.default) {
+  if (!aw.noBook) {
+    // 日常（内置策略 1）：起会话的号 ＋ personal · team · api，到 90% 换。
+    const params = { line: 90, slots: [], mode: "normal", stint: null };
     putRotation(d, {
-      defaultRule: "r_daily",
-      rules: {
-        r_daily: { name: "日常", rotation: aw.default, rev: 3, updatedAt: t - 3600 },
-        ...Object.fromEntries((aw.rules ?? []).map((r) => [r.id, { name: r.name, rotation: r.rotation, rev: 3, updatedAt: t - 3600 }])),
+      defaultConfig: "c_daily",
+      configs: {
+        c_daily: {
+          name: "日常",
+          strategy: "1",
+          accounts: [{ start: true, params }, ...["personal", "team", "api"].map((id) => ({ id, params: { ...params, mode: id === "api" ? "standby" : "normal" } }))],
+          params: { back: false, delay: 0, standby_wait: 40, all_out: "go" },
+          acctInit: params,
+          rev: 3,
+          updatedAt: t - 3600,
+        },
       },
       sessions,
     });
@@ -224,12 +216,6 @@ function world(
     const w = base();
     const aw: AcctWorld = {
       accounts: baseAccounts(),
-      default: {
-        order: [{ start: true }, "personal"],
-        enabled: ["personal"],
-        atLimit: "continue",
-        wait: 40,
-      },
       sessions: { 0: swappedSess() },
     };
     build(aw);
@@ -281,19 +267,24 @@ async function openPanel(): Promise<void> {
   await sleep(700);
 }
 
-/** 面板里选 重启切换 再点；问会打断什么的框出来就点确认；等那一条报错 toast 出来。 */
-async function restartThroughConfirm(): Promise<void> {
+const SWITCH = '[role="dialog"][data-kit-popover], [role="dialog"]:not(aside):not([aria-modal])';
+
+/** 开面板、点列表头 `切换…`，等浮层出来。 */
+async function openSwitch(): Promise<void> {
   await openPanel();
-  await scrollPanelTo("切换");
-  const r = [
-    ...document.querySelectorAll<HTMLInputElement>(
-      'aside[role="dialog"] input[type="radio"][name^="acct-mode"]',
-    ),
-  ][1];
+  await click('aside[role="dialog"] [data-rot-switch]');
+  await waitFor('input[type="radio"][name^="acct-mode"]');
+  await sleep(400);
+}
+
+/** `切换…` 里选 重启切换 再点；问会打断什么的框出来就点确认；等那一条报错 toast 出来。 */
+async function restartThroughConfirm(): Promise<void> {
+  await openSwitch();
+  const r = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="acct-mode"]')][1];
   r.checked = true;
   r.dispatchEvent(new Event("change"));
   await sleep(300);
-  await click(await byText('aside[role="dialog"] button', "重启切换"));
+  await click(await byText(`${SWITCH} button`, "重启切换"));
   const confirm = await waitFor('[role="alertdialog"]', 3000).catch(() => null);
   if (confirm) {
     await sleep(300);
@@ -302,23 +293,6 @@ async function restartThroughConfirm(): Promise<void> {
   await waitFor('#kit-toast-stack [role="alert"]');
   await sleep(500);
 }
-
-/** 开面板、摊开「时间轴」那一折、滚到它。 */
-async function openTimeline(): Promise<void> {
-  await openPanel();
-  await scrollPanelTo("轮换");
-  const head = await byText('aside[role="dialog"] [data-fold-head]', "时间轴").catch(() => null);
-  if (head) await click(head);
-  await sleep(900);
-  document.querySelector("[data-tl-head]")?.scrollIntoView({ block: "start" });
-  await sleep(300);
-}
-
-const scrollPanelTo = async (text: string): Promise<void> => {
-  const h = await byText('aside[role="dialog"] h3', text);
-  h.scrollIntoView({ block: "start" });
-  await sleep(300);
-};
 
 export const ACCT_SCENES: Scene[] = [
   // ── 状态栏按钮各态（每张都带悬停卡）
@@ -363,8 +337,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "work",
         current: "work",
-        follow: false,
-        custom: { ...ROT_CUSTOM, enabled: ["personal"] },
         history: [],
       };
       aw.accounts[1] = {
@@ -398,7 +370,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "work",
         current: "work",
-        follow: true,
         history: [],
       };
     }),
@@ -415,7 +386,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "api",
         current: "api",
-        follow: true,
         history: [],
       };
     }),
@@ -437,7 +407,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "api",
         current: "api",
-        follow: true,
         history: [],
       };
     }),
@@ -464,7 +433,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "team",
         current: "team",
-        follow: true,
         history: [],
       };
     }),
@@ -514,7 +482,7 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-panel-unreadable",
     "面板 · 额度账读不出",
-    "那份额度账读不出：「当前」那一块一条警告条，后端写好的那一句（读的哪份 · 原因词）＋［复制详情］",
+    "那份额度账读不出：头下一条警告条，后端写好的那一句（读的哪份 · 原因词）＋［复制详情］",
     openPanel,
     () => {
       const w = world(() => {})();
@@ -526,436 +494,26 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-panel",
     "面板 · 本会话 · 第一屏",
-    "点状态栏按钮：当前（两根条）· 轮换（本会话 · 触发 ≥90% · 无号可换 继续跑）· 切换 · 记录 · 底栏新会话默认",
+    "点状态栏按钮：头下一句 起会话的号 · 能热换 · 轮换（打开的配置 · 描述 · 参数… 刷新策略 切换… · 合图）· 底栏新会话默认",
     openPanel,
     world(() => {}),
-  ),
-  scene(
-    "acct-src-open",
-    "面板 · 来源下拉开着",
-    "轮换第一行 来源 [本会话 ▾]：点开列 跟随默认 · 本会话（当前项打勾）；合着时方向键不写",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-acct-src]');
-      await waitFor("[role=menu]");
-      await sleep(400);
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-src-done",
-    "面板 · 换了来源 ⇒ 带撤销的 toast",
-    "下拉里选 跟随默认：只写一次；右下 toast orders · 跟随默认 ［撤销］",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-acct-src]');
-      await waitFor("[role=menu]");
-      await click(await byText('[role=menu] [role^="menuitem"]', "跟随默认"));
-      await waitFor('#kit-toast-stack [role="status"]');
-      await sleep(600);
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-src-peek",
-    "面板 · 来源下拉 · 规则悬停小卡",
-    "下拉里悬停 夜间 300ms：右侧只读小卡 顺序（起始 · team · personal，封顶标签 · 兜底）＋ 后端那句说明",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-acct-src]');
-      await waitFor("[role=menu]");
-      const night = [
-        ...document.querySelectorAll<HTMLElement>(
-          '[role="menu"] [role^="menuitem"]',
-        ),
-      ].find((b) => b.textContent?.startsWith("夜间"))!;
-      await hover(night);
-      await sleep(700);
-    },
-    world((aw) => {
-      aw.rules = [
-        {
-          id: "r_night",
-          name: "夜间",
-          rotation: {
-            order: [{ start: true }, "team", "personal"],
-            enabled: ["team", "personal"],
-            atLimit: "continue",
-            wait: 40,
-            preempt: true,
-            fallback: ["personal"],
-            cap: { "*": { "5h": 90 }, team: { "*": [{ at: "17:00-02:00", n: 0 }] } },
-          },
-          users: 2,
-        },
-      ];
-    }),
-  ),
-  scene(
-    "acct-src-rules",
-    "面板 · 来源下拉列规则",
-    "这台有 日常（默认）· 夜间 两条：下拉列 跟随默认（灰字 日常）· 规则 日常 · 规则 夜间 · 本会话；本会话在用 夜间",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-acct-src]');
-      await waitFor("[role=menu]");
-      await sleep(400);
-    },
-    world((aw) => {
-      aw.rules = [
-        {
-          id: "r_night",
-          name: "夜间",
-          rotation: {
-            order: [{ start: true }, "team", "personal"],
-            enabled: ["team", "personal"],
-            cap: { "*": { "5h": 90 } },
-            atLimit: "continue",
-            wait: 40,
-            preempt: true,
-          },
-          users: 2,
-        },
-      ];
-      aw.sessions[0] = {
-        ...swappedSess(),
-        follow: false,
-        rule: "r_night",
-        custom: undefined,
-      };
-    }),
-  ),
-  scene(
-    "acct-rule-readonly",
-    "面板 · 来源 ＝ 规则 夜间（只读）",
-    "上方一行 规则 夜间 · 在用 2 会话 ［编辑规则…］［转为本会话］；触发灰、列表只读、personal 行尾封顶写成标签 17:00-02:00 停用；team 一枚实心 兜底（关着的不画）",
-    openPanel,
-    world((aw) => {
-      aw.rules = [
-        {
-          id: "r_night",
-          name: "夜间",
-          rotation: {
-            order: [{ start: true }, "team", "personal"],
-            enabled: ["team", "personal"],
-            atLimit: "continue",
-            wait: 40,
-            preempt: true,
-            fallback: ["team"],
-            cap: { "*": { "5h": 90 }, personal: { "*": [{ at: "17:00-02:00", n: 0 }] } },
-          },
-          users: 2,
-        },
-      ];
-      aw.sessions[0] = {
-        ...swappedSess(),
-        follow: false,
-        rule: "r_night",
-        custom: undefined,
-      };
-    }),
-  ),
-  scene(
-    "acct-src-parent",
-    "面板 · 来源下拉有「跟随父会话」",
-    "这个会话是在 tab 2 那个会话里起的：下拉紧跟 跟随默认 出 跟随父会话（灰字 父标题 · 夜间）；当前项打勾",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-acct-src]');
-      await waitFor("[role=menu]");
-      await sleep(400);
-    },
-    world((aw) => {
-      aw.rules = [
-        {
-          id: "r_night",
-          name: "夜间",
-          rotation: {
-            order: [{ start: true }, "team", "personal"],
-            enabled: ["team", "personal"],
-            atLimit: "continue",
-            wait: 40,
-            preempt: true,
-          },
-          users: 2,
-        },
-      ];
-      aw.sessions[1] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
-      aw.sessions[0] = { ...swappedSess(), custom: undefined, parent: 1, followParent: true };
-    }),
-  ),
-  scene(
-    "acct-parent-readonly",
-    "面板 · 来源 ＝ 跟随父会话（只读）",
-    "上方一行 跟随父会话 {父标题} · 规则 夜间 ［打开父会话］［转为本会话］；触发灰、列表只读",
-    openPanel,
-    world((aw) => {
-      aw.rules = [
-        {
-          id: "r_night",
-          name: "夜间",
-          rotation: {
-            order: [{ start: true }, "team", "personal"],
-            enabled: ["team", "personal"],
-            atLimit: "continue",
-            wait: 40,
-            preempt: true,
-          },
-          users: 2,
-        },
-      ];
-      aw.sessions[1] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
-      aw.sessions[0] = { ...swappedSess(), custom: undefined, parent: 1, followParent: true };
-    }),
-  ),
-  scene(
-    "acct-custom-edit",
-    "面板 · 本会话（可改）",
-    "换法 按顺序 | 抢回 | 单段预算 · 最多等 10 分；每行行尾 封顶 按钮（team 设了 ≤80）；右上 存为规则…",
-    openPanel,
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        custom: { ...ROT_CUSTOM, cap: { ...ROT_CUSTOM.cap, team: { "*": 80 } } },
-      };
-    }),
-  ),
-  scene(
-    "acct-fallback-on",
-    "面板 · 兜底开着",
-    "team 标了兜底：行里一枚实心 兜底；别的号的开关平时不显示",
-    openPanel,
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        custom: { ...ROT_CUSTOM, fallback: ["team"] },
-      };
-    }),
-  ),
-  scene(
-    "acct-fallback-off",
-    "面板 · 兜底都关着",
-    "没有号标兜底：每行都不显示 兜底（悬停或键盘到那一行才出）",
-    openPanel,
-    world((aw) => {
-      aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM } };
-    }),
-  ),
-  scene(
-    "acct-fallback-hover",
-    "面板 · 悬停一行 ⇒ 兜底开关出来",
-    "鼠标停在 team 那一行：行尾出一枚描边 兜底（点了才变实心）；api 标了兜底、实心",
-    openPanel,
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        custom: { ...ROT_CUSTOM, fallback: ["api"] },
-      };
-    }),
-    [W, H],
-    '[data-acct-row="team"]',
-  ),
-  scene(
-    "acct-rows-narrow",
-    "面板 · 窄窗 · 行挤了先截号名",
-    "窗宽 700：长号名截成省略号，在用 · 起始 · 兜底 等标签全字、重置时刻一行",
-    openPanel,
-    world((aw) => {
-      aw.accounts.push({
-        account: "research-shared-pool-01",
-        kind: "sub",
-        state: "ok",
-        limiting: "5h",
-        slots: [
-          { slot: "5h", pct: 22, resetsAt: 3.2 * H1 },
-          { slot: "7d", pct: 30, resetsAt: 90 * H1 },
-        ],
-      });
-      aw.sessions[0] = {
-        ...swappedSess(),
-        current: "research-shared-pool-01",
-        custom: {
-          ...ROT_CUSTOM,
-          order: [
-            { start: true },
-            "research-shared-pool-01",
-            "personal",
-            "team",
-            "api",
-          ],
-          enabled: ["research-shared-pool-01", "personal", "team"],
-          fallback: ["team"],
-          cap: { ...ROT_CUSTOM.cap, personal: { "*": 99 } },
-        },
-      };
-    }),
-    [700, 600],
-  ),
-  scene(
-    "acct-cap-pop",
-    "面板 · 封顶浮层 · 按时段",
-    "personal 行尾 封顶 ⇒ 浮层 personal · 全部窗口：不设 | 固定 | 按时段；两段 17:00–02:00 上限 0 · 02:00–17:00 上限 99；24h 色带（0 斜纹）",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-rot-cap-btn="personal"]');
-      await waitFor('[data-rot-cap="personal"]');
-      await sleep(400);
-    },
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        custom: {
-          ...ROT_CUSTOM,
-          cap: {
-            ...ROT_CUSTOM.cap,
-            personal: {
-              "*": [
-                { at: "17:00-02:00", n: 0 },
-                { at: "02:00-17:00", n: 99 },
-              ],
-            },
-          },
-        },
-      };
-    }),
-  ),
-  scene(
-    "acct-save-as",
-    "面板 · 存为规则浮层 · 重名",
-    "右上 存为规则… ⇒ 名称 夜间 · ☑ 本会话改用这条规则；按存 ⇒ 后端回重名，框下红字",
-    async () => {
-      await openPanel();
-      await click('aside[role="dialog"] [data-acct-save-as]');
-      const input = await waitFor<HTMLInputElement>(
-        "[data-rot-save] input[type=text]",
-      );
-      input.value = "夜间";
-      await click("[data-rot-save-ok]");
-      await sleep(500);
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-wait-record",
-    "面板 · 记录 · 停着等前面的号",
-    "personal 被拒、work 2 分钟后恢复（最多等 10 分钟）⇒ 不用兜底 team：记录一行 先等 work · 不用兜底 team ↻…",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("记录");
-    },
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        history: [
-          ...swappedSess().history,
-          {
-            at: -0.02 * H1,
-            from: "personal",
-            to: "personal",
-            why: { wait: { account: "work", instead: "team" } },
-            fromResetsAt: 0.03 * H1,
-          },
-        ],
-      };
-    }),
-  ),
-  scene(
-    "acct-hist-lines",
-    "面板 · 记录 · 触发带窗口",
-    "到线那几种写清是哪一窗：work 7d ≥90% ↻… · personal 5h ≥90% ↻… · team 时段停用（不写成 ≥0%）· work 5h ≥90% · 停发",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("记录");
-    },
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        history: [
-          { at: -5 * H1, from: "team", to: "personal", why: { off: {} } },
-          { at: -3.4 * H1, from: "personal", to: "work", why: { threshold: { n: 90, w: "5h" } }, fromResetsAt: 1.2 * H1 },
-          { at: -0.9 * H1, from: "work", to: "personal", why: { threshold: { n: 90, w: "7d" } }, fromResetsAt: 60 * H1 },
-          { at: -0.1 * H1, from: "personal", to: "personal", why: { held: { n: 90, w: "5h" } }, fromResetsAt: 0.6 * H1 },
-        ],
-      };
-    }),
-  ),
-  scene(
-    "acct-panel-toast",
-    "面板开着时来一条提示",
-    "账号面板开着、按快捷键翻一下自动跟随：右下角那条让到面板左边，不压面板底栏「新会话默认」那一行",
-    async () => {
-      await openPanel();
-      await key("J", { ctrl: true, shift: true, code: "KeyJ" });
-      await sleep(550);
-    },
-    world(
-      () => {},
-      () => {
-        const w = defaultWorld();
-        w.config = {
-          ...w.config,
-          keybindings: { "behavior.toggle-auto-follow": "Ctrl+Shift+KeyJ" },
-        };
-        return w;
-      },
-    ),
-  ),
-  scene(
-    "acct-panel-lower",
-    "面板 · 切换 · 记录 · 底栏",
-    "同上，滚到下半",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("切换");
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-panel-follow",
-    "面板 · 跟随默认",
-    "轮换 = 默认：列表只读（无把手、勾灰），上方 跟随本机默认 设置…；触发与无号可换照默认那一份、灰着",
-    openPanel,
-    world((aw) => {
-      aw.sessions[0] = { ...swappedSess(), follow: true, custom: undefined };
-    }),
   ),
   scene(
     "acct-panel-norelay",
     "面板 · 未实时显示（热切换不成立）",
-    "中转没见过：当前块一条 未实时显示 · 无用量 · 不自动轮换 [接入…]；热切换灰、写原因、主按钮 重启切换",
+    "中转没见过：头下一条 未实时显示 · 无用量 · 不自动轮换 [接入…]；只剩 切换…（热切换灰、写原因）",
     openPanel,
     world((aw) => {
       aw.sessions[0] = { ...swappedSess(), absent: true };
     }),
   ),
   scene(
-    "acct-panel-timeline",
-    "面板 · 被拒 ⇒ 时间轴自动展开",
-    "本会话的号被拒：时间轴自动展开（红段 = 被拒区间，| 5h 重置 ◆ 7d 重置）",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("轮换");
-    },
-    world((aw) => {
-      aw.sessions[0] = {
-        start: "work",
-        current: "work",
-        follow: false,
-        custom: { ...ROT_CUSTOM },
-        history: [],
-      };
-    }),
-  ),
-  scene(
     "acct-panel-pick",
     "面板 · 选号下拉",
-    "切换那一块的下拉：在用项灰 在用、被拒项琥珀、按量 按量",
+    "切换… 浮层里的下拉：在用项灰 在用、被拒项琥珀、按量 按量",
     async () => {
-      await openPanel();
-      await scrollPanelTo("切换");
-      const pick = document.querySelector<HTMLElement>(
-        'aside[role="dialog"] button[aria-label="选账号"]',
-      );
+      await openSwitch();
+      const pick = document.querySelector<HTMLElement>('button[aria-label="选账号"]');
       if (pick) await click(pick);
       await sleep(500);
     },
@@ -966,17 +524,12 @@ export const ACCT_SCENES: Scene[] = [
     "面板 · 重启切换 ⇒ 先问会打断什么",
     "选 重启切换 再点：标题 重启切换 → team，中断 当前轮次 · 保留 会话记录 · 续接",
     async () => {
-      await openPanel();
-      await scrollPanelTo("切换");
-      const r = [
-        ...document.querySelectorAll<HTMLInputElement>(
-          'aside[role="dialog"] input[type="radio"][name^="acct-mode"]',
-        ),
-      ][1];
+      await openSwitch();
+      const r = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="acct-mode"]')][1];
       r.checked = true;
       r.dispatchEvent(new Event("change"));
       await sleep(300);
-      await click(await byText('aside[role="dialog"] button', "重启切换"));
+      await click(await byText(`${SWITCH} button`, "重启切换"));
       await waitFor(
         '[role="alertdialog"], dialog[open], [role="dialog"][aria-modal]',
       );
@@ -1013,11 +566,10 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-switch-strip",
     "消息流 · 换号条",
-    "面板里热切换到 team：toast · 当前与记录原地换 · 消息流末尾一行 ⇄ 时刻 personal → team · 手动 · 热切换 · 账号…",
+    "切换… 里热切换到 team（不出提示）：消息流末尾一行 ⇄ 时刻 personal → team · 手动 · 账号…",
     async (ctx) => {
-      await openPanel();
-      await scrollPanelTo("切换");
-      await click(await byText('aside[role="dialog"] button', "切换"));
+      await openSwitch();
+      await click(await byText(`${SWITCH} button`, "切换"));
       await sleep(400);
       ctx.backend.pushChanged(LOCAL, "rotation", { key: ctx.backend.world.sessions[0].sid });
       await sleep(800);
@@ -1042,133 +594,5 @@ export const ACCT_SCENES: Scene[] = [
       await sleep(600);
     },
     world(() => {}),
-  ),
-  // ── 稿里没画的：无号可换两态（触发那一行旁）
-  scene(
-    "acct-atlimit-continue",
-    "无号可换 · 继续跑（缺省）",
-    "触发 ≥90% 时：轮换内都 ≥90% ⇒ 继续跑（留在当前号照发、被拒才换）；悬停一行说明",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("轮换");
-      await hover(
-        await byText(
-          'aside[role="dialog"] [aria-label="无号可换时"] button',
-          "继续跑",
-        ),
-      );
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-atlimit-stop",
-    "无号可换 · 停",
-    "选 停：轮换内都 ≥90% ⇒ 停发、最早有号回到 90% 以下时续发（claude 照它自己的用满样子停下）；悬停一行说明",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("轮换");
-      await click(
-        await byText(
-          'aside[role="dialog"] [aria-label="无号可换时"] button',
-          "停",
-        ),
-      );
-      await sleep(600);
-      await hover(
-        await byText(
-          'aside[role="dialog"] [aria-label="无号可换时"] button',
-          "停",
-        ),
-      );
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-atlimit-full",
-    "无号可换 · 触发 = 满 时灰着",
-    "触发 = 满（被拒才换）时没有 N%：两态灰着，悬停 仅按 ≥N% 触发时有效",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("轮换");
-      await hover(await byText('aside[role="dialog"] span', "无号可换"));
-    },
-    world((aw) => {
-      aw.sessions[0] = {
-        ...swappedSess(),
-        custom: { ...ROT_CUSTOM, cap: undefined },
-      };
-    }),
-  ),
-  // ── 时间轴
-  scene(
-    "acct-timeline",
-    "面板 · 时间轴 · 平时（24h）",
-    "顶行 在用 personal 5h 63% · 距触发 27 点；本会话轨：过去实线（work → personal，换号点 ✕）、将来虚线（≥90% → team · 抢回 → work）；泳道 被拒 · 过封顶 · 时段停用 · 重置；现在竖线",
-    async () => {
-      await openTimeline();
-    },
-    world((aw) => {
-      aw.warm = [{ account: "team", at: 2.5 * H1 }];
-    }),
-    [W, 1000],
-  ),
-  scene(
-    "acct-timeline-blocked",
-    "面板 · 时间轴 · 卡住（自动展开）",
-    "顶行琥珀条 轮换内均不可用 · 最早 team ↻… · 5h 重置；本会话轨此刻起一段停发（斜纹），之后接 team",
-    async () => {
-      await openPanel();
-      await scrollPanelTo("轮换");
-      await sleep(900);
-      document.querySelector("[data-tl-head]")?.scrollIntoView({ block: "start" });
-      await sleep(300);
-    },
-    world((aw) => {
-      // 轮换里的号都被拒（personal · team 都满了）⇒ 卡住。
-      for (const i of [1, 2]) aw.accounts[i] = { ...aw.accounts[i], state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: (1.2 + i * 0.4) * H1 }, aw.accounts[i].slots[1]], readingReset: (1.2 + i * 0.4) * H1 };
-    }),
-    [W, 1000],
-  ),
-  scene(
-    "acct-timeline-fallback",
-    "面板 · 时间轴 · 兜底（6h）",
-    "team 是兜底：过去 work 被拒、personal 快恢复 ⇒ 一段 先等 personal（不发上游）再接 personal；将来 ≥90% → team，personal 重置 ⇒ 换下兜底 → personal",
-    async () => {
-      await openTimeline();
-      await click(await byText("[data-tl-view] button", "6h"));
-      await sleep(900);
-    },
-    world((aw) => {
-      // team 是兜底：work 被拒、personal 被拒且快恢复 ⇒ 先等 personal（兜底顶上）再接回 personal。
-      aw.accounts[1] = { ...aw.accounts[1], state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: 0.5 * H1 }, aw.accounts[1].slots[1]], readingReset: 0.5 * H1 };
-      aw.sessions[0] = { ...swappedSess(), current: "team", custom: { ...ROT_CUSTOM, order: [{ start: true }, "personal"], enabled: ["personal"], fallback: ["team"] } };
-    }),
-    [W, 1000],
-  ),
-  scene(
-    "acct-timeline-hover",
-    "面板 · 时间轴 · 悬停一列",
-    "键盘进轴、→ 走三格：竖向细线 ＋ 卡「几点 · 用谁 · 谁不能用到几点」",
-    async () => {
-      await openTimeline();
-      const tl = await waitFor("[data-tl]");
-      (tl as HTMLElement).focus();
-      for (let i = 0; i < 3; i++) await key("ArrowRight");
-      await sleep(300);
-    },
-    world(() => {}),
-    [W, 1000],
-  ),
-  scene(
-    "acct-timeline-7d",
-    "面板 · 时间轴 · 7d",
-    "7d 视窗（前 1d · 后 6d）：本会话轨将来只画到 +1d，其后写 —；刻度写日期",
-    async () => {
-      await openTimeline();
-      await click(await byText("[data-tl-view] button", "7d"));
-      await sleep(900);
-    },
-    world(() => {}),
-    [W, 1000],
   ),
 ];

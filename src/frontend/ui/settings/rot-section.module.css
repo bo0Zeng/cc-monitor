@@ -1,0 +1,404 @@
+/* 设置 → 机器 → 轮换：页签 配置 | 策略；左列表 ＋ 右编辑器 / 详情。 */
+@layer components {
+  .rot {
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .rotBody {
+    min-width: 0;
+  }
+
+  .rotCols {
+    display: grid;
+    grid-template-columns: minmax(240px, 2fr) minmax(0, 3fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  @container (width < 760px) {
+    .rotCols {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .rotListCol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .rotList {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--card);
+  }
+
+  .rotItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 52px;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-faint);
+    cursor: pointer;
+  }
+
+  .rotItem:last-child {
+    border-bottom: 0;
+  }
+
+  .rotItem:hover {
+    background: var(--state-hover);
+  }
+
+  .rotItem[data-on="true"] {
+    background: var(--selected-bg);
+  }
+
+  .rotItem:focus-visible {
+    outline: 2px solid var(--state-focus);
+    outline-offset: -2px;
+  }
+
+  .rotItemMain {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .rotItemL1 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .rotItemName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rotItemDesc {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rotItemDesc[data-error="true"],
+  .rotFactV[data-error="true"] {
+    color: var(--error-text);
+  }
+
+  .rotItemSide {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .rotTag {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 18px;
+    padding: 0 5px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .rotDirty {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 18px;
+    padding: 0 5px;
+    border: 1px solid color-mix(in srgb, var(--warn) 60%, transparent);
+    border-radius: var(--radius-s);
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .rotMore {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    padding: 2px;
+    border: 0;
+    color: var(--text-2);
+    background: none;
+    cursor: pointer;
+  }
+
+  .rotEditor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--card);
+  }
+
+  .rotEdHead,
+  .rotEdLine,
+  .rotSecHead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .rotEdLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rotEdName {
+    width: 200px;
+    height: var(--control-h-compact);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    color: var(--text);
+    background: var(--field-bg);
+    font: inherit;
+  }
+
+  .rotSpacer {
+    flex: 1;
+  }
+
+  .rotErr {
+    color: var(--error-text);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotNote {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotSec {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .rotSecTitle {
+    margin: 0;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotTable {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rotTr {
+    display: grid;
+    grid-template-columns: 44px minmax(120px, 1.6fr) repeat(var(--rot-cols), minmax(0, 1fr)) 24px;
+    gap: var(--space-2);
+    align-items: center;
+    min-height: 30px;
+    padding: 0 var(--space-2);
+    border-bottom: 1px solid var(--border-faint);
+    cursor: pointer;
+  }
+
+  .rotTr[data-head="true"] {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    cursor: default;
+  }
+
+  .rotTr[data-ticked="true"] {
+    background: var(--selected-bg);
+  }
+
+  .rotTr[data-init="true"] {
+    color: var(--text-2);
+    font-style: italic;
+  }
+
+  .rotTr[data-lifted="true"] {
+    opacity: 0.4;
+  }
+
+  .rotTr[data-drop="before"] {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+
+  .rotTd {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rotTd[data-changed="true"] {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotTd[data-error="true"] {
+    color: var(--error-text);
+  }
+
+  .rotHandle {
+    display: inline-flex;
+    color: var(--text-faint);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .rotWho {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rotWhoGroup {
+    font-style: italic;
+  }
+
+  .rotRowForm {
+    padding: var(--space-1) var(--space-4) var(--space-2) 56px;
+    border-bottom: 1px solid var(--border-faint);
+    background: var(--card);
+  }
+
+  .rotSec [data-columns="2"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-5);
+  }
+
+  .rotChartHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    font-size: var(--font-size-small);
+  }
+
+  .rotDetTitle {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotFacts {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: var(--space-1) var(--space-3);
+    font-size: var(--font-size-small);
+  }
+
+  .rotFactK {
+    color: var(--text-2);
+  }
+
+  .rotFactV {
+    min-width: 0;
+  }
+
+  .rotTry {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rotTryRow {
+    display: grid;
+    grid-template-columns: 22px 18px 96px minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .rotTryRow[data-skip="true"] {
+    color: var(--text-2);
+  }
+
+  .rotTryN {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    text-align: center;
+  }
+
+  .rotTryWhy {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rotTryP {
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rotSource {
+    max-height: 520px;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    overflow: auto;
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    line-height: 1.55;
+  }
+
+  .rotSrcLine[data-error="true"] {
+    background: color-mix(in srgb, var(--error) 18%, transparent);
+  }
+
+  /* 「从文件添加…」背后的那个选文件框：不出现，按钮替它点。 */
+  .rotFile {
+    display: none;
+  }
+
+  .rotSrcN {
+    display: inline-block;
+    width: 3ch;
+    margin-right: var(--space-2);
+    color: var(--text-faint);
+    text-align: right;
+    user-select: none;
+  }
+}

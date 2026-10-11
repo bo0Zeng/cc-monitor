@@ -93,7 +93,7 @@ export const PERF_SCENES: Scene[] = [
     page: "settings",
     dir: "性能",
     title: "设置窗 · 真实规模",
-    desc: "十几台机器、二十几个账号、三十条规则、几百个扩展，给性能台架量开窗 · 切页 · 滚动 · 筛选",
+    desc: "十几台机器、二十几个账号、三十份轮换配置、几百个扩展，给性能台架量开窗 · 切页 · 滚动 · 筛选",
     width: 960,
     height: 740,
     world: settingsPerfWorld,

@@ -1,5 +1,5 @@
 /**
- * 额度 / 规则表 / 会话轮换的推送带了成品（同重问那条命令的应答）⇒ 用同一个解码器收、直接放进 store、不再问；
+ * 额度 / 配置表 / 会话轮换的推送带了成品（同重问那条命令的应答）⇒ 用同一个解码器收、直接放进 store、不再问；
  * 没带 / 解不开 / 期间可能漏了 ⇒ 照旧重问。期望手写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,8 +13,18 @@ vi.mock("../../../src/frontend/ui/quota-reads", async (importOriginal) => {
       asked.push("quota-read");
       return null;
     }),
-    readRules: vi.fn(async () => {
-      asked.push("rotation-rules-read");
+  };
+});
+vi.mock("../../../src/frontend/ui/rot-reads", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../src/frontend/ui/rot-reads")>();
+  return {
+    ...real,
+    readConfigs: vi.fn(async () => {
+      asked.push("rotation-configs-read");
+      return null;
+    }),
+    readStrategies: vi.fn(async () => {
+      asked.push("rotation-strategies-read");
       return null;
     }),
     readSessionRotation: vi.fn(async (_o: string, sids: string[]) => {
@@ -27,7 +37,7 @@ vi.mock("../../../src/frontend/ui/quota-reads", async (importOriginal) => {
 import { onQuotaChanged } from "../../../src/frontend/ui/acct-center";
 import { appStore } from "../../../src/frontend/ui/app-store";
 
-const rules = { state: "present", defaultRule: "r1", followText: "f", rules: [] };
+const configs = { state: "present", defaultConfig: "c1", configs: [] };
 const rotation = { now: 7, sessions: { s1: { state: "absent", inPlace: "follow" } } };
 
 describe("acct-center 收推送里的成品", () => {
@@ -35,14 +45,22 @@ describe("acct-center 收推送里的成品", () => {
     asked.length = 0;
   });
 
-  it("规则表带了成品 ⇒ 进 store、不问；没带 ⇒ 问；可能漏了 ⇒ 带了也问", () => {
-    onQuotaChanged("box-a", "rotation_rules", { cells: [{ key: null, rev: null, body: rules }], all: false });
-    expect(appStore.rotationRules.get().get("box-a")?.defaultRule).toBe("r1");
+  it("配置表带了成品 ⇒ 进 store、不问；没带 ⇒ 问；可能漏了 ⇒ 带了也问", () => {
+    onQuotaChanged("box-a", "rotation_configs", { cells: [{ key: null, rev: null, body: configs }], all: false });
+    expect(appStore.rotationConfigs.get().get("box-a")?.defaultConfig).toBe("c1");
     expect(asked).toEqual([]);
-    onQuotaChanged("box-a", "rotation_rules", { cells: [{ key: null, rev: null, body: undefined }], all: false });
-    expect(asked).toEqual(["rotation-rules-read"]);
-    onQuotaChanged("box-a", "rotation_rules", { cells: [], all: true });
-    expect(asked).toEqual(["rotation-rules-read", "rotation-rules-read"]);
+    onQuotaChanged("box-a", "rotation_configs", { cells: [{ key: null, rev: null, body: undefined }], all: false });
+    expect(asked).toEqual(["rotation-configs-read"]);
+    onQuotaChanged("box-a", "rotation_configs", { cells: [], all: true });
+    expect(asked).toEqual(["rotation-configs-read", "rotation-configs-read"]);
+  });
+
+  it("策略目录变了也走这个主题：问过策略表的那台一起重问；没问过的不问", () => {
+    appStore.rotationStrategies.set(new Map([["box-c", null]]));
+    onQuotaChanged("box-c", "rotation_configs", { cells: [{ key: null, rev: null, body: configs }], all: false });
+    expect(asked).toEqual(["rotation-strategies-read"]);
+    onQuotaChanged("box-d", "rotation_configs", { cells: [{ key: null, rev: null, body: configs }], all: false });
+    expect(asked).toEqual(["rotation-strategies-read"]);
   });
 
   it("成品解不开 ⇒ 不放、照旧问", () => {

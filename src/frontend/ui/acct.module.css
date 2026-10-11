@@ -126,9 +126,16 @@
   .acctPanel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    gap: var(--space-4);
     font-size: var(--font-size-small);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* 头下那一句：起会话的号 · 能不能热换；下面一道细线隔开轮换那一块。 */
+  .acctStub {
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-2);
   }
 
   .acctBlock {
@@ -158,60 +165,9 @@
     gap: var(--space-4);
   }
 
-  .acctBlockNote,
-  .acctHint,
-  .acctLead {
+  .acctHint {
     color: var(--text-2);
     font-size: var(--font-size-xs);
-  }
-
-  .acctLead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-  }
-
-  .acctWho {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .acctWhoName {
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-strong);
-  }
-
-  .acctWhoFrom {
-    color: var(--text-2);
-  }
-
-  .acctTag {
-    padding: 0 var(--space-2);
-    /* 一枚标签是一段，不在段内折行（封顶 `5h 01:00-20:00 封顶 99%` 那种长的也一行）；一行放不下 ⇒ 尾部省略、悬停看全文，不挤掉右边的用量。 */
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-s);
-    color: var(--text-2);
-    font-size: var(--font-size-xs);
-  }
-
-  .acctTag[data-shade="cur"] {
-    border-color: var(--accent);
-    color: var(--text);
-  }
-
-  .acctTag[data-shade="warn"] {
-    border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-    color: var(--warn);
-  }
-
-  .acctTag[data-shade="error"] {
-    border-color: color-mix(in srgb, var(--error) 45%, transparent);
-    color: var(--error-text);
   }
 
   .acctMeterRow {
@@ -227,55 +183,8 @@
     text-align: right;
   }
 
-  .acctApiLine {
-    display: flex;
-    gap: var(--space-4);
-    color: var(--text-2);
-  }
-
-  .acctApiLine[data-shade="refused"] {
-    color: var(--error-text);
-  }
-
-  .acctRotBar,
-  .acctTrigger,
-  .acctLimit,
-  .acctTriggerWrap {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .acctTriggerWrap {
-    gap: var(--space-5);
-  }
-
-  /* 来源一行：`来源 [跟随默认 ▾] ⓘ`，下拉按内容宽（不撑满）。 */
-  .acctSrcRow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .acctSrcRow > button {
-    width: auto;
-    min-width: 132px;
-    max-width: 260px;
-  }
-
   .acctSpacer {
     flex: 1;
-  }
-
-  .acctInfo {
-    display: inline-flex;
-    color: var(--text-2);
-    cursor: help;
-  }
-
-  .acctTriggerLabel {
-    color: var(--text-2);
   }
 
   .acctRadio {
@@ -283,172 +192,6 @@
     align-items: center;
     gap: var(--space-2);
     cursor: pointer;
-  }
-
-  .acctLimit [data-disabled="true"] {
-    opacity: 0.45;
-  }
-
-  .acctList {
-    display: flex;
-    flex-direction: column;
-    max-height: calc(32px * 8);
-    overflow-y: auto;
-    border-radius: var(--radius-m);
-    background: var(--bg-2);
-  }
-
-  .acctRow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-height: 32px;
-    padding: 0 var(--space-4);
-    border-left: 2px solid transparent;
-  }
-
-  .acctRow:focus-visible {
-    outline: 1px solid var(--state-focus);
-  }
-
-  .acctRow[data-inuse="true"] {
-    border-left-color: var(--accent);
-  }
-
-  .acctRow[data-dim="true"] {
-    opacity: 0.55;
-  }
-
-  .acctRow[data-lifted="true"] {
-    opacity: 0.35;
-  }
-
-  .acctHandle {
-    display: inline-flex;
-    color: var(--text-faint);
-    cursor: grab;
-    touch-action: none;
-  }
-
-  /* 一行挤了先截号名（头像已带缩写）；状态标签与行尾用量不缩、不折行；只读的封顶标签文字长，排在号名之后再缩。 */
-  .acctRowName {
-    flex: 0 4 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text);
-  }
-
-  .acctRow > .acctTag {
-    flex: none;
-  }
-
-  .acctRow > .acctTag[data-cap] {
-    flex: 0 1 auto;
-  }
-
-  .acctRowUsage {
-    display: inline-flex;
-    flex: none;
-    gap: var(--space-5);
-    margin-left: auto;
-    color: var(--text-2);
-    white-space: nowrap;
-  }
-
-  .acctRowUsage[data-shade="refused"] {
-    color: var(--error-text);
-  }
-
-  .acctRowSlot {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .acctRowSlot[data-shade="refused"] {
-    color: var(--error-text);
-  }
-
-  .acctRowSlot[data-shade="warn"] {
-    color: var(--warn);
-  }
-
-  .acctRowSlotKey,
-  .acctRowSlotReset {
-    color: var(--text-2);
-  }
-
-  .acctRowSlotVal {
-    min-width: 3ch;
-    text-align: right;
-  }
-
-  .acctMiniBar {
-    display: inline-block;
-    width: 20px;
-    height: 4px;
-    overflow: hidden;
-    border-radius: var(--radius-s);
-    background: var(--border-soft);
-  }
-
-  .acctMiniFill {
-    display: block;
-    height: 100%;
-    background: var(--text-2);
-    transform-origin: left;
-  }
-
-  .acctRowSlot[data-shade="refused"] .acctMiniFill {
-    background: var(--error);
-  }
-
-  .acctRowSlot[data-shade="warn"] .acctMiniFill {
-    background: var(--warn);
-  }
-
-  .acctRowSlot[data-stale="true"] .acctMiniFill {
-    background: repeating-linear-gradient(135deg, var(--text-2) 0 3px, transparent 3px 6px);
-  }
-
-  .acctDropLine {
-    height: 2px;
-    margin: -1px 0;
-    background: var(--accent);
-  }
-
-  .acctTimeline {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding-top: var(--space-3);
-  }
-
-  .acctTlTop {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .acctTlHead {
-    flex: 1;
-    min-width: 0;
-    font-size: var(--font-size-small);
-  }
-
-  /* 顶行一段整段换行；一段比整行还宽才在段内折。 */
-  .acctTlHeadPart {
-    display: inline-block;
-    max-width: 100%;
-  }
-
-  /* 卡住：琥珀条（要留意几点能接着干）。 */
-  .acctTlHead[data-tl-head="blocked"] {
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--warn);
-    border-radius: var(--radius-s);
   }
 
   .acctSwitchRow {
@@ -494,39 +237,6 @@
 
   .acctReason {
     color: var(--text-2);
-  }
-
-  .acctHistRow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-  }
-
-  .acctHistAt {
-    width: 11ch;
-    flex: none;
-    color: var(--text-2);
-  }
-
-  .acctHistMove {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .acctHistArrow,
-  .acctHistWhy {
-    color: var(--text-2);
-  }
-
-  .acctHistReset {
-    margin-left: var(--space-2);
-  }
-
-  .acctHistMore {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
   }
 
   .acctFoot {
