@@ -839,7 +839,7 @@ fn declaring_zero_fields_needs_a_reason() {
 #[test]
 fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     // ④ 那一步真调每一条读能力：`files-index-rebuild` 不给 `path` 就重走家目录、装上常驻那一份 ⇒ 拿那把唯一的锁
-    //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，mg41 CI 现红过）。
+    //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，CI 上并行跑时现红过）。
     let _lock = crate::files::index::tests::resident_lock();
     // ① 名字：能力名把 `.` 换成 `-` 就是线上名（反向那一半住 `files::answer_wire`）。
     let declared: std::collections::BTreeSet<String> = crate::files::capability_names()

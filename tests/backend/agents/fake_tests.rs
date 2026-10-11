@@ -2,7 +2,7 @@ use super::*;
 
 /// 夹具根：按 pid + tag 隔开。
 ///
-/// ⚠ 建在临时目录里：用户 08-14 明令**不要动生产** ——
+/// ⚠ 建在临时目录里：**不要动生产** ——
 /// 这份夹具与 `~/.cc-monitor/`、`~/.claude/` 一个字节都不相干。
 fn fixture_root(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!("ccm-s6-{tag}-{}", std::process::id()))
@@ -388,7 +388,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 
     // ③ 账号：**静默**（零行）。
     // ⚠ 直接喂夹具里一个不存在的账号库目录：走 CLI 那一臂的话账号库跟着这个进程的家走，
-    //   会去读**用户真实的**账号库（用户 08-14 明令不碰生产）。
+    //   会去读**用户真实的**账号库（不碰生产）。
     let no_accts = root.join("no-such-accts");
     assert_eq!(
         crate::observe::accounts_query::session_accounts(&root, &no_accts),

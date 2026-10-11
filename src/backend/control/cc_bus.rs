@@ -173,7 +173,7 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 /// # 为什么是环境变量而不是给 cc-send 加参数
 ///
 /// `cc-whoami` 的优先级第一条逐字就是 `$CC_BUS_ID`（可选覆盖）——**这是 cc-bus 现成的契约**。
-/// 用户 08-13 逐字「细节先按原本的就行」⇒ 不动 cc-bus 本体。
+/// 「细节先按原本的就行」⇒ 不动 cc-bus 本体。
 ///
 /// # ★★ 这一族环境键从此**由本模块显式交办**，不再靠继承
 ///
@@ -543,7 +543,7 @@ fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
     if skipped > 0 {
         tracing::warn!("cc-bus 名册里有 {skipped} 行读不懂，这一趟没算进去");
     }
-    // ★ 去问**身份空间**谁还活着（用户 08-13 那条架构点）。问不到就回 `null`，不假装知道。
+    // ★ 去问**身份空间**谁还活着。问不到就回 `null`，不假装知道。
     let sessions = super::gate::list_sessions().ok();
     Ok(join_identity(roster_agents(&rows), sessions.as_deref()))
 }

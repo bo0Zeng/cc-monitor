@@ -1454,9 +1454,9 @@ fn every_job_that_installs_apt_packages_restores_the_deb_cache_first() {
     );
 }
 
-/// **候选分支 `next`：推 main 之前 CI 先在它上面跑同一套，绿了 main 才快进过去**（用户 10-10 定）。
+/// **候选分支 `next`：推 main 之前 CI 先在它上面跑同一套，绿了 main 才快进过去**。
 ///
-/// 推送脚本（仓外）把合并树强推到 `origin/next`、等这一趟 CI 全绿才 `merge --ff-only` 并推 main；
+/// 推送脚本（仓外）把合并好的分支强推到 `origin/next`、等这一趟 CI 全绿才 `merge --ff-only` 并推 main；
 /// main 于是只收 CI 绿过的提交。这条钉住那条路在仓里的一半：
 /// ① `ci.yml` 的 push 触发同时认 `main` 与 `next`（少了 `next` ⇒ 推候选分支什么都不跑，脚本等到超时）；
 /// ② `ci.yml` 里没有一条按分支 / 事件分叉的条件（`if:` · `github.ref` · `github.event_name` …）——

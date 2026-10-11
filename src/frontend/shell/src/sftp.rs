@@ -34,7 +34,7 @@
 //! 那段序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）逐字搬去了后端
 //! `dial/sftp.rs::put_atomic` 的头注。〕
 //! ⇒ 落点变了一格：`ccm` 入口从 `~/.local/bin/ccm` 挪到 **`~/.cc-monitor/bin/ccm`**（两个写根之内；也正是
-//! 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
+//! 要的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;

@@ -117,7 +117,7 @@ pub(crate) struct Adapter {
     pub(crate) history: Option<HistoryFace>,
     /// 这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（404 ＋ 原因头，FIX3 之前是 502），不回落。
     ///
-    /// 用户 2026-09-18 逐字「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
+    /// 「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
     /// （`accounts::upstream_select` 的每 agent 一行表），与「跟着适配层」不是同一格（自陈待对齐）。
     /// 今天上游选择**只从这里读**（`default_upstreams`）—— 加一家的默认上游，改的就是注册表里那一行。
     pub(crate) upstream: Option<DefaultUpstream>,

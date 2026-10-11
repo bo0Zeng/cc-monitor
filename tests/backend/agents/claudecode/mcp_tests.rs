@@ -75,7 +75,7 @@ fn a_missing_file_is_silent_and_a_broken_one_is_said() {
 /// 状态只说配置层说得准的：停用（`projects[目录].disabledMcpServers`）· 要登录（各号家目录里那份「要登录」缓存、
 /// 还在 Claude 自己的有效期内，缺省 15 分钟、条目带 `ttlMs` 就按它；只对 http / sse 算数，stdio 那种 Claude 自己也不看）；
 /// 过期的、stdio 的、没记的 ⇒ `unknown`，不说「连上了」。
-/// 要求：用户 10-09 定「mcp-read 带上每个服务器的 status，配置层能说真话的那一份，其余都写 unknown，不说 connected」。
+/// 要求：「mcp-read 带上每个服务器的 status，配置层能说真话的那一份，其余都写 unknown，不说 connected」。
 #[test]
 fn status_says_only_what_the_config_side_can_know() {
     use crate::agents::{McpLook, McpStatus};

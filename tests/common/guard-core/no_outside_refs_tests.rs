@@ -16,7 +16,11 @@
 //! 什么时候改成拦：产品代码（`src/`）与 `src/doc` 里这三形清到零的那个提交里，把三眼并进 `net()`，
 //! 本条改成命中集 == ∅（测试与 `tests/evidence/` 同拍清，或那时按目录分两步收）。
 //!
-//! 买不到：换了说法、不落在网眼上的指路（施工路代号不在网眼上；编号网只认几种常见写法）。
+//! 第五张网（施工过程的叫法）：派活的那一方 · 施工分支与合并分支的代号 · 带日期的「用户 MM-DD」· 「合并」那棵树 ·
+//! 「施工」那一路 · 「这一路的」写区。同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时怎么做的），测试声明行不扫；
+//! 命中集 == ∅，点名哪个文件哪一行。仓的读者不知道这些名字指什么：留下道理本身，叫法删掉。
+//!
+//! 买不到：换了说法、不落在网眼上的指路（代号网只认登记过的前缀；编号网只认几种常见写法）。
 
 use regex::Regex;
 use std::collections::BTreeSet;
@@ -63,6 +67,37 @@ fn process_net() -> Regex {
     Regex::new(&format!("第[一二三四五六七八九十]{}|4d-{}", "波", "lanes"))
         .expect("施工说法网拼不成正则")
 }
+
+/// 第五张网：施工过程的叫法。每个网眼拆两段、运行期拼 ⇒ 本文件里没有一处完整的网眼。
+/// 「主会话」本身是产品词（Claude Code 的主会话 vs 子 agent），只抓它后面跟着日期或「定 / 审 / 拍 / 说 / 认」的那几形。
+/// 代号前后不许紧挨字母、数字、`_`、`-`（`net2_…` 这类测试函数名 · `gate2` 这类代码名不算）。
+fn process_names_net() -> Regex {
+    let lanes = [
+        "mg", "proj", "core", "clock", "shotreal", "mob", "net", "fix", "guards", "slim",
+        "patches", "mainwin", "filewin", "settings", "auditfix", "docsync", "cxrelay", "rotrules",
+        "pbui",
+    ]
+    .join("|");
+    let bare = ["token", "fix|cx", "rec|cx", "stream|wt", "fix|wt", "sw"].concat();
+    let eyes = [
+        format!(
+            "主会{}",
+            r"话 ?(?:[0-9]{1,2}-[0-9]{2}|定|审|拍|说|认|打版本)"
+        ),
+        format!("用{}", r"户 ?(?:20[0-9]{2}-)?[01][0-9]-[0-3][0-9]"),
+        format!("合并{}", "树"),
+        format!("施工{}", "路"),
+        format!("这一路的{}", "写区"),
+        format!(
+            r"(?:^|[^A-Za-z0-9_./-])(?:(?:{lanes})[0-9]+[a-z]?|{bare}|w{}/[a-z0-9]+)(?:$|[^A-Za-z0-9_-])",
+            "8"
+        ),
+    ];
+    Regex::new(&eyes.join("|")).expect("施工叫法网拼不成正则")
+}
+
+/// 第五张网不扫的文件：版本记录照实写当时怎么做的。
+const PROCESS_NAMES_EXEMPT: &[&str] = &["CHANGELOG.md"];
 
 /// 第三张网的三形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
 fn unblocked_eyes() -> [(&'static str, Regex); 3] {
@@ -311,6 +346,70 @@ fn the_process_net_catches_wave_names_and_spares_test_declarations() {
         got,
         BTreeSet::from([1, 2, 5]),
         "施工说法网在合成夹具上抓到的行 ≠ 标定（该抓 1、2、5；该放过 3、4）—— 网坏了，全仓那条零命中不作数"
+    );
+}
+
+#[test]
+fn no_tracked_text_uses_the_build_process_names() {
+    let texts = tracked_texts(&repo());
+    assert!(
+        texts.len() > 500,
+        "人群只有 {} 份 —— `git ls-files` 口径坏了，零命中不作数",
+        texts.len()
+    );
+    let (net, decl) = (process_names_net(), test_declaration());
+    let mut hits = Vec::new();
+    for (rel, text) in &texts {
+        if PROCESS_NAMES_EXEMPT.contains(&rel.as_str()) {
+            continue;
+        }
+        for (i, line) in text.lines().enumerate() {
+            if decl.is_match(line) {
+                continue;
+            }
+            if let Some(m) = net.find(line) {
+                hits.push(format!("{rel}:{}: {}", i + 1, snippet(line, m.start())));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "仓里有 {} 行写着施工过程的叫法（派活的一方 · 分支代号 · 带日期的用户裁定 · 合并那棵树 · 施工那一路）：\
+         读者不知道这些名字指什么 —— 叫法删掉，留下道理本身。前 50 处：\n{}",
+        hits.len(),
+        hits.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// 合成夹具：施工叫法必须抓到，产品里的「主会话」· 代码名 · 测试函数名必须放过（行号集相等）。
+#[test]
+fn the_process_names_net_catches_build_names_and_spares_product_words() {
+    let net = process_names_net();
+    let lines = [
+        format!("// 稿里没画（主会{} 10-06 定）", "话"), // 1 ✔
+        format!("/// 起因（mg{} CI 现红）", "41"),       // 2 ✔
+        format!("// 要求：用{} 10-09 定「带上 status」", "户"), // 3 ✔
+        format!("// 用{} 2026-09-17「要引入一层文案表」", "户"), // 4 ✔
+        format!("# 合并{}推上去 CI 才红", "树"),         // 5 ✔
+        format!("/// 删了而退役（w{}/proj10 删 hello）", "8"), // 6 ✔
+        format!("// 〔m{}37 合并 token{} 10-09〕", "g", "fix"), // 7 ✔
+        "// 主会话派的 ⇒ 主窗口；子 agent 派的 ⇒ 其窗口".to_string(), // 8 ✘ 产品词
+        "fn net2_uncancellable_is_additive_and_last() {".to_string(), // 9 ✘ 测试函数名
+        "pub(crate) fn gate2(name: &str) -> Gate2 {".to_string(), // 10 ✘ 代码名
+        "// 上传那一路与复制这一路问的是同一件事".to_string(), // 11 ✘ 不是施工那一路
+        "// 用户原话：「本地要和远端一样」".to_string(), // 12 ✘ 不带日期
+        format!("// 不在这一路的写{}", "区"),            // 13 ✔
+    ];
+    let got: BTreeSet<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| net.is_match(l))
+        .map(|(i, _)| i + 1)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 13]),
+        "施工叫法网在合成夹具上抓到的行 ≠ 标定（该抓 1–7、13；该放过 8–12）—— 网坏了，全仓那条零命中不作数"
     );
 }
 

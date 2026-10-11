@@ -1565,7 +1565,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         c.payload
     );
     assert_eq!(c.bus.as_ref().map(|b| b.note.as_str()), Some(multi));
-    // 用户 09-26：相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
+    // 相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
     let e0 = env();
     for (rel, want) in [
         ("rel/dir", format!("{}/rel/dir", e0.pwd)),
@@ -1580,7 +1580,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         build_of(&["--cwd", rel], &e0)
             .unwrap_or_else(|e| panic!("相对 {rel:?} 补全后被拒：{}", e.0));
     }
-    // 用户 09-26：启动器按空格拆词、打头 `~/` 是家目录（与载荷那条路交给 shell 拆词同一个结果）。
+    // 启动器按空格拆词、打头 `~/` 是家目录（与载荷那条路交给 shell 拆词同一个结果）。
     for (l, want) in [
         ("ccr code", vec!["ccr", "code", "-p"]),
         ("~/bin/claude --x", vec!["/home/pi/bin/claude", "--x", "-p"]),

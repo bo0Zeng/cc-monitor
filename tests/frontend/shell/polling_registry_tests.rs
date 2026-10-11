@@ -45,7 +45,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              它**自己的注释就承认了**：`:20` 逐字「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」。\
              **事件源**：`$BUS/queue` 目录的 inotify —— 队列是文件系统目录、天然可 watch，\
              与后端侧看 pidfile 的做法同构。\
-             **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，用户 08-10 明确「后面再增强」）。\
+             **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，明确「后面再增强」）。\
              如实记未排期，不编一个假 owner 让它看起来有人管。\
              ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; backend_running && break; done` \
              —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",

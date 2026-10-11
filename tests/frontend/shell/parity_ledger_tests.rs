@@ -104,7 +104,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // `bind.rs` 的 `SetForegroundWindow` / `IsWindow` / `ShowWindow` 全在 `#[cfg(windows)]` 下
     // ⇒ **Linux 上这两条命令都没有实现**（不是坏了，是没写）。
     // 本表记的是「本地/远端平价」，不是「平台覆盖」—— 所以 `Both` 没记错；
-    // 但只读这一行会以为 Linux 也有。⇒ 平台那一维归 `U14`（用户 08-12 已裁：要做，排在后面）。
+    // 但只读这一行会以为 Linux 也有。⇒ 平台那一维归 `U14`（已裁：要做，排在后面）。
     ("bring_terminal_to_front", "terminal.focus", Side::Local),
     // 已握手的终端数：从别名读回口里拆出来（住 monitor 进程的 `BindRegistry`），与拉前同一项能力。
     (
@@ -219,7 +219,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //
     // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
     // 正是 §1.2 今天悬着的问题」。**两半都被证伪了**：
-    // ① 「还没裁定」——`C1`/`C8` 已裁（用户 08-11「本地要和远端一样」）；
+    // ① 「还没裁定」——`C1`/`C8` 已裁（「本地要和远端一样」）；
     // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs::local_stdio_consumer` 里逐字
     //    `inbound_client::register(LOCAL_ORIGIN, client)`，`client_for("<local>")` 实测通。
     // ③ 而 **P3 刀 3 让生产段真的用它了**：`runLocalResumeIntoExistingTmux`
@@ -330,7 +330,7 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     // `panorama.code-graph` 那一行（`Undecided`，「远端 repo 的代码图谱既没做、也没在任何计划里登记过」）**摘了**：
     //   要，`panorama_call`（`Side::Remote`）按 origin 问那台后端 ⇒ 两侧都有。
     // `panorama.annotate` 那一行（`ParityDebt`：「远端仓的批注写等后端写面」）**结清、删掉**：
-    //   用户 09-24「引擎只算、文件管理来写」，`panorama_edit`（`Side::Both`）本机远端同一条。
+    //   「引擎只算、文件管理来写」，`panorama_edit`（`Side::Both`）本机远端同一条。
     // `creds.apikey` 那一行（`ParityDebt`：「把 key 送到远端的路」）**结清、删掉**：
     //   远端那一份由那台机器的后端写（`apikey-key-set`，临时文件出生即只给本人 —— 机密性由拿着那份文件的
     //   那台机器自己的 `creds_core::perm` 管，不靠 SFTP 的 mode 参数，那一行点名的两条要求都照做了）。

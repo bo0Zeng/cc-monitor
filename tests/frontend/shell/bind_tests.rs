@@ -68,7 +68,7 @@ fn entry(ps_pid: u32, hwnd: isize, owner_pid: u32) -> HwndEntry {
     }
 }
 
-/// ★ 用户 10-09 那一幕（两个 Windows Terminal 窗口、从标签栏 resume 的远端会话、PowerShell 没登记）：
+/// ★ 那一幕（两个 Windows Terminal 窗口、从标签栏 resume 的远端会话、PowerShell 没登记）：
 /// 链上开着连接的 ssh.exe 认得出它显示在哪个窗口（它的控制台挂在那个 Windows Terminal 窗口下）⇒ 就是那个窗口，
 /// 不管 Windows Terminal 开着几个窗口、不要任何登记。
 #[test]

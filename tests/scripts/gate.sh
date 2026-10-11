@@ -898,7 +898,7 @@ run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红�
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 # ── `shotsshell`：截图台架的无头壳（例子 `ccm-shots-shell`，只在台架特性下编）编不编得过 ──
 # 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；从前没有一格编它，壳里它调的签名一改（如 `call_via` 多一参），
-# 要到跑截图台架才发现（proj10 · mg42 都撞上过）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
+# 要到跑截图台架才发现（撞上过两回）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
 # 与 `cargo` · `appbuild` 同一个 target 目录，增量编一次。
 run_gate shotsshell '不是数出来的数：截图台架那个无头壳（例子 `ccm-shots-shell`）在 Linux 上 dev 档真编真链一趟，只有绿/红两态，与台架 `pool.mjs` 同一条编法。⚠ 只编不跑：台架里它跑得对不对由截图台架自己判' \
          bash -c 'cd src/frontend/shell && out=$(cargo build --features shots --example ccm-shots-shell 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "shotsshell: 1 passed"'
@@ -917,7 +917,7 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 #   真走一趟链接器（dev）。`[lib]` 只产 `rlib`；有人把 `cdylib` 加回来 ⇒ 红在 `export ordinal too large`。
 # 再编出 lib 的测试程序（`cargo test --lib --no-run`，只编不跑），用 `llvm-readobj --coff-resources` 读它的资源表：
 #   必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
-#   为什么：mg38 推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
+#   为什么：有一回推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
 #   `TaskDialogIndirect` 一族，而清单当时只进 `[[bin]]`。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来（`build.rs::manifest_for_every_artifact`）。
 # 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；链的是不带本机后端那一形：`native-backend/` 没铺，或铺着本机 linux 那份（清单写着别的 target ⇒ `build.rs` 这一趟当它不在，判据 `native_bytes_staged_for_another_target_are_left_out_not_fatal`）。
 # 判资源表的那段 python 读 `llvm-readobj` 的输出（stdin），$1 是给人看的名字；绿时印一行 `清单 ok`，红时说缺什么并退 1。

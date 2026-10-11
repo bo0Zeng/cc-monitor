@@ -2,7 +2,7 @@
  * 截图台架的假适配层（`tests/shots/fake/`）不写核心的成品：核心写的字（额度行 · 距今 · 需手动 · 状态字 …）与时刻字一律由真后端算，
  * 台架只造盘上原始格式的输入（`tests/shots/disk/`）交给真后端（`tests/shots/real/pool.mjs`）。
  *
- * 为什么有这一格：mg39 把额度行收进核心（`faces/quota_rows.rs`）的同一批，截图假后端又抄了一份行模型与距今（`quota-face.ts` ·
+ * 为什么有这一格：额度行收进核心（`faces/quota_rows.rs`）的同一批，截图假后端又抄了一份行模型与距今（`quota-face.ts` ·
  * `backend.ts::withTexts`）——核心每加一格，台架就得手补一次，补错了截图照样「长得像」，谁也看不出（架构复审四 R6 / R7）。
  *
  * 认什么（每一种都是「替核心写成品」的写法）：

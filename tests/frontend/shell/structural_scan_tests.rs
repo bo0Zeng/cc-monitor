@@ -3450,7 +3450,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //「旧 `shared/ccm::avoid_name_collision`（`K-R48` 已删）那句
         //  `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思」——
         // 用来说明「`--print` 不查实时状态」这条行为是从哪继承来的。
-        // 用户 09-12 `R52` 裁定二之后**那条行为本身没了**（退让搬进 `plan::build`、
+        // `R52` 裁定二之后**那条行为本身没了**（退让搬进 `plan::build`、
         // 问同一张会话快照，`--print` 与真跑吐同一个名字）⇒ 连带那个字段与那句头注
         // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
         // 别让表替真判据挡枪」。

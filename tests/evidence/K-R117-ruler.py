@@ -178,7 +178,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   剩 monitor 自己那台那几行的事实，能力 id 换成下面那一条（理由同上面几条墓碑）。
     ("audit.monitor-own", (NA, "—", "足迹里 monitor 自己那台那几行的**事实**（只 stat，报告安装面，不改它）")),
     # `assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
-    # 〔墓碑〕`audit.drift-ledger` 随 monitor 自己那本漂移账（`drift_ledger` · Tauri 命令 `drift_ledger_report`）删了而退役（w8/proj10 删 hello.capabilities）；
+    # 〔墓碑〕`audit.drift-ledger` 随 monitor 自己那本漂移账（`drift_ledger` · Tauri 命令 `drift_ledger_report`）删了而退役（`hello.capabilities` 跟着删了）；
     #   能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
     # 〔墓碑〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
     #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。

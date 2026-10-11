@@ -145,7 +145,7 @@ pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
 // **别名只有一类 —— 名字 ＋ 一组 ccm 参数**
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 用户 2026-09-17 逐字：「不要有 account alias 这种东西……就是 ccm 参数附加器」。
+// 「不要有 account alias 这种东西……就是 ccm 参数附加器」。
 // 账号（`--account`）只是参数里的一个维度。清单由**用户**拥有，不跟着账号表自动增删。
 //
 // 命令面是两跳：
@@ -295,7 +295,7 @@ pub(crate) struct Caps {
 
 impl Caps {
     /// 一种 shell 的目标机器上有什么。今天只有一个事实：**PowerShell 目标 ⇔ Windows ⇔ 没有 tmux**
-    /// （后端 `lib.rs::TARGET_GAPS` 里 `ccm-launcher` × Windows 那几行，用户 2026-09-21「windows 用 windows
+    /// （后端 `lib.rs::TARGET_GAPS` 里 `ccm-launcher` × Windows 那几行，「windows 用 windows
     /// 自己的后台服务，后面再做」）。POSIX 目标按「有」算：没装 tmux 的 Linux 由 ccm 在运行时报 `no_tmux`（今天就是这样）。
     pub fn of(shell: Shell) -> Caps {
         Caps {

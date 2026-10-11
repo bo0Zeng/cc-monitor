@@ -98,7 +98,7 @@ fn the_session_file_predicate_answers_both_ways() {
     // ── 阴性：这些**必须**放行 ────────────────────────────────────────
     //    ★ 前四条是 09-23 那一裁买到的东西，**逐条承重**。
     for miss in [
-        "/home/u/.claude/skills/my-skill/SKILL.md", // 用户 09-23 逐字点名的那一类
+        "/home/u/.claude/skills/my-skill/SKILL.md", // 点名要能改的那一类
         "/home/u/.claude/settings.json", // `INVARIANTS §1` SS-14：写面绝不含它 —— 而「不含」≠「拒写」
         "/home/u/.claude-alt/q/.credentials.json", // 账号库
         "/home/u/.claude/projects/-x/sub/abc.jsonl", // `projects/` 下**多一层** ⇒ 不是会话文件那个位置
@@ -152,7 +152,7 @@ fn the_lexical_fence_lets_a_clean_relative_path_through() {
 ///
 /// 原来的标题逐字是「目标根**自己**落在 Claude 树里时，相对段再干净也不行」，
 /// 断言的是「把文件管理目标指到 `~/.claude` 底下 ⇒ 整个拒」。
-/// **用户 09-23 逐字裁掉了那一句**：「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」
+/// **那一句已经裁掉**：「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」
 ///
 /// ⇒ 今天判的是**两向**：
 /// · 目标根指到 `~/.claude` 底下 ＋ 写点不是会话文件 ⇒ **放行**（那一裁买到的东西）；

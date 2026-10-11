@@ -923,7 +923,7 @@ fn takes_the_lock(chunk: &str) -> bool {
 
 /// ★ 后端测试树里，凡是会写常驻那两份的 `#[test]` 块，都拿 [`resident_lock`] —— 碰这份进程级状态只有这一道门。
 ///
-/// 起因（mg41 CI 现红）：`a_query_against_a_missing_index_says_so_instead_of_saying_no_hits` 拿锁、清空、查，
+/// 起因（CI 上并行跑时现红过）：`a_query_against_a_missing_index_says_so_instead_of_saying_no_hits` 拿锁、清空、查，
 /// 查到的却是一份索引 —— 同一进程里 `inbound_structure_guards::the_files_read_family_is_online_exactly_as_it_is_declared`
 /// 用空入参把每一条读能力真调一次，`files-index-rebuild` 不给 `path` 就重走家目录、把常驻那一份装上，而它没拿这把锁。
 /// 单跑、本机跑都绿：要两条恰好并发、而那一趟重走恰好落在「清空」与「查」之间。

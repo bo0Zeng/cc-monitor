@@ -97,7 +97,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // **MCP 资产同步的判定**（B，用户 09-24）：两份原文进、
+    // **MCP 资产同步的判定**（B）：两份原文进、
     //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
     //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。
     CommandSpec {

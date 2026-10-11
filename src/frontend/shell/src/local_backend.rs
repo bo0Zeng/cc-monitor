@@ -1452,7 +1452,7 @@ pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[BACKEND_SEP, STREAM_WORD];
 /// monitor 起流的每一发（本机两条载体 · 远端流 · 测试连接探针）都以它打头。
 pub(crate) const STREAM_WORD: &str = "--stream";
 
-/// 〔用户 09-27〕叫后端时打头的那个 `--`：后端二进制就是 `ccm`，`ccm [交给 claude 的…] -- [ccm 自己的…]` ——
+/// 叫后端时打头的那个 `--`：后端二进制就是 `ccm`，`ccm [交给 claude 的…] -- [ccm 自己的…]` ——
 /// 打头的 `--` 紧跟后端的词（子命令 / 流模式旗标）才当后端用，没有它整行交给 claude。monitor 叫后端的每一发都带它。
 pub(crate) const BACKEND_SEP: &str = "--";
 

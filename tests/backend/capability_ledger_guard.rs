@@ -455,7 +455,7 @@ fn every_target_gap_names_a_capability_that_really_exists() {
 
 /// 🔴 每一条豁免都要答两件：**今天为什么做不到** ＋ **将来怎么办**。
 ///
-/// 「暂时不做」是合法答复（用户 2026-09-21 逐字「**除非暂时不做**」），
+/// 「暂时不做」是合法答复（「**除非暂时不做**」），
 /// 但**必须写出来** —— 不写就分不清「想过了、决定推后」与「压根没想」。
 #[test]
 fn every_target_gap_says_why_and_what_happens_next() {

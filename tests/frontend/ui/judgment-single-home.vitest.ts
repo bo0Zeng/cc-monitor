@@ -1266,6 +1266,6 @@ describe("DUP1 判定只有一个家", () => {
     // `mirror` 的要求形状：认得出两种、认不出空话。
     expect(DESIGN_ADDRESS.test("「失败要显式、归因要准确」")).toBe(true);
     expect(DESIGN_ADDRESS.test("INVARIANTS §47")).toBe(true);
-    expect(DESIGN_ADDRESS.test("主会话拍")).toBe(false);
+    expect(DESIGN_ADDRESS.test("当时拍板")).toBe(false);
   });
 });

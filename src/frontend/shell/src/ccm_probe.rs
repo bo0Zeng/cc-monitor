@@ -791,7 +791,7 @@ pub(crate) fn local_ccm_entry_now(fresh: Option<bool>) -> LocalCcmEntry {
         _ => parse_probe_output(""),
     };
     // ⚠ **`$HOME/…` 形态，不是绝对路径**：这个串会被别名生成器嵌进用户的 shell 命令里，
-    //   而用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）⇒ 写死绝对路径把自定义堵死，
+    //   而「这些命令都是可以自定义的」（`R19`）⇒ 写死绝对路径把自定义堵死，
     //   换台机器 / 换个用户也当场失效。
     let entry = installed.map(|_| {
         format!(

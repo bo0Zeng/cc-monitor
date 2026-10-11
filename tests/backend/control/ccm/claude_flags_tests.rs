@@ -24,7 +24,7 @@ fn flags_of(help: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// 〔用户 09-27〕要求：「命令格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 claude；
+/// 要求：「命令格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 claude；
 /// 有 ⇒ 按最后一个 `--` 切……右边全归 ccm……认不得的词直接报错、不猜」「撞名判据改为『右边只认 ccm 表』」。
 /// 取代「壳层选项 ∩ claude 旗标 = ∅」与 E2 第一版「claude 旗标 ∩ 后端第一个词」两条（〔墓碑〕后者曾钉着 `--fork-session` 豁免）。
 ///

@@ -45,7 +45,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "scripts" / "gate.sh"
 
-# ── 承诺表（条 63，用户 2026-09-18 逐字点完）──────────────────────────────
+# ── 承诺表（条 63）──────────────────────────────
 # 每格：(平台名, 它在 gate.sh 里那一格的名字, 逐字锚点, 这一格买到了什么)
 PROMISED = [
     ("本机 Windows x86_64", "winchk", "run_gate winchk ",
@@ -53,7 +53,7 @@ PROMISED = [
     ("本机 Windows x86_64", "winchk-backend", "run_gate winchk-backend ",
      "`src/backend` 那个 crate 过 `x86_64-pc-windows-gnu`（`--all-targets`）"),
     ("本机 Windows x86_64", "winlink", "run_gate winlink ",
-     "`-p monitor` 的两个二进制在 `x86_64-pc-windows-gnu` 上**真链接**（dev；WIN1 · RT1 F1）＋ lib 测试程序带进程清单（MANIFEST · Common-Controls；mg38）"),
+     "`-p monitor` 的两个二进制在 `x86_64-pc-windows-gnu` 上**真链接**（dev；WIN1 · RT1 F1）＋ lib 测试程序带进程清单（MANIFEST · Common-Controls）"),
     ("远端 Linux（musl 两个 arch）", "muslbuild", "run_gate muslbuild ",
      "后端在两个 musl target 上**编得出静态字节**（与 `release.yml` 同一套 zig 版本）"),
     ("本机 Linux x86_64", "cargo", "run_gate_sum cargo ",

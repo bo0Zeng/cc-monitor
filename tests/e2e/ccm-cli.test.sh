@@ -59,7 +59,7 @@ echo "===== 契约：壳层选项 × 交给 claude 的参数====="
 # ccm 是 claude 的壳：位置动作取消、`--resume` / `--model` / 未知旗标原样交 claude、诊断口改 `--ccm-*`；
 #   从前 resume 那条 `set -f; exec <后端答案>` 的配方随进程内 `resolve` 一起删了（留着会与透传的 `--resume` 叠两份）。
 
-# 〔用户 09-26〕相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
+# 相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
 HERE_P="$(pwd -P)"
 ck "零修饰（--cwd .）：补成绝对的当前目录" \
    "$UNSET; cd '$HERE_P' && exec claude" \
@@ -107,7 +107,7 @@ ck "-- 左边透传给 agent，含特殊字符正确 quote" \
 ck "-- 左边原样交给 claude，按原顺序" \
    "$UNSET; cd '/p' && exec claude -p 'a b' --verbose" \
    "$(ccm -p "a b" --verbose -- --cwd /p --ccm-print)"
-ck "claude 自己的 --tmux / --agent 原样交出去（用户 09-26：ccm 的改名 --ccm-tmux / --ccm-agent）" \
+ck "claude 自己的 --tmux / --agent 原样交出去（ccm 的改名 --ccm-tmux / --ccm-agent）" \
    "$UNSET; cd '/p' && exec claude --tmux --agent x" \
    "$(ccm --tmux --agent x -- --cwd /p --ccm-print)"
 ck "ccm new（-- 左边）整个交给 claude，不开例外" \
@@ -119,7 +119,7 @@ ck "new 是 ccm 自己的词：写在 -- 右边第一个 = 起新会话（与不
 ck "new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
    "ccm: $(zh beArgv.parse.newNotFirst)" \
    "$(ccm -- --cwd /p new --ccm-print 2>&1)"
-ck "--launcher 'ccr code' 拆成词（用户 09-26）" \
+ck "--launcher 'ccr code' 拆成词" \
    "$UNSET; cd '/p' && exec ccr code -p x" \
    "$(ccm -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
 ck "--account 与 --base 互斥" \
