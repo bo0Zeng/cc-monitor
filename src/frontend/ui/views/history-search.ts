@@ -143,7 +143,7 @@ async function askOne(origin: string, payload: Uint8Array): Promise<OneMachine> 
   return { sessions, unreadable, skipped };
 }
 
-/** 各台远端：答上的那几份 ＋ 没答上的那几台（界面说「连不上 X，它的会话没搜到」）。 */
+/** 各台远端：答上的那几份 ＋ 没答上的那几台（界面说「X 断开，它的会话没搜到」）。 */
 async function searchRemotes(payload: Uint8Array): Promise<{ answered: OneMachine[]; failed: string[] }> {
   let origins: string[];
   try {

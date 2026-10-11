@@ -437,11 +437,11 @@ export const MAIN_SCENES: Scene[] = [
     card.scrollIntoView({ block: "start" });
     await settled(scroller);
   }, longWorld),
-  main("main-unseen-machine", "主窗口 · 一台机器连不上", "gpu-01 的会话流一开始就看不见（那台机器连不上）", async () => {
+  main("main-unseen-machine", "主窗口 · 一台机器断开", "gpu-01 的会话流一开始就看不见（那台机器断开）", async () => {
     await mainReady(ALL_TABS - 1);
     await sleep(800);
   }, unseenWorld),
-  main("main-unseen-machine-later", "主窗口 · 一台机器一直连不上", "gpu-01 的会话流一开始就看不见、20 秒后还没连上：右下角说是哪台、能做什么", async () => {
+  main("main-unseen-machine-later", "主窗口 · 一台机器一直断开", "gpu-01 的会话流一开始就看不见、20 秒后还没连上：右下角说是哪台、能做什么", async () => {
     await mainReady(ALL_TABS - 1);
     await sleep(21_000);
   }, unseenWorld),

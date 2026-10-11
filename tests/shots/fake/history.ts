@@ -79,11 +79,11 @@ export function historyOps(): Record<string, OpHandler> {
     // 远端那一份界面先经长连接问那台常驻 `raw`、再带着（`listing`）交本机后端：那一跳这里只管通不通，合成行照旧按 `origin` 现造。
     "history-list": (o, req, w) => {
       if (req.raw === true) {
-        if (w.historyDown?.includes(o)) throw new Error(`连不上 ${o}`);
+        if (w.historyDown?.includes(o)) throw new Error(`${o} 断开`);
         return { rows: [], failed: [] };
       }
       const origin = (req.origin as string | undefined) ?? "<local>";
-      if (w.historyDown?.includes(origin)) throw new Error(`连不上 ${origin}`);
+      if (w.historyDown?.includes(origin)) throw new Error(`${origin} 断开`);
       const q = typeof req.query === "string" ? req.query.toLowerCase() : "";
       const rows = HISTORY.filter((p) => p.origin === origin).flatMap((p) =>
         p.sessions

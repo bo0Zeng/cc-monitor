@@ -58,7 +58,7 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
 /// D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
 /// 带上那台原话，并归成 `Unsupported`（`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
 /// 老后端掉进流模式发 hello ⇒ 「太旧」（`Failed`：部署会把它换掉，照常重连）。四样都是失败，没有「回落」那一格。
-/// 要求：「非 unix 远端（Windows 远端，不承诺）连不上常驻时**明说**不支持，不静默」。
+/// 要求：「非 unix 远端（Windows 远端，不承诺）断开常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
     let ok = parse_answer(&exec(r#"{"pid":7}"#, "", Some(0)), "devbox").unwrap();
@@ -276,7 +276,7 @@ fn the_relay_refusal_line_is_read_and_its_words_match_the_backend() {
 }
 
 /// 中继的编排（替身接中继）：① `absent`（刚起的还没绑上）两次、第三次接上 ⇒ 等着再接、恰好 3 次、接成；
-/// ② 别的理由 ⇒ 接 1 次就停、那一句说「连不上 · 需重启」；③ 一直 `absent` ⇒ 封顶次数后说「后端没在运行」。
+/// ② 别的理由 ⇒ 接 1 次就停、那一句说「断开 · 需重启」；③ 一直 `absent` ⇒ 封顶次数后说「后端没在运行」。
 #[tokio::test]
 async fn the_relay_waits_only_while_nobody_listens() {
     use std::sync::atomic::{AtomicUsize, Ordering};

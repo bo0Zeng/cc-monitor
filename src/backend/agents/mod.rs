@@ -1675,7 +1675,7 @@ pub(crate) struct McpLook {
 
 /// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它；线上名即 serde 名，闭集）。
 /// 配置层（`mcp-read`）只说说得准的：停用（配置里写着）· 要登录（那一家最近一次连它时记下的、还在有效期内）· 其余 `Unknown`；
-/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 连不上 · 还在连。两处都不说「连上了」。
+/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 断开 · 还在连。两处都不说「连上了」。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpStatus {
@@ -1692,7 +1692,7 @@ pub(crate) enum McpStatus {
 pub(crate) struct McpSaid {
     pub pending: Option<Vec<String>>,
     pub needs_login: Option<Vec<String>>,
-    /// 连不上的：名字 · 那一家写的原话（没写 ⇒ `None`）。
+    /// 断开的：名字 · 那一家写的原话（没写 ⇒ `None`）。
     pub failed: Option<Vec<(String, Option<String>)>>,
 }
 

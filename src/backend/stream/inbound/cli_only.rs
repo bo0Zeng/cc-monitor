@@ -15,7 +15,7 @@ pub const CLI_ONLY_DOCS: &[(&str, &str, &str)] = &[
     ("read-session", "<jsonl>", "原样透传整份会话字节"),
     ("read-session-from-offset", "[--until <end>] <jsonl> <offset>", "从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）。骨架索引是 `--history-index`。续点用 `line` 帧的 `byte_offset`，别用 `seq`"),
     ("read-session-tail", "<jsonl> <N>", "尾部优先：首行 `{kind:\"snapshot_meta\",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)`"),
-    ("resident-attach", "", "小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；连不上 ⇒ stdout 一行 `{attach:\"refused\", reason: absent|unreachable}`、退出 2"),
+    ("resident-attach", "", "小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:\"refused\", reason: absent|unreachable}`、退出 2"),
     ("resident-ensure", "[--replace]", "确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起"),
     ("resident-stop", "[--grace <秒>]", "停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful|killed|not_running, pid}`"),
     ("search", "<query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]", "全库全文搜索：每命中会话一行 `SessionHits`（camelCase，含 `hitsTruncated`），行序 = 最近优先"),

@@ -806,7 +806,7 @@ async fn serve_listening(
                 //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，待定。
                 if control::exit_policy::last_client_left() {
                     // 不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
-                    //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「连不上 ⇒ 起一个」走）。
+                    //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「断开 ⇒ 起一个」走）。
                     inbound::exit_after_drain(
                         "流结束 ⇒ 这台机器的退出策略是「结束」",
                         None::<std::future::Ready<()>>,

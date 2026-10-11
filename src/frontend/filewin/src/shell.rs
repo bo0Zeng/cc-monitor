@@ -667,7 +667,7 @@ impl FileWindow {
 
     /// 🔴 **断线时哪几件做不了 —— 唯一一处**：命令栏每一颗 · 菜单每一项 · 键盘都问它。
     /// 要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏 · 选中项上的每一件，打开目录除外）⇒ 「离线 · 只读」；
-    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说连不上。
+    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说断开。
     pub fn offline_cmd(&self, c: super::chrome::Cmd) -> Option<String> {
         use super::chrome::Cmd;
         let needs_machine = match c {
@@ -810,7 +810,7 @@ impl FileWindow {
 
     /// 重新列一次当前目录。**本机同步做完；远端扔给 tokio，不堵住 UI 线程。**
     pub fn reload(&self) {
-        // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「连不上」）：列表进过期态、照常摆着，
+        // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「断开」）：列表进过期态、照常摆着，
         //   连上之后窗口那一级把每个标签页重列一遍（`Workspace::settle_link`）。
         if self.link.offline() && !self.listing.rows.lock().unwrap().is_empty() {
             return;

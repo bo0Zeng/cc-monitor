@@ -139,11 +139,11 @@ mod tests {
             "起线程失败",
         ),
         (
-            // 先前是 `[relay] upstream connect failed`，只管「连不上」一支；
+            // 先前是 `[relay] upstream connect failed`，只管「断开」一支；
             //   今天等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）与发到一半断了（FIX3）也走这一行 ⇒ 回 502 / 504。
             "comms-outward/server.rs",
             "[relay] upstream failed",
-            "上游连不上 / 没发完 / 没回应 / 回的不是 HTTP（中转自己的传输失败，超时回 504、其余 502）",
+            "上游断开 / 没发完 / 没回应 / 回的不是 HTTP（中转自己的传输失败，超时回 504、其余 502）",
         ),
         (
             "relay/listen.rs",

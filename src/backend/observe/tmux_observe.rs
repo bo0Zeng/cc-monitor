@@ -28,7 +28,7 @@ pub(super) enum ServerState {
 /// 因任何原因没醒，状态永远停在 `Alive`，rc=1 就被永久压成 `Unobservable` ⇒ 永不 retire。
 /// 改成**直接查 `/proc` 里那个 server pid 还在不在**：
 /// - 不在了 ⇒ 就是真的没 server（`NoServer` 原样通过，顺带把状态推到 `Gone`）
-/// - 还在 ⇒ 「server 明明活着、`tmux ls` 却连不上」= 真异常（socket 权限/被换掉之类）
+/// - 还在 ⇒ 「server 明明活着、`tmux ls` 却断开」= 真异常（socket 权限/被换掉之类）
 ///   ⇒ `Unobservable`（保守跳过，不误 retire）
 ///
 /// 一次 `/proc` 存在性读，无定时器、无状态耦合、无挂死风险。

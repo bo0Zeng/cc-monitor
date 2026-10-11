@@ -102,7 +102,7 @@ pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
          逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\
          ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \
          第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\
-         「tmux 连不上时会说 no server running」是个想当然，实测把它证伪了一半。",
+         「tmux 断开时会说 no server running」是个想当然，实测把它证伪了一半。",
     ),
     (
         "no server running",

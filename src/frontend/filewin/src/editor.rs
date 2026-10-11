@@ -665,7 +665,7 @@ pub enum Arrived {
     },
     /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
-    /// 下层那句话（连不上 / 没权限 …）与它的复制详情。
+    /// 下层那句话（断开 / 没权限 …）与它的复制详情。
     Failed {
         path: String,
         why: super::source::Failed,

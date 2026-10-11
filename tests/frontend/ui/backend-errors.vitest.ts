@@ -1,6 +1,6 @@
 /**
  * 壳推来的出错（`UiErrorPayload`）怎么上屏：标题就是壳照文案键写好的那一句，码 · 键 · 原话一个字都不上屏，
- * 原话只在［复制详情］里；那台连不上 ⇒［重新连接］在［看日志］前面。
+ * 原话只在［复制详情］里；那台断开 ⇒［重新连接］在［看日志］前面。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -15,7 +15,7 @@ const payload = (over: Partial<UiErrorPayload> = {}): UiErrorPayload => ({
   code: "local-exited",
   key: "rsUiError.localExited.down",
   args: {},
-  said: "夹具那一句 · 本机连不上",
+  said: "夹具那一句 · 本机断开",
   detail: "时刻：夹具\n原话：[夹具账] origin=<local> 判定=夹具",
   reconnect: "<local>",
   at: 0,

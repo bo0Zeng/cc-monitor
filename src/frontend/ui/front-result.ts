@@ -8,7 +8,7 @@
  *   提权 · 程序不提供控制台）· 切到了窗口、标签页没切成（标签名不随程序标题变化 · 读不到标签页 · 提权 · 读不到控制台）· 认不出（没登记 · 会话已不在运行 · 后台）· 窗口已关 · 认不准 · 系统不许抢前台 · 真在后台 · Wayland 桌面上切不了；
  * - 那台后端 `session-terminals` 的 `why`：tmux 里没终端连着 · 没有终端 · 读不了；
  * - 本机后端 `terminal-processes` 的 `why`：那台本地屏幕 · 在另一台电脑 · 经跳板机对不上 · 这一次没查成；
- * - 通道那一跳的归因（`ipc/chan-caller.ts`）：那台旧 · 期限到 · 连不上。
+ * - 通道那一跳的归因（`ipc/chan-caller.ts`）：那台旧 · 期限到 · 断开。
  */
 import type { FrontOutcome } from "./generated/FrontOutcome";
 import type { SeveralWhy } from "./generated/SeveralWhy";

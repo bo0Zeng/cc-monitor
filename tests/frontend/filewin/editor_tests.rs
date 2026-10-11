@@ -172,7 +172,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
         assert_eq!(
             text_from_reply(Err(failed(code, "那句原话"))).map_err(|f| f.said),
             Err("那句原话".to_string()),
-            "`{code:?}` 被压成了「不可编辑」—— 连不上与不是文本在屏幕上就分不开了"
+            "`{code:?}` 被压成了「不可编辑」—— 断开与不是文本在屏幕上就分不开了"
         );
     }
     assert!(

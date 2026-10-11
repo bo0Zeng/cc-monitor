@@ -69,7 +69,7 @@ function labelOf(o: OwnItem): string {
   return o.dir ? `${tail}/` : tail;
 }
 
-/** 那台家里那几样排成一块；`open` 拿那一样的绝对路径（家目录已展开）；`open` 为 `null` ＝ 那台连不上（画的是上次的），打开置灰。 */
+/** 那台家里那几样排成一块；`open` 拿那一样的绝对路径（家目录已展开）；`open` 为 `null` ＝ 那台断开（画的是上次的），打开置灰。 */
 export function remoteOwnBlock(items: readonly OwnItem[], home: string, open: ((abs: string) => void) | null): HTMLElement {
   const block = document.createElement("div");
   block.className = "settings-data-block";

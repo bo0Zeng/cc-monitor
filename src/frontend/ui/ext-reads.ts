@@ -7,7 +7,7 @@
  * | 装到一台之前那张确认卡 / 装 | 本机后端（枢纽，向来源取、交被写那台写） | `ext-hub-preview` / `ext-hub-apply` |
  * | 从一台的某一处卸之前那张卡 / 卸 | 被卸的那一台 | `ext-uninstall-preview` / `ext-uninstall-apply` |
  * | 写 / 改 / 清一个条目的备注 | 本机后端（记进它的目录，随目录同步） | `ext-note-set` |
- * | MCP 那几行每台的小标（需登录 · 连不上）与抽屉里那一行的字 | 那一台（判定与写字都在它的后端：`mcp-read`） | `mcp-read` |
+ * | MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行的字 | 那一台（判定与写字都在它的后端：`mcp-read`） | `mcp-read` |
  *
  * 判定全在后端：这里只按形状严格收（形状由后端的类型生成，`generated/Ext*.ts`；线上形状由金样
  * `tests/__fixtures__/ext-flow.golden.json` 钉），不比较、不推断。形状不对 ⇒ 抛「两端版本对不上」。
@@ -291,7 +291,7 @@ export interface McpLoginMark {
   copy: string;
 }
 
-/** `mcp-read` 一条的「连不上」那几格（后端从这台活会话里最近说它的那一条写好：抽屉那一句 · 悬停那一截 · 原话）。 */
+/** `mcp-read` 一条的「断开」那几格（后端从这台活会话里最近说它的那一条写好：抽屉那一句 · 悬停那一截 · 原话）。 */
 export interface McpFailedMark {
   said: string;
   tip: string;
@@ -353,7 +353,7 @@ export function decodeMcpRead(v: unknown): McpRead {
   };
 }
 
-/** 问那台它的 MCP 列表（全局那一段；每条带后端写好的需登录 / 连不上那几格）。本机远端同一条命令。 */
+/** 问那台它的 MCP 列表（全局那一段；每条带后端写好的需登录 / 断开那几格）。本机远端同一条命令。 */
 export function mcpRead(on: Origin): Promise<McpRead> {
   return ask((body, budget) => chan.call(on, "mcp-read", body, budget), {}, LIST_BUDGET_MS, decodeMcpRead);
 }

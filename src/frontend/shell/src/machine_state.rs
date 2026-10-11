@@ -1,6 +1,6 @@
 //! 每台机器的状态成品：`{state, reason, stage, version, versionRelation, os, fixes}`。
 //!
-//! 界面按码取那一句与修法，自己不判（「那台连不上 / 要更新 / 版本较新 / 停用了」只在这里定）。
+//! 界面按码取那一句与修法，自己不判（「那台断开 / 要更新 / 版本较新 / 停用了」只在这里定）。
 //! 写点：远端那条流的每一轮（`stream_source::run`：起拨 · 握手成了 · 这一轮没成）、拨号那一处
 //! （`dial_host::open`：后端 ack 带回的原因码）、部署计划（那台的系统）；读点：`backend_status` 的 `machine` 一格。
 //! 「连接这台」关着的那台由读点按机器表说「停用」（不进这张表）。
@@ -397,7 +397,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
     }
 }
 
-/// 本机那条连不上的原因码。
+/// 本机那条断开的原因码。
 pub const LOCAL_DOWN: &str = "local";
 
 #[cfg(test)]

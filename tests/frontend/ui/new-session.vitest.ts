@@ -377,7 +377,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     await flush();
     expect(top()).toContain(copyText("newSession.machine.offline", { machine: "devbox" }));
     expect(createBtn().title).toBe(copyText("newSession.machine.offline", { machine: "devbox" }));
-    expect(sent.filter((x) => x.op.startsWith("session-new")), "连不上还去问那台").toEqual([]);
+    expect(sent.filter((x) => x.op.startsWith("session-new")), "断开还去问那台").toEqual([]);
     [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
     expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });
   });

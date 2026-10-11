@@ -32,7 +32,7 @@
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
 //! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
-//! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 连不上 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
+//! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 断开 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -176,7 +176,7 @@ pub(crate) struct SessionFacts {
     pub(crate) bg_tasks: Vec<BgTask>,
     /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
     pub(crate) background: Option<Background>,
-    /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 连不上 · 还在连），按名字排；没列的不等于连上了。
+    /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,
 }
 
@@ -324,7 +324,7 @@ pub(crate) struct McpTrouble {
     pub(crate) name: String,
     /// `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
     pub(crate) status: crate::agents::McpStatus,
-    /// 连不上时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
+    /// 断开时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
     pub(crate) detail: Option<String>,
     /// 说它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
@@ -965,7 +965,7 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
 const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
 
 /// 只要 `mcp` 那一格：读 `r` 整份，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 累加（口径与整份事实那一格同一处）。
-/// 扩展页问「这台活会话里谁连不上」用（`observe::accounts_query::live_mcp_failed`）。
+/// 扩展页问「这台活会话里谁断开」用（`observe::accounts_query::live_mcp_failed`）。
 pub(crate) fn mcp_of<R: std::io::BufRead>(mut r: R) -> std::io::Result<Vec<McpTrouble>> {
     let mut f = SessionFacts::default();
     let mut buf: Vec<u8> = Vec::new();

@@ -116,7 +116,7 @@ export const HISTORY_SCENES: Scene[] = [
     await sleep(300);
   }),
   {
-    ...hist("history-10-partial", "历史 · 部分连不上", "gpu-01 那台的清单没答上：列表顶一条［重新连接］，别的台照画", async () => {
+    ...hist("history-10-partial", "历史 · 部分断开", "gpu-01 那台的清单没答上：列表顶一条［重新连接］，别的台照画", async () => {
       await openHistory();
     }),
     world: offline,

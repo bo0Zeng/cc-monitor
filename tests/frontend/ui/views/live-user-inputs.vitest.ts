@@ -239,7 +239,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     expect(outlineCalls().length).toBe(1);
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
-    expect(toggleOf().title).toContain("连不上");
+    expect(toggleOf().title).toContain("断开");
     // 下一次触发（真用户输入上屏）⇒ 再要一次，这次通了
     outlineBackend.entries.push(outlineEntry("u101", "刚说的"));
     feed(userLine(101, "u101", "刚说的"));

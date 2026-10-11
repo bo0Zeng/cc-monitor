@@ -136,7 +136,7 @@ pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 ///
 /// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/stream/listen.rs::ENV_RESIDENT`。
 /// 两边漂了**不会报错** —— 起出来的后端会当成「没设」而走 stdio 那条路，
-/// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「连不上」。
+/// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「断开」。
 /// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。
 pub(crate) const RESIDENT_ENV: &str = "CCM_RESIDENT";
 
@@ -788,7 +788,7 @@ fn note_detached_death(
         // 这条路上进程真的起来过 ⇒ 没有「起不来」那一支的两个字段。
         start_failure: None,
     };
-    // 脱离那条路没有监护：它走了就没人再起它 ⇒ 本机连不上，等用户点［重新连接］。
+    // 脱离那条路没有监护：它走了就没人再起它 ⇒ 本机断开，等用户点［重新连接］。
     after_death(
         crate::backend_policy::record_death(
             crate::inbound_client::LOCAL_ORIGIN,
@@ -1038,7 +1038,7 @@ fn start_detached(
     match probe_and_attach_after_spawn(&sock, extra_env) {
         Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
         Err(e) => {
-            // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
+            // 起来了但断开 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
             stop_detached();
             DetachOutcome::Done(StartOutcome::Failed {
                 reason: Said::restate(

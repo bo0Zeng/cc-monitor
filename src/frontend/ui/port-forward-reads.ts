@@ -101,7 +101,7 @@ function said(e: unknown): Error {
   return new Error(saidFrom(e, LOCAL_ORIGIN));
 }
 
-/** 起一条转发，回它的号。口绑不上 / 连不上 ⇒ 抛那句原话。 */
+/** 起一条转发，回它的号。口绑不上 / 断开 ⇒ 抛那句原话。 */
 export async function startForward(spec: ForwardSpec, via: ForwardMachine | null = null): Promise<string> {
   let reply: Uint8Array;
   try {

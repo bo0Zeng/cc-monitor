@@ -1670,7 +1670,7 @@ async fn a_real_click_on_download_asks_the_system_save_box() {
 /// 🔴**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
 /// （`files-read-text`）之后，合成后端（真回环口、真钥匙、真 `dial`）答得了它 ⇒ 链子一直走到
 /// 编辑面立起来；线上那一行的参数逐格读回（`path` 原样 · `max_bytes` == 窗口那个上限）。
-/// 第九刀那一版读走 SFTP、连不上（`.invalid`），只买得到「那一趟发出去了」。
+/// 第九刀那一版读走 SFTP、断开（`.invalid`），只买得到「那一趟发出去了」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_edit_fires_the_read() {
     use crate::editor::EDIT_LABEL;

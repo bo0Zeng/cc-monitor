@@ -475,7 +475,7 @@ fn spawn_fake_upstream_faulted(
 /// 往假上游发一整发、并把响应**整条**读回来。只给 `K-R126` 那两条判据用。
 fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
     let mut c = TcpStream::connect(addr)
-        .unwrap_or_else(|e| panic!("{what}：连不上假上游 —— 它的 `listener` 已经不在了（{e:?}）"));
+        .unwrap_or_else(|e| panic!("{what}：假上游断开 —— 它的 `listener` 已经不在了（{e:?}）"));
     let req = format!(
         "POST /v1/messages HTTP/1.1\r\nContent-Length: {}\r\n\r\n{REQUEST_BODY}",
         REQUEST_BODY.len()
@@ -1731,7 +1731,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 /// # 它**证不了**什么
 ///
 /// - 上游那一跳之后的事（TLS、真 API）—— `C7` 禁「绝不起真 claude」。
-/// - 上游连不上那条错误支（要一台死掉的上游，得再起一个子进程）。**登记为没测**
+/// - 上游断开那条错误支（要一台死掉的上游，得再起一个子进程）。**登记为没测**
 ///   〔下一条 `each_account_gets_its_own_key_…` 的 ㈢ 补上了；今天那一支回 504，〕。
 #[test]
 fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
@@ -1903,7 +1903,7 @@ fn a_port_nobody_listens_on() -> u16 {
     // 从一个不常用的低段往上找。1024 以下要 root 才 bind 得了 ⇒ 更安全，
     // 但有些环境里 1–1023 会被别的服务占，所以直接从 1024 往上探。
     for p in 1024u16..EPHEMERAL_FLOOR {
-        // 连得上 = 有人在听 ⇒ 换下一个。连不上（拒绝 / 超时）= 就是它。
+        // 连得上 = 有人在听 ⇒ 换下一个。断开（拒绝 / 超时）= 就是它。
         let refused = std::net::TcpStream::connect_timeout(
             &SocketAddr::new(LOOPBACK, p),
             std::time::Duration::from_millis(50),
@@ -2002,7 +2002,7 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
 ///
 /// ★ **①比②更要紧**：② 是 `K-H2a` 已经买到的，① 是这里新增的风险。
 ///
-/// # ⚠ 它顺带补上了 `K-H2a` 留下的**连不上上游那一格**
+/// # ⚠ 它顺带补上了 `K-H2a` 留下的**上游断开那一格**
 ///
 /// 件计划逐字记着 `K-H2a` 的诚实边界：「**502 那条错误支没测**（已测 404/400）」。
 /// 这里第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
@@ -2131,14 +2131,14 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "表里查不到的账号段该回 404：{not_found:?}"
     );
 
-    // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；之后回 504，起 502）──
+    // ── ㈢ **上游断开那一支**（`K-H2a` 留下的那一格；之后回 504，起 502）──
     let (bad_gateway, _) = send_raw(
         relay.addr,
         "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         bad_gateway.starts_with("HTTP/1.1 502"),
-        "上游连不上那一支该回 502：{bad_gateway:?}\n\
+        "上游断开那一支该回 502：{bad_gateway:?}\n\
          ★ 实得 404 时**先分辨是哪一种**（看原因头）：\n\
            ① 表里没有 `acct-dead`（`decide` 的 `Refuse`，`why` 是「代入模式要求表里有这一行」）；\n\
            ② 那条「没人听」的端口上**其实有人听**，而那个人回了 404\n\
@@ -2933,7 +2933,7 @@ fn the_upstream_deadline_is_the_wider_one_because_a_silently_thinking_model_is_n
     );
 }
 
-/// ★ `DoD-4㈡` 行为那半：从**非回环**地址连不上中转的端口。
+/// ★ `DoD-4㈡` 行为那半：从**非回环**地址连中转的端口会断开。
 /// 机器上没有非回环地址时**跳过并出声**，不静默当绿。
 #[test]
 fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
@@ -2958,7 +2958,7 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
         );
         return;
     };
-    // 连到**本机的非回环地址**上的中转端口 —— 中转只绑了回环，这一发就该连不上。
+    // 连到**本机的非回环地址**上的中转端口 —— 中转只绑了回环，这一发就该断开。
     // ⚠ 订正〔回修轮之四 08-25〕：先前这行注释写的是「**绑**到那个地址再 connect」，
     //    而代码从来没绑过源地址，它是把那个地址当**目的地**去连。措辞与实现漂开了。
     //
@@ -3479,7 +3479,7 @@ fn the_dead_port_is_one_the_kernel_can_never_hand_out() {
             std::time::Duration::from_millis(100),
         )
         .is_err(),
-        "{p} 上有人在听 —— 它不是一个「连不上」的上游"
+        "{p} 上有人在听 —— 它不是一个「断开」的上游"
     );
 
     // 🔴 本机那个下界**真的**不比我们这个常量低（低了的话上面那一比是假的安全感）。
@@ -3589,7 +3589,7 @@ fn spawn_slamming_upstream() -> SocketAddr {
 /// | 回的不是 HTTP | 上游回一行垃圾 | 502 · `upstream-not-http` |
 /// | 只有中间响应 | 9 条 `100 Continue` | 另一条判据（`too_many_interim_responses_are_refused_with_502`） |
 ///
-/// 同一个中转、同一张表：表里没这一行 ⇒ 404 ＋ `no-account-row`（我们拒的 4xx）；上游连不上 ⇒ 502。本条顺带断一次。
+/// 同一个中转、同一张表：表里没这一行 ⇒ 404 ＋ `no-account-row`（我们拒的 4xx）；上游断开 ⇒ 502。本条顺带断一次。
 #[test]
 fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
     const BAD_GATEWAY: &str = "HTTP/1.1 502 Bad Gateway\r\n";
@@ -3600,7 +3600,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
     let dead = a_port_nobody_listens_on();
     let (relay, _r, _t) = spawn_relay(SocketAddr::new(LOOPBACK, dead));
     let (got, _) = send_raw(relay, get);
-    assert!(got.starts_with(BAD_GATEWAY), "① 连不上该回 502：{got:?}");
+    assert!(got.starts_with(BAD_GATEWAY), "① 断开该回 502：{got:?}");
     assert!(
         got.contains(&reason("upstream-connect")),
         "① 原因头：{got:?}"

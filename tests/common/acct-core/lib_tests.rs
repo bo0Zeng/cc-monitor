@@ -85,7 +85,7 @@ fn every_declared_auth_kind_round_trips() {
 /// ★ 缺席与认不出**都**落订阅，而且**不许**落 api-key。
 ///
 /// 反向也断一次：只有逐字 `api-key` 才是 api-key（大小写/空格/近似写法一律不算），
-/// 否则一个手抄错的 manifest 会静默把订阅号变成「可选但连不上」。
+/// 否则一个手抄错的 manifest 会静默把订阅号变成「可选但断开」。
 #[test]
 fn unknown_and_absent_auth_kinds_fall_back_to_subscription_not_api_key() {
     for raw in [
@@ -100,7 +100,7 @@ fn unknown_and_absent_auth_kinds_fall_back_to_subscription_not_api_key() {
         let got = auth_kind_from_manifest(raw);
         assert_eq!(
             got, AUTH_KIND_SUBSCRIPTION,
-            "{raw:?} 被认成了 {got} —— 保守方向是订阅（缺凭据看得见），不是 api-key（连不上看不见）"
+            "{raw:?} 被认成了 {got} —— 保守方向是订阅（缺凭据看得见），不是 api-key（断开看不见）"
         );
     }
     assert_eq!(

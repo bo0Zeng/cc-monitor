@@ -34,7 +34,7 @@ pub struct RemoteConfig {
     #[serde(default)]
     pub addresses: Vec<String>,
     /// Batch14-F56：跳板 ProxyJump——指向另一台已配置主机的 `origin_label`。Some = 经该跳板
-    /// 机 `channel_open_direct_tcpip` 隧道连本机（fail-closed，跳板缺失/连不上即报错不直连）；
+    /// 机 `channel_open_direct_tcpip` 隧道连本机（fail-closed，跳板缺失/断开即报错不直连）；
     /// None/空 = 直连。v1 单跳（跳板自身的 jump 忽略）+ 防自引用环。
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub jump: Option<String>,

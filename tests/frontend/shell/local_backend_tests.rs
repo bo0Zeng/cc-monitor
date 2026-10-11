@@ -1661,7 +1661,7 @@ fn hitting_the_cap_gives_up_and_says_why() {
     let Decision::GiveUp { reason } = decide(&[1_000, 2_000, 3_000], 3_000, l) else {
         panic!("第 3 次崩溃就该放弃 —— 差一位的错本仓出现过");
     };
-    // 带实际次数与上限，并说清影响面（远端连接全经本机这一份，本机起不来远端一样连不上）。
+    // 带实际次数与上限，并说清影响面（远端连接全经本机这一份，本机起不来远端一样断开）。
     assert_eq!(
         reason,
         copy_core::copy_text(

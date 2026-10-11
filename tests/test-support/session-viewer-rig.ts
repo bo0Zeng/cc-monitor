@@ -79,7 +79,7 @@ export function answerListUserInputs(args: { fromOffset: number }): unknown {
   });
   if (outlineBackend.failNext > 0) {
     outlineBackend.failNext--;
-    return no("transport", "连不上");
+    return no("transport", "断开");
   }
   if (!outlineBackend.available) return no(outlineBackend.failure, outlineBackend.reason);
   if (from > all.length) return no("transport", "越过 EOF");
@@ -117,7 +117,7 @@ export function tauriCoreMock(): Record<string, unknown> {
       if (cmd === "list_user_inputs") return answerListUserInputs(args as { fromOffset: number });
       // 按偏移取一段：骨架里 `[offset, until)` 那几行里 `chunk` 有的（台子的字节轴 ＝ 索引那几行的 `o`）。
       if (cmd === "read_session_range") {
-        if (viewerRig.failPage) throw new Error("devbox 连不上");
+        if (viewerRig.failPage) throw new Error("devbox 断开");
         const a = args as { offset: number; until: number };
         const at = offsetsOf(rigIndex());
         return viewerRig.chunk.filter((p) => {
@@ -127,7 +127,7 @@ export function tauriCoreMock(): Record<string, unknown> {
       }
       // 骨架索引：用例塞了就用它；没塞 ⇒ 照 `chunk` 现造一份（查看器只经骨架取正文）。
       if (cmd === "read_session_index") {
-        if (viewerRig.failPage) throw new Error("devbox 连不上");
+        if (viewerRig.failPage) throw new Error("devbox 断开");
         return rigIndex();
       }
       if (cmd === "find_in_session") return viewerRig.find;

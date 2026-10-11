@@ -5,7 +5,7 @@
 //!
 //! # 一个任务（[`run`]）
 //!
-//! 1. B 那台：问 `files-home`（连不上 / 没这台 ⇒ 当场说）；落点目录缺省 ＝ B 的 home；目标已在 ⇒ **问一次**盖不盖。
+//! 1. B 那台：问 `files-home`（断开 / 没这台 ⇒ 当场说）；落点目录缺省 ＝ B 的 home；目标已在 ⇒ **问一次**盖不盖。
 //! 2. 本机暂存：问本机后端（`<local>`）的 home，暂存区 `~/.cc-monitor/staging`（不在就经本机后端建、收 0700），落点 `<32hex>.part`。
 //! 3. 从 A 下到本机暂存（`download::pull_one` —— 名字不是 UTF-8 走 `lossy_pull::pull_by_bytes`）。
 //! 4. 传到 B（`transfer::upload_remote`：B 的暂存 → B 提交；B 若是非标准 SFTP 起始目录，照 Q5 自动改走块形）。

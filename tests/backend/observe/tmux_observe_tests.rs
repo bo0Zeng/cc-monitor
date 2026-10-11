@@ -203,7 +203,7 @@ fn no_server_is_tightened_only_when_the_pid_is_really_still_alive() {
     assert_eq!(
         classify_with_server_state(TmuxObservation::NoServer, ServerState::Alive(me)),
         TmuxObservation::Unobservable,
-        "server 明明活着而 tmux ls 连不上 = 真异常，不该当成零会话"
+        "server 明明活着而 tmux ls 断开 = 真异常，不该当成零会话"
     );
 
     // ② 记着的 server 已死 + rc=1 ⇒ 原样通过（真的没 server）

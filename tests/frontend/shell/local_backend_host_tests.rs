@@ -1238,7 +1238,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
 /// ★★ **跨 crate 字面量对拍**：常驻开关的 env 名两侧必须逐字一样。
 ///
 /// 漂了**不会报错**：起出来的后端会把它当成「没设」而走 stdio 那条路，
-/// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「连不上」。
+/// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「断开」。
 /// 形状抄 `the_local_origin_is_the_same_string_on_both_sides`。
 ///
 /// ⚠ 这条 `include_str!` 是一条**跨半边**（monitor→backend）的语料边，

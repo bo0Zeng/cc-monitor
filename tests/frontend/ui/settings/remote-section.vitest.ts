@@ -888,14 +888,14 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       fingerprint: null,
       endpoint: null,
       backendHello: null,
-      message: "连不上-甲",
+      message: "断开-甲",
       detail: "命令：dial\n原话：夹具原话-乙",
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
     const box = sec.element.querySelector<HTMLElement>(".remote-test-result")!;
-    expect(box.textContent).toContain("连不上-甲");
+    expect(box.textContent).toContain("断开-甲");
     expect(box.textContent).not.toContain("夹具原话-乙");
     expect([...box.querySelectorAll("button")].map((b) => b.textContent)).toContain(copyText("detail.act.copy"));
     ipcReplies.clear();

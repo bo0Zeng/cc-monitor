@@ -87,7 +87,7 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) ->
             };
             let look = mcp_look(kind);
             let read = crate::agents::mcp_read(kind, dir.as_deref(), &look).unwrap_or_default();
-            // 连不上：这台此刻活着的会话里那一家说的（各号的家都看）；每个名字取说它最晚的那一条。
+            // 断开：这台此刻活着的会话里那一家说的（各号的家都看）；每个名字取说它最晚的那一条。
             let homes: Vec<std::path::PathBuf> =
                 look.homes.iter().map(|(_, h)| h.clone()).collect();
             let failed = crate::observe::accounts_query::live_mcp_failed(&homes);
@@ -152,7 +152,7 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// [`mcp_reply`] 写字要的：这台活会话里说连不上的那几个 · 此刻（unix 秒）与看的那一台的时区 · 登录那一步复制的那条命令（那一家的）。
+/// [`mcp_reply`] 写字要的：这台活会话里说断开的那几个 · 此刻（unix 秒）与看的那一台的时区 · 登录那一步复制的那条命令（那一家的）。
 #[derive(Default)]
 pub(crate) struct McpSay<'a> {
     pub failed: &'a [crate::observe::accounts_query::LiveMcpFailed],
@@ -162,8 +162,8 @@ pub(crate) struct McpSay<'a> {
 }
 
 /// `mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
-/// 每条带写好的字（界面照抄）：`login`（需登录那一句 · 悬停那一截 · 复制的命令）· `failed`（连不上那一句 · 悬停那一截 · 原话）·
-/// `mark`（小标画哪一种：连不上压过需登录；停用的不连 ⇒ 不标连不上）。
+/// 每条带写好的字（界面照抄）：`login`（需登录那一句 · 悬停那一截 · 复制的命令）· `failed`（断开那一句 · 悬停那一截 · 原话）·
+/// `mark`（小标画哪一种：断开压过需登录；停用的不连 ⇒ 不标断开）。
 pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> Value {
     use crate::agents::McpStatus;
     let time = |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), say.now_s, &say.tz);

@@ -40,7 +40,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
       }
       if (op !== "data-report") return Promise.reject(new Error(`没料到 ${op}`));
       const a = answers.get(origin);
-      if (a === undefined) return Promise.reject(new Error(`${origin} 连不上`));
+      if (a === undefined) return Promise.reject(new Error(`${origin} 断开`));
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(a)));
     },
   },
@@ -304,7 +304,7 @@ describe("cc-monitor 放了什么", () => {
     await settle();
     expect(seen.get("devbox")?.data, "读成了那台 ⇒ 交本机后端记下").toBeTruthy();
     expect(seen.has(LOCAL_ORIGIN), "本机那台不记").toBe(false);
-    // 「重启」：界面那份记忆清掉，那台这回连不上。
+    // 「重启」：界面那份记忆清掉，那台这回断开。
     __resetLastSeenForTests();
     answers.delete("devbox");
     document.body.replaceChildren();
@@ -317,7 +317,7 @@ describe("cc-monitor 放了什么", () => {
     expect(pane.textContent).toContain("~/.zshrc");
     expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", ago: copyText("durationFormat.short.under") }));
     expect(pane.querySelectorAll(".data-remote-only [data-own]").length).toBe(3);
-    expect([...pane.querySelectorAll<HTMLButtonElement>(".data-remote-only [data-own] button")].every((b) => b.disabled), "连不上的那台打不开文件窗口 ⇒ 置灰").toBe(true);
+    expect([...pane.querySelectorAll<HTMLButtonElement>(".data-remote-only [data-own] button")].every((b) => b.disabled), "断开的那台打不开文件窗口 ⇒ 置灰").toBe(true);
     // 从没读成过的那台照旧说读不到。
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "gpu")!.click();
     expect(pane.textContent).toContain(copyText("dataPage.placed.offline", { machine: "gpu" }));

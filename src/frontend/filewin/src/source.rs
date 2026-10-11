@@ -940,7 +940,7 @@ pub async fn ask(
 /// 一趟 [`ask_coded`] 没成：**对端说的码**（只有「对端拒了」那一形有）＋ 那句人话。
 ///
 /// 🔴为什么要把码留下来：编辑器读文本那一问，后端的
-/// `too_large` / `not_text` 与「连不上」是**两件事**（前者说「这份不是一份能编辑的文本」，
+/// `too_large` / `not_text` 与「断开」是**两件事**（前者说「这份不是一份能编辑的文本」，
 /// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Failed {

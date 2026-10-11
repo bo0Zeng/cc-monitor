@@ -226,7 +226,7 @@ impl CallError {
 /// 传输错的三种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HopFault {
-    /// 连不上 / 没有这条路。
+    /// 断开 / 没有这条路。
     Unreachable,
     /// 路断在半途。
     Dropped,
