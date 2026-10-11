@@ -8,7 +8,7 @@
 use serde_json::{Map, Value};
 
 /// 账号 0 的名字（保留名：不许注册同名的号）。
-pub(crate) const ACCOUNT_ZERO: &str = "0";
+pub(crate) const ACCOUNT_ZERO: &str = acct_core::BARE_ACCOUNT;
 
 /// 一个具名的号。
 #[derive(Debug, Clone, PartialEq)]

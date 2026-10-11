@@ -128,6 +128,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -275,6 +276,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -432,6 +434,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -586,6 +589,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -743,6 +747,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -880,6 +885,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -1015,6 +1021,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -1154,6 +1161,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -1303,6 +1311,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -1532,6 +1541,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -1679,6 +1689,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -2027,6 +2038,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -2056,6 +2068,7 @@
         "fiveHour": null,
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
@@ -2082,6 +2095,7 @@
         "fiveHour": "5h 读不到",
         "names": {
           "accounts": {
+            "0": "账号 0",
             "_": "~/.claude"
           },
           "slots": {
