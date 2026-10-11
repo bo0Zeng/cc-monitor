@@ -30,7 +30,7 @@
    （⑮，两向集合相等）。它落地时盘上**就有现物**：搬树之后 `release.yml` 里五处还写着
    `src/frontend/shell/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
    安装包都没有。逐条住下面 ⑮ 那一段的头注。
-7. **Release 资产 ↔ 登记表**（⑯）：`RELEASING.md` §2.2 那张表是资产名的登记（手机端照它下载）。
+7. **Release 资产 ↔ 登记表**（⑯）：`RELEASING.md` §2.2 那张表是资产名的登记（对外的资产名，改名要同拍改这张表）。
    两处发布步骤的 `files:` ↔ 登记两向一一对上；登记、交叉编译、改名成资产的 musl 目标都等于
    x86_64 / aarch64；每份校验和恰好一步生成、排在发布前，算的那几份 ↔ 登记里进它的资产两向一一对上。
    ⚠ 只认文件名；glob 那几样（deb · 安装器 · msi）真叫什么由打包器定，它判不了。
@@ -804,11 +804,11 @@ def parse_workflow(text):
 
 
 # ── ⑯ Release 资产登记 ──────────────────────────────────────────────────────
-#: 资产登记的唯一住址：`RELEASING.md` §2.2 两个标记之间那张表（手机端照它下载）。
+#: 资产登记的唯一住址：`RELEASING.md` §2.2 两个标记之间那张表（对外的资产名）。
 ASSET_DOC = "src/doc/RELEASING.md"
 ASSET_BEGIN = "<!-- 发版资产登记：起 -->"
 ASSET_END = "<!-- 发版资产登记：止 -->"
-#: 手机端契约：远端后端两个 musl 目标，资产名 `cc-monitor-backend-<arch>`。
+#: 对外契约：远端后端两个 musl 目标，资产名 `cc-monitor-backend-<arch>`。
 BACKEND_ASSET_PREFIX = "cc-monitor-backend-"
 MUSL_ARCHES = {"x86_64", "aarch64"}
 STAGE_STEP = ("build-backends", "Stage binaries")
@@ -1523,7 +1523,7 @@ def run_checks(emit):
           % (sorted(got_roots - want_roots), sorted(want_roots - got_roots), declared,
              {k: sorted(set(v))[:3] for k, v in sorted(roots.items())}))
 
-    # ══ ⑯ Release 资产名 · 两个 musl 目标 · 校验和 ↔ 登记表（手机端照登记表下载）════════
+    # ══ ⑯ Release 资产名 · 两个 musl 目标 · 校验和 ↔ 登记表（对外的资产名）════════
     reg = asset_registry()
     check(bool(reg), "⑯地板·资产登记表抠得出来",
           "`%s` 两个标记之间现打 %d 行" % (ASSET_DOC, len(reg or [])))
@@ -1554,7 +1554,7 @@ def run_checks(emit):
     staged = set(re.findall(r"\.build/backend/([a-z0-9_]+)-unknown-linux-musl/release/cc-monitor-backend"
                             r" staged/" + re.escape(BACKEND_ASSET_PREFIX) + r"\1\s*$", stage_run, re.M))
     check(reg_arches == built == staged == MUSL_ARCHES,
-          "⑯c两个 musl 目标·登记 ↔ 交叉编译 ↔ 改名成资产，都等于手机端要的那两个",
+          "⑯c两个 musl 目标·登记 ↔ 交叉编译 ↔ 改名成资产，都等于对外契约的那两个",
           "登记 %s · 编 %s · 改名 %s · 契约 %s"
           % (sorted(reg_arches), sorted(built), sorted(staged), sorted(MUSL_ARCHES)))
 
@@ -1585,7 +1585,7 @@ def run_checks(emit):
         check(got is not None and not (lg or ln or multi),
               "⑯d算的那几份·%s ↔ 登记里进它的资产，两向一一对上" % sname,
               "算了没登记 %s · 登记了没算 %s · 一条认了几个 %s（算的 %r）—— 后一样就是 4.1.1 那趟："
-              "两个后端上传了却不在 `SHA256SUMS-linux.txt` 里，手机端校验不了"
+              "两个后端上传了却不在 `SHA256SUMS-linux.txt` 里，下载的人校验不了"
               % (lg, ln, multi, got))
         cnt = re.findall(r'\[ "\$n" -eq (\d+) \]', run)
         check(all(int(x) == len(got or []) for x in cnt),
