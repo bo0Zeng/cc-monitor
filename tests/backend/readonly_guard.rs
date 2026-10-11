@@ -899,13 +899,6 @@ mod tests {
              锁目录建成即持有、续完即删（`remove_dir` 只删自己刚建的那两个空目录）。入口只有上游选择换号要令牌那一处（`oauth::access_token`）",
         ),
         (
-            "accounts/quota/ledger.rs",
-            "**额度账** `~/.cc-monitor/quota.json`：这台各号最近一次从回包头看到的额度快照 ＋ 看到的时刻。\
-             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 账号域**自己的**状态，不是用户数据。\
-             在跨进程锁里读盘 → 换掉那一个号那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
-             失败删自己的临时文件；读不懂的那份不覆盖。入口只有中转记账那一路（上游选择的 `observe`）—— 不是帧面命令",
-        ),
-        (
             "accounts/quota/rotation.rs",
             "**账号轮换** `~/.cc-monitor/rotation.json`（配置表 · 本机默认 · 各会话打开的那份配置的副本 · 手动调整 · 策略备忘 · 换号记录）\
              与本机策略目录 `~/.cc-monitor/strategies/*.rhai`。文件名 / 格式 / 落点都是本仓定的 ⇒ 账号域**自己的**状态。\
@@ -996,11 +989,6 @@ mod tests {
             "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
         ),
         (
-            "accounts/upstream_select/mod.rs",
-            "上游选择对中转的那个口（`Destinations` 的实现）：回包头读完那一刻中转把状态与头交进来（`observe`），\
-             读成额度快照后记进额度账 —— 那一格没有帧命令可走（数据只从中转经手的回包来）",
-        ),
-        (
             "accounts/upstream_select/rotate.rs",
             "上游选择换号那一份：中转看见一个会话的第一发 · 被拒 / 发之前满着要换号 ⇒ 记下会话、钉号、记一条为什么 —— \
              那一格没有帧命令可走（换号发生在中转经手的那一发上）",
@@ -1009,11 +997,6 @@ mod tests {
             "faces/rotation_face.rs",
             "换号那一族的帧面宿主（`rotation-rule-save` · `-rename` · `-delete` · `rotation-default-set` · `rotation-session-set` · `rotation-switch`）：\
              前端存 / 改 / 删规则、设默认、改会话轮换、现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
-        ),
-        (
-            "faces/quota_probe_face.rs",
-            "用某个号查一次额度的帧面宿主（`quota-probe`，帧面与派生的 CLI 面共用）：官方客户端报的用量记进额度账（来源 `usage`，按窗口合并）· \
-             起它之前建好家里那个不出会话的工作目录 —— 用户 / AI / skill 按需调，不定时",
         ),
         (
             "relay/listen.rs",
@@ -1063,17 +1046,6 @@ mod tests {
             "accounts/oauth/store.rs",
             "store::with_refresh_lock",
             "accounts/oauth/mod.rs",
-        ),
-        // 额度账：写口是记一条观测的那一个函数，门是上游选择对中转的那个口；第二个来源（官方客户端报的用量）一个写口、一扇门。
-        (
-            "accounts/quota/ledger.rs",
-            "ledger::record_seen",
-            "accounts/upstream_select/mod.rs",
-        ),
-        (
-            "accounts/quota/ledger.rs",
-            "ledger::record_probe",
-            "faces/quota_probe_face.rs",
         ),
         // 账号轮换：中转换号那一路只从上游选择换号那一份进，帧面那一路只从换号的帧面宿主进。
         (
@@ -1133,12 +1105,6 @@ mod tests {
             "common/own_dir.rs",
             "common::own_dir::ensure_private_dir",
             "control/files_commit.rs",
-        ),
-        // 家里那个不出会话的工作目录：只在 `quota-probe` 起官方客户端之前建。
-        (
-            "common/own_dir.rs",
-            "common::own_dir::ensure_hidden_work_dir",
-            "faces/quota_probe_face.rs",
         ),
     ];
 

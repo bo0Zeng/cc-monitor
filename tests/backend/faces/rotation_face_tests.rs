@@ -95,6 +95,17 @@ impl Home {
     }
 }
 
+/// 写句柄：数据目录那一根同这份上下文里额度账所在的那一层（判据的家）。
+fn own_of(ctx: &Ctx) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_data_at(
+        ctx.hop
+            .quota
+            .path()
+            .and_then(std::path::Path::parent)
+            .expect("判据的额度账有落点"),
+    )
+}
+
 const S1: &str = "11111111-1111-4111-8111-111111111111";
 const S2: &str = "22222222-2222-4222-8222-222222222222";
 
@@ -626,7 +637,7 @@ fn seen(ctx: &Ctx, account: &str, used_5h: f64, refused_until: Option<u64>) {
             overage: None,
         },
     };
-    ledger::record_seen(&ctx.hop.quota, "claude-code", account, r, now);
+    ledger::record_seen(&ctx.hop.quota, &own_of(ctx), "claude-code", account, r, now);
 }
 
 /// ★ 推演：此刻之后的段都是估的；到线那一段（`line`）只在策略声明了 `line` 时出；视窗起止 · 刻度带字。
@@ -1092,8 +1103,22 @@ fn the_plan_rows_carry_left_slots_estimate_and_far_resets() {
         ],
         overage: None,
     };
-    ledger::record_seen(&ctx.hop.quota, "claude-code", "a", r(0.50), n - 600);
-    ledger::record_seen(&ctx.hop.quota, "claude-code", "a", r(0.56), n);
+    ledger::record_seen(
+        &ctx.hop.quota,
+        &own_of(&ctx),
+        "claude-code",
+        "a",
+        r(0.50),
+        n - 600,
+    );
+    ledger::record_seen(
+        &ctx.hop.quota,
+        &own_of(&ctx),
+        "claude-code",
+        "a",
+        r(0.56),
+        n,
+    );
     let v = answer_plan_with(&ctx, &json!({"sid": S1}), n).expect("ok");
     let row = |a: &str| {
         v["rows"]

@@ -691,7 +691,7 @@ fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     let now = crate::accounts::quota::now_unix();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
-    ledger::record_seen(&side, "claude-code", "b", r, now);
+    ledger::record_seen(&side, &home.own(), "claude-code", "b", r, now);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let resp = send_as_a(home.relay(up));
     assert_eq!(resp, refused_with_quota());

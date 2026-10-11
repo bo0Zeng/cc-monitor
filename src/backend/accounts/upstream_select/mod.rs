@@ -266,7 +266,14 @@ impl Ready for Booted {
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
-        let quota = std::sync::Arc::new(Ledger::at(ledger::path_from(get)).ringing(ledger::bell()));
+        let quota = std::sync::Arc::new(
+            Ledger::at(
+                own.path(ledger::FILE_NAME)
+                    .ok()
+                    .map(|p| p.as_path().to_path_buf()),
+            )
+            .ringing(ledger::bell()),
+        );
         let mut accounts = Accounts::new(table, upstreams, own.clone())
             .recording_to(std::sync::Arc::clone(&quota));
         let store = crate::accounts::quota::rotation::RotationStore::at(
@@ -575,7 +582,7 @@ impl Destinations for Accounts {
                     refusal_line(seen.tag, seen.status, &reading, retry_after)
                 );
             }
-            ledger::record_seen(&self.quota, agent, seen.tag, reading, now);
+            ledger::record_seen(&self.quota, &self.own, agent, seen.tag, reading, now);
         }
     }
 }

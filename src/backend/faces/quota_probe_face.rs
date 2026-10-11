@@ -11,6 +11,7 @@ use crate::accounts::quota::ledger;
 use crate::accounts::upstream_select::rotate::account_ok;
 use crate::faces::rotation_face::Ctx;
 use crate::platform::child::{Child, Deadline};
+use crate::platform::fs::Own;
 use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::Value;
@@ -33,12 +34,24 @@ fn bad(detail: &str) -> crate::stream::inbound::spec::Fail {
 }
 
 /// `quota-probe`：`{agent, account}` ⇒ 读到的窗口（并已记进额度账）或「读不懂」。
-pub(crate) fn answer_probe(args: &Value) -> Answer {
-    answer_probe_with(&Ctx::here(), args, crate::accounts::quota::now_unix(), None)
+pub(crate) fn answer_probe(args: &Value, own: &Own) -> Answer {
+    answer_probe_with(
+        &Ctx::here(),
+        own,
+        args,
+        crate::accounts::quota::now_unix(),
+        None,
+    )
 }
 
 /// 本体。`path` ＝ 子进程的 `PATH`（判据交一个放着假客户端的目录；生产 `None` ＝ 照宿主的）。
-pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<&OsStr>) -> Answer {
+pub(crate) fn answer_probe_with(
+    ctx: &Ctx,
+    own: &Own,
+    args: &Value,
+    now: u64,
+    path: Option<&OsStr>,
+) -> Answer {
     let agent = args
         .get("agent")
         .and_then(Value::as_str)
@@ -80,10 +93,15 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
             .into());
     }
     let book = ctx.hop.quota.path();
-    let home = book
-        .and_then(std::path::Path::parent)
-        .ok_or_else(|| ("io_failed", copy_text("beQuotaLedger.read.noHome", &[])))?;
-    let cwd = crate::common::own_dir::ensure_hidden_work_dir(home).map_err(|e| {
+    // 家里那个不出会话的工作目录（数据目录底下一层，没有就建）：经写句柄建。
+    let no_home = || ("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
+    if book.is_none() {
+        return Err(no_home().into());
+    }
+    let cwd = own
+        .path(crate::common::own_dir::HIDDEN_WORK_DIR)
+        .map_err(|_| no_home())?;
+    own.ensure_dir(&cwd).map_err(|e| {
         crate::stream::inbound::spec::Fail::new(
             "io_failed",
             copy_text(
@@ -93,7 +111,9 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
         )
         .with_raw(Some(&e.to_string()))
     })?;
-    let mut child = Child::new(face.program).args(face.args).current_dir(&cwd);
+    let mut child = Child::new(face.program)
+        .args(face.args)
+        .current_dir(cwd.as_path());
     child = match &found.dir {
         Some(d) => child.env(face.dir_env, d),
         None => child.env_remove(face.dir_env),
@@ -151,7 +171,7 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
     match (face.read)(&text, now) {
         Err(why) => wire(&probed("unreadable", Some(why), Vec::new())),
         Ok(windows) => {
-            ledger::record_probe(&ctx.hop.quota, agent, account, windows.clone(), now)
+            ledger::record_probe(&ctx.hop.quota, own, agent, account, windows.clone(), now)
                 .map_err(|e| ("io_failed", e))?;
             wire(&probed("read", None, windows))
         }

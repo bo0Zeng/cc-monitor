@@ -36,7 +36,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[both("account", "账号库里的号（配置目录末段；账号 0 是 `0`）"), both("agent", "路由第 1 段：哪一家"), out("from", "恒 `\"usage\"`"), out("now", "这台此刻的 unix 秒"), out("path", "额度账那份文件的绝对路径"), out("reason", "只在 `unreadable` 时有：哪一处读不懂（英文诊断）"), out("state", "`\"read\"`（读得懂、已记进额度账）· `\"unreadable\"`（输出对不上：**不猜、不写账**）"), out("windows", "读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::quota_probe_face::answer_probe(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::quota_probe_face::answer_probe(&r.args, own).map(Some)
+        }),
     },
     // 换号那一族（帧面宿主 `faces/rotation_face.rs`，`轮换-积木.md` §5）：配置表读 / 存 / 改名 / 删 / 设为本机默认 · 策略读 / 装 / 删 / 试跑 ·
     //   会话读 / 打开配置 / 改副本 / 存 / 还原 / 手动调整 · 推演 · 现在就换。

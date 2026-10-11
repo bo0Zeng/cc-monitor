@@ -83,7 +83,13 @@ impl Home {
 
     fn probe(&self, ctx: &Ctx, args: Value) -> Answer {
         let path = format!("{}:/usr/bin:/bin", self.bin.display());
-        answer_probe_with(ctx, &args, NOW, Some(OsStr::new(&path)))
+        answer_probe_with(
+            ctx,
+            &crate::platform::fs::Own::issue_data_at(&self.root),
+            &args,
+            NOW,
+            Some(OsStr::new(&path)),
+        )
     }
 
     fn seen(&self) -> String {
