@@ -229,14 +229,14 @@ fn helper_tab(pid: u32, hwnd: isize) {
     use crate::bind::{TabMiss, TabPick};
     use std::io::Write;
     let marker = crate::bind::front_marker();
-    let until = std::time::Instant::now() + TAB_BUDGET;
+    let deadline = std::time::Instant::now() + TAB_BUDGET;
     let pick = match super::wt_tabs::WtTabs::open(hwnd) {
         None => TabPick::Miss(TabMiss::NoUia),
         Some(mut tabs) => borrow(pid, || {
             crate::bind::pick_tab(
                 &mut LentTitle {
                     tabs: &mut tabs,
-                    until,
+                    deadline,
                 },
                 &marker,
                 TAB_READS,
@@ -265,7 +265,7 @@ const TAB_READS: usize = 6;
 #[cfg(windows)]
 struct LentTitle<'a> {
     tabs: &'a mut super::wt_tabs::WtTabs,
-    until: std::time::Instant,
+    deadline: std::time::Instant,
 }
 
 #[cfg(windows)]
@@ -292,7 +292,7 @@ impl crate::bind::TabReader for LentTitle<'_> {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     fn time_left(&self) -> bool {
-        std::time::Instant::now() < self.until
+        std::time::Instant::now() < self.deadline
     }
 }
 
