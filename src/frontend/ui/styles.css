@@ -1623,6 +1623,11 @@
   display: none;
 }
 
+/* 排队插话已经落成了人话（后端 `history-turns` 的 landed）：同一句不上屏两次。 */
+.queued-landed {
+  display: none;
+}
+
 /* === 轮次刻度：正文区右缘 16px 一列，每轮一格 3px 短线；当前那一轮 --accent 加长，在等你的那一轮琥珀。
    挂在 #message-stream 上、不随流滚；切 tab 翻 visibility（子树就几十格，翻继承属性的代价可以忽略；大的那棵 .stream 走 content-visibility）。 */
 .turn-rail {
@@ -1688,50 +1693,12 @@
   white-space: pre-line;
 }
 
-/* === 工具组合并外层卡 === */
-.card-tool-group {
-  margin: 12px 0;
-  padding: 0;
+/* === 过程里的几步：一条记录一张卡，每步一行（不并组；收不收进「过程」由后端划段） === */
+.card-steps {
+  margin: 4px 0;
+  padding: 0 12px;
   background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-l);
-  overflow: hidden;
-}
-
-.card-tool-group-summary {
-  cursor: pointer;
-  padding: 8px 12px;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  user-select: none;
-}
-
-
-
-.card-tool-group-summary:hover {
-  background: var(--overlay-hover);
-  color: var(--text);
-}
-
-/* 过程里的工具组整组摊开，不再另起一层「过程 · 工具 ×N」。 */
-.card-tool-group[data-proc-of] {
   border: 0;
-  margin: 0;
-}
-
-.card-tool-group[data-proc-of] > .card-tool-group-summary {
-  display: none;
-}
-
-.card-tool-group[open] > .card-tool-group-summary {
-  color: var(--text);
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border-strong);
-}
-
-.card-tool-group-body {
-  padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2112,16 +2079,6 @@
 .block-agent-body {
   white-space: normal;
   padding: 12px 14px 16px;
-}
-
-.block-agent-tool-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 8px 0;
-  padding: 8px 10px;
-  background: var(--overlay-dim);
-  border-radius: var(--radius-m);
 }
 
 .block-agent-error {

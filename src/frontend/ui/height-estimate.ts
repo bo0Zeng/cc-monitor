@@ -45,6 +45,7 @@ export function initialColumnWidth(): number {
 }
 const USER_BODY_W = COL_W * 0.8 - 34; // 气泡 max-width 80% - padding 16×2 - border 2
 const SUMMARY_H = 38; // 折叠 <details> 只剩 summary 行
+const STEPS_GAP = 4; // .card-steps 的 gap
 const CODE_BAR_H = 30; // .code-bar(copy 按钮撑高)+ border
 const CODE_PAD_V = 30; // pre 上下 padding 14×2 + border 2
 const CODE_MARGIN = 24; // .code-block margin 12×0(上下)
@@ -276,7 +277,7 @@ export function __resetUnknownCardWarnings(): void {
  * 顶层卡片估高。认不出的形态返回 null(CSS 兜底 120px + 渲染后 auto 记忆)。
  */
 export function estimateStreamNodeHeight(el: HTMLElement): number | null {
-  // 折叠态顶层 <details>(工具组 / compact 卡):summary 一行,与 units 数量无关
+  // 折叠态顶层 <details>(compact 卡):summary 一行
   if (el.tagName === "DETAILS" && !(el as HTMLDetailsElement).open) return SUMMARY_H;
 
   if (el.classList.contains("card-user")) {
@@ -309,6 +310,15 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   // 行数直接数 DOM 里**已经截过的** pre(cards/bash.ts 超 30 行只留头 20 行),
   // 所以这里不需要知道原始输出多长。stderr 标签/展开按钮/空态各算一个细条行。
   if (el.classList.contains("card-bash-output")) return bashOutputHeight(el);
+
+  // 过程里的几步：每步一行（收着的 <details> 只剩 summary；派出子 agent 那一步是一行抬头），展开着的那一步按内容算；
+  // 步间 `gap: 4px`；卡本身上下不留内边距。
+  if (el.classList.contains("card-steps")) {
+    const steps = Array.from(el.children);
+    let h = Math.max(0, steps.length - 1) * STEPS_GAP;
+    for (const s of steps) h += s.tagName === "DETAILS" && (s as HTMLDetailsElement).open ? blockHeight(s) : SUMMARY_H;
+    return h;
+  }
 
   if (el.classList.contains("card-assistant")) {
     let h = CARD_HEADER_H;
@@ -375,9 +385,9 @@ export interface SkeletonFacts {
 
 /**
  * 一条记录在骨架里算哪一类：
- * - `none`：**不建卡**（不进界面的行 · 标题 · 不画的来源 …）——高 0，**也不打断**工具组的连续
- *   （渲染时它们根本不进 timeline，`peekPrev` 看得见的左邻居仍是上一个工具组）；
- * - `tool`：只有折叠单元的记录（纯 tool_use / 纯 tool_result）——连续的一串并成**一张**工具组卡；
+ * - `none`：**不建卡**（不进界面的行 · 标题 · 不画的来源 …）——高 0；
+ * - `tool`：只有折叠单元的记录（纯 tool_use / 纯 tool_result）——assistant 那一侧一条一张「几步」卡（每步一行）；
+ *   user 那一侧的纯工具结果注入进它那个调用的那一行，不另建卡（高 0）；
  * - `card`：其余。
  */
 export type SkeletonKind = "none" | "tool" | "card";
@@ -389,7 +399,8 @@ export type SkeletonKind = "none" | "tool" | "card";
  */
 const SKEL_USER_CHROME = 50;
 const SKEL_CARD_CHROME = 19;
-const SKEL_TOOL_GROUP_H = 49;
+/** 「几步」卡的外距（每步一行另按 `SUMMARY_H`、步间按 `STEPS_GAP` 算；与 `estimateStreamNodeHeight` 的 card-steps 那一支同形）。 */
+const SKEL_STEPS_CHROME = 4; // 上下各 4px 外距，与邻卡的外距折叠后只剩一份（RENDER2 金样：位置 − 那几行 = 4）
 const SKEL_SYSTEM_H = 28;
 /** 系统注入的细条（「显示系统注入」开着时）：一行 summary ＋ 上下外距。关着 ⇒ 0。 */
 const SKEL_INJECTED_H = 30;
@@ -404,7 +415,7 @@ export function setInjectedShown(on: boolean): void {
 export const SKEL_OUTER = {
   user: SKEL_USER_CHROME,
   assistant: CARD_HEADER_H + BLOCK_GAP + SKEL_CARD_CHROME,
-  toolGroup: SKEL_TOOL_GROUP_H,
+  steps: SKEL_STEPS_CHROME,
   system: SKEL_SYSTEM_H,
 } as const;
 
@@ -435,23 +446,21 @@ export function skeletonKind(f: SkeletonFacts): SkeletonKind {
 /**
  * **第一级粗估**：由宽度无关料 × 当前列宽算一条记录在骨架里占多高（px，border-box 口径）。
  *
- * `prevKind` = 上一条**建卡**记录的类别（`none` 不算）—— 连续的 `tool` 只有第一条出高，其余并进同一个组。
  * `colW` 默认 `COL_W`（模块求值时量出来的起始列宽）。
  *
  * 买到：骨架落地那一瞬间就有总高（滚动条大致对、跳转可用）。
  * **买不到**：精度。它不知道 slash/compact 细条、ESC 折叠、`stripInternalNoise` 剥空这些渲染期决定；
  * 第二级（建卡时 `applyIntrinsicSize` ＋ `contain-intrinsic-size: auto` 记住真值）接管已渲染的那部分。
  */
-export function estimateFromFacts(
-  f: SkeletonFacts,
-  prevKind: SkeletonKind,
-  colW: number = COL_W,
-): number {
+export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): number {
   const kind = skeletonKind(f);
-  // 注入行不是任何一类（不打断相邻工具并组），只按开关出高。
+  // 注入行不是任何一类，只按开关出高。
   if (f.sp === "system") return injectedShown ? SKEL_INJECTED_H : 0;
   if (kind === "none") return 0;
-  if (kind === "tool") return prevKind === "tool" ? 0 : SKEL_TOOL_GROUP_H;
+  if (kind === "tool") {
+    const n = f.fd ?? 0;
+    return f.t === "said" ? 0 : n * SUMMARY_H + Math.max(0, n - 1) * STEPS_GAP + SKEL_STEPS_CHROME;
+  }
   if (f.t === "retry") return SKEL_SYSTEM_H;
   const folded = (f.fd ?? 0) * SUMMARY_H;
   if (f.t === "said" || f.t === "queued") {
@@ -527,7 +536,7 @@ function splitFences(md: string): { prose: string; codeLines: number; codeBlocks
 }
 
 /**
- * 一条记录 ⇒ 第二级那一件；不值得精算的（不建卡 · 工具组 · 细条卡 · 没有正文）⇒ `null`（第一级就是它的高）。
+ * 一条记录 ⇒ 第二级那一件；不值得精算的（不建卡 · 几步卡 · 细条卡 · 没有正文）⇒ `null`（第一级就是它的高）。
  * 与 `estimateFromFacts` 逐项同形：只把 `factLines(…) × 行高` 换成 pretext 排出来的高。`colW` 同第一级。
  */
 export function refineItemOf(rec: LineRecord, colW: number = COL_W): RefineItem | null {

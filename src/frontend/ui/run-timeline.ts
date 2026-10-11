@@ -8,6 +8,7 @@ import type { Origin } from "./ipc/origin";
 import { loadRunPage, readBranch, type RunPage, type RunWhich } from "./record-reads";
 import { BranchFolder } from "./branch-fold";
 import { markCardId } from "./render-stream-record";
+import { buildStepsCard } from "./cards";
 import { copyText } from "./copy-table";
 import { sayFailure } from "./kit/detail";
 import { observeForEnhance } from "./render";
@@ -15,7 +16,7 @@ import { observeForEnhance } from "./render";
 /** 渲染器给出来的那一形（`cards/index.ts::renderMessage` 的结果，只取要用的两种）。 */
 export type RunRender = (
   rec: LineRecord,
-) => { kind: "card"; element: HTMLElement } | { kind: "tool-group"; units: HTMLElement[] } | { kind: "skip" };
+) => { kind: "card"; element: HTMLElement } | { kind: "steps"; units: HTMLElement[] } | { kind: "skip" };
 
 /** 一次最多续读几页（一页 ≤ 1 MiB；再多下一次运行表变了再读）。 */
 export const RUN_PAGES_PER_REFRESH = 8;
@@ -95,16 +96,12 @@ export class RunTimeline {
         for (const row of page.rows) {
           const r = this.deps.render(row.record);
           const root = this.deps.enhanceRoot;
-          if (r.kind === "card") {
-            markCardId(r.element, row.record);
-            this.body.appendChild(r.element);
-            if (root) observeForEnhance(r.element, root);
-          } else if (r.kind === "tool-group") {
-            const wrap = document.createElement("div");
-            wrap.className = "block-agent-tool-group";
-            for (const u of r.units) wrap.appendChild(u);
-            this.body.appendChild(wrap);
-            if (root) for (const u of r.units) observeForEnhance(u, root);
+          // 与主窗口同一张卡：过程里的几步一条记录一张（`buildStepsCard`），不并组。
+          const el = r.kind === "card" ? r.element : r.kind === "steps" ? buildStepsCard(r.units) : null;
+          if (el) {
+            markCardId(el, row.record);
+            this.body.appendChild(el);
+            if (root) observeForEnhance(el, root);
           }
           if (row.rid !== undefined) this.deps.onRecord?.(row.rid);
         }

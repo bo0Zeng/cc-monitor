@@ -199,6 +199,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         main: text::extract_text_blocks,
         tool: text::extract_tool_text,
         user: text::user_text_of_record,
+        queued: text::queued_of_record,
         result: steps::result_of,
     }),
     delete: Some(super::SessionDelete {

@@ -35,7 +35,7 @@ async function openCard(sel: string, nth = 0, block: ScrollLogicalPosition = "st
 async function showCard(el: HTMLElement, block: ScrollLogicalPosition = "start"): Promise<void> {
   const top = el.closest<HTMLElement>("[data-proc-of]");
   if (top?.classList.contains("proc-hidden")) {
-    document.querySelector<HTMLElement>(`.proc-line[data-turn="${top.dataset.procOf}"]`)?.click();
+    document.querySelector<HTMLElement>(`.proc-line[data-fold="${top.dataset.procOf}"]`)?.click();
     await sleep(400);
   }
   await expand(el);
@@ -324,7 +324,7 @@ export const MAIN_SCENES: Scene[] = [
     const retry = await waitFor(".stream.active .card-api-retry");
     const turn = retry.dataset.procOf;
     if (turn && retry.classList.contains("proc-hidden")) {
-      document.querySelector<HTMLElement>(`.stream.active .proc-line[data-turn="${CSS.escape(turn)}"]`)?.click();
+      document.querySelector<HTMLElement>(`.stream.active .proc-line[data-fold="${CSS.escape(turn)}"]`)?.click();
       await sleep(300);
     }
     await scrollStream(".stream.active .card-api-retry");

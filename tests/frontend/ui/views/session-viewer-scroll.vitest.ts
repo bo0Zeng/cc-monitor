@@ -215,12 +215,12 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root", ()
 });
 
 /**
- * 「命中落在工具结果里（`--include-tools`）时那条记录可能被并进工具组卡、
- * 找不到 `[data-id]` ⇒ 标『跳不过去』」。修法：被并入 / 被注入的记录给落点记 `data-member-id`，`revealCard` 两种键都认。
- * 判据（集合相等）：一条典型工具链（tool_use → tool_result → 又一个 tool_use 并进同一组 → 它的 tool_result）里，
- * 四条记录的 uuid 全都跳得到，而且跳到的元素是它自己那一块（不是整组外壳）。
+ * 「命中落在工具结果里（`--include-tools`）时那条记录没有自己的卡、
+ * 找不到 `[data-id]` ⇒ 标『跳不过去』」。修法：被注入的记录给落点记 `data-member-id`，`revealCard` 两种键都认。
+ * 判据（集合相等）：一条典型工具链（tool_use → tool_result → 又一个 tool_use → 它的 tool_result）里，
+ * 四条记录的 uuid 全都跳得到，而且跳到的元素是它自己那一块。
  */
-describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => {
+describe("R11 · 被注入进调用那一行的工具结果也跳得到", () => {
   const ts = (s: number): string => `2026-09-10T00:00:${String(s).padStart(2, "0")}.000Z`;
   const use = (seq: number, uuid: string, id: string, cmd: string): RigPayload =>
     line(seq, {
@@ -249,8 +249,8 @@ describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => 
       use(3, "a2", "t2", "echo two"),
       res(4, "r2", "t2", "two-out"),
     ]);
-    // 台子自检：真的并成了**一个**工具组（不然本条测的不是「被并入」）
-    expect(v.element.querySelectorAll(".card-tool-group").length).toBe(1);
+    // 台子自检：两次调用各一张「几步」卡，两条结果没有自己的卡（注入进调用那一行 ⇒ 本条测的是「被注入」的落点）
+    expect(v.element.querySelectorAll(".card-steps").length).toBe(2);
     const got = new Map<string, string>();
     for (const uuid of ["a1", "r1", "a2", "r2"]) {
       const el = (v as unknown as { scrollToMessage(u: string): HTMLElement | null }).scrollToMessage(uuid);
@@ -264,7 +264,7 @@ describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => 
   });
 
   it("结果先于调用到（先建 fallback、收尾对账时注入）：落点标记跟着搬过去，照样跳得到", async () => {
-    // r9 的 fallback 并进 a0 那个组（标记记在 fallback 单元上）；a9 到了之后收尾对账把结果注入 a9 那一块、摘掉 fallback
+    // r9 的 fallback 先自成一张卡；a9 到了之后收尾对账把结果注入 a9 那一块、摘掉 fallback
     const v = await mount([use(1, "a0", "t0", "echo first"), res(2, "r9", "t9", "early-out"), use(3, "a9", "t9", "echo late")]);
     // 台子自检：对账真的发生了（fallback 独立条已摘掉、结果进了 tool_use 那一块）
     expect(v.element.querySelector(".block-tool-result:not(.block-tool-result-inline)")).toBeNull();

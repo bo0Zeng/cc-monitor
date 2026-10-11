@@ -82,8 +82,7 @@ vi.mock("../../../src/frontend/ui/fork-flow", () => ({
 
 import {
   renderMessage,
-  buildToolGroup,
-  addToToolGroup,
+  buildStepsCard,
   resultTextLedger,
   resetResultTextLedger,
   type LineRecord,
@@ -116,7 +115,7 @@ function freshCtx(): RenderContext {
   };
 }
 
-/** 渲染一条记录并把产物挂进 `document.body`（tool-group 那一支照生产包外壳）。 */
+/** 渲染一条记录并把产物挂进 `document.body`（steps 那一支照生产包一张卡）。 */
 function renderInto(rec: LineRecord, ctx: RenderContext): HTMLElement | null {
   const res = renderMessage(rec, ctx);
   if (res.kind === "skip") return null;
@@ -124,10 +123,9 @@ function renderInto(rec: LineRecord, ctx: RenderContext): HTMLElement | null {
     document.body.appendChild(res.element);
     return res.element;
   }
-  const group = buildToolGroup(res.time);
-  addToToolGroup(group, res.units);
-  document.body.appendChild(group.root);
-  return group.root;
+  const card = buildStepsCard(res.units);
+  document.body.appendChild(card);
+  return card;
 }
 
 function toolUseRec(id: string, name: string, recId: string): LineRecord {

@@ -295,8 +295,6 @@ export class TabStreamView {
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
     };
     streamEl.addEventListener("scroll", fillHandler, { passive: true });
-    // 收尾时视口落在过程里、先没收的那一轮：滚出去了再收（同一个监听，摘的时候一起摘）。
-    streamEl.addEventListener("scroll", tab.turnFold.releaseOnScroll, { passive: true });
     streamEl.addEventListener("scroll", tab.turnRail.onScroll, { passive: true }); // 刻度上「当前」那一格
     tab.fillHandler = fillHandler;
     // ★ 步 3：**视口自己变大 ⇒ 重新补批。**
@@ -334,7 +332,6 @@ export class TabStreamView {
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
     tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
-    tab.streamEl.removeEventListener("scroll", tab.turnFold.releaseOnScroll);
     tab.streamEl.removeEventListener("scroll", tab.turnRail.onScroll);
     tab.turnRail.el.remove(); // 刻度挂在流外，不随 `streamEl.remove()` 一起走
     tab.turnFold.dispose(); // 按轮折叠：断观察、在途那趟作废
@@ -395,7 +392,6 @@ export class TabStreamView {
       t.inputsEl.classList.toggle("active", sid === sessionId);
       // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
       if (sid !== sessionId) this.finds.get(sid)?.close();
-      if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
       t.turnRail.el.classList.toggle("active", sid === sessionId);
       if (sid === sessionId) t.turnFold.flushStale(); // Ctrl+O 之后还没按新默认排过（后台只记了一笔）⇒ 当场排
       if (sid === sessionId) t.turnRail.shown(); // 收起期间没量过 ⇒ 下一帧量一次
@@ -602,7 +598,7 @@ export class TabStreamView {
       if (!render && tab.skeleton && !tab.skeleton.isPending(payload.seq)) render = true;
     }
     // 批期落在渲染窗口内中部的插入（seq ≥ floor 且 < 已渲染最高 seq：大增量批的老块）→ 缓冲，onBatchEnd 一次挂载（不逐帧往上方插，§21）。
-    // 离线期的真新消息照计未读（按记录计，与工具组合并略有出入，99+ 封顶下可接受）。
+    // 离线期的真新消息照计未读（按记录计，与相邻合并、不建卡的记录略有出入，99+ 封顶下可接受）。
     if (render && this.store.inBatch && payload.seq < tab.timeline.maxSeq) {
       tab.midBatchBuffer.push(payload);
       // 徽标刷新攒到批末 flush 一次(D 审计:600 条缓冲 = 600 次全 bar 巡检)
@@ -637,7 +633,7 @@ export class TabStreamView {
     const inserted = tab.timeline.size > beforeSize;
     if (inserted) tab.branchFolder.cardsAdded(); // 新卡可能落在回退掉的那一段里 ⇒ 帧末按清单重折
 
-    // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
+    // unread 计数：只有真新 entry 入 timeline 才算（注入进旧卡的工具结果不算）
     if (inserted && this.store.activeId !== tab.sessionId) {
       tab.unread += 1;
       // 帧末合批：这里每来一行实时记录就走一次，徽标数字攒到帧末一次更新。
@@ -768,7 +764,7 @@ export class TabStreamView {
   }
 
   /**
-   * 补到一屏填满（`contentReachesBottom`）或账本弹尽：一批 150 条可能只产出几张卡（工具组合并、skip 记录占配额）。
+   * 补到一屏填满（`contentReachesBottom`）或账本弹尽：一批 150 条可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
    * 一次同步调用只跑 {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
    * （`scheduleFillContinuation`，与上翻补批同一条 rAF 自链）—— 不可滚的元素不产生 scroll，没有别的入口会再补。
    */

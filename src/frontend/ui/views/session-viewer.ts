@@ -48,7 +48,7 @@ import { copyText } from "../copy-table";
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
   const key = CSS.escape(uuid);
-  // 卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-id`）
+  // 卡找不到 ⇒ 再找「被注入进 tool_use」的那一块（`data-member-id`）
   const el =
     container.querySelector<HTMLElement>(`[data-id="${key}"]`) ??
     container.querySelector<HTMLElement>(`[data-member-id="${key}"]`);
@@ -372,7 +372,6 @@ export class SessionViewer {
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
     this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere, undefined, () => this.skeleton);
-    this.streamEl.addEventListener("scroll", this.turnFold.releaseOnScroll, { passive: true });
 
     // 读取中：骨架；状态行不说话。
     this.setLoading(true);
@@ -810,7 +809,6 @@ export class SessionViewer {
     this.loaded = false;
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
     if (this.turnFold) {
-      this.streamEl.removeEventListener("scroll", this.turnFold.releaseOnScroll);
       this.turnFold.dispose(); // 断观察、在途那趟作废
       this.turnFold = null;
     }
