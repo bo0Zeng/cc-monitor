@@ -20,6 +20,13 @@
     --rc-lc: 104px;
   }
 
+  /* 窄窗（面板 360，外层会话面板那一块是尺寸容器）：左栏收到 104。 */
+  @container (width < 340px) {
+    .rcChart {
+      --rc-lc: 104px;
+    }
+  }
+
   .rcHead,
   .rcRow {
     display: grid;

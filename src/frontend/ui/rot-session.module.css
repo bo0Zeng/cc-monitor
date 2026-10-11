@@ -84,6 +84,14 @@
     .rsMore {
       display: inline-flex;
     }
+
+    /* 描述最多两行（全文在下拉的小卡里）。 */
+    .rsDesc {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
   }
 
   .rsDesc {
