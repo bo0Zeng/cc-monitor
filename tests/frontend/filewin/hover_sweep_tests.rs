@@ -244,9 +244,13 @@ async fn wired_pane(tag: &str) -> (crate::find::testing::Wired, FileWindow, std:
         .homed(&base)
         .preindexed(&base);
     let wired = wire_up(&format!("sweep-{tag}"), be).await;
-    let d = dir.to_string_lossy().to_string();
+    // 窗口那一侧的路径照后端的形状交（`/` 分隔，同 `find_tests` 的 `remote_root`）：Windows 上盘上那一份是 `\`，
+    // 搜索按窗口的当前目录对后端的索引取前缀，交本机形状就一条都对不上。
+    let d = crate::find::testing::remote_form(&dir.to_string_lossy());
     let mut w = window_on(&wired, &d);
-    w.navigate_to(dir.join("src").to_string_lossy().to_string());
+    w.navigate_to(crate::find::testing::remote_form(
+        &dir.join("src").to_string_lossy(),
+    ));
     while w.listing.is_loading() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
