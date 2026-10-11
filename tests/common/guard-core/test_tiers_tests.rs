@@ -319,6 +319,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/shots/perf/filewin-perf.sh", needle: "workspace::tests::perf_rig_worker" },
     ),
     (
+        "tests/frontend/filewin/hover_sweep_tests.rs",
+        "real_window_rig_for_the_frame_log",
+        Trigger::Manual("台架不是判据：在一台真桌面（Windows 真机 / 虚拟机，或私有 Xvfb）上开真文件窗口录帧日志，外面另起进程模拟鼠标乱动；跑法住它自己的头注"),
+    ),
+    (
         "tests/backend/relay/server_tests.rs",
         "relay_overhead_bench",
         Trigger::Manual("读数不是判据：中转每发多出来的那一跳（直连与经中转各发 N 发比 p50）；跑法住它自己的头注"),
