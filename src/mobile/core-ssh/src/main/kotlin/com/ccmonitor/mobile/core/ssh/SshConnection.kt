@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.remote.ExecResult
@@ -324,7 +325,7 @@ class SshConnection(
             readWithDeadline(
                 OPEN_SHELL_TIMEOUT_MS,
                 onTimeout = { runCatching { close() } },
-                message = copyText("mobSsh.shell.openTimeout", "dur" to copyText("durationFormat.unit.sec", "n" to OPEN_SHELL_TIMEOUT_MS / 1000)),
+                message = copyText("mobSsh.shell.openTimeout", "dur" to DurationFormat.short(OPEN_SHELL_TIMEOUT_MS)),
             ) {
                 val session = client().startSession()
                 session.allocatePTY(term, cols, rows, 0, 0, emptyMap<PTYMode, Int>())
@@ -642,7 +643,7 @@ internal suspend fun <T> readWithDeadline(
         val result = runCatching(read)
         val wonByRead = settled.compareAndSet(false, true) // false：看门狗已先判超时
         watchdog.cancel()
-        if (!wonByRead) throw IOException(message ?: copyText("mobSsh.exec.timeout", "dur" to copyText("durationFormat.unit.ms", "n" to timeoutMs)))
+        if (!wonByRead) throw IOException(message ?: copyText("mobSsh.exec.timeout", "dur" to DurationFormat.short(timeoutMs)))
         result.getOrThrow()
     }
 

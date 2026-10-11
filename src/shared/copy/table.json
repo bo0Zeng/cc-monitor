@@ -31606,7 +31606,7 @@
     "mobTmux.kill.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已结束「{name}」",
+      "zh": "已终止「{name}」",
       "args": ["name"]
     },
     "mobTmux.kill.failed": {

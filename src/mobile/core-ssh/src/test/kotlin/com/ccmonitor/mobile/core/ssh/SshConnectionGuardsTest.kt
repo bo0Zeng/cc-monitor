@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +103,7 @@ class SshConnectionGuardsTest {
                 }.exceptionOrNull()
             assertEquals(
                 "message 缺省时用默认文案",
-                copyText("mobSsh.exec.timeout", "dur" to copyText("durationFormat.unit.ms", "n" to 200)),
+                copyText("mobSsh.exec.timeout", "dur" to DurationFormat.short(200)),
                 ex?.message,
             )
         }

@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -256,7 +257,7 @@ class SshConnectionManager(
                 if (stateFor(id).generation == myGen) {
                     val msg =
                         if (timedOut.get()) {
-                            copyText("mobSsh.handshake.timeout", "dur" to copyText("durationFormat.unit.ms", "n" to handshakeDeadlineMs(addressConfigs)))
+                            copyText("mobSsh.handshake.timeout", "dur" to DurationFormat.short(handshakeDeadlineMs(addressConfigs)))
                         } else {
                             e.message ?: e.toString()
                         }
