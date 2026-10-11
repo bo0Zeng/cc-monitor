@@ -1,6 +1,6 @@
 {
  "note": "秤 2 的真高金标准。真高只取决于 DOM+CSS+引擎，与 height-estimate.ts 无关 ⇒ 可以静态固化。估值必须门禁跑的时候现算。刷新：bash tests/evidence/U-scale2-run.sh",
- "generatedAt": "2026-10-09",
+ "generatedAt": "2026-10-11",
  "engine": {
   "name": "Chromium 153.0.8010.12 (headless shell, Playwright)",
   "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
@@ -650,325 +650,325 @@
   },
   {
    "id": "real#40",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 2822,
+   "bytes": 2851,
    "bucket": "2-8K",
-   "htmlLen": 311,
-   "htmlHash": "31f0f500",
+   "htmlLen": 187,
+   "htmlHash": "451dfc61",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#41",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 2769,
+   "bytes": 2859,
    "bucket": "2-8K",
-   "htmlLen": 352,
-   "htmlHash": "fc26f074",
+   "htmlLen": 228,
+   "htmlHash": "6848cf12",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#43",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 2342,
+   "bytes": 2389,
    "bucket": "2-8K",
-   "htmlLen": 325,
-   "htmlHash": "4aa714dd",
+   "htmlLen": 201,
+   "htmlHash": "480de59c",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#44",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 2797,
+   "bytes": 2859,
    "bucket": "2-8K",
-   "htmlLen": 344,
-   "htmlHash": "0f5205dd",
+   "htmlLen": 220,
+   "htmlHash": "a4d35790",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#46",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 5188,
    "bucket": "2-8K",
-   "htmlLen": 808,
-   "htmlHash": "b9e66a84",
+   "htmlLen": 684,
+   "htmlHash": "affb48b0",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#47",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 2468,
    "bucket": "2-8K",
-   "htmlLen": 971,
-   "htmlHash": "e9a0e9ef",
+   "htmlLen": 836,
+   "htmlHash": "ad4216b0",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 44.59,
+   "trueContentBox": 44.59,
+   "padBorder": 0
   },
   {
    "id": "real#48",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 7939,
+   "bytes": 8006,
    "bucket": "2-8K",
-   "htmlLen": 333,
-   "htmlHash": "7b4f66cd",
+   "htmlLen": 209,
+   "htmlHash": "1daa2e7b",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#50",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 42136,
    "bucket": "32-128K",
-   "htmlLen": 571,
-   "htmlHash": "fef2692d",
+   "htmlLen": 447,
+   "htmlHash": "789f608f",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#51",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 42136,
    "bucket": "32-128K",
-   "htmlLen": 571,
-   "htmlHash": "07420bc7",
+   "htmlLen": 447,
+   "htmlHash": "d69a5d91",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#52",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 9799,
+   "bytes": 9852,
    "bucket": "8-32K",
-   "htmlLen": 333,
-   "htmlHash": "5b2e0456",
+   "htmlLen": 209,
+   "htmlHash": "a4ddf78e",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#53",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 17786,
    "bucket": "8-32K",
-   "htmlLen": 584,
-   "htmlHash": "19ca22eb",
+   "htmlLen": 460,
+   "htmlHash": "e51fa60b",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#54",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 24683,
    "bucket": "8-32K",
-   "htmlLen": 565,
-   "htmlHash": "3f77954c",
+   "htmlLen": 441,
+   "htmlHash": "405404e7",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#55",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 18338,
+   "bytes": 18401,
    "bucket": "8-32K",
-   "htmlLen": 336,
-   "htmlHash": "8624f213",
+   "htmlLen": 212,
+   "htmlHash": "a2ab1bda",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#57",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 29326,
+   "bytes": 29381,
    "bucket": "8-32K",
-   "htmlLen": 336,
-   "htmlHash": "344aa930",
+   "htmlLen": 212,
+   "htmlHash": "9c6b6866",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#58",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 19484,
    "bucket": "8-32K",
-   "htmlLen": 568,
-   "htmlHash": "74381587",
+   "htmlLen": 444,
+   "htmlHash": "e4aa7947",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#61",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 516,
+   "bytes": 607,
    "bucket": "<2K",
-   "htmlLen": 368,
-   "htmlHash": "8f6798f1",
+   "htmlLen": 244,
+   "htmlHash": "0694cc52",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#62",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 1354,
    "bucket": "<2K",
-   "htmlLen": 810,
-   "htmlHash": "2ea075c7",
+   "htmlLen": 686,
+   "htmlHash": "0d0c3b6d",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#64",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 956,
    "bucket": "<2K",
-   "htmlLen": 785,
-   "htmlHash": "91d80262",
+   "htmlLen": 661,
+   "htmlHash": "17c6e5cc",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#65",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 714,
    "bucket": "<2K",
-   "htmlLen": 701,
-   "htmlHash": "fa439e31",
+   "htmlLen": 577,
+   "htmlHash": "ec4190a5",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#66",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 863,
+   "bytes": 966,
    "bucket": "<2K",
-   "htmlLen": 368,
-   "htmlHash": "8a848dbd",
+   "htmlLen": 244,
+   "htmlHash": "e16a4e63",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#67",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 1386,
+   "bytes": 1474,
    "bucket": "<2K",
-   "htmlLen": 368,
-   "htmlHash": "62e6547b",
+   "htmlLen": 244,
+   "htmlHash": "2342c05b",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "real#68",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
    "bytes": 676,
    "bucket": "<2K",
-   "htmlLen": 681,
-   "htmlHash": "a90ba45f",
+   "htmlLen": 557,
+   "htmlHash": "a4887909",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 38,
+   "trueContentBox": 38,
+   "padBorder": 0
   },
   {
    "id": "real#69",
-   "cls": "card-tool-group",
+   "cls": "card-steps",
    "source": "shaped",
-   "bytes": 845,
+   "bytes": 908,
    "bucket": "<2K",
-   "htmlLen": 336,
-   "htmlHash": "cfa11f13",
+   "htmlLen": 212,
+   "htmlHash": "db786c2c",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
-   "trueBorderBox": 36.59,
-   "trueContentBox": 34.59,
-   "padBorder": 2
+   "trueBorderBox": 40.59,
+   "trueContentBox": 40.59,
+   "padBorder": 0
   },
   {
    "id": "syn#0",
@@ -1420,95 +1420,95 @@
   },
   {
    "id": "real#40",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#41",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#43",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#44",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#46",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#47",
-   "trueContentBox": 34
+   "trueContentBox": 44
   },
   {
    "id": "real#48",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#50",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#51",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#52",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#53",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#54",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#55",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#57",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#58",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#61",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#62",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#64",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#65",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#66",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#67",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "real#68",
-   "trueContentBox": 34
+   "trueContentBox": 38
   },
   {
    "id": "real#69",
-   "trueContentBox": 34
+   "trueContentBox": 40
   },
   {
    "id": "syn#0",

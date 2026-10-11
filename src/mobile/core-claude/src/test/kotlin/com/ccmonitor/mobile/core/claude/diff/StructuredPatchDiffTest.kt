@@ -139,7 +139,7 @@ class StructuredPatchDiffTest {
 
     @Test
     fun capsOverlongLine() {
-        // minified 单行几十万字符 → 截到 2000 + …（对齐 LineDiff）。
+        // minified 单行几十万字符 → 截到 2000 + …（单行上限）。
         val d = structuredPatchToDiff(listOf(hunk(1, 0, 1, 1, listOf("+" + "x".repeat(3000)))))
         assertEquals(2001, d.rows[1].text.length) // 2000 + '…'
         assertTrue(d.rows[1].text.endsWith("…"))

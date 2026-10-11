@@ -933,7 +933,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// session_added / session_status 的活动那几格收成 ActivityFace、多 activity_order（监控板组内只按它排）；accounts-list 每号带 badge；rotation-rules-read 多 followText；profiles-resolve 多 lineShort。
 /// 删 apikey-read · apikey-routing（没有读者）。后端「现在」只一处 common::time::now（带特性 shots 编的从台架交的时刻接着走）。
 /// 手机聊天屏起会话走 session-new ＋ terminal-input（删路 A 与 src/mobile/bridge）。
-pub const BUILD_ID: &str = "p10a-flagless-typed-clock";
+///
+/// p10b-fold-segments-codex-record：过程按段折——history-turns 每轮的 ending · parts · span 换成 shown（露着的那几条）＋ folds[] {after, parts, span, phase}（一段一行），
+/// 多 landed（落成了人话的排队插话，界面不再单独出）；核心 observe/turns.rs 一处划段。Codex 的 function_call 入参从 arguments 解成 tool_use.input（从前恒为 null）。
+/// Windows 上找 / 起 agent 命令收成 platform::shell::find_session_command（PATHEXT 次序，.cmd 经 cmd /c、.ps1 经 powershell -File）。
+/// 手机：终端屏阅读子页删、Codex 落聊天屏能送字、stream-watch 按行号接续、复用判活与新建同时起跑。
+pub const BUILD_ID: &str = "p10b-fold-segments-codex-record";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 

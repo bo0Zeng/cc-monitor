@@ -103,3 +103,66 @@ export const RS_RULES: ExitRule[] = [
     misses: ["n / 10240"],
   },
 ];
+
+/**
+ * 手机端（Kotlin，`src/mobile`）那几条：同一件事的 Kotlin 写法（`when` 分支 · 字符串模板 · `java.time` / `SimpleDateFormat`）。
+ * 手机还有一大批硬写的中文（`待定.md` 缺口 7），按码直接取汉字的 `when` 分支同按码取字一类，也在这里抓。
+ */
+export const KT_RULES: ExitRule[] = [
+  {
+    id: "codeWord",
+    what: "按后端码比较后取字：`x.code == \"dup\") copyText(…)` · `… == \"dup\" -> copyText(…)`",
+    re: /(?:\.|\b)(?:code|state|kind|status|activity|slot|mode|why|tone|outcome|result)\s*==\s*"[^"\n]*"\s*\)?\s*(?:->|&&|\?:)?\s*copyText\(/g,
+    hits: ['if (e.code == "dup") copyText("a.b.c")', 'r.state == "refused" -> copyText("a.b.c")'],
+    misses: ['e.cell == "name") copyText("a.b.c")', 'x.code == "dup") 1 else 2'],
+  },
+  {
+    id: "caseWord",
+    what: "按码 `when` 取字：`\"rejected\" -> copyText(…)` · `\"rejected\" -> \"已拒绝\"`（直接写汉字）",
+    re: /"[^"\n]+"\s*->\s*(?:copyText\(|"[^"\n]*[一-鿿])/g,
+    hits: ['"rejected" -> copyText("a.b.c")', '"escape" -> "转义序列"'],
+    misses: ['"x" -> 0', '"x" -> e.said', '"x" -> "abc"'],
+  },
+  {
+    id: "caseRank",
+    what: "按状态排档的 `when`：`\"needs_you\" -> 0`",
+    re: /"[^"\n]+"\s*->\s*-?\d+\s*(?=\n|\})/g,
+    hits: ['"needs_you" -> 0\n'],
+    misses: ['"x" -> a - b\n', '"x" -> 0.5\n'],
+  },
+  {
+    id: "pct",
+    what: "自己拼百分比：模板里 `${n}%` · `$n%` · `+ \"%\"`",
+    re: /\$\{[^}\n]*\}%|\$[A-Za-z_]\w*%|\+\s*"%"/g,
+    hits: ['"${p}%"', '"$p%"', 'n + "%"'],
+    misses: ['copyText("a.b.c", "pct" to p)', '"100%"'],
+  },
+  {
+    id: "durUnit",
+    what: "自己写时长单位：模板插值后紧跟 `s` / `m` / `h` / `d` / `ms` / 秒 / 分钟 / 小时 / 天",
+    re: /\}\s?(?:ms|s|m|h|d|秒|分钟|小时|天)(?=["$）)\s,])|\$[A-Za-z_]\w*\s?(?:秒|分钟|小时|天)/g,
+    hits: ['"${s}s"', '"（${n / 1000} 秒）"', '"$n分钟前"'],
+    misses: ['"${a}.${b}"', '"${n} rows"', '"${id}data"'],
+  },
+  {
+    id: "clock",
+    what: "自己换算时刻：`SimpleDateFormat(` · `DateTimeFormatter.` · `Date(` · `LocalDateTime.` · `ZonedDateTime.` · `Instant.ofEpoch…(`",
+    re: /SimpleDateFormat\(|DateTimeFormatter\.|\bDate\(|LocalDateTime\.|ZonedDateTime\.|Instant\.ofEpoch\w*\(/g,
+    hits: ['SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)', "java.util.Date(ms)", "Instant.ofEpochMilli(ms)"],
+    misses: ["System.currentTimeMillis()", "ZoneId.systemDefault().id"],
+  },
+  {
+    id: "fixed",
+    what: "自己取小数位：`\"%.1f\"` 一类的格式串",
+    re: /"%[-\d.]*f"/g,
+    hits: ['"%.1f".format(x)'],
+    misses: ['"%02X".format(b)'],
+  },
+  {
+    id: "size",
+    what: "自己换算大小：`/ 1024`",
+    re: /\/\s*1024(?:\.0|L)?\b/g,
+    hits: ["n / 1024", "x / 1024.0"],
+    misses: ["n / 10240", "1024"],
+  },
+];

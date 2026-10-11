@@ -1,7 +1,8 @@
 /**
  * **出口零判定零格式化**的扫描判据（架构复审三第 0 批 · `src/doc/ARCHITECTURE.md` §2.9）。
  *
- * 扫：桌面界面 `src/frontend/ui`（TS）与壳 `src/frontend/shell/src`（Rust）的生产代码，剥过注释，按 [`exit-rules.ts`] 每条写法指纹数命中。
+ * 扫：桌面界面 `src/frontend/ui`（TS）、壳 `src/frontend/shell/src`（Rust）与手机端 `src/mobile`（Kotlin，各模块 `src/main/`）的生产代码，
+ * 剥过注释，按 [`exit-rules.ts`] 每条写法指纹数命中。
  * 今天的存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，**只许删、不许加**（同 `UNSHAPED` 的规矩）：
  * 1. 每一格（文件 × 规则）实得 == 名单登的数：多一处 ⇒ 红（新长出来的自己判 / 自己写字）；少了 ⇒ 也红（删了就把那一格改小或删掉，
  *    不改，下一个人就能悄悄加回去）。名单外的文件命中一处 ⇒ 红。
@@ -9,8 +10,8 @@
  * 3. 名单自身：每格 `n > 0`、`why` 非空、`kind` 在闭集里、没有重复格；`roots` 里每个目录都扫到了文件（反空真）。
  * 4. 阳性 / 阴性对照：每条规则对自己的样例各恰好命中一次 / 零次（探测器坏了 ⇒ 先红）。
  *
- * 手机端（`src/mobile`）并进来以后：在名单 `roots` 里加它那一（几）个目录与语言，跑一次本文件看红出来的那几格，
- * 逐格登进 `entries`（`kind` 照实填），`ceiling` 加上那几格的和、[`CEILING_AT_MOST`] 同改 —— 那一拍是唯一一次许「加」，之后同样只许删。
+ * 手机端（`src/mobile`）10-10 并进来（mob4）：`roots` 加了它（`kt`，规则见 `KT_RULES`），红出来的三格照实登进 `entries`，
+ * `ceiling` 与 [`CEILING_AT_MOST`] 从 267 同改到 276 —— 那一拍是唯一一次「加」，之后同样只许删。
  *
  * 买不到：指纹只认登记过的写法（换个写法重写一遍看不见）；命中的也不全是违例（界面自己的骨架词表会撞 `caseWord`），
  * 名单里 `kind: "留"` 的格写明凭什么留。
@@ -20,27 +21,33 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionKtFiles, productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
-import { RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
+import { KT_RULES, RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
 
 /** 上一批收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。 */
-const CEILING_AT_MOST = 246;
+const CEILING_AT_MOST = 255;
+
+type Lang = "ts" | "rs" | "kt";
 
 interface Debt {
-  roots: { dir: string; lang: "ts" | "rs" }[];
+  roots: { dir: string; lang: Lang }[];
   ceiling: number;
   entries: { file: string; rule: string; n: number; kind: string; why: string }[];
 }
 
-// 10-10 起没有「待分」：每格都分清了归哪一批、还是留（留的写凭什么）。
-const KINDS = new Set(["第 1 批", "第 3 批", "第 7 批", "留"]);
+// 10-10 起没有「待分」：每格都分清了归哪一批、还是留（留的写凭什么）。「手机」＝ 手机端那几批收（手机上还硬写着的字与自己写的单位）。
+const KINDS = new Set(["第 1 批", "第 3 批", "第 7 批", "手机", "留"]);
 
 const debt = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/frontend/ui/exit-debt.json"), "utf8")) as Debt;
 
-function rulesOf(lang: "ts" | "rs"): ExitRule[] {
-  return lang === "ts" ? TS_RULES : RS_RULES;
+function rulesOf(lang: Lang): ExitRule[] {
+  return { ts: TS_RULES, rs: RS_RULES, kt: KT_RULES }[lang];
+}
+
+function sourcesOf(dir: string, lang: Lang) {
+  return { ts: productionTsFiles, rs: productionRsFiles, kt: productionKtFiles }[lang](dir);
 }
 
 /** 盘上实得：`文件 · 规则` ⇒ 命中数（零的不进来）。 */
@@ -48,10 +55,10 @@ function scan(): { got: Map<string, number>; files: Map<string, number> } {
   const got = new Map<string, number>();
   const files = new Map<string, number>();
   for (const { dir, lang } of debt.roots) {
-    const srcs = lang === "ts" ? productionTsFiles(dir) : productionRsFiles(dir);
+    const srcs = sourcesOf(dir, lang);
     files.set(dir, srcs.length);
     for (const s of srcs) {
-      const code = stripComments(s.text, lang === "rs" ? "rust" : "ts");
+      const code = stripComments(s.text, ({ ts: "ts", rs: "rust", kt: "kotlin" } as const)[lang]);
       for (const r of rulesOf(lang)) {
         const n = code.match(r.re)?.length ?? 0;
         if (n > 0) got.set(`${s.file} · ${r.id}`, n);
@@ -106,7 +113,7 @@ describe("出口零判定零格式化：扫描 ＋ 只减不增的欠账名单",
 
   it("阳性 / 阴性对照：每条规则对自己的样例各恰好命中一次 / 零次", () => {
     const bad: string[] = [];
-    for (const r of [...TS_RULES, ...RS_RULES]) {
+    for (const r of [...TS_RULES, ...RS_RULES, ...KT_RULES]) {
       expect(r.hits.length, `${r.id} 没有阳性样例`).toBeGreaterThan(0);
       for (const h of r.hits) if ((h.match(r.re)?.length ?? 0) !== 1) bad.push(`${r.id} 阳性「${h}」没恰好命中一次`);
       for (const m of r.misses) if ((m.match(r.re)?.length ?? 0) !== 0) bad.push(`${r.id} 阴性「${m}」命中了`);

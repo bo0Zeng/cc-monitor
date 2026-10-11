@@ -1627,3 +1627,68 @@ fn a_local_footprint_path_uses_one_separator_throughout() {
         "/home/u/.cc-monitor/bin/ccm*"
     );
 }
+
+/// 夹具：`dir` 底下只有 `files` 这几个普通文件（`dirs` 是同名的目录）。
+fn one_dir_with<'a>(
+    dir: &'a str,
+    files: &'a [&'a str],
+    dirs: &'a [&'a str],
+) -> impl Fn(&Path) -> Option<(bool, u64)> + 'a {
+    move |p: &Path| {
+        let named = |n: &&str| p == Path::new(dir).join(n);
+        if files.iter().any(named) {
+            Some((false, 1))
+        } else if dirs.iter().any(named) {
+            Some((true, 0))
+        } else {
+            None
+        }
+    }
+}
+
+/// 缺陷（10-10）：Windows 上 agent 命令行「装没装」只认不带后缀的那个文件 ⇒ 原生安装器的 `.exe` 认不出、npm 全局碰巧靠那份 sh 壳认得。
+/// 会话在 Windows 上开在 PowerShell 里 ⇒ 按它的找法：`PATH` 上 `.exe` · `.cmd` · `.bat` · `.ps1` 各算装了；
+/// 只剩不带后缀的那份（npm 给 Git Bash 的 sh 壳，PowerShell 起不了）、或同名的是个目录 ⇒ 缺。
+/// unix 那一臂照旧只认原名。几种装法各一格（夹具造的，不读真机）。
+#[test]
+fn the_session_shell_finds_each_windows_install_form() {
+    let h = home();
+    let dir = "/w/bin";
+    let cases: &[(&str, bool, &[&str], &[&str], bool)] = &[
+        ("原生安装器（.exe）", true, &["claude.exe"], &[], true),
+        (
+            "npm 全局（.cmd ＋ .ps1 ＋ sh 壳）",
+            true,
+            &["claude", "claude.cmd", "claude.ps1"],
+            &[],
+            true,
+        ),
+        ("只有 .cmd", true, &["claude.cmd"], &[], true),
+        ("只有 .ps1", true, &["claude.ps1"], &[], true),
+        ("只有 .bat", true, &["claude.bat"], &[], true),
+        ("只有不带后缀的 sh 壳", true, &["claude"], &[], false),
+        ("同名的是目录", true, &[], &["claude.exe"], false),
+        ("unix：原名", false, &["claude"], &[], true),
+        ("unix：只有 .exe", false, &["claude.exe"], &[], false),
+    ];
+    for &(what, windows, files, dirs, found) in cases {
+        let meta = one_dir_with(dir, files, dirs);
+        let fs = FsProbe {
+            meta: &meta,
+            list: &|_| None,
+        };
+        let mut env = env_with(&h, &fs, Some(dir));
+        env.windows = windows;
+        let (_, state) = observe_unmanaged("claude", EnvProbe::InSessionShell, &env);
+        let want = if found {
+            matches!(state, SurfaceState::Present { .. })
+        } else {
+            state == SurfaceState::Absent
+        };
+        assert!(
+            want,
+            "{what}：该{}，实得 {state:?}",
+            if found { "认得" } else { "说缺" }
+        );
+    }
+}

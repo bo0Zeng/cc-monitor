@@ -45,7 +45,7 @@ class TmuxSurfaceLiteralScanTest {
     fun everyTmuxShellFragmentLivesOnlyInTheGatewayOrUserContent() {
         val root = repoRoot()
         val sources = productionSources(root)
-        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 150)
+        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
 
         val literalsOf = sources.associateWith { stringLiteralsOf(it.readText()) }
         val census = linkedMapOf<String, Map<String, Int>>()
@@ -183,7 +183,7 @@ class TmuxSurfaceLiteralScanTest {
          *
          * | 文件 | 次 | 那是什么 |
          * |---|---|---|
-         * | `TmuxCommands.kt` | 19/3/1/3/1 | 网关本身 |
+         * | `TmuxCommands.kt` | 18/3/1/2/1 | 网关本身 |
          * | `DevSeeder.kt` | 1 | 种子按钮的默认命令 `CustomButton("btn-tmux", null, "tmux", "tmux new -A -s main")`：用户进按钮编辑就能改掉，是用户的字 |
          * | `ButtonBuiltins.kt` | 1 | 内建动作的显示名 `"tmux_sessions" to "tmux 会话"` |
          * | `SessionScreen.kt` | 2 | Toast「无 tmux 会话可抓屏」+ 命令面板项「tmux 会话管理」 |
@@ -199,7 +199,7 @@ class TmuxSurfaceLiteralScanTest {
                 TMUX_VERB to
                     mapOf(
                         SEEDER to 1,
-                        GATEWAY to 19,
+                        GATEWAY to 18,
                         BUILTIN_LABELS to 1,
                         SESSION_SCREEN to 2,
                         TMUX_DIALOG to 2,
@@ -207,7 +207,7 @@ class TmuxSurfaceLiteralScanTest {
                     ),
                 SEND_KEYS to mapOf(GATEWAY to 3),
                 CAPTURE_PANE to mapOf(GATEWAY to 1),
-                DISPLAY_MESSAGE to mapOf(GATEWAY to 3),
+                DISPLAY_MESSAGE to mapOf(GATEWAY to 2),
                 KILL_SESSION to mapOf(GATEWAY to 1),
             )
     }

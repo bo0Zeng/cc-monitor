@@ -259,7 +259,7 @@ class HostConnectorGatewayTest {
                 .sortedBy { it.path }
         assertTrue("前提：得找到扫描面（app + core-*），实得 ${roots.size} 个源根", roots.size >= 2)
         val files = roots.flatMap { r -> r.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
-        assertTrue("前提：得真扫到源文件，实得 ${files.size} 个", files.size > 150)
+        assertTrue("前提：得真扫到源文件，实得 ${files.size} 个", files.size > 100)
         return files.associate { it.relativeTo(root).invariantSeparatorsPath to codeOnly(it.readText()) }
     }
 

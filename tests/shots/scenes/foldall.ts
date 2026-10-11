@@ -60,7 +60,7 @@ function foldConvo(): Convo {
   c.retry(2, 10);
   c.tool("Read", { file_path: `${CWD}/src/config.py` }, "def load_config():\n    return {}\n");
   c.user("[Request interrupted by user]", { interrupt: true });
-  c.queued("缓存用 functools 就行，别自己写");
+  c.queued("缓存用 functools 就行，别自己写。");
   c.user("缓存用 functools 就行，别自己写。");
   c.tool("Edit", { file_path: `${CWD}/src/config.py`, old_string: "def load_config():", new_string: "@functools.cache\ndef load_config():" }, "The file has been updated.");
   c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "41 passed in 1.10s");

@@ -365,18 +365,30 @@ export interface TurnSummary {
   retries: number;
   peers: number;
   fails: number;
-  /** 结尾：留在过程折叠外面的那几条记录的 uuid（结论正文；没有 ⇒ 停下这一轮的中断标记 / 报错卡）。 */
-  ending: string[];
+  /** 露着的那几条记录的 uuid（带正文的：中间说的话与结论 ＋ 停下这一轮的中断标记 / 报错卡）。 */
+  shown: string[];
   /** 回复头三行（≤ 120 字）。 */
   reply: string;
   /** 这一轮收尾了（后面又有你的一句，或 Claude 说完了，或你中断了它）。 */
   done: boolean;
   /** 此刻：没在跑 · 在跑 · 在等你（后端按这台的会话事实判）。 */
   phase: TurnPhase;
-  /** 过程行的字（后端写好；空 ⇒ 这一轮不出过程行、不折）。 */
+  /** 这一轮里落成了人话的排队插话（排队那一条的记录 id）：界面不再单独出它（同一句不上屏两次）。 */
+  landed: string[];
+  /** 过程段（后端划好，文件序）：一段一行，跟在 `after` 那张卡后面；空 ⇒ 这一轮不折。 */
+  folds: TurnFoldRow[];
+}
+
+/** 一段过程（后端 `turns.rs::Fold`）。 */
+export interface TurnFoldRow {
+  /** 这一段跟在哪一条后面（这一轮你那句，或露着的某一条的 uuid）。 */
+  after: string;
+  /** 那一行的字（后端写好）。 */
   parts: TurnPart[];
-  /** 过程行右端那一截：字里的 `{dur}` 由界面填 `to − from`（`to` 缺 ⇒ 到现在）。 */
+  /** 右端那一截：字里的 `{dur}` 由界面填 `to − from`（`to` 缺 ⇒ 到现在）。 */
   span: TurnSpan;
+  /** 此刻（只有还在跑的那一轮的尾巴那一段会是在跑 / 在等你）。 */
+  phase: TurnPhase;
 }
 
 export type TurnPhase = "idle" | "running" | "awaiting";
@@ -391,10 +403,28 @@ export interface TurnSpan {
   to: number | null;
 }
 
-const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "ending", "fails", "parts", "peers", "phase", "reply", "retries", "said", "span", "start", "startText", "thinking", "tools", "uuid"] as const;
+const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "fails", "folds", "landed", "peers", "phase", "reply", "retries", "said", "shown", "start", "startText", "thinking", "tools", "uuid"] as const;
 const PHASES: readonly string[] = ["idle", "running", "awaiting"];
 const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn"] satisfies readonly Tone[];
 const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
+
+/** 一段过程的形状逐格对。 */
+function isFold(f: unknown): boolean {
+  return (
+    isObj(f) &&
+    exactKeys(f, ["after", "parts", "phase", "span"]) &&
+    isStr(f.after) &&
+    isStr(f.phase) &&
+    PHASES.includes(f.phase) &&
+    Array.isArray(f.parts) &&
+    f.parts.every((p) => isObj(p) && exactKeys(p, ["text", "tone"]) && isStr(p.text) && isStr(p.tone) && TONES.includes(p.tone)) &&
+    isObj(f.span) &&
+    exactKeys(f.span, ["from", "text", "to"]) &&
+    isStr(f.span.text) &&
+    numOrNull(f.span.from) &&
+    numOrNull(f.span.to)
+  );
+}
 
 /** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
 export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnSummary[] } {
@@ -411,19 +441,15 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       typeof t.done !== "boolean" ||
       !isStr(t.phase) ||
       !PHASES.includes(t.phase) ||
-      !Array.isArray(t.ending) ||
-      !t.ending.every(isStr) ||
-      !Array.isArray(t.parts) ||
-      !t.parts.every((p) => isObj(p) && exactKeys(p, ["text", "tone"]) && isStr(p.text) && isStr(p.tone) && TONES.includes(p.tone)) ||
-      !isObj(t.span) ||
-      !exactKeys(t.span, ["from", "text", "to"]) ||
-      !isStr(t.span.text) ||
-      !numOrNull(t.span.from) ||
-      !numOrNull(t.span.to)
+      !Array.isArray(t.shown) ||
+      !t.shown.every(isStr) ||
+      !Array.isArray(t.landed) ||
+      !t.landed.every(isStr) ||
+      !Array.isArray(t.folds) ||
+      !t.folds.every(isFold)
     ) {
       return bad();
     }
-    const span = t.span as { text: string; from: number | null; to: number | null };
     return {
       at: t.at as number,
       uuid: t.uuid as string,
@@ -439,12 +465,17 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       retries: t.retries as number,
       peers: t.peers as number,
       fails: t.fails as number,
-      ending: [...(t.ending as string[])],
+      shown: [...(t.shown as string[])],
+      landed: [...(t.landed as string[])],
       reply: t.reply as string,
       done: t.done,
       phase: t.phase as TurnPhase,
-      parts: (t.parts as TurnPart[]).map((p) => ({ text: p.text, tone: p.tone })),
-      span: { text: span.text, from: span.from, to: span.to },
+      folds: (t.folds as TurnFoldRow[]).map((f) => ({
+        after: f.after,
+        parts: f.parts.map((p) => ({ text: p.text, tone: p.tone })),
+        span: { text: f.span.text, from: f.span.from, to: f.span.to },
+        phase: f.phase,
+      })),
     };
   });
   return { from: v.from, end: v.end, turns };

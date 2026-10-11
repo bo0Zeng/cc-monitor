@@ -1,5 +1,5 @@
-// 大折叠（按轮）：两句人话之间除结尾外全收进一行（后端给的结尾与行上的字，界面不按卡型猜）；正在跑的那一轮也折着；
-// 点过程行这一轮单独记住、跑完不收；跳卡 / 查找落在折着的过程里自动展开；点「失败 ×N」滚到第一处失败；
+// 大折叠（按段）：一轮里被露着的正文隔开的每一段过程各收进一行（后端给的露着的、段与行上的字，界面不按卡型猜、不自己划段）；
+// 正在跑的那一轮尾巴那一段也折着；点过程行这一段单独记住、跑完不收；跳卡 / 查找落在折着的过程里自动展开；点「失败 ×N」滚到第一处失败；
 // 默认开关（Ctrl+O）全部摊开 / 收回；骨架占位与 ESC 折叠段之后不再归轮（宁可不折）；续取从还没收尾的那一轮起、整轮替换。
 // 轮次刻度（§5.2.6）：一轮一格、超过 60 轮并格 · 当前那一轮 · 在等你的那一格琥珀 · 点了 / Alt+↑↓ 跳 · 悬停卡在左侧。
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -10,8 +10,8 @@ import { placeFloat } from "../../../src/frontend/ui/kit/place";
 
 /** 轮次刻度的悬停卡：左侧、竖直居中、间距 6（`tooltip.ts` 的 PLACEMENT 表）。 */
 const placeCardLeft = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "left", align: "center", gap: 6 }, tip, view);
-import type { TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
-import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
+import type { TurnFoldRow, TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
+import { markCardId, renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -33,20 +33,31 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
   retries: 0,
   peers: 0,
   fails: 0,
-  ending: [],
+  shown: [],
+  landed: [],
   reply: "",
   done: true,
   phase: "idle",
-  parts: [
-    { text: "头", tone: "plain" },
-    { text: "工具 ×2", tone: "plain" },
-  ],
-  span: { text: "02:01–02:04 · {dur}", from: 0, to: 182_000 },
+  folds: [seg(uuid)],
   ...over,
 });
 
+/** 一段过程（缺省：跟在 `after` 后面、工具 ×2、收尾了）。 */
+function seg(after: string, over: Partial<TurnFoldRow> = {}): TurnFoldRow {
+  return {
+    after,
+    parts: [
+      { text: "头", tone: "plain" },
+      { text: "工具 ×2", tone: "plain" },
+    ],
+    span: { text: "02:01–02:04 · {dur}", from: 0, to: 182_000 },
+    phase: "idle",
+    ...over,
+  };
+}
+
 function card(cls: string, uuid?: string): HTMLElement {
-  const el = cls === "card-tool-group" ? document.createElement("details") : document.createElement("div");
+  const el = document.createElement("div");
   el.className = `card ${cls}`;
   if (uuid) el.setAttribute("data-id", uuid);
   return el;
@@ -64,13 +75,34 @@ function rig(cards: HTMLElement[], reads: TurnsResult[]) {
 const hidden = (el: Element): boolean => el.classList.contains("proc-hidden");
 const lines = (root: HTMLElement): HTMLElement[] => [...root.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)];
 
-describe("按轮折叠", () => {
+describe("按段折叠", () => {
   beforeEach(() => setProcessExpandedDefault(false));
 
-  it("完成的轮：开头之后、结尾以外的全收进一行（交回条 · 后台任务 · 压缩 · 报错卡也收），结尾与人说的常显；行上的字照后端写", async () => {
+  it("★ 用户 10-10：「工具 · 正文 · 工具 · 正文」⇒ 两段各一行，中间说的话露在两段之间（行插在那段正文后面），结尾照旧露着", async () => {
+    const u1 = card("card-user", "u1");
+    const g1 = card("card-steps", "a1");
+    const mid = card("card-assistant", "a2");
+    const g2 = card("card-steps", "a3");
+    const end = card("card-assistant", "a4");
+    const { content, fold: f } = rig([u1, g1, mid, g2, end], [
+      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { shown: ["a2", "a4"], folds: [seg("u1"), seg("a2", { parts: [{ text: "头", tone: "plain" }, { text: "工具 ×1", tone: "plain" }] })] })] },
+    ]);
+    await f.refresh();
+    expect(lines(content)).toHaveLength(2);
+    expect(u1.nextElementSibling?.classList.contains(PROC_LINE_CLASS)).toBe(true);
+    expect(mid.nextElementSibling?.classList.contains(PROC_LINE_CLASS)).toBe(true);
+    expect([g1, g2].map(hidden)).toEqual([true, true]);
+    expect([u1, mid, end].map(hidden)).toEqual([false, false, false]);
+    expect(lines(content)[1].textContent).toContain("工具 ×1");
+    // 两段各自开合
+    lines(content)[1].click();
+    expect([hidden(g1), hidden(g2)]).toEqual([true, false]);
+  });
+
+  it("完成的轮：一段过程（交回条 · 后台任务 · 压缩 · 报错卡也收）收进一行，结尾与人说的常显；行上的字照后端写", async () => {
     const u1 = card("card-user", "u1");
     const a1 = card("card-assistant", "a1");
-    const g1 = card("card-tool-group", "a2");
+    const g1 = card("card-steps", "a2");
     const bar = card("card-speaker", "s1");
     const notice = card("card-notice", "n1");
     const compact = card("card-compact", "k1");
@@ -82,7 +114,7 @@ describe("按轮折叠", () => {
       { text: "失败 ×1", tone: "fail" as const },
     ];
     const { content, fold } = rig([u1, a1, g1, bar, notice, compact, c1, u2], [
-      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { ending: ["a3"], parts }), turn("u2", 500, { parts: [] })] },
+      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { shown: ["a3"], folds: [seg("u1", { parts })] }), turn("u2", 500, { folds: [] })] },
     ]);
     await fold.refresh();
     expect(lines(content)).toHaveLength(1);
@@ -96,12 +128,12 @@ describe("按轮折叠", () => {
     expect(line.querySelector(".proc-span")?.textContent).toBe("02:01–02:04 · 3m");
   });
 
-  it("正在跑的那一轮也折着：转圈 ＋「现在：…」；在等你 ⇒ 琥珀点；右端用时到现在", async () => {
-    const g = card("card-tool-group", "a1") as HTMLDetailsElement;
+  it("正在跑的那一轮尾巴那一段也折着：转圈 ＋「现在：…」；在等你 ⇒ 琥珀点；右端用时到现在", async () => {
+    const g = card("card-steps", "a1");
     const live = { text: "现在：Grep x", tone: "now" as const };
     const { content, fold } = rig([card("card-user", "u1"), g], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "running", parts: [{ text: "头", tone: "plain" }, live], span: { text: "02:16 起 · {dur}", from: 0, to: null } })] },
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "awaiting", parts: [{ text: "头", tone: "plain" }, { text: "等你批准：Bash x", tone: "need" }] })] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "running", folds: [seg("u1", { phase: "running", parts: [{ text: "头", tone: "plain" }, live], span: { text: "02:16 起 · {dur}", from: 0, to: null } })] })] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "awaiting", folds: [seg("u1", { phase: "awaiting", parts: [{ text: "头", tone: "plain" }, { text: "等你批准：Bash x", tone: "need" }] })] })] },
     ]);
     await fold.refresh();
     expect(hidden(g)).toBe(true);
@@ -116,9 +148,9 @@ describe("按轮折叠", () => {
     expect(fillDur({ text: "02:16", from: null, to: null }, 43_000)).toBe("02:16");
   });
 
-  it("后端不给行（parts 空：过程是空的 / 只有一条压缩摘要）⇒ 不出过程行、一张不折", async () => {
+  it("后端不给段（folds 空：过程是空的 / 只有一条压缩摘要）⇒ 不出过程行、一张不折", async () => {
     const k = card("card-compact", "k1");
-    const { content, fold } = rig([card("card-user", "u1"), k], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { parts: [] })] }]);
+    const { content, fold } = rig([card("card-user", "u1"), k], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [] })] }]);
     await fold.refresh();
     expect(lines(content)).toHaveLength(0);
     expect(hidden(k)).toBe(false);
@@ -127,7 +159,7 @@ describe("按轮折叠", () => {
   it("手动展开的正在跑那一轮：跑完不收；收起的也不再自己展开", async () => {
     const a = card("card-assistant", "a1");
     const { content, fold } = rig([card("card-user", "u1"), a], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "running" })] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "running", folds: [seg("u1", { phase: "running" })] })] },
       { available: true, from: 0, end: 20, turns: [turn("u1", 0)] },
     ]);
     await fold.refresh();
@@ -137,13 +169,13 @@ describe("按轮折叠", () => {
     expect(hidden(a)).toBe(false);
   });
 
-  it("跳卡 / 查找落在折着的过程里（revealCard）：展开那一轮再滚；工具组里的一步也找得到", async () => {
-    const g = card("card-tool-group", "a1") as HTMLDetailsElement;
+  it("跳卡 / 查找落在折着的过程里（revealCard）：展开那一轮再滚；「几步」卡里的一步也找得到", async () => {
+    const g = card("card-steps", "a1");
     const unit = document.createElement("div");
     unit.dataset.memberId = "a2";
     g.appendChild(unit);
     const { content, fold } = rig([card("card-user", "u1"), g, card("card-assistant", "a3")], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["a3"] })] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["a3"] })] },
     ]);
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal("CSS", { escape: (x: string) => x });
@@ -155,8 +187,8 @@ describe("按轮折叠", () => {
   });
 
   it("点「失败 ×N」：展开并滚到第一处失败；点行别处 ＝ 开合", async () => {
-    const ok = card("card-tool-group", "a1");
-    const bad = card("card-tool-group", "a2");
+    const ok = card("card-steps", "a1");
+    const bad = card("card-steps", "a2");
     const step = document.createElement("div");
     step.className = "step-line";
     step.dataset.state = "failed";
@@ -165,7 +197,7 @@ describe("按轮折叠", () => {
       { text: "头", tone: "plain" as const },
       { text: "失败 ×1", tone: "fail" as const },
     ];
-    const { content, fold } = rig([card("card-user", "u1"), ok, bad], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { parts })] }]);
+    const { content, fold } = rig([card("card-user", "u1"), ok, bad], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [seg("u1", { parts })] })] }]);
     const scrolled = vi.fn();
     step.scrollIntoView = scrolled;
     await fold.refresh();
@@ -178,7 +210,7 @@ describe("按轮折叠", () => {
     expect(hidden(bad)).toBe(true);
   });
 
-  it("点过程行：这一轮就地展开 / 收起；Ctrl+O 换默认、各轮单独记的作废", async () => {
+  it("点过程行：这一段就地展开 / 收起；Ctrl+O 换默认、各段单独记的作废", async () => {
     const a = card("card-assistant", "a1");
     const b = card("card-assistant", "b1");
     const { content, fold } = rig([card("card-user", "u1"), a, card("card-user", "u2"), b], [
@@ -194,7 +226,7 @@ describe("按轮折叠", () => {
     expect([hidden(a), hidden(b)]).toEqual([true, true]);
   });
 
-  it("骨架占位 / ESC 折叠段之后不再归轮，认出下一轮开头再接着折", async () => {
+  it("骨架占位（没接上账本）/ ESC 折叠段之后不再归段，认出下一个边界再接着折", async () => {
     const gap = document.createElement("div");
     gap.className = "stream-skeleton-gap";
     const after = card("card-assistant", "x1");
@@ -210,7 +242,7 @@ describe("按轮折叠", () => {
     expect(hidden(p3)).toBe(true);
   });
 
-  it("骨架占位按账本（uuid→seq）认：里面没有哪一轮的开头 ⇒ 它属于这一轮的过程，折着就藏（不物化）、后面接着折；里面有 ⇒ 后面的卡归最后那个开头的轮（开头还没建 ⇒ 先不画行）；展开 ⇒ 露出并叫骨架物化", async () => {
+  it("骨架占位按账本（uuid→seq）认：整块落在某一段里 ⇒ 折着就藏（不物化）、后面接着折；里面夹着边界 ⇒ 露着、后面的卡归占位末尾所在的那一段（那一段的 after 还没建 ⇒ 先不画行）；展开 ⇒ 露出并叫骨架物化", async () => {
     const gapIn = document.createElement("div");
     gapIn.className = "stream-skeleton-gap";
     gapIn.dataset.skeletonLo = "3";
@@ -226,7 +258,7 @@ describe("按轮折叠", () => {
     document.body.replaceChildren(content);
     const fill = vi.fn(() => 0);
     const seqs = new Map([["u1", 1], ["u2", 20]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)] }));
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
     await fold.refresh();
     expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
@@ -239,7 +271,7 @@ describe("按轮折叠", () => {
     expect(fill).toHaveBeenCalled();
   });
 
-  it("折着的轮把它的过程行（开头之后到下一轮开头 / 账本尾，扣掉结尾那几行）告诉骨架：按 0 高、不物化；带行的开头多一条行高；展开 ⇒ 撤掉", async () => {
+  it("折着的段把它那几行（after 之后到下一个边界 / 账本尾）告诉骨架：按 0 高、不物化；每段的 after 多一条行高；结尾之后没有段 ⇒ 不折；展开 ⇒ 撤掉", async () => {
     const content = document.createElement("div");
     content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"), card("card-user", "u3"));
     document.body.replaceChildren(content);
@@ -249,12 +281,12 @@ describe("按轮折叠", () => {
       available: true,
       from: 0,
       end: 10,
-      turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5), turn("u3", 9, { parts: [] })],
+      turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5), turn("u3", 9, { folds: [] })],
     }));
     const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
     await fold.refresh();
-    expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [11, 12], [13, 30]], lines: [1, 12], linePx: 40 });
+    expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [13, 30]], lines: [1, 12], linePx: 40 });
     lines(content)[0].click();
     expect(setFolds.mock.lastCall?.[0].folded).toEqual([[13, 30]]);
   });
@@ -274,7 +306,7 @@ describe("按轮折叠", () => {
       [card("card-user", "u1"), card("card-assistant", "a1")],
       [
         { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false })] },
-        { available: true, from: 0, end: 12, turns: [turn("u1", 0, { done: false, parts: [{ text: "头", tone: "plain" }, { text: "工具 ×3", tone: "plain" }] })] },
+        { available: true, from: 0, end: 12, turns: [turn("u1", 0, { done: false, folds: [seg("u1", { parts: [{ text: "头", tone: "plain" }, { text: "工具 ×3", tone: "plain" }] })] })] },
       ],
     );
     await fold.refresh();
@@ -287,11 +319,11 @@ describe("按轮折叠", () => {
     expect(line.textContent).toContain("工具 ×3");
   });
 
-  it("重排时归属没变的卡一个属性都不写（`data-proc-of` / 工具组的 open 有样式挂着：照写一遍 ＝ 每次卡进出流都让全部过程卡重算样式）", async () => {
+  it("重排时归属没变的卡一个属性都不写（`data-proc-of` 有样式挂着：照写一遍 ＝ 每次卡进出流都让全部过程卡重算样式）", async () => {
     setProcessExpandedDefault(true);
     try {
       const { content, fold } = rig(
-        [card("card-user", "u1"), card("card-assistant", "a1"), card("card-tool-group", "g1"), card("card-user", "u2"), card("card-assistant", "a2")],
+        [card("card-user", "u1"), card("card-assistant", "a1"), card("card-steps", "g1"), card("card-user", "u2"), card("card-assistant", "a2")],
         [{ available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 5)] }],
       );
       await fold.refresh();
@@ -309,7 +341,7 @@ describe("按轮折叠", () => {
     }
   });
 
-  it("展开的那几轮量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
+  it("展开的那几段量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
     setProcessExpandedDefault(true);
     const cards: HTMLElement[] = [];
     const turns: TurnSummary[] = [];
@@ -360,7 +392,7 @@ describe("按轮折叠", () => {
     document.body.replaceChildren(content);
     const setFolds = vi.fn();
     const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)] }));
     const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
     let reads = 0;
@@ -402,23 +434,39 @@ describe("按轮折叠", () => {
     expect(fold.all.map((t) => t.uuid)).toEqual(["u1"]);
   });
 
-  it("暂定结论被降级（又调了工具）：那一刻视口正落在它上面 ⇒ 先不收，滚出去 / 切走再收", async () => {
+  it("正文后面又调了工具：正文照旧露着，后面那一段另起一行折（不再有「先不收」那一套）", async () => {
     const a = card("card-assistant", "a1");
-    const g = card("card-tool-group", "a2");
-    const { content, fold } = rig([card("card-user", "u1"), a, g], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, ending: ["a1"] })] },
-      { available: true, from: 0, end: 20, turns: [turn("u1", 0, { done: false, ending: [] })] },
+    const g = card("card-steps", "a2");
+    const { fold: f } = rig([card("card-user", "u1"), a, g], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, shown: ["a1"], folds: [] })] },
+      { available: true, from: 0, end: 20, turns: [turn("u1", 0, { done: false, shown: ["a1"], folds: [seg("a1")] })] },
     ]);
-    const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top }) as DOMRect;
-    content.getBoundingClientRect = () => box(0, 500);
-    a.getBoundingClientRect = () => box(100, 200);
-    await fold.refresh();
-    expect(hidden(a)).toBe(false);
-    await fold.refresh();
-    expect(hidden(a)).toBe(false);
-    a.getBoundingClientRect = () => box(-300, -200);
-    fold.releaseOnScroll();
-    expect(hidden(a)).toBe(true);
+    await f.refresh();
+    expect([hidden(a), hidden(g)]).toEqual([false, false]);
+    await f.refresh();
+    expect([hidden(a), hidden(g)]).toEqual([false, true]);
+    expect(a.nextElementSibling?.classList.contains(PROC_LINE_CLASS)).toBe(true);
+  });
+});
+
+describe("排队插话落成了人话", () => {
+  it("★ 后端说它落了（landed）⇒ 插话卡不再单独出，只露人话那一条；还在排队 ⇒ 照常露着", async () => {
+    const q = card("card-user-queued");
+    q.dataset.queuedId = "@40";
+    const { fold: f } = rig([card("card-user", "u1"), card("card-assistant", "a1"), q], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, shown: ["a1"], folds: [] })] },
+      { available: true, from: 0, end: 20, turns: [turn("u1", 0, { shown: ["a1"], folds: [], landed: ["@40"] }), turn("u2", 15, { folds: [] })] },
+    ]);
+    await f.refresh();
+    expect(q.classList.contains("queued-landed")).toBe(false);
+    await f.refresh();
+    expect(q.classList.contains("queued-landed")).toBe(true);
+  });
+
+  it("排队卡带上它的记录 id（`data-queued-id`，不进 `data-id`：它不在链上）", () => {
+    const el = document.createElement("div");
+    markCardId(el, { t: "queued", id: "@40" } as never);
+    expect([el.dataset.queuedId, el.getAttribute("data-id")]).toEqual(["@40", null]);
   });
 });
 
@@ -491,14 +539,14 @@ describe("轮次刻度", () => {
   });
 });
 
-// 系统注入（「谁说的」稿 A ⑤）：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散工具组的相邻合并）。
+// 系统注入（「谁说的」稿 A ⑤）：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散重试 · 后台通知的相邻合并）。
 describe("系统注入的旁注细条", () => {
   const tool = (uuid: string, id: string) =>
     ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false, endsTurn: false }) as never;
   const injected = (uuid: string, body?: string) =>
     ({ agent: "claude", t: "said", id: uuid, at: "2026-01-01T02:02:30.000Z", blocks: [{ type: "text", text: "x" }], who: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
 
-  it("★ 有正文 ⇒ 一条隐藏的细条进流（带 uuid）；夹在两次工具调用之间也不打散工具组；没正文 ⇒ 什么都不放", () => {
+  it("★ 有正文 ⇒ 一条隐藏的细条进流（带 uuid），按 seq 落在两次工具调用之间；没正文 ⇒ 什么都不放", () => {
     const content = document.createElement("div");
     const stream = { contentElement: content, insertNode: (el: HTMLElement, ref: HTMLElement | null) => content.insertBefore(el, ref) };
     const timeline = new RecordTimeline(stream as never);
@@ -510,18 +558,18 @@ describe("系统注入的旁注细条", () => {
     feed(3, tool("a2", "t2"));
     feed(4, injected("m2"));
     const kids = [...content.children] as HTMLElement[];
-    expect(kids.map((k) => k.classList.contains("card-tool-group") ? "group" : k.classList.contains("card-injected") ? "aside" : "?")).toEqual(["group", "aside"]);
-    expect(kids[0].querySelectorAll(".card-tool-group-body > *").length).toBe(2);
+    expect(kids.map((k) => k.classList.contains("card-steps") ? "steps" : k.classList.contains("card-injected") ? "aside" : "?")).toEqual(["steps", "aside", "steps"]);
+    expect(kids.map((k) => k.childElementCount)).toEqual([1, kids[1].childElementCount, 1]);
     expect([kids[1].getAttribute("data-id"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
   });
 
-  it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类（前后的工具照样并成一组）", () => {
+  it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类", () => {
     const f = { o: 0, n: 1, t: "said", sp: "system", ch: 200, pl: 9 } as never;
     expect(skeletonKind(f)).toBe("none");
     setInjectedShown(false);
-    expect(estimateFromFacts(f, "tool")).toBe(0);
+    expect(estimateFromFacts(f)).toBe(0);
     setInjectedShown(true);
-    expect(estimateFromFacts(f, "tool")).toBeGreaterThan(0);
+    expect(estimateFromFacts(f)).toBeGreaterThan(0);
     setInjectedShown(false);
   });
 });

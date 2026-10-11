@@ -67,8 +67,12 @@
  *（`s` 之后不是 `'`），所以那 114 处生命周期一处都不受影响。
  */
 
-/** 源码方言。**必填**：给默认值会让调用方静默拿到错的方言（Rust 的 `'a` vs TS 的 `'…'`）。 */
-export type SourceLang = "rust" | "ts";
+/**
+ * 源码方言。**必填**：给默认值会让调用方静默拿到错的方言（Rust 的 `'a` vs TS 的 `'…'`）。
+ * `kotlin`（手机端 `src/mobile`）：`"""…"""` 原始字符串整段不透明（里面的 `"` 与 `//` 不算）；`'x'` 字符字面量同 Rust 那条窄判据
+ *（Kotlin 没有生命周期，`'` 只出现在字符字面量里）；块注释同样不认嵌套（取舍 1）。
+ */
+export type SourceLang = "rust" | "ts" | "kotlin";
 
 /**
  * 去掉块注释与行注释，**逐字符保留行结构**（注释里的字符换成空格，换行原样留下）。
@@ -131,6 +135,24 @@ export function stripComments(src: string, lang: SourceLang): string {
         const bodyStart = i + m[0].length;
         const close = src.indexOf(terminator, bodyStart);
         i = close < 0 ? n : close + terminator.length;
+        continue;
+      }
+    }
+
+    // ---- Kotlin 原始字符串 """…"""（不认转义，里面可以有 `"`）----
+    if (lang === "kotlin" && src.startsWith('"""', i)) {
+      const close = src.indexOf('"""', i + 3);
+      i = close < 0 ? n : close + 3;
+      // `""""` 收尾：多出来的引号属于字符串体。
+      while (i < n && src[i] === '"') i++;
+      continue;
+    }
+
+    // ---- Kotlin 字符字面量：判据同下面 Rust 那条（右引号紧跟一个字符或一个转义）----
+    if (lang === "kotlin" && c === "'") {
+      const m = /^'(?:\\(?:u[0-9A-Fa-f]{4}|[\s\S])|[^\\'])'/.exec(src.slice(i, i + 10));
+      if (m) {
+        i += m[0].length;
         continue;
       }
     }

@@ -19,7 +19,7 @@ function setup() {
   const mk = (seq: number) => {
     const el = document.createElement("div");
     el.textContent = `#${seq}`;
-    tl.insert({ seq, element: el, kind: "card", toolGroup: null });
+    tl.insert({ seq, element: el, kind: "card" });
     return el;
   };
   return { stream, tl, mk };
@@ -47,7 +47,7 @@ describe("RecordTimeline F40b 查询扩展", () => {
     // seq 21 的右邻居现在是 30(20 已出账)→ 正常 insertBefore,非降级尾追加
     const el21 = document.createElement("div");
     el21.textContent = "#21";
-    tl.insert({ seq: 21, element: el21, kind: "card", toolGroup: null });
+    tl.insert({ seq: 21, element: el21, kind: "card" });
     const order = [...stream.contentElement.children].map((c) => c.textContent);
     expect(order).toEqual(["#10", "#21", "#30"]);
   });
@@ -90,10 +90,10 @@ describe("D4 · 锚点离场 / 在折叠段里：插入仍按 seq 序", () => {
     for (const s of [10, 20, 30]) {
       const el = card(s);
       els.set(s, el);
-      tl.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+      tl.insert({ seq: s, element: el, kind: "card" });
     }
     els.get(20)!.remove(); // 摘 DOM、不删账 —— 锚点过期
-    tl.insert({ seq: 15, element: card(15), kind: "card", toolGroup: null });
+    tl.insert({ seq: 15, element: card(15), kind: "card" });
     expect(docOrder(stream)).toEqual(["#10", "#15", "#30"]);
     expect(tl.size).toBe(3); // 20 出账了
   });
@@ -104,7 +104,7 @@ describe("D4 · 锚点离场 / 在折叠段里：插入仍按 seq 序", () => {
     for (const s of [10, 20, 30, 40]) {
       const el = card(s);
       els.set(s, el);
-      tl.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+      tl.insert({ seq: s, element: el, kind: "card" });
     }
     // 照 BranchFolder.wrapRun 的形状把 20、30 包进一个折叠段
     const wrap = document.createElement("div");
@@ -116,7 +116,7 @@ describe("D4 · 锚点离场 / 在折叠段里：插入仍按 seq 序", () => {
     stream.contentElement.insertBefore(wrap, els.get(20)!);
     inner.appendChild(els.get(20)!);
     inner.appendChild(els.get(30)!);
-    tl.insert({ seq: 25, element: card(25), kind: "card", toolGroup: null });
+    tl.insert({ seq: 25, element: card(25), kind: "card" });
     expect(docOrder(stream)).toEqual(["#10", "#20", "#25", "#30", "#40"]);
   });
 });
