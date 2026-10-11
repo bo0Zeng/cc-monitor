@@ -83,7 +83,7 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     };
     let turn = |sid: &str| {
         frame(&format!(
-            r#"{{"kind":"turn_end","session_id":"{sid}","uuid":"u"}}"#
+            r#"{{"kind":"turn_end","session_id":"{sid}","uuid":"u","title":"t","body":"b"}}"#
         ))
     };
     let state = |sid: &str| {
