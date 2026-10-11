@@ -1308,7 +1308,7 @@ impl crate::guard_support::Shaped for Minted {
 
 /// 缺陷（10-10）：Windows 上 `ccm` 最后起 agent 那一下按裸名字起，std 只补 `.exe` ⇒ npm 全局的 `.cmd` / `.ps1` 起不来，而足迹说装了。
 /// 今天它与足迹同一个找法（`platform::shell::find_session_command`）：Windows 上裸名字换成找到的那个文件（`.ps1` 经 PowerShell）；
-/// unix · 带路径的 · 找不到的 ⇒ 原样。
+/// unix · 带路径的 · 找不到的 ⇒ 原样。只有 `.ps1`、执行策略不让跑脚本 ⇒ 不起，`Err` 带那份文件与那一档的原词。
 #[test]
 fn the_final_launch_starts_what_the_footprint_found() {
     use std::ffi::OsString;
@@ -1318,46 +1318,66 @@ fn the_final_launch_starts_what_the_footprint_found() {
     let cmd = d.join("claude.cmd");
     let ps = d.join("claude.ps1");
     let has = |set: Vec<PathBuf>| move |p: &Path| set.iter().any(|f| f == p);
-    let bare = |s: &str| (OsString::from(s), Vec::<OsString>::new());
+    let bare = |s: &str| Ok((OsString::from(s), Vec::<OsString>::new()));
+    let open = || Some("RemoteSigned".to_string());
+    let shut = || Some("Restricted".to_string());
 
     assert_eq!(
         final_program(
             "claude",
             true,
             Some(pe),
-            &has(vec![cmd.clone(), ps.clone()])
+            &has(vec![cmd.clone(), ps.clone()]),
+            &shut
         ),
-        (cmd.clone().into_os_string(), vec![])
+        Ok((cmd.clone().into_os_string(), vec![]))
     );
     assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![ps.clone()])),
-        (
+        final_program("claude", true, Some(pe), &has(vec![ps.clone()]), &open),
+        Ok((
             OsString::from("powershell.exe"),
             vec![
                 "-NoProfile".into(),
                 "-File".into(),
                 ps.clone().into_os_string()
             ]
-        )
+        ))
+    );
+    // 只有 .ps1、执行策略不让 ⇒ 不起、照实说（不加 -ExecutionPolicy Bypass）
+    assert_eq!(
+        final_program("claude", true, Some(pe), &has(vec![ps.clone()]), &shut),
+        Err(copy_text(
+            "beCcm.execDirect.scriptRefused",
+            &[
+                ("file", &ps.display().to_string()),
+                ("policy", "Restricted")
+            ]
+        ))
     );
     // unix 照旧按名字 exec
     assert_eq!(
-        final_program("claude", false, Some(pe), &has(vec![d.join("claude")])),
+        final_program(
+            "claude",
+            false,
+            Some(pe),
+            &has(vec![d.join("claude")]),
+            &shut
+        ),
         bare("claude")
     );
     // 找不到 / 判不了 ⇒ 原样（起不来时那句报错说得出是哪个）
     assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![])),
+        final_program("claude", true, Some(pe), &has(vec![]), &shut),
         bare("claude")
     );
     assert_eq!(
-        final_program("claude", true, None, &has(vec![cmd.clone()])),
+        final_program("claude", true, None, &has(vec![cmd.clone()]), &shut),
         bare("claude")
     );
     // 用户给了路径 ⇒ 不替他找
     let given = "C:\\tools\\claude";
     assert_eq!(
-        final_program(given, true, Some(pe), &has(vec![cmd])),
+        final_program(given, true, Some(pe), &has(vec![cmd]), &shut),
         bare(given)
     );
 }

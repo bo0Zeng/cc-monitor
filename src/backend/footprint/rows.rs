@@ -117,25 +117,6 @@ pub enum Vantage {
 
 // agent 家由调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来（[`SurfaceEnv::agent_home`]）。
 
-/// 按 `$PATH` 逐目录反查一个裸命令在不在（`exists` 注入）。切分走 `std::env::split_paths`（T03 阻塞 1：
-/// 写死 `':'` 在 Windows 上把盘符切碎、给出确定的否定答案）；`path_env` 取不到 / 空 ⇒ `None`（不猜）。
-/// 从 `hooks_diag.rs` 挪来。
-pub fn resolves_on_path(
-    prog: &str,
-    path_env: Option<&str>,
-    exists: &dyn Fn(&str) -> bool,
-) -> Option<bool> {
-    let pe = path_env?;
-    if pe.trim().is_empty() {
-        return None;
-    }
-    Some(std::env::split_paths(pe).any(|d| {
-        let d = d.to_string_lossy();
-        let d = d.trim_end_matches(['/', '\\']);
-        !d.is_empty() && exists(&format!("{d}/{prog}"))
-    }))
-}
-
 /// 把申报路径解析成本机可查的形态。
 ///
 /// **「本机还是远端」从 `dest` 推导，不新增字段**（`TouchedFile` 的文档写了理由）。
@@ -647,9 +628,7 @@ pub struct SurfaceEnv<'a> {
     /// `$PATH` 原样。
     ///
     /// 🔴 **`None` = 取不到，不是「空的」** —— 那时 [`EnvProbe::OnPath`] 那一族一律
-    /// 「查不动」（`Undetermined`），**绝不说成「不存在」**。
-    /// 这条纪律不是新写的：[`resolves_on_path`] 的头注记着它在生产平台上
-    /// 曾经「既没取到、又给了一个确定的否定答案」。
+    /// 「查不动」（`Undetermined`），**绝不说成「不存在」**（找法 `platform::shell::find_session_command` 答「判不了」）。
     pub path_env: Option<&'a str>,
     /// 起会话那个 shell 的 `PATH`（[`EnvProbe::InSessionShell`] 那一族按它判）。`None` = 问不出来 ⇒ 「查不动」。
     pub session_path: Option<&'a str>,
@@ -738,32 +717,28 @@ fn observe_unmanaged(
     env: &SurfaceEnv,
 ) -> (Option<String>, SurfaceState) {
     match probe {
-        // `PATH` 上的裸命令。**复用 [`resolves_on_path`]，不新写一个 `which`** ——
-        // 它已经把「切分必须走 `split_paths`」与「取不到 PATH 就不猜」两条填好了。
+        // `PATH` 上的裸命令：与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`：
+        //   `split_paths` 切分 · 取不到 `PATH` 就不猜 · Windows 上按 `PATHEXT` 认 `.exe` / `.cmd` …，原名不算 · 同名的目录不算）。
+        //   差的只是哪一份 `PATH`：agent 命令行看起会话那个 shell 的，别的看后端进程自己的。
         EnvProbe::OnPath | EnvProbe::InSessionShell => {
-            let (found, blind) = match probe {
-                // agent 命令行：在起会话那个 shell 里敲它 ⇒ 按那个 shell 的找法（Windows 上 `.exe` / `.cmd` / `.ps1` …）。
-                //   与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`）。
+            let (path, blind) = match probe {
                 EnvProbe::InSessionShell => (
-                    match crate::platform::shell::find_session_command(
-                        named,
-                        env.session_path,
-                        env.windows,
-                        &|p| matches!((env.fs.meta)(p), Some((false, _))),
-                    ) {
-                        crate::platform::shell::SessionCommand::Unknown => None,
-                        crate::platform::shell::SessionCommand::Absent => Some(false),
-                        crate::platform::shell::SessionCommand::Found { .. } => Some(true),
-                    },
+                    env.session_path,
                     copy_text("rsConfigSurface.onPath.noSessionPath", &[("named", named)]),
                 ),
                 _ => (
-                    resolves_on_path(named, env.path_env, &|p| {
-                        (env.fs.meta)(Path::new(p)).is_some()
-                    }),
+                    env.path_env,
                     copy_text("rsConfigSurface.onPath.noPath", &[("named", named)]),
                 ),
             };
+            let found =
+                match crate::platform::shell::find_session_command(named, path, env.windows, &|p| {
+                    matches!((env.fs.meta)(p), Some((false, _)))
+                }) {
+                    crate::platform::shell::SessionCommand::Unknown => None,
+                    crate::platform::shell::SessionCommand::Absent => Some(false),
+                    crate::platform::shell::SessionCommand::Found { .. } => Some(true),
+                };
             match found {
                 // 🔴 **查不动**：`PATH` 读不到。绝不说成「不存在」——
                 // 那会对一台装得好好的机器报假警报（本模块头注那条硬纪律）。

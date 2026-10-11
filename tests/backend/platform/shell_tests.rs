@@ -206,7 +206,7 @@ fn files_at(present: &[std::path::PathBuf]) -> impl Fn(&std::path::Path) -> bool
 /// 不带后缀的那份不算；unix 只认原名；`PATH` 问不出 ⇒ 判不了。
 #[test]
 fn a_session_command_is_found_and_started_the_windows_way() {
-    use super::{find_session_command as find, SessionCommand};
+    use super::{find_session_command as find, SessionCommand, StartBy};
     use std::path::{Path, PathBuf};
     let a = PathBuf::from("/w/a");
     let b = PathBuf::from("/w/b");
@@ -217,6 +217,7 @@ fn a_session_command_is_found_and_started_the_windows_way() {
         file: f.clone(),
         program: f.clone().into_os_string(),
         lead: vec![],
+        by: StartBy::Itself,
     };
 
     // npm 三件同在：挑 .cmd（不是 sh 壳、也不是 .ps1）
@@ -255,6 +256,7 @@ fn a_session_command_is_found_and_started_the_windows_way() {
                 "-File".into(),
                 ps[0].clone().into_os_string()
             ],
+            by: StartBy::PowerShellFile,
         }
     );
     // 只剩 sh 壳 ⇒ 没有
@@ -286,4 +288,52 @@ fn a_session_command_is_found_and_started_the_windows_way() {
         find("claude", Some("  "), true, &|_: &Path| true),
         SessionCommand::Unknown
     );
+}
+
+/// 只有 `.ps1`、执行策略又不让跑本地脚本（`Restricted` · `AllSigned`）⇒ 照实拒起、带那一档的原词，
+/// 不悄悄加 `-ExecutionPolicy Bypass`。别的形不问执行策略（问一趟要起一个 PowerShell）；问不到 ⇒ 照起。
+#[test]
+fn a_script_install_is_refused_only_when_the_policy_forbids_scripts() {
+    use super::{find_session_command as find, script_refused_by_policy as refused};
+    use std::cell::Cell;
+    use std::path::PathBuf;
+    let a = PathBuf::from("/w/a");
+    let only_a = a.to_str().unwrap();
+    let ps = find(
+        "claude",
+        Some(only_a),
+        true,
+        &files_at(&[a.join("claude.ps1")]),
+    );
+    let cmd = find(
+        "claude",
+        Some(only_a),
+        true,
+        &files_at(&[a.join("claude.cmd")]),
+    );
+    let asked = Cell::new(0);
+    let says = |w: Option<&'static str>| {
+        let asked = &asked;
+        move || {
+            asked.set(asked.get() + 1);
+            w.map(str::to_string)
+        }
+    };
+    assert_eq!(
+        refused(&ps, &says(Some("Restricted"))),
+        Some("Restricted".into())
+    );
+    assert_eq!(
+        refused(&ps, &says(Some("AllSigned"))),
+        Some("AllSigned".into())
+    );
+    assert_eq!(refused(&ps, &says(Some("RemoteSigned"))), None);
+    assert_eq!(refused(&ps, &says(None)), None, "问不到 ⇒ 照起");
+    assert_eq!(asked.get(), 4);
+    assert_eq!(refused(&cmd, &says(Some("Restricted"))), None);
+    assert_eq!(
+        refused(&super::SessionCommand::Absent, &says(Some("Restricted"))),
+        None
+    );
+    assert_eq!(asked.get(), 4, "不是脚本那一形就不该去问执行策略");
 }
