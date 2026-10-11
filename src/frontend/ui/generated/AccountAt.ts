@@ -3,16 +3,4 @@
 /**
  * 一个号 ＋ 一个时刻。
  */
-export type AccountAt = { account: string, at: number, 
-/**
- * `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
- */
-atText?: string, 
-/**
- * `at` 距今（`+1h30m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
- */
-atRelText?: string, 
-/**
- * 这个号此刻是过线卡着的 ⇒ 过线的那一窗（语义位；停发横幅「最早 team 5h ↻…」）；不是过线 · 说不出 ⇒ 缺。
- */
-w?: string, };
+export type AccountAt = { account: string, at: number, atText?: string, atRelText?: string, };

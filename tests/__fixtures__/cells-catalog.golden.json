@@ -2331,12 +2331,6 @@
           "kind": "text",
           "path": "said",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "with",
-          "type": "number"
         }
       ],
       "name": "cell_error"

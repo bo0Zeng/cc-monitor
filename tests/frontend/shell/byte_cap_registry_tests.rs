@@ -72,6 +72,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**条数**不是字节：文件窗口删一整棵树时一趟让后端至多删几条（`filewin/writeops.rs`）；删够了后端停在两条之间、回还剩几条，窗口接着发下一趟，不限任何读写的体量。",
     ),
     (
+        "MAX_OPERATIONS",
+        "**操作数**不是字节：轮换策略一判在沙箱里至多走多少步（`accounts/quota/strategy/mod.rs`，20 万）；超了这一判照内置策略 1 排，不限任何读写的体量。",
+    ),
+    (
         "SEEN_REFRESH",
         "**秒数**不是字节：轮换账本里「中转最后一次看见这个会话」隔多久才刷新一次（`accounts/quota/rotation.rs`，一天）· 会话血缘里一条被用到的时刻隔多久刷新（`lineage.rs`，一天）；只决定多久写一次盘，不限任何读写的体量。",
     ),
@@ -957,6 +961,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/accounts/quota/rotation.rs",
         "MAX_BYTES",
         "后端自有的账号轮换 `~/.cc-monitor/rotation.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/accounts/quota/strategy/mod.rs",
+        "MAX_SOURCE_BYTES",
+        "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
         "拒收+回错",
     ),
     (

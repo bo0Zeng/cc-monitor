@@ -425,16 +425,53 @@ pub(crate) fn windows_of(
         .collect()
 }
 
-/// 这个号各窗此刻的线（窗口名 → 线；没线 ⇒ `None`）：与轮换判过线同一处（[`decide::line_at`]）。
+/// 这个号各窗此刻的线（窗口名 → 线；没线 ⇒ `None`）：照这个号在打开的那份配置里那一行的约定参数 `line` · `slots`
+/// （`clock` ＝ 配置时区的本地钟，一天里第几分钟；时段内取时段的线，`0` ＝ 这段不用）。策略没声明这两格 ⇒ 没线。
 pub(crate) fn lines_of<'a>(
-    cap: &'a super::rotation::Caps,
-    account: &'a str,
-    now: u64,
-    offset: i64,
-    key: &'a dyn Fn(&str) -> Option<String>,
+    params: Option<&'a crate::accounts::quota::rotation::Params>,
+    clock: u32,
     slot: &'a dyn Fn(&str) -> Option<&'static str>,
 ) -> impl Fn(&str) -> Option<u8> + 'a {
-    move |name| decide::line_at(cap, account, &key(name)?, slot(name), now, offset)
+    move |name| {
+        let p = params?;
+        let w = slot(name)?;
+        let n = |v: &serde_json::Value| v.as_u64().and_then(|n| u8::try_from(n).ok());
+        let in_slot = p
+            .get(crate::accounts::quota::strategy::form::SLOTS)
+            .and_then(serde_json::Value::as_array)
+            .and_then(|a| {
+                a.iter().find(|x| {
+                    x.get("at")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(crate::accounts::quota::strategy::form::span_of)
+                        .is_some_and(|(f, t)| {
+                            let (f, t, c) = (u32::from(f), u32::from(t), clock);
+                            if f < t {
+                                c >= f && c < t
+                            } else {
+                                c >= f || c < t
+                            }
+                        })
+                })
+            });
+        if let Some(x) = in_slot {
+            return x.get("line").and_then(n);
+        }
+        match p.get(crate::accounts::quota::strategy::form::LINE)? {
+            serde_json::Value::Object(m) => m.get(w).and_then(n),
+            v => n(v),
+        }
+    }
+}
+
+/// 「用到 N%」的显示判法：这个窗口用到 `n`%、还没重置。
+fn over(w: &crate::agents::QuotaWindow, n: u8, now: u64) -> bool {
+    w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && !super::reset_since_seen(w.resets_at, now)
+}
+
+/// 这一窗用到它的线、还没重置（显示态「到线」那一枚签）。
+fn at_line(w: &crate::agents::QuotaWindow, n: u8, now: u64) -> bool {
+    n > 0 && over(w, n, now)
 }
 
 /// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
@@ -472,8 +509,7 @@ fn slots_of(
                 resets_at: w.resets_at,
                 full: full(w, now),
                 at_line: r.windows.iter().any(|x| {
-                    slot(&x.name) == Some(*s)
-                        && line(&x.name).is_some_and(|n| decide::at_line(x, n, now))
+                    slot(&x.name) == Some(*s) && line(&x.name).is_some_and(|n| at_line(x, n, now))
                 }),
                 text: Words::default(),
                 tone: Tone::Plain,
@@ -536,14 +572,14 @@ pub(crate) fn show(
         QuotaState::OverageInUse
     } else if passed(shown_reset) {
         QuotaState::ResetSinceSeen
-    } else if decide::window_over(
-        r,
-        &|w| line(w).filter(|n| *n > 0).unwrap_or(NEAR_DEFAULT),
-        now,
-        slot,
-    )
-    .is_some()
-        || r.status == Some(QuotaStatus::Warning)
+    } else if r.windows.iter().any(|w| {
+        slot(&w.name).is_some()
+            && over(
+                w,
+                line(&w.name).filter(|n| *n > 0).unwrap_or(NEAR_DEFAULT),
+                now,
+            )
+    }) || r.status == Some(QuotaStatus::Warning)
     {
         QuotaState::Near
     } else {

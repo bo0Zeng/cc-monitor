@@ -1175,12 +1175,11 @@ mod specimens {
     }
 
     /// `sessions-needs` 的一行：会话 id ＋ 那一份 `needs`（与 `facts.needs` 同一个类型）。
-    /// 轮换编辑器里一格填错了（`rotation-rule-save` · `rotation-plan` 的 `errors[]`）：那一句 `said` 由核心写。
+    /// 配置编辑器里一格填错了（`rotation-config-save` · `rotation-session-edit` 的 `errors[]`）：那一句 `said` 由核心写。
     pub(super) fn cell_error() -> Vec<Specimen> {
         vec![node_of(&crate::accounts::quota::rotation::cell_err(
-            s("cap.b.*[1]"),
+            s("accounts[1].slots[1].at"),
             "overlap",
-            Some(0),
         ))]
     }
 

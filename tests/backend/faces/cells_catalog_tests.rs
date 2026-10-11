@@ -113,12 +113,19 @@ fn golden(file: &str) -> String {
 /// 各件成品的真样子：跨语言金样里由真代码写出来的那几份（＋ 金样里恰好缺的那一格，用真代码现造）。
 fn corpus(name: &str) -> Vec<Value> {
     match name {
-        // 一格错：真走逐格校验（封顶时段重叠 · 越界），每一形都带写好的那一句。
-        "cell_error" => crate::accounts::quota::rotation::cell_errors(&serde_json::json!({
-            "cap": {"b": {"*": [{"at": "17:00-02:00", "n": 0}, {"at": "01:00-05:00", "n": 120}]}}
-        }))
-        .into_iter()
-        .map(|e| serde_json::to_value(e).unwrap())
+        // 一格错：每一种码各一份，都带写好的那一句。
+        "cell_error" => [
+            "overlap", "range", "time", "of", "type", "empty", "dup", "tooLong", "strategy",
+            "account",
+        ]
+        .iter()
+        .map(|c| {
+            serde_json::to_value(crate::accounts::quota::rotation::cell_err(
+                "accounts[1].slots[1].at".into(),
+                c,
+            ))
+            .unwrap()
+        })
         .collect(),
         // 两家各一份：Claude 那份按类造 · Codex 那份是一整份造的 rollout 走读页那一遍（同一件成品、同一份格目录）。
         "record" => ["record.golden.jsonl", "record-codex.golden.jsonl"]

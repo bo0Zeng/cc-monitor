@@ -1,8 +1,8 @@
 //! 换号那一族的帧面宿主：把账号库（`accounts/manage`）读成上游选择换号要的那几格交进去 —— 上游选择与账号库管理互不认识，
-//! 两边只在这里接上。
+//! 两边只在这里接上。命令（`轮换-积木.md` §5）：配置表（读 · 存 · 改名 · 删 · 设为本机默认）· 策略（读 · 装 · 删 · 试跑）·
+//! 会话（读 · 打开一份配置 · 改副本 · 存 · 还原 · 手动调整）· 推演。都只照后端算好的回，界面不跑策略。
 
 use crate::accounts::upstream_select::rotate::{LibAccount, Library, LibraryRead};
-use crate::platform::fs::Ro;
 use std::path::Path;
 
 /// 这台的账号库：清单里每个号（配置目录的末段 ＝ 路由第 2 段）＋ 账号 0。没建账号库 / 清单读不懂 ⇒ 空。
@@ -39,45 +39,42 @@ pub fn library() -> LibraryRead {
     std::sync::Arc::new(library_at)
 }
 
-// ── 帧面命令：默认轮换 · 会话轮换 · 现在就换 ───────────────────────────────────────
-
+use crate::accounts::quota::decide::{self, Kind, Ranked, Verdict};
 use crate::accounts::quota::ledger::{self, Ledger};
+use crate::accounts::quota::rotation::doc::{self, Diff, Edit, Saved, Set};
 use crate::accounts::quota::rotation::{
-    self, Book, Rotation, RotationStore, SessionEntry, SwitchOutcome, SwitchRecord, SwitchWhy,
-    Unready,
+    self, Blocked, Book, CellError, Config, ConfigBody, Hot, Leave, Manual, Params, Place,
+    RotationStore, SessionEntry, SwitchOutcome, SwitchRecord, Unready, Who,
 };
 use crate::accounts::quota::show;
+use crate::accounts::quota::strategy::ctx::Facts;
+use crate::accounts::quota::strategy::form::Shown;
+use crate::accounts::quota::strategy::words::Speak;
+use crate::accounts::quota::strategy::{self, Fail as StrategyFail, FailKind, Lang, Strategy};
 use crate::accounts::upstream_select::rotate::{account_ok, Hop};
-use crate::common::cells::Words;
+use crate::common::time::TextClock;
 use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
+use serde::Serialize;
+use serde_json::{json, Value};
 use std::sync::Arc;
 
-/// 失败带码 ＋ 那一句 ＋ 原话（写盘那几形的原话进复制详情，[`Fail`]）。
+/// 失败带码 ＋ 那一句 ＋ 原话。
 type Answer = Result<Value, Fail>;
 use crate::stream::inbound::spec::Fail;
 
-/// 一条命令要的几样：轮换的账本（经它判、经它写）· 这台 key 表里有哪几行（按量号接不接得上）。
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
 type Rows = Box<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 
 /// 这台此刻活着的会话（sid 集合）。
 type Live = Box<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
 
-pub(crate) use crate::observe::accounts_query::Doing;
-
-/// 这台此刻活着的会话各在干什么（与主窗口标签页同一判；规则在用名单的状态）。
-type DoingRead = Box<dyn Fn() -> std::collections::BTreeMap<String, Doing> + Send + Sync>;
-
+/// 一条命令要的几样：轮换的账本（经它判、经它写）· 这台 key 表里有哪几行 · 活着的会话 · 看的那一台的时区。
 pub(crate) struct Ctx {
     pub(crate) hop: Hop,
-    /// 会话血缘（读：会话的父；跟随父会话按它填）。
-    pub(crate) lineage: Arc<crate::lineage::LineageStore>,
     pub(crate) rows: Rows,
     pub(crate) live: Live,
-    pub(crate) doing: DoingRead,
-    /// 看的那一台的时区（请求信封的 `tz`）：写规则那一下盖进规则（[`Rotation::stamped`]）。
+    /// 看的那一台的时区（请求信封的 `tz`）：写配置那一下盖进配置，字按它写。
     pub(crate) tz: crate::Tz,
 }
 
@@ -96,7 +93,6 @@ impl Ctx {
                 library(),
                 None,
             ),
-            lineage: Arc::new(crate::lineage::LineageStore::at(crate::lineage::path_now())),
             rows: Box::new(move |agent, a| {
                 (agent == crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT
                     && rows.iter().any(|r| r == a))
@@ -108,29 +104,34 @@ impl Ctx {
                     &crate::observe::history_query::agent_home(),
                 )
             }),
-            doing: Box::new(|| {
-                crate::observe::accounts_query::live_doing(
-                    &crate::observe::history_query::agent_home(),
-                )
-            }),
             tz: crate::Tz::default(),
         }
     }
 
-    /// 这一问看的那一台的时区（写规则的那几问用）。
+    /// 这一问看的那一台的时区。
     pub(crate) fn viewing(mut self, tz: &crate::Tz) -> Self {
         self.tz = tz.clone();
         self
     }
 
-    fn is_api(&self, agent: &str, a: &str) -> bool {
-        (self.rows)(agent, a).is_some()
+    fn kind(&self, agent: &str, a: &str) -> Kind {
+        let api = (self.rows)(agent, a).is_some()
             || self
                 .hop
                 .library()
                 .accounts
                 .iter()
-                .any(|x| x.id == a && x.api)
+                .any(|x| x.id == a && x.api);
+        if api {
+            Kind::Api
+        } else {
+            Kind::Sub
+        }
+    }
+
+    /// 此刻加载的全部策略。
+    fn strategies(&self) -> Arc<Vec<Arc<Strategy>>> {
+        strategy::all(self.hop.store.strategy_dir().as_deref())
     }
 }
 
@@ -154,47 +155,104 @@ fn read_book(ctx: &Ctx) -> (&'static str, Option<crate::common::said::Said>, Boo
             Book::default(),
         ),
         Some(rotation::Read::Absent) => ("absent", None, Book::default()),
-        Some(rotation::Read::Present(b)) => ("present", None, b),
-        Some(rotation::Read::Unreadable(e)) => ("unreadable", Some(e), Book::default()),
+        Some(rotation::Read::Present(_)) => ("present", None, ctx.hop.store.now()),
+        // 读不懂 ⇒ 照上一份读懂的那一份回（引擎也照它挑号），盘上那份不动。
+        Some(rotation::Read::Unreadable(e)) => ("unreadable", Some(e), ctx.hop.store.now()),
     }
 }
 
-/// 凭据文件那一家（账号库是它的）：默认轮换里新勾的按量号按它判。
+/// 凭据文件那一家（账号库是它的）：没有会话的那几问（配置 · 草稿 · 推演）按它判种类与事实。
 const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT;
 
-/// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
-/// 此刻发得出去的号、最早回来的那个。
-/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按请求带来的看的那一台的时区）、每号添好几行（`faces/quota_rows.rs`）
-/// 与开窗那一判（`warm`：quota-warm 照它发一句 / 睡到几点）。
+fn lang_of(args: &Value) -> Lang {
+    Lang::of(args.get("lang").and_then(Value::as_str))
+}
+
+fn str_arg(args: &Value, k: &str) -> Result<String, Fail> {
+    args.get(k)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| bad(&format!("`{k}` must be a non-empty string")))
+}
+
+fn sid_arg(args: &Value) -> Result<String, Fail> {
+    args.get("sid")
+        .and_then(Value::as_str)
+        .filter(|s| shell_quote_core::session_id_ok(s))
+        .map(str::to_string)
+        .ok_or_else(|| bad("`sid` must be a session id"))
+}
+
+fn if_rev(args: &Value) -> Result<Option<u64>, Fail> {
+    match args.get("ifRev") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| bad("`ifRev` must be an integer")),
+    }
+}
+
+fn flag(args: &Value, k: &str) -> Result<bool, Fail> {
+    match args.get(k) {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(_) => Err(bad(&format!("`{k}` must be true or false"))),
+    }
+}
+
+fn now_secs(t: u64) -> i64 {
+    i64::try_from(t).unwrap_or(i64::MAX)
+}
+
+// ── quota-read ───────────────────────────────────────────────────────────────────────
+
+/// `quota-read`：这台的额度账，每条带上显示态（「快满」按本机默认那份配置里这个号那一行的线）；另给账号库里从没出过数的号、
+/// 此刻发得出去的号、最早回来的那个。出口那一下给每个时刻添好显示的字、每号添好几行与开窗那一判。
 pub(crate) fn answer_quota_read(tz: &crate::Tz) -> Answer {
     answer_quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix(), tz)
 }
 
-/// [`answer_quota_read`] 的本体（出口在 [`crate::faces::quota_read::reply_of`]：时刻字按看的那一台的时区 · 每号几行 · 开窗那一判 · 号名 / 位名）。
+/// [`answer_quota_read`] 的本体。
 pub(crate) fn answer_quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> Answer {
     wire::<_, Fail>(&quota_read_with(ctx, now, tz))
 }
 
 pub(crate) use crate::faces::quota_read::QuotaRead;
 
-/// 读这台的额度账、给每个号判显示态，交出口写成成品（时刻字按这台此刻的本地钟）。
+/// 一份配置里一个号照哪一行的参数：点名的那一行；没点名的订阅号 ⇒ 「其余的订阅号」那一行；都没有 ⇒ `None`。
+fn row_params_of<'a>(body: &'a ConfigBody, account: &str, kind: Kind) -> Option<&'a Params> {
+    body.row(&Who::Id(account.to_string()))
+        .or_else(|| (kind == Kind::Sub).then(|| body.row(&Who::Rest)).flatten())
+        .map(|r| &r.params)
+}
+
+/// 读这台的额度账、给每个号判显示态，交出口写成成品。
 pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead {
     use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
     let base = ledger::answer_of(ctx.hop.quota.path(), now);
     let seen = &base.accounts;
     let lib = ctx.hop.library();
-    let rot = ctx.hop.store.now().default_rotation();
-    let offset = rot.offset_at(now);
+    let book = ctx.hop.store.now();
+    let default = book
+        .configs
+        .get(&book.default_config)
+        .map(|c| c.body.clone());
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
         let slot = crate::agents::window_slot_of(agent);
         let key = crate::agents::window_key_of(agent);
         let slot = |w: &str| slot.and_then(|f| f(w));
         let key = |w: &str| key.and_then(|f| f(w));
+        let params = default
+            .as_ref()
+            .and_then(|b| row_params_of(b, account, ctx.kind(agent, account)));
+        let clock = default.as_ref().map_or(0, |b| b.clock_at(now));
         let mut sh = show::show(
             o.map(|o| (&o.reading, o.seen_at)),
             ctx.hop
                 .show_facts(agent, &lib, account, &|a| (ctx.rows)(agent, a)),
-            &show::lines_of(&rot.cap, account, now, offset, &key, &slot),
+            &show::lines_of(params, clock, &slot),
             now,
             &slot,
         );
@@ -261,1055 +319,1129 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
         },
         rows,
         unseen,
-        &crate::common::time::TextClock::new(now, tz),
+        &TextClock::new(now, tz),
     )
 }
 
-// ── 规则表：读 · 存 · 改名 · 删 · 设为默认 ────────────────────────────────────────────
+// ── 描述 · 写字 ─────────────────────────────────────────────────────────────────────────
 
-use crate::accounts::quota::rotation::{CellError, Rule, Source};
-use crate::accounts::quota::rule_text;
-
-/// 一条规则的线上形状：本身那几格 ＋ 后端算好的（谁在用 · 摘要 · 说明 · 这台没有的号 · 「无号可换」作不作数）。
-fn rule_wire(
+/// 一份配置写成的那一句描述（策略的 `describe` 片段写成字）；策略读不懂 ⇒ 照内置策略 1 写、后面接「策略出错」。
+fn describe(
     ctx: &Ctx,
-    book: &Book,
-    id: &str,
-    r: &Rule,
-    live: &std::collections::BTreeSet<String>,
-    doing: &std::collections::BTreeMap<String, Doing>,
-) -> Value {
-    let (mut sids, mut ended_sids): (Vec<&String>, Vec<&String>) = (Vec::new(), Vec::new());
-    let mut follow = 0usize;
-    for (sid, s) in &book.sessions {
-        if book.rule_of(s) != Some(id) {
-            continue;
-        }
-        if live.contains(sid) {
-            sids.push(sid);
-            if s.source == Source::Follow {
-                follow += 1;
-            }
-        } else {
-            ended_sids.push(sid);
-        }
-    }
-    let lib = ctx.hop.library();
-    let missing: Vec<&String> = r
-        .rotation
-        .order
+    agent: &str,
+    body: &ConfigBody,
+    s: Option<&Strategy>,
+    lang: Lang,
+    now: u64,
+) -> String {
+    let (s, broken) = match s.filter(|s| s.usable()) {
+        Some(s) => (Arc::new(s.clone()), false),
+        None => match strategy::fallback() {
+            Some(f) => (f, true),
+            None => return String::new(),
+        },
+    };
+    let b = doc::filled(body, &s);
+    let accounts: Vec<Value> = b
+        .accounts
         .iter()
-        .filter_map(|slot| match slot {
-            rotation::RotationSlot::Named(a) if !lib.accounts.iter().any(|x| &x.id == a) => Some(a),
-            _ => None,
+        .map(|r| {
+            let kind = match &r.who {
+                Who::Id(a) => ctx.kind(agent, a),
+                _ => Kind::Sub,
+            };
+            json!({"id": r.who.key(), "kind": kind, "params": r.params})
         })
         .collect();
-    json!({
-        "id": id,
-        "name": r.name,
-        "rotation": r.rotation,
-        "rev": r.rev,
-        "updatedAt": r.updated_at,
-        "isDefault": book.default_rule == id,
-        "users": {
-            "live": sids.len(),
-            "ended": ended_sids.len(),
-            "follow": follow,
-            "doing": sids.iter().map(|sid| ((*sid).clone(), doing_wire(doing.get(*sid))))
-                .chain(ended_sids.iter().map(|sid| ((*sid).clone(), ended_wire())))
-                .collect::<Map<String, Value>>(),
-            "sids": sids,
-            "endedSids": ended_sids,
-        },
-        "summary": rule_text::summary(&r.rotation),
-        "explain": rule_text::explain(&r.rotation),
-        "missing": missing,
-        "atLimitApplies": rule_text::at_limit_applies(&r.rotation),
-    })
+    let Some(ast) = s.ast.as_deref() else {
+        return String::new();
+    };
+    let (d, _) = strategy::call(
+        ast,
+        "describe",
+        (
+            rhai::serde::to_dynamic(Value::Object(b.params.clone())).unwrap_or_default(),
+            rhai::serde::to_dynamic(Value::Array(accounts)).unwrap_or_default(),
+        ),
+    );
+    let frags = d
+        .ok()
+        .and_then(|d| rhai::serde::from_dynamic::<Value>(&d).ok())
+        .unwrap_or(Value::Null);
+    let mut text = Speak::of(&s, lang, now, &ctx.tz).describe(&frags);
+    if broken {
+        text = [text, strategy::words::broken_text()]
+            .into_iter()
+            .filter(|x| !x.is_empty())
+            .collect::<Vec<_>>()
+            .join(&copy_text("beRotation.desc.sep", &[]));
+    }
+    text
 }
 
-/// 一个活会话的状态：`state`（轮换那一侧的判：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · network ·
-/// worker · goal · choose · unknown）· `ended`）＋ 显示用的 `text` · `tone`（与主窗口同一处写：活动态的字 · 那一种「需手动」的字 ·
-/// 去向的字）。说不清在干什么 ⇒ `working`；后台命令还在跑 ⇒ 也按 `working`（重启会把它掐掉），字照 activity 写。
-fn doing_wire(d: Option<&Doing>) -> Value {
-    use crate::agents::SessionActivity as A;
-    use crate::observe::facts_query::{needs_words, NeedsKind};
-    let activity = d.and_then(|d| d.activity);
-    let (text, tone) = crate::stream::wire::ActivityFace::of(activity).words();
-    match activity {
-        Some(A::NeedsYou) => {
-            let kind = d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown);
-            json!({
-                "state": "needsYou",
-                "needs": kind,
-                "text": needs_words(kind),
-                "tone": crate::common::cells::Tone::Need,
-            })
-        }
-        Some(A::Idle) => json!({"state": "idle", "needs": null, "text": text, "tone": tone}),
-        Some(A::Working | A::BackgroundWork) | None => {
-            json!({"state": "working", "needs": null, "text": text, "tone": tone})
-        }
+/// 策略出错那一句（面板红条照抄）。
+fn fail_text(name: &str, f: &StrategyFail) -> String {
+    match f.kind {
+        FailKind::Broke => copy_text(
+            "beRotation.strategy.failed",
+            &[("name", name), ("line", &f.line.unwrap_or(0).to_string())],
+        ),
+        FailKind::Timeout => copy_text("beRotation.strategy.timeout", &[("name", name)]),
+        FailKind::BadShape => copy_text(
+            "beRotation.strategy.badShape",
+            &[("name", name), ("what", &f.msg)],
+        ),
+        FailKind::Gone => copy_text("beRotation.strategy.gone", &[("name", name)]),
     }
 }
 
-/// 名单里一个已结束的会话（字与语气同 `session_state` 的去向）。
-fn ended_wire() -> Value {
-    let (text, _, tone) = crate::stream::wire::SessionFate::Ended.cells();
-    json!({"state": "ended", "needs": null, "text": text, "tone": tone})
-}
-
-/// `rotation-rules-read` 的应答。
-#[derive(serde::Serialize)]
+/// 出错那一格的线上样子：哪一种 · 第几行 · 原话 · 写好的那一句。
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct RulesRead {
-    state: &'static str,
-    reason: Value,
-    detail: Value,
-    path: Option<String>,
-    default_rule: String,
-    /// 「跟随默认」那一项写好的字（[`follow_words`]）：新建会话面板 · 批量菜单照抄。
-    follow_text: Words,
-    /// 每条一项，形状见 [`rule_wire`]。
-    rules: Vec<Value>,
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct StrategyError {
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub fail: StrategyFail,
+    pub text: String,
 }
 
-/// 「跟随默认」那一句（唯一一处）：默认那条没起名（名字空，或还是起始那条的名字）⇒「跟随默认」；起了名 ⇒「跟随默认（名字）」。
-fn follow_words(default_name: Option<&str>) -> Words {
-    let seed = copy_core::copy_text("beRotation.rule.defaultName", &[]);
-    Words(match default_name.map(str::trim) {
-        Some(n) if !n.is_empty() && n != seed => {
-            copy_core::copy_text("rot.src.followOf", &[("name", n)])
+fn strategy_name(all: &[Arc<Strategy>], id: &str) -> String {
+    strategy::find(all, id).map_or_else(|| id.to_string(), |s| s.name.clone())
+}
+
+/// 换号记录写成字：引擎那一半（`leave`）＋ 策略那一半（`pick`，照那份策略的字）。
+fn record_text(
+    r: &SwitchRecord,
+    all: &[Arc<Strategy>],
+    lang: Lang,
+    now: u64,
+    tz: &crate::Tz,
+) -> String {
+    let why_of = |s: &Strategy, w: &Value| Speak::of(s, lang, now, tz).why(w);
+    let one = strategy::fallback();
+    let leave = match &r.leave {
+        Leave::Outranked => copy_text("beRotation.leave.top", &[]),
+        Leave::Unusable { why } => {
+            let w = one.as_ref().map(|s| why_of(s, why)).unwrap_or_default();
+            copy_text("beRotation.leave.unusable", &[("why", &w)])
         }
-        _ => copy_core::copy_text("rot.src.follow", &[]),
-    })
-}
-
-fn rules_wire(ctx: &Ctx) -> RulesRead {
-    let (state, why, book) = read_book(ctx);
-    let (reason, detail) = crate::stream::detail::unreadable("rotation-rules-read", why.as_ref());
-    let live = (ctx.live)();
-    let doing = (ctx.doing)();
-    let mut rules: Vec<(&String, &Rule)> = book.rules.iter().collect();
-    // 默认那条排最前，其余按名字。
-    rules.sort_by(|a, b| {
-        (a.0 != &book.default_rule)
-            .cmp(&(b.0 != &book.default_rule))
-            .then_with(|| a.1.name.cmp(&b.1.name))
-    });
-    RulesRead {
-        state,
-        reason,
-        detail,
-        path: ctx.hop.store.path().map(|p| p.display().to_string()),
-        rules: rules
-            .iter()
-            .map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing))
-            .collect(),
-        follow_text: follow_words(book.rules.get(&book.default_rule).map(|r| r.name.as_str())),
-        default_rule: book.default_rule,
-    }
-}
-
-/// `rotation-rules-read`：这台的规则表。
-pub(crate) fn answer_rules_read() -> Answer {
-    answer_rules_read_with(&Ctx::here())
-}
-
-pub(crate) fn answer_rules_read_with(ctx: &Ctx) -> Answer {
-    let mut v = wire::<_, Fail>(&rules_wire(ctx))?;
-    crate::accounts::quota::name_words::with_names(&mut v);
-    Ok(v)
-}
-
-/// 名称那一格的错：空 · 超长 · 与这台别的规则重名（不分大小写、去首尾空白）。
-fn name_errors(book: &Book, id: Option<&str>, name: &str) -> Vec<CellError> {
-    let code = if name.trim().is_empty() {
-        Some("empty")
-    } else if name.trim().chars().count() > rotation::RULE_NAME_MAX {
-        Some("tooLong")
-    } else if book.rules.iter().any(|(k, r)| {
-        Some(k.as_str()) != id && rotation::name_key(&r.name) == rotation::name_key(name)
-    }) {
-        Some("dup")
-    } else {
-        None
+        Leave::Manual => copy_text("beRotation.leave.manual", &[]),
+        Leave::ManualRestart => copy_text("beRotation.leave.manualRestart", &[]),
+        Leave::Refresh => copy_text("beRotation.leave.refresh", &[]),
+        Leave::Held => copy_text("beRotation.leave.held", &[]),
+        Leave::Overage => copy_text(
+            "beRotation.leave.overage",
+            &[(
+                "acct",
+                &crate::accounts::quota::name_words::account_text(&r.from),
+            )],
+        ),
     };
-    code.map(|c| rotation::cell_err("name".into(), c, None))
-        .into_iter()
-        .collect()
-}
-
-/// 复制出来的那条取名：不重名照原名；重名 ⇒ 名后加 ` 2` · ` 3` … 取第一个不重的（超长照旧由 [`name_errors`] 拒）。
-fn free_name(book: &Book, id: Option<&str>, name: &str) -> String {
-    let taken = |n: &str| {
-        book.rules.iter().any(|(k, r)| {
-            Some(k.as_str()) != id && rotation::name_key(&r.name) == rotation::name_key(n)
-        })
-    };
-    let base = name.trim();
-    if !taken(base) {
-        return base.to_string();
-    }
-    (2..)
-        .map(|i| format!("{base} {i}"))
-        .find(|n| !taken(n))
-        .unwrap_or_default()
-}
-
-/// `rotation-rule-save` / `rotation-rule-rename` 的应答：按 `state` 分三支。
-#[derive(serde::Serialize)]
-#[serde(tag = "state", rename_all = "camelCase")]
-pub(crate) enum RuleSaved {
-    /// 写成了：那一条（形状同 `rotation-rules-read` 的一项）· 写成那一刻按看的那一台的时区写好的钟面（编辑器「已保存 HH:MM」）。
-    Saved {
-        rule: Value,
-        #[serde(rename = "savedAtText")]
-        saved_at_text: String,
-    },
-    /// 逐格错，没写。
-    Refused { errors: Vec<CellError> },
-    /// 读到之后别处改过：此刻的版本，没写。
-    Conflict { rev: u64 },
-}
-
-fn refused(errors: Vec<CellError>) -> Answer {
-    wire(&RuleSaved::Refused { errors })
-}
-
-fn conflict(rev: u64) -> Answer {
-    wire(&RuleSaved::Conflict { rev })
-}
-
-fn if_rev(args: &Value) -> Result<Option<u64>, Fail> {
-    match args.get("ifRev") {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v
-            .as_u64()
-            .map(Some)
-            .ok_or_else(|| bad("`ifRev` must be a non-negative integer")),
+    let pick = r
+        .pick
+        .as_ref()
+        .and_then(|p| strategy::find(all, &p.strategy).map(|s| why_of(&s, &p.why)))
+        .filter(|s| !s.is_empty());
+    match pick {
+        Some(p) => format!("{leave}{}{p}", copy_text("beRotation.desc.sep", &[])),
+        None => leave,
     }
 }
 
-fn rule_id_arg(args: &Value, key: &str) -> Result<Option<String>, Fail> {
-    match args.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s))
-            if !s.is_empty()
-                && s.len() <= 32
-                && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') =>
-        {
-            Ok(Some(s.clone()))
-        }
-        Some(_) => Err(bad(&format!("`{key}` must be a rule id"))),
+// ── 配置表 ───────────────────────────────────────────────────────────────────────────
+
+/// 配置列表里的一项：存下的那一份 ＋ 后端写好的描述 · 策略名 · 开着它的会话 · 是不是本机默认。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ConfigItem {
+    pub id: String,
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub config: Config,
+    pub text: String,
+    pub strategy_name: String,
+    pub in_use: Vec<String>,
+    pub is_default: bool,
+}
+
+/// `rotation-configs-read` 的应答。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ConfigsRead {
+    /// `present` · `absent`（没动过：内置三份）· `unreadable`。
+    pub state: String,
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub reason: Value,
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub detail: Value,
+    /// 默认那份在最前、其余按名字。
+    pub configs: Vec<ConfigItem>,
+    pub default_config: String,
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub path: Option<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn config_item(
+    ctx: &Ctx,
+    book: &Book,
+    all: &[Arc<Strategy>],
+    id: &str,
+    c: &Config,
+    lang: Lang,
+    now: u64,
+) -> ConfigItem {
+    let s = strategy::find(all, &c.body.strategy);
+    ConfigItem {
+        id: id.to_string(),
+        config: c.clone(),
+        text: describe(ctx, LIBRARY_AGENT, &c.body, s.as_deref(), lang, now),
+        strategy_name: strategy_name(all, &c.body.strategy),
+        in_use: book.in_use(id),
+        is_default: book.default_config == id,
     }
 }
 
-/// 写成之后回那一条（线上形状）。
-fn saved(ctx: &Ctx, id: &str) -> Answer {
-    let (_, _, book) = read_book(ctx);
-    let live = (ctx.live)();
-    let r = book
-        .rules
-        .get(id)
-        .ok_or_else(|| ("failed", format!("rule {id} vanished after write")))?;
-    let doing = (ctx.doing)();
-    let now = crate::common::time::now_secs();
-    wire(&RuleSaved::Saved {
-        rule: rule_wire(ctx, &book, id, r, &live, &doing),
-        saved_at_text: crate::common::time::hm(ctx.tz.local(now)),
-    })
-}
-
-/// `rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ `ifRev`）。`{id?, name, rotation?, ifRev?, from?, dedupe?}`：
-/// 新建时不给 `rotation` 就从 `from` 那条拷（`from: "blank"` ＝ 只有起始账号）；`dedupe: true`（复制 · 复制到别的机器）⇒
-/// 重名不拒、名后加 ` 2` · ` 3` … 取第一个不重的。
-/// 回 `{state: "saved", rule}` · `{state: "refused", errors: [{cell, code, with?}]}`（逐格，界面照它标红）·
-/// `{state: "conflict", rev}`（别处先改过了）。形状不对 ⇒ `bad_args`；改的那条不在 ⇒ `no_such_rule`。
-pub(crate) fn answer_rule_save(args: &Value, tz: &crate::Tz) -> Answer {
-    answer_rule_save_with(
+/// `rotation-configs-read`：这台的配置表（默认那份在最前）。
+pub(crate) fn answer_configs_read(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_configs_read_with(
         &Ctx::here().viewing(tz),
         args,
         crate::accounts::quota::now_unix(),
     )
 }
 
-pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
-    let id = rule_id_arg(args, "id")?;
-    let mut name = args
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `name`"))?
-        .to_string();
-    let dedupe = match args.get("dedupe") {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(_) => return Err(bad("`dedupe` must be a boolean")),
+pub(crate) fn answer_configs_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let (state, why, book) = read_book(ctx);
+    let (reason, detail) = crate::stream::detail::unreadable("rotation-configs-read", why.as_ref());
+    let all = ctx.strategies();
+    let lang = lang_of(args);
+    let mut items: Vec<ConfigItem> = book
+        .configs
+        .iter()
+        .map(|(id, c)| config_item(ctx, &book, &all, id, c, lang, now))
+        .collect();
+    items.sort_by(|a, b| {
+        b.is_default
+            .cmp(&a.is_default)
+            .then_with(|| a.config.body.name.cmp(&b.config.body.name))
+    });
+    wire(&ConfigsRead {
+        state: state.to_string(),
+        reason,
+        detail,
+        configs: items,
+        default_config: book.default_config.clone(),
+        path: ctx.hop.store.path().map(|p| p.display().to_string()),
+    })
+}
+
+/// 存一份配置的结局（设置窗的配置编辑器 · 改名）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum ConfigSaved {
+    /// 写成了：id · 新的版本 · 写成那一刻的钟面 `HH:MM`。
+    #[serde(rename_all = "camelCase")]
+    Saved {
+        id: String,
+        #[cfg_attr(test, ts(type = "number"))]
+        rev: u64,
+        saved_at_text: String,
+    },
+    /// 逐格错，没写。
+    Refused { errors: Vec<CellError> },
+    /// 读到之后别处存过（没 `force`）：此刻的版本 · 别处那一版跟这一份差哪几格。
+    Conflict { rev: u64, theirs: Vec<Diff> },
+}
+
+fn parse_body(v: &Value) -> Result<ConfigBody, Fail> {
+    serde_json::from_value::<ConfigBody>(v.clone()).map_err(|e| bad(&format!("`config`: {e}")))
+}
+
+fn saved_at_text(ctx: &Ctx, now: u64) -> String {
+    crate::common::time::hm(ctx.tz.local(now_secs(now)))
+}
+
+/// `rotation-config-save`：`{id?, ifRev?, config, force?}`；参数照声明逐格校验；`id` 缺 ＝ 新建。
+pub(crate) fn answer_config_save(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_config_save_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
+}
+
+pub(crate) fn answer_config_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let body = parse_body(args.get("config").unwrap_or(&Value::Null))?;
+    let id = match args.get("id") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(str_arg(args, "id")?),
     };
-    let want_rev = if_rev(args)?;
+    let (ifr, force) = (if_rev(args)?, flag(args, "force")?);
     store_path(ctx)?;
+    let all = ctx.strategies();
+    let s = strategy::find(&all, &body.strategy);
     let book = ctx.hop.store.now();
-    if dedupe {
-        name = free_name(&book, id.as_deref(), &name);
-    }
-    let prior = id.as_deref().and_then(|i| book.rules.get(i));
-    if id.is_some() && prior.is_none() {
-        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
-    }
-    let mut errors = name_errors(&book, id.as_deref(), &name);
-    let rot = match (args.get("rotation"), rule_id_arg(args, "from")?) {
-        (Some(v), _) => {
-            errors.extend(rotation::cell_errors(v));
-            if !errors.is_empty() {
-                return refused(errors);
-            }
-            rotation::rotation_from(
-                v,
-                0..=1,
-                &account_ok,
-                &|a| ctx.is_api(LIBRARY_AGENT, a),
-                prior.map(|p| &p.rotation),
-            )
-            .map_err(|e| bad(&e))?
+    let mut errors = doc::name_errors(&book, id.as_deref(), &body.name);
+    let filled = match doc::validate(&body, s.as_deref(), &account_ok) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            errors.extend(e);
+            None
         }
-        (None, Some(from)) if prior.is_none() && from == "blank" => Rotation::default(),
-        (None, Some(from)) if prior.is_none() => book
-            .rules
-            .get(&from)
-            .map(|r| r.rotation.clone())
-            .ok_or_else(|| ("no_such_rule", copy_text("beRotation.rule.gone", &[])))?,
-        (None, _) => match prior {
-            Some(p) => p.rotation.clone(),
-            None => return Err(bad("missing `rotation` (or `from` for a new rule)")),
-        },
     };
-    if !errors.is_empty() {
-        return refused(errors);
-    }
-    // 写的那一下盖上看的那一台的时区：按时段的上限按它判（拷来的 · 照旧的也一样重盖）。
-    let rot = rot.stamped(&ctx.tz);
-    let name = name.trim().to_string();
-    let wrote = rotation::face_change(&ctx.hop.store, |b| -> Result<String, u64> {
-        match id.clone() {
-            Some(id) => {
-                let Some(r) = b.rules.get_mut(&id) else {
-                    return Err(0);
-                };
-                if want_rev.is_some_and(|w| w != r.rev) {
-                    return Err(r.rev);
-                }
-                if r.name != name || r.rotation != rot {
-                    r.name = name.clone();
-                    r.rotation = rot.clone();
-                    r.rev += 1;
-                    r.updated_at = now;
-                }
-                Ok(id)
-            }
-            None => {
-                let id = rotation::new_rule_id(&b.rules);
-                b.rules.insert(
-                    id.clone(),
-                    Rule {
-                        name: name.clone(),
-                        rotation: rot.clone(),
-                        rev: 1,
-                        updated_at: now,
-                    },
-                );
-                Ok(id)
-            }
+    let (Some(filled), true) = (filled, errors.is_empty()) else {
+        return wire(&ConfigSaved::Refused { errors });
+    };
+    let filled = ConfigBody {
+        name: filled.name.trim().to_string(),
+        ..filled
+    };
+    if let Some(id) = &id {
+        let Some(cur) = book.configs.get(id) else {
+            return Err(("no_such_config", copy_text("beRotation.config.gone", &[])).into());
+        };
+        if ifr.is_some_and(|r| r != cur.rev) && !force {
+            let theirs = s
+                .as_deref()
+                .map(|s| doc::diff(&filled, &cur.body, s, lang_of(args)))
+                .unwrap_or_default();
+            return wire(&ConfigSaved::Conflict {
+                rev: cur.rev,
+                theirs,
+            });
         }
+    }
+    let tz = ctx.tz.iana_name();
+    let (id, rev) = rotation::face_change(&ctx.hop.store, |b| {
+        let id = id
+            .clone()
+            .unwrap_or_else(|| rotation::new_config_id(&b.configs));
+        let rev = doc::write_config(
+            b,
+            &id,
+            filled.clone(),
+            now,
+            rotation::SAVED_BY_SETTINGS,
+            tz.clone(),
+        );
+        (id, rev)
     })
     .map_err(|e| ("io_failed", e))?;
-    match wrote {
-        Ok(id) => saved(ctx, &id),
-        Err(0) => Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into()),
-        Err(rev) => conflict(rev),
-    }
+    wire(&ConfigSaved::Saved {
+        id,
+        rev,
+        saved_at_text: saved_at_text(ctx, now),
+    })
 }
 
-/// `rotation-rule-rename`：`{id, name, ifRev}`；回同 `rotation-rule-save`。
-pub(crate) fn answer_rule_rename(args: &Value) -> Answer {
-    answer_rule_rename_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+/// `rotation-config-rename`：`{id, name, ifRev?}`。
+pub(crate) fn answer_config_rename(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_config_rename_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
 }
 
-pub(crate) fn answer_rule_rename_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
-    let id = rule_id_arg(args, "id")?.ok_or_else(|| bad("missing `id`"))?;
+pub(crate) fn answer_config_rename_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let id = str_arg(args, "id")?;
     let name = args
         .get("name")
         .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `name`"))?;
-    let mut a = json!({"id": id, "name": name});
-    if let Some(r) = args.get("ifRev") {
-        a["ifRev"] = r.clone();
-    }
-    answer_rule_save_with(ctx, &a, now)
-}
-
-/// `rotation-rule-delete`：`{ids, then: "custom" | "follow"}`；用着它们的会话按 `then` 落（`custom` ＝ 照那条拷一份成本会话的，行为不变）。
-/// 默认那条不许删（`is_default`）。回 `{moved: {sid: "custom" | "follow"}}`。
-pub(crate) fn answer_rule_delete(args: &Value) -> Answer {
-    answer_rule_delete_with(&Ctx::here(), args)
-}
-
-pub(crate) fn answer_rule_delete_with(ctx: &Ctx, args: &Value) -> Answer {
-    let ids: Vec<String> = args
-        .get("ids")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("`ids` must be an array of rule ids"))?
-        .iter()
-        .map(|v| match v {
-            Value::String(s) => Ok(s.clone()),
-            _ => Err(bad("`ids` must be an array of rule ids")),
-        })
-        .collect::<Result<_, _>>()?;
-    let to_custom = match args.get("then").and_then(Value::as_str) {
-        Some("custom") => true,
-        Some("follow") => false,
-        _ => return Err(bad("`then` must be \"custom\" or \"follow\"")),
-    };
+        .ok_or_else(|| bad("`name` must be a string"))?
+        .to_string();
+    let ifr = if_rev(args)?;
     store_path(ctx)?;
     let book = ctx.hop.store.now();
-    if ids.iter().any(|i| *i == book.default_rule) {
-        return Err(("is_default", copy_text("beRotation.rule.isDefault", &[])).into());
+    let Some(cur) = book.configs.get(&id).cloned() else {
+        return Err(("no_such_config", copy_text("beRotation.config.gone", &[])).into());
+    };
+    let errors = doc::name_errors(&book, Some(&id), &name);
+    if !errors.is_empty() {
+        return wire(&ConfigSaved::Refused { errors });
     }
-    if let Some(i) = ids.iter().find(|i| !book.rules.contains_key(*i)) {
-        return Err((
-            "no_such_rule",
-            copy_text("beRotation.rule.gone", &[]) + " " + i,
+    if ifr.is_some_and(|r| r != cur.rev) {
+        return wire(&ConfigSaved::Conflict {
+            rev: cur.rev,
+            theirs: Vec::new(),
+        });
+    }
+    let body = ConfigBody {
+        name: name.trim().to_string(),
+        ..cur.body
+    };
+    let tz = ctx.tz.iana_name();
+    let rev = rotation::face_change(&ctx.hop.store, |b| {
+        doc::write_config(
+            b,
+            &id,
+            body.clone(),
+            now,
+            rotation::SAVED_BY_SETTINGS,
+            tz.clone(),
         )
-            .into());
-    }
-    let moved = rotation::face_change(&ctx.hop.store, |b| {
-        let mut moved = Map::new();
-        for (sid, s) in b.sessions.iter_mut() {
-            let Source::Rule(id) = &s.source else {
-                continue;
-            };
-            let Some(r) = ids
-                .iter()
-                .find(|i| *i == id)
-                .and_then(|i| book.rules.get(i))
-            else {
-                continue;
-            };
-            if to_custom {
-                s.custom = Some(r.rotation.clone());
-                s.source = Source::Custom;
-            } else {
-                s.source = Source::Follow;
-            }
-            moved.insert(
-                sid.clone(),
-                json!(if to_custom { "custom" } else { "follow" }),
-            );
-        }
-        for i in &ids {
-            b.rules.remove(i);
-        }
-        moved
     })
     .map_err(|e| ("io_failed", e))?;
-    wire(&RuleDeleted { moved })
+    wire(&ConfigSaved::Saved {
+        id,
+        rev,
+        saved_at_text: saved_at_text(ctx, now),
+    })
 }
 
-/// `rotation-rule-delete` 的应答：用着被删那几条的会话落到了哪。
-#[derive(serde::Serialize)]
-pub(crate) struct RuleDeleted {
-    moved: Map<String, Value>,
+/// 删一份配置的结局。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum ConfigDropped {
+    Done,
+    /// 有会话开着它（`inUse` 是哪几个）· 是本机默认（先设别的为默认）。
+    #[serde(rename_all = "camelCase")]
+    Refused {
+        in_use: Vec<String>,
+        is_default: bool,
+        said: String,
+    },
 }
 
-/// `rotation-default-set`：`{rule}` 设为这台的默认；回 `{defaultRule, followers}`（跟随默认、此刻活着的会话有几个）。
+/// 只有一句「成了」的应答（设本机默认 · 还原）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "RotationDone"
+    )
+)]
+pub struct Done {
+    /// 恒为 `done`。
+    pub state: String,
+}
+
+fn done() -> Done {
+    Done {
+        state: "done".into(),
+    }
+}
+
+/// `rotation-config-delete`：`{id}`；有会话开着 · 是本机默认 ⇒ 不删。
+pub(crate) fn answer_config_delete(args: &Value) -> Answer {
+    answer_config_delete_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_config_delete_with(ctx: &Ctx, args: &Value) -> Answer {
+    let id = str_arg(args, "id")?;
+    store_path(ctx)?;
+    let book = ctx.hop.store.now();
+    if !book.configs.contains_key(&id) {
+        return Err(("no_such_config", copy_text("beRotation.config.gone", &[])).into());
+    }
+    let in_use = book.in_use(&id);
+    let is_default = book.default_config == id;
+    if !in_use.is_empty() || is_default {
+        let said = if is_default {
+            copy_text("beRotation.config.isDefault", &[])
+        } else {
+            copy_text(
+                "beRotation.config.inUse",
+                &[("n", &in_use.len().to_string())],
+            )
+        };
+        return wire(&ConfigDropped::Refused {
+            in_use,
+            is_default,
+            said,
+        });
+    }
+    rotation::face_change(&ctx.hop.store, |b| {
+        b.configs.remove(&id);
+    })
+    .map_err(|e| ("io_failed", e))?;
+    wire(&ConfigDropped::Done)
+}
+
+/// `rotation-default-set`：`{id}` ⇒ 本机默认指向它（已开着的会话不跟着换）。
 pub(crate) fn answer_default_set(args: &Value) -> Answer {
     answer_default_set_with(&Ctx::here(), args)
 }
 
 pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
-    let id = rule_id_arg(args, "rule")?.ok_or_else(|| bad("missing `rule`"))?;
+    let id = str_arg(args, "id")?;
     store_path(ctx)?;
-    if !ctx.hop.store.now().rules.contains_key(&id) {
-        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
+    if !ctx.hop.store.now().configs.contains_key(&id) {
+        return Err(("no_such_config", copy_text("beRotation.config.gone", &[])).into());
     }
-    rotation::face_change(&ctx.hop.store, |b| b.default_rule = id.clone())
+    rotation::face_change(&ctx.hop.store, |b| b.default_config = id.clone())
         .map_err(|e| ("io_failed", e))?;
-    let live = (ctx.live)();
-    let followers = ctx
+    wire(&done())
+}
+
+// ── 策略 ─────────────────────────────────────────────────────────────────────────────
+
+/// 共用小函数库那一行（只读）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "StrategyLib"
+    )
+)]
+pub struct LibShown {
+    pub source: String,
+}
+
+/// 策略列表里的一项。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct StrategyItem {
+    pub id: String,
+    pub name: String,
+    pub builtin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub path: Option<String>,
+    pub ordered: bool,
+    /// 缺省参数下的描述（读不懂 ⇒ 空串）。
+    pub text: String,
+    pub params: Vec<Shown>,
+    pub acct_params: Vec<Shown>,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub error: Option<StrategyError>,
+    /// 用它的配置（id）。
+    pub used_by: Vec<String>,
+}
+
+/// `rotation-strategies-read` 的应答。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct StrategiesRead {
+    pub lib: LibShown,
+    pub strategies: Vec<StrategyItem>,
+}
+
+fn load_error(s: &Strategy, f: &StrategyFail) -> StrategyError {
+    StrategyError {
+        fail: f.clone(),
+        text: if f.msg == strategy::DUP_ID {
+            copy_text("beRotation.strategy.dupId", &[("id", &s.id)])
+        } else {
+            fail_text(&s.name, f)
+        },
+    }
+}
+
+fn strategy_item(ctx: &Ctx, book: &Book, s: &Strategy, lang: Lang, now: u64) -> StrategyItem {
+    let shown = |d: &[strategy::form::Decl]| {
+        d.iter()
+            .map(|x| strategy::form::shown(x, &s.texts, lang))
+            .collect()
+    };
+    let text = if s.usable() {
+        let body = ConfigBody {
+            name: String::new(),
+            strategy: s.id.clone(),
+            accounts: Vec::new(),
+            params: s.param_init(),
+            acct_init: s.acct_init(),
+            parked: Default::default(),
+            tz: None,
+        };
+        describe(ctx, LIBRARY_AGENT, &body, Some(s), lang, now)
+    } else {
+        String::new()
+    };
+    StrategyItem {
+        id: s.id.clone(),
+        name: s.name.clone(),
+        builtin: s.builtin,
+        path: s.path.as_ref().map(|p| p.display().to_string()),
+        ordered: s.ordered,
+        text,
+        params: shown(&s.params),
+        acct_params: shown(&s.acct_params),
+        source: s.source.clone(),
+        error: s.error.as_ref().map(|f| load_error(s, f)),
+        used_by: book
+            .configs
+            .iter()
+            .filter(|(_, c)| c.body.strategy == s.id)
+            .map(|(id, _)| id.clone())
+            .collect(),
+    }
+}
+
+/// `rotation-strategies-read`：`{lang?}` ⇒ 共用小函数的源码 ＋ 每份策略（内置在前；读不懂的照实写哪一行）。
+pub(crate) fn answer_strategies_read(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_strategies_read_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
+}
+
+pub(crate) fn answer_strategies_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let book = ctx.hop.store.now();
+    let lang = lang_of(args);
+    let all = ctx.strategies();
+    wire(&StrategiesRead {
+        lib: LibShown {
+            source: strategy::LIB_SOURCE.to_string(),
+        },
+        strategies: all
+            .iter()
+            .map(|s| strategy_item(ctx, &book, s, lang, now))
+            .collect(),
+    })
+}
+
+/// 装 · 删一份策略的结局。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum StrategyChanged {
+    Done {
+        id: String,
+    },
+    /// 装不进（读不懂 · 与内置同 id · 名字不合法）/ 删不了（内置的 · 有配置在用）：那一句 ＋ 读不懂时第几行。
+    #[serde(rename_all = "camelCase")]
+    Refused {
+        said: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        error: Option<StrategyError>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
+        used_by: Vec<String>,
+    },
+}
+
+/// `rotation-strategy-add`：`{id, source}` ⇒ 读得懂才写进本机策略目录（`<id>.rhai`，已有同名 ⇒ 覆盖）。
+pub(crate) fn answer_strategy_add(args: &Value) -> Answer {
+    answer_strategy_add_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_strategy_add_with(ctx: &Ctx, args: &Value) -> Answer {
+    let id = str_arg(args, "id")?;
+    let source = args
+        .get("source")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("`source` must be the file text"))?
+        .to_string();
+    if ctx.hop.store.strategy_dir().is_none() {
+        return Err(("io_failed", copy_text("beRotation.read.noHome", &[])).into());
+    }
+    let taken: Vec<String> = strategy::builtins().iter().map(|l| l.id.clone()).collect();
+    let probe = strategy::load(
+        vec![strategy::File {
+            name: format!("{id}.rhai"),
+            path: None,
+            text: Ok(source.clone()),
+        }],
+        false,
+        &taken,
+    )
+    .remove(0);
+    if let Some(e) = &probe.error {
+        let err = load_error(&probe, e);
+        return wire(&StrategyChanged::Refused {
+            said: err.text.clone(),
+            error: Some(err),
+            used_by: Vec::new(),
+        });
+    }
+    rotation::strategy_file_write(&ctx.hop.store, &id, &source).map_err(|e| ("io_failed", e))?;
+    wire(&StrategyChanged::Done { id })
+}
+
+/// `rotation-strategy-delete`：`{id}` ⇒ 删本机那一份（内置的 · 有配置在用 ⇒ 不删）。
+pub(crate) fn answer_strategy_delete(args: &Value) -> Answer {
+    answer_strategy_delete_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_strategy_delete_with(ctx: &Ctx, args: &Value) -> Answer {
+    let id = str_arg(args, "id")?;
+    let all = ctx.strategies();
+    let Some(s) = strategy::find(&all, &id) else {
+        return Err((
+            "no_such_strategy",
+            copy_text("beRotation.strategy.gone", &[("name", &id)]),
+        )
+            .into());
+    };
+    if s.builtin {
+        return wire(&StrategyChanged::Refused {
+            said: copy_text("beRotation.strategy.builtinFixed", &[]),
+            error: None,
+            used_by: Vec::new(),
+        });
+    }
+    let used_by: Vec<String> = ctx
         .hop
         .store
         .now()
-        .sessions
+        .configs
         .iter()
-        .filter(|(sid, s)| s.source == Source::Follow && live.contains(*sid))
-        .count();
-    wire(&DefaultSet {
-        default_rule: id,
-        followers,
-    })
-}
-
-/// `rotation-default-set` 的应答。
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DefaultSet {
-    default_rule: String,
-    /// 跟随默认、此刻活着的会话有几个。
-    followers: usize,
-}
-
-/// `session-new` 带 `rotation: {rule}`：起之前在这台的账本里给那个定好的 sid 记一条、来源 ＝ 那条规则（会话一报到就已经是它）。
-/// 规则不在 ⇒ `no_such_rule`。`kind` ＝ 线上的那一家（记成它的适配器 id，与中转看见会话时同一格；对不上的那几格中转报到时照常改，来源不动）。
-pub(crate) fn preset_with(
-    ctx: &Ctx,
-    sid: &str,
-    kind: &str,
-    rule: &str,
-    now: u64,
-) -> Result<(), (&'static str, String)> {
-    store_path(ctx)?;
-    if !ctx.hop.store.now().rules.contains_key(rule) {
-        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
-    }
-    let agent = crate::agents::pick_kind(Some(kind))
-        .map(|(_, f)| f.adapter_id.to_string())
-        .unwrap_or_else(|_| kind.to_string());
-    let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
-    rotation::face_change(&ctx.hop.store, |b| {
-        let mut e = SessionEntry::fresh(&agent, zero, now);
-        e.source = Source::Rule(rule.to_string());
-        b.sessions.insert(sid.to_string(), e);
-    })
-    .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
-}
-
-/// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号、来源还是规则的；写不成只出声）。
-pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
-    if let Err(e) = rotation::face_change(&ctx.hop.store, |b| {
-        if b.sessions
-            .get(sid)
-            .is_some_and(|s| s.history.is_empty() && matches!(s.source, Source::Rule(_)))
-        {
-            b.sessions.remove(sid);
-        }
-    }) {
-        tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{}", e.logged());
-    }
-}
-
-/// `rotation-plan`：这份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写）。问的是哪一份：`{rotation}`（草稿：先逐格校验，有错只回 `errors`）·
-/// `{rule}`（这台的一条规则）· `{sid}`（这个会话此刻生效的那一份，从它此刻的号起）；`span`：`6h` · `12h`（缺省）· `24h` · `7d`。
-/// 回 `{errors, now, plan, lanes, effective}`：用量只按此刻的算（以后涨多快没根据，不预测），结论只在重置 · 时段起止时变。
-/// 形状不对（`rotation_from` 整份拒）⇒ `bad_args`；规则 / 会话不在 ⇒ `no_such_rule` / `bad_args`。
-pub(crate) fn answer_plan(args: &Value, tz: &crate::Tz) -> Answer {
-    answer_plan_with(&Ctx::here(), args, crate::accounts::quota::now_unix(), tz)
-}
-
-/// 预览的视窗（秒）。
-fn span_secs(args: &Value) -> Result<u64, Fail> {
-    match args.get("span") {
-        None | Some(Value::Null) => Ok(12 * 3600),
-        Some(v) => match v.as_str() {
-            Some("6h") => Ok(6 * 3600),
-            Some("12h") => Ok(12 * 3600),
-            Some("24h") => Ok(24 * 3600),
-            Some("7d") => Ok(7 * 86_400),
-            _ => Err(bad("`span` must be 6h / 12h / 24h / 7d")),
-        },
-    }
-}
-
-/// 规则 / 草稿没有会话：从池里排第一的号起（起始账号占位 ＝ 账号 0）。
-fn first_of(rot: &Rotation, start: &str) -> String {
-    rot.pool(start)
-        .first()
-        .cloned()
-        .unwrap_or_else(|| start.to_string())
-}
-
-fn cap_at_wire(c: &crate::accounts::quota::decide::CapAt) -> Value {
-    let mut v = json!({"v": c.v, "layer": c.layer});
-    if let Some(w) = c.w {
-        v["w"] = json!(w);
-    }
-    v
-}
-
-/// 全部窗口那一格的悬停：两窗各取多少（`5h ≤90 · 7d 不封顶`），一句由这里拼。
-fn lines_text(each: &[(&'static str, crate::accounts::quota::decide::CapAt)]) -> String {
-    each.iter()
-        .map(|(w, c)| {
-            let w = slot_label(w);
-            match c.v {
-                Some(n) => copy_text("beRotation.eff.line", &[("w", &w), ("n", &n.to_string())]),
-                None => copy_text("beRotation.eff.none", &[("w", &w)]),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(&copy_text("kit.text.sep", &[]))
-}
-
-fn slot_label(w: &str) -> String {
-    crate::accounts::quota::name_words::slot_text(w)
-}
-
-/// 时间轴的视窗（此刻之前, 之后，秒）：`6h` ＝ 前 2h · 后 4h；`24h` ＝ 前 6h · 后 18h；`7d` ＝ 前 1d · 后 6d。不给 ⇒ `None`（编辑器那一问：从此刻起）。
-fn view_secs(args: &Value) -> Result<Option<(u64, u64)>, Fail> {
-    match args.get("view") {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => match v.as_str() {
-            Some("6h") => Ok(Some((2 * 3600, 4 * 3600))),
-            Some("24h") => Ok(Some((6 * 3600, 18 * 3600))),
-            Some("7d") => Ok(Some((86_400, 6 * 86_400))),
-            _ => Err(bad("`view` must be 6h / 24h / 7d")),
-        },
-    }
-}
-
-/// 问的是哪一份。
-enum Asked<'a> {
-    /// 草稿 · 一条规则：没有会话。
-    Rotation,
-    /// 一个会话此刻那一份。
-    Session(&'a str),
-    /// 这台全部号（设置里的时间轴）：按默认规则判封顶。
-    Machine,
-}
-
-/// 一个会话在 `[from, now]` 里走过哪几个号（照换号记录切段；换进那一段的原因带上，头一段没有）。
-/// 没换成的那几种（`from == to`）不切；没有记录 ⇒ 从 `since`（不早于 `from`）起一整段此刻的号。
-fn past_of(s: &SessionEntry, from: u64, now: u64) -> Vec<(u64, u64, String, Option<SwitchWhy>)> {
-    let mut recs: Vec<&SwitchRecord> = s
-        .history
-        .iter()
-        .filter(|h| h.from != h.to && h.at > from && h.at <= now)
+        .filter(|(_, c)| c.body.strategy == id)
+        .map(|(cid, _)| cid.clone())
         .collect();
-    recs.sort_by_key(|h| h.at);
-    let mut t = if recs.is_empty() {
-        s.since.clamp(from, now)
-    } else {
-        from
-    };
-    let mut acct = recs
-        .first()
-        .map_or_else(|| s.current.clone(), |h| h.from.clone());
-    let mut why: Option<SwitchWhy> = None;
-    let mut out = Vec::new();
-    for h in recs {
-        if h.at > t {
-            out.push((t, h.at, acct, why));
-        }
-        t = h.at;
-        acct = h.to.clone();
-        why = Some(h.why.clone());
+    if !used_by.is_empty() {
+        return wire(&StrategyChanged::Refused {
+            said: copy_text(
+                "beRotation.strategy.inUse",
+                &[("n", &used_by.len().to_string())],
+            ),
+            error: None,
+            used_by,
+        });
     }
-    if now > t {
-        out.push((t, now, acct, why));
+    if let Some(p) = &s.path {
+        rotation::strategy_file_remove(&ctx.hop.store, p).map_err(|e| ("io_failed", e))?;
     }
-    out
+    wire(&StrategyChanged::Done { id })
 }
 
-/// quota-warm 留下的状态文件（`quota-warm.json`，与 `rotation.json` 同一目录）：写它的进程还活着 ⇒ 号 → 下一次开窗的时刻；
-/// 读不到 · 形状不对 · 进程没了 ⇒ 空（整类不画）。
-fn warm_of(ctx: &Ctx) -> std::collections::BTreeMap<String, Vec<u64>> {
-    let mut out = std::collections::BTreeMap::new();
-    let Some(path) = ctx
-        .hop
-        .store
-        .path()
-        .and_then(Path::parent)
-        .map(|d| d.join("quota-warm.json"))
-    else {
-        return out;
-    };
-    let Some(v) = Ro::read_to_string(&path)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-    else {
-        return out;
-    };
-    let alive = v
-        .get("pid")
-        .and_then(Value::as_u64)
-        .and_then(|p| u32::try_from(p).ok())
-        .is_some_and(crate::platform::proc::pid_alive);
-    if !alive {
-        return out;
-    }
-    for n in v
-        .get("next")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        if let (Some(a), Some(at)) = (
-            n.get("account").and_then(Value::as_str),
-            n.get("at").and_then(Value::as_u64),
-        ) {
-            out.entry(a.to_string()).or_insert_with(Vec::new).push(at);
-        }
-    }
-    out
+/// 试跑那一行：号 · `p`（`null` ＝ 此刻不挑）· 写好的为什么 · 几点能再挑。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct TryRow {
+    pub account: String,
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub p: Option<f64>,
+    pub why: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub back: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub back_text: Option<String>,
 }
 
-/// `tz` ＝ 看的那一台的时区：每段起止的字（`fromText` · `toText`）按它写。
-pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64, tz: &crate::Tz) -> Answer {
-    let mut v = plan_with(ctx, args, now, tz)?;
-    crate::accounts::quota::name_words::with_names(&mut v);
-    Ok(v)
+/// `rotation-strategy-try` 的应答：排出的先后 · 会挑谁（停发 ⇒ 缺）· 备忘 · 用了几次操作（上限）· 出错的话为什么。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct TryReply {
+    pub rows: Vec<TryRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub pick: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "unknown"))]
+    pub memo: Option<Value>,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub ops: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub max_ops: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub strategy_error: Option<StrategyError>,
 }
 
-/// [`answer_plan_with`] 的本体（号名 / 位名那一遍之前）。
-fn plan_with(ctx: &Ctx, args: &Value, now: u64, tz: &crate::Tz) -> Answer {
-    let view = view_secs(args)?;
-    let (from, until) = match view {
-        Some((before, after)) => (now.saturating_sub(before), now + after),
-        None => (now, now + span_secs(args)?),
-    };
-    let (state, why, book) = read_book(ctx);
-    let (reason, detail) = crate::stream::detail::unreadable("rotation-plan", why.as_ref());
+/// 推演 · 试跑问的是哪一份：会话此刻那份（可另给草稿）· 一份存下的配置 · 草稿。
+struct Subject {
+    agent: String,
+    start: String,
+    current: Option<String>,
+    body: ConfigBody,
+    entry: Option<SessionEntry>,
+}
+
+fn gone_session() -> Fail {
+    Fail::new("no_such_session", copy_text("beRotation.session.gone", &[]))
+}
+
+fn gone_config() -> Fail {
+    Fail::new("no_such_config", copy_text("beRotation.config.gone", &[]))
+}
+
+fn subject(book: &Book, args: &Value) -> Result<Subject, Fail> {
     let zero = crate::accounts::manage::model::ACCOUNT_ZERO.to_string();
-    let (rot, agent, start, current, above, asked) = if let Some(v) = args.get("rotation") {
-        let errors = rotation::cell_errors(v);
-        if !errors.is_empty() {
-            return wire(&PlanReply::Draft { errors });
+    let draft = args.get("draft").filter(|v| !v.is_null());
+    if args.get("sid").is_some_and(|v| !v.is_null()) {
+        let sid = sid_arg(args)?;
+        let s = book.sessions.get(&sid).ok_or_else(gone_session)?;
+        let o = book.opened(s).ok_or_else(gone_config)?;
+        let body = match draft {
+            Some(d) => parse_body(d)?,
+            None => o.body.clone(),
+        };
+        return Ok(Subject {
+            agent: s.agent.clone(),
+            start: s.start.clone(),
+            current: Some(s.current.clone()),
+            body,
+            entry: Some(s.clone()),
+        });
+    }
+    let body = match draft {
+        Some(d) => parse_body(d)?,
+        None => {
+            let id = str_arg(args, "config")?;
+            book.configs
+                .get(&id)
+                .map(|c| c.body.clone())
+                .ok_or_else(gone_config)?
         }
-        let rot = rotation::rotation_from(
-            v,
-            0..=1,
-            &account_ok,
-            &|a| ctx.is_api(LIBRARY_AGENT, a),
-            None,
-        )
-        .map_err(|e| bad(&e))?;
-        let first = first_of(&rot, &zero);
-        (
-            rot,
-            LIBRARY_AGENT.to_string(),
-            zero,
-            first,
-            Vec::new(),
-            Asked::Rotation,
-        )
-    } else if let Some(id) = rule_id_arg(args, "rule")? {
-        let Some(r) = book.rules.get(&id) else {
-            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
-        };
-        let first = first_of(&r.rotation, &zero);
-        (
-            r.rotation.clone(),
-            LIBRARY_AGENT.to_string(),
-            zero,
-            first,
-            Vec::new(),
-            Asked::Rotation,
-        )
-    } else if let Some(sid) = args.get("sid").and_then(Value::as_str) {
-        let Some(s) = book.sessions.get(sid) else {
-            return Err(bad("no such session"));
-        };
-        (
-            book.rotation_of(s),
-            s.agent.clone(),
-            s.start.clone(),
-            s.current.clone(),
-            s.blocked_above.clone(),
-            Asked::Session(sid),
-        )
-    } else if args.get("machine").and_then(Value::as_bool) == Some(true) {
-        let lib = ctx.hop.library();
-        let ids: Vec<String> = if lib.enabled {
-            lib.accounts.iter().map(|a| a.id.clone()).collect()
-        } else {
-            vec![zero.clone()]
-        };
-        let mut rot = book.default_rotation();
-        rot.order = ids
-            .iter()
-            .cloned()
-            .map(rotation::RotationSlot::Named)
-            .collect();
-        rot.enabled = ids.clone();
-        let first = ids.first().cloned().unwrap_or_else(|| zero.clone());
-        (
-            rot,
-            LIBRARY_AGENT.to_string(),
-            zero,
-            first,
-            Vec::new(),
-            Asked::Machine,
-        )
-    } else {
-        return Err(bad("missing `rotation` / `rule` / `sid` / `machine`"));
     };
-    let view_obj = ctx.hop.plan_view(
-        &rot,
-        &agent,
-        &start,
-        &current,
-        &above,
-        &|a| (ctx.rows)(&agent, a),
-        now,
-        until,
-    );
-    let text = |t: u64| {
-        crate::common::time::fmt_at(
-            i64::try_from(t).unwrap_or(i64::MAX),
-            i64::try_from(now).unwrap_or(i64::MAX),
-            tz,
-        )
-    };
-    let seg = |from: u64, to: u64, account: &Option<String>, why: &Option<SwitchWhy>| json!({"from": from, "fromText": text(from), "to": to, "toText": text(to), "account": account, "why": why});
-    // 7d 的时间轴：将来那一截只画到 +1d（再往后预测没有根据），其后界面写 `—`。
-    let plan_until = match view {
-        Some((before, _)) if before >= 86_400 => (now + 86_400).min(until),
-        _ => until,
-    };
-    let plan: Vec<Value> = view_obj
-        .steps
-        .iter()
-        .filter(|p| p.from < plan_until)
-        .map(|p| seg(p.from, p.to.min(plan_until), &p.account, &p.why))
-        .collect();
-    let machine = matches!(asked, Asked::Machine);
-    let live = if machine {
-        (ctx.live)()
-    } else {
-        Default::default()
-    };
-    let warm = if view.is_some() {
-        warm_of(ctx)
-    } else {
-        Default::default()
-    };
-    let lanes: Vec<Value> = view_obj
-        .lanes
-        .iter()
-        .map(|l| {
-            let mut v = json!({
-                "account": l.account,
-                "spans": l.spans.iter().map(|x| json!({"from": x.from, "fromText": text(x.from), "to": x.to, "toText": text(x.to), "state": x.state, "n": x.n, "w": x.w})).collect::<Vec<_>>(),
-                "resets": l.resets.iter().map(|(w, at)| json!({"w": w, "at": at, "atText": text(*at)})).collect::<Vec<_>>(),
-                "pct": l.pinch.as_ref().map(|p| p.1),
-            });
-            if machine {
-                v["usedBy"] = json!(book
-                    .sessions
-                    .iter()
-                    .filter(|(sid, s)| s.current == l.account && live.contains(*sid))
-                    .count());
-            }
-            let ats: Vec<Value> = warm
-                .get(&l.account)
-                .into_iter()
-                .flatten()
-                .filter(|t| **t > now && **t < until)
-                .map(|t| json!({"at": t, "atText": text(*t)}))
-                .collect();
-            if !ats.is_empty() {
-                v["warm"] = Value::Array(ats);
-            }
-            v
-        })
-        .collect();
-    let effective: Map<String, Value> = view_obj
-        .effective
-        .iter()
-        .map(|(a, cells)| {
-            let mut m: Map<String, Value> = cells
-                .iter()
-                .map(|(k, (at, below))| {
-                    let mut v = cap_at_wire(at);
-                    v["below"] = cap_at_wire(below);
-                    (k.clone(), v)
-                })
-                .collect();
-            // 全部窗口那一格：两窗此刻各取多少 · 这一格不算时各取多少（后端拼好的一句）。
-            if let (Some(Value::Object(all)), Some(ls)) =
-                (m.get_mut(rotation::ALL_WINDOWS), view_obj.lines.get(a))
-            {
-                let now_: Vec<_> = ls.iter().map(|(w, at, _)| (*w, *at)).collect();
-                let below: Vec<_> = ls.iter().map(|(w, _, b)| (*w, *b)).collect();
-                all.insert("list".into(), json!(lines_text(&now_)));
-                all.insert("belowList".into(), json!(lines_text(&below)));
-            }
-            (a.clone(), Value::Object(m))
-        })
-        .collect();
-    let off = tz.offset_secs(i64::try_from(now).unwrap_or(i64::MAX));
-    let grid = view.map(|(before, _)| grid_of(before, from, until, off, &text));
-    let head = (view.is_some() && !machine).then(|| head_of(ctx, &agent, &view_obj, now, &text));
-    let past = match (view, &asked) {
-        (Some(_), Asked::Session(sid)) => Some(
-            past_of(&book.sessions[*sid], from, now)
-                .into_iter()
-                .map(|(a, b, acct, why)| seg(a, b, &Some(acct), &why))
-                .collect(),
+    Ok(Subject {
+        agent: LIBRARY_AGENT.to_string(),
+        start: zero,
+        current: None,
+        body,
+        entry: None,
+    })
+}
+
+/// 用哪份策略跑：`source` 有 ⇒ 现编那一份（不装）；`id` 有 ⇒ 那一份；都没有 ⇒ 配置写的那份。
+fn trial_strategy(ctx: &Ctx, args: &Value, body: &ConfigBody) -> Option<Arc<Strategy>> {
+    if let Some(src) = args.get("source").and_then(Value::as_str) {
+        return Some(Arc::new(
+            strategy::load(
+                vec![strategy::File {
+                    name: "try.rhai".into(),
+                    path: None,
+                    text: Ok(src.to_string()),
+                }],
+                false,
+                &[],
+            )
+            .remove(0),
+        ));
+    }
+    let all = ctx.strategies();
+    let id = args
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or(&body.strategy);
+    strategy::find(&all, id)
+}
+
+/// 一行的「为什么」写成字：策略没给 ⇒「策略没给」。
+fn row_why(speak: Option<&Speak<'_>>, r: &Ranked) -> String {
+    if r.missing {
+        return copy_text("beRotation.strategy.missing", &[]);
+    }
+    speak.map(|s| s.why(&r.why)).unwrap_or_default()
+}
+
+fn strategy_error(name: &str, f: StrategyFail) -> StrategyError {
+    StrategyError {
+        text: fail_text(name, &f),
+        fail: f,
+    }
+}
+
+/// `rotation-strategy-try`：`{source? | id?, config | draft | sid, lang?}` ⇒ 按此刻的事实跑一次（不写盘不换号）。
+pub(crate) fn answer_strategy_try(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_strategy_try_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
+}
+
+pub(crate) fn answer_strategy_try_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let book = ctx.hop.store.now();
+    let sub = subject(&book, args)?;
+    let s = trial_strategy(ctx, args, &sub.body);
+    let body = match &s {
+        Some(st) if st.usable() => doc::filled(
+            &ConfigBody {
+                strategy: st.id.clone(),
+                ..sub.body.clone()
+            },
+            st,
         ),
-        _ => None,
+        _ => sub.body.clone(),
     };
-    wire(&PlanReply::Plan(Box::new(Plan {
-        errors: Vec::new(),
-        state,
-        reason,
-        detail,
+    let row = |a: &str| (ctx.rows)(&sub.agent, a);
+    let current = sub.current.clone().unwrap_or_else(|| sub.start.clone());
+    let sc = ctx
+        .hop
+        .scene_of(&book, &sub.agent, &sub.start, &current, &body, &row, now);
+    let memo = sub
+        .entry
+        .as_ref()
+        .and_then(|e| e.memo.clone())
+        .unwrap_or(Value::Null);
+    let j = decide::judge(&decide::Judge {
+        strategy: s.as_deref(),
+        body: &body,
+        accounts: &sc.accounts,
         now,
-        now_text: text(now),
-        from,
-        from_text: text(from),
-        until,
-        plan,
-        lanes,
-        effective,
-        grid,
-        head,
-        past,
-    })))
-}
-
-/// `rotation-plan` 的应答：草稿有错 ⇒ 只回逐格错；否则整份预览。
-#[derive(serde::Serialize)]
-#[serde(untagged)]
-pub(crate) enum PlanReply {
-    Draft { errors: Vec<CellError> },
-    Plan(Box<Plan>),
-}
-
-/// `rotation-plan` 的整份预览（各格的意思见注册表那一条）。
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Plan {
-    errors: Vec<CellError>,
-    state: &'static str,
-    reason: Value,
-    detail: Value,
-    now: u64,
-    now_text: String,
-    from: u64,
-    from_text: String,
-    until: u64,
-    plan: Vec<Value>,
-    lanes: Vec<Value>,
-    effective: Map<String, Value>,
-    /// 只在带 `view` 时有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    grid: Option<Value>,
-    /// 只在带 `view`、问的不是 `machine` 时有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    head: Option<Value>,
-    /// 只在 `sid` ＋ `view` 时有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    past: Option<Vec<Value>>,
-}
-
-/// 时间轴的刻度：按看的那一台的时区对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
-/// 轴上写字的那几格另带 `label`（6h 每小时 · 24h 每 3h：`HH:MM`；7d 每天零点：`MM-DD`）。
-fn grid_of(before: u64, from: u64, until: u64, off: i64, text: &dyn Fn(u64) -> String) -> Value {
-    let (step, major): (i64, i64) = match before {
-        b if b <= 2 * 3600 => (900, 3600),
-        b if b <= 6 * 3600 => (3600, 3 * 3600),
-        _ => (6 * 3600, 86_400),
-    };
-    let (from, until) = (
-        i64::try_from(from).unwrap_or(i64::MAX),
-        i64::try_from(until).unwrap_or(i64::MAX),
-    );
-    let mut t = (from + off).div_euclid(step) * step - off;
-    if t < from {
-        t += step;
-    }
-    let mut out = Vec::new();
-    while t <= until {
-        let at = u64::try_from(t).unwrap_or(0);
-        let mut g = json!({"at": at, "atText": text(at)});
-        if (t + off).rem_euclid(major) == 0 {
-            let local = (t + off).rem_euclid(86_400);
-            g["label"] = json!(if major == 86_400 {
-                let (_, m, d) = crate::common::time::civil_from_days((t + off).div_euclid(86_400));
-                format!("{m:02}-{d:02}")
+        current: &current,
+        stint: sc.stint,
+        rate: sc.rate,
+        memo: &memo,
+    });
+    let manual = sub
+        .entry
+        .as_ref()
+        .map(|e| e.manual.clone())
+        .unwrap_or_default();
+    let (eff, _) = decide::effective(&j.rows, &manual, &sc.accounts);
+    let v = decide::decide(
+        &eff,
+        &decide::Pickable {
+            facts: &sc.accounts,
+            current: &current,
+            tried: &[],
+            can_hold: crate::agents::limit_reply_of(&sub.agent).is_some(),
+        },
+        &j.strategy,
+        &mut |x| {
+            if ctx.hop.ready(&sub.agent, &sub.start, x, &row, now) {
+                Ok(())
             } else {
-                format!("{:02}:{:02}", local / 3600, (local % 3600) / 60)
-            });
-        }
-        out.push(g);
-        t += step;
-    }
-    Value::Array(out)
+                Err(Unready::NeedsLogin)
+            }
+        },
+    );
+    let all = ctx.strategies();
+    let used = if j.error.is_some() {
+        strategy::fallback()
+    } else {
+        s.clone()
+    };
+    let lang = lang_of(args);
+    let speak = used.as_deref().map(|u| Speak::of(u, lang, now, &ctx.tz));
+    let clock = TextClock::new(now, &ctx.tz);
+    let rows = eff
+        .iter()
+        .map(|r| TryRow {
+            account: r.account.clone(),
+            p: r.p,
+            why: row_why(speak.as_ref(), r),
+            back: r.back,
+            back_text: r.back.map(|t| clock.text(t).0),
+        })
+        .collect();
+    let pick = match v {
+        Verdict::Stay { .. } => Some(current.clone()),
+        Verdict::Switch { to, .. } => Some(to),
+        Verdict::Hold { .. } => None,
+    };
+    let name = s
+        .as_ref()
+        .map_or_else(|| strategy_name(&all, &body.strategy), |x| x.name.clone());
+    wire(&TryReply {
+        rows,
+        pick,
+        memo: j.memo,
+        ops: j.ops,
+        max_ops: strategy::MAX_OPERATIONS,
+        strategy_error: j.error.map(|f| strategy_error(&name, f)),
+    })
 }
 
-/// 时间轴顶行：池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, w?}}`（最早回来的那个号、几点、哪个窗口重置）；
-/// 否则 `{account, w, pct, toLine?: {w, n}}`（此刻用的号 · 卡人的窗口与用量 · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线
-/// ——封顶 → 触发，同 `effective`——算，取差得最少的那一窗；都没线 ⇒ 缺）。
-fn head_of(
-    ctx: &Ctx,
-    agent: &str,
-    v: &crate::accounts::upstream_select::rotate::PlanView,
-    now: u64,
-    text: &dyn Fn(u64) -> String,
-) -> Value {
-    use crate::accounts::quota::decide::LaneState;
-    let stuck = |l: &crate::accounts::upstream_select::rotate::PlanLane| {
-        l.spans
-            .iter()
-            .find(|x| {
-                x.from <= now
-                    && now < x.to
-                    && matches!(
-                        x.state,
-                        LaneState::Refused | LaneState::Capped | LaneState::Off
-                    )
-            })
-            .map(|x| x.to)
-    };
-    let held = v.steps.first().is_some_and(|p| p.account.is_none());
-    let all_stuck = !v.lanes.is_empty() && v.lanes.iter().all(|l| stuck(l).is_some());
-    if held || all_stuck {
-        let back = v
-            .lanes
-            .iter()
-            .filter_map(|l| stuck(l).map(|t| (t, l)))
-            .min_by_key(|(t, _)| *t);
-        let Some((at, l)) = back else {
-            return json!({"blocked": {}});
-        };
-        let mut b = json!({"account": l.account, "at": at, "atText": text(at)});
-        if let Some(rel) = crate::common::time::fmt_rel(
-            i64::try_from(at).unwrap_or(i64::MAX),
-            i64::try_from(now).unwrap_or(i64::MAX),
-        ) {
-            b["atRelText"] = json!(rel);
-        }
-        if let Some((w, _)) = l.resets.iter().find(|(_, t)| *t == at) {
-            b["w"] = json!(w);
-        }
-        return json!({ "blocked": b });
-    }
-    let Some(account) = v.steps.first().and_then(|p| p.account.clone()) else {
-        return json!({});
-    };
-    let mut h = json!({ "account": account });
-    if let Some((w, pct)) = ctx.hop.pinch(agent, &account, now) {
-        h["w"] = json!(w);
-        h["pct"] = json!(pct);
-        if let Some((lw, n)) = v
-            .lanes
-            .iter()
-            .find(|l| l.account == account)
-            .and_then(|l| l.to_line.as_ref())
-        {
-            h["toLine"] = json!({"w": lw, "n": n});
-        }
-        // 「估」：到的是这号这窗口此刻取的上限（封顶 → 触发；都没有 ⇒ 满）；没根据（[`Observed::eta`] 那几条）就不给。
-        let target = v
-            .effective
-            .get(&account)
-            .and_then(|m| m.get(&w).or_else(|| m.get("*")))
-            .and_then(|(at, _)| at.v)
-            .map_or(100, u32::from);
-        if let Some(at) = ctx.hop.eta(agent, &account, target, now) {
-            h["est"] = json!({"at": at, "atText": text(at), "pct": target, "w": w});
-        }
-    }
-    h
+// ── 会话 ─────────────────────────────────────────────────────────────────────────────
+
+/// 会话打开的那一份：哪份 · 名字 · 版本 · 改没改过 · 别处存了新版（本会话改过才有）· 改了哪几格（改过才有）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct OpenShown {
+    pub id: String,
+    pub name: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub rev: u64,
+    pub dirty: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub newer: Option<Newer>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<Diff>>"))]
+    pub diff: Vec<Diff>,
+}
+
+/// 别处存的新版：版本 · 时刻 · 谁存的（`settings` 或会话 id）· 写好的那一句。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ConfigNewer"
+    )
+)]
+pub struct Newer {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub rev: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub by: String,
+    pub text: String,
+}
+
+/// 会话面板列表的一行（有效优先级的先后，第一行是在用的号）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "RotationRow"
+    )
+)]
+pub struct RowShown {
+    pub account: String,
+    /// 策略给的那一句写成的字（`skip` 时面板写「跳过 · {why}」）。
+    pub why: String,
+    /// 此刻不挑（`p` 是 `()`）。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub skip: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub back: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub back_text: Option<String>,
+    /// 此刻也钉在它上面的别的会话数。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub also_used: u32,
+    pub facts: Facts,
+    /// 从「其余的订阅号」那一行来的。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub from_rest: bool,
+}
+
+/// 一行的参数值（谁 ＋ 那一行的每号参数）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct WhoParams {
+    /// `@start` · `@rest` · 号 id。
+    pub who: String,
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub params: Params,
+}
+
+/// 副本此刻的参数值（照策略声明补齐）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ConfigValues"
+    )
+)]
+pub struct Values {
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub params: Params,
+    pub accounts: Vec<WhoParams>,
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub acct_init: Params,
+}
+
+/// 用的哪份策略。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct StrategyRef {
+    pub id: String,
+    pub name: String,
+    pub ordered: bool,
+}
+
+/// `rotation-session-read` 里一个会话的那一份。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct SessionRotation {
+    pub agent: String,
+    pub start: String,
+    pub current: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub since: u64,
+    pub history: Vec<SwitchRecord>,
+    pub in_place: rotation::InPlace,
+    pub config: OpenShown,
+    /// 副本的描述（后端写好）。
+    pub text: String,
+    pub strategy: StrategyRef,
+    pub values: Values,
+    pub rows: Vec<RowShown>,
+    /// 手动热换到的号（顶在最前）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub hot: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub blocked: Option<Blocked>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub strategy_error: Option<StrategyError>,
+    /// 此刻那个号的显示态。
+    pub quota: show::QuotaShow,
+    /// 轮换文件此刻读不懂（引擎照上一份读懂的接着挑号、不覆盖那份文件）：需手动；那一句 ＋ 复制详情。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub needs: Option<RotationNeeds>,
+}
+
+/// 会话这一侧需手动的那一格。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct RotationNeeds {
+    /// `unreadable`（轮换文件读不懂）。
+    pub kind: String,
+    pub reason: String,
+    pub detail: String,
+}
+
+/// 一个会话在这台查得到吗：查得到 ⇒ 那一份；中转没见过 ⇒ 只说能不能不重启换。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum SessionRotationState {
+    Present(Box<SessionRotation>),
+    #[serde(rename_all = "camelCase")]
+    Absent {
+        in_place: rotation::InPlace,
+    },
 }
 
 fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, Fail> {
@@ -1328,46 +1460,216 @@ fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, Fail> {
         .collect()
 }
 
-/// `rotation-session-read`：一批会话各自的那一份（`{sids}`）；这台没见过的照实标 `absent`，不整批失败。
-/// 出口那一下给每个时刻添好显示的字（同 [`answer_quota_read`]）。
+fn newer_text(name: &str, at: u64, by: &str, now: u64, tz: &crate::Tz) -> String {
+    let at_text = crate::common::time::fmt_at(now_secs(at), now_secs(now), tz);
+    let place = if by == rotation::SAVED_BY_SETTINGS {
+        copy_text("rot.doc.whereSettings", &[])
+    } else {
+        copy_text("rot.doc.whereSession", &[("session", by)])
+    };
+    [
+        copy_text("rot.doc.newer", &[("cfg", name)]),
+        copy_text("rot.doc.newerBy", &[("at", &at_text), ("where", &place)]),
+    ]
+    .join(&copy_text("beRotation.desc.sep", &[]))
+}
+
+/// ★ 一个会话此刻的那一份（只读）：有效优先级的每一行（第一行在用）· 打开的那份 · 描述 · 停发 · 策略出错 · 显示态。
+pub(crate) fn session_state(
+    ctx: &Ctx,
+    book: &Book,
+    sid: &str,
+    live: &dyn Fn(&str) -> bool,
+    lang: Lang,
+    now: u64,
+) -> SessionRotationState {
+    let agent = book.sessions.get(sid).map(|s| s.agent.clone());
+    let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
+    let v = match ctx.hop.view(book, sid, &row, live, now) {
+        Ok(v) => v,
+        Err(in_place) => return SessionRotationState::Absent { in_place },
+    };
+    let all = ctx.strategies();
+    let tz = &ctx.tz;
+    let used = strategy::find(&all, &v.judged.strategy);
+    let speak = used.as_deref().map(|u| Speak::of(u, lang, now, tz));
+    let clock = TextClock::new(now, tz);
+    let fact = |a: &str| {
+        v.scene
+            .accounts
+            .iter()
+            .find(|(f, _)| f.id == a)
+            .map(|(f, _)| f.clone())
+    };
+    // 第一行固定是在用的号，往下照有效优先级排。
+    let mut eff = v.eff.clone();
+    if let Some(i) = eff.iter().position(|r| r.account == v.entry.current) {
+        let r = eff.remove(i);
+        eff.insert(0, r);
+    }
+    let rows: Vec<RowShown> = eff
+        .iter()
+        .filter_map(|r| {
+            let f = fact(&r.account)?;
+            let back = r.back.or(f.back);
+            Some(RowShown {
+                account: r.account.clone(),
+                why: row_why(speak.as_ref(), r),
+                skip: r.p.is_none(),
+                back,
+                back_text: back.map(|t| clock.text(t).0),
+                also_used: f.others,
+                from_rest: v.scene.from_rest.contains(&r.account),
+                facts: f,
+            })
+        })
+        .collect();
+    let blocked = match &v.verdict {
+        Verdict::Hold { back, .. } => Some(Blocked {
+            earliest: back.as_ref().map(|(a, at)| rotation::AccountAt {
+                account: a.clone(),
+                at: *at,
+                at_text: None,
+                at_rel_text: None,
+            }),
+            text: match back {
+                Some((a, at)) => copy_text(
+                    "beRotation.blocked.stop",
+                    &[
+                        ("at", &clock.text(*at).0),
+                        ("acct", &crate::accounts::quota::name_words::account_text(a)),
+                        ("rel", &clock.rel(*at).map(|w| w.0).unwrap_or_default()),
+                    ],
+                ),
+                None => copy_text("beRotation.blocked.none", &[]),
+            },
+        }),
+        _ => None,
+    };
+    let s = strategy::find(&all, &v.body.strategy);
+    let body = match &s {
+        Some(st) if st.usable() => doc::filled(&v.body, st),
+        _ => v.body.clone(),
+    };
+    let name = book
+        .configs
+        .get(&v.config_id)
+        .map_or_else(String::new, |c| c.body.name.clone());
+    let newer = doc::newer_of(book, &v.entry).map(|(rev, at, by)| Newer {
+        rev,
+        at,
+        text: newer_text(&name, at, &by, now, tz),
+        by,
+    });
+    let diff = match (&s, book.configs.get(&v.config_id)) {
+        (Some(st), Some(c)) if v.dirty && st.usable() => doc::diff(&c.body, &body, st, lang),
+        _ => Vec::new(),
+    };
+    let mut history = v.entry.history.clone();
+    for h in &mut history {
+        h.text = Some(record_text(h, &all, lang, now, tz));
+    }
+    let mut quota = v.quota.clone();
+    quota.stamp(&clock);
+    let needs = ctx.hop.store.unreadable().map(|e| {
+        let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", Some(&e));
+        RotationNeeds {
+            kind: "unreadable".into(),
+            reason: reason.as_str().unwrap_or_default().to_string(),
+            detail: detail.as_str().unwrap_or_default().to_string(),
+        }
+    });
+    SessionRotationState::Present(Box::new(SessionRotation {
+        agent: v.entry.agent.clone(),
+        start: v.entry.start.clone(),
+        current: v.entry.current.clone(),
+        since: v.entry.since,
+        history,
+        in_place: v.in_place,
+        config: OpenShown {
+            id: v.config_id.clone(),
+            name,
+            rev: v.rev,
+            dirty: v.dirty,
+            newer,
+            diff,
+        },
+        text: describe(ctx, &v.entry.agent, &v.body, s.as_deref(), lang, now),
+        strategy: StrategyRef {
+            id: v.body.strategy.clone(),
+            name: strategy_name(&all, &v.body.strategy),
+            ordered: s.as_ref().is_some_and(|x| x.ordered),
+        },
+        values: Values {
+            params: body.params.clone(),
+            accounts: body
+                .accounts
+                .iter()
+                .map(|r| WhoParams {
+                    who: r.who.key().to_string(),
+                    params: r.params.clone(),
+                })
+                .collect(),
+            acct_init: body.acct_init.clone(),
+        },
+        rows,
+        hot: v
+            .entry
+            .manual
+            .hot
+            .as_ref()
+            .filter(|_| !v.hot_stale)
+            .map(|h| h.account.clone()),
+        blocked,
+        strategy_error: v
+            .judged
+            .error
+            .clone()
+            .map(|f| strategy_error(&strategy_name(&all, &v.body.strategy), f)),
+        quota,
+        needs,
+    }))
+}
+
+/// `rotation-session-read` 的应答。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct SessionRead {
+    pub state: String,
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub reason: Value,
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub detail: Value,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub now: u64,
+    pub sessions: std::collections::BTreeMap<String, SessionRotationState>,
+}
+
+/// `rotation-session-read`：一批会话各自的那一份（`{sids, lang?}`）；这台没见过的照实标 `absent`，不整批失败。
 pub(crate) fn answer_session_read(args: &Value, tz: &crate::Tz) -> Answer {
     let now = crate::accounts::quota::now_unix();
-    let mut v = answer_session_read_with(&Ctx::here(), args, now, tz)?;
+    let mut v = answer_session_read_with(&Ctx::here().viewing(tz), args, now)?;
     crate::common::time::with_texts_now(&mut v, now, tz);
     Ok(v)
 }
 
-pub(crate) fn answer_session_read_with(
-    ctx: &Ctx,
-    args: &Value,
-    now: u64,
-    tz: &crate::Tz,
-) -> Answer {
+pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let sids = sids_of(args, "sids")?;
     let (state, why, book) = read_book(ctx);
     let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
     let live = (ctx.live)();
-    let lineage = ctx.lineage.now();
-    let clock = crate::common::time::TextClock::new(now, tz);
-    let mut sessions = Map::new();
-    for sid in sids {
-        let agent = book.sessions.get(&sid).map(|s| s.agent.clone());
-        let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
-        let parent = lineage.parent_of(&sid);
-        let mut one = ctx
-            .hop
-            .view(&book, &sid, parent, &row, &|x| live.contains(x), now);
-        // 此刻那个号的显示态：时刻字与用量那一格按这台此刻的本地钟写（同 `quota-read` 那一处）。
-        if let crate::accounts::quota::rotation::SessionRotationState::Present(p) = &mut one {
-            p.quota.stamp(&clock);
-        }
-        sessions.insert(
-            sid,
-            serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
-        );
-    }
+    let lang = lang_of(args);
+    let sessions = sids
+        .into_iter()
+        .map(|sid| {
+            let one = session_state(ctx, &book, &sid, &|x| live.contains(x), lang, now);
+            (sid, one)
+        })
+        .collect();
     let mut v = wire::<_, Fail>(&SessionRead {
-        state,
+        state: state.to_string(),
         reason,
         detail,
         now,
@@ -1377,171 +1679,352 @@ pub(crate) fn answer_session_read_with(
     Ok(v)
 }
 
-/// `rotation-session-read` 的应答。
-#[derive(serde::Serialize)]
-pub(crate) struct SessionRead {
-    state: &'static str,
-    reason: Value,
-    detail: Value,
-    now: u64,
-    /// 每个 sid 一份。
-    sessions: Map<String, Value>,
+/// 打开一份配置的结局。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum SessionOpened {
+    Opened,
+    /// 本会话的副本有没存的改动（界面问保存 / 丢掉 / 取消）。
+    Dirty {
+        diff: Vec<Diff>,
+    },
 }
 
-/// `rotation-session-set`：一批会话的轮换来源（`{sids, rotation}`；`rotation` ＝ `"follow"` · `{"rule": id}` ·
-/// `"custom"`（恢复上一份自己的，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的 ＝「转为本会话」）·
-/// `{"custom": {order, enabled, cap?, …}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
-/// 回每个会话的结果。指向的规则不在 ⇒ `no_such_rule`（整批不写）。
-pub(crate) fn answer_session_set(args: &Value, tz: &crate::Tz) -> Answer {
-    answer_session_set_with(
+/// `rotation-session-open`：`{sid, config, discard?}`。
+pub(crate) fn answer_session_open(args: &Value) -> Answer {
+    answer_session_open_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_session_open_with(ctx: &Ctx, args: &Value) -> Answer {
+    let sid = sid_arg(args)?;
+    let id = str_arg(args, "config")?;
+    let discard = flag(args, "discard")?;
+    let lang = lang_of(args);
+    store_path(ctx)?;
+    let all = ctx.strategies();
+    let r = rotation::face_change(&ctx.hop.store, |b| {
+        doc::open_session(b, &sid, &id, discard, &all, lang)
+    })
+    .map_err(|e| ("io_failed", e))?;
+    match r {
+        doc::Opened::Opened => wire(&SessionOpened::Opened),
+        doc::Opened::Dirty(diff) => wire(&SessionOpened::Dirty { diff }),
+        doc::Opened::Missing => Err(gone_config()),
+    }
+}
+
+/// 改副本的结局。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct SessionEdited {
+    pub dirty: bool,
+    pub diff: Vec<Diff>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<CellError>>"))]
+    pub errors: Vec<CellError>,
+}
+
+fn edit_of(args: &Value) -> Result<Edit, Fail> {
+    let list = |k: &str| -> Result<Vec<String>, Fail> {
+        match args.get(k) {
+            None | Some(Value::Null) => Ok(Vec::new()),
+            Some(Value::Array(a)) => a
+                .iter()
+                .map(|x| {
+                    x.as_str()
+                        .map(str::to_string)
+                        .ok_or_else(|| bad(&format!("`{k}` must be an array of account ids")))
+                })
+                .collect(),
+            Some(_) => Err(bad(&format!("`{k}` must be an array of account ids"))),
+        }
+    };
+    let set = match args.get("set") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                let k = x
+                    .get("k")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| bad(&format!("`set[{i}].k` must be a parameter name")))?;
+                Ok(Set {
+                    acct: x.get("acct").and_then(Value::as_str).map(str::to_string),
+                    k: k.to_string(),
+                    v: x.get("v").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .collect::<Result<_, Fail>>()?,
+        Some(_) => return Err(bad("`set` must be an array of {acct?, k, v}")),
+    };
+    Ok(Edit {
+        set,
+        add: list("add")?,
+        drop: list("drop")?,
+        strategy: args
+            .get("strategy")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+/// `rotation-session-edit`：`{sid, set: [{acct?, k, v}], add?, drop?, strategy?, lang?}` ⇒ 改副本（手动调整不在这里）。
+pub(crate) fn answer_session_edit(args: &Value) -> Answer {
+    answer_session_edit_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_session_edit_with(ctx: &Ctx, args: &Value) -> Answer {
+    let sid = sid_arg(args)?;
+    let e = edit_of(args)?;
+    let lang = lang_of(args);
+    store_path(ctx)?;
+    let all = ctx.strategies();
+    let r = rotation::face_change(&ctx.hop.store, |b| {
+        doc::edit_session(b, &sid, &e, &all, &account_ok, lang)
+    })
+    .map_err(|e| ("io_failed", e))?
+    .ok_or_else(gone_session)?;
+    wire(&SessionEdited {
+        dirty: r.dirty,
+        diff: r.diff,
+        errors: r.errors,
+    })
+}
+
+/// 存会话副本的结局。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum SessionSaved {
+    Saved {
+        id: String,
+        #[cfg_attr(test, ts(type = "number"))]
+        rev: u64,
+    },
+    /// 那份配置读到之后别处存过（没 `force`）：此刻的版本 · 别处那一版 · 本会话的改动。
+    Conflict {
+        #[cfg_attr(test, ts(type = "number"))]
+        rev: u64,
+        theirs: Vec<Diff>,
+        mine: Vec<Diff>,
+    },
+    Refused {
+        errors: Vec<CellError>,
+    },
+}
+
+/// `rotation-session-save`：`{sid, ifRev, as?: {name?}, force?}`。
+pub(crate) fn answer_session_save(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_session_save_with(
         &Ctx::here().viewing(tz),
         args,
         crate::accounts::quota::now_unix(),
     )
 }
 
-/// 要写成什么样。
-enum Want {
-    Follow,
-    /// 跟随父会话（父按血缘填）。
-    Parent,
-    Rule(String),
-    /// 恢复自己那份（没有 ⇒ 照此刻生效的那份拷）。
-    Restore,
-    /// 照此刻生效的那份拷。
-    Detach,
-    Custom(Value),
+pub(crate) fn answer_session_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let sid = sid_arg(args)?;
+    let ifr = if_rev(args)?;
+    let force = flag(args, "force")?;
+    let as_name = match args.get("as") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(m)) => Some(m.get("name").and_then(Value::as_str).map(str::to_string)),
+        Some(_) => return Err(bad("`as` must be {name?}")),
+    };
+    let lang = lang_of(args);
+    store_path(ctx)?;
+    let all = ctx.strategies();
+    let tz = ctx.tz.iana_name();
+    let r = rotation::face_change(&ctx.hop.store, |b| {
+        doc::save_session(
+            b,
+            &sid,
+            ifr,
+            as_name.clone(),
+            force,
+            now,
+            tz.clone(),
+            &all,
+            lang,
+        )
+    })
+    .map_err(|e| ("io_failed", e))?;
+    match r {
+        Saved::Saved { id, rev } => wire(&SessionSaved::Saved { id, rev }),
+        Saved::Clash { rev, theirs, mine } => wire(&SessionSaved::Conflict { rev, theirs, mine }),
+        Saved::Refused(errors) => wire(&SessionSaved::Refused { errors }),
+    }
+}
+
+/// `rotation-session-revert`：`{sid, toLatest?}` ⇒ 丢副本（`toLatest` ＝ 载入新版本：同一件事，`rev` 跟上）。
+pub(crate) fn answer_session_revert(args: &Value) -> Answer {
+    answer_session_revert_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_session_revert_with(ctx: &Ctx, args: &Value) -> Answer {
+    let sid = sid_arg(args)?;
+    flag(args, "toLatest")?;
+    store_path(ctx)?;
+    let ok = rotation::face_change(&ctx.hop.store, |b| doc::revert_session(b, &sid))
+        .map_err(|e| ("io_failed", e))?;
+    if !ok {
+        return Err(gone_session());
+    }
+    wire(&done())
+}
+
+/// 手动调整的结局：`done` · 没换成（`skipped` · `failed`，`why` 同 `rotation-switch` 那一格的码）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "RotationPlaced"
+    )
+)]
+pub struct Placed {
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub why: Option<String>,
+}
+
+impl From<SwitchOutcome> for Placed {
+    fn from(o: SwitchOutcome) -> Self {
+        match o {
+            SwitchOutcome::Switched => Placed {
+                state: "done".into(),
+                why: None,
+            },
+            SwitchOutcome::Skipped { code } => Placed {
+                state: "skipped".into(),
+                why: Some(code),
+            },
+            SwitchOutcome::NotSwitched { code } => Placed {
+                state: "failed".into(),
+                why: Some(code),
+            },
+        }
+    }
+}
+
+/// `rotation-session-set`：手动调整（不碰副本）。`{sid, place: {account, at}}` ⇒ 把那个号放到第 `at` 位（`at = 0` ＝ 现在就换过去，同
+/// `rotation-switch` 热换）；`{sid, refresh: true}` ⇒ 清掉全部手动调整与备忘，照策略重算。
+pub(crate) fn answer_session_set(args: &Value) -> Answer {
+    answer_session_set_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
 }
 
 pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
-    let sids = sids_of(args, "sids")?;
-    let want = match args.get("rotation") {
-        Some(Value::String(s)) if s == "follow" => Want::Follow,
-        Some(Value::String(s)) if s == "parent" => Want::Parent,
-        Some(Value::String(s)) if s == "custom" => Want::Restore,
-        Some(Value::String(s)) if s == "detach" => Want::Detach,
-        Some(Value::Object(m)) if m.len() == 1 && m.contains_key("custom") => {
-            Want::Custom(m["custom"].clone())
-        }
-        Some(Value::Object(m)) if m.len() == 1 && m.contains_key("rule") => {
-            Want::Rule(rule_id_arg(args.get("rotation").unwrap_or(&Value::Null), "rule")?.unwrap_or_default())
-        }
-        _ => {
-            return Err(bad(
-                "`rotation` must be \"follow\", \"parent\", \"custom\", \"detach\", {\"rule\": id} or {\"custom\": {order, enabled, cap?}}",
-            ))
-        }
-    };
-    let named = |k: &str| {
-        args.get(k)
-            .and_then(Value::as_str)
-            .filter(|s| account_ok(s) || *s == "_")
-            .map(str::to_string)
-    };
-    let (agent, start) = (named("agent"), named("start"));
+    let sid = sid_arg(args)?;
     store_path(ctx)?;
-    let book = ctx.hop.store.now();
-    if let Want::Rule(id) = &want {
-        if !book.rules.contains_key(id) {
-            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
-        }
-    }
-    // 跟随父会话：每个都得在血缘里有父，且父（在账本里的话）与它同一家；有一个不成立 ⇒ 整批 `no_parent`。
-    let lineage = ctx.lineage.now();
-    let parent_of = |sid: &str| -> Option<String> {
-        let p = lineage.parent_of(sid)?;
-        let mine = book
-            .sessions
-            .get(sid)
-            .map(|s| s.agent.as_str())
-            .or(agent.as_deref());
-        let theirs = book.sessions.get(p).map(|s| s.agent.as_str());
-        match (mine, theirs) {
-            (Some(m), Some(t)) if m != t => None,
-            _ => Some(p.to_string()),
-        }
-    };
-    if matches!(want, Want::Parent) && sids.iter().any(|sid| parent_of(sid).is_none()) {
-        return Err(("no_parent", copy_text("beRotation.parent.none", &[])).into());
-    }
-    // 先把要写的每一份都判完（不合法整批拒、一个字节不写），再一次写进去。
-    let mut plan: Vec<(String, Source, Option<Rotation>)> = Vec::new();
-    let mut outcomes = Map::new();
-    for sid in &sids {
-        let s = book.sessions.get(sid);
-        let (g, effective) = match (s, &agent, &start) {
-            (Some(s), _, _) => (s.agent.clone(), book.rotation_of(s)),
-            (None, Some(g), Some(_)) => (g.clone(), book.default_rotation()),
-            (None, _, _) => {
-                outcomes.insert(
-                    sid.clone(),
-                    outcome(SwitchOutcome::Skipped {
-                        code: "noRelay".into(),
-                    })?,
-                );
-                continue;
+    if flag(args, "refresh")? {
+        let ok = rotation::face_change(&ctx.hop.store, |b| match b.sessions.get_mut(&sid) {
+            Some(s) => {
+                s.manual = Manual::default();
+                s.memo = None;
+                true
             }
-        };
-        let (source, custom) = match &want {
-            Want::Follow => (Source::Follow, None),
-            Want::Parent => (Source::Parent(parent_of(sid).unwrap_or_default()), None),
-            Want::Rule(id) => (Source::Rule(id.clone()), None),
-            Want::Restore => (
-                Source::Custom,
-                Some(s.and_then(|s| s.custom.clone()).unwrap_or(effective)),
-            ),
-            Want::Detach => (Source::Custom, Some(effective.stamped(&ctx.tz))),
-            Want::Custom(v) => (
-                Source::Custom,
-                Some(
-                    rotation::rotation_from(
-                        v,
-                        0..=1,
-                        &account_ok,
-                        &|a| ctx.is_api(&g, a),
-                        Some(&effective),
-                    )
-                    .map_err(|e| bad(&e))?
-                    .stamped(&ctx.tz),
-                ),
-            ),
-        };
-        plan.push((sid.clone(), source, custom));
-    }
-    rotation::face_change(&ctx.hop.store, |b| {
-        for (sid, source, custom) in &plan {
-            if !b.sessions.contains_key(sid) {
-                if let (Some(g), Some(st)) = (&agent, &start) {
-                    b.sessions
-                        .insert(sid.clone(), SessionEntry::fresh(g, st, now));
-                }
-            }
-            if let Some(s) = b.sessions.get_mut(sid) {
-                s.source = source.clone();
-                if custom.is_some() {
-                    s.custom.clone_from(custom);
-                }
-            }
+            None => false,
+        })
+        .map_err(|e| ("io_failed", e))?;
+        if !ok {
+            return Err(gone_session());
         }
+        return wire(&Placed::from(SwitchOutcome::Switched));
+    }
+    let place = args
+        .get("place")
+        .and_then(Value::as_object)
+        .ok_or_else(|| bad("`place` must be {account, at} (or `refresh: true`)"))?;
+    let account = place
+        .get("account")
+        .and_then(Value::as_str)
+        .filter(|a| account_ok(a) || *a == crate::accounts::quota::name_words::HOME_ACCOUNT)
+        .ok_or_else(|| bad("`place.account` must name an account"))?
+        .to_string();
+    let at = place
+        .get("at")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| bad("`place.at` must be a position (0 = switch now)"))?;
+    if at == 0 {
+        return wire(&Placed::from(hot_one(ctx, &sid, &account, now)));
+    }
+    let ok = rotation::face_change(&ctx.hop.store, |b| match b.sessions.get_mut(&sid) {
+        Some(s) => {
+            s.manual.place.retain(|p| p.account != account);
+            s.manual.place.push(Place {
+                account: account.clone(),
+                at: usize::try_from(at).unwrap_or(usize::MAX),
+            });
+            true
+        }
+        None => false,
     })
     .map_err(|e| ("io_failed", e))?;
-    for (sid, _, _) in plan {
-        outcomes.insert(sid, outcome(SwitchOutcome::Switched)?);
+    if !ok {
+        return Err(gone_session());
     }
-    wire(&SessionSet { sessions: outcomes })
+    wire(&Placed::from(SwitchOutcome::Switched))
 }
 
-/// `rotation-session-set` 的应答：逐个结果。
-#[derive(serde::Serialize)]
-pub(crate) struct SessionSet {
-    sessions: Map<String, Value>,
+/// `session-new` 带 `rotation: {config}`：起之前在这台的账本里给那个定好的 sid 记一条、打开那一份（会话一报到就已经是它）。
+/// 配置不在 ⇒ `no_such_config`。`kind` ＝ 线上的那一家（记成它的适配器 id）。
+pub(crate) fn preset_with(
+    ctx: &Ctx,
+    sid: &str,
+    kind: &str,
+    config: &str,
+    now: u64,
+) -> Result<(), (&'static str, String)> {
+    store_path(ctx)?;
+    let book = ctx.hop.store.now();
+    let Some(c) = book.configs.get(config) else {
+        return Err(("no_such_config", copy_text("beRotation.config.gone", &[])));
+    };
+    let open = rotation::OpenConfig {
+        id: config.to_string(),
+        rev: c.rev,
+        copy: None,
+    };
+    let agent = crate::agents::pick_kind(Some(kind))
+        .map(|(_, f)| f.adapter_id.to_string())
+        .unwrap_or_else(|_| kind.to_string());
+    let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
+    rotation::face_change(&ctx.hop.store, |b| {
+        b.sessions.insert(
+            sid.to_string(),
+            SessionEntry::fresh(&agent, zero, now, open.clone()),
+        );
+    })
+    .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
+}
+
+/// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号的；写不成只出声）。
+pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
+    if let Err(e) = rotation::face_change(&ctx.hop.store, |b| {
+        if b.sessions.get(sid).is_some_and(|s| s.history.is_empty()) {
+            b.sessions.remove(sid);
+        }
+    }) {
+        tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{}", e.logged());
+    }
 }
 
 pub(crate) fn outcome(o: SwitchOutcome) -> Result<Value, (&'static str, String)> {
     serde_json::to_value(o).map_err(|e| ("failed", e.to_string()))
 }
 
-/// 不重启换一个会话：中转见过它 · 这一家有账号 · 这台建了账号库 · 目标号接得上 ⇒ 钉过去、记一条。
+/// 不重启换一个会话（手动热换）：中转见过它 · 这一家有账号 · 这台建了账号库 · 目标号接得上 ⇒ 钉过去、记 `manual.hot`、记一条。
+/// 不出任何提示。
 pub(crate) fn hot_one(ctx: &Ctx, sid: &str, target: &str, now: u64) -> SwitchOutcome {
     let book = ctx.hop.store.now();
     let skipped = |code: &str| SwitchOutcome::Skipped { code: code.into() };
@@ -1557,27 +2040,27 @@ pub(crate) fn hot_one(ctx: &Ctx, sid: &str, target: &str, now: u64) -> SwitchOut
     if !ctx.hop.library().enabled {
         return skipped("machineNotMulti");
     }
-    if s.current == target {
-        return SwitchOutcome::Switched;
-    }
     let row = |a: &str| (ctx.rows)(&s.agent, a);
-    if let Err(u) = ctx.hop.check_target(&s.agent, &s.start, target, &row, now) {
-        let code = match u {
-            Unready::NeedsKey => "targetNeedsKey",
-            Unready::NeedsLogin | Unready::UnsureBody => "targetNeedsLogin",
-        };
-        return SwitchOutcome::NotSwitched { code: code.into() };
+    if s.current != target {
+        if let Err(u) = ctx.hop.check_target(&s.agent, &s.start, target, &row, now) {
+            let code = match u {
+                Unready::NeedsKey => "targetNeedsKey",
+                Unready::NeedsLogin | Unready::UnsureBody => "targetNeedsLogin",
+            };
+            return SwitchOutcome::NotSwitched { code: code.into() };
+        }
     }
-    record(ctx, sid, &s.current, target, SwitchWhy::ManualHot, now)
+    let from = s.current.clone();
+    record(ctx, sid, &from, target, Leave::Manual, now)
 }
 
-/// 记一条手动换号（钉到 `to`）；写不进 ⇒ 没成。
+/// 记一条手动换号（钉到 `to`；`Leave::Manual` ⇒ 另记 `manual.hot`）；写不进 ⇒ 没成。
 pub(crate) fn record(
     ctx: &Ctx,
     sid: &str,
     from: &str,
     to: &str,
-    why: SwitchWhy,
+    leave: Leave,
     now: u64,
 ) -> SwitchOutcome {
     let agent = ctx
@@ -1593,29 +2076,32 @@ pub(crate) fn record(
         .quota
         .entry(&agent, from)
         .and_then(|o| o.reading.resets_at);
+    let hot = matches!(leave, Leave::Manual);
     let rec = SwitchRecord {
-        at_text: None,
-        from_resets_at_text: None,
         at: now,
+        at_text: None,
         from: from.to_string(),
         to: to.to_string(),
-        why,
+        leave,
+        pick: None,
         from_resets_at: resets,
+        from_resets_at_text: None,
+        text: None,
     };
     let base = ctx.hop.baseline_of(&agent, to, now);
-    let book = ctx.hop.store.now();
-    let above = book
-        .sessions
-        .get(sid)
-        .map(|s| {
-            ctx.hop
-                .above_at(&book, s, to, &|a| (ctx.rows)(&agent, a), now)
-        })
-        .unwrap_or_default();
     match rotation::face_change(&ctx.hop.store, |b| {
-        b.pin(sid, rec, &[]);
-        b.rebase(sid, &base);
-        b.block_above(sid, &above);
+        if hot {
+            if let Some(s) = b.sessions.get_mut(sid) {
+                s.manual.hot = Some(Hot {
+                    account: to.to_string(),
+                    since: now,
+                });
+                s.manual.place.retain(|p| p.account != to);
+            }
+        }
+        if b.pin(sid, rec) {
+            b.rebase(sid, &base);
+        }
     }) {
         Ok(()) => SwitchOutcome::Switched,
         Err(e) => {
@@ -1625,6 +2111,532 @@ pub(crate) fn record(
             }
         }
     }
+}
+
+// ── 推演 ─────────────────────────────────────────────────────────────────────────────
+
+/// 视窗：`12h`（前 3h · 后 9h）· `24h`（前 6h · 后 18h）。
+fn view_secs(args: &Value) -> Result<(u64, u64, &'static str), Fail> {
+    match args.get("view").and_then(Value::as_str) {
+        None | Some("12h") => Ok((3 * 3600, 9 * 3600, "12h")),
+        Some("24h") => Ok((6 * 3600, 18 * 3600, "24h")),
+        Some(_) => Err(bad("`view` must be 12h / 24h")),
+    }
+}
+
+/// 推演里的一段：`[from, to)` 用 `account`（`null` ＝ 停发）· 这一段开头为什么换过来（头一段 ⇒ 缺）· 估的。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PlanSeg {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub from: u64,
+    pub from_text: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub to: u64,
+    pub to_text: String,
+    pub account: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub why: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub est: bool,
+}
+
+/// 合图里一个号那一行的一段：`k` ＝ `use`（在用）· `line`（到线：策略给 `()` 且为什么是 `@line`）· `off`（时段不用）·
+/// `refused` · `full` · `overage` · `login` · `skip`（策略此刻不挑，别的原因）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../../frontend/ui/generated/", rename = "PlanBar")
+)]
+pub struct Bar {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub to: u64,
+    pub k: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub est: bool,
+}
+
+/// 视窗里的一个重置刻度（语义位 · 时刻）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanReset"
+    )
+)]
+pub struct ResetMark {
+    pub w: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub at_text: String,
+}
+
+/// 合图里一个号那一行。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PlanRow {
+    pub account: String,
+    pub bars: Vec<Bar>,
+    pub resets: Vec<ResetMark>,
+    /// 离此刻的线还剩几点（卡人那一窗；策略声明了 `line` 才有）· 写好的字「余 N」。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub left: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub left_text: Option<String>,
+    /// 视窗里这个号那几段时段（每号参数 `slots`）与那一段的线。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<SlotBand>>"))]
+    pub slots: Vec<SlotBand>,
+    /// 在用的号按最近的用速估的到线时刻（没用速 · 视窗里到不了 · 窗口先重置 ⇒ 缺）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub est: Option<EstMark>,
+    /// 落在视窗外的重置（时刻 ＋ 写好的那一句）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<FarReset>>"))]
+    pub far_resets: Vec<FarReset>,
+}
+
+/// 时段那一段：`[from, to)` · 这一段的线（`0` ＝ 这段不用）· 写好的字（「≤80%」·「不用」）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanSlotBand"
+    )
+)]
+pub struct SlotBand {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub to: u64,
+    pub line: u8,
+    pub text: String,
+}
+
+/// 估的到线时刻：几点 · 写好的字 · 哪一窗。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanEstimate"
+    )
+)]
+pub struct EstMark {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub at_text: String,
+    pub w: String,
+}
+
+/// 视窗外的重置：语义位 · 几点 · 时刻的字 · 写好的那一句。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanFarReset"
+    )
+)]
+pub struct FarReset {
+    pub w: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub at_text: String,
+    pub text: String,
+}
+
+/// 视窗 `[from, until)` 里一行时段参数落成的那几段（按配置的时区；跨零点照算）。
+fn slot_bands(body: &ConfigBody, p: &Params, from: u64, until: u64) -> Vec<SlotBand> {
+    let Some(slots) = p.get(strategy::form::SLOTS).and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let off = body.offset_at(from);
+    let day = 86_400i64;
+    let first = (now_secs(from) + off).div_euclid(day) * day - off - day;
+    let mut out = Vec::new();
+    for x in slots {
+        let Some((f, t)) = x
+            .get("at")
+            .and_then(Value::as_str)
+            .and_then(strategy::form::span_of)
+        else {
+            continue;
+        };
+        let line = x
+            .get("line")
+            .and_then(Value::as_u64)
+            .and_then(|n| u8::try_from(n).ok())
+            .unwrap_or(0);
+        let text = if line == 0 {
+            copy_text("beRotation.plan.slotOff", &[])
+        } else {
+            copy_text("beRotation.plan.slotLine", &[("n", &line.to_string())])
+        };
+        for k in 0..4i64 {
+            let ds = first + k * day;
+            let s = ds + i64::from(f) * 60;
+            let e = if f < t {
+                ds + i64::from(t) * 60
+            } else {
+                ds + day + i64::from(t) * 60
+            };
+            let (s, e) = (s.max(now_secs(from)), e.min(now_secs(until)));
+            if s < e {
+                out.push(SlotBand {
+                    from: u64::try_from(s).unwrap_or(0),
+                    to: u64::try_from(e).unwrap_or(0),
+                    line,
+                    text: text.clone(),
+                });
+            }
+        }
+    }
+    out.sort_by_key(|b| b.from);
+    out
+}
+
+/// 刻度。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct GridMark {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub at_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub label: Option<String>,
+}
+
+/// `rotation-plan` 的应答。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PlanReply {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub now: u64,
+    pub now_text: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub until: u64,
+    pub view: String,
+    /// 此刻之前（只在问会话时有：照换号记录）＋ 此刻之后（推演）。
+    pub plan: Vec<PlanSeg>,
+    pub rows: Vec<PlanRow>,
+    pub grid: Vec<GridMark>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub strategy_error: Option<StrategyError>,
+}
+
+/// 时间轴的刻度：按看的那一台的时区对齐（12h 一格 30m、每 2h 写字；24h 一格 1h、每 3h 写字）。
+fn grid_of(
+    view: &str,
+    from: u64,
+    until: u64,
+    off: i64,
+    text: &dyn Fn(u64) -> String,
+) -> Vec<GridMark> {
+    let (step, major): (i64, i64) = if view == "12h" {
+        (1800, 7200)
+    } else {
+        (3600, 3 * 3600)
+    };
+    let (from, until) = (now_secs(from), now_secs(until));
+    let mut t = (from + off).div_euclid(step) * step - off;
+    if t < from {
+        t += step;
+    }
+    let mut out = Vec::new();
+    while t <= until {
+        let at = u64::try_from(t).unwrap_or(0);
+        let label = ((t + off).rem_euclid(major) == 0).then(|| {
+            let local = (t + off).rem_euclid(86_400);
+            format!("{:02}:{:02}", local / 3600, (local % 3600) / 60)
+        });
+        out.push(GridMark {
+            at,
+            at_text: text(at),
+            label,
+        });
+        t += step;
+    }
+    out
+}
+
+/// 一个号在一个时刻的那一格是什么样子（`None` ＝ 能挑、没在用：那一格不画）。
+fn bar_kind(snap: &crate::accounts::quota::plan::Snap, account: &str) -> Option<&'static str> {
+    if snap.account.as_deref() == Some(account) {
+        return Some("use");
+    }
+    let f = snap.facts.iter().find(|f| f.id == account)?;
+    if let Some(w) = f.why_not {
+        return Some(w.word());
+    }
+    let r = snap.rows.iter().find(|r| r.account == account)?;
+    if r.p.is_some() {
+        return None;
+    }
+    Some(match r.why.get("k").and_then(Value::as_str) {
+        Some("@line") => "line",
+        Some("@off") => "off",
+        _ => "skip",
+    })
+}
+
+/// `rotation-plan`：`{sid | config | draft, source?, view: 12h | 24h, lang?}` ⇒ 此刻往后怎么换（推演）＋ 合图每行（都不写）。
+pub(crate) fn answer_plan(args: &Value, tz: &crate::Tz) -> Answer {
+    let now = crate::accounts::quota::now_unix();
+    let mut v = answer_plan_with(&Ctx::here().viewing(tz), args, now)?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
+}
+
+pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let (before, after, view) = view_secs(args)?;
+    let (from, until) = (now.saturating_sub(before), now + after);
+    let book = ctx.hop.store.now();
+    let sub = subject(&book, args)?;
+    let s = trial_strategy(ctx, args, &sub.body);
+    let body = sub.body.clone();
+    let row = |a: &str| (ctx.rows)(&sub.agent, a);
+    let current0 = sub.current.clone().unwrap_or_else(|| sub.start.clone());
+    let sc = ctx
+        .hop
+        .scene_of(&book, &sub.agent, &sub.start, &current0, &body, &row, now);
+    let ready = |x: &str| ctx.hop.ready(&sub.agent, &sub.start, x, &row, now);
+    let memo = sub
+        .entry
+        .as_ref()
+        .and_then(|e| e.memo.clone())
+        .unwrap_or(Value::Null);
+    let snaps = crate::accounts::quota::plan::simulate(&crate::accounts::quota::plan::Input {
+        strategy: s.as_deref(),
+        body: &body,
+        accounts: sc.accounts.clone(),
+        now,
+        until,
+        current: current0.clone(),
+        stint: sc.stint,
+        rate: sc.rate,
+        memo: memo.clone(),
+        manual: sub
+            .entry
+            .as_ref()
+            .map(|e| e.manual.clone())
+            .unwrap_or_default(),
+        can_hold: crate::agents::limit_reply_of(&sub.agent).is_some(),
+        ready: &ready,
+    });
+    let clock = TextClock::new(now, &ctx.tz);
+    let text = |t: u64| clock.text(t).0;
+    let all = ctx.strategies();
+    let lang = lang_of(args);
+    let why_text = |strategy: &str, w: &Value| {
+        strategy::find(&all, strategy)
+            .map(|st| Speak::of(&st, lang, now, &ctx.tz).why(w))
+            .unwrap_or_default()
+    };
+    let seg =
+        |from: u64, to: u64, account: Option<String>, why: Option<String>, est: bool| PlanSeg {
+            from,
+            from_text: text(from),
+            to,
+            to_text: text(to),
+            account,
+            why,
+            est,
+        };
+    let mut plan: Vec<PlanSeg> = Vec::new();
+    // 此刻之前：问的是会话 ⇒ 照换号记录切段（没换成的那几种不切）。
+    if let Some(e) = &sub.entry {
+        let mut recs: Vec<&SwitchRecord> = e
+            .history
+            .iter()
+            .filter(|h| h.from != h.to && h.at > from && h.at <= now)
+            .collect();
+        recs.sort_by_key(|h| h.at);
+        let mut t = if recs.is_empty() {
+            e.since.clamp(from, now)
+        } else {
+            from
+        };
+        let mut acct = recs
+            .first()
+            .map_or_else(|| e.current.clone(), |h| h.from.clone());
+        let mut why: Option<String> = None;
+        for h in recs {
+            if h.at > t {
+                plan.push(seg(t, h.at, Some(acct.clone()), why.clone(), false));
+            }
+            t = h.at;
+            acct = h.to.clone();
+            why = Some(record_text(h, &all, lang, now, &ctx.tz));
+        }
+        if now > t {
+            plan.push(seg(t, now, Some(acct), why, false));
+        }
+    }
+    // 此刻之后：推演的每一刻并成段。
+    for (i, sn) in snaps.iter().enumerate() {
+        let end = snaps.get(i + 1).map_or(until, |n| n.at);
+        let why = sn.switched.as_ref().map(|w| why_text(&sn.strategy, w));
+        match plan.last_mut() {
+            Some(last)
+                if last.account == sn.account
+                    && why.is_none()
+                    && last.to == sn.at
+                    && last.est == sn.est =>
+            {
+                last.to = end;
+                last.to_text = text(end);
+            }
+            _ => plan.push(seg(sn.at, end, sn.account.clone(), why, sn.est)),
+        }
+    }
+    let clock_now = body.clock_at(now);
+    let mut rows: Vec<PlanRow> = sc
+        .accounts
+        .iter()
+        .map(|(f, p)| PlanRow {
+            left: (p.contains_key(strategy::form::LINE) && f.kind == Kind::Sub).then(|| {
+                let w = crate::accounts::quota::plan::pinch(f);
+                let used = if w == "7d" { f.w7d.used } else { f.w5h.used };
+                (crate::accounts::quota::plan::line_now(p, w, clock_now) - used)
+                    .max(0.0)
+                    .round() as u32
+            }),
+            left_text: None,
+            slots: slot_bands(&body, p, from, until),
+            est: (f.id == current0)
+                .then_some(())
+                .and(sc.rate.filter(|r| *r > 0.0))
+                .and_then(|r| {
+                    let w = crate::accounts::quota::plan::pinch(f);
+                    let win = if w == "7d" { f.w7d } else { f.w5h };
+                    let line = crate::accounts::quota::plan::line_now(p, w, clock_now);
+                    (win.open && line > win.used).then_some(())?;
+                    let at = now + ((line - win.used) / r * 60.0).ceil() as u64;
+                    (at < until && win.resets.is_none_or(|t| at < t)).then(|| EstMark {
+                        at,
+                        at_text: text(at),
+                        w: w.to_string(),
+                    })
+                }),
+            far_resets: [("5h", f.w5h.resets), ("7d", f.w7d.resets)]
+                .iter()
+                .filter_map(|(w, t)| {
+                    let at = t.filter(|t| *t >= until)?;
+                    Some(FarReset {
+                        w: (*w).to_string(),
+                        at,
+                        at_text: text(at),
+                        text: copy_text(
+                            "beRotation.plan.farReset",
+                            &[
+                                ("w", &crate::accounts::quota::name_words::slot_text(w)),
+                                ("at", &text(at)),
+                            ],
+                        ),
+                    })
+                })
+                .collect(),
+            account: f.id.clone(),
+            bars: Vec::new(),
+            resets: [("5h", f.w5h.resets), ("7d", f.w7d.resets)]
+                .iter()
+                .filter_map(|(w, t)| {
+                    let at = t.filter(|t| *t > now && *t < until)?;
+                    Some(ResetMark {
+                        w: (*w).to_string(),
+                        at,
+                        at_text: text(at),
+                    })
+                })
+                .collect(),
+        })
+        .collect();
+    for r in &mut rows {
+        r.left_text = r
+            .left
+            .map(|n| copy_text("beRotation.plan.left", &[("n", &n.to_string())]));
+    }
+    for (i, sn) in snaps.iter().enumerate() {
+        let end = snaps.get(i + 1).map_or(until, |n| n.at);
+        for r in &mut rows {
+            let Some(k) = bar_kind(sn, &r.account) else {
+                continue;
+            };
+            match r.bars.last_mut() {
+                Some(b) if b.k == k && b.to == sn.at && b.est == sn.est => b.to = end,
+                _ => r.bars.push(Bar {
+                    from: sn.at,
+                    to: end,
+                    k: k.to_string(),
+                    est: sn.est,
+                }),
+            }
+        }
+    }
+    let name = s
+        .as_ref()
+        .map_or_else(|| strategy_name(&all, &body.strategy), |x| x.name.clone());
+    let first_err = decide::judge(&decide::Judge {
+        strategy: s.as_deref(),
+        body: &body,
+        accounts: &sc.accounts,
+        now,
+        current: &current0,
+        stint: sc.stint,
+        rate: sc.rate,
+        memo: &memo,
+    })
+    .error
+    .map(|f| strategy_error(&name, f));
+    let off = ctx.tz.offset_secs(now_secs(now));
+    wire(&PlanReply {
+        now,
+        now_text: text(now),
+        from,
+        until,
+        view: view.to_string(),
+        plan,
+        rows,
+        grid: grid_of(view, from, until, off, &text),
+        strategy_error: first_err,
+    })
 }
 
 #[cfg(test)]

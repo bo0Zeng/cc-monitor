@@ -1,0 +1,122 @@
+{
+ "now": 1760187780,
+ "clock": 1263,
+ "current": "team",
+ "stint": {
+  "since": 1760182800,
+  "used": 18.0
+ },
+ "rate": 0.45,
+ "memo": null,
+ "params": {},
+ "accounts": [
+  {
+   "id": "work",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": true,
+    "used": 94.0,
+    "resets": 1760193600
+   },
+   "w7d": {
+    "open": true,
+    "used": 40.0,
+    "resets": 1760427780
+   },
+   "others": 0,
+   "params": {}
+  },
+  {
+   "id": "personal",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": false,
+    "used": 0.0,
+    "resets": null
+   },
+   "w7d": {
+    "open": true,
+    "used": 20.0,
+    "resets": 1760487780
+   },
+   "others": 0,
+   "params": {}
+  },
+  {
+   "id": "team",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": true,
+    "used": 93.0,
+    "resets": 1760195400
+   },
+   "w7d": {
+    "open": true,
+    "used": 50.0,
+    "resets": 1760367780
+   },
+   "others": 1,
+   "params": {
+    "line": 99
+   }
+  },
+  {
+   "id": "lab",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": true,
+    "used": 35.0,
+    "resets": 1760190180
+   },
+   "w7d": {
+    "open": true,
+    "used": 30.0,
+    "resets": 1760439780
+   },
+   "others": 0,
+   "params": {
+    "line": 99,
+    "slots": [
+     {
+      "at": "17:00-02:00",
+      "line": 80
+     }
+    ]
+   }
+  },
+  {
+   "id": "api",
+   "kind": "api",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": false,
+    "used": 0.0,
+    "resets": null
+   },
+   "w7d": {
+    "open": false,
+    "used": 0.0,
+    "resets": null
+   },
+   "others": 0,
+   "params": {
+    "mode": "standby"
+   }
+  }
+ ],
+ "_title": "同 c2，team 只剩 6 点"
+}

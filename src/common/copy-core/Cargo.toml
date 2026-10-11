@@ -10,3 +10,7 @@ description = "对外文案表（src/shared/copy/table.json）的 Rust 取文口
 # `serde_json` 在两份 lock 里本来就各有 1 条 ⇒ 加本 crate 不引新的第三方包。
 [dependencies]
 serde_json = "1"
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../test-home" }

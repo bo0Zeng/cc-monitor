@@ -1830,7 +1830,7 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
     let rec = |cwd: &str| format!("{{\"type\":\"user\",\"cwd\":\"{cwd}\"}}\n");
     std::fs::write(
         proj.join("pd-sid.jsonl"),
-        rec("/a/proj") + &rec("/a/proj/sub") + &rec("/a/proj/sub"),
+        rec("/a/proj") + rec("/a/proj/sub").as_str() + rec("/a/proj/sub").as_str(),
     )
     .unwrap();
     let (cwd, project_dir) = announce("pd-sid");
@@ -4113,9 +4113,9 @@ fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
         ) + "\n"
     };
     let mut body = line("u1", "", "t1", "user")
-        + &line("a1", "u1", "t2", "assistant")
-        + &line("u2", "a1", "t3", "user")
-        + &line("u3", "a1", "t4", "user");
+        + line("a1", "u1", "t2", "assistant").as_str()
+        + line("u2", "a1", "t3", "user").as_str()
+        + line("u3", "a1", "t4", "user").as_str();
     std::fs::write(&jsonl, &body).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::new(tx);

@@ -1,6 +1,6 @@
 ---
 name: quota-warm
-description: 让这台机器上各 Claude 订阅号的 5 小时额度窗口尽早开始计时——窗口没在计时（已过期、或从没见过数）就用那个号发一句最短的话，之后按最早的重置时刻自己醒来再看。也写了 AI 自己管额度时能直接调的那几条 cc-monitor 后端命令（读额度账 · 读写轮换 · 现在就换号）。触发场景——「让各号的 5h 窗口早点开始」「没在计时就发一句」「看看各号几点重置」「quota-warm」「帮我管额度 / 轮换顺序」。
+description: 让这台机器上各 Claude 订阅号的 5 小时额度窗口尽早开始计时——窗口没在计时（已过期、或从没见过数）就用那个号发一句最短的话，之后按最早的重置时刻自己醒来再看。也写了 AI 自己管额度时能直接调的那几条 cc-monitor 后端命令（读额度账 · 读轮换 · 现在就换号）。触发场景——「让各号的 5h 窗口早点开始」「没在计时就发一句」「看看各号几点重置」「quota-warm」「帮我管额度 / 轮换顺序」。
 ---
 
 # quota-warm：没在计时就发一句
@@ -90,13 +90,6 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 都经 `~/.cc-monitor/bin/ccm -- --<命令>`；要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。形状与字段全表见仓里 `src/doc/IPC-COMMANDS.md` 的「4.3 账号」（从代码生成）。
 
 - `--quota-read`：这台额度账（每个号的状态 · `5h` / `7d` 用量与重置时刻 · 登录 · 从没出过数的号）；每号带写好的几行 `rows` 与开窗那一判 `warm`。给人看加 `--text`（所有命令通用：回包里写好的格拼成字）；回包里的「几点」按 `--tz` 写（看的人就在这台 ⇒ `--tz local`；不带 ⇒ UTC）。
-- `--rotation-rules-read`：这台的轮换规则表（每条：名字 · 顺序 · 勾上哪几个 · 满了才换还是到 N% 就换 · 换法 · 封顶与时段 · 兜底 · 兜底前最多等几分钟 · 谁在用）；`defaultRule` ＝ 本机默认指向哪条。
-  换法与兜底是两件事，记录里的原因也分开写：
-  - **抢回**（`preempt`）：从「前面的号」说 —— 换走时挡在前面的号有额度了，就换回它（记 `preempt`，界面写「抢回」）。
-  - **兜底**（`fallback`）：从「这个号」说 —— 别的号都没额度时才用它；在它上面时别的号有额度了，就不用它（记 `leaveFallback`，界面写「换下兜底」，不管换法）。
-  - **先等**（`wait` 分钟，缺省 40）：要用兜底号时，别的号这么多分钟内有一个恢复，就先等它、不用兜底（记 `wait{account, instead}`，界面写「先等」）。
-- `--rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ 读到的 `rev` 作 `ifRev`；别处先改过 ⇒ `{state:"conflict"}`、不写）；动态改顺序 ＝ 读额度账、自己排好、整份写回默认那条。`--rotation-rule-rename` · `--rotation-rule-delete` · `--rotation-default-set` 同族。
-- `--rotation-plan`：一份轮换接下来会怎么走（按规则 · 按会话 · 按一份草稿，或这台全部号的时间轴），草稿顺带逐格校验；都不写。
-- `--quota-probe`：用某个号起一次官方客户端问它的用量，读得懂才记进额度账（`{agent, account}`）。
-- `--rotation-session-read` / `--rotation-session-set`：一批会话的轮换与「账号」格（卡住的会话最早什么时候能续：`blocked.earliest.at`）。
+- 轮换（配置 · 策略 · 会话的副本 · 手动调整 · 推演）：另一份 skill `src/shared/rotation/SKILL.md` 讲全；这里只列最常用的两条。
+- `--rotation-session-read`：一批会话的轮换（`rows` ＝ 有效优先级的先后，第一行在用；卡住的会话最早什么时候能续：`blocked.earliest.at`）。
 - `--rotation-switch`：现在就换（`hot` 不重启 · `restart` 重开）。

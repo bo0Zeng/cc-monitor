@@ -128,7 +128,7 @@ pub struct TapRx {
     quota: Option<tokio::sync::watch::Receiver<u64>>,
     /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `changed {rotation, key: sid}`）；`None` ＝ 不订。
     rotation: Option<tokio::sync::broadcast::Receiver<String>>,
-    /// 这台的规则表 / 默认指向变了的通道（变了推一帧 `changed {rotation_rules}`）；`None` ＝ 不订。
+    /// 这台的配置表 / 本机默认 / 策略变了的通道（变了推一帧 `changed {rotation_configs}`）；`None` ＝ 不订。
     rules: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
@@ -192,7 +192,7 @@ impl TapSource for TapRx {
                 moved = rules_moved(&mut self.rules) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
                     Some(()) => {
-                        let f = self.changed(Topic::RotationRules, None);
+                        let f = self.changed(Topic::RotationConfigs, None);
                         self.out.push_back(f);
                     }
                     None => self.rules = None,
@@ -219,7 +219,7 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz
     let mut rx = attach_rx(hub().attach(), book);
     rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
-    rx.rules = Some(crate::accounts::quota::rotation::rules_changes().subscribe());
+    rx.rules = Some(crate::accounts::quota::rotation::configs_changes().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;
     rx.tz = tz;

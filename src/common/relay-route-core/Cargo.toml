@@ -10,3 +10,7 @@ description = "后端的门牌与家的契约：落点 · 监听口与中转口 
 # ⚠ 它**不是业务 crate**：里面没有账号 / 凭据 / 上游，只有「这台机器的中转门在哪、路由路径长什么样」——
 # 中转 crate `comms-outward` 因此可以依赖它（边界判据 `C2` 的依赖名单里有它）。
 [dependencies]
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../test-home" }

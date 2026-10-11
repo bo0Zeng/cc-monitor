@@ -288,13 +288,21 @@ fn every_registered_command_declares_its_run_kind() {
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
                 | "quota-probe"
                 // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
-                | "rotation-rules-read"
-                | "rotation-rule-save"
-                | "rotation-rule-rename"
-                | "rotation-rule-delete"
+                | "rotation-configs-read"
+                | "rotation-config-save"
+                | "rotation-config-rename"
+                | "rotation-config-delete"
                 | "rotation-default-set"
+                | "rotation-strategies-read"
+                | "rotation-strategy-add"
+                | "rotation-strategy-delete"
+                | "rotation-strategy-try"
                 | "rotation-plan"
                 | "rotation-session-read"
+                | "rotation-session-open"
+                | "rotation-session-edit"
+                | "rotation-session-save"
+                | "rotation-session-revert"
                 | "rotation-session-set"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
@@ -559,13 +567,21 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-set",
         "quota-read",
         "quota-probe",
-        "rotation-rules-read",
-        "rotation-rule-save",
-        "rotation-rule-rename",
-        "rotation-rule-delete",
+        "rotation-configs-read",
+        "rotation-config-save",
+        "rotation-config-rename",
+        "rotation-config-delete",
         "rotation-default-set",
+        "rotation-strategies-read",
+        "rotation-strategy-add",
+        "rotation-strategy-delete",
+        "rotation-strategy-try",
         "rotation-plan",
         "rotation-session-read",
+        "rotation-session-open",
+        "rotation-session-edit",
+        "rotation-session-save",
+        "rotation-session-revert",
         "rotation-session-set",
         "tasks-list",
         "session-interrupts",
@@ -1325,22 +1341,14 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    ("rotation-default-set", sampled::<rf::DefaultSet>, &[], &[]),
+    ("rotation-config-delete", sampled::<rf::ConfigDropped>, &[], &[]),
+    ("rotation-config-rename", sampled::<rf::ConfigSaved>, &[], &[]),
+    ("rotation-config-save", sampled::<rf::ConfigSaved>, &[], &[]),
+    ("rotation-configs-read", sampled::<rf::ConfigsRead>, &[], &[]),
+    ("rotation-default-set", sampled::<rf::Done>, &[], &[]),
     (
         "rotation-plan",
         sampled::<rf::PlanReply>,
-        &[],
-        &[(
-            "names",
-            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
-        )],
-    ),
-    ("rotation-rule-delete", sampled::<rf::RuleDeleted>, &[], &[]),
-    ("rotation-rule-rename", sampled::<rf::RuleSaved>, &[], &[]),
-    ("rotation-rule-save", sampled::<rf::RuleSaved>, &[], &[]),
-    (
-        "rotation-rules-read",
-        sampled::<rf::RulesRead>,
         &[],
         &[(
             "names",
@@ -1356,7 +1364,15 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
             "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
         )],
     ),
-    ("rotation-session-set", sampled::<rf::SessionSet>, &[], &[]),
+    ("rotation-session-edit", sampled::<rf::SessionEdited>, &[], &[]),
+    ("rotation-session-open", sampled::<rf::SessionOpened>, &[], &[]),
+    ("rotation-session-revert", sampled::<rf::Done>, &[], &[]),
+    ("rotation-session-save", sampled::<rf::SessionSaved>, &[], &[]),
+    ("rotation-session-set", sampled::<rf::Placed>, &[], &[]),
+    ("rotation-strategies-read", sampled::<rf::StrategiesRead>, &[], &[]),
+    ("rotation-strategy-add", sampled::<rf::StrategyChanged>, &[], &[]),
+    ("rotation-strategy-delete", sampled::<rf::StrategyChanged>, &[], &[]),
+    ("rotation-strategy-try", sampled::<rf::TryReply>, &[], &[]),
 ];
 
 /// `session-restart`：成功那一形 ＋ 失败信封按码定形的 `data`（自己那几形 ＋ 选不了号那一形）。
@@ -1996,7 +2012,7 @@ fn typed_enum_replies_sample_every_variant() {
     }
     assert!(
         enums >= 2,
-        "`TYPED` 里只数到 {enums} 个顶层是枚举的应答 —— 量具坏了（`rotation-plan` · `rotation-rule-save` 都是），本条在空转"
+        "`TYPED` 里只数到 {enums} 个顶层是枚举的应答 —— 量具坏了（`rotation-config-save` · `rotation-session-save` 都是），本条在空转"
     );
     assert!(
         bad.is_empty(),

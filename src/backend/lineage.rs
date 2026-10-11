@@ -130,7 +130,8 @@ impl Book {
             .retain(|_, p| now.saturating_sub(p.at) < DROP_AFTER);
     }
 
-    /// 这个会话的父（没记过 ⇒ `None`）。
+    /// 这个会话的父（没记过 ⇒ `None`）。今天只有判据读它（环境继承那一轮才有生产里的读者）。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn parent_of(&self, sid: &str) -> Option<&str> {
         self.parents.get(sid).map(|p| p.parent.as_str())
     }
@@ -141,10 +142,6 @@ impl Book {
 /// 这台的落点：`<家>/lineage.json`（家同额度账与轮换）。
 pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     crate::accounts::quota::ledger::path_from(get).map(|p| p.with_file_name(FILE_NAME))
-}
-
-pub(crate) fn path_now() -> Option<PathBuf> {
-    path_from(&|k| std::env::var(k).ok())
 }
 
 type Read = crate::common::own_state::Read<Book>;

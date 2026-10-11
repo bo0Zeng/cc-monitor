@@ -86,6 +86,9 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
 pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
+#[cfg(test)]
+#[path = "../../tests/backend/test_home_guard.rs"]
+mod test_home_guard; // 每个有判据的 Rust crate 都引了 `src/common/test-home`（测试档的家一开始就是沙箱）
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
@@ -1103,15 +1106,23 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-files",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
-    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // `--rotation-read` / `--rotation-set` 随规则表删了（默认轮换 ＝ 默认规则，经 `--rotation-rules-read` · `--rotation-rule-save` · `--rotation-default-set`）。
-    "--rotation-rules-read",
-    "--rotation-rule-save",
-    "--rotation-rule-rename",
-    "--rotation-rule-delete",
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    // 规则表那四条（`--rotation-rules-read` · `-rule-save` · `-rule-rename` · `-rule-delete`）随第二版存储删了，换成配置 · 策略 · 会话副本那几条。
+    "--rotation-configs-read",
+    "--rotation-config-save",
+    "--rotation-config-rename",
+    "--rotation-config-delete",
     "--rotation-default-set",
+    "--rotation-strategies-read",
+    "--rotation-strategy-add",
+    "--rotation-strategy-delete",
+    "--rotation-strategy-try",
     "--rotation-plan",
     "--rotation-session-read",
+    "--rotation-session-open",
+    "--rotation-session-edit",
+    "--rotation-session-save",
+    "--rotation-session-revert",
     "--rotation-session-set",
     "--rotation-switch",
     "--exit-policy-set",
@@ -2622,3 +2633,8 @@ pub fn unavailable_here() -> Vec<stream::wire::Unavailable> {
     out.extend(unix_mode_unavailable(cfg!(unix)));
     out
 }
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
