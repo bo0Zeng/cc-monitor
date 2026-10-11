@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.host
 
+import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.identity.identityDeleteWarning
 import org.junit.Assert.assertEquals
@@ -23,7 +24,7 @@ import java.io.File
  * |---|---|
  * | 往 `ui/host` / `ui/identity` 的 `Text(…)` 里新加一句带禁用词的 | 红 |
  * | 把那句话搬进一个常量再 `Text(那个常量)` | 抓不到；所以这一组的上屏常量另有 [theNewCopyConstantsAreClean] 逐个点名 |
- * | `SwitchRow("…")` / `AlertDialog(title = …)` 这种不是 `Text(` 直接实参的字面 | 抓不到：扫描器认的是 `Text(` 的实参括号（「打开就直接进那台上的工作区」就住 `SwitchRow` 的第一个实参，没有判据守着） |
+ * | `SwitchRow("…")` / `AlertDialog(title = …)` 这种不是 `Text(` 直接实参的字面 | 抓不到：扫描器认的是 `Text(` 的实参括号（`SwitchRow` 的第一个实参就没有判据守着；那句现在住文案表，表这一侧归 `tests/copy/` 的规矩判据） |
  * | 那句话真的画出来了没有 | 抓不到：布局要 `androidTest` 或真机 |
  * | 「实现词上屏」这一类 | 没有可执行形式，是人判的；本文件只机检裸词 |
  */
@@ -130,7 +131,9 @@ class SettingsGroupWordlistTest {
     private fun scan(pkg: String): List<Hit> =
         sourcesOf(pkg).flatMap { f ->
             KotlinSourceScanner.literalsInCallsTo(f.readText(), TEXT).literals.flatMap { lit ->
-                banned.filter { it in lit.body }.map { Hit("${f.name}:${lit.line}", it, lit.body) }
+                // 界面上的字收进了文案表：字面量是表里的键 ⇒ 换成那句 zh 再比。
+                val shown = CopyTableForTests.shown(lit.body)
+                banned.filter { it in shown }.map { Hit("${f.name}:${lit.line}", it, shown) }
             }
         }
 

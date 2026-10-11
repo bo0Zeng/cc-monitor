@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
@@ -59,13 +60,13 @@ import java.util.UUID
  * 服务器列表那一屏的标题。没有机器时冷启动落在这一屏，它是新用户看到的第一屏。
  * 「SSH 主机」在界面上一律叫「服务器」。
  */
-const val HOSTS_SCREEN_TITLE = "服务器"
+val HOSTS_SCREEN_TITLE: String get() = copyText("mobHosts.page.title")
 
 /**
  * 钥匙（SSH 密钥）那一屏的标题，以及通往它那颗按钮的字。
  * 叫「钥匙」不叫「身份」，免得与账号身份撞名。
  */
-const val IDENTITY_SCREEN_TITLE = "钥匙"
+val IDENTITY_SCREEN_TITLE: String get() = copyText("mobIdentity.page.title")
 
 /**
  * 服务器列表。[onConnect] 带上这台服务器的 agent 种类，落地判定（`AppNavHost.onConnectDestination`）
@@ -103,7 +104,7 @@ fun HostListScreen(
             HostListHeader(vm, title, newSessionMode, onIdentities, onSessions)
             if (hosts.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Text("还没有主机。点 + 添加。", color = tokens.textFaint)
+                    Text(copyText("mobHosts.list.empty"), color = tokens.textFaint)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -111,7 +112,7 @@ fun HostListScreen(
                         if (showHeaders) {
                             item(key = "hdr-${group ?: "__none__"}") {
                                 Text(
-                                    group ?: "未分组",
+                                    group ?: copyText("mobHosts.list.ungrouped"),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = tokens.textFaint,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -162,7 +163,7 @@ private fun HostListHeader(
     // 新建会话模式的提示：点主机即强制新建独立 tab（不复用已开会话），返回键取消。
     if (newSessionMode) {
         Text(
-            "点选一台主机，将强制新建一个独立会话 tab（不复用已打开的会话）；按返回键取消。",
+            copyText("mobHosts.newSession.hint"),
             style = MaterialTheme.typography.bodySmall,
             color = LocalAppTokens.current.textFaint,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -176,14 +177,14 @@ private fun ImportSshConfigButton(vm: HostViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf(false) }
-    TextButton(onClick = { show = true }) { Text("导入") }
+    TextButton(onClick = { show = true }) { Text(copyText("mobHosts.import.action")) }
     if (show) {
         ImportSshConfigDialog(
             onDismiss = { show = false },
             onImport = { text ->
                 scope.launch {
                     val n = vm.importSshConfig(text)
-                    val msg = if (n > 0) "加进来 $n 台服务器" else "这段字里没认出任何一台服务器"
+                    val msg = if (n > 0) copyText("mobHosts.import.added", "n" to n) else copyText("mobHosts.import.none")
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     show = false
                 }
@@ -203,11 +204,11 @@ private fun ImportSshConfigDialog(
         onDismissRequest = onDismiss,
         // 这条路一次填好地址、端口、用户名、钥匙四个字段，多台一起。
         // 文案不提文件名与协议名；也不说「问那台要」，因为实际要手工把那段字粘过来。
-        title = { Text("从别处搬一批服务器过来") },
+        title = { Text(copyText("mobHosts.import.title")) },
         text = {
             Column {
                 Text(
-                    "把另一台电脑上记着的那份服务器清单整段贴进来，一次能加好几台。贴进来之后按名字对上已经存过的钥匙。",
+                    copyText("mobHosts.import.hint"),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
@@ -218,8 +219,8 @@ private fun ImportSshConfigDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text("导入") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text(copyText("mobHosts.import.ok")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -243,7 +244,7 @@ private fun HostListActions(
     onSessions: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onSessions) { Text("会话") } // 多 tab 会话总览
+        TextButton(onClick = onSessions) { Text(copyText("mobHosts.list.sessions")) } // 多 tab 会话总览
         ImportSshConfigButton(vm)
         TextButton(onClick = onIdentities) { Text(IDENTITY_SCREEN_TITLE) }
     }
@@ -251,7 +252,7 @@ private fun HostListActions(
 
 /** 主机删除确认文案：点明不可撤销，且不动远端数据。 */
 internal fun hostDeleteWarning(label: String): String =
-    "删除主机「$label」？此操作不可撤销（仅删本地主机配置，不影响远端数据）。"
+    copyText("mobHosts.delete.body", "label" to label)
 
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按删除，与 SftpScreen 的「点跳转，长按删」一致
 @Composable
@@ -269,15 +270,15 @@ private fun HostRow(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除主机") },
+            title = { Text(copyText("mobHosts.delete.title")) },
             text = { Text(hostDeleteWarning(host.label)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(copyText("mobHosts.delete.ok"), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
     Column(
@@ -302,8 +303,8 @@ private fun HostRow(
                     color = tokens.textFaint,
                 )
             }
-            TextButton(onClick = onEdit) { Text("编辑") }
-            TextButton(onClick = onFiles) { Text("文件") }
+            TextButton(onClick = onEdit) { Text(copyText("mobHosts.row.edit")) }
+            TextButton(onClick = onFiles) { Text(copyText("mobHosts.row.files")) }
             // 删除由长按主机行触发（见上方 combinedClickable）。
         }
         // 启动配置 chips（cc/cct/项目）：点 chip 即带 launcher 连接（一键 cd、tmux、跑命令）。
@@ -400,8 +401,8 @@ fun HostEditorScreen(
     if (load == HostEditLoad.NotFound) {
         Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("主机不存在或已被删除", color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onDone) { Text("返回") }
+                Text(copyText("mobHostEdit.load.missing"), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onDone) { Text(copyText("mobHostEdit.load.back")) }
             }
         }
         return
@@ -423,24 +424,24 @@ fun HostEditorScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(if (hostId == null) "新建主机" else "编辑主机", style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(label, { label = it }, label = { Text("名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(host, { host = it }, label = { Text("主机 / IP（主地址）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text("端口") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user, { user = it }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text(if (hostId == null) copyText("mobHostEdit.page.newTitle") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
+        OutlinedTextField(label, { label = it }, label = { Text(copyText("mobHostEdit.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(host, { host = it }, label = { Text(copyText("mobHostEdit.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("mobHostEdit.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(user, { user = it }, label = { Text(copyText("mobHostEdit.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
         // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
         OutlinedTextField(
             extraAddresses,
             { extraAddresses = it },
-            label = { Text("额外地址（每行一个，可选）") },
+            label = { Text(copyText("mobHostEdit.field.extra")) },
             placeholder = { Text("192.0.2.20\nwan.example.com:2222") },
             minLines = 2,
             modifier = Modifier.fillMaxWidth(),
         )
         if (extraAddresses.isNotBlank()) {
             Text(
-                "将并发连接 ${previewEps.size} 个地址：" + previewEps.joinToString(", ") { "${it.host}:${it.port}" },
+                copyText("mobHostEdit.field.extraPreview", "n" to previewEps.size, "addresses" to previewEps.joinToString(", ") { "${it.host}:${it.port}" }),
                 style = monoSmall,
                 color = tokens.textFaint,
             )
@@ -449,14 +450,14 @@ fun HostEditorScreen(
         OutlinedTextField(
             workingDir,
             { workingDir = it },
-            label = { Text("默认工作目录（可选）") },
+            label = { Text(copyText("mobHostEdit.field.workDir")) },
             placeholder = { Text("/home/pi") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(group, { group = it }, label = { Text("分组（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         // agent 种类：Claude Code（默认）或 Codex CLI，决定落点、resume 的载荷与定位走哪套。
-        Text("Agent 种类", style = MaterialTheme.typography.labelMedium)
+        Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             // 遍历档案，产品名取档案的 `displayName`，不硬写；加一种 agent 这里自然多一项。
             AgentProfile.ALL.forEach { p ->
@@ -468,18 +469,18 @@ fun HostEditorScreen(
         OutlinedTextField(
             claudeDir,
             { claudeDir = it },
-            label = { Text(if (!gatedByAccount) "Codex 配置目录（可选）" else "Claude 账号目录") },
-            placeholder = { Text(if (!gatedByAccount) "默认 \${CODEX_HOME:-\$HOME/.codex}" else "/home/用户名/.claude") },
+            label = { Text(if (!gatedByAccount) copyText("mobHostEdit.dir.codex") else copyText("mobHostEdit.dir.claude")) },
+            placeholder = { Text(if (!gatedByAccount) copyText("mobHostEdit.dir.codexPlaceholder", "path" to "\${CODEX_HOME:-\$HOME/.codex}") else copyText("mobHostEdit.dir.claudePlaceholder")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
 
         // 开关即 useTmux；文案不说「连接」「tmux」。
-        SwitchRow("打开就直接进那台上的工作区", useTmux) { useTmux = it }
-        SwitchRow("断线自动重连", autoReconnect) { autoReconnect = it }
+        SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
+        SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
 
         // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
-        Text("远端系统", style = MaterialTheme.typography.labelMedium)
+        Text(copyText("mobHostEdit.os.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = !isWindows, onClick = { isWindows = false })
             Text("Linux/macOS", style = MaterialTheme.typography.bodyMedium)
@@ -488,31 +489,31 @@ fun HostEditorScreen(
         }
         if (isWindows) {
             Text(
-                "Windows：走 PowerShell、跳过 tmux；tmux/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）。",
+                copyText("mobHostEdit.os.windowsHint"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         // 认证方式：钥匙或密码，二选一。
-        Text("认证方式", style = MaterialTheme.typography.labelMedium)
+        Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = !authIsPassword, onClick = { authIsPassword = false })
-            Text("身份（密钥）", style = MaterialTheme.typography.bodyMedium)
+            Text(copyText("mobHostEdit.auth.key"), style = MaterialTheme.typography.bodyMedium)
             RadioButton(selected = authIsPassword, onClick = { authIsPassword = true })
-            Text("密码", style = MaterialTheme.typography.bodyMedium)
+            Text(copyText("mobHostEdit.auth.password"), style = MaterialTheme.typography.bodyMedium)
         }
         if (authIsPassword) {
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("密码") },
+                label = { Text(copyText("mobHostEdit.auth.password")) },
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "密码经设备 Keystore 加密后落库，不明文存储。",
+                copyText("mobHostEdit.auth.passwordHint"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -536,11 +537,11 @@ fun HostEditorScreen(
 
         // 本机自定义按钮编辑器入口；只对已保存的主机给，因为要 host id 作专属作用域。
         if (existing != null) {
-            TextButton(onClick = onEditButtons) { Text("自定义按钮（本机）") }
+            TextButton(onClick = onEditButtons) { Text(copyText("mobHostEdit.buttons.edit")) }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onDone) { Text("取消") }
+            TextButton(onClick = onDone) { Text(copyText("kit.dialog.cancel")) }
             Button(
                 onClick = {
                     val base = existing ?: Host(id = "host-" + UUID.randomUUID(), label = "", host = "", port = 22, username = "")
@@ -569,7 +570,7 @@ fun HostEditorScreen(
                 },
                 // 密码模式必须填密码；钥匙模式只走基本校验。
                 enabled = host.isNotBlank() && user.isNotBlank() && (!authIsPassword || password.isNotBlank()),
-            ) { Text("保存") }
+            ) { Text(copyText("mobHostEdit.page.save")) }
         }
     }
 }
@@ -581,10 +582,10 @@ private fun ProxyJumpPicker(
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
-    Text("经跳板机（可选，ssh -J）", style = MaterialTheme.typography.labelMedium)
+    Text(copyText("mobHostEdit.jump.title"), style = MaterialTheme.typography.labelMedium)
     Row(Modifier.fillMaxWidth().clickable { onSelect(null) }, verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected = selected == null, onClick = { onSelect(null) })
-        Text("无（直连）", style = MaterialTheme.typography.bodyMedium)
+        Text(copyText("mobHostEdit.jump.none"), style = MaterialTheme.typography.bodyMedium)
     }
     candidates.forEach { j ->
         Row(Modifier.fillMaxWidth().clickable { onSelect(j.id) }, verticalAlignment = Alignment.CenterVertically) {

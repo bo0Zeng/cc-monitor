@@ -22,9 +22,9 @@ import com.ccmonitor.mobile.MainActivity
 import com.ccmonitor.mobile.core.claude.link.BackendFeed
 import com.ccmonitor.mobile.core.claude.link.TurnEnd
 import com.ccmonitor.mobile.core.claude.link.TurnEnds
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.countsAsActive
-import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ui.chat.ChatController
@@ -251,7 +251,7 @@ class SshKeepAliveService : Service() {
         return NotificationCompat
             .Builder(this, CHANNEL_ID)
             .setContentTitle(getString(com.ccmonitor.mobile.R.string.app_name))
-            .setContentText("$n 个活动 SSH 会话")
+            .setContentText(copyText("mobKeepAlive.notify.body", "n" to n))
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
             .setContentIntent(tap)
@@ -260,9 +260,9 @@ class SshKeepAliveService : Service() {
 
     private fun createChannel() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "SSH 会话保活", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, copyText("mobKeepAlive.channel.keepAlive"), NotificationManager.IMPORTANCE_LOW))
         // 完成通知渠道：DEFAULT 出声并进状态栏，不强弹 heads-up。
-        nm.createNotificationChannel(NotificationChannel(DONE_CHANNEL_ID, "Claude 任务完成", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(DONE_CHANNEL_ID, copyText("mobKeepAlive.channel.done"), NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     private fun registerNetwork() {

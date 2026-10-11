@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.remote.RemoteDuplex
 import kotlinx.coroutines.CancellationException
@@ -156,7 +158,7 @@ class SshConnection(
         if (closed.get()) { // close 恰在建与登记之间触发，sweep 可能错过本 client，自行收尾
             hops.remove(client)
             runCatching { client.disconnect() }
-            error("连接已关闭（看门狗超时或已断开），弃用刚建的 client")
+            error(copyText("mobSsh.conn.closedNew"))
         }
         return client
     }
@@ -178,8 +180,8 @@ class SshConnection(
         val tofu = installTofuVerifier(client, config)
         openTransport(client, config, jumpClient, tofu, ::emit)
         when (tofu?.outcome) {
-            is TofuOutcome.FirstUse -> emit(SshConnectEvent.Stage.HOSTKEY, "首次信任该主机密钥（TOFU）")
-            is TofuOutcome.Trusted -> emit(SshConnectEvent.Stage.HOSTKEY, "主机密钥已信任")
+            is TofuOutcome.FirstUse -> emit(SshConnectEvent.Stage.HOSTKEY, copyText("mobSsh.log.tofuFirst"))
+            is TofuOutcome.Trusted -> emit(SshConnectEvent.Stage.HOSTKEY, copyText("mobSsh.log.tofuTrusted"))
             else -> {} // Mismatch 已在 openTransport 抛出；null=无 store
         }
         authenticate(client, config, onEvent)
@@ -189,7 +191,7 @@ class SshConnection(
             .onFailure { android.util.Log.w("SshConnection", "keepalive 设置失败（连接仍可用，但静默死对端探测降级）: ${it.message}") }
         // 首见的 host key 认证成功后才落库，免得未认证的端点往 TOFU 库里投毒。
         (tofu?.outcome as? TofuOutcome.FirstUse)?.let { knownHostStore?.record(it.knownHost) }
-        emit(SshConnectEvent.Stage.ESTABLISHED, "${config.username}@${config.host}:${config.port} 连接已建立")
+        emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.established", "target" to "${config.username}@${config.host}:${config.port}"))
     }
 
     /** KeystoreSigner 连接用替换了 ecdsa KeyAlgorithm 的 Config（签名走 AndroidKeyStore），其余用默认。 */
@@ -225,16 +227,16 @@ class SshConnection(
     ) {
         try {
             if (jumpClient != null) {
-                emit(SshConnectEvent.Stage.TCP, "经跳板 ${config.jumpVia?.host} 打开到 ${config.host}:${config.port} 的隧道 …")
+                emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.viaJump", "jump" to config.jumpVia?.host.orEmpty(), "target" to "${config.host}:${config.port}"))
                 client.connectVia(jumpClient.newDirectConnection(config.host, config.port)) // ssh -J
             } else {
-                emit(SshConnectEvent.Stage.TCP, "连接 ${config.host}:${config.port} …")
+                emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.connecting", "target" to "${config.host}:${config.port}"))
                 client.connect(config.host, config.port)
             }
         } catch (e: Exception) {
             val o = tofu?.outcome
             if (o is TofuOutcome.Mismatch) {
-                emit(SshConnectEvent.Stage.ERROR, "主机密钥不匹配（疑 MITM/服务器重装）")
+                emit(SshConnectEvent.Stage.ERROR, copyText("mobSsh.log.keyMismatch"))
                 runCatching { client.disconnect() }
                 throw HostKeyChangedException(
                     host = config.host,
@@ -247,10 +249,10 @@ class SshConnection(
                     cause = e,
                 )
             }
-            emit(SshConnectEvent.Stage.ERROR, "连接失败：${e.message ?: e.javaClass.simpleName}")
+            emit(SshConnectEvent.Stage.ERROR, withRaw(copyText("mobSsh.log.connectFailed"), e.message ?: e.javaClass.simpleName))
             throw e
         }
-        emit(SshConnectEvent.Stage.NEGOTIATE, "协议协商与密钥交换完成")
+        emit(SshConnectEvent.Stage.NEGOTIATE, copyText("mobSsh.log.negotiated"))
     }
 
     /** 按认证方式认证：先发 AUTH 阶段事件，失败时发 ERROR 再抛。 */
@@ -268,20 +270,20 @@ class SshConnection(
         try {
             when (val auth = config.auth) {
                 is AuthMethod.Password -> {
-                    emit(SshConnectEvent.Stage.AUTH, "密码认证中 …")
+                    emit(SshConnectEvent.Stage.AUTH, copyText("mobSsh.log.authPassword"))
                     client.authPassword(config.username, auth.password)
                 }
                 is AuthMethod.PrivateKey -> {
-                    emit(SshConnectEvent.Stage.AUTH, "公钥认证中 …")
+                    emit(SshConnectEvent.Stage.AUTH, copyText("mobSsh.log.authKey"))
                     client.authPublickey(config.username, client.loadKeys(auth.pem.toString(Charsets.UTF_8), null, null))
                 }
                 is AuthMethod.KeystoreSigner -> {
-                    emit(SshConnectEvent.Stage.AUTH, "硬件密钥认证中（TEE 签名）…")
+                    emit(SshConnectEvent.Stage.AUTH, copyText("mobSsh.log.authKeystore"))
                     client.authPublickey(config.username, KeystoreEcdsaSigner(auth.alias))
                 }
             }
         } catch (e: Exception) {
-            emit(SshConnectEvent.Stage.ERROR, "认证失败：${e.message ?: e.javaClass.simpleName}")
+            emit(SshConnectEvent.Stage.ERROR, withRaw(copyText("mobSsh.log.authFailed"), e.message ?: e.javaClass.simpleName))
             throw e
         }
     }
@@ -322,7 +324,7 @@ class SshConnection(
             readWithDeadline(
                 OPEN_SHELL_TIMEOUT_MS,
                 onTimeout = { runCatching { close() } },
-                message = "打开终端通道超时（${OPEN_SHELL_TIMEOUT_MS / 1000} 秒）：连接可能已失效，已断开，请重试",
+                message = copyText("mobSsh.shell.openTimeout", "dur" to copyText("durationFormat.unit.sec", "n" to OPEN_SHELL_TIMEOUT_MS / 1000)),
             ) {
                 val session = client().startSession()
                 session.allocatePTY(term, cols, rows, 0, 0, emptyMap<PTYMode, Int>())
@@ -500,7 +502,7 @@ class SshConnection(
                         off += n
                     }
                     val text = String(buf, 0, off, Charsets.UTF_8)
-                    if (total > maxBytes) "$text\n…（已截断，共 $total 字节）" else text
+                    if (total > maxBytes) "$text\n" + copyText("mobSsh.read.truncated", "n" to total) else text
                 }
             }
         }
@@ -559,7 +561,7 @@ class SshConnection(
     }
 
     // 「未连接」抛 IOException 而不是 IllegalStateException：断连一律以 IOException 上抛。
-    private fun client(): SSHClient = ssh ?: throw IOException("SSH 连接不可用（未连接 / 已断开）")
+    private fun client(): SSHClient = ssh ?: throw IOException(copyText("mobSsh.conn.unavailable"))
 
     private companion object {
         /** SFTP WRITE 分包大小（SFTP 草案建议 ≤32KB）。 */
@@ -640,7 +642,7 @@ internal suspend fun <T> readWithDeadline(
         val result = runCatching(read)
         val wonByRead = settled.compareAndSet(false, true) // false：看门狗已先判超时
         watchdog.cancel()
-        if (!wonByRead) throw IOException(message ?: "命令执行超时（${timeoutMs}ms），已中止")
+        if (!wonByRead) throw IOException(message ?: copyText("mobSsh.exec.timeout", "dur" to copyText("durationFormat.unit.ms", "n" to timeoutMs)))
         result.getOrThrow()
     }
 

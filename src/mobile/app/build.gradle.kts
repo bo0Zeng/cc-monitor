@@ -79,6 +79,7 @@ dependencies {
     implementation(project(":core-terminal"))
     implementation(project(":core-claude"))
     implementation(project(":core-remote"))
+    implementation(project(":core-copy"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

@@ -27,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
@@ -219,7 +220,7 @@ private fun NewSessionHostPickerScreen(
         },
         onSessions = { nav.popBackStack() }, // 本页只从会话总览进，「会话」即返回
         newSessionMode = true,
-        title = "新建会话 · 选择主机",
+        title = copyText("mobNav.newSession.title"),
     )
 }
 

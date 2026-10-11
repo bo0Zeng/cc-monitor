@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.drawer
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.overview.HistoryItem
 
 /** 抽屉里有什么：项、顺序、文案都住这里，[ChatDrawer] 只负责画。没路可走的项不列。 */
@@ -48,10 +49,10 @@ data class DrawerEntry(
 
 fun drawerEntries(): List<DrawerEntry> =
     listOf(
-        DrawerEntry(DrawerItem.NewConversation, "⊕", "新对话", accent = true),
-        DrawerEntry(DrawerItem.Conversations, "💬", "对话"),
-        DrawerEntry(DrawerItem.Files, "📁", "文件"),
-        DrawerEntry(DrawerItem.Terminal, "⌨", "终端"),
+        DrawerEntry(DrawerItem.NewConversation, "⊕", copyText("mobDrawer.item.newChat"), accent = true),
+        DrawerEntry(DrawerItem.Conversations, "💬", copyText("mobDrawer.item.chats")),
+        DrawerEntry(DrawerItem.Files, "📁", copyText("mobDrawer.item.files")),
+        DrawerEntry(DrawerItem.Terminal, "⌨", copyText("mobDrawer.item.terminal")),
     )
 
 fun DrawerItem.action(): DrawerAction =
@@ -93,19 +94,19 @@ fun recentFitCount(
 
 const val DRAWER_TITLE = "cc-monitor"
 
-const val RECENT_HEADER = "最近"
+val RECENT_HEADER: String get() = copyText("mobDrawer.recent.title")
 
-fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) "服务器" else "服务器 · $name"
+fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) copyText("mobDrawer.server.bare") else copyText("mobDrawer.server.named", "name" to name)
 
 const val SETTINGS_GLYPH = "⚙"
 
 /** ⚙ 念给读屏软件听的字。 */
-const val SETTINGS_DESCRIPTION = "设置"
+val SETTINGS_DESCRIPTION: String get() = copyText("mobDrawer.settings.aria")
 
 /** 聊天屏左上那颗。 */
 const val DRAWER_OPEN_GLYPH = "☰"
 
-const val DRAWER_OPEN_DESCRIPTION = "打开抽屉"
+val DRAWER_OPEN_DESCRIPTION: String get() = copyText("mobDrawer.open.aria")
 
 /** 抽屉里一件事的去处：[route]；[replacesChat] = 换掉当前这条对话，而不是往返回栈上叠一屏。 */
 data class DrawerNav(

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
 /**
@@ -115,7 +116,7 @@ fun CommandPalette(
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = { Text("搜索命令") },
+                label = { Text(copyText("mobPalette.search.label")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -128,7 +129,7 @@ fun CommandPalette(
                     .padding(top = 8.dp),
             ) {
                 if (filtered.isEmpty()) {
-                    Text("无匹配命令", style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(copyText("mobPalette.search.empty"), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     filtered.groupBy { it.group }.forEach { (group, items) ->
                         Text(

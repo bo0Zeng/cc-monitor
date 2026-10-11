@@ -16,7 +16,8 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | `core-ssh` | SSH（sshj）：连接池、多地址竞速、跳板、SFTP、`~/.ssh/config`、known_hosts、密钥 |
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
-| `core-ui` | 共用主题与反馈 · 取文口 `copyText`（构建时从 `src/shared/copy/table.json` 抄手机代码引到的那几条） |
+| `core-ui` | 共用主题与反馈 |
+| `core-copy` | 取文口 `copyText` 与大小 · 时长格式（纯 JVM，各模块都依赖它；构建时从 `src/shared/copy/table.json` 抄手机各模块代码引到的那几条）。手机生产源码不写死界面中文，判据 `tests/copy/mobile-literals.vitest.ts` |
 
 ## 技术栈
 
@@ -40,7 +41,7 @@ cd src/mobile
 ## 测试
 
 ```sh
-./gradlew ktlintCheck detektDebug :app:lintDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain
+./gradlew ktlintCheck detektDebug :app:lintDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain
 bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（读 .build/mobile/*/test-results）
 ```
 

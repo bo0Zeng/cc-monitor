@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.ui.sftp
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshTransport
@@ -93,7 +95,7 @@ class SftpViewModel(
             // 只看 isConnected 不够：对端掉电的死 TCP（无 FIN）约 75s 内仍报 true，复用它会让 sftpList 卡死。
             // 所以复用前主动探活（一次往返、5s 超时）；探活败就走真连接重建。没有现成连接时不空探。
             hostConnector.connection(hostId)?.takeIf { it.isConnected && it.probeAliveOrFalse() } ?: run {
-                val host = hostRepo.get(hostId) ?: error("未找到主机: $hostId")
+                val host = hostRepo.get(hostId) ?: error(copyText("mobSession.host.missing", "id" to hostId))
                 // 认证、跳板、竞速都在 HostConnector 里。SFTP 没有选身份流（pendingIdentity=null）。
                 hostConnector.connect(host, expectedGen = epoch)
             }
@@ -148,7 +150,7 @@ class SftpViewModel(
 
     // 当前目录下一次写操作（busy + 错误事件 + 成功刷新）。
     private fun runOp(
-        label: String,
+        failText: String,
         block: suspend (SshTransport) -> Unit,
     ) {
         viewModelScope.launch {
@@ -159,20 +161,20 @@ class SftpViewModel(
             }.onSuccess { refresh() } // refresh 重置 busy
                 .onFailure {
                     if (it is CancellationException) throw it // 取消须传播，不折成失败事件
-                    _events.tryEmit("$label 失败: ${it.message}")
+                    _events.tryEmit(withRaw(failText, it.message))
                     _busy.value = false
                 }
         }
     }
 
-    fun mkdir(name: String) = runOp("新建目录") { it.sftpMkdir(joinPath(_path.value, name)) }
+    fun mkdir(name: String) = runOp(copyText("mobSftp.mkdir.failed")) { it.sftpMkdir(joinPath(_path.value, name)) }
 
     fun rename(
         fromPath: String,
         newName: String,
-    ) = runOp("重命名") { it.sftpRename(fromPath, joinPath(_path.value, newName)) }
+    ) = runOp(copyText("mobSftp.rename.failed")) { it.sftpRename(fromPath, joinPath(_path.value, newName)) }
 
-    fun delete(entry: SftpEntry) = runOp("删除") { it.sftpDelete(entry.path, entry.isDir) }
+    fun delete(entry: SftpEntry) = runOp(copyText("mobSftp.delete.failed", "name" to entry.name)) { it.sftpDelete(entry.path, entry.isDir) }
 
     /** 下载到 [destDir]（Composable 传 getExternalFilesDir）。 */
     fun download(
@@ -185,10 +187,10 @@ class SftpViewModel(
                 val local = File(destDir, entry.name)
                 withContext(io) { ensureConn().sftpDownload(entry.path, local) }
                 local.absolutePath
-            }.onSuccess { _events.tryEmit("已下载到 $it") }
+            }.onSuccess { _events.tryEmit(copyText("mobSftp.download.done", "path" to it)) }
                 .onFailure {
                     if (it is CancellationException) throw it // 取消须传播
-                    _events.tryEmit("下载失败: ${it.message}")
+                    _events.tryEmit(withRaw(copyText("mobSftp.download.failed"), it.message))
                 }
             _busy.value = false
         }
@@ -207,29 +209,32 @@ class SftpViewModel(
                     localTmp.delete()
                 }
             }.onSuccess {
-                _events.tryEmit("已上传 $remoteName")
+                _events.tryEmit(copyText("mobSftp.upload.done", "name" to remoteName))
                 refresh()
             }.onFailure {
                 if (it is CancellationException) throw it // 取消须传播
-                _events.tryEmit("上传失败: ${it.message}")
+                _events.tryEmit(withRaw(copyText("mobSftp.upload.failed", "name" to remoteName), it.message))
                 _busy.value = false
             }
         }
     }
 
     /** 预览：读全文（Composable 拿到后开预览对话框）。失败已 emit 事件。 */
-    suspend fun readPreview(path: String): Result<String> = readOp { it.sftpReadText(path) }
+    suspend fun readPreview(path: String): Result<String> = readOp(copyText("mobSftp.read.failed", "path" to path)) { it.sftpReadText(path) }
 
     /** 读供编辑的全文；null=过大/二进制（不可编辑）。失败已 emit 事件。 */
-    suspend fun readForEdit(path: String): Result<String?> = readOp { it.sftpReadTextForEdit(path) }
+    suspend fun readForEdit(path: String): Result<String?> = readOp(copyText("mobSftp.read.failed", "path" to path)) { it.sftpReadTextForEdit(path) }
 
-    private suspend fun <T> readOp(block: suspend (SshTransport) -> T): Result<T> {
+    private suspend fun <T> readOp(
+        failText: String,
+        block: suspend (SshTransport) -> T,
+    ): Result<T> {
         _busy.value = true
         return runCatching { ensureConn().let { c -> withContext(io) { block(c) } } }
             .also { _busy.value = false }
             .onFailure {
                 if (it is CancellationException) throw it // 取消须传播（不折成读取失败事件 + 不返回 failure Result）
-                _events.tryEmit("读取失败: ${it.message}")
+                _events.tryEmit(withRaw(failText, it.message))
             }
     }
 
@@ -245,11 +250,11 @@ class SftpViewModel(
         val r = runCatching { withContext(io) { ensureConn().sftpWriteText(path, text) } }
         r
             .onSuccess {
-                _events.tryEmit("已保存")
+                _events.tryEmit(copyText("mobSftp.save.done"))
                 refresh() // refresh 复位 busy
             }.onFailure {
                 if (it is CancellationException) throw it // 取消须传播
-                _events.tryEmit("保存失败: ${it.message}")
+                _events.tryEmit(withRaw(copyText("mobSftp.save.failed"), it.message))
                 _busy.value = false
             }
         return r

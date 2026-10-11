@@ -14,6 +14,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -50,7 +51,7 @@ class AppSnackbarController internal constructor(
     fun showUndoAfter(
         action: suspend () -> Unit,
         message: String,
-        undoLabel: String = "撤销",
+        undoLabel: String = copyText("kit.toast.undo"),
         onUndo: suspend () -> Unit,
     ) {
         scope.launch {
@@ -70,7 +71,7 @@ class AppSnackbarController internal constructor(
      */
     fun showUndo(
         message: String,
-        undoLabel: String = "撤销",
+        undoLabel: String = copyText("kit.toast.undo"),
         onUndo: suspend () -> Unit,
     ) {
         scope.launch {

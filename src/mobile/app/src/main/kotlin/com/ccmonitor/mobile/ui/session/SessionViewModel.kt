@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.agent.AgentDirSettingKey
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.Launcher
@@ -291,7 +292,7 @@ class SessionViewModel(
     private suspend fun establishConnectedState(expectedGen: Int): SessionUiState {
         var created: TerminalSession? = null // 取消时要关掉它，否则 reader / writeExecutor 线程泄漏
         return try {
-            val host = hostRepo.get(hostId) ?: error("未找到主机: $hostId")
+            val host = hostRepo.get(hostId) ?: error(copyText("mobSession.host.missing", "id" to hostId))
             // 按 host.agentKind 选定位器解析 agent 目录。Codex 没有应用级默认，回退内置 ${CODEX_HOME:-$HOME/.codex}。
             val kind = host.agentKindOrDefault()
             _agentKind.value = kind
@@ -411,7 +412,7 @@ class SessionViewModel(
                 when (ResumeWatchdog(channel).watch(tmuxName)) {
                     ResumeOutcome.SUCCESS -> Unit // Claude 起来了（或像是在包装脚本下跑），保留会话名
                     ResumeOutcome.FAILED -> {
-                        _notices.trySend("resume 失败：Claude 未能启动（检查『$launchCommand』是否存在）")
+                        _notices.trySend(copyText("mobSession.resume.failed", "command" to launchCommand))
                         _tmuxSession.value = null // 空会话已被杀，本 tab 不再声称附着于它
                         resumeFailed.set(true) // 失败态：同 sid 再次打开可换命令重跑
                     }
@@ -502,7 +503,7 @@ class SessionViewModel(
                 ),
             ) ?: return null
         // 配置的命令含不安全字符被替换时，明说一声，免得静默落空。
-        plan.substitutedFrom?.let { _notices.trySend("自定义命令『$it』含不安全字符，改用 ${plan.launchLabel} 续跑") }
+        plan.substitutedFrom?.let { _notices.trySend(copyText("mobSession.resume.substituted", "command" to it, "label" to plan.launchLabel)) }
         return plan
     }
 
@@ -516,7 +517,7 @@ class SessionViewModel(
         val ids = withContext(io) { identityRepo.observeAll().first() }
         return when {
             ids.isEmpty() -> {
-                _uiState.value = SessionUiState.Error("该主机未关联身份，请先在身份管理创建或导入一个身份")
+                _uiState.value = SessionUiState.Error(copyText("mobSession.identity.none"))
                 false
             }
             ids.size == 1 -> {

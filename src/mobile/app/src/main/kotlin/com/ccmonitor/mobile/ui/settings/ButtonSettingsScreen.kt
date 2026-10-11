@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
@@ -95,10 +96,10 @@ private fun ColumnScope.GroupListView(
     val groups = (known + counts.keys.filter { it !in known }.sorted()).distinct()
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = onBack) { Text("← 返回") }
-        Text(if (hostId == null) "自定义按钮组" else "本机按钮组", style = MaterialTheme.typography.titleLarge)
+        TextButton(onClick = onBack) { Text(copyText("mobKit.act.back")) }
+        Text(if (hostId == null) copyText("mobButtonSettings.groups.titleGlobal") else copyText("mobButtonSettings.groups.titleHost"), style = MaterialTheme.typography.titleLarge)
     }
-    Text("点进某组看/改它的按钮；键排上的 ⇌ 按钮在组间切换。", style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint)
+    Text(copyText("mobButtonSettings.groups.hint"), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint)
     LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         items(groups, key = { it }) { g ->
             GroupRow(
@@ -116,12 +117,12 @@ private fun ColumnScope.GroupListView(
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { newGroupOpen = true }) { Text("＋ 新建组") }
+        Button(onClick = { newGroupOpen = true }) { Text("＋ " + copyText("mobButtonSettings.groups.new")) }
         if (hostId == null) {
             TextButton(onClick = {
                 vm.restoreDefaults()
-                snackbar.show("已补回缺失的默认按键")
-            }) { Text("恢复默认按键") }
+                snackbar.show(copyText("mobButtonSettings.restore.done"))
+            }) { Text(copyText("mobButtonSettings.restore.action")) }
         }
     }
 
@@ -162,14 +163,14 @@ private fun ColumnScope.GroupDetailView(
     var deleteTarget by remember { mutableStateOf<CustomButton?>(null) }
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = onBack) { Text("← 组列表") }
+        TextButton(onClick = onBack) { Text(copyText("mobButtonSettings.group.back")) }
         Text(groupLabel(group), style = MaterialTheme.typography.titleLarge)
     }
     Text(groupWhere(group), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint)
     LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (buttons.isEmpty()) {
             item {
-                Text("本组还没有按钮 · 点下方「＋」新建", style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint)
+                Text(copyText("mobButtonSettings.group.empty"), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint)
             }
         }
         itemsIndexed(buttons, key = { _, b -> b.id }) { i, b ->
@@ -191,7 +192,7 @@ private fun ColumnScope.GroupDetailView(
     Button(onClick = {
         editing = null
         dialogOpen = true
-    }) { Text("＋ 新建按钮") }
+    }) { Text("＋ " + copyText("mobButtonSettings.group.newButton")) }
 
     if (dialogOpen) {
         ButtonEditDialog(
@@ -234,9 +235,9 @@ private fun GroupRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(groupLabel(group), style = MaterialTheme.typography.bodyLarge)
-            Text("$count 个按钮 · ${groupWhere(group)}", style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
+            Text(copyText("mobButtonSettings.row.summary", "n" to count, "where" to groupWhere(group)), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
         }
-        TextButton(onClick = onDelete) { Text("删组") }
+        TextButton(onClick = onDelete) { Text(copyText("mobButtonSettings.row.deleteGroup")) }
         Text("›", style = MaterialTheme.typography.titleLarge, color = tokens.textFaint)
     }
 }
@@ -250,12 +251,12 @@ private fun NewGroupDialog(
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("新建按钮组") },
+        title = { Text(copyText("mobButtonSettings.newGroup.title")) },
         text = {
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("组名（如：常用 / git）") }, singleLine = true)
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(copyText("mobButtonSettings.newGroup.name")) }, singleLine = true)
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim()) }) { Text("创建") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim()) }) { Text(copyText("mobButtonSettings.newGroup.create")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -268,10 +269,10 @@ private fun DeleteButtonDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除按钮") },
-        text = { Text("删除「${target.label}」？") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("删除") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        title = { Text(copyText("mobButtons.delete.title")) },
+        text = { Text(copyText("mobButtons.delete.body", "label" to target.label)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobButtons.delete.ok")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -294,8 +295,8 @@ private fun ButtonRow(
         }
         TextButton(onClick = onUp, enabled = canUp) { Text("↑") }
         TextButton(onClick = onDown, enabled = canDown) { Text("↓") }
-        TextButton(onClick = onEdit) { Text("编辑") }
-        TextButton(onClick = onDelete) { Text("删") }
+        TextButton(onClick = onEdit) { Text(copyText("mobButtonSettings.row.edit")) }
+        TextButton(onClick = onDelete) { Text(copyText("mobButtonSettings.row.delete")) }
     }
 }
 
@@ -314,15 +315,14 @@ private fun CustomGroupDeleteDialog(
     group ?: return
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除「$group」？") },
+        title = { Text(copyText("mobButtonSettings.groupDelete.title", "group" to group)) },
         text = {
             Text(
-                "这一组的 $count 个按钮会被删除。它是自建的组，" +
-                    "撤销之后就找不回来了 —— 内建组还能用「恢复默认按键」补回，自建组不能。",
+                copyText("mobButtonSettings.groupDelete.body", "n" to count),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(group) }) { Text("删除") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { onConfirm(group) }) { Text(copyText("mobButtons.delete.ok")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -341,7 +341,7 @@ private fun deleteGroupWithUndo(
     val removed = counts[group].orEmpty()
     snackbar.showUndoAfter(
         action = { removed.forEach { dao.delete(it) } },
-        message = "已删除「${groupLabel(group)}」的 ${removed.size} 个按钮",
+        message = copyText("mobButtonSettings.groupDelete.done", "group" to groupLabel(group), "n" to removed.size),
         onUndo = { removed.forEach { dao.upsert(it) } },
     )
 }
@@ -351,7 +351,7 @@ private fun groupLabel(group: String): String = BUTTON_GROUPS.firstOrNull { it.f
 
 /** 组的出现处提示。 */
 private fun groupWhere(group: String): String =
-    if (group == ButtonGroups.MAIN) "工具条（终端顶部动作条）" else "键盘上方键排（⇌ 可切到此组）"
+    if (group == ButtonGroups.MAIN) copyText("mobButtonSettings.where.main") else copyText("mobButtonSettings.where.keys")
 
 /** type → 用户视角「做什么」徽标（与编辑器同一套人话，隐藏 command/keycode 黑话）。 */
 private fun buttonTypeLabel(type: String): String = ButtonPurpose.of(type).label

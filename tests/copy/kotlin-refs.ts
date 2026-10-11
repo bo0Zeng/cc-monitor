@@ -6,7 +6,7 @@ import { productionKtFiles } from "../test-support/production-sources.ts";
 import type { Ref } from "./copy-support.ts";
 
 /** Kotlin 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
-export const KT_HOME = "src/mobile/core-ui/src/main/kotlin/com/ccmonitor/mobile/core/ui/copy/CopyText.kt";
+export const KT_HOME = "src/mobile/core-copy/src/main/kotlin/com/ccmonitor/mobile/core/copy/CopyText.kt";
 const KT_FN = "copyText";
 
 /** 剥掉 `/* … *\/` 块注释（含 KDoc）与 `//` 行注释（字符串里的不算）。 */

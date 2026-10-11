@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ssh
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.endpoints
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
@@ -49,10 +50,10 @@ suspend fun resolveJumpChain(
     val jumpId = host.proxyJumpHostId?.trim()?.takeIf { it.isNotEmpty() && it != host.id && it !in visited } ?: return null
     // 配了跳板却解析不了（跳板主机没了、没身份）→ 拒连并报错，绝不静默直连：那会绕过跳板这道安全边界，
     // 还会把「跳板坏了」报成「目标连不上」。
-    val jumpHost = hostRepo.get(jumpId) ?: error("跳板主机不存在（已被删除？proxyJumpHostId=$jumpId）——已拒绝直连以防绕过跳板，请修复该主机的跳板设置。")
+    val jumpHost = hostRepo.get(jumpId) ?: error(copyText("mobConnect.jump.missing"))
     // 跳板身份或密码有一样即可；都没有同样拒连。
     if (jumpHost.authRef == null && jumpHost.passwordEnc == null) {
-        error("跳板「${jumpHost.label}」未关联身份、也未设密码——已拒绝直连以防绕过跳板，请给跳板主机绑定身份或设置密码。")
+        error(copyText("mobConnect.jump.noAuth", "label" to jumpHost.label))
     }
     val ep = jumpHost.endpoints().first()
     return ConnectionConfig(
@@ -73,11 +74,11 @@ suspend fun resolveAuthMethod(
     authRef: String,
     identityRepo: IdentityRepository,
 ): AuthMethod {
-    val identity = identityRepo.get(authRef) ?: error("身份不存在: $authRef")
+    val identity = identityRepo.get(authRef) ?: error(copyText("mobConnect.identity.missing", "id" to authRef))
     return if (identity.isKeystoreBacked()) {
         AuthMethod.KeystoreSigner(requireNotNull(identity.keystoreAlias))
     } else {
-        AuthMethod.PrivateKey(identityRepo.privateKey(authRef) ?: error("身份私钥为空"))
+        AuthMethod.PrivateKey(identityRepo.privateKey(authRef) ?: error(copyText("mobConnect.identity.noKey")))
     }
 }
 
@@ -92,7 +93,7 @@ suspend fun resolveHostAuth(
     hostRepo: HostRepository,
 ): AuthMethod {
     hostRepo.password(host)?.let { return AuthMethod.Password(it) }
-    val ref = host.authRef ?: pendingIdentityId ?: error("主机未关联身份，也未设密码认证")
+    val ref = host.authRef ?: pendingIdentityId ?: error(copyText("mobConnect.host.noAuth"))
     return resolveAuthMethod(ref, identityRepo)
 }
 

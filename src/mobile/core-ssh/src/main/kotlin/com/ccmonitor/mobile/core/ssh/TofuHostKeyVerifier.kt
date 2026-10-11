@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.copyText
 import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.common.KeyType
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
@@ -34,7 +35,7 @@ class HostKeyChangedException(
     /** 现在这台服务器出示的指纹。 */
     val offeredFingerprint: String = "",
     cause: Throwable? = null,
-) : Exception("主机密钥已变更（$host:$port，$keyType）—— 可能是中间人攻击或服务器重装。已拒绝连接。", cause)
+) : Exception(copyText("mobSsh.hostKey.changed", "target" to "$host:$port", "keyType" to keyType), cause)
 
 /**
  * TOFU（Trust-On-First-Use）host key 校验。

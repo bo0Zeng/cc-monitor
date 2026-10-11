@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonType
 import com.ccmonitor.mobile.core.terminal.KeyModifiers
@@ -62,15 +63,15 @@ fun CustomButton.visibleOn(supportsTmux: Boolean): Boolean =
 /** 内建动作 id → 中文标签（编辑器下拉选项 / 副标题）。 */
 val BUILTIN_ACTIONS: List<Pair<String, String>> =
     listOf(
-        "show_tabs" to "标签面板",
-        "command_palette" to "命令面板",
-        "tmux_sessions" to "tmux 会话",
-        "paste" to "粘贴",
-        "capture" to "抓屏",
-        "push_key" to "推送公钥",
-        "show_keyboard" to "软键盘",
-        "toggle_ctrl" to "Ctrl 粘性",
-        "toggle_alt" to "Alt 粘性",
+        "show_tabs" to copyText("mobBuiltin.action.tabs"),
+        "command_palette" to copyText("mobBuiltin.action.palette"),
+        "tmux_sessions" to copyText("mobBuiltin.action.tmux"),
+        "paste" to copyText("mobBuiltin.action.paste"),
+        "capture" to copyText("mobBuiltin.action.capture"),
+        "push_key" to copyText("mobBuiltin.action.pushKey"),
+        "show_keyboard" to copyText("mobBuiltin.action.keyboard"),
+        "toggle_ctrl" to copyText("mobBuiltin.action.ctrl"),
+        "toggle_alt" to copyText("mobBuiltin.action.alt"),
     )
 
 /**

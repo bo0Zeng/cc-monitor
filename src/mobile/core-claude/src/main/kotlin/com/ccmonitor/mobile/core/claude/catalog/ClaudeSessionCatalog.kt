@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.model.parseBashOutput
 import com.ccmonitor.mobile.core.claude.model.parseSlashCommand
 import com.ccmonitor.mobile.core.claude.model.stripInternalNoise
 import com.ccmonitor.mobile.core.claude.transport.ClaudePaths
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.shellQuote
 import com.squareup.moshi.Moshi
@@ -549,7 +550,7 @@ class ClaudeSessionCatalog(
             encDir: String,
         ): String =
             when {
-                cwd.isNullOrBlank() -> encDir.ifEmpty { "(未知项目)" }
+                cwd.isNullOrBlank() -> encDir.ifEmpty { copyText("mobReading.project.unknown") }
                 cwd.trimEnd('/').isEmpty() -> "/"
                 else -> cwd.trimEnd('/').substringAfterLast('/')
             }

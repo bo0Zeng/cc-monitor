@@ -22,6 +22,7 @@ ksp {
 }
 
 dependencies {
+    implementation(project(":core-copy")) // 上屏句子从文案表取（取文口住 core-copy）
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

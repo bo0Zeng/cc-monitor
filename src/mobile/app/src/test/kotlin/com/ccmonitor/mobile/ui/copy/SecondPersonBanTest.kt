@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.copy
 
+import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,7 +13,7 @@ import java.io.File
  * 规矩不落到可执行层面就会一句句腐回去（同 `UiWordlistTest` 头注里「文案会一句句把技术概念漏回 UI」）；
  * `UiWordlistTest` 的禁用词表里不含第二人称，所以单开这一份。
  *
- * 射程：两个模块的 `src/main`：`app`（界面全部包，不只三个面）＋ `core-claude`
+ * 射程：两个模块的 `src/main`：`app`（界面全部包，不只三个面）＋ `core-claude`；字面量是文案表的键时比的是那句 zh
  * （等待文案 `WaitingCopy` 住这儿，漏掉它这条判据就是空的）。测试源不扫：判据自己要钉文案，断言里必然出现文案。
  *
  * ### 它不防什么
@@ -58,12 +59,14 @@ class SecondPersonBanTest {
                 KotlinSourceScanner
                     .literalsOf(f.readText())
                     .asSequence()
-                    .filter { lit -> allowed.keys.none { lit.body.contains(it) } }
-                    .flatMap { lit ->
+                    // 界面上的字收进了文案表：字面量是表里的键 ⇒ 换成那句 zh 再比（表这一侧另有 C-W19 逐条判）。
+                    .map { lit -> lit.line to CopyTableForTests.shown(lit.body) }
+                    .filter { (_, body) -> allowed.keys.none { body.contains(it) } }
+                    .flatMap { (line, body) ->
                         secondPerson
                             .asSequence()
-                            .filter { lit.body.contains(it) }
-                            .map { Hit("${f.name}:${lit.line}", it, lit.body) }
+                            .filter { body.contains(it) }
+                            .map { Hit("${f.name}:$line", it, body) }
                     }
             }.toList()
     }

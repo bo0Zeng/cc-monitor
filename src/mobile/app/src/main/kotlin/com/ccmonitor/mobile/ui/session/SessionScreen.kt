@@ -45,6 +45,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
@@ -54,7 +56,6 @@ import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
-import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
@@ -162,9 +163,11 @@ private fun ErrorContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text("连接失败: $message", color = MaterialTheme.colorScheme.error)
+        Text(copyText("mobSession.connect.failed"), color = MaterialTheme.colorScheme.error)
+        // 下层给的原话（或这一侧判出的原因）放在句子下面，小字，同连接日志一栏。
+        Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (log.isNotEmpty()) ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
-        TextButton(onClick = { vm.retry() }) { Text("重连") }
+        TextButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
     }
 }
 
@@ -191,8 +194,8 @@ private fun NeedIdentityContent(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text("选择连接身份", style = MaterialTheme.typography.titleMedium)
-        Text("该主机未绑定身份，选一个用于连接（会记住，下次点即连）：", style = MaterialTheme.typography.bodySmall)
+        Text(copyText("mobSession.identity.pickTitle"), style = MaterialTheme.typography.titleMedium)
+        Text(copyText("mobSession.identity.pickHint"), style = MaterialTheme.typography.bodySmall)
         identities.forEach { id ->
             TextButton(onClick = { onPick(id.id) }) { Text(id.label.ifBlank { id.id }) }
         }
@@ -222,41 +225,43 @@ private fun HostKeyChangedContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text("这台服务器的身份变了", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+        Text(copyText("mobHostKey.page.title"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
         Text(
             copyText("hostIdentity.changed.body"),
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "· 如果刚重装过系统、重建过这台机器，这是正常的\n" +
-                "· 如果没有，别继续 —— 可能有人在冒充它",
+            copyText("mobHostKey.page.cases"),
             style = MaterialTheme.typography.bodySmall,
         )
         // 详情给会核对的人，放在正文之下、小字
         if (state.expectedFingerprint.isNotBlank() || state.offeredFingerprint.isNotBlank()) {
             Text(
-                "以前记得的：${state.expectedFingerprint.ifBlank { "（算不出）" }}\n" +
-                    "现在这台是：${state.offeredFingerprint.ifBlank { "（算不出）" }}",
+                copyText(
+                    "mobHostKey.page.fingerprints",
+                    "old" to state.expectedFingerprint.ifBlank { copyText("mobHostKey.page.unknown") },
+                    "new" to state.offeredFingerprint.ifBlank { copyText("mobHostKey.page.unknown") },
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = { confirming = true }) { Text("我确认是我自己改的") }
+        TextButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
     }
 
     if (confirming) {
         AlertDialog(
             onDismissRequest = { confirming = false },
-            title = { Text("信任新身份？") },
+            title = { Text(copyText("mobHostKey.trust.title")) },
             // 二次确认的文案说清后果，而不是只问「确定吗」。
             text = { Text(copyText("hostIdentity.trust.consequence")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = false
                     onTrustNew()
-                }) { Text("信任并重连") }
+                }) { Text(copyText("mobHostKey.trust.ok")) }
             },
-            dismissButton = { TextButton(onClick = { confirming = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
 }
@@ -275,7 +280,7 @@ private fun ConnectingContent(
     ) {
         SessionStateTabButton(onShowTabs)
         CircularProgressIndicator()
-        Text("连接中…", style = MaterialTheme.typography.titleMedium)
+        Text(copyText("mobSession.connect.progress"), style = MaterialTheme.typography.titleMedium)
         ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
     }
 }
@@ -383,10 +388,10 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            if (status == SessionStatus.RECONNECTING) "重连中…" else "连接已断开",
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped"),
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
-        TextButton(onClick = onReconnect) { Text("重连") }
+        TextButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
     }
 }
 
@@ -438,12 +443,12 @@ private fun rememberModelSwitchAction(
             // send-keys 是异步 exec，成败都给反馈，掉线时不假报「已发送」。
             scope.launch {
                 runCatching { runOnce(vm.channel, backend.sendModelCommand(ts, model)) }
-                    .onSuccess { Toast.makeText(context, "已发送 /model $model", Toast.LENGTH_SHORT).show() }
-                    .onFailure { Toast.makeText(context, "发送失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                    .onSuccess { Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show() }
+                    .onFailure { Toast.makeText(context, withRaw(copyText("mobTerm.model.sendFailed"), it.message), Toast.LENGTH_SHORT).show() }
             }
         } else {
             session.send("/model $model\n".toByteArray()) // 没有 tmux：直接发给终端前台
-            Toast.makeText(context, "已发送 /model $model", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -464,10 +469,10 @@ private fun rememberCaptureAction(
             scope.launch {
                 runCatching { runOnce(vm.channel, backend.captureCommand(ts)) }
                     .onSuccess { onCaptured(it) }
-                    .onFailure { Toast.makeText(context, "抓屏失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                    .onFailure { Toast.makeText(context, withRaw(copyText("mobTerm.capture.failed"), it.message), Toast.LENGTH_SHORT).show() }
             }
         } else {
-            Toast.makeText(context, "无 tmux 会话可抓屏", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, copyText("mobTerm.capture.noTmux"), Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -522,7 +527,7 @@ private fun CaptureControl(
         text = text,
         onCopy = {
             scope.launch { clipboard.copyPlainText(text) }
-            Toast.makeText(context, "已复制 ${text.length} 字符", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, copyText("mobTerm.capture.copied", "n" to text.length), Toast.LENGTH_SHORT).show()
             onDismiss()
         },
         onDismiss = onDismiss,
@@ -532,9 +537,9 @@ private fun CaptureControl(
 /** 把推送命令的输出映射为可读的反馈。 */
 private fun pushKeyResultMessage(out: String): String =
     when {
-        out.contains("CCM_KEY_ADDED") -> "已推送公钥到本机 authorized_keys"
-        out.contains("CCM_KEY_ALREADY") -> "公钥已在 authorized_keys（未重复添加）"
-        else -> "推送未确认，请检查远端 ~/.ssh/authorized_keys" // 没有标记：命令链在写入前就失败了（权限 / 磁盘等），不假报成功
+        out.contains("CCM_KEY_ADDED") -> copyText("mobKeyPush.result.added")
+        out.contains("CCM_KEY_ALREADY") -> copyText("mobKeyPush.result.already")
+        else -> copyText("mobKeyPush.result.unsure") // 没有标记：命令链在写入前就失败了（权限 / 磁盘等），不假报成功
     }
 
 /** 公钥推送对话框的宿主：选身份，在活连接上 exec，给反馈。 */
@@ -554,13 +559,13 @@ private fun PushKeyControl(
         onPick = { id ->
             onDismiss()
             if (id.publicKeyOpenSsh.isBlank()) {
-                Toast.makeText(context, "该身份无公钥，无法推送（旧的导入身份可重新导入以派生公钥）", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, copyText("mobKeyPush.result.noPublic"), Toast.LENGTH_LONG).show()
             } else {
                 // 在已认证的连接上 exec，不必重新认证。输出里带 CCM_KEY_ADDED / ALREADY 标记。
                 scope.launch {
                     runCatching { runOnce(channel, appendAuthorizedKeyCommand(id.publicKeyOpenSsh)) }
                         .onSuccess { Toast.makeText(context, pushKeyResultMessage(it), Toast.LENGTH_SHORT).show() }
-                        .onFailure { Toast.makeText(context, "推送失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                        .onFailure { Toast.makeText(context, withRaw(copyText("mobKeyPush.result.failed"), it.message), Toast.LENGTH_SHORT).show() }
                 }
             }
         },
@@ -576,13 +581,13 @@ private fun PushKeyDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("推送公钥到本机") },
+        title = { Text(copyText("mobKeyPush.dialog.title")) },
         text = {
             Column {
                 if (identities.isEmpty()) {
-                    Text("还没有身份，先在身份管理创建或导入。", style = MaterialTheme.typography.bodySmall)
+                    Text(copyText("mobKeyPush.dialog.empty"), style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("选一个身份，把它的公钥加到本机 ~/.ssh/authorized_keys（幂等，已存在不重复）：", style = MaterialTheme.typography.bodySmall)
+                    Text(copyText("mobKeyPush.dialog.hint"), style = MaterialTheme.typography.bodySmall)
                     identities.forEach { id ->
                         TextButton(onClick = { onPick(id) }) { Text(id.label.ifBlank { id.id }) }
                     }
@@ -590,7 +595,7 @@ private fun PushKeyDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -603,16 +608,16 @@ private fun CaptureDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("当前屏幕") },
+        title = { Text(copyText("mobCapture.dialog.title")) },
         text = {
             Text(
-                text.ifBlank { "(空)" },
+                text.ifBlank { copyText("mobCapture.dialog.empty") },
                 style = monoSmall,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { TextButton(onClick = onCopy) { Text("复制") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(onClick = onCopy) { Text(copyText("mobCapture.dialog.copy")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -796,16 +801,16 @@ internal fun terminalPaletteActions(
 ): List<PaletteAction> =
     buildList {
         if (supportsTmux) {
-            MODEL_PRESETS.forEach { m -> add(PaletteAction("模型", m, "/model $m") { onModel(m) }) }
-            add(PaletteAction("抓屏", "抓当前屏幕") { onCapture() })
+            MODEL_PRESETS.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m, "/model $m") { onModel(m) }) }
+            add(PaletteAction(copyText("mobPalette.group.capture"), copyText("mobPalette.item.capture")) { onCapture() })
         }
         // 副标题显示组合键（如 Ctrl+C）而不是裸键；动作带整个按钮，由调用方按修饰键编码。
-        customButtons.forEach { b -> add(PaletteAction("自定义", b.label, customButtonSubtitle(b)) { onCustom(b) }) }
+        customButtons.forEach { b -> add(PaletteAction(copyText("mobPalette.group.custom"), b.label, customButtonSubtitle(b)) { onCustom(b) }) }
         if (supportsTmux) {
-            add(PaletteAction("会话", "tmux 会话管理") { onShowTmux() })
+            add(PaletteAction(copyText("mobPalette.group.tmux"), copyText("mobPalette.item.tmux")) { onShowTmux() })
             // 公钥推送用的是 POSIX shell（mkdir / chmod / grep >> authorized_keys），严格说要的是 POSIX 能力而非 tmux；
             // 按操作系统定方言时两者总是同值，所以挂在 supportsTmux 上。
-            add(PaletteAction("公钥", "推送公钥到本机 authorized_keys") { onPushKey() })
+            add(PaletteAction(copyText("mobPalette.group.key"), copyText("mobPalette.item.key")) { onPushKey() })
         }
     }
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
@@ -105,15 +106,15 @@ fun CustomButtonBar(
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("删除按钮") },
-            text = { Text("删除「${target.label}」？") },
+            title = { Text(copyText("mobButtons.delete.title")) },
+            text = { Text(copyText("mobButtons.delete.body", "label" to target.label)) },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { dao.delete(target) }
                     deleteTarget = null
-                }) { Text("删除") }
+                }) { Text(copyText("mobButtons.delete.ok")) }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
 }
