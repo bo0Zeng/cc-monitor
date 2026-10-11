@@ -23,7 +23,7 @@
 
 跑法与射程都在各脚本自己的头注里。
 
-门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓：取 `PRIVATE_SCAN` 指的那份，没设就找 PATH 上的 `private-scan.sh`，都没有就跳过并说一声。
+门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓：取环境变量 `PRIVATE_SCAN` 指的那份，没设就在 PATH 上找同名的扫描脚本，都没有就跳过并说一声。
 
 PowerShell 别名块的模板是 `src/shared/cc.ps1.tpl`（不在本目录；后端编译时 `include_str!` 进去）：设置里装别名块时把它（`__ccm_bind` 自动打开 monitor · 窗口标签 ＋ 带标签的 `ssh` · 接上别名文件）写进用户 `$PROFILE` 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内。
 

@@ -42,9 +42,9 @@ pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux se
 pub mod dial; // K-P6b / C2 /：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力
-pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
+pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 pub mod history; // 历史清单与注解（history_list · history_annotations）

@@ -102,7 +102,11 @@ mod tests {
             }
             let mut ch = c.spawn().expect("python3 起不来");
             use std::io::Write;
-            ch.stdin.take().unwrap().write_all(changes.as_bytes()).unwrap();
+            ch.stdin
+                .take()
+                .unwrap()
+                .write_all(changes.as_bytes())
+                .unwrap();
             let out = ch.wait_with_output().unwrap();
             (
                 out.status.code().unwrap_or(-1),
@@ -125,7 +129,10 @@ mod tests {
         assert_eq!(rc, 0, "挑格那一步停了（表与 gate.sh 对不上？）：{said}");
         assert_eq!(line(&said, "PLAN-MODE:"), "affected", "{said}");
         let cells = line(&said, "PLAN-CELLS:");
-        assert!(cells.split_whitespace().any(|c| c == "tsc"), "恒跑那组没挑上：{said}");
+        assert!(
+            cells.split_whitespace().any(|c| c == "tsc"),
+            "恒跑那组没挑上：{said}"
+        );
         assert!(
             !cells.split_whitespace().any(|c| c == "mobile"),
             "只动 README 却挑上了手机那格：{said}"
@@ -147,7 +154,9 @@ mod tests {
         let bin = d.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         // 只放脚本要的几样，故意不放 systemd-run / systemctl。
-        for tool in ["bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "false"] {
+        for tool in [
+            "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "false",
+        ] {
             let found = Command::new("bash")
                 .args(["-c", &format!("type -P {tool}")])
                 .output()
@@ -172,12 +181,16 @@ mod tests {
         let out = run(&["echo", "heavy-said-this"]);
         let said = String::from_utf8_lossy(&out.stdout);
         let note = String::from_utf8_lossy(&out.stderr);
-        assert!(out.status.success(), "没有 systemd-run 时没跑成：{said}{note}");
-        assert_eq!(said.trim(), "heavy-said-this", "命令的输出没原样出来：{said}");
         assert!(
-            note.contains("systemd-run"),
-            "退成直接跑却没说一声：{note}"
+            out.status.success(),
+            "没有 systemd-run 时没跑成：{said}{note}"
         );
+        assert_eq!(
+            said.trim(),
+            "heavy-said-this",
+            "命令的输出没原样出来：{said}"
+        );
+        assert!(note.contains("systemd-run"), "退成直接跑却没说一声：{note}");
         assert!(
             d.join("state/heavy-slots").is_dir(),
             "槽位没放进 GATE_STATE_DIR"
