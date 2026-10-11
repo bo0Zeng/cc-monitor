@@ -133,6 +133,8 @@ let CLOSURES: Record<Win, Closure>;
 let INPUT: Record<string, string>;
 /** 构建产物：html 文件名 → 它按序链的 CSS 资产全文（每个窗口真正加载的样式，就是这一串）。 */
 let BUILT_CSS_BY_HTML: Record<string, string[]>;
+/** 构建产物里全部资产的文件名（字体、图片、CSS …）。 */
+let ASSET_NAMES: string[];
 
 async function buildClosures(): Promise<{ closures: Record<Win, Closure>; input: Record<string, string> }> {
   let input: Record<string, string> = {};
@@ -186,6 +188,7 @@ async function buildClosures(): Promise<{ closures: Record<Win, Closure>; input:
     walk(entry[0].fileName);
     closures[win] = { facade: rel(entry[0].facadeModuleId ?? ""), modules, cssAssets, jsCode };
   }
+  ASSET_NAMES = [...assets.keys()];
   BUILT_CSS_BY_HTML = {};
   for (const w of Object.values(WINDOWS)) {
     const html = assets.get(w.html);
@@ -1030,6 +1033,15 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
       const inVendor = vendorish.filter(([, ls]) => ls.has("vendor")).length;
       expect(inVendor, `${html}：第三方类一个都不在 vendor 层里`).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("字体：KaTeX 只打 woff2", () => {
+  // 两个 WebView（WebView2 · WebKitGTK）都认 woff2；KaTeX 的样式表原样会把 ttf · woff · woff2 三种都引进来（约多 0.6 MB）。
+  it("产物里的字体文件全是 .woff2，且 KaTeX 那几份在", () => {
+    const fonts = ASSET_NAMES.filter((n) => /\.(?:woff2?|ttf|otf|eot)$/i.test(n));
+    expect(fonts.filter((n) => !n.endsWith(".woff2")), "产物里有 woff2 以外的字体").toEqual([]);
+    expect(fonts.filter((n) => n.includes("KaTeX")).length, "产物里没有 KaTeX 的 woff2 —— 本条对着空气").toBeGreaterThan(10);
   });
 });
 
