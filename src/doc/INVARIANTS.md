@@ -340,7 +340,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 **谁在守**：`tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`src/**/*.ts` 生产段零处 tmux 动词 / `&&` 字面量，不开例外）。
 
-守的范围只到桌面界面的 TS。手机端终端屏今天仍自己拼 tmux 命令（`src/mobile/` 的 `TmuxCommands.kt`，列会话 · 附着 · 会话级显示选项），不在这条判据的扫描面里。
+手机那一侧：列会话 · 附着 · 结束 · 抓屏 · 送字都问那台核心（附着那一行由 `launch-render-cli` 渲、手机原样敲进自己的终端），不改会话级选项；`TmuxCommands.kt` 只留用户在 ssh 里也会敲的两条（`tmux -u new-session -A -s <名>` · `tmux -u new-session -d -s <名>`）。守它的是 `src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ssh/TmuxSurfaceLiteralScanTest.kt`（tmux 片段只许住网关，找会话 · 附着 · 结束 · 抓屏的子命令锚点在生产代码里一次都不许出现）。
 
 ## 31a. tmux `-t` 目标恒用 `=<名>:` 精确形态——三处同源，禁止任一处退回裸目标（F01 / unify-launch）
 

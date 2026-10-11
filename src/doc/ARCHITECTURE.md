@@ -326,7 +326,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - 本机：本机后端 `launch-local` 渲出那一行 → monitor 开窗。
 - 界面只经 `src/frontend/ui/terminal-open.ts` 走这条，monitor 只开窗、不拼命令。开窗挑终端：设置里指定的 → 系统出口（`xdg-terminal-exec` · `x-terminal-emulator`）→ 常见终端逐个探；都没有就不开窗、说清楚去设置里指定（`launch_tests.rs::the_terminal_is_picked_by_setting_then_system_exits_then_common_ones` 钉着）。
 
-**在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。附着那一行今天由手机自己拼（`src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt`）；与桌面同一个出处、敲后端渲的那一行是去向。
+**在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。附着那一行问那台后端 `launch-render-cli` 渲（接回一个 tmux 会话就是 `ccm -- --attach <名>`，与桌面「命令已复制」那一条同一个出处），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Terminals.kt` 的 `AttachLine`）；列会话 · 结束 · 抓屏 · 送字也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input`）。手机自己只留用户在 ssh 里也会敲的两条（主机设置里「连上就进某个会话」与 tmux 管理窗里的「新建」，`ssh/TmuxCommands.kt`）。
 
 **tmux 这一面**（都在后端）：
 
