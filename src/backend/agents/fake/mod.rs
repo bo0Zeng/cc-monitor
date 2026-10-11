@@ -317,6 +317,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         compact_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
+        asks: None,
     }
 }
 
@@ -332,6 +333,7 @@ pub(crate) fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         )),
         local: Some(local_face(pidfile_root, cmdline_may_be_agent)),
         live: crate::agents::LiveBy::Unknown,
+        asks: None,
         accounts: Some(accounts_face(ACCOUNT_DIR_ENV)),
         launch: Some(LAUNCH),
         ..bare_row(home)
@@ -569,6 +571,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     let reg = [crate::agents::Adapter {
         local: Some(local_face(pid_root, cmdline)),
         live: crate::agents::LiveBy::Unknown,
+        asks: None,
         ..bare_row(home_fn)
     }];
     let local =

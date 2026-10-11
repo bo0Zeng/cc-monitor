@@ -17709,6 +17709,174 @@
       "zh": "运行中",
       "args": []
     },
+    "beAsk.scope.session": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本次会话",
+      "args": []
+    },
+    "beAsk.scope.local": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本项目 · 只这台",
+      "args": []
+    },
+    "beAsk.scope.project": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本项目",
+      "args": []
+    },
+    "beAsk.scope.user": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "所有项目",
+      "args": []
+    },
+    "beAsk.rule.dirs": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "允许访问 {dirs}（{scope}）",
+      "args": ["dirs", "scope"]
+    },
+    "beAsk.rule.acceptEdits": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "自动接受编辑（{scope}）",
+      "args": ["scope"]
+    },
+    "beAsk.rule.mode": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "切到 {mode} 模式（{scope}）",
+      "args": ["mode", "scope"]
+    },
+    "beAsk.rule.rules": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "以后不再问 {rules}（{scope}）",
+      "args": ["rules", "scope"]
+    },
+    "beAsk.choice.allow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "允许",
+      "args": []
+    },
+    "beAsk.choice.allowAlways": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "允许，且{rule}",
+      "args": ["rule"]
+    },
+    "beAsk.choice.deny": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "拒绝",
+      "args": []
+    },
+    "beAsk.choice.denyNote": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "拒绝并说明",
+      "args": []
+    },
+    "beAsk.choice.denyStop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "拒绝并停下",
+      "args": []
+    },
+    "beAsk.choice.release": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改到终端里答",
+      "args": []
+    },
+    "beAsk.choice.planAuto": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "批准，用自动模式",
+      "args": []
+    },
+    "beAsk.choice.planEdits": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "批准，自动接受编辑",
+      "args": []
+    },
+    "beAsk.choice.planManual": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "批准，逐个确认编辑",
+      "args": []
+    },
+    "beAsk.choice.planKeep": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "继续规划",
+      "args": []
+    },
+    "beAsk.choice.answer": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "提交答案",
+      "args": []
+    },
+    "beAsk.choice.dismiss": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "不回答",
+      "args": []
+    },
+    "beAsk.planKeep.note": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "继续规划，先不要动手",
+      "args": []
+    },
+    "beAsk.manual.terminal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "只能在终端里答",
+      "args": []
+    },
+    "beAsk.answer.already": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这一条已经有人答过",
+      "args": []
+    },
+    "beAsk.answer.closed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这一条已在终端里答过或已关掉",
+      "args": []
+    },
+    "beAsk.answer.notFound": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到这一条请求",
+      "args": []
+    },
+    "beAsk.answer.badChoice": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这一项不能选",
+      "args": []
+    },
+    "beAsk.answer.noteRequired": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这一项要写一句说明",
+      "args": []
+    },
+    "beAsk.answer.picks": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "每道题都要答",
+      "args": []
+    },
     "beSession.needs.approve": {
       "kind": "body",
       "role": "片段",
