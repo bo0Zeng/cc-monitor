@@ -163,7 +163,8 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
 }
 
 /// 搬上 `Own` 的那几份（第二刀逐份搬，搬一份挪一行）。
-const MOVED_TO_OWN: &[&str] = &["assets/asset_catalog.rs", 
+const MOVED_TO_OWN: &[&str] = &[
+    "assets/asset_catalog.rs",
     "assets/skill_ledger.rs",
     "history/history_annotations.rs",
     "control/exit_policy.rs",
