@@ -51,22 +51,20 @@ pub mod chan;
 mod config;
 // `mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
 //   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
-mod data_paths;
-mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
-                      // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
+mod data_paths;
 mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform/notify.rs）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
-mod drift_ledger;
 mod event_replay;
-// 🔴原生文件管理窗口。进程形态＝**同进程**、
-// egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-// （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
-// ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-//   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
-//   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
-//   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
+mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
+                      // 🔴原生文件管理窗口。进程形态＝**同进程**、
+                      // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+                      // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+                      // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
+                      //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
+                      //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
+                      //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
 // `hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
@@ -339,7 +337,7 @@ use tauri::{Emitter, Listener, Manager};
 ///
 /// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 backend **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由后端的 kind 交互性过滤处理
-/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::local_hides`），与本处嵌套环境清洗无关。
+/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::BgHide`），与本处嵌套环境清洗无关。
 /// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
@@ -867,7 +865,7 @@ pub fn run() {
             config::load_config,
             config::patch_config,
             config::machine_table_try,
-            // K-H2a：apikey 表那把 key 的写（`KS10`）。读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
+            // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
             // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
             // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
             //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
@@ -876,7 +874,6 @@ pub fn run() {
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             // 足迹成品由那台后端出（界面经通道问 `footprint-report`）；这里只答 monitor 自己那台那几行的事实。
             footprint_client::footprint_client_facts,
-            drift_ledger::drift_ledger_report,
             diagnostics_report::diagnostics_report,
             app_restart::restart_app,
             desktop_notify::notify_desktop,
@@ -1361,7 +1358,7 @@ pub(crate) fn batch_to_payloads(
                     session_id: line.session_id,
                     cwd: line.cwd,
                     path: line.path.to_string_lossy().into_owned(),
-                    // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
+                    // P5.1：后端给每行编行号（流不重放历史，与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
                     record,
@@ -1410,12 +1407,6 @@ impl SkipRuns {
         self.0.remove(sid);
     }
 }
-
-// `read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`
-//   （`src/frontend/ui/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
-
-// `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
-//   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
 
 // 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 // 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`

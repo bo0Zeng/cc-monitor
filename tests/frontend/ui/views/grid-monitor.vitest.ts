@@ -30,6 +30,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   activity: null,
   activityText: null,
   activityTone: null,
+  activityOrder: null,
   needs: null,
   runningAgents: 0,
   totalAgents: 0,
@@ -65,25 +66,18 @@ describe("F91 groupSessionsByOrigin", () => {
 });
 
 describe("F91 sortSessionsInGroup", () => {
-  it("活会话先于归档；活内 等人>在干活>后台任务运行中>闲着>说不清；同档稳定", () => {
+  it("活会话先于归档；活内只按核心给的序（activityOrder，小的在前）；同档稳定；还没收到序的排活会话最后", () => {
+    // 序故意与 activity 码对不上：界面只照核心那一格排，不按码另判。
     const sorted = sortSessionsInGroup([
-      snap({ sessionId: "arch", state: ENDED }),
-      snap({ sessionId: "idle", activity: "idle" }),
-      snap({ sessionId: "unknown", activity: null }),
-      snap({ sessionId: "shell", activity: "background_work" }),
-      snap({ sessionId: "wait", activity: "needs_you" }),
-      snap({ sessionId: "busy", activity: "working" }),
-      snap({ sessionId: "idle2", activity: "idle" }),
+      snap({ sessionId: "arch", state: ENDED, activityOrder: 0 }),
+      snap({ sessionId: "o3", activity: "needs_you", activityOrder: 3 }),
+      snap({ sessionId: "none", activity: null }),
+      snap({ sessionId: "o2", activity: "idle", activityOrder: 2 }),
+      snap({ sessionId: "o0", activity: "idle", activityOrder: 0 }),
+      snap({ sessionId: "o1", activity: "working", activityOrder: 1 }),
+      snap({ sessionId: "o0b", activity: "background_work", activityOrder: 0 }),
     ]);
-    expect(sorted.map((s) => s.sessionId)).toEqual([
-      "wait",
-      "busy",
-      "shell",
-      "idle",
-      "idle2",
-      "unknown",
-      "arch",
-    ]);
+    expect(sorted.map((s) => s.sessionId)).toEqual(["o0", "o0b", "o1", "o2", "o3", "none", "arch"]);
   });
   it("不改入参（返回新数组）", () => {
     const input = [snap({ sessionId: "a", activity: "idle" }), snap({ sessionId: "b", activity: "working" })];
@@ -95,8 +89,8 @@ describe("F91 sortSessionsInGroup", () => {
     const sorted = sortSessionsInGroup([
       snap({ sessionId: "arch", state: ENDED }),
       // idle-tmux：status 仍 live、activityStatus 可为任意陈旧值——tmuxIdle 优先降到 8
-      snap({ sessionId: "tidle", state: RECONNECTABLE, activity: "working" }),
-      snap({ sessionId: "busy", activity: "working" }),
+      snap({ sessionId: "tidle", state: RECONNECTABLE, activity: "working", activityOrder: 0 }),
+      snap({ sessionId: "busy", activity: "working", activityOrder: 1 }),
     ]);
     expect(sorted.map((s) => s.sessionId)).toEqual(["busy", "tidle", "arch"]);
   });
@@ -489,10 +483,10 @@ describe("F91 GridMonitorView interval 生命周期", () => {
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
-    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activity: "working", runningAgents: 2, totalAgents: 3 }),
+    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activity: "working", activityOrder: 1, runningAgents: 2, totalAgents: 3 }),
     snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
     snap({ sessionId: "l3", title: "本机三", state: ENDED }),
-    snap({ sessionId: "p1", title: "派一", origin: "pi", activity: "needs_you", needs: "核心·等批准" }),
+    snap({ sessionId: "p1", title: "派一", origin: "pi", activity: "needs_you", activityOrder: 0, needs: "核心·等批准" }),
     snap({ sessionId: "p2", title: "派二", origin: "pi", state: RECONNECTABLE, background: true }),
     snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
     snap({ sessionId: "n2", title: "诺二", origin: "nano", context: { text: "12%", tone: "plain", percent: 12 } }),
@@ -571,8 +565,10 @@ describe("UP1 机器总览按行更新", () => {
       const before = new Map(["l1", "l2", "l3", "p1", "p2", "n1", "n2"].map((sid) => [sid, t.cellOf(sid)]));
       t.set((s) => {
         s[1].activity = "needs_you"; // l2 排到本机组最前
+        s[1].activityOrder = 0;
         s[1].needs = "核心·等批准";
         s[3].activity = "working"; // p1 不再等
+        s[3].activityOrder = 1;
         s[3].needs = null;
         s[5].cwd = null; // n1 的 cwd 行摘掉
         s[6].unread = 1;
@@ -646,6 +642,7 @@ describe("UP1 机器总览按行更新", () => {
       expect(document.activeElement).toBe(t.cellOf("n2"));
       t.set((s) => {
         s[6].activity = "needs_you"; // n2 排到 nano 组最前（被 insertBefore 挪动）
+        s[6].activityOrder = 0;
         s[6].needs = "x";
       });
       vi.advanceTimersByTime(1000);

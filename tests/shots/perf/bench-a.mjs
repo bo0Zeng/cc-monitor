@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "../cdp.mjs";
+import { pinDateSource, SHOTS_TZ } from "../real/pool.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, "../../..");
@@ -48,7 +49,7 @@ process.on("SIGINT", () => process.exit(130));
 process.on("SIGTERM", () => process.exit(143));
 
 function isolatedEnv(extra = {}) {
-  const env = { ...process.env, HOME: path.join(sandbox, "home"), ...extra };
+  const env = { ...process.env, HOME: path.join(sandbox, "home"), TZ: SHOTS_TZ, ...extra };
   for (const k of Object.keys(env)) if (/^(CCM_|CLAUDE_|ANTHROPIC_|TMUX)/.test(k) && !k.startsWith("CCM_SHOTS_")) delete env[k];
   for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"]) delete env[k];
   return env;
@@ -100,7 +101,7 @@ const cdp = await Cdp.connect(await devtoolsUrl(profile));
 const result = { when: new Date().toISOString(), engine: "chromium", runs, load: { start: load0 }, rows: [] };
 
 async function open(url, ready) {
-  const page = await Page.open(cdp, 1280, 800);
+  const page = await Page.open(cdp, 1280, 800, 1, { boot: pinDateSource() });
   await page.send("Page.addScriptToEvaluateOnNewDocument", { source: probe });
   await page.send("Performance.enable", { timeDomain: "timeTicks" });
   const t0 = Date.now();

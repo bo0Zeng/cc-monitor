@@ -39,7 +39,6 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         host_arch: "x86_64".into(),
         claude_dir: "/tmp".into(),
         homes: vec![],
-        capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],

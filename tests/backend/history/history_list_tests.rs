@@ -27,6 +27,43 @@ use super::*;
 use crate::history::history_annotations::{Entry, Table};
 use std::path::PathBuf;
 
+// 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
+
+fn listing_from(
+    tree: Vec<(String, Result<Vec<Value>, String>)>,
+    synth: &[(
+        &'static str,
+        Vec<crate::agents::SynthSession>,
+        fn(&std::path::Path) -> String,
+    )],
+    live: &LiveSet,
+    last: &Value,
+) -> Value {
+    serde_json::to_value(super::listing_from(tree, synth, live, last)).unwrap()
+}
+
+fn answer_from(
+    listing: &Value,
+    origin: Option<&str>,
+    ann: Result<&Table, String>,
+    ask: &Ask,
+    now_ms: i64,
+    tz: &crate::Tz,
+) -> Value {
+    let l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
+    serde_json::to_value(super::answer_from(&l, origin, ann, ask, now_ms, tz)).unwrap()
+}
+
+fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_annotations::Loaded) {
+    let mut l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
+    super::with_own_annotations(&mut l, loaded);
+    *listing = serde_json::to_value(l).unwrap();
+}
+
+fn listing_annotations(listing: &Value) -> Result<Table, String> {
+    super::listing_annotations(&serde_json::from_value(listing.clone()).expect("清单读不回来"))
+}
+
 fn fixtures() -> PathBuf {
     crate::guard_support::repo_root().join("tests/__fixtures__")
 }

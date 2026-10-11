@@ -1051,12 +1051,6 @@
       "zh": "写后回读 · {path} 里无账号 {account} 的 API key",
       "args": ["path", "account"]
     },
-    "beUpstreamFileFace.perm.tooWide": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{how} · 修法 {fix}",
-      "args": ["how", "fix"]
-    },
     "beUpstreamFileFace.write.noParent": {
       "kind": "error",
       "role": "原因格",
@@ -5548,12 +5542,6 @@
       "zh": "读取远端历史失败",
       "args": []
     },
-    "remoteHealth.head.degraded": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端降级模式",
-      "args": []
-    },
     "remoteHealth.head.backendOld": {
       "kind": "body",
       "role": "片段",
@@ -6924,6 +6912,18 @@
       "kind": "control",
       "role": "标签",
       "zh": "值",
+      "args": []
+    },
+    "profilesPage.merge.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制整条命令",
+      "args": []
+    },
+    "profilesPage.merge.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制整条",
       "args": []
     },
     "profilesPage.merge.equals": {
@@ -13539,25 +13539,6 @@
       "zh": "host 别名含不安全字符 · {alias}",
       "args": ["alias"]
     },
-    "rsSshSource.health.degraded": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "远端后端要更新 · {build} · 当前 {expected} · 部分功能不可用\n后台会话看不见 · 历史加载易卡\n在设置里重装此机后端",
-      "args": ["build", "expected"]
-    },
-    "rsSshSource.health.degradedNoOwnBytes": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "远端后端版本不可比\n现为 {build} · 未带后端字节\n降级运行 · 后台会话不可见 · 历史易卡",
-      "args": ["build"]
-    },
-    "rsSshSource.upgrade.reconnect": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端已更新 · 重新连接一次",
-      "args": [],
-      "limited": ["连接"]
-    },
     "rsSshSource.version.protoMismatch": {
       "kind": "body",
       "role": "说明",
@@ -16443,12 +16424,6 @@
       "kind": "error",
       "role": "原因格",
       "zh": "缺 {k} · 要字符串",
-      "args": ["k"]
-    },
-    "beUpstreamEndpoint.args.missingStrings": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "缺 {k} · 要字符串数组",
       "args": ["k"]
     },
     "beUpstreamEndpoint.optin.noHome": {
@@ -25490,6 +25465,18 @@
       "role": "按钮",
       "zh": "重试",
       "args": []
+    },
+    "mobChat.delivery.sending": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "发送中",
+      "args": []
+    },
+    "mobChat.record.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 上找不到这条会话的记录",
+      "args": ["machine"]
     },
     "terminal.why.ambiguous": {
       "kind": "body",

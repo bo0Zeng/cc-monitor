@@ -271,8 +271,8 @@ class BackendCommandSurfaceLiteralScanTest {
          *
          * | 锚点 | 出处 |
          * |---|---|
-         * | `--backend-probe` · `--resident-ensure` · `--resident-attach` · `--tail-only` | 接常驻流之前那几步（`BackendGate` · `ResidentLink`） |
-         * | `--stream` · `--with-bg` · `--list-projects` · `--list-sessions` · `--read-session`（前缀）· `--resolve` · `--daemon-probe` · `--fork-session` · `--search` · `--list-accounts` | 后端还认、手机不发的那几条：必须是零 |
+         * | `--backend-probe` · `--resident-ensure` · `--resident-attach` | 接常驻流之前那几步（`BackendGate` · `ResidentLink`） |
+         * | `--stream` · `--list-projects` · `--list-sessions` · `--read-session`（前缀）· `--resolve` · `--daemon-probe` · `--fork-session` · `--search` · `--list-accounts` | 后端还认、手机不发的那几条：必须是零 |
          *
          * 零命中的锚点也留在表里：将来有人要接的时候，这张表就是那一刻的拦截点。
          * （它们不构成恒绿：活着的 [LIVE_ANCHOR] 的正向命中是前提③。）
@@ -283,11 +283,8 @@ class BackendCommandSurfaceLiteralScanTest {
                 "--backend-probe" to mapOf(GATE to 1),
                 "--resident-ensure" to mapOf(RESIDENT to 1),
                 "--resident-attach" to mapOf(RESIDENT to 1),
-                // RESIDENT：常驻流 attach 行里这条连接要的旗标。
-                "--tail-only" to mapOf(RESIDENT to 1),
                 // ── 后端还认、我们不发的那几条：必须保持零 ──
                 "--stream" to emptyMap(),
-                "--with-bg" to emptyMap(),
                 "--list-projects" to emptyMap(),
                 "--list-sessions" to emptyMap(),
                 "--read-session" to emptyMap(),

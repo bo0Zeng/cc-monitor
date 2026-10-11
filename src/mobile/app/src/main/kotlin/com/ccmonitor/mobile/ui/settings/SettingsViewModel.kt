@@ -33,10 +33,4 @@ class SettingsViewModel(
         repo.newUiEnabled().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun setNewUi(enabled: Boolean) = viewModelScope.launch(io) { repo.setNewUiEnabled(enabled) }
-
-    /** 新对话的权限模式。null = 用 Claude 自己的默认。 */
-    val permissionMode: StateFlow<String?> =
-        repo.permissionMode().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    fun setPermissionMode(value: String?) = viewModelScope.launch(io) { repo.setPermissionMode(value) }
 }

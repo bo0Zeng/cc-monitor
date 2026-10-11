@@ -380,6 +380,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "看的那一台的时区：修改时间那两格按请求带来的它写",
     ),
     (
+        "common::time::now",
+        Kind::Common,
+        "此刻（后端的「现在」只有一处，`one_clock_guard`）：索引建好的时刻 · 查找与状态按它算多久以前",
+    ),
+    (
         "common::time::mtime_texts_now",
         Kind::Common,
         "列目录 · 问元数据 · 查找回的修改时间旁边那两格（列里那一格 · 完整那一格）按看的那一台的时区写好，文件窗口照抄",

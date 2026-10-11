@@ -20,7 +20,7 @@ fn rig(
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
-    let mut state = ReaderState::new(dir.clone(), false, false);
+    let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(SID.to_string());
     let path = dir.join(format!("{SID}.jsonl"));
     (dir, path, state, FrameSink::new(tx), rx)

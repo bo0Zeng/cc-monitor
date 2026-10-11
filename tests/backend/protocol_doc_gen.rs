@@ -830,7 +830,7 @@ fn oneshot_types(out: &mut String) {
         ("control/fork_write.rs", "`--fork-session` 的出参"),
         (
             "observe/history_query.rs",
-            "`--read-session-from-offset … --index` 的出参行",
+            "骨架索引的一行（`history-index` 的 `rows` 装运之前）",
         ),
     ] {
         let src = read(rel);
@@ -889,7 +889,6 @@ fn the_parser_sees_every_frame_field() {
         "build_id",
         "host_arch",
         "claude_dir",
-        "capabilities",
         "emits",
         "commands",
         "unavailable",

@@ -81,7 +81,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
     let prod = production_code(&backend_root_source());
     for anchor in [
         format!("const BUILD{}", "_ID"),
-        format!("const CAPA{}", "BILITIES"),
+        format!("const STREAM{}", "_FLAGS"),
         format!("fn split_stream{}", "_flags"),
         format!("mod obser{}", "ve;"),
         format!("mod contr{}", "ol;"),

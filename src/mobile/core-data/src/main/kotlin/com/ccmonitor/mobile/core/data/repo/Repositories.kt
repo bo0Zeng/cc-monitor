@@ -120,45 +120,7 @@ class SettingsRepository(
         dao.upsert(Settings(KEY_NEW_UI_ENABLED, if (enabled) FLAG_ON else FLAG_OFF))
 
     /**
-     * 新对话用哪个权限模式（`claude --permission-mode`）。null 表示用 Claude 自己的默认。
-     *
-     * 这里只存字符串，合法性由用的地方（`ClaudeInvocation.permissionModeFlag` 的白名单）把关：
-     * 脏值不会拼进命令行，而是 fail-closed 成不带这个参数。用的地方是必经之路，存的地方不是。
-     */
-    fun permissionMode(): Flow<String?> = dao.observe(KEY_PERMISSION_MODE)
-
-    suspend fun setPermissionMode(value: String?) =
-        dao.upsert(Settings(KEY_PERMISSION_MODE, value?.trim()?.ifEmpty { null }))
-
-    /**
-     * 这台主机上次进的是哪个对话。null 表示没进过。
-     *
-     * 落地路由要在导航那一刻同步定下来，去远端问一趟就成了先转圈再进屏，所以记在本地。
-     * 它是导航提示，不是事实来源：这个编号在远端可能已经不存在，用它的地方必须容忍打开一个空对话。
-     */
-    suspend fun getLastConversation(hostId: String): String? = dao.get(keyLastConversation(hostId))
-
-    suspend fun setLastConversation(
-        hostId: String,
-        sessionId: String?,
-    ) = dao.upsert(Settings(keyLastConversation(hostId), sessionId?.trim()?.ifEmpty { null }))
-
-    /**
-     * 这台主机上被远端确认存在过的对话编号。null 表示一个都没有。
-     *
-     * 只有它认过的编号才允许 `--resume`：远端没有那条记录时 Claude 会当场退出
-     * （`No conversation found with session ID: …`）。没认过的仍记进 [setLastConversation]，但按新对话起。
-     * 注意：它只证明这个编号在远端跑起来过，不证明现在还在；那种情况仍会退化成一次失败的 resume。
-     */
-    suspend fun getConfirmedConversation(hostId: String): String? = dao.get(keyConfirmedConversation(hostId))
-
-    suspend fun setConfirmedConversation(
-        hostId: String,
-        sessionId: String?,
-    ) = dao.upsert(Settings(keyConfirmedConversation(hostId), sessionId?.trim()?.ifEmpty { null }))
-
-    /**
-     * 上次进的是哪台机器。null 表示从没进过。先由它定位机器，再由 [getLastConversation] 定位对话。
+     * 上次进的是哪台机器。null 表示从没进过。打开 app 落在它上空的新建会话（不记上次那条）。
      * 同样是导航提示：那台机器可能已被删掉，用它的地方必须先核对主机还在。
      */
     suspend fun getLastHost(): String? = dao.get(KEY_LAST_HOST)
@@ -178,17 +140,8 @@ class SettingsRepository(
         /** 开关的关值，只有它判成关。 */
         const val FLAG_OFF = "0"
 
-        /** 新对话的权限模式。 */
-        const val KEY_PERMISSION_MODE = "permission_mode"
-
         /** 上次进的那台机器（全局单键）。 */
         const val KEY_LAST_HOST = "last_host"
-
-        /** 每台主机各存一条「上次进的对话」：两台机器上的对话互不相干，共用一个键会串号。 */
-        fun keyLastConversation(hostId: String): String = "last_conversation:$hostId"
-
-        /** 被远端确认存在过的那个编号，与 [keyLastConversation] 分开存。 */
-        fun keyConfirmedConversation(hostId: String): String = "confirmed_conversation:$hostId"
     }
 }
 

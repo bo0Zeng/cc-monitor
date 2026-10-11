@@ -55,12 +55,16 @@ export class Cdp {
 
 /** 一页：开一个新标签、挂上会话，给出截图要的几样动作。 */
 export class Page {
-  static async open(cdp, width, height, scale = 1) {
+  /** `opts.boot`：每次导航都在页里任何脚本之前先跑的一段（拨钟那一段，`real/pool.mjs::pinDateSource`）；`opts.reducedMotion`：按减少动画开。 */
+  static async open(cdp, width, height, scale = 1, opts = {}) {
     const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
     const page = new Page(cdp, targetId, sessionId);
     await page.send("Page.enable");
     await page.send("Runtime.enable");
+    if (opts.boot) await page.send("Page.addScriptToEvaluateOnNewDocument", { source: opts.boot });
+    // 系统的「减弱动态效果」开着那一形（跨导航留着）：界面那一侧什么都不动，截下来的那一帧不落在动画半途。
+    if (opts.reducedMotion) await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
     // 场景里的 `key()`（`scenes/helpers.ts`）经这条绑定请这边发真按键；绑定跨导航留着。
     await page.send("Runtime.addBinding", { name: "__shotsKey" });
     await page.size(width, height, scale);

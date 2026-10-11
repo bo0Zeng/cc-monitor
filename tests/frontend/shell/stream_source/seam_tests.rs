@@ -1,4 +1,5 @@
 use super::*;
+use crate::copy_table::copy_text;
 use crate::inbound_client;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};

@@ -413,19 +413,25 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-/// attach 行：「我要流」＋ 看的这一台的时区（同远端那一条 `remote_resident::attach_line` 的 `tz`；`None` ⇒ 不带，后端按 UTC 写推来的钟面）。
-pub(crate) fn attach_line(tz: Option<&str>) -> String {
-    match tz {
-        Some(tz) => format!("{}\n", serde_json::json!({ "attach": true, "tz": tz })),
-        None => "{\"attach\":true}\n".to_string(),
+/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 这条流的出口声明（后端 `listen::attach_flags` 的逆；本机远端同一处拼）。
+/// `tz` ＝ [`host_core::viewer_tz`]（`None` ⇒ 不带，后端按 UTC 写推来的钟面）；`view` ＝ 请求信封同一套词（`None` ⇒ 不带 ＝ 全量）。
+pub(crate) fn attach_line(tz: Option<&str>, view: Option<&serde_json::Value>) -> String {
+    let mut o = serde_json::Map::new();
+    o.insert("attach".into(), true.into());
+    if let Some(tz) = tz {
+        o.insert("tz".into(), tz.into());
     }
+    if let Some(v) = view {
+        o.insert("view".into(), v.clone());
+    }
+    format!("{}\n", serde_json::Value::Object(o))
 }
 
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
 fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(attach_line(host_core::viewer_tz().as_deref()).as_bytes())
+    w.write_all(attach_line(host_core::viewer_tz().as_deref(), None).as_bytes())
         .and_then(|()| w.flush())
         .map_err(|e| {
             Said::with_raw(
@@ -492,8 +498,7 @@ fn spawn_detached(
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
-    // 流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：`--tail-only --with-bg`；
-    // ＋ `--with-pid`，让 `session_added` 带 pid）。
+    // 流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：只有 `--stream`）。
     cmd.args(local_backend::LOCAL_STREAM_ARGS)
         // ★★ **`TMUX` 一律不继承**〔08-11 事故订正，与 `supervise_with_stdio` 同一条〕：
         //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。
@@ -1557,7 +1562,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
 // monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退，monitor 一行都不管；
-// - 在不在：起会话那一发由那台的 `ccm` 在最终 exec 那一处判；界面上那几格由本机常驻后端自己答（`apikey-routing` 的 `running`）；
+// - 在不在：起会话那一发由那台的 `ccm` 在最终 exec 那一处判；界面上那几格由本机常驻后端自己答（`accounts-list` 每号的徽章）；
 // monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
 
 /// 起本机后端时交给它的那份**环境**。起它的两条载体（常驻那条 `start_detached` 的 `extra_env` ·
@@ -1595,7 +1600,7 @@ pub(crate) fn backend_env_from(
 }
 
 // `relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
-//   （`apikey-routing` · `relay-optin` 的成品里那一格读后端进程内的监听状态；起会话那一发归 `ccm`，见 `INVARIANTS §48.1a`）。
+//   （`accounts-list` 的徽章 · `relay-optin` 的成品里那一格读后端进程内的监听状态；起会话那一发归 `ccm`，见 `INVARIANTS §48.1a`）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」

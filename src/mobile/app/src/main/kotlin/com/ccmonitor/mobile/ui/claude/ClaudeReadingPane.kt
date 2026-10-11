@@ -41,6 +41,7 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
 import com.ccmonitor.mobile.core.claude.model.isInteractiveTool
+import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -86,10 +87,21 @@ fun ClaudeReadingPane(
                     is RenderUnit.BashInput -> BashInputCard(unit, matched)
                     is RenderUnit.BashOutput -> BashOutputCard(unit, matched)
                     is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
+                    is RenderUnit.Interrupt -> InterruptLine(unit)
                 }
             }
         }
     }
+}
+
+/** 「已中断本轮 · {time}」一道细线；字照文案表，钟面照核心。 */
+@Composable
+private fun InterruptLine(unit: RenderUnit.Interrupt) {
+    Text(
+        copyText("speaker.interrupt.line", "time" to unit.timeText.orEmpty()),
+        style = monoSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** 斜杠命令 `/name args`：紧凑单行（name 强调、args 次要），与真实 prompt 区分开的低调标识。 */
@@ -310,39 +322,18 @@ private fun UserTextCard(
     ) {
         Column {
             Text(unit.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-            // 发送状态贴在这条消息下面：失败的消息留在 transcript 里，看得见、能重发，不是弹一下就没了。
+            // 投递状态贴在这条消息下面（字照文案表 `terminal.input.*` 那一族）：只有在送 · 送达未知 · 没送到才有。
+            val line = unit.deliveryText
             when (unit.delivery) {
-                DeliveryState.SENDING ->
-                    Text("发送中…", style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                // `Accepted` 的默认落点：送出去了但还没看到对面的反应。什么都不显示的话视觉上等同于「已送达」。
-                // 注意：它不用错误色，这不是失败，是还不知道。
-                DeliveryState.SENT_UNCONFIRMED ->
-                    Text(
-                        "已发出，还没看到对面的反应",
-                        style = monoSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
+                DeliveryState.SENDING, DeliveryState.UNSURE ->
+                    line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 DeliveryState.FAILED ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // 原因贴在这条消息旁边。全屏单槽横幅会被后一条的成功擦掉，而这条仍显示未送达，分不清是哪条失败。
-                        Text(
-                            unit.deliveryError?.let { "未送达：$it" } ?: "未送达",
-                            style = monoSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        TextButton(onClick = { onRetrySend(unit.key) }) { Text("重试", style = monoSmall) }
+                        line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.error) }
+                        TextButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("terminal.input.retry"), style = monoSmall) }
                     }
-
-                // 重试也没用（权限被拒/会话已结束）——不给骗人的重试按钮
                 DeliveryState.FAILED_PERMANENT ->
-                    Text(
-                        unit.deliveryError?.let { "未送达（不可重试）：$it" } ?: "未送达（不可重试）",
-                        style = monoSmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-
+                    line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.error) }
                 null -> Unit
             }
         }

@@ -401,15 +401,7 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
         assert!(lines.len() >= 2, "CLI 臂没写头尾");
         lines[1..lines.len() - 1].to_vec()
     };
-    let cases: [(&str, serde_json::Value, &str, Vec<serde_json::Value>); 3] = [
-        (
-            "history-index",
-            serde_json::json!({"path": path, "offset": 0}),
-            "rows",
-            middle(&|o| {
-                crate::observe::history_query::session_index_into(&home, &path, 0, None, o)
-            }),
-        ),
+    let cases: [(&str, serde_json::Value, &str, Vec<serde_json::Value>); 2] = [
         (
             "history-user-inputs",
             serde_json::json!({"path": path, "from": 0}),
@@ -433,21 +425,13 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
             }),
         ),
     ];
-    for (cmd, args, key, mut cli) in cases {
+    for (cmd, args, key, cli) in cases {
         let v = answer_at(&home, cmd, &args, &Default::default()).unwrap();
         assert!(
             !cli.is_empty(),
             "`{cmd}` 的 CLI 臂中段是空的 —— 夹具没打到，本条会空真"
         );
-        // 骨架索引在帧面上按列排、不带 `sc`（`pack_index` 头注）⇒ 装回逐行、CLI 那一臂去掉 `sc` 再比。
-        let got = if cmd == "history-index" {
-            for r in &mut cli {
-                r.as_object_mut().unwrap().remove("sc");
-            }
-            rows_of_index(&v)
-        } else {
-            v[key].as_array().unwrap().clone()
-        };
+        let got = v[key].as_array().unwrap().clone();
         assert_eq!(got, cli, "`{cmd}` 的成品条目 != CLI 臂中段");
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -739,7 +723,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "tone": "need", "rank": 1})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");

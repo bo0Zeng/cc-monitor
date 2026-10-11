@@ -456,7 +456,6 @@ fn every_target_has_the_same_capabilities_except_the_registered_gaps() {
     for fam in [
         "ccm-launcher",
         "files-read",
-        "stream-flags",
         "wire-commands",
         "cli-subcommands",
     ] {

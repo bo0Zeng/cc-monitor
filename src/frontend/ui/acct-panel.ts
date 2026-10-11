@@ -18,8 +18,6 @@ import {
   machineLabel,
   reasonLabel,
   swappedFrom,
-  usageOf,
-  usageText,
   whyOf,
 } from "./acct-view";
 import { copyText } from "./copy-table";
@@ -61,7 +59,6 @@ import {
   slotLabel,
   slotText,
   type QuotaRead,
-  type QuotaReadAccount,
 } from "./acct-words";
 import {
   checkRotation,
@@ -440,7 +437,7 @@ function nowBlock(
     );
   sec.content.appendChild(who);
   if (read.quota.kind === "api") {
-    const u = usageOf(read.quota, led?.reading);
+    const u = read.quota.usage;
     const line = el(
       "div",
       s.acctApiLine,
@@ -471,7 +468,7 @@ function quotaOf(
     (x) => x.agent === agent && x.account === account,
   );
   return u
-    ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login }
+    ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login, usage: u.usage }
     : null;
 }
 
@@ -479,13 +476,12 @@ function quotaOf(
 /** 只画卡着它的那一个窗口（轮换列表行尾有兜底 · 封顶，照稿只留一格用量；另一格在悬停卡与时间轴里）。 */
 function rowUsage(
   q: QuotaShow | null,
-  reading: QuotaReadAccount["reading"],
   atLine: string | null = null,
 ): HTMLElement {
   const box = el("span", s.acctRowUsage);
   if (!q) return box;
   if (q.kind === "api") {
-    const u = usageOf(q, reading);
+    const u = q.usage;
     box.appendChild(
       el(
         "span",
@@ -498,7 +494,7 @@ function rowUsage(
     return box;
   }
   // 此刻过线的那一窗（后端预览泳道此刻那一格）⇒ 改显那一窗。
-  for (const slot of [atLine ?? q.limiting ?? "5h"]) {
+  for (const slot of [atLine ?? q.usage.slot ?? ""]) {
     const x = q.slots.find((v) => v.slot === slot);
     const here = q.limiting === slot;
     const cell = el("span", s.acctRowSlot);
@@ -959,11 +955,7 @@ function rotationList(
     else if ((r.fallback ?? []).includes(row.account))
       line.appendChild(fallbackMark());
     line.appendChild(
-      rowUsage(
-        q,
-        ledgerOf(quota, read.agent, row.account)?.reading,
-        atLine,
-      ),
+      rowUsage(q, atLine),
     );
     if (editable) {
       // 键盘：Alt+↑ / Alt+↓ 移位、空格勾（复选框自己管）。
@@ -1246,8 +1238,7 @@ function switchBlock(
     );
     const q = quotaOf(quota, agent, pick);
     if (q) {
-      const u = usageOf(q, ledgerOf(quota, agent, pick)?.reading);
-      pickBtn.appendChild(el("span", s.acctPickUsage, usageText(u)));
+      pickBtn.appendChild(el("span", s.acctPickUsage, q.usage.text));
     }
   } else {
     pickBtn.appendChild(
@@ -1258,8 +1249,8 @@ function switchBlock(
   pickBtn.addEventListener("click", () => {
     const items: MenuItem[] = candidates.map((a) => {
       const q = quotaOf(quota, agent, a);
-      const u = q ? usageOf(q, ledgerOf(quota, agent, a)?.reading) : null;
-      const usage = u ? usageText(u) : undefined;
+      const u = q?.usage;
+      const usage = u?.text;
       const blocked =
         a === cur || q?.login === "needsLogin" || q?.login === "needsKey";
       return {
@@ -1274,8 +1265,7 @@ function switchBlock(
               : q?.login === "needsKey"
                 ? copyText("acct.tag.key")
                 : usage,
-        detailTone:
-          u?.tone === "refused" || u?.tone === "near" ? "warn" : undefined,
+        detailTone: u && u.tone !== "plain" ? "warn" : undefined,
         enabled: !blocked,
         onClick: () => {
           o.pick = a;

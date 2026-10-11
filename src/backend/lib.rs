@@ -139,7 +139,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
 /// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
 ///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍 aterm TurnDetector）；
-///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
+///   `turn_end` 加进 EMITS。dedup 视界在手机端（`TurnEndDebouncer.kt` 的 debounce ＋ `SshKeepAliveService.kt` 的 `baselineByPath`）。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
 ///   bump BUILD_ID 给含 DG3-6 的后端独立身份（Phase G 审计 I2：防"同 id 不同内容"静默陈旧）。
@@ -926,7 +926,14 @@ pub const PROTO_VERSION: u32 = 1;
 /// 通道 Call 帧头带 view（请求信封同一格）；StepResult 多 chars（冻结）；骨架索引帧面按列排。一轮结束的系统通知认 turn_end 帧，Codex 适配层补 turn_end（task_complete）。
 /// Codex 会话进流：watcher 跟注册表里能跟的每一家，没有 pidfile 的那一家按写者判活（platform/writers，Linux）；session_added.agent_kind 每条都带。
 /// 手机：一轮完成改读常驻流 turn_end、断了自己接回去、只核 BUILD_ID（删逐格核格目录）、信封与 attach 行带 tz。
-pub const BUILD_ID: &str = "p9z-stream-watch-codex";
+///
+/// p10a-flagless-typed-clock：删流旗标——--with-bg · --tail-only · --with-pid · --with-raw · --index 不认；attach 行只剩 {attach, tz?, view?}（别的键当 malformed），CLI 那一臂 --stream [--tz] [--view]；
+/// 历史一律不重放（宣告带行数 L，[0, L) 客户端按骨架补）、session_added.pid 恒在、line.raw 删；hello.capabilities 删（契约 crate 的 STREAM_CAPABILITIES 一起删）。
+/// 核心多出几格：quota-read · history-list 成品改成类型、进格目录；额度显示态带 usage（颜色档）；步骤结果带写好的 text / timed、认不出的工具 ToolStep.text；
+/// session_added / session_status 的活动那几格收成 ActivityFace、多 activity_order（监控板组内只按它排）；accounts-list 每号带 badge；rotation-rules-read 多 followText；profiles-resolve 多 lineShort。
+/// 删 apikey-read · apikey-routing（没有读者）。后端「现在」只一处 common::time::now（带特性 shots 编的从台架交的时刻接着走）。
+/// 手机聊天屏起会话走 session-new ＋ terminal-input（删路 A 与 src/mobile/bridge）。
+pub const BUILD_ID: &str = "p10a-flagless-typed-clock";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1008,7 +1015,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
     // ⚠ 它们与 `--list-accounts` / `--session-accounts` 是**同一个函数的两个宿主**，
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
-    "--accounts-list",
+    //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
     "--accounts-sessions",
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
@@ -1086,12 +1093,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--rotation-session-set",
     "--rotation-switch",
     "--exit-policy-set",
-    // 上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
-    // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
-    // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。
+    // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。
     "--apikey-key-set",
-    "--apikey-read",
-    // `--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 起会话那一行 `ccm …` 的渲染（`inbound::REGISTRY` 的 `launch-render-cli`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
     //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1333,41 +1337,20 @@ pub const SUBCOMMANDS: &[&str] = &[
 //   `CAPABILITIES` 是一张声明表。in-process 那条路一样要问「这次调用是不是查询模式」。
 //   真正的分派（那个 `match`）仍然留在 `main.rs`，规格。
 
-/// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。值住契约 crate
-/// （`deploy_contract::STREAM_CAPABILITIES`），monitor 认 token 读的是同一份。
-/// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
-/// （闭合 2026-07-09「漏拷身份清单 → 确认不了 → 全降级」事故：能力由后端自己
-/// 声明，即使清单丢失也照开）。
-///
-/// **加法式，两轴正交**：加新能力就往这里加 token（旧 monitor 忽略未知 token）；
-/// **绝不为此 bump `PROTO_VERSION`**（那是破坏性变更专用，会把每台旧后端误判
-/// Incompatible）。build_id 继续管 staleness / 重部署提示，与能力正交。
-///
-/// **§26 死循环护栏（硬约束）**：只声明本 backend **会在一次性查询判定前剥离对应
-/// flag** 的能力——即每个 token 必须有 `split_stream_flags`（`:76`）里对应的剥离分支。
-/// `bg`→`--with-bg`、`tail-only`→`--tail-only`，二者 `split_stream_flags` 都剥。
-/// 加新能力 token 时，必须同时给它的 flag 加剥离分支，否则声明它 = 埋死循环
-/// （monitor 发对应 flag → 本后端不剥 → 当查询退出 → 无 hello → 重连死循环）。
-/// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
-///
-// ⚠ **排序照字典序**（不是按加入时间）：`capability_ledger_guard::the_stream_flag_list_keeps_its_own_narrow_semantics`
-// 拿汇总那侧（排过序）与本表**逐项相等**。
-pub const CAPABILITIES: &[&str] = deploy_contract::STREAM_CAPABILITIES;
-
 // ══════════════════ 步 `8a`：能力清单的**汇总** —— 第 2 层 ══════════════════
 //
 // 🔴 **这一段填的是 `files/mod.rs` 头注自己登记的那个缺口**，逐字：
 //   「`CAPABILITIES` 的汇总没接。第 2 层要求『能力清单从实现派生，
 //    `CAPABILITIES` 由它们汇总而来』。本族把自己那一份声明成了**数据**，但**没有**
-//    把它汇进 `lib.rs::CAPABILITIES` —— 那一处的语义今天是『会在一次性查询判定前
+//    把它汇进流旗标那张能力表（10-10 随流旗标删了）—— 那一处的语义当时是『会在一次性查询判定前
 //    剥离对应 flag 的**流**能力』，本族六条都不是那种东西，硬塞进去会当场红，
 //    **而且会是红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活。」
 //
 // 🔴 **「硬塞进去会当场红」这句话本轮现打过，成立**：把 `"files.ls"` 加进上面那个
-//   [`CAPABILITIES`] 之后 `backend` 套 `769 passed / 1 failed`，**只红一条**，
-//   而且是 `main_stream_flag_tests::every_capability_token_is_strippable` 逐字点名
+//   流旗标那张能力表之后 `backend` 套 `769 passed / 1 failed`，**只红一条**，
+//   而且是当时那条「每个能力 token 都有剥离分支」的判据逐字点名
 //   「无 flag 映射 …… 否则埋 §26 死循环」。⇒ 那一处的语义**保持不动**，
-//   它在本汇总里是**一个面**（`stream-flags`），不是汇总本身。
+//   它在本汇总里是**一个面**（`stream-flags`），不是汇总本身。（10-10 那张表与 hello 的 `capabilities` 一起删了。）
 //
 // # 这一层买到什么 · 买不到什么（那张三层表逐字）
 //
@@ -1498,15 +1481,6 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
                        `grep cfg(target_os|windows|unix|target_family` 零命中）\
                        ⇒ 四个 target 同一份源码。另有本族自己那条更强的：每条能力的 \
                        `Capability::targets` 与 `TARGETS` 做**集合相等**（边界②）。",
-    },
-    CapabilityFace {
-        family: "stream-flags",
-        kind: CapabilityKind::Protocol,
-        declares: stream_flag_capability_names,
-        declared_in: "lib.rs",
-        targets: TARGETS,
-        target_basis: "`split_stream_flags` 是对 argv 的**纯函数**（`retain` + 两次 \
-                       `iter().any`），整份实现零平台 `cfg` ⇒ 四个 target 上逐字同一份。",
     },
     CapabilityFace {
         family: "ccm-launcher",
@@ -1874,11 +1848,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
 ///
 /// ⚠ 它**不是**第二份名单，是同一个 const 的一次借用：这一族的能力名住址仍然只有
 /// [`CAPABILITIES`] 那一行。
-fn stream_flag_capability_names() -> Vec<&'static str> {
-    CAPABILITIES.to_vec()
-}
-
-/// `control::ccm::CAPABILITIES` 的名单，同 [`stream_flag_capability_names`] 的理由。
+/// `control::ccm::CAPABILITIES` 的名单。
 fn ccm_capability_names() -> Vec<&'static str> {
     control::ccm::CAPABILITIES.to_vec()
 }
@@ -2196,35 +2166,21 @@ pub const EMITS: &[&str] = &[
 /// 它不对应任何能力（老后端不认 ⇒ 按未知旗标照常进流模式，同 U6b-2 的降级）。
 pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
 
-/// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
-///
-/// `--with-pid`：客户端显式索要 `session_added` 上的 `pid`（本机 ↗ 按它找父 PowerShell）。
-/// 只有本机那条流发它（本机后端与 monitor 同一份构建），不对应能力 token；默认关 ⇒ 别的客户端收到的字节不变。
-/// `--with-raw`：客户端显式索要 `line` 上的 `raw`（那一行记录的原文）。第二个前端自己解析记录、要它；
-/// 同 `--with-pid` 不对应能力 token（老后端把它当未知旗标忽略、照常起流）；默认关 ⇒ 没索要的客户端字节不变。
-pub const STREAM_FLAGS: &[&str] = &[
-    STREAM_FLAG_EXPLICIT,
-    "--with-bg",
-    "--tail-only",
-    "--with-pid",
-    "--with-raw",
-];
+/// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（[`StreamWants::view`]）。
+pub const STREAM_FLAGS: &[&str] = &[STREAM_FLAG_EXPLICIT];
 
-/// 一条流的客户端索要了什么（流模式旗标剥出来的那几位）。全关 ＝ 默认：没索要的客户端收到的字节不变。
+/// 一条流的客户端要了什么：时区 ＋ 出口的声明。缺 ＝ 全量（bg 会话照宣告、`session_added` 带 `pid`；历史一律不重放，客户端按骨架 / 尾段补）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StreamWants {
-    /// `--with-bg`：放行 bg 会话。
-    pub with_bg: bool,
-    /// `--tail-only`：不重放历史。
-    pub tail_only: bool,
-    /// `--with-pid`：`session_added` 带 `pid`。
-    pub with_pid: bool,
-    /// `--with-raw`：`line` 带 `raw`。
-    pub with_raw: bool,
     /// [`TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
     /// 一次性 CLI 面的回包同样按它写。缺 · 认不得 ⇒ UTC。
     pub tz: Tz,
+    /// 这条流的出口声明（attach 行的 `view` · 流模式起参的 [`VIEW_FLAG`]，与请求信封的 `view` 同一套词）：推出去的帧照它裁格
+    /// （`stream::inbound::views::StreamView`）。缺 ＝ 全量。
+    pub view: Option<StreamView>,
 }
+
+pub use stream::inbound::views::StreamView;
 
 /// **看的人那一台的时区**：`--tz <IANA 名>`（任意位置；流模式与一次性 CLI 面同一个旗标）与帧面请求信封的 `tz` 同名同义：
 /// 回包与推送里「几点」「今天 / 昨天」按它写，不按这台后端的钟。缺 · 缺值 · 认不得 ⇒ UTC（不拒）。
@@ -2290,10 +2246,7 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
     "--grace",
     "--include-tools",
-    // 〔骨架〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
-    // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的
-    // 降级形状住 `observe::history_query::FromOffsetOpts` 的头注。
-    "--index",
+    // `--read-session-from-offset` 的右端收口（骨架索引是帧命令 `history-index`，CLI 面 `--history-index`）。
     "--limit",
     // `--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
     "--query",
@@ -2313,26 +2266,29 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     WITHIN_MS_FLAG,
 ];
 
-/// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流索要了什么）。
+/// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流要什么）。
 ///
-/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。
-pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, StreamWants) {
-    let has = |f: &str| args.iter().any(|a| a == f);
-    let wants = StreamWants {
-        with_bg: has("--with-bg"),
-        tail_only: has("--tail-only"),
-        with_pid: has("--with-pid"),
-        with_raw: has("--with-raw"),
-        tz: Default::default(),
-    };
+/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。[`TZ_FLAG`] 任意位置都剥（一次性 CLI 面同样按它写钟面）；
+/// [`VIEW_FLAG`] 只在流模式那一形里剥（打头不是子命令；子命令的 `--view` 归它自己的 CLI 臂解）。
+/// 声明解不出 · 认不出 ⇒ `Err(那几处)`（不起流）。
+pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamWants), String> {
     args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
-    let mut wants = wants;
+    let mut wants = StreamWants::default();
     if let Some(i) = args.iter().position(|a| a == TZ_FLAG) {
         let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
         args.drain(i..i + 1 + usize::from(v.is_some()));
         wants.tz = v.as_deref().and_then(Tz::named).unwrap_or_default();
     }
-    (args, wants)
+    let subcommand = args
+        .first()
+        .is_some_and(|a| SUBCOMMANDS.contains(&a.as_str()));
+    if !subcommand && args.iter().any(|a| a == VIEW_FLAG) {
+        let decl = control::cli_control::view_of(&args).map_err(|(_, why)| why)?;
+        wants.view = StreamView::parse(&decl)?;
+        let i = args.iter().position(|a| a == VIEW_FLAG).unwrap_or_default();
+        args.drain(i..(i + 2).min(args.len()));
+    }
+    Ok((args, wants))
 }
 
 /// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？
@@ -2390,6 +2346,11 @@ mod window_raise_guard;
 #[cfg(test)]
 #[path = "../../tests/backend/raw_said_guard.rs"]
 mod raw_said_guard;
+
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+#[path = "../../tests/backend/one_clock_guard.rs"]
+mod one_clock_guard;
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]

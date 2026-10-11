@@ -43,7 +43,7 @@
 //!    （「target 答每个平台编不编得过」）。对上那两个轴是步 `8b` 的活，**挡在步 3.5 上**。
 
 use super::{
-    capability_ledger, parity_faces, CapabilityKind, Target, CAPABILITIES, CAPABILITY_FACES,
+    capability_ledger, parity_faces, CapabilityKind, Target, CAPABILITY_FACES, COMMAND_FACES,
     TARGETS, TARGET_GAPS,
 };
 
@@ -108,9 +108,6 @@ const ROSTER: &[(&str, &str)] = &[
     // 纯读，超上限整趟拒不截断，上限由调用方给、后端有自己的天花板。
     ("files-read", "files.read.text"),
     ("files-read", "files.stat"),
-    // ── `stream-flags`（`lib.rs`，射程：**协议**轴）────────────────────
-    ("stream-flags", "bg"),
-    ("stream-flags", "tail-only"),
 ];
 
 /// 源码树上**每一份**声明了 `const CAPABILITIES` 的文件（相对本 crate 源码树根）。
@@ -219,7 +216,7 @@ fn the_ledger_is_exactly_the_roster_that_was_adjudicated() {
 
 /// ★★ **反空真**：上面那条相等，必须**装得下** `files-read` 那一族，而且不是地板。
 ///
-/// `files/mod.rs` 头注登记的缺口逐字是「**没有**把它汇进 `lib.rs::CAPABILITIES`」——
+/// `files/mod.rs` 头注登记的缺口逐字是「**没有**把它汇进流旗标那张能力表」（那张表随流旗标删了）——
 /// 本条就是那句话被填掉的凭据：那一族的**每一条**都要真的在汇总里。
 #[test]
 fn the_ledger_really_carries_the_files_read_family() {
@@ -303,9 +300,9 @@ fn every_capability_table_in_the_tree_is_a_registered_face() {
         .map(|f| f.declared_in.to_string())
         .collect();
 
-    // ★ 反空真：源码树上一张能力表都没扫到 ⇒ 采集坏了（`files/mod.rs` 与 `lib.rs`
-    //   两张是本件的前提，它们不可能不在）。
-    for must in ["lib.rs", "files/mod.rs"] {
+    // ★ 反空真：源码树上一张能力表都没扫到 ⇒ 采集坏了（`files/mod.rs` 与 `control/ccm/mod.rs`
+    //   两张是本件的前提，它们不可能不在；`lib.rs` 那张流旗标能力表随旗标删了）。
+    for must in ["files/mod.rs", "control/ccm/mod.rs"] {
         assert!(
             on_disk.contains(must),
             "源码树上没扫到 `{must}` 的 `const CAPABILITIES` 声明表（扫到 {on_disk:?}）—— 采集坏了"
@@ -345,9 +342,11 @@ fn both_halves_of_the_declared_reach_have_a_real_member() {
         CapabilityKind::Protocol,
         "射程只有一类 —— 那条「装得下协议级能力」的要求退化成空话"
     );
+    // 协议那一类今天住命令面（`COMMAND_FACES`：帧命令 · CLI 子命令）；流旗标那一面随旗标删了。
     for want in [CapabilityKind::Asset, CapabilityKind::Protocol] {
         let faces: Vec<&str> = CAPABILITY_FACES
             .iter()
+            .chain(COMMAND_FACES)
             .filter(|f| f.kind == want)
             .map(|f| f.family)
             .collect();
@@ -362,6 +361,7 @@ fn both_halves_of_the_declared_reach_have_a_real_member() {
         // 反空真：这一类下面的面必须真的声明了能力，不能是个空壳。
         let n: usize = CAPABILITY_FACES
             .iter()
+            .chain(COMMAND_FACES)
             .filter(|f| f.kind == want)
             .map(|f| (f.declares)().len())
             .sum();
@@ -422,51 +422,6 @@ fn every_face_declares_its_targets_and_says_on_what_basis() {
             );
         }
     }
-}
-
-/// 🔴 **`lib.rs::CAPABILITIES` 那一处的语义一个字没被汇总改动。**
-///
-/// # 它治的是哪一形（`files/mod.rs` 头注逐字点过这件事）
-///
-/// 那份头注逐字：汇总没接的理由是「`lib.rs::CAPABILITIES` 那一处的语义今天是
-/// **会在一次性查询判定前剥离对应 flag 的流能力**，本族六条都不是那种东西，
-/// **硬塞进去会当场红，而且会是红对了**」。
-///
-/// ⇒ 步 `8a` 的做法是把那一处降格成汇总里的**一个面**（`stream-flags`），
-/// 而**不是**把别族的能力塞进它。本条钉住那件事没有偷偷发生：
-/// 那张表里每一条都必须仍然是一个 `stream-flags` 面的成员，
-/// 而 `§26` 那条护栏（`every_capability_token_is_strippable`）继续管它自己。
-///
-/// ⚠ 本条**不重判** `§26`（那是 `main_stream_flag_tests` 的活，一个判定只有一个家）。
-/// 它判的是**归属**：`CAPABILITIES` 的内容没有被汇总这件事污染。
-#[test]
-fn the_stream_flag_list_keeps_its_own_narrow_semantics() {
-    assert!(
-        !CAPABILITIES.is_empty(),
-        "`lib.rs::CAPABILITIES` 是空的 —— 本条在空转"
-    );
-    let ledger = capability_ledger();
-    for token in CAPABILITIES {
-        assert!(
-            ledger.contains(&("stream-flags", token)),
-            "`lib.rs::CAPABILITIES` 里的 `{token}` 在汇总里不挂 `stream-flags` —— \
-             那一处的语义被改了"
-        );
-    }
-    let face: Vec<&str> = ledger
-        .iter()
-        .filter(|(f, _)| *f == "stream-flags")
-        .map(|(_, n)| *n)
-        .collect();
-    assert_eq!(
-        face,
-        CAPABILITIES.to_vec(),
-        "\n`stream-flags` 这个面交出来的名单与 `lib.rs::CAPABILITIES` 对不上。\n\
-         🔴 **最要紧的失效方向是「多」**：有人把另一族的能力名塞进了那张表。\n\
-         那张表的语义是「会在一次性查询判定前**剥离对应 flag**」（`§26` 死循环护栏），\n\
-         塞一条没有 flag 的进去 ⇒ `every_capability_token_is_strippable` 当场红，\n\
-         **而且是红对了**。汇总的正确接法是给它加一个**面**，不是往它里面塞。"
-    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
