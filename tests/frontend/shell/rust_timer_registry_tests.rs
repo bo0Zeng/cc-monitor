@@ -47,6 +47,20 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              对上就停。**有上限**、只在点 ↗ 那一下跑，不是节拍器。（换成订根窗口的属性变更事件要一个带期限的事件等待，x11rb 不带，今天不做。）",
     ),
     (
+        "src/bind.rs",
+        "pick_tab_in_budget",
+        "wait-for-condition",
+        "↗ 切标签页的看门那一支：等主线程做完，至多 `TAB_BUDGET`（2s，一次 `recv_timeout`）；到点就替它写回标题、答话。\
+             **有上限**、只在那个一次性小助手进程里跑一次，不是节拍器。",
+    ),
+    (
+        "src/platform/console.rs",
+        "ask_helper",
+        "wait-for-condition",
+        "↗ monitor 等借控制台的小助手答话，至多 `HELPER_TIMEOUT`（3s，一次 `recv_timeout`）；答了就停，到点只是不再等、不掐它。\
+             **有上限**、只在点 ↗ 那一下跑。",
+    ),
+    (
         "src/platform/console.rs",
         "wait",
         "wait-for-condition",

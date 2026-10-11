@@ -3,14 +3,13 @@
 use filewin_contract::{Theme, THEME_TOKENS};
 use std::collections::BTreeMap;
 
-/// 主界面的令牌表（两个前端包都住在 `src/frontend/` 下，按包目录取同一份）。编进测试程序里：
-/// 测试程序拷到别的机器上跑（Windows 虚拟机上的真窗口台架）也读得到同一份。
+/// 主界面的令牌表（两个前端包都住在 `src/frontend/` 下，按包目录取同一份）。
+/// 测试程序拷到别的机器上跑（Windows 上的真窗口台架）时，`CCM_FILEWIN_TOKENS_CSS` 指着随它拷过去的那一份。
 pub fn tokens_css() -> String {
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../ui/styles/tokens.css"
-    ))
-    .to_string()
+    let p = std::env::var("CCM_FILEWIN_TOKENS_CSS").unwrap_or_else(|_| {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../ui/styles/tokens.css").to_string()
+    });
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p}：{e}"))
 }
 
 /// `tokens.css` 里名单上每一格的声明值（`  --name: value;`，取第一处）。

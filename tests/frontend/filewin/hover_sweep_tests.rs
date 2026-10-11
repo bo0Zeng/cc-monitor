@@ -400,7 +400,8 @@ async fn sweeping_over_search_results_never_flips_a_frame() {
 /// 帧日志写到 `CCM_FILEWIN_FRAME_LOG`，跑 `CCM_FILEWIN_RIG_SECS` 秒自己关。场景走 `CCM_FILEWIN_RIG_SCENE`
 /// （tabs · split · preview · menu）。后端是合成后端（目录是这一格自己铺的占位），不连任何机器。
 /// 渲染那一层的读数（OpenGL 的厂商 / 渲染器 / 版本 · 开窗参数里的 vsync）另写一份 `<帧日志>.gl.txt`。
-/// 用法：外面模拟鼠标在窗口上乱动，回头读帧日志看鼠标一动时每帧画面变没变、谁请求的重画。
+/// 用法：外面模拟鼠标在窗口上乱动，回头读帧日志看鼠标一动时每帧画面变没变、谁请求的重画。拷到别的机器上跑时
+/// 带上 `tokens.css` 并设 `CCM_FILEWIN_TOKENS_CSS`（判据用的主题从它解）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn real_window_rig_for_the_frame_log() {

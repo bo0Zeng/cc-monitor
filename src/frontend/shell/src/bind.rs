@@ -511,7 +511,7 @@ pub(crate) trait TabReader {
     fn select(&mut self, i: usize) -> bool;
     /// 两次读之间等一步（生产 50 ms）。
     fn wait(&mut self);
-    /// 这一趟的预算还有没有剩（生产：小助手起来之后 1.5 s）。
+    /// 这一趟的预算还有没有剩（生产：小助手起来之后 2 s，`TAB_BUDGET`）。
     fn time_left(&self) -> bool;
 }
 
@@ -565,6 +565,86 @@ pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> Ta
     };
     r.restore(&old);
     picked
+}
+
+/// 切标签页一趟，最多 `budget`（小助手里调）：主线程做 [`pick_tab`]；到点还没做完 ⇒ 看门那一支替它把标题写回
+/// （`put_back`，借着的控制台是整个进程的，哪条线程写都一样）、按「读不到标签页」答话 —— 主线程卡在 UI Automation
+/// 哪一个调用里都不等它（生产的 `answer` 答完就退出进程）。答话只一次、标题只写回一次（谁先到谁做）；
+/// 到点之后主线程才走到挂记号那一步 ⇒ 不挂。monitor 不掐小助手，记号就不会因为被掐断留在标题上。
+pub(crate) fn pick_tab_in_budget(
+    r: &mut impl TabReader,
+    marker: &str,
+    tries: usize,
+    budget: std::time::Duration,
+    put_back: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
+    answer: std::sync::Arc<dyn Fn(TabPick) + Send + Sync>,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    struct Lease {
+        /// 挂着记号时那个原标题（写回了 ⇒ `None`）。
+        old: Mutex<Option<String>>,
+        /// 答过话了（看门那一支到点答 · 主线程做完答，谁先谁算）。
+        answered: AtomicBool,
+    }
+    /// 记号经租约挂、经租约写回：看门那一支写回过 ⇒ 主线程那一次不再写；答过话之后不再挂。
+    struct Leased<'a, R> {
+        r: &'a mut R,
+        lease: &'a Lease,
+    }
+    impl<R: TabReader> TabReader for Leased<'_, R> {
+        fn names(&mut self) -> Option<Vec<String>> {
+            self.r.names()
+        }
+        fn mark(&mut self, title: &str) -> Option<String> {
+            let mut old = self.lease.old.lock().unwrap();
+            if self.lease.answered.load(Ordering::SeqCst) {
+                return None;
+            }
+            let got = self.r.mark(title)?;
+            *old = Some(got.clone());
+            Some(got)
+        }
+        fn restore(&mut self, old: &str) {
+            if self.lease.old.lock().unwrap().take().is_some() {
+                self.r.restore(old);
+            }
+        }
+        fn select(&mut self, i: usize) -> bool {
+            self.r.select(i)
+        }
+        fn wait(&mut self) {
+            self.r.wait();
+        }
+        fn time_left(&self) -> bool {
+            self.r.time_left()
+        }
+    }
+    let lease = Arc::new(Lease {
+        old: Mutex::new(None),
+        answered: AtomicBool::new(false),
+    });
+    let (done, rx) = std::sync::mpsc::channel::<()>();
+    let watch = {
+        let (lease, answer) = (lease.clone(), answer.clone());
+        std::thread::spawn(move || {
+            if rx.recv_timeout(budget).is_ok() {
+                return;
+            }
+            if let Some(old) = lease.old.lock().unwrap().take() {
+                put_back(&old);
+            }
+            if !lease.answered.swap(true, Ordering::SeqCst) {
+                answer(TabPick::Miss(TabMiss::NoUia));
+            }
+        })
+    };
+    let pick = pick_tab(&mut Leased { r, lease: &lease }, marker, tries);
+    let _ = done.send(());
+    let _ = watch.join();
+    if !lease.answered.swap(true, Ordering::SeqCst) {
+        answer(pick);
+    }
 }
 
 /// 拉前之前那一步：要不要试切标签页。
