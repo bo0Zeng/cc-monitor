@@ -152,7 +152,7 @@ pub enum ToolSource {
     ///
     /// 〔`K-R60` 09-11 加〕上面五个变体都预设「这东西的内容出自本仓」，
     /// 而 app 最吃重的那一项（Claude Code 自己写的会话记录）根本不出自本仓。
-    /// 没有这一格，它就只能靠**不进表**来表示 —— 而那正是本件在治的病。
+    /// 没有这一格，它就只能靠**不进表**来表示 —— 而那正是这一层在治的病。
     NotOurs { who: Text },
 }
 
@@ -165,7 +165,7 @@ pub enum ToolDestination {
     ///
     /// `K-R69`（09-12 上午）写过一段「它零使用者、`never constructed` 就是这笔债的存根」，
     /// 并把退役条件写死成「**下一件活里若仍没有「只落在远端」的工具进来**就删」。
-    /// 本件把 [`Carrier`] 这一层立起来之后，那个条件**不成立了**：
+    /// [`Carrier`] 这一层立起来之后，那个条件**不成立了**：
     /// `ccm` 的**远端那一份**（shim，`~/.local/bin/ccm`）就是一个只落在远端的载体，
     /// 它与本机那一份不再需要挤在同一个 `destination` 里 ——
     /// 「一个东西两个落点」这件事今天由**载体这一维**表达，不由一个双值变体表达。
@@ -391,7 +391,7 @@ impl ToolSpec {
     /// 这个工具碰的**全部**文件（跨载体铺平）。
     ///
     /// ⚠ 只在「不关心是哪个载体」时用它；关心的时候用 [`Self::carrier_touches`] ——
-    /// 铺平会把本件刚立起来的那个 key 又丢掉一次。
+    /// 铺平会把这里立起来的那个 key 又丢掉一次。
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn touches(&self) -> impl Iterator<Item = &'static TouchedFile> {
         self.carriers.iter().flat_map(|c| c.touches.iter())
@@ -494,13 +494,13 @@ pub const TOOLS: &[ToolSpec] = &[
     // 🔴 **这个名字已经花过一次真钱**：`build-linux` 没有 `Stage native backend for
     // self-extract` 那一步而 `build-windows` 有 ⇒ **Linux 裸 exe 装出来没有本机后端**
     // （用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
-    // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，本件只把名字与闭集说对。
+    // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，这里只把名字与闭集说对。
     ToolSpec {
         id: "backend",
         display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
         uninstallable: true,
-        // 🔴 **同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打。在本件之前闭集里只有中间那一条，
+        // 🔴 **同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打。从前闭集里只有中间那一条，
         // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
         // ⚠ 三者是**同一份代码**的三种载体，不是三个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）；
         //   ①③ 是同一次 `cargo build` 的同一个文件拷两份，② 结构上不可能同字节
@@ -552,7 +552,7 @@ pub const TOOLS: &[ToolSpec] = &[
     //
     // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
     // 「加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫」。
-    // 本件把那句话变成了假的：`profile_installer::plan_install` 的 `PosixRc` 臂把那个
+    // 载体这一层把那句话变成了假的：`profile_installer::plan_install` 的 `PosixRc` 臂把那个
     // 别名块装进用户**选定**的 rc（内容与远端那个口来自同一个常量 `profile_installer::CCM_WRAPPER_SNIPPET`，
     // 合块与剥块都走 `profile_installer::merge_profile_block` / `strip_profile_block`），
     // `profile_installer::plan_uninstall` 卸得掉，`profile_installer::scan_profile` 查得出。
@@ -568,7 +568,7 @@ pub const TOOLS: &[ToolSpec] = &[
         carriers: &[Carrier {
             what: Text(|| copy_text("rsToolRegistry.tools.posixAliasesWhat", &[])),
             // 装进去的内容**就是仓里那份文件**（`profile_installer::CCM_WRAPPER_SNIPPET` 是它的
-            // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
+            // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是这里不许出现第二份的东西。
             source: ToolSource::EmbeddedText {
                 repo_path: "src/shared/ccm-aliases.sh",
             },
@@ -844,7 +844,7 @@ pub enum EnvProbe {
     /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
-    /// 拿「查不动」当「不查」的遮羞布 —— 那正是本件在治的病。
+    /// 拿「查不动」当「不查」的遮羞布 —— 那正是这一层在治的病。
     CannotProbe { why: Text },
 }
 

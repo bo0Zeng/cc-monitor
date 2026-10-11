@@ -276,7 +276,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // `9_/tmp/tmux-1000/default`，`parse::<u32>()` 自然失败 ⇒ `(None, None)`
     // ⇒ 落进 `match probe.server_pid` 的 `_ => {}` 那条**什么都不打的**臂
     // ⇒ `spawn_pid_watcher` 与 `socket_path` 那路 inotify 一次都不装，**而外面看起来一切正常**。
-    // 那正是本件立件时看到的症状。处置不变（拿不到就是拿不到），**加的是那句话**。
+    // 那正是当初看到的症状。处置不变（拿不到就是拿不到），**加的是那句话**。
     if !line.is_empty() && tab_underflow(line, 2) {
         tracing::warn!(
             "CCM_TMUX_UNPARSABLE display-message 切出 {} 段 < 2 —— \

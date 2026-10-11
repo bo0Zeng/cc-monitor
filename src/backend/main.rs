@@ -250,7 +250,7 @@ async fn main() {
     //
     // ⚠ **由环境决定，不由 argv 决定**：`SUBCOMMANDS` 那张表一动就要 bump `BUILD_ID`
     // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），
-    // 而本件**一条子命令都没加** —— 它换的是同一个流模式的载体。
+    // 而这里**一条子命令都没加** —— 它换的是同一个流模式的载体。
     // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到），在 [`claim_then_log`] 里定、抢口。
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.

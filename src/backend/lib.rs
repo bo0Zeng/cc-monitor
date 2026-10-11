@@ -70,7 +70,7 @@ mod protocol_doc_gen; // 协议参考 IPC-COMMANDS.md 由它从代码生成；�
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 #[cfg(test)]
 #[path = "../../tests/backend/ratchet_guard.rs"]
-mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
+mod ratchet_guard; // K-P1 KPY7：动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -204,7 +204,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   已部署的旧后端根本没有这条臂；而 monitor 判 stale 只看 build_id
 ///   ⇒ 不 bump 就不重装（p1r / p1t / G2 / p2d 那四次的同一个形状）。
 ///   🔴 **别把这条读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里
-///   本件只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
+///   这一版只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
 ///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍。
 ///
 /// - p2f-build-stamp：**这一份二进制第一次说得出自己是谁。**
@@ -227,7 +227,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
 ///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
 ///   **没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
-///   🔴 **别把它读成「远端画面预览通了」**：本件只出后端这一侧的原语，
+///   🔴 **别把它读成「远端画面预览通了」**：这一版只出后端这一侧的原语，
 ///   monitor 那条远端抓屏命令一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
 /// - p2h-oneshot-session：新增 `--oneshot-session` —— **一次性会话**，
@@ -241,7 +241,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
 ///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
 ///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
-///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出后端这一侧的原语，
+///   🔴 **别把它读成「用量探针搬进后端了」**：这一版只出后端这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
 ///
 /// - p2i-frame-tmux-primitives：**`capture-pane` 与 `oneshot-session`
@@ -268,7 +268,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
 ///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/` ⇒ 不涉及 re-embed）。
-///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
+///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：这一版只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
 ///
 /// - p2k-usage-retired〔删用量〕：**减法那一侧的第一条** —— 两条子命令与一条帧面命令
@@ -957,7 +957,7 @@ pub const BUILD_STAMP_LEN: usize =
 
 /// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
 ///
-/// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是本件的支点，
+/// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是这里的支点，
 /// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_backends` 头注）：
 /// 「编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里**不连续**），
 ///  运行时 `bytes_contain` 启发式会误拒正品二进制」⇒ 当时的出路是**旁挂一份清单**，

@@ -3545,7 +3545,7 @@ mod spawn_registry {
     ///
     /// [`the_registry_has_no_ghost_entries`] 只做两件事：断言每条 `why` 非空 +
     /// **硬编码**核 `tmux_hook.rs` / `watcher.rs` 那两条。**它不核其余五条。**
-    /// ⇒ 本件搬家时如果**加**了 `plugin/invoke.rs` 的登记却**忘了删**
+    /// ⇒ 搬家时如果**加**了 `plugin/invoke.rs` 的登记却**忘了删**
     /// `control/cc_bus.rs` 那条：`ALLOWED` 变 8 条、扫到的仍是 9 处、`unregistered` 仍空
     /// ⇒ **三条判据全绿，而表里躺着一条幽灵**。
     ///
@@ -3818,7 +3818,7 @@ mod capture_is_read_only {
     /// ★★ `KR86D3`：**这一处只抓一次就返回。**
     ///
     /// 两个数一起断：起进程**恰好一处**（多一处 = 有人在这里连着抓第二屏），
-    /// 循环构件**零处**（那是「靠节拍反复问」的形态，归 `K-R87`，不许在本件里做掉）。
+    /// 循环构件**零处**（那是「靠节拍反复问」的形态，归 `K-R87`，不许在这里做掉）。
     ///
     /// ⚠ 与 `no_timer_guard` **不重**：那一条扫的是全 crate 的「会让线程自己醒来的构件」
     /// （`sleep` / `interval` / `Duration::from_secs`），认不出一个**忙循环**；
@@ -3842,7 +3842,7 @@ mod capture_is_read_only {
             loops,
             Vec::<String>::new(),
             "抓屏那一处的生产段里出现了循环构件：{loops:?}\n\
-             ⇒ 「抓几次」是**调用方**的事（`KR86D3` 逐字：本件只出原语，不出轮询）。"
+             ⇒ 「抓几次」是**调用方**的事（`KR86D3` 逐字：只出原语，不出轮询）。"
         );
     }
 }
@@ -4107,7 +4107,7 @@ mod g6_reach {
 
     /// ★ 反例仍在盘上、仍然通过；同形的**直写**仍然会红。
     ///
-    /// ★★ 本件专属陷阱（件文件 `§3`）在这一格的答案：这条路**未经任何放宽就已经通过**
+    /// ★★ 专属陷阱在这一格的答案：这条路**未经任何放宽就已经通过**
     /// —— 默认层的判据里没有任何一条能匹配到起进程（分母 = `FS_MUTATION_PATTERNS` 11 条 +
     /// 只读白名单那条，两者都只认 `fs::` / `File::` / `OpenOptions` 三个命名空间的文本）。
     /// ⇒ 它属于「**它本来就拦不住**」那一侧，而不是「放宽之后没红」。
@@ -5287,15 +5287,15 @@ mod g6_dependency_signoff {
     //
     // 本档今天 6 条**全是仓内 crate**（清单那一行带 `path =`）⇒ **源码就在树里**，
     // 重扫是零边际成本。`UNMEASURED` 那一档的解锁条件是「有人真去读了它的源码」，
-    // 而那些是第三方 crate、源码不在树里 ⇒ **本件的做法对它们不适用**。
-    // 🔴 **本件覆盖 `MEASURED_CLEAN` 这一档，不覆盖 `UNMEASURED` 那一档**；
+    // 而那些是第三方 crate、源码不在树里 ⇒ **这里的做法对它们不适用**。
+    // 🔴 **这里覆盖 `MEASURED_CLEAN` 这一档，不覆盖 `UNMEASURED` 那一档**；
     //    下面这几条判据绿了，说明的只是前者，**不许把后者也算进这个绿里**。
     //
     // # 它买不到什么（`§4` 诚实边界逐字，别读大一格）
     //
     // - 买到的是「**写面出现的那一刻会红**」，**不是**「那几棵 crate 永远干净」。两句不许压成一句。
-    // - **模式表本身有多准，本件不判** —— 它沿用护栏既有的那两张表（[`super::tests::FS_MUTATION_PATTERNS`]
-    //   与 [`super::tests::WHITELIST_STILL_FORBIDDEN`]）加起进程点；**那两张表漏掉的写法，本件一样漏**。
+    // - **模式表本身有多准，这里不判** —— 它沿用护栏既有的那两张表（[`super::tests::FS_MUTATION_PATTERNS`]
+    //   与 [`super::tests::WHITELIST_STILL_FORBIDDEN`]）加起进程点；**那两张表漏掉的写法，这里一样漏**。
     //   08-06 就实测过一次同族的漏：黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`。
     //   〔`K-R79` 09-12 补：尺子里现在还有第三样 —— [`super::remote_write_layer::all_remote_needles`]
     //    那两张远端写的网。**同一句话照样成立**：那两张网漏掉的写法，这里一样漏，
@@ -5310,7 +5310,7 @@ mod g6_dependency_signoff {
     /// ① 本常量；② `VERDICTS` 里 `MEASURED_CLEAN` 那一档的解锁条件文字；③ 本文件里真有这么一条 `fn`。
     const RESIDENT_GUARD: &str = "the_clean_verdict_is_re_measured_on_the_tree_every_run";
 
-    /// 本件那把尺子：**护栏自己那两张模式表 ∪ 起进程点 ∪ 远端写那两张网**（现算，不手抄第二份）。
+    /// 这里那把尺子：**护栏自己那两张模式表 ∪ 起进程点 ∪ 远端写那两张网**（现算，不手抄第二份）。
     ///
     /// ⚠ 起进程点那一项**运行时拼** —— 本文件里别再多一处那个字面量：
     /// [`super::spawn_registry`] 那条判据靠**按文件名跳过本文件**才不自匹配，
@@ -5319,7 +5319,7 @@ mod g6_dependency_signoff {
     /// 并进了 [`super::remote_write_layer`] 那两张网。**理由是「同职」**：
     /// 这把尺子替 `已量·未见写面` 那一档回答「这几棵仓内 crate 今天干不干净」，
     /// 而「干净」如果只算本机写面，那么哪天 `acct-core` 里长出一处远端写，
-    /// 这一档照样绿 —— 那正是本件在后端本体上治的同一个洞，换一棵树再挖一遍。
+    /// 这一档照样绿 —— 那正是在后端本体上治的同一个洞，换一棵树再挖一遍。
     /// ⚠ 并进来是**收紧**：今天这六棵 crate 上现打 0 处命中（量过，逐词都是 0）。
     fn resident_ruler() -> Vec<String> {
         let mut v: Vec<String> = super::tests::FS_MUTATION_PATTERNS
@@ -5369,7 +5369,7 @@ mod g6_dependency_signoff {
 
     /// 把某一档拆成「扫得了的」与「扫不了的」两半。
     ///
-    /// 🔴 **扫不了的不许静默跳过** —— 那正是本件要治的病的同族形状（判决没人盯着）。
+    /// 🔴 **扫不了的不许静默跳过** —— 那正是这里要治的病的同族形状（判决没人盯着）。
     /// 返回 `(可扫: (crate 名, 清单里的 path, src 住址), 扫不了的诊断行)`。
     #[allow(clippy::type_complexity)]
     fn split_by_reachability(
@@ -5652,7 +5652,7 @@ mod g6_dependency_signoff {
 
     /// ★★ 「今天零条未签字」这个读数要先证明**尺子接上了** —— 喂一份合成清单，它必须点名。
     ///
-    /// 合成的那条刻意就是本件的形状：**引擎作为一条新依赖进来**那天。
+    /// 合成的那条刻意就是这里的形状：**引擎作为一条新依赖进来**那天。
     #[test]
     fn an_unsigned_dependency_is_really_reported_so_that_the_zero_is_not_vacuous() {
         let engine = "some-engine";
@@ -5672,7 +5672,7 @@ mod g6_dependency_signoff {
         assert_eq!(
             unsigned_of(&declared),
             vec![format!("  {DEPS} 里的 {engine}")],
-            "★ 这一刀正是本件的形状：**引擎被编进 backend** 那天，它会作为一条新依赖出现，\
+            "★ 这一刀正是这里的形状：**引擎被编进 backend** 那天，它会作为一条新依赖出现，\
              而它自己就是「在 vendor 里写盘、判据看不见」的那一个 —— 本条要求那时候当场点名它。\
              同时它反向证明另一半：已经签过字的 `serde` / `guard-core` 不许被误报成没签字。"
         );
@@ -5881,7 +5881,7 @@ mod g6_dependency_signoff {
     // 塞进 `已量·有写面` ⇒ [`the_credentials_crate_is_signed_as_a_purposeful_writer_and_its_feature_is_really_on`]
     // （那一档的成员集是**相等**断言）；塞进 `已量·未见写面` ⇒
     // [`the_clean_verdict_is_re_measured_on_the_tree_every_run`]（第三方 crate 没有 `path =`，
-    // 落进「本判据扫不了」那一格）；塞进 `未量·靠用法签字` ⇒ **在本件之前一条都不红**，
+    // 落进「本判据扫不了」那一格）；塞进 `未量·靠用法签字` ⇒ **从前一条都不红**，
     // 那正是 [`capability_supplier_misfits`] 补上的那一格。
 
     /// 能力供应者**许**落的判档：已量那两档。**闭集**。
@@ -6422,7 +6422,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
             "登记的是「起什么」，**判不了被起的那个程序写了什么**",
         ),
         (
-            "L3 远端能力写（本件新加）",
+            "L3 远端能力写（新加）",
             layer_remote_capability,
             "能力网认的是**取得能力**那一步、动词网认的是**协议操作名的方法形**；\
              两者都是源码文本 ⇒ `use` 别名 · 宏里拼出来的调用 · 自己改名的封装，一律看不见",

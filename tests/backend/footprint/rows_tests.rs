@@ -644,7 +644,7 @@ fn every_host_declaration_is_pinned() {
     let want: &[(&str, &str, HostScope)] = &[
         // 远端入口 `~/.local/bin/ccm` → `~/.cc-monitor/bin/ccm`（远端写只许两处）。
         ("ccm", "~/.cc-monitor/bin/ccm", Remote),
-        // 🔴 **本机那条** —— `Client` 是刻意的、也是本件的正题：
+        // 🔴 **本机那条** —— `Client` 是刻意的、也是这里的正题：
         //    在它之前，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
         //    而用户 `K34` 逐字要的「旧的干净退役」就此没有承接方。
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
@@ -1141,7 +1141,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
              今天它必须解析，否则「真去查」这句话是假的"
     );
 
-    // ② 没装的：**Absent**，不是 Undetermined —— 这一格就是本件买到的东西
+    // ② 没装的：**Absent**，不是 Undetermined —— 这一格就是这里买到的东西
     let gone = pick("tmux");
     assert_eq!(
         gone.state,

@@ -385,7 +385,7 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
     let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), dirty_two));
     assert!(
         closed.is_empty(),
-        "🔴 通道一脏就把**全部活会话**报成消失 —— 这才是本件真正的伤害。实得：{closed:?}"
+        "🔴 通道一脏就把**全部活会话**报成消失 —— 这才是真正的伤害。实得：{closed:?}"
     );
     assert_eq!(
         prev.as_ref().map(|s| s.len()),
@@ -655,7 +655,7 @@ fn tmux_socket_dir_follows_tmux_tmpdir() {
 
 /// ★★ **超时必须落成「观测无效」，绝不能落成「零会话」**。
 ///
-/// 这是本件最要命的一格：`ServerEmpty`（rc=0 且 stdout 空）会让上层认为
+/// 这是最要命的一格：`ServerEmpty`（rc=0 且 stdout 空）会让上层认为
 /// **那台机器上一个会话都没有** ⇒ 活着的会话被 retire。
 /// 而超时是「**我没看清**」，不是「**我看清了，是空的**」。
 ///

@@ -522,7 +522,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
 /// ⇒ 🔴 **backend 自己那一格（门禁 `backend` = `cd src/backend && cargo test`）
 /// 今天没有这道闸**：只跑后端那一格的人新写一道绕道，**不会红**。
 /// 两棵树是两个 workspace（`src/backend/Cargo.toml` 头注逐字写着 standalone），
-/// 而「backend 那一格要不要也跑一条同形的判据」不是本件能决定的事 —— 交回 PM。
+/// 而「backend 那一格要不要也跑一条同形的判据」不是这里能决定的事。
 #[test]
 fn the_detour_ratchet_reaches_both_trees() {
     let corpus = addr_corpus();
@@ -1592,7 +1592,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
     // ★ 抽取器自检 2：这一族本来就有两百来处 —— 抽到个位数就是剥法坏了。
     assert!(
         refs.len() >= 150,
-        "只抽到 {} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于本件尖）",
+        "只抽到 {} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于当时的尖）",
         refs.len()
     );
 
@@ -1912,7 +1912,7 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
 
 /// 至少几个下划线才进人群。**只能是 2，不许往上调。**
 ///
-/// 整条曲线（现打，量于本件基点）：
+/// 整条曲线（现打，量于基点）：
 /// `>=1` 100 个/143 处 · **`>=2` 58/84** · `>=3` 43/61 · `>=4` 33/50 · `>=5` 30/44。
 /// 🔴 旗舰活体 `local_tmux_names` **只有 2 个下划线，在 `>=3` 就掉出人群**。
 /// ⇒ 把阈值调上去换一个好看的人群数，等于把本条要逮的那个逮不着。

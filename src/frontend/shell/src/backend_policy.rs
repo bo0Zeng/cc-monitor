@@ -148,7 +148,7 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 //
 // # 为什么这一档住在宿主侧，而不是预批的 `src/backend/death_ledger.rs`
 //
-// 三条现打，逐条给住址（PM 补充里预批了那个新文件 + `main.rs` 一行 `mod`，本件**都没用**）：
+// 三条现打，逐条给住址（PM 补充里预批了那个新文件 + `main.rs` 一行 `mod`，这里**都没用**）：
 //
 // 1. **backend 写不了盘，而放宽写盘口是第二档的事。**
 //    `src/backend/readonly_guard.rs` 的默认层禁掉本 crate 生产段里
@@ -279,7 +279,7 @@ pub enum Death {
 ///
 /// ⚠ **诚实边界，如实登记**：`exit 0` 而**从来没说过话**这一形（起来了、干净地退了、
 /// 但一句 hello 都没发）今天**判成不上账**。它在这三维上与「正常收工」不可区分，
-/// 而给它单开第五档就是发明一件今天没有证据支持的事（本件的 DoD 说的是**四件**）。
+/// 而给它单开第五档就是发明一件今天没有证据支持的事（要求说的是**四件**）。
 /// 真撞上它 ⇒ 那是第二档的题目，回来重判，别在这里悄悄加一档。
 pub fn verdict(ev: &DeathEvidence) -> Option<Death> {
     match &ev.reader {
@@ -455,7 +455,7 @@ pub trait DeathSink {
 
 /// 生产落点：**monitor 自己的滚动日志**（只进日志；告诉用户的那一句由调用方经 `ui_error::tell` 说）。
 ///
-/// ★ 这是本件「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
+/// ★ 这是「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
 /// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 一个已经登记在
 /// `write_site_registry::WRITE_SITES` 里的落点。本模块一个 `fs::` 调用都没有。
 ///
@@ -477,7 +477,7 @@ impl DeathSink for MonitorLog {
 ///
 /// `#[must_use]` 是**刻意的**：吞掉它就等于把「写不进去」这件事静默掉，
 /// 而 `§0-1` 那一格的全部内容就是「没有任何东西在记」——
-/// 一个被吞掉的错误会让本件原地退回那个状态。
+/// 一个被吞掉的错误会让这里原地退回那个状态。
 #[must_use]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Recorded {

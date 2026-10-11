@@ -37,7 +37,7 @@ mod tests {
     ///
     /// `identity_tag::tag`（`U-NP④`，08-14）的答案**同型**：触发时机是「某个 pidfile 出现/
     /// 原地换了 sid」，那是 `sessions/` inotify 观测到的事实（`(pid, sid)` 也只有那一刻同时在手）；
-    /// control 侧没有这个信号，硬要它自己发现只能靠轮询 —— 而本件的**全部目的**就是
+    /// control 侧没有这个信号，硬要它自己发现只能靠轮询 —— 而这里的**全部目的**就是
     /// 把 `shared/ccm` 那条每秒轮询消掉（「不要轮询」「ccm 做到必须走后端」）。
     /// 反过来做只是把轮询从 ccm 搬到后端。
     ///
@@ -819,7 +819,7 @@ mod tests {
     /// `src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs` …）**不在人群里**，
     /// 而且就算放进来也扫不到：`mod relay;` 声明在 `main.rs`，它写的是**裸** `relay::…`，
     /// 而 `refs_to_layer` 的锚点是 `crate::relay` / `super::super::relay`。
-    /// ⇒ 顶层文件伸手进 `relay::upstream::…` 这一形，**本判据看不见**。留作跟进件，不在本件买。
+    /// ⇒ 顶层文件伸手进 `relay::upstream::…` 这一形，**本判据看不见**。留作跟进件，这里不买。
     #[test]
     fn no_layer_may_reach_into_relay_internals() {
         let mut bad: Vec<String> = Vec::new();

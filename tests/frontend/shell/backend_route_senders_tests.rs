@@ -29,7 +29,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（monitor 里那个发送端，已删）
-    //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
+    //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 已删净），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
     //   〔：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
     //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
@@ -78,7 +78,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("host.rs", Verdict::UsesRouter),
     // ★ **第九个发送端** —— 只读查询面（`frame_query.rs`，
     //   `history-*` / `accounts-*` 八条）。它**没有第二条路可回落**：逐次拨 SSH 那条正是
-    //   本件要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
+    //   这里要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
     //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
     ("frame_query.rs", Verdict::UsesRouter),
     // ★ **又一个发送端** —— 链路的 monitor 这一侧（`link_mux.rs`，`link-*` 四条，

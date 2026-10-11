@@ -9,7 +9,7 @@ use super::*;
 /// | 在这里自己去列一遍 tmux、拼一个 `Vec<String>` 喂给 `build` | **类型**：`plan::build` 只收 `TakenNames`，而它的字段是 `common::session_snapshot` 模块私有的 ⇒ **编译不过** |
 /// | 让 `build` 拿到名字之后，在 `execute` 里再退让一次（本文件从前正是这样） | **本条**：算完的名字一个字都不许再改 |
 ///
-/// 🔴 第二种是本件之前的真实形状 —— 后果不是「名字错了」，是
+/// 🔴 第二种是从前的真实形状 —— 后果不是「名字错了」，是
 /// **`--print` 与真跑吐的名字可以不一样**，而 `--print` 的全部意义就是当平价预言机。
 #[test]
 fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {

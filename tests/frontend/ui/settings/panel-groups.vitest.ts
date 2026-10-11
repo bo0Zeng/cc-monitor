@@ -369,7 +369,7 @@ describe("S2 设置面板分页结构", () => {
     // 它与 `panel-machine-page-visibility.vitest.ts` 那条断的是**同一个比特的两个相反符号**：
     // `appliesTo: "remote"` 时本条绿、那条红；改成 `"both"` 时反过来。
     // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
-    // ⇒ 同一件事实写在两处，本件改了那件事实 ⇒ 两处一起改，不是二选一。
+    // ⇒ 同一件事实写在两处，改了那件事实 ⇒ 两处一起改，不是二选一。
     expect(visibleTitles).toContain(copyText("machinePage.tab.accounts"));
     expect(visibleTitles).not.toContain(copyText("rsConfigSurface.scope.userNote"));
   });

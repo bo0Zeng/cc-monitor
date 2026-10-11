@@ -204,7 +204,7 @@ fn refusal_reasons_are_a_closed_set() {
 ///   ⇒ 105 处引用、**悬空 1 处**：`platform/pidwatch/linux.rs` 头注的
 ///   「从 `platform/pidwatch.rs` 逐字搬来」（今天是 `platform/pidwatch/mod.rs`）。
 ///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**不在本轮写区** ⇒ 交回 PM。
-///   ⇒ **本条不是全 crate 的**：它管的是本件自己新增的那三份。
+///   ⇒ **本条不是全 crate 的**：它管的是新增的那三份。
 #[test]
 fn every_file_this_head_note_points_at_really_exists() {
     let heads = [

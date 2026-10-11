@@ -174,7 +174,7 @@ libc = "0.2"
 # ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，
 # 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
 # 根子是两个词混着用了，分清楚：
-#   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在本件**之前**就已在
+#   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在这条依赖加进来**之前**就已在
 #     monitor 的依赖图里 —— `git show c3cf193:src/frontend/shell/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
 #     `cargo tree -i ring --manifest-path ../frontend/shell/Cargo.toml` ⇒ `ring └── russh └── monitor`。
 #     同一把尺子量 **backend 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**backend 侧**第一条」是真话。
