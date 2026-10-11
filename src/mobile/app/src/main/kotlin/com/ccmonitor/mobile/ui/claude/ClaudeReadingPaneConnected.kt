@@ -34,9 +34,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
@@ -61,8 +59,6 @@ fun ClaudeReadingPaneConnected(
     executor: RemoteExecutor,
     cwd: String?,
     claudeDir: String?,
-    // 本会话 agent 种类：决定 parser / usage / locator、排序与 VM key。
-    agentKind: AgentKind = AgentProfile.DEFAULT.kind,
     modifier: Modifier = Modifier,
     // 连接死否由错误态 [ClaudeReadState.Error.connectionDead] 携带（exec 抛 ConnectionDeadException 或 tail EOF 时为 true），见 onRetry。
     onReconnectSsh: () -> Unit = {}, // 连接已死时驱动整条 SSH/会话重连（即 SessionViewModel.retry）
@@ -79,9 +75,8 @@ fun ClaudeReadingPaneConnected(
     // key 并入 `-pin-<path>`：钉住、换钉、解钉各是独立 VM，互不污染缓存。
     val vm =
         koinViewModel<ReadingPaneViewModel>(
-            // kind 也折进 key：切 agent 种类重建 VM，不复用旧 tail 缓存。
-            key = "reading-${cwd ?: "~"}" + (pinnedPath?.let { "-pin-$it" } ?: "") + "-${agentKind.name}",
-        ) { parametersOf(channel, cwd ?: "", claudeDir ?: "", pinnedPath ?: "", pinnedLabel ?: "", agentKind, executor) }
+            key = "reading-${cwd ?: "~"}" + (pinnedPath?.let { "-pin-$it" } ?: ""),
+        ) { parametersOf(channel, cwd ?: "", claudeDir ?: "", pinnedPath ?: "", pinnedLabel ?: "", executor) }
     val state by vm.state.collectAsState()
     val sessions by vm.sessions.collectAsState()
     val selectedPath by vm.selectedPath.collectAsState()

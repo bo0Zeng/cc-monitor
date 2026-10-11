@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.claude
 
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.model.ContentBlock
 import com.ccmonitor.mobile.core.claude.model.JsonlRecord
 import com.ccmonitor.mobile.core.claude.model.RecordClassifier
@@ -565,122 +564,6 @@ class ReadingPaneViewModelTest {
             val job = launch { vm.state.collect {} }
             advanceUntilIdle()
             assertTrue("断连应 Error 而非 Empty：${vm.state.value}", vm.state.value is ClaudeReadState.Error)
-            job.cancel()
-        }
-
-    // ---------- Codex 渲染 per-kind（无 parentUuid → 文件序 + 合成 uuid；用量 per-kind） ----------
-
-    @Test
-    fun codexRendersMultipleNullUuidRecordsWithUniqueKeys() =
-        runTest(dispatcher) {
-            // Codex 记录多无 uuid（payload.id 不稳）：3 条渲染记录若不补合成 uuid 会全撞 "_#0"
-            // → LazyColumn items(key) 崩。补 cx-<index> 后各成唯一 key。同时用量走 Codex 聚合（contextWindow/去缓存 input）。
-            fun env(
-                ts: String,
-                payload: String,
-            ) = """{"timestamp":"$ts","type":"response_item","payload":$payload}"""
-            val userMsg = """{"type":"message","role":"user","content":[{"type":"input_text","text":"帮我看看"}]}"""
-            val asstMsg = """{"type":"message","role":"assistant","content":[{"type":"output_text","text":"好的"}]}"""
-            val user2Msg = """{"type":"message","role":"user","content":[{"type":"input_text","text":"继续"}]}"""
-            val tokenCount =
-                """{"timestamp":"2026-07-18T22:45:03Z","type":"event_msg","payload":{"type":"token_count","info":""" +
-                    """{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10,""" +
-                    """"reasoning_output_tokens":5,"total_tokens":110},"last_token_usage":{"total_tokens":80},""" +
-                    """"model_context_window":258400}}}"""
-            val lines =
-                env("2026-07-18T22:45:00Z", userMsg) + "\n" +
-                    env("2026-07-18T22:45:01Z", asstMsg) + "\n" +
-                    env("2026-07-18T22:45:02Z", user2Msg) + "\n" +
-                    tokenCount + "\n"
-            val codexPath = "/h/.codex/sessions/2026/07/18/rollout-2026-07-18T22-45-32-019f78e8-84dd-7ac0-b479-e9c1b9caec67.jsonl"
-            val channel =
-                RemoteCommandChannel { cmd ->
-                    when {
-                        cmd.contains("tail") ->
-                            flow {
-                                delay(100) // 虚拟时间：让新行晚于管线就位（trigger 无 replay，订阅前 tryEmit 会被丢）
-                                emit(lines.toByteArray())
-                                awaitCancellation() // 保持流开着（别 EOF→Error）
-                            }
-                        else -> emptyFlow() // Codex 跳骨架；发现(ls/pidfile)用 Claude catalog→空（pinned 不依赖）
-                    }
-                }
-            val vm =
-                ReadingPaneViewModel(
-                    channel,
-                    executor = noSizeExecutor(),
-                    cwdArg = null,
-                    pinnedPathArg = codexPath,
-                    pinnedLabelArg = "codex 会话",
-                    agentKindArg = AgentKind.Codex,
-                    cpu = dispatcher,
-                )
-            val job = launch { vm.state.collect {} }
-            advanceTimeBy(500)
-            runCurrent()
-
-            val ready = vm.state.value as? ClaudeReadState.Ready
-            assertTrue("应 Ready（实际 ${vm.state.value}）", ready != null)
-            val keys = ready!!.units.map { it.key }
-            assertEquals("3 条渲染记录（2 user + 1 assistant）", 3, keys.size)
-            assertEquals("无 null-uuid 撞键（unitKey 唯一，否则 LazyColumn 崩）", keys.size, keys.toSet().size)
-            assertTrue("无 \"_#0\" 占位键（已补合成 uuid）", keys.none { it.startsWith("_#") })
-            job.cancel()
-        }
-
-    @Test
-    fun codexTailUsesFullReadNoSkeleton() =
-        runTest(dispatcher) {
-            // Codex 无 parentUuid → 跳骨架窗口首载（那靠 MainBranch）→ 直接全量 tail -c +1（非骨架/窗口）。
-            val commands = mutableListOf<String>()
-            val codexPath = "/h/.codex/sessions/2026/07/18/rollout-x-019f78e8-84dd-7ac0-b479-e9c1b9caec67.jsonl"
-            val channel =
-                RemoteCommandChannel { cmd ->
-                    commands.add(cmd)
-                    when {
-                        cmd.contains("tail") -> flow { awaitCancellation() }
-                        else -> emptyFlow()
-                    }
-                }
-            val vm =
-                ReadingPaneViewModel(channel, executor = noSizeExecutor(), cwdArg = null, pinnedPathArg = codexPath, agentKindArg = AgentKind.Codex, cpu = dispatcher)
-            val job = launch { vm.state.collect {} }
-            advanceTimeBy(300)
-            runCurrent()
-
-            assertTrue("Codex 不跑骨架 awk 命令", commands.none { it.contains("awk") })
-            val tails = commands.filter { it.contains("tail -c") }
-            assertTrue("Codex 全量 tail -c +1（非窗口 offset）：$tails", tails.isNotEmpty() && tails.first().contains("tail -c +1 "))
-            job.cancel()
-        }
-
-    @Test
-    fun codexResumeTargetCwdFromSessionMeta() =
-        runTest(dispatcher) {
-            // Codex cwd 在 session_meta（User 无 cwd）→ resumeTarget.cwd 从 session_meta 提；sessionId=末尾 UUID。
-            val uuid = "019f78e8-84dd-7ac0-b479-e9c1b9caec67"
-            val codexPath = "/h/.codex/sessions/2026/07/18/rollout-2026-07-18T22-45-32-$uuid.jsonl"
-            val meta = """{"timestamp":"t","type":"session_meta","payload":{"id":"$uuid","cwd":"/home/u/proj"}}"""
-            val userMsg = """{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}}"""
-            val channel =
-                RemoteCommandChannel { cmd ->
-                    when {
-                        cmd.contains("tail") ->
-                            flow {
-                                delay(100)
-                                emit((meta + "\n" + userMsg + "\n").toByteArray())
-                                awaitCancellation()
-                            }
-                        else -> emptyFlow()
-                    }
-                }
-            val vm = ReadingPaneViewModel(channel, executor = noSizeExecutor(), cwdArg = null, pinnedPathArg = codexPath, agentKindArg = AgentKind.Codex, cpu = dispatcher)
-            val job = launch { vm.state.collect {} }
-            advanceTimeBy(500)
-            runCurrent()
-            val rt = vm.resumeTarget.value
-            assertEquals("sessionId=末尾 UUID", uuid, rt?.sessionId)
-            assertEquals("cwd 从 session_meta（Codex User 无 cwd）", "/home/u/proj", rt?.cwd)
             job.cancel()
         }
 

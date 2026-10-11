@@ -3,8 +3,6 @@ package com.ccmonitor.mobile.agent
 import com.ccmonitor.mobile.core.claude.agent.AgentDirSettingKey
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
-import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -15,13 +13,11 @@ import org.junit.Test
  *
  * 它不是「消费方真走档案」的证据：本条对每一刀变异都会红，因为它就是直接读档案。
  * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest`
- * · `ReadingPaneViewModelTest` 的 Codex 三例 · `SessionLocatorTest` 等）。
+ * · `SessionReadingTabTest` · `SessionLocatorTest` 等）。
  *
  * 本条的职责只有一个：改表要留痕（同 `NewUiSettingsTest.theDefaultSourceIsPinned…`）。
  */
 class AgentProfileTableTest {
-    private val fakeChannel = RemoteCommandChannel { emptyFlow() }
-
     /** 一份档案压成一行（每一格都进串：少写一格，那一格的变异就溜过去了）。 */
     private fun render(p: AgentProfile): String =
         listOf(
@@ -31,13 +27,11 @@ class AgentProfileTableTest {
             "uplink=${p.supportsUplink}",
             "chatScreen=${p.landsOnChatScreen}",
             "accountGate=${p.requiresAccountGate}",
-            "parentUuid=${p.usesParentUuidChain}",
+            "readingTab=${p.hasReadingTab}",
             "ccmIdentity=${p.hasCcmIdentity}",
             "dirSetting=${p.appDefaultDirSetting}",
             p.invocation::class.simpleName,
-            p.recordParser::class.simpleName,
             p.sessionLocator::class.simpleName,
-            p.newSessionCatalog(fakeChannel, "/d")::class.simpleName,
         ).joinToString(" | ")
 
     @Test
@@ -146,12 +140,10 @@ class AgentProfileTableTest {
          */
         private val PINNED_TABLE =
             listOf(
-                "ClaudeCode | Claude | claude | uplink=true | chatScreen=true | accountGate=true | parentUuid=true | " +
-                    "ccmIdentity=true | dirSetting=AppDefaultClaudeDir | ClaudeInvocation | JsonlParser | " +
-                    "ClaudeSessionLocator | ClaudeSessionCatalog",
-                "Codex | Codex | codex | uplink=false | chatScreen=false | accountGate=false | parentUuid=false | " +
-                    "ccmIdentity=false | dirSetting=null | CodexInvocation | CodexRecordParser | " +
-                    "CodexSessionLocator | CodexSessionCatalog",
+                "ClaudeCode | Claude | claude | uplink=true | chatScreen=true | accountGate=true | readingTab=true | " +
+                    "ccmIdentity=true | dirSetting=AppDefaultClaudeDir | ClaudeInvocation | ClaudeSessionLocator",
+                "Codex | Codex | codex | uplink=false | chatScreen=false | accountGate=false | readingTab=false | " +
+                    "ccmIdentity=false | dirSetting=null | CodexInvocation | CodexSessionLocator",
             )
     }
 }

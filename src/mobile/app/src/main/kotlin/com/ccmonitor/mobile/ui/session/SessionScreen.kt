@@ -47,7 +47,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
+import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
@@ -62,6 +64,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ssh.SessionBackend
+import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
 import com.ccmonitor.mobile.ui.claude.ClaudeHistorySheet
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPaneConnected
@@ -412,8 +415,11 @@ private fun ConnectedScaffold(
     onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    // 阅读面、tmux、切模型依赖 tail -F 与 tmux，按远端方言的能力位（supportsClaudeReading / supportsTmux）开关。
+    // 阅读面、tmux、切模型依赖 tail -F 与 tmux，按远端方言的能力位（supportsClaudeReading / supportsTmux）开关；
+    // 阅读子页另问这台的档案有没有（[showsReadingTab]）。
     val dialect = s.dialect
+    val agentKind by vm.agentKind.collectAsState()
+    val reading = showsReadingTab(dialect, agentKind)
     // 只订阅本会话的状态。
     val status by vm.status.collectAsState()
     // shell 流断了（reader EOF 或 keepalive 探到对端已死）：即使连接状态仍是 CONNECTED（静默半开），也就地显示重连。
@@ -421,8 +427,8 @@ private fun ConnectedScaffold(
     val dropped = terminalDropped || (status != null && status != SessionStatus.CONNECTED)
     // statusBarsPadding：边到边下 TabRow 不被系统状态栏遮挡（否则 tab 与时钟重叠且点不到）。
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        // 不支持 Claude 阅读（没有 tail -F，如 Windows / PowerShell）：隐藏 Claude tab，只留终端，不渲染 TabRow。
-        if (dialect.supportsClaudeReading) {
+        // 没有阅读子页（没有 tail -F，如 Windows / PowerShell；或这一家没有）：只留终端，不渲染 TabRow。
+        if (reading) {
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { onTab(0) }, text = { Text("终端") })
                 Tab(selected = tab == 1, onClick = { onTab(1) }, text = { Text("Claude 阅读") })
@@ -434,7 +440,8 @@ private fun ConnectedScaffold(
                 hostId = hostId,
                 s = s,
                 vm = vm,
-                tab = tab,
+                // 没有阅读子页 ⇒ 恒在终端（防 rememberSaveable 残留 tab=1）。
+                tab = if (reading) tab else 0,
                 readCwd = readCwd,
                 pinnedRead = pinnedRead,
                 onReconnect = onReconnect,
@@ -493,7 +500,7 @@ private fun SessionTabContent(
     val onCapture = rememberCaptureAction(vm, dialect.sessionBackend, { currentTmux }, onCaptured)
     // 切走终端不杀会话：emulator/TerminalSession 状态留存（reader 线程持续写 emulator），切回原样。
     when {
-        !dialect.supportsClaudeReading || tab == 0 -> // 没有阅读能力就只显示终端（防 rememberSaveable 残留 tab=1）
+        tab == 0 ->
             TerminalTab(
                 session = s.session,
                 hostId = hostId,
@@ -520,7 +527,6 @@ private fun ClaudeReadingTab(
     onShowHistory: () -> Unit,
 ) {
     val claudeDir by vm.claudeDir.collectAsState() // 解析后的 agent 配置目录，阅读面据此定位 JSONL
-    val agentKind by vm.agentKind.collectAsState() // agent 种类（Claude / Codex），阅读面按它选实现
     // 阅读面用该连接的 exec 通道（sshj 多路复用，不影响终端 shell 通道）。
     // 底部补导航条 inset，否则末条消息和「↓ 最新」被系统手势条挡住；上层只垫了顶部，不会叠两层。
     ClaudeReadingPaneConnected(
@@ -528,7 +534,6 @@ private fun ClaudeReadingTab(
         executor = vm.executor,
         cwd = readCwd, // 可被 tmux 会话「读」重定向
         claudeDir = claudeDir,
-        agentKind = agentKind,
         modifier = Modifier.fillMaxSize().navigationBarsPadding(),
         onReconnectSsh = onReconnect, // 连接死了（由阅读面的错误态判出）时整条重连
         pinnedPath = pinnedRead?.path, // 历史页钉住的 JSONL
@@ -1005,3 +1010,11 @@ internal fun customButtonSubtitle(b: CustomButton): String =
 
 /** 常用模型预设，经命令面板「模型」组发 `/model <preset>`。 */
 private val MODEL_PRESETS = listOf("opus", "sonnet", "haiku", "default")
+
+/**
+ * 终端 tab 里出不出「阅读」子页：远端方言读得了（有 `tail -F`），且这台的档案有这一页（[AgentProfile.hasReadingTab]）。
+ */
+internal fun showsReadingTab(
+    dialect: ShellDialect,
+    kind: AgentKind,
+): Boolean = dialect.supportsClaudeReading && AgentProfile.of(kind).hasReadingTab

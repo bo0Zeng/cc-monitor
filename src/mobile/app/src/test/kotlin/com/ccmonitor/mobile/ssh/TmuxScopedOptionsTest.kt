@@ -87,7 +87,7 @@ class TmuxScopedOptionsTest {
     fun noProductionSourceSpellsAGlobalOptionWrite() {
         val root = repoRoot()
         val sources = productionSources(root)
-        assertTrue("前提：得真扫到源文件，实得 ${sources.size} 个", sources.size > 150)
+        assertTrue("前提：得真扫到源文件，实得 ${sources.size} 个", sources.size > 100)
         val hits = sortedMapOf<String, Int>()
         for (f in sources) {
             val n = GLOBAL_WRITE_IN_SOURCE.findAll(KotlinSourceScanner.codeOnlyKeepingLiterals(f.readText())).count()

@@ -1,24 +1,17 @@
 package com.ccmonitor.mobile.core.claude.agent
 
-import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.CodexSessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.SessionCatalog
 import com.ccmonitor.mobile.core.claude.command.AgentInvocation
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.command.CodexInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.claude.model.CodexRecordParser
-import com.ccmonitor.mobile.core.claude.model.JsonlParser
-import com.ccmonitor.mobile.core.claude.model.RecordParser
 import com.ccmonitor.mobile.core.claude.transport.ClaudeSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.CodexSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.SessionLocator
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 
 /**
  * 一个 agent 一份档案。消费方只问档案，不问种类。
  *
- * 一家一句的事实（产品名、能不能上行、resume 载荷、记录解析、会话发现……）都收在这里；
+ * 一家一句的事实（产品名、能不能上行、resume 载荷与定位……）都收在这里；
  * [of] 是唯一取法，构造器与实例都是 `private`，外面建不出第三份。
  * 加一种 agent 时 [of] 的 `when` 因穷尽性编译不过，逼着补一份档案。
  *
@@ -42,10 +35,11 @@ class AgentProfile private constructor(
     /** 起新对话前要不要先选账号。只读档不起新对话，这道门对它没有意义。 */
     val requiresAccountGate: Boolean,
     /**
-     * 记录之间靠 `parentUuid` 串成链（Claude），还是按文件序加合成 uuid（Codex 没有 parentUuid）。
-     * 决定阅读面能不能走 `MainBranch` 与骨架链。
+     * 终端 tab 里有没有「阅读」子页。今天那一页自己读这台 Claude 的记录树（`ReadingPaneViewModel`），只有 Claude 有；
+     * Codex 的记录手机不再自己解，看 Codex 走「对话」⇒ 聊天屏（读核心的通用记录）。
+     * 子页换成读核心通用记录的同一个组件后，两家都有，这一格随之删。
      */
-    val usesParentUuidChain: Boolean,
+    val hasReadingTab: Boolean,
     /**
      * 后端对这一家有没有会话身份面。`true` 时 resume 出来的 tmux 会话在新建那一支打
      * `@ccm_sid=<完整 sid>`。
@@ -62,16 +56,8 @@ class AgentProfile private constructor(
     val appDefaultDirSetting: AgentDirSettingKey?,
     /** resume 与启动命令的载荷构造（sid 校验、命令净化、候选链、resume 串、会话名）。 */
     val invocation: AgentInvocation,
-    /** 一行原始记录 → 统一内部模型。 */
-    val recordParser: RecordParser,
-    /** 远端会话发现命令、`path→sessionId`、agent-dir 解析。 */
+    /** 远端会话定位命令（resume 找那份记录）、`path→sessionId`、agent-dir 解析。 */
     val sessionLocator: SessionLocator,
-    /**
-     * 会话目录工厂（会话发现、活动判定、可读标题）。
-     *
-     * 注意：函数型参数留在最后一个位置，尾随 lambda 才不会绑错格。
-     */
-    val newSessionCatalog: (channel: RemoteCommandChannel, agentDir: String) -> SessionCatalog,
 ) {
     /**
      * 点一台这种服务器进去，落聊天屏（`true`）还是对话总览只读档（`false`）。
@@ -91,13 +77,11 @@ class AgentProfile private constructor(
                 wireName = "claude",
                 supportsUplink = true,
                 requiresAccountGate = true,
-                usesParentUuidChain = true,
+                hasReadingTab = true,
                 hasCcmIdentity = true,
                 appDefaultDirSetting = AgentDirSettingKey.AppDefaultClaudeDir,
                 invocation = ClaudeInvocation,
-                recordParser = JsonlParser,
                 sessionLocator = ClaudeSessionLocator,
-                newSessionCatalog = { channel, agentDir -> ClaudeSessionCatalog(channel, agentDir) },
             )
 
         private val CODEX =
@@ -108,14 +92,12 @@ class AgentProfile private constructor(
                 // 只读档：没有输入行，落点是对话总览。
                 supportsUplink = false,
                 requiresAccountGate = false,
-                usesParentUuidChain = false,
+                hasReadingTab = false,
                 hasCcmIdentity = false,
                 // 只认主机覆盖与内置 `${CODEX_HOME:-$HOME/.codex}`。
                 appDefaultDirSetting = null,
                 invocation = CodexInvocation,
-                recordParser = CodexRecordParser,
                 sessionLocator = CodexSessionLocator,
-                newSessionCatalog = { channel, agentDir -> CodexSessionCatalog(channel, agentDir) },
             )
 
         /** 唯一取法。生产代码里对 [AgentKind] 的 `when` 只有这一处。 */
