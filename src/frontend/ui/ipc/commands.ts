@@ -15,6 +15,7 @@
  */
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { Said } from "../generated/Said";
+import type { ConfigPatched } from "../generated/ConfigPatched";
 
 /**
  * 壳命令失败（Rust `detail::Said`：一句 ＋ 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
@@ -133,7 +134,7 @@ export const commands = {
    * 补丁的形状由生成物 `ConfigEdit` 钉（Rust `config.rs::ConfigEdit`）；值本身仍是不透明 JSON（见 `load_config`）。
    */
   patch_config: (args: { edits: ConfigEdit[] }) =>
-    invoke<void>("patch_config", args),
+    invoke<ConfigPatched>("patch_config", args),
   machine_table_try: (args: { edits: ConfigEdit[] }) =>
     invoke<MachineFault | null>("machine_table_try", args),
 

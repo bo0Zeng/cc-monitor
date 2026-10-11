@@ -220,6 +220,8 @@ impl Reach for Wire {
                 machine,
                 "authorized-keys-add",
                 &json!({ "key": key }),
+                // 回包里没有时刻（只回 `outcome`）。
+                &crate::Tz::default(),
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
             )

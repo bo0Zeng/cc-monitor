@@ -223,3 +223,32 @@ fn a_missing_file_prints_the_template_so_import_does_not_need_guessing() {
     assert!(text.contains(store::FILE_NAME), "没印出路径：{text}");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// KS11 上屏：凭据文件过宽 ⇒ 账号清单的那一句（路径 ＋ 宽在哪 ＋ 怎么修）；只给本人 ⇒ 不说；文件不在 ⇒ 不说（没有可宽的）。
+#[cfg(unix)]
+#[test]
+fn a_too_wide_credentials_file_has_a_sentence_for_the_accounts_list() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmpdir("perm-notice");
+    let f = dir.join("credentials.json");
+    assert_eq!(perm_notice(&f), None, "文件不在 ⇒ 不说");
+    std::fs::write(&f, "{}").unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(perm_notice(&f), None, "只给本人 ⇒ 不说");
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let Verdict::TooWide { how, fix } = perm::judge(&perm::probe(&f)) else {
+        panic!("0644 该判过宽")
+    };
+    assert_eq!(
+        perm_notice(&f),
+        Some(copy_text(
+            "beAccountsQuery.listProductAt.credsPerm",
+            &[
+                ("path", &f.display().to_string()),
+                ("how", &how),
+                ("fix", &fix)
+            ]
+        ))
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

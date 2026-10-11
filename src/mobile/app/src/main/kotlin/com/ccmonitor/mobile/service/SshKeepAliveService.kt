@@ -19,7 +19,6 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.ccmonitor.mobile.MainActivity
-import com.ccmonitor.mobile.core.claude.link.BackendFeed
 import com.ccmonitor.mobile.core.claude.link.TurnEnd
 import com.ccmonitor.mobile.core.claude.link.TurnEnds
 import com.ccmonitor.mobile.core.copy.copyText
@@ -194,7 +193,7 @@ class SshKeepAliveService : Service() {
         backend.ensure()
         return scope.launch {
             TurnEnds.rounds(backend.turnEnds).collect { round ->
-                if (!AppForeground.isForeground) notifyRoundDone(hostId, round, backend)
+                if (!AppForeground.isForeground) notifyRoundDone(hostId, round)
             }
         }
     }
@@ -207,17 +206,15 @@ class SshKeepAliveService : Service() {
 
     private fun doneNotifIdFor(slot: String): Int = doneNotifIds.getOrPut(slot) { DONE_NOTIF_ID + doneNotifIds.size }
 
+    /**
+     * 标题与正文照抄 `turn_end` 帧上后端写好的那两行（叫这条会话什么由后端定，与桌面同一格）；
+     * 前面加那台的名字（这台机器表里的叫法，后端不知道），与桌面远端会话同一个规矩。
+     */
     private fun notifyRoundDone(
         hostId: String,
         round: TurnEnd,
-        backend: BackendFeed,
     ) {
-        // 标题里的 {tab}：会话名（流上宣告时带的），没有就用机器名。
-        val tab =
-            backend.table.value.sessions[round.sid]
-                ?.name
-                ?: manager.sessions.value[hostId]?.label
-                ?: hostId
+        val machine = manager.sessions.value[hostId]?.label ?: hostId
         val tap =
             PendingIntent.getActivity(
                 this,
@@ -228,8 +225,8 @@ class SshKeepAliveService : Service() {
         val n =
             NotificationCompat
                 .Builder(this, DONE_CHANNEL_ID)
-                .setContentTitle(copyText("turnNotify.finish.title", "tab" to tab))
-                .setContentText(copyText("turnNotify.finish.body"))
+                .setContentTitle("[$machine] ${round.title}")
+                .setContentText(round.body)
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setAutoCancel(true)
                 .setContentIntent(tap)

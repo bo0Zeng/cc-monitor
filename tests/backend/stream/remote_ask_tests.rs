@@ -125,9 +125,16 @@ fn reach_args(origin: &str, host: &str) -> Value {
 async fn an_unregistered_origin_is_said_and_never_dialed() {
     let table = Table::default();
     let far = Recorder::default();
-    let e = ask_json("nowhere", "history-list", &json!({}), &table, &far)
-        .await
-        .expect_err("没登记的那台不许问出东西来");
+    let e = ask_json(
+        "nowhere",
+        "history-list",
+        &json!({}),
+        &crate::Tz::default(),
+        &table,
+        &far,
+    )
+    .await
+    .expect_err("没登记的那台不许问出东西来");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
     assert_eq!(e.message, unreachable_message("nowhere"));
     assert!(
@@ -138,14 +145,15 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
     assert_eq!(far.n.load(Ordering::SeqCst), 0, "没登记也去拨了");
 }
 
-/// ★ 判据 3（正向）：交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行，参数走 stdin 一行。
+/// ★ 判据 3（正向）：交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行（看的人那一台的时区经 `--tz` 转过去），参数走 stdin 一行。
 #[tokio::test]
 async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command() {
     let table = Table::default();
     answer_reach_with(&reach_args("dev", "192.0.2.2"), &table).unwrap();
     let far = Recorder::default();
     let args = json!({"dir": "-home-u-it's"});
-    let _ = ask_json("dev", "history-list", &args, &table, &far)
+    let tz = crate::Tz::iana("Asia/Shanghai").unwrap();
+    let _ = ask_json("dev", "history-list", &args, &tz, &table, &far)
         .await
         .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
@@ -155,7 +163,7 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
     // 那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
     assert_eq!(
         calls[0].1,
-        r#""$HOME"/.cc-monitor/bin/ccm -- '--history-list' '--stdin-line'"#
+        r#""$HOME"/.cc-monitor/bin/ccm -- '--history-list' '--stdin-line' '--tz' 'Asia/Shanghai'"#
     );
     assert_eq!(calls[0].2.as_deref(), Some("{\"dir\":\"-home-u-it's\"}\n"));
 }

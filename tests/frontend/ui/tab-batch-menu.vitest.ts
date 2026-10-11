@@ -19,7 +19,7 @@ import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origi
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, aiTitle: `T-${sid}`, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;
@@ -139,8 +139,8 @@ describe("批量菜单", () => {
   it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里", async () => {
     const devbox = originFromWire("devbox");
     tabs = [
-      tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", aiTitle: "账单导出改成流式" }),
-      tab("l", true, { title: "[web] 首页", projectDir: "/w/web", aiTitle: "首页" }),
+      tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", label: "账单导出改成流式", labelProject: "billing" }),
+      tab("l", true, { title: "[web] 首页", projectDir: "/w/web", label: "首页", labelProject: "web" }),
     ];
     run.stop.mockResolvedValue([
       { sid: "r", outcome: "failed", why: "门拦下了" },

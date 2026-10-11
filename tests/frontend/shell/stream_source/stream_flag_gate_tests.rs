@@ -73,7 +73,7 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     let frame = |l: &str| crate::stream_source::parse_frame(l).expect("认得的帧");
     let added = |sid: &str, bg: bool| {
         frame(&format!(
-            r#"{{"kind":"session_added","agent_kind":"claude","sid":"{sid}","background":{bg},"activity_text":"x","activity_tone":"now","activity_order":1,"pid":1}}"#
+            r#"{{"kind":"session_added","agent_kind":"claude","sid":"{sid}","background":{bg},"activity_text":"x","activity_tone":"now","activity_order":1,"label":"L","pid":1}}"#
         ))
     };
     let line = |sid: &str| {
@@ -83,7 +83,7 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     };
     let turn = |sid: &str| {
         frame(&format!(
-            r#"{{"kind":"turn_end","session_id":"{sid}","uuid":"u"}}"#
+            r#"{{"kind":"turn_end","session_id":"{sid}","uuid":"u","title":"t","body":"b"}}"#
         ))
     };
     let state = |sid: &str| {

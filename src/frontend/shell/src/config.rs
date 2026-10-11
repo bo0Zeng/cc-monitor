@@ -226,21 +226,46 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// 前端写配置的唯一口：交一串 [`ConfigEdit`]，这里合并进盘上那份。
 #[tauri::command]
-pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
-    let r: Result<(), Said> = (move || -> Result<(), Said> {
+pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<ConfigPatched, Said> {
+    let r: Result<ConfigPatched, Said> = (move || -> Result<ConfigPatched, Said> {
         let path = resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
-        Ok(patch_config_at(&path, &edits)
-            .map(|_| ())
-            .map_err(ConfigWriteError::into_said)?)
+        let (_, pinned) =
+            patch_config_stamping(&path, &edits).map_err(ConfigWriteError::into_said)?;
+        Ok(ConfigPatched { pinned })
     })();
     r.map_err(|s| s.named("patch_config"))
 }
 
-/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局；一条都没改动 ⇒ 不写。
+/// `patch_config` 的回话：这一趟壳替界面盖上的那几格（今天只有「指纹记于哪一天」，[`stamp_pinned_day`]）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct ConfigPatched {
+    pub pinned: Vec<PinnedDay>,
+}
+
+/// 一台机器的「指纹记于哪一天」盖成了什么（`day` 空 ＝ 指纹清了、日子一起清）。`origin` ＝ 补丁认那台用的键。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct PinnedDay {
+    pub origin: crate::origin::Origin,
+    pub day: String,
+}
+
+/// 🔴 **`config.json` 唯一的写函数**（[`patch_config_stamping`]）；只要逐条结局的调用方用它。
 pub(crate) fn patch_config_at(
     path: &Path,
     edits: &[ConfigEdit],
 ) -> Result<Vec<Applied>, ConfigWriteError> {
+    patch_config_stamping(path, edits).map(|(applied, _)| applied)
+}
+
+/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局 ＋ 这一趟盖上的日子；一条都没改动 ⇒ 不写。
+pub(crate) fn patch_config_stamping(
+    path: &Path,
+    edits: &[ConfigEdit],
+) -> Result<(Vec<Applied>, Vec<PinnedDay>), ConfigWriteError> {
     // ① 先验全部：一条不成形 ⇒ 整批拒，连锁都不拿。
     if let Some(bad) = edits.iter().find(|e| e.path().is_empty()) {
         return Err(ConfigWriteError::BadEdit(format!(
@@ -256,7 +281,7 @@ pub(crate) fn patch_config_at(
         )));
     }
     if edits.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -309,9 +334,10 @@ pub(crate) fn patch_config_at(
     };
 
     // ④ 逐条应用 ＋ 机器表那一道。
-    let applied = apply_and_check(&mut root, edits)?;
+    let mut pinned = Vec::new();
+    let applied = apply_and_check(&mut root, edits, &mut pinned)?;
     if !applied.contains(&Applied::Done) {
-        return Ok(applied);
+        return Ok((applied, pinned));
     }
 
     // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
@@ -352,15 +378,26 @@ pub(crate) fn patch_config_at(
             &e,
         ))
     })?;
-    Ok(applied)
+    Ok((applied, pinned))
 }
 
 /// 把一串补丁逐条应用到 `root` 上，再过机器表那一道（动了认人的格才过）。写口与试算口同一份。
 fn apply_and_check(
     root: &mut Map<String, Value>,
     edits: &[ConfigEdit],
+    pinned: &mut Vec<PinnedDay>,
 ) -> Result<Vec<Applied>, ConfigWriteError> {
-    let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(root, e)).collect();
+    let day = pinned_day(std::time::SystemTime::now());
+    let applied: Vec<Applied> = edits
+        .iter()
+        .map(|e| {
+            let a = apply_edit(root, e);
+            if a == Applied::Done {
+                pinned.extend(stamp_pinned_day(root, e, &day));
+            }
+            a
+        })
+        .collect();
     if let Some(miss) = applied
         .iter()
         .find(|a| matches!(a, Applied::NoMatch | Applied::Ambiguous))
@@ -392,6 +429,70 @@ fn apply_and_check(
         }
     }
     Ok(applied)
+}
+
+/// 写的那一天（UTC 的 `YYYY-MM-DD`）：机器的「指纹记于 …」那一格（[`stamp_pinned_day`]）。
+pub(crate) fn pinned_day(t: std::time::SystemTime) -> String {
+    let days = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or(0) as i64;
+    let (y, m, d) = copy_core::civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// 一条写进了机器指纹的补丁（改那一格 · 新增一台）⇒ 同一台的 `hostKeyPinnedAt` 跟着盖上写的那一天；指纹写成空 ⇒ 日子清空。
+/// 只此一处：设置页记下指纹 · 拨号时自动固化都经补丁口，日子不由界面取、也不认补丁里带来的那一份。
+fn stamp_pinned_day(root: &mut Map<String, Value>, e: &ConfigEdit, day: &str) -> Option<PinnedDay> {
+    let hosts = |p: &[String]| p.len() == 2 && p[0] == "remote" && p[1] == "hosts";
+    let (path, r#where, fp) = match e {
+        ConfigEdit::SetIn {
+            path,
+            r#where,
+            field,
+            value,
+            ..
+        } if hosts(path) && field == "hostKeyFingerprint" => (path, r#where, value),
+        ConfigEdit::InsertIn {
+            path,
+            r#where,
+            value,
+        } if hosts(path) => (
+            path,
+            r#where,
+            value.get("hostKeyFingerprint").unwrap_or(&Value::Null),
+        ),
+        _ => return None,
+    };
+    let given = fp.as_str().is_some_and(|s| !s.trim().is_empty());
+    // 新增一台没带指纹 ⇒ 没什么可记的，不添这一格。
+    if !given && matches!(e, ConfigEdit::InsertIn { .. }) {
+        return None;
+    }
+    let day = if given {
+        day.to_string()
+    } else {
+        String::new()
+    };
+    let done = apply_edit(
+        root,
+        &ConfigEdit::SetIn {
+            path: path.clone(),
+            r#where: r#where.clone(),
+            field: "hostKeyPinnedAt".into(),
+            value: Value::String(day.clone()),
+            if_empty: false,
+        },
+    );
+    (done == Applied::Done).then(|| PinnedDay {
+        origin: crate::origin::Origin(
+            r#where
+                .first()
+                .map(|k| k.equals.clone())
+                .unwrap_or_default(),
+        ),
+        day,
+    })
 }
 
 /// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
@@ -492,7 +593,7 @@ pub(crate) fn machine_table_try_at(
     if edits.iter().any(|e| e.path().is_empty()) {
         return Ok(None);
     }
-    match apply_and_check(&mut root, edits) {
+    match apply_and_check(&mut root, edits, &mut Vec::new()) {
         Err(ConfigWriteError::BadMachine(f)) => Ok(Some(f)),
         // 往机器表里加一台、而同名的已经在了（写口回「已存在」）⇒ 这一道说成同名。
         Err(ConfigWriteError::ElementExists) => Ok(edits.iter().find_map(|e| match e {

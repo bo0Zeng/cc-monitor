@@ -20,4 +20,8 @@ body?: string, } | { "kind": "agentTask" } | { "kind": "system",
 /**
  * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
  */
-body?: string, } | { "kind": "compactSummary" } | { "kind": "interrupt" } | { "kind": "toolResult" };
+body?: string, } | { "kind": "compactSummary", 
+/**
+ * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ */
+charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };

@@ -72,7 +72,7 @@ pub(crate) enum LocalStep {
     /// 本机的某样东西变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `changed`）。
     Changed { topic: String, cell: String },
     /// 一轮结束（交那台的会话流一格）。
-    TurnEnd { sid: String },
+    TurnEnd(crate::ui_contract::SessionTurnEndPayload),
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -103,6 +103,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
             project_dir,
             name,
             activity,
+            naming,
             waiting_for,
             container,
             pid,
@@ -117,6 +118,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
                 project_dir: project_dir.clone(),
                 name: name.clone(),
                 activity: activity.clone(),
+                naming: naming.clone(),
                 waiting_for: waiting_for.clone(),
                 container: container.clone(),
                 pid: *pid,
@@ -125,11 +127,13 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
         LocalItem::Frame(InboundFrame::SessionStatus {
             sid,
             activity,
+            naming,
             waiting_for,
         }) => Some(BookIn::Status {
             origin: origin(),
             sid: sid.clone(),
             activity: activity.clone(),
+            naming: naming.clone(),
             waiting_for: waiting_for.clone(),
         }),
         LocalItem::Frame(InboundFrame::SessionState { sid, state, words }) => Some(BookIn::Left {
@@ -185,7 +189,7 @@ pub(crate) fn local_step(item: LocalItem) -> LocalStep {
         LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
             LocalStep::Notice { sid, path, change }
         }
-        LocalItem::Frame(InboundFrame::TurnEnd { sid }) => LocalStep::TurnEnd { sid },
+        LocalItem::Frame(InboundFrame::TurnEnd(turn)) => LocalStep::TurnEnd(turn),
         // 「X 变了」：与 bg 藏不藏无关（界面按主题 · key 取，藏起来的会话本来就没有 tab）。
         LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
             LocalStep::Changed { topic, cell }
@@ -233,8 +237,8 @@ impl BgHide {
             | InboundFrame::SessionStatus { sid, .. }
             | InboundFrame::SessionRuns { sid, .. }
             | InboundFrame::SessionBranch { sid, .. }
-            | InboundFrame::SessionFileNotice { sid, .. }
-            | InboundFrame::TurnEnd { sid } => self.hidden.contains(sid),
+            | InboundFrame::SessionFileNotice { sid, .. } => self.hidden.contains(sid),
+            InboundFrame::TurnEnd(turn) => self.hidden.contains(&turn.session_id),
             _ => false,
         }
     }
@@ -327,8 +331,8 @@ pub(crate) async fn consume_local(
                 LocalStep::Changed { topic, cell } => {
                     replay.changed(&crate::origin::Origin(label.clone()), &topic, cell)
                 }
-                LocalStep::TurnEnd { sid } => {
-                    replay.on_turn_end(&crate::origin::Origin(label.clone()), sid)
+                LocalStep::TurnEnd(turn) => {
+                    replay.on_turn_end(&crate::origin::Origin(label.clone()), turn)
                 }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,

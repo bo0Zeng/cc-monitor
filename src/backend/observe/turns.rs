@@ -612,7 +612,7 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                         ..
                     } => t.agent_runs.extend(from),
                     Speaker::AgentMessage { .. } | Speaker::PeerSession { .. } => it.peers += 1,
-                    Speaker::CompactSummary => it.compacts += 1,
+                    Speaker::CompactSummary { .. } => it.compacts += 1,
                     Speaker::Interrupt => {
                         t.stop = uuid.map(|_| here);
                         t.row.done = true;

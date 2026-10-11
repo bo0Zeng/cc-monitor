@@ -270,3 +270,22 @@ fn the_shared_size_golden_agrees_with_this_reader() {
         .collect();
     assert!(wrong.is_empty(), "大小与金样不符：{wrong:?}");
 }
+
+/// **计数的对拍**：共用金样 `tests/__fixtures__/count-text.golden.json` 逐条喂给 [`crate::count_text`]；
+/// 桌面那一侧 `tests/copy/count-text.vitest.ts` 读同一份（`format.ts::countText`）。
+#[test]
+fn the_shared_count_golden_agrees_with_this_reader() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/count-text.golden.json")).unwrap();
+    let cases = golden["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() >= 8, "只有 {} 条（反空真）", cases.len());
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter_map(|c| {
+            let n = c["n"].as_u64().expect("n");
+            let got = crate::count_text(n);
+            (got != c["want"].as_str().unwrap()).then(|| format!("{n}: {got:?} ≠ {}", c["want"]))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "计数与金样不符：{wrong:?}");
+}

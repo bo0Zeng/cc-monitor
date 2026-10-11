@@ -114,12 +114,10 @@ export interface TitleParts {
 }
 
 export function titleParts(tab: Tab): TitleParts {
-  const proj = tab.projectDir ? projectNameFromCwd(tab.projectDir) : null;
   const bg = tab.background;
   const forked = tab.forkedFromSessionId !== null;
-  const named = bg ? (tab.bgName ?? tab.aiTitle) : tab.aiTitle;
-  if (named) return { proj, title: named, bg, forked };
-  return { proj: null, title: proj ?? tab.sessionId.slice(0, 8), bg, forked };
+  const name = tab.label ?? tab.sessionId.slice(0, 8);
+  return { proj: tab.labelProject, title: bg ? (tab.bgName ?? name) : name, bg, forked };
 }
 
 /** 一行写完的标题（会话头 · 悬停卡第一行）：`项目 标题`。 */
@@ -156,7 +154,7 @@ export function groupSummary(members: readonly Tab[]): { needs: number; running:
 
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
 export function abbrOf(tab: Tab): string {
-  const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.aiTitle ?? tab.sessionId;
+  const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.label ?? tab.sessionId;
   const letters = name.replace(/[^a-z]/gi, "");
   return (letters.length >= 2 ? letters : name).slice(0, 2).toLowerCase();
 }

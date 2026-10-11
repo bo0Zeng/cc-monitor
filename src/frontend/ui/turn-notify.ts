@@ -12,7 +12,6 @@
  */
 import { getBehavior } from "./behavior";
 import { commands } from "./ipc/commands";
-import { copyText } from "./copy-table";
 
 export interface TurnNotifyDeps {
   isFocused(): boolean;
@@ -49,8 +48,8 @@ export class TurnEndNotifier {
     };
   }
 
-  /** 会话流的 `turn_end` 格（`TabManager.onTurnEnd`）：那个会话一轮结束了。 */
-  observe(sid: string, tabTitle: string): void {
+  /** 会话流的 `turn_end` 格（`TabManager.onTurnEnd`）：那个会话一轮结束了。标题 · 正文是后端写好的（`wire.rs::Frame::turn_end`），照抄。 */
+  observe(sid: string, title: string, body: string): void {
     if (this.disabled) return;
     const now = this.deps.now();
     const last = this.lastNotify.get(sid) ?? 0;
@@ -58,13 +57,13 @@ export class TurnEndNotifier {
     if (this.deps.isFocused()) return;
     // 先记账再进异步尾：异步窗口期同会话再来一条也不会重发。
     this.lastNotify.set(sid, now);
-    void this.finish(tabTitle);
+    void this.finish(title, body);
   }
 
-  private async finish(tabTitle: string): Promise<void> {
+  private async finish(title: string, body: string): Promise<void> {
     try {
       if (!(await this.deps.enabled())) return;
-      await this.deps.send(copyText("turnNotify.finish.title", { tab: tabTitle }), copyText("turnNotify.finish.body"));
+      await this.deps.send(title, body);
     } catch (e) {
       console.warn("turn-notify: send failed:", e);
     }

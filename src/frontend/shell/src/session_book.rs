@@ -146,6 +146,16 @@ pub struct ActivityCells {
     pub activity_order: u8,
 }
 
+/// 叫这条会话什么那两格（那台核心的 `stream::wire::NameFace`，原样转交）：名字（`session_label` 出的，标签页 · 历史清单 · 通知同一个）·
+/// 项目那一格（名字是起出来的才有；界面拼「[项目] 名字」）。解码只一处（`stream_source::frame` 的 `name_cells`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct NameCells {
+    pub label: String,
+    pub label_project: Option<String>,
+}
+
 /// 一条活会话宣告时带来的那几格（后端 `session_added`）。之后按 `session_status` 更新灯。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LiveMeta {
@@ -158,6 +168,8 @@ pub struct LiveMeta {
     pub project_dir: Option<String>,
     pub name: Option<String>,
     pub activity: ActivityCells,
+    /// 叫它什么（之后按 `session_status` 更新）。
+    pub naming: NameCells,
     pub waiting_for: Option<String>,
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 pid（本机 ↗ 点那一刻从它往上找窗口；没索要 ⇒ `None`）。
@@ -183,6 +195,7 @@ pub enum In {
         origin: String,
         sid: String,
         activity: ActivityCells,
+        naming: NameCells,
         waiting_for: Option<String>,
     },
     Left {
@@ -222,6 +235,7 @@ pub enum Out {
         origin: String,
         sid: String,
         activity: ActivityCells,
+        naming: NameCells,
         waiting_for: Option<String>,
     },
     Left {
@@ -297,6 +311,7 @@ impl Book {
                 origin,
                 sid,
                 activity,
+                naming,
                 waiting_for,
             } => {
                 if let Some(Product::Live(m)) = self
@@ -305,12 +320,14 @@ impl Book {
                     .and_then(|b| b.sessions.get_mut(&sid))
                 {
                     m.activity = activity.clone();
+                    m.naming = naming.clone();
                     m.waiting_for = waiting_for.clone();
                 }
                 vec![Out::Status {
                     origin,
                     sid,
                     activity,
+                    naming,
                     waiting_for,
                 }]
             }
@@ -553,6 +570,7 @@ impl Out {
                     F::Activity(b::SessionActivityPayload {
                         session_id: sid.clone(),
                         activity: meta.activity.clone(),
+                        naming: meta.naming.clone(),
                         waiting_for: meta.waiting_for.clone(),
                     }),
                 ];
@@ -567,11 +585,13 @@ impl Out {
             Out::Status {
                 sid,
                 activity,
+                naming,
                 waiting_for,
                 ..
             } => vec![F::Activity(b::SessionActivityPayload {
                 session_id: sid.clone(),
                 activity: activity.clone(),
+                naming: naming.clone(),
                 waiting_for: waiting_for.clone(),
             })],
             Out::Left {

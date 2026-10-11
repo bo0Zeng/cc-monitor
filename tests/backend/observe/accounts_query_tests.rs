@@ -2477,3 +2477,68 @@ fn the_badge_is_written_by_the_core() {
         (t("accounts.badge.signedIn"), false, String::new())
     );
 }
+
+/// 清单的 `notice` 是几句「能用但有缺」并成的一句：凭据文件权限那一句并进去（KS11）；都没有 ⇒ `null`。
+#[test]
+fn the_list_notice_carries_the_credentials_file_warning_too() {
+    let base = |n: Option<&str>| serde_json::json!({"meta": {}, "accounts": [], "notice": n});
+    assert_eq!(
+        with_notice(base(None), None)["notice"],
+        serde_json::Value::Null
+    );
+    assert_eq!(with_notice(base(None), Some("宽".into()))["notice"], "宽");
+    assert_eq!(with_notice(base(Some("缺")), None)["notice"], "缺");
+    assert_eq!(
+        with_notice(base(Some("缺")), Some("宽".into()))["notice"],
+        copy_text(
+            "beAccountsQuery.listProductAt.joined",
+            &[("a", "缺"), ("b", "宽")]
+        )
+    );
+}
+
+/// 「这条会话此刻谁持着它」只有一处（[`session_holders_by`]），照适配层声明的判活方式走：
+/// 开着写那一家 ⇒ 此刻开着记录写的进程（关了 ⇒ 判过了、没人）；pidfile 那一家 ⇒ 这台 pidfile（一份都没有 ⇒ 判过了、没人）；
+/// 判不了的那一家 ⇒ `None`，哪怕此刻正有进程开着它写（不冒充判过）。
+#[cfg(target_os = "linux")]
+#[test]
+fn who_holds_a_session_is_judged_the_way_its_adapter_declares() {
+    use crate::agents::LiveBy;
+    let home = tmpdir("holders");
+    let rec = home.join("hold-sid.jsonl");
+    fs::write(&rec, "{}\n").unwrap();
+    let open = || fs::OpenOptions::new().append(true).open(&rec).unwrap();
+    let me = std::process::id();
+    let f = open();
+    assert_eq!(
+        session_holders_by(LiveBy::HeldOpen, &home, &rec),
+        Some(vec![me]),
+        "开着写的那一家：本进程开着它写，没认出来"
+    );
+    assert_eq!(
+        session_holders_by(LiveBy::Unknown, &home, &rec),
+        None,
+        "判不了的那一家冒充判过了"
+    );
+    drop(f);
+    assert_eq!(
+        session_holders_by(LiveBy::HeldOpen, &home, &rec),
+        Some(vec![]),
+        "关了还算持着"
+    );
+    assert_eq!(
+        session_holders_by(LiveBy::Pidfiles, &home, &rec),
+        Some(vec![]),
+        "pidfile 那一家：一份 pidfile 都没有 ⇒ 判过了、没人"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// 判活的声明在注册表那一行（`Adapter::live`）：Claude 认 pidfile，Codex 认开着写；认不出的 kind ⇒ 判不了。
+#[test]
+fn each_adapter_declares_how_its_sessions_are_judged_alive() {
+    use crate::agents::{live_by, LiveBy};
+    assert_eq!(live_by("claude"), LiveBy::Pidfiles);
+    assert_eq!(live_by("codex"), LiveBy::HeldOpen);
+    assert_eq!(live_by("no-such-agent"), LiveBy::Unknown);
+}

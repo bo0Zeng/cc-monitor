@@ -10,7 +10,7 @@ const SRC: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const MSG: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const NEW: &str = "cccccccc-1111-2222-3333-444444444444";
 const ENTRY: &str = "/h/.cc-monitor/bin/ccm";
-/// 选了规则起时这台先定好的 sid（替身铸的）。
+/// 新起时这台先定好的 sid（替身铸的）。
 const PRESET: &str = "dddddddd-1111-4222-8333-444444444444";
 
 fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
@@ -163,7 +163,10 @@ fn a_new_session_in_tmux_is_minted_from_the_directory_and_started_detached() {
     let out = rig.call(req(json!({}))).unwrap();
     assert_eq!(out["outcome"], "started");
     assert_eq!(out["session"], "proj-cc-2");
-    assert_eq!(out["sid"], Value::Null);
+    assert_eq!(
+        out["sid"], PRESET,
+        "新起的也回 sid：这台先定好（那一家认 --session-id）"
+    );
     assert_eq!(out["agent"], "claude");
     assert_eq!(out["cwd"], "/srv/proj");
     assert_eq!(
@@ -533,14 +536,16 @@ fn a_rule_at_launch_is_written_under_a_preset_sid_before_starting() {
     );
 }
 
-/// 跟随默认（或不给）⇒ 不定 sid、不写（新会话本来就跟随默认）；开窗那一形同样带 --session-id。
+/// 跟随默认（或不给）⇒ 不写来源（新会话本来就跟随默认），sid 照样先定好、回包带它；开窗那一形同样带 --session-id。
 #[test]
 fn follow_at_launch_writes_nothing_and_a_window_launch_carries_the_sid_too() {
     let rig = Rig::new(Some(vec![]));
     let got = rig.call(req(json!({"rotation": "follow"}))).expect("ok");
-    assert_eq!(got["sid"], Value::Null);
+    assert_eq!(got["sid"], PRESET);
     assert!(rig.rot.borrow().is_empty());
-    assert!(!rig.ccm.borrow()[0].iter().any(|a| a == "--session-id"));
+    assert!(rig.ccm.borrow()[0]
+        .windows(2)
+        .any(|w| w[0] == "--session-id" && w[1] == PRESET));
     let rig = Rig::new(Some(vec![]));
     let got = rig
         .call(req(
@@ -583,6 +588,116 @@ fn a_rule_at_launch_that_fails_leaves_nothing_behind() {
     );
 }
 
+/// 第一句随起会话一起交（B4）：两家都认起的时候带第一句（`claude [prompt]` · `codex [PROMPT]`）⇒ 作为启动参数交过去
+/// （交给那一家的那一半、`--` 之后，开头是 `-` 也不会被当成旗标，可以跨行）；回包的结局是交到了。
+/// Codex 不认先定 sid 也照样收（它的记录要第一句进去才建，等报到再送字会一直等下去）。不交 ⇒ 回包这一格 `null`。
+#[test]
+fn the_first_prompt_goes_in_as_a_launch_argument_for_both_families() {
+    for agent in ["claude", "codex"] {
+        let rig = Rig::new(Some(vec![]));
+        let got = rig
+            .call(req(
+                json!({"agent": agent, "account": {"kind": "base"}, "prompt": "-看一下\n这个目录"}),
+            ))
+            .unwrap_or_else(|e| panic!("{agent}: {e:?}"));
+        let argv = rig.ccm.borrow()[0].clone();
+        let last = argv.iter().rposition(|a| a == "--").expect("--");
+        let agent_side = &argv[..last];
+        assert!(
+            agent_side
+                .windows(2)
+                .any(|w| w == ["--", "-看一下\n这个目录"]),
+            "{agent}：第一句在交给那一家的那一半、`--` 之后：{argv:?}"
+        );
+        assert_eq!(got["prompt"]["result"], "delivered", "{agent}: {got}");
+    }
+    let rig = Rig::new(Some(vec![]));
+    let got = rig.call(req(json!({}))).expect("ok");
+    assert_eq!(got["prompt"], Value::Null);
+    assert!(!rig.ccm.borrow()[0].iter().any(|a| a == "你好"));
+}
+
+/// 那一家声明起的时候不收第一句（`first_prompt_arg: false`）⇒ 带第一句的起会话不收（`bad_args`）；两家今天都收。
+#[test]
+fn a_family_that_cannot_take_the_first_prompt_at_launch_refuses_it() {
+    let no = crate::agents::LaunchFace {
+        first_prompt_arg: false,
+        ..crate::agents::claudecode::LAUNCH
+    };
+    assert!(first_prompt_refused(&no).is_some());
+    for agent in ["claude", "codex"] {
+        let (_, face) = crate::agents::pick_kind(Some(agent)).expect("注册表里有");
+        assert_eq!(first_prompt_refused(&face), None, "{agent}");
+    }
+}
+
+/// 第一句只跟 tmux 那一形（开窗那一形终端在界面那一侧，核心送不进去）；空的 ⇒ 不收。不收的什么都不起。
+#[test]
+fn a_first_prompt_that_cannot_be_delivered_is_refused_before_anything_starts() {
+    for extra in [
+        json!({"prompt": "你好", "place": "window"}),
+        json!({"prompt": "  "}),
+        json!({"prompt": 3}),
+    ] {
+        let rig = Rig::new(Some(vec![]));
+        let e = rig.call(req(extra.clone())).expect_err("不收");
+        assert_eq!(e.0, "bad_args", "{extra}");
+        assert!(rig.ccm.borrow().is_empty(), "{extra}");
+    }
+}
+
+/// 起会话带模型与权限档（B5）：模型压过偏好表、交给那一家（`--model`）；权限档照那一家声明的旗标与可选的档交（Claude：`--permission-mode`）。
+/// 缺 ＝ 跟随。那一家不认的档 · 不给的档（`bypassPermissions`）· 那一家没有权限档 ⇒ `bad_args`，什么都不起。
+#[test]
+fn a_launch_carries_the_model_and_the_permission_mode_it_was_asked_for() {
+    let rig = Rig::new(Some(vec![]));
+    rig.call(req(json!({"model": "opus", "permissionMode": "plan"})))
+        .expect("ok");
+    let argv = rig.ccm.borrow()[0].clone();
+    let sep = argv.iter().position(|a| a == "--").expect("--");
+    let agent_side = &argv[..sep];
+    assert!(
+        agent_side.windows(2).any(|w| w == ["--model", "opus"]),
+        "{argv:?}"
+    );
+    assert!(
+        agent_side
+            .windows(2)
+            .any(|w| w == ["--permission-mode", "plan"]),
+        "{argv:?}"
+    );
+    let rig = Rig::new(Some(vec![]));
+    rig.call(req(json!({}))).expect("ok");
+    assert!(
+        !rig.ccm.borrow()[0].iter().any(|a| a == "--permission-mode"),
+        "缺 ＝ 跟随，不吐"
+    );
+    let rig = Rig::new(Some(vec![]));
+    let got = rig
+        .call(req(
+            json!({"place": "window", "permissionMode": "acceptEdits"}),
+        ))
+        .expect("ok");
+    assert!(
+        got["cmd"]
+            .as_str()
+            .unwrap()
+            .contains("--permission-mode acceptEdits"),
+        "开窗那一形同样带：{got}"
+    );
+    for extra in [
+        json!({"permissionMode": "bypassPermissions"}),
+        json!({"permissionMode": "nope"}),
+        json!({"agent": "codex", "permissionMode": "plan"}),
+        json!({"model": "bad model;"}),
+    ] {
+        let rig = Rig::new(Some(vec![]));
+        let e = rig.call(req(extra.clone())).expect_err("不收");
+        assert_eq!(e.0, "bad_args", "{extra}");
+        assert!(rig.ccm.borrow().is_empty(), "{extra}");
+    }
+}
+
 impl crate::guard_support::Shaped for SessionNew {
     fn samples() -> Vec<Self> {
         vec![SessionNew {
@@ -597,6 +712,11 @@ impl crate::guard_support::Shaped for SessionNew {
             }),
             agent: "claude".into(),
             cwd: "/home/u/proj".into(),
+            prompt: Some(FirstSay {
+                result: "delivered".into(),
+                why: None,
+                said: None,
+            }),
         }]
     }
 }

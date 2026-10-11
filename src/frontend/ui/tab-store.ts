@@ -100,6 +100,8 @@ export class TabStore {
    */
   readonly seenOrigins = new Set<string>();
   readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
+  /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
+  readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();
 
   /** 「tab 集合变了」那一格。建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
   private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0, faces: "" }, sameSummary);

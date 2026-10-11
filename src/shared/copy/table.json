@@ -3282,7 +3282,7 @@
     "stream.step.unclearUntracked": {
       "kind": "body",
       "role": "说明",
-      "zh": "此类 agent 不留进程记录 · 运行状态不明",
+      "zh": "无法判断此会话是否在运行",
       "args": []
     },
     "stream.step.failed": {
@@ -16294,6 +16294,24 @@
       "role": "报错",
       "zh": "读取任务目录失败 · {dir} · {why}",
       "args": ["dir", "why"]
+    },
+    "beAccountsQuery.listProductAt.credsPerm": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "API key 凭据文件 {path}：{how} · {fix}",
+      "args": ["path", "how", "fix"]
+    },
+    "beAccountsQuery.listProductAt.credsPermUnknown": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "API key 凭据文件 {path}：{why}",
+      "args": ["path", "why"]
+    },
+    "beAccountsQuery.listProductAt.joined": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{a}；{b}",
+      "args": ["a", "b"]
     },
     "beAccountsQuery.listProductAt.noDefault": {
       "kind": "body",

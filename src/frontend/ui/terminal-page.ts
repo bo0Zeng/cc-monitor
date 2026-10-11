@@ -14,6 +14,7 @@
  *   没送的字按会话各记一份，切回来还在。
  * - 页头右边「切到终端」只在 ↗ 真能用时出（同会话头那一道）。
  */
+import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { saidOfControl, machineName } from "./control-said";
@@ -526,7 +527,7 @@ export class TerminalPage {
     const lines = this.box.value.split("\n").length;
     this.box.rows = Math.min(MAX_INPUT_ROWS, Math.max(1, lines));
     const n = [...this.box.value].length;
-    setButtonLabel(this.sendBtn, n > LONG_TEXT ? copyText("terminal.input.sendLong", { n: n.toLocaleString("en-US") }) : copyText("terminal.input.send"));
+    setButtonLabel(this.sendBtn, n > LONG_TEXT ? copyText("terminal.input.sendLong", { n: countText(n) }) : copyText("terminal.input.send"));
   }
 
   /** 输入框里按 Esc：焦点还给消息流（不清字、不收抽屉）。是这一下就回 `true`。 */

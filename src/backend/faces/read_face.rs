@@ -381,7 +381,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                     &last.pending,
                     accounts_query::session_wait(home, sid).as_ref(),
                 );
-                let live = !accounts_query::session_writers(home, sid).is_empty();
+                let live = history_query::facts_holders(home, path).is_some_and(|h| !h.is_empty());
                 crate::observe::turns::dress_live(last, needs.as_ref(), live);
             }
             let mut rows = CappedRows::default();
@@ -465,7 +465,9 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             if facts.agent.is_none() {
                 facts.agent = history_query::facts_agent(home, path);
             }
-            facts.writers = accounts_query::session_writers(home, sid);
+            // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
+            let holders = history_query::facts_holders(home, path);
+            facts.writers = holders.clone().unwrap_or_default();
             // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             facts.needs = facts_query::needs_of(
                 &facts.pending,
@@ -478,13 +480,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                     .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
                 facts_query::background_of(&facts.bg_tasks, born, now)
             });
-            // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。这一家不留 pidfile ⇒ 判不了活。
-            let tracked = facts
-                .agent
-                .as_deref()
-                .and_then(|k| crate::agents::launch_face_among(crate::agents::REGISTRY, k))
-                .is_some_and(|f| f.has_pidfiles);
-            facts_query::settle_pending(&mut facts, tracked);
+            // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
+            facts_query::settle_pending(&mut facts, holders.is_some());
             let v = serde_json::to_value(&facts).map_err(|e| ("failed", e.to_string()))?;
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {

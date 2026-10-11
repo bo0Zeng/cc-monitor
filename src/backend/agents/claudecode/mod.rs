@@ -128,6 +128,9 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
 pub(crate) const COMPACT_REQUEST: &str = "/compact";
 
+/// 怎么判活（注册表 `Adapter.live` 那一格）：认 pidfile（[`LOCAL`] 的 pidfile 目录），不认谁开着记录。
+pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::Pidfiles;
+
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
 pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,
@@ -137,6 +140,12 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    // `claude [options] [prompt]`：位置参数的提示词在启动画面（信任框在里头）走完之后才交进会话。
+    first_prompt_arg: true,
+    permission: Some(super::PermissionFace {
+        flag: resume::PERMISSION_MODE_FLAG,
+        modes: &["default", "acceptEdits", "plan"],
+    }),
     self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
@@ -146,7 +155,6 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     // 不经 env 交 cc-bus 身份：它自己读得到 tmux，交了反而盖掉 `@cc_id` 的细分。
     needs_bus_id: false,
     has_identity: true,
-    has_pidfiles: true,
     models: Some(resume::MODEL_ALIASES),
 };
 
@@ -219,8 +227,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     }),
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
-    // 判活认 pidfile（`LOCAL`），不认谁开着记录。
-    held_open: false,
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

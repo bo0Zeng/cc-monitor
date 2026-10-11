@@ -47,7 +47,6 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `agent_kind` | string | 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …） |
-| `liveness_confidence` | string? | 判活置信度：`"heuristic"` ＝ 「活着」是猜的（比如按修改时刻） |
 | `background` | bool? | 是不是后台会话（不是人坐在终端里对话的那种） |
 | `attachable` | bool? | attach 进去对人有没有意义 |
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |
@@ -56,6 +55,7 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
+| `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
@@ -68,8 +68,9 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
+| `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
-| `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
+| `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来（会话刚起、记录还没写出来）· 换了一份 ⇒ 发一帧带上最新的；没变 ⇒ 不上线（别的原因发的这一帧字节与本字段加进来之前一字不差） |
 
 ### `session_state`
 
@@ -100,6 +101,8 @@ turn-end 边沿（一轮 assistant 完成）。
 |---|---|---|
 | `session_id` | string | 会话 id |
 | `uuid` | string | 这一轮最后那条 assistant 记录的 uuid |
+| `title` | Words | 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（`NameFace`） |
+| `body` | Words | 通知的正文（写好的字） |
 
 ### `overflow`
 
@@ -289,6 +292,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `activity_text` | Words |  |
 | `activity_tone` | Tone |  |
 | `activity_order` | number |  |
+
+#### `NameFace`
+
+**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::observe::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截（界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `label` | Words |  |
+| `label_project` | Words? |  |
 
 #### `LostFrame`
 
@@ -1332,7 +1344,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`） |
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`） |
 | `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`） |
-| `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
+| `notice` | ← | 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null` |
 
 码：`bad_args` · `too_large`
 
@@ -1857,7 +1869,7 @@ sid → 上次用哪个号起。
 | `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
 | `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
+| `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（判不了活：这一家没声明怎么判，或这台认不出写者） |
 | `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
 | `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答 |
 | `projectDir` | ← | 会话起在哪个目录（记录开头）；还没读到 ⇒ `null` |
@@ -1865,7 +1877,7 @@ sid → 上次用哪个号起。
 | `tokens` | ← | 全会话用量（按请求去重）`{input, output, cacheRead, cacheWrite5m, cacheWrite1h, requests, text, last}`（写缓存分 5 分钟 / 1 小时两档；`text` 写好）；一条带用量的回复都没有 ⇒ `null` |
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
-| `writers` | ← | 此刻持着这条会话的活进程 pid（这台的 pidfile），升序；不留 pidfile 的那一家恒空 |
+| `writers` | ← | 此刻持着这条会话的活进程 pid，照那一家声明的判活方式查（认 pidfile 的 ⇒ 这台的 pidfile；认开着写的 ⇒ 此刻开着记录写的进程），升序；判不了 ⇒ 空 |
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -3205,12 +3217,15 @@ cc-bus 钩子诊断。
 | `kind` | → | `account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类） |
 | `local` | → | 发请求的界面就在这台上（开窗那一形本机与远端渲法不同） |
 | `model` | ← | 应答 `account` 里：用的模型 |
+| `model` | → | 可缺：这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随 |
 | `models` | → | 可缺 |
 | `name` | → ← | `account` 为 `named` 时的号名；应答 `account` 里是实际用的号 |
 | `outcome` | ← | `started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`） |
+| `permissionMode` | → | 可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args` |
 | `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
+| `prompt` | → ← | 入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 作为启动参数交给那一家（交给它的那一半末尾、`--` 之后，可以跨行），那一家自己在启动画面 · 信任框过了之后交进会话；那一家声明不认起的时候带第一句 ⇒ `bad_args`。应答：交的结局 `{result, why, said}`（同 `terminal-input` 那三格；起好了 ⇒ `delivered`），没给第一句 ⇒ `null` |
 | `session` | ← | `started` 时的 tmux 会话名 |
-| `sid` | ← | 分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出） |
+| `sid` | ← | 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出） |
 | `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界） |
 | `tmuxName` | → | 可缺 ⇒ 这台铸 |
 | `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |

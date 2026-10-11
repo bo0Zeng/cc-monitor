@@ -22,6 +22,9 @@ pub(crate) const RESUME_TOKEN: &str = "--resume";
 /// 起新会话时先定好 sid 的旗标（`claude --session-id <uuid>`；起会话框带规则时后端按它先写好来源）。
 pub(crate) const SESSION_ID_FLAG: &str = "--session-id";
 
+/// 起会话时选权限档的旗标（`claude --permission-mode <档>`）。
+pub(crate) const PERMISSION_MODE_FLAG: &str = "--permission-mode";
+
 /// claude 导给它起的每个子进程的「我是哪个会话」（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。也是嵌套标记之一。
 pub(crate) const SELF_SID_ENV: &str = "CLAUDE_CODE_SESSION_ID";
 

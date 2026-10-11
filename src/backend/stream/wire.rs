@@ -175,6 +175,37 @@ impl ActivityFace {
     }
 }
 
+/// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
+/// `label` ＝ [`crate::observe::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截
+/// （界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NameFace {
+    label: Words,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_project: Option<Words>,
+}
+
+impl NameFace {
+    /// 那几样 ⇒ 这两格。
+    pub(crate) fn of(facts: &crate::observe::search_rules::LabelFacts) -> Self {
+        let (label, _) = crate::observe::search_rules::session_label(facts);
+        let label_project = facts
+            .project_dir
+            .as_deref()
+            .and_then(crate::observe::search_rules::project_name)
+            .map(Words::from);
+        NameFace {
+            label: Words(label),
+            label_project,
+        }
+    }
+
+    /// 名字那一格。
+    pub(crate) fn label(&self) -> &str {
+        &self.label.0
+    }
+}
+
 /// 一条**丢了就不可恢复**的帧的身份。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
@@ -408,10 +439,6 @@ pub enum Frame {
         sid: String,
         /// 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …）。每条都带。
         agent_kind: String,
-        /// 判活置信度：`"heuristic"` ＝ 「活着」是猜的（比如按修改时刻）。缺 ＝ 系统给的事实判的：pidfile ＋ pidfd，
-        /// 或「有进程开着它的记录写」＋ pidfd（`observe::watcher` 的「开着即活」那一路）—— 两路同一档。今天没有哪一路标它。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        liveness_confidence: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
         /// 只在 `true` 时上线（缺 ＝ 交互会话；交互会话的帧字节与本字段加进来之前一字不差）。
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -455,6 +482,9 @@ pub enum Frame {
         /// 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，[`ActivityFace`]，平铺在帧上）。
         #[serde(flatten)]
         face: ActivityFace,
+        /// 叫这条会话什么（[`NameFace`]，平铺在帧上）。
+        #[serde(flatten)]
+        name_face: NameFace,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -479,12 +509,16 @@ pub enum Frame {
         /// 此刻在干什么（同 `session_added` 那几格，[`ActivityFace`]）。
         #[serde(flatten)]
         face: ActivityFace,
+        /// 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧）。
+        #[serde(flatten)]
+        name_face: NameFace,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
-        /// DG3（#2D，additive）：判活置信度（同 SessionAdded；状态变化时带）。Claude 省→缺=authoritative。
+        /// 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来（会话刚起、记录还没写出来）· 换了一份 ⇒ 发一帧带上最新的；
+        /// 没变 ⇒ 不上线（别的原因发的这一帧字节与本字段加进来之前一字不差）。`line` 帧只发给在看的，这一帧人人都收。
         #[serde(skip_serializing_if = "Option::is_none")]
-        liveness_confidence: Option<String>,
+        path: Option<String>,
     },
     /// **会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
     ///
@@ -539,6 +573,10 @@ pub enum Frame {
         session_id: String,
         /// 这一轮最后那条 assistant 记录的 uuid。
         uuid: String,
+        /// 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（[`NameFace`]）。只经 [`Frame::turn_end`] 来。
+        title: Words,
+        /// 通知的正文（写好的字）。
+        body: Words,
     },
     // 这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
     //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
@@ -977,6 +1015,19 @@ impl TransferEnd {
 }
 
 impl Frame {
+    /// 一轮结束那一帧：通知的两行在这里一处写。叫这条会话什么用标签页那一格（[`NameFace`]，同一个 `session_label`）。
+    pub(crate) fn turn_end(session_id: String, uuid: String, name: &NameFace) -> Frame {
+        Frame::TurnEnd {
+            title: Words(copy_core::copy_text(
+                "turnNotify.finish.title",
+                &[("tab", name.label())],
+            )),
+            body: Words(copy_core::copy_text("turnNotify.finish.body", &[])),
+            session_id,
+            uuid,
+        }
+    }
+
     /// 成功、不带数据的那一种应答。
     pub(crate) fn ok(id: &str) -> Frame {
         Frame::Reply {

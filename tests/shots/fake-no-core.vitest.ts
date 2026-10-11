@@ -68,13 +68,16 @@ function hitsIn(src: string, keys: Set<string>): Record<Form, number> {
 const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
   "backend.ts": {
     coreKey: [
-      5,
-      "会话流（`session-lines`）还是合成的：活动 · 已结束 · 可重连那几格的字（`wire::activity_cells` 的 beSession.* · sessionState.*）与合成拒答的复制详情（detail.*）要等会话流接真后端那一刀（会话记录落盘 ＋ 判活 ＋ 壳的会话账本）",
+      6,
+      "会话流（`session-lines`）还是合成的：活动 · 已结束 · 可重连那几格的字（`wire::activity_cells` 的 beSession.* · sessionState.*）· 叫会话什么那一格没说过话时的那一句（`session_label` 的 history.row.untitled）与合成拒答的复制详情（detail.*）要等会话流接真后端那一刀（会话记录落盘 ＋ 判活 ＋ 壳的会话账本）",
     ],
   },
   "clock.ts": {
     coreKey: [5, "历史清单 · 内容头 · 查找那几格的时刻字（`common::time::{row_time, section_text, span_text, hit_time}`）：history-* 那一族还是合成的，等会话记录落盘那一刀"],
     clock: [2, "同上：历史那几格的钟面（当天 HH:MM · 别的天 MM-DD …）"],
+  },
+  "history.ts": {
+    coreKey: [1, "历史清单还是合成的：没说过话的会话那一行的 `label`（`session_label` 写的 history.row.untitled）；等会话记录落盘那一刀"],
   },
   "machine.ts": {
     coreKey: [39, "机器页那一族帧命令（扩展 · MCP · 别名 · 足迹 · 数据报告 · 终端 · ssh 导入 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],

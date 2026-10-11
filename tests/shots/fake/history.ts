@@ -3,6 +3,7 @@
  */
 import { rowTime, sectionText, spanText } from "./clock";
 import type { OpHandler } from "./types";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 // 历史页按看的人这台的日历分段（今天 · 昨天 · 本周 …）⇒ 合成时间跟着截图那一刻走。
 const NOW = Date.now();
@@ -100,7 +101,7 @@ export function historyOps(): Record<string, OpHandler> {
               aiTitle: s.title || null,
               firstUserExcerpt: s.excerpt,
               title: s.title || s.excerpt || s.sid.slice(0, 8),
-              label: s.title || s.excerpt || s.sid.slice(0, 8),
+              label: s.title || s.excerpt || copyText("history.row.untitled"),
               untitled: !s.title && !s.excerpt,
               startedAt: ago(s.agoMin + 40),
               updatedAt: ago(s.agoMin),

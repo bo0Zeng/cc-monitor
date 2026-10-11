@@ -520,14 +520,24 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
     SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
 }
 
-/// 一份会话记录的标题（同历史清单那一格：起的名字 · 首条用户输入摘要 · sid 前 8 位三选一），走清单缓存（没变不重扫、变长只扫尾巴）。
-pub(crate) fn session_title_of(p: &Path) -> String {
+/// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
+pub(crate) fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
     let row = analyze_session_cached(p);
-    super::search_rules::session_title(
-        row["aiTitle"].as_str(),
-        row["firstUserExcerpt"].as_str().unwrap_or(""),
-        row["sessionId"].as_str().unwrap_or(""),
-    )
+    super::search_rules::LabelFacts {
+        custom: None,
+        title: row["aiTitle"].as_str().map(str::to_string),
+        first: row["firstUserExcerpt"].as_str().unwrap_or("").to_string(),
+        project_dir: row["cwd"].as_str().map(str::to_string),
+    }
+}
+
+/// 一份会话记录的标题（同历史清单那一格，[`super::search_rules::session_label`]，不并注解）。
+pub(crate) fn session_title_of(p: &Path) -> String {
+    let sid = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    super::search_rules::session_label(&label_facts_of(p)).0
 }
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
@@ -911,6 +921,12 @@ pub(crate) fn facts_project_dir(agent_home: &Path, jsonl_path: &str) -> Option<S
 pub(crate) fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String> {
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     crate::agents::record_kind_of(&target).map(str::to_string)
+}
+
+/// 这条会话此刻谁持着它（[`super::accounts_query::session_holders`]，先过同一道围栏）；过不了围栏 / 判不了 ⇒ `None`。
+pub(crate) fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
+    let target = validate_session_path(agent_home, jsonl_path).ok()?;
+    super::accounts_query::session_holders(agent_home, &target)
 }
 
 /// `history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：

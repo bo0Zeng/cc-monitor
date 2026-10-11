@@ -5,7 +5,7 @@
  * 答不上的一律记进 `unhandled`（工具最后列出来），并按真后端「不认」那一形拒绝 —— 不悄悄给空。
  */
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
-import { Refuse, type World } from "./types";
+import { Refuse, type SessionSpec, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { MachineDisk } from "../disk";
 
@@ -236,7 +236,7 @@ export class FakeBackend {
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
       // 字 · 语气 · 序照后端 `wire::ActivityFace::of` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
       const act = s.activity === null ? (["unclear", "now", 4] as const) : ({ working: ["working", "now", 1], needs_you: ["needsYou", "need", 0], idle: ["idle", "plain", 3], background_work: ["backgroundWork", "busy", 2] } as const)[s.activity];
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: copyText(`beSession.activity.${act[0]}`), activity_tone: act[1], activity_order: act[2], waiting_for: s.waitingFor } });
+      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: copyText(`beSession.activity.${act[0]}`), activity_tone: act[1], activity_order: act[2], ...nameCells(s), waiting_for: s.waitingFor } });
       if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("sessionState.ended.name"), hint: copyText("sessionState.ended.tooltip"), tone: "plain" } });
       else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("sessionState.reconnectable.name"), hint: copyText("sessionState.reconnectable.tooltip"), tone: "plain" } });
     }
@@ -363,3 +363,14 @@ function omitCells(rec: Record<string, unknown>, paths: string[]): Record<string
   return out;
 }
 
+
+/** 叫这条会话什么（照后端 `search_rules::session_label` 与 `wire::NameFace::of`）：最后一条标题 → 人说的第一句（120 字）→「没有说过话的会话」；项目那一格一直带。 */
+function nameCells(s: SessionSpec): { label: string; label_project: string | null } {
+  const titles = s.records.filter((r) => r.t === "title");
+  const title = titles.length > 0 ? (titles[titles.length - 1] as { text: string }).text : null;
+  const said = s.records.find((r) => r.t === "said" && (r as { who: { speaker: { kind: string } } }).who.speaker.kind === "human") as { who: { text: string } } | undefined;
+  const first = said ? ([...said.who.text].length > 120 ? `${[...said.who.text].slice(0, 120).join("").replace(/[\r\n]/g, " ")}…` : said.who.text.replace(/[\r\n]/g, " ")) : "";
+  const project = s.cwd.split(/[\\/]/).filter((x) => x !== "").pop() ?? null;
+  const named = title?.trim() ? title : first.trim() ? first : null;
+  return { label: named ?? copyText("history.row.untitled"), label_project: project };
+}

@@ -11,9 +11,14 @@ use std::sync::Mutex;
 struct FakeHere {
     answers: BTreeMap<&'static str, Value>,
     asked: Mutex<Vec<(String, Value)>>,
+    tz: crate::Tz,
 }
 
 impl Here for FakeHere {
+    fn viewer_tz(&self) -> crate::Tz {
+        self.tz.clone()
+    }
+
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
         self.asked.lock().unwrap().push((cmd.to_string(), args));
         self.answers
@@ -46,6 +51,7 @@ fn here(answers: &[(&'static str, Value)]) -> (Arc<FakeHere>, Arc<dyn Here>) {
     let h = Arc::new(FakeHere {
         answers: answers.iter().cloned().collect(),
         asked: Mutex::new(Vec::new()),
+        tz: Default::default(),
     });
     let dyn_h: Arc<dyn Here> = h.clone();
     (h, dyn_h)
@@ -99,7 +105,7 @@ async fn the_hub_takes_from_the_source_and_asks_the_target_itself() {
     assert!(
         calls[0]
             .0
-            .ends_with(" -- '--mcp-sync-source' '--stdin-line'"),
+            .ends_with(" -- '--mcp-sync-source' '--stdin-line' '--tz' 'UTC'"),
         "{calls:?}"
     );
     assert_eq!(
@@ -113,6 +119,44 @@ async fn the_hub_takes_from_the_source_and_asks_the_target_itself() {
         asked[0].1["def"],
         json!({ "command": "c", "env": { "K": null } })
     );
+}
+
+/// 枢纽代问别台时把看的人那一台的时区（请求信封的 `tz`）转过去：那台回的「几点」（失败详情里的时刻也是）按它写，不落成 UTC。
+/// 没带时区 ⇒ 照信封的缺省（UTC）明说。
+#[tokio::test]
+async fn the_hub_hands_the_viewers_time_zone_to_the_machine_it_asks() {
+    let src =
+        json!({ "path": "/r/.mcp.json", "def": { "command": "c" }, "slots": [], "token": "t" });
+    let preview = json!({ "path": "/l/.mcp.json", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": null });
+    for (tz, tail) in [
+        (
+            crate::Tz::iana("Asia/Shanghai").unwrap(),
+            " -- '--mcp-sync-source' '--stdin-line' '--tz' 'Asia/Shanghai'",
+        ),
+        (
+            crate::Tz::default(),
+            " -- '--mcp-sync-source' '--stdin-line' '--tz' 'UTC'",
+        ),
+    ] {
+        let h: Arc<dyn Here> = Arc::new(FakeHere {
+            answers: [("mcp-sync-preview", preview.clone())]
+                .into_iter()
+                .collect(),
+            asked: Mutex::new(Vec::new()),
+            tz,
+        });
+        let r = remote(&[src.clone()]);
+        ext_preview(
+            &h,
+            &mcp_args(json!("devbox"), Value::Null),
+            &table_with("devbox"),
+            &r,
+        )
+        .await
+        .expect("枢纽没答");
+        let calls = r.calls.lock().unwrap().clone();
+        assert!(calls[0].0.ends_with(tail), "{calls:?}");
+    }
 }
 
 /// ★ 写：两头再看一次 —— 来源的记号与卡上不同 ⇒ `stale`、被写那台一次都没被叫去写；相同 ⇒ 交被写那台写（带用户填的值）。
@@ -272,6 +316,9 @@ struct WindowsHere {
 }
 
 impl Here for WindowsHere {
+    fn viewer_tz(&self) -> crate::Tz {
+        Default::default()
+    }
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
         if let Some(p) = args["project"].as_str() {
             crate::assets::mcp_edit::project_root_as(p, crate::assets::mcp_edit::PathForm::Windows)

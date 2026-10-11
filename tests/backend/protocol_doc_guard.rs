@@ -192,9 +192,9 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     (
         "agents/claudecode/resume.rs",
         "tests/__fixtures__/agent-profile-golden.tsv",
-        &["--resume", "--session-id"],
-        "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`）与起新会话先定 sid 的旗标\
-         （`SESSION_ID_FLAG`，起会话框带规则时用；起会话事实的唯一住址）：都是 claude 这个子进程的命令面，后端 argv 从不认它们，\
+        &["--permission-mode", "--resume", "--session-id"],
+        "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`）、起新会话先定 sid 的旗标\
+         （`SESSION_ID_FLAG`，新起都带）与起会话选权限档的旗标（`PERMISSION_MODE_FLAG`）：都是 claude 这个子进程的命令面，后端 argv 从不认它们，\
          线上契约里也没有它们的位置。",
     ),
     (
@@ -402,7 +402,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
             let mut accepts: Vec<String> = if child.ends_with(".tsv") {
                 // 子进程在仓外（`claude` · `codex`）⇒ 它认的旗标取金样里那一家的 `--` 开头的那几个词：
-                // flag 形的 `resume_token` ＋ `launch_args` ＋ 起新会话先定 sid 的 `preset_sid`。
+                // flag 形的 `resume_token` ＋ `launch_args` ＋ 起新会话先定 sid 的 `preset_sid` ＋ 选权限档的 `permission`。
                 let agent = if file.contains("/codex/") {
                     "codex"
                 } else {
@@ -415,7 +415,10 @@ mod tests {
                         let f: Vec<&str> = l.split('\t').collect();
                         (f.len() == 3
                             && f[0] == agent
-                            && matches!(f[1], "resume_token" | "launch_args" | "preset_sid"))
+                            && matches!(
+                                f[1],
+                                "resume_token" | "launch_args" | "preset_sid" | "permission"
+                            ))
                         .then(|| {
                             f[2].split(' ')
                                 .filter(|w| w.starts_with("--"))

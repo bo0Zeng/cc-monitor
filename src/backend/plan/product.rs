@@ -309,6 +309,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 .map(|g| {
                     json!({
                         "at": s(g, "at"),
+                        // 排序用的毫秒（界面「新的在上」只按它排，不解析 `at`）；读不出时刻 ⇒ null（排后）。
+                        "atMs": g.get("at").and_then(Value::as_str).and_then(crate::common::time::parse_iso8601_ms),
                         "by": who_json(g.get("by").and_then(Value::as_str), who),
                         "reason": s(g, "reason"),
                         "refs": g.get("refs").cloned().unwrap_or_else(|| json!([])),

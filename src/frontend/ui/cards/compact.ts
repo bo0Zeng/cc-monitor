@@ -7,6 +7,8 @@ import { copyText } from "../copy-table";
 
 export function buildCompactSummaryCard(
   text: string,
+  /** 摘要多少字（后端写好的 `speaker.charsText`）。 */
+  chars: string,
   /** 记录的钟面（后端写好的 `timeText`）。 */
   time: string,
 ): HTMLElement {
@@ -15,7 +17,7 @@ export function buildCompactSummaryCard(
 
   const s = document.createElement("summary");
   s.className = "card-compact-summary";
-  s.textContent = copyText("compact.summary.title", { n: text.length.toLocaleString(), time: time });
+  s.textContent = copyText("compact.summary.title", { n: chars, time });
   d.appendChild(s);
 
   let rendered = false;

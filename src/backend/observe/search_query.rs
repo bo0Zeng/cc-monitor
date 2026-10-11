@@ -929,11 +929,13 @@ fn session_row(
     } else {
         &entry.done.excerpt
     };
-    let title = search_rules::session_title(
-        ai_title.map(String::as_str),
-        first_user_excerpt,
-        &session_id,
-    );
+    // 全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
+    let (title, _) = search_rules::session_label(&search_rules::LabelFacts {
+        custom: None,
+        title: ai_title.cloned(),
+        first: first_user_excerpt.clone(),
+        project_dir: None,
+    });
     serde_json::json!({
         // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
         "agent": crate::agents::record_tree_kind().unwrap_or_default(),

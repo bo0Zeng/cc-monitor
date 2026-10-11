@@ -3,4 +3,12 @@
 /**
  * [`SessionStreamFrame::TurnEnd`] 的体。
  */
-export type SessionTurnEndPayload = { session_id: string, };
+export type SessionTurnEndPayload = { session_id: string, 
+/**
+ * 通知的标题（后端写好的字，照抄）。
+ */
+title: string, 
+/**
+ * 通知的正文（后端写好的字，照抄）。
+ */
+body: string, };

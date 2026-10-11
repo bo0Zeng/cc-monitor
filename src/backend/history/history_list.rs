@@ -239,7 +239,7 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         project_name: last_segment(cwd).unwrap_or(project_dir).to_string(),
         ai_title: v["aiTitle"].as_str().map(str::to_string),
         first_user_excerpt: excerpt.to_string(),
-        title: crate::observe::search_rules::session_title(v["aiTitle"].as_str(), excerpt, sid),
+        title: label_of(None, v["aiTitle"].as_str(), excerpt, cwd, sid),
         started_at: v["startedAtMs"].as_i64().unwrap_or(0),
         updated_at: v["updatedAtMs"].as_i64().unwrap_or(0),
         jsonl_path: v["jsonlPath"].as_str().unwrap_or_default().to_string(),
@@ -259,7 +259,7 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
 /// 合成历史的一条会话 ⇒ 清单的一行（判不了活 ⇒ `isLive: null`）。
 fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> RawRow {
     let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
-    let title = crate::observe::search_rules::session_title(None, &excerpt, &s.sid);
+    let title = label_of(None, None, &excerpt, &s.cwd, &s.sid);
     RawRow {
         agent: kind.to_string(),
         session_id: s.sid.clone(),
@@ -283,6 +283,23 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         group: group_key(kind, &s.cwd),
         last_account: None,
     }
+}
+
+/// 叫这一行什么（[`crate::observe::search_rules::session_label`]，与标签页 · 通知同一个）。
+fn label_of(
+    custom: Option<&str>,
+    title: Option<&str>,
+    first: &str,
+    project: &str,
+    sid: &str,
+) -> String {
+    let facts = crate::observe::search_rules::LabelFacts {
+        custom: custom.map(str::to_string),
+        title: title.map(str::to_string),
+        first: first.to_string(),
+        project_dir: (!project.is_empty()).then(|| project.to_string()),
+    };
+    crate::observe::search_rules::session_label(&facts).0
 }
 
 /// 一行的分组键：哪一家 ＋ 真实目录（记录目录名会撞）。
@@ -459,7 +476,13 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
     let untitled = meta.custom_title.is_none()
         && raw.ai_title.as_deref().is_none_or(str::is_empty)
         && raw.first_user_excerpt.is_empty();
-    let label = meta.custom_title.unwrap_or_else(|| raw.title.clone());
+    let label = label_of(
+        meta.custom_title.as_deref(),
+        raw.ai_title.as_deref(),
+        &raw.first_user_excerpt,
+        &raw.project_path,
+        &raw.session_id,
+    );
     let status = status_of(raw.is_live);
     Finished {
         raw,

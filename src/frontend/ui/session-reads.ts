@@ -242,7 +242,7 @@ export interface PendingCall {
   whyText: string | null;
 }
 
-/** 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile、判不了活。 */
+/** 一步状态不明的原因：没有活进程持着这条会话 · 判不了活（核心说）。 */
 export type UnclearWhy = "noWriter" | "untracked";
 const UNCLEAR_WHY: ReadonlySet<string> = new Set<UnclearWhy>(["noWriter", "untracked"]);
 

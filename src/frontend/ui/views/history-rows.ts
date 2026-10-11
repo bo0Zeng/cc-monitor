@@ -67,9 +67,9 @@ export function rowBadges(r: HistoryRow, needs: string | null, live = true): HTM
   return badges;
 }
 
-/** 标题那一格：改过的 ＞ 标题 ＞ 第一句；都没有 ⇒「（没有说过话的会话）」。 */
+/** 标题那一格：核心写的 `label`（改过的 ＞ 标题 ＞ 第一句 ＞「没有说过话的会话」，与标签页 · 通知同一个函数）。 */
 export function labelOf(r: HistoryRow): string {
-  return r.untitled ? copyText("history.row.untitled") : r.label;
+  return r.label;
 }
 
 /** 行尾的［恢复］或［切过去］＋［⋯］（悬停 / 选中时换掉时间，占位不变）。 */

@@ -169,6 +169,7 @@ export function defaultOps(): Record<string, OpHandler> {
       account: null,
       agent: req.agent,
       cwd: req.cwd,
+      prompt: null,
     }),
     // 会打断什么：合成世界里每个会话都当它有一轮在跑、带它在做的任务。
     "session-interrupts": (_o, req, w) => {

@@ -10,7 +10,8 @@ import { topTarget, cellTarget } from "../../../src/frontend/ui/views/plan-revie
 import type { PlanCell, PlanNeed, PlanSlice, PlanWho } from "../../../src/frontend/ui/plan-reads.ts";
 
 const who = (sid: string): PlanWho => ({ id: sid, kind: "session", sid, alive: true, activity: "idle", needs: null }) as PlanWho;
-const sign = (at: string, reason: string) => ({ at, atText: at, by: who("s1"), reason, refs: [] });
+// 排序只认核心给的 `atMs`（`at` 那一串不解析）：夹具里两者故意不同序，排错了就红。
+const sign = (at: string, reason: string, atMs: number | null) => ({ at, atText: at, atMs, by: who("s1"), reason, refs: [] });
 const cell = (id: string, title: string, signs: ReturnType<typeof sign>[], extra: Partial<PlanCell> = {}): PlanCell =>
   ({ id, title, kind: "模块", parent: null, children: [], signs, statusCode: "done", owner: who("s2"), signer: null, ...extra }) as unknown as PlanCell;
 
@@ -20,15 +21,15 @@ const slice = {
   top: ["A1", "A2"],
   blocks: [{ id: "project", cells: ["project"], owner: who("lead") }],
   cells: [
-    cell("A1", "读入模块", [sign("2026-01-01T00:00:00Z", "第一次"), sign("2026-01-03T00:00:00Z", "再签")]),
-    cell("A2", "写出模块", [sign("2026-01-02T00:00:00Z", "写完")]),
+    cell("A1", "读入模块", [sign("9", "第一次", 1), sign("1", "再签", 3)]),
+    cell("A2", "写出模块", [sign("5", "写完", 2), sign("8", "没时刻", null)]),
     cell("A3", "空着", []),
   ],
 } as unknown as PlanSlice;
 
 describe("签收流：整片排成一条、新的在上、按标题找", () => {
   it("全片的签收按时刻倒排（同一格签两次两条都在）", () => {
-    expect(signsNewestFirst(slice).map((x) => `${x.cell.id}:${x.sign.reason}`)).toEqual(["A1:再签", "A2:写完", "A1:第一次"]);
+    expect(signsNewestFirst(slice).map((x) => `${x.cell.id}:${x.sign.reason}`)).toEqual(["A1:再签", "A2:写完", "A1:第一次", "A2:没时刻"]);
   });
   it("按标题找只留那几格的签收；对不上 ⇒ 空", () => {
     expect(signsNewestFirst(slice, "读入").map((x) => x.sign.reason)).toEqual(["再签", "第一次"]);
