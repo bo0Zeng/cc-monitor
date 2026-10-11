@@ -38,12 +38,12 @@
  *    全量 8 148 条候选，去掉 image 块的 base64 之后最大一条 41 KB。
  *    ⇒ §1 那个 617 KB 的 max 是一颗截图 base64，对渲染成本的贡献是 0。
  *    本秤在 `32-128K` 就到顶，**「617 KB 那一档」谁都没量过**。
- * 4. **单条 tool-group。** 语料按 seq 顺序喂，连续 tool-only 会走合并支；
- *    但生产里一张外壳能吃下几十条，`merge` 段在长会话上的真实量级本秤看不到。
+ * 4. **「几步」卡一条一张。** 界面不把相邻的工具记录并组（收进「过程」由后端划段），
+ *    ⇒ 没有合并那一段，生产里与语料里是同一形。
  * 5. **时间是这台机器这一次的，而且随负载抖。** 绝对毫秒不可跨机比较，段占比与桶倍率在门禁并发时也会飘
  *    ⇒ 10-07 起**没有一条闸看墙钟**：复杂度那几条（随字节单调 · 长比短多一个量级 · 长尾桶里的折叠卡便宜一个量级）
  *    数的是**物化进 DOM 的字符数**（`domChars`，确定量），理由与等价性写在那一组的头注；
- *    墙钟读数（四段 p50 · 占比 · 残余）照旧印进报表，只当读数。
+ *    墙钟读数（三段 p50 · 占比 · 残余）照旧印进报表，只当读数。
  * 6. **探针自己要钱。** 分桶轴要「记录字节」，而 payload 上没有该字段 ⇒
  *    只能 `JSON.stringify(record)` 现算（它自己就是 §2.4 那一形）。
  *    ⇒ 探针默认关；开着时字节数在总时刻取完之后才算，**不进任何一段读数**，
@@ -158,14 +158,14 @@ const EXPECTED_SAMPLES = 552;
 
 /**
  * 每个卡型的**绝对**样本数（69 条 × 8 遍；独立写死，理由同 `EXPECTED_SAMPLES_PER_BUCKET`）。
- * `card-tool-group` = 新建外壳 1 条 ＋ 并入已有外壳 22 条（两条分支，同一种卡）。
+ * `card-steps` = 23 条纯工具记录，一条一张（界面不并组）。
  * 记录换形（10-09）：字节口径换成通用记录的 JSON（桶跟着挪）；那一条代理自动应答（`autoReply`）从 assistant 卡挪进 skip。
  */
 const EXPECTED_SAMPLES_PER_CARD: Readonly<Record<string, number>> = {
   "card-assistant": 216,
   "card-user": 80,
   "card-compact": 8,
-  "card-tool-group": 184,
+  "card-steps": 184,
   skip: 64,
 };
 /**
@@ -173,7 +173,7 @@ const EXPECTED_SAMPLES_PER_CARD: Readonly<Record<string, number>> = {
  * 物化量**不随记录正文涨**（至多涨后端定长的那一行）—— 这就是它们便宜的机制。
  */
 const FOLDED_CARD_TYPES: ReadonlySet<string> = new Set([
-  "card-tool-group",
+  "card-steps",
   "card-compact",
 ]);
 /** **正文卡型**：正文进 DOM，物化量随正文涨 —— O(len) 的那几条声称都住在它们身上。 */
@@ -241,11 +241,11 @@ function p(values: number[], q: number): number {
   return v[f] + (v[c] - v[f]) * (k - f);
 }
 
-const SEGMENTS = ["render", "merge", "estimate", "mount"] as const;
-const BRANCHES = ["skip", "card", "tool-group", "tool-group-merged"] as const;
+const SEGMENTS = ["render", "estimate", "mount"] as const;
+const BRANCHES = ["skip", "card", "steps"] as const;
 
 function segSum(s: RenderCostSample): number {
-  return s.render + s.merge + s.estimate + s.mount;
+  return s.render + s.estimate + s.mount;
 }
 
 let samples: RenderCostSample[] = [];
@@ -320,13 +320,13 @@ beforeAll(() => {
   lines.push("");
   lines.push("② 按字节分桶（设计原先要的那张；**反例附表**：同一桶里混着便宜与贵的卡型）：");
   lines.push(
-    "| 桶 | n | total p50 | total p90 | total max | render p50 | merge p50 | estimate p50 | mount p50 | render 占 total p50 |",
+    "| 桶 | n | total p50 | total p90 | total max | render p50 | estimate p50 | mount p50 | render 占 total p50 |",
   );
-  lines.push("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  lines.push("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const [name] of BUCKETS) {
     const rows = samples.filter((s) => bucketOf(s.bytes) === name);
     if (!rows.length) {
-      lines.push(`| ${name} | 0 | — | — | — | — | — | — | — | — |`);
+      lines.push(`| ${name} | 0 | — | — | — | — | — | — | — |`);
       continue;
     }
     const tot = rows.map((s) => s.total);
@@ -347,8 +347,8 @@ beforeAll(() => {
   lines.push(
     "桶 × 分支（n / total p50 ms）—— 这张表是本秤最重要的产出，理由见读数：",
   );
-  lines.push("| 桶 | skip | card | tool-group | tool-group-merged |");
-  lines.push("|---|---|---|---|---|");
+  lines.push("| 桶 | skip | card | steps |");
+  lines.push("|---|---|---|---|");
   for (const [name] of BUCKETS) {
     const cells = BRANCHES.map((b) => {
       const rows = samples.filter(
@@ -397,7 +397,7 @@ beforeAll(() => {
     const withTime = samples.filter((s) => s.total > 0);
     const rest = withTime.map((s) => (s.total - segSum(s)) / s.total);
     lines.push(
-      `残余（total − Σ四段）占比：p50=${(p(rest, 0.5) * 100).toFixed(2)}% ` +
+      `残余（total − Σ三段）占比：p50=${(p(rest, 0.5) * 100).toFixed(2)}% ` +
         `p90=${(p(rest, 0.9) * 100).toFixed(2)}% max=${(Math.max(...rest) * 100).toFixed(2)}%`,
     );
   }
@@ -496,19 +496,19 @@ describe("秤 1 · 反空真（绿必须来自相等断言，不是「扫不到�
   });
 });
 
-describe("秤 1 · 四个子段真的各自被量到（死值验的着力点）", () => {
-  it("★ render / merge / estimate / mount 四段各自至少在一条样本上 > 0", () => {
+describe("秤 1 · 三个子段真的各自被量到（死值验的着力点）", () => {
+  it("★ render / estimate / mount 三段各自至少在一条样本上 > 0", () => {
     const dead = SEGMENTS.filter(
       (k) => !samples.some((s) => (s[k] as number) > 0),
     );
     expect(
       dead.join(" / "),
       `子段 [${dead.join(" / ")}] 在整份语料上恒为 0 —— 要么计时被摘掉了，` +
-        "要么语料根本走不到那条分支。两种都让「拆 4 个子段」这句话变成假话",
+        "要么语料根本走不到那条分支。两种都让「拆 3 个子段」这句话变成假话",
     ).toBe("");
   });
 
-  it("四条分支都被走到（skip / card / tool-group / tool-group-merged）", () => {
+  it("三条分支都被走到（skip / card / steps）", () => {
     const missing = BRANCHES.filter(
       (b) => !samples.some((s) => s.branch === b),
     );
@@ -518,24 +518,24 @@ describe("秤 1 · 四个子段真的各自被量到（死值验的着力点）"
     ).toBe("");
   });
 
-  it("★ 四段之和 ≤ total（入口出口是真夹的，不是把差额摊进某一段）", () => {
+  it("★ 三段之和 ≤ total（入口出口是真夹的，不是把差额摊进某一段）", () => {
     const over = samples.filter((s) => segSum(s) > s.total + 1e-9);
     expect(
       over.length,
-      `${over.length} 条样本的四段之和超过了 total —— 计时区间重叠了`,
+      `${over.length} 条样本的三段之和超过了 total —— 计时区间重叠了`,
     ).toBe(0);
   });
 
   // 残余中位占比（原来钉 < 10%）是墙钟读数，随负载抖 ⇒ 10-07 起只进报表；「真夹」那一侧（存在正残余）照钉。
-  it("★ 残余（total − Σ四段）不恒为 0：total 是入口出口真夹的，不是算成 Σ四段", () => {
+  it("★ 残余（total − Σ三段）不恒为 0：total 是入口出口真夹的，不是算成 Σ三段", () => {
     const withTime = samples.filter((s) => s.total > 0);
-    // `total` 如果被写成 Σ四段，残余就恒 0，而「入口出口真夹」这句话当场变成假话，却没有任何一格会红。
+    // `total` 如果被写成 Σ三段，残余就恒 0，而「入口出口真夹」这句话当场变成假话，却没有任何一格会红。
     // 真夹的话，分派与 `onRealUserInput` 回调必然在某些样本上留下正残余。
     const positive = withTime.filter((s) => s.total - segSum(s) > 0).length;
     expect(
       positive,
-      `552 条样本里没有一条的 total 大于四段之和 —— ` +
-        "`total` 多半不是入口出口夹出来的，而是被算成了 Σ四段",
+      `552 条样本里没有一条的 total 大于三段之和 —— ` +
+        "`total` 多半不是入口出口夹出来的，而是被算成了 Σ三段",
     ).toBeGreaterThan(0);
   });
 });
@@ -571,7 +571,7 @@ describe("秤 1 · 〔SC1〕成本轴是卡型 —— 不看墙钟的那一半",
   // 🔴 S2 就是「字节不是成本轴，卡型才是」的**可红形态**：
   //   同一条记录只加正文，物化量怎么变由卡型决定 —— 折叠卡型至多涨后端定长的那一行（有界），正文卡型整段跟着涨。
   //   膨胀的是原文、过的是后端翻译表 ⇒ 收着那一行（主参数 · 说明）照真的跟着变，上界是协议上的定长。
-  //   哪天工具结果改成急切把正文塞进 DOM ⇒ `card-tool-group` 涨过上界、跳到正文集 ⇒ 红；
+  //   哪天工具结果改成急切把正文塞进 DOM ⇒ `card-steps` 涨过上界、跳到正文集 ⇒ 红；
   //   哪天正文卡型不再渲正文 ⇒ 反方向红；后端那一行不再定长 ⇒ 涨幅落在两档之间 ⇒ 红。一毫秒墙钟都不用。
   it("★ S2 · 物化量有界的卡型 == 登记的折叠卡型；随正文涨的 == 登记的正文卡型（两向）", () => {
     const grows = new Set<string>();
@@ -657,13 +657,13 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导�
   it("🔴 反例也要钉住：按**字节**取的「长尾桶」里全是折叠卡，物化量比 2-8K 正文卡少一个量级", () => {
     const tail = steady.filter((s) => bucketOf(s.bytes) === "32-128K");
     expect(tail.length, "长尾桶空着 —— 本格恒绿").toBeGreaterThan(0);
-    // ① 成分（按卡型说）：字节最重的那一桶里全是**折叠卡型** —— 合并进已有外壳的 tool_result ＋ 那一条 46 KB 的压缩摘要。
-    //   分支上它们分属 `tool-group-merged` 与 `card` ⇒ 按分支看会以为桶里混着建卡那条贵路，按卡型看两种都便宜。
+    // ① 成分（按卡型说）：字节最重的那一桶里全是**折叠卡型** —— 纯工具结果那一条的「几步」卡 ＋ 那一条 46 KB 的压缩摘要。
+    //   分支上它们分属 `steps` 与 `card` ⇒ 按分支看会以为桶里混着建卡那条贵路，按卡型看两种都便宜。
     const cards = [...new Set(tail.map((s) => s.card))].sort();
-    expect(cards, "32-128K 桶的卡型变了 —— 上面那段「轴选错了」的诊断要重做").toEqual(["card-compact", "card-tool-group"]);
+    expect(cards, "32-128K 桶的卡型变了 —— 上面那段「轴选错了」的诊断要重做").toEqual(["card-compact", "card-steps"]);
     for (const c of cards) expect(FOLDED_CARD_TYPES.has(c), `${c} 不是折叠卡型`).toBe(true);
     const branches = [...new Set(tail.map((s) => s.branch))].sort();
-    expect(branches, "32-128K 桶的分支成分变了").toEqual(["card", "tool-group-merged"]);
+    expect(branches, "32-128K 桶的分支成分变了").toEqual(["card", "steps"]);
     // ② 量级：物化字符比 2-8K 的正文卡少至少一个量级
     const tailDom = p(tail.map((s) => s.domChars), 0.5);
     const cardMid = bodyByBucket().find((b) => b.name === "2-8K")?.dom ?? 0;

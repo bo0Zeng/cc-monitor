@@ -1,5 +1,5 @@
 // 主窗口剩下的几处行为：状态栏两块浮层（任务 · 子 agent）· tab 右键菜单（躲窗口边 · 关得掉已结束的 · 说不清的不当已结束）·
-// 顶栏远端文件选单 · 命令面板里的机器名 · 工具组收着时说出失败与子 agent · 命令卡展开显示命令本身。
+// 顶栏远端文件选单 · 命令面板里的机器名 · 命令卡展开显示命令本身。
 // 行为口径：同一时刻同一层只开一块；看得见 ⇔ 在 Esc 弹层栈上，Esc 一次只关最上一层；浮层躲窗口边、贴边内缩 8px；
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
@@ -95,7 +95,7 @@ import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
-import { buildToolGroup, addToToolGroup, renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
+import { renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
 import { copyPattern } from "../../test-support/copy-pattern";
@@ -468,38 +468,13 @@ const ctx = (): RenderContext => ({
   pendingToolResults: new Map(),
 });
 
-describe("工具组收着时说出里面有失败的、有子 agent", () => {
-  it("一组里一个失败的命令、一个子 agent ⇒ 收着那一行说「1 个失败 · 1 个子 agent」；全成的不说", () => {
-    const c = ctx();
-    const r = renderMessage(
-      toolCalls(
-        [
-          { id: "t1", name: "Bash", input: { command: "pytest -q" } },
-          { id: "t2", name: "Agent", input: { prompt: "看看" } },
-          { id: "t3", name: "Read", input: { file_path: "/a" } },
-        ],
-        { t2: "agent" },
-      ),
-      c,
-    );
-    if (r.kind !== "tool-group") throw new Error(`期望工具组，得到 ${r.kind}`);
-    const g = buildToolGroup(r.time);
-    addToToolGroup(g, r.units);
-    const quiet = g.summary.textContent ?? "";
-    expect(quiet).not.toMatch(/失败/);
-    expect(quiet).toMatch(copyPattern("cards.toolGroup.summaryAgents", { agents: 1 }));
-    renderMessage(results([{ id: "t1", text: "1 failed", error: true }, { id: "t3", text: "ok" }]), c);
-    expect(g.summary.textContent).toMatch(copyPattern("cards.toolGroup.summaryBoth", { failed: 1, agents: 1 }));
-  });
-});
-
 describe("命令卡展开显示命令本身（说明作注），不显示入参 JSON", () => {
   it("后端说是命令卡 ⇒ 收着那一行是命令、展开是「# 说明」＋ 命令；没有卡型的照旧", () => {
     const r = renderMessage(
       toolCalls([{ id: "t1", name: "Bash", input: { command: 'rg -n "x" src | head', description: "找调用点" } }], { t1: "command" }),
       ctx(),
     );
-    if (r.kind !== "tool-group") throw new Error(`期望工具组，得到 ${r.kind}`);
+    if (r.kind !== "steps") throw new Error(`期望几步，得到 ${r.kind}`);
     const d = r.units[0] as HTMLDetailsElement;
     // 一步一行（§5.2.3）：工具名 · 主参数 · 说明由后端给（`steps`）；这条夹具没带 ⇒ 工具名 ＋ 命令兜底。
     expect([...d.querySelectorAll(".block-summary .step-tool, .block-summary .step-arg")].map((e) => e.textContent)).toEqual(["Bash", 'rg -n "x" src | head']);
@@ -510,7 +485,7 @@ describe("命令卡展开显示命令本身（说明作注），不显示入参 
     expect(body).not.toMatch(/"command"/);
     // 没有卡型（界面不认工具名）⇒ 照旧画入参。
     const plain = renderMessage(toolCalls([{ id: "t2", name: "Bash", input: { command: "ls" } }]), ctx());
-    if (plain.kind !== "tool-group") throw new Error(plain.kind);
+    if (plain.kind !== "steps") throw new Error(plain.kind);
     const p = plain.units[0] as HTMLDetailsElement;
     p.open = true;
     p.dispatchEvent(new Event("toggle"));
@@ -600,7 +575,7 @@ describe("一步还没结果时：照会话事实画", () => {
     const c = { ...ctx(), needs: { kind: "approve", call: "t2", waitedMs: 65_000, receivedAt: Date.now() }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
     const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }, { id: "t3", name: "Bash", input: {} }]) as object) } as unknown as LineRecord;
     const r = renderMessage(use, c);
-    if (r.kind !== "tool-group") throw new Error(r.kind);
+    if (r.kind !== "steps") throw new Error(r.kind);
     const st = [0, 1, 2].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
     expect(st).toEqual(["running", "awaiting", "pending"]);
     expect(r.units[1].querySelector(".step-right")?.textContent).toBe(fmtDur(65));
@@ -626,7 +601,7 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
       },
     } as unknown as LineRecord;
     const r = renderMessage(use, c);
-    if (r.kind !== "tool-group") throw new Error(r.kind);
+    if (r.kind !== "steps") throw new Error(r.kind);
     const line = (i: number) => r.units[i].querySelector<HTMLElement>(".step-line")!;
     expect([line(0).dataset.state, line(0).querySelector(".step-arg")?.textContent, line(0).querySelector(".step-note")?.textContent]).toEqual(["pending", "rg -n x src", "找调用点"]);
     const res = {
@@ -654,7 +629,7 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
       { id: "e2", name: "Bash", input: {} },
     ]) as unknown as LineRecord;
     const r = renderMessage(use, c);
-    if (r.kind !== "tool-group") throw new Error(r.kind);
+    if (r.kind !== "steps") throw new Error(r.kind);
     const res = {
       ...(results([
         { id: "e1", text: "Exit code 1", error: true },

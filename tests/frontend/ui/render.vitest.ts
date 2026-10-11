@@ -398,7 +398,7 @@ describe("D1 · 数学也 lazy", () => {
       } as never,
       { parentPath: "/p/s.jsonl", origin: "<local>", toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: true } as never,
     );
-    expect(res.kind).toBe("tool-group");
+    expect(res.kind).toBe("steps");
     const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
     d.open = true;
     d.dispatchEvent(new Event("toggle"));

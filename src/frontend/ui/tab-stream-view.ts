@@ -598,7 +598,7 @@ export class TabStreamView {
       if (!render && tab.skeleton && !tab.skeleton.isPending(payload.seq)) render = true;
     }
     // 批期落在渲染窗口内中部的插入（seq ≥ floor 且 < 已渲染最高 seq：大增量批的老块）→ 缓冲，onBatchEnd 一次挂载（不逐帧往上方插，§21）。
-    // 离线期的真新消息照计未读（按记录计，与工具组合并略有出入，99+ 封顶下可接受）。
+    // 离线期的真新消息照计未读（按记录计，与相邻合并、不建卡的记录略有出入，99+ 封顶下可接受）。
     if (render && this.store.inBatch && payload.seq < tab.timeline.maxSeq) {
       tab.midBatchBuffer.push(payload);
       // 徽标刷新攒到批末 flush 一次(D 审计:600 条缓冲 = 600 次全 bar 巡检)
@@ -633,7 +633,7 @@ export class TabStreamView {
     const inserted = tab.timeline.size > beforeSize;
     if (inserted) tab.branchFolder.cardsAdded(); // 新卡可能落在回退掉的那一段里 ⇒ 帧末按清单重折
 
-    // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
+    // unread 计数：只有真新 entry 入 timeline 才算（注入进旧卡的工具结果不算）
     if (inserted && this.store.activeId !== tab.sessionId) {
       tab.unread += 1;
       // 帧末合批：这里每来一行实时记录就走一次，徽标数字攒到帧末一次更新。
@@ -764,7 +764,7 @@ export class TabStreamView {
   }
 
   /**
-   * 补到一屏填满（`contentReachesBottom`）或账本弹尽：一批 150 条可能只产出几张卡（工具组合并、skip 记录占配额）。
+   * 补到一屏填满（`contentReachesBottom`）或账本弹尽：一批 150 条可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
    * 一次同步调用只跑 {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
    * （`scheduleFillContinuation`，与上翻补批同一条 rAF 自链）—— 不可滚的元素不产生 scroll，没有别的入口会再补。
    */

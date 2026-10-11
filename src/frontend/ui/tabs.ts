@@ -472,7 +472,7 @@ export class TabManager {
     reportWatching(t ? [{ origin: t.origin, sessionId: t.sessionId }] : []);
   }
 
-  /** 收到一行记录：走 `renderStreamRecord`（时间线按 seq 定位 · 工具组看左邻居合并 · 标题与真用户输入走 sink）。 */
+  /** 收到一行记录：走 `renderStreamRecord`（时间线按 seq 定位 · 标题与真用户输入走 sink）。 */
   onLine(payload: JsonlLinePayload): void {
     // 项目目录不从行里取（行上的 cwd 是那一刻的工作目录，会漂进子目录）：只认后端那一格（会话宣告 / 会话事实）。
     const tab = this.ensureTab(payload.session_id, null, payload.path, originFromWire(payload.origin));

@@ -61,7 +61,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 ```
 
 - **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
-- **seq 是后端给的行号**，前端 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。工具组合并是插入后的后处理：看左邻居是不是工具组。
+- **seq 是后端给的行号**，前端 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。一条记录至多一张卡：纯工具的记录画成一张「几步」卡（每步一行），界面不把相邻的并组 —— 哪几条收进「过程」只由后端划段（`observe/turns.rs`）。
 - **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_state` · `sessions_replayed` 随 `session-lines` 一起来，起停帧不吃 credit、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、界面说「说不清」。
 - **背压**：前端给 credit；实时行没有 credit 就丢，并在原位报 gap，前端按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。

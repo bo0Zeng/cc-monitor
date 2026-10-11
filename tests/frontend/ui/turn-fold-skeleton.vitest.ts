@@ -97,7 +97,7 @@ async function rig() {
         el.dataset.h = "60";
         el.dataset.seq = String(s);
         el.setAttribute("data-id", `u${s}`);
-        timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+        timeline.insert({ seq: s, element: el, kind: "card" });
       }
     },
   });
@@ -199,7 +199,7 @@ describe("冷切停住那一帧：骨架后到", () => {
       el.dataset.h = "60";
       el.dataset.seq = String(s);
       el.setAttribute("data-id", `u${s}`);
-      timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+      timeline.insert({ seq: s, element: el, kind: "card" });
     };
     for (let s = floor; s < total; s++) card(s);
     let view: SkeletonView | null = null;

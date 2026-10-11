@@ -1,14 +1,12 @@
 /**
- * 一条记录的渲染管线（renderMessage → markCardId → 工具组合并 → 挂进 DOM），
+ * 一条记录的渲染管线（renderMessage → markCardId → 挂进 DOM），
  * 实时标签页 · 会话查看器 · 子运行卡三处共用，差异经 sink 注入（append / insertBefore · 触不触发 userActive）。
  * 主线外（回退掉的）那几条不在这里判：那台后端给清单（实时帧 `branch` · 冷读 `history-branch`），`BranchFolder` 按卡上的 `data-id` 折。
  *
- * 工具组合并按 timeline 的邻居判：renderMessage 交回 `tool-group` 时 `timeline.peekPrev(seq)` 看左邻居，
- * 是工具组 ⇒ 单元并进它的 body，不建新 entry；否则建组、记 id、插进 timeline。
- * 合并方向只看 timeline 已排好的序、与到达顺序无关（早 seq 的后到也先按 seq 找到位置再判邻居）。
+ * 过程里的几步（`steps`）一条记录一张卡，不与相邻的并组：哪几条收进「过程」只由后端划段（`turn-fold.ts` 照抄）。
  */
 
-import { renderMessage, buildToolGroup, addToToolGroup, type LineRecord, type RenderContext } from "./cards";
+import { renderMessage, buildStepsCard, type LineRecord, type RenderContext } from "./cards";
 import { observeForEnhance } from "./render";
 import { applyIntrinsicSize } from "./height-estimate";
 import { saidByHuman } from "./speaker";
@@ -43,7 +41,7 @@ export interface StreamSink {
   enhanceRoot?: HTMLElement | null;
   /**
    * 一张普通卡建好、记过 id 之后调。只有会话查看器实现：给卡挂「从这一轮建分支」。
-   * 工具组卡不触发（不在会话轮次上分支）。
+   * 「几步」卡不触发（不在会话轮次上分支）。
    */
   onCardRendered?: (element: HTMLElement, record: LineRecord) => void;
 }
@@ -51,7 +49,7 @@ export interface StreamSink {
 /**
  * 两段式：
  * - routeMeta：元数据路由 —— 收纳（不建卡）与渲染两条路共用这一份；
- * - renderContentRecord：纯渲染（建卡 · 工具组合并 · 挂进 DOM）；
+ * - renderContentRecord：纯渲染（建卡 · 挂进 DOM）；
  * - renderStreamRecord：两段串起来。
  */
 
@@ -85,16 +83,15 @@ export function renderStreamRecord(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// 单条渲染成本的采集端（`renderContentRecord` 的墙钟，按记录字节分桶，拆四段，进环形缓冲 cap 5000）。
+// 单条渲染成本的采集端（`renderContentRecord` 的墙钟，按记录字节分桶，拆三段，进环形缓冲 cap 5000）。
 //
 // | 子段 | 覆盖 |
 // |---|---|
 // | `render`   | `renderMessage()`（O(len) 的活都在这里） |
-// | `merge`    | 工具组邻居判定 ＋ `addToToolGroup` ＋ `buildToolGroup` |
 // | `estimate` | `markCardId` ＋ `onCardRendered` ＋ `applyIntrinsicSize` |
 // | `mount`    | `timeline.insert` ＋ `observeForEnhance` |
 //
-// `total` 是入口出口真夹的，`total − Σ四段` 是分派开销与调用方回调，不摊进任何一段。
+// `total` 是入口出口真夹的，`total − Σ三段` 是分派开销与调用方回调，不摊进任何一段。
 // 默认关：分桶要的字节数只能 `JSON.stringify(record)` 现算（本身就是 O(len)）；探针 `null` 时热路径只多一次布尔判断。
 // 开了之后字节数、卡型（`card`：第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard` 同口径）、
 // 物化进 DOM 的字符数（`domChars`）都在总时刻取完之后才算，不污染分段读数。
@@ -108,20 +105,18 @@ export interface RenderCostSample {
    * 走了哪条分支。**`skip` 也留**：那是"白跑一趟 `renderMessage` 什么也没建"的成本，
    * 从账上抹掉它，长尾里不建卡的那几种就成了免费的。
    */
-  branch: "skip" | "card" | "tool-group" | "tool-group-merged";
+  branch: "skip" | "card" | "steps";
   /** 落进了哪种卡（第一个 `card-*` 类名；skip 记 `"skip"`）—— 成本轴 */
   card: string;
   /** 这条记录物化进 DOM 的字符数（`textContent` 长度）—— 成本轴的机制那一半 */
   domChars: number;
   /** ① `renderMessage()` */
   render: number;
-  /** ② tool-group 合并 / 新建外壳 */
-  merge: number;
-  /** ③ 估高（markCardId + onCardRendered + applyIntrinsicSize） */
+  /** ② 估高（markCardId + onCardRendered + applyIntrinsicSize） */
   estimate: number;
-  /** ④ DOM 挂载（timeline.insert + observeForEnhance） */
+  /** ③ DOM 挂载（timeline.insert + observeForEnhance） */
   mount: number;
-  /** 入口出口夹出来的总 wall time。`≥ render+merge+estimate+mount` */
+  /** 入口出口夹出来的总 wall time。`≥ render+estimate+mount` */
   total: number;
 }
 
@@ -188,7 +183,7 @@ function domCharsOf(els: readonly Element[]): number {
 }
 
 /**
- * 纯渲染段:建卡 / tool-group 后处理合并 / DOM 挂载 / userActive。
+ * 纯渲染段:建卡 / DOM 挂载 / userActive。
  * 前置:routeMeta 已对该 payload 返回 "content"(meta 已消费)。
  *
  * 秤 1 的仪表夹在本函数的入口与每一条 `return` 之前（见上方那段）。
@@ -210,7 +205,7 @@ export function renderContentRecord(
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
   const tRender = probe ? performance.now() : 0;
-  markMemberUuids(message, ctx, result); // 在秤 1 的 render 段之外（那一段只夹 renderMessage）
+  markMemberUuids(message, ctx); // 在秤 1 的 render 段之外（那一段只夹 renderMessage）
 
   switch (result.kind) {
     case "skip": {
@@ -220,7 +215,7 @@ export function renderContentRecord(
       if (typeof injected === "string" && injected !== "") {
         const strip = buildInjectedLine(injected, message.timeText ?? "");
         markCardId(strip, message);
-        sink.timeline.insert({ seq: payload.seq, element: strip, kind: "aside", toolGroup: null });
+        sink.timeline.insert({ seq: payload.seq, element: strip, kind: "aside" });
       }
       if (probe) {
         const total = performance.now() - t0;
@@ -230,7 +225,6 @@ export function renderContentRecord(
           card: "skip",
           domChars: 0,
           render: tRender - t0,
-          merge: 0,
           estimate: 0,
           mount: 0,
           total,
@@ -265,7 +259,6 @@ export function renderContentRecord(
         seq: payload.seq,
         element: result.element,
         kind: "card",
-        toolGroup: null,
       });
       if (sink.enhanceRoot) observeForEnhance(result.element, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
@@ -283,7 +276,6 @@ export function renderContentRecord(
           card: cardTypeOf(result.element),
           domChars: domCharsOf([result.element]),
           render: tRender - t0,
-          merge: 0,
           estimate: tEstimate - tRender,
           mount: tMount - tEstimate,
           total,
@@ -292,61 +284,23 @@ export function renderContentRecord(
       return;
     }
 
-    case "tool-group": {
-      // 看左邻居是不是工具组 → 是则并进去
-      const prev = sink.timeline.peekPrev(payload.seq);
-      if (prev && prev.kind === "tool-group" && prev.toolGroup) {
-        addToToolGroup(prev.toolGroup, result.units);
-        const tMerge = probe ? performance.now() : 0;
-        // units 已挂进 prev.toolGroup.body（DOM 内嵌），不入 timeline 新 entry。
-        // 若 batch 模式新 units 要 observe lazy hljs：units 是新插入的 DOM
-        if (sink.enhanceRoot) {
-          for (const u of result.units) observeForEnhance(u, sink.enhanceRoot);
-        }
-        const tMount = probe ? performance.now() : 0;
-        if (probe) {
-          const total = performance.now() - t0;
-          pushCostSample(probe, {
-            bytes: recordBytes(message),
-            branch: "tool-group-merged",
-            card: cardTypeOf(prev.toolGroup.root),
-            domChars: domCharsOf(result.units),
-            render: tRender - t0,
-            merge: tMerge - tRender,
-            estimate: 0,
-            mount: tMount - tMerge,
-            total,
-          });
-        }
-        return;
-      }
-
-      // 否则新建 group 并 insert
-      const group = buildToolGroup(result.time);
-      addToToolGroup(group, result.units);
-      const tMerge = probe ? performance.now() : 0;
-      // tool-group root 也写 data-id（首条贡献 id）让 BranchFolder 把它当卡识别
-      markCardId(group.root, message);
-      applyIntrinsicSize(group.root); // 折叠组 = summary 常数
+    case "steps": {
+      const card = buildStepsCard(result.units);
+      markCardId(card, message);
+      applyIntrinsicSize(card);
       const tEstimate = probe ? performance.now() : 0;
-      sink.timeline.insert({
-        seq: payload.seq,
-        element: group.root,
-        kind: "tool-group",
-        toolGroup: group,
-      });
-      if (sink.enhanceRoot) observeForEnhance(group.root, sink.enhanceRoot);
+      sink.timeline.insert({ seq: payload.seq, element: card, kind: "card" });
+      if (sink.enhanceRoot) observeForEnhance(card, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
       if (probe) {
         const total = performance.now() - t0;
         pushCostSample(probe, {
           bytes: recordBytes(message),
-          branch: "tool-group",
-          card: cardTypeOf(group.root),
-          domChars: domCharsOf([group.root]),
+          branch: "steps",
+          card: cardTypeOf(card),
+          domChars: domCharsOf([card]),
           render: tRender - t0,
-          merge: tMerge - tRender,
-          estimate: tEstimate - tMerge,
+          estimate: tEstimate - tRender,
           mount: tMount - tEstimate,
           total,
         });
@@ -357,19 +311,14 @@ export function renderContentRecord(
 }
 
 /**
- * **落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
- * 工具结果被注入进它那个工具调用的单元里），就在它真正落下的那一块上记 `data-member-id`，
+ * **落点标记**：一条记录若没有自己的卡（工具结果被注入进它那个工具调用的单元里），就在它真正落下的那一块上记 `data-member-id`，
  * 会话内查找 / 大纲命中它时 `revealCard` 找得到。
- * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-id`）；
  * - said 记录里的工具结果块：注入到了哪个工具调用单元的结果区块，就记在那个区块上。
  * 不用 `data-id`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
  * 后者的产物是秤 2 金标准的 DOM 指纹，落点是管线的事。
  */
-function markMemberUuids(record: LineRecord, ctx: RenderContext, result: ReturnType<typeof renderMessage>): void {
+function markMemberUuids(record: LineRecord, ctx: RenderContext): void {
   const id = record.id;
-  if (result.kind === "tool-group") {
-    for (const u of result.units) if (!u.dataset.memberId) u.dataset.memberId = id;
-  }
   if (record.t !== "said") return;
   for (const b of record.blocks) {
     if (b.type !== "tool_result") continue;

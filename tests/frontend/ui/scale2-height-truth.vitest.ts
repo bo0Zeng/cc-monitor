@@ -167,7 +167,7 @@ const P90_CEILING: Record<string, number> = {
   "card-assistant": 0.3, //    实测 p90 21.8% / 26.7%，max 21.8% / 26.7%（双向）
   "card-bash-output": 0.3, //  实测 p90 8.6% / 10.0%，max 15.2%
   "card-compact": 0.3, //      实测 p90 9.8% / 11.8%
-  "card-tool-group": 0.3, //   实测 p90 9.8% / 11.8%
+  "card-steps": 0.3, //        实测 p90 6.4% / 5.0%，max 14.8% / 13.6%（虚低：带结果一句的那一步比 summary 高 2.6px；10-10 换形，原「工具组」整组按 38 算）
   "card-user": 0.3, //         实测 p90 1.4% / 4.8%（地板去掉前 10.7% / 14.3%）
   // 🔴 这三条此前**不是常数不准，是地板把常数吃了**：常数 17/19/19 对真值 17.05/18.59/18.59
   //   本来只差 0.3%/2.2%/2.2%，地板一律顶成 24 ⇒ 落地误差停在 40.8%/29.1%/29.1%。
@@ -223,7 +223,7 @@ const EXCEEDS_DESIGN_GATE: string[] = [];
  *
  * # 射程（写清，别让人当成"估高全对"）
  *
- * - 对六个**常数驱动**的 class（retry / slash / bash-input / api-error / compact / tool-group），
+ * - 对六个**常数驱动**的 class（retry / slash / bash-input / api-error / compact / steps），
  *   登记值 **＝ 源码那个常数本身** ⇒ 常数被改小**当场红**（变异 M11/M12 实证）。
  * - 对三个**算出来**的 class（user / assistant / bash-output），登记的是它们**结构上的下界**
  *   （一行正文 / 卡头 / 输出头），⚠ **比今天实测的 min 松**（见每条的注释）——
@@ -238,7 +238,7 @@ const CLASS_MIN_EST: Record<string, { min: number; why: string }> = {
   "card-bash-input": { min: 19, why: "常数 19（同一套紧凑系 token）" },
   "card-api-error": { min: 60, why: "常数 60（抬头 · 下一步 · 原文折叠三行）" },
   "card-compact": { min: 38, why: "SUMMARY_H = 38（折叠 <details> 只剩 summary 行）" },
-  "card-tool-group": { min: 38, why: "SUMMARY_H = 38（同上）" },
+  "card-steps": { min: 38, why: "一步一行 SUMMARY_H = 38（收着的 <details> 只剩 summary；一条记录至少一步）" },
   // ── 算出来的：登记结构下界，⚠ 比今天语料实测的 min 松 ──
   "card-bash-output": {
     min: 19,
@@ -262,7 +262,7 @@ const PRETEXT_FREE = new Set([
   "card-bash-input",
   "card-bash-output",
   "card-compact",
-  "card-tool-group",
+  "card-steps",
 ]);
 
 describe("秤 2 · 金标准没过期（过期的秤比没有秤更坏）", () => {
@@ -821,7 +821,7 @@ describe("秤 2 · 悬案③：一屏门控的三段边界，换上实测值之�
 // 金样由真 Chromium 打（`tests/evidence/RENDER2-skel-run.ts`；读的是卡在流里占的位置 − 头 − 体），与本文件的秤 2 同一份语料。
 // ⚠ 买不到：WebKitGTK 那一个引擎没打（秤 2 两个都打了）；卡间距按语料里的邻居折叠，真会话里邻居不同会差几 px。
 describe("秤 2 · 骨架外框（RENDER2）", () => {
-  it("★ 四格 `SKEL_*` == 真浏览器里「位置 − 体」的中位数向上取整（user · assistant 含头 · 工具组 · 系统细条）", async () => {
+  it("★ 四格 `SKEL_*` == 真浏览器里「位置 − 体」的中位数向上取整（user · assistant 含头 · 几步卡的外距 · 系统细条）", async () => {
     const { SKEL_OUTER } = await import("../../../src/frontend/ui/height-estimate");
     const g = JSON.parse(readFileSync(resolve(__dirname, "../../evidence/RENDER2-skel-golden.json"), "utf8")) as {
       rows: Array<{ cls: string; slot: number; body: number }>;
@@ -839,7 +839,7 @@ describe("秤 2 · 骨架外框（RENDER2）", () => {
     expect({ ...SKEL_OUTER }).toEqual({
       user: of("card-user"),
       assistant: of("card-assistant"),
-      toolGroup: of("card-tool-group"),
+      steps: of("card-steps"),
       system: of("card-api-retry"),
     });
   });

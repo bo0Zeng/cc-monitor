@@ -322,7 +322,7 @@ pub(crate) fn launchable_kinds() -> Vec<&'static str> {
 pub enum ToolCard {
     /// 展开 ＝ 子会话（折叠卡里嵌着渲染子 agent 的记录）。
     Agent,
-    /// agent 在等用户决定（默认展开，不进工具组折叠）。
+    /// agent 在等用户决定（默认展开，不收成过程里的一步）。
     Interactive,
     /// 写类工具（参数按行级 diff 画）。
     Diff,

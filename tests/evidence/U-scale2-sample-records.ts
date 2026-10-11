@@ -483,8 +483,8 @@ function predictClass(rec: RawRecord): string {
   const hasText = blocks.some(
     (b) => b?.type === "text" && String(b.text ?? "").trim(),
   );
-  if (rec.type === "user") return hasText ? "card-user" : "tool-group";
-  return hasText ? "card-assistant" : "tool-group";
+  if (rec.type === "user") return hasText ? "card-user" : "card-steps";
+  return hasText ? "card-assistant" : "card-steps";
 }
 
 /** 结构指纹：用来证明「换完之后形状没变」。原记录与落盘记录必须逐项相同。 */
