@@ -23,7 +23,7 @@ describe("主窗口 tab 建卡的上下文", () => {
       retries: new Map(),
       fullRecord,
     } as unknown as Tab;
-    const ctx = tabRenderContext(tab, { runLabelOf: () => undefined }, false);
+    const ctx = tabRenderContext(tab, { runLabelOf: () => undefined, markNewRunCard: () => undefined }, false);
     expect(ctx.fullRecord).toBe(fullRecord);
   });
 });

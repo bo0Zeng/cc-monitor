@@ -4,6 +4,7 @@
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
 import { click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
 
@@ -325,8 +326,20 @@ export const MAIN_SCENES: Scene[] = [
   }, injectWorld),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
-    // 重试细条在那一轮的过程里（完成的轮默认收起）⇒ 先点开那一轮的过程行，再滚到细条。
-    const retry = await waitFor(".stream.active .card-api-retry");
+    // 重试细条在靠后那一轮里：卡只在视口附近建、完成的轮默认收起（折着的过程不建卡）⇒ 从底往上一屏一屏翻，
+    // 见到数着重试的那条过程行就点开，直到细条建出来。
+    const scroller = await until(() => document.querySelector<HTMLElement>(".stream.active"));
+    const retries = copyText("rsTurns.proc.retries", { n: "2" });
+    let retry: HTMLElement | null = null;
+    for (let k = 0; k < 60 && !retry; k++) {
+      retry = document.querySelector<HTMLElement>(".stream.active .card-api-retry");
+      if (retry) break;
+      const line = [...document.querySelectorAll<HTMLElement>(".stream.active .proc-line")].find((e) => e.textContent?.includes(retries) && e.getAttribute("aria-expanded") !== "true");
+      if (line) line.click();
+      else scroller.scrollTop -= scroller.clientHeight * 0.8;
+      await sleep(200);
+    }
+    if (!retry) throw new Error("翻遍了也没见到重试细条");
     const turn = retry.dataset.procOf;
     if (turn && retry.classList.contains("proc-hidden")) {
       document.querySelector<HTMLElement>(`.stream.active .proc-line[data-turn="${CSS.escape(turn)}"]`)?.click();

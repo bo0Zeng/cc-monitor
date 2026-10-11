@@ -63,12 +63,14 @@ export interface TabStreamHost {
   forkFrom(tab: Tab, uuid: string): void;
   /** 这个会话的运行表里那个运行叫什么（agent 来话的事件条起名用；表里没有 ⇒ `undefined`，用来话自带的名字）。 */
   runLabelOf(sid: string, run: string): string | undefined;
+  /** 一张派出卡刚建出来：照这个会话此刻的运行表标它（状态 · 窗口已开）。 */
+  markNewRunCard(sid: string, tool: string, card: HTMLElement): void;
 }
 
 /**
  * 一个 tab 建卡用的上下文（实时那一路三处共用：一行一行进 · 成批进 · 批末对账早到的结果）。`lazy` ＝ 走惰性高亮。
  */
-export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf">, lazy: boolean): RenderContext {
+export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf" | "markNewRunCard">, lazy: boolean): RenderContext {
   return {
     parentPath: tab.parentPath,
     speaker: speakerNameOf(tab.agent),
@@ -81,6 +83,7 @@ export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf
     stepWait: (call) => tab.pending.find((p) => p.id === call),
     retryOutcome: (id) => tab.retries.get(id),
     runLabelOf: (run) => host.runLabelOf(tab.sessionId, run),
+    onRunCard: (tool, card) => host.markNewRunCard(tab.sessionId, tool, card),
     // 出口省掉的正文展开那一下按骨架偏移取回那一行全文（查看器那一路同一处 `readRecordById`）。
     fullRecord: tab.fullRecord,
     lazy,

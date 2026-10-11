@@ -333,6 +333,20 @@ describe("TabManager 生命周期", () => {
     expect(after.projectDir).toBe("/root/proj");
   });
 
+  it("骨架 tab 先建、行后到：展开取回全文按回填的那份记录路径问（不是建骨架时那个空串）", async () => {
+    const asked: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      const a = args as { op?: string; payload?: number[] } | undefined;
+      if (cmd === "chan_call" && a?.op === "history-page") asked.push((JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? []))) as { path: string }).path);
+      return undefined;
+    });
+    tm.createSkeletonTab("sk2", "/root/proj", LOCAL_ORIGIN);
+    const tab = tm.ensureTab("sk2", null, "/fake/sk2.jsonl", LOCAL_ORIGIN);
+    tab.skeleton = { ledger: { uuidToSeq: new Map([["r1", 0]]), factsOf: () => ({ o: 0, n: 10 }) } } as unknown as typeof tab.skeleton;
+    await tab.fullRecord("r1").catch(() => null);
+    expect(asked).toEqual(["/fake/sk2.jsonl"]);
+  });
+
   // 会话里 shell 进了子目录：之后的记录 cwd 都是子目录，而界面只读尾巴 ⇒ 流里「见过的最早那条」是近期的一条。
   // 标题只认后端宣告的项目目录；后端不给（老后端）⇒ 退到 sid，不从行里猜。
   it("★ 项目目录只认宣告那一格：只读尾巴的流接上之后标题仍是项目名，不漂成子目录", () => {

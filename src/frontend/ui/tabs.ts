@@ -168,6 +168,12 @@ export class TabManager {
         const r = this.live.board.of(sid).find((x) => x.run === run);
         return r ? runLabel(r) : undefined;
       },
+      markNewRunCard: (sid, tool, card) => {
+        const r = this.live.board.of(sid).find((x) => x.tool === tool);
+        if (!r) return;
+        markRunCard(card, r.run, r.state, r);
+        markRunWindow(card, this.runWindows.has(`${sid}\u0000${r.run}`));
+      },
     });
   }
 
@@ -741,7 +747,11 @@ export class TabManager {
       branchFolder,
       pendingToolResults: new Map(),
       // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文（骨架还没接上 ⇒ 说清、下次再取）。
-      fullRecord: (id: string) => readRecordById(origin, sourcePath, this.store.tabs.get(sessionId)?.skeleton?.ledger ?? null, id),
+      // 机器与记录路径按展开那一刻的 tab 取：骨架 tab 建的时候路径还是空串，首条行才回填。
+      fullRecord: (id: string) => {
+        const t = this.store.tabs.get(sessionId);
+        return readRecordById(t?.origin ?? origin, t?.parentPath || sourcePath, t?.skeleton?.ledger ?? null, id);
+      },
       seenSeqs: new SeqSet(),
       window: new TailWindow(),
       skeleton: null,
