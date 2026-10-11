@@ -63,7 +63,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "就地 resume：外层只包那一行直路", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "s1" },
       container: { kind: "tmux", name: "cc-x", mode: "create" },
-    }), sendInto: true, ok: true, out: "tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case ${TMUX:-} in '') tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac" },
+    }), sendInto: true, ok: true, out: "tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case x${TMUX:-} in x) tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac" },
   { name: "identity（--ccm-sid）", caps: ALL_CAPS, ctx: base({ ccmSid: "sid-1" }),
     ok: true, out: "ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base" },
   { name: "自定义 launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: "mycc" }),

@@ -688,7 +688,7 @@ fn attach_uses_the_exact_match_target() {
     // `attach <名>` 写作 `--attach <名>`
     assert_eq!(
         printed(&["--attach", "cc-p1"]),
-        "case ${TMUX:-} in '') tmux -u attach -t '=cc-p1:';; *) tmux -u switch-client -t '=cc-p1:';; esac"
+        "case x${TMUX:-} in x) tmux -u attach -t '=cc-p1:';; *) tmux -u switch-client -t '=cc-p1:';; esac"
     );
 }
 
@@ -732,7 +732,7 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
     ];
     let mut got = Vec::new();
     for (what, rendered) in &joins {
-        let Some(at) = rendered.find("case ${TMUX:-} in") else {
+        let Some(at) = rendered.find("case x${TMUX:-} in") else {
             got.push(format!("{what}: 没有按在不在 tmux 里分开"));
             continue;
         };
@@ -1763,7 +1763,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
     // `--ccm-print` 吐的就是真跑那一行：在不在 tmux 里是配方，不是宿主状态。
     assert_eq!(
         render(&rejoin(false)),
-        "case ${TMUX:-} in '') tmux -u attach -t '=work:';; *) tmux -u switch-client -t '=work:';; esac"
+        "case x${TMUX:-} in x) tmux -u attach -t '=work:';; *) tmux -u switch-client -t '=work:';; esac"
     );
     assert_eq!(render(&rejoin(true)), "echo 'ccm-session=work'");
 }
@@ -2612,19 +2612,34 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
     let mut files = 0;
     let mut sources: Vec<(std::path::PathBuf, String)> = Vec::new();
     for dir in ["control/ccm", "control/launch_render"] {
-        sources.extend(guard_core::scan_tree!(&crate::guard_support::src_root().join(dir), &["rs"]));
+        sources.extend(guard_core::scan_tree!(
+            &crate::guard_support::src_root().join(dir),
+            &["rs"]
+        ));
     }
     let join_home = crate::guard_support::src_root().join("common/tmux_utf8.rs");
-    sources.push((join_home.clone(), std::fs::read_to_string(&join_home).expect("读不了 tmux_utf8.rs")));
+    sources.push((
+        join_home.clone(),
+        std::fs::read_to_string(&join_home).expect("读不了 tmux_utf8.rs"),
+    ));
     let mut source_tmux = 0;
     for (path, text) in &sources {
         files += 1;
         let (seen, b) = tmux_words_without_utf8_flag(&crate::guard_support::production_code(text));
         source_tmux += seen;
-        bad.extend(b.into_iter().map(|h| format!("{}: 手写了不带旗的 {h}", path.display())));
+        bad.extend(
+            b.into_iter()
+                .map(|h| format!("{}: 手写了不带旗的 {h}", path.display())),
+        );
     }
-    assert!(files >= 6, "源码那一面只扫到 {files} 份 —— 目录挪了，本条会空转着绿");
-    assert!(source_tmux >= 10, "源码那一面只量到 {source_tmux} 处 tmux —— 剥法或量具坏了，本条会空转着绿");
+    assert!(
+        files >= 6,
+        "源码那一面只扫到 {files} 份 —— 目录挪了，本条会空转着绿"
+    );
+    assert!(
+        source_tmux >= 10,
+        "源码那一面只量到 {source_tmux} 处 tmux —— 剥法或量具坏了，本条会空转着绿"
+    );
     assert!(
         bad.is_empty(),
         "渲给客户端的 tmux 子命令没带 -u：\n{}",

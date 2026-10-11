@@ -1451,7 +1451,10 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // agent 起来时若问「信任这个目录吗」（claude 首次进一个目录），由用户在会话里自己答：
     // 那是它的安全检查，收尾一个键都不替用户按（替它按 Enter 按中的是缺省那一项「不信任、退出」）。
     if !c.detach {
-        seq.push_str(&format!("; {}", crate::common::tmux_utf8::join_session(&c.name)));
+        seq.push_str(&format!(
+            "; {}",
+            crate::common::tmux_utf8::join_session(&c.name)
+        ));
     }
     if let Some(b) = &c.bus {
         seq.push_str(&format!(

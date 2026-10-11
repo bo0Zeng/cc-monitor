@@ -243,7 +243,7 @@ fn send_into_wraps_exactly_the_direct_line() {
         render(&s).unwrap(),
         format!(
             "tmux -u send-keys -t '=cc x:' '{direct}' Enter; \
-             case ${{TMUX:-}} in '') tmux -u attach -t '=cc x:';; *) tmux -u switch-client -t '=cc x:';; esac"
+             case x${{TMUX:-}} in x) tmux -u attach -t '=cc x:';; *) tmux -u switch-client -t '=cc x:';; esac"
         )
     );
     assert!(direct.starts_with("ccm --resume s1 -- "), "{direct}");
