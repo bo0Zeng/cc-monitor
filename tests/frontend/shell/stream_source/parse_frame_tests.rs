@@ -15,9 +15,7 @@ fn parses_hello_and_captures_build_id() {
             claude_dir: "/home/pi/.claude".to_string(),
             // `S4`：本样本无 `homes` 字段（= 今天所有已部署的后端）→ 空表 ⇒ 回退 `claude_dir`。
             homes: Vec::new(),
-            // F66：旧后端（本样本无 capabilities 字段）→ 空集（保守缺省）
-            capabilities: Vec::new(),
-            // U8a-2a：同理，无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
+            // U8a-2a：无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
             commands: Vec::new(),
             unavailable: vec![],
             uncancellable: vec![],
@@ -131,7 +129,7 @@ fn parses_hello_commands_across_the_three_shapes() {
         InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
         other => panic!("不是 hello：{other:?}"),
     }
-    // 坏后端：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 capabilities 口径）。
+    // 坏后端：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 commands 口径）。
     let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":"ping"}"#;
     match parse_frame(junk).expect("hello must parse") {
         InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
@@ -201,52 +199,6 @@ fn parses_reply_and_cancelled_field_by_field() {
 fn hello_missing_build_id_returns_none() {
     let line = r#"{"kind":"hello","v":1,"host_arch":"x86_64","claude_dir":"/c"}"#;
     assert!(parse_frame(line).is_err());
-}
-
-/// F66（#58③）wire 契约：hello 的 `capabilities` 字段。
-/// ① 缺字段（旧后端）→ 空集（向后兼容，保守缺省，同 §27 族）。
-/// ② 声明数组 → 原样解析（monitor 按此决定发哪些 flag）。
-/// ③ 非数组 / 元素非字符串 → 滤成空集，绝不 panic（宽容解析，§18）。
-#[test]
-fn hello_capabilities_backward_compat_and_declared() {
-    // ① 旧后端：无 capabilities → 空集
-    let old = r#"{"kind":"hello","v":1,"build_id":"p1e","host_arch":"x86_64","claude_dir":"/c"}"#;
-    match parse_frame(old).unwrap() {
-        InboundFrame::Hello { capabilities, .. } => {
-            assert!(capabilities.is_empty(), "旧后端无声明 → 空集");
-        }
-        _ => panic!("expected Hello"),
-    }
-    // ② 新后端：声明能力
-    let new = r#"{"kind":"hello","v":1,"build_id":"p1h","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg","tail-only"]}"#;
-    match parse_frame(new).unwrap() {
-        InboundFrame::Hello { capabilities, .. } => {
-            assert_eq!(
-                capabilities,
-                vec!["bg".to_string(), "tail-only".to_string()]
-            );
-        }
-        _ => panic!("expected Hello"),
-    }
-    // ③ 畸形 capabilities（非数组 / 混入非字符串）→ 不 panic，滤成空/仅字符串
-    let bad = r#"{"kind":"hello","v":1,"build_id":"p1x","host_arch":"x86_64","claude_dir":"/c","capabilities":"not-array"}"#;
-    match parse_frame(bad).unwrap() {
-        InboundFrame::Hello { capabilities, .. } => {
-            assert!(capabilities.is_empty(), "非数组 capabilities → 空集，不崩");
-        }
-        _ => panic!("expected Hello"),
-    }
-    let mixed = r#"{"kind":"hello","v":1,"build_id":"p1x","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg",42,null,"tail-only"]}"#;
-    match parse_frame(mixed).unwrap() {
-        InboundFrame::Hello { capabilities, .. } => {
-            assert_eq!(
-                capabilities,
-                vec!["bg".to_string(), "tail-only".to_string()],
-                "非字符串元素被滤掉，字符串保留"
-            );
-        }
-        _ => panic!("expected Hello"),
-    }
 }
 
 /// 「我这一版」的一个样值（判据里不读 `byte_table::my_backend_id`：两档都要判，与这棵树带没带字节无关）。

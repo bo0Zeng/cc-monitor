@@ -15,7 +15,7 @@ fn bad(what: &str) -> Fail {
 }
 
 fn now_ms() -> u64 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)

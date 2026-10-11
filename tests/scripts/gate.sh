@@ -189,12 +189,12 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
 #      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）；
 #    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
-#      · `clippy-backend` · `appbuild` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
+#      · `clippy-backend` · `appbuild` · `shotsshell` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
 GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile "
-GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
 gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
@@ -896,6 +896,12 @@ run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets
          bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
 run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上真编真链一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
+# ── `shotsshell`：截图台架的无头壳（例子 `ccm-shots-shell`，只在台架特性下编）编不编得过 ──
+# 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；从前没有一格编它，壳里它调的签名一改（如 `call_via` 多一参），
+# 要到跑截图台架才发现（proj10 · mg42 都撞上过）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
+# 与 `cargo` · `appbuild` 同一个 target 目录，增量编一次。
+run_gate shotsshell '不是数出来的数：截图台架那个无头壳（例子 `ccm-shots-shell`）在 Linux 上 dev 档真编真链一趟，只有绿/红两态，与台架 `pool.mjs` 同一条编法。⚠ 只编不跑：台架里它跑得对不对由截图台架自己判' \
+         bash -c 'cd src/frontend/shell && out=$(cargo build --features shots --example ccm-shots-shell 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "shotsshell: 1 passed"'
 
 # ── `winchk`：Windows 那半编不编得过 ──
 # 本机门禁跑在 Linux 上，`#[cfg(windows)]` 的代码根本不参与编译；这里按 `x86_64-pc-windows-gnu` 把它 check 一遍。
@@ -1273,8 +1279,8 @@ gate_lane 手机端
 #   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
 # 跑：ktlint · detekt（带类型解析）· Android Lint（`:app:lintDebug`，error 一条就红；warning 不拦）·
 #   各模块 JVM 单测（`:core-claude` · `:core-remote` 是纯 JVM 模块，要显式点）·
-#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）· `bridge/` 的 Python 金样测试。
-# 判：Gradle 与 pytest 退出码都是 0 ＋ 这一趟 test-results 里的条数 > 0（先清掉旧的 test-results；build cache 命中时 Gradle 照样还原它）。
+#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）。
+# 判：Gradle 退出码是 0 ＋ 这一趟 test-results 里的条数 > 0（先清掉旧的 test-results；build cache 命中时 Gradle 照样还原它）。
 # 不起模拟器：要设备的 androidTest 不在这里，入口是 `src/mobile/scripts/android-test.sh`。
 # 不进无网沙箱：Gradle 头一趟要下依赖；单测里只起 `/bin/sh`、全落临时目录，不连任何口、不碰 tmux。
 gate_mobile() {
@@ -1288,12 +1294,11 @@ gate_mobile() {
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
       :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :app:assembleRelease || exit $?
-    PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider bridge/tests || exit $?
   ) || return $?
   n="$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
-  printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · Android Lint · release 构建 · bridge 金样也都绿）\n' "${n:-0}"
+  printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · Android Lint · release 构建也都绿）\n' "${n:-0}"
 }
-run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合计）；同一格还跑 ktlint · detekt · Android Lint · release 构建（R8）· bridge 的 Python 金样，那几步只有绿/红。⚠ 不起模拟器：要设备的 androidTest 不在这里' \
+run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合计）；同一格还跑 ktlint · detekt · Android Lint · release 构建（R8），那几步只有绿/红。⚠ 不起模拟器：要设备的 androidTest 不在这里' \
          gate_mobile
 
 # 各道同时起跑、等齐，再按上面的顺序逐格判。

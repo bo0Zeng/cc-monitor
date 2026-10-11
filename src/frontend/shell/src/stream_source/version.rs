@@ -39,37 +39,6 @@ pub(super) fn forget_verified_build(origin: &str) {
     }
 }
 
-/// monitor 认识的能力 token：契约 crate 那一份（后端 `CAPABILITIES` 取的也是它）。与 [`decide_stream_flags`] 是同一份事实
-/// （`known_capability_tokens_match_decide_stream_flags` 钉住）；有它才答得出「backend 声明了一个我们不认识的能力」（漂移记账的一个面）。
-const KNOWN_CAPABILITY_TOKENS: &[&str] = deploy_contract::STREAM_CAPABILITIES;
-
-/// hello 里不认识的能力 token 记一笔，记在 `origin`（那台远端）名下。只记账（不认识的 token 本来就按保守缺省忽略）。
-pub(super) fn note_unknown_capabilities(origin: &crate::origin::Origin, capabilities: &[String]) {
-    for t in capabilities {
-        if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
-            crate::drift_ledger::record(origin, &format!("capabilities:{t}"));
-        }
-    }
-}
-
-/// 流模式门控（纯函数）：从后端声明的能力 token 决定发哪两位 flag `(with_bg, tail_only)`。
-/// - 空集（旧 backend / 尚未确认）→ `(false, false)`：全降级，功能退化但连接正常。
-/// - `tail_only` 需后端声明 `"tail-only"`；`with_bg` 需后端声明 `"bg"` 且用户开了 `show_bg`。
-/// §26 死循环护栏靠声明本身保住：旧后端把未知 flag 当一次性查询 → 退出 → 无 hello → 重连死循环；只有会先剥离该 flag 的后端才声明对应能力。
-/// 改它会连带 [`should_upgrade_reconnect`]（防无限重连的收敛判据）。
-pub(super) fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
-    let has = |c: &str| capabilities.iter().any(|t| t == c);
-    (show_bg && has("bg"), has("tail-only"))
-}
-
-/// 防无限重连的收敛判据（纯函数，穷举单测）：收到后端能力声明后，是否值得重连一轮升级流模式。`cur` = 本轮实际发的 `(with_bg, tail_only)`；
-/// `next` = 据后端自报能力算出的下一轮 flag。仅当下一轮会开一个本轮关着的 flag 才重连 —— 每次重连严格增开 flag ⟹ 最多 2 轮收敛。
-/// 记账 `hello_confirmed=Some(D)` 之后下一轮 `caps=D` ⟹ `next==cur` ⟹ 恒 `false`。两项都写全 `&& !cur_*`，收敛不变式在函数内自洽、可独立穷举测试。
-pub(super) fn should_upgrade_reconnect(cur: (bool, bool), next: (bool, bool)) -> bool {
-    let ((cur_bg, cur_tail), (next_bg, next_tail)) = (cur, next);
-    (next_tail && !cur_tail) || (next_bg && !cur_bg)
-}
-
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/coldstart_preflight_guard.rs"]
 mod coldstart_preflight_guard;
@@ -90,15 +59,6 @@ mod stream_flag_gate_tests;
 /// 类型用 `u64` 而非后端侧的 `u32`：JSON 数字无符号宽度之分，`parse_frame` 用
 /// `as_u64()` 读 `v`，这里与之同宽以便直接比较，无需转换。
 pub(super) const EXPECTED_PROTO_V: u64 = 1;
-
-/// monitor 内嵌 backend 声明的能力 token（契约 crate `STREAM_CAPABILITIES`，后端 hello 交的是同一份）。部署侧确认「那台装的就是手上这一版」时，
-/// 第一次连接还没收到 hello，用它预知后端能力、直接发对应 flag；收到真实 hello 后一律以 backend 自报的为准（`hello_confirmed`）。
-pub(super) fn embedded_backend_capabilities() -> Vec<String> {
-    deploy_contract::STREAM_CAPABILITIES
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
-}
 
 /// 版本协商结论（纯函数 [`negotiate_version`] 的产物）。
 #[derive(Debug, Clone, PartialEq, Eq)]

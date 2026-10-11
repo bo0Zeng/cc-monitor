@@ -3244,17 +3244,21 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
             );
         }
     }
-    guard_core::find_pinned(&body_of(&host, "fn attach_line("), r#"{\"attach\":true}\n"#)
-        .expect("attach 行不是「我要流」那一形（恰好一处）");
     assert_eq!(
-        crate::local_backend_host::attach_line(None),
+        crate::local_backend_host::attach_line(None, None),
         "{\"attach\":true}\n"
     );
     assert_eq!(
-        crate::local_backend_host::attach_line(Some("Asia/Shanghai")),
+        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None),
         "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
         "看的这一台的时区跟在旁边一格（后端 `listen::attach_flags` 读 `tz`）"
     );
+    // 本机这条要全量（`session_added.pid` 给 ↗ 绑窗口）⇒ 不交声明。
+    guard_core::find_pinned(
+        &host,
+        "attach_line(host_core::viewer_tz().as_deref(), None)",
+    )
+    .expect("本机常驻那条 attach 行带了声明");
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),

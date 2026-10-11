@@ -50,7 +50,7 @@ class BackendFeedTest {
                 val d = remote.duplexes.removeFirst()
                 d.push(hello)
                 d.push("""{"attach":"ok"}""")
-                when (val a = FrameClient.attach(d, listOf("--tail-only"), s, HANDSHAKE_MS, "n${remote.opens}", "UTC") {}) {
+                when (val a = FrameClient.attach(d, s, HANDSHAKE_MS, "n${remote.opens}", "UTC") {}) {
                     is AttachOutcome.Attached -> LinkOutcome.Up(a.client)
                     else -> LinkOutcome.Attach(a)
                 }
@@ -174,6 +174,22 @@ class BackendFeedTest {
             f.onForeground()
             runCurrent()
             assertEquals("断着回前台当场接，不等退避", 2, remote.opens)
+        }
+
+    @Test
+    fun `line 帧原样往下给：sid · 偏移 · 记录，按到达顺序，一条不丢`() =
+        runTest {
+            val remote = Remote()
+            val d = remote.next()
+            val f = feed(remote, MutableStateFlow(TOKEN_1))
+            val got = mutableListOf<RecordLine>()
+            backgroundScope.launch { f.lines.collect { got += it } }
+            f.ensure()
+            runCurrent()
+            repeat(300) { i -> d.push("""{"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":$i,"byte_offset":${i * 10},"record":{"id":"r$i","t":"said"}}""") }
+            runCurrent()
+            assertEquals((0 until 300).map { it * 10L }, got.map { it.byteOffset })
+            assertEquals("r299", got.last().record?.str("id"))
         }
 
     @Test

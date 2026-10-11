@@ -38,7 +38,7 @@ fn added(sid: &str) -> Ev {
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     }
     .into()
 }
@@ -156,7 +156,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     });
     assert!(!l.awaits_observation());
     let (pass, extra) = l.on_frame(&Frame::SessionRemoved {

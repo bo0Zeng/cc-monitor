@@ -506,10 +506,10 @@ fn every_origin_taking_command_splits_local_through_route() {
         total_cmds >= 45, // 50 → 45：会话正文四条退役（今天 47）
         "只摘到 {total_cmds} 条 `#[tauri::command]` —— 抽取器坏了，本条在空转"
     );
-    // 反向自检②：左边那个人群不许是空集 —— 步 12·C 落地之后它至少有 5 条。
+    // 反向自检②：左边那个人群不许是空集 —— 步 12·C 落地之后它至少有 5 条；10-10 漂移账那一条随 hello 的能力 token 删了 ⇒ 4 条。
     assert!(
-        takes_origin.len() >= 5,
-        "吃 `Origin` 的命令只数到 {} 条（现打应 ≥5）—— 人群塌了，本条在空转：{takes_origin:?}",
+        takes_origin.len() >= 4,
+        "吃 `Origin` 的命令只数到 {} 条（现打应 ≥4）—— 人群塌了，本条在空转：{takes_origin:?}",
         takes_origin.len()
     );
     // ★ 有牙的那条：两向集合相等。

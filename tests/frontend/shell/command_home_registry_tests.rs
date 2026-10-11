@@ -151,12 +151,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("open_log_dir", Own::Log, "日志"),
     (
-        "drift_ledger_report",
-        Own::Log,
-        "漂移账里 monitor 天生观测的两面（未登记的会话 kind · 后端 hello 里不认识的能力 token）—— 诊断；\
-         记录那两面随解析进了那台后端（`drift-report`，界面经通道问）",
-    ),
-    (
         "list_remote_mcp_origins",
         Own::Config,
         "已配置且启用的远端标签：读的是 monitor 自己的配置（名字里的 mcp 是第一个用户留下的）",
@@ -248,7 +242,7 @@ const PENDING: &[(&str, &str)] = &[
     // `config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
     //   monitor 只答它自己那台那几行的事实（`footprint_client_facts`，进「monitor 自己的事」）。
     // 漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
-    //   monitor 天生观测的那一面（hello 里不认识的能力 token）留在 `drift_ledger_report`，进「monitor 自己的事」（日志）。
+    //   monitor 自己那本（hello 里不认识的能力 token）随 hello 的 `capabilities` 一起删了。
     // 会话正文四条（查看器整份读那一条 · `load_subagent` · `read_session_range` ·
     //   `read_session_lines`〔散文墓碑〕）迁了：记录解释进了后端，界面经通道直问那台后端（`history-page` · `history-subagent` ·
     //   `history-lines`，`src/frontend/ui/record-reads.ts`）。

@@ -496,7 +496,7 @@
   border: 2px solid var(--border-soft);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: tab-focus-spin 0.8s linear infinite;
+  animation: tab-focus-spin var(--dur-spin) linear infinite;
 }
 
 @keyframes tab-focus-spin {
@@ -734,9 +734,9 @@
   cursor: pointer;
   opacity: 0;
   transition:
-    opacity 0.12s ease,
-    color 0.12s ease,
-    background 0.12s ease;
+    opacity var(--dur-press) ease,
+    color var(--dur-press) ease,
+    background var(--dur-press) ease;
 }
 
 .has-branch-btn:hover .viewer-branch-btn,
@@ -931,8 +931,8 @@
   padding: 2px 8px;
   border-radius: var(--radius-s);
   transition:
-    color 120ms,
-    background 120ms;
+    color var(--dur-press),
+    background var(--dur-press);
 }
 
 .code-copy:hover {
@@ -2191,9 +2191,9 @@
   cursor: pointer;
   opacity: 0.75;
   transition:
-    opacity 0.12s,
-    color 0.12s,
-    border-color 0.12s;
+    opacity var(--dur-press),
+    color var(--dur-press),
+    border-color var(--dur-press);
 }
 
 .status-cmdk:hover {
@@ -2265,7 +2265,7 @@
 .branch-fold-arrow {
   display: inline-flex;
   color: var(--text-faint);
-  transition: transform 150ms ease;
+  transition: transform var(--dur-float-in) ease;
   transform: rotate(0deg);
 }
 
@@ -2281,7 +2281,7 @@
 .branch-fold-body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 200ms ease;
+  transition: grid-template-rows var(--dur-expand) ease;
 }
 
 .branch-fold-wrap.expanded .branch-fold-body {
@@ -2381,7 +2381,7 @@
 }
 
 .search-hit-flash {
-  animation: search-hit-flash 1.5s ease-out;
+  animation: search-hit-flash var(--dur-flash) ease-out;
   border-radius: var(--radius-m);
 }
 

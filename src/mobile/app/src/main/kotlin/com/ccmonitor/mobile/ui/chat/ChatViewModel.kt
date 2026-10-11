@@ -1,8 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
 import androidx.lifecycle.ViewModel
-import com.ccmonitor.mobile.core.claude.bridge.BridgeFrame
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -16,13 +14,9 @@ class ChatViewModel(
 ) : ViewModel() {
     val state: StateFlow<ChatUiState> get() = session.state
 
-    fun start(
-        frames: Flow<BridgeFrame>,
-        smooth: Boolean = true,
-        prompt: String? = null,
-    ) = session.start(frames, smooth, prompt)
-
-    fun attachHistoryPaging(loader: suspend () -> List<BridgeFrame>?) = session.attachHistoryPaging(loader)
+    init {
+        session.open()
+    }
 
     fun loadOlder() = session.loadOlder()
 
@@ -31,19 +25,4 @@ class ChatViewModel(
     fun retry(localId: String) = session.retry(localId)
 
     fun stop() = session.stop()
-
-    /** 把下行重新接上，见 [ChatSession.reattach]。 */
-    fun reattach(
-        frames: Flow<BridgeFrame>,
-        smooth: Boolean = true,
-    ) = session.reattach(frames, smooth)
-
-    /** 开屏与「重新接上内容」共用的入口，见 [ChatSession.openOrReattach]。 */
-    fun openOrReattach(
-        frames: Flow<BridgeFrame>,
-        smooth: Boolean = true,
-    ) = session.openOrReattach(frames, smooth)
-
-    /** 起管道失败也要说出来，与「下行断了」走同一条通道，见 [ChatSession.reportStartFailure]。 */
-    fun reportStartFailure(reason: String) = session.reportStartFailure(reason)
 }

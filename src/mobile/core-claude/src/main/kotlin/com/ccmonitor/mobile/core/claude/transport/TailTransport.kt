@@ -53,9 +53,6 @@ class TailTransport(
          * 2. `2>/dev/null`：sshj 的 stderr 与 stdout 共用同一个通道窗口，`tail -F` 在文件不存在时持续往 stderr
          *    刷重试信息，不读就会耗尽窗口、把 stdout 一起拖停；流式 `exec` 读不了 stderr，只能丢弃。
          * 3. 重连前先 [killStaleCommand] 掉自己上次那条：`timeout` 只保证最终回收，这条是立刻回收。
-         *
-         * 注意：管道里那条 `tail -f in.ndjson` 不能套 `timeout`。它跑在 tmux 里、就是要常驻，
-         * 套上等于定时杀掉正在进行的对话。区别在跑在 SSH exec 上还是跑在 tmux 里。
          */
         fun tailCommand(
             jsonlPath: String,

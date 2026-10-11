@@ -83,6 +83,11 @@ path = "../../tests/benches/s7_history_read.rs"
 harness = false
 test = true
 
+[features]
+# 截图台架那一档（`tests/shots/real/pool.mjs` 编）：「现在」从台架交的时刻接着走（`common::time::shots_clock`）。
+# 发版 / CI / 门禁里不许开（判据 `one_clock_guard` · 壳那一侧 `shots_feature_guard_tests::s3`）。
+shots = []
+
 [dependencies]
 # Versions pinned to whatever ../frontend/shell/Cargo.lock already resolved so the
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,

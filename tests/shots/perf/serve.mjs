@@ -28,7 +28,7 @@ const injectFake = {
   },
 };
 
-// 真后端池（`../real/pool.mjs`）：`REAL_OPS` 那几条帧命令由它答；二进制要先编好（`cd src/backend && cargo build`）。
+// 真后端池（`../real/pool.mjs`）：`REAL_OPS` 那几条帧命令由它答；二进制要先编好（`cd src/backend && cargo build --features shots --target-dir ../../.build/backend-shots`，同截图台架那一份）。
 const pool = backendPool({ repo, sandbox: process.env.CCM_SHOTS_SANDBOX ?? path.join(repo, ".build/perf-sandbox") });
 process.on("exit", () => pool.close());
 

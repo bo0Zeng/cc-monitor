@@ -74,6 +74,9 @@ fn without(o: &Map<String, Value>, key: &str) -> String {
     Value::Object(o).to_string()
 }
 
+/// 后端恒写、出口在流的声明里能去掉的格（`kind`, 格）。
+const OMITTABLE: &[(&str, &str)] = &[("session_added", "pid")];
+
 /// ② 每一行解得出、解成那一种；必填 == 最少格里的格（删哪一格都判形状不对），全格多出来的格删了照样解得出。
 #[test]
 fn every_golden_row_parses_and_exactly_the_minimal_fields_are_required() {
@@ -88,7 +91,18 @@ fn every_golden_row_parses_and_exactly_the_minimal_fields_are_required() {
     let pairs = golden_pairs();
     let mut required = 0usize;
     for (kind, (full, min)) in &pairs {
-        for key in min.keys().filter(|k| *k != "kind") {
+        // 恒在、但出口能在声明里去掉的格（远端那条流去掉 `session_added.pid`）：去掉了照样解得出。
+        for key in min
+            .keys()
+            .filter(|k| OMITTABLE.contains(&(kind.as_str(), k.as_str())))
+        {
+            parse_frame(&without(min, key))
+                .unwrap_or_else(|e| panic!("`{kind}` 去掉声明可去的格 `{key}` 就解不出了：{e}"));
+        }
+        for key in min
+            .keys()
+            .filter(|k| *k != "kind" && !OMITTABLE.contains(&(kind.as_str(), k.as_str())))
+        {
             required += 1;
             match parse_frame(&without(min, key)) {
                 Err(Unread::BadShape { kind: k, .. }) if k == *kind => {}

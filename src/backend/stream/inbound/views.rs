@@ -103,6 +103,66 @@ pub(crate) fn plan_for(cmd: &str, view: &Value) -> Result<Plan, Fail> {
     })
 }
 
+/// 推送帧 kind → 帧里成品住的那几处（同 [`PLACES`] 的写法；空串 ＝ 整帧就是那件成品）。这条流的声明只许点这几件。
+pub(crate) const STREAM_PLACES: &[(&str, &[(&str, &str)])] = &[
+    ("line", &[("record", "record")]),
+    ("session_added", &[("", "session_added")]),
+    ("session_status", &[("", "session_status")]),
+    ("session_state", &[("", "session_state")]),
+    ("session_removed", &[("", "session_removed")]),
+];
+
+/// **一条流的出口声明**（attach 行的 `view` · 流模式起参 `--view`）：与请求信封的 `view` 同一套词、同一处解（[`parse_view`]）、
+/// 同一处裁（[`project_reply`]）；只许点推送帧里住着的那几件成品（[`STREAM_PLACES`]）。应答不受它管（应答各按各的请求信封）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamView(View);
+
+impl StreamView {
+    /// 解、校验。缺 / `null` ⇒ `Ok(None)`（全量）；认不出 · 点了流上不出的成品 ⇒ `Err(那几处)`。
+    pub fn parse(v: &Value) -> Result<Option<StreamView>, String> {
+        let Some(view) = parse_view(v)? else {
+            return Ok(None);
+        };
+        let stray: Vec<&str> = view
+            .products()
+            .into_iter()
+            .filter(|p| {
+                !STREAM_PLACES
+                    .iter()
+                    .any(|(_, places)| places.iter().any(|(_, q)| q == p))
+            })
+            .collect();
+        if !stray.is_empty() {
+            return Err(format!(
+                "view names {} but the stream carries record, session_added, session_status, session_state, session_removed",
+                stray.join(", ")
+            ));
+        }
+        Ok(Some(StreamView(view)))
+    }
+
+    /// 这一帧（已序列化成一团）照声明裁好。帧的 `kind` 不受裁（挑格只挑成品的格，不挑帧的标签）。
+    pub fn apply(&self, frame: &mut Value) {
+        let Some(kind) = frame
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            return;
+        };
+        let Some((_, places)) = STREAM_PLACES.iter().find(|(k, _)| *k == kind) else {
+            return;
+        };
+        if !places.iter().any(|(_, q)| self.0.products().contains(q)) {
+            return;
+        }
+        project_reply(frame, places, &self.0);
+        if let Some(o) = frame.as_object_mut() {
+            o.insert("kind".to_string(), Value::String(kind));
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/stream/views_tests.rs"]
 mod tests;

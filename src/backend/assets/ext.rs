@@ -1000,7 +1000,7 @@ fn backup_slot(home: &Path, kind: &str, name: &str, now_ms: u128) -> (String, St
 }
 
 fn now_ms() -> u128 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0)
