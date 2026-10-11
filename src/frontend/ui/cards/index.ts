@@ -775,7 +775,7 @@ function injectOrBuildToolResult(
   const host = ctx.toolUseElements.get(block.for);
   // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
   // 正文被省掉了 ⇒ 派出卡里先写核心给的预览（展开那张卡时它自己读那个子运行的记录）。
-  if (host && settleRunCard(host, text ?? preview, block.isError === true, facts.results[block.for]?.chars ?? 0)) return null;
+  if (host && settleRunCard(host, text ?? preview, block.isError === true, facts.results[block.for]?.chars ?? 0, facts.results[block.for]?.kind)) return null;
   // 提问 / 计划答了之后：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
   const answered = facts.results[block.for];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {
@@ -881,12 +881,6 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
     if (reInjected === null) {
       // 宿主卡必须在 remove **之前**取(摘除后 closest 断链)
       const host = element.closest<HTMLElement>(".card-steps");
-      // fallback 所在那张卡是它那条记录的（`data-id`）：记录的落点跟着搬到注入出来的结果区块上（`data-member-id`，查找 / 大纲跳得到）
-      const member = host?.dataset.id;
-      if (member) {
-        const inline = ctx.toolUseElements.get(toolUseId)?.querySelector<HTMLElement>(".block-tool-result-inline");
-        if (inline) inline.dataset.memberId = member;
-      }
       // 注入成功 → 删除原 fallback
       element.remove();
       toDelete.push(toolUseId);

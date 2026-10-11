@@ -731,6 +731,22 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub chars: Option<u32>,
+    /// 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub kind: Option<ResultKind>,
+}
+
+/// 派出子运行那次调用拿到的结果是哪一种（各家的格式知识，适配层判；界面只照它画）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub enum ResultKind {
+    /// 后台派出当场回的「已启动」回执：子运行还在跑，这不是它交回的东西；收场看运行表。
+    Launched,
+    /// 子运行交回的结果（前台派出那次调用拿到的结果）。
+    Handback,
 }
 
 /// 耗时那一截的占位（出口填）。
@@ -1170,6 +1186,19 @@ pub(crate) struct TextFace {
     pub(crate) queued: fn(&serde_json::Value) -> Option<String>,
     /// 一个工具结果块（＋ 记录级的结构化结果）⇒ 结果一句（[`StepResult`]：失败 · 被拒 · 数 · 提问与计划答了什么）。
     pub(crate) result: fn(&serde_json::Value, Option<&serde_json::Value>) -> StepResult,
+    /// 一条已解析的记录在消息流里落在哪张卡上（[`Lands`]）：查找 · 搜索的单位就是流里画的那几张卡。
+    pub(crate) lands: fn(&serde_json::Value) -> Lands,
+}
+
+/// 一条记录在消息流里落在哪（[`TextFace::lands`]，判法是各家的格式知识；界面照它跳、不自己推）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Lands {
+    /// 自己那张卡。
+    Own,
+    /// 流里不画它（代理那一侧自动写的应答之类）⇒ 不搜、不列。
+    Nowhere,
+    /// 收在这次工具调用（调用 id）画成的那一块里：工具结果流里不自己成卡（派出子运行的结果收在派出卡里）。
+    InTool(String),
 }
 
 /// `kind` 那一家的文本面。
@@ -1213,6 +1242,11 @@ pub(crate) fn step_result_of(
         },
         |t| (t.result)(block, tur),
     )
+}
+
+/// `kind` 那一家说这条记录在流里落在哪。那一家答不了 ⇒ 自己那张卡。
+pub(crate) fn lands_of(kind: &str, v: &serde_json::Value) -> Lands {
+    text_face(kind).map_or(Lands::Own, |t| (t.lands)(v))
 }
 
 /// 人在这条记录里说的话（[`UserText::speech`]）；不是人说的 ⇒ `None`。

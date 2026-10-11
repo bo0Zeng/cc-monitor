@@ -393,15 +393,6 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await sleep(500);
   }),
-  panel("panel-find-missing", "会话内查找 · 跳到找不到的那条", "选中最后一条（那张卡不在这份会话的流里）：那一行下面写一句", async () => {
-    await mainReady(ALL_TABS);
-    await key("f", { ctrl: true });
-    await waitFor("[data-role=find-input]");
-    await type("[data-role=find-input]", "重试");
-    await sleep(700);
-    await key("ArrowUp");
-    await sleep(700);
-  }),
   panel("panel-outline", "大纲", "Ctrl+F 面板的「大纲」页：本会话里你说过的每一句", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });

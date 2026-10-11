@@ -47,6 +47,7 @@ impl ScanMap {
     pub(crate) fn scan_with<R: std::io::BufRead>(
         r: R,
         len: u64,
+        kind: &str,
         chain: Option<fn(&str) -> Option<crate::agents::mainline::ChainFact>>,
     ) -> std::io::Result<ScanMap> {
         use std::io::BufRead as _;
@@ -73,6 +74,7 @@ impl ScanMap {
             if counted {
                 map.starts.push(start);
                 map.index.push(super::history_query::index_row_of(
+                    kind,
                     v.as_ref(),
                     start,
                     read as u64,
@@ -273,8 +275,9 @@ impl RecordScans {
             f
         };
         let chain = crate::agents::record_face_of(path).and_then(|f| f.chain);
+        let kind = crate::agents::record_kind_of(path).unwrap_or_default();
         let scanned =
-            ScanMap::scan_with(std::io::BufReader::new(file), stamp.0, chain).map(Arc::new);
+            ScanMap::scan_with(std::io::BufReader::new(file), stamp.0, kind, chain).map(Arc::new);
         {
             let mut g = self.lock();
             g.flights.retain(|(p, _)| p != path);

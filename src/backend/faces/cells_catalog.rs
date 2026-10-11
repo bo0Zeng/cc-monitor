@@ -816,7 +816,7 @@ mod specimens {
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
-        SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
+        ResultKind, SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
     };
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
@@ -915,6 +915,7 @@ mod specimens {
             timed: Some(Words(s("{dur}"))),
             preview: some("p"),
             chars: Some(1),
+            kind: Some(ResultKind::Handback),
         }
     }
 

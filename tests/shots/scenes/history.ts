@@ -5,7 +5,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import { defaultWorld, LOCAL } from "../fake/world";
 import { putQuota, type QuotaSpec } from "../disk";
-import { SEARCH_WORD } from "../fake/history";
+import { codexRolloutRel, codexSaidRollout, SEARCH_WORD } from "../fake/history";
 import { byText, click, key, mainReady, sleep, type, waitFor } from "./helpers";
 
 const ALL_TABS = 7;
@@ -200,6 +200,21 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await byText('.history-view [role="option"]', "Codex"));
     await sleep(900);
   }),
+  {
+    ...hist("history-19-codex-said", "历史 · 说过话的 Codex 会话", "点开说过一轮话的 Codex 会话：消息流里是你说的那一句和它回的那一句，底行写条数（骨架照 Codex 那一家的认法判哪几行进界面）", async () => {
+      await openHistory();
+      await click(await byText('.history-view [role="option"]', "Codex"));
+      await waitFor(".session-viewer [data-id]");
+      await sleep(600);
+    }),
+    world: () => {
+      const w = defaultWorld();
+      const now = Date.now();
+      const d = w.disk[LOCAL];
+      w.disk[LOCAL] = { ...d, files: { ...d.files, [codexRolloutRel(now)]: codexSaidRollout(now) } };
+      return w;
+    },
+  },
   hist("history-09-said", "历史 · 你说过的话", "查看器工具行「你说过的话 · N ▾」：浮层列出你说过的每一句，当前读到的那句高亮", async () => {
     await openHistory();
     await click(await row(0));

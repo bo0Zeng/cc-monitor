@@ -299,11 +299,11 @@ function whoOf(kind: string): string {
 export const HITS_SHOWN = 3;
 
 /** 内容搜索的一块：会话行 ＋ 前几处命中 ＋「+N 处 ▸」。 */
-export function hitsBlock(row: HTMLElement, sh: SessionHits, open: (uuid: string | null) => void): HTMLElement {
+export function hitsBlock(row: HTMLElement, sh: SessionHits, open: (hit: Hit | null) => void): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvHits;
   el.appendChild(row);
-  for (const hit of sh.hits.slice(0, HITS_SHOWN)) el.appendChild(hitLine(hit, () => open(hit.uuid)));
+  for (const hit of sh.hits.slice(0, HITS_SHOWN)) el.appendChild(hitLine(hit, () => open(hit)));
   const more = sh.hitCount - Math.min(sh.hits.length, HITS_SHOWN);
   if (more > 0) {
     const m = document.createElement("button");

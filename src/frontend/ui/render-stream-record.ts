@@ -192,7 +192,7 @@ export function renderContentRecord(
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
   const tRender = probe ? performance.now() : 0;
-  markMemberUuids(message, ctx); // 在秤 1 的 render 段之外（那一段只夹 renderMessage）
+  markToolAnchors(message, ctx); // 在秤 1 的 render 段之外（那一段只夹 renderMessage；秤 2 的 DOM 指纹也只认它的产物）
 
   switch (result.kind) {
     case "skip": {
@@ -251,8 +251,9 @@ export function renderContentRecord(
       const tMount = probe ? performance.now() : 0;
 
       // 真用户输入触发回调（让 TabManager 自动切 Tab）。排队消息也算：用户刚插了话，多半正等着看回应。
+      // 只认**刚写进来的**：补历史带来的旧记录（载荷 `catch_up`，monitor 按会话宣告那一刻的行数分的）里人说过的话不是刚敲的。
       // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
-      if ((message.t === "said" || message.t === "queued") && saidByHuman(message.who.speaker.kind)) {
+      if (payload.catch_up !== true && (message.t === "said" || message.t === "queued") && saidByHuman(message.who.speaker.kind)) {
         sink.onRealUserInput?.(payload.session_id);
       }
       if (probe) {
@@ -298,19 +299,17 @@ export function renderContentRecord(
 }
 
 /**
- * **落点标记**：一条记录若没有自己的卡（工具结果被注入进它那个工具调用的单元里），就在它真正落下的那一块上记 `data-member-id`，
- * 会话内查找 / 大纲命中它时 `revealCard` 找得到。
- * - said 记录里的工具结果块：注入到了哪个工具调用单元的结果区块，就记在那个区块上。
- * 不用 `data-id`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
- * 后者的产物是秤 2 金标准的 DOM 指纹，落点是管线的事。
+ * **落点标记**：一次工具调用画成的那一块记 `data-tool`（调用 id）。查找 · 搜索的命中落在哪次调用的卡里是核心说的
+ * （命中的 `tool`，`search_query.rs`），`revealCard` 按它找这一块；调用那一块还没到、结果先画成独立一条的，那一条也记
+ * （收尾对账注入之后它被摘掉，落到调用那一块上）。放在管线这一层、不放进 `renderMessage`：后者的产物是秤 2 金标准的 DOM 指纹。
  */
-function markMemberUuids(record: LineRecord, ctx: RenderContext): void {
-  const id = record.id;
-  if (record.t !== "said") return;
+function markToolAnchors(record: LineRecord, ctx: RenderContext): void {
+  if (record.t !== "reply" && record.t !== "said") return;
   for (const b of record.blocks) {
-    if (b.type !== "tool_result") continue;
-    const inline = ctx.toolUseElements.get(b.for)?.querySelector<HTMLElement>(".block-tool-result-inline");
-    if (inline) inline.dataset.memberId = id;
+    const id = b.type === "tool_use" ? b.id : b.type === "tool_result" ? b.for : null;
+    if (id === null) continue;
+    const el = ctx.toolUseElements.get(id) ?? ctx.pendingToolResults?.get(id)?.element;
+    if (el) el.dataset.tool = id;
   }
 }
 

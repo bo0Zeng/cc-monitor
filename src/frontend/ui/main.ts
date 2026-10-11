@@ -831,6 +831,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.warn("[events] backend_machines 失败，只订本机的会话流：", e);
   }
+  // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
+  tabs.setMachines(machines as Origin[]);
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({

@@ -321,6 +321,7 @@ describe("重启后各台都报完了、组员一个都没回来的组不留空�
       ["late", "h"],
     ]);
     (store.tabs.get("a") as Tab).group = "h";
+    tm.setMachines([LOCAL_ORIGIN, "pi" as never]);
     tm.markOriginSeen(LOCAL_ORIGIN);
     tm.markOriginSeen("pi" as never);
     expect(prefs.collections.map((c) => c.id), "各台各自报完不算：等壳那一刻").toEqual(["g", "h"]);
@@ -328,6 +329,42 @@ describe("重启后各台都报完了、组员一个都没回来的组不留空�
     expect(prefs.collections.map((c) => c.id)).toEqual(["h"]);
     expect([...prefs.savedGroupOf]).toEqual([]);
     expect(document.querySelectorAll(".tab-group")).toHaveLength(1);
+  });
+});
+
+describe("「各台都报完」先于某台自己那几格到：那台的组员不算没回来（组不丢）", () => {
+  /**
+   * 每台一条会话流：壳在最后报完的那一台的流上说「各台都报完」（`listed.all`），别的台那条流上它自己的宣告与「报完了」可能还在路上。
+   * 从前那一刻就把还没建出 tab 的组员当「不会再来了」收掉 ⇒ 那几个 tab 随后照样到了、却已不在组里，组头整个没了
+   * （shotreal6 tg-07 / tg-27：「训练」组头找不到）。组员关系是盘上的状态：每台都在自己那条流上报完了，才认「没回来」。
+   */
+  it("★ 壳说各台都报完、gpu 那台的格还没到 ⇒ 组留着；gpu 的两个 tab 随后到了照旧在组里；gpu 也报完了才收真没回来的", () => {
+    const tm = makeTabs(["a"]);
+    const { prefs } = inside(tm);
+    const GPU = "gpu" as never;
+    tm.setMachines([LOCAL_ORIGIN, GPU]);
+    prefs.collectionsLoaded = true;
+    prefs.collections = [
+      { id: "g1", name: "本机" },
+      { id: "g2", name: "训练" },
+    ];
+    prefs.savedGroupOf = new Map([
+      ["a", "g1"],
+      ["t1", "g2"],
+      ["t2", "g2"],
+      ["gone", "g2"],
+    ]);
+    for (const t of inside(tm).store.tabs.values()) prefs.adoptGroup(t);
+    tm.markOriginSeen(LOCAL_ORIGIN);
+    tm.markAllListed(); // 壳那一刻（在本机那条流上到的）
+    expect(prefs.collections.map((c) => c.id), "gpu 那条流还没报完：它的组员不算没回来").toEqual(["g1", "g2"]);
+    tm.ensureTab("t1", "/w/t1", "/p/t1.jsonl", GPU);
+    tm.ensureTab("t2", "/w/t2", "/p/t2.jsonl", GPU);
+    tm.markOriginSeen(GPU);
+    expect(prefs.groupOf("t1")?.id).toBe("g2");
+    expect(prefs.groupOf("t2")?.id).toBe("g2");
+    expect([...prefs.savedGroupOf], "真没回来的那一个这时才收").toEqual([]);
+    expect(prefs.collections.map((c) => c.id)).toEqual(["g1", "g2"]);
   });
 });
 

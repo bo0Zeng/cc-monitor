@@ -23,8 +23,8 @@ export type FindMode = "search" | "outline";
 export interface SessionFindHost {
   /** 在这一份会话里找（问后端；宿主决定问哪台机器上的哪份文件）；`skip` ＝ 跳过前几条（续下一页）。 */
   search(query: string, includeTools: boolean, skip: number): Promise<FindResult>;
-  /** 同 `UserInputPanelHost.jumpTo`：返回真正落到的那张卡（可以是 Promise —— 要先按偏移取回正文）。 */
-  jumpTo(uuid: string): JumpResult;
+  /** 同 `UserInputPanelHost.jumpTo`：返回真正落到的那张卡（可以是 Promise —— 要先按偏移取回正文）。`tool` 同 `FindStripHost.jumpTo`。 */
+  jumpTo(uuid: string, tool?: string): JumpResult;
   /** 跳空时那一行下面写的一句。 */
   readonly unjumpableHint: string;
 }
@@ -71,7 +71,7 @@ export class SessionFindPanel {
       openOutline: () => this.toggle("outline"),
     });
     this.find = new FindStrip(
-      { search: (q, tools, skip) => host.search(q, tools, skip), jumpTo: (uuid) => host.jumpTo(uuid), unjumpableHint: host.unjumpableHint },
+      { search: (q, tools, skip) => host.search(q, tools, skip), jumpTo: (uuid, tool) => host.jumpTo(uuid, tool), unjumpableHint: host.unjumpableHint },
       { autoMs: 300, panel: true, meta: (h) => hitMeta(h) },
     );
 

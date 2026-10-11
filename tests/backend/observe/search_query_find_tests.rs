@@ -36,6 +36,9 @@ fn fixture() -> Vec<String> {
         // agent 发来的话是 agent 回报（种类 `report` 单列）；后台通知不是谁说的话 ⇒ 不搜
         r#"{"type":"user","uuid":"hit-agent-report","isMeta":true,"origin":{"kind":"peer","from":"a1"},"message":{"content":"<agent-message from=\"a1\">needle</agent-message>"}}"#.into(),
         r#"{"type":"user","uuid":"miss-notice","origin":{"kind":"task-notification"},"message":{"content":"<task-notification><summary>needle</summary></task-notification>"}}"#.into(),
+        // 代理那一侧自动写的应答（型号 `<synthetic>`）流里不画 ⇒ 不搜；同一型号的 API 报错那条画成报错卡 ⇒ 照搜
+        r#"{"type":"assistant","uuid":"miss-synthetic","message":{"model":"<synthetic>","content":[{"type":"text","text":"needle auto reply"}]}}"#.into(),
+        r#"{"type":"assistant","uuid":"hit-api-error","isApiErrorMessage":true,"message":{"model":"<synthetic>","content":[{"type":"text","text":"needle api error"}]}}"#.into(),
     ]
 }
 
@@ -96,8 +99,8 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
     let data = bytes_of(&lines);
     let plain = named(&lines, &["hit-"]);
     let with_tools = named(&lines, &["hit-", "tool-"]);
-    assert_eq!(plain.len(), 4, "夹具里 hit-* 的条数变了：{plain:?}");
-    assert_eq!(with_tools.len(), 6);
+    assert_eq!(plain.len(), 5, "夹具里 hit-* 的条数变了：{plain:?}");
+    assert_eq!(with_tools.len(), 7);
     assert!(named(&lines, &["miss-"]).len() >= 5, "miss-* 一类塌了");
     let v = find(&data, Q, false, FIND_DEFAULT_LIMIT);
     assert_eq!(uuids(&v), plain);
@@ -111,7 +114,15 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
         .collect();
     assert_eq!(
         kinds,
-        ["user", "assistant", "tool", "tool", "user", "report"],
+        [
+            "user",
+            "assistant",
+            "tool",
+            "tool",
+            "user",
+            "report",
+            "assistant"
+        ],
         "{kinds:?}"
     );
 }
@@ -367,4 +378,22 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         .collect();
     assert_eq!(uuids, ["t1-a", "t2-a"]);
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 查找的单位就是流里画的那几张卡：工具结果流里不自己成卡、收进它那次工具调用的卡（派出子运行的结果收进派出卡），
+/// 核心在命中上说它落在哪次调用的卡里（`tool`），界面照它跳、不自己推。别的命中落在自己那张卡上 ⇒ 没有 `tool`。
+#[test]
+fn a_tool_result_hit_says_which_tool_card_it_lands_in() {
+    let data = bytes_of(&fixture());
+    let v = find(&data, Q, true, 100);
+    let tool_of = |uuid: &str| {
+        v.iter()
+            .find(|h| h["uuid"] == uuid)
+            .unwrap_or_else(|| panic!("{uuid} 该中"))
+            .get("tool")
+            .cloned()
+    };
+    assert_eq!(tool_of("tool-result"), Some(serde_json::json!("t")));
+    assert_eq!(tool_of("tool-use-input"), None);
+    assert_eq!(tool_of("hit-user-str"), None);
 }

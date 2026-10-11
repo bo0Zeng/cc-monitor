@@ -503,6 +503,15 @@ pub(crate) fn translated(raw: &str, start: u64) -> Result<Option<Translated>, St
 /// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录） |
 /// | 事件 · 元记录 | 无记录 |
 ///
+/// 一条已解析的记录 ⇒ 骨架上它是哪一类（注册表 `RecordFace.class`）：就是 [`record_of`] 出的那条记录的类
+/// （类与起点偏移无关），认不出的那一种（`unread`）骨架上不出（同记录树那一家）。
+pub(crate) fn class_of(v: &Value) -> Option<crate::agents::record::RecordClass> {
+    use crate::agents::record::RecordClass;
+    record_of(v, 0)
+        .map(|r| r.body.class())
+        .filter(|c| *c != RecordClass::Unread)
+}
+
 /// `id`：`payload.id`；没有（user / developer / 工具输出常没有）⇒ 按这一行的起点字节偏移合成（[`crate::agents::line_id`]）。
 pub fn record_of(v: &Value, start: u64) -> Option<Record> {
     use CodexRecordKind as K;

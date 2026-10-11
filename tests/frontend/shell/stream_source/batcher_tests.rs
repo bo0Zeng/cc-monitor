@@ -9,6 +9,7 @@ fn line(sid: &str, seq: u64) -> JsonlLine {
         cwd: None,
         end: None,
         rid: None,
+        catch_up: false,
     }
 }
 

@@ -134,14 +134,14 @@ function dispatch(seq: number, tool: string, label: string): never {
 }
 
 /** 一条工具结果（`who` 是工具结果那一种）。 */
-function result(seq: number, tool: string, text: string): never {
+function result(seq: number, tool: string, text: string, kind: "handback" | "launched" = "handback"): never {
   return line(seq, {
     t: "said",
     id: `u${seq}`,
     at: "2026-09-10T00:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: tool, content: [{ type: "text", text }], isError: false }],
-    results: { [tool]: { ok: true, preview: text, chars: [...text].length } },
+    results: { [tool]: { ok: true, preview: text, chars: [...text].length, kind } },
   }) as never;
 }
 
@@ -153,13 +153,13 @@ function foldedResult(seq: number, tool: string, preview: string, chars: number)
     at: "2026-09-10T00:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: tool, isError: false }],
-    results: { [tool]: { ok: true, preview, chars } },
+    results: { [tool]: { ok: true, preview, chars, kind: "handback" } },
   }) as never;
 }
 
 /** 那次调用当场拿到的结果（后台派出那一形：一拿到就是「已启动」，子运行还在跑）。 */
 function launched(seq: number, tool: string): never {
-  return result(seq, tool, "x");
+  return result(seq, tool, "Async agent launched successfully.", "launched");
 }
 
 describe("真 TabManager ＋ 真 agent 面板", () => {
@@ -276,6 +276,20 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onSessionRuns({ session_id: SID, runs: [run("w6", "stopped", "扫目录", "t1")], ended: [] });
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("stopped") }]);
     expect(MARK.stopped).not.toBe(MARK.done);
+  });
+
+  it("★ 后台派出当场回的「已启动」回执（核心说 `kind: launched`）⇒ 派出卡上不写「交回结果」，卡上的状态照运行表（还在跑）", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.onLine(launched(1, "t1"));
+    tm.switchTo(SID);
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
+    expect(card.querySelector('[data-role="run-result"]'), "回执不是交回").toBeNull();
+    expect(card.dataset.runState).toBe("running");
+    // 后来真交回了（前台那一形 / 换了一次）⇒ 才写交回。
+    tm.onLine(result(2, "t1", "找到两处"));
+    expect(card.querySelector('[data-role="run-result"] summary')?.textContent).toBe(copyText("runCard.result.done", { n: 4 }));
   });
 
   it("被挤出运行表的已收场子运行（`ended`）：派出它的那张卡照样标终态；面板上不列它", () => {

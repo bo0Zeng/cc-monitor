@@ -420,6 +420,7 @@ impl Facts {
                             report: false,
                             main: String::new(),
                             tool: String::new(),
+                            lands_in: None,
                         })
                     }) else {
                         continue;
@@ -488,6 +489,7 @@ impl Facts {
                     report: r.rt.report,
                     main: r.rt.main.clone(),
                     tool: String::new(),
+                    lands_in: r.rt.lands_in.clone(),
                 },
                 ts_ms: r.ts_ms,
                 uuid: r.uuid.clone(),
@@ -664,7 +666,7 @@ impl SearchIndex {
                 continue;
             };
             if pager.take() && result.is_ok() {
-                result = on_hit(&find_hit(&rec.uuid, kind, hit, q, turn, rec.ts_ms));
+                result = on_hit(&find_hit(&rec.rt, &rec.uuid, kind, hit, q, turn, rec.ts_ms));
             }
         }
         let (count, total) = pager.finish();
@@ -860,14 +862,19 @@ fn session_hits_in(
         match budget.take(hits.len()) {
             SnippetVerdict::Give => {
                 let (before, matched, after) = search_rules::make_snippet(text, q_lc);
-                hits.push(serde_json::json!({
+                let mut hit = serde_json::json!({
                     "uuid": rec.uuid,
                     "tsMs": rec.ts_ms,
                     "kind": hkind,
                     "before": before,
                     "matched": matched,
                     "after": after,
-                }));
+                });
+                // 落点同会话内查找（[`find_hit`]）：收在某次工具调用那一块里 ⇒ 带那次调用的 id。
+                if let Some(id) = &rec.rt.lands_in {
+                    hit["tool"] = id.clone().into();
+                }
+                hits.push(hit);
             }
             SnippetVerdict::BudgetExhausted => session_starved = true,
             SnippetVerdict::SessionCapped => {}
@@ -960,6 +967,8 @@ pub(crate) struct RecordText {
     pub(crate) main: String,
     /// 工具内容（tool_use 入参 / tool_result 输出 / thinking），按 `TOOL_CAP` 截断；不搜工具时空串。
     pub(crate) tool: String,
+    /// 这一条在流里收在哪次工具调用的那一块里（调用 id，[`crate::agents::Lands::InTool`]）；落在自己那张卡上 ⇒ `None`。
+    pub(crate) lands_in: Option<String>,
 }
 
 /// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
@@ -975,6 +984,12 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
     let content_v = v.get("message").and_then(|m| m.get("content"));
     // 搜的是记录树那一家的记录。
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    // 查找 · 搜索的单位就是流里画的那几张卡：流里不画的不搜，收在某次调用那一块里的记下那次调用。
+    let lands_in = match crate::agents::lands_of(kind, v) {
+        crate::agents::Lands::Nowhere => return None,
+        crate::agents::Lands::InTool(id) => Some(id),
+        crate::agents::Lands::Own => None,
+    };
     // user 那侧：人说的话是 user 命中；agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）单列一种（`report`）；
     //   后台通知 · 系统注入都不搜。谁说的由适配层判（`agents::user_text_of` 的 `speaker`）。
     let (raw_main, report) = if is_assistant {
@@ -1011,6 +1026,7 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
         report,
         main,
         tool,
+        lands_in,
     })
 }
 
@@ -1109,9 +1125,18 @@ impl FindPager {
 
 /// 一条命中的成品：片段三段 ＋ 第几轮（你说的第几句之后；第一句之前 ＝ 0）＋ 那条记录的时刻（毫秒，读不出 ＝ 0）
 /// （按看的那一台的钟写好的样子 `tsText` 在出口那一下添，[`with_hit_text`]）。
-fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -> Value {
+/// 收在某次工具调用那一块里的（[`RecordText::lands_in`]）再带 `tool`（调用 id）：界面按它落到那一块上。
+fn find_hit(
+    rt: &RecordText,
+    uuid: &str,
+    kind: &str,
+    hit: &str,
+    q: &str,
+    turn: u64,
+    ts_ms: i64,
+) -> Value {
     let (before, matched, after) = search_rules::make_snippet(hit, q);
-    serde_json::json!({
+    let mut v = serde_json::json!({
         "uuid": uuid,
         "kind": kind,
         "before": before,
@@ -1119,7 +1144,11 @@ fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -
         "after": after,
         "turn": turn,
         "tsMs": ts_ms,
-    })
+    });
+    if let Some(id) = &rt.lands_in {
+        v["tool"] = id.clone().into();
+    }
+    v
 }
 
 /// 出口那一下：一条命中添上 `tsText`（`tsMs` 按看的那一台的时区写，[`crate::common::time::hit_text`]；界面照抄）。
@@ -1213,7 +1242,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
                 .and_then(Value::as_str)
                 .and_then(crate::common::time::parse_iso8601_ms)
                 .unwrap_or(0);
-            on_hit(&find_hit(uuid, kind, hit, &q, turn, ts_ms))?;
+            on_hit(&find_hit(&rt, uuid, kind, hit, &q, turn, ts_ms))?;
         }
     }
     Ok(pager.finish())

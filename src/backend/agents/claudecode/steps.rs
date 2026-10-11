@@ -237,6 +237,7 @@ fn counted(block: &Value, tur: Option<&Value>) -> StepResult {
         ok: !is_error,
         preview: preview_of(&text),
         chars: (!text.is_empty()).then(|| u32::try_from(text.chars().count()).unwrap_or(u32::MAX)),
+        kind: super::runs::result_kind(tur),
         ..StepResult::default()
     };
     let tur_text = tur.and_then(Value::as_str).unwrap_or("");

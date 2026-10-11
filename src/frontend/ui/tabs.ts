@@ -1095,6 +1095,7 @@ export class TabManager {
    */
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
     this.store.seenOrigins.add(origin);
+    this.settleUnarrivedOnce(); // 壳那一刻先到了、这一台的流后报完 ⇒ 到这时才认「没回来」
     this.bar.markOriginDown(origin, false);
     let changed = false;
     for (const tab of this.store.tabs.values()) {
@@ -1134,6 +1135,13 @@ export class TabManager {
   /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */
   private allListed = false;
   private unarrivedSettled = false;
+  /** 这个窗口订了会话流的那几台（[`setMachines`]）；空 ⇒ 只等壳那一刻（查看窗等不订整台的）。 */
+  private machines: Origin[] = [];
+
+  /** 这个窗口订了哪几台的会话流（主窗口起步时交一次）：「没回来的组员」要等每台都在自己那条流上报完了才认。 */
+  setMachines(origins: readonly Origin[]): void {
+    this.machines = [...origins];
+  }
 
   /** 「各台都报完了」那一刻（壳给的，`listed` 格的 `all`）。 */
   markAllListed(): void {
@@ -1149,6 +1157,8 @@ export class TabManager {
   /** 各台都报完了活会话清单 ⇒ 盘上记着、却一个都没回来的组员不会再来了：收掉，空了的组随之消失（只做一次）。 */
   private settleUnarrivedOnce(): void {
     if (this.unarrivedSettled || !this.allListed || !this.prefs.collectionsLoaded) return;
+    // 壳那一刻是在最后报完的那一台的流上到的；别的台那条流上它自己的宣告（组员的 tab）可能还在路上 ⇒ 每台都在自己那条流上报完了才认。
+    if (!this.machines.every((o) => this.store.seenOrigins.has(o))) return;
     this.unarrivedSettled = true;
     void this.prefs.forgetUnarrived();
     this.refreshTabBar();

@@ -699,7 +699,7 @@ export class HistoryView {
       const row = this.rowsByKey.get(rowKey(sh)) ?? rowFromHits(sh);
       const el = sessionRow(row, hooks, { compact: false, forks: 0, forksOpen: false, child: false, orphan: false });
       this.order.push(rowKey(row));
-      body.push(hitsBlock(el, sh, (uuid) => this.show(row, uuid ?? undefined)));
+      body.push(hitsBlock(el, sh, (hit) => this.show(row, hit ?? undefined)));
     }
   }
 
@@ -820,8 +820,8 @@ export class HistoryView {
     this.shown = null;
   }
 
-  /** 右边就地看这一行（列表不动）。`jumpTo` = 内容命中那一句的 uuid。 */
-  private show(r: HistoryRow, jumpTo?: string): void {
+  /** 右边就地看这一行（列表不动）。`jumpTo` = 内容命中的那一句（uuid ＋ 后端说的落点 `tool`）。 */
+  private show(r: HistoryRow, jumpTo?: { uuid: string; tool?: string }): void {
     const k = rowKey(r);
     this.selected = k;
     this.shown = k;
@@ -836,7 +836,8 @@ export class HistoryView {
       origin: r.origin ?? LOCAL_ORIGIN,
       agent: r.agent,
       cwd: r.projectPath,
-      scrollToUuid: jumpTo,
+      scrollToUuid: jumpTo?.uuid,
+      ...(jumpTo?.tool !== undefined ? { scrollToTool: jumpTo.tool } : {}),
       suppressBranch: !r.can.fork,
       // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了 ⇒ 重问那一台的清单（头上［切过去］／［恢复］跟着那台的判定换）。
       follow: r.status === "live" ? { sid: r.sessionId, live: true, onLive: () => this.refresh(r.origin !== undefined, r.origin ?? "") } : undefined,

@@ -1096,9 +1096,11 @@ pub(crate) fn open_session_at(
 }
 
 /// **骨架索引**的扫描：读 `r`（已定位在 `from`）每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
+/// `kind` ＝ 这份记录是哪一家的（[`index_row_of`]）。
 /// `until`：只收**起点** `< until` 的行（起点在界内的那一行整行收，不劈半行）。`end` ＝ 最后一个完整行的末字节（torn 残尾不计）＝ 下一次续传的起点。
 /// 帧面 `history-index`（`read_face.rs`，CLI 面 `--history-index`）用它；「这一行占不占 seq」仍只住 [`line_counts`]。
 pub(crate) fn scan_session_index<R: std::io::BufRead>(
+    kind: &str,
     mut r: R,
     from: u64,
     until: Option<u64>,
@@ -1124,7 +1126,7 @@ pub(crate) fn scan_session_index<R: std::io::BufRead>(
         if !line_counts(body) {
             continue; // 空行不占 seq（判定只有 `line_counts` 一个住址）
         }
-        on_row(&index_row(body, start, read as u64))?;
+        on_row(&index_row(kind, body, start, read as u64))?;
         count += 1;
     }
     Ok((count, end))
@@ -1206,12 +1208,23 @@ fn is_zero(n: &u32) -> bool {
 ///
 /// 解析失败（半截 / 非 JSON）**不丢这一行** —— 它仍占一个 seq，只是没有料（`t` 省略）；
 /// 丢了它，后面每一行的 seq 都会错一位（那是「计数对不上而且不会报错」的那一形）。
-pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
-    index_row_of(super::record_scan::parse_record(line).as_ref(), offset, len)
+pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
+    index_row_of(
+        kind,
+        super::record_scan::parse_record(line).as_ref(),
+        offset,
+        len,
+    )
 }
 
 /// [`index_row`] 的后半：这一行已经解析过（解析不了 ⇒ `None`，那一行照样占位）。
-pub(crate) fn index_row_of(v: Option<&serde_json::Value>, offset: u64, len: u64) -> IndexRow {
+/// `kind` ＝ 这份记录是哪一家的（[`crate::agents::record_kind_of`]）：这一行进不进界面、谁说的都照那一家的认法判。
+pub(crate) fn index_row_of(
+    kind: &str,
+    v: Option<&serde_json::Value>,
+    offset: u64,
+    len: u64,
+) -> IndexRow {
     let mut row = IndexRow {
         o: offset,
         n: len,
@@ -1221,8 +1234,6 @@ pub(crate) fn index_row_of(v: Option<&serde_json::Value>, offset: u64, len: u64)
         return row;
     };
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
-    // 骨架索引读的是记录树那一家的记录。
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
     row.t = crate::agents::record_class_of(kind, v);
     row.sc = crate::agents::run_of_record(kind, &v).is_some();
     let said = crate::agents::user_text_of(kind, &v);
