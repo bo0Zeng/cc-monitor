@@ -16,6 +16,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ui.copyPlainText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** 屏上几处的测试标签。 */
@@ -84,10 +87,7 @@ private fun LazyListScope.needsSection(
         Column(Modifier.fillMaxWidth().clickable { onOpen(n.sessionId) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
             n.label?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             Text(n.text, color = toneColor(Tone.NEED), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                n.waitedText?.let { copyText("needs.bar.sub", "waited" to it) } ?: copyText("needs.bar.subBare"),
-                style = monoSmall,
-            )
+            WaitedLine(n)
         }
     }
 }
@@ -153,3 +153,17 @@ private fun ProblemBar(
         }
     }
 }
+
+/** 「已等 …」那一行：屏上每秒重画（[NeedsItem.waitedAt]，同桌面的走表），不重问那台。 */
+@Composable
+private fun WaitedLine(n: NeedsItem) {
+    val now by produceState(monoNow(), n.receivedAt) {
+        while (true) {
+            value = monoNow()
+            delay(TICK_MS)
+        }
+    }
+    Text(n.waitedAt(now)?.let { copyText("needs.bar.sub", "waited" to it) } ?: copyText("needs.bar.subBare"), style = monoSmall)
+}
+
+private const val TICK_MS = 1_000L

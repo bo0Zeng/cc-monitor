@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.ui.copy
 
 import com.squareup.moshi.Moshi
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -44,5 +45,13 @@ class FormatGoldenTest {
         for (c in g.list("clock")) {
             assertEquals(c["text"].toString(), c["want"], DurationFormat.clock(c["text"] as String, c.long("from")!!, c.long("to"), c.long("now")!!))
         }
+    }
+
+    /** 同桌面 `duration-format.ts` 的 `waitedNow`：那台算好的 `waitedMs` ＋ 本机从收到那份起走过的（两段各在一台钟上量，不跨机器减）。 */
+    @Test
+    fun `已等走表：那台给的 waitedMs 加上本机从收到起走过的；没有起点 ⇒ null；本机钟往回走按 0`() {
+        assertEquals(DurationFormat.short(240_000), DurationFormat.waited(180_000, receivedAt = 1_000, now = 61_000))
+        assertEquals(DurationFormat.short(5_000), DurationFormat.waited(5_000, receivedAt = 10_000, now = 9_000))
+        assertNull(DurationFormat.waited(null, receivedAt = 0, now = 1_000))
     }
 }

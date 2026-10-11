@@ -65,6 +65,16 @@ object DurationFormat {
         return copyText("durationFormat.rel.ahead", "dur" to short(mins * MINUTE_MS))
     }
 
+    /**
+     * 已等多久（同桌面 `duration-format.ts` 的 `waitedNow`）：那台答出那一刻算好的 [waitedMs] ＋ 本机从收到那份（[receivedAt]）到 [now] 走过的
+     * （两段各在一台钟上量，不跨机器减；本机钟往回走按 0）。没有起点 ⇒ `null`。
+     */
+    fun waited(
+        waitedMs: Long?,
+        receivedAt: Long,
+        now: Long,
+    ): String? = waitedMs?.let { short(it + (now - receivedAt).coerceAtLeast(0)) }
+
     /** 会走的钟：[text] 里的 `{dur}` 按（[to] 或此刻 [now]）− [from] 填；[from] 比此刻还晚 ⇒ 按 0。 */
     fun clock(
         text: String,

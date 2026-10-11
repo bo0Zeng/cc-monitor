@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.ui.copy.DurationFormat
 import com.ccmonitor.mobile.link.Problem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -52,14 +53,16 @@ class ConversationsViewTest {
     fun `需手动照核心的先后、字照抄；清单里没有的不拿 sid 顶标题`() {
         val needs =
             listOf(
-                SessionsNeeds.Row("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, "3m")),
+                SessionsNeeds.Row("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, 180_000L)),
                 SessionsNeeds.Row("9", Needs("answer", "等回答", Tone.NEED, 1, null)),
             )
-        val v = view(LinkState.Up, SessionTable(), list, Fetched.Got(needs), "m")
+        val v = view(LinkState.Up, SessionTable(), list, Fetched.Got(needs), "m", needsAt = 1_000)
         assertEquals(listOf("3", "9"), v.needs.map { it.sessionId })
         assertEquals("标题 3", v.needs[0].label)
         assertEquals("等批准 · Bash", v.needs[0].text)
         assertNull(v.needs[1].label)
+        assertEquals("已等在屏上接着走：收到时 3m、过了一分钟是 4m（不重问那台）", DurationFormat.short(240_000), v.needs[0].waitedAt(61_000))
+        assertNull("没有起点 ⇒ 不画时长", v.needs[1].waitedAt(61_000))
     }
 
     @Test

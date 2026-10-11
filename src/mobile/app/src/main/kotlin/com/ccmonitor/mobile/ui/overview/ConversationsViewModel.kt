@@ -12,6 +12,7 @@ import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
+import com.ccmonitor.mobile.core.ui.copy.DurationFormat
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,7 +37,7 @@ class ConversationsViewModel(
     private val needs = MutableStateFlow<Fetched<List<SessionsNeeds.Row>>>(Fetched.Loading)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, machine) }
+        combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, machine, needsAt) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
@@ -71,8 +72,15 @@ class ConversationsViewModel(
         viewModelScope.launch { list.value = fetched(backend.call(HistoryList.COMMAND, null), HistoryList.COMMAND, HistoryList::of) }
     }
 
+    /** 最近一份 `sessions-needs` 收到的本机时刻（「已等」从这里接着走）。 */
+    @Volatile private var needsAt = 0L
+
     private fun fetchNeeds() {
-        viewModelScope.launch { needs.value = fetched(backend.call(SessionsNeeds.COMMAND, null), SessionsNeeds.COMMAND, SessionsNeeds::of) }
+        viewModelScope.launch {
+            val got = fetched(backend.call(SessionsNeeds.COMMAND, null), SessionsNeeds.COMMAND, SessionsNeeds::of)
+            needsAt = monoNow()
+            needs.value = got
+        }
     }
 
     private fun <T> fetched(
@@ -132,9 +140,19 @@ data class NeedsItem(
     val label: String?,
     /** 「等批准 · Bash」。 */
     val text: String,
-    /** 「已等 3m」；没有起点 ⇒ `null`。 */
-    val waitedText: String?,
-)
+    /** 那台答出那一刻已等了多久（毫秒）；没有起点 ⇒ `null`。 */
+    val waitedMs: Long?,
+    /** 收到那份的本机时刻（[monoNow] 那一种钟）。 */
+    val receivedAt: Long,
+) {
+    /** 此刻（[now]，同一种钟）已等多久：那台给的 ＋ 本机从收到起走过的（屏上每秒重画这一格，不重问那台）。 */
+    fun waitedAt(now: Long): String? = DurationFormat.waited(waitedMs, receivedAt, now)
+}
+
+/** 本机单调钟（毫秒）：「已等」接着走表用，不受改系统时间影响。 */
+internal fun monoNow(): Long = System.nanoTime() / NANOS_PER_MS
+
+private const val NANOS_PER_MS = 1_000_000L
 
 /** 清单里一段：段头（核心写的「今天」「昨天」…）＋ 那几行。 */
 data class HistorySection(
@@ -157,6 +175,7 @@ internal fun view(
     list: Fetched<HistoryList.Answer>,
     needs: Fetched<List<SessionsNeeds.Row>>,
     machine: String,
+    needsAt: Long = 0,
 ): ConversationsUiState {
     if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(machine), connecting = false, listLoading = false)
     if (link == LinkState.Connecting) return ConversationsUiState()
@@ -175,7 +194,7 @@ internal fun view(
     }
     return ConversationsUiState(
         connecting = false,
-        needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedText) },
+        needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt) },
         needsProblem = (needs as? Fetched.Failed)?.problem,
         sections = sections,
         listLoading = list is Fetched.Loading,

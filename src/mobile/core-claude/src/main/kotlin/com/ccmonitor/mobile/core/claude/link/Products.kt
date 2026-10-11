@@ -109,8 +109,8 @@ data class Needs(
     val tone: Tone?,
     /** 先答哪个，0 最先。 */
     val rank: Long,
-    /** 「已等 12m」那一句；没有起点 ⇒ `null`。 */
-    val waitedText: String?,
+    /** 那台答出那一刻已等了多久（毫秒）；屏上从收到那份起接着走表（`DurationFormat.waited`）。没有起点 ⇒ `null`。 */
+    val waitedMs: Long?,
 ) {
     companion object {
         fun of(m: Map<String, Any?>?): Needs? = decoding { need(m) }
@@ -122,7 +122,7 @@ data class Needs(
                     text = it.str("text").need(),
                     tone = Tone.of(it.str("tone")),
                     rank = it.num("rank").need(),
-                    waitedText = it.str("waitedText"),
+                    waitedMs = it.num("waitedMs"),
                 )
             }
     }
