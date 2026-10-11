@@ -3,7 +3,6 @@
 //! 写分支记录交 `control/fork_write`（本体与 `session-fork` 同一份）。
 
 use crate::control::session_new;
-use crate::platform::child::Until;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -18,120 +17,29 @@ fn agent_of(args: &Value) -> &str {
         .unwrap_or_default()
 }
 
-/// `session-new`（可撤档）。`until`：发起方的截止时刻（分派那一层由请求期限换来）——带第一句时等会话就绪就等到那一刻为止，没带 ⇒ `bad_args`（后端不替发起方定等多久）。
-/// 起那一段在阻塞线程上跑；外层被撤（future 被丢）⇒ 阻塞线程照样起完（票跟着它落），等就绪那一下当场停、不送字（结局 `refused` ＋ `not_ready`）。
-pub(crate) async fn answer(
-    args: Value,
-    until: Option<Until>,
+/// `session-new`。
+pub(crate) fn answer(
+    args: &Value,
     files: super::launch_face::Files,
 ) -> Result<Value, session_new::Failed> {
-    if until.is_none() && args.get("prompt").is_some_and(|p| !p.is_null()) {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("`prompt` needs the request deadline `within_ms`"),
-            None,
-            None,
-        ));
-    }
-    // 这一头持着、外层一丢就松开：等就绪的那一侧听它。
-    let (_stay, gone) = tokio::sync::oneshot::channel::<()>();
-    let gone = std::sync::Mutex::new(Some(gone));
-    let run = tokio::task::spawn_blocking(move || {
-        let home = crate::observe::history_query::agent_home();
-        let fork =
-            |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
-        let user_home = crate::platform::paths::home_dir();
-        let ctx = super::rotation_face::Ctx::here();
-        let sid = crate::accounts::quota::rotation::new_session_id;
-        let write = |sid: &str, kind: &str, rule: &str| {
-            super::rotation_face::preset_with(
-                &ctx,
-                sid,
-                kind,
-                rule,
-                crate::accounts::quota::now_unix(),
-            )
-        };
-        let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, sid);
-        let pre = session_new::PreRotation {
-            sid: &sid,
-            write: &write,
-            forget: &forget,
-        };
-        let say = |sid: &str, text: &str| {
-            // 带第一句必带期限（上面已核）。
-            let Some(until) = until else {
-                return refused(
-                    "not_ready",
-                    copy_core::copy_text("beSessionNew.prompt.notReady", &[]),
-                );
-            };
-            let gone = gone
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take()
-                .unwrap_or_else(|| tokio::sync::oneshot::channel::<()>().1);
-            first_say_with(
-                crate::observe::one_wait::session_ready(&home, sid),
-                until,
-                gone,
-                || send(sid, text),
-            )
-        };
-        super::session_batch_face::with_deps_as(None, agent_of(&args), Some(files), |d| {
-            session_new::answer(&args, d, &fork, &pre, &say, user_home.as_deref())
-        })
-    });
-    match run.await {
-        Ok(r) => r,
-        Err(e) => std::panic::resume_unwind(e.into_panic()),
-    }
-}
-
-/// 交第一句（B4）：等这条会话就绪、等着输入（这台 pidfile 说它闲着 ⇒ 启动 · 信任框都过了），再交 `send`（照 `terminal-input` 那一路送字 ＋ 回车）。
-/// 到发起方的截止时刻 `until` 没等到 · 发起方放手（`gone`）⇒ `refused` ＋ `not_ready`，不送（送进还在启动的终端会被信任框 · 启动画面吃掉）。
-fn first_say_with(
-    ready: Result<crate::observe::one_wait::Armed, String>,
-    until: Until,
-    gone: crate::observe::one_wait::Gone,
-    send: impl FnOnce() -> session_new::FirstSay,
-) -> session_new::FirstSay {
-    let ready = match ready {
-        Ok(armed) => armed.within_blocking(until, gone),
-        Err(e) => {
-            tracing::warn!("session-new: cannot watch for the session to be ready: {e}");
-            false
-        }
+    let home = crate::observe::history_query::agent_home();
+    let fork =
+        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
+    let user_home = crate::platform::paths::home_dir();
+    let ctx = super::rotation_face::Ctx::here();
+    let sid = crate::accounts::quota::rotation::new_session_id;
+    let write = |sid: &str, kind: &str, rule: &str| {
+        super::rotation_face::preset_with(&ctx, sid, kind, rule, crate::accounts::quota::now_unix())
     };
-    if !ready {
-        return refused(
-            "not_ready",
-            copy_core::copy_text("beSessionNew.prompt.notReady", &[]),
-        );
-    }
-    send()
-}
-
-fn refused(why: &str, said: String) -> session_new::FirstSay {
-    session_new::FirstSay {
-        result: "refused".into(),
-        why: Some(why.into()),
-        said: Some(said),
-    }
-}
-
-/// 照 `terminal-input` 那一路送字 ＋ 回车。
-fn send(sid: &str, text: &str) -> session_new::FirstSay {
-    match crate::control::terminals::input_for_inbound(
-        &serde_json::json!({"sid": sid, "text": text}),
-    ) {
-        Ok(v) => session_new::FirstSay {
-            result: v["result"].as_str().unwrap_or("unsure").to_string(),
-            why: v["why"].as_str().map(str::to_string),
-            said: v["said"].as_str().map(str::to_string),
-        },
-        Err(f) => refused(&f.code, f.message),
-    }
+    let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, sid);
+    let pre = session_new::PreRotation {
+        sid: &sid,
+        write: &write,
+        forget: &forget,
+    };
+    super::session_batch_face::with_deps_as(None, agent_of(args), Some(files), |d| {
+        session_new::answer(args, d, &fork, &pre, user_home.as_deref())
+    })
 }
 
 /// `session-new-dir`：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`。

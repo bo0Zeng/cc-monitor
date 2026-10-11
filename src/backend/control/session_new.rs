@@ -12,7 +12,6 @@
 use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
 use super::launch_render::{local, wire};
 use super::session_batch::{carriers, Deps, NameBase, Standing};
-use crate::agents::FirstPrompt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -77,21 +76,18 @@ pub(crate) struct NewRequest {
     pub(crate) permission_mode: Option<String>,
 }
 
-/// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。
+/// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。第一句作为启动参数交给那一家 ⇒ 起好了就是 `delivered`（起不成整条失败、走不到这里）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct FirstSay {
     /// `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
     pub result: String,
-    /// `refused` 的原因（同 `terminal-input`，另有 `not_ready`：期限内没等到会话就绪）；别的 ⇒ `null`。
+    /// `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
     pub why: Option<String>,
     /// `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
     pub said: Option<String>,
 }
-
-/// 交第一句那一下（宿主给）：`(sid, 那一句)` ⇒ 结局。宿主等会话就绪、信任框过了才送，期限到了没等到 ⇒ `refused` ＋ `not_ready`。
-pub(crate) type Say<'a> = &'a dyn Fn(&str, &str) -> FirstSay;
 
 /// 哪一格不行（`data.field`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -211,7 +207,6 @@ pub(crate) fn answer(
     deps: &Deps,
     fork: ForkWrite,
     pre: &PreRotation,
-    say: Say,
     home: Option<&std::path::Path>,
 ) -> Result<Value, Failed> {
     let req: NewRequest = serde_json::from_value(args.clone()).map_err(|e| {
@@ -243,7 +238,7 @@ pub(crate) fn answer(
                 None,
             )
         },
-        || start(req, deps, fork, pre, say, home),
+        || start(req, deps, fork, pre, home),
     )
 }
 
@@ -253,7 +248,6 @@ fn start(
     deps: &Deps,
     fork: ForkWrite,
     pre: &PreRotation,
-    say: Say,
     home: Option<&std::path::Path>,
 ) -> Result<Value, Failed> {
     // 没说是哪一家就不起（不落默认那一家：默认是界面读画像时的事）。
@@ -284,19 +278,17 @@ fn start(
             None,
         )
     };
-    // 第一句：只跟 tmux 那一形（开窗那一形的终端在界面那一侧）；空的不收。怎么交照那一家的声明（[`first_prompt_plan`]）。
+    // 第一句：只跟 tmux 那一形（开窗那一形的终端在界面那一侧）；空的不收；那一家声明不认起的时候带 ⇒ 不收。
     let prompt = match req.prompt.as_deref().map(str::trim) {
         None => None,
         Some("") => return Err(malformed("`prompt` must not be empty")),
         Some(_) if req.place != Place::Tmux => {
             return Err(malformed("`prompt` goes only with `place: tmux`"))
         }
-        Some(_) => {
-            let how =
-                first_prompt_plan(&face, req.fork_from.is_some() || face.preset_sid.is_some())
-                    .map_err(malformed)?;
-            req.prompt.clone().map(|t| (t, how))
+        Some(_) if first_prompt_refused(&face).is_some() => {
+            return Err(malformed(first_prompt_refused(&face).unwrap_or_default()))
         }
+        Some(_) => req.prompt.clone(),
     };
     // 模型：过全仓那一条模型名判（与偏好表那一路同一条）。
     if req
@@ -402,7 +394,7 @@ fn start(
     };
     preset_args.extend(permission_args);
     // 起的时候就交的第一句：交给那一家的那一半末尾、`--` 之后（开头是 `-` 也不会被当成旗标）。
-    if let Some((text, FirstPrompt::Argv)) = &prompt {
+    if let Some(text) = &prompt {
         preset_args.extend([super::ccm::argv::flag::END.to_string(), text.clone()]);
     }
     let resumed = forked.clone();
@@ -533,30 +525,20 @@ fn start(
         })
     };
     let mut out = launch().map_err(undo)?;
-    // 第一句：起的时候已交 ⇒ 交到了；不认的那一家起好了才交（交给宿主：它等会话就绪 · 信任框过了再送）。
-    out.prompt = match (&prompt, &sid, out.outcome) {
-        (Some((_, FirstPrompt::Argv)), _, SessionNewOutcome::Started) => Some(FirstSay {
+    // 第一句起的时候已经交给那一家了 ⇒ 交到了。
+    if prompt.is_some() && out.outcome == SessionNewOutcome::Started {
+        out.prompt = Some(FirstSay {
             result: "delivered".into(),
             why: None,
             said: None,
-        }),
-        (Some((text, FirstPrompt::Typed)), Some(s), SessionNewOutcome::Started) => {
-            Some(say(s, text))
-        }
-        _ => None,
-    };
+        });
+    }
     serde_json::to_value(out).map_err(|e| ("bad_args", e.to_string(), None, None))
 }
 
-/// 第一句怎么交：照那一家的声明（[`crate::agents::LaunchFace::first_prompt`]）；不认起的时候带、又说不出 sid（`has_sid`：先定 sid · 分叉）⇒ 送不进（那句不行的话）。
-pub(crate) fn first_prompt_plan(
-    face: &crate::agents::LaunchFace,
-    has_sid: bool,
-) -> Result<FirstPrompt, &'static str> {
-    match face.first_prompt {
-        FirstPrompt::Typed if !has_sid => Err("this agent cannot take a first prompt at launch"),
-        how => Ok(how),
-    }
+/// 那一家起的时候收不收第一句（[`crate::agents::LaunchFace::first_prompt_arg`]）：不收 ⇒ 那句不行的话。
+pub(crate) fn first_prompt_refused(face: &crate::agents::LaunchFace) -> Option<&'static str> {
+    (!face.first_prompt_arg).then_some("this agent cannot take a first prompt at launch")
 }
 
 /// tmux 那一形的会话名。这台没 tmux ⇒ `place` 那一格不行；看不见名单 ⇒ 整体不行（不拿空名单铸：那是不避让）。

@@ -34,10 +34,6 @@ struct Rig {
     marks: RefCell<Vec<String>>,
     /// 起之前写的轮换来源：`<sid> <哪一家> <规则> @<此前已交的 ccm 数>`；撤掉的：`forget <sid>`。
     rot: RefCell<Vec<String>>,
-    /// 交了第一句的那几下：`<sid> <那一句> @<此前已交的 ccm 数>`。
-    said: RefCell<Vec<String>>,
-    /// 替身交第一句的结局。
-    say_result: &'static str,
 }
 
 impl Rig {
@@ -51,8 +47,6 @@ impl Rig {
             last: None,
             marks: RefCell::new(vec![]),
             rot: RefCell::new(vec![]),
-            said: RefCell::new(vec![]),
-            say_result: "delivered",
         }
     }
 
@@ -147,23 +141,7 @@ impl Rig {
             write: &write,
             forget: &forget,
         };
-        let say = |sid: &str, text: &str| -> FirstSay {
-            let at = self.ccm.borrow().len();
-            self.said.borrow_mut().push(format!("{sid} {text} @{at}"));
-            FirstSay {
-                result: self.say_result.to_string(),
-                why: None,
-                said: None,
-            }
-        };
-        answer(
-            &args,
-            &deps,
-            &fork,
-            &pre,
-            &say,
-            Some(std::path::Path::new("/h")),
-        )
+        answer(&args, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
     }
 }
 
@@ -611,7 +589,7 @@ fn a_rule_at_launch_that_fails_leaves_nothing_behind() {
 }
 
 /// 第一句随起会话一起交（B4）：两家都认起的时候带第一句（`claude [prompt]` · `codex [PROMPT]`）⇒ 作为启动参数交过去
-/// （交给那一家的那一半、`--` 之后，开头是 `-` 也不会被当成旗标），不等就绪、不送键（宿主那一下一次都不叫）；回包的结局是交到了。
+/// （交给那一家的那一半、`--` 之后，开头是 `-` 也不会被当成旗标，可以跨行）；回包的结局是交到了。
 /// Codex 不认先定 sid 也照样收（它的记录要第一句进去才建，等报到再送字会一直等下去）。不交 ⇒ 回包这一格 `null`。
 #[test]
 fn the_first_prompt_goes_in_as_a_launch_argument_for_both_families() {
@@ -631,10 +609,6 @@ fn the_first_prompt_goes_in_as_a_launch_argument_for_both_families() {
                 .any(|w| w == ["--", "-看一下\n这个目录"]),
             "{agent}：第一句在交给那一家的那一半、`--` 之后：{argv:?}"
         );
-        assert!(
-            rig.said.borrow().is_empty(),
-            "{agent}：作为启动参数交了就不再送键"
-        );
         assert_eq!(got["prompt"]["result"], "delivered", "{agent}: {got}");
     }
     let rig = Rig::new(Some(vec![]));
@@ -643,25 +617,18 @@ fn the_first_prompt_goes_in_as_a_launch_argument_for_both_families() {
     assert!(!rig.ccm.borrow()[0].iter().any(|a| a == "你好"));
 }
 
-/// 不认起的时候带第一句的那一家（声明 `FirstPrompt::Typed`）才走「起好 → 等就绪 → 送字」：要说得出 sid（先定 sid · 分叉）；说不出 ⇒ `bad_args`。
+/// 那一家声明起的时候不收第一句（`first_prompt_arg: false`）⇒ 带第一句的起会话不收（`bad_args`）；两家今天都收。
 #[test]
-fn only_a_family_that_cannot_take_it_at_launch_types_the_first_prompt() {
-    use crate::agents::FirstPrompt;
-    let typed = crate::agents::LaunchFace {
-        first_prompt: FirstPrompt::Typed,
+fn a_family_that_cannot_take_the_first_prompt_at_launch_refuses_it() {
+    let no = crate::agents::LaunchFace {
+        first_prompt_arg: false,
         ..crate::agents::claudecode::LAUNCH
     };
-    let argv = crate::agents::LaunchFace {
-        first_prompt: FirstPrompt::Argv,
-        preset_sid: None,
-        ..crate::agents::claudecode::LAUNCH
-    };
-    assert_eq!(first_prompt_plan(&typed, true), Ok(FirstPrompt::Typed));
-    assert!(
-        first_prompt_plan(&typed, false).is_err(),
-        "说不出 sid 就送不进"
-    );
-    assert_eq!(first_prompt_plan(&argv, false), Ok(FirstPrompt::Argv));
+    assert!(first_prompt_refused(&no).is_some());
+    for agent in ["claude", "codex"] {
+        let (_, face) = crate::agents::pick_kind(Some(agent)).expect("注册表里有");
+        assert_eq!(first_prompt_refused(&face), None, "{agent}");
+    }
 }
 
 /// 第一句只跟 tmux 那一形（开窗那一形终端在界面那一侧，核心送不进去）；空的 ⇒ 不收。不收的什么都不起。
@@ -675,10 +642,7 @@ fn a_first_prompt_that_cannot_be_delivered_is_refused_before_anything_starts() {
         let rig = Rig::new(Some(vec![]));
         let e = rig.call(req(extra.clone())).expect_err("不收");
         assert_eq!(e.0, "bad_args", "{extra}");
-        assert!(
-            rig.ccm.borrow().is_empty() && rig.said.borrow().is_empty(),
-            "{extra}"
-        );
+        assert!(rig.ccm.borrow().is_empty(), "{extra}");
     }
 }
 
