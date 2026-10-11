@@ -21,6 +21,15 @@ function layout(records: LineRecord[]): { at: { o: number; n: number }[]; end: n
   // 记一份（同一个数组只量一次）：长会话每问都整份 stringify 一遍，假后端自己就占掉页里一大截主线程（性能台架量的是产品）。
   const had = layouts.get(records);
   if (had && had.at.length === records.length) return had;
+  // 只往后长（实时来行）⇒ 只量新来的那几条，不整份重量
+  if (had && had.at.length < records.length) {
+    for (const r of records.slice(had.at.length)) {
+      const n = JSON.stringify(r).length + 1;
+      had.at.push({ o: had.end, n });
+      had.end += n;
+    }
+    return had;
+  }
   const fresh = layoutOnce(records);
   layouts.set(records, fresh);
   return fresh;
@@ -243,13 +252,15 @@ export function defaultOps(): Record<string, OpHandler> {
       let cur: T | null = null;
       let acc: Acc | null = null;
       const n = (key: Parameters<typeof copyText>[0], v: number): string => copyText(key, { n: String(v) });
+      // 结尾那几条按 id 找（逐轮整份扫 ＝ 轮数 × 行数，十几万行的会话一问就是几十秒）
+      const replies = new Map(recs.filter(isReply).map((r) => [r.id, r]));
       const close = (t: T, x: Acc): void => {
         for (const no of x.notices) {
           if (!(no.task && x.runs.includes(no.task))) t.background++;
           if (no.failed) t.fails++;
         }
         if (t.ending.length === 0 && x.stop) t.ending = [x.stop];
-        const body = recs.filter((r): r is Reply => isReply(r) && t.ending.includes(r.id)).flatMap(replyTexts);
+        const body = t.ending.flatMap((id) => (replies.has(id) ? replyTexts(replies.get(id)!) : []));
         // 只取正文行：代码块整块不算；只有代码 ⇒「仅代码」（同后端 `turns.rs::reply_head`）。
         let fenced = false;
         let code = false;
@@ -372,7 +383,9 @@ export function defaultOps(): Record<string, OpHandler> {
           }
         }
       }
-      return { from: 0, end, turns };
+      // 续取从 `from`（还没收尾的那一轮的开头）起：只交那之后开头的轮（同后端 `turns.rs` 从偏移读）。
+      const from = typeof req.from === "number" ? req.from : 0;
+      return { from, end, turns: turns.filter((t) => t.at >= from) };
     },
     "history-facts": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
