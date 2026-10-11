@@ -19,6 +19,13 @@ object SessionNew {
         prompt: String,
     ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt)
 
+    /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（终端屏「后台起」那一格）。 */
+    fun inTmux(
+        agent: String,
+        name: String,
+        ticket: String,
+    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to "~", "place" to "tmux", "local" to false, "ticket" to ticket, "tmuxName" to name)
+
     data class Answer(
         /** `started`（tmux 里起好了）· `open`（要开终端窗口：手机不走这一形）。 */
         val outcome: String,
@@ -56,6 +63,12 @@ object TerminalInput {
         sid: String,
         text: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "text" to text)
+
+    /** 按名单里的句柄送字（终端屏：那个终端里不一定跑着会话）。 */
+    fun textInto(
+        terminal: String,
+        text: String,
+    ): Map<String, Any?> = mapOf("terminal" to terminal, "text" to text)
 
     /** 送键（`esc` 停这一轮 …）。 */
     fun key(
