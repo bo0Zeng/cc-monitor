@@ -2379,8 +2379,6 @@ mod stream_flag_tests;
 #[path = "../../tests/backend/main_argv_table_guard.rs"]
 mod argv_table_guard;
 
-use std::path::PathBuf;
-
 // ── 第四面：本机到底缺什么（tmux 可用性）＋ `EMITS` ───────────
 // 同上一段的理由：它们不是「分派」，是 hello 帧的**内容**。in-process 那条路一样要回答
 // 「这台机器有没有 tmux」「本构建会发哪些帧」。`main_fourth_face_tests` 用 `super::` 引它们。
