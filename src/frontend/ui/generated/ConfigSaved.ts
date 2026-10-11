@@ -5,4 +5,4 @@ import type { ConfigDiff } from "./ConfigDiff";
 /**
  * 存一份配置的结局（设置窗的配置编辑器 · 改名）。
  */
-export type ConfigSaved = { "state": "saved", id: string, rev: bigint, savedAtText: string, } | { "state": "refused", errors: Array<CellError>, } | { "state": "conflict", rev: bigint, theirs: Array<ConfigDiff>, };
+export type ConfigSaved = { "state": "saved", id: string, rev: number, savedAtText: string, } | { "state": "refused", errors: Array<CellError>, } | { "state": "conflict", rev: bigint, theirs: Array<ConfigDiff>, };

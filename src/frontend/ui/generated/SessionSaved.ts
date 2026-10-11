@@ -5,4 +5,4 @@ import type { ConfigDiff } from "./ConfigDiff";
 /**
  * 存会话副本的结局。
  */
-export type SessionSaved = { "state": "saved", id: string, rev: bigint, } | { "state": "conflict", rev: bigint, theirs: Array<ConfigDiff>, mine: Array<ConfigDiff>, } | { "state": "refused", errors: Array<CellError>, };
+export type SessionSaved = { "state": "saved", id: string, rev: number, } | { "state": "conflict", rev: number, theirs: Array<ConfigDiff>, mine: Array<ConfigDiff>, } | { "state": "refused", errors: Array<CellError>, };

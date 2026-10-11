@@ -3,4 +3,4 @@
 /**
  * 别处存的新版：版本 · 时刻 · 谁存的（`settings` 或会话 id）· 写好的那一句。
  */
-export type ConfigNewer = { rev: bigint, at: number, by: string, text: string, };
+export type ConfigNewer = { rev: number, at: number, by: string, text: string, };

@@ -153,9 +153,12 @@ struct OldBook {
     sessions: BTreeMap<String, OldSession>,
 }
 
-/// 第一版种子规则的 id 与名字。
+/// 第一版种子规则的 id（名字是第一版写进去的那个字，照文案表那一格认）。
 const OLD_SEED_ID: &str = "r_00000000";
-const OLD_SEED_NAME: &str = "默认";
+
+fn old_seed_name() -> String {
+    copy_core::copy_text("beRotation.migrate.oldSeedName", &[])
+}
 
 /// 一位（`5h` / `7d`）的线：号自己那一行有就取（`7d:<模型>` 并进 `7d` 取小的），`*` 管两位。
 fn line_positions(row: Option<&BTreeMap<String, CapValue>>) -> [Option<u8>; 2] {
@@ -385,7 +388,7 @@ pub(crate) fn from_v1(v: &Value) -> Result<Book, String> {
         rules.insert(
             OLD_SEED_ID.into(),
             Rule {
-                name: OLD_SEED_NAME.into(),
+                name: old_seed_name(),
                 rotation: old.default.clone().unwrap_or_default(),
                 rev: 1,
                 updated_at: 0,
@@ -402,7 +405,7 @@ pub(crate) fn from_v1(v: &Value) -> Result<Book, String> {
     let mut configs: BTreeMap<String, Config> = rules
         .iter()
         .map(|(id, r)| {
-            let name = if id == OLD_SEED_ID && r.name == OLD_SEED_NAME {
+            let name = if id == OLD_SEED_ID && r.name == old_seed_name() {
                 seed_name.clone()
             } else {
                 r.name.clone()

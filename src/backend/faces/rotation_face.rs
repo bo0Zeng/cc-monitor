@@ -552,6 +552,7 @@ pub enum ConfigSaved {
     #[serde(rename_all = "camelCase")]
     Saved {
         id: String,
+        #[cfg_attr(test, ts(type = "number"))]
         rev: u64,
         saved_at_text: String,
     },
@@ -1054,7 +1055,9 @@ pub struct TryReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional, type = "unknown"))]
     pub memo: Option<Value>,
+    #[cfg_attr(test, ts(type = "number"))]
     pub ops: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub max_ops: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -1268,6 +1271,7 @@ pub(crate) fn answer_strategy_try_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
 pub struct OpenShown {
     pub id: String,
     pub name: String,
+    #[cfg_attr(test, ts(type = "number"))]
     pub rev: u64,
     pub dirty: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1291,6 +1295,7 @@ pub struct OpenShown {
     )
 )]
 pub struct Newer {
+    #[cfg_attr(test, ts(type = "number"))]
     pub rev: u64,
     #[cfg_attr(test, ts(type = "number"))]
     pub at: u64,
@@ -1325,6 +1330,7 @@ pub struct RowShown {
     #[cfg_attr(test, ts(optional))]
     pub back_text: Option<String>,
     /// 此刻也钉在它上面的别的会话数。
+    #[cfg_attr(test, ts(type = "number"))]
     pub also_used: u32,
     pub facts: Facts,
     /// 从「其余的订阅号」那一行来的。
@@ -1798,10 +1804,12 @@ pub(crate) fn answer_session_edit_with(ctx: &Ctx, args: &Value) -> Answer {
 pub enum SessionSaved {
     Saved {
         id: String,
+        #[cfg_attr(test, ts(type = "number"))]
         rev: u64,
     },
     /// 那份配置读到之后别处存过（没 `force`）：此刻的版本 · 别处那一版 · 本会话的改动。
     Conflict {
+        #[cfg_attr(test, ts(type = "number"))]
         rev: u64,
         theirs: Vec<Diff>,
         mine: Vec<Diff>,

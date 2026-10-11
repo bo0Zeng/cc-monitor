@@ -21885,12 +21885,6 @@
       "zh": "父会话不在会话列表里",
       "args": []
     },
-    "rot.src.followOf": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "跟随默认（{name}）",
-      "args": ["name"]
-    },
     "rot.src.custom": {
       "kind": "control",
       "role": "标签",
@@ -22009,24 +22003,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "存",
-      "args": []
-    },
-    "rot.save.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "名称不能为空",
-      "args": []
-    },
-    "rot.save.dup": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "重名",
-      "args": []
-    },
-    "rot.save.tooLong": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "≤24 字",
       "args": []
     },
     "rot.save.failed": {
@@ -22209,28 +22185,10 @@
       "zh": "取消",
       "args": []
     },
-    "rot.capErr.same": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "起止相同",
-      "args": []
-    },
-    "rot.capErr.overlap": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "与第 {i} 段重叠",
-      "args": ["i"]
-    },
     "rot.capErr.range": {
       "kind": "error",
       "role": "报错",
       "zh": "0–99",
-      "args": []
-    },
-    "rot.capErr.time": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "HH:MM",
       "args": []
     },
     "rot.capTag.fixed": {
@@ -32410,67 +32368,67 @@
     },
     "beRotation.lib.refused": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "被拒 · {at} 恢复",
       "args": ["at"]
     },
     "beRotation.lib.refusedOpen": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "被拒",
       "args": []
     },
     "beRotation.lib.full": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "用满 · {at} 恢复",
       "args": ["at"]
     },
     "beRotation.lib.fullOpen": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "用满",
       "args": []
     },
     "beRotation.lib.overage": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "超额在用",
       "args": []
     },
     "beRotation.lib.login": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "要重新登录",
       "args": []
     },
     "beRotation.lib.line": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "{w} 到 {n}% · {at} 恢复",
       "args": ["w", "n", "at"]
     },
     "beRotation.lib.lineOpen": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "{w} 到 {n}%",
       "args": ["w", "n"]
     },
     "beRotation.lib.off": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "{at} 前不用",
       "args": ["at"]
     },
     "beRotation.lib.pending": {
       "kind": "body",
-      "role": "原因格",
-      "zh": "{at} 换过去（等延迟 {n} 分）· {then}",
+      "role": "片段",
+      "zh": "{at} 换过去（等延迟 {n} 分） · {then}",
       "args": ["at", "n", "then"]
     },
     "beRotation.lib.going": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "都到上限，接着用",
       "args": []
     },
@@ -32483,7 +32441,7 @@
     "beRotation.desc.n": {
       "kind": "body",
       "role": "片段",
-      "zh": "{n} 个号",
+      "zh": "号 {n}",
       "args": ["n"]
     },
     "beRotation.desc.line": {
@@ -32548,13 +32506,13 @@
     },
     "beRotation.blocked.stop": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "都到上限 · 已停发 · 最早 {at} {acct} 恢复 ({rel})",
       "args": ["at", "acct", "rel"]
     },
     "beRotation.blocked.none": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "都到上限 · 已停发",
       "args": []
     },
@@ -32609,13 +32567,13 @@
     "beRotation.cell.strategy": {
       "kind": "error",
       "role": "原因格",
-      "zh": "策略没读到或读不懂",
+      "zh": "策略不可用",
       "args": []
     },
     "beRotation.cell.account": {
       "kind": "error",
       "role": "原因格",
-      "zh": "这一行的号不对",
+      "zh": "号不对",
       "args": []
     },
     "beRotation.config.seedName": {
@@ -32639,7 +32597,7 @@
     "beRotation.config.inUse": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{n} 个会话开着它 · 先换一份再删",
+      "zh": "开着它的会话 {n} · 先换一份再删",
       "args": ["n"]
     },
     "beRotation.config.isDefault": {
@@ -32729,13 +32687,13 @@
     "beRotation.session.gone": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台没见过这个会话",
+      "zh": "后端未见过该会话",
       "args": []
     },
     "beRotation.strategy.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "策略「{name}」第 {line} 行出错 · 此刻照内置策略 1 排",
+      "zh": "策略「{name}」出错 · 行 {line} · 此刻照内置策略 1 排",
       "args": ["name", "line"]
     },
     "beRotation.strategy.timeout": {
@@ -32747,7 +32705,7 @@
     "beRotation.strategy.badShape": {
       "kind": "error",
       "role": "报错",
-      "zh": "策略「{name}」回的不对（{what}）· 此刻照内置策略 1 排",
+      "zh": "策略「{name}」回的不对（{what}） · 此刻照内置策略 1 排",
       "args": ["name", "what"]
     },
     "beRotation.strategy.gone": {
@@ -32758,7 +32716,7 @@
     },
     "beRotation.strategy.missing": {
       "kind": "body",
-      "role": "原因格",
+      "role": "片段",
       "zh": "策略没给",
       "args": []
     },
@@ -32771,13 +32729,13 @@
     "beRotation.strategy.builtinFixed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内置策略随引擎走 · 删不了",
+      "zh": "内置策略随引擎走 · 不可删",
       "args": []
     },
     "beRotation.strategy.inUse": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{n} 份配置在用它 · 先换掉再删",
+      "zh": "在用它的配置 {n} · 先换掉再删",
       "args": ["n"]
     },
     "beRotation.val.on": {
@@ -32866,13 +32824,16 @@
     },
     "rot.doc.newer": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "{cfg} 有新版本",
-      "args": ["cfg"]
+      "args": ["cfg"],
+      "waive": {
+        "C-W5": "「新版本」是这一版轮换的产品词（轮换-v3 §9 · 术语表新词：有新版本 · 载入新版本），指别处存了的那一份配置，不是猜测或论证"
+      }
     },
     "rot.doc.newerBy": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "{at} 在{where}存的 · 本会话改过，没跟",
       "args": ["at", "where"]
     },
@@ -32887,6 +32848,12 @@
       "role": "片段",
       "zh": "会话 {session}",
       "args": ["session"]
+    },
+    "beRotation.migrate.oldSeedName": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "默认",
+      "args": []
     }
   }
 }

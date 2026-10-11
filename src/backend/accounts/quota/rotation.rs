@@ -979,7 +979,7 @@ impl RotationStore {
 
     /// 盘上那份此刻读不懂 ⇒ 为什么（一句 ＋ 原话）；读得懂 · 没有 ⇒ `None`。
     pub(crate) fn unreadable(&self) -> Option<Said> {
-        let _ = self.now();
+        self.now();
         self.cache
             .lock()
             .unwrap_or_else(|e| e.into_inner())

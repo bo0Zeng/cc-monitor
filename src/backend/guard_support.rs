@@ -4,8 +4,6 @@
 
 pub(crate) use guard_core::{assert_no_test_code, production_code, production_source};
 
-pub(crate) use crate::test_home::sandbox_root;
-
 /// 本 crate 源码树根的唯一住址。搬树时只改这一行：几十个扫描型守卫各写一份的话，源码树一搬它们会扫一个不存在的目录、
 /// 扫了个空集 ⇒ 恒绿。前端侧同形（`tests/test-support/repo-root.ts` 的 `srcDirOf`）。
 /// 抽住址时把定义处排除在替换人群之外（新住址的定义本身就是旧形状的最后一个实例）。

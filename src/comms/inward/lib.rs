@@ -19,3 +19,8 @@ pub mod chan {
     pub mod router;
     pub mod wire;
 }
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;

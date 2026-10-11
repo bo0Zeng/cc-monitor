@@ -834,6 +834,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     into_async: NONE,
     someone_listening: NONE,
   },
+  // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
+  "test-home": {
+    SANDBOX_MARK: NONE,
+    linked: NONE,
+    sandbox_root: NONE,
+    account_home: NONE,
+    must_move: NONE,
+  },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
     ALL: NONE,

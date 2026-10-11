@@ -455,8 +455,8 @@ fn read_into(l: &mut Strategy, builtin: bool) -> Result<(), Fail> {
     let src = l.source.clone();
     let decl_err = |(k, msg): (String, String)| fail_at(&src, &format!("\"{k}\""), msg);
     l.params = form::decls_of(m.get("params"), &l.texts, form::Scope::Whole).map_err(decl_err)?;
-    l.acct_params =
-        form::decls_of(m.get("acct_params"), &l.texts, form::Scope::PerAccount).map_err(decl_err)?;
+    l.acct_params = form::decls_of(m.get("acct_params"), &l.texts, form::Scope::PerAccount)
+        .map_err(decl_err)?;
     // 描述：缺省参数 ＋ 没有号也得跑得通，片段的键都得有字。
     let init = rhai::serde::to_dynamic(serde_json::Value::Object(l.param_init()))
         .map_err(|x| Fail::shape(x.to_string()))?;

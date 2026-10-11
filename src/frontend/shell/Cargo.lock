@@ -137,6 +137,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "test-home",
  "ts-rs",
 ]
 
@@ -801,6 +802,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "test-home",
  "tokio",
  "tracing",
  "uuid",
@@ -918,6 +920,7 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
+ "test-home",
  "tokio",
  "tracing",
  "ts-rs",
@@ -932,6 +935,7 @@ dependencies = [
  "guard-core",
  "relay-route-core",
  "rustls",
+ "test-home",
  "upstream-url-core",
  "webpki-roots",
 ]
@@ -960,6 +964,7 @@ name = "copy-core"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "test-home",
 ]
 
 [[package]]
@@ -1070,6 +1075,7 @@ dependencies = [
  "copy-core",
  "guard-core",
  "serde_json",
+ "test-home",
  "win-path-core",
  "windows 0.56.0",
 ]
@@ -1201,6 +1207,7 @@ version = "0.1.0"
 dependencies = [
  "copy-core",
  "shell-quote-core",
+ "test-home",
 ]
 
 [[package]]
@@ -1814,6 +1821,7 @@ dependencies = [
  "host-core",
  "serde",
  "serde_json",
+ "test-home",
 ]
 
 [[package]]
@@ -2446,6 +2454,7 @@ name = "guard-core"
 version = "0.1.0"
 dependencies = [
  "regex",
+ "test-home",
 ]
 
 [[package]]
@@ -2546,6 +2555,7 @@ dependencies = [
  "iana-time-zone",
  "serde",
  "serde_json",
+ "test-home",
  "win-path-core",
  "windows 0.56.0",
 ]
@@ -3370,6 +3380,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "test-home",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -4048,6 +4059,7 @@ name = "own-chan"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "test-home",
  "tokio",
 ]
 
@@ -4635,6 +4647,9 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "relay-route-core"
 version = "0.1.0"
+dependencies = [
+ "test-home",
+]
 
 [[package]]
 name = "renderdoc-sys"
@@ -5103,6 +5118,9 @@ dependencies = [
 [[package]]
 name = "shell-quote-core"
 version = "0.1.0"
+dependencies = [
+ "test-home",
+]
 
 [[package]]
 name = "shlex"
@@ -5894,6 +5912,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-home"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6500,6 +6526,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 [[package]]
 name = "upstream-url-core"
 version = "0.1.0"
+dependencies = [
+ "test-home",
+]
 
 [[package]]
 name = "url"
@@ -7162,6 +7191,7 @@ name = "win-path-core"
 version = "0.1.0"
 dependencies = [
  "guard-core",
+ "test-home",
 ]
 
 [[package]]

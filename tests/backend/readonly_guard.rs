@@ -230,7 +230,7 @@ mod tests {
              一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",
         ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
-        ("test_home", "测试档一起来就把真家换成沙箱（只设环境变量 ＋ 建一个临时目录，只在测试档）"),
+        ("test_home_guard", "判据：每个有判据的 Rust crate 都把 `test-home` 引进测试二进制"),
         (
             "assets",
             "后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
@@ -5115,11 +5115,11 @@ mod g6_dependency_signoff {
              策略文件由后端自己读成字串交给它（`strategy::files_in`），它自己不开文件",
         ),
         (
-            "ctor",
+            "test-home",
             DEV_DEPS,
             UNMEASURED,
-            "测试档一起来就把家换成沙箱（`tests/backend/test_home.rs`，`main` 之前设 `HOME` 等变量）。**只在测试期链接**，\
-             不进发布二进制；它本身只是把一个函数挂进启动段，不开文件、不起进程",
+            "测试档一起来就把真家换成沙箱（仓内 crate `src/common/test-home`，`main` 之前设 `HOME` 等变量、建一个临时目录）。\
+             **只在测试期链接**，不进发布二进制",
         ),
         (
             "sha2",
