@@ -340,6 +340,8 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 **谁在守**：`tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`src/**/*.ts` 生产段零处 tmux 动词 / `&&` 字面量，不开例外）。
 
+守的范围只到桌面界面的 TS。手机端终端屏今天仍自己拼 tmux 命令（`src/mobile/` 的 `TmuxCommands.kt`，列会话 · 附着 · 会话级显示选项），不在这条判据的扫描面里。
+
 ## 31a. tmux `-t` 目标恒用 `=<名>:` 精确形态——三处同源，禁止任一处退回裸目标（F01 / unify-launch）
 
 裸 `-t <名>` 按「精确 → 名字开头 → glob」解析：只有 `sib-2` 在时 `kill-session -t sib` 杀掉 `sib-2` 且 rc=0。`=` 只在 target-session 路径上被认，`send-keys` / `capture-pane` / `set-option` 走 pane 解析 ⇒ 必须带尾冒号 `=<名>:`，它是所有动词上都既通用又精确的唯一形式。`new-session -s <名>` 收的是名字，不加 `=` / `:`。e2e 的 shell 探针同样用 `=<名>:`。

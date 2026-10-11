@@ -10,8 +10,8 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 
 | 模块 | 管什么 |
 |---|---|
-| `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关（终端屏用）；聊天屏起会话 · 送字 · 正文都走那台核心（`ui/chat/ChatSession.kt`） |
-| `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了自己接回去）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条 · `session-new` · `terminal-input` · `history-tail/read` · `line` 帧）；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元；其余是还没删的自读原文那一族（终端屏的「Claude 阅读」） |
+| `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关（终端屏用：列会话 · 附着的 tmux 命令今天在手机这边拼，`ssh/TmuxCommands.kt`）；聊天屏起会话 · 送字 · 正文都走那台核心（`ui/chat/ChatSession.kt`）；文件屏（`ui/sftp/`）经手机自己那条 SSH 走 SFTP |
+| `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了自己接回去）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条 · `session-new` · `terminal-input` · `history-tail/read` · `line` 帧）；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元；其余（自己读原文那一族：`model/JsonlParser.kt` · `catalog/` · `transport/`）生产屏已经不调，只剩测试在用 |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
 | `core-ssh` | SSH（sshj）：连接池、多地址竞速、跳板、SFTP、`~/.ssh/config`、known_hosts、密钥 |
 | `core-data` | Room 库 |

@@ -3,8 +3,8 @@
 | 脚本 | 作用 |
 |---|---|
 | [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 |
-| [`gate.sh`](gate.sh) | 出货前的唯一闸门：各格跑一遍，末尾只吐一行 `GATE: OK` / `GATE: PARTIAL` / `GATE: FAIL …`。先跑它、看见 OK，再单独提交；它故意不提供 `--commit` 开关 |
-| [`verify-committed-state.sh`](verify-committed-state.sh) | 从提交状态（不是工作树）编一次：工作树里有未提交改动时，「工作树绿」与「提交状态绿」是两件事。本仓不推送，CI 见不到这些提交，所以在本机跑 |
+| [`gate.sh`](gate.sh) | 全量门禁，格的唯一名单：各格跑一遍，末尾只吐一行 `GATE: OK` / `GATE: PARTIAL` / `GATE: FAIL …`；`GATE_ONLY=<格>` 只跑点名的（CI 的 Linux job 这么调它）。平时经 `gate-affected.sh` 挑格跑，全量只在打发版标签前经 `gate-clean.sh` 跑一趟；它故意不提供 `--commit` 开关 |
+| [`verify-committed-state.sh`](verify-committed-state.sh) | 从提交状态（不是工作树）编一次：工作树里有未提交改动时，「工作树绿」与「提交状态绿」是两件事。提交推上候选分支之前 CI 见不到它们，所以在本机跑 |
 | [`hooks-are-runnable.sh`](hooks-are-runnable.sh) | 门禁 `hooks` 那一格：`tests/hooks/` 下会被 git 执行的每个脚本，盘上有没有可执行位 · 库里记没记那个位 · 语法过不过它自己声明的解释器（本仓 `core.filemode=false`，前两条分开判）。自带 8 条阳性对照 |
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零） |
 | [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
