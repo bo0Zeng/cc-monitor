@@ -1450,6 +1450,12 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "path",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "sid",

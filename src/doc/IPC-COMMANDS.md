@@ -70,6 +70,7 @@ A new session file appeared。
 | `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
 | `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
+| `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来（会话刚起、记录还没写出来）· 换了一份 ⇒ 发一帧带上最新的；没变 ⇒ 不上线（别的原因发的这一帧字节与本字段加进来之前一字不差） |
 
 ### `session_state`
 

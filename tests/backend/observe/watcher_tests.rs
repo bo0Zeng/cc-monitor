@@ -1384,6 +1384,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
                 project_dir: Some("/w/proj".into()),
                 ..Default::default()
             },
+            path: Some(path.to_string_lossy().into_owned()),
         },
     );
     watch_sessions(vec!["other".into()], &mut state, &mut sink);
@@ -1844,6 +1845,65 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
         Some("/launched/here"),
         "还没有记录 ⇒ pidfile 记的起会话目录"
     );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 先宣告、后建记录：宣告时还没有记录（`path` 缺），记录一出现核心就推一帧 `session_status` 带上这条会话的记录路径 ——
+/// 客户端不读 `line` 帧也拿得到（`line` 帧只发给在看的；`session_status` 人人都收）。路径没变就不再带。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announcement() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-path-later-{}", std::process::id()));
+    let proj = dir.join("projects").join("-a-proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"late-sid","cwd":"/a/proj","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let mut announced_path = Some(String::from("?"));
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded { path, .. } = f {
+            announced_path = path;
+        }
+    }
+    assert_eq!(announced_path, None, "宣告时还没有记录");
+    let rec = proj.join("late-sid.jsonl");
+    std::fs::write(&rec, "{\"type\":\"user\",\"cwd\":\"/a/proj\"}\n").unwrap();
+    process_jsonl(&rec, &mut state, &mut sink);
+    let want = rec.to_string_lossy().into_owned();
+    let mut paths = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionStatus { sid, path, .. } = f {
+            assert_eq!(sid, "late-sid");
+            paths.push(path);
+        }
+    }
+    assert_eq!(
+        paths,
+        vec![Some(want.clone())],
+        "记录出现 ⇒ 一帧 session_status 带路径"
+    );
+    std::fs::write(
+        &rec,
+        "{\"type\":\"user\",\"cwd\":\"/a/proj\"}\n{\"type\":\"user\",\"cwd\":\"/a/proj\"}\n",
+    )
+    .unwrap();
+    process_jsonl(&rec, &mut state, &mut sink);
+    while let Ok(f) = rx.try_recv() {
+        assert!(
+            !matches!(f, Frame::SessionStatus { path: Some(_), .. }),
+            "路径没变就不再带：{f:?}"
+        );
+    }
     std::fs::remove_dir_all(&dir).ok();
 }
 
