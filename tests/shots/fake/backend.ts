@@ -26,6 +26,7 @@ export const REAL_OPS = new Set([
   "rotation-session-set",
   "rotation-rule-save",
   "rotation-plan",
+  "needs-answer",
 ]);
 
 /**
@@ -33,7 +34,7 @@ export const REAL_OPS = new Set([
  * `session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；换号那几条帧命令还是合成的）·
  * 终端画面（要真 tmux）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["changed/accounts", "changed/profiles", "changed/tasks"]);
+export const SHELL_KINDS = new Set(["changed/accounts", "changed/profiles", "changed/tasks", "changed/needs"]);
 
 /** 真后端够不着的那几台：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支（例：账号库「Windows 不支持多账号」）演不出来。 */
 const WINDOWS_ONLY: Record<string, Set<string>> = { "win-laptop": new Set(["accounts-list"]) };
@@ -83,6 +84,51 @@ export class FakeBackend {
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
+  }
+
+  /**
+   * 会话事实：场景合成那一份（记录还没落盘，种类 · 哪一步 · 已等多久照旧在 `ops.ts` 算）；只有答题口那三格交真后端 ——
+   * `needs.ask` · `needs.manualText` 取自那台真后端此刻的 `sessions-needs`（挂没挂着请求、只能在终端里答那一句都是它写的），
+   * `answerOff` 恒 `null`（替身进程的环境里没有那个变量；真后端判它要读持着会话的那个进程）。台架不替核心写这几格的字。
+   */
+  private async factsWithAsk(origin: string, req: Record<string, unknown>, view: unknown): Promise<ArrayBuffer> {
+    const v = this.world.ops["history-facts"](origin, req, this.world) as { needs: Record<string, unknown> | null };
+    const out: Record<string, unknown> = { ...v, answerOff: null };
+    if (v.needs) {
+      const sid = String(req.path ?? "").split("/").pop()?.replace(/\.jsonl$/, "") ?? "";
+      const real = (await this.realNeeds(origin)).find((r) => r.sid === sid)?.needs;
+      out.needs = { ...v.needs, ask: real?.ask ?? null, manualText: real?.manualText ?? null };
+    }
+    const delay = this.world.opDelayMs?.["history-facts"] ?? 0;
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    return enc.encode(JSON.stringify(foldByView("history-facts", out, view))).buffer;
+  }
+
+  /** 那台真后端此刻在等人的会话（`sessions-needs`）；那台看不见 ⇒ 空。 */
+  private async realNeeds(origin: string): Promise<{ sid: string; needs: { ask: unknown; manualText: unknown } }[]> {
+    if (this.world.unseenMachines.includes(origin) || WINDOWS_ONLY[origin]) return [];
+    try {
+      const body = await this.real(origin, "sessions-needs", {}, null);
+      return ((JSON.parse(dec.decode(body)) as { waiting?: unknown[] }).waiting ?? []) as { sid: string; needs: { ask: unknown; manualText: unknown } }[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 场景演「那一家的答题 hook 挂上一条请求」：经真后端 `needs-ask`（与 hook 客户端 `--answer-hook` 同一条命令）挂上、不等它答完。
+   * `hook` 是那一家 hook 交来的那一份（PermissionRequest 的形）。之后真后端推 `changed {needs}`，页里照常重读。
+   */
+  hookAsk(origin: string, hook: Record<string, unknown>): void {
+    void this.real(origin, "needs-ask", { agent: "claude", hook }, null).catch(() => undefined);
+  }
+
+  /** 场景演「别处（终端那边）先答了」：经真后端答掉那一条。 */
+  async answerElsewhere(origin: string, sid: string, choice: string): Promise<void> {
+    const w = await this.realNeeds(origin);
+    const ask = (w.find((r) => r.sid === sid)?.needs.ask as { id?: string } | null)?.id;
+    if (!ask) throw new Error(`${sid} 没挂着请求`);
+    await this.real(origin, "needs-answer", { sid, ask, choice }, null);
   }
 
   /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */
@@ -140,6 +186,7 @@ export class FakeBackend {
       const delay = this.world.opDelayMs?.[op] ?? 0;
       return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
     }
+    if (op === "history-facts" && this.world.ops[op]) return this.factsWithAsk(origin, req, args.view);
     const handler = this.world.ops[op];
     if (!handler) {
       if (!this.world.quiet?.includes(op)) this.miss(`帧命令 ${op}`);
