@@ -6,6 +6,7 @@ import { spawn, spawnSync } from "node:child_process";
 import zlib from "node:zlib";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { WALL_CEILING_MS } from "./real/pool.mjs";
 
 /** 起私有 Xvfb 的那一份起法（仓根相对；文件窗口台架同用它）。 */
 const XVFB_LAUNCHER = "tests/scripts/xvfb-free.sh";
@@ -95,7 +96,7 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
       CCM_SHOTS_FILEWIN_W: String(s.width),
     };
     delete runEnv.WAYLAND_DISPLAY;
-    const r = spawnSync(exe, [TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"], { env: runEnv, encoding: "utf8", timeout: 120_000 });
+    const r = spawnSync(exe, [TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"], { env: runEnv, encoding: "utf8", timeout: WALL_CEILING_MS });
     const ok = r.status === 0 && existsSync(file);
     if (!ok) {
       const why = `${r.stderr ?? ""}\n${r.stdout ?? ""}`.split("\n").filter((l) => /panicked|error/i.test(l)).slice(0, 2).join(" | ");
