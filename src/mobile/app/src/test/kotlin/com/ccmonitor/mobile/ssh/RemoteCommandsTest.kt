@@ -56,12 +56,12 @@ class RemoteCommandsTest {
 
     @Test fun shQuoteHandlesSpaces() = assertEquals("'a b'", shQuote("a b"))
 
-    @Test fun tmuxNewOrAttachNoWd() = assertEquals("tmux new-session -d -s 'main' 2>/dev/null; ${setup("main")}; tmux attach -t 'main'", tmuxNewOrAttach("main"))
+    @Test fun tmuxNewOrAttachNoWd() = assertEquals("tmux new-session -d -s 'main' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'", tmuxNewOrAttach("main"))
 
     @Test fun tmuxNewOrAttachWithWd() =
-        assertEquals("tmux new-session -d -s 'proj' -c '/srv/app' 2>/dev/null; ${setup("proj")}; tmux attach -t 'proj'", tmuxNewOrAttach("proj", "/srv/app"))
+        assertEquals("tmux new-session -d -s 'proj' -c '/srv/app' 2>/dev/null; ${setup("proj")}; tmux -u attach -t 'proj'", tmuxNewOrAttach("proj", "/srv/app"))
 
-    @Test fun tmuxAttachWhenNotInTmux() = assertEquals("${setup("work")}; tmux attach -t 'work'", tmuxAttachCommand("work", alreadyInTmux = false))
+    @Test fun tmuxAttachWhenNotInTmux() = assertEquals("${setup("work")}; tmux -u attach -t 'work'", tmuxAttachCommand("work", alreadyInTmux = false))
 
     @Test fun tmuxAttachWhenAlreadyInTmuxUsesSwitchClient() =
         assertEquals("${setup("work")}; tmux switch-client -t 'work'", tmuxAttachCommand("work", alreadyInTmux = true))
@@ -91,7 +91,7 @@ class RemoteCommandsTest {
 
     @Test fun tmuxListFormatStable() =
         assertEquals(
-            "tmux ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}' 2>/dev/null",
+            "tmux -u ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}' 2>/dev/null",
             tmuxListCommand(),
         )
 
@@ -107,7 +107,7 @@ class RemoteCommandsTest {
             tmuxNewDetachedRunning("my bg", "claude"),
         )
 
-    @Test fun sessionNameWithSpaceIsQuoted() = assertEquals("${setup("my proj")}; tmux attach -t 'my proj'", tmuxAttachCommand("my proj", alreadyInTmux = false))
+    @Test fun sessionNameWithSpaceIsQuoted() = assertEquals("${setup("my proj")}; tmux -u attach -t 'my proj'", tmuxAttachCommand("my proj", alreadyInTmux = false))
 
     @Test fun tmuxSendModelCommandPlain() =
         assertEquals("tmux send-keys -t 'cc' '/model opus' Enter", tmuxSendModelCommand("cc", "opus"))
@@ -170,7 +170,7 @@ class RemoteCommandsTest {
         assertFalse("非 --resume flag", cmd.contains("--resume"))
         assertFalse("无 unset 嵌套环境（Codex 无此病）", cmd.contains("unset "))
         assertTrue("cwd 抽取沿用 grep（Codex session_meta 首个 cwd）", cmd.contains("grep -a -m1 -o '\"cwd\":\"[^\"]*\"'"))
-        assertTrue("tmux 编排一致（new-session + attach）", cmd.contains("tmux new-session -d -s 'cx-019f78e8'") && cmd.contains("tmux attach -t 'cx-019f78e8'"))
+        assertTrue("tmux 编排一致（new-session + attach）", cmd.contains("tmux new-session -d -s 'cx-019f78e8'") && cmd.contains("tmux -u attach -t 'cx-019f78e8'"))
     }
 
     @Test fun tmuxResumeNotInTmuxAttaches() {
@@ -187,7 +187,7 @@ class RemoteCommandsTest {
                 "else case \"\$(tmux display-message -p -t 'cc-abcd' '#{pane_current_command}' 2>/dev/null)\" in " +
                 "(bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) " +
                 "$sendSeg;; esac; fi; " +
-                "${setup("cc-abcd")}; tmux attach -t 'cc-abcd'; " +
+                "${setup("cc-abcd")}; tmux -u attach -t 'cc-abcd'; " +
                 "else echo 'aterm: resume 失败——无法确定工作目录（会话 abcd1234）'; fi",
             cmd,
         )
@@ -197,7 +197,7 @@ class RemoteCommandsTest {
     @Test fun tmuxResumeMobileSetupAppliedBeforeAttach() {
         val cmd = resume("cc-abcd", "sid", "/p")
         assertTrue("定位段在前：$cmd", cmd.startsWith("${locateSeg("sid")}; "))
-        assertTrue("setup 段在 attach 前逐字出现：$cmd", cmd.contains("; ${setup("cc-abcd")}; tmux attach -t 'cc-abcd'; else echo"))
+        assertTrue("setup 段在 attach 前逐字出现：$cmd", cmd.contains("; ${setup("cc-abcd")}; tmux -u attach -t 'cc-abcd'; else echo"))
     }
 
     // 按 create 退出码分支：fresh 会话（create 成功）无条件 send。`new-session -d` 之后 pane_current_command
@@ -239,7 +239,7 @@ class RemoteCommandsTest {
     @Test fun tmuxResumeAlreadyInTmuxUsesSwitchClient() {
         val cmd = resume("cc-x", "sid", "/srv/a", alreadyInTmux = true)
         assertTrue("已在 tmux 内用 switch-client 防嵌套：$cmd", cmd.contains("tmux switch-client -t 'cc-x'; else echo"))
-        assertFalse("不 attach（防嵌套）", cmd.contains("tmux attach"))
+        assertFalse("不 attach（防嵌套）", cmd.contains("attach -t"))
         assertTrue("fallback cwd 透传", cmd.contains("&& cwd='/srv/a';"))
         assertTrue("create 用双引号变量展开的权威 cwd", cmd.contains("-c \"\$cwd\""))
         assertTrue("send-keys 跑 claude --resume（默认命令）", cmd.contains("; claude --resume sid' Enter"))

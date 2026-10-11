@@ -62,7 +62,7 @@ object TmuxCommands {
         return listOfNotNull(
             "tmux new-session -d -s ${shQuote(name)}$wd 2>/dev/null",
             tmuxMobileSetup(name),
-            "tmux attach -t ${shQuote(name)}",
+            "tmux -u attach -t ${shQuote(name)}",
         ).joinToString("; ")
     }
 
@@ -74,7 +74,7 @@ object TmuxCommands {
         name: String,
         alreadyInTmux: Boolean,
     ): String {
-        val enter = if (alreadyInTmux) "tmux switch-client -t ${shQuote(name)}" else "tmux attach -t ${shQuote(name)}"
+        val enter = if (alreadyInTmux) "tmux switch-client -t ${shQuote(name)}" else "tmux -u attach -t ${shQuote(name)}"
         return listOfNotNull(tmuxMobileSetup(name), enter).joinToString("; ")
     }
 
@@ -244,11 +244,12 @@ object TmuxCommands {
 
     /**
      * `tmux ls`，tab 分隔（会话名不能含 tab，可以含 `|`）。没有 server 时 stderr 被吞，输出为空。
+     * 带 `-u`：exec 通道里常常没有 UTF-8 的 locale，那时 tmux 把输出里的 tab 换成 `_`，整张表切不开。
      * 输出由 `ui/session/TmuxParse.kt` 的 `parseTmuxList` 解析。
      */
     @Suppress("FunctionOnlyReturningConstant")
     fun tmuxListCommand(): String =
-        "tmux ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}' 2>/dev/null"
+        "tmux -u ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}' 2>/dev/null"
 
     /**
      * tmux `-t` 的精确匹配包装，别简化。

@@ -49,6 +49,8 @@ export PATH=$(printf %q "$box/bin"):/usr/local/bin:/usr/bin:/bin SHELL=/bin/bash
 # 台架后端的中转口用私有的（默认那个口本机正在跑的后端占着）。替身起到能收第一句要多久：外面给了就带进来。
 export CCM_RELAY_PORT=${CCM_SMOKE_RELAY_PORT:-28788} CCM_SMOKE_BOOT=${CCM_SMOKE_BOOT:-2}
 cd "\$HOME"
+# 每条进来的命令记一行（冒烟看手机到底跑了什么）。
+printf '%s %s\n' "\$(date +%T.%N | cut -c1-12)" "\${SSH_ORIGINAL_COMMAND:-<登录 shell>}" >> $(printf %q "$box/logs/commands.log")
 case "\${SSH_ORIGINAL_COMMAND:-}" in
   '') exec -a -bash /bin/bash ;;
   internal-sftp|*sftp-server*) exec /usr/lib/openssh/sftp-server ;;

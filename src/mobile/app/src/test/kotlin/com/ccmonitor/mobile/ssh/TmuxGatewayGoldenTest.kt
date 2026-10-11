@@ -22,6 +22,9 @@ import org.junit.Test
  * 那一刻没有客户端挂着，之后进它时由进入那条只对它施加。Codex 的 resume 不打 `@ccm_sid`
  * （档案 `hasCcmIdentity=false`，后端那侧 `has_identity: false`）。
  *
+ * 进会话（attach）带 `-u`：手机的终端恒是 UTF-8，而 exec / 登录 shell 里常没有 UTF-8 的 locale，那时 tmux 客户端把中文这类宽字符画成 `_`
+ * （模拟器冒烟在终端屏接上会话时撞上）。列会话（`ls`）带 `-u` 同理（tab 会被换成 `_`）。
+ *
  * ### 判别力边界
  *
  * | 绕过形态 | 本文件 |
@@ -157,13 +160,13 @@ class TmuxGatewayGoldenTest {
             """tmux set -t '=work:' status off 2>/dev/null; tmux set -t '=work:' mouse on 2>/dev/null"""
 
         private val GOLDEN_NEW_OR_ATTACH_MIN: String =
-            """tmux new-session -d -s 'main' 2>/dev/null; tmux set -t '=main:' status off 2>/dev/null; tmux set -t '=main:' mouse on 2>/dev/null; tmux attach -t 'main'"""
+            """tmux new-session -d -s 'main' 2>/dev/null; tmux set -t '=main:' status off 2>/dev/null; tmux set -t '=main:' mouse on 2>/dev/null; tmux -u attach -t 'main'"""
 
         private val GOLDEN_NEW_OR_ATTACH_WD: String =
-            """tmux new-session -d -s 'proj' -c '/home/u/my proj' 2>/dev/null; tmux set -t '=proj:' status off 2>/dev/null; tmux set -t '=proj:' mouse on 2>/dev/null; tmux attach -t 'proj'"""
+            """tmux new-session -d -s 'proj' -c '/home/u/my proj' 2>/dev/null; tmux set -t '=proj:' status off 2>/dev/null; tmux set -t '=proj:' mouse on 2>/dev/null; tmux -u attach -t 'proj'"""
 
         private val GOLDEN_ATTACH_OUTSIDE: String =
-            """tmux set -t '=work:' status off 2>/dev/null; tmux set -t '=work:' mouse on 2>/dev/null; tmux attach -t 'work'"""
+            """tmux set -t '=work:' status off 2>/dev/null; tmux set -t '=work:' mouse on 2>/dev/null; tmux -u attach -t 'work'"""
 
         private val GOLDEN_ATTACH_INSIDE: String =
             """tmux set -t '=work:' status off 2>/dev/null; tmux set -t '=work:' mouse on 2>/dev/null; tmux switch-client -t 'work'"""
@@ -181,13 +184,13 @@ class TmuxGatewayGoldenTest {
             """p=${'$'}(tmux display-message -p -t 'cc-0f9d3c2a' '#{pane_pid}' 2>/dev/null); if [ -z "${'$'}p" ]; then echo ATERM_PANE_ABSENT; elif ! command -v pgrep >/dev/null 2>&1; then echo ATERM_PANE_NOPGREP; elif pgrep -P "${'$'}p" >/dev/null 2>&1; then echo ATERM_PANE_HASCHILD; else echo ATERM_PANE_NOCHILD; fi"""
 
         private val GOLDEN_RESUME_CLAUDE: String =
-            """j=${'$'}(find '~/.claude/projects' -maxdepth 2 -name '0f9d3c2a-1111-4222-8333-444455556666.jsonl' -print -quit 2>/dev/null); cwd=${'$'}([ -n "${'$'}j" ] && grep -a -m1 -o '"cwd":"[^"]*"' -- "${'$'}j" 2>/dev/null | head -n 1 | sed 's/.*"cwd":"//;s/"${'$'}//'); [ -z "${'$'}cwd" ] && cwd='/home/u/proj'; if [ -n "${'$'}cwd" ] && [ -d "${'$'}cwd" ]; then if tmux new-session -d -s 'cc-0f9d3c2a' -c "${'$'}cwd" 2>/dev/null; then tmux set-option -t 'cc-0f9d3c2a' @ccm_sid '0f9d3c2a-1111-4222-8333-444455556666' 2>/dev/null; tmux send-keys -t 'cc-0f9d3c2a' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cct --resume 0f9d3c2a-1111-4222-8333-444455556666' Enter; else case "${'$'}(tmux display-message -p -t 'cc-0f9d3c2a' '#{pane_current_command}' 2>/dev/null)" in (bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) tmux send-keys -t 'cc-0f9d3c2a' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cct --resume 0f9d3c2a-1111-4222-8333-444455556666' Enter;; esac; fi; tmux set -t '=cc-0f9d3c2a:' status off 2>/dev/null; tmux set -t '=cc-0f9d3c2a:' mouse on 2>/dev/null; tmux attach -t 'cc-0f9d3c2a'; else echo 'aterm: resume 失败——无法确定工作目录（会话 0f9d3c2a）'; fi"""
+            """j=${'$'}(find '~/.claude/projects' -maxdepth 2 -name '0f9d3c2a-1111-4222-8333-444455556666.jsonl' -print -quit 2>/dev/null); cwd=${'$'}([ -n "${'$'}j" ] && grep -a -m1 -o '"cwd":"[^"]*"' -- "${'$'}j" 2>/dev/null | head -n 1 | sed 's/.*"cwd":"//;s/"${'$'}//'); [ -z "${'$'}cwd" ] && cwd='/home/u/proj'; if [ -n "${'$'}cwd" ] && [ -d "${'$'}cwd" ]; then if tmux new-session -d -s 'cc-0f9d3c2a' -c "${'$'}cwd" 2>/dev/null; then tmux set-option -t 'cc-0f9d3c2a' @ccm_sid '0f9d3c2a-1111-4222-8333-444455556666' 2>/dev/null; tmux send-keys -t 'cc-0f9d3c2a' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cct --resume 0f9d3c2a-1111-4222-8333-444455556666' Enter; else case "${'$'}(tmux display-message -p -t 'cc-0f9d3c2a' '#{pane_current_command}' 2>/dev/null)" in (bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) tmux send-keys -t 'cc-0f9d3c2a' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cct --resume 0f9d3c2a-1111-4222-8333-444455556666' Enter;; esac; fi; tmux set -t '=cc-0f9d3c2a:' status off 2>/dev/null; tmux set -t '=cc-0f9d3c2a:' mouse on 2>/dev/null; tmux -u attach -t 'cc-0f9d3c2a'; else echo 'aterm: resume 失败——无法确定工作目录（会话 0f9d3c2a）'; fi"""
 
         private val GOLDEN_RESUME_CLAUDE_INSIDE: String =
             """j=${'$'}(find '/opt/cfg/.claude/projects' -maxdepth 2 -name '0f9d3c2a-1111-4222-8333-444455556666.jsonl' -print -quit 2>/dev/null); cwd=${'$'}([ -n "${'$'}j" ] && grep -a -m1 -o '"cwd":"[^"]*"' -- "${'$'}j" 2>/dev/null | head -n 1 | sed 's/.*"cwd":"//;s/"${'$'}//'); [ -z "${'$'}cwd" ] && cwd=''; if [ -n "${'$'}cwd" ] && [ -d "${'$'}cwd" ]; then if tmux new-session -d -s 'cc-0f9d3c2a' -c "${'$'}cwd" 2>/dev/null; then tmux set-option -t 'cc-0f9d3c2a' @ccm_sid '0f9d3c2a-1111-4222-8333-444455556666' 2>/dev/null; tmux send-keys -t 'cc-0f9d3c2a' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude --resume 0f9d3c2a-1111-4222-8333-444455556666' Enter; else case "${'$'}(tmux display-message -p -t 'cc-0f9d3c2a' '#{pane_current_command}' 2>/dev/null)" in (bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) tmux send-keys -t 'cc-0f9d3c2a' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude --resume 0f9d3c2a-1111-4222-8333-444455556666' Enter;; esac; fi; tmux set -t '=cc-0f9d3c2a:' status off 2>/dev/null; tmux set -t '=cc-0f9d3c2a:' mouse on 2>/dev/null; tmux switch-client -t 'cc-0f9d3c2a'; else echo 'aterm: resume 失败——无法确定工作目录（会话 0f9d3c2a）'; fi"""
 
         private val GOLDEN_RESUME_CODEX: String =
-            """j=${'$'}(find '~/.codex/sessions' -maxdepth 4 -name '*aaaabbbb-1111-4222-8333-cccc55556666.jsonl*' -print -quit 2>/dev/null); cwd=${'$'}([ -n "${'$'}j" ] && grep -a -m1 -o '"cwd":"[^"]*"' -- "${'$'}j" 2>/dev/null | head -n 1 | sed 's/.*"cwd":"//;s/"${'$'}//'); [ -z "${'$'}cwd" ] && cwd='/home/u/proj'; if [ -n "${'$'}cwd" ] && [ -d "${'$'}cwd" ]; then if tmux new-session -d -s 'cx-aaaabbbb' -c "${'$'}cwd" 2>/dev/null; then tmux send-keys -t 'cx-aaaabbbb' 'codex resume aaaabbbb-1111-4222-8333-cccc55556666' Enter; else case "${'$'}(tmux display-message -p -t 'cx-aaaabbbb' '#{pane_current_command}' 2>/dev/null)" in (bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) tmux send-keys -t 'cx-aaaabbbb' 'codex resume aaaabbbb-1111-4222-8333-cccc55556666' Enter;; esac; fi; tmux set -t '=cx-aaaabbbb:' status off 2>/dev/null; tmux set -t '=cx-aaaabbbb:' mouse on 2>/dev/null; tmux attach -t 'cx-aaaabbbb'; else echo 'aterm: resume 失败——无法确定工作目录（会话 aaaabbbb）'; fi"""
+            """j=${'$'}(find '~/.codex/sessions' -maxdepth 4 -name '*aaaabbbb-1111-4222-8333-cccc55556666.jsonl*' -print -quit 2>/dev/null); cwd=${'$'}([ -n "${'$'}j" ] && grep -a -m1 -o '"cwd":"[^"]*"' -- "${'$'}j" 2>/dev/null | head -n 1 | sed 's/.*"cwd":"//;s/"${'$'}//'); [ -z "${'$'}cwd" ] && cwd='/home/u/proj'; if [ -n "${'$'}cwd" ] && [ -d "${'$'}cwd" ]; then if tmux new-session -d -s 'cx-aaaabbbb' -c "${'$'}cwd" 2>/dev/null; then tmux send-keys -t 'cx-aaaabbbb' 'codex resume aaaabbbb-1111-4222-8333-cccc55556666' Enter; else case "${'$'}(tmux display-message -p -t 'cx-aaaabbbb' '#{pane_current_command}' 2>/dev/null)" in (bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) tmux send-keys -t 'cx-aaaabbbb' 'codex resume aaaabbbb-1111-4222-8333-cccc55556666' Enter;; esac; fi; tmux set -t '=cx-aaaabbbb:' status off 2>/dev/null; tmux set -t '=cx-aaaabbbb:' mouse on 2>/dev/null; tmux -u attach -t 'cx-aaaabbbb'; else echo 'aterm: resume 失败——无法确定工作目录（会话 aaaabbbb）'; fi"""
 
         private val GOLDEN_KILL: String =
             """tmux kill-session -t 'work' 2>&1 && echo __aterm_kill_ok__"""
@@ -198,7 +201,11 @@ class TmuxGatewayGoldenTest {
         private val GOLDEN_CAPTURE_PANE: String =
             """tmux capture-pane -t 'cc-0f9d3c2a' -p"""
 
+        /**
+         * 带 `-u`：exec 通道里常常没有 UTF-8 的 locale（没 LANG），那时 tmux 把格式输出里的控制字符（tab）换成 `_`，
+         * 整张表按 tab 切不开、解析成空（模拟器冒烟走到终端屏「tmux 会话」时撞上：台架里明明有会话，弹窗说没有）。后端那侧读 tmux 也带 `-u`。
+         */
         private val GOLDEN_LIST: String =
-            """tmux ls -F '#{session_name}${'\t'}#{session_windows}${'\t'}#{?session_attached,1,0}${'\t'}#{pane_current_command}' 2>/dev/null"""
+            """tmux -u ls -F '#{session_name}${'\t'}#{session_windows}${'\t'}#{?session_attached,1,0}${'\t'}#{pane_current_command}' 2>/dev/null"""
     }
 }

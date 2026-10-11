@@ -9,7 +9,7 @@ data class TmuxSession(
 )
 
 /**
- * 解析 `tmux ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}'` 的输出。
+ * 解析 `tmux -u ls -F '#{session_name}\t#{session_windows}\t#{?session_attached,1,0}\t#{pane_current_command}'` 的输出。
  * 用 tab 分隔（会话名可含空格与 `|`，但不含 tab）；
  * 字段不足 3 或会话名空 → 跳过；windows 非数字 → 0；attached=第 3 列为 "1"。无 server（stderr 被 2>/dev/null 吞）→ 空。
  */
