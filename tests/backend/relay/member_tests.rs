@@ -75,10 +75,6 @@ fn an_oversized_content_length_is_refused_without_allocating_it() {
 /// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、各段各落各位；再交给**生产段那张决策表**
 /// （`accounts::upstream_select::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成一个未登记的名字（手写）⇒ 拒（404 ＋ 原因头，FIX3 之前是 502）。
 ///
-/// ⇒ 「注入的那一形，中转真的会照直通处理」这一截从成品到决策表一路是真的。先前这里是三条跨半边对拍
-/// （monitor `payload.rs` 的两份样例 · `APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕 现抠字面量），
-/// 拼的那一侧搬进后端、语法进共享 crate 之后，两半之间没有第二份可对拍了（`cross_half_edge_registry` 那条边随之出列）。
-/// 买不到的那一截（claude 拿到这个变量之后怎么走）同今天（`C7`）。
 #[test]
 fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
     let answer = crate::accounts::upstream_select::endpoint::relay_with(

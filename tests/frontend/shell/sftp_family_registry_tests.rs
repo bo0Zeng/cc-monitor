@@ -9,7 +9,7 @@
 //!   跟着搬去后端（`tests/backend/control/transfer_tests.rs`）。
 //! - 池子里那 13 条 `#[tauri::command]` **一条都不属于传输核心**（窗口不走 Tauri IPC、走通道）——
 //!   它们今天全是**待收**：最后一个消费者在别人的写区里（老面板归 F7b 删；复制 / 读文本 / 问 home 归 F7a 换）。
-//!   本路**不删**它们（删了 = 老面板那几处 `invoke` 当场悬空，红在别人那一侧），而是登记成 [`PENDING`]：
+//!   **不删**它们（删了 = 老面板那几处 `invoke` 当场悬空，红在别人那一侧），而是登记成 [`PENDING`]：
 //!   每一格写清等哪一路、消费者住哪，**并要求那个消费者此刻真的在盘上**。
 //!   ⇒ 那一路合进来、消费者一走，那一格当场红 ⇒ 删它是一件机械活（名字、住址都在表上）。
 //!   这与 `sftp_pool.rs` 里 `is_protected_claude_data_path` 那行转出住址「递减棘轮 ＋ 最后一个消费者」同形。
@@ -35,10 +35,6 @@ use std::collections::BTreeSet;
 ///
 /// **这张表只许变短** —— 变长 = SFTP 又长回一条非传输的命令。
 pub(super) const PENDING: &[(&str, &str, &str, &str, &str)] = &[
-    // F7a ＋ F7b 合进来之后这张表从 13 行收到 1 行 —— 删掉的十二条
-    //   〔已删：`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_download` ·
-    //   `sftp_upload` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_mkdir` · `sftp_rename` ·
-    //   `sftp_delete` · `sftp_chmod`〕连同它们的 Tauri 注册、`commands.ts` 包装、`parity_ledger` 行一起走了。
     // 最后一行（零流量复制那条命令，消费者是门禁 `f3-copy` 那一格）连同那一格一起退役
     //   （`gate.sh` 29 格 → 28），它挂的那个写函数一起删了 ⇒ **表空：池子零条 Tauri 命令**。
     //   表留着、今天是空的：它只许变短，而它已经短到底了 —— 池子哪天再长出一条命令，下面判据 1 当场红。

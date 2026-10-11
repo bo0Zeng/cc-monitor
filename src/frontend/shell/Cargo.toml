@@ -88,9 +88,6 @@ path = "src/main.rs"
 #
 # ── 🔴〔2026-09-23 同日订正〕**「发版包里还没有它」那条报备是假的** ─────────────────
 #
-# 〔墓碑，原话逐字：「② **发版包里今天还没有它**：Tauri 的安装包只装主二进制与
-#  `externalBin` 那几个 sidecar ⇒ 装机那份上 `filewin::proc::resolve_window_bin` 会
-#  找不到它**并出声**（`D11`：不留退路）。补它要动 `tauri.sidecar.conf.json` 与发版流水线」。〕
 #
 # 现打两趟推翻（本仓这份 manifest ＋ `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，
 # `@tauri-apps/cli` 现锁 2.11.2，喂的是占位字节 —— 问的是**清单**）：
@@ -163,7 +160,6 @@ copy-core = { path = "../../common/copy-core" }
 # **不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（本机那份的状态
 #   由本机常驻后端并进账号清单）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
 #   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private`）只在 `harden` 下存在。
-# 〔墓碑 —— GP1 那一版开着它「只为 Windows 上读 DACL」（`perm::probe` 那一臂）：读者随 `creds_store::read_status`〔散文墓碑〕一起没了。〕
 creds-core = { path = "../../common/creds-core" }
 
 # P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有

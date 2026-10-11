@@ -16,7 +16,7 @@
 //!
 //! # 每台机器上的写者恰好一个
 //!
-//! monitor 所在那台：monitor 自己（`src/frontend/shell/src/creds_store.rs`，本路一个字节没动）。
+//! monitor 所在那台：monitor 自己（`src/frontend/shell/src/creds_store.rs`）。
 //! 其余每台：那台的后端，就是本模块。monitor **从不**把 `apikey-key-set` 发给本机那条连接。
 //!
 //! # 路径：与中转里的上游选择**同一个出处**
@@ -241,8 +241,7 @@ pub(crate) fn check_inputs(plain: &str, base_url: Option<&str>) -> Result<(), Fa
 /// ★★**「表里有哪几行」的唯一住址** = 上游选择装表那一步（`table::build`，中转装表同一个函数、
 /// 同一张每 agent 默认上游）**真收进表**的那几行的 id。
 ///
-/// 先前这里（与 monitor `history::apikey_rows_at`〔散文墓碑〕）只筛「id 当不当得了路由段」，而装表还会因为
-/// `base_url` 解析不了 · 明文非回环 · `auth_style` 认不出 · 「不发头」却配了 key 把一行丢出表 ⇒
+/// 只筛「id 当不当得了路由段」不够：装表还会因为 `base_url` 解析不了 · 明文非回环 · `auth_style` 认不出 · 「不发头」却配了 key 把一行丢出表 ⇒
 /// 那一行界面说「经本机中转」、起会话注入 `/s/`，中转却 404（头注自认的残留）。今天两处读者
 /// （`accounts-list` 并表 · `ccm` 起会话）都读这一份 ⇒ 与中转同答。
 ///

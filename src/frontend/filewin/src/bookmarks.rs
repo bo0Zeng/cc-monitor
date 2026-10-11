@@ -35,9 +35,6 @@ use std::sync::{Arc, Mutex};
 
 use super::source::Origin;
 
-// 书签文件的名字 ＋ 「它在数据目录下的全路径」（`FILE_NAME`〔散文墓碑〕· `file_in`〔散文墓碑〕）挪到了 monitor 那一侧：
-//   名字只住 `data_paths::FILEWIN_BOOKMARKS_FILE`，全路径由开窗入口算好、随种子交来（窗口进程不找数据目录）。
-
 /// 整份书签：机器 → 那台机器上的目录（保序、不重样）。
 pub type Book = BTreeMap<String, Vec<String>>;
 

@@ -1,19 +1,19 @@
 //! ═══════════════════════════════════════════════════════════════════
-//! # 要求住址：**`src/doc/INVARIANTS.md` 条 44**
+//! # 要求住址：**`src/doc/INVARIANTS.md` §44**
 //! ═══════════════════════════════════════════════════════════════════
 //!
-//! 🔴 **它与 `§41.6` D1 那条附加条件是两件事，而那正是条 44 存在的理由。**
+//! 🔴 **它与 `§41.6` D1 那条附加条件是两件事，而那正是 §44 存在的理由。**
 //! 那一条逐字要求「起进程的面**逐条登记**…写明『做什么、
 //! **为什么不违反收窄后的铁律**』」—— 它是**后端**只读铁律收窄时的强制条件。
 //!
 //! 而 **monitor 侧起进程不违反任何铁律**（monitor 本来就能写用户的东西）
 //! ⇒ 那个理由栏**对这一侧没有意义**。
 //!
-//! ⇒ 条 44 要的是另一件事：**起进程不许悄悄扩散，每一族只许有一个出口。**
+//! ⇒ §44 要的是另一件事：**起进程不许悄悄扩散，每一族只许有一个出口。**
 //! 它防的不是写盘，是「第二条出路」（同一件事两处起法，参数拼装 / 环境擦洗 /
 //! 错误归因一定会漂）与「没人认领的子进程」。
 //!
-//! ⚠ 条 44 是 2026-09-22 才有的（`P20` 现打之后升格）；
+//! ⚠ §44 是 2026-09-22 才有的（`P20` 现打之后升格）；
 //! 在那之前本表点不到任何要求。逐条依据住。
 //!
 use std::path::{Path, PathBuf};
@@ -35,16 +35,13 @@ enum Origin {
 const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 整条命令是常量/无插值字面量
     // `cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
-    // `hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     // `mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
-    // `ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。〔散文墓碑〕
     // `sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
     // 公钥推送那一行出去了：读 `.pub` · 组请求 · 一次 exec 都进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`）。
     // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
-    //    `cc_bus.rs / check_cc_bus_agent_online`（`Builder("build_online_cmd")`）与
-    //    `tmux.rs / capture_remote_pane`（`Builder("build_capture_pane_cmd")`）。
+    //    查在线与抓屏那两个构造器。
     //    形状与理由**与上面 `K-R72` / `K-R104` 那几笔逐字同形**：那两处的一次性 SSH exec
     //    整条没了（查在线改走帧 `bus-list`、抓屏改走帧 `capture-pane`）
     //    ⇒ 它们不再是「远端执行点」，两个构造器也随之整块删。
@@ -62,20 +59,16 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    留着它，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住。
     // ── 本函数里拼，但自由文本过了 shell_quote
     // 🔴 **这里原来还有两行，两行都出去了**：
-    //    `remote_history.rs / stream_read_remote_session`（`--read-session`）与
-    //    `stream_source/snapshot.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
+    //    读整份会话（`--read-session`）与读尾段（`--read-session-tail`）那两处。形状与理由同上面
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
     //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
-    // 🔴 **逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
-    //    它的放行表 C4c 起是空的，已删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
     // `stream_source/` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
     // `tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
     // `stream_source/` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
     //   ⇒ 本表空了，下面那条判据改成「零处」（带正控）。
     // `cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
 ];
 
 fn src_root() -> PathBuf {
@@ -281,7 +274,6 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     // 常驻自检：某一类归零时上面那一支就没人行使，而它看起来照样绿。
     // ⚠ 本仓已连着六次栽在「新分支平时没人走」上，所以四类各要一个活样本。
-    // `Const` 那一类收敛到零（最后一条 `probe_ccm_cli`〔散文墓碑〕 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
     // `Quoted` 那一类也收敛到零（最后一条 `stream_source/` 起远端流模式那一处随那一形删了）⇒ 同上。
     // `Builder` 那一类也收敛到零（最后一条 `pubkey.rs` 的公钥推送进了本机后端 `pubkey-push`）⇒ 同上。
     assert_eq!(
@@ -305,7 +297,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
 //
 // 类别：`Bootstrap` —— 这一跳发生在那台的后端**还不存在 / 正在被装**的时候，问不了它；
 //       `Deploy` —— 装的是后端之外的工具（「部署 …… 不迁」）；
-//       `Pending(归谁)` —— **能换**，本路没换，写清卡在哪、归谁。
+//       `Pending(归谁)` —— **能换**，还没换，写清卡在哪、归谁。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StillShell {
@@ -321,12 +313,8 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
     // `sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
     // 公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
-    //   （链接走写面 `files-link`，装卸账记 skill 装记录）；字节照走部署那一条（SFTP 经本机后端）。
     // `mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（选的那一条）。
     // `hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
-    // `probe_ccm_cli`〔散文墓碑〕 那一行摘了：`ccm` 就是那台后端本身，「会哪些」改问那台后端 `ccm-probe`
-    //   （与 `ccm --ccm-probe` 同一份），不再进交互 shell 查 `PATH`（写好的解锁条件兑现）。
     // `tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。
     // `cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。
 ];

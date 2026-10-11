@@ -196,7 +196,7 @@ fn choose_answers_every_cell_of_table_a() {
     use Want::*;
     let expect: &[(Key, Want)] = &[
         (k(Windows, X86_64), Give),
-        // 用户 09-18「不含 arm64」⇒ 无产线。
+        // 「不含 arm64」⇒ 无产线。
         (k(Windows, Aarch64), Unsupported),
         (k(Linux, X86_64), Give),
         (k(Linux, Aarch64), Give),
@@ -288,7 +288,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             assert!(!s.contains(banned), "{r:?} 说了禁词 {banned}：{s}");
         }
         // 每一形说的是**自己那一句** —— 按文案键比，不再按那张表各取一个独有词
-        //   （用户 09-29「所有文案…不能把开发过程混进去」之后那几句不再说「今天 / 承诺 / 没有验过」）。
+        //   （「所有文案…不能把开发过程混进去」之后那几句不再说「今天 / 承诺 / 没有验过」）。
         //   只比「五句互不相同」挡不住「一形借了另一形的句子、填了不同的参数」（死值验 K6 首刀没砍中，补这一向）。
         let (form, os, arch, why) = match r {
             Refusal::UnsupportedMachine { os, arch } => {
@@ -446,7 +446,6 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
         }
     }
     assert!(scanned > 50, "只扫到 {scanned} 份 .rs —— 扫描口坏了");
-    // `acct_iso_deploy.rs`（vendored 脚本）出去了：账号库改由后端自己建，那份 vendored 脚本整棵删了。
     let want: BTreeSet<String> = ["byte_table.rs"].into_iter().map(String::from).collect();
     assert_eq!(homes, want);
     // 正控：一段带 `include_bytes!` 的合成生产代码认得出来。
@@ -790,7 +789,7 @@ fn embedded_copies_must_agree_or_the_build_fails() {
 }
 
 /// ④ **铺着的本机那几份是给别的 target 编的 ⇒ 这一趟当它们不在**：不内嵌（不置 cfg）、不 panic、照没铺那样喊一句 warning。
-/// 合并树照常 `re-embed.sh --native`（铺的是本机 linux 那份），门禁 `winlink` 再编 Windows 那份 lib 测试程序，就是这一形。
+/// 发版前照常 `re-embed.sh --native`（铺的是本机 linux 那份），门禁 `winlink` 再编 Windows 那份 lib 测试程序，就是这一形。
 /// 清单缺席（铺着字节却说不出给谁编的）仍当场失败：那份字节可信不可信答不上来。正控：同一份铺法、TARGET 对得上 ⇒ 内嵌。
 #[test]
 fn native_bytes_staged_for_another_target_are_left_out_not_fatal() {

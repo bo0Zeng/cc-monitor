@@ -139,12 +139,6 @@ fn the_sole_home_really_holds_the_implementation() {
     );
 }
 
-// 「monitor 侧的入口逐字节对拍」那一条删了：最后一个入口（`stream_source` 里那层转调壳）随它唯一的生产调用方
-//   （monitor 侧 Gate 1 前检，THIN 第 3 件删）零调用、一起删 ⇒ monitor 侧零个 quote 入口，要 quote 直调内核。
-//   更早摘掉的两个：`launch::posix_quote`〔散文墓碑〕（FIX4，远端 ssh 外壳随渲染进了本机后端）· `acct_iso_deploy::sq`（MIG-3a）。
-//   「不逃逸的第二份实现」那一形照旧由上面的零命中守卫 ＋ 唯一的家那两条挡（当年只比一个入口时，把 `posix_quote`〔散文墓碑〕
-//   换成不逃逸的写法照样全绿 —— 那条教训今天落在「monitor 侧零个入口」上）。
-
 // ═══════ PowerShell 那一门：monitor 里一个引号器都不许有 ═══════════════════
 
 /// PowerShell 单引号引号器必有的记号：双写替换串 `"''"`（只转 ASCII 的那一形）· PowerShell 专有的四个引号字符

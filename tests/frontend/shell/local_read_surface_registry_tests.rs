@@ -151,7 +151,6 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     // monitor 那份 Codex 适配器取 `~/.codex` 那一行摘了：适配器随适配表删了（`~/.codex` 住哪只剩后端 `agents/codex/`）。
     (
         "footprint_client.rs",
-        // 足迹判定进了后端，monitor 只答它自己那台那几行的事实（`with_monitor_probe`〔散文墓碑〕删了）。
         "footprint_client_facts",
         "足迹里 monitor 自己那几行的根（`home` 那一格）",
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
@@ -164,13 +163,6 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "**不是伸手拿用户的东西**：cc-monitor 自己的家（后端与 monitor 同住）。只 `is_file` / `is_dir` / 长度，\
              不读字节 —— 两把钥匙的内容一个字节都不碰；`home_dir()` 只为「每个用户各一份」",
     ),
-    // `data_paths.rs` 探 `$PROFILE` 候选目录那一行摘了：界面经通道问本机后端（`$PROFILE` 在哪只有后端方言答）。
-    // 钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。
-    // 这里原来有 `aliases_read`〔散文墓碑〕一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
-    //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。
-    // 这里原来还有 `aliases_install`〔散文墓碑〕一行（它自己 `home_dir()`、再交本进程落盘）。
-    // 别名那一族整个进了那台后端（`aliases-*`）。
-    //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
         "ccm_probe.rs",
         "local_ccm_entry_now",
@@ -204,7 +196,6 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     // `("local_accounts.rs", "local_accts_dir")` 那一行同拍去掉 —— 它自己写的退役条件兑现了：
     //   钉契约目录名的那条判据搬到了后端（`accounts_query_tests.rs::the_accounts_library_lives_under_the_contract_directory_name`，
     //   对 `acct-core` 的常量与后端缺省解析那一处），本机那份参照实现连同这一处 `home_dir()` 一起删了。
-    // `mcp.rs` 那一行（`.claude.json` 三候选的 `home_dir()`〔散文墓碑〕）去掉：MCP 列表改问那台后端，monitor 不再伸手进 home 找它。
     // `("config.rs", "resolve_claude_dir")` 那一行摘了：Claude 目录只由那台后端解析。
     (
         "config.rs", // 原 `paths.rs`
@@ -427,8 +418,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     // **F05b 已落地、本机后端真的起起来了**（真机实测日志逐字为
     // `本机后端: Started { pid: 6072, attempt: 1 }`），所以 F10 的正题现在能做 ——
     // 把那些 `reader` 直读点切到后端，然后把那条棘轮往下拧。
-    // ⚠ **F01b 留的那条死限已由 P3 刀 0 解除**（原文：「本地 sid 一进 `tmux_raw_registry`〔散文墓碑〕，
-    // `/branch` 的灰点 bug 会回来」）。当时成立，是因为本地那条 diff **只产 `Gone`**；
+    // ⚠ 从前有一条死限：「本地 sid 一进 tmux 原文账，`/branch` 的灰点 bug 会回来」。当时成立，是因为本地那条 diff **只产 `Gone`**；
     // P3 刀 0 让它按 `pid + procStart` 判出 `Superseded`（要正面证据，缺 `procStart` 退回 `Gone`）
     // ⇒ 进表之后 `/branch` 会走 `(Some(origin), Superseded)` = 归档，不再是灰点。
     // 判出它的今天是本机后端（`session_removed.cause` ⇒ 会话账本裁成 `session_state`），monitor 只转交成品。

@@ -52,8 +52,9 @@ import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
-import com.ccmonitor.mobile.core.terminal.AtermTerminal
+import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
+import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
@@ -223,7 +224,7 @@ private fun HostKeyChangedContent(
         SessionStateTabButton(onShowTabs)
         Text("这台服务器的身份变了", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
         Text(
-            "aterm 记得的身份和现在这台对不上。",
+            copyText("hostIdentity.changed.body"),
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
@@ -248,7 +249,7 @@ private fun HostKeyChangedContent(
             onDismissRequest = { confirming = false },
             title = { Text("信任新身份？") },
             // 二次确认的文案说清后果，而不是只问「确定吗」。
-            text = { Text("aterm 会忘掉旧身份、记住现在这台。如果这台其实不是目标服务器，之后的输入都会发给它。") },
+            text = { Text(copyText("hostIdentity.trust.consequence")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = false
@@ -531,8 +532,8 @@ private fun CaptureControl(
 /** 把推送命令的输出映射为可读的反馈。 */
 private fun pushKeyResultMessage(out: String): String =
     when {
-        out.contains("ATERM_ADDED") -> "已推送公钥到本机 authorized_keys"
-        out.contains("ATERM_ALREADY") -> "公钥已在 authorized_keys（未重复添加）"
+        out.contains("CCM_KEY_ADDED") -> "已推送公钥到本机 authorized_keys"
+        out.contains("CCM_KEY_ALREADY") -> "公钥已在 authorized_keys（未重复添加）"
         else -> "推送未确认，请检查远端 ~/.ssh/authorized_keys" // 没有标记：命令链在写入前就失败了（权限 / 磁盘等），不假报成功
     }
 
@@ -555,7 +556,7 @@ private fun PushKeyControl(
             if (id.publicKeyOpenSsh.isBlank()) {
                 Toast.makeText(context, "该身份无公钥，无法推送（旧的导入身份可重新导入以派生公钥）", Toast.LENGTH_LONG).show()
             } else {
-                // 在已认证的连接上 exec，不必重新认证。输出里带 ATERM_ADDED / ALREADY 标记。
+                // 在已认证的连接上 exec，不必重新认证。输出里带 CCM_KEY_ADDED / ALREADY 标记。
                 scope.launch {
                     runCatching { runOnce(channel, appendAuthorizedKeyCommand(id.publicKeyOpenSsh)) }
                         .onSuccess { Toast.makeText(context, pushKeyResultMessage(it), Toast.LENGTH_SHORT).show() }
@@ -644,7 +645,7 @@ private fun TerminalTab(
     // navigationBarsPadding 让 ExtraKeysRow 不被系统手势条挡住；imePadding 让键盘弹起时按钮条仍在键盘上方。
     Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
         // 不用 key() 重建 Terminal：回喂的 initialFontSize 由 termlib 就地改字号，滚动位置、选区与 IME 状态都保得住。
-        AtermTerminal(
+        CcMonitorTerminal(
             emulator = session.emulator,
             modifier = Modifier.fillMaxWidth().weight(1f),
             keyboardEnabled = true,

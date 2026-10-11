@@ -290,7 +290,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。
-    //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
+    //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对手机端冻结的 `--fork-session`（argv 形）撞名。
     CommandSpec {
         name: "session-fork",
         summary: "从某条消息处分叉出一个新会话",
@@ -337,7 +337,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // U6b-3：第一条**真业务命令**。
-    // 一次性 `--resolve` 那条路**逐字不动** —— 契约与仓外 aterm 冻结在 2026-07-18，
+    // 一次性 `--resolve` 那条路**逐字不动** —— 契约与手机端冻结在 2026-07-18，
     // 两条路复用同一个纯函数。⚠ 它的命令级错误码今天仍叫 `bad_request`（与协议级同名），
     // **刻意不改**：改它会破坏那份冻结的契约。如实登记。
     CommandSpec {
@@ -345,7 +345,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数）",
         // 原来只列两个，而 `resolve_from_json` 还会回 `invalid_session_id` /
         // `unsafe_launch_candidate`（B2 两道校验）⇒ 登记表比真回的少两个。补齐；
-        // 与跨仓承诺的码全集两向相等由 `resolve_query_tests.rs` 那一族钉着
+        // 与对手机端的承诺的码全集两向相等由 `resolve_query_tests.rs` 那一族钉着
         //（`stdin_read_failed` 只有一次性那条会出，不在这里）。
         codes: &[
             "bad_request",

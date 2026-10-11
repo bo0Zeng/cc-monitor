@@ -12,10 +12,6 @@
  * 两个 realm（主窗 / 设置窗 —— 同一个 monitor 进程里的两个 webview，各自一份模块实例）× 全部写者，**同一拍一起发**，
  * `await` 全部，然后看盘：每个写者写的值都在，且盘上没有期望之外的键（**两向相等**，期望手写）。
  *
- * 假盘在 `@tauri-apps/api/core::invoke` 这一层（最外层），于是 `config.ts` / `ipc/commands.ts` / 各写者走的都是
- * 生产那条真链。每一跳 IPC 都让出一次事件循环（`setTimeout 0`），模拟 Tauri 往返 —— 旧代码的
- * 「`load_config` → 改 → `save_config` 整份」两跳之间别人的写会插进来，这正是 E1 的形。 〔散文墓碑〕
- *
  * ⚠ 射程：假盘的 `patch_config` 用 `tests/frontend/ui/config-patch-fake.ts::applyConfigEdits`（与 Rust 写口跑同一份金样）。本条**只**证明
  * 「前端每个写者只交自己那几条路径」；Rust 写口本身在并发下合并得对不对，归
  * `tests/frontend/shell/config_tests.rs`（真文件、真线程）。

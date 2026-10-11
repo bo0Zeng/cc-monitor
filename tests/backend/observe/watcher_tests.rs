@@ -380,8 +380,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     // 「把 Poke 拆成独立臂」**没有变红**：断言那串字面量就在本测试自己的源码里，
     // `contains` 恒真 ⇒ 这条守卫是**安慰剂**。是变异（而不是审读）把它揪出来的。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -418,8 +417,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
 #[test]
 fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -503,8 +501,7 @@ fn still_exactly_one_event_channel() {
     // 现在锚 `\n#[cfg(test)]\nmod tests`：源码里这串是**转义写法**（反斜杠 + n 两个字符），
     // 与真正的换行不相等 ⇒ 不会匹配到本行自己。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -656,11 +653,11 @@ fn appending_lines_advances_offset_and_seq_monotonically() {
 }
 
 #[test]
-fn byte_offset_matches_aterm_lineframer() {
-    // backend-01（gap#2）：Line.byte_offset **逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、
-    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自 aterm LineFramerTest 的关键语料。
+fn byte_offset_matches_mobile_lineframer() {
+    // backend-01（gap#2）：Line.byte_offset **逐字节对齐手机端 `LineFramer.endOffset`**——计 CRLF 的 `\r`、
+    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自手机端 LineFramerTest 的关键语料。
     let mut seqs = SeqCounter::new();
-    // aterm feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
+    // 手机端 feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
     // 你=3B + \r + \n = 5；x + \n = 2 → 累计 7。raw 剥 \r/\n。
     let (out, cur) = read_new_lines(
         "你\r\nx\n".as_bytes(),
@@ -3589,7 +3586,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
 }
 
 /// `ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
-/// add-time 冒名判定）。家目录放在非 ASCII 路径下（纪律 25：主树住 `~/文档/…`）。
+/// add-time 冒名判定）。家目录放在非 ASCII 路径下（仓可能住在非 ASCII 的目录里）。
 #[cfg(target_os = "linux")]
 #[test]
 fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {

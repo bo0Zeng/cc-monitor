@@ -5,8 +5,7 @@ use super::*;
 ///
 /// # 它换掉了谁、为什么〔**D 类**〕
 ///
-/// 原来这里住的是 `the_caller_never_gets_its_own_source_back`〔散文墓碑〕，断言
-/// 「本 crate 的 `src/` 里只有 `lib.rs`（= **调用者自己**），摘除生效 ⇒ 结果为空」。
+/// 换掉的那条断言是「本 crate 的 `src/` 里只有 `lib.rs`（= **调用者自己**），摘除生效 ⇒ 结果为空」。
 /// 那条断言的前提是**判据与被测代码同住一份文件** —— 判据搬进
 /// `tests/common/guard-core/lib_tests.rs` 之后，「调用者」不再是 `lib.rs`，
 /// 前提**恒假**，它当场红。这正是 `§6.2` D 类那一形（`§6.3` 记过两条同形的）。
@@ -80,7 +79,7 @@ fn without_the_exclusion_the_caller_would_be_included() {
     );
 }
 
-/// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 条 73 的成因钉。
+/// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 「明写名单、不靠自摘」那条纪律的成因钉。
 ///
 /// 仓库重组之后，测试模块长这样：
 /// `#[cfg(test)] #[path = "../../../../src/bridge/tests/bridge/X_tests.rs"] mod tests;`
@@ -88,7 +87,7 @@ fn without_the_exclusion_the_caller_would_be_included() {
 /// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比**恒不命中**。
 ///
 /// ⚠ 这一条**不是**在要求把它修好（修好之后它仍然只是「看起来像在工作」）；
-/// 它是把那个失效**钉成一条读得出来的事实**，好让条 73 那条纪律有据可依：
+/// 它是把那个失效**钉成一条读得出来的事实**，好让那条纪律有据可依：
 /// 靠 `file!()` 自摘的判据，一搬树就安静地把自己收进了自己的语料。
 #[test]
 fn a_path_attribute_caller_file_silently_fails_to_exclude() {
@@ -98,7 +97,7 @@ fn a_path_attribute_caller_file_silently_fails_to_exclude() {
     assert!(
         files.iter().any(|(p, _)| p.ends_with("lib.rs")),
         "折返形的 `caller_file` 居然摘掉了调用者 —— 那说明后缀比的口径变了，\
-             条 73 那条纪律的成因描述要跟着重写"
+             「明写名单、不靠自摘」那条纪律的成因描述要跟着重写"
     );
 }
 
@@ -556,7 +555,7 @@ fn a_broken_model_strips_nothing_and_says_so() {
 /// ⚠ 09-04（`K-R25`）起两个单位一起量：整份文件 ＋ 按 `#[test]` 切出的每一块。
 #[test]
 fn this_crate_never_falls_back_to_not_stripping() {
-    // 🔴 〔步 7c 剖分 2026-09-19〕**语料根要跨两棵树。**
+    // 🔴 **语料根要跨两棵树。**
     //
     // 本条的块那一半数的是「按 `#[test]` 切出来的块」，而本 crate 的测试模块
     // 剖分之后整个住进了 `<repo>/tests/common/guard-core/`。

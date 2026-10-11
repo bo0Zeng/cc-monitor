@@ -18,7 +18,7 @@ fn repo_root() -> PathBuf {
 /// 它展开成 `scan_tree_excluding_self(` —— 那个函数**号称**按 `file!()` 摘掉调用者自己，
 /// 而那一刀在本仓的判据上**一处都不生效**（判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是
 /// 带 `..` 的折返路径 ⇒ 后缀比**恒不命中**；逐字读数住 `scanning_guard_registry` 头注）。
-/// ** 条 73 因此把「摘掉自己」换成了明写名单**，于是新写的遍历一律是
+/// **因此「摘掉自己」换成了明写名单**，于是新写的遍历一律是
 /// `guard_core::scan_tree_excluding(`（现打：`tests/frontend/shell` 29 处 · `tests/backend` 12 处 ·
 /// `src/common` 1 处），而那个字面量**这张表一个都不含** ——
 /// `scan_tree_excluding(` 里没有 `scan_tree!`，也没有 `read_to_string(`。
@@ -236,7 +236,7 @@ fn receiver_before(hay: &str, dot_at: usize) -> String {
 /// ⇒ 只盯 `contains` 等于放掉一半以上的族成员。
 /// 一处 `.ends_with("…")` 的 needle 是不是**纯扩展名**（`.rs` / `.ts` / `.d.ts` / `.vitest.ts`）。
 ///
-/// # 为什么这一形要从「裸匹配欠账」里摘出去〔步 7c 2026-09-19 登记，带理由〕
+/// # 为什么这一形要从「裸匹配欠账」里摘出去
 ///
 /// 本区棘轮治的风险**只有一个**：`匹配单位（子串）比事实小 ⇒ 把事实撑大的改动
 /// 从缝里溜过去而判据照样绿`（头注那张表三个实例：`起流`→`起流程` ·

@@ -79,10 +79,6 @@ function passMerge(args: ChanCallArgs): ArrayBuffer {
 
 beforeEach(() => invokeMock.mockReset());
 
-// 这里原来三条钉前端 `mergeSearchResults`〔散文墓碑〕（倒序 · 总数相加 · 任一被砍 ⇒ truncated · 空）：
-//   合并排序搬进本机后端 `history-search-merge`（`search_rules::sort_by_recency`），期望原样搬进
-//   `tests/backend/observe/search_query_tests.rs::the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said`。
-//   这里钉界面那一半：交给它的是什么、用的是不是它合好的那一份、它回的形状不认怎么办。
 
 /** 替身：本机后端合好的一份 —— 刻意**逆着**交进来的顺序回，好认出「界面用的就是它排的，不是自己排的」。 */
 function mergeReply(sent: unknown): ArrayBuffer {

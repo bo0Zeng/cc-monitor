@@ -5,8 +5,6 @@
 //! - `src/doc/INVARIANTS.md §10`，逐字：「Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。
 //!   一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）」；
 //!   「**实施口诀**：IPC 命令默认写 `pub async fn`，函数体包 `tokio::task::spawn_blocking(move || { ... }).await.map_err(...)?`」。
-//! - 出处：审计 F 🔴-2（`resume_history_session` · `new_local_session`〔散文墓碑〕两条同步命令里经
-//!   `relay_prefix_for_launch` `block_on` 等本机后端，最长 `apikey_remote::BUDGET`〔散文墓碑〕 10 s）。
 //!
 //! # 判据（两向相等）
 //!
@@ -33,8 +31,6 @@
 //!
 //! # 买不到（逐条）
 //!
-//! - **间接调用**：经函数指针 / 闭包值 / trait 对象的那一跳看不见（例：`relay_endpoint_on`〔散文墓碑〕
-//!   里 `(facts.endpoint)(…)` 那一跳）；同名歧义的调用不连。
 //! - **针认七样**（[`NEEDLES`]）：等 async 往返 · 同步连口 · 起子进程 · 等子进程 · 睡 · 起停串行锁。
 //!   「读写文件」**不在射程**（今天还同步的 `load_config` / `patch_config` / `cc_*_auto_launch` 读写的是 monitor 自己几 KB 的
 //!   一份文件，逐条登记在 [`SYNC_ALLOWED`]）；`local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_status`（等起停那把锁）

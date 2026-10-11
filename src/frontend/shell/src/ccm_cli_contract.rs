@@ -7,9 +7,6 @@
 //! 〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
 //! ⇒ **那份脚本删了，这些读数没有被测对象了**。
 //!
-//! 删掉的 22 条判据与三张表（`REQUIRED_NEEDLES` / `LEDGER` / `BACKEND_BACKED_PATHS`、
-//! `measure` / `scan_t_targets` / `pin_t_def` 〔散文墓碑〕 / `BASELINE`）当时逐条判过，它们守的**性质**由后端二进制自己的契约判据接着守。
-//!
 //! # 留下来的这 7 条为什么留
 //!
 //! 它们**一条都不读那份脚本** —— 读的是 `src/shared/cc-bus/scripts/cc-spawn` 与

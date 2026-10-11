@@ -7,7 +7,7 @@
 
 「独立进程那个壳要为**每一个我们发布的平台**编得过，且这条要在门禁里。」
 （「折进前端那个壳要能链接进前端」那一半随那一档放弃作废 —— 见下面 `P4` 的墓志。）
-行数由 **条 63** 定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux x86_64），
+行数由**平台承诺面**定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux x86_64），
 (Windows, aarch64) **显式拒绝**。本机 (Linux, aarch64) **不承诺**（用户原话
 「不承诺. 适配部分, 即os适配部分后面单独写单独做.」）—— 它不是零脚印（远端那格有 musl 字节），
 所以不进 `REFUSED`，进 `NOT_PROMISED`：代码里后端 `control/deploy_plan.rs::promised` 对它答「否」，由后端
@@ -45,7 +45,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "scripts" / "gate.sh"
 
-# ── 承诺表（条 63，用户 2026-09-18 逐字点完）──────────────────────────────
+# ── 承诺表──────────────────────────────
 # 每格：(平台名, 它在 gate.sh 里那一格的名字, 逐字锚点, 这一格买到了什么)
 PROMISED = [
     ("本机 Windows x86_64", "winchk", "run_gate winchk ",
@@ -53,7 +53,7 @@ PROMISED = [
     ("本机 Windows x86_64", "winchk-backend", "run_gate winchk-backend ",
      "`src/backend` 那个 crate 过 `x86_64-pc-windows-gnu`（`--all-targets`）"),
     ("本机 Windows x86_64", "winlink", "run_gate winlink ",
-     "`-p monitor` 的两个二进制在 `x86_64-pc-windows-gnu` 上**真链接**（dev；WIN1 · RT1 F1）＋ lib 测试程序带进程清单（MANIFEST · Common-Controls；mg38）"),
+     "`-p monitor` 的两个二进制在 `x86_64-pc-windows-gnu` 上**真链接**（dev；WIN1 · RT1 F1）＋ lib 测试程序带进程清单（MANIFEST · Common-Controls）"),
     ("远端 Linux（musl 两个 arch）", "muslbuild", "run_gate muslbuild ",
      "后端在两个 musl target 上**编得出静态字节**（与 `release.yml` 同一套 zig 版本）"),
     ("本机 Linux x86_64", "cargo", "run_gate_sum cargo ",
@@ -78,10 +78,10 @@ NOT_PROMISED = [
     ("Local", "Linux", "aarch64",
      "本机 (Linux, aarch64) 不承诺；OS 适配以后单独写设计、单独做。起不来时出声「这台不在承诺里」"),
     ("Remote", "Windows", "x86_64",
-     "条 63：远端 Windows 目标里有、现在不做（有本机那份原生字节，远端没验过）"),
+     "远端 Windows 目标里有、现在不做（有本机那份原生字节，远端没验过）"),
 ]
 
-# ── 显式拒绝（条 63 待点②：不含 arm64，零成本落地因为盘上零脚印）────────
+# ── 显式拒绝（不含 arm64，零成本落地因为盘上零脚印）────────
 REFUSED = [("(Windows, aarch64)", "aarch64-pc-windows")]
 
 
@@ -109,7 +109,7 @@ def main():
             f"P1 承诺表与 `gate.sh` 现打的格对不上："
             f"登记了而盘上没有 {sorted(registered - on_disk)} · "
             f"盘上有而登记没有 {sorted(on_disk - registered)} —— "
-            f"⚠ 前者是**承诺的平台今天没有门禁**（条 63 点名的那三格之一失守）；"
+            f"⚠ 前者是**承诺的平台今天没有门禁**（承诺面那三格之一失守）；"
             f"后者是登记陈了。两向都判，因为只判一向在表被清空时恒真。")
 
     # ── P2：逐字锚点唯一 ────────────────────────────────────────────────
@@ -133,7 +133,7 @@ def main():
         hits = [h for h in hits if h != "tests/evidence/K-G4-platform-ledger.py"]
         if hits:
             fails.append(
-                f"P3 {label} 是**显式拒绝**的平台（条 63 待点②），而盘上现打 {len(hits)} 处脚印："
+                f"P3 {label} 是**显式拒绝**的平台，而盘上现打 {len(hits)} 处脚印："
                 f"{hits[:5]} —— 要么那一票被推翻了（回来改这张表 ＋ 给它一条产线与一格门禁），"
                 f"要么有人顺手加了个跑不起来的 target。**两种都要人回来裁。**")
 
@@ -152,7 +152,7 @@ def main():
         print(f"| {plat} | `{cell}` | {buys} |")
     print()
     for label, needle in REFUSED:
-        print(f"🚫 **{label}**：显式拒绝（条 63 待点②）· 全仓 `{needle}` 现打 **0** 处脚印")
+        print(f"🚫 **{label}**：显式拒绝 · 全仓 `{needle}` 现打 **0** 处脚印")
     for route, os_, arch, why in NOT_PROMISED:
         print(f"⬜ **{route} ({os_}, {arch})**：不承诺 —— {why}")
     print()

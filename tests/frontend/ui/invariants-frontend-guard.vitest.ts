@@ -1,5 +1,5 @@
 /**
- * `P21` —— **`INVARIANTS.md` 里讲前端那五条（条 12 / 13 / 14 / 21 / 22）的判据。**
+ * `P21` —— **`INVARIANTS.md` 里讲前端那五条（§12 / 13 / 14 / 21 / 22）的判据。**
  *
  * 量具住 `tests/evidence/P21-frontend-invariants.ts`，**本文件只登记与判**
  * （分家的理由写在那边：`scanning-guard-registry.vitest.ts` 的 `WALKERS`
@@ -7,7 +7,7 @@
  *
  * # 🔴 先说这条判据**为什么**存在，以及它订正了哪一句
  *
- * 原先的读数是：「条 21 · 22 · 12 · 13 · 14 这五条讲的全是前端，
+ * 原先的读数是：「§21 · 22 · 12 · 13 · 14 这五条讲的全是前端，
  * 而 TS 侧 2 129 条判据里**没有一条的断言对象是那几条条文**」。
  * 那个读数**是对的**，但它后面那句推论 ——「所以它们没人守」——**不成立**。
  * `P21` 第一步现打核过（命令与逐条读数写在件里），结论是**三种情况混在一起**：
@@ -16,7 +16,7 @@
  * |---|---|---|
  * | **12** alert 不算错误反馈 | 🔴 **没人守**（生产侧现打 0 处 `alert(`，但**没有任何东西断言那个 0**） | ⇒ 本文件 ① |
  * | **13** portal 必须真挂 body | 🔴 **没人守**（`info-icon.vitest.ts` 断的是 tooltip **零残留**，不是它挂在哪） | ⇒ 本文件 ② |
- * | **14** key 必须前缀 `cc-monitor.` | 🔴 **没人守**（`src/frontend/ui/local-storage.ts` 头注引了条 14，全仓无断言读它） | ⇒ 本文件 ③ |
+ * | **14** key 必须前缀 `cc-monitor.` | 🔴 **没人守**（`src/frontend/ui/local-storage.ts` 头注引了 §14，全仓无断言读它） | ⇒ 本文件 ③ |
  * | **21.1/21.2** 守卫式 `snap` · 不手动补偿 | 🔴 **TS 侧没人守**（只有 `tests/e2e/f40-suite.sh` 的密度绊线，而它**手动、不进 CI**） | ⇒ 本文件 ④⑤ |
  * | **21.3** 尾部优先门控（F40a/F40b） | ✅ **已有人守** —— `tests/frontend/ui/tabs.vitest.ts` 那一组 `F40a 门控矩阵` / `F40b R-1` 等值断言 | **不在这里复制**（`D1`） |
  * | **22.4** 精简模式 CSS 不塌 grid 行 | ✅ **已有人守** —— `tests/frontend/ui/app-grid-claims.vitest.ts`，`viewer` 模式的隐式行数钉在 0 | **不在这里复制**（`D1`） |
@@ -48,7 +48,7 @@
  * - ② 是**必要条件**（一个从不碰 `document.body` 的模块不可能把浮层挂到 body 上），
  *   不是充分条件：同一份文件里既挂 body 又把另一个 fixed 元素挂在组件子树里，本格看不见。
  *   换来的是它对本仓实际的两族写法都判得对（理由逐字在量具 `FixedPortal` 头注里）。
- * - **不管条 12 的正面那半**（「关键失败必须有 toast / banner」）：那要判语义。
+ * - **不管 §12 的正面那半**（「关键失败必须有 toast / banner」）：那要判语义。
  *   ①只钉反面（不许用 alert）。正面那半今天由 `tests/frontend/ui/error-toast.vitest.ts`（合流）与
  *   `tests/frontend/ui/settings/unknown-keys-notice.vitest.ts`（恒亮的告警等于没有告警，报文逐字引 `INVARIANTS §12`）
  *   各守一角，**同样不在这里复制**。
@@ -115,7 +115,7 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
   });
 
   it("🔴 正控：包含块属性的量具对本仓两个真选择器判得出相反结论", () => {
-    // 条 13 的「为什么」逐字点的就是 `.settings-panel` 的 `transform: translateX(0)`。
+    // §13 的「为什么」逐字点的就是 `.settings-panel` 的 `transform: translateX(0)`。
     expect(
       containingBlockProps(".settings-panel"),
       "`.settings-panel` 的 `transform` 没被看见 —— ② 的登记表理由就是靠这把尺子机检的",
@@ -127,21 +127,21 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
   });
 });
 
-// ═══════════════════════════ ① 条 12 ═══════════════════════════
+// ═══════════════════════════ ① §12 ═══════════════════════════
 
 describe("P21 ① 条 12：前端 alert 不算错误反馈 —— 生产侧零 `alert(`", () => {
   it("★ 生产 TS 里一处 `alert(` 都没有", () => {
     const sites = alertCallSites(SOURCES);
     expect(
       sites.map((s) => `${s.file}:${s.line}  ${s.text}`),
-      "条 12：`alert` 弹窗用户可能没看清就关掉（v1.7.9 那次「Permission denied」事故的成因）。\n" +
+      "§12：`alert` 弹窗用户可能没看清就关掉（v1.7.9 那次「Permission denied」事故的成因）。\n" +
         "关键失败要走 `console.error` ＋ 状态栏红色 toast（`src/frontend/ui/error-toast.ts`）／严重的加顶部 banner。\n" +
-        "⚠ 射程只有 `alert` —— `confirm`/`prompt` 问的是「要不要干」，不在条 12 里。",
+        "⚠ 射程只有 `alert` —— `confirm`/`prompt` 问的是「要不要干」，不在 §12 里。",
     ).toEqual([]);
   });
 });
 
-// ═══════════════════════════ ② 条 13 ═══════════════════════════
+// ═══════════════════════════ ② §13 ═══════════════════════════
 
 /**
  * **不把 fixed 浮层挂 `document.body` 的已知例外**，逐条写清它凭什么安全。
@@ -158,7 +158,7 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
     const off = PORTALS.filter((p) => !p.mountsBody).map((p) => p.sel);
     expect(
       off.sort(),
-      "条 13：祖先有 `transform`/`filter`/`perspective`/`will-change`（或 layout containment）时，\n" +
+      "§13：祖先有 `transform`/`filter`/`perspective`/`will-change`（或 layout containment）时，\n" +
         "`position: fixed` 后代的包含块从 viewport 重置到那个祖先 ⇒ fixed 失去 viewport 锚定。\n" +
         "本仓 `.settings-panel` 有 `transform: translateX(0)` 做 slide-in、`.stream-content > *` 有\n" +
         "`content-visibility: auto` ⇒ 挂在它们子树里的 fixed 元素会乱跑。挂 body 是唯一可靠路径。\n" +
@@ -202,14 +202,14 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
   });
 });
 
-// ═══════════════════════════ ③ 条 14 ═══════════════════════════
+// ═══════════════════════════ ③ §14 ═══════════════════════════
 
 /**
  * **绕过 `src/frontend/ui/local-storage.ts` 接入层直写的存储 key**（`LS_KEYS` 里没有它们）。
  *
- * ⚠ 条 14 要的是**前缀**，这两个前缀都对。登记它们的理由是**另一半**：
+ * ⚠ §14 要的是**前缀**，这两个前缀都对。登记它们的理由是**另一半**：
  * `src/frontend/ui/local-storage.ts` 头注逐字「新加 key 必须先在这里注册，否则模块内 grep 不到无法定位」，
- * 而条 14 的附带契约（Batch5-F19）要求「非主窗视图写共享 key 前必须显式隔离」——
+ * 而 §14 的附带契约（Batch5-F19）要求「非主窗视图写共享 key 前必须显式隔离」——
  * 那个审视动作**只发生在接入层的 `LS_KEYS` 旁边**。绕过去的 key 没人会想起来审。
  * ⇒ 这一格只许降。
  */
@@ -229,7 +229,7 @@ describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor
   it("★ 每一个 key 都以 `cc-monitor.` 开头", () => {
     expect(
       KEYS.filter((k) => !k.key.startsWith("cc-monitor.")).map((k) => `${k.file}:${k.line}  ${JSON.stringify(k.key)}`),
-      "条 14：WebView2 的 origin 是 `tauri://localhost`，与其他可能用同一 origin 的 Tauri 应用\n" +
+      "§14：WebView2 的 origin 是 `tauri://localhost`，与其他可能用同一 origin 的 Tauri 应用\n" +
         "共享存储（理论上）。前缀避免冲突，也让数据透明化展示时过滤得出来。",
     ).toEqual([]);
   });
@@ -247,13 +247,13 @@ describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor
     expect(
       [...new Set(KEYS.filter((k) => !k.registered).map((k) => k.key))].sort(),
       "新增了一个绕过 `src/frontend/ui/local-storage.ts` 的直写 key。\n" +
-        "★ 条 14 的附带契约（Batch5-F19：非主窗视图写共享 key 前必须显式隔离）那个审视动作\n" +
+        "★ §14 的附带契约（Batch5-F19：非主窗视图写共享 key 前必须显式隔离）那个审视动作\n" +
         "只发生在 `LS_KEYS` 旁边 —— 绕过去的 key 没人会想起来审。收口进 `LS_KEYS`，别加进这张表。",
     ).toEqual([...OFF_LEDGER_KEYS].sort());
   });
 });
 
-// ═══════════════════════════ ④ 条 21.1 ═══════════════════════════
+// ═══════════════════════════ ④ §21.1 ═══════════════════════════
 
 /** 给一个元素装上「可编程的滚动几何」＋ 数 `scrollTop` 被写了几次。 */
 function riggedScroller(scrollHeight: number, clientHeight: number, scrollTop: number) {
@@ -280,7 +280,7 @@ describe("P21 ④ 条 21.1：`snap()` 必须是守卫式的 —— 已在底部�
     new MessageStream(el).scrollToBottom();
     expect(
       writes,
-      "条 21.1：每帧无脑 `scrollTop = scrollHeight` 会在 HiDPI 分数像素布局下因整数\n" +
+      "§21.1：每帧无脑 `scrollTop = scrollHeight` 会在 HiDPI 分数像素布局下因整数\n" +
         "`scrollHeight` 与分数布局的舍入误差**每帧不同** ⇒ 整块内容 ±0.5px 高频重绘\n" +
         "（启动重放期「最新消息整行上下微抖」的根因，已实测定位）。",
     ).toEqual([]);
@@ -307,14 +307,14 @@ describe("P21 ④ 条 21.1：`snap()` 必须是守卫式的 —— 已在底部�
     stream.insertNode(above, first); // 插到它**上方**
     expect(
       writes,
-      "条 21.2：视口上方插入交给浏览器原生 `overflow-anchor` 维持视觉稳定。\n" +
+      "§21.2：视口上方插入交给浏览器原生 `overflow-anchor` 维持视觉稳定。\n" +
         "手动补偿 `scrollTop` ＋ 原生 anchoring 叠加会 double-shift。",
     ).toEqual([]);
     expect(above.nextElementSibling, "插入位置错了 —— 上面那个零写入是在一条没发生的插入上空转").toBe(first);
   });
 });
 
-// ═══════════════════════════ ⑤ 条 21.2（CSS 那半）═══════════════════════════
+// ═══════════════════════════ ⑤ §21.2（CSS 那半）═══════════════════════════
 
 describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-anchor: none`", () => {
   it("★ 一处都没有", () => {
@@ -323,7 +323,7 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
       .map((r) => r.selector);
     expect(
       hits,
-      "条 21.2 逐字：**禁止**给 `.stream` 设 `overflow-anchor: none` ——\n" +
+      "§21.2 逐字：**禁止**给 `.stream` 设 `overflow-anchor: none` ——\n" +
         "补批在**同一同步任务内**的临时关闭（`tabs.fillAbove` / `session-viewer.maybeFillAbove`，\n" +
         "两处都在 `finally` 里还原）是唯一豁免类，而那是 JS 行内样式，**不许写进 CSS**：\n" +
         "写进 CSS 就是永久关闭，启动重放期的上方插入会立刻失去原生锚定。",
@@ -342,7 +342,7 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
     ).toEqual([]);
     expect(
       toggles.filter((t) => !t.restoredInFinally).map((t) => `${t.file}:${t.onLine}`),
-      "条 21.2 逐字：**还原必须在 `finally`** —— 渲染内核抛出时留下 `overflow-anchor:none`\n" +
+      "§21.2 逐字：**还原必须在 `finally`** —— 渲染内核抛出时留下 `overflow-anchor:none`\n" +
         "= 该 tab 永久失去原生锚定，**且无自愈**（D 审计两家共识）。\n" +
         "⚠ 本条是近似判法（往前回看 600 字符找 `finally`），嵌套 try 会让它假红 —— 那是叫，不是漏。",
     ).toEqual([]);
@@ -357,13 +357,13 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
     // `.stream` 身上压根不该有这个属性。写了任何值都要有人看一眼。
     expect(
       cssDecl(".stream", "overflow-anchor"),
-      "`.stream` 上出现了 `overflow-anchor` 声明。条 21.2 要的是**保留浏览器默认 auto**，\n" +
+      "`.stream` 上出现了 `overflow-anchor` 声明。§21.2 要的是**保留浏览器默认 auto**，\n" +
         "也就是**一个字都不写**。写了 `auto` 也要有人看一眼（说明有人动过这一块）。",
     ).toBeNull();
   });
 });
 
-// ═══════════════════════════ ⑥ 条 22.2 / 22.3 / 22.6 ═══════════════════════════
+// ═══════════════════════════ ⑥ §22.2 / 22.3 / 22.6 ═══════════════════════════
 
 describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
   // 〔三入口拆分 · 住址搬家〕两个精简 bootstrap 从 `main.ts` 搬到了各自的入口模块
@@ -398,7 +398,7 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     expect(ev.indexOf("chan.subscribe("), "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
     expect(
       /\blisten\s*(<[^>]*>)?\s*\(|@tauri-apps\/api\/event/.test(ev),
-      "条 22.3：`listen()` 是**异步注册**，注册完成前 emit 的事件会**静默丢**（实测症状：viewer 白屏只剩状态栏）。\n" +
+      "§22.3：`listen()` 是**异步注册**，注册完成前 emit 的事件会**静默丢**（实测症状：viewer 白屏只剩状态栏）。\n" +
         "⇒ `bindEvents` 里若再有 Tauri 监听，必须 `await` 注册完才订会话流（订阅一登记，句柄就可能开始交格）。",
     ).toBe(false);
   });
@@ -409,11 +409,11 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     const body = SETTINGS ?? "";
     expect(
       (body.match(/dispatcher\.applyOverrides\(/g) ?? []).length,
-      "条 22.6：设置窗有**自己的** dispatcher 实例，不 `applyOverrides` ⇒ 窗内看到的是默认键位",
+      "§22.6：设置窗有**自己的** dispatcher 实例，不 `applyOverrides` ⇒ 窗内看到的是默认键位",
     ).toBe(1);
     expect(
       (body.match(/dispatcher\.start\(\)/g) ?? []).length,
-      "条 22.6：`dispatcher.start()` 是唯一挂 window keydown 的地方 —— 不调则\n" +
+      "§22.6：`dispatcher.start()` 是唯一挂 window keydown 的地方 —— 不调则\n" +
         "① 快捷键编辑器录制收不到键；② Esc 无法经 overlay LIFO 逐层关。\n" +
         "⚠ **别改成手搓 window 级 Esc 监听**：它会与栈内 overlay 的 Esc 双触发（既关 overlay 又关整窗）。",
     ).toBe(1);

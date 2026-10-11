@@ -1,7 +1,7 @@
 {
-  "_note": "resolve / --resolve 给仓外 aterm 的跨仓承诺的冻结金样（契约冻结 2026-07-18，daemon-协议-v1 §3）。改任何一格 = 跨仓契约变更：同轮改代码 + 本文件 + IPC-PROTOCOL §8「--resolve」那一条 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带的那一族。",
+  "_note": "resolve / --resolve 给手机端的承诺的冻结金样（契约冻结 2026-07-18，daemon-协议-v1 §3）。改任何一格 = 与手机端的契约变更：同轮改代码 + 本文件 + IPC-PROTOCOL §8「--resolve」那一条 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带的那一族。",
   "frozen": "2026-07-18",
-  "consumer": "aterm",
+  "consumer": "mobile",
   "request_fields": [
     "sessionId",
     "launchCandidates",

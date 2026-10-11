@@ -66,8 +66,8 @@ class IdentityViewModel(
     /** 生成 ECDSA-P256 Keystore 不可导出密钥并存为身份（私钥留 Keystore，不落库）。 */
     fun generateEcdsa(label: String) =
         runOp("已生成硬件密钥") {
-            val alias = "aterm-key-" + UUID.randomUUID()
-            val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = label.ifBlank { "aterm" })
+            val alias = "ccm-key-" + UUID.randomUUID()
+            val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = label.ifBlank { "cc-monitor" })
             repo.saveKeystoreBacked(
                 Identity(
                     id = alias,
@@ -85,7 +85,7 @@ class IdentityViewModel(
     /** 软件生成 Ed25519 身份（私钥 OpenSSH PEM 经 CryptoBox 加密落库，走 imported/PrivateKey 路径）。 */
     fun generateEd25519(label: String) =
         runOp("已生成 Ed25519 密钥") {
-            val key = SshKeyGenerator.generateEd25519(comment = label.ifBlank { "aterm" })
+            val key = SshKeyGenerator.generateEd25519(comment = label.ifBlank { "cc-monitor" })
             repo.save(
                 Identity(
                     id = "ed25519-" + UUID.randomUUID(),

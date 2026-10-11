@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
  *
  * 只做冒烟：App 起得来、根屏渲染得出、不崩。不测业务逻辑（那是 JVM 单测的活）。
  *
- * 它比「验了渲染」值钱：`createAndroidComposeRule<MainActivity>()` 会真正拉起 `AtermApp`，于是顺带覆盖了
+ * 它比「验了渲染」值钱：`createAndroidComposeRule<MainActivity>()` 会真正拉起 `CcMonitorApp`，于是顺带覆盖了
  * Koin 全模块装配（`startKoin { modules(dataModule, sshModule, appModule) }`）以及根屏 ViewModel 的解析。
  * 往 `AppModule.kt` 加东西时 DI 装配破损是高发故障，会被本测当场抓住。别当 hello-world 删掉。
  *

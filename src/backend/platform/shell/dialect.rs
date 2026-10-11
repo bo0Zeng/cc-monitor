@@ -6,7 +6,7 @@
 //! 从 monitor `shell_dialect.rs` 搬来：别名规则与方言住**那台机器的后端**，
 //! 「这台说不说 PowerShell」「`PATH` 上有没有同名程序」「文档目录在哪」从此都是**这台自己**的事实（不再是 monitor 那台的）。
 //!
-//! # 判准（条 33）
+//! # 判准
 //!
 //! ```text
 //! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」 → 这里（翻译官）
@@ -121,11 +121,10 @@ pub(crate) enum Listed {
     IfDirExists(String),
 }
 
-/// 🔴 ** 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
+/// 🔴 **方言那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
 pub(crate) trait ShellDialect: Sync {
-    // 墓碑：这里从前有一格「围栏块的排版」—— 唯一的读者是代装 rc 那一行的那一跳（退役）。
-    //   别名块那一侧的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
+    // 别名块的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
 
     /// 落盘前的编码。PowerShell 加 BOM（`K-R132`：PS 5.1 把无 BOM 的 `.ps1` 按 ANSI 代码页解，
     /// 中文注释会吞掉下一行）；POSIX 一个字节都不加（`.bashrc` 开头多三个字节 ⇒ `sh` 把它当命令）。
@@ -140,9 +139,7 @@ pub(crate) trait ShellDialect: Sync {
     /// `home` 是**那台机器**的 home（后端 `files-home` 答的字符串）；这里一个字节的盘都不读（[`StartupCandidate`]）。
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate>;
 
-    // 墓碑：这里从前有一格「用户选的那份启动文件还不在时，装 source 那一行要不要新建它」——
-    //   代装那一行的那一跳退役了（source 那一行只住别名块里），这一格零调用方 ⇒ 删。
-    //   （别名块自己那一侧建不建 `$PROFILE`，归 `profile_installer` 那一份规则。）
+    // 别名块建不建 `$PROFILE`，归 `profile_installer` 那一份规则（source 那一行只住别名块里）。
 
     /// 我们自己那份别名文件在 home 下的相对路径（`/` 分隔，交给后端的 `rel` 就是它）。
     fn our_alias_file_rel(&self) -> &'static str;
@@ -171,8 +168,6 @@ pub(crate) trait ShellDialect: Sync {
     /// 这个名字是不是已经被占了（**只出声、不拦**）。报出来的话里带住址。
     /// `own_block` 是我们自己那块别名块的正文（通用层给：POSIX 是 `src/shared/ccm-aliases.sh`，PowerShell 是模板渲染出来的那一份）。
     ///
-    /// `PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
-    /// （从前住 monitor 时远端只能不查，那一格 `look_on_path`〔散文墓碑〕随之退役）。
     fn name_taken(&self, name: &str, own_block: &str) -> Option<String>;
 }
 
@@ -368,8 +363,6 @@ impl Posix {
         Ok(words)
     }
 
-    /// 生成文件里的一行 → 一条。认两种调用词：裸 `ccm`，以及从前那种 `"${CCM:-<路径>}"`
-    /// （`K-R69` 的 `ccmInvocation`〔散文墓碑〕吐过，那一格随 TS 生成器退役）—— 读回之后一律按裸 `ccm` 重写。
     fn parse_line(call: Call, line: &str) -> Parsed {
         let rest = line
             .strip_suffix(POSIX_FN_TAIL)

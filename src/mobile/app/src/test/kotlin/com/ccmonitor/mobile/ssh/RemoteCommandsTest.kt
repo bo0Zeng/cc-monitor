@@ -78,13 +78,13 @@ class RemoteCommandsTest {
      */
     @Test fun tmuxKillCarriesSuccessMarker() {
         val cmd = tmuxKillCommand("bg")
-        assertEquals("tmux kill-session -t 'bg' 2>&1 && echo __aterm_kill_ok__", cmd)
+        assertEquals("tmux kill-session -t 'bg' 2>&1 && echo __ccm_kill_ok__", cmd)
         assertTrue("会话名必须被 quote", cmd.contains("'bg'"))
     }
 
     /** 判定必须要求肯定的证据——命令没跑起来时 stdout 同样是空的。 */
     @Test fun tmuxKillSuccessNeedsPositiveEvidence() {
-        assertTrue(tmuxKillSucceeded("__aterm_kill_ok__\n"))
+        assertTrue(tmuxKillSucceeded("__ccm_kill_ok__\n"))
         assertFalse("空输出不算成功（命令可能根本没跑起来）", tmuxKillSucceeded(""))
         assertFalse("只有 stderr 不算成功", tmuxKillSucceeded("can't find session: bg\n"))
     }
@@ -126,7 +126,7 @@ class RemoteCommandsTest {
         assertTrue(cmd.contains("grep -qxF 'ssh-ed25519 AAAAKEY comment'")) // 整行精确匹配去重
         assertTrue(cmd.contains(">> ~/.ssh/authorized_keys")) // 追加
         assertTrue(cmd.contains("mkdir -p ~/.ssh")) // 首次建目录 + chmod
-        assertTrue(cmd.contains("ATERM_ADDED") && cmd.contains("ATERM_ALREADY")) // 反馈标记
+        assertTrue(cmd.contains("CCM_KEY_ADDED") && cmd.contains("CCM_KEY_ALREADY")) // 反馈标记
         assertTrue("写入应用 printf 而非 echo", cmd.contains("printf '%s\\n' 'ssh-ed25519 AAAAKEY comment'"))
     }
 
@@ -188,7 +188,7 @@ class RemoteCommandsTest {
                 "(bash|-bash|sh|-sh|ash|-ash|dash|-dash|zsh|-zsh|ksh|-ksh|csh|-csh|tcsh|-tcsh|fish|-fish|login) " +
                 "$sendSeg;; esac; fi; " +
                 "${setup("cc-abcd")}; tmux attach -t 'cc-abcd'; " +
-                "else echo 'aterm: resume 失败——无法确定工作目录（会话 abcd1234）'; fi",
+                "else echo 'ccm: resume 失败——无法确定工作目录（会话 abcd1234）'; fi",
             cmd,
         )
     }
@@ -299,7 +299,7 @@ class RemoteCommandsTest {
         val guardIdx = cmd.indexOf("if [ -n \"\$cwd\" ] && [ -d \"\$cwd\" ]; then")
         val createIdx = cmd.indexOf("tmux new-session")
         assertTrue("守卫在 create 之前（$guardIdx < $createIdx）", guardIdx in 0 until createIdx)
-        assertTrue("失败分支打印可读错误（含 sid8）", cmd.endsWith("else echo 'aterm: resume 失败——无法确定工作目录（会话 sid）'; fi"))
+        assertTrue("失败分支打印可读错误（含 sid8）", cmd.endsWith("else echo 'ccm: resume 失败——无法确定工作目录（会话 sid）'; fi"))
         assertTrue("fallbackCwd 为空 → cwd=''（守卫 [ -n ] 拦下）", cmd.contains("[ -z \"\$cwd\" ] && cwd='';"))
     }
 

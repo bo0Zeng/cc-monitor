@@ -190,7 +190,7 @@ fn sanitize_rejects_bad_input() {
 }
 
 #[test]
-fn cmd_follows_aterm_contract() {
+fn cmd_follows_mobile_contract() {
     let c = authorized_keys_cmd("ssh-ed25519 AAAA user@host");
     assert!(c.contains("printf '%s\\n'"), "须 printf %s 而非 echo");
     assert!(!c.contains("echo "), "不得用 echo");

@@ -174,7 +174,7 @@ fn the_account_id_is_the_last_path_segment_and_the_subset_is_per_agent() {
     );
     assert!(
         apikey_routed_subset(&dirs, &rows, "codex", "claude-code").is_empty(),
-        "别家的号不许借这张表（条 49：有行说的是 (agent, 账号) 这一对）"
+        "别家的号不许借这张表（有行说的是 (agent, 账号) 这一对）"
     );
     assert!(apikey_routed_subset(&dirs, &[], "claude-code", "claude-code").is_empty());
 }

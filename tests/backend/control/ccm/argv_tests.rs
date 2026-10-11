@@ -213,7 +213,7 @@ fn the_combination_rules_all_fail_loudly() {
         ok(&["--ccm-agent", "codex", "resume", "s"]).passthru,
         v(&["resume", "s"])
     );
-    // 用户 09-26：claude 自己的 `--tmux` / `--agent` 原样交出去；`new` / 位置词 `attach` 交给 claude。
+    // claude 自己的 `--tmux` / `--agent` 原样交出去；`new` / 位置词 `attach` 交给 claude。
     assert_eq!(
         ok(&["--tmux", "--agent", "x"]).passthru,
         v(&["--tmux", "--agent", "x"])

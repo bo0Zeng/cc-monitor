@@ -20,7 +20,7 @@
 //!
 //! ## 心跳清理
 //!
-//! 每 10s 扫一遍内存中的握手表，对每个 shell 进程号调 `is_process_alive`〔散文墓碑〕，死了的从内存 + 磁盘移除。
+//! 每 10s 扫一遍内存中的握手表，逐个 shell 进程号问一次还活着没有，死了的从内存 + 磁盘移除。
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};

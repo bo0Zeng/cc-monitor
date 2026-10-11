@@ -19,13 +19,6 @@ fn synth_cfg() -> RemoteConfig {
     }
 }
 
-// 上一版这里两条行为判据判的是 monitor 这一侧先问 home / 先列一屏：
-//   `an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot`〔散文墓碑〕
-//   `a_directory_we_cannot_list_is_an_error_not_a_blank_window`〔散文墓碑〕
-//   那两问进了窗口进程，性质（没给目录才问 home · 列不出来带原话、不开窗）搬到
-//   `proc_tests::the_first_screen_asks_home_only_when_told_nothing`（真通道口 ＋ 替身后端）与
-//   `proc_tests::the_window_process_lists_first_and_the_parent_carries_its_words`（替身窗口进程说那一行）。
-
 // 「通道口没起来 ⇒ 一个窗口进程都不起」那一条删了：通道不再是 monitor 起来时绑的一个口，而是每个窗口进程自己的 stdin / stdout
 //   （父子管道，`chan::host::serve_window`），没有「没起来」这一形。
 

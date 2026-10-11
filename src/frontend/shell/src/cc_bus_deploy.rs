@@ -1,10 +1,5 @@
 //! **装 cc-bus 之前那一道「本机 `ccm` 够不够新」的预检** —— monitor 探本机 ccm 的那一格。
 //!
-//! 装本身（`PS1` 内嵌 → `<claude_dir>/skills/cc-bus/` · 幂等 · 覆盖前整目录备份 · 三态）从前住本模块
-//! （`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕两条 Tauri 命令），今天是**后端代管的资产**：
-//! 判 · 写 · 记都在本机后端（`src/backend/assets/cc_bus_install.rs`，帧命令 `cc-bus-install` / `-state`），
-//! 装卸账复用 skill 装记录那一份。留在这里的只有「装出来的 `cc-spawn` 在这台跑不跑得起来」：它问的是**本机那个 `ccm`**
-//! （PATH 上那个 / cc-monitor 装下去的那份），探法住 `ccm_probe.rs`（本机后端的引导那一族）。
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
@@ -66,15 +61,10 @@ fn local_ccm_too_old_warning() -> Option<String> {
 
 /// 上一条的 **Windows 对侧** —— 它**真探**，而且探的是**哪一份**说得清。
 ///
-/// # 🪦 上一版：「它**不做**这一格预检，而且**把『没做』说出来**」〔散文墓碑〕
-///
-/// 那一版回的是一句固定的「这一格没做预检」。它的头注自己写着解锁条件，逐字：
-/// 「今天 monitor 在 Windows 上确实没有任何 ccm 探测形态（`probe_local_ccm` 那一族整族
-/// 带 `#[cfg(not(windows))]`）；**哪天有了，这条该换成真探测，而不是继续报『没做』**」。
-/// ⇒ **那一天是 `K-R69`**：`ccm_probe::probe_binary_uncached` 直接问一个二进制
+/// `ccm_probe::probe_binary_uncached` 直接问一个二进制
 /// `<bin> --ccm-probe`（不经 shell、跨平台），`ccm_probe::local_ccm_entry_now` 用它问
 /// **cc-monitor 自己装下去的那一份**（`~/.cc-monitor/bin/<本机 ccm 入口名>`）。
-/// 本条从此复用那一处，**不另起进程**（起进程的登记住在 `ccm_probe.rs`）。
+/// 本条复用那一处，**不另起进程**（起进程的登记住在 `ccm_probe.rs`）。
 ///
 /// # 它买到 / 买不到什么
 ///

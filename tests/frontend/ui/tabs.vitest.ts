@@ -699,14 +699,14 @@ describe("TabManager 生命周期", () => {
 
   // === Batch13-F40a：尾部优先门控 / 物化（D 审计 C-3 补测） ===
   //
-  // 🔴 **它服务哪条业务要求：`INVARIANTS.md` 条 21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
-  //    条 21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
+  // 🔴 **它服务哪条业务要求：`INVARIANTS.md` §21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
+  //    §21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
   //    —— `TabManager.onLine` 按 seq 门控，`seq < tab.window.floorSeq` 的旧记录只进
   //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化
   //    尾段 / `switchTo` 时同步物化」——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
-  // 把条 21 记成「全树零命中」并推出「所以它没人守」：读数对
+  // 把 §21 记成「全树零命中」并推出「所以它没人守」：读数对
   //    （没人在散文里点出条号），推论错（第 3 项这一组等值断言一直在守）。
-  //    ⚠ 条 21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
+  //    ⚠ §21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
   //    那是 `MessageStream` 的性质，本文件把它整个 mock 掉了（见文件抬头）。
   //    住址：`tests/frontend/ui/invariants-frontend-guard.vitest.ts` 的 ④⑤ 两格。
 
@@ -1981,8 +1981,6 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
 
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-// 〔散文墓碑〕tmux↔sid 那几个前端过滤（findClaudeTmux · findClaudeTmuxMatches · findIdleTmux · isCwdFallbackMatch）与 tmux 名单短缓存的判据删了：
-//   「这个 sid 由哪个 tmux 会话在跑」只在后端判（`control/session_batch.rs::standing`，判据住 `session_batch_tests.rs`），按目录猜那一支删了。
 
 describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions-stop，与批量同一条）", () => {
   let tm: TabManager;
@@ -2775,7 +2773,7 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
     // ⇒ 「已结束的 tab 留在主栏灰着」**成了正常行为本身**，这一条于是是它的正面断言。
     // ⚠ 孤儿 `barEl` 那个布景**刻意留着**：它仍是一个真的边界情形，而且这条断言
     //   在那个布景下也该成立 —— 顺手把两件事一起买了。
-    // ⚠ 「灰着但还在」这句话来自 `tabs.ts` 自己的旧头注，而用户 2026-09-19 逐字说了同一句。
+    // ⚠ 「灰着但还在」这句话来自 `tabs.ts` 自己的旧头注，也是要求原话。
     document.body.innerHTML = "";
     const orphanBar = document.createElement("div"); // 刻意不 append 到 body
     const streamRootEl = document.createElement("div");
@@ -2909,7 +2907,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   /**
-   * ★ 6d（条 54）：**拖到一半，tab 不许自己跳位置。**
+   * ★ 6d：**拖到一半，tab 不许自己跳位置。**
    *
    * 「拖拽进行中注入一次活动事件 ⇒ 松手之前 `#tab-bar` 子节点顺序一次都不变；
    * 松手后那一次重画必须补上（守卫是推迟不是丢弃）。住 `tests/frontend/ui/tabs.vitest.ts`「6d」。」
@@ -3042,23 +3040,6 @@ describe("P7a-3 集合分组渲染", () => {
     (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
   const setCols = (cols: { id: string; name: string; tabs?: string[] }[]): void => setGroups(tm, cols);
   const order = (): string[] => home(tm).store.orderedIds;
-
-  // ── 🔴 墓碑：五条测「归档抽屉」的判据整块删除 ──────
-  //
-  // 删的是：`P7a1-Y1`（归档 tab 离开主栏进抽屉）· `P7a1-Y2`（当前 tab 绝不进抽屉）
-  // · `P7a1-Y2b`（切走之后才落进抽屉）· `P7a1-Y3`（抽屉里的 tab 不挂 tear-off）
-  // · `P7a3-Y2b`（归档优先于集合：灰 tab 进抽屉不进组）。
-  //
-  // **它们没有失效，是被测的那个功能整个不存在了。** 用户 2026-09-19 逐字：
-  // 「没有归档这个东西，不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，
-  //   全部删掉。」而抬头本来就写着「**已定**：删归档抽屉 · 固定灰 tab」。
-  //
-  // ⚠ **`P7a3-Y2b` 那条的判词今天正好反过来**：它断言「灰 tab 进抽屉**不进组**」，
-  //   而 `§A.3` 逐字「**灰 tab 也能在组里**，更符合直觉」⇒ 留着它就是把设计判红。
-  //   下面 `P7a3` 那一族里已经有「按集合分组」的正向判据盖住新行为，不另立。
-  //
-  // ⚠ 留下这块墓碑而不是静悄悄删：那条 —— 一条判据消失时，
-  //   「它被删了」与「它从来没有过」在盘上长得一模一样。
 
   it("★ P7a3-Y2：成员进它的组，非成员照常直接挂主栏", () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
@@ -4724,10 +4705,8 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根（那台判�
   });
 });
 
-// **接线判据**：`main.ts` 起步那几行（`list_active_sessions`〔散文墓碑〕 之后标本机清单报完 ·
-// 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
+// **接线判据**：`main.ts` 起步那几行（标本机清单报完 · 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
-  // 本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
   it("★ 容器 · 清单报完（本机远端同一格）· 各台都报完那一拍各恰一处；本机不再另拉清单", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;

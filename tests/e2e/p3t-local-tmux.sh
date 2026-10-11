@@ -169,7 +169,7 @@ fi
 ok "前置：串打头的 ccm 钉成本树这一份（$BIN/ccm → $CCM_NATIVE），不经 PATH 解析"
 
 case "$CMD" in
-  *"--ccm-tmux=$TMUXNAME"*) ok "串里带 --ccm-tmux=$TMUXNAME（会话容器；用户 09-26 改名）" ;;
+  *"--ccm-tmux=$TMUXNAME"*) ok "串里带 --ccm-tmux=$TMUXNAME（会话容器）" ;;
   *) bad "串里没有 --ccm-tmux=$TMUXNAME —— 本件的正题没落地：$CMD" ;;
 esac
 # C7d：串里必须显式指定假 launcher。缺了它 ccm 会去 PATH 上找 `claude` —— 那是真的。

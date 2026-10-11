@@ -41,7 +41,7 @@ fn sample() -> Vec<(&'static str, Vec<String>, RestTo)> {
     ]
 }
 
-/// 黄金串 · POSIX：与 AL1 那一版逐字一样（本路只搬了住址，一个字节都没改）。
+/// 黄金串 · POSIX：与 AL1 那一版逐字一样（只搬了住址，一个字节都没改）。
 #[test]
 fn posix_golden() {
     let got: Vec<String> = sample()

@@ -1579,7 +1579,7 @@ struct SessionEntry {
 pub struct ReadLine {
     pub seq: u64,
     pub raw: String,
-    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐 aterm `LineFramer`
+    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐手机端 `LineFramer`
     /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
     pub byte_offset: u64,
     /// 本行第一个字节在文件里的偏移（没有自己身份的记录拿它合成 id，`agents::line_id`）。
@@ -1746,7 +1746,7 @@ fn scan_new_lines(
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         consumed = complete_end as u64;
         // backend-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
-        // 累计原始字节（对齐 aterm `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
+        // 累计原始字节（对齐手机端 `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
         // 3 字节换 1 字节）会漂。每行的原始内容单独 lossy 解码（残行已在 tail 外，故整行 multibyte 完整、安全）。
         let mut pos = 0usize; // 相对 slice 的原始字节游标
         while pos < complete_end {
@@ -1757,7 +1757,7 @@ fn scan_new_lines(
                 .expect("complete region ends at a '\\n'");
             let content = &slice[pos..pos + nl]; // 行内容原始字节（不含 '\n'，可能尾随 '\r'）
             let line_end = pos + nl + 1; // 本行末尾（含 '\n'）在 slice 内的原始字节位
-                                         // raw = 内容解码 + 剥尾随 '\r'（对齐 aterm：raw 无 CRLF/无尾 \n；但 offset **计** `\r`）。
+                                         // raw = 内容解码 + 剥尾随 '\r'（对齐手机端：raw 无 CRLF/无尾 \n；但 offset **计** `\r`）。
             let text = String::from_utf8_lossy(content);
             let raw = text.strip_suffix('\r').unwrap_or(&text);
             let is_blank = raw.trim_start_matches('\u{feff}').trim().is_empty();
@@ -2173,10 +2173,10 @@ fn send_line(
         seq: line.seq,
         record,
         cwd,
-        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐手机端 LineFramer）
         rid: rec.rid,
     });
-    // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
+    // **先 Line 后 TurnEnd**：对齐手机端 β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
     if let Some(uuid) = turn_uuid {
         sink.send(Frame::TurnEnd {

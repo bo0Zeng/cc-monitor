@@ -59,7 +59,7 @@ echo "===== 契约：壳层选项 × 交给 claude 的参数====="
 # ccm 是 claude 的壳：位置动作取消、`--resume` / `--model` / 未知旗标原样交 claude、诊断口改 `--ccm-*`；
 #   从前 resume 那条 `set -f; exec <后端答案>` 的配方随进程内 `resolve` 一起删了（留着会与透传的 `--resume` 叠两份）。
 
-# 〔用户 09-26〕相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
+# 相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
 HERE_P="$(pwd -P)"
 ck "零修饰（--cwd .）：补成绝对的当前目录" \
    "$UNSET; cd '$HERE_P' && exec claude" \
@@ -81,7 +81,7 @@ ck "--resume=<sid> 等号形式原样交出去" \
 # 会话名必须经 env 透进去），只是 `--print` 从来没说 —— 而整个仓拿 `--print` 当离线预言机。
 # 打印的是**配方不是值**（`TMUX` 判断留在串里、执行时才求值），所以这条串对宿主 `TMUX`
 # 仍然逐字节稳定，不需要给这个 helper 加 `env -u TMUX`（那就成了为实现让路改判据）。
-# 〔§49〕配方里读会话名那一发带 `-u`（主线 SH1 改了配方、这一行没跟上，本路合并时补）。
+# 〔§49〕配方里读会话名那一发带 `-u`（配方改了之后这一行补上的）。
 # 会话号变量照样清（同起子进程原语：真跑那一趟摘掉它们，打印那一行也写上，print↔exec 才一样）。
 ck "--ccm-agent codex：换启动器 + 不连共享后台 + 不清 claude 的嵌套 env（只清会话号变量）+ cc-bus 身份配方" \
    "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon" \
@@ -107,7 +107,7 @@ ck "-- 左边透传给 agent，含特殊字符正确 quote" \
 ck "-- 左边原样交给 claude，按原顺序" \
    "$UNSET; cd '/p' && exec claude -p 'a b' --verbose" \
    "$(ccm -p "a b" --verbose -- --cwd /p --ccm-print)"
-ck "claude 自己的 --tmux / --agent 原样交出去（用户 09-26：ccm 的改名 --ccm-tmux / --ccm-agent）" \
+ck "claude 自己的 --tmux / --agent 原样交出去（ccm 的改名 --ccm-tmux / --ccm-agent）" \
    "$UNSET; cd '/p' && exec claude --tmux --agent x" \
    "$(ccm --tmux --agent x -- --cwd /p --ccm-print)"
 ck "ccm new（-- 左边）整个交给 claude，不开例外" \
@@ -119,7 +119,7 @@ ck "new 是 ccm 自己的词：写在 -- 右边第一个 = 起新会话（与不
 ck "new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
    "ccm: $(zh beArgv.parse.newNotFirst)" \
    "$(ccm -- --cwd /p new --ccm-print 2>&1)"
-ck "--launcher 'ccr code' 拆成词（用户 09-26）" \
+ck "--launcher 'ccr code' 拆成词" \
    "$UNSET; cd '/p' && exec ccr code -p x" \
    "$(ccm -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
 ck "--account 与 --base 互斥" \

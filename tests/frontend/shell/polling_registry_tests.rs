@@ -45,7 +45,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              它**自己的注释就承认了**：`:20` 逐字「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」。\
              **事件源**：`$BUS/queue` 目录的 inotify —— 队列是文件系统目录、天然可 watch，\
              与后端侧看 pidfile 的做法同构。\
-             **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，用户 08-10 明确「后面再增强」）。\
+             **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，明确「后面再增强」）。\
              如实记未排期，不编一个假 owner 让它看起来有人管。\
              ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; backend_running && break; done` \
              —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",
@@ -660,8 +660,6 @@ fn the_identity_poller_is_gone_for_good() {
     );
 }
 
-// 🔴 **这里原来有 `ccm_fails_loudly_when_no_backend_can_be_found` 〔散文墓碑〕，
-//   随 `shared/ccm` 一起删了 —— 而且它是「被测对象消失」，不是「判据放宽」。**
 //
 //   它钉的是 `U-NP④`（08-14）那条：**在 tmux 里找不到 backend ⇒ 响亮失败（rc=2）**，
 //   形状面四格（身份分支真去查 backend · 找不到就 `die` · 逃生口会说话 · 前置检查排在

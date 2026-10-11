@@ -75,7 +75,7 @@
 //! 这一条链被用到，且 `child_main` 那个文件里一个 `tauri` / `tao` 都没有 —— 调用点集合两向相等。
 //! 哪天有人又在 monitor 进程里开这个窗口，② 先红，逼他回来重答「进程 DPI 归谁」。
 //!
-//! 🚫 **买不到**：真 Windows 上一趟都没跑（本路不碰 Win11 虚拟机）。这一改的依据是上面那张
+//! 🚫 **买不到**：真 Windows 上一趟都没跑。这一改的依据是上面那张
 //! 09-20 的四格真机读数 ＋ 「窗口进程里没有 `tao`」这条源码事实，是逻辑题，不是新读数。
 //!
 //! # ⚠ 没做到的，写在这儿而不是藏着
@@ -174,7 +174,7 @@ pub fn open_requested() -> u64 {
 ///
 /// 🔴〔2026-09-23 本机侧退役〕**它换了唯一消费者，如实记**：从前它是工具栏上
 /// 那颗「本机」按钮的落脚点（那颗按钮连同整个本机侧已经不在了，见
-/// `source.rs` 头注那块墓碑）；今天它只有一个消费者 ——
+/// `source.rs` 头注「只有远端一侧」那一节）；今天它只有一个消费者 ——
 /// [`super::download::default_dest`]（往外拖时「存到哪儿」那一格的缺省值）。
 /// ⇒ 它**不再是文件管理器的一部分**，是**往外传**那条路上的一格。
 ///
@@ -191,9 +191,6 @@ pub fn local_home() -> String {
 /// 没连上通道时，每一件要问后端的事说的那一句（`D11`：不退回 SFTP、不静默）。
 pub static NO_LINE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.noLine.message", &[]));
-
-// 「在此打开终端」那一串（`build_open_terminal_cmd`〔散文墓碑〕· `build_open_terminal_cmd_at`〔散文墓碑〕· `cd_then_shell`〔散文墓碑〕）
-//   随「窗口只交意图」搬进本机后端：`src/backend/dial/terminal.rs::command_for_cwd`（期望串原样搬去 `tests/backend/dial_terminal_tests.rs`）。
 
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
 ///
@@ -860,7 +857,7 @@ impl FileWindow {
             //
             // 🔴〔2026-09-23 本机侧退役〕这一支从前是两支：本机那一支同步
             //    `read_dir` 一趟、把「这一屏是 monitor 自己列的」写进裁决格。
-            //    本机侧不在了（`source.rs` 头注那块墓碑）⇒ 现在只剩「出声」这一种结局。
+            //    本机侧不在了（`source.rs` 头注「只有远端一侧」那一节）⇒ 现在只剩「出声」这一种结局。
             // ⚠ **不许**把它改回「静默交一个空列表」：那与「这个目录真的是空的」
             //    在屏幕上分不开，而那正是本仓的头号病形。
             None => {
@@ -887,9 +884,6 @@ impl FileWindow {
     pub fn row_path(&self, r: &super::source::Listed) -> super::source::RemotePath {
         join_path(&self.cwd_path(), &name_bytes(r))
     }
-
-    // 〔散文墓碑〕这里原有 `refused_in_lossy_cwd`（W5-FILES：有损目录里上传 / 搜索 / 开终端出声拒）——
-    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`〔散文墓碑〕，今天是后端 `dial/terminal.rs::command_for_cwd`），它没了调用方。
 
     /// 〔有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
     pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {

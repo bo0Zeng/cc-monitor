@@ -25,7 +25,7 @@ fn plain_end_turn_is_turn_end() {
     assert_eq!(turn_end_uuid(&v).as_deref(), Some("u-1"));
 }
 
-/// 对拍 aterm 守卫四条，逐条证伪。
+/// 对拍手机端守卫四条，逐条证伪。
 #[test]
 fn guard_conditions_each_exclude() {
     // 非 assistant

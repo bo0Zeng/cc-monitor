@@ -109,8 +109,6 @@ impl StartOutcome {
 // ⇒ 落点只能是这里，形状照 `platform::fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 🪦〔散文墓碑〕 `CREATE_NO_WINDOW` / `hide_console_window` **搬走了**
 //
 // 那是止血，它自己的头注逐字写着终局：
 // 「正确形状是 `spawn_managed(bin, args, ConsolePolicy, Lifetime, StderrSink)` ……
@@ -1469,10 +1467,7 @@ pub fn start_local_backend() -> StartOutcome {
     }
     // **本机的字节也按 (OS, arch) 从那一张表里取**（规矩 4：本机只是「目标机器恰好是自己」）。
     //
-    // 〔墓碑 —— 这里原来是一道 `cfg!(target_os = "linux")` 的闸（D 阶段补审 08-11）：远端那两份 musl 只按 arch 取、不认 OS，
-    //  于是在 Windows 构建上会释放一个 Linux ELF、再报「已起」；那道闸挡住了它，代价是非 Linux 本机一份字节都拿不到，
-    //  由 `local_backend` 那一层再问一次「这份产物自己带没带」补上。：「这道闸要消失 —— 它是
-    //  『表没有 OS 轴』逼出来的补丁」。〕今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
+    //  今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
     let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(this_machine)
@@ -1563,7 +1558,6 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退，monitor 一行都不管；
 // - 在不在：起会话那一发由那台的 `ccm` 在最终 exec 那一处判；界面上那几格由本机常驻后端自己答（`accounts-list` 每号的徽章）；
-// monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
 
 /// 起本机后端时交给它的那份**环境**。起它的两条载体（常驻那条 `start_detached` 的 `extra_env` ·
 /// 被监护那条 `local_backend::start_or_extract` 的 `envs`）与停它的那一趟（[`run_resident_stop`]）交的是**同一份**。
@@ -1598,9 +1592,6 @@ pub(crate) fn backend_env_from(
     }
     envs
 }
-
-// `relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
-//   （`accounts-list` 的徽章 · `relay-optin` 的成品里那一格读后端进程内的监听状态；起会话那一发归 `ccm`，见 `INVARIANTS §48.1a`）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」

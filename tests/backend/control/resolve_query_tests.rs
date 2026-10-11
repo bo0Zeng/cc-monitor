@@ -15,7 +15,7 @@ fn spec(sid: &str, candidates: Vec<Option<&str>>) -> ResumeSpec {
     }
 }
 
-/// 契约：ResumeSpec → CommandPlan 的 wire 形状 + camelCase + aterm 4 caps 名 + substitutedFrom。
+/// 契约：ResumeSpec → CommandPlan 的 wire 形状 + camelCase + 手机端 4 caps 名 + substitutedFrom。
 /// DG3（#2D）：ResumeSpec 的 `agent_kind` 从 **camelCase** wire `agentKind` 反序列化（resolve I/O 面
 /// 全 camelCase）；缺省 → `""`（= claude 兼容）。DG6 据此构 codex resume vs claude --resume。
 #[test]
@@ -29,21 +29,21 @@ fn resume_spec_parses_camelcase_agent_kind_default_claude() {
 }
 
 #[test]
-fn resolve_builds_plan_with_aterm_field_names() {
+fn resolve_builds_plan_with_mobile_field_names() {
     let s = spec(
         "abcd1234-5678-90ab-cdef-1234567890ab",
         vec![None, Some("cct"), Some("cc")],
     );
     let plan = resolve(crate::agents::REGISTRY, &s).expect("valid");
-    // 序列化 → 校验 camelCase 键名（尤其 aterm 4 caps 名逐字对齐、免映射）。
+    // 序列化 → 校验 camelCase 键名（尤其手机端 4 caps 名逐字对齐、免映射）。
     let v: Value = serde_json::from_str(&serde_json::to_string(&plan).unwrap()).unwrap();
     assert_eq!(v["mode"], "PtyInject");
     assert_eq!(
         v["command"],
         "cct --resume abcd1234-5678-90ab-cdef-1234567890ab"
     );
-    // substitutedFrom：MVP 恒省略——backend 不做候选消解、无「被替换的原命令」（对齐 aterm
-    // 语义：仅解析 launch≠原意首候选时才有；见 resolve() 注 + aterm 2026-07-18 确认）。
+    // substitutedFrom：MVP 恒省略——backend 不做候选消解、无「被替换的原命令」（对齐手机端
+    // 语义：仅解析 launch≠原意首候选时才有；见 resolve() 注 + 手机端 2026-07-18 确认）。
     assert!(
         v.get("substitutedFrom").is_none(),
         "MVP 无候选消解 → substitutedFrom 省略（不再误设为被用候选）"
@@ -52,7 +52,7 @@ fn resolve_builds_plan_with_aterm_field_names() {
     let caps = &v["capabilities"];
     assert!(
         caps.get("supportsSendKeys").is_some(),
-        "aterm caps 名 supportsSendKeys"
+        "手机端 caps 名 supportsSendKeys"
     );
     assert!(caps.get("supportsCapture").is_some());
     assert!(caps.get("supportsMultiClient").is_some());
@@ -62,7 +62,7 @@ fn resolve_builds_plan_with_aterm_field_names() {
 }
 
 /// DG6：agent_kind="codex" → `<base> resume <uuid>`（**子命令、无 --resume**）+ 会话名 `cx-`；
-/// 默认基底 `codex`、自定义候选照用。golden-parity aterm CodexInvocation.resumeInvocation/resumeSessionName。
+/// 默认基底 `codex`、自定义候选照用。golden-parity 手机端 CodexInvocation.resumeInvocation/resumeSessionName。
 #[test]
 fn resolve_codex_builds_resume_subcommand_and_cx_name() {
     let uuid = "019f75dd-875c-7c81-9eda-32f866b2c60f";
@@ -179,7 +179,7 @@ fn resolve_rejects_injection_in_launch_candidate() {
 }
 
 /// 审计 quality-阻塞：`resolve_from_json`（= `run()` 的分发核）真覆盖 happy 路径——
-/// stdin JSON 串 → CommandPlan JSON 串（含 aterm caps 名）。此前 `run()` 零覆盖。
+/// stdin JSON 串 → CommandPlan JSON 串（含手机端 caps 名）。此前 `run()` 零覆盖。
 #[test]
 fn resolve_from_json_happy_returns_command_plan_json() {
     let out = resolve_from_json(
@@ -221,10 +221,10 @@ fn resolve_from_json_propagates_validation_errors() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// `resolve` / `--resolve` 是给仓外 aterm 的**跨仓承诺**
+// `resolve` / `--resolve` 是给手机端的**承诺**
 // ════════════════════════════════════════════════════════════════════════
 //
-// 要求：后端 `resolve` 帧命令与 `--resolve` 子命令是给 aterm 冻结的跨仓契约，保留并由判据钉住形状；
+// 要求：后端 `resolve` 帧命令与 `--resolve` 子命令是给手机端冻结的契约，保留并由判据钉住形状；
 // 契约正文住 `src/doc/IPC-PROTOCOL.md` §8 末尾「`--resolve`」那一条。
 //
 // 为什么这一族要比上面那几条更硬：仓内**零调用方**（`D §D7`）⇒ 改坏了**仓里没有任何东西会红**，
@@ -280,7 +280,7 @@ fn frozen_every_frozen_sample_still_produces_the_same_bytes() {
         if let Some(want) = s["product"].as_str() {
             ok += 1;
             let out = got.unwrap_or_else(|e| panic!("冻结样例 {req} 该成功，却回了 {e:?}"));
-            assert_eq!(out, want, "冻结样例 {req} 的成品字节变了 —— 这是一次跨仓契约变更（IPC-PROTOCOL §8「--resolve」那一条）");
+            assert_eq!(out, want, "冻结样例 {req} 的成品字节变了 —— 这是一次与手机端的契约变更（IPC-PROTOCOL §8「--resolve」那一条）");
             let v: Value = serde_json::from_str(&out).unwrap();
             for k in v.as_object().unwrap().keys() {
                 assert!(plan_fields.contains(k), "成品里多出一个承诺外的键 `{k}`");
@@ -383,7 +383,7 @@ fn frozen_the_wire_field_names_are_the_frozen_ones() {
         assert_eq!(
             frozen_sorted(frozen_wire_fields(&src, decl)),
             frozen_sorted(frozen_list(&g, key)),
-            "`{decl}` 的线上字段 ≠ 冻结金样 `{key}`（两向）—— 改名 / 增删字段都是跨仓契约变更"
+            "`{decl}` 的线上字段 ≠ 冻结金样 `{key}`（两向）—— 改名 / 增删字段都是与手机端的契约变更"
         );
     }
 }
@@ -438,7 +438,7 @@ fn frozen_the_error_codes_and_the_envelope_are_the_frozen_ones() {
     let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|c| c.name == "resolve")
-        .expect("inbound::REGISTRY 里没有 `resolve` —— 跨仓承诺的流那条入口没了");
+        .expect("inbound::REGISTRY 里没有 `resolve` —— 对手机端的承诺的流那条入口没了");
     assert_eq!(
         frozen_sorted(spec.codes.iter().map(|s| s.to_string()).collect()),
         stream_want,

@@ -22,7 +22,7 @@
 //!
 //! ⚠ **08-06 订正：真实是 11 条**（monitor→backend **9** · backend→monitor 2）。
 //! 多出来的那条是 `tmux.rs → observe/watcher.rs`，它**从一开始就在**，
-//! 只是路径藏在 `macro_rules! backend_watcher_src` 里，而抽取器只认 `(` 之后紧跟的引号。
+//! 只是路径藏在一个单臂宏里，而抽取器只认 `(` 之后紧跟的引号。
 //! ⇒ 「10 对得上」这个结论当时是**用一个看不见它的量具**得出的 ——
 //! 量具与被量对象一起决定了那个数，而结论只写了数。
 //! 但「编不过」说的是 **`cargo test`**，不是 `cargo build`。
@@ -56,9 +56,6 @@
 /// 实测每一对都**两两不同**，所以「文件对」是够用且稳定的键。
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
-    // ── monitor → backend：monitor 的判据去读后端的源码 ─────────────────
-    // `tmux_tests.rs → observe/watcher.rs` 那一条（`TMUX_LS_FMT` 双写点对拍，路径藏在 `backend_watcher_src`〔散文墓碑〕 宏里）
-    //   出列：列会话的解析整族搬进后端，格式串只剩后端一个家，那条对拍与那个宏随之删了。
     (
         "monitor→backend",
         "tests/frontend/shell/backend_kill_tests.rs",
@@ -155,7 +152,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
     (
         "monitor→backend",
-        // 〔步 7c 剖分 2026-09-19〕住址跟着判据搬：
+        // 住址跟着判据搬：
         // 那条 `include_str!` 一直长在 `polling_registry` 的**测试段**里，
         // 而测试段这一轮搬进了 `tests/frontend/shell/polling_registry_tests.rs`。
         // **边的条数一格没变**（16 → 16），只是左端的住址换了。
@@ -164,7 +161,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "前端那几条「今天不能退役」的轮询理由建立在「后端只装那三条会话 hook」之上 —— \
          hook 覆盖面一变就要回来重新裁定",
     ),
-    // 🔴 **〔条 67〕`tool_registry.rs → sidecars/codepicture/acquire.rs`
+    // 🔴 **`tool_registry.rs → sidecars/codepicture/acquire.rs`
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
@@ -293,9 +290,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `shell_tests.rs::the_exists_code_is_the_backends_one`。两侧各写一份 `exists`；\
          失效方向：两份漂开 ⇒ 就地改名 / 新建撞名时那一格下面说的是系统那句长话，不是「x 已存在」。",
     ),
-    // `tests/frontend/shell/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
-    //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
-    //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
     // `tests/frontend/shell/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
     //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
     //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。

@@ -59,10 +59,6 @@ struct ForkResult {
 /// 分叉这条新路却没用它。真机上会话 jsonl 到几十 MB 是常态（本仓注释里记过 37MB 一份），
 /// backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
 ///
-/// 次生危害更隐蔽：进程被 OOM-killer 杀掉时 sshd 送的是 `exit-signal` 而不是 `exit-status`，
-/// monitor 侧 `interpret_fork_exec`〔散文墓碑〕（已随 exec 那条路删，今天走帧命令）会看到 `exit_status: None` ⇒ 报「没收到退出码，连接可能中断」
-/// ⇒ 把排查方向带到网络上去。
-///
 /// 256MB：与 monitor 侧 `remote_history::MAX_SESSION_BYTES` 同一量级，正常会话远够不到。
 const MAX_SESSION_JSONL_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -146,7 +142,7 @@ pub(crate) fn cli(agent_home: &Path, args: &[String]) -> Result<String, Failed> 
 /// 为什么要它（本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接）：monitor 本机分叉此前每次
 /// exec 一个本机后端进程跑 `--fork-session`、远端经拨号链路 exec 同一条；两条路现在都经那台机器常驻后端的长连接说这一条。
 /// ⚠ 帧命令**不叫** `fork-session`：`cli_control` 从帧面自动派生的 CLI 面会是 `--fork-session`，
-/// 与对 aterm 冻结的那一条（argv 两个位置参数）撞名。
+/// 与对手机端冻结的那一条（argv 两个位置参数）撞名。
 /// ⚠ 入口住顶层壳 `fork_face.rs`（它找家目录）：本层自己找就得问 `observe::`（反向边）或多问一次适配层。
 /// 帧面 `session-fork` 的本体（家目录由顶层壳 `fork_face` 交进来；判据直接喂夹具家目录）。
 ///

@@ -3,8 +3,7 @@
 //! 守的要求：`INVARIANTS §34`（三道门：名字形状 · 身份 · 窗口）在创建那一侧的反面 ——
 //! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
 //!
-//! 本文件原本挂在杀会话的 monitor 发送端 `backend_kill.rs`〔散文墓碑〕下面，一起住着那个发送端自己的几条单元判据
-//! （读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
+//! 杀会话的 monitor 发送端从前带着几条自己的单元判据（读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
 //! 经通道直接说后端的 `kill`），发送端删了：
 //! - 它自己的那几条随它退役 —— 「读 `killed` 不许猜」搬到 TS `decodeKilled`，「拒绝码逐码一句」搬到 TS 那张表
 //!   （`tests/frontend/ui/tmux-control.vitest.ts`，码集合取自跨语言金样 `tests/__fixtures__/tmux-control.golden.json`）；
@@ -141,7 +140,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     let mut found: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     let mut stack: Vec<std::path::PathBuf> =
-        // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
+        // **这里没有 `"src/backend"`，不是漏了**：后端树搬到
         // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
         // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
         // **这里没有 `"src/frontend/shell/src"`，不是漏了**：
@@ -371,8 +370,8 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 ///   前者不是耐久设计文档；后者是**死值验留档**，逐字记着历史上那一刀砍的是什么，
 ///   它**本来就该**提到那句话。
 ///   ⇒ 把它们扫进来买到的不是更严，是一条必然误报的闸。
-/// - **它按整串 `contains` 判** ⇒ 想在耐久文档里给这句话立一块**墓碑**（「历史上有过、
-///   已经删了」）就会被它拦下。今天的出路是**换一种说法**（本轮三份副本都是这么改的）。
+/// - **它按整串 `contains` 判** ⇒ 想在耐久文档里写一句「历史上有过、
+///   已经删了」就会被它拦下。今天的出路是**换一种说法**（本轮三份副本都是这么改的）。
 ///   这是它已知的代价，不是没看见。
 /// - **它不判那三份副本说得对不对** —— 只判「那句话在不在」与「代码里那条路在不在」一致。
 #[test]
@@ -460,8 +459,3 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
         scanned.len()
     );
 }
-
-// 这里原来住着「两条后端命令的拒绝文案说同一件事」（`the_refusal_wording_matches_the_sibling_command`〔散文墓碑〕，
-//   对照 monitor 里杀会话与送键两个发送端各自那份 `refusal_text`）。两个发送端都迁到界面删了，
-//   拒绝码 → 一句话从此只有 `src/frontend/ui/tmux-control.ts` 一份（按动作分表：结束会话 · 发按键），
-//   「逐码一句、两两不同、带会话名与后端原话」由 `tests/frontend/ui/tmux-control.vitest.ts` 钉着。

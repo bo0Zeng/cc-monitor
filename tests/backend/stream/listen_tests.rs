@@ -240,14 +240,14 @@ fn every_file_this_head_note_points_at_really_exists() {
     // `src/frontend/shell/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
     // **monitor 侧的裸文件名**（`backend_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
     let roots = [
-        // 〔搬树 2026-09-17〕后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
+        // 后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
         // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
         crate::guard_support::src_root(),
         // 〔搬测试 2026-09-17〕头注里点名的很多是判据文件，它们今天住第二棵树。
         crate::guard_support::tests_root(),
         crate::guard_support::repo_root(),
         crate::guard_support::repo_root().join("src/frontend/shell/src"),
-        // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**monitor 也有第二棵树。**
+        // 🔴 **monitor 也有第二棵树。**
         //    上一格（`src/frontend/shell/src`）接的是「头注点名 monitor 侧的裸文件名」那一形，
         //    而剖分之后 monitor 的判据整批住 `<repo>/tests/frontend/shell/`
         //    ⇒ 头注里那些 `X_tests.rs` 四个根一个都够不着，被读成「假住址」。

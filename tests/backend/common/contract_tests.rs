@@ -26,7 +26,7 @@ fn the_contract_sentence_carries_no_diagnostic() {
     assert_eq!(malformed("another diag"), said);
 }
 
-/// 〔mg39〕`malformed` 有副作用（记一行 warn）⇒ 它只许在真错了的那条路上被调。
+/// `malformed` 有副作用（记一行 warn）⇒ 它只许在真错了的那条路上被调。
 /// 写成急求值的实参（`.ok_or((码, malformed(..)))` · `.unwrap_or(..)` · `.map_or(默认, ..)` · `.or(..)` · `.and(..)`）的话，
 /// 成功的那一趟也会记一行「请求格式不对」—— 日志说假话，一次性模式里还会混进 stderr。要写 `ok_or_else(|| ..)` 这类惰性形。
 /// 人群：后端生产段全部 `.rs`；对账：扫到的 `malformed(` 调用数要过一个下限（扫了个空集 ⇒ 红，不是绿）。

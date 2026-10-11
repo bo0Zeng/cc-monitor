@@ -634,12 +634,6 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// 引用拿到盘上现打一次，印出那一行今天长什么样。它**判不了「引用的意图对不对」**，只印原文；
 /// 它也**不是判据**（没有机器口径的对错），是一把尺子。跑一次就知道这一栏有没有回潮。
 ///
-/// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
-/// |---|---|
-/// | 仓根 `.` | `tests/scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src/frontend/shell\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
-/// | `src/frontend/shell/` | `tests/scripts/gate.sh` 的 `run_gate_sum cargo …`（CI 的 Linux job 也是调它）（`cd src/frontend/shell && cargo test --workspace --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里 `rust` job 的 `working-directory: src/frontend/shell`（Linux 那几个 job 改成调门禁，不再自己设这一句）· `tests/e2e/` **两个脚本共 3 处**（`local-backend-supervise.sh` 的 `local_backend` 与 `local_backend_host` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）；🔴 ** 09-18 从 4 降到 3，脚本数从三个降到两个**：用量 ②③ 两轴整轴退役 ⇒ `usage-probe-acceptance.sh` **整份删除**（被测对象没了，不是断言变少了），它那一处发起面（帧面夹具产出者 `emit_usage_probe_frames_for_e2e`）随 `account_usage.rs` 一起没了  〔散文墓碑〕|
-/// | `src/backend/` | `tests/scripts/gate.sh` 的 `run_gate backend …`（`cd src/backend && cargo test`）（e2e 前置那一趟 `cargo build --bin cc-monitor-backend` 也从这里起）· `ci.yml` 的 `backend` job 跨 target check 那一步（`working-directory: src/backend`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-backends` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/backend-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
-///
 /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
 /// `ci.yml` / `release.yml` 那几处逐字都是同一句 `working-directory: <目录>`，**行号是它们
 /// 今天唯一的区分**；所以这里改成**按 job 名**指路（job 名是 yml 自己的标识符，改名会连带改

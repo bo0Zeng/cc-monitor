@@ -56,15 +56,11 @@ pub(crate) const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{p
 /// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**。
 pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 
-// ★★ **K-R12 下一拍（09-04）：这两个口径的家搬到了 `crate::common::tmux_utf8`。**
-//
-// 上一拍这里各写了一份（`TMUX_UTF8_ENV` 与 `tmux_tab_underflow`〔散文墓碑〕），而 `control/gate.rs`
-// 也各写了一份，头注里逐字登记着「三份口径今天**靠人对齐**」——
-// 成因是 `layering_guard` 钉死 `control/` 不许引用 `observe/` ⇒ 共用的家只能是 `common/`，
-// 而它当时不在写区。本拍写区含 `common/` ⇒ 两份都归位，两层各自 `use` 同一个家。
+// ★★ 这两个口径的家在 `crate::common::tmux_utf8`：`layering_guard` 钉死 `control/` 不许引用 `observe/`
+// ⇒ 共用的家只能是 `common/`，两层各自 `use` 同一个家。
 //
 // 口径本身、两种表示为什么是**一个**口径、以及「什么形态的调用点该用哪种表示」
-// 全部只有一个住址：那个模块的头注。**这里不复述**（`brief` 13b：闭集只许一个住址）。
+// 全部只有一个住址：那个模块的头注。**这里不复述**（闭集只许一个住址）。
 //
 // 只留本调用点专属的两句：
 //
@@ -77,9 +73,6 @@ use crate::platform::child::Deadline;
 
 // ---------- P1（zero-poll-liveness）：tmux 观测的取值（原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
-// **双写点**：与 monitor `src/frontend/shell/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
-// `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 测试钉住（`include_str!` 读本文件 +
-// 锚定 const 定义行）。**改本处必须同步 monitor**，同 `TMUX_LS_FMT` 的纪律。
 /// backend 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
 const OBS_ZERO_SESSIONS: &str = "zero_sessions";
 /// 远端没装 tmux——与既有 `NO_TMUX` 哨兵同义，显式化。

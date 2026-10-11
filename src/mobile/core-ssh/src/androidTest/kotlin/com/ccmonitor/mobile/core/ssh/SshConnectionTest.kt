@@ -132,13 +132,13 @@ class SshConnectionTest {
             connect()
             val ctx = InstrumentationRegistry.getInstrumentation().targetContext
             val payload = "roundtrip-${System.nanoTime()}".toByteArray()
-            val remote = "/tmp/aterm_roundtrip_test.txt"
-            val up = File.createTempFile("aterm_up", ".txt", ctx.cacheDir).apply { writeBytes(payload) }
+            val remote = "/tmp/ccm_roundtrip_test.txt"
+            val up = File.createTempFile("ccm_up", ".txt", ctx.cacheDir).apply { writeBytes(payload) }
             try {
                 conn.sftpUpload(up, remote)
                 val listed = conn.sftpList("/tmp")
-                assertTrue("上传后 /tmp 应能列到该文件", listed.any { it.name == "aterm_roundtrip_test.txt" && !it.isDir })
-                val down = File.createTempFile("aterm_down", ".txt", ctx.cacheDir)
+                assertTrue("上传后 /tmp 应能列到该文件", listed.any { it.name == "ccm_roundtrip_test.txt" && !it.isDir })
+                val down = File.createTempFile("ccm_down", ".txt", ctx.cacheDir)
                 conn.sftpDownload(remote, down)
                 assertTrue("下载字节应与上传一致", down.readBytes().contentEquals(payload))
                 down.delete()

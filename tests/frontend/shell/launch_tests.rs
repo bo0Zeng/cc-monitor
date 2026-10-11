@@ -124,7 +124,7 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
     //
     // ⇒ **这不是巧合**：扫描面按「想到哪扫哪」长出来，而假话按「写在哪就在哪」分布。
     // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
-    // 〔搬树 2026-09-18〕**这一格从 `"tests/e2e"` 换成整棵 `"tests"`** —— 与
+    // **这一格从 `"tests/e2e"` 换成整棵 `"tests"`** —— 与
     // `structural_scan` 那边同一个判断：前端测试此前住在 `src/` 里、被下面那个 `"src"`
     // 顺带收着；搬去 `tests/` 之后**这个语料面悄悄缩了一大块**，而本条的反空真检查
     // 只管「某一族够不够」，管不了「少了一棵树」⇒ 会安静地少扫，不会红。
@@ -1150,9 +1150,8 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     );
 }
 
-// 这里原来六条钉 `build_remote_ssh_ps_command`〔散文墓碑〕与 `build_jump_arg`〔散文墓碑〕（基本形态 · 钥匙与口 ·
-// IPv6 · 跳板参数 · 坏输入 · 单引号过两层）：ssh 外壳搬进本机后端（帧命令 `terminal-ssh`），期望原样搬进
-// `tests/backend/dial_terminal_tests.rs`（被测对象搬了家，一个期望没改；跳板那一格改经 `machine::resolve`）。
+// ssh 外壳那几条期望（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 · 单引号过两层）住本机后端那一侧：
+// `tests/backend/dial_terminal_tests.rs`（帧命令 `terminal-ssh`；跳板那一格经 `machine::resolve`）。
 
 /// 开终端窗口那一问只答一处（`open_local`）：POSIX 一个终端都没探到 ⇒ 回「找不到终端」那个结局（前端据此说「未找到终端」并给设置入口，
 /// 账号登录另给「在 tmux 里登录」），**不**回落到无窗口直起（要人交互的那一行跑在看不见的地方 = 没跑）。

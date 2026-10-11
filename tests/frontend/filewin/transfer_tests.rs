@@ -1167,9 +1167,6 @@ fn cancelling_goes_through_the_stop_token_only() {
     );
 }
 
-/// 取消台没有窗口也不 panic；一趟都没起过时按取消，送出去的是空的、旗照样立起来。
-/// 从前这里还验「池子那条取消命令对没注册过的 id 是 no-op」（`forward_cancel`〔散文墓碑〕）——
-/// 那条路随复制走后端一起删了。
 #[test]
 fn cancelling_an_idle_desk_is_harmless() {
     let desk = super::CancelDesk::default();

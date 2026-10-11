@@ -114,7 +114,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 /// `dispatch_registry_is_complete` 的判法是「生产段里出现 `"--` 字面量的文件集
 /// == [`DISPATCH_FILES`]」，而 [`DISPATCH_FILES`] 里的每个 token 都得落进
 /// `src/doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔backend 的冻结线上契约**，
-/// 读者在仓外（aterm），改一个字就是改协议。
+/// 读者是手机端，改一个字就是改协议。
 ///
 /// `ccm` 那套旗标（`--tmux` / `--account` / `--cwd` …）**不属于那份契约**：
 /// 它们是**用户在终端里敲的东西**，消费者是人与 `src/shared/ccm-aliases.sh` 里那三个别名，
@@ -518,7 +518,7 @@ mod tests {
         );
         // 今天的接盘判据：`control::ccm` 的用法行判据。它必须①存在 ②扫的是同一份文件。
         //
-        // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕**读的那份换了。**
+        // 🔴 **读的那份换了。**
         // `own_source()` 回的是生产段那份 `control/ccm/mod.rs`；而接盘的那条判据
         // （`fn every_flag_we_accept_has_a_usage_line`）这一轮跟着测试段搬进了
         // `tests/backend/control/ccm_tests.rs` ⇒ 在 `own_source()` 里恒找不到。
@@ -530,8 +530,7 @@ mod tests {
         // ⚠ 针**运行时拼**：写成字面量的话本文件就多出一处「解析不出路径的 `include_*!`」，
         //   而 `cross_half_edge_registry` 的抽取器按文本数调用数 —— 那是一次现打逮到的假阳。
         //
-        // 🔴 〔步 7c 剖分 2026-09-19 ·  第二条元教训〕
-        //    **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
+        // 🔴 **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
         //    剖分把那条判据搬去了 `tests/backend/control/ccm_tests.rs`，剖分器**按原语义
         //    重定向**了它的 `include_str!`，于是那一行今天逐字是
         //    `include_str!("../../../src/backend/control/ccm/argv.rs")` ⇒ 整串针失配
@@ -540,9 +539,9 @@ mod tests {
         //      而不是「那条相对路径逐字长这样」。前者是事实，后者是位置。
         // ⚠ 针要**跳过左括号与引号之间的空白**：`cargo fmt` 会把长的嵌入调用折行
         //   （左括号一行、路径字面量另一行），那时「宏名紧跟引号」就不再连写。
-        //   〔步 7c 现打：格式化那一趟本条就是这么红的 —— 又一处「按位置认的针」。〕
+        //   格式化那一趟本条就是这么红过 —— 又一处「按位置认的针」。
         //
-        // ⚠⚠ **这段注里刻意不写那个宏调用的完整形**〔步 7c 第二次现打〕：
+        // ⚠⚠ **这段注里刻意不写那个宏调用的完整形**：
         //   `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
         //   按文本数「嵌入宏的调用处」，而它数的是**整份文件**（含注释）。
         //   第一版在这里逐字写了 `宏名!(` 加一个转义换行 ⇒ 那条判据把这句话数成了
@@ -590,7 +589,7 @@ mod tests {
     /// `resolve_query.rs`」。**实测那个前提是错的** —— 今天有 **3 个文件、6 个类型**，
     /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
     ///
-    /// - `resolve_query.rs` 的 4 个：与仓外 aterm **冻结在 2026-07-18** 的一次性契约；
+    /// - `resolve_query.rs` 的 4 个：与手机端 **冻结在 2026-07-18** 的一次性契约；
     /// - `fork_write.rs::ForkResult`：**一次性子命令 `--fork-session` 的出参**，不是流协议；
     /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析账号库的清单
     ///   **文件**（文件 schema）。
@@ -607,7 +606,7 @@ mod tests {
             (
                 "control/resolve_query.rs",
                 "ResumeSpec",
-                "一次性 `--resolve` 的入参。契约与仓外 aterm 冻结在 2026-07-18，逐字不动",
+                "一次性 `--resolve` 的入参。契约与手机端冻结在 2026-07-18，逐字不动",
             ),
             (
                 "control/resolve_query.rs",
@@ -803,7 +802,7 @@ mod tests {
     /// 命令级的形状错误叫 `bad_args`（全部命令一个码）；本条把这条分层**钉住**。
     ///
     /// ⚠ **`resolve` 是登记在案的例外**：它的命令级 parse 错误仍叫 `bad_request`，
-    /// 因为一次性 `--resolve` 与仓外 aterm 的契约冻结在 2026-07-18，两条路复用同一个纯函数。
+    /// 因为一次性 `--resolve` 与手机端的契约冻结在 2026-07-18，两条路复用同一个纯函数。
     /// 改它会破坏那份契约 ⇒ 如实登记，不顺手改。
     #[test]
     fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
@@ -993,7 +992,7 @@ mod tests {
             assert!(
                 variants.contains(e),
                 "`EMITS` 里的 `{e}` 不是任何一个 `Frame` 变体的 kind。\n\
-                 消费侧（aterm）拿它**门控消费** —— 声明一个不存在的帧种，\n\
+                 消费侧（手机端）拿它**门控消费** —— 声明一个不存在的帧种，\n\
                  对面会去等一个永远不来的东西。今天的变体：{variants:?}"
             );
         }

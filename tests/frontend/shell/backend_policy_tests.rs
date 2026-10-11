@@ -1,6 +1,6 @@
 use super::*;
 
-/// 〔条 66〕那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
+/// 那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
 /// （`ledger()`），原来那张「推进来的生效值表」连同推它的命令一起没了。
 ///
 /// ⚠ 这是 `E2` 的 monitor 那一半：退出臂那一问（`kill_on_exit_now` → `exit_policy_call`）的路径上
@@ -68,9 +68,6 @@ fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
         );
     }
 }
-
-// 「空 origin 必须拒」那一条（驱动 Tauri 命令 `set_backend_exit_policy`〔散文墓碑〕里的 `origin.route`）随命令退役：
-//   设置页经通道问；空白名那一档由通道那一跳 `chan/webview.rs::chan_call` 的 `Origin::route` 当场按「用法错」拒（判据在 `webview_tests`）。
 
 /// 没有通道的那台机器：退出臂那一问**明说**问不到，按缺省（不结束）办，不编一个值。
 /// 界面那两问（问 / 写）改走通道之后，这里只剩退出臂那一问（monitor 自己的事）。
@@ -896,7 +893,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
     );
     let mut scanned = 0usize;
     let mut hits: Vec<(String, usize)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  条 73〕**只数调用点，不数定义。**
+    // 🔴 **只数调用点，不数定义。**
     //
     // 上一版靠 `scan_tree!` 的 `file!()` 自摘把 `backend_policy.rs` 摘出人群 ——
     // 当年本条就住在它的 `#[cfg(test)]` 段里，而那份文件恰好是 `record_death` 的**定义家**。
@@ -1073,8 +1070,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 //   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
 //   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
 //
-// 剩下那一条原名 `the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕，
-// 钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
+// 剩下那一条钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
 // ——合并是一次设计变更，回去看」。它守的是「合并之前别顺手改」，不是「永远不合」。
 // C4b 读了（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
 // 「哪台机器」本身（它只是本机那条命令结果的缓存键），账号面没有第二个概念 ⇒ 这一次就是它等的那次设计变更。

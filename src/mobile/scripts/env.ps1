@@ -4,11 +4,11 @@
   用法(每个新 PowerShell 会话):
       . .\scripts\env.ps1
   换工具链位置:
-      $env:ATERM_ANDROID_DEV = 'D:\android-dev'; . .\scripts\env.ps1
+      $env:CCM_ANDROID_DEV = 'D:\android-dev'; . .\scripts\env.ps1
 
   全局 JAVA_HOME 不受影响 —— 退出这个 shell 一切复原。
 #>
-$root = if ($env:ATERM_ANDROID_DEV) { $env:ATERM_ANDROID_DEV } else { 'E:\android-dev' }
+$root = if ($env:CCM_ANDROID_DEV) { $env:CCM_ANDROID_DEV } else { 'E:\android-dev' }
 
 $env:JAVA_HOME        = Join-Path $root 'jdk'
 $env:ANDROID_HOME     = Join-Path $root 'sdk'

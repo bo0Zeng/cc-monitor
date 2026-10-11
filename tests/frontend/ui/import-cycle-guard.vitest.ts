@@ -181,7 +181,7 @@ function cycleComponents(graph: Map<string, string[]>): string[][] {
  */
 const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
   // `accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
-  //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（子步 4 登记时写明归本路摘）。
+  //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（登记时写明这一处要摘）。
   // `cards/index ⇄ cards/subagent` 那一行摘了：派出卡不再就地展开时间线，`subagent.ts` 不再 `import type` 回 `./index`（agent 窗口那一路）。
   // `launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/frontend/ui/launch-types.ts`，
   //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。

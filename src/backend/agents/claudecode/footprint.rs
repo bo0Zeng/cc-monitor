@@ -130,10 +130,8 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     //
                     // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
                     // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
-                    // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/〔散文墓碑〕
-                    // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
-                    // 这半句早已不成立（P4f / BS1b 起写面本机也走后端，起由界面经通道直接说，本机与远端同一条路）；
-                    // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
+                    // 写面（`_broadcast`/`_kill`）也一样：本机走后端，由界面经通道直接说，本机与远端同一条路；
+                    // note 里把「读」与「写」分开说。
                     host: HostScope::Either,
                     note: Some(Text(|| {
                         copy_text("rsToolRegistry.tools.ccBusStateNote", &[])
@@ -220,7 +218,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
     // 每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
     // `uninstallable: true`：只删装时写进去的文件 —— 装的时候那台后端记下写了哪几个
     //   （第二条 touch：那台后端自己的装记录），卸口 `skill_flow.rs::answer_uninstall` 只删记着的那几个（装完改过的先问）。
-    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",
         display_name: Text(|| copy_text("rsToolRegistry.tools.skillInstallName", &[])),
@@ -334,7 +331,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     effect: TouchEffect::OwnedFile,
                 }],
             },
-            // **推 / 拉**（B，用户 09-24）：同一份文件的**第二个写入来源** ——
+            // **推 / 拉**（B）：同一份文件的**第二个写入来源** ——
             //   内容不是这台机器上现场编的，是从另一台机器那份里**原样**拷来的条目（`mcp_sync.rs`）。
             //   落点、写法（经那台后端 `files-put`）与上一格同一个；单列一格是为了让「这个 app 动过你哪些文件」
             //   那一页说得出「有些条目是从别的机器搬来的」（每个写点都要在足迹里可见）。

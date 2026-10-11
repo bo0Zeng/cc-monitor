@@ -126,12 +126,9 @@ fn tmp_home(tag: &str) -> TmpHome {
     TmpHome(d)
 }
 
-// 这里原来是「形状围栏」那一条（`validate_alias_line`〔散文墓碑〕只放行
-// `名字() { ccm <已知修饰...> "$@"; }` 一形）与四条 `apply(dry_run)` 的判据。前端不再递 shell 文本
-// （递的是结构，文本由 `render` 出），围栏没有输入了 ⇒ 挡注入那件事换成下面
+// 前端不递 shell 文本（递的是结构，文本由 `render` 出），别名行没有可围的输入 ⇒ 挡注入那件事靠下面
 // `injection_attempts_arrive_as_plain_args_in_bash`：**让真 bash 执行渲染出来的那一行**，
-// 看那几个危险值是不是原样、作为一个参数到了 `ccm` 手里。「预览不写」那一条也不需要了 ——
-// `render` 连 home 都不收，结构上够不到任何文件。
+// 看那几个危险值是不是原样、作为一个参数到了 `ccm` 手里。`render` 连 home 都不收，结构上够不到任何文件（预览不会写）。
 
 /// ★★ 注入：值里的 `;` / `$( )` / 反引号 / `|` / 引号，进了配置文件、再经 ccm 合下来，**只是一个参数**、逐字不变；
 /// 别名文件里那一行只有名字（`名字() { ccm @名字 "$@"; }`），真 bash 执行下来调用时跟的词原样接在 `@名字` 后面。
@@ -460,7 +457,7 @@ fn every_alias_flag_is_a_real_ccm_flag() {
 
 const PS: Shell = Shell::PowerShell;
 
-/// 「shell 语法记号」—— 通用层的生产代码里一个都不许有（条 33：通用层持有结构，不持有任何一种 shell 的文本）。
+/// 「shell 语法记号」—— 通用层的生产代码里一个都不许有（通用层持有结构，不持有任何一种 shell 的文本）。
 /// 两种方言各取几样最有辨识度的：POSIX 的函数声明 / `"$@"` / `if [` / 引号器，PowerShell 的 `function ` / 余参 / `Test-Path`。
 const SHELL_SYNTAX: &[&str] = &[
     "$@",

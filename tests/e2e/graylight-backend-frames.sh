@@ -130,7 +130,7 @@ wait_tag "$SESSION" "$SID" 12 \
 
 # ── 1bis. S0：**同 pidfile 原地换 sid**（= 用户的 `/branch`）───────────────────
 #
-# 用户 2026-07-30 实测：「执行 branch 后原本的 tab 不会变灰，而是变成灰点也杀不掉」。
+# 「执行 branch 后原本的 tab 不会变灰，而是变成灰点也杀不掉」。
 # 机制：`/branch` **不重启 claude 进程**（`shared/ccm` 末尾是 exec，pid 不变），只让 CC
 # 把 `sessions/<pid>.json` 里的 sessionId 换掉。这里就照这个形态复现：**进程不动，
 # 只原地改 sessionId**。

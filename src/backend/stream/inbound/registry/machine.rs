@@ -119,7 +119,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔条 66〕「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
+    // 「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
     //   （`~/.cc-monitor/backend.json`），前端要读要改都经这两条，**前端从不碰那个文件**。
     //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
     //   ⚠ `exit-policy-read` **没有错误码**：「读不出来」是一个**状态**（`state: "unreadable"` ＋ `reason`），

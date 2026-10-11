@@ -250,7 +250,7 @@ class SshKeepAliveService : Service() {
             )
         return NotificationCompat
             .Builder(this, CHANNEL_ID)
-            .setContentTitle("Aterm")
+            .setContentTitle(getString(com.ccmonitor.mobile.R.string.app_name))
             .setContentText("$n 个活动 SSH 会话")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
