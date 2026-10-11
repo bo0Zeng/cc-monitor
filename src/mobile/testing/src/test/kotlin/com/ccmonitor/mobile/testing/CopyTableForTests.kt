@@ -10,8 +10,9 @@ import java.io.File
  * 读不出一条 ⇒ [zhOf] 全部落空、词表判据静默空转 —— 所以 [entries] 读到的条数由 `CopyTableForTestsTest` 钉下限。
  */
 object CopyTableForTests {
+    // zh 用展开写法 `[^"\\]*+(?:\\.[^"\\]*+)*+`：`(?:\\.|[^"\\])*` 每个字递归一层，表里最长那句 1772 字在 CI 上栈溢出。
     private val ENTRY =
-        Regex(""""([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*){2})": \{\s*"kind": "[^"]*",\s*"role": "[^"]*",\s*"zh": "((?:\\.|[^"\\])*)"""")
+        Regex(""""([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*){2})": \{\s*"kind": "[^"]*",\s*"role": "[^"]*",\s*"zh": "([^"\\]*+(?:\\.[^"\\]*+)*+)"""")
 
     /** 表里全部条目：键 → zh（已解开 JSON 转义）。 */
     val entries: Map<String, String> by lazy {
