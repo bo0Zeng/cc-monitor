@@ -37,7 +37,7 @@ interface Debt {
   entries: { file: string; rule: string; n: number; kind: string; why: string }[];
 }
 
-// 10-10 起没有「待分」：每格都分清了归哪一批、还是留（留的写凭什么）。「手机」＝ 手机端那几批收（`调研/手机端/待定.md` 缺口 7）。
+// 10-10 起没有「待分」：每格都分清了归哪一批、还是留（留的写凭什么）。「手机」＝ 手机端那几批收（手机上还硬写着的字与自己写的单位）。
 const KINDS = new Set(["第 1 批", "第 3 批", "第 7 批", "手机", "留"]);
 
 const debt = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/frontend/ui/exit-debt.json"), "utf8")) as Debt;
