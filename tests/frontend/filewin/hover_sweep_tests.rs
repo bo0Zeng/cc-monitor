@@ -395,3 +395,152 @@ async fn sweeping_over_search_results_never_flips_a_frame() {
     let _ = std::fs::remove_dir_all(base);
     no_flips(flips);
 }
+
+/// 真窗口台架（不是判据）：开一扇真文件窗口（生产那个 `Workspace` 当 eframe 的 App，开窗参数同 `shell::run`），
+/// 帧日志写到 `CCM_FILEWIN_FRAME_LOG`，跑 `CCM_FILEWIN_RIG_SECS` 秒自己关。场景走 `CCM_FILEWIN_RIG_SCENE`
+/// （tabs · split · preview · menu）。后端是合成后端（目录是这一格自己铺的占位），不连任何机器。
+/// 渲染那一层的读数（OpenGL 的厂商 / 渲染器 / 版本 · 开窗参数里的 vsync）另写一份 `<帧日志>.gl.txt`。
+/// 用法：外面模拟鼠标在窗口上乱动，回头读帧日志看鼠标一动时每帧画面变没变、谁请求的重画。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore]
+async fn real_window_rig_for_the_frame_log() {
+    let need = |k: &str| {
+        std::env::var(k).unwrap_or_else(|_| panic!("这一格只给真窗口台架跑：缺环境变量 {k}"))
+    };
+    let log = std::path::PathBuf::from(need(crate::frame_log::ENV));
+    let scene = need("CCM_FILEWIN_RIG_SCENE");
+    let secs: u64 = need("CCM_FILEWIN_RIG_SECS").parse().unwrap();
+    let (_wired, mut w, base) = wired_pane(&format!("rig-{scene}")).await;
+    for n in ["Cargo.toml", "README.md", "notes.txt", "build.log"] {
+        std::fs::write(base.join("work").join(n), format!("{n}\n")).unwrap();
+    }
+    w.reload();
+    while w.listing.is_loading() {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let i = w
+        .listing
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .position(|r| r.name == "main.rs")
+        .unwrap();
+    w.apply_intent(
+        crate::select::Intent::Edge {
+            end: false,
+            extend: false,
+        },
+        0.0,
+        None,
+    );
+    for _ in 0..i {
+        w.apply_intent(
+            crate::select::Intent::Step {
+                by: 1,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+    }
+    if scene == "menu" {
+        w.tally.menu_clicked = Some(i);
+        w.apply_menu_click(egui::pos2(520.0, 300.0));
+    }
+    let gl_out = log.with_extension("gl.txt");
+    let h = std::thread::spawn(move || {
+        struct Rig {
+            ws: Workspace,
+            gl_out: std::path::PathBuf,
+            said: bool,
+        }
+        impl eframe::App for Rig {
+            fn logic(&mut self, ctx: &egui::Context, f: &mut eframe::Frame) {
+                eframe::App::logic(&mut self.ws, ctx, f);
+            }
+            fn ui(&mut self, ui: &mut egui::Ui, f: &mut eframe::Frame) {
+                if !self.said {
+                    self.said = true;
+                    let gl = f.gl().map(|gl| {
+                        use eframe::glow::HasContext as _;
+                        unsafe {
+                            format!(
+                                "vendor={} renderer={} version={}",
+                                gl.get_parameter_string(eframe::glow::VENDOR),
+                                gl.get_parameter_string(eframe::glow::RENDERER),
+                                gl.get_parameter_string(eframe::glow::VERSION)
+                            )
+                        }
+                    });
+                    let _ = std::fs::write(
+                        &self.gl_out,
+                        format!(
+                            "backend=glow {}\nvsync(glow_options 缺省)={}\nppp={}\n",
+                            gl.unwrap_or_else(|| "no-gl".into()),
+                            eframe::NativeOptions::default().glow_options.vsync,
+                            ui.ctx().pixels_per_point()
+                        ),
+                    );
+                }
+                eframe::App::ui(&mut self.ws, ui, f);
+            }
+            fn clear_color(&self, v: &egui::Visuals) -> [f32; 4] {
+                eframe::App::clear_color(&self.ws, v)
+            }
+        }
+        let theme = crate::theme::testing::default_theme();
+        // 开窗参数照 `shell::run` 那一处（其余取缺省，与生产一样）。
+        let opts = eframe::NativeOptions {
+            event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([1280.0, 800.0])
+                .with_min_inner_size(crate::shell::MIN_WINDOW)
+                .with_title("filewin-rig"),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "filewin-rig",
+            opts,
+            Box::new(move |cc| {
+                crate::theme::install(&cc.egui_ctx, &theme);
+                w.font = crate::fonts::FontState::Pending(crate::fonts::install(
+                    &cc.egui_ctx,
+                    Some(&theme),
+                ));
+                let mut ws = Workspace::new(w);
+                ws.theme = Some(theme);
+                match scene.as_str() {
+                    "tabs" => {
+                        let mut more = pane("/srv/logs");
+                        more.shelf = None;
+                        assert!(ws.add_tab(0, more));
+                        ws.select_tab(0, 0);
+                    }
+                    "split" => {
+                        assert!(ws.set_split(true));
+                    }
+                    "preview" => ws.set_preview(true),
+                    _ => {}
+                }
+                ws.frame_log = crate::frame_log::FrameLog::to_file(&log).unwrap();
+                let ctx = cc.egui_ctx.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(secs));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    ctx.request_repaint();
+                });
+                Ok(Box::new(Rig {
+                    ws,
+                    gl_out,
+                    said: false,
+                }))
+            }),
+        )
+        .unwrap();
+    });
+    tokio::task::spawn_blocking(move || h.join().unwrap())
+        .await
+        .unwrap();
+    let _ = std::fs::remove_dir_all(base);
+}
