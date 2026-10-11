@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.agent
 
-import com.ccmonitor.mobile.core.claude.agent.AgentDirSettingKey
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import org.junit.Assert.assertEquals
@@ -12,8 +11,7 @@ import org.junit.Test
  * 整张档案表钉住：改任何一格都要重新过一遍眼。
  *
  * 它不是「消费方真走档案」的证据：本条对每一刀变异都会红，因为它就是直接读档案。
- * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest`
- * · `SessionLocatorTest` 等）。
+ * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest` 等）。
  *
  * 本条的职责只有一个：改表要留痕（同 `NewUiSettingsTest.theDefaultSourceIsPinned…`）。
  */
@@ -25,9 +23,7 @@ class AgentProfileTableTest {
             p.displayName,
             p.wireName,
             "accountGate=${p.requiresAccountGate}",
-            "dirSetting=${p.appDefaultDirSetting}",
             p.invocation::class.simpleName,
-            p.sessionLocator::class.simpleName,
         ).joinToString(" | ")
 
     @Test
@@ -70,7 +66,6 @@ class AgentProfileTableTest {
     fun theDefaultProfileIsTheConservativeOne() {
         assertSame("缺省档必须是表里的一份，不是另造的", AgentProfile.of(AgentProfile.DEFAULT.kind), AgentProfile.DEFAULT)
         assertTrue("缺省档必须走账号门（保守的一侧：宁可多问一次）", AgentProfile.DEFAULT.requiresAccountGate)
-        assertEquals("缺省档的应用级默认目录键", AgentDirSettingKey.AppDefaultClaudeDir, AgentProfile.DEFAULT.appDefaultDirSetting)
     }
 
     /**
@@ -117,10 +112,8 @@ class AgentProfileTableTest {
          */
         private val PINNED_TABLE =
             listOf(
-                "ClaudeCode | Claude | claude | accountGate=true | dirSetting=AppDefaultClaudeDir | " +
-                    "ClaudeInvocation | ClaudeSessionLocator",
-                "Codex | Codex | codex | accountGate=false | dirSetting=null | " +
-                    "CodexInvocation | CodexSessionLocator",
+                "ClaudeCode | Claude | claude | accountGate=true | ClaudeInvocation",
+                "Codex | Codex | codex | accountGate=false | CodexInvocation",
             )
     }
 }

@@ -32,12 +32,12 @@ class UnknownBeforeLoadedTest {
      * ③：`newUi != false` 把「还不知道」折成「开」，但折不出分歧，因为真值恒为「开」。
      *
      * `newUiEnabled()` 的判据是 `!= FLAG_OFF`，而 `FLAG_OFF` 只有一条写入路径：
-     * `SettingsRepository.setNewUiEnabled(false)` ← `SettingsViewModel.setNewUi(false)` ← 没有调用方
-     * （`NewUiSettingsTest` 钉着「设置屏里不许出现 `setNewUi`」）。我们自己的代码写不出 `FLAG_OFF`，
+     * `SettingsRepository.setNewUiEnabled(false)` ← 没有调用方（设置屏那个 VM 随「Claude 配置目录」一起删了，
+     * 中间那一跳也没了）。我们自己的代码写不出 `FLAG_OFF`，
      * 真值恒为 `true`，未知窗口里折下来的 `null != false` 也是 `true`，分歧为空。
      *
      * 这条是哨兵，不是免罪符：第三组断言摆的正是「分歧长什么样」，真值若是 `false`，落点不同。
-     * 谁哪天给 `setNewUi` 接上一个调用方，前两组断言当场红，提醒他 `AppNavHost` 那一行
+     * 谁哪天给 `setNewUiEnabled` 接上一个调用方，前两组断言当场红，提醒他 `AppNavHost` 那一行
      * `newUi != false` 要跟着改成三值。
      *
      * 它钉不住：手改数据库写下过 `FLAG_OFF`；未知窗口有多长、窗口里那一屏上有没有服务器可点
@@ -47,26 +47,16 @@ class UnknownBeforeLoadedTest {
     fun thereIsNoWayToWriteTheOffFlagSoTheFoldedUnknownCannotDiverge() {
         val prod = productionCode()
 
-        // 第一组（必须扫到东西）：两个定义都得在，否则就是扫描器瞎了而不是「守住了」
+        // 第一组（必须扫到东西）：定义得在，否则就是扫描器瞎了而不是「守住了」
         val writerDefs = prod.filterValues { DEFINE_REPO_WRITER.containsMatchIn(it) }.keys
-        val vmDefs = prod.filterValues { DEFINE_VM_WRITER.containsMatchIn(it) }.keys
         assertEquals("前提：`setNewUiEnabled` 的定义必须恰好一处，实得 $writerDefs", 1, writerDefs.size)
-        assertEquals("前提：`setNewUi` 的定义必须恰好一处，实得 $vmDefs", 1, vmDefs.size)
 
-        // 第二组（不该有的零命中）：写 FLAG_OFF 那条链上没有任何入口
-        // 数的是出现次数不是文件数：按文件过滤的话，
-        //   「在 `SettingsViewModel` 自己里面再加一个 `disableNewUi() = setNewUi(false)`」会整条漏掉。
-        val vmHits = prod.mapValues { (_, c) -> TOKEN_VM_WRITER.findAll(c).count() }.filterValues { it > 0 }
-        assertEquals(
-            "`setNewUi` 全仓只许出现一次（它自己的定义）：多一处就是回退门的入口回来了，" +
-                "`AppNavHost` 那句 `newUi != false` 当场从「不可达」变成真 bug。实得：$vmHits",
-            mapOf(vmDefs.single() to 1),
-            vmHits,
-        )
+        // 第二组（不该有的零命中）：写 FLAG_OFF 那条链上没有任何入口（数的是出现次数不是文件数）
         val writerHits = prod.mapValues { (_, c) -> TOKEN_REPO_WRITER.findAll(c).count() }.filterValues { it > 0 }
         assertEquals(
-            "`setNewUiEnabled` 只许出现两次：定义，加 `SettingsViewModel` 那一跳（而它自己没有调用方）。实得：$writerHits",
-            mapOf(writerDefs.single() to 1, vmDefs.single() to 1),
+            "`setNewUiEnabled` 全仓只许出现一次（它自己的定义）：多一处就是回退门的入口回来了，" +
+                "`AppNavHost` 那句 `newUi != false` 当场从「不可达」变成真 bug。实得：$writerHits",
+            mapOf(writerDefs.single() to 1),
             writerHits,
         )
         val rowWriters = prod.filterValues { it.contains("Settings(KEY_NEW_UI_ENABLED") }.keys
@@ -136,9 +126,7 @@ class UnknownBeforeLoadedTest {
         private const val FOLDED_UNKNOWN = true
 
         private val DEFINE_REPO_WRITER = Regex("""fun\s+setNewUiEnabled\s*\(""")
-        private val DEFINE_VM_WRITER = Regex("""fun\s+setNewUi\s*\(""")
         private val TOKEN_REPO_WRITER = Regex("""\bsetNewUiEnabled\b""")
-        private val TOKEN_VM_WRITER = Regex("""\bsetNewUi\b""")
 
         private const val MAX_WALK_UP = 6
     }

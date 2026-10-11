@@ -152,6 +152,33 @@ def host_alias():
     return route[route.index("via") + 1]
 
 
+def fab_under_notice(fab_text, notice_text):
+    """同一帧里：悬浮按钮（含 [fab_text] 的那个可点的块）与提示条（含 [notice_text] 的那一条）的矩形有没有交叠。"""
+    ns = ui.nodes()
+
+    def first(text):
+        return next((n for n in ns if text in (n.get("text"), n.get("content-desc"))), None)
+
+    def area(b):
+        return (b[2] - b[0]) * (b[3] - b[1])
+
+    def inside(outer, inner):
+        return outer[0] <= inner[0] and outer[1] <= inner[1] and outer[2] >= inner[2] and outer[3] >= inner[3]
+
+    f, c = first(fab_text), first(notice_text)
+    if c is None:
+        raise Step.Fail(f"这一帧里没有提示「{notice_text}」")
+    if f is None:
+        return True  # 按钮整个被盖住时，无障碍树里连它的字都不出
+
+    fb, cb = ui.bounds(f), ui.bounds(c)
+    fab = min((ui.bounds(n) for n in ns if n.get("clickable") == "true" and inside(ui.bounds(n), fb)), key=area, default=fb)
+    # 提示条：装得下那颗按钮字、又比它宽出一大截的最小那一块（按钮本身不算）。
+    bars = [ui.bounds(n) for n in ns if inside(ui.bounds(n), cb) and ui.bounds(n)[2] - ui.bounds(n)[0] > 3 * (cb[2] - cb[0])]
+    bar = min(bars, key=area, default=cb)
+    return not (fab[2] <= bar[0] or bar[2] <= fab[0] or fab[3] <= bar[1] or bar[3] <= fab[1])
+
+
 def tap_in_row(label, button):
     """点 [label] 那一行上的 [button]（同一行：纵向范围重叠）。"""
     ns = ui.nodes()
@@ -206,10 +233,11 @@ def main():
         tap(t("mobIdentity.import.ok")); time.sleep(2)
         if ui.find("imported") is not None:
             raise Step.Fail("只贴进一行的钥匙照样存下了")
-        # 拒的那一句是条长提示（带「复制详情」，约 10 秒），盖在「+」上：等它退了再点。
-        end = time.time() + 15
-        while time.time() < end and ui.find(t("detail.act.copy")) is not None:
-            time.sleep(1)
+        # 拒的那一句是条长提示（带「复制详情」）：它在的时候「+」要让开、不被盖住，接着点得到。
+        if not wait(t("detail.act.copy"), 5):
+            raise Step.Fail("拒了却没出那条提示")
+        if fab_under_notice("+", t("detail.act.copy")):
+            raise Step.Fail("提示盖住了「+」（按钮没让开）")
         tap("+"); time.sleep(1)
         tap(t("mobIdentity.add.import")); time.sleep(1)
         tap(t("mobIdentity.import.name")); typed("smoke")

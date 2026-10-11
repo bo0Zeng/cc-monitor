@@ -17,7 +17,6 @@ import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsViewModel
-import com.ccmonitor.mobile.ui.settings.SettingsViewModel
 import com.ccmonitor.mobile.ui.sftp.SftpViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -67,7 +66,6 @@ val appModule =
             ConversationsViewModel(backend = get<HostBackends>().of(params.get(0)), machine = params.get(1))
         }
         viewModel { IdentityViewModel(get()) }
-        viewModel { SettingsViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
         viewModel { HostViewModel(get(), get(), get()) }
         // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession)`
@@ -82,7 +80,6 @@ val appModule =
                 hostRepo = get(),
                 identityRepo = get(),
                 launcherRepo = get(),
-                settingsRepo = get(),
                 hostConnector = get(),
                 backends = get(), // 这台的常驻流：终端那几件问那台核心
                 knownHostStore = get(), // TOFU 恢复路径

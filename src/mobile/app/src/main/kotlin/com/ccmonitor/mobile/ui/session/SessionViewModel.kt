@@ -3,16 +3,13 @@ package com.ccmonitor.mobile.ui.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.agent.agentKindOrDefault
-import com.ccmonitor.mobile.core.claude.agent.AgentDirSettingKey
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.data.repo.LauncherRepository
-import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.HostKeyChangedException
@@ -108,7 +105,6 @@ class SessionViewModel(
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
     private val launcherRepo: LauncherRepository,
-    private val settingsRepo: SettingsRepository,
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
     backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束都问那台核心
     private val knownHostStore: KnownHostStore, // 主机钥匙变更的恢复：确认后 forget 再重连
@@ -192,17 +188,6 @@ class SessionViewModel(
     private val _tmuxSession = MutableStateFlow(attachTo)
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
-    /**
-     * 本主机解析后的 agent 配置目录（host.claudeDir > 应用默认 > 内置默认），阅读面（只 Claude 有）与 resume 据此定位 JSONL。
-     * 含义随 [agentKind]：ClaudeCode 是 ~/.claude，Codex 是 ~/.codex（字段名仍叫 claudeDir）。
-     */
-    private val _claudeDir = MutableStateFlow<String?>(null)
-    val claudeDir: StateFlow<String?> = _claudeDir.asStateFlow()
-
-    /** 本主机的 agent 种类（缺省 `AgentProfile.DEFAULT`）。目录定位、有没有阅读子页、resume 都按它取档案。 */
-    private val _agentKind = MutableStateFlow(AgentProfile.DEFAULT.kind)
-    val agentKind: StateFlow<AgentKind> = _agentKind.asStateFlow()
-
     /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行）。 */
     val terminals = TerminalOps(backends.of(hostId)) { hostRepo.get(hostId)?.label ?: hostId }
 
@@ -240,29 +225,12 @@ class SessionViewModel(
             }
     }
 
-    /**
-     * 这一档的 agent 目录认不认「设置」屏里的应用级默认：问档案，不问种类。
-     *
-     * `when` 故意不带 `else`：[AgentDirSettingKey] 加了值，这里当场编译不过，而不是静默走缺省分支。
-     */
-    private suspend fun appDefaultAgentDir(profile: AgentProfile): String? =
-        when (profile.appDefaultDirSetting) {
-            AgentDirSettingKey.AppDefaultClaudeDir -> settingsRepo.getDefaultClaudeDir()
-            null -> null // 这一档没有应用级默认，只认主机覆盖与内置默认
-        }
-
     // 连接可能抛各种异常（IO / 认证 / 超时…），统一兜成 Error 态；CancellationException 先重抛。
     @Suppress("TooGenericExceptionCaught")
     private suspend fun establishConnectedState(expectedGen: Int): SessionUiState {
         var created: TerminalSession? = null // 取消时要关掉它，否则 reader / writeExecutor 线程泄漏
         return try {
             val host = hostRepo.get(hostId) ?: error(copyText("mobSession.host.missing", "id" to hostId))
-            // 按 host.agentKind 选定位器解析 agent 目录。Codex 没有应用级默认，回退内置 ${CODEX_HOME:-$HOME/.codex}。
-            val kind = host.agentKindOrDefault()
-            _agentKind.value = kind
-            val profile = AgentProfile.of(kind)
-            val appDefaultDir = appDefaultAgentDir(profile)
-            _claudeDir.value = profile.sessionLocator.resolveAgentDir(host.claudeDir, appDefaultDir)
             // 认证、跳板、竞速都在 HostConnector 里；pendingIdentityId 是本次选定的身份。
             val conn =
                 hostConnector.connect(

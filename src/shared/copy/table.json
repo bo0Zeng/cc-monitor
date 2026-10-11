@@ -30733,42 +30733,6 @@
       "zh": "终端",
       "args": []
     },
-    "mobSettings.claudeDir.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "应用级默认 Claude 配置目录",
-      "args": []
-    },
-    "mobSettings.claudeDir.label": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "默认用哪个号",
-      "args": []
-    },
-    "mobSettings.claudeDir.placeholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "留空 = 内置默认 {dir}",
-      "args": ["dir"]
-    },
-    "mobSettings.claudeDir.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未单独指定账号的服务器都用此号\n改完后从下一段新对话起生效",
-      "args": []
-    },
-    "mobSettings.claudeDir.saved": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已保存",
-      "args": []
-    },
-    "mobSettings.claudeDir.save": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "保存",
-      "args": []
-    },
     "mobKit.act.back": {
       "kind": "action",
       "role": "按钮",
@@ -32206,30 +32170,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "Agent 种类",
-      "args": []
-    },
-    "mobHostEdit.dir.codex": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "Codex 配置目录（可选）",
-      "args": []
-    },
-    "mobHostEdit.dir.claude": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "Claude 账号目录",
-      "args": []
-    },
-    "mobHostEdit.dir.codexPlaceholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "默认 {path}",
-      "args": ["path"]
-    },
-    "mobHostEdit.dir.claudePlaceholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "/home/用户名/.claude",
       "args": []
     },
     "mobHostEdit.switch.workspace": {

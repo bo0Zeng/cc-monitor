@@ -50,6 +50,7 @@ import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
+import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -140,7 +141,7 @@ fun HostListScreen(
         }
         FloatingActionButton(
             onClick = onAddHost,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).clearOfNotice().padding(24.dp),
         ) { Text("+", style = MaterialTheme.typography.titleLarge) }
     }
 }
@@ -357,11 +358,8 @@ fun HostEditorScreen(
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    var claudeDir by remember { mutableStateOf("") } // 每主机的 agent 配置目录（Claude ~/.claude / Codex ~/.codex）
     // agent 种类存档案本身；选项行遍历 `AgentProfile.ALL`，加一种 agent 这一页不用改。
     var agentProfile by remember { mutableStateOf(AgentProfile.DEFAULT) }
-    // 目录框的标签、占位与说明按「这一档走不走账号门」区分。
-    val gatedByAccount = agentProfile.requiresAccountGate
     var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
     var load by remember { mutableStateOf(if (hostId == null) HostEditLoad.Loaded else HostEditLoad.Loading) }
@@ -387,7 +385,6 @@ fun HostEditorScreen(
                 useTmux = h.sessionManager == "tmux"
                 autoReconnect = h.autoReconnect
                 group = h.groupId ?: ""
-                claudeDir = h.claudeDir ?: ""
                 // 存量值转档案，大小写不敏感（见 `ofStoredNameIgnoringCase` 的头注）。
                 agentProfile = AgentProfile.ofStoredNameIgnoringCase(h.agentKind)
                 proxyJumpHostId = h.proxyJumpHostId
@@ -466,16 +463,6 @@ fun HostEditorScreen(
                 ChoiceRow(p.displayName, agentProfile.kind == p.kind) { agentProfile = p }
             }
         }
-        // 这一格只给终端屏的「Claude 阅读」找记录用；聊天屏起会话跟随那台核心的默认号，不读它。
-        OutlinedTextField(
-            claudeDir,
-            { claudeDir = it },
-            label = { Text(if (!gatedByAccount) copyText("mobHostEdit.dir.codex") else copyText("mobHostEdit.dir.claude")) },
-            placeholder = { Text(if (!gatedByAccount) copyText("mobHostEdit.dir.codexPlaceholder", "path" to "\${CODEX_HOME:-\$HOME/.codex}") else copyText("mobHostEdit.dir.claudePlaceholder")) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
         // 开关即 useTmux；文案不说「连接」「tmux」。
         SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
@@ -548,7 +535,6 @@ fun HostEditorScreen(
                             sessionManager = if (useTmux) "tmux" else null,
                             autoReconnect = autoReconnect,
                             groupId = group.trim().ifBlank { null },
-                            claudeDir = claudeDir.trim().ifBlank { null },
                             proxyJumpHostId = proxyJumpHostId,
                             os = if (isWindows) "windows" else null,
                             // 存 `AgentKind.name`；缺省档存 null。

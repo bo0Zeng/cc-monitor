@@ -157,22 +157,9 @@ class AgentArchetypeTest {
         private val PRODUCT_NAMES = listOf("Claude", "Codex")
 
         /**
-         * 还硬写着产品名的那几处（`app/src/main` 里，按文件名 → 那几句）。
-         *
-         * 这张表只许缩短，不许悄悄变长。每一条都得说得出为什么它还在：
-         *
-         * | 文件 | 为什么还在 |
-         * |---|---|
-         * | `SettingsScreen.kt` | 应用级设置说的是远端那个 Claude（账号目录），不是「这台服务器叫什么」，与 kind 无关 |
-         * | `HostScreens.kt` | 「Claude 账号目录」是 `if (isCodex)` 的 else 支（已按 kind 分档） |
+         * 还硬写着产品名的那几处（`app/src/main` 里，按文件名 → 那几句）。今天一处都没有：
+         * 那几句（设置页、服务器编辑页的配置目录框）随那一格删掉了。这张表只许缩短，不许悄悄变长。
          */
-        private val PINNED_HARDCODED_PRODUCT_NAMES: Map<String, List<String>> =
-            mapOf(
-                // 服务器编辑页那个目录框的标签，已按 kind 分档（`if (isCodex) … else …`）。
-                "HostScreens.kt" to listOf("Claude 账号目录", "Codex 配置目录（可选）"),
-                // 应用级的话（账号目录），说的是「远端那个 Claude」而不是「这台服务器叫什么」，与 agentKind 无关。
-                // （从前还钉着一条扫描器的假阳「留空 = 内置默认 ${'$'}{ClaudePaths…}」：那句进了文案表，占位符是 {dir}，假阳没了。）
-                "SettingsScreen.kt" to listOf("应用级默认 Claude 配置目录"),
-            )
+        private val PINNED_HARDCODED_PRODUCT_NAMES: Map<String, List<String>> = emptyMap()
     }
 }

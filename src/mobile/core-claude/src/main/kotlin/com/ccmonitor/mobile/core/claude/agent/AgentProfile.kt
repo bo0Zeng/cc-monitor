@@ -4,14 +4,11 @@ import com.ccmonitor.mobile.core.claude.command.AgentInvocation
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.command.CodexInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.claude.transport.ClaudeSessionLocator
-import com.ccmonitor.mobile.core.claude.transport.CodexSessionLocator
-import com.ccmonitor.mobile.core.claude.transport.SessionLocator
 
 /**
  * 一个 agent 一份档案。消费方只问档案，不问种类。
  *
- * 一家一句的事实（产品名、启动命令、记录住哪……）都收在这里；
+ * 一家一句的事实（产品名、线上名、启动命令……）都收在这里；
  * [of] 是唯一取法，构造器与实例都是 `private`，外面建不出第三份。
  * 加一种 agent 时 [of] 的 `when` 因穷尽性编译不过，逼着补一份档案。
  */
@@ -24,15 +21,8 @@ class AgentProfile private constructor(
     val wireName: String,
     /** 起新对话前要不要先选账号。只读档不起新对话，这道门对它没有意义。 */
     val requiresAccountGate: Boolean,
-    /**
-     * 这一家的 agent-dir 认不认「设置」屏那个应用级默认，认的话是哪个键；`null` = 不认
-     * （只有主机覆盖加内置默认）。做成枚举而非 `Boolean`，第三家进来时消费方的 `when` 会编译不过。
-     */
-    val appDefaultDirSetting: AgentDirSettingKey?,
-    /** resume 与启动命令的载荷构造（sid 校验、命令净化、候选链、resume 串、会话名）。 */
+    /** 启动命令（净化 · 候选链）。 */
     val invocation: AgentInvocation,
-    /** 远端会话定位命令（resume 找那份记录）、`path→sessionId`、agent-dir 解析。 */
-    val sessionLocator: SessionLocator,
 ) {
     override fun toString(): String = "AgentProfile(${kind.name})"
 
@@ -43,9 +33,7 @@ class AgentProfile private constructor(
                 displayName = "Claude",
                 wireName = "claude",
                 requiresAccountGate = true,
-                appDefaultDirSetting = AgentDirSettingKey.AppDefaultClaudeDir,
                 invocation = ClaudeInvocation,
-                sessionLocator = ClaudeSessionLocator,
             )
 
         private val CODEX =
@@ -54,10 +42,7 @@ class AgentProfile private constructor(
                 displayName = "Codex",
                 wireName = "codex",
                 requiresAccountGate = false,
-                // 只认主机覆盖与内置 `${CODEX_HOME:-$HOME/.codex}`。
-                appDefaultDirSetting = null,
                 invocation = CodexInvocation,
-                sessionLocator = CodexSessionLocator,
             )
 
         /** 唯一取法。生产代码里对 [AgentKind] 的 `when` 只有这一处。 */
@@ -89,10 +74,4 @@ class AgentProfile private constructor(
         fun ofStoredNameIgnoringCase(name: String?): AgentProfile =
             ALL.firstOrNull { it.kind.name.equals(name, ignoreCase = true) } ?: DEFAULT
     }
-}
-
-/** agent-dir 的应用级默认来自「设置」屏的哪个键。 */
-enum class AgentDirSettingKey {
-    /** `settings` 表里应用级默认的 Claude 配置目录。 */
-    AppDefaultClaudeDir,
 }

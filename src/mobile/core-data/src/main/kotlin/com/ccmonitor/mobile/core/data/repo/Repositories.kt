@@ -93,20 +93,6 @@ class LauncherRepository(
 class SettingsRepository(
     private val dao: SettingsDao,
 ) {
-    /** 应用级默认 Claude 配置目录（null=未设，回退内置默认 [com.ccmonitor.mobile... ClaudePaths.DEFAULT_CLAUDE_DIR]）。 */
-    fun defaultClaudeDir(): Flow<String?> = dao.observe(KEY_DEFAULT_CLAUDE_DIR)
-
-    suspend fun getDefaultClaudeDir(): String? = dao.get(KEY_DEFAULT_CLAUDE_DIR)
-
-    suspend fun setDefaultClaudeDir(value: String?) =
-        dao.upsert(Settings(KEY_DEFAULT_CLAUDE_DIR, value?.trim()?.ifEmpty { null }))
-
-    /** 历史页「自定义命令…」的上次输入（全局单键，只作弹窗预填；null 表示没用过）。 */
-    fun resumeCustomCommand(): Flow<String?> = dao.observe(KEY_RESUME_CUSTOM_COMMAND)
-
-    suspend fun setResumeCustomCommand(value: String?) =
-        dao.upsert(Settings(KEY_RESUME_CUSTOM_COMMAND, value?.trim()?.ifEmpty { null }))
-
     /**
      * 新形态界面的总开关，默认开。
      *
@@ -128,9 +114,6 @@ class SettingsRepository(
     suspend fun setLastHost(hostId: String?) = dao.upsert(Settings(KEY_LAST_HOST, hostId?.trim()?.ifEmpty { null }))
 
     companion object {
-        const val KEY_DEFAULT_CLAUDE_DIR = "default_claude_dir"
-        const val KEY_RESUME_CUSTOM_COMMAND = "resume_custom_command"
-
         /** 新形态界面总开关的存储键。 */
         const val KEY_NEW_UI_ENABLED = "new_ui_enabled"
 

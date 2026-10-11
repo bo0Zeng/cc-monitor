@@ -301,15 +301,16 @@ class SettingsEntriesTest {
         private const val SECTION_HEADER_STYLE = "MaterialTheme.typography.titleMedium"
 
         /**
-         * 设置面有几个节标题（照源码里 `titleMedium` 的处数数）：写死的那一节 ＋ `EntrySections` 那一个渲染器（它画出数据侧的「终端」节）。
-         * 10-10 删了「新对话的权限」那一节（起会话改走那台核心，那一档设置没有落处），3 → 2：只会更矮，「终端」那一节只会更近。
+         * 设置面有几个节标题（照源码里 `titleMedium` 的处数数）：只剩 `EntrySections` 那一个渲染器（它画出数据侧的「终端」节）。
+         * 10-10 删了「新对话的权限」那一节（起会话改走那台核心，那一档设置没有落处），3 → 2；
+         * 10-11 删了「Claude 配置目录」那一节（手机不再拼远端路径，没人读它），2 → 1：只会更矮，「终端」那一节只会更近。
          *
          * 加一节之前必须走一遍真机，理由见 [theSectionCountIsPinnedSoAnyGrowthGetsReVettedOnADevice]。
          *
          * 判别力边界：这条钉的是节数，不是内容高度。在一节内部增删行、把说明写长三倍，它全绿；
          * 它守的只是「加/减一整节时那次真机读数作废」这一件事。
          */
-        private const val PINNED_SECTION_HEADERS = 2
+        private const val PINNED_SECTION_HEADERS = 1
 
         /**
          * `Screen` 的每个 data object → 它的路由串。
