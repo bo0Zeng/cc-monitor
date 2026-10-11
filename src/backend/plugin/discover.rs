@@ -92,20 +92,25 @@ pub(crate) fn find(
             return Ok(c.clone());
         }
     }
-    let path_dirs: Vec<PathBuf> = if search_path {
-        std::env::var_os("PATH")
-            .map(|p| std::env::split_paths(&p).collect())
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    for d in &path_dirs {
-        let c = d.join(name);
-        if is_executable(&c) {
-            return Ok(c);
-        }
+    if !search_path {
+        return Err(not_installed_message(name, fixed, 0, hint));
     }
-    Err(not_installed_message(name, fixed, path_dirs.len(), hint))
+    // `PATH` 那一档：找法只住 `platform::shell::find_session_command`（Windows 上 [`is_executable`] 只认 `.exe` ⇒ 找到的就是 `<名>.exe`）。
+    let path = std::env::var("PATH").ok();
+    if let crate::platform::shell::SessionCommand::Found { file, .. } =
+        crate::platform::shell::find_session_command(
+            name,
+            path.as_deref(),
+            cfg!(windows),
+            &is_executable,
+        )
+    {
+        return Ok(file);
+    }
+    let searched = path
+        .as_deref()
+        .map_or(0, |p| crate::platform::shell::path_dirs(p).len());
+    Err(not_installed_message(name, fixed, searched, hint))
 }
 
 #[cfg(test)]

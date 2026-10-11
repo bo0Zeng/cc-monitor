@@ -526,7 +526,7 @@ fn on_path_child_reports_what_it_sees() {
         return;
     }
     for name in ["workcc", "realtool"] {
-        println!("{name}={}", on_path(name, &[""]).is_some());
+        println!("{name}={}", on_path(name, false).is_some());
     }
 }
 

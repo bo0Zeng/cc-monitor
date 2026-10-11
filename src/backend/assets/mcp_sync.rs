@@ -123,17 +123,17 @@ pub(crate) trait Facts {
     fn command(&self, name: &str) -> Option<bool>;
 }
 
-/// 生产那一份：真 `stat` ＋ 这个进程的 `PATH`（与 `PATHEXT`，只有 Windows 上才有这个变量）。
+/// 生产那一份：真 `stat` ＋ 这个进程的 `PATH`（按哪种系统的规矩找是入参，判据能在 Linux 上跑 Windows 那一形）。
 pub(crate) struct Live {
     pub path_var: Option<OsString>,
-    pub pathext: Option<OsString>,
+    pub windows: bool,
 }
 
 impl Live {
     pub(crate) fn from_env() -> Self {
         Live {
             path_var: std::env::var_os("PATH"),
-            pathext: std::env::var_os("PATHEXT"),
+            windows: cfg!(windows),
         }
     }
 }
@@ -153,28 +153,18 @@ impl Facts for Live {
     }
 
     fn command(&self, name: &str) -> Option<bool> {
-        let dirs: Vec<_> = std::env::split_paths(self.path_var.as_ref()?)
-            .filter(|d| !d.as_os_str().is_empty())
-            .collect();
-        if dirs.is_empty() {
-            return None;
+        // 找法只住 `platform::shell::find_session_command`（Windows 上 `npx` 真装了的叫 `npx.cmd`，不带后缀的那份不算）。
+        // ⚠ 不看执行位（只问「有没有这个名字的文件」，见模块头注「买不到」）。
+        match crate::platform::shell::find_session_command(
+            name,
+            self.path_var.as_deref().and_then(std::ffi::OsStr::to_str),
+            self.windows,
+            &|p| p.is_file(),
+        ) {
+            crate::platform::shell::SessionCommand::Unknown => None,
+            crate::platform::shell::SessionCommand::Absent => Some(false),
+            crate::platform::shell::SessionCommand::Found { .. } => Some(true),
         }
-        // `PATHEXT` 只在 Windows 上有（`.COM;.EXE;.BAT;.CMD` …）：`npx` 在那边真装了的叫 `npx.cmd`。
-        // 没有这个变量 ⇒ 只找原名。⚠ 不看执行位（只问「有没有这个名字的文件」，见模块头注「买不到」）。
-        let exts: Vec<String> = self
-            .pathext
-            .as_ref()
-            .map(|v| {
-                v.to_string_lossy()
-                    .split(';')
-                    .filter(|e| !e.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
-        Some(dirs.iter().any(|d| {
-            d.join(name).is_file() || exts.iter().any(|e| d.join(format!("{name}{e}")).is_file())
-        }))
     }
 }
 

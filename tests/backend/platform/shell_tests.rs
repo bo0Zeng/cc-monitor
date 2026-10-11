@@ -337,3 +337,55 @@ fn a_script_install_is_refused_only_when_the_policy_forbids_scripts() {
     );
     assert_eq!(asked.get(), 4, "不是脚本那一形就不该去问执行策略");
 }
+
+/// ★ 后端里按 `PATH` 一目录一目录找命令的只许 [`super::find_session_command`] 这一处（Windows 后缀规矩只写一遍：
+/// 「认得出」就是「起得来」）。认法：生产代码里切 `PATH` 的那一下（`split_paths(`）只许住 `platform/shell/mod.rs`、恰好一处。
+#[test]
+fn only_find_session_command_walks_path() {
+    let root = crate::guard_support::src_root();
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(
+        files.len() > 200,
+        "只扫到 {} 个文件 —— 采集坏了",
+        files.len()
+    );
+    const HOME: &str = "platform/shell/mod.rs";
+    let mut hits: Vec<String> = Vec::new();
+    let mut home_count = 0;
+    for (p, text) in &files {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let code = guard_core::production_code(text);
+        // 别处拿 `path_dirs` 只许数目录（找不到时那句话里说查过几个）：每一处后面紧跟 `.len()`。
+        if rel != HOME {
+            for (i, _) in code.match_indices("shell::path_dirs(") {
+                let rest = &code[i..];
+                let close = rest.find(')').unwrap_or(rest.len());
+                if !rest[close..].starts_with(").len()") {
+                    hits.push(format!("{rel}：拿 path_dirs 自己逐目录找"));
+                }
+            }
+        }
+        let n = code.matches("split_paths(").count();
+        if n == 0 {
+            continue;
+        }
+        if rel == HOME {
+            home_count = n;
+        } else {
+            hits.push(format!("{rel} ×{n}"));
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "按 PATH 逐目录找命令只许经 `platform::shell::find_session_command`：\n{}",
+        hits.join("\n")
+    );
+    assert_eq!(
+        home_count, 1,
+        "{HOME} 里切 PATH 的应恰好一处（find_session_command 那一下）"
+    );
+}

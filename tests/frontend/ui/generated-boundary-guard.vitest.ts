@@ -439,6 +439,30 @@ describe("C01 边界生成物", () => {
     );
   });
 
+  it("`history-turns` 的一轮与过程段（`observe/turns.rs`）来自生成物，界面不再手写那一形", () => {
+    // 复审五：`Fold` 只有 `Serialize`、界面手写了一份（新加的线上形状必须出生成类型）。
+    const files = readdirSync(resolve(ROOT, "src/frontend/ui/generated"));
+    const want = ["TurnRow", "FoldSegment", "TurnPart", "TurnSpan", "TurnPhase", "Tone"];
+    expect(want.filter((n) => !files.includes(`${n}.ts`)), "生成目录里缺这几形").toEqual([]);
+    const turns = rustCode(read("src/backend/observe/turns.rs"));
+    for (const t of ["TurnRow", "Fold", "Part", "Span", "Phase"]) {
+      expect(turns, `turns.rs 的 ${t} 没派生 ts_rs::TS`).toMatch(
+        new RegExp(`derive\\(ts_rs::TS\\)\\)\\]\\s*(#\\[[^\\n]*\\]\\s*)*pub\\(crate\\) (struct|enum) ${t}\\b`),
+      );
+    }
+    const src = code(read("src/frontend/ui/session-reads.ts"));
+    expect(src, "没读到 session-reads.ts / 剥过头了").toContain("export function decodeTurns");
+    for (const n of ["TurnRow", "FoldSegment", "TurnPhase", "Tone"]) {
+      expect(src, `session-reads.ts（解 history-turns 的那一处）没从生成物取 ${n}`).toContain(`"./generated/${n}"`);
+    }
+    const handWritten = productionTsFiles("src/frontend").filter(
+      (f) =>
+        !f.includes("/generated/") &&
+        /^\s*(export\s+)?(interface|type)\s+(TurnSummary|TurnFoldRow|TurnRow|FoldSegment|TurnPart|TurnSpan|TurnPhase|TurnTone|Tone)\b/m.test(code(read(f))),
+    );
+    expect(handWritten, "手写的一轮 / 过程段 / 语气类型又回来了").toEqual([]);
+  });
+
   it("直接 import invoke 的生产文件恰好 1 个 —— 包装层自己（成功标准 4 的度量）", () => {
     const scanned = productionTsFiles();
     const hits = scanned.filter((f) =>

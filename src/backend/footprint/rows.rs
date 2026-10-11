@@ -715,9 +715,9 @@ fn observe_unmanaged(
     env: &SurfaceEnv,
 ) -> (Option<String>, SurfaceState) {
     match probe {
-        // `PATH` 上的裸命令：与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`：
-        //   `split_paths` 切分 · 取不到 `PATH` 就不猜 · Windows 上按 `PATHEXT` 认 `.exe` / `.cmd` …，原名不算 · 同名的目录不算）。
-        //   差的只是哪一份 `PATH`：agent 命令行看起会话那个 shell 的，别的看后端进程自己的。
+        // `PATH` 上的裸命令：与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`，
+        // Windows 上 `.exe` / `.cmd` / `.ps1` … 的规矩只住那里）；两族只差按哪一份 `PATH` 找。
+        // agent 命令行在起会话那个 shell 里敲 ⇒ 那个 shell 的 `PATH`；别的按这个后端进程的。
         EnvProbe::OnPath | EnvProbe::InSessionShell => {
             let (path, blind) = match probe {
                 EnvProbe::InSessionShell => (

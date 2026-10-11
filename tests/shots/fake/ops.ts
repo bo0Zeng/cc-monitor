@@ -244,7 +244,7 @@ export function defaultOps(): Record<string, OpHandler> {
       const { at, end } = layout(recs);
       type Part = { text: string; tone: string };
       type Span = { text: string; from: number | null; to: number | null };
-      type Fold = { after: string; parts: Part[]; span: Span; phase: string };
+      type Fold = { after: string; until: string | null; parts: Part[]; span: Span; phase: string };
       type T = {
         at: number; uuid: string; start: string; end: string; startText: string; endText: string; said: string;
         tools: number; thinking: number; agents: number; background: number; retries: number; peers: number; fails: number;
@@ -269,7 +269,7 @@ export function defaultOps(): Record<string, OpHandler> {
         }
         return c;
       };
-      const close = (t: T, x: Acc): void => {
+      const close = (t: T, x: Acc, next: string | null): void => {
         if (x.stop !== null) x.items[x.stop].shown = true;
         const all = tally(x.items, x.runs);
         for (const k of keys) t[k] = all[k];
@@ -289,7 +289,7 @@ export function defaultOps(): Record<string, OpHandler> {
         // 划段（同后端 `Open::close`）。
         let after = t.uuid;
         let seg: Item[] = [];
-        const flush = (): void => {
+        const flush = (until: string | null): void => {
           if (seg.length === 0) return;
           const c = tally(seg, x.runs);
           const others = keys.reduce((s, k) => s + c[k], 0);
@@ -308,12 +308,12 @@ export function defaultOps(): Record<string, OpHandler> {
           const when = f0 === f1 ? f0 : copyText("rsTurns.span.range", { from: f0, to: f1 });
           const [a, b] = [Date.parse(s0), Date.parse(s1)];
           const span = b - a >= 1000 ? { text: copyText("rsTurns.span.done", { when, dur: "{dur}" }), from: a, to: b } : { text: when, from: null, to: null };
-          t.folds.push({ after, parts, span, phase: "idle" });
+          t.folds.push({ after, until, parts, span, phase: "idle" });
           x.tailStart = f0;
         };
         for (const it of x.items) {
           if (it.shown) {
-            flush();
+            flush(it.id);
             t.shown.push(it.id);
             after = it.id;
             continue;
@@ -322,7 +322,7 @@ export function defaultOps(): Record<string, OpHandler> {
         }
         const open = seg.length > 0;
         const before = t.folds.length;
-        flush();
+        flush(next);
         x.tail = open && t.folds.length > before;
       };
       recs.forEach((r, i) => {
@@ -334,7 +334,7 @@ export function defaultOps(): Record<string, OpHandler> {
             // 排队插话落成了这一句（原文一字不差）⇒ 记进排队那一条所在的那一轮（同后端 `TurnScan::line`）。
             const text = r.who.text.trim();
             cur.landed = acc.queued.filter(([, q]) => q === text).map(([id]) => id);
-            close(cur, acc);
+            close(cur, acc, r.id);
           }
           const said = sp!.kind === "slashCommand" ? `${(sp as { name: string }).name} ${(sp as { args?: string }).args ?? ""}`.trim() : r.who.text;
           const when = r.at ?? "";
@@ -400,7 +400,7 @@ export function defaultOps(): Record<string, OpHandler> {
           }
         }
       });
-      if (cur && acc) close(cur, acc);
+      if (cur && acc) close(cur, acc, null);
       // 最后一轮还没收尾：按会话事实在尾巴那一段补那一截（同后端 `turns.rs::dress_live`）。
       const last = turns.at(-1);
       const lastAcc = accs.at(-1);

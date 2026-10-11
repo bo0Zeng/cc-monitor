@@ -25,6 +25,10 @@ import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
 import { exactKeys, isObj } from "./ipc/decode";
+import type { Tone } from "./generated/Tone";
+import type { FoldSegment } from "./generated/FoldSegment";
+import type { TurnPhase } from "./generated/TurnPhase";
+import type { TurnRow } from "./generated/TurnRow";
 
 // ─── 成品的形状（后端 `read_face.rs` 那三条的应答；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）───
 
@@ -101,9 +105,6 @@ export interface SessionIndexResult {
   /** 要不到的种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时 ⇒ 下一次触发点再问一次）。 */
   failure?: OutlineFailure;
 }
-
-/** 一格字的语气（后端 `common::cells::Tone`）：出口按它选颜色。 */
-export type Tone = "plain" | "fail" | "now" | "need" | "warn";
 
 /** 最新 usage ＋ 上下文上限 ＋ 写好的字（后端 `facts_query::UsageFact`：上限、百分比、字都由后端定，界面照抄）。 */
 export interface UsageFact {
@@ -345,75 +346,18 @@ export function decodeUserInputs(v: unknown): { from: number; end: number; entri
   return { from: v.from, end: v.end, entries };
 }
 
-/** 一轮的摘要（后端 `observe/turns.rs::TurnRow`，键名一字不差）：过程行 · 刻度悬停 · 折哪几条都按它。 */
-export interface TurnSummary {
-  /** 这一轮开头（你那句）那一行的字节位置；还在跑的最后一轮下次从这里再取。 */
-  at: number;
-  uuid: string;
-  start: string;
-  end: string;
-  /** 起止各自的钟面（后端按那台本地钟写好的 `HH:MM`；解不出 ⇒ 空串）。 */
-  startText: string;
-  endText: string;
-  /** 你那句的第一行（≤ 50 字）。 */
-  said: string;
-  /** 工具调用（派 agent 不算）· 思考 · 派出 agent · 后台任务通知 · API 重试 · 来话 · 失败合计（后端 `turns.rs` 数）。 */
-  tools: number;
-  thinking: number;
-  agents: number;
-  background: number;
-  retries: number;
-  peers: number;
-  fails: number;
-  /** 露着的那几条记录的 uuid（带正文的：中间说的话与结论 ＋ 停下这一轮的中断标记 / 报错卡）。 */
-  shown: string[];
-  /** 回复头三行（≤ 120 字）。 */
-  reply: string;
-  /** 这一轮收尾了（后面又有你的一句，或 Claude 说完了，或你中断了它）。 */
-  done: boolean;
-  /** 此刻：没在跑 · 在跑 · 在等你（后端按这台的会话事实判）。 */
-  phase: TurnPhase;
-  /** 这一轮里落成了人话的排队插话（排队那一条的记录 id）：界面不再单独出它（同一句不上屏两次）。 */
-  landed: string[];
-  /** 过程段（后端划好，文件序）：一段一行，跟在 `after` 那张卡后面；空 ⇒ 这一轮不折。 */
-  folds: TurnFoldRow[];
-}
-
-/** 一段过程（后端 `turns.rs::Fold`）。 */
-export interface TurnFoldRow {
-  /** 这一段跟在哪一条后面（这一轮你那句，或露着的某一条的 uuid）。 */
-  after: string;
-  /** 那一行的字（后端写好）。 */
-  parts: TurnPart[];
-  /** 右端那一截：字里的 `{dur}` 由界面填 `to − from`（`to` 缺 ⇒ 到现在）。 */
-  span: TurnSpan;
-  /** 此刻（只有还在跑的那一轮的尾巴那一段会是在跑 / 在等你）。 */
-  phase: TurnPhase;
-}
-
-export type TurnPhase = "idle" | "running" | "awaiting";
-export type TurnTone = "plain" | "fail" | "now" | "need";
-export interface TurnPart {
-  text: string;
-  tone: TurnTone;
-}
-export interface TurnSpan {
-  text: string;
-  from: number | null;
-  to: number | null;
-}
-
 const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "fails", "folds", "landed", "peers", "phase", "reply", "retries", "said", "shown", "start", "startText", "thinking", "tools", "uuid"] as const;
 const PHASES: readonly string[] = ["idle", "running", "awaiting"];
-const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn"] satisfies readonly Tone[];
+const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn", "busy"] satisfies readonly Tone[];
 const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
 
 /** 一段过程的形状逐格对。 */
 function isFold(f: unknown): boolean {
   return (
     isObj(f) &&
-    exactKeys(f, ["after", "parts", "phase", "span"]) &&
+    exactKeys(f, ["after", "parts", "phase", "span", "until"]) &&
     isStr(f.after) &&
+    (f.until === null || isStr(f.until)) &&
     isStr(f.phase) &&
     PHASES.includes(f.phase) &&
     Array.isArray(f.parts) &&
@@ -427,12 +371,12 @@ function isFold(f: unknown): boolean {
 }
 
 /** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
-export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnSummary[] } {
+export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnRow[] } {
   const bad = (): never => {
     throw new ShapeError("history-turns", copyText("sessionReads.missing.turns"));
   };
   if (!isObj(v) || !exactKeys(v, ["end", "from", "turns"]) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.turns)) return bad();
-  const turns = v.turns.map((t): TurnSummary => {
+  const turns = v.turns.map((t): TurnRow => {
     if (
       !isObj(t) ||
       !exactKeys(t, TURN_KEYS) ||
@@ -470,8 +414,9 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       reply: t.reply as string,
       done: t.done,
       phase: t.phase as TurnPhase,
-      folds: (t.folds as TurnFoldRow[]).map((f) => ({
+      folds: (t.folds as FoldSegment[]).map((f) => ({
         after: f.after,
+        until: f.until,
         parts: f.parts.map((p) => ({ text: p.text, tone: p.tone })),
         span: { text: f.span.text, from: f.span.from, to: f.span.to },
         phase: f.phase,
@@ -757,7 +702,7 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
 }
 
 /** 每轮的摘要的回包：要不到 ⇒ `available:false`（过程行与刻度不出，正文照常）。 */
-export type TurnsResult = { available: true; from: number; end: number; turns: TurnSummary[] } | { available: false; reason: string };
+export type TurnsResult = { available: true; from: number; end: number; turns: TurnRow[] } | { available: false; reason: string };
 
 /** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）。 */
 export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
