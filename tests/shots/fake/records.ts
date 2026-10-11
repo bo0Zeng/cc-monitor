@@ -54,6 +54,8 @@ export class Convo {
   private parent: string | null = null;
   /** 子 agent 那一段（`sid` 是父会话的；文件住父会话那一份旁边）。 */
   readonly agentId: string | null;
+  /** 子 agent 那一段：父侧派出它的那次调用的 id（派出那一刻 Claude Code 在子记录旁边落 `agent-<agentId>.meta.json`，`toolUseId` 是它）。 */
+  spawnedBy: string | null = null;
   /** 这一份文件最后写的那一刻（epoch ms；盘上的修改时刻）。缺 ⇒ 开页那一刻。 */
   writtenAt: number | undefined;
 
@@ -91,9 +93,10 @@ export class Convo {
     return tail.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + (tail.length > 0 ? "\n" : "");
   }
 
-  /** 这一段与它派出的子 agent 那几段：相对家目录的路径 → 原文。 */
+  /** 这一段与它派出的子 agent 那几段（各带派出那一刻落的 `.meta.json`）：相对家目录的路径 → 原文。 */
   files(): Record<string, string> {
     const out: Record<string, string> = { [this.file()]: this.text() };
+    if (this.spawnedBy !== null) out[`${this.file().slice(0, -".jsonl".length)}.meta.json`] = JSON.stringify({ toolUseId: this.spawnedBy }) + "\n";
     for (const c of this.children.values()) Object.assign(out, c.files());
     return out;
   }
@@ -209,18 +212,21 @@ export class Convo {
     if (opts.lead) blocks.push({ type: "text", text: opts.lead });
     blocks.push({ type: "tool_use", id, name, input: opts.bg || opts.launched ? { ...input, run_in_background: true } : input });
     this.assistant(blocks);
-    this.adopt(opts);
+    this.adopt(opts, id);
     if (result !== null) this.result(id, result, opts.error ?? false, toolUseResult(name, input, result, opts));
     return id;
   }
 
-  private adopt(opts: ToolOpts): void {
-    if (opts.child?.agentId) this.children.set(opts.child.agentId, opts.child);
+  private adopt(opts: ToolOpts, id: string): void {
+    const c = opts.child;
+    if (!c?.agentId) return;
+    this.children.set(c.agentId, c);
+    c.spawnedBy = id;
   }
 
   /** 一次调用的结果（`tur` ＝ 记录级那一格 `toolUseResult`；缺 ⇒ 照工具名与入参现编，同 [`tool`]）。 */
   answer(id: string, name: string, input: Json, content: string, opts: ToolOpts = {}): this {
-    this.adopt(opts);
+    this.adopt(opts, id);
     return this.result(id, content, opts.error ?? false, toolUseResult(name, input, content, opts));
   }
 
