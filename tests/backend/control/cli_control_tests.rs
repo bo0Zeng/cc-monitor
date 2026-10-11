@@ -681,8 +681,24 @@ fn the_one_line_flag_counts_wherever_it_sits() {
         ]),
         ThenPanic(Some(line)),
     );
-    assert_eq!(at_end, at_one, "`--stdin-line` 不在第二格时答得不一样");
+    // 信封的 detail 里带着出错那一刻（到秒）：两趟跨过整秒就不一样 —— 机器一忙就更容易跨。比之前先把那一格抹平，
+    // 判的是两处答的是同一件事，不是两次调用落在同一秒里。
+    let unclocked = |(rc, out, err): (i32, String, String)| {
+        let err = match err.find("时刻：") {
+            Some(a) => {
+                let b = err[a..].find("\\n").map_or(err.len(), |b| a + b);
+                format!("{}时刻：<抹平>{}", &err[..a], &err[b..])
+            }
+            None => err,
+        };
+        (rc, out, err)
+    };
     assert_ne!(err_code(&at_one.2), "no_input");
+    assert_eq!(
+        unclocked(at_end),
+        unclocked(at_one),
+        "`--stdin-line` 不在第二格时答得不一样"
+    );
 }
 
 /// ★ 两个口二选一；用法错一律 `bad_args`，坏载荷 `bad_request`，超大 `args_too_large` —— 都是立即回、不截断。
