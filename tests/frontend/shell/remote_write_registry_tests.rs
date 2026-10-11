@@ -90,9 +90,8 @@ fn write_sites() -> Vec<(String, String)> {
 ///
 /// ★★〔G 审计逮到的〕**第一版按「源码里出现 SFTP 会话类型名」判，恒绿。**
 ///
-/// 漏掉的是 `acct_iso_deploy.rs`：它 `let conn = connect_sftp(&cfg).await?;`
-/// `let sftp = &conn.sftp;` 然后往**用户给的 `dest_dir`** 写文件
-/// （`#[tauri::command] deploy_remote_acct_iso`）——**类型靠推断，那个名字一次都没写出来**。
+/// 漏掉的是部署账号库那一份：它 `let conn = connect_sftp(&cfg).await?;`
+/// `let sftp = &conn.sftp;` 然后往**用户给的 `dest_dir`** 写文件 ——**类型靠推断，那个名字一次都没写出来**。
 ///
 /// ⇒ 又一次「按拼法取样」，而本条的 doc 注释里逐字写着
 /// 「**凡「本条是某一族唯一的哨兵」的判据，人群必须按事实取样，因为它没有第二道网**」。
@@ -292,7 +291,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     let root = repo_root();
     // `(入口所在文件, 入口名, 它该转发到的已登记写点)`
     const ROUTES: &[(&str, &str, &str)] = &[
-        // **空了**：`deploy_remote_backend → upload_atomic` · `deploy_remote_acct_iso → ensure_dir_all`
+        // **空了**：`deploy_remote_backend → upload_atomic` 与部署账号库那一条
         //   两条边的后半跳（monitor 里的 SFTP 写点）整段进了本机后端；按钮今天经 `dial_host::RemoteFs` 交给后端执行，
         //   「按钮 ↔ 真实写点」那条边跨进了后端那棵树（它的写点由后端 `readonly_guard::remote_write_layer` 钉）。
         // 更早走掉的几条（F89a · F11 · F10 经远端后端写）见 git 历史。
@@ -345,7 +344,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
 /// 上面四条判据的覆盖面就跟着变，而**没有任何东西会提醒**。
 ///
 /// ⚠⚠ **第一版按「源码里出现会话类型名」判，恒绿，被 G 审计逮到**
-/// （`acct_iso_deploy.rs` 靠类型推断，那个名字一次都没写出来，
+/// （部署账号库那一份靠类型推断，那个名字一次都没写出来，
 /// 而它往用户给的 `dest_dir` 写 8 个文件 + 2 个目录）。
 /// 而本条的注释当时就逐字写着「凡『唯一的哨兵』的判据人群必须按事实取样」——
 /// **写下那句话的判据自己犯了那句话说的错**，本区第三次。

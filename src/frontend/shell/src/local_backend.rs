@@ -758,7 +758,7 @@ pub fn supervise_with_stdio(
             // ★★ （不开控制台窗口）与（stderr 接进滚动日志）
             //    **都已经不在这一层了**〔A3 落地，09-18〕。
             //
-            // 先前这里有两段平台/宿主知识：一句 `crate::local_backend_host::hide_console_window(&mut cmd)`
+            // 先前这里有两段平台/宿主知识：一句「不开控制台窗口」的宿主调用
             // （那是 A3 之前的止血，它自己的头注逐字写着「A3 落地时它会被换成注入参数，
             // 和 `make_executable` 一样」），加一句 `.stderr(Stdio::piped())` ＋ 下面一条泵。
             // ⇒ 今天两样都是 `spawn` 这个注入参数说了算：宿主那侧声明

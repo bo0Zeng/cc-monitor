@@ -35,8 +35,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 def _lex(src: str, start: int, stop_at_depth0_close: bool, in_lit_lines=None, line_base: int = 0):
     """从 src[start] 开始走词法。
 
-    跳过注释与各种字面量 —— 这一条就是 §6.1 点名的那个坑（`strip_cfg_test`
-    的括号配平不识别字符串里的大括号，已知造成过 4 次事故）。
+    跳过注释与各种字面量 —— 这一条就是 §6.1 点名的那个坑（剥测试段的
+    便宜近似拿括号配平，不识别字符串里的大括号，已知造成过 4 次事故）。
 
     stop_at_depth0_close=True  ⇒ src[start] 必须是 '{'，返回配对 '}' 的下标（找不到返回 -1）。
     in_lit_lines is not None   ⇒ 顺带把「行首落在字符串/字符字面量内部」的行号记进去。

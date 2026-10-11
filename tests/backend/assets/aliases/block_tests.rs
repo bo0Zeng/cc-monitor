@@ -175,7 +175,7 @@ fn run<T>(x: T) -> T {
 /// ① 在围栏前插 `std::fs::write(path, "MUTANT CLOBBER\n")` —— 扫描不认这个 API 名
 ///    → 函数返回「已中止」而**用户文件已被清成 `"MUTANT CLOBBER\n"`**；
 /// ② 把同一个 `std::fs::copy` 挪进窗口之外的 helper → **泄漏文件真的产生**。
-/// 它还能被**注释文本**骗红（提到 `"atomic_write_string"` 的注释就让它 FAILED），
+/// 它还能被**注释文本**骗红（注释里提到那个写原语的名字就让它 FAILED），
 /// 而且 `str::find` 只取第一处 `copy`（窗口内各有 3 处）
 /// —— **恰好命中真备份纯属排序运气**。
 ///

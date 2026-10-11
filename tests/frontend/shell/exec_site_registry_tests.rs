@@ -35,15 +35,13 @@ enum Origin {
 const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 整条命令是常量/无插值字面量
     // `cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
-    // `hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     // `mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
     // `sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
     // 公钥推送那一行出去了：读 `.pub` · 组请求 · 一次 exec 都进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`）。
     // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
-    //    `cc_bus.rs / check_cc_bus_agent_online`（`Builder("build_online_cmd")`）与
-    //    `tmux.rs / capture_remote_pane`（`Builder("build_capture_pane_cmd")`）。
+    //    查在线与抓屏那两个构造器。
     //    形状与理由**与上面 `K-R72` / `K-R104` 那几笔逐字同形**：那两处的一次性 SSH exec
     //    整条没了（查在线改走帧 `bus-list`、抓屏改走帧 `capture-pane`）
     //    ⇒ 它们不再是「远端执行点」，两个构造器也随之整块删。
@@ -61,8 +59,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    留着它，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住。
     // ── 本函数里拼，但自由文本过了 shell_quote
     // 🔴 **这里原来还有两行，两行都出去了**：
-    //    `remote_history.rs / stream_read_remote_session`（`--read-session`）与
-    //    `stream_source/snapshot.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
+    //    读整份会话（`--read-session`）与读尾段（`--read-session-tail`）那两处。形状与理由同上面
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
     //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
@@ -72,7 +69,6 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // `stream_source/` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
     //   ⇒ 本表空了，下面那条判据改成「零处」（带正控）。
     // `cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
 ];
 
 fn src_root() -> PathBuf {
@@ -317,8 +313,6 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
     // `sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
     // 公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
-    //   （链接走写面 `files-link`，装卸账记 skill 装记录）；字节照走部署那一条（SFTP 经本机后端）。
     // `mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（选的那一条）。
     // `hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
     // `tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。

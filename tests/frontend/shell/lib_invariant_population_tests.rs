@@ -434,7 +434,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "落点常量后只跟本侧旗标（`--<帧命令>` · `--stdin-line` · 资产目录两旗）",
     ),
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
     // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
     // 就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）· 键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
     (

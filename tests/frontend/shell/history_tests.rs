@@ -100,7 +100,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 // 这里原来是本机分叉那份实现的四条 IO 判据（`O_EXCL` 不覆盖 · 软链逃逸按 sid 找不到 ·
 // 源零改动 ＋ 新文件原生格式 · 以及它们共用的最小会话夹具）。本机分叉改成 exec 本机后端 `--fork-session` 之后，
 // 同一组性质由后端那份实现（`src/backend/control/fork_write.rs`）的同形判据守着（`fork_write_tests.rs`），
-// 本侧只剩「结果怎么解释」（`remote_branch_tests.rs`：本机那一趟的三态折成与远端同形的结果）。
+// 本侧只剩「结果怎么解释」（本机那一趟的三态折成与远端同形的结果）。
 
 /// 后端那棵树上某个文件的**生产段**（运行时读，不是 `include_str!`）。
 ///

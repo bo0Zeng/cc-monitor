@@ -683,7 +683,7 @@ def _cfg_test_item_end(masked: str, pos: int) -> int:
     return n - 1
 
 
-def strip_cfg_test(masked: str) -> str:
+def drop_cfg_test_items(masked: str) -> str:
     """把 `#[cfg(test)]` 修饰的**那一个 item** 整个换成空格（行号不变）。"""
     out = list(masked)
     for m in CFG_TEST_RE.finditer(masked):
@@ -703,7 +703,7 @@ CFG_TEST_MOD_RE = re.compile(
 
 def cfg_test_module_files(root: Path) -> set:
     """🔴 修 bug（CP1 2026-09-24）：`#[cfg(test)] mod x;` 声明的模块**整个文件**只在测试构建里，
-    但它住在另一个文件里 ⇒ 单文件内的 `strip_cfg_test` 看不见（`backend/agents/fake/` 现打 28 条混进人群）。
+    但它住在另一个文件里 ⇒ 单文件内的 `drop_cfg_test_items` 看不见（`backend/agents/fake/` 现打 28 条混进人群）。
     ⇒ 先扫一遍所有 `.rs`，把这种声明解析成文件路径（及其子模块目录），整棵从语料里摘掉。
     → 相对仓根的 posix 路径前缀集合（文件本身，或 `dir/`）。
     """
@@ -1110,7 +1110,7 @@ def scan(root: Path):
         except (UnicodeDecodeError, OSError):
             continue
         if lang == "rs":
-            masked = strip_cfg_test(masked)
+            masked = drop_cfg_test_items(masked)
         scanned_lines += masked.count("\n") + 1
         is_ccbus = any(rel.startswith(x) for x in CC_BUS_INJECT_FILES)
         tagmap = build_tag_map(masked) if lang == "ts" else {}

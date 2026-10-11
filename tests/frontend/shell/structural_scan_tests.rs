@@ -2331,22 +2331,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_probe_sees_allocations_made_by_the_reader_task",
             1,
         ),
-        (
-            "src/backend/stream/inbound/mod.rs",
-            "handlers_never_run_on_the_reader_task",
-            1,
-        ),
-        // 〔入方向拆目录 10-03〕手抄的命令名单删了：它头注里那一处与测试段那条镜子判据头注里那一处随之没了，3 → 1。
-        (
-            "src/backend/stream/inbound/mod.rs",
-            "hello_commands_match_the_dispatch_table",
-            1,
-        ),
-        (
-            "src/backend/stream/inbound/mod.rs",
-            "hello_is_flushed_before_the_inbound_reader_starts",
-            1,
-        ),
         ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
         ("src/comms/outward/http1.rs", "handle_alloc_error", 1),
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
@@ -2418,8 +2402,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_per_second_identity_poller_spawns_nothing_per_tick",
             1,
         ),
-        // -1：`profile_installer.rs` 里点这个名字的那段话随
-        //    `find_block_range` 一起走了（拼接收成 `fenced_block::splice_in/out` 一份）。
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/rust_timer_registry_tests.rs",
@@ -2438,7 +2420,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "copy_bidirectional_with_sizes",
             1,
         ),
-        // `stream_source/emits_parity.rs` 点 `hello_commands_match_the_dispatch_table` 那一行摘了：那份判据随跨语言金样删了。
         // 存量四行摘了：点它们的那几段散文（`stream_source/` 的 tmux 原文账 / 宣告账头注 · `tmux.rs` 的 `list_local_tmux` 头注）
         //   随 monitor 那几本账一起删 / 改写（`list_local_tmux` 改问本机后端），`ssh_source_f032_idle_tests.rs` 那一处随文件删。
         (

@@ -186,7 +186,7 @@ fn includes_of(rel: &str, raw: &str) -> Vec<(String, String)> {
             if s >= b.len() || b[s] != b'"' {
                 // **参数是同文件里的单臂宏时，把它展开**。
                 //
-                // `tmux.rs` 有两处 `include_str!(backend_watcher_src!())`，
+                // 比如 `include_str!(<单臂宏>!())`，
                 // 而那个宏展开成 `"../../backend/observe/watcher.rs"` ——
                 // **两条真的 monitor→backend 跨界边**，此前整条不在登记表里。
                 // 讽刺的是 `tmux.rs` 自己写着为什么要用宏：`include_str!` 只接字面量 token，

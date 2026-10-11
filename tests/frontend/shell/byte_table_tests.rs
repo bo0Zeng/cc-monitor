@@ -446,7 +446,6 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
         }
     }
     assert!(scanned > 50, "只扫到 {scanned} 份 .rs —— 扫描口坏了");
-    // `acct_iso_deploy.rs`（vendored 脚本）出去了：账号库改由后端自己建，那份 vendored 脚本整棵删了。
     let want: BTreeSet<String> = ["byte_table.rs"].into_iter().map(String::from).collect();
     assert_eq!(homes, want);
     // 正控：一段带 `include_bytes!` 的合成生产代码认得出来。
