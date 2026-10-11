@@ -6,12 +6,16 @@
 pub(crate) fn creates_a_session(prod: &str) -> bool {
     let verb = format!("new-{}", "session");
     let wide = format!("tmux {verb}");
+    // 渲给客户端的那几行是 UTF-8 客户端（`tmux -u new-session`，`common/tmux_utf8.rs`）。
+    let wide_utf8 = format!("tmux -u {verb}");
     let argv = format!("\"{verb}\", \"-d\"");
     prod.lines().any(|l| {
         let t = l.trim_start();
         !t.starts_with("//")
             && !t.starts_with('#')
             && !t.starts_with('*')
-            && (l.contains(wide.as_str()) || l.contains(argv.as_str()))
+            && (l.contains(wide.as_str())
+                || l.contains(wide_utf8.as_str())
+                || l.contains(argv.as_str()))
     })
 }

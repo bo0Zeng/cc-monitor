@@ -138,7 +138,7 @@ ck "--ccm-version 是 ccm 自己的版本" \
    "ccm 7" \
    "$(ccm -- --ccm-version)"
 ck "--attach 接回（位置动作 attach 取消）" \
-   "if [ -n \"\${TMUX:-}\" ]; then tmux switch-client -t '=cc-foo:'; else tmux attach -t '=cc-foo:'; fi" \
+   "case x\${TMUX:-} in x) tmux -u attach -t '=cc-foo:';; *) tmux -u switch-client -t '=cc-foo:';; esac" \
    "$(ccm -- --attach cc-foo --ccm-print)"
 
 echo
@@ -323,11 +323,11 @@ echo "===== 会话名派生：真跑那条路铸出来的名字（前端那份�
 # **必须 env -u TMUX**：CLI 在 tmux 内会退化成"就地起"（不建嵌套会话），
 # 那时 --print 没有 tmux 命令序列可抓。生产路径是 `ssh -t … bash -lic`，$TMUX 本就不存在。
 # ⚠ **`^[{ ]*` 不能省**〔`U-NP④` 08-14 顺手修的既有腐坏〕：`P3sc`（08-13）把撞名改成
-# 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
+# 「响亮失败」时，把 `tmux new-session`（今天是 `tmux -u new-session`）包进了 `{ … || { …; exit 3; }; }` ——
 # 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条**全部拿到空串、静默常红**。
 # 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「不一致」，真因是抽取器失灵。
 name_of() { env -u TMUX HOME="$NOHOME" "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
-            | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
+            | sed -n "s/^[{ ]*tmux -u new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 # tmux 名撞名时 CLI 会加 -2/-3；此处只比基名（测试环境不建会话，故恒等基名）
 for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|proj-cc" "/|session-cc" "/home/pi/.hidden.dir|hidden-dir-cc"; do
   d="${pair%%|*}"; want="${pair##*|}"

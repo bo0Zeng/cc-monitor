@@ -363,10 +363,12 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
             },
             caps,
         )?;
+        // 接进去那一段与 `ccm --attach` 同一个函数（在 tmux 里切过去、不在就 attach，都是 UTF-8 客户端）。
         let t = shell_quote_core::posix_quote(&format!("={name}:"));
         return Ok(Parts::Shell(format!(
-            "tmux send-keys -t {t} {} Enter; tmux attach -t {t}",
-            shell_quote_core::posix_quote(&inner)
+            "tmux -u send-keys -t {t} {} Enter; {}",
+            shell_quote_core::posix_quote(&inner),
+            crate::common::tmux_utf8::join_session(name)
         )));
     }
 
