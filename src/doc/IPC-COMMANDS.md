@@ -3218,12 +3218,15 @@ cc-bus 钩子诊断。
 | `kind` | → | `account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类） |
 | `local` | → | 发请求的界面就在这台上（开窗那一形本机与远端渲法不同） |
 | `model` | ← | 应答 `account` 里：用的模型 |
+| `model` | → | 可缺：这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随 |
 | `models` | → | 可缺 |
 | `name` | → ← | `account` 为 `named` 时的号名；应答 `account` 里是实际用的号 |
 | `outcome` | ← | `started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`） |
+| `permissionMode` | → | 可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args` |
 | `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
+| `prompt` | → ← | 入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 起好之后这台等会话就绪（pidfile 说闲着 ⇒ 启动 · 信任框都过了）再送字 ＋ 回车；应答：交的结局 `{result, why, said}`（同 `terminal-input`，`why` 另有 `not_ready`：30 秒内没等到就绪、没送），没给第一句 ⇒ `null` |
 | `session` | ← | `started` 时的 tmux 会话名 |
-| `sid` | ← | 分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出） |
+| `sid` | ← | 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出） |
 | `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界） |
 | `tmuxName` | → | 可缺 ⇒ 这台铸 |
 | `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |

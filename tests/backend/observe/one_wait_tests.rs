@@ -167,3 +167,46 @@ fn a_session_reported_by_a_new_process_is_seen_and_the_old_one_is_not() {
     let _ = std::fs::remove_dir_all(&home);
     assert!(got, "新进程报出了却没等到");
 }
+
+/// 起会话交第一句之前等的那一刻：这台 pidfile 说那条会话闲着（等着输入）⇒ 等到；还在启动 · 在干活（`busy`）⇒ 不算。
+/// 在阻塞线程上等那一形（`within_blocking`，不起 runtime）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_is_ready_for_its_first_prompt_once_its_pidfile_says_idle() {
+    let home = scratch("ready");
+    let dir = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&dir).unwrap();
+    let sid = "bbbbbbbb-1111-2222-3333-444444444444";
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+    let ticks = crate::platform::proc::proc_starttime(pid).expect("读得到起始时刻");
+    let write = |status: &str| {
+        let body = format!(
+            r#"{{"pid":{pid},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"{status}"}}"#
+        );
+        std::fs::write(dir.join(format!("{pid}.json")), body).unwrap();
+    };
+    // 起会话那条命令在（多线程）runtime 的阻塞线程上跑：照那样等。
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_time()
+        .build()
+        .expect("起运行时");
+    let wait = |armed: Armed, ms: u64| {
+        rt.block_on(rt.spawn_blocking(move || armed.within_blocking(ms)))
+            .unwrap()
+    };
+    write("busy");
+    let busy = wait(session_ready(&home, sid).expect("装"), 300);
+    let armed = session_ready(&home, sid).expect("装");
+    write("idle");
+    let idle = wait(armed, 10_000);
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&home);
+    assert!(!busy, "还在干活就算成就绪了");
+    assert!(idle, "pidfile 说闲着了却没等到");
+}

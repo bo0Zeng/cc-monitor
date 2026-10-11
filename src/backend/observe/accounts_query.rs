@@ -754,6 +754,19 @@ pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     pids
 }
 
+/// 这条会话**就绪、等着下一句输入**：这台 pidfile 里持着 `sid` 的活交互进程说它闲着（适配层翻成 [`crate::agents::SessionActivity::Idle`]）。
+/// 判活同 [`session_writers`]。起会话交第一句之前等的就是它（信任框 · 启动中都不是闲着）。
+pub(crate) fn session_idle(agent_home: &Path, sid: &str) -> bool {
+    pidfiles(agent_home)
+        .into_iter()
+        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
+        .filter(|(_, v)| !crate::agents::pidfile_background(v))
+        .filter(|(_, v)| {
+            crate::agents::pidfile_activity(v) == Some(crate::agents::SessionActivity::Idle)
+        })
+        .any(|(pid, v)| crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)))
+}
+
 /// **这条会话此刻谁持着它**（冷读那几处判活只问这一处）：`record` 是这条会话的记录（已过围栏），
 /// 哪一家照它落在哪棵树下认（`agents::record_kind_of`），怎么判照那一家声明的（[`crate::agents::Adapter::live`]，见 [`session_holders_by`]）。
 pub(crate) fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {

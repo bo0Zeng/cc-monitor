@@ -38,6 +38,20 @@ impl<F: FnMut() -> bool> Pending<F> {
     }
 }
 
+impl Armed {
+    /// 同 [`Armed::within`]，在阻塞线程上等（起会话那条命令在 runtime 的阻塞线程上跑：借这个 runtime 等，期限同一处）。
+    /// 不在 runtime 里 ⇒ 等不了，回 `false`（说出来）。
+    pub(crate) fn within_blocking(self, ms: u64) -> bool {
+        match tokio::runtime::Handle::try_current() {
+            Ok(rt) => rt.block_on(self.within(ms)),
+            Err(e) => {
+                tracing::warn!("one-wait: no runtime to wait on ({e})");
+                false
+            }
+        }
+    }
+}
+
 /// 盯 `dir`（不递归），每批事件问一次 `seen`。
 fn arm(dir: &Path, seen: impl FnMut() -> bool + Send + 'static) -> Result<Armed, String> {
     let (tell, hit) = tokio::sync::oneshot::channel::<()>();
@@ -95,6 +109,16 @@ pub(crate) fn session_arrival(agent_home: &Path, sid: &str) -> Result<Armed, Str
     let before = now(&home, &sid);
     arm(&dir, move || {
         now(&home, &sid).iter().any(|p| !before.contains(p))
+    })
+}
+
+/// 等 `sid` 就绪、等着下一句输入（[`crate::observe::accounts_query::session_idle`]）：盯这台的 pidfile 目录，装好之前已经闲着的也认得出。
+pub(crate) fn session_ready(agent_home: &Path, sid: &str) -> Result<Armed, String> {
+    let dir = crate::observe::watcher::pidfile_dir(agent_home);
+    let home = agent_home.to_path_buf();
+    let sid = sid.to_string();
+    arm(&dir, move || {
+        crate::observe::accounts_query::session_idle(&home, &sid)
     })
 }
 

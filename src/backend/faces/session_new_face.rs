@@ -37,9 +37,46 @@ pub(crate) fn answer(
         write: &write,
         forget: &forget,
     };
+    let say = |sid: &str, text: &str| first_say(&home, sid, text);
     super::session_batch_face::with_deps_as(None, agent_of(args), Some(files), |d| {
-        session_new::answer(args, d, &fork, &pre, user_home.as_deref())
+        session_new::answer(args, d, &fork, &pre, &say, user_home.as_deref())
     })
+}
+
+/// 起好之后等第一句能交的那一刻至多多久（Claude Code 起到等输入一般几秒；新目录已在起之前标成信任过）。
+pub(crate) const READY_WITHIN_MS: u64 = 30_000;
+
+/// 交第一句（B4）：等这条会话就绪、等着输入（这台 pidfile 说它闲着 ⇒ 启动 · 信任框都过了），再照 `terminal-input` 那一路送字 ＋ 回车。
+/// 期限内没等到 ⇒ `refused` ＋ `not_ready`，不送（送进还在启动的终端会被信任框 · 启动画面吃掉）。
+fn first_say(home: &std::path::Path, sid: &str, text: &str) -> session_new::FirstSay {
+    let refused = |why: &str, said: String| session_new::FirstSay {
+        result: "refused".into(),
+        why: Some(why.into()),
+        said: Some(said),
+    };
+    let ready = match crate::observe::one_wait::session_ready(home, sid) {
+        Ok(armed) => armed.within_blocking(READY_WITHIN_MS),
+        Err(e) => {
+            tracing::warn!("session-new: cannot watch for {sid} to be ready: {e}");
+            false
+        }
+    };
+    if !ready {
+        return refused(
+            "not_ready",
+            copy_core::copy_text("beSessionNew.prompt.notReady", &[]),
+        );
+    }
+    match crate::control::terminals::input_for_inbound(
+        &serde_json::json!({"sid": sid, "text": text}),
+    ) {
+        Ok(v) => session_new::FirstSay {
+            result: v["result"].as_str().unwrap_or("unsure").to_string(),
+            why: v["why"].as_str().map(str::to_string),
+            said: v["said"].as_str().map(str::to_string),
+        },
+        Err(f) => refused(&f.code, f.message),
+    }
 }
 
 /// `session-new-dir`：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`。

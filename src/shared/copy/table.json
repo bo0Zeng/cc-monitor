@@ -1676,6 +1676,12 @@
       "zh": "启动失败 · 程序出错",
       "args": []
     },
+    "beSessionNew.prompt.notReady": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "会话未在期限内就绪 · 第一句未送出",
+      "args": []
+    },
     "beSessionNew.ticket.pending": {
       "kind": "error",
       "role": "报错",

@@ -170,6 +170,8 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 起会话时选权限档那个旗标与可选的档（起会话框 · 手机起会话带它；不给 `bypassPermissions` 那种越过批准的档）。这一家没有 ⇒ `None`。
+    pub(crate) permission: Option<PermissionFace>,
     /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
     /// 这一家不导 ⇒ `None`。
     pub(crate) self_sid_env: Option<&'static str>,
@@ -195,6 +197,15 @@ pub(crate) struct LaunchFace {
     // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) models: Option<&'static [&'static str]>,
+}
+
+/// 一家起会话时选权限档的说法（[`LaunchFace::permission`]）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PermissionFace {
+    /// 交给那一家的旗标（`claude --permission-mode <档>`）。
+    pub(crate) flag: &'static str,
+    /// 可选的档（原值，交给那一家的就是它）。
+    pub(crate) modes: &'static [&'static str],
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

@@ -65,7 +65,32 @@ pub(crate) struct NewRequest {
     /// 轮换来源：缺 / `"follow"` ＝ 跟随默认（新会话本来就这样，不写）· `{rule: id}` ＝ 起之前按定好的 sid 写成那条规则。
     #[serde(default)]
     pub(crate) rotation: Option<Value>,
+    /// 第一句（B4）：起好了之后由这台交进会话（宿主等它就绪 · 信任框过了再送）；只跟 `place: tmux`。缺 ⇒ 不交。
+    #[serde(default)]
+    pub(crate) prompt: Option<String>,
+    /// 这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随。
+    #[serde(default)]
+    pub(crate) model: Option<String>,
+    /// 起在哪一个权限档（那一家声明的档之一，`LaunchFace::permission`）；缺 ＝ 跟随那一家自己的默认。
+    #[serde(default)]
+    pub(crate) permission_mode: Option<String>,
 }
+
+/// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct FirstSay {
+    /// `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
+    pub result: String,
+    /// `refused` 的原因（同 `terminal-input`，另有 `not_ready`：期限内没等到会话就绪）；别的 ⇒ `null`。
+    pub why: Option<String>,
+    /// `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
+    pub said: Option<String>,
+}
+
+/// 交第一句那一下（宿主给）：`(sid, 那一句)` ⇒ 结局。宿主等会话就绪、信任框过了才送，期限到了没等到 ⇒ `refused` ＋ `not_ready`。
+pub(crate) type Say<'a> = &'a dyn Fn(&str, &str) -> FirstSay;
 
 /// 哪一格不行（`data.field`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -112,7 +137,7 @@ pub struct SessionNew {
     pub outcome: SessionNewOutcome,
     /// tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
     pub session: Option<String>,
-    /// 分叉出来的新会话 sid · 带规则新起时这台先定好的 sid；别的新起 ⇒ `null`（报到之前说不出）。
+    /// 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid）；那一家不认 ⇒ `null`（报到之前说不出）。
     pub sid: Option<String>,
     /// 开窗那一形要跑的那一行（`started` ⇒ `null`）。
     pub cmd: Option<String>,
@@ -122,9 +147,11 @@ pub struct SessionNew {
     pub agent: String,
     /// 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
     pub cwd: String,
+    /// 第一句交进去的结局；没给第一句 ⇒ `null`。
+    pub prompt: Option<FirstSay>,
 }
 
-/// 起会话框选了规则时那几下（宿主给）：铸一个 sid · 起之前把那个会话的来源写成那条规则（规则不在 ⇒ `no_such_rule`）· 起不成撤掉。
+/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了规则时起之前把那个会话的来源写成那条规则（规则不在 ⇒ `no_such_rule`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {
     pub(crate) sid: &'a dyn Fn() -> String,
     pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
@@ -183,6 +210,7 @@ pub(crate) fn answer(
     deps: &Deps,
     fork: ForkWrite,
     pre: &PreRotation,
+    say: Say,
     home: Option<&std::path::Path>,
 ) -> Result<Value, Failed> {
     let req: NewRequest = serde_json::from_value(args.clone()).map_err(|e| {
@@ -214,7 +242,7 @@ pub(crate) fn answer(
                 None,
             )
         },
-        || start(req, deps, fork, pre, home),
+        || start(req, deps, fork, pre, say, home),
     )
 }
 
@@ -224,6 +252,7 @@ fn start(
     deps: &Deps,
     fork: ForkWrite,
     pre: &PreRotation,
+    say: Say,
     home: Option<&std::path::Path>,
 ) -> Result<Value, Failed> {
     // 没说是哪一家就不起（不落默认那一家：默认是界面读画像时的事）。
@@ -246,6 +275,43 @@ fn start(
             None,
         ));
     }
+    let malformed = |m: &str| -> Failed {
+        (
+            "bad_args",
+            crate::common::contract::malformed(m),
+            None,
+            None,
+        )
+    };
+    // 第一句：只跟 tmux 那一形（开窗那一形的终端在界面那一侧）、要说得出 sid（那一家认先定 sid，或分叉）；空的不收。
+    let prompt = match req.prompt.as_deref().map(str::trim) {
+        None => None,
+        Some("") => return Err(malformed("`prompt` must not be empty")),
+        Some(_) if req.place != Place::Tmux => {
+            return Err(malformed("`prompt` goes only with `place: tmux`"))
+        }
+        Some(_) if req.fork_from.is_none() && face.preset_sid.is_none() => {
+            return Err(malformed("this agent cannot take a first prompt at launch"))
+        }
+        Some(_) => req.prompt.clone(),
+    };
+    // 模型：过全仓那一条模型名判（与偏好表那一路同一条）。
+    if req
+        .model
+        .as_deref()
+        .is_some_and(|m| !shell_quote_core::model_name_ok(m))
+    {
+        return Err(malformed("`model` is not a model name"));
+    }
+    // 权限档：那一家声明的旗标与可选的档（没有 ⇒ 不收）。
+    let permission_args: Vec<String> = match req.permission_mode.as_deref() {
+        None => Vec::new(),
+        Some(m) => match face.permission {
+            Some(p) if p.modes.contains(&m) => vec![p.flag.to_string(), m.to_string()],
+            Some(_) => return Err(malformed("`permissionMode` is not one this agent offers")),
+            None => return Err(malformed("this agent has no permission modes")),
+        },
+    };
     // 启动命令：拼进那一行之前过全仓那一张命令片段白名单。
     let command = req
         .command
@@ -322,15 +388,16 @@ fn start(
         Some(f) => Some(fork(&f.sid, &f.uuid).map_err(|(c, m)| fail(c, m, None))?),
         None => None,
     };
-    // 选了规则的新起会话：这台先定 sid（交给那一家的那一串里带 `--session-id <sid>`）。
-    let preset = match (&rule, &forked) {
-        (Some(_), None) => Some((pre.sid)()),
+    // 新起的会话：那一家认先定 sid ⇒ 这台先定（交给那一家的那一串里带 `--session-id <sid>`），回包就说得出 sid。
+    let preset = match (&forked, face.preset_sid) {
+        (None, Some(_)) => Some((pre.sid)()),
         _ => None,
     };
-    let preset_args: Vec<String> = match (&preset, face.preset_sid) {
+    let mut preset_args: Vec<String> = match (&preset, face.preset_sid) {
         (Some(s), Some(flag)) => vec![flag.to_string(), s.clone()],
         _ => Vec::new(),
     };
+    preset_args.extend(permission_args);
     let resumed = forked.clone();
     let sid = forked.or_else(|| preset.clone());
     // 起之前把来源写好：会话一报到就已经是那条规则（界面不补写）。
@@ -359,6 +426,7 @@ fn start(
         account: launched.clone(),
         agent: kind.to_string(),
         cwd: cwd.clone(),
+        prompt: None,
     };
     // 起之前：工作目录标成要用的那个号信任过（三种起法同一下）。
     super::session_batch::pretrust(&account, &cwd, deps);
@@ -372,10 +440,12 @@ fn start(
                             &launcher,
                             face.default_launcher,
                             resumed.as_deref(),
-                            face.preset_sid.zip(preset.as_deref()),
+                            preset.as_deref(),
+                            &preset_args,
                             Some(&name),
                             &cwd,
                             &asked,
+                            req.model.as_deref(),
                             &req.models,
                         ),
                         &account,
@@ -420,6 +490,7 @@ fn start(
                     tmux_name: None,
                     default_launcher: face.default_launcher.to_string(),
                     preset_args: preset_args.clone(),
+                    model: req.model.clone(),
                 };
                 let cmd = local::plan(&lreq, &account, &deps.local_facts)
                     .map_err(|m| fail("refused", m, None))?;
@@ -433,10 +504,12 @@ fn start(
                             &launcher,
                             face.default_launcher,
                             resumed.as_deref(),
-                            face.preset_sid.zip(preset.as_deref()),
+                            preset.as_deref(),
+                            &preset_args,
                             None,
                             &cwd,
                             &asked,
+                            req.model.as_deref(),
                             &req.models,
                         ),
                         &account,
@@ -452,7 +525,11 @@ fn start(
             }
         })
     };
-    let out = launch().map_err(undo)?;
+    let mut out = launch().map_err(undo)?;
+    // 起好了才交第一句（交给宿主：它等会话就绪 · 信任框过了再送）。
+    if let (Some(text), Some(s), SessionNewOutcome::Started) = (&prompt, &sid, out.outcome) {
+        out.prompt = Some(say(s, text));
+    }
     serde_json::to_value(out).map_err(|e| ("bad_args", e.to_string(), None, None))
 }
 
@@ -519,10 +596,12 @@ fn wire_req(
     launcher: &str,
     default_launcher: &str,
     sid: Option<&str>,
-    preset: Option<(&str, &str)>,
+    preset: Option<&str>,
+    preset_args: &[String],
     tmux: Option<&str>,
     cwd: &str,
     account: &AccountAsk,
+    model: Option<&str>,
     models: &BTreeMap<String, String>,
 ) -> wire::CliRenderRequest {
     wire::CliRenderRequest {
@@ -542,16 +621,14 @@ fn wire_req(
         account: account.clone(),
         // 身份标记打在建出来的 tmux 会话上（resume · 先定好 sid 的新起才说得出 sid）。
         ccm_sid: sid
-            .or(preset.map(|p| p.1))
+            .or(preset)
             .filter(|_| tmux.is_some())
             .map(str::to_string),
-        model: None,
+        model: model.map(str::to_string),
         models: models.clone(),
         launcher: launcher.to_string(),
         default_launcher: default_launcher.to_string(),
-        preset_args: preset
-            .map(|(flag, s)| vec![flag.to_string(), s.to_string()])
-            .unwrap_or_default(),
+        preset_args: preset_args.to_vec(),
     }
 }
 
