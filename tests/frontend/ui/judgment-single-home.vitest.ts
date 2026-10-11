@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -588,6 +588,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "「实现只一处」：同一种值只许一种样子",
   },
+  J32: {
+    what: "计数（几个字 · 几条 ⇒ 给人看的一格：每三位一个逗号）",
+    homes: ["copy-core::count_text"],
+    // 认可的双读口（同 J31）：成品里的计数核心写好（压缩摘要的字数）；界面那一个读口 `format.ts::countText` 只给现数现写的那几处
+    //   （终端页输入框的字数），同一份金样。从前两处各用 `toLocaleString`（一处不指定语言、一处 en-US）。
+    status: "mirror",
+    defs: ["countText"],
+    gone: [],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/count-text.golden.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/count-text.vitest.ts"],
+    },
+    why: "「实现只一处」：同一种值只许一种样子",
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -652,6 +667,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     short_duration: "J28",
     rel_duration: "J28",
     size_text: "J31",
+    count_text: "J32",
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",

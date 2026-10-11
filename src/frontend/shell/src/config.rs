@@ -441,6 +441,10 @@ fn stamp_pinned_day(root: &mut Map<String, Value>, e: &ConfigEdit, day: &str) {
         _ => return,
     };
     let given = fp.as_str().is_some_and(|s| !s.trim().is_empty());
+    // 新增一台没带指纹 ⇒ 没什么可记的，不添这一格。
+    if !given && matches!(e, ConfigEdit::InsertIn { .. }) {
+        return;
+    }
     apply_edit(
         root,
         &ConfigEdit::SetIn {
