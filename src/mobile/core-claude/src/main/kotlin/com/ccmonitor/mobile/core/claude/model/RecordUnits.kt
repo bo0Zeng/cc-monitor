@@ -16,12 +16,13 @@ object RecordUnits {
         return records.flatMap { unitsOf(it, results) }
     }
 
-    /** 一个工具调用配上的结果：正文 · 出错 · 核心给的 patch。 */
+    /** 一个工具调用配上的结果：正文 · 出错 · 核心给的 patch · 结果那一句（`StepResult.text`）。 */
     private class Result(
         val text: String,
         val isError: Boolean,
         val patch: List<PatchHunk>?,
         val file: String?,
+        val line: String?,
     )
 
     private fun resultsOf(r: Map<String, Any?>): List<Pair<String, Result>> {
@@ -36,7 +37,7 @@ object RecordUnits {
                     .mapNotNull { it.takeIf { c -> c.str("type") == "text" }?.str("text") }
                     .joinToString("\n")
             val one = said.obj(id)
-            id to Result(text, b["isError"] == true, one?.objs("patch")?.map(::hunk), one?.str("file"))
+            id to Result(text, b["isError"] == true, one?.objs("patch")?.map(::hunk), one?.str("file"), one?.str("text")?.takeIf { it.isNotEmpty() })
         }
     }
 
@@ -92,6 +93,7 @@ object RecordUnits {
                 "tool_use" -> {
                     val callId = b.str("id").orEmpty()
                     val res = results[callId]
+                    val step = r.obj("steps")?.obj(callId)
                     RenderUnit.ToolCall(
                         key = key,
                         toolUseId = callId,
@@ -103,6 +105,8 @@ object RecordUnits {
                         sourceUuid = id,
                         structuredPatch = res?.patch,
                         patchFilePath = res?.file,
+                        summary = (step?.str("arg") ?: step?.str("text")).orEmpty(),
+                        resultLine = res?.line,
                     )
                 }
                 else -> null
