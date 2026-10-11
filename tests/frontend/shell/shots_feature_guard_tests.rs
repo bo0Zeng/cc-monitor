@@ -175,9 +175,9 @@ fn s3_only_the_screenshot_rig_builds_with_the_feature() {
                 let feat = guard_core::contains_word(l, "--features")
                     && guard_core::contains_word(l, FEATURE);
                 // 门禁那一格只编例子（不进任何发出去的二进制），S5 另钉它的形状。
-                let gate_cell = p.ends_with("tests/scripts/gate.sh")
-                    && l.contains(&gate_build())
-                    && !l.contains("--release");
+                let gate_cell = p == root.join("tests/scripts/gate.sh")
+                    && guard_core::contains_word(l, &gate_build())
+                    && !guard_core::contains_word(l, "--release");
                 if gate_cell {
                     allowed += 1;
                 } else if feat || guard_core::contains_word(l, "--all-features") {
@@ -217,14 +217,22 @@ fn s5_the_gate_has_a_cell_that_builds_the_headless_shell() {
     let cmd = gate_cell(&gate, GATE_CELL)
         .unwrap_or_else(|| panic!("门禁的格名单里没有 `{GATE_CELL}`（`run_gate {GATE_CELL} …`）"));
     assert!(
-        cmd.contains("cd src/frontend/shell") && cmd.contains(&gate_build()),
+        guard_core::contains_word(&cmd, "cd src/frontend/shell")
+            && guard_core::contains_word(&cmd, &gate_build()),
         "`{GATE_CELL}` 在本包目录下照台架那一条编（`{}`）：{cmd}",
         gate_build()
     );
-    assert!(!cmd.contains("--release"), "只编 dev 档的例子：{cmd}");
+    assert!(
+        !guard_core::contains_word(&cmd, "--release"),
+        "只编 dev 档的例子：{cmd}"
+    );
     let yields = gate
         .lines()
-        .find_map(|l| l.strip_prefix("GATE_YIELD_CELLS=\""))
+        .find_map(|l| {
+            l.split_once('=')
+                .filter(|(k, _)| *k == "GATE_YIELD_CELLS")
+                .map(|(_, v)| v.trim_matches('"'))
+        })
         .expect("gate.sh 里有让路表");
     assert!(
         yields.split_whitespace().any(|c| c == GATE_CELL),
