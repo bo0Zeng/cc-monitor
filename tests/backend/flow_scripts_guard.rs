@@ -6,7 +6,9 @@
 //! - 每一份都在，且不写家目录的绝对路径（锁 · 槽位 · 日志走 `GATE_STATE_DIR`，仓根走 `git rev-parse`）；
 //! - 带 `--help` 的几份能跑、退 0、印用法；
 //! - 挑格那一半拿仓里这张表对仓里这份 `gate.sh` 出得了计划（表过期它退 2，这条就红）；
-//! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声。
+//! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；
+//! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
+//!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -173,6 +175,7 @@ mod tests {
                 .current_dir(&d)
                 .env("PATH", &bin)
                 .env("GATE_STATE_DIR", d.join("state"))
+                .env_remove("HEAVY_HELD")
                 .env_remove("TMUX")
                 .env_remove("TMUX_PANE")
                 .output()
@@ -198,5 +201,205 @@ mod tests {
         let out = run(&["false"]);
         assert_eq!(out.status.code(), Some(1), "命令的退出码没照传");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            ok.status.success(),
+            "git {args:?}：{}",
+            String::from_utf8_lossy(&ok.stderr)
+        );
+    }
+
+    fn write(dir: &Path, rel: &str, text: &str) {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+
+    /// 一棵假仓：main 上有一份假 gradlew（记下参数、写一份三条的 test-results），工作分支上只改 `changed` 那一条。
+    /// 返回 quick-check `--mobile` 的输出与假 gradlew 收到的参数（没被调就是 None）。
+    fn quick_mobile(tag: &str, changed: &str) -> (String, String, Option<String>) {
+        let d = scratch(tag);
+        git(&d, &["init", "-q", "-b", "main"]);
+        write(
+            &d,
+            "src/mobile/gradlew",
+            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
+        );
+        assert!(Command::new("chmod")
+            .args(["+x", "src/mobile/gradlew"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success());
+        write(&d, ".gitignore", ".build/\ngradlew-args\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "base"]);
+        git(&d, &["checkout", "-q", "-b", "work"]);
+        write(&d, changed, "changed\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "work"]);
+        let script = root().join("tests/scripts/quick-check.sh");
+        let run = |arg: &str| {
+            Command::new("bash")
+                .arg(&script)
+                .arg(arg)
+                .current_dir(&d)
+                .env("JAVA_HOME", d.join("no-jdk"))
+                .env("ANDROID_HOME", d.join("no-sdk"))
+                .env("GRADLE_USER_HOME", d.join("no-gradle"))
+                .env("GATE_STATE_DIR", d.join("state"))
+                .env_remove("HEAVY_HELD")
+                .env_remove("TMUX")
+                .env_remove("TMUX_PANE")
+                .output()
+                .unwrap()
+        };
+        let plan = String::from_utf8_lossy(&run("--mobile-plan").stdout).into_owned();
+        let out = run("--mobile");
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let args = std::fs::read_to_string(d.join("gradlew-args")).ok();
+        let _ = std::fs::remove_dir_all(&d);
+        (plan, said, args)
+    }
+
+    #[test]
+    fn quick_check_runs_the_mobile_suite_only_when_mobile_inputs_changed() {
+        // 改到手机读的金样 ⇒ 跑：经 gradle、带 --no-daemon，ktlint · detekt · 单测都在，条数读得出来。
+        for changed in [
+            "tests/__fixtures__/x.golden.json",
+            "src/mobile/app/src/main/kotlin/X.kt",
+        ] {
+            let (plan, said, args) = quick_mobile("mobile-run", changed);
+            assert!(
+                plan.contains(&format!("MOBILE: 跑 —— 改到 {changed}")),
+                "{plan}"
+            );
+            let args = args.unwrap_or_else(|| panic!("改到 {changed} 却没调 gradle：{said}"));
+            for want in [
+                "--no-daemon",
+                "ktlintCheck",
+                "detektDebug",
+                "testDebugUnitTest",
+            ] {
+                assert!(
+                    args.split_whitespace().any(|a| a == want),
+                    "gradle 少了 {want}：{args}"
+                );
+            }
+            assert!(said.contains("3 条"), "条数没读出来：{said}");
+            assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+        }
+        // 没改到 ⇒ 跳过，并说一声；gradle 一次都没调。
+        let (plan, said, args) = quick_mobile("mobile-skip", "src/frontend/ui/x.ts");
+        assert!(plan.contains("MOBILE: 跳过"), "{plan}");
+        assert!(args.is_none(), "没改到手机读的东西却调了 gradle：{said}");
+        assert!(
+            said.contains("跳过：相对 main 没改到"),
+            "跳过了却没说：{said}"
+        );
+        assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+    }
+
+    /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。
+    #[test]
+    fn the_mobile_reads_cover_every_repo_path_the_mobile_tree_names() {
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        let line = qc
+            .lines()
+            .find_map(|l| l.strip_prefix("mobile_reads=("))
+            .and_then(|l| l.strip_suffix(')'))
+            .expect("quick-check.sh 里没有 `mobile_reads=(…)` 那一行");
+        let reads: Vec<&str> = line.split_whitespace().collect();
+        assert!(reads.contains(&"src/mobile/"), "{reads:?}");
+        let mut files = Vec::new();
+        let mut stack = vec![root().join("src/mobile")];
+        while let Some(dir) = stack.pop() {
+            for e in std::fs::read_dir(&dir).unwrap().flatten() {
+                let p = e.path();
+                let name = e.file_name().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    if !matches!(name.as_str(), "build" | ".gradle" | ".kotlin" | ".idea") {
+                        stack.push(p);
+                    }
+                } else if name.ends_with(".kt") || name.ends_with(".kts") {
+                    files.push(p);
+                }
+            }
+        }
+        assert!(
+            files.len() > 50,
+            "只扫到 {} 份手机源 —— 人群坏了",
+            files.len()
+        );
+        let outside = [
+            "tests/",
+            "src/backend/",
+            "src/shared/",
+            "src/frontend/",
+            "src/common/",
+            "src/comms/",
+            "src/doc/",
+            "src/vendor/",
+            ".github/",
+        ];
+        let mut named = Vec::new();
+        for f in &files {
+            let text = std::fs::read_to_string(f).unwrap_or_default();
+            let gradle = f.extension().is_some_and(|e| e == "kts");
+            for lit in text.split('"').skip(1).step_by(2) {
+                if lit.chars().any(char::is_whitespace) {
+                    continue;
+                }
+                // Gradle 脚本里 rootProject.file("../X") 的 X 相对的是 src/。
+                let path = match lit.strip_prefix("../") {
+                    Some(rest) if gradle && !rest.starts_with('$') => format!("src/{rest}"),
+                    _ => lit.to_string(),
+                };
+                let path = path.split('$').next().unwrap().to_string();
+                if outside
+                    .iter()
+                    .any(|o| path.starts_with(o) || format!("{path}/") == *o)
+                {
+                    named.push((f.strip_prefix(root()).unwrap().display().to_string(), path));
+                }
+            }
+        }
+        assert!(
+            named
+                .iter()
+                .any(|(_, p)| p.starts_with("tests/__fixtures__")),
+            "一条金样路径都没认出来 —— 扫法坏了：{named:?}"
+        );
+        let missed: Vec<_> = named
+            .iter()
+            .filter(|(_, p)| {
+                !reads
+                    .iter()
+                    .any(|r| p.starts_with(r) || format!("{p}/") == *r)
+            })
+            .collect();
+        assert!(
+            missed.is_empty(),
+            "手机树读了这些仓内路径，quick-check 的 mobile_reads 里没有 —— 改了它们 quick-check 不会跑手机那一套：{missed:?}"
+        );
     }
 }

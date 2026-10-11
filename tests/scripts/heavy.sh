@@ -16,6 +16,9 @@ case "${1:-}" in
   -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
   '') echo "用法：heavy.sh <命令…>" >&2; exit 2 ;;
 esac
+# 已经在一份重活里（外层 heavy 拿了槽位、起了 scope，比如 gate-affected 经 heavy 跑 quick-check、quick-check 里又经 heavy 跑 gradle）
+#   ⇒ 直接跑：再排一个槽位会和外层互等（三份外层占满三个槽位、各自等第四个），内存也已经被外层那个 scope 封顶。
+[ -n "${HEAVY_HELD:-}" ] && exec "$@"
 slots=${HEAVY_SLOTS:-3}
 max=${HEAVY_MEM_MAX:-14G}
 high=${HEAVY_MEM_HIGH:-12G}
@@ -28,13 +31,14 @@ else
   echo "heavy: 这台没有 systemd-run --user（CI / Windows / 没有 user session）⇒ 不封顶内存，直接跑" >&2
   scope=()
 fi
-command -v flock >/dev/null 2>&1 || { echo "heavy: 没有 flock ⇒ 不排槽位" >&2; exec "${scope[@]}" "$@"; }
+command -v flock >/dev/null 2>&1 || { echo "heavy: 没有 flock ⇒ 不排槽位" >&2; export HEAVY_HELD=0; exec "${scope[@]}" "$@"; }
 waited=0
 while :; do
   for i in $(seq 1 "$slots"); do
     exec 9>"$dir/$i"
     if flock -n 9; then
       [ "$waited" -gt 0 ] && echo "heavy: 等了 ${waited} 秒拿到槽位 $i" >&2
+      export HEAVY_HELD=$i
       exec "${scope[@]}" "$@"
     fi
     exec 9>&-
