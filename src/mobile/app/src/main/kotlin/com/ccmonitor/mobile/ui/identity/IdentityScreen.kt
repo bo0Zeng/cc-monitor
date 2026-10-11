@@ -38,6 +38,7 @@ import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
+import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -118,7 +119,7 @@ private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
     var showGenerateEd25519 by remember { mutableStateOf(false) }
     FloatingActionButton(
         onClick = { showChooser = true },
-        modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp),
+        modifier = Modifier.align(Alignment.BottomEnd).clearOfNotice().padding(24.dp),
     ) {
         Text("+", style = MaterialTheme.typography.titleLarge)
     }

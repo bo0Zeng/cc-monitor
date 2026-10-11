@@ -155,7 +155,7 @@ class SshConnection(
      */
     private fun buildAndRegister(config: ConnectionConfig): SSHClient {
         check(!closed.get()) { "连接已关闭（看门狗超时或已断开），拒绝新建 client" }
-        val client = buildClient(config).also { hops.add(it) }
+        val client = newSshClient(config).also { hops.add(it) }
         if (closed.get()) { // close 恰在建与登记之间触发，sweep 可能错过本 client，自行收尾
             hops.remove(client)
             runCatching { client.disconnect() }
@@ -186,20 +186,10 @@ class SshConnection(
             else -> {} // Mismatch 已在 openTransport 抛出；null=无 store
         }
         authenticate(client, config, onEvent)
-        // 认证成功后启用 keepalive（Config 已装 KEEP_ALIVE provider），探测静默死掉的对端。
-        // 设置失败不该让连接失败，但要打日志。
-        runCatching { client.connection.keepAlive.keepAliveInterval = config.keepAliveIntervalSec }
-            .onFailure { android.util.Log.w("SshConnection", "keepalive 设置失败（连接仍可用，但静默死对端探测降级）: ${it.message}") }
         // 首见的 host key 认证成功后才落库，免得未认证的端点往 TOFU 库里投毒。
         (tofu?.outcome as? TofuOutcome.FirstUse)?.let { knownHostStore?.record(it.knownHost) }
         emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.established", "target" to "${config.username}@${config.host}:${config.port}"))
     }
-
-    /** KeystoreSigner 连接用替换了 ecdsa KeyAlgorithm 的 Config（签名走 AndroidKeyStore），其余用默认。 */
-    private fun buildClient(config: ConnectionConfig): SSHClient =
-        SSHClient(
-            if (config.auth is AuthMethod.KeystoreSigner) SshjConfigFactory.createForKeystoreSigner() else SshjConfigFactory.create(),
-        ).apply { connectTimeout = config.connectTimeoutMs }
 
     /** 有 store 时装 TOFU 校验器并返回它（供判定 outcome）；没有 store 时装 PromiscuousVerifier、返回 null。 */
     private suspend fun installTofuVerifier(
@@ -596,6 +586,20 @@ class SshConnection(
         const val OPEN_SHELL_TIMEOUT_MS = 15_000L
     }
 }
+
+/**
+ * 造一个还没连的 client。KeystoreSigner 连接用替换了 ecdsa KeyAlgorithm 的 Config（签名走 AndroidKeyStore），其余用默认。
+ *
+ * 保活间隔在这里、`connect` 之前装好（Config 已装 KEEP_ALIVE provider）：sshj 0.39 只在 `onConnect` 那一刻、
+ * 间隔已经 > 0 时才起保活线程，连上之后再设就不起（判据 `KeepAliveBeforeConnectTest`）。
+ */
+internal fun newSshClient(config: ConnectionConfig): SSHClient =
+    SSHClient(
+        if (config.auth is AuthMethod.KeystoreSigner) SshjConfigFactory.createForKeystoreSigner() else SshjConfigFactory.create(),
+    ).apply {
+        connectTimeout = config.connectTimeoutMs
+        connection.keepAlive.keepAliveInterval = config.keepAliveIntervalSec
+    }
 
 /**
  * 竞速决出赢家后复查是否已被关闭。已关闭时赢家的 socket 可能是 close 之后才开的：

@@ -48,11 +48,13 @@ interface CoreLink {
     /**
      * 一问一答。流没通（在建 · 在重接 · SSH 还没通）⇒ 先等它接上（至多 [withinMs]）再问，不当场回 [Reply.LinkDown]；
      * 走不通、要人动手的那几种（另一版 · 没装 …）⇒ 当场 [Reply.LinkDown]。等的那一段也算在 [withinMs] 里。
+     * [blocking]：那条命令是阻塞档（撤不动，如 `session-new`）⇒ 请求不带 `within_ms`、到期限也不发撤单，[withinMs] 只是这边等多久。
      */
     suspend fun call(
         cmd: String,
         args: Map<String, Any?>? = null,
         withinMs: Long = DEFAULT_CALL_MS,
+        blocking: Boolean = false,
     ): Reply
 }
 
@@ -79,6 +81,8 @@ class BackendFeed(
     private val onLost: () -> Unit = {},
     private val onBreak: (String) -> Unit = {},
     private val backoff: Backoff = Backoff(),
+    /** 毫秒钟（只量这条流活了多久；测试交虚拟时钟）。 */
+    private val now: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) : CoreLink {
     private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
     val state: StateFlow<LinkState> = stateFlow.asStateFlow()
@@ -139,6 +143,7 @@ class BackendFeed(
         cmd: String,
         args: Map<String, Any?>?,
         withinMs: Long,
+        blocking: Boolean,
     ): Reply {
         val since = TimeSource.Monotonic.markNow()
         val c =
@@ -147,7 +152,7 @@ class BackendFeed(
                 client
             } ?: return Reply.LinkDown
         val left = (withinMs - since.elapsedNow().inWholeMilliseconds).coerceAtLeast(1L)
-        return c.call(cmd, args, left)
+        return c.call(cmd, args, left, blocking)
     }
 
     /** 断在要人动手的那一步（不会自己好）：问的人不用等。 */
@@ -164,7 +169,8 @@ class BackendFeed(
         while (true) {
             val run = connectAndPump()
             if (run.wasUp) {
-                attempt = 0
+                // 见过 hello 不算站住：对端发完 hello 就死的话，每一轮都「连上过」、退避永远一秒（自激循环）。
+                if (backoff.healthy(run.livedMs)) attempt = 0
                 onLost()
             }
             if (run.retryable) {
@@ -178,6 +184,8 @@ class BackendFeed(
     private class Run(
         val wasUp: Boolean,
         val retryable: Boolean,
+        /** 接上之后活了多久（没接上 ⇒ 0）。 */
+        val livedMs: Long = 0L,
     )
 
     private suspend fun connectAndPump(): Run {
@@ -205,6 +213,7 @@ class BackendFeed(
     }
 
     private suspend fun pump(c: FrameClient): Run {
+        val upAt = now()
         client = c
         epochFlow.value += 1
         stateFlow.value = LinkState.Up
@@ -221,27 +230,40 @@ class BackendFeed(
             }
         }
         stateFlow.value = LinkState.Down(null)
-        return Run(wasUp = true, retryable = true)
+        return Run(wasUp = true, retryable = true, livedMs = now() - upAt)
     }
 
     /** 断在路上的（接流时被掐 · 小中继与常驻断开）再试会好；其余要人动手。 */
     private fun retryable(o: LinkOutcome): Boolean =
         o is LinkOutcome.Attach && (o.outcome is AttachOutcome.Cut || o.outcome is AttachOutcome.Refused)
 
-    /** 流断了、SSH 还通时多久再接：从 [firstMs] 起翻倍，封顶 [capMs]。 */
+    /**
+     * 流断了、SSH 还通时多久再接：从 [firstMs] 起翻倍，封顶 [capMs]；接上的那一条活过 [HEALTHY_MS] 才从头来（[healthy]）。
+     *
+     * 「活过多久才算站住」与桌面同一个值：桌面在 `src/frontend/shell/src/stream_source/backoff.rs` 的
+     * `MIN_HEALTHY_UPTIME`（30 s，F05 / I-1 那个自激循环）。两端还不能共用一份（后端那一侧的 `resident-client` 还没拆出来），
+     * 先各写一份、在这里点名；改一边要改另一边。
+     */
     class Backoff(
         private val firstMs: Long = 1_000L,
         private val capMs: Long = 30_000L,
     ) {
         fun delayMs(attempt: Int): Long = (firstMs shl attempt.coerceIn(0, MAX_SHIFT)).coerceAtMost(capMs)
 
-        private companion object {
-            const val MAX_SHIFT = 20
+        /** 接上的那一条活了 [livedMs] ⇒ 算不算站住（站住了，下一次断退避从头来）。 */
+        fun healthy(livedMs: Long): Boolean = livedMs >= HEALTHY_MS
+
+        companion object {
+            private const val MAX_SHIFT = 20
+
+            /** 一条流活过这么久才算站住（站住过的那一条断了，退避才从头来）。同桌面 `MIN_HEALTHY_UPTIME`。 */
+            const val HEALTHY_MS: Long = 30_000L
         }
     }
 
     private companion object {
         const val BUFFER = 64
         const val LINE_BUFFER = 256
+        const val NANOS_PER_MS = 1_000_000L
     }
 }

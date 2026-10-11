@@ -7,7 +7,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * tmux 那半的每一个 shell 片段，只许住在网关里。
+ * tmux 那半的每一个 shell 片段，只许住在网关里；网关里只剩用户在 ssh 里也会敲的那两条（进 / 建一个会话）。
+ * 找会话、附着到 cc-monitor 认得的会话、结束、抓屏、送字都走那台核心，四个子命令锚点在生产代码里一次都不许出现。
  *
  * 每个协议面一个网关类：别处只拿结构化结果，不拼字符串；网关之外的文件里不许出现 `"tmux "` 这类拼串。
  * 本文件是 tmux 这一面的机检落点。
@@ -37,7 +38,7 @@ import java.io.File
  */
 class TmuxSurfaceLiteralScanTest {
     /**
-     * 五个锚点各自的 file → 次数逐字钉死。
+     * 八个锚点各自的 file → 次数逐字钉死。
      *
      * 钉的是次数不只是文件集 ⇒ 同一个文件里再长出一处也红。
      */
@@ -55,9 +56,10 @@ class TmuxSurfaceLiteralScanTest {
                 val n = countOccurrences(lits, mark)
                 if (n > 0) counts[f.relativeTo(root).invariantSeparatorsPath] = n
             }
-            assertTrue("前提：锚点 `$mark` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", counts.values.sum() > 0)
             census[mark] = counts.toMap()
         }
+        // 子命令锚点期望零命中，扫描器瞎没瞎由 `tmux ` 那一格（期望非零）与下面的自检接住。
+        assertTrue("前提：`$TMUX_VERB` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", census.getValue(TMUX_VERB).values.sum() > 0)
         assertEquals(
             "tmux 面的 shell 片段只许由网关 `TmuxCommands` 产出。" +
                 "多出来的请改成调网关；确属用户内容（按钮显示名 / 默认命令 / 菜单文案）的，" +
@@ -85,6 +87,7 @@ class TmuxSurfaceLiteralScanTest {
         assertEquals("注释里的 `send-keys ` 不算：\n$lits", 0, countOccurrences(lits, SEND_KEYS))
         assertEquals("注释里的 `kill-session ` 不算：\n$lits", 0, countOccurrences(lits, KILL_SESSION))
         assertEquals("注释里的 `capture-pane` 不算：\n$lits", 0, countOccurrences(lits, CAPTURE_PANE))
+        assertEquals("代码里那条 `attach -t` 要算：\n$lits", 1, countOccurrences(lits, ATTACH_T))
 
         // 反过来也要证：真片段一定认得出，否则「剥得干净」可以靠「什么都不认」作弊。
         assertEquals("裸一行真字面必须认出", 1, countOccurrences(stringLiteralsOf("val x = \"tmux ls\""), TMUX_VERB))
@@ -169,21 +172,26 @@ class TmuxSurfaceLiteralScanTest {
         private const val DISPLAY_MESSAGE = "display-message "
         private const val KILL_SESSION = "kill-session "
 
+        // 找会话 · 附着那几形（手机不拼：列会话问 `terminals-list`，进终端敲 `launch-render-cli` 渲出的那一行）。
+        private const val ATTACH_T = "attach -t"
+        private const val SWITCH_CLIENT = "switch-client"
+        private const val LIST_SESSIONS = "ls -F"
+
         private const val GATEWAY = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt"
 
         // ---- 用户内容（不是协议面，逐条写着这是谁的字）----
         private const val SEEDER = "app/src/main/kotlin/com/ccmonitor/mobile/dev/DevSeeder.kt"
 
         /**
-         * 定值钉：五个锚点在生产代码字符串字面量里的 file → 次数。
+         * 定值钉：八个锚点在生产代码字符串字面量里的 file → 次数。
          *
          * | 文件 | 次 | 那是什么 |
          * |---|---|---|
-         * | `TmuxCommands.kt` | 18/3/1/2/1 | 网关本身 |
+         * | `TmuxCommands.kt` | 2/0/0/0/0 | 网关本身：只剩 `new-session -A`（有则接无则建）与 `new-session -d`（后台建） |
          * | `DevSeeder.kt` | 1 | 种子按钮的默认命令 `CustomButton("btn-tmux", null, "tmux", "tmux new -A -s main")`：用户进按钮编辑就能改掉，是用户的字 |
          *
-         * 四个子命令锚点在网关之外一次都没有（这一格才是真正的「零拼串」读数）：
-         * 唯一的用户内容是 `DevSeeder` 那条种子命令（`new -A`，不在这四个锚点里）。
+         * 四个子命令锚点在生产代码里一次都没有（送字 · 抓屏 · 探前台 · 结束都是那台核心的命令）：
+         * 唯一的用户内容是 `DevSeeder` 那条种子命令（`new -A`，不在这几个锚点里）。
          * 按钮显示名 · 弹窗标题 · 面板项里的「tmux 会话」收进了文案表（`src/shared/copy/table.json`），不再是源码字面量。
          */
         private val PINNED_FRAGMENT_COUNTS =
@@ -191,12 +199,15 @@ class TmuxSurfaceLiteralScanTest {
                 TMUX_VERB to
                     mapOf(
                         SEEDER to 1,
-                        GATEWAY to 18,
+                        GATEWAY to 2,
                     ),
-                SEND_KEYS to mapOf(GATEWAY to 3),
-                CAPTURE_PANE to mapOf(GATEWAY to 1),
-                DISPLAY_MESSAGE to mapOf(GATEWAY to 2),
-                KILL_SESSION to mapOf(GATEWAY to 1),
+                SEND_KEYS to emptyMap(),
+                CAPTURE_PANE to emptyMap(),
+                DISPLAY_MESSAGE to emptyMap(),
+                KILL_SESSION to emptyMap(),
+                ATTACH_T to emptyMap(),
+                SWITCH_CLIENT to emptyMap(),
+                LIST_SESSIONS to emptyMap(),
             )
     }
 }

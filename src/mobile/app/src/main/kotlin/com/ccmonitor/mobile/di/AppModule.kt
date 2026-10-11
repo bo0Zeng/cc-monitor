@@ -17,7 +17,6 @@ import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsViewModel
-import com.ccmonitor.mobile.ui.settings.SettingsViewModel
 import com.ccmonitor.mobile.ui.sftp.SftpViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -67,10 +66,9 @@ val appModule =
             ConversationsViewModel(backend = get<HostBackends>().of(params.get(0)), machine = params.get(1))
         }
         viewModel { IdentityViewModel(get()) }
-        viewModel { SettingsViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
         viewModel { HostViewModel(get(), get(), get()) }
-        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession, resumeSessionId, resumeCommand)`
+        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->
             SessionViewModel(
@@ -78,15 +76,12 @@ val appModule =
                 cdArg = params.get(1),
                 launcherIdArg = params.get(2),
                 tmuxArg = params.get(3),
-                resumeArg = params.get(4),
-                resumeCommandArg = params.get(5),
                 manager = get(),
                 hostRepo = get(),
                 identityRepo = get(),
                 launcherRepo = get(),
-                settingsRepo = get(),
                 hostConnector = get(),
-                tabManager = get(), // resume 失败时重新驱动用的句柄注册表
+                backends = get(), // 这台的常驻流：终端那几件问那台核心
                 knownHostStore = get(), // TOFU 恢复路径
             )
         }

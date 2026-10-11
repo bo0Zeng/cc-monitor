@@ -15,7 +15,7 @@ enum class ScreenInset {
 /**
  * 「设置 · 服务器」那一组屏要让开的三块，按施加顺序排。
  *
- * `MainActivity` 开着 edge-to-edge 且没设 `windowSoftInputMode`，不垫的话标题被状态栏压、
+ * `MainActivity` 开着 edge-to-edge、`windowSoftInputMode` 是 `adjustResize`（系统不替屏让开键盘），不垫的话标题被状态栏压、
  * 键盘弹起时焦点框被遮。垫的是系统报的值，不写死 dp。
  *
  * 注意：顺序承重。`windowInsetsPadding` 系列会消耗自己垫掉的部分，`NavigationBars` 排在 `Ime`

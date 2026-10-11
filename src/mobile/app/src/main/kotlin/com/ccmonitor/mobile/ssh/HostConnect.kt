@@ -105,8 +105,7 @@ suspend fun resolveHostAuth(
  * - 没有 workingDir：tmux → `tmux new -A …`；否则有 defWd 就 `cd <defWd>`；都没有 → 空。
  * - [LaunchSpec.command] 非空 → 追加在最后。
  *
- * 移动端触摸、状态栏设置由 [SessionBackend.enter] 拼在建会话之后、attach 之前，首连就生效。
- * 不另开 exec 去设：Connected 一出现 exec 通道可能先于 pty 里的 tmux 建会话到达，那时没有 server，设置会静默丢。
+ * 这些照「用户在 ssh 里自己敲」执行：就是在那个 shell 里跑一条命令（[SessionBackend.enter]），不另拼 tmux 管理逻辑。
  */
 fun Host.initialCommands(spec: LaunchSpec = LaunchSpec()): List<String> {
     val dialect = dialectFor(os)

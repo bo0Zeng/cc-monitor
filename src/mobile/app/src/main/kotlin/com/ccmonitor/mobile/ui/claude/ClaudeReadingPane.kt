@@ -365,7 +365,7 @@ private fun ToolCallCard(
         }
     // 核心给的 patch（真行号、带上下文）就画 diff；没给就不画，手机不自己从入参算 diff。
     val patchDiff = remember(unit) { unit.structuredPatch?.takeIf { it.isNotEmpty() }?.let { structuredPatchToDiff(it) } }
-    val summary = remember(unit) { toolSummary(unit) }
+    val summary = unit.summary.replace("\n", " ")
 
     Column(
         Modifier
@@ -396,6 +396,10 @@ private fun ToolCallCard(
                 )
             }
             Spacer(Modifier.weight(1f))
+            unit.resultLine?.let {
+                Text(it, style = monoSmall, color = tokens.textFaint, maxLines = 1)
+                Spacer(Modifier.width(tokens.spacing.sm))
+            }
             Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
         }
         AnimatedVisibility(expanded) {
@@ -433,24 +437,6 @@ private fun ToolCallCard(
 }
 
 private const val MAX_RESULT_CHARS = 4000
-
-/** 工具头部的一行输入摘要。 */
-private fun toolSummary(call: RenderUnit.ToolCall): String {
-    val i = call.input
-    return when (call.name) {
-        "Bash" -> i["command"] as? String ?: ""
-        "Read", "Edit", "Write", "MultiEdit" -> i["file_path"] as? String ?: ""
-        "Grep", "Glob" -> i["pattern"] as? String ?: ""
-        else -> i.entries.take(2).joinToString(", ") { "${it.key}=${prettyValue(it.value)}" }
-    }.replace("\n", " ")
-}
-
-/** moshi 把 JSON 数字解析成 Double；整数值去掉 .0 让摘要更干净。 */
-private fun prettyValue(v: Any?): String =
-    when (v) {
-        is Double -> if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
-        else -> v.toString()
-    }
 
 /** 交互工具（AskUserQuestion / ExitPlanMode）在等人决定：默认展开，否则折起来看着像模型还在跑。 */
 private val INTERACTIVE_TOOLS = setOf("AskUserQuestion", "ExitPlanMode")

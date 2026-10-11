@@ -436,8 +436,8 @@ class SharedScannerGateTest {
         /** 扫描面下限。 */
         private const val MIN_SOURCES = 200
 
-        /** 转发到共享扫描器的 `codeOnly` 声明数。 */
-        private const val MIN_CODE_ONLY_SITES = 15
+        /** 转发到共享扫描器的 `codeOnly` 声明数的下限（今天 14 处；只用来证明扫描面是真的，不钉准数）。 */
+        private const val MIN_CODE_ONLY_SITES = 10
 
         private val SKIPPED_DIRS = setOf("build", ".git", ".gradle", ".idea", "libs", ".codepicture")
 

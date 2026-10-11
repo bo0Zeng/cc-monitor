@@ -112,6 +112,8 @@ class FrameClient private constructor(
         scope.launch {
             try {
                 for (raw in lines) dispatch(raw)
+            } catch (_: IOException) {
+                // 读那一头抛错（断网 · 连接被掐）收到这里：同流断了，下面落成断开、未答的一律 LinkDown；不往外抛（外层没人接，会把整个 App 带崩）。
             } finally {
                 goDown()
             }
@@ -156,12 +158,13 @@ class FrameClient private constructor(
 
     /**
      * 发一条命令、等它的应答。[withinMs] 同时交给后端（`within_ms`：它据此收紧阻塞档命令的总期限）
-     * 与这里自己掐表（到点撤单）。
+     * 与这里自己掐表（到点撤单）。[blocking]（阻塞档，撤不动）⇒ 不交 `within_ms`、到点不撤单，只是这边不等了（迟到的应答照样认得、丢掉）。
      */
     suspend fun call(
         cmd: String,
         args: Map<String, Any?>? = null,
         withinMs: Long,
+        blocking: Boolean = false,
     ): Reply {
         val id = "$nonce-${seq.incrementAndGet()}"
         val answer = CompletableDeferred<Reply>()
@@ -176,7 +179,7 @@ class FrameClient private constructor(
                 put("id", id)
                 put("cmd", cmd)
                 if (args != null) put("args", args)
-                put("within_ms", withinMs)
+                if (!blocking) put("within_ms", withinMs)
                 put("tz", tz)
             }
         try {
@@ -188,8 +191,10 @@ class FrameClient private constructor(
         return withTimeoutOrNull(withinMs) { answer.await() } ?: run {
             pending.remove(id)
             abandoned += id
-            abandoned += "$id-cancel"
-            runCatching { writeLine(mapOf("id" to "$id-cancel", "cmd" to "cancel", "args" to mapOf("target" to id))) }
+            if (!blocking) {
+                abandoned += "$id-cancel"
+                runCatching { writeLine(mapOf("id" to "$id-cancel", "cmd" to "cancel", "args" to mapOf("target" to id))) }
+            }
             Reply.TimedOut
         }
     }
