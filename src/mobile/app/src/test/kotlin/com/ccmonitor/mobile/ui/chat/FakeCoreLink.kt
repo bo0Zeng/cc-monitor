@@ -64,12 +64,14 @@ internal class FakeCoreLink :
         seq: Long,
     ) = fromFlow.emit(WatchFrom(sid, "/p/$sid.jsonl", seq))
 
+    /** 那台报一条会话；[path] 缺 ⇒ 记录还没落盘（那台宣告时就不带路径）。 */
     fun report(
         sid: String,
         cwd: String,
         tone: Tone = Tone.PLAIN,
+        path: String? = "/p/$sid.jsonl",
     ) {
-        table.value = table.value.copy(sessions = table.value.sessions + (sid to LiveSession(sid, path = "/p/$sid.jsonl", cwd = cwd, activity = Toned("空闲", tone))))
+        table.value = table.value.copy(sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd, activity = Toned("空闲", tone))))
     }
 
     companion object {

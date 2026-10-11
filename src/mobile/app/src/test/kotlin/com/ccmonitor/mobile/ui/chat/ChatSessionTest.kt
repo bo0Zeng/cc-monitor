@@ -123,27 +123,33 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `新起的会话记录还没落盘：不报找不到，等会话表给出记录路径再读`() =
+    fun `新起的会话记录还没落盘：不报找不到，等流上推来这条会话的记录路径（line 帧带着）再读；不按点重问`() =
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File()
             link.answer = { cmd, args ->
                 when (cmd) {
                     "session-new" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null)))
-                    "history-list" -> ok(mapOf("rows" to emptyList<Any>(), "sections" to emptyList<Any>()))
                     else -> file.answer(cmd, args) ?: Reply.LinkDown
                 }
             }
             val s = draft(link)
             s.visible(true)
             s.send("你好")
+            link.report("pre", "/h/proj", path = null) // 那台宣告这条会话时记录还没有
+            advanceTimeBy(ChatSession.ARRIVAL_MS * 3)
             runCurrent()
             assertNull("记录还没有不是「找不到」", s.state.value.failedWhy)
+            assertTrue("不去清单里按点找", link.calls("history-list").isEmpty())
+            assertEquals(setOf("pre"), link.watching())
             file.records += human("u1", "你好")
-            link.report("pre", "/h/proj")
+            file.records += reply("a1", "替身收到")
+            link.line("pre", 0, human("u1", "你好"))
+            runCurrent()
+            link.line("pre", 1, reply("a1", "替身收到"))
             runCurrent()
             assertNull(s.state.value.failedWhy)
-            assertEquals(listOf("u1"), s.state.value.units.map { it.key })
+            assertEquals(listOf("u1", "a1#0"), s.state.value.units.map { it.key })
         }
 
     @Test
