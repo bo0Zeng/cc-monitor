@@ -8,9 +8,6 @@ fn spec(sid: &str, candidates: Vec<Option<&str>>) -> ResumeSpec {
             .into_iter()
             .map(|o| o.map(str::to_string))
             .collect(),
-        claude_dir: String::new(),
-        fallback_cwd: String::new(),
-        already_in_tmux: false,
         agent_kind: String::new(),
     }
 }
@@ -326,7 +323,7 @@ fn frozen_wire_fields(src: &str, decl: &str) -> Vec<String> {
     );
     let body = &src[start..start + src[start..].find("\n}").expect("结构体没收尾")];
     // 字段上的 `serde(rename…)` / `alias` 会让线上名与标识符分家 —— 那样下面读标识符就是在读错的东西
-    //（`ResumeSpec.claude_dir` 头注逐字：「除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个源头」）。
+    //（再挂一条 `serde(rename)` 就是把一条契约拆成两个源头）。
     for bad in ["rename", "alias"] {
         assert!(
             !body.contains(bad),

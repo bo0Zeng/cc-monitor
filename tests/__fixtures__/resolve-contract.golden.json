@@ -3,9 +3,6 @@
   "request_fields": [
     "sessionId",
     "launchCandidates",
-    "claudeDir",
-    "fallbackCwd",
-    "alreadyInTmux",
     "agentKind"
   ],
   "plan_fields": [

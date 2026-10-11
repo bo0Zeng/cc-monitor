@@ -1,6 +1,6 @@
 //! `resolve`：读 `ResumeSpec`，出 `CommandPlan`（camelCase）。帧命令，CLI 面照派生规则有 `--resolve`（信封与别的命令同一形，`cli_control`）。
 //!
-//! - 入：`ResumeSpec{sessionId, launchCandidates:[String?], claudeDir, fallbackCwd, alreadyInTmux, agentKind?}`。
+//! - 入：`ResumeSpec{sessionId, launchCandidates:[String?], agentKind?}`（别的格不认、不报错，照 serde 缺省忽略）。
 //! - 出：`CommandPlan{command, mode:"PtyInject"|"ExecOnce",
 //!   capabilities{supportsSendKeys,supportsCapture,supportsMultiClient,supportsMultiWindow},
 //!   sessionName?, launchLabel?, substitutedFrom?}`。
@@ -19,18 +19,6 @@ struct ResumeSpec {
     session_id: String,
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
-    /// 兼容字段，不许随手改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `resolve` 入参的一格（线上是 `claudeDir`）。
-    /// Rust 侧改名 = 线上字段名改名，所以通用层去 agent 名时绕开它，
-    /// 登记在 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
-    #[allow(dead_code)] // MVP 未用（backend 用自身 agent_home 做 pidfile 查，留字段兼容）
-    #[serde(default)]
-    claude_dir: String,
-    #[allow(dead_code)] // MVP 未用（both-down→local 回退是客户端侧决策，见 §3 三态）
-    #[serde(default)]
-    fallback_cwd: String,
-    #[allow(dead_code)] // MVP 未据此分支（PtyInject 对 alreadyInTmux 与否一致，留字段兼容）
-    #[serde(default)]
-    already_in_tmux: bool,
     /// 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`）。
     /// 注册表里的一家 = 那一家；缺 / `""` = 默认那一家；别的名字 ⇒ `bad_args`。
     #[serde(default)]
