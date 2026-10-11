@@ -3589,7 +3589,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
 }
 
 /// `ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
-/// add-time 冒名判定）。家目录放在非 ASCII 路径下（纪律 25：主树住 `~/文档/…`）。
+/// add-time 冒名判定）。家目录放在非 ASCII 路径下（仓可能住在非 ASCII 的目录里）。
 #[cfg(target_os = "linux")]
 #[test]
 fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {

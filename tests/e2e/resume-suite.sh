@@ -37,7 +37,7 @@ _gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 拷到 ASCII 的临时目录再当启动器。
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 的目录里⇒ 拷到 ASCII 的临时目录再当启动器。
 FAKE_DIR="$(mktemp -d /tmp/e2e-resume-fake.XXXXXX)"
 cp "$REPO/tests/e2e/fake-claude" "$FAKE_DIR/fake-claude" && chmod +x "$FAKE_DIR/fake-claude"
 FAKE="$FAKE_DIR/fake-claude"
