@@ -268,9 +268,11 @@
 每一级先问「它显示在哪个窗口」，再看它名下的可见顶层窗口，碰到终端本身就停（恰好一个窗口 ⇒ 它，几个 ⇒ 照实说分不清）。
 
 「它显示在哪个窗口」：
-- **Windows**：借那个进程的控制台问一句（`platform::console::console_window`：`AttachConsole` → `GetConsoleWindow` → 属主）。
-  Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的那个窗口；经典控制台就是控制台窗口自己。不要接入块、不要登记、不改标题。
-  只认到窗口，认不到窗口里的哪个标签。
+- **Windows**：借那个进程的控制台问一句（`AttachConsole` → `GetConsoleWindow` → 属主）。借的是本二进制的一次性小助手（隐藏子命令
+  `--ccm-console windows <进程号…>`，每个进程答一行 `<pid> shown 0x<窗口>` · `hidden` · `denied` · `none`），monitor 自己不挂别人的控制台。
+  Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的那个窗口；经典控制台就是控制台窗口自己。不要接入块、不要登记。
+  Windows Terminal 的窗口里再切到那个标签页：小助手（`--ccm-console tab <进程号> 0x<窗口>`，答一行 `selected` · `single` · `miss <原因>`）
+  借它的控制台挂记号标题，UI Automation 找名字带记号的标签页选中，原标题写回。
 - **Linux（X11）**：bash / zsh 接入块在本机桌面上开的 shell 里留 `ps-await/<PID>.tty`，monitor 往那个终端写改标题序列挂记号、按标题找窗口，
   写进 `ps-registry/`（标题出栈还原）。
 

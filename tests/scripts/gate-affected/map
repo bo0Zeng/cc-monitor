@@ -1,0 +1,128 @@
+# tests/scripts/gate-affected.sh 的数据：哪些路径改了要跑哪几格。gate-affected.sh 每趟读它、不缓存。
+#
+# 两段：
+#   @组名  格名…          —— 一组格。格名必须是 tests/scripts/gate.sh 盘上真有的格（脚本每趟对账，对不上就停、不猜）。
+#   路径模式  组名[,组名…]  理由  —— 一条映射。模式是相对仓根的 glob：`*` 不跨 `/`，`**` 跨任意层；`{a,b}` 不支持，分两行写。
+# 判法：改到的每条路径 = 它命中的**所有**行的组的并集（不是第一条命中）。
+#       一条路径一行都没命中 ⇒ 不认识 ⇒ 整趟退回全量（不带 GATE_ONLY，等于 gate-clean.sh）。
+#       组名 `-` = 只跑恒跑的那组（这条路径有人读，但读它的判据全在恒跑格里）。组名 `FULL` = 整趟全量。
+#       gate.sh 里新加了格、这里两段都没提到它 ⇒ 当成恒跑（宁可多跑，不许新格悄悄不跑）。
+# 另有四条现算的规则住在挑格那一半 plan.py 里（不是这张表能写死的东西）：
+#   ① Rust 的 include_str! / include_bytes! / #[path] 引到的文件 ⇒ 引它的那棵 workspace 的编译组（shellrs / backendrs）；
+#   ② tests/e2e/ 下脚本里字面写到的 src/… tests/… 路径，以及 e2e 的 .ts/.mts 驱动顺 import 摸到的文件 ⇒ e2e；
+#   ③ gate.sh 里 GATE_SHELLCHECK_GLOBS 命中的、或任何 *.sh ⇒ shellcheck；
+#   ④ 任何 Cargo.toml / Cargo.lock ⇒ 它所在那棵 workspace 的编译组（锁文件变了依赖就变了）。
+
+# ── 组 ───────────────────────────────────────────────────────────────────────────
+# 恒跑（两种模式都跑）：静态那几格（全是读盘上文本，合计十几秒）· 两棵树的排版 · tsc · npm audit。
+@cheap worktree-clean hooks copy2 e2e-smoke release-gate platform installface ccbus-twophase fmt fmt-backend audit tsc tmux-default
+# 默认模式也恒跑、--trust-ci 模式交给 CI 的：两棵树的全部单测（cargo · backend）与 vitest（npm）及跟着它们的三格。
+#   为什么默认恒跑：两棵 Rust 树里有一百多份判据在测试时去读仓里别处的文本（TS · CSS · 文案表 · README · workflow），
+#   vitest 那边也读 Rust 源；谁读了谁只有跑起来才知道 ⇒ 按路径挑这几格会绿着说假话。
+#   出仓引用（no_outside_refs）在 cargo 里，文案机检（copy-rules · copy-table）在 npm 里；--trust-ci 时 gate-affected 在门禁外单跑这几条。
+@suites cargo comm-boundary test-tiers generated backend npm
+# 壳那棵 workspace（monitor · 文件窗口 · 共享 crate）只编不跑的那几格：lint · 死码 · Linux 真链 · 截图台架的无头壳 · Windows 交叉检查与真链。
+@shellrs clippy deadcode appbuild shotsshell winchk winlink
+# 后端那棵（src/backend 及它链的共享 crate）只编不跑的那几格：lint · 死码 · Windows 交叉检查 · 两个 musl 静态包。
+@backendrs clippy-backend deadcode-backend winchk-backend muslbuild
+# 真机 e2e 全部套件（逐套列名：gate.sh 里新加的套件这里没列 ⇒ 按恒跑算）＋ 起内层门禁跑两套 e2e 的 env-sandbox。被测对象是后端二进制、cc-bus 脚本与几份启动渲染 TS。
+@e2e cc-spawn-uplift backend-tmux-late-server tmux-target restart backend-sessions-rewatch backend-cc-bus resume cc-bus-queue-drain graylight-frames resume-frames backend-gate2 ccm-cli inbound-frames ccm-contract-parity p3t-local-tmux ccm-print-parity backend-fork local-backend env-sandbox
+# local-backend 那一套另在壳 workspace 里 `cargo test --lib -- --ignored local_backend::`（monitor 的 lib 是它的被测对象之一）⇒ 壳那边改了也要它；
+#   它与 cargo 格同一个 profile，编译几乎白拿。
+@e2e-local local-backend
+# 弱网台架：自带 docker 镜像与脚本，不起真后端（rig.sh 头注），只读 tests/e2e/weak-net/。
+@weaknet weak-net
+# 覆盖率：只量 src/**/*.ts，与 npm 同一批 vitest 再带插桩跑一遍；TS 与它的测试不动，覆盖率就动不了。
+@coverage coverage
+# 截图台架的无头壳（例子 ccm-shots-shell，源在 tests/shots/real/shell_main.rs，链壳的 lib）编不编得过（10-10 mg43 加）：
+#   壳那棵被改到时随 @shellrs 一起跑；只动台架（tests/shots/）时单跑这一格。CI 不跑它 ⇒ --trust-ci 下被改到就本机照跑。
+@shots shotsshell
+@shellcheck shellcheck
+# 手机端 app（src/mobile，Gradle）：ktlint · detekt · Android Lint · JVM 单测 · release（R8），一格。CI 的 mobile job 也跑它。
+@mobile mobile
+
+# CI 上有等价物、本机门禁外的那几格（--trust-ci 时按「CI 会跑」算）。Linux 那几个 job 的 GATE_ONLY 由脚本从 ci.yml 现读，不抄在这；
+# 这里只登记 Windows 那两个 job 自己写命令、门禁格名对不上的：
+#   rust job（windows-latest）：cargo fmt --check · cargo clippy --workspace --all-targets · cargo test --workspace（真 Windows 上编、链、跑 monitor 与文件窗口，
+#     比 winchk / winlink 的 -gnu 交叉更真）· 生成物最新；frontend job：npm audit · tsc · npm test · coverage 两步；
+#   backend job：cargo check --all-targets --target x86_64-pc-windows-msvc（≈ winchk-backend，msvc 比本机的 -gnu 更真）。
+@ci-windows fmt clippy cargo generated winchk winlink audit tsc npm coverage winchk-backend
+# CI 也跑、但 --trust-ci 时只要被改到本机照跑的：便宜的编译格里，近两周合并树全量门禁上真红过、quick-check 又看不见的那几格。
+#   mg22 winchk-backend（Windows 上 *mut c_void 不是 Send）· mg29 deadcode-backend（非 Windows 的空桩没人用）；deadcode 与它同一类。
+#   跑它们比推上去等 CI 红了再修一棵树便宜（编译格合计中位一分半）。
+#   e2e 套件不在这里写死（10-10 起）：--trust-ci 下被改到被测对象的那几套由 plan.py 逐套现算、本机照跑
+#   （套件入口顺着摸到的文件 ＋ 它起的后端二进制 / 它 cargo test 的那棵树的源）；从前写死的 backend-cc-bus · ccm-cli · ccm-contract-parity 随之撤下。
+#   winlink（10-10 加）：链两个二进制之外还查 lib 测试程序带不带进程清单（mg38 推上去 CI 才发现测试程序在 Windows 上起不来）；壳那棵被改到时本机照跑。
+@keep-local deadcode deadcode-backend winchk-backend winlink npm
+
+# ── 门禁自己 · CI 形状 · 依赖清单：动了就全量 ──────────────────────────────────────────
+tests/scripts/**                FULL   门禁与它调的脚本（apt-install · re-embed · 覆盖率地板）本身变了，格怎么分可能跟着变
+.github/**                      FULL   CI 形状变了；audit / coverage 两格从 ci.yml 现取步骤原样跑
+package.json                    FULL   npm 脚本（test:<套件> 就是 e2e 的入口）与依赖都在这；版本号也在这（打版本那一趟本来就要全量）
+package-lock.json               FULL   依赖变了，vite / vitest / tsx 的行为都可能变
+
+# ── 仓根那几份 ─────────────────────────────────────────────────────────────────────
+README.md                       -      版本与文案判据读它，全在 cargo / npm / release-gate（恒跑）
+README.en.md                    -      同上
+CHANGELOG.md                    -      发版守卫与版本判据读它（恒跑格）
+LICENSE                         -      只有恒跑的静态判据读
+THIRD-PARTY-NOTICES.txt         -      release-gate 读（恒跑）
+.gitignore                      -      worktree-clean · release-gate 读（恒跑）
+.gitattributes                  -      只影响 git 自己
+.stylelintrc.json               -      css-ledger 那份 vitest 读（npm，恒跑）
+eslint.config.js                -      eslint-baseline 那份 vitest 读（npm，恒跑）
+index.html                      -      vite 入口；entry-graphs 那份 vitest 读（npm，恒跑）
+settings.html                   -      同上
+viewer.html                     -      同上
+tsconfig.json                   coverage  改 include / 编译选项会改 vitest 里被插桩的面；tsc 恒跑
+vite.config.ts                  coverage  同上
+vitest.config.ts                coverage  覆盖率阈值住这里
+docs/**                         -      README 用的截图，只有恒跑判据读
+
+# ── 界面（TS / CSS / HTML）──────────────────────────────────────────────────────────
+src/frontend/ui/**/*.ts         coverage  覆盖率量的就是它；e2e 驱动 import 到的那几份由现算规则 ② 另加 e2e
+src/frontend/ui/**/*.tsx        coverage  同上
+src/frontend/ui/**/*.mts        coverage  同上
+src/frontend/ui/**              -      CSS / 图标 / JSON：读它们的判据在 npm（恒跑）；被 Rust include_str! 的由规则 ① 另加
+src/comms/ui/**                 coverage  ts-rs 生成的 TS，前端 import 它
+tests/frontend/ui/**            coverage  vitest 本体：改它就改了覆盖率
+tests/copy/**                   coverage  文案表的 vitest 与夹具
+tests/naming/**                 coverage  命名判据（vitest）
+tests/shots/**                  coverage,shots  截图场景（TS，tsc 恒跑；vitest 有几份读它）；无头壳的例子源（real/shell_main.rs）与台架编它的那一条也在这
+tests/test-support/**           coverage,e2e  vitest 与 e2e 驱动共用的辅助（launch-cli-golden 等）
+
+# ── 壳那棵 workspace ─────────────────────────────────────────────────────────────────
+src/frontend/shell/**           shellrs,e2e-local  monitor 包：源码 · build.rs · tauri.conf.json · capabilities · 图标都是编译输入；e2e 读的那几份由规则 ② 另加
+src/frontend/filewin/**         shellrs,e2e-local  文件窗口包（壳 workspace 成员，monitor 的一个 bin 转调它）
+src/comms/inward/**             shellrs,e2e-local  通信层面 A：monitor 与文件窗口链它，后端不链
+tests/frontend/shell/**         shellrs,e2e-local  monitor 的测试（#[path] 引进 lib 的 test 档；clippy --all-targets 与 winchk 都编它）
+tests/frontend/filewin/**       shellrs  文件窗口的测试
+tests/common/**                 shellrs  共享 crate 的测试（只在壳 workspace 里跑；后端只把共享 crate 当依赖、不编它们的 test 档）
+tests/comms/**                  shellrs  通信层两包的测试（壳 workspace 成员）
+
+# ── 两棵都链的 ───────────────────────────────────────────────────────────────────────
+src/common/**                   shellrs,backendrs,e2e  共享 crate：两棵 workspace 都编它，后端二进制（e2e 的被测对象）链它
+src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链它，它的单测在壳 workspace 里
+
+# ── 后端那棵 ─────────────────────────────────────────────────────────────────────────
+src/backend/**                  backendrs,e2e  后端 crate：e2e 全部套件的被测对象就是它编出来的二进制
+src/vendor/**                   backendrs,e2e  后端链的 vendored russh
+tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
+tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 目标（--all-targets 编它）
+
+# ── 部署到远端 / 共用的那几份 ───────────────────────────────────────────────────────────
+src/shared/cc-bus/**            e2e    cc-bus 脚本：cc-spawn-uplift · backend-cc-bus · cc-bus-queue-drain 真跑它；ccbus-twophase 恒跑；shellcheck 由规则 ③ 另加
+src/shared/**                   e2e,coverage  文案表 JSON（TS 与 Rust 都读、e2e 也读）· ccm 别名 · quota-warm；被 Rust include_str! 的由规则 ① 另加
+src/doc/**                      -      协议 / IPC 文档：读它的判据在 cargo / backend（恒跑）；被 include_str! 的由规则 ① 另加
+src/README.md                   -      只有恒跑判据读
+
+# ── 手机端 ─────────────────────────────────────────────────────────────────────────
+src/mobile/**                   mobile  手机端 app：Gradle 多模块的源码 · 构建脚本 · 金样 · Python 测试都是这一格的输入；扫全仓文本的判据（私人形状 · 出仓引用 · shell lint 登记）在 cargo 格里，*.sh 由规则 ③ 另加 shellcheck
+
+# ── 测试那边的其余 ───────────────────────────────────────────────────────────────────
+tests/e2e/weak-net/**           weaknet  弱网台架自己的镜像与脚本
+tests/e2e/**                    e2e    e2e 套件本体（e2e-smoke 那几步恒跑）
+tests/__fixtures__/**           e2e,coverage  黄金夹具：e2e（gate2-golden）与 vitest 都读；被 Rust include_str! 的由规则 ① 另加
+tests/evidence/**               -      python 判据：被恒跑的静态格调用；*.sh 由规则 ③ 另加 shellcheck；*.rs 由规则 ① 归到 include 它的那棵
+tests/evidence/**/*.ts          coverage  evidence 下的 TS 判据（vitest 读）
+tests/hooks/**                  shellcheck  hooks 那格恒跑；shellcheck 的人群里有它

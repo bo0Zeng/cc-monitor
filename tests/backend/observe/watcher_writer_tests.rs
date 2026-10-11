@@ -64,8 +64,13 @@ fn rig(tag: &str) -> Rig {
 }
 
 /// 开着 `file` 追加写的假进程；读到第一行 ⇒ 关掉那个 fd；读到第二行 ⇒ 退出。
+/// 写者的环境在这里显式给：宣告上的容器那一格读的是写者进程的环境（`TMUX_PANE` 等），照继承就随跑测试那个 shell 变 ——
+/// 在 tmux 里直接 `cargo test`，金样上的 `container` 就对不上。清空后只放一个 `PATH`：整份空着的环境读回 0 字节，
+/// 观测侧照实判「取不到」、不报容器（`platform::proc::proc_env_var`），那就不是「不在 tmux 里」了。
 fn writer(file: &Path) -> Child {
-    let mut c = Command::new("sh")
+    let mut c = Command::new("/bin/sh")
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
         .arg("-c")
         .arg("exec 3>>\"$1\"; echo up; read _; exec 3>&-; echo closed; read _")
         .arg("sh")

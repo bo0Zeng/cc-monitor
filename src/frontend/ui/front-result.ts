@@ -4,13 +4,16 @@
  * 分不清是哪个窗口：照实说拉不了、带候选个数（不切、不闪任何一个）。
  *
  * 结局族的来处（这里不判，只排版）：
- * - 壳 `bring_terminal_to_front` / `bring_remote_terminal_to_front`（`FrontOutcome`）：切过去了 · 分不清（带候选窗口）· 没登记 · 窗口已关 ·
- *   认不准 · 系统不许抢前台 · 真在后台 · Wayland 桌面上切不了；
+ * - 壳 `bring_terminal_to_front` / `bring_remote_terminal_to_front`（`FrontOutcome`）：切过去了 · 分不清（带候选窗口与原因：没登记 · 读不到控制台 ·
+ *   提权 · 程序不提供控制台）· 切到了窗口、标签页没切成（标签名不随程序标题变化 · 读不到标签页 · 提权 · 读不到控制台）· 认不出（没登记 · 会话已不在运行 · 后台）· 窗口已关 · 认不准 · 系统不许抢前台 · 真在后台 · Wayland 桌面上切不了；
  * - 那台后端 `session-terminals` 的 `why`：tmux 里没终端连着 · 没有终端 · 读不了；
  * - 本机后端 `terminal-processes` 的 `why`：那台本地屏幕 · 在另一台电脑 · 经跳板机对不上 · 这一次没查成；
  * - 通道那一跳的归因（`ipc/chan-caller.ts`）：那台旧 · 期限到 · 连不上。
  */
 import type { FrontOutcome } from "./generated/FrontOutcome";
+import type { SeveralWhy } from "./generated/SeveralWhy";
+import type { TabMiss } from "./generated/TabMiss";
+import type { UnboundWhy } from "./generated/UnboundWhy";
 import { copyText } from "./copy-table";
 
 export type FrontResult =
@@ -58,10 +61,12 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
   switch (r.kind) {
     case "switched":
       return null;
+    case "switched-window":
+      return tabMissedView(r.why, v);
     case "several":
-      return v(unsure, copyText("front.body.several", { program: r.program, n: r.count }), "amber", [], copyText("front.hint.several"));
+      return severalView(r.why, r.program, r.count, v);
     case "unbound":
-      return v(copyText("front.title.unbound"), copyText("front.body.unbound"), "amber", [{ kind: "connect" }], copyText("front.hint.unbound"));
+      return unboundView(r.why, v);
     case "detached":
       return v(copyText("front.title.noTerminal"), copyText("front.body.detached"), "grey", [{ kind: "open-in-terminal" }]);
     case "no-terminal":
@@ -102,6 +107,49 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
       return v(copyText("front.title.failed"), copyText("terminalFront.unavailable.short"), "grey");
     case "unknown":
       return v(copyText("front.title.failed"), copyText("front.body.unknown"), "red", [{ kind: "copy", detail: r.detail }]);
+  }
+}
+
+/** 排一张浮层（`frontView` 里那一个）。 */
+type Lay = (title: string, body: string, tone: FrontView["tone"], acts?: FrontAct[], hint?: string | null) => FrontView;
+
+/** 窗口切过去了、标签页没切成：为什么。 */
+function tabMissedView(why: TabMiss, v: Lay): FrontView {
+  switch (why) {
+    case "title-ignored":
+      return v(copyText("front.title.tabMissed"), copyText("front.body.tabTitleIgnored"), "grey", [], copyText("front.hint.tabTitleIgnored"));
+    case "no-uia":
+      return v(copyText("front.title.tabMissed"), copyText("front.body.tabNoUia"), "grey");
+    case "elevated":
+      return v(copyText("front.title.tabMissed"), copyText("front.body.tabElevated"), "grey");
+    case "no-console":
+      return v(copyText("front.title.tabMissed"), copyText("front.body.tabNoConsole"), "grey");
+  }
+}
+
+/** 分不清：候选个数与原因 · 灰字办法。 */
+function severalView(why: SeveralWhy, program: string, n: number, v: Lay): FrontView {
+  switch (why) {
+    case "unregistered":
+      return v(copyText("front.title.unsure"), copyText("front.body.severalUnregistered", { program, n }), "amber", [], copyText("front.hint.unregistered"));
+    case "console-unreachable":
+      return v(copyText("front.title.unsure"), copyText("front.body.severalConsole", { program, n }), "amber", [], copyText("front.hint.severalConsole"));
+    case "elevated":
+      return v(copyText("front.title.unsure"), copyText("front.body.severalElevated", { program, n }), "amber", [], copyText("front.hint.severalElevated"));
+    case "foreign":
+      return v(copyText("front.title.unsure"), copyText("front.body.severalForeign", { program, n }), "amber");
+  }
+}
+
+/** 本机会话认不出窗口：为什么。 */
+function unboundView(why: UnboundWhy, v: Lay): FrontView {
+  switch (why) {
+    case "unregistered":
+      return v(copyText("front.title.unbound"), copyText("front.body.unregistered"), "amber", [{ kind: "connect" }], copyText("front.hint.unregistered"));
+    case "not-live":
+      return v(copyText("front.title.unbound"), copyText("front.body.notLive"), "grey");
+    case "no-console":
+      return v(copyText("front.title.noTerminal"), copyText("front.body.background"), "grey");
   }
 }
 

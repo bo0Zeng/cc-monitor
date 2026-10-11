@@ -21,6 +21,15 @@ function layout(records: LineRecord[]): { at: { o: number; n: number }[]; end: n
   // 记一份（同一个数组只量一次）：长会话每问都整份 stringify 一遍，假后端自己就占掉页里一大截主线程（性能台架量的是产品）。
   const had = layouts.get(records);
   if (had && had.at.length === records.length) return had;
+  // 只往后长（实时来行）⇒ 只量新来的那几条，不整份重量
+  if (had && had.at.length < records.length) {
+    for (const r of records.slice(had.at.length)) {
+      const n = JSON.stringify(r).length + 1;
+      had.at.push({ o: had.end, n });
+      had.end += n;
+    }
+    return had;
+  }
   const fresh = layoutOnce(records);
   layouts.set(records, fresh);
   return fresh;
@@ -420,7 +429,9 @@ export function defaultOps(): Record<string, OpHandler> {
           }
         }
       }
-      return { from: 0, end, turns };
+      // 续取从 `from`（还没收尾的那一轮的开头）起：只交那之后开头的轮（同后端 `turns.rs` 从偏移读）。
+      const from = typeof req.from === "number" ? req.from : 0;
+      return { from, end, turns: turns.filter((t) => t.at >= from) };
     },
     "history-facts": (_o, req, w) => {
       const s = sessionByPath(w, req.path);

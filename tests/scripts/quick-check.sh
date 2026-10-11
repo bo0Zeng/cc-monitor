@@ -9,14 +9,38 @@
 #   「加了子命令要打版本号」那一条在各路树上必红（版本号合并时打：`tests/scripts/bump-build-id.sh`）⇒ 单列成「待打版本号」，不算红。
 # 环境：清掉会话继承来的 CCM_* / CLAUDE_* / ANTHROPIC_* / TMUX*；HOME 与 TMUX_TMPDIR 指到 `.build/` 下一次性沙箱目录（不碰真家目录与默认 tmux）。
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（沙箱换 HOME 之前就定下）。
+# 手机那一套（ktlint · detekt · 各模块 JVM 单测；经 heavy.sh，gradle 带 --no-daemon）：这棵树（连没提交的改动）相对 main 改到了
+#   下面 mobile_reads 里的路径才跑，没改到就跳过并打一行说明。手机的单测与构建在 src/mobile 之外还读：tests/__fixtures__/（金样）·
+#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/shared/copy/（文案表，生成 CopyEntries）。这张表漏没漏，由判据
+#   tests/backend/flow_scripts_guard.rs 对着 src/mobile 里字面写到的仓内路径核。Android Lint 与 release 构建不在这里（门禁 mobile 格跑）。
+#   工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev（沙箱换 HOME 之前就定下）。
+#   `--mobile` 只跑手机那一段；`--mobile-plan` 只印跑不跑、为什么。
 # 红了：每条失败测试的 panic 原话（`panicked at` 起那几行）印出来；整趟输出存 `.build/quick-check/<时刻>.log`，偶发的那一次有原话可查。
 set -uo pipefail
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
+mode=all
+case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/)
+# 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
+mobile_touch() {
+  local base
+  base=$(git merge-base HEAD main 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null) || { echo '?'; return; }
+  { git -c core.quotepath=false diff --name-only "$base" -- "${mobile_reads[@]}"
+    git -c core.quotepath=false ls-files --others --exclude-standard -- "${mobile_reads[@]}"; } | head -1
+}
+if [ "$mode" = plan ]; then
+  hit=$(mobile_touch)
+  echo "MOBILE-READS: ${mobile_reads[*]}"
+  if [ -z "$hit" ]; then echo "MOBILE: 跳过 —— 相对 main 没改到"; elif [ "$hit" = '?' ]; then echo "MOBILE: 跑 —— 找不到 main"; else echo "MOBILE: 跑 —— 改到 $hit"; fi
+  exit 0
+fi
 mkdir -p .build/quick-check
 box=$(mktemp -d "$root/.build/qc-box.XXXXXX") || exit 2
 log="$root/.build/quick-check/$(date +%Y%m%d-%H%M%S).log"
 : > "$log"
+real_home=$HOME
 cargo_home=${CARGO_HOME:-$HOME/.cargo}
 rustup_home=${RUSTUP_HOME:-$HOME/.rustup}
 npm_cache=${npm_config_cache:-$HOME/.npm}
@@ -50,7 +74,32 @@ step() { local name=$1; shift; local t0=$SECONDS out
     printf '%s\n' "${hit:-$(printf '%s\n' "$out" | tail -5)}" | sed 's/^/       /'
     printf '%s\n' "$out" | panics; fails+=("$name"); fi; }
 
+# 手机那一段：改到才跑（见头注）。条数读这一趟 .build/mobile/*/test-results（先清掉旧的）。
+mobile_step() {
+  local hit; hit=$(mobile_touch)
+  if [ -z "$hit" ]; then printf '  --   %-16s 跳过：相对 main 没改到 %s\n' mobile "${mobile_reads[*]}"; return; fi
+  printf '  --   %-16s %s ⇒ 跑 ktlint · detekt · JVM 单测\n' mobile "$( [ "$hit" = '?' ] && echo '找不到 main，照跑' || echo "改到 $hit")"
+  step mobile run env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
+    out="$PWD/.build/mobile"; cd src/mobile || exit 1
+    if [ -z "${JAVA_HOME:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
+      export ATERM_ANDROID_DEV="${ATERM_ANDROID_DEV:-$REAL_HOME/android-dev}"
+      . ./scripts/env.sh >/dev/null || { echo "mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了"; exit 1; }
+    else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
+    rm -rf "$out"/*/test-results
+    ./gradlew --no-daemon --console=plain ktlintCheck detektDebug testDebugUnitTest \
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain || exit $?
+    n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
+    echo "mobile: ${n:-0} passed"'
+}
+verdict() {
+  echo
+  echo "  墙钟 $((SECONDS-t_all))s · 负载 $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null) · 整趟输出 ${log#"$root"/}"
+  if [ ${#fails[@]} -eq 0 ]; then echo "QUICK: OK ${notes[*]:+（${notes[*]}）} —— 可以排队跑门禁"; exit 0
+  else echo "QUICK: 红 —— ${fails[*]}"; exit 1; fi
+}
+
 echo "快检 $(git log --oneline -1 | cut -c1-60)"
+[ "$mode" = mobile ] && { mobile_step; verdict; }
 if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新树）⇒ npm ci"; run env npm_config_cache="$npm_cache" npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1 || { echo "QUICK: 红 —— npm ci 失败"; exit 1; }; fi
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
 step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check'
@@ -74,8 +123,7 @@ else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
 step shell        runcargo bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -q'
 # 界面：整套 vitest
 step vitest       run node_modules/.bin/vitest run --reporter=dot
+# 手机：改到才跑
+mobile_step
 
-echo
-echo "  墙钟 $((SECONDS-t_all))s · 负载 $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null) · 整趟输出 ${log#"$root"/}"
-if [ ${#fails[@]} -eq 0 ]; then echo "QUICK: OK ${notes[*]:+（${notes[*]}）} —— 可以排队跑门禁"; exit 0
-else echo "QUICK: 红 —— ${fails[*]}"; exit 1; fi
+verdict

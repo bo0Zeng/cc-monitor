@@ -125,6 +125,14 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          stderr 要接出来读错信封 —— 这三样本处特有，出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。",
     ),
     (
+        "platform/console.rs",
+        "run_helper",
+        "spawn_managed_cmd",
+        "起本二进制当借控制台的一次性小助手（`--ccm-console …`）：程序是本进程自己（`current_exe`），\
+         argv 是那件事的参数（`helper_argv`），stdout 要接成管道读它的答话 —— 都是本处特有，出口只回答三条策略 ⇒ \
+         `Command` 由这里装好再递进去。",
+    ),
+    (
         "platform/terminal.rs", // 原 `launch.rs`
         "launch_local_posix_via",
         "spawn_managed_cmd",

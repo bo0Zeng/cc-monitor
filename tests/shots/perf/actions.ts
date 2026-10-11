@@ -684,6 +684,40 @@ async function withoutRules(hit: (selector: string) => boolean, fn: () => Promis
 }
 
 const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
+  // 10-10「视口里的占位一直不填」：滚动条拖到十几万行那条的中段 ⇒ 视口里该出真卡，按段取回有数（不连锁往后取）
+  "stuck-jump": async () => {
+    await toLongest();
+    const be = window.__perfBackend!;
+    const s = scroller();
+    const inner = be.world.ops["history-page"];
+    let pages = 0;
+    be.world.ops["history-page"] = (o, req, w) => {
+      pages++;
+      return inner(o, req, w);
+    };
+    const realInView = (): number => {
+      const v = s.getBoundingClientRect();
+      return [...s.querySelectorAll<HTMLElement>(":scope > .stream-content > .card")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.height > 0 && r.bottom > v.top && r.top < v.bottom;
+      }).length;
+    };
+    const t0 = performance.now();
+    s.scrollTop = s.scrollHeight * 0.5;
+    const top0 = s.scrollTop;
+    // 按帧等：视口里出了真卡、而且取回停了（连着 60 帧没有新的一问）；最多 1200 帧
+    let firstCardAt: number | null = null;
+    let quiet = 0;
+    let last = pages;
+    for (let f = 0; f < 1200 && quiet < 60; f++) {
+      await new Promise((r) => requestAnimationFrame(r));
+      if (firstCardAt === null && realInView() > 0) firstCardAt = performance.now() - t0;
+      quiet = pages === last ? quiet + 1 : 0;
+      last = pages;
+    }
+    be.world.ops["history-page"] = inner;
+    return { name: "stuck-jump", pages, firstCardAt, cardsInView: realInView(), drift: Math.round(s.scrollTop - top0), settledMs: Math.round(performance.now() - t0) };
+  },
   "slow-dom": slowDom,
   idle: () => idle(),
   "scroll-up": () => scroll("up"),
