@@ -32860,6 +32860,30 @@
       "role": "报错",
       "zh": "轮换文件还是旧格式 · 常驻后端换形之前不写 · {path}",
       "args": ["path"]
+    },
+    "beRotation.plan.left": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "余 {n}",
+      "args": ["n"]
+    },
+    "beRotation.plan.slotLine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "≤{n}%",
+      "args": ["n"]
+    },
+    "beRotation.plan.slotOff": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不用",
+      "args": []
+    },
+    "beRotation.plan.farReset": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} {at} 重置 · 视窗外",
+      "args": ["w", "at"]
     }
   }
 }

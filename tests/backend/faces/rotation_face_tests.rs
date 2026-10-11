@@ -1055,3 +1055,79 @@ fn an_unreadable_file_is_surfaced_on_the_session_and_the_last_good_one_keeps_wor
     assert!(!s["rows"].as_array().expect("rows").is_empty());
     assert_eq!(std::fs::read_to_string(&path).expect("r"), "{broken");
 }
+
+/// ★ 推演每行给合图要的、界面不自己算的那几格：离线还剩几点（`left` · `leftText`）· 时段那几段与它们的线（`slots`）·
+/// 在用号按用速估的到线时刻（`est`）· 落在视窗外的 7d 重置（`farResets`，带字）。
+#[test]
+fn the_plan_rows_carry_left_slots_estimate_and_far_resets() {
+    use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
+    let home = Home::new("plan-rows");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000002"})).expect("open");
+    answer_session_edit_with(
+        &ctx,
+        &json!({"sid": S1, "set": [{"acct": "b", "k": "slots", "v": [{"at": "00:00-12:00", "line": 80}, {"at": "12:00-24:00", "line": 0}]}]}),
+    )
+    .expect("edit");
+    let n = now();
+    let r = |used: f64| QuotaReading {
+        status: Some(QuotaStatus::Allowed),
+        refused: false,
+        limiting: Some("five_hour".into()),
+        resets_at: Some(n + 3_600),
+        windows: vec![
+            QuotaWindow {
+                name: "five_hour".into(),
+                used: Some(used),
+                resets_at: Some(n + 3_600),
+                warned_at: None,
+            },
+            QuotaWindow {
+                name: "seven_day".into(),
+                used: Some(0.3),
+                resets_at: Some(n + 5 * 86_400),
+                warned_at: None,
+            },
+        ],
+        overage: None,
+    };
+    ledger::record_seen(&ctx.hop.quota, "claude-code", "a", r(0.50), n - 600);
+    ledger::record_seen(&ctx.hop.quota, "claude-code", "a", r(0.56), n);
+    let v = answer_plan_with(&ctx, &json!({"sid": S1}), n).expect("ok");
+    let row = |a: &str| {
+        v["rows"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .find(|x| x["account"] == a)
+            .cloned()
+            .expect(a)
+    };
+    let a = row("a");
+    assert_eq!(a["left"], 34, "线 90 − 用了 56");
+    assert_eq!(
+        a["leftText"],
+        copy_text("beRotation.plan.left", &[("n", "34")])
+    );
+    let est = a["est"]["at"].as_u64().expect("在用号有用速 ⇒ 估的到线");
+    assert!(est > n && est <= n + 3_500, "{est}");
+    assert!(a["est"]["atText"].is_string());
+    let far = a["farResets"].as_array().expect("far");
+    assert_eq!(far[0]["w"], "7d");
+    assert_eq!(far[0]["at"], n + 5 * 86_400);
+    assert!(!far[0]["text"].as_str().unwrap_or("").is_empty());
+    let b = row("b");
+    let slots = b["slots"].as_array().expect("slots");
+    assert!(!slots.is_empty());
+    for s in slots {
+        assert!(s["from"].as_u64() < s["to"].as_u64());
+        let text = s["text"].as_str().unwrap_or("");
+        assert!(
+            text == copy_text("beRotation.plan.slotLine", &[("n", "80")])
+                || text == copy_text("beRotation.plan.slotOff", &[]),
+            "{text}"
+        );
+    }
+    assert!(row("b").get("est").is_none(), "不在用的号没有估的到线");
+}

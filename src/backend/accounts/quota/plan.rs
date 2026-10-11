@@ -79,7 +79,7 @@ fn facts_at(f: &Facts, t: u64, grow: Option<(f64, &str)>) -> Facts {
 }
 
 /// 卡人那一窗（用得多的那个；都没开 ⇒ 5h）。
-fn pinch(f: &Facts) -> &'static str {
+pub(crate) fn pinch(f: &Facts) -> &'static str {
     if f.w7d.open && (!f.w5h.open || f.w7d.used > f.w5h.used) {
         "7d"
     } else {
@@ -88,7 +88,7 @@ fn pinch(f: &Facts) -> &'static str {
 }
 
 /// 一行参数此刻那一窗的线（点）：时段内取时段的；`()` ＝ 用满（100）。
-fn line_now(p: &Params, w: &str, clock: u32) -> f64 {
+pub(crate) fn line_now(p: &Params, w: &str, clock: u32) -> f64 {
     let n = |v: &Value| v.as_f64();
     if let Some(s) = p.get(form::SLOTS).and_then(Value::as_array).and_then(|a| {
         a.iter().find(|x| {

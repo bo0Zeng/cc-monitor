@@ -2193,6 +2193,135 @@ pub struct PlanRow {
     pub account: String,
     pub bars: Vec<Bar>,
     pub resets: Vec<ResetMark>,
+    /// 离此刻的线还剩几点（卡人那一窗；策略声明了 `line` 才有）· 写好的字「余 N」。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub left: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub left_text: Option<String>,
+    /// 视窗里这个号那几段时段（每号参数 `slots`）与那一段的线。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<SlotBand>>"))]
+    pub slots: Vec<SlotBand>,
+    /// 在用的号按最近的用速估的到线时刻（没用速 · 视窗里到不了 · 窗口先重置 ⇒ 缺）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub est: Option<EstMark>,
+    /// 落在视窗外的重置（时刻 ＋ 写好的那一句）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<FarReset>>"))]
+    pub far_resets: Vec<FarReset>,
+}
+
+/// 时段那一段：`[from, to)` · 这一段的线（`0` ＝ 这段不用）· 写好的字（「≤80%」·「不用」）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanSlotBand"
+    )
+)]
+pub struct SlotBand {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub to: u64,
+    pub line: u8,
+    pub text: String,
+}
+
+/// 估的到线时刻：几点 · 写好的字 · 哪一窗。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanEstimate"
+    )
+)]
+pub struct EstMark {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub at_text: String,
+    pub w: String,
+}
+
+/// 视窗外的重置：语义位 · 几点 · 时刻的字 · 写好的那一句。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PlanFarReset"
+    )
+)]
+pub struct FarReset {
+    pub w: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    pub at_text: String,
+    pub text: String,
+}
+
+/// 视窗 `[from, until)` 里一行时段参数落成的那几段（按配置的时区；跨零点照算）。
+fn slot_bands(body: &ConfigBody, p: &Params, from: u64, until: u64) -> Vec<SlotBand> {
+    let Some(slots) = p.get(strategy::form::SLOTS).and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let off = body.offset_at(from);
+    let day = 86_400i64;
+    let first = (now_secs(from) + off).div_euclid(day) * day - off - day;
+    let mut out = Vec::new();
+    for x in slots {
+        let Some((f, t)) = x
+            .get("at")
+            .and_then(Value::as_str)
+            .and_then(strategy::form::span_of)
+        else {
+            continue;
+        };
+        let line = x
+            .get("line")
+            .and_then(Value::as_u64)
+            .and_then(|n| u8::try_from(n).ok())
+            .unwrap_or(0);
+        let text = if line == 0 {
+            copy_text("beRotation.plan.slotOff", &[])
+        } else {
+            copy_text("beRotation.plan.slotLine", &[("n", &line.to_string())])
+        };
+        for k in 0..4i64 {
+            let ds = first + k * day;
+            let s = ds + i64::from(f) * 60;
+            let e = if f < t {
+                ds + i64::from(t) * 60
+            } else {
+                ds + day + i64::from(t) * 60
+            };
+            let (s, e) = (s.max(now_secs(from)), e.min(now_secs(until)));
+            if s < e {
+                out.push(SlotBand {
+                    from: u64::try_from(s).unwrap_or(0),
+                    to: u64::try_from(e).unwrap_or(0),
+                    line,
+                    text: text.clone(),
+                });
+            }
+        }
+    }
+    out.sort_by_key(|b| b.from);
+    out
 }
 
 /// 刻度。
@@ -2397,10 +2526,53 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             _ => plan.push(seg(sn.at, end, sn.account.clone(), why, sn.est)),
         }
     }
+    let clock_now = body.clock_at(now);
     let mut rows: Vec<PlanRow> = sc
         .accounts
         .iter()
-        .map(|(f, _)| PlanRow {
+        .map(|(f, p)| PlanRow {
+            left: (p.contains_key(strategy::form::LINE) && f.kind == Kind::Sub).then(|| {
+                let w = crate::accounts::quota::plan::pinch(f);
+                let used = if w == "7d" { f.w7d.used } else { f.w5h.used };
+                (crate::accounts::quota::plan::line_now(p, w, clock_now) - used)
+                    .max(0.0)
+                    .round() as u32
+            }),
+            left_text: None,
+            slots: slot_bands(&body, p, from, until),
+            est: (f.id == current0)
+                .then_some(())
+                .and(sc.rate.filter(|r| *r > 0.0))
+                .and_then(|r| {
+                    let w = crate::accounts::quota::plan::pinch(f);
+                    let win = if w == "7d" { f.w7d } else { f.w5h };
+                    let line = crate::accounts::quota::plan::line_now(p, w, clock_now);
+                    (win.open && line > win.used).then_some(())?;
+                    let at = now + ((line - win.used) / r * 60.0).ceil() as u64;
+                    (at < until && win.resets.is_none_or(|t| at < t)).then(|| EstMark {
+                        at,
+                        at_text: text(at),
+                        w: w.to_string(),
+                    })
+                }),
+            far_resets: [("5h", f.w5h.resets), ("7d", f.w7d.resets)]
+                .iter()
+                .filter_map(|(w, t)| {
+                    let at = t.filter(|t| *t >= until)?;
+                    Some(FarReset {
+                        w: (*w).to_string(),
+                        at,
+                        at_text: text(at),
+                        text: copy_text(
+                            "beRotation.plan.farReset",
+                            &[
+                                ("w", &crate::accounts::quota::name_words::slot_text(w)),
+                                ("at", &text(at)),
+                            ],
+                        ),
+                    })
+                })
+                .collect(),
             account: f.id.clone(),
             bars: Vec::new(),
             resets: [("5h", f.w5h.resets), ("7d", f.w7d.resets)]
@@ -2416,6 +2588,11 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
                 .collect(),
         })
         .collect();
+    for r in &mut rows {
+        r.left_text = r
+            .left
+            .map(|n| copy_text("beRotation.plan.left", &[("n", &n.to_string())]));
+    }
     for (i, sn) in snaps.iter().enumerate() {
         let end = snaps.get(i + 1).map_or(until, |n| n.at);
         for r in &mut rows {
