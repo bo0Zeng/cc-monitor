@@ -3,6 +3,60 @@
 //! Windows 那一臂走 `OpenProcess` 一族 · ToolHelp；Linux 那一臂读 `/proc/<pid>/stat`；别处答「读不到」（`None` / `false`）。
 //! 拿这几个事实去判「绑定还作不作数 / 这条登记该不该撤」的规则在 `bind.rs`。
 
+/// 那个进程的权限是不是在本进程之上（Windows：提权的终端，本进程没提权）：本进程打不开它的令牌（非提权进程打不开提权进程的，
+/// 这本身就说明了）⇒ 是；打得开 ⇒ 它提权、本进程没提权才算。进程打不开 / 别处 ⇒ 否。
+#[cfg(windows)]
+pub fn above_us(pid: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Threading::{
+        GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    /// 一个进程的令牌说它提权了没有；令牌打不开 ⇒ `None`。
+    fn elevated(process: HANDLE) -> Option<bool> {
+        use windows::Win32::Security::{
+            GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+        };
+        let mut token = HANDLE::default();
+        // SAFETY：只读令牌信息；句柄用完即关。
+        unsafe {
+            OpenProcessToken(process, TOKEN_QUERY, &mut token).ok()?;
+            let mut e = TOKEN_ELEVATION::default();
+            let mut len = 0u32;
+            let ok = GetTokenInformation(
+                token,
+                TokenElevation,
+                Some(&mut e as *mut _ as *mut core::ffi::c_void),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut len,
+            )
+            .is_ok();
+            let _ = CloseHandle(token);
+            ok.then_some(e.TokenIsElevated != 0)
+        }
+    }
+    if pid == 0 {
+        return false;
+    }
+    // SAFETY：只开一个查询句柄，用完即关。
+    let theirs = unsafe {
+        let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return false;
+        };
+        let e = elevated(h);
+        let _ = CloseHandle(h);
+        e
+    };
+    match theirs {
+        None => true,
+        Some(t) => t && !elevated(unsafe { GetCurrentProcess() }).unwrap_or(false),
+    }
+}
+
+#[cfg(not(windows))]
+pub fn above_us(_pid: u32) -> bool {
+    false
+}
+
 /// 指定 pid 的 `GetProcessTimes` 起始 FILETIME。读不到 ⇒ `None`。
 #[cfg(windows)]
 pub fn creation_filetime(pid: u32) -> Option<super::filetime::FileTime> {

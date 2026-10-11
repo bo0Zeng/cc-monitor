@@ -296,6 +296,35 @@ pub fn bring_to_front(hwnd: isize) -> bool {
     }
 }
 
+/// 拉前之后此刻的前台窗口：已经是 `hwnd` 就立刻回；不是就隔 20 ms 再读，最多 100 ms（换前台在系统那边是排队做的）。读不到 ⇒ `None`。
+#[cfg(windows)]
+pub fn foreground_settled(hwnd: isize) -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let mut now = None;
+    for i in 0..6 {
+        if i > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        // SAFETY：只读当前前台窗口句柄。
+        now = Some(unsafe { GetForegroundWindow() }.0).filter(|&h| h != 0);
+        if now == Some(hwnd) {
+            break;
+        }
+    }
+    now
+}
+
+/// X11：窗口管理器此刻的活动窗口（`_NET_ACTIVE_WINDOW`；拉前那一下已经等过它答应）。
+#[cfg(target_os = "linux")]
+pub fn foreground_settled(_hwnd: isize) -> Option<isize> {
+    super::ewmh::active_window().map(|w| w as isize)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+pub fn foreground_settled(_hwnd: isize) -> Option<isize> {
+    None
+}
+
 /// X11：请窗口管理器切过去（`_NET_ACTIVE_WINDOW`），等它最多 600 ms 答应（同握手那条的重试长度）。
 #[cfg(target_os = "linux")]
 pub fn bring_to_front(hwnd: isize) -> bool {
