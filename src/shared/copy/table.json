@@ -20338,6 +20338,126 @@
       "zh": "{human} · {bytes} 字节",
       "args": ["human", "bytes"]
     },
+    "rsFilewinPicture.read.grew": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "图片读取中超过 {limit} · 不显示",
+      "args": ["limit"]
+    },
+    "rsFilewinPicture.decode.undecodable": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "图片无法解码",
+      "args": []
+    },
+    "rsFilewinPicture.decode.tooManyPixels": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "像素过多 · 无法解码",
+      "args": []
+    },
+    "rsFilewinImgview.label.view": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查看",
+      "args": []
+    },
+    "rsFilewinImgview.head.fit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "适应窗口",
+      "args": []
+    },
+    "rsFilewinImgview.head.full": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "原尺寸",
+      "args": []
+    },
+    "rsFilewinImgview.head.zoomIn": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "放大",
+      "args": []
+    },
+    "rsFilewinImgview.head.zoomOut": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "缩小",
+      "args": []
+    },
+    "rsFilewinImgview.head.prev": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "上一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.next": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "下一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.first": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "已是第一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.last": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "已是最后一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.count": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{i} / {n}",
+      "args": ["i", "n"]
+    },
+    "rsFilewinImgview.head.percent": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{p}%",
+      "args": ["p"]
+    },
+    "rsFilewinImgview.status.meta": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} × {h} · {size} · {time}",
+      "args": ["w", "h", "size", "time"]
+    },
+    "rsFilewinImgview.status.metaNoTime": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} × {h} · {size}",
+      "args": ["w", "h", "size"]
+    },
+    "rsFilewinImgview.status.shrunk": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "原图 {w} × {h} · 按 {dw} × {dh} 显示",
+      "args": ["w", "h", "dw", "dh"]
+    },
+    "rsFilewinImgview.state.reading": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "读取中 · {name} · {got} / {total}",
+      "args": ["name", "got", "total"]
+    },
+    "rsFilewinImgview.state.tooBig": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} {size} · 超过查看上限 {limit} · 可下载到本机再打开",
+      "args": ["name", "size", "limit"]
+    },
+    "rsFilewinImgview.state.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} · {why}",
+      "args": ["name", "why"]
+    },
     "rsFilewinPreview.decide.imageKind": {
       "kind": "body",
       "role": "说明",
@@ -20347,7 +20467,7 @@
     "rsFilewinPreview.decide.imageTooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 图片预览上限 {limit}",
+      "zh": "{name} {size} · 超过图片预览上限 {limit} · 不预览 · 可下载到本机再打开",
       "args": ["name", "size", "limit"]
     },
     "rsFilewinPreview.decide.binaryKind": {
@@ -20361,18 +20481,6 @@
       "role": "片段",
       "zh": "{w} × {h}",
       "args": ["w", "h"]
-    },
-    "rsFilewinPreview.image.grew": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "图片读取中超过 {limit} · 不预览",
-      "args": ["limit"]
-    },
-    "rsFilewinPreview.image.undecodable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "图片无法解码",
-      "args": []
     },
     "rsFilewinProps.box.title": {
       "kind": "title",

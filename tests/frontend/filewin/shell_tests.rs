@@ -2985,8 +2985,8 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
     let file = dir.join("filewin-view.json");
     let mut ws =
         crate::workspace::Workspace::new(remote_window_with_rows("/l", vec![file_row("a")]));
-    ws.zoom = crate::workspace::Zoom::open(Some(file.clone()));
-    assert_eq!(ws.zoom.factor(), 1.0, "没记过却不是 100%");
+    ws.memo = crate::workspace::ViewMemo::open(Some(file.clone()));
+    assert_eq!(ws.memo.zoom(), 1.0, "没记过却不是 100%");
     let ctx = egui::Context::default();
     let mut t = 0.0;
     // 按一下，再跑一帧（egui 的缩放在下一帧开头才生效）。
@@ -3021,10 +3021,68 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
     let z = press(&mut ws, egui::Event::Zoom(1.5));
     assert!((z - 1.5).abs() < 1e-4, "Ctrl + 滚轮没缩放：{z}");
     assert_eq!(
-        crate::workspace::Zoom::open(Some(file.clone())).factor(),
+        crate::workspace::ViewMemo::open(Some(file.clone())).zoom(),
         1.5,
         "重开之后不是上次的缩放"
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 🔴 **预览开关记住上次的**（稿「看一份文件」那一行）：没记过 ⇒ 关着；Alt+P 开了 ⇒ 记进视图文件，
+/// 重开窗（照那份文件摆）预览开着；再关、再重开 ⇒ 关着。缩放与它同住一份文件，改一样不冲掉另一样。
+#[test]
+fn the_preview_switch_survives_a_reopen_and_keeps_the_zoom() {
+    let dir = std::env::temp_dir().join(format!("ccm-filewin-pvmemo-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("filewin-view.json");
+    let reopen = || {
+        let mut ws =
+            crate::workspace::Workspace::new(remote_window_with_rows("/l", vec![file_row("a")]));
+        ws.restore_view(crate::workspace::ViewMemo::open(Some(file.clone())));
+        ws
+    };
+    let ctx = egui::Context::default();
+    let mut t = 0.0;
+    let mut press = |ws: &mut crate::workspace::Workspace, key: egui::Key, modifiers| {
+        for events in [
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }],
+            Vec::new(),
+        ] {
+            t += 1.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                time: Some(t),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| ws.frame(ui))
+                .drop_without_applying_deltas();
+        }
+    };
+    let mut ws = reopen();
+    assert!(ws.preview.is_none(), "没记过却开着预览");
+    press(&mut ws, egui::Key::Equals, egui::Modifiers::COMMAND);
+    press(&mut ws, egui::Key::P, egui::Modifiers::ALT);
+    assert!(ws.preview.is_some(), "Alt+P 没开预览");
+    let ws = reopen();
+    assert!(ws.preview.is_some(), "重开之后预览没照上次开着");
+    assert_eq!(ws.memo.zoom(), 1.1, "记预览把缩放冲掉了");
+    let mut ws = reopen();
+    press(&mut ws, egui::Key::P, egui::Modifiers::ALT);
+    assert!(ws.preview.is_none(), "Alt+P 没关预览");
+    let ws = reopen();
+    assert!(ws.preview.is_none(), "关了再重开预览却开着");
+    assert_eq!(ws.memo.zoom(), 1.1, "记预览把缩放冲掉了");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
