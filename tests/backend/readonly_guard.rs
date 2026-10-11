@@ -321,6 +321,10 @@ mod tests {
             "cc_bus_boundary_guard",
             "守卫：backend 不许碰 cc-bus 的数据布局",
         ),
+        (
+            "flow_scripts_guard",
+            "守卫：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录",
+        ),
         ("layering_guard", "守卫：observe↔control 的方向与条数"),
         ("no_timer_guard", "守卫：零定时器护栏"),
         ("plugin_walk_fixture", "守卫 ＋ 夹具：最小假插件走通全流程"),
