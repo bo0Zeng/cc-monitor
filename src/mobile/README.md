@@ -4,7 +4,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 
 它是 cc-monitor 的一个**输出适配层**（出口）：判定与写字都在后端核心，手机端只挑格、排版、装运（见 [`../doc/ARCHITECTURE.md`](../doc/ARCHITECTURE.md)「核心与适配层」一节）。它经 SSH 连服务器上那份常驻后端（`~/.cc-monitor/bin/ccm`）：先 `--backend-probe` 核同一个 `BUILD_ID`、`--resident-ensure` 起常驻，再开一条长连接 `--resident-attach`（双向帧协议，和桌面连远端同一条路），一问一答与会话帧都走它；与桌面端共用同一份后端，一台服务器装一次。
 
-当前版本 0.6.1（versionCode 11）。包名与 `applicationId` 是 `com.ccmonitor.mobile`（与桌面端的 `com.ccmonitor.app` 同一个根）。
+版本号跟仓里的走：`versionName` 就是仓根 `package.json` 的 `version`，`versionCode` 由它算（主 × 1_000_000 ＋ 次 × 1_000 ＋ 修订），都在 `app/build.gradle.kts` 里构建时现读，手机这边不另写一份。包名与 `applicationId` 是 `com.ccmonitor.mobile`（与桌面端的 `com.ccmonitor.app` 同一个根）。
 
 ## 模块
 
