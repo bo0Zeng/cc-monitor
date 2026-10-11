@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 const REGISTERED: &[(&str, &str, &str)] = &[
     // 🔴 **这里原来的第一条出去了**：`src/frontend/ui/session-accounts-poll.ts` 那个
     //    10s `refreshSessionAccounts`（data-poll）。它自己的说法栏写着退役条件 ——「先有一种账号事件
-    //    （新帧或文件事件）」—— 这一拍兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
+    //    （新帧或文件事件）」—— 兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
     //    `accounts-list`，不再每拍握一次手），而「会话 ↔ 账号」只在会话起停时变、**起停本来就有帧**
     //    （`session_added` / `session_removed` ⇒ 远端 `live` 格 / `ended` 格），
     //    再加一个握手完成事件 `remote-backend-ready`（后来改经通道订 `accounts-changed`，那一格 `seen`）。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），

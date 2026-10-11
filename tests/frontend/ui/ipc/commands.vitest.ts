@@ -966,7 +966,7 @@ describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", { time
 //
 // 基线 `d7fcd6d8` 现打：`commands.ts` 之外还有 **16 处**裸 `invoke`（`tab-session-actions.ts` 11 ·
 // `accounts.ts` 5），它们调的命令里有 10 条根本不在包装层 ⇒ 名字 / 实参形状 / 返回类型三样都没人钉。
-// 这一拍把它们收进来，本节钉住「不许再长出来」。与 `generated-boundary-guard.vitest.ts` 那条
+// 已把它们收进来，本节钉住「不许再长出来」。与 `generated-boundary-guard.vitest.ts` 那条
 // 「直接 import invoke 的生产文件恰好 1 个」**异源**：那条量 `import` 语句，本条量**调用点**
 // （命名空间导入 `import * as core` 之后 `core.invoke(` 那一形 import 那条看不见，本条的第三格补上）。
 // ══════════════════════════════════════════════════════════════════════════

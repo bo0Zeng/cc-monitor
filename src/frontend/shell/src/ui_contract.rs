@@ -153,7 +153,7 @@ pub enum SessionStreamFrame {
     /// 一个会话的主线外清单（那台后端给，原样转）：清单里的那几条卡折成一段（ESC 回退掉的）。
     Branch(SessionBranchPayload),
     /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格，壳原样转）：它的这份记录从第 `seq` 行起上流，
-    /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一拍按它修成「连着的」（见 `event_replay::on_watch_from`）。
+    /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一刻按它修成「连着的」（见 `event_replay::on_watch_from`）。
     Watch(SessionWatchPayload),
     /// 一轮结束（那台后端 `turn_end`，在不在看都发）：系统通知认它，不认行（没在看的会话行不上流）。
     TurnEnd(SessionTurnEndPayload),

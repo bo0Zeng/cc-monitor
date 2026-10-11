@@ -140,7 +140,7 @@ SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12)" \
 # claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰）。原来 monitor 拿缓存的最后一份 `tmux_sessions` 快照自己裁
 # （E67③ 那段：kill 之后不会有新快照，只能读最近一帧）；裁决进了后端、快照帧删了 ⇒ 等成品帧 `session_state`（它随 session_removed 同拍发）。
 GRAY_ALIVE="$(tmux has-session -t "=$SESSION:" 2>/dev/null && echo 1 || echo 0)"
-SS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"session_state\".*$SID" 12 || true)"  # 从 kill 那一刻之后找（它就是这一拍的裁决）
+SS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"session_state\".*$SID" 12 || true)"  # 从 kill 那一刻之后找（它就是这一刻的裁决）
 if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SS_GRAY" | grep -q '"state":"reconnectable"'; then
   ok "claude 死后 tmux 会话仍在、后端裁可重连 ⇒ 灰(非已结束):$SS_GRAY"
 else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$SS_GRAY"; fi

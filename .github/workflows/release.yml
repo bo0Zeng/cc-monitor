@@ -17,7 +17,7 @@ name: Release
 #     🔴 〔步 `19c` 订正 09-19〕**这一句在步 8（全仓改名 `daemon`→`backend`）到今天之间是假的**：
 #     `src/frontend/shell/.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/`，
 #     现打 `git check-ignore` **两条都不命中** ⇒ 三个落点里有两个从改名那天起就没被挡住。
-#     本拍把那两行改对，并给它们加了机检锚（`K-R124-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
+#     那两行已改对，并给它们加了机检锚（`K-R124-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
 #     —— 这句「硬事实」从此有人每趟核它。
 #  ② 三条产线**只由本文件驱动**，而本文件只在推 `v*` tag / 手工触发时跑
 #     ⇒ 平常的 `cargo build` 一格字节都没有 ⇒ **这张表的门禁只能建在本文件上，不能建在 `cargo` 上**。

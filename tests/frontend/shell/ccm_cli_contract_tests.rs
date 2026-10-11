@@ -39,7 +39,7 @@ fn cc_spawn_creates_it_never_reuses_a_live_session() {
     }
     // ⚠ 下面两条都判**剥掉 `#` 注释之后**的正文。首版没剥，当场被自己写的那句
     //   「原来这里是 `while tmux has-session …`」（记录搬走了什么的**诚实注释**）判红。
-    //   ★ 这是本拍第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，
+    //   ★ 这是第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，
     //   而 `contains` 判的是「文件里有没有」。散文里提一句被删掉的东西是**好事**，不该被拦。
     let prod_spawn = shell_production(&src);
     guard_core::find_pinned(&prod_spawn, "--tmux-base=\"$base\"").unwrap_or_else(|e| {
@@ -48,7 +48,7 @@ fn cc_spawn_creates_it_never_reuses_a_live_session() {
         )
     });
     // ⚠ 用 `contains_word` 而不是裸 `contains`：`needle_anchor_registry` 是**递减棘轮**，
-    //   本拍新加的两处裸 `contains` 当场把它从 33 顶到 35（「不许把上限调上去让今天好过」）。
+    //   新加的两处裸 `contains` 当场把它从 33 顶到 35（「不许把上限调上去让今天好过」）。
     assert!(
         !guard_core::contains_word(&prod_spawn, "while tmux has-session"),
         "`cc-spawn` 里又长出了自己的命名避让 —— `C15`〔用@08-13「cc-bus收进ccm」〕之后\n                          那件事归 `ccm`（`--tmux-base`）。留两份 = 改一处漏一处。"

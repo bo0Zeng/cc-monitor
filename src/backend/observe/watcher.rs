@@ -273,7 +273,7 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
 ///
 /// **删 ticker 时差点顺手删掉的东西**：它除了打节拍，还承担「**首轮立即发一拍**」——
 /// monitor 一连上就该拿到 tmux 状态。全删的话，backend 要等到第一个 hook 触发才会探，
-/// 空闲机器上可能是**永远**。所以节拍没了，但这一拍要留下。
+/// 空闲机器上可能是**永远**。所以节拍没了，但这一下要留下。
 ///
 /// 之后的每一拍都由事件驱动：tmux hook → `--tmux-notify` → SIGUSR1 → `WatchEvent::Poke`
 /// （P4），server 生死由 pidfd / socket inotify 管（P3）。**零定时器。**

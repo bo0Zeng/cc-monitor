@@ -22,7 +22,7 @@
 // 🔴 模块声明、`PROTO_VERSION`、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
 //    都搬进了 `lib.rs`，理由逐字写在那份文件的头注里（一句话：**in-process 那条路没有
 //    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
-// ⚠ 用 glob 而不是逐项列 —— 本拍是**纯机械搬家**，逐项列会让 diff 里混进
+// ⚠ 用 glob 而不是逐项列 —— 这一段是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
 use cc_monitor_backend::control::cli_control;
 use cc_monitor_backend::faces::read_face;

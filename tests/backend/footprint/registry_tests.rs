@@ -543,7 +543,7 @@ fn declarations_match_reality_not_intent() {
     //      `true`，它会拦一次，而那时它拦的是一句真话。
     // ⇒ 本条今天只剩下**不属于那条性质**的那一格：`settings.json` 的 effect。
     // ⚠ 如实登记：本条的**名字**因此比它现在做的事宽了一格（改名要连带跑生成命令，
-    //   PM 的窗口开着时不许跑）⇒ 改名的事走上报口交回 PM，不在这一拍自批。
+    //   PM 的窗口开着时不许跑）⇒ 改名的事另走一次，不在这里自批。
     // settings.json 只生成待贴文本，绝不写
     let hooks = ccbus
         .touches()
@@ -1042,7 +1042,7 @@ const SITES: &[(&str, Why, usize)] = &[
 /// 会把量具自己算进被测量。
 ///
 /// **顺序即口径**：先把「crate 目录 / 包名的那个拼写」整个剥掉再数 ——
-/// 那是**住址**，不是名字（本拍刻意不碰，理由在下面那条判据的头注里）。
+/// 那是**住址**，不是名字（这里刻意不碰，理由在下面那条判据的头注里）。
 fn old_name_counts(text: &str) -> [usize; 3] {
     let d = "-";
     let u = "_";
@@ -1186,7 +1186,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # 🔴 射程与**刻意不管**的两样，写死在这里
 ///
-/// - **crate 目录（`…-proto`）与包名（`cc-monitor-backend`）本拍不碰**，
+/// - **crate 目录（`…-proto`）与包名（`cc-monitor-backend`）这里不碰**，
 ///   而且它们**根本不进这把尺子**（`old_name_counts` 第一步就把那个拼写剥掉了）。
 ///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-backends/`
 ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单
@@ -1313,7 +1313,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         unregistered.is_empty(),
         "\n这几处带着后端的**旧名字**而 `SITES` 里没有登记：\n  {}\n\n\
              ⇒ 两条出路：**把名字改对**（它是「后端」，在两台机器上各跑一份），\n\
-             或者往 `SITES` 里加一行、并在 `Why` 那个闭集里说清**为什么这一拍改不动**。\n\
+             或者往 `SITES` 里加一行、并在 `Why` 那个闭集里说清**为什么现在改不动**。\n\
              ⚠ 不许为了变绿就往表里塞一行了事 —— 那正是这条账要防的。",
         unregistered.join("\n  ")
     );

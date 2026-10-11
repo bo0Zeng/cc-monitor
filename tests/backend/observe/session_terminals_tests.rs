@@ -28,7 +28,7 @@ fn wait_until(secs: u64, mut f: impl FnMut() -> bool) -> bool {
 
 /// `pid` 已经 exec 成 `comm` 并且新映像的环境装好了。只看 `comm` 不够：exec 时内核先换进程名、后记下新映像的
 /// 环境区 —— 中间那一刻读 `/proc/<pid>/environ` 回 0 字节（`proc_env_var` 照实答「这一刻读不到」）。
-/// 机器忙时判据正好落进这一拍 ⇒ 间歇红（紧跟着 `comm` 变了就读，本机 3000 趟里 2985 趟读到 0 字节）。
+/// 机器忙时判据正好落进这一刻 ⇒ 间歇红（紧跟着 `comm` 变了就读，本机 3000 趟里 2985 趟读到 0 字节）。
 fn exec_settled(pid: u32, comm: &str) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == comm)
         && std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|e| !e.is_empty())

@@ -301,7 +301,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
 /// # 为什么每个挂点都要这一套
 ///
 /// inotify 的 watch 绑在 **inode** 上。本仓 08-13 一天之内在**三处**踩到同一个形状：
-/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（本拍）——
+/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（最后一拍）——
 /// 症状都是「目录被删掉再重建之后，那一路的帧永远不来，而且没有任何错误」。
 /// ⇒ 与其每处各写一遍，不如**只有一份**：改一处漏两处正是本仓一路在收的那族。
 ///

@@ -118,7 +118,7 @@ fn the_scan_actually_reads_both_crates() {
 /// ★ 反向锚点：**真机制必须还写在某处** —— 否则本条退化成「谁都没提过 8s」的空守卫。
 ///
 /// 锚点选 `initial_tmux_probe` 的头注：它是 P5 留下的那一下，
-/// 头注里逐字解释了「节拍没了，但首轮这一拍要留」。那段没了 = 源头没了。
+/// 头注里逐字解释了「节拍没了，但首轮这一下要留」。那段没了 = 源头没了。
 #[test]
 fn the_real_cadence_is_still_documented_somewhere() {
     let w = fs::read_to_string(repo_root().join("src/backend/observe/watcher.rs"))

@@ -492,7 +492,7 @@ describe("C01 边界生成物", () => {
     // ★★**3 → 1**：`tab-session-actions.ts`（11 处）与 `accounts.ts`（5 处）
     //   那 16 处裸 `invoke` 收进包装层（缺的十条命令补进 `commands.ts`，包装层 132 → 142 == Rust 命令数）。
     //   `accounts.ts` 那条「跨工作区冲突协议」早已不在；`tabs.ts` 那条红线由 U2 拆分换成了 `tab-session-actions.ts`，
-    //   这一拍一起清掉。**名单逐字相等**（不是只问「包装层在不在」）：多出任何一个都是第二条路。
+    //   已一起清掉。**名单逐字相等**（不是只问「包装层在不在」）：多出任何一个都是第二条路。
     //   29 → … → 3 → **1**。
     expect(hits.length, `期望恰好 1 个，实得 ${hits.length}`).toBe(1);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "名单只许是包装层自己").toEqual([

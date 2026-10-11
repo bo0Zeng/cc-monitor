@@ -1674,7 +1674,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
 fn line_number_addresses_stay_in_range_and_never_grow() {
     /// **存量登记**：`(引用方文件基名, 被引路径原样, 被引行号)`。
     ///
-    /// 这一张表就是「这一拍之后还剩什么没牙」的**逐条点名**：
+    /// 这一张表就是「改完之后还剩什么没牙」的**逐条点名**：
     /// 表里每一行都是一处**判不了真伪**的地址。想少一行的唯一办法是把它改成符号地址。
     ///
     /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
@@ -2286,7 +2286,7 @@ fn dead_names_on_disk(
 fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// **存量登记**：`(仓根相对路径, 名字, 未声明的处数)`。
     ///
-    /// 这张表就是「这一拍之后还剩什么没牙」的**逐条点名**：每一行都是一处
+    /// 这张表就是「改完之后还剩什么没牙」的**逐条点名**：每一行都是一处
     /// **判不了真伪**的名字。想少一行的唯一办法是**把那句话改对**。
     ///
     /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
@@ -2379,7 +2379,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 🔴 原来这里登记着 `polling_registry.rs` 里那句提到
         //    `every_comment_stripping_transformer_is_registered` 的散文。那句话住在
-        //    `the_identity_poller_is_gone_for_good` 的注释里，而本拍把那条判据的语料
+        //    `the_identity_poller_is_gone_for_good` 的注释里，而后来把那条判据的语料
         //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
         //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
         (

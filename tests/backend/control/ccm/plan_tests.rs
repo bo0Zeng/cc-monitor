@@ -613,7 +613,7 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     assert!(!is_exec(std::path::Path::new(&d)), "目录被判成可执行文件");
     let _ = std::fs::remove_dir_all(&d);
 
-    // ② 查找次序**三档都在**：`PATH` 那一档是本拍补回来的，别再删。
+    // ② 查找次序**三档都在**：`PATH` 那一档是补回来的，别再删。
     let me = crate::guard_support::production_code(include_str!(
         "../../../../src/backend/control/ccm/plan.rs"
     ));

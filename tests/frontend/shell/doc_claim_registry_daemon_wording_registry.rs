@@ -28,10 +28,10 @@ const SITES: &[&str] = &[
 /// 每条片段必须在那份文件里**恰好命中一次** —— 命中 0 次 = 那句话被改过了、这条例外
 /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
 const EXEMPT: &[(&str, &str, &str)] = &[
-    // 🔴 **六条例外在这一拍删掉了 —— 那是例外真的没有了，不是放宽。**
+    // 🔴 **六条例外已删掉 —— 那是例外真的没有了，不是放宽。**
     //    它们当年的理由全都是「那一处在本轮写区之外 ⇒ 改不动」，而**步 8 是全仓冻结窗口**：
     //    写区就是全仓，那个前提当场消失。逐条：
-    //      · `CONTRIBUTING.md` 的 markdown 锚点 —— 目标标题（`REMOTE-PHASE0-DEPLOY.md`）这一拍跟着改了，锚点同步改，链接没断；
+    //      · `CONTRIBUTING.md` 的 markdown 锚点 —— 目标标题（`REMOTE-PHASE0-DEPLOY.md`）同时跟着改了，锚点同步改，链接没断；
     //      · `README.md` 里那串 CI job 名 —— `.github/workflows/ci.yml` 的 job 同拍改名；
     //      · `tests/e2e/README.md` 与 `src/frontend/shell/README.md` 的两处占位符 `<daemon>` —— 换成 `<backend>`；
     //      · `src/frontend/shell/README.md` 里「安装 / 卸载 daemon」两句 —— 界面按钮文案住 `src/frontend/ui/settings/machine-card.ts`，同拍改成「安装 / 卸载后端」。

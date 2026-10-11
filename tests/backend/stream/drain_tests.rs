@@ -16,7 +16,7 @@ use super::*;
 
 // ── D1 ────────────────────────────────────────────────────────────────────
 
-/// 不靠睡地 poll 一次：返回「这一拍完成没有」。
+/// 不靠睡地 poll 一次：返回「这一次完成没有」。
 fn polled_ready<F: std::future::Future>(f: std::pin::Pin<&mut F>) -> bool {
     let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
     f.poll(&mut cx).is_ready()

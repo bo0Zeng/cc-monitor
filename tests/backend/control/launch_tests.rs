@@ -153,7 +153,7 @@ fn the_create_only_fields_have_their_own_shapes() {
 /// （`inbound::structure_guards::launch_fields_match_its_parser_and_output`），
 /// 而那面镜子**只看解析器与输出构造器** —— 一个字段完全可以「解析出来、存进结构体、
 /// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、backend 照收、`@ccm_agent` 与尺寸静默消失**，
-/// 而两侧任何一条现有判据都不会红。**那正是本命令这一拍要防的那件事。**
+/// 而两侧任何一条现有判据都不会红。**那正是本命令要防的那件事。**
 ///
 /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
 #[test]
@@ -710,7 +710,7 @@ fn no_doc_claims_the_payload_really_landed() {
 /// 两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
 /// 守的要求：「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 从这一拍起由界面经通道直接说
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 由界面经通道直接说
 /// （`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
 ///
 /// 四格各自异源：`send-into` 的请求样例过**生产**解析器 [`parse_request`]、

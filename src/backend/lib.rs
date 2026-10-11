@@ -354,7 +354,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 按本谱系里 p1v-attachable 的先例（那次只加了一个 additive wire 字段就 bump 了），
 /// **该 bump**。
 ///
-/// **那为什么这一拍不 bump —— 三条，缺一条我就该顺手 bump 了**：
+/// **那为什么这一版不 bump —— 三条，缺一条我就该顺手 bump 了**：
 /// ① 🔴 **这一刀单独上线什么都不改变。** `§8.7` 明写「1 与 2 之间有顺序依赖
 ///    （没有 token 进环境，后端读不到）」：步 1（往启动命令里注这个变量）与
 ///    步 3（本地半认这个 marker）都还没做，monitor 侧也还不发那条 flag
@@ -372,10 +372,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ **同拍 re-embed**。**在那之前这条能力在已部署的远端上是休眠的 —— 这是刻意的。**
 ///
 /// ★★★ **p2o-files-write-and-rbind-token**（2026-09-24）：
-/// 上面那笔「欠着的 bump」**在这一拍还掉**，与 F1 写面六条命令合成一次 ——
+/// 上面那笔「欠着的 bump」**在这一版还掉**，与 F1 写面六条命令合成一次 ——
 /// 解锁条件逐条核过：步 1（`CCM_RBIND_TOKEN` 进环境）与步 3（铸币口 ＋ 本地半）已落，
 /// monitor 已在协商到 `rbind-token` 时发 `--with-rbind-token`。
-/// 线上面这一拍动了：① `files-create/-mkdir/-rename/-delete/-chmod/-write-text`
+/// 线上面这一版动了：① `files-create/-mkdir/-rename/-delete/-chmod/-write-text`
 /// 两个命令面各 ＋6（写面只从 `stream/inbound/` 那一扇门进，见 `files::module_boundary_guard`）；
 /// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
 /// ★ re-embed 在发版时做（同 p2d…p2n 的登记）；本机 `--native` 那份发版时重打。
@@ -2511,7 +2511,7 @@ fn tmux_found(
 /// # 三档，🔴 不许再合并
 ///
 /// ⚠ 拆开的是**平台**这一维，**不是**三态处置那条规则 —— 那条（「不知道」不许压成
-/// 「做不到」）在 [`unavailable_from`] 的头注里，本拍一个字没动，也不该动：
+/// 「做不到」）在 [`unavailable_from`] 的头注里，这里一个字没动，也不该动：
 /// 它论证过「不知道」压成「做不到」会让**能用的功能从界面上无声消失**。
 /// 上一拍的病不在那条规则，在**把 Windows 归进了「不知道」这一档**。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
