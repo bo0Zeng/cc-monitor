@@ -169,7 +169,7 @@ fn a_session_reported_by_a_new_process_is_seen_and_the_old_one_is_not() {
 }
 
 /// 起会话交第一句之前等的那一刻：这台 pidfile 说那条会话闲着（等着输入）⇒ 等到；还在启动 · 在干活（`busy`）⇒ 不算。
-/// 在阻塞线程上等那一形（`within_blocking`，不起 runtime）。
+/// 在阻塞线程上等那一形（`within_blocking`：期限是发起方的截止时刻，持着的那一头一直在）。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_session_is_ready_for_its_first_prompt_once_its_pidfile_says_idle() {
@@ -196,8 +196,15 @@ fn a_session_is_ready_for_its_first_prompt_once_its_pidfile_says_idle() {
         .build()
         .expect("起运行时");
     let wait = |armed: Armed, ms: u64| {
-        rt.block_on(rt.spawn_blocking(move || armed.within_blocking(ms)))
-            .unwrap()
+        let until =
+            crate::platform::child::Until::after(crate::platform::child::Deadline::millis(ms))
+                .unwrap();
+        let (stay, gone) = tokio::sync::oneshot::channel::<()>();
+        let got = rt
+            .block_on(rt.spawn_blocking(move || armed.within_blocking(until, gone)))
+            .unwrap();
+        drop(stay);
+        got
     };
     write("busy");
     let busy = wait(session_ready(&home, sid).expect("装"), 300);
@@ -209,4 +216,51 @@ fn a_session_is_ready_for_its_first_prompt_once_its_pidfile_says_idle() {
     let _ = std::fs::remove_dir_all(&home);
     assert!(!busy, "还在干活就算成就绪了");
     assert!(idle, "pidfile 说闲着了却没等到");
+}
+
+/// 一次性等待的期限只由发起方给：后端里每一处等（`.within(` · `.within_blocking(`）登记在这里，交的都是发起方那一格
+/// （换号重启：请求里的 `compact_within_ms` / `arrive_within_ms`；起会话交第一句：分派层由请求期限换来的截止时刻 `until`）。
+/// 多一处 · 交了别的（自定的常量）⇒ 红。
+#[test]
+fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
+    const WAITS: &[(&str, &str)] = &[
+        (
+            "control/session_restart.rs",
+            ".within(req.compact_within_ms)",
+        ),
+        (
+            "control/session_restart.rs",
+            ".within(req.arrive_within_ms)",
+        ),
+        ("faces/session_new_face.rs", ".within_blocking(until, gone)"),
+    ];
+    let root = crate::guard_support::src_root();
+    let mut seen = Vec::new();
+    for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel == "observe/one_wait.rs" {
+            continue;
+        }
+        let prod = crate::guard_support::production_code(&src);
+        for pat in [".within(", ".within_blocking("] {
+            for (at, _) in prod.match_indices(pat) {
+                let end = prod[at..].find(')').map_or(prod.len(), |e| at + e + 1);
+                seen.push((rel.clone(), prod[at..end].to_string()));
+            }
+        }
+    }
+    seen.sort();
+    let mut want: Vec<(String, String)> = WAITS
+        .iter()
+        .map(|(f, s)| (f.to_string(), s.to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        seen, want,
+        "一次性等待的期限不是发起方给的那一格（或多了一处没登记的等）"
+    );
 }

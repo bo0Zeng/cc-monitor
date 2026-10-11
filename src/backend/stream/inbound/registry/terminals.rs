@@ -249,6 +249,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
     //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
+//   可撤档：起那一段在阻塞线程上跑、开跑之后撤也起完（票跟着它落）；带第一句时等会话就绪那一下听撤单、等到发起方的截止时刻为止，撤了 · 到了都不送字。
     CommandSpec {
         name: "session-new",
         summary: "起一个新会话（全产品一个框、一个请求）",
@@ -269,12 +270,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "launch_pending",
             "no_such_rule",
         ],
-        fields: &[arg("rotation", "可缺：轮换来源。缺 / `\"follow\"` ＝ 跟随默认（不写）· `{rule: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它把来源写成那条规则，回包 `sid` 就是它；规则不在 ⇒ `no_such_rule`；那一家不认先定 sid ⇒ `bad_args`"), both("account", "可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:\"base\"}` · `{kind:\"named\", name}`；应答里是实际用的号（账号 0 / 不指定 ⇒ `null`）"), both("agent", "哪一家（线上的 kind）；应答里是起的那一家"), both("cmd", "`open` 时界面要在终端里跑的那一行"), arg("command", "启动命令；空 / 缺 ⇒ 那一家的默认启动器"), out("configDir", "应答 `account` 里：那个号的配置目录"), both("cwd", "工作目录（开头的 `~` 按这台的家目录读）；应答里是展开之后的（认报到的会话按它）"), out("field", "失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`）"), arg("forkFrom", "可缺"), arg("kind", "`account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类）"), arg("local", "发请求的界面就在这台上（开窗那一形本机与远端渲法不同）"), out("model", "应答 `account` 里：用的模型"), arg("model", "可缺：这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随"), arg("models", "可缺"), both("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), out("outcome", "`started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`）"), arg("permissionMode", "可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args`"), arg("place", "`tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）"), both("prompt", "入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 起好之后这台等会话就绪（pidfile 说闲着 ⇒ 启动 · 信任框都过了）再送字 ＋ 回车；应答：交的结局 `{result, why, said}`（同 `terminal-input`，`why` 另有 `not_ready`：30 秒内没等到就绪、没送），没给第一句 ⇒ `null`"), out("session", "`started` 时的 tmux 会话名"), out("sid", "分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出）"), arg("ticket", "可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界）"), arg("tmuxName", "可缺 ⇒ 这台铸"), out("unavailable", "`account_unavailable` 时那一形，带替代号"), arg("uuid", "`forkFrom` 里：从哪条消息处分叉")],
+        fields: &[arg("rotation", "可缺：轮换来源。缺 / `\"follow\"` ＝ 跟随默认（不写）· `{rule: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它把来源写成那条规则，回包 `sid` 就是它；规则不在 ⇒ `no_such_rule`；那一家不认先定 sid ⇒ `bad_args`"), both("account", "可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:\"base\"}` · `{kind:\"named\", name}`；应答里是实际用的号（账号 0 / 不指定 ⇒ `null`）"), both("agent", "哪一家（线上的 kind）；应答里是起的那一家"), both("cmd", "`open` 时界面要在终端里跑的那一行"), arg("command", "启动命令；空 / 缺 ⇒ 那一家的默认启动器"), out("configDir", "应答 `account` 里：那个号的配置目录"), both("cwd", "工作目录（开头的 `~` 按这台的家目录读）；应答里是展开之后的（认报到的会话按它）"), out("field", "失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`）"), arg("forkFrom", "可缺"), arg("kind", "`account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类）"), arg("local", "发请求的界面就在这台上（开窗那一形本机与远端渲法不同）"), out("model", "应答 `account` 里：用的模型"), arg("model", "可缺：这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随"), arg("models", "可缺"), both("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), out("outcome", "`started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`）"), arg("permissionMode", "可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args`"), arg("place", "`tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）"), both("prompt", "入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 起好之后这台等会话就绪（pidfile 说闲着 ⇒ 启动 · 信任框都过了）再送字 ＋ 回车；应答：交的结局 `{result, why, said}`（同 `terminal-input`，`why` 另有 `not_ready`：到请求期限 `within_ms` 没等到就绪 · 撤了单，没送），没给第一句 ⇒ `null`。带第一句必带请求期限（没带 ⇒ `bad_args`）；等多久全由它定，起会话 ＋ 等就绪一般要几十秒，手机侧建议 ≥ 40 秒"), out("session", "`started` 时的 tmux 会话名"), out("sid", "分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出）"), arg("ticket", "可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界）"), arg("tmuxName", "可缺 ⇒ 这台铸"), out("unavailable", "`account_unavailable` 时那一形，带替代号"), arg("uuid", "`forkFrom` 里：从哪条消息处分叉")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::faces::session_new_face::answer(&r.args, &LocalFiles)
-                .map(Some)
-                .map_err(failed_with_raw)
+        run: Run::AsyncData(|r| {
+            Box::pin(async move {
+                crate::faces::session_new_face::answer(r.args, r.until, &LocalFiles)
+                    .await
+                    .map(Some)
+                    .map_err(failed_with_raw)
+            })
         }),
     },
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
