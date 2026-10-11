@@ -74,9 +74,6 @@ data class CatalogSession(
 data class LiveSessionScan(
     val refs: List<SessionRef>,
     val probeOk: Boolean,
-    // 判活是否权威。Claude 是（pidfile + /proc 身份）；Codex 不是（只有 mtime，分不出活死），
-    // 这时调用方不能把「全不活」当可信的零活会话来收敛，应 tail 最近的前 N 条。
-    val authoritativeLiveness: Boolean = true,
 )
 
 /** 标题素材（每个 jsonl）：最后一条 custom-title、最后一条 ai-title、首条真实用户消息摘要、项目 cwd。 */
@@ -127,7 +124,7 @@ data class ProjectHistory(
 class ClaudeSessionCatalog(
     private val channel: RemoteCommandChannel,
     private val claudeDir: String,
-) : SessionCatalog {
+) {
     /** 当前项目（[cwd]，null=全项目）的活动会话，含标题。一次取全，给测试和一次性场景用。 */
     suspend fun liveSessions(cwd: String?): List<CatalogSession> = labeledSessions(liveSessionRefs(cwd))
 
@@ -135,7 +132,7 @@ class ClaudeSessionCatalog(
      * 快路径：只算列哪些会话、谁活动，不取标题。活动会话（pidfile 判活 + cwd 匹配）优先；
      * 无活会话时兜底最近 mtime 的前 [FALLBACK_MAX_SESSIONS] 条。
      */
-    override suspend fun liveSessionRefs(cwd: String?): List<SessionRef> = scanLiveSessions(cwd).refs
+    suspend fun liveSessionRefs(cwd: String?): List<SessionRef> = scanLiveSessions(cwd).refs
 
     /**
      * [liveSessionRefs] 的带探测可信度版本：探测失败显式暴露为 [LiveSessionScan.probeOk]=false，
@@ -143,7 +140,7 @@ class ClaudeSessionCatalog(
      * jsonl 列表命令失败照常抛，连接不可用也算（无连接时 exec 流抛 IOException）；
      * 不能折叠成可信空集，否则调用方会撤光活 tail、阅读面误报「未找到 Claude 会话」。
      */
-    override suspend fun scanLiveSessions(cwd: String?): LiveSessionScan {
+    suspend fun scanLiveSessions(cwd: String?): LiveSessionScan {
         val jsonls = listJsonl(cwd)
         if (jsonls.isEmpty()) return LiveSessionScan(emptyList(), probeOk = true) // ls 成功、无 jsonl
         var probeOk = true
@@ -177,7 +174,7 @@ class ClaudeSessionCatalog(
      * 慢路径：给一组 [refs] 取标题探针、套回退链。探针按 [HISTORY_TITLE_CHUNK] 分片跑，免得命令行过长；
      * 单片失败只让这片降级。
      */
-    override suspend fun labeledSessions(refs: List<SessionRef>): List<CatalogSession> {
+    suspend fun labeledSessions(refs: List<SessionRef>): List<CatalogSession> {
         val parts = LinkedHashMap<String, TitleParts>()
         refs.map { it.path }.chunked(HISTORY_TITLE_CHUNK).forEach { chunk ->
             parts.putAll(degradeToDefault(emptyMap()) { titlesFor(chunk) })

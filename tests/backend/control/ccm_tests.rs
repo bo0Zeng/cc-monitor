@@ -1303,3 +1303,59 @@ impl crate::guard_support::Shaped for Minted {
         }]
     }
 }
+
+/// 缺陷（10-10）：Windows 上 `ccm` 最后起 agent 那一下按裸名字起，std 只补 `.exe` ⇒ npm 全局的 `.cmd` / `.ps1` 起不来，而足迹说装了。
+/// 今天它与足迹同一个找法（`platform::shell::find_session_command`）：Windows 上裸名字换成找到的那个文件（`.ps1` 经 PowerShell）；
+/// unix · 带路径的 · 找不到的 ⇒ 原样。
+#[test]
+fn the_final_launch_starts_what_the_footprint_found() {
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+    let d = PathBuf::from("/w/npm");
+    let pe = d.to_str().unwrap();
+    let cmd = d.join("claude.cmd");
+    let ps = d.join("claude.ps1");
+    let has = |set: Vec<PathBuf>| move |p: &Path| set.iter().any(|f| f == p);
+    let bare = |s: &str| (OsString::from(s), Vec::<OsString>::new());
+
+    assert_eq!(
+        final_program(
+            "claude",
+            true,
+            Some(pe),
+            &has(vec![cmd.clone(), ps.clone()])
+        ),
+        (cmd.clone().into_os_string(), vec![])
+    );
+    assert_eq!(
+        final_program("claude", true, Some(pe), &has(vec![ps.clone()])),
+        (
+            OsString::from("powershell.exe"),
+            vec![
+                "-NoProfile".into(),
+                "-File".into(),
+                ps.clone().into_os_string()
+            ]
+        )
+    );
+    // unix 照旧按名字 exec
+    assert_eq!(
+        final_program("claude", false, Some(pe), &has(vec![d.join("claude")])),
+        bare("claude")
+    );
+    // 找不到 / 判不了 ⇒ 原样（起不来时那句报错说得出是哪个）
+    assert_eq!(
+        final_program("claude", true, Some(pe), &has(vec![])),
+        bare("claude")
+    );
+    assert_eq!(
+        final_program("claude", true, None, &has(vec![cmd.clone()])),
+        bare("claude")
+    );
+    // 用户给了路径 ⇒ 不替他找
+    let given = "C:\\tools\\claude";
+    assert_eq!(
+        final_program(given, true, Some(pe), &has(vec![cmd])),
+        bare(given)
+    );
+}

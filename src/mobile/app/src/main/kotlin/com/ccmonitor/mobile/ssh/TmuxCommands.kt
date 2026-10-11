@@ -243,12 +243,6 @@ object TmuxCommands {
     fun tmuxCapturePaneCommand(session: String): String = "tmux capture-pane -t ${shQuote(session)} -p"
 
     /**
-     * 会话活动 pane 的当前路径，即该会话的工作目录。不 attach 读后台会话时，
-     * 用它定位 `~/.claude/projects/<enc(cwd)>/` 下的 jsonl。
-     */
-    fun tmuxSessionCwdCommand(name: String): String = "tmux display-message -p -t ${shQuote(name)} '#{pane_current_path}'"
-
-    /**
      * `tmux ls`，tab 分隔（会话名不能含 tab，可以含 `|`）。没有 server 时 stderr 被吞，输出为空。
      * 输出由 `ui/session/TmuxParse.kt` 的 `parseTmuxList` 解析。
      */

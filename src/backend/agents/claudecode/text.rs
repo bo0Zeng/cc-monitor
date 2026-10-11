@@ -223,6 +223,16 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
 }
 
 /// 排队消息（`queue-operation` 的 `content`）是谁说的：它没有记录级字段，只认具名框与固定句，认不出归人。
+/// 一条记录是不是进界面的排队插话（口径同 `record_of` 认 `Queued` 那一支：`queue-operation` 的 `remove`、人说的）⇒ 原文。
+pub(crate) fn queued_of_record(v: &Value) -> Option<String> {
+    let s = |k: &str| v.get(k).and_then(Value::as_str);
+    if s("type") != Some("queue-operation") || s("operation") != Some("remove") {
+        return None;
+    }
+    let who = queued_text(s("content")?);
+    matches!(who.speaker, Speaker::Human).then(|| who.text.trim().to_string())
+}
+
 pub(crate) fn queued_text(content: &str) -> UserText {
     framed(content, false).unwrap_or_else(|| spoken(content))
 }

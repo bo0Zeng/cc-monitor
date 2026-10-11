@@ -16,7 +16,6 @@ import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxNewOrAttach
 import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxPaneChildProbeCommand
 import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxResumeCommand
 import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxSendModelCommand
-import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxSessionCwdCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -46,7 +45,6 @@ class SessionBackendTest {
         assertEquals(tmuxKillCommand(name), TmuxBackend.killCommand(name))
         assertEquals(tmuxNewDetachedCommand(name), TmuxBackend.newDetachedCommand(name))
         assertEquals(tmuxNewDetachedRunning(name, "claude"), TmuxBackend.newDetachedRunningCommand(name, "claude"))
-        assertEquals(tmuxSessionCwdCommand(name), TmuxBackend.sessionCwdCommand(name))
         assertEquals(tmuxSendModelCommand(name, "opus"), TmuxBackend.sendModelCommand(name, "opus"))
         assertEquals(tmuxCapturePaneCommand(name), TmuxBackend.captureCommand(name))
     }

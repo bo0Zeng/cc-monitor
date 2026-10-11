@@ -213,6 +213,45 @@ fn tool_input_and_call_id() {
     );
 }
 
+/// `function_call` 的入参写在 `arguments`（一个 JSON 串）：解得出对象 ⇒ 那个对象；解不出 ⇒ 原串包成 `{input}`（不吞）；
+/// `input` 与 `arguments` 都在 ⇒ 认 `input`。
+#[test]
+fn function_call_arguments_become_the_input() {
+    let call = |p: Value| env("response_item", p);
+    assert_eq!(
+        tool_input(&call(
+            json!({"type": "function_call", "call_id": "c", "name": "shell", "arguments": "{\"command\":[\"ls\"]}"})
+        )),
+        json!({"command": ["ls"]})
+    );
+    assert_eq!(
+        tool_input(&call(
+            json!({"type": "function_call", "call_id": "c", "arguments": "not json"})
+        )),
+        json!({"input": "not json"})
+    );
+    assert_eq!(
+        tool_input(&call(
+            json!({"type": "function_call", "call_id": "c", "arguments": "[1,2]"})
+        )),
+        json!({"input": "[1,2]"}),
+        "解出来不是对象 ⇒ 照原串包"
+    );
+    assert_eq!(
+        tool_input(&call(
+            json!({"type": "function_call", "call_id": "c", "input": {"a": 1}, "arguments": "{\"b\":2}"})
+        )),
+        json!({"a": 1})
+    );
+    // `custom_tool_call` 的 `input` 是自由文本：长得像 JSON 也不解，照原串包。
+    assert_eq!(
+        tool_input(&call(
+            json!({"type": "custom_tool_call", "call_id": "c", "input": "{\"x\":1}"})
+        )),
+        json!({"input": "{\"x\":1}"})
+    );
+}
+
 // ─── 翻成通用记录 ───
 
 /// 翻一条（起点偏移随便给一个）。
@@ -548,4 +587,37 @@ fn a_codex_turn_complete_answers_turn_end_through_the_registry() {
         None
     );
     assert_eq!(turn_end("not json _complete"), None);
+}
+
+/// 金样重写开关（人读过「现打」再落盘）。
+const CODEX_REGEN: &str = "CCM_REGEN_CODEX_RECORD_GOLDEN";
+
+/// ★ 造的中性 rollout（`codex-rollout.sample.jsonl`，一整份会话：元记录 · 事件 · 人话 · 注入 · 推理 · 两种工具 · 回复 · 认不出的一类）
+/// 走核心读页那一遍（适配层 ＋ `record_page::rows_of`，与 `history-read` 同一条路）⇒ 通用记录金样 `record-codex.golden.jsonl`。
+/// 手机（`CodexRecordGoldenTest.kt`）与界面（`codex-record.vitest.ts`）解的是同一份金样，逐格对。
+#[test]
+fn codex_sample_rollout_reads_to_the_record_golden() {
+    let root = crate::guard_support::repo_root();
+    let sample = std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
+    let face = super::super::RECORDS;
+    let tz = crate::Tz::named("UTC").unwrap();
+    let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], tz);
+    let rows = crate::observe::record_page::rows_of(&mut reader, 0, &sample);
+    let mut got = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        if let Some(record) = &row.record {
+            let line = serde_json::json!({"case": format!("line-{i:02}"), "record": record});
+            got.push_str(&line.to_string());
+            got.push('\n');
+        }
+    }
+    let path = root.join("tests/__fixtures__/record-codex.golden.jsonl");
+    if std::env::var_os(CODEX_REGEN).is_some() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_default();
+    assert_eq!(
+        got, want,
+        "Codex 通用记录与金样不一致（{CODEX_REGEN}=1 重写）。现打：\n{got}"
+    );
 }

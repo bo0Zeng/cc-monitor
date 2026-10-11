@@ -248,38 +248,61 @@
         "done": true,
         "end": "t8",
         "endText": "",
-        "ending": [
-          "t-8"
-        ],
         "fails": 1,
-        "parts": [
+        "folds": [
           {
-            "text": "过程",
-            "tone": "plain"
+            "after": "t-1",
+            "parts": [
+              {
+                "text": "过程",
+                "tone": "plain"
+              },
+              {
+                "text": "思考 ×1",
+                "tone": "plain"
+              }
+            ],
+            "phase": "idle",
+            "span": {
+              "from": null,
+              "text": "",
+              "to": null
+            }
           },
           {
-            "text": "工具 ×2",
-            "tone": "plain"
-          },
-          {
-            "text": "思考 ×1",
-            "tone": "plain"
-          },
-          {
-            "text": "失败 ×1",
-            "tone": "fail"
+            "after": "t-3",
+            "parts": [
+              {
+                "text": "过程",
+                "tone": "plain"
+              },
+              {
+                "text": "工具 ×2",
+                "tone": "plain"
+              },
+              {
+                "text": "失败 ×1",
+                "tone": "fail"
+              }
+            ],
+            "phase": "idle",
+            "span": {
+              "from": null,
+              "text": "",
+              "to": null
+            }
           }
         ],
+        "landed": [],
         "peers": 0,
         "phase": "idle",
         "reply": "r1\nr2\nr3",
         "retries": 0,
         "said": "first line",
-        "span": {
-          "from": null,
-          "text": "",
-          "to": null
-        },
+        "shown": [
+          "t-3",
+          "t-8"
+        ],
         "start": "t1",
         "startText": "",
         "thinking": 1,
@@ -293,28 +316,35 @@
         "done": false,
         "end": "t10",
         "endText": "",
-        "ending": [],
         "fails": 0,
-        "parts": [
+        "folds": [
           {
-            "text": "过程",
-            "tone": "plain"
-          },
-          {
-            "text": "工具 ×1",
-            "tone": "plain"
+            "after": "t-9",
+            "parts": [
+              {
+                "text": "过程",
+                "tone": "plain"
+              },
+              {
+                "text": "工具 ×1",
+                "tone": "plain"
+              }
+            ],
+            "phase": "idle",
+            "span": {
+              "from": null,
+              "text": "",
+              "to": null
+            }
           }
         ],
+        "landed": [],
         "peers": 0,
         "phase": "idle",
         "reply": "",
         "retries": 0,
         "said": "next",
-        "span": {
-          "from": null,
-          "text": "",
-          "to": null
-        },
+        "shown": [],
         "start": "t9",
         "startText": "",
         "thinking": 0,

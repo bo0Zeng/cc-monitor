@@ -23,12 +23,6 @@ sealed interface ShellDialect {
     /** 会话后端，tmux 命令族的唯一入口；null = 该 OS 没有（Windows）。 */
     val sessionBackend: SessionBackend?
 
-    /**
-     * 该 shell 有没有 Claude 阅读面要的 POSIX 工具（`tail -F`、`ls`、glob）。
-     * 与 [supportsTmux] 分开：阅读面依赖的是这些工具，不是 tmux。
-     */
-    val supportsClaudeReading: Boolean
-
     /** 把参数安全引用（防注入/含空格）。 */
     fun quote(s: String): String
 
@@ -45,7 +39,6 @@ sealed interface ShellDialect {
 /** POSIX（bash/sh）：单引号 `'...'`（内嵌 `'` → `'\''`）。复用既有 [shQuote]。 */
 data object PosixDialect : ShellDialect {
     override val supportsTmux = true
-    override val supportsClaudeReading = true
     override val sessionBackend: SessionBackend = TmuxBackend
 
     override fun quote(s: String): String = shQuote(s)
@@ -63,7 +56,6 @@ data object PosixDialect : ShellDialect {
  */
 data object PowerShellDialect : ShellDialect {
     override val supportsTmux = false
-    override val supportsClaudeReading = false
     override val sessionBackend: SessionBackend? = null
 
     override fun quote(s: String): String = "'" + s.replace("'", "''") + "'"

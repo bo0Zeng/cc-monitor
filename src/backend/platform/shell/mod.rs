@@ -69,6 +69,94 @@ pub(crate) fn session_shell_path() -> Option<String> {
     }
 }
 
+/// 在起会话那个 shell 里敲裸名字 `prog`，`PATH` 上会起来的是哪个文件、该怎么起它（[`find_session_command`] 的答案）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SessionCommand {
+    /// `PATH` 问不出 / 空 —— 判不了，调用方不许当成「没有」。
+    Unknown,
+    /// 查了，没有。
+    Absent,
+    /// 找到了：起它就是 `program` ＋ `lead` ＋ 用户那几个参数。
+    Found {
+        /// 找到的那个文件（`.ps1` 那一形里是它，`program` 是 PowerShell）。
+        file: std::path::PathBuf,
+        program: std::ffi::OsString,
+        lead: Vec<std::ffi::OsString>,
+    },
+}
+
+/// 一种装法的壳怎么起。
+#[derive(Clone, Copy)]
+enum StartBy {
+    /// 直接起那个文件。`.cmd` / `.bat` 也走这一形：起进程原语（std）认得这两种后缀、自己经 `cmd.exe /c` 起并按它的规矩转义参数。
+    Itself,
+    /// `powershell.exe -NoProfile -File <文件>`（执行策略照这台的，不绕过）。
+    PowerShellFile,
+}
+
+/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· `ccm` 最后起 agent 那一下 —— **只经这一处**找 agent 命令行，
+/// 于是「认得出」就是「起得来」。
+///
+/// - unix：只认原名（直接起）。
+/// - Windows：会话开在 PowerShell 里 ⇒ 照 `where.exe` 的顺序：`PATH` 逐目录、同一目录里按 `PATHEXT` 的默认次序
+///   （`.com` · `.exe` 原生安装器 / winget / scoop · `.bat` · `.cmd` npm / pnpm / yarn）；这几种哪儿都没有时才认 PowerShell 自己的 `.ps1`。
+///   **原名不算**：npm 全局目录里那份不带后缀的是给 Git Bash 的 sh 壳，PowerShell 起不了它。
+///
+/// 平台是入参（不碰 `cfg!`），`is_file` 是注入的（同名的目录不算）：Linux 上的判据能把 Windows 那一形当夹具跑。
+pub(crate) fn find_session_command(
+    prog: &str,
+    path_env: Option<&str>,
+    windows: bool,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> SessionCommand {
+    const UNIX: &[(&str, StartBy)] = &[("", StartBy::Itself)];
+    const WINDOWS: &[(&str, StartBy)] = &[
+        (".com", StartBy::Itself),
+        (".exe", StartBy::Itself),
+        (".bat", StartBy::Itself),
+        (".cmd", StartBy::Itself),
+    ];
+    const WINDOWS_LAST: &[(&str, StartBy)] = &[(".ps1", StartBy::PowerShellFile)];
+    let Some(pe) = path_env.filter(|p| !p.trim().is_empty()) else {
+        return SessionCommand::Unknown;
+    };
+    let dirs: Vec<std::path::PathBuf> = std::env::split_paths(pe)
+        .filter(|d| !d.as_os_str().is_empty())
+        .collect();
+    let rounds: &[&[(&str, StartBy)]] = if windows {
+        &[WINDOWS, WINDOWS_LAST]
+    } else {
+        &[UNIX]
+    };
+    for forms in rounds {
+        for d in &dirs {
+            for &(suffix, by) in *forms {
+                let file = d.join(format!("{prog}{suffix}"));
+                if !is_file(&file) {
+                    continue;
+                }
+                let (program, lead) = match by {
+                    StartBy::Itself => (file.clone().into_os_string(), Vec::new()),
+                    StartBy::PowerShellFile => (
+                        "powershell.exe".into(),
+                        vec![
+                            "-NoProfile".into(),
+                            "-File".into(),
+                            file.clone().into_os_string(),
+                        ],
+                    ),
+                };
+                return SessionCommand::Found {
+                    file,
+                    program,
+                    lead,
+                };
+            }
+        }
+    }
+    SessionCommand::Absent
+}
+
 /// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。
 pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
     Child::new(shell)

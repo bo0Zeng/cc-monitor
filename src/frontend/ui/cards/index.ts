@@ -2,11 +2,11 @@
  * 卡片渲染的总分发器。
  *
  * `renderMessage(rec, ctx)` 是核心纯函数：给定一条通用记录（`LineRecord`，ts-rs 从后端导出）+ RenderContext，
- * 返回 `RenderResult`（`card` 普通卡 / `tool-group` 工具组单元 / `skip` 不渲染）。
+ * 返回 `RenderResult`（`card` 普通卡 / `steps` 过程里的几步 / `skip` 不渲染）。
  * 实时 Tab、历史只读视图、subagent 卡三处共用它，保证视觉一致（详 render-stream-record.ts）。
  *
  * 职责边界：
- * - 按记录的类别 `t` + 内容块分发：said 气泡 / reply 卡 / 纯工具 → tool-group /
+ * - 按记录的类别 `t` + 内容块分发：said 气泡 / reply 卡 / 纯工具 → steps /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
  * - said 记录是谁说的（人 · 斜杠命令 · `!` 输入/输出 · 压缩摘要 · 派给子 agent 的活 · 系统注入 · agent 来话 · 后台通知……，
@@ -22,7 +22,7 @@ import { buildCompactSummaryCard } from "./compact";
 import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
 import { drawsCard } from "../speaker";
 import { buildBriefCard } from "./brief";
-import { buildAgentCard, isRunCard, settleRunCard } from "./subagent";
+import { buildAgentCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
 import type { Pasted } from "../generated/Pasted";
@@ -208,12 +208,12 @@ export type RenderResult =
    */
   | { kind: "card"; element: HTMLElement }
   /**
-   * 工具组成员：assistant 消息全部由 thinking/tool_use/tool_result 构成，没 text
+   * 过程里的几步：assistant 消息全部由 thinking/tool_use/tool_result 构成，没 text
    * 也没交互等待工具（issue #21：含 AskUserQuestion/ExitPlanMode 的走 kind:"card"
-   * 保持可见）。TabManager 会把连续的 tool-group 合并到同一个外层折叠卡。
-   * `units` 是每个块单独的折叠条元素。
+   * 保持可见）。`units` 是每个块单独的一行；一条记录一张卡（`buildStepsCard`），界面不把相邻的并组 ——
+   * 哪几条收进「过程」只由后端划段（`turn-fold.ts`）。
    */
-  | { kind: "tool-group"; time: string; units: HTMLElement[] };
+  | { kind: "steps"; units: HTMLElement[] };
 
 export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult {
   const time = rec.timeText ?? "";
@@ -267,7 +267,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult
         .map((b) => renderBlock(b, ctx, NO_CARDS, NO_RUNS, facts))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
-      return { kind: "tool-group", time, units };
+      return { kind: "steps", units };
     }
     case "reply": {
       // 上游最终失败写的报错 → 红色报错卡（当普通回复画会让人以为还在跑）。
@@ -292,8 +292,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult
 
       const hasText = meaningful.some((b) => b.type === "text");
       // issue #21：含交互等待工具（AskUserQuestion / ExitPlanMode）的消息走
-      // kind:"card"——它们要默认可见，不能折进 card-tool-group（进组判定在
-      // 记录级，kind:"card" 是唯一的不进组通路）。
+      // kind:"card"——它们要默认可见（画成带正文的卡）。
       const cards = toolCardsOf(rec);
       const hasInteractive = meaningful.some(
         (b) => b.type === "tool_use" && cards[b.id] === "interactive",
@@ -304,13 +303,13 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult
           element: buildAssistantCard(rec, meaningful, ctx),
         };
       }
-      // 全是 thinking / tool_use / tool_result → 工具组成员
+      // 全是 thinking / tool_use / tool_result → 过程里的几步
       const facts = stepFactsOf(rec);
       const units = meaningful
         .map((b) => renderBlock(b, ctx, cards, childRunsOf(rec), facts))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
-      return { kind: "tool-group", time, units };
+      return { kind: "steps", units };
     }
     case "retry":
       // 上游失败、将重试的中间态 → 细条提示（不画的话重试风暴时只看到「卡住」）。
@@ -354,65 +353,12 @@ function buildQueuedUserCard(text: string, time: string): HTMLElement {
   return card;
 }
 
-/** 工具组外层折叠卡 —— TabManager 维护一组，连续的 tool-group 都追加进来 */
-export interface ToolGroup {
-  root: HTMLDetailsElement;
-  body: HTMLElement;
-  summary: HTMLElement;
-  count: number;
-  /** 第一条的钟面（后端写好的 `timeText`）。 */
-  since: string;
-}
-
-/** 外层折叠卡 → 它的工具组（结果后到、注入进组里某一条时，要回头改那一组收着时那一行）。 */
-const groupOfRoot = new WeakMap<HTMLElement, ToolGroup>();
-
-/** `el` 所在的那个工具组收着时那一行重写一遍（`el` 不在任何组里 ⇒ 不动）。 */
-function refreshGroupAround(el: HTMLElement | null): void {
-  const root = el?.closest<HTMLElement>(".card-tool-group");
-  const group = root ? groupOfRoot.get(root) : undefined;
-  if (group) updateToolGroupSummary(group);
-}
-
-export function buildToolGroup(since: string): ToolGroup {
-  const root = document.createElement("details");
-  root.className = "card card-tool-group";
-
-  const summary = document.createElement("summary");
-  summary.className = "card-tool-group-summary";
-  root.appendChild(summary);
-
-  const body = document.createElement("div");
-  body.className = "card-tool-group-body";
-  root.appendChild(body);
-
-  const group: ToolGroup = { root, body, summary, count: 0, since };
-  groupOfRoot.set(root, group);
-  updateToolGroupSummary(group);
-  return group;
-}
-
-export function addToToolGroup(group: ToolGroup, units: HTMLElement[]): void {
-  for (const u of units) group.body.appendChild(u);
-  group.count += units.length;
-  updateToolGroupSummary(group);
-}
-
-/** 收着时那一行：个数 · 起始时刻；里面有失败的、有子 agent 就说出来（收着也看得见）。 */
-function updateToolGroupSummary(group: ToolGroup): void {
-  const count = group.count;
-  const since = group.since;
-  const failed = group.body.querySelectorAll(":scope > .block-has-error, :scope > .block-tool-result.block-error").length;
-  let agents = 0;
-  for (const el of group.body.children) if (isRunCard(el)) agents++;
-  group.summary.textContent =
-    failed > 0 && agents > 0
-      ? copyText("cards.toolGroup.summaryBoth", { count, failed, agents, since })
-      : failed > 0
-        ? copyText("cards.toolGroup.summaryFailed", { count, failed, since })
-        : agents > 0
-          ? copyText("cards.toolGroup.summaryAgents", { count, agents, since })
-          : copyText("cards.toolGroup.summary", { count, since });
+/** 过程里一条记录的几步：一张卡（`data-id` 由管线写），每步一行。 */
+export function buildStepsCard(units: HTMLElement[]): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "card card-steps";
+  for (const u of units) card.appendChild(u);
+  return card;
 }
 
 /** 粘贴块超过这么多行就折成一行。 */
@@ -848,7 +794,6 @@ function injectOrBuildToolResult(
       if (block.isError) {
         resultEl.classList.add("block-error");
         host.classList.add("block-has-error");
-        refreshGroupAround(host); // 收着的工具组那一行要说出「1 个失败」
       }
 
       const labelPrefix = block.isError
@@ -905,13 +850,11 @@ function injectOrBuildToolResult(
  * 不匹配的（真 fallback：tool_use 永远不会来）留着，UI 仍然能看到独立卡。
  */
 /**
- * fallback 单元在工具组里（timeline 记的是组 root，不是单元）：单元摘掉后组空了 ⇒ 连组壳一起摘、交回 root，
- * 由调用方从 timeline 出账（不然留一个空的「1 个工具调用」且账上挂着离场元素）。组里还有别的 ⇒ `null`。
+ * fallback 单元在一张几步的卡里（timeline 记的是卡，不是单元）：单元摘掉后卡空了 ⇒ 连卡一起摘、交回它，
+ * 由调用方从 timeline 出账（不然留一张空卡且账上挂着离场元素）。卡里还有别的 ⇒ `null`。
  */
-export function removeEmptyToolGroupShell(host: HTMLElement | null): HTMLElement | null {
-  if (!host) return null;
-  const body = host.querySelector(":scope > .card-tool-group-body");
-  if (!body || body.childElementCount > 0) return null;
+export function removeEmptyStepsCard(host: HTMLElement | null): HTMLElement | null {
+  if (!host || host.childElementCount > 0) return null;
   host.remove();
   return host;
 }
@@ -922,27 +865,27 @@ const pendingFacts = new WeakMap<HTMLElement, StepFacts>();
 export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
   if (!ctx.pendingToolResults || ctx.pendingToolResults.size === 0) return [];
   const toDelete: string[] = [];
-  // 交回需要从 timeline 出账的元素（被连根摘掉的空组壳 root）。
-  // fallback 单元本身从不是 timeline entry(见 removeEmptyToolGroupShell 注释)。
+  // 交回需要从 timeline 出账的元素（被连根摘掉的空卡）。
+  // fallback 单元本身从不是 timeline entry(见 removeEmptyStepsCard 注释)。
   const removed: HTMLElement[] = [];
   for (const [toolUseId, { block, element }] of ctx.pendingToolResults) {
     if (!ctx.toolUseElements.has(toolUseId)) continue; // 仍然没匹配，保留
     // 已有 host → 重新调注入（injectOrBuildToolResult 走"已 host"分支，返 null）
     const reInjected = injectOrBuildToolResult(block, ctx, pendingFacts.get(element));
     if (reInjected === null) {
-      // fallback 身上的落点标记（`render-stream-record.ts::markMemberUuids` 记的）跟着搬到注入出来的结果区块上
-      const member = element.dataset.memberId;
+      // 宿主卡必须在 remove **之前**取(摘除后 closest 断链)
+      const host = element.closest<HTMLElement>(".card-steps");
+      // fallback 所在那张卡是它那条记录的（`data-id`）：记录的落点跟着搬到注入出来的结果区块上（`data-member-id`，查找 / 大纲跳得到）
+      const member = host?.dataset.id;
       if (member) {
         const inline = ctx.toolUseElements.get(toolUseId)?.querySelector<HTMLElement>(".block-tool-result-inline");
         if (inline) inline.dataset.memberId = member;
       }
-      // 注入成功 → 删除原 fallback;宿主组必须在 remove **之前**取(摘除后 closest 断链)
-      const host = element.closest<HTMLElement>(".card-tool-group");
+      // 注入成功 → 删除原 fallback
       element.remove();
       toDelete.push(toolUseId);
-      const shell = removeEmptyToolGroupShell(host);
+      const shell = removeEmptyStepsCard(host);
       if (shell) removed.push(shell);
-      else refreshGroupAround(host); // 那一条（可能是失败的）搬走了，原来那一组收着时那一行重算
     }
   }
   for (const id of toDelete) {

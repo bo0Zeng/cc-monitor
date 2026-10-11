@@ -7,8 +7,8 @@
  * （`.stream-skeleton-gap`，内联高度 = `SkeletonLedger.heightOf(lo, hi)`）顶住。
  * 占位本身也是 timeline 里的一个条目（`seq = lo - 0.5`，`kind: "card"`），于是：
  * - 岛里的卡按 seq 二分插入时**自然落在占位之后、下一个已渲染条目之前**；
- * - 工具组后处理合并看的左邻居（`peekPrev`）遇到占位就停 —— 岛的第一张工具卡**不会**
- *   跨过一段没渲染的历史并进上面那个工具组；
+ * - 相邻合并（重试细条 · 后台通知）看的左邻居（`peekPrev`）遇到占位就停 —— 岛的第一张卡**不会**
+ *   跨过一段没渲染的历史并进上面那一张；
  * - `BranchFolder` 把没有 `data-id` 的元素当断 run（它的头注第 12 行）—— 占位不会被折进回退段。
  *
  * # 🔴 「骨架快」的主语是「只物化可见区」
@@ -333,7 +333,7 @@ export class SkeletonView {
     for (const g of this.gaps) {
       const r = g.el.getBoundingClientRect();
       if (r.height <= 0) {
-        // 只剩不占高的行（并进工具组的工具结果 · 不建卡的行）：落在视口带里就整块物化，不然它永远留着（工具那一步缺结果）。
+        // 只剩不占高的行（注入进调用那一行的工具结果 · 不建卡的行）：落在视口带里就整块物化，不然它永远留着（工具那一步缺结果）。
         // 折着的过程那几段下面 `withoutFolded` 照样扣掉（藏起来的占位量出来也是 0 高，走的是这一支）。
         if (r.top >= top && r.top <= bottom) ranges.push([g, g.lo, g.hi]);
         continue;
@@ -446,7 +446,7 @@ export class SkeletonView {
     // `.stream-content > *` 统一挂了 `content-visibility: auto` ＋ 120px 兜底；占位的高度是显式的，
     // 不要容器尺寸约束来插手（styles.css 在 U1 手里拆，这里只能内联）。
     el.style.contentVisibility = "visible";
-    this.timeline.insert({ seq: lo - 0.5, element: el, kind: "card", toolGroup: null });
+    this.timeline.insert({ seq: lo - 0.5, element: el, kind: "card" });
     const gap: Gap = { lo, hi, el };
     const at = this.gaps.findIndex((x) => x.lo > lo);
     if (at < 0) this.gaps.push(gap);

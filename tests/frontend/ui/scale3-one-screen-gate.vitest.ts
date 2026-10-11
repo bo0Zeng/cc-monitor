@@ -261,8 +261,8 @@ describe("秤 3 · 卡型覆盖：没有一个卡型还在落 120px 兜底", () 
    */
   // `__dirname` 在 vitest 里指向 `tests/`（同 `account-base-semantics.vitest.ts:36` 的用法）
   const CARD_SRC_DIR = resolve(__dirname, "../../../src/frontend/ui/cards");
-  /** 这两个是 `<details>`，估高走「折叠态 summary 一行」那一支 */
-  const DETAILS_CLASSES = new Set(["card-compact", "card-tool-group"]);
+  /** 这个是 `<details>`，估高走「折叠态 summary 一行」那一支 */
+  const DETAILS_CLASSES = new Set(["card-compact"]);
 
   function cardClassesFromSource(): string[] {
     const found = new Set<string>();

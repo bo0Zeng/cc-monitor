@@ -118,7 +118,7 @@ export interface Tab {
   /** 父 JSONL 路径（subagent 加载需要） */
   parentPath: string;
   unread: number;
-  /** 按 seq 排序的 timeline：renderStreamRecord 调 `insert / peekPrev` 决定挂载位置与工具组合并。 */
+  /** 按 seq 排序的 timeline：renderStreamRecord 调 `insert / peekPrev` 决定挂载位置与相邻合并。 */
   timeline: RecordTimeline;
   /**
    * 工具调用 id → 那次调用的工具名与卡型（`cards/index.ts::ToolUseSeen`）。调用在回复记录出现时记下，

@@ -5,7 +5,7 @@
 // 按「测试从未引用过的生产模块」筛（前端 116 个生产 .ts 里有 5 个），
 // `cards/interactive.ts` 排在里面，而它导出的 `isInteractiveTool` 是个**纯谓词、有判断**。
 // 先核缺口：把 `agent-profile.ts` 的 `interactiveTools` **清空**（等于这两个工具重新被折进
-// 通用 🔧 工具组）—— `npm test` / `npx vitest run`（1277）/ `tsc` **三个门禁全绿**。
+// 过程那几步）—— `npm test` / `npx vitest run`（1277）/ `tsc` **三个门禁全绿**。
 //
 // 它的后果不是「样式变了」：`interactive.ts` 头注逐字写着，折叠会让
 // **「用户看不出有问题在等他，误以为 LLM 还在输出」**。
@@ -19,7 +19,7 @@
 //
 // 〔判定只在后端〕「哪个工具算交互工具」今天住那台后端的适配层（`agents/claudecode/cards.rs`，
 // 判据 `tests/backend/agents/claudecode/cards_tests.rs` 逐名钉着这两个），随 assistant 记录的 `toolCards` 带来；
-// 界面这一半只剩「**照卡型办**」：卡型是 `interactive` ⇒ 整条消息走 `kind: "card"`（不进工具组折叠），没有卡型 ⇒ 工具组。
+// 界面这一半只剩「**照卡型办**」：卡型是 `interactive` ⇒ 整条消息走 `kind: "card"`（不进过程那几步），没有卡型 ⇒ 过程里的几步。
 import { describe, it, expect } from "vitest";
 import { buildInteractiveCard, settleInteractive } from "../../../../src/frontend/ui/cards/interactive";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
@@ -28,7 +28,7 @@ import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecor
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import type { StepAsk } from "../../../../src/frontend/ui/generated/StepAsk";
 
-describe("交互等待类工具：不许被折进通用工具组", () => {
+describe("交互等待类工具：不许被折进过程那几步", () => {
   const ctx = () => ({
     parentPath: "/p/s.jsonl",
     origin: LOCAL_ORIGIN,
@@ -49,12 +49,12 @@ describe("交互等待类工具：不许被折进通用工具组", () => {
       ...(cards ? { cards } : {}),
     }) as never;
 
-  it("★ 后端说这是交互卡（`toolCards` 里是 `interactive`）⇒ 默认可见的一张卡，不进工具组", () => {
+  it("★ 后端说这是交互卡（`toolCards` 里是 `interactive`）⇒ 默认可见的一张卡，不进过程那几步", () => {
     expect(renderMessage(ask({ t1: "interactive" }), ctx() as never).kind, "问题卡被折叠 = 用户看不出有问题在等他").toBe("card");
   });
 
-  it("★ 反向：没有卡型 ⇒ 普通工具组（界面不按工具名自己判 —— 否则上一条恒真、等于没判据）", () => {
-    expect(renderMessage(ask(undefined), ctx() as never).kind).toBe("tool-group");
+  it("★ 反向：没有卡型 ⇒ 普通的几步（界面不按工具名自己判 —— 否则上一条恒真、等于没判据）", () => {
+    expect(renderMessage(ask(undefined), ctx() as never).kind).toBe("steps");
   });
 });
 

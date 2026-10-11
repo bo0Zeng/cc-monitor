@@ -839,7 +839,8 @@ pub enum EnvProbe {
     /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
     OnPath,
     /// 起会话那个 shell 的 `PATH` 上的一个裸命令（agent 命令行：会话在用户登录 shell 里起，按那里的 `PATH` 找它）。
-    /// 同走 `rows.rs::resolves_on_path`，只是 `PATH` 换成那一份；问不出来 ⇒ 「查不动」，绝不说「缺」。
+    /// 走 `platform::shell::find_session_command`（起新会话框「这台能起哪几家」、`ccm` 起它那一下也问它）：`PATH` 换成那一份，
+    /// 文件名按那个 shell 的找法（Windows 上 `.exe` · `.cmd` · `.bat` · `.ps1` 都算）；问不出来 ⇒ 「查不动」，绝不说「缺」。
     InSessionShell,
     /// ssh 客户端：走开远端终端用的同一个找法（`platform::ssh_client::locate_with`：Windows 先查 System32\OpenSSH，再按 PATH 找 `ssh.exe`；别处按 PATH 找 `ssh`）。
     SshClient,

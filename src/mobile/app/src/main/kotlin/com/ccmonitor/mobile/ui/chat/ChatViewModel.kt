@@ -25,4 +25,7 @@ class ChatViewModel(
     fun retry(localId: String) = session.retry(localId)
 
     fun stop() = session.stop()
+
+    /** 聊天屏进 / 出（`stream-watch` 名单跟着它）。 */
+    fun visible(on: Boolean) = session.visible(on)
 }

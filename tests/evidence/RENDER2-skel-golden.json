@@ -1,6 +1,6 @@
 {
   "note": "RENDER2 骨架外框秤（RENDER2-skel-run.ts 生成，勿手改）",
-  "generatedAt": "2026-09-27T17:45:12.362Z",
+  "generatedAt": "2026-10-11T01:43:11.097Z",
   "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
   "colWidth": 780,
   "rows": [
@@ -187,13 +187,6 @@
       "body": 24.75
     },
     {
-      "id": "real#27",
-      "cls": "card-assistant",
-      "slot": 74.796875,
-      "header": 18.046875,
-      "body": 24.75
-    },
-    {
       "id": "real#28",
       "cls": "card-assistant",
       "slot": 99.546875,
@@ -279,164 +272,164 @@
     },
     {
       "id": "real#40",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#41",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#43",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#44",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#46",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#47",
-      "cls": "card-tool-group",
+      "cls": "card-steps",
       "slot": 48.59375,
       "header": 0,
-      "body": 0
+      "body": 44.59375
     },
     {
       "id": "real#48",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#50",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#51",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#52",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#53",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#54",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#55",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#57",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#58",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#61",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#62",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#64",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#65",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#66",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#67",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "real#68",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 42,
       "header": 0,
-      "body": 0
+      "body": 38
     },
     {
       "id": "real#69",
-      "cls": "card-tool-group",
-      "slot": 48.59375,
+      "cls": "card-steps",
+      "slot": 44.59375,
       "header": 0,
-      "body": 0
+      "body": 40.59375
     },
     {
       "id": "syn#0",
@@ -476,105 +469,105 @@
     {
       "id": "syn#5",
       "cls": "card-api-error",
-      "slot": 95.375,
+      "slot": 110.875,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#6",
       "cls": "card-api-error",
-      "slot": 95.375,
+      "slot": 110.875,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#7",
       "cls": "card-api-error",
-      "slot": 290.5625,
+      "slot": 110.875,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#8",
       "cls": "card-bash-input",
-      "slot": 36.59375,
+      "slot": 37.59375,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#9",
       "cls": "card-bash-input",
-      "slot": 36.59375,
+      "slot": 37.59375,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#10",
       "cls": "card-bash-input",
-      "slot": 36.59375,
+      "slot": 37.59375,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#11",
       "cls": "card-bash-output",
-      "slot": 59.1875,
+      "slot": 60.1875,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#12",
       "cls": "card-bash-output",
-      "slot": 143.296875,
+      "slot": 144.296875,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#13",
       "cls": "card-bash-output",
-      "slot": 445.40625,
+      "slot": 446.40625,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#14",
       "cls": "card-bash-output",
-      "slot": 522.59375,
+      "slot": 523.59375,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#15",
       "cls": "card-bash-output",
-      "slot": 488.453125,
+      "slot": 489.453125,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#16",
       "cls": "card-bash-output",
-      "slot": 152.203125,
+      "slot": 153.203125,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#17",
       "cls": "card-slash",
-      "slot": 36.59375,
+      "slot": 37.59375,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#18",
       "cls": "card-slash",
-      "slot": 36.59375,
+      "slot": 37.59375,
       "header": 0,
       "body": 0
     },
     {
       "id": "syn#19",
       "cls": "card-slash",
-      "slot": 38.59375,
+      "slot": 39.59375,
       "header": 0,
       "body": 0
     }

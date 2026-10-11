@@ -195,3 +195,95 @@ fn a_stuck_login_shell_is_unknown_not_hung() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 夹具：这几个路径是普通文件，别的都不在。
+fn files_at(present: &[std::path::PathBuf]) -> impl Fn(&std::path::Path) -> bool + '_ {
+    move |p| present.iter().any(|f| f == p)
+}
+
+/// 缺陷（10-10）：Windows 上 agent 命令行认不出 / 起不来。找法与起法同一处答：
+/// `PATH` 逐目录、同一目录里 `PATHEXT` 的默认次序（`.bat` 先于 `.cmd`），这几种哪儿都没有才认 `.ps1`（经 `powershell.exe -NoProfile -File` 起）；
+/// 不带后缀的那份不算；unix 只认原名；`PATH` 问不出 ⇒ 判不了。
+#[test]
+fn a_session_command_is_found_and_started_the_windows_way() {
+    use super::{find_session_command as find, SessionCommand};
+    use std::path::{Path, PathBuf};
+    let a = PathBuf::from("/w/a");
+    let b = PathBuf::from("/w/b");
+    let both = std::env::join_paths([&a, &b]).unwrap();
+    let both = both.to_str().unwrap();
+    let only_a = a.to_str().unwrap();
+    let at = |f: &PathBuf| SessionCommand::Found {
+        file: f.clone(),
+        program: f.clone().into_os_string(),
+        lead: vec![],
+    };
+
+    // npm 三件同在：挑 .cmd（不是 sh 壳、也不是 .ps1）
+    let npm = [a.join("claude"), a.join("claude.cmd"), a.join("claude.ps1")];
+    assert_eq!(
+        find("claude", Some(only_a), true, &files_at(&npm)),
+        at(&npm[1])
+    );
+    // 同一目录 .bat 与 .cmd：PATHEXT 里 .bat 在前
+    let two = [a.join("claude.cmd"), a.join("claude.bat")];
+    assert_eq!(
+        find("claude", Some(only_a), true, &files_at(&two)),
+        at(&two[1])
+    );
+    // 目录次序优先：前一个目录的 .cmd 先于后一个目录的 .exe
+    let split = [a.join("claude.cmd"), b.join("claude.exe")];
+    assert_eq!(
+        find("claude", Some(both), true, &files_at(&split)),
+        at(&split[0])
+    );
+    // .ps1 只在哪儿都没有 PATHEXT 那几种时才认：前一目录只有 .ps1、后一目录有 .exe ⇒ .exe
+    let ps_then_exe = [a.join("claude.ps1"), b.join("claude.exe")];
+    assert_eq!(
+        find("claude", Some(both), true, &files_at(&ps_then_exe)),
+        at(&ps_then_exe[1])
+    );
+    // 只有 .ps1 ⇒ 经 PowerShell 起它
+    let ps = [a.join("claude.ps1")];
+    assert_eq!(
+        find("claude", Some(only_a), true, &files_at(&ps)),
+        SessionCommand::Found {
+            file: ps[0].clone(),
+            program: "powershell.exe".into(),
+            lead: vec![
+                "-NoProfile".into(),
+                "-File".into(),
+                ps[0].clone().into_os_string()
+            ],
+        }
+    );
+    // 只剩 sh 壳 ⇒ 没有
+    let sh = [a.join("claude")];
+    assert_eq!(
+        find("claude", Some(only_a), true, &files_at(&sh)),
+        SessionCommand::Absent
+    );
+    // unix：原名才算
+    assert_eq!(
+        find("claude", Some(only_a), false, &files_at(&sh)),
+        at(&sh[0])
+    );
+    assert_eq!(
+        find(
+            "claude",
+            Some(only_a),
+            false,
+            &files_at(&[a.join("claude.exe")])
+        ),
+        SessionCommand::Absent
+    );
+    // PATH 问不出 / 空 ⇒ 判不了
+    assert_eq!(
+        find("claude", None, true, &|_: &Path| true),
+        SessionCommand::Unknown
+    );
+    assert_eq!(
+        find("claude", Some("  "), true, &|_: &Path| true),
+        SessionCommand::Unknown
+    );
+}

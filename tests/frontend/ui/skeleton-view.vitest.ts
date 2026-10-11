@@ -6,12 +6,12 @@
  * （先全量渲染再盖一层骨架 = 假骨架，那一组会红）。
  *
  * 买到：占位总高 = 账本估高 · 滚到中部只建视口 ±0.5 屏那几行 · 视口里有已渲染卡时钉住它不跳 ·
- * 视口整个在占位里时不补偿 · 岛的左邻居是占位（工具组不跨空洞合并）· 没布局时什么都不做。
+ * 视口整个在占位里时不补偿 · 岛的左邻居是占位（相邻合并不跨空洞）· 没布局时什么都不做。
  * **买不到**：真引擎里的像素（布局模型是一维的累加，没有 margin 折叠 / content-visibility）；
  * 秤 3（半屏）那种端到端读数得在真 webview 里打。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { estimateFromFacts, initialColumnWidth, skeletonKind, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
+import { estimateFromFacts, initialColumnWidth, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
 import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
@@ -77,7 +77,7 @@ function makeHost(timeline: RecordTimeline, realH: (seq: number) => number) {
         const el = document.createElement("div");
         el.dataset.h = String(realH(s));
         el.dataset.seq = String(s);
-        timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+        timeline.insert({ seq: s, element: el, kind: "card" });
       }
     },
   };
@@ -170,7 +170,7 @@ describe("🔴 只物化可见区", () => {
     expect(Number(kids[g1 + 1].dataset.seq)).toBe(4900);
   });
 
-  it("岛的第一行左邻居是占位（kind=card），不会并进空洞上方的工具组", () => {
+  it("岛的第一行左邻居是占位（kind=card），不会并进空洞上方的那一张", () => {
     s.layout.scrollTop = s.ledger.heightOf(0, 4900) / 2;
     s.view.fillVisible();
     const gap0 = s.content.querySelector(`.${SKELETON_GAP_CLASS}`) as HTMLElement;
@@ -236,7 +236,7 @@ describe("大折叠：折着的过程不物化", () => {
     expect(cardsIn(s.content).some((c) => (c as HTMLElement).dataset.seq === "80")).toBe(true);
   });
 
-  it("只剩不占高的行（工具结果并进工具组那种）的占位落在视口里 ⇒ 照样物化（不因高 0 永远留着）；扣掉折着的那几段", () => {
+  it("只剩不占高的行（工具结果注入进调用那一行那种）的占位落在视口里 ⇒ 照样物化（不因高 0 永远留着）；扣掉折着的那几段", () => {
     const s = setup(30, 20);
     const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "said", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "reply", fd: 1 } : asst(`u${i}`)));
     const ledger = new SkeletonLedger(0, rows);
@@ -426,7 +426,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
     ];
     for (const [rec, facts] of cases) {
       const it = refineItemOf(rec as never)!;
-      expect(refinedHeight(it, arith), JSON.stringify(facts)).toBeCloseTo(estimateFromFacts(facts, "none"), 6);
+      expect(refinedHeight(it, arith), JSON.stringify(facts)).toBeCloseTo(estimateFromFacts(facts), 6);
     }
   });
 });
@@ -450,11 +450,9 @@ describe("〔P3〕列宽变了", () => {
     ]);
     const w = initialColumnWidth() / 2;
     expect(s.view.relayout(w)).toBe(true);
-    let prev: ReturnType<typeof skeletonKind> = "none";
     for (let i = 0; i < 3000; i += 97) {
       const f = s.ledger.factsOf(i)!;
-      prev = i === 0 ? "none" : skeletonKind(s.ledger.factsOf(i - 1)!);
-      expect(s.ledger.heightOf(i, i + 1), `第 ${i} 行`).toBeCloseTo(estimateFromFacts(f, prev, w), 6);
+      expect(s.ledger.heightOf(i, i + 1), `第 ${i} 行`).toBeCloseTo(estimateFromFacts(f, w), 6);
     }
     const gap = s.content.querySelector<HTMLElement>(`.${SKELETON_GAP_CLASS}`)!;
     expect(parseFloat(gap.style.height)).toBeCloseTo(s.ledger.heightOf(0, 2990), 6);

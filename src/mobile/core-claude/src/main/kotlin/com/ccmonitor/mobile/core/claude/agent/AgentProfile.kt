@@ -1,24 +1,17 @@
 package com.ccmonitor.mobile.core.claude.agent
 
-import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.CodexSessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.SessionCatalog
 import com.ccmonitor.mobile.core.claude.command.AgentInvocation
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.command.CodexInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.claude.model.CodexRecordParser
-import com.ccmonitor.mobile.core.claude.model.JsonlParser
-import com.ccmonitor.mobile.core.claude.model.RecordParser
 import com.ccmonitor.mobile.core.claude.transport.ClaudeSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.CodexSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.SessionLocator
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 
 /**
  * 一个 agent 一份档案。消费方只问档案，不问种类。
  *
- * 一家一句的事实（产品名、能不能上行、resume 载荷、记录解析、会话发现……）都收在这里；
+ * 一家一句的事实（产品名、resume 载荷与定位……）都收在这里；
  * [of] 是唯一取法，构造器与实例都是 `private`，外面建不出第三份。
  * 加一种 agent 时 [of] 的 `when` 因穷尽性编译不过，逼着补一份档案。
  *
@@ -32,20 +25,8 @@ class AgentProfile private constructor(
     val displayName: String,
     /** 守护进程帧里的 `agent_kind` 串（`"claude"` | `"codex"`）。反向映射见 [fromWire]。 */
     val wireName: String,
-    /**
-     * 这一家能不能说话（上行与输入行形态的唯一判定源）。
-     *
-     * `false` 时输入行整条不渲染（不是灰掉：灰掉是「等会儿就能发」的承诺，对这一家是假的），
-     * [landsOnChatScreen] 也随之为 `false`。Codex 是 `false`：上行那半全按 Claude CLI 的管道形状写。
-     */
-    val supportsUplink: Boolean,
     /** 起新对话前要不要先选账号。只读档不起新对话，这道门对它没有意义。 */
     val requiresAccountGate: Boolean,
-    /**
-     * 记录之间靠 `parentUuid` 串成链（Claude），还是按文件序加合成 uuid（Codex 没有 parentUuid）。
-     * 决定阅读面能不能走 `MainBranch` 与骨架链。
-     */
-    val usesParentUuidChain: Boolean,
     /**
      * 后端对这一家有没有会话身份面。`true` 时 resume 出来的 tmux 会话在新建那一支打
      * `@ccm_sid=<完整 sid>`。
@@ -62,25 +43,9 @@ class AgentProfile private constructor(
     val appDefaultDirSetting: AgentDirSettingKey?,
     /** resume 与启动命令的载荷构造（sid 校验、命令净化、候选链、resume 串、会话名）。 */
     val invocation: AgentInvocation,
-    /** 一行原始记录 → 统一内部模型。 */
-    val recordParser: RecordParser,
-    /** 远端会话发现命令、`path→sessionId`、agent-dir 解析。 */
+    /** 远端会话定位命令（resume 找那份记录）、`path→sessionId`、agent-dir 解析。 */
     val sessionLocator: SessionLocator,
-    /**
-     * 会话目录工厂（会话发现、活动判定、可读标题）。
-     *
-     * 注意：函数型参数留在最后一个位置，尾随 lambda 才不会绑错格。
-     */
-    val newSessionCatalog: (channel: RemoteCommandChannel, agentDir: String) -> SessionCatalog,
 ) {
-    /**
-     * 点一台这种服务器进去，落聊天屏（`true`）还是对话总览只读档（`false`）。
-     *
-     * 派生自 [supportsUplink] 而不单独存：「能不能说话」与「去哪儿落地」是同一句话，
-     * 拆成两格就可能一半改了一半没改。
-     */
-    val landsOnChatScreen: Boolean get() = supportsUplink
-
     override fun toString(): String = "AgentProfile(${kind.name})"
 
     companion object {
@@ -89,15 +54,11 @@ class AgentProfile private constructor(
                 kind = AgentKind.ClaudeCode,
                 displayName = "Claude",
                 wireName = "claude",
-                supportsUplink = true,
                 requiresAccountGate = true,
-                usesParentUuidChain = true,
                 hasCcmIdentity = true,
                 appDefaultDirSetting = AgentDirSettingKey.AppDefaultClaudeDir,
                 invocation = ClaudeInvocation,
-                recordParser = JsonlParser,
                 sessionLocator = ClaudeSessionLocator,
-                newSessionCatalog = { channel, agentDir -> ClaudeSessionCatalog(channel, agentDir) },
             )
 
         private val CODEX =
@@ -105,17 +66,12 @@ class AgentProfile private constructor(
                 kind = AgentKind.Codex,
                 displayName = "Codex",
                 wireName = "codex",
-                // 只读档：没有输入行，落点是对话总览。
-                supportsUplink = false,
                 requiresAccountGate = false,
-                usesParentUuidChain = false,
                 hasCcmIdentity = false,
                 // 只认主机覆盖与内置 `${CODEX_HOME:-$HOME/.codex}`。
                 appDefaultDirSetting = null,
                 invocation = CodexInvocation,
-                recordParser = CodexRecordParser,
                 sessionLocator = CodexSessionLocator,
-                newSessionCatalog = { channel, agentDir -> CodexSessionCatalog(channel, agentDir) },
             )
 
         /** 唯一取法。生产代码里对 [AgentKind] 的 `when` 只有这一处。 */

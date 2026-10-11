@@ -87,11 +87,34 @@ describe("extractProseText(R1:块感知提取)", () => {
 });
 
 describe("estimateStreamNodeHeight", () => {
-  it("折叠 details(工具组)= summary 常数,与内容量无关", () => {
+  it("折叠的顶层 details(压缩卡)= summary 常数,与内容量无关", () => {
     const d = document.createElement("details");
-    d.className = "card card-tool-group";
-    d.innerHTML = "<summary>🔧 工具调用 · 99 个</summary><div>" + "x".repeat(5000) + "</div>";
+    d.className = "card card-compact";
+    d.innerHTML = "<summary>s</summary><div>" + "x".repeat(5000) + "</div>";
     expect(estimateStreamNodeHeight(d)).toBe(38);
+  });
+  it("「几步」卡 = 每步收着一行 × 步数 + 步间距,与收着的内容量无关", () => {
+    const card = document.createElement("div");
+    card.className = "card card-steps";
+    card.innerHTML =
+      '<details class="block-collapsible"><summary>a</summary><div>' + "x".repeat(5000) + "</div></details>" +
+      '<details class="block-collapsible"><summary>b</summary></details>' +
+      '<details class="block-collapsible"><summary>c</summary></details>';
+    expect(estimateStreamNodeHeight(card)).toBe(3 * 38 + 2 * 4);
+    const one = document.createElement("div");
+    one.className = "card card-steps";
+    one.innerHTML = '<details class="block-collapsible"><summary>a</summary></details>';
+    expect(estimateStreamNodeHeight(one)).toBe(38);
+    // 派出子 agent 那一步不是 <details>，也是一行抬头；展开着的那一步按内容算（比一行高）
+    const mixed = document.createElement("div");
+    mixed.className = "card card-steps";
+    mixed.innerHTML =
+      '<div data-role="run-card"><button>agent</button></div>' +
+      '<details class="block-collapsible" open><summary>a</summary><div class="block-text"><p>' + "长".repeat(400) + "</p></div></details>";
+    const h = estimateStreamNodeHeight(mixed)!;
+    expect(h).toBeGreaterThan(38 + 4 + 38);
+    mixed.querySelector("details")!.open = false;
+    expect(estimateStreamNodeHeight(mixed)).toBe(38 + 4 + 38);
   });
   it("展开的顶层 details 返回 null(走 CSS 兜底+auto 记忆)", () => {
     const d = document.createElement("details");
