@@ -16,7 +16,7 @@ fn read_small(p: &Path) -> Option<String> {
     if !p.exists() {
         return None;
     }
-    match crate::common::fs::read_regular_capped(p, READ_CAP).map(String::from_utf8) {
+    match crate::platform::fs::Ro::read_regular_capped(p, READ_CAP).map(String::from_utf8) {
         Ok(Ok(t)) => Some(t),
         Ok(Err(_)) => {
             tracing::warn!(path = %p.display(), "chores: not UTF-8, skipped");

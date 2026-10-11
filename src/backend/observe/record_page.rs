@@ -19,6 +19,7 @@
 
 use crate::agents::record::TypedTimes;
 use crate::agents::RecordFace;
+use crate::platform::fs::Ro;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -64,7 +65,7 @@ pub(crate) fn lead_of(target: &Path, offset: u64) -> (u64, Vec<u8>) {
     use std::io::{Read, Seek, SeekFrom};
     let at = offset.saturating_sub(QUEUE_LOOKBACK_BYTES);
     let mut buf = Vec::new();
-    let read = std::fs::File::open(target).and_then(|mut f| {
+    let read = Ro::open(target).and_then(|mut f| {
         f.seek(SeekFrom::Start(at))?;
         f.take(offset - at).read_to_end(&mut buf)
     });

@@ -2851,9 +2851,8 @@ mod tests {
             "read",
             "read_dir",
             "read_to_string",
-            "mtime_ms",
-            "read_regular_capped",
-            "read_json_capped",
+            // `platform/fs/` 那个只读命名空间（`crate::platform::fs::Ro::…` 那一形里 `fs::` 后面跟的是它）。
+            "Ro",
             // P4f：`PermissionsExt` 只用来**读** `mode()`（判可执行位，找 cc-bus 命令用）。
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",
@@ -2871,6 +2870,8 @@ mod tests {
             "canonicalize",
             // `read_link`：读 `/proc/<pid>/exe`（停远端常驻后端之前核身份，`platform::proc::exe_of`）—— 纯读。
             "read_link",
+            // `symlink_metadata`：不跟链接地看一项 —— 纯读（`platform::fs::Ro::symlink_metadata` 那一处）。
+            "symlink_metadata",
         ];
         let root = crate::guard_support::src_root();
         let mut bad: Vec<String> = Vec::new();

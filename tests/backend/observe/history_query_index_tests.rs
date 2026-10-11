@@ -174,7 +174,7 @@ fn stream_from_offset_until_is_half_open() {
         (16, 4, &data[0..0]),
         (16, 999, &data[16..]),
     ] {
-        let mut f = std::fs::File::open(&p).unwrap();
+        let mut f = Ro::open(&p).unwrap();
         let mut got = Vec::new();
         stream_from_offset(&mut f, off, Some(until), &mut got).unwrap();
         assert_eq!(got, want, "[{off},{until})");

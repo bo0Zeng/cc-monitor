@@ -38,6 +38,7 @@
 //!   `--account-trust-zero` 不收路径参数。
 
 use crate::common::cells::Words;
+use crate::platform::fs::Ro;
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
@@ -143,7 +144,7 @@ fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
         ));
     }
     // 屏上那一句只带原因词；系统原话记一行日志（这一形的失败是给账号页一句话，没有原话位）。
-    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
+    let bytes = Ro::read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
         crate::common::said::IntoNote::into_note(e.wrap(|why| {
             copy_text(
                 "beAccountsQuery.loadManifest.unreadable",
@@ -202,7 +203,6 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 // ---------------------------------------------------------------- /proc
 
 // `/proc/<pid>/stat` 的 starttime 只有一份：`platform::proc::proc_starttime`。
-use crate::common::fs::read_regular_capped;
 use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
 
 /// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
@@ -402,7 +402,7 @@ pub(crate) const CREDENTIALS_FILE: &str = CREDENTIALS_NAME;
 /// 删掉默认号之后新会话默认谁（默认号只有清单里那一份）：问写侧那一条规则（`Manifest::without`），这里不另判。
 /// 清单读不出 / 没有默认号 / 删了之后没有别的号 ⇒ `None`。
 fn next_default(accts_dir: &Path) -> Option<String> {
-    let bytes = read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
+    let bytes = Ro::read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
     let text = String::from_utf8(bytes).ok()?;
     let m = crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}'))
         .ok()?;
@@ -597,7 +597,7 @@ pub(crate) fn list_product_with(
 fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     let mut out = Vec::new();
     let dir = crate::agents::pidfile_dir(agent_home);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
+    let Ok(rd) = Ro::read_dir(&dir) else {
         return Vec::new(); // 没有 sessions/ → 零行（exit 0）
     };
     let mut seen = 0usize;
@@ -618,7 +618,7 @@ fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
             continue;
         };
         seen += 1;
-        let bytes = match read_regular_capped(&path, MAX_SESSION_FILE_BYTES) {
+        let bytes = match Ro::read_regular_capped(&path, MAX_SESSION_FILE_BYTES) {
             Ok(b) => b,
             Err(e) => {
                 // 跳过要说清是谁：一个超过 `MAX_SESSION_FILE_BYTES` 的 pidfile 被静默丢掉，那个会话就永远不归属到任何账号、也没人说得出是哪一个。
@@ -688,7 +688,7 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
             let Ok(path) = super::history_query::session_record(home, sid) else {
                 continue;
             };
-            let Ok(file) = std::fs::File::open(&path) else {
+            let Ok(file) = Ro::open(&path) else {
                 continue;
             };
             let Ok(said) = super::facts_query::mcp_of(std::io::BufReader::new(file)) else {

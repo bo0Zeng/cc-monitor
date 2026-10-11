@@ -57,6 +57,7 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
+use crate::platform::fs::{Ro, RoFile};
 use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
@@ -509,7 +510,7 @@ impl AccountsEar {
 
     /// 按盘上此刻挂各号目录：新出现的挂上，不在了的摘掉（符号链接不跟）。
     fn arm_subs(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
-        let now: std::collections::BTreeSet<PathBuf> = std::fs::read_dir(&self.dir)
+        let now: std::collections::BTreeSet<PathBuf> = Ro::read_dir(&self.dir)
             .map(|rd| {
                 rd.flatten()
                     .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
@@ -1950,13 +1951,13 @@ enum Look {
 /// - ★ `file_len` 用「真读到多少」算（理由见原注：`metadata` 与读之间文件还在长）。
 fn read_tail_from(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Look {
     use std::io::{Read, Seek, SeekFrom};
-    let meta_len = match std::fs::metadata(path) {
+    let meta_len = match Ro::metadata(path) {
         Ok(m) => m.len(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Look::Gone,
         Err(_) => return Look::Unreadable,
     };
     let read_from = |start: u64| -> Option<(Vec<u8>, u64, u64)> {
-        let mut f = std::fs::File::open(path).ok()?;
+        let mut f = Ro::open(path).ok()?;
         if start > 0 {
             f.seek(SeekFrom::Start(start)).ok()?;
         }
@@ -2387,7 +2388,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         return;
     };
     let mut rest = Vec::new();
-    let read = std::fs::File::open(path).and_then(|mut f| {
+    let read = Ro::open(path).and_then(|mut f| {
         f.seek(SeekFrom::Start(cursor.consumed))?;
         f.read_to_end(&mut rest)
     });
@@ -2506,7 +2507,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
         return false;
     };
-    let Some(bytes) = std::fs::read(path).ok() else {
+    let Some(bytes) = Ro::read(path).ok() else {
         return false;
     };
     let Some(sid) = parse_session_id(&bytes) else {
@@ -3014,7 +3015,7 @@ fn reconcile_sessions(
                 continue;
             }
             if let Some(want) = only {
-                let sid = std::fs::read(p).ok().and_then(|b| parse_session_id(&b));
+                let sid = Ro::read(p).ok().and_then(|b| parse_session_id(&b));
                 if sid.as_deref() != Some(want) {
                     continue;
                 }
@@ -3077,7 +3078,7 @@ fn find_sid_jsonls(state: &ReaderState, sid: &str) -> Vec<std::path::PathBuf> {
     let mut v: Vec<std::path::PathBuf> = record_files(state)
         .filter(|p| state.sid_of(p).as_deref() == Some(sid))
         .collect();
-    v.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
+    v.sort_by_key(|p| std::cmp::Reverse(Ro::metadata(p).and_then(|m| m.modified()).ok()));
     v
 }
 
@@ -3111,7 +3112,7 @@ fn sid_jsonls(state: &mut ReaderState, sid: &str) -> Vec<std::path::PathBuf> {
         }
         return found;
     }
-    v.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
+    v.sort_by_key(|p| std::cmp::Reverse(Ro::metadata(p).and_then(|m| m.modified()).ok()));
     v
 }
 
@@ -3236,7 +3237,7 @@ const PRIME_BLOCK: usize = 1 << 20;
 /// 冷接宣告那一趟的读者：从游标读到最后一个整行，**按块交出**（每块止于一个 `\n`；末尾的残行不交，留给续读）。
 /// 起读处与续读（[`read_tail_from`]）同一套：变短 ⇒ 从 0；游标之前的末尾指纹对不上 ⇒ 从 0。
 struct PrimeReader {
-    file: std::fs::File,
+    file: RoFile,
     /// 从哪一处起读。
     from: u64,
     /// 起读处之前那几个指纹字节（从 0 起 ⇒ 空）。
@@ -3251,12 +3252,12 @@ impl PrimeReader {
     /// 不在 ⇒ `Err(Look::Gone)`；读不出 ⇒ `Err(Look::Unreadable)`。
     fn open(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Result<Self, Look> {
         use std::io::{Read, Seek, SeekFrom};
-        let meta_len = match std::fs::metadata(path) {
+        let meta_len = match Ro::metadata(path) {
             Ok(m) => m.len(),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Look::Gone),
             Err(_) => return Err(Look::Unreadable),
         };
-        let mut file = std::fs::File::open(path).map_err(|_| Look::Unreadable)?;
+        let mut file = Ro::open(path).map_err(|_| Look::Unreadable)?;
         let mut from = 0;
         let mut probe = Vec::new();
         if meta_len >= cursor.seen_len {
@@ -3429,7 +3430,7 @@ fn activity(bytes: &[u8]) -> Option<crate::agents::SessionActivity> {
 /// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
 pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
     let dir = pidfile_dir(agent_home);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    let Ok(entries) = Ro::read_dir(&dir) else {
         return Vec::new();
     };
     entries
@@ -3438,7 +3439,7 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
         .filter(|p| is_session_json(p))
         .filter_map(|p| {
             let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
-            let bytes = std::fs::read(&p).ok()?;
+            let bytes = Ro::read(&p).ok()?;
             let sid = parse_session_id(&bytes)?;
             (pid_alive(pid) && !is_background(&bytes) && add_time_check(pid, &bytes, &p).is_ok())
                 .then_some((sid, pid))
@@ -3449,7 +3450,7 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
 /// `sid` 那个会话此刻有没有一轮在跑：活着的交互会话 pidfile 说在干活（判活同 [`running_sessions`]）。
 pub(crate) fn session_busy(agent_home: &Path, sid: &str) -> bool {
     let dir = pidfile_dir(agent_home);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    let Ok(entries) = Ro::read_dir(&dir) else {
         return false;
     };
     entries
@@ -3460,7 +3461,7 @@ pub(crate) fn session_busy(agent_home: &Path, sid: &str) -> bool {
             let Some(pid) = file_stem_str(&p).and_then(|s| s.parse::<u32>().ok()) else {
                 return false;
             };
-            let Ok(bytes) = std::fs::read(&p) else {
+            let Ok(bytes) = Ro::read(&p) else {
                 return false;
             };
             parse_session_id(&bytes).as_deref() == Some(sid)
@@ -3485,7 +3486,7 @@ fn parse_procstart_ticks(bytes: &[u8]) -> Option<u64> {
 
 /// The pidfile's mtime as epoch seconds (None on any error → check skipped).
 fn file_mtime_epoch(path: &Path) -> Option<u64> {
-    let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
+    let mtime = Ro::metadata(path).ok()?.modified().ok()?;
     mtime
         .duration_since(std::time::UNIX_EPOCH)
         .ok()

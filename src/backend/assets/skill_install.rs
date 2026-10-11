@@ -92,7 +92,7 @@ fn skill_dir(
 
 /// 读一个文件：`(原文, 读不出原文的原因)`，两者恰有一个。
 fn read_text(p: &Path) -> (Option<String>, Option<String>) {
-    match crate::common::fs::read_regular_capped(p, MAX_FILE_BYTES) {
+    match crate::platform::fs::Ro::read_regular_capped(p, MAX_FILE_BYTES) {
         Ok(b) if b.contains(&0) => (None, Some(copy_text("beSkillInstall.text.binary", &[]))),
         Ok(b) => match String::from_utf8(b) {
             Ok(t) => (Some(t), None),

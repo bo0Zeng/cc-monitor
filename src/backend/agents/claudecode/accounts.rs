@@ -4,8 +4,8 @@
 //! 那是账号库的格式（`accounts/manage/model.rs` 读写、`observe/accounts_query.rs` 只读）。
 
 use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
-use crate::common::fs::read_regular_capped;
 use crate::common::said::IntoNote as _;
+use crate::platform::fs::Ro;
 use std::path::Path;
 
 /// 账号级配置文件的文件名（住在配置根下）。
@@ -122,7 +122,7 @@ pub(crate) fn shared_root_in(home: &Path) -> std::path::PathBuf {
 
 /// 一份 `.claude.json` 里登录的是哪个邮箱（`oauthAccount.emailAddress`）。只取这一格；读不了 / 没有 ⇒ `None`。
 pub(crate) fn oauth_email_in(p: &Path) -> Option<String> {
-    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
+    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
     let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     v.get("oauthAccount")?
         .get("emailAddress")?
@@ -139,7 +139,7 @@ pub(crate) fn identity_file(config_dir: &Path, base_home: Option<&Path>) -> std:
 /// 那份文件里的账号身份：`oauthAccount.accountUuid`（请求体 `metadata.user_id` 里 `account_uuid` 那一格的值）。
 /// 读不了 / 没有 / 不像一个 id ⇒ `None`。
 pub(crate) fn identity_in(p: &Path) -> Option<String> {
-    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
+    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
     let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     v.get("oauthAccount")?
         .get("accountUuid")?
@@ -223,7 +223,7 @@ pub(crate) fn trust_of_config(p: &Path, cwd: &str) -> Result<String, (String, St
                 .to_string(),
         );
     }
-    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES)
+    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES)
         .map_err(|e| ("claude_json_unreadable".to_string(), e.into_note()))?;
     let v: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|e| ("claude_json_invalid".to_string(), e.to_string()))?;

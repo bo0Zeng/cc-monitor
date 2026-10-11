@@ -13,6 +13,7 @@
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
 use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::accounts::upstream_select::endpoint::LaunchAccount;
@@ -226,9 +227,8 @@ impl Env {
 fn is_exec(p: &std::path::Path) -> bool {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        return std::fs::metadata(p)
-            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        return Ro::metadata(p)
+            .map(|m| m.is_file() && Ro::mode(&m).is_some_and(|mode| mode & 0o111 != 0))
             .unwrap_or(false);
     }
     // 〔WN1 件 G〕从前这一臂是 `p.is_file()` ⇒ Windows 上「可执行」退化成「存在」
@@ -401,7 +401,7 @@ impl AccountTable {
     /// ⚠ 刻意**不**在这里报错退出：「读不到账号库」照旧是合法的降级路径
     /// （退化为基座启动器）。改的只是**那句话的真假**。
     pub(crate) fn load(manifest_path: &str) -> Self {
-        let raw = match std::fs::read_to_string(manifest_path) {
+        let raw = match Ro::read_to_string(manifest_path) {
             Ok(s) => s,
             Err(_) => return Self::default(),
         };
@@ -750,7 +750,7 @@ pub(crate) fn expand_home(p: &str, home: &str) -> String {
 /// 比「是不是同一个目录」用的键：解开链接（解不开就按原样），再按这台的大小写规矩折。
 fn same_dir_key(p: &str) -> std::path::PathBuf {
     let raw = std::path::Path::new(p);
-    let real = std::fs::canonicalize(raw).unwrap_or_else(|_| raw.to_path_buf());
+    let real = Ro::canonicalize(raw).unwrap_or_else(|_| raw.to_path_buf());
     crate::platform::paths::path_key(&real)
 }
 

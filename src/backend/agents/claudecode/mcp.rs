@@ -176,7 +176,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
         }
         Ok(_) => {}
     }
-    match crate::common::fs::read_json_capped(path, cap) {
+    match crate::platform::fs::Ro::read_json_capped(path, cap) {
         Ok(v) => Some(v),
         // 那一句只带原因词进说明；原话记日志（说明没有复制详情那一格）。
         Err(e) => {

@@ -49,7 +49,7 @@ pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, crate::comm
     match item_at(p) {
         Item::Absent => Ok(None),
         Item::File { .. } => {
-            let b = crate::common::fs::read_regular_capped(Path::new(p), cap)?;
+            let b = crate::platform::fs::Ro::read_regular_capped(Path::new(p), cap)?;
             String::from_utf8(b)
                 .map(Some)
                 .map_err(|_| copy_text("beAcctMcpShare.read.notText", &[]).into())

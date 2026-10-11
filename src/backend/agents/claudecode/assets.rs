@@ -11,7 +11,7 @@
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-use crate::common::fs::read_regular_capped;
+use crate::platform::fs::Ro;
 
 use super::accounts::{config_path_in, MAX_CONFIG_BYTES};
 use super::paths::{resolve_home, CONFIG_DIR_ENV};
@@ -70,7 +70,7 @@ pub(crate) fn plugins(config_root: &Path) -> Vec<(PathBuf, String)> {
             if !m.exists() {
                 return None; // 普通 skill 目录：不是插件，不用说
             }
-            let bytes = match read_regular_capped(&m, PLUGIN_MANIFEST_MAX_BYTES) {
+            let bytes = match Ro::read_regular_capped(&m, PLUGIN_MANIFEST_MAX_BYTES) {
                 Ok(b) => b,
                 Err(e) => {
                     tracing::warn!(
@@ -211,7 +211,7 @@ fn skill_description(doc: &Path) -> Result<Option<String>, crate::common::said::
     if !doc.exists() {
         return Ok(None);
     }
-    let bytes = read_regular_capped(doc, SKILL_DOC_MAX_BYTES)?;
+    let bytes = Ro::read_regular_capped(doc, SKILL_DOC_MAX_BYTES)?;
     let text = String::from_utf8_lossy(&bytes);
     let mut lines = text.lines();
     // front matter 的围栏是一行三个 `-`（写成 `repeat` 是为了不让协议对拍把它认成一个 `--子命令` 字面量）。
@@ -236,7 +236,7 @@ pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
     if !claude_json.exists() {
         return;
     }
-    match crate::common::fs::read_json_capped(claude_json, MAX_CONFIG_BYTES) {
+    match crate::platform::fs::Ro::read_json_capped(claude_json, MAX_CONFIG_BYTES) {
         Ok(v) => servers_into(&v, claude_json, None, out),
         // 这一条只是资产目录上的一句说明（没有复制详情那一格）：原话记日志。
         Err(e) => out.problems.push(
@@ -274,7 +274,7 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
         }
         Ok(_) => {}
     }
-    match crate::common::fs::read_json_capped(&file, MAX_PROJECT_MCP_BYTES) {
+    match crate::platform::fs::Ro::read_json_capped(&file, MAX_PROJECT_MCP_BYTES) {
         Ok(v) => servers_into(&v, &file, Some(&dir.display().to_string()), out),
         Err(e) => {
             let e = e.wrap(|why| {

@@ -28,15 +28,6 @@ pub(crate) fn project_dir(p: &Path) -> Option<String> {
     crate::agents::first_in_head(p, |v| parse::session_meta_cwd(v).map(str::to_string))
 }
 
-fn mtime_ms(p: &Path) -> i64 {
-    std::fs::metadata(p)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
 /// 这台机器上的 Codex 会话（没装 Codex / 没有会话目录 ⇒ 空）。
 pub(crate) fn sessions() -> Vec<crate::agents::SynthSession> {
     match super::home() {
@@ -77,7 +68,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
             sid,
             path: p.to_path_buf(),
             cwd: project_dir(p).unwrap_or_default(),
-            mtime_ms: mtime_ms(p),
+            mtime_ms: crate::platform::fs::Ro::mtime_ms(p),
         });
     }
     out

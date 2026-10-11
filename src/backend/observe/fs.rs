@@ -1,18 +1,7 @@
-//! observe 内部共享的文件元信息读取。
+//! observe 内部共享的增量读（只往后追加的会话记录）。读盘本身经 `platform::fs::Ro`。
 
+use crate::platform::fs::Ro;
 use std::path::Path;
-use std::time::UNIX_EPOCH;
-
-/// 文件 mtime 的毫秒时间戳；任何读取失败都退化成 `0`（排序时沉到最旧：读失败与「1970 年的文件」混成同一个值，要改得连同两个调用点的排序语义一起想）。
-/// 住 observe：两个调用点（`history_query` / `search_query`）同属 observe，不够 `common/` 的「≥2 个上层用」门槛。
-pub(crate) fn mtime_ms(p: &Path) -> i64 {
-    std::fs::metadata(p)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
 
 /// 增量读一份**只往后追加**的文件（会话记录）的那本账：上一次读完时的（stat 的修改时刻, 真读到的长度）·
 /// `[0, consumed)` 已经交给调用方的完整行 · `consumed` 之前最多 [`WITNESS_BYTES`] 字节的见证。
@@ -47,7 +36,7 @@ impl Tailed {
         may_append: bool,
         bytes: &mut u64,
     ) -> Result<(Step, (Option<std::time::SystemTime>, u64)), String> {
-        let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+        let meta = Ro::metadata(path).map_err(|e| e.to_string())?;
         let seen = (meta.modified().ok(), meta.len());
         if let Some(prev) = prev {
             if prev.seen == seen {
@@ -66,7 +55,7 @@ impl Tailed {
     pub(crate) fn read_whole(path: &Path, bytes: &mut u64) -> Result<Vec<u8>, String> {
         use std::io::Read;
         let mut buf = Vec::new();
-        std::fs::File::open(path)
+        Ro::open(path)
             .and_then(|mut f| f.read_to_end(&mut buf))
             .map_err(|e| e.to_string())?;
         *bytes += buf.len() as u64;
@@ -77,7 +66,7 @@ impl Tailed {
     fn appended(&self, path: &Path, bytes: &mut u64) -> Result<Option<Vec<u8>>, String> {
         use std::io::{Read, Seek, SeekFrom};
         let w = self.witness.len() as u64;
-        let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let mut f = Ro::open(path).map_err(|e| e.to_string())?;
         let mut buf = Vec::new();
         f.seek(SeekFrom::Start(self.consumed - w))
             .and_then(|_| f.read_to_end(&mut buf))

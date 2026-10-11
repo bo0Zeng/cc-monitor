@@ -27,6 +27,7 @@
 //! 那个 sid 的目录**不存在** ⇒ 空表（诚实的空：这个会话没用过任务）。
 //! 目录**在但读不了** ⇒ 命令级 `failed`：回空表就与上一行长得一模一样。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::Path;
 
@@ -72,7 +73,7 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let entries = std::fs::read_dir(&dir).map_err(|e| {
+    let entries = Ro::read_dir(&dir).map_err(|e| {
         (
             "failed",
             crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
@@ -105,7 +106,7 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
         else {
             continue;
         };
-        match std::fs::metadata(&path) {
+        match Ro::metadata(&path) {
             Ok(m) if m.len() > TASK_FILE_CAP_BYTES => {
                 tracing::warn!(
                     "任务文件 {} 有 {} 字节，超过单个任务文件的读上限 ⇒ 这一条跳过",
@@ -120,7 +121,7 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
                 continue;
             }
         }
-        let raw = match std::fs::read_to_string(&path) {
+        let raw = match Ro::read_to_string(&path) {
             Ok(s) => s,
             Err(e) => {
                 tracing::trace!("读任务文件 {} 失败：{e}", path.display());
