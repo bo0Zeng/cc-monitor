@@ -9,7 +9,33 @@
 //! | W5 | 家目录那一根只给 `.cc-monitor` 底下：别的打头 · 家目录本身 · 往上跳都拒 | 纯函数 |
 
 use super::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// 判据用的几种造法（只在测试构建里有：住测试模块里，生产段一个都看不见）。
+impl Own {
+    /// 判据用：家目录指到一个临时目录（数据目录随之是它底下的 `.cc-monitor`，同没设 `CCM_DATA_DIR` 那一形）。
+    pub(crate) fn issue_at(home: &Path) -> Own {
+        Own {
+            home: Some(home.to_path_buf()),
+            data: Some(home.join(HOME_DIR_NAME)),
+        }
+    }
+
+    /// 判据用：只给数据目录（指到一个临时目录；家目录那一根没有）。
+    pub(crate) fn issue_data_at(data: &Path) -> Own {
+        Own {
+            home: None,
+            data: Some(data.to_path_buf()),
+        }
+    }
+
+    /// 判据用：根指到这个测试进程自己的一个临时目录（不碰真家目录；只是要递一份句柄、并不关心写到哪的那些判据用它）。
+    pub(crate) fn for_tests() -> Own {
+        Own::issue_at(
+            &std::env::temp_dir().join(format!("ccm-own-for-tests-{}", std::process::id())),
+        )
+    }
+}
 
 fn sandbox(tag: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(
@@ -89,11 +115,9 @@ fn w3_atomic_write_needs_the_lock_of_that_very_dir() {
         "拿着别的目录的锁也写进去了"
     );
     assert!(!elsewhere.as_path().exists(), "拒了却落了盘");
-    let leftovers: Vec<_> = std::fs::read_dir(&base)
-        .expect("列")
-        .filter_map(Result::ok)
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".tmp"))
+    let leftovers: Vec<_> = guard_core::scan_tree!(&base, &["tmp"])
+        .into_iter()
+        .map(|(p, _)| p.display().to_string())
         .collect();
     assert!(leftovers.is_empty(), "留下了旁名：{leftovers:?}");
     std::fs::remove_dir_all(&base).ok();

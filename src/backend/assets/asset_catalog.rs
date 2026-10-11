@@ -728,15 +728,6 @@ fn home() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
 }
 
-/// 这台机器上目录文件的路径（`~/.cc-monitor/` 与 `backend.json` 同一个家）。
-pub fn catalog_path() -> Option<PathBuf> {
-    Some(
-        home()?
-            .join(crate::control::exit_policy::DIR_NAME)
-            .join(FILE_NAME),
-    )
-}
-
 /// 这台自报的称呼：`user@host`（环境里取；取不到的那一半写 `?`）。只给人看，不参与任何判定。
 pub fn machine_label() -> String {
     let user = std::env::var("USER")

@@ -340,8 +340,7 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
         hits.is_empty(),
         "monitor 生产段够到了凭据文件的写半边 —— 本机那一份的写者是本机常驻后端，monitor 一个字节都不写：{hits:?}"
     );
-    let face =
-        guard_core::production_code(include_str!("../../../src/backend/common/own_state.rs"));
+    let face = guard_core::production_code(include_str!("../../../src/backend/platform/fs/own.rs"));
     assert!(
         needles.iter().any(|n| face.contains(n.as_str())),
         "正控失败：后端那一份写口里也数不到 —— 针瞎了"

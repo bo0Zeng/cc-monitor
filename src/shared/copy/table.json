@@ -883,12 +883,6 @@
       "zh": "{path} 由版本更高的后端写入 · 未覆盖 · 此后端认格式 {mine} · 它是 {theirs}",
       "args": ["path", "mine", "theirs"]
     },
-    "beAssetCatalog.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beAssetCatalog.write.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
@@ -1007,12 +1001,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "{path} 格式不对",
-      "args": ["path"]
-    },
-    "beSkillLedger.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beSkillLedger.add.tooMany": {
@@ -15877,12 +15865,6 @@
       "zh": "写入失败 · {dir} · {why}",
       "args": ["dir", "why"]
     },
-    "beExitPolicy.writeAt.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beResolveQuery.resolve.unsafeLauncher": {
       "kind": "error",
       "role": "报错",
@@ -15924,12 +15906,6 @@
       "role": "原因格",
       "zh": "写入失败 · {dir} · {why}",
       "args": ["dir", "why"]
-    },
-    "beHistoryAnnotations.writeAt.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
     },
     "beHistoryAnnotations.readForWrite.notObject": {
       "kind": "error",

@@ -1146,7 +1146,7 @@ fn no_production_code_writes_the_agent_settings_file() {
     assert!(code(fake).contains(NEEDLE) && writes(&code(fake)));
     let writer = files
         .iter()
-        .find(|(p, _)| p.ends_with("platform/fs/own.rs"))
+        .find(|(p, _)| *p == repo.join("src/backend/platform/fs/own.rs"))
         .expect("正控：后端自有状态文件原子写的那一处不在扫描范围里");
     assert!(
         writes(&code(&writer.1)),

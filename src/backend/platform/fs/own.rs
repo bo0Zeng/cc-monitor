@@ -68,32 +68,6 @@ impl Own {
         }
     }
 
-    /// 判据用：家目录指到一个临时目录（数据目录随之是它底下的 `.cc-monitor`，同没设 `CCM_DATA_DIR` 那一形）。
-    #[cfg(test)]
-    pub(crate) fn issue_at(home: &Path) -> Own {
-        Own {
-            home: Some(home.to_path_buf()),
-            data: Some(home.join(HOME_DIR_NAME)),
-        }
-    }
-
-    /// 判据用：只给数据目录（指到一个临时目录；家目录那一根没有）。
-    #[cfg(test)]
-    pub(crate) fn issue_data_at(data: &Path) -> Own {
-        Own {
-            home: None,
-            data: Some(data.to_path_buf()),
-        }
-    }
-
-    /// 判据用：根指到这个测试进程自己的一个临时目录（不碰真家目录；只是要递一份句柄、并不关心写到哪的那些判据用它）。
-    #[cfg(test)]
-    pub(crate) fn for_tests() -> Own {
-        Own::issue_at(
-            &std::env::temp_dir().join(format!("ccm-own-for-tests-{}", std::process::id())),
-        )
-    }
-
     /// 数据目录本身；这台没有家目录 ⇒ `None`。
     pub(crate) fn root(&self) -> Option<OwnPath> {
         self.data.clone().map(OwnPath)
@@ -201,25 +175,43 @@ pub(crate) fn atomic_write(path: &Path, body: &[u8]) -> Result<(), Said> {
     ));
     let tmp_s = tmp.display().to_string();
     let path_s = path.display().to_string();
-    let io_said = |key: &str, e: &std::io::Error, with_path: bool| {
-        let why = copy_core::io_reason(e.kind());
-        let mut args: Vec<(&str, &str)> = vec![("tmp", &tmp_s), ("why", &why)];
-        if with_path {
-            args.push(("path", &path_s));
-        }
-        Said::with_raw(copy_text(key, &args), e)
-    };
+    let why = |e: &std::io::Error| copy_core::io_reason(e.kind());
     // 建不出来 ⇒ 那个名字上的文件不是我们的，什么都不删。
-    let mut f = creds_core::perm::create_private(&tmp)
-        .map_err(|e| io_said("beOwnState.write.tmpCreateFailed", &e, false))?;
+    let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
+        let w = why(&e);
+        Said::with_raw(
+            copy_text(
+                "beOwnState.write.tmpCreateFailed",
+                &[("tmp", &tmp_s), ("why", &w)],
+            ),
+            &e,
+        )
+    })?;
     let result = f
         .write_all(body)
         .and_then(|()| f.sync_all())
-        .map_err(|e| io_said("beOwnState.write.tmpWriteFailed", &e, false))
+        .map_err(|e| {
+            let w = why(&e);
+            Said::with_raw(
+                copy_text(
+                    "beOwnState.write.tmpWriteFailed",
+                    &[("tmp", &tmp_s), ("why", &w)],
+                ),
+                &e,
+            )
+        })
         .and_then(|()| {
             drop(f);
-            std::fs::rename(&tmp, path)
-                .map_err(|e| io_said("beOwnState.write.renameFailed", &e, true))
+            std::fs::rename(&tmp, path).map_err(|e| {
+                let w = why(&e);
+                Said::with_raw(
+                    copy_text(
+                        "beOwnState.write.renameFailed",
+                        &[("tmp", &tmp_s), ("path", &path_s), ("why", &w)],
+                    ),
+                    &e,
+                )
+            })
         });
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);

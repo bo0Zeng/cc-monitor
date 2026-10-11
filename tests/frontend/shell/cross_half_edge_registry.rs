@@ -144,9 +144,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/common/own_state.rs",
+        "src/backend/platform/fs/own.rs",
         "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
-         要落在真写者身上 —— 后端那份写口经自有状态原子写这一处出生即只给本人，同一把针在这里数得到，才说明零命中不是针瞎了",
+         要落在真写者身上 —— 后端那份写口经自有状态原子写那一处（`platform/fs/own.rs`）出生即只给本人，同一把针在这里数得到，才说明零命中不是针瞎了",
     ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
