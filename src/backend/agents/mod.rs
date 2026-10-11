@@ -410,6 +410,9 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 这一行说这条会话此刻进到哪一态（一轮开始 ⇒ 在跑 · 一轮完了 / 中止 ⇒ 闲着）；不说 ⇒ `None`。
+    /// 没有进程状态文件的那一家靠它（[`LocalFace::activity_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
+    pub(crate) activity: Option<fn(&str) -> Option<SessionActivity>>,
     /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
     /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
     pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,

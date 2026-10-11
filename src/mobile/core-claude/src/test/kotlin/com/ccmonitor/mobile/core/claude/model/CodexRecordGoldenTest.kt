@@ -3,6 +3,8 @@ package com.ccmonitor.mobile.core.claude.model
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.Json
 import com.ccmonitor.mobile.core.claude.link.RecordLine
+import com.ccmonitor.mobile.core.claude.link.SessionTable
+import com.ccmonitor.mobile.core.claude.link.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -110,6 +112,24 @@ class CodexRecordGoldenTest {
             records.map { RenderUnit.UserText(it["id"] as String, (it["who"] as Map<*, *>)["text"] as String, it["id"] as String) },
             RecordUnits.of(records),
         )
+    }
+
+    @Test
+    fun `流上那一路：Codex 会话的活动跟着一轮走，一轮完了是空闲（聊天屏的停止键认 NOW）`() {
+        // 同一份金样：一轮开始 ⇒ 运行中（NOW）；一轮完了 ⇒ 空闲（PLAIN）。手机只照抄帧上的字与语气。
+        var table = SessionTable()
+        val tones = mutableListOf<Tone?>()
+        File(repoRoot(), "tests/__fixtures__/codex-session-stream.golden.jsonl")
+            .readLines()
+            .filter { it.isNotBlank() }
+            .mapNotNull(Json::obj)
+            .forEach { f ->
+                table = table.step(f) { error("会话帧解不开：$it") }
+                val only = table.sessions.values.singleOrNull()
+                val tone = only?.activity?.tone
+                if (tones.lastOrNull() != tone || tones.isEmpty()) tones += tone
+            }
+        assertEquals(listOf(Tone.PLAIN, Tone.NOW, Tone.PLAIN, Tone.NOW, Tone.PLAIN), tones)
     }
 
     private fun repoRoot(): File =

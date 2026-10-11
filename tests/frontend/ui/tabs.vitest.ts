@@ -6394,6 +6394,26 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual(ends.map((f) => [codexSid, f.title, f.body]));
     expect(ends).toHaveLength(2);
   });
+
+  it("Codex 样本 ⇒ 它那个 tab 的活动跟着一轮走：一轮开始在跑、一轮完了空闲（帧上那几格照抄）", () => {
+    type F = { kind: string; sid?: string; path?: string; activity?: string; waiting_for?: string; activity_text?: string; activity_tone?: string; activity_order?: number };
+    const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as F);
+    const announced = frames.find((f) => f.kind === "session_added")!;
+    const sid = announced.sid!;
+    tm.ensureTab(sid, null, announced.path!, LOCAL_ORIGIN);
+    const seen: (string | null)[] = [];
+    for (const f of frames.filter((x) => x.kind === "session_added" || x.kind === "session_status")) {
+      tm.updateActivity(sid, (f.activity ?? null) as never, f.waiting_for ?? null, f.activity_text!, f.activity_tone!, f.activity_order!);
+      const a = home(tm).store.tabs.get(sid)!.activity;
+      if (seen[seen.length - 1] !== (a?.doing ?? null)) seen.push(a?.doing ?? null);
+    }
+    expect(seen).toEqual(["idle", "working", "idle", "working", "idle"]);
+    const last = home(tm).store.tabs.get(sid)!.activity!;
+    expect([last.text, last.tone]).toEqual([copyText("beSession.activity.idle"), "plain"]);
+  });
 });
 
 describe("SeqSet.maxBelow：见过的、比 x 小的最大行号", () => {

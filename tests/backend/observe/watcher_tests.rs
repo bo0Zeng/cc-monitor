@@ -2377,7 +2377,7 @@ fn priming_a_big_record_reads_it_in_blocks() {
     let mut state = ReaderState::new(dir.join("projects"));
     state.active_sids.insert(sid.to_string());
     let base = crate::alloc_probe::reset_peak();
-    let lines = prime_file_cursor(&path, &mut state);
+    let (lines, _) = prime_file_cursor(&path, &mut state);
     let grew = crate::alloc_probe::peak_since(base);
     let cursor = state.offsets.get(&path_key(&path)).copied();
     std::fs::remove_dir_all(&dir).ok();

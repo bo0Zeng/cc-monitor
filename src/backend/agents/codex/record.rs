@@ -99,6 +99,22 @@ pub(crate) fn turn_end_id(raw: &str) -> Option<String> {
     payload.get("turn_id")?.as_str().map(str::to_string)
 }
 
+/// **此刻在干什么**（注册表 `RecordFace.activity`；这一家没有进程状态文件，只有记录里的事件说得出）：
+/// 一轮开始（`task_started`）⇒ 在跑；一轮完了（`task_complete`）· 中止（`turn_aborted`）⇒ 闲着，等下一句；别的行不说。
+/// 先过子串闸：连 `"event_msg"` 都没有的行（绝大多数）零解析直接回。
+pub(crate) fn activity_of(raw: &str) -> Option<crate::agents::SessionActivity> {
+    use crate::agents::SessionActivity as A;
+    if !raw.contains("\"event_msg\"") {
+        return None;
+    }
+    let v: Value = serde_json::from_str(raw).ok()?;
+    match classify(&v) {
+        CodexRecordKind::TurnStarted => Some(A::Working),
+        CodexRecordKind::TurnComplete | CodexRecordKind::TurnAborted => Some(A::Idle),
+        _ => None,
+    }
+}
+
 // ─── 文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
 /// **数组文本拍平**——Codex 的 `message.content` 与 `custom_tool_call_output.output` **真机恒数组**

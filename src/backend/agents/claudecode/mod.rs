@@ -198,6 +198,8 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         file_name: records::session_file_name,
     }),
     turn_end: Some(turn::turn_end_uuid_of),
+    // 此刻在干什么由进程状态文件说（`LocalFace.activity_of`），记录不说。
+    activity: None,
     class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
