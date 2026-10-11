@@ -113,11 +113,11 @@ do_native() {
   # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
-  # 文件窗口程序（单文件的 monitor 靠它开窗）。它是 monitor 包的另一个 `[[bin]]`，monitor 的 build.rs 在同一趟 cargo 里
-  #   吃不到它 ⇒ 先单编、铺好，之后再编 monitor 才嵌得进去。与 `release.yml` 两个 job 的 `Build local filewin (native)` ＋
+  # 文件窗口程序（monitor 开窗时把它放到 `~/.cc-monitor/bin/` 再起）。它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，
+  #   monitor 的 build.rs 吃不到它 ⇒ 先单编、铺好，之后再编 monitor 才嵌得进去。与 `release.yml` 两个 job 的 `Build local filewin (native)` ＋
   #   `Stage native filewin for self-extract` 同一条配方；落点名字定死在 `build.rs::NATIVE_FILEWIN_FILE`（判据对拍）。
-  printf '==> cargo build %s --bin cc-monitor-filewin（本机 target %s，src/frontend/shell）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
-  ( cd "$ROOT/src/frontend/shell" && cargo build "${REEMBED_BUILD_FLAGS[@]}" --bin cc-monitor-filewin )
+  printf '==> cargo build %s -p cc-monitor-filewin --bin cc-monitor-filewin（本机 target %s，src/frontend/shell）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
+  ( cd "$ROOT/src/frontend/shell" && cargo build "${REEMBED_BUILD_FLAGS[@]}" -p cc-monitor-filewin --bin cc-monitor-filewin )
   cp "$ROOT/.build/shell/release/cc-monitor-filewin$exe" "$NATIVE_DIR/cc-monitor-filewin"
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-filewin.target"
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-filewin（＋ .target = %s）\n' "$triple"

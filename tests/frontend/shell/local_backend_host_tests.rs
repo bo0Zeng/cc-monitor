@@ -1271,7 +1271,7 @@ fn the_listen_env_names_are_the_same_string_on_both_sides() {
 /// # 🔴 `K-R43` 换了机制，**名字刻意没改**（引它的地方不用跟着动）
 ///
 /// 从前常驻那条路不要监护那半、用不了 `start_or_extract`（那一份把「找」与「监护」焊在一起）⇒ **两份实现**，
-/// 只对拍**顺序**（两边都必须先 `resolve_beside_this_exe`、再释放内嵌那份）。
+/// 只对拍**顺序**（两边都必须先找 exe 旁边那份、再释放内嵌那份；size2 10-11 起不再找旁边）。
 ///
 /// ⚠ **它守的那件事一个字没变** —— 仍是「同一台机上两条路不许找到不同的二进制」
 /// （那正是「每台机 N 个后端」的另一个入口）。变的是**拿什么去守**，而换机制的理由是
@@ -1302,7 +1302,6 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
     // ① 那份共用的解析真的在，而且三问俱在 —— 它是下面三条的地板。
     let shared = body_of(&theirs, "pub fn resolve_or_extract(");
     for needle in [
-        "resolve_beside_this_exe(",
         "match embedded {",
         "extract_embedded_to(",
         "extraction_failure_reason(",

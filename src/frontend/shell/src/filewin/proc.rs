@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! open_file_window（monitor 进程）
-//! ├─ ① resolve_window_bin()      ← 环境变量 CCM_FILEWIN_BIN，或 exe 旁那份，或 monitor 自带那份（放到 ~/.cc-monitor/bin）
+//! ├─ ① resolve_window_bin()      ← 环境变量 CCM_FILEWIN_BIN，或 monitor 自带那份（放到 ~/.cc-monitor/bin）
 //! ├─ ② 起进程的唯一出口          ← `crate::spawn_managed` 那个五参数形态
 //! │                                  （Hidden · Detached · Inherit，逐格理由住 [`spawn_window`]）
 //! ├─ ③ 把种子写成它 stdin 的第一行  ← 源 + cwd（缺 = 问那台 home）+ reveal + 通道帧长；stdin 不关
@@ -30,8 +30,9 @@
 //! - 订阅（生产上零条流，`chan/host.rs` 头注）· 接回（`chan/client.rs` 头注：管子断了就断了，之后每一件都会出声说没走通）。
 //! - 「窗口真的出现在屏幕上」在本机量不到（`XDG_SESSION_TYPE=tty`）：这一侧买得到的是「那个进程起来了、而且没有当场退」，
 //!   屏幕上那一维由 Xvfb 台架那一摞买。真窗口管理器（reparent 之后几何不同）· 真 Windows · release 档（`panic = "abort"`）都没读数。
-//! - 发版包里有这个二进制：tauri bundler 把每个 `[[bin]]` 装到主程序旁（两向相等判据住 `K-R124-ruler.py` ⑭）；单文件的 monitor 内嵌它的字节
-//!   （`build.rs::embed_native_filewin`），旁边没有时放到 `~/.cc-monitor/bin/` 再起。
+//! - 发版包里这个二进制只有一份：monitor 内嵌它的字节（`build.rs::embed_native_filewin`），开窗时放到 `~/.cc-monitor/bin/` 再起。
+//!   它住文件窗口包自己名下（`src/frontend/filewin/Cargo.toml` 的 `[[bin]]`），不再是 monitor 包的第二个 bin
+//!   （打包器会把 monitor 包的每个 bin 都装进安装包，那一份与内嵌的逐字节相同；size2 10-11 撤了）。
 
 use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
@@ -44,35 +45,28 @@ pub use filewin_contract::{
 
 /// 窗口进程那份二进制的**文件名主干**。
 ///
-/// ⚠ 与本包主二进制同住一个目录（`cargo` 的 `target/<档>/` 或安装包的 exe 旁）。
+/// 产出侧是文件窗口包的 `[[bin]] name`（`proc_tests::the_window_binary_target_really_hosts_the_body` 逐字对拍）。
 pub const BIN_STEM: &str = "cc-monitor-filewin";
 
-/// 窗口那份二进制在 `dir` 里的落点。**纯函数**（判据要在临时目录上喂它）。
-pub fn window_bin_in(dir: &Path) -> PathBuf {
-    dir.join(window_bin_name())
-}
-
-/// 窗口那份二进制的文件名（exe 旁边与 `~/.cc-monitor/bin` 里是同一个名字）。
+/// 窗口那份二进制的文件名（`~/.cc-monitor/bin` 里就叫这个）。
 pub fn window_bin_name() -> String {
     format!("{BIN_STEM}{}", crate::platform::proc::EXE_SUFFIX)
 }
 
-/// 那份二进制到底在哪 —— 环境变量 → exe 旁边 → monitor 自带那份（放到 `~/.cc-monitor/bin/` 再用）。三处之外没有别的路，也没有回落：
+/// 那份二进制到底在哪 —— 环境变量 → monitor 自带那份（放到 `~/.cc-monitor/bin/` 再用）。两处之外没有别的路，也没有回落：
 /// 找不到 / 放不下来都是一条响亮的失败，说清看过哪几处、或往哪儿写失败了。
 ///
-/// - 环境变量 [`BIN_ENV`]：开发时指一份别处的。
-/// - exe 旁边：安装包把它装在主程序旁；开发树 `target/<档>/` 里两个也挨着。名字里永远不带 target triple（与 `local_backend::local_backend_candidates` 不同）。
+/// - 环境变量 [`BIN_ENV`]：开发时指一份别处的（开发树里先 `cargo build -p cc-monitor-filewin`，或 `re-embed.sh --native` 铺好内嵌那份）。
+/// - exe 旁边**不找**：安装包不再旁放它；旧安装包留下的那一份可能是旧版本，而种子与就绪那一行是编进两侧的契约。
 /// - monitor 自带那份（`byte_table::native_filewin`，发版时内嵌）：落点、上位、Windows 上旧的那份正在跑时怎么换，都与本机后端同一套
 ///   （`local_backend::place_local_program`）；盘上那份逐字节相等才直接用，不同就换成这一版 monitor 带的那份（种子与就绪那一行是编进两侧的契约）。
 ///
 /// # Errors
 ///
-/// 三处都给不出一个存在的文件；或自带的那份放不下来。
+/// 两处都给不出一个存在的文件；或自带的那份放不下来。
 pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
-    let exe = std::env::current_exe().map_err(|e| crashed(e.to_string()))?;
     resolve_window_bin_in(
         std::env::var_os(BIN_ENV).map(PathBuf::from),
-        exe.parent().unwrap_or(Path::new(".")),
         crate::byte_table::native_filewin(),
         landing_dir().as_deref(),
         &crate::platform::fs::make_executable,
@@ -86,7 +80,7 @@ fn landing_dir() -> Option<PathBuf> {
     creds_core::store::home_dir().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
 }
 
-/// [`resolve_window_bin`] 的注入形：环境变量的值 · exe 所在目录 · 自带的字节 · 落点目录 · 两样宿主知识都由调用方给
+/// [`resolve_window_bin`] 的注入形：环境变量的值 · 自带的字节 · 落点目录 · 两样宿主知识都由调用方给
 /// （判据在临时目录上喂它，不碰真 `~/.cc-monitor`）。
 ///
 /// # Errors
@@ -94,7 +88,6 @@ fn landing_dir() -> Option<PathBuf> {
 /// 同 [`resolve_window_bin`]。
 pub fn resolve_window_bin_in(
     env: Option<PathBuf>,
-    exe_dir: &Path,
     embedded: Option<&[u8]>,
     landing: Option<&Path>,
     make_executable: &dyn Fn(&Path) -> Result<(), crate::detail::Said>,
@@ -107,13 +100,11 @@ pub fn resolve_window_bin_in(
         }
         looked.push(p);
     }
-    let beside = window_bin_in(exe_dir);
-    if beside.is_file() {
-        return Ok(beside);
-    }
-    looked.push(beside);
     let Some(bytes) = embedded else {
-        let looked: Vec<String> = looked.iter().map(|p| p.display().to_string()).collect();
+        // 详情点名要找的是哪个程序（这一份 monitor 没带它），再列看过的那几处。
+        let looked: Vec<String> = std::iter::once(window_bin_name())
+            .chain(looked.iter().map(|p| p.display().to_string()))
+            .collect();
         return Err(ProcFail {
             said: copy_text("rsFilewinProc.bin.notFound", &[("binEnv", BIN_ENV)]),
             code: None,

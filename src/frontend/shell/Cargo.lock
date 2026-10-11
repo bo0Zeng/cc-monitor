@@ -790,6 +790,7 @@ dependencies = [
  "egui",
  "egui-phosphor",
  "egui_extras",
+ "embed-resource",
  "filewin-contract",
  "fontdb",
  "futures",

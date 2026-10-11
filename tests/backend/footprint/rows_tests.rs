@@ -674,13 +674,10 @@ fn every_host_declaration_is_pinned() {
         // 起会话用的号与起会话便条：会话跑的那台的后端自己的状态。
         ("accounts", "~/.cc-monitor/launch-accounts.json", Either),
         ("accounts", "~/.cc-monitor/launch-pending", Either),
-        // 🔴 `remote-daemon` → `backend`，而它今天有**三行**：
-        //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
-        //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；
-        //    ③ 推给远端那台的那份是 `Remote` —— 而「远端」说的是「相对这台 monitor」，
-        //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
-        //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
-        ("backend", "$APP_DIR", Client),
+        // 🔴 `remote-daemon` → `backend`：同一份后端今天只剩推给远端那台的那一行（`Remote`）——
+        //    「远端」说的是「相对这台 monitor」，**不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
+        //    本机那份是 exe 内嵌、放到 `~/.cc-monitor/bin/ccm*` 的那一个，记在 `ccm` 那一条底下；
+        //    安装包旁边那份（`$APP_DIR`）size2 10-11 撤了：安装包不再旁放它。
         // 自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
         // `$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
@@ -1027,10 +1024,13 @@ fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
             }
         }
     }
-    // 计数自检：≥2 个使用者才配有这个变体（本工作区的 ≥2 判据）
+    // 计数自检：至少有一个使用者（否则上面整段是空转的）。
+    // ⚠ 本工作区的 ≥2 判据（「不够 2 个就不该是一个变体」）今天**不满足**：size2（10-11）撤掉安装包旁边那份后端
+    //   （`$APP_DIR` 那一格）之后只剩 `$POSIX_RC` 一个使用者。按规矩该把它并进别的变体，但 `ToolDestination` 进线上形状
+    //   （`serde::Serialize`，帧面 `footprint-report`），并它连着生成类型与手机金样 —— 另立一件，这里如实把地板放到 1。
     assert!(
-        n >= 2,
-        "UserConfiguredPath 只有 {n} 个使用者——不够 2 个就不该是一个变体"
+        n >= 1,
+        "UserConfiguredPath 一个使用者都没有了 —— 该删这个变体"
     );
 }
 

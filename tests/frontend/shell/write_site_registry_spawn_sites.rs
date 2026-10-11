@@ -155,7 +155,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "—— **它就是那个出口本身**，没有「它选了哪三条」这回事"),
     // 🔴 **文件管理窗口的独立进程。** 这一行是新的**一整面**，
     //    不是搬家：此前那个窗口跑在 monitor 自己的进程里（次线程 ＋ `run_native`）。
-    ("proc.rs", "spawn_window", "`cc-monitor-filewin`（本包的第二个 `[[bin]]`，一个窗口一个）",
+    ("proc.rs", "spawn_window", "`cc-monitor-filewin`（文件窗口包的 `[[bin]]`，monitor 内嵌、放到 `~/.cc-monitor/bin/` 再起；一个窗口一个）",
      "「**窗口生命周期就是销毁**」，而 winit **一个进程只许一个事件循环** \
           ⇒ 「关掉就销毁」与「关掉之后还能再打开」在同进程形态下**不可同时成立** \
           ⇒ 只剩「一个窗口一个进程」这条路。必须起进程的理由就是这一条，**它不是为了隔离**。\
@@ -167,7 +167,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           而 Linux 一条环境变量的上限是 32 页 ⇒ `execve` 直接 `E2BIG`）；\
           ② argv 是世界可读的（`/proc/<pid>/cmdline`），而种子里带着 `RemoteConfig`\
           （主机名 · 用户名 · 私钥**路径**）—— C2 那一版的拨号代理宿主也用过同一条理由（SR1a 起它不再起进程）。\
-          ⚠ 二进制的来路只有两处（环境变量 `CCM_FILEWIN_BIN` · exe 旁那份），\
+          ⚠ 二进制的来路只有两处（环境变量 `CCM_FILEWIN_BIN` · monitor 自带那份），\
           都不在就**出声**（`D11`：不留退路），由 `filewin::proc::tests` 那一摞钉住。\
           ⚠ 收尸归本落点自己（`Detached` 不改父子关系）：一条阻塞在 `waitpid` 上的线程，\
           零 CPU、零唤醒 —— 刻意**不**用「隔一会儿看一眼」，那是一个新节拍

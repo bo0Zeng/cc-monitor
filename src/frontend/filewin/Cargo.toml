@@ -7,13 +7,19 @@ description = "cc-monitor 的文件管理窗口（又一个前端：egui 原生�
 license = "MIT"
 
 # 〔文件窗口成独立包 `src/frontend/filewin/`〕
-#   本包只有 lib：打包路线不变 —— 二进制仍是 monitor 包里的第二个 `[[bin]] cc-monitor-filewin`（一行转调 [`run`]），
-#   tauri-cli 按「包里每个 [[bin]]」把它装到主程序旁（`tests/evidence/K-R124-ruler.py` ⑭）。
+#   库面 ＋ 一个 `[[bin]] cc-monitor-filewin`（一行转调 [`run`]）。二进制只经 monitor 内嵌那一份出货：发版先单编它、
+#   铺进 `src/frontend/shell/native-backend/`，monitor 的 `build.rs` 嵌进去，开窗时放到 `~/.cc-monitor/bin/` 再起。
+#   ⚠ size2（10-11）以前它是 monitor 包的第二个 `[[bin]]`，而 tauri-cli 按「monitor 包里每个 [[bin]]」都装进安装包
+#   ⇒ 安装包里多一份与内嵌逐字节相同的 10 MB。住本包名下就不进安装包（`tests/evidence/K-R124-ruler.py` ⑭a 钉 monitor 包只剩主二进制）。
 #   依赖只许契约类 ＋ 前端宿主原语 ＋ 自己的界面库；不链 monitor、不链判定类 crate（`contract_crate_guard_tests.rs` 钉）。
 
 [lib]
 name = "cc_monitor_filewin"
 path = "src/lib.rs"
+
+[[bin]]
+name = "cc-monitor-filewin"
+path = "src/main.rs"
 
 [dependencies]
 comms-inward = { path = "../../comms/inward" }
@@ -118,6 +124,10 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 主界面字族里的名字 → 这台机器上的那份字体文件（MIT）。
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
+
+# Windows 上把进程清单与图标编成资源（`build.rs`）；与 monitor 同一个版本（锁里已有）。
+[build-dependencies]
+embed-resource = "3"
 
 [dev-dependencies]
 guard-core = { path = "../../common/guard-core" }

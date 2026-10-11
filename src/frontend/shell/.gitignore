@@ -6,7 +6,7 @@
 # will have schema files for capabilities auto-completion
 /gen/schemas
 
-# ── 🔴 三个**内嵌落点**：字节不进仓 ─────────────────────────────────────────────
+# ── 🔴 **内嵌落点**：字节不进仓（从前还有第三个 `binaries/`，Tauri `externalBin` 的暂存区，size2 10-11 撤了）─────────────────────────────────────────────
 #
 # 〔步 `19c` · 2026-09-19 修〕**下面这三行在本拍之前有两行是指空的。** 步 8（全仓改名
 # `daemon` → `backend`）把落点改成了 `embedded-backends/` / `native-backend/`，
@@ -29,11 +29,6 @@
 # （步 `19c`：`BUILD_ID` bump 的同拍步骤）。build.rs 缺席时优雅降级（不内嵌 → 自动部署 no-op），
 # 故 dev/CI 无此二进制也能编译。
 /embedded-backends/
-# ⇐ 内嵌落点
-# F05b：本机后端 sidecar。与 embedded-backends 同族（都是构建产物、都不进 git），
-# 但用途不同：embedded-backends 是**远端 SFTP 部署**用的 musl 二进制（build.rs 的
-# `include_bytes!` 内嵌），binaries/ 是 **本机** sidecar（Tauri `externalBin` 打包）。
-/binaries/
 # ⇐ 内嵌落点
 # K-R42（09-10 合入）：**裸 exe 自己带着的那份本机后端**，构建期产物，不进 git。
 # 谁产的：`.github/workflows/release.yml` 的 “Stage native backend for self-extract” 那一步

@@ -138,11 +138,11 @@ fn drawn_files() -> Vec<(String, String)> {
     //   `PROBE` 就住那儿，让它进人群等于**恒等两侧同源**。自摘那一刀在这里落不落都无关。
     //
     // 🔴**排除名单多了两份，理由与 `fonts.rs` 那一份不同：**
-    //   `proc.rs`（窗口改独立进程那一侧）与 `win_main.rs`（那个 `[[bin]]` 的入口）
+    //   `proc.rs`（窗口改独立进程那一侧）与 `main.rs`（本包那个 `[[bin]]` 的入口）
     //   **一个字都不画在 egui 上**：
     //   · `proc.rs` 的中文串两个去处 —— monitor 那条 Tauri 命令的返回值（走 **webview**，
     //     字体归浏览器）与窗口进程的 **stderr**（终端，字体归终端）；
-    //   · `win_main.rs` 只有头注与一行 `main`。
+    //   · `main.rs` 只有头注与一行 `main`。
     //   ⇒ 收进人群的后果是**现打**出来的，不是推的：非 ASCII 字符从 249 涨到 **355**
     //   ⇒ 要往 `PROBE` 里塞 106 个**永远不会出现在窗口上**的字，而 `PROBE` 是
     //   「窗口上会不会出豆腐块」那把尺子 —— 掺进去只会让它对真问题更钝。
@@ -165,13 +165,14 @@ fn drawn_files() -> Vec<(String, String)> {
             "proc.rs",
             "guard_support.rs",
             "frame_log.rs",
+            "main.rs",
         ],
     )
     .into_iter()
     .chain(guard_core::scan_tree_excluding(
         &monitor_side,
         &["rs"],
-        &["mod.rs", "proc.rs", "win_main.rs"],
+        &["mod.rs", "proc.rs"],
     ))
     .map(|(path, src)| {
         let name = path
@@ -372,7 +373,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
           那句「盖掉它就没有备份了，不可撤销」）。🔴 那句话是这一批里最要紧的：\
           它是「这一下不可撤销」的唯一出口，变成豆腐块的时候用户会照点〕\
          〔第十三刀 09-23：**这个数一格没动，而 `filewin/` 多了两份文件** ——\
-          `proc.rs` 与 `win_main.rs` 进了排除名单（它们一个字都不画在 egui 上，\
+          `proc.rs` 与 `main.rs` 进了排除名单（它们一个字都不画在 egui 上，\
           逐条理由与那条现打读数「收进来 249 → 355」住 `drawn_files`）〕\
          〔F7b 09-24：12 → 14，多的是 `create.rs` 与 `bigfile.rs`（「新建空文件」那颗按钮与它那个框）〕\
          〔F9 09-24：（与 F7b 同拍合并，现打 14）多的是 `bigfile.rs`（大文件模式：顶上那句说明与行尾那枚「这一行共 N 字」）〕\

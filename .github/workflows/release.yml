@@ -12,7 +12,7 @@ name: Release
 # ── 🔴 `19b`（2026-09-19）：**本文件是「产字节那条路」的唯一驱动** ─────────────────
 #
 # 现打两条硬事实，它们是这一段存在的全部理由：
-#  ① 三个落点（`embedded-backends/` · `binaries/` · `native-backend/`）**全部 gitignore**
+#  ① 两个落点（`embedded-backends/` · `native-backend/`；从前还有 `binaries/`，size2 10-11 撤了）**全部 gitignore**
 #     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
 #     🔴 〔步 `19c` 订正 09-19〕**这一句在步 8（全仓改名 `daemon`→`backend`）到今天之间是假的**：
 #     `src/frontend/shell/.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/`，
@@ -29,7 +29,7 @@ name: Release
 # 按手上那份旧字节说话；「字节 == 源码」那条核对住下面的内嵌校验与那条命令的 `--check`）。那条命令把它们重编回来。
 # 🔴 **它与本文件下面那两步是同一条配方，不是两条**：
 #   · `Cross-compile backend for both musl targets` ↔ 脚本的 `REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`
-#   · `Build local backend (native)`（两个 job 各一处）     ↔ 脚本的 `--native` 那一趟
+#   · `Build local backend (native)`（Windows job 一处）     ↔ 脚本的 `--native` 那一趟
 #   两侧由 `tests/evidence/K-R124-ruler.py` 的 ⑬b **每趟两向对拍**（target 集合相等 ＋ 旗标逐字相同）。
 #   ⇒ **改本文件那几步的 target 或旗标，不同拍改那条命令，门禁当场红**（反过来也一样）。
 # ⚠ **诚实边界**：本机那一趟买到的是「开发期自洽 ＋ 裸 exe 恢复部署能力」，
@@ -409,41 +409,22 @@ jobs:
           }
           Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
 
-      # F05b：**本机后端**（Tauri `externalBin` 那一份）（C7「没有 daemonless，本机也要有后端进程」）。
+      # **本机后端**（C7「没有 daemonless，本机也要有后端进程」）：原生编一份，下一步铺进 `native-backend/`、内嵌进 exe；
+      # monitor 起它之前先放到 `~/.cc-monitor/bin/ccm` 再跑。
       #
-      # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制
-      # （`build.rs` 用 `include_bytes!` 内嵌进 monitor）；这一份是**装在用户自己机器上**、
-      # 由 monitor 起来看住的本机后端（Tauri `externalBin` 打包，装完落在 cc-monitor.exe 旁边）。
-      #
-      # ⚠ 必须原生编：backend 在 Windows 上真编得过（2026-08-04 真机实测 exit=0、
-      # release 2.6 MB，且跑起来发完整 hello；tmux 那半诚实发 `observation:"unobservable"`）。
-      # ⚠ 名字必须带 target triple —— Tauri 的本机后端约定是「构建期带 triple、打包时剥掉」，
-      # 而消费侧 `local_backend::resolve_with` 正是先找带 triple 的、再找裸名。
+      # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制；这一份是**用户自己机器上**的本机后端。
+      # ⚠ size2（10-11）起安装包旁边**不再另放一份**（从前经 Tauri `externalBin` 装在 exe 旁边，与内嵌那份逐字节相同、
+      #   开机只用内嵌那份 ⇒ setup 多 5.9 MB、msi 多 8 MB）。判据 `local_backend_tests::no_bundle_job_puts_a_second_local_backend_beside_the_exe`。
       # `--locked` 的理由与 build-backends 那步同源（同一份 `src/backend/Cargo.lock`、
       # 同一个 yanked 的 `crypto-bigint 0.7.3`），逐字见那里的头注 —— 这里不抄第二份。
       - name: Build local backend (native)
         working-directory: src/backend
         run: cargo build --release --locked
-      - name: Stage local backend for externalBin
-        shell: pwsh
-        run: |
-          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          New-Item -ItemType Directory -Force src/frontend/shell/binaries | Out-Null
-          Copy-Item .build/backend/release/cc-monitor-backend.exe `
-            "src/frontend/shell/binaries/cc-monitor-backend-$triple.exe" -Force
-          Get-ChildItem src/frontend/shell/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
-
-      # ── K-R42：**同一份二进制再铺一处** —— 让**裸 `cc-monitor.exe`** 也带得上本机后端 ──────
+      # ── K-R42：**本机后端内嵌进 exe** —— 裸 `cc-monitor.exe` 与装机那份都靠它起本机后端 ──────
       #
-      # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-backend.exe` **2 个进程在跑**，
-      # 裸 `monitor.exe` **0 个**。上面那一步（`binaries/` → Tauri `externalBin`）只服务
-      # **安装包**：它把本机后端放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
-      #
-      # ⚠ **这一步不动上面那一步**：安装包那条路 09-10 实测是好的（2 个进程），
-      # `externalBin` 仍然只住 `tauri.sidecar.conf.json`、仍然只在下面 `tauri build` 那行
-      # 用 `--config` 注入（进主配置会让 `cargo test` 也要求当前 target 的二进制存在，
-      # 那是 C2 反面钉住的）。本步**只是把同一个产物再拷一份到 `embedded-backends/`**，
-      # 由 `src/frontend/shell/build.rs::embed_native_backend` `include_bytes!` 进 exe。
+      # 09-10 干净 win11 上现打：那时安装包旁边另装一份（Tauri `externalBin`），裸 `monitor.exe` 拿不到它 ⇒ **0 个**本机后端进程。
+      # 本步把上一步的产物铺进 `native-backend/`，由 `src/frontend/shell/build.rs::embed_native_backend` `include_bytes!` 进 exe；
+      # size2（10-11）起这是本机后端**唯一**的字节来源（安装包旁边那份撤了）。
       #
       # ⚠ **落点刻意不是 `embedded-backends/`**，理由住 `build.rs` 的 `NATIVE_BACKEND_DIR` 头注
       # （一句话：那个目录名是另一条判据认「谁会起真后端」用的来历串，
@@ -478,14 +459,15 @@ jobs:
 
       # ── **文件窗口程序也内嵌进 exe** —— 单文件的 `cc-monitor.exe` 旁边没有它时，开窗那一刻放到 `~/.cc-monitor/bin/` 再起 ──
       #
-      # 它是 monitor 包的另一个 `[[bin]]`：monitor 的 `build.rs` 在同一趟 cargo 里吃不到它 ⇒ 先单编、铺进 `native-backend/`
+      # 它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`：monitor 的 `build.rs` 吃不到它 ⇒ 先单编、铺进 `native-backend/`
       # （名字定死在 `build.rs::NATIVE_FILEWIN_FILE`，旁挂 `.target` 同上面两对），下面 `tauri build` 编 monitor 时
       # `build.rs::embed_native_filewin` 把它内嵌进去。与 `tests/scripts/re-embed.sh --native` 同一条配方（`K-R124-ruler.py` ⑬b 对拍）。
-      # ⚠ 安装包里照旧另带一份（打包器把包里每个 `[[bin]]` 都装在主程序旁，⑭）：装机那份开窗走「exe 旁边」。
+      # ⚠ size2（10-11）起它不再是 monitor 包的第二个 `[[bin]]`（打包器会把 monitor 包的每个 bin 都装进安装包，那一份与内嵌的逐字节相同）
+      #   ⇒ 安装包里只有内嵌那一份：第一次开文件窗口时放到 `~/.cc-monitor/bin/` 再起（`filewin::proc::resolve_window_bin`）。
       # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上」；买不到「在真 Windows 上放得下来、起得来」—— 那要真机跑一趟。
       - name: Build local filewin (native)
         working-directory: src/frontend/shell
-        run: cargo build --release --locked --bin cc-monitor-filewin
+        run: cargo build --release --locked -p cc-monitor-filewin --bin cc-monitor-filewin
       - name: Stage native filewin for self-extract
         shell: pwsh
         run: |
@@ -500,11 +482,8 @@ jobs:
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
-      # ⚠ `--config src/frontend/shell/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
-      # **不进主配置** —— `tauri-build` 要求当前 target 的本机后端在**编译期**就存在，
-      # 进主配置会让 `cargo test` 也需要一份后端二进制（实测报错
-      # `resource path binaries/cc-monitor-backend-<triple> doesn't exist`），
-      # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
+      # ⚠ `--config src/frontend/shell/tauri.sidecar.conf.json` 只在发版这一步注入：今天它只带第三方许可声明（`bundle.resources`）；
+      #   从前的 `externalBin`（安装包旁边另放一份本机后端）size2 10-11 撤了。
       - name: tauri build
         run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles nsis,msi
 
@@ -653,27 +632,11 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      # F05b：本机后端（理由同 build-windows 那两步，见那里的头注）。
-      # ⚠ Linux 侧同样必须做 —— `externalBin` 一旦注入，`tauri build` 就要求**当前 target**
-      # 的那份二进制存在；少了它这一步会以 `resource path ... doesn't exist` 直接失败。
-      # `--locked` 同上：理由住 build-backends 那步的头注，这里不抄第二份。
-      - name: Build local backend (native)
-        working-directory: src/backend
-        run: cargo build --release --locked
-      - name: Stage local backend for externalBin
-        run: |
-          set -euo pipefail
-          triple=$(rustc -vV | sed -n 's/^host: //p')
-          mkdir -p src/frontend/shell/binaries
-          cp .build/backend/release/cc-monitor-backend \
-             "src/frontend/shell/binaries/cc-monitor-backend-$triple"
-          ls -l src/frontend/shell/binaries
-
       # 文件窗口程序也内嵌进裸 `cc-monitor`（理由与次序同 build-windows 那两步，见那里的头注）：先单编、铺进 `native-backend/`，
       # 再由下面 `tauri build` 编 monitor 时内嵌。Linux 这一格的后端用 musl 那两份，文件窗口要原生的一份（它链 GTK）。
       - name: Build local filewin (native)
         working-directory: src/frontend/shell
-        run: cargo build --release --locked --bin cc-monitor-filewin
+        run: cargo build --release --locked -p cc-monitor-filewin --bin cc-monitor-filewin
       - name: Stage native filewin for self-extract
         run: |
           set -euo pipefail
@@ -724,13 +687,10 @@ jobs:
       #
       # ## 🔴 它同时是「非主 `[[bin]]` 会被打包器自动装」这条机制的**探针**
       #
-      # `cc-monitor-filewin` 进安装包**不靠本仓任何配置**：`tauri-cli::get_binaries` 把
-      # Cargo.toml 里每一个 `[[bin]]` 都交给打包器（`name == 包名` 的算主二进制、其余
-      # `!bin.main()`），而 nsis / msi / deb 三个打包器都把非主 bin 装到主二进制旁边。
-      # ⇒ 那条机制哪天变了（升级 CLI、上游改行为），**本步会在 deb 上先红**，而它与
-      #   Windows 那两个安装包是**同一个机制** ⇒ 这一格红就是「Windows 那份也别信了」。
-      # ⚠ 反过来**不成立**：本步绿只代表 deb 里有它。Windows 那两份安装包本刀**没买到**
-      #   （没有 Windows 机器、也不跑 NSIS/WiX）—— 如实登记，别读宽。
+      # `tauri-cli::get_binaries` 把 monitor 包 Cargo.toml 里每一个 `[[bin]]` 都交给打包器，nsis / msi / deb 三个打包器
+      # 都把非主 bin 装到主二进制旁边 ⇒ 文件窗口程序 size2（10-11）起搬去它自己的包（`cc-monitor-filewin`），
+      # monitor 包只剩主二进制，`externalBin` 也撤了 ⇒ 今天 `usr/bin/` 里该只有 `cc-monitor` 一份。
+      # ⚠ 本步只覆盖 `.deb`；Windows 那两份安装包靠同一个机制，装完的样子在 Win11 虚拟机上走过一趟（size2 交回）。
       - name: The .deb really ships every binary this package declares
         run: |
           set -euo pipefail
@@ -744,7 +704,7 @@ jobs:
           # ⚠ **刻意写成 `python3 -c` 一行，不用 heredoc**：`run: |` 是 YAML 的块标量，
           #   heredoc 的正文要顶到第 0 列才收得住终止符，而那**破掉块标量的缩进**
           #   ⇒ 整份 `release.yml` 解不动（现打栽过一次，`K-R124` 的 ④ 地板当场红）。
-          want="$(python3 -c 'import json,tomllib; bins={b["name"] for b in tomllib.load(open("src/frontend/shell/Cargo.toml","rb"))["bin"]}; ext={p.rsplit("/",1)[-1] for p in json.load(open("src/frontend/shell/tauri.sidecar.conf.json"))["bundle"]["externalBin"]}; print("\n".join(sorted(bins|ext)))')"
+          want="$(python3 -c 'import json,tomllib; bins={b["name"] for b in tomllib.load(open("src/frontend/shell/Cargo.toml","rb"))["bin"]}; ext={p.rsplit("/",1)[-1] for p in json.load(open("src/frontend/shell/tauri.sidecar.conf.json"))["bundle"].get("externalBin",[])}; print("\n".join(sorted(bins|ext)))')"
           got="$(dpkg-deb -c "$deb" | awk '{print $NF}' | sed -nE 's#^(\./)?usr/bin/##p' | LC_ALL=C sort)"
           printf '想要：\n%s\n现打（%s 的 usr/bin/）：\n%s\n' "$want" "$deb" "$got"
           # 🔴 两向：`diff` 对**两个方向**都出声。少一个 = 安装包里没有它（用户点那个按钮会

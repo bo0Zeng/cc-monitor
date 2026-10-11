@@ -11251,30 +11251,11 @@
       "zh": "本机",
       "args": []
     },
-    "rsLocalBackend.place.besideUnstamped": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "安装包旁的后端 {bin} 报不出版本\n未用它放 ~/.cc-monitor/bin/ccm · 重装 cc-monitor 再试",
-      "args": ["bin"],
-      "limited": ["ccm"]
-    },
-    "rsLocalBackend.place.besideReadFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取安装包旁的后端 {bin} 失败 · {why}",
-      "args": ["bin", "why"]
-    },
     "rsLocalBackend.extract.writeFailed": {
       "kind": "error",
       "role": "原因格",
       "zh": "写入失败 · {tmp} · {why}",
       "args": ["tmp", "why"]
-    },
-    "rsLocalBackend.resolve.noSelfPath": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "拿不到本程序路径 · 找不到本机后端",
-      "args": []
     },
     "rsLocalBackend.supervise.spawnFailed": {
       "kind": "error",
@@ -11293,12 +11274,6 @@
       "role": "报错",
       "zh": "本机离线 · {windowMs}ms 内退出 ×{recent}（上限 {maxCrashes}） · 远端同样不可连",
       "args": ["windowMs", "recent", "maxCrashes"]
-    },
-    "rsLocalBackend.resolve.notBeside": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机离线 · 安装不完整 · 缺 {stem} · 重新装上安装包 · 远端同样不可连",
-      "args": ["stem"]
     },
     "rsBackendControl.handle.missing": {
       "kind": "error",
@@ -14801,24 +14776,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "推到远端机器上跑的后端",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendBesideNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机，随安装包落盘；文件名带目标平台，Windows 上再带 .exe",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendBesideDestWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "装机时安装向导里选的安装目录",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendBesideWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "安装包放在 cc-monitor 程序旁的后端 · 找本机后端时先用它",
       "args": []
     },
     "rsToolRegistry.tools.backendName": {

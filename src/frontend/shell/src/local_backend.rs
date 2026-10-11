@@ -4,7 +4,7 @@
 //!
 //! 它是 C13 两半拆法在「起一个本机后端」上的落地：
 //!
-//! - **决策那半住这里**：去哪儿找那个二进制（[`resolve_with`]）· 崩了要不要再起（[`decide`]）。
+//! - **决策那半住这里**：那个二进制放到哪、怎么放（[`resolve_or_extract`]）· 崩了要不要再起（[`decide`]）。
 //!   两条都是**纯函数**，不碰进程、不碰时钟 —— 时间由调用方喂进来。
 //! - **宿主知识留调用方**：exe 目录在哪、target triple 是什么，由 `lib.rs` 那一侧给。
 //!   本模块过 `backend::tests::the_backend_layer_stays_host_agnostic`（禁 `AppHandle` 等把手）。
@@ -45,41 +45,21 @@
 //! 被监护的对象是我们自己的后端（流模式持续往 stdout 写帧），不会这么干；
 //! 换成别的程序前要重新想。EOF 之后仍会 `wait()` 收尸（那时它已经死了，不阻塞）。
 //!
-//! # ⚠ 它只认安装包里那一份，**绝不扫仓库 dev 产物** —— 这是刻意的
+//! # ⚠ 它只认这一份产物内嵌的那份，**绝不扫仓库 dev 产物、也不找 exe 旁边** —— 这是刻意的
 //!
 //! 摸底量到一件安全相关的事：backend 一启动就**无条件**往它能连到的 tmux server 上装三条
 //! 全局 hook（`observe/watcher.rs::install_tmux_hooks_best_effort` → `set-hook -g`），
 //! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-backend`
 //! 就起它」会去改用户真实 tmux server 的状态。
 //!
-//! ⇒ [`resolve_with`] **只认打包进安装包的那一份本机后端**（exe 同目录、按 target triple 命名），
-//! **不扫仓库里的 dev 产物**；找不到时是 [`Resolved::Missing`] 的**诚实降级**
+//! ⇒ [`resolve_or_extract`] 的字节**只有一个来源**：宿主交进来的、这一份产物内嵌的那份（`byte_table`），
+//! 放到 `~/.cc-monitor/bin/ccm` 再起；这一份没带时是 [`Resolved::Missing`] 的**诚实降级**
 //! （定框 §5：tagged + `reason`，不是 `Err`），零副作用。
 //!
-//! 🔴 **订正（2026-09-10 现打，v3.7.0）**：本段原话「今天安装包里还没有那个文件
-//! （`externalBin` 是 **F05b**）⇒ 生产路径**恒走**降级」——**两句今天都不成立**。
-//! F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
-//! `src/frontend/shell/tauri.sidecar.conf.json`，发版那一步用
-//! `npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json` 注入（`.github/workflows/release.yml`）。
-//! ⚠ 它**刻意不进基础 `tauri.conf.json`** —— 进了会让 `cargo test` 也要求当前 target
-//! 的那份二进制存在（那条头注住 `release.yml` 的 `tauri build` 那一步）。
-//! ⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
-//!
-//! 干净 win11 虚拟机上现打（PM，09-10，真安装包 + 真裸 exe 各一趟）：
-//! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
-//! **裸 `monitor.exe`** 那份 **0 个**。⇒ 走 [`Resolved::Found`] 还是 [`Resolved::Missing`]，
-//! 取决于**用户手里是哪一份产物**，不再是一个常数。
-//! **C7 由 F05a + F05b 两件共同满足**，就是这么记的 —— 两件今天都在了。
-//!
-//! 🔴 **`K-R42`（09-10 同日，上面那次读数之后）：上面那句「取决于哪一份产物」被这一件改小了。**
-//! 那次读数**没有被推翻**（它量的是 v3.7.0 的产物，那一版的裸 exe 确实是 0 个）——
-//! 变的是**它之后的机制**：本模块这条路今天多了第二个二进制来源
-//! （`build.rs::embed_native_backend` 按 `TARGET` 嵌进来的那一份；今天与其余几份一起由宿主经
-//! `byte_table::pick` 按这台机器的 (OS, arch) 取来，本层只收字节），
-//! 于是 [`resolve_with`] 的 `Missing` **不再等于「这台机器上没有本机后端」**，
-//! 它只等于「**旁边**没有」。裸 exe 那一支从此走的是「自己释放一份再起」。
-//! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（宿主交进来的 `embedded`）
-//! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
+//! 来历（读数住 `DECISIONS` 与 `调研/报告/安装包体积-10-11.md`）：v3.7.0 起安装包经 Tauri `externalBin` 在 exe 旁边另放一份（F05b），
+//! 裸 exe 那时 0 个本机后端进程；`K-R42` 起 exe 自己内嵌一份、旁边没有就释放这一份；
+//! size2（10-11）撤掉了旁边那份 —— 它与内嵌那份逐字节相同、只是字节来源，而旧安装包留下的那一份可能是旧版本。
+//! ⚠ 两句话别混：① 这份产物带没带（宿主交进来的 `embedded`）· ② 放不放得下来（[`extraction_failure_reason`]）。
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise_with_stdio`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
@@ -94,15 +74,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// 本机后端的基名。Tauri 的 `externalBin` 会把它按 `<基名>-<target-triple>[.exe]`
-/// 放到 app 可执行文件旁边。
-pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
-
 /// F06b-1：**monitor 告诉 `ccm` 「backend 二进制在哪」的那个 env 名**。
 ///
 /// # 为什么用 env（三条路里裁的第 ③ 条）
 ///
-/// `ccm` 是终端里的一次性 bash，它够不着 monitor 的 [`resolve_beside_this_exe`]。三条路：
+/// `ccm` 是终端里的一次性 bash，它够不着 monitor 的「后端在哪」那份答案。三条路：
 /// ① ccm 自己实现一份「找本机后端」⇒ **第二份实现**（定框 §4 逐字禁）·
 /// ② 装 ccm 时写进配置 ⇒ 要新机制（ccm 有 SFTP 部署 / 手装 / 仓内相对路径三条安装路径）·
 /// ③ **monitor 拼 env 时告诉它** ⇒ 零新机制（monitor 本来就在拼 env 前缀）。
@@ -118,7 +94,7 @@ pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
 /// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
 /// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。
 /// 挡在前面的是一条**架构题**，不是工作量：`payload.rs` 编译的 `EnvOp` 由 **TS 前端经 wire
-/// 送来**（`launch_wire.rs`），而后端路径是**后端的知识**（[`resolve_beside_this_exe`]）
+/// 送来**（`launch_wire.rs`），而后端路径是**后端的知识**（[`resolve_or_extract`]）
 /// ⇒ 让前端携带它正对着 C2 与 C9。裁这道题是 F06b-1d 的第一件事。⇒ resume 路不能把
 /// backend 的答案烤进打印串，得打印一段「执行时去问后端」的配方。
 pub(crate) const BACKEND_BIN_ENV: &str = "CCM_BACKEND_BIN";
@@ -133,44 +109,6 @@ pub enum Resolved {
         reason: Said,
         looked_at: Vec<PathBuf>,
     },
-}
-
-/// 本机后端的候选路径。**只在 exe 同目录找**，理由见模块头注（不扫仓库 dev 产物）。
-///
-/// 两个候选：Tauri `externalBin` 的 triple 后缀形态，以及 bundler 剥掉后缀后的裸名
-/// （两种形态都出现过，取决于打包器版本；**都列出来比猜一个强**）。
-pub fn local_backend_candidates(
-    exe_dir: &Path,
-    target_triple: &str,
-    exe_suffix: &str,
-) -> Vec<PathBuf> {
-    vec![
-        exe_dir.join(format!("{LOCAL_BACKEND_STEM}-{target_triple}{exe_suffix}")),
-        exe_dir.join(format!("{LOCAL_BACKEND_STEM}{exe_suffix}")),
-    ]
-}
-
-/// 纯函数版的解析：`exists` 由调用方注入，便于单测不碰文件系统。
-pub fn resolve_with(
-    exe_dir: &Path,
-    target_triple: &str,
-    exe_suffix: &str,
-    exists: &dyn Fn(&Path) -> bool,
-) -> Resolved {
-    let cands = local_backend_candidates(exe_dir, target_triple, exe_suffix);
-    for c in &cands {
-        if exists(c) {
-            return Resolved::Found(c.clone());
-        }
-    }
-    Resolved::Missing {
-        reason: copy_text(
-            "rsLocalBackend.resolve.notBeside",
-            &[("stem", &LOCAL_BACKEND_STEM.to_string())],
-        )
-        .into(),
-        looked_at: cands,
-    }
 }
 
 /// 崩溃频率上限。**不是退避** —— 见模块头注「为什么没有退避睡眠」。
@@ -847,11 +785,8 @@ pub fn supervise_with_stdio(
             // **全部 stdout 攒在一个永不释放的 `Vec` 里**，而它是**持续产帧**的
             // （那正是本模块头注用来论证「它不会关掉 stdout」的理由）⇒ 增长速度 =
             // 本机所有会话的 jsonl 产出速度，且没有任何消费者。
-            // 〔订正 09-10：原话「今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing`
-            // （`tauri.conf.json` 里没有 `externalBin`）—— **离生效只差一个配置项**」**已过期**。
-            // F05b 随 v3.7.0 发出去了：装出来那份现打有 2 个后端进程在跑（读数住模块头注）
-            // ⇒ 这条路**在装了安装包的机器上已经生效**，不再是「差一个配置项」。
-            // 也就是说这个修不是预防性的，它今天就在挡真事。〕
+            // 〔订正 09-10：原话「今天不咬人只因为生产路径恒走降级、离生效只差一个配置项」**已过期**：
+            // 本机后端今天在每一份产物上都起得来（读数住模块头注）⇒ 这个修不是预防性的，它今天就在挡真事。〕
             // `tests/e2e/local-backend-supervise.sh` 那条真进程路径也一直在跑它。
             // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
             let report = match (&stdio, out, in_) {
@@ -958,10 +893,6 @@ pub fn supervise_with_stdio(
     handle
 }
 
-/// 在**本可执行文件同目录**找本机后端。这是 [`resolve_with`] 的真文件系统版。
-///
-/// `current_exe()` 不是 GUI 把手（不违反宿主无关那条机检）——
-/// 它是「我这个二进制装在哪」这一条**部署事实**，正是本机后端该在的位置。
 /// F06b-1d（**C9** 的逐字落地）：给 backend 亲手开的那个终端窗口，配上后端路径。
 ///
 /// # 为什么是「给窗口设 env」而不是「拼进启动串」
@@ -980,7 +911,7 @@ pub fn supervise_with_stdio(
 ///
 /// # 给的是**正在跑的那一份**，不是「exe 旁边那一份」
 ///
-/// 此前这里自己 `resolve_beside_this_exe`：只认 exe 同目录那份文件，**不认自释放之后正在跑的那一份**
+/// 此前这里自己去 exe 同目录找那份文件，**不认自释放之后正在跑的那一份**
 /// （RT1 F2 / WIN1 报备：Windows 发版包里旁边没有 ⇒ 窗口里 `CCM_BACKEND_BIN` 一直不设）。
 /// 今天路径由**宿主**交进来：`local_backend_host::running_backend_bin` —— 常驻那条记在 `DETACHED`
 /// （起的 / 接管的都记着那份二进制），被监护那条记着起它时解析出的那一份（`D11`：后端是给定的，不另找一份）。
@@ -989,27 +920,6 @@ pub(crate) fn backend_bin_env_for_window(
     running: Option<std::path::PathBuf>,
 ) -> Option<(&'static str, String)> {
     running.map(|p| (BACKEND_BIN_ENV, p.to_string_lossy().into_owned()))
-}
-
-pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
-    let exe_dir = match std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-    {
-        Some(d) => d,
-        None => {
-            return Resolved::Missing {
-                reason: copy_text("rsLocalBackend.resolve.noSelfPath", &[]).into(),
-                looked_at: Vec::new(),
-            }
-        }
-    };
-    resolve_with(
-        &exe_dir,
-        target_triple,
-        crate::platform::proc::EXE_SUFFIX,
-        &|p: &Path| p.is_file(),
-    )
 }
 
 /// **本机后端的落点：`dir/ccm(.exe)` —— 它就是后端本身**（文件名 = [`local_ccm_entry_name`]）。
@@ -1294,7 +1204,7 @@ pub const CCM_ENTRY_WORD: &str = "ccm";
 /// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
 /// 它得带着自己那个后缀。
 /// ⚠ 这里**不许**现算 `EXE_SUFFIX` —— 那是**本进程**的后缀，而这一份要的是**目标**平台的（`build.rs` 按 `TARGET` 算好）；
-/// 平台原语本身也只许住 `platform/`（`resolve_beside_this_exe` 那一处已改引 `platform::proc::EXE_SUFFIX`）。
+/// 平台原语本身也只许住 `platform/`。
 pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }
@@ -1797,11 +1707,7 @@ fn local_stdio_consumer_guarded(
 
 /// P2z（`control-parity` 的定框 C10）：**「那个后端二进制在哪」的唯一一份答案。**
 ///
-/// 顺序刻意是 **先找旁边、再释放**：开发构建里 `target/debug/` 旁边就有一个**更新**的二进制，
-/// 那条路径优先于内嵌那份（内嵌的是打包时的快照）。
-///
-/// ⚠ **这个顺序也是 P2z-Y1 的验收陷阱**：dev 构建里第一步恒命中 ⇒ 不把旁边那个挪开，
-/// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
+/// 字节只有一个来源：这一份产物内嵌的那份；exe 旁边不找（size2 10-11，理由住模块头注）。
 ///
 /// `embedded` 由调用方给（宿主经 `byte_table::choose` 按这台机器的 (OS, arch) 取来；取不到时是那句拒绝的话）—— 本模块不认识那张表，
 /// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
@@ -1809,7 +1715,7 @@ fn local_stdio_consumer_guarded(
 /// # `embedded` 只有一个来源
 ///
 /// 今天宿主按这台机器的 (OS, arch) 从 `byte_table` 那一张表里取（那张表里本机原生那一槽挂在这一份产物的 `TARGET` 上），
-/// 取不到时交进来的是**那句拒绝的话**（`Err`），本层把它接在「旁边没有」那句后面 —— 不再自己问第二处。
+/// 取不到时交进来的是**那句拒绝的话**（`Err`），本层原样交出 —— 不再自己问第二处。
 ///
 /// # 🔴 `K-R43`：本函数**为什么是从 [`start_or_extract`] 里抽出来的**
 ///
@@ -1822,7 +1728,6 @@ fn local_stdio_consumer_guarded(
 /// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_backend_host.rs`）
 /// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，正是当初逼出第二份实现的那颗钉子。**
 pub fn resolve_or_extract(
-    target_triple: &str,
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), Said>,
@@ -1834,56 +1739,19 @@ pub fn resolve_or_extract(
     // 字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
     //   **落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件。
     //   带标号的块照旧：`the_self_extract_path_really_asks_the_product_whether_it_carries_one` 切的是本函数的体。
+    // 字节只有一个来源：这一份产物内嵌的那份（宿主交进来）。**落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件。
+    //   exe 旁边**不找**（size2 10-11）：安装包不再旁放一份；旧安装包留下的那一份可能是旧版本，认它就会把旧后端放到落点上。
+    //   带标号的块照旧：`the_self_extract_path_really_asks_the_product_whether_it_carries_one` 切的是本函数的体。
     let resolved = 'resolve: {
-        let beside = resolve_beside_this_exe(target_triple);
-        let from_beside: Option<(String, Vec<u8>)> = match &beside {
-            Resolved::Found(p) => match std::fs::read(p) {
-                Ok(b) => match deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS) {
-                    deploy_contract::RemoteIdentity::Stamp(id) => Some((id, b)),
-                    _ => {
-                        break 'resolve Resolved::Missing {
-                            reason: copy_text(
-                                "rsLocalBackend.place.besideUnstamped",
-                                &[("bin", &p.display().to_string())],
-                            )
-                            .into(),
-                            looked_at: vec![p.clone()],
-                        }
-                    }
-                },
-                Err(e) => {
-                    break 'resolve Resolved::Missing {
-                        reason: Said::with_raw(
-                            copy_text(
-                                "rsLocalBackend.place.besideReadFailed",
-                                &[
-                                    ("bin", &p.display().to_string()),
-                                    ("why", &copy_core::io_reason(e.kind())),
-                                ],
-                            ),
-                            &e,
-                        ),
-                        looked_at: vec![p.clone()],
-                    }
+        // 宿主从那张表里取不到 ⇒ 它交进来的是那句拒绝的话：原样交出（它已经说全了「为什么没有」）。
+        let (build_id, bytes): (&str, &[u8]) = match embedded {
+            Ok(e) => e,
+            Err(why) => {
+                break 'resolve Resolved::Missing {
+                    reason: why.into(),
+                    looked_at: Vec::new(),
                 }
-            },
-            Resolved::Missing { .. } => None,
-        };
-        // 旁边没有、宿主从那张表里也取不到 ⇒ 它交进来的是那句拒绝的话：接在「旁边没有」后面，两件事都说。
-        let (build_id, bytes): (&str, &[u8]) = match &from_beside {
-            Some((id, b)) => (id.as_str(), b.as_slice()),
-            None => match embedded {
-                Ok(e) => e,
-                Err(why) => {
-                    break 'resolve match beside {
-                        Resolved::Missing { reason, looked_at } => Resolved::Missing {
-                            reason: Said::restate(format!("{}\n{why}", reason.said), reason),
-                            looked_at,
-                        },
-                        found @ Resolved::Found(_) => found,
-                    };
-                }
-            },
+            }
         };
         match extract_embedded_to(
             extract_dir,
@@ -1906,10 +1774,7 @@ pub fn resolve_or_extract(
                 tracing::error!("{}（{}）", reason.said, reason.raw());
                 Resolved::Missing {
                     reason,
-                    looked_at: match beside {
-                        Resolved::Missing { looked_at, .. } => looked_at,
-                        Resolved::Found(p) => vec![p],
-                    },
+                    looked_at: vec![extract_dir.to_path_buf()],
                 }
             }
         }
@@ -1923,7 +1788,6 @@ pub fn resolve_or_extract(
 /// ⚠ 本函数 = **那一份共用的解析 + 监护**。「在哪找、找不到说什么」一个字都不住这里
 /// （`K-R43` 抽走了，理由住 [`resolve_or_extract`] 的头注）。
 pub fn start_or_extract(
-    target_triple: &str,
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), Said>,
@@ -1937,7 +1801,6 @@ pub fn start_or_extract(
     ask: PlaceAsk<'_>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let resolved = resolve_or_extract(
-        target_triple,
         extract_dir,
         embedded,
         make_executable,

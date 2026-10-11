@@ -187,7 +187,7 @@ pub enum ToolDestination {
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
     /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
     ///
-    /// `token` 是申报路径里用的占位符（形如 `$APP_DIR`，与 `$PROFILE` 同一套写法，
+    /// `token` 是申报路径里用的占位符（形如 `$POSIX_RC`，与 `$PROFILE` 同一套写法，
     /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
     UserConfiguredPath { token: &'static str, what: Text },
     /// **我们不装它** —— 这一格回答的不是「装到哪」，而是「它本来在哪」。
@@ -322,7 +322,7 @@ pub enum TouchEffect {
 /// 三种载体逐条是：① 这一份产物自己带着、要用时自释放的那份（`native-backend/`，
 /// `byte_table.rs` 的 `include_bytes!`，按这一份产物的 `TARGET` 那一格取）·
 /// ② 内嵌、推给远端那台机器的那份（`embedded-backends/`）·
-/// ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）。
+/// ③ 安装包放在 app 可执行文件旁边的那份（Tauri `externalBin`；size2 10-11 撤了）。
 ///
 /// # 为什么不是「`destination` 改成多值」
 ///
@@ -500,34 +500,10 @@ pub const TOOLS: &[ToolSpec] = &[
         display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
         uninstallable: true,
-        // 🔴 **同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打。在本件之前闭集里只有中间那一条，
-        // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
-        // ⚠ 三者是**同一份代码**的三种载体，不是三个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）；
-        //   ①③ 是同一次 `cargo build` 的同一个文件拷两份，② 结构上不可能同字节
-        //   （另一个 job / musl target）—— **那正是 `K25` 裁的形状，不是缺陷**。
+        // 🔴 **同一份后端，几种载体、几个落点** —— `K-R68` 摸底现打三种（安装包旁边 · 自释放 · 推给远端）。
+        // ⚠ 它们是**同一份代码**的几种载体，不是几个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）。
+        //   size2（10-11）撤了安装包旁边那份（与内嵌那份逐字节相同、只是字节来源）；自释放那份记在 `ccm` 的本机载体底下 ⇒ 这里只剩推给远端那一条。
         carriers: &[
-            Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.backendBesideWhat", &[])),
-                source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/frontend/shell/binaries/cc-monitor-backend",
-                },
-                // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
-                // 而那个目录是装机时由人选的。同 `$ACCT_ISO_DEST` 那一格的理由：
-                // 申报一个我们其实没在用的常量，审计页会拿它去查一个没人写的路径
-                // 然后言之凿凿地报「缺失」。
-                destination: ToolDestination::UserConfiguredPath {
-                    token: "$APP_DIR",
-                    what: Text(|| copy_text("rsToolRegistry.tools.backendBesideDestWhat", &[])),
-                },
-                touches: &[TouchedFile {
-                    path: "$APP_DIR",
-                    host: HostScope::Client,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.backendBesideNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                }],
-            },
             // 内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
             //   同一个文件不在两个工具底下各记一遍（那张「本机 `ccm` 落点恰一条」的对拍要这一格）。
             Carrier {
@@ -573,7 +549,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 repo_path: "src/shared/ccm-aliases.sh",
             },
             // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
-            // 理由与后端那条 `$APP_DIR` 逐字同源：申报一个我们其实没在用的常量，
+            // 理由：申报一个我们其实没在用的常量，
             // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
             // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
             // （`account_aliases` 的 `§0e`）。

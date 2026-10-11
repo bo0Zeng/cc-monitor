@@ -735,10 +735,26 @@ fn the_backend_is_one_thing_landing_in_several_places() {
     let t = backend();
 
     // ① 关系存在：不是「一个落点」，也不是「一个值多了几个枚举变体」。
-    let sites = landing_sites_of(t);
+    //    本机那一处（exe 内嵌、放到 `~/.cc-monitor/bin/ccm*` 的那份）记在 `ccm` 那一条的本机载体底下（它就是后端本身），
+    //    ⇒ 数的是 `backend` 与 `ccm` 两条里来源是后端字节的那几个载体；安装包旁边那份 size2（10-11）撤了。
+    let ccm = TOOLS
+        .iter()
+        .find(|x| x.id == "ccm")
+        .expect("闭集里没有 `ccm` 那一条");
+    let mut sites: Vec<String> = [t, ccm]
+        .iter()
+        .flat_map(|x| x.carriers.iter())
+        .filter(|c| matches!(c.source, ToolSource::EmbeddedBinary { .. }))
+        .filter_map(|c| {
+            landing_path_of(&c.destination)
+                .map(|p| format!("{p}@{:?}", c.touches.iter().find(|f| f.path == p).map(|f| f.host)))
+        })
+        .collect();
+    sites.sort();
+    sites.dedup();
     assert!(
         sites.len() > 1,
-        "`{BACKEND_ID}` 只说得出 {} 个落点（实得 {sites:?}）——\n\
+        "后端只说得出 {} 个落点（实得 {sites:?}）——\n\
              「一个后端要两处使用」，而闭集里它还是一处。\n\
              ⚠ 往 `ToolDestination` 里加枚举值买不到这一格：这个数数的是**载体**。",
         sites.len()
@@ -783,12 +799,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
         })
         .collect();
     let mut want: Vec<(String, String, HostScope)> = vec![
-        // ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）
-        (
-            "src/frontend/shell/binaries/cc-monitor-backend".into(),
-            "$APP_DIR".into(),
-            HostScope::Client,
-        ),
+        // ③ 安装包放在 app 可执行文件旁边的那份：size2（10-11）撤了 —— 安装包不再旁放本机后端（与内嵌那份逐字节相同）。
         // ① 自释放那一份的本机落点就是 `~/.cc-monitor/bin/ccm`（后端本身）—— 声明挂在 `ccm` 那一条的本机载体上，
         //   不在这里再记一遍（`the_declared_local_ccm_path_really_matches_the_name_we_install` 要本机 `ccm` 落点恰一条）。
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
