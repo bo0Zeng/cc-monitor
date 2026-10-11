@@ -424,15 +424,35 @@ pub(crate) fn list_product(
     table_agent: &str,
     relay_running: bool,
 ) -> serde_json::Value {
-    list_product_with(
-        &resolve_accts_dir(),
-        home_dir().as_deref(),
-        rows,
-        &crate::accounts::upstream_select::file_face::machine_key_facts(),
-        agent,
-        table_agent,
-        relay_running,
+    let creds = crate::accounts::upstream_select::file_face::machine_path()
+        .ok()
+        .and_then(|p| crate::accounts::upstream_select::creds::perm_notice(&p));
+    with_notice(
+        list_product_with(
+            &resolve_accts_dir(),
+            home_dir().as_deref(),
+            rows,
+            &crate::accounts::upstream_select::file_face::machine_key_facts(),
+            agent,
+            table_agent,
+            relay_running,
+        ),
+        creds,
     )
+}
+
+/// 清单的 `notice` 并上另一句（凭据文件权限那一句，KS11）：两句都有 ⇒ 连成一句；只有一句 ⇒ 就是它。
+pub(crate) fn with_notice(mut v: serde_json::Value, more: Option<String>) -> serde_json::Value {
+    let Some(more) = more else { return v };
+    let joined = match v["notice"].as_str() {
+        Some(a) => copy_text(
+            "beAccountsQuery.listProductAt.joined",
+            &[("a", a), ("b", &more)],
+        ),
+        None => more,
+    };
+    v["notice"] = serde_json::Value::String(joined);
+    v
 }
 
 /// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。

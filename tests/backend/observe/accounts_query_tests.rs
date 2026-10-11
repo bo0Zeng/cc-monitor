@@ -2478,3 +2478,22 @@ fn the_badge_is_written_by_the_core() {
         (t("accounts.badge.signedIn"), false, String::new())
     );
 }
+
+/// 清单的 `notice` 是几句「能用但有缺」并成的一句：凭据文件权限那一句并进去（KS11）；都没有 ⇒ `null`。
+#[test]
+fn the_list_notice_carries_the_credentials_file_warning_too() {
+    let base = |n: Option<&str>| serde_json::json!({"meta": {}, "accounts": [], "notice": n});
+    assert_eq!(
+        with_notice(base(None), None)["notice"],
+        serde_json::Value::Null
+    );
+    assert_eq!(with_notice(base(None), Some("宽".into()))["notice"], "宽");
+    assert_eq!(with_notice(base(Some("缺")), None)["notice"], "缺");
+    assert_eq!(
+        with_notice(base(Some("缺")), Some("宽".into()))["notice"],
+        copy_text(
+            "beAccountsQuery.listProductAt.joined",
+            &[("a", "缺"), ("b", "宽")]
+        )
+    );
+}

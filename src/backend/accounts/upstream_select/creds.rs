@@ -101,6 +101,26 @@ pub(crate) fn load(path: &Path) -> Loaded {
     }
 }
 
+/// KS11 上屏的那一句（账号清单的 `notice` 并它）：凭据文件在、却不是只给本人 ⇒ 路径 ＋ 宽在哪 ＋ 怎么修（查不出 ⇒ 为什么查不出）；
+/// 只给本人 · 文件不在 ⇒ `None`。判断只问 `creds_core::perm::judge`（启动日志那一路同一个）。
+pub(crate) fn perm_notice(path: &Path) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    let p = path.display().to_string();
+    match perm::judge(&perm::probe(path)) {
+        Verdict::OwnerOnly => None,
+        Verdict::TooWide { how, fix } => Some(copy_text(
+            "beAccountsQuery.listProductAt.credsPerm",
+            &[("path", &p), ("how", &how), ("fix", &fix)],
+        )),
+        Verdict::Undetermined { why, .. } => Some(copy_text(
+            "beAccountsQuery.listProductAt.credsPermUnknown",
+            &[("path", &p), ("why", &why)],
+        )),
+    }
+}
+
 /// 把该说的话说出去。返回印了几行（判据数得着）。
 ///
 /// 印的每一样都在 `creds_guard::ALLOWED_LOG_FIELDS` 那张白名单里：路径、判断的说法、「配了没配」这个布尔；一个字节的 key 都不进来。
