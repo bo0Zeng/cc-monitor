@@ -10,7 +10,7 @@ object SessionNew {
     /**
      * 新起一条会话（[agent] 是哪一家的线上名：`claude` · `codex`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认（中途换模型送 `/model <名>`）。
      * [ticket] 一个草稿一张：期限到了同一张再问，那台认出是同一趟、不起第二个。
-     * [prompt] 第一句：随起交（那台起好之后等会话就绪再送字 ＋ 回车，结局在回包的 `prompt`）。
+     * [prompt] 第一句：随起交（那台作为启动参数交给 agent，结局在回包的 `prompt`）。
      */
     fun args(
         cwd: String,
@@ -28,7 +28,7 @@ object SessionNew {
         val sid: String?,
         /** 展开之后的目录：认报到的会话按它。 */
         val cwd: String,
-        /** 第一句交进去的结局（同 `terminal-input` 的回话，`why` 另有 `not_ready`）；那台没交 ⇒ `null`。 */
+        /** 第一句交进去的结局（同 `terminal-input` 的回话）；那台没交 ⇒ `null`。 */
         val prompt: TerminalInput.Result?,
     )
 

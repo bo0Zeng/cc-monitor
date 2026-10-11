@@ -81,7 +81,7 @@ class ChatSessionTest {
     private fun said(prompt: Map<String, Any?>) = started + mapOf("sid" to "pre", "prompt" to prompt)
 
     @Test
-    fun `新建会话：第一句随 session-new 交（那台等会话就绪再送），送没送到照回包里的 prompt；不另走 terminal-input`() =
+    fun `新建会话：第一句随 session-new 交（那台作为启动参数交），送没送到照回包里的 prompt；不另走 terminal-input`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
@@ -94,18 +94,19 @@ class ChatSessionTest {
             s.send("你好")
             runCurrent()
             assertEquals("你好", link.calls("session-new").single()?.get("prompt"))
+            assertEquals("session-new 撤不动（阻塞档）：按阻塞档问，不带 within_ms、不撤单", listOf("session-new"), link.blockingCalls)
             assertEquals("pre", s.state.value.sid)
             assertTrue("第一句已随起交了，不再送一遍", link.calls("terminal-input").isEmpty())
             assertNull("送到了的不挂标", s.local().single().delivery)
         }
 
     @Test
-    fun `新建会话：那台没等到就绪（not_ready）⇒ 那句标未送达、字照那台写的；再发一次走 terminal-input`() =
+    fun `新建会话（兜底）：那台说第一句没交到（refused，能改的）⇒ 那句标未送达、字照那台写的；再发一次走 terminal-input`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
-                    "session-new" -> ok(said(mapOf("result" to "refused", "why" to "not_ready", "said" to "会话还没就绪")))
+                    "session-new" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))
                     "terminal-input" -> ok(mapOf("result" to "delivered"))
                     else -> Reply.LinkDown
                 }
@@ -115,7 +116,7 @@ class ChatSessionTest {
             runCurrent()
             val o = s.local().single()
             assertEquals(DeliveryState.FAILED, o.delivery)
-            assertEquals(copyText("terminal.input.failed", "why" to "会话还没就绪"), o.deliveryText)
+            assertEquals(copyText("terminal.input.failed", "why" to "终端已不在"), o.deliveryText)
             s.retry(o.key)
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "pre", "text" to "你好")), link.calls("terminal-input"))

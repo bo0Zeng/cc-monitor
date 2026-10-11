@@ -97,6 +97,25 @@ class FrameClientTest {
         }
 
     @Test
+    fun `阻塞档（撤不动的，如 session-new）：请求不带 within_ms，到这边的期限只回 TimedOut、不发撤单`() =
+        runTest {
+            val d = FakeDuplex()
+            val c = attached(d, backgroundScope)
+            d.written.receive()
+            val r = async { c.call("session-new", mapOf("cwd" to "~"), 100, blocking = true) }
+            val req = Json.obj(d.written.receive())!!
+            assertTrue("阻塞档不带 within_ms：$req", "within_ms" !in req)
+            assertEquals(Reply.TimedOut, r.await())
+            assertTrue("不发撤单", d.written.tryReceive().getOrNull() == null)
+            d.push("""{"kind":"reply","id":"${req.str("id")}","ok":true}""")
+            val next = async { c.call("ping", null, 5_000) }
+            val req2 = Json.obj(d.written.receive())!!
+            d.push("""{"kind":"reply","id":"${req2.str("id")}","ok":true}""")
+            assertEquals(Reply.Ok(null), next.await())
+            assertTrue("迟到的那条应答不当对不上：$breaks", breaks.isEmpty())
+        }
+
+    @Test
     fun `到期限就撤单，迟到的应答不当契约对不上`() =
         runTest {
             val d = FakeDuplex()

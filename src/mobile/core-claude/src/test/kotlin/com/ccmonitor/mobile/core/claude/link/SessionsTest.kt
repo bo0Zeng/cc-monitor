@@ -22,8 +22,8 @@ class SessionsTest {
         val base = mapOf("outcome" to "started", "session" to "proj-cc", "sid" to "s1", "agent" to "claude", "cwd" to "/h/proj")
         assertEquals(TerminalInput.Result.Delivered, SessionNew.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null)))?.prompt)
         assertEquals(
-            TerminalInput.Result.Refused("会话还没就绪", "not_ready"),
-            SessionNew.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_ready", "said" to "会话还没就绪")))?.prompt,
+            TerminalInput.Result.Refused("终端已不在", "not_known"),
+            SessionNew.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))?.prompt,
         )
         assertNull(SessionNew.of(base + ("prompt" to null))?.prompt)
         assertNull("prompt 那一格认不出 ⇒ 解不出", SessionNew.of(base + ("prompt" to mapOf("result" to "maybe"))))

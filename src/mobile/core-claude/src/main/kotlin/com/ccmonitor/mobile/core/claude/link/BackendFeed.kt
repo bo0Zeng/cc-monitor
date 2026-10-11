@@ -48,11 +48,13 @@ interface CoreLink {
     /**
      * 一问一答。流没通（在建 · 在重接 · SSH 还没通）⇒ 先等它接上（至多 [withinMs]）再问，不当场回 [Reply.LinkDown]；
      * 走不通、要人动手的那几种（另一版 · 没装 …）⇒ 当场 [Reply.LinkDown]。等的那一段也算在 [withinMs] 里。
+     * [blocking]：那条命令是阻塞档（撤不动，如 `session-new`）⇒ 请求不带 `within_ms`、到期限也不发撤单，[withinMs] 只是这边等多久。
      */
     suspend fun call(
         cmd: String,
         args: Map<String, Any?>? = null,
         withinMs: Long = DEFAULT_CALL_MS,
+        blocking: Boolean = false,
     ): Reply
 }
 
@@ -139,6 +141,7 @@ class BackendFeed(
         cmd: String,
         args: Map<String, Any?>?,
         withinMs: Long,
+        blocking: Boolean,
     ): Reply {
         val since = TimeSource.Monotonic.markNow()
         val c =
@@ -147,7 +150,7 @@ class BackendFeed(
                 client
             } ?: return Reply.LinkDown
         val left = (withinMs - since.elapsedNow().inWholeMilliseconds).coerceAtLeast(1L)
-        return c.call(cmd, args, left)
+        return c.call(cmd, args, left, blocking)
     }
 
     /** 断在要人动手的那一步（不会自己好）：问的人不用等。 */

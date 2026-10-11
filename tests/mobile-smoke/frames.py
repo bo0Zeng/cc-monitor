@@ -13,6 +13,9 @@ cmd = sys.argv[1]
 args = json.loads(sys.argv[2]) if len(sys.argv) > 2 and cmd != "watch" else None
 within = int(sys.argv[3]) if len(sys.argv) > 3 else 20000
 
+# 常驻不在就先起（和手机一样：attach 不上 ⇒ --resident-ensure 再接）。
+subprocess.run(["bash", os.path.join(here, "rig.sh"), "ssh", '"$HOME"/.cc-monitor/bin/ccm -- --resident-ensure'],
+               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
 p = subprocess.Popen(["bash", os.path.join(here, "rig.sh"), "ssh", '"$HOME"/.cc-monitor/bin/ccm -- --resident-attach'],
                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
 t0 = time.time()

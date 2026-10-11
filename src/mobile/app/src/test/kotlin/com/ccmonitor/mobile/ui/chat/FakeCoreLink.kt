@@ -24,14 +24,19 @@ internal class FakeCoreLink :
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
     override val epoch = MutableStateFlow(0L)
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
+
+    /** 按阻塞档问的那几条命令名（不带 within_ms、不撤单）。 */
+    val blockingCalls = mutableListOf<String>()
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }
 
     override suspend fun call(
         cmd: String,
         args: Map<String, Any?>?,
         withinMs: Long,
+        blocking: Boolean,
     ): Reply {
         calls += cmd to args
+        if (blocking) blockingCalls += cmd
         return answer(cmd, args)
     }
 
