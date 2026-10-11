@@ -337,7 +337,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `profiles` —— 这台的配置文件（`~/.cc-monitor/profiles.toml`）
 - `quota` —— 这台的额度账显示得出来的那几格
 - `rotation` —— 这台某个会话的轮换或「账号」格（`key` ＝ sid）
-- `rotation_rules` —— 这台的轮换规则表或默认指向
+- `rotation_configs` —— 这台的轮换配置表 · 本机默认 · 策略
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 
@@ -1149,158 +1149,289 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
 
-#### `rotation-rules-read`
+#### `rotation-configs-read`
 
-这台的轮换规则表。
+这台的轮换配置表。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rules-read`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-configs-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `defaultRule` | ← | 默认规则的 id |
-| `followText` | ← | 「跟随默认」那一项写好的字：默认那条没起名（还是起始的名字）⇒「跟随默认」，起了名 ⇒「跟随默认（名字）」；新建会话面板 · 批量菜单照抄 |
-| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
-| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
+| `configs` | ← | 每份一项（本机默认在最前、其余按名字）：`{id, name, strategy, accounts, params, acctInit, parked, tz?, rev, updatedAt, savedBy, text, strategyName, inUse, isDefault}`；`text` 是后端写好的描述（策略的 `describe` 片段写成字），`inUse` ＝ 开着它的会话 |
+| `defaultConfig` | ← | 本机默认那份的 id |
+| `lang` | → | 可缺：策略自己的字写哪种语言（`zh` 缺省 · `en`） |
+| `detail` | ← | 只在 `unreadable` 时有：复制详情 |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
-| `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
-| `state` | ← | `"present"` · `"absent"`（没动过：只有缺省的「默认」一条）· `"unreadable"` |
+| `state` | ← | `"present"` · `"absent"`（没动过：内置三份）· `"unreadable"` |
 
-#### `rotation-rule-save`
+#### `rotation-config-save`
 
-新建或整份改一条轮换规则。
+存一份轮换配置（新建或覆盖）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rule-save`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dedupe` | → | 可缺席：`true` ⇒ 重名不拒，名后加 ` 2` · ` 3` … 取第一个不重的（复制 · 复制到别的机器） |
-| `errors` | ← | 只在 `refused` 时有：`[{cell, code, with?}]`：哪一格（触发那一行是 `cap.*.5h` · `cap.*.7d`）· 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段 |
-| `from` | → | 新建时不给 `rotation`：从哪条规则拷（`"blank"` ＝ 只有起始账号） |
-| `id` | → | 改哪条；不给 ＝ 新建 |
-| `ifRev` | → | 改之前读到的 `rev`；对不上 ⇒ `{state:"conflict", rev}`、不写 |
-| `name` | → | 规则名（1–24 字，这台不重名：去首尾空白、不分大小写） |
-| `rev` | ← | 只在 `conflict` 时有：此刻的版本 |
-| `rotation` | → | 整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap["*"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换） |
-| `rule` | ← | 只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项） |
-| `savedAtText` | ← | 只在 `saved` 时有：写成那一刻的钟面 `HH:MM`（按请求的 `tz`；编辑器「已保存」照抄） |
-| `state` | ← | `"saved"`（写成了）· `"refused"`（逐格错，没写）· `"conflict"`（读到之后别处改过，没写） |
-
-码：`bad_args` · `io_failed` · `no_such_rule`
-
-#### `rotation-rule-rename`
-
-给一条轮换规则改名。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rule-rename`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-config-save`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `errors` | ← | 同 `rotation-rule-save` |
-| `id` | → | 哪条 |
-| `ifRev` | → | 同 `rotation-rule-save` |
-| `name` | → | 新名字 |
-| `rev` | ← | 同 `rotation-rule-save` |
-| `rule` | ← | 同 `rotation-rule-save` |
-| `savedAtText` | ← | 同 `rotation-rule-save` |
-| `state` | ← | 同 `rotation-rule-save` |
+| `config` | → | 整份内容 `{name, strategy, accounts: [{start: true} \| {rest: true} \| {id}, params], params, acctInit, parked?}`；参数照那份策略的声明逐格校验，缺的格补齐 |
+| `errors` | ← | 只在 `refused` 时有：`[{cell, code, said}]`（`name` · `strategy` · `accounts[i]` · `params.<k>` · `accounts[i].<k>` · `acctInit.<k>`，时段细到 `[j].at` / `[j].line`） |
+| `force` | → | 可缺：`true` ⇒ `ifRev` 对不上也覆盖 |
+| `id` | → ← | 入参：改哪份；缺 ＝ 新建。应答：写成的那份 |
+| `ifRev` | → | 可缺：改之前读到的 `rev`；对不上 ⇒ `conflict` |
+| `rev` | → ← | 写成的版本 · `conflict` 时此刻的版本 |
+| `savedAtText` | ← | 只在 `saved` 时有：写成那一刻的钟面 `HH:MM` |
+| `state` | ← | `"saved"` · `"refused"` · `"conflict"` |
+| `theirs` | ← | 只在 `conflict` 时有：别处那一版跟这一份差哪几格 `[{acct?, k, from, to, text}]` |
 
-码：`bad_args` · `io_failed` · `no_such_rule`
+码：`bad_args` · `io_failed` · `no_such_config`
 
-#### `rotation-rule-delete`
+#### `rotation-config-rename`
 
-删轮换规则。
+给一份轮换配置改名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rule-delete`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-config-rename`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `ids` | → | 要删的规则 id |
-| `moved` | ← | 用着它们的会话落到了哪 `{sid: "custom" \| "follow"}` |
-| `then` | → | 用着它们的会话怎么办：`"custom"`（照那条拷一份成本会话的，行为不变）· `"follow"`（改跟随默认） |
+| `errors` | ← | 同 `rotation-config-save` |
+| `id` | → ← | 哪份 |
+| `ifRev` | → | 同 `rotation-config-save` |
+| `name` | → | 新名字（1–24 字，本机不重名） |
+| `rev` | ← | 同 `rotation-config-save` |
+| `savedAtText` | ← | 同 `rotation-config-save` |
+| `state` | ← | 同 `rotation-config-save` |
+| `theirs` | ← | 同 `rotation-config-save`（改名撞版本时为空） |
 
-码：`bad_args` · `io_failed` · `is_default` · `no_such_rule`
+码：`bad_args` · `io_failed` · `no_such_config`
+
+#### `rotation-config-delete`
+
+删一份轮换配置。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-config-delete`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `id` | → | 哪份 |
+| `inUse` | ← | 只在 `refused` 时有：开着它的会话 |
+| `isDefault` | ← | 只在 `refused` 时有：是本机默认 |
+| `said` | ← | 只在 `refused` 时有：那一句 |
+| `state` | ← | `"done"` · `"refused"`（有会话开着 · 是本机默认） |
+
+码：`bad_args` · `io_failed` · `no_such_config`
 
 #### `rotation-default-set`
 
-设这台的默认规则。
+设这台的本机默认配置。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-default-set`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `defaultRule` | ← | 此刻的默认规则 |
-| `followers` | ← | 跟随默认、此刻活着的会话有几个 |
-| `rule` | → | 设为默认的那条 |
+| `id` | → | 设为本机默认的那份（已开着的会话不跟着换） |
+| `state` | ← | `"done"` |
 
-码：`bad_args` · `io_failed` · `no_such_rule`
+码：`bad_args` · `io_failed` · `no_such_config`
+
+#### `rotation-strategies-read`
+
+这台加载的轮换策略。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategies-read`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lang` | → | 可缺：参数名 · 选项 · 灰字写哪种语言（`zh` 缺省 · `en`） |
+| `lib` | ← | 共用小函数库 `{source}`（随引擎走，只读） |
+| `strategies` | ← | 每份一项（内置在前、本机按文件名）：`{id, name, builtin, path?, ordered, text, params: [Decl＋字], acctParams: [Decl＋字], source, error?: {kind, line?, col?, msg, text}, usedBy}`；`Decl＋字` ＝ `{k, type, init, of?, min?, max?, label, hint?, options?: [{v, label, hint?}]}`，界面只照它画格 |
+
+#### `rotation-strategy-add`
+
+装一份轮换策略进本机策略目录。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-add`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `error` | ← | 只在 `refused` 时有：读不懂那一处 `{kind, line?, col?, msg, text}` |
+| `id` | → ← | 文件名去 `.rhai`（路由段闸那一套字符，至多 32 字，不以 `@` 开头；与内置同 id ⇒ 不收） |
+| `said` | ← | 只在 `refused` 时有：那一句 |
+| `source` | → | 策略文件的全文（至多 64 KiB） |
+| `state` | ← | `"done"` · `"refused"` |
+| `usedBy` | ← | 删不了时：用它的配置 |
+
+码：`bad_args` · `io_failed`
+
+#### `rotation-strategy-delete`
+
+删本机的一份轮换策略。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-delete`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `error` | ← | 同 `rotation-strategy-add` |
+| `id` | → ← | 哪份（内置的删不了） |
+| `said` | ← | 同 `rotation-strategy-add` |
+| `state` | ← | `"done"` · `"refused"`（内置的 · 有配置在用） |
+| `usedBy` | ← | 只在有配置在用时有：那几份的 id |
+
+码：`bad_args` · `io_failed` · `no_such_strategy`
+
+#### `rotation-strategy-try`
+
+按此刻的事实试跑一份策略（不写盘不换号）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-try`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `config` | → | 跑哪份配置（与 `draft` · `sid` 三选一） |
+| `draft` | → | 草稿：一份完整配置内容 |
+| `id` | → | 可缺：用哪份已加载的策略（缺 ⇒ 配置写的那份） |
+| `lang` | → | 可缺：字写哪种语言 |
+| `maxOps` | ← | 一判的操作数上限 |
+| `memo` | ← | 这一判回的 `@memo`（没写 ⇒ 缺） |
+| `ops` | ← | 这一判用了几次操作 |
+| `pick` | ← | 会挑谁（停发 ⇒ 缺） |
+| `rows` | ← | 有效优先级的先后 `[{account, p, why, back?, backText?}]`：`p` 为 `null` ＝ 此刻不挑 |
+| `sid` | → | 这个会话此刻那一份（从它此刻的号起，手动调整 · 备忘照叠） |
+| `source` | → | 可缺：现编的一份策略全文（不装，只跑） |
+| `strategyError` | ← | 出错 / 超时 / 形状不对时：为什么（这一判照内置策略 1 排） |
+
+码：`bad_args` · `no_such_config` · `no_such_session`
 
 #### `rotation-plan`
 
-一份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写）。
+推演：一份配置接下来会怎么换（都不写）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-plan`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `detail` | ← | 同 `rotation-rules-read` |
-| `names` | ← | 同 `rotation-rules-read` |
-| `effective` | ← | 号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句） |
-| `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
-| `from` | ← | 视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
-| `fromText` | ← | `from` 按看的那一台的时区（请求的 `tz`）写好的字 |
-| `grid` | ← | 只在带 `view` 时有：刻度 `[{at, atText, label?}]`，按看的那一台的时区对齐（`6h` 一格 15m · `24h` 1h · `7d` 6h；悬停与键盘按格走），轴上写字的那几格带 `label`（`6h` 每小时 · `24h` 每 3h 写 `HH:MM`；`7d` 每天零点写 `MM-DD`） |
-| `head` | ← | 只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toLine?: {w, n}, est?}`（此刻用的号 · 卡人的窗口与用了多少 % · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线算，取差得最少的那一窗，都没线 ⇒ 缺 · `est` ＝ 按目前涨法几点用到这号这窗口此刻取的上限 `{at, atText, pct, w}`：只在额度账上这一窗有两次不同的采样、最近 30 分钟在涨时给，按这两点的斜率外推，到之前先重置就不给）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置） |
-| `lanes` | ← | 池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n, w}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那条线 · `w` ＝ 那一窗的语义位）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
+| `config` | → | 跑哪份配置（与 `draft` · `sid` 三选一；没有会话 ⇒ 从起会话的号起） |
+| `draft` | → | 草稿：一份完整配置内容（带 `sid` 时 ＝ 这个会话的草稿） |
+| `names` | ← | 号名与语义位名的字 |
+| `from` | ← | 视窗起（此刻之前那一截的起点） |
+| `grid` | ← | 刻度 `[{at, atText, label?}]`，按看的那一台的时区对齐 |
+| `lang` | → | 可缺：字写哪种语言 |
 | `now` | ← | 这台此刻的 unix 秒 |
-| `nowText` | ← | `now` 按看的那一台的时区（请求的 `tz`）写好的字 |
-| `past` | ← | 只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`） |
-| `plan` | ← | `[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；`view` 是 `7d` 时只到此刻 +1d；每个时刻旁有 `…Text` |
-| `reason` | ← | 同 `rotation-rules-read` |
-| `state` | ← | 那份文件的三态（同 `rotation-rules-read`）；`unreadable` 时照缺省那一份算 |
-| `until` | ← | 视窗止（unix 秒） |
-| `machine` | → | `true`：这台全部号（设置里的时间轴），按默认规则判封顶 |
-| `rotation` | → | 草稿 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap["*"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一 |
-| `rule` | → | 这台的一条规则 id（从池里排第一的号起） |
-| `sid` | → | 一个会话：此刻生效的那一份，从它此刻的号起 |
-| `span` | → | 可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d`（从此刻起；带 `view` 时不看） |
-| `view` | → | 可缺：时间轴视窗 `6h`（前 2h · 后 4h）· `24h`（前 6h · 后 18h）· `7d`（前 1d · 后 6d） |
+| `nowText` | ← | `now` 写好的字 |
+| `plan` | ← | `[{from, fromText, to, toText, account, why?, est?}]`：`account` 为 `null` ＝ 停发；`why` ＝ 那一段开头为什么换过来；此刻之后的都是估的（`est`） |
+| `rows` | ← | 合图每个号一行 `{account, bars: [{from, to, k, est?}], resets: [{w, at, atText}]}`：`k` ＝ `use` · `line`（策略声明了 `line` 且到线才出）· `off` · `refused` · `full` · `overage` · `login` · `skip` |
+| `sid` | → | 一个会话：此刻那一份，从它此刻的号起；此刻之前那一截照换号记录 |
+| `source` | → | 可缺：现编的一份策略全文（不装，只跑） |
+| `strategyError` | ← | 此刻这一判出错时：为什么 |
+| `until` | ← | 视窗止 |
+| `view` | → ← | `12h`（缺省：前 3h · 后 9h）· `24h`（前 6h · 后 18h） |
 
-码：`bad_args` · `no_such_rule`
+码：`bad_args` · `no_such_config` · `no_such_session`
 
 #### `rotation-session-read`
 
-一批会话的轮换与「账号」格。
+一批会话的轮换。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `detail` | ← | 同 `rotation-rules-read` |
-| `names` | ← | 同 `rotation-rules-read` |
-| `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
-| `reason` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
-| `sessions` | ← | 每个 sid 一份 |
+| `detail` | ← | 同 `rotation-configs-read` |
+| `lang` | → | 可缺：字写哪种语言 |
+| `names` | ← | 号名与语义位名的字：`{accounts: {码: 字}, slots: {码: 字}}` |
+| `now` | ← | 这台此刻的 unix 秒；回包里每个时刻旁有 `…Text` |
+| `reason` | ← | 同 `rotation-configs-read` |
+| `sessions` | ← | 每个 sid 一份：`{state: "present", agent, start, current, since, history: [{at, from, to, leave, pick?, text}], inPlace, config: {id, name, rev, dirty, newer?: {rev, at, by, text}, diff?}, text, strategy: {id, name, ordered}, values: {params, accounts: [{who, params}], acctInit}, rows: [{account, why, skip?, back?, backText?, alsoUsed, facts, fromRest?}], hot?, blocked?: {earliest?, text}, strategyError?, quota}` · 中转没见过 ⇒ `{state: "absent", inPlace}`；`rows` 是有效优先级的先后，第一行在用 |
 | `sids` | → | 会话 id 的数组 |
-| `state` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
+| `state` | ← | 那份文件的三态（同 `rotation-configs-read`） |
 
 码：`bad_args` · `failed`
 
+#### `rotation-session-open`
+
+会话打开一份配置。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-open`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `config` | → | 打开哪份 |
+| `diff` | ← | 只在 `dirty` 时有：本会话副本改了哪几格 |
+| `discard` | → | 可缺：`true` ⇒ 丢掉本会话没存的改动再打开 |
+| `sid` | → | 哪个会话 |
+| `state` | ← | `"opened"`（手动调整与备忘清掉）· `"dirty"`（副本有没存的改动，先问） |
+
+码：`bad_args` · `io_failed` · `no_such_config`
+
+#### `rotation-session-edit`
+
+改会话打开的那份配置的副本。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-edit`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `add` | → | 可缺：加进来的号（新的一行抄 `acctInit`） |
+| `diff` | ← | 副本跟原样差哪几格 `[{acct?, k, from, to, text}]` |
+| `dirty` | ← | 副本改没改过（改回原样 ⇒ `false`，副本丢掉） |
+| `drop` | → | 可缺：不参与的号（删那一行） |
+| `errors` | ← | 收不下的格 `[{cell, code, said}]`（那几格不改） |
+| `lang` | → | 可缺：字写哪种语言 |
+| `set` | → | `[{acct?, k, v}]`：`acct` 缺 ＝ 整份参数 · `@start` · `@rest` · `@init`（新加的号缺省）· 号 id（`rest` 底下的号 ⇒ 给它单写一行） |
+| `sid` | → | 哪个会话 |
+| `strategy` | → | 可缺：换一份策略（旧参数收进 `parked`，同名同类型的照搬） |
+
+码：`bad_args` · `io_failed` · `no_such_session`
+
+#### `rotation-session-save`
+
+存会话的副本（写回或另存为）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-save`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `as` | → | 可缺：`{name?}` ⇒ 另存为（新 id，本会话改开它；不起名 ⇒ `配置 N`） |
+| `errors` | ← | 只在 `refused` 时有 |
+| `force` | → | 可缺：`true` ⇒ 撞版本也覆盖 |
+| `id` | ← | 只在 `saved` 时有：写成的那份 |
+| `ifRev` | → | 打开时的 `rev`；对不上且没 `force` ⇒ `conflict` |
+| `mine` | ← | 只在 `conflict` 时有：本会话的改动 |
+| `rev` | ← | 写成的版本 · `conflict` 时此刻的版本 |
+| `sid` | → | 哪个会话 |
+| `state` | ← | `"saved"` · `"conflict"` · `"refused"` |
+| `theirs` | ← | 只在 `conflict` 时有：别处那一版跟本会话的差 |
+
+码：`bad_args` · `io_failed`
+
+#### `rotation-session-revert`
+
+丢掉会话副本的改动。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-revert`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 哪个会话 |
+| `state` | ← | `"done"` |
+| `toLatest` | → | 可缺：载入新版本（同一件事：副本丢掉、版本跟上） |
+
+码：`bad_args` · `io_failed` · `no_such_session`
+
 #### `rotation-session-set`
 
-改一批会话的轮换。
+会话的手动调整（拖一行 · 刷新策略）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-set`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `agent` | → | 这台没见过的会话要另给：哪一家 |
-| `rotation` | → | `"follow"` · `"parent"`（跟随父会话：父按会话血缘填；有一个没有父或父是别的一家 ⇒ 整批 `no_parent`）· `{"rule": id}` · `"custom"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的）· `{"custom":{…}}` |
-| `sessions` | ← | 逐个结果 `{sid: {state:"done"} \| {state:"skipped", code}}` |
-| `sids` | → | 要改的会话 |
-| `start` | → | 起它的号 |
+| `place` | → | `{account, at}`：把那个号放到第 `at` 位（0 起；`0` ＝ 现在就换过去，同 `rotation-switch` 热换，不出任何提示） |
+| `refresh` | → | `true` ⇒ 清掉全部手动调整与备忘，照策略重算 |
+| `sid` | → | 哪个会话 |
+| `state` | ← | `"done"` · `"skipped"` · `"failed"` |
+| `why` | ← | 没换成时的码（同 `rotation-switch` 的 `hot` 那一格） |
 
-码：`bad_args` · `failed` · `io_failed` · `no_parent` · `no_such_rule`
+码：`bad_args` · `io_failed` · `no_such_session`
 
 #### `rotation-switch`
 
@@ -3205,7 +3336,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `rotation` | → | 可缺：轮换来源。缺 / `"follow"` ＝ 跟随默认（不写）· `{rule: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它把来源写成那条规则，回包 `sid` 就是它；规则不在 ⇒ `no_such_rule`；那一家不认先定 sid ⇒ `bad_args` |
+| `rotation` | → | 可缺：打开哪份轮换配置。缺 ＝ 本机默认那份（不写）· `{config: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它记成打开那一份，回包 `sid` 就是它；配置不在 ⇒ `no_such_config`；那一家不认先定 sid ⇒ `bad_args` |
 | `account` | → ← | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}`；应答里是实际用的号（账号 0 / 不指定 ⇒ `null`） |
 | `agent` | → ← | 哪一家（线上的 kind）；应答里是起的那一家 |
 | `cmd` | → ← | `open` 时界面要在终端里跑的那一行 |
@@ -3231,7 +3362,7 @@ cc-bus 钩子诊断。
 | `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |
 | `uuid` | → | `forkFrom` 里：从哪条消息处分叉 |
 
-码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_such_rule`
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_such_config`
 
 #### `session-new-facts`
 
@@ -3975,14 +4106,22 @@ cc-bus 钩子诊断。
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数） |
-| `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的默认规则 |
-| `--rotation-plan` | ＝ 帧命令 `rotation-plan`：一份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写） |
-| `--rotation-rule-delete` | ＝ 帧命令 `rotation-rule-delete`：删轮换规则 |
-| `--rotation-rule-rename` | ＝ 帧命令 `rotation-rule-rename`：给一条轮换规则改名 |
-| `--rotation-rule-save` | ＝ 帧命令 `rotation-rule-save`：新建或整份改一条轮换规则 |
-| `--rotation-rules-read` | ＝ 帧命令 `rotation-rules-read`：这台的轮换规则表 |
-| `--rotation-session-read` | ＝ 帧命令 `rotation-session-read`：一批会话的轮换与「账号」格 |
-| `--rotation-session-set` | ＝ 帧命令 `rotation-session-set`：改一批会话的轮换 |
+| `--rotation-config-delete` | ＝ 帧命令 `rotation-config-delete`：删一份轮换配置 |
+| `--rotation-config-rename` | ＝ 帧命令 `rotation-config-rename`：给一份轮换配置改名 |
+| `--rotation-config-save` | ＝ 帧命令 `rotation-config-save`：存一份轮换配置（新建或覆盖） |
+| `--rotation-configs-read` | ＝ 帧命令 `rotation-configs-read`：这台的轮换配置表 |
+| `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的本机默认配置 |
+| `--rotation-plan` | ＝ 帧命令 `rotation-plan`：推演：一份配置接下来会怎么换（都不写） |
+| `--rotation-session-edit` | ＝ 帧命令 `rotation-session-edit`：改会话打开的那份配置的副本 |
+| `--rotation-session-open` | ＝ 帧命令 `rotation-session-open`：会话打开一份配置 |
+| `--rotation-session-read` | ＝ 帧命令 `rotation-session-read`：一批会话的轮换 |
+| `--rotation-session-revert` | ＝ 帧命令 `rotation-session-revert`：丢掉会话副本的改动 |
+| `--rotation-session-save` | ＝ 帧命令 `rotation-session-save`：存会话的副本（写回或另存为） |
+| `--rotation-session-set` | ＝ 帧命令 `rotation-session-set`：会话的手动调整（拖一行 · 刷新策略） |
+| `--rotation-strategies-read` | ＝ 帧命令 `rotation-strategies-read`：这台加载的轮换策略 |
+| `--rotation-strategy-add` | ＝ 帧命令 `rotation-strategy-add`：装一份轮换策略进本机策略目录 |
+| `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删本机的一份轮换策略 |
+| `--rotation-strategy-try` | ＝ 帧命令 `rotation-strategy-try`：按此刻的事实试跑一份策略（不写盘不换号） |
 | `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
 | `--search` `<query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]` | 全库全文搜索：每命中会话一行 `SessionHits`（camelCase，含 `hitsTruncated`），行序 = 最近优先 |
 | `--session-accounts` | 正在跑的会话各属哪个号：每条 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |

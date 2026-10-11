@@ -1,11 +1,14 @@
-//! 轮换：额度满了（或到阈值）就把会话钉到轮换里下一个号上，不重启进程。落 `~/.cc-monitor/rotation.json`。
+//! 轮换的存取：配置表 ＋ 每个会话的那一份，落 `~/.cc-monitor/rotation.json`（第二版形状，`version: 2`）。
 //!
-//! - 每台一张规则表：一条规则 ＝ 一份有名字的轮换（顺序 · 勾了哪几个 · 换号时机 · 封顶 · 换法 · 最多等几分钟）；
-//!   本机默认 ＝ 指向其中一条（`defaultRule`），永远至少一条；缺省那一条只有「起始账号」那一格 ⇒ 缺省不轮换。
-//! - 每个会话的来源四选一：跟随默认 · 跟随父会话（链接：父此刻按哪份它就按哪份；谁起的谁只在 `lineage.rs`）·
-//!   用某条规则（链接：规则改了它下一发就按新的走）· 本会话自己一份（换成别的来源时自己那一份留着）；按会话 id 存，后端重启后还在。
-//! - 每个会话此刻钉在哪个号、从什么时候起、换号记录；会话换了起它的号（重启换号 / 换号恢复）⇒ 钉号随之清掉。
-//! - 判「换不换、换谁」只在 [`super::decide`]；这里只有存取。
+//! - **配置**有名字、不绑会话：一份策略的参数值 ＝ 用哪份策略 · 参与的号（每行写全这份策略的每号参数）· 整份参数 · 新加的号缺省。
+//!   本机默认 ＝ 指向其中一份（`defaultConfig`），永远至少一份；没有文件时是内置的「默认配置 1 · 2 · 3」，默认指向 1（＝ 不轮换）。
+//! - **会话**打开一份配置的副本（`config: {id, rev, copy?}`）：改了写 `copy`、跟原样相等就丢；手动调整（`manual`）· 策略的备忘
+//!   （`memo`）· 在用的号 · 换号记录都跟会话走。按会话 id 存，后端重启后还在；会话换了起它的号 ⇒ 钉号随之清掉。
+//! - 读到第一版（没有 `version`）⇒ 在锁里换成第二版写回，原文件留一份 `rotation.json.v1`（[`migrate`]）。
+//! - 判「换不换、换谁」只在 [`super::decide`]；副本的改 · 存 · 还原只在 [`doc`]；这里只有形状与存取。
+
+pub(crate) mod doc;
+pub(crate) mod migrate;
 
 use crate::common::said::Said;
 use copy_core::copy_text;
@@ -17,164 +20,147 @@ use std::sync::Mutex;
 
 pub(crate) const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ROTATION_REL);
 
+/// 盘上这一版的形状号。
+pub(crate) const BOOK_VERSION: u64 = 2;
+
 /// 每个会话至多留几条换号记录（最早的先丢）。
 pub(crate) const HISTORY_KEPT: usize = 32;
 
-/// 触发那一行（`cap["*"]`）的线与单段预算收哪些值。
-pub(crate) const THRESHOLD_RANGE: std::ops::RangeInclusive<u8> = 1..=99;
-/// 每号覆盖的上限收哪些值：多一个 `0` ＝ 这个号（这一时段）不用，不管用量多少。
-pub(crate) const CAP_RANGE: std::ops::RangeInclusive<u8> = 0..=99;
-/// 「切兜底前最多等几分钟」收哪些值：`0` ＝ 不等（要切兜底就立刻切）。
-pub(crate) const WAIT_RANGE: std::ops::RangeInclusive<u8> = 0..=120;
-/// 「切兜底前最多等几分钟」缺省几分钟。
-pub(crate) const WAIT_DEFAULT: u8 = 40;
-/// 规则名至多几个字（按字符数）。
-pub(crate) const RULE_NAME_MAX: usize = 24;
+/// 配置名至多几个字（按字符数）。
+pub(crate) const NAME_MAX: usize = 24;
 
-fn wait_default() -> u8 {
-    WAIT_DEFAULT
+/// 内置三份配置：（id, 用哪份策略）。没有文件时就是这三份，默认指向第一份。
+pub(crate) const SEEDS: [(&str, &str); 3] = [
+    ("c_00000001", "1"),
+    ("c_00000002", "2"),
+    ("c_00000003", "3"),
+];
+
+/// 写配置那一下若不是会话 ⇒ 记这个（设置窗）。
+pub(crate) const SAVED_BY_SETTINGS: &str = "settings";
+
+/// 参数值：参数名 → 值（形状照那份策略的声明，[`super::strategy::form`] 校验）。
+pub type Params = serde_json::Map<String, Value>;
+
+/// 配置里一行是谁：起会话的号 · 账号库里其余的订阅号 · 点名的一个号。
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Who {
+    Start,
+    Rest,
+    Id(String),
 }
 
-/// 每号那一格里「这个号的所有窗口」的键；也是 `cap` · `stint` 里「所有号」那一行的键。
-pub(crate) const ALL_WINDOWS: &str = "*";
+impl Who {
+    /// 命令里指一行的写法：`@start` · `@rest` · 号 id。
+    pub(crate) fn key(&self) -> &str {
+        match self {
+            Who::Start => "@start",
+            Who::Rest => "@rest",
+            Who::Id(a) => a,
+        }
+    }
 
-/// 规则一级的线（`cap["*"]` 那一行）收哪几个语义位：5 小时一格、7 天一格（7 天那一格管所有 7 天窗口，含分档的）。
-pub(crate) const LINE_SLOTS: [&str; 2] = ["5h", "7d"];
-
-/// 此刻的号到了线、池里没有线下的号可换时怎么办。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum AtLimit {
-    /// 软阈值（缺省）：留在此刻的号上照发；它真被拒时退一步取首个没被拒的号。
-    #[default]
-    Continue,
-    /// 硬上限：不再发上游，回一份那一家自己认得的「用满」回包（重置时刻 ＝ 池里最早回到 N% 以下的那一刻）。
-    Stop,
-}
-
-/// 轮换列表里的一格：起始账号占位，或一个号（路由第 2 段）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum RotationSlot {
-    /// `{"start": true}`：起这个会话的那个号。
-    Start(StartSlot),
-    Named(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct StartSlot {
-    pub start: bool,
-}
-
-/// 上限的一个值：一个数，或按时段的几段（此刻不落在任何一段 ⇒ 这一层没有值，落回下一层）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum CapValue {
-    N(u8),
-    Slots(Vec<CapSlot>),
-}
-
-/// 一段：`at` ＝ `"HH:MM-HH:MM"`（那台后端的本地钟，含起不含止，跨午夜可写，止可写 `24:00`）· 这一段的上限。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct CapSlot {
-    pub at: String,
-    pub n: u8,
-}
-
-impl CapSlot {
-    /// 此刻（本地钟的一天里第几分钟）落不落在这一段；`at` 读不懂 ⇒ 不落。
-    pub(crate) fn holds(&self, minute: u16) -> bool {
-        match span_of(&self.at) {
-            Some((from, to)) if from < to => (from..to).contains(&minute),
-            Some((from, to)) => minute >= from || minute < to,
-            None => false,
+    pub(crate) fn of_key(k: &str) -> Self {
+        match k {
+            "@start" => Who::Start,
+            "@rest" => Who::Rest,
+            a => Who::Id(a.to_string()),
         }
     }
 }
 
-/// `"HH:MM-HH:MM"` → （起, 止）分钟；起止相同 · 读不懂 ⇒ `None`。
-pub(crate) fn span_of(at: &str) -> Option<(u16, u16)> {
-    let (a, b) = at.split_once('-')?;
-    let (from, to) = (clock_of(a)?, clock_of(b)?);
-    (from < 24 * 60 && from != to).then_some((from, to))
+/// 配置里的一行：谁 ＋ 这一行的每号参数（写全这份策略声明的每一格）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "AcctRowWire", into = "AcctRowWire")]
+pub struct AcctRow {
+    pub who: Who,
+    pub params: Params,
 }
 
-/// 每号的上限（线）：号 → 窗口键（或 `*` ＝ 这个号的所有窗口）→ 上限；号那一格是 `*` 的那一行 ＝ 所有号（规则一级的「触发」），
-/// 只收语义位 `5h` · `7d`、值 `1..=99` 或按时段。没有那一窗的线 ＝ 那一窗满了才换。
-pub type Caps = BTreeMap<String, BTreeMap<String, CapValue>>;
+/// 一行在线上的样子：`{"start": true, params}` · `{"rest": true, params}` · `{"id": "team", params}`（三者恰有其一）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../../frontend/ui/generated/", rename = "AcctRow")
+)]
+pub struct AcctRowWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub start: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub rest: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub id: Option<String>,
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub params: Params,
+}
 
-/// 每号的单段预算：号（或 `*` ＝ 所有号）→ 窗口键（或 `*`）→ 换进来之后再用几个点就想走。
-pub type Stints = BTreeMap<String, BTreeMap<String, u8>>;
+impl TryFrom<AcctRowWire> for AcctRow {
+    type Error = String;
+    fn try_from(w: AcctRowWire) -> Result<Self, String> {
+        let who = match (w.start, w.rest, w.id) {
+            (Some(true), None, None) => Who::Start,
+            (None, Some(true), None) => Who::Rest,
+            (None, None, Some(id)) if !id.is_empty() => Who::Id(id),
+            _ => {
+                return Err(
+                    "an account row is exactly one of {start: true} · {rest: true} · {id}".into(),
+                )
+            }
+        };
+        Ok(Self {
+            who,
+            params: w.params,
+        })
+    }
+}
 
-/// 一份轮换：顺序 · 勾了哪几个 · 线（触发那一行 ＋ 每号上限，都在 `cap`）· 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
-/// 起始账号占位恒算勾上。后三格缺省（空 · 空 · 关）时不写出。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl From<AcctRow> for AcctRowWire {
+    fn from(r: AcctRow) -> Self {
+        let (start, rest, id) = match r.who {
+            Who::Start => (Some(true), None, None),
+            Who::Rest => (None, Some(true), None),
+            Who::Id(a) => (None, None, Some(a)),
+        };
+        Self {
+            start,
+            rest,
+            id,
+            params: r.params,
+        }
+    }
+}
+
+/// 一份配置的内容（会话的副本也是这一形）：名字 · 策略 · 参与的号 · 整份参数 · 新加的号缺省 · 换策略时收起的旧参数 · 时区。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct Rotation {
-    pub order: Vec<RotationSlot>,
-    pub enabled: Vec<String>,
-    /// 盘上缺 ⇒ `continue`。
+pub struct ConfigBody {
+    pub name: String,
+    pub strategy: String,
+    #[cfg_attr(test, ts(as = "Vec<AcctRowWire>"))]
+    pub accounts: Vec<AcctRow>,
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub params: Params,
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub acct_init: Params,
+    /// 换策略时收起的旧参数：策略 id → `{params, acctInit, accounts}`。
     #[serde(default)]
-    pub at_limit: AtLimit,
-    /// 线：`{号|"*": {窗口键|"*": n | [{at, n}]}}`；层次 这号这窗口 → 这号这语义位 → 这号全部窗口 → 所有号这语义位（`"*"` 那一行），时段外落回下一层。
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Caps>"))]
-    pub cap: Caps,
-    /// 每号的单段预算（软的）：`{号: {窗口键|"*": n}}` ＝ 换进来之后再用 n 个点就想走。
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Stints>"))]
-    pub stint: Stints,
-    /// 排在此刻的号前面的号又能用了 ⇒ 下一发切回去。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub preempt: bool,
-    /// 兜底的号（`order` 里具名的那几个）：只在别的号都用不了、又等不到它们回来时才切过去。没有 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
-    pub fallback: Vec<String>,
-    /// 切兜底前最多等几分钟：要切到兜底号时，非兜底的号（含此刻的）有一个在这么多分钟内回来 ⇒ 先停着等它，不切兜底。
-    /// 往非兜底号切照旧立刻切；没标兜底 ⇒ 这一格不起作用。`0` ＝ 不等。盘上缺 ⇒ 缺省 40。
-    #[serde(default = "wait_default")]
-    pub wait: u8,
-    /// 按时段写的上限（`cap` 里的 `[{at, n}]`）那几个钟点按哪个时区（IANA 名）：写规则那一下由后端从请求信封的 `tz` 盖进来
-    /// （看的那一台的时区；`local` 那种盖不进来 ⇒ 缺），判的时候按它算 —— 跟后端那台在哪个时区、此刻有没有人在看都无关。
-    /// 缺 ⇒ UTC（同别处「没带按 UTC」）。界面读到原样回、回了也不认（写的那一下照信封重盖）。
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub parked: BTreeMap<String, Value>,
+    /// 时段那几个钟点按哪个时区（IANA 名）：写的那一下由请求信封的 `tz` 盖进来；缺 ⇒ UTC。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub tz: Option<String>,
 }
 
-impl Default for Rotation {
-    /// 缺省：只有起始账号 ⇒ 不轮换。
-    fn default() -> Self {
-        Self {
-            order: vec![RotationSlot::Start(StartSlot { start: true })],
-            enabled: Vec::new(),
-            at_limit: AtLimit::Continue,
-            cap: Caps::new(),
-            stint: Stints::new(),
-            preempt: false,
-            fallback: Vec::new(),
-            wait: WAIT_DEFAULT,
-            tz: None,
-        }
-    }
-}
-
-impl Rotation {
-    /// 时刻 `t`（unix 秒）那一刻这份规则的钟比 UTC 快几秒（按时段的上限按它取）：规则自己的 [`Rotation::tz`]，缺 ⇒ UTC。
+impl ConfigBody {
+    /// 时刻 `t` 那一刻这份配置的钟比 UTC 快几秒（缺 ⇒ UTC）。
     pub(crate) fn offset_at(&self, t: u64) -> i64 {
         let t = i64::try_from(t).unwrap_or(i64::MAX);
         self.tz
@@ -184,30 +170,159 @@ impl Rotation {
             .offset_secs(t)
     }
 
-    /// 写规则那一下：盖上看的那一台的时区（请求信封的 `tz`）。
-    pub(crate) fn stamped(mut self, tz: &crate::common::time::Tz) -> Self {
-        self.tz = tz.iana_name();
-        self
+    /// 时刻 `t` 是这份配置的本地钟一天里的第几分钟。
+    pub(crate) fn clock_at(&self, t: u64) -> u32 {
+        let local = i128::from(t) + i128::from(self.offset_at(t));
+        u32::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
     }
 
-    /// 这个会话实际的轮换池（按序、去重）：占位换成起始账号，具名的只取勾上的。
-    pub(crate) fn pool(&self, start: &str) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        for slot in &self.order {
-            let a = match slot {
-                RotationSlot::Start(_) => start,
-                RotationSlot::Named(a) if self.enabled.iter().any(|e| e == a) => a.as_str(),
-                RotationSlot::Named(_) => continue,
-            };
-            if !out.iter().any(|o| o == a) {
-                out.push(a.to_string());
-            }
-        }
-        out
+    /// 点名的那一行（`rest` 底下的号不在这里）。
+    pub(crate) fn row(&self, who: &Who) -> Option<&AcctRow> {
+        self.accounts.iter().find(|r| &r.who == who)
     }
 }
 
-/// 为什么跳过一个号（换号记录与「切换」结果里的原因码）。
+/// 一份存下的配置：内容 ＋ 版本（每写一次加一，写时带 `ifRev`）· 最后存的时刻 · 谁存的（`settings` 或会话 id）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct Config {
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub body: ConfigBody,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub rev: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub updated_at: u64,
+    pub saved_by: String,
+}
+
+/// 会话打开的那一份：哪份配置 · 打开时（或跟上时）的版本 · 改过的副本（没改 ⇒ 缺）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OpenConfig {
+    pub(crate) id: String,
+    pub(crate) rev: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) copy: Option<ConfigBody>,
+}
+
+/// 手动热换：换到哪个号 · 什么时候。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Hot {
+    pub(crate) account: String,
+    pub(crate) since: u64,
+}
+
+/// 拖过的一个号：放回第几位（0 起）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Place {
+    pub(crate) account: String,
+    pub(crate) at: usize,
+}
+
+/// 手动调整（引擎的积木，跟会话走、不进配置、不算已改）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Manual {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hot: Option<Hot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) place: Vec<Place>,
+}
+
+impl Manual {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.hot.is_none() && self.place.is_empty()
+    }
+}
+
+/// 为什么离开原来那个号（引擎这一侧）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "k", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "SwitchLeave"
+    )
+)]
+pub enum Leave {
+    /// 目标排到原来那个号上面了。
+    #[serde(rename = "top")]
+    Outranked,
+    /// 原来那个号事实上不能用了 / 策略给它 `()`：`why` 是那一句（`{k: "@line", …}` 这一形）。
+    Unusable {
+        #[cfg_attr(test, ts(type = "unknown"))]
+        why: Value,
+    },
+    /// 手动热换（不重启）。
+    Manual,
+    /// 手动换、重启。
+    ManualRestart,
+    /// 刷新策略以后照策略换走。
+    Refresh,
+    /// 没号可挑：停发（`from == to`）。
+    Held,
+    /// 订阅号都满了，留在原号的付费超额上（`from == to`）。
+    Overage,
+}
+
+/// 换到的那个号策略怎么说：哪份策略 · 那一句 `why`（写字时照那份策略的 `texts` 或 `beRotation.lib.*`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "SwitchPick"
+    )
+)]
+pub struct Pick {
+    pub strategy: String,
+    #[cfg_attr(test, ts(type = "unknown"))]
+    pub why: Value,
+}
+
+/// 一条换号记录。`from == to` 的是没换成的那几种（停发 · 留在超额）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct SwitchRecord {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub at: u64,
+    /// `at` 写给人看的样子（回包出口添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub at_text: Option<String>,
+    pub from: String,
+    pub to: String,
+    pub leave: Leave,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub pick: Option<Pick>,
+    /// 那一刻原号几点重置（知道才有）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub from_resets_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub from_resets_at_text: Option<String>,
+    /// 这一条写成的字（`leave` ＋ `pick`；回包出口添，不落盘）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub text: Option<String>,
+}
+
+/// 为什么一个号接不上（换号时问 `ready`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -219,82 +334,6 @@ pub enum Unready {
     NeedsKey,
     /// 这一发的请求体里账号身份那一格认不准，换不了。
     UnsureBody,
-}
-
-/// 为什么换（或为什么没换成）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum SwitchWhy {
-    /// 原号被拒（满了）；`w` 卡住的那个窗口的语义位（`5h` / `7d`），说不出 ⇒ 缺。
-    Full {
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        #[cfg_attr(test, ts(optional))]
-        w: Option<String>,
-    },
-    /// 原号用量到了线：`n` 那条线 · `w` 那一窗的语义位（卡得最久的那一窗，与 `fromResetsAt` 同一窗；说不出 ⇒ 缺）。
-    Threshold {
-        n: u8,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        #[cfg_attr(test, ts(optional))]
-        w: Option<String>,
-    },
-    /// 原号此刻那一格上限取到 0（时段停用）；`w` 那一格的语义位，整号停用或说不出 ⇒ 缺。
-    Off {
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        #[cfg_attr(test, ts(optional))]
-        w: Option<String>,
-    },
-    /// 用户「现在就换」，不重启。
-    ManualHot,
-    /// 用户「现在就换」，重启。
-    ManualRestart,
-    /// 轮到这个号时跳过了它。
-    Skipped { account: String, reason: Unready },
-    /// 订阅号都满了，留在原号的付费超额上。
-    ToOverage,
-    /// 硬上限：池里没有线下的号，这一发没发上游（`fromResetsAt` ＝ 池里最早回到线下的那一刻）；`n` · `w` ＝ 卡着的那条线与那一窗（说不出 ⇒ `w` 缺）。
-    Held {
-        n: u8,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        #[cfg_attr(test, ts(optional))]
-        w: Option<String>,
-    },
-    /// 这一段在原号上用完了单段预算：`w` 那个窗口（窗口键）换进来之后又用了 `n` 个点。
-    Stint { w: String, n: u8 },
-    /// 前面的号又能用了（`preempt`）⇒ 切回去。
-    Preempt,
-    /// 要往后换到 `instead` 时，排在它前面的 `account` 在「最多等几分钟」内就回来 ⇒ 先停着等它（这一发没发上游；
-    /// `fromResetsAt` ＝ 它回来的那一刻）。
-    Wait { account: String, instead: String },
-    /// 在兜底号上、池里有非兜底的号又能用了 ⇒ 切到首个能用的那个（`to`），不管换法。
-    LeaveFallback,
-}
-
-/// 一条换号记录。`from == to` 的是没换成的那几种（跳过 · 留在超额）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct SwitchRecord {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub at: u64,
-    /// `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub at_text: Option<String>,
-    pub from: String,
-    pub to: String,
-    pub why: SwitchWhy,
-    /// 那一刻原号几点重置（知道才有；记下就不随后来的数变）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub from_resets_at: Option<u64>,
-    /// `from_resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub from_resets_at_text: Option<String>,
 }
 
 /// 能不能不重启换号（会话一级的原因码；目标号接不上另在「切换」结果里说）。
@@ -323,21 +362,15 @@ pub struct AccountAt {
     pub account: String,
     #[cfg_attr(test, ts(type = "number"))]
     pub at: u64,
-    /// `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
-    /// `at` 距今（`+1h30m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub at_rel_text: Option<String>,
-    /// 这个号此刻是过线卡着的 ⇒ 过线的那一窗（语义位；停发横幅「最早 team 5h ↻…」）；不是过线 · 说不出 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub w: Option<String>,
 }
 
-/// 这个会话发不出去了：轮换里没有能接的号；`earliest` ＝ 最早回来的那个（说不出 ⇒ 缺）。
+/// 这个会话发不出去了（停发）：最早回来的那个号（说不出 ⇒ 缺）· 写好的那一句（卡住条照抄）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -346,123 +379,7 @@ pub struct Blocked {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub earliest: Option<AccountAt>,
-}
-
-/// 会话的「账号」格。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct AccountCell {
-    /// 起这个会话进程的那个号（`_` ＝ 起会话时没说是哪个号，原样）。
-    pub start: String,
-    /// 此刻走的号。
-    pub current: String,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub since: u64,
-    /// `since` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub since_text: Option<String>,
-    /// 换号记录，先的在前。
-    pub history: Vec<SwitchRecord>,
-    pub in_place: InPlace,
-    /// 这一段（换进 `current` 以来）各窗口用了几个点；说不出基线的窗口不出，一个都没有 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<SegmentShow>>"))]
-    pub segment: Vec<SegmentShow>,
-    /// 换进 `current` 那一刻池里排在它前面、当时不能用的号（`preempt` 开着时其中一个又能用了 ⇒ 切回去）；没有 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
-    pub blocked_above: Vec<String>,
-}
-
-/// 这一段在一个窗口上：换进来那一刻的用量 · 之后又用了几个点 · 这个窗口的单段预算（没设 ⇒ 缺）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct SegmentShow {
-    /// 窗口键（`5h` · `7d` · `7d:<模型>`）。
-    pub w: String,
-    /// 换进来那一刻的用量（%，取整）。
-    pub base: u32,
-    /// 之后又用了几个点（取整；窗口这期间重置过 ⇒ 只算重置之后的，是下界）。
-    pub spent: u32,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub stint: Option<u8>,
-}
-
-/// 换进一个号那一刻它一个窗口的用量（基线）：用了多少（比例）· 那时几点重置。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Base {
-    pub(crate) used: f64,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) resets_at: Option<u64>,
-}
-
-/// 窗口键 → 基线。
-pub(crate) type Baseline = BTreeMap<String, Base>;
-
-/// `rotation-session-read` 里一个会话的那一份。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct SessionRotation {
-    pub agent: String,
-    /// 轮换从哪来：跟随默认 · 某条规则 · 本会话。
-    pub source: Source,
-    /// 此刻生效的那条规则叫什么（跟随默认 ⇒ 默认那条；本会话 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub rule_name: Option<String>,
-    /// 按此刻生效的那一份写好的一句规则说明（界面照抄）。
-    pub explain: String,
-    /// 会话血缘里它的父（不管来源是不是跟随它；界面据此决定来源下拉里列不列「跟随父会话」）；没有 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub parent: Option<String>,
-    /// 来源是跟随父会话、却追不到父那一条（父没经过中转 · 已清掉 · 绕回来）⇒ `true`，此刻按跟随默认；否则缺。
-    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub parent_missing: bool,
-    /// 这个会话自己那一份（换成别的来源时也留着）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub custom: Option<Rotation>,
-    pub account: AccountCell,
-    /// 此刻的号触发了会换到谁；没有 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub next: Option<String>,
-    /// 发不出去了（被拒、轮换里没有能接的）；能发 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub blocked: Option<Blocked>,
-    /// 这台可用、不在这个会话轮换里的按量号；没有 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub fallback_api: Option<String>,
-    /// 到上限此刻实际照哪一档办：轮换说 `stop`、这一家给不出「用满」回包 ⇒ `continue`。
-    pub at_limit: AtLimit,
-    /// 此刻那个号的显示态（「快满」按这个会话的 N）。
-    pub quota: super::show::QuotaShow,
-}
-
-/// 一个会话在这台查得到吗：查得到 ⇒ 那一份；中转没见过 ⇒ 只说能不能不重启换。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "state", rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum SessionRotationState {
-    Present(Box<SessionRotation>),
-    #[serde(rename_all = "camelCase")]
-    Absent {
-        in_place: InPlace,
-    },
+    pub text: String,
 }
 
 /// 「切换」里一个会话的结果。
@@ -503,6 +420,18 @@ pub enum OldSession {
     Ended,
 }
 
+/// 换进一个号那一刻它一个窗口的用量（基线）：用了多少（比例）· 那时几点重置。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Base {
+    pub(crate) used: f64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resets_at: Option<u64>,
+}
+
+/// 窗口键 → 基线。
+pub(crate) type Baseline = BTreeMap<String, Base>;
+
 /// 一个会话在这台的轮换状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -515,49 +444,45 @@ pub(crate) struct SessionEntry {
     pub(crate) current: String,
     /// 从什么时候起走 `current`。
     pub(crate) since: u64,
-    /// 轮换从哪来。
-    pub(crate) source: Source,
-    /// 这个会话自己那一份（换成别的来源时留着）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) custom: Option<Rotation>,
-    #[serde(default)]
-    pub(crate) history: Vec<SwitchRecord>,
-    /// 换进 `current` 那一刻它各窗口的用量（`since` 起算的这一段的基线）；换号 / 换了起它的号就清掉重记。
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) baseline: Baseline,
-    /// 换进 `current` 那一刻池里排在它前面、当时不能用的号（`preempt` 只等它们回来）；换号 / 换了起它的号就清掉重记。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) blocked_above: Vec<String>,
-    /// 中转最后一次看见它的时刻（至多一天刷新一次，免得每发都写盘）；`0` ＝ 没记过（按 `since` 算）。清旧会话按它。
+    /// 中转最后一次看见它的时刻（至多一天刷新一次）；`0` ＝ 没记过（按 `since` 算）。
     #[serde(default, skip_serializing_if = "is_zero")]
     pub(crate) seen: u64,
+    /// 打开的那一份配置（副本在 `copy`）。
+    pub(crate) config: OpenConfig,
+    #[serde(default, skip_serializing_if = "Manual::is_empty")]
+    pub(crate) manual: Manual,
+    /// 策略上一判回的 `@memo`（下一判原样交回）；没有 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) memo: Option<Value>,
+    /// 换进 `current` 那一刻它各窗口的用量；换号 / 换了起它的号就清掉重记。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) baseline: Baseline,
+    #[serde(default)]
+    pub(crate) history: Vec<SwitchRecord>,
 }
 
 fn is_zero(v: &u64) -> bool {
     *v == 0
 }
 
-/// 跟随父会话最多追几层（再深 ⇒ 按跟随默认）。
-pub(crate) const PARENT_DEPTH: usize = 8;
-
 /// 「看见」的时刻隔多久才刷新一次（秒）。
 pub(crate) const SEEN_REFRESH: u64 = 86_400;
-/// 跟随默认 · 没换过号 · 没有自己那一份的会话，多久没被看见就从账本里清掉（秒）。
+/// 没改过副本 · 没手动调整 · 没换过号的会话，多久没被看见就从账本里清掉（秒）。
 pub(crate) const DROP_AFTER: u64 = 7 * 86_400;
 
 impl SessionEntry {
-    pub(crate) fn fresh(agent: &str, start: &str, now: u64) -> Self {
+    pub(crate) fn fresh(agent: &str, start: &str, now: u64, open: OpenConfig) -> Self {
         Self {
             agent: agent.to_string(),
             start: start.to_string(),
             current: start.to_string(),
             since: now,
-            source: Source::Follow,
-            custom: None,
-            history: Vec::new(),
-            baseline: Baseline::new(),
-            blocked_above: Vec::new(),
             seen: now,
+            config: open,
+            manual: Manual::default(),
+            memo: None,
+            baseline: Baseline::new(),
+            history: Vec::new(),
         }
     }
 
@@ -567,168 +492,153 @@ impl SessionEntry {
     }
 }
 
-/// 一个会话的轮换从哪来。线上 `"follow"` · `"custom"` · `{"rule": "<id>"}` · `{"parent": "<sid>"}`。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "RotationSource"
-    )
-)]
-pub enum Source {
-    /// 跟随这台的默认规则（默认换了一条也跟着走）。
-    Follow,
-    /// 跟随父会话（链接：父那一条此刻按哪份它就按哪份；值是父的会话 id，取自会话血缘）。只共享规则，钉号与换号记录各自一份。
-    Parent(String),
-    /// 本会话自己那一份。
-    Custom,
-    /// 用某条规则（链接）。
-    Rule(String),
-}
-
-/// 一条规则：名字 · 那一份轮换 · 版本（每写一次加一，写时带 `ifRev` 防两处互相覆盖）· 最后改的时刻。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Rule {
-    pub(crate) name: String,
-    pub(crate) rotation: Rotation,
-    pub(crate) rev: u64,
-    pub(crate) updated_at: u64,
-}
-
-/// 整份 `rotation.json`：规则表 · 默认指向哪条 · 每个会话。读进来那一刻补齐「至少一条规则、默认指向一条在的」。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// 整份 `rotation.json`（第二版）：配置表 · 本机默认 · 每个会话。读进来那一刻补齐「至少一份配置、默认指向一份在的」。
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Book {
-    pub(crate) rules: BTreeMap<String, Rule>,
-    /// 默认规则的 id（空 ＝ 还没有任何规则：只在内存里那一刻，落盘前补齐）。
-    pub(crate) default_rule: String,
+    pub(crate) default_config: String,
+    pub(crate) configs: BTreeMap<String, Config>,
     pub(crate) sessions: BTreeMap<String, SessionEntry>,
+    /// 读进来的是第一版 ⇒ 原文（写回第二版时另存一份 `rotation.json.v1`）；不落盘。
+    pub(crate) from_v1: Option<Value>,
 }
 
-/// 盘上读进来的那一形：今天的格 ＋ 升级前的两格（`default` 一份轮换 · 会话的 `follow`）。只在读的那一下用，写出去只有今天的格。
-#[derive(Deserialize)]
+/// 盘上第二版的那一形（读写都经它）。
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BookOnDisk {
+struct BookWire {
+    version: u64,
+    default_config: String,
+    configs: BTreeMap<String, Config>,
     #[serde(default)]
-    rules: BTreeMap<String, Rule>,
-    #[serde(default)]
-    default_rule: String,
-    /// 升级前：这台的默认轮换。
-    #[serde(default)]
-    default: Option<Rotation>,
-    #[serde(default)]
-    sessions: BTreeMap<String, SessionOnDisk>,
+    sessions: BTreeMap<String, SessionEntry>,
 }
 
-#[derive(Deserialize)]
-struct SessionOnDisk {
-    #[serde(flatten)]
-    entry: SessionEntryLoose,
-    /// 升级前：跟随默认轮换。
-    #[serde(default)]
-    follow: Option<bool>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SessionEntryLoose {
-    agent: String,
-    start: String,
-    current: String,
-    since: u64,
-    #[serde(default)]
-    source: Option<Source>,
-    #[serde(default)]
-    custom: Option<Rotation>,
-    #[serde(default)]
-    history: Vec<SwitchRecord>,
-    #[serde(default)]
-    baseline: Baseline,
-    #[serde(default)]
-    blocked_above: Vec<String>,
-    #[serde(default)]
-    seen: u64,
+impl Serialize for Book {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Wire<'a> {
+            version: u64,
+            default_config: &'a str,
+            configs: &'a BTreeMap<String, Config>,
+            sessions: &'a BTreeMap<String, SessionEntry>,
+        }
+        Wire {
+            version: BOOK_VERSION,
+            default_config: &self.default_config,
+            configs: &self.configs,
+            sessions: &self.sessions,
+        }
+        .serialize(s)
+    }
 }
 
 impl<'de> Deserialize<'de> for Book {
+    /// 有 `version: 2` ⇒ 照第二版读；没有 `version` ⇒ 第一版，换形（[`migrate::from_v1`]）；别的版本 ⇒ 读不懂（不覆盖）。
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let disk = BookOnDisk::deserialize(d)?;
-        let sessions = disk
-            .sessions
-            .into_iter()
-            .map(|(sid, s)| {
-                let e = s.entry;
-                let source = e.source.unwrap_or(match s.follow {
-                    Some(false) => Source::Custom,
-                    _ => Source::Follow,
-                });
-                let entry = SessionEntry {
-                    agent: e.agent,
-                    start: e.start,
-                    current: e.current,
-                    since: e.since,
-                    source,
-                    custom: e.custom,
-                    history: e.history,
-                    baseline: e.baseline,
-                    blocked_above: e.blocked_above,
-                    seen: e.seen,
-                };
-                (sid, entry)
-            })
-            .collect();
-        let mut b = Book {
-            rules: disk.rules,
-            default_rule: disk.default_rule,
-            sessions,
+        use serde::de::Error;
+        let v = Value::deserialize(d)?;
+        let mut b = match v.get("version") {
+            None => {
+                let mut b = migrate::from_v1(&v).map_err(D::Error::custom)?;
+                b.from_v1 = Some(v);
+                b
+            }
+            Some(n) if n.as_u64() == Some(BOOK_VERSION) => {
+                let w = BookWire::deserialize(v).map_err(D::Error::custom)?;
+                Book {
+                    default_config: w.default_config,
+                    configs: w.configs,
+                    sessions: w.sessions,
+                    from_v1: None,
+                }
+            }
+            Some(n) => {
+                return Err(D::Error::custom(format!(
+                    "unknown rotation.json version {n}"
+                )))
+            }
         };
-        b.settle(disk.default, 0);
+        b.settle(0);
         Ok(b)
     }
 }
 
 impl Default for Book {
-    /// 没有文件时那一份：只有一条缺省的「默认」规则。
+    /// 没有文件时那一份：内置三份配置，默认指向第一份。
     fn default() -> Self {
         let mut b = Book {
-            rules: BTreeMap::new(),
-            default_rule: String::new(),
+            default_config: String::new(),
+            configs: BTreeMap::new(),
             sessions: BTreeMap::new(),
+            from_v1: None,
         };
-        b.settle(None, 0);
+        b.settle(0);
         b
     }
 }
 
-/// 补齐时建的那条「默认」规则的 id（固定：文件还没有时读几次都是同一条）。
-pub(crate) const SEED_RULE_ID: &str = "r_00000000";
+/// 一份内置配置（`默认配置 N`）：
+/// 1 ＝ 起会话的号 · 用满才换 · 都到上限后接着用（不轮换）；2 · 3 ＝ 起会话的号 ＋ 其余订阅号 · 到 90% · 停下。
+pub(crate) fn seed_config(n: usize, now: u64) -> Option<(String, Config)> {
+    let (id, strategy) = SEEDS.get(n)?;
+    let s = super::strategy::find(super::strategy::builtins(), strategy)?;
+    let mut init = s.acct_init();
+    let mut params = s.param_init();
+    let mut rows = vec![Who::Start];
+    if n == 0 {
+        init.insert(super::strategy::form::LINE.into(), Value::Null);
+        params.insert(super::strategy::form::ALL_OUT.into(), Value::from("go"));
+    } else {
+        rows.push(Who::Rest);
+    }
+    let name = copy_text("beRotation.config.seedName", &[("n", &(n + 1).to_string())]);
+    Some((
+        id.to_string(),
+        Config {
+            body: ConfigBody {
+                name,
+                strategy: strategy.to_string(),
+                accounts: rows
+                    .into_iter()
+                    .map(|who| AcctRow {
+                        who,
+                        params: init.clone(),
+                    })
+                    .collect(),
+                params,
+                acct_init: init,
+                parked: BTreeMap::new(),
+                tz: None,
+            },
+            rev: 1,
+            updated_at: now,
+            saved_by: SAVED_BY_SETTINGS.to_string(),
+        },
+    ))
+}
 
-/// 进程内序号：同一秒里连建两条规则也换一个 id。
-static RULE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 进程内序号：同一秒里连建两份也换一个 id。
+static ID_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 一个没用过的规则 id：`r_` ＋ 8 位十六进制（不随改名变）。
-pub(crate) fn new_rule_id(taken: &BTreeMap<String, Rule>) -> String {
+/// 一个没用过的配置 id：`c_` ＋ 8 位十六进制（不随改名变）。
+pub(crate) fn new_config_id(taken: &BTreeMap<String, Config>) -> String {
     use std::hash::{Hash, Hasher};
     loop {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         crate::common::time::now().hash(&mut h);
         std::process::id().hash(&mut h);
-        RULE_SEQ
+        ID_SEQ
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .hash(&mut h);
-        let id = format!("r_{:08x}", h.finish() as u32);
-        if !taken.contains_key(&id) && id != SEED_RULE_ID {
+        let id = format!("c_{:08x}", h.finish() as u32);
+        if !taken.contains_key(&id) && !SEEDS.iter().any(|(s, _)| *s == id) {
             return id;
         }
     }
 }
 
-/// 起新会话先定好的 sid（UUID v4 的样子：那一家 `--session-id` 只收这一形）。随机来源同规则 id：时刻 · 进程 · 进程内序号。
+/// 起新会话先定好的 sid（UUID v4 的样子：那一家 `--session-id` 只收这一形）。
 pub(crate) fn new_session_id() -> String {
     use std::hash::{BuildHasher, Hash, Hasher};
     let seed = std::collections::hash_map::RandomState::new();
@@ -737,7 +647,7 @@ pub(crate) fn new_session_id() -> String {
         salt.hash(&mut h);
         crate::common::time::now().hash(&mut h);
         std::process::id().hash(&mut h);
-        RULE_SEQ
+        ID_SEQ
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .hash(&mut h);
         h.finish()
@@ -755,114 +665,100 @@ pub(crate) fn new_session_id() -> String {
     )
 }
 
-/// 规则名的比较形：去首尾空白、不分大小写（本机内不许重名按它判）。
+/// 配置名的比较形：去首尾空白、不分大小写（本机内不许重名按它判）。
 pub(crate) fn name_key(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
+/// 一个会话此刻照的那一份：哪份配置 · 它的内容（有副本用副本）· 版本 · 改没改过。
+pub(crate) struct Opened<'a> {
+    pub(crate) id: &'a str,
+    pub(crate) body: &'a ConfigBody,
+    pub(crate) rev: u64,
+    pub(crate) dirty: bool,
+}
+
 impl Book {
-    /// 补齐：没有任何规则 ⇒ 建一条「默认」（升级前那一份默认轮换，没有就缺省那份）并设为默认；默认指向不在的 ⇒ 指向名字排最前的那条。
-    pub(crate) fn settle(&mut self, legacy_default: Option<Rotation>, now: u64) {
-        if self.rules.is_empty() {
-            let id = SEED_RULE_ID.to_string();
-            self.rules.insert(
-                id.clone(),
-                Rule {
-                    name: copy_text("beRotation.rule.defaultName", &[]),
-                    rotation: legacy_default.unwrap_or_default(),
-                    rev: 1,
-                    updated_at: now,
-                },
-            );
-            self.default_rule = id;
+    /// 补齐：没有任何配置 ⇒ 建内置三份、默认指向第一份；默认指向不在的 ⇒ 指向名字排最前的那份。
+    pub(crate) fn settle(&mut self, now: u64) {
+        if self.configs.is_empty() {
+            for n in 0..SEEDS.len() {
+                if let Some((id, c)) = seed_config(n, now) {
+                    self.configs.insert(id, c);
+                }
+            }
+            self.default_config = SEEDS[0].0.to_string();
         }
-        if !self.rules.contains_key(&self.default_rule) {
-            if let Some((id, _)) = self.rules.iter().min_by(|a, b| a.1.name.cmp(&b.1.name)) {
-                self.default_rule = id.clone();
+        if !self.configs.contains_key(&self.default_config) {
+            if let Some((id, _)) = self
+                .configs
+                .iter()
+                .min_by(|a, b| a.1.body.name.cmp(&b.1.body.name))
+            {
+                self.default_config = id.clone();
             }
         }
     }
 
-    pub(crate) fn default_rotation(&self) -> Rotation {
-        self.rules
-            .get(&self.default_rule)
-            .map(|r| r.rotation.clone())
-            .unwrap_or_default()
+    /// 本机默认那份的打开形（新会话照它开）。
+    pub(crate) fn open_default(&self) -> OpenConfig {
+        OpenConfig {
+            id: self.default_config.clone(),
+            rev: self.configs.get(&self.default_config).map_or(0, |c| c.rev),
+            copy: None,
+        }
     }
 
-    /// 顺着「跟随父会话」追到说了算的那一条（自己不是跟随父会话 ⇒ 就是自己）；最多追 [`PARENT_DEPTH`] 层。
-    /// 追不到（父不在账本里 · 绕回来 · 太深）⇒ `None`：按跟随默认。
-    pub(crate) fn decider<'a>(&'a self, s: &'a SessionEntry) -> Option<&'a SessionEntry> {
-        let mut cur = s;
-        for _ in 0..=PARENT_DEPTH {
-            match &cur.source {
-                Source::Parent(p) => cur = self.sessions.get(p)?,
-                _ => return Some(cur),
+    /// 这个会话此刻照的那一份：有副本 ⇒ 副本；打开的那份不在了 ⇒ 本机默认那份。走不到 `None`（补齐过）。
+    pub(crate) fn opened<'a>(&'a self, s: &'a SessionEntry) -> Option<Opened<'a>> {
+        let (id, c) = match self.configs.get_key_value(&s.config.id) {
+            Some((id, c)) => (id.as_str(), c),
+            None => {
+                let (id, c) = self.configs.get_key_value(&self.default_config)?;
+                return Some(Opened {
+                    id: id.as_str(),
+                    body: &c.body,
+                    rev: c.rev,
+                    dirty: false,
+                });
             }
-        }
-        None
+        };
+        Some(match &s.config.copy {
+            Some(copy) => Opened {
+                id,
+                body: copy,
+                rev: s.config.rev,
+                dirty: true,
+            },
+            None => Opened {
+                id,
+                body: &c.body,
+                rev: c.rev,
+                dirty: false,
+            },
+        })
     }
 
-    /// 这个会话此刻实际按哪条规则（本会话 ⇒ `None`；指向的规则不在了 / 跟随父会话追不到 ⇒ 默认那条）。
-    pub(crate) fn rule_of<'a>(&'a self, s: &'a SessionEntry) -> Option<&'a str> {
-        let d = self.decider(s);
-        match d.map(|d| (&d.source, d)) {
-            Some((Source::Custom, d)) if d.custom.is_some() => None,
-            Some((Source::Rule(id), _)) if self.rules.contains_key(id) => Some(id.as_str()),
-            _ => self
-                .rules
-                .contains_key(&self.default_rule)
-                .then_some(self.default_rule.as_str()),
-        }
+    /// 开着这份配置的会话（按 sid）。
+    pub(crate) fn in_use(&self, id: &str) -> Vec<String> {
+        self.sessions
+            .iter()
+            .filter(|(_, s)| s.config.id == id)
+            .map(|(sid, _)| sid.clone())
+            .collect()
     }
 
-    /// 这个会话此刻按哪一份轮换：跟随 ⇒ 默认那条 · 跟随父会话 ⇒ 父此刻那份 · 规则 ⇒ 那条（不在了 ⇒ 默认那条）· 本会话 ⇒ 自己那份。
-    pub(crate) fn rotation_of(&self, s: &SessionEntry) -> Rotation {
-        match self.decider(s) {
-            Some(SessionEntry {
-                source: Source::Custom,
-                custom: Some(c),
-                ..
-            }) => c.clone(),
-            _ => self
-                .rule_of(s)
-                .and_then(|id| self.rules.get(id))
-                .map(|r| r.rotation.clone())
-                .unwrap_or_default(),
-        }
-    }
-
-    /// 同 [`Book::saw`]；这一下是新建的、且血缘里有父、父在账本里且与它同一家 ⇒ 来源 ＝ 跟随父会话（不同家的不继承）。
-    /// 已记下的会话来源一律不动。
-    pub(crate) fn saw_child(
-        &mut self,
-        sid: &str,
-        agent: &str,
-        start: &str,
-        now: u64,
-        parent: Option<&str>,
-    ) -> bool {
-        let fresh = !self.sessions.contains_key(sid);
-        let moved = self.saw(sid, agent, start, now);
-        if fresh {
-            let same = parent
-                .filter(|p| *p != sid)
-                .filter(|p| self.sessions.get(*p).is_some_and(|ps| ps.agent == agent));
-            if let (Some(p), Some(s)) = (same, self.sessions.get_mut(sid)) {
-                s.source = Source::Parent(p.to_string());
-            }
-        }
-        moved
-    }
-
-    /// 中转第一次看见这个会话 / 会话换了起它的号 ⇒ 记下（换了起它的号 ⇒ 钉号清掉，从新号起算）。改了 ⇒ `true`。
-    /// 每天头一次看见已知的会话 ⇒ 刷新「看见」的时刻（`true`，写一次盘）；新会话被看见时顺手清旧会话（[`Book::drop_stale`]）。
+    /// 中转第一次看见这个会话 / 会话换了起它的号 ⇒ 记下（新会话打开本机默认那份；换了起它的号 ⇒ 钉号 · 手动调整 · 备忘清掉）。
+    /// 每天头一次看见已知的会话 ⇒ 刷新「看见」的时刻；新会话被看见时顺手清旧会话（[`Book::drop_stale`]）。改了 ⇒ `true`。
     pub(crate) fn saw(&mut self, sid: &str, agent: &str, start: &str, now: u64) -> bool {
+        let open = self.open_default();
         match self.sessions.get_mut(sid) {
             None => {
                 self.drop_stale(now);
-                self.sessions
-                    .insert(sid.to_string(), SessionEntry::fresh(agent, start, now));
+                self.sessions.insert(
+                    sid.to_string(),
+                    SessionEntry::fresh(agent, start, now, open),
+                );
                 true
             }
             Some(s) if s.start != start || s.agent != agent => {
@@ -871,7 +767,8 @@ impl Book {
                 s.current = start.to_string();
                 s.since = now;
                 s.baseline.clear();
-                s.blocked_above.clear();
+                s.manual = Manual::default();
+                s.memo = None;
                 s.seen = now;
                 true
             }
@@ -883,31 +780,19 @@ impl Book {
         }
     }
 
-    /// 清旧会话（稿第 12 题）：跟随默认或跟随父会话 · 没换过号 · 没有自己那一份 · 超过 [`DROP_AFTER`] 没被看见 ⇒ 从账本里删。
-    /// 用规则的 · 本会话的 · 换过号的都不动；删掉的那种再来一发会照新会话记回来（一样的一条，不丢东西）。回删了几条。
+    /// 清旧会话：没改过副本 · 没手动调整 · 没换过号 · 超过 [`DROP_AFTER`] 没被看见 ⇒ 从账本里删（再来一发照新会话记回来）。
     pub(crate) fn drop_stale(&mut self, now: u64) -> usize {
         let before = self.sessions.len();
         self.sessions.retain(|_, s| {
-            !(matches!(s.source, Source::Follow | Source::Parent(_))
-                && s.custom.is_none()
+            !(s.config.copy.is_none()
+                && s.manual.is_empty()
                 && s.history.is_empty()
                 && now.saturating_sub(s.last_seen()) > DROP_AFTER)
         });
         before - self.sessions.len()
     }
 
-    /// 记下换进此刻的号那一刻挡在它前面的号（换号 · 换了起它的号时已清空）。改了 ⇒ `true`。
-    pub(crate) fn block_above(&mut self, sid: &str, above: &[String]) -> bool {
-        let Some(s) = self.sessions.get_mut(sid) else {
-            return false;
-        };
-        let changed = s.blocked_above != above;
-        s.blocked_above = above.to_vec();
-        changed
-    }
-
-    /// 补这一段的基线：`base` 里此刻还没记的窗口记下（换号 · 换了起它的号时已清空 ⇒ 等于整份记；
-    /// 换进来时说不出的窗口，之后第一次说得出时补上）。改了 ⇒ `true`。
+    /// 补这一段的基线：`base` 里此刻还没记的窗口记下。改了 ⇒ `true`。
     pub(crate) fn rebase(&mut self, sid: &str, base: &Baseline) -> bool {
         let Some(s) = self.sessions.get_mut(sid) else {
             return false;
@@ -922,72 +807,59 @@ impl Book {
         changed
     }
 
-    /// 钉到 `to`，记一条（以及轮到时跳过的那几个）。
-    pub(crate) fn pin(&mut self, sid: &str, rec: SwitchRecord, skipped: &[(String, Unready)]) {
-        let Some(s) = self.sessions.get_mut(sid) else {
-            return;
-        };
-        for (account, reason) in skipped {
-            note(
-                s,
-                SwitchRecord {
-                    at_text: None,
-                    from_resets_at_text: None,
-                    at: rec.at,
-                    from: rec.from.clone(),
-                    to: rec.from.clone(),
-                    why: SwitchWhy::Skipped {
-                        account: account.clone(),
-                        reason: *reason,
-                    },
-                    from_resets_at: None,
-                },
-            );
-        }
-        if rec.to != s.current {
-            s.current = rec.to.clone();
-            s.since = rec.at;
-            s.baseline.clear();
-            s.blocked_above.clear();
-        }
-        push(s, rec);
-    }
-
-    /// 没换成的那几种（跳过 · 留在超额 · 硬上限卡住）：自上一次真换号以来同一句已经记过 ⇒ 不再记。改了 ⇒ `true`。
-    pub(crate) fn note_stuck(
-        &mut self,
-        sid: &str,
-        rec: SwitchRecord,
-        skipped: &[(String, Unready)],
-    ) -> bool {
+    /// ★ 换号落账：只在**真换成**的那一下记（会话此刻还在 `rec.from` 上、`rec.to` 是别的号）—— 别的请求刚把它换走了 ⇒ 不再记第二条。
+    /// 换成了 ⇒ `true`（钉到 `to`、这一段的基线清掉重记）。
+    pub(crate) fn pin(&mut self, sid: &str, rec: SwitchRecord) -> bool {
         let Some(s) = self.sessions.get_mut(sid) else {
             return false;
         };
-        let mut changed = false;
-        for (account, reason) in skipped {
-            changed |= note(
-                s,
-                SwitchRecord {
-                    at_text: None,
-                    from_resets_at_text: None,
-                    at: rec.at,
-                    from: rec.from.clone(),
-                    to: rec.from.clone(),
-                    why: SwitchWhy::Skipped {
-                        account: account.clone(),
-                        reason: *reason,
-                    },
-                    from_resets_at: None,
-                },
-            );
+        if s.current != rec.from || rec.to == rec.from {
+            return false;
         }
-        if matches!(
-            rec.why,
-            SwitchWhy::ToOverage | SwitchWhy::Held { .. } | SwitchWhy::Wait { .. }
-        ) {
-            changed |= note(s, rec);
+        s.current = rec.to.clone();
+        s.since = rec.at;
+        s.baseline.clear();
+        push(s, rec);
+        true
+    }
+
+    /// 没换成的那几种（停发 · 留在超额）：自上一次真换号以来同一句已经记过 ⇒ 不再记。改了 ⇒ `true`。
+    pub(crate) fn note_stuck(&mut self, sid: &str, rec: SwitchRecord) -> bool {
+        let Some(s) = self.sessions.get_mut(sid) else {
+            return false;
+        };
+        if rec.from != rec.to || !matches!(rec.leave, Leave::Held | Leave::Overage) {
+            return false;
         }
-        changed
+        let dup = s
+            .history
+            .iter()
+            .rev()
+            .take_while(|h| h.from == h.to)
+            .any(|h| h.from == rec.from && h.leave == rec.leave);
+        if !dup {
+            push(s, rec);
+        }
+        !dup
+    }
+
+    /// 存下这一判策略回的备忘（整个替换；没写 ⇒ 清掉）。改了 ⇒ `true`。
+    pub(crate) fn set_memo(&mut self, sid: &str, memo: Option<Value>) -> bool {
+        let Some(s) = self.sessions.get_mut(sid) else {
+            return false;
+        };
+        if s.memo == memo {
+            return false;
+        }
+        s.memo = memo;
+        true
+    }
+
+    /// 清掉手动热换（热换的号事实上不能用了 / 策略给它 `()`）。改了 ⇒ `true`。
+    pub(crate) fn clear_hot(&mut self, sid: &str) -> bool {
+        self.sessions
+            .get_mut(sid)
+            .is_some_and(|s| s.manual.hot.take().is_some())
     }
 }
 
@@ -995,20 +867,6 @@ fn push(s: &mut SessionEntry, rec: SwitchRecord) {
     s.history.push(rec);
     let over = s.history.len().saturating_sub(HISTORY_KEPT);
     s.history.drain(..over);
-}
-
-/// 记一条「没换成」的：自上一次真换号以来已有同一句 ⇒ 不记。
-fn note(s: &mut SessionEntry, rec: SwitchRecord) -> bool {
-    let dup = s
-        .history
-        .iter()
-        .rev()
-        .take_while(|h| h.from == h.to)
-        .any(|h| h.from == rec.from && h.why == rec.why);
-    if !dup {
-        push(s, rec);
-    }
-    !dup
 }
 
 // ── 落盘 ─────────────────────────────────────────────────────────────────
@@ -1022,18 +880,22 @@ pub(crate) fn path_now() -> Option<PathBuf> {
     path_from(&|k| std::env::var(k).ok())
 }
 
+/// 第一版换形前的原文留在哪：`rotation.json.v1`。
+pub(crate) fn v1_backup_of(path: &Path) -> PathBuf {
+    path.with_file_name(format!("{FILE_NAME}.v1"))
+}
+
 /// 读一次盘。三态：没有（没动过）/ 读得懂 / 读不懂（不覆盖）。
 pub(crate) type Read = crate::common::own_state::Read<Book>;
 
-/// 读盘的上限（会话条数与每条的换号记录都有上限，远到不了）。
+/// 读盘的上限。
 const MAX_BYTES: u64 = 16 << 20;
 
 pub(crate) fn read_at(path: &Path) -> Read {
     crate::common::own_state::read_json(path, MAX_BYTES)
 }
 
-/// 盘上那一份的戳：改动时刻 · 长度 · inode（每次写都是换名落盘 ⇒ 新 inode；文件系统的时刻是粗粒度的，
-/// 同一个时钟格里写两次、长度又一样时只有它分得出）。
+/// 盘上那一份的戳：改动时刻 · 长度 · inode（每次写都是换名落盘 ⇒ 新 inode）。
 type Stamp = (std::time::SystemTime, u64, u64);
 
 fn stamp(p: &Path) -> Option<Stamp> {
@@ -1048,14 +910,15 @@ fn stamp(p: &Path) -> Option<Stamp> {
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。
 pub(crate) struct RotationStore {
     path: Option<PathBuf>,
-    cache: Mutex<(Option<Stamp>, Book)>,
+    /// （盘上的戳, 上一份读懂的, 此刻读不懂的话为什么）。读不懂 ⇒ 照上一份读懂的接着用、不覆盖盘上那份。
+    cache: Mutex<(Option<Stamp>, Book, Option<Said>)>,
 }
 
 impl RotationStore {
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
         Self {
             path,
-            cache: Mutex::new((None, Book::default())),
+            cache: Mutex::new((None, Book::default(), None)),
         }
     }
 
@@ -1063,21 +926,73 @@ impl RotationStore {
         self.path.as_deref()
     }
 
-    /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 当作缺省，不轮换）。
+    /// 本机策略目录（家推不出 ⇒ `None`）。
+    pub(crate) fn strategy_dir(&self) -> Option<PathBuf> {
+        self.path.as_deref().and_then(super::strategy::dir_from)
+    }
+
+    /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 当作缺省；读到第一版 ⇒ 当场换形写回）。
     pub(crate) fn now(&self) -> Book {
-        let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(p) = self.path.as_deref() else {
-            return g.1.clone();
-        };
-        let s = stamp(p);
-        if s.is_none() || s != g.0 {
-            g.1 = match read_at(p) {
-                Read::Present(b) => b,
-                Read::Absent | Read::Unreadable(_) => Book::default(),
+        let read = {
+            let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(p) = self.path.as_deref() else {
+                return g.1.clone();
             };
-            g.0 = s;
+            let s = stamp(p);
+            if s.is_some() && s == g.0 {
+                return g.1.clone();
+            }
+            let b = match read_at(p) {
+                Read::Present(b) => b,
+                Read::Absent => Book::default(),
+                // 读不懂 ⇒ 照上一份读懂的接着挑号（没有过 ⇒ 内置那一份），把为什么留着交给会话那一份；盘上那份不动。
+                Read::Unreadable(e) => {
+                    if g.0 != s {
+                        tracing::warn!(
+                            "[rotation] {} 读不懂，照上一份读懂的接着用：{}",
+                            p.display(),
+                            e.logged()
+                        );
+                    }
+                    g.0 = s;
+                    g.2 = Some(e);
+                    return g.1.clone();
+                }
+            };
+            g.2 = None;
+            if b.from_v1.is_none() {
+                g.1 = b.clone();
+                g.0 = s;
+                return b;
+            }
+            b
+        };
+        // 第一版 ⇒ 在锁里换形写回（写不成照内存里换好的那一份用）。
+        match self.change(|_| ()) {
+            Ok(()) => self.now_cached(),
+            Err(e) => {
+                tracing::warn!("[rotation] 换形写回不成：{}", e.logged());
+                read
+            }
         }
-        g.1.clone()
+    }
+
+    /// 盘上那份此刻读不懂 ⇒ 为什么（一句 ＋ 原话）；读得懂 · 没有 ⇒ `None`。
+    pub(crate) fn unreadable(&self) -> Option<Said> {
+        let _ = self.now();
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .2
+            .clone()
+    }
+
+    fn now_cached(&self) -> Book {
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .1
+            .clone()
     }
 
     /// 在跨进程锁里读盘 → 改 → 原子写回 → 缓存跟上；改到的会话各响一下（[`changes`]）。读不懂的那一份不覆盖。
@@ -1094,8 +1009,7 @@ impl RotationStore {
                 let (r, before, after) = write_locked(path, f)?;
                 g.0 = stamp(path);
                 g.1 = after.clone();
-                // 上一回见过的那一份（别的进程在那之后写过 ⇒ 它改到的会话也在这一下里响）；本进程记下自己写成的这一份，
-                // 盯盘那一路再看见同一个戳就不重推。
+                g.2 = None;
                 let base = seen_swap(path, g.0, &after).unwrap_or(before.clone());
                 (r, base, after)
             }
@@ -1106,7 +1020,7 @@ impl RotationStore {
     }
 }
 
-/// 本进程最后见过的盘上那一份（按路径）：本进程写成的 · 盯盘重扫读到的。别的进程写了 ⇒ 戳对不上 ⇒ 重扫时比对它推。
+/// 本进程最后见过的盘上那一份（按路径）。别的进程写了 ⇒ 戳对不上 ⇒ 重扫时比对它推。
 type DiskSeen = std::collections::HashMap<PathBuf, (Option<Stamp>, Book)>;
 
 fn seen() -> &'static Mutex<DiskSeen> {
@@ -1146,25 +1060,52 @@ pub(crate) fn rescan(path: &Path) {
     }
 }
 
-/// 盯 `rotation.json` 所在的目录（只认这个文件名）：别的进程写了 ⇒ [`rescan`]。返回的那一份活着就一直盯。
-/// 起的时候先记下此刻那一份（之后的改动才有得比）。
+/// 本机策略目录里的文件变了：每个会话都响一下（它此刻照的那份策略可能变了），配置那条通道也响一下。
+fn strategies_moved(path: &Path) {
+    let b = match read_at(path) {
+        Read::Present(b) => b,
+        _ => Book::default(),
+    };
+    for sid in b.sessions.keys() {
+        let _ = changes().send(sid.clone());
+    }
+    let _ = configs_changes().send(());
+}
+
+/// 盯 `rotation.json` 所在的目录（只认这个文件名）与本机策略目录：别的进程写了 ⇒ [`rescan`]；策略文件变了 ⇒ 重推。
+/// 返回的那一份活着就一直盯。起的时候先记下此刻那一份（之后的改动才有得比）。
 pub(crate) fn watch(path: &Path) -> Result<crate::platform::watch_file::Watching, String> {
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?
         .to_path_buf();
     crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
+    let sdir = dir.join(super::strategy::DIR_NAME);
+    crate::common::own_dir::ensure_private_dir(&sdir).map_err(|e| e.to_string())?;
     rescan(path);
     let target = path.to_path_buf();
+    let sdir_for = sdir.clone();
     crate::platform::watch_file::watch(
-        &[(dir, false)],
-        |p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME),
+        &[(dir, false), (sdir.clone(), false)],
+        move |p| {
+            p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME)
+                || (p.parent() == Some(sdir_for.as_path())
+                    && p.extension().and_then(|x| x.to_str()) == Some("rhai"))
+        },
         "rotation-watch",
-        move |_| rescan(&target),
+        move |hit| {
+            if hit
+                .iter()
+                .any(|p| p.extension().and_then(|x| x.to_str()) == Some("rhai"))
+            {
+                strategies_moved(&target);
+            }
+            rescan(&target)
+        },
     )
 }
 
-/// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json`，进程活着就一直盯。盯不上只出声。
+/// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json` 与策略目录，进程活着就一直盯。盯不上只出声。
 pub(crate) fn watch_here() {
     static HELD: Mutex<Option<crate::platform::watch_file::Watching>> = Mutex::new(None);
     let Some(path) = path_now() else { return };
@@ -1181,7 +1122,7 @@ pub(crate) fn watch_here() {
     }
 }
 
-/// 中转那一路的写口（上游选择换号：第一次看见会话 · 钉号 · 记一条）。
+/// 中转那一路的写口（第一次看见会话 · 钉号 · 记一条 · 存备忘）。
 pub(crate) fn relay_change<R>(
     store: &RotationStore,
     f: impl FnOnce(&mut Book) -> R,
@@ -1189,7 +1130,53 @@ pub(crate) fn relay_change<R>(
     store.change(f)
 }
 
-/// 帧面那一路的写口（改默认轮换 · 改会话轮换 · 现在就换）。
+/// 帧面那一路装一份本机策略：`<家>/strategies/<id>.rhai`（目录只建这一层，整份原子写）。读不读得懂由调用方先判。
+pub(crate) fn strategy_file_write(
+    store: &RotationStore,
+    id: &str,
+    source: &str,
+) -> Result<PathBuf, Said> {
+    let dir = store
+        .strategy_dir()
+        .ok_or_else(|| Said::from(copy_text("beRotation.read.noHome", &[])))?;
+    let shown = dir.display().to_string();
+    crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beRotation.write.failed",
+                &[("path", &shown), ("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
+        )
+    })?;
+    let path = dir.join(format!("{id}.rhai"));
+    crate::common::own_state::write(&path, source.as_bytes())?;
+    Ok(path)
+}
+
+/// 帧面那一路删一份本机策略（只删本机策略目录里的那一份）。
+pub(crate) fn strategy_file_remove(store: &RotationStore, path: &Path) -> Result<(), Said> {
+    let inside = store
+        .strategy_dir()
+        .is_some_and(|d| path.parent() == Some(d.as_path()));
+    if !inside {
+        return Err(Said::from(copy_text("beRotation.read.noHome", &[])));
+    }
+    std::fs::remove_file(path).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beRotation.write.failed",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })
+}
+
+/// 帧面那一路的写口（存配置 · 改副本 · 手动调整 · 现在就换）。
 pub(crate) fn face_change<R>(
     store: &RotationStore,
     f: impl FnOnce(&mut Book) -> R,
@@ -1197,17 +1184,17 @@ pub(crate) fn face_change<R>(
     store.change(f)
 }
 
-/// 改到的会话各响一下：它那一格变了，或它此刻生效的那一份轮换变了（链接：规则改了 ＝ 用它的会话都变了）；
-/// 规则表 / 默认指向变了 ⇒ 规则那条通道也响一下。
+/// 改到的会话各响一下：它那一格变了，或它此刻照的那份配置变了；配置表 / 默认指向变了 ⇒ 配置那条通道也响一下。
 fn ring_changed(before: &Book, after: &Book) {
-    let rules_moved = before.rules != after.rules || before.default_rule != after.default_rule;
+    let configs_moved =
+        before.configs != after.configs || before.default_config != after.default_config;
     for (sid, s) in &after.sessions {
         let moved = match before.sessions.get(sid) {
-            // 跟随父会话的：父那一条变了，它此刻生效那份就变了（规则表没动也算）。
             Some(b) => {
                 b != s
-                    || ((rules_moved || matches!(s.source, Source::Parent(_)))
-                        && before.rotation_of(b) != after.rotation_of(s))
+                    || (configs_moved
+                        && before.opened(b).map(|o| o.body.clone())
+                            != after.opened(s).map(|o| o.body.clone()))
             }
             None => true,
         };
@@ -1215,13 +1202,13 @@ fn ring_changed(before: &Book, after: &Book) {
             let _ = changes().send(sid.clone());
         }
     }
-    if rules_moved {
-        let _ = rules_changes().send(());
+    if configs_moved {
+        let _ = configs_changes().send(());
     }
 }
 
-/// 进程里那条「这台的规则表 / 默认指向变了」的通道（流连接订它推 `changed {rotation_rules}`）。
-pub(crate) fn rules_changes() -> &'static tokio::sync::broadcast::Sender<()> {
+/// 进程里那条「这台的配置表 / 本机默认 / 策略变了」的通道（流连接订它推 `changed {rotation_configs}`）。
+pub(crate) fn configs_changes() -> &'static tokio::sync::broadcast::Sender<()> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> = std::sync::OnceLock::new();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<()>(16).0)
 }
@@ -1248,295 +1235,32 @@ fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Bo
         )
     })?;
     let _lock = crate::platform::lock::hold(dir)?;
-    let before = match read_at(path) {
+    let mut before = match read_at(path) {
         Read::Absent => Book::default(),
         Read::Present(b) => b,
-        // 读不懂的那份不覆盖：读不懂那一句（带路径与原因词）后面接「未覆盖」，原话照它的。
         Read::Unreadable(e) => {
             return Err(e.wrap(|said| copy_text("beRotation.write.unreadable", &[("said", said)])))
         }
     };
+    let v1 = before.from_v1.take();
     let mut after = before.clone();
     let r = f(&mut after);
-    if after == before {
+    if after == before && v1.is_none() {
         return Ok((r, before, after));
+    }
+    if let Some(orig) = v1 {
+        // 第一版换形：原文留一份（已经有了 ⇒ 不覆盖）。
+        let backup = v1_backup_of(path);
+        if !backup.exists() {
+            crate::common::own_state::write_json(&backup, &orig)?;
+        }
     }
     crate::common::own_state::write_json(path, &after)?;
     Ok((r, before, after))
 }
 
-// ── 线上那一份轮换的读法（整份收、不合法整份拒并说哪一格） ─────────────────
-
-/// 窗口键（适配层给的不透明串，如 `5h` · `7d` · `7d:<模型>`）或 `*`：写得进轮换的那一形。
-fn window_key_ok(k: &str) -> bool {
-    k == ALL_WINDOWS
-        || (!k.is_empty()
-            && k.len() <= 64
-            && k.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'_' | b'-' | b'.')))
-}
-
-fn pct_in_range(v: &Value) -> Option<u8> {
-    in_range(v, &THRESHOLD_RANGE)
-}
-
-fn in_range(v: &Value, range: &std::ops::RangeInclusive<u8>) -> Option<u8> {
-    v.as_u64()
-        .and_then(|n| u8::try_from(n).ok())
-        .filter(|n| range.contains(n))
-}
-
-/// 每号那一层：`{号: {窗口键|"*": 值}}`，值由 `one(值, 这一格的名字)` 读。
-fn per_account<T>(
-    v: Option<&Value>,
-    name: &str,
-    account_ok: &dyn Fn(&str) -> bool,
-    one: &dyn Fn(&Value, &str) -> Result<T, String>,
-) -> Result<BTreeMap<String, BTreeMap<String, T>>, String> {
-    let Some(v) = v else {
-        return Ok(BTreeMap::new());
-    };
-    let o = v.as_object().ok_or_else(|| {
-        format!("`{name}` must be an object {{account: {{window|\"*\": value}}}}")
-    })?;
-    let mut out = BTreeMap::new();
-    for (a, per) in o {
-        if !account_ok(a) {
-            return Err(format!("`{name}.{a}` must name an account"));
-        }
-        let per = per.as_object().filter(|m| !m.is_empty()).ok_or_else(|| {
-            format!("`{name}.{a}` must be a non-empty object {{window|\"*\": value}}")
-        })?;
-        let mut row = BTreeMap::new();
-        for (k, x) in per {
-            if !window_key_ok(k) {
-                return Err(format!("`{name}.{a}.{k}` is not a window key or \"*\""));
-            }
-            row.insert(k.clone(), one(x, &format!("{name}.{a}.{k}"))?);
-        }
-        out.insert(a.clone(), row);
-    }
-    Ok(out)
-}
-
-/// 上限的一个值：`0..=99`，或 `[{at: "HH:MM-HH:MM", n: 0..=99}, …]`（至少一段）。`0` ＝ 不用这个号。
-fn cap_value(v: &Value, cell: &str) -> Result<CapValue, String> {
-    if let Some(n) = in_range(v, &CAP_RANGE) {
-        return Ok(CapValue::N(n));
-    }
-    let bad = || {
-        format!(
-            "`{cell}` must be an integer 0..=99 or [{{\"at\":\"HH:MM-HH:MM\",\"n\":0..=99}}, …]"
-        )
-    };
-    let arr = v.as_array().filter(|a| !a.is_empty()).ok_or_else(bad)?;
-    let mut slots = Vec::new();
-    for (i, item) in arr.iter().enumerate() {
-        let m = item
-            .as_object()
-            .filter(|m| m.len() == 2)
-            .ok_or_else(|| format!("`{cell}[{i}]` must be {{\"at\", \"n\"}}"))?;
-        let at = m
-            .get("at")
-            .and_then(Value::as_str)
-            .filter(|at| span_of(at).is_some())
-            .ok_or_else(|| {
-                format!("`{cell}[{i}].at` must be \"HH:MM-HH:MM\" (00:00..24:00, start ≠ end)")
-            })?;
-        let n = m
-            .get("n")
-            .and_then(|n| in_range(n, &CAP_RANGE))
-            .ok_or_else(|| format!("`{cell}[{i}].n` must be an integer 0..=99"))?;
-        if let Some(j) = slots.iter().position(|x: &CapSlot| overlaps(&x.at, at)) {
-            return Err(format!("`{cell}[{i}].at` overlaps `{cell}[{j}].at`"));
-        }
-        slots.push(CapSlot {
-            at: at.to_string(),
-            n,
-        });
-    }
-    Ok(CapValue::Slots(slots))
-}
-
-/// 一段占一天里的哪几截（跨午夜的拆成两截）。
-fn pieces(at: &str) -> Vec<(u16, u16)> {
-    match span_of(at) {
-        Some((from, to)) if from < to => vec![(from, to)],
-        Some((from, to)) => vec![(from, 24 * 60), (0, to)],
-        None => Vec::new(),
-    }
-}
-
-/// 两段有没有重叠的分钟（含跨午夜的）。
-pub(crate) fn overlaps(a: &str, b: &str) -> bool {
-    pieces(a)
-        .iter()
-        .any(|(f1, t1)| pieces(b).iter().any(|(f2, t2)| f1 < t2 && f2 < t1))
-}
-
-/// 读一份轮换：键 `order` · `enabled`，可选 `atLimit`（`"continue"` · `"stop"`，缺 ⇒ `continue`）·
-/// `cap`（`{号: {窗口键|"*": 0..=99 | [{at, n}]}}`，`0` ＝ 不用这个号；同一格的时段不许重叠；号那一格写 `"*"` ＝ 所有号（触发那一行），只收 `5h` · `7d`、`1..=99`）· `stint`（`{号: {窗口键|"*": 1..=99}}`）· `preempt`（布尔，缺 ⇒ 关）·
-/// `fallback`（兜底的号，须在 `order` 里具名）· `wait`（切兜底前最多等几分钟 `0..=120`，缺 ⇒ 40）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
-/// `account_ok(号)` 判这一格当得了轮换里的号；`is_api(号)` 判按量号；`prior` 是改之前那一份：**新勾上的按量号挪到 `order` 末尾**（订阅号用完才轮到它）。
-/// 不合法 ⇒ `Err(哪一格、为什么)`（英文诊断，不进文案表）。
-pub(crate) fn rotation_from(
-    v: &Value,
-    start_slots: std::ops::RangeInclusive<usize>,
-    account_ok: &dyn Fn(&str) -> bool,
-    is_api: &dyn Fn(&str) -> bool,
-    prior: Option<&Rotation>,
-) -> Result<Rotation, String> {
-    let o = v.as_object().ok_or(
-        "rotation must be an object {order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}",
-    )?;
-    if let Some(k) = o.keys().find(|k| {
-        !matches!(
-            k.as_str(),
-            "order"
-                | "enabled"
-                | "atLimit"
-                | "cap"
-                | "stint"
-                | "preempt"
-                | "fallback"
-                | "wait"
-                | "tz"
-        )
-    }) {
-        return Err(format!("unknown field `{k}`"));
-    }
-    let order_v = o
-        .get("order")
-        .and_then(Value::as_array)
-        .ok_or("`order` must be an array")?;
-    let mut order: Vec<RotationSlot> = Vec::new();
-    let mut starts = 0usize;
-    for (i, item) in order_v.iter().enumerate() {
-        let slot = match item {
-            Value::String(a) if account_ok(a) => RotationSlot::Named(a.clone()),
-            Value::Object(m) if m.len() == 1 && m.get("start") == Some(&Value::Bool(true)) => {
-                starts += 1;
-                RotationSlot::Start(StartSlot { start: true })
-            }
-            _ => {
-                return Err(format!(
-                    "`order[{i}]` must be an account id or {{\"start\":true}}"
-                ))
-            }
-        };
-        if order.contains(&slot) && matches!(slot, RotationSlot::Named(_)) {
-            return Err(format!("`order[{i}]` repeats an account"));
-        }
-        order.push(slot);
-    }
-    if !start_slots.contains(&starts) {
-        return Err(format!(
-            "`order` must hold {}..={} {{\"start\":true}} slot(s), got {starts}",
-            start_slots.start(),
-            start_slots.end()
-        ));
-    }
-    let named = |a: &str| {
-        order
-            .iter()
-            .any(|s| s == &RotationSlot::Named(a.to_string()))
-    };
-    let enabled_v = o
-        .get("enabled")
-        .and_then(Value::as_array)
-        .ok_or("`enabled` must be an array")?;
-    let mut enabled: Vec<String> = Vec::new();
-    for (i, item) in enabled_v.iter().enumerate() {
-        let a = item
-            .as_str()
-            .filter(|a| named(a))
-            .ok_or_else(|| format!("`enabled[{i}]` must name an account listed in `order`"))?;
-        if enabled.iter().any(|e| e == a) {
-            return Err(format!("`enabled[{i}]` repeats an account"));
-        }
-        enabled.push(a.to_string());
-    }
-    let at_limit = match o.get("atLimit") {
-        None => AtLimit::Continue,
-        Some(Value::String(s)) if s == "continue" => AtLimit::Continue,
-        Some(Value::String(s)) if s == "stop" => AtLimit::Stop,
-        Some(_) => return Err("`atLimit` must be \"continue\" or \"stop\"".into()),
-    };
-    let cap = per_account(
-        o.get("cap"),
-        "cap",
-        &|a| a == ALL_WINDOWS || account_ok(a),
-        &cap_value,
-    )?;
-    if let Some(row) = cap.get(ALL_WINDOWS) {
-        for (k, v) in row {
-            if !LINE_SLOTS.contains(&k.as_str()) {
-                return Err(format!("`cap.*.{k}` must be one of `5h` · `7d`"));
-            }
-            let zero = match v {
-                CapValue::N(n) => *n == 0,
-                CapValue::Slots(s) => s.iter().any(|x| x.n == 0),
-            };
-            if zero {
-                return Err(format!("`cap.*.{k}` must be 1..=99"));
-            }
-        }
-    }
-    // 单段预算多收一行 `"*"`（所有号）：换法「单段预算 N 点」写的就是 `{"*": {"*": n}}`。
-    let stint = per_account(
-        o.get("stint"),
-        "stint",
-        &|a| a == ALL_WINDOWS || account_ok(a),
-        &|v, cell| pct_in_range(v).ok_or_else(|| format!("`{cell}` must be an integer 1..=99")),
-    )?;
-    let preempt = match o.get("preempt") {
-        None => false,
-        Some(Value::Bool(b)) => *b,
-        Some(_) => return Err("`preempt` must be true or false".into()),
-    };
-    let wait = match o.get("wait") {
-        None => WAIT_DEFAULT,
-        Some(v) => in_range(v, &WAIT_RANGE).ok_or("`wait` must be an integer 0..=120")?,
-    };
-    let mut fallback: Vec<String> = Vec::new();
-    if let Some(v) = o.get("fallback") {
-        let arr = v.as_array().ok_or("`fallback` must be an array")?;
-        for (i, item) in arr.iter().enumerate() {
-            let a = item
-                .as_str()
-                .filter(|a| named(a))
-                .ok_or_else(|| format!("`fallback[{i}]` must name an account listed in `order`"))?;
-            if fallback.iter().any(|f| f == a) {
-                return Err(format!("`fallback[{i}]` repeats an account"));
-            }
-            fallback.push(a.to_string());
-        }
-    }
-    let was = |a: &str| prior.is_some_and(|p| p.enabled.iter().any(|e| e == a));
-    let newly: Vec<RotationSlot> = enabled
-        .iter()
-        .filter(|a| is_api(a) && !was(a))
-        .map(|a| RotationSlot::Named(a.clone()))
-        .collect();
-    order.retain(|s| !newly.contains(s));
-    order.extend(newly);
-    Ok(Rotation {
-        order,
-        enabled,
-        at_limit,
-        cap,
-        stint,
-        preempt,
-        fallback,
-        wait,
-        // 写的那一下由调用方照信封盖（[`Rotation::stamped`]）；入参里带的那一格不认。
-        tz: None,
-    })
-}
-
-/// 编辑器里一格填错了：哪一格（`name` · `wait` · `cap.*.5h` · `cap.*.7d`（触发那一行）· `cap.<号>.<窗口键>` · `cap.<号>.<窗口键>[i]` · `stint.<号>.<窗口键>`）·
-/// 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）· 那一格下面的那一句（`said`，核心写好）。
-/// 界面照 `cell` 标红、照抄 `said`，不按短码取字。
+/// 编辑器里一格填错了：哪一格（`name` · `params.<k>` · `accounts[i].<k>` · `acctInit.<k>`，时段再细到 `[j].at` / `[j].line`）·
+/// 短码（`empty` · `dup` · `tooLong` · `type` · `range` · `of` · `time` · `overlap` · `strategy` · `account`）· 那一格下面的那一句（核心写好）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -1544,112 +1268,29 @@ pub(crate) fn rotation_from(
 pub struct CellError {
     pub cell: String,
     pub code: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub with: Option<usize>,
     #[cfg_attr(test, ts(type = "string"))]
     pub said: crate::common::cells::Words,
 }
 
-/// 一格错（那一句照短码由核心写：名称那三种 · 封顶那四种）。
-pub(crate) fn cell_err(cell: String, code: &str, with: Option<usize>) -> CellError {
+/// 一格错（那一句照短码由核心写）。
+pub(crate) fn cell_err(cell: String, code: &str) -> CellError {
     let said = match code {
-        "empty" => copy_text("rot.save.empty", &[]),
-        "dup" => copy_text("rot.save.dup", &[]),
-        "tooLong" => copy_text("rot.save.tooLong", &[]),
-        "same" => copy_text("rot.capErr.same", &[]),
-        "overlap" => copy_text(
-            "rot.capErr.overlap",
-            &[("i", &(with.unwrap_or(0) + 1).to_string())],
-        ),
-        "range" => copy_text("rot.capErr.range", &[]),
-        _ => copy_text("rot.capErr.time", &[]),
+        "empty" => copy_text("beRotation.cell.empty", &[]),
+        "dup" => copy_text("beRotation.cell.dup", &[]),
+        "tooLong" => copy_text("beRotation.cell.tooLong", &[("n", &NAME_MAX.to_string())]),
+        "type" => copy_text("beRotation.cell.type", &[]),
+        "range" => copy_text("beRotation.cell.range", &[]),
+        "of" => copy_text("beRotation.cell.of", &[]),
+        "overlap" => copy_text("beRotation.cell.overlap", &[]),
+        "strategy" => copy_text("beRotation.cell.strategy", &[]),
+        "account" => copy_text("beRotation.cell.account", &[]),
+        _ => copy_text("beRotation.cell.time", &[]),
     };
     CellError {
         cell,
         code: code.to_string(),
-        with,
         said: crate::common::cells::Words(said),
     }
-}
-
-/// `"HH:MM"` → 分钟（`24:00` 收）；写错 ⇒ `None`。
-fn clock_of(s: &str) -> Option<u16> {
-    let (h, m) = s.split_once(':')?;
-    if h.len() != 2 || m.len() != 2 || !(h.bytes().chain(m.bytes())).all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let (h, m): (u16, u16) = (h.parse().ok()?, m.parse().ok()?);
-    (m < 60 && (h < 24 || (h == 24 && m == 0))).then_some(h * 60 + m)
-}
-
-/// 填的人会填错的那几格逐格判（形状不对的不在这里，交 [`rotation_from`] 整份拒）。
-pub(crate) fn cell_errors(v: &Value) -> Vec<CellError> {
-    let mut out = Vec::new();
-    let Some(o) = v.as_object() else {
-        return out;
-    };
-    if let Some(w) = o.get("wait") {
-        if in_range(w, &WAIT_RANGE).is_none() {
-            out.push(cell_err("wait".into(), "range", None));
-        }
-    }
-    let rows = |k: &str| -> Vec<(String, String, Value)> {
-        o.get(k)
-            .and_then(Value::as_object)
-            .into_iter()
-            .flat_map(|m| m.iter())
-            .flat_map(|(a, per)| {
-                per.as_object()
-                    .into_iter()
-                    .flat_map(|m| m.iter())
-                    .map(move |(w, x)| (a.clone(), w.clone(), x.clone()))
-            })
-            .collect()
-    };
-    for (a, w, x) in rows("cap") {
-        let cell = format!("cap.{a}.{w}");
-        // 触发那一行不收 0（空着那一窗就是满了才换）。
-        let range = if a == ALL_WINDOWS {
-            THRESHOLD_RANGE
-        } else {
-            CAP_RANGE
-        };
-        match &x {
-            Value::Array(items) => {
-                let mut ok: Vec<(usize, String)> = Vec::new();
-                for (i, item) in items.iter().enumerate() {
-                    let at = item.get("at").and_then(Value::as_str).unwrap_or("");
-                    let here = format!("{cell}[{i}]");
-                    let ends = at.split_once('-').map(|(f, t)| (clock_of(f), clock_of(t)));
-                    match ends {
-                        Some((Some(f), Some(t))) if f == t => {
-                            out.push(cell_err(here.clone(), "same", None));
-                        }
-                        Some((Some(_), Some(_))) if span_of(at).is_some() => {
-                            if let Some((j, _)) = ok.iter().find(|(_, b)| overlaps(b, at)) {
-                                out.push(cell_err(here.clone(), "overlap", Some(*j)));
-                            } else {
-                                ok.push((i, at.to_string()));
-                            }
-                        }
-                        _ => out.push(cell_err(here.clone(), "time", None)),
-                    }
-                    if item.get("n").and_then(|n| in_range(n, &range)).is_none() {
-                        out.push(cell_err(here, "range", None));
-                    }
-                }
-            }
-            n if in_range(n, &range).is_none() => out.push(cell_err(cell, "range", None)),
-            _ => {}
-        }
-    }
-    for (a, w, x) in rows("stint") {
-        if pct_in_range(&x).is_none() {
-            out.push(cell_err(format!("stint.{a}.{w}"), "range", None));
-        }
-    }
-    out
 }
 
 #[cfg(test)]

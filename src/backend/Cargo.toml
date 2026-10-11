@@ -133,6 +133,9 @@ own-chan = { path = "../common/own-chan" }
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`。
 # 依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
 copy-core = { path = "../common/copy-core" }
+# 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
+# `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
+rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }
 # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `control/deploy_plan.rs`。
 deploy-contract = { path = "../common/deploy-contract" }
 tokio = { version = "1", features = [
@@ -320,6 +323,10 @@ sha2 = "0.11"
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
+# 测试档的家从一开始就是沙箱（`guard_support::sandbox_home`）：测试二进制的第一条判据跑之前，`HOME` · `CCM_DATA_DIR` · `XDG_*`
+# 已经指到这个进程自己的临时目录 —— 直接敲 `cargo test`、IDE 里点、quick-check 都一样，判据经 `Ctx::here()` · `path_now()` 碰不到真家
+# （10-11 那一次：直接敲 `cargo test`，判据把真家里的 `rotation.json` 换了形）。**只在 dev 侧**，不进发布二进制；本机缓存里有 0.8.0。
+ctor = "0.8.0"
 
 # ── **打补丁版 russh** ─────────────
 #
@@ -333,3 +340,8 @@ ts-rs = "12.0.1"
 #   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
 [patch.crates-io]
 russh = { path = "../vendor/russh" }
+
+# 轮换策略的沙箱有 50 ms 墙钟上限：判据跑的是 dev 档，不优化的 rhai 一判要慢一个数量级、机器一忙就撞上墙钟
+# （判据判的是策略的行为，不是 rhai 在 debug 下有多慢）⇒ 只给这一个依赖开优化。发布档本来就优化。
+[profile.dev.package.rhai]
+opt-level = 3

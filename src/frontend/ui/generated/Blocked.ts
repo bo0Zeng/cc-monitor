@@ -2,6 +2,6 @@
 import type { AccountAt } from "./AccountAt";
 
 /**
- * 这个会话发不出去了：轮换里没有能接的号；`earliest` ＝ 最早回来的那个（说不出 ⇒ 缺）。
+ * 这个会话发不出去了（停发）：最早回来的那个号（说不出 ⇒ 缺）· 写好的那一句（卡住条照抄）。
  */
-export type Blocked = { earliest?: AccountAt, };
+export type Blocked = { earliest?: AccountAt, text: string, };

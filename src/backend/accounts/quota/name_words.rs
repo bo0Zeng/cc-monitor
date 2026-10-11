@@ -44,7 +44,7 @@ pub(crate) fn names() -> Names {
             .iter()
             .map(|a| (a.to_string(), Words(account_text(a))))
             .collect(),
-        slots: super::rotation::LINE_SLOTS
+        slots: ["5h", "7d"]
             .iter()
             .map(|w| (w.to_string(), Words(slot_text(w))))
             .collect(),

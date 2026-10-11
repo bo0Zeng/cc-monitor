@@ -20,7 +20,7 @@ const LEDGER: &[(&str, usize, &str)] = &[
     ("control/session_new.rs", 1, "自己的应答序列化不出（实际到不了）"),
     ("faces/accounts_face.rs", 1, "自己的应答序列化不出（实际到不了）"),
     ("faces/read_face.rs", 4, "读面开文件 / 序列化：待收进带原话的读法"),
-    ("faces/rotation_face.rs", 2, "自己的应答序列化不出（实际到不了）"),
+    ("faces/rotation_face.rs", 1, "自己的应答序列化不出（实际到不了）"),
     ("faces/rotation_switch_face.rs", 3, "轮换切号：待收进带原话的写法"),
 ];
 

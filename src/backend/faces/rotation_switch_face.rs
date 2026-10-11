@@ -2,7 +2,7 @@
 //! 重启换逐个交给 `session-restart`（成了再记一条）。单住一份：只有这一条够得着 tmux（经 `session-restart`）。
 
 use super::rotation_face::{hot_one, outcome, record, Ctx};
-use crate::accounts::quota::rotation::{OldSession, RestartOutcome, SwitchOutcome, SwitchWhy};
+use crate::accounts::quota::rotation::{Leave, OldSession, RestartOutcome, SwitchOutcome};
 use crate::accounts::upstream_select::rotate::account_ok;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -138,7 +138,7 @@ pub(crate) async fn answer_switch(
                 let ctx = Ctx::here();
                 let book = ctx.hop.store.now();
                 match book.sessions.get(&s).map(|e| e.current.clone()) {
-                    Some(from) => record(&ctx, &s, &from, &t, SwitchWhy::ManualRestart, now),
+                    Some(from) => record(&ctx, &s, &from, &t, Leave::ManualRestart, now),
                     None => SwitchOutcome::Switched,
                 }
             })

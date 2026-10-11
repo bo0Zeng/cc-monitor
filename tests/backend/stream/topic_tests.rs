@@ -143,9 +143,13 @@ fn a_computed_body_is_a_declared_body() {
 #[test]
 fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::RotationRules, None, &crate::Tz::default()),
-        crate::faces::rotation_face::answer_rules_read().ok(),
-        "规则表的小成品不是 rotation-rules-read 的应答"
+        crate::stream::topic_body::body_now(Topic::RotationConfigs, None, &crate::Tz::default()),
+        crate::faces::rotation_face::answer_configs_read(
+            &serde_json::json!({}),
+            &crate::Tz::default()
+        )
+        .ok(),
+        "配置表的小成品不是 rotation-configs-read 的应答"
     );
     assert_eq!(
         crate::stream::topic_body::body_now(

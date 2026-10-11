@@ -1,0 +1,103 @@
+{
+ "now": 1760187780,
+ "clock": 1263,
+ "current": "team",
+ "stint": {
+  "since": 1760182800,
+  "used": 18.0
+ },
+ "rate": 0.45,
+ "memo": null,
+ "params": {
+  "all_out": "go"
+ },
+ "accounts": [
+  {
+   "id": "work",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": true,
+    "used": 94.0,
+    "resets": 1760193600
+   },
+   "w7d": {
+    "open": true,
+    "used": 40.0,
+    "resets": 1760427780
+   },
+   "others": 0,
+   "params": {}
+  },
+  {
+   "id": "personal",
+   "kind": "sub",
+   "ok": false,
+   "why_not": "full",
+   "back": 1760487780,
+   "w5h": {
+    "open": false,
+    "used": 0.0,
+    "resets": null
+   },
+   "w7d": {
+    "open": true,
+    "used": 100.0,
+    "resets": 1760487780
+   },
+   "others": 0,
+   "params": {}
+  },
+  {
+   "id": "team",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": true,
+    "used": 99.5,
+    "resets": 1760195400
+   },
+   "w7d": {
+    "open": true,
+    "used": 50.0,
+    "resets": 1760367780
+   },
+   "others": 1,
+   "params": {
+    "line": 99
+   }
+  },
+  {
+   "id": "lab",
+   "kind": "sub",
+   "ok": true,
+   "why_not": null,
+   "back": null,
+   "w5h": {
+    "open": true,
+    "used": 85.0,
+    "resets": 1760199600
+   },
+   "w7d": {
+    "open": true,
+    "used": 30.0,
+    "resets": 1760439780
+   },
+   "others": 0,
+   "params": {
+    "line": 99,
+    "slots": [
+     {
+      "at": "17:00-02:00",
+      "line": 80
+     }
+    ]
+   }
+  }
+ ],
+ "_title": "都到线、没有按量号；都到上限后 接着用"
+}
