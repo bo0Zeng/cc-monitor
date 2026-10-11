@@ -262,11 +262,12 @@ export const MAIN_SCENES: Scene[] = [
   }),
   main("main-stream-steps", "主窗口 · 过程一步一行", "同一个会话的中段：每一步一行（状态图标 · 工具名 · 主参数 · 说明 · 右侧小字）· agent 交回事件条 · 后台通知并条 · 失败那一步", async () => {
     await mainReady(ALL_TABS);
-    // 完成的轮过程默认折成一行：点开那一行看一步一行。
-    (await waitFor(".stream.active .proc-line")).click();
+    // 完成的轮过程默认折成一行：点开带 agent 与失败的那一段（中段那一行）看一步一行。
+    await waitFor(".stream.active .proc-line .proc-fails");
+    const line = document.querySelector<HTMLElement>(".stream.active .proc-line .proc-fails")!.closest<HTMLElement>(".proc-line")!;
+    line.click();
     await sleep(200);
-    const s = document.querySelector<HTMLElement>(".card-speaker")!;
-    s.scrollIntoView({ block: "center" });
+    line.scrollIntoView({ block: "start" });
     await sleep(300);
   }),
   main("main-turn-folded", "主窗口 · 完成的轮过程折成一行", "这一轮做完了：你说的 · 过程一行（工具 ×N · 思考 ×N · 失败 ×N · 起止 · 用时）· 结论常显", async () => {
