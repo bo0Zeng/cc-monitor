@@ -1025,6 +1025,9 @@ pub(crate) struct ChildFace {
     pub(crate) hint: fn(&str) -> bool,
     /// 一条记录自己写着的时刻（自 1970 起的毫秒；运行表的开始 · 最近动静 · 收场三个时刻用）；记录里没写 ⇒ `None`（通用层退回读到它的时刻）。
     pub(crate) written: fn(&serde_json::Value) -> Option<u64>,
+    /// 一份子运行记录（[`Self::sources`] 收的那种）⇒ 派出它的那一刻就落了盘的对上（[`ChildLink`] 的「对上」一形：父侧工具调用 id ＋ 子运行）。
+    /// 前台派出的子运行要跑完父侧才回结果，在那之前卡和运行只能靠它对上；还没落盘 / 这一家不落 ⇒ `None`（通用层下次读到这份记录再问）。
+    pub(crate) spawned: fn(&Path) -> Option<ChildLink>,
 }
 
 /// 一个上游协议的流面：把一个原始流事件（SSE `data:` 后面那段原文）折成归一事件。认不出 ⇒ 空。
@@ -1131,6 +1134,10 @@ impl RunFaces {
 
     pub(crate) fn written(&self, v: &serde_json::Value) -> Option<u64> {
         self.children.and_then(|c| (c.written)(v))
+    }
+
+    pub(crate) fn spawned(&self, child: &Path) -> Option<ChildLink> {
+        self.children.and_then(|c| (c.spawned)(child))
     }
 }
 

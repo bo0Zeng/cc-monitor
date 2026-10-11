@@ -226,6 +226,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         find: runs::find,
         hint: runs::hint,
         written: runs::written,
+        spawned: runs::spawned,
     }),
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
