@@ -154,21 +154,21 @@ pub(crate) fn return_with(
     Ok(out)
 }
 
-fn give_back(args: &Value) -> Answer {
+fn give_back(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     let ws = str_arg(args, "workspace")?;
     // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
     let send = |a: &Value| crate::control::terminals::input_for_inbound(a);
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
-        crate::plan::review::answer_returned(ws, sl, id, r)
+        crate::plan::review::answer_returned(own, ws, sl, id, r)
     };
     return_with(args, &doc, &send, &record, now_ms())
 }
 
 /// 帧面入口：命令名从 `r.cmd` 来。
-pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
+pub(crate) fn answer(cmd: &str, args: &Value, own: &crate::platform::fs::Own) -> Answer {
     match cmd {
-        "plan-return" => give_back(args)
+        "plan-return" => give_back(args, own)
             .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanReturnReply>),
         other => Err(bad(&format!("unknown command `{other}`"))),
     }

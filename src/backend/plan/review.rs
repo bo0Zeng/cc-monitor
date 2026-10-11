@@ -9,6 +9,7 @@
 //! 全仓唯一的写口是本模块的 `answer_*` 三个：认可两个只从 `faces/plan_review_face.rs` 进，记退回那一个只从 `faces/plan_return_face.rs` 进。
 
 use super::needs::{self, Returned};
+use crate::platform::fs::Own;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -124,28 +125,28 @@ pub(crate) fn current(path: Option<&Path>) -> Review {
 type Err = crate::stream::inbound::spec::Fail;
 
 /// 读—改—写一次（跨进程锁里；读不懂的不覆盖）。
-fn edit_at(path: &Path, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
-    let dir = path.parent().ok_or_else(|| {
-        Err::new(
-            "bad_args",
-            crate::common::contract::malformed("review path has no parent"),
-        )
-    })?;
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
+    let no_home = |_| Err::new("io_failed", copy_text("bePlan.review.noHome", &[]));
+    let dir = own.home_dir().map_err(no_home)?;
+    let file = own
+        .at_home(relay_route_core::PLAN_REVIEW_REL)
+        .map_err(no_home)?;
+    own.ensure_dir(&dir).map_err(|e| {
         Err::from((
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
                     "bePlan.review.mkdirFailed",
-                    &[("dir", &dir.display().to_string())],
+                    &[("dir", &dir.as_path().display().to_string())],
                 ),
                 e,
             ),
         ))
     })?;
-    let _g = crate::platform::lock::hold(dir)
+    let held = own
+        .lock(&dir)
         .map_err(|e| Err::from(("io_failed", crate::common::said::Said::from(e))))?;
-    let mut r = match read_at(path) {
+    let mut r = match read_at(file.as_path()) {
         crate::common::own_state::Read::Absent => Review::default(),
         crate::common::own_state::Read::Present(r) => r,
         crate::common::own_state::Read::Unreadable(why) => {
@@ -153,18 +154,21 @@ fn edit_at(path: &Path, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
         }
     };
     f(&mut r);
-    crate::common::own_state::write_json(path, &r).map_err(|e| Err::from(("io_failed", e)))
+    let body = crate::common::own_state::json_body(file.as_path(), &r)
+        .map_err(|e| Err::from(("io_failed", e)))?;
+    own.write(&file, &held, &body)
+        .map_err(|e| Err::from(("io_failed", e)))
 }
 
 /// 认可一条：那一片只留此刻还在的键（`live`）＋ 这一条。
 pub(crate) fn ack_at(
-    path: &Path,
+    own: &Own,
     ws: &str,
     slice: &str,
     key: &str,
     live: &[String],
 ) -> Result<(), Err> {
-    edit_at(path, |r| {
+    edit_at(own, |r| {
         let keys = r
             .acks
             .entry(ws.to_string())
@@ -177,8 +181,8 @@ pub(crate) fn ack_at(
 }
 
 /// 撤掉一条认可（没有也不算错）。
-pub(crate) fn unack_at(path: &Path, ws: &str, slice: &str, key: &str) -> Result<(), Err> {
-    edit_at(path, |r| {
+pub(crate) fn unack_at(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Err> {
+    edit_at(own, |r| {
         if let Some(s) = r.acks.get_mut(ws) {
             if let Some(k) = s.get_mut(slice) {
                 k.retain(|x| x != key);
@@ -195,13 +199,13 @@ pub(crate) fn unack_at(path: &Path, ws: &str, slice: &str, key: &str) -> Result<
 
 /// 记一次退回（盖掉那一格先前那一次）。
 pub(crate) fn returned_at(
-    path: &Path,
+    own: &Own,
     ws: &str,
     slice: &str,
     cell: &str,
     rec: Returned,
 ) -> Result<(), Err> {
-    edit_at(path, |r| {
+    edit_at(own, |r| {
         r.returns
             .entry(ws.to_string())
             .or_default()
@@ -211,23 +215,31 @@ pub(crate) fn returned_at(
     })
 }
 
-fn path_or_err() -> Result<PathBuf, Err> {
-    review_path().ok_or_else(|| Err::new("io_failed", copy_text("bePlan.review.noHome", &[])))
-}
-
 /// `plan-ack` 的写口（**只从 `faces/plan_review_face.rs` 进**）。
-pub(crate) fn answer_ack(ws: &str, slice: &str, key: &str, live: &[String]) -> Result<(), Err> {
-    ack_at(&path_or_err()?, ws, slice, key, live)
+pub(crate) fn answer_ack(
+    own: &Own,
+    ws: &str,
+    slice: &str,
+    key: &str,
+    live: &[String],
+) -> Result<(), Err> {
+    ack_at(own, ws, slice, key, live)
 }
 
 /// `plan-unack` 的写口（同上）。
-pub(crate) fn answer_unack(ws: &str, slice: &str, key: &str) -> Result<(), Err> {
-    unack_at(&path_or_err()?, ws, slice, key)
+pub(crate) fn answer_unack(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Err> {
+    unack_at(own, ws, slice, key)
 }
 
 /// `plan-return` 送出去之后记那一次的写口（**只从 `faces/plan_return_face.rs` 进**）。
-pub(crate) fn answer_returned(ws: &str, slice: &str, cell: &str, rec: Returned) -> Result<(), Err> {
-    returned_at(&path_or_err()?, ws, slice, cell, rec)
+pub(crate) fn answer_returned(
+    own: &Own,
+    ws: &str,
+    slice: &str,
+    cell: &str,
+    rec: Returned,
+) -> Result<(), Err> {
+    returned_at(own, ws, slice, cell, rec)
 }
 
 #[cfg(test)]

@@ -926,13 +926,6 @@ mod tests {
              经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。入口只有中转那一路（上游选择对中转的那个口）—— 不是帧面命令",
         ),
         (
-            "plan/review.rs",
-            "**计划要你看的认可与退回记录** `~/.cc-monitor/plan-review.json`：认可过的几条（键带条目版本）· 退回过的格（送给谁 · 当时的子格与正文摘要）。\
-             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（计划仓 `.planned-build/` 一个字节不写，认可不回写 pb）。\
-             在跨进程锁里读盘 → 改 → 经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
-             线上入口两扇：认可那一半的宿主（`faces/plan_review_face.rs`：`plan-ack` · `plan-unack`）· 退回那一半的宿主（`faces/plan_return_face.rs`：`plan-return`），各 ＋ 派生的 CLI 面",
-        ),
-        (
             "assets/skill_ledger.rs",
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -1048,14 +1041,6 @@ mod tests {
              起它之前建好家里那个不出会话的工作目录 —— 用户 / AI / skill 按需调，不定时",
         ),
         (
-            "faces/plan_review_face.rs",
-            "计划认可的帧面宿主（`plan-ack` · `plan-unack`，帧面与派生的 CLI 面共用）：认可 / 撤销认可",
-        ),
-        (
-            "faces/plan_return_face.rs",
-            "计划退回的帧面宿主（`plan-return`，帧面与派生的 CLI 面共用）：送到了 / 送达未知之后记那一次退回",
-        ),
-        (
             "relay/listen.rs",
             "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
@@ -1159,23 +1144,6 @@ mod tests {
             "assets/skill_ledger.rs",
             "skill_ledger::answer_",
             "stream/inbound/registry/assets.rs",
-        ),
-        // 计划认可与退回：认可两条（`answer_ack` · `answer_unack`）只从认可那一半的宿主进，记退回（`answer_returned`）只从退回那一半进；
-        // 读口 `current` / `review_path` 不在针上。
-        (
-            "plan/review.rs",
-            "review::answer_ack",
-            "faces/plan_review_face.rs",
-        ),
-        (
-            "plan/review.rs",
-            "review::answer_unack",
-            "faces/plan_review_face.rs",
-        ),
-        (
-            "plan/review.rs",
-            "review::answer_returned",
-            "faces/plan_return_face.rs",
         ),
         // 起会话用的号：留便条只从 ccm 最终那一跳进，认便条记账只从观测侧进。
         (
