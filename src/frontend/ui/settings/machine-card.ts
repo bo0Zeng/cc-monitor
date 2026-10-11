@@ -1103,10 +1103,16 @@ export class MachineCard {
     await this.onSaveFingerprint(seen);
   }
 
+  /** 存完之后壳回话里这台「指纹记于哪一天」盖成了什么（`patch_config` 的回话）⇒ 当场显示。 */
+  pinnedOn(day: string): void {
+    this.pinnedAt = day;
+    this.syncResetFpVisibility();
+  }
+
   /** 把测出的指纹写进字段并保存（TOFU→strict 固化）。 */
   private async onSaveFingerprint(fingerprint: string): Promise<void> {
     this.fingerprintInput.value = fingerprint;
-    this.pinnedAt = ""; // 记于哪一天由壳写配置时盖上，存完从盘上读回来
+    this.pinnedAt = ""; // 记于哪一天由壳写配置时盖上，存完照回话显示（`pinnedOn`）
     this.syncResetFpVisibility(); // 程序化赋值不触发 input 事件，手动同步重置按钮显隐
     this.hooks.onChange(); // 触发 section 保存
     // 就地把［记录］那一行换成「已记录」（不重连）。

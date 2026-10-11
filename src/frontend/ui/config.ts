@@ -9,6 +9,7 @@
 // 钉在唯一的读盘口上：每一次 `loadConfig()` 都拿盘上的顶层键去对 [`KNOWN_CONFIG_KEYS`]，对不上的记下来，
 // 由 `settings/unknown-keys-notice.ts` 画成一条**常驻**提示条（`INVARIANTS §12`：
 // 状态性警告不许只活在 hover / 日志里）。
+import type { ConfigPatched } from "./generated/ConfigPatched";
 import { commands } from "./ipc/commands";
 import type { ConfigEdit } from "./generated/ConfigEdit";
 
@@ -141,8 +142,8 @@ function enqueue<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径。 */
-export function patchConfig(edits: readonly ConfigEdit[]): Promise<void> {
+/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径；回话里是壳这一趟替界面盖上的那几格（指纹记于哪一天）。 */
+export function patchConfig(edits: readonly ConfigEdit[]): Promise<ConfigPatched> {
   const copy = [...edits];
   return enqueue(() => commands.patch_config({ edits: copy }));
 }

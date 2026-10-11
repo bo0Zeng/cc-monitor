@@ -510,6 +510,15 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ]);
   });
 
+  it("★ 手动「记录」指纹 ⇒ 卡上当场就是壳盖的那一天（照补丁口的回话，不另读盘、不自己取今天）", async () => {
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const card = (sec as unknown as { cards: { onSaveFingerprint(fp: string): Promise<void>; element: HTMLElement }[] }).cards[0]!;
+    await card.onSaveFingerprint("SHA256:abcdefghijklmnop");
+    for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
+    const fp = document.querySelector<HTMLElement>(".machine-fp") ?? sec.element.querySelector<HTMLElement>(".machine-fp");
+    expect(fp?.textContent).toBe(copyText("machineCard.fp.line", { fp: "SHA256:abcd…op", date: "03-04" }));
+  });
+
   // ── Phase G：页 id 从「每次现算」改成「创建时定死」——两条实测复现的缺陷 ──
   //
   // 这两条在修之前**各自都有绿测试**（改名一条、删除一条），只是从没人把它们串起来

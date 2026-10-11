@@ -752,3 +752,48 @@ fn the_pinned_day_is_stamped_when_the_fingerprint_is_written() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 补丁口的回话带上这一趟盖好的「记于哪一天」（按那台的 origin）：设置页刚点完「记录」，卡上当场照它显示，不另去读盘、不自己取今天。
+#[test]
+fn the_patch_reply_carries_the_days_it_stamped() {
+    let dir = tmpdir("pinned-reply");
+    let file = dir.join("config.json");
+    std::fs::write(
+        &file,
+        json!({"remote": {"hosts": [{"label": "box", "host": "h", "user": "u"}]}}).to_string(),
+    )
+    .unwrap();
+    let cell = |field: &str, v: Value| ConfigEdit::SetIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: "box".into(),
+        }],
+        field: field.into(),
+        value: v,
+        if_empty: false,
+    };
+    let today = crate::config::pinned_day(std::time::SystemTime::now());
+    let (_, pinned) =
+        patch_config_stamping(&file, &[cell("hostKeyFingerprint", json!("SHA256:aa"))]).unwrap();
+    assert_eq!(
+        pinned,
+        vec![PinnedDay {
+            origin: "box".into(),
+            day: today
+        }]
+    );
+    let (_, pinned) = patch_config_stamping(&file, &[cell("jump", json!("j"))]).unwrap();
+    assert!(pinned.is_empty(), "没动指纹 ⇒ 回话里没有");
+    let (_, pinned) =
+        patch_config_stamping(&file, &[cell("hostKeyFingerprint", json!(""))]).unwrap();
+    assert_eq!(
+        pinned,
+        vec![PinnedDay {
+            origin: "box".into(),
+            day: String::new()
+        }],
+        "清空 ⇒ 日子清空也说"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

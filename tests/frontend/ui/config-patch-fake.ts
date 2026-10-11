@@ -106,6 +106,30 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
   return JSON.stringify(obj);
 }
 
+/** 替身盖的「指纹记于哪一天」（壳 `config.rs::stamp_pinned_day` 盖写的那一天；替身用一个定死的日子）。 */
+export const FAKE_PINNED_DAY = "2026-03-04";
+
+/**
+ * 同壳的补丁口：写进了指纹（改那一格 · 新增一台带指纹）⇒ 那台的 `hostKeyPinnedAt` 跟着盖上（指纹清空 ⇒ 清空），回话里说盖成了什么。
+ * 回 [补上盖日子那几条之后的补丁, 回话]。
+ */
+export function withPinnedDays(edits: readonly Edit[]): [Edit[], { pinned: { origin: string; day: string }[] }] {
+  const out: Edit[] = [];
+  const pinned: { origin: string; day: string }[] = [];
+  const hosts = (p: string[]) => p.length === 2 && p[0] === "remote" && p[1] === "hosts";
+  for (const e of edits) {
+    out.push(e);
+    const fp = e.op === "setin" && hosts(e.path) && e.field === "hostKeyFingerprint" ? e.value : e.op === "insertin" && hosts(e.path) ? (e.value as Record<string, unknown>).hostKeyFingerprint : undefined;
+    if (fp === undefined || !("where" in e)) continue;
+    const given = typeof fp === "string" && fp.trim() !== "";
+    if (!given && e.op === "insertin") continue;
+    const day = given ? FAKE_PINNED_DAY : "";
+    out.push({ op: "setin", path: e.path, where: e.where, field: "hostKeyPinnedAt", value: day, ifEmpty: false });
+    pinned.push({ origin: e.where[0]!.equals, day });
+  }
+  return [out, { pinned }];
+}
+
 /**
  * 一块假盘 ＋ 它的两条命令。`patches` 记下每一次 `patch_config` 收到的补丁（判「写者只交自己的键」用）。
  * `saved` 是每次写完之后的整份（给「写完盘上是什么」那一类旧断言用）。
@@ -124,10 +148,12 @@ export function makeFakeConfigDisk(initial: Record<string, unknown> = {}) {
       return JSON.parse(disk.text) as Record<string, unknown>;
     },
     load_config: async (): Promise<Record<string, unknown>> => JSON.parse(disk.text),
-    patch_config: async ({ edits }: { edits: Edit[] }): Promise<void> => {
+    patch_config: async ({ edits }: { edits: Edit[] }): Promise<{ pinned: { origin: string; day: string }[] }> => {
       disk.patches.push(edits);
-      disk.text = applyConfigEdits(disk.text, edits);
+      const [all, reply] = withPinnedDays(edits);
+      disk.text = applyConfigEdits(disk.text, all);
       disk.saved.push(JSON.parse(disk.text) as Record<string, unknown>);
+      return reply;
     },
   };
   return disk;
@@ -151,14 +177,16 @@ export async function mockedConfigModule(
   importOriginal: <T>() => Promise<T>,
 ): Promise<Record<string, unknown>> {
   const actual = await importOriginal<Record<string, unknown>>();
-  const patchConfig = async (edits: readonly Edit[]): Promise<void> => {
+  const patchConfig = async (edits: readonly Edit[]): Promise<{ pinned: { origin: string; day: string }[] }> => {
     fakeCfg.patches([...edits]);
     const base = ((await fakeCfg.load()) ?? {}) as Record<string, unknown>;
-    const doc = JSON.parse(applyConfigEdits(JSON.stringify(base), edits)) as Record<string, unknown>;
+    const [all, reply] = withPinnedDays(edits);
+    const doc = JSON.parse(applyConfigEdits(JSON.stringify(base), all)) as Record<string, unknown>;
     // 写完之后再读，读到的是写完的那份（真盘就是这样）。从前旧测试靠的是生产代码**原地改了**
     // `loadConfig` 摆出来的那个对象 —— 那是替身的巧合，不是盘的语义。
     fakeCfg.load.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
     fakeCfg.saved(doc);
+    return reply;
   };
   return { ...actual, loadConfig: fakeCfg.load, patchConfig };
 }

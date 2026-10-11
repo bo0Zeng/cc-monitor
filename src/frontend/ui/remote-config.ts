@@ -1,4 +1,5 @@
 // 远端配置数据层（纯数据，无 DOM）：config.json `remote` 段的类型 ＋ 读写 ＋ 反查 / 筛选纯函数。
+import type { ConfigPatched } from "./generated/ConfigPatched";
 import { loadConfig, patchConfig, type ConfigEdit } from "./config";
 import { commands } from "./ipc/commands";
 import type { MachineFault } from "./generated/MachineFault";
@@ -241,9 +242,9 @@ export interface RemoteHostsPatch {
  */
 export async function patchRemoteConfig(
   patch: RemoteHostsPatch,
-): Promise<void> {
+): Promise<ConfigPatched> {
   const edits = remoteHostsEdits(patch);
-  if (edits.length > 0) await patchConfig(edits);
+  return edits.length > 0 ? await patchConfig(edits) : { pinned: [] };
 }
 
 /**
