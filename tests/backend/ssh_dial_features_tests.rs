@@ -250,7 +250,7 @@ async fn open(
     let mut rd = BufReader::new(down_r);
     loop {
         let mut line = String::new();
-        let n = tokio::time::timeout(std::time::Duration::from_secs(20), rd.read_line(&mut line))
+        let n = tokio::time::timeout(guard_core::wall::CEILING, rd.read_line(&mut line))
             .await
             .expect("等 ack 超时")
             .expect("读 ack");
@@ -266,7 +266,7 @@ async fn open(
 async fn read_until(rd: &mut BufReader<tokio::io::DuplexStream>, want: &str) -> String {
     let mut got = Vec::new();
     let mut buf = [0u8; 256];
-    let deadline = std::time::Duration::from_secs(20);
+    let deadline = guard_core::wall::CEILING;
     while !String::from_utf8_lossy(&got).contains(want) {
         let n = tokio::time::timeout(deadline, rd.read(&mut buf))
             .await
@@ -540,14 +540,11 @@ async fn a_held_connection_is_reused_and_its_link_ends_when_the_peer_goes() {
             .await;
     }
     let mut rest = Vec::new();
-    let n = tokio::time::timeout(
-        std::time::Duration::from_secs(20),
-        held.read_to_end(&mut rest),
-    )
-    .await
-    .expect("服务端断开之后握着的链路一直没收工");
+    let n = tokio::time::timeout(guard_core::wall::CEILING, held.read_to_end(&mut rest))
+        .await
+        .expect("服务端断开之后握着的链路一直没收工");
     assert!(n.is_ok());
-    tokio::time::timeout(std::time::Duration::from_secs(5), run)
+    tokio::time::timeout(guard_core::wall::CEILING, run)
         .await
         .expect("那一趟没收场")
         .unwrap();

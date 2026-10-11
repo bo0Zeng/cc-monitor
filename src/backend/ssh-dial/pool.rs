@@ -136,7 +136,12 @@ impl Heard {
     /// 等这条连接没了（已经没了 ⇒ 当场回）。
     pub async fn gone(&self) {
         let mut rx = self.gone.subscribe();
-        let _ = rx.wait_for(|g| *g).await;
+        // 发端住本结构里、活得比这一问长 ⇒ `changed` 回错（发端没了）只会在进程收尾时出现，那时也算没了。
+        while !*rx.borrow_and_update() {
+            if rx.changed().await.is_err() {
+                return;
+            }
+        }
     }
 }
 
