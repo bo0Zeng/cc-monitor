@@ -221,6 +221,24 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.ask.title.approved",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.ask.title.kept",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.ask.title.waiting",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.known",
           "type": "bool"

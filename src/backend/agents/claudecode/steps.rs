@@ -178,7 +178,10 @@ pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
         }
         "ExitPlanMode" => text(input, "plan")
             .filter(|p| !p.trim().is_empty())
-            .map(|text| StepAsk::Plan { text }),
+            .map(|text| StepAsk::Plan {
+                text,
+                title: crate::agents::PlanTitle::written(),
+            }),
         _ => None,
     }
 }

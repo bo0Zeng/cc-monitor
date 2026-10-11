@@ -100,17 +100,32 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
     expect(el.querySelector(".block-ask")?.textContent).toContain("改哪一处");
   });
 
-  it("★ 答了之后（B7）：标题换「提问」/「计划」、底行写后端读出的结果（已选「…」· 已批准 · 未批准），被选项高亮；不印英文原句", () => {
+  const plan = () => {
+    const el = buildInteractiveCard({ kind: "plan", text: "甲", title: { waiting: "w", approved: "a", kept: "k" } }, opts);
+    settleInteractive(el, { ok: true, answer: { kind: "approved" }, text: "" });
+    return el;
+  };
+  it("★ 答了之后（B7）：提问卡标题换「提问」、底行写后端读出的结果（已选「…」· 已批准 · 未批准），被选项高亮；不印英文原句", () => {
     const ask = buildInteractiveCard(asked("选哪个方案", ["甲案", "乙案"]), opts);
     settleInteractive(ask, { ok: true, answer: { kind: "picked", options: ["乙案"] }, text: copyText("interactive.done.picked", { option: "乙案" }) });
     expect(ask.querySelector(".block-ask-title")?.textContent).toBe(copyText("interactive.ask.done"));
     expect(ask.querySelector(".block-interactive-done")?.textContent).toBe(copyText("interactive.done.picked", { option: "乙案" }));
     expect([...ask.querySelectorAll(".ask-option.is-chosen")].map((li) => (li as HTMLElement).dataset.optionLabel)).toEqual(["乙案"]);
-    const plan = buildInteractiveCard({ kind: "plan", text: "甲" }, opts);
-    settleInteractive(plan, { ok: true, answer: { kind: "approved" }, text: copyText("interactive.done.approved") });
-    expect([plan.querySelector(".block-plan-title")?.textContent, plan.querySelector(".block-interactive-done")?.textContent]).toEqual([copyText("interactive.plan.done"), copyText("interactive.done.approved")]);
-    settleInteractive(plan, { ok: false, rejected: true, text: "" });
-    expect(plan.querySelector(".block-interactive-done")?.textContent).toBe(copyText("interactive.done.rejected"));
-    expect(plan.textContent).not.toMatch(/User has/);
+    expect(plan().textContent).not.toMatch(/User has/);
+  });
+
+  it("★ 计划卡的标题照核心写的那一句（状态格打头）：等批准 ⇒ 批了换「已批准」那一句 · 没批换「继续规划」那一句；界面不写一个字", () => {
+    const title = { waiting: "核心·等批准 · 计划", approved: "核心·已批准 · 计划", kept: "核心·未批准 · 继续规划" };
+    const card = () => buildInteractiveCard({ kind: "plan", text: "甲", title }, opts);
+    const t = (el: HTMLElement) => el.querySelector(".block-plan-title")?.textContent;
+    const a = card();
+    expect(t(a), "还没答").toBe(title.waiting);
+    settleInteractive(a, { ok: true, answer: { kind: "approved" }, text: copyText("interactive.done.approved") });
+    expect(t(a), "批了").toBe(title.approved);
+    expect(a.querySelector(".block-interactive-done"), "标题已经说了，不另起底行").toBeNull();
+    const k = card();
+    settleInteractive(k, { ok: false, rejected: true, text: "" });
+    expect(t(k), "没批 ⇒ 继续规划").toBe(title.kept);
+    expect(k.querySelector(".block-interactive-done")).toBeNull();
   });
 });

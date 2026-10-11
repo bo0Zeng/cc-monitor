@@ -736,8 +736,37 @@ pub struct ToolStep {
 pub enum StepAsk {
     /// 在问人：一道或几道题，每道题几个选项。
     Questions { questions: Vec<AskQuestion> },
-    /// 交一份计划等人批（正文是 Markdown 原文）。
-    Plan { text: String },
+    /// 交一份计划等人批（正文是 Markdown 原文）＋ 卡片标题那三态写好的字。
+    Plan { text: String, title: PlanTitle },
+}
+
+/// 计划卡的标题（[`StepAsk::Plan`]）：三态都由核心写好、状态格打头（同钉条第一行「等批准 · 计划」）；
+/// 界面按这一步的结果挑一句照抄（还没结果 ⇒ `waiting`；批了 ⇒ `approved`；没批 ⇒ `kept`），不另写字。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PlanTitle {
+    /// 等着批。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub waiting: crate::common::cells::Words,
+    /// 批了。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub approved: crate::common::cells::Words,
+    /// 没批（接着规划）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub kept: crate::common::cells::Words,
+}
+
+impl PlanTitle {
+    /// 那三句（唯一一处）。
+    pub(crate) fn written() -> Self {
+        use crate::common::cells::Words;
+        Self {
+            waiting: Words(copy_core::copy_text("needs.bar.plan", &[])),
+            approved: Words(copy_core::copy_text("interactive.plan.approved", &[])),
+            kept: Words(copy_core::copy_text("interactive.plan.kept", &[])),
+        }
+    }
 }
 
 /// 一道题（[`StepAsk::Questions`]）。

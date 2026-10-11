@@ -376,8 +376,28 @@ fn questions_and_plans_come_out_as_their_own_cell() {
     assert_eq!(
         p.ask,
         Some(crate::agents::StepAsk::Plan {
-            text: "## 计划\n1. 先做甲".into()
+            text: "## 计划\n1. 先做甲".into(),
+            title: crate::agents::PlanTitle::written(),
         })
+    );
+    // 计划卡的标题三态都由核心写好（状态格打头，同钉条第一行「等批准 · 计划」）；界面照抄、不另写字。
+    let t = crate::agents::PlanTitle::written();
+    assert_eq!(
+        t.waiting.0,
+        copy_core::copy_text("needs.bar.plan", &[]),
+        "等着批：与钉条第一行同一句"
+    );
+    assert!(
+        t.approved
+            .0
+            .starts_with(&copy_core::copy_text("interactive.done.approved", &[])),
+        "批了：「已批准」打头"
+    );
+    assert!(
+        t.kept
+            .0
+            .starts_with(&copy_core::copy_text("interactive.done.rejected", &[])),
+        "没批：「未批准」打头"
     );
     // 形状不对 ⇒ 没有这一格（界面退成普通工具卡），别的工具也没有
     assert_eq!(

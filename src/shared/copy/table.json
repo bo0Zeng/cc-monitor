@@ -3480,10 +3480,16 @@
       "zh": "提问",
       "args": []
     },
-    "interactive.plan.done": {
+    "interactive.plan.approved": {
       "kind": "title",
       "role": "标题",
-      "zh": "计划",
+      "zh": "已批准 · 计划",
+      "args": []
+    },
+    "interactive.plan.kept": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未批准 · 继续规划",
       "args": []
     },
     "interactive.done.approved": {
@@ -3502,12 +3508,6 @@
       "kind": "body",
       "role": "toast",
       "zh": "未批准",
-      "args": []
-    },
-    "interactive.plan.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "计划 · 等批准",
       "args": []
     },
     "interactive.ask.multi": {

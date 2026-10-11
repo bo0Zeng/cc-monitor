@@ -1005,7 +1005,10 @@ mod specimens {
                             note: some("n"),
                             known: true,
                             text: Some(Words(s("t"))),
-                            ask: Some(StepAsk::Plan { text: s("p") }),
+                            ask: Some(StepAsk::Plan {
+                                text: s("p"),
+                                title: crate::agents::PlanTitle::written(),
+                            }),
                         },
                     ),
                 ]
