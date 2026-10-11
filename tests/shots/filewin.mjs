@@ -42,6 +42,8 @@ export const FILEWIN_SCENES = [
   { id: "filewin-plan-menu", scene: "plan-menu", title: "文件窗口 · 右键 · 在计划里看", desc: "main.rs 上右键（稿 06 第 3 张）：删除之前多一项「在计划里看 · 下单入口」；不归哪一格的文件这一项不出" },
   { id: "filewin-view", scene: "view", title: "文件窗口 · 图片查看页", desc: "docs 里回车 architecture.png ⇒ 同一栏开一个查看页（标签图片图标 ＋ 名字）：头条面包屑 ·「‹ 1 / 2 ›」· 适应窗口（亮）· 原尺寸 · − 百分比 + · 下载；画面里整张放进来、透明处棋盘格；状态栏「1600 × 1000 · 大小 · 时间」（稿 ⑬ 26）" },
   { id: "filewin-view-menu", scene: "view-menu", title: "文件窗口 · 右键查看 ＋ 预览头查看", desc: "docs 里选中 architecture.png、右键：第一项「查看」（图片不给「编辑」）；预览头上「查看」「下载」，预览里摆的是与查看页共用的那一份（稿 ⑬ 29）" },
+  { id: "filewin-multi-menu", scene: "multi-menu", title: "文件窗口 · 多选 ＋ 右键菜单", desc: "Ctrl 点选 docs · main.rs · release.tar.gz、在压缩包上右键（稿 02）：多选那一种只给「算大小」「改权限…」｜「删除 3 项…」（红、带 Delete）；每一项图标 ＋ 字 ＋ 右端快捷键，不画框。稿上的「下载 3 项」「复制到另一台…」「复制到另一栏」多选还做不了，没有" },
+  { id: "filewin-blank-menu", scene: "blank-menu", title: "文件窗口 · 空白处右键", desc: "列表最后一行下面右键：选中清掉，菜单对这个目录说话 ——「文件夹」（Ctrl+Shift+N）·「空文件」·「上传」（Ctrl+U）｜「终端」（稿里没画，照命令栏「这个目录」那一组）" },
   { id: "filewin-focus", scene: "focus", title: "文件窗口 · 键盘焦点环", desc: "按 Tab 走到搜索框：2px 强调色外环（鼠标点出来的不画）" },
 ].map((s) => ({ dir: "文件窗口", width: 1280, height: 800, ...s }));
 

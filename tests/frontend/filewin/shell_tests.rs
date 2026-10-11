@@ -1483,7 +1483,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 /// ⚠ 买不到：真机上鼠标点得到（本机无图形会话，喂的是合成事件）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
-    use crate::writeops::DELETE_LABEL;
+    let delete_label = crate::select::Item::Act(Action::Delete).label(1, None);
     let jsonl = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("e2e-fence")),
@@ -1543,12 +1543,12 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
     let _ = paint(&mut w, 0.3, vec![right(true), right(false)]);
     assert!(w.menu().is_some(), "右键那一行没摆出菜单");
     let painted = paint(&mut w, 0.4, Vec::new());
-    let items = crate::copy::testing::rects_of(&painted, DELETE_LABEL.as_str());
+    let items = crate::copy::testing::rects_of(&painted, delete_label.as_str());
     assert_eq!(
         items.len(),
         1,
         "菜单上没有「{}」：{painted:?}",
-        DELETE_LABEL.as_str()
+        delete_label.as_str()
     );
     let at = items[0].center();
     let _ = paint(&mut w, 0.5, vec![egui::Event::PointerMoved(at)]);
@@ -2851,8 +2851,8 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     };
     *w.listing.rows.lock().unwrap() = vec![file];
     w.apply_intent(Intent::SelectAll, 0.0, None);
-    // 算大小。
-    assert!(w.perform(Action::Size, None), "{:?}", w.key_notice());
+    // 算大小（菜单上算大小只给目录与多选；这里看的是寻址按字节，直接走那一口）。
+    assert!(w.start_sizes(&[0], None), "{:?}", w.key_notice());
     wait_for(&wired, "files-size", 1).await;
     assert_eq!(
         last_args(&wired, "files-size")["path"],

@@ -60,6 +60,8 @@ pub struct RenderTally {
     pub picked_click: Option<(usize, egui::Modifiers)>,
     /// 🔴这一帧哪一行被**右键**点了（`None` = 没有）。菜单摆在哪儿由窗口读指针位置。
     pub menu_clicked: Option<usize>,
+    /// 🔴这一帧列表的**空白处**（最后一行下面）被右键点了 ⇒ 窗口摆对这个目录的菜单。
+    pub menu_blank: bool,
     /// 这一帧哪一行被**拖起**了（带出「从哪一行拖起」）。
     pub drag_started: Option<usize>,
     /// 🔴这一帧被画成「**选中**」的那几行（下标，按画的顺序；只含真画出来的那几行）。
@@ -671,7 +673,7 @@ pub fn show_file_rows_with_tail(
         }
         let row_h = metrics(ui.ctx()).row_h;
         let n = rows.len() + usize::from(tail.is_some());
-        area.show_rows(ui, row_h, n, |ui, range| {
+        let out = area.show_rows(ui, row_h, n, |ui, range| {
             tally.first_row = range.start;
             tally.last_row = range.end.min(rows.len());
             for i in range {
@@ -723,6 +725,21 @@ pub fn show_file_rows_with_tail(
                 }
             }
         });
+        // 空白处（列表区里、哪一行都没落上）右键 ⇒ 对这个目录的菜单。
+        let below = egui::Rect::from_min_max(
+            egui::pos2(
+                out.inner_rect.left(),
+                out.inner_rect.top() + out.content_size.y,
+            ),
+            out.inner_rect.max,
+        );
+        if tally.menu_clicked.is_none()
+            && below.height() > 0.0
+            && ui.rect_contains_pointer(below)
+            && ui.input(|i| i.pointer.secondary_clicked())
+        {
+            tally.menu_blank = true;
+        }
     });
 }
 

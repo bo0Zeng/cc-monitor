@@ -8,6 +8,8 @@ use copy_core::copy_text;
 use egui_phosphor::regular as ph;
 use std::sync::{Arc, Mutex};
 
+use super::kit;
+use super::select::Item;
 use super::shell::FileWindow;
 use super::source::breadcrumbs;
 use super::theme::{bar_frame, metrics, palette};
@@ -99,24 +101,6 @@ const PICK_MORE: [super::select::Action; 7] = [
     super::select::Action::Size,
     super::select::Action::Extract,
 ];
-
-fn pick_icon(a: super::select::Action) -> &'static str {
-    use super::select::Action as A;
-    match a {
-        A::Download => ph::DOWNLOAD_SIMPLE,
-        A::CrossCopy => ph::SWAP,
-        A::Rename => ph::PENCIL_SIMPLE,
-        A::Delete => ph::TRASH,
-        A::Edit => ph::NOTE_PENCIL,
-        A::View => ph::EYE,
-        A::Copy => ph::COPY_SIMPLE,
-        A::Chmod => ph::LOCK_KEY,
-        A::Properties => ph::INFO,
-        A::Size => ph::RULER,
-        A::Extract => ph::FILE_ZIP,
-        A::Open => ph::FOLDER_OPEN,
-    }
-}
 
 /// 地址栏里开头收起几段：从当前那一级往前数，放得下几段摆几段（当前那一级总摆着，太长自己截成「…」）。
 /// 回 `(收起几段, 摆不摆开头那个「…」)`：连「…」都摆不下时只摆当前那一级。
@@ -315,19 +299,22 @@ impl FileWindow {
                             ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
                             // 收起的那几级：「…」是一个下拉，点开看得到、点得进（有损目录里只看不点）。
                             let hidden: Vec<(String, String)> = crumbs[..skip].to_vec();
-                            super::kit::menu(
+                            let entries: Vec<kit::Entry> = hidden
+                                .iter()
+                                .map(|(seg, _)| {
+                                    kit::Entry::Row(
+                                        kit::MenuRow::new(ph::FOLDER_SIMPLE, seg.clone())
+                                            .blocked(lossy.then(String::new)),
+                                    )
+                                })
+                                .collect();
+                            if let (_, Some(k)) = kit::menu(
                                 ui,
                                 egui::RichText::new(ph::DOTS_THREE).color(p.text2),
-                                |ui| {
-                                    for (seg, full) in hidden {
-                                        if ui.add_enabled(!lossy, egui::Button::new(seg)).clicked()
-                                        {
-                                            nav = Some(Nav::Go(full));
-                                            ui.close();
-                                        }
-                                    }
-                                },
-                            );
+                                &entries,
+                            ) {
+                                nav = Some(Nav::Go(hidden[k].1.clone()));
+                            }
                         }
                         for (seg, full) in crumbs.into_iter().skip(skip) {
                             ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
@@ -416,10 +403,58 @@ impl FileWindow {
         self.unavailable_here(a).or_else(|| self.offline_refusal(a))
     }
 
+    /// 命令栏「⋯」里「选中的」那几件：照菜单那张表（这一种选中的那几组，去掉 `skip` 那几件），每一项灰不灰问 [`Self::command_blocked`]。
+    /// 没选中 ⇒ 那几件照列、全灰（悬停「先选中一项」），位置不跳。
+    fn picked_menu_groups(
+        &self,
+        ctx: &egui::Context,
+        skip: &[super::select::Action],
+    ) -> Vec<Vec<(super::kit::MenuRow, Cmd)>> {
+        let kind = {
+            let rows = self.listing.rows.lock().unwrap();
+            let idx = self.selection().picked_indices(&rows);
+            let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
+            super::select::picked_kind(&picked)
+        };
+        let n = self.selection().len().max(1);
+        let groups: Vec<Vec<super::select::Action>> = if kind == super::select::Picked::Here {
+            vec![PICK_SHOWN.into_iter().chain(PICK_MORE).collect()]
+        } else {
+            super::select::menu_groups(kind, false)
+                .into_iter()
+                .map(|g| {
+                    g.into_iter()
+                        .filter_map(|it| match it {
+                            Item::Act(a) => Some(a),
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        groups
+            .into_iter()
+            .map(|g| {
+                g.into_iter()
+                    .filter(|a| !skip.contains(a))
+                    .map(|a| {
+                        let it = Item::Act(a);
+                        (
+                            super::kit::MenuRow::new(it.icon(), it.label(n, None))
+                                .key(it.shortcut().map(|k| ctx.format_shortcut(&k)))
+                                .danger(it.danger())
+                                .blocked(self.command_blocked(a)),
+                            Cmd::Act(a),
+                        )
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
     /// 🔴 **命令栏**：左 侧栏开关 ｜ 这个目录（新建 ▾ · 上传 · 终端）｜ 选中的（下载 · 复制到另一台 · 改名 · 删除 · ⋯）｜ 右 看法（显示隐藏文件 · 双栏 · 预览）。
     /// 没选中时「选中的」那几颗灰着、悬停说原因，位置不跳。宽度档：中档「选中的」与「看法」只剩图标；窄档只留「新建 ▾」「上传」＋「⋯」。
     pub fn command_bar_ui(&mut self, ui: &mut egui::Ui, view: ViewState) -> Option<Cmd> {
-        use super::kit;
         let tier = Tier::of(ui.ctx().content_rect().width());
         let mut hit = None;
         let n = self.selection().len();
@@ -436,19 +471,24 @@ impl FileWindow {
             let new_why = self.offline_cmd(Cmd::Mkdir);
             let new_label = NEW_LABEL.clone();
             let r = ui.add_enabled_ui(new_why.is_none(), |ui| {
-                super::kit::menu(ui, (ph::PLUS, new_label.as_str(), ph::CARET_DOWN), |ui| {
-                    if ui
-                        .button((ph::FOLDER_PLUS, NEW_FOLDER_ITEM.as_str()))
-                        .clicked()
-                    {
-                        hit = Some(Cmd::Mkdir);
-                        ui.close();
-                    }
-                    if ui.button((ph::FILE_PLUS, NEW_FILE_ITEM.as_str())).clicked() {
-                        hit = Some(Cmd::NewFile);
-                        ui.close();
-                    }
-                })
+                let entries = [
+                    kit::Entry::Row(
+                        kit::MenuRow::new(Item::Mkdir.icon(), NEW_FOLDER_ITEM.as_str())
+                            .key(Item::Mkdir.shortcut().map(|k| ui.ctx().format_shortcut(&k))),
+                    ),
+                    kit::Entry::Row(kit::MenuRow::new(
+                        Item::NewFile.icon(),
+                        NEW_FILE_ITEM.as_str(),
+                    )),
+                ];
+                let (r, k) =
+                    kit::menu(ui, (ph::PLUS, new_label.as_str(), ph::CARET_DOWN), &entries);
+                match k {
+                    Some(0) => hit = Some(Cmd::Mkdir),
+                    Some(1) => hit = Some(Cmd::NewFile),
+                    _ => {}
+                }
+                r
             });
             if let Some(w) = &new_why {
                 r.inner.on_disabled_hover_text(w);
@@ -468,32 +508,15 @@ impl FileWindow {
             }
             let term_why = self.offline_cmd(Cmd::Term);
             if tier == Tier::Narrow {
-                super::kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), |ui| {
-                    let r = ui.add_enabled(
-                        term_why.is_none(),
-                        egui::Button::new(TERMINAL_LABEL.as_str()),
-                    );
-                    let r = match &term_why {
-                        Some(w) => r.on_disabled_hover_text(w),
-                        None => r,
-                    };
-                    if r.clicked() {
-                        hit = Some(Cmd::Term);
-                    }
-                    ui.separator();
-                    for a in PICK_SHOWN.into_iter().chain(PICK_MORE) {
-                        let why = self.command_blocked(a);
-                        let r = ui.add_enabled(why.is_none(), egui::Button::new(sel_label(a)));
-                        let r = match &why {
-                            Some(w) => r.on_disabled_hover_text(w),
-                            None => r,
-                        };
-                        if r.clicked() {
-                            hit = Some(Cmd::Act(a));
-                        }
-                    }
-                    ui.separator();
-                    for (c, label, on) in [
+                // 窄档：终端 ｜ 选中的那几件（照菜单那张表）｜ 看法那三个开关，全收进这一颗「⋯」。
+                let mut groups: Vec<Vec<(kit::MenuRow, Cmd)>> = vec![vec![(
+                    kit::MenuRow::new(Item::Term.icon(), Item::Term.label(1, None))
+                        .blocked(term_why.clone()),
+                    Cmd::Term,
+                )]];
+                groups.extend(self.picked_menu_groups(ui.ctx(), &[]));
+                groups.push(
+                    [
                         (Cmd::Hidden, HIDDEN_LABEL.as_str(), self.shows_hidden()),
                         (Cmd::Split, super::workspace::SPLIT_LABEL.as_str(), view.two),
                         (
@@ -501,13 +524,22 @@ impl FileWindow {
                             super::workspace::PREVIEW_LABEL.as_str(),
                             view.preview,
                         ),
-                    ] {
-                        if ui.add(egui::Button::selectable(on, label)).clicked() {
-                            hit = Some(c);
-                        }
-                    }
-                })
-                .on_hover_text(MORE_LABEL.as_str());
+                    ]
+                    .into_iter()
+                    .map(|(c, label, on)| (kit::MenuRow::new("", label).checked(on), c))
+                    .collect(),
+                );
+                let (cmds, rows): (Vec<Vec<Cmd>>, Vec<Vec<kit::MenuRow>>) = groups
+                    .into_iter()
+                    .map(|g| g.into_iter().map(|(r, c)| (c, r)).unzip())
+                    .unzip();
+                let (entries, at) = kit::grouped(rows);
+                let (r, k) =
+                    kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), &entries);
+                r.on_hover_text(MORE_LABEL.as_str());
+                if let Some((g, i)) = k.and_then(|k| at.get(k).copied()) {
+                    hit = Some(cmds[g][i]);
+                }
                 return;
             }
             let r = kit::ghost(
@@ -533,7 +565,7 @@ impl FileWindow {
                 let label = sel_label(a);
                 let r = kit::ghost(
                     ui,
-                    pick_icon(a),
+                    a.icon(),
                     if icons_only { "" } else { &label },
                     why.is_none(),
                     why.as_deref().unwrap_or(""),
@@ -569,24 +601,18 @@ impl FileWindow {
                     hit = Some(Cmd::Across);
                 }
             }
-            super::kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), |ui| {
-                for a in PICK_MORE {
-                    let why = self.command_blocked(a);
-                    let r = ui.add_enabled(
-                        why.is_none(),
-                        egui::Button::new(format!("{} {}", pick_icon(a), sel_label(a))),
-                    );
-                    let r = match &why {
-                        Some(w) => r.on_disabled_hover_text(w),
-                        None => r,
-                    };
-                    if r.clicked() {
-                        hit = Some(Cmd::Act(a));
-                        ui.close();
-                    }
-                }
-            })
-            .on_hover_text(MORE_LABEL.as_str());
+            // 「⋯」：选中的那一种在菜单那张表里、命令栏上没常驻的那几件（分组同右键菜单）。
+            let groups = self.picked_menu_groups(ui.ctx(), &PICK_SHOWN);
+            let (cmds, rows): (Vec<Vec<Cmd>>, Vec<Vec<kit::MenuRow>>) = groups
+                .into_iter()
+                .map(|g| g.into_iter().map(|(r, c)| (c, r)).unzip())
+                .unzip();
+            let (entries, at) = kit::grouped(rows);
+            let (r, k) = kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), &entries);
+            r.on_hover_text(MORE_LABEL.as_str());
+            if let Some((g, i)) = k.and_then(|k| at.get(k).copied()) {
+                hit = Some(cmds[g][i]);
+            }
             // ── 看法（右端）──
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let short = tier != Tier::Wide;

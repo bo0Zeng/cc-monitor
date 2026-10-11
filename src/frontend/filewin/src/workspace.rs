@@ -1529,21 +1529,24 @@ impl Workspace {
                 }
                 if !hidden.is_empty() {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        super::kit::menu(
+                        // 放不下的标签页：全部列出，当前那个打勾（同一种菜单项）。
+                        let entries: Vec<super::kit::Entry> = s
+                            .tabs
+                            .iter()
+                            .enumerate()
+                            .map(|(i, t)| {
+                                super::kit::Entry::Row(
+                                    super::kit::MenuRow::new("", Self::tab_title(&t.pane))
+                                        .checked(i == s.active),
+                                )
+                            })
+                            .collect();
+                        pick = super::kit::menu(
                             ui,
                             egui::RichText::new(egui_phosphor::regular::CARET_DOWN).color(p.text2),
-                            |ui| {
-                                for (i, t) in s.tabs.iter().enumerate() {
-                                    if ui
-                                        .selectable_label(i == s.active, Self::tab_title(&t.pane))
-                                        .clicked()
-                                    {
-                                        pick = Some(i);
-                                        ui.close();
-                                    }
-                                }
-                            },
-                        );
+                            &entries,
+                        )
+                        .1;
                     });
                 }
             },

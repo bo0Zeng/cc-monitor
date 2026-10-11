@@ -232,17 +232,264 @@ pub fn ghost(ui: &mut Ui, icon: &str, label: &str, enabled: bool, why: &str) -> 
     }
 }
 
-/// 幽灵样子的下拉按钮（命令栏「新建 ▾」「⋯」· 地址栏「…」· 范围 ▾）：平时不画框，点开一层菜单。回那颗按钮的 `Response`。
-pub fn menu<'a, R>(
+// ═══════════════════════════════════════════════════════════════════════
+// 菜单（规范 `C12`）：窗口里每一个弹出的菜单都只经这一处画项
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 菜单上的一行（稿 `.mi`）：图标 ＋ 字 ＋ 右端淡色快捷键；悬停一层淡底，不画框。
+///
+/// 🔴 窗口里**菜单项只许这样写**（判据 `kit_tests::menu_items_are_only_drawn_by_the_kit` 扫整个包）：
+/// 菜单的内容是一串 [`Entry`]（数据），不是一个往里塞按钮的闭包 —— 塞不进按钮，也就画不成「一项一颗带框的按钮」。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MenuRow {
+    /// 左边那一格的图标（空 ⇒ 留白，字照样对齐）。
+    pub icon: &'static str,
+    pub label: String,
+    /// 右端那一格（快捷键）；`None` ⇒ 不画。
+    pub key: Option<String>,
+    /// 危险项（删除）：字与图标 `--error-text`。
+    pub danger: bool,
+    /// 做不了 ⇒ 灰、点不动，悬停说这一句（空串 ⇒ 只灰不说）。
+    pub blocked: Option<String>,
+    /// 单选那一种（范围 · 标签页列表 · 开关）：`Some(true)` ⇒ 左格画勾，`Some(false)` ⇒ 左格留白。
+    pub checked: Option<bool>,
+}
+
+impl MenuRow {
+    pub fn new(icon: &'static str, label: impl Into<String>) -> Self {
+        Self {
+            icon,
+            label: label.into(),
+            ..Self::default()
+        }
+    }
+    pub fn key(mut self, key: Option<String>) -> Self {
+        self.key = key;
+        self
+    }
+    pub fn danger(mut self, on: bool) -> Self {
+        self.danger = on;
+        self
+    }
+    pub fn blocked(mut self, why: Option<String>) -> Self {
+        self.blocked = why;
+        self
+    }
+    pub fn checked(mut self, on: bool) -> Self {
+        self.checked = Some(on);
+        self
+    }
+}
+
+/// 菜单里的一格：一项 · 一道分隔线 · 一行只读的说明（「所选项无可用操作」· 详情清单）。
+#[derive(Clone, Debug, PartialEq)]
+pub enum Entry {
+    Row(MenuRow),
+    Sep,
+    Note(String),
+}
+
+/// 一组一组的项 ⇒ 组与组之间一道线（空组跳过）。回 `(各格, 第 k 格是第几组第几项)`。
+pub fn grouped(groups: Vec<Vec<MenuRow>>) -> (Vec<Entry>, Vec<(usize, usize)>) {
+    let mut out = Vec::new();
+    let mut at = Vec::new();
+    for (g, rows) in groups
+        .into_iter()
+        .enumerate()
+        .filter(|(_, r)| !r.is_empty())
+    {
+        if !out.is_empty() {
+            out.push(Entry::Sep);
+            at.push((usize::MAX, usize::MAX));
+        }
+        for (i, r) in rows.into_iter().enumerate() {
+            out.push(Entry::Row(r));
+            at.push((g, i));
+        }
+    }
+    (out, at)
+}
+
+/// 菜单一行的高 · 左右内边距 · 图标格宽 · 图标与字的间距 · 字与快捷键至少隔多宽 · 菜单最窄（稿 `.menu` `.mi`）。
+pub const MENU_ROW_H: f32 = 28.0;
+const MENU_PAD: f32 = 10.0;
+const MENU_ICON_W: f32 = 16.0;
+const MENU_GAP: f32 = 10.0;
+const MENU_KEY_GAP: f32 = 16.0;
+pub const MENU_MIN_W: f32 = 212.0;
+
+/// 在一个已经开着的弹层里画这几格；回这一帧被点的那一格的下标（只回 [`Entry::Row`] 且没被挡的）。
+///
+/// 每一行一样宽（最宽那一行 ＋ 内边距，至少 [`MENU_MIN_W`]）：悬停底色是整条，快捷键贴右端对齐成一列。
+pub fn menu_body(ui: &mut Ui, entries: &[Entry]) -> Option<usize> {
+    let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
+    let body = egui::TextStyle::Body.resolve(ui.style());
+    let small = egui::FontId::proportional(12.0);
+    let width_of = |t: &str, f: &egui::FontId| {
+        ui.fonts_mut(|fs| fs.layout_no_wrap(t.to_string(), f.clone(), p.text).size().x)
+    };
+    let mut w = MENU_MIN_W;
+    for e in entries {
+        let need = match e {
+            Entry::Row(r) => {
+                MENU_PAD * 2.0
+                    + MENU_ICON_W
+                    + MENU_GAP
+                    + width_of(&r.label, &body)
+                    + r.key
+                        .as_ref()
+                        .map_or(0.0, |k| MENU_KEY_GAP + width_of(k, &small))
+            }
+            Entry::Note(t) => MENU_PAD * 2.0 + width_of(t, &body),
+            Entry::Sep => 0.0,
+        };
+        w = w.max(need);
+    }
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let mut hit = None;
+    for (i, e) in entries.iter().enumerate() {
+        match e {
+            Entry::Sep => {
+                let (r, _) = ui.allocate_exact_size(egui::vec2(w, 9.0), egui::Sense::hover());
+                ui.painter().hline(
+                    (r.left() + 6.0)..=(r.right() - 6.0),
+                    r.center().y,
+                    egui::Stroke::new(1.0, p.border_soft),
+                );
+            }
+            Entry::Note(t) => {
+                let (r, _) =
+                    ui.allocate_exact_size(egui::vec2(w, MENU_ROW_H), egui::Sense::hover());
+                ui.painter().text(
+                    egui::pos2(r.left() + MENU_PAD, r.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    t,
+                    body.clone(),
+                    p.text2,
+                );
+            }
+            Entry::Row(row) => {
+                let enabled = row.blocked.is_none();
+                let sense = if enabled {
+                    egui::Sense::click()
+                } else {
+                    egui::Sense::hover()
+                };
+                let (r, resp) = ui.allocate_exact_size(egui::vec2(w, MENU_ROW_H), sense);
+                if enabled && resp.hovered() {
+                    ui.painter().rect_filled(r, m.radius_m, p.hover);
+                }
+                let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.45) };
+                let (text_c, icon_c) = if row.danger {
+                    (p.error_text, p.error_text)
+                } else {
+                    (p.text, p.text2)
+                };
+                let icon = match row.checked {
+                    Some(true) => egui_phosphor::regular::CHECK,
+                    Some(false) => "",
+                    None => row.icon,
+                };
+                let x = r.left() + MENU_PAD;
+                if !icon.is_empty() {
+                    ui.painter().text(
+                        egui::pos2(x + MENU_ICON_W / 2.0, r.center().y),
+                        egui::Align2::CENTER_CENTER,
+                        icon,
+                        body.clone(),
+                        fade(icon_c),
+                    );
+                }
+                ui.painter().text(
+                    egui::pos2(x + MENU_ICON_W + MENU_GAP, r.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    &row.label,
+                    body.clone(),
+                    fade(text_c),
+                );
+                if let Some(k) = &row.key {
+                    ui.painter().text(
+                        egui::pos2(r.right() - MENU_PAD, r.center().y),
+                        egui::Align2::RIGHT_CENTER,
+                        k,
+                        small.clone(),
+                        fade(p.text2),
+                    );
+                }
+                let resp = match &row.blocked {
+                    Some(why) if !why.is_empty() => resp.on_hover_text(why),
+                    _ => resp,
+                };
+                if enabled && resp.clicked() {
+                    hit = Some(i);
+                }
+            }
+        }
+    }
+    hit
+}
+
+/// 幽灵样子的下拉按钮（命令栏「新建 ▾」「⋯」· 地址栏「…」· 范围 ▾ · 标签页 ▾ · 编辑页 ⋯）：平时不画框，点开一层菜单。
+/// 回 `(那颗按钮, 点了第几格)`；点了一格菜单就收。
+pub fn menu<'a>(
     ui: &mut Ui,
     text: impl egui::IntoAtoms<'a>,
-    add: impl FnOnce(&mut Ui) -> R,
-) -> egui::Response {
-    egui::containers::menu::MenuButton::from_button(
+    entries: &[Entry],
+) -> (egui::Response, Option<usize>) {
+    let mut hit = None;
+    let r = egui::containers::menu::MenuButton::from_button(
         egui::Button::new(text).frame_when_inactive(false),
     )
-    .ui(ui, add)
-    .0
+    .ui(ui, |ui| {
+        hit = menu_body(ui, entries);
+        if hit.is_some() {
+            ui.close();
+        }
+    })
+    .0;
+    (r, hit)
+}
+
+/// 右键菜单：摆在 `at`（指针那一刻的位置），`open` 被点别处 / Esc 时置假。回点了第几格（点了一格也收）。
+pub fn context_menu(
+    ui: &Ui,
+    id: egui::Id,
+    at: egui::Pos2,
+    open: &mut bool,
+    entries: &[Entry],
+) -> Option<usize> {
+    let mut hit = None;
+    egui::Popup::new(
+        id,
+        ui.ctx().clone(),
+        egui::PopupAnchor::Position(at),
+        ui.layer_id(),
+    )
+    .kind(egui::PopupKind::Menu)
+    .open_bool(open)
+    .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+    .show(|ui| hit = menu_body(ui, entries));
+    if hit.is_some() {
+        *open = false;
+    }
+    hit
+}
+
+/// 框里的下拉选择格（「复制到」那台机器）：`shown` 是格子里写的；点开是同一种菜单。回点了第几格。
+pub fn select_field(
+    ui: &mut Ui,
+    id: &str,
+    width: f32,
+    shown: String,
+    entries: &[Entry],
+) -> Option<usize> {
+    let mut hit = None;
+    egui::ComboBox::from_id_salt(id)
+        .width(width)
+        .selected_text(shown)
+        .show_ui(ui, |ui| hit = menu_body(ui, entries));
+    hit
 }
 
 /// 标签页（规范 `C5` 下划线式 ＋ 图标 ＋ ×（悬停与当前才显）＋ 6px 忙点）。回 `(点了, 点了 ×)`。

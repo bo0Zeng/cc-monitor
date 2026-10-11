@@ -1313,26 +1313,23 @@ impl SearchBoard {
                 } else {
                     copy_text("rsFilewinFind.scope.under", &[])
                 };
-                super::kit::menu(
+                let entries = [false, true].map(|machine| {
+                    let label = if machine {
+                        copy_text("rsFilewinFind.scope.machine", &[])
+                    } else {
+                        copy_text("rsFilewinFind.scope.under", &[])
+                    };
+                    super::kit::Entry::Row(
+                        super::kit::MenuRow::new("", label).checked(whole == machine),
+                    )
+                });
+                if let (_, Some(k)) = super::kit::menu(
                     ui,
                     format!("{label} {}", egui_phosphor::regular::CARET_DOWN),
-                    |ui| {
-                        if ui
-                            .selectable_label(!whole, copy_text("rsFilewinFind.scope.under", &[]))
-                            .clicked()
-                        {
-                            act = Some(SearchAction::Scope(false));
-                            ui.close();
-                        }
-                        if ui
-                            .selectable_label(whole, copy_text("rsFilewinFind.scope.machine", &[]))
-                            .clicked()
-                        {
-                            act = Some(SearchAction::Scope(true));
-                            ui.close();
-                        }
-                    },
-                );
+                    &entries,
+                ) {
+                    act = Some(SearchAction::Scope(k == 1));
+                }
             } else if self.is_running() {
                 ui.spinner();
             }
