@@ -484,8 +484,9 @@ pub(crate) struct Container {
     /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
-    /// 送进容器那条内层命令的词（不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，载荷由同一串渲出。
-    pub(crate) inner: Vec<String>,
+    /// 送进容器那条内层命令到 `--` 之前的词（入口 ＋ 交给 agent 的那几个；不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，
+    /// 载荷由同一串接上 `--` 与 ccm 自己的参数渲出。
+    pub(crate) inner_head: Vec<String>,
     // ★★ **`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
     //
     // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
@@ -1110,6 +1111,7 @@ pub(crate) fn build_among(
         }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
+        let inner_head = inner.clone();
         inner.push(flag::END.into());
         inner.extend(opts);
         // 🔴 **自检那一趟与 pane 里那一趟是同一串 argv**，只在 ccm 那一半末尾多一个 `--ccm-print`。
@@ -1209,7 +1211,7 @@ pub(crate) fn build_among(
             detach: o.detach,
             payload,
             self_check,
-            inner,
+            inner_head,
             bus,
         }));
     }
@@ -1319,7 +1321,7 @@ pub(crate) fn render_for(plan: &Plan, shell: crate::platform::shell::dialect::Sh
 }
 
 /// **「等于」那一行的短形（唯一一处）**：设置页「敲 xx 等于」那一格照抄，整条脚本另在［复制］里（[`render_for`]）。
-/// tmux 那一形只写建哪个会话 ＋ 里面跑的那条命令（`tmux new-session -d -s 名 … 内层命令`）；直路只写进哪个目录、用哪份账号目录、跑什么
+/// tmux 那一形只写建哪个会话 ＋ 里面跑的是 ccm（`tmux new-session -d -s 名 … ccm [交给 agent 的] -- …`：ccm 自己的参数照稿省成 `…`）；直路只写进哪个目录、用哪份账号目录、跑什么
 /// （环境的清与设、中转、cc-bus 身份那几段不写）；接回 ⇒ 接哪个会话。家目录写成 `~`；只给人看，词不加引号（带空白的才加）。
 pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
     let word = |w: &str| -> String {
@@ -1341,9 +1343,10 @@ pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
             format!("tmux attach -t {}", word(name))
         }
         Plan::Container(c) => format!(
-            "tmux new-session -d -s {} \u{2026} {}",
+            "tmux new-session -d -s {} \u{2026} {} {} \u{2026}",
             word(&c.name),
-            words(&c.inner)
+            words(&c.inner_head),
+            flag::END
         ),
         Plan::Direct(d) => {
             let mut line = String::new();
