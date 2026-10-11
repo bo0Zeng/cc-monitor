@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
@@ -460,8 +462,7 @@ fun HostEditorScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             // 遍历档案，产品名取档案的 `displayName`，不硬写；加一种 agent 这里自然多一项。
             AgentProfile.ALL.forEach { p ->
-                RadioButton(selected = agentProfile.kind == p.kind, onClick = { agentProfile = p })
-                Text(p.displayName, style = MaterialTheme.typography.bodyMedium)
+                ChoiceRow(p.displayName, agentProfile.kind == p.kind) { agentProfile = p }
             }
         }
         // 这一格只给终端屏的「Claude 阅读」找记录用；聊天屏起会话跟随那台核心的默认号，不读它。
@@ -481,10 +482,8 @@ fun HostEditorScreen(
         // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
         Text("远端系统", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = !isWindows, onClick = { isWindows = false })
-            Text("Linux/macOS", style = MaterialTheme.typography.bodyMedium)
-            RadioButton(selected = isWindows, onClick = { isWindows = true })
-            Text("Windows", style = MaterialTheme.typography.bodyMedium)
+            ChoiceRow("Linux/macOS", !isWindows) { isWindows = false }
+            ChoiceRow("Windows", isWindows) { isWindows = true }
         }
         if (isWindows) {
             Text(
@@ -497,10 +496,8 @@ fun HostEditorScreen(
         // 认证方式：钥匙或密码，二选一。
         Text("认证方式", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = !authIsPassword, onClick = { authIsPassword = false })
-            Text("身份（密钥）", style = MaterialTheme.typography.bodyMedium)
-            RadioButton(selected = authIsPassword, onClick = { authIsPassword = true })
-            Text("密码", style = MaterialTheme.typography.bodyMedium)
+            ChoiceRow("身份（密钥）", !authIsPassword) { authIsPassword = false }
+            ChoiceRow("密码", authIsPassword) { authIsPassword = true }
         }
         if (authIsPassword) {
             OutlinedTextField(
@@ -518,13 +515,7 @@ fun HostEditorScreen(
             )
         } else {
             identities.forEach { id ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { authRef = id.id },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = authRef == id.id, onClick = { authRef = id.id })
-                    Text(id.label, style = MaterialTheme.typography.bodyMedium)
-                }
+                ChoiceRow(id.label, authRef == id.id, Modifier.fillMaxWidth()) { authRef = id.id }
             }
         }
 
@@ -582,15 +573,26 @@ private fun ProxyJumpPicker(
     onSelect: (String?) -> Unit,
 ) {
     Text("经跳板机（可选，ssh -J）", style = MaterialTheme.typography.labelMedium)
-    Row(Modifier.fillMaxWidth().clickable { onSelect(null) }, verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected == null, onClick = { onSelect(null) })
-        Text("无（直连）", style = MaterialTheme.typography.bodyMedium)
-    }
+    ChoiceRow("无（直连）", selected == null, Modifier.fillMaxWidth()) { onSelect(null) }
     candidates.forEach { j ->
-        Row(Modifier.fillMaxWidth().clickable { onSelect(j.id) }, verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = selected == j.id, onClick = { onSelect(j.id) })
-            Text("${j.label} (${j.host})", style = MaterialTheme.typography.bodyMedium)
-        }
+        ChoiceRow("${j.label} (${j.host})", selected == j.id, Modifier.fillMaxWidth()) { onSelect(j.id) }
+    }
+}
+
+/** 单选里的一项：整行（圆圈 ＋ 字）都能点，按单选的角色报给无障碍；圆圈只画状态，不自己接点击。 */
+@Composable
+private fun ChoiceRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onSelect),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

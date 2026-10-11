@@ -25403,6 +25403,12 @@
       "zh": "{machine} 上找不到这条会话的记录",
       "args": ["machine"]
     },
+    "mobIdentity.import.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认不出这把私钥 · 要从 BEGIN 那一行贴到 END 那一行 · 带口令的先去掉口令",
+      "args": []
+    },
     "terminal.why.ambiguous": {
       "kind": "body",
       "role": "片段",

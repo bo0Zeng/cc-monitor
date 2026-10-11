@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
+import com.ccmonitor.mobile.core.ui.copy.copyText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,17 +106,19 @@ class IdentityViewModel(
         label: String,
         pem: ByteArray,
     ) = runOp("已导入私钥") {
-        // 从 PEM 派生公钥与指纹。派生失败（带 passphrase/格式不识别）回退空串，身份照样导入：
-        // 私钥仍可用于连接，只是「复制公钥」为空。keyType 保持 "imported"。
-        val derived = PublicKeyDeriver.fromPrivatePem(pem, comment = label.ifBlank { "imported" })
+        // 从 PEM 派生公钥与指纹；派生不出（只贴进了一部分 · 格式认不出 · 带口令）⇒ 当场拒、不存：
+        // 存下来也连不上，而且要到连的那一刻才以「认证方式用尽」的面目出来。keyType 保持 "imported"。
+        val derived =
+            PublicKeyDeriver.fromPrivatePem(pem, comment = label.ifBlank { "imported" })
+                ?: throw UnreadableKey()
         repo.save(
             Identity(
                 id = "import-" + UUID.randomUUID(),
                 label = label.ifBlank { "imported" },
                 keyType = "imported",
                 privateKeyEnc = ByteArray(0),
-                publicKeyOpenSsh = derived?.openSsh ?: "",
-                fingerprintSha256 = derived?.fingerprintSha256 ?: "",
+                publicKeyOpenSsh = derived.openSsh,
+                fingerprintSha256 = derived.fingerprintSha256,
                 createdAt = System.currentTimeMillis(),
             ),
             plainPrivateKey = pem,
@@ -124,3 +127,6 @@ class IdentityViewModel(
 
     fun delete(identity: Identity) = viewModelScope.launch(io) { repo.delete(identity) }
 }
+
+/** 导进来的私钥认不出（[IdentityOp.Failed] 那一句走文案表）。 */
+private class UnreadableKey : Exception(copyText("mobIdentity.import.unreadable"))
