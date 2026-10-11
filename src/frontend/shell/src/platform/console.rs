@@ -229,20 +229,43 @@ fn helper_tab(pid: u32, hwnd: isize) {
     use crate::bind::{TabMiss, TabPick};
     use std::io::Write;
     let marker = crate::bind::front_marker();
+    let until = std::time::Instant::now() + TAB_BUDGET;
     let pick = match super::wt_tabs::WtTabs::open(hwnd) {
         None => TabPick::Miss(TabMiss::NoUia),
         Some(mut tabs) => borrow(pid, || {
-            crate::bind::pick_tab(&mut LentTitle { tabs: &mut tabs }, &marker, 12)
+            crate::bind::pick_tab(
+                &mut LentTitle {
+                    tabs: &mut tabs,
+                    until,
+                },
+                &marker,
+                TAB_READS,
+            )
         })
         .unwrap_or(TabPick::Miss(TabMiss::NoConsole)),
     };
-    let _ = std::io::stdout().write_all(format!("{}\n", tab_line(pick)).as_bytes());
+    let mut out = std::io::stdout();
+    let _ = out.write_all(format!("{}\n", tab_line(pick)).as_bytes());
+    let _ = out.flush();
+    // 答完就退，不等 UI Automation 那几个对象逐个放回：真机上放回要等终端那边，整趟从两百多毫秒拖到一两秒
+    // （标题此时已经写回、控制台已经摘下，进程一退系统替它收）。
+    std::process::exit(0);
 }
+
+/// 小助手切标签页那一件最多读多久（从它起来算；monitor 等它 [`HELPER_TIMEOUT`]，这里先停、先写回标题，免得被掐断时记号留在标题上）。
+#[cfg(windows)]
+const TAB_BUDGET: std::time::Duration = std::time::Duration::from_millis(2000);
+
+/// 挂上记号之后读几次标签名：真机上标签名 50–240 ms 跟上，读一次标签页约 30–200 ms、两次之间等 50 ms ⇒ 六次读到
+/// 半秒到一秒半，读满还没有就是标签名不随程序标题变化（得在 [`TAB_BUDGET`] 之内读满，否则说成读不到标签页）。
+#[cfg(windows)]
+const TAB_READS: usize = 6;
 
 /// 切标签页那一份读法：标签页走 UI Automation，标题走此刻借着的那个控制台（只在 `borrow` 里用）。
 #[cfg(windows)]
 struct LentTitle<'a> {
     tabs: &'a mut super::wt_tabs::WtTabs,
+    until: std::time::Instant,
 }
 
 #[cfg(windows)]
@@ -267,6 +290,9 @@ impl crate::bind::TabReader for LentTitle<'_> {
     }
     fn wait(&mut self) {
         std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    fn time_left(&self) -> bool {
+        std::time::Instant::now() < self.until
     }
 }
 

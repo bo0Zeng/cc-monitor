@@ -511,6 +511,8 @@ pub(crate) trait TabReader {
     fn select(&mut self, i: usize) -> bool;
     /// 两次读之间等一步（生产 50 ms）。
     fn wait(&mut self);
+    /// 这一趟的预算还有没有剩（生产：小助手起来之后 1.5 s）。
+    fn time_left(&self) -> bool;
 }
 
 /// 现铸一个记号标题（`ccm-front-` ＋ 8 位）。
@@ -528,20 +530,27 @@ pub(crate) fn marked_tab(names: &[String], marker: &str) -> Option<usize> {
 
 /// 切到挂着记号的那个标签页：标签页读不到 ⇒ 读不到标签页；至多一个 ⇒ 不用切（不挂记号）；挂上记号（挂不上 ⇒ 读不到控制台），
 /// 再读至多 `tries` 次（标签名跟上控制台标题要几十到两百多毫秒），带记号的那个 ⇒ 选中（选不了 ⇒ 读不到标签页）；
-/// 一直没有 ⇒ 标签名不随程序标题变化。挂上了就一定写回原标题（不论找没找到）。
+/// 读满了也没有 ⇒ 标签名不随程序标题变化；时候到了（读得太慢：真机上刚开的窗口头几次读要几秒）⇒ 读不到标签页，
+/// 挂记号之前时候就到了 ⇒ 不挂。挂上了就一定写回原标题（不论找没找到）。
 pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> TabPick {
     match r.names() {
         None => return TabPick::Miss(TabMiss::NoUia),
         Some(n) if n.len() <= 1 => return TabPick::Single,
+        Some(_) if !r.time_left() => return TabPick::Miss(TabMiss::NoUia),
         Some(_) => {}
     }
     let Some(old) = r.mark(marker) else {
         return TabPick::Miss(TabMiss::NoConsole);
     };
     let mut hit = None;
+    let mut out_of_time = false;
     for i in 0..tries {
         if i > 0 {
             r.wait();
+            if !r.time_left() {
+                out_of_time = true;
+                break;
+            }
         }
         if let Some(at) = r.names().and_then(|n| marked_tab(&n, marker)) {
             hit = Some(at);
@@ -551,6 +560,7 @@ pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> Ta
     let picked = match hit {
         Some(at) if r.select(at) => TabPick::Selected,
         Some(_) => TabPick::Miss(TabMiss::NoUia),
+        None if out_of_time => TabPick::Miss(TabMiss::NoUia),
         None => TabPick::Miss(TabMiss::TitleIgnored),
     };
     r.restore(&old);

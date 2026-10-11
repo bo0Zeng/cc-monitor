@@ -667,6 +667,9 @@ struct FakeTabs {
     selected: Vec<usize>,
     can_mark: bool,
     can_select: bool,
+    /// 等过几步之后时候就到了（`None` = 不限）；`waited` 是已经等过几步。
+    time_after_waits: Option<usize>,
+    waited: usize,
 }
 
 impl FakeTabs {
@@ -682,6 +685,8 @@ impl FakeTabs {
             selected: Vec::new(),
             can_mark: true,
             can_select: true,
+            time_after_waits: None,
+            waited: 0,
         }
     }
 }
@@ -707,7 +712,12 @@ impl TabReader for FakeTabs {
         self.selected.push(i);
         self.can_select
     }
-    fn wait(&mut self) {}
+    fn wait(&mut self) {
+        self.waited += 1;
+    }
+    fn time_left(&self) -> bool {
+        self.time_after_waits.is_none_or(|n| self.waited < n)
+    }
 }
 
 /// ★ 切到对的标签页：借那个会话的控制台挂一个记号标题，在那个窗口的标签页里找名字带记号的那一个、选中，标题一定写回。
@@ -764,6 +774,18 @@ fn a_tab_that_cannot_be_found_says_why_and_the_title_is_still_put_back() {
     let mut t = FakeTabs::new(vec![None]);
     assert_eq!(pick_tab(&mut t, m, 12), TabPick::Miss(TabMiss::NoUia));
     assert!(t.titles_set.is_empty(), "读不到标签页就不碰标题");
+
+    // 标签页读得太慢、时候到了（真机：刚开的窗口头几次读要几秒）⇒ 停下、写回标题，说读不到标签页（不说标签名不跟随）。
+    let mut t = FakeTabs::new(vec![Some(vec!["a", "b"])]);
+    t.time_after_waits = Some(2);
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Miss(TabMiss::NoUia));
+    assert_eq!(t.asked, 3, "先读一次，挂上记号后读到时候到为止");
+    assert_eq!(t.title, "✳ claude", "时候到了也写回");
+    // 头一次读就把时候用完了 ⇒ 不挂记号。
+    let mut t = FakeTabs::new(vec![Some(vec!["a", "b"])]);
+    t.time_after_waits = Some(0);
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Miss(TabMiss::NoUia));
+    assert!(t.titles_set.is_empty(), "时候到了就不挂记号");
 
     let mut t = FakeTabs::new(vec![Some(vec!["a", "b"])]);
     t.can_mark = false;
