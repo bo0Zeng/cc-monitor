@@ -69,7 +69,7 @@ function win(id: string, run: string, title: string, desc: string, after?: () =>
     height: 720,
     world: agentWorld,
     act: async () => {
-      await waitFor('[data-role="brief"]', 15_000);
+      await waitFor('[data-role="brief"]');
       await sleep(800);
       await after?.();
     },

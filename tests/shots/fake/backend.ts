@@ -58,6 +58,8 @@ export class FakeBackend {
   /** 交给无头壳的那几条订阅的编号。 */
   private readonly shellSubs = new Set<number>();
   private screenSeq = 0;
+  /** 已经交出 `live` 那一格的会话（按 sid 去重）：等 tab 等不到时的读数（`window.__shots.sessions`）。 */
+  readonly liveSent = new Set<string>();
 
   /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
   private readonly ready: Promise<void>;
@@ -217,6 +219,7 @@ export class FakeBackend {
   sessionFrames(origin: string, only: string | null = null): SessionStreamFrame[] {
     const frames: SessionStreamFrame[] = [{ batch: "start" }];
     for (const s of this.world.sessions.filter((x) => x.origin === origin && (only === null || x.sid === only))) {
+      this.liveSent.add(s.sid);
       frames.push({
         live: {
           session_id: s.sid,
