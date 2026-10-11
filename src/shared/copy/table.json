@@ -20241,7 +20241,7 @@
     "rsFilewinPreview.decide.imageTooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 图片预览上限 {limit}",
+      "zh": "{name} {size} · 超过图片预览上限 {limit} · 不预览 · 可下载到本机再打开",
       "args": ["name", "size", "limit"]
     },
     "rsFilewinPreview.decide.binaryKind": {

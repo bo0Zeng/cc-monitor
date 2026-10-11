@@ -5167,7 +5167,7 @@ pub fn open_detached_seeded(
     reveal: Option<String>,
     // 书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
     bookmarks: Option<std::path::PathBuf>,
-    // 视图文件（记缩放；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放，只是不记）。
+    // 视图文件（记缩放与预览开关；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放、开预览，只是不记）。
     view: Option<std::path::PathBuf>,
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
@@ -5212,11 +5212,11 @@ pub fn open_detached_seeded(
                 // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
                 let mut ws = super::workspace::Workspace::new(w);
                 ws.theme = theme;
-                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）。
-                ws.zoom = super::workspace::Zoom::open(view);
+                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）· 预览开没开。
+                ws.restore_view(super::workspace::ViewMemo::open(view));
                 // 帧日志：设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 才开（收集「一闪一闪」的证据）。
                 ws.frame_log = super::frame_log::FrameLog::from_env();
-                cc.egui_ctx.set_zoom_factor(ws.zoom.factor());
+                cc.egui_ctx.set_zoom_factor(ws.memo.zoom());
                 Ok(Box::new(FitOnce {
                     inner: ws,
                     work: work_area,

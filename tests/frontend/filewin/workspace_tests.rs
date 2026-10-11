@@ -2085,6 +2085,25 @@ fn space_toggles_the_peek_overlay_unless_the_preview_is_open() {
     assert!(ws.peek.is_none(), "预览栏开着（宽档）空格却开了浮层");
 }
 
+/// 空格看一眼走真的按键：点一下列表里那一行、按空格 ⇒ 浮层开着，看的就是点的那一份；再按空格收起。
+#[test]
+fn clicking_a_row_then_space_peeks_at_it() {
+    let mut ws = Workspace::new(pane("/srv/data", &["a.txt", "b.txt"]));
+    let mut d = Drive::new();
+    let at = d.find(&mut ws, "b.txt");
+    assert_eq!(at.len(), 1);
+    d.click(&mut ws, at[0].center(), egui::PointerButton::Primary);
+    d.key(&mut ws, egui::Key::Space);
+    assert!(ws.peek.is_some(), "点了一行再按空格，没开「看一眼」");
+    assert_eq!(
+        ws.pane_on(0).picked_name(),
+        Ok("b.txt".to_string()),
+        "看的不是点的那一份"
+    );
+    d.key(&mut ws, egui::Key::Space);
+    assert!(ws.peek.is_none(), "再按空格没收起");
+}
+
 /// 🔴 复现 4.1.3 的崩溃：两栏、焦点在右栏，点命令栏「两栏」收掉右栏 ⇒ 同一帧往后画状态栏时
 /// 还拿着帧初记下的「焦点 ＝ 1」去取右栏 ⇒ `sides[1]` 越界、整个窗口进程退出（0xc0000409）。
 #[test]

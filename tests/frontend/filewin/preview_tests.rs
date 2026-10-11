@@ -9,6 +9,7 @@
 //! | [`what_is_not_read_says_why_and_sends_nothing`] | 目录 / 两项 / 超上限 ⇒ 一句话、线上零条；不是文本 ⇒ 那句话 | 零命中读的是线上那本账 |
 //! | [`the_text_on_the_panel_is_the_text_the_backend_sent`] | 打开预览、选中一个文件、跑生产那个 `Workspace::frame` ⇒ 后端给的那几行真画在这一帧上 | galley 读回；文本由合成后端给 |
 //! | [`line_starts_cut_where_the_newlines_are`] | 行起点逐格相等 | 期望手写 |
+//! | [`an_image_over_the_cap_says_why_it_is_not_shown`] | 超上限的图 ⇒ 那一句（多大 · 上限 · 不预览）画在面板上、头上有「下载」、线上零条；正控：上限上的那张照读 | 那一句从这一帧的 galley 里读回 |
 //!
 //! ⚠ 买不到：真远端上一趟的时延；图片 / 二进制预览（没做）。
 
@@ -383,4 +384,89 @@ fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
         painted.iter().any(|(t, _)| t == "j"),
         "新内容的最后一行没画出来：{painted:?}"
     );
+}
+
+/// 🔴 **图片超上限照实说为什么不显示**（稿：太大 ⇒ 一句话 ＋［下载］）：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
+/// 面板上那一句点名文件、它多大、上限多少、不预览；头上照样给「下载」。正控：恰好在上限上的那张照读。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_image_over_the_cap_says_why_it_is_not_shown() {
+    let (wired, mut w) = rig(
+        "fw-pv-bigimg",
+        vec![
+            row("huge.png", IMAGE_MAX_BYTES + 1, false),
+            row("fits.png", IMAGE_MAX_BYTES, false),
+        ],
+    )
+    .await;
+    let mut p = Preview::default();
+    w.apply_intent(
+        Intent::Edge {
+            end: false,
+            extend: false,
+        },
+        0.0,
+        None,
+    );
+    p.follow(&w, None);
+    let size = copy_core::size_text(IMAGE_MAX_BYTES + 1);
+    let limit = copy_core::size_text(IMAGE_MAX_BYTES);
+    let said = match p.view() {
+        View::Idle(s) => s.clone(),
+        other => panic!("超上限的图没说为什么不显示：{other:?}"),
+    };
+    assert!(
+        copy_core::copy_matches_with(
+            "rsFilewinPreview.decide.imageTooBig",
+            &[("name", "huge.png"), ("size", &size), ("limit", &limit)],
+            &said
+        ),
+        "那一句不是「多大 · 上限多少 · 不预览」：{said:?}"
+    );
+    for part in ["huge.png", size.as_str(), limit.as_str()] {
+        assert!(said.contains(part), "那一句没说到 {part}：{said:?}");
+    }
+    // 面板真画出这一句，头上有「下载」。
+    let ctx = egui::Context::default();
+    let out = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 600.0),
+            )),
+            ..Default::default()
+        },
+        |ui| {
+            let _ = p.ui(ui);
+        },
+    );
+    let painted: Vec<String> = text_in_frame(&out).into_iter().map(|(t, _)| t).collect();
+    out.drop_without_applying_deltas();
+    assert!(
+        painted.iter().any(|t| t == &said),
+        "面板上没画那一句：{painted:?}"
+    );
+    assert!(
+        painted
+            .iter()
+            .any(|t| t == crate::download::DOWNLOAD_LABEL.as_str()),
+        "超上限的图头上没给「下载」：{painted:?}"
+    );
+    assert_eq!(p.fired(), 0, "说了不读却发了");
+    // 正控：恰好在上限上的那张要读（摆成「正在读」）。
+    w.apply_intent(
+        Intent::Step {
+            by: 1,
+            extend: false,
+        },
+        0.0,
+        None,
+    );
+    p.follow(&w, None);
+    assert!(
+        matches!(p.view(), View::Loading(_) | View::Said(_)),
+        "{:?}",
+        p.view()
+    );
+    assert!(p.fired() >= 1, "上限上的那张没去读");
+    drop(wired);
 }

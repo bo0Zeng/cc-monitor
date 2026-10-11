@@ -88,8 +88,8 @@ pub struct Workspace {
     pub(super) home_go: bool,
     /// 左栏「其他机器」那一问的结局。
     pub(super) other: super::chrome::OtherSlot,
-    /// 整窗缩放（记在视图文件里，下次开窗照它）。
-    pub zoom: Zoom,
+    /// 视图文件（整窗缩放 · 预览开没开，下次开窗照它）。
+    pub memo: ViewMemo,
     /// 右下角那一摞回执（一次性的那几句：键位做不成的原因 · 跳到隐藏文件 · 开另一台 …）。
     pub toasts: super::kit::Toasts,
     /// 带［撤销］的回执：记号 → 撤销要做的那几件（点了交给焦点那一栏直接做）。
@@ -131,44 +131,82 @@ pub const ZOOM_MAX: f32 = 2.0;
 /// 缩放的档位（规范 `I8` 与稿 ⑫）。
 pub const ZOOM_STOPS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
-/// 整窗缩放（egui 的 `zoom_factor`）：Ctrl + = / Ctrl + - / Ctrl + 0、Ctrl + 滚轮改它；
-/// 记在 monitor 交来的那份视图文件里（`{"zoom": 1.2}`），下次开窗照它。没有那份文件 ⇒ 照样能缩放，只是不记。
+/// 视图文件（monitor 交来的那一份，`{"zoom": 1.2, "preview": true}`）：记**整窗缩放**与**预览开没开**，下次开窗照它摆。
+/// 没有那份文件 ⇒ 照样能缩放、开预览，只是不记。
+///
+/// 缩放是 egui 的 `zoom_factor`：Ctrl + = / Ctrl + - / Ctrl + 0、Ctrl + 滚轮改它；
 /// 主界面的「字号」是另一回事（随开窗的样子交过来的绝对字号）；这里是在它之上整体放大缩小。
+/// 预览没记过 ⇒ 关着（缺省关）。两样同住一份文件，写哪一样都把另一样原样带上（互不覆盖）。
 #[derive(Clone, Debug, Default)]
-pub struct Zoom {
+pub struct ViewMemo {
     file: Option<std::path::PathBuf>,
-    /// 文件里记着的那个数（没记过 ⇒ 1）。
-    saved: Option<f32>,
+    /// 文件里记着的缩放（没记过 ⇒ 1）。
+    zoom: Option<f32>,
+    /// 文件里记着的预览开关（没记过 ⇒ 关）。
+    preview: Option<bool>,
 }
 
-impl Zoom {
-    /// 读那份文件（读不到 / 读不懂 ⇒ 按 1 起，下一次改了就写一份新的）。
+impl ViewMemo {
+    /// 读那份文件（读不到 / 读不懂 ⇒ 按缺省起，下一次改了就写一份新的）。
     pub fn open(file: Option<std::path::PathBuf>) -> Self {
-        let saved = file
+        let v = file
             .as_deref()
             .and_then(|f| std::fs::read(f).ok())
-            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+        let zoom = v
+            .as_ref()
             .and_then(|v| v.get("zoom").and_then(serde_json::Value::as_f64))
             .map(|z| (z as f32).clamp(ZOOM_MIN, ZOOM_MAX));
-        Self { file, saved }
+        let preview = v
+            .as_ref()
+            .and_then(|v| v.get("preview").and_then(serde_json::Value::as_bool));
+        Self {
+            file,
+            zoom,
+            preview,
+        }
     }
 
     /// 开窗时照哪个数缩放。
-    pub fn factor(&self) -> f32 {
-        self.saved.unwrap_or(1.0)
+    pub fn zoom(&self) -> f32 {
+        self.zoom.unwrap_or(1.0)
+    }
+
+    /// 开窗时预览开不开。
+    pub fn preview(&self) -> bool {
+        self.preview.unwrap_or(false)
     }
 
     /// 这一帧的缩放与记着的不同 ⇒ 记下来（两位小数，同一个数不重写）。
-    fn remember(&mut self, z: f32) {
+    fn remember_zoom(&mut self, z: f32) {
         let z = (z * 100.0).round() / 100.0;
-        if self.saved == Some(z) || (self.saved.is_none() && z == 1.0) {
+        if self.zoom == Some(z) || (self.zoom.is_none() && z == 1.0) {
             return;
         }
-        self.saved = Some(z);
-        if let Some(f) = &self.file {
-            if let Err(e) = host_core::atomic_write_json(f, &serde_json::json!({ "zoom": z })) {
-                tracing::warn!(error = %e, "zoom not saved");
-            }
+        self.zoom = Some(z);
+        self.write();
+    }
+
+    /// 预览开关与记着的不同 ⇒ 记下来。
+    fn remember_preview(&mut self, on: bool) {
+        if self.preview() == on {
+            return;
+        }
+        self.preview = Some(on);
+        self.write();
+    }
+
+    fn write(&self) {
+        let Some(f) = &self.file else { return };
+        let mut v = serde_json::Map::new();
+        if let Some(z) = self.zoom {
+            v.insert("zoom".into(), serde_json::json!(z));
+        }
+        if let Some(p) = self.preview {
+            v.insert("preview".into(), serde_json::json!(p));
+        }
+        if let Err(e) = host_core::atomic_write_json(f, &serde_json::Value::Object(v)) {
+            tracing::warn!(error = %e, "view memo not saved");
         }
     }
 }
@@ -267,7 +305,7 @@ impl Workspace {
             home: Default::default(),
             home_go: false,
             other: Default::default(),
-            zoom: Zoom::default(),
+            memo: ViewMemo::default(),
             toasts: Default::default(),
             undo_for: Default::default(),
             undo_tag: 0,
@@ -718,9 +756,16 @@ impl Workspace {
         keys.len()
     }
 
-    /// 开 / 关预览。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
+    /// 开 / 关预览，并记进视图文件（下次开窗照它）。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
     pub fn set_preview(&mut self, on: bool) {
         self.preview = on.then(super::preview::Preview::default);
+        self.memo.remember_preview(on);
+    }
+
+    /// 开窗时照视图文件摆：预览照上次开没开（缩放由开窗那一处交给 egui）。
+    pub fn restore_view(&mut self, memo: ViewMemo) {
+        self.preview = memo.preview().then(super::preview::Preview::default);
+        self.memo = memo;
     }
 
     /// 🔴 **复制到另一栏**：焦点那一栏选中的**那一摞**（文件与目录都行）→ 另一栏当前目录、同名。
@@ -947,7 +992,7 @@ impl Workspace {
 
     /// 状态栏那颗「125%」点了：回 100% 并记下来。
     pub fn zoom_reset(&mut self) {
-        self.zoom.remember(1.0);
+        self.memo.remember_zoom(1.0);
     }
 
     /// 这一帧的缩放手势：Ctrl + = / + 放大一步 · Ctrl + - 缩小一步 · Ctrl + 0 回 100% · Ctrl + 滚轮按滚的量；
@@ -990,7 +1035,7 @@ impl Workspace {
         if z != ctx.zoom_factor() {
             ctx.set_zoom_factor(z);
         }
-        self.zoom.remember(z);
+        self.memo.remember_zoom(z);
         z
     }
 
