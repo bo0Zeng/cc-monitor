@@ -15,9 +15,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import kotlin.time.TimeSource
 
 /** 一台的常驻流此刻通不通。 */
 sealed interface LinkState {
@@ -32,11 +34,21 @@ sealed interface LinkState {
     ) : LinkState
 }
 
-/** 一台的常驻流对外的那三样：会话表 · 记录行 · 一问一答。聊天屏只经它（测试给假的）。 */
+/** 一台的常驻流对外的那几样：会话表 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */
 interface CoreLink {
     val table: StateFlow<SessionTable>
     val lines: SharedFlow<RecordLine>
 
+    /**
+     * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
+     * 断着那一段的 `line` 帧没收到 ⇒ 读过的正文要从断处补读。
+     */
+    val epoch: StateFlow<Long>
+
+    /**
+     * 一问一答。流没通（在建 · 在重接 · SSH 还没通）⇒ 先等它接上（至多 [withinMs]）再问，不当场回 [Reply.LinkDown]；
+     * 走不通、要人动手的那几种（另一版 · 没装 …）⇒ 当场 [Reply.LinkDown]。等的那一段也算在 [withinMs] 里。
+     */
     suspend fun call(
         cmd: String,
         args: Map<String, Any?>? = null,
@@ -72,6 +84,10 @@ class BackendFeed(
     val state: StateFlow<LinkState> = stateFlow.asStateFlow()
 
     private val tableFlow = MutableStateFlow(SessionTable())
+
+    private val epochFlow = MutableStateFlow(0L)
+
+    override val epoch: StateFlow<Long> = epochFlow.asStateFlow()
 
     /** 流上的会话帧折出来的会话表（此刻有哪些会话、各自的状态字与语气）。 */
     override val table: StateFlow<SessionTable> = tableFlow.asStateFlow()
@@ -119,12 +135,23 @@ class BackendFeed(
         if (stateFlow.value is LinkState.Down) reconnect() else ensure()
     }
 
-    /** 一问一答。流没通 ⇒ [Reply.LinkDown]。 */
     override suspend fun call(
         cmd: String,
         args: Map<String, Any?>?,
         withinMs: Long,
-    ): Reply = client?.call(cmd, args, withinMs) ?: Reply.LinkDown
+    ): Reply {
+        val since = TimeSource.Monotonic.markNow()
+        val c =
+            withTimeoutOrNull(withinMs) {
+                stateFlow.first { it is LinkState.Up || it.needsHand() }
+                client
+            } ?: return Reply.LinkDown
+        val left = (withinMs - since.elapsedNow().inWholeMilliseconds).coerceAtLeast(1L)
+        return c.call(cmd, args, left)
+    }
+
+    /** 断在要人动手的那一步（不会自己好）：问的人不用等。 */
+    private fun LinkState.needsHand(): Boolean = this is LinkState.Down && outcome != null && !retryable(outcome)
 
     /** 跟着 SSH 的这一条连接：没通 ⇒ 停在断开；通着 ⇒ 接、断了再接，直到它换一条（被 `collectLatest` 取消）。 */
     private suspend fun follow(conn: Any?) {
@@ -179,6 +206,7 @@ class BackendFeed(
 
     private suspend fun pump(c: FrameClient): Run {
         client = c
+        epochFlow.value += 1
         stateFlow.value = LinkState.Up
         for (frame in c.frames) {
             val next = tableFlow.value.step(frame, onBreak)

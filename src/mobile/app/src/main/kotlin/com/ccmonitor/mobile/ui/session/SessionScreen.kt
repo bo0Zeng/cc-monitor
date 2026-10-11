@@ -19,8 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,9 +45,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
@@ -64,11 +59,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ssh.SessionBackend
-import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
-import com.ccmonitor.mobile.ui.claude.ClaudeHistorySheet
-import com.ccmonitor.mobile.ui.claude.ClaudeReadingPaneConnected
-import com.ccmonitor.mobile.ui.claude.ResumeLauncherOption
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
@@ -82,7 +73,7 @@ import kotlin.math.roundToInt
 
 /**
  * 连接指定主机并渲染实时终端。连接编排在 [SessionViewModel]，这里只渲染。
- * 连上后可在终端与 Claude 阅读面之间切换；阅读面走同一连接上的另一条 exec 通道，实时 tail 远端 JSONL。
+ * 终端屏只有终端：看一条会话的正文回聊天屏（`界面.md`「终端」）。
  */
 @Composable
 fun SessionScreen(
@@ -93,10 +84,8 @@ fun SessionScreen(
     resumeSessionId: String? = null, // 本 tab 首连即 resume 的 Claude 会话 id；普通 tab 为 null
     resumeCommand: String? = null, // 历史页长按选定的 resume 命令；null 走默认候选链
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
-    // resume：开新终端 tab。title 是会话可读标题（可 null），cwd 只作兜底（可 null），command 是选定的命令。
-    onResumeInNewTab: (cwd: String?, sessionId: String, title: String?, command: String?) -> Unit = { _, _, _, _ -> },
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
-) = SessionContent(hostId, cd, launcherId, tmuxSession, resumeSessionId, resumeCommand, onAttachInNewTab, onResumeInNewTab, onShowTabs)
+) = SessionContent(hostId, cd, launcherId, tmuxSession, resumeSessionId, resumeCommand, onAttachInNewTab, onShowTabs)
 
 @Composable
 private fun SessionContent(
@@ -107,7 +96,6 @@ private fun SessionContent(
     resumeSessionId: String?,
     resumeCommand: String?,
     onAttachInNewTab: (name: String) -> Unit,
-    onResumeInNewTab: (cwd: String?, sessionId: String, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
@@ -154,7 +142,6 @@ private fun SessionContent(
                 vm,
                 onReconnect = { vm.retry() },
                 onAttachInNewTab = onAttachInNewTab,
-                onResumeInNewTab = onResumeInNewTab,
                 onShowTabs = onShowTabs,
             )
     }
@@ -179,12 +166,6 @@ private fun ErrorContent(
         TextButton(onClick = { vm.retry() }) { Text("重连") }
     }
 }
-
-/** 历史页点击要阅读的会话：阅读器据此 tail 该 JSONL，[title] 供下拉与标题。 */
-private data class ReadPin(
-    val path: String,
-    val title: String,
-)
 
 /**
  * 非连接态（连接中 / 失败 / 选身份）顶部的 tab 按钮。这些态没有工具条，靠它在慢连、连不上、待选身份时
@@ -324,8 +305,7 @@ private fun ConnectLogView(
 }
 
 /**
- * 终端与 Claude 阅读面切换。两者共用同一连接：终端在 shell 通道，阅读面在另一条 exec 通道。
- * 这里只持跨子树共享的状态（tab、对话框开关、readCwd、抓屏文本）与动作；渲染在 [ConnectedScaffold]
+ * 已连接态：终端 ＋ 几个对话框（tmux 管理 / 抓屏 / 公钥推送）。这里只持对话框开关与抓屏文本；渲染在 [ConnectedScaffold]
  * 与 [ConnectedDialogs]。
  */
 @Composable
@@ -335,37 +315,21 @@ private fun ConnectedContent(
     vm: SessionViewModel,
     onReconnect: () -> Unit,
     onAttachInNewTab: (name: String) -> Unit, // tmux 附着：开新终端 tab
-    // resume：开新终端 tab（cwd 可 null）。
-    onResumeInNewTab: (cwd: String?, sessionId: String, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    var tab by rememberSaveable { mutableStateOf(0) }
     var showTmux by rememberSaveable { mutableStateOf(false) }
-    var showHistory by rememberSaveable { mutableStateOf(false) }
-    // 阅读面当前 tail 的工作目录：默认是主机默认目录，从 tmux 会话「读」可改到那个会话的 cwd（不 attach）。
-    // 以 s.cwd 为键：重连或 resume 后 cwd 变了就重置；cwd 没变则保留「读」的重定向。
-    var readCwd by remember(s.cwd) { mutableStateOf(s.cwd) }
-    // 历史页点击钉住的 JSONL，同样以 s.cwd 为键。tmux「读」会清掉它：两条阅读入口互斥，后触发的生效。
-    var pinnedRead by remember(s.cwd) { mutableStateOf<ReadPin?>(null) }
     // 抓当前 tmux 会话的可见屏为纯文本，弹窗看并可复制。
     var captureText by remember { mutableStateOf<String?>(null) }
     // 公钥推送：命令面板「推送公钥」触发，选一个身份，把它的 OpenSSH 公钥追加到这台主机的 authorized_keys。
     var showKeyPush by remember { mutableStateOf(false) }
-    val onResumeSession = rememberResumeAction(onResumeInNewTab)
     ConnectedScaffold(
         hostId = hostId,
         s = s,
         vm = vm,
-        tab = tab,
-        onTab = { tab = it },
-        readCwd = readCwd,
-        pinnedRead = pinnedRead,
         onReconnect = onReconnect,
         onShowTmux = { showTmux = true },
-        onShowHistory = { showHistory = true },
         onPushKey = { showKeyPush = true },
         onCaptured = { captureText = it },
-        onResumeSession = onResumeSession,
         onShowTabs = onShowTabs,
     )
     ConnectedDialogs(
@@ -373,23 +337,6 @@ private fun ConnectedContent(
         showTmux = showTmux,
         onDismissTmux = { showTmux = false },
         onAttachInNewTab = onAttachInNewTab,
-        onReadSession = { cwd ->
-            // 不 attach 终端，只把阅读面重定向到该会话的工作目录，并清掉钉住的 JSONL。
-            pinnedRead = null
-            readCwd = cwd
-            tab = 1
-            showTmux = false
-        },
-        showHistory = showHistory,
-        onDismissHistory = { showHistory = false },
-        // 历史页点击：钉住该 JSONL，cwd 已解出则一并重定向，切到阅读 tab。
-        onReadHistory = { path, cwd, _, title ->
-            pinnedRead = ReadPin(path, title)
-            cwd?.let { readCwd = it }
-            tab = 1
-            showHistory = false
-        },
-        onResumeSession = onResumeSession,
         captureText = captureText,
         onDismissCapture = { captureText = null },
         showKeyPush = showKeyPush,
@@ -397,61 +344,28 @@ private fun ConnectedContent(
     )
 }
 
-/** 已连接的主界面：TabRow、掉线条幅、终端与阅读两个 tab。 */
+/** 已连接的主界面：掉线条幅 ＋ 终端。 */
 @Composable
 private fun ConnectedScaffold(
     hostId: String,
     s: SessionUiState.Connected,
     vm: SessionViewModel,
-    tab: Int,
-    onTab: (Int) -> Unit,
-    readCwd: String?,
-    pinnedRead: ReadPin?, // 历史页钉住的阅读目标；null 走常规发现
     onReconnect: () -> Unit,
     onShowTmux: () -> Unit,
-    onShowHistory: () -> Unit,
     onPushKey: () -> Unit,
     onCaptured: (String) -> Unit,
-    onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    // 阅读面、tmux、切模型依赖 tail -F 与 tmux，按远端方言的能力位（supportsClaudeReading / supportsTmux）开关；
-    // 阅读子页另问这台的档案有没有（[showsReadingTab]）。
-    val dialect = s.dialect
-    val agentKind by vm.agentKind.collectAsState()
-    val reading = showsReadingTab(dialect, agentKind)
     // 只订阅本会话的状态。
     val status by vm.status.collectAsState()
     // shell 流断了（reader EOF 或 keepalive 探到对端已死）：即使连接状态仍是 CONNECTED（静默半开），也就地显示重连。
     val terminalDropped by vm.terminalDropped.collectAsState()
     val dropped = terminalDropped || (status != null && status != SessionStatus.CONNECTED)
-    // statusBarsPadding：边到边下 TabRow 不被系统状态栏遮挡（否则 tab 与时钟重叠且点不到）。
+    // statusBarsPadding：边到边下终端不被系统状态栏遮挡。
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        // 没有阅读子页（没有 tail -F，如 Windows / PowerShell；或这一家没有）：只留终端，不渲染 TabRow。
-        if (reading) {
-            TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { onTab(0) }, text = { Text("终端") })
-                Tab(selected = tab == 1, onClick = { onTab(1) }, text = { Text("Claude 阅读") })
-            }
-        }
         if (dropped) DroppedBanner(status, onReconnect)
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            SessionTabContent(
-                hostId = hostId,
-                s = s,
-                vm = vm,
-                // 没有阅读子页 ⇒ 恒在终端（防 rememberSaveable 残留 tab=1）。
-                tab = if (reading) tab else 0,
-                readCwd = readCwd,
-                pinnedRead = pinnedRead,
-                onReconnect = onReconnect,
-                onShowTmux = onShowTmux,
-                onShowHistory = onShowHistory,
-                onPushKey = onPushKey,
-                onCaptured = onCaptured,
-                onResumeSession = onResumeSession,
-                onShowTabs = onShowTabs,
-            )
+            ConnectedTerminal(hostId, s, vm, onShowTmux, onPushKey, onCaptured, onShowTabs)
         }
     }
 }
@@ -475,71 +389,32 @@ private fun DroppedBanner(
     }
 }
 
-/** 终端与阅读 tab 的分派，含终端动作的接线。 */
+/** 终端与它的动作接线。 */
 @Composable
-private fun SessionTabContent(
+private fun ConnectedTerminal(
     hostId: String,
     s: SessionUiState.Connected,
     vm: SessionViewModel,
-    tab: Int,
-    readCwd: String?,
-    pinnedRead: ReadPin?,
-    onReconnect: () -> Unit,
     onShowTmux: () -> Unit,
-    onShowHistory: () -> Unit,
     onPushKey: () -> Unit,
     onCaptured: (String) -> Unit,
-    onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     onShowTabs: () -> Unit,
 ) {
+    // tmux、切模型依赖 tmux，按远端方言的能力位（supportsTmux）开关。
     val dialect = s.dialect
     // 当前是否已在 tmux 内（决定 attach 用 switch-client，免得嵌套）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
-    // 动作在 when 外创建：其中的 rememberCoroutineScope 跟随本 Composable 的生命周期，切 tab 不打断在途请求。
     val onSwitchModel = rememberModelSwitchAction(s.session, vm, dialect.sessionBackend) { currentTmux }
     val onCapture = rememberCaptureAction(vm, dialect.sessionBackend, { currentTmux }, onCaptured)
-    // 切走终端不杀会话：emulator/TerminalSession 状态留存（reader 线程持续写 emulator），切回原样。
-    when {
-        tab == 0 ->
-            TerminalTab(
-                session = s.session,
-                hostId = hostId,
-                onShowTmux = onShowTmux,
-                onModel = onSwitchModel,
-                onCapture = onCapture,
-                onPushKey = onPushKey,
-                onShowHistory = onShowHistory,
-                onShowTabs = onShowTabs,
-                supportsTmux = dialect.supportsTmux,
-            )
-        else -> ClaudeReadingTab(vm, readCwd, pinnedRead, onReconnect, onResumeSession, onShowHistory)
-    }
-}
-
-/** Claude 阅读 tab。 */
-@Composable
-private fun ClaudeReadingTab(
-    vm: SessionViewModel,
-    readCwd: String?,
-    pinnedRead: ReadPin?,
-    onReconnect: () -> Unit,
-    onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
-    onShowHistory: () -> Unit,
-) {
-    val claudeDir by vm.claudeDir.collectAsState() // 解析后的 agent 配置目录，阅读面据此定位 JSONL
-    // 阅读面用该连接的 exec 通道（sshj 多路复用，不影响终端 shell 通道）。
-    // 底部补导航条 inset，否则末条消息和「↓ 最新」被系统手势条挡住；上层只垫了顶部，不会叠两层。
-    ClaudeReadingPaneConnected(
-        channel = vm.channel,
-        executor = vm.executor,
-        cwd = readCwd, // 可被 tmux 会话「读」重定向
-        claudeDir = claudeDir,
-        modifier = Modifier.fillMaxSize().navigationBarsPadding(),
-        onReconnectSsh = onReconnect, // 连接死了（由阅读面的错误态判出）时整条重连
-        pinnedPath = pinnedRead?.path, // 历史页钉住的 JSONL
-        pinnedLabel = pinnedRead?.title,
-        onResume = onResumeSession, // 「续接」走统一的 resume tab 路径
-        onShowHistory = onShowHistory,
+    TerminalTab(
+        session = s.session,
+        hostId = hostId,
+        onShowTmux = onShowTmux,
+        onModel = onSwitchModel,
+        onCapture = onCapture,
+        onPushKey = onPushKey,
+        onShowTabs = onShowTabs,
+        supportsTmux = dialect.supportsTmux,
     )
 }
 
@@ -596,44 +471,19 @@ private fun rememberCaptureAction(
     }
 }
 
-/**
- * 唯一的 resume 路径（历史页与阅读器「续接」共用）：开新终端 tab，fresh shell 起 tmux 跑
- * `<cc> --resume <sid>`（远端按 sid 定位权威 cwd）。不往当前前台 pty 注入：前台若正跑 Claude，
- * 命令会被打进它的输入框。sid 先验（防注入）。title 可 null；cwd 只作兜底；command 是历史页长按选定的命令。
- */
-@Composable
-private fun rememberResumeAction(
-    onResumeInNewTab: (cwd: String?, sessionId: String, title: String?, command: String?) -> Unit,
-): (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit {
-    val context = LocalContext.current
-    return { sessionId, resumeCwd, title, command ->
-        if (ClaudeInvocation.isValidSessionId(sessionId)) {
-            onResumeInNewTab(resumeCwd, sessionId, title, command)
-        } else {
-            Toast.makeText(context, "会话 ID 非法，无法 resume", Toast.LENGTH_SHORT).show()
-        }
-    }
-}
-
-/** 已连接态的四个对话框（tmux 管理 / 历史面板 / 抓屏 / 公钥推送），显隐状态在上层。 */
+/** 已连接态的三个对话框（tmux 管理 / 抓屏 / 公钥推送），显隐状态在上层。 */
 @Composable
 private fun ConnectedDialogs(
     vm: SessionViewModel,
     showTmux: Boolean,
     onDismissTmux: () -> Unit,
     onAttachInNewTab: (name: String) -> Unit,
-    onReadSession: (cwd: String) -> Unit,
-    showHistory: Boolean,
-    onDismissHistory: () -> Unit,
-    // 历史页点击：钉住 JSONL 并切阅读 tab（关面板在上层回调里做）。
-    onReadHistory: (path: String, cwd: String?, sessionId: String, title: String) -> Unit,
-    onResumeSession: (sessionId: String, cwd: String?, title: String?, command: String?) -> Unit,
     captureText: String?,
     onDismissCapture: () -> Unit,
     showKeyPush: Boolean,
     onDismissKeyPush: () -> Unit,
 ) {
-    // tmux 管理与历史面板用该连接的 exec 通道（sshj 多路复用，不影响终端 shell 通道）。
+    // tmux 管理用该连接的 exec 通道（sshj 多路复用，不影响终端 shell 通道）。
     val channel = vm.channel
     if (showTmux) {
         TmuxManagerDialog(
@@ -649,35 +499,7 @@ private fun ConnectedDialogs(
                 onAttachInNewTab(name)
                 onDismissTmux()
             },
-            onRead = onReadSession,
             onDismiss = onDismissTmux,
-        )
-    }
-    if (showHistory) {
-        // 历史记录面板：复用当前连接与 claudeDir 浏览全部项目的历史。点击阅读；长按选命令 resume
-        // （选项来自本主机的 launcher，自定义命令记住上次输入）。
-        val claudeDir by vm.claudeDir.collectAsState()
-        val hostLaunchers by vm.hostLaunchers.collectAsState()
-        val lastCustomCommand by vm.lastResumeCustomCommand.collectAsState()
-        ClaudeHistorySheet(
-            channel = channel,
-            claudeDir = claudeDir,
-            launchers =
-                hostLaunchers.mapNotNull { l ->
-                    l.command
-                        ?.trim()
-                        ?.takeIf { it.isNotEmpty() }
-                        ?.let { ResumeLauncherOption(l.label, it) }
-                },
-            lastCustomCommand = lastCustomCommand,
-            onRead = onReadHistory,
-            // 注意参数换序：(cwd, sid) → (sid, cwd)。
-            onResume = { cwd, sid, title, command ->
-                onDismissHistory()
-                onResumeSession(sid, cwd, title, command)
-            },
-            onCustomCommandUsed = { vm.setLastResumeCustomCommand(it) }, // 记住上次自定义命令
-            onDismiss = onDismissHistory,
         )
     }
     CaptureControl(captureText, onDismissCapture)
@@ -802,7 +624,6 @@ private fun TerminalTab(
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
-    onShowHistory: () -> Unit,
     onShowTabs: () -> Unit,
     supportsTmux: Boolean = true, // 远端是否支持 tmux，决定 tmux 会话 / 切模型 / 抓屏 / 公钥这些项
 ) {
@@ -845,7 +666,6 @@ private fun TerminalTab(
             onModel = onModel,
             onCapture = onCapture,
             onPushKey = onPushKey,
-            onShowHistory = onShowHistory,
         )
     }
 }
@@ -862,7 +682,6 @@ private fun TerminalBottomControls(
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
-    onShowHistory: () -> Unit,
 ) {
     // 命令面板「自定义」段的来源，与按钮条同源，只取 group='main'：fn / vim 组的单键（Esc、方向、hjkl…）
     // 进面板只是噪声。
@@ -870,7 +689,7 @@ private fun TerminalBottomControls(
     val customButtons by remember(hostId) {
         customButtonDao.observeGroup(hostId, ButtonGroups.MAIN)
     }.collectAsState(initial = emptyList())
-    // 「自定义」段也过 tmux 门控（与按钮条同一条 [visibleOn]），否则 `tmux 会话` / `Claude 历史` 这类内建动作
+    // 「自定义」段也过 tmux 门控（与按钮条同一条 [visibleOn]），否则 `tmux 会话` / `抓屏` 这类内建动作
     // 会在非 tmux 主机上冒出来。
     val paletteButtons = customButtons.filter { it.visibleOn(supportsTmux) }
     var showPalette by rememberSaveable { mutableStateOf(false) }
@@ -890,7 +709,6 @@ private fun TerminalBottomControls(
             { showPalette = true },
             onShowTmux,
             onPaste,
-            onShowHistory,
             onCapture,
             onPushKey,
             showKeyboard,
@@ -916,7 +734,7 @@ private fun TerminalBottomControls(
     // 命令面板：把模型、抓屏、自定义命令、tmux 会话整合成可搜索的动作。
     if (showPalette) {
         val actions =
-            terminalPaletteActions(supportsTmux, paletteButtons, onModel, onCapture, onShowTmux, onPushKey, onShowHistory, dispatch)
+            terminalPaletteActions(supportsTmux, paletteButtons, onModel, onCapture, onShowTmux, onPushKey, dispatch)
         CommandPalette(actions = actions, onDismiss = { showPalette = false })
     }
     // 按钮设置全屏 Dialog（hostId=null 即全局按钮），关掉即回终端。
@@ -935,7 +753,7 @@ private fun TerminalBottomControls(
 }
 
 /**
- * 终端 tab 的内建动作。tmux 类动作（会话 / 抓屏 / 历史 / 公钥）在不支持 tmux 的主机上点了也无害。
+ * 终端 tab 的内建动作。tmux 类动作（会话 / 抓屏 / 公钥）在不支持 tmux 的主机上点了也无害。
  */
 private fun terminalButtonBuiltins(
     session: TerminalSession,
@@ -944,7 +762,6 @@ private fun terminalButtonBuiltins(
     onCommandPalette: () -> Unit,
     onShowTmux: () -> Unit,
     onPaste: () -> Unit,
-    onShowHistory: () -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
     onShowKeyboard: () -> Unit,
@@ -956,7 +773,6 @@ private fun terminalButtonBuiltins(
         onCommandPalette = onCommandPalette,
         onTmuxSessions = onShowTmux,
         onPaste = onPaste,
-        onShowHistory = onShowHistory,
         onCapture = onCapture,
         onPushKey = onPushKey,
         onShowKeyboard = onShowKeyboard,
@@ -965,7 +781,7 @@ private fun terminalButtonBuiltins(
     )
 
 /**
- * 命令面板的动作集。依赖 tmux 的项（切模型 / 抓屏 / tmux 会话 / 历史 / 公钥推送）按 `supportsTmux` 开关；
+ * 命令面板的动作集。依赖 tmux 的项（切模型 / 抓屏 / tmux 会话 / 公钥推送）按 `supportsTmux` 开关；
  * 自定义命令总在。
  */
 internal fun terminalPaletteActions(
@@ -975,7 +791,6 @@ internal fun terminalPaletteActions(
     onCapture: () -> Unit,
     onShowTmux: () -> Unit,
     onPushKey: () -> Unit,
-    onHistory: () -> Unit,
     onCustom: (CustomButton) -> Unit,
 ): List<PaletteAction> =
     buildList {
@@ -987,8 +802,6 @@ internal fun terminalPaletteActions(
         customButtons.forEach { b -> add(PaletteAction("自定义", b.label, customButtonSubtitle(b)) { onCustom(b) }) }
         if (supportsTmux) {
             add(PaletteAction("会话", "tmux 会话管理") { onShowTmux() })
-            // 历史记录：resume 依赖 tmux 与 POSIX，所以也按 supportsTmux 开关。副标题与历史面板一致。
-            add(PaletteAction("历史", "Claude 历史记录", "按项目分组 · 点击查看 · 长按选择命令续跑") { onHistory() })
             // 公钥推送用的是 POSIX shell（mkdir / chmod / grep >> authorized_keys），严格说要的是 POSIX 能力而非 tmux；
             // 按操作系统定方言时两者总是同值，所以挂在 supportsTmux 上。
             add(PaletteAction("公钥", "推送公钥到本机 authorized_keys") { onPushKey() })
@@ -1010,11 +823,3 @@ internal fun customButtonSubtitle(b: CustomButton): String =
 
 /** 常用模型预设，经命令面板「模型」组发 `/model <preset>`。 */
 private val MODEL_PRESETS = listOf("opus", "sonnet", "haiku", "default")
-
-/**
- * 终端 tab 里出不出「阅读」子页：远端方言读得了（有 `tail -F`），且这台的档案有这一页（[AgentProfile.hasReadingTab]）。
- */
-internal fun showsReadingTab(
-    dialect: ShellDialect,
-    kind: AgentKind,
-): Boolean = dialect.supportsClaudeReading && AgentProfile.of(kind).hasReadingTab

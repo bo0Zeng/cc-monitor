@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.nav
 
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
@@ -67,8 +66,6 @@ class NavRoutesTest {
             onConnectDestination(
                 hostId = "h1",
                 newUi = false,
-                // 种类是必填的（无默认值）：`newUi × agentKind` 四格在 `AgentArchetypeTest` 里钉
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = { "s-new" },
             ) { "session/tab-$it" }
         assertTrue("关着时必须还是终端那条路：$off", off.startsWith("session/"))
@@ -82,8 +79,6 @@ class NavRoutesTest {
             onConnectDestination(
                 hostId = "h1",
                 newUi = true,
-                // 种类是必填的（无默认值）：`newUi × agentKind` 四格在 `AgentArchetypeTest` 里钉
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = { "s-new" },
             ) { "session/tab-$it" }
         assertEquals(Screen.Chat.of("h1", "s-new", isNew = true), on)

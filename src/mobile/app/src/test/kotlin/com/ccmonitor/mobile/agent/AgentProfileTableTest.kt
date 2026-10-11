@@ -13,7 +13,7 @@ import org.junit.Test
  *
  * 它不是「消费方真走档案」的证据：本条对每一刀变异都会红，因为它就是直接读档案。
  * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest`
- * · `SessionReadingTabTest` · `SessionLocatorTest` 等）。
+ * · `SessionLocatorTest` 等）。
  *
  * 本条的职责只有一个：改表要留痕（同 `NewUiSettingsTest.theDefaultSourceIsPinned…`）。
  */
@@ -24,10 +24,7 @@ class AgentProfileTableTest {
             p.kind.name,
             p.displayName,
             p.wireName,
-            "uplink=${p.supportsUplink}",
-            "chatScreen=${p.landsOnChatScreen}",
             "accountGate=${p.requiresAccountGate}",
-            "readingTab=${p.hasReadingTab}",
             "ccmIdentity=${p.hasCcmIdentity}",
             "dirSetting=${p.appDefaultDirSetting}",
             p.invocation::class.simpleName,
@@ -65,33 +62,15 @@ class AgentProfileTableTest {
     }
 
     /**
-     * 落点与输入行是同一句话。
-     *
-     * 「能不能说话」与「去哪儿落地」是一个判定源。哪天有人把 [AgentProfile.landsOnChatScreen] 改成独立存的一格，
-     * 两格就又能各说各的（Codex 服务器落进 Claude 聊天屏的那种形态），本条当场红。
-     */
-    @Test
-    fun theLandingAndTheInputRowStayOneAndTheSameStatement() {
-        for (p in AgentProfile.ALL) {
-            assertEquals("${p.kind}：落点必须逐点等于「能不能说话」", p.supportsUplink, p.landsOnChatScreen)
-        }
-        // 两档必须真的分得开：全 true / 全 false 的表让上面那句话变成废话
-        val uplinks: Set<Boolean> = AgentProfile.ALL.mapTo(mutableSetOf()) { it.supportsUplink }
-        assertEquals("「能说话」与「不能说话」两档都要真有 agent 落在上面，否则 `5i` 那条路根本走不到", 2, uplinks.size)
-    }
-
-    /**
      * 缺省档 = 保守的一侧（Claude 档）。
      *
-     * 七处「读不出种类就用它」的落点（`AppNavHost` · `AppModule` · `SessionBackend` · `SessionViewModel`
-     * · `ReadingPaneViewModel` · `ClaudeReadingPaneConnected` · `SshKeepAliveService`）全指着它：
-     * 把它改成 Codex 档，等于让所有读不出种类的服务器都变成只读档、不再问账号。
+     * 「读不出种类就用它」的那几处落点（`SessionBackend` · `SessionViewModel` · `ChatRoute` · `HostScreens` 等）全指着它：
+     * 把它改成 Codex 档，等于让所有读不出种类的服务器都不再问账号。
      */
     @Test
     fun theDefaultProfileIsTheConservativeOne() {
         assertSame("缺省档必须是表里的一份，不是另造的", AgentProfile.of(AgentProfile.DEFAULT.kind), AgentProfile.DEFAULT)
         assertTrue("缺省档必须走账号门（保守的一侧：宁可多问一次）", AgentProfile.DEFAULT.requiresAccountGate)
-        assertTrue("缺省档必须能说话（否则读不出种类的服务器全被推去只读档）", AgentProfile.DEFAULT.supportsUplink)
         assertEquals("缺省档的应用级默认目录键", AgentDirSettingKey.AppDefaultClaudeDir, AgentProfile.DEFAULT.appDefaultDirSetting)
     }
 
@@ -140,10 +119,10 @@ class AgentProfileTableTest {
          */
         private val PINNED_TABLE =
             listOf(
-                "ClaudeCode | Claude | claude | uplink=true | chatScreen=true | accountGate=true | readingTab=true | " +
-                    "ccmIdentity=true | dirSetting=AppDefaultClaudeDir | ClaudeInvocation | ClaudeSessionLocator",
-                "Codex | Codex | codex | uplink=false | chatScreen=false | accountGate=false | readingTab=false | " +
-                    "ccmIdentity=false | dirSetting=null | CodexInvocation | CodexSessionLocator",
+                "ClaudeCode | Claude | claude | accountGate=true | ccmIdentity=true | dirSetting=AppDefaultClaudeDir | " +
+                    "ClaudeInvocation | ClaudeSessionLocator",
+                "Codex | Codex | codex | accountGate=false | ccmIdentity=false | dirSetting=null | " +
+                    "CodexInvocation | CodexSessionLocator",
             )
     }
 }

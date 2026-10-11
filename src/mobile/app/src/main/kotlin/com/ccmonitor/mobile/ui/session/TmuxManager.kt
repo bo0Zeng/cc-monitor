@@ -62,7 +62,6 @@ fun TmuxManagerDialog(
     channel: RemoteCommandChannel,
     onAttach: (String) -> Unit,
     onNewAttach: (String) -> Unit,
-    onRead: (cwd: String) -> Unit, // 不附着，只读该会话的 Claude 输出；传入的是已解析出的 cwd
     onDismiss: () -> Unit,
     backend: SessionBackend = TmuxBackend, // 命令族由会话后端给出
 ) {
@@ -96,7 +95,6 @@ fun TmuxManagerDialog(
                 sessions = sessions,
                 newName = newName,
                 onNameChange = { newName = it },
-                onRead = onRead,
                 onAttach = onAttach,
                 onNewAttach = onNewAttach,
                 onKillRequested = { pendingKill = it },
@@ -134,7 +132,6 @@ private fun TmuxManagerBody(
     sessions: List<TmuxSession>,
     newName: String,
     onNameChange: (String) -> Unit,
-    onRead: (cwd: String) -> Unit,
     onAttach: (String) -> Unit,
     onNewAttach: (String) -> Unit,
     onKillRequested: (TmuxSession) -> Unit,
@@ -144,13 +141,10 @@ private fun TmuxManagerBody(
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
         TmuxSessionList(
-            channel = channel,
             loading = loading,
             sessions = sessions,
-            onRead = onRead,
             onAttach = onAttach,
             onKillRequested = onKillRequested,
-            backend = backend,
         )
         HorizontalDivider(color = tokens.surfaceHigh, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
@@ -222,21 +216,17 @@ private fun KillConfirmDialog(
 }
 
 /**
- * 会话列表段（加载 / 空态 / 各行）及行上的 exec 动作（读 cwd）。
+ * 会话列表段（加载 / 空态 / 各行）。
  * 行上点「杀」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈。
  */
 @Composable
 private fun TmuxSessionList(
-    channel: RemoteCommandChannel,
     loading: Boolean,
     sessions: List<TmuxSession>,
-    onRead: (cwd: String) -> Unit,
     onAttach: (String) -> Unit,
     onKillRequested: (TmuxSession) -> Unit,
-    backend: SessionBackend,
 ) {
     val tokens = LocalAppTokens.current
-    val scope = rememberCoroutineScope()
     when {
         loading -> Text("加载中…", color = tokens.textFaint)
         sessions.isEmpty() -> Text("无 tmux 会话。下方新建一个。", color = tokens.textFaint)
@@ -244,13 +234,6 @@ private fun TmuxSessionList(
             sessions.forEach { s ->
                 TmuxSessionRow(
                     s = s,
-                    onRead = {
-                        // 解析该会话的工作目录，交给阅读面跟读其 Claude jsonl，不附着终端。
-                        scope.launch {
-                            val cwd = runCatching { runOnce(channel, backend.sessionCwdCommand(s.name)).trim() }.getOrDefault("")
-                            if (cwd.isNotBlank()) onRead(cwd)
-                        }
-                    },
                     onAttach = { onAttach(s.name) },
                     onKill = { onKillRequested(s) },
                 )
@@ -258,11 +241,10 @@ private fun TmuxSessionList(
     }
 }
 
-/** 单个 tmux 会话行：名称、运行中命令，以及读 / 附着 / 杀。 */
+/** 单个 tmux 会话行：名称、运行中命令，以及附着 / 杀。 */
 @Composable
 private fun TmuxSessionRow(
     s: TmuxSession,
-    onRead: () -> Unit,
     onAttach: () -> Unit,
     onKill: () -> Unit,
 ) {
@@ -286,7 +268,6 @@ private fun TmuxSessionRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        TextButton(onClick = onRead) { Text("读") }
         TextButton(onClick = onAttach) { Text("附着") }
         TextButton(onClick = onKill) { Text("杀", color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
     }

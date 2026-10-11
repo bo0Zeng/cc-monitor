@@ -11,7 +11,7 @@ import com.ccmonitor.mobile.core.claude.transport.SessionLocator
 /**
  * 一个 agent 一份档案。消费方只问档案，不问种类。
  *
- * 一家一句的事实（产品名、能不能上行、resume 载荷与定位……）都收在这里；
+ * 一家一句的事实（产品名、resume 载荷与定位……）都收在这里；
  * [of] 是唯一取法，构造器与实例都是 `private`，外面建不出第三份。
  * 加一种 agent 时 [of] 的 `when` 因穷尽性编译不过，逼着补一份档案。
  *
@@ -25,21 +25,8 @@ class AgentProfile private constructor(
     val displayName: String,
     /** 守护进程帧里的 `agent_kind` 串（`"claude"` | `"codex"`）。反向映射见 [fromWire]。 */
     val wireName: String,
-    /**
-     * 这一家能不能说话（上行与输入行形态的唯一判定源）。
-     *
-     * `false` 时输入行整条不渲染（不是灰掉：灰掉是「等会儿就能发」的承诺，对这一家是假的），
-     * [landsOnChatScreen] 也随之为 `false`。Codex 是 `false`：上行那半全按 Claude CLI 的管道形状写。
-     */
-    val supportsUplink: Boolean,
     /** 起新对话前要不要先选账号。只读档不起新对话，这道门对它没有意义。 */
     val requiresAccountGate: Boolean,
-    /**
-     * 终端 tab 里有没有「阅读」子页。今天那一页自己读这台 Claude 的记录树（`ReadingPaneViewModel`），只有 Claude 有；
-     * Codex 的记录手机不再自己解，看 Codex 走「对话」⇒ 聊天屏（读核心的通用记录）。
-     * 子页换成读核心通用记录的同一个组件后，两家都有，这一格随之删。
-     */
-    val hasReadingTab: Boolean,
     /**
      * 后端对这一家有没有会话身份面。`true` 时 resume 出来的 tmux 会话在新建那一支打
      * `@ccm_sid=<完整 sid>`。
@@ -59,14 +46,6 @@ class AgentProfile private constructor(
     /** 远端会话定位命令（resume 找那份记录）、`path→sessionId`、agent-dir 解析。 */
     val sessionLocator: SessionLocator,
 ) {
-    /**
-     * 点一台这种服务器进去，落聊天屏（`true`）还是对话总览只读档（`false`）。
-     *
-     * 派生自 [supportsUplink] 而不单独存：「能不能说话」与「去哪儿落地」是同一句话，
-     * 拆成两格就可能一半改了一半没改。
-     */
-    val landsOnChatScreen: Boolean get() = supportsUplink
-
     override fun toString(): String = "AgentProfile(${kind.name})"
 
     companion object {
@@ -75,9 +54,7 @@ class AgentProfile private constructor(
                 kind = AgentKind.ClaudeCode,
                 displayName = "Claude",
                 wireName = "claude",
-                supportsUplink = true,
                 requiresAccountGate = true,
-                hasReadingTab = true,
                 hasCcmIdentity = true,
                 appDefaultDirSetting = AgentDirSettingKey.AppDefaultClaudeDir,
                 invocation = ClaudeInvocation,
@@ -89,10 +66,7 @@ class AgentProfile private constructor(
                 kind = AgentKind.Codex,
                 displayName = "Codex",
                 wireName = "codex",
-                // 只读档：没有输入行，落点是对话总览。
-                supportsUplink = false,
                 requiresAccountGate = false,
-                hasReadingTab = false,
                 hasCcmIdentity = false,
                 // 只认主机覆盖与内置 `${CODEX_HOME:-$HOME/.codex}`。
                 appDefaultDirSetting = null,

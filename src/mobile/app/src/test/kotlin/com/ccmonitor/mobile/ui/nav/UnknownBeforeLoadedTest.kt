@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.nav
 
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -78,9 +77,9 @@ class UnknownBeforeLoadedTest {
         )
 
         // 第三组：分歧长什么样（它为空，但不是因为两边本来就一样）
-        val folded = onConnectDestination(HOST, FOLDED_UNKNOWN, AgentKind.ClaudeCode, fixedId, ::terminalOf)
-        val onlyReachableReal = onConnectDestination(HOST, true, AgentKind.ClaudeCode, fixedId, ::terminalOf)
-        val hypotheticalOff = onConnectDestination(HOST, false, AgentKind.ClaudeCode, fixedId, ::terminalOf)
+        val folded = onConnectDestination(HOST, FOLDED_UNKNOWN, fixedId, ::terminalOf)
+        val onlyReachableReal = onConnectDestination(HOST, true, fixedId, ::terminalOf)
+        val hypotheticalOff = onConnectDestination(HOST, false, fixedId, ::terminalOf)
         assertTrue("前提：折下来的值就是「开」（`null != false`）", FOLDED_UNKNOWN)
         assertEquals("折下来的值与今天唯一可达的真值给出同一个落点 ⇒ 分歧为空", onlyReachableReal, folded)
         assertNotEquals(

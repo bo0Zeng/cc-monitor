@@ -22,7 +22,6 @@ import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxNewOrAttach
 import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxPaneChildProbeCommand
 import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxResumeCommand
 import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxSendModelCommand
-import com.ccmonitor.mobile.ssh.TmuxCommands.tmuxSessionCwdCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -89,9 +88,6 @@ class RemoteCommandsTest {
         assertFalse("空输出不算成功（命令可能根本没跑起来）", tmuxKillSucceeded(""))
         assertFalse("只有 stderr 不算成功", tmuxKillSucceeded("can't find session: bg\n"))
     }
-
-    @Test fun tmuxSessionCwd() =
-        assertEquals("tmux display-message -p -t 'work' '#{pane_current_path}'", tmuxSessionCwdCommand("work"))
 
     @Test fun tmuxListFormatStable() =
         assertEquals(

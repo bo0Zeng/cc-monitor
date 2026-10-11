@@ -38,7 +38,7 @@ class TmuxScopedOptionsTest {
     @Test
     fun noTmuxCommandWeBuildTouchesTheServerWideState() {
         val all = everyTmuxCommandWeBuild()
-        assertTrue("前提：枚举得到命令，实得 ${all.size} 条", all.size >= 15)
+        assertTrue("前提：枚举得到命令，实得 ${all.size} 条", all.size >= 14)
         assertTrue(
             "前提：枚举里得真有写选项的命令（否则①守了个寂寞）",
             all.values.any { optionWrites(it).isNotEmpty() },
@@ -154,7 +154,6 @@ class TmuxScopedOptionsTest {
             put("kill", b.killCommand("work"))
             put("newDetached", b.newDetachedCommand("work"))
             put("newDetachedRunning", b.newDetachedRunningCommand("work", "claude"))
-            put("sessionCwd", b.sessionCwdCommand("work"))
             put("sendModel", b.sendModelCommand("work", "opus"))
             put("capture", b.captureCommand("work"))
             put("foregroundProbe", b.foregroundProbeCommand("work"))

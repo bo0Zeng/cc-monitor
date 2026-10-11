@@ -163,7 +163,7 @@ class TmuxGatewayCallSiteTest {
          * | 类 | 函数 | 谁在用 |
          * |---|---|---|
          * | 进入/新建 | `tmuxNewOrAttach` · `tmuxNewDetachedCommand` · `tmuxNewDetachedRunning` | `TmuxBackend`（`SessionBackend` 的实现，别处只经它） |
-         * | 探测/查询 | `tmuxForegroundProbeCommand` · `tmuxPaneChildProbeCommand` · `tmuxSessionCwdCommand` · `tmuxListCommand` · `tmuxCapturePaneCommand` | `TmuxBackend` |
+         * | 探测/查询 | `tmuxForegroundProbeCommand` · `tmuxPaneChildProbeCommand` · `tmuxListCommand` · `tmuxCapturePaneCommand` | `TmuxBackend` |
          * | resume | `tmuxResumeCommand` | `TmuxBackend`（档案整份交进去） |
          * | kill/投递 | `tmuxKillCommand` · `tmuxSendModelCommand` | `TmuxBackend` |
          * | 解析 | `isResumeForegroundShell` · `paneConfirmedNoChild` | `TmuxBackend`（`SessionBackend` 把它们也收进了接口） |
@@ -176,7 +176,6 @@ class TmuxGatewayCallSiteTest {
                 "tmuxNewDetachedRunning" to setOf(BACKEND),
                 "tmuxForegroundProbeCommand" to setOf(BACKEND),
                 "tmuxPaneChildProbeCommand" to setOf(BACKEND),
-                "tmuxSessionCwdCommand" to setOf(BACKEND),
                 "tmuxListCommand" to setOf(BACKEND),
                 "tmuxCapturePaneCommand" to setOf(BACKEND),
                 "tmuxResumeCommand" to setOf(BACKEND),

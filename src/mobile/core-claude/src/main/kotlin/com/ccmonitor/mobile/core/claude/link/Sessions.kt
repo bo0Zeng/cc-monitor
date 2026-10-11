@@ -8,13 +8,14 @@ object SessionNew {
     const val COMMAND: String = "session-new"
 
     /**
-     * 新起一条 Claude 会话。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认（中途换模型送 `/model <名>`）。
+     * 新起一条会话（[agent] 是哪一家的线上名：`claude` · `codex`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认（中途换模型送 `/model <名>`）。
      * [ticket] 一个草稿一张：期限到了同一张再问，那台认出是同一趟、不起第二个。
      */
     fun args(
         cwd: String,
         ticket: String,
-    ): Map<String, Any?> = mapOf("agent" to AGENT, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket)
+        agent: String,
+    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket)
 
     data class Answer(
         /** `started`（tmux 里起好了）· `open`（要开终端窗口：手机不走这一形）。 */
@@ -39,8 +40,6 @@ object SessionNew {
         cwd: String,
         before: Set<String>,
     ): LiveSession? = table.sessions.values.firstOrNull { it.cwd == cwd && it.sid !in before }
-
-    private const val AGENT = "claude"
 }
 
 /** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
@@ -98,9 +97,16 @@ object HistoryTail {
         val end: Long,
         /** 尾段第一行的字节起点。 */
         val splitAt: Long,
+        /** 尾段第一行的行号（与 `line` 帧的 `seq` 同一个空间）。 */
+        val tailFrom: Long,
+        /** 可计行总数 ＝ 读到 [end] 为止的下一行行号。 */
+        val total: Long,
     )
 
-    fun of(data: Any?): Answer? = decoding { data.asObj().let { Answer(it.num("end").need(), it.num("split_at").need()) } }
+    fun of(data: Any?): Answer? =
+        decoding {
+            data.asObj().let { Answer(it.num("end").need(), it.num("split_at").need(), it.num("tail_from").need(), it.num("total").need()) }
+        }
 }
 
 /** `history-read`：按字节读 `[offset, until)` 那一段，每行一条通用记录（不进界面的行没有记录、不出）。 */
@@ -129,18 +135,72 @@ object HistoryRead {
         }
 }
 
+/** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
+object HistoryLines {
+    const val COMMAND: String = "history-lines"
+
+    fun args(
+        path: String,
+        from: Long,
+        until: Long,
+    ): Map<String, Any?> = mapOf("path" to path, "from" to from, "until" to until)
+
+    data class Page(
+        val records: List<Map<String, Any?>>,
+        /** 每条记录的行号（与 [records] 一一对应）。 */
+        val seqs: List<Long>,
+        /** 下一段从这一行起。 */
+        val next: Long,
+        val eof: Boolean,
+    )
+
+    fun of(data: Any?): Page? =
+        decoding {
+            val m = data.asObj()
+            val rows = m.objs("lines").need().mapNotNull { l -> l.obj("record")?.let { it to l.num("seq").need() } }
+            Page(rows.map { it.first }, rows.map { it.second }, m.num("next").need(), m.bool("eof") == true)
+        }
+}
+
 /** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号）。 */
 data class RecordLine(
     val sid: String,
     val path: String,
-    /** 这一行末尾在文件里的累计字节：续读按它。 */
-    val byteOffset: Long,
+    /** 这一行在这份记录里的行号（与 `history-tail.total` · `history-lines` · `stream-watch.from[].seq` 同一个空间）：接续与去重按它。 */
+    val seq: Long,
+    /** 这一行末尾在文件里的累计字节。 */
+    val byteOffset: Long?,
     val record: Map<String, Any?>?,
 ) {
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
-            return decoding { RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("byte_offset").need(), frame.obj("record")) }
+            return decoding {
+                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), frame.obj("record"))
+            }
         }
     }
+}
+
+/** `stream-watch` 应答里的一格：这个会话刚进名单，这条流从第 [seq] 行起发它；`[已有, seq)` 由看的那一方补。 */
+data class WatchFrom(
+    val sid: String,
+    val path: String,
+    val seq: Long,
+)
+
+/** `stream-watch`：这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。 */
+object StreamWatch {
+    const val COMMAND: String = "stream-watch"
+
+    fun args(sids: Set<String>): Map<String, Any?> = mapOf("sids" to sids.sorted())
+
+    fun of(data: Any?): List<WatchFrom>? =
+        decoding {
+            data
+                .asObj()
+                .objs("from")
+                .need()
+                .map { WatchFrom(it.str("sid").need(), it.str("path").need(), it.num("seq").need()) }
+        }
 }

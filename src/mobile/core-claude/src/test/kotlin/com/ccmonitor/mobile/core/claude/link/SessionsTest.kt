@@ -12,9 +12,9 @@ class SessionsTest {
     private val frames = Fixtures.text("session-stream.golden.jsonl").lines().mapNotNull(Json::obj)
 
     @Test
-    fun `session-new：在那台 tmux 里起 Claude，带票；不带模型 · 权限 · 账号（跟随默认）`() {
-        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1")
-        assertEquals(mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1"), args)
+    fun `session-new：在那台 tmux 里起那一家，带票；不带模型 · 权限 · 账号（跟随默认）`() {
+        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "codex")
+        assertEquals(mapOf("agent" to "codex", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1"), args)
     }
 
     @Test
@@ -60,7 +60,7 @@ class SessionsTest {
     @Test
     fun `history-tail · history-read：尾段起点与每行的记录照抄；不进界面的行不出`() {
         assertEquals(mapOf("path" to "/p/a.jsonl", "n" to 50L), HistoryTail.args("/p/a.jsonl", 50))
-        assertEquals(HistoryTail.Answer(end = 900, splitAt = 300), HistoryTail.of(mapOf("end" to 900, "split_at" to 300, "tail_from" to 7, "total" to 9)))
+        assertEquals(HistoryTail.Answer(end = 900, splitAt = 300, tailFrom = 7, total = 9), HistoryTail.of(mapOf("end" to 900, "split_at" to 300, "tail_from" to 7, "total" to 9)))
         assertEquals(mapOf("path" to "/p/a.jsonl", "offset" to 3L, "until" to 9L), HistoryRead.args("/p/a.jsonl", 3, 9))
         val page = HistoryRead.of(reads["history-read"])!!
         assertEquals(273L, page.next)
@@ -75,8 +75,31 @@ class SessionsTest {
         val a = RecordLine.of(full)!!
         assertEquals("s1", a.sid)
         assertEquals(120L, a.byteOffset)
+        assertEquals("行号与 history-lines · stream-watch 的 from 同一个空间", 3L, a.seq)
         assertEquals("u1", a.record?.str("id"))
         assertNull(RecordLine.of(least)!!.record)
         assertNull(RecordLine.of(mapOf("kind" to "session_added", "sid" to "s1")))
+    }
+
+    @Test
+    fun `history-lines：按行号取一段，每条记录带它的行号；next 是下一段的起点`() {
+        assertEquals(mapOf("path" to "/p/a.jsonl", "from" to 4L, "until" to 9L), HistoryLines.args("/p/a.jsonl", 4, 9))
+        val page = HistoryLines.of(reads["history-lines"])!!
+        assertTrue(page.eof)
+        assertEquals(listOf("r-1", "r-2"), page.records.map { it.str("id") })
+        assertEquals(listOf(1L, 2L), page.seqs)
+        assertEquals(3L, page.next)
+        assertNull(HistoryLines.of(mapOf("lines" to emptyList<Any>())))
+    }
+
+    @Test
+    fun `stream-watch：报名单整份换；应答 from 每份记录一格 sid · path · seq`() {
+        assertEquals(mapOf("sids" to listOf("a", "b")), StreamWatch.args(setOf("b", "a")))
+        assertEquals(mapOf("sids" to emptyList<String>()), StreamWatch.args(emptySet()))
+        assertEquals(
+            listOf(WatchFrom("s1", "/p/s1.jsonl", 12)),
+            StreamWatch.of(mapOf("from" to listOf(mapOf("sid" to "s1", "path" to "/p/s1.jsonl", "seq" to 12)))),
+        )
+        assertNull(StreamWatch.of(mapOf("from" to listOf(mapOf("sid" to "s1")))))
     }
 }

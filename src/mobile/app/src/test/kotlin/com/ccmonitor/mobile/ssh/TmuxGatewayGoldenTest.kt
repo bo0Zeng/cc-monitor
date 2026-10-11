@@ -62,7 +62,6 @@ class TmuxGatewayGoldenTest {
             GOLDEN_PANE_CHILD_PROBE,
             TmuxCommands.tmuxPaneChildProbeCommand(CC_NAME),
         )
-        assertEquals("取会话 cwd 变了", GOLDEN_SESSION_CWD, TmuxCommands.tmuxSessionCwdCommand("work"))
         assertEquals("`tmux ls` 的格式串变了（读它的 `parseTmuxList` 会跟着错位）", GOLDEN_LIST, TmuxCommands.tmuxListCommand())
         assertEquals("抓屏变了", GOLDEN_CAPTURE_PANE, TmuxCommands.tmuxCapturePaneCommand(CC_NAME))
     }
@@ -198,9 +197,6 @@ class TmuxGatewayGoldenTest {
 
         private val GOLDEN_CAPTURE_PANE: String =
             """tmux capture-pane -t 'cc-0f9d3c2a' -p"""
-
-        private val GOLDEN_SESSION_CWD: String =
-            """tmux display-message -p -t 'work' '#{pane_current_path}'"""
 
         private val GOLDEN_LIST: String =
             """tmux ls -F '#{session_name}${'\t'}#{session_windows}${'\t'}#{?session_attached,1,0}${'\t'}#{pane_current_command}' 2>/dev/null"""

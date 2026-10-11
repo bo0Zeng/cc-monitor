@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.di
 
 import android.util.Log
-import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.link.HostBackends
@@ -9,10 +8,9 @@ import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.KnownHostDaoStore
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatOpen
-import com.ccmonitor.mobile.ui.chat.ChatSession
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
 import com.ccmonitor.mobile.ui.chat.ConnectionHolder
-import com.ccmonitor.mobile.ui.claude.ReadingPaneViewModel
+import com.ccmonitor.mobile.ui.chat.sessionOf
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
@@ -33,11 +31,8 @@ val appModule =
         // 参数按类型取一件 `ChatOpen`，不按位置取几个裸串。
         viewModel {
             val open = it.get<ChatOpen>()
-            ChatViewModel(
-                get<ChatController>().sessionFor(key = open.key, hostId = open.hostId) { scope ->
-                    ChatSession(get<HostBackends>().of(open.hostId).also { f -> f.ensure() }, open.target, open.machine, scope)
-                },
-            )
+            val backends = get<HostBackends>()
+            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::watchOf))
         }
         // 应用级的对话持有者，tail 活在这里，不活在屏幕里。逐出要记日志，否则「对话怎么没了」无从查起。
         single {
@@ -75,19 +70,6 @@ val appModule =
         viewModel { SettingsViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
         viewModel { HostViewModel(get(), get(), get()) }
-        // 阅读面 VM。位置参数与 `parametersOf(channel, cwd, claudeDir, pinnedPath, pinnedLabel)` 一一对应，
-        // 空串是 null 的哨兵；按位取值是因为 5 参解构超过 detekt 上限。
-        viewModel { params ->
-            ReadingPaneViewModel(
-                channel = params.get(0),
-                // 按类型取，且用 `get` 不用 `getOrNull`：调用方漏传就在构造时炸，不悄悄让截断检测失效。
-                executor = params.get<RemoteExecutor>(),
-                cwdArg = params.get(1),
-                claudeDirArg = params.get(2),
-                pinnedPathArg = params.get(3),
-                pinnedLabelArg = params.get(4),
-            )
-        }
         // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession, resumeSessionId, resumeCommand)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->
