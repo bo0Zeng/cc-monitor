@@ -82,6 +82,11 @@ impl Until {
     pub(crate) fn after(d: Deadline) -> Option<Until> {
         now().checked_add(d.0).map(Until)
     }
+
+    /// 到那一刻还剩多少毫秒（已过 ⇒ 0）。
+    pub(crate) fn left_ms(self) -> u64 {
+        u64::try_from(self.0.saturating_duration_since(now()).as_millis()).unwrap_or(u64::MAX)
+    }
 }
 
 impl Budget {
