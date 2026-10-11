@@ -5,10 +5,7 @@
 use std::collections::BTreeSet;
 
 /// 名字带这三个后缀、却是产品的：`(文件名, 为什么是产品)`。
-const PRODUCT: &[(&str, &str)] = &[(
-    "drift_ledger.rs",
-    "运行期的账：远端回来的未知 token 按机器记下，Tauri 命令 `drift_ledger_report` 交给界面",
-)];
+const PRODUCT: &[(&str, &str)] = &[];
 
 fn judge_named(name: &str) -> bool {
     ["_registry.rs", "_guard.rs", "_ledger.rs"]

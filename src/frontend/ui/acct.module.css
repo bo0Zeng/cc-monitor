@@ -40,17 +40,16 @@
     color: var(--text);
   }
 
-  .acctChip[data-shade="near"] .acctChipValue,
-  .acctChip[data-shade="over"] .acctChipValue {
+  .acctChip[data-shade="warn"] .acctChipValue {
     color: var(--warn);
   }
 
-  .acctChip[data-shade="refused"] {
+  .acctChip[data-shade="fail"] {
     border-color: color-mix(in srgb, var(--error) 45%, transparent);
   }
 
-  .acctChip[data-shade="refused"] .acctChipValue,
-  .acctChip[data-shade="refused"] .acctChipReset {
+  .acctChip[data-shade="fail"] .acctChipValue,
+  .acctChip[data-shade="fail"] .acctChipReset {
     color: var(--error-text);
   }
 

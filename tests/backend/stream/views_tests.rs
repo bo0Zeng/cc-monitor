@@ -138,3 +138,128 @@ async fn the_frame_face_projects_a_successful_reply() {
         ]}}], "next": 9, "eof": true})
     );
 }
+
+// ═══ 流的声明（attach 行的 `view` · 起流 `--view`）═══════════════════════════════
+
+/// 流的住处表：每个 kind 是真有的推送帧、每件成品在格目录里。
+#[test]
+fn every_stream_place_names_a_pushed_frame_and_a_catalogued_product() {
+    use crate::faces::cells_catalog::PRODUCTS;
+    for (kind, places) in STREAM_PLACES {
+        assert!(
+            crate::EMITS.contains(kind),
+            "流的住处表点了 `{kind}`，后端不发这种帧"
+        );
+        for (_, product) in *places {
+            assert!(
+                PRODUCTS.iter().any(|p| p.name == *product),
+                "`{kind}` 那一处的成品 `{product}` 不在格目录里"
+            );
+        }
+    }
+}
+
+/// 推送帧照流的声明裁：`session_added` 去掉 `pid`、`line.record` 去掉正文块的字；`kind` 恒在；声明没点的帧与应答字节不变。
+#[test]
+fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
+    use crate::stream::wire::{to_line, to_line_viewed, Frame};
+    let view = StreamView::parse(&json!({
+        "omit": {"session_added": ["pid"], "record": ["blocks[type=text].text"]},
+    }))
+    .unwrap()
+    .expect("认得的声明");
+    let added = Frame::SessionAdded {
+        sid: "s".into(),
+        agent_kind: "claude".to_string(),
+        liveness_confidence: None,
+        background: false,
+        attachable: None,
+        cwd: None,
+        project_dir: None,
+        name: None,
+        path: None,
+        lines: None,
+        face: crate::stream::wire::ActivityFace::of(None),
+        waiting_for: None,
+        container: None,
+        pid: 42,
+    };
+    let full: serde_json::Value = serde_json::from_str(to_line(&added).unwrap().trim()).unwrap();
+    assert_eq!(full["pid"], 42, "没声明的时候该有 pid");
+    let cut: serde_json::Value =
+        serde_json::from_str(to_line_viewed(&added, Some(&view)).unwrap().trim()).unwrap();
+    assert!(cut.get("pid").is_none(), "声明去掉了 pid 却还在：{cut}");
+    assert_eq!(cut["kind"], "session_added");
+    assert_eq!(cut["sid"], "s");
+
+    use crate::agents::record::{Block, Body, Record};
+    let record = Record {
+        agent: "claude".into(),
+        id: "u1".into(),
+        at: None,
+        time_text: None,
+        at_ms: None,
+        body: Body::Said {
+            who: crate::agents::UserText {
+                speaker: crate::agents::Speaker::Human,
+                text: "x".into(),
+                pasted: Vec::new(),
+            },
+            blocks: vec![Block::Text { text: "x".into() }],
+            results: Default::default(),
+            cwd: None,
+        },
+    };
+    let line = Frame::Line {
+        session_id: "s".into(),
+        path: "/p".into(),
+        seq: 0,
+        record: Some(record),
+        cwd: None,
+        byte_offset: 9,
+        rid: None,
+    };
+    let cut: serde_json::Value =
+        serde_json::from_str(to_line_viewed(&line, Some(&view)).unwrap().trim()).unwrap();
+    assert_eq!(cut["kind"], "line");
+    assert_eq!(cut["byte_offset"], 9);
+    assert_eq!(cut["record"]["blocks"][0]["type"], "text");
+    assert!(
+        cut["record"]["blocks"][0].get("text").is_none(),
+        "声明去掉了正文却还在：{cut}"
+    );
+    assert_eq!(cut["record"]["who"]["text"], "x", "没点到的格照发");
+
+    let other = Frame::SessionsReplayed;
+    assert_eq!(
+        to_line_viewed(&other, Some(&view)).unwrap(),
+        to_line(&other).unwrap()
+    );
+    assert_eq!(
+        to_line_viewed(&added, None).unwrap(),
+        to_line(&added).unwrap(),
+        "没声明 ⇒ 字节与 to_line 一样"
+    );
+
+    // 只留几格（`cells`）：帧的 `kind` 不在成品的格里，照样留着（客户端按它分派）。
+    let keep = StreamView::parse(&json!({"cells": {"session_status": ["sid"]}}))
+        .unwrap()
+        .expect("认得的声明");
+    let mut status = json!({"kind": "session_status", "sid": "s", "status": "busy"});
+    keep.apply(&mut status);
+    assert_eq!(status, json!({"kind": "session_status", "sid": "s"}));
+}
+
+/// 流的声明只许点推送帧里住着的成品；认不出的词 · 格同请求信封那一处拒。
+#[test]
+fn the_stream_view_refuses_products_the_stream_does_not_carry() {
+    assert_eq!(StreamView::parse(&serde_json::Value::Null), Ok(None));
+    assert!(StreamView::parse(&json!({"omit": {"facts": ["usage"]}})).is_err());
+    assert!(StreamView::parse(&json!({"omit": {"session_added": ["nope"]}})).is_err());
+    assert!(StreamView::parse(&json!({"pick": {}})).is_err());
+    assert!(
+        StreamView::parse(&json!({"cells": {"session_status": ["sid"]}}))
+            .unwrap()
+            .is_some()
+    );
+}

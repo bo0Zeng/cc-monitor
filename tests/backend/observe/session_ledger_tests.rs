@@ -34,12 +34,10 @@ fn added(sid: &str) -> Ev {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     }
     .into()
 }
@@ -153,12 +151,10 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         name: None,
         path: None,
         lines: None,
-        activity: None,
-        activity_text: crate::stream::wire::activity_cells(None).0,
-        activity_tone: crate::stream::wire::activity_cells(None).1,
+        face: crate::stream::wire::ActivityFace::of(None),
         waiting_for: None,
         container: None,
-        pid: None,
+        pid: 0,
     });
     assert!(!l.awaits_observation());
     let (pass, extra) = l.on_frame(&Frame::SessionRemoved {

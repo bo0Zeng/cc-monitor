@@ -36,8 +36,6 @@ export function headlineFor(kind: string): string {
       return copyText("remoteHealth.head.backendNewer");
     case "version-incomparable":
       return copyText("remoteHealth.head.versionIncomparable");
-    case "degraded":
-      return copyText("remoteHealth.head.degraded");
     case "snapshot":
       return copyText("remoteHealth.head.historyFailed");
     // 连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。

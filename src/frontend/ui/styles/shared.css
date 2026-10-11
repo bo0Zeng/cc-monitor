@@ -24,9 +24,9 @@
   cursor: pointer;
   opacity: 0.75;
   transition:
-    opacity 0.12s,
-    color 0.12s,
-    border-color 0.12s;
+    opacity var(--dur-press),
+    color var(--dur-press),
+    border-color var(--dur-press);
 }
 
 .status-account:hover {

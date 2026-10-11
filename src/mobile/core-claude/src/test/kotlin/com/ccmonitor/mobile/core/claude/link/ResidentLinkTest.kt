@@ -40,7 +40,7 @@ class ResidentLinkTest {
             runCurrent()
             assertTrue("应当接上：$got", got is LinkOutcome.Up)
             assertEquals("hello 自报同一版就是门槛：不另问门槛、不起常驻", emptyList<String>(), asked)
-            assertEquals("流上只写了 attach 那一行", listOf("""{"attach":true,"flags":["--tail-only"],"tz":"Asia/Shanghai"}"""), drain(d))
+            assertEquals("流上只写了 attach 那一行", listOf("""{"attach":true,"tz":"Asia/Shanghai"}"""), drain(d))
         }
 
     @Test

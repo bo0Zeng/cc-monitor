@@ -397,6 +397,8 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                                 at_ms: None,
                                 state: Default::default(),
                                 why: None,
+                                text: None,
+                                why_text: None,
                             });
                         }
                         // 又调了工具 ⇒ 之前的正文是「中间的话」，不是结论。

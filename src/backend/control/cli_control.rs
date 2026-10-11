@@ -67,7 +67,7 @@ pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
 /// 后一种被读成前一种，第二个前端（只有一次性 CLI 与流两条路进后端）就够不着。
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
-    "apikey-routing",
+    "accounts-list",
     "relay-optin",
     "launch-local",
     "forward-start",
@@ -132,6 +132,22 @@ pub(crate) fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Fail
 /// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
 fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i32 {
     f.emit_to(err, text, tz)
+}
+
+/// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
+pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
+    let detail = why.unwrap_or_default().to_string();
+    let f = crate::stream::inbound::spec::Fail::new(
+        "bad_args",
+        crate::common::contract::malformed(&format!("stream: {detail}")),
+    )
+    .with_raw(Some(&detail));
+    emit_failed(
+        &mut std::io::stderr(),
+        &f.settle("stream", &serde_json::Value::Null),
+        false,
+        tz,
+    )
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。

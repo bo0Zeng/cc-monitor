@@ -4,8 +4,8 @@
 //!
 //! 远端账号页建的 apikey 号，key 一直写进的是**本机**那份表（第三条）——
 //! 远端会话用不上。那份文件要落在**会话跑的那台机器**上，而那台机器上唯一住着的是它的后端。
-//! ⇒ 本模块是那台机器上这份文件**唯一的程序写者**：`apikey-key-set` 写一条账号的 key，
-//! `apikey-read` 回文件级的状态与「表里有哪几行」。两条都只从 `stream/inbound/` 登记进来。
+//! ⇒ 本模块是那台机器上这份文件**唯一的程序写者**：`apikey-key-set` 写一条账号的 key（只从 `stream/inbound/` 登记进来）；
+//! 「表里有哪几行」（[`rows_at`]）只在这台后端里用（`accounts-list` 并表 · `ccm` 起会话），不出线。
 //!
 //! # 🔴 归属：上游选择自己的状态，**不是用户文件**（判清的全文住）
 //!
@@ -39,10 +39,8 @@
 //! （`creds_core::perm::create_private`，O_EXCL）· 写满 · 落盘 · 原子改名 · 失败删自己的临时文件。
 //! ⚠ 现有文件**解析不了 ⇒ 拒绝、不覆盖**（`bad_file`）：人手编打错一个逗号时，覆盖等于把他写的东西抹掉。
 
-use crate::common::said::IntoNote as _;
 use crate::stream::inbound::spec::Fail;
 use copy_core::copy_text;
-use creds_core::perm::{self, Verdict};
 use creds_core::store;
 use creds_core::SecretKey;
 use serde_json::{json, Map, Value};
@@ -57,7 +55,7 @@ pub(crate) fn machine_path() -> Result<PathBuf, String> {
     super::creds::resolve_path(&|k| std::env::var(k).ok())
 }
 
-/// 这台那份表里有哪几行（[`rows_at`]）。推不出路径 ⇒ 零条，同「读不动」那一形：那句话由 `apikey-read` 的 `problem` 说。
+/// 这台那份表里有哪几行（[`rows_at`]）。推不出路径 ⇒ 零条，同「读不动」那一形。
 pub(crate) fn machine_rows() -> Vec<String> {
     machine_path().map(|p| rows_at(&p)).unwrap_or_default()
 }
@@ -240,60 +238,16 @@ pub(crate) fn check_inputs(plain: &str, base_url: Option<&str>) -> Result<(), Fa
     Ok(())
 }
 
-/// `apikey-read`：文件级的状态 ＋ 表里有哪几行。**从不回明文**。
-pub(crate) fn answer_read() -> FileFaceAnswer {
-    Ok(match machine_path() {
-        Ok(p) => read_at(&p),
-        // 推不出路径也是**状态**（同「读不动」）：没配、路径空、`problem` 说为什么。
-        Err(why) => json!({
-            "configured": false,
-            "masked": "",
-            "path": "",
-            "notice": null,
-            "problem": why,
-        }),
-    })
-}
-
-/// [`answer_read`] 的本体。**从不报错** —— 读不动 / 解析不了是**状态**（`problem`），不是一次失败：
-/// 界面要的正是那一句「读坏了」，而不是一次「命令失败」。
-///
-/// `configured` / `masked` 说的是**顶层那一把**（`KH2C3`）。界面经 `chan.call` 直接问它、按形状收
-/// （monitor 那一份状态读者 `creds_store::read_status`〔散文墓碑〕与转发的 Tauri 命令退役）。
-/// 先前还回一格 `rows`（表里有哪几行，只给 monitor 起会话那一侧用）：「表里有哪几行」从此只有 [`rows_at`] 一份、
-/// 只在这台后端里用（`ccm` 起会话 · `apikey-routing` · `accounts-list`），不再出线。
-pub(crate) fn read_at(path: &Path) -> Value {
-    let verdict = perm::judge(&perm::probe(path));
-    let (doc, problem) = match read_doc(path) {
-        Ok(Some(doc)) => (Some(doc), None),
-        Ok(None) => (None, None),
-        Err(f) => (None, Some(f.into_note())),
-    };
-    let exists = doc.is_some() || problem.is_some();
-    let (configured, masked) = match doc.as_ref().and_then(store::read_key) {
-        Some(k) => (true, k.masked()),
-        None => (false, String::new()),
-    };
-    json!({
-        "configured": configured,
-        "masked": masked,
-        "path": path.display().to_string(),
-        // 文件不存在时不报权限问题（那时的「查不出来」不是一条有用的提醒）—— 同 monitor 那一侧。
-        "notice": if exists { notice_of(&verdict) } else { None },
-        "problem": problem,
-    })
-}
-
 /// ★★**「表里有哪几行」的唯一住址** = 上游选择装表那一步（`table::build`，中转装表同一个函数、
 /// 同一张每 agent 默认上游）**真收进表**的那几行的 id。
 ///
 /// 先前这里（与 monitor `history::apikey_rows_at`〔散文墓碑〕）只筛「id 当不当得了路由段」，而装表还会因为
 /// `base_url` 解析不了 · 明文非回环 · `auth_style` 认不出 · 「不发头」却配了 key 把一行丢出表 ⇒
-/// 那一行界面说「经本机中转」、起会话注入 `/s/`，中转却 404（头注自认的残留）。今天三处读者
-/// （`accounts-list` 并表 · `apikey-routing` · `ccm` 起会话）都读这一份 ⇒ 与中转同答。
+/// 那一行界面说「经本机中转」、起会话注入 `/s/`，中转却 404（头注自认的残留）。今天两处读者
+/// （`accounts-list` 并表 · `ccm` 起会话）都读这一份 ⇒ 与中转同答。
 ///
 /// **读不动 / 解析不了 ⇒ 零条**：零条的正确行为就是「谁都不按 apikey 号算」，把一份坏文件变成一次清单失败，
-/// 是拿一个能用的状态去换一条报错。坏文件自己的那句话由 `apikey-read` 的 `problem` 说。
+/// 是拿一个能用的状态去换一条报错。
 /// ⚠ 与中转的一处差别（照实写）：中转遇到坏文件**保留上一张表**（`Accounts::refresh_if_changed`），这里答零条。
 /// 默认上游的环境旋钮认不出（那一刻中转也起不来）⇒ 同样零条。
 pub(crate) fn rows_at(path: &Path) -> Vec<String> {
@@ -326,7 +280,7 @@ pub(crate) struct KeyFact {
 }
 
 /// 这台那份表里每一行的 [`KeyFact`]（`accounts-list` 给每个 API 号带出去）。推不出路径 / 读不动 / 解析不了 ⇒ 零条
-/// （坏文件那句话由 `apikey-read` 的 `problem` 说）。
+/// （坏文件不出声，同上）。
 pub(crate) fn machine_key_facts() -> Vec<KeyFact> {
     machine_path().map(|p| key_facts_at(&p)).unwrap_or_default()
 }
@@ -364,22 +318,6 @@ fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, Fail> {
     store::parse(&raw)
         .map(Some)
         .map_err(|e| Fail::from(("bad_file", e.said(path))))
-}
-
-/// 把权限判断变成一句给人看的话（与 monitor 那一侧 `creds_store::notice_of` 同一个口径）。
-fn notice_of(v: &Verdict) -> Option<String> {
-    match v {
-        Verdict::OwnerOnly => None,
-        Verdict::TooWide { how, fix } => Some(copy_text(
-            "beUpstreamFileFace.perm.tooWide",
-            &[("how", how), ("fix", fix)],
-        )),
-        // 提示格没有详情位：那一句交出去，原话记一行日志。
-        Verdict::Undetermined { why, raw } => Some(match raw {
-            Some(r) => crate::common::said::Said::with_raw(why.clone(), r).into_note(),
-            None => why.clone(),
-        }),
-    }
 }
 
 /// 写一个号的 key（与 Base URL）：同一个合并函数、只改这一条的那一格。

@@ -4,6 +4,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import type { ProfileForm, ProfileOp, ProfileRow, ProfilesBook } from "../../../../src/frontend/ui/profiles-reads";
 
+const clip = vi.hoisted(() => ({ writeClipboard: vi.fn(() => Promise.resolve()) }));
+vi.mock("../../../../src/frontend/ui/clipboard", () => clip);
+
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 16; i += 1) await Promise.resolve();
 };
@@ -88,6 +91,7 @@ describe("buildProfilesList", () => {
             chain: ["cc", name],
             rows: [{ key: "cwd-if", slot: "cwdIf", label: "按目录", vals: ["~", "~/x"], said: "在 ~ 敲进 ~/x", from: "cc", overriddenBy: null }],
             line: `LINE ${name}`,
+            lineShort: `SHORT ${name}`,
             lineError: null,
             problem: null,
           }),
@@ -142,7 +146,10 @@ describe("buildProfilesList", () => {
     const box = el.querySelector<HTMLElement>('[data-role="merge"]')!;
     expect(box.textContent).toContain("按目录");
     expect(box.textContent).toContain("cwd-if");
-    expect(box.querySelector('[data-role="equals"]')!.textContent).toBe("LINE teamcct");
+    // 上屏的是核心写好的短形；整条只进「复制整条」。
+    expect(box.querySelector('[data-role="equals"]')!.textContent).toBe("SHORT teamcct");
+    box.querySelector<HTMLElement>('[data-role="equals-copy"]')!.click();
+    expect(clip.writeClipboard).toHaveBeenCalledWith("LINE teamcct");
   });
 
   it("改一条：表单回填后端给的那一份；存时交 set（带原来的名字与读回时的指纹），存完收起、选中它", async () => {

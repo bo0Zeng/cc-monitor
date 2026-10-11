@@ -48,10 +48,10 @@ pub(super) mod tests {
     /// ㈠ 上游选择那棵树里的文件（相对**上游选择的根**）。**相等，不是地板**。
     // 根从 `accounts/` 收窄到 `accounts/upstream_select/`（现推，不是写死）；
     // 账号库管理（`accounts/manage/`）**不是**上游选择，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
-    // +`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
+    // +`file_face.rs`：这台机器上那份凭据文件的帧面写口（`apikey-key-set`）与「表里有哪几行」。
     // 它是上游选择自己的状态、同一份文件、同一套格式 ⇒ 住上游选择这棵树；它用到中转的只有 `segment_is_safe`
     // （已在 [`CONTRACT`] 里），接口面一项没变宽。
-    // +`endpoint.rs`：起会话那一发走哪、注入什么（`launch-endpoint`）· 界面「表里有没有行」（`apikey-routing`）——
+    // +`endpoint.rs`：起会话那一发走哪、注入什么（`launch-endpoint`）· 账号清单徽章「表里有没有行」（`accounts-list`）——
     // 那张表从 monitor 搬来；它用到中转的只多一样 `our_relay_listening`（见 [`CONTRACT`]）。
     const UPSTREAM_SELECTION_FILES: &[&str] = &[
         "creds.rs",
@@ -143,7 +143,7 @@ pub(super) mod tests {
         "KeyKind",
         "KeyKind::Full",
         "KeyKind::Pass",
-        // 出成品时问「这台机器上我们的中转在不在听」（`apikey-routing` 的 `running` · 别名预览那一面）。
+        // 出成品时问「这台机器上我们的中转在不在听」（账号清单徽章 · 别名预览那一面）。
         "our_relay_listening",
         // `run`（`--relay` 进程的中转入口）随那一形删了。
         "segment_is_safe",

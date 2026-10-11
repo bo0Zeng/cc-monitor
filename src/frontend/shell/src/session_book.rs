@@ -133,6 +133,19 @@ impl SessionActivity {
     }
 }
 
+/// 一条活会话此刻在干什么那几格（那台核心的 `stream::wire::ActivityFace`，原样转交）：那一态（`None` ＝ 说不清）·
+/// 写好的字与语气（运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）· 监控板组内的序（`activity_order`，小的在前，核心排的）。
+/// 解码只一处（`stream_source::frame` 的 `activity_cells`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct ActivityCells {
+    pub activity: Option<SessionActivity>,
+    pub activity_text: String,
+    pub activity_tone: String,
+    pub activity_order: u8,
+}
+
 /// 一条活会话宣告时带来的那几格（后端 `session_added`）。之后按 `session_status` 更新灯。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LiveMeta {
@@ -144,10 +157,7 @@ pub struct LiveMeta {
     /// 会话的项目目录（那台后端给的；tab 标题用它）。
     pub project_dir: Option<String>,
     pub name: Option<String>,
-    pub activity: Option<SessionActivity>,
-    /// `activity` 那一态写好的字与语气（那台核心写的，原样转交）。
-    pub activity_text: String,
-    pub activity_tone: String,
+    pub activity: ActivityCells,
     pub waiting_for: Option<String>,
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 pid（本机 ↗ 点那一刻从它往上找窗口；没索要 ⇒ `None`）。
@@ -172,9 +182,7 @@ pub enum In {
     Status {
         origin: String,
         sid: String,
-        activity: Option<SessionActivity>,
-        activity_text: String,
-        activity_tone: String,
+        activity: ActivityCells,
         waiting_for: Option<String>,
     },
     Left {
@@ -213,9 +221,7 @@ pub enum Out {
     Status {
         origin: String,
         sid: String,
-        activity: Option<SessionActivity>,
-        activity_text: String,
-        activity_tone: String,
+        activity: ActivityCells,
         waiting_for: Option<String>,
     },
     Left {
@@ -291,8 +297,6 @@ impl Book {
                 origin,
                 sid,
                 activity,
-                activity_text,
-                activity_tone,
                 waiting_for,
             } => {
                 if let Some(Product::Live(m)) = self
@@ -300,17 +304,13 @@ impl Book {
                     .get_mut(&origin)
                     .and_then(|b| b.sessions.get_mut(&sid))
                 {
-                    m.activity = activity;
-                    m.activity_text = activity_text.clone();
-                    m.activity_tone = activity_tone.clone();
+                    m.activity = activity.clone();
                     m.waiting_for = waiting_for.clone();
                 }
                 vec![Out::Status {
                     origin,
                     sid,
                     activity,
-                    activity_text,
-                    activity_tone,
                     waiting_for,
                 }]
             }
@@ -552,9 +552,7 @@ impl Out {
                     }),
                     F::Activity(b::SessionActivityPayload {
                         session_id: sid.clone(),
-                        activity: meta.activity,
-                        activity_text: meta.activity_text.clone(),
-                        activity_tone: meta.activity_tone.clone(),
+                        activity: meta.activity.clone(),
                         waiting_for: meta.waiting_for.clone(),
                     }),
                 ];
@@ -569,15 +567,11 @@ impl Out {
             Out::Status {
                 sid,
                 activity,
-                activity_text,
-                activity_tone,
                 waiting_for,
                 ..
             } => vec![F::Activity(b::SessionActivityPayload {
                 session_id: sid.clone(),
-                activity: *activity,
-                activity_text: activity_text.clone(),
-                activity_tone: activity_tone.clone(),
+                activity: activity.clone(),
                 waiting_for: waiting_for.clone(),
             })],
             Out::Left {

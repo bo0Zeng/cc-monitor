@@ -27,12 +27,13 @@ class RecordUnitsTest {
     @Test
     fun `回复：思考 · 正文 · 工具调用各一单元，按块的先后；工具的结果从后来那条人侧记录里配上`() {
         val u = units("reply-full")
-        assertEquals(listOf("a-full#0", "a-full#1", "a-full#2", "a-full#3"), u.map { it.key })
+        assertEquals(listOf("a-full#0", "a-full#1", "a-full#2", "a-full#3", "a-full#4"), u.map { it.key })
         assertEquals(RenderUnit.Thinking("a-full#0", "plan it", "a-full"), u[0])
         assertEquals(RenderUnit.AssistantMarkdown("a-full#1", "done", "a-full"), u[1])
         val edit = u[3] as RenderUnit.ToolCall
         assertEquals("Edit", edit.name)
         assertTrue("没有结果 ⇒ 还在跑", edit.pending)
+        assertEquals("认不出的工具也是一张调用卡", "mcp__x__y", (u[4] as RenderUnit.ToolCall).name)
     }
 
     @Test

@@ -4,6 +4,11 @@
       {
         "authKind": "subscription",
         "authReady": false,
+        "badge": {
+          "text": "需登录",
+          "title": "未登录 · 终端里用该账号运行 /login",
+          "warn": true
+        },
         "baseUrl": null,
         "configDir": null,
         "email": "",
@@ -18,6 +23,11 @@
       {
         "authKind": "subscription",
         "authReady": true,
+        "badge": {
+          "text": "已登录",
+          "title": "",
+          "warn": false
+        },
         "baseUrl": null,
         "configDir": "<root>/accts/acct-a",
         "email": "a@x",
@@ -32,6 +42,11 @@
       {
         "authKind": "api-key",
         "authReady": true,
+        "badge": {
+          "text": "按量 · 经中转",
+          "title": "已配置 · 会话请求经此机中转发送\n按凭据文件里该行换上 key · key 对不对要到 claude 那边才知道",
+          "warn": false
+        },
         "baseUrl": "https://api.example.com",
         "configDir": "<root>/accts/acct-b",
         "email": "",

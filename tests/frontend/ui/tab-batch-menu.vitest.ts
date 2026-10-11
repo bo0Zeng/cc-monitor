@@ -172,6 +172,7 @@ describe("批量菜单 · 轮换规则 ▸", () => {
   const RULES = {
     state: "present" as const,
     defaultRule: "r_daily",
+    followText: "核心·跟随默认（日常）",
     rules: [
       { id: "r_daily", name: "日常", isDefault: true },
       { id: "r_night", name: "夜间", isDefault: false },
@@ -202,7 +203,7 @@ describe("批量菜单 · 轮换规则 ▸", () => {
     open();
     await openSub();
     expect(sub()).toEqual([
-      copyText("rot.src.followOf", { name: "日常" }),
+      "核心·跟随默认（日常）",
       "日常",
       "夜间",
       copyText("rot.src.manage"),

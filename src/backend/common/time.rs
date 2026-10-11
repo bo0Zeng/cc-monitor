@@ -236,6 +236,43 @@ pub(crate) fn with_texts_now(v: &mut serde_json::Value, now: u64, tz: &Tz) {
     with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz);
 }
 
+/// 成品写时刻字的那一把钟：此刻 ＋ 看的那一台的时区（[`Tz`]：应答按请求信封的 `tz`，推送帧按连接的 `tz`，缺了按 UTC）。
+/// 有类型的成品逐格按它写 `…Text` / `…RelText`（同 [`with_texts`] 一个写法）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TextClock {
+    pub(crate) now: i64,
+    pub(crate) tz: Tz,
+}
+
+impl TextClock {
+    /// 此刻 `now`（unix 秒）按看的那一台的时区。
+    pub(crate) fn new(now: u64, tz: &Tz) -> Self {
+        TextClock {
+            now: i64::try_from(now).unwrap_or(i64::MAX),
+            tz: tz.clone(),
+        }
+    }
+
+    /// 那一刻写给人看的样子（[`fmt_at`]）。
+    pub(crate) fn text(&self, t: u64) -> crate::common::cells::Words {
+        crate::common::cells::Words(fmt_at(
+            i64::try_from(t).unwrap_or(i64::MAX),
+            self.now,
+            &self.tz,
+        ))
+    }
+
+    /// 那一刻距今（[`fmt_rel`]；已过 ⇒ `None`）。
+    pub(crate) fn rel(&self, t: u64) -> Option<crate::common::cells::Words> {
+        fmt_rel(i64::try_from(t).unwrap_or(i64::MAX), self.now).map(crate::common::cells::Words)
+    }
+
+    /// 透传的一团（原数）里认得的时刻格旁边添字（[`with_texts`]）。
+    pub(crate) fn on(&self, v: &mut serde_json::Value) {
+        with_texts(v, self.now, &self.tz);
+    }
+}
+
 /// 本地钟秒数 ⇒ 钟面 `HH:MM`（不写日子）。
 pub(crate) fn hm(local: i64) -> String {
     let secs = local.rem_euclid(DAY);
@@ -268,11 +305,58 @@ pub(crate) fn ms_hm(ms: i64, tz: &Tz) -> String {
     hm(tz.local(ms.div_euclid(1_000)))
 }
 
+/// **此刻**：后端各处取当前墙钟只走这一个（判据 `one_clock_guard`：别处不许直接问系统钟）。
+/// 正式构建里它就是系统钟；只有带特性 `shots` 编的后端（截图台架）认台架交来的起点时刻、从那一刻接着走（[`shots_clock`]）。
+pub(crate) fn now() -> std::time::SystemTime {
+    #[cfg(feature = "shots")]
+    if let Some(t) = shots_clock::now() {
+        return t;
+    }
+    std::time::SystemTime::now()
+}
+
+/// 截图台架的拨钟：起点时刻由台架交（环境变量 `CCM_SHOTS_NOW_MS`，unix 毫秒）；进程头一回问钟那一刻对上它，之后照系统钟接着走
+/// （记的是两者之差，不另起一只钟）。没给 · 解不出 ⇒ 不拨（`None`，照系统钟）。默认构建里这一段不编进去。
+#[cfg(feature = "shots")]
+mod shots_clock {
+    use std::sync::OnceLock;
+    use std::time::{Duration, SystemTime};
+
+    /// （往后拨?, 拨多少）。
+    static SHIFT: OnceLock<Option<(bool, Duration)>> = OnceLock::new();
+
+    pub(super) fn now() -> Option<SystemTime> {
+        let sys = SystemTime::now();
+        let (ahead, d) = (*SHIFT.get_or_init(|| {
+            let ms: u64 = std::env::var("CCM_SHOTS_NOW_MS")
+                .ok()?
+                .trim()
+                .parse()
+                .ok()?;
+            let at = SystemTime::UNIX_EPOCH + Duration::from_millis(ms);
+            Some(match at.duration_since(sys) {
+                Ok(d) => (true, d),
+                Err(e) => (false, e.duration()),
+            })
+        }))?;
+        if ahead {
+            sys.checked_add(d)
+        } else {
+            sys.checked_sub(d)
+        }
+    }
+}
+
+/// 此刻（unix 毫秒）。
+pub(crate) fn now_ms() -> i64 {
+    now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
 /// 此刻（unix 秒）。
 pub(crate) fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+    now_ms().div_euclid(1_000)
 }
 
 /// 文件的修改时间（本地钟秒数；`today` ＝ 本地今天是第几天）⇒ `(列里那一格, 完整那一格)`：
@@ -389,20 +473,26 @@ pub(crate) fn hit_text(ts_ms: i64, tz: &Tz) -> String {
     hit_time(tz.local(ts_ms.div_euclid(1_000)), tz.local(now_secs()))
 }
 
-/// **历史页回包出口那一遍**（一行）：`at` ⇒ 行尾 `atText` ＋ 分段 `sectionText`；`startedAt` → `updatedAt` ⇒ 内容头 `spanText`。
-/// 时刻是毫秒；按看的那一台的时区排（偏移按各自那一刻）。缺哪一格就不添哪一格。
-pub(crate) fn history_texts(row: &mut serde_json::Value, now_ms: i64, tz: &Tz) {
+/// **历史页一行的三格**：`at` ⇒ 行尾那一格 ＋ 分段头；`from` → `to` ⇒ 内容头那一段。
+/// 时刻是毫秒；按看的那一台的时区排（偏移按各自那一刻）。
+pub(crate) fn history_times(
+    at: i64,
+    from: i64,
+    to: i64,
+    now_ms: i64,
+    tz: &Tz,
+) -> (
+    crate::common::cells::Words,
+    crate::common::cells::Words,
+    crate::common::cells::Words,
+) {
     let l = |ms: i64| tz.local(ms.div_euclid(1_000));
     let now = l(now_ms);
-    let ms = |k: &str| row.get(k).and_then(serde_json::Value::as_i64);
-    let (at, from, to) = (ms("at"), ms("startedAt"), ms("updatedAt"));
-    if let Some(at) = at {
-        row["atText"] = row_time(l(at), now).into();
-        row["sectionText"] = section_text(l(at), now).into();
-    }
-    if let (Some(from), Some(to)) = (from, to) {
-        row["spanText"] = span_text(l(from), l(to), now).into();
-    }
+    (
+        crate::common::cells::Words(row_time(l(at), now)),
+        crate::common::cells::Words(section_text(l(at), now)),
+        crate::common::cells::Words(span_text(l(from), l(to), now)),
+    )
 }
 
 #[cfg(test)]

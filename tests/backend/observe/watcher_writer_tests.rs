@@ -44,7 +44,7 @@ fn rig(tag: &str) -> Rig {
         .join("codex/sessions/2026/10/10")
         .join(format!("rollout-2026-10-10T00-00-00-{SID}.jsonl"));
     std::fs::write(&record, record_lines("t1")).unwrap();
-    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let mut state = ReaderState::new(dir.join("projects"));
     let kind = crate::agents::codex::AGENT_KIND;
     state.follow(&crate::agents::Followed {
         kind,
@@ -144,26 +144,26 @@ fn closed(p: &Path) -> crate::platform::writers::OpenBatch {
     }
 }
 
-/// 有进程开着它写 ⇒ 宣告（帧上说是哪一家；判活与 pidfile 那一路同一档，不标 heuristic）· 已有的行 · 一轮结束；之后追加的行由文件事件那一路照常上流。
+/// 有进程开着它写 ⇒ 宣告（帧上说是哪一家；判活与 pidfile 那一路同一档，不标 heuristic）；已有的行不重放（宣告带行数 L，
+/// `[0, L)` 客户端按骨架补，与 pidfile 那一路同一条）；之后追加的行与一轮结束由文件事件那一路照常上流。
 #[test]
-fn a_record_being_written_is_announced_with_its_lines_and_turn_end() {
+fn a_record_being_written_is_announced_with_its_line_count_and_then_streams() {
     let mut r = rig("announce");
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let frames = drain(&mut r.rx);
-    assert_eq!(
-        brief(&frames),
-        vec!["added:codex:-", "line:0", "line:1", "line:2", "turn_end:t1"]
-    );
+    assert_eq!(brief(&frames), vec!["added:codex:-"]);
     let Some(Frame::SessionAdded {
         path,
         project_dir,
         cwd,
+        lines,
         ..
     }) = frames.first()
     else {
         unreachable!()
     };
+    assert_eq!(*lines, Some(3), "宣告带已有的完整行数");
     assert_eq!(path.as_deref(), Some(r.record.to_str().unwrap()));
     assert_eq!(
         project_dir.as_deref(),
@@ -219,10 +219,16 @@ fn an_unwatched_session_still_says_its_turn_end() {
     let _ = watch_sessions(vec!["someone-else".to_string()], &mut r.state, &mut r.sink);
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
-    assert_eq!(
-        brief(&drain(&mut r.rx)),
-        vec!["added:codex:-", "turn_end:t1"]
-    );
+    assert_eq!(brief(&drain(&mut r.rx)), vec!["added:codex:-"]);
+    let more = "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"t2\"}}\n";
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&r.record)
+        .unwrap()
+        .write_all(more.as_bytes())
+        .unwrap();
+    process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    assert_eq!(brief(&drain(&mut r.rx)), vec!["turn_end:t2"]);
     gone(w);
     std::fs::remove_dir_all(&r.dir).ok();
 }
@@ -302,7 +308,8 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     std::fs::remove_dir_all(&r.dir).ok();
 }
 
-/// 造好的 Codex 样本（宣告 · 三行 · 一轮结束 · 第二轮）真走一遍 watcher，线上那几行就是这份金样（路径里的临时目录换成 `/r`）。
+/// 造好的 Codex 样本（宣告 · 之后两轮各一句话 ＋ 一轮结束）真走一遍 watcher，线上那几行就是这份金样
+/// （路径里的临时目录换成 `/r`，宣告上写者的 pid 换成 0）。
 /// 壳（`tests/frontend/shell/codex_stream_tests.rs`）与界面（`tests/frontend/ui/codex-turn-notify.vitest.ts`）读同一份往下走到系统通知。
 /// 重打是显式动作：`REGOLD_CODEX_STREAM=1` 跑本条写盘；不设就只比。钟面（`timeText`）在推出去那一下才按看的那一台写（`Frame::stamp`），这里拿到的帧没有它。
 pub(crate) const CODEX_STREAM_GOLDEN: &str = "tests/__fixtures__/codex-session-stream.golden.jsonl";
@@ -312,21 +319,34 @@ fn the_codex_sample_walks_into_the_golden_frames() {
     let mut r = rig("golden");
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
-    let more = "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"t2\"}}\n";
-    std::fs::OpenOptions::new()
-        .append(true)
-        .open(&r.record)
-        .unwrap()
-        .write_all(more.as_bytes())
-        .unwrap();
-    process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    let round = |text: &str, turn: &str| {
+        format!(
+            concat!(
+                "{{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"{text}\"}}]}}}}\n",
+                "{{\"timestamp\":\"2026-10-10T00:00:04.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_complete\",\"turn_id\":\"{turn}\"}}}}\n",
+            ),
+            text = text,
+            turn = turn
+        )
+    };
+    for (text, turn) in [("again", "t2"), ("more", "t3")] {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&r.record)
+            .unwrap()
+            .write_all(round(text, turn).as_bytes())
+            .unwrap();
+        process_jsonl(&r.record, &mut r.state, &mut r.sink);
+    }
     let root = r.dir.to_string_lossy().into_owned();
+    let pid = format!("\"pid\":{}", w.id());
     let produced: String = drain(&mut r.rx)
         .iter()
         .map(|f| {
             crate::stream::wire::to_line(f)
                 .unwrap()
                 .replace(&root, "/r")
+                .replace(&pid, "\"pid\":0")
         })
         .collect();
     gone(w);

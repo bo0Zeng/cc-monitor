@@ -12,7 +12,7 @@ import { icon, type IconName } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyText } from "../copy-table";
 import { spanNow } from "../duration-format";
-import type { StepWait, UnclearWhy } from "../session-reads";
+import type { PendingCall } from "../session-reads";
 
 /**
  * 一步的状态。结果到了：成功 · 失败 · 人没批准 · 认不出的工具（只给原文）；还没结果：事实还没到（`pending`，不画）·
@@ -36,31 +36,16 @@ export function stateOf(step: ToolStep | undefined, res: StepResult | undefined,
   return "ok";
 }
 
-/** 右侧小字：改动 `+38 −6` · 读了几行 · 几个文件 · 否则耗时；失败 `失败 · 41s` · 被拒「未批准」· 认不出「未识别结果 · 原文」。 */
-export function stepRight(step: ToolStep | undefined, res: StepResult | undefined, state: StepState, durText: string | null): string {
+/**
+ * 右侧小字：都是核心写好的 —— 结果那一句（`StepResult.text`；带耗时的那一形 `timed`，耗时那一截 `{dur}` 由这里填两条记录之间的用时
+ * [`durBetween`]）、认不出的工具那一句（`ToolStep.text`，结果成功时用它）；还没结果的那几种照会话事实画（[`paintWaiting`]）。
+ * 没有结果那一格 ⇒ 只写耗时。
+ */
+export function stepRight(step: ToolStep | undefined, res: StepResult | undefined, durText: string | null): string {
   const dur = durText ?? "";
-  switch (state) {
-    case "pending":
-    case "running":
-      return "";
-    case "unclear":
-      return copyText("stream.step.unclear");
-    case "rejected":
-      return copyText("stream.step.rejected");
-    case "failed":
-      return dur ? copyText("stream.step.failedFor", { dur }) : copyText("stream.step.failed");
-    case "unknown":
-      return copyText("stream.step.unknown");
-    case "ok":
-      break;
-  }
-  if (res?.added !== undefined || res?.removed !== undefined) {
-    const parts = [res.added ? `+${res.added}` : "", res.removed ? `−${res.removed}` : ""].filter(Boolean);
-    if (parts.length > 0) return parts.join(" ");
-  }
-  if (step?.path && res?.lines !== undefined) return copyText("stream.step.lines", { n: res.lines });
-  if (res?.files !== undefined) return copyText("stream.step.files", { n: res.files });
-  return dur;
+  if (!res) return dur;
+  if (res.ok && step?.text !== undefined) return step.text;
+  return res.timed !== undefined && durText !== null ? res.timed.replace("{dur}", dur) : res.text;
 }
 
 /** 路径中间省略：留开头一段与文件名，中间换成 `…`（只在超长时）。 */
@@ -144,26 +129,28 @@ export function buildThinkingLine(label: string, preview: string): HTMLElement {
 export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res: StepResult | undefined, isError: boolean, durText: string | null): StepState {
   row.querySelector(".step-await")?.remove();
   const state = stateOf(step, res, isError);
-  paint(row, state, stepRight(step, res, state, durText));
+  paint(row, state, stepRight(step, res, durText));
   return state;
 }
 
 
 /**
- * 会话事实说这一步还没结果时是什么样子（`pending[].state`；不在 `pending` 里 ⇒ 状态不明）⇒ 照画。结果已经到了的不动。
- * 在等你：琥珀点 · 说明位「等你批准」（等的不是批准 ⇒「在等你」）· 右侧已等多久。状态不明：悬停说后端给的原因（`why`）。
+ * 会话事实说这一步还没结果时是什么样子（`pending[]` 那一项；不在 `pending` 里 ⇒ 状态不明）⇒ 照画。结果已经到了的不动。
+ * 在等你：琥珀点 · 说明位「等你批准」（等的不是批准 ⇒「在等你」）· 右侧已等多久。状态不明：右侧与悬停照后端写好的那两句（`text` · `whyText`）。
  */
-export function paintWaiting(row: HTMLElement, state: StepWait, waited: string | null, approve: boolean, why: UnclearWhy | null = null): void {
+export function paintWaiting(row: HTMLElement, p: Pick<PendingCall, "state" | "text" | "whyText"> | null, waited: string | null, approve: boolean): void {
   if (!WAITING.has(row.dataset.state ?? "")) return;
+  const state = p?.state ?? "unclear";
   if (state === "awaiting") {
     markAwaiting(row, waited, approve);
     return;
   }
   row.querySelector(".step-await")?.remove();
-  paint(row, state, stepRight(undefined, undefined, state, null));
+  // 事实里已经没有它（那一轮过去了、被截在上界外）⇒ 状态不明：这一判只在桌面这一侧（核心那一份里没有这一步）。
+  paint(row, state, p ? (p.text ?? "") : copyText("stream.step.unclear"));
   const r = row.querySelector<HTMLElement>(".step-right");
   if (!r) return;
-  if (state === "unclear" && why) r.title = why === "noWriter" ? copyText("stream.step.unclearNoWriter") : copyText("stream.step.unclearUntracked");
+  if (p?.whyText) r.title = p.whyText;
   else r.removeAttribute("title");
 }
 

@@ -704,7 +704,7 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Result<serde_json:
     let (landed, bytes) =
         commit_upload(home, &key, &root, &rel, overwrite, &expect).map_err(refused)?;
     // 暂存区清理「孤儿」那一格的事件：一次提交成功。
-    let now = std::time::SystemTime::now()
+    let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
@@ -792,7 +792,7 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
     let (landed, n, sha) =
         commit_text(home, &key, chunks, bytes, &root, &rel, &expect).map_err(WriteFail::from)?;
     // 提交成功 ⇒ 顺手扫孤儿（同上传那一条的事件）。
-    let now = std::time::SystemTime::now()
+    let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
