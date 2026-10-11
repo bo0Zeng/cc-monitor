@@ -214,7 +214,7 @@ export function machineOps(): Record<string, OpHandler> {
     "terminals-list": (o, _r, w) => ({
       complete: true,
       terminals: w.sessions
-        .filter((x) => !x.ended && x.origin === o)
+        .filter((x) => !x.ended && !x.outsideTmux && x.origin === o)
         .map((x, i) => {
           const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
           return {

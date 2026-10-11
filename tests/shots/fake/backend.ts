@@ -141,6 +141,10 @@ export class FakeBackend {
   /** 开页之后台架在演的那几样都落定了（截图在这之后量、截）。 */
   async settled(): Promise<void> {
     await this.ready;
+    // 主界面订了会话流的那几台都报完清单（收场 · 断了那几样是收到清单才排上的），至多等 15 秒。
+    const t0 = Date.now();
+    const unlisted = (): boolean => [...this.shellSubs.values()].some((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin));
+    while (unlisted() && Date.now() - t0 < 15_000) await new Promise((r) => setTimeout(r, 50));
     for (let n = 0; n < this.pending.length; n = this.pending.length) await Promise.all(this.pending.slice(n));
   }
 

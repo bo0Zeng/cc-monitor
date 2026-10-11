@@ -6,7 +6,7 @@ import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
-import { click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
+import { byText, click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -426,6 +426,19 @@ export const MAIN_SCENES: Scene[] = [
   main("main-empty", "主窗口 · 一个会话都没有", "四台机器都连着、没有在跑的会话（空状态）", async () => {
     await sleep(2500);
   }, emptyWorld),
+  main("main-watch-fill", "主窗口 · 切过去之后补段", "devbox 上「网关限流」没在看的时候又写了一轮（主窗口只报在看当前那个 ⇒ 它的行不上流）；切过去 ⇒ 那台报这一份从第几行起上流，前面那段按骨架补、接上实时，新的那一轮只出一次", async (ctx) => {
+    await mainReady(ALL_TABS);
+    const s = ctx.backend.world.sessions[4];
+    const c = s.convo!;
+    const from = c.lines.length;
+    c.user("搜索与导出的限流分开配。");
+    c.say("限流按路由分开了：/api/search 每秒 5 次，/api/export 每分钟 2 次。", 30_000, "end_turn");
+    await ctx.backend.appendLines(s.origin, c, from);
+    await sleep(1500);
+    await click(await byText("#tab-bar .tab", "网关限流配置"));
+    await byText(".stream.active [data-id]:not(.proc-hidden)", "限流按路由分开了", 10_000);
+    await settled(await until(() => document.querySelector<HTMLElement>(".stream.active")));
+  }),
   main("main-long", "主窗口 · 长会话", "一个 160 轮、640 条记录的会话，停在底部", async () => {
     await mainReady(1);
     const scroller = await until(streamScroller);

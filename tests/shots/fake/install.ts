@@ -26,6 +26,8 @@ const backend = new FakeBackend(scene.world());
 mockWindows(label);
 mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
 backend.attachEmitter((event, payload) => emit(event, payload));
+// 场景等「开页之后台架在演的那几样落定」用（`scenes/helpers.ts::mainReady`）。
+(window as { __shotsSettled?: () => Promise<void> }).__shotsSettled = () => backend.settled();
 // 主界面的就绪点（`frontend-ready`，前端发、壳收）：转给无头壳，它照这一拍重放会话流。
 void listen<{ prioritySid?: string | null }>("frontend-ready", (e) => backend.frontendReady(e.payload));
 

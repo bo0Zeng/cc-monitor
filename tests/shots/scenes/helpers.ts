@@ -115,6 +115,8 @@ export async function type(sel: string, text: string): Promise<void> {
 /** 主窗口画好了：tab 都在、批模式出来了（批末 300ms 宽限之后才切实时）。 */
 export async function mainReady(tabs: number): Promise<void> {
   await waitCount("#tab-bar .tab", tabs, 15_000);
+  // 已结束 / 可重连那几个是收到清单之后才收场的：等它们落定，不然截到的是收场之前那一刻。
+  await (window as { __shotsSettled?: () => Promise<void> }).__shotsSettled?.();
   await sleep(900);
 }
 
