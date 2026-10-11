@@ -29,6 +29,10 @@ fn seen(
     out: &mut BTreeSet<String>,
 ) {
     match v {
+        // 可缺的一整块（结构体那一格是 `null`）：这一次没有，它底下的格在别的成品里见。
+        Value::Null
+            if !cat.contains_key(path)
+                && cat.keys().any(|k| k.starts_with(&format!("{path}."))) => {}
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
             out.insert(path.to_string());
         }
@@ -132,6 +136,8 @@ fn corpus(name: &str) -> Vec<Value> {
                 at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
+                text: None,
+                why_text: None,
             }];
             let wait = crate::observe::facts_query::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
@@ -162,6 +168,8 @@ fn corpus(name: &str) -> Vec<Value> {
                 at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
+                text: None,
+                why_text: None,
             }];
             let wait = crate::observe::facts_query::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
@@ -178,9 +186,18 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
         }
         "index_row" => {
-            let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();
-            let mut rows = g["history-index"]["rows"].as_array().unwrap().clone();
-            // 金样那份会话里没有子运行、没有代码块与全宽字 ⇒ 这一行用真函数现算。
+            // 逐行那一形只在 CLI 那一臂（帧面按列排，`read_face.rs::pack_index`）⇒ 用真函数逐行现算：
+            // 用户说的话（摘要 · 时刻）· 带工具调用的回复 · 系统注入 · 子运行里带代码块与全宽字的一行。
+            let mut rows: Vec<Value> = [
+                r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,
+                r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"role":"assistant","content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+                r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"role":"user","content":"meta"}}"#,
+            ]
+            .iter()
+            .map(|l| {
+                serde_json::to_value(crate::observe::history_query::index_row(l.as_bytes(), 0, l.len() as u64)).unwrap()
+            })
+            .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
                 serde_json::to_value(crate::observe::history_query::index_row(
@@ -207,12 +224,93 @@ fn corpus(name: &str) -> Vec<Value> {
                 .map(|r| serde_json::to_value(r).unwrap())
                 .collect()
         }
+        // 额度账：金样各案例的回包（真出口写的）＋ 金样里恰好没有的那几格用真判定现造一份
+        // （照原名的各窗口 · 到线 · 别台的钟走在前面 · 账上记了各窗口几点看到 · 没出过数的订阅号的标识）。
+        "quota_read" => {
+            let g: Value = serde_json::from_str(&golden("quota-read.golden.json")).unwrap();
+            let mut out: Vec<Value> = g["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["reply"].clone())
+                .collect();
+            out.push(serde_json::to_value(real_quota_read()).unwrap());
+            out
+        }
+        "history_list" => vec![serde_json::from_str(&golden("history-list.golden.json")).unwrap()],
         frame => golden("session-stream.golden.jsonl")
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap())
             .filter(|v| v["kind"] == frame)
             .collect(),
     }
+}
+
+/// 用真判定现造的一份 `quota-read`（[`corpus`] 里补金样没有的那几格）。
+fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
+    use crate::accounts::quota::show;
+    use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
+    let now: u64 = 1_791_189_600;
+    let agent = "claude-code";
+    let o: crate::accounts::quota::ledger::Observed = serde_json::from_value(serde_json::json!({
+        "agent": agent, "account": "a", "seenAt": now + 120,
+        "reading": {"refused": false, "windows": [
+            {"name": "five_hour", "used": 0.6, "resetsAt": now + 3600},
+            {"name": "seven_day", "used": 0.2, "resetsAt": now - 10}
+        ]},
+        "windowsSeen": {"five_hour": {"at": now + 120, "from": "headers"}}
+    }))
+    .unwrap();
+    let slot = crate::agents::window_slot_of(agent).unwrap();
+    let key = crate::agents::window_key_of(agent).unwrap();
+    let facts = |kind| show::Facts {
+        kind,
+        login: show::LoginState::Ok,
+        sub_id: Some("s".into()),
+    };
+    let mut sh = show::show(
+        Some((&o.reading, o.seen_at)),
+        facts(crate::accounts::quota::decide::Kind::Sub),
+        &|_| Some(50),
+        now,
+        &slot,
+    );
+    sh.windows = show::windows_of(&o, &key, now);
+    let u = show::show(
+        None,
+        facts(crate::accounts::quota::decide::Kind::Sub),
+        &|_| None,
+        now,
+        &slot,
+    );
+    reply_of(
+        Base {
+            state: "present",
+            reason: Value::Null,
+            detail: Value::Null,
+            path: Some("/q".into()),
+            now,
+            usable_now: vec!["a".into()],
+            earliest: None,
+        },
+        vec![Seen {
+            agent: o.agent.clone(),
+            account: o.account.clone(),
+            seen_at: o.seen_at,
+            reading: serde_json::to_value(&o.reading).unwrap(),
+            windows_seen: Some(serde_json::to_value(&o.windows_seen).unwrap()),
+            show: sh,
+        }],
+        vec![UnseenHead {
+            agent: agent.into(),
+            account: "b".into(),
+            kind: u.kind,
+            login: u.login,
+            sub_id: u.sub_id,
+            usage: u.usage.into(),
+        }],
+        &crate::common::time::TextClock::new(now, &crate::Tz::default()),
+    )
 }
 
 /// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）。

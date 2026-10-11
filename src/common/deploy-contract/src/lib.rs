@@ -8,7 +8,6 @@
 //! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
 //! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
-//! | 流模式能力 token（hello 的 `capabilities`） | | [`STREAM_CAPABILITIES`] |
 //! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `control/deploy_plan.rs` 一家；
@@ -270,11 +269,6 @@ pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<K
 pub const STAMP_OPEN: &str = "<<ccm-build-id:";
 /// 身份戳的关界标（见 [`STAMP_OPEN`]）。
 pub const STAMP_CLOSE: &str = ":ccm-build-id>>";
-
-/// 后端流模式声明的能力 token（hello 帧的 `capabilities`，字典序）：后端 `lib.rs::CAPABILITIES` 取它，
-/// monitor 拿它认 hello 里的 token、并在确认那台装的就是手上这一版时预知能力。
-/// 每个 token 都要有后端 `split_stream_flags` 的剥离分支（后端 `every_capability_token_is_strippable` 钉着）。
-pub const STREAM_CAPABILITIES: &[&str] = &["bg", "tail-only"];
 
 /// 身份戳的两个界标（扫描函数的参数形）。生产里两侧都交 [`STAMP_OPEN`] / [`STAMP_CLOSE`]，判据可换一对去验扫描本身。
 #[derive(Debug, Clone, Copy)]

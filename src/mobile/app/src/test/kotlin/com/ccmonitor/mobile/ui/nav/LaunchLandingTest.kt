@@ -12,7 +12,7 @@ import org.junit.Test
 /**
  * 打开 app 就是聊天屏：落到上次那台机器上的一个空的新对话。
  *
- * 判据落在两个纯函数上：[launchDestination]（启动那一刻去哪儿）与 [chatLanding]（进了某台机器去哪个对话）。
+ * 判据落在纯函数 [launchDestination]（启动那一刻去哪儿）上；不回上次那条会话。
  * 组合层（`launchRoute`）只负责把三个异步事实读出来喂给它们。
  *
  * 判别力边界：纯函数判据挡不住「`launchRoute` 忘了核对那台主机还在不在」，
@@ -24,7 +24,6 @@ class LaunchLandingTest {
     /** 启动即聊天：上次那台机器还在 ⇒ 落到聊天屏，而不是先看一屏列表。 */
     @Test
     fun theAppOpensStraightIntoTheChatScreen() {
-        // `confirmedConversationId` 传 "s7" ⇒ 它是被远端确认过的那条，才走「恢复」这一支。
         val to =
             launchDestination(
                 newUi = true,
@@ -148,45 +147,6 @@ class LaunchLandingTest {
                 newConversationId = newId,
             )
         assertEquals(Screen.Hosts.route, to)
-    }
-
-    /**
-     * 记得的那个对话 ⇒ 接着它跑（`new=false` ⇒ `ChatRoute` 会带 `--resume`）。
-     *
-     * 反过来写成 `true` 的话，每次启动都会给远端一个它已经有的编号去 `--session-id`，
-     * 远端报 `Session ID … is already in use.`，屏幕空白、没有任何提示。
-     */
-    @Test
-    fun aRememberedConversationIsResumedNotRecreated() {
-        // 只有确认过的编号才按「恢复」起；没确认过的那一支由
-        // `NavRoutesTest.aRememberedButUnconfirmedConversationStartsFreshInsteadOfResuming` 钉。
-        assertEquals(
-            Screen.Chat.of("h1", "s7", isNew = false),
-            chatLanding("h1", "s7", newId, confirmedConversationId = "s7"),
-        )
-    }
-
-    /**
-     * 没记住任何对话 ⇒ 新开（`new=true` ⇒ 带 `--session-id`，不许 resume）。
-     *
-     * 反过来写成 `false` 的话，会对一个远端从没见过的编号做 `--resume`，直接失败。
-     */
-    @Test
-    fun withNothingRememberedANewConversationIsStarted() {
-        val to = chatLanding("h1", null, newId)
-        assertEquals(Screen.Chat.of("h1", newId(), isNew = true), to)
-        assertTrue("新开的对话必须带 new=true", to.endsWith("?new=true"))
-    }
-
-    /**
-     * 存下来的空串要当成「没记住」。
-     *
-     * 键值表里出现空串并不罕见（手改数据库、迁移遗留）；不当成 null 的话会拼出
-     * `chat/h1/?new=false`，一个匹配得上模板、但对话编号为空的路由。
-     */
-    @Test
-    fun aBlankRememberedIdCountsAsNothing() {
-        assertEquals(Screen.Chat.of("h1", newId(), isNew = true), chatLanding("h1", "   ", newId))
     }
 
     /**

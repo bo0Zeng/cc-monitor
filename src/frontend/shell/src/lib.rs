@@ -51,22 +51,20 @@ pub mod chan;
 mod config;
 // `mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
 //   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
-mod data_paths;
-mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
-                      // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
+mod data_paths;
 mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform/notify.rs）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
-mod drift_ledger;
 mod event_replay;
-// 🔴原生文件管理窗口。进程形态＝**同进程**、
-// egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-// （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
-// ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-//   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
-//   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
-//   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
+mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
+                      // 🔴原生文件管理窗口。进程形态＝**同进程**、
+                      // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+                      // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+                      // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
+                      //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
+                      //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
+                      //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
 // `hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
@@ -166,6 +164,8 @@ mod sftp;
 // 远端行带 origin=host 标签。
 mod ccm_probe;
 mod stream_source;
+// 每条长连接报「在看哪几个会话」（那台后端 `stream-watch`）：主窗口在看的 tab ∪ 查看窗跟着的会话。
+mod stream_watch;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 // `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
 //   SFTP 进了本机常驻后端（`src/backend/dial/sftp.rs`），**界面进程零 SSH**（用户）。
@@ -337,7 +337,7 @@ use tauri::{Emitter, Listener, Manager};
 ///
 /// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 backend **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由后端的 kind 交互性过滤处理
-/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::local_hides`），与本处嵌套环境清洗无关。
+/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::BgHide`），与本处嵌套环境清洗无关。
 /// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
@@ -605,6 +605,7 @@ pub fn run() {
             // 会话内容经通道 `subscribe` 交给 webview（`chan/webview.rs` 头注）：出口先装上。
             replay.attach_sink(Arc::new(chan::webview::WebviewSink(app.handle().clone())));
             local_lines::install(app.handle().clone(), replay.clone());
+            stream_watch::spawn(replay.clone());
 
             // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
             // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
@@ -860,7 +861,7 @@ pub fn run() {
             config::load_config,
             config::patch_config,
             config::machine_table_try,
-            // K-H2a：apikey 表那把 key 的写（`KS10`）。读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
+            // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
             // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
             // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
             //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
@@ -869,7 +870,6 @@ pub fn run() {
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             // 足迹成品由那台后端出（界面经通道问 `footprint-report`）；这里只答 monitor 自己那台那几行的事实。
             footprint_client::footprint_client_facts,
-            drift_ledger::drift_ledger_report,
             diagnostics_report::diagnostics_report,
             app_restart::restart_app,
             desktop_notify::notify_desktop,
@@ -883,6 +883,7 @@ pub fn run() {
             //   （`assets-sync` 问 `<local>` · `skill-read` / `skill-install-plan` / `skill-install-apply` / `skill-uninstall-apply`，
             //   `src/frontend/ui/assets-sync-reads.ts` · `src/frontend/ui/skill-install-reads.ts`）。
             forget_session,
+            watch_sessions,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
@@ -1353,7 +1354,7 @@ pub(crate) fn batch_to_payloads(
                     session_id: line.session_id,
                     cwd: line.cwd,
                     path: line.path.to_string_lossy().into_owned(),
-                    // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
+                    // P5.1：后端给每行编行号（流不重放历史，与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
                     record,
@@ -1403,12 +1404,6 @@ impl SkipRuns {
     }
 }
 
-// `read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`
-//   （`src/frontend/ui/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
-
-// `apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
-//   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
-
 // 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 // 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`
 //   比 hello 的 `host_env`），核路径那一问由连接本身答 ⇒ 界面经通道直接发 `apikey-key-set`（`src/frontend/ui/apikey-reads.ts::writeApikeyKey`），
@@ -1430,6 +1425,24 @@ fn forget_session(
         Ok(())
     })();
     r.map_err(|s| s.named("forget_session"))
+}
+
+/// 主窗口此刻在看的会话（整份换；切 tab 时界面报）：与查看窗跟着的会话合成每台的「在看」名单，
+/// 由 `stream_watch` 报给那台那条长连接（没在看的会话，它的行不上流）。
+#[tauri::command]
+fn watch_sessions(
+    sessions: Vec<ui_contract::WatchedSession>,
+    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
+) -> Result<(), Said> {
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        replay.set_main_watch(
+            sessions
+                .into_iter()
+                .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+        );
+        Ok(())
+    })();
+    r.map_err(|s| s.named("watch_sessions"))
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，

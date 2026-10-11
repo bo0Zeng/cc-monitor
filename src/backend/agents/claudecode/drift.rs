@@ -11,7 +11,6 @@
 //! # 按机器分
 //!
 //! 记录在那台机器自己的后端里解析 ⇒ 账天然按机器分；界面按机器经通道问那台后端（帧命令 `drift-report`）。
-//! monitor 天生观测的两面（未登记的会话 `kind` · 后端 `hello` 里不认识的能力 token）记在 monitor 自己那本（`src/frontend/shell/src/drift_ledger.rs`）。
 //! 计数是每条记录一次（解析热路径）；要看的是键的集合，不是数字。
 
 use copy_core::copy_text;

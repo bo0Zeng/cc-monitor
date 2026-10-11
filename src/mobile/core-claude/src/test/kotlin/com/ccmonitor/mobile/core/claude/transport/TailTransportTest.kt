@@ -1,5 +1,4 @@
 package com.ccmonitor.mobile.core.claude.transport
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flow
@@ -7,7 +6,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -138,19 +136,6 @@ class TailTransportTest {
         assertTrue("offset 处要通配，否则杀不掉上一次那条", pattern.contains("-c +[0-9]*"))
         assertNotEquals("模式不许退化成裸 `tail`（会连别的 tail 一起杀）", "tail", pattern.trim())
         assertTrue("没得杀不算失败", kill.endsWith("|| true"))
-    }
-
-    /**
-     * 管道那条 `tail -f in.ndjson` 不能套 `timeout`。
-     *
-     * 它跑在 tmux 里、就是要常驻（`ClaudeInvocation.pipeInvocation`）；套上 `timeout` 等于定时杀掉
-     * 正在进行的对话。区别在「跑在 SSH exec 上」还是「跑在 tmux 里」，不是「都叫 tail 就统一处理」。
-     */
-    @Test fun thePersistentPipeTailMustNotInheritTheLifetimeCap() {
-        val pipe = ClaudeInvocation.pipeInvocation(null, "abc123-DEF_456")
-        // 管道那条是 `tail -n 0 -f`（重建时不重放旧上行）；这里守的不是 `-n 0`，只是前提。
-        assertTrue("前提：管道里确实有一条 tail", pipe.contains("tail -n 0 -f "))
-        assertFalse("管道那条不许被套 timeout：那是定时杀对话", pipe.contains("timeout "))
     }
 
     @Test fun flushesTrailingPartialLineWhenStreamEnds() =

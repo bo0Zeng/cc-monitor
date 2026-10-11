@@ -11,31 +11,41 @@
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
-| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；先读 hello，再交一行 `{"attach":true}`（可带 `"flags":[…]`，起流旗标的子集），回 `{"attach":"ok"}` 或 `{"attach":"refused","reason":"malformed-attach"}`；中继连不上时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；每条连接各一份 watcher / 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；先读 hello，再交一行 `{"attach":true}`（可带 `"tz"` · `"view"`，见 §2；别的键一律当 malformed），回 `{"attach":"ok"}` 或 `{"attach":"refused","reason":"malformed-attach"}`；中继连不上时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；每条连接各一份 watcher / 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
 
 **线约束**：每行恰好一个 UTF-8 JSON 对象，`\n` 结尾，对象内没有裸 `\n` / `\r`。帧用 `kind` 做标签（snake_case）。
 
-## 2. 起流旗标
+## 2. 起流：时区与声明
 
-monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端传对应旗标，不按版本号猜。
+一条流要什么只由两样定：看的那一台的时区，与这条流的出口声明。没有别的起流旗标（10-10 删了 `--with-bg` · `--tail-only` · `--with-pid` · `--with-raw`，不认）。
+流恒这样发：**历史不重放**（各文件从当前行数起只尾随新行；`[0, 当前)` 由客户端经骨架 / 尾段另取：`history-index` · `history-tail` · `history-read`）；
+**bg 会话照宣告**（`session_added.background: true`，成不成 tab 由客户端定）；`session_added` 带 `pid`；`line` 不带原文（两个前端都读成品 `record`）。
 
-| 旗标 | 意思 |
+| 载体 | 怎么交 |
 |---|---|
-| `--stream` | 「我是流模式」的显式词，不改行为 |
-| `--with-bg` | 放行 `kind:"bg"` 的后台任务会话 |
-| `--tail-only` | 不重放历史：各文件从当前行数起只尾随新行；历史由客户端另取（`history-read` / `--read-session-tail`） |
-| `--with-pid` | `session_added` 带 `pid`（只本机那条流发；默认关，关时字节与加它之前一字不差） |
-| `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
-| `--tz <IANA 名>` | 看的那一台的时区（如 `Asia/Shanghai`）：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。常驻那条连接在 attach 行旁边带同名一格 `tz`（不进 `flags`）。见 §4「时刻按谁的钟」 |
+| SSH exec / stdio（CLI 那一臂） | `ccm -- --stream [--tz <IANA 名>] [--view <声明>]`。`--stream` 是「我是流模式」的显式词；`--view` 的值同 §8 CLI 面那一格（JSON 原样或 base64）。声明认不出 ⇒ 不起流：stderr 一行失败信封（`bad_args`）、退出 2 |
+| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","view":{…}}`：两格都可缺；声明认不出 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
+
+- **`tz`**：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。见 §4「时刻按谁的钟」。
+- **`view`**：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_state` · `session_removed`（整帧就是那件成品，`kind` 不受裁）。
+  点了别的成品 ⇒ 当认不出。缺 ＝ 全量。应答不受它管（应答各按各的请求信封）。例：桌面远端那条流交 `{"omit":{"session_added":["pid"]}}`（那台的 pid 只有本机 ↗ 绑窗口用得上）。
+
+### 流只发要看的会话
+
+一条流用 `stream-watch {sids}` 报它此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · `turn_end` · 文件重读 / 不在了 · `changed` 照发。
+应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
+
+桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
+`from[]` 原样进会话流（`watch` 格，不吃 credit）：tab 与查看窗补上 `[已有, seq)`（缺得不多按行号取到 `seq`；缺得多 ⇒ tab 整份重来、只取 `seq` 之下一截尾巴，更早的往上翻再取）；壳的留存同一拍修成连着的一段（F5 重放不出洞）。
+一轮结束的系统通知认 `turn_end`（会话流的 `turn_end` 格），不认行。
 
 ## 3. hello：先读它，再说话
 
 连上之后后端先发一帧 `hello`，**客户端读到它之前不许写命令**（后端侧 reader 要一个只有 flush 过 hello 才拿得到的见证才起得来）。几个面各管一件事：
 
-- `capabilities` —— 后端认得哪些起流旗标（每个 token 对应一条它会先剥掉的旗标）；缺 ＝ 按最小能力集待它。
 - `emits` —— 后端会发哪些帧 kind；客户端据此决定依不依赖某种帧。
 - `commands` —— 后端接哪些入方向命令；不在里面的命令客户端**不发**。缺 ＝ 这个后端不读 stdin。
 - `unavailable` —— 接得下、但**这台机器上做不到**的命令与原因码（如没有 tmux ⇒ `no_tmux`）。缺 ＝ 没有把握，照发、看回话；列出来的 ＝ 别画那个按钮。它是提示，后端自己绝不拿它拒命令（同一帧会被这个进程后来的连接共用，读数可以很旧）。
@@ -84,6 +94,16 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ## 5. 会话流：帧的先后与续传
 
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
+   `session_added.agent_kind` 每条都带（那一家的 kind）。哪几家进流、各自怎么判活由适配层说（`agents::followed`）：
+   - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在；`liveness_confidence` 缺。
+   - 没有 pidfile 的那一家（Codex）：活会话 ＝ **有进程开着它的那份记录写**（看 `/proc/<pid>/fdinfo` 的打开方式，不看进程名）；
+     那个进程退了（pidfd）或把记录写完关闭、复核已没人开着写 ⇒ `session_removed`（`gone`）。「开着它写」是系统给的事实、再加 pidfd 看守，
+     与 pidfile 那一路同一档 ⇒ `liveness_confidence` 同样缺（`"heuristic"` 只留给真靠猜的，比如按修改时刻）。
+     ⚠ 「Codex 在世期间一直开着这份 rollout」只读过源码（codex-rs 的 rollout 写者任务持有文件），**没在真机上实测过**。
+     它要是不成立（中途关了文件），后果是漏认 / 提早摘掉，不会把死的认成活的。
+     扫进程表只在三种时候：记录根下新建 / 打开了一份还没认的记录（按事件攒批：一次醒来读完的那一批里开了又关的当场抵掉，读的人不引出扫描）·
+     起步与「重新对齐」· 内核事件队列溢出。已知口子：一份很大的记录正被人读到一半时恰好赶上那一批，会多扫一趟、什么帧都不出（不误报）。
+     只在 Linux 上判得了；别的平台照实判不了，这一家的会话不宣告。
 2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
 3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
@@ -115,7 +135,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）。带了 `body` 不改可丢性。
 
-`--tail-only` 时客户端先取快照（尾部优先：`--read-session-tail` / `history-tail`），`session_added.lines` 是宣告那一刻的完整行数，用来核快照拉全了没有。
+历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`），`session_added.lines` 是宣告那一刻的完整行数，用来核快照拉全了没有。
 
 ## 6. 会话归属与身份门
 
@@ -134,13 +154,14 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
-- 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）`record` ·
+- 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `emits` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `dropped` `lost` `lost_truncated` · `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `lines` `waiting_for` `agent_kind` `liveness_confidence` `attachable` `activity` `activity_text` `activity_tone` `background`）·
   `session_status`（`sid` `waiting_for` `liveness_confidence` `activity` `activity_text` `activity_tone`）· `session_removed`（`sid` `cause`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
-  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
+  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形；
+  `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
 - **改了冻结的格就得打版本号**（同加子命令）：`build_id_guard` 的指纹带一行冻结格的摘要 ⇒ 第二个前端连上只核 `BUILD_ID` 这一处，不用读 `cells-catalog` 逐格核。
 - 一次性子命令：第二个前端只调 `--backend-probe` · `--resident-ensure`（可带 `--replace`）· `--resident-attach`，其余都走常驻流上的帧命令。
@@ -180,7 +201,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 - **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
 - 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch", "results.*.patchTruncated"]}`；
-  正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch", "results.*.patchTruncated"]}`。`--with-raw` 才带 `line.raw`。
+  正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch", "results.*.patchTruncated"]}`。`line` 不带原文。
 - 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch`（整份）· 冷读 `history-branch`。没有链的那一家恒空。
 
 ## 8. CLI 一次性调用
@@ -235,7 +256,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 **Claude Code 自己写、后端只读的两份**（集成方要自己写 pidfile 时看这里）：
 
-- `<claude_dir>/sessions/<PID>.json`：活会话登记表。`kind` 是**排他式**的 —— 缺席或 `"interactive"` 放行、`"bg"` 只在 `--with-bg` 时放行、**其它任何值都被隐藏**（想让会话可见，`kind` 要么不写、要么写 `interactive`；同一个 pidfile 的 `kind` 翻成别的值等于让会话消失）。
+- `<claude_dir>/sessions/<PID>.json`：活会话登记表。`kind` 是**排他式**的 —— 缺席或 `"interactive"` 放行、`"bg"` 照宣告（`session_added.background: true`）、**其它任何值都被隐藏**（想让会话可见，`kind` 要么不写、要么写 `interactive`；同一个 pidfile 的 `kind` 翻成别的值等于让会话消失）。
   `attachable: false` ⇒ 不提供 attach / 拉前 / 「杀死空 tmux」，缺席 ＝ `true`。`procStart` 参与 PID 复用检测：缺了就退化成只看进程在不在。
 - `<claude_dir>/tasks/<sid>/<id>.json`：任务清单（`<digits>.json` 才算，`.lock` / `.highwatermark` 忽略；读到半截 JSON 单条跳过）。后端盯这棵树，变了发 `changed {tasks, key: sid}`，客户端重问 `tasks-list`。
 

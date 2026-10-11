@@ -31,12 +31,20 @@ function session(origin: string): SessionAccount {
 
 describe("mapWithLimit", () => {
   it("保序 —— 结果按输入顺序，与完成顺序无关", async () => {
-    const delays = [30, 5, 20, 1, 10];
-    const out = await mapWithLimit(delays, 2, async (d, i) => {
-      await new Promise((r) => setTimeout(r, d));
-      return i;
-    });
-    expect(out).toEqual([0, 1, 2, 3, 4]);
+    // 完成顺序由判据手放（每一步都让后起的那一格先完）：1 · 0 · 3 · 2 · 4 —— 不靠计时器的长短排先后。
+    const gates: ((v: number) => void)[] = [];
+    const finished: number[] = [];
+    const run = mapWithLimit([0, 1, 2, 3, 4], 2, (_x, i) =>
+      new Promise<number>((r) => (gates[i] = r)).then((v) => (finished.push(v), v)),
+    );
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    for (const i of [1, 0, 3, 2, 4]) {
+      await tick();
+      expect(gates[i], `第 ${i} 格该起了`).toBeDefined();
+      gates[i]!(i);
+    }
+    expect(await run).toEqual([0, 1, 2, 3, 4]);
+    expect(finished, "量具自检：完成顺序确实是乱的").toEqual([1, 0, 3, 2, 4]);
   });
 
   it("同时在飞的数量不超过上限", async () => {

@@ -5,7 +5,7 @@ use crate::copy_table::copy_text;
 use crate::session_book::Fate;
 
 /// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。所有行都从后端的帧来（远端流 · 本机流 · 旁路快照）；
-/// `seq` 是后端给的行号（`--tail-only` 下与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
+/// `seq` 是后端给的行号（流不重放历史，与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
 #[derive(Debug, Clone)]
 pub struct JsonlLine {
     pub session_id: String,
@@ -72,9 +72,7 @@ pub enum InboundFrame {
         claude_dir: String,
         /// 远端各 agent 的 home 目录表（additive）。旧后端无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。非数组 / 元素缺字段一律滤掉，绝不 panic。
         homes: Vec<AgentHome>,
-        /// backend 声明的能力 token 集。旧后端无此字段 → 空集（按最小能力集待它，不发流模式 flag）；monitor 按此决定发 `--with-bg` / `--tail-only`。
-        capabilities: Vec<String>,
-        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。`capabilities` 说出方向的流 flag，这一条说入方向 —— 两者正交。
+        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。
         /// 旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
         /// `hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
@@ -111,11 +109,8 @@ pub enum InboundFrame {
         path: Option<String>,
         /// backend prime 时的完整行数 L（快照完整性校验）。
         lines: Option<u64>,
-        /// 宣告时此刻在干什么 ＋ 在等什么（连接建立灯就对）。
-        activity: Option<crate::session_book::SessionActivity>,
-        /// `activity` 那一态写好的字与语气（那台核心写的，原样转交）。
-        activity_text: String,
-        activity_tone: String,
+        /// 宣告时此刻在干什么（那一态 · 字 · 语气 · 序）＋ 在等什么（连接建立灯就对）。
+        activity: crate::session_book::ActivityCells,
         waiting_for: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
         /// 不认识的宿主 ⇒ `Other`（不吞）。
@@ -137,9 +132,7 @@ pub enum InboundFrame {
     /// 会话 status 变化（远端红绿灯）。
     SessionStatus {
         sid: String,
-        activity: Option<crate::session_book::SessionActivity>,
-        activity_text: String,
-        activity_tone: String,
+        activity: crate::session_book::ActivityCells,
         waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。monitor 只拿它当内容流的边界（残批先冲、快照作废）；
@@ -214,8 +207,8 @@ pub enum InboundFrame {
     TerminalScreen { ticket: String, cell: String },
     /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"why": 停因, "said": 那一句}`（同名原样，两格都得是串）。
     TerminalFollowEnd { ticket: String, cell: String },
-    /// 一轮对话收尾（`turn_end`）。认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。
-    TurnEnd,
+    /// 一轮对话收尾（`turn_end`；在不在看都发）⇒ 交那台的会话流一格（系统通知认它，不认行：没在看的会话行不上流）。
+    TurnEnd { sid: String },
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -312,6 +305,23 @@ fn req_u64(o: &Obj, kind: &str, key: &str) -> Result<u64, Unread> {
 }
 
 /// 必填的数组，原文收下（monitor 不解释）。
+/// `session_added` · `session_status` 上那几格「此刻在干什么」（那台核心的 `ActivityFace`，平铺在帧上）的唯一解码口：
+/// 那一态（缺 ＝ 说不清；给了认不出 ⇒ 契约对不上）· 写好的字 · 语气 · 监控板的序（后三格必有）。
+fn activity_cells(o: &Obj, kind: &str) -> Result<crate::session_book::ActivityCells, Unread> {
+    Ok(crate::session_book::ActivityCells {
+        activity: opt_word(
+            o,
+            kind,
+            "activity",
+            crate::session_book::SessionActivity::from_wire,
+        )?,
+        activity_text: req_str(o, kind, "activity_text")?,
+        activity_tone: req_str(o, kind, "activity_tone")?,
+        activity_order: u8::try_from(req_u64(o, kind, "activity_order")?)
+            .map_err(|e| bad(kind, e.to_string()))?,
+    })
+}
+
 fn req_array_text(
     o: &Obj,
     kind: &str,
@@ -405,7 +415,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
     let k = kind;
     Ok(match kind {
         "hello" => {
-            // `homes` / `capabilities` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
+            // `homes` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
             // `homes` 空 ⇒ 消费侧回落 `claude_dir`（[`claude_home_from_hello`]；今天后端恒发空表）。
             let homes: Vec<AgentHome> = obj
                 .get("homes")
@@ -440,7 +450,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 host_arch: req_str(obj, k, "host_arch")?,
                 claude_dir: req_str(obj, k, "claude_dir")?,
                 homes,
-                capabilities: strings("capabilities"),
                 commands: strings("commands"),
                 unavailable,
                 uncancellable,
@@ -450,6 +459,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "line" => decode_line(line)?,
         "session_added" => {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);
+            // 是哪一家（每条都带）：缺 ⇒ 形状不对。壳今天不按它分叉（tab 上的那一家小牌另排），只核它在。
+            req_str(obj, k, "agent_kind")?;
             InboundFrame::SessionAdded {
                 sid: req_str(obj, k, "sid")?,
                 background: opt_bool(obj, k, "background")?.unwrap_or(false),
@@ -460,14 +471,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 name: opt("name"),
                 path: opt("path"),
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
-                activity: opt_word(
-                    obj,
-                    k,
-                    "activity",
-                    crate::session_book::SessionActivity::from_wire,
-                )?,
-                activity_text: req_str(obj, k, "activity_text")?,
-                activity_tone: req_str(obj, k, "activity_tone")?,
+                activity: activity_cells(obj, k)?,
                 waiting_for: opt("waiting_for"),
                 // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
                 container: match obj.get("container") {
@@ -499,14 +503,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);
             InboundFrame::SessionStatus {
                 sid: req_str(obj, k, "sid")?,
-                activity: opt_word(
-                    obj,
-                    k,
-                    "activity",
-                    crate::session_book::SessionActivity::from_wire,
-                )?,
-                activity_text: req_str(obj, k, "activity_text")?,
-                activity_tone: req_str(obj, k, "activity_tone")?,
+                activity: activity_cells(obj, k)?,
                 waiting_for: opt("waiting_for"),
             }
         }
@@ -685,11 +682,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 body,
             })
         }
-        // 认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。形状照样判。
+        // `uuid` 照样判形状（不用：一轮只报一次由后端保证，去抖在界面）。
         "turn_end" => {
-            req_str(obj, k, "session_id")?;
             req_str(obj, k, "uuid")?;
-            InboundFrame::TurnEnd
+            InboundFrame::TurnEnd {
+                sid: req_str(obj, k, "session_id")?,
+            }
         }
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })

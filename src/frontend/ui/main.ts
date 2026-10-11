@@ -925,7 +925,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone),
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone, e.activity_order),
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
@@ -944,6 +944,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
     onStreamGap: (origin) => tabs.onStreamGap(origin),
+    // 一个会话刚进了那台那条流的「在看」名单 ⇒ 没在看那段没上流的补上（`TabManager.onSessionWatch`）。
+    onSessionWatch: (origin, p) => tabs.onSessionWatch(origin, p),
+    // 一轮结束（在不在看都来）⇒ 系统通知。
+    onTurnEnd: (origin, sid) => tabs.onTurnEnd(origin, sid),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
     // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。

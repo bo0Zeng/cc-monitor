@@ -73,7 +73,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
 
 function acct(p: Partial<Account>): Account {
-  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, ...p };
+  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
 }
 const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", effectiveDefault: "work", home: "/h" };
 function state(p: Partial<AccountsState> = {}): AccountsState {
@@ -106,13 +106,14 @@ function quota(refusedAt?: number): QuotaRead {
       { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
     ],
     login: "ok",
+    usage: { slot: "5h", window: "5h", value: `${pct5}%`, text: `5h ${pct5}%`, tone: "plain" },
   });
   return {
     state: "present",
     reason: null,
     path: null,
     now: NOW,
-    accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude-code", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok" }],
+    accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude-code", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok", usage: { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } }],
     unseen: [],
     usableNow: [],
     earliestReturn: null,

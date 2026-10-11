@@ -227,25 +227,9 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
     decode_verdict(&data.unwrap_or_default())
 }
 
-/// attach 行：「我要流」＋ 这条连接要的流模式旗标（远端 `listen::attach_flags` 的逆）。
-/// `tz` ＝ 看的这一台的时区（[`host_core::viewer_tz`]）：跟在旁边一格，这条流推来的钟面按它写；`None` ⇒ 不带（那台按 UTC 写）。
-pub(crate) fn attach_line(flags: (bool, bool), tz: Option<&str>) -> String {
-    let (with_bg, tail_only) = flags;
-    let mut f: Vec<&str> = Vec::new();
-    if with_bg {
-        f.push("--with-bg");
-    }
-    if tail_only {
-        f.push("--tail-only");
-    }
-    // 看的这一台的时区跟在旁边一格（远端 `listen::attach_flags` 读它）：这条流推来的钟面按它写。
-    let mut line = match tz {
-        Some(tz) => serde_json::json!({ "attach": true, "flags": f, "tz": tz }),
-        None => serde_json::json!({ "attach": true, "flags": f }),
-    }
-    .to_string();
-    line.push('\n');
-    line
+/// 远端这条流的出口声明：`session_added.pid` 不要（那台的 pid 只有本机 ↗ 绑窗口用得上）。
+pub(crate) fn remote_stream_view() -> serde_json::Value {
+    serde_json::json!({ "omit": { "session_added": ["pid"] } })
 }
 
 /// 读握手那一行（hello / attach 应答）；`hello` 选哪一句说「没答完」。
@@ -391,7 +375,7 @@ where
 }
 
 /// **接上那台的常驻后端**（没有就起一个）：起 · 找 → 中继 → hello（旧 ⇒ 换一次）→ attach。
-pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Replayed, AttachErr> {
+pub(crate) async fn attach(cfg: &RemoteConfig) -> Result<Replayed, AttachErr> {
     let origin = cfg.origin_label();
     let mut replaced = false;
     ensure(cfg, false).await?;
@@ -423,7 +407,13 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
             )
         };
         r.get_mut()
-            .write_all(attach_line(flags, host_core::viewer_tz().as_deref()).as_bytes())
+            .write_all(
+                crate::local_backend_host::attach_line(
+                    host_core::viewer_tz().as_deref(),
+                    Some(&remote_stream_view()),
+                )
+                .as_bytes(),
+            )
             .await
             .map_err(not_sent)?;
         r.get_mut().flush().await.map_err(not_sent)?;

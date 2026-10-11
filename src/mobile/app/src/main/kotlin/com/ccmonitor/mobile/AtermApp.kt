@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.di.sshModule
 import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.di.appModule
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.ForegroundTracker
 import kotlinx.coroutines.CoroutineScope
@@ -28,7 +29,7 @@ class AtermApp : Application() {
                 modules(dataModule, sshModule, appModule)
             }.koin
         // 维护前台标志，并在回到前台时探活重连僵死会话。
-        registerForegroundTracking(koin.get())
+        registerForegroundTracking(koin.get(), koin.get())
 
         // 只在 debug 构建播种演示主机和身份；dev key 资产也只在 src/debug。
         if (BuildConfig.DEBUG) {
@@ -38,15 +39,22 @@ class AtermApp : Application() {
     }
 
     /**
-     * 维护 [AppForeground]，并在 0→1（回到前台，含冷启动）时调 [SshConnectionManager.probeAndReconnectStale]。
+     * 维护 [AppForeground]，并在 0→1（回到前台，含冷启动）时调 [SshConnectionManager.probeAndReconnectStale]，
+     * 再让每台断着的常驻流当场重接（[HostBackends.onForeground]；SSH 那层重连过的那几台由流自己跟上）。
      * 网络恢复由 [com.ccmonitor.mobile.service.SshKeepAliveService] 触发探测；纯回前台（同网络下服务端 idle 超时、
      * NAT 重绑静默掐断）只能靠这里，否则首次交互要吃满 15s openShell 看门狗。
      * 探测可以在主线程调：临界区很短，网络往返在 reconnectScope 里。
      */
-    private fun registerForegroundTracking(manager: SshConnectionManager) {
+    private fun registerForegroundTracking(
+        manager: SshConnectionManager,
+        backends: HostBackends,
+    ) {
         val tracker =
             ForegroundTracker(
-                onEnterForeground = { manager.probeAndReconnectStale() },
+                onEnterForeground = {
+                    manager.probeAndReconnectStale()
+                    backends.onForeground()
+                },
                 setForeground = { AppForeground.isForeground = it },
             )
         registerActivityLifecycleCallbacks(

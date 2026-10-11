@@ -175,17 +175,13 @@ fn excerpt_falls_back_to_the_whole_text_when_the_head_is_all_whitespace() {
 /// 从骨架索引的输出里把大纲搬出来（前端 `outline-source.ts::outlineSeedFromIndex` 做的同一件事）：
 /// 带 `x` 的行 ⇒ `{uuid: u, excerpt: x, timestamp: ts ?? ""}`。
 fn outline_from_index(data: &[u8]) -> Vec<(String, String, String)> {
-    let mut out = Vec::new();
-    crate::observe::history_query::write_session_index(data, 0, None, &mut out).expect("index ok");
-    let v: Vec<serde_json::Value> = String::from_utf8(out)
-        .unwrap()
-        .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
-    assert_eq!(v[0]["kind"], "session_index");
-    assert_eq!(v[v.len() - 1]["kind"], "session_index_end");
-    v[1..v.len() - 1]
-        .iter()
+    let mut v = Vec::new();
+    crate::observe::history_query::scan_session_index(data, 0, None, |row| {
+        v.push(serde_json::to_value(row).unwrap());
+        Ok(())
+    })
+    .expect("index ok");
+    v.iter()
         .filter(|r| r.get("x").is_some())
         .map(|r| {
             (

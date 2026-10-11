@@ -7,7 +7,7 @@
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { accountLabel, slotLabel, type QuotaRead, type QuotaReadAccount } from "./acct-words";
-import type { QuotaShow } from "./generated/QuotaShow";
+import type { Usage } from "./generated/Usage";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { SwitchRecord } from "./generated/SwitchRecord";
 import type { SessionRotationEntry } from "./app-store";
@@ -17,7 +17,8 @@ export function machineLabel(origin: Origin): string {
   return isLocalOrigin(origin) ? copyText("acct.machine.here") : origin;
 }
 
-export type ChipTone = "neutral" | "near" | "refused" | "over";
+/** 按钮那一格的语气（核心写的 `usage.tone`）。 */
+export type ChipTone = Usage["tone"];
 
 /** 状态栏那颗按钮这一刻画什么。 */
 export interface ChipModel {
@@ -40,60 +41,30 @@ export function ledgerOf(quota: QuotaRead | null, agent: string, account: string
   return quota?.accounts.find((a) => a.agent === agent && a.account === account);
 }
 
-/** 一个号的显示态 ⇒ 窗口 · 值 · 重置 · 色（按钮与「下一个」那一格同一套）。 */
-export function usageOf(
-  q: QuotaShow,
-  reading: QuotaReadAccount["reading"],
-): { window: string | null; value: string; reset: string | null; tone: ChipTone } {
-  if (q.kind === "api") {
-    if (q.state !== "refused") return { window: null, value: copyText("acct.kind.api"), reset: null, tone: "neutral" };
-    const at = reading?.resetsAtText;
-    return { window: null, value: copyText("acct.val.refusedOnly"), reset: at === undefined ? null : copyText("acct.reset.at", { at }), tone: "refused" };
-  }
-  const w = q.limiting ?? "5h";
-  const slot = q.slots.find((s) => s.slot === w);
-  const window = slotLabel(w);
-  const resetAt = slot?.resetsAt !== undefined ? slot.resetsAtText : reading?.resetsAtText;
-  // 值那一格是核心写好的字（`slots[].text`，与额度每号几行同一处）；没有这一格 ⇒ 被拒写「被拒」、别的写「—」。
-  const value = slot?.text ?? (q.state === "refused" ? copyText("acct.val.refusedOnly") : copyText("acct.val.none"));
-  switch (q.state) {
-    case "refused":
-      return { window, value, reset: resetAt === undefined ? null : copyText("acct.reset.at", { at: resetAt }), tone: "refused" };
-    case "overageInUse":
-      return { window, value, reset: null, tone: "over" };
-    case "resetSinceSeen":
-    case "unseen":
-      return { window, value, reset: null, tone: "neutral" };
-    default:
-      break;
-  }
-  return { window, value, reset: null, tone: slot?.full ? "refused" : q.state === "near" && slot?.pct !== undefined ? "near" : "neutral" };
-}
-
 /**
  * ★ 本会话那颗按钮。`entry` ＝ 这个会话在它那台的轮换格（还没问到 ⇒ `undefined`）；`fallback` ＝ tab 栏徽章那份快照里
  * 这个会话归属的号（中转没见过这个会话时只能画它）；都没有 ⇒ `null`（不画）。
  */
-export function sessionChip(entry: SessionRotationEntry | undefined, fallback: string | null, quota: QuotaRead | null): ChipModel | null {
+export function sessionChip(entry: SessionRotationEntry | undefined, fallback: string | null): ChipModel | null {
   const read = entry?.read;
   if (!read) {
     if (fallback === null) return null;
-    return { account: fallback, name: accountLabel(fallback), swapped: false, window: null, value: null, reset: null, tone: "neutral", stale: false };
+    return { account: fallback, name: accountLabel(fallback), swapped: false, window: null, value: null, reset: null, tone: "plain", stale: false };
   }
   if (read.state === "absent") {
     // 中转没见过这个会话：有归属就画那个号（无用量）；归属也不知道 ⇒ 照实写「未实时显示」，点开仍是本会话面板（只剩重启切换）。
     const name = fallback === null ? copyText("acct.hover.noRelay") : accountLabel(fallback);
-    return { account: fallback, name, swapped: false, window: null, value: null, reset: null, tone: "neutral", stale: false };
+    return { account: fallback, name, swapped: false, window: null, value: null, reset: null, tone: "plain", stale: false };
   }
   const cur = read.account.current;
-  const u = usageOf(read.quota, ledgerOf(quota, read.agent, cur)?.reading);
+  const u = read.quota.usage;
   return {
     account: cur,
     name: accountLabel(cur),
     swapped: cur !== read.account.start,
-    window: u.window,
+    window: u.window ?? null,
     value: u.value,
-    reset: u.reset,
+    reset: u.reset ?? null,
     tone: u.tone,
     stale: read.quota.stale,
   };
@@ -116,8 +87,10 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
   if (!read || read.state === "absent") {
     if (fallback === null) return read ? [[copyText("acct.hover.noRelay")], [copyText("acct.hover.switch"), copyText("acct.hover.restartOnly")]] : null;
     const known = quota?.accounts.find((a) => a.account === fallback) ?? quota?.unseen.find((u) => u.account === fallback);
+    // 首行照核心那一段的头两格（名 · 类型）。
     const head = [accountLabel(fallback)];
-    if (known) head.push(known.kind === "api" ? copyText("acct.kind.api") : copyText("acct.kind.sub"));
+    const kind = known?.rows[0]?.[1]?.text;
+    if (kind !== undefined) head.push(kind);
     return [
       head,
       [copyText("acct.hover.usage"), copyText("acct.val.none"), copyText("acct.hover.noRelay")],
@@ -152,8 +125,7 @@ function nextRow(read: Extract<SessionRotationState, { state: "present" }>, quot
   if (read.next === undefined) return [label, copyText("acct.val.none"), copyText("acct.hover.nextNone")];
   const led = ledgerOf(quota, read.agent, read.next);
   if (!led) return [label, accountLabel(read.next), copyText("acct.val.none")];
-  const u = usageOf(led, led.reading);
-  return [label, accountLabel(read.next), usageText(u)];
+  return [label, accountLabel(read.next), led.usage.text];
 }
 
 /** 记录那一条的原因（`work 5h ✕` · `手动 · 热切换` …）＋ 那一刻原号几点重置（`↻19:00`，记下就不变）。 */
@@ -262,7 +234,7 @@ export function bannerOf(entry: SessionRotationEntry | undefined): { text: strin
     return { text, tone: "warn" };
   }
   if (e.account === read.account.current) {
-    const w = slotLabel(read.quota.limiting ?? "5h");
+    const w = read.quota.usage.window ?? "";
     return { text: copyText("acct.banner.full", { name, w, at, rel: rel.slice(1) }), tone: "warn" };
   }
   return { text: copyText("acct.banner.allFull", { name, at, rel: rel.slice(1) }), tone: "warn" };
@@ -272,15 +244,9 @@ export function bannerOf(entry: SessionRotationEntry | undefined): { text: strin
 export function tabBlockedOf(entry: SessionRotationEntry | undefined): { text: string; hover: string } | null {
   const read = entry?.read;
   if (!read || read.state === "absent" || read.blocked === undefined) return null;
-  const w = slotLabel(read.quota.limiting ?? "5h");
+  const w = read.quota.usage.window ?? "";
   const e = read.blocked.earliest;
   const text = copyText("acct.tab.blocked", { w });
   if (e === undefined) return { text, hover: text };
   return { text, hover: copyText("acct.tab.hover", { w, name: accountLabel(e.account), at: e.atText ?? "" }) };
-}
-
-/** 一个号用量的一格字（下拉项右侧 · 切换那颗按钮）：`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`。 */
-export function usageText(u: { window: string | null; value: string; reset: string | null }): string {
-  if (u.window === null) return u.reset === null ? u.value : copyText("acct.usage.wv", { w: u.value, v: u.reset });
-  return u.reset === null ? copyText("acct.usage.wv", { w: u.window, v: u.value }) : copyText("acct.usage.wvr", { w: u.window, v: u.value, r: u.reset });
 }

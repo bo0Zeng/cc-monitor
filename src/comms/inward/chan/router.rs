@@ -49,11 +49,13 @@ use tokio::sync::{mpsc, Semaphore};
 /// 句柄拿它给自己的下一跳装期限。路由器自己另外按同一个值装了一个上界。
 pub trait Backends: Send + Sync {
     /// 一次性请求。失败一定是一个 `CallError`，不许回一个空答案冒充。
+    /// `view`：出口的声明（`Head::Call.view`），原样交给句柄、由它搬进后端的请求信封；路由器不读它。
     fn call(
         &self,
         origin: Origin,
         op: Op,
         payload: Body,
+        view: Option<serde_json::Value>,
         left: Duration,
         cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>>;
@@ -144,11 +146,12 @@ where
                 origin,
                 op,
                 left,
+                view,
             } => {
                 let Some(cancel) = open_slot(&inflight, id, None) else {
                     break Ended::Broken(format!("编号 {id} 还在飞，又来了一次"));
                 };
-                let call = backends.call(origin, Op(op), Body(body), left, cancel.clone());
+                let call = backends.call(origin, Op(op), Body(body), view, left, cancel.clone());
                 tokio::spawn(run_call(
                     id,
                     call,

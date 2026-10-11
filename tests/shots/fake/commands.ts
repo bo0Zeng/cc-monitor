@@ -19,6 +19,8 @@ export function defaultCommands(): Record<string, CommandHandler> {
     open_terminal_window: () => "opened",
     // 在新窗口里看一个会话：截图里不真开窗。
     open_session_in_new_window: () => null,
+    // 主窗口报在看哪个会话（壳据此给各台发 stream-watch）：截图里不报给无头壳 ⇒ 各台从没收到名单 ＝ 全看。
+    watch_sessions: () => null,
     // 设置 → 通用「终端」那一行的事实（Linux 桌面：自动挑到 ptyxis）。
     terminal_choices: () => ({ applies: true, auto: "ptyxis", found: ["ptyxis", "alacritty"], setting: "" }),
   };

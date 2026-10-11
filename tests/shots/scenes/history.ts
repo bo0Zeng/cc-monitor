@@ -27,6 +27,36 @@ async function row(n: number): Promise<HTMLElement> {
   return document.querySelectorAll<HTMLElement>('.history-view [role="option"]')[n];
 }
 
+/** 展开取回那一下：取回全文那一问慢 2.5 秒（「读取中」截得到）。 */
+const slowFull = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), fullFetchDelayMs: { "history-page": 2500 } });
+
+/** 查看窗里打开最后一个跑命令（Bash）那一步的结果（连同外面的折叠）；回那个结果的折叠。 */
+async function openLastResult(): Promise<HTMLDetailsElement> {
+  await waitFor(".session-viewer [data-id]", 15_000);
+  await sleep(1200);
+  const all = [...document.querySelectorAll<HTMLDetailsElement>(".session-viewer .block-tool-result-inline")].filter((r) =>
+    r.parentElement?.closest("details")?.querySelector(":scope > summary")?.textContent?.includes("Bash"),
+  );
+  const res = all.at(-1);
+  if (!res) throw new Error("查看窗里没有跑命令那一步的结果");
+  // 做完的那一轮过程默认折成一行（`turn-fold.ts` 挂 `proc-hidden`）：先点开那一轮的过程行。
+  const top = res.closest<HTMLElement>("[data-proc-of]");
+  if (top?.classList.contains("proc-hidden")) {
+    document.querySelector<HTMLElement>(`.proc-line[data-turn="${top.dataset.procOf}"]`)?.click();
+    await sleep(400);
+  }
+  for (let p: HTMLElement | null = res; p; p = p.parentElement) {
+    if (p instanceof HTMLDetailsElement && !p.open) {
+      p.open = true;
+      p.dispatchEvent(new Event("toggle"));
+    }
+  }
+  res.scrollIntoView({ block: "center" });
+  const r = res.getBoundingClientRect();
+  if (res.closest(".proc-hidden") || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight) throw new Error("那个结果没出现在视口里");
+  return res;
+}
+
 const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), historyDown: ["gpu-01"] });
 
 /** 额度账里有这几台的号的数（恢复菜单每个号后面 `5h N%`）。 */
@@ -224,6 +254,38 @@ export const HISTORY_SCENES: Scene[] = [
     act: async () => {
       await waitFor(".session-viewer [data-id]", 15_000);
       await sleep(1500);
+    },
+  },
+  {
+    id: "viewer-expand-fetch-loading",
+    page: "viewer",
+    query: "viewer=5e550001-0000-4000-8000-000000000001",
+    dir: "历史",
+    title: "独立查看窗 · 展开取回 · 读取中",
+    desc: "桌面读正文交「折起那一行」声明：工具结果正文不随行来，点开那一下按记录 id 去取 —— 取回之前写「读取中」",
+    width: 900,
+    height: 720,
+    world: slowFull,
+    act: async () => {
+      const res = await openLastResult();
+      await sleep(600);
+      if (!res.querySelector(".block-omitted")) throw new Error("点开之后没出「读取中」—— 正文没被省掉，或取得太快");
+    },
+  },
+  {
+    id: "viewer-expand-fetch-landed",
+    page: "viewer",
+    query: "viewer=5e550001-0000-4000-8000-000000000001",
+    dir: "历史",
+    title: "独立查看窗 · 展开取回 · 落全文",
+    desc: "同上，取回之后「读取中」换成那一块全文",
+    width: 900,
+    height: 720,
+    world: slowFull,
+    act: async () => {
+      const res = await openLastResult();
+      await sleep(3600);
+      if (res.querySelector(".block-omitted")) throw new Error("等了 3.6 秒还在「读取中」/ 取失败");
     },
   },
   {

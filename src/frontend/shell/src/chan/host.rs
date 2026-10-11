@@ -96,11 +96,12 @@ impl Backends for InboundBackends {
         origin: Origin,
         op: Op,
         payload: Body,
+        view: Option<serde_json::Value>,
         left: Duration,
         _cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
         // 对端说「不行」⇒ 拒绝体里那份详情远端时补「本机」一行（主界面与文件窗口都经这一口，补一次、只在这里）。
-        let fut = self.call_raw(origin.clone(), op, payload, left);
+        let fut = self.call_raw(origin.clone(), op, payload, view, left);
         Box::pin(async move {
             fut.await
                 .map_err(|e| crate::detail::relay_refusal(&origin, e))
@@ -124,11 +125,13 @@ impl Backends for InboundBackends {
 
 impl InboundBackends {
     /// `call` 的本体（拒绝体补「本机」之前）。
+    /// `view` 只给转去那台后端的那一路（原样进请求信封）；monitor 自己接的那几条（[`HOST_OPS`]）不认声明。
     fn call_raw(
         &self,
         origin: Origin,
         op: Op,
         payload: Body,
+        view: Option<serde_json::Value>,
         left: Duration,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
         // 🔴**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
@@ -167,7 +170,12 @@ impl InboundBackends {
             let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
                 return Err(OursFault::Misuse.into());
             };
-            match client.call(&op.0, args, left).await {
+            let deadline = tokio::time::Instant::now() + left;
+            let answer = match &view {
+                Some(v) => client.call_until_viewed(&op.0, args, v, deadline).await,
+                None => client.call_until(&op.0, args, deadline).await,
+            };
+            match answer {
                 Ok(v) => Ok(Body(
                     serde_json::to_vec(&v.unwrap_or(serde_json::Value::Null)).unwrap_or_default(),
                 )),

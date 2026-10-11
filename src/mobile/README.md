@@ -10,14 +10,13 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 
 | 模块 | 管什么 |
 |---|---|
-| `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关、起路 A |
-| `core-claude` | `link/`：常驻流的帧客户端（门槛 · 起常驻 · attach · 一问一答 · 格目录）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read`）；其余是还没删的路 A 与自读原文那一族 |
+| `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关（终端屏用）；聊天屏起会话 · 送字 · 正文都走那台核心（`ui/chat/ChatSession.kt`） |
+| `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了自己接回去）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条 · `session-new` · `terminal-input` · `history-tail/read` · `line` 帧）；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元；其余是还没删的自读原文那一族（终端屏的「Claude 阅读」） |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
 | `core-ssh` | SSH（sshj）：连接池、多地址竞速、跳板、SFTP、`~/.ssh/config`、known_hosts、密钥 |
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-ui` | 共用主题与反馈 · 取文口 `copyText`（构建时从 `src/shared/copy/table.json` 抄手机代码引到的那几条） |
-| `bridge/` | 路 A 上下行的线协议（`PROTOCOL.md`）与金样（`vectors/`） |
 
 ## 技术栈
 
@@ -41,8 +40,7 @@ cd src/mobile
 ## 测试
 
 ```sh
-./gradlew ktlintCheck detektDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain
-python3 -m pytest bridge/tests        # bridge 的 Python 金样测试
+./gradlew ktlintCheck detektDebug :app:lintDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain
 bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（读 .build/mobile/*/test-results）
 ```
 
@@ -50,7 +48,7 @@ bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（�
 
 - **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease`（CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
 - **要设备的 instrumentation 测（androidTest）不进门禁、也不进 CI**：接好模拟器或真机后跑 `bash scripts/android-test.sh`。其中 `SshConnectionTest` 要一台真 SSH 服务端，入口脚本不跑它，手测时用 `-Pandroid.testInstrumentationRunnerArguments.sshHost=<地址>` 给地址。
-- **Android Lint**（`./gradlew :app:lintDebug`）也不在门禁里：今天有 3 条 error（两条 NewApi、一条 RestrictedApi），修掉之后再进。
+- **Android Lint**（`:app:lintDebug`）在上面那条里：error 一条就红，warning 不拦。
 
 ## License
 

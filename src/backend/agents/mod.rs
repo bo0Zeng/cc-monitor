@@ -258,7 +258,7 @@ pub(crate) fn pick_kind_among(
     pick_among(registry, name, |kind, _| kind)
 }
 
-/// 按适配器 id 认（上游选择那几问的 `agent`：`apikey-routing` · `accounts-list` · `launch-local`）。规则见 [`pick_among`]。
+/// 按适配器 id 认（上游选择那几问的 `agent`：`accounts-list` · `launch-local`）。规则见 [`pick_among`]。
 pub(crate) fn pick_adapter_among(
     registry: &[Adapter],
     id: Option<&str>,
@@ -425,6 +425,9 @@ pub(crate) struct RecordFace {
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
     /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
     pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
+    /// 这一家的会话在世期间，写记录的那个进程一直开着那份记录（不留 pidfile 的那一家判活就认它：有进程开着它写 ⇒ 活，
+    /// 那个进程退了或把它关了 ⇒ 走了；`platform::writers`）。`false` ＝ 这一家不这样判活（有 pidfile，或说不清）。
+    pub(crate) held_open: bool,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -601,6 +604,10 @@ pub struct ToolStep {
     pub note: Option<String>,
     /// 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
     pub known: bool,
+    /// 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub text: Option<crate::common::cells::Words>,
     /// 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
     /// 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -694,10 +701,81 @@ pub struct StepResult {
     #[serde(rename = "patchTruncated", skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub patch_truncated: bool,
+    /// 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+    /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub text: crate::common::cells::Words,
+    /// 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub timed: Option<crate::common::cells::Words>,
     /// 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub preview: Option<String>,
+    /// 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub chars: Option<u32>,
+}
+
+/// 耗时那一截的占位（出口填）。
+pub(crate) const DUR_SLOT: &str = "{dur}";
+
+impl StepResult {
+    /// ★ 右侧那一句（唯一一处）。`read` ＝ 这是读文件那一类的结果（`lines` 才说成「读了几行」；命令输出几行 · 搜索命中几行不说）。
+    pub(crate) fn written(mut self, read: bool) -> Self {
+        let w = |s: String| crate::common::cells::Words(s);
+        let (text, timed) = if self.rejected {
+            (copy_core::copy_text("stream.step.rejected", &[]), None)
+        } else if !self.ok {
+            (
+                copy_core::copy_text("stream.step.failed", &[]),
+                Some(copy_core::copy_text(
+                    "stream.step.failedFor",
+                    &[("dur", DUR_SLOT)],
+                )),
+            )
+        } else if let Some(a) = &self.answer {
+            // 提问 / 计划答了什么（卡片底行那一句）。
+            (
+                match a {
+                    Answer::Approved => copy_core::copy_text("interactive.done.approved", &[]),
+                    Answer::Picked { options } => copy_core::copy_text(
+                        "interactive.done.picked",
+                        &[("option", &options.join(" / "))],
+                    ),
+                },
+                None,
+            )
+        } else {
+            let diff: Vec<String> = [
+                self.added.filter(|n| *n > 0).map(|n| format!("+{n}")),
+                self.removed.filter(|n| *n > 0).map(|n| format!("−{n}")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            if !diff.is_empty() {
+                (diff.join(" "), None)
+            } else if let Some(n) = self.lines.filter(|_| read) {
+                (
+                    copy_core::copy_text("stream.step.lines", &[("n", &n.to_string())]),
+                    None,
+                )
+            } else if let Some(n) = self.files {
+                (
+                    copy_core::copy_text("stream.step.files", &[("n", &n.to_string())]),
+                    None,
+                )
+            } else {
+                (String::new(), Some(DUR_SLOT.to_string()))
+            }
+        };
+        self.text = w(text);
+        self.timed = timed.map(w);
+        self
+    }
 }
 
 /// 一段改动（统一 diff 的一个 hunk）。行正文带着头字（` ` 没变 · `+` 加的 · `-` 删的）。
@@ -1082,9 +1160,12 @@ pub(crate) fn step_result_of(
     tur: Option<&serde_json::Value>,
 ) -> StepResult {
     text_face(kind).map_or_else(
-        || StepResult {
-            ok: block.get("is_error").and_then(serde_json::Value::as_bool) != Some(true),
-            ..StepResult::default()
+        || {
+            StepResult {
+                ok: block.get("is_error").and_then(serde_json::Value::as_bool) != Some(true),
+                ..StepResult::default()
+            }
+            .written(false)
         },
         |t| (t.result)(block, tur),
     )
@@ -1325,6 +1406,60 @@ pub(crate) fn record_tree_kind() -> Option<&'static str> {
 
 fn record_tree_kind_among(registry: &[Adapter]) -> Option<&'static str> {
     sole_kind_among(registry, |a| a.history.is_none() && a.records.is_some())
+}
+
+/// 流式 watcher 跟的一家：它的记录住哪个根 · 记录解释面 · 它的会话靠什么判活。
+#[derive(Clone)]
+pub(crate) struct Followed {
+    pub(crate) kind: &'static str,
+    /// 记录根（其下每份会话记录一个文件；子目录怎么分是那一家的事）。
+    pub(crate) root: PathBuf,
+    pub(crate) face: RecordFace,
+    pub(crate) live: LiveBy,
+}
+
+/// 一家的会话靠什么判活（流式 watcher 按它挑发现与摘除的那一路）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LiveBy {
+    /// 每个活会话的进程在这个目录里留一份进程状态文件（pidfile）。
+    Pidfiles(PathBuf),
+    /// 没有 pidfile：有进程开着那份记录写 ⇒ 活（[`RecordFace::held_open`]）。
+    Writer,
+}
+
+/// 流式 watcher 跟的那几家（注册序）：家目录记录树那一家（[`record_tree_kind`]，`tree_home` 是它的家目录，判活认 pidfile）·
+/// 记录住在合成历史根下、会话在世期间一直开着记录写的那几家（判活认写者）。别的不跟。
+pub(crate) fn followed(tree_home: &Path) -> Vec<Followed> {
+    followed_among(REGISTRY, tree_home)
+}
+
+/// [`followed`] 的可喂夹具那一半。
+pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Followed> {
+    let tree_kind = record_tree_kind_among(registry);
+    registry
+        .iter()
+        .filter_map(|a| {
+            let face = a.records?;
+            if Some(a.kind) == tree_kind {
+                let local = a.local?;
+                return Some(Followed {
+                    kind: a.kind,
+                    root: (face.tree?.root)(tree_home),
+                    face,
+                    live: LiveBy::Pidfiles((local.pidfile_dir)(tree_home)),
+                });
+            }
+            if !face.held_open {
+                return None;
+            }
+            Some(Followed {
+                kind: a.kind,
+                root: (a.history?.root)()?,
+                face,
+                live: LiveBy::Writer,
+            })
+        })
+        .collect()
 }
 
 /// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。

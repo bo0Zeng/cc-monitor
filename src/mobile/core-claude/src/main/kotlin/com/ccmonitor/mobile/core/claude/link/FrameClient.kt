@@ -77,7 +77,7 @@ sealed interface AttachOutcome {
  * R 通道上的帧客户端：一条 `ccm -- --resident-attach` 双向长 exec，上面一问一答（请求 `{id, cmd, args, within_ms}` ⇒
  * `reply`）＋ 出方向的帧。手机所有远端调用只经它一处（`架构.md` D5）。
  *
- * - 先读 `hello` 再写话（`IPC-PROTOCOL.md` §3）；`attach` 行带这条连接要的流旗标（`--tail-only` …）。
+ * - 先读 `hello` 再写话（`IPC-PROTOCOL.md` §3）；`attach` 行只说「我要流」（`{"attach":true}`；后端不重放历史，正文由 `history-tail` / `history-read` 另取）。
  * - `id` 由这里发号（`<连接 nonce>-<单调序号>`），后端只回显。
  * - 超时归客户端：[call] 的期限到了就发 `cancel` 撤单，回 [Reply.TimedOut]。
  * - 帧（`reply` / `cancelled` 以外的每一行）原样进 [frames]，只许一个消费方；它慢 ⇒ 这里停读 ⇒ SSH 窗口停发（不丢帧）。
@@ -89,6 +89,8 @@ class FrameClient private constructor(
     private val lines: ReceiveChannel<String>,
     private val scope: CoroutineScope,
     private val nonce: String,
+    /** 看的这一台的时区（IANA 名）：每条请求信封都带（回包里写成字的时刻按它写）。 */
+    private val tz: String,
     private val onBreak: (String) -> Unit,
 ) {
     private val seq = AtomicLong(0)
@@ -175,6 +177,7 @@ class FrameClient private constructor(
                 put("cmd", cmd)
                 if (args != null) put("args", args)
                 put("within_ms", withinMs)
+                put("tz", tz)
             }
         try {
             writeLine(request)
@@ -221,10 +224,10 @@ class FrameClient private constructor(
          */
         suspend fun attach(
             duplex: RemoteDuplex,
-            flags: List<String>,
             parent: CoroutineScope,
             handshakeMs: Long,
             nonce: String,
+            tz: String,
             onBreak: (String) -> Unit,
         ): AttachOutcome {
             val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
@@ -241,8 +244,8 @@ class FrameClient private constructor(
             }
 
             return try {
-                val hello = handshake(duplex, lines, flags, handshakeMs)
-                AttachOutcome.Attached(FrameClient(duplex, hello, lines, scope, nonce, onBreak).also { it.start() })
+                val hello = handshake(duplex, lines, tz, handshakeMs)
+                AttachOutcome.Attached(FrameClient(duplex, hello, lines, scope, nonce, tz, onBreak).also { it.start() })
             } catch (stop: Stop) {
                 duplex.close()
                 scope.cancel()
@@ -255,12 +258,13 @@ class FrameClient private constructor(
             val outcome: AttachOutcome,
         ) : RuntimeException()
 
+        /** attach 行：`{attach, tz}`（这条流推出去的钟面按 `tz` 写）。 */
         private suspend fun sendAttach(
             duplex: RemoteDuplex,
-            flags: List<String>,
+            tz: String,
         ) {
             try {
-                duplex.write((Json.line(mapOf("attach" to true, "flags" to flags)) + "\n").toByteArray(Charsets.UTF_8))
+                duplex.write((Json.line(mapOf("attach" to true, "tz" to tz)) + "\n").toByteArray(Charsets.UTF_8))
             } catch (_: IOException) {
                 throw Stop(AttachOutcome.Cut(AttachOutcome.Stage.ATTACH_REPLY, duplex.stderrTail))
             }
@@ -270,7 +274,7 @@ class FrameClient private constructor(
         private suspend fun handshake(
             duplex: RemoteDuplex,
             lines: ReceiveChannel<String>,
-            flags: List<String>,
+            tz: String,
             handshakeMs: Long,
         ): Map<String, Any?> {
             suspend fun next(stage: AttachOutcome.Stage): Pair<String, Map<String, Any?>?> {
@@ -289,7 +293,7 @@ class FrameClient private constructor(
             ): Map<String, Any?> = m?.takeIf(ok) ?: throw Stop(AttachOutcome.NotOurs(line))
             val (first, m1) = next(AttachOutcome.Stage.HELLO)
             val hello = ours(first, m1) { it.str("kind") == "hello" }
-            sendAttach(duplex, flags)
+            sendAttach(duplex, tz)
             val (second, m2) = next(AttachOutcome.Stage.ATTACH_REPLY)
             ours(second, m2) { it.str("attach") == "ok" }
             return hello

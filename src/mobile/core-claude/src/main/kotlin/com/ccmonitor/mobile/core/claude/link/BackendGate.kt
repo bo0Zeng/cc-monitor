@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.core.claude.link
 /**
  * 门槛：那台的后端和这一版手机是**同一个 `BUILD_ID`** 才接（同仓之后手机内嵌本仓后端的身份，不比大小、不留回落）。
  * 读那台 `ccm -- --backend-probe`（回 `{proto, buildId, commands}`，不读 stdin）。
- * 某一格在不在不按版本猜：接上之后读 `cells-catalog`（[CellsCatalog]）。
+ * 只核这一处：改了冻结的格同加子命令一样要打版本号（核心那道判据管），所以同一个 `BUILD_ID` 就是两端的格对得上。
  */
 sealed interface GateVerdict {
     /** 同一个 `BUILD_ID`。 */

@@ -44,7 +44,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-rules-read",
         summary: "这台的轮换规则表",
         codes: &[],
-        fields: &[out("defaultRule", "默认规则的 id"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("names", "号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d`"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rules", "每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句"), out("state", "`\"present\"` · `\"absent\"`（没动过：只有缺省的「默认」一条）· `\"unreadable\"`")],
+        fields: &[out("defaultRule", "默认规则的 id"), out("followText", "「跟随默认」那一项写好的字：默认那条没起名（还是起始的名字）⇒「跟随默认」，起了名 ⇒「跟随默认（名字）」；新建会话面板 · 批量菜单照抄"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("names", "号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d`"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rules", "每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs, text, tone}`：`state` 是轮换那一侧的判 `working` · `idle` · `needsYou` · `ended`（后台命令在跑也算 `working`），`needs` 只在 `needsYou` 时有（种类同会话事实 `needs.kind`），`text` · `tone` 是显示用的字与语气（与主窗口同一处写，界面照抄）），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句"), out("state", "`\"present\"` · `\"absent\"`（没动过：只有缺省的「默认」一条）· `\"unreadable\"`")],
         takes_input: false,
         run: Run::BlockingData(|_r| crate::faces::rotation_face::answer_rules_read().map(Some)),
     },
@@ -134,27 +134,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("account", "推出来的账号 id"), both("baseUrl", "入（可选）：这个账号的第三方端点"), arg("configDir", "这个号的账号目录"), arg("key", "明文"), out("masked", "写完**再读一遍**、这一行 key 的掩码（盘上的事实）"), out("path", "那份文件的绝对路径")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::accounts::upstream_select::file_face::answer_set(&r.args).map(Some)),
-    },
-    CommandSpec {
-        name: "apikey-read",
-        summary: "上游选择凭据文件在这台的状态",
-        codes: &[],
-        // `rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
-        fields: &[out("configured", "**顶层那一把**（历史格式那一行）配没配、掩码"), out("masked", "**顶层那一把**（历史格式那一行）配没配、掩码"), out("notice", "权限过宽 / 查不出来时的一句话（文件不在时 `null`）"), out("path", "那份文件的绝对路径"), out("problem", "读不动 / 解析不了时的一句话")],
-        takes_input: false,
-        run: Run::BlockingData(|_r| crate::accounts::upstream_select::file_face::answer_read().map(Some)),
-    },
-    CommandSpec {
-        name: "apikey-routing",
-        summary: "这几个号在这台的表里有没有行 · 这台的中转在不在",
-        codes: &["bad_args"],
-        fields: &[out("routed", "传进来的里面、**表里有对应行**的那几个（原样回）"), out("running", "这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::accounts::upstream_select::endpoint::answer_routing(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
     },
     // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
     CommandSpec {

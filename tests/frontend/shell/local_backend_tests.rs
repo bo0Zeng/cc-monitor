@@ -618,7 +618,6 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         host_arch: "x86_64".into(),
         claude_dir: "/tmp".into(),
         homes: vec![],
-        capabilities: vec![],
         commands: vec!["ping".into()],
         unavailable: vec![],
         uncancellable: vec![],

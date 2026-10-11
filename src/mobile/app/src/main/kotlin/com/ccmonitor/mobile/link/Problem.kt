@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.AttachOutcome
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.GateVerdict
 import com.ccmonitor.mobile.core.claude.link.LinkOutcome
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.OneShotOutcome
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.ui.copy.copyText
@@ -31,10 +32,6 @@ fun LinkState.Down.problem(machine: String): Problem {
         is LinkOutcome.Ensure -> ensureProblem(o.outcome)
         is LinkOutcome.Attach -> attachProblem(o.outcome, machine)
         is LinkOutcome.HelloDiffers -> Problem(copyText("front.title.update", "machine" to machine), o.theirs.orEmpty())
-        // 同一个 BUILD_ID 却缺手机要读的格 ⇒ 那台要换成和手机同一版（详情里是缺的那几格）。
-        is LinkOutcome.Contract ->
-            (o.reply as? Reply.Failed)?.let { core(it.failure) }
-                ?: Problem(copyText("front.title.update", "machine" to machine), o.missing.joinToString("\n"))
         is LinkOutcome.Up -> Problem(copyText("front.body.offline", "machine" to machine), "")
     }
 }
@@ -79,18 +76,25 @@ private fun attachProblem(
         is AttachOutcome.Attached -> Problem(copyText("front.body.offline", "machine" to machine), "")
     }
 
-/** 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。 */
-fun Reply.problem(machine: String): Problem? =
+/** 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。 */
+fun Reply.problem(
+    machine: String,
+    command: String,
+): Problem? =
     when (this) {
         is Reply.Ok -> null
         is Reply.Failed -> core(failure)
         Reply.TimedOut -> Problem(copyText("front.body.timeout", "machine" to machine), "")
         Reply.Cancelled, Reply.LinkDown -> Problem(copyText("front.body.offline", "machine" to machine), "")
-        is Reply.Unreadable -> Problem(copyText("rsRemoteResident.hello.notOurs"), raw)
+        is Reply.Unreadable -> unreadableReply(machine, command, raw)
     }
 
-/** 答成了却解不出（缺必填格）：两端契约对不上 ⇒ 那台要换成和手机同一版；详情说是哪一条命令。 */
-fun contractProblem(
+/**
+ * 回包解不出（帧上缺格 · 成品形状对不上，同一个说法）。门槛核过同一个 `BUILD_ID`，那头就是 cc-monitor 后端，
+ * 所以说「读取那台后端回复失败 · 内容无法解析」，不说「不是 cc-monitor 后端」；详情带命令名与原文。
+ */
+fun unreadableReply(
     machine: String,
     command: String,
-): Problem = Problem(copyText("front.title.update", "machine" to machine), command)
+    raw: String,
+): Problem = Problem(copyText("peerVersion.said.unreadable", "machine" to machine), "command: $command\nreply: $raw")

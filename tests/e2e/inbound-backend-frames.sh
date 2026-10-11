@@ -84,7 +84,7 @@ INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-int
 echo "== U8a-2a 入方向真进程端到端 =="
 echo "backend: $BACKEND"
 
-CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --tail-only <"$IN" >"$OUT" 2>"$ERR" &
+CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --stream <"$IN" >"$OUT" 2>"$ERR" &
 BACKEND_PID=$!
 # 把 fifo 的写端**持有住**：不这样的话第一个写者退出即 EOF，backend 的入方向 reader 当场寿终，
 # 后面每一条命令都发不进去（进程还活着，但再也不理你）。
@@ -363,7 +363,7 @@ BACKEND_PID=""
 # 走阻塞线程池，runtime drop 会等它），修法是 `std::process::exit(0)`。
 # **爆炸半径正是生产形状** —— monitor 经 SSH exec 连着时 stdin 一直开着。
 IN2="$WORK/in2.fifo"; mkfifo "$IN2"
-CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --tail-only <"$IN2" >"$WORK/out2.jsonl" 2>/dev/null &
+CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --stream <"$IN2" >"$WORK/out2.jsonl" 2>/dev/null &
 P2=$!
 exec 4>"$IN2"   # 持有写端 ⇒ backend 的 stdin 一直开着、且没有数据
 for _ in $(seq 1 100); do grep -q '"kind":"hello"' "$WORK/out2.jsonl" 2>/dev/null && break; sleep 0.05; done

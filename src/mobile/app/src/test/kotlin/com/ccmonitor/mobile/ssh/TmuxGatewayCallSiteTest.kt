@@ -27,7 +27,7 @@ import java.io.File
  * |---|---|
  * | 网关新增一支函数 | 红（②那条集合不等） |
  * | 某支函数失去全部生产调用方 | 红（①那条文件集不等，且要求非空） |
- * | 有人在网关外重新手抄一份哨兵字面（如 `"ATERM_SENT"`） | 红（③那条文件集不等） |
+ * | 有人在网关外重新手抄一份哨兵字面（如 `"__aterm_kill_ok__"`） | 红（③那条文件集不等） |
  * | 调用方存在但走的是死分支 | 抓不到：源码扫描只答「有没有引用」 |
  * | 反射 / 别名 / 通过局部 `val f = TmuxCommands::tmuxKillCommand` 转一手 | 抓不到（防手滑不防拼接） |
  * | 消费方成员导入（`import ….TmuxCommands.tmuxKillCommand`）后裸调 | 仍算命中：import 那一行里就有 `TmuxCommands.<名>`。①问的是「这个文件有没有经网关」，不是「每个调用点都写全限定名」 |
@@ -83,9 +83,8 @@ class TmuxGatewayCallSiteTest {
     /**
      * ③：哨兵常量与读它的人同源：命令那头一改，解析这头当场跟着变。
      *
-     * 这几个常量是焊在命令串里的（`printf '__aterm_started__\n'` / `&& echo __aterm_kill_ok__` /
-     * `printf 'ATERM_SENT\n'`）。读方若在别的文件里比对手抄的同一个串，命令一改就会把失败报成成功
-     * （kill 失败报成成功、发送失败判成送达）。本条钉住「读方只许问网关要这个串」。
+     * 这几个常量是焊在命令串里的（`&& echo __aterm_kill_ok__`）。读方若在别的文件里比对手抄的同一个串，
+     * 命令一改就会把失败报成成功（kill 失败报成成功）。本条钉住「读方只许问网关要这个串」。
      */
     @Test
     fun everyCommandSentinelIsReadOnlyFromTheGateway() {
@@ -156,29 +155,25 @@ class TmuxGatewayCallSiteTest {
         private val FUN_DECL_RE = Regex("""(?m)^\s*(?:private\s+|internal\s+)?fun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
 
         private const val BACKEND = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxBackend.kt"
-        private const val SINK = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxSendKeysSink.kt"
-        private const val LAUNCHER = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/PipeLauncher.kt"
         private const val TMUX_DIALOG = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TmuxManager.kt"
 
         /**
-         * 定值钉：网关对外那 16 支各自的生产调用方。
+         * 定值钉：网关对外那 14 支各自的生产调用方。
          *
          * | 类 | 函数 | 谁在用 |
          * |---|---|---|
-         * | 进入/新建 | `tmuxNewOrAttach` · `tmuxNewDetachedCommand` · `tmuxNewDetachedRunning` · `tmuxStartOnceCommand` | `TmuxBackend`（`SessionBackend` 的实现，别处只经它） |
+         * | 进入/新建 | `tmuxNewOrAttach` · `tmuxNewDetachedCommand` · `tmuxNewDetachedRunning` | `TmuxBackend`（`SessionBackend` 的实现，别处只经它） |
          * | 探测/查询 | `tmuxForegroundProbeCommand` · `tmuxPaneChildProbeCommand` · `tmuxSessionCwdCommand` · `tmuxListCommand` · `tmuxCapturePaneCommand` | `TmuxBackend` |
          * | resume | `tmuxResumeCommand` | `TmuxBackend`（档案整份交进去） |
          * | kill/投递 | `tmuxKillCommand` · `tmuxSendModelCommand` | `TmuxBackend` |
          * | 解析 | `isResumeForegroundShell` · `paneConfirmedNoChild` | `TmuxBackend`（`SessionBackend` 把它们也收进了接口） |
          * | 解析 | `tmuxKillSucceeded` | `TmuxManager`，不经 `TmuxBackend`：`SessionBackend` 没有 `killSucceeded` 这一格 |
-         * | 上行 | `buildSendCommand` | `TmuxSendKeysSink`（它只管「产品行为」那一半） |
          */
         private val PINNED_OUTWARD_CALLERS =
             linkedMapOf(
                 "tmuxNewOrAttach" to setOf(BACKEND),
                 "tmuxNewDetachedCommand" to setOf(BACKEND),
                 "tmuxNewDetachedRunning" to setOf(BACKEND),
-                "tmuxStartOnceCommand" to setOf(BACKEND),
                 "tmuxForegroundProbeCommand" to setOf(BACKEND),
                 "tmuxPaneChildProbeCommand" to setOf(BACKEND),
                 "tmuxSessionCwdCommand" to setOf(BACKEND),
@@ -190,7 +185,6 @@ class TmuxGatewayCallSiteTest {
                 "isResumeForegroundShell" to setOf(BACKEND),
                 "paneConfirmedNoChild" to setOf(BACKEND),
                 "tmuxKillSucceeded" to setOf(TMUX_DIALOG),
-                "buildSendCommand" to setOf(SINK),
             )
 
         /**
@@ -200,32 +194,23 @@ class TmuxGatewayCallSiteTest {
          * |---|---|---|
          * | `tmuxAttachCommand` | `tmuxResumeCommand` 的收尾段 | 它是 resume 那条串的一格，判据要能单独钉住它的两种形态（attach vs switch-client 防嵌套） |
          * | `tmuxMobileSetup` | `tmuxNewOrAttach` · `tmuxAttachCommand` | 按会话名出串，判据要能单独钉住「只对那一个会话」，不碰 tmux 全局 |
-         * | `exactTarget` | `buildGuardedCommand` | `=name:` 的精确匹配包装是结构性的门，判据要能单独证「空 target 被拒」 |
-         * | `buildGuardedCommand` | `buildSendCommand` | 身份门那一段单独可测（`needSid` 两支形状完全不同） |
-         * | `isCcmTmuxName` | `buildSendCommand` 决定 `needSid` | 「认老 `cc-` 前缀」的判据（`TmuxSessionNameSourceTest` ③c 钉着它是只认不造那一侧） |
-         * | `hasNewCcSuffix` | `isCcmTmuxName` | `private`，跟着上一条 |
+         * | `exactTarget` | `tmuxMobileSetup` | `=name:` 的精确匹配包装是结构性的门，判据要能单独证「空 target 被拒」 |
          */
         private val GATEWAY_INTERNAL_ONLY =
-            setOf("tmuxAttachCommand", "tmuxMobileSetup", "exactTarget", "buildGuardedCommand", "isCcmTmuxName", "hasNewCcSuffix")
+            setOf("tmuxAttachCommand", "tmuxMobileSetup", "exactTarget")
 
         /** 定值钉：焊在命令串里的哨兵，各自今天的读方。 */
         private val PINNED_SENTINEL_READERS =
             linkedMapOf(
-                "TMUX_ALREADY_MARKER" to setOf(LAUNCHER),
-                "TMUX_STARTED_MARKER" to setOf(LAUNCHER),
                 "TMUX_KILL_OK_MARKER" to setOf(TMUX_DIALOG),
-                "SENT_MARKER" to setOf(SINK),
-                "MODAL_SENTINEL" to setOf(SINK),
             )
 
         /**
          * 上面那几个哨兵的字面值：网关之外一次都不许出现（手抄一份就等于有两处各说各的）。
          *
-         * 只列有具名常量的那五个。`NO_TMUX` / `CCM_NO_SESSION` / `CCM_GUARD_REJECTED`
-         * 在网关里是内联在 `printf` 里的、没有常量可读，`TmuxSendKeysSink.classify` 那头也是手写字面，
-         * 所以它们不在本条射程内；要闭合得先在网关里给它们起名字。
+         * 只列有具名常量的那几个。
          */
         private val SENTINEL_LITERALS =
-            listOf("__aterm_already__", "__aterm_started__", "__aterm_kill_ok__", "ATERM_SENT", "ATERM_MODAL_WAIT")
+            listOf("__aterm_kill_ok__")
     }
 }

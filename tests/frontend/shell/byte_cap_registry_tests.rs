@@ -67,6 +67,14 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**标志位**不是体量：`CreateToolhelp32Snapshot` 那一问「要进程表」的那个位（`platform/win_tables.rs`）。",
     ),
     (
+        "TREE_MASK",
+        "**标志位**不是体量：「谁开着哪份文件写」那道耳朵在记录树每个目录上订的 inotify 事件种类（新建 · 打开 · 关闭 · 移入，`platform/writers/linux.rs`）。",
+    ),
+    (
+        "WAIT_MASK",
+        "**标志位**不是体量：同一道耳朵在记录根还不在时、在它最近一个已在的祖先上订的那几种（新建 · 移入 · 只认目录，`platform/writers/linux.rs`）。",
+    ),
+    (
         "TREE_SLICE",
         "**条数**不是字节：文件窗口删一整棵树时一趟让后端至多删几条（`filewin/writeops.rs`）；删够了后端停在两条之间、回还剩几条，窗口接着发下一趟，不限任何读写的体量。",
     ),

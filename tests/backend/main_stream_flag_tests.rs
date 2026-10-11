@@ -4,84 +4,51 @@ fn v(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
 
-/// F66（#58③）★ §26 死循环护栏的**代码强制**：`CAPABILITIES` 里每个能力 token 的
-/// CLI flag 都必须被 `split_stream_flags` 剥离——否则声明它 = 埋 monitor 侧死循环
-/// （monitor 发该 flag → 本后端不剥 → 当一次性查询退出 → 无 hello → 重连死循环）。
-/// 加新能力 token 时，若忘了在此登记它的 flag、或忘了给 `split_stream_flags` 加剥离
-/// 分支，本测试红。把审计指出的「约定强制」拉回「代码强制」。
+/// 流模式起参只剩「我是流模式」那个词 ＋ `--tz` · `--view`：`--stream` 剥干净、什么都不置；
+/// 删掉的旧旗标不认（不剥 ⇒ 落到「未知 flag 照常进流」那条通用路，`wants` 里没有它们的位）。
 #[test]
-fn every_capability_token_is_strippable() {
-    // token → 它对应的 CLI flag（加新能力时同步扩这张表）
-    fn flag_of(token: &str) -> &'static str {
-        match token {
-            "bg" => "--with-bg",
-            "tail-only" => "--tail-only",
-            other => panic!(
-                "CAPABILITIES 声明了 token `{other}` 但此处无 flag 映射——加新能力必须在此登记它的 flag 并确认 split_stream_flags 剥离它（否则埋 §26 死循环）"
-            ),
-        }
-    }
-    for &token in super::CAPABILITIES {
-        let flag = flag_of(token);
-        let (rest, _) = split_stream_flags(v(&[flag]));
-        assert!(
-            rest.is_empty(),
-            "能力 token `{token}` 的 flag `{flag}` 未被 split_stream_flags 剥离 → §26 死循环"
-        );
+fn only_the_stream_word_is_a_stream_flag() {
+    let (rest, got) = split_stream_flags(v(&["--stream"])).unwrap();
+    assert!(rest.is_empty(), "--stream 没被剥干净 → §26 死循环");
+    assert_eq!(got, super::StreamWants::default());
+    for old in ["--with-bg", "--tail-only", "--with-pid", "--with-raw"] {
+        let (rest, _) = split_stream_flags(v(&["--stream", old])).unwrap();
+        assert_eq!(rest, v(&[old]), "{old} 还被当成流旗标剥");
     }
 }
 
-/// F25 DoD ③：流模式 flag 剥离后不残留（不会误入查询模式判定），且每条只置自己那一位。
-/// 两半都要断：只断“置位了”会漏掉 §26 那条（不剥 ⇒ 当查询退出 ⇒ 无 hello），
-/// 只断“剥干净了”会漏掉“剥掉了但忘了抬位”（客户端永远收不到要的那一格、而没任何信号）。
+/// 流的声明 `--view <声明>`（JSON 原样或 base64）：流模式那一形里连值一起剥、解成这条流的声明；
+/// 认不出 ⇒ `Err`（不起流）；打头是子命令时不碰（那是子命令自己的 `--view`，归 CLI 臂解）。
 #[test]
-fn flags_are_stripped_and_detected() {
-    use super::StreamWants;
-    let none = StreamWants::default();
-    for (args, want) in [
-        (
-            v(&["--with-bg", "--tail-only"]),
-            StreamWants {
-                with_bg: true,
-                tail_only: true,
-                ..none.clone()
-            },
-        ),
-        (
-            v(&["--tail-only"]),
-            StreamWants {
-                tail_only: true,
-                ..none.clone()
-            },
-        ),
-        (v(&[]), none.clone()),
-        (
-            v(&["--with-pid"]),
-            StreamWants {
-                with_pid: true,
-                ..none.clone()
-            },
-        ),
-        (
-            v(&["--with-raw"]),
-            StreamWants {
-                with_raw: true,
-                ..none.clone()
-            },
-        ),
-        (
-            v(&["--stream", "--with-raw", "--tail-only"]),
-            StreamWants {
-                tail_only: true,
-                with_raw: true,
-                ..none.clone()
-            },
-        ),
-    ] {
-        let (rest, got) = split_stream_flags(args.clone());
-        assert!(rest.is_empty(), "{args:?} 没被剥干净 → §26 死循环");
-        assert_eq!(got, want, "{args:?}");
-    }
+fn the_stream_view_flag_is_parsed_in_stream_mode_only() {
+    let decl = r#"{"omit":{"session_added":["pid"]}}"#;
+    let (rest, got) = split_stream_flags(v(&["--stream", "--view", decl])).unwrap();
+    assert!(rest.is_empty(), "{rest:?}");
+    assert_eq!(
+        got.view,
+        super::StreamView::parse(&serde_json::from_str(decl).unwrap()).unwrap()
+    );
+    assert!(got.view.is_some());
+    let b64 = crate::stream::wire::b64_encode(decl.as_bytes());
+    let (_, by_b64) = split_stream_flags(v(&["--stream", "--view", &b64])).unwrap();
+    assert_eq!(by_b64.view, got.view, "base64 那一形解出来不一样");
+    assert!(
+        split_stream_flags(v(&[
+            "--stream",
+            "--view",
+            r#"{"omit":{"facts":["usage"]}}"#
+        ]))
+        .is_err(),
+        "点了流上不出的成品却起了流"
+    );
+    assert!(
+        split_stream_flags(v(&["--stream", "--view"])).is_err(),
+        "缺值"
+    );
+    let cli = v(&["--history-read", "--view", decl]);
+    let (rest, got) = split_stream_flags(cli.clone()).unwrap();
+    assert_eq!(rest, cli, "子命令的 --view 被流模式剥走了");
+    assert!(got.view.is_none());
 }
 
 /// 看的那一台的时区 `--tz <IANA 名>`：任意位置、连值一起剥掉（不剥 ⇒ 当查询参数 / 当位置参数）；认得的名 ⇒ 那个时区，
@@ -90,27 +57,27 @@ fn flags_are_stripped_and_detected() {
 fn the_viewer_time_zone_flag_is_stripped_with_its_value() {
     use super::{StreamWants, Tz};
     let sh = Tz::named("Asia/Shanghai").expect("时区库里有上海");
-    let (rest, got) = split_stream_flags(v(&["--tail-only", "--tz", "Asia/Shanghai"]));
+    let (rest, got) = split_stream_flags(v(&["--stream", "--tz", "Asia/Shanghai"])).unwrap();
     assert!(rest.is_empty(), "{rest:?}");
     assert_eq!(
         got,
         StreamWants {
-            tail_only: true,
             tz: sh.clone(),
             ..Default::default()
         }
     );
-    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "Asia/Shanghai", "--text"]));
+    let (rest, got) =
+        split_stream_flags(v(&["--quota-read", "--tz", "Asia/Shanghai", "--text"])).unwrap();
     assert_eq!(
         rest,
         v(&["--quota-read", "--text"]),
         "值不许留下来当位置参数"
     );
     assert_eq!(got.tz, sh);
-    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "Nowhere/Atlantis"]));
+    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "Nowhere/Atlantis"])).unwrap();
     assert_eq!(rest, v(&["--quota-read"]));
     assert_eq!(got.tz, Tz::default(), "认不得 ⇒ UTC");
-    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "--text"]));
+    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "--text"])).unwrap();
     assert_eq!(
         rest,
         v(&["--quota-read", "--text"]),
@@ -120,12 +87,10 @@ fn the_viewer_time_zone_flag_is_stripped_with_its_value() {
     assert_ne!(sh, Tz::default(), "反空真：上海不等于 UTC");
 }
 
-/// 查询参数与流 flag 互不干扰：查询参数原样保留（顺带守住"flag 混进查询
-/// 命令行也不会破坏查询"的边角）。
+/// 查询参数原样保留。
 #[test]
 fn query_args_pass_through() {
-    let (rest, wants) = split_stream_flags(v(&["--read-session", "/p/s.jsonl", "--with-bg"]));
+    let (rest, wants) = split_stream_flags(v(&["--read-session", "/p/s.jsonl"])).unwrap();
     assert_eq!(rest, v(&["--read-session", "/p/s.jsonl"]));
-    assert!(wants.with_bg);
-    assert!(!wants.tail_only && !wants.with_pid && !wants.with_raw);
+    assert_eq!(wants, super::StreamWants::default());
 }

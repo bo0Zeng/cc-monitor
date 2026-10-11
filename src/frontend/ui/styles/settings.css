@@ -3015,6 +3015,12 @@ body.settings-window-mode .settings-panel {
   width: 220px;
   font-family: var(--font-mono);
 }
+.prof-equals-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
 .prof-line {
   margin: var(--space-2) 0;
   padding: var(--space-4) var(--space-5);

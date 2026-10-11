@@ -236,6 +236,10 @@ export interface PendingCall {
   state: StepWait;
   /** 状态不明的原因（后端给的码）；别的状态 ⇒ `null`。 */
   why: UnclearWhy | null;
+  /** 过程那一行右侧那一句（状态不明 ⇒「状态不明」）；别的 ⇒ `null`。 */
+  text: string | null;
+  /** 状态不明时悬停说的为什么（后端照 `why` 写好）；别的 ⇒ `null`。 */
+  whyText: string | null;
 }
 
 /** 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile、判不了活。 */
@@ -263,6 +267,10 @@ export interface Needs {
   sinceMs: number | null;
   /** 核心写好的字（等批准 · 等回答 · 需手动），照抄。 */
   text: string;
+  /** 钉条第一行（核心写好的种类 ＋ 工具名：「等批准 · Bash」），照抄；短的那一格是 `text`。 */
+  head: string;
+  /** 钉条里等宽那一段（批准 · 回答 · 放行带主参数；别的种类 ⇒ `null`），照抄。 */
+  headCode: string | null;
   /** 语气（恒 `need`）。 */
   tone: string;
   /** 先答哪个（0 最先：顶上的框先答，再按危险度；后端 `facts_query::NEEDS_BY_DANGER`）。 */
@@ -442,15 +450,72 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
   return { from: v.from, end: v.end, turns };
 }
 
-/** `history-index` 的成品 ⇒ `(from, end, rows)`。行本身**不解释**（只验「是对象、带偏移与行长」）。 */
+/**
+ * `history-index` 的成品 ⇒ `(from, end, rows)`。帧面上它**按列排**（后端 `read_face.rs::pack_index`：偏移是与上一行末尾的差、
+ * `t` 是 `classes` 里的号、稀疏的几格各一张小表、`at` 是行号差）；这里装回逐行，下游照旧读 [`SkeletonFacts`]。
+ * 行本身**不解释**；列长对不上 / 号越界 / 行号越界 ⇒ 抛（不猜、不补）。
+ */
 export function decodeIndex(v: unknown): { from: number; end: number; rows: SkeletonFacts[] } {
-  if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.rows)) {
+  const bad = (): never => {
     throw new ShapeError("history-index", copyText("sessionReads.missing.index"));
+  };
+  const badRow = (): never => {
+    throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
+  };
+  if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !isNum(v.count) || !Array.isArray(v.classes)) return bad();
+  const count = v.count;
+  const col = (k: string): unknown[] => {
+    const c = v[k];
+    return Array.isArray(c) && c.length === count ? c : badRow();
+  };
+  const [o, n, t, fd, u] = [col("o"), col("n"), col("t"), col("fd"), col("u")];
+  const classes = v.classes as unknown[];
+  if (!classes.every(isStr)) return bad();
+  const rows: Array<SkeletonFacts & { x?: string; ts?: string }> = [];
+  let at = v.from;
+  for (let i = 0; i < count; i++) {
+    const [gap, len, k, f, id] = [o[i], n[i], t[i], fd[i], u[i]];
+    if (!isNum(gap) || !isNum(len) || !isNum(k) || k > classes.length || !isNum(f) || !(id === null || isStr(id))) return badRow();
+    const r: SkeletonFacts = { o: at + gap, n: len };
+    at = r.o + len;
+    if (k > 0) r.t = classes[k - 1] as SkeletonFacts["t"];
+    if (id !== null) r.u = id;
+    if (f > 0) r.fd = f;
+    rows.push(r);
   }
-  for (const r of v.rows) {
-    if (!isObj(r) || !isNum(r.o) || !isNum(r.n)) throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
-  }
-  return { from: v.from, end: v.end, rows: v.rows as SkeletonFacts[] };
+  /** 一张稀疏小表：`at` 是与上一项的行号差（第一项与 −1 比），其余每格一列、与 `at` 同长。 */
+  const sparse = (name: string, keys: string[], put: (r: SkeletonFacts & { x?: string; ts?: string }, vals: unknown[]) => void): void => {
+    const tv = v[name];
+    if (!isObj(tv) || !Array.isArray(tv.at)) return badRow();
+    const ats = tv.at;
+    const cols = keys.map((k) => (Array.isArray(tv[k]) && (tv[k] as unknown[]).length === ats.length ? (tv[k] as unknown[]) : badRow()));
+    let i = -1;
+    ats.forEach((g, j) => {
+      if (!isNum(g)) return badRow();
+      i += g + 1;
+      if (i >= count) return badRow();
+      put(rows[i], cols.map((c) => c[j]));
+    });
+  };
+  sparse("body", ["ch", "cj", "pl", "cb", "cl"], (r, vals) => {
+    if (!vals.every(isNum)) return badRow();
+    const [ch, cj, pl, cb, cl] = vals as number[];
+    if (ch > 0) r.ch = ch;
+    if (cj > 0) r.cj = cj;
+    if (pl > 0) r.pl = pl;
+    if (cb > 0) r.cb = cb;
+    if (cl > 0) r.cl = cl;
+  });
+  sparse("sp", ["v"], (r, [sp]) => {
+    if (!isStr(sp)) return badRow();
+    r.sp = sp;
+  });
+  sparse("inputs", ["x", "ts"], (r, [x, ts]) => {
+    if (!isStr(x) || !isStr(ts)) return badRow();
+    r.x = x;
+    if (ts !== "") r.ts = ts;
+  });
+  return { from: v.from, end: v.end, rows };
 }
 
 
@@ -496,9 +561,9 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
-    if (!isObj(p) || !exactKeys(p, ["at", "atMs", "id", "name", "state", "what", "why"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at) || !(p.atMs === null || isNum(p.atMs))) return bad();
+    if (!isObj(p) || !exactKeys(p, ["at", "atMs", "id", "name", "state", "text", "what", "why", "whyText"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at) || !(p.atMs === null || isNum(p.atMs)) || !strOrNull(p.text) || !strOrNull(p.whyText)) return bad();
     if (!(isStr(p.state) && STEP_WAIT.has(p.state)) || !(p.why === null || (isStr(p.why) && UNCLEAR_WHY.has(p.why)))) return bad();
-    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, atMs: p.atMs, state: p.state as StepWait, why: p.why as UnclearWhy | null });
+    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, atMs: p.atMs, state: p.state as StepWait, why: p.why as UnclearWhy | null, text: p.text, whyText: p.whyText });
   }
   if (!Array.isArray(v.mcp)) return bad();
   const mcp: McpTrouble[] = [];
@@ -521,8 +586,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
+    if (!isObj(n) || !exactKeys(n, ["call", "head", "headCode", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
   }
   if (!Array.isArray(v.bgTasks)) return bad();
   const bgTasks: BgTask[] = [];

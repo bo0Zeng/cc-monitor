@@ -453,7 +453,7 @@ describe("TabManager 生命周期", () => {
 
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {
     const tab = tm.ensureTab("s3", "/home", "p", LOCAL_ORIGIN);
-    tab.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };
+    tab.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
     tm.archiveTab("s3");
     expect(tab.state).toEqual(ENDED);
     expect(tab.activity).toBeNull();
@@ -464,15 +464,15 @@ describe("TabManager 生命周期", () => {
     // 对立类（若哪天把两个 classList.toggle 之一改成条件执行，本测会红）。
     tm.ensureTab("lt", "/x", "p", LOCAL_ORIGIN);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
-    tm.updateActivity("lt", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
+    tm.updateActivity("lt", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need", 1);
     expect(btn().dataset.light === "waiting").toBe(true);
     expect(btn().dataset.light === "idle").toBe(false);
     // waiting → idle：陈旧 waiting 那一档必须清、换 idle
-    tm.updateActivity("lt", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("lt", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(btn().dataset.light === "waiting").toBe(false);
     expect(btn().dataset.light === "idle").toBe(true);
     // idle → busy：两类都清（默认绿点）
-    tm.updateActivity("lt", "working", null, copyText("beSession.activity.working"), "now");
+    tm.updateActivity("lt", "working", null, copyText("beSession.activity.working"), "now", 1);
     expect(btn().dataset.light === "idle").toBe(false);
     expect(btn().dataset.light === "waiting").toBe(false);
   });
@@ -494,7 +494,7 @@ describe("TabManager 生命周期", () => {
     // ⚠ 只断言**可观察行为**，不戳内部 `pendingActivity`：那个字段当年不在探针接口（今天的 `TMHomes`）上，
     // 戳它会让本文件 `tsc --noEmit` 红（第一版就是这么写的，当场被基线 tsc 逮住）。
     // 而且断行为本来就更强 —— 它不关心暂存用什么数据结构实现。
-    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     // 远端骨架 Tab 走 createSkeletonTab → ensureTab（顺序不能反：它必须落实暂存的灯）
     tm.createSkeletonTab("early-light", "/proj", "devbox", null, null);
     const btn = document.querySelector<HTMLElement>(".tab")!;
@@ -504,7 +504,7 @@ describe("TabManager 生命周期", () => {
         "`pendingActivity` 没被 `ensureTab` 落实，而默认值是绿，所以这个洞不会自己暴露。",
     ).toBe(true);
     // 落实之后再来一次同值信号不该出问题（幂等）。
-    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("early-light", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(btn.dataset.light === "idle").toBe(true);
   });
 
@@ -552,7 +552,7 @@ describe("TabManager 生命周期", () => {
       expect(c.firstElementChild?.textContent).toBe(fullTitle(t));
       return c.querySelector(".tab-hover-state")?.textContent;
     };
-    tm.updateActivity("tt1", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need");
+    tm.updateActivity("tt1", "needs_you", "permission prompt", copyText("beSession.activity.needsYou"), "need", 1);
     expect(said(), "活着、在等：种类还没到 ⇒ 只说需手动（不猜，也不印英文原样）").toBe(copyText("beSession.activity.needsYou"));
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
     expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
@@ -594,12 +594,12 @@ describe("TabManager 生命周期", () => {
 
   it("F03.2 收到活动信号回到活（claude 复活）——activity 值不变也回且重绘", () => {
     const tab = tm.ensureTab("gi2", "/x", "p", "pi");
-    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now"); // 先有一次 busy
+    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now", 1); // 先有一次 busy
     tm.markTmuxIdle("gi2");
     expect(tab.state).toEqual(RECONNECTABLE);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     // 同值 busy 再来一次（activity 无变化）——仍须回到活、类须去掉（早退前转移的守护）
-    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now");
+    tm.updateActivity("gi2", "working", null, copyText("beSession.activity.working"), "now", 1);
     expect(tab.state).toEqual(LIVE);
     expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
@@ -1226,11 +1226,11 @@ describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终�
     const tm = new TabManager(barEl, streamRootEl, (s) => seen.push(s.total));
     tm.ensureTab("st1", "/home/u", "p", LOCAL_ORIGIN);
     tm.ensureTab("st2", "/home/u", "p", LOCAL_ORIGIN);
-    tm.updateActivity("st1", "working", null, copyText("beSession.activity.working"), "now");
+    tm.updateActivity("st1", "working", null, copyText("beSession.activity.working"), "now", 1);
     const before = seen.length;
-    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(seen.length, "运行中 → 空闲，订阅者没收到（会话头停在「运行中」）").toBe(before + 1);
-    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain");
+    tm.updateActivity("st1", "idle", null, copyText("beSession.activity.idle"), "plain", 1);
     expect(seen.length, "同一状态再来不该通知").toBe(before + 1);
   });
 });
@@ -2406,22 +2406,32 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(frontBtn(tm, "r2")!.querySelector("svg")?.getAttribute("data-icon"), "↗ 换成对勾").toBe("check");
   });
 
-  it("★ 在飞超过 300ms：↗ 旁出「查找终端…」，同一个会话再点不重发；回来了就收起", async () => {
-    let done: (v: unknown) => void = () => {};
-    mockInvoke.mockImplementation((cmd: string) => (cmd === "bring_terminal_to_front" ? new Promise((r) => (done = r)) : Promise.resolve([])));
-    const tm = makeTM();
-    tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
-    const btn = frontBtn(tm, "l1")!;
-    btn.click();
-    btn.click();
-    await new Promise((r) => setTimeout(r, 120));
-    expect(document.querySelector("[data-role=front-busy]"), "300ms 之内不出（防闪）").toBeNull();
-    await new Promise((r) => setTimeout(r, 300));
-    expect(document.querySelector("[data-role=front-busy]")?.textContent).toBe(copyText("front.pending.label"));
-    expect(mockInvoke.mock.calls.filter((c) => c[0] === "bring_terminal_to_front").length, "在飞时再点不重发").toBe(1);
-    done({ kind: "switched" });
-    await new Promise((r) => setTimeout(r, 500));
-    expect(document.querySelector("[data-role=front-busy]"), "回来了就收起").toBeNull();
+  // 测的就是两段时长本身（300ms 之前不出 · 出了至少停 400ms：`FRONT_PENDING_AFTER_MS` / `FRONT_PENDING_MIN_MS`）⇒ 假时钟拨到界上两侧，不真等。
+  // 数照写字面量：这两个数是给人看的约定（标题写着），常量被改了判据要红。
+  it("★ 在飞超过 300ms：↗ 旁出「查找终端…」，同一个会话再点不重发；出了至少停 400ms，回来了就收起", async () => {
+    vi.useFakeTimers();
+    try {
+      let done: (v: unknown) => void = () => {};
+      mockInvoke.mockImplementation((cmd: string) => (cmd === "bring_terminal_to_front" ? new Promise((r) => (done = r)) : Promise.resolve([])));
+      const tm = makeTM();
+      tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
+      const btn = frontBtn(tm, "l1")!;
+      const busy = () => document.querySelector("[data-role=front-busy]");
+      btn.click();
+      btn.click();
+      await vi.advanceTimersByTimeAsync(299);
+      expect(busy(), "300ms 之内不出（防闪）").toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(busy()?.textContent).toBe(copyText("front.pending.label"));
+      expect(mockInvoke.mock.calls.filter((c) => c[0] === "bring_terminal_to_front").length, "在飞时再点不重发").toBe(1);
+      done({ kind: "switched" });
+      await vi.advanceTimersByTimeAsync(399);
+      expect(busy(), "出了就至少停 400ms（防闪），刚回来不收").not.toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(busy(), "回来了、停够了就收起").toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("★ 通道那一跳：那台旧 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；连不上 ⇒「离线」＋［重新连接］", async () => {
@@ -2528,13 +2538,13 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     };
     const [b1, b2] = [step("b1"), step("b2")];
     expect([b1.dataset.state, b2.dataset.state], "事实到之前不画").toEqual(["pending", "pending"]);
-    const call = (id: string, state: "running" | "awaiting" | "unclear", why: "noWriter" | "untracked" | null = null) => ({ id, name: "Bash", what: id, at: null, atMs: null, state, why });
+    const call = (id: string, state: "running" | "awaiting" | "unclear", why: "noWriter" | "untracked" | null = null) => ({ id, name: "Bash", what: id, at: null, atMs: null, state, why, text: state === "unclear" ? "U" : null, whyText: why === null ? null : `W:${why}` });
     const paint = (pending: Tab["pending"], needs: Tab["needs"]): void => {
       tab.pending = pending;
       tab.needs = needs;
       (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), receivedAt: Date.now() });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(fmtDur(125));
@@ -2542,7 +2552,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "awaiting"]);
     paint([call("b2", "unclear", "noWriter")], null);
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["unclear", "unclear"]);
-    expect(b2.querySelector<HTMLElement>(".step-right")?.title, "原因是后端给的码").toBe(copyText("stream.step.unclearNoWriter"));
+    expect(b2.querySelector<HTMLElement>(".step-right")?.title, "悬停照后端写好的那一句").toBe("W:noWriter");
     settleStepLine(b1, undefined, { ok: true } as never, false, "0s");
     paint([call("b1", "running")], null);
     expect(b1.dataset.state, "结果到了的不动").toBe("ok");
@@ -4093,40 +4103,55 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
 
   // 切换可打断：索引是切进来那一下要的，回来时人已经切走了 ⇒ 不在后台接（接骨架要插占位、量几何、补可见区 ——
   // 收起的 tab 里做这些是白干还逼排版，快速连切时一串旧切换的活全堆在后面）。停着，切回来的下一帧再接。
+  // 「停住」就是 `TabStreamView.STAY_MS`（150ms）这段时长 ⇒ 假时钟拨到界上两侧，不真等（数照写字面量，常量被改了要红）。
   it("★ 索引回来时 tab 已经切走 ⇒ 不在后台接；切回来停住了再接，不重问", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
-      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    ) as never));
-    const t = replay("pk"); // pk 是当前的，批结束要了索引（还没回来）
-    tm.onLine(mk("pkOther", 5, "po5"));
-    tm.switchTo("pkOther"); // 索引回来之前切走
-    await settle();
-    expect(t.skeleton, "切走了还在后台接骨架 ⇒ 旧切换的活还在干").toBeNull();
-    tm.switchTo("pk");
-    expect(t.skeleton, "同步段里不接（接要量几何）").toBeNull();
-    await new Promise((r) => setTimeout(r, 250));
-    expect(t.skeleton, "切回来停住了该接上").not.toBeNull();
-    expect(t.skeleton!.pendingRows).toBe(200);
-    expect(indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/pk.jsonl").length, "停着的那一份直接用，不重问").toBe(1);
+    vi.useFakeTimers();
+    try {
+      vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+        Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+      ) as never));
+      const t = replay("pk"); // pk 是当前的，批结束要了索引（还没回来）
+      tm.onLine(mk("pkOther", 5, "po5"));
+      tm.switchTo("pkOther"); // 索引回来之前切走
+      await vi.advanceTimersByTimeAsync(0);
+      expect(t.skeleton, "切走了还在后台接骨架 ⇒ 旧切换的活还在干").toBeNull();
+      tm.switchTo("pk");
+      expect(t.skeleton, "同步段里不接（接要量几何）").toBeNull();
+      await vi.advanceTimersByTimeAsync(149);
+      expect(t.skeleton, "还没停够就接了").toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(t.skeleton, "切回来停住了该接上").not.toBeNull();
+      expect(t.skeleton!.pendingRows).toBe(200);
+      expect(indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/pk.jsonl").length, "停着的那一份直接用，不重问").toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // 按住「下一个 tab」连切：每个 tab 只在眼前几十毫秒。要骨架索引（后端整份读那个会话的记录文件）、接骨架、刷大纲
   // 都是给「停下来看」的人准备的 —— 路过的 tab 一概不发、不接；在眼前停住了才做。
   it("★ 路过的 tab（切进来又马上切走）不要骨架索引；停住了才要", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
-      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    ) as never));
-    tm.onLine(mk("dwA", 1, "dwa1")); // 首个 tab ⇒ 当前
-    tm.onLine(mk("dwB", 200, "u200")); // 后台 tab：直渲、钉 floor，还没要过索引
-    const ofB = () => indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/dwB.jsonl").length;
-    tm.switchTo("dwB");
-    tm.switchTo("dwA"); // 路过
-    await new Promise((r) => setTimeout(r, 250));
-    expect(ofB(), "路过的 tab 也去要索引 ⇒ 按住切一圈就是一圈整份读").toBe(0);
-    tm.switchTo("dwB");
-    expect(ofB(), "同步段里不要").toBe(0);
-    await new Promise((r) => setTimeout(r, 250));
-    expect(ofB(), "停住了该要").toBe(1);
+    vi.useFakeTimers();
+    try {
+      vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+        Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+      ) as never));
+      tm.onLine(mk("dwA", 1, "dwa1")); // 首个 tab ⇒ 当前
+      tm.onLine(mk("dwB", 200, "u200")); // 后台 tab：直渲、钉 floor，还没要过索引
+      const ofB = () => indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/dwB.jsonl").length;
+      tm.switchTo("dwB");
+      tm.switchTo("dwA"); // 路过
+      await vi.advanceTimersByTimeAsync(150);
+      expect(ofB(), "路过的 tab 也去要索引 ⇒ 按住切一圈就是一圈整份读").toBe(0);
+      tm.switchTo("dwB");
+      expect(ofB(), "同步段里不要").toBe(0);
+      await vi.advanceTimersByTimeAsync(149);
+      expect(ofB(), "还没停够就要了").toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ofB(), "停住了该要").toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // 「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。
@@ -4272,17 +4297,13 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     await settle();
     const rendered = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq).sort((x, y) => x - y);
     expect(rendered).toEqual([98, 99, 100, 101, 102, 103, 104]);
-    // 🔴 取回的是**历史**：按重放语义建卡 —— sink 不接 onRealUserInput（历史 user 卡不许自动切 tab），
-    //    轮次结束检测按批期短路（不许为历史弹系统通知）
+    // 🔴 取回的是**历史**：按重放语义建卡 —— sink 不接 onRealUserInput（历史 user 卡不许自动切 tab）；
+    //    系统通知只认流里的 `turn_end` 格，取回的行一条都不经过它
     for (const c of spy.mock.calls.filter((c) => (c[0] as { seq: number }).seq >= 100 && (c[0] as { seq: number }).seq <= 102)) {
       expect((c[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeUndefined();
     }
     const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
-    const obs = vi.mocked(turnEndNotifier.observe).mock.calls.filter(
-      (c) => (c[2] as { seq: number }).seq >= 100 && (c[2] as { seq: number }).seq <= 102,
-    );
-    expect(obs.length).toBe(3);
-    expect(obs.every((c) => c[3] === true), "历史行按 live 喂了 ⇒ 会为旧轮次弹通知").toBe(true);
+    expect(vi.mocked(turnEndNotifier.observe), "取回的历史行弹了系统通知").not.toHaveBeenCalled();
     // 150 不在这一段里 ⇒ 没被要
     expect(ranges.some((c) => c.seqBase === 150)).toBe(false);
   });
@@ -5842,9 +5863,9 @@ describe("组头", () => {
     home(tm).prefs.collectionsLoaded = true;
     for (const sid of ["x", "a", "b", "c", "y"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
-    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need" };
-    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now" };
-    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain" };
+    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt", text: copyText("beSession.activity.needsYou"), tone: "need", order: 1 };
+    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
+    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null, text: copyText("beSession.activity.idle"), tone: "plain", order: 1 };
     tm.switchTo("x");
     flushBar();
   });
@@ -6264,5 +6285,129 @@ describe("栏里的键盘 · 右键「分组 ▸」", () => {
     tm.openGroupMenuFromCommand();
     expect(menuLabels()).toContain(copyText("tabBatch.menu.found", { n: 2 }));
     expect(menuLabels()).toContain(copyText("tabBatch.menu.joinOne", { name: "订单", n: 2 }));
+  });
+});
+
+// 〔流只发要看的会话〕主窗口报「在看哪个会话」；会话刚进那台那条流的名单（`watch` 格）⇒ 没在看那段没上流的补上；
+// 一轮结束认 `turn_end` 格（在不在看都来）。
+describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · 一轮结束", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+    // 当前 tab 是别的那一个：被补的 tab 在后台（切进来那一脚往上翻的取回不掺进来）。
+    tm.ensureTab("front", null, "/p/front.jsonl", LOCAL_ORIGIN);
+    tm.switchTo("front");
+  });
+  const line = (sid: string, seq: number) =>
+    ({ session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "reply", id: `${sid}-${seq}` } as never }) as never;
+  /** 按行号取：`[from, until ?? END)` 一页答完。 */
+  const END = 3000;
+  const answerLines = () =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd !== "read_session_lines") return Promise.resolve(undefined);
+      const sid = String(args!.jsonlPath).replace(/^\/p\/|\.jsonl$/g, "");
+      const from = args!.from as number;
+      const until = (args!.until as number | undefined) ?? END;
+      return Promise.resolve({
+        from,
+        next: until,
+        eof: args!.until === undefined,
+        payloads: Array.from({ length: until - from }, (_, k) => line(sid, from + k)),
+      });
+    }) as never);
+  const lineReads = () =>
+    recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines").filter((a) => (a as { jsonlPath: string }).jsonlPath !== "/p/front.jsonl").map((a) => {
+      const { from, until } = a as { from: number; until?: number };
+      return { from, until };
+    });
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("切 tab ⇒ 报壳「主窗口在看这一个」（哪台 · 哪个会话）", () => {
+    tm.ensureTab("wa", null, "/p/wa.jsonl", LOCAL_ORIGIN);
+    tm.ensureTab("wb", null, "/p/wb.jsonl", "box");
+    tm.switchTo("wb");
+    const reports = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "watch_sessions").map((c) => c[1]);
+    expect(reports.at(-1)).toEqual({ sessions: [{ origin: "box", sessionId: "wb" }] });
+  });
+
+  it("缺口不大 ⇒ 从见过的、上流点之下最大那一行之后按行号取到上流点，取回的落进 tab", async () => {
+    answerLines();
+    for (let s = 0; s < 10; s++) tm.onLine(line("wg", s));
+    tm.onLine(line("wg", 50)); // 上流点那一行比应答先到
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wg", path: "/p/wg.jsonl", seq: 50 });
+    await settle();
+    expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
+    const t = home(tm).store.tabs.get("wg")!;
+    for (let s = 0; s <= 50; s++) expect(t.seenSeqs.has(s), `第 ${s} 行没补上`).toBe(true);
+  });
+
+  it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴、取到末尾（重来时丢掉的实时行也在里面）", async () => {
+    answerLines();
+    for (let s = 0; s < 10; s++) tm.onLine(line("wbig", s));
+    tm.onLine(line("wbig", 2000));
+    const before = home(tm).store.tabs.get("wbig")!;
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wbig", path: "/p/wbig.jsonl", seq: 2000 });
+    await settle();
+    expect(lineReads()).toEqual([{ from: 1400, until: undefined }]);
+    const t = home(tm).store.tabs.get("wbig")!;
+    expect(t, "缺得多却没整份重来").not.toBe(before);
+    expect(t.seenSeqs.has(5), "重来之后旧的那段还在账上").toBe(false);
+    expect(t.seenSeqs.has(1400) && t.seenSeqs.has(2000) && t.seenSeqs.has(END - 1)).toBe(true);
+  });
+
+  it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
+    answerLines();
+    for (let s = 0; s < 10; s++) tm.onLine(line("wc", s));
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wc", path: "/p/wc.jsonl", seq: 10 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wc", path: "/q/other.jsonl", seq: 40 });
+    tm.onSessionWatch("box", { session_id: "wc", path: "/p/wc.jsonl", seq: 40 });
+    await settle();
+    expect(lineReads()).toEqual([]);
+  });
+
+  it("一轮结束（turn_end 格）⇒ 按那个 tab 的名字报通知；没有 tab / 别的机器上的同名会话不报", async () => {
+    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
+    vi.mocked(turnEndNotifier.observe).mockClear();
+    const t = tm.ensureTab("wt", null, "/p/wt.jsonl", LOCAL_ORIGIN);
+    tm.onTurnEnd(LOCAL_ORIGIN, "wt");
+    tm.onTurnEnd("box", "wt");
+    tm.onTurnEnd(LOCAL_ORIGIN, "nobody");
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([["wt", t.title]]);
+  });
+
+  it("Codex 样本（后端真走过 watcher 的那几帧，壳那一跳同一份金样）⇒ 它那个 tab 两轮各报一次通知", async () => {
+    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
+    vi.mocked(turnEndNotifier.observe).mockClear();
+    const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string });
+    const announced = frames.filter((f) => f.kind === "session_added");
+    expect(announced).toHaveLength(1);
+    const codexSid = announced[0].sid!;
+    const tab = tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
+    for (const f of frames.filter((f) => f.kind === "turn_end")) tm.onTurnEnd(LOCAL_ORIGIN, f.session_id!);
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([
+      [codexSid, tab.title],
+      [codexSid, tab.title],
+    ]);
+  });
+});
+
+describe("SeqSet.maxBelow：见过的、比 x 小的最大行号", () => {
+  it("落在段里 ⇒ x − 1；落在洞里 ⇒ 前一段的末尾；之前什么都没有 ⇒ -1", async () => {
+    const { SeqSet } = await import("../../../src/frontend/ui/live-window");
+    const set = new SeqSet();
+    expect(set.maxBelow(5)).toBe(-1);
+    set.addRange(0, 10);
+    set.addRange(50, 60);
+    expect(set.maxBelow(5)).toBe(4);
+    expect(set.maxBelow(10)).toBe(9);
+    expect(set.maxBelow(30)).toBe(9);
+    expect(set.maxBelow(50)).toBe(9);
+    expect(set.maxBelow(55)).toBe(54);
+    expect(set.maxBelow(100)).toBe(59);
+    expect(set.maxBelow(0)).toBe(-1);
   });
 });

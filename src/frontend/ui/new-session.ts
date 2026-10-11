@@ -405,7 +405,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
-  // 轮换：跟随默认（默认那条的名字）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
+  // 轮换：跟随默认（核心写好的那一句 `followText`）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
   const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
   const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
   rotRow.root.hidden = true;
@@ -422,10 +422,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (my !== rotSeq) return;
     rotRow.root.hidden = rules === null;
     if (rules === null) return;
-    const def = rules.rules.find((r) => r.id === rules.defaultRule);
     rotSel.setOptions(
       [
-        { value: ROT_FOLLOW, label: copyText("rot.src.followOf", { name: def?.name ?? "" }) },
+        { value: ROT_FOLLOW, label: rules.followText },
         ...rules.rules.map((r) => ({
           value: `rule:${r.id}`,
           label: r.name,

@@ -109,6 +109,18 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(remaining({ until: performance.now() - 10 }), "过了期限不许是负数").toBe(0);
   });
 
+  it("★ 出口声明（view）原样搬进 `chan_call` 的那一格，不进载荷；没给 ⇒ `null`", async () => {
+    invokeMock.mockResolvedValue(new Uint8Array([7]).buffer);
+    const view = { omit: { record: ["blocks[type=tool_use].input"] } };
+    const payload = new Uint8Array([1, 2, 3]);
+    await chan.call("<local>", "op", payload, budgetWithin(5_000), view);
+    await chan.call("<local>", "op", payload, budgetWithin(5_000));
+    const [withView, without] = invokeMock.mock.calls.map((c) => c[1] as { view: unknown; payload: number[] });
+    expect(withView.view).toEqual(view);
+    expect(withView.payload, "声明不许塞进载荷").toEqual([1, 2, 3]);
+    expect(without.view).toBeNull();
+  });
+
   it("★ 撤单：已经拨下的不发；在飞时拨下立即回 `Ours{Cancelled}`，不等 monitor", async () => {
     const pre = new AbortController();
     pre.abort();

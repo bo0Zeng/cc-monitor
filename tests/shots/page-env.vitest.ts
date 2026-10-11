@@ -45,7 +45,7 @@ function opens(src: string): string[] {
 
 describe("台架开的每一页：时区 · 现在给死，截图另按减少动画", () => {
   it("人群不空（截图台架 ＋ 性能台架）", () => {
-    const rels = launchers.map((p) => path.relative(root, p));
+    const rels = launchers.map((p) => path.relative(root, p).split(path.sep).join("/"));
     expect(rels).toContain("run.mjs");
     expect(rels).toContain("perf/bench.mjs");
   });
@@ -60,7 +60,7 @@ describe("台架开的每一页：时区 · 现在给死，截图另按减少动
   });
 
   for (const file of launchers) {
-    const rel = path.relative(root, file);
+    const rel = path.relative(root, file).split(path.sep).join("/");
     const src = readFileSync(file, "utf8");
     const calls = opens(src);
     it(`${rel}：每一页开头拨钟`, () => {

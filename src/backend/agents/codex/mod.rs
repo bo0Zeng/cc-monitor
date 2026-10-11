@@ -5,8 +5,9 @@
 //! | [`parse`] | rollout 记录的信封与字段抽取、会话目录定位 |
 //! | [`resume`] | resume 的命令形状与会话名前缀、默认命令名 |
 //!
-//! 适配层的接口是四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话 / resume）。「这台机器上有没有这个 agent」已有（[`home`] + `agents::visible_homes`），
-//! 「有哪些会话、活没活」那一格是空的（要扫会话树 + 判活）⇒ Codex 会话不出现在流式 watcher 里。
+//! 适配层的接口是四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话 / resume）。「这台机器上有没有这个 agent」已有（[`home`] + `agents::visible_homes`）；
+//! 「有哪些会话、活没活」：没有 pidfile ⇒ 声明 `RecordFace::held_open`（在世期间一直开着记录写），流式 watcher 据此认写者判活
+//! （`observe/watcher.rs` 的「开着即活」那一路，记录根是合成历史面的那个根）。
 //! 发现出来的东西不上线：`main.rs` 的 `homes: Vec::new()` 那一行留着（填 `homes` 是一次跨仓契约变更，是一次纯发布决策）。
 //! 不要从「这里有个模块」推断「Codex 支持完整」。
 
@@ -25,14 +26,15 @@ pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFac
     excerpt: history::first_user_excerpt,
     root: history::records_root,
 };
-/// 记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报。
+/// 记录解释面（注册表 `Adapter.records` 那一格）。漂移账这一家今天不报。
 pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
     parse: record::translated,
     sid: parse::codex_sid_from_path,
     is_session_file: history::is_session_file,
     // 会话按日期分、不住按项目分的记录树（历史由合成历史面并进来）。
     tree: None,
-    turn_end: None,
+    // 一轮结束：`task_complete` 那一行（判法只在 `record::turn_end_id`）。
+    turn_end: Some(record::turn_end_id),
     class: None,
     chain: None,
     // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
@@ -50,6 +52,9 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     children: None,
     project_dir: Some(history::project_dir),
     mcp_said: None,
+    // 没有 pidfile：会话在世期间写记录的那个任务一直开着这份 rollout（codex-rs `rollout/recorder.rs` 的写者任务持有文件；
+    // 新会话第一轮落盘时才建文件，resume 打开旧的那份接着写）。⚠ 只读过源码，没在真机上实测过。
+    held_open: true,
 };
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。

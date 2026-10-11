@@ -7,12 +7,9 @@ import com.ccmonitor.mobile.core.claude.command.AgentInvocation
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.command.CodexInvocation
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.claude.model.ClaudeTurnEndDetector
 import com.ccmonitor.mobile.core.claude.model.CodexRecordParser
-import com.ccmonitor.mobile.core.claude.model.CodexTurnEndDetector
 import com.ccmonitor.mobile.core.claude.model.JsonlParser
 import com.ccmonitor.mobile.core.claude.model.RecordParser
-import com.ccmonitor.mobile.core.claude.model.TurnEndDetector
 import com.ccmonitor.mobile.core.claude.transport.ClaudeSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.CodexSessionLocator
 import com.ccmonitor.mobile.core.claude.transport.SessionLocator
@@ -63,23 +60,10 @@ class AgentProfile private constructor(
      * （只有主机覆盖加内置默认）。做成枚举而非 `Boolean`，第三家进来时消费方的 `when` 会编译不过。
      */
     val appDefaultDirSetting: AgentDirSettingKey?,
-    /**
-     * 守护进程帧流会不会为这一家发 `turn_end` 帧。
-     *
-     * `false` 时这一家的「完成一轮」通知只能走裸 tail 加 [turnEndDetector] 自己判，前台服务也不去探帧流。
-     * 后端的流式 watcher 只跟记录树那一家（Claude），轮次边沿按 Claude 的判词（`stop_reason=="end_turn"`）算，
-     * Codex 的 rollout 记录过不了，所以 Codex 是 `false`。
-     *
-     * 注意：它答的不是「这一家有没有 turn-end 概念」（那是 [turnEndDetector]），
-     * 而是「对端那条流替不替我们算」。后端把 Codex 接上实时流时翻成 `true` 即可。
-     */
-    val daemonStreamReportsTurnEnd: Boolean,
     /** resume 与启动命令的载荷构造（sid 校验、命令净化、候选链、resume 串、会话名）。 */
     val invocation: AgentInvocation,
     /** 一行原始记录 → 统一内部模型。 */
     val recordParser: RecordParser,
-    /** 一条记录是不是「一轮结束」的边沿。 */
-    val turnEndDetector: TurnEndDetector,
     /** 远端会话发现命令、`path→sessionId`、agent-dir 解析。 */
     val sessionLocator: SessionLocator,
     /**
@@ -110,10 +94,8 @@ class AgentProfile private constructor(
                 usesParentUuidChain = true,
                 hasCcmIdentity = true,
                 appDefaultDirSetting = AgentDirSettingKey.AppDefaultClaudeDir,
-                daemonStreamReportsTurnEnd = true,
                 invocation = ClaudeInvocation,
                 recordParser = JsonlParser,
-                turnEndDetector = ClaudeTurnEndDetector,
                 sessionLocator = ClaudeSessionLocator,
                 newSessionCatalog = { channel, agentDir -> ClaudeSessionCatalog(channel, agentDir) },
             )
@@ -130,10 +112,8 @@ class AgentProfile private constructor(
                 hasCcmIdentity = false,
                 // 只认主机覆盖与内置 `${CODEX_HOME:-$HOME/.codex}`。
                 appDefaultDirSetting = null,
-                daemonStreamReportsTurnEnd = false,
                 invocation = CodexInvocation,
                 recordParser = CodexRecordParser,
-                turnEndDetector = CodexTurnEndDetector,
                 sessionLocator = CodexSessionLocator,
                 newSessionCatalog = { channel, agentDir -> CodexSessionCatalog(channel, agentDir) },
             )

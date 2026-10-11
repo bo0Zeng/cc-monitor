@@ -514,10 +514,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "apikey-key-set",
         "给一个号配 key：monitor 那条命令（`write_apikey_credentials_key`〔散文墓碑〕）推账号 id、本机那一臂先问 `apikey-read` 核路径再转这一条 ——         推 id 搬进后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答，命令与写臂删了",
     ),
-    (
-        "apikey-routing",
-        "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream_select/endpoint.rs`），命令删了",
-    ),
     // skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
     // `C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏（今天走终端管理那一条）。
     (
@@ -669,7 +665,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`）：\
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
     ),
-    // `apikey-read` 那一行退役：写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂删了。
     (
         "assets-sync",
         1,
@@ -1114,7 +1109,6 @@ fn client_for_test(
         host_arch: "x86_64".into(),
         claude_dir: "/tmp".into(),
         homes: vec![],
-        capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
@@ -1430,4 +1424,42 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
     );
     // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
     assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "record": "x"})).is_none());
+}
+
+/// ★ 旁路快照那一页（`read_page` → `history-read`）交「折起那一行」那份声明：就是 `src/shared/views/folded-record.json`
+/// （界面 `record-reads.ts` 用同一份），放在请求信封的 `view` 那一格、不进 `args`。
+#[tokio::test]
+async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
+    let origin = Origin("proj6-folded-view".into());
+    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
+    let o = origin.clone();
+    let asking = tokio::spawn(async move {
+        read_page(
+            &o,
+            "/p/s.jsonl",
+            0,
+            Some(90),
+            Deadline::within(Duration::from_secs(5)),
+        )
+        .await
+    });
+    let req = next_request(&mut peer, Duration::from_secs(5))
+        .await
+        .expect("一行都没发");
+    let shared: Value =
+        serde_json::from_str(include_str!("../../../src/shared/views/folded-record.json"))
+            .expect("那份声明是 JSON");
+    assert_eq!(req["cmd"], "history-read");
+    assert_eq!(req["view"], shared, "旁路快照没交那份声明：{req}");
+    assert!(req["args"].get("view").is_none(), "声明塞进了 args");
+    client.route_reply(
+        req["id"].as_str().expect("id"),
+        true,
+        None,
+        None,
+        None,
+        Some(json!({"rows": [], "next": 90, "eof": true})),
+    );
+    assert!(asking.await.expect("task").is_ok());
+    inbound_client::unregister(origin.as_wire_str(), &client);
 }

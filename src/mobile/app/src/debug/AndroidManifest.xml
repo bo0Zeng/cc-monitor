@@ -7,10 +7,5 @@
             android:exported="true"
             android:label="Claude 阅读面预览" />
 
-        <!-- 聊天面重放隐藏入口：adb shell am start -n com.ccmonitor.mobile/.ui.chat.ChatReplayActivity -e case demo-debug -->
-        <activity
-            android:name=".ui.chat.ChatReplayActivity"
-            android:exported="true"
-            android:label="聊天面重放" />
     </application>
 </manifest>

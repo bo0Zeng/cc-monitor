@@ -64,6 +64,7 @@ pub(crate) async fn call_via(
     origin: super::wire::Origin,
     op: String,
     payload: Vec<u8>,
+    view: Option<serde_json::Value>,
     left: Duration,
     call_id: Option<String>,
 ) -> Result<Body, CallError> {
@@ -73,7 +74,7 @@ pub(crate) async fn call_via(
     if cancel.is_cancelled() {
         return Err(OursFault::Cancelled.into());
     }
-    let fut = backends.call(origin, Op(op), Body(payload), left, cancel.clone());
+    let fut = backends.call(origin, Op(op), Body(payload), view, left, cancel.clone());
     router::settle(fut, left, cancel).await
 }
 
@@ -141,6 +142,7 @@ pub fn chan_cancel(id: String) -> bool {
 }
 
 /// 主界面说 `call` 的那一条命令。`left_ms` = 这一跳还剩多少（TS 那侧由绝对时刻换算，过期的根本不发）。
+/// `view` = 出口的声明（`chan.ts::call` 的那一格），原样交给句柄、进后端的请求信封；不进载荷。
 ///
 /// 空白名当场按「用法错」拒（`Origin::route` 那道闸，同全仓吃 `Origin` 的命令）：
 /// 空名交给句柄只会得到一句「没有控制通道」，那与真实原因（调用方没说哪台）毫无关系。
@@ -149,6 +151,7 @@ pub async fn chan_call(
     origin: crate::origin::Origin,
     op: String,
     payload: Vec<u8>,
+    view: Option<serde_json::Value>,
     left_ms: u64,
     call_id: Option<String>,
 ) -> Result<tauri::ipc::Response, Fail> {
@@ -160,6 +163,7 @@ pub async fn chan_call(
         origin.clone(),
         op.clone(),
         payload,
+        view,
         Duration::from_millis(left_ms),
         call_id,
     )
