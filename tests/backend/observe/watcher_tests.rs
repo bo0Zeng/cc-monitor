@@ -1485,8 +1485,8 @@ fn status_diff_emits_session_status_frame() {
         }) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face.activity(),
-                Some(SessionActivity::Working),
+                face,
+                crate::stream::wire::ActivityFace::of(Some(SessionActivity::Working)),
                 "适配层翻好的活动态"
             );
             assert!(!background, "不写 kind ⇒ 交互");
@@ -1507,7 +1507,10 @@ fn status_diff_emits_session_status_frame() {
             ..
         }) => {
             assert_eq!(sid, "st-sid");
-            assert_eq!(face.activity(), Some(SessionActivity::NeedsYou));
+            assert_eq!(
+                face,
+                crate::stream::wire::ActivityFace::of(Some(SessionActivity::NeedsYou))
+            );
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
         other => panic!("expected SessionStatus, got {other:?}"),
@@ -1521,7 +1524,7 @@ fn status_diff_emits_session_status_frame() {
             face,
             waiting_for: None,
             ..
-        }) if face.activity() == Some(SessionActivity::Idle)
+        }) if face == crate::stream::wire::ActivityFace::of(Some(SessionActivity::Idle))
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
