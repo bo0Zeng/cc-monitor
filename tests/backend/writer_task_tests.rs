@@ -53,7 +53,15 @@ async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
     drop(tx); // 出方向关了 ⇒ 写者排完就寿终
     drop(tap_tx);
     let mut out: Vec<u8> = Vec::new();
-    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), Default::default(), None).await;
+    writer_task(
+        &mut out,
+        rx,
+        reply_rx,
+        Fed(tap_rx),
+        Default::default(),
+        None,
+    )
+    .await;
     drop(reply_tx);
 
     let text = String::from_utf8(out).expect("utf8");
