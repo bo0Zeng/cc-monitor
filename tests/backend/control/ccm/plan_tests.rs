@@ -620,7 +620,7 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     for anchor in [
         "std::env::var(\"CC_BUS_SCRIPTS\")",
         "join(\"cc-bus\").join(\"scripts\")",
-        "std::env::split_paths(&std::env::var_os(\"PATH\")?)",
+        "crate::platform::shell::find_session_command(",
     ] {
         assert!(
             me.contains(anchor),

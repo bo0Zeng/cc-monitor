@@ -325,13 +325,19 @@ pub(crate) fn discover_bus_scripts() -> Option<String> {
             return Some(sibling.to_string_lossy().to_string());
         }
     }
-    // `PATH` 上的 `cc-register`（旧实现逐字：`command -v cc-register` 再取 `dirname`）。
-    for dir in std::env::split_paths(&std::env::var_os("PATH")?) {
-        if is_exec(&dir.join("cc-register")) {
-            return Some(dir.to_string_lossy().to_string());
+    // `PATH` 上的 `cc-register`（`command -v cc-register` 再取 `dirname`；找法只住 `platform::shell::find_session_command`）。
+    let path = std::env::var("PATH").ok();
+    match crate::platform::shell::find_session_command(
+        "cc-register",
+        path.as_deref(),
+        cfg!(windows),
+        &is_exec,
+    ) {
+        crate::platform::shell::SessionCommand::Found { file, .. } => {
+            file.parent().map(|d| d.to_string_lossy().to_string())
         }
+        _ => None,
     }
-    None
 }
 
 /// 一个账号。manifest 里 `configDir` **键缺席** = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。

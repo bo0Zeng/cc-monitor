@@ -253,24 +253,19 @@ fn ask_get_alias() -> PsAliases {
     Ok(parse_alias_listing(&String::from_utf8_lossy(&out.stdout)))
 }
 
-fn on_path(name: &str, exts: &[&str]) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        for ext in exts {
-            let cand = if ext.is_empty() {
-                dir.join(name)
-            } else {
-                dir.join(format!("{name}.{ext}"))
-            };
-            // 我们自己放的别名链接（`~/.cc-monitor/bin/<名>` → `ccm`，`assets/aliases/links.rs`）不算撞名：那就是这条别名本身。
-            let ccm = relay_route_core::BACKEND_LANDING_REL.rsplit('/').next();
-            let ours = std::fs::read_link(&cand).is_ok_and(|t| t.to_str() == ccm);
-            if cand.is_file() && !ours {
-                return Some(cand);
-            }
-        }
+/// 这个后端进程 `PATH` 上敲 `name` 会起来的那个文件（`windows` ＝ 按 PowerShell 的规矩找：`.com` · `.exe` · `.bat` · `.cmd` · `.ps1`）。
+/// 找法只住 `platform::shell::find_session_command`；这里只多一条：我们自己放的别名链接不算撞名。
+fn on_path(name: &str, windows: bool) -> Option<PathBuf> {
+    let path = std::env::var("PATH").ok();
+    // 我们自己放的别名链接（`~/.cc-monitor/bin/<名>` → `ccm`，`assets/aliases/links.rs`）不算撞名：那就是这条别名本身。
+    let ccm = relay_route_core::BACKEND_LANDING_REL.rsplit('/').next();
+    let theirs = |cand: &std::path::Path| {
+        cand.is_file() && !std::fs::read_link(cand).is_ok_and(|t| t.to_str() == ccm)
+    };
+    match super::find_session_command(name, path.as_deref(), windows, &theirs) {
+        super::SessionCommand::Found { file, .. } => Some(file),
+        _ => None,
     }
-    None
 }
 
 /// `[A-Za-z_][A-Za-z0-9_]*`。两种方言用**同一个**字符集：PowerShell 本来还收 `-`，不收是为了
@@ -528,7 +523,7 @@ impl ShellDialect for Posix {
                 &[("name", &name.to_string())],
             ));
         }
-        on_path(name, &[""]).map(|cand| {
+        on_path(name, false).map(|cand| {
             copy_text(
                 "rsShellDialect.posix.nameTakenPath",
                 &[
@@ -859,7 +854,7 @@ impl ShellDialect for PowerShell {
                 return Some(note);
             }
         }
-        on_path(name, &["exe", "cmd", "bat", "ps1", "com"]).map(|cand| {
+        on_path(name, true).map(|cand| {
             copy_text(
                 "rsShellDialect.ps.nameTakenPath",
                 &[

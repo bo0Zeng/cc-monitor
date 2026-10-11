@@ -120,9 +120,7 @@ pub(crate) fn find_session_command(
     let Some(pe) = path_env.filter(|p| !p.trim().is_empty()) else {
         return SessionCommand::Unknown;
     };
-    let dirs: Vec<std::path::PathBuf> = std::env::split_paths(pe)
-        .filter(|d| !d.as_os_str().is_empty())
-        .collect();
+    let dirs = path_dirs(pe);
     let rounds: &[&[(&str, StartBy)]] = if windows {
         &[WINDOWS, WINDOWS_LAST]
     } else {
@@ -155,6 +153,14 @@ pub(crate) fn find_session_command(
         }
     }
     SessionCommand::Absent
+}
+
+/// `PATH` 切成目录（Windows 的 `;` 与盘符冒号走 `std::env::split_paths`；空项不算）。后端里切 `PATH` 只此一处：
+/// 找命令一律经 [`find_session_command`]；别处只许拿它数一数查过几个目录（找不到时那句话里说）。
+pub(crate) fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
+    std::env::split_paths(path_env)
+        .filter(|d| !d.as_os_str().is_empty())
+        .collect()
 }
 
 /// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。

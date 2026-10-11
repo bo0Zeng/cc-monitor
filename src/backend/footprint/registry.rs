@@ -895,11 +895,8 @@ pub struct UnmanagedEnv {
 /// **不许再造一套**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvProbe {
-    /// `PATH` 上的一个裸命令 —— 走 `rows.rs::resolves_on_path`。
-    ///
-    /// **用已有那一把，不新写一个 `which`**：它已经把两条坑填了 ——
-    /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
-    /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
+    /// 这个后端进程 `PATH` 上的一个裸命令 —— 走 `platform::shell::find_session_command`（按 `PATH` 找命令只住那一处：
+    /// 切分走 `std::env::split_paths`、Windows 的后缀次序、「取不到 `PATH` 就判不了（**不猜**）」都在那里）。
     OnPath,
     /// 起会话那个 shell 的 `PATH` 上的一个裸命令（agent 命令行：会话在用户登录 shell 里起，按那里的 `PATH` 找它）。
     /// 走 `platform::shell::find_session_command`（起新会话框「这台能起哪几家」、`ccm` 起它那一下也问它）：`PATH` 换成那一份，
