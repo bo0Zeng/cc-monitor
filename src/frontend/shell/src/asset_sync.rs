@@ -10,8 +10,6 @@
 //! 1. **连上那一刻**（[`on_remote_ready`]，`stream_source/` 在远端那条流握手成功时调）：那台的后端认得资产目录
 //!    ⇒ 把「怎么够到那台」（拨号请求 ＋ 那台后端的路径）交给本机常驻后端 `assets-sync`，由**它**沿池里那条 SSH
 //!    拉 / 并 / 推（`src/backend/assets/asset_sync.rs`）。后台跑，不挡收帧。
-//! 2. **界面看机器页前**：界面经通道直问本机后端 `assets-sync`（只报 `origin`，够到那台用握手时登记的那一行，
-//!    `src/frontend/ui/assets-sync-reads.ts`）；这里那条 Tauri 命令〔散文墓碑〕删了。
 //!
 //! 拨号请求今天仍由 monitor 造（读 ssh 配置那一半归 MIG-1 进本机后端）；**合并、推什么、扇不扇出，一条都不在这里**。
 //! 目录本身的读（`assets-catalog`）前端经通道直接问那台（`chan.call`），不经本模块。
@@ -36,9 +34,6 @@ pub(crate) const REMOTE_NEEDS: &str = "assets-catalog-merge";
 
 /// 一趟的上限：拉 ＋ 推（每台几条 exec）＋ 扇出到其余各台。给足余量同时防卡死（后端零定时器，期限归调用方）。
 const BUDGET: Duration = Duration::from_secs(180);
-
-// `AssetsSynced` 那三个形状与 `parse_reply`〔散文墓碑〕随 Tauri 命令 `assets_sync` 删了：界面经通道直问本机后端、
-//   按形状收（`src/frontend/ui/assets-sync-reads.ts`）；这里只剩流握手那一刻交事实（`on_remote_ready`），应答原样记日志。
 
 /// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）。那台后端的路径不交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`。
 pub(crate) fn args_for(cfg: &crate::stream_source::RemoteConfig) -> Result<Value, String> {

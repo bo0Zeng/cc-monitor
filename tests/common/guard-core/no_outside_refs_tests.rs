@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
 
 /// 仓根（本 crate 住 `src/common/guard-core`）。
-fn repo() -> PathBuf {
+pub(super) fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
         .canonicalize()
@@ -176,7 +176,7 @@ fn first_outside_pointer(
 }
 
 /// 人群：`(仓根相对路径, 正文)`。跟踪着的符号链接按 git 存的那样取链接目标的文字。
-fn tracked_texts(root: &Path) -> Vec<(String, String)> {
+pub(super) fn tracked_texts(root: &Path) -> Vec<(String, String)> {
     let out = std::process::Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(root)

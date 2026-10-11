@@ -1,9 +1,5 @@
 //! cc-bus 在 monitor 侧**只剩一句共用的说法**（机器怎么称呼）与 id 规则的再导出。
 //!
-//! 驾驶舱读面（名册 · 收件箱）迁到界面经通道直接问那台后端（`bus-state` / `bus-inbox`，
-//! 后端转调 cc-bus 新加的机器可读读命令）：monitor 这里原先那一整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路，
-//! `cat agents.tsv` / `tail` 收件箱、自述头、三个解析器、Windows 上找 `bash` 那一族）整份删了〔散文墓碑〕。
-//! 坏行「跳过并计数、不因坏行丢好行」那条契约搬进了后端（`control/cc_bus.rs::parse_roster_tsv` 一族）。
 
 use crate::copy_table::copy_text;
 

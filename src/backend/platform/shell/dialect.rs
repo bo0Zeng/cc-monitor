@@ -171,8 +171,6 @@ pub(crate) trait ShellDialect: Sync {
     /// 这个名字是不是已经被占了（**只出声、不拦**）。报出来的话里带住址。
     /// `own_block` 是我们自己那块别名块的正文（通用层给：POSIX 是 `src/shared/ccm-aliases.sh`，PowerShell 是模板渲染出来的那一份）。
     ///
-    /// `PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
-    /// （从前住 monitor 时远端只能不查，那一格 `look_on_path`〔散文墓碑〕随之退役）。
     fn name_taken(&self, name: &str, own_block: &str) -> Option<String>;
 }
 
@@ -368,8 +366,6 @@ impl Posix {
         Ok(words)
     }
 
-    /// 生成文件里的一行 → 一条。认两种调用词：裸 `ccm`，以及从前那种 `"${CCM:-<路径>}"`
-    /// （`K-R69` 的 `ccmInvocation`〔散文墓碑〕吐过，那一格随 TS 生成器退役）—— 读回之后一律按裸 `ccm` 重写。
     fn parse_line(call: Call, line: &str) -> Parsed {
         let rest = line
             .strip_suffix(POSIX_FN_TAIL)

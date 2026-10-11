@@ -592,6 +592,3 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         "这些文件有外部值只靠 quote、没过放行判定：{open:?}"
     );
 }
-
-// `every_read_of_the_backend_path_field_is_registered`〔散文墓碑〕 与它的登记表删了：`RemoteConfig` 没有 `backend_path` 这一格了
-//   （落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`），「裸读那个字段」这一形编译期就不存在。

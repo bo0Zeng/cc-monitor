@@ -67,15 +67,6 @@
 //!
 //! ## 原先这里有个 `ProbeStatus`，本轮**删掉了**
 //!
-//! 它是 `{ installed: bool, version: String, capabilities: Vec<String> }`，
-//! 与既有的 `ccm_probe::CcmProbeResult` **同形**、零适配、零生产消费者，
-//! 而且 `version: String` 比对方的 `Option<String>` 还丢了「取不到」这一档。
-//! 我原先把它当作「机制留各家、结果统一」的落点——**发明第二个同形结构不是统一，
-//! 是重复**。按我自己这一轮的尺子（`build_online_cmd`〔散文墓碑〕零调用点被我判为**阻塞**、
-//! `WriteVerdict::is_ok` 只有测试在用就删掉），它该删。统一的结果类型**已经存在**，
-//! 就是 `CcmProbeResult`；T02 真要消费探测结果时直接用它（不够就给它加字段），
-//! 而不是在注册表里再造一个。
-//!
 //! ## 如实登记：本模块目前**零生产消费者**（T01 审计 I2）
 //!
 //! `TOOLS` 现在只有本文件的测试在读。同一轮我以「只有测试在用」为由删了
@@ -192,14 +183,6 @@ pub enum ToolDestination {
     /// 项目目录内的文件（`<dir>/.mcp.json`）。
     ProjectRelative(&'static str),
     /// **路径由用户配置决定，不是常量。**
-    ///
-    /// T02 审计追问「注册表与真写入方零耦合」时查出来的（比审计报的更严重）：
-    /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-backend")`，
-    ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.backend_path`，
-    ///   每个远端各自配置（当年的逐次拨号那条路 `run_list_query`〔散文墓碑〕直接 `shell_quote(&cfg.backend_path)`，C4d 已删）。
-    /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
-    ///   而当年的 `deploy_remote_acct_iso(cfg, dest_dir)`〔散文墓碑〕是**远端**部署、
-    ///   落点还是**前端传进来的** `dest_dir`。
     ///
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
     /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
@@ -323,15 +306,6 @@ pub enum TouchEffect {
     GenerateOnly,
     /// **我们不直接写这个文件，但用户在 cc-monitor 里的动作会导致它被写。**
     ///
-    /// 这一档是 T02 审计的阻塞项逼出来的：`~/.cc-bus/` 原先声明成 [`Self::ReadOnly`]，
-    /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
-    /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
-    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`）〔散文墓碑〕
-    /// （今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
-    /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
-    /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
-    /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
-    /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
     IndirectWrite,
 }
 
@@ -360,13 +334,6 @@ pub enum TouchEffect {
 /// ⇒ touch 挂在载体下，**key 天然就有**。
 ///
 /// # 它同时治掉 `ToolSource` 那一半（`R26` 裁定二：两者是同一个形状问题的两半）
-///
-/// `ccm` 那一行的 `source` 先前**自己的注释逐字承认是假的**：远端那一份的来源是
-/// `local_backend::ccm_entry_shim`〔散文墓碑〕现造的 shim，而**本机那一份的来源是后端二进制
-/// 自己的改名副本**（`local_backend::install_local_ccm_entry`〔散文墓碑〕）——
-/// 一个 `source` 字段装不下两个来源，于是那条注释只能写「不为它再开一个变体，
-/// 在这里如实写清」。载体这一维立起来之后，两个来源各归各的载体，**注释里那句
-/// 「这一格是假的」不再需要**。
 ///
 /// # 🪦 `ToolDestination::BothHomeRelative` 的墓碑（`K-R69` 09-12 上午 → `K-R81` 09-12 下午）
 ///
@@ -464,15 +431,6 @@ pub const TOOLS: &[ToolSpec] = &[
         //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `backend_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
-        // 🔴 **上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
-        //    `K-R69` 当时逐字写的是：「本机那一半的来源不是这个 shim —— 是后端二进制自己的
-        //    改名副本（`local_backend::install_local_ccm_entry`〔散文墓碑〕）。`ToolSource` 一个字段
-        //    同样装不下两个来源……**不为它再开一个变体**，在这里如实写清」。
-        //    ⇒ 那句「在注释里如实写清」是**用散文顶替一个字段**。载体这一维立起来之后，
-        //    两个来源各归各的载体，注释不再承重（`R26` 裁定二：`ToolSource` 与
-        //    `destination` 是同一个形状问题的两半，本件同拍治）。
-        //    ⚠ 两条载体仍是**同一个东西**：`control::ccm::intercept` 认 `argv[0]` 的 basename，
-        //    两边都进那一处解析（`K33` 逐字「所有命令只许有一处」）。
         installable: true,
         uninstallable: true,
         carriers: &[
@@ -545,13 +503,6 @@ pub const TOOLS: &[ToolSpec] = &[
         id: "backend",
         display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
-        // 🔴 **这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
-        // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
-        // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
-        // （删后端二进制；落点是固定的 `~/.cc-monitor/bin/ccm`，`is_safe_remote_backend_path`〔散文墓碑〕那道守卫随之删了）。
-        // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
-        //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
-        //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
         uninstallable: true,
         // 🔴 **同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打。在本件之前闭集里只有中间那一条，
         // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
@@ -664,10 +615,6 @@ pub const TOOLS: &[ToolSpec] = &[
         }],
     },
 ];
-
-// `local_ccm_bin_dir_rel` / `remote_ccm_bin_dir_rel`〔散文墓碑〕（从本表现算 `ccm` 两个载体落点的目录）搬进了判据档：
-//   生产上要那个目录的只有 monitor 补 PATH 那一步，它今天取共享 crate 里后端的落点（`relay_route_core::BACKEND_LANDING_REL`，
-//   本机远端同一个）；本表申报的那两条与它相等由 `tests/backend/footprint/registry_tests.rs` 对拍。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群

@@ -7,14 +7,9 @@
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
-//! - **F11**：用户**主动**删除远端会话 jsonl。**已不在本模块**：经远端后端的
-//!   `files-delete-session`（只收 sid）删，从前那道 SFTP 直删与它的结构守卫〔散文墓碑〕走了。
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`。**写已不在本模块**；
 //! 今天由那台后端自己算、自己写（帧命令 `mcp-server-put` / `-remove`，`mcp_edit.rs::project_root` 守落点）。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
-//! - **F10**：别名块装/卸——今天是 `lib.rs` 的 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）
-//!   （从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
-//!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
 //! **落盘已不在本模块**：那台后端自己读改写（文件管理那一面）；规划那一半
 //!   （`merge_profile_block` / `strip_profile_block`）住 `profile_installer`。
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
@@ -29,10 +24,9 @@
 //! **部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
 //! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，判定住后端那一份、两侧对上的形状住契约 crate `deploy-contract`）；
 //! 本模块只**照计划放字节**（取这一版带着的那一格 · 身份戳自检 · mkdir · 原子上传 ＋ 读回判定 · 删旧落点），
-//! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。〔墓碑 —— 从前本模块自己开 SFTP：`connect_sftp`〔散文墓碑〕在一条
-//! 进程内拨的 russh 连接上开子系统，`upload_atomic`〔散文墓碑〕在这里跑「EXCL 临时件 → 旧的改名 `.bak` → 上位」。
-//! 那段序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）逐字搬去了后端
-//! `dial/sftp.rs::put_atomic` 的头注。〕
+//! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。
+//! 原子上传的序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）住后端
+//! `dial/sftp.rs::put_atomic` 的头注。
 //! ⇒ 落点变了一格：`ccm` 入口从 `~/.local/bin/ccm` 挪到 **`~/.cc-monitor/bin/ccm`**（两个写根之内；也正是
 //! 要的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
@@ -122,8 +116,6 @@ pub(crate) async fn upload_verified(
     })
 }
 
-// `read_marker` · `put_marker`〔散文墓碑〕与标记读上限随 `acct_iso_deploy` 删了（按目录取标记那条路的唯一消费者）。
-
 /// 远端那台要的那一份后端（字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
 pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
@@ -149,9 +141,6 @@ pub(crate) const STAMP_MARKS: deploy_contract::Marks<'static> = deploy_contract:
 
 /// 部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `control/deploy_plan.rs`）；本 crate 里还要它的几处从这里拿同一份名字。
 pub use deploy_contract::DeployAction;
-
-// `deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
-//   （账号库今天由那台后端自己建，不再部署外部工具）。后端那条路的判定住 `deploy_contract::identity_decision`。
 
 /// **本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
 /// 该不该换 · 换成哪一格 · 落点那一份是谁 —— 全是后端判的；本模块只照它放字节。
@@ -440,8 +429,6 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
 // 卸载删落点那个文件（固定落点 `~/.cc-monitor/bin/ccm`，没有外来路径要守）。
 // ============================================================================
 
-// `is_safe_remote_managed_path`〔散文墓碑〕删了：第 2 个消费者（`acct_iso_deploy` 的落点围栏）随那条命令退役，只剩零个。
-
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）。逻辑同自动部署 [`ensure_backend_deployed`]，
 /// 但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况（探测不到 arch / 无该 arch 内嵌）显式报错。
 /// 落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
@@ -518,22 +505,9 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said>
     r.map_err(|s| s.named("uninstall_remote_backend"))
 }
 
-// ============================================================================
-// F11：远端用户数据写（删除远端历史 jsonl）。
-// **这一段整个搬走了**：经那台远端的后端删
-// （`files-delete-session`，只收 sid —— 当时说「会话文件围栏唯一的例外」，FN1 之后写面已无那道围栏；
-// 落点由远端后端按 sid 在它自己的记录树里找），
-// 从前这里那道结构守卫 `is_safe_remote_jsonl`〔散文墓碑〕与 SFTP 直删 `remove_remote_file`〔散文墓碑〕零调用方 ⇒ 删了。
-// 「哪几份才许删」那一问的住址从此是 `src/backend/agents/claudecode/paths.rs::session_file_for_delete`。
-// ============================================================================
-
 // F10（别名块）这一段搬去了 `profile_installer.rs`（B §2 第 12 条：本文件已经不做 SFTP，
 //   别名块的真相 —— 围栏那一对 · 块的内容 · 自带的名字 · 合 / 剥 · 远端装 / 卸两条命令 —— 归别名域）。
 //   本文件只剩部署：后端字节 · 身份 · 读回 · `ccm` 入口。
-
-// 这里原先是 `ccm` 入口那一段（三行 shim 的推送口 `put_ccm_entry`〔散文墓碑〕、落点常量
-//   `CCM_CLI_REMOTE_PATH`〔散文墓碑〕）：`ccm` 就是后端本身之后，落点 `~/.cc-monitor/bin/ccm` 上放的就是后端字节（[`LANDING_REL`]），
-//   没有第二样要放。`K-R48` 那句墓碑（打包 bash 启动器的 `include_str!` 已删，`KR48D1` 盯着）照旧成立。
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sftp_tests.rs"]

@@ -931,9 +931,6 @@ pub struct ConfigSurfaceReport {
     // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上。
 }
 
-// Tauri 命令 `config_surface_report`〔散文墓碑〕与 monitor 自己那台的探针（`with_monitor_probe`〔散文墓碑〕）删了：
-//   成品由那台后端的 `footprint-report` 出（[`super::answer`]），monitor 那一族的事实由 monitor `footprint_client_facts` 答。
-
 #[cfg(test)]
 #[path = "../../../tests/backend/footprint/rows_tests.rs"]
 mod tests;

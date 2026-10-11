@@ -5,7 +5,6 @@ use super::*;
 ///
 /// # 它换掉了谁、为什么〔**D 类**〕
 ///
-/// 原来这里住的是 `the_caller_never_gets_its_own_source_back`〔散文墓碑〕，断言
 /// 「本 crate 的 `src/` 里只有 `lib.rs`（= **调用者自己**），摘除生效 ⇒ 结果为空」。
 /// 那条断言的前提是**判据与被测代码同住一份文件** —— 判据搬进
 /// `tests/common/guard-core/lib_tests.rs` 之后，「调用者」不再是 `lib.rs`，

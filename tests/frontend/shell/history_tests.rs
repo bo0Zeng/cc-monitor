@@ -28,7 +28,6 @@ impl Drop for TmpDir {
     }
 }
 
-// 这里原来是本机分叉读 jsonl 那一格（`read_jsonl_values`〔散文墓碑〕：剥 BOM · 静默丢坏行）
 // 的判据。本机分叉交给后端之后那个函数零调用方、删了；后端那份读法的判据住 `fork_write_tests.rs`。
 
 /// ★★〔`K-R97` 09-12 后继形态〕**「从 jsonl 头部抠 cwd」这件事，全仓只剩一处了。**
@@ -92,24 +91,6 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
         "历史查询里又长出了一份自己的头部窗口（项目目录只问适配层）"
     );
 }
-
-// 历史清单与注解搬进本机常驻后端（join 只一个家、注解读写者是本机后端）——
-//   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
-//   - `K-R97` 本机清单来自后端那一行 · 本机判活答真值 · 远端只问一次（`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）
-//     ⇒ 后端 `tests/backend/history/history_list_tests.rs`（`the_machine_listing_carries_group_dir_failures_synth_and_last_accounts` ·
-//     `a_real_record_tree_becomes_the_machine_listing` · `a_remote_listing_is_handed_in_and_kept_for_typing`）；
-//     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/frontend/ui/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/frontend/ui/history-reads.vitest.ts`；
-//   - `K-R92` 分得开「不知道」与「真的是 0」· 「不知道」自成一档排序（`the_three_counts_can_say_i_do_not_know` 那两条〔散文墓碑〕）
-//     ⇒ 后端 `history_list_tests.rs`（`unreadable_annotations_say_so_and_the_rows_still_come` · `groups_rank_live_then_starred_then_recent_and_keep_failed_dirs`）；
-//   - 线上形状的驼峰契约（`history_project_camel_case_contract` 那两条〔散文墓碑〕）⇒ 跨语言金样 `tests/__fixtures__/history-list.golden.json`
-//     （后端产 · TS 解码器逐键收）；
-//   - Codex 分组 · 首条真用户话去注入（`codex_projects_group_by_cwd` 那两条〔散文墓碑〕）⇒ 后端 `tests/backend/agents/codex/history_tests.rs`
-//     ＋ `history_list_tests.rs::the_machine_listing_carries_group_dir_failures_synth_and_last_accounts`；
-//   - 上次账号的 serde 与 patch 三态 · 只含真有的那几条（`last_account_serde_and_patch_semantics` 那两条〔散文墓碑〕）⇒ 后端
-//     `tests/backend/history/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did`；上次账号那一格今天不归注解，住会话所在那台的起会话账号记录）；
-//   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ 通用搜索口径的 `truncate_excerpt`（后端会话行改用它；今天住 `observe/search_rules.rs`）；
-//   - 「迁移前」旧读者读注解夹具 == 金样（`c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕，子步 4 那一拍对过）
-//     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
 
 // 删会话那道 stem 一致性闸的两条判据（只交 sid · 对不上一个请求都不发）与
 //   分叉结果形状那一条（驼峰键）随 monitor 那两条命令删了：界面经通道直说那台后端（`src/frontend/ui/session-writes.ts`），
@@ -232,7 +213,6 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
 
 /// ★★ **「configDir → 表里的 id」与「哪几个号在表里有行」两条规则只有一个家：`acct-core`**。
 ///
-/// 要求：「**一个判定只有一个家**」。monitor 那一个绑定（`history::apikey_routed_subset`〔散文墓碑〕）
 /// 随界面那一问搬进后端一起删了 ⇒ 两棵生产树里两条规则的**定义**都零处；反空真：同一个识别器在 `acct-core` 上各数得出恰好 1。
 #[test]
 fn the_two_apikey_rules_are_defined_only_in_acct_core() {
@@ -269,8 +249,6 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
 //   随读正文那条命令一起退役：判定进了后端，住 `tests/backend/observe/record_page_tests.rs`（编号 · 只出进界面的 ·
 //   按根认是哪一家）与 `tests/backend/faces/read_face_tests.rs`（`history-page` 那一臂）。
 
-// `remote_history.rs` 整份删了（最后一个函数 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令退役），它的测试文件里
-//   这一条与它无关的对照挪到这里。
 #[test]
 fn shell_quote_via_the_shared_core() {
     // `stream_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。

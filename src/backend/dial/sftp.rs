@@ -535,7 +535,6 @@ pub(crate) async fn fenced_remote(
 /// （真 `OpenSSH_10.2p1` 上 permissions-only 的 SETSTAT 前后都是 16 字节）；最可能当年那个属性块真的带了 size。
 /// 🔴 **但这条禁令不放宽**：事故是真的、只量了一个服务端版本、部署路上多一次 setstat 收益为零风险是变砖。
 /// ⚠ 与改权限命令的关系：那条命令（今天是后端 `files-chmod`）**要**改权限，是它的本职；它当年靠「属性块逐字节不带 size」
-/// 那条判据挡住这一形（`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕，随那条老命令一起删了）。
 pub(crate) async fn put_atomic(
     s: &Session,
     path: &str,

@@ -1,6 +1,5 @@
 /// ★ 围栏本身的行为：**跑出 home 的一律拒绝，home 之内的照常放行**。
 ///
-/// ⚠ 正例那一半不是凑数：围栏收得太紧会**悄悄砍掉「其它文件」**（从前叫 `ProfileKind::Custom`〔散文墓碑〕）
 /// （用户指 `~/.config/fish/config.fish` 这种），那是把一个洞换成一个回归。
 #[test]
 fn the_profile_fence_keeps_writes_inside_home() {
@@ -59,17 +58,10 @@ fn the_profile_fence_keeps_writes_inside_home() {
 
 /// ★★ **收启动文件路径的命令都必须先过路径围栏**〔audit-0805 08-08，Phase G 第 86 件〕。
 ///
-/// 那三条从前叫 `cc_integration_install` / `_uninstall` / `_scan_path`〔散文墓碑〕，
 /// 今天是别名块的 `aliases_block_install` / `aliases_block_remove` ＋ 读回口 `aliases_read` 的「其它文件」
 /// （读回口的围栏在 `account_aliases::read_in` 里过：它拿临时目录当 home 才测得了，见下面第二段）。
 ///
 /// # 洞：本机这条路没有围栏，而远端那条有
-///
-/// `cc_integration_install(path: String, command_name: String, …)` 把 webview 给的路径
-/// **原样** `PathBuf::from` 交给 [`install_to_profile`]（文件不存在就创建 —— 本文件
-/// 另有一条判据逐字叫 `install_to_nonexistent_path_creates_file`），
-/// `cc_integration_uninstall` 会**重写**那个文件，`cc_integration_scan_path` 是任意路径的〔散文墓碑〕
-/// **存在性/大小探针**。三条都不看路径。
 ///
 /// 而**远端**那条同名功能有围栏：`sftp.rs` 逐字「profile 只能是 home 下的文件名
 ///（如 `.bashrc` / `.zshrc`）」。⇒ **同一形态在另一半有围栏、这一半没有**
@@ -654,7 +646,6 @@ fn reinstall_replaces_block_keeps_user_content() {
     }
 }
 
-// 这里原来是 `install_preserves_explicit_acl_entries`〔散文墓碑〕（Windows：v1.7.10
 // `ReplaceFileW` 保住 explicit ACE）。写从本进程搬到了后端（只有后端的文件管理部分写文件，本机也算），
 // 那条性质跟着搬：`tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
 
@@ -1365,7 +1356,6 @@ fn strip_aborts_on_malformed_begin_without_end() {
 /// `uninstall_from_profile(`）的那几个。两向相等于下面这张手写表（异源：表是人按角色写的，右边是源码现扫）：
 /// - **写的**（两个：远端那两条命令并进了转交那两条）函数体里必须恰好一处 `crate::user_files::edit(`；
 /// - **纯规划 / 预览**（三个）与**转交**（两条命令，交给写的那两个）一处写原语都不许有；
-/// - 全体都不许碰别的写原语（`.put(` · `std::fs::write` · `fenced_block::apply`〔散文墓碑〕）。
 ///
 /// 同波别的路长出新成员时：再加一个碰别名块的函数 ⇒ 集合不等 ⇒ 红，去表里登记它的角色（写的得经 `edit`）。
 #[test]

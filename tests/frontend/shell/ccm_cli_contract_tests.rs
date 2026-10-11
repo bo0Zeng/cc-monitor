@@ -37,11 +37,6 @@ fn cc_spawn_creates_it_never_reuses_a_live_session() {
             "`cc-spawn` 里又出现了 {gone:?} —— 默认复用回潮了。\n                 `C14`〔用 08-12〕逐字：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。"
         );
     }
-    // ② 命名避让必须还在（不复用 ≠ 不避让）—— 但 `C15`〔用@08-13〕之后它**搬进 ccm 了**。
-    //    ⚠ 这条判据 08-12 原本钉 `cc-spawn` 里那句 `while tmux has-session`。
-    //    搬家之后**不能只是删掉它**：那样「避让还在不在」就没人钉了。改钉两件 ——
-    //    （a）cc-spawn 把基名交出去；（b）避让在 ccm 那边（旧判据 `the_avoidance_lives_in_ccm_now` 〔散文墓碑〕，
-    //    `K-R48` 第二拍随 `shared/ccm` 删；今天由 `control::ccm::plan::tests::only_two_of_the_three_naming_paths_step_aside_on_a_collision` 钉）。
     // ⚠ 下面两条都判**剥掉 `#` 注释之后**的正文。首版没剥，当场被自己写的那句
     //   「原来这里是 `while tmux has-session …`」（记录搬走了什么的**诚实注释**）判红。
     //   ★ 这是本拍第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，

@@ -15,7 +15,6 @@
 pub(crate) const DEFAULT_COMMAND: &str = "claude";
 
 /// 用户的 shell 集成 wrapper（含代理 / env）：探得到就先用它，探不到回退 [`DEFAULT_COMMAND`]。
-/// 从前与下面两格一起住 monitor `adapter/claude_code.rs`〔散文墓碑〕，与后端 `control/ccm/` 各一份、靠金样对着。
 pub(crate) const LAUNCHER_ALIAS: &str = "cc";
 
 /// resume 那个字面量：**flag 形**（`--` 开头）。[`resume_command`] 与画像表（`agents::LaunchFace`）同一份。

@@ -192,9 +192,6 @@ pub fn local_home() -> String {
 pub static NO_LINE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.noLine.message", &[]));
 
-// 「在此打开终端」那一串（`build_open_terminal_cmd`〔散文墓碑〕· `build_open_terminal_cmd_at`〔散文墓碑〕· `cd_then_shell`〔散文墓碑〕）
-//   随「窗口只交意图」搬进本机后端：`src/backend/dial/terminal.rs::command_for_cwd`（期望串原样搬去 `tests/backend/dial_terminal_tests.rs`）。
-
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
 ///
 /// 🔴 抽成一个结构是因为它要被**两条线程**看：UI 线程读，tokio 那条写。
@@ -887,9 +884,6 @@ impl FileWindow {
     pub fn row_path(&self, r: &super::source::Listed) -> super::source::RemotePath {
         join_path(&self.cwd_path(), &name_bytes(r))
     }
-
-    // 〔散文墓碑〕这里原有 `refused_in_lossy_cwd`（W5-FILES：有损目录里上传 / 搜索 / 开终端出声拒）——
-    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`〔散文墓碑〕，今天是后端 `dial/terminal.rs::command_for_cwd`），它没了调用方。
 
     /// 〔有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
     pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {

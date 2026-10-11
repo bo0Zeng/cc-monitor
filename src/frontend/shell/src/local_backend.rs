@@ -113,7 +113,6 @@ pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
 /// 由 `the_backend_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// ⚠ **ccm 那一半已接**：旧 `shared/ccm` 的 `resolve_from_backend` 〔散文墓碑〕（函数，exec 路用）
 /// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
 /// 一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
@@ -1279,12 +1278,6 @@ pub fn place_local_program(
 
 // ── `K-R69`（09-12）：**本机的 `ccm` 入口** ──────────────────────────────
 //
-// 立件时现打（量于 `79bf97d`）：闭集 `tool_registry::TOOLS` 里落点是 `…/ccm` 的**只有一条**，
-// 而它是 `RemoteHomeRelative(".local/bin/ccm")` ⇒ **本机侧 0 条**；装口也只有远端那一个
-// （`sftp::install_remote_ccm_helper`〔散文墓碑〕，今天那一半在 `sftp::deploy_remote_backend`）。⇒ 用户 `K34` 逐字要的「装了新版后
-// `~/.local/bin/ccm` 可以干净退役」**今天没有承接方** —— 不是「没验过旧的能不能退役」，
-// 是**本机压根没有新的那一份**。
-//
 // 🔴 **它不是第二个 `ccm`**。`K33` 逐字「不要有什么单独的 ccm，所有命令只许有一处」，
 //    而 `K-R48` 花两拍删掉的正是那份 1592 行的 bash。本机这条落点是**后端二进制自己**，
 //    只是换了个名字：`control::ccm::intercept` 的入口①逐字写着「`argv[0]` 的 basename
@@ -1306,12 +1299,6 @@ pub const CCM_ENTRY_WORD: &str = "ccm";
 pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }
-
-// 远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
-//   后端字节（`sftp.rs::LANDING_REL`）。落点上不说自己是谁的文件（从前那份三行入口也一样）一律显式失败、不动（`deploy_plan::identity_decision`）。
-
-// `install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，「第二份拷贝」）删了：
-//   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。
 
 /// 「带着后端但放不下来」这一形的**认路标记**。
 ///
@@ -1495,10 +1482,6 @@ pub(crate) fn absorb_local_frame(
 ) -> Option<crate::stream_source::InboundFrame> {
     use crate::stream_source::InboundFrame;
     match frame {
-        // 本机的 tmux 观测两种帧 monitor 不再消费（后端也不再发，那两帧删了）：
-        //   收割与「可重连」由本机后端的会话账本裁（`observe/session_ledger.rs`），成品 `session_state` 走下面那一臂进本机内容通道。
-        //   〔从前这里记 tmux 原文账（`stream_source::record_tmux_raw`〔散文墓碑〕）＋ 本机收割器（`local_idle_retirements`〔散文墓碑〕）；
-        //    `session_added` 这一臂还记容器（`session_facts::note_container`〔散文墓碑〕）——容器今天随活会话成品一起进 `session_book`。〕
         InboundFrame::Reply {
             id,
             ok,
@@ -1562,9 +1545,6 @@ pub(crate) fn absorb_local_frame(
     }
     None
 }
-
-// 本机收割器那三个函数（`local_reaper_state`〔散文墓碑〕· `local_idle_retirements`〔散文墓碑〕· `local_tmux_closed`〔散文墓碑〕）
-//   删了：收割搬进本机后端的会话账本（`src/backend/observe/session_ledger.rs`），与远端同一份。
 
 /// stdio 读循环这一条是哪台、交到哪。产品只有 [`StdioRoute::local`]（本机后端 ⇒ `local_lines` 那一个消费者）；
 /// 截图台架的无头壳（`shots_shell`）每台机器一条，各带自己的通道。
@@ -1761,8 +1741,6 @@ pub(crate) fn local_stdio_consumer(
     if let Some(mine) = registered {
         crate::inbound_client::unregister(route.origin.as_wire_str(), &mine);
     }
-    // 流结束时清本机 tmux 原文那一步（`forget_tmux_raw`〔散文墓碑〕）随那本账一起删了：monitor 不再存 tmux 快照，
-    //   本机的成品由 `consume_local` 收到流断那一件时整份作废（`session_book::In::LinkLost`）。
     ConsumerReport {
         exit: if early {
             ConsumerExit::Early
@@ -1842,13 +1820,6 @@ fn local_stdio_consumer_guarded(
 /// 抽出来之前，「找那个二进制」有**两份手写实现**：本模块的 [`start_or_extract`]
 /// 与 `local_backend_host.rs::resolve_backend_bin`（常驻那条路不要监护那半，用不了前者）。
 /// 两份之间只有一条 `the_two_resolution_paths_still_agree_on_the_order` 盯着，而它**只对拍顺序**。
-///
-/// ⚠ **那条判据眼皮底下真的漂了一次，而它全程绿**〔`K-R43` 现打，读数住件文件 `§9`〕：
-/// `K-R42` 只给 [`start_or_extract`] 接上了上面那两段（问产物带没带 · 释放失败说一句分得开的话），
-/// `resolve_backend_bin` 一个字没动 —— 顺序仍是「先旁边、再释放」⇒ 那条判据**照样绿**。
-/// 于是同一台机器上，两条路对**同一个失败**给出的是两句性质不同的话。
-/// ⇒ 处置**不是**再加一条「两边内容也要一样」的对拍（那是「测自己的副本」的近亲，
-/// 本模块 `local_extract_name`〔散文墓碑〕的头注逐字论证过同一件事），是**只留一份**。
 ///
 /// # 它不做什么
 ///

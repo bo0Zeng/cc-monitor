@@ -805,12 +805,6 @@ gate_lane 壳Rust
 # 该跑到的包 = `src/frontend/shell` workspace 的成员（`cargo metadata` 现取），与输出里真跑到的两向相等。
 run_gate_sum cargo gate_shell_libs gate_cargo_test_nonet src/frontend/shell --workspace --lib
 
-# `src/frontend/shell/embedded-backends/` 铺没铺（gitignore 挡着，跟着铺走、不跟 git 走）决定 `build.rs` 置不置 `embedded_backends` cfg。
-# 挂这个 cfg 的是「本地后端真的能起来吗」那一族：`sftp::embedded_backend_binaries_present_and_valid` ·
-# `local_backend_host::the_local_backend_host_can_be_stopped_and_started_again` ·
-# `local_backend::the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（随 monitor 那本 tmux 原文账删了） ·
-# `local_backend::the_local_backend_host_really_registers_an_inbound_client`。
-# 没铺时上面那个合计少了这一族。这一行只自报、不判（铺与没铺本该是两个数），所以行首不是 `ok`。
 if [ -d src/frontend/shell/embedded-backends ]; then
   printf '  分母 %-14s %s\n' "cargo" "本树铺了 src/frontend/shell/embedded-backends/ ⇒ embedded_backends cfg 会置上，「本地后端真的能起来吗」那一族在跑"
 else

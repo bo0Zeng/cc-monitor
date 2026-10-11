@@ -21,8 +21,6 @@ fn idx_of(p: &JsonlLinePayload) -> usize {
     last.trim_end_matches(".jsonl").parse().unwrap()
 }
 
-// `buffered_local_session_ids` / `buffered_remote_sessions`〔散文墓碑〕那两条随函数删了（F5 对账改在各条订阅自己的重放里）。
-
 // === Batch5-F19：build_priority_chunks ===
 
 #[test]

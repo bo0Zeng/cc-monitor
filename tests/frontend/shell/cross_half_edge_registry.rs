@@ -56,9 +56,6 @@
 /// 实测每一对都**两两不同**，所以「文件对」是够用且稳定的键。
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
-    // ── monitor → backend：monitor 的判据去读后端的源码 ─────────────────
-    // `tmux_tests.rs → observe/watcher.rs` 那一条（`TMUX_LS_FMT` 双写点对拍，路径藏在 `backend_watcher_src`〔散文墓碑〕 宏里）
-    //   出列：列会话的解析整族搬进后端，格式串只剩后端一个家，那条对拍与那个宏随之删了。
     (
         "monitor→backend",
         "tests/frontend/shell/backend_kill_tests.rs",
@@ -293,9 +290,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `shell_tests.rs::the_exists_code_is_the_backends_one`。两侧各写一份 `exists`；\
          失效方向：两份漂开 ⇒ 就地改名 / 新建撞名时那一格下面说的是系统那句长话，不是「x 已存在」。",
     ),
-    // `tests/frontend/shell/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
-    //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
-    //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
     // `tests/frontend/shell/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
     //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
     //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。

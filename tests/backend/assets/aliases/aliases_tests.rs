@@ -126,7 +126,6 @@ fn tmp_home(tag: &str) -> TmpHome {
     TmpHome(d)
 }
 
-// 这里原来是「形状围栏」那一条（`validate_alias_line`〔散文墓碑〕只放行
 // `名字() { ccm <已知修饰...> "$@"; }` 一形）与四条 `apply(dry_run)` 的判据。前端不再递 shell 文本
 // （递的是结构，文本由 `render` 出），围栏没有输入了 ⇒ 挡注入那件事换成下面
 // `injection_attempts_arrive_as_plain_args_in_bash`：**让真 bash 执行渲染出来的那一行**，

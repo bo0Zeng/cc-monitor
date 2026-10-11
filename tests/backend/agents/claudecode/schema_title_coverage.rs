@@ -67,13 +67,6 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         bearers.len()
     );
 
-    // 标题抽取**搬家了**：本机历史清单从 monitor 进程内（`history·rs::analyze_jsonl`〔散文墓碑〕，
-    //   按 `JsonlRecord::<变体>` 分臂）搬进本机常驻后端，本机与远端同一个函数
-    //   （`src/backend/observe/history_query.rs::analyze_session`，按记录的**线上类型名**分臂）。
-    //   ⇒ 本条的「被接住」从「`history.rs` 里有 `JsonlRecord::<变体>`」换成「后端那个函数里有 `Some("<线上类型名>")` 那一臂」；
-    //   人群（带 `*title` 字段的变体）照旧从记录的 schema（今天在 `agents/claudecode/schema.rs`）抠，线上类型名从它上面那行 `serde(rename)` 抠 —— 两份源码异源。
-    //   清单缓存那一刀之后 `analyze_session` 只转调 `ListingEntry::scan`，逐行分臂住 `observe/listing_scan.rs` 的 `SessionScan::absorb`
-    //   （变长只扫尾巴也走它）⇒ 「被接住」看那一个方法体。
     let backend = include_str!("../../../../src/backend/observe/listing_scan.rs");
     let at = guard_core::find_pinned(backend, "pub(super) fn absorb(&mut self, line: &str) {")
         .unwrap_or_else(|e| panic!("后端逐行吸收记录的那个方法不是恰好一处：{e}"));

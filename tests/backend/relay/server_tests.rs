@@ -3167,11 +3167,6 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（写侧 ＝ 每台机器那台后端的 `accounts/upstream_select/file_face.rs`，
-/// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
-/// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
-/// 这个共同祖先上会合**：backend 单向依赖 `src/common/*`，够得着它们。
-///
 /// # ⚠⚠ 它**买不到**什么 —— 逐字落在这里，别读宽〔PM `裁二`，09-02〕
 ///
 /// > `KH2C2` 要读成「**写侧产出的那份文件**能让那个账号的会话走到中转」，

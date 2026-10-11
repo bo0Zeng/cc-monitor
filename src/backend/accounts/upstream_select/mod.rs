@@ -1,5 +1,4 @@
 //! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**。
-//! 原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
 //!
 //! 从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
 //! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
@@ -84,13 +83,11 @@ use table::{RoutingTable, Row};
 /// 那份文件的行挂在哪一家名下由适配层那一格声明（`agents::DefaultUpstream::owns_credentials_file`），
 /// 这里只取它的路由名；本层不认识任何一家的名字。
 ///
-/// 它**只有这一份**：先前 monitor 那一侧决定「这次拉起要不要注入」时另写一份（`payload::APIKEY_TABLE_AGENT`〔散文墓碑〕），
 /// 由一条跨半边判据现抠字面量对拍；那张决策表搬进本层（[`endpoint`]）之后，读它的只剩本层自己。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
 pub(crate) const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();
 
-// 这里原先是 `AgentUpstream` 与每 agent 一行的默认上游表 `AGENT_UPSTREAMS`〔散文墓碑〕。
 // 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
 // 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 

@@ -343,16 +343,6 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// 本机那一份的写者也换成了本机常驻后端（「每台机器一个写者 ＝ 那台的后端」）⇒
-// monitor 那侧 `creds_store::write_key_at`〔散文墓碑〕删了，它身上三条**本侧没有同形**的写路判据逐条搬到这里
-// （写的是同一份 `creds_core::store` 规则，被测换成这一侧唯一那个写口）。其余几条本侧早有同形：
-// 写的那一刻读盘 / 别的行不动（`other_rows_and_unknown_keys_survive_…`）· 出生即只给本人（`the_written_file_is_owner_only_…`）·
-// Base URL（`base_url_is_written_with_the_key_…`）· 说不出账号拒写（`bad_arguments_are_refused_…`）。
-// 要求住址：`INVARIANTS §42`（每台机器上的程序写者恰好一个）。
-// ════════════════════════════════════════════════════════════════════════════
-
-/// ★★ `KS10` 行为那一半（原 monitor `a_program_write_keeps_everything_the_human_put_there`〔散文墓碑〕）：
 /// 人手编的顶层键 · 顶层那一把旧 key（`KH2C3`：读得出来的一行，但**不再是写进去的地方**）一个字节不动；
 /// 新的那一把落在 `accounts.<id>`；落盘按键名排序（`KS10②`）。期望全是手写字面量。
 #[test]
@@ -398,7 +388,6 @@ fn gp1_a_program_write_keeps_everything_the_human_put_there() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★★★ `K-R1` 写侧那一格（原 monitor `a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`〔散文墓碑〕）：
 /// 配一次 key 不许吃掉**同一行**上人手编的 `auth_style` / `base_url` / 未知键；别的行一个字节不动，
 /// 也不许凭空给别的行加 `auth_style`。并且装回上游选择那一层之后那两格真的读得出来（不只是「JSON 里还在」）。
 #[test]
@@ -454,7 +443,6 @@ fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★★★ `KH2C3` 后半（原 monitor `the_write_side_no_longer_targets_the_legacy_top_level_slot`〔散文墓碑〕）：
 /// 结构 —— 这一侧写口生产段里 `store::merge_key(`（写顶层那一格的唯一入口）零处，`merge_account_key(` 在（正控）；
 /// 行为 —— 全新文件写一次，顶层那一格根本不被创建。
 #[test]
@@ -494,7 +482,6 @@ fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
 
 /// E2：「表里有哪几行」只有一份 —— [`rows_at`] == 上游选择装表**真收进表**的那几行。
 ///
-/// 守的要求：必须拆 1（monitor `history::apikey_rows_at`〔散文墓碑〕另算人群，头注自认
 /// 「`base_url` 写错的号界面说经本机中转、后端 404」）· 「业务解释只有一个家」。
 /// 夹具里四行进不了表（`base_url` 坏 · 明文非回环 · `auth_style` 认不出 · id 当不了路由段）、一行能进；
 /// 正控：`store::read_accounts` 读得到全部五行（旧口径下前三行都算「有行」）。
@@ -527,7 +514,6 @@ fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 〔US1 · 4D，原 monitor `creds_store_tests::what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕〕
 /// **写口真写下的那一行，正是起会话那一发的成品用上的那一行**（跨两个读者：写口 `answer_set_at` → 人群 `rows_at` → 决策 `decide_launch`）。
 /// 两侧异源：写的是写口，读的是上游选择装表那一条 ＋ 决策表。只配了一个号 ⇒ 另一个号不许被顺带配上；不落 `default` 那一行。
 #[test]

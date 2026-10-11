@@ -106,7 +106,6 @@ pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
     plan_install(shell, "", &what, home)
 }
 
-// 这里原来是 `ProfileKind`（PS 5.1 / PS 7 / 自定义 三个标签）与 `ProfileScan`〔散文墓碑〕
 // （一份 profile 的扫描结果，给终端集成那两条命令出参）。今天候选只有一份来历（`shell_dialect::ShellDialect::startup_files`），
 // 扫描结果是 `account_aliases::StartupFile` ＋ 上面的 [`BlockState`]；「哪一份是 PS 5.1 的」这个标签没有消费者了。
 
@@ -207,7 +206,6 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// # 为什么需要它
 ///
 /// 那三条命令（今天是 `aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」；
-/// 从前叫 `cc_integration_*`〔散文墓碑〕）收的是 **webview 给的字符串**（前端那一格是用户可输入的
 /// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：装往那里写、
 /// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
 /// 而**远端**那条同名功能一直有围栏（从前 `sftp.rs`：「profile 只能是 home 下的文件名」）。
@@ -293,12 +291,6 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     Ok(expanded)
 }
 
-// 这里原来住着 `$PROFILE` 的两份认法 ＋ 一段扫描：`discover_profiles` · `legacy_profile_paths` · `scan_legacy_profiles`〔散文墓碑〕
-// （前者认 PS 5.1 / 7 的 `Microsoft.PowerShell_profile.ps1`；后者把同目录的 `profile.ps1` 当成「v1.7.0-1.7.1 装错的位置」），
-// 以及扫一份的 `scan_path` / `scan_profile`〔散文墓碑〕。`$PROFILE` 在哪今天**只有** `shell_dialect.rs` 的 PowerShell 那一臂答（四份都列：
-// `profile.ps1` 是合法的 AllHosts 位置，不是「装错了」—— 从前两处认法正是在这一格上互相矛盾）；
-// 扫一份的判内容那一半是上面的 [`block_state`]，读盘那一次在 `account_aliases::rc_candidates_in`。
-
 // `K-R132` 那一节「装上了、能跑、用户敲不到」（用户级 PATH 那一格）留在 monitor（`profile_installer.rs`，本机后端的引导）。
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -321,7 +313,6 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // ## 机制
 //
-// 那时的落盘原语 `atomic_write_string`〔散文墓碑〕走标准库的整份写，写的是**不带 BOM 的 UTF-8**
 // （今天落盘在后端 `files-put`，同样原样写字节、不加 BOM）。
 // 而 **Windows PowerShell 5.1 把不带 BOM 的 `.ps1` 按系统 ANSI 代码页解**
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
@@ -524,12 +515,6 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
         super::fence::Layout::PowerShell,
     )
 }
-
-// 这里原来是本机用户文件的原子写原语 `atomic_write_string`〔散文墓碑〕与它的
-// 两份平台副本 `atomic_replace_path`〔散文墓碑〕（Windows `ReplaceFileW` 保 ACL · POSIX `rename`）。
-// 只有后端的文件管理部分写文件（本机也算）⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
-// 全改经后端写（`user_files`），三件零调用方 ⇒ 走。「Windows 上替换要保住 explicit ACE」那条性质
-// 跟着写搬到了后端（`control/files_write.rs::swap_in` 的 `cfg(windows)` 那一支）。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // **别名块的真相**：从 `sftp.rs` 搬来（那份文件已经不做 SFTP，B §2 第 12 条）

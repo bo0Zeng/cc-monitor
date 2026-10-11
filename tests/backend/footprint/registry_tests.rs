@@ -964,7 +964,6 @@ fn every_carrier_says_which_one_it_is() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Why {
     /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
-    /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`〔散文墓碑〕（已退役）、
     /// `parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
     /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
@@ -1028,7 +1027,7 @@ const SITES: &[(&str, Why, usize)] = &[
     // `src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
     ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
     // 下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
-    ("src/backend/footprint/registry.rs", Why::OldId, 2),
+    ("src/backend/footprint/registry.rs", Why::OldId, 1),
     ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
     // `tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
@@ -1961,10 +1960,6 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
 /// 会原样往上传 `None`（**一条命令都不吐**），界面那一格显示「拿不到落点」
 /// 而不是一个编出来的目录 —— **指错目录与根本没补，在用户终端上是同一个结果**。
 ///
-/// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
-/// 不是「盘上那份**真的**在哪」。两者对不对得上由
-/// `profile_installer` 那条跨文件判据钉住（它去读真正调
-/// `extract_embedded_to` 的那一行源码；从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
 fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS.iter() {

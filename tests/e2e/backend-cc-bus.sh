@@ -321,8 +321,6 @@ echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc
 #   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
 #   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份），它再起 PATH 上的
 #   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
-# 分流只看 argv、不看 argv[0] ⇒ 叫 `ccm` 还是叫 `cc-monitor-backend` 走同一条规则；
-#   从前的入口②（`cc-monitor-backend ccm …`）〔散文墓碑〕。两个名字同形由下面 [17] 真跑判。
 _SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
 mkdir -p "$_SB" "$_SH" "$_SW/proj"
 ln -sf "$D" "$_SB/ccm"

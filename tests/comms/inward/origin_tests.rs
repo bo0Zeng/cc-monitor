@@ -134,12 +134,6 @@ fn a_blank_name_is_neither_local_nor_remote() {
     //   `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」⇒「没说」要么被拒、
     //   要么由调用点补默认，**不许在类型这一层悄悄当成本机**。
     //
-    // 🔴 **它钉的值换了：`Unspecified` → 空白名。**
-    //   `null` 已经在反序列化那一层被拒（`A` 组那一格），构造不出来；
-    //   而空串是它退役之后线上**唯一**还能表达「没说」的值 —— 而且它在盘上
-    //   **真的**被当过本机：`subagent·rs` 那个 `Backend::for_origin`〔散文墓碑〕上一拍逐字写着
-    //   「`origin` 缺省 / **空串** = 本机」。⇒ 只删 `null` 不管空串，
-    //   等于把同一个洞从一个值搬到另一个值。
     for blank in ["", " ", "\t", "\n  "] {
         let u = Origin(blank.to_string());
         assert!(
@@ -194,14 +188,6 @@ fn local_and_remote_are_exactly_complementary() {
 // 🔴 **93 → 88，降的 5 处逐处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
 //
-//    五处全部出自「同义双份命令合成一条带 origin 的」那一刀 —— 被合掉的那 5 条
-//    远端命令，签名从 `origin: String` 变成了 `host: &str`：
-//      · `remote_branch.rs` 的 `create_remote_branch_session`〔散文墓碑〕
-//      · `remote_history.rs` 的 `delete_remote_history_session`〔散文墓碑〕
-//      · `stream_remote_history_sessions`〔散文墓碑〕（随远端会话清单搬进本机后端一起删了）
-//      · `stream_read_remote_session`〔散文墓碑〕（函数也删了：本机远端合成一条，后来整份读这件事也随查看器改成骨架 ＋ 按视口取没了）
-//      · `list_remote_mcp_project_dirs`〔散文墓碑〕（本机远端同一条 `mcp-read`，那个远端分支删了）
-//
 // 🔴 **为什么参数名从 `origin` 改成 `host`，而不是原样留着**：
 //    这五个函数今天拿到的是**已经分过本机**的机器名（分本机那一步住合并后那条命令里）。
 //    继续叫 `origin` 是句假话 —— `origin` 的取值域含 `"<local>"`，而这五处
@@ -211,11 +197,6 @@ fn local_and_remote_are_exactly_complementary() {
 //    93 − 5 = 88 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
 // 🔴 **88 → 86，降的 2 处逐处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
-//
-//    两处都出自「`origin` 归一的**最后两对**同义双份命令合成一条带 origin 的」那一刀 ——
-//    被合掉的那 2 条远端命令，签名从 `origin: String` 变成了 `host: &str`：
-//      · `write_remote_mcp_server`〔散文墓碑〕（原住 `mcp.rs`，随 MCP 进后端删了）
-//      · `remove_remote_mcp_server`〔散文墓碑〕（同上）
 //
 //    改名的理由与上一拍那五处**逐字同形**：这两个函数今天拿到的是**已经分过本机**的
 //    机器名（分本机那一步住合并后那条命令里），继续叫 `origin` 是句假话
@@ -229,9 +210,6 @@ fn local_and_remote_are_exactly_complementary() {
 //
 // 🔴 **86 → 85，降的 1 处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
-//
-//    那一处是**全仓最后一条在入方向收 `Option<String>` origin 的命令**：
-//      · `subagent·rs` 的 `load_subagent`〔散文墓碑〕（`origin: Option<String>` → `origin: crate::origin::Origin`）
 //
 //    🔴 **它与上两拍那七处不是同一件事，别读成同一形**：上两拍是「远端那条命令拿到的
 //    已经是分过本机的机器名 ⇒ 改叫 `host`」（名字说真话）；这一拍是「这条命令**本来**

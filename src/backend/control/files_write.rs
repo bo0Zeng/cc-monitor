@@ -2111,7 +2111,6 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
 /// 「盘上有字节、读出来却是空的」那一句（v1.7.9 那次事故：OneDrive 占位 / 杀毒软件锁着）。
 ///
 /// 🔴 继续走的后果是拿「空 ＋ 新内容」整份盖掉原文 —— 读改写的读那一半与写那一半都在这里停。
-/// 从前住 monitor 的 `fenced_block::LocalFile::read`〔散文墓碑〕，随写规则一起搬到后端。
 fn hollow_read(p: &Path, on_disk: u64) -> String {
     copy_text(
         "beFilesWrite.put.hollow",
@@ -2955,7 +2954,6 @@ fn path_of(
 
 /// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。
 ///
-/// 〔散文墓碑〕这里原来写着「`rel` **只收 UTF-8 字符串**」—— 那时 [`lexical_in_root`]
 /// 的入参是 `&str`。路径解析换成按 `Path` 逐段判之后，相对段与 `root` 同形（字符串或 `{"b16": …}`），
 /// 取法住 [`rel_of`]。
 fn answer_create(args: &serde_json::Value) -> Answer {

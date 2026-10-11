@@ -8,9 +8,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
-/// `src/frontend/shell/src/stream_source/` 的解析处逐字一致，由 monitor 侧
-/// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RemovalCause {
@@ -292,7 +289,6 @@ pub enum Frame {
         /// （生产路径**确实**给空表）与
         /// `wire_tests.rs::dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
         /// （**给了**空表就得到旧字节）两条**合起来**钉住 —— 缺任一条这句话都不成立。
-        /// ⚠ 原先写的是 `hello_bytes_for_claude_are_frozen`〔散文墓碑〕，
         /// **那个名字全仓零定义**，而这句话是**当现状在说**，还撑着一条**契约级**结论
         /// （仓外 aterm 的 hello fixture 按精确字节对，契约冻结 2026-07-18）。
         /// `S5` 落地时往这里填，**不要再加第二个目录字段**。

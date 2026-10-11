@@ -293,9 +293,6 @@ fn the_hello_witness_can_only_come_from_a_hello_frame() {
 /// ★ **跨轨对拍**：`tests/e2e/inbound-backend-frames.sh` 喂给真后端的那条 ping 行，
 /// 必须**逐字节**等于本模块编码器的产物。
 ///
-/// 没有这条，那套 e2e 只证明了「backend 认得我手写的那串 JSON」，
-/// 证明不了「monitor 真发出去的那串 JSON」—— 两者一旦漂开，e2e 会**继续全绿**
-/// 而生产里一条命令都发不出去。同 `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 的思路。
 #[test]
 fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
     const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
@@ -366,11 +363,6 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
 
 /// ★ U8a-2c-1：同上，但钉的是**业务命令**那一行。
 ///
-/// ping 那条证明「backend 认得 monitor 编的信封」；这条证明的是
-/// **界面真正会发的那条 `launch`**（此前是 monitor 的 `backend_send_into`〔散文墓碑〕，今天是
-/// `src/frontend/ui/tmux-control.ts::sendInto` / `sendKeys` 说的 `send-into`）。
-/// 少了它，那套 e2e 只验证了「backend 认得我手写的 launch 形状」——
-/// 而发送那一侧的键名一改，e2e 会继续全绿而生产里一条命令都发不出去。
 #[test]
 fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
     const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
@@ -384,11 +376,6 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
         literal.len() > 40,
         "抽到的字面量太短（{literal:?}）—— 抽取坏了"
     );
-    // 这一格原来比的是「e2e 那一行 == monitor 编码器 `launch_args`〔散文墓碑〕的产物」。
-    //   就地 resume / 送键迁到界面之后，发这条的是 `src/frontend/ui/tmux-control.ts`（经通道，monitor 那一跳只把 JSON 原样
-    //   转成 `args`）⇒ 「真在发的形状」的源头换成跨语言金样 `tests/__fixtures__/tmux-control.golden.json`
-    //   里 `launch` 的请求样例（TS 那侧逐字断言它发的就是这一份）。本格比：e2e 那一行的 `args` 键集合 == 金样那一份，
-    //   mode 是 `send-into`，且信封是 monitor 那一跳会产出的那一行（`encode_request` 重编一遍逐字节相等）。
     let line: serde_json::Value = serde_json::from_str(literal).expect("e2e 那一行不是 JSON");
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
@@ -483,15 +470,6 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
              加/删入方向命令时这两处要一起动 —— 否则新命令在**唯一跑真进程的那一层**漏测。"
     );
 }
-
-// 这里原来住着 `KR104D1` 那条跨轨对拍（抓屏的参数构造器 `capture_pane_args` ↔ 后端 `REGISTRY` 那一格 `fields`）〔散文墓碑〕。
-//   monitor 侧那个构造器随发送端删了；抓屏今天走终端管理那一条 `terminal-preview`（界面 `src/frontend/ui/terminal-reads.ts`），
-//   形状由跨语言金样 `tests/__fixtures__/terminals.golden.json` 钉着（后端 `terminals_tests.rs` · 界面 `terminal-reads.vitest.ts` 读同一份）。
-
-// 这里原来住着「`launch_args`〔散文墓碑〕吐的键名恰好是后端解析器认的那几个」（跨轨读后端 `control/launch.rs`）。
-//   monitor 侧那个构造器随发送端迁到界面删了；「发出去的键 == 后端解析器认的键」改由跨语言金样钉：
-//   后端侧 `tests/backend/control/launch_tests.rs` 让金样的请求样例（两个 mode 各一份）过**生产**解析器，
-//   界面侧 `tests/frontend/ui/tmux-control.vitest.ts` 断言它发的就是那一份。
 
 #[test]
 fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {

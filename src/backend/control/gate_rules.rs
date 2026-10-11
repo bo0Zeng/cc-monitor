@@ -128,8 +128,6 @@ pub(crate) fn gate_client(declared: &str, requester: Option<&str>) -> ClientVerd
     }
 }
 
-// `needs_remote_sid`〔散文墓碑〕删：它是给「两侧同一个取反」立的名字，monitor 那一侧没了之后零调用方。
-
 /// Gate 2 union：名字命中 **或** 远端 `@ccm_sid` 已设。
 ///
 /// `remote_sid` 的三种取值都有意义，**别把它们折成 bool**：

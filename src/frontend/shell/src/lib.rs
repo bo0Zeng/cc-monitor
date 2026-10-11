@@ -18,7 +18,6 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 都在 `setup()` 里 `app.manage`；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
-// `acct_iso_deploy`〔散文墓碑〕删了：账号库今天由那台后端自己管（`src/backend/accounts/manage/`），不再部署外部工具。
 // `adapter`（monitor 那一份 agent 适配表 ＋ 画像生成器，`adapter/claude_code.rs` · `adapter/codex.rs`）删了：
 //   起会话事实只住后端适配层（`src/backend/agents/<名>/resume.rs`，注册表 `Adapter.launch`），monitor 读它生成的
 //   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
@@ -46,13 +45,11 @@ mod ui_contract;
 mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
+mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 pub mod chan;
-mod config;
-// `mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
-//   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
-mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
+mod config;
 mod data_paths;
 mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform/notify.rs）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
@@ -67,16 +64,8 @@ mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostSc
                       //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
-// `hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
-// `apikey_remote`〔散文墓碑〕删了：它最后只剩发送口，唯一的调用方（起会话那一侧问 `launch-endpoint`）随本机起会话搬进后端。
-// `backend/` 这个目录从壳里消失了（从前住着 monitor 侧「后端边界」的九份：它们是 monitor 自己的代码，名字却叫 backend）。
-//   逐份回真住址（都在壳根，宿主无关 ＋ 平台无关两道判据照旧看着它们：`backend_client_guard_tests.rs`）：
-//   调后端的客户端 —— `inbound_client`（长连接入方向的 wire 客户端）· `frame_query`（只读查询发送端）· `backend_route`（通信层成员，
-//   分流器，住 `src/comms/inward/`）；Tauri 命令层 —— `backend_control`（起 / 停 / 状态）· `cc_bus`（两句说法与 id 规则）；
-//   宿主 —— `local_backend`（本机后端的起与看住）。跨轨对拍锚点 `agent_profile_parity`〔散文墓碑〕 随 monitor 那份适配表删了（对拍随家进了后端 `agents_tests.rs`）。
-//   Gate 1 前检 `tmux` 与 monitor 那一轨 `gate2_parity` 删了（子步 1：门只在后端）。
 mod backend_control;
 mod cc_bus;
 mod frame_query;
@@ -123,24 +112,14 @@ mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/�
 mod local_origin_registry;
 mod logging;
 mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
-                   // `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
-                   // `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
-                   //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-              // `plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
-              //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
 mod profile_installer;
-// `pubkey`〔散文墓碑〕（F50 公钥推送）进了本机后端：帧命令 `pubkey-push`（`src/backend/assets/pubkey.rs`），界面经通道直问。
 // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
-// `mod remote_history;`〔散文墓碑〕删：最后一个函数（按名字核「这台配置过」）随子 agent 那条命令退役。
+mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
-                           // `mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
-                           // 会话起停的成品缓存（后端裁、monitor 只转交 ＋ F5 重放）。替掉 `session_map` 本机活会话表〔散文墓碑〕
-                           //   与 `session_facts` 容器账〔散文墓碑〕：两本账的裁决与记账都搬进了那台后端（`observe/session_ledger.rs`）。
-mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod session_book;
 mod session_tap;
 mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
@@ -153,8 +132,6 @@ mod spawn_managed;
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
-// `verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
-//   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
 // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
@@ -181,8 +158,6 @@ mod frame_tally;
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
 // 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
-// `agent_dispatch_registry`〔散文墓碑〕（桌面侧「通用层认得出某个 adapter」逐条登记 ＋ 递减棘轮）退役：桌面侧没有适配器了，
-//   登记的人群清零；「通用层不按名字够某一家」那一条住后端 `agent_locality_guard`。
 /// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
 ///
 /// ⚠ **插在这里、不要插在上面那条注释与 `#[cfg(test)]` 之间。** U1a 初版就插错了位置，
@@ -271,6 +246,9 @@ mod plugin_class_registry;
 #[path = "../../../../tests/frontend/shell/polling_registry.rs"]
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（backend 那条零定时器护栏点名要「单独论证」的那半）
 #[cfg(test)]
+#[path = "../../../../tests/frontend/shell/pub_reader_registry.rs"]
+mod pub_reader_registry; // 后端 · 壳 · 共享 crate 的 `pub` 项要有产品读者（只被测试读算零）
+#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/quote_singleton_guard.rs"]
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 #[cfg(test)]
@@ -282,11 +260,6 @@ mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/session_name_registry.rs"]
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
-                           // `sftp_move_ledger`〔散文墓碑〕（K-R78：那 14 处 SFTP 拨号今天各自卡在哪 —— 乙为什么没搬 + 甲的四条挡路石）
-                           //   **退役**：那 14 处全搬了（界面进程零 SFTP），底账要记的那件事做完了；它的挡路石各自怎么被拆的写在 SR1b 的记录里。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/pub_reader_registry.rs"]
-mod pub_reader_registry; // 后端 · 壳 · 共享 crate 的 `pub` 项要有产品读者（只被测试读算零）
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/shared_crate_registry.rs"]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
@@ -295,7 +268,6 @@ mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]
 mod structural_scan;
-// `mod subagent;`〔散文墓碑〕删：子 agent 那一份（列 ＋ 挑 ＋ 读 ＋ 解析）由那台后端按运行读（`history-run`）出成品，界面经通道直问。
 // 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/swallow_registry.rs"]
@@ -305,7 +277,6 @@ mod swallow_registry;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sync_command_registry.rs"]
 mod sync_command_registry;
-// `mod session_skeleton;`〔散文墓碑〕删：按偏移 / 按行号取正文由那台后端出记录行（`history-page` · `history-lines`），界面经通道直问。
 // 大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/frontend/ui/session-reads.ts`）。
 // 远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
@@ -314,7 +285,6 @@ mod snapshot_resume;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/tmux_backend_gate_guard.rs"]
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
-                             // `tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
 mod utils;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/write_site_registry.rs"]
@@ -839,7 +809,6 @@ pub fn run() {
             // `app.manage(session_map.clone())` 也删了，但当年的历史清单命令也接
             // `State<Arc<SessionMap>>`，导致历史浏览器打不开，报"state not managed
             // for field `map`"。这里补回去。那两条命令退役了（清单归本机后端），`SessionMap` 仍有别的命令接。
-            // `app.manage(session_map)`〔散文墓碑〕那一行删了：本机活会话表是进程级的一张（`session_map::local()`），命令直接读它。
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
             // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
@@ -862,9 +831,6 @@ pub fn run() {
             config::patch_config,
             config::machine_table_try,
             // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
-            // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
-            // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
-            //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
@@ -895,11 +861,6 @@ pub fn run() {
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
-            // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。
-            //    `R87` 裁定它住 Tauri 命令 —— 与别名块那几条同族（今天是 `aliases_block_*`，从前叫
-            //    `cc_integration_*`〔散文墓碑〕）
-            //    （「往用户的 shell profile 里写」与「往用户级 PATH 里写一段」是同一族动作，
-            //    而前者已经在这儿了；再给同一族动作另起一条路本身就违反 `K33`）。
             ccm_user_path_status,
             ccm_user_path_add,
             ccm_user_path_remove,
@@ -935,7 +896,6 @@ pub fn run() {
             // 设置页「终端」那一行的事实（挑终端的判定住平台层）。
             launch::terminal_choices,
             launch::terminal_dial,
-            // 池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了；
             // 最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。
             // 🔴 `24e` 第二刀（第三段）：**原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
@@ -1058,9 +1018,6 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
 /// 重放缓冲（[`event_replay::EventReplay`]）收东西的那几个口：会话成品（`session_book` 的出口线程 → `on_lifecycle`）·
 /// 中转抄出来的 tap · 测试连接进度 · 终端画面。产品在 setup 里调一次；截图台架的无头壳（`shots_shell`）也调这一份，不另接一遍。
 pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
-    // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
-    //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
-    //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
     let (book_tx, book_rx) = std::sync::mpsc::channel::<session_book::Out>();
     session_book::install_sink(book_tx);
 
@@ -1404,15 +1361,6 @@ impl SkipRuns {
     }
 }
 
-// 墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
-// 按 origin 交那台机器的后端；本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`
-//   比 hello 的 `host_env`），核路径那一问由连接本身答 ⇒ 界面经通道直接发 `apikey-key-set`（`src/frontend/ui/apikey-reads.ts::writeApikeyKey`），
-//   账号 id 由后端推（`acct_core::apikey_account_id_of_dir`）。monitor 里从此没有明文 key 的具名绑定。
-//   `KH2C1` 前端那一侧的机检（它的旧名 `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕）照旧在 `accounts-section.vitest.ts`。
-
-// 别名一族六条（`aliases_render` / `_read` / `_install` / `aliases_block_*`〔散文墓碑〕）退役：
-//   规则 · 方言 · 围栏住那台机器的后端（`src/backend/assets/aliases/`），界面经 `chan.call(origin, "aliases-*")` 直问（`src/frontend/ui/alias-reads.ts`）。
-
 #[tauri::command]
 fn forget_session(
     session_id: String,
@@ -1630,9 +1578,6 @@ fn pct_encode(s: &str) -> String {
     out
 }
 
-// 独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
-//   `session-lines/<sid>`（`src/frontend/ui/entry-viewer.ts`），留存由那条订阅当场交。
-
 /// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
 /// 两个平台臂（Windows 的 AttachThreadInput 那套 · 别处 Tauri 自己的 `set_focus`）住 `platform/window.rs::bring_to_front`，头注随之。
 #[tauri::command]
@@ -1641,9 +1586,6 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
         async move { Ok(crate::platform::window::bring_to_front(app).await?) }.await;
     r.map_err(|s| s.named("bring_monitor_to_front"))
 }
-
-// `list_session_activity`〔散文墓碑〕· `list_active_sessions`〔散文墓碑〕两条命令退役：本机活会话的骨架与初始灯
-//   是会话流里的 `live` / `activity` 成品（就绪点按成品缓存重放），与远端同一条路。
 
 /// 拉本机会话的终端窗口：点那一刻现走那个 claude 往上的进程链（`bind::bring_local_window`，与远端那一格同一条规则），
 /// 校验、拉前。会话账里没有它的进程号（不在活集里）⇒ 「没登记」。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
@@ -1703,7 +1645,6 @@ async fn bring_remote_terminal_to_front(
 
 // === v1.7：PowerShell profile cc 集成 IPC ===
 //
-// 这里原来是「终端集成」那五条命令（`cc_integration_*`〔散文墓碑〕：状态 · 扫一份 · 预览 · 装 · 卸）
 // 与它们的三个出参类型。它们办的是**别名块**，并进了别名同一族命令面；
 // 那一族今天住那台机器的后端（`assets/aliases/`，帧命令 `aliases-*`）。
 // 「v1.7.0-1.7.1 装错位置」那一段遗留扫描随之删了 —— 每份候选都带块的现状，块装在哪几份照实说。

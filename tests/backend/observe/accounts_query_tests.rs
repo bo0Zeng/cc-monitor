@@ -1795,7 +1795,6 @@ fn both_readers_of_the_manifest_see_the_same_accounts() {
 // monitor 那份本机 manifest 参照实现删了 —— 挂在它身上的三个锚点改指这里（现存实现）
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求：「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
 // （零生产调用方的本机参照实现）删，**挂着的判据锚点改指现存实现**」。下面三条的断言逐字搬自 monitor
 // `tests/frontend/shell/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
 

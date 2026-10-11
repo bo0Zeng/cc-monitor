@@ -21,10 +21,6 @@
 //!
 //! 1. **反向锚点**：backend 侧的身份门**必须还在**。删了它就红 ——
 //!    从「不许出现」翻成「必须存在」，是 F03 之后前提变了的直接后果。
-//! 2. **禁令整个翻面了**（F04b 切 kill、**F04c 切 send-keys**）：定框 C6
-//!    「先搬 Gate 2，再切 kill / send-keys」**走完了**。今天钉的是反向 ——
-//!    **两条命令都必须走后端，不许退回**
-//!    （原是 `kill_now_routes_through_the_backend` / `send_keys_now_routes_through_the_backend` 两条〔散文墓碑〕，
 //! 随那两条命令迁到界面翻面了，见第 4 条）。
 //!    ★★ **`K-R72`（09-12）：那两条又各加了一格 —— 回潮闸。**
 //!    `C7` 那条过渡期 SSH 回落**删了**（`K-R54` 裁定表第 1 · 2 处），于是这两条判据
@@ -39,13 +35,6 @@
 //!    （`出现了 Gate 3 / kill 的标志 ["session_windows", "kill-session"] —— 这多半是好事`），
 //!    于是按它自己的要求翻面：从「不许出现」改成 [`the_backend_now_has_gate3`]（**不许消失**）。
 //!    ⚠ **它红了不是误报，是它的岗位。** 删掉它才是错的处置（铁律 13）。
-//!
-//! 4. **两条命令整条迁到界面**（`src/frontend/ui/tmux-control.ts::killSession` 经通道直接说后端的 `kill`；
-//!    送键那一条后来连界面入口一起删了）：monitor 里 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕那两个函数体不在了，
-//!    第 2 条那两格（`kill_now_routes_through_the_backend` / `send_keys_now_routes_through_the_backend`〔散文墓碑〕）
-//!    翻成 [`tests::the_monitor_has_no_second_path_that_kills_a_session`]（monitor 里一处杀会话的 shell 串都没有）
-//!    ＋ [`tests::the_front_end_speaks_the_tmux_control_ops_only_through_one_module`]（界面只经一处说）。
-//!    第 1、3 条（后端的门还在路上）**一格不动** —— 界面从此只靠它们。
 //!
 //! ⚠ **约定型守卫**（同 `readonly_guard` 一族）：查的是符号名的源码形态，
 //! 挡得住「顺手把这两条改走后端」，挡不住「换个名字继续错」。**比没有强，别读成证明。**

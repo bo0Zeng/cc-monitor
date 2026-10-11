@@ -114,8 +114,6 @@ fn the_session_file_predicate_answers_both_ways() {
     }
 }
 
-// 「两份会话围栏逐字节相同」那一条退役：桥那一份（`claude_data_fence.rs`〔散文墓碑〕）随它最后一个用户进了后端，全仓只剩 `paths.rs` 这一份。
-
 // ── 围栏①（词法）──────────────────────────────────────────────────────
 
 #[test]
@@ -2050,7 +2048,6 @@ fn a_session_that_is_a_link_out_of_the_record_tree_is_not_followed() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 从 `profile_installer_tests.rs` 里那条 `install_preserves_explicit_acl_entries`〔散文墓碑〕搬来：
 /// v1.7.9 那次事故（原 profile 上的 explicit ACE 被暂存文件的继承 ACL 顶掉，用户读不了自己的 `$PROFILE`）。
 /// 写从 monitor 搬到后端之后，替换那一步在 Windows 上走**就地覆盖写**（`swap_in` 的 `cfg(windows)` 那一支）。
 /// ⚠ 本机门禁是 Linux，这一条只在 Windows 上跑（`winchk-backend` 只编不跑）—— 如实登记为「没跑过」。

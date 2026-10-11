@@ -141,11 +141,6 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
     );
 }
 
-// 这里原住着那四格「monitor 侧四层落地」的落地探针与它的反向自检：
-//   `a_capability_line_has_landed` · `layer_has_landed_at` · `the_capability_line_landing_probe_actually_bites`〔散文墓碑〕。
-//   它们只服务 ARCHITECTURE 那张进度表；那张表退役（架构文档不放进度，进度住），四格人群为空，
-//   探针连同自检一起删 —— 留着就是一条没人喂的恒真判据。量法与普查行同拍删（`STATUS_CELLS` / `MEASURE_CENSUS`）。
-
 /// **`doc/` 里点名的代码符号必须解析得到，且住在文档说的那个文件里。**
 ///
 /// **为什么建它**：08-06 把本会话逮到的每一处文档/计划腐坏按机制归了族，主力是

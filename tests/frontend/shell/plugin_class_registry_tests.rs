@@ -160,10 +160,6 @@ fn backend_command_names() -> Vec<String> {
     out
 }
 
-/// 🔴 **这里原来有三个从那份已删的 bash `ccm` 里抠的取法**
-/// （`ccm_agent_arms` 〔散文墓碑〕 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values` 〔散文墓碑〕）。
-/// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
-/// `src/backend/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
 ///
 /// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与后端之间造一条
 /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。

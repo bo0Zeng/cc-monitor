@@ -1101,9 +1101,6 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 // 🔴 `K-R69` / `KR69D1`：**本机那条 `ccm` 入口，与远端那条同源**
 // ═══════════════════════════════════════════════════════════════════════
 
-// `the_local_ccm_entry_is_a_copy_of_the_backend_itself` · `the_resolution_path_really_puts_the_local_ccm_entry_down`（两条都〔散文墓碑〕）
-//   随逐字节副本删了：本机没有「副本」可比，落点本身就是后端。下面那条改成直接问「解析出来的那份就是 `ccm`」。
-
 /// 要求：「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
 /// 真跑一趟 `resolve_or_extract`（旁边必没有 ⇒ 走内嵌那份）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节。
 #[test]
@@ -1169,8 +1166,6 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
         "`CCM_ENTRY_WORD` 变成了 {CCM_ENTRY_WORD:?} —— 上面两条会零命中地绿"
     );
 }
-
-// `remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
 
 /// P2z-Y3：**本机那条路不许自己写版本比较** —— 版本比对只有一个家（当年是 `sftp.rs` 的比标记函数，
 /// 那一族退役后是共享判定 `identity_decision`；今天住后端 `control/deploy_plan.rs`，本机那一份经 `place-verdict` 问手上那份字节自己）。
@@ -2982,10 +2977,6 @@ fn supervise(
 ) -> SuperviseHandle {
     supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
 }
-
-// 本机收割那四条判据（先摘后退 · 去抖两拍 · 容器交 `session_facts`〔散文墓碑〕· 本机 emitter 只查本机那一格）删了：
-//   收割与可重连的裁决搬进本机后端的会话账本，本机远端同一份（判据住 `tests/backend/observe/session_ledger_tests.rs`）；
-//   monitor 这一侧只剩「成品原样交出口」（`tests/frontend/shell/session_book_tests.rs`）。
 
 /// 宿主从 `byte_table` 取不到字节时交进来的是**那句拒绝的话**（`Err`）：
 /// `resolve_or_extract` 必须把它接在「旁边没有」那句后面交回，**两件事都说**，而且一个字节都不写。

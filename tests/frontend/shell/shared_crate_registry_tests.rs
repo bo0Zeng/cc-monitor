@@ -513,7 +513,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 /// | `usage-probe-acceptance.sh` | **11 过 / 0 败** | 2 条（F08 段 + 命令串产出） |
 ///
 /// ⇒ **7 条里 7 条都跑过了**（`local_backend` 那 4 条此前一次都没跑过 ——
-/// 其中 `the_local_tmux_frames_really_land_in_the_ledger` **首跑就是红的**，
+/// 其中一条**首跑就是红的**，
 /// 病根是「测试与后端不在同一台 tmux server」，已修，见 `P3 §0h-2`）。
 ///
 /// ★ 「触发者登记在册」与「真的有人跑」是两件事 —— 本条只守前者，

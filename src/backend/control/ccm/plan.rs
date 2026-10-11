@@ -86,10 +86,6 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：`[argv0]`（分流不看 argv0，
-    /// 入口② `[argv0, "ccm"]`〔散文墓碑〕）。取法住 [`super::self_invocation`]。
-    /// 从前还有一档「设了 `CCM_SELF` 就用那个值」—— 那个环境变量删了
-    /// （它只为远端 shim 存在）。
     pub(crate) self_argv: Vec<String>,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
     pub(crate) bus_scripts: Option<String>,

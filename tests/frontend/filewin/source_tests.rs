@@ -36,11 +36,6 @@ fn listing_a_local_dir_yields_dirs_first_then_case_insensitive_name() {
 
 /// 🔴 上面头注那个「两份实现」的缝 —— 这条把**两条路的真实输出**对拍成相等。
 ///
-/// 远端那一侧的序**曾经**由池子里那个私有排序函数产生（`sort_entries`〔散文墓碑〕已随列目录命令删了，
-/// 这条对拍今天钉的是「生产契约的定义」与 [`sort_rows`] 相等）；
-/// 这里够不着它，但够得着**它排过的结果**在类型上等价的那个形状 ——
-/// 于是拿同一组合成名字，一边喂 [`sort_rows`]，一边按生产契约的定义重算，
-/// 断言**两个序列逐项相等**。任何一侧改了排序规则，这条当场红。
 #[test]
 fn the_two_orderings_agree_on_a_synthetic_set() {
     let names = [
@@ -182,11 +177,6 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
 /// 🔴 它**不许**借 `std::path` —— 在 Windows 上 `Path` 把 `\` 也当分隔符，
 /// 于是远端一个名字里含反斜杠的目录会被切成两级（而 SFTP 的路径分隔符只有 `/`）。
 ///
-/// ⚠〔2026-09-23 本机侧退役〕本条原名是
-/// 〔散文墓碑〕`walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side`，
-/// 尾巴上那半判的是**本机**那一支（用 `Path` 造期望值、到顶回原值）。
-/// `parent_dir` 今天只吃一条字符串、只有一个算法 ⇒ 那半判的东西不在了。
-/// **反斜杠那一条一个字没动** —— 它才是这条判据承重的那一格。
 #[test]
 fn walking_up_uses_slashes_only_and_never_the_platform_separator() {
     // 相等断言，逐个：

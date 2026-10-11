@@ -253,7 +253,6 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_export", re: ident("relay_export"), why: "`ccm` 非得经 shell 那一趟把中转地址渲成 export 那一句" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },
-  // `start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个中转名字。〔散文墓碑〕
   // 起本机后端交的那份环境从前叫「中转那几格」，那一行摘了：它今天还交家 · Claude 目录，不再是中转的名字。
   { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（中转的 host ＋ 上游选择那只手）" },
   { name: "RelayAsk", re: ident("RelayAsk"), why: "`relay_endpoint_for` 的入参" },
@@ -271,9 +270,6 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
  * 原「层 2（账号）/ 账号层」改名「上游选择」—— 账号域里按号决定这一发的上游与凭据的那个口；纯命名清理，行为不变。
  *
  * 与上面那张 [`ACCOUNT_NAMES`] 同一套机制（`done` ⇒ 旧名在扫描面零命中、新名非零；同一个扫描面），
- * 多一格：**讲旧叫法来历的那几行**挂 `structural_scan.rs::PROSE_NAME_TOMBSTONE` 那块标记，本表放行它们 ——
- * 而放行的住址集合与 [`RENAME_TOMBSTONED_FILES`] **两向相等**（新挂一块墓碑想逃过本表 ⇒ 红）。
- * 标记串不在本文件里写第二份字面量：运行期从 Rust 那一份常量的声明行里抠（一个标记一处真相）。
  *
  * 人群：同波别的路新写一句「账号层」/「层 2」/`accounts::apikey`/`account_layer…` ⇒ 本表当场红（合并时对上）。
  *
@@ -336,33 +332,6 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
     state: "done",
   },
 ];
-
-/** 改名前那几条旧叫法**只许**活在这几份文件挂了墓碑标记的行里（讲来历）。两向相等。 */
-export const RENAME_TOMBSTONED_FILES = ["src/backend/accounts/upstream_select/mod.rs", "src/comms/outward/lib.rs"];
-
-/** 墓碑标记：从 `structural_scan.rs` 那一份常量声明里现抠（不在本文件写第二份字面量）。 */
-export function proseTombstoneMark(): string {
-  const src = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/structural_scan.rs"), "utf8");
-  const m = /pub const PROSE_NAME_TOMBSTONE: &str = "([^"]+)";/.exec(src);
-  if (!m) throw new Error("structural_scan.rs 里抠不出 PROSE_NAME_TOMBSTONE —— 常量改名或搬家了");
-  return m[1];
-}
-
-/** 同 [`hitsIn`]，但把带墓碑标记的行分开：`[未挂标记的命中, 挂了标记的命中所在文件]`。 */
-export function hitsSplitByTombstone(texts: Map<string, string>, re: RegExp, mark: string): [string[], Set<string>] {
-  const once = new RegExp(re.source, re.flags.replace("g", ""));
-  const live: string[] = [];
-  const tomb = new Set<string>();
-  for (const [p, t] of texts) {
-    if (!once.test(t)) continue;
-    for (const line of t.split("\n")) {
-      if (!once.test(line)) continue;
-      if (line.includes(mark)) tomb.add(p);
-      else live.push(`${p}: ${line.trim().slice(0, 160)}`);
-    }
-  }
-  return [live, tomb];
-}
 
 /**
  * 刻意不扫的（逐格写理由）。
@@ -476,9 +445,8 @@ describe("R3 · 账号 / 中转命名清账（术语归属）", () => {
 
 describe("「上游选择」改名", () => {
   const corpus = loadCorpus();
-  const mark = proseTombstoneMark();
 
-  it("正控：每条旧名认得出种进去的样本、认不出别义；墓碑行放行、同一行去掉标记就红", () => {
+  it("正控：每条旧名认得出种进去的样本、认不出别义", () => {
     const want: [string, string][] = [
       ["账号层", "中转里的账号层按这一行换 key"],
       ["层 2", "问层 2 要答案"],
@@ -506,24 +474,12 @@ describe("「上游选择」改名", () => {
       const row = UPSTREAM_SELECTION_NAMES.find((r) => r.old === old)!;
       expect(hitsIn(new Map([["x", sample]]), row.re), `「${old}」把别义「${sample}」认进来了`).toHaveLength(0);
     }
-    // 墓碑那一格两向：带标记 ⇒ 进放行集、不进命中；同一行去掉标记 ⇒ 进命中。
-    const row = UPSTREAM_SELECTION_NAMES[0];
-    const [liveT, tombT] = hitsSplitByTombstone(new Map([["t.rs", `原叫账号层。${mark}`]]), row.re, mark);
-    expect(liveT).toEqual([]);
-    expect([...tombT]).toEqual(["t.rs"]);
-    const [liveU, tombU] = hitsSplitByTombstone(new Map([["t.rs", "原叫账号层。"]]), row.re, mark);
-    expect(liveU).toHaveLength(1);
-    expect(tombU.size).toBe(0);
-    // 标记是从 Rust 那份常量抠出来的，不是空串（空串会让每一行都「带标记」）。
-    expect(mark.length).toBeGreaterThan(2);
   });
 
-  it("每条旧名：未挂墓碑的行零命中且新名在；挂了墓碑的住址 == RENAME_TOMBSTONED_FILES（两向）", () => {
+  it("每条旧名：盘上零命中且新名在", () => {
     const wrong: string[] = [];
-    const tombAll = new Set<string>();
     for (const row of UPSTREAM_SELECTION_NAMES) {
-      const [live, tomb] = hitsSplitByTombstone(corpus.texts, row.re, mark);
-      for (const t of tomb) tombAll.add(t);
+      const live = hitsIn(corpus.texts, row.re);
       if (row.state === "done") {
         if (live.length > 0) wrong.push(`「${row.old}」登记 done，盘上还有 ${live.length} 处：\n    ${live.slice(0, 12).join("\n    ")}`);
         if (row.freshRe && hitsIn(corpus.texts, row.freshRe).length === 0) wrong.push(`「${row.old}」新名「${row.fresh}」全仓零命中`);
@@ -532,8 +488,5 @@ describe("「上游选择」改名", () => {
       }
     }
     expect(wrong, wrong.join("\n")).toEqual([]);
-    expect([...tombAll].sort(), "讲旧叫法来历、挂了墓碑的住址对不上登记（新挂一块要来这里登记并说清为什么）").toEqual(
-      [...RENAME_TOMBSTONED_FILES].sort(),
-    );
   }, 60_000);
 });

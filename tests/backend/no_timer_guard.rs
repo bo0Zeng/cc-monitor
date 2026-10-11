@@ -449,14 +449,6 @@ mod f09_external_beat {
              头注多写一根而人群里没有 ⇒ 那是一句今天就假的话。"
         );
     }
-
-    // 〔删用量〕**`the_oneshot_watchdog_script_carries_no_loop` 这一条整删。**  〔散文墓碑〕
-    // 它自陈「**本条只盖 `control/oneshot_session.rs` 这一份文件**」，而那份文件随用量 ③ 轴
-    // （探针会话）整轴退役而整删 ⇒ **守卫没有标的了**，不是放宽。
-    // ⚠ 它守的性质（「交给 shell 的那条串不许自带节拍」）没有失去主人：
-    //   `platform/cfgless_guard` 的 `posix-shell-sh` 那根针仍盖着 argv 形的 `sh -c`，
-    //   而本模块上面那条 `shell_string_literals` 仍盖着含针表达式里的字面量。
-    //   今天本 crate 生产段里**一处 argv 形看门狗都没有**。
 }
 
 #[cfg(test)]

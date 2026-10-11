@@ -57,8 +57,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
           ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
-    // 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕那一行出表了（`K-R112` 写下的出表条件兑现）：
-    //   驾驶舱读名册 / 读收件箱都改走后端（`bus-state` / `bus-inbox`，转调 cc-bus 的机器可读读命令），monitor 本机不再起 `bash`。
     // `dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
     //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。〔墓碑 —— 那一行的要点：
     //   「界面拿一条 SSH 链路的唯一入口 … 起的是 `cc-monitor-backend` … argv 只有一个常量 flag，
@@ -120,8 +118,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           （`local_stdio_consumer`）。先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
           ★ 三条策略为什么是这三格：🔴 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    // `local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
-    //   monitor 不再起一次性本机后端。
     // `ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
     // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
     ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",

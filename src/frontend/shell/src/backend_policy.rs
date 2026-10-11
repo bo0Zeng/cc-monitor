@@ -55,9 +55,6 @@ use serde_json::{json, Value};
 //   后端出「健康」那一格的成品（状态 ＋ 格子里那一句 ＋ ⓘ ＋ `[详情]`），界面只排版。TS 那份三档与这里原来那份
 //   同逻辑的第二份一起并掉；那几句的 key 随之归本文件的面（`rsBackendPolicy.health.*`）。
 
-// 界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
-//   设置页经通道直接问后端（期限同值 10 秒，住 `settings/backend-section.ts`）。
-
 /// monitor 退出臂那一问的期限。**monitor 正在退**：问不到就按缺省办，不许把退出拖住。
 /// 本机后端读一份小文件就回，这个数是上界不是节拍（问的是本机那条已经连着的流）。
 const EXIT_ASK_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -105,10 +102,6 @@ fn said(r: Routed) -> String {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
     }
 }
-
-// 那两条 Tauri 命令（问「退出行为」那个值 · 交那台机器写它：`backend_exit_policy` /
-//   `set_backend_exit_policy`〔散文墓碑〕）退役：它们只在「拦空白名 ＋ 转一条 `exit-policy-read` / `exit-policy-set` ＋ 原样交回」，
-//   解释本来就在界面那一侧（`settings/backend-section.ts::readExitAnswer`）⇒ 设置页经通道直接问，本机与远端同一条路。
 
 /// 从后端那份应答里取生效值。形状不对 ⇒ `None`（调用方按缺省办并出声）。
 pub(crate) fn kill_from_answer(data: &Value) -> Option<bool> {

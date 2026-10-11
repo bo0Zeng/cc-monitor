@@ -195,7 +195,6 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
     );
 }
 
-// 🔴 〔散文墓碑〕**`a_hand_written_entry_is_never_app_installs` 删了。**
 //
 // 它逐字断言 `UNMANAGED_ENV` 每一条的 `tier != EnvTier::AppInstalls`，
 // 理由是「装得了就该有一条 `ToolSpec`」。那时 `tier` 是**手填**的 ⇒ 它真有牙。

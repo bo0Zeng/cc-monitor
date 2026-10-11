@@ -59,10 +59,6 @@ struct ForkResult {
 /// 分叉这条新路却没用它。真机上会话 jsonl 到几十 MB 是常态（本仓注释里记过 37MB 一份），
 /// backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
 ///
-/// 次生危害更隐蔽：进程被 OOM-killer 杀掉时 sshd 送的是 `exit-signal` 而不是 `exit-status`，
-/// monitor 侧 `interpret_fork_exec`〔散文墓碑〕（已随 exec 那条路删，今天走帧命令）会看到 `exit_status: None` ⇒ 报「没收到退出码，连接可能中断」
-/// ⇒ 把排查方向带到网络上去。
-///
 /// 256MB：与 monitor 侧 `remote_history::MAX_SESSION_BYTES` 同一量级，正常会话远够不到。
 const MAX_SESSION_JSONL_BYTES: u64 = 256 * 1024 * 1024;
 

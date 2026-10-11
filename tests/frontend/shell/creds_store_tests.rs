@@ -55,19 +55,12 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     assert!(store::template().contains(store::KEY_FIELD));
 }
 
-// `brace_block`〔散文墓碑〕随它唯一的调用方（明文逐跳那一条）一起删了。
-
 // 这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
 // `auth_style` / `base_url`），打的是 monitor 那侧的写口。写者换成了那台的后端 ⇒ 两条原样搬去后端那一份写口：
 // `file_face_tests::gp1_a_program_write_keeps_everything_the_human_put_there` ·
 // `file_face_tests::gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`。
 
 // ============================================================ `K-H2c` `KH2C1` / `KH2C3`
-
-// 「写侧落下的那一行，正是起会话那一侧会去找的那一行」那条跨两半的判据
-//   （`what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕）挪去后端：起会话那一侧找行的读者
-//   今天是那台后端的 `file_face::rows_at`（`ccm` 起会话 · `accounts-list` 徽章读同一份），与写口同一个模块 ⇒
-//   `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses`（写口真写 → 成品真答 `/s/`）。
 
 /// ★★ **`KH2C1` 的机检那一半**：写侧**没有第二份**「取末段名」的实现。
 ///
@@ -76,8 +69,6 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
 /// ⇒ 这一条钉的是结构：写侧只许**调**那一份唯一的规则，自己不许再取一次末段名。
 #[test]
 fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
-    // 写侧推 id 的那一半今天住后端写口 `accounts/upstream_select/file_face.rs`（界面经通道交 `configDir`，
-    //   那台后端推）。〔GP1 那一版住 monitor `apikey_remote.rs`（`send_key`〔散文墓碑〕）；更早住 `creds_store.rs`。〕
     let src = guard_core::production_code(include_str!(
         "../../../src/backend/accounts/upstream_select/file_face.rs"
     ));
@@ -113,10 +104,6 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
 
 // `KH2C3` 后半（顶层那一把不再是写入目标：结构 ＋ 行为两维）打的是 monitor 那侧写口；
 // 写口去了后端 ⇒ 原样搬去 `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
-
-// 「说不出 id 的时候报错、不回落」那一条（`a_config_dir_that_names_no_account_is_refused_instead_of_falling_back`〔散文墓碑〕）
-//   打的是 monitor 那侧入口 `apikey_remote::write_key_on`〔散文墓碑〕；推 id 搬进后端写口之后，同一组形状（空串 · 全空白 · `/` ·
-//   最后一段是 `..`）由后端那一份判：`file_face_tests::hx2_the_account_id_is_derived_here_from_the_config_dir`。
 
 /// 明文两个出口，各自**只许出现在哪棵树的哪个文件里**。
 ///
@@ -362,11 +349,6 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
 }
 
 // ================================================================ `K-H2` `KH7`
-
-// 墓碑：这里从前是 `PLAINTEXT_HOPS`〔散文墓碑〕与 `the_plaintext_argument_is_only_ever_handed_one_hop_further`〔散文墓碑〕
-//   （`K-H2` `KH7`：明文入参在 monitor 里每一跳只许被往下传登记过的那几次 —— Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕→
-//   `apikey_remote::write_key_on`〔散文墓碑〕→ `send_key`〔散文墓碑〕装进 `args.key`）。写 key 改走通道之后，明文在 monitor 里
-//   **没有具名绑定**了：它是 `chan_call` 转手的一段不透明字节。下面那一条把「没有」钉成零命中。
 
 /// ★★★ **monitor 生产段里没有一处能把明文 key 叫出名字的写口**（零命中，带正控）。
 ///

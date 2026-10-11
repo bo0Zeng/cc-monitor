@@ -263,8 +263,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `RemovalCause`
 
-`Frame::SessionRemoved` 的原因。
-
 - `gone` —— 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind
 - `superseded` —— 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**
 

@@ -908,13 +908,6 @@ mod tests {
     ///
     /// # 它与今天那 32 条判据的差别（这一句是本件的全部内容）
     ///
-    /// 件文件 `§0c` 现打：`plugin/` **25 条**（`discover` 5 · `probe` 8 · `invoke` 6 ·
-    /// `mod.rs::layer_guard` 6）加 `control/cc_bus.rs` **7 条**，逐条读下来
-    /// **没有任何一条同时驱动 ≥2 跳**，而且**没有一条真起过进程**
-    /// （`invoke.rs` 那 6 条是 `argv_for` 的纯函数断言与手搓 `Done{…}`；
-    /// `cc_bus.rs` 那 7 条是 `parse_list`/`classify_send`/`fixed_candidates` 一族纯函数）。〔散文墓碑〕
-    /// ⇒ 本条是**第一条**把 ②④⑤⑥⑦⑧ 串起来、并且真起进程的判据。
-    ///
     /// # ⚠ 边界逐跳写在断言旁边，不许含混成「走通了」
     #[test]
     fn one_fake_plugin_walks_six_hops_as_one_path() {

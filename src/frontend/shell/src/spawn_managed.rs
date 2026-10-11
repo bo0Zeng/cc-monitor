@@ -6,11 +6,6 @@
 //! `local_backend.rs` 那一处监护 spawn **同时**犯三个错（无 `CREATE_NO_WINDOW` ·
 //! 无 job 绑定 · `stderr(Stdio::null())`），而**三样的正确做法仓里都已经有**：
 //!
-//! | 需要的 | 仓里原来住哪 | 今天住哪 |
-//! |---|---|---|
-//! | `CREATE_NO_WINDOW` | `lib.rs::open_with_os` ＋ `local_backend_host` 的 `hide_console_window`〔散文墓碑〕 | [`ConsolePolicy::Hidden`] |
-//! | Job Object `KILL_ON_JOB_CLOSE` | `cc_bus` 的 `reap_whole_tree_on_drop`〔散文墓碑〕 | [`Lifetime::JobKillOnClose`] |
-//!
 //! ⚠ 中间那一列的两个名字**今天已经不在盘上了** —— 它们就是被本模块收编的那两份，
 //! 逐字留着是为了说清「这三样不是新发明的，是仓里各自长了一份的东西」。
 //! | stderr → 滚动日志 | `local_backend::drain_child_stderr_into_log` | [`StderrSink::ToLog`] |
@@ -96,13 +91,6 @@ pub enum Lifetime {
 /// 它的 stderr 去哪。**没有 `Default`**。
 ///
 /// # ⚠ 这里比多两个变体，理由写下来
-///
-/// 设计稿写的是 `{ ToLog, Null }` —— 那是**从一个落点（`local_backend.rs::supervise_with_stdio`）看出去**
-/// 得到的两格。把人群现打一遍（`write_site_registry::SPAWNS`，14 个运行期落点）之后，
-/// 今天真实存在的是**四**格：还有「不接管，跟着界面进程的 stderr 走」
-/// （`dial_host.rs::open` 逐字写着为什么）与「接出来当返回值读」
-/// （`.output()` 那几处：`local_query` · `profile_installer` ·
-/// `stream_source::resolve_ssh_host`〔散文墓碑〕）。
 ///
 /// ⇒ 少这两格的话，那六处要么被迫改行为（拿现有两格之一硬套），要么绕开这个出口 ——
 /// **而后者正是本模块在关的那扇门**。两格换六处绕行，不划算。
@@ -282,9 +270,6 @@ pub fn local_backend_supervised() -> std::sync::Arc<ManagedSpawn> {
         StderrSink::ToLog,
     )
 }
-
-// 本机后端那条**一次性只读查询**的路（`local_backend_one_shot_query`〔散文墓碑〕，给
-// `local_query::run_query`〔散文墓碑〕用）删了：本机那几问改走 `<local>` 长连接，monitor 不再起一次性后端。
 
 // 出口只有同步那一侧（`std::process`）。要在 tokio 里起进程，照它（`prepare` ＋ `attach_lifetime`）在这里接一格，别在出口外面自己起。
 

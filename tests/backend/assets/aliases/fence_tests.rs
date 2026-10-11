@@ -441,10 +441,6 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
 // **规则只有一份** —— 拼接与落盘序列的判据
 // ═══════════════════════════════════════════════════════════════════════
 
-// 这里原来是落盘序列 `apply`〔散文墓碑〕的五条判据（相同不写 · 备份只给非空用户文件 ·
-//   读回不对就撤 · 撤的措辞只说真发生的事 · 读不出就不写）与它的内存落点。那一个序列删了（零调用方：用户文件经后端
-//   `files-put` 写，序列与这几条性质住后端 `control/files_write.rs::put_text` 与它的判据；远端 `ccm` 入口改走 `sftp::upload_verified`）。
-
 /// 两种排版都幂等；POSIX 块外一个字节都不动，PowerShell 保住 CRLF。
 #[test]
 fn splicing_is_idempotent_and_keeps_every_user_line() {
@@ -476,14 +472,12 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 
 /// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，远端 rc 那一份
 /// 也搬进了后者）的生产段里，「配对 ＋ 读回比对」的原语**零命中**。
-/// 正控换了：从前是本模块 `apply`〔散文墓碑〕里恰好一处 `verify_readback(`；那个序列删了
 /// （零调用方），「备份 · 原子替换 · 回读 · 回滚」今天只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
 /// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
 /// `block_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///
 /// 死值验：往 `account_aliases.rs` 的写别名文件那一跳里放回一行
 /// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
-/// 原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
     let root = crate::guard_support::repo_root().join("src/backend/assets/aliases");

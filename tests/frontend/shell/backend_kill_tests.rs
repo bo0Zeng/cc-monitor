@@ -3,7 +3,6 @@
 //! 守的要求：`INVARIANTS §34`（三道门：名字形状 · 身份 · 窗口）在创建那一侧的反面 ——
 //! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
 //!
-//! 本文件原本挂在杀会话的 monitor 发送端 `backend_kill.rs`〔散文墓碑〕下面，一起住着那个发送端自己的几条单元判据
 //! （读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
 //! 经通道直接说后端的 `kill`），发送端删了：
 //! - 它自己的那几条随它退役 —— 「读 `killed` 不许猜」搬到 TS `decodeKilled`，「拒绝码逐码一句」搬到 TS 那张表
@@ -460,8 +459,3 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
         scanned.len()
     );
 }
-
-// 这里原来住着「两条后端命令的拒绝文案说同一件事」（`the_refusal_wording_matches_the_sibling_command`〔散文墓碑〕，
-//   对照 monitor 里杀会话与送键两个发送端各自那份 `refusal_text`）。两个发送端都迁到界面删了，
-//   拒绝码 → 一句话从此只有 `src/frontend/ui/tmux-control.ts` 一份（按动作分表：结束会话 · 发按键），
-//   「逐码一句、两两不同、带会话名与后端原话」由 `tests/frontend/ui/tmux-control.vitest.ts` 钉着。

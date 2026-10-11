@@ -442,10 +442,6 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3b-session-facts**（2026-09-24）：子命令 ＋1 —— `history-record`（`{sid}` → 记录在不在，两个命令面）。
 /// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
 ///
-/// ★★★ **p3c-panorama-plan**（2026-09-24）：子命令集不变，**行为**变更 ——
-/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`〔散文墓碑〕）；
-/// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
-///
 /// ★★★ **p3d-sftp-resident**（2026-09-24）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
 /// （传输台搬进后端，只在帧面）。＋ 线上：链路多一种用途 `use:"files"`（sftp 子系统上的一问一答）· 新出方向帧 `transfer`。
 /// 界面进程从此零 SSH：旧后端不认 `files` 用途 ⇒ 部署 / 传输全断 ⇒ 必须判 stale。
@@ -1685,7 +1681,6 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               Windows 上没有 tmux ⇒ 没有可写的地方；直路上它不起作用，拉前终端也不靠它（点 ↗ 时现查连着的终端）。\
               等 Windows 后台机制选定（未定）时一并回答，**暂时不做**。",
     },
-    // ── 🔴 〔散文墓碑〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //
     // 它从前逐字写着：
     //   「**只有一半做得到**：`claude` 那支真机 `EXIT=0`，`codex` 那支 `EXIT=4 program not

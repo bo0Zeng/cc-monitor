@@ -2436,6 +2436,11 @@ mod build_features;
 #[path = "../../../../tests/common/guard-core/no_outside_refs_tests.rs"]
 mod no_outside_refs;
 
+/// 删掉的名字不许回来：禁名表里的名字在仓里别处零命中。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/retired_names_tests.rs"]
+mod retired_names;
+
 /// 仓里不留私人标识的形状（家目录名 · 私网地址 · 记忆链接 · 邮箱）：只认形状，不点名。
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/private_shape_guard_tests.rs"]

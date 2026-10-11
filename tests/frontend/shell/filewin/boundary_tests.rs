@@ -332,12 +332,11 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("comms_inward::chan::wire::Withdraw::Asked", Kind::Wire),
     // ── 跨机传输 ──
     // `§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
-    //  ⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
-    //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
+    //  ⇒ 这一类没有边。
     // ── 本地预判围栏 ──那一行（围栏本家那个判定）随窗口那道预判删了：这一类清零。
     // ── 本机动作 ──
     // 开终端三步：机器事实（monitor 的机器表 ＋ 上次赢的那条）→ 窗口那条通道问本机后端 `terminal-ssh` →
-    //   开窗（`launch_remote_terminal`〔散文墓碑〕那一条拼 ssh 的边退役，ssh 外壳进了本机后端）。
+    //   开窗（ssh 外壳在本机后端）。
     // ── monitor 自己的状态 ──
     // `utils::atomic_write_json` 那一行摘了：原子写搬进共享 crate `host_core`（前端宿主原语），不再是壳里的边。
     // 书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。

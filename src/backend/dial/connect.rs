@@ -1,11 +1,6 @@
 //! 连 → 校验 host key → 鉴权。**本 crate 里唯一与远端跑 SSH 传输层握手的地方**
 //! （`tests/backend/dial_tests.rs::the_dial_only_happens_under_dial_home` 钉着「只在 `dial/`」）。
 //!
-//! 搬自界面侧 `stream_source` 的 `connect_session` / `race_connect` / `connect_via_jump`〔散文墓碑〕 /
-//! `authenticate_via_agent`〔散文墓碑〕 与 `ClientHandler` —— 那几样在界面侧**删掉了**，这里是它们唯一的家。
-//! 与原来相比只有两处不同，都写在 `mod.rs` 头注「边界」一节：竞速同时起拨（不错开）；
-//! ssh-agent 两个平台都有（界面侧原来只有 Windows）。
-//!
 //! TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
 //! （`platform::tcp_rtt`），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
 

@@ -965,9 +965,6 @@ fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
     agents::home_at(config_dir, from_env)
 }
 
-// 🪦这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
-//   平台 cfg 只许住那一层，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
-
 #[cfg(test)]
 #[path = "../../tests/backend/main_claim_tests.rs"]
 mod claim_tests;

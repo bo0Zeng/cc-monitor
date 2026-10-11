@@ -194,13 +194,6 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[(
 ///
 /// # 它买的是哪一形：「子命令表里有、分派臂没有」
 ///
-/// 上面 [`every_listed_subcommand_is_actually_dispatched`] 的头注写清了它为什么看不见
-/// 这一形。这一形不是假想：`K-P6b` 实打过一次（摘掉 `--dial` 那条臂，backend 侧
-/// 一条判据都不红，见那时 `dial/dial_tests.rs` 里的 `the_dial_arm_is_actually_wired_into_the_dispatch`〔散文墓碑〕 ——
-/// `--dial` 删了，那条判据换了入口、改名 `dial_tests.rs::the_link_arms_are_actually_wired_into_the_dispatch`），
-/// `K-R86` 又撞了一次（`--capture-pane`）。两次都是**一件一件地各补一把伞**。
-/// 本条是那把**总伞**：人群不是手写的，是 [`SUBCOMMANDS`] 自己。
-///
 /// # 🔴 两侧的发现机制刻意不同 —— 这是本条的承重要求，不是排版
 ///
 /// - **表侧** = `SUBCOMMANDS` 这个**编译后的常量值**。没有抽取器可坏，改名增删自动反映。

@@ -17,9 +17,6 @@ fn probe_cfg() -> crate::stream_source::RemoteConfig {
 //   要求零网络就被结构守卫拒）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后，
 //   那条 SFTP 直删与它的守卫一起走了；「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
-// 卸载路那道围栏 `is_safe_remote_backend_path`〔散文墓碑〕删了：卸的是固定落点 `~/.cc-monitor/bin/ccm`（常量），
-//   没有外来路径要守；本条（`both_remote_path_sinks_still_ask_their_fence`〔散文墓碑〕）随之删。
-
 /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
 ///
 /// 这些不是"要素清单"而是**血的教训清单**，每条对应一个真实踩过的坑：
@@ -54,18 +51,8 @@ fn probe_cfg() -> crate::stream_source::RemoteConfig {
 ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
 #[test]
 fn ccm_cli_has_required_elements() {
-    // U1a（2026-08-01）：三张表 + `-t` 扫描口径搬进 `crate::ccm_cli_contract`。
-    // **判据一条没改、没加、没减** —— 搬出去只是为了让 U9 迁到 `control/` 时
-    // 改的是「喂哪份脚本文本」，而不是把这些断言重写一遍（账本 S11：迁移是强度
-    // 悄悄下降的经典时机）。强度读数的基线对拍在那个模块的
-    // `ccm_cli_strength_is_at_or_above_baseline` 〔散文墓碑〕。
     use crate::ccm_cli_contract as contract;
 
-    // 🔴 **这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
-    //    随 `shared/ccm` 一起删了**：住址账本两条循环（`ledger.needles` / `ledger.channel_a`）·
-    //    `pin_t_def` 〔散文墓碑〕（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
-    //    （tmux 目标必须是 `=名:` 形态，`INVARIANTS §31a`）。
-    //    它们量的全是「**那个 bash 脚本怎么写的**」，被测对象没了就没了。
     //
     // ⚠ **它们守的性质没有一条被丢掉，逐条给新住址**：
     //    · `=名:` 精确目标 ⇒ `control::ccm::plan` 的渲染判据（`--print` 黄金串里每个
@@ -75,9 +62,6 @@ fn ccm_cli_has_required_elements() {
     //    ⚠ 「跨语言那一半」（TS 侧 `deriveTmuxName` 对拍 · `capabilities ⊇ CLI_REQUIRED_CAPS`）
     //      仍**只**住 e2e（`ccm-cli.test.sh` 5 条 · `ccm-contract-parity.sh` 5 条），别当 Rust 判据能顶。
 }
-
-// `the_remote_ccm_entry_is_an_entry_not_an_implementation`〔散文墓碑〕 删了：远端 `ccm` 不再是三行入口，就是后端本身
-//   （`K33`「所有命令只许有一处」从此由「那个文件就是后端」结构上成立）。已部署的旧入口怎么认住 `ccm_legacy_tests.rs`。
 
 /// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
 /// 才编译/运行——证实内嵌真生效：Linux 两格取到 ELF 二进制 + build_id 非空。CI 无二进制时
@@ -142,15 +126,6 @@ fn the_build_stamp_witness_actually_bites() {
 /// ★★ 🔴 `K-R70`（09-12）：**内嵌那份的身份只许来自它自己的字节。**
 ///
 /// # 它取代了什么，以及为什么不是「换个写法」
-///
-/// 〔散文墓碑〕〔本条原名 `the_identity_witness_is_derived_from_the_manifest_not_written_by_hand`，
-///  钉的是那个见证布尔 `id_from_manifest` 只能由「那份清单在不在」推出来、不许写死 `true`
-///  （写死会让 `deploy_embedded_backend` 里那道 `bytes_contain` 兜底整个跳过；
-///   08-08 实测写死 x86_64 那处，monitor 1004 一条都不红）。
-///  **它守的动作是对的，守的东西是错的**：那个「见证」见证的是**一份旁挂清单在不在**，
-///  而清单是 `release.yml` 从源码常量 `const BUILD_ID` 抠出来写的 ——
-///  三个载体的清单**恒等**，恒等的东西一格证据都不提供
-///  （`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零：那是把标签当成了指纹）。〕
 ///
 /// 今天身份**只有一条来路**：`build.rs` 从二进制字节里扫 `CC_MONITOR_BUILD_STAMP`。
 /// 于是本条钉三件事：
@@ -402,8 +377,6 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     );
 }
 
-// `deploy_decision_truth_table`〔散文墓碑〕随 `deploy_decision` 删了（旁挂标记那条路整条退役）。
-
 // ═══ 部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
 //
 // 要求：「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
@@ -568,8 +541,6 @@ fn remote_parent_and_marker() {
     // 旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
 }
 
-// `safe_managed_path_requires_a_marker`〔散文墓碑〕随谓词删了（第 2 个消费者 `acct_iso_deploy` 退役，只剩零个）。
-
 // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
 
 // 读回那一趟住本机后端（它交回**比对的事实**：读回长度 · 首个差异，读不回 ⇒ `None`；
@@ -631,23 +602,7 @@ fn upload_verify_passes_on_exact_bytes() {
     assert!(verify_readback("/r/d", 7, Some((7, Some(0)))).is_err());
 }
 
-// 这里原来是远端 profile 读取那一族的四条判据（读不出不当空文件 · 非 UTF-8 拒 ·
-//   有字节读到空拒 · `RemoteFile::read` 走 fail-safe 读取器）。被测对象 `interpret_profile_read`〔散文墓碑〕/
-//   `read_profile_text`〔散文墓碑〕/ `RemoteFile`〔散文墓碑〕随 `fenced_block::apply`〔散文墓碑〕一起删了：它们只剩
-//   远端 `ccm` 入口一个用户，而那一处改走 `upload_verified`（部署物按字节比，不按文本读）。用户文件（rc）的读
-//   经那台后端的 `files-peek`，「不存在 / 读不出 / 有字节读到空」那三分由后端答（`user_files::Peeked`）。
-
-// `rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
-// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`〔散文墓碑〕，
-// 判据跟着住到 `fenced_block_tests.rs` 那条「撤的措辞只说真发生的事」；那一族后来随序列一起删了。
-
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
-///
-/// 范围只覆盖 `deploy_remote_backend` 函数体（另一个 `deploy_remote_acct_iso`〔散文墓碑〕 退役了）
-/// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
-/// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
-/// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
-/// 守卫范围比性质宽 = 假红 = 会被人关掉。
 ///
 /// 版本标记允许裸上传：它是"校验通过"的凭证，必须最后写。
 #[test]
@@ -659,16 +614,13 @@ fn deploy_paths_use_verified_upload_for_content() {
         let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
         &src[i..j]
     }
-    let checks = [
-        (
-            body(
-                include_str!("../../../src/frontend/shell/src/sftp.rs"),
-                "pub async fn deploy_remote_backend(",
-            ),
-            "deploy_remote_backend",
+    let checks = [(
+        body(
+            include_str!("../../../src/frontend/shell/src/sftp.rs"),
+            "pub async fn deploy_remote_backend(",
         ),
-        // `deploy_remote_acct_iso`〔散文墓碑〕 那一格随命令删了：cc-acct-iso 的字节随后端二进制走（后端 `files-put` 逐份 CAS 写）。
-    ];
+        "deploy_remote_backend",
+    )];
     let mut verified_total = 0usize;
     for (b, what) in checks {
         let code = b

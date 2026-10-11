@@ -68,8 +68,6 @@ pass=0; fail=0; skip=0; waived=0
 #   门禁不钉本套件的断言条数，只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`；兜底那一行 `*) echo "" ;;` 由
 #   `tests/backend/control/gate_tests.rs::an_unregistered_skip_still_fails_the_gate2_suite` 钉着（兜底一回非空串，未登记的 skip 就成了豁免）。
 #
-# 〔墓碑〕第二条登记 `meta_dollar`（`CI-J3` 09-09）〔散文墓碑〕：它是「环境相关」的豁免（只在 tmux ≤3.4 上成立），
-#   在更新的 tmux 上静悄悄用不到、PASS 数随机器变。换成下面的**版本门**（`min_tmux_for`）。
 waiver_reason() {
   case "$1" in
     meta_colon) echo "tmux 会把名字里的 ':' 换成 '_'（本机 3.6 实测 cc-a:b → cc-a_b）⇒ 这一轨造不出真会话；判定由 monitor/backend 两条纯函数轨覆盖（同一张 TSV）" ;;

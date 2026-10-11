@@ -1783,10 +1783,6 @@ pub(super) fn created_ms_or_mtime(p: &Path) -> i64 {
 /// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
 /// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）
 ///
-/// **这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
-/// （`history·rs::analyze_jsonl`〔散文墓碑〕，经记录解析器），与这里的「精简版」各算各的 —— 开始时刻 / 摘录 / 标题 / fork 关系
-/// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
-/// `custom-title` · 首条时间戳）补进来，摘录取人说的话（经注册表 `agents::human_speech`，与全文搜索同一个家）、截断用 `observe/search_rules.rs`。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
     // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**（[`ListingEntry::scan`] 逐行读）。原来是 `read_to_string(p)` 整读：
     // `--list-sessions` 对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
@@ -1820,9 +1816,6 @@ pub(super) fn forked_pair(f: &serde_json::Value) -> Option<(String, String)> {
         f.get("messageUuid")?.as_str()?.to_string(),
     ))
 }
-
-// 按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_rules::truncate_excerpt`（同样不劈码点，
-//   另把换行折成空格、超了加 `…` —— 与本机那条路从前的口径、与全文搜索的标题摘录同一个家）。
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/history_query_tests.rs"]
