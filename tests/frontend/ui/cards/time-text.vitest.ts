@@ -1,7 +1,7 @@
 // 卡上的时刻照抄后端写好的钟面（记录的 `timeText` · 轮次的 `startText` / `endText` · 子运行的 `started_text`），界面不从原始时刻换算。
 // 夹具故意让原始时刻与钟面对不上（原始是 UTC 02:01，钟面写 17:45）：界面若还在自己换算，这几条就红。
 import { describe, it, expect } from "vitest";
-import { renderMessage, buildToolGroup, addToToolGroup } from "../../../../src/frontend/ui/cards/index";
+import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { buildNoticeLine, mergeNotice } from "../../../../src/frontend/ui/cards/speaker-bar";
 import { factsOf } from "../../../../src/frontend/ui/agent-window-text";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
@@ -21,15 +21,6 @@ describe("卡上的时刻照抄后端写好的钟面", () => {
       if (r.kind !== "card") throw new Error(r.kind);
       expect(r.element.querySelector(".card-header .ts")?.textContent).toBe(want);
     }
-  });
-
-  it("工具组收着那一行：起始时刻 ＝ 第一条的 timeText", () => {
-    const rec = { agent: "claude", t: "reply", id: "a2", at: AT, timeText: "17:47", blocks: [{ type: "tool_use", id: "t1", name: "Read", input: {} }], autoReply: false, endsTurn: false } as LineRecord;
-    const r = renderMessage(rec, ctx());
-    if (r.kind !== "tool-group") throw new Error(r.kind);
-    const g = buildToolGroup(r.time);
-    addToToolGroup(g, r.units);
-    expect(g.summary.textContent).toBe(copyText("cards.toolGroup.summary", { count: 1, since: "17:47" }));
   });
 
   it("相邻的后台通知并成一条：时段按时刻排先后、写的是各自的钟面", () => {

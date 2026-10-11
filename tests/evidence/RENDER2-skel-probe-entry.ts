@@ -4,7 +4,7 @@
  *
  * 与秤 2 同一份语料、同一套生产样式、同一个 `.stream > .stream-content`，关掉 `content-visibility` 让每张卡真排版；
  * 读的不是卡自己的高，而是**卡在流里占的位置**（下一张卡的顶 − 这一张的顶，含折叠后的卡间距）——骨架占位顶的就是这个。
- * 每张卡另记头 / 体的高，外框 = 位置 − 头 − 体（第一级公式里正文之外那一段）。只 Chromium 一个引擎（生产 WebView2 同族）。
+ * 每张卡另记头 / 体的高，外框 = 位置 − 头 − 体（第一级公式里正文之外那一段）；「几步」卡的体就是卡自己（那几行）。只 Chromium 一个引擎（生产 WebView2 同族）。
  * 结果写 `window.__RESULT` ＋ `window.__DONE`，由 `RENDER2-skel-run.ts` 读回、写金样 `RENDER2-skel-golden.json`。
  */
 import "../../src/frontend/ui/styles/layers.css";
@@ -52,7 +52,8 @@ async function main(): Promise<void> {
       cls: item.cls,
       slot,
       header: h(el.querySelector(":scope > .card-header")),
-      body: h(el.querySelector(":scope > .card-body")),
+      // 「几步」卡没有卡体那一层：它自己就是那几行（第一级按「每步一行 × 步数 ＋ 步间距」算的就是它）。
+      body: h(el.classList.contains("card-steps") ? el : el.querySelector(":scope > .card-body")),
     };
   });
   window.__RESULT = JSON.stringify({

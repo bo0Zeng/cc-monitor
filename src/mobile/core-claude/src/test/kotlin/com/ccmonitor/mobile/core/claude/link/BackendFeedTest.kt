@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.link
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -193,6 +195,77 @@ class BackendFeedTest {
         }
 
     @Test
+    fun `流还没接上时问：等它接上再问，不当场报离线`() =
+        runTest {
+            val remote = Remote()
+            val d = remote.next()
+            val ssh = MutableStateFlow<Any?>(null) // SSH 还在建
+            val f = feed(remote, ssh)
+            f.ensure()
+            runCurrent()
+            val got = async { f.call("history-list", null, CALL_MS) }
+            runCurrent()
+            assertFalse("流没通：等着，不当场回离线", got.isCompleted)
+            ssh.value = TOKEN_1 // SSH 通了 ⇒ 接上
+            runCurrent()
+            val written = generateSequence { d.written.tryReceive().getOrNull() }.toList()
+            val req = Json.obj(written.last { !it.startsWith("{\"attach\"") })
+            assertEquals("接上之后那一问才发出去", "history-list", req?.str("cmd"))
+            d.push("""{"kind":"reply","id":"${req?.str("id")}","ok":true,"data":{"rows":[]}}""")
+            runCurrent()
+            assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any?>())), got.await())
+        }
+
+    @Test
+    fun `走不通要人动手的（那台是另一版）：问了当场回离线，不等`() =
+        runTest {
+            val remote = Remote()
+            remote.outcomes += LinkOutcome.Gate(GateVerdict.Differs("other"))
+            val f = feed(remote, MutableStateFlow(TOKEN_1))
+            f.ensure()
+            runCurrent()
+            val got = async { f.call("history-list", null, CALL_MS) }
+            runCurrent()
+            assertTrue(got.isCompleted)
+            assertEquals(Reply.LinkDown, got.await())
+        }
+
+    @Test
+    fun `等满期限还没接上：回离线`() =
+        runTest {
+            val f = feed(Remote(), MutableStateFlow(null))
+            f.ensure()
+            val got = async { f.call("history-list", null, CALL_MS) }
+            advanceTimeBy(CALL_MS + 1)
+            runCurrent()
+            assertEquals(Reply.LinkDown, got.await())
+        }
+
+    @Test
+    fun `每接上一回 epoch 加一：SSH 换了一条、流断了重接都算`() =
+        runTest {
+            val remote = Remote()
+            val first = remote.next()
+            val second = remote.next()
+            remote.next()
+            val ssh = MutableStateFlow<Any?>(TOKEN_1)
+            val f = feed(remote, ssh)
+            assertEquals("还没接上过", 0L, f.epoch.value)
+            f.ensure()
+            runCurrent()
+            assertEquals(1L, f.epoch.value)
+            ssh.value = TOKEN_2 // SSH 换了一条
+            runCurrent()
+            assertEquals(2L, f.epoch.value)
+            assertTrue(first.closed)
+            second.end() // 新的那条流断了
+            runCurrent()
+            advanceTimeBy(BackendFeed.Backoff().delayMs(0) + 1)
+            runCurrent()
+            assertEquals(3L, f.epoch.value)
+        }
+
+    @Test
     fun `退避：从一秒起翻倍，封顶半分钟`() {
         val b = BackendFeed.Backoff()
         assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), (0..6).map(b::delayMs))
@@ -201,6 +274,7 @@ class BackendFeedTest {
     private companion object {
         const val HANDSHAKE_MS = 1_000L
         const val MINUTE_MS = 60_000L
+        const val CALL_MS = 15_000L
         val TOKEN_1 = Any()
         val TOKEN_2 = Any()
     }

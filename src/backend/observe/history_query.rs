@@ -1169,7 +1169,7 @@ pub(crate) struct IndexRow {
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) cl: u32,
     /// 折叠单元数：`tool_use` / `tool_result` / `thinking` / `redacted_thinking` / `image` 块。
-    /// 它们渲染成一行 summary（或并进工具组），与正文长短无关。
+    /// 它们各渲染成一行 summary（纯工具的记录画成一张「几步」卡，每步一行），与正文长短无关。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) fd: u32,
     /// 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。

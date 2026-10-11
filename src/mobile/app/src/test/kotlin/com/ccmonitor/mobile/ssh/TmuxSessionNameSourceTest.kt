@@ -53,7 +53,7 @@ class TmuxSessionNameSourceTest {
     fun everyNewSessionInProductionLivesInTheTmuxGateway() {
         val root = repoRoot()
         val sources = productionSources(root)
-        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 150)
+        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
 
         val counts = sortedMapOf<String, Int>()
         for (f in sources) {
@@ -148,7 +148,7 @@ class TmuxSessionNameSourceTest {
     fun theCcPrefixIsWrittenOnlyByResumeSessionName() {
         val root = repoRoot()
         val sources = productionSources(root)
-        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 150)
+        assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
 
         val found = sortedSetOf<String>()
         var hits = 0

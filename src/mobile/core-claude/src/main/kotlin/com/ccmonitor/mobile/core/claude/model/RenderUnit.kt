@@ -19,7 +19,7 @@ enum class DeliveryState {
 }
 
 /**
- * 阅读窗的渲染单元，由 [RecordClassifier] 从 [JsonlRecord] 流折叠而来；UI 把每个 unit 映射成一张卡片。
+ * 正文的渲染单元，由 [RecordUnits] 从核心的通用记录排出来；UI 把每个 unit 映射成一张卡片。
  *
  * [key] 是稳定唯一标识（`<uuid>#<块在记录内的序号>`），供 LazyColumn 做 key。基于记录身份而非列表位置，
  * 流式追加新 unit 时已有 key 不漂移。
@@ -110,16 +110,6 @@ sealed interface RenderUnit {
         val timeText: String?,
         override val sourceUuid: String?,
     ) : RenderUnit
-
-    /**
-     * 连续（非交互）工具调用合并成的一张外层折叠组卡（`工具调用 · N 个`）。
-     * [calls] ≥2（单个 ToolCall 不入组）。[key] = 首 call 的 key（稳定）。交互工具（AskUserQuestion/ExitPlanMode）不入组。
-     */
-    data class ToolGroup(
-        override val key: String,
-        val calls: List<ToolCall>,
-        override val sourceUuid: String?,
-    ) : RenderUnit
 }
 
 /** 会话内搜索用的可搜索纯文本（工具调用含名/参数/输出，便于搜命令、文件名、输出）。 */
@@ -134,7 +124,6 @@ fun RenderUnit.searchableText(): String =
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
         is RenderUnit.CompactSummary -> text
         is RenderUnit.Interrupt -> ""
-        is RenderUnit.ToolGroup -> calls.joinToString("\n") { it.toolCallSearchable() }
     }
 
 private fun RenderUnit.ToolCall.toolCallSearchable(): String =

@@ -2,17 +2,34 @@ package com.ccmonitor.mobile.core.claude.diff
 
 import com.ccmonitor.mobile.core.claude.model.PatchHunk
 
-/** 与 [LineDiff] 对齐的单行字符上限（防 minified 单行几十万字符撑爆布局）。 */
+enum class DiffType { ADD, DEL, CTX }
+
+data class DiffRow(
+    val type: DiffType,
+    val text: String,
+    val oldNo: Int?,
+    val newNo: Int?,
+)
+
+/** rows 受 maxLines 截断；addCount/delCount 为全量（不受截断影响）。 */
+data class DiffResult(
+    val rows: List<DiffRow>,
+    val truncated: Boolean,
+    val addCount: Int,
+    val delCount: Int,
+)
+
+/** 单行字符上限（防 minified 单行几十万字符撑爆布局）。 */
 private const val MAX_CHARS_PER_LINE = 2000
 
-/** 剥尾随 CR（CRLF 源按 `\n` 切行后每行残留的 `\r`）再按 [LineDiff] 同规则截长行——保真但不让不可见控制符/超长行进渲染。 */
+/** 剥尾随 CR（CRLF 源按 `\n` 切行后每行残留的 `\r`）再截长行——保真但不让不可见控制符/超长行进渲染。 */
 private fun cleanCell(text: String): String {
     val noCr = if (text.endsWith("\r")) text.substring(0, text.length - 1) else text
     return if (noCr.length > MAX_CHARS_PER_LINE) noCr.substring(0, MAX_CHARS_PER_LINE) + "…" else noCr
 }
 
 /**
- * `structuredPatch`（Edit/Write 的权威 hunk）→ [DiffResult]（喂现有 [DiffView] 渲染）。
+ * `structuredPatch`（Edit/Write 的权威 hunk）→ [DiffResult]（喂 `DiffView` 渲染；patch 是核心给的，手机不自己算 diff）。
  * 真行号从各 hunk 的 oldStart/newStart 起算；`lines` 首字符 `+`/`-`/` ` 定 ADD/DEL/CTX，
  * `\`（统一 diff 的 `\ No newline at end of file` 标记）跳过不占行，其余无前缀行当 CTX 原样。
  */

@@ -741,18 +741,30 @@ fn observe_unmanaged(
         // `PATH` 上的裸命令。**复用 [`resolves_on_path`]，不新写一个 `which`** ——
         // 它已经把「切分必须走 `split_paths`」与「取不到 PATH 就不猜」两条填好了。
         EnvProbe::OnPath | EnvProbe::InSessionShell => {
-            let exists = |p: &str| (env.fs.meta)(Path::new(p)).is_some();
-            let (path, blind) = match probe {
+            let (found, blind) = match probe {
+                // agent 命令行：在起会话那个 shell 里敲它 ⇒ 按那个 shell 的找法（Windows 上 `.exe` / `.cmd` / `.ps1` …）。
+                //   与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`）。
                 EnvProbe::InSessionShell => (
-                    env.session_path,
+                    match crate::platform::shell::find_session_command(
+                        named,
+                        env.session_path,
+                        env.windows,
+                        &|p| matches!((env.fs.meta)(p), Some((false, _))),
+                    ) {
+                        crate::platform::shell::SessionCommand::Unknown => None,
+                        crate::platform::shell::SessionCommand::Absent => Some(false),
+                        crate::platform::shell::SessionCommand::Found { .. } => Some(true),
+                    },
                     copy_text("rsConfigSurface.onPath.noSessionPath", &[("named", named)]),
                 ),
                 _ => (
-                    env.path_env,
+                    resolves_on_path(named, env.path_env, &|p| {
+                        (env.fs.meta)(Path::new(p)).is_some()
+                    }),
                     copy_text("rsConfigSurface.onPath.noPath", &[("named", named)]),
                 ),
             };
-            match resolves_on_path(named, path, &exists) {
+            match found {
                 // 🔴 **查不动**：`PATH` 读不到。绝不说成「不存在」——
                 // 那会对一台装得好好的机器报假警报（本模块头注那条硬纪律）。
                 None => (None, SurfaceState::Undetermined { why: blind }),

@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -23,6 +24,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ccmonitor.mobile.agent.agentKindOrDefault
+import com.ccmonitor.mobile.core.claude.agent.AgentProfile
+import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
@@ -60,18 +65,23 @@ fun ChatRoute(
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
     KeepAliveWhileLinked(link)
     val host = rememberChatHost(hostId) ?: return
-    val target = if (isNew) ChatTarget.Draft(ticket = sessionId, cwd = host.cwd) else ChatTarget.Existing(sessionId)
+    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = host.cwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
     val vm: ChatViewModel =
         org.koin.androidx.compose
-            .koinViewModel(key = chatKey(hostId, sessionId)) { parametersOf(ChatOpen(hostId, chatKey(hostId, sessionId), target, host.machine)) }
+            .koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
+    // 在屏上才进这台的 stream-watch 名单（离屏 ⇒ 退出，列表页上名单是空的）。
+    DisposableEffect(vm) {
+        vm.visible(true)
+        onDispose { vm.visible(false) }
+    }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(
             modifier = modifier,
-            topBar = { ChatTopBar(onOpenDrawer = { scope.launch { drawerState.open() } }) },
+            topBar = { ChatTopBar(title = host.product, onOpenDrawer = { scope.launch { drawerState.open() } }) },
         ) { inner ->
             ChatScreen(
                 state = state,
@@ -93,10 +103,31 @@ data class ChatOpen(
     val machine: String,
 )
 
+/** 读一条已有的会话（从列表点进来）。 */
+fun existingChat(
+    hostId: String,
+    sid: String,
+    machine: String,
+): ChatOpen = ChatOpen(hostId, chatKey(hostId, sid), ChatTarget.Existing(sid), machine)
+
+/**
+ * 一条会话的 [ChatSession]（应用级，同一个 key ⇒ 同一条）。[linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上），
+ * [watchOf] 给那台的 `stream-watch` 名单（`HostBackends.watchOf`）。
+ */
+fun ChatController.sessionOf(
+    open: ChatOpen,
+    linkOf: (hostId: String) -> CoreLink,
+    watchOf: (hostId: String) -> SessionWatch,
+): ChatSession =
+    sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope) }
+
 /** 这台在手机上的名字 ＋ 新建会话起在哪（这台的默认工作目录，没填 ⇒ `~`）；还没读到 ⇒ `null`。 */
 private data class ChatHost(
     val machine: String,
     val cwd: String,
+    /** 这台的种类：新建会话起哪一家（线上名）· 顶栏叫什么。 */
+    val agent: String,
+    val product: String,
 )
 
 @Composable
@@ -104,7 +135,14 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
         val h = runCatching { hosts.get(hostId) }.getOrNull()
-        value = ChatHost(machine = h?.label ?: hostId, cwd = h?.defaultWorkingDir?.trim()?.ifEmpty { null } ?: HOME_DIR)
+        val profile = AgentProfile.of(h?.agentKindOrDefault() ?: AgentProfile.DEFAULT.kind)
+        value =
+            ChatHost(
+                machine = h?.label ?: hostId,
+                cwd = h?.defaultWorkingDir?.trim()?.ifEmpty { null } ?: HOME_DIR,
+                agent = profile.wireName,
+                product = profile.displayName,
+            )
     }
     return got
 }
@@ -119,7 +157,11 @@ private const val HOME_DIR = "~"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatTopBar(onOpenDrawer: () -> Unit) {
+private fun ChatTopBar(
+    /** 这台那一家的产品名（`AgentProfile.displayName`）。不写主机名，界面上不出现「连接」那套说法。 */
+    title: String,
+    onOpenDrawer: () -> Unit,
+) {
     TopAppBar(
         navigationIcon = {
             IconButton(
@@ -129,12 +171,9 @@ private fun ChatTopBar(onOpenDrawer: () -> Unit) {
                 Text(DRAWER_OPEN_GLYPH, style = MaterialTheme.typography.titleLarge)
             }
         },
-        title = { Text(CHAT_TITLE) },
+        title = { Text(title) },
     )
 }
-
-/** 落地屏的标题。不写主机名，界面上不出现「连接」那套说法。 */
-internal const val CHAT_TITLE = "Claude"
 
 /**
  * 连上主机就起前台保活服务。

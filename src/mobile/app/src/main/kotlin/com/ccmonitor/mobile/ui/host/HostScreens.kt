@@ -42,9 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.agent.agentKindOrDefault
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
@@ -77,7 +75,7 @@ const val IDENTITY_SCREEN_TITLE = "钥匙"
  */
 @Composable
 fun HostListScreen(
-    onConnect: (String, AgentKind) -> Unit,
+    onConnect: (String) -> Unit,
     onAddHost: () -> Unit,
     onIdentities: () -> Unit,
     onFiles: (String) -> Unit = {},
@@ -125,7 +123,7 @@ fun HostListScreen(
                                 host,
                                 launchers = launchersByHost[host.id].orEmpty(),
                                 // 种类跟着 hostId 一起交出去，见本屏头注。
-                                onClick = { onConnect(host.id, host.agentKindOrDefault()) },
+                                onClick = { onConnect(host.id) },
                                 onLaunch = { launcherId -> onLaunch(host.id, launcherId) },
                                 onFiles = { onFiles(host.id) },
                                 onEdit = { onEdit(host.id) },
@@ -457,7 +455,7 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text("分组（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // agent 种类：Claude Code（默认）或 Codex CLI，决定会话定位、解析、turn-end、用量、resume 走哪套实现。
+        // agent 种类：Claude Code（默认）或 Codex CLI，决定落点、resume 的载荷与定位走哪套。
         Text("Agent 种类", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             // 遍历档案，产品名取档案的 `displayName`，不硬写；加一种 agent 这里自然多一项。
@@ -480,7 +478,7 @@ fun HostEditorScreen(
         SwitchRow("打开就直接进那台上的工作区", useTmux) { useTmux = it }
         SwitchRow("断线自动重连", autoReconnect) { autoReconnect = it }
 
-        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux 与 Claude 阅读面）。
+        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
         Text("远端系统", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = !isWindows, onClick = { isWindows = false })
@@ -490,7 +488,7 @@ fun HostEditorScreen(
         }
         if (isWindows) {
             Text(
-                "Windows：走 PowerShell、跳过 tmux；tmux/Claude 阅读面/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）。",
+                "Windows：走 PowerShell、跳过 tmux；tmux/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

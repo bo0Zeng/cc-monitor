@@ -4,6 +4,7 @@ import android.util.Log
 import com.ccmonitor.mobile.core.claude.link.BackendFeed
 import com.ccmonitor.mobile.core.claude.link.OneShot
 import com.ccmonitor.mobile.core.claude.link.ResidentLink
+import com.ccmonitor.mobile.core.claude.link.WatchList
 import com.ccmonitor.mobile.core.ssh.liveDuplex
 import com.ccmonitor.mobile.core.ssh.liveExecutor
 import com.ccmonitor.mobile.ssh.HostConnector
@@ -24,8 +25,12 @@ class HostBackends(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val byHost = ConcurrentHashMap<String, BackendFeed>()
+    private val watches = ConcurrentHashMap<String, WatchList>()
 
     fun of(hostId: String): BackendFeed = byHost.getOrPut(hostId) { feed(hostId) }
+
+    /** 这台的 `stream-watch` 名单（每台一份，跟着那条常驻流）。 */
+    fun watchOf(hostId: String): WatchList = watches.getOrPut(hostId) { WatchList(of(hostId), scope) }
 
     /** App 回到前台：每台断着的当场再接（手机会被杀后台，不是常驻）。 */
     fun onForeground() = byHost.values.forEach(BackendFeed::onForeground)

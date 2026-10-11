@@ -31,10 +31,12 @@ sealed interface LinkOutcome {
 }
 
 /**
- * 连一台：门槛（同一个 `BUILD_ID`）→ `--resident-ensure`（常驻不在就起）→ 长 exec `--resident-attach`
- * 接常驻流。和桌面连远端是同一条路（`IPC-PROTOCOL.md` 载体表「常驻套接字」）。
+ * 连一台：先直接接常驻流（长 exec `--resident-attach`）——常驻在跑、hello 自报同一个 `BUILD_ID` ⇒ 一条 exec 就接上（平时就是这样）。
+ * 没接上（常驻没在跑 · 没装 · 另一版 · 断在半路）⇒ 门槛（同一个 `BUILD_ID`）→ `--resident-ensure`（常驻不在就起）→ 再接一次，
+ * 结局照这一趟说。和桌面连远端是同一条路（`IPC-PROTOCOL.md` 载体表「常驻套接字」）。
  * 两端对不对得上只核 `BUILD_ID` 这一处（改了冻结的格同加子命令一样要打版本号），不另问格目录。
- * C 通道（[OneShot]）只在接流之前用这两次；之后一切都经 [FrameClient]。
+ * C 通道（[OneShot]）只在第一次没接上时用那两次；接上之后一切都经 [FrameClient]。
+ * （net2 台子：RTT 200 ms 时三条 exec 串着走要 1.5 秒，换成一条约 0.5 秒。）
  */
 class ResidentLink(
     private val oneShot: OneShot,
@@ -48,10 +50,22 @@ class ResidentLink(
         timeouts: Timeouts,
         onBreak: (String) -> Unit,
     ): LinkOutcome {
+        val direct = attach(scope, nonce, tz, timeouts, onBreak)
+        if (direct is LinkOutcome.Up) return direct
         val gate = BackendGate.check(oneShot)
         if (gate != GateVerdict.Same) return LinkOutcome.Gate(gate)
         val ensured = oneShot.run(ENSURE)
         if (ensured !is OneShotOutcome.Ok) return LinkOutcome.Ensure(ensured)
+        return attach(scope, nonce, tz, timeouts, onBreak)
+    }
+
+    private suspend fun attach(
+        scope: CoroutineScope,
+        nonce: String,
+        tz: String,
+        timeouts: Timeouts,
+        onBreak: (String) -> Unit,
+    ): LinkOutcome {
         val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), scope, timeouts.handshakeMs, nonce, tz, onBreak)
         return if (attached is AttachOutcome.Attached) checked(attached.client) else LinkOutcome.Attach(attached)
     }

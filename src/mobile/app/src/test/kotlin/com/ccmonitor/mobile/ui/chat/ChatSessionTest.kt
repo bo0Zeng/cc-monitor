@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.chat
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
+import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.failed
@@ -24,9 +25,12 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionTest {
-    private fun TestScope.draft(link: FakeCoreLink) = ChatSession(link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj"), "box", backgroundScope)
+    private fun TestScope.draft(
+        link: FakeCoreLink,
+        agent: String = "claude",
+    ) = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj", agent = agent), "box", backgroundScope)
 
-    private fun TestScope.existing(link: FakeCoreLink) = ChatSession(link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
+    private fun TestScope.existing(link: FakeCoreLink) = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
 
     private fun ok(data: Any?) = Reply.Ok(data)
 
@@ -46,7 +50,7 @@ class ChatSessionTest {
                 when (cmd) {
                     "session-new" -> ok(started)
                     "terminal-input" -> ok(mapOf("result" to "delivered"))
-                    "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0))
+                    "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0, "tail_from" to 0, "total" to 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
             }
@@ -63,7 +67,7 @@ class ChatSessionTest {
             assertEquals(listOf(mapOf("sid" to "new", "text" to "你好")), link.calls("terminal-input"))
             assertNull("送到了的不挂标", s.local().single().delivery)
 
-            link.line("new", 10, human("u1", "你好"))
+            link.line("new", 0, human("u1", "你好"))
             runCurrent()
             assertEquals("记录里出现了这句人话 ⇒ 本地那句换成记录那一条", emptyList<RenderUnit.UserText>(), s.local())
             assertEquals(
@@ -71,6 +75,28 @@ class ChatSessionTest {
                 s.state.value.units
                     .map { it.key },
             )
+        }
+
+    @Test
+    fun `Codex 那台也落聊天屏：新建会话起的是 Codex，字同样经 terminal-input 进那条会话`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-new" -> ok(started + ("agent" to "codex"))
+                    "terminal-input" -> ok(mapOf("result" to "delivered"))
+                    "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0, "tail_from" to 0, "total" to 0))
+                    else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
+                }
+            }
+            val s = draft(link, agent = "codex")
+            s.send("看一下")
+            runCurrent()
+            assertEquals("codex", link.calls("session-new").single()?.get("agent"))
+            link.report("cx", "/h/proj")
+            runCurrent()
+            assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下")), link.calls("terminal-input"))
+            assertNull("送到了的不挂标", s.local().single().delivery)
         }
 
     @Test
@@ -120,7 +146,7 @@ class ChatSessionTest {
             link.report("s1", "/w", Tone.NOW)
             link.answer = { cmd, args ->
                 when (cmd) {
-                    "history-tail" -> ok(mapOf("end" to 200, "split_at" to 100))
+                    "history-tail" -> ok(mapOf("end" to 200, "split_at" to 100, "tail_from" to 0, "total" to 2))
                     "history-read" -> {
                         assertEquals(mapOf("path" to "/p/s1.jsonl", "offset" to 100L, "until" to 200L), args)
                         ok(mapOf("rows" to listOf(mapOf("end" to 150, "record" to human("u1", "问")), mapOf("end" to 200, "record" to reply("a1", "答"))), "next" to 200, "eof" to true))
@@ -137,9 +163,9 @@ class ChatSessionTest {
             )
             assertTrue("会话帧语气 now ⇒ 在跑", s.state.value.running)
             assertTrue("还有更早的", s.state.value.canLoadOlder)
-            link.line("s1", 200, reply("a1", "答")) // 读到的那一行，流上又报一次
-            link.line("other", 300, reply("x", "别的会话"))
-            link.line("s1", 260, reply("a2", "又一句"))
+            link.line("s1", 1, reply("a1", "答")) // 读到的那一行，流上又报一次
+            link.line("other", 2, reply("x", "别的会话"))
+            link.line("s1", 2, reply("a2", "又一句"))
             runCurrent()
             assertEquals(
                 listOf("u1", "a1#0", "a2#0"),
@@ -149,12 +175,73 @@ class ChatSessionTest {
         }
 
     @Test
+    fun `进出会话 · 断线重接以后，看到的行和全看时逐条一样；在屏上才进 stream-watch 名单`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File()
+
+            fun add(n: Int) = (file.records.size until file.records.size + n).forEach { i -> file.records += if (i % 2 == 0) human("u$i", "问$i") else reply("a$i", "答$i") }
+
+            suspend fun write(n: Int) = repeat(n) { add(1).also { link.line("s1", file.records.lastIndex.toLong(), file.records.last()) } }
+
+            link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            add(5)
+            val s = existing(link)
+            s.visible(true)
+            runCurrent()
+            assertEquals("在屏上 ⇒ 进名单", setOf("s1"), link.watching())
+            write(1)
+            runCurrent()
+
+            s.visible(false) // 退出会话：名单里没它，它的行不上流
+            runCurrent()
+            assertEquals(emptySet<String>(), link.watching())
+            add(2)
+
+            s.visible(true) // 再进：from 说从第 7 行起上流，[6, 7) 按行号补
+            runCurrent()
+            link.from("s1", 7)
+            write(1)
+            runCurrent()
+            link.line("s1", 4, file.records[4]) // 重叠处按行号去重
+            runCurrent()
+
+            add(2) // 断开那一段的两行没收到
+            link.epoch.value += 1 // 换了一条流
+            runCurrent()
+            add(1) // 接上以后先来的一行比已有的新、中间缺着
+            link.line("s1", file.records.lastIndex.toLong(), file.records.last())
+            runCurrent()
+            assertEquals(RecordUnits.of(file.records), s.state.value.units)
+            assertTrue("补段走的是按行号取", link.calls("history-lines").isNotEmpty())
+            assertNull(s.state.value.failedWhy)
+        }
+
+    @Test
+    fun `点进会话那一刻流不通：不报离线，接上以后照常出第一屏`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u0", "问"), reply("a1", "答")))
+            var up = false
+            link.answer = { cmd, args -> if (up) file.answer(cmd, args) ?: Reply.LinkDown else Reply.TimedOut }
+            link.report("s1", "/w")
+            val s = existing(link)
+            runCurrent()
+            up = true
+            link.epoch.value += 1
+            runCurrent()
+            assertEquals(RecordUnits.of(file.records), s.state.value.units)
+            assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
+        }
+
+    @Test
     fun `送达未知 · 画面变了 · 会话已结束：各是各的标，字照文案表`() =
         runTest {
             val link = FakeCoreLink()
             val results = ArrayDeque(listOf(mapOf("result" to "unsure"), mapOf("result" to "refused", "why" to "screen_changed", "said" to "画面已变"), mapOf("result" to "refused", "why" to "ended", "said" to "已结束")))
             link.answer = { cmd, _ -> if (cmd == "terminal-input") ok(results.removeFirst()) else Reply.LinkDown }
-            val s = ChatSession(link, ChatTarget.Existing("s1"), "box", backgroundScope)
+            val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
             s.send("a")
             runCurrent()
             s.send("b")
@@ -174,7 +261,7 @@ class ChatSessionTest {
         runTest {
             val link = FakeCoreLink()
             link.answer = { _, _ -> ok(mapOf("result" to "delivered")) }
-            ChatSession(link, ChatTarget.Existing("s1"), "box", backgroundScope).stop()
+            ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).stop()
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "s1", "key" to "esc")), link.calls("terminal-input"))
         }

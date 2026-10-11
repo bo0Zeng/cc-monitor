@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.drawer
 
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
 import com.ccmonitor.mobile.ui.nav.Screen
@@ -125,8 +124,7 @@ class DrawerTest {
 
     @Test
     fun addingAServerLandsOnItsEmptyNewConversation() {
-        assertEquals(Screen.Chat.of("h9", newId(), isNew = true), freshLanding("h9", AgentKind.ClaudeCode, newId))
-        assertEquals("不落聊天屏的档照旧去对话列表", Screen.Conversations.of("h9"), freshLanding("h9", AgentKind.Codex, newId))
+        assertEquals(Screen.Chat.of("h9", newId(), isNew = true), freshLanding("h9", newId))
         val nav = codeOnly(source("AppNavHost.kt"))
         assertTrue("加一台的那条路由要接上加完之后去哪", nav.contains("onAdded ="))
     }

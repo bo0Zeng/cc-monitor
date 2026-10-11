@@ -42,7 +42,7 @@ async function openLastResult(): Promise<HTMLDetailsElement> {
   // 做完的那一轮过程默认折成一行（`turn-fold.ts` 挂 `proc-hidden`）：先点开那一轮的过程行。
   const top = res.closest<HTMLElement>("[data-proc-of]");
   if (top?.classList.contains("proc-hidden")) {
-    document.querySelector<HTMLElement>(`.proc-line[data-turn="${top.dataset.procOf}"]`)?.click();
+    document.querySelector<HTMLElement>(`.proc-line[data-fold="${top.dataset.procOf}"]`)?.click();
     await sleep(400);
   }
   for (let p: HTMLElement | null = res; p; p = p.parentElement) {

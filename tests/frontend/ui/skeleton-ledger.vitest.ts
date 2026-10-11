@@ -2,7 +2,7 @@
  * 〔骨架〕骨架账本 + 第一级粗估的判据。
  *
  * 买到：总条数 / 总高 / 像素→seq / uuid→seq 四件事**不看 DOM、不看正文**就答得出；
- * 工具组「一串只出一张卡」在骨架里也成立；列宽变了能整份重估。
+ * 纯工具记录一条一张「几步」卡（界面不并组）；列宽变了能整份重估。
  * **买不到**：估得准不准 —— 那归秤 2 / 真引擎（本文件只钉算术与形状，常数本身没有对拍）。
  */
 import { describe, expect, it } from "vitest";
@@ -33,16 +33,16 @@ describe("estimateFromFacts / skeletonKind", () => {
   it("不建卡的记录高 0：系统注入 · 本地命令回显 / 不进界面的行 / 标题 / 解析不出的", () => {
     for (const f of [user(10, { sp: "system" }), user(10, { sp: "commandOutput" }), none(), none("title"), { o: 0, n: 1 }]) {
       expect(skeletonKind(f)).toBe("none");
-      expect(estimateFromFacts(f, "card")).toBe(0);
+      expect(estimateFromFacts(f)).toBe(0);
     }
   });
 
   it("认的是通用记录的类：said / queued 按人那一侧的气泡、reply 按回复卡、retry 是细条；盘上的原词不再认", () => {
     expect(skeletonKind(user(10))).toBe("card");
     expect(skeletonKind({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 })).toBe("card");
-    expect(estimateFromFacts({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 }, "none")).toBe(estimateFromFacts(user(10), "none"));
+    expect(estimateFromFacts({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 })).toBe(estimateFromFacts(user(10)));
     expect(skeletonKind(asst(10))).toBe("card");
-    expect(estimateFromFacts({ o: 0, n: 1, t: "retry" }, "none")).toBe(SKEL_OUTER.system);
+    expect(estimateFromFacts({ o: 0, n: 1, t: "retry" })).toBe(SKEL_OUTER.system);
     for (const raw of ["user", "assistant", "system"]) expect(skeletonKind({ o: 0, n: 1, t: raw as never, ch: 10, pl: 1 })).toBe("none");
   });
 
@@ -52,22 +52,22 @@ describe("estimateFromFacts / skeletonKind", () => {
     for (const sp of ["agentMessage", "peerSession", "coordinator", "taskNotification", "interrupt"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
   });
 
-  it("连续的纯工具记录只有第一条出高（并成一张工具组卡）", () => {
-    const first = estimateFromFacts(toolOnly(), "card");
-    expect(first).toBeGreaterThan(0);
-    expect(estimateFromFacts(toolOnly("said"), "tool")).toBe(0);
+  it("纯工具记录：回复那一侧一条一张「几步」卡（每步一行 ＋ 步间距 ＋ 外距，不看左邻居）；人那一侧的工具结果注入进调用那一行、高 0", () => {
+    expect(estimateFromFacts(toolOnly())).toBe(38 + SKEL_OUTER.steps);
+    expect(estimateFromFacts({ ...toolOnly(), fd: 3 })).toBe(3 * 38 + 2 * 4 + SKEL_OUTER.steps);
+    expect(estimateFromFacts(toolOnly("said"))).toBe(0);
   });
 
   it("正文越长越高；窄列比宽列高（宽度相关的那一半在前端算）", () => {
-    const short = estimateFromFacts(asst(20), "none");
-    const long = estimateFromFacts(asst(4000, { pl: 20 }), "none");
+    const short = estimateFromFacts(asst(20));
+    const long = estimateFromFacts(asst(4000, { pl: 20 }));
     expect(long).toBeGreaterThan(short);
-    expect(estimateFromFacts(asst(4000, { pl: 20 }), "none", 400)).toBeGreaterThan(long);
+    expect(estimateFromFacts(asst(4000, { pl: 20 }), 400)).toBeGreaterThan(long);
   });
 
   it("代码行按等宽行高线性", () => {
-    const one = estimateFromFacts(asst(1, { cb: 1, cl: 1 }), "none");
-    const eleven = estimateFromFacts(asst(1, { cb: 1, cl: 11 }), "none");
+    const one = estimateFromFacts(asst(1, { cb: 1, cl: 1 }));
+    const eleven = estimateFromFacts(asst(1, { cb: 1, cl: 11 }));
     expect(eleven - one).toBeCloseTo(10 * 13 * 1.55);
   });
 });
@@ -117,10 +117,10 @@ describe("SkeletonLedger", () => {
     expect(l.uuidToSeq.has("zzz")).toBe(false);
   });
 
-  it("工具组跨过不建卡的行仍并成一张（attachment 不打断）", () => {
+  it("不建卡的行 · 人那一侧的工具结果高 0；回复那一侧的纯工具记录各自出高", () => {
     const l = new SkeletonLedger(0, rows);
-    expect(l.heightOf(3, 5)).toBe(0); // attachment(0) + 第二条工具(0)
-    expect(l.heightOf(2, 3)).toBeGreaterThan(0);
+    expect(l.heightOf(3, 5)).toBe(0); // attachment(0) + 工具结果(0)
+    expect(l.heightOf(2, 3)).toBe(estimateFromFacts(toolOnly()));
   });
 
   it("heightOf 是可加的，totalHeight = 全段", () => {

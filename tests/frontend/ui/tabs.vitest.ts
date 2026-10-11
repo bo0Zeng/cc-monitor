@@ -36,7 +36,6 @@ const f15 = vi.hoisted(() => ({
       seq: payload.seq,
       element: document.createElement("div"),
       kind: "card",
-      toolGroup: null,
     });
   },
 }));
@@ -120,7 +119,7 @@ vi.mock("../../../src/frontend/ui/render-stream-record", () => ({
   // 这个函数（`render-stream-record.ts:173-179` 的 `card` 分支），而它此前是个空 `vi.fn()`。
   // 三处 mock 里少任何一处，`tabs.ts:891` 的 `inserted` 都恒假。
   // ⇒ 「量具把它测没了」这件事**是三处叠出来的**，只修一处会让人以为修完了却仍然零命中。
-  // 这里只塞「一条记录 = 一个 seq」，不复刻真实现的 tool-group 合并（那有自己的单测）。
+  // 这里只塞「一条记录 = 一个 seq」（与真实现同：一条记录至多一张卡）。
   renderContentRecord: vi.fn(f15.insertingRender),
 }));
 vi.mock("../../../src/frontend/ui/cards", () => ({

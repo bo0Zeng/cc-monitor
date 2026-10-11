@@ -5,30 +5,23 @@
  * （重放历史与实时增量走同一条路，不再分相位协调）。seq 只在同一会话内比（后端每份文件一个单调计数器）。
  *
  * insert 走 `stream.insertNode`：同步触发贴底，不靠 ResizeObserver 的异步回调 —— 重放期高频插入时滚动条才跟得上。
- * 工具组的邻居合并在 `render-stream-record.ts`（与 renderMessage 的产物耦合），这里只给 insert 与邻居查询。
+ * 相邻合并（重试细条 · 后台通知）在建卡那一侧，这里只给 insert 与邻居查询。
  */
 
-import type { ToolGroup } from "./cards";
 import type { MessageStream } from "./stream";
 
 export interface TimelineEntry {
   /** 后端 watcher 给的 per-file 单调 seq */
   seq: number;
-  /** 卡片 / tool-group root 的 DOM 元素 */
+  /** 卡片的 DOM 元素 */
   element: HTMLElement;
   /**
-   * 渲染语义类别——给 tool-group 后处理判邻居用。
-   * - `card`：普通卡（user / assistant 含 text / slash / compact / agent-tool 等）
-   * - `tool-group`：tool-only assistant 渲染产出的工具组卡（可后处理合并）
+   * 渲染语义类别——给相邻合并判邻居用。
+   * - `card`：一张卡（user / assistant / 过程里的几步 / slash / compact / agent-tool 等）
    * - `aside`：旁注（系统注入的细条，开关关着时不显示）——**不算任何人的邻居**：左右邻居查询跳过它，
-   *   相邻合并（工具组 · 重试 · 后台通知）照它不在时一样合
+   *   相邻合并（重试 · 后台通知）照它不在时一样合
    */
-  kind: "card" | "tool-group" | "aside";
-  /**
-   * tool-group entry 持有 ToolGroup 实例，供后续 tool-only 邻居 addToToolGroup 用。
-   * card entry 此字段为 null。
-   */
-  toolGroup?: ToolGroup | null;
+  kind: "card" | "aside";
 }
 
 export class RecordTimeline {
@@ -70,7 +63,7 @@ export class RecordTimeline {
 
   /**
    * 查"假如 seq 此刻插入，它的左邻居是谁"——不真 insert。
-   * tool-group 后处理用：判断新 tool-only 是否能合到左侧已有 ToolGroup。
+   * 相邻合并用（重试细条 · 后台通知）：判断新的那一条能不能并进左邻居。
    */
   peekPrev(seq: number): TimelineEntry | null {
     return this.near(this.binarySearchInsertIdx(seq) - 1, -1);

@@ -3314,30 +3314,6 @@
       "zh": "Edit {n}",
       "args": ["n"]
     },
-    "cards.toolGroup.summary": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "过程 · 工具 ×{count} · 自 {since}",
-      "args": ["count", "since"]
-    },
-    "cards.toolGroup.summaryFailed": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "过程 · 工具 ×{count} · 失败 ×{failed} · 自 {since}",
-      "args": ["count", "failed", "since"]
-    },
-    "cards.toolGroup.summaryAgents": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "过程 · 工具 ×{count} · agent ×{agents} · 自 {since}",
-      "args": ["count", "agents", "since"]
-    },
-    "cards.toolGroup.summaryBoth": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "过程 · 工具 ×{count} · 失败 ×{failed} · agent ×{agents} · 自 {since}",
-      "args": ["count", "failed", "agents", "since"]
-    },
     "cards.command.note": {
       "kind": "body",
       "role": "片段",
@@ -4030,7 +4006,7 @@
     "remoteLaunchRun.resume.buildFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "生成恢复命令失败",
+      "zh": "生成恢复会话的启动命令失败",
       "args": []
     },
     "remoteLaunchRun.copyFallback.runRemote": {
@@ -7424,7 +7400,7 @@
     "machineCard.field.resumeCmd": {
       "kind": "control",
       "role": "标签",
-      "zh": "恢复命令",
+      "zh": "恢复会话的启动程序",
       "args": []
     },
     "machineCard.build.filesNeedHost": {
@@ -7709,7 +7685,7 @@
     "settingsPanel.behavior.resume": {
       "kind": "control",
       "role": "标签",
-      "zh": "恢复命令",
+      "zh": "启动程序",
       "args": []
     },
     "settingsPanel.behavior.resumeHelp": {
@@ -7934,7 +7910,7 @@
     "settingsPanel.group.resume": {
       "kind": "title",
       "role": "标题",
-      "zh": "恢复",
+      "zh": "恢复会话",
       "args": []
     },
     "settingsPanel.claudeDir.pickTitle": {
