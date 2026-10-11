@@ -7,11 +7,28 @@ plugins {
 }
 
 // 发布签名：从 gitignored 的 keystore.properties 读凭据；没有这个文件就产出未签名的 release，照样能构建。
-val keystorePropsFile = rootProject.file("keystore.properties")
+// 文件默认在手机工程根；`-Pccm.keystoreProperties=<路径>` 指到别处（发版流水线把它写在 runner 的临时目录里，不落工作树）。
+val keystorePropsFile =
+    providers.gradleProperty("ccm.keystoreProperties").orNull?.let(::file) ?: rootProject.file("keystore.properties")
 val keystoreProps =
     Properties().apply {
         // 用 UTF-8 reader：InputStream 按 ISO-8859-1 解码，非 ASCII 路径会乱码，找不到密钥库。
         if (keystorePropsFile.exists()) keystorePropsFile.reader(Charsets.UTF_8).use { load(it) }
+    }
+
+// 版本号跟仓里的走：versionName 就是仓根 `package.json` 的 `version`（桌面那几份的权威源），不在手机里另写一份；
+// bump 桌面版本号时手机这份跟着变，不用另改。versionCode 由它算：主 × 1_000_000 ＋ 次 × 1_000 ＋ 修订
+// （次、修订各在 0..999，越界就构建失败）⇒ 版本号只往上走，versionCode 就只往上走。认不出那一行 ⇒ 构建失败，不猜。
+val repoVersion: String =
+    Regex("(?m)^  \"version\": \"(\\d+\\.\\d+\\.\\d+)\",$")
+        .find(rootProject.file("../../package.json").readText())
+        ?.groupValues
+        ?.get(1)
+        ?: throw GradleException("仓根 package.json 里认不出顶层那行 `\"version\": \"X.Y.Z\",`")
+val repoVersionCode: Int =
+    repoVersion.split('.').map { it.toInt() }.let { (major, minor, patch) ->
+        if (minor > 999 || patch > 999) throw GradleException("版本号 $repoVersion 的次 / 修订超过 999，versionCode 算法要改")
+        major * 1_000_000 + minor * 1_000 + patch
     }
 
 android {
@@ -37,8 +54,8 @@ android {
     defaultConfig {
         applicationId = "com.ccmonitor.mobile"
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.6.1"
+        versionCode = repoVersionCode
+        versionName = repoVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

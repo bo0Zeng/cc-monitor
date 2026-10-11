@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """`K-R124` 的判据本体 —— **发版那条流水线的两件事：闸没被偷偷改过 · 正文是我们写的那份。**
 
-# 它守的性质是（七句）
+# 它守的性质是（九句）
 
 1. 〔`KR114D1`，`K-R114` 09-14 立〕`release.yml` 里「发不发布」那个闸
    （`env.PUBLISH` 的**字面** ＋ 每一处「往 Release 上写」与 CI 门那一步的 `if:`）
@@ -38,6 +38,12 @@
    == 两份 `Cargo.lock` 的第三方包 ∪ `src/vendor/` 下的包（两向、两份不相交）；声明里的 npm 包 == `package-lock.json` 的生产依赖
    （两向）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
    （`tauri.sidecar.conf.json` 的 `bundle.resources`）。⚠ 「哪些包进产物」由 cargo-about 按目标平台算，本格不重算，只认生成器写下的那一分。
+
+9. **手机那一格**（⑱）：`build-mobile` 在、打 `:app:assembleRelease --no-daemon`、排在 `build-windows` 之后；
+   四个签名 secrets 只在它还原那一步的 `env:` 上各出现一次（别处、`run:` 里、`ci.yml` 里零次）；还原只写
+   `$RUNNER_TEMP`，碰签名变量的行都重定向进文件、不开 xtrace；打包之后 `if: always()` 删掉；对着 APK 核签名与
+   versionName；keystore / keystore.properties 被 `.gitignore` 挡住、仓里一份都没有。
+   ⚠ 只读盘上文本：secrets 真给没给、runner 上签不签得出来，判不了（那要一趟 workflow_dispatch）。
 
 # 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
 
@@ -895,6 +901,22 @@ def npm_production():
             for k, v in pk.items() if k and not v.get("dev")}
 
 
+# ── ⑱ 手机那一格（签名包）──────────────────────────────────────────────────
+MOBILE_JOB = "build-mobile"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+#: 签名材料只从这四个 GitHub secrets 来（`src/doc/RELEASING.md` §2.3）。
+SIGN_SECRETS = {"ANDROID_KEYSTORE_B64", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD"}
+#: 签名凭据那几样不许进仓：`.gitignore` 要挡住、`git ls-files` 里一份都不许有。
+SIGN_FILES = ["src/mobile/keystore.properties", "src/mobile/release.jks", "src/mobile/release.keystore",
+              "release.jks", "keystore.properties"]
+SIGN_FILE_RE = re.compile(r"(^|/)(keystore\.properties|[^/]*\.jks|[^/]*\.keystore)$")
+
+
+def secret_refs(text):
+    """文本里 `secrets.ANDROID_…` 的名字（逐个出现，不去重）。"""
+    return re.findall(r"secrets\.(ANDROID_[A-Z0-9_]+)", text or "")
+
+
 def needs_closure(jobs, jname):
     """`jname` 经 `needs` 直接间接等着的 job 集合（不含它自己）。"""
     seen, stack = set(), [jname]
@@ -1605,6 +1627,81 @@ def run_checks(emit):
     into = [v for k, v in (res.items() if isinstance(res, dict) else []) if leaf(k) == NOTICES]
     check(into == [NOTICES], "⑰d声明进安装包·`%s` 的 bundle.resources 把它放进包根" % SIDECAR_CONF,
           "现打 %r" % (res,))
+
+    # ══ ⑱ 手机那一格：签名包 · 签名材料只从 secrets 来 · 不进仓 · 不进日志 · 用完就删 ════════
+    mob = jobs.get(MOBILE_JOB) if isinstance(jobs, dict) else None
+    check(isinstance(mob, dict), "⑱a手机那一格在·`%s` 这个 job" % MOBILE_JOB,
+          "jobs 的键 = %r" % (sorted(jobs) if isinstance(jobs, dict) else jobs,))
+    msteps = [(i, st) for jn, i, st in steps if jn == MOBILE_JOB]
+    mrun = lambda st: str(st.get("run") or "")
+    builds = [i for i, st in msteps if ":app:assembleRelease" in mrun(st) and "--no-daemon" in mrun(st)]
+    check(len(builds) == 1, "⑱a打签名包·`./gradlew :app:assembleRelease --no-daemon` 恰好一步",
+          "现打 %d 步" % len(builds))
+    check("build-windows" in needs_closure(jobs, MOBILE_JOB),
+          "⑱a排在 build-windows 之后（Release 由它建、版本号与 tag 一致那道检查由它守）",
+          "needs 闭包 = %s" % sorted(needs_closure(jobs, MOBILE_JOB)))
+    # 签名材料：整份 release.yml 里只在手机那一格的步骤 `env:` 上出现，四个各一次；`run:` 里不许直接展开。
+    env_refs, other_refs = [], []
+    for jname, idx, st in steps:
+        env_text = "\n".join(str(v) for v in ((st.get("env") or {}) if isinstance(st.get("env"), dict) else {}).values())
+        refs = secret_refs(env_text)
+        (env_refs if jname == MOBILE_JOB else other_refs).extend(refs)
+        other_refs.extend(secret_refs(mrun(st)) + secret_refs(json.dumps(st.get("with") or {})))
+    job_level = [secret_refs(json.dumps({k: v for k, v in (j or {}).items() if k != "steps"}))
+                 for j in (jobs.values() if isinstance(jobs, dict) else [])]
+    other_refs += [r for refs in job_level for r in refs] + secret_refs(json.dumps(doc.get("env") or {}))
+    check(sorted(env_refs) == sorted(SIGN_SECRETS) and not other_refs,
+          "⑱b签名材料只从 secrets 来·四个 secrets 各在手机那一格的步骤 `env:` 上出现一次，别处零次",
+          "步骤 env 上 %s · 别处（run / with / job 级 / 文件级）%s · 要 %s"
+          % (sorted(env_refs), sorted(other_refs), sorted(SIGN_SECRETS)))
+    ci_text = CI_WORKFLOW.read_text(encoding="utf-8") if CI_WORKFLOW.exists() else None
+    check(ci_text is not None and not re.search(r"secrets\.ANDROID_|ANDROID_KEYSTORE|ANDROID_KEY_", ci_text),
+          "⑱b ci.yml 的 mobile 格只打未签名包·ci.yml 里一处签名材料都没有",
+          "ci.yml %s" % ("读不到" if ci_text is None else "命中 %r" % re.findall(r"\S*ANDROID_KEY\S*", ci_text)[:4]))
+    # 还原那一步：只写 runner 的临时目录；碰到签名变量的每一行都是重定向进文件（不往标准输出写）；不开 xtrace。
+    restore = [(i, st) for i, st in msteps if secret_refs(json.dumps(st.get("env") or {}))]
+    check(len(restore) == 1, "⑱c地板·还原 keystore 的那一步恰好一步", "现打 %d 步" % len(restore))
+    names = "|".join(sorted(SIGN_SECRETS))
+    for i, st in msteps:
+        lines = [l for l in mrun(st).splitlines() if not l.lstrip().startswith("#")]
+        leaky = [l.strip() for l in lines if re.search(r"\$\{?(%s)\b" % names, l) and not re.search(r">>?\s*\"?\$", l)]
+        xtrace = [l.strip() for l in lines if re.search(r"\bset\s+-[a-wyz]*x|set -o xtrace|\bbash -x\b", l)]
+        check(not leaky and not xtrace, "⑱c不进日志·%s 第 %d 步" % (MOBILE_JOB, i),
+              "碰签名变量却不重定向进文件的行 %r · 开 xtrace 的行 %r" % (leaky, xtrace))
+    if len(restore) == 1:
+        r = mrun(restore[0][1])
+        writes = re.findall(r">>?\s*\"?\$\{?([A-Za-z_]+)", r)
+        homes = set(re.findall(r"^\s*([A-Za-z_]+)=\"?\$\{?RUNNER_TEMP\}?/", r, re.M))
+        check(bool(writes) and set(writes) <= homes and "base64 -d" in r,
+              "⑱c只写在 runner 的临时目录·还原那一步写的每个文件都在 `$RUNNER_TEMP` 下",
+              "写进 %s · 住在 $RUNNER_TEMP 下的 %s" % (sorted(set(writes)), sorted(homes)))
+        if builds:
+            b = mrun(dict(msteps)[builds[0]])
+            check(re.search(r"-Pccm\.keystoreProperties=\"?\$\{?RUNNER_TEMP\}?/", b) is not None,
+                  "⑱c打包那一步读的凭据文件就是临时目录里那份（`-Pccm.keystoreProperties=$RUNNER_TEMP/…`）",
+                  "打包那一步：%r" % b.strip()[:200])
+    # 用完就删：打包之后有一步 `if: always()` 删掉临时目录里那几份。
+    cleanup = [i for i, st in msteps if st.get("if") == "always()" and "rm " in mrun(st)
+               and "RUNNER_TEMP" in mrun(st) and builds and i > builds[0]]
+    check(len(cleanup) == 1, "⑱d构建完删掉临时文件·打包之后恰好一步 `if: always()` 删 `$RUNNER_TEMP` 下那几份",
+          "现打 %d 步" % len(cleanup))
+    # 签名包真打出来了、版本号与桌面一致：对着 APK 核签名（印证书指纹）与 versionName == package.json。
+    verify = [i for i, st in msteps if re.search(r'apksigner"?\s+verify\b', mrun(st)) and "--print-certs" in mrun(st)
+              and "dump badging" in mrun(st) and "package.json" in mrun(st)]
+    check(len(verify) == 1 and builds and verify[0] > builds[0],
+          "⑱e打包之后核 APK：签名（印证书指纹）· versionName == package.json 的 version",
+          "现打 %d 步" % len(verify))
+    # 签名凭据那几样不进仓：`.gitignore` 挡得住，`git ls-files` 里一份都没有。
+    try:
+        ign = subprocess.run(["git", "check-ignore", "--no-index", "--"] + SIGN_FILES, cwd=str(ROOT),
+                             capture_output=True, text=True, timeout=30)
+        ignored = set(ign.stdout.split())
+        tracked = [f for f in subprocess.run(["git", "ls-files"], cwd=str(ROOT), capture_output=True,
+                                             text=True, timeout=60).stdout.splitlines() if SIGN_FILE_RE.search(f)]
+        check(ignored == set(SIGN_FILES) and not tracked, "⑱f签名凭据不进仓·`.gitignore` 挡住、仓里一份都没有",
+              "没挡住 %s · 进了仓的 %s" % (sorted(set(SIGN_FILES) - ignored), tracked))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        check(False, "⑱f签名凭据不进仓·`.gitignore` 挡住、仓里一份都没有", "git 跑不起来：%s —— 判不了，按红记" % e)
 
     return (1 if fails else 0), passes[0], fails
 
