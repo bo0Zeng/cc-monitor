@@ -178,18 +178,14 @@ pub enum ToolDestination {
     RemoteHomeRelative(&'static str),
     /// 本机家目录下的相对路径（`~/.claude/skills/...`）。
     LocalHomeRelative(&'static str),
-    /// 用户的 shell profile（`$PROFILE` / `~/.bashrc`）——路径由用户选。
-    UserShellProfile,
+    /// 用户的 shell profile —— 哪一种由 [`ShellProfile`] 说（PowerShell 的 `$PROFILE` · 用户选定的 POSIX rc）。
+    /// 申报路径写那一种的占位符（[`ShellProfile::token`]），不写一个凭印象猜的常量。
+    ///
+    /// 〔size2 10-11〕从前另有一个「路径由用户配置决定」的变体 `UserConfiguredPath { token, what }`：安装包旁那份后端（`$APP_DIR`）撤掉之后
+    /// 它只剩 POSIX rc 一个使用者，而那一格说的就是「用户选的 shell profile」⇒ 按 ≥2 规矩并进这里。
+    UserShellProfile(ShellProfile),
     /// 项目目录内的文件（`<dir>/.mcp.json`）。
     ProjectRelative(&'static str),
-    /// **路径由用户配置决定，不是常量。**
-    ///
-    /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
-    /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
-    ///
-    /// `token` 是申报路径里用的占位符（形如 `$POSIX_RC`，与 `$PROFILE` 同一套写法，
-    /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
-    UserConfiguredPath { token: &'static str, what: Text },
     /// **我们不装它** —— 这一格回答的不是「装到哪」，而是「它本来在哪」。
     ///
     /// 〔`K-R60` 09-11 加〕别的五个变体都在回答「我们把它放到哪儿去」。
@@ -198,6 +194,34 @@ pub enum ToolDestination {
     /// ⇒ 显式承认「这不是我们的落点」。
     /// 判据 `installable_tools_declare_where_they_land` 钉住：用了这一格就不许 `installable: true`。
     NotInstalledByUs { whose: Text },
+}
+
+/// [`ToolDestination::UserShellProfile`] 是哪一种 shell profile。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum ShellProfile {
+    /// PowerShell 的 `$PROFILE`：路径由 PowerShell 自己定，这台问得出来（`PathResolution::WindowsProfile`）。
+    PowerShell,
+    /// 用户在确认卡上选的那一份 POSIX rc（`.bashrc` / `.zshrc` / `config.fish` 写法不同，产品不替人选）：
+    /// 路径是配置项，不是常量 ⇒ 解析成「去哪儿看」那一句（[`ShellProfile::what`]）。
+    PosixRc,
+}
+
+impl ShellProfile {
+    /// 申报路径里的占位符（与 `path` 的 ASCII-graphic 判据同一套写法）。
+    pub fn token(self) -> &'static str {
+        match self {
+            ShellProfile::PowerShell => "$PROFILE",
+            ShellProfile::PosixRc => "$POSIX_RC",
+        }
+    }
+
+    /// 用户选的那一份去哪儿看（只有 [`ShellProfile::PosixRc`] 要说；`$PROFILE` 这台问得出来）。
+    pub fn what(self) -> String {
+        match self {
+            ShellProfile::PowerShell => "$PROFILE".to_string(),
+            ShellProfile::PosixRc => copy_text("rsToolRegistry.tools.posixAliasesRcWhat", &[]),
+        }
+    }
 }
 
 /// 这个文件在**哪台机器**上。
@@ -553,10 +577,7 @@ pub const TOOLS: &[ToolSpec] = &[
             // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
             // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
             // （`account_aliases` 的 `§0e`）。
-            destination: ToolDestination::UserConfiguredPath {
-                token: "$POSIX_RC",
-                what: Text(|| copy_text("rsToolRegistry.tools.posixAliasesRcWhat", &[])),
-            },
+            destination: ToolDestination::UserShellProfile(ShellProfile::PosixRc),
             touches: &[TouchedFile {
                 path: "$POSIX_RC",
                 host: HostScope::Client,
@@ -575,7 +596,7 @@ pub const TOOLS: &[ToolSpec] = &[
         carriers: &[Carrier {
             what: Text(|| copy_text("rsToolRegistry.tools.powershellWhat", &[])),
             source: ToolSource::Generated,
-            destination: ToolDestination::UserShellProfile,
+            destination: ToolDestination::UserShellProfile(ShellProfile::PowerShell),
             touches: &[TouchedFile {
                 path: "$PROFILE",
                 host: HostScope::Client,

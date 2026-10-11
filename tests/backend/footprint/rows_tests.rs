@@ -192,7 +192,7 @@ fn remote_project_and_profile_are_not_local() {
         resolve_touched_path(
             Vantage::Monitor,
             "$PROFILE",
-            &ToolDestination::UserShellProfile,
+            &ToolDestination::UserShellProfile(ShellProfile::PowerShell),
             HostScope::Client,
             &home(),
             &home().join(".claude")
@@ -211,7 +211,14 @@ fn declaration_inconsistency_is_an_error_not_a_guess() {
             ToolDestination::LocalHomeRelative("x"), // 不以 ~/ 开头
         ),
         ("~/somewhere", ToolDestination::ProjectRelative("x")),
-        ("~/.bashrc", ToolDestination::UserShellProfile),
+        (
+            "~/.bashrc",
+            ToolDestination::UserShellProfile(ShellProfile::PowerShell),
+        ),
+        (
+            "$PROFILE",
+            ToolDestination::UserShellProfile(ShellProfile::PosixRc), // 申报的是另一种 profile 的占位符
+        ),
         (
             "~/.local/*/bin",
             ToolDestination::LocalHomeRelative("x"), // glob 不在最后一段
@@ -742,9 +749,8 @@ fn host_is_not_a_function_of_destination() {
             let key = match &c.destination {
                 ToolDestination::RemoteHomeRelative(_) => "RemoteHomeRelative",
                 ToolDestination::LocalHomeRelative(_) => "LocalHomeRelative",
-                ToolDestination::UserShellProfile => "UserShellProfile",
+                ToolDestination::UserShellProfile(_) => "UserShellProfile",
                 ToolDestination::ProjectRelative(_) => "ProjectRelative",
-                ToolDestination::UserConfiguredPath { .. } => "UserConfiguredPath",
                 ToolDestination::NotInstalledByUs { .. } => "NotInstalledByUs",
             };
             for f in c.touches {
@@ -766,7 +772,7 @@ fn host_is_not_a_function_of_destination() {
     // 今天真实变了一格：`P4a` 把 cc-bus 读面做成本机可用 ⇒ `~/.cc-bus/` 从
     // `Remote` 改成 `Either`（理由的长版住 `tool_registry.rs`）。
     // 于是 `LocalHomeRelative` 只剩 `{Either}`，多 host 的变体从 2 个降到 1 个
-    // （`UserConfiguredPath` 仍同时映 `Remote` 与 `Either`）。
+    // （size2 10-11 起 `UserConfiguredPath` 并进了 `UserShellProfile`，剩下的多 host 变体以 `multi` 现打为准）。
     //
     // ⇒ **字段没有退化成冗余标签**（头注那条「变回 1:1 就该删字段」的准则未触发），
     // 只是余量少了一格。降门槛的同时把这句话留下：**再少一格就真的是 1:1**，
@@ -815,13 +821,13 @@ fn host_labels_are_distinct_and_truthful() {
 /// `host` 的四个变体都得有真实使用者。
 ///
 /// **如实登记一处尺子不一致**（T04 审计重要 4）：这条用 **≥1**，而同文件
-/// `user_configured_destinations_declare_a_placeholder_not_a_guess` 用 **≥2**。
+/// `shell_profile_destinations_declare_their_own_placeholder` 用 **≥2**。
 /// 变体真实用户数：`Client` 1 条/1 工具、`ProjectDir` 1/1、`Either` 4 条/2 工具、`Remote` 4/3。
 ///
 /// 为什么**不**统一到 ≥2：同文件的 `ToolSource` 5 个变体里 4 个是单用户（T01 保留了它），
 /// `TouchEffect` 的门禁也只要求 `>= 3` 种被用到。**描述数据的 enum 允许变体各自单用户**
 /// ——这一点 T01 论证过（变体差异是数据的本性，不是过度设计）。
-/// 而 `UserConfiguredPath` 那条 ≥2 守的是**别的东西**：那是"这个变体值不值得存在"的判据，
+/// 而 `UserShellProfile` 那条（从前是 `UserConfiguredPath` 那条）≥2 守的是**别的东西**：那是"这个变体值不值得存在"的判据，
 /// 因为它是我为了不写死一个假常量而**新造**的。两把尺子各有其位，但**同一文件里并存
 /// 就该写明**，不能让人以为是疏忽。
 #[test]
@@ -847,14 +853,12 @@ fn all_host_scopes_are_really_used() {
 /// （它告诉用户去哪儿看那个值），覆盖掉是降级。
 #[test]
 fn host_projection_preserves_the_richer_resolution() {
-    // 今天闭集里没有「远端 × 配置项落点」那一格的真成员 ⇒ 造一个落点喂同一个解析函数。
-    let dest = ToolDestination::UserConfiguredPath {
-        token: "$REMOTE_SAMPLE",
-        what: crate::footprint::registry::Text(|| "sample".to_string()),
-    };
+    // 今天闭集里没有「远端 × 用户选的 profile」那一格的真成员 ⇒ 造一个落点喂同一个解析函数。
+    let dest = ToolDestination::UserShellProfile(ShellProfile::PosixRc);
+    let want = ShellProfile::PosixRc.what();
     let r = resolve_touched_path(
         Vantage::Monitor,
-        "$REMOTE_SAMPLE",
+        ShellProfile::PosixRc.token(),
         &dest,
         HostScope::Remote,
         &home(),
@@ -862,7 +866,7 @@ fn host_projection_preserves_the_richer_resolution() {
     )
     .unwrap();
     match r {
-        PathResolution::NeedsUserConfig { what } => assert_eq!(what, "sample", "实得 {what}"),
+        PathResolution::NeedsUserConfig { what } => assert_eq!(what, want, "实得 {what}"),
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
 }
@@ -997,26 +1001,25 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     );
 }
 
-/// **配置项型落点不许再冒充常量**：`UserConfiguredPath` 的申报路径必须是占位符
-/// （`$` 开头），否则就是又一次"凭印象写个常量"。
+/// **用户选的 shell profile 不许冒充常量**：`UserShellProfile` 的每一个载体，申报路径里都有它那种 profile 的占位符
+/// （`$PROFILE` / `$POSIX_RC`，[`ShellProfile::token`]），否则就是又一次"凭印象写个常量"；
+/// 用户自己选的那一种（POSIX rc）解析成「去哪儿看」那一句（[`PathResolution::NeedsUserConfig`]），不是一条假路径。
+///
+/// 〔size2 10-11〕「路径由用户配置决定」从前是单独一个变体 `UserConfiguredPath`；安装包旁那份后端（`$APP_DIR`）撤掉之后它只剩
+/// POSIX rc 一个使用者，按 ≥2 规矩并进了 `UserShellProfile`（它说的本来就是同一件事：用户选的 shell profile）。
 #[test]
-fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
+fn shell_profile_destinations_declare_their_own_placeholder() {
     let mut n = 0;
     for t in TOOLS.iter() {
         // 🔴 按**载体**判：占位符要出现在**它自己那个载体**的 touches 里，
         //    不是「这个工具的某一条 touch 里」—— 后者在多载体下会**静默配错对**。
         for c in t.carriers {
-            if let ToolDestination::UserConfiguredPath { token, what } = &c.destination {
+            if let ToolDestination::UserShellProfile(p) = &c.destination {
                 n += 1;
+                let token = p.token();
                 assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
                 assert!(
-                    !what.get().trim().is_empty(),
-                    "{}: 得告诉用户去哪儿看这个值",
-                    t.id
-                );
-                // 这个占位符必须真出现在 touches 里，否则表格上那一行会显示别的东西
-                assert!(
-                    c.touches.iter().any(|f| f.path == *token),
+                    c.touches.iter().any(|f| f.path == token),
                     "{}: 载体「{}」的 touches 里没有 {token:?}",
                     t.id,
                     c.what
@@ -1024,14 +1027,26 @@ fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
             }
         }
     }
-    // 计数自检：至少有一个使用者（否则上面整段是空转的）。
-    // ⚠ 本工作区的 ≥2 判据（「不够 2 个就不该是一个变体」）今天**不满足**：size2（10-11）撤掉安装包旁边那份后端
-    //   （`$APP_DIR` 那一格）之后只剩 `$POSIX_RC` 一个使用者。按规矩该把它并进别的变体，但 `ToolDestination` 进线上形状
-    //   （`serde::Serialize`，帧面 `footprint-report`），并它连着生成类型与手机金样 —— 另立一件，这里如实把地板放到 1。
+    // 计数自检：≥2 个使用者才配有这个变体（本工作区的 ≥2 判据）
     assert!(
-        n >= 1,
-        "UserConfiguredPath 一个使用者都没有了 —— 该删这个变体"
+        n >= 2,
+        "UserShellProfile 只有 {n} 个使用者——不够 2 个就不该是一个变体"
     );
+    let r = resolve_touched_path(
+        Vantage::Monitor,
+        ShellProfile::PosixRc.token(),
+        &ToolDestination::UserShellProfile(ShellProfile::PosixRc),
+        HostScope::Client,
+        &home(),
+        &home().join(".claude"),
+    )
+    .unwrap();
+    match r {
+        PathResolution::NeedsUserConfig { what } => {
+            assert!(!what.trim().is_empty(), "POSIX rc 没告诉用户去哪儿看")
+        }
+        other => panic!("用户自己选的 POSIX rc 解析成了 {other:?}"),
+    }
 }
 
 /// 🔴 `KR60D2`：**这个视图的人群 = 环境清单的闭集**，一项不多、一项不少。

@@ -28,8 +28,8 @@
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
 use super::registry::{
-    Carrier, EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ToolDestination, ToolSource,
-    ToolSpec, TouchEffect, TouchedFile,
+    Carrier, EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ShellProfile, ToolDestination,
+    ToolSource, ToolSpec, TouchEffect, TouchedFile,
 };
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -173,7 +173,7 @@ pub fn resolve_touched_path(
 
 /// `host` 只改写**本机可解析**的那两种结果，其余原样透传。
 ///
-/// 为什么不是"host 说远端就一律返回 Remote"：`UserConfiguredPath` 解析出的
+/// 为什么不是"host 说远端就一律返回 Remote"：用户选的 POSIX rc（`UserShellProfile(PosixRc)`）解析出的
 /// `NeedsUserConfig { what }` 比 `Remote` **信息更多**（它告诉用户去哪儿看那个值），
 /// 覆盖掉是降级。
 fn project_onto_host(
@@ -217,16 +217,19 @@ fn resolve_by_destination(
     agent_home: &Path,
 ) -> Result<PathResolution, String> {
     match dest {
-        ToolDestination::UserShellProfile => {
-            if declared == "$PROFILE" {
-                Ok(PathResolution::WindowsProfile)
-            } else {
+        ToolDestination::UserShellProfile(p) => {
+            if declared != p.token() {
                 // 落点是"用户选的 profile"却申报了别的路径 → 声明自相矛盾，宁可报错
-                Err(copy_text(
+                return Err(copy_text(
                     "rsConfigSurface.declared.profileMismatch",
                     &[("declared", &format!("{:?}", declared))],
-                ))
+                ));
             }
+            Ok(match p {
+                ShellProfile::PowerShell => PathResolution::WindowsProfile,
+                // 用户选的那一份：路径是配置项 ⇒ 告诉用户去哪儿看那个值，不发明一条路径。
+                ShellProfile::PosixRc => PathResolution::NeedsUserConfig { what: p.what() },
+            })
         }
         ToolDestination::ProjectRelative(_) => {
             if declared.starts_with('~') || declared.starts_with('/') {
@@ -236,18 +239,6 @@ fn resolve_by_destination(
                 ));
             }
             Ok(PathResolution::NeedsProjectDir(declared.to_string()))
-        }
-        // **占位符只对应"落点"那一条，别的 touches 照常解析。**
-        // 第一版这条臂要求**每条** touches 都等于占位符，于是 cc-acct-iso 的
-        // 账号库那一条（**T04 查证：它在远端**，`accounts.rs` 全走 ssh exec，
-        // 我这句原先写的"本机账号库"是错的）被判违规——
-        // 落点只是这个工具碰的文件之一，不是全部。测试当场红在这里。
-        ToolDestination::UserConfiguredPath { token, what } => {
-            if declared == *token {
-                Ok(PathResolution::NeedsUserConfig { what: what.get() })
-            } else {
-                resolve_local_home(declared, home, agent_home)
-            }
         }
         // 从远端那台看，「远端家目录相对」就是**这台**的家目录相对 ⇒ 照本机路径解析（`home` 是那台的）。
         ToolDestination::RemoteHomeRelative(_) => match vantage {
@@ -266,7 +257,7 @@ fn resolve_by_destination(
 }
 
 /// 解析一个 `~/…` 形态的**本机**路径。抽出来是因为两条臂共用它
-/// （`LocalHomeRelative`，以及 `UserConfiguredPath` 里那些**不是**落点占位符的 touches）。
+/// （`LocalHomeRelative` 与 `NotInstalledByUs`）。
 fn resolve_local_home(
     declared: &str,
     home: &Path,

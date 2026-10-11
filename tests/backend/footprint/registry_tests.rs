@@ -644,8 +644,7 @@ fn landing_path_of(d: &ToolDestination) -> Option<String> {
             Some(format!("~/{p}"))
         }
         ToolDestination::ProjectRelative(p) => Some((*p).to_string()),
-        ToolDestination::UserShellProfile => Some("$PROFILE".to_string()),
-        ToolDestination::UserConfiguredPath { token, .. } => Some((*token).to_string()),
+        ToolDestination::UserShellProfile(p) => Some(p.token().to_string()),
         ToolDestination::NotInstalledByUs { .. } => None,
     }
 }
