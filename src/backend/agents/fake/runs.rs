@@ -17,6 +17,7 @@
 use crate::agents::{
     BlockKind, ChildLink, RunDid, RunEnd, RunFaces, RunMark, StreamEv, StreamFace,
 };
+use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -116,7 +117,7 @@ fn sources(parent: &Path) -> Vec<PathBuf> {
         return Vec::new();
     };
     let lanes = dir.join(format!("{stem}.{LANES_SUFFIX}"));
-    let Ok(rd) = std::fs::read_dir(&lanes) else {
+    let Ok(rd) = Ro::read_dir(&lanes) else {
         return Vec::new();
     };
     let mut v: Vec<PathBuf> = rd
@@ -130,7 +131,7 @@ fn sources(parent: &Path) -> Vec<PathBuf> {
 
 /// 记录根底下（平铺一层）`<父>.lanes/<id>.<LANE_EXT>`：本假家的子运行文件名就是它的 id。
 fn find(root: &Path, child_id: &str) -> Option<PathBuf> {
-    std::fs::read_dir(root).ok()?.flatten().find_map(|e| {
+    Ro::read_dir(root).ok()?.flatten().find_map(|e| {
         let p = e.path().join(format!("{child_id}.{LANE_EXT}"));
         (e.path().extension().is_some_and(|x| x == LANES_SUFFIX) && p.is_file()).then_some(p)
     })

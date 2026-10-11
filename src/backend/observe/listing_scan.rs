@@ -149,7 +149,7 @@ impl SessionScan {
             "sessionId": session_id,
             "jsonlPath": p.to_string_lossy(),
             "startedAtMs": self.started_at.unwrap_or_else(|| super::history_query::created_ms_or_mtime(p)),
-            "updatedAtMs": super::fs::mtime_ms(p),
+            "updatedAtMs": crate::platform::fs::Ro::mtime_ms(p),
             "messageCountApprox": self.count,
             "firstUserExcerpt": self.excerpt,
             "aiTitle": self.ai_title,

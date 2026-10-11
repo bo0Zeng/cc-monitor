@@ -509,20 +509,20 @@ fn special_files_are_rejected_not_read() {
     // read_regular_capped 必须靠 is_file() 挡下（跟随 symlink 后目标是字符设备）。
     let link = root.join("evil.json");
     symlink("/dev/zero", &link).unwrap();
-    let r = read_regular_capped(&link, cc_accounts::MAX_CONFIG_BYTES);
+    let r = Ro::read_regular_capped(&link, cc_accounts::MAX_CONFIG_BYTES);
     assert!(
         r.is_err(),
         "指向 /dev/zero 的 symlink 必须被拒，而不是读爆内存"
     );
     // 目录也不是常规文件
-    assert!(read_regular_capped(&root, 1024).is_err());
+    assert!(Ro::read_regular_capped(&root, 1024).is_err());
     // 正常小文件放行
     let ok = root.join("ok.json");
     fs::write(&ok, "{}").unwrap();
-    assert_eq!(read_regular_capped(&ok, 1024).unwrap(), b"{}");
+    assert_eq!(Ro::read_regular_capped(&ok, 1024).unwrap(), b"{}");
     // 超上限的常规文件被拒
     fs::write(&ok, vec![b'x'; 100]).unwrap();
-    assert!(read_regular_capped(&ok, 50).is_err());
+    assert!(Ro::read_regular_capped(&ok, 50).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -1808,9 +1808,9 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
     fs::create_dir_all(&dir).unwrap();
     let big = root.join("big.json");
     fs::write(&big, vec![b'x'; 10]).unwrap();
-    let e_missing = read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
-    let e_dir = read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
-    let e_big = read_regular_capped(&big, 4).expect_err("超限必须是 Err");
+    let e_missing = Ro::read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
+    let e_dir = Ro::read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
+    let e_big = Ro::read_regular_capped(&big, 4).expect_err("超限必须是 Err");
     assert!(e_big.said.contains("10"), "过大那句没带实际字节数：{e_big}");
     assert!(
         e_missing != e_dir && e_dir != e_big && e_missing != e_big,
@@ -1819,11 +1819,11 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
     let exact = root.join("exact.json");
     fs::write(&exact, vec![b'y'; 8]).unwrap();
     assert_eq!(
-        read_regular_capped(&exact, 8).expect("正好等于上限应当放行"),
+        Ro::read_regular_capped(&exact, 8).expect("正好等于上限应当放行"),
         vec![b'y'; 8]
     );
     assert!(
-        read_regular_capped(&exact, 7).is_err(),
+        Ro::read_regular_capped(&exact, 7).is_err(),
         "超出一个字节没被拒 —— 上限那一格滑了"
     );
     let _ = fs::remove_dir_all(&root);

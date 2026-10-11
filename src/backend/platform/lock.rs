@@ -32,7 +32,7 @@ use std::path::Path;
 /// 持着的那把锁。落地即放。
 pub(crate) struct DirLock {
     #[cfg(unix)]
-    _dir: std::fs::File,
+    _dir: crate::platform::fs::RoFile,
     #[cfg(windows)]
     mutex: std::os::windows::io::RawHandle,
 }
@@ -49,8 +49,8 @@ fn lock_fail(said: String, raw: &std::io::Error) -> LockFail {
 /// 本层不建：`platform/` 在默认层，一个写动词都不许有）。
 #[cfg(unix)]
 pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
-    use std::os::unix::io::AsRawFd;
-    let f = std::fs::File::open(dir).map_err(|e| {
+    use std::os::fd::{AsFd as _, AsRawFd as _};
+    let f = crate::platform::fs::Ro::open(dir).map_err(|e| {
         lock_fail(
             copy_text(
                 "bePlatformLock.hold.openFailed",
@@ -64,7 +64,7 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
     })?;
     loop {
         // SAFETY: `f` 活着、描述有效；`flock` 只读这个整数。
-        let rc = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) };
+        let rc = unsafe { libc::flock(f.as_fd().as_raw_fd(), libc::LOCK_EX) };
         if rc == 0 {
             return Ok(DirLock { _dir: f });
         }

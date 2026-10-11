@@ -1249,7 +1249,7 @@ fn the_non_unix_arm_of_is_exec_delegates_to_the_pathext_rule() {
         .and_then(|b| b.split("\n}\n").next())
         .expect("找不到 `is_exec` 的函数体 —— 抽取器坏了，下面几条会零命中地绿");
     assert!(
-        body.contains("m.is_file() && m.permissions().mode() & 0o111 != 0"),
+        body.contains("m.is_file() && Ro::mode(&m).is_some_and(|mode| mode & 0o111 != 0)"),
         "正控：unix 臂那一句不在了 —— 抽取器切错了地方"
     );
     let arm = body

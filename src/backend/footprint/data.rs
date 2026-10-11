@@ -15,6 +15,7 @@
 
 use super::registry::EnvTier;
 use super::rows::{ConfigSurfaceReport, SurfaceRow, SurfaceState};
+use crate::platform::fs::Ro;
 use serde_json::{json, Value};
 
 /// cc-monitor 自己的家（相对家目录）：这下面的不是「你的文件」。
@@ -88,7 +89,7 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
         .iter()
         .map(|&(id, rel, dir, truth)| {
             let p = home.join(rel);
-            let meta = std::fs::metadata(&p).ok();
+            let meta = Ro::metadata(&p).ok();
             let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
             let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
             json!({

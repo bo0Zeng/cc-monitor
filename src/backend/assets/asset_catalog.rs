@@ -311,7 +311,7 @@ pub fn skill_asset(
             }
         };
         bytes += len;
-        match crate::common::fs::read_regular_capped(ent.path(), SKILL_MAX_FILE_BYTES) {
+        match crate::platform::fs::Ro::read_regular_capped(ent.path(), SKILL_MAX_FILE_BYTES) {
             Ok(body) => {
                 if body.contains(&0) || std::str::from_utf8(&body).is_err() {
                     binary = true;

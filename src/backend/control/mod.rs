@@ -17,7 +17,7 @@
 //!
 //! # 这一层不许引用 [`crate::observe`]
 //!
-//! 由 `crate::layering_guard` 机检。通用的安全读文件住 `common/fs.rs`，不靠给反向边开例外。
+//! 由 `crate::layering_guard` 机检。通用的安全读文件住 `platform/fs/ro.rs`，不靠给反向边开例外。
 
 pub mod capture_pane;
 pub(crate) mod cc_bus;

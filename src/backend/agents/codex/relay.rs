@@ -9,6 +9,7 @@
 //! - 同一个地址两种登录都用 ⇒ 真上游按这一发带没带 `ChatGPT-Account-ID`（只有 ChatGPT 登录带）二选一。
 
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 /// 这一家的默认上游那一格（注册表 `Adapter.upstream`）。
@@ -62,7 +63,7 @@ const KEY: &str = "openai_base_url";
 /// `$HOME/.codex/config.toml`（缺省的家；另设 `CODEX_HOME` 的号各有各的那一份，归多账号那一维）＋ 顶层那一格。**只读**。
 fn read_config_base_url(home: &Path) -> (PathBuf, SettingsBaseUrl) {
     let file = home.join(".codex").join("config.toml");
-    let raw = match std::fs::metadata(&file) {
+    let raw = match Ro::metadata(&file) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return (file, SettingsBaseUrl::Unset)
         }
@@ -72,7 +73,7 @@ fn read_config_base_url(home: &Path) -> (PathBuf, SettingsBaseUrl) {
             let error = SettingsUnreadable::TooLarge(CONFIG_CAP_BYTES);
             Err(error)
         }
-        Ok(_) => std::fs::read_to_string(&file).map_err(|e| SettingsUnreadable::Io(e.to_string())),
+        Ok(_) => Ro::read_to_string(&file).map_err(|e| SettingsUnreadable::Io(e.to_string())),
     };
     let found = match raw {
         Ok(text) => config_base_url(&text),

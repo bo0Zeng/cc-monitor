@@ -17,6 +17,7 @@
 //! - 时刻：每条记录的 `timestamp`（ISO 8601）。在等工具：子记录里带 `tool_result` 的 user 记录交回了之前那次调用的结果。
 //!   报错原话：前台那次调用 `is_error` 的结果正文 · API 报错那条 assistant 记录的正文。
 
+use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -348,8 +349,8 @@ pub(crate) fn find(records_root: &Path, child_id: &str) -> Option<PathBuf> {
         return None;
     }
     let want = format!("{CHILD_PREFIX}{child_id}.jsonl");
-    for proj in std::fs::read_dir(records_root).ok()?.flatten() {
-        let Ok(stems) = std::fs::read_dir(proj.path()) else {
+    for proj in Ro::read_dir(records_root).ok()?.flatten() {
+        let Ok(stems) = Ro::read_dir(proj.path()) else {
             continue;
         };
         for stem in stems.flatten() {
@@ -370,7 +371,7 @@ pub(crate) fn find(records_root: &Path, child_id: &str) -> Option<PathBuf> {
 }
 
 fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = Ro::read_dir(dir) else {
         return;
     };
     for e in rd.flatten() {

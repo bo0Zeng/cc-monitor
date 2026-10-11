@@ -7,6 +7,7 @@
 //! 路径在启动日志里说：装表时把算出来的那条绝对路径印在 stderr 上，文件不在时连模板一起印（backend 没有 `--help`）。
 
 use super::table::{Note, Rejected, WHY_AUTH_STYLE_UNKNOWN};
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use creds_core::perm::{self, Verdict};
 use creds_core::store::{self, AccountEntry, AuthStyle};
@@ -52,7 +53,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
     // 先查权限，再读内容：反过来的话，一份过宽的文件已经被读进内存了才开始出声。
     let verdict = perm::judge(&perm::probe(path));
 
-    let raw = match std::fs::read_to_string(path) {
+    let raw = match Ro::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Loaded {

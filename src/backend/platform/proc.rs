@@ -6,6 +6,8 @@
 //! Windows 臂只买到编得过（`winchk-backend`）＋ 纯换算那一半在 Linux 上的对拍；真机零读数。
 //! `platform/fallback_guard.rs` 钉住这一族：fallback 分支不许凭空返回「成功」值。
 
+use crate::platform::fs::Ro;
+
 /// Whether `pid` currently exists as a process on this host (existence only).
 ///
 /// Linux (the backend's real target): `/proc/<pid>` existence. This is the
@@ -66,8 +68,8 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 ///
 /// | 支 | 何处 | 事实 |
 /// |---|---|---|
-/// | 一 | `std::fs::read(…)` 回 `Err` | 环境读不到（进程没了 / 权限 / 竞态）—— 很少发生 |
-/// | 四 | `std::fs::read(…)` 回 `Ok(vec![])` | 读得到，但回 0 字节 —— 常见：exec 窗口（进程刚 `execve`、mm 还没装好）与僵尸进程 |
+/// | 一 | `Ro::read(…)` 回 `Err` | 环境读不到（进程没了 / 权限 / 竞态）—— 很少发生 |
+/// | 四 | `Ro::read(…)` 回 `Ok(vec![])` | 读得到，但回 0 字节 —— 常见：exec 窗口（进程刚 `execve`、mm 还没装好）与僵尸进程 |
 /// | 二 | 键在，值是空串 | 显式设成了空 |
 /// | 三 | 循环走完没命中 | 压根没这个键 |
 ///
@@ -97,7 +99,7 @@ pub(crate) enum EnvRead {
 pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
     #[cfg(target_os = "linux")]
     {
-        let bytes = match std::fs::read(format!("/proc/{pid}/environ")) {
+        let bytes = match Ro::read(format!("/proc/{pid}/environ")) {
             Ok(b) => b,
             Err(e) => {
                 tracing::warn!(
@@ -150,7 +152,7 @@ pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
         parse_starttime_from_stat(&stat)
     }
     #[cfg(windows)]
@@ -170,7 +172,7 @@ pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
 pub(crate) fn has_controlling_tty(pid: u32) -> Option<bool> {
     #[cfg(target_os = "linux")]
     {
-        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
         parse_tty_nr_from_stat(&stat).map(|n| n != 0)
     }
     #[cfg(not(target_os = "linux"))]
@@ -219,7 +221,7 @@ pub(crate) const USER_HZ: u64 = 100;
 pub(crate) fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let btime = std::fs::read_to_string("/proc/stat")
+        let btime = Ro::read_to_string("/proc/stat")
             .ok()
             .and_then(|s| parse_btime(&s))?;
         Some(btime + ticks? / USER_HZ)
@@ -256,7 +258,7 @@ pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
 pub(crate) fn exe_of(pid: u32) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
-        std::fs::read_link(format!("/proc/{pid}/exe"))
+        Ro::read_link(format!("/proc/{pid}/exe"))
             .ok()
             .map(|p| p.to_string_lossy().into_owned())
     }
@@ -272,7 +274,7 @@ pub(crate) fn exe_of(pid: u32) -> Option<String> {
 pub(crate) fn proc_cmdline(pid: u32) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
-        let bytes = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+        let bytes = Ro::read(format!("/proc/{pid}/cmdline")).ok()?;
         let spaced: Vec<u8> = bytes
             .into_iter()
             .map(|b| if b == 0 { b' ' } else { b })

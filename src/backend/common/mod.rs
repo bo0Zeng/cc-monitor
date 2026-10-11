@@ -9,7 +9,6 @@
 /// ③ 只认「这一格是写好的字 / 语气」。
 pub(crate) mod cells;
 pub(crate) mod contract;
-pub(crate) mod fs;
 /// 只听回环的那一个地址。① stream（常驻监听口）· relay（中转的宿主）· control（本机探口）都绑 / 连它 · ② `std::net` 的常量 · ③ 只认「回环」。
 pub mod net;
 /// 后端建自家目录的那一个函数。① 原生那一块（退出行为 · 资产目录 · skill 装记录 · 中转钥匙 · 常驻登记）与文件管理那一块（暂存区，

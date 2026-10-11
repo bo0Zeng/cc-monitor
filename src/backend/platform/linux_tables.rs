@@ -8,6 +8,7 @@
 
 #![cfg(target_os = "linux")]
 
+use crate::platform::fs::Ro;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -111,7 +112,7 @@ pub(crate) fn socket_inode(link: &str) -> Option<u64> {
 
 /// `/proc` 下的进程号们。
 fn pids() -> Result<Vec<u32>, String> {
-    let rd = std::fs::read_dir("/proc").map_err(|e| format!("read /proc: {e}"))?;
+    let rd = Ro::read_dir("/proc").map_err(|e| format!("read /proc: {e}"))?;
     Ok(rd
         .flatten()
         .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
@@ -125,11 +126,11 @@ fn owners(wanted: &[u64], pids: &[u32]) -> HashMap<u64, u32> {
         return out;
     }
     for &pid in pids {
-        let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        let Ok(rd) = Ro::read_dir(format!("/proc/{pid}/fd")) else {
             continue;
         };
         for e in rd.flatten() {
-            let Ok(link) = std::fs::read_link(e.path()) else {
+            let Ok(link) = Ro::read_link(e.path()) else {
                 continue;
             };
             if let Some(i) = link.to_str().and_then(socket_inode) {
@@ -152,7 +153,7 @@ pub(crate) fn connection_and_process_tables() -> Result<String, String> {
         ("/proc/net/tcp", Family::V4),
         ("/proc/net/tcp6", Family::V6),
     ] {
-        match std::fs::read_to_string(path) {
+        match Ro::read_to_string(path) {
             Ok(t) => lines.extend(parse_proc_net_tcp(&t, fam)),
             // 内核没开 IPv6 时没有 tcp6；IPv4 那张必须有。
             Err(e) if fam == Family::V4 => return Err(format!("read {path}: {e}")),
@@ -178,7 +179,7 @@ pub(crate) fn connection_and_process_tables() -> Result<String, String> {
     let proc: Vec<serde_json::Value> = pids
         .iter()
         .filter_map(|&pid| {
-            let s = parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+            let s = parse_stat(&Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
             Some(
                 serde_json::json!({ "pid": pid, "ppid": s.ppid, "name": s.name, "start": s.start }),
             )

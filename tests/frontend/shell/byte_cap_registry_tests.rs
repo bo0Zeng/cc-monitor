@@ -1727,7 +1727,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
              读的是尾部，应答 `truncated` 说清前面还有 —— 截断且说清。",
     ),
     (
-        "src/backend/common/fs.rs",
+        "src/backend/platform/fs/ro.rs",
         "cap + 1",
         "`read_file_capped` 是后端侧共用的有界读助手，上限是入参；\
              调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",

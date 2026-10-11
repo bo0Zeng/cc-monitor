@@ -144,7 +144,7 @@ fn stream_from_offset_production_path_byte_parity() {
     let p = tmp.join("s.jsonl");
     std::fs::write(&p, data).unwrap();
     for off in [0u64, 4, 5, 7, 100] {
-        let mut f = std::fs::File::open(&p).unwrap();
+        let mut f = Ro::open(&p).unwrap();
         let mut got = Vec::new();
         let n = stream_from_offset(&mut f, off, None, &mut got).expect("stream ok");
         // 对拍纯助手（= 生产 seek 应吐的字节）：逐字节一致 + copy 返回字节数吻合。
