@@ -196,5 +196,11 @@ object StreamWatch {
     fun args(sids: Set<String>): Map<String, Any?> = mapOf("sids" to sids.sorted())
 
     fun of(data: Any?): List<WatchFrom>? =
-        decoding { data.asObj().objs("from").need().map { WatchFrom(it.str("sid").need(), it.str("path").need(), it.num("seq").need()) } }
+        decoding {
+            data
+                .asObj()
+                .objs("from")
+                .need()
+                .map { WatchFrom(it.str("sid").need(), it.str("path").need(), it.num("seq").need()) }
+        }
 }

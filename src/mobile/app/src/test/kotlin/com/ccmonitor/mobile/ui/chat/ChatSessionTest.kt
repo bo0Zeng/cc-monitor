@@ -179,8 +179,11 @@ class ChatSessionTest {
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File()
+
             fun add(n: Int) = (file.records.size until file.records.size + n).forEach { i -> file.records += if (i % 2 == 0) human("u$i", "问$i") else reply("a$i", "答$i") }
+
             suspend fun write(n: Int) = repeat(n) { add(1).also { link.line("s1", file.records.lastIndex.toLong(), file.records.last()) } }
+
             link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
             link.report("s1", "/w")
             add(5)

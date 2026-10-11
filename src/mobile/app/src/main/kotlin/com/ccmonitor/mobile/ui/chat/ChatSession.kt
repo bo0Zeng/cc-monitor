@@ -308,26 +308,39 @@ class ChatSession(
             lock.withLock {
                 if (!loaded) {
                     if (e == Event.Reconnected) loaded = reloadLocked(p)
-                    return@withLock
+                } else if (stepLocked(p, e)) {
+                    publishLocked()
                 }
-                when (e) {
-                    is Event.Line -> {
-                        if (e.line.seq < nextSeq) return@withLock
-                        if (e.line.seq > nextSeq && !fillLocked(p, e.line.seq)) return@withLock
-                        if (e.line.seq < nextSeq) return@withLock
-                        e.line.record?.let { records += it }
-                        nextSeq = e.line.seq + 1
-                    }
-                    is Event.From -> if (e.seq > nextSeq) fillLocked(p, e.seq)
-                    Event.Reconnected -> {
-                        val t = readTail(p, 1) ?: return@withLock
-                        if (t.total > nextSeq && !fillLocked(p, t.total)) return@withLock
-                        _state.value = _state.value.copy(failedWhy = null, historyError = null)
-                    }
-                }
-                publishLocked()
             }
         }
+    }
+
+    /** 接上一样；记录有变 ⇒ `true`。 */
+    private suspend fun stepLocked(
+        p: String,
+        e: Event,
+    ): Boolean =
+        when (e) {
+            is Event.Line -> lineLocked(p, e.line)
+            is Event.From -> e.seq <= nextSeq || fillLocked(p, e.seq)
+            Event.Reconnected -> {
+                val t = readTail(p, 1)
+                val filled = t != null && (t.total <= nextSeq || fillLocked(p, t.total))
+                if (filled) _state.value = _state.value.copy(failedWhy = null, historyError = null)
+                filled
+            }
+        }
+
+    /** 一行：比已有的旧 ⇒ 重叠、不要；比已有的新、中间缺着 ⇒ 先补上。 */
+    private suspend fun lineLocked(
+        p: String,
+        line: RecordLine,
+    ): Boolean {
+        if (line.seq > nextSeq && !fillLocked(p, line.seq)) return false
+        if (line.seq < nextSeq) return false
+        line.record?.let { records += it }
+        nextSeq = line.seq + 1
+        return true
     }
 
     /** 整份重来：读最后一屏（[tailLines] 行）。没读成 ⇒ `false`（那一句已上屏）。 */
@@ -355,15 +368,15 @@ class ChatSession(
             tailLines = PAGE_LINES
             return reloadLocked(p)
         }
-        while (nextSeq < until) {
+        var more = true
+        while (more && nextSeq < until) {
             val r = link.call(HistoryLines.COMMAND, HistoryLines.args(p, nextSeq, until), READ_MS)
             val page =
                 (r as? Reply.Ok)?.let { HistoryLines.of(it.data) }
                     ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
             records += page.records
-            if (page.next <= nextSeq) break
-            nextSeq = page.next
-            if (page.eof) break
+            more = page.next > nextSeq && !page.eof
+            nextSeq = maxOf(nextSeq, page.next)
         }
         nextSeq = maxOf(nextSeq, until)
         return true
