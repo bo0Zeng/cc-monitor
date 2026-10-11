@@ -23,7 +23,7 @@
 //! （[`tests::sorting_an_already_sorted_screenful_by_name_changes_nothing`] 现打钉着）。
 //!
 //! ⚠ **池子那一份没退役**（它排的是 `SftpEntry`，不是这一侧的行），
-//! 提级成共用件仍然要等 `sftp*.rs` 那棵树 —— **本刀不动它**（另一路在改那棵树）。
+//! 提级成共用件仍然要等 `sftp*.rs` 那棵树 —— **这里不动它**（另一路在改那棵树）。
 //!
 //! # 🔴 排序**可选**（`名称 / 大小 / 类型`）—— 默认那一档与今天逐字节相同
 //!
@@ -60,7 +60,7 @@ pub struct Row {
 /// # 🔴 为什么不是「往 [`Row`] 上再加两个字段」—— 理由不是设计，是并行开发，如实记
 ///
 /// 直觉写法是给 `Row` 加两格。**那一改今天落不下去**：`Row` 的结构体字面量盘上约 30 处，
-/// 其中 `tests/frontend/shell/filewin/{writeops,editor,proc}_tests.rs` 三份在本刀的红线里
+/// 其中 `tests/frontend/shell/filewin/{writeops,editor,proc}_tests.rs` 三份在这里的红线里
 /// （另两路正在改它们对应的生产文件）。给 `Row` 加一格 ⇒ 那三份当场编不过；
 /// 而且**另两路新写的每一处 `Row { … }` 会在合并那天一起编不过** ——
 /// 那不是一次可能的冲突，是一次**必然**的冲突。

@@ -56,7 +56,7 @@ rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-
 #      · `x86_64-pc-windows-gnu`（门禁 winchk 那一格用的 target）✅ 31.97 秒
 #      · `x86_64-unknown-linux-musl`          ✅（只是 `check`，不是静态链接）
 #    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
-#      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**没被本刀回答**。
+#      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**这里没回答**。
 egui = "0.36"
 # 🔴 **渲染后端必须是 `glow`，不能用 eframe 默认的 `wgpu`** —— 理由是现打出来的编译失败，
 #    不是口味。**这一条别顺手改回默认。**

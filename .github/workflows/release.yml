@@ -729,7 +729,7 @@ jobs:
       # `!bin.main()`），而 nsis / msi / deb 三个打包器都把非主 bin 装到主二进制旁边。
       # ⇒ 那条机制哪天变了（升级 CLI、上游改行为），**本步会在 deb 上先红**，而它与
       #   Windows 那两个安装包是**同一个机制** ⇒ 这一格红就是「Windows 那份也别信了」。
-      # ⚠ 反过来**不成立**：本步绿只代表 deb 里有它。Windows 那两份安装包本刀**没买到**
+      # ⚠ 反过来**不成立**：本步绿只代表 deb 里有它。Windows 那两份安装包这一步**管不到**
       #   （没有 Windows 机器、也不跑 NSIS/WiX）—— 如实登记，别读宽。
       - name: The .deb really ships every binary this package declares
         run: |
