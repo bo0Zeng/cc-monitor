@@ -7,6 +7,7 @@
 import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { diskOf } from "./world";
+import type { Convo } from "./records";
 
 /**
  * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
@@ -100,14 +101,19 @@ export class FakeBackend {
   }
 
   /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */
-  async writeFile(origin: string, rel: string, text: string): Promise<void> {
+  async writeFile(origin: string, rel: string, text: string, append = false): Promise<void> {
     await this.ready;
-    const r = await fetch("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text }) });
+    const r = await fetch("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text, append }) });
     if (!r.ok) throw new Error(`改不了 ${origin} 上的 ${rel}：${await r.text()}`);
   }
 
+  /** 场景在开页之后往一个会话的记录里再写几行（`from` 起的那几条；真后端的 watcher 读到、照真的那一套交格）。 */
+  appendLines(origin: string, c: Convo, from: number): Promise<void> {
+    return this.writeFile(origin, c.file(), c.textFrom(from), true);
+  }
+
   /** 订阅那几样交给无头壳。 */
-  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end", body: Record<string, unknown>): Promise<void> {
+  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch", body: Record<string, unknown>): Promise<void> {
     return this.ready.then(async () => {
       const r = await fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
       if (!r.ok) throw new Error(`/__ccm/${what}：${await r.text()}`);
@@ -153,6 +159,10 @@ export class FakeBackend {
         return this.chanCall(args);
       case "chan_offer":
         return { ops: Object.keys(this.world.ops), unavailable: [], stoppable: [] };
+      case "watch_sessions":
+        // 主窗口报在看哪几个（整份换）：转给无头壳，它照产品那一条合每台的名单、经 `stream-watch` 报给那台后端（没在看的会话，行不上流）。
+        void this.tell("watch", { sessions: args.sessions ?? [] });
+        return null;
       case "chan_subscribe":
         this.subscribe(args);
         return null;
@@ -177,8 +187,9 @@ export class FakeBackend {
     const op = String(args.op);
     const raw = args.payload as number[];
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
+    // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。声明本身原样交给真后端，这里不读它。
+    const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
     if (REAL_OPS.has(op) && !WINDOWS_ONLY[origin]?.has(op)) {
-      const delay = this.world.opDelayMs?.[op] ?? 0;
       return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
     }
     const handler = this.world.ops[op];
@@ -187,9 +198,7 @@ export class FakeBackend {
       return Promise.reject({ err: "Unsupported", body: [] });
     }
     try {
-      const v = foldByView(op, handler(origin, req, this.world), args.view);
-      // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。
-      const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
+      const v = handler(origin, req, this.world);
       const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
       return later.then(
         // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
@@ -309,41 +318,3 @@ function pluginDefault(cmd: string, args: Record<string, unknown>): unknown {
   if (cmd === "plugin:dialog|open" || cmd === "plugin:dialog|save") return null;
   return null;
 }
-
-/**
- * 照出口交的声明裁记录（真后端 `faces/project.rs` 那一处的小抄：只认桌面交的那几种路径 ——
- * `blocks[type=X].Y` · `results.*.Y`）。认不出的路径 ⇒ 抛（宁可这张图截失败，也不交一份没裁的冒充裁过）。
- */
-function foldByView(op: string, v: unknown, view: unknown): unknown {
-  const paths = (view as { omit?: { record?: string[] } } | null | undefined)?.omit?.record;
-  if (!paths || (op !== "history-page" && op !== "history-lines")) return v;
-  const lines = (v as { lines?: Array<{ record: Record<string, unknown> }> }).lines ?? [];
-  const folded = lines.map((l) => ({ ...l, record: omitCells(l.record, paths) }));
-  return { ...(v as object), lines: folded };
-}
-
-function omitCells(rec: Record<string, unknown>, paths: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...rec };
-  for (const p of paths) {
-    const block = /^blocks\[type=([a-z_]+)\]\.(\w+)$/.exec(p);
-    const result = /^results\.\*\.(\w+)$/.exec(p);
-    if (block && Array.isArray(out.blocks)) {
-      out.blocks = (out.blocks as Array<Record<string, unknown>>).map((b) => {
-        if (b.type !== block[1]) return b;
-        const { [block[2]]: _gone, ...rest } = b;
-        return rest;
-      });
-    } else if (result && out.results && typeof out.results === "object") {
-      out.results = Object.fromEntries(
-        Object.entries(out.results as Record<string, Record<string, unknown>>).map(([k, r]) => {
-          const { [result[1]]: _gone, ...rest } = r;
-          return [k, rest];
-        }),
-      );
-    } else if (!block && !result) {
-      throw new Error(`shots: 假后端认不出声明里的路径 ${p}`);
-    }
-  }
-  return out;
-}
-

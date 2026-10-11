@@ -97,7 +97,7 @@ export const DRAWER_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await click(".status-agents");
     await waitFor("#bottom-drawer .agent-row");
-    await emit("agent-window", { sessionId: defaultWorld().sessions[0].sid, run: "agent-a2", open: true });
+    await emit("agent-window", { sessionId: defaultWorld().sessions[0].sid, run: "a2", open: true });
     await waitFor('#bottom-drawer [data-role="window-open"]');
     await sleep(500);
   }),

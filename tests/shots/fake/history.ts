@@ -2,7 +2,9 @@
  * 历史页的合成数据：几台机器上的项目与会话、全文搜索的命中。形状照 `history-list.golden.json` 与界面的解码器。
  */
 import { rowTime, sectionText, spanText } from "./clock";
-import type { OpHandler } from "./types";
+import type { OpHandler, World } from "./types";
+import { HOME } from "../disk";
+import { jsonlOf } from "./records";
 
 // 历史页按看的人这台的日历分段（今天 · 昨天 · 本周 …）⇒ 合成时间跟着截图那一刻走。
 const NOW = Date.now();
@@ -70,6 +72,11 @@ export const HISTORY: Proj[] = [
 const projectDir = (path: string): string => path.replace(/[/\\:]/g, "-");
 const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 const historyPath = (p: Proj, s: string): string => `/home/user/.claude/projects/${projectDir(p.path)}/${s}.jsonl`;
+/** 记录路径：世界里有这个会话 ⇒ 它落盘的那一份（场景可能换了它的工作目录）；没有 ⇒ 照清单这一条的目录现编。 */
+const pathIn = (w: World, p: Proj, sid: string): string => {
+  const s = w.sessions.find((x) => x.sid === sid);
+  return s ? `${HOME}/${jsonlOf(s.cwd, s.sid)}` : historyPath(p, sid);
+};
 const withOrigin = (origin: string): Record<string, unknown> => (origin === "<local>" ? {} : { origin });
 
 export function historyOps(): Record<string, OpHandler> {
@@ -108,7 +115,7 @@ export function historyOps(): Record<string, OpHandler> {
               atText: rowTime(ago(s.agoMin)),
               sectionText: sectionText(ago(s.agoMin)),
               spanText: spanText(ago(s.agoMin + 40), ago(s.agoMin)),
-              jsonlPath: historyPath(p, s.sid),
+              jsonlPath: pathIn(w, p, s.sid),
               messageCountApprox: s.messages,
               isBg: s.bg === true,
               starred: s.starred === true,
@@ -150,7 +157,7 @@ export function historyOps(): Record<string, OpHandler> {
       return { rows, groups, total: rows.length, truncated: false, notice: null };
     },
     // `titles: true` ⇒ 只比标题与第一句（「按项目」那一路）；否则按内容命中。本机还有 Codex 的会话（不在内容搜索里）。
-    "history-search": (origin, req) => ({
+    "history-search": (origin, req, w) => ({
       unreadable: 0,
       skipped: origin === "<local>" && req.titles !== true ? ["Codex"] : [],
       lines: HISTORY.filter((p) => p.origin === origin).flatMap((p) =>
@@ -166,7 +173,7 @@ export function historyOps(): Record<string, OpHandler> {
               sessionId: s.sid,
               projectPath: p.path,
               projectName: baseName(p.path),
-              jsonlPath: historyPath(p, s.sid),
+              jsonlPath: pathIn(w, p, s.sid),
               title: s.title,
               updatedAt: ago(s.agoMin),
               hitCount: req.titles === true ? 0 : s.hits!.length,

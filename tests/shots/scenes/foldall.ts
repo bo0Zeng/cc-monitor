@@ -11,7 +11,7 @@ import { mainReady, scrollStream, sleep, waitFor } from "./helpers";
 const SID = sidOf(1);
 const CWD = "/home/user/work/sample";
 
-function foldConvo(): { c: Convo; t1: string; t2: string } {
+function foldConvo(): Convo {
   const c = new Convo(SID, CWD, "2026-10-01T09:00:00Z");
   c.title("示例项目：配置读取整理");
   // 第一轮：思考 · 连续工具 · 中间的话 · 一次失败 · 结论
@@ -32,8 +32,16 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
   // 第二轮：派两个 agent · 交回 · 后台任务通知 · 系统注入 · 结论
   c.user("再让两个 agent 分别查一下文档和示例里有没有旧写法。");
   c.say("好，分两路查。");
-  const t1 = c.tool("Task", { description: "查文档里的旧写法", prompt: "在 docs/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "docs/ 里有 2 处旧用法：docs/a.md:10、docs/b.md:4。", { child: { label: "查文档里的旧写法", kind: "Explore" } });
-  const t2 = c.tool("Task", { description: "查示例里的旧写法", prompt: "在 examples/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "examples/ 里没有旧用法。", { child: { label: "查示例里的旧写法", kind: "Explore" } });
+  const r1 = c.child("r1");
+  r1.user("在 docs/ 里找 load_config 的旧用法。");
+  r1.tool("Grep", { pattern: "load_config", path: "docs" }, "docs/a.md:10\ndocs/b.md:4");
+  r1.say("docs/ 里有 2 处旧用法：docs/a.md:10、docs/b.md:4。", 20_000, "end_turn");
+  const r2 = c.child("r2");
+  r2.user("在 examples/ 里找 load_config 的旧用法。");
+  r2.tool("Grep", { pattern: "load_config", path: "examples" }, "");
+  r2.say("examples/ 里没有旧用法。", 20_000, "end_turn");
+  c.tool("Task", { description: "查文档里的旧写法", prompt: "在 docs/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "docs/ 里有 2 处旧用法：docs/a.md:10、docs/b.md:4。", { child: r1 });
+  c.tool("Task", { description: "查示例里的旧写法", prompt: "在 examples/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "examples/ 里没有旧用法。", { child: r2 });
   c.from({ kind: "agentMessage", from: "r1", name: "查文档里的旧写法", handback: true, body: "docs/ 里有 2 处旧用法：`docs/a.md:10`、`docs/b.md:4`。" });
   c.from({ kind: "agentMessage", from: "r2", name: "查示例里的旧写法", handback: true, body: "examples/ 里没有旧用法。" });
   c.from({ kind: "taskNotification", taskId: "bg1", status: "completed", summary: "lint" });
@@ -44,8 +52,7 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
 
   // 压缩
   c.from({ kind: "slashCommand", name: "/compact", args: "" });
-  c.from({ kind: "compactSummary" });
-  (c.records[c.records.length - 1] as { who: { text: string } }).who.text = "## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改";
+  c.from({ kind: "compactSummary", body: "This session is being continued from a previous conversation that ran out of context. The conversation is summarized below:\n## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改" });
 
   // 第三轮：重试 · 中途你按了 Esc 并插话 · 再做 · 结论
   c.user("给 load_config 加缓存。");
@@ -65,19 +72,15 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
   c.tool("Grep", { pattern: "from .a import|from .b import", path: "src" }, "");
   c.say("没有引用了，删掉。");
   c.tool("Bash", { command: "git rm src/c.py", description: "删旧文件" }, null);
-  return { c, t1, t2 };
+  return c;
 }
 
 function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
   const w = defaultWorld();
-  const { c, t1, t2 } = foldConvo();
+  const c = foldConvo();
   w.sessions[0] = session(1, LOCAL, CWD, c, {
     activity,
     ...(activity === "needs_you" ? { waitingFor: "permission prompt", waitingSinceMs: Date.now() - 60_000 } : {}),
-    runs: [
-      { run: "agent-r1", label: "查文档里的旧写法", kind: "Explore", tool: t1, state: "done", last: { t: "say" } },
-      { run: "agent-r2", label: "查示例里的旧写法", kind: "Explore", tool: t2, state: "done", last: { t: "say" } },
-    ],
   });
   return w;
 }

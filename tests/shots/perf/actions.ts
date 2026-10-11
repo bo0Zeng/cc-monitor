@@ -9,8 +9,6 @@
  * 长任务（只有 Chromium 有）· 新建节点 · 结束时 DOM 节点数。只给台架用；不进产品构建。
  */
 import type { FakeBackend } from "../fake/backend";
-import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
-import { Convo } from "../fake/records";
 import { turn } from "./world";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -274,7 +272,7 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
   const s = scroller();
   s.scrollTop = s.scrollHeight;
   await sleep(300);
-  const active = be.world.sessions.reduce((a, b) => (b.records.length > a.records.length ? b : a));
+  const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
   const target = where === "active" ? active : be.world.sessions[1];
   let n = 0;
   const ev = (e: unknown): unknown => ({ origin: target.origin, stream: target.sid, resp: 1, n: n++, ev: e });
@@ -288,13 +286,11 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
       }
       await step(steps, "tool", () => be.pushTap(target.origin, [ev({ t: "block", i: 1, kind: "tool", tool: "Bash" })]));
       await sleep(200);
-      // 这一轮落成记录（真后端：记录文件写了 ⇒ 一批 line 格）
-      const c = new Convo(target.sid, target.cwd, "2026-10-02T08:00:00Z");
+      // 这一轮落成记录：记录文件接着写了几行 ⇒ 真后端的 watcher 读到、交一批 line 格
+      const c = target.convo!;
+      const from = c.lines.length;
       turn(c, target.cwd, 1000 + round, false);
-      const from = target.records.length;
-      target.records.push(...c.records);
-      const frames: SessionStreamFrame[] = c.records.map((record, i) => ({ line: { session_id: target.sid, cwd: target.cwd, path: `${target.cwd}/${target.sid}.jsonl`, seq: from + i, origin: target.origin, record } }) as SessionStreamFrame);
-      await step(steps, "lines", () => be.pushFrames(target.origin, frames));
+      await step(steps, "lines", () => be.appendLines(target.origin, c, from));
       await sleep(500);
     }
   });
@@ -475,7 +471,7 @@ async function drawer(): Promise<Record<string, unknown>> {
   await toLongest();
   const be = window.__perfBackend;
   if (!be) throw new Error("没有假后端句柄");
-  const active = be.world.sessions.reduce((a, b) => (b.records.length > a.records.length ? b : a));
+  const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
   return measure("drawer", async (steps) => {
     const btn = await waitSel("#session-head button[aria-label='看它的终端']");
     await step(steps, "open", () => clickEl(btn));

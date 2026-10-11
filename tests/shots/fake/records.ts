@@ -27,6 +27,8 @@ export interface ToolOpts {
   lead?: string;
   /** 后台起的命令（入参带 `run_in_background`）：当场回的结果旁边说它的任务号。 */
   bg?: string;
+  /** 后台派出子 agent（入参带 `run_in_background`）：当场回的那次结果是「已起」（`status: async_launched`），不是它收场。 */
+  launched?: boolean;
 }
 
 let uid = 0;
@@ -52,6 +54,8 @@ export class Convo {
   private parent: string | null = null;
   /** 子 agent 那一段（`sid` 是父会话的；文件住父会话那一份旁边）。 */
   readonly agentId: string | null;
+  /** 这一份文件最后写的那一刻（epoch ms；盘上的修改时刻）。缺 ⇒ 开页那一刻。 */
+  writtenAt: number | undefined;
 
   constructor(
     readonly sid: string,
@@ -78,13 +82,26 @@ export class Convo {
 
   /** 原文（一行一条）。 */
   text(): string {
-    return this.lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + (this.lines.length > 0 ? "\n" : "");
+    return this.textFrom(0);
+  }
+
+  /** 第 `from` 条起的原文（开页之后接着写的那几行）。 */
+  textFrom(from: number): string {
+    const tail = this.lines.slice(from);
+    return tail.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + (tail.length > 0 ? "\n" : "");
   }
 
   /** 这一段与它派出的子 agent 那几段：相对家目录的路径 → 原文。 */
   files(): Record<string, string> {
     const out: Record<string, string> = { [this.file()]: this.text() };
     for (const c of this.children.values()) Object.assign(out, c.files());
+    return out;
+  }
+
+  /** 这一段与它派出的子 agent 那几段里给了写入时刻的：相对家目录的路径 → 修改时刻（epoch ms）。 */
+  mtimes(): Record<string, number> {
+    const out: Record<string, number> = this.writtenAt === undefined ? {} : { [this.file()]: this.writtenAt };
+    for (const c of this.children.values()) Object.assign(out, c.mtimes());
     return out;
   }
 
@@ -190,15 +207,20 @@ export class Convo {
     const id = this.nextToolId();
     const blocks: RawBlock[] = [];
     if (opts.lead) blocks.push({ type: "text", text: opts.lead });
-    blocks.push({ type: "tool_use", id, name, input: opts.bg ? { ...input, run_in_background: true } : input });
+    blocks.push({ type: "tool_use", id, name, input: opts.bg || opts.launched ? { ...input, run_in_background: true } : input });
     this.assistant(blocks);
-    if (opts.child?.agentId) this.children.set(opts.child.agentId, opts.child);
+    this.adopt(opts);
     if (result !== null) this.result(id, result, opts.error ?? false, toolUseResult(name, input, result, opts));
     return id;
   }
 
+  private adopt(opts: ToolOpts): void {
+    if (opts.child?.agentId) this.children.set(opts.child.agentId, opts.child);
+  }
+
   /** 一次调用的结果（`tur` ＝ 记录级那一格 `toolUseResult`；缺 ⇒ 照工具名与入参现编，同 [`tool`]）。 */
   answer(id: string, name: string, input: Json, content: string, opts: ToolOpts = {}): this {
+    this.adopt(opts);
     return this.result(id, content, opts.error ?? false, toolUseResult(name, input, content, opts));
   }
 
@@ -253,7 +275,7 @@ function toolUseResult(name: string, input: Json, content: string, opts: ToolOpt
   if (name === "Edit") {
     const old = str("old_string").split("\n");
     const neu = str("new_string").split("\n");
-    return { filePath: str("file_path"), oldString: str("old_string"), newString: str("new_string"), structuredPatch: [{ oldStart: 1, oldLines: old.length, newStart: 1, newLines: neu.length, lines: [...old.map((l) => `-${l}`), ...neu.map((l) => `+${l}`)] }] };
+    return { filePath: str("file_path"), oldString: str("old_string"), newString: str("new_string"), structuredPatch: [{ oldStart: 1, oldLines: old.length, newStart: 1, newLines: neu.length, lines: [...old.map((l) => "-" + l), ...neu.map((l) => "+" + l)] }] };
   }
   if (name === "Write") return { type: "create", filePath: str("file_path"), content: str("content"), structuredPatch: [] };
   if (name === "Read") return { type: "text", file: { filePath: str("file_path"), content, numLines: content.split("\n").length, startLine: 1, totalLines: content.split("\n").length } };
@@ -264,7 +286,7 @@ function toolUseResult(name: string, input: Json, content: string, opts: ToolOpt
     for (const m of content.matchAll(/"([^"]*)"="([^"]*)"/g)) answers[m[1]] = m[2];
     return { questions: input.questions, answers };
   }
-  if ((name === "Task" || name === "Agent") && opts.child?.agentId) return { status: "completed", agentId: opts.child.agentId, content: [{ type: "text", text: content }] };
+  if ((name === "Task" || name === "Agent") && opts.child?.agentId) return { status: opts.launched ? "async_launched" : "completed", agentId: opts.child.agentId, content: [{ type: "text", text: content }] };
   return undefined;
 }
 

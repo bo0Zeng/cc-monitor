@@ -19,7 +19,7 @@ export async function waitFor<T extends Element = HTMLElement>(sel: string, ms =
 export async function waitCount(sel: string, n: number, ms = 8000): Promise<void> {
   const until = performance.now() + ms;
   while (document.querySelectorAll(sel).length < n) {
-    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}）`);
+    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}：${[...document.querySelectorAll(sel)].map((e) => (e.textContent ?? "").slice(0, 30)).join(" | ")}）`);
     await sleep(50);
   }
 }

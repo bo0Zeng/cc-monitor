@@ -65,6 +65,28 @@ export interface TabStreamHost {
   runLabelOf(sid: string, run: string): string | undefined;
 }
 
+/**
+ * 一个 tab 建卡用的上下文（实时那一路三处共用：一行一行进 · 成批进 · 批末对账早到的结果）。`lazy` ＝ 走惰性高亮。
+ */
+export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf">, lazy: boolean): RenderContext {
+  return {
+    parentPath: tab.parentPath,
+    speaker: speakerNameOf(tab.agent),
+    origin: tab.origin,
+    toolUseNames: tab.toolUseNames,
+    toolUseElements: tab.toolUseElements,
+    runCards: tab.runCards,
+    pendingToolResults: tab.pendingToolResults,
+    needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
+    stepWait: (call) => tab.pending.find((p) => p.id === call),
+    retryOutcome: (id) => tab.retries.get(id),
+    runLabelOf: (run) => host.runLabelOf(tab.sessionId, run),
+    // 出口省掉的正文展开那一下按骨架偏移取回那一行全文（查看器那一路同一处 `readRecordById`）。
+    fullRecord: tab.fullRecord,
+    lazy,
+  };
+}
+
 /** `mountTabDom` 建出来、要写进 `Tab` 的那几样。 */
 export interface TabStreamDom {
   streamEl: HTMLElement;
@@ -508,15 +530,7 @@ export class TabStreamView {
       this.flushMidBatchBuffer(t);
       t.branchFolder.rebuildNow();
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
-      const ctx: RenderContext = {
-        parentPath: t.parentPath,
-        speaker: speakerNameOf(t.agent),
-        origin: t.origin,
-        toolUseNames: t.toolUseNames,
-        toolUseElements: t.toolUseElements,
-        runCards: t.runCards,
-        pendingToolResults: t.pendingToolResults,
-      };
+      const ctx = tabRenderContext(t, this.host, this.store.inBatch);
       // 孤儿卡出 DOM 的同时出账，防悬空锚点
       for (const el of reconcilePendingToolResults(ctx)) t.timeline.removeByElement(el);
     }
@@ -617,21 +631,8 @@ export class TabStreamView {
       return;
     }
 
-    const ctx: RenderContext = {
-      parentPath: tab.parentPath,
-      speaker: speakerNameOf(tab.agent),
-      origin: tab.origin,
-      toolUseNames: tab.toolUseNames,
-      toolUseElements: tab.toolUseElements,
-      runCards: tab.runCards,
-      pendingToolResults: tab.pendingToolResults,
-      needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
-      stepWait: (call) => tab.pending.find((p) => p.id === call),
-      retryOutcome: (id) => tab.retries.get(id),
-      runLabelOf: (run) => this.host.runLabelOf(tab.sessionId, run),
-      // 批期间走惰性高亮（代码块占位 ＋ IntersectionObserver 触发再补）
-      lazy: this.store.inBatch,
-    };
+    // 批期间走惰性高亮（代码块占位 ＋ IntersectionObserver 触发再补）
+    const ctx = tabRenderContext(tab, this.host, this.store.inBatch);
     const beforeSize = tab.timeline.size;
     renderContentRecord(payload, ctx, sink);
     const inserted = tab.timeline.size > beforeSize;
@@ -795,20 +796,7 @@ export class TabStreamView {
    */
   private renderPayloadsBatch(tab: Tab, payloads: JsonlLinePayload[]): void {
     if (payloads.length === 0) return;
-    const ctx: RenderContext = {
-      parentPath: tab.parentPath,
-      speaker: speakerNameOf(tab.agent),
-      origin: tab.origin,
-      toolUseNames: tab.toolUseNames,
-      toolUseElements: tab.toolUseElements,
-      runCards: tab.runCards,
-      pendingToolResults: tab.pendingToolResults,
-      needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
-      stepWait: (call) => tab.pending.find((p) => p.id === call),
-      retryOutcome: (id) => tab.retries.get(id),
-      runLabelOf: (run) => this.host.runLabelOf(tab.sessionId, run),
-      lazy: true,
-    };
+    const ctx = tabRenderContext(tab, this.host, true);
     const sink: StreamSink = {
       timeline: tab.timeline,
       enhanceRoot: tab.streamEl, // IO 的 root = 本 tab 的滚动容器

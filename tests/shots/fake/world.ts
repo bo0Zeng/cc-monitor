@@ -242,8 +242,13 @@ export function diskOf(w: World): Record<string, MachineDisk> {
       const d = w.disk[m] ?? blankDisk();
       const mine = w.sessions.filter((s) => s.origin === m);
       const files = { ...d.files };
-      for (const s of mine) if (s.convo) Object.assign(files, s.convo.files());
-      return [m, { ...d, files, live: [...d.live, ...mine.map(liveOf)] }];
+      const mtimes = { ...d.mtimes };
+      for (const s of mine) {
+        if (!s.convo) continue;
+        Object.assign(files, s.convo.files());
+        Object.assign(mtimes, s.convo.mtimes());
+      }
+      return [m, { ...d, files, mtimes, live: [...d.live, ...mine.map(liveOf)] }];
     }),
   );
 }

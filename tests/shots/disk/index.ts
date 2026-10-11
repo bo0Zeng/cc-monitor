@@ -32,6 +32,8 @@ export interface LiveSession {
 export interface MachineDisk {
   /** 相对家目录的路径 → 内容。 */
   files: Record<string, string>;
+  /** 修改时刻不是开页那一刻的那几份：相对家目录的路径 → epoch ms。 */
+  mtimes?: Record<string, number>;
   live: LiveSession[];
   /** quota-warm 在跑（`real/pool.mjs` 配一个替身进程、写 `.cc-monitor/quota-warm.json` 带它的 pid）：号 → 下一次开窗的时刻。 */
   warm?: { account: string; at: number }[];
