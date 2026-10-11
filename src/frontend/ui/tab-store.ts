@@ -123,7 +123,9 @@ export class TabStore {
     const faces: string[] = [];
     for (const t of this.tabs.values()) {
       if (isLive(t.state)) live += 1;
-      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${needsOf(t)?.kind ?? ""}\u0001${t.pending[0]?.name ?? ""}`);
+      // 需手动那一份：种类 ＋ 挂着的请求（答题块按它换）＋ 只能在终端里答那一句 —— 种类不变、请求挂上 / 答掉也要通知。
+      const n = needsOf(t);
+      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}`);
     }
     return { total: this.tabs.size, live, dead: this.tabs.size - live, faces: faces.join("\u0000") };
   }

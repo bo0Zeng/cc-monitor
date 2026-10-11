@@ -291,6 +291,20 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(r.host.answerAt).toHaveBeenCalledTimes(1);
   });
 
+  it("★ 挂着的请求换了（挂上 · 答掉 · 只能在终端里答那一句变了）⇒ 摘要变、订阅者（答题块 · 窗口标题）重画；种类没变也算", () => {
+    const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) })]);
+    const seen: unknown[] = [];
+    r.store.subscribe((x) => seen.push(x));
+    const n0 = seen.length;
+    const t = r.store.tabs.get("a") as Tab;
+    t.needs = { ...approve(NOW - 10_000), ask: { id: "ask-1" } as never };
+    r.store.notify();
+    expect(seen.length, "ask 挂上").toBe(n0 + 1);
+    t.needs = { ...approve(NOW - 10_000), ask: null, manualText: "核心·那一句" };
+    r.store.notify();
+    expect(seen.length, "换成只能在终端里答").toBe(n0 + 2);
+  });
+
   it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", () => {
     const r = bar([tab("a"), tab("g1", { origin: "gpu-01" as never, state: UNSEEN }), tab("g2", { origin: "gpu-01" as never, state: UNSEEN })]);
     r.view.markOriginDown("gpu-01", true, Date.now() - 180_000);

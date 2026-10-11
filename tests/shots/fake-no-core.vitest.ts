@@ -83,7 +83,7 @@ const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
     coreKey: [39, "机器页那一族帧命令（扩展 · MCP · 别名 · 足迹 · 数据报告 · 终端 · ssh 导入 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],
   },
   "ops.ts": {
-    coreKey: [14, "记录那一族（history-turns · history-facts 的上下文 / 后台命令那几格）还是合成的：合成的是解析后的通用记录，不是盘上的原始 jsonl；等会话记录落盘那一刀"],
+    coreKey: [16, "记录那一族（history-turns · history-facts 的上下文 / 后台命令 / 没结果那几步的状态句那几格）还是合成的：合成的是解析后的通用记录，不是盘上的原始 jsonl，真后端读不到它；等会话记录落盘那一刀（造了原始 jsonl 的会话已经整份交真后端答，`SessionSpec.rawJsonl`）"],
     duration: [2, "同上：history-facts 的需手动等了多久 · 后台命令跑了多久（`waitedText` · 后台那一格）"],
   },
   "plan.ts": {

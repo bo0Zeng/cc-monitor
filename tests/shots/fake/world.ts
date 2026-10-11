@@ -220,6 +220,9 @@ export function defaultWorld(): World {
   };
 }
 
+/** 原始 jsonl 在那台家目录里的相对路径（claude 的目录名：工作目录里的 `/` 换成 `-`）。 */
+export const rawJsonlPathOf = (s: SessionSpec): string => `.claude/projects/${s.cwd.replace(/\//g, "-")}/${s.sid}.jsonl`;
+
 /** claude 在 pidfile 里写的原词（`agents/claudecode/pidfile.rs` 认的那一套）。 */
 const PIDFILE_STATUS = { working: "busy", needs_you: "waiting", idle: "idle", background_work: "shell" } as const;
 
@@ -241,6 +244,7 @@ export function defaultDisk(machines: string[], sessions: SessionSpec[]): Record
       const d = blankDisk();
       putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
       d.live = sessions.filter((s) => s.origin === m && !s.ended && !s.idle).map((s) => liveOf(s));
+      for (const s of sessions) if (s.origin === m && s.rawJsonl !== undefined) d.files[rawJsonlPathOf(s)] = s.rawJsonl;
       // 设置窗「别名与配置文件」那一页（devbox）：照设计稿那台的配置文件。
       if (m === "devbox") putProfiles(d, "normal");
       return [m, d];

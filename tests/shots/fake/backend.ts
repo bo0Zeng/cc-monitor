@@ -7,7 +7,8 @@
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
 import { Refuse, type SessionSpec, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { MachineDisk } from "../disk";
+import { HOME, type MachineDisk } from "../disk";
+import { rawJsonlPathOf } from "./world";
 
 /**
  * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
@@ -120,7 +121,17 @@ export class FakeBackend {
    * `hook` 是那一家 hook 交来的那一份（PermissionRequest 的形）。之后真后端推 `changed {needs}`，页里照常重读。
    */
   hookAsk(origin: string, hook: Record<string, unknown>): void {
-    void this.real(origin, "needs-ask", { agent: "claude", hook }, null).catch(() => undefined);
+    // 答完 / 撤了才回；台架只记一笔（没挂上就看得见为什么）。
+    void this.real(origin, "needs-ask", { agent: "claude", hook }, null).then(
+      (b) => console.info("[shots] needs-ask 收场：", dec.decode(b)),
+      (e: unknown) => console.warn("[shots] needs-ask 没成：", JSON.stringify(e)),
+    );
+  }
+
+  /** 那台真后端此刻给这个会话挂着的请求 id（没有 ⇒ `null`）。 */
+  async askIdOf(origin: string, sid: string): Promise<string | null> {
+    const ask = (await this.realNeeds(origin)).find((r) => r.sid === sid)?.needs.ask as { id?: string } | null | undefined;
+    return ask?.id ?? null;
   }
 
   /** 场景演「别处（终端那边）先答了」：经真后端答掉那一条。 */
@@ -186,7 +197,12 @@ export class FakeBackend {
       const delay = this.world.opDelayMs?.[op] ?? 0;
       return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
     }
-    if (op === "history-facts" && this.world.ops[op]) return this.factsWithAsk(origin, req, args.view);
+    if (op === "history-facts") {
+      const s = this.world.sessions.find((x) => typeof req.path === "string" && req.path.endsWith(`${x.sid}.jsonl`));
+      // 造了原始 jsonl 的会话：整份交真后端（读那台盘上那一份）；别的照旧合成，只有答题口那几格取真后端的。
+      if (s?.rawJsonl !== undefined) return this.real(origin, op, { ...req, path: `${HOME}/${rawJsonlPathOf(s)}` }, args.view);
+      if (this.world.ops[op]) return this.factsWithAsk(origin, req, args.view);
+    }
     const handler = this.world.ops[op];
     if (!handler) {
       if (!this.world.quiet?.includes(op)) this.miss(`帧命令 ${op}`);

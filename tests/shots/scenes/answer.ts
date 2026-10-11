@@ -7,7 +7,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import type { FakeBackend } from "../fake/backend";
 import { Convo } from "../fake/records";
-import { defaultWorld, LOCAL, session, sidOf } from "../fake/world";
+import { defaultDisk, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
 import { click, mainReady, sleep, until } from "./helpers";
 
 const N = 31;
@@ -27,8 +27,14 @@ function world(tool: string, input: Record<string, unknown>, waitingFor: string)
     const c = new Convo(SID, CWD, "2026-10-08T06:20:00Z");
     c.title("整理工单");
     c.user("建个探针文件试一下。");
-    c.tool(tool, input, null, { lead: "先把探针文件建出来。", card: tool === "Bash" ? "command" : "interactive" });
-    w.sessions = [session(N, LOCAL, CWD, c, { activity: "needs_you", waitingFor, waitingSinceMs: Date.now() - 12_000, idle: false })];
+    const call = c.tool(tool, input, null, { lead: "先把探针文件建出来。", card: tool === "Bash" ? "command" : "interactive" });
+    // 盘上那一份（同一个调用 id）：会话事实整份由真后端读它答（needs · 没结果那一步 · 用量 …）。
+    const raw = [
+      { type: "user", uuid: "u-1", timestamp: "2026-10-08T06:20:00.000Z", cwd: CWD, sessionId: SID, message: { role: "user", content: "建个探针文件试一下。" } },
+      { type: "assistant", uuid: "a-1", parentUuid: "u-1", timestamp: "2026-10-08T06:21:05.000Z", cwd: CWD, sessionId: SID, message: { id: "msg-1", role: "assistant", model: "claude-sonnet-4-5", usage: { input_tokens: 12, cache_creation_input_tokens: 2000, cache_read_input_tokens: 40000, output_tokens: 80 }, content: [{ type: "text", text: "先把探针文件建出来。" }, { type: "tool_use", id: call, name: tool, input }] } },
+    ];
+    w.sessions = [session(N, LOCAL, CWD, c, { activity: "needs_you", waitingFor, waitingSinceMs: Date.now() - 12_000, idle: false, rawJsonl: raw.map((r) => JSON.stringify(r) + "\n").join("") })];
+    w.disk = defaultDisk(w.machines, w.sessions);
     return w;
   };
 }
@@ -48,7 +54,16 @@ const SUGGEST = [
 /** 打开那个会话、挂上请求、等答题块画出选项（不抢焦点：截图里焦点不在块里）。 */
 async function asked(backend: FakeBackend, h: Record<string, unknown> | null, want = "button[data-choice]"): Promise<HTMLElement> {
   await mainReady(1);
-  if (h) backend.hookAsk(LOCAL, h);
+  if (h) {
+    backend.hookAsk(LOCAL, h);
+    // 真后端挂上了（sessions-needs 里有它）才往下等界面；挂不上就在这里说清，不让后面那一句「没等到」盖住原因。
+    let id: string | null = null;
+    for (let i = 0; i < 40 && id === null; i++) {
+      id = await backend.askIdOf(LOCAL, SID);
+      if (id === null) await sleep(250);
+    }
+    console.info("[shots] 真后端挂上的请求：", id);
+  }
   const el = await until(() => document.querySelector<HTMLElement>(`[role=group] ${want}`), 15_000);
   await sleep(600);
   return el;

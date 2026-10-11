@@ -523,7 +523,11 @@ export function defaultOps(): Record<string, OpHandler> {
       // 每步状态（同后端 `facts_query::settle_pending`）：在等的那一步 ⇒ 在等你；会话活着 ⇒ 在跑；否则状态不明（没有进程）。
       const live = s?.activity === "working" || s?.activity === "needs_you";
       const steps = pending.map((p) =>
-        needs?.call === p.id ? { ...p, state: "awaiting", why: null } : live ? { ...p, state: "running", why: null } : { ...p, state: "unclear", why: "noWriter" },
+        needs?.call === p.id
+          ? { ...p, state: "awaiting", why: null, text: null, whyText: null }
+          : live
+            ? { ...p, state: "running", why: null, text: null, whyText: null }
+            : { ...p, state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
       );
       // 一串串重试的结局（同后端 `facts_query::note_retry`）：按首条 uuid；下文是正常回复 ⇒ 接上 · 报错那条 ⇒ 没接上 · 人发一句 ⇒ 中断。
       const retries: { id: string; outcome: string }[] = [];

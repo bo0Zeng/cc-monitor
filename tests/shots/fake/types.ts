@@ -45,6 +45,11 @@ export interface SessionSpec {
   idle: boolean;
   /** 那台的中转看见过这个会话的请求：带过扩展上下文那一项（`wide`）/ 没带过（`std`）；缺 ＝ 中转没看见过。 */
   relay?: "wide" | "std";
+  /**
+   * 这个会话在盘上的原始 jsonl（那一家落盘的原样，正文是编的）：有 ⇒ 写进那台家目录 `.claude/projects/<目录名>/<sid>.jsonl`，
+   * 会话事实（`history-facts`）整份交真后端答；缺 ⇒ 照旧合成（`ops.ts`）。会话流还是读 `records`（两份要对得上：同一个调用 id）。
+   */
+  rawJsonl?: string;
 }
 
 /** 一条帧命令怎么答：给值 ⇒ 当 JSON 答；抛 `Refuse` ⇒ 对端说不行；不在表里 ⇒ 对端说不认。 */
