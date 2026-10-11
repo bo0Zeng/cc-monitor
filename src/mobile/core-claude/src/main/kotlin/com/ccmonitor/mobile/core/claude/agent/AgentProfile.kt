@@ -11,12 +11,9 @@ import com.ccmonitor.mobile.core.claude.transport.SessionLocator
 /**
  * 一个 agent 一份档案。消费方只问档案，不问种类。
  *
- * 一家一句的事实（产品名、resume 载荷与定位……）都收在这里；
+ * 一家一句的事实（产品名、启动命令、记录住哪……）都收在这里；
  * [of] 是唯一取法，构造器与实例都是 `private`，外面建不出第三份。
  * 加一种 agent 时 [of] 的 `when` 因穷尽性编译不过，逼着补一份档案。
- *
- * resume 真正发出去的命令还要套一层 tmux 脚手架，住 `:app`；它向档案要三样：
- * 载荷（[invocation]）、定位命令（[sessionLocator]）、打不打身份标记（[hasCcmIdentity]）。
  */
 class AgentProfile private constructor(
     /** 这份档案是哪一种 agent。生产代码里只有本文件持 [AgentKind] 字面。 */
@@ -27,15 +24,6 @@ class AgentProfile private constructor(
     val wireName: String,
     /** 起新对话前要不要先选账号。只读档不起新对话，这道门对它没有意义。 */
     val requiresAccountGate: Boolean,
-    /**
-     * 后端对这一家有没有会话身份面。`true` 时 resume 出来的 tmux 会话在新建那一支打
-     * `@ccm_sid=<完整 sid>`。
-     *
-     * Codex 是 `false`：后端的 `@ccm_sid` 是事实标记，靠 pidfile 打，Codex 没有 pidfile，后端从不给它打。
-     * 我们替它打上就是伪造事实，kill 与送键的身份门会对它放行。
-     * 这一格与会话文件怎么摆（[sessionLocator]）是两件事，第三家按 cwd 编码目录存会话也不会因此拿到标记。
-     */
-    val hasCcmIdentity: Boolean,
     /**
      * 这一家的 agent-dir 认不认「设置」屏那个应用级默认，认的话是哪个键；`null` = 不认
      * （只有主机覆盖加内置默认）。做成枚举而非 `Boolean`，第三家进来时消费方的 `when` 会编译不过。
@@ -55,7 +43,6 @@ class AgentProfile private constructor(
                 displayName = "Claude",
                 wireName = "claude",
                 requiresAccountGate = true,
-                hasCcmIdentity = true,
                 appDefaultDirSetting = AgentDirSettingKey.AppDefaultClaudeDir,
                 invocation = ClaudeInvocation,
                 sessionLocator = ClaudeSessionLocator,
@@ -67,7 +54,6 @@ class AgentProfile private constructor(
                 displayName = "Codex",
                 wireName = "codex",
                 requiresAccountGate = false,
-                hasCcmIdentity = false,
                 // 只认主机覆盖与内置 `${CODEX_HOME:-$HOME/.codex}`。
                 appDefaultDirSetting = null,
                 invocation = CodexInvocation,

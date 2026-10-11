@@ -53,27 +53,6 @@ class SessionLocatorTest {
 
     // ---- 按 sid 找回会话文件（resume 脚手架的 locate 段）----
 
-    @Test fun claudeFindsTheRecordByExactNameTwoLevelsDown() {
-        assertEquals(
-            "find \"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/projects\" -maxdepth 2 -name 'abc-1.jsonl' -print -quit 2>/dev/null",
-            ClaudeSessionLocator.findBySessionIdCommand(ClaudePaths.DEFAULT_CLAUDE_DIR, "abc-1"),
-        )
-        assertEquals(
-            "用户覆写的目录作字面路径单引号",
-            "find '/srv/c d/projects' -maxdepth 2 -name 'abc-1.jsonl' -print -quit 2>/dev/null",
-            ClaudeSessionLocator.findBySessionIdCommand("/srv/c d", "abc-1"),
-        )
-    }
-
-    @Test fun codexFindsTheRolloutByTrailingUuidFourLevelsDown() {
-        // rollout-<ISO-ts>-<uuid>.jsonl[.zst]：uuid 在尾 ⇒ `*<uuid>.jsonl*`（兼吃 .zst）；年/月/日三级 ⇒ maxdepth 4。
-        assertEquals(
-            "find '/h/.codex/sessions' -maxdepth 4 -name '*019f78e8-84dd-7ac0-b479-e9c1b9caec67.jsonl*' -print -quit 2>/dev/null",
-            CodexSessionLocator.findBySessionIdCommand("/h/.codex", "019f78e8-84dd-7ac0-b479-e9c1b9caec67"),
-        )
-    }
-
-    /** 按 kind 经 `AgentProfile.of(kind).sessionLocator` 取到对应定位器。 */
     @Test fun selectorRoutesPerKind() {
         assertEquals(ClaudeSessionLocator, AgentProfile.of(AgentKind.ClaudeCode).sessionLocator)
         assertEquals(CodexSessionLocator, AgentProfile.of(AgentKind.Codex).sessionLocator)

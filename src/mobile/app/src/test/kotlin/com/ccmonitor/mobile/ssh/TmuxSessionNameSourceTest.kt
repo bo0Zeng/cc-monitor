@@ -19,7 +19,7 @@ import java.io.File
  * |---|---|---|
  * | ③a | `new-session` 在生产代码里恰好 2 处、全在 tmux 网关 `TmuxCommands.kt` | 源码扫描（闭集） |
  * | ③b | 两处的真实命令串里 `-s` 后那个名字，逐字等于调用方给的 | 真实返回值 |
- * | ③c | `"cc-`（写会话名那个，不是 `cc-monitor-…`）只住两个文件 | 源码扫描（定值钉） |
+ * | ③c | `"cc-`（写会话名那个，不是 `cc-monitor-…`）生产代码里没有 | 源码扫描 |
  *
  * ### 判别力边界
  *
@@ -99,16 +99,13 @@ class TmuxSessionNameSourceTest {
     // ---- ③c：写侧 `cc-` 的住址 --------------------------------------------
 
     /**
-     * ③c：`"cc-`（后面不是 `monitor` 的那种）在生产代码里只住两个文件。
-     *
-     * | 文件 | 侧 | 为什么它可以有 |
-     * |---|---|---|
-     * | `ClaudeInvocation.kt` | 写 | `resumeSessionName = "cc-<sid8>"`，唯一定义处 |
+     * ③c：`"cc-`（后面不是 `monitor` 的那种）在生产代码里一处都没有：会话名由那台核心铸（`session-new` · `terminal-name-mint`），
+     * 手机不造 `cc-…` 名。扫描器瞎没瞎由 [theScannersReadCodeAndNothingElse] 接住。
      *
      * 二进制名 `"cc-monitor-…"` 不是会话名，由 [countSessionCcPrefix] 按「后面是不是 `monitor`」排除掉。
      */
     @Test
-    fun theCcPrefixIsWrittenOnlyByResumeSessionName() {
+    fun theMobileNeverMintsCcSessionNames() {
         val root = repoRoot()
         val sources = productionSources(root)
         assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
@@ -120,12 +117,7 @@ class TmuxSessionNameSourceTest {
             hits += n
             if (n > 0) found += f.relativeTo(root).invariantSeparatorsPath
         }
-        assertTrue("前提：会话名前缀 `\"cc-` 整份语料零命中 ⇒ 扫描器瞎了、本条恒绿", hits > 0)
-        assertEquals(
-            "构造 `cc-` 会话名只许 `ClaudeInvocation.resumeSessionName` 一处。别处要用请调那个函数。",
-            PINNED_CC_PREFIX_FILES,
-            found.toSet(),
-        )
+        assertEquals("手机不造 `cc-` 会话名（那台核心铸名）：命中 $hits 处", emptySet<String>(), found.toSet())
     }
 
     // ---- app 侧写命令串的落点 -----------------------------------
@@ -341,15 +333,6 @@ class TmuxSessionNameSourceTest {
          */
         private val PINNED_NEW_SESSION_SITES =
             mapOf("app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt" to 2)
-
-        /**
-         * 定值钉：会话名前缀 `"cc-` 的两个合法住处（写侧 `ClaudeInvocation.resumeSessionName` 一处，
-         * 读侧 `TmuxCommands.isCcmTmuxName` 一处）。
-         */
-        private val PINNED_CC_PREFIX_FILES =
-            setOf(
-                "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/command/ClaudeInvocation.kt",
-            )
 
         /** 定值钉：推公钥那条命令串写到哪几个地方（OpenSSH 标准位，第三个名字空间）。 */
         private val PINNED_AUTHORIZED_KEY_TARGETS = setOf("~/.ssh", "~/.ssh/authorized_keys")

@@ -25,7 +25,6 @@ class AgentProfileTableTest {
             p.displayName,
             p.wireName,
             "accountGate=${p.requiresAccountGate}",
-            "ccmIdentity=${p.hasCcmIdentity}",
             "dirSetting=${p.appDefaultDirSetting}",
             p.invocation::class.simpleName,
             p.sessionLocator::class.simpleName,
@@ -115,13 +114,12 @@ class AgentProfileTableTest {
          * 两份档案，每一格。改这张表 = 声明「我知道我在改行为」。
          *
          * 每一格的产品理由写在 `AgentProfile.kt` 里那一格自己的 KDoc 上，别在这里复述。
-         * `ccmIdentity`（`hasCcmIdentity`）那一格的消费方侧判据是 `ResumeScaffoldTest`。
          */
         private val PINNED_TABLE =
             listOf(
-                "ClaudeCode | Claude | claude | accountGate=true | ccmIdentity=true | dirSetting=AppDefaultClaudeDir | " +
+                "ClaudeCode | Claude | claude | accountGate=true | dirSetting=AppDefaultClaudeDir | " +
                     "ClaudeInvocation | ClaudeSessionLocator",
-                "Codex | Codex | codex | accountGate=false | ccmIdentity=false | dirSetting=null | " +
+                "Codex | Codex | codex | accountGate=false | dirSetting=null | " +
                     "CodexInvocation | CodexSessionLocator",
             )
     }
