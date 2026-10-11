@@ -21,7 +21,6 @@ import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +31,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -74,7 +72,7 @@ sealed interface ChatTarget {
  * 一条会话的聊天状态。起会话、送字、正文都走那台的核心（[CoreLink]）：
  * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台等会话就绪再送，
  *   送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
- *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等流上推来它的记录路径（[freshPath]）。
+ *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
  * - 正文：`history-tail` ＋ `history-read` 读最后一屏，之后跟流上这条会话的 `line` 帧；往上翻再读上一段。记录 ⇒ 渲染单元见 [RecordUnits]。
  * - 在屏上（[visible]）才进这台的 `stream-watch` 名单；进名单 · 断线重接之后，`[已有, seq)` 那一段按行号用 `history-lines` 补上
@@ -322,8 +320,7 @@ class ChatSession(
         attached = true
         syncHold()
         watchRunning(s)
-        val early = mutableListOf<Event>()
-        val p = (if (fresh) freshPath(s, events, early) else pathOf(s)) ?: return
+        val p = (if (fresh) freshPath(s) else pathOf(s)) ?: return
         path = p
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { reloadLocked(p) }
@@ -336,41 +333,14 @@ class ChatSession(
                     publishLocked()
                 }
             }
-        early.forEach { take(it) }
         for (e in events) take(e)
     }
 
     /**
-     * 刚起的那条的记录路径：第一句进去之前记录还没落盘，那台宣告这条会话时就不带路径 ⇒ 等流上推来
-     * （会话表里那一条有了路径，或这条会话的第一行 `line` 帧带着它）。不设期限、不去清单里按点找：会话在，记录迟早来。
-     * 等的时候流上来的几样攒进 [early]，读完第一屏照样接上。
-     * 〔过渡〕从 line 帧里取路径这一半是过渡：核心（core10）会在记录路径定下来时推一帧带路径的会话帧，进来以后只认会话表、删掉 line 帧这一路。
+     * 刚起的那条的记录路径：第一句进去之前记录还没落盘，那台宣告这条会话时不带路径；记录出现时那台先推一帧带路径的状态帧
+     * （在那一行的 line 帧之前）⇒ 等会话表里那一条有了路径。不设期限、不去清单里按点找：会话在，记录迟早来。
      */
-    private suspend fun freshPath(
-        s: String,
-        events: Channel<Event>,
-        early: MutableList<Event>,
-    ): String {
-        link.table.value.sessions[s]
-            ?.path
-            ?.let { return it }
-        val listed = scope.async { link.table.mapNotNull { it.sessions[s]?.path }.first() }
-        try {
-            while (true) {
-                val got =
-                    select<String?> {
-                        listed.onAwait { it }
-                        events.onReceive { e ->
-                            early += e
-                            (e as? Event.Line)?.line?.path
-                        }
-                    }
-                if (got != null) return got
-            }
-        } finally {
-            listed.cancel()
-        }
-    }
+    private suspend fun freshPath(s: String): String = link.table.mapNotNull { it.sessions[s]?.path }.first()
 
     /** 接上一样；记录有变 ⇒ `true`。 */
     private suspend fun stepLocked(

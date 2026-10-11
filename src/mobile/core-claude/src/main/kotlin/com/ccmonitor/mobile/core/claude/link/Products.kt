@@ -66,12 +66,16 @@ data class SessionTable(
 
     private fun removed(frame: Map<String, Any?>): SessionTable? = frame.str("sid")?.let { copy(sessions = sessions - it) }
 
-    /** 状态帧：改那一条的字与语气（宣告时的其余格不动）；没宣告过的 sid ⇒ 不动。缺必填格 ⇒ `null`。 */
+    /**
+     * 状态帧：改那一条的字与语气；带着 `path`（宣告以后记录才出现 · 换了一份，那台在那一行的 line 帧之前先发）⇒ 路径换成它。
+     * 宣告时的其余格不动；没宣告过的 sid ⇒ 不动。缺必填格 ⇒ `null`。
+     */
     private fun status(frame: Map<String, Any?>): SessionTable? {
         val sid = frame.str("sid") ?: return null
         val text = frame.str("activity_text") ?: return null
         val prior = sessions[sid] ?: return this
-        return copy(sessions = sessions + (sid to prior.copy(activity = Toned(text, Tone.of(frame.str("activity_tone"))))))
+        val now = prior.copy(activity = Toned(text, Tone.of(frame.str("activity_tone"))), path = frame.str("path") ?: prior.path)
+        return copy(sessions = sessions + (sid to now))
     }
 
     companion object {

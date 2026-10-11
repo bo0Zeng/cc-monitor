@@ -123,7 +123,7 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `新起的会话记录还没落盘：不报找不到，等流上推来这条会话的记录路径（line 帧带着）再读；不按点重问`() =
+    fun `新起的会话记录还没落盘：不报找不到，等那台推来这条会话的记录路径再读；不按点重问`() =
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File()
@@ -143,9 +143,11 @@ class ChatSessionTest {
             assertTrue("不去清单里按点找", link.calls("history-list").isEmpty())
             assertEquals(setOf("pre"), link.watching())
             file.records += human("u1", "你好")
-            file.records += reply("a1", "替身收到")
+            link.report("pre", "/h/proj") // 记录出现：那台推来带路径的状态帧（在那一行的 line 帧之前）
+            runCurrent()
             link.line("pre", 0, human("u1", "你好"))
             runCurrent()
+            file.records += reply("a1", "替身收到")
             link.line("pre", 1, reply("a1", "替身收到"))
             runCurrent()
             assertNull(s.state.value.failedWhy)

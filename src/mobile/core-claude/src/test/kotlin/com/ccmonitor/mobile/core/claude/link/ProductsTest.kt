@@ -42,6 +42,20 @@ class ProductsTest {
     }
 
     @Test
+    fun `会话表：状态帧带着记录路径（宣告以后记录才出现 · 换了一份）⇒ 那一条的路径换成它；不带就不动`() {
+        val breaks = mutableListOf<String>()
+        val bare = golden("session_added")[0] - "path"
+        var t = SessionTable().step(bare, breaks::add)
+        assertNull("宣告时记录还没有", t.sessions.getValue("s1").path)
+        val withPath = golden("session_status").first { it.containsKey("path") }
+        t = t.step(withPath, breaks::add)
+        assertEquals(withPath.str("path"), t.sessions.getValue("s1").path)
+        t = t.step(golden("session_status").first { !it.containsKey("path") }, breaks::add)
+        assertEquals("不带路径的状态帧不抹掉已有的", withPath.str("path"), t.sessions.getValue("s1").path)
+        assertTrue(breaks.toString(), breaks.isEmpty())
+    }
+
+    @Test
     fun `会话表：缺必填格报出来、表不动`() {
         val breaks = mutableListOf<String>()
         val t = SessionTable().step(mapOf("kind" to "session_added", "sid" to "s"), breaks::add)

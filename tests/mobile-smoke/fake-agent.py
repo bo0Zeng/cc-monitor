@@ -63,7 +63,7 @@ class Claude:
     def __init__(self):
         home = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.environ["HOME"], ".claude")
         self.home = refuse_outside_box(home)
-        self.sid = arg_after("--session-id") or arg_after("--resume") or str(uuid.uuid4())
+        self.sid = arg_after("--session-id") or arg_after("--resume") or str(uuid.uuid4())  # 带初始提示词起：见 initial_prompt
         self.cwd = os.getcwd()
         self.parent = None
         self.pidfile = os.path.join(self.home, "sessions", f"{os.getpid()}.json")
@@ -177,9 +177,20 @@ class Codex:
         self.put("event_msg", {"type": "task_complete", "turn_id": t, "last_agent_message": text})
 
 
+def initial_prompt():
+    """起的时候带的第一句：`--` 之后那一段（那一家「带初始提示词起」的形状）。"""
+    a = sys.argv[1:]
+    return " ".join(a[a.index("--") + 1:]).strip() if "--" in a else ""
+
+
 def main():
     agent = Codex() if KIND == "codex" else Claude()
     print(f"[替身 {KIND}] 就绪，敲一句回车。", flush=True)
+    first = initial_prompt()
+    if first:
+        print(f"> {first}", flush=True)
+        agent.turn(first, sys.stdin.readline)
+        print("[替身] 答完。", flush=True)
     for line in sys.stdin:
         said = line.strip()
         if not said:
