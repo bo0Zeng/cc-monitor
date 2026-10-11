@@ -9,8 +9,6 @@
 //! 跨层边的条数由 `crate::layering_guard` 钉住 —— 多一个就红，逼人回答「这条也该跨层吗」。
 
 pub mod accounts_query;
-// 待答登记表（会话里弹的批准 / 提问 / 批计划经答题 hook 挂进来，任一出口答）＋ hook 那一头的客户端（`--answer-hook`）。
-pub mod asks;
 // cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod cc_bus_hooks;
 // 会话事实（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）的本体；帧面宿主在顶层 `read_face`。

@@ -121,10 +121,10 @@ fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value>
             "options": [{"label": "l", "description": "d"}]}]}
     });
     let asked = crate::agents::claudecode::asks::read(&hook).unwrap();
-    let ask = crate::observe::asks::product_of("ask-1", &asked, 1);
+    let ask = crate::agents::asks::product_of("ask-1", &asked, 1);
     [
-        crate::observe::asks::dress_with(base.clone(), Some(ask), 2),
-        crate::observe::asks::dress_with(base, None, 2),
+        crate::observe::facts_query::dress_ask_with(base.clone(), Some(ask), 2),
+        crate::observe::facts_query::dress_ask_with(base, None, 2),
     ]
     .into_iter()
     .map(|n| serde_json::to_value(n).unwrap())

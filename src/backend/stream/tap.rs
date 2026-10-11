@@ -232,7 +232,7 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
     rx.rules = Some(crate::accounts::quota::rotation::rules_changes().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
-    rx.needs = Some(crate::observe::asks::changes().subscribe());
+    rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;
     rx.tz = tz;
     rx

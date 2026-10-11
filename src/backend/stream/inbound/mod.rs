@@ -182,8 +182,8 @@ where
         // （`control::terminal_follow::Desk` 的 `Drop`）。
         let follows = crate::control::terminal_follow::Desk::new(replies.clone());
         // 本连接挂的待答请求：同上，随本读循环一起死 ⇒ hook 那一头走了（终端先答了 · 被打断），它挂的那条一律撤
-        // （`observe::asks::Desk` 的 `Drop`）。
-        let asks = crate::observe::asks::Desk::new();
+        // （`control::asks::Desk` 的 `Drop`）。
+        let asks = crate::control::asks::Desk::new();
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -394,7 +394,7 @@ fn dispatch(
             req,
             Box::new(move |r: Request| -> DataFut {
                 Box::pin(async move {
-                    crate::observe::asks::ask(asks, &r.args)
+                    crate::control::asks::ask(asks, &r.args)
                         .await
                         .map(Some)
                         .map_err(Fail::from)

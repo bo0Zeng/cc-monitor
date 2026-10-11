@@ -62,6 +62,8 @@
 
 use std::path::{Path, PathBuf};
 
+// 待答请求的成品（`needs.ask`）与选项写字（通用）。
+pub(crate) mod asks;
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
@@ -150,7 +152,7 @@ pub(crate) struct Adapter {
 }
 
 /// 一家的**答题口**（[`Adapter::asks`]）：那一家的 hook 输入长什么样、答案写成什么、起会话时怎么挂上 hook，只住适配层；
-/// 待答登记表、选项怎么写字、谁先答算谁的住通用层（`observe::asks`）。
+/// 待答登记表、选项怎么写字、谁先答算谁的住通用层（`control::asks`）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AskFace {
     /// 起会话时垫在启动器后面的那几个词（只给这一个会话挂上答题 hook，不碰用户自己的设置）；入参 ＝ 这台 `ccm` 的绝对路径。
@@ -190,11 +192,14 @@ pub(crate) struct AskIn {
     pub(crate) input: serde_json::Value,
 }
 
-/// 待答请求的种类。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum AskKind {
+    #[serde(rename = "approve")]
     Approve,
+    #[serde(rename = "answer")]
     Question,
+    #[serde(rename = "plan")]
     Plan,
 }
 

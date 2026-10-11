@@ -129,9 +129,10 @@
 | `rotation_rules` | 是 | — | — | 带（≤ 8192 B） | `rotation-rules-read` |
 | `plan` | 是 | 带 | 带 | 带（≤ 64 B） | `plan-read` |
 | `tasks` | 否 | 带 | — | 带（≤ 8192 B） | `tasks-list` |
+| `needs` | 是 | 带 | — | — | `sessions-needs` |
 <!-- topic-table:end -->
 
-`key`：`rotation` · `tasks` 是会话 id，`plan` 是工作区根。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
+`key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
 `body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`rotation` 问 `{sids: [key]}`、`tasks` 问 `{sid: key}`、另两样不带参数），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）。带了 `body` 不改可丢性。

@@ -797,18 +797,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "needs.ask.agentId",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "needs.ask.agentType",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "needs.ask.choices[].id",
           "type": "string"
         },
@@ -894,6 +882,18 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.ask.questions[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.run.id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.run.kind",
           "type": "string"
         },
         {
@@ -1210,18 +1210,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "needs.ask.agentId",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "needs.ask.agentType",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "needs.ask.choices[].id",
           "type": "string"
         },
@@ -1307,6 +1295,18 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.ask.questions[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.run.id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.run.kind",
           "type": "string"
         },
         {

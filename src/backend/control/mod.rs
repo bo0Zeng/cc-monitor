@@ -19,6 +19,8 @@
 //!
 //! 由 `crate::layering_guard` 机检。通用的安全读文件住 `common/fs.rs`，不靠给反向边开例外。
 
+// 待答登记表（会话里弹的批准 / 提问 / 批计划经答题 hook 挂进来，任一出口答）＋ hook 那一头的客户端（`--answer-hook`）。
+pub mod asks;
 pub mod capture_pane;
 pub(crate) mod cc_bus;
 pub mod ccm;

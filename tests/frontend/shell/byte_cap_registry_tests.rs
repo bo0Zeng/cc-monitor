@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "HOOK_TIMEOUT_SECS",
+        "**时长**不是体量：`agents/claudecode/asks.rs` 写进会话级答题 hook 设置的期限（秒），到点那一家杀 hook、不给决定 ⇒ 框照常在终端里问。",
+    ),
+    (
         "ERROR_CHARS",
         "`backend/observe/runs.rs`：运行表里失败收场的报错原话至多留几个**字**（字符数，不是字节；运行表一变就整份重发，留短一点）",
     ),
@@ -679,6 +683,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_SCROLLBACK",
         "终端预览往回多要的行数（行，不是字节）",
         "截断+说清",
+    ),
+    (
+        "src/backend/control/asks/hook.rs",
+        "STDIN_CAP",
+        "答题 hook 客户端读那一家交来的 hook 输入（一次待答请求的 JSON）",
+        "拒收+回错",
     ),
     (
         "src/backend/control/cli_args.rs",

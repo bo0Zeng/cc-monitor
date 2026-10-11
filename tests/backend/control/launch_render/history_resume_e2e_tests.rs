@@ -106,7 +106,14 @@ fn resuming_from_history_starts_the_agent_the_session_belongs_to() {
     );
     assert_eq!(
         resume_in_child(&root, SID_CLAUDE),
-        format!("claude --resume {SID_CLAUDE} | CLAUDE_CONFIG_DIR=<unset>\n")
+        // 我们起的 Claude 会话恒带会话级答题 hook（`--settings` 那两个词，叫这台的 ccm 入口）。
+        format!(
+            "claude {} --resume {SID_CLAUDE} | CLAUDE_CONFIG_DIR=<unset>\n",
+            crate::agents::claudecode::asks::launch_args(
+                &root.join("home/.cc-monitor/bin/ccm").to_string_lossy()
+            )
+            .join(" ")
+        )
     );
     std::fs::remove_dir_all(&root).ok();
 }

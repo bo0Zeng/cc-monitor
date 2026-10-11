@@ -13,7 +13,7 @@ use crate::agents::SessionActivity;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
-/// stdin 上限（同 CLI 入参那一道）。
+/// stdin 上限（同 CLI 入参那一道）：超了整份拒。
 const STDIN_CAP: u64 = 1_048_576;
 /// 这一问的请求 id（一条连接只问这一次）。
 const REQ_ID: &str = "answer-hook";
@@ -25,11 +25,13 @@ pub async fn run(args: &[String]) -> i32 {
         return 0;
     };
     let mut raw = Vec::new();
+    // 多读一个字节分得出「正好到上限」与「超了」：超了整份拒（不给决定，框照常在终端里问），不截断着用。
     if tokio::io::stdin()
-        .take(STDIN_CAP)
+        .take(STDIN_CAP + 1)
         .read_to_end(&mut raw)
         .await
         .is_err()
+        || raw.len() as u64 > STDIN_CAP
     {
         return 0;
     }
@@ -119,7 +121,7 @@ fn watch_terminal(
     let local = crate::agents::local_face_among(crate::agents::REGISTRY, agent)?;
     let dir = (local.pidfile_dir)(&(local.home_at)(None, true));
     let started = now_ms();
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     let mut tx = Some(tx);
     let mut seen_waiting = false;
     let sid = sid.to_string();

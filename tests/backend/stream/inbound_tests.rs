@@ -914,6 +914,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-unfollow",
         // 流只发要看的会话：硬臂，交给 watcher 线程、等它一句回话（异步档）⇒ 不阻塞。
         "stream-watch",
+        // 答题 hook 挂一条、等人答：硬臂（要本连接的号），等的是一个通道（异步档）⇒ 不阻塞。
+        "needs-ask",
+        // 答一条挂着的待答请求：锁一下登记表、交通道，不碰盘不起进程 ⇒ 异步档、不阻塞。
+        "needs-answer",
         // 计划七条：起 pb / 读改写小文件 / 起 tmux，阻塞档（上面逐条断）。
         "plan-list",
         "plan-read",
@@ -1466,7 +1470,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     };
     let until_pending = |sid: &'static str| async move {
         for _ in 0..10_000 {
-            if let Some(a) = crate::observe::asks::pending(sid).pop() {
+            if let Some(a) = crate::control::asks::pending(sid).pop() {
                 return a;
             }
             tokio::task::yield_now().await;
@@ -1488,7 +1492,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         .await
         .unwrap();
     let a = until_pending("t-inbound-1").await;
-    crate::observe::asks::answer(
+    crate::control::asks::answer(
         &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
     )
     .unwrap();
@@ -1519,9 +1523,9 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     let a = until_pending("t-inbound-2").await;
     drop(client);
     h.await.unwrap();
-    assert!(crate::observe::asks::pending("t-inbound-2").is_empty());
+    assert!(crate::control::asks::pending("t-inbound-2").is_empty());
     assert_eq!(
-        crate::observe::asks::answer(
+        crate::control::asks::answer(
             &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
         )
         .unwrap_err()

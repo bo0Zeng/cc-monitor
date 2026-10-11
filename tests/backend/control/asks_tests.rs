@@ -2,7 +2,7 @@
 //! 登记表是进程里一份，各条用各自的会话 id，并行跑互不相扰。夹具正文都是编的。
 
 use super::*;
-use crate::agents::{AskOption, AskQuestion, AskSuggestion};
+use crate::agents::{AskKind, AskOption, AskQuestion, AskSuggestion};
 use serde_json::json;
 
 const AGENT: &str = "claude";
@@ -15,7 +15,7 @@ fn approve(sid: &str) -> AskIn {
         what: Some("touch a".into()),
         detail: "touch a\necho b".into(),
         suggestions: vec![AskSuggestion {
-            text: "允许访问 /w（本次会话）".into(),
+            text: "/w".into(),
             raw: json!({"type": "addDirectories", "directories": ["/w"], "destination": "session"}),
         }],
         questions: vec![],
@@ -44,7 +44,7 @@ fn approval_choices_are_written_and_the_never_ask_again_one_is_not_first() {
     assert!(a.choices[1].text.0.contains("/w"), "规则写成人话");
     assert_eq!(a.choices[3].note, NoteNeed::Required);
     assert_eq!(a.detail, "touch a\necho b");
-    assert_eq!(a.kind, NeedsKind::Approve);
+    assert_eq!(a.kind, AskKind::Approve);
 }
 
 #[test]
@@ -147,12 +147,17 @@ fn a_sub_agent_request_lands_in_needs_carries_its_id_and_is_answered() {
     a.blocks_terminal = true;
     let mut rx = open(AGENT, a, 9003);
     // 挡着终端：pidfile 不说在等 ⇒ 照挂着的请求补出一份 needs。
-    let needs = dress(None, sid).expect("有挂着的就有 needs");
+    let needs =
+        crate::observe::facts_query::dress_ask_with(None, pending(sid).into_iter().next(), 0)
+            .expect("有挂着的就有 needs");
     let ask = needs.ask.clone().expect("带 ask");
-    assert_eq!(needs.kind, NeedsKind::Approve);
+    assert_eq!(needs.kind, crate::observe::facts_query::NeedsKind::Approve);
     assert_eq!(needs.tool.as_deref(), Some("Bash"));
-    assert_eq!(ask.agent_id.as_deref(), Some("agent-7"));
-    assert_eq!(ask.agent_type.as_deref(), Some("general-purpose"));
+    assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("agent-7"));
+    assert_eq!(
+        ask.run.as_ref().and_then(|r| r.kind.as_deref()),
+        Some("general-purpose")
+    );
     assert_eq!(
         ids(&ask).last(),
         Some(&"release"),
@@ -282,13 +287,13 @@ fn needs_without_a_pending_request_say_only_in_the_terminal() {
             read_at_ms: 0,
         }),
     );
-    let n = dress_with(n, None, 0).unwrap();
+    let n = crate::observe::facts_query::dress_ask_with(n, None, 0).unwrap();
     assert!(n.ask.is_none());
     assert_eq!(
         n.manual_text.as_ref().map(|w| w.0.as_str()),
         Some("只能在终端里答")
     );
-    assert!(dress_with(None, None, 0).is_none());
+    assert!(crate::observe::facts_query::dress_ask_with(None, None, 0).is_none());
 }
 
 #[tokio::test]
@@ -339,4 +344,23 @@ fn the_hook_client_calls_it_closed_only_after_leaving_waiting() {
     assert!(hook::closed_now(&[], started, &mut seen));
     let mut seen = false;
     assert!(!hook::closed_now(&[], started, &mut seen));
+}
+
+impl crate::guard_support::Shaped for AskReply {
+    fn samples() -> Vec<Self> {
+        vec![
+            AskReply {
+                decision: Some(json!({"hookSpecificOutput": {"decision": {"behavior": "allow"}}})),
+            },
+            AskReply { decision: None },
+        ]
+    }
+}
+
+impl crate::guard_support::Shaped for Answered {
+    fn samples() -> Vec<Self> {
+        vec![Answered {
+            result: AnswerResult::Answered,
+        }]
+    }
 }

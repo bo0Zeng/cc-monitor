@@ -5,7 +5,7 @@
 //! 「批准并切档」经 `updatedPermissions` 的 `setMode`；子 agent 的请求多 `agent_id` · `agent_type`，后台那种是 hook 先跑完框才出。
 //! exec 形必须写 `command`（只写 `args` 整份设置被跳过、开局还弹一个框）。
 //!
-//! 这一家的字段名只住这里；待答登记表、选项写字、谁先答算谁的住通用层（`observe::asks`）。
+//! 这一家的字段名只住这里；待答登记表、选项写字、谁先答算谁的住通用层（`control::asks`）。
 
 use crate::agents::{AskFace, AskIn, AskKind, AskQuestion, AskSuggestion, PlanMode, Verdict};
 use copy_core::copy_text;
@@ -19,15 +19,16 @@ pub(crate) const FACE: AskFace = AskFace {
     decide,
 };
 
-/// 会话级设置那个旗标（`--settings <文件或 JSON 串>`：hooks 与各层设置合并，不替换用户自己的）。
-pub(crate) const SETTINGS_FLAG: &str = "--settings";
+/// 会话级设置那个旗标（住启动形状那一处，`resume.rs`）。
+use super::resume::SETTINGS_FLAG;
 /// 唯一挂的那一种 hook。
 const EVENT: &str = "PermissionRequest";
 /// hook 的期限（秒）：到点它被杀、不给决定 ⇒ 框照常在终端里（挡着终端的那种到点才出框）。
 pub(crate) const HOOK_TIMEOUT_SECS: u64 = 3600;
 /// hook 那一趟叫 ccm 的哪几个词（后端子命令 ＋ 这一家的 kind）。
 pub(crate) fn hook_words() -> [&'static str; 3] {
-    ["--", crate::ANSWER_HOOK_FLAG, super::AGENT_KIND]
+    let [end, flag] = crate::ANSWER_HOOK_WORDS;
+    [end, flag, super::AGENT_KIND]
 }
 
 /// 起会话时垫的那两个词：`--settings` ＋ 只含这一个 hook 的 JSON 串（exec 形，不经 shell；`entry` ＝ ccm 绝对路径）。

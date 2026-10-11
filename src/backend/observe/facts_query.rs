@@ -515,8 +515,8 @@ pub(crate) struct Needs {
     pub(crate) waited_ms: Option<u64>,
     /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
     pub(crate) waited_text: Option<Words>,
-    /// 这一条可以怎么答（挂着的待答请求，`observe::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
-    pub(crate) ask: Option<crate::observe::asks::Ask>,
+    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+    pub(crate) ask: Option<crate::agents::asks::Ask>,
     /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
     pub(crate) manual_text: Option<Words>,
 }
@@ -581,10 +581,63 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         rank,
         waited_ms,
         waited_text: waited_ms.map(|ms| Words(copy_core::short_duration(ms))),
-        // 配不配挂着的请求在调用处（`observe::asks::dress`，读常驻进程那一份登记表）。
+        // 配不配挂着的请求在顶层壳（`faces::read_face` 查常驻进程那一份登记表，经 [`dress_ask_with`] 配）。
         ask: None,
         manual_text: None,
     })
+}
+
+/// 会话的 `needs` 配上挂着的待答请求 `ask`（最早挂上的那一条；登记表住常驻进程，`control::asks`，由顶层壳查好交进来）：
+/// 有 ⇒ `needs.ask` 是它（pidfile 没说在等 —— 挡着终端的那种 —— 就照它补出一份）；pidfile 说在等却没有 ⇒ `ask: null`、`manualText` 写好「只能在终端里答」。
+pub(crate) fn dress_ask_with(
+    needs: Option<Needs>,
+    ask: Option<crate::agents::asks::Ask>,
+    now_ms: u64,
+) -> Option<Needs> {
+    use crate::agents::AskKind;
+    match (needs, ask) {
+        (Some(mut n), Some(a)) => {
+            n.manual_text = None;
+            n.ask = Some(a);
+            Some(n)
+        }
+        (Some(mut n), None) => {
+            n.ask = None;
+            n.manual_text = Some(Words(copy_core::copy_text("beAsk.manual.terminal", &[])));
+            Some(n)
+        }
+        (None, Some(a)) => {
+            let kind = match a.kind {
+                AskKind::Approve => NeedsKind::Approve,
+                AskKind::Question => NeedsKind::Answer,
+                AskKind::Plan => NeedsKind::Plan,
+            };
+            let waited = now_ms.saturating_sub(a.since_ms);
+            Some(Needs {
+                kind,
+                tool: Some(a.tool.clone()),
+                call: None,
+                what: a.what.clone(),
+                since_ms: Some(a.since_ms),
+                text: needs_words(kind),
+                head: needs_head(kind, Some(&a.tool)),
+                head_code: match kind {
+                    NeedsKind::Approve | NeedsKind::Answer => a.what.clone(),
+                    _ => None,
+                },
+                tone: crate::common::cells::Tone::Need,
+                rank: NEEDS_BY_DANGER
+                    .iter()
+                    .position(|k| *k == kind)
+                    .map_or(u8::MAX, |i| i as u8),
+                waited_ms: Some(waited),
+                waited_text: Some(Words(copy_core::short_duration(waited))),
+                ask: Some(a),
+                manual_text: None,
+            })
+        }
+        (None, None) => None,
+    }
 }
 
 /// 一种「需手动」写好的字（唯一一处：会话事实的 `needs.text` · 轮换在用名单都由它写）。

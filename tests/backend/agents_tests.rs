@@ -221,6 +221,11 @@ fn the_launch_faces_agree_with_the_golden_table() {
                 })
                 .unwrap_or_default(),
             "self_sid_env" => f.self_sid_env.unwrap_or_default().to_string(),
+            // 答题口挂 hook 的那个旗标（注册表 `Adapter.asks`；没有答题口 ⇒ 空）。
+            "answer_hook_flag" => crate::agents::ask_face_among(REGISTRY, agent)
+                .map(|a| a.launch_flag)
+                .unwrap_or_default()
+                .to_string(),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
         if &got != want {
