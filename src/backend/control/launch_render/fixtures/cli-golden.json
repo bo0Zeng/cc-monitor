@@ -202,7 +202,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "tmux send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; tmux attach -t '=cc-x:'"
+      "out": "tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case ${TMUX:-} in '') tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac"
     },
     {
       "name": "identity（--ccm-sid）",

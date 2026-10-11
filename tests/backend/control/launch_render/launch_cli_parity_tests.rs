@@ -156,7 +156,7 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     for c in f
         .cases
         .iter()
-        .filter(|c| c.ok && !c.out.starts_with("tmux send-keys"))
+        .filter(|c| c.ok && !c.out.starts_with("tmux -u send-keys"))
     {
         let words = shell_words(&c.out);
         assert_eq!(
@@ -210,10 +210,11 @@ fn every_monitor_launch_path_hands_over_one_ccm_line() {
         let words = shell_words(&line);
         let ok = match words.first().map(String::as_str) {
             Some("ccm") => true,
-            // 外层只包一层：`tmux send-keys -t '=名:' '<那一行>' Enter; tmux attach -t '=名:'`。
+            // 外层只包一层：`tmux -u send-keys -t '=名:' '<那一行>' Enter; <接进去>`。
             Some("tmux") => {
-                words.get(1).map(String::as_str) == Some("send-keys")
-                    && words.get(4).is_some_and(|inner| inner.starts_with("ccm "))
+                words.get(1).map(String::as_str) == Some("-u")
+                    && words.get(2).map(String::as_str) == Some("send-keys")
+                    && words.get(5).is_some_and(|inner| inner.starts_with("ccm "))
             }
             _ => false,
         };

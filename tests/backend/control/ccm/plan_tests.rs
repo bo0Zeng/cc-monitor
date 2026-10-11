@@ -688,7 +688,7 @@ fn attach_uses_the_exact_match_target() {
     // `attach <名>` 写作 `--attach <名>`
     assert_eq!(
         printed(&["--attach", "cc-p1"]),
-        "if [ -n \"${TMUX:-}\" ]; then tmux -u switch-client -t '=cc-p1:'; else tmux -u attach -t '=cc-p1:'; fi"
+        "case ${TMUX:-} in '') tmux -u attach -t '=cc-p1:';; *) tmux -u switch-client -t '=cc-p1:';; esac"
     );
 }
 
@@ -732,7 +732,7 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
     ];
     let mut got = Vec::new();
     for (what, rendered) in &joins {
-        let Some(at) = rendered.find("if [ -n \"${TMUX:-}\" ]") else {
+        let Some(at) = rendered.find("case ${TMUX:-} in") else {
             got.push(format!("{what}: 没有按在不在 tmux 里分开"));
             continue;
         };
@@ -1763,7 +1763,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
     // `--ccm-print` 吐的就是真跑那一行：在不在 tmux 里是配方，不是宿主状态。
     assert_eq!(
         render(&rejoin(false)),
-        "if [ -n \"${TMUX:-}\" ]; then tmux -u switch-client -t '=work:'; else tmux -u attach -t '=work:'; fi"
+        "case ${TMUX:-} in '') tmux -u attach -t '=work:';; *) tmux -u switch-client -t '=work:';; esac"
     );
     assert_eq!(render(&rejoin(true)), "echo 'ccm-session=work'");
 }
@@ -2482,4 +2482,151 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
         assert_eq!(got, want.unwrap_or_default(), "{what}");
         let _ = std::fs::remove_dir_all(&root);
     }
+}
+
+/// 量具：一段 shell 文本里每一个 `tmux` 命令词（前面不连着字母数字 / `_` / `-`，后面跟空白、再跟一个小写字母或 `-` 打头的词）
+/// 的下一个词必须是 `-u`；不是的那几处原样交回。头一个数是量到了几个。
+fn tmux_words_without_utf8_flag(line: &str) -> (usize, Vec<String>) {
+    let b = line.as_bytes();
+    let (mut seen, mut bad) = (0, Vec::new());
+    let mut from = 0;
+    while let Some(k) = line[from..].find("tmux") {
+        let at = from + k;
+        from = at + 4;
+        let before_ok =
+            at == 0 || !(b[at - 1].is_ascii_alphanumeric() || matches!(b[at - 1], b'_' | b'-'));
+        let after_ws = b.get(at + 4).is_some_and(|c| c.is_ascii_whitespace());
+        if !(before_ok && after_ws) {
+            continue;
+        }
+        let next = line[at + 4..].split_whitespace().next().unwrap_or_default();
+        // 后面不是一个命令词（旗 / 子命令）⇒ 是一句话里的「tmux」（`tmux 会话名 … 已被占用`），不算。
+        if !next.starts_with(|c: char| c.is_ascii_lowercase() || c == '-') {
+            continue;
+        }
+        seen += 1;
+        if next != crate::common::tmux_utf8::UTF8_CLIENT_FLAG {
+            let end = (at + 40).min(line.len());
+            let end = (end..=line.len())
+                .find(|&e| line.is_char_boundary(e))
+                .unwrap_or(line.len());
+            bad.push(line[at..end].to_string());
+        }
+    }
+    (seen, bad)
+}
+
+/// ★ **渲给客户端的每一条 tmux 子命令都是 UTF-8 客户端（`tmux -u <子命令>`）** —— 没有 UTF-8 locale 的终端（ssh 进来的手机终端）里，
+/// 非 UTF-8 客户端把 tab 与中文画成 `_`（mobsmoke 10-11 查到）。三面一起量，各带不许空转的那一格：
+/// ① 渲出来的成品：`launch-render-cli` 入库金样里每条渲成了的 `out` ＋ `ccm` 每一形计划（`--ccm-print` 那一份与短形）；
+/// ② 渲那几行的源码（`control/ccm/` · `control/launch_render/` ＋ `common/tmux_utf8.rs` 的生产段）：同一把尺子，不等样本渲到。
+#[test]
+fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
+    // 量具自检：该命中的命中、不该命中的不命中。
+    assert_eq!(tmux_words_without_utf8_flag("tmux attach -t x").1.len(), 1);
+    assert_eq!(
+        tmux_words_without_utf8_flag("a; /usr/bin/tmux send-keys x")
+            .1
+            .len(),
+        1
+    );
+    assert_eq!(
+        tmux_words_without_utf8_flag(
+            "tmux -u attach -t x; --ccm-tmux=n ${TMUX:-} cc_tmux x 缺 tmux; tmux 会话名 %s"
+        ),
+        (1, vec![])
+    );
+
+    let mut bad = Vec::new();
+    let mut check = |what: &str, line: &str| {
+        let (seen, b) = tmux_words_without_utf8_flag(line);
+        assert!(
+            seen > 0,
+            "「{what}」里一个 tmux 都没量到 —— 样本挑错了，本条会空转着绿：{line}"
+        );
+        bad.extend(b.into_iter().map(|h| format!("{what}: {h}")));
+    };
+
+    // ① 金样：渲成了的那几条里凡是有 tmux 的。
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../src/backend/control/launch_render/fixtures/cli-golden.json"
+    ))
+    .expect("金样不是 JSON");
+    let mut golden_with_tmux = 0;
+    for c in golden["cases"].as_array().expect("金样没有 cases") {
+        let out = c["out"].as_str().unwrap_or_default();
+        if c["ok"] == serde_json::Value::Bool(true) && tmux_words_without_utf8_flag(out).0 > 0 {
+            golden_with_tmux += 1;
+            check(
+                &format!("金样「{}」", c["name"].as_str().unwrap_or_default()),
+                out,
+            );
+        }
+    }
+    assert!(
+        golden_with_tmux > 0,
+        "金样里一条带 tmux 的都没有 —— 就地 resume 那一条该在"
+    );
+
+    // ① ccm 每一形：接回 · resume 接上在跑的 · 建容器接进去 / 不接 · 带 cc-bus 登记 · codex 的总线身份配方。
+    let t = AccountTable::default();
+    let container = |args: &[&str]| match plan_of(args, &env(), &t) {
+        Plan::Container(c) => c,
+        other => panic!("该是容器路：{args:?} ⇒ {other:?}"),
+    };
+    let mut bus = container(&["--ccm-tmux=n1", "--cwd", "/p", "--detach"]);
+    bus.bus = Some(BusRegister {
+        scripts_dir: "/s".into(),
+        note: "n".into(),
+        has_spawned_record: true,
+    });
+    let plans = [
+        ("--attach", plan_of(&["--attach", "cc-p1"], &env(), &t)),
+        (
+            "resume 接上在跑的",
+            Plan::Rejoin {
+                name: "work".into(),
+                sid: "sid-1".into(),
+                detach: false,
+            },
+        ),
+        (
+            "建容器接进去",
+            Plan::Container(container(&["--ccm-tmux=n1", "--cwd", "/p"])),
+        ),
+        (
+            "建容器不接",
+            Plan::Container(container(&["--ccm-tmux=n1", "--cwd", "/p", "--detach"])),
+        ),
+        ("带 cc-bus 登记", Plan::Container(bus)),
+    ];
+    for (what, p) in &plans {
+        check(&format!("ccm {what}"), &render(p));
+        check(&format!("ccm {what}（短形）"), &render_short(p, "/home/pi"));
+    }
+    check("codex 的总线身份配方", &super::super::BUS_ID_RECIPE);
+
+    // ② 源码：渲给客户端那几行住的地方（`control/ccm/` · `control/launch_render/` 两个目录 ＋ 接进去那一处 `common/tmux_utf8.rs`），
+    //   生产段里每一处 `tmux <子命令>` 也用同一把尺子量（手写一条不带旗的，不等有样本渲到它就红）。
+    let mut files = 0;
+    let mut sources: Vec<(std::path::PathBuf, String)> = Vec::new();
+    for dir in ["control/ccm", "control/launch_render"] {
+        sources.extend(guard_core::scan_tree!(&crate::guard_support::src_root().join(dir), &["rs"]));
+    }
+    let join_home = crate::guard_support::src_root().join("common/tmux_utf8.rs");
+    sources.push((join_home.clone(), std::fs::read_to_string(&join_home).expect("读不了 tmux_utf8.rs")));
+    let mut source_tmux = 0;
+    for (path, text) in &sources {
+        files += 1;
+        let (seen, b) = tmux_words_without_utf8_flag(&crate::guard_support::production_code(text));
+        source_tmux += seen;
+        bad.extend(b.into_iter().map(|h| format!("{}: 手写了不带旗的 {h}", path.display())));
+    }
+    assert!(files >= 6, "源码那一面只扫到 {files} 份 —— 目录挪了，本条会空转着绿");
+    assert!(source_tmux >= 10, "源码那一面只量到 {source_tmux} 处 tmux —— 剥法或量具坏了，本条会空转着绿");
+    assert!(
+        bad.is_empty(),
+        "渲给客户端的 tmux 子命令没带 -u：\n{}",
+        bad.join("\n")
+    );
 }

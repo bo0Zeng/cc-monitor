@@ -229,7 +229,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     );
 }
 
-/// 就地 resume：外层只包那一行直路 `ccm …`（键进已有的 pane，再接进去）。
+/// 就地 resume：外层只包那一行直路 `ccm …`（键进已有的 pane，再接进去：接进去那一段同 `ccm --attach`，在 tmux 里切过去、不在就 attach）。
 #[test]
 fn send_into_wraps_exactly_the_direct_line() {
     let mut s = base_spec();
@@ -241,7 +241,10 @@ fn send_into_wraps_exactly_the_direct_line() {
     };
     assert_eq!(
         render(&s).unwrap(),
-        format!("tmux send-keys -t '=cc x:' '{direct}' Enter; tmux attach -t '=cc x:'")
+        format!(
+            "tmux -u send-keys -t '=cc x:' '{direct}' Enter; \
+             case ${{TMUX:-}} in '') tmux -u attach -t '=cc x:';; *) tmux -u switch-client -t '=cc x:';; esac"
+        )
     );
     assert!(direct.starts_with("ccm --resume s1 -- "), "{direct}");
 }

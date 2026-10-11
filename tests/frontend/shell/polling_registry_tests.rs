@@ -655,7 +655,7 @@ fn the_identity_poller_is_gone_for_good() {
     );
     // 反向锚点 ②：**抽取器没有空转** —— 渲给 shell 的那句键入载荷必须还看得见。
     assert!(
-        prod.contains("tmux send-keys -t {t}"),
+        prod.contains("tmux -u send-keys -t {t}"),
         "连容器路键入载荷那句 `tmux send-keys` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
     );
 }

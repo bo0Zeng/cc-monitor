@@ -67,6 +67,21 @@
 /// 用法与位置纪律见模块头注：**必须排在子命令之前**。
 pub(crate) const UTF8_CLIENT_FLAG: &str = "-u";
 
+/// **渲给客户端的「接进一个 tmux 会话」—— 全仓唯一一处**：`ccm --attach` · resume 接上在跑的 · 建完容器接进去（`control/ccm/plan.rs`）
+/// 与 `launch-render-cli` 就地 resume 键完那一行之后（`control/launch_render/ccm_invocation.rs`）都调它。
+///
+/// - 已经在 tmux 里 ⇒ 当前客户端切过去（`attach` 在 tmux 里是拒的）；不在 ⇒ `attach`。在不在 tmux 里不进 `--ccm-print`
+///   （`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
+/// - 两条都是 UTF-8 客户端（上表「跨 SSH 的命令串」那一行 ⇒ 旗，排在子命令之前）：这一行跑在用户那台终端里，
+///   那边常没有 UTF-8 locale（ssh 进来的手机终端），非 UTF-8 客户端把 tab 与中文画成 `_`。
+/// - 写成 `case` 不写 `if [ -n "…" ]`：这一行会被交给 Windows 本机终端开 ssh，那条路拒双引号（`dial/terminal.rs`，PowerShell 5.1 传参畸变）；
+///   `case` 的那个词不分词、不展开通配，不用引号也对。
+/// 渲给客户端的每一条 tmux 子命令都带旗：判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`。
+pub(crate) fn join_session(name: &str) -> String {
+    let t = shell_quote_core::posix_quote(&format!("={name}:"));
+    format!("case ${{TMUX:-}} in '') tmux -u attach -t {t};; *) tmux -u switch-client -t {t};; esac")
+}
+
 /// **UTF-8 客户端 env（env 形）** —— 同一个口径的另一种表示，`(变量名, 值)`。
 ///
 /// 挂在起 `sh` 的那个 `Command` 上，一行覆盖脚本串里的全部 `exec` 分支。
