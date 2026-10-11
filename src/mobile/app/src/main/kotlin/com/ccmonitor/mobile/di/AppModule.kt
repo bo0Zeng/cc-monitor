@@ -31,7 +31,8 @@ val appModule =
         // 参数按类型取一件 `ChatOpen`，不按位置取几个裸串。
         viewModel {
             val open = it.get<ChatOpen>()
-            ChatViewModel(get<ChatController>().sessionOf(open) { h -> get<HostBackends>().of(h).also { f -> f.ensure() } })
+            val backends = get<HostBackends>()
+            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::watchOf))
         }
         // 应用级的对话持有者，tail 活在这里，不活在屏幕里。逐出要记日志，否则「对话怎么没了」无从查起。
         single {

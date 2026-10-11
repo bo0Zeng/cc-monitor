@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -26,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.agent.agentKindOrDefault
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
@@ -68,6 +70,11 @@ fun ChatRoute(
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
+    // 在屏上才进这台的 stream-watch 名单（离屏 ⇒ 退出，列表页上名单是空的）。
+    DisposableEffect(vm) {
+        vm.visible(true)
+        onDispose { vm.visible(false) }
+    }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -104,12 +111,15 @@ fun existingChat(
 ): ChatOpen = ChatOpen(hostId, chatKey(hostId, sid), ChatTarget.Existing(sid), machine)
 
 /**
- * 一条会话的 [ChatSession]（应用级，同一个 key ⇒ 同一条）。[linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上）。
+ * 一条会话的 [ChatSession]（应用级，同一个 key ⇒ 同一条）。[linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上），
+ * [watchOf] 给那台的 `stream-watch` 名单（`HostBackends.watchOf`）。
  */
 fun ChatController.sessionOf(
     open: ChatOpen,
     linkOf: (hostId: String) -> CoreLink,
-): ChatSession = sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), open.target, open.machine, scope) }
+    watchOf: (hostId: String) -> SessionWatch,
+): ChatSession =
+    sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope) }
 
 /** 这台在手机上的名字 ＋ 新建会话起在哪（这台的默认工作目录，没填 ⇒ `~`）；还没读到 ⇒ `null`。 */
 private data class ChatHost(

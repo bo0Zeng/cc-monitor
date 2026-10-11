@@ -86,7 +86,6 @@ internal class FakeCoreLink :
 
         fun failed(message: String) = Reply.Failed(CoreFailure("start_failed", message, "detail"))
     }
-    }
 
     /**
      * 一份会话记录的替身：第 i 行（行号 i）占字节 `[10i, 10i+10)`、每行都进界面。照它答 history-tail · history-read · history-lines。
@@ -112,7 +111,7 @@ internal class FakeCoreLink :
                 "history-lines" -> {
                     val a = args!!["from"] as Long
                     val b = minOf(args["until"] as Long, n)
-                    Reply.Ok(mapOf("lines" to (a until b).map { mapOf("seq" to it, "record" to records[it.toInt()]) }, "next" to b, "eof" to b >= n))
+                    Reply.Ok(mapOf("lines" to (a until b).map { mapOf("seq" to it, "record" to records[it.toInt()]) }, "next" to b, "eof" to (b >= n)))
                 }
                 else -> null
             }

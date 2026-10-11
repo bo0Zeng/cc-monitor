@@ -5,7 +5,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -23,13 +22,12 @@ interface SessionWatch {
 
 /**
  * 一台的 `stream-watch` 名单（`IPC-PROTOCOL.md`「流只发要看的会话」）：此刻在屏上的那几条会话的并集。
- * 每次接上（[state] 进 `Up` ＝ 换了一条新连接，新连接 ＝ 没报过）先照当前名单报一次 —— 列表页上就是 `[]`；
+ * 每次接上（[CoreLink.epoch] 变了 ＝ 换了一条新连接，新连接 ＝ 没报过）先照当前名单报一次 —— 列表页上就是 `[]`；
  * 名单一变再报。应答的 `from[]` 原样从 [from] 发出去，由看着那一条的去补 `[已有, seq)`。
  * 报没成（这条断了）不重试：下一次接上照样整份重报。
  */
 class WatchList(
     private val link: CoreLink,
-    private val state: StateFlow<LinkState>,
     scope: CoroutineScope,
 ) : SessionWatch {
     private val held = MutableStateFlow<Map<String, Int>>(emptyMap())
@@ -39,8 +37,8 @@ class WatchList(
 
     init {
         scope.launch {
-            state.collectLatest { s ->
-                if (s == LinkState.Up) held.map { it.keys }.distinctUntilChanged().collect { report(it) }
+            link.epoch.collectLatest { e ->
+                if (e > 0) held.map { it.keys }.distinctUntilChanged().collect { report(it) }
             }
         }
     }

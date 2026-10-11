@@ -30,7 +30,7 @@ class ChatControllerTest {
     private fun ChatController.open(
         key: String,
         hostId: String? = null,
-    ): ChatSession = sessionFor(key, hostId) { scope -> ChatSession(link, ChatTarget.Existing(key), "box", scope).also { it.open() } }
+    ): ChatSession = sessionFor(key, hostId) { scope -> ChatSession(link, link, ChatTarget.Existing(key), "box", scope).also { it.open() } }
 
     private class Log : ConnectionHolder {
         val log = mutableListOf<String>()

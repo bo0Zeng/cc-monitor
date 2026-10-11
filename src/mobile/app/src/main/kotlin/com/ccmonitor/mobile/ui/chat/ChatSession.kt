@@ -26,6 +26,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onSubscription
@@ -277,6 +278,9 @@ class ChatSession(
         data class From(
             val seq: Long,
         ) : Event
+
+        /** 换了一条流（`CoreLink.epoch` 变了）：断开那段的行没收到。 */
+        data object Reconnected : Event
     }
 
     /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。 */
@@ -292,14 +296,20 @@ class ChatSession(
         }
         subscribed.await()
         fromSubscribed.await()
+        scope.launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
         attached = true
         syncHold()
         watchRunning(s)
         val p = pathOf(s) ?: return
         path = p
-        lock.withLock { if (!reloadLocked(p)) return }
+        // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
+        var loaded = lock.withLock { reloadLocked(p) }
         for (e in events) {
             lock.withLock {
+                if (!loaded) {
+                    if (e == Event.Reconnected) loaded = reloadLocked(p)
+                    return@withLock
+                }
                 when (e) {
                     is Event.Line -> {
                         if (e.line.seq < nextSeq) return@withLock
@@ -309,6 +319,11 @@ class ChatSession(
                         nextSeq = e.line.seq + 1
                     }
                     is Event.From -> if (e.seq > nextSeq) fillLocked(p, e.seq)
+                    Event.Reconnected -> {
+                        val t = readTail(p, 1) ?: return@withLock
+                        if (t.total > nextSeq && !fillLocked(p, t.total)) return@withLock
+                        _state.value = _state.value.copy(failedWhy = null, historyError = null)
+                    }
                 }
                 publishLocked()
             }
