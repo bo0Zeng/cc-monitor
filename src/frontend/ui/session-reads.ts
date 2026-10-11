@@ -172,6 +172,8 @@ export interface SessionFacts {
   background: BackgroundWork | null;
   /** 这个会话里那一家说有毛病的 MCP 服务器（按名字排；没列的不等于连上了）。`detail` 是连不上时的原话（复制详情用）。 */
   mcp: McpTrouble[];
+  /** 答题口没接上那一句（ccm 起它时挂不上答题 hook）；接上了 / 判不了 ⇒ `null`。 */
+  answerOff?: string | null;
 }
 
 /** 一条还没收场的后台命令（续传令牌的一部分）。 */
@@ -280,6 +282,10 @@ export interface Needs {
   waitedMs: number | null;
   /** `waitedMs` 写好的字（答出那一刻）；没有起点 ⇒ `null`。 */
   waitedText: string | null;
+  /** 这一条可以怎么答（后端 `needs.ask`：选项的字都写好；答题弹层那一路才读，这里原样留着）；没有挂着的 ⇒ `null`。 */
+  ask?: unknown;
+  /** `ask` 为 `null` 时写好的那一句（只能在终端里答 / 答题口没接上）；有 `ask` ⇒ `null`。 */
+  manualText?: string | null;
   /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`duration-format.ts::waitedNow`）。 */
   receivedAt: number;
 }
@@ -503,8 +509,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "mcp", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
-  if (!strOrNull(v.permissionMode)) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "answerOff", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "mcp", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!strOrNull(v.permissionMode) || !strOrNull(v.answerOff)) return bad();
   let tokens: TokenUse | null = null;
   if (v.tokens !== null) {
     const p = v.tokens;
@@ -562,8 +568,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "head", "headCode", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
+    if (!isObj(n) || !exactKeys(n, ["ask", "call", "head", "headCode", "kind", "manualText", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(n.ask === null || isObj(n.ask)) || !strOrNull(n.manualText) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, ask: n.ask, manualText: n.manualText as string | null, receivedAt };
   }
   if (!Array.isArray(v.bgTasks)) return bad();
   const bgTasks: BgTask[] = [];
@@ -642,6 +648,7 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
     bgTasks,
     background,
     mcp,
+    answerOff: v.answerOff as string | null,
   };
 }
 

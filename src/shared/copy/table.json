@@ -17838,7 +17838,7 @@
     "beAsk.manual.noHook": {
       "kind": "body",
       "role": "说明",
-      "zh": "该会话只能在终端里答批准 · 会话级设置读不出，答题口未接上",
+      "zh": "只能在终端里答批准 · 会话级设置读不出",
       "args": []
     },
     "beAsk.manual.terminal": {

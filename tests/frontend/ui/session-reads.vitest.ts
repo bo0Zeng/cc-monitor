@@ -246,6 +246,7 @@ describe("〔STC〕第五问：会话事实", () => {
         { name: "m-f", status: "failed", detail: "e-f", at: null },
         { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
+      answerOff: null,
     });
   });
 
@@ -275,11 +276,13 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, usage: { ...u, contextText: undefined } }), "缺写好的字").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, needs: { kind: "approve", tool: null, call: null, what: null, sinceMs: null, text: "t", tone: "need" } }), "缺先答哪个的序").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts(without("answerOff")), "缺答题口那一格").toThrow(ReplyUnreadable);
+    expect(decodeFacts({ ...good, answerOff: copyText("beAsk.manual.noHook") }).answerOff).toBe(copyText("beAsk.manual.noHook"));
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
     // 需手动：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
-    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), head: "等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs: 1000, waitedText: "1 秒" };
+    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), head: "等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs: 1000, waitedText: "1 秒", ask: null, manualText: copyText("beAsk.manual.terminal") };
     // 本机收到的那一刻随解码记下（会走的钟从它起接着加；不在线上）。
     expect(decodeFacts({ ...good, needs }, 777).needs).toEqual({ ...needs, receivedAt: 777 });
     expect(() => decodeFacts({ ...good, needs: { ...needs, waitedMs: undefined } }), "缺已等多久").toThrow(ReplyUnreadable);
