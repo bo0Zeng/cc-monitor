@@ -1,12 +1,8 @@
 package com.ccmonitor.mobile.ssh
 
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
-import com.ccmonitor.mobile.core.claude.command.CodexInvocation
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -15,16 +11,14 @@ import java.io.File
  * `tmux new-session` 的名字只来自两个点名的来源（聊天屏的会话由那台核心起，不在这里）。
  *
  * tmux 会话名分两类：
- * ② 终端 resume 那条路按与后端的约定起 `cc-<sid8>`（Codex `cx-`），那是后端认的前缀，不是越界；
- *    唯一定义处是 `AgentInvocation.resumeSessionName` 的两个实现；
  * ③ 用户显式给的名字：`HostConnect.resolveTmuxSession`（`LaunchSpec.tmuxSession` > `DEFAULT_TMUX_SESSION="main"`）
  *    与 tmux 管理器新建行里手敲的那个名。那是终端的自由 tmux 会话，既不在我们的名字空间也不在后端的；
  *    透传那几支不许自己加前缀。
  *
  * | # | 问什么 | 量什么 |
  * |---|---|---|
- * | ③a | `new-session` 在生产代码里恰好 4 处、全在 tmux 网关 `TmuxCommands.kt` | 源码扫描（闭集） |
- * | ③b | 四处的真实命令串里 `-s` 后那个名字，逐字等于其上游来源的产物 | 真实返回值 |
+ * | ③a | `new-session` 在生产代码里恰好 2 处、全在 tmux 网关 `TmuxCommands.kt` | 源码扫描（闭集） |
+ * | ③b | 两处的真实命令串里 `-s` 后那个名字，逐字等于调用方给的 | 真实返回值 |
  * | ③c | `"cc-`（写会话名那个，不是 `cc-monitor-…`）只住两个文件 | 源码扫描（定值钉） |
  *
  * ### 判别力边界
@@ -44,9 +38,9 @@ class TmuxSessionNameSourceTest {
     // ---- ③a：new-session 的闭集 -------------------------------------------
 
     /**
-     * ③a：剥注释后 `new-session` 在全部生产源集里恰好 4 处，全在 tmux 网关 `TmuxCommands.kt`。
+     * ③a：剥注释后 `new-session` 在全部生产源集里恰好 2 处，全在 tmux 网关 `TmuxCommands.kt`。
      *
-     * 这一条是③b 的分母：③b 只覆盖这四支；第 5 支一出现，本条当场红，
+     * 这一条是③b 的分母：③b 只覆盖这两支；第 3 支一出现，本条当场红，
      * 于是「新长出来一处没人管」不可能悄悄发生。
      */
     @Test
@@ -63,7 +57,7 @@ class TmuxSessionNameSourceTest {
         assertTrue("前提：`$NEW_SESSION` 整份语料零命中 ⇒ 扫描器瞎了、本条恒绿", counts.values.sum() > 0)
         assertEquals(
             "`$NEW_SESSION` 只许住 tmux 网关 `TmuxCommands.kt`（每个协议面一个网关类，" +
-                "别处只拿结构化结果），且恰好 4 支。" +
+                "别处只拿结构化结果），且恰好 2 支。" +
                 "多出来的那一支请说明它的会话名来自哪个来源，再一起改这张表与 ③b。",
             PINNED_NEW_SESSION_SITES,
             counts.toMap(),
@@ -71,36 +65,6 @@ class TmuxSessionNameSourceTest {
     }
 
     // ---- ③b：四支各自的名字来源 -------------------------------------------
-
-    /**
-     * ③b-②：resume 那两支的名字逐字等于 `resumeSessionName(sid)`。
-     *
-     * `cc-<sid8>` / Codex `cx-<sid8>` 是与后端约定的前缀（后端的 `findClaudeTmux` 认它）。
-     * 本条钉的是「名字必须来自那个函数」。
-     */
-    @Test
-    fun theResumeSessionNamesComeFromResumeSessionName() {
-        val expectations =
-            listOf(
-                Triple(AgentKind.ClaudeCode, ClaudeInvocation.resumeSessionName(sid), "cc-"),
-                Triple(AgentKind.Codex, CodexInvocation.resumeSessionName(sid), "cx-"),
-            )
-        for ((kind, expected, literalPrefix) in expectations) {
-            val plan =
-                TmuxBackend.resume(
-                    ResumeSpec(sessionId = sid, launchCandidates = emptyList(), claudeDir = "/home/u/.claude", fallbackCwd = "/home/u", agentKind = kind),
-                )
-            assertNotNull("前提：$kind 的 resume 计划没造出来 ⇒ 本条量不到东西", plan)
-            assertEquals("$kind 的乐观会话名必须来自 `resumeSessionName`", expected, plan!!.sessionName)
-            assertTrue(
-                "那个名字得真是约定的 `$literalPrefix<sid8>` 形状（定值钉，防有人改了 `resumeSessionName` 还全绿）",
-                expected == "$literalPrefix${sid.take(8)}",
-            )
-            val names = newSessionNames(plan.command)
-            assertEquals("前提：$kind 的 resume 串里得恰好有一支 `$NEW_SESSION`：\n${plan.command}", 1, names.size)
-            assertEquals("$kind 的 `$NEW_SESSION` 用的名字必须就是那个（别处不许再拼一份）", expected, names[0])
-        }
-    }
 
     /**
      * ③b-③：其余三支原样透传调用方给的名字，不许自己加前缀、不许截。
@@ -120,7 +84,6 @@ class TmuxSessionNameSourceTest {
                 "TmuxBackend.enter(无工作目录)" to TmuxBackend.enter(PROBE_NAME, null),
                 "TmuxBackend.enter(带工作目录)" to TmuxBackend.enter(PROBE_NAME, "/home/u/proj"),
                 "TmuxBackend.newDetachedCommand" to TmuxBackend.newDetachedCommand(PROBE_NAME),
-                "TmuxBackend.newDetachedRunningCommand" to TmuxBackend.newDetachedRunningCommand(PROBE_NAME, "claude"),
             )
         for ((who, cmd) in passthrough) {
             val names = newSessionNames(cmd)
@@ -374,10 +337,10 @@ class TmuxSessionNameSourceTest {
         /**
          * 定值钉：`new-session` 在生产代码里的 file -> 次数。
          *
-         * 四支：`tmuxNewOrAttach` · `tmuxNewDetachedCommand` · `tmuxNewDetachedRunning` · `tmuxResumeCommand`。
+         * 两支：`tmuxNewOrAttach` · `tmuxNewDetachedCommand`（用户在 ssh 里也会这么敲的那两条）。
          */
         private val PINNED_NEW_SESSION_SITES =
-            mapOf("app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt" to 4)
+            mapOf("app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt" to 2)
 
         /**
          * 定值钉：会话名前缀 `"cc-` 的两个合法住处（写侧 `ClaudeInvocation.resumeSessionName` 一处，

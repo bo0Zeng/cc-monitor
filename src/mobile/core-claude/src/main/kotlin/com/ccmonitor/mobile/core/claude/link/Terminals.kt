@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
-/**
+/*
  * 那台的终端：列 · 抓屏 · 结束 · 进终端那一行。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
  * 找哪个窗格、怎么附着全在那台；手机只拼入参、解成品，句柄（`terminal`）不拼不解析，原样交回。
  */
@@ -54,7 +54,14 @@ object TerminalPreview {
     fun args(terminal: String): Map<String, Any?> = mapOf("terminal" to terminal, "color" to false)
 
     /** 自上而下的行拼成一段。 */
-    fun of(data: Any?): String? = decoding { data.asObj().objs("lines").need().joinToString("\n") { it.str("text").need() } }
+    fun of(data: Any?): String? =
+        decoding {
+            data
+                .asObj()
+                .objs("lines")
+                .need()
+                .joinToString("\n") { it.str("text").need() }
+        }
 }
 
 /** `kill`：结束一个终端（那台过身份门；被拒 ⇒ 失败信封里是那台写好的那一句）。 */

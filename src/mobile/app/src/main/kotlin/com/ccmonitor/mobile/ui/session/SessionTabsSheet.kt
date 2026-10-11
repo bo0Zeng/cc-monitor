@@ -27,7 +27,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import org.koin.compose.koinInject
@@ -138,8 +137,7 @@ private fun SessionTabRowItem(
 
 /**
  * tab 的基础可读标签。后缀兜底链：[SessionTabManager.OpenSession.label]
- * （resume 会话标题，建 tab 时同步传入）?: tmux 会话名（attach tab）?: `cc-<sid8>`
- * （resume tab 无 label 时由 sid 推导实际 tmux 名）?: 无后缀，即纯主机名。
+ * ?: tmux 会话名（attach tab）?: 无后缀，即纯主机名。
  * 有后缀时格式 `主机名 · 后缀`；类型符（▷/📁）由渲染处另加，不入本函数。
  */
 internal fun tabBaseLabel(
@@ -147,7 +145,7 @@ internal fun tabBaseLabel(
     hostLabel: String,
 ): String {
     val term = s.target as? SessionTabManager.TabTarget.Terminal
-    val suffix = s.label ?: term?.tmuxSession ?: term?.resumeSessionId?.let(ClaudeInvocation::resumeSessionName)
+    val suffix = s.label ?: term?.tmuxSession
     return if (suffix != null) "$hostLabel · $suffix" else hostLabel
 }
 

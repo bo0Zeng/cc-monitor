@@ -5,11 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HostConnectTest {
-    // tmux 创建序列里的移动端 setup 段（status off + 唯一的滚动模式触摸设置，new-session 后、attach 前，
-    // 无条件施加）。逐字锁死；下方拼接断言仍是全串 assertEquals。
-    // 只对进的那个会话（`-t '=<名>:'`），不用 `-g` 改整台机器；不设 `terminal-overrides`。
-    private fun setup(session: String) = "tmux set -t '=$session:' status off 2>/dev/null; tmux set -t '=$session:' mouse on 2>/dev/null"
-
     private fun host(
         wd: String? = null,
         tmux: Boolean = false,
@@ -44,7 +39,7 @@ class HostConnectTest {
         )
 
     @Test fun posixDefaultStillTmux() =
-        assertEquals(listOf("tmux new-session -d -s 'main' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'"), host(tmux = true, os = null).initialCommands())
+        assertEquals(listOf("tmux -u new-session -A -s 'main'"), host(tmux = true, os = null).initialCommands())
 
     // === 无 workingDir：tmux 会话名带引号 'main' ===
     @Test fun noOverrideNoTmuxNoWd() = assertEquals(emptyList<String>(), host().initialCommands())
@@ -53,10 +48,10 @@ class HostConnectTest {
         assertEquals(listOf("cd '/home/pi'"), host(wd = "/home/pi").initialCommands())
 
     @Test fun noOverrideTmuxNoWd() =
-        assertEquals(listOf("tmux new-session -d -s 'main' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'"), host(tmux = true).initialCommands())
+        assertEquals(listOf("tmux -u new-session -A -s 'main'"), host(tmux = true).initialCommands())
 
     @Test fun noOverrideTmuxWithWd() =
-        assertEquals(listOf("tmux new-session -d -s 'main' -c '/home/pi' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'"), host(wd = "/home/pi", tmux = true).initialCommands())
+        assertEquals(listOf("tmux -u new-session -A -s 'main' -c '/home/pi'"), host(wd = "/home/pi", tmux = true).initialCommands())
 
     // === workingDir（「在 SFTP 目录打开终端」）：override 强制 cd，优先于 defWd ===
     @Test fun overrideNoTmux() =
@@ -67,13 +62,13 @@ class HostConnectTest {
 
     @Test fun overrideTmuxNoDefWd() =
         assertEquals(
-            listOf("tmux new-session -d -s 'main' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'", "cd '/srv/app'"),
+            listOf("tmux -u new-session -A -s 'main'", "cd '/srv/app'"),
             host(tmux = true).initialCommands(LaunchSpec(workingDir = "/srv/app")),
         )
 
     @Test fun overrideTmuxWithDefWd() =
         assertEquals(
-            listOf("tmux new-session -d -s 'main' -c '/home/pi' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'", "cd '/srv/app'"),
+            listOf("tmux -u new-session -A -s 'main' -c '/home/pi'", "cd '/srv/app'"),
             host(wd = "/home/pi", tmux = true).initialCommands(LaunchSpec(workingDir = "/srv/app")),
         )
 
@@ -81,7 +76,7 @@ class HostConnectTest {
 
     // === LaunchSpec.tmuxSession 覆盖默认会话名 ===
     @Test fun tmuxSessionOverridesDefault() =
-        assertEquals(listOf("tmux new-session -d -s 'proj' 2>/dev/null; ${setup("proj")}; tmux -u attach -t 'proj'"), host(tmux = true).initialCommands(LaunchSpec(tmuxSession = "proj")))
+        assertEquals(listOf("tmux -u new-session -A -s 'proj'"), host(tmux = true).initialCommands(LaunchSpec(tmuxSession = "proj")))
 
     // === LaunchSpec.command 末尾追加（cd/tmux 之后）===
     @Test fun commandAppendedAfterCd() =
@@ -95,7 +90,7 @@ class HostConnectTest {
 
     @Test fun commandAppendedAfterTmux() =
         assertEquals(
-            listOf("tmux new-session -d -s 'main' 2>/dev/null; ${setup("main")}; tmux -u attach -t 'main'", "cc"),
+            listOf("tmux -u new-session -A -s 'main'", "cc"),
             host(tmux = true).initialCommands(LaunchSpec(command = "cc")),
         )
 
@@ -105,15 +100,14 @@ class HostConnectTest {
     // === launcher 的 tmuxSession 驱动 tmux（即使 host 未配 auto-tmux），如 cct ===
     @Test fun launcherTmuxSessionDrivesTmuxOnNonTmuxHost() =
         assertEquals(
-            listOf("tmux new-session -d -s 'cc' 2>/dev/null; ${setup("cc")}; tmux -u attach -t 'cc'", "claude"),
+            listOf("tmux -u new-session -A -s 'cc'", "claude"),
             host(tmux = false).initialCommands(LaunchSpec(tmuxSession = "cc", command = "claude")),
         )
 
     @Test fun launcherCcNoTmuxJustCommand() =
         assertEquals(listOf("claude"), host(tmux = false).initialCommands(LaunchSpec(command = "claude")))
 
-    // === 移动端 setup（含唯一的滚动模式触摸设置）无条件拼进 tmux 创建序列（new-session 后、attach 前）：
-    // 首连确定性施加，避开 exec 通道竞速。非 tmux 主机不产生 tmux 命令（见 noOverridePlainCdWorkingDir 等）===
+    // 非 tmux 主机不产生 tmux 命令（见 noOverridePlainCdWorkingDir 等）。
 
     @Test fun resolveTmuxSessionPrefersSpecThenAutoTmux() {
         assertEquals("proj", host(tmux = false).resolveTmuxSession(LaunchSpec(tmuxSession = "proj")))

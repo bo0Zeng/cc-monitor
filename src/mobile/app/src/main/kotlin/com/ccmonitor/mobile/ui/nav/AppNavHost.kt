@@ -262,9 +262,7 @@ private fun HostedSession(
                     open.hostId,
                     target.cd,
                     target.launcherId,
-                    target.tmuxSession, // attach tab 首连即附着该 tmux 会话
-                    target.resumeSessionId, // resume tab 首连即起 tmux 跑 <cc> --resume
-                    open.resumeCommand, // 长按选定的 resume 命令，是 tab 元数据，不在 target 里
+                    target.tmuxSession, // 进终端 tab 首连即敲那台渲出的那一行，接回该会话
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
                 )

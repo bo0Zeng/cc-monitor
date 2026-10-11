@@ -21,7 +21,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import org.koin.compose.koinInject
 
@@ -77,10 +76,9 @@ fun SessionsOverviewScreen(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("${if (isSftp) "📁" else "▷"}  $label", style = MaterialTheme.typography.titleMedium)
-                            // 终端 tab 副标题：有 label（resume 会话的可读标题）先显 label，其次 tmux 会话名
-                            // （attach tab 的名，或 resume tab 由 sid 推导的 cc-<sid8>），都没有则显 cd。
+                            // 终端 tab 副标题：有 label 先显 label，其次 tmux 会话名（attach tab 的名），都没有则显 cd。
                             val term = s.target as? SessionTabManager.TabTarget.Terminal
-                            val tmuxName = term?.tmuxSession ?: term?.resumeSessionId?.let(ClaudeInvocation::resumeSessionName)
+                            val tmuxName = term?.tmuxSession
                             val sub =
                                 when {
                                     isSftp -> "SFTP 文件"

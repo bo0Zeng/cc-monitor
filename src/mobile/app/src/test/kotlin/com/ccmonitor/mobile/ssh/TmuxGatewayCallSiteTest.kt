@@ -80,30 +80,6 @@ class TmuxGatewayCallSiteTest {
         )
     }
 
-    /**
-     * ③：哨兵常量与读它的人同源：命令那头一改，解析这头当场跟着变。
-     *
-     * 这几个常量是焊在命令串里的（`&& echo __aterm_kill_ok__`）。读方若在别的文件里比对手抄的同一个串，
-     * 命令一改就会把失败报成成功（kill 失败报成成功）。本条钉住「读方只许问网关要这个串」。
-     */
-    @Test
-    fun everyCommandSentinelIsReadOnlyFromTheGateway() {
-        val root = repoRoot()
-        val sources = productionSources(root).filter { it.relativeTo(root).invariantSeparatorsPath != GATEWAY }
-        val codeOf = sources.associate { it.relativeTo(root).invariantSeparatorsPath to codeOnly(it.readText()) }
-
-        for ((constName, pinned) in PINNED_SENTINEL_READERS) {
-            val found = codeOf.filterValues { it.contains("$OBJECT.$constName") }.keys.toSortedSet()
-            assertTrue("哨兵 `$OBJECT.$constName` 在生产代码里没有任何读方：那它是干什么用的？", found.isNotEmpty())
-            assertEquals("哨兵 `$constName` 的读方住址变了。", pinned, found.toSet())
-        }
-        // 反面：哨兵的字面不许在网关之外再出现一次（手抄一份 = 命令改了它不跟着改）。
-        for (literal in SENTINEL_LITERALS) {
-            val leaked = codeOf.filterValues { it.contains("\"$literal") }.keys.toSortedSet()
-            assertEquals("哨兵字面 `$literal` 在网关之外被手抄了一份：请改成读 `$OBJECT` 的常量。", emptySet<String>(), leaked.toSet())
-        }
-    }
-
     /** 抠取器自检：②那条的判别力全押在 [FUN_DECL_RE] 与 [codeOnly] 上。 */
     @Test
     fun theFunctionExtractorFindsDeclarationsAndOnlyDeclarations() {
@@ -155,61 +131,25 @@ class TmuxGatewayCallSiteTest {
         private val FUN_DECL_RE = Regex("""(?m)^\s*(?:private\s+|internal\s+)?fun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
 
         private const val BACKEND = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxBackend.kt"
-        private const val TMUX_DIALOG = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TmuxManager.kt"
 
         /**
          * 定值钉：网关对外那 14 支各自的生产调用方。
          *
          * | 类 | 函数 | 谁在用 |
          * |---|---|---|
-         * | 进入/新建 | `tmuxNewOrAttach` · `tmuxNewDetachedCommand` · `tmuxNewDetachedRunning` | `TmuxBackend`（`SessionBackend` 的实现，别处只经它） |
-         * | 探测/查询 | `tmuxForegroundProbeCommand` · `tmuxPaneChildProbeCommand` · `tmuxListCommand` · `tmuxCapturePaneCommand` | `TmuxBackend` |
-         * | resume | `tmuxResumeCommand` | `TmuxBackend`（档案整份交进去） |
-         * | kill/投递 | `tmuxKillCommand` · `tmuxSendModelCommand` | `TmuxBackend` |
-         * | 解析 | `isResumeForegroundShell` · `paneConfirmedNoChild` | `TmuxBackend`（`SessionBackend` 把它们也收进了接口） |
-         * | 解析 | `tmuxKillSucceeded` | `TmuxManager`，不经 `TmuxBackend`：`SessionBackend` 没有 `killSucceeded` 这一格 |
+         * | 进入/新建 | `tmuxNewOrAttach` · `tmuxNewDetachedCommand` | `TmuxBackend`（`SessionBackend` 的实现，别处只经它） |
+         *
+         * 找会话 · 附着 · 结束 · 抓屏 · 送字不在网关里：走那台核心的命令（`TerminalOps`）。
          */
         private val PINNED_OUTWARD_CALLERS =
             linkedMapOf(
                 "tmuxNewOrAttach" to setOf(BACKEND),
                 "tmuxNewDetachedCommand" to setOf(BACKEND),
-                "tmuxNewDetachedRunning" to setOf(BACKEND),
-                "tmuxForegroundProbeCommand" to setOf(BACKEND),
-                "tmuxPaneChildProbeCommand" to setOf(BACKEND),
-                "tmuxListCommand" to setOf(BACKEND),
-                "tmuxCapturePaneCommand" to setOf(BACKEND),
-                "tmuxResumeCommand" to setOf(BACKEND),
-                "tmuxKillCommand" to setOf(BACKEND),
-                "tmuxSendModelCommand" to setOf(BACKEND),
-                "isResumeForegroundShell" to setOf(BACKEND),
-                "paneConfirmedNoChild" to setOf(BACKEND),
-                "tmuxKillSucceeded" to setOf(TMUX_DIALOG),
             )
 
         /**
-         * 只有网关自己用的那几支：如实登记，不假装它们有外部消费方。
-         *
-         * | 函数 | 谁在用（网关内） | 为什么它是公开的 |
-         * |---|---|---|
-         * | `tmuxAttachCommand` | `tmuxResumeCommand` 的收尾段 | 它是 resume 那条串的一格，判据要能单独钉住它的两种形态（attach vs switch-client 防嵌套） |
-         * | `tmuxMobileSetup` | `tmuxNewOrAttach` · `tmuxAttachCommand` | 按会话名出串，判据要能单独钉住「只对那一个会话」，不碰 tmux 全局 |
-         * | `exactTarget` | `tmuxMobileSetup` | `=name:` 的精确匹配包装是结构性的门，判据要能单独证「空 target 被拒」 |
+         * 只有网关自己用的那几支：如实登记，不假装它们有外部消费方（今天没有）。
          */
-        private val GATEWAY_INTERNAL_ONLY =
-            setOf("tmuxAttachCommand", "tmuxMobileSetup", "exactTarget")
-
-        /** 定值钉：焊在命令串里的哨兵，各自今天的读方。 */
-        private val PINNED_SENTINEL_READERS =
-            linkedMapOf(
-                "TMUX_KILL_OK_MARKER" to setOf(TMUX_DIALOG),
-            )
-
-        /**
-         * 上面那几个哨兵的字面值：网关之外一次都不许出现（手抄一份就等于有两处各说各的）。
-         *
-         * 只列有具名常量的那几个。
-         */
-        private val SENTINEL_LITERALS =
-            listOf("__aterm_kill_ok__")
+        private val GATEWAY_INTERNAL_ONLY = emptySet<String>()
     }
 }

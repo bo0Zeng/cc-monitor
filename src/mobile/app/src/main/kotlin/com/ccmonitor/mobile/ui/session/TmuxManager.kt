@@ -23,13 +23,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.SessionBackend
 import com.ccmonitor.mobile.ssh.TmuxBackend
-import com.ccmonitor.mobile.ssh.TmuxCommands
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -46,37 +46,32 @@ internal suspend fun runOnce(
     return buf.toString("UTF-8")
 }
 
-/** 列 tmux 会话，解析见 [parseTmuxList]。没有 server 时 stderr 被吞掉，得到空列表。 */
-suspend fun listTmux(
-    channel: RemoteCommandChannel,
-    backend: SessionBackend = TmuxBackend,
-): List<TmuxSession> = parseTmuxList(runOnce(channel, backend.listCommand()))
-
 /**
  * tmux 会话管理弹窗：列出、附着、结束、新建，不用手输命令。
- * list/kill/new-detached 走 [channel]；附着要进终端，所以经 [onAttach]/[onNewAttach] 交给调用方。
+ * 列 · 结束 · 后台起 cc 是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
+ * （新 tab 敲那台渲出的那一行）。「新建」是用户在 shell 里会敲的那一条，经 [channel] 跑。
  * 状态与 scope 都在本函数，子块只收参数。
  */
 @Composable
 fun TmuxManagerDialog(
     channel: RemoteCommandChannel,
+    terminals: TerminalOps,
     onAttach: (String) -> Unit,
-    onNewAttach: (String) -> Unit,
     onDismiss: () -> Unit,
-    backend: SessionBackend = TmuxBackend, // 命令族由会话后端给出
+    backend: SessionBackend = TmuxBackend, // 「新建」那一条由会话后端给出
 ) {
     val scope = rememberCoroutineScope()
-    var sessions by remember { mutableStateOf<List<TmuxSession>>(emptyList()) }
+    var sessions by remember { mutableStateOf<List<TerminalsList.Row>>(emptyList()) }
     var newName by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
     var refreshTick by remember { mutableStateOf(0) }
     // 待确认要结束的会话（null = 没有）
-    var pendingKill by remember { mutableStateOf<TmuxSession?>(null) }
+    var pendingKill by remember { mutableStateOf<TerminalsList.Row?>(null) }
     val snackbar = LocalAppSnackbar.current // 结束会话后的结果反馈
 
     androidx.compose.runtime.LaunchedEffect(refreshTick) {
         loading = true
-        sessions = runCatching { listTmux(channel, backend) }.getOrDefault(emptyList())
+        sessions = terminals.list().getOrDefault(emptyList())
         loading = false
     }
 
@@ -90,13 +85,13 @@ fun TmuxManagerDialog(
         text = {
             TmuxManagerBody(
                 channel = channel,
+                terminals = terminals,
                 backend = backend,
                 loading = loading,
                 sessions = sessions,
                 newName = newName,
                 onNameChange = { newName = it },
                 onAttach = onAttach,
-                onNewAttach = onNewAttach,
                 onKillRequested = { pendingKill = it },
                 onCreated = {
                     newName = ""
@@ -116,7 +111,7 @@ fun TmuxManagerDialog(
             pendingKill = null
             scope.launch {
                 // 结果必须可见；结束会话不可逆，所以不给撤销
-                snackbar.show(killSessionReportingResult(channel, backend, t))
+                snackbar.show(terminals.kill(t.name))
                 refresh()
             }
         },
@@ -127,14 +122,14 @@ fun TmuxManagerDialog(
 @Composable
 private fun TmuxManagerBody(
     channel: RemoteCommandChannel,
+    terminals: TerminalOps,
     backend: SessionBackend,
     loading: Boolean,
-    sessions: List<TmuxSession>,
+    sessions: List<TerminalsList.Row>,
     newName: String,
     onNameChange: (String) -> Unit,
     onAttach: (String) -> Unit,
-    onNewAttach: (String) -> Unit,
-    onKillRequested: (TmuxSession) -> Unit,
+    onKillRequested: (TerminalsList.Row) -> Unit,
     onCreated: () -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
@@ -158,46 +153,27 @@ private fun TmuxManagerBody(
             },
             onNewDetachedCc = { n ->
                 scope.launch {
-                    runCatching { runOnce(channel, backend.newDetachedRunningCommand(n, "claude")) }
+                    terminals.startClaude(n)
                     onCreated()
                 }
             },
-            onNewAttach = onNewAttach,
+            // 先在后台建（用户会敲的那一条），再像附着已有的一样进去。
+            onNewAttach = { n ->
+                scope.launch {
+                    runCatching { runOnce(channel, backend.newDetachedCommand(n)) }
+                    onAttach(n)
+                }
+            },
         )
     }
 }
 
-/**
- * 结束会话并把结果说出来。只刷新列表的话，失败和成功看起来一样（那条还在，像是没点中）。
- *
- * @return 上屏的一句话，成功与失败不同。
- */
-private suspend fun killSessionReportingResult(
-    channel: RemoteCommandChannel,
-    backend: SessionBackend,
-    target: TmuxSession,
-): String =
-    runCatching { runOnce(channel, backend.killCommand(target.name)) }
-        .fold(
-            onSuccess = { out ->
-                // 传输层没抛不等于命令成功：要看到成功标记才算，命令没跑起来时 stdout 同样是空的。
-                // 标记与判定都在 `TmuxCommands`，与命令同处一地。
-                if (TmuxCommands.tmuxKillSucceeded(out)) {
-                    "已结束「${target.name}」"
-                } else {
-                    val detail = out.replace(TmuxCommands.TMUX_KILL_OK_MARKER, "").trim().ifBlank { "远端没有回应" }
-                    "没能结束「${target.name}」：$detail"
-                }
-            },
-            onFailure = { "没能结束「${target.name}」：${it.message ?: "未知原因"}" },
-        )
-
 /** 结束会话不可逆，里面可能正跑着活，所以二次确认；文案写清后果（会中断什么、不能撤销），而不是问「确定吗」。 */
 @Composable
 private fun KillConfirmDialog(
-    target: TmuxSession?,
+    target: TerminalsList.Row?,
     onDismiss: () -> Unit,
-    onConfirm: (TmuxSession) -> Unit,
+    onConfirm: (TerminalsList.Row) -> Unit,
 ) {
     target ?: return
     AlertDialog(
@@ -206,7 +182,7 @@ private fun KillConfirmDialog(
         text = {
             Text(
                 "里面正在跑的东西会被中断，" +
-                    (target.command.takeIf { it.isNotBlank() }?.let { "当前是：$it。" } ?: "") +
+                    (target.title.takeIf { it.isNotBlank() }?.let { "当前是：$it。" } ?: "") +
                     "这一步不能撤销。",
             )
         },
@@ -222,9 +198,9 @@ private fun KillConfirmDialog(
 @Composable
 private fun TmuxSessionList(
     loading: Boolean,
-    sessions: List<TmuxSession>,
+    sessions: List<TerminalsList.Row>,
     onAttach: (String) -> Unit,
-    onKillRequested: (TmuxSession) -> Unit,
+    onKillRequested: (TerminalsList.Row) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     when {
@@ -244,7 +220,7 @@ private fun TmuxSessionList(
 /** 单个 tmux 会话行：名称、运行中命令，以及附着 / 杀。 */
 @Composable
 private fun TmuxSessionRow(
-    s: TmuxSession,
+    s: TerminalsList.Row,
     onAttach: () -> Unit,
     onKill: () -> Unit,
 ) {
@@ -255,12 +231,11 @@ private fun TmuxSessionRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(s.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            // 显示活动 pane 在跑什么（免得盲杀正在干活的会话）、窗口数、附着态。
+            // 显示那台写好的标题（免得盲杀正在干活的会话）、附着态。
             Text(
                 buildString {
-                    append("${s.windows} 窗口")
-                    if (s.command.isNotBlank()) append(" · 运行: ${s.command}")
-                    if (s.attached) append(" · 已附着")
+                    if (s.title.isNotBlank()) append("运行: ${s.title}")
+                    if (s.attached) append(if (isEmpty()) "已附着" else " · 已附着")
                 },
                 style = monoSmall,
                 color = tokens.textFaint,
