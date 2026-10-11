@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!-- 本包每一个链接产物（两个程序 · 测试程序）在 Windows 上带的进程清单；由 build.rs 编成资源。
-     「通用控件 v6」那一条是 Tauri 的 Windows 运行时要的：tao / wry / 对话框按名字引入 comctl32 的
+<!-- 两个前端包（monitor · 文件窗口）每一个链接产物（程序 · 测试程序）在 Windows 上带的进程清单；由本 crate 的
+     `embed_for_every_artifact` 在各自的 build.rs 里编成资源。
+     「通用控件 v6」那一条：monitor 经 Tauri（tao / wry / 对话框）、文件窗口经 rfd（`common-controls-v6`）按名字引入 comctl32 的
      TaskDialogIndirect · SetWindowSubclass 一族，只有 v6 按名字导出它们，缺了它进程起不来（0xc0000139）。 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <dependency>

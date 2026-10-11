@@ -1,0 +1,12 @@
+[package]
+name = "win-manifest"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "两个前端包（monitor · 文件窗口）在 Windows 上带的进程清单的唯一一份：清单本身 · 构建脚本里把它编成资源交给包里每一个链接产物 · 测试程序读回自己那一份。"
+
+# 两个前端包都这样用它：`[build-dependencies]`（`build.rs` 调 `embed_for_every_artifact`）＋ `[dev-dependencies]`
+#   （测试程序在 Windows 上读回自己的清单）。后端不链（`contract_crate_guard_tests.rs` ④ 钉）；不进任何发布二进制的运行期。
+[dependencies]
+# 清单编成资源（`.rc` → windres / rc.exe）。不新增依赖树条目：`tauri-build` 经 `tauri-winres` 早就带着同一个版本。
+embed-resource = "3"

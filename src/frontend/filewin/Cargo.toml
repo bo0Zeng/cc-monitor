@@ -119,5 +119,12 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 主界面字族里的名字 → 这台机器上的那份字体文件（MIT）。
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
 
+[build-dependencies]
+# Windows 进程清单编成资源、交给本包每一个链接产物（本包只有 lib ⇒ 就是 lib 的测试程序）：与 monitor 同一份清单、同一处编法。
+#   rfd 的 `common-controls-v6` 按名字引入 comctl32 的 `TaskDialogIndirect`，没清单的测试程序在 Windows 上 0xc0000139 起不来。
+win-manifest = { path = "../../common/win-manifest" }
+
 [dev-dependencies]
 guard-core = { path = "../../common/guard-core" }
+# 测试程序在 Windows 上读回自己的进程清单（`tests/frontend/filewin/app_manifest_tests.rs`）。
+win-manifest = { path = "../../common/win-manifest" }
