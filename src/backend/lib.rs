@@ -941,7 +941,14 @@ pub const PROTO_VERSION: u32 = 1;
 /// 足迹里按 PATH 找的那一族（git · bash · tmux …）在 Windows 上也走 find_session_command，只有 .ps1 且执行策略不让跑脚本时照实拒起（ccm 直起同一句）；
 /// 桌面复用：TCP 层记最后收包时刻，久没收包时开通道与新建同时起跑，保活 10 秒、一轮没回话判死并摘同族。
 /// 壳：Windows「切到终端」照实说原因、核前台，隐藏子命令 --ccm-console 一次性小助手认窗口、经 UI Automation 切 Windows Terminal 标签页。
-pub const BUILD_ID: &str = "p10c-steady-cards-wt-tabs";
+///
+/// p10d-copy-table-mobile-release：子命令指纹变了（冻结格有意解冻）。会话帧：session_added · session_status 平铺 label · label_project（名字由核心 session_label 一处起）、
+/// 去掉 liveness_confidence；session_status 多 path（记录路径定下来 / 换了一份时先推一帧）；turn_end 多 title · body。
+/// session-new：新起的也回 sid；第一句作为启动参数交（Claude · Codex 都认，回 delivered；「等就绪 → 送字」那条路删）；带 model · permissionMode。
+/// 判活收进适配层一格（Adapter::live）与 accounts_query::session_holders 一处；找 tmux 走 find_session_command，后端切 PATH 只剩 path_dirs。
+/// history-turns 的过程段多 until（管到哪一条为止），线上形状出生成类型。patch_config 回话带「记于哪一天」。
+/// 手机：界面中文全进共享文案表（core-copy），失败原话进「复制详情」；旧名 aterm 一族改 ccm（不认旧名）；发版加签名 APK。
+pub const BUILD_ID: &str = "p10d-copy-table-mobile-release";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
