@@ -20278,6 +20278,38 @@
       "zh": "属性",
       "args": []
     },
+    "rsFilewinSelect.menu.delete": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "删除…",
+      "args": []
+    },
+    "rsFilewinSelect.menu.deleteMany": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "删除 {n} 项…",
+      "args": [
+        "n"
+      ]
+    },
+    "rsFilewinSelect.menu.chmod": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "改权限…",
+      "args": []
+    },
+    "rsFilewinSelect.menu.newFolder": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建文件夹",
+      "args": []
+    },
+    "rsFilewinSelect.menu.newFile": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建空文件",
+      "args": []
+    },
     "rsFilewinProps.label.kind": {
       "kind": "body",
       "role": "片段",

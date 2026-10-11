@@ -438,11 +438,9 @@ impl GrepBoard {
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new(k).color(p.text2));
                     let lines = skipped_detail(o);
-                    super::kit::menu(ui, copy_text("rsFilewinGrep.action.detail", &[]), |ui| {
-                        for l in lines {
-                            ui.label(l);
-                        }
-                    });
+                    let entries: Vec<super::kit::Entry> =
+                        lines.into_iter().map(super::kit::Entry::Note).collect();
+                    super::kit::menu(ui, copy_text("rsFilewinGrep.action.detail", &[]), &entries);
                 }
                 if let Some(t) = stopped_line(o) {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
