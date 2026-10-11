@@ -422,7 +422,7 @@ export class SessionViewer {
       const ledger = got.ledger;
       for (let q = ledger.base; q < ledger.endSeq; q++) if (ledger.factsOf(q)?.t !== undefined) this.total++;
       this.folder = new BranchFolder(this.stream.contentElement);
-      const view = new SkeletonView(ledger, this.streamEl, sink.timeline, {
+      const view: SkeletonView = new SkeletonView(ledger, this.streamEl, sink.timeline, {
         materialize: (lo, hi) => this.fetchRows(gen, view, lo, hi),
       });
       this.skeleton = view;
@@ -487,19 +487,20 @@ export class SessionViewer {
    * 骨架交来 `[lo, hi)`：按索引里的字节边界取要建卡的那几段（`rowRuns`，已经画过的切段），落地按 seq 插进时间线（视口钉住）、
    * 配对工具结果、重折。取不到 ⇒ 那一段放回占位（下次滚到 / 跳到再取），失败原样交给等它的人。
    */
-  private fetchRows(gen: number, view: SkeletonView, lo: number, hi: number): void {
+  private fetchRows(gen: number, view: SkeletonView, lo: number, hi: number): Array<[number, number]> {
     const o = this.opts;
-    if (!o) return;
-    for (const run of rowRuns(view.ledger, lo, hi, (q) => this.drawn.has(q))) {
+    if (!o) return [];
+    const runs = rowRuns(view.ledger, lo, hi, (q) => this.drawn.has(q));
+    for (const run of runs) {
       const p: Promise<void> = readRange(o.origin, o.jsonlPath, run.offset, run.until, run.a).then(
         (rows) => {
           if (this.loadGeneration !== gen || this.skeleton !== view) return;
-          view.pinned(() => this.drawRows(rows));
+          view.landed(run.a, run.b, () => this.drawRows(rows));
           this.updateStatus();
           this.syncEmpty();
         },
         (e: unknown) => {
-          if (this.loadGeneration === gen && this.skeleton === view) view.restore(run.a, run.b);
+          if (this.loadGeneration === gen && this.skeleton === view) view.failed(run.a, run.b);
           console.warn(`[session-viewer] 按偏移取正文失败 [${run.a},${run.b})：`, e);
           throw e instanceof Error ? e : new Error(String(e));
         },
@@ -508,6 +509,7 @@ export class SessionViewer {
       p.catch(() => {});
       void p.finally(() => this.inflight.delete(p)).catch(() => {});
     }
+    return runs.map(({ a, b }) => [a, b]);
   }
 
   /** 取回的 / 跟着长来的几行画进去（按 seq 插；画过的跳过）：配对工具结果、重折。 */

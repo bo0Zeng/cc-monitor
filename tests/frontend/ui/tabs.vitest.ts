@@ -4251,8 +4251,9 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
   });
 
   it("门控：占位里的行收纳；岛（ensure 物化过的一段）里迟到的行就地建卡，不收纳", async () => {
+    // 按偏移取 60 那一问一直在路上（取回中的行不算还在占位里；取不到才放回占位）
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
-      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+      cmd === "read_session_range" ? new Promise(() => {}) : Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
     ) as never));
     const t = replay("gate", new Set([60, 150]));
     await settle();
