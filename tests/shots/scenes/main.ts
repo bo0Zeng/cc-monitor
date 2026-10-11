@@ -81,6 +81,7 @@ function longWorld(): World {
     );
     c.say(`第 ${i} 步完成：删掉 ${12 + (i % 30)} 行重复样式，引用改到共享组件。`, 30_000 + i * 900);
   }
+  c.endAt(Date.now() - 60_000);
   w.sessions = [session(9, LOCAL, "/home/user/work/monorepo", c, { activity: "working", sid })];
   return w;
 }
@@ -101,6 +102,7 @@ function injectWorld(): World {
   c.user("<command-name>/skills</command-name>\nBase directory for this skill: /home/user/.claude/skills/run-tests\n跑全量测试并汇总失败。", { meta: true });
   c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "213 passed in 9.12s");
   c.say("全量 213 个通过。", 32_000, "end_turn");
+  c.endAt(Date.now() - 60_000);
   w.sessions = [session(9, LOCAL, cwd, c, { activity: "idle", sid })];
   return w;
 }
@@ -129,6 +131,7 @@ function pasteWorld(): World {
   const log = Array.from({ length: 20 }, (_, i) => `2026-10-01 08:5${i % 10}:0${i % 6} WARN inventory call timed out after 30s (attempt ${i + 1})`).join("\n");
   c.user(`这是今早的日志：<pasted_content id="p1">\n${log}\n</pasted_content id="p1">\n配置是：<pasted_content id="p2">retries=0\ntimeout_s=30\nbackoff_ms=0</pasted_content id="p2">\n帮我看看为什么一直超时。`);
   c.say("日志里每次都是整 30 秒超时、而且没有重试——配置里 `retries=0`。先把重试与整体超时加上。", 30_000, "end_turn");
+  c.endAt(Date.now() - 60_000);
   w.sessions = [session(9, LOCAL, "/home/user/work/orders", c, { activity: "idle", sid })];
   return w;
 }
@@ -187,7 +190,7 @@ function unreadWorld(): World {
   c.say("脚本里版本号写死在第 12 行，改成读 `git describe` 的结果。");
   c.broken();
   c.user("可以，顺便把 CHANGELOG 也补一条。");
-  s.convo = c;
+  s.convo = c.endAt(Date.now() - 60_000);
   return w;
 }
 
@@ -209,7 +212,7 @@ function askWorld(): World {
   c.answer(askId, "AskUserQuestion", ask, 'User has answered your questions: "重试耗尽之后怎么办？"="记日志". You can now continue with the user\'s answers in mind.');
   c.answer(planId, "ExitPlanMode", plan, "User has approved your plan. You can now start coding.");
   c.say("好，照计划开始改。");
-  s.convo = c;
+  s.convo = c.endAt(Date.now() - 60_000);
   return w;
 }
 
@@ -226,10 +229,11 @@ function oddCardsWorld(): World {
   c.apiError(529, "API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
   c.retry(3, 10);
   c.user("[Request interrupted by user]", { interrupt: true });
+  // 排着队的那一句落下来就是同一句话的那条 user 记录（Claude Code 原样写一遍）。
   c.queued("先别写文档了，先把 CHANGELOG 补上");
-  c.user("先补 CHANGELOG。");
+  c.user("先别写文档了，先把 CHANGELOG 补上");
   c.say("好，CHANGELOG 里加了一条「库存接口调用加重试与整体超时」。");
-  s.convo = c;
+  s.convo = c.endAt(Date.now() - 60_000);
   return w;
 }
 
@@ -362,15 +366,6 @@ export const MAIN_SCENES: Scene[] = [
     await openTab(5);
     await sleep(600);
   }, answerWorld),
-  main("main-codex-card", "主窗口 · Codex 会话的卡头", "会话事实说这条是 Codex 的：卡头写「Codex」（画像里的短名），不按文件名猜", async () => {
-    await mainReady(ALL_TABS);
-    await openTab(0);
-    await sleep(900);
-  }, () => {
-    const w = defaultWorld();
-    w.sessions[0].agent = "codex";
-    return w;
-  }),
   main("main-hover-card", "主窗口 · 标签页悬停卡", "悬停第二个标签页 500ms：全名 · 机器 · 目录 · 状态句 · 它在等的那一句 · 数字键", async () => {
     await mainReady(ALL_TABS);
     const row = document.querySelectorAll<HTMLElement>("#tab-bar .tab")[1];

@@ -4,7 +4,6 @@
  */
 import { hms } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import FOOTPRINT_GOLDEN from "../../__fixtures__/footprint-report.golden.json";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
@@ -12,26 +11,6 @@ import type { OpHandler, World } from "./types";
 const HOME = "/home/user";
 
 const pidOf = (origin: string, w: World): number => 3200 + w.machines.indexOf(origin) * 17;
-
-/** 足迹：金样的家目录换成合成那台；用户装过的那几行改成「在」。 */
-function footprint(): unknown {
-  const g = JSON.parse(JSON.stringify(FOOTPRINT_GOLDEN).split("/nonexistent-footprint-golden").join(HOME)) as {
-    rows: { path_declared: string; tier: string; host_label: string; state: { kind: string; detail?: string } }[];
-    settings_scopes: { state: unknown; has_cc_bus_hooks: boolean | null }[];
-  };
-  for (const r of g.rows) {
-    const p = r.path_declared;
-    if (r.state.kind === "expected_absent") continue;
-    if (p.startsWith("$") || r.host_label === copyText("rsConfigSurface.host.projectDir")) continue;
-    const seen = p.endsWith("/") ? copyText("rsConfigSurface.observe.dirCount", { count: 6 }) : copyText("rsConfigSurface.observe.fileSize", { bytes: 2048 + p.length * 37 });
-    r.state = { kind: "present", detail: seen };
-  }
-  if (g.settings_scopes[0]) {
-    g.settings_scopes[0].state = { kind: "present", detail: copyText("rsConfigSurface.observe.fileSize", { bytes: 2140 }) };
-    g.settings_scopes[0].has_cc_bus_hooks = true;
-  }
-  return g;
-}
 
 /** 扩展页那张表：金样的临时目录换成合成那台的家，两台机器换成本机与 devbox。 */
 function extList(w: World): unknown {
@@ -240,8 +219,6 @@ export function machineOps(): Record<string, OpHandler> {
     "terminal-follow-ack": () => ({}),
     "terminal-unfollow": () => ({}),
     "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
-    "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
-    "footprint-report": () => footprint(),
     // 文件与数据：devbox 照稿 25 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
     // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。

@@ -312,15 +312,8 @@ export const SETTINGS_SCENES: Scene[] = [
     },
     () => {
       const w = defaultWorld();
-      const why = "读取 /home/user/.cc-monitor/exit-policy.json 失败 · 内容无法解析";
-      w.ops["exit-policy-read"] = () => ({
-        state: "unreadable",
-        killOnExit: false,
-        reason: why,
-        detail: "时刻 2026-10-10 01:00:00 +08:00\n机器 Linux x86_64 · 后端 fake\n命令 exit-policy-read\n码 unreadable\n原话 expected value at line 1 column 1",
-        path: "/home/user/.cc-monitor/exit-policy.json",
-        said: copyText("backendPolicy.exit.unreadable", { why }),
-      });
+      // 盘上那份退出策略写坏了（写到一半断掉）：真后端读它、出「读不出」那一形与那一句。
+      w.disk[LOCAL].files[".cc-monitor/backend.json"] = '{"killOnExit": tr';
       return w;
     },
   ),
