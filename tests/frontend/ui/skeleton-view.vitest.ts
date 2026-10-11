@@ -71,15 +71,33 @@ function makeHost(timeline: RecordTimeline, realH: (seq: number) => number) {
   const calls: Array<[number, number]> = [];
   return {
     calls,
-    materialize(lo: number, hi: number): void {
+    materialize(lo: number, hi: number): Array<[number, number]> {
       calls.push([lo, hi]);
-      for (let s = lo; s < hi; s++) {
-        const el = document.createElement("div");
-        el.dataset.h = String(realH(s));
-        el.dataset.seq = String(s);
-        timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
-      }
+      buildCards(timeline, lo, hi, realH);
+      return [];
     },
+  };
+}
+
+function buildCards(timeline: RecordTimeline, lo: number, hi: number, realH: (seq: number) => number): void {
+  for (let s = lo; s < hi; s++) {
+    const el = document.createElement("div");
+    el.dataset.h = String(realH(s));
+    el.dataset.seq = String(s);
+    timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+  }
+}
+
+/** 正文本地一行都没有的宿主（骨架接上后账本只留尾巴）：交来的每一段都要去取 ⇒ 整段报「取回中」，落地由测试手动放。 */
+function makeFetchingHost(timeline: RecordTimeline, realH: (seq: number) => number) {
+  const calls: Array<[number, number]> = [];
+  return {
+    calls,
+    materialize(lo: number, hi: number): Array<[number, number]> {
+      calls.push([lo, hi]);
+      return [[lo, hi]];
+    },
+    build: (lo: number, hi: number) => buildCards(timeline, lo, hi, realH),
   };
 }
 
@@ -216,6 +234,78 @@ describe("🔴 只物化可见区", () => {
     s.scrollEl.getBoundingClientRect = () => ({ top: 0, bottom: 0, height: 0 }) as DOMRect;
     expect(s.view.fillVisible()).toBe(0);
     expect(s.host.calls.length).toBe(0);
+  });
+});
+
+describe("🔴 取回中的行留着占位（10-10「视口里的占位一直不填」）", () => {
+  function fetching(realH = (_s: number) => 60) {
+    const s = setup(5000, 4900, realH);
+    const host = makeFetchingHost(s.timeline, realH);
+    const view = new SkeletonView(s.ledger, s.scrollEl, s.timeline, host);
+    view.attach(4900);
+    const total = () => Array.from(s.content.children).reduce((a, c) => a + (parseFloat((c as HTMLElement).style.height) || Number((c as HTMLElement).dataset.h ?? 0)), 0);
+    const inView = () =>
+      cardsIn(s.content).filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.height > 0 && r.bottom > 0 && r.top < VIEW_H;
+      });
+    return { ...s, host, view, total, inView };
+  }
+
+  it("落在占位中部：一次只要视口那一段；占位高不撤（总高不变）、视口没被带到后面去", () => {
+    const f = fetching();
+    const gapH = f.ledger.heightOf(0, 4900);
+    f.layout.scrollTop = gapH / 2;
+    const h0 = f.total();
+    const mid = f.ledger.seqAt(0, 4900, gapH / 2);
+    f.view.fillVisible();
+    expect(f.host.calls.length).toBe(1);
+    const [lo, hi] = f.host.calls[0];
+    const rowH = f.ledger.heightOf(0, 1);
+    expect(hi - lo).toBeLessThanOrEqual(Math.ceil((VIEW_H * 2) / rowH) + 2);
+    expect(lo).toBeLessThanOrEqual(mid);
+    expect(hi).toBeGreaterThan(mid);
+    expect(f.total()).toBeCloseTo(h0);
+    expect(f.layout.scrollTop).toBe(gapH / 2);
+  });
+
+  it("取回在途：再来 scroll / resize 也不再要（取回次数有上限），这几行不算还在占位里", () => {
+    const f = fetching();
+    f.layout.scrollTop = f.ledger.heightOf(0, 4900) / 2;
+    f.view.fillVisible();
+    const [lo, hi] = f.host.calls[0];
+    for (let k = 0; k < 20; k++) f.view.fillVisible();
+    expect(f.host.calls.length).toBe(1);
+    for (let q = lo; q < hi; q++) expect(f.view.isPending(q)).toBe(false);
+    expect(f.view.isPending(lo - 1)).toBe(true);
+  });
+
+  it("正文落地：同一个任务里占位换成卡，视口里出现真卡、不跳", () => {
+    const f = fetching();
+    const gapH = f.ledger.heightOf(0, 4900);
+    f.layout.scrollTop = gapH / 2;
+    f.view.fillVisible();
+    const [lo, hi] = f.host.calls[0];
+    const block = f.content.querySelector<HTMLElement>(`.${SKELETON_GAP_CLASS}[data-skeleton-lo="${lo}"]`)!;
+    const blockTop = block.getBoundingClientRect().top;
+    f.view.landed(lo, hi, () => f.host.build(lo, hi));
+    expect(block.isConnected).toBe(false);
+    expect(f.inView().length).toBeGreaterThan(0);
+    const first = cardsIn(f.content).find((c) => (c as HTMLElement).dataset.seq === String(lo))!;
+    expect(first.getBoundingClientRect().top).toBeCloseTo(blockTop);
+    expect(f.layout.scrollTop).toBe(gapH / 2);
+  });
+
+  it("取不到：那一段放回占位，下次滚到再要", () => {
+    const f = fetching();
+    f.layout.scrollTop = f.ledger.heightOf(0, 4900) / 2;
+    f.view.fillVisible();
+    const [lo, hi] = f.host.calls[0];
+    f.view.failed(lo, hi);
+    expect(f.view.isPending(lo) && f.view.isPending(hi - 1)).toBe(true);
+    expect(f.view.gapCount).toBe(1);
+    f.view.fillVisible();
+    expect(f.host.calls.length).toBe(2);
   });
 });
 

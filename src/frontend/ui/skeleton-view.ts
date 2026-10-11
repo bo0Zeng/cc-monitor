@@ -30,7 +30,12 @@
  * 视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
  *   更远的一直是第一级。
  * - **正文从哪来归宿主**：主窗口 tab 先从 `TailWindow.pending` 拿（重放推过来的），没有的按偏移取；
- *   查看器不留正文，交来的每一段都按偏移取（两边同一处切段：`rowRuns`），取不到的那一段 `restore` 放回占位。
+ *   查看器不留正文，交来的每一段都按偏移取（两边同一处切段：`rowRuns`）。
+ * - **去取的那几段留着占位**（取回中，`materialize` 的返回值）：高不撤、不再交给宿主、不算 `isPending`；
+ *   正文落地 `landed` 同一个任务里换成卡，取不到 `failed` 放回普通占位。从前是交出去就撤高 ⇒ 内容整体上收、
+ *   视口落到后面几行的占位里又去取，一路连锁、视口一直空着（10-10 用户报「主窗口卡渲染」，台架 `perf-huge` 的 `stuck-jump`）。
+ * - 落地换卡在 `pinned` 里做（期间关原生锚定）：钉视口里的真卡，没有就钉视口里那块占位（取回中的那块被换掉 ⇒ 卡就画在它原位）；
+ *   不交给原生锚定 —— 它会钉住视口里的大占位、把 scrollTop 一路往下补偿，视口出不了占位。
  * - 本模块**不排任何定时器**（`polling_registry` 对 rAF/setTimeout 逐文件计数）：
  *   触发全靠宿主转来的 scroll / resize 事件，一次调用内有界地多跑几轮收敛。
  */
@@ -49,14 +54,20 @@ const MAX_PASSES = 4;
 export const SKELETON_GAP_CLASS = "stream-skeleton-gap";
 
 export interface SkeletonHost {
-  /** 把 seq ∈ `[lo, hi)` 的记录建成卡（宿主自己决定正文从哪来；拿不到的行跳过）。 */
-  materialize(lo: number, hi: number): void;
+  /**
+   * 把 seq ∈ `[lo, hi)` 的记录建成卡（宿主自己决定正文从哪来；拿不到的行跳过）。
+   * 返回**正文本地没有、去取了**的那几段（半开区间，落在 `[lo, hi)` 里）：它们留着占位、标成取回中，
+   * 落地时宿主调 [`SkeletonView.landed`]（取不到 ⇒ [`SkeletonView.failed`]）。
+   */
+  materialize(lo: number, hi: number): ReadonlyArray<readonly [number, number]>;
 }
 
 interface Gap {
   lo: number;
   hi: number;
   el: HTMLElement;
+  /** 取回中：正文在路上，占位的高留着、不再交给宿主（10-10「视口里的占位一直不填」）。 */
+  fetching: boolean;
 }
 
 export class SkeletonView {
@@ -108,9 +119,32 @@ export class SkeletonView {
     return this.pendingHeight;
   }
 
-  /** 这个 seq 还在占位里（没物化）吗 —— 宿主据此决定迟到的行直接建卡还是收纳。 */
+  /** 这个 seq 还在占位里（没物化）吗 —— 宿主据此决定迟到的行直接建卡还是收纳。取回中的不算（已经交出去了，到了就建）。 */
   isPending(seq: number): boolean {
-    return this.gaps.some((g) => seq >= g.lo && seq < g.hi);
+    return this.gaps.some((g) => !g.fetching && seq >= g.lo && seq < g.hi);
+  }
+
+  /**
+   * 取回的正文落地：`[lo, hi)` 那块取回中的占位撤掉、`draw` 把卡建进去，**同一个任务里**换 ——
+   * 中间没有「占位撤了、卡还没到」的一帧（那一帧内容整体上收，视口落到后面几行的占位里，又去取那几行：连锁）。
+   * 视口钉法同 [`pinned`]；视口正落在这块上 ⇒ 卡就画在它原来的位置。
+   */
+  landed(lo: number, hi: number, draw: () => void): void {
+    if (this.disposed) {
+      draw();
+      return;
+    }
+    this.pinned(() => {
+      for (const g of this.gaps.filter((x) => x.fetching && x.lo < hi && x.hi > lo)) this.dropGap(g);
+      draw();
+    });
+  }
+
+  /** 取不到：`[lo, hi)` 那块取回中的占位变回普通占位（下次滚到 / 跳到再交给宿主）。 */
+  failed(lo: number, hi: number): void {
+    if (this.disposed) return;
+    for (const g of this.gaps.filter((x) => x.fetching && x.lo < hi && x.hi > lo)) this.dropGap(g);
+    this.restore(lo, hi);
   }
 
   /**
@@ -124,7 +158,7 @@ export class SkeletonView {
 
   /** 占位里还有多少行 */
   get pendingRows(): number {
-    return this.gaps.reduce((s, g) => s + (g.hi - g.lo), 0);
+    return this.gaps.reduce((s, g) => s + (g.fetching ? 0 : g.hi - g.lo), 0);
   }
 
   /** 占位的像素高合计 */
@@ -245,6 +279,7 @@ export class SkeletonView {
     const hi = Math.min(this.ledger.endSeq, to);
     const ranges: Array<[Gap, number, number]> = [];
     for (const g of this.gaps) {
+      if (g.fetching) continue;
       const a = Math.max(g.lo, lo);
       const b = Math.min(g.hi, hi);
       if (b > a) ranges.push([g, a, b]);
@@ -275,7 +310,7 @@ export class SkeletonView {
         let lo = x;
         let hi = y;
         for (const g of [...this.gaps]) {
-          if (g.hi !== lo && g.lo !== hi) continue;
+          if (g.fetching || (g.hi !== lo && g.lo !== hi)) continue;
           lo = Math.min(lo, g.lo);
           hi = Math.max(hi, g.hi);
           this.dropGap(g);
@@ -331,6 +366,7 @@ export class SkeletonView {
     const bottom = view.bottom + over;
     const ranges: Array<[Gap, number, number]> = [];
     for (const g of this.gaps) {
+      if (g.fetching) continue;
       const r = g.el.getBoundingClientRect();
       if (r.height <= 0) {
         // 只剩不占高的行（并进工具组的工具结果 · 不建卡的行）：落在视口带里就整块物化，不然它永远留着（工具那一步缺结果）。
@@ -385,10 +421,16 @@ export class SkeletonView {
       el.style.overflowAnchor = "none";
       for (const [, i, j] of ranges) {
         // 同一块占位可能拆成几小段：前一段物化后它已经劈开了 ⇒ 现找覆盖 [i, j) 的那一块。
-        const g = this.gaps.find((x) => x.lo <= i && j <= x.hi);
+        const g = this.gaps.find((x) => !x.fetching && x.lo <= i && j <= x.hi);
         if (!g) continue;
-        this.host.materialize(i, j);
+        const away = this.host.materialize(i, j);
         this.splitGap(g, i, j);
+        // 去取的那几段：占位的高留着（不撤），标成取回中，落地时 `landed` 原地换成卡
+        for (const [a, b] of away) {
+          const x = Math.max(a, i);
+          const y = Math.min(b, j);
+          if (y > x) this.addGap(x, y, true);
+        }
         n += j - i;
       }
       if (anchor && anchor.isConnected) {
@@ -436,9 +478,10 @@ export class SkeletonView {
     if (j < hi) this.addGap(j, hi);
   }
 
-  private addGap(lo: number, hi: number): void {
+  private addGap(lo: number, hi: number, fetching = false): void {
     const el = document.createElement("div");
     el.className = SKELETON_GAP_CLASS;
+    if (fetching) el.dataset.skeletonFetching = "";
     el.setAttribute("aria-hidden", "true");
     el.dataset.skeletonLo = String(lo);
     el.dataset.skeletonHi = String(hi);
@@ -447,7 +490,7 @@ export class SkeletonView {
     // 不要容器尺寸约束来插手（styles.css 在 U1 手里拆，这里只能内联）。
     el.style.contentVisibility = "visible";
     this.timeline.insert({ seq: lo - 0.5, element: el, kind: "card", toolGroup: null });
-    const gap: Gap = { lo, hi, el };
+    const gap: Gap = { lo, hi, el, fetching };
     const at = this.gaps.findIndex((x) => x.lo > lo);
     if (at < 0) this.gaps.push(gap);
     else this.gaps.splice(at, 0, gap);

@@ -91,7 +91,7 @@ async function rig() {
   const total = TURNS * PER_TURN;
   const ledger = new SkeletonLedger(0, Array.from({ length: total }, (_, i) => facts(i)));
   const view = new SkeletonView(ledger, scrollEl, timeline, {
-    materialize(lo: number, hi: number): void {
+    materialize(lo: number, hi: number): Array<[number, number]> {
       for (let s = lo; s < hi; s++) {
         const el = document.createElement("div");
         el.dataset.h = "60";
@@ -99,6 +99,7 @@ async function rig() {
         el.setAttribute("data-id", `u${s}`);
         timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
       }
+      return [];
     },
   });
   view.attach(total);
@@ -207,7 +208,7 @@ describe("冷切停住那一帧：骨架后到", () => {
     await fold.refresh();
     layout.scrollTop = 1e9; // 贴底（尾巴那一屏）
     const ledger = new SkeletonLedger(0, Array.from({ length: total }, (_, i) => facts(i)));
-    const mkView = (): SkeletonView => (view = new SkeletonView(ledger, scrollEl, timeline, { materialize: (lo, hi) => { for (let s = lo; s < hi; s++) card(s); } }));
+    const mkView = (): SkeletonView => (view = new SkeletonView(ledger, scrollEl, timeline, { materialize: (lo, hi) => { for (let s = lo; s < hi; s++) card(s); return []; } }));
     return { content, scrollEl, fold, ledger, mkView, floor };
   }
 
