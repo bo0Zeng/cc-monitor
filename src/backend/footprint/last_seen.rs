@@ -3,6 +3,7 @@
 //! 全仓唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
 //! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
+use crate::platform::fs::{Own, OwnPath};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
@@ -72,9 +73,9 @@ pub(crate) fn read_at(path: &Path, args: &Value) -> Answer {
 }
 
 /// `{origin, kind, value}` ⇒ 记下（时刻由这里盖）；`{origin, forget: true}` ⇒ 清掉那台（删机器时）。回 `{atMs}`。
-pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
+pub(crate) fn write_at(own: &Own, args: &Value, now_ms: u64) -> Answer {
     if args.get("forget").is_some() {
-        return forget_at(path, args, now_ms);
+        return forget_at(own, args, now_ms);
     }
     let origin = origin_arg(args)?.to_string();
     let kind = args
@@ -99,17 +100,15 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
             ),
         )));
     }
-    let dir = path
-        .parent()
-        .ok_or_else(|| bad("store path has no parent"))?;
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    let (dir, file) = place(own)?;
+    own.ensure_dir(&dir).map_err(|e| {
         (
             "io_failed",
             crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
                 copy_text(
                     "beLastSeen.store.mkdirFailed",
                     &[
-                        ("dir", &dir.display().to_string()),
+                        ("dir", &dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),
@@ -117,7 +116,7 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
             )),
         )
     })?;
-    locked_edit(dir, path, |all| {
+    locked_edit(own, &dir, &file, |all| {
         record(all, origin, kind, value, now_ms);
         true
     })?;
@@ -126,19 +125,36 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
 
 /// 锁里读—改—写那一份（本文件唯一拿跨进程锁的地方）；`edit` 回 `false` ⇒ 没改、不写。
 fn locked_edit(
-    dir: &Path,
-    path: &Path,
+    own: &Own,
+    dir: &OwnPath,
+    file: &OwnPath,
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
 ) -> Result<(), crate::stream::inbound::spec::Fail> {
-    let _g = crate::platform::lock::hold(dir).map_err(|e| {
-        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
-    })?;
-    let mut all = load(path);
+    let io = |e| crate::stream::inbound::spec::Fail::from(("io_failed", e));
+    let held = own
+        .lock(dir)
+        .map_err(|e| io(crate::common::said::Said::from(e)))?;
+    let mut all = load(file.as_path());
     if edit(&mut all) {
-        crate::common::own_state::write_json(path, &all)
-            .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+        let body = crate::common::own_state::json_body(file.as_path(), &all).map_err(io)?;
+        own.write(file, &held, &body).map_err(io)?;
     }
     Ok(())
+}
+
+/// 那份文件所在的那一层（`~/.cc-monitor`）与它本身。没有家目录 ⇒ `io_failed`。
+fn place(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::spec::Fail> {
+    let no_home = |_| {
+        crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            copy_text("beLastSeen.store.noHome", &[]),
+        ))
+    };
+    Ok((
+        own.home_dir().map_err(no_home)?,
+        own.at_home(relay_route_core::LAST_SEEN_REL)
+            .map_err(no_home)?,
+    ))
 }
 
 /// 记下一份；台数超了先丢最久没更新的那台。
@@ -170,7 +186,7 @@ fn record(all: &mut Map<String, Value>, origin: String, kind: &str, value: &Valu
 }
 
 /// 清掉一台的上次值（两样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。
-fn forget_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
+fn forget_at(own: &Own, args: &Value, now_ms: u64) -> Answer {
     let origin = origin_arg(args)?;
     if args.get("forget") != Some(&Value::Bool(true))
         || args.get("kind").is_some()
@@ -180,10 +196,11 @@ fn forget_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
             "`forget` must be `true` and come without `kind` / `value`",
         ));
     }
-    let Some(dir) = path.parent().filter(|d| d.is_dir()) else {
+    let (dir, file) = place(own)?;
+    if !dir.as_path().is_dir() {
         return Ok(json!({ "atMs": now_ms }));
-    };
-    locked_edit(dir, path, |all| all.remove(origin).is_some())?;
+    }
+    locked_edit(own, &dir, &file, |all| all.remove(origin).is_some())?;
     Ok(json!({ "atMs": now_ms }))
 }
 
@@ -200,9 +217,8 @@ pub(crate) fn answer_read(args: &Value) -> Answer {
 }
 
 /// `last-seen-write`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub(crate) fn answer_write(args: &Value) -> Answer {
-    let path = store_path().ok_or(("io_failed", copy_text("beLastSeen.store.noHome", &[])))?;
-    write_at(&path, args, now_ms())
+pub(crate) fn answer_write(args: &Value, own: &Own) -> Answer {
+    write_at(own, args, now_ms())
 }
 
 #[cfg(test)]

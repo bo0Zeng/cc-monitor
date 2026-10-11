@@ -65,8 +65,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "too_large"],
         fields: &[out("atMs", "记下的时刻（毫秒）"), arg("forget", "`true` ⇒ 清掉这台的上次值（删机器时；不带 `kind` / `value`）"), arg("kind", "闭集 `accounts` · `data`"), arg("origin", "哪台（机器名）"), arg("value", "那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::footprint::last_seen::answer_write(&r.args)
+        run: Run::BlockingOwn(|r, own| {
+            crate::footprint::last_seen::answer_write(&r.args, own)
                 .map(Some)
         }),
     },
