@@ -83,11 +83,15 @@ export class FakeBackend {
     this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now() }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
-      new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`).onmessage = (m) => {
+      // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
+      // 机器忙时那几问答得慢，后开的事件流排不上队 ⇒ 一格都收不到、一个 tab 都起不来（负载高时偶发的「现有 0 个 tab」就是它）。
+      const es = new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`);
+      es.onmessage = (m) => {
         const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
         this.watch(d.sub, d.items);
         void this.emit("chan-items", d);
       };
+      await new Promise<void>((resolve) => (es.onopen = () => resolve()));
     });
   }
 
