@@ -802,7 +802,8 @@ fn a_tab_that_cannot_be_found_says_why_and_the_title_is_still_put_back() {
 /// 一个会卡住的标签页读法：挂上记号之后那一次读要 `stuck` 才回来（真机上 UI Automation 的一次调用能卡几秒）。
 struct StuckTabs {
     reads: usize,
-    stuck: std::time::Duration,
+    /// 第二次起的读卡在这里，直到判据放行（关掉发送端；不按墙钟卡一段固定的时长）。
+    stuck: std::sync::mpsc::Receiver<()>,
     title: std::sync::Arc<std::sync::Mutex<String>>,
 }
 
@@ -810,7 +811,7 @@ impl TabReader for StuckTabs {
     fn names(&mut self) -> Option<Vec<String>> {
         self.reads += 1;
         if self.reads > 1 {
-            std::thread::sleep(self.stuck);
+            let _ = self.stuck.recv();
         }
         Some(vec!["pwsh".into(), "✳ claude".into()])
     }
@@ -832,8 +833,9 @@ impl TabReader for StuckTabs {
     }
 }
 
-/// 🔴 **小助手超了预算也写回标题、照样答话**：挂上记号之后卡在一次读里（1.5 秒），预算 300 毫秒 ⇒
+/// 🔴 **小助手超了预算也写回标题、照样答话**：挂上记号之后卡在一次读里（判据放行之前一直卡着），预算 300 毫秒 ⇒
 /// 到点（主线程还卡着）标题已经写回原样、答的是「读不到标签页」；卡完回来不再写第二次、不再答第二句。
+/// 「到点就答」靠先后判：答话到了的那一刻读法还卡着（放行在后），不拿墙钟量答得多快。
 /// monitor 那一侧不掐它（`console::ask_helper` 那条判据），记号就不会因为被掐断留在标题上。
 #[test]
 fn an_overrun_tab_pick_still_puts_the_title_back_and_answers_once() {
@@ -841,9 +843,10 @@ fn an_overrun_tab_pick_still_puts_the_title_back_and_answers_once() {
     let put = title.clone();
     let answers = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let said = answers.clone();
+    let (release, stuck) = std::sync::mpsc::channel();
     let mut r = StuckTabs {
         reads: 0,
-        stuck: std::time::Duration::from_millis(1500),
+        stuck,
         title: title.clone(),
     };
     let t0 = std::time::Instant::now();
@@ -857,17 +860,18 @@ fn an_overrun_tab_pick_still_puts_the_title_back_and_answers_once() {
             std::sync::Arc::new(move |p| said.lock().unwrap().push((p, t0.elapsed()))),
         )
     });
-    std::thread::sleep(std::time::Duration::from_millis(800));
-    assert!(!main.is_finished(), "量具：读法该还卡着");
+    for _ in guard_core::wall::rounds() {
+        if !answers.lock().unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!main.is_finished(), "量具：读法该还卡着（还没放行）");
     assert_eq!(*title.lock().unwrap(), "✳ claude", "到点了标题还挂着记号");
     let got = answers.lock().unwrap().clone();
-    assert_eq!(got.len(), 1, "到点了还没答话：{got:?}");
+    assert_eq!(got.len(), 1, "读法还卡着就该答话（到点答），没答：{got:?}");
     assert_eq!(got[0].0, TabPick::Miss(TabMiss::NoUia));
-    assert!(
-        got[0].1 < std::time::Duration::from_millis(700),
-        "答得太晚：{:?}",
-        got[0].1
-    );
+    drop(release); // 放行：之后每一次读都不再卡
     main.join().unwrap();
     assert_eq!(answers.lock().unwrap().len(), 1, "卡完回来又答了一句");
     assert_eq!(*title.lock().unwrap(), "✳ claude");
