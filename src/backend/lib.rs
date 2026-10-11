@@ -948,7 +948,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// 判活收进适配层一格（Adapter::live）与 accounts_query::session_holders 一处；找 tmux 走 find_session_command，后端切 PATH 只剩 path_dirs。
 /// history-turns 的过程段多 until（管到哪一条为止），线上形状出生成类型。patch_config 回话带「记于哪一天」。
 /// 手机：界面中文全进共享文案表（core-copy），失败原话进「复制详情」；旧名 aterm 一族改 ccm（不认旧名）；发版加签名 APK。
-pub const BUILD_ID: &str = "p10d-copy-table-mobile-release";
+///
+/// p10e-tmux-utf8-mobile-core：子命令集不变。渲给客户端的 tmux 行一律带 -u（tmux -u attach / switch-client），接进 tmux 会话收成 common/tmux_utf8.rs 一处。
+/// Codex 一轮完了翻成空闲（记录面多「此刻在干什么」，变了才发 session_status）；前台派出的子 agent 读子记录旁的 agent-<id>.meta.json 对上卡（ChildFace::spawned）。
+/// 手机：列会话 · 附着 · 结束 · 抓屏 · 送字走那台核心（附着那一行照 launch-render-cli 渲的原样敲）；termlib 0.1.2。文件窗口加图片查看页。
+pub const BUILD_ID: &str = "p10e-tmux-utf8-mobile-core";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
