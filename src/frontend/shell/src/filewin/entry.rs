@@ -45,7 +45,7 @@
 //! 逐条理由住 [`open_file_window`] 的 `# 🔴` 那一节。
 //!
 //! ⚠ 顶栏那个 SFTP 入口（`src/frontend/ui/sftp-host-picker.ts::openSftpFromTopbar`，0 台提示 / 1 台直开 / 多台选单）
-//! **这一刀没碰** —— `src/frontend/ui/main.ts` 不在本刀写区。要把原生窗口接到顶栏上，
+//! **这一刀没碰** —— `src/frontend/ui/main.ts` 这里不改。要把原生窗口接到顶栏上，
 //! 得连那颗按钮一起改，那是下一刀的事（而且那一刀正好是「旧面板退役」那一刀）。
 
 use crate::copy_table::copy_text;

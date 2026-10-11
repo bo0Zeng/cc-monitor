@@ -1329,7 +1329,7 @@ fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_eve
 ///
 /// ⚠⚠ **它证不了的那一半，写在这里**：真正能让半开连接**自己散掉**的是读/写期限，
 /// 而那要在生产段写 `Duration::from_*` ⇒ 要动 `no_timer_guard.rs::REGISTERED_DURATION_USES`，
-/// **那个文件不在本轮写区**。⇒ 今天的性质是「**顶不满、拒绝有声**」，
+/// **那个文件这里不改**。⇒ 今天的性质是「**顶不满、拒绝有声**」，
 /// **不是**「半开连接会自己散」。交回理由见件文件 §8.20.4。
 #[test]
 fn inflight_connections_are_capped_and_the_refusal_is_spoken() {

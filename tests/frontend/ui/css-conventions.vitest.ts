@@ -31,7 +31,7 @@
  * **两条都办不到，理由不是懒：**
  *
  * - 装插件要改 `package.json` ＋ `package-lock.json`；换 stylelint 规则要改
- *   `.stylelintrc.json`。**三份都不在本轮写区**（写区只有 `src/frontend/ui/styles.css` ·
+ *   `.stylelintrc.json`。**三份这里都不改**（改的只有 `src/frontend/ui/styles.css` ·
  *   `src/frontend/ui/styles/` 下的 CSS · 新立的判据文件）。
  * - 而且那个插件**买不到本格 ⑤ 的反方向**：它只看「用了没定义」，
  *   看不见「定义了没人用」——而现打逮到的两条真缺陷恰好全在反方向（见 ⑤c）。

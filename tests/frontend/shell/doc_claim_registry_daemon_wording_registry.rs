@@ -5,7 +5,7 @@ fn repo_root() -> PathBuf {
     crate::guard_support::repo_root()
 }
 
-/// 本闸的扫描面 —— `K-R116` 写区里那 9 份散文。**闭集，按住址点名。**
+/// 本闸的扫描面 —— `K-R116` 改过的那 9 份散文。**闭集，按住址点名。**
 ///
 /// 🔴 表名起成 `SITES` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的
 /// （「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的名字之一」）。
@@ -21,7 +21,7 @@ const SITES: &[&str] = &[
     "src/backend/README.md",
 ];
 
-/// 写区里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
+/// 那 9 份里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
 ///
 /// 🔴 **这是本仓这个闭集的唯一住址**。
 ///
@@ -29,8 +29,8 @@ const SITES: &[&str] = &[
 /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
 const EXEMPT: &[(&str, &str, &str)] = &[
     // 🔴 **六条例外已删掉 —— 那是例外真的没有了，不是放宽。**
-    //    它们当年的理由全都是「那一处在本轮写区之外 ⇒ 改不动」，而**步 8 是全仓冻结窗口**：
-    //    写区就是全仓，那个前提当场消失。逐条：
+    //    它们当年的理由全都是「那一处不在改动范围里 ⇒ 改不动」，而**步 8 是全仓冻结窗口**：
+    //    改动范围就是全仓，那个前提当场消失。逐条：
     //      · `CONTRIBUTING.md` 的 markdown 锚点 —— 目标标题（`REMOTE-PHASE0-DEPLOY.md`）同时跟着改了，锚点同步改，链接没断；
     //      · `README.md` 里那串 CI job 名 —— `.github/workflows/ci.yml` 的 job 同拍改名；
     //      · `tests/e2e/README.md` 与 `src/frontend/shell/README.md` 的两处占位符 `<daemon>` —— 换成 `<backend>`；

@@ -2679,7 +2679,7 @@ fn p9_tree_shape(root: &std::path::Path, tree: &str) -> (usize, usize, usize, us
 ///
 /// 现打（步 7c 剖分做完之后，2026-09-19）：`src/backend` **7** · `src/frontend/shell/src` **15**。
 /// 逐份点名。这一族要单独裁（那句「`§3.1` 罩不住它们」），
-/// 不在步 7c 的写区里 —— 立这条棘轮是为了让它**只减不增**。
+/// 当时没改 —— 立这条棘轮是为了让它**只减不增**。
 const P9_SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
     &[("src/backend", 7), ("src/frontend/shell/src", 15)];
 

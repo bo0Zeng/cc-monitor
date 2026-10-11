@@ -314,7 +314,7 @@ AGREE_BANNED = ['"unknown"', "unwrap_or_default()"]
 #
 # 🔴 **它治的是一条当天就被推翻的报备。** 第十三刀（文件管理窗口落成独立进程）交回时
 # 逐字写着：「Tauri 安装包只装主二进制与 `externalBin` sidecar ⇒ 装机那份上
-# `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成写区外的欠账。
+# `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成一笔欠账。
 #
 # **那句是假的。** 现打两趟推翻（用的是本仓这份 `src/frontend/shell/Cargo.toml` ＋
 # `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，`@tauri-apps/cli` 现锁的 2.11.2；
@@ -1339,7 +1339,7 @@ def run_checks(emit):
     #     F3 hello 自报的是别的版本 ⇒ 红在「起得来」那一格。
     #   ⚠ 买不到：「这棵树上那份真字节起得来」—— 那是 `--check-dev` 在真树上跑的事（B1 交付里
     #     现打过一趟），本格在门禁里**不要求**真树铺了字节（字节不进仓，要求它会把每一棵
-    #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，不在本件写区）。
+    #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，这里不管）。
     lib = read_rel("src/backend/lib.rs")
     contract = read_rel(MARKS_SRC)
     sid = rust_str_const(lib, "BUILD_ID") if lib else None

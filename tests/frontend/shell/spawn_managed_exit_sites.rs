@@ -223,7 +223,7 @@ fn needle() -> String {
 /// 那一个只回**名字**（它只需要名字），而本条要的是**那一段文本** ——
 /// 第三列那个入口名要在里面找。回名字的那一版把 `fn` 那一行的下标丢掉了，
 /// 而丢掉的正是本条要的东西。⇒ 两者不是同一形状，不是「抄了第二份」。
-/// ⚠ 真要收成一处得改另一条判据自己那份文件，那不在本轮的写区 —— **如实记**。
+/// ⚠ 真要收成一处得改另一条判据自己那份文件，那不在这里改 —— **如实记**。
 fn enclosing_fn_item(lines: &[&str], at: usize) -> Option<(String, String)> {
     let start = (0..=at).rev().find(|i| fn_name_on(lines[*i]).is_some())?;
     let name = fn_name_on(lines[start])?;

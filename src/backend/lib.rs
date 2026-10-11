@@ -2080,7 +2080,7 @@ pub struct TargetNarrowing {
 ///   （`files/capability_guard.rs::the_capability_set_is_equal_across_every_target`，集合相等）⇒ 今天读它与不读它交出来的是同一份；
 /// ② 读它要从这一层伸手进 `files::CAPABILITIES` —— 那是 `files/module_boundary_guard.rs`
 ///   登记的门之外的**第三扇门**（PR1 落地时现打：那条两向相等当场红，逐字点名 `files::CAPABILITIES`）。
-///   开门要改那份门表与 `files` 那一族，不在 PR1 写区里。
+///   开门要改那份门表与 `files` 那一族，PR1 没动它们。
 /// ⇒ 代价：边界②哪天放宽（某条 files 能力不在某个 target 上），本段**看不见**那一格，
 ///   要同拍在 `files` 那边开一扇 `capability_names_on(t)` 的门、再在这里登记收窄。
 pub const TARGET_NARROWINGS: &[TargetNarrowing] = &[

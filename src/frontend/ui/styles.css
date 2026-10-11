@@ -2354,7 +2354,7 @@
 }
 
 /* === K-R45：「我说过的 N 句」清单面板 ===
-   上一轮 `src/frontend/ui/styles.css` 在写区外，这两条规则写成了 `style.cssText`（**申报过的债**）。
+   上一轮 `src/frontend/ui/styles.css` 没跟着改，这两条规则写成了 `style.cssText`（**申报过的债**）。
    已搬进来，**逐条属性逐字照搬、一个值都没改** —— 搬家不是改外观的时机。
 
    🔴 **第三轮改的只有类名**（`.session-viewer-*` → `.user-*`），声明**一条没动**：

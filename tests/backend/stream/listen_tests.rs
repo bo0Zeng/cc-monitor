@@ -203,7 +203,7 @@ fn refusal_reasons_are_a_closed_set() {
 /// - ⚠ **射程之外，如实登记**：同一把尺子扫**全 crate 69 个 `.rs` 的 `//!` 头注**
 ///   ⇒ 105 处引用、**悬空 1 处**：`platform/pidwatch/linux.rs` 头注的
 ///   「从 `platform/pidwatch.rs` 逐字搬来」（今天是 `platform/pidwatch/mod.rs`）。
-///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**不在本轮写区** ⇒ 交回 PM。
+///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**这里不改**。
 ///   ⇒ **本条不是全 crate 的**：它管的是新增的那三份。
 #[test]
 fn every_file_this_head_note_points_at_really_exists() {

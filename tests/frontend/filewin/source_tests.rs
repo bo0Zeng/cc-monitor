@@ -858,7 +858,7 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
     const CAP_LINE: &str = "name: \"files.ls\",";
     const FIELDS_HEAD: &str = "fields: &[";
     // ⚠ **运行期读**，不是 `include_str!`：后者是一条 monitor → backend 的**编译期**边，
-    //   要进 `cross_half_edge_registry` 那张表（写区外）；这一条只要今天那份声明的文本。
+    //   要进 `cross_half_edge_registry` 那张表（不在这里）；这一条只要今天那份声明的文本。
     let raw =
         std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/files/mod.rs"))
             .expect("读不到后端那份 `files/mod.rs`");

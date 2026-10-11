@@ -25,7 +25,7 @@
  * 🔴 **本文件不装第五格（`#app` 布局根）—— 它有自己的家。**
  * 落地时它红在一个真缺陷上（`src/frontend/ui/tabs.ts` 的 `ensureArchiveUi()` 往 `#app` 插的
  * `.tab-archive` 是个没认领格子的 grid item，偷走消息流 35px，`S21 §6 ④` 有真引擎读数），
- * 而 `src/frontend/ui/tabs.ts` / `src/frontend/ui/styles.css` 都不在本轮写区。
+ * 而 `src/frontend/ui/tabs.ts` / `src/frontend/ui/styles.css` 这里都不改。
  * **同一棵树上另一路（`S24`）把缺陷修了、并把那一格装成了 `tests/frontend/ui/app-grid-claims.vitest.ts`** ——
  * 而且形态比字面写法更对：钉的不是「子元素 == 那三个」（`.tab-archive` 在步 17
  * 之前还得在，钉集合会持续假红），是「**每个 in-flow 直接子元素都认领了一个声明过的具名区域**」。
@@ -62,7 +62,7 @@
  *
  * - 量具买不到的东西逐条写在 `tests/evidence/S25-class-ledger.ts` 的头注里，这里不复述。
  * - **（变量对账）没装**：它要 `npm i -D stylelint-value-no-unknown-custom-properties`，
- *   而装包要改 `package-lock.json`，不在本轮写区。而且它今天**装上就红** ——
+ *   而装包要改 `package-lock.json`，这里不改。而且它今天**装上就红** ——
  *   `S21` 步 2 现打剩 1 个未定义变量（`--bg-1`，6 处），那一处正等用户在
  *   `--bg` / `--field-bg` 之间定（`S21 §6 ①`）。⇒ 不装，登记在此。
  * - ④ 跑的是**真 stylelint**（本仓少数几条在判据里起外部工具的，先例：`eslint-baseline.vitest.ts`）。
@@ -182,7 +182,7 @@ function lintKey(file: string, rule: string, text: string): string {
  *
  * 这条 lint 抓的是「后写的选择器特异度更低」：读源码的人以为后者覆盖前者，实际前者赢。
  * `@layer` 落地之后它终于可以打开（「`@layer` 本来要买的正是这条 lint 可以打开」）。
- * 打开时现打 **39** 条：写区内能**证明零级联变化**的 6 条当拍修掉（纯挪位，逐对核过先后翻转的规则，
+ * 打开时现打 **39** 条：本文件管得到、能**证明零级联变化**的 6 条当拍修掉（纯挪位，逐对核过先后翻转的规则，
  * 读数在），余下 **33** 条逐条登记在这里。
  *
  * 形态是**两向相等**（命中的多重集 == 本表）：
@@ -195,7 +195,7 @@ function lintKey(file: string, rule: string, text: string): string {
  * - `list`：同一条规则的选择器列表内部（声明一模一样，谁赢都一样）；
  * - `harmless`：逐条看过，结构上打不到同一个元素，或打到了也是作者要的结果（理由写在 `why`）；
  * - `defect?`：**真冲突，缺陷候选**，待定（改了会改变可见样式，本机无图形会话不能目视）；
- * - 〔历史〕`U4` / `ST3` 两档：当时在同波别的路的写区里、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
+ * - 〔历史〕`U4` / `ST3` 两档：当时在别处改着、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
  *   ST3 那 15 条逐条判完（全是 `harmless`），这两档从类型里删了 —— 今天没有「未判」。
  *
  * ⚠ 并发：别的路改到这些规则时，这张表会在合并时红（多了或少了条目）——
@@ -255,7 +255,7 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
     kind: "harmless",
     why: "结构上打不到同一个元素：diff 行不在 `.code-block pre` 里（后一条规则头注逐字：`.code-block` 的 transparent 覆盖不 scope 到 `.block-diff`，所以才单写一条防御）。",
   },
-  // ── src/frontend/ui/styles.css：tab 规则（U4 写区，未判）──
+  // ── src/frontend/ui/styles.css：tab 规则（U4 那一侧，未判）──
   { file: "src/frontend/ui/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   // ── src/frontend/ui/styles/settings.css：〔C §2.2 ·  待拍 2〕ST3 那 15 条逐条判完 ──
   //   读法：两条规则的声明逐条对（`postcss` 现打），再到 TS 里核两个选择器能不能落在同一个元素上。
@@ -498,7 +498,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
         "\n★ 删之前**先确认它不是假阳性**（上一轮 13 个里有 3 个是活的，`S21` 步 3）：\n" +
         "  ① 是不是 `` `${某个常量}-后缀` `` 拼出来的？② 是不是第三方库自产的？\n" +
         "  ③ 是不是模板拼接？是的话把前缀连**理由**一起加进 `ALLOWED_PREFIXES`。\n" +
-        "  ④ 确实是死的 ⇒ 删掉那几行 CSS；删不了（不在写区）⇒ 加进 `KNOWN_DEAD` 并写清凭什么。",
+        "  ④ 确实是死的 ⇒ 删掉那几行 CSS；删不了（不归这里改）⇒ 加进 `KNOWN_DEAD` 并写清凭什么。",
     ).toEqual(registered.sort());
 
     denom(

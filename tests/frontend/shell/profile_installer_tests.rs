@@ -259,7 +259,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
 ///
 /// `src/frontend/ui/ipc/commands.ts` 头注那「三桶」规则说：TS 侧真消费字段的命令（桶③）该用
 /// **生成物**类型。`ccm_user_path_status` 破了这条 —— 生成物要落进 `src/frontend/ui/generated/`，
-/// 而那份目录**不在 `K-R135` 的写区里**。⇒ 手写一份，并用这条判据钉住它：
+/// 而那份目录**不在 `K-R135` 的改动范围里**。⇒ 手写一份，并用这条判据钉住它：
 /// 生成物买的是「Rust 改了、TS 自动跟着变」，这一条买的是
 /// 「**Rust 改了、TS 没跟 ⇒ 当场红**」。⚠ 它买不到「TS 多写了一个 Rust 没有的字段」
 /// （那一形 `tsc` 也不会红，因为多出来的字段只是永远 `undefined`）—— 如实记，不假装。

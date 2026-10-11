@@ -199,7 +199,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 ///
 /// 因为消费侧那个 `include_bytes!` 的参数**必须是字面量**：
 /// `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason` 默认拒绝
-/// 非字面量的 `include_*!`，而它的登记表**不在本件写区**。
+/// 非字面量的 `include_*!`，而它的登记表**这里不改**。
 /// ⇒ 名字定死、**用一个旁挂清单把 triple 记下来再核**（`.target`，下面那条硬校验）。
 /// 这一换其实更强：文件名是**没人核的约定**，清单是**每次构建都核的断言**。
 ///
@@ -268,7 +268,7 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
     //   （读那份字节 stdout 的第一行，必须是一帧自报源码 `BUILD_ID` 的 hello；缺席即红）。
     // ⚠ 这里**仍然是 warning 不是 panic**，理由是硬的、不是手软：门禁与 CI 上每一格
     //   `cargo check/test/clippy` 都在**没铺字节**的树上跑（字节不进仓），panic 会把它们全拖红，
-    //   而那几处不在本件写区。**判词住那条命令上，不住这句 warning 上。**
+    //   而那几处这里不改。**判词住那条命令上，不住这句 warning 上。**
     if !src.exists() {
         println!(
             "cargo:warning=没有本机内嵌后端（src/frontend/shell/{}）⇒ **这一趟编出来的可执行文件起不了本机后端**\
@@ -334,7 +334,7 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
     // ⚠ **不往 `OUT_DIR` 拷一份**（`embed_backends` 那条是拷的）——消费侧那个 `include_bytes!`
     // 直接按**字面量相对路径**读得到，而拷贝会让本函数变成一个**写盘落点**，
     // 那要在 `write_site_registry::WRITE_SITES` 里申报（`fs::copy(` 是它的 needle 之一），
-    // 而那张表**不在本件写区**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
+    // 而那张表**这里不改**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
     println!("cargo:rustc-cfg=embedded_native_backend");
 }
 

@@ -15,10 +15,10 @@
 //!
 //! # 为什么落在这里，而不是 `plugin/fake/mod.rs`（甲档）—— 三条，都是现打的
 //!
-//! 1. 🔴 **甲档要动的两张登记表不在本轮写区里。** `plugin/mod.rs::layer_guard` 那条
+//! 1. 🔴 **甲档要动的两张登记表这里不改。** `plugin/mod.rs::layer_guard` 那条
 //!    `the_plugin_layer_collection_is_complete` 的诊断文案**逐字要求**：往那一层加文件要
 //!    「**同轮**加进 `agent_boundary_guard::CORE_FILES` 与它的棘轮表」——
-//!    而 `agent_boundary_guard.rs` 不在本轮写区（写区只有 `plugin/` · `layering_guard.rs` ·
+//!    而 `agent_boundary_guard.rs` 这里不改（改的只有 `plugin/` · `layering_guard.rs` ·
 //!    `evidence/`）。⇒ 甲档要么违纪，要么上报之后停一轮。
 //! 2. 🔴 **甲档会被通用层自己的判据当场打红，而那不是误伤、是它干对了活。**
 //!    假插件必须带**它自己那一份码表**（`E6`：码 → 语义每插件一份），而那张表的形状

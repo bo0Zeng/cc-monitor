@@ -4,7 +4,7 @@
 //! # ⚠⚠ 🔴 它的**名字**与对不上，理由现打，别当成漏了
 //!
 //! 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
-//! 挡着改名的是**写区外的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
+//! 挡着改名的是**这里没改的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
@@ -12,7 +12,7 @@
 //! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
 //! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/comms/outward/server.rs", "handle_alloc_error", 1)` |
 //!
-//! 那几处都在 `tests/frontend/shell/` 下，**不在本拍的写区里**（写区逐字是
+//! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
 //! ⇒ 这里**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
 //! 这里剩下的就是说的 `exchange`。改名要与那几处同拍，留给下一件。

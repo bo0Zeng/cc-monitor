@@ -2390,7 +2390,7 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 /// - **不买「传输面就是这四份」** —— 人群是那张表 ＋给的，
 ///   本条**不去数目录**。哪天传输面多一份文件，本条一个字都不说。
 /// - **不买「这几处读盘清得掉」** —— 它只买「那段解释为什么清不掉的理由不是假的」。
-///   逐处的写区外前置（另一族判据正着钉住那处环境变量 · 6 条互锁登记表 · 一道未拍的设计题）
+///   逐处的外部前置（另一族判据正着钉住那处环境变量 · 6 条互锁登记表 · 一道未拍的设计题）
 ///   写在表里各自那一行。
 #[test]
 fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {

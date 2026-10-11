@@ -883,7 +883,7 @@ fn the_docs_self_reported_release_is_the_version_we_ship() {
     // ⚠ 刻意写成函数体里的 `let`，不是模块级 `const …: &[…]` ——
     //   后者要起 `scanning_guard_registry::TABLE_DECLS` 里**已有的**名字（那条元判据
     //   按名字认表），而往那张闭集里加一个新名字必须同拍改 `MUST_BE_RECOGNISED`，
-    //   两处都不在本件写区。同形先例就在上面那条「六处一致」里（它的 `others` 也是
+    //   两处这里都不改。同形先例就在上面那条「六处一致」里（它的 `others` 也是
     //   函数体里的 `let`）。
     let places: [(&str, &str, &str); 2] = [
         ("README.md 发布沿革段抬头", "README.md", "当前发布 **v"),

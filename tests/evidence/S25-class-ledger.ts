@@ -6,7 +6,7 @@
  *
  * 1. `tests/frontend/ui/scanning-guard-registry.vitest.ts` 有一条棘轮（`WALKER_CEILING = 11`）：
  *    **`.vitest.ts` / `.test.ts` 里做目录遍历的文件只许变少**。本量具要走 `src/` 整棵树，
- *    住进 `.vitest.ts` 就会把那条棘轮顶破 —— 而那个文件不在本轮写区。
+ *    住进 `.vitest.ts` 就会把那条棘轮顶破 —— 而那个文件这里不改。
  *    ⇒ 遍历留在本文件（它既不是 `.vitest.ts` 也不是 `.test.ts`，`IS_TEST` 取不到它），
  *    判据那边一行 `readdirSync` 都不写。**这不是绕过那条棘轮，是满足它给的第二条出路**
  *    （「扫的树不含自己」在这里升级成「扫的人和判的人不是同一个文件」）。

@@ -210,18 +210,18 @@ SITE_TOOLID_NONE_BUT_ARCHIVED = ("build.rs::embed_daemons",)
 # 为什么要有这一块（两条，失效方向不一样）：
 #   甲 `K-R117` `§3-3` 的**收工判据**逐字要「该件那一组的前端落点数恒等于 1」，
 #      而 `§S5b` 今天**只出读数、不判红** ⇒ 那句话没有闸。
-#   乙 **纪律 A**（「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件写区才真不相交」）
+#   乙 **纪律 A**（「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件改动范围才真不相交」）
 #      今天**完全建立在纪律上，没有任何东西在盘它**，而 S1 / S5 是方案里唯一许并跑的一对。
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── 分组表（`KR128D1`）—— **人的判断住这里**，逐行写死出处 ────────────────────
 #
 # 出处：安装面收成三处时定的那张五行切件表。
-# ⚠ **那张表没有逐条列命令名** —— 它每一行给的是「后端写区 · 前端写区 · 收几条」。
-#   下面这五行是从「归处（①②③）＋ 后端写区那一列 ＋ 收几条那一列」派生出来的
+# ⚠ **那张表没有逐条列命令名** —— 它每一行给的是「后端改动范围 · 前端改动范围 · 收几条」。
+#   下面这五行是从「归处（①②③）＋ 后端改动范围那一列 ＋ 收几条那一列」派生出来的
 #   **人的判断**，派生依据逐行写在第三栏。**派生对不对由 `R8` 盘**（闭集两向 ＋ 交集空）。
 #
-# ⚠ **刻意没有拿「今天住哪」去盘这张表**，理由写出来别当省略：`§3-3` 的「写区（后端）」
+# ⚠ **刻意没有拿「今天住哪」去盘这张表**，理由写出来别当省略：`§3-3` 的「改动范围（后端）」
 #   那一列写的是**搬过去之后**的落点，不是今天的住址 —— S4 那一行现打就对不上
 #   （它写的是 `account_aliases.rs` · `profile_installer.rs`）。拿住址当判据会把「计划」读成「现状」。
 #
@@ -237,11 +237,11 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
         "uninstall_remote_backend",
-    ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
+    ), "§3-3 第一行：后端改动范围 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。远端半那两条并进了 `aliases_block_*`（带 origin），今天剩 2 条")),
     ("S2", ("①-本机半", (
         # 别名块那三条并进 `aliases_*` 同一族命令面，
-        # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
+        # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个改动范围」的历史读数，不随归档改。
         #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种，改表是跟上真相。
         # `aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
         "ccm_user_path_add",
@@ -249,13 +249,13 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "ccm_user_path_status",
         "local_ccm_entry_status",
         # 远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`）；本机那一格是 `local_ccm_entry_status`。
-    ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
+    ), "§3-3 第二行：后端改动范围 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条，那几条归 S4。"
        "🔴 那三条 `ccm_user_path_*`（用户级 PATH 那一格：现在状态 / 加 / 撤）"
        "是新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
        "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
-       "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端写区。"
+       "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端改动范围。"
        "⚠ 而且**前端落点一个字都没多**：它们的调用点在 `src/frontend/ui/launcher-diagnostics.ts`，"
        "那一份本来就在 `FRONTEND_PIN['S2']` 里 ⇒ `R9` 那条棘轮不动。"
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
@@ -470,7 +470,7 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 
 # ── 纪律 A 的闸（`KR128D3`）—— 三份共用文件 ───────────────────────────────────
 #
-# 纪律 A 逐字：「第二拍全程不改命令名」⇒ 三份共用文件一个字节都不用动 ⇒ 五件写区才真不相交。
+# 纪律 A 逐字：「第二拍全程不改命令名」⇒ 三份共用文件一个字节都不用动 ⇒ 五件改动范围才真不相交。
 # ⚠ **钉的是命令名，不是文件的字节**（件文件 `§0b`/`KR128D3` 逐字）：那三份里还住着
 #   别的东西，按字节钉会把无关改动也判红，那种闸三天内就会被人绕过去。
 #
@@ -908,7 +908,7 @@ def section_split_closure(cmds_now):
     if only_now:
         red("R8a", "现打人群里这些命令**五件谁都没认领**：" + ", ".join(only_now)
                    + " —— 新长出一条安装面命令而切件方案没覆盖它，"
-                     "或者有人改了命令名 ⇒ 第三块的写区当场不完整")
+                     "或者有人改了命令名 ⇒ 第三块的改动范围当场不完整")
     if not only_table and not only_now:
         ok(f"R8a 分组表并集逐字等于现打人群（{len(uni)} 条，两向差集都空）")
         print(f"  ✓ R8a 并集逐字相等，两向差集都是空的（表→人群 0 · 人群→表 0）")
@@ -917,7 +917,7 @@ def section_split_closure(cmds_now):
     if overlap:
         for m in sorted(overlap):
             red("R8b", f"命令 `{m}` 同时被 {', '.join(overlap[m])} 认领 —— "
-                       f"五件的写区就是这么撞上的")
+                       f"五件的改动范围就是这么撞上的")
     else:
         ok(f"R8b 五组两两交集为空（{len(SPLIT_GROUPS)} 组 / {len(union)} 条名额）")
         print(f"  ✓ R8b 两两交集为空（{len(union)} 条名额没有一条被两件认领）")
@@ -964,7 +964,7 @@ def section_frontend_ratchet(texts, cmds_now, wrapper: str):
         if grew:
             red("R9a", f"{g}（{label}）**多出落点**：{', '.join(grew)} —— "
                        f"钉住的是 {', '.join(want) if want else '（零）'}。"
-                       f"有人往上加了一份前端落点 ⇒ 第三块那一件的写区变大了，"
+                       f"有人往上加了一份前端落点 ⇒ 第三块那一件的改动范围变大了，"
                        f"**不许靠把表改大让它绿**（`§0c`）")
         if shrank:
             red("R9b", f"{g}（{label}）**少了落点**：{', '.join(shrank)} —— "
@@ -1087,7 +1087,7 @@ def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
        **不许红**（否则以后没人敢动这三份文件）。本节每一条判定都只在这 22 个名字上取值。
     """
     print(head("§S5e 纪律 A 的闸 —— 三份共用文件的命令名"))
-    print("  纪律 A 逐字：「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件写区才真不相交」。"
+    print("  纪律 A 逐字：「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件改动范围才真不相交」。"
           "S1 / S5 是方案里唯一许并跑的一对 ⇒ 这条纪律破了，两件当场撞车。")
     print("  🔴 判的是**命令名集合**，不是文件字节：往这三份里加一条与这 22 条无关的新命令"
           "**不红**（按字节钉的闸三天内就会被人绕过去）。")
@@ -1383,7 +1383,7 @@ def main() -> int:
           f" = {len(rows) + len(SITE_ARCHIVE)} 项**（现打；分母 = `LEDGER` {len(ledger)} 行 ＋"
           f" `WRITE_SITES` {len(sites)} 行）")
 
-    # ── §S5b 前端落点（切件的写区要按这个切，别手写） ─────────────────────────
+    # ── §S5b 前端落点（切件的改动范围要按这个切，别手写） ─────────────────────────
     print(head("§S5b 前端落点 —— 每条安装面命令在 `src/**.ts` 里被谁引用"))
     print("  ⚠ 分母 = `<root>/src` 下的 `.ts`，**排除** `*.vitest.ts` 与 `src/frontend/ui/generated/`；"
           "`src/frontend/ui/ipc/commands.ts` 是**共用包装层**（每条都在它里面），单列不重复印。")

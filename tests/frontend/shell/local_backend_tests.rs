@@ -1545,7 +1545,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
 /// 闭集本该只有一个住址（把名字 emit 成编译期 env 就够了）——**`include_bytes!` 的语法
 /// 不许**：它只吃字面量，`concat!(env!(..), ..)` 那种写法会撞
 /// `cross_half_edge_registry` 那条「非字面量 include 必须登记」的默认拒绝，
-/// 而那张登记表不在本件写区。⇒ 两处字面量是**被语法逼出来的**，不是懒。
+/// 而那张登记表这里不改。⇒ 两处字面量是**被语法逼出来的**，不是懒。
 /// 逼出来的重复由**判据**补：这一条现读 `build.rs` 里那两个常量的**值**，
 /// 再去生产段里找拼出来的那条路径 —— 任一侧改名，这里当场红。
 ///

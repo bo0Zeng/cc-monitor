@@ -83,7 +83,7 @@
  *
  * ⚠ 为什么是 `.ts` 而不是 `.mjs`：`tests/frontend/ui/eslint-baseline.vitest.ts` 的第②格要求
  * 每个被 lint 到的 `.mjs` 目录都要在 `eslint.config.js` 里有 `files:` 块认领，
- * 而 `eslint.config.js` 不在本轮写区里。**这不是绕过判据，是走它指的另一条合规路。**
+ * 而 `eslint.config.js` 这里不改。**这不是绕过判据，是走它指的另一条合规路。**
  * 同理本文件不碰 `process` / `Buffer`（`tests/**` 那格只配了 browser globals）。
  */
 import {

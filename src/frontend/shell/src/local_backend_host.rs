@@ -621,7 +621,7 @@ pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
 /// **只在真的走过那条路时才被写下**，写它的唯一入口是 [`note_start_refusal`]。
 ///
 /// ⚠ `StartOutcome` 的形状**不能动**（加一个变体或一个字段，`backend_control.rs`
-/// 那个 `match` 当场编不过，而它在本轮写区之外）⇒ 走这条旁路。
+/// 那个 `match` 当场编不过，而它这里不改）⇒ 走这条旁路。
 static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// 记下「这一次失败**用户动得了手**，而且下一步是什么」。**写 [`LAST_START_REFUSAL`] 的唯一入口。**

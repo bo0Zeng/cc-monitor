@@ -553,7 +553,7 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// # 🔴 两次尝试之间**今天什么都不做**，而这不是疏忽 —— 写清楚，别让下一个人以为是
 ///
 /// go / cargo 那条公认的解法是「**有上限地重试 + 每次之间睡一小会儿**」，而这里只有前半。
-/// 后半今天做不了，理由是**两道现成的闸**，两道都不在本件的写区里：
+/// 后半今天做不了，理由是**两道现成的闸**，两道这里都不改：
 /// - `nothing_in_the_production_path_wakes_itself_up`（本文件，`C12` 的源码钉）：
 ///   **本模块生产段一个 `thread::sleep` 都不许有**；
 /// - `rust_timer_registry::every_periodic_wake_in_the_rust_tree_is_registered`：

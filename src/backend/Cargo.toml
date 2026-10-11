@@ -71,7 +71,7 @@ path = "main.rs"
 # **递归走全树收 `.rs`**。其中 `no_timer_guard::periodic_wake_patterns()` 的禁用表里
 # 逐字有一条 `format!("{}::now", "Instant")` —— 而一把计时的秤**必须**调它。
 # ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`backend_production_code_has_no_periodic_wakeups`
-# 当场红，而那条守卫住 `tests/backend/`、不在本件的写区里。
+# 当场红，而那条守卫住 `tests/backend/`、这里没改它。
 # 同理还有 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
 # ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。

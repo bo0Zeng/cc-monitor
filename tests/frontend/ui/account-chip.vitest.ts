@@ -389,7 +389,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
 //    然后把两边**能点选的那几个号**对拍。不读源码文本。
 //
 // ⚠ 本组**买不到**：`main.ts` 那一行是不是真的把 `snapshotReady()` 喂给了
-//    `buildAccountCommands`（`main.ts` 不在本件写区，也没有 DOM 判据够得着它）。
+//    `buildAccountCommands`（`main.ts` 这里不改，也没有 DOM 判据够得着它）。
 //    今天靠的是一个**读数**（08-28 现打，分母 = `git ls-files -z | xargs -0 grep -n snapshotReady`）：
 //    `account-chip.ts` 之外的生产消费方**恰好 1 处**，就是 `main.ts:558`
 //    （chip 内部还有一处 `applyDefaultByName`，那是它自己的事）。**读数不是判据。**

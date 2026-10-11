@@ -19,7 +19,7 @@
 //!    - `files-chmod` 在非 unix 上恒回 `io_failed`（`control/files_write.rs::change_mode` 的
 //!      `#[cfg(not(unix))]` 那一支）—— 它的 `codes` 说不出「这个平台没有」，本条**看不见**这一格；
 //!    - CLI 独有的子命令（如 `--tmux-notify`）没有任何逐 target 声明；
-//!    - `files-read` 逐条的 `targets` 本段不读（开门在写区外，理由住 `lib.rs::TARGET_NARROWINGS` 头注）。
+//!    - `files-read` 逐条的 `targets` 本段不读（开门不在这里，理由住 `lib.rs::TARGET_NARROWINGS` 头注）。
 //! 2. **判的是「做得到」这根轴的声明，不是「编得过」，更不是「真机上跑得起来」。**
 //!    编得过归门禁的 `winchk` / `winchk-backend` / `muslbuild`（**macOS 一格都没有**）；
 //!    真机归那种现打。产物层（每个 `[[bin]]` ↔ 入包路线）归

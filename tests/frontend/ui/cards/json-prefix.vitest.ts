@@ -3,7 +3,7 @@
  *
  * 守的要求：「三处『整条切 / 整条序列化只为取 ≤60 字』：`cards/index.ts::firstLinePreview`
  * · `summarizeInput` · `trackAgents` 取首行」—— 修法「`indexOf("\n")` ＋ `slice`；只序列化头几个 key；
- * 顺手抽一个 `firstLineOf(s, max)` 消掉三个住址」。第三处（`trackAgents`）住 STC 的写区，本文件不管。
+ * 顺手抽一个 `firstLineOf(s, max)` 消掉三个住址」。第三处（`trackAgents`）在别处，本文件不管。
  *
  * 判据（异源：参照一侧是**改之前的原式**逐字抄在本文件里，被判一侧是 `src/frontend/ui/format.ts` 的两个新函数）：
  * - `firstLineOf` 与原式 `split("\n").find(非空).trim()` 在随机文本上逐字相等（行、是否超长两样都比）；

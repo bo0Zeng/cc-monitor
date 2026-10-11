@@ -1254,7 +1254,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
 /// `//` 开头的行），`structural_scan::every_comment_stripping_transformer_is_registered`
 /// 当场逮住它，逐字问：「先问共享原语为什么不够 —— 答得出来就登记，答不出来就改成调它」。
 /// **答不出来**（`production_code` 做的就是这两件事）⇒ 改成调它。
-/// ⚠ 那张登记表住 `src/frontend/shell/src/structural_scan.rs`，**不在本拍写区** ——
+/// ⚠ 那张登记表住 `src/frontend/shell/src/structural_scan.rs`，**这里不改** ——
 /// 而它给的第一条出路本来就不需要动登记表。
 fn production_text() -> String {
     let me = include_str!("../../../src/backend/observe/accounts_query.rs");

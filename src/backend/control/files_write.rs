@@ -88,7 +88,7 @@
 //!    判据头注里逐条写着哪几格是判不了的。
 //! 4. **它今天没有调用方**：只落了「模块 ＋ 围栏 ＋ 判据」这三样（射程）。
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed，
-//!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
+//!    那几处全不在本模块里。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
 use copy_core::{copy_text, io_reason};
 use std::path::{Component, Path, PathBuf};
@@ -2813,7 +2813,7 @@ impl From<WriteRefusal> for WriteFail {
 ///
 /// 那份汇总清单是**产品面**的登记（`CapabilityKind` 两类、
 /// 逐 target 的对等断言），加一个面要动 `lib.rs::CAPABILITY_FACES` ——
-/// 那处**在本刀写区之外**，已如实报备。
+/// 那处**不在本模块里**，已如实报备。
 /// ⇒ 本表今天只当「线上契约的数据形态」用（判据按它对拍 `inbound::REGISTRY`
 /// 与 `IPC-PROTOCOL.md §10`），**别把它读成「这一面已经进了能力清单」**。
 pub struct ManageCommand {
