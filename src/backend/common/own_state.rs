@@ -7,9 +7,7 @@
 
 use crate::common::said::Said;
 use copy_core::copy_text;
-use std::io::Write as _;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 读一次的结果。三态，不许合并：「不在」与「读不出来」对调用方是两件事（后者不覆盖）。
 /// 读不出来那一形带那一句（路径 ＋ 原因词）与下层原话（[`Said`]）：读答里放 `reason` ＋ `detail` 两格（`stream::detail::unreadable`）。
@@ -78,73 +76,9 @@ pub(crate) fn write_json<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Re
     write(path, &body)
 }
 
-/// 进程内序号：同一线程连写两次也换一个旁名。
-static SEQ: AtomicU64 = AtomicU64::new(0);
-
-/// 整份原子写 `body`。那一句只有路径与原因词，系统原话进 `raw`；都不带内容。
+/// 整份原子写 `body`（本体住 `platform::fs::own`，全后端一份）。过渡：还没搬上 `Own` 的写口经它；全部搬完删。
 pub(crate) fn write(path: &Path, body: &[u8]) -> Result<(), Said> {
-    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
-        return Err(copy_text(
-            "beOwnState.write.noParent",
-            &[("path", &path.display().to_string())],
-        )
-        .into());
-    };
-    let tmp = dir.join(format!(
-        "{}.{}.{:?}.{}.tmp",
-        name.to_string_lossy(),
-        std::process::id(),
-        std::thread::current().id(),
-        SEQ.fetch_add(1, Ordering::Relaxed),
-    ));
-    // 建不出来 ⇒ 那个名字上的文件不是我们的，什么都不删。
-    let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beOwnState.write.tmpCreateFailed",
-                &[
-                    ("tmp", &tmp.display().to_string()),
-                    ("why", &copy_core::io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
-    })?;
-    let result = f
-        .write_all(body)
-        .and_then(|()| f.sync_all())
-        .map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "beOwnState.write.tmpWriteFailed",
-                    &[
-                        ("tmp", &tmp.display().to_string()),
-                        ("why", &copy_core::io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })
-        .and_then(|()| {
-            drop(f);
-            std::fs::rename(&tmp, path).map_err(|e| {
-                Said::with_raw(
-                    copy_text(
-                        "beOwnState.write.renameFailed",
-                        &[
-                            ("tmp", &tmp.display().to_string()),
-                            ("path", &path.display().to_string()),
-                            ("why", &copy_core::io_reason(e.kind())),
-                        ],
-                    ),
-                    &e,
-                )
-            })
-        });
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::platform::fs::atomic_write(path, body)
 }
 
 #[cfg(test)]

@@ -15,7 +15,11 @@
 
 use std::path::Path;
 
+mod own;
 mod ro;
+/// 过渡：还没搬上 [`Own`] 的写口经 `common::own_state::write` 用这一份原子写（同一份实现）；全部搬完连同那个转调一起删。
+pub(crate) use own::atomic_write;
+pub(crate) use own::{create_dir_private, Own, OwnLock, OwnPath, PRIVATE_DIR_MODE};
 pub(crate) use ro::{Ro, RoFile};
 
 /// 把 `from` 改名成 `to`；**`to` 已在（含一条链接）⇒ `AlreadyExists`，一个字节不动**。原子：没有先看后改的窗。

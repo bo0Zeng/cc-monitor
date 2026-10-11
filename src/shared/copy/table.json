@@ -58,6 +58,18 @@
       "zh": "清掉 key 表 {path} 里 {dir} 的行",
       "args": ["dir", "path"]
     },
+    "beOwnState.path.noHome": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · 无主目录",
+      "args": []
+    },
+    "beOwnState.path.notRelative": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · {rel} · 不是数据目录底下的相对名",
+      "args": ["rel"]
+    },
     "beOwnState.read.failed": {
       "kind": "error",
       "role": "原因格",
@@ -74,6 +86,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "写入失败 · {path} · 程序出错",
+      "args": ["path"]
+    },
+    "beOwnState.write.lockMismatch": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · {path} · 未持所在目录的锁",
       "args": ["path"]
     },
     "beOwnState.write.noParent": {

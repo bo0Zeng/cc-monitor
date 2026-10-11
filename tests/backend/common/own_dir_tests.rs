@@ -7,7 +7,7 @@
 //! | # | 判据 | 形状 |
 //! |---|---|---|
 //! | O1 | 新建 ⇒ 0700；已在的 0755 ⇒ 仍 0755；父目录不在 ⇒ 照实报错 | 真目录，两向 |
-//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`own_dir.rs::ensure_private_dir` · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
+//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`platform/fs/own.rs::create_dir_private`（`Own::ensure_dir` 的本体） · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
 //! | O3 | 七个调用方（六份第四层 ＋ 暂存区；凭据与历史注解那一层就是数据目录 `~/.cc-monitor`）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
 
 #[cfg(unix)]
@@ -75,7 +75,7 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
 /// 登记表：`(文件, 函数, 建的是什么)`。第三列恰为 [`OWN_HOME`] 的那几行 = 建后端自家目录的地方。
 const OWN_HOME: &str = "后端自家目录";
 const DIR_CREATORS: &[(&str, &str, &str)] = &[
-    ("common/own_dir.rs", "ensure_private_dir", OWN_HOME),
+    ("platform/fs/own.rs", "create_dir_private", OWN_HOME),
     ("dial/sftp.rs", "make_dir", OWN_HOME),
     // 订阅号续期锁（+1）：与那个号自己的 claude 同一套 `mkdir` 锁（配置目录里那一把 · 旁边那一把），建成即持有、续完即删（`make` 建；过期的那把删了重建也走它）。
     (
@@ -147,11 +147,11 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     let home: Vec<&str> = DIR_CREATORS
         .iter()
         .filter(|(_, _, what)| *what == OWN_HOME)
-        .map(|(f, n, _)| if *f == "common/own_dir.rs" { *n } else { *f })
+        .map(|(f, n, _)| if *f == "platform/fs/own.rs" { *n } else { *f })
         .collect();
     assert_eq!(
         home,
-        vec!["ensure_private_dir", "dial/sftp.rs"],
+        vec!["create_dir_private", "dial/sftp.rs"],
         "建后端自家目录的只该是那个函数（本机）＋ 远端部署那一处"
     );
     // 正控：数法认得出合成语料里多出来的一处。

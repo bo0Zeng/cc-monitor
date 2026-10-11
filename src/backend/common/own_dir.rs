@@ -14,23 +14,13 @@ use std::path::Path;
 pub const DIR_NAME: &str = ".cc-monitor";
 
 /// 后端自家目录**建的那一下**给的权限位：只给本人。
-pub const PRIVATE_DIR_MODE: u32 = 0o700;
+pub const PRIVATE_DIR_MODE: u32 = crate::platform::fs::PRIVATE_DIR_MODE;
 
 /// 建**一层**自家目录，建的那一下就是 [`PRIVATE_DIR_MODE`]（unix：权限位随创建一起生效，没有「先按 umask 建出来再收窄」的那一段）。
 /// **已在的不动**（那可能是用户自己设的）；父目录不在 ⇒ 照实报错（调用方都只建「家目录下那一层」，父目录本来就在）。
 /// 非 unix：照常建（那边不是 unix 权限位这一问；目录的 ACL 按父目录继承）。
 pub fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
-    let mut b = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt as _;
-        b.mode(PRIVATE_DIR_MODE);
-    }
-    match b.create(dir) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(e) => Err(e),
-    }
+    crate::platform::fs::create_dir_private(dir)
 }
 
 /// 家（[`DIR_NAME`]）里那个**不出会话**的工作目录名：在那里跑的官方客户端（替号开额度窗口的那一句 · `quota-probe` 报用量的那一次）

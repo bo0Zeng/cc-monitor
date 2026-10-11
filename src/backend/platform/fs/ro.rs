@@ -2,7 +2,7 @@
 //!
 //! 后端生产段只有 `platform/fs/` 许点名文件系统命名空间（`readonly_guard::only_the_fs_platform_module_names_the_filesystem`）；
 //! 别处读盘一律经这里。`Ro` 没有写方法，[`Ro::open`] 交回的 [`RoFile`] 不实现 `Write` ⇒ 拿着它写不出来。
-//! 缺一个读动词就加在这里（不跟链接地看一项 · inode 号这几样等写盘那几层搬过来时随用随加），护栏不用动。本文件点名的标准库条目由同一份护栏逐个核是读（`the_read_namespace_only_names_reads`）。
+//! 缺一个读动词就加在这里（不跟链接地看一项 · inode 号这几样等写盘那几层搬过来时随用随加），护栏不用动。本文件点名的标准库条目由同一份护栏逐个核是读（`the_fs_home_names_only_its_registered_entries`）。
 //! 平台无关的部分不认域知识（不认识账号、会话、帧）。
 
 use copy_core::copy_text;

@@ -1270,6 +1270,13 @@ mod tests {
     /// 只许住 `own_dir.rs` 的两个词：带权限位建目录（`DirBuilder` ＋ unix 的 `DirBuilderExt`）。
     /// 刻意不进 [`OWN_STATE_VERBS`]（不替第四层每一份都多放一个建目录的写法）。
     const OWN_DIR_AUX: &[&str] = &["DirBuilder", "DirBuilderExt"];
+    /// 第二刀过渡：还没搬上 `Own` 的写口经 `own_state::write` / `own_dir::ensure_private_dir` 转调 `platform/fs/own.rs`
+    /// （原子写与建目录只有那一份实现）。全部搬完连同这两个转调一起删。
+    const OWN_STATE_TRANSITIONAL: &[(&str, &str)] = &[
+        ("common/own_state.rs", "atomic_write"),
+        ("common/own_dir.rs", "create_dir_private"),
+        ("common/own_dir.rs", "PRIVATE_DIR_MODE"),
+    ];
 
     fn is_own_state(rel: &str) -> bool {
         OWN_STATE_MODULES.iter().any(|(p, _)| *p == rel)
@@ -1541,6 +1548,11 @@ mod tests {
                 continue;
             }
 
+            // `platform/fs/` 是碰盘的那一处本身：它点名什么由它自己那条判据逐个核（`the_fs_home_names_only_its_registered_entries`），不按默认层的黑名单判。
+            if rel.starts_with(FS_HOME) {
+                default_scanned += 1;
+                continue;
+            }
             if let Some(pat) = violates_default_layer(&prod) {
                 panic!(
                     "backend 写盘护栏违规（红线 I7 默认层）：生产代码 {} 含 `{pat}`。\n\
@@ -1808,6 +1820,10 @@ mod tests {
     /// 第四层**之外**拿这把锁的（`(模块, 为什么)`）：它们改的不是后端自有状态文件，却同样是一趟读—改—写，
     /// 两个后端进程同时做会盖掉对方。锁只是只读打开那个目录，不添任何写动词。
     const LOCK_HOLDERS_OUTSIDE_OWN_STATE: &[(&str, &str)] = &[
+        (
+            "platform/fs/own.rs",
+            "自家状态写句柄 `Own::lock` 的本体：搬上 `Own` 的写口经它拿锁（原子写的签名要这把锁的守卫），自己不读—改—写任何一份",
+        ),
         (
             "accounts/manage/wire.rs",
             "账号库的读—改—写（读清单与各号目录 → 算计划 → 经文件管理面落盘）：本机常驻后端与一次性 CLI 同时改，\
@@ -3010,6 +3026,10 @@ mod tests {
                         {
                             continue;
                         }
+                        // 过渡（第二刀搬的这一段）：没搬完的写口经这两份转调 `platform/fs/own.rs` 的原子写与建目录，同一份实现。
+                        if OWN_STATE_TRANSITIONAL.contains(&(rel.as_str(), full.as_str())) {
+                            continue;
+                        }
                         // 带权限位建目录：只在建自家目录的那一个模块里放行。
                         if OWN_DIR_AUX.contains(&full.as_str()) && rel == "common/own_dir.rs" {
                             continue;
@@ -3214,9 +3234,9 @@ mod tests {
             assert_eq!(fs_namespace_hits(green), vec![], "该绿没绿：{green}");
         }
     }
-    /// `platform/fs/` 里点名标准库文件系统的只许 `ro.rs` 一份，而它点名的每一样都是读
-    /// （写原语那几样住 `mod.rs`，走系统调用、一个命名空间都不点名，谁调得到由写的那几层管）。
-    /// 这张表只管这一份文件：今后加一个读动词，改的是 `ro.rs` 与这里，别处一行不动。
+    /// `platform/fs/` 里点名标准库文件系统的只许两份：`ro.rs` 点名的每一样都是读（本表）；`own.rs` 的见 [`OWN_NAMES`]
+    /// （文件管理面的写原语住 `mod.rs`，走系统调用、一个命名空间都不点名，谁调得到由写的那几层管）。
+    /// 今后加一个读动词，改的是 `ro.rs` 与这里，别处一行不动。
     const RO_NAMES: &[&str] = &[
         "std::fs::read(",
         "std::fs::read_to_string(",
@@ -3232,9 +3252,17 @@ mod tests {
         "std::os::unix::fs::PermissionsExt",
         "std::os::unix::fs::MetadataExt",
     ];
+    /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录）；
+    /// 原子写的旁名经 `creds_core::perm::create_private` 建（依赖签字那一侧管）。谁能调由类型管：方法都在 `Own` 上，`Own` 只在启动时造。
+    const OWN_NAMES: &[&str] = &[
+        "std::fs::remove_file(",
+        "std::fs::rename(",
+        "std::fs::DirBuilder::new()",
+        "std::os::unix::fs::DirBuilderExt",
+    ];
 
     #[test]
-    fn the_read_namespace_only_names_reads() {
+    fn the_fs_home_names_only_its_registered_entries() {
         let root = crate::guard_support::src_root();
         let mut named = 0usize;
         let mut bad = Vec::new();
@@ -3245,16 +3273,23 @@ mod tests {
                 .to_string_lossy()
                 .replace('\\', "/");
             let code = guard_core::production_code(&src);
-            if rel != "platform/fs/ro.rs" {
+            let names: &[&str] = match rel.as_str() {
+                "platform/fs/ro.rs" => RO_NAMES,
+                "platform/fs/own.rs" => OWN_NAMES,
+                _ => &[],
+            };
+            if names.is_empty() {
                 for (line, what) in fs_namespace_hits(&code) {
                     let text = code.lines().nth(line - 1).unwrap_or("").trim();
-                    bad.push(format!("  {rel}: {what} —— {text}（只许 `ro.rs` 点名）"));
+                    bad.push(format!(
+                        "  {rel}: {what} —— {text}（只许 `ro.rs` · `own.rs` 点名）"
+                    ));
                 }
                 continue;
             }
             // 认得的那几形整段摘掉，剩下的里面再有一处点名就是读以外的东西。
             let mut rest = code.clone();
-            for ok in RO_NAMES {
+            for ok in names {
                 named += rest.matches(ok).count();
                 rest = rest.replace(ok, "");
             }
@@ -3270,7 +3305,7 @@ mod tests {
         assert!(
             bad.is_empty(),
             "`platform/fs/` 里点名了读以外的东西：\n{}\n\n\
-             这里是全后端唯一能碰盘的地方，读那一半只许读（`RO_NAMES`）；写的能力不从这里开口子。",
+             这里是全后端唯一能碰盘的地方：读那一半只许读（`RO_NAMES`），自家状态那一半只许那几样（`OWN_NAMES`）；别的写的能力不从这里开口子。",
             bad.join("\n")
         );
     }
@@ -5890,9 +5925,9 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        // 第四层各份（凭据 · 中转钥匙 · 常驻钥匙 · 主机钥匙 …）都经读三态与原子写那一处出生即只给本人 ⇒ 引用处只有它。
+        // 第四层各份（凭据 · 中转钥匙 · 常驻钥匙 · 主机钥匙 …）都经原子写那一处（`platform/fs/own.rs`）出生即只给本人 ⇒ 引用处只有它。
         let want: std::collections::BTreeSet<String> =
-            ["common/own_state.rs".to_string()].into_iter().collect();
+            ["platform/fs/own.rs".to_string()].into_iter().collect();
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\
