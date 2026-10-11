@@ -2084,7 +2084,7 @@ fn every_cell_error_carries_its_written_sentence() {
 /// ★ 出号名的四件成品都带核心写好的号名 / 位名（`names`，[`crate::accounts::quota::name_words`]）：界面照它画，不认 `_` 与 `5h` / `7d`。
 #[test]
 fn every_product_that_names_accounts_carries_the_names() {
-    let home = Home::new("names");
+    let home = Home::new("account-names");
     let ctx = home.ctx();
     let want = crate::accounts::quota::name_words::names_cell();
     let rules = answer_rules_read_with(&ctx).expect("rules");
