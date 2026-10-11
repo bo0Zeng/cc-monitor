@@ -6345,7 +6345,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     const turnsAsks = () =>
       vi.mocked(invoke).mock.calls.filter((c) => {
         const a = c[1] as { op?: string; payload?: number[] };
-        return c[0] === "chan_call" && a.op === "history-turns" && new TextDecoder().decode(new Uint8Array(a.payload ?? [])).includes("/p/wf.jsonl");
+        return c[0] === "chan_call" && a.op === "history-turns" && (JSON.parse(new TextDecoder().decode(new Uint8Array(a.payload ?? []))) as { path?: string }).path === "/p/wf.jsonl";
       }).length;
     for (let s = 0; s < 10; s++) tm.onLine(line("wf", s));
     for (let k = 0; k < 5; k++) await settle();

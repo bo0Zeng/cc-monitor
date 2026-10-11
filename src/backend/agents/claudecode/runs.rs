@@ -280,22 +280,29 @@ pub(crate) fn links_in_content(content: &Value) -> Vec<super::super::ChildLink> 
 
 /// 派出那一刻落盘的那一份（与子记录同目录、同名换后缀）：`toolUseId` ＝ 父侧那次 Agent 调用的 id。
 const META_SUFFIX: &str = ".meta.json";
-/// 那一份至多读多少字节（它只有几格；多了不认）。
+/// 那一份至多读多少字节（它只有几格）；超了 ⇒ 不认它、说一声（卡等父侧结果回来再对上）。
 const META_MAX: u64 = 64 * 1024;
 
 /// 一份子 agent 记录 ⇒ 派出它的那次 Agent 调用（读旁边那份 `agent-<agentId>.meta.json` 的 `toolUseId`；子 agent 是哪个取文件名）。
-/// 前台派出的要跑完父侧才回带 `agentId` 的结果，在那之前卡和运行只能凭它对上。还没落盘 / 读不出 ⇒ `None`。
+/// 前台派出的要跑完父侧才回带 `agentId` 的结果，在那之前卡和运行只能凭它对上。还没落盘 ⇒ `None`（不说）；读不出 ⇒ `None` 并记一笔。
 pub(crate) fn spawned(child: &Path) -> Option<super::super::ChildLink> {
-    use std::io::Read;
     let name = child.file_stem()?.to_str()?;
     let run = name.strip_prefix(CHILD_PREFIX).filter(|r| !r.is_empty())?;
-    let mut text = String::new();
-    std::fs::File::open(child.with_file_name(format!("{name}{META_SUFFIX}")))
-        .ok()?
-        .take(META_MAX)
-        .read_to_string(&mut text)
-        .ok()?;
-    let v: Value = serde_json::from_str(&text).ok()?;
+    let meta = child.with_file_name(format!("{name}{META_SUFFIX}"));
+    if !meta.exists() {
+        return None;
+    }
+    let v = match crate::common::fs::read_json_capped(&meta, META_MAX) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                "[runs] {} 读不出来，派出卡等父侧结果再对上：{}",
+                meta.display(),
+                e.said
+            );
+            return None;
+        }
+    };
     let tool = s(&v, "toolUseId").filter(|t| !t.is_empty())?;
     Some(super::super::ChildLink {
         tool: Some(tool.to_string()),

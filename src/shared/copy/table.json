@@ -19665,7 +19665,7 @@
     "rsRun.load.notLinked": {
       "kind": "error",
       "role": "报错",
-      "zh": "未知派出的 agent · 还没对上",
+      "zh": "未知派出的 agent",
       "args": []
     },
     "extPage.row.noteMarkTitle": {
