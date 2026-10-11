@@ -35,7 +35,7 @@ const SYNTH_REGISTRY: &[Adapter] = &[
 ///
 /// ⚠ 三个阴性项（`ghost` 缺席 · `nameless` 说不出路径 · `filey` 是文件）是本条的
 /// 全部意义所在：只喂存在的那家、只断言"返回非空"的话，判准坏成「永远全放行」照样绿 ——
-/// 而那种坏法正是本件最怕的：backend 会声明它其实**看不见**的 agent，
+/// 而那种坏法正是这里最怕的：backend 会声明它其实**看不见**的 agent，
 /// 消费方照着那个 path 去列会话，只会得到空/报错。
 ///
 /// ⚠ 本条**完全不依赖跑测试这台机器上装了什么** —— 注册表是合成的，
@@ -683,6 +683,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         is_session_file: |_| false,
         tree: None,
         turn_end: None,
+        activity: None,
         class: None,
         chain: None,
         find_session: Some(find),

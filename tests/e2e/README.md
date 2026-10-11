@@ -130,13 +130,8 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 > **代价**：本地改了后端的 `ccm`（或别的被上面套件驱动的真源）时，`npm test` 不会有任何反应。
 > 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
 > 想连门禁那套判法一起验就 `bash tests/e2e/assert-pass-floor.sh restart`。
-> ~~不手跑的话，**第一次发现是在 CI 上**。~~
->
-> ⚠ **08-06 订正：那句已经不成立。**〔用 08-05〕裁定**不再 push**，而 `ci.yml` 只在
-> `push` / `pull_request` 上触发 ⇒ **CI 至今没跑过**。今天不手跑的后果不是「CI 上才发现」，
-> 是**没有任何一次发现**。这个前提由
-> `shared_crate_registry_tests.rs::the_premise_behind_three_honesty_boundaries_still_holds` 盯着
-> （谁加了 `workflow_dispatch`/`schedule`，这句话与另外三条诚实边界都要一起重判）。
+> 不手跑的话，第一次发现是在候选分支 `next` 的 CI 上（`ci.yml` 在 `next` 与 `main` 的 push 上跑同一套 job，e2e 那一格调门禁），
+> 或者在 `gate-affected.sh` 按改动挑到这一套的时候。
 >
 > ★ 而且这些套件**本机都跑得动**（隔离的 tmux socket 或根本不碰 tmux）：本机门禁
 > `tests/scripts/gate.sh` 的 `run_e2e` 每一套都跑（清单以那里为准，**此处不抄**）。

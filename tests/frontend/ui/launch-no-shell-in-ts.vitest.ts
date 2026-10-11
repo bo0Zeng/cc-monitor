@@ -22,7 +22,7 @@
  *
  * 剥注释之后，**字符串字面量**（`"…"` / `'…'` / 模板串的静态部分）里出现：
  *  - `&&`；或
- *  - `tmux <动词> -…`（动词后面紧跟旗标 —— 同 `session-backend-gate` 首跑逼出来的收窄：
+ *  - `tmux [-u] <动词> -…`（`-u` ＝ UTF-8 客户端旗，可有可无；动词后面紧跟旗标 —— 同 `session-backend-gate` 首跑逼出来的收窄：
  *    文案「已拉起 tmux attach」是给人看的话，不是命令）。
  * ⚠ 射程如实写：把命令拆成几段拼（`"tmux new-" + "session -d"`）能从缝里过去；
  *   代码里的 `a && b`（不在字面量里）按构造不算。
@@ -47,6 +47,7 @@ const TMUX_VERBS = [
   "has-session",
   "capture-pane",
   "list-sessions",
+  "switch-client",
 ];
 
 /** 字符串字面量的文本（模板串只取静态部分，`${…}` 里的表达式跳过）。输入须已剥注释。 */
@@ -141,7 +142,7 @@ function shellHits(literal: string): string[] {
   const hits: string[] = [];
   if (literal.includes("&&")) hits.push("&&");
   for (const v of TMUX_VERBS) {
-    if (new RegExp(`\\btmux\\s+${v}\\s+-`).test(literal)) hits.push(`tmux ${v} -`);
+    if (new RegExp(`\\btmux\\s+(?:-u\\s+)?${v}\\s+-`).test(literal)) hits.push(`tmux ${v} -`);
   }
   return hits;
 }
@@ -161,10 +162,11 @@ describe(" 条 1：前端零 shell 串", () => {
       "// tmux send-keys -t x Enter && y",
       'const d = "已拉起 tmux attach";',
       "const e = `${f(`tmux new-session -d -s ${n}`)}`;",
+      "const u = 'tmux -u switch-client -t x';",
       // 正则里的引号不许被读成字符串开头：读错的话 `'"]/.test(a) && ` 会被当成字面量、多出一处 `&&`。
       "const r = /[\\s'\"]/.test(a) && 'x'; const g = 'plain';",
     ].join("\n");
-    expect(hitsIn(corpus)).toEqual(["tmux attach -", "&&", "tmux new-session -"]);
+    expect(hitsIn(corpus)).toEqual(["tmux attach -", "&&", "tmux new-session -", "tmux switch-client -"]);
   });
 
   it("量具自检：人群真的是 src/ 生产段全集（否则零命中是因为人群空了）", () => {
@@ -192,8 +194,8 @@ describe(" 条 1：前端零 shell 串", () => {
   it("★ 正控：挪出去的那份夹具用例表里的命令串，同一把尺子量得到（否则上一条的零是尺子瞎了）", () => {
     const f = "tests/test-support/launch-cli-golden.ts";
     const text = readFileSync(resolve(REPO_ROOT, f), "utf8");
-    // 就地 resume 那一格外层包的那一层（`tmux send-keys -t …  Enter; tmux attach -t …`），用例表里一条（手写形状那条）。
-    expect(hitsIn(text), `${f} 用同一把尺子量不出命中`).toEqual(["tmux send-keys -", "tmux attach -"]);
+    // 就地 resume 那一格外层包的那一层（`tmux -u send-keys -t …  Enter; 在 tmux 里 switch-client、不在 attach`），用例表里一条（手写形状那条）。
+    expect(hitsIn(text), `${f} 用同一把尺子量不出命中`).toEqual(["tmux send-keys -", "tmux attach -", "tmux switch-client -"]);
   });
 
   it("★ TS 兜底一族不许回来：文件不在盘上、导出名在 src/ 生产段零命中", () => {

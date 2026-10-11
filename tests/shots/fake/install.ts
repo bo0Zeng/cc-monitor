@@ -5,12 +5,15 @@
  * 只由截图工具的 vite 插件插进页面（`tests/shots/serve.mjs`）；产品构建里没有它。
  */
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { FakeBackend } from "./backend";
 import { DEFAULT_STORAGE, sceneById } from "../scenes";
 import { layoutProblems } from "../scenes/layout-check";
 import type { ShotsHandle } from "./types";
 import HOST_FACTS from "../../__fixtures__/host-facts.golden.json";
+import { LS_KEYS } from "../../../src/frontend/ui/local-storage";
+
+const LAST_ACTIVE_KEY = LS_KEYS.lastActiveSid;
 
 const params = new URLSearchParams(location.search);
 const scene = sceneById(params.get("scene") ?? "");
@@ -20,18 +23,26 @@ const label = location.pathname.startsWith("/settings")
     ? `viewer-${params.get("viewer") ?? "x"}`
     : "main";
 
-const backend = new FakeBackend(scene.world());
+const backend = new FakeBackend(scene.world(), { mainWindow: label === "main" });
 // 壳在每页起页时注入的本机能力（`platform/host_facts.rs`）：照场景要的系统（缺省 Linux，截图机就是 Linux）那一行注入。
 (window as { __CCM_HOST__?: unknown }).__CCM_HOST__ = (HOST_FACTS as Record<string, unknown>)[scene.hostOs ?? "linux"] ?? null;
 mockWindows(label);
 mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
 backend.attachEmitter((event, payload) => emit(event, payload));
+// 场景等「开页之后台架在演的那几样落定」用（`scenes/helpers.ts::mainReady`）。
+(window as { __shotsSettled?: () => Promise<void> }).__shotsSettled = () => backend.settled();
+// 主界面的就绪点（`frontend-ready`，前端发、壳收）：转给无头壳，它收到这一下就重放会话流。
+void listen<{ prioritySid?: string | null }>("frontend-ready", (e) => backend.frontendReady(e.payload));
 
 // 产品代码会把「上次停在哪个 tab」之类的记忆写进 localStorage；每张图从同一个起点开始。
 try {
   localStorage.clear();
   sessionStorage.clear();
   for (const [k, v] of Object.entries(scene.storage ?? DEFAULT_STORAGE)) localStorage.setItem(k, v);
+  // 上次停在哪个 tab：用过的那台都记着一个（这里记世界里第一个会话）。不记的话开页落在哪个 tab 看谁的会话先到 ——
+  // 就绪点早于后端报完清单时，会话一个个实时到，先到的那个成了当前的（各台后端扫盘的先后每次不一样，main-turn-folded 偶尔落到 web-console 就是它）。
+  const first = backend.world.sessions[0]?.sid;
+  if (first && localStorage.getItem(LAST_ACTIVE_KEY) === null) localStorage.setItem(LAST_ACTIVE_KEY, first);
 } catch {
   // 读不了存储就当它是空的
 }
@@ -49,6 +60,8 @@ window.addEventListener("DOMContentLoaded", () => {
   void (async () => {
     try {
       await scene.act({ backend });
+      // 开页之后台架还在演的那几样（已结束的收场 · 断了）落定了才量、才截。
+      await backend.settled();
       // 让过渡动画落定再量（浮层出现 160ms 上移 4px）。
       await new Promise((r) => setTimeout(r, 250));
       if (scene.pointer) {

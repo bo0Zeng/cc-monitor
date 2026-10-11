@@ -20,6 +20,7 @@ pub(crate) mod readiness;
 pub(crate) mod registry;
 pub(crate) mod rows;
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -145,13 +146,13 @@ fn report_with(
 
 /// 这台的一条路径：`(是否目录, 大小)`；不在 / 读不动 ⇒ `None`。
 fn meta_of(p: &Path) -> Option<(bool, u64)> {
-    let md = std::fs::metadata(p).ok()?;
+    let md = Ro::metadata(p).ok()?;
     Some((md.is_dir(), if md.is_dir() { 0 } else { md.len() }))
 }
 
 /// 这台的一个目录的一层名字；列不动 / 超过 [`MAX_ENTRIES`] ⇒ `None`（≠ 空目录，不截断；那一行按「列不动」报「未确定」）。
 fn list_of(p: &Path) -> Option<Vec<String>> {
-    let names: Vec<String> = std::fs::read_dir(p)
+    let names: Vec<String> = Ro::read_dir(p)
         .ok()?
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -169,7 +170,7 @@ fn list_of(p: &Path) -> Option<Vec<String>> {
 
 /// 一份文件里有没有 cc-bus 钩子那两个字样。读不动 / 太大 / 不是文件 ⇒ `None`（**不猜**）。
 fn hooks_in(p: &Path) -> Option<bool> {
-    let md = std::fs::metadata(p).ok()?;
+    let md = Ro::metadata(p).ok()?;
     if !md.is_file() || md.len() > MAX_HOOK_FILE_BYTES {
         let size = md.len();
         tracing::warn!(
@@ -178,7 +179,7 @@ fn hooks_in(p: &Path) -> Option<bool> {
         );
         return None;
     }
-    let s = std::fs::read_to_string(p).ok()?;
+    let s = Ro::read_to_string(p).ok()?;
     Some(rows::HOOK_PROGRAMS.iter().any(|n| s.contains(n)))
 }
 

@@ -31,6 +31,8 @@
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
 //! 跨 target 的对等断言（各面能力集横着对、逐条登记豁免）没做；它与「在这台机器上做不到」（[`crate::stream::wire::Unavailable`]，运行期逐机器）是两个轴。
 
+use crate::platform::fs::Ro;
+
 pub mod browse_watch;
 pub mod grep;
 pub mod index;
@@ -362,7 +364,7 @@ pub const FRESHNESS: &[Freshness] = &[
         evidence: Evidence::Undetermined,
         gap: "🔴 **这一格是「没验」，不是「验过没事」。** 门禁的 `muslbuild` 那格买的是\
               「**编得出静态字节**」，**不买**「在真远端上跑得起来」（无真机、不运行）。\
-              ⇒ 静态 musl 下 `inotify` 的行为**本件没有任何读数**。",
+              ⇒ 静态 musl 下 `inotify` 的行为**没有任何读数**。",
     },
     Freshness {
         target: Target::Windows,
@@ -543,7 +545,7 @@ fn answer_ls(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let dir = path_arg(args)?;
     let limit = limit_of(args);
     // 打不开的原因分几种码（界面按码说「路径不存在 / 无权限 / 不是目录」，系统原话进详情）。
-    let rd = std::fs::read_dir(&dir).map_err(|e| {
+    let rd = Ro::read_dir(&dir).map_err(|e| {
         let code = match e.kind() {
             std::io::ErrorKind::NotFound => "not_found",
             std::io::ErrorKind::PermissionDenied => "denied",
@@ -580,7 +582,7 @@ fn answer_ls(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
             "kind".to_string(),
             serde_json::Value::String(kind.to_string()),
         );
-        if let Ok(md) = std::fs::metadata(e.path()) {
+        if let Ok(md) = Ro::metadata(e.path()) {
             row.insert("size".to_string(), serde_json::json!(md.len()));
             if let Some(t) = epoch_secs(md.modified()) {
                 row.insert("mtime_secs".to_string(), serde_json::json!(t));
@@ -629,7 +631,7 @@ where
 /// 那个动词不在 `readonly_guard` 的只读白名单上。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
 fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let path = path_arg(args)?;
-    let md = std::fs::metadata(&path).map_err(|e| {
+    let md = Ro::metadata(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
@@ -654,13 +656,8 @@ fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer
     // unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
     //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
     //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode`）。
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        out.insert(
-            "mode".to_string(),
-            serde_json::json!(md.permissions().mode() & 0o7777),
-        );
+    if let Some(mode) = crate::platform::fs::Ro::mode(&md) {
+        out.insert("mode".to_string(), serde_json::json!(mode & 0o7777));
     }
     if let Some(ms) = epoch_secs(md.modified()) {
         out.insert("mtime_secs".to_string(), serde_json::json!(ms));
@@ -902,7 +899,7 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
         Some(_) => path_arg(args)?,
     };
     // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
-    std::fs::read_dir(&root).map_err(|e| {
+    Ro::read_dir(&root).map_err(|e| {
         Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
@@ -1028,7 +1025,7 @@ impl Default for ContentDigest {
 /// 一份文件的 [`content_sha256`]，**逐块读**（64 KiB 一块）。读不出 ⇒ 原样的 IO 错。
 pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
     use std::io::Read as _;
-    let mut f = std::fs::File::open(path)?;
+    let mut f = Ro::open(path)?;
     let mut d = ContentDigest::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
@@ -1065,7 +1062,7 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
             )),
         )));
     }
-    let md = std::fs::metadata(&path).map_err(|e| {
+    let md = Ro::metadata(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
@@ -1091,7 +1088,7 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
             &e,
         )
     };
-    let mut f = std::fs::File::open(&path).map_err(|e| {
+    let mut f = Ro::open(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
@@ -1144,7 +1141,7 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
             )),
         )));
     }
-    let md = std::fs::metadata(&path).map_err(|e| {
+    let md = Ro::metadata(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
@@ -1173,7 +1170,7 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
             ),
         )));
     }
-    let f = std::fs::File::open(&path).map_err(|e| {
+    let f = Ro::open(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
             copy_core::copy_text(

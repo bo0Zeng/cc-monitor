@@ -124,7 +124,7 @@ rsh() { docker exec -u root "$CT" bash -c "$*" 2>&1; }
 
 # 敲一个名字，回 `FOUND <路径或类型>` / `NOTFOUND`。
 # ⚠ 用 `command -v`：它认得**函数 / 别名 / PATH 上的文件**三样，而 `which` 只认第三样 ——
-#   本件要判的「半通」那一档正好活在前两样里，用 `which` 会把它整档看不见。
+#   要判的「半通」那一档正好活在前两样里，用 `which` 会把它整档看不见。
 probe_name() { # $1=名字 $2=口径函数名
   local n="$1" f="$2" out
   out="$($f "command -v $n" | head -1)"
@@ -223,7 +223,7 @@ printf '%s\n' "$INS_OUT" | sed 's/^/    | /' | tail -8
 chk ".deb 装上了" "$INS_RC" "rc=0"
 note "装完之后 dpkg -L 落了几个文件：$(rsh 'dpkg -L cc-monitor | wc -l' | tr -d '\r')"
 note "落在 PATH 目录（/usr/bin）下的：$(rsh 'dpkg -L cc-monitor | grep "^/usr/bin/" | tr "\n" " "')"
-# 🔴 这一格是本件的要害之一：**包里有没有一个叫 ccm 的东西**。
+# 🔴 这一格是要害之一：**包里有没有一个叫 ccm 的东西**。
 CCM_IN_DEB="$(rsh 'dpkg -L cc-monitor | grep -c "/ccm$"' | tr -d '\r')"
 note ".deb 里名字恰好是 ccm 的文件数 = $CCM_IN_DEB（分母 = dpkg -L 全部条目）"
 line

@@ -1098,7 +1098,7 @@ fn w1_the_ceiling_is_one_number_everywhere() {
     }
     let mut kt = Vec::new();
     for rel in files() {
-        // 截图台架不在门禁里，但它等页面起好用的也是这一个数（合并那一拍跑它）。
+        // 截图台架不在门禁里，但它等页面起好用的也是这一个数（发版前与合并时手跑）。
         if lang_of(&rel) == Some("kt") || rel == SHOTS_RUNNER {
             for c in ms_def.captures_iter(&read(&rel)) {
                 kt.push((rel.clone(), num(&c[1])));

@@ -34,7 +34,7 @@
 //! （`agents::find_session_file`）。
 //!
 //! ⇒ 本模块今天只剩：**读 → 调变换 → `O_EXCL` 落盘**。
-//! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：本件在收「找」，不搬「写」）——
+//! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：这里收「找」，不搬「写」）——
 //! 它是本 crate 只读白名单上那一条，搬它要动的是白名单，那是另一件事。
 
 use crate::stream::detail::Failed;
@@ -54,7 +54,7 @@ struct ForkResult {
 /// 单份会话 jsonl 的读取上限。
 ///
 /// **Phase G 审计补的**：原来是裸 `read_to_string`（无上限）。同一个 crate 里
-/// `common::fs::read_regular_capped` 早就为这件事写好了函数**和**一句结论
+/// `platform::fs::Ro::read_regular_capped` 早就为这件事写好了函数**和**一句结论
 ///（「`read_to_string` 无上限 → 远端 OOM」，还实测过 symlink→/dev/zero 六秒涨 11GB），
 /// 分叉这条新路却没用它。真机上会话 jsonl 到几十 MB 是常态（本仓注释里记过 37MB 一份），
 /// backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
@@ -66,7 +66,7 @@ const MAX_SESSION_JSONL_BYTES: u64 = 256 * 1024 * 1024;
 fn read_jsonl(path: &Path) -> Result<Vec<serde_json::Value>, String> {
     // 走共享的**安全读**（先确认是常规文件，挡掉 FIFO/设备，再 take(cap) 限量）——
     // 不是自己再写一遍 `read_to_string`。
-    let bytes = crate::common::fs::read_regular_capped(path, MAX_SESSION_JSONL_BYTES)
+    let bytes = crate::platform::fs::Ro::read_regular_capped(path, MAX_SESSION_JSONL_BYTES)
         .map_err(|e| format!("refuse fork: read {}: {e}", path.display()))?;
     let text = String::from_utf8_lossy(&bytes);
     Ok(text

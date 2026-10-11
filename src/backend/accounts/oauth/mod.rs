@@ -56,7 +56,7 @@ pub(crate) enum Unusable {
     Busy,
     /// 令牌端点不收这个刷新令牌（状态码）—— 要重新登录。
     Refused(u16),
-    /// 续期那一发没成（连不上 / 回包读不懂），一句原因 ＋ 可缺的原话。
+    /// 续期那一发没成（断开 / 回包读不懂），一句原因 ＋ 可缺的原话。
     NotRenewed(crate::common::said::Said),
     /// 续好了，写不回那份文件（一句原因词 ＋ 原话）。
     WriteFailed(crate::common::said::Said),

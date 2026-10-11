@@ -2,7 +2,7 @@
  * 场景动作的小工具：等元素、点、按键、右键。全在页里跑（产品代码看到的是真 DOM 事件）。
  *
  * 等的上限一律是兜底的那一个数（`tests/test-support/wall-ceiling.ts`）：等的是条件，到了就走；
- * 从前 8 秒 / 15 秒，合并那一拍负载 40–50 时随机漏图（tab 少一个、或一个都没来）。
+ * 从前 8 秒 / 15 秒，机器负载 40–50 时随机漏图（tab 少一个、或一个都没来）。
  * 「可能有、没有就跳过」的那几处探一下的窗口由调用处自己给（它们不是等，是看一眼）。
  */
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
@@ -24,7 +24,7 @@ export async function waitFor<T extends Element = HTMLElement>(sel: string, ms =
 export async function waitCount(sel: string, n: number, ms = WALL_CEILING_MS): Promise<void> {
   const until = performance.now() + ms;
   while (document.querySelectorAll(sel).length < n) {
-    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}）`);
+    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}：${[...document.querySelectorAll(sel)].map((e) => (e.textContent ?? "").slice(0, 30)).join(" | ")}）`);
     await sleep(50);
   }
 }
@@ -127,9 +127,11 @@ export async function mainReady(tabs: number): Promise<void> {
     await waitCount("#tab-bar .tab", tabs);
   } catch (e) {
     const s = window.__shots?.sessions?.();
-    const said = s ? `；世界宣告 ${s.declared} 个会话，假后端交出 ${s.sent} 个` : "";
+    const said = s ? `；世界宣告 ${s.declared} 个会话，无头壳交出 ${s.sent} 个` : "";
     throw new Error(`${(e as Error).message}${said}`);
   }
+  // 已结束 / 可重连那几个是收到清单之后才收场的：等它们落定，不然截到的是收场之前那一刻。
+  await (window as { __shotsSettled?: () => Promise<void> }).__shotsSettled?.();
   await sleep(900);
 }
 

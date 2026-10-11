@@ -588,7 +588,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     let desk = Desk::new(tx);
     let tmp = Tmp::dir("start");
     let local = tmp.file("h.bin", b"x");
-    // 端口 1：本机上一定连不上（拒绝连接，立刻失败，不等期限）。
+    // 端口 1：本机上一定断开（拒绝连接，立刻失败，不等期限）。
     let d = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u","keyPath":"/nonexistent"}});
     let (_, _, data) =
         reply_of(&desk.upload("r1", &serde_json::json!({"dial": d, "local_path": local})));

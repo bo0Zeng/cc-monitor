@@ -331,7 +331,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
   it("每条登记都写清为什么还在、归谁拆", () => {
     for (const [m, why] of TYPE_CYCLE_EXEMPT) {
       expect(why.length, `${m.join(" ⇄ ")} 的理由像占位`).toBeGreaterThan(40);
-      expect(/写区|归/.test(why), `${m.join(" ⇄ ")} 没说归谁拆`).toBe(true);
+      expect(/归/.test(why), `${m.join(" ⇄ ")} 没说归谁拆`).toBe(true);
     }
   });
 });

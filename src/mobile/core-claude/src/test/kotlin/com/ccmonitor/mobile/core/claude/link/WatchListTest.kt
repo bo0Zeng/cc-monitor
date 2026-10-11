@@ -28,6 +28,7 @@ class WatchListTest {
             cmd: String,
             args: Map<String, Any?>?,
             withinMs: Long,
+            blocking: Boolean,
         ): Reply {
             if (cmd != StreamWatch.COMMAND) return Reply.LinkDown
             @Suppress("UNCHECKED_CAST")

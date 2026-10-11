@@ -198,7 +198,8 @@ pub async fn transfer_call(
     Ok(v)
 }
 
-/// 订阅那一格的守卫：**流被丢掉 = 停订**。没收场就经开它的那条流发 `transfer-stop`；无论如何把中继摘掉。
+/// 订阅那一格的守卫：**流被丢掉 = 停订**。没收场就经开它的那条流发 `transfer-stop`；无论如何把中继摘掉 ——
+/// 只摘**自己那一份**：本机后端重起之后票号从头数，同一个号可能已经是新开的那一趟（旧流的守卫晚一步才落）。
 struct WatchGuard {
     id: String,
     state: Arc<watch::Sender<Snap>>,
@@ -207,7 +208,14 @@ struct WatchGuard {
 
 impl Drop for WatchGuard {
     fn drop(&mut self) {
-        relays().remove(&self.id);
+        {
+            let mut g = relays();
+            if g.get(&self.id)
+                .is_some_and(|r| Arc::ptr_eq(&r.state, &self.state))
+            {
+                g.remove(&self.id);
+            }
+        }
         if self.state.borrow().end.is_some() {
             return;
         }

@@ -323,7 +323,7 @@ describe("重启后各台都报完了、组员一个都没回来的组不留空�
     (store.tabs.get("a") as Tab).group = "h";
     tm.markOriginSeen(LOCAL_ORIGIN);
     tm.markOriginSeen("pi" as never);
-    expect(prefs.collections.map((c) => c.id), "各台各自报完不算：等壳那一拍").toEqual(["g", "h"]);
+    expect(prefs.collections.map((c) => c.id), "各台各自报完不算：等壳那一刻").toEqual(["g", "h"]);
     tm.markAllListed();
     expect(prefs.collections.map((c) => c.id)).toEqual(["h"]);
     expect([...prefs.savedGroupOf]).toEqual([]);

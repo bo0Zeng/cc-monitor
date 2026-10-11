@@ -77,7 +77,7 @@ class SshConnectionCloseThreadTest {
         assertClosedOffTheMainThread(produced.single())
     }
 
-    /** 握手失败路径：主线程上连不上一台主机时每次都走。 */
+    /** 握手失败路径：主线程上与一台主机断开时每次都走。 */
     @Test(timeout = WALL_CEILING_MS)
     fun aFailedConnectClosesOffTheMainThread() {
         val mgr = realDispatcherManager { throw IOException("造出来的握手失败") }

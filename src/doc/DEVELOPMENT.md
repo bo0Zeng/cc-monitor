@@ -16,6 +16,7 @@
 | Windows：WebView2 Runtime | Windows 11 自带，Windows 10 [手装](https://developer.microsoft.com/microsoft-edge/webview2/) | — |
 | Linux：WebKitGTK 等 | `libwebkit2gtk-4.1-dev` · `libgtk-3-dev` · `libayatana-appindicator3-dev` · `librsvg2-dev` | `pkg-config --modversion webkit2gtk-4.1` |
 | e2e 另需 | `tmux` · `jq` · `Xvfb`（GUI 那几套） | — |
+| 手机端另需 | JDK 21 · Android SDK（不要 NDK），见 [`src/mobile/README.md`](../mobile/README.md) | `java -version` |
 
 ---
 
@@ -78,9 +79,9 @@ cargo clippy --all-targets
 
 ### 门禁
 
-- `npm run gate`（＝ `bash tests/scripts/gate.sh`）：出货前的唯一闸门，逐格跑 cargo（三处）· npm · 各类判据，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。先跑它、看见 OK，再单独提交。
+- `npm run gate`（＝ `bash tests/scripts/gate.sh`）：全量门禁，格的唯一名单，逐格跑 cargo（三处）· npm · 各类判据 · e2e，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。它故意不提交任何东西。
   每一趟落一张收据（位置由 `GATE_RECEIPT` 定，默认在构建目录里）：真跑过哪几格、每格毫秒数（`ms`）、e2e 前置编译与整趟墙钟。`GATE_ONLY="<格> …"` 只跑点名的几格（e2e 可写组名 `e2e`），裁决行是 `GATE: PARTIAL`；CI 的 Linux job 就是这么调它的。
-- 平时不直接敲 `npm run gate`，走这几个入口（都在 `tests/scripts/`，跑法见各自头注与 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
+- 平时不直接敲 `npm run gate`，也不拿它当调试回路；写的时候只跑改到的那几块测试，之后走这几个入口（都在 `tests/scripts/`，跑法见各自头注与 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
   - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿锁；两棵 Rust 树的全部单测 ＋ 整套 vitest，改到手机读的东西时加跑手机的 ktlint · detekt · 单测；跑哪几条见它的头注）。
   - 合并用的工作树推送之前：`bash tests/scripts/gate-affected.sh --trust-ci`（按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <合并工作树名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。
   - 打发版标签之前：`bash tests/scripts/gate-clean.sh`（清掉会话变量、排门禁锁的全量一趟，`GATE: OK` 才打）。

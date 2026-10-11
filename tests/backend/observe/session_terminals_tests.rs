@@ -33,8 +33,8 @@ fn unix_secs() -> u64 {
 }
 
 /// `pid` 已经 exec 成 `comm` 并且新映像的环境装好了。只看 `comm` 不够：exec 时内核先换进程名、后记下新映像的
-/// 环境区 —— 中间那一拍读 `/proc/<pid>/environ` 回 0 字节（`proc_env_var` 照实答「这一刻读不到」）。
-/// 机器忙时判据正好落进这一拍 ⇒ 间歇红（紧跟着 `comm` 变了就读，本机 3000 趟里 2985 趟读到 0 字节）。
+/// 环境区 —— 中间那一刻读 `/proc/<pid>/environ` 回 0 字节（`proc_env_var` 照实答「这一刻读不到」）。
+/// 机器忙时判据正好落进这一刻 ⇒ 间歇红（紧跟着 `comm` 变了就读，本机 3000 趟里 2985 趟读到 0 字节）。
 fn exec_settled(pid: u32, comm: &str) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == comm)
         && std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|e| !e.is_empty())
@@ -106,7 +106,7 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
         .expect("读不到 pane_pid");
     // 那个「claude」（pane 里的进程）自己的环境里有 TMUX / TMUX_PANE —— tmux 注的。
     //   先等 exec 成 `sleep` 做完（`exec_settled`）：exec 之前读到的环境是 fork 出来那一份（也有 TMUX），只等 TMUX 出现
-    //   会在 exec 那一拍之前就放行，下面那一问落进 exec 当中 ⇒ 判「取不到」（负载下并发跑红过：Unreadable ≠ Detached）。
+    //   会在 exec 那一刻之前就放行，下面那一问落进 exec 当中 ⇒ 判「取不到」（负载下并发跑红过：Unreadable ≠ Detached）。
     assert!(wait_until(|| exec_settled(pane_pid, "sleep")
         && matches!(
             crate::platform::proc::proc_env_var(pane_pid, "TMUX"),

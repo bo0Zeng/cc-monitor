@@ -2,7 +2,7 @@
 //! `src/shared/copy/table.json`（在表里 = 对外，不在表里 = 不对外，没有第三种）。
 //!
 //! 要求：「所有对外文案与报错都从一张表来（结构化的 key → 文本，插值点留在表里）」。
-//! 这一拍只有一处用它（`byte_table::Refusal::say`，那几个 `deploy.*` 拒绝句）；
+//! 今天只有一处用它（`byte_table::Refusal::say`，那几个 `deploy.*` 拒绝句）；
 //! 全量抽表在最后一波。
 //!
 //! # 纪律（与 TS 那一侧同一套，判据住 `tests/copy/copy-table.vitest.ts`）

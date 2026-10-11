@@ -20,7 +20,7 @@
  * # 射程
  *
  * - jsdom 里渲染的是**面板**，不是真 app 窗口。主窗口启动时那条（`src/frontend/ui/main.ts`）
- *   `P12` 的写区够不到，今天没有 ⇒ 从没打开过设置的用户看不到。这一条本文件盖不到。
+ *   `P12` 当时够不到，今天没有 ⇒ 从没打开过设置的用户看不到。这一条本文件盖不到。
  * - 不判样式（条是不是够显眼）。那归 `src/frontend/ui/styles.css` 与 `css-ledger` 那一族。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

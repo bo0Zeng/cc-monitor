@@ -446,8 +446,8 @@ else bad "按 sid 结束：实得 $R（E 在=$(pane_alive "$PE" && echo 是 || e
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$((skip_ver + skip)) WAIVED=$waived ====="
-# 本轮跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。
-echo "（本轮 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)；用掉登记豁免 $waived 条；版本不够跳过 $skip_ver 条）"
+# 这一趟跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。
+echo "（这一趟 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)；用掉登记豁免 $waived 条；版本不够跳过 $skip_ver 条）"
 # ⚠ **这里刻意不写数字地板**，门禁与 CI 也都不钉本套件的断言条数（只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`）。
 #   这里是**导出式自检**：判定表有几行、就必须尝试过几行。加一行用例不用改这里，而它照样挡得住「静默跳过」。
 [ "$skip" -eq 0 ] || { echo "有 $skip 条被跳过 —— 本套件不接受**未登记**的 skip（造不出的名字要进 waiver_reason 并写明纯函数轨怎么覆盖它）"; exit 1; }

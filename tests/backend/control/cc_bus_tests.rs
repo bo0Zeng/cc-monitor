@@ -10,7 +10,7 @@ use serde_json::json;
 /// 定框 `K33` 逐字「**不要有什么 bash 脚本**」，而本模块今天**每一条**都在转调
 /// cc-bus 的脚本。`K-R111` 摸底把这件事登记为「后端那一侧也还有活」，
 /// `KR113D2` 逼出一次裁定：**收，还是不收，都要落成盘上看得见的东西**。
-/// 本轮裁的是**乙（不收）** —— 理由逐条写在下面第三栏，**不是一句「以后再说」**。
+/// 裁的是**乙（不收）** —— 理由逐条写在下面第三栏，**不是一句「以后再说」**。
 ///
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED` 与 `cli_control::NOT_ON_CLI`
 ///（逐字：「把『为什么这条不上』写成**数据**，好让机检对着它比 —— 散文里说一遍，
@@ -147,7 +147,7 @@ fn every_shelled_out_command_carries_a_written_ruling() {
     assert!(
         ghosts.is_empty(),
         "`TRANSCALLS` 里这几条**今天已经不转调了**：{ghosts:?} —— 裁定过期了，\n\
-             收进后端的那一拍要**同轮**把它这一行删掉（不删就是一条幽灵，\n\
+             收进后端时要**同时**把它这一行删掉（不删就是一条幽灵，\n\
              下一个人会照着一份不成立的理由做判断）。"
     );
     for (cmd, face, why, unlock) in TRANSCALLS {
@@ -599,7 +599,7 @@ fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
 /// ★★**跨语言金样**：界面直接收的 cc-bus 那几份成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
 ///
 /// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线 · 发消息 · 收掉 · 派生 · 广播五件从这一拍起由界面经通道直接说
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线 · 发消息 · 收掉 · 派生 · 广播五件由界面经通道直接说
 /// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
 /// 各格异源：请求样例过**生产**解析器（`parse_send` / `parse_kill` / `parse_spawn` / `parse_broadcast`）·

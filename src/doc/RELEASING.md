@@ -51,7 +51,7 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 
 下面这张表是 Release 资产的**登记**：资产名、由哪个 job 上传、进哪份校验和。`release.yml` 两处发布步骤的 `files:` 与它两向相等，两份校验和由各自 job 里的生成步骤逐个算、算的那几份也与它两向相等（门禁 `release-gate` 那一格核）。改资产名先改这张表。
 
-🔴 **手机端照它下载**：手机端（cc-monitor-mobile）从 Release 下载两个远端后端，按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验。后端两行（两个 musl 目标 x86_64 / aarch64）与校验和文件名不随手改；要改就与手机端同拍。
+手机端今天不从 Release 下后端：它连上一台只核那台后端的 `BUILD_ID` 与自己这一版是否相同，不同就提示那台要更新，自己不上传、不安装 `ccm`（远端的后端由桌面端部署）。后端两行（两个 musl 目标 x86_64 / aarch64）与 `SHA256SUMS-linux.txt` 照旧是对外的资产名，不随手改。
 
 <!-- 发版资产登记：起 -->
 | 资产 | job | 校验和 | 是什么 |

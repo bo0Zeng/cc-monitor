@@ -31,7 +31,7 @@
  * **两条都办不到，理由不是懒：**
  *
  * - 装插件要改 `package.json` ＋ `package-lock.json`；换 stylelint 规则要改
- *   `.stylelintrc.json`。**三份都不在本轮写区**（写区只有 `src/frontend/ui/styles.css` ·
+ *   `.stylelintrc.json`。**三份这里都不改**（改的只有 `src/frontend/ui/styles.css` ·
  *   `src/frontend/ui/styles/` 下的 CSS · 新立的判据文件）。
  * - 而且那个插件**买不到本格 ⑤ 的反方向**：它只看「用了没定义」，
  *   看不见「定义了没人用」——而现打逮到的两条真缺陷恰好全在反方向（见 ⑤c）。
@@ -466,7 +466,7 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
 // 以及同节「**没判的**：一般形式『同一个状态名不得同时出现在两种载体里』今天没有判据」—— 本格补的就是这一句。
 // 量具 `tests/evidence/S30-css-conventions.ts::stateCarriers`（两种形的定义与取法写在那边的头注）。
 //
-// 🔴 立格那一拍现打逮到三处，**当拍改掉，没有登记**（外观不变：选择器特异度逐条同档或无竞争者，见 `W5-AUX.md §2`）：
+// 🔴 立格时现打逮到三处，**当拍改掉，没有登记**（外观不变：选择器特异度逐条同档或无竞争者，见 `W5-AUX.md §2`）：
 //   · 名字形 `conf`：`views/panorama.ts` 把置信档拼成 `conf-<值>` 类名族，而全景图里同一个状态名走 `data-conf` ⇒ 改走 `data-conf`；
 //   · 名字形 `kind`：`views/history.ts` · `settings/data-section.ts` 拼 `kind-<值>` 类名族，而另三处走 `data-kind` ⇒ 改走 `data-kind`；
 //   · 同一处写两遍：`settings/remote-section.ts` 的缺口行把 `g.kind` 同时拼进类名 `remote-gap-<kind>` 又写进 `data-kind` ⇒ 类名那一份摘掉。
@@ -529,9 +529,9 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "CSS Modules（`rot-editor.module.css`）：给 kit 按钮挂兜底开关的样子类；哈希过的类名，开 / 关走 `aria-pressed`，不是状态名",
 } as const;
 
-/** 名字形的已知违例（今天空：立格那一拍逮到的两处已改）。 */
+/** 名字形的已知违例（今天空：立格时逮到的两处已改）。 */
 const STATE_NAME_KNOWN_BAD: Readonly<Record<string, string>> = {} as const;
-/** 同一处写两遍的已知违例（今天空：立格那一拍逮到的一处已改）。 */
+/** 同一处写两遍的已知违例（今天空：立格时逮到的一处已改）。 */
 const STATE_SAME_WRITE_KNOWN_BAD: Readonly<Record<string, string>> = {} as const;
 
 describe("S30 ⑧ 同一个状态名不许同现于类名与 data-* 两种载体（一般形式）", () => {
@@ -615,7 +615,7 @@ describe("S30 ⑧ 同一个状态名不许同现于类名与 data-* 两种载体
 // 另一条声明整条盖住它的属性（同名，或后写的简写盖先写的长写）· 按级联那一条赢（重要性 → 层 → 窗口清单里的文件先后 →
 // 同文件里的规则先后 → 同规则里的声明先后）· 而且在**每一扇**载入它那份文件的窗口里都这样。
 //
-// 🔴 立格那一拍现打逮到一处，当拍删掉（外观不变 —— 死声明从没生效过）：`src/frontend/ui/styles.css` 的 `.status-tasks` 里
+// 🔴 立格时现打逮到一处，当拍删掉（外观不变 —— 死声明从没生效过）：`src/frontend/ui/styles.css` 的 `.status-tasks` 里
 //   `line-height: 16px` 紧跟着被 `font: inherit` 整条盖掉（stylelint 的 `declaration-block-no-shorthand-property-overrides`
 //   同一处；`css-ledger` ④ 的上限随之 36 → 35）。若本意是 16px 要挪到 `font` 之后 —— 那会改可见样式，要目视，没做。
 //
@@ -630,7 +630,7 @@ const DECLS: CssDecl[] = cssDeclarations(REPO_ROOT, DECL_ANOMALIES);
 const WINDOWS = windowSheets(REPO_ROOT);
 const LAYERS = layerOrder(REPO_ROOT);
 
-/** 死声明的已知违例（今天空：立格那一拍逮到的一处已删）。键：`文件:行 选择器 { 属性 }`。 */
+/** 死声明的已知违例（今天空：立格时逮到的一处已删）。键：`文件:行 选择器 { 属性 }`。 */
 const DEAD_DECL_KNOWN: Readonly<Record<string, string>> = {} as const;
 
 describe("S30 ⑨ 活规则里的死声明", () => {

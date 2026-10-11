@@ -1,8 +1,10 @@
 package com.ccmonitor.mobile.core.ui.feedback
 
 import android.content.ClipData
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -10,13 +12,21 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -148,13 +158,34 @@ fun AppSnackbarHostScaffold(
             AppSnackbarController(hostState, scope) { text -> clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("cc-monitor", text))) }
         }
 
-    CompositionLocalProvider(LocalAppSnackbar provides controller) {
+    // 提示条此刻占了底下多高（没有提示 ⇒ 0）：悬浮按钮按它往上让（[clearOfNotice]），两者同处一个排版，不互相盖。
+    val band = remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalAppSnackbar provides controller, LocalNoticeBand provides band) {
         Box(modifier) {
             content()
             SnackbarHost(
                 hostState = hostState,
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .onSizeChanged { band.value = with(density) { it.height.toDp() } },
             )
         }
     }
+}
+
+/** 根部那一个提示宿主此刻占的底边高度（没装宿主 ⇒ 恒 0：那一屏没有提示）。 */
+private val LocalNoticeBand = compositionLocalOf<State<Dp>> { mutableStateOf(0.dp) }
+
+/**
+ * 悬浮按钮用：提示出来时按它占的高度往上让，退了再落回（动画）。提示放在根部（撤销要跨屏活着），
+ * 不在各屏 Scaffold 的 snackbarHost 里，所以由这一格把两者接到同一个排版上。每个悬浮按钮都要接（判据 `FabClearsNoticeTest`）。
+ */
+@Composable
+fun Modifier.clearOfNotice(): Modifier {
+    val band by LocalNoticeBand.current
+    val lift by animateDpAsState(band, label = "clearOfNotice")
+    return this.padding(bottom = lift)
 }

@@ -59,7 +59,7 @@ tasks.named<Test>("test") {
 
 dependencies {
     implementation(project(":core-copy")) // 上屏句子从文案表取（取文口住 core-copy）
-    // 用 api：RemoteCommandChannel 出现在公开构造参数里（ClaudeSessionCatalog），消费方的 compile classpath 上要见到它。
+    // 用 api：RemoteExecutor 出现在公开构造参数里（OneShot），消费方的 compile classpath 上要见到它。
     api(project(":core-remote"))
     implementation(libs.moshi)
     // 传输用 Flow<ByteArray>。用 -core（纯 JVM artifact），不引 Android 耦合。

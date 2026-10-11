@@ -24,7 +24,7 @@ fn response_head_keeps_framing_and_forces_close() {
 /// 1. socket 上有读期限时，`read_head` 面对一条**半开**连接（只发半个请求头、
 ///    **不关**连接）会**报错返回**，而不是永久挂住；
 /// 2. 那条错误**没有被任何一层当成「再试一次」** —— `read_head` 直接把它交出来。
-///    ⭐ 这第 2 条是本轮最要紧的一格：一旦哪层重试，期限就从「阻塞有上限」
+///    ⭐ 这第 2 条是最要紧的一格：一旦哪层重试，期限就从「阻塞有上限」
 ///    退化成「轮询」，而轮询正是零定时器护栏要防的东西。
 ///
 /// # 为什么这里用**测试自己选的** 200ms，而不是生产那 30 秒
@@ -55,7 +55,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     //    —— 那一屏与「跑完了、没有新红」几乎分不开（判定行会整条消失）。
     //    ⇒ 把读搬到一条工作线程上，用 `recv_timeout` 给它一个**远宽于**期限的上界（兜底的那一个数），
     //      超了就 `panic!` ⇒ **把挂住换成红**。这条纪律本文件 `送 5x` 那几处已经在用。
-    //    〔本轮 `MU5` 实测：把 `http1::read_head` 的读循环改成「`WouldBlock` 也 `continue`」
+    //    〔`MU5` 实测：把 `http1::read_head` 的读循环改成「`WouldBlock` 也 `continue`」
     //      —— 没有这一层的话它整条判据挂死，有了这一层它**红**。〕
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {

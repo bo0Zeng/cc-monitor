@@ -22,7 +22,7 @@
 //!
 //! ## ✅ 2026-09-20：**在一台真 Windows 11 桌面上量过了，然后才改的**
 //!
-//! 之前这一节的结论是读源码推出来的，处置写着「建议，本刀没做 —— 没有 Windows 机器，
+//! 之前这一节的结论是读源码推出来的，处置写着「建议，没做 —— 没有 Windows 机器，
 //! 改了验不了」。那个理由现在不成立了：本机那台 Win11 虚拟机有活的交互桌面（session 1），
 //! 一个 scratchpad 探针（`tao` ＋ `eframe`，与本仓同版本、同 `glow` 后端、
 //! 清单与 `monitor.exe` 逐字同形 ⇒ 进程起来时是 `UNAWARE`）在那上面跑出四格：
@@ -115,7 +115,7 @@ use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_hit_rows, HitTally, RenderTally};
-use super::select::{self, Action, Intent, Selection, TypeAhead};
+use super::select::{self, Action, Intent, Item, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, PromptKind, WriteBoard, WriteOp, WritePrompt};
@@ -586,6 +586,14 @@ pub struct FileWindow {
     pub edit_tab: bool,
     /// 这个目录视图挂在窗口里（`Workspace` 置）：打开一份文本 ⇒ 交给窗口开一个编辑页，不在这一页里开。
     pub(super) in_workspace: bool,
+    /// 这个标签页是一张图的**查看页**（稿 ⑬：标签上图片图标 ＋ 文件名，正文是画面、不是列表）。逻辑住 [`super::imgview`]。
+    pub view_tab: bool,
+    /// 摆着的那一张（`None` ＝ 不是查看页）。**UI 线程自己的**。
+    pub(super) viewing: Option<super::imgview::Viewer>,
+    /// 要开的那一张（目录页交给窗口那一级：开一个查看页 / 切到正摆着它的那一页）。
+    pub(super) want_view: Option<super::imgview::Viewer>,
+    /// 这扇窗里所有解好的图（预览 · 「看一眼」· 查看页共用一份；`Workspace` 让每个标签拿同一份）。
+    pub pictures: super::picture::Pictures,
     /// 要开的那一份（目录页交给窗口那一级：开一个编辑页 / 切到已开着的那一页）。
     pub(super) want_edit: Option<EditWant>,
     /// 编辑页头上点了面包屑那一段 / 「在列表里显示」：窗口那一级开一个目录页到那里（或切到已在那里的那一页）。
@@ -612,15 +620,18 @@ pub struct EditWant {
     pub refused: Option<String>,
 }
 
-/// 一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
+/// 一个摆着的右键菜单：**在哪儿 · 列哪几项（分几组）· 对几项说话**。
 ///
-/// 🔴 那几项是**开菜单那一刻**按 [`select::actions_for`] 算好的快照 ——
+/// 🔴 那几项是**开菜单那一刻**按菜单那张表（[`select::menu_groups`]）算好的快照 ——
 /// 每帧重算要扫一遍整摞行找选中（64 万行那一档每帧一趟 O(n)）。
 /// 快照不会过时：菜单摆着的时候键盘不接（[`FileWindow::apply_keys`] 的闸），
 /// 点别处菜单先关；而点菜单上那一项时 [`FileWindow::perform`] **再问一次**那张表。
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuAt {
     pub at: egui::Pos2,
+    /// 表里这一种选中的那几组；每一项带着「这一份做不了」那一句（[`select::blocked`]；做得了 ⇒ `None`）。
+    pub groups: Vec<Vec<(Item, Option<String>)>>,
+    /// 这一刻真做得了的那几件（[`select::actions_for`]；判据与键盘那一侧对账用）。
     pub actions: Vec<Action>,
     pub n: usize,
     /// 单选的那一份归某一格 ⇒ 菜单多一项「在计划里看 · {标题}」（那一项的字；不归 ⇒ `None`）。
@@ -667,7 +678,7 @@ impl FileWindow {
 
     /// 🔴 **断线时哪几件做不了 —— 唯一一处**：命令栏每一颗 · 菜单每一项 · 键盘都问它。
     /// 要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏 · 选中项上的每一件，打开目录除外）⇒ 「离线 · 只读」；
-    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说连不上。
+    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说断开。
     pub fn offline_cmd(&self, c: super::chrome::Cmd) -> Option<String> {
         use super::chrome::Cmd;
         let needs_machine = match c {
@@ -797,6 +808,10 @@ impl FileWindow {
             hit_rows: (u64::MAX, u64::MAX, Arc::new(Vec::new())),
             edit_tab: false,
             in_workspace: false,
+            view_tab: false,
+            viewing: None,
+            want_view: None,
+            pictures: Default::default(),
             want_edit: None,
             want_dir: None,
             want_reveal: None,
@@ -810,7 +825,7 @@ impl FileWindow {
 
     /// 重新列一次当前目录。**本机同步做完；远端扔给 tokio，不堵住 UI 线程。**
     pub fn reload(&self) {
-        // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「连不上」）：列表进过期态、照常摆着，
+        // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「断开」）：列表进过期态、照常摆着，
         //   连上之后窗口那一级把每个标签页重列一遍（`Workspace::settle_link`）。
         if self.link.offline() && !self.listing.rows.lock().unwrap().is_empty() {
             return;
@@ -1589,9 +1604,40 @@ impl FileWindow {
     ///
     /// 回值 = 真的换了目录。
     pub fn apply_click(&mut self) -> bool {
-        match self.tally.clicked {
-            Some(i) => self.activate(i),
+        let Some(i) = self.tally.clicked else {
+            return false;
+        };
+        let dir = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .map(Listed::opens_as_dir);
+        match dir {
+            Some(true) => self.activate(i),
+            // 文件：同回车（图片 ⇒ 查看页 · 其余 ⇒ 编辑页）；不换目录。
+            Some(false) => {
+                self.open_file(i, None);
+                false
+            }
             None => false,
+        }
+    }
+
+    /// 打开第 `i` 行那份文件（回车 · 双击）：窗口解得开的图 ⇒ 查看页；其余 ⇒ 编辑页（做不了的那一页上说为什么）。
+    pub fn open_file(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        let image = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .is_some_and(super::imgview::viewable);
+        if image {
+            self.begin_view(i)
+        } else {
+            self.begin_edit(i, ctx)
         }
     }
 
@@ -1976,18 +2022,23 @@ impl FileWindow {
                         .color(pal.text2),
                 );
                 let w = ui.available_width();
-                egui::ComboBox::from_id_salt("filewin-cross-machine")
-                    .width(w)
-                    .selected_text(format!(
-                        "{}  {}",
-                        egui_phosphor::regular::DESKTOP,
-                        shown_machine
-                    ))
-                    .show_ui(ui, |ui| {
-                        for m in &machines {
-                            ui.selectable_value(&mut p.machine, m.clone(), m);
-                        }
-                    });
+                let entries: Vec<super::kit::Entry> = machines
+                    .iter()
+                    .map(|m| {
+                        super::kit::Entry::Row(
+                            super::kit::MenuRow::new("", m.clone()).checked(*m == p.machine),
+                        )
+                    })
+                    .collect();
+                if let Some(k) = super::kit::select_field(
+                    ui,
+                    "filewin-cross-machine",
+                    w,
+                    format!("{}  {}", egui_phosphor::regular::DESKTOP, shown_machine),
+                    &entries,
+                ) {
+                    p.machine = machines[k].clone();
+                }
                 ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new(copy_text("rsFilewinCrossCopy.prompt.dir", &[]))
@@ -3262,8 +3313,13 @@ impl FileWindow {
 
     /// 头条左边：那台 › 面包屑（只留最后两级）› 文件名；点哪一段回到那一级（交回要去的目录）。
     fn edit_crumbs(&self, ui: &mut egui::Ui, f: &EditFacts) -> Option<String> {
+        self.path_crumbs(ui, &f.path)
+    }
+
+    /// 那台 › 面包屑（只留最后两级）› 文件名（编辑页 · 查看页的头条共用）；点哪一段交回要去的目录。
+    pub(super) fn path_crumbs(&self, ui: &mut egui::Ui, path: &str) -> Option<String> {
         let p = super::theme::palette(ui.ctx());
-        let (path, name) = (&f.path, &f.name);
+        let name = &super::source::remote_basename(path).to_string();
         let machine = self.source.label();
         let crumbs = super::source::breadcrumbs(&super::source::parent_dir(&path));
         let mut go = None;
@@ -3343,34 +3399,31 @@ impl FileWindow {
         let p = super::theme::palette(ui.ctx());
         let (pane, path, name) = (&f.pane, &f.path, &f.name);
         let (idle, dirty, over, big) = (f.idle, f.dirty, f.over, f.big);
-        super::kit::menu(
-            ui,
-            egui::RichText::new(egui_phosphor::regular::DOTS_THREE).size(16.0),
-            |ui| {
-                if ui
-                    .button(copy_text("rsFilewinEditPage.more.reload", &[]))
-                    .clicked()
-                {
-                    acts.reopen = true;
-                    ui.close();
-                }
-                if ui
-                    .button(copy_text("rsFilewinEditPage.more.download", &[]))
-                    .clicked()
-                {
-                    acts.pull = true;
-                    ui.close();
-                }
-                if ui
-                    .button(copy_text("rsFilewinEditPage.more.reveal", &[]))
-                    .clicked()
-                {
-                    *go = Some(super::source::parent_dir(path));
-                    self.want_reveal = Some(name.clone());
-                    ui.close();
-                }
-            },
-        );
+        use egui_phosphor::regular as ph;
+        let entries = [
+            (
+                ph::ARROW_CLOCKWISE,
+                copy_text("rsFilewinEditPage.more.reload", &[]),
+            ),
+            (
+                ph::DOWNLOAD_SIMPLE,
+                copy_text("rsFilewinEditPage.more.download", &[]),
+            ),
+            (
+                ph::LIST_MAGNIFYING_GLASS,
+                copy_text("rsFilewinEditPage.more.reveal", &[]),
+            ),
+        ]
+        .map(|(icon, label)| super::kit::Entry::Row(super::kit::MenuRow::new(icon, label)));
+        match super::kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), &entries).1 {
+            Some(0) => acts.reopen = true,
+            Some(1) => acts.pull = true,
+            Some(2) => {
+                *go = Some(super::source::parent_dir(path));
+                self.want_reveal = Some(name.clone());
+            }
+            _ => {}
+        }
         let label = if self.edits.saving().is_some() {
             copy_text("rsFilewinEditPage.state.saving", &[])
         } else {
@@ -4006,7 +4059,7 @@ impl FileWindow {
     /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
     /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
     fn modal_up(&self) -> bool {
-        self.asking_up() || self.editing.is_some() || self.edit_tab
+        self.asking_up() || self.editing.is_some() || self.edit_tab || self.showing_picture()
     }
 
     /// 编辑面以外的那几个框有没有一个摆着。
@@ -4178,7 +4231,7 @@ impl FileWindow {
         };
         match one {
             Some((_, true)) => self.perform(Action::Open, ctx),
-            Some((i, false)) => self.begin_edit(i, ctx),
+            Some((i, false)) => self.open_file(i, ctx),
             None => {
                 self.key_notice = Some(select::refusal(Action::Open, self.selection.len()));
                 false
@@ -4215,6 +4268,7 @@ impl FileWindow {
             (Action::Delete, _) => self.delete_picked(&idx, ctx),
             (Action::Open, [i]) => self.activate(*i),
             (Action::Edit, [i]) => self.begin_edit(*i, ctx),
+            (Action::View, [i]) => self.begin_view(*i),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
             // 一项或多项。
@@ -4355,29 +4409,60 @@ impl FileWindow {
         true
     }
 
-    /// 🔴 **胶水**：列表说「第 `i` 行被右键点了」→ 选中态按右键的手感变 → 摆出菜单。
+    /// 🔴 **胶水**：列表说「第 `i` 行被右键点了」→ 选中态按右键的手感变 → 摆出菜单；
+    /// 说「空白处被右键点了」→ 清掉选中 → 摆出对这个目录的菜单（新建 · 上传 · 终端）。
     ///
     /// `at` = 菜单摆在哪儿（指针那一刻的位置；判据直接喂）。
     pub fn apply_menu_click(&mut self, at: egui::Pos2) -> bool {
-        let Some(i) = self.tally.menu_clicked else {
+        let row = self.tally.menu_clicked;
+        if row.is_none() && !self.tally.menu_blank {
             return false;
-        };
+        }
         if self.modal_up() {
             return false;
         }
-        let (actions, n) = {
+        let (kind, why, actions, n) = {
             let rows = self.listing.rows.lock().unwrap();
-            self.selection.pick_for_menu(&rows, i);
+            match row {
+                Some(i) => self.selection.pick_for_menu(&rows, i),
+                None => self.selection.clear_picked(),
+            }
             let idx = self.selection.picked_indices(&rows);
             let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
-            (select::actions_for(&picked), idx.len())
+            let kind = select::picked_kind(&picked);
+            // 表里有、这一份做不了的那几件 ⇒ 那一句（菜单上灰着说）。
+            let why: Vec<(Action, String)> = select::menu_groups(kind, false)
+                .into_iter()
+                .flatten()
+                .filter_map(|it| match it {
+                    Item::Act(a) => select::blocked(a, &picked).map(|w| (a, w)),
+                    _ => None,
+                })
+                .collect();
+            (kind, why, select::actions_for(&picked), idx.len())
         };
         self.key_notice = None;
+        // 归属问到了、单选的那一份归某一格 ⇒ 表里「带计划」那一组。
         let plan = self
             .picked_owner()
             .map(|(_, o)| super::plan::menu_label(&o));
+        let groups = select::menu_groups(kind, plan.is_some())
+            .into_iter()
+            .map(|g| {
+                g.into_iter()
+                    .map(|it| {
+                        let w = why
+                            .iter()
+                            .find(|(a, _)| it == Item::Act(*a))
+                            .map(|(_, w)| w.clone());
+                        (it, w)
+                    })
+                    .collect()
+            })
+            .collect();
         self.menu = Some(MenuAt {
             at,
+            groups,
             actions,
             n,
             plan,
@@ -4391,63 +4476,66 @@ impl FileWindow {
         egui::Id::new(("filewin-row-menu", serial))
     }
 
-    /// 画右键菜单；点了哪一项就交给 [`Self::perform`]。点别处 / Esc ⇒ 收掉。
+    /// 菜单上的一项此刻做不了的那一句：这一份做不了（开菜单时算好的）· 这台做不到 · 断着线。
+    fn item_refusal(&self, it: Item, row_why: &Option<String>) -> Option<String> {
+        use super::chrome::Cmd;
+        if row_why.is_some() {
+            return row_why.clone();
+        }
+        match it {
+            Item::Act(a) => self.unavailable_here(a).or_else(|| self.offline_refusal(a)),
+            Item::InPlan => None,
+            Item::Mkdir => self.offline_cmd(Cmd::Mkdir),
+            Item::NewFile => self.offline_cmd(Cmd::NewFile),
+            Item::Upload => self.offline_cmd(Cmd::Upload),
+            Item::Term => self.offline_cmd(Cmd::Term),
+        }
+    }
+
+    /// 画右键菜单（经 kit 那一种菜单项）；点了哪一项就交出去。点别处 / Esc ⇒ 收掉。
     fn menu_ui(&mut self, ui: &mut egui::Ui) {
         let Some(m) = self.menu.clone() else {
             return;
         };
+        let ctx = ui.ctx().clone();
+        let rows: Vec<Vec<super::kit::MenuRow>> = m
+            .groups
+            .iter()
+            .map(|g| {
+                g.iter()
+                    .map(|(it, why)| {
+                        super::kit::MenuRow::new(it.icon(), it.label(m.n, m.plan.as_deref()))
+                            .key(it.shortcut().map(|k| ctx.format_shortcut(&k)))
+                            .danger(it.danger())
+                            .blocked(self.item_refusal(*it, why))
+                    })
+                    .collect()
+            })
+            .collect();
+        let (mut entries, at) = super::kit::grouped(rows);
+        if entries.is_empty() {
+            entries.push(super::kit::Entry::Note(MENU_EMPTY.to_string()));
+        }
         let mut open = true;
-        let mut chosen: Option<Action> = None;
-        let mut want_plan = false;
-        egui::Popup::new(
-            Self::menu_id(m.serial),
-            ui.ctx().clone(),
-            egui::PopupAnchor::Position(m.at),
-            ui.layer_id(),
-        )
-        .kind(egui::PopupKind::Menu)
-        .open_bool(&mut open)
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
-        .show(|ui| {
-            if m.actions.is_empty() {
-                ui.label(MENU_EMPTY.as_str());
-            }
-            for a in &m.actions {
-                // 「在计划里看」放在删除那一项之前、隔一道线（稿 06 第 3 张）。
-                if *a == Action::Delete {
-                    if let Some(label) = &m.plan {
-                        let b = ui.button(format!(
-                            "{} {label}",
-                            egui_phosphor::regular::TREE_STRUCTURE
-                        ));
-                        if b.clicked() {
-                            want_plan = true;
-                        }
-                        ui.separator();
-                    }
-                }
-                // 这台做不到的那一件置灰，hover 说为什么。
-                let blocked = self.unavailable_here(*a);
-                let b = ui.add_enabled(blocked.is_none(), egui::Button::new(a.label(m.n)));
-                let b = match &blocked {
-                    Some(why) => b.on_disabled_hover_text(why),
-                    None => b,
-                };
-                if b.clicked() {
-                    chosen = Some(*a);
-                }
-            }
-        });
-        if chosen.is_some() || want_plan || !open {
+        let hit = super::kit::context_menu(ui, Self::menu_id(m.serial), m.at, &mut open, &entries)
+            .and_then(|k| at.get(k).copied())
+            .and_then(|(g, i)| m.groups.get(g).and_then(|g| g.get(i)))
+            .map(|(it, _)| *it);
+        if hit.is_some() || !open {
             self.menu = None;
         }
-        if want_plan {
-            let ctx = ui.ctx().clone();
-            self.open_in_plan(Some(ctx));
-        }
-        if let Some(a) = chosen {
-            let ctx = ui.ctx().clone();
-            self.perform(a, Some(ctx));
+        match hit {
+            Some(Item::Act(a)) => {
+                self.perform(a, Some(ctx));
+            }
+            Some(Item::InPlan) => {
+                self.open_in_plan(Some(ctx));
+            }
+            Some(Item::Mkdir) => self.run_command(super::chrome::Cmd::Mkdir, Some(ctx)),
+            Some(Item::NewFile) => self.run_command(super::chrome::Cmd::NewFile, Some(ctx)),
+            Some(Item::Upload) => self.run_command(super::chrome::Cmd::Upload, Some(ctx)),
+            Some(Item::Term) => self.run_command(super::chrome::Cmd::Term, Some(ctx)),
+            None => {}
         }
     }
 }
@@ -4469,6 +4557,12 @@ impl FileWindow {
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
         self.font_frame(ui);
         if self.edit_frame(ui) {
+            return;
+        }
+        if self.showing_picture() {
+            let ctx = ui.ctx().clone();
+            self.settle_pick_with(Some(ctx));
+            self.view_page(ui);
             return;
         }
         // 工具条（后退 · 前进 · 上一级 · 地址栏 · 搜索格）与命令栏不在这里画：
@@ -5161,7 +5255,7 @@ pub fn open_detached_seeded(
     reveal: Option<String>,
     // 书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
     bookmarks: Option<std::path::PathBuf>,
-    // 视图文件（记缩放；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放，只是不记）。
+    // 视图文件（记缩放与预览开关；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放、开预览，只是不记）。
     view: Option<std::path::PathBuf>,
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
@@ -5206,11 +5300,11 @@ pub fn open_detached_seeded(
                 // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
                 let mut ws = super::workspace::Workspace::new(w);
                 ws.theme = theme;
-                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）。
-                ws.zoom = super::workspace::Zoom::open(view);
+                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）· 预览开没开。
+                ws.restore_view(super::workspace::ViewMemo::open(view));
                 // 帧日志：设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 才开（收集「一闪一闪」的证据）。
                 ws.frame_log = super::frame_log::FrameLog::from_env();
-                cc.egui_ctx.set_zoom_factor(ws.zoom.factor());
+                cc.egui_ctx.set_zoom_factor(ws.memo.zoom());
                 Ok(Box::new(FitOnce {
                     inner: ws,
                     work: work_area,
@@ -5231,7 +5325,7 @@ mod tests;
 #[path = "../../../../tests/frontend/filewin/shell_keys_tests.rs"]
 mod keys_tests;
 
-/// 开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
+/// 开窗后第一拍（窗口几何有了的那一帧）把窗口夹进 monitor 交来的工作区，之后原样转交。
 struct FitOnce<A> {
     inner: A,
     work: Option<host_core::WorkArea>,
@@ -5261,7 +5355,7 @@ impl<A: eframe::App> eframe::App for FitOnce<A> {
     }
 }
 
-/// [`FitOnce`] 那一拍发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
+/// [`FitOnce`] 那一帧发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
 /// `crate::fit_into_work_area`（Tauri 那几扇窗也用它），再换回逻辑点。本来就在里面 ⇒ 空。
 pub(crate) fn fit_commands(
     outer: egui::Rect,

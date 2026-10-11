@@ -60,6 +60,7 @@
 //! 扣出人群的**对价**是判据⑦把本文件的处数钉死成 `REGISTRY.len()`（**一家一行**），
 //! 谁想把别处的直呼挪进来，当场红。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 pub mod claudecode;
@@ -410,6 +411,9 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 这一行说这条会话此刻进到哪一态（一轮开始 ⇒ 在跑 · 一轮完了 / 中止 ⇒ 闲着）；不说 ⇒ `None`。
+    /// 没有进程状态文件的那一家靠它（[`LocalFace::activity_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
+    pub(crate) activity: Option<fn(&str) -> Option<SessionActivity>>,
     /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
     /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
     pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
@@ -1022,6 +1026,9 @@ pub(crate) struct ChildFace {
     pub(crate) hint: fn(&str) -> bool,
     /// 一条记录自己写着的时刻（自 1970 起的毫秒；运行表的开始 · 最近动静 · 收场三个时刻用）；记录里没写 ⇒ `None`（通用层退回读到它的时刻）。
     pub(crate) written: fn(&serde_json::Value) -> Option<u64>,
+    /// 一份子运行记录（[`Self::sources`] 收的那种）⇒ 派出它的那一刻就落了盘的对上（[`ChildLink`] 的「对上」一形：父侧工具调用 id ＋ 子运行）。
+    /// 前台派出的子运行要跑完父侧才回结果，在那之前卡和运行只能靠它对上；还没落盘 / 这一家不落 ⇒ `None`（通用层下次读到这份记录再问）。
+    pub(crate) spawned: fn(&Path) -> Option<ChildLink>,
 }
 
 /// 一个上游协议的流面：把一个原始流事件（SSE `data:` 后面那段原文）折成归一事件。认不出 ⇒ 空。
@@ -1128,6 +1135,10 @@ impl RunFaces {
 
     pub(crate) fn written(&self, v: &serde_json::Value) -> Option<u64> {
         self.children.and_then(|c| (c.written)(v))
+    }
+
+    pub(crate) fn spawned(&self, child: &Path) -> Option<ChildLink> {
+        self.children.and_then(|c| (c.spawned)(child))
     }
 }
 
@@ -1410,7 +1421,7 @@ pub(crate) fn record_kind_of(path: &Path) -> Option<&'static str> {
 /// [`record_kind_of`] 的可喂夹具那一半。
 pub(crate) fn record_kind_among(registry: &[Adapter], path: &Path) -> Option<&'static str> {
     let under = |root: PathBuf| {
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        let root = Ro::canonicalize(&root).unwrap_or(root);
         path.starts_with(root)
     };
     registry
@@ -1515,7 +1526,7 @@ pub(crate) fn first_in_head(
     pick: impl Fn(&serde_json::Value) -> Option<String>,
 ) -> Option<String> {
     use std::io::{BufRead, Read};
-    let file = std::fs::File::open(p).ok()?;
+    let file = Ro::open(p).ok()?;
     let mut r = std::io::BufReader::new(file.take(HEAD_CAP));
     let mut line = Vec::new();
     let mut read = 0u64;
@@ -1675,7 +1686,7 @@ pub(crate) struct McpLook {
 
 /// 一条 MCP server 此刻的状态（中立值；各家的字由适配层翻成它；线上名即 serde 名，闭集）。
 /// 配置层（`mcp-read`）只说说得准的：停用（配置里写着）· 要登录（那一家最近一次连它时记下的、还在有效期内）· 其余 `Unknown`；
-/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 连不上 · 还在连。两处都不说「连上了」。
+/// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 断开 · 还在连。两处都不说「连上了」。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpStatus {
@@ -1692,7 +1703,7 @@ pub(crate) enum McpStatus {
 pub(crate) struct McpSaid {
     pub pending: Option<Vec<String>>,
     pub needs_login: Option<Vec<String>>,
-    /// 连不上的：名字 · 那一家写的原话（没写 ⇒ `None`）。
+    /// 断开的：名字 · 那一家写的原话（没写 ⇒ `None`）。
     pub failed: Option<Vec<(String, Option<String>)>>,
 }
 

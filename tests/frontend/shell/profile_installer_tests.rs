@@ -201,7 +201,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
     // 「**应该让用户手动点击加，也能管理删除**」⇒ **点击即执行是允许的**
     // （`§0c`：`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定），
     // 而「现在状态」那一格**根本不可能靠用户去跑** ——
-    // `R88` 就是为这件事推翻 `R87`「本件不需要起进程」那句假前提的。
+    // `R88` 就是为这件事推翻 `R87`「不需要起进程」那句假前提的。
     // ⇒ `testing.md` 规则 12：反向锚点的出路是**重新裁定**，不是删掉。
     //
     // 🔴 **先量人群再翻正**（`R88` 点名要求的那一步）：上一轮那条断言的分母
@@ -236,7 +236,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
         assert!(
             prod.contains(flag),
             "argv 里少了 `{flag}`。`-NoProfile` 是承重的：不读用户自己的 profile ——\
-                 本件刚把我们那一段从 profile 里删掉，再回头去读 profile 是自相矛盾；\
+                 这里刚把我们那一段从 profile 里删掉，再回头去读 profile 是自相矛盾；\
                  `-NonInteractive` 保证它不会弹提示等人回车，把界面挂住。"
         );
     }
@@ -259,7 +259,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
 ///
 /// `src/frontend/ui/ipc/commands.ts` 头注那「三桶」规则说：TS 侧真消费字段的命令（桶③）该用
 /// **生成物**类型。`ccm_user_path_status` 破了这条 —— 生成物要落进 `src/frontend/ui/generated/`，
-/// 而那份目录**不在 `K-R135` 的写区里**。⇒ 手写一份，并用这条判据钉住它：
+/// 而那份目录**不在 `K-R135` 的改动范围里**。⇒ 手写一份，并用这条判据钉住它：
 /// 生成物买的是「Rust 改了、TS 自动跟着变」，这一条买的是
 /// 「**Rust 改了、TS 没跟 ⇒ 当场红**」。⚠ 它买不到「TS 多写了一个 Rust 没有的字段」
 /// （那一形 `tsc` 也不会红，因为多出来的字段只是永远 `undefined`）—— 如实记，不假装。

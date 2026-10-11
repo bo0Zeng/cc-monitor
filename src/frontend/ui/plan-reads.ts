@@ -437,7 +437,7 @@ export function decodePlanList(v: unknown): PlanList {
 
 const MISS_CODES = new Set<PlanMissCode>(["no_pb", "not_workspace", "pb_unsupported", "failed", "no_view"]);
 
-/** 拒绝 ⇒ `PlanMiss`（码 ＋ 后端那一句）；连不上 ⇒ `offline`。每一问各写一处 `chan.call`，操作名是字面量（通信层判据按字面量认是哪条帧命令）。 */
+/** 拒绝 ⇒ `PlanMiss`（码 ＋ 后端那一句）；断开 ⇒ `offline`。每一问各写一处 `chan.call`，操作名是字面量（通信层判据按字面量认是哪条帧命令）。 */
 async function settle(call: Promise<Uint8Array>): Promise<unknown> {
   try {
     return readJson(await call);

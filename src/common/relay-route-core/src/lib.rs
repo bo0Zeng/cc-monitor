@@ -127,7 +127,7 @@ pub const CHORES_REL: &str = ".cc-monitor/chores.json";
 /// 〔同上〕计划「要你看」的认可与「退回」的记录（后端 `plan/review.rs` 写；计划仓本身一个字节不写）。
 pub const PLAN_REVIEW_REL: &str = ".cc-monitor/plan-review.json";
 
-/// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；连不上时照它画、跨重启还在）。
+/// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；断开时照它画、跨重启还在）。
 pub const LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
 
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。

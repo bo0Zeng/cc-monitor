@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
@@ -48,6 +50,7 @@ import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
+import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -69,10 +72,7 @@ val HOSTS_SCREEN_TITLE: String get() = copyText("mobHosts.page.title")
 val IDENTITY_SCREEN_TITLE: String get() = copyText("mobIdentity.page.title")
 
 /**
- * 服务器列表。[onConnect] 带上这台服务器的 agent 种类，落地判定（`AppNavHost.onConnectDestination`）
- * 靠它把 Codex 服务器送去只读档，而不是 Claude 的聊天屏。
- * 种类直接从行里的 `Host` 读（同步、零往返），不另查库：关着新界面的那条连接路径不进协程
- * （见 `rememberConnectAction` 的头注），为取种类加一次挂起读会改变它的时序。
+ * 服务器列表。[onConnect] 进这台上空的新对话（`AppNavHost.freshLanding`，哪一家都一样）。
  */
 @Composable
 fun HostListScreen(
@@ -138,7 +138,7 @@ fun HostListScreen(
         }
         FloatingActionButton(
             onClick = onAddHost,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).clearOfNotice().padding(24.dp),
         ) { Text("+", style = MaterialTheme.typography.titleLarge) }
     }
 }
@@ -355,11 +355,8 @@ fun HostEditorScreen(
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    var claudeDir by remember { mutableStateOf("") } // 每主机的 agent 配置目录（Claude ~/.claude / Codex ~/.codex）
     // agent 种类存档案本身；选项行遍历 `AgentProfile.ALL`，加一种 agent 这一页不用改。
     var agentProfile by remember { mutableStateOf(AgentProfile.DEFAULT) }
-    // 目录框的标签、占位与说明按「这一档走不走账号门」区分。
-    val gatedByAccount = agentProfile.requiresAccountGate
     var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
     var load by remember { mutableStateOf(if (hostId == null) HostEditLoad.Loaded else HostEditLoad.Loading) }
@@ -385,7 +382,6 @@ fun HostEditorScreen(
                 useTmux = h.sessionManager == "tmux"
                 autoReconnect = h.autoReconnect
                 group = h.groupId ?: ""
-                claudeDir = h.claudeDir ?: ""
                 // 存量值转档案，大小写不敏感（见 `ofStoredNameIgnoringCase` 的头注）。
                 agentProfile = AgentProfile.ofStoredNameIgnoringCase(h.agentKind)
                 proxyJumpHostId = h.proxyJumpHostId
@@ -461,20 +457,9 @@ fun HostEditorScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             // 遍历档案，产品名取档案的 `displayName`，不硬写；加一种 agent 这里自然多一项。
             AgentProfile.ALL.forEach { p ->
-                RadioButton(selected = agentProfile.kind == p.kind, onClick = { agentProfile = p })
-                Text(p.displayName, style = MaterialTheme.typography.bodyMedium)
+                ChoiceRow(p.displayName, agentProfile.kind == p.kind) { agentProfile = p }
             }
         }
-        // 这一格只给终端屏的「Claude 阅读」找记录用；聊天屏起会话跟随那台核心的默认号，不读它。
-        OutlinedTextField(
-            claudeDir,
-            { claudeDir = it },
-            label = { Text(if (!gatedByAccount) copyText("mobHostEdit.dir.codex") else copyText("mobHostEdit.dir.claude")) },
-            placeholder = { Text(if (!gatedByAccount) copyText("mobHostEdit.dir.codexPlaceholder", "path" to "\${CODEX_HOME:-\$HOME/.codex}") else copyText("mobHostEdit.dir.claudePlaceholder")) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
         // 开关即 useTmux；文案不说「连接」「tmux」。
         SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
@@ -482,10 +467,8 @@ fun HostEditorScreen(
         // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
         Text(copyText("mobHostEdit.os.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = !isWindows, onClick = { isWindows = false })
-            Text("Linux/macOS", style = MaterialTheme.typography.bodyMedium)
-            RadioButton(selected = isWindows, onClick = { isWindows = true })
-            Text("Windows", style = MaterialTheme.typography.bodyMedium)
+            ChoiceRow("Linux/macOS", !isWindows) { isWindows = false }
+            ChoiceRow("Windows", isWindows) { isWindows = true }
         }
         if (isWindows) {
             Text(
@@ -498,10 +481,8 @@ fun HostEditorScreen(
         // 认证方式：钥匙或密码，二选一。
         Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = !authIsPassword, onClick = { authIsPassword = false })
-            Text(copyText("mobHostEdit.auth.key"), style = MaterialTheme.typography.bodyMedium)
-            RadioButton(selected = authIsPassword, onClick = { authIsPassword = true })
-            Text(copyText("mobHostEdit.auth.password"), style = MaterialTheme.typography.bodyMedium)
+            ChoiceRow(copyText("mobHostEdit.auth.key"), !authIsPassword) { authIsPassword = false }
+            ChoiceRow(copyText("mobHostEdit.auth.password"), authIsPassword) { authIsPassword = true }
         }
         if (authIsPassword) {
             OutlinedTextField(
@@ -519,13 +500,7 @@ fun HostEditorScreen(
             )
         } else {
             identities.forEach { id ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { authRef = id.id },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = authRef == id.id, onClick = { authRef = id.id })
-                    Text(id.label, style = MaterialTheme.typography.bodyMedium)
-                }
+                ChoiceRow(id.label, authRef == id.id, Modifier.fillMaxWidth()) { authRef = id.id }
             }
         }
 
@@ -557,7 +532,6 @@ fun HostEditorScreen(
                             sessionManager = if (useTmux) "tmux" else null,
                             autoReconnect = autoReconnect,
                             groupId = group.trim().ifBlank { null },
-                            claudeDir = claudeDir.trim().ifBlank { null },
                             proxyJumpHostId = proxyJumpHostId,
                             os = if (isWindows) "windows" else null,
                             // 存 `AgentKind.name`；缺省档存 null。
@@ -583,15 +557,26 @@ private fun ProxyJumpPicker(
     onSelect: (String?) -> Unit,
 ) {
     Text(copyText("mobHostEdit.jump.title"), style = MaterialTheme.typography.labelMedium)
-    Row(Modifier.fillMaxWidth().clickable { onSelect(null) }, verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected == null, onClick = { onSelect(null) })
-        Text(copyText("mobHostEdit.jump.none"), style = MaterialTheme.typography.bodyMedium)
-    }
+    ChoiceRow(copyText("mobHostEdit.jump.none"), selected == null, Modifier.fillMaxWidth()) { onSelect(null) }
     candidates.forEach { j ->
-        Row(Modifier.fillMaxWidth().clickable { onSelect(j.id) }, verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = selected == j.id, onClick = { onSelect(j.id) })
-            Text("${j.label} (${j.host})", style = MaterialTheme.typography.bodyMedium)
-        }
+        ChoiceRow("${j.label} (${j.host})", selected == j.id, Modifier.fillMaxWidth()) { onSelect(j.id) }
+    }
+}
+
+/** 单选里的一项：整行（圆圈 ＋ 字）都能点，按单选的角色报给无障碍；圆圈只画状态，不自己接点击。 */
+@Composable
+private fun ChoiceRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onSelect),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

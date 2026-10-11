@@ -248,7 +248,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
       ["icon:success", copyText("extPage.legend.failed")],
     ]);
     open(s, "skill/demo");
-    expect((machineLines(s)[1].querySelector(".ext-pick") as HTMLInputElement).disabled, "连不上的那台勾不了").toBe(true);
+    expect((machineLines(s)[1].querySelector(".ext-pick") as HTMLInputElement).disabled, "断开的那台勾不了").toBe(true);
   });
 
   it("★ 抽屉里连不上的那台：这一行变淡、勾不了、卸不了，现状后面点明是上次同步的样子；连得上的照常", async () => {
@@ -475,9 +475,9 @@ export function comparesFingerprints(src: string): string[] {
   return hits;
 }
 
-// 要求：MCP 状态稿甲 1（每台那个点右上角一个小标：黄 = 需登录 · 红 = 连不上；没小标只说「装了」；图例补两项；
+// 要求：MCP 状态稿甲 1（每台那个点右上角一个小标：黄 = 需登录 · 红 = 断开；没小标只说「装了」；图例补两项；
 // 停用的不画——停用按项目记，一格一台说不清是哪个项目）与甲 2（抽屉里那台下面一行：需登录那一句 ＋［去登录］复制那条命令、toast；
-// 连不上那一句 ＋ 原话 ＋［复制详情］；两种都没有 ⇒ 不画）。字与哪一种都是那台后端 `mcp-read` 写好的，界面照抄。
+// 断开那一句 ＋ 原话 ＋［复制详情］；两种都没有 ⇒ 不画）。字与哪一种都是那台后端 `mcp-read` 写好的，界面照抄。
 describe("MCP：每台的小标与抽屉那一行", () => {
   beforeEach(() => {
     invokeMock.mockReset();

@@ -25,6 +25,17 @@ class RecordUnitsTest {
     }
 
     @Test
+    fun `工具头那一行照核心写好的：左边是这一步的参数（认不出的那一家照核心那句），右边是结果那一句`() {
+        val calls = units("reply-full", "said-read").filterIsInstance<RenderUnit.ToolCall>().associateBy { it.toolUseId }
+        assertEquals("认得的那一步：参数", "/w/a.txt", calls.getValue("call-3").summary)
+        assertEquals("认不出的那一步：核心那一句，不另拼 k=v", "未识别结果 · 原文", calls.getValue("call-4").summary)
+        assertEquals("结果那一句", "3 行", calls.getValue("call-4").resultLine)
+        assertEquals("还没结果 ⇒ 没有那一句", null, calls.getValue("call-3").resultLine)
+        val bash = units("reply-step-note").filterIsInstance<RenderUnit.ToolCall>().single()
+        assertEquals("ls", bash.summary)
+    }
+
+    @Test
     fun `回复：思考 · 正文 · 工具调用各一单元，按块的先后；工具的结果从后来那条人侧记录里配上`() {
         val u = units("reply-full")
         assertEquals(listOf("a-full#0", "a-full#1", "a-full#2", "a-full#3", "a-full#4"), u.map { it.key })

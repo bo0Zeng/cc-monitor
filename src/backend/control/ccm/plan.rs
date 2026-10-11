@@ -13,6 +13,7 @@
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
 use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::accounts::upstream_select::endpoint::LaunchAccount;
@@ -226,9 +227,8 @@ impl Env {
 fn is_exec(p: &std::path::Path) -> bool {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        return std::fs::metadata(p)
-            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        return Ro::metadata(p)
+            .map(|m| m.is_file() && Ro::mode(&m).is_some_and(|mode| mode & 0o111 != 0))
             .unwrap_or(false);
     }
     // 〔WN1 件 G〕从前这一臂是 `p.is_file()` ⇒ Windows 上「可执行」退化成「存在」
@@ -287,7 +287,7 @@ pub(crate) fn accts_manifest_under(home: &str) -> String {
 }
 
 /// 家目录下一个 `/` 分隔的相对路径 → 本平台的完整路径（逐段 `join`，Windows 上不再 `\` 与 `/` 混拼）。
-/// 家目录为空时照旧拼成 `/<rel>`（与改之前逐字相同 —— 这一格不是本件要改的行为）。
+/// 家目录为空时照旧拼成 `/<rel>`（与改之前逐字相同 —— 这一格不是这里要改的行为）。
 pub(crate) fn under_home(home: &str, rel: &str) -> String {
     if home.is_empty() {
         return format!("/{rel}");
@@ -401,7 +401,7 @@ impl AccountTable {
     /// ⚠ 刻意**不**在这里报错退出：「读不到账号库」照旧是合法的降级路径
     /// （退化为基座启动器）。改的只是**那句话的真假**。
     pub(crate) fn load(manifest_path: &str) -> Self {
-        let raw = match std::fs::read_to_string(manifest_path) {
+        let raw = match Ro::read_to_string(manifest_path) {
             Ok(s) => s,
             Err(_) => return Self::default(),
         };
@@ -750,7 +750,7 @@ pub(crate) fn expand_home(p: &str, home: &str) -> String {
 /// 比「是不是同一个目录」用的键：解开链接（解不开就按原样），再按这台的大小写规矩折。
 fn same_dir_key(p: &str) -> std::path::PathBuf {
     let raw = std::path::Path::new(p);
-    let real = std::fs::canonicalize(raw).unwrap_or_else(|_| raw.to_path_buf());
+    let real = Ro::canonicalize(raw).unwrap_or_else(|_| raw.to_path_buf());
     crate::platform::paths::path_key(&real)
 }
 
@@ -1334,10 +1334,10 @@ pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
     let words = |ws: &[String]| ws.iter().map(|w| word(w)).collect::<Vec<_>>().join(" ");
     match plan {
         Plan::Attach { name } | Plan::Rejoin { name, .. } => {
-            format!("tmux attach -t {}", word(name))
+            format!("tmux -u attach -t {}", word(name))
         }
         Plan::Container(c) => format!(
-            "tmux new-session -d -s {} \u{2026} {} {} \u{2026}",
+            "tmux -u new-session -d -s {} \u{2026} {} {} \u{2026}",
             word(&c.name),
             words(&c.inner_head),
             flag::END
@@ -1368,23 +1368,14 @@ pub(crate) fn terminal_shell() -> crate::platform::shell::dialect::Shell {
 /// `--ccm-print`：吐出这一趟的**等价 shell**。全部来自 [`Plan`] ⇒ 与真跑同源。
 pub(crate) fn render(plan: &Plan) -> String {
     match plan {
-        Plan::Attach { name } => join_session(name),
+        Plan::Attach { name } => crate::common::tmux_utf8::join_session(name),
         Plan::Rejoin {
             name, detach: true, ..
         } => format!("echo {}", sq(&format!("ccm-session={name}"))),
-        Plan::Rejoin { name, .. } => join_session(name),
+        Plan::Rejoin { name, .. } => crate::common::tmux_utf8::join_session(name),
         Plan::Container(c) => render_container(c),
         Plan::Direct(d) => render_direct(d),
     }
-}
-
-/// 接进一个 tmux 会话：已经在 tmux 里 ⇒ 当前客户端切过去（`attach` 在 tmux 里是拒的）；不在 ⇒ `attach`。
-/// 在不在 tmux 里不进 `--ccm-print`（`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
-fn join_session(name: &str) -> String {
-    let t = sq(&format!("={name}:"));
-    format!(
-        "if [ -n \"${{TMUX:-}}\" ]; then tmux switch-client -t {t}; else tmux attach -t {t}; fi"
-    )
 }
 
 fn render_container(c: &Container) -> String {
@@ -1394,7 +1385,7 @@ fn render_container(c: &Container) -> String {
         None => String::new(),
     };
     let mut seq = format!(
-        "{{ tmux new-session -d -s {} -c {}{size} 2>/dev/null",
+        "{{ tmux -u new-session -d -s {} -c {}{size} 2>/dev/null",
         sq(&c.name),
         sq(&c.cwd)
     );
@@ -1404,19 +1395,19 @@ fn render_container(c: &Container) -> String {
         sq(&c.name)
     ));
     seq.push_str(&format!(
-        " && (tmux set-option -t {t} @ccm_agent {} 2>/dev/null || true)",
+        " && (tmux -u set-option -t {t} @ccm_agent {} 2>/dev/null || true)",
         sq(&c.agent)
     ));
     // 通道 A（意图）写 `@ccm_sid_expect`，**不写** `@ccm_sid` —— 后者是通道 B（事实）的，
     // 破坏性动作只认事实标记，不被「声明了但从未真正跑起来」的会话骗过。
     if !c.ccm_sid.is_empty() {
         seq.push_str(&format!(
-            " && (tmux set-option -t {t} @ccm_sid_expect {} 2>/dev/null || true)",
+            " && (tmux -u set-option -t {t} @ccm_sid_expect {} 2>/dev/null || true)",
             sq(&c.ccm_sid)
         ));
     }
     seq.push_str(&format!(
-        " && tmux send-keys -t {t} {} Enter",
+        " && tmux -u send-keys -t {t} {} Enter",
         sq(&c.payload)
     ));
     let tail = render_container_tail(c);
@@ -1460,11 +1451,14 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // agent 起来时若问「信任这个目录吗」（claude 首次进一个目录），由用户在会话里自己答：
     // 那是它的安全检查，收尾一个键都不替用户按（替它按 Enter 按中的是缺省那一项「不信任、退出」）。
     if !c.detach {
-        seq.push_str(&format!("; {}", join_session(&c.name)));
+        seq.push_str(&format!(
+            "; {}",
+            crate::common::tmux_utf8::join_session(&c.name)
+        ));
     }
     if let Some(b) = &c.bus {
         seq.push_str(&format!(
-            "; {{ _p=$(tmux list-panes -t {t} -F '#{{pane_id}}' 2>/dev/null | head -1)"
+            "; {{ _p=$(tmux -u list-panes -t {t} -F '#{{pane_id}}' 2>/dev/null | head -1)"
         ));
         seq.push_str(&format!(
             "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {} >/dev/null",

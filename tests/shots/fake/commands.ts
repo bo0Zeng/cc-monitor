@@ -8,7 +8,7 @@ export type CommandHandler = (args: Record<string, unknown>, world: World) => un
 
 export function defaultCommands(): Record<string, CommandHandler> {
   return {
-    load_config: (_a, w) => w.config,
+    load_config: (_a, w) => withTabOrder(w),
     patch_config: () => null,
     backend_machines: (_a, w) => w.machines,
     frontend_perf_log: () => null,
@@ -19,9 +19,21 @@ export function defaultCommands(): Record<string, CommandHandler> {
     open_terminal_window: () => "opened",
     // 在新窗口里看一个会话：截图里不真开窗。
     open_session_in_new_window: () => null,
-    // 主窗口报在看哪个会话（壳据此给各台发 stream-watch）：截图里不报给无头壳 ⇒ 各台从没收到名单 ＝ 全看。
-    watch_sessions: () => null,
     // 设置 → 通用「终端」那一行的事实（Linux 桌面：自动挑到 ptyxis）。
     terminal_choices: () => ({ applies: true, auto: "ptyxis", found: ["ptyxis", "alacritty"], setting: "" }),
   };
+}
+
+/**
+ * 配置里那张 tab 顺序（`tabBar.order`）缺 ⇒ 补上（先按机器、再按会话的先后）：用过一阵的那台盘上都有这一张。
+ * 不补的话顺序看各台会话流谁先到（几台真后端各起各的，每次先后不一样），同一张图两次截出来 tab 排得不一样。
+ * 场景自己写了就照它的。
+ */
+function withTabOrder(w: World): Record<string, unknown> {
+  const bar = (w.config.tabBar ?? {}) as Record<string, unknown>;
+  if ("order" in bar) return w.config;
+  // 先按机器（世界里机器的先后：本机在前），同一台上按会话的先后 —— 各台都在就绪点之前报完时真壳重放出来就是这个先后。
+  const at = (o: string): number => (w.machines.indexOf(o) + w.machines.length + 1) % (w.machines.length + 1);
+  const order = w.sessions.map((s, i) => ({ sid: s.sid, m: at(s.origin), i })).sort((a, b) => a.m - b.m || a.i - b.i);
+  return { ...w.config, tabBar: { ...bar, order: order.map((x) => x.sid) } };
 }

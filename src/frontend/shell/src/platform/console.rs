@@ -241,29 +241,38 @@ fn helper_tab(pid: u32, hwnd: isize) {
     use std::io::Write;
     let marker = crate::bind::front_marker();
     let deadline = std::time::Instant::now() + TAB_BUDGET;
-    let pick = match super::wt_tabs::WtTabs::open(hwnd) {
-        None => TabPick::Miss(TabMiss::NoUia),
-        Some(mut tabs) => borrow(pid, || {
-            crate::bind::pick_tab(
-                &mut LentTitle {
-                    tabs: &mut tabs,
-                    deadline,
-                },
-                &marker,
-                TAB_READS,
-            )
-        })
-        .unwrap_or(TabPick::Miss(TabMiss::NoConsole)),
+    // 答一句就退：答完不等 UI Automation 那几个对象逐个放回（真机上放回要等终端那边，整趟从两百多毫秒拖到一两秒；
+    // 标题此时已经写回、进程一退控制台跟着摘下）。到点（主线程卡在 UI Automation 里）由看门那一支先写回标题再答。
+    let answer: std::sync::Arc<dyn Fn(TabPick) + Send + Sync> = std::sync::Arc::new(|pick| {
+        let mut out = std::io::stdout();
+        let _ = out.write_all(format!("{}\n", tab_line(pick)).as_bytes());
+        let _ = out.flush();
+        std::process::exit(0);
+    });
+    let Some(mut tabs) = super::wt_tabs::WtTabs::open(hwnd) else {
+        return answer(TabPick::Miss(TabMiss::NoUia));
     };
-    let mut out = std::io::stdout();
-    let _ = out.write_all(format!("{}\n", tab_line(pick)).as_bytes());
-    let _ = out.flush();
-    // 答完就退，不等 UI Automation 那几个对象逐个放回：真机上放回要等终端那边，整趟从两百多毫秒拖到一两秒
-    // （标题此时已经写回、控制台已经摘下，进程一退系统替它收）。
-    std::process::exit(0);
+    let answered = borrow(pid, || {
+        pick_tab_in_budget(
+            &mut LentTitle {
+                tabs: &mut tabs,
+                deadline,
+            },
+            &marker,
+            TAB_READS,
+            deadline.saturating_duration_since(std::time::Instant::now()),
+            std::sync::Arc::new(|old: &str| {
+                set_title(old);
+            }),
+            answer.clone(),
+        )
+    });
+    if answered.is_err() {
+        answer(TabPick::Miss(TabMiss::NoConsole));
+    }
 }
 
-/// 小助手切标签页那一件最多读多久（从它起来算；monitor 等它 [`HELPER_TIMEOUT`]，这里先停、先写回标题，免得被掐断时记号留在标题上）。
+/// 小助手切标签页那一件最多读多久（从它起来算）：到点就收尾 —— 写回标题、答「读不到标签页」、退出（[`pick_tab_in_budget`]）。monitor 不掐它。
 #[cfg(windows)]
 const TAB_BUDGET: std::time::Duration = std::time::Duration::from_millis(2000);
 
@@ -349,7 +358,7 @@ impl ConsoleLooks {
     }
 }
 
-/// 小助手最多等多久（起进程 ＋ 逐个借，真机几十毫秒）。
+/// monitor 最多等小助手多久（起进程 ＋ 逐个借，真机几十毫秒；切标签页那一件它自己 [`TAB_BUDGET`] 到点就收尾）。到点只是不再等，不掐它。
 #[cfg(windows)]
 const HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
@@ -403,34 +412,138 @@ impl crate::bind::TabReader for NoTabs {
     }
 }
 
-/// 起一趟小助手（本二进制，带 [`helper_argv`]），等它答完，回它的标准输出；起不来 / 超时 ⇒ `None`。
+/// 切标签页一趟，最多 `budget`（小助手里调）：主线程做 [`crate::bind::pick_tab`]（规则在那里）；到点还没做完 ⇒ 看门那一支替它把标题写回
+/// （`put_back`，借着的控制台是整个进程的，哪条线程写都一样）、按「读不到标签页」答话 —— 主线程卡在 UI Automation
+/// 哪一个调用里都不等它（生产的 `answer` 答完就退出进程）。答话只一次、标题只写回一次（谁先到谁做）；
+/// 到点之后主线程才走到挂记号那一步 ⇒ 不挂。monitor 不掐小助手，记号就不会因为被掐断留在标题上。
+#[cfg(any(windows, test))]
+pub(crate) fn pick_tab_in_budget(
+    r: &mut impl crate::bind::TabReader,
+    marker: &str,
+    tries: usize,
+    budget: std::time::Duration,
+    put_back: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
+    answer: std::sync::Arc<dyn Fn(crate::bind::TabPick) + Send + Sync>,
+) {
+    use crate::bind::{pick_tab, TabMiss, TabPick, TabReader};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    struct Lease {
+        /// 挂着记号时那个原标题（写回了 ⇒ `None`）。
+        old: Mutex<Option<String>>,
+        /// 答过话了（看门那一支到点答 · 主线程做完答，谁先谁算）。
+        answered: AtomicBool,
+    }
+    /// 记号经租约挂、经租约写回：看门那一支写回过 ⇒ 主线程那一次不再写；答过话之后不再挂。
+    struct Leased<'a, R> {
+        r: &'a mut R,
+        lease: &'a Lease,
+    }
+    impl<R: TabReader> TabReader for Leased<'_, R> {
+        fn names(&mut self) -> Option<Vec<String>> {
+            self.r.names()
+        }
+        fn mark(&mut self, title: &str) -> Option<String> {
+            let mut old = self.lease.old.lock().unwrap();
+            if self.lease.answered.load(Ordering::SeqCst) {
+                return None;
+            }
+            let got = self.r.mark(title)?;
+            *old = Some(got.clone());
+            Some(got)
+        }
+        fn restore(&mut self, old: &str) {
+            if self.lease.old.lock().unwrap().take().is_some() {
+                self.r.restore(old);
+            }
+        }
+        fn select(&mut self, i: usize) -> bool {
+            self.r.select(i)
+        }
+        fn wait(&mut self) {
+            self.r.wait();
+        }
+        fn time_left(&self) -> bool {
+            self.r.time_left()
+        }
+    }
+    let lease = Arc::new(Lease {
+        old: Mutex::new(None),
+        answered: AtomicBool::new(false),
+    });
+    let (done, rx) = std::sync::mpsc::channel::<()>();
+    let watch = {
+        let (lease, answer) = (lease.clone(), answer.clone());
+        std::thread::spawn(move || {
+            if rx.recv_timeout(budget).is_ok() {
+                return;
+            }
+            if let Some(old) = lease.old.lock().unwrap().take() {
+                put_back(&old);
+            }
+            if !lease.answered.swap(true, Ordering::SeqCst) {
+                answer(TabPick::Miss(TabMiss::NoUia));
+            }
+        })
+    };
+    let pick = pick_tab(&mut Leased { r, lease: &lease }, marker, tries);
+    let _ = done.send(());
+    let _ = watch.join();
+    if !lease.answered.swap(true, Ordering::SeqCst) {
+        answer(pick);
+    }
+}
+
+/// 起一趟小助手（本二进制，带 [`helper_argv`]），等它答完（[`ask_helper`]：至多 [`HELPER_TIMEOUT`]，到点不掐），
+/// 回它的标准输出；起不来 / 没答完 ⇒ `None`。不随 monitor 死（`Detached`）：它自己有预算、到点收尾。
 #[cfg(windows)]
 fn run_helper(req: &HelperRequest) -> Option<String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     let me = std::env::current_exe().ok()?;
     let argv = helper_argv(req);
-    let got = crate::ccm_probe::capture_full(
-        HELPER_TIMEOUT,
-        &|| {
-            let mut c = std::process::Command::new(&me);
-            c.args(&argv)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped());
-            spawn_managed_cmd(
-                &mut c,
-                ConsolePolicy::Hidden,
-                Lifetime::JobKillOnClose,
-                StderrSink::Null,
-            )
-        },
-        None,
-    );
-    match got {
-        Ok(c) => Some(String::from_utf8_lossy(&c.stdout).into_owned()),
-        Err(_) => {
-            tracing::info!("bind: 借控制台的小助手没答话（{argv:?}）");
+    let got = ask_helper(HELPER_TIMEOUT, &|| {
+        let mut c = std::process::Command::new(&me);
+        c.args(&argv)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped());
+        spawn_managed_cmd(
+            &mut c,
+            ConsolePolicy::Hidden,
+            Lifetime::Detached,
+            StderrSink::Null,
+        )
+    });
+    if got.is_none() {
+        tracing::info!("bind: 借控制台的小助手没答话（{argv:?}）");
+    }
+    got
+}
+
+/// 等小助手答完（至多 `wait`），回它的标准输出；起不来 / 到点没答完 ⇒ `None`。
+/// 🔴 **到点不掐它**：小助手自己有预算（[`TAB_BUDGET`]，到点写回标题、答话、退出），掐断它会把记号留在终端标题上；
+/// 它的输出由一条读线程收完、再替它收尸，monitor 这一侧只是不再等。
+#[cfg(any(windows, test))]
+pub(crate) fn ask_helper(
+    wait: std::time::Duration,
+    spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
+) -> Option<String> {
+    use std::io::Read;
+    let mut child = spawn().ok()?;
+    let mut out = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let read = out.read_to_end(&mut buf);
+        let _ = child.wait();
+        let _ = tx.send(read.map(|_| buf));
+    });
+    match rx.recv_timeout(wait) {
+        Ok(Ok(buf)) => Some(String::from_utf8_lossy(&buf).into_owned()),
+        Ok(Err(e)) => {
+            tracing::info!("bind: 读借控制台小助手的答话出错：{e}");
             None
         }
+        Err(_) => None,
     }
 }
 
@@ -495,3 +608,7 @@ extern "system" {
     fn GetConsoleTitleW(buf: *mut u16, size: u32) -> u32;
     fn SetConsoleTitleW(title: *const u16) -> i32;
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/platform/console_tests.rs"]
+mod tests;

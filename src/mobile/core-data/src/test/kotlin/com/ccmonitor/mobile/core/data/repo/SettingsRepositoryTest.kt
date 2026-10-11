@@ -24,23 +24,22 @@ class SettingsRepositoryTest {
     }
 
     @Test
-    fun setThenGetDefaultClaudeDir() =
+    fun setThenGetLastHost() =
         runBlocking {
             val dao = FakeSettingsDao()
             val repo = SettingsRepository(dao)
-            assertNull("初始未设应为 null", repo.getDefaultClaudeDir())
-            repo.setDefaultClaudeDir("/data/claude")
-            assertEquals("/data/claude", repo.getDefaultClaudeDir())
-            assertEquals("/data/claude", dao.store[SettingsRepository.KEY_DEFAULT_CLAUDE_DIR])
+            assertNull("初始未设应为 null", repo.getLastHost())
+            repo.setLastHost("h1")
+            assertEquals("h1", repo.getLastHost())
         }
 
     @Test
     fun blankStoredAsNullAndValueTrimmed() =
         runBlocking {
             val repo = SettingsRepository(FakeSettingsDao())
-            repo.setDefaultClaudeDir("   ")
-            assertNull("纯空白应存为 null", repo.getDefaultClaudeDir())
-            repo.setDefaultClaudeDir("  /x/claude  ")
-            assertEquals("应去首尾空白", "/x/claude", repo.getDefaultClaudeDir())
+            repo.setLastHost("   ")
+            assertNull("纯空白应存为 null", repo.getLastHost())
+            repo.setLastHost("  h2  ")
+            assertEquals("应去首尾空白", "h2", repo.getLastHost())
         }
 }

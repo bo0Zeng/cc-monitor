@@ -3,8 +3,10 @@
  * （winit 一个进程只许建一个事件循环）。测试二进制先 `cargo test --no-run` 编出来，再逐场景按名字拉起。
  */
 import { spawn, spawnSync } from "node:child_process";
+import zlib from "node:zlib";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { WALL_CEILING_MS } from "./real/pool.mjs";
 
 /** 起私有 Xvfb 的那一份起法（仓根相对；文件窗口台架同用它）。 */
 const XVFB_LAUNCHER = "tests/scripts/xvfb-free.sh";
@@ -39,6 +41,10 @@ export const FILEWIN_SCENES = [
   { id: "filewin-peek", scene: "peek", width: 720, title: "文件窗口 · 窄档 · 空格看一眼", desc: "窗宽 720、main.rs 上按空格：窗口正中一块「看一眼」浮层（代码高亮）；Esc / 空格 / 点别处收（稿 24）" },
   { id: "filewin-plan", scene: "plan", title: "文件窗口 · 计划反查", desc: "目录落在一片的仓库里（稿 06 第 1 张）：列表多一列「格」（状态图标 ＋ 那一格的标题；被两格声明带红 ⚠）；选中 main.rs，预览头多一块「归属」（标题 ·［在计划里看］· 片 · 块 · 签收时刻 · 也声明了它的那一格）。回包是合成的（真后端 `plan-files` 判）" },
   { id: "filewin-plan-menu", scene: "plan-menu", title: "文件窗口 · 右键 · 在计划里看", desc: "main.rs 上右键（稿 06 第 3 张）：删除之前多一项「在计划里看 · 下单入口」；不归哪一格的文件这一项不出" },
+  { id: "filewin-view", scene: "view", title: "文件窗口 · 图片查看页", desc: "docs 里回车 architecture.png ⇒ 同一栏开一个查看页（标签图片图标 ＋ 名字）：头条面包屑 ·「‹ 1 / 2 ›」· 适应窗口（亮）· 原尺寸 · − 百分比 + · 下载；画面里整张放进来、透明处棋盘格；状态栏「1600 × 1000 · 大小 · 时间」（稿 ⑬ 26）" },
+  { id: "filewin-view-menu", scene: "view-menu", title: "文件窗口 · 右键查看 ＋ 预览头查看", desc: "docs 里选中 architecture.png、右键：第一项「查看」（图片不给「编辑」）；预览头上「查看」「下载」，预览里摆的是与查看页共用的那一份（稿 ⑬ 29）" },
+  { id: "filewin-multi-menu", scene: "multi-menu", title: "文件窗口 · 多选 ＋ 右键菜单", desc: "Ctrl 点选 docs · main.rs · release.tar.gz、在压缩包上右键（稿 02）：多选那一种只给「算大小」「改权限…」｜「删除 3 项…」（红、带 Delete）；每一项图标 ＋ 字 ＋ 右端快捷键，不画框。稿上的「下载 3 项」「复制到另一台…」「复制到另一栏」多选还做不了，没有" },
+  { id: "filewin-blank-menu", scene: "blank-menu", title: "文件窗口 · 空白处右键", desc: "列表最后一行下面右键：选中清掉，菜单对这个目录说话 ——「文件夹」（Ctrl+Shift+N）·「空文件」·「上传」（Ctrl+U）｜「终端」（稿里没画，照命令栏「这个目录」那一组）" },
   { id: "filewin-focus", scene: "focus", title: "文件窗口 · 键盘焦点环", desc: "按 Tab 走到搜索框：2px 强调色外环（鼠标点出来的不画）" },
 ].map((s) => ({ dir: "文件窗口", width: 1280, height: 800, ...s }));
 
@@ -90,7 +96,7 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
       CCM_SHOTS_FILEWIN_W: String(s.width),
     };
     delete runEnv.WAYLAND_DISPLAY;
-    const r = spawnSync(exe, [TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"], { env: runEnv, encoding: "utf8", timeout: 120_000 });
+    const r = spawnSync(exe, [TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"], { env: runEnv, encoding: "utf8", timeout: WALL_CEILING_MS });
     const ok = r.status === 0 && existsSync(file);
     if (!ok) {
       const why = `${r.stderr ?? ""}\n${r.stdout ?? ""}`.split("\n").filter((l) => /panicked|error/i.test(l)).slice(0, 2).join(" | ");
@@ -133,6 +139,40 @@ fn main() {
 }
 `;
 
+/** 一张 RGBA 的 png（`paint(x, y)` 给每个像素的 [r, g, b, a]）：查看页那两张要真解得开的图。 */
+function png(w, h, paint) {
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 4 + 1)] = 0;
+    for (let x = 0; x < w; x++) raw.set(paint(x, y), y * (w * 4 + 1) + 1 + x * 4);
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(td) >>> 0);
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+/** 一张架构草图样子的图：透明底上几块色块 ＋ 连线（`k` 是缩放）。 */
+function diagram(w, h) {
+  const boxes = [[0.05, 0.38, 0.24, 0.58, [59, 110, 165]], [0.41, 0.16, 0.6, 0.36, [201, 100, 66]], [0.41, 0.62, 0.6, 0.82, [111, 154, 90]], [0.76, 0.38, 0.95, 0.58, [138, 107, 176]]];
+  return png(w, h, (x, y) => {
+    const u = x / w, v = y / h;
+    for (const [a, b, c, d, rgb] of boxes) if (u >= a && u <= c && v >= b && v <= d) return [...rgb, 255];
+    if (Math.abs(u - 0.505) < 0.004 && v > 0.36 && v < 0.62) return [90, 90, 90, 255];
+    if (Math.abs(v - 0.48) < 0.006 && ((u > 0.24 && u < 0.41) || (u > 0.6 && u < 0.76))) return [90, 90, 90, 255];
+    return [0, 0, 0, 0];
+  });
+}
+
 /** 铺一个合成的项目目录（占位文件；修改时间钉死，每次截出来一样）。 */
 function layFixture(home) {
   rmSync(home, { recursive: true, force: true });
@@ -154,6 +194,8 @@ function layFixture(home) {
     ["src/clients.rs", "pub struct InventoryClient;\n", "2026-10-01T09:11:00"],
     ["tests/retry_test.rs", "#[test]\nfn retries() {}\n", "2026-10-01T09:20:00"],
     ["docs/retry.md", "# 重试\n", "2026-09-28T17:40:00"],
+    ["docs/architecture.png", diagram(1600, 1000), "2026-09-28T17:30:00"],
+    ["docs/flow.png", diagram(800, 500), "2026-09-28T17:35:00"],
   ];
   for (const [name, body, t] of files) {
     writeFileSync(path.join(dir, name), body);

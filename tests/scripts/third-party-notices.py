@@ -43,10 +43,10 @@ LOCKS = ["src/backend/Cargo.lock", "src/frontend/shell/Cargo.lock"]
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying|notice)", re.I)
 #: (组件, 版本, SPDX, 在仓里的位置（目录以 / 结尾）, 许可全文所在文件, 说明)
 VENDORED_FILES = [
-    ("termlib", "0.1.1", "Apache-2.0", "src/mobile/libs/m2/org/connectbot/termlib/",
+    ("termlib", "0.1.2", "Apache-2.0", "src/mobile/libs/m2/org/connectbot/termlib/",
      "src/mobile/libs/LICENSES/Apache-2.0.txt",
      "connectbot/termlib 的预编 aar（含 sources.jar）；打过 src/mobile/libs/termlib-patches/ 里的补丁，是改过的版本"),
-    ("libvterm", "termlib 0.1.1 内含", "MIT", "src/mobile/libs/m2/org/connectbot/termlib/0.1.1/termlib-0.1.1.aar",
+    ("libvterm", "termlib 0.1.2 内含", "MIT", "src/mobile/libs/m2/org/connectbot/termlib/0.1.2/termlib-0.1.2.aar",
      "src/mobile/libs/LICENSES/libvterm-MIT.txt", "编进 termlib aar 的 libjni_cb_term.so"),
     ("JetBrains Mono", "2.305", "OFL-1.1", "src/mobile/core-ui/src/main/res/font/",
      "src/mobile/libs/LICENSES/JetBrainsMono-OFL-1.1.txt", "jetbrains_mono_regular.ttf · jetbrains_mono_medium.ttf"),

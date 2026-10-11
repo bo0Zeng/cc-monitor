@@ -45,6 +45,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
@@ -61,7 +62,6 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
-import com.ccmonitor.mobile.ssh.SessionBackend
 import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -84,12 +84,10 @@ fun SessionScreen(
     hostId: String,
     cd: String? = null,
     launcherId: String? = null,
-    tmuxSession: String? = null, // 本 tab 首连即附着的 tmux 会话名；普通 tab 为 null
-    resumeSessionId: String? = null, // 本 tab 首连即 resume 的 Claude 会话 id；普通 tab 为 null
-    resumeCommand: String? = null, // 历史页长按选定的 resume 命令；null 走默认候选链
+    tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
-) = SessionContent(hostId, cd, launcherId, tmuxSession, resumeSessionId, resumeCommand, onAttachInNewTab, onShowTabs)
+) = SessionContent(hostId, cd, launcherId, tmuxSession, onAttachInNewTab, onShowTabs)
 
 @Composable
 private fun SessionContent(
@@ -97,15 +95,13 @@ private fun SessionContent(
     cd: String?,
     launcherId: String?,
     tmuxSession: String?,
-    resumeSessionId: String?,
-    resumeCommand: String?,
     onAttachInNewTab: (name: String) -> Unit,
     onShowTabs: () -> Unit,
 ) {
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
     val vm =
         koinViewModel<SessionViewModel> {
-            parametersOf(hostId, cd ?: "", launcherId ?: "", tmuxSession ?: "", resumeSessionId ?: "", resumeCommand ?: "")
+            parametersOf(hostId, cd ?: "", launcherId ?: "", tmuxSession ?: "")
         }
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -174,7 +170,7 @@ private fun ErrorContent(
 }
 
 /**
- * 非连接态（连接中 / 失败 / 选身份）顶部的 tab 按钮。这些态没有工具条，靠它在慢连、连不上、待选身份时
+ * 非连接态（连接中 / 失败 / 选身份）顶部的 tab 按钮。这些态没有工具条，靠它在慢连、断开、待选身份时
  * 仍能唤出 tab 面板切换或关闭会话。
  */
 @Composable
@@ -410,10 +406,10 @@ private fun ConnectedTerminal(
 ) {
     // tmux、切模型依赖 tmux，按远端方言的能力位（supportsTmux）开关。
     val dialect = s.dialect
-    // 当前是否已在 tmux 内（决定 attach 用 switch-client，免得嵌套）。动作 lambda 在点击时经 getter 读最新值。
+    // 本 tab 当前所在的 tmux 会话名（切模型 · 抓屏按它找那台名单里的终端）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
-    val onSwitchModel = rememberModelSwitchAction(s.session, vm, dialect.sessionBackend) { currentTmux }
-    val onCapture = rememberCaptureAction(vm, dialect.sessionBackend, { currentTmux }, onCaptured)
+    val onSwitchModel = rememberModelSwitchAction(s.session, vm.terminals) { currentTmux }
+    val onCapture = rememberCaptureAction(vm.terminals, { currentTmux }, onCaptured)
     TerminalTab(
         session = s.session,
         hostId = hostId,
@@ -427,14 +423,13 @@ private fun ConnectedTerminal(
 }
 
 /**
- * 一键切模型。有 tmux 会话就 send-keys 投到 Claude 所在 pane（不依赖终端前台）；没有就直接发给终端前台。
+ * 一键切模型。有 tmux 会话就请那台往那个终端里送 `/model <名>`（不依赖本 tab 的前台）；没有就直接发给终端前台。
  * Toast 只说「已发送」：切没切成取决于 Claude 是否在提示态。
  */
 @Composable
 private fun rememberModelSwitchAction(
     session: TerminalSession,
-    vm: SessionViewModel,
-    backend: SessionBackend?, // null 表示没有 tmux 后端；有 tmux 会话时一定非 null
+    terminals: TerminalOps,
     currentTmux: () -> String?,
 ): (String) -> Unit {
     val context = LocalContext.current
@@ -442,25 +437,28 @@ private fun rememberModelSwitchAction(
     val scope = rememberCoroutineScope()
     return { model ->
         val ts = currentTmux()
-        if (ts != null && backend != null) {
-            // send-keys 是异步 exec，成败都给反馈，掉线时不假报「已发送」。
+        val line = ClaudeInvocation.modelCommand(model)
+        if (ts != null) {
+            // 送字是那台的一问一答，成败都给反馈，掉线时不假报「已发送」。
             scope.launch {
-                runCatching { runOnce(vm.channel, backend.sendModelCommand(ts, model)) }
-                    .onSuccess { Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show() }
-                    .onFailure { snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), it.message)) }
+                val problem = terminals.typeInto(ts, line)
+                if (problem == null) {
+                    Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show()
+                } else {
+                    snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), problem))
+                }
             }
         } else {
-            session.send("/model $model\n".toByteArray()) // 没有 tmux：直接发给终端前台
+            session.send("$line\n".toByteArray()) // 没有 tmux：直接发给终端前台
             Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show()
         }
     }
 }
 
-/** 抓当前 tmux 会话的可见屏为纯文本，交给 [onCaptured]。 */
+/** 请那台抓当前 tmux 会话的一屏（纯文字），交给 [onCaptured]。 */
 @Composable
 private fun rememberCaptureAction(
-    vm: SessionViewModel,
-    backend: SessionBackend?, // null 表示没有 tmux 后端；有 tmux 会话时一定非 null
+    terminals: TerminalOps,
     currentTmux: () -> String?,
     onCaptured: (String) -> Unit,
 ): () -> Unit {
@@ -469,9 +467,10 @@ private fun rememberCaptureAction(
     val scope = rememberCoroutineScope()
     return {
         val ts = currentTmux()
-        if (ts != null && backend != null) {
+        if (ts != null) {
             scope.launch {
-                runCatching { runOnce(vm.channel, backend.captureCommand(ts)) }
+                terminals
+                    .capture(ts)
                     .onSuccess { onCaptured(it) }
                     .onFailure { snackbar.show(Notice(copyText("mobTerm.capture.failed"), it.message)) }
             }
@@ -498,14 +497,10 @@ private fun ConnectedDialogs(
     if (showTmux) {
         TmuxManagerDialog(
             channel = channel,
+            terminals = vm.terminals,
             onAttach = { name ->
-                // 附着是新开终端 tab，由它的 fresh shell 跑 `tmux new -A -s name`；不往当前前台 pty 注入
-                // （前台若是 Claude Code 会打进它的输入框）。新 shell 不在 tmux 内，也不会嵌套。
-                onAttachInNewTab(name)
-                onDismissTmux()
-            },
-            onNewAttach = { name ->
-                // 新建并附着同样开新 tab（`tmux new -A -s name` 无则建、有则附），与附着等价。
+                // 附着是新开终端 tab，由它的新 shell 敲那台渲出的那一行；不往当前前台 pty 注入
+                // （前台若是 Claude Code 会打进它的输入框）。
                 onAttachInNewTab(name)
                 onDismissTmux()
             },

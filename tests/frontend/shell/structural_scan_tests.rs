@@ -139,7 +139,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
             //   而那条棘轮的语料变量追踪是**按名字、整份文件**算的
             //   ⇒ 这两处**一直存在**的针**第一次被数到**（2 处 > 上限 0）。
             //   拼出来就不在它的人群里；针的含义一个字没变。
-            //   ★ 如实记：这是「人群扩大之后旧债第一次现形」，不是本轮新写的债。
+            //   ★ 如实记：这是「人群扩大之后旧债第一次现形」，不是新写的债。
             let fn_head = format!("{} ", "fn");
             let pub_fn_head = format!("pub {} ", "fn");
             while k > 0 {
@@ -522,7 +522,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
 /// ⇒ 🔴 **backend 自己那一格（门禁 `backend` = `cd src/backend && cargo test`）
 /// 今天没有这道闸**：只跑后端那一格的人新写一道绕道，**不会红**。
 /// 两棵树是两个 workspace（`src/backend/Cargo.toml` 头注逐字写着 standalone），
-/// 而「backend 那一格要不要也跑一条同形的判据」不是本件能决定的事 —— 交回 PM。
+/// 而「backend 那一格要不要也跑一条同形的判据」不是这里能决定的事。
 #[test]
 fn the_detour_ratchet_reaches_both_trees() {
     let corpus = addr_corpus();
@@ -1008,7 +1008,7 @@ fn exact_target(win: &str) -> Result<(), String> {
     }
 }
 
-/// **用已知的绕过手法验证**（本轮新纪律）。这不是构造的边角——
+/// **用已知的绕过手法验证**（纪律）。这不是构造的边角——
 /// 裸目标正是 F01 修掉的那次「杀错/打错兄弟会话」生产事故，
 /// 而 F04 的 D 审计实测过：固定 needle 版本对它**完全空转**。
 #[test]
@@ -1592,7 +1592,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
     // ★ 抽取器自检 2：这一族本来就有两百来处 —— 抽到个位数就是剥法坏了。
     assert!(
         refs.len() >= 150,
-        "只抽到 {} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于本件尖）",
+        "只抽到 {} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于当时的尖）",
         refs.len()
     );
 
@@ -1674,7 +1674,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
 fn line_number_addresses_stay_in_range_and_never_grow() {
     /// **存量登记**：`(引用方文件基名, 被引路径原样, 被引行号)`。
     ///
-    /// 这一张表就是「这一拍之后还剩什么没牙」的**逐条点名**：
+    /// 这一张表就是「改完之后还剩什么没牙」的**逐条点名**：
     /// 表里每一行都是一处**判不了真伪**的地址。想少一行的唯一办法是把它改成符号地址。
     ///
     /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
@@ -1912,7 +1912,7 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
 
 /// 至少几个下划线才进人群。**只能是 2，不许往上调。**
 ///
-/// 整条曲线（现打，量于本件基点）：
+/// 整条曲线（现打，量于基点）：
 /// `>=1` 100 个/143 处 · **`>=2` 58/84** · `>=3` 43/61 · `>=4` 33/50 · `>=5` 30/44。
 /// 🔴 旗舰活体 `local_tmux_names` **只有 2 个下划线，在 `>=3` 就掉出人群**。
 /// ⇒ 把阈值调上去换一个好看的人群数，等于把本条要逮的那个逮不着。
@@ -1961,7 +1961,7 @@ fn dead_name_corpus() -> Vec<(String, String)> {
     // 🔴 **两棵根，互不包含。** 上一版列了五个根，其中
     // `"src/frontend/shell/src"` · `"src/common"` · `"src/doc"` 在搬树之后**全都是
     // `"src"` 的子目录** ⇒ 那些文件被**数两遍**，于是「盘上 N 处」全部翻倍，
-    // 而登记表写的是搬家前的真数 ⇒ 一片假红（本轮实发：`local_is_posix` 1→2 之类）。
+    // 而登记表写的是搬家前的真数 ⇒ 一片假红（实发：`local_is_posix` 1→2 之类）。
     //
     // ⚠ 那一版的注释**已经点出了这个形状**（「后端树已经是 `src` 的子目录，
     // 两个都列会把每个文件数两遍」）—— 但只对 `"src/backend"` 那一格落实了，
@@ -2286,7 +2286,7 @@ fn dead_names_on_disk(
 fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// **存量登记**：`(仓根相对路径, 名字, 未声明的处数)`。
     ///
-    /// 这张表就是「这一拍之后还剩什么没牙」的**逐条点名**：每一行都是一处
+    /// 这张表就是「改完之后还剩什么没牙」的**逐条点名**：每一行都是一处
     /// **判不了真伪**的名字。想少一行的唯一办法是**把那句话改对**。
     ///
     /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
@@ -2379,7 +2379,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 🔴 原来这里登记着 `polling_registry.rs` 里那句提到
         //    `every_comment_stripping_transformer_is_registered` 的散文。那句话住在
-        //    `the_identity_poller_is_gone_for_good` 的注释里，而本拍把那条判据的语料
+        //    `the_identity_poller_is_gone_for_good` 的注释里，而后来把那条判据的语料
         //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
         //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
         (
@@ -2679,7 +2679,7 @@ fn p9_tree_shape(root: &std::path::Path, tree: &str) -> (usize, usize, usize, us
 ///
 /// 现打（步 7c 剖分做完之后，2026-09-19）：`src/backend` **7** · `src/frontend/shell/src` **15**。
 /// 逐份点名。这一族要单独裁（那句「`§3.1` 罩不住它们」），
-/// 不在步 7c 的写区里 —— 立这条棘轮是为了让它**只减不增**。
+/// 当时没改 —— 立这条棘轮是为了让它**只减不增**。
 const P9_SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
     &[("src/backend", 7), ("src/frontend/shell/src", 15)];
 

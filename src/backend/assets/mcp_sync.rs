@@ -30,6 +30,7 @@
 //! 必须是同一个读法）· 不写盘 · 不改写任何一条配置（写的内容由 monitor 从原文里原样取）。
 //! 事实只有两种：`stat` 一条绝对路径 · 在这个后端进程的 `PATH` 上找一个名字。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -145,7 +146,7 @@ impl Facts for Live {
         if !Path::new(p).is_absolute() {
             return There::Foreign;
         }
-        match std::fs::metadata(p) {
+        match Ro::metadata(p) {
             Ok(_) => There::Present,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => There::Absent,
             Err(_) => There::Unknown,

@@ -354,7 +354,7 @@ fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
     );
     let _ = std::fs::remove_dir_all(&d);
 
-    // 败：连不上（没有状态码）
+    // 败：断开（没有状态码）
     let d = temp_dir("log-down");
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);

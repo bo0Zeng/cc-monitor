@@ -101,7 +101,7 @@ impl Conn {
     }
 }
 
-/// 窗口管理器此刻管着的顶层窗口们（连不上 `$DISPLAY` / 窗口管理器不挂这张表 ⇒ 空）。
+/// 窗口管理器此刻管着的顶层窗口们（`$DISPLAY` 断开 / 窗口管理器不挂这张表 ⇒ 空）。
 pub fn clients() -> Vec<Client> {
     open().map(|c| c.clients()).unwrap_or_default()
 }

@@ -738,6 +738,35 @@ impl FakeBackend {
                     ),
                 )
             }
+            // 按字节分块读：读**真盘**上那份（图片判据要真字节去解码），同后端 `answer_read_chunk` 的应答形
+            //   `{path, offset, size, eof, content: {b16}}`；读不到 ⇒ `unreadable`。
+            "files-read-chunk" => {
+                let p = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let off = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let len = args.get("len").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                match std::fs::read(p) {
+                    Ok(all) => {
+                        let a = off.min(all.len());
+                        let b = (a + len).min(all.len());
+                        let hex: String = all[a..b].iter().map(|x| format!("{x:02x}")).collect();
+                        (
+                            true,
+                            None,
+                            None,
+                            Some(serde_json::json!({
+                                "path": p, "offset": off, "size": all.len(),
+                                "eof": b >= all.len(), "content": { "b16": hex }
+                            })),
+                        )
+                    }
+                    Err(e) => (
+                        false,
+                        Some("unreadable".into()),
+                        Some(format!("unreadable：{e}")),
+                        None,
+                    ),
+                }
+            }
             // 解压：只记下来、不落盘；`rel` 里带 `taken` 且没带 `fresh` ⇒ 按「落点已在」答 `exists`；
             //   带 `bad` ⇒ 按「不认这种包」拒；否则回一组定值（落点带不带 ` (2)` 看 `fresh`）。
             "files-extract" => {

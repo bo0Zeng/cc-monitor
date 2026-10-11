@@ -329,6 +329,16 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "盘不认不覆盖改名时，普通文件走 `link` ＋ `unlink`（目标已在 ⇒ 原子失败）",
     ),
     (
+        "platform::fs::Ro",
+        Kind::Platform,
+        "读盘的唯一命名空间（只读：`Ro::metadata` · `Ro::read_dir` · `Ro::open` …）：后端除 `platform/fs/` 外不许点名 `std::fs`",
+    ),
+    (
+        "platform::fs::Ro::mode",
+        Kind::Platform,
+        "unix 权限位（`files-stat` 的 `mode` 那一格）：读元数据的平台扩展只住 `platform/fs/`，非 unix ⇒ 缺席",
+    ),
+    (
         "platform::fs::NO_FOLLOW",
         Kind::Platform,
         "全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",

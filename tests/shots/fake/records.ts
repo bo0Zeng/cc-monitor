@@ -1,69 +1,35 @@
 /**
- * 合成会话记录：直接造后端的成品（通用记录 `LineRecord`：said / reply / retry / title / queued），
- * 正文全是编的占位，不取任何真会话。成品里没有、假后端几问要用的那几样（用量）记在旁边一张表里（`usageOf`）。
+ * 合成会话记录：照 Claude Code 落盘的**原始 jsonl** 写（一行一条），交真后端解析成记录成品 —— 台架不写成品
+ * （步骤 · 结果 · 卡型 · 用量 · 上下文 · 需手动 …… 一律是真后端读了这些行算出来的）。
+ * 正文全是编的占位，不取任何真会话。各种行的形状照后端解析器的判据样本（`tests/backend/agents/claudecode/record_of_tests.rs`）。
  */
-import { hm } from "./clock";
-import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
-import type { Block } from "../../../src/frontend/ui/generated/Block";
-import type { ApiReason } from "../../../src/frontend/ui/generated/ApiReason";
-import type { ToolCard } from "../../../src/frontend/ui/generated/ToolCard";
-import type { ChildRunTag } from "../../../src/frontend/ui/generated/ChildRunTag";
-import type { ToolStep } from "../../../src/frontend/ui/generated/ToolStep";
-import type { StepResult } from "../../../src/frontend/ui/generated/StepResult";
-import type { Speaker } from "../../../src/frontend/ui/generated/Speaker";
-import RECORD_GOLDEN from "../../__fixtures__/record.golden.jsonl?raw";
 
-/** 核心金样那几条（字 · 摘录 · 提问卡与计划卡的 `steps[].ask` 都是后端真写的，这里不另写）：`case` ⇒ 记录。 */
-const GOLDEN: Record<string, LineRecord> = Object.fromEntries(
-  RECORD_GOLDEN.split("\n")
-    .filter((l) => l.trim() !== "")
-    .map((l) => JSON.parse(l) as { case: string; record: LineRecord })
-    .map((g) => [g.case, g.record]),
-);
-/** 台架照核心金样直接取的那几条（别的还是这里合成）。 */
-type GoldenCase = "unread-unknown" | "unread-parse-failed" | "reply-ask" | "said-ask-answered" | "said-plan-approved";
+type Json = Record<string, unknown>;
 
-// 假后端也出记录成品里过程那几格（`steps` · `results` · 报错原因），口径照真后端 `agents/claudecode/steps.rs` 的那张表抄一份小的。
-const PATH_ARG: Record<string, string> = { Read: "file_path", Edit: "file_path", Write: "file_path", MultiEdit: "file_path" };
-const MAIN_ARG: Record<string, string> = { Bash: "command", Grep: "pattern", Glob: "pattern", WebFetch: "url", WebSearch: "query", Task: "description", Agent: "description" };
-const BARE = new Set(["TodoWrite", "ExitPlanMode", "AskUserQuestion"]);
-function fakeStep(name: string, input: Record<string, unknown>): ToolStep {
-  const str = (k: string) => (typeof input[k] === "string" ? (input[k] as string).split(/\s+/).join(" ") : undefined);
-  if (PATH_ARG[name]) return { tool: name, arg: str(PATH_ARG[name]), path: true, known: true };
-  if (MAIN_ARG[name]) return { tool: name, arg: str(MAIN_ARG[name]), note: MAIN_ARG[name] === "description" ? undefined : str("description"), known: true };
-  return { tool: name, known: BARE.has(name) };
+/** 造 assistant 那一条时传进来的块（Claude 的原词）。 */
+export type RawBlock =
+  | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string; signature?: string }
+  | { type: "tool_use"; id: string; name: string; input: Json };
+
+/** 人以外的来话（原文怎么写那一形由后端认）。 */
+export type From =
+  | { kind: "agentMessage"; from: string; name?: string; handback?: boolean; body: string }
+  | { kind: "taskNotification"; taskId: string; status: string; summary?: string; toolUseId?: string }
+  | { kind: "compactSummary"; body?: string }
+  | { kind: "slashCommand"; name: string; args?: string };
+
+export interface ToolOpts {
+  /** 派出子 agent（`Task` / `Agent`）：子 agent 的那一段记录（写进 `<会话>/subagents/agent-<id>.jsonl`；结果里带它的 `agentId`）。 */
+  child?: Convo;
+  error?: boolean;
+  /** 工具调用前同一条 assistant 里先说的那一句。 */
+  lead?: string;
+  /** 后台起的命令（入参带 `run_in_background`）：当场回的结果旁边说它的任务号。 */
+  bg?: string;
+  /** 后台派出子 agent（入参带 `run_in_background`）：当场回的那次结果是「已起」（`status: async_launched`），不是它收场。 */
+  launched?: boolean;
 }
-// 右侧那一句（`text` · `timed`）是核心写的（`StepResult::written`）：假后端不替它写，只给「都说不上 ⇒ 写耗时」那一形；记录换成真后端出之后才有真句子。
-const UNSAID = { text: "", timed: "{dur}" };
-function fakeResult(name: string, input: Record<string, unknown>, content: string, isError: boolean): StepResult {
-  return { ...fakeCounts(name, input, content, isError), ...bodyCells(content), ...UNSAID };
-}
-
-/** 核心另出的两格（照真后端 `steps.rs::preview_of` 与 `chars`）：首行预览（至多 60 字）· 正文多少字。正文空 ⇒ 都缺。 */
-function bodyCells(content: string): Pick<StepResult, "preview" | "chars"> {
-  if (content === "") return {};
-  const line = content.split("\n").map((l) => l.trim()).find((l) => l !== "");
-  const chars = [...content].length;
-  if (line === undefined) return { chars };
-  const cs = [...line];
-  return { preview: cs.length > 60 ? `${cs.slice(0, 59).join("")}…` : line, chars };
-}
-
-function fakeCounts(name: string, input: Record<string, unknown>, content: string, isError: boolean): Omit<StepResult, "text"> {
-  if (isError) return { ok: false };
-  const lines = (s: unknown) => (typeof s === "string" && s.length > 0 ? s.split("\n").length : 0);
-  if (name === "Edit") return { ok: true, added: lines(input.new_string), removed: lines(input.old_string) };
-  if (name === "Write") return { ok: true, added: lines(input.content), removed: 0 };
-  if (name === "Read") return { ok: true, lines: lines(content) };
-  if (name === "Bash") return { ok: true, lines: lines(content) };
-  if (content.startsWith("User has approved your plan")) return { ok: true, answer: { kind: "approved" } };
-  const picked = [...content.matchAll(/"[^"]*"="([^"]*)"/g)].map((m) => m[1]);
-  if (picked.length > 0) return { ok: true, answer: { kind: "picked", options: picked } };
-  return { ok: true };
-}
-
-/** 造 assistant 那一条时传进来的块：thinking 照 Claude 的叫法给，其余就是成品块。 */
-type InBlock = Block | { type: "thinking"; thinking: string; signature?: string };
 
 let uid = 0;
 const nextUuid = (): string => {
@@ -71,107 +37,187 @@ const nextUuid = (): string => {
   return `00000000-0000-4000-8000-${uid.toString(16).padStart(12, "0")}`;
 };
 
-/** Claude 那一家记在回复上的用量（成品里没有；假后端算「上下文用了多少」时读）。 */
-export interface Usage {
-  input_tokens: number;
-  cache_creation_input_tokens: number;
-  cache_read_input_tokens: number;
-  output_tokens: number;
-}
+/** Claude 的项目目录名：工作目录里的 `/` · `\` · `.` · `:` 换成 `-`。 */
+export const projectDir = (cwd: string): string => cwd.replace(/[/\\.:]/g, "-");
 
-/** 成品里没有的用量：回复那一条 ⇒ 它的用量。 */
-export const usageOf = new WeakMap<LineRecord, Usage>();
-
-export interface ToolOpts {
-  card?: ToolCard;
-  child?: ChildRunTag;
-}
-
-/** 人粘贴进来的块：照后端 `claudecode/text.rs::pasted_spans` 那一形（UTF-16 下标 · 正文那一截 · 行数）。没有 ⇒ 缺。 */
-function pastedOf(text: string): { id?: string; start: number; end: number; bodyStart: number; bodyEnd: number; lines: number }[] | undefined {
-  const out = [];
-  const re = /<pasted_content(?: id="([^"]*)")?>([\s\S]*?)<\/pasted_content(?: id="[^"]*")?>/g;
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    const bodyStart = m.index + m[0].indexOf(">") + 1;
-    const body = m[2];
-    out.push({ ...(m[1] ? { id: m[1] } : {}), start: m.index, end: m.index + m[0].length, bodyStart, bodyEnd: bodyStart + body.length, lines: body.replace(/^[\r\n]+|[\r\n]+$/g, "").split("\n").length });
-  }
-  return out.length > 0 ? out : undefined;
-}
-
-const reasonOf = (status: number): ApiReason =>
-  status === 429 ? "quota" : status === 401 || status === 403 ? "auth" : status >= 500 ? "overloaded" : "unknown";
+/** 那个会话的主记录（相对家目录）。 */
+export const jsonlOf = (cwd: string, sid: string): string => `.claude/projects/${projectDir(cwd)}/${sid}.jsonl`;
 
 /** 一段对话：按时间往后排。 */
 export class Convo {
-  readonly records: LineRecord[] = [];
+  /** 一行一条：对象照 JSON 写；串原样写（演认不出 / 读不懂的那一行）。 */
+  readonly lines: (Json | string)[] = [];
+  /** 这段对话派出的子 agent：agentId → 它那一段。 */
+  readonly children = new Map<string, Convo>();
   private t: number;
   private toolN = 0;
-  private titles = 0;
+  private parent: string | null = null;
+  /** 子 agent 那一段（`sid` 是父会话的；文件住父会话那一份旁边）。 */
+  readonly agentId: string | null;
+  /** 子 agent 那一段：父侧派出它的那次调用的 id（派出那一刻 Claude Code 在子记录旁边落 `agent-<agentId>.meta.json`，`toolUseId` 是它）。 */
+  spawnedBy: string | null = null;
+  /** 这一份文件最后写的那一刻（epoch ms；盘上的修改时刻）。缺 ⇒ 开页那一刻。 */
+  writtenAt: number | undefined;
 
   constructor(
     readonly sid: string,
     readonly cwd: string,
     start = "2026-10-01T09:00:00Z",
     readonly model = "claude-sonnet-4-5",
+    /** 子 agent 那一段：每条带 `isSidechain` 与 `agentId`。 */
+    agentId: string | null = null,
   ) {
     this.t = Date.parse(start);
+    this.agentId = agentId;
   }
 
-  /** 下一条的时刻 ＋ 它的钟面（真后端解析时填 `timeText`）。 */
-  private at(stepSec = 20): { at: string; timeText: string } {
+  /** 一个子 agent 的那一段（同一个会话 id、同一个工作目录；从父这一刻往后排）。 */
+  child(agentId: string): Convo {
+    return new Convo(this.sid, this.cwd, new Date(this.t).toISOString(), this.model, agentId);
+  }
+
+  /** 盘上那份文件（相对家目录）。 */
+  file(): string {
+    const main = jsonlOf(this.cwd, this.sid);
+    return this.agentId === null ? main : `${main.slice(0, -".jsonl".length)}/subagents/agent-${this.agentId}.jsonl`;
+  }
+
+  /** 原文（一行一条）。 */
+  text(): string {
+    return this.textFrom(0);
+  }
+
+  /** 第 `from` 条起的原文（开页之后接着写的那几行）。 */
+  textFrom(from: number): string {
+    const tail = this.lines.slice(from);
+    return tail.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + (tail.length > 0 ? "\n" : "");
+  }
+
+  /** 这一段与它派出的子 agent 那几段（各带派出那一刻落的 `.meta.json`）：相对家目录的路径 → 原文。 */
+  files(): Record<string, string> {
+    const out: Record<string, string> = { [this.file()]: this.text() };
+    if (this.spawnedBy !== null) out[`${this.file().slice(0, -".jsonl".length)}.meta.json`] = JSON.stringify({ toolUseId: this.spawnedBy }) + "\n";
+    for (const c of this.children.values()) Object.assign(out, c.files());
+    return out;
+  }
+
+  /** 这一段与它派出的子 agent 那几段的修改时刻：相对家目录的路径 → epoch ms（给了写入时刻照它，没给照末一条那一刻）。 */
+  mtimes(): Record<string, number> {
+    // 没给写入时刻 ⇒ 末一条那一刻（文件就是那时候写的）；一条带时刻的都没有 ⇒ 缺（开页那一刻）。
+    const at = this.writtenAt ?? this.lastStamp();
+    const out: Record<string, number> = at === undefined ? {} : { [this.file()]: at };
+    for (const c of this.children.values()) Object.assign(out, c.mtimes());
+    return out;
+  }
+
+  /** 下一条从这一刻往后排（epoch ms；演「两分钟前开始的那一步」之类）。 */
+  clock(ms: number): this {
+    this.t = ms;
+    return this;
+  }
+
+  /**
+   * 整段（连同它派出的子 agent 那几段）平移到末一条落在 `ms`：照固定起点一条条往后排出来的那几段用它挪到「现在」前面一点。
+   * 不挪的话记录写的是一周前（或几小时之后）、会话却说它此刻在跑 / 在等，文件修改时刻又是开页那一刻 —— 历史页的时段、等了多久都对不上。
+   */
+  endAt(ms: number): this {
+    const stamped = this.lines.filter((l): l is Json => typeof l !== "string" && typeof l.timestamp === "string");
+    if (stamped.length === 0) return this;
+    const delta = ms - Math.max(...stamped.map((l) => Date.parse(l.timestamp as string)));
+    this.shift(delta);
+    return this;
+  }
+
+  private shift(delta: number): void {
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") l.timestamp = new Date(Date.parse(l.timestamp) + delta).toISOString();
+    this.t += delta;
+    if (this.writtenAt !== undefined) this.writtenAt += delta;
+    for (const c of this.children.values()) c.shift(delta);
+  }
+
+  private lastStamp(): number | undefined {
+    let last: number | undefined;
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") last = Math.max(last ?? -Infinity, Date.parse(l.timestamp));
+    return last;
+  }
+
+  /** 头一条带时刻的那条的时刻（epoch ms）；一条都没有 ⇒ 缺。 */
+  get firstAt(): number | undefined {
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") return Date.parse(l.timestamp);
+    return undefined;
+  }
+
+  /** 末一条的时刻（epoch ms）。 */
+  get lastAt(): number {
+    return this.t;
+  }
+
+  private at(stepSec: number): string {
     this.t += stepSec * 1000;
-    return { at: new Date(this.t).toISOString(), timeText: hm(this.t) };
+    return new Date(this.t).toISOString();
+  }
+
+  private push(type: string, stepSec: number, body: Json): string {
+    const uuid = nextUuid();
+    this.lines.push({
+      type,
+      uuid,
+      parentUuid: this.parent,
+      timestamp: this.at(stepSec),
+      cwd: this.cwd,
+      sessionId: this.sid,
+      ...(this.agentId === null ? {} : { isSidechain: true, agentId: this.agentId }),
+      ...body,
+    });
+    this.parent = uuid;
+    return uuid;
   }
 
   title(text: string): this {
-    this.titles += 1;
-    this.records.push({ agent: "claude", id: `@title-${this.titles}`, t: "title", text, by: "agent" });
+    this.lines.push({ type: "ai-title", aiTitle: text, sessionId: this.sid });
     return this;
   }
 
   user(text: string, opts: { interrupt?: boolean; meta?: boolean } = {}): this {
-    this.records.push({
-      agent: "claude",
-      id: nextUuid(),
-      ...this.at(45),
-      t: "said",
-      who: opts.interrupt
-        ? { speaker: { kind: "interrupt" }, text: "" }
-        : opts.meta
-          ? { speaker: { kind: "system", body: text.trim() }, text: "" }
-          : { speaker: { kind: "human" }, text, pasted: pastedOf(text) },
-      blocks: [{ type: "text", text }],
-      cwd: this.cwd,
+    const content = opts.interrupt ? "[Request interrupted by user]" : text;
+    this.push("user", 45, { message: { role: "user", content }, ...(opts.meta ? { isMeta: true } : {}) });
+    return this;
+  }
+
+  /** 一条 assistant：`stop: "end_turn"` ＝ 这一轮说完了。 */
+  assistant(blocks: RawBlock[], opts: { usage?: Usage; stop?: string } = {}): this {
+    this.push("assistant", 20, {
+      requestId: `req_${nextUuid().slice(-8)}`,
+      message: {
+        id: `msg_${nextUuid().slice(-12)}`,
+        type: "message",
+        role: "assistant",
+        model: this.model,
+        content: blocks,
+        stop_reason: opts.stop ?? (blocks.some((b) => b.type === "tool_use") ? "tool_use" : null),
+        usage: opts.usage ?? usage(42_000),
+      },
     });
     return this;
   }
 
-  /** 一条 assistant：`blocks` 里的 tool_use 用 [`tool`] 造。`stop: "end_turn"` ＝ 这一轮说完了。 */
-  assistant(blocks: InBlock[], opts: { cards?: Record<string, ToolCard>; runs?: Record<string, ChildRunTag>; usage?: Usage; stop?: string } = {}): this {
-    const out: Block[] = blocks.map((b) => (b.type === "thinking" && "thinking" in b ? { type: "thinking", text: b.thinking } : (b as Block)));
-    const uses = out.filter((b): b is Extract<Block, { type: "tool_use" }> => b.type === "tool_use");
-    const rec: LineRecord = {
-      agent: "claude",
-      id: nextUuid(),
-      ...this.at(),
-      t: "reply",
-      blocks: out,
-      model: this.model,
-      autoReply: false,
-      endsTurn: opts.stop === "end_turn",
-      cards: opts.cards,
-      steps: uses.length > 0 ? Object.fromEntries(uses.map((b) => [b.id, fakeStep(b.name, b.input as Record<string, unknown>)])) : undefined,
-      runs: opts.runs,
-    };
-    usageOf.set(rec, opts.usage ?? usage(42_000));
-    this.records.push(rec);
-    return this;
-  }
-
-  /** 一条不是人说的 user 记录（事件条：agent 交回 / 来话 · 另一会话 · 后台通知）。 */
-  from(speaker: Speaker): this {
-    this.records.push({ agent: "claude", id: nextUuid(), ...this.at(20), t: "said", who: { speaker, text: "" }, blocks: [], cwd: this.cwd });
+  from(f: From): this {
+    if (f.kind === "agentMessage") {
+      this.push("user", 20, {
+        message: { role: "user", content: `<agent-message from="${f.from}">${f.body}</agent-message>` },
+        origin: { kind: "peer", from: f.from, ...(f.name ? { name: f.name } : {}), ...(f.handback ? { handback: true } : {}), body: f.body },
+      });
+    } else if (f.kind === "taskNotification") {
+      const tag = (k: string, v: string | undefined) => (v === undefined ? "" : `<${k}>${v}</${k}>`);
+      this.push("user", 20, {
+        message: { role: "user", content: `<task-notification>${tag("task-id", f.taskId)}${tag("tool-use-id", f.toolUseId)}${tag("status", f.status)}${tag("summary", f.summary)}</task-notification>` },
+        origin: { kind: "task-notification" },
+      });
+    } else if (f.kind === "compactSummary") {
+      this.push("user", 20, { message: { role: "user", content: f.body ?? "" }, isCompactSummary: true });
+    } else {
+      this.push("user", 20, { message: { role: "user", content: `<command-name>${f.name}</command-name><command-args>${f.args ?? ""}</command-args>` } });
+    }
     return this;
   }
 
@@ -181,72 +227,124 @@ export class Convo {
 
   think(thinking: string, then: string): this {
     return this.assistant([
-      { type: "thinking", thinking },
+      { type: "thinking", thinking, signature: "c2hvdHM=" },
       { type: "text", text: then },
     ]);
   }
 
-  /** 一次工具调用 ＋ 它的结果（结果是下一条 said 里的 tool_result）。返回 tool_use 的 id。 */
-  tool(name: string, input: Record<string, unknown>, result: string | null, opts: ToolOpts & { error?: boolean; lead?: string } = {}): string {
+  /** 下一个工具调用的 id（同一条 assistant 里带几次调用时先取 id、自己拼块）。 */
+  nextToolId(): string {
     this.toolN += 1;
-    const id = `toolu_${this.sid.slice(0, 4)}${String(this.toolN).padStart(4, "0")}`;
-    const blocks: InBlock[] = [];
+    return `toolu_${this.sid.slice(0, 4)}${this.agentId ?? ""}${String(this.toolN).padStart(4, "0")}`;
+  }
+
+  /** 一次工具调用 ＋ 它的结果（结果是下一条 user 里的 `tool_result`；`null` ＝ 还没有结果）。返回 tool_use 的 id。 */
+  tool(name: string, input: Json, result: string | null, opts: ToolOpts = {}): string {
+    const id = this.nextToolId();
+    const blocks: RawBlock[] = [];
     if (opts.lead) blocks.push({ type: "text", text: opts.lead });
-    blocks.push({ type: "tool_use", id, name, input });
-    this.assistant(blocks, {
-      cards: opts.card ? { [id]: opts.card } : undefined,
-      runs: opts.child ? { [id]: opts.child } : undefined,
-    });
-    if (result !== null) this.result(id, result, opts.error ?? false, fakeResult(name, input, result, opts.error ?? false));
+    blocks.push({ type: "tool_use", id, name, input: opts.bg || opts.launched ? { ...input, run_in_background: true } : input });
+    this.assistant(blocks);
+    this.adopt(opts, id);
+    if (result !== null) this.result(id, result, opts.error ?? false, toolUseResult(name, input, result, opts));
     return id;
   }
 
-  result(id: string, content: string, isError = false, res?: StepResult): this {
-    this.records.push({
-      agent: "claude",
-      id: nextUuid(),
-      ...this.at(8),
-      t: "said",
-      who: { speaker: { kind: "toolResult" }, text: "" },
-      blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: content }], isError }],
-      results: { [id]: res ?? { ok: !isError, ...UNSAID } },
-      cwd: this.cwd,
+  private adopt(opts: ToolOpts, id: string): void {
+    const c = opts.child;
+    if (!c?.agentId) return;
+    this.children.set(c.agentId, c);
+    c.spawnedBy = id;
+  }
+
+  /** 一次调用的结果（`tur` ＝ 记录级那一格 `toolUseResult`；缺 ⇒ 照工具名与入参现编，同 [`tool`]）。 */
+  answer(id: string, name: string, input: Json, content: string, opts: ToolOpts = {}): this {
+    this.adopt(opts, id);
+    return this.result(id, content, opts.error ?? false, toolUseResult(name, input, content, opts));
+  }
+
+  result(id: string, content: string, isError = false, tur?: unknown): this {
+    this.push("user", 8, {
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content, is_error: isError }] },
+      ...(tur === undefined ? {} : { toolUseResult: tur }),
     });
     return this;
   }
 
   apiError(status: number, text: string): this {
-    this.records.push({
-      agent: "claude",
-      id: nextUuid(),
-      ...this.at(),
-      t: "reply",
-      blocks: [{ type: "text", text }],
-      autoReply: false,
-      endsTurn: false,
-      error: { reason: reasonOf(status), status },
+    this.push("assistant", 20, {
+      isApiErrorMessage: true,
+      apiErrorStatus: status,
+      error: status === 429 ? "rate_limit" : "unknown",
+      message: { id: `msg_${nextUuid().slice(-12)}`, type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], stop_reason: "stop_sequence", usage: usage(0) },
+    });
+    return this;
+  }
+
+  /**
+   * Claude Code 自己补写的那一句（`model: "<synthetic>"`、不是报错；原话照后端判据样本 `record_of_tests.rs` 的 `a-auto`）：
+   * 后端认作 `autoReply`，消息流不给它建卡。
+   */
+  autoReply(text = "No response requested."): this {
+    this.push("assistant", 2, {
+      message: { id: `msg_${nextUuid().slice(-12)}`, type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], stop_reason: "stop_sequence", usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } },
     });
     return this;
   }
 
   retry(attempt: number, max: number): this {
-    this.records.push({ agent: "claude", id: nextUuid(), ...this.at(5), t: "retry", reason: "overloaded", attempt, max });
+    this.push("system", 5, { subtype: "api_error", level: "error", retryInMs: 1000 * attempt, retryAttempt: attempt, maxRetries: max, error: { status: 529, error: { type: "overloaded_error" } } });
     return this;
   }
 
-  /** 照核心金样那一条（认不出的一行 · 一问一计划与它们的答），只换 id 与时刻；调用 id（`call-ask` · `call-plan`）照金样，问与答对得上。 */
-  golden(name: GoldenCase): this {
-    const g = GOLDEN[name];
-    if (!g) throw new Error(`核心金样里没有 ${name}`);
-    this.records.push({ ...g, id: nextUuid(), ...this.at(5) });
-    return this;
-  }
-
-  /** 用户打断时说的那句话（插进正在跑的那一轮）。 */
+  /** 用户在一轮跑着的时候打进来、排着队的那句话。 */
   queued(text: string): this {
-    this.records.push({ agent: "claude", id: `@queued-${nextUuid().slice(-6)}`, ...this.at(3), t: "queued", who: { speaker: { kind: "human" }, text } });
+    this.lines.push({ type: "queue-operation", operation: "enqueue", content: text, timestamp: this.at(3), sessionId: this.sid });
     return this;
   }
+
+  /** 后端认不出的一行（新版 Claude 写了一种这一版不认的记录）。 */
+  unknown(kind = "shots-unknown-kind"): this {
+    this.lines.push({ type: kind, uuid: nextUuid(), timestamp: this.at(5), sessionId: this.sid });
+    return this;
+  }
+
+  /** 读不懂的一行（写到一半断掉的 JSON）。 */
+  broken(): this {
+    this.at(5);
+    this.lines.push('{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"写到一半');
+    return this;
+  }
+}
+
+/** 工具结果的记录级那一格（`toolUseResult`：改文件的补丁 · 读了几行 · 计划 · 回答 · 派出的子 agent）。照 Claude Code 落盘的原词。 */
+function toolUseResult(name: string, input: Json, content: string, opts: ToolOpts): unknown {
+  if (opts.error) return undefined;
+  if (opts.bg) return { stdout: "", stderr: "", interrupted: false, isImage: false, backgroundTaskId: opts.bg };
+  const str = (k: string): string => (typeof input[k] === "string" ? (input[k] as string) : "");
+  if (name === "Edit") {
+    const old = str("old_string").split("\n");
+    const neu = str("new_string").split("\n");
+    return { filePath: str("file_path"), oldString: str("old_string"), newString: str("new_string"), structuredPatch: [{ oldStart: 1, oldLines: old.length, newStart: 1, newLines: neu.length, lines: [...old.map((l) => "-" + l), ...neu.map((l) => "+" + l)] }] };
+  }
+  if (name === "Write") return { type: "create", filePath: str("file_path"), content: str("content"), structuredPatch: [] };
+  if (name === "Read") return { type: "text", file: { filePath: str("file_path"), content, numLines: content.split("\n").length, startLine: 1, totalLines: content.split("\n").length } };
+  if (name === "Bash") return { stdout: content, stderr: "", interrupted: false, isImage: false };
+  if (name === "ExitPlanMode") return { plan: str("plan"), isAgent: false };
+  if (name === "AskUserQuestion") {
+    const answers: Record<string, string> = {};
+    for (const m of content.matchAll(/"([^"]*)"="([^"]*)"/g)) answers[m[1]] = m[2];
+    return { questions: input.questions, answers };
+  }
+  if ((name === "Task" || name === "Agent") && opts.child?.agentId) return { status: opts.launched ? "async_launched" : "completed", agentId: opts.child.agentId, content: [{ type: "text", text: content }] };
+  return undefined;
+}
+
+export interface Usage {
+  input_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  output_tokens: number;
 }
 
 export function usage(contextTokens: number): Usage {

@@ -4,8 +4,8 @@
 //! 那是账号库的格式（`accounts/manage/model.rs` 读写、`observe/accounts_query.rs` 只读）。
 
 use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
-use crate::common::fs::read_regular_capped;
 use crate::common::said::IntoNote as _;
+use crate::platform::fs::Ro;
 use std::path::Path;
 
 /// 账号级配置文件的文件名（住在配置根下）。
@@ -109,7 +109,7 @@ pub(crate) fn trust_dir_key(cwd: &str) -> String {
     if cfg!(windows) {
         return cwd.replace('\\', "/");
     }
-    std::fs::canonicalize(cwd)
+    Ro::canonicalize(cwd)
         .ok()
         .and_then(|p| p.to_str().map(str::to_string))
         .unwrap_or_else(|| cwd.to_string())
@@ -122,7 +122,7 @@ pub(crate) fn shared_root_in(home: &Path) -> std::path::PathBuf {
 
 /// 一份 `.claude.json` 里登录的是哪个邮箱（`oauthAccount.emailAddress`）。只取这一格；读不了 / 没有 ⇒ `None`。
 pub(crate) fn oauth_email_in(p: &Path) -> Option<String> {
-    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
+    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
     let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     v.get("oauthAccount")?
         .get("emailAddress")?
@@ -139,7 +139,7 @@ pub(crate) fn identity_file(config_dir: &Path, base_home: Option<&Path>) -> std:
 /// 那份文件里的账号身份：`oauthAccount.accountUuid`（请求体 `metadata.user_id` 里 `account_uuid` 那一格的值）。
 /// 读不了 / 没有 / 不像一个 id ⇒ `None`。
 pub(crate) fn identity_in(p: &Path) -> Option<String> {
-    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
+    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
     let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     v.get("oauthAccount")?
         .get("accountUuid")?
@@ -204,7 +204,7 @@ pub(crate) const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
 ///
 /// ⚠ 有它才能让「账号 0 的配置必须来自 `$HOME`」那条自省判据继续钉得住：
 /// 原来那条断言比的是源码里出不出现 `home.join(".claude.json")` 这个**字面量**，
-/// 而字面量随本件搬进了适配层。⇒ 判据的比对对象换成这个函数名，性质不变。
+/// 而字面量搬进了适配层。⇒ 判据的比对对象换成这个函数名，性质不变。
 pub(crate) fn config_path_in(root: &std::path::Path) -> std::path::PathBuf {
     root.join(CONFIG_FILE_NAME)
 }
@@ -223,7 +223,7 @@ pub(crate) fn trust_of_config(p: &Path, cwd: &str) -> Result<String, (String, St
                 .to_string(),
         );
     }
-    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES)
+    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES)
         .map_err(|e| ("claude_json_unreadable".to_string(), e.into_note()))?;
     let v: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|e| ("claude_json_invalid".to_string(), e.to_string()))?;

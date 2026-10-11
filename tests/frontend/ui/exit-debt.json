@@ -320,7 +320,7 @@
       "rule": "caseWord",
       "n": 14,
       "kind": "第 7 批",
-      "why": "V12：连不上的原因码 ⇒ 字（机器状态成品带 said）"
+      "why": "V12：断开的原因码 ⇒ 字（机器状态成品带 said）"
     },
     {
       "file": "src/frontend/ui/settings/remote-own.ts",

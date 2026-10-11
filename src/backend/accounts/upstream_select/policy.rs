@@ -3,11 +3,13 @@
 //! 这一整块是从 `server.rs`（中转）搬过来的：「那张表什么时候重读」是**上游选择的私事**，
 //! 中转认识「凭据文件」这个东西本身就是越界。行为一个字节没动。
 
+use crate::platform::fs::Ro;
+
 /// 那份凭据文件**这一刻**的印记：`(mtime, 字节数)`。读不到就是 `None`。
 ///
 /// ⚠ 两样一起取是有意的，理由见 `Accounts::refresh_if_changed` 的「它买不到什么」。
 pub(super) fn stamp_of(path: &std::path::Path) -> Option<(std::time::SystemTime, u64)> {
-    let m = std::fs::metadata(path).ok()?;
+    let m = Ro::metadata(path).ok()?;
     Some((m.modified().ok()?, m.len()))
 }
 

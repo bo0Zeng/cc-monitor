@@ -13,6 +13,7 @@ use super::facts_query::{ContextLimits, SessionFacts};
 use super::history_query::{IndexRow, TailPlan};
 use super::turns::{TurnRow, TurnScan};
 use super::user_inputs::UserInputRow;
+use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
@@ -233,7 +234,7 @@ impl RecordScans {
 
     /// 只看不扫：留着、且 `path` 此刻没变 ⇒ 那一张；否则 `None`。
     pub(crate) fn peek(&self, path: &Path) -> Option<Arc<ScanMap>> {
-        let meta = std::fs::metadata(path).ok()?;
+        let meta = Ro::metadata(path).ok()?;
         let stamp: Stamp = (meta.len(), meta.modified().ok());
         let mut g = self.lock();
         g.tick += 1;
@@ -248,7 +249,7 @@ impl RecordScans {
 
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变了 / 没有 ⇒ 现扫（同一份正在扫 ⇒ 等它）。
     pub(crate) fn get(&self, path: &Path) -> std::io::Result<Arc<ScanMap>> {
-        let file = std::fs::File::open(path)?;
+        let file = Ro::open(path)?;
         let meta = file.metadata()?;
         let stamp: Stamp = (meta.len(), meta.modified().ok());
         let flight = {

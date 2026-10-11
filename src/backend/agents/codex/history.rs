@@ -14,6 +14,7 @@
 //!
 //! Codex 没有 pidfile ⇒ 判活答不了（「不知道」，不是「没活」）；Codex 的会话目录里也没有项目概念（按 cwd 分组是通用层的事）。
 
+use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::io::BufRead;
 use std::path::Path;
@@ -26,15 +27,6 @@ use super::record::message_said;
 /// 会话的项目目录 ＝ 开头那条 `session_meta` 的 `cwd`（注册表 `RecordFace.project_dir`；只读开头、有上界）。
 pub(crate) fn project_dir(p: &Path) -> Option<String> {
     crate::agents::first_in_head(p, |v| parse::session_meta_cwd(v).map(str::to_string))
-}
-
-fn mtime_ms(p: &Path) -> i64 {
-    std::fs::metadata(p)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// 这台机器上的 Codex 会话（没装 Codex / 没有会话目录 ⇒ 空）。
@@ -77,7 +69,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
             sid,
             path: p.to_path_buf(),
             cwd: project_dir(p).unwrap_or_default(),
-            mtime_ms: mtime_ms(p),
+            mtime_ms: crate::platform::fs::Ro::mtime_ms(p),
         });
     }
     out
@@ -85,7 +77,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
 
 /// 一份 Codex 会话的首条真用户话（列表摘要）。前 200 行里找；找不到 ⇒ 空串。
 pub(crate) fn first_user_excerpt(path: &Path) -> String {
-    let Ok(f) = std::fs::File::open(path) else {
+    let Ok(f) = Ro::open(path) else {
         return String::new();
     };
     for line in std::io::BufReader::new(f)

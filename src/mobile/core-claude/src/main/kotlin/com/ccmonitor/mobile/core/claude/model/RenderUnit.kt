@@ -72,6 +72,9 @@ sealed interface RenderUnit {
         // Edit/Write 的权威 diff（tool_result 的 top-level structuredPatch）+ 文件名。有则渲染保真 diff（优于 input 推导）。
         val structuredPatch: List<PatchHunk>? = null,
         val patchFilePath: String? = null,
+        // 头那一行的字，核心写好的（`reply.steps` · `said.results`）：这一步的参数（认不出的那一家 ⇒ 核心那一句），结果那一句（还没结果 ⇒ null）。
+        val summary: String = "",
+        val resultLine: String? = null,
     ) : RenderUnit
 
     /** 斜杠命令 `/name args`（user 记录里的 `<command-*>` 回显，非真实 prompt）。 */

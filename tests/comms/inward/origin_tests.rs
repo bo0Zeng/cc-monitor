@@ -15,7 +15,7 @@
 //! 只是各自换了被钉的那个值 —— 处置与理由逐条写在 `src/comms/inward/origin.rs` 头注里，
 //! 这里只记「哪一条钉到哪儿去了」，免得下一个人以为是删了判据换绿：
 //!
-//! | 上一拍钉的 | 这一拍钉的 | 住在哪一条 |
+//! | 原先钉的 | 改后钉的 | 住在哪一条 |
 //! |---|---|---|
 //! | 线上 `null` 解得出 `Unspecified` | 线上 `null` **解不出来**，报错里逐字有 `"<local>"` | `A` 组 `an_unknown_shape_is_refused_not_guessed` |
 //! | `Unspecified.is_local() == false` | `Origin("").is_local() == false`（空白名既不是本机也不是远端）| `C` 组 `a_blank_name_is_neither_local_nor_remote` |
@@ -43,7 +43,7 @@ use crate::origin::*;
 
 // ── A：线上形状与今天逐字节相同 ────────────────────────────────────────────
 //
-// 🔴 **这一组是本文件存在的前提。** `Origin` 落地那一拍必须零行为变化 ——
+// 🔴 **这一组是本文件存在的前提。** `Origin` 落地时必须零行为变化 ——
 //   前端今天送 `null` / `"<local>"` / `"devbox"` 三种值，后端今天读得懂。
 //   若 `serde` 形状变了，这个类型就不能替换任何一处签名（换了就是改协议）。
 #[test]
@@ -205,14 +205,14 @@ fn local_and_remote_are_exactly_complementary() {
 // ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 86，再照它写
 //   （现打那一行逐字「裸字符串 origin 参数现打 86 处，上限 0」）。
 //   88 − 2 = 86 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
-// ⚠ 这一拍**没有**新增一条吃 `Origin` 的命令却让这个数不动的情形：
+// ⚠ 这里**没有**新增一条吃 `Origin` 的命令却让这个数不动的情形：
 //   新落地的 `sftp_pool::sftp_chmod` 收的是 `RemoteConfig` 不是 origin，不进本条人群。
 //
 // 🔴 **86 → 85，降的 1 处记在这里**（本条自己要求
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
 //
 //    🔴 **它与上两拍那七处不是同一件事，别读成同一形**：上两拍是「远端那条命令拿到的
-//    已经是分过本机的机器名 ⇒ 改叫 `host`」（名字说真话）；这一拍是「这条命令**本来**
+//    已经是分过本机的机器名 ⇒ 改叫 `host`」（名字说真话）；这一处是「这条命令**本来**
 //    就在自己心里把两个『没说』的值（`None` 与 `""`）悄悄当本机 ⇒ 让它收 `Origin`，
 //    并把分本机那一步交给唯一的漏斗 `route`」。前者是**改名**，后者是**去 `null` 化**。
 //    ⇒ 这个数跟着降只是副产物；步 2 买的是「线上那个 `null` 没了」。
@@ -233,7 +233,7 @@ fn local_and_remote_are_exactly_complementary() {
 //    · 降 1 处：`lib·rs::batch_to_payloads`（`origin: Option<String>`，`None` = 本机）→ `origin: &Origin`
 //      它同时是漂移记账的那台，缺省当本机正是「没说被悄悄当成本机」那一形。
 // ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
-// 🔴 **81 → 83 → 81（上限没动）**：主线外清单那一拍（`session_book` 的 `In::Branch` / `Out::Branch`）新写了两处 `origin: String`，
+// 🔴 **81 → 83 → 81（上限没动）**：主线外清单那次（`session_book` 的 `In::Branch` / `Out::Branch`）新写了两处 `origin: String`，
 //    推上去 CI 红；那两格改收 `crate::origin::Origin`（分本机仍在线上串那一层，账本键照旧是线上串）。
 // ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
 const ORIGIN_MIGRATION_CEILING: usize = 81;
@@ -397,7 +397,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
 
 /// 从生产段里摘出每条 `#[tauri::command]` 的 (名字, 参数列表, 函数体)。
 ///
-/// ⚠ **收尾括号从签名之后找起** —— 这是本轮实打踩过的坑（`history_tests.rs` 那条
+/// ⚠ **收尾括号从签名之后找起** —— 这是实打踩过的坑（`history_tests.rs` 那条
 /// 同形判据）：`pub(crate) async fn …(` 这样的签名**自己就含一个 `)`**。
 /// 这里从 `fn` 后面的第一个 `(` 起算，天然避开。
 fn tauri_commands_with_bodies(src: &str) -> Vec<(String, String, String)> {

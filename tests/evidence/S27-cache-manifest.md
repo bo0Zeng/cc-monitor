@@ -71,6 +71,6 @@ cargo 第一行逐字印：**`Locking 26 packages to latest compatible versions`
 - 它钉的是**一次解析的结果**。`russh-sftp` / `serde` / `wasm-bindgen` 任何一条发新版，
   重解析出来的版本就与这张表不同 ⇒ 判据会点名「表里有、缓存里没有」的那几条。
   那时**不是补缓存，是重跑 §复算 重生成这张表**。
-- 它**不管** `src/bridge`（monitor 那棵）。那棵没有 `russh-sftp`，本件不动它。
-- 落地（真把 `russh-sftp` 写进 `src/backend/Cargo.toml`）**不是本件的活**，
-  本件只把缓存备齐并立判据。
+- 它**不管** `src/bridge`（monitor 那棵）。那棵没有 `russh-sftp`，这里不动它。
+- 落地（真把 `russh-sftp` 写进 `src/backend/Cargo.toml`）**不归这里**，
+  这里只把缓存备齐并立判据。

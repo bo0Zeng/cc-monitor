@@ -342,7 +342,7 @@ pub fn is_interim_status(status_line: &str) -> bool {
 /// 值域是 **`usize` 全域，没有任何上界**（`HEAD_CAP` 只管头**字节数**，管不到它）。
 /// 一条 `Content-Length: 1000000000000` 的下游请求 ⇒ 分配失败 ⇒ `handle_alloc_error`
 /// ⇒ **abort（SIGABRT）**。**abort 不走 unwind** ⇒ `panic = "unwind"` 与 `catch_unwind`
-/// 一概接不住；而本件的形状是「**一个进程**服务 N 个会话」（`K9` 裁定二第 1 条）
+/// 一概接不住；而这里的形状是「**一个进程**服务 N 个会话」（`K9` 裁定二第 1 条）
 /// ⇒ 这一发打掉的不是一条连接，是**当时所有会话的在途流**。
 /// 我自己重打过这一刀，逐字读数（`memory allocation of 1000000000000 bytes failed` ·
 /// `signal: 6, SIGABRT` · 退出码 101 · 判定行 **0**）见件文件 §8.20.1。

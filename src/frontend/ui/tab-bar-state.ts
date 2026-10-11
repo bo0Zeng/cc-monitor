@@ -70,7 +70,7 @@ export function sanitizeOrder(raw: unknown, alive: ReadonlySet<string> | null): 
  *
  * 读失败不阻断启动：坏掉的配置最坏也就是顺序退回默认。
  *
- * `alive` 传 `null`（生产只走这一档）：读在启动那一拍，tab 随后陆续建出来 —— 那一刻「已删的会话」与「还没到的会话」长得一样，
+ * `alive` 传 `null`（生产只走这一档）：读在启动那一刻，tab 随后陆续建出来 —— 那一刻「已删的会话」与「还没到的会话」长得一样，
  *   拿当时的存活集过滤会把整张顺序摘掉。过滤在应用那一刻做（`TabManager.applySavedOrder` 按此刻在的 sid 筛）。
  */
 export async function getTabOrder(alive: ReadonlySet<string> | null): Promise<string[]> {

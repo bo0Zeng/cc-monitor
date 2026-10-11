@@ -113,7 +113,7 @@ fn powershell_encoded_command_is_shell_safe() {
 /// 没有这一格，一条「剥了前缀照样等于期望值」的读数分不出「买到了」还是「x == x」。
 ///
 /// ⚠ **它买不到什么**：Windows 上 `powershell.exe -EncodedCommand` 真的照这个串起了进程
-/// —— 那要真机，本件登记在「判不了」里（而那一格**给得出 `cfg`**：调用方
+/// —— 那要真机，这里登记在「判不了」里（而那一格**给得出 `cfg`**：调用方
 /// `launch::launch_powershell_window` 带 `#[cfg(windows)]`，门禁跑在 Linux ⇒ 不进编译单元）。
 #[test]
 fn the_relay_prefix_survives_the_powershell_encoding_byte_for_byte() {

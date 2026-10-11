@@ -50,7 +50,7 @@ async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
 ///
 /// 那句话对**内容帧**是真的（行还在远端 jsonl 里），对**状态增量帧**是**假的** ——
 /// 它是一次差分的结果、别处不存在。这句 message 是用户唯一看得见的东西，
-/// 所以它对不对本身就是本件的正题。
+/// 所以它对不对本身就是正题。
 #[test]
 fn the_overflow_message_stops_lying_when_state_was_lost() {
     let lost = vec![

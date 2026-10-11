@@ -8,7 +8,7 @@ export class Cdp {
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       ws.addEventListener("open", resolve, { once: true });
-      ws.addEventListener("error", () => reject(new Error(`连不上浏览器调试口：${wsUrl}`)), { once: true });
+      ws.addEventListener("error", () => reject(new Error(`浏览器调试口断开：${wsUrl}`)), { once: true });
     });
     return new Cdp(ws);
   }

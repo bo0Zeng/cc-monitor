@@ -25,6 +25,7 @@
 //! 入口吃一个取消位（[`search_with`] 的 `cancel`），每进一项看一次：置位 ⇒ 当场收手。帧面那一臂（`files-grep`，异步档）
 //! 在被 `cancel` 掉时（future 被丢）把这个位置上（`mod.rs::answer_grep_cancellable` 的守卫），阻塞线程上的这一趟随即停。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -155,7 +156,7 @@ pub fn search_with(
     let top_dev = device_of(top);
     let mut stack: Vec<PathBuf> = vec![top.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(listing) = std::fs::read_dir(&dir) else {
+        let Ok(listing) = Ro::read_dir(&dir) else {
             g.unreadable += 1;
             continue;
         };
@@ -213,7 +214,7 @@ fn look_at(path: &Path, len: u64, args: &GrepArgs, caps: Caps, g: &mut Grepped) 
         g.stopped = Stopped::Bytes;
         return;
     }
-    let Ok(body) = std::fs::read(path) else {
+    let Ok(body) = Ro::read(path) else {
         g.unreadable += 1;
         return;
     };

@@ -33,10 +33,10 @@ zh() { "$REPO/node_modules/.bin/tsx" "$REPO/tests/e2e/copy-text.mts" "$@"; }
 export HOME="$CCMDIR/home"; mkdir -p "$HOME"
 unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 
-# ⚠ **这里原来有两道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
+# ⚠ **这里原来有两道 `jq` 的 fail-closed 硬依赖闸，已删。**
 #   它们守的是本文件那几份**假 backend**（`mk_mirror_backend` 用 `jq` 把夹具 manifest 翻成
 #   `--list-accounts` 的帧形状、`KREC` 的记账 shim 转发给 `/usr/bin:/bin` 上那一个）——
-#   而那几份假后端与它们服务的判据本轮一起删了：同一个进程之下没有「帧」这回事，
+#   而那几份假后端与它们服务的判据也一起删了：同一个进程之下没有「帧」这回事，
 #   账号表由后端自己读那份 manifest。**本文件今天一处都不用 `jq`**（`grep -c jq` 自己看）。
 # 原来这里还有一条「`npx` 那条纪律仍在」（会话名派生那一节拿 `npx tsx` 真跑前端那个函数对拍）：前端那份删了，那一节改手写期望，本文件不再要 `npx`。
 
@@ -138,7 +138,7 @@ ck "--ccm-version 是 ccm 自己的版本" \
    "ccm 7" \
    "$(ccm -- --ccm-version)"
 ck "--attach 接回（位置动作 attach 取消）" \
-   "if [ -n \"\${TMUX:-}\" ]; then tmux switch-client -t '=cc-foo:'; else tmux attach -t '=cc-foo:'; fi" \
+   "case x\${TMUX:-} in x) tmux -u attach -t '=cc-foo:';; *) tmux -u switch-client -t '=cc-foo:';; esac" \
    "$(ccm -- --attach cc-foo --ccm-print)"
 
 echo
@@ -290,7 +290,7 @@ FAKEHOME="$TMPROOT/home"; mkdir -p "$FAKEHOME"
 #   那段旧 bash 的逐字复刻：**在 $HOME 跳工作区 · 在 git 仓跳仓的父目录**。
 #   〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
 #   ⇒ 那两档按 `K37`（「把这个行为去掉，用户还做不做得到同一件事」= 做得到 ⇒ 偏好，出去）
-#   删了，于是**把旧语义钉死的正是这 5 条判据本身** —— 本件不删它们，改成钉新语义：
+#   删了，于是**把旧语义钉死的正是这 5 条判据本身** —— 这里不删它们，改成钉新语义：
 #   同样这 5 种布局，今天一律该停在原地。布局 1/2/3 就是那两档旧分支的现场，
 #   它们从「证明会跳」变成「证明不跳」，**射程一格没少**。
 #
@@ -323,11 +323,11 @@ echo "===== 会话名派生：真跑那条路铸出来的名字（前端那份�
 # **必须 env -u TMUX**：CLI 在 tmux 内会退化成"就地起"（不建嵌套会话），
 # 那时 --print 没有 tmux 命令序列可抓。生产路径是 `ssh -t … bash -lic`，$TMUX 本就不存在。
 # ⚠ **`^[{ ]*` 不能省**〔`U-NP④` 08-14 顺手修的既有腐坏〕：`P3sc`（08-13）把撞名改成
-# 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
+# 「响亮失败」时，把 `tmux new-session`（今天是 `tmux -u new-session`）包进了 `{ … || { …; exit 3; }; }` ——
 # 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条**全部拿到空串、静默常红**。
 # 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「不一致」，真因是抽取器失灵。
 name_of() { env -u TMUX HOME="$NOHOME" "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
-            | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
+            | sed -n "s/^[{ ]*tmux -u new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 # tmux 名撞名时 CLI 会加 -2/-3；此处只比基名（测试环境不建会话，故恒等基名）
 for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|proj-cc" "/|session-cc" "/home/pi/.hidden.dir|hidden-dir-cc"; do
   d="${pair%%|*}"; want="${pair##*|}"
@@ -335,7 +335,7 @@ for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|pro
 done
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ⚠ **本文件原来有 264 条断言，本轮删到 46 条。**
+# ⚠ **本文件原来有 264 条断言，已删到 46 条。**
 #
 # 〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
 # ⇒ `shared/ccm` 删了，本套件的被测对象换成后端二进制本体。
@@ -353,8 +353,8 @@ done
 #     同一个进程之下**没有「上线字节」这回事**；其中「那几件事一件都不许丢」已落成 Rust 判据
 #     `the_container_launch_goes_through_the_one_door_with_every_field_intact`。
 #
-# 🔴 **两族是本拍实测推翻第一拍判词的，写在这里而不是藏进 TSV**（第一拍判 `M-repoint`，
-#    本拍指过去之后发现它们没有指称对象 ⇒ 降级为 `N`）：
+# 🔴 **两族是后来实测推翻第一拍判词的，写在这里而不是藏进 TSV**（第一拍判 `M-repoint`，
+#    指过去之后发现它们没有指称对象 ⇒ 降级为 `N`）：
 #   ① 第 82–83（`--print` 不受身份前置检查影响 ＋ 它的非空对照）——
 #      **非空对照那一条断的正是 `rc=2`**，而那道检查随第 67–81 那族一起没了。
 #      留下第 82 条单条 = 一条恒真（那正是第 83 条当初被加进来要防的东西）。

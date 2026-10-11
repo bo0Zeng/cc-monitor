@@ -127,7 +127,7 @@ export const PLAN_SCENES: Scene[] = [
   }),
   plan("plan-31-needs-strip", "需手动 · 标签栏的数 ＋ 会话头那一枚标", "标签栏「需手动 N」含计划项（会话在前、计划项在后）；切到总负责：会话头多一枚「ledger · 顶块 · 执行」", async () => {
     await mainReady(TABS);
-    await click(await byText("#tab-bar .tab", "总负责"));
+    await click(await byText("#tab-bar .tab", /^(?!.*站点).*总负责/));
     await waitFor(".session-plan-mark");
     await sleep(400);
   }),

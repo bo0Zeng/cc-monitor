@@ -3,7 +3,7 @@
  * 往上 / 下 / 左拖出栏或按 Esc 取消。
  *
  * 「落在哪」「落下后顺序与组怎么变」全在 `tab-drop.ts`（纯函数，判据直接打它）；这里只管量尺寸、挂 / 摘 document 监听、
- * 影子 · 插入线 · 目标框 · 小标签、停留计时器，以及松手那一拍把「顺序 ＋ 组」一次落实并给撤销。
+ * 影子 · 插入线 · 目标框 · 小标签、停留计时器，以及松手那一刻把「顺序 ＋ 组」一次落实并给撤销。
  * 与 tab 栏视图的约定：**拖拽进行中不重排 tab 栏**（`deferRefresh`），被挡下的刷新收尾时补一次。
  */
 import {
@@ -315,7 +315,7 @@ export class TabBarDrag {
     d.scrollRaf = requestAnimationFrame(frame);
   }
 
-  /** 越过阈值那一拍：源行变暗、建影子（状态点 ＋ 标题，同行上的写法）与插入线、接管 Esc。 */
+  /** 越过阈值那一刻：源行变暗、建影子（状态点 ＋ 标题，同行上的写法）与插入线、接管 Esc。 */
   private startDragging(d: DragState): void {
     d.dragging = true;
     if (d.group !== null) {

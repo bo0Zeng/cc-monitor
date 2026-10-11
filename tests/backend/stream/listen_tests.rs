@@ -130,7 +130,7 @@ fn refusal_reasons_are_a_closed_set() {
     //    带 `refusal_line(` 的行只有那条 `pub fn` 声明（而它被 filter 掉了）
     //    ⇒ 那个循环**跑零圈**，是个**空转**的判据。
     //    它读起来完全正常，而它一个字节都没在守。⇒ 人群搬到真正的调用点。
-    //    ★ 这是本轮「守卫范围 ≠ 性质范围」那一族的第四形：**人群画在了错的文件上**。
+    //    ★ 这是「守卫范围 ≠ 性质范围」那一族的第四形：**人群画在了错的文件上**。
     // 小中继（`control/resident.rs`）那一处由下面另一段钉。
     let caller =
         crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
@@ -184,27 +184,27 @@ fn refusal_reasons_are_a_closed_set() {
     );
 }
 
-/// ★★ `重-1`：**本轮新增那三个文件的头注里，每一个住址今天都真的在。**
+/// ★★ `重-1`：**新增那三个文件的头注里，每一个住址今天都真的在。**
 ///
 /// 〔`K-P1-D1` `重-1`〕`listen.rs` 头注原先写「由 `frozen_single_client_guard.rs`
 /// 那条触发器看着」—— 那个文件**全仓不存在**（命中 1 处，就是那一行自己），
 /// 真名是 `single_stream_guard.rs`。
 ///
 /// ⚠ **治的不是那一个词**，也不是「本模块头注」这一处（`brief` 第 15 条那一问：
-/// 我治的是这一处，还是**所有同职的地方**？）⇒ 人群是**本轮新增的那三个后端文件**
+/// 我治的是这一处，还是**所有同职的地方**？）⇒ 人群是**新增的那三个后端文件**
 /// 的头注，逐个文件、逐个住址。一条承重头注把读者指向一个不存在的住址，
 /// 是「**指了住址，但住址是假的**」——`brief` 第 13 条那一族的反面。
 ///
 /// # 分母（现打 08-27，量具 = 一段正则 + 逐条落盘核在不在）
 ///
-/// - 本轮新增的三个后端文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
+/// - 新增的三个后端文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
 ///   **全文**的路径式引用共 **22 处**（去掉一个正则假阳性 `buf.shrink_to_fit()`），
 ///   **悬空 1 处**，就是这一处；另两份**零悬空**。
 /// - ⚠ **射程之外，如实登记**：同一把尺子扫**全 crate 69 个 `.rs` 的 `//!` 头注**
 ///   ⇒ 105 处引用、**悬空 1 处**：`platform/pidwatch/linux.rs` 头注的
 ///   「从 `platform/pidwatch.rs` 逐字搬来」（今天是 `platform/pidwatch/mod.rs`）。
-///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**不在本轮写区** ⇒ 交回 PM。
-///   ⇒ **本条不是全 crate 的**：它管的是本件自己新增的那三份。
+///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**这里不改**。
+///   ⇒ **本条不是全 crate 的**：它管的是新增的那三份。
 #[test]
 fn every_file_this_head_note_points_at_really_exists() {
     let heads = [
@@ -243,7 +243,7 @@ fn every_file_this_head_note_points_at_really_exists() {
         // 后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
         // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
         crate::guard_support::src_root(),
-        // 〔搬测试 2026-09-17〕头注里点名的很多是判据文件，它们今天住第二棵树。
+        // 头注里点名的很多是判据文件，它们今天住第二棵树。
         crate::guard_support::tests_root(),
         crate::guard_support::repo_root(),
         crate::guard_support::repo_root().join("src/frontend/shell/src"),
@@ -272,7 +272,7 @@ fn every_file_this_head_note_points_at_really_exists() {
                  ⇒ 要么改成真名，要么把那句话删掉；**别留一个假住址**。"
         );
     }
-    // 反空真②：一个住址都没扫到 ⇒ 上面的 `for` 跑零圈（本轮 `refusal_reasons_are_a_closed_set`
+    // 反空真②：一个住址都没扫到 ⇒ 上面的 `for` 跑零圈（`refusal_reasons_are_a_closed_set`
     // 第一版正是死在这一格：人群画在了错的文件上，循环跑零圈而读起来完全正常）。
     assert!(
         checked >= 9,

@@ -161,7 +161,7 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     const v = await mount();
     viewerRig.failPage = true;
     const got = (v as unknown as { scrollToMessage(u: string): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage("u150");
-    await expect(Promise.resolve(got)).rejects.toThrow("devbox 连不上");
+    await expect(Promise.resolve(got)).rejects.toThrow("devbox 断开");
     expect(gaps(v.element)).toEqual([[0, 700]]);
   });
 });

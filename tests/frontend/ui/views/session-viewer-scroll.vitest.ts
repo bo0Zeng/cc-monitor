@@ -69,7 +69,7 @@ async function mount(lines: RigPayload[], scrollToUuid?: string): Promise<Sessio
     jsonlPath: "/p/s1.jsonl",
     displayTitle: "T",
     origin: LOCAL_ORIGIN,
-    suppressBranch: true, // 分支按钮不在本件射程里
+    suppressBranch: true, // 分支按钮不在这里的射程里
     ...(scrollToUuid === undefined ? {} : { scrollToUuid }),
   });
   expectLoaded(v.element);

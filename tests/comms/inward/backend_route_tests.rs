@@ -74,13 +74,13 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
     assert!(matches!(no_channel("h1"), Routed::NoChannel(_)));
 }
 
-/// ★★ **收拢表逐档穷举**〔面 A 通道那一拍，2026-09-24〕—— `route_call_error` 对
+/// ★★ **收拢表逐档穷举**—— `route_call_error` 对
 /// `inbound_client::CallError` 的**每一个变体**，产出的三态**连同那句话**逐字节钉死。
 ///
 /// # 两侧为什么异源
 ///
 /// 右侧（期望值）是**字面量**，抄自改动之前那份 `route_call_error` 在同一输入上的产出
-/// —— 先在旧实现上跑绿、再动实现（「分层判定只许一份，三态从它收拢」那一拍）。
+/// —— 先在旧实现上跑绿、再动实现（「分层判定只许一份，三态从它收拢」那次）。
 /// 它**不**调新的分层函数自证：拿新函数去算期望值，改错了两边一起错，恒真。
 ///
 /// # 买到 / 买不到

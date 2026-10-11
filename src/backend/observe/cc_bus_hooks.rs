@@ -9,6 +9,7 @@
 //! ⇒ 按「被执行的程序」判。看不懂的形态答「无法判断」，不猜「未装」。
 //! 只读：不写 `settings.json`（用户的共享全局配置，由用户自己合并），只生成要加的内容。
 
+use crate::platform::fs::Ro;
 use crate::platform::shell::posix;
 use copy_core::copy_text;
 use serde::Serialize;
@@ -267,9 +268,9 @@ pub(crate) fn answer_at(
         .and_then(|k| crate::agents::user_settings_of(k, agent_home))
         .unwrap_or_default();
     // 超上限 / 不是普通文件 / 读不了 ⇒ 按「没读到」降级，`note` 说出来（`diagnose(None)`）。
-    let raw = match std::fs::metadata(&settings) {
+    let raw = match Ro::metadata(&settings) {
         Ok(meta) if meta.is_file() && meta.len() <= SETTINGS_CAP_BYTES => {
-            std::fs::read_to_string(&settings).ok()
+            Ro::read_to_string(&settings).ok()
         }
         _ => None,
     };

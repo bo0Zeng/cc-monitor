@@ -26,7 +26,7 @@ fn staged_sha(home: &Path, key: &str) -> String {
         .unwrap_or_else(|| "0".repeat(crate::control::files_write::SHA256_HEX_LEN))
 }
 
-/// 一个本轮独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
+/// 一个这次运行独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-fc-{tag}-{}", std::process::id()));
     std::fs::remove_dir_all(&p).ok();

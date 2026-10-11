@@ -370,6 +370,9 @@ fn jumping_finds_the_first_name_with_that_prefix_ignoring_case() {
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **「能做什么」逐格手写**（异源）：单选的几种行 · 多选全可写 · 多选混着有损名 · 空。
+///
+/// 10-11 起照菜单那张表：算大小只给目录与多选 · 解压只给压缩包 · 查看给图片 · 编辑给文本；
+/// 超编辑上限的那一份「编辑」在表里、但做不了（菜单上灰着说为什么），所以这里没有它。
 #[test]
 fn what_can_be_done_matches_a_hand_written_table() {
     use Action::*;
@@ -379,34 +382,60 @@ fn what_can_be_done_matches_a_hand_written_table() {
     let huge = row("h.bin", false, big, false);
     let lossy = row("\u{FFFD}x", false, 3, true);
     let lossy_dir = row("\u{FFFD}d", true, 0, true);
+    let png = row("logo.png", false, 3, false);
+    let code = row("main.rs", false, 3, false);
+    let tgz = row("release.tar.gz", false, 3, false);
+    let pdf = row("report.pdf", false, 3, false);
+    let broken = Listed {
+        link: true,
+        link_broken: true,
+        ..row("gone", false, 0, false)
+    };
     // 有损名**带着原始字节**（后端 `files-ls` 送的就是字节）⇒ 三件写操作放开。
     let lossy_raw = Listed {
         raw_name: Some(b"\xffx".to_vec()),
         ..row("\u{FFFD}x", false, 3, true)
     };
+    let text = vec![
+        Edit, Download, CrossCopy, Copy, Rename, Chmod, Properties, Delete,
+    ];
     let cases: Vec<(&str, Vec<&Listed>, Vec<Action>)> = vec![
         ("空", vec![], vec![]),
+        ("一个普通文件", vec![&file], text.clone()),
+        ("一份代码", vec![&code], text.clone()),
         (
-            "一个普通文件",
-            vec![&file],
-            // 算大小（`files-size`）一格：名字寻址得到就给。
-            // 解压到这里（`files-extract`）一格：一份文件就给，认不认这种包由后端判。
+            "一张图：查看顶替编辑，不算大小、不解压",
+            vec![&png],
             vec![
-                Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete, Properties,
+                View, Download, CrossCopy, Copy, Rename, Chmod, Properties, Delete,
             ],
         ),
-        // 目录能复制了（后端 `recursive: true`）⇒ 多一格「复制」。
+        (
+            "一个压缩包：解压，不编辑",
+            vec![&tgz],
+            vec![
+                Download, CrossCopy, Copy, Extract, Rename, Chmod, Properties, Delete,
+            ],
+        ),
+        (
+            "一份 PDF：不编辑、不查看",
+            vec![&pdf],
+            vec![Download, CrossCopy, Copy, Rename, Chmod, Properties, Delete],
+        ),
         (
             "一个目录",
             vec![&dir],
-            vec![Open, Copy, Size, Rename, Chmod, Delete, Properties],
+            vec![Open, Copy, Size, Rename, Chmod, Properties, Delete],
         ),
         (
             "一个超编辑上限的文件",
             vec![&huge],
-            vec![
-                Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete, Properties,
-            ],
+            vec![Download, CrossCopy, Copy, Rename, Chmod, Properties, Delete],
+        ),
+        (
+            "一个断了的链接",
+            vec![&broken],
+            vec![Rename, Properties, Delete],
         ),
         ("一个有损名文件（没有原始字节）", vec![&lossy], vec![]),
         (
@@ -417,11 +446,8 @@ fn what_can_be_done_matches_a_hand_written_table() {
         (
             "一个有损名文件（带原始字节）",
             vec![&lossy_raw],
-            // 〔有损名全寻址（）〕带着字节 ⇒ 编辑 / 复制 / 算大小也放开（线上走字节）；
-            // 下载也放开（远端按字节就地拷进暂存区再下，`lossy_pull.rs`）。
-            vec![
-                Edit, Copy, Download, Size, Extract, CrossCopy, Rename, Chmod, Delete, Properties,
-            ],
+            // 带着字节 ⇒ 编辑 / 复制 / 下载也放开（线上走字节；下载在远端按字节拷进暂存区再下，`lossy_pull.rs`）。
+            text.clone(),
         ),
         ("两项全可写", vec![&file, &dir], vec![Size, Chmod, Delete]),
         (
@@ -438,6 +464,202 @@ fn what_can_be_done_matches_a_hand_written_table() {
     ];
     for (what, picked, want) in cases {
         assert_eq!(actions_for(&picked), want, "「{what}」那一格不对");
+    }
+}
+
+/// 🔴 **菜单那张表逐种手写**（异源，照稿 02 · 29 的分组）：每一种选中给的恰好是这几组、这个顺序。
+///
+/// 行从真名字造（`logo.png` · `main.rs` · `release.tar.gz` …），先过「这是哪一种」那一跳，再查表 ——
+/// 两跳一起判：分错了种，或者表里多 / 少一项，都红。
+#[test]
+fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
+    use Action::*;
+    use Item::Act as I;
+    let link = |name: &str, to_dir: bool, broken: bool| Listed {
+        link: true,
+        link_dir: to_dir,
+        link_broken: broken,
+        ..row(name, false, 4096, false)
+    };
+    let png = row("logo.png", false, 3, false);
+    let svg = row("icon.svg", false, 3, false);
+    let code = row("main.rs", false, 3, false);
+    let env = row(".env", false, 3, false);
+    let tgz = row("release.tar.gz", false, 3, false);
+    let pdf = row("report.pdf", false, 3, false);
+    let dir = row("docs", true, 0, false);
+    let to_dir = link("deploy", true, false);
+    let to_log = link("latest.log", false, false);
+    let gone = link("old", false, true);
+    let lossy = row("\u{FFFD}x", false, 3, true);
+    let lossy_dir = row("\u{FFFD}d", true, 0, true);
+    let text_groups = vec![
+        vec![I(Edit), I(Download), I(CrossCopy), I(Copy)],
+        vec![I(Rename), I(Chmod), I(Properties)],
+        vec![I(Delete)],
+    ];
+    let cases: Vec<(&str, Vec<&Listed>, Picked, Vec<Vec<Item>>)> = vec![
+        (
+            "空白处",
+            vec![],
+            Picked::Here,
+            vec![
+                vec![Item::Mkdir, Item::NewFile, Item::Upload],
+                vec![Item::Term],
+            ],
+        ),
+        (
+            "一个目录",
+            vec![&dir],
+            Picked::Dir,
+            vec![
+                vec![I(Open), I(Copy)],
+                vec![I(Size), I(Rename), I(Chmod), I(Properties)],
+                vec![I(Delete)],
+            ],
+        ),
+        (
+            "指向目录的链接",
+            vec![&to_dir],
+            Picked::DirLink,
+            vec![
+                vec![I(Open), I(Copy)],
+                vec![I(Rename), I(Chmod), I(Properties)],
+                vec![I(Delete)],
+            ],
+        ),
+        ("一份代码", vec![&code], Picked::Text, text_groups.clone()),
+        (
+            "没有扩展名的",
+            vec![&env],
+            Picked::Text,
+            text_groups.clone(),
+        ),
+        (
+            "指向文本的链接",
+            vec![&to_log],
+            Picked::Text,
+            text_groups.clone(),
+        ),
+        (
+            "窗口解不开的图（svg）照旧当文本",
+            vec![&svg],
+            Picked::Text,
+            text_groups.clone(),
+        ),
+        (
+            "一张图片",
+            vec![&png],
+            Picked::Image,
+            vec![
+                vec![I(View), I(Download), I(CrossCopy), I(Copy)],
+                vec![I(Rename), I(Chmod), I(Properties)],
+                vec![I(Delete)],
+            ],
+        ),
+        (
+            "一个压缩包",
+            vec![&tgz],
+            Picked::Archive,
+            vec![
+                vec![I(Download), I(CrossCopy), I(Copy)],
+                vec![I(Extract), I(Rename), I(Chmod), I(Properties)],
+                vec![I(Delete)],
+            ],
+        ),
+        (
+            "PDF",
+            vec![&pdf],
+            Picked::File,
+            vec![
+                vec![I(Download), I(CrossCopy), I(Copy)],
+                vec![I(Rename), I(Chmod), I(Properties)],
+                vec![I(Delete)],
+            ],
+        ),
+        (
+            "断了的链接",
+            vec![&gone],
+            Picked::BrokenLink,
+            vec![vec![I(Rename), I(Properties)], vec![I(Delete)]],
+        ),
+        (
+            "名字读不出的目录",
+            vec![&lossy_dir],
+            Picked::NamelessDir,
+            vec![vec![I(Open)]],
+        ),
+        ("名字读不出的文件", vec![&lossy], Picked::Nameless, vec![]),
+        (
+            "多选",
+            vec![&dir, &code, &tgz],
+            Picked::Many,
+            vec![vec![I(Size), I(Chmod)], vec![I(Delete)]],
+        ),
+        (
+            "多选混着读不出的",
+            vec![&code, &lossy],
+            Picked::ManyNameless,
+            vec![],
+        ),
+    ];
+    for (what, picked, kind, want) in cases {
+        assert_eq!(picked_kind(&picked), kind, "「{what}」分错了种");
+        assert_eq!(menu_groups(kind, false), want, "「{what}」那一种的菜单不对");
+    }
+    // 带计划：危险那一组之前多「在计划里看」一组；没有危险组的那种接在最后。
+    assert_eq!(
+        menu_groups(Picked::Text, true),
+        vec![
+            vec![I(Edit), I(Download), I(CrossCopy), I(Copy)],
+            vec![I(Rename), I(Chmod), I(Properties)],
+            vec![Item::InPlan],
+            vec![I(Delete)],
+        ]
+    );
+    assert_eq!(
+        menu_groups(Picked::NamelessDir, true),
+        vec![vec![I(Open)], vec![Item::InPlan]]
+    );
+}
+
+/// 🔴 菜单右端写的快捷键**真是那一件的键**：每一个喂回键位翻译（[`intents`]），出的是做这一件的那个意图。
+#[test]
+fn every_shortcut_on_the_menu_is_the_key_that_does_that_item() {
+    use Action::*;
+    let want: Vec<(Item, Intent)> = vec![
+        (Item::Act(Open), Intent::Open),
+        (Item::Act(Edit), Intent::Open),
+        (Item::Act(View), Intent::Open),
+        (Item::Act(Download), Intent::Download),
+        (Item::Act(Rename), Intent::Rename),
+        (Item::Act(Delete), Intent::Delete),
+        (Item::Mkdir, Intent::NewFolder),
+        (Item::Upload, Intent::Upload),
+    ];
+    for (item, intent) in &want {
+        let k = item
+            .shortcut()
+            .unwrap_or_else(|| panic!("{item:?} 在菜单上没写快捷键"));
+        assert_eq!(
+            intents(&[key(k.logical_key, k.modifiers)]),
+            vec![intent.clone()],
+            "{item:?} 写的键不是做它的那个键"
+        );
+    }
+    // 反面：别的项不写键（写了却按不出来就是说假话）。
+    for item in [
+        Item::Act(Copy),
+        Item::Act(Size),
+        Item::Act(Extract),
+        Item::Act(CrossCopy),
+        Item::Act(Chmod),
+        Item::Act(Properties),
+        Item::InPlan,
+        Item::NewFile,
+        Item::Term,
+    ] {
+        assert_eq!(item.shortcut(), None, "{item:?} 写了一个按不出它的键");
     }
 }
 

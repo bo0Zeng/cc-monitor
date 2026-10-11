@@ -644,7 +644,7 @@ fn every_host_declaration_is_pinned() {
     let want: &[(&str, &str, HostScope)] = &[
         // 远端入口 `~/.local/bin/ccm` → `~/.cc-monitor/bin/ccm`（远端写只许两处）。
         ("ccm", "~/.cc-monitor/bin/ccm", Remote),
-        // 🔴 **本机那条** —— `Client` 是刻意的、也是本件的正题：
+        // 🔴 **本机那条** —— `Client` 是刻意的、也是这里的正题：
         //    在它之前，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
         //    而用户 `K34` 逐字要的「旧的干净退役」就此没有承接方。
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
@@ -913,7 +913,7 @@ fn destination_checks_still_run_under_every_host() {
 /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
 /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
 ///
-/// 🔴 **〔`K-R63` 09-11 登记，本轮没治它〕本条与那一族是同一个病，而它今天仍是专名的。**
+/// 🔴 **〔`K-R63` 09-11 登记，没治它〕本条与那一族是同一个病，而它今天仍是专名的。**
 ///
 /// 「申报 ↔ 现实」这条性质在 `tool_registry` 的两个 `bool`（`installable` / `uninstallable`）
 /// 上已经收成**一条覆盖全表**的判据了
@@ -1141,7 +1141,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
              今天它必须解析，否则「真去查」这句话是假的"
     );
 
-    // ② 没装的：**Absent**，不是 Undetermined —— 这一格就是本件买到的东西
+    // ② 没装的：**Absent**，不是 Undetermined —— 这一格就是这里买到的东西
     let gone = pick("tmux");
     assert_eq!(
         gone.state,
@@ -1535,10 +1535,12 @@ fn this_module_only_reads() {
     // 剥掉注释与测试段：注释里出现 `fs::write` 这个词不该判红。
     let fs_uses = |src: &str| -> (Vec<String>, Vec<String>) {
         let stripped = guard_core::production_code(src);
-        let mut uses: Vec<String> = stripped
-            .match_indices("fs::")
-            .map(|(i, _)| {
-                stripped[i + "fs::".len()..]
+        // 读盘走 `platform::fs::Ro`（`Ro::metadata` …）⇒ `Ro::` 后面那个词与 `fs::` 后面那个词一起数。
+        let mut uses: Vec<String> = ["fs::", "Ro::"]
+            .iter()
+            .flat_map(|pre| stripped.match_indices(pre).map(move |(i, _)| i + pre.len()))
+            .map(|at| {
+                stripped[at..]
                     .chars()
                     .take_while(|c| c.is_alphanumeric() || *c == '_')
                     .collect::<String>()
@@ -1560,7 +1562,7 @@ fn this_module_only_reads() {
     assert!(rows_fs.is_empty(), "判定那一层碰了 fs：{rows_fs:?}");
     assert_eq!(
         face_fs,
-        ["metadata", "metadata", "read_dir", "read_to_string"],
+        ["Ro", "metadata", "metadata", "read_dir", "read_to_string"],
         "face 的 fs:: 用法变了（只准只读的 stat / 列目录 / 读钩子字样）"
     );
     assert_eq!(
@@ -1575,6 +1577,7 @@ fn this_module_only_reads() {
     assert_eq!(
         face_use,
         [
+            "use crate::platform::fs::Ro;",
             "use copy_core::copy_text;",
             "use serde_json::{json, Value};",
             "use std::path::{Path, PathBuf};",

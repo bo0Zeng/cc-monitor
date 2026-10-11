@@ -123,6 +123,8 @@ struct Shape {
     child_failed: fn(&str, &str, &str) -> String,
     /// 父记录：前台派出的那次以报错收场（工具调用 id, 子运行, 报错原话）。
     fg_failed: fn(&str, &str, &str) -> String,
+    /// 派出那一刻落盘的那一份（子运行记录的路径, 父侧工具调用 id）：父侧结果回来之前，凭它把卡和运行对上。
+    note: fn(&Path, &str),
 }
 
 /// 记录时刻的基准（2026-10-01T10:00:00Z，自 1970 起的秒）。
@@ -236,6 +238,15 @@ fn claude_code() -> Shape {
                 r#"{{"type":"user","uuid":"r-{tool}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{tool}","is_error":true,"content":[{{"type":"text","text":"{why}"}}]}}]}},"toolUseResult":{{"status":"completed","agentId":"{run}"}}}}"#
             )
         },
+        note: |child, tool| {
+            let name = child.file_stem().unwrap().to_string_lossy().into_owned();
+            std::fs::create_dir_all(child.parent().unwrap()).unwrap();
+            std::fs::write(
+                child.with_file_name(format!("{name}.meta.json")),
+                format!(r#"{{"agentType":"k","description":"x","toolUseId":"{tool}","requestShape":"foreground"}}"#),
+            )
+            .unwrap();
+        },
     }
 }
 
@@ -310,6 +321,10 @@ fn fake() -> Shape {
             format!(
                 r#"{{"kind":"spawned","call":"{tool}","lane":"{run}","fin":"bad","why":"{why}"}}"#
             )
+        },
+        note: |child, tool| {
+            std::fs::create_dir_all(child.parent().unwrap()).unwrap();
+            std::fs::write(child.with_extension("whence"), tool).unwrap();
         },
     }
 }
@@ -731,6 +746,94 @@ fn a_fake_adapter_ends_its_runs_by_what_the_dispatcher_says() {
 #[test]
 fn claude_code_ends_its_runs_by_what_the_dispatcher_says() {
     completion_criteria(&claude_code());
+}
+
+// ── 前台派出、还在跑 ──────────────────────────────────────────────────────────────
+
+/// 前台派出 f1（父侧结果要等它跑完才回）：派出那一刻落盘的那一份在、子记录在写 ⇒ 卡（父侧工具调用 id）已经对上运行、在跑；
+/// 那一份比子记录晚落盘也一样（下一次读到子记录时对上）；结果回来 ⇒ 完成。冷接（adopt）与文件事件（on_path）两条路各一遍。
+fn foreground_scenario(shape: &Shape, cold: bool) {
+    let dir = scratch(&format!("{}-fg-{cold}", shape.name));
+    let parent = (shape.parent_of)(&dir, SID);
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    let spawn = [(shape.spawn)("t1", "L1"), (shape.spawn)("t2", "L2")];
+    append(&parent, &spawn);
+    for l in &spawn {
+        track.main_record(SID, l);
+    }
+    let c1 = (shape.child_of)(&parent, "f1");
+    let c2 = (shape.child_of)(&parent, "f2");
+    (shape.note)(&c1, "t1");
+    child_wrote(shape, &parent, "f1", None);
+    // f2：子记录先写、那一份后落。
+    child_wrote(shape, &parent, "f2", None);
+    if cold {
+        track.adopt(SID, &parent);
+    } else {
+        append(&parent, &[(shape.main_say)("m0")]);
+        track.adopt(SID, &parent);
+        track.on_path(&c1);
+        track.on_path(&c2);
+    }
+    let card = |book: &RunBook, run: &str| {
+        let r = info_of(book, run);
+        (r.tool, r.label, r.state)
+    };
+    let w = |s: &str| Some(s.to_string());
+    assert_eq!(
+        card(&book, "f1"),
+        (w("t1"), w("L1"), RunState::Running),
+        "[{}] 前台派出、父侧结果还没回：卡已对上运行、标在跑（cold={cold}）",
+        shape.name
+    );
+    assert_eq!(
+        info_of(&book, "f2").tool,
+        None,
+        "[{}] 那一份没落盘之前不猜",
+        shape.name
+    );
+    (shape.note)(&c2, "t2");
+    append(&c2, &[(shape.child_tool)("f2", "r-f2b", "Read")]);
+    track.on_path(&c2);
+    assert_eq!(
+        card(&book, "f2"),
+        (w("t2"), w("L2"), RunState::Running),
+        "[{}] 那一份比子记录晚落盘：下一次读到子记录时对上",
+        shape.name
+    );
+    let Frame::SessionRuns { runs, .. } = book.frame(SID) else {
+        panic!("运行表那一帧");
+    };
+    assert!(
+        runs.iter().any(|r| r.run == "f1"
+            && r.tool.as_deref() == Some("t1")
+            && r.state == RunState::Running),
+        "[{}] 线上那一帧也带着对上的工具调用 id",
+        shape.name
+    );
+    let done = (shape.fg_done)("t1", "f1");
+    append(&parent, std::slice::from_ref(&done));
+    track.main_record(SID, &done);
+    assert_eq!(
+        card(&book, "f1").2,
+        RunState::Done,
+        "[{}] 结果回来 ⇒ 完成",
+        shape.name
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_fake_adapter_links_a_foreground_run_to_its_card_the_moment_it_is_spawned() {
+    foreground_scenario(&fake(), true);
+    foreground_scenario(&fake(), false);
+}
+
+#[test]
+fn claude_code_links_a_foreground_run_to_its_card_the_moment_it_is_spawned() {
+    foreground_scenario(&claude_code(), true);
+    foreground_scenario(&claude_code(), false);
 }
 
 // ── 冷接 · 续跑 · 空闲 ──────────────────────────────────────────────────────────

@@ -315,7 +315,7 @@ fn the_relay_stops_resending_at_its_hard_cap() {
     assert_eq!(got.lock().expect("lock").len(), cap + 1);
 }
 
-/// 重发那一发连不上 ⇒ 不再换，第一发那个拒绝原样交下去（不吞成 502）。
+/// 重发那一发断开 ⇒ 不再换，第一发那个拒绝原样交下去（不吞成 502）。
 #[test]
 fn a_resend_that_cannot_connect_hands_down_the_answer_in_hand() {
     fn answer(_auth: Option<&str>) -> String {
@@ -350,7 +350,7 @@ const AGENT_TOKEN: &str = "Bearer fake-token-of-a";
 const B_TOKEN: &str = "fake-access-of-b";
 const B_REFRESH: &str = "fake-refresh-of-b";
 
-/// 判据里续令牌一律发到这里：本机一个刚关掉的口（连不上 ⇒ 续不上），绝不发到那一家的真端点。
+/// 判据里续令牌一律发到这里：本机一个刚关掉的口（断开 ⇒ 续不上），绝不发到那一家的真端点。
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
     let port = TcpListener::bind(SocketAddr::new(LOOPBACK, 0))
         .and_then(|l| l.local_addr())

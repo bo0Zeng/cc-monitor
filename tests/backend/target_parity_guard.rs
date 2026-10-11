@@ -19,7 +19,7 @@
 //!    - `files-chmod` 在非 unix 上恒回 `io_failed`（`control/files_write.rs::change_mode` 的
 //!      `#[cfg(not(unix))]` 那一支）—— 它的 `codes` 说不出「这个平台没有」，本条**看不见**这一格；
 //!    - CLI 独有的子命令（如 `--tmux-notify`）没有任何逐 target 声明；
-//!    - `files-read` 逐条的 `targets` 本段不读（开门在写区外，理由住 `lib.rs::TARGET_NARROWINGS` 头注）。
+//!    - `files-read` 逐条的 `targets` 本段不读（开门不在这里，理由住 `lib.rs::TARGET_NARROWINGS` 头注）。
 //! 2. **判的是「做得到」这根轴的声明，不是「编得过」，更不是「真机上跑得起来」。**
 //!    编得过归门禁的 `winchk` / `winchk-backend` / `muslbuild`（**macOS 一格都没有**）；
 //!    真机归那种现打。产物层（每个 `[[bin]]` ↔ 入包路线）归
@@ -406,14 +406,14 @@ fn every_variant_is_in_targets(t: Target) -> bool {
 /// | 一侧 | 来源 | 谁会改它 |
 /// |---|---|---|
 /// | **现推的差异** | `capabilities_on(t)`：面的 `targets` · ccm 那几条的载体 · 命令自己声明的 `no_tmux` 码 × 平台档 | 加命令 / 加能力 / 改实现的那一路 |
-/// | **登记的差异** | `TARGET_GAPS` | 裁「为什么做不到、哪一档」的那一拍 |
+/// | **登记的差异** | `TARGET_GAPS` | 裁「为什么做不到、哪一档」的那一处 |
 ///
 /// 现推那一段不读登记表，由 [`the_derivation_never_reads_the_gap_table`] 从源码上钉。
 ///
 /// # 两向各治一形
 ///
 /// - **现推有、登记没有** ⇒ 有一个 target 上少了一条能力，**没有人说过为什么** ——
-///   本波加命令的那几路，谁的新命令声明了 `no_tmux`，合并那一拍就红在这里（红对了）；
+///   本波加命令的那几路，谁的新命令声明了 `no_tmux`，合并时就红在这里（红对了）；
 /// - **登记有、现推没有** ⇒ 登记表说做不到，声明侧却看不出差异 ⇒ 要么已经做到了
 ///   （删那一行 —— 同 `P19` 删 `agent` 那一形），要么声明侧把这件事丢了。
 #[test]
@@ -1039,7 +1039,7 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
     );
     let edges = file_edges(&tree);
     let spawners = tmux_spawning_files(&tree);
-    // 地板只防人群塌成空集；主锚是下面两向相等。现打（立格那一拍）：7 份直呼 + 1 份经 shell（`observe/watcher.rs`）。
+    // 地板只防人群塌成空集；主锚是下面两向相等。现打（立格时）：7 份直呼 + 1 份经 shell（`observe/watcher.rs`）。
     assert!(
         spawners.len() >= 5,
         "真起 tmux 的文件只找到 {spawners:?} —— 取法坏了"

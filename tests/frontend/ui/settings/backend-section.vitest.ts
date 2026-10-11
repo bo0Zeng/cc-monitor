@@ -191,7 +191,7 @@ describe("P2s backend 开关区", () => {
     }
     // ⚠ `K-P3b KP3W4`③：人群扩到 `HEALTH_*` 四句 —— 它们与那三句同一条规矩，
     //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_backend_policy_copy_has_exactly_one_home` 看着
-    //   （那份 vitest 当时不在它的写区）。两侧各有一条不是重复：
+    //   （那份 vitest 当时没跟着改）。两侧各有一条不是重复：
     //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
     // 人群 +1：「读不出来」那一句（三句变四句）。
     // HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
@@ -227,7 +227,7 @@ describe("P2s backend 开关区", () => {
 
   it("★★ 反向锚点：常驻那一句（`backendPolicy.exit.unattended`）在表里有字、且后端那一处真取它（KPY4③）", () => {
     // ⚠ 这一条在 `K-P1` **之前**的代码上是**红**的：那时常驻却一句不说。
-    //   它就是本轮翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
+    //   它就是翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
     expect(EXIT_UNATTENDED.trim().length, "常驻那一句在表里是空的 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半").toBeGreaterThan(0);
     const policy = readFileSync(resolve(srcDirOf(__dirname), "../../../backend/control/exit_policy.rs"), "utf8");
     expect(policy, "后端那一处不再取常驻那一句 —— 界面摆的 `said` 里就没有它了").toContain('copy_text("backendPolicy.exit.unattended"');

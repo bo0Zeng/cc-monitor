@@ -12,7 +12,7 @@
 ///
 /// ★ 「硬编码清单 vs 递归遍历」这一族在本仓这是**第三个模块**
 /// （`readonly_guard::spawn_registry` · `tmux_backend_gate_guard` 的两文件表 · 本条），
-/// 而这一次是**我自己本轮亲手挖的**。⇒ 改成**遍历 + 登记表**：
+/// 而这一次是**自己亲手挖的**。⇒ 改成**遍历 + 登记表**：
 /// 目录里每个 `.call(` 的文件都必须在下表里，要么用分流器、要么是**带理由的刻意例外**。
 #[cfg(test)]
 const SENDERS: &[(&str, Verdict)] = &[
@@ -29,7 +29,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（monitor 里那个发送端，已删）
-    //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
+    //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 已删净），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
     //   〔：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
     //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
@@ -40,7 +40,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   （`src/frontend/ui/tmux-control.ts::capturePane`），monitor 里那个发送端删了 ——
     //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
     //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
-    // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
+    // ★ **第七个发送端** —— 原生文件窗口那一侧的搜索
     //   （`filewin/find.rs`，`files-find` / `files-index-status` /
     //   `files-index-rebuild` / `files-browse` 四条）。
     //   它**没有第二条路可回落**，而且这一次那句话是硬的：
@@ -78,7 +78,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("host.rs", Verdict::UsesRouter),
     // ★ **第九个发送端** —— 只读查询面（`frame_query.rs`，
     //   `history-*` / `accounts-*` 八条）。它**没有第二条路可回落**：逐次拨 SSH 那条正是
-    //   本件要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
+    //   这里要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
     //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
     ("frame_query.rs", Verdict::UsesRouter),
     // ★ **又一个发送端** —— 链路的 monitor 这一侧（`link_mux.rs`，`link-*` 四条，
@@ -207,7 +207,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
     // 另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
-    //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一拍当场从人群里消失，本条因此红过）。
+    //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一刻当场从人群里消失，本条因此红过）。
     let verb = format!(".call({}", "");
     let verb_until = format!(".call_until({}", "");
     let mut senders: Vec<String> = Vec::new();

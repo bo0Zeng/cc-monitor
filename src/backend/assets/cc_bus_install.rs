@@ -10,6 +10,7 @@
 //!
 //! 源是内嵌的（装了的二进制身边没有仓）：单一事实源是 `src/shared/cc-bus/`，编译期固化。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
@@ -214,7 +215,7 @@ pub(crate) fn state_at(skills: &Path) -> Value {
     let writes: Vec<&str> = FILES
         .iter()
         .filter(|(rel, bytes)| {
-            std::fs::read(dest.join(rel))
+            Ro::read(dest.join(rel))
                 .map(|got| got != *bytes)
                 .unwrap_or(true)
         })
