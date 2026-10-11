@@ -688,13 +688,14 @@ fn attach_uses_the_exact_match_target() {
     // `attach <名>` 写作 `--attach <名>`
     assert_eq!(
         printed(&["--attach", "cc-p1"]),
-        "if [ -n \"${TMUX:-}\" ]; then tmux switch-client -t '=cc-p1:'; else tmux attach -t '=cc-p1:'; fi"
+        "if [ -n \"${TMUX:-}\" ]; then tmux -u switch-client -t '=cc-p1:'; else tmux -u attach -t '=cc-p1:'; fi"
     );
 }
 
 /// 已经在 tmux 里敲给了名字的那几形（`--attach <名>` · `--ccm-tmux=<名>` · `--tmux-base <基名>`）：接进去用 `switch-client`
 /// （在 tmux 里 `attach` 是拒的 ⇒ 会话建了、claude 起了，ccm 却 rc 1、人还留在原窗格）；不在 tmux 里照旧 `attach`。
-/// 拿渲好的那一段真跑（假 tmux 记下子命令）。
+/// 两条都是 UTF-8 客户端（`-u` 排在子命令之前，`common::tmux_utf8`）：没有 UTF-8 locale 的终端里，非 UTF-8 客户端把 tab 与中文画成 `_`。
+/// 拿渲好的那一段真跑（假 tmux 记下前两个词：旗 ＋ 子命令）。
 #[cfg(unix)]
 #[test]
 fn naming_a_session_from_inside_tmux_switches_the_client() {
@@ -705,7 +706,7 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
     let fake = dir.join("tmux");
     std::fs::write(
         &fake,
-        format!("#!/bin/sh\necho \"$1\" >> '{}'\n", log.display()),
+        format!("#!/bin/sh\necho \"$1 $2\" >> '{}'\n", log.display()),
     )
     .unwrap();
     {
@@ -759,12 +760,12 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
     assert_eq!(
         got,
         vec![
-            "--attach 在里: switch-client",
-            "--attach 在外: attach",
-            "--ccm-tmux=<名> 在里: switch-client",
-            "--ccm-tmux=<名> 在外: attach",
-            "--tmux-base 在里: switch-client",
-            "--tmux-base 在外: attach",
+            "--attach 在里: -u switch-client",
+            "--attach 在外: -u attach",
+            "--ccm-tmux=<名> 在里: -u switch-client",
+            "--ccm-tmux=<名> 在外: -u attach",
+            "--tmux-base 在里: -u switch-client",
+            "--tmux-base 在外: -u attach",
         ]
     );
 }
@@ -1762,7 +1763,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
     // `--ccm-print` 吐的就是真跑那一行：在不在 tmux 里是配方，不是宿主状态。
     assert_eq!(
         render(&rejoin(false)),
-        "if [ -n \"${TMUX:-}\" ]; then tmux switch-client -t '=work:'; else tmux attach -t '=work:'; fi"
+        "if [ -n \"${TMUX:-}\" ]; then tmux -u switch-client -t '=work:'; else tmux -u attach -t '=work:'; fi"
     );
     assert_eq!(render(&rejoin(true)), "echo 'ccm-session=work'");
 }

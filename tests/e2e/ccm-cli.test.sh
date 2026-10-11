@@ -138,7 +138,7 @@ ck "--ccm-version 是 ccm 自己的版本" \
    "ccm 7" \
    "$(ccm -- --ccm-version)"
 ck "--attach 接回（位置动作 attach 取消）" \
-   "if [ -n \"\${TMUX:-}\" ]; then tmux switch-client -t '=cc-foo:'; else tmux attach -t '=cc-foo:'; fi" \
+   "if [ -n \"\${TMUX:-}\" ]; then tmux -u switch-client -t '=cc-foo:'; else tmux -u attach -t '=cc-foo:'; fi" \
    "$(ccm -- --attach cc-foo --ccm-print)"
 
 echo
