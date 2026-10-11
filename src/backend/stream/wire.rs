@@ -172,11 +172,6 @@ impl ActivityFace {
         }
     }
 
-    /// 那一态（说不清 ⇒ `None`）。
-    pub(crate) fn activity(&self) -> Option<SessionActivity> {
-        self.activity
-    }
-
     /// 写好的字与语气（轮换那一侧的会话状态照抄这两格）。
     pub(crate) fn words(&self) -> (Words, Tone) {
         (self.activity_text.clone(), self.activity_tone)
