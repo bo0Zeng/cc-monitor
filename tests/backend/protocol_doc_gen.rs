@@ -821,13 +821,16 @@ fn cli(out: &mut String) {
 }
 
 fn oneshot_types(out: &mut String) {
-    out.push_str("## 6. 一次性子命令的出入参类型\n\n");
+    out.push_str("## 6. 几条命令的出入参类型\n\n");
     for (rel, what) in [
         (
             "control/resolve_query.rs",
-            "`--resolve`（入参 `ResumeSpec` 从 stdin，出参 `CommandPlan` / `ResolveError`）",
+            "`resolve`（入参 `ResumeSpec`，出参 `CommandPlan`）",
         ),
-        ("control/fork_write.rs", "`--fork-session` 的出参"),
+        (
+            "control/fork_write.rs",
+            "`session-fork` 的出参（应答另多 `launch` 一格）",
+        ),
         (
             "observe/history_query.rs",
             "骨架索引的一行（`history-index` 的 `rows` 装运之前）",

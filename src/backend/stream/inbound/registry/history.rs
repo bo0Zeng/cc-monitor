@@ -58,11 +58,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //
     // 🔴 **处理器住顶层 `read_face`，与 `files/` 同一个理由**：入方向不许出现 `observe::`
     //   （`inbound_never_reaches_into_the_observe_layer`），而查询本体住 `observe/`。
-    //   `read_face` 只做换壳 —— 每条都调 CLI 那一臂同一个函数，`out` 从 stdout 换成内存。
-    //
-    // ⚠ **名字刻意不与 CLI 那几条同名**（`history-read` 而不是 `read-session`）：CLI 面从本表自动派生
-    //   （`cli_control::cli_exposed`），同名就会把 `--read-session` 从 `history_query::run` 手里抢走、改印一行 JSON。
-    //   ⇒ 每条多出一个 CLI 面（`--history-read` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
+    //   `read_face` 只做换壳 —— 查询本体住 `observe/`，`out` 是内存。
+    //   每条有一个派生的 CLI 面（`--history-read` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
@@ -88,7 +85,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-search",
         summary: "全文搜索",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[arg("after_ms", "可选，= `--after-ms`"), arg("include_tools", "可选布尔，= `--include-tools`"), arg("limit", "可选，= `--limit`"), out("lines", "每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search`"), arg("query", "搜索词（必填）"), arg("scope", "可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope`"), out("skipped", "内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里"), arg("titles", "可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空"), out("unreadable", "这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）")],
+        fields: &[arg("after_ms", "可选：只要这一刻（毫秒）之后的"), arg("include_tools", "可选布尔：工具调用与结果也搜"), arg("limit", "可选：全局片段上限（`hitCount` 仍报全量）"), out("lines", "每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家）"), arg("query", "搜索词（必填）"), arg("scope", "可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope`"), out("skipped", "内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里"), arg("titles", "可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空"), out("unreadable", "这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -164,7 +161,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-read",
         summary: "按字节分页读一份会话",
         codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd`"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
+        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd`"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -243,7 +240,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-find",
         summary: "会话内查找",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（与 `--find-in-session` 的中段逐行相同）；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量）"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
+        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -267,7 +264,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-user-inputs",
         summary: "「你说过的话」清单",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节 ＝ 下一次增量该带的 `from`"), out("entries", "每条用户输入 `{uuid, timestamp, excerpt}`（对话序；与 `--list-user-inputs` 的中段逐行相同）"), both("from", "增量起点（缺省 0；传上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）")], // 应答出成品：`lines` ⇒ `from` / `end` / `entries`
+        fields: &[out("end", "最后一个完整行的末字节 ＝ 下一次增量该带的 `from`"), out("entries", "每条用户输入 `{uuid, timestamp, excerpt}`（对话序）"), both("from", "增量起点（缺省 0；传上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）")], // 应答出成品：`lines` ⇒ `from` / `end` / `entries`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -279,7 +276,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-tail",
         summary: "一份会话的尾段从哪个字节起",
         codes: &["bad_args", "failed"],
-        fields: &[out("end", "最后一个完整行之后的字节位置"), arg("n", "要最新几行"), arg("path", "jsonl 路径（路径围栏同 `history-read`）"), out("split_at", "尾段第一行的字节起点"), out("tail_from", "尾段第一行的行号"), out("total", "可计行总数（口径同 `--read-session-tail` 的 `snapshot_meta`）")],
+        fields: &[out("end", "最后一个完整行之后的字节位置"), arg("n", "要最新几行"), arg("path", "jsonl 路径（路径围栏同 `history-read`）"), out("split_at", "尾段第一行的字节起点"), out("tail_from", "尾段第一行的行号"), out("total", "可计行总数")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -287,10 +284,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
+    // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。
-    //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对手机端冻结的 `--fork-session`（argv 形）撞名。
     CommandSpec {
         name: "session-fork",
         summary: "从某条消息处分叉出一个新会话",
@@ -336,19 +332,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // U6b-3：第一条**真业务命令**。
-    // 一次性 `--resolve` 那条路**逐字不动** —— 契约与手机端冻结在 2026-07-18，
-    // 两条路复用同一个纯函数。⚠ 它的命令级错误码今天仍叫 `bad_request`（与协议级同名），
-    // **刻意不改**：改它会破坏那份冻结的契约。如实登记。
+    // U6b-3：第一条**真业务命令**：按 `ResumeSpec` 推恢复命令（本体 `control/resolve_query.rs`）。CLI 面照派生规则有 `--resolve`。
     CommandSpec {
         name: "resolve",
-        summary: "按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数）",
-        // 原来只列两个，而 `resolve_from_json` 还会回 `invalid_session_id` /
-        // `unsafe_launch_candidate`（B2 两道校验）⇒ 登记表比真回的少两个。补齐；
-        // 与对手机端的承诺的码全集两向相等由 `resolve_query_tests.rs` 那一族钉着
-        //（`stdin_read_failed` 只有一次性那条会出，不在这里）。
+        summary: "按 `ResumeSpec` 推出恢复命令 `CommandPlan`",
+        // 与 `resolve_query` 真会回的码两向相等由 `resolve_query_tests.rs` 钉着。
         codes: &[
-            "bad_request",
+            "bad_args",
             "invalid_session_id",
             "unsafe_launch_candidate",
             "serialize_failed",
@@ -358,7 +348,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Async(|r| {
             Box::pin(async move {
                 let input = serde_json::to_string(&r.args)
-                    .map_err(|e| ("bad_request".to_string(), e.to_string()))?;
+                    .map_err(|e| ("bad_args".to_string(), e.to_string()))?;
                 crate::control::resolve_query::resolve_json_for_inbound(&input)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))

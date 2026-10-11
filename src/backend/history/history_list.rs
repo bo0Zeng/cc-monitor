@@ -214,7 +214,7 @@ fn last_segment(p: &str) -> Option<&str> {
     p.rsplit(['/', '\\']).next().filter(|s| !s.is_empty())
 }
 
-/// 记录树里的一行（`--list-sessions` 那一形）＋ 判活 ⇒ 清单的一行（注解格先按没有填，并注解在 [`answer_from`]）。
+/// 记录树里的一行（会话清单那一形）＋ 判活 ⇒ 清单的一行（注解格先按没有填，并注解在 [`answer_from`]）。
 /// 没有 `sessionId` ⇒ `None`。
 fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
     let sid = v["sessionId"].as_str().filter(|s| !s.is_empty())?;

@@ -172,7 +172,7 @@ export interface Tab {
   /** 上翻补批的 scroll listener（closeTab 摘） */
   fillHandler: (() => void) | null;
   /**
-   * 大纲的数据源 —— 问后端要（`--list-user-inputs`），不在前端攒（到达序 ≠ 对话序）。
+   * 大纲的数据源 —— 问后端要（`history-user-inputs`），不在前端攒（到达序 ≠ 对话序）。
    * 本 tab 只持有「上次要到哪个字节」与已列出的 uuid，不存正文；摘要在面板的行上。
    */
   outline: OutlineSource;

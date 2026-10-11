@@ -1,7 +1,5 @@
 {
-  "_note": "resolve / --resolve 给手机端的承诺的冻结金样（契约冻结 2026-07-18，daemon-协议-v1 §3）。改任何一格 = 与手机端的契约变更：同轮改代码 + 本文件 + IPC-PROTOCOL §8「--resolve」那一条 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带的那一族。",
-  "frozen": "2026-07-18",
-  "consumer": "mobile",
+  "_note": "帧命令 `resolve`（CLI 面照派生规则有 `--resolve`，信封与别的命令同一形）的线上形状金样：入参 · 成品 · 命令级错误码 · 样例逐字节。改任何一格 = 线上形状变更：同轮改代码 + 本文件 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带 `frozen_` 的那一族。",
   "request_fields": [
     "sessionId",
     "launchCandidates",
@@ -28,30 +26,11 @@
     "PtyInject",
     "ExecOnce"
   ],
-  "error_envelope": [
-    "code",
-    "message"
-  ],
-  "error_exit": 2,
   "error_codes": [
-    "stdin_read_failed",
-    "bad_request",
+    "bad_args",
     "invalid_session_id",
     "unsafe_launch_candidate",
-    "serialize_failed",
-    "args_too_large",
-    "no_input",
-    "bad_args"
-  ],
-  "oneshot_only_codes": [
-    "stdin_read_failed",
-    "args_too_large",
-    "no_input",
-    "bad_args"
-  ],
-  "oneshot_input_flags": [
-    "--args-b64",
-    "--stdin-line"
+    "serialize_failed"
   ],
   "samples": [
     {
@@ -76,11 +55,11 @@
     },
     {
       "request": "not json",
-      "error": "bad_request"
+      "error": "bad_args"
     },
     {
       "request": "{\"launchCandidates\":[]}",
-      "error": "bad_request"
+      "error": "bad_args"
     }
   ]
 }

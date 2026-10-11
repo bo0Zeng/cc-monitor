@@ -18515,12 +18515,6 @@
       "zh": "读取失败 · {path} · 无权限",
       "args": ["path"]
     },
-    "beHistory.records.none": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "此机无会话记录 · {path} 不存在",
-      "args": ["path"]
-    },
     "beHistory.dir.unreadable": {
       "kind": "error",
       "role": "报错",

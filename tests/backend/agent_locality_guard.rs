@@ -247,8 +247,8 @@ mod tests {
         (
             "control/resolve_query.rs",
             "claude_dir",
-            "`--resolve` 的 **stdin 入参** `ResumeSpec.claudeDir`（`rename_all=camelCase`）。\
-             契约与手机端冻结在 2026-07-18，改 Rust 标识符 = 改线上字段名。\
+            "命令 `resolve` 的**入参** `ResumeSpec.claudeDir`（`rename_all=camelCase`）。\
+             当时与手机端冻结在 2026-07-18（10-11 手写的 `--resolve` 臂删了，契约解冻），改 Rust 标识符 = 改线上字段名。\
              ⚠ 它今天是 `#[allow(dead_code)]`（MVP 不做 pidfile 消解），**但「没用到」不等于\
              「可以改名」** —— 别人在往里发。",
             "手机端那侧 `ResumeSpec` 不再发 `claudeDir` 之后（或整个 `--resolve` 契约重谈）。\

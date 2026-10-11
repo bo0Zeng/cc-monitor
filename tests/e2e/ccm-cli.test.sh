@@ -254,9 +254,14 @@ mkdir -p "$AH/.claude-alt/old"
 printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-alt/old" > "$AH/.claude-alt/accounts.json"
 OLD_SUM="$(cksum < "$AH/.claude-alt/accounts.json")"
 home_run() { env -i PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" HOME="$AH" "$CCM" "$@" 2>&1; }
-names_of() { home_run -- --list-accounts | tail -n +2 | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | tr '\n' ' '; }
-ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号" "false" \
-   "$(home_run -- --list-accounts | head -1 | sed -n 's/.*"enabled":\([a-z]*\).*/\1/p')"
+# 列账号：额度账那一问（`--quota-read`）逐号一行，`account` 是号名（账号库没启用 ⇒ 一个号都不列）。
+#   读不出（不是那一形）⇒ 印出原话，不当成「零个号」。
+names_of() {
+  local o; o="$(home_run -- --quota-read </dev/null)"
+  case "$o" in *'"unseen":'*) ;; *) printf '<额度账读不出：%s>' "$o"; return ;; esac
+  printf '%s' "$o" | grep -o '"account":"[^"]*"' | sed 's/.*:"\(.*\)"/\1/' | sort | tr '\n' ' '
+}
+ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号（一个号都不列）" "" "$(names_of)"
 ck "建库前：裸起不落旧清单里的默认号" "$UNSET; cd '/p' && exec claude" "$(home_run -- --cwd /p --ccm-print)"
 INIT="$(printf '{"name":"d"}' | home_run -- --accounts-init)"
 ck "建库：应答说落了盘" "yes" "$(printf '%s' "$INIT" | grep -qF '"applied":true' && echo yes || echo no)"
@@ -272,7 +277,7 @@ ck "ccm --account d：CLAUDE_CONFIG_DIR 指向新位置" \
    "$(home_run -- --account d --cwd /p --ccm-print)"
 ck "ccm --account old（只在旧位置的清单里）⇒ rc=2" "2" \
    "$(home_run -- --account old --cwd /p --ccm-print >/dev/null 2>&1; echo $?)"
-ck "列账号只列新库里的号（旧清单里的 old 不在）" "d 0 " "$(names_of)"
+ck "列账号只列新库里的号（旧清单里的 old 不在）" "0 d " "$(names_of)"
 rm -rf "$AH"
 
 echo
@@ -382,8 +387,8 @@ ck "-- 右边认不得的词直接报错（不猜）" \
    "ccm: $(zh beArgv.parse.unknownRight w=--model)" \
    "$(ccm -- --model opus --ccm-print)"
 ck "后端子命令只能紧跟打头的 --" \
-   "ccm: $(zh beArgv.parse.backendWordAfterClaudeArgs w=--list-sessions)" \
-   "$(ccm -p -- --list-sessions)"
+   "ccm: $(zh beArgv.parse.backendWordAfterClaudeArgs w=--history-list)" \
+   "$(ccm -p -- --history-list)"
 
 echo "===== 没有 -- 又没有终端：不起 claude（被别的程序经管道驱动的裸调用）====="
 # 假 claude 只记下自己被叫了（argv 写进标记文件）就退出；PATH 最前面是它，碰不到真的。
@@ -396,8 +401,8 @@ ck "零参数、管道驱动：退出码 5" "5" "$rc"
 ck "零参数、管道驱动：claude 没被起" "no" "$([ -e "$MARK" ] && echo yes || echo no)"
 ck "零参数、管道驱动：stderr 说清怎么叫后端" "yes" "$(grep -qF 'ccm -- --stream' "$CCMDIR/err" && grep -qF 'ccm -- <子命令>' "$CCMDIR/err" && echo yes || echo no)"
 ck "零参数、管道驱动：stdout 一个字都没有" "" "$(cat "$CCMDIR/out")"
-rm -f "$MARK"; bare --list-projects </dev/null >/dev/null 2>&1; rc=$?
-ck "漏了 -- 的一次性叫法（--list-projects）：退出码 5、claude 没被起" "5 no" "$rc $([ -e "$MARK" ] && echo yes || echo no)"
+rm -f "$MARK"; bare --history-list </dev/null >/dev/null 2>&1; rc=$?
+ck "漏了 -- 的一次性叫法（--history-list）：退出码 5、claude 没被起" "5 no" "$rc $([ -e "$MARK" ] && echo yes || echo no)"
 ck "有 -- 的不看终端：-- --ccm-print 照样印出那一行" \
    "$UNSET; cd '/p' && exec claude" \
    "$(bare -- --cwd /p --ccm-print </dev/null 2>&1)"

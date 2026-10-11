@@ -116,48 +116,9 @@ pub(crate) fn excerpt(text: &str) -> String {
     }
 }
 
-/// 读 `r`（已定位在字节 `from`）逐行出清单（头 ＋ 行 ＋ 尾）。**纯 I/O 泛型**，单测直接喂字节。
-///
-/// 只看**完整行**（`\n` 收尾）；torn 残尾不看、不计进 `end` —— 下一次从 `end` 接着要时它已写完。
-/// 返回出了几条（不含头尾）。
-pub(crate) fn write_user_inputs<R: std::io::BufRead, W: std::io::Write>(
-    r: R,
-    from: u64,
-    out: &mut W,
-) -> std::io::Result<u64> {
-    writeln!(out, "{{\"kind\":\"user_inputs\",\"v\":1,\"from\":{from}}}")?;
-    let (count, end) = scan_user_inputs(r, from, |row| {
-        serde_json::to_writer(&mut *out, row)?;
-        out.write_all(b"\n")
-    })?;
-    writeln!(
-        out,
-        "{{\"kind\":\"user_inputs_end\",\"count\":{count},\"end\":{end}}}"
-    )?;
-    Ok(count)
-}
-
-/// 从头那一份已经扫好（共用扫描图）⇒ 照同一个头尾三段写出。
-pub(crate) fn write_rows<W: std::io::Write>(
-    rows: &[UserInputRow],
-    end: u64,
-    out: &mut W,
-) -> std::io::Result<()> {
-    writeln!(out, "{{\"kind\":\"user_inputs\",\"v\":1,\"from\":0}}")?;
-    for row in rows {
-        serde_json::to_writer(&mut *out, row)?;
-        out.write_all(b"\n")?;
-    }
-    writeln!(
-        out,
-        "{{\"kind\":\"user_inputs_end\",\"count\":{},\"end\":{end}}}",
-        rows.len()
-    )
-}
-
-/// [`write_user_inputs`] 的中段：逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个
-/// 完整行的末字节）。CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-user-inputs`，
-/// 装成成品 `{from, end, entries}`）跑的是**同一个**扫描 —— 「什么算一条用户输入」仍只住 [`user_input_of`]。
+/// 读 `r`（已定位在字节 `from`）逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个完整行的末字节）。
+/// 只看**完整行**（`\n` 收尾）；torn 残尾不看、不计进 `end`。帧面 `history-user-inputs`（`read_face.rs`）装成成品
+/// `{from, end, entries}` —— 「什么算一条用户输入」只住 [`user_input_of`]。
 pub(crate) fn scan_user_inputs<R: std::io::BufRead>(
     mut r: R,
     from: u64,

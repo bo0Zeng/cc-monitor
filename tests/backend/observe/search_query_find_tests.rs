@@ -48,16 +48,16 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
     v
 }
 
+/// 现扫一遍（帧面 `history-find` 不归常驻索引管时跑的那一个），摊成 `[{}, 每条命中…, {count, total}]`。
 fn find(data: &[u8], q: &str, tools: bool, limit: usize) -> Vec<Value> {
-    let mut out = Vec::new();
-    write_session_find(data, q, tools, limit, &Default::default(), &mut out).expect("find ok");
-    let v: Vec<Value> = String::from_utf8(out)
-        .unwrap()
-        .lines()
-        .map(|l| serde_json::from_str(l).expect("每行都是 JSON"))
-        .collect();
-    assert_eq!(v[0]["kind"], "session_find", "首行认得出");
-    assert_eq!(v[v.len() - 1]["kind"], "session_find_end", "有尾行");
+    let mut v = vec![serde_json::json!({})];
+    let page = FindPage { skip: 0, limit };
+    let (count, total) = scan_session_find(data, q, tools, page, |hit| {
+        v.push(with_hit_text(hit, &Default::default()));
+        Ok(())
+    })
+    .expect("find ok");
+    v.push(serde_json::json!({ "count": count, "total": total }));
     assert_eq!(
         v[v.len() - 1]["count"].as_u64().unwrap() as usize,
         v.len() - 2,
@@ -237,7 +237,10 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
             r,
             "zqx",
             tools,
-            crate::observe::search_query::FindPage::first(500),
+            crate::observe::search_query::FindPage {
+                skip: 0,
+                limit: 500,
+            },
             |h| {
                 hits.push(crate::observe::search_query::with_hit_text(
                     h,

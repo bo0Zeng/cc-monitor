@@ -1,7 +1,6 @@
-//! issue #28：远端全文搜索（一次性查询子命令 `--search`）。
+//! issue #28：全文搜索（帧命令 `history-search`，宿主 `faces/read_face.rs`）与会话内查找的内核。
 //!
-//! cc-monitor 通过**独立 SSH 连接**一次性 exec `<backend> --search <query> [opts]`，
-//! backend 在远端 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
+//! backend 在会话所在那台的 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
 //! 整库回本地），输出**每命中会话一行** camelCase JSON（与 monitor `search::SessionHits`
 //! 形状严格一致，可直接反序列化）：
 //! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
@@ -46,29 +45,6 @@ struct SearchOpts {
     titles: bool,
 }
 
-/// `--search <query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]`。
-/// 返回进程退出码（0 ok / 2 err），与 history_query::run 同约定。
-pub fn run(agent_home: &Path, args: &[String]) -> i32 {
-    // args[0] == "--search"
-    let query = match args.get(1) {
-        Some(q) => q.as_str(),
-        None => {
-            eprintln!("cc-monitor-backend query error: --search requires <query> argument");
-            return 2;
-        }
-    };
-    let opts = parse_opts(&args[2.min(args.len())..]);
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
-    match search(agent_home, query, &opts, &mut out) {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("cc-monitor-backend search error: {e}");
-            2
-        }
-    }
-}
-
 /// 帧面那条（`history-search`）的入口：`rest` 是 `--search <query>` **之后**那一截，
 /// 解析走**同一个** [`parse_opts`] —— 选项的口径只有一份，不在帧面另写一套 JSON 解析。
 /// 回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
@@ -91,7 +67,7 @@ pub(crate) fn search_into(
     Ok(unreadable)
 }
 
-/// 从 `--search <query>` 之后的参数解析选项（未知/缺值的容错忽略）。
+/// 从选项词（帧面 `history-search` 摊回来的那一截，`faces/read_face.rs::search_rest`）解析选项（未知/缺值的容错忽略）。
 fn parse_opts(rest: &[String]) -> SearchOpts {
     let mut opts = SearchOpts {
         include_tools: false,
@@ -131,24 +107,6 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
         i += 1;
     }
     opts
-}
-
-/// 扫 projects/**/*.jsonl，搜索匹配，每命中会话输出一行 JSON。
-///
-/// ⚠ `out` 是参数而不是直接 `stdout()`：**输出的行序就是预算顺序**，
-/// 而「预算按最近优先花」正是 `KR100D2` 要判的性质 —— 判据得看得见那个序
-/// （`the_snippet_budget_goes_to_the_most_recent_sessions`）。直接写 stdout 就判不了。
-fn search(
-    agent_home: &Path,
-    query: &str,
-    opts: &SearchOpts,
-    out: &mut impl Write,
-) -> Result<(), String> {
-    let unreadable = search_counting(agent_home, query, opts, out)?;
-    if let Some(note) = unreadable_note(unreadable) {
-        tracing::warn!("{note}");
-    }
-    Ok(())
 }
 
 /// 〔E 吞错普查点名〕扫完一趟，有几个会话文件**读不动**（权限 / IO 错 / 不是合法 UTF-8）、因此没搜到。
@@ -964,7 +922,7 @@ pub(crate) struct RecordText {
 
 /// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
 ///
-/// 🔴 **全局搜索（`--search`）与会话内查找（`--find-in-session`）的口径只有这一个住址**；
+/// 🔴 **全局搜索（`history-search`）与会话内查找（`history-find`）的口径只有这一个住址**；
 /// 抽取 / 「谁说的」住适配层（经注册表 `agents::main_text` · `tool_text` · `human_speech`），截断住 `search_rules`（原 `search-core`）。
 pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> {
     let is_assistant = match v.get("type").and_then(Value::as_str) {
@@ -1069,12 +1027,6 @@ pub(crate) struct FindPage {
     pub(crate) limit: usize,
 }
 
-impl FindPage {
-    pub(crate) fn first(limit: usize) -> Self {
-        Self { skip: 0, limit }
-    }
-}
-
 /// 一页的账：每条命中都记进全量数，只有落在这一页里的才交出去。
 struct FindPager {
     page: FindPage,
@@ -1130,39 +1082,8 @@ pub(crate) fn with_hit_text(hit: &Value, tz: &crate::common::time::Tz) -> Value 
     h
 }
 
-/// **会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
-/// 出三段（形状登记 `IPC-PROTOCOL.md §10.5`）：
-/// 1. 头 `{"kind":"session_find","v":1}`；
-/// 2. 每条命中一行 `{"uuid","kind","before","matched","after","turn","tsMs","tsText"}`，**按文件序**（= 对话序），最多 `limit` 条；
-/// 3. 尾 `{"kind":"session_find_end","count":N,"total":T}` —— `T` = 全量命中数（≥ N）。**没有尾行 ⇒ 截断**。
-///
-/// 与 `--search` 的差别只在「扫哪些文件、给多少条」：口径（[`record_text`] / [`record_hit`] ＋ `search_rules`
-/// 的片段）同一份。没有 uuid 的记录不算（跳不过去 —— 列出来就是一条点了没反应的项）。
-/// 只看**完整行**（torn 残尾下一次再看）。空查询 ⇒ 零条。返回 `(count, total)`。
-pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
-    r: R,
-    query: &str,
-    include_tools: bool,
-    limit: usize,
-    tz: &crate::common::time::Tz,
-    out: &mut W,
-) -> std::io::Result<(u64, u64)> {
-    writeln!(out, "{{\"kind\":\"session_find\",\"v\":1}}")?;
-    let (count, total) =
-        scan_session_find(r, query, include_tools, FindPage::first(limit), |hit| {
-            serde_json::to_writer(&mut *out, &with_hit_text(hit, tz))?;
-            out.write_all(b"\n")
-        })?;
-    writeln!(
-        out,
-        "{{\"kind\":\"session_find_end\",\"count\":{count},\"total\":{total}}}"
-    )?;
-    Ok((count, total))
-}
-
-/// [`write_session_find`] 的中段：**逐条命中交给 `on_hit`**（按文件序、只交 `page` 那一页），
-/// 回 `(count, total)`。判定一行都不在这一层之外 —— CLI 那一臂（上面，写头尾三段：stdout 要分帧）与帧面那一臂
-/// （`read_face.rs` 的 `history-find`，把同一串命中装成成品 `{total, hits}`）跑的是**同一个**扫描。
+/// 会话内查找的现扫：**逐条命中交给 `on_hit`**（按文件序、只交 `page` 那一页），回 `(count, total)`
+/// （`total` = 全量命中数）。帧面 `history-find`（`read_face.rs`）不归常驻索引管时跑它，把命中装成成品 `{total, hits}`。
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub(crate) fn scan_session_find<R: std::io::BufRead>(

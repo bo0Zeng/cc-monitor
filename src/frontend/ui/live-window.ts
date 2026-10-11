@@ -376,7 +376,7 @@ export class TailWindow {
  *
  * # 坐标
  *
- * 下标就是 **seq**（与 watcher / `--read-session-tail` 同一个行号空间，`IPC-PROTOCOL.md §10.3`）。
+ * 下标就是 **seq**（与 watcher / `history-tail` 同一个行号空间，`IPC-PROTOCOL.md §10.3`）。
  * `base` = 第一行的 seq（冷启动 0；续传是上次的 `endSeq`，由 `append` 接上）。
  *
  * # 买不到

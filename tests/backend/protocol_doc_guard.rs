@@ -64,23 +64,17 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "assets/asset_sync.rs",
         include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
-    (
-        "observe/history_query.rs",
-        include_str!("../../src/backend/observe/history_query.rs"),
-    ),
     // `accounts/iso.rs` 那一行摘了：`--acct-iso-status` / `--acct-iso-shellinit` 的 argv 形分派退役，
     //   两问上了帧面（CLI 面由 `cli_control` 从 `REGISTRY` 派生，那一份早在本表里）。
-    (
-        "observe/accounts_query.rs",
-        include_str!("../../src/backend/observe/accounts_query.rs"),
-    ),
+    // `observe/history_query.rs` · `observe/accounts_query.rs` 两行摘了（10-11）：`--read-session*` · `--list-*` ·
+    //   `--find-in-session` · `--account-trust*` 那几条手写子命令删了，两份文件里不再有 `"--` 字面量。
     (
         "observe/search_query.rs",
         include_str!("../../src/backend/observe/search_query.rs"),
     ),
     // 只读查询的帧面宿主。它不做 match 分派，但把 `history-search` 的
     // JSON 选项摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit` 那几个 token
-    // （解析走 CLI 那一臂同一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
+    // （解析走 `search_query` 那一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
     // 那几个 token 本来就在 IPC-PROTOCOL.md 里，它们从此也在这里受对拍。
     (
         "faces/read_face.rs",
@@ -592,8 +586,8 @@ mod tests {
     /// `resolve_query.rs`」。**实测那个前提是错的** —— 今天有 **3 个文件、6 个类型**，
     /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
     ///
-    /// - `resolve_query.rs` 的 4 个：与手机端 **冻结在 2026-07-18** 的一次性契约；
-    /// - `fork_write.rs::ForkResult`：**一次性子命令 `--fork-session` 的出参**，不是流协议；
+    /// - `resolve_query.rs` 的几个：命令 `resolve` 的入参与成品（当时与手机端冻结，10-11 解冻）；
+    /// - `fork_write.rs::ForkResult`：分叉的出参（当时是一次性子命令 `--fork-session` 的出参），不是流协议；
     /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析账号库的清单
     ///   **文件**（文件 schema）。
     ///
@@ -609,7 +603,7 @@ mod tests {
             (
                 "control/resolve_query.rs",
                 "ResumeSpec",
-                "一次性 `--resolve` 的入参。契约与手机端冻结在 2026-07-18，逐字不动",
+                "命令 `resolve` 的入参（形状钉在金样 `resolve-contract.golden.json`），命令应答不是流协议帧",
             ),
             (
                 "control/resolve_query.rs",
@@ -617,11 +611,10 @@ mod tests {
                 "同上，`CommandPlan` 的一部分",
             ),
             ("control/resolve_query.rs", "CommandPlan", "同上，出参"),
-            ("control/resolve_query.rs", "ResolveError", "同上，错误形状"),
             (
                 "control/fork_write.rs",
                 "ForkResult",
-                "一次性子命令 `--fork-session` 的**出参**，不是流协议帧 —— 搬进 wire 是错误归类",
+                "分叉的**出参**（`session-fork` 应答 `data` 的那几格），不是流协议帧 —— 搬进 wire 是错误归类",
             ),
             (
                 "observe/accounts_query.rs",

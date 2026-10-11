@@ -133,24 +133,14 @@ async fn main() {
     };
     init_tracing(is_query_mode(&args) || bad_view.is_some());
 
-    let agent_home = resolve_agent_home();
-
     if is_query_mode(&args) || bad_view.is_some() {
         // 看的那一台的时区（`--tz`，剥流旗标那一步剥出来的）：一次性回包里的「几点」按它写。
         let z = &wants.tz;
-        // 一次性查询模式：--search 全文搜索（#28）/
-        // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
+        // 一次性查询模式：手写的几条（tmux 钩子 · 常驻后端起找停）＋ 从帧命令派生的 CLI 面；别的一律「不认识」。
         let code = match args.first().map(String::as_str) {
             _ if bad_view.is_some() => cli_control::refuse_stream_view(bad_view.as_deref(), z),
             // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
-            // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
-            // 不在本 crate 的源码文本里 —— 零定时器铁律的人群逐字排除「被起进程的行为」。
-            Some("--search") => observe::search_query::run(&agent_home, &args),
-            Some("--resolve") => control::resolve_query::run(&agent_home, &args),
-            // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
-            // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
-            Some("--fork-session") => control::fork_write::run(&agent_home, &args, z),
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
@@ -159,34 +149,26 @@ async fn main() {
             Some("--resident-stop") => control::resident::run_stop(&args[1..]),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
-            // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
-            // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
-            // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，
-            // 而 monitor 的账号 0 路径**真的在发这条命令**。
-            // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
-            // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
-            Some("--list-accounts")
-            | Some("--session-accounts")
-            | Some("--account-trust")
-            | Some("--account-trust-zero") => observe::accounts_query::run(&agent_home, &args, z),
+            // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、
+            //   生产里没人调；`--resolve` 照派生规则走下面那条臂（信封与别的命令同一形）。
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
             // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
-            // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
-            // 它的信封与手机端冻结在 2026-07-18，走原路一个字节都不动
-            // （两条路的输出实为同一个 `CommandPlan`，但冻结的契约不拿「实际上一样」去赌）。
+            // 于是「帧面加一条命令」不需要回来改这里。
             // ⚠ **必须写成单行臂**：`argv_table_guard::every_dispatch_arm_actually_calls_an_implementation`
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
             Some(f) if cli_control::handles(f) => cli_control::run(&args, z).await,
-            _ => observe::history_query::run(&agent_home, &args, z),
+            // 不认识的子命令（含删掉的那几条带着裸参数敲）：stderr 一行 `unknown_command` 失败信封、退出 2。
+            _ => cli_control::refuse_unknown(&args, z),
         };
         std::process::exit(code);
     }
 
     // 一次性查询已 exit；到此必是流模式。agent_home 日志放此（审计 correctness-重要①：
-    // --resolve/一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
-    // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
+    // 一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
+    // 「错误 exit2 + stderr 纯 JSON 失败信封」，客户端可整段 JSON-parse stderr）。
+    let agent_home = resolve_agent_home();
     tracing::info!("agent_home = {}", agent_home.display());
 
     // **脱离常驻那条载体的 stderr 落盘**：宿主交了路径才接（monitor 只在起脱离那条时交），先抢口、抢到了才接（[`claim_then_log`]）。

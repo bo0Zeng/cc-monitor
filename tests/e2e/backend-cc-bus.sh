@@ -620,7 +620,7 @@ chk "★ argv 值超本后端的上限：args_too_large" "$(jq -r .code < "$SAND
 _t0=$(c2ms); d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null 2>&1; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
 chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
 
-# `--resolve`（与手机端冻结的那一条）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input（码全集钉在金样里）。
+# `--resolve`（帧命令 `resolve` 派生的那一面，手写臂删了）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input。
 _rq='{"sessionId":"s1"}'
 printf '%s' "$_rq" | d --resolve >"$SANDBOX/c2-rs-in.txt"; _rc_in=$?
 d --resolve --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-rs-av.txt"; _rc_av=$?

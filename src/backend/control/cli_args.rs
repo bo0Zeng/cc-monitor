@@ -1,4 +1,4 @@
-//! CLI 面**读入参的唯一一处**：派生子命令（`cli_control`）与 `--resolve`（`resolve_query`，与手机端冻结的那一条）都经 [`read_args`] 读。
+//! CLI 面**读入参的唯一一处**：派生子命令（`cli_control`，含 `--resolve`）都经 [`read_args`] 读。
 //!
 //! 两个口**二选一**，修饰词都认任意位置：
 //! - stdin：默认读到 EOF；带 [`STDIN_LINE_FLAG`] ⇒ 只读一行（给 stdin 关不掉的调用方）。开着却 [`STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`。
@@ -6,13 +6,13 @@
 //!
 //! 上限：stdin [`MAX_CLI_STDIN`]；argv [`MAX_ARGS_B64_LEN`]。超了 `args_too_large`，不截断。会回的码全集是 [`READ_ARGS_CODES`]。
 //!
-//! 单独住一个文件：`resolve_query` 引它，不引 `cli_control`（那边挂着整张命令表，文件级引用图上会把 tmux 带进流上的 `resolve`）。
+//! 单独住一个文件：从前 `resolve_query` 也引它（不引挂着整张命令表的 `cli_control`）；那条手写臂 10-11 删了，读入参的口留在这里。
 
 use crate::common::contract;
 use std::io::Read;
 use std::time::Duration;
 
-/// stdin 上限（兜 DoS，不是兜格式；`--resolve` 也是这一道）。超限是拒收，不是截断：
+/// stdin 上限（兜 DoS，不是兜格式）。超限是拒收，不是截断：
 /// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
 pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
 

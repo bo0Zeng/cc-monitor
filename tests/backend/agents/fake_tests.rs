@@ -285,7 +285,7 @@ fn the_twelve_reverse_derived_capabilities_are_enough_to_finish_the_pipeline() {
 ///    对每个洞都会"红"，那种红是假的。
 ///
 /// ⚠ 对照着看的是**通用层今天的反应**：同样是"这家的布局它不认识"，
-/// 用量聚合那条查询 / `search_query::run` / `--session-accounts` 一律 **rc=0 + 零输出**
+/// 用量聚合那条查询 / 全文搜索 / 会话归属一律 **零输出**
 /// （实测读数见 `PR-S6.md`）—— 那正是**静默**。两者的差就是 `L2` 要补的东西。
 #[test]
 fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
@@ -341,10 +341,10 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 ///
 /// | 入口 | 今天的反应 |
 /// |---|---|
-/// | `history_query --list-projects` | rc=2 + 报错，但措辞是 **Claude 的布局**（`<home>/projects`） |
-/// | `search_query --search` | **rc=0、零输出** ⇒ 静默 |
-/// | `accounts_query --session-accounts` | **rc=0、零行** ⇒ 静默 |
-/// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **`bad_request`：不认识这个 agent，说出认得的几家** |
+/// | `history_query::list_projects_into`（项目清单） | 「记录树根不在」（`Ok(false)`、零行）：调用方据此说「这台还没有会话记录」 |
+/// | `search_query::search_into`（全文搜索） | **零命中** ⇒ 静默 |
+/// | `accounts_query::session_accounts`（会话归属） | **零行** ⇒ 静默 |
+/// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **`bad_args`：不认识这个 agent，说出认得的几家** |
 ///
 /// 最后一条：resume 按注册表里那一家的那一格拼（注册了的家走它自己的命令形，见
 /// `the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family`）；**没注册**的 kind 报错、不落默认那一家
@@ -367,24 +367,22 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
         "夹具里出现了 Claude 的 `projects/` —— 那样下面测的就不是「第二种布局」了"
     );
 
-    // ① 会话读：说得出话，但说的是**别人的话**（措辞是 Claude 的目录布局）。
-    let rc = crate::observe::history_query::run(
-        &root,
-        &["--list-projects".to_string()],
-        &Default::default(),
-    );
+    // ① 项目清单：答「记录树根不在」（不是零个项目）—— 调用方据此说「这台还没有会话记录」。
+    let mut out: Vec<u8> = Vec::new();
     assert_eq!(
-        rc, 2,
-        "`--list-projects` 对一个布局不同的 agent 不再报错了 —— \
-             那它就退化成了「静默零输出」，比现在更坏"
+        crate::observe::history_query::list_projects_into(&root, &mut out),
+        Ok(false),
+        "项目清单对一个布局不同的 agent 不再说「记录树根不在」了 —— 那它就退化成了「静默零个项目」"
     );
+    assert!(out.is_empty());
 
-    // ② 搜索：**静默**（rc=0）。
-    let rc = crate::observe::search_query::run(&root, &["--search".to_string(), "hi".to_string()]);
-    assert_eq!(
-        rc, 0,
-        "`--search` 的反应变了 —— 本格记的是「今天它 rc=0 零输出」这个事实，\
-             变了就该同轮改本格头注那张表"
+    // ② 搜索：**静默**（零命中）。
+    let mut out: Vec<u8> = Vec::new();
+    crate::observe::search_query::search_into(&root, "hi", &[], false, &mut out)
+        .expect("搜索对一个布局不同的 agent 报错了");
+    assert!(
+        out.is_empty(),
+        "全文搜索的反应变了 —— 本格记的是「今天它零命中」这个事实，变了就该同轮改本格头注那张表"
     );
 
     // ③ 账号：**静默**（零行）。
@@ -394,14 +392,14 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     assert_eq!(
         crate::observe::accounts_query::session_accounts(&root, &no_accts),
         Vec::<String>::new(),
-        "`--session-accounts` 的反应变了"
+        "会话归属的反应变了"
     );
 
     // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
     let (code, said) = crate::control::resolve_query::resolve_json_for_inbound(&spec)
-        .expect_err("`--resolve` 对注册表里没有的 agentKind 落了默认那一家");
-    assert_eq!(code, "bad_request");
+        .expect_err("`resolve` 对注册表里没有的 agentKind 落了默认那一家");
+    assert_eq!(code, "bad_args");
     assert_eq!(
         said,
         copy_core::copy_text(

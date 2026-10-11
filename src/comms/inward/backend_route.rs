@@ -46,7 +46,7 @@ pub enum CallError {
     Unavailable { cmd: String, code: String },
     /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
     Timeout { after: Duration, withdraw: Withdraw },
-    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）；
+    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状同帧面失败应答）；
     /// `data` ＝ 那几个按码定了形的码带的 `data`（序列化好的 JSON 原文；别的码 ⇒ `None`）。
     Remote {
         code: String,

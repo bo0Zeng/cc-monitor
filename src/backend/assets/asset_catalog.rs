@@ -378,7 +378,7 @@ pub(crate) fn assets_from(sightings: &[crate::agents::Sightings]) -> (Vec<Asset>
     (out, problems)
 }
 
-/// 这台上开过会话的项目目录：取历史清单那一份（`--list-projects` 的每一行的 `projectPath`），不另起一份扫描。
+/// 这台上开过会话的项目目录：取历史清单那一份（项目清单每一行的 `projectPath`），不另起一份扫描。
 /// 列不出来 ⇒ 空 ＋ 一句话（「这台没有项目」与「这台的项目列不出来」不许合成一句）。
 pub(crate) fn session_projects() -> (Vec<String>, Option<String>) {
     session_projects_at(&crate::observe::history_query::agent_home())

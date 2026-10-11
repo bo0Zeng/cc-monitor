@@ -1,17 +1,6 @@
-//! issue #16 P1a：一次性历史查询模式。
-//!
-//! cc-monitor 通过**独立 SSH 连接**一次性 exec 本二进制并带参数：
-//!
-//! - `--list-projects`                → 列举 `<claude_dir>/projects/` 下各项目
-//! - `--list-sessions <project_dir>`  → 列举某项目目录下的历史会话（带元数据）
-//! - `--read-session <jsonl_path>`    → 原样透传该 jsonl 文件内容（monitor 侧解析）
-//! - `--read-session-from-offset <jsonl_path> <offset>` → 从字节 `offset`（0-based）透传
-//!   [offset, EOF]，= 手机端 `tail -c +(offset+1)`（offset 续拉/重连恢复）
-//!
-//! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
-//! 协议互不混用，旧后端不认参数会照常进流模式发 hello，monitor 以"首行是
-//! hello 帧"识别旧版并优雅降级）；`--read-session` 输出原始文件字节。
-//! 错误：stderr 写原因 + 退出码 2。成功退出码 0。
+//! 历史读面的本体：项目清单 · 会话清单 · 尾段图 · 骨架索引 · 分页读 · 大纲 · 会话内查找的打开口 · 记录在不在。
+//! 帧面那几条（`history-*`，宿主 `faces/read_face.rs`）与资产目录（`asset_catalog`）经这里读；
+//! 一次性 `--read-session*` · `--list-*` · `--find-in-session` 那几条手写子命令删了（第 7 批第二题）。
 //!
 //! 安全：所有路径参数严格限制在 `<claude_dir>/projects/` 之内（canonicalize 后
 //! 前缀校验，防 `../` 穿越）；project_dir 参数不允许含路径分隔符。
@@ -71,121 +60,10 @@ pub(crate) struct Can {
     pub(crate) delete: &'static str,
 }
 
-/// 查询模式入口。返回进程退出码。
-pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
-    let result = match args.first().map(String::as_str) {
-        Some("--list-projects") => {
-            return match list_projects_to(agent_home, &mut std::io::stdout().lock()) {
-                Ok(()) => 0,
-                Err((Some(code), said)) => coded_failure(code, &said, tz),
-                Err((None, e)) => query_failed(&e),
-            }
-        }
-        Some("--list-sessions") => match args.get(1) {
-            Some(dir) => list_sessions(agent_home, dir),
-            None => Err("--list-sessions requires <project_dir> argument".into()),
-        },
-        Some("--read-session-tail") => match (args.get(1), args.get(2)) {
-            (Some(p), Some(n)) => match n.parse::<usize>() {
-                Ok(n) => read_session_tail(agent_home, p, n),
-                Err(_) => Err("--read-session-tail <jsonl_path> <N>: N must be a number".into()),
-            },
-            _ => Err("--read-session-tail requires <jsonl_path> <N> arguments".into()),
-        },
-        Some("--read-session") => match args.get(1) {
-            Some(p) => read_session(agent_home, p),
-            None => Err("--read-session requires <jsonl_path> argument".into()),
-        },
-        Some("--read-session-from-offset") => match parse_from_offset_args(&args[1..]) {
-            Ok((opts, pos)) => match (pos.first(), pos.get(1)) {
-                (Some(p), Some(o)) => match o.parse::<u64>() {
-                    Ok(o) => read_session_from_offset(agent_home, p, o, opts.until),
-                    Err(_) => Err(
-                        "--read-session-from-offset <jsonl_path> <offset>: offset must be a number"
-                            .into(),
-                    ),
-                },
-                _ => Err(
-                    "--read-session-from-offset requires <jsonl_path> <offset> arguments".into(),
-                ),
-            },
-            Err(e) => Err(e),
-        },
-        // 大纲的数据源：「你说过的话」清单（判定住 `observe::user_inputs`）。
-        Some("--list-user-inputs") => match parse_user_inputs_args(&args[1..]) {
-            Ok((from, p)) => list_user_inputs(agent_home, p, from),
-            Err(e) => Err(e),
-        },
-        // 会话内查找（口径与 `--search` 同一份，内核住 `observe::search_query`）。
-        Some("--find-in-session") => match parse_find_args(&args[1..]) {
-            Ok(a) => find_in_session(agent_home, &a, tz),
-            Err(e) => Err(e),
-        },
-        Some(other) => Err(format!("unknown argument: {other}")),
-        None => Err("no query argument".into()),
-    };
-    match result {
-        Ok(()) => 0,
-        Err(e) => query_failed(&e),
-    }
-}
-
-/// `--list-projects`：每个项目目录一行 JSON：
-/// `{"dirName","projectPath","sessionCount","lastActivityMs"}`
-/// projectPath = 该项目**最新** jsonl 的项目目录（适配层 `RecordFace.project_dir`：真实目录，
-/// 而非编码过的目录名）；读不到则空字符串，monitor 侧回退显示 dirName。
-///
-/// 老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
-/// （`agents/fake` 那条 S6-Z3 钉着）；但那一形带上结构化的码 [`NO_RECORD_TREE`]（`{code, message}` 信封），
-/// 问的那台后端认码 ⇒ 画「这台还没有会话记录」而不是「没加载上」。其余失败无码（`Err((None, 原因))`）。
-pub(crate) fn list_projects_to(
-    agent_home: &Path,
-    out: &mut dyn Write,
-) -> Result<(), (Option<&'static str>, String)> {
-    if list_projects_into(agent_home, out).map_err(|e| (None, e))? {
-        return Ok(());
-    }
-    Err((
-        Some(NO_RECORD_TREE),
-        copy_text(
-            "beHistory.records.none",
-            &[(
-                "path",
-                &records_root(agent_home)
-                    .unwrap_or_else(|| agent_home.to_path_buf())
-                    .display()
-                    .to_string(),
-            )],
-        ),
-    ))
-}
-
-/// `--list-projects` 在「记录树根不在」时信封里的码（生产方住这里；问它的那一方认码，不认话）。
-pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
-
-/// 带码的那一行：CLI 错误信封（与 CLI 控制面同一份失败载体 `stream::detail::Failed`：`{code, message, detail}`；读信封的是 `remote_ask::settle_pulled`）。
-/// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
-fn coded_failure(code: &str, said: &str, tz: &crate::Tz) -> i32 {
-    let f = crate::stream::detail::Failed::new(
-        Some("list-projects"),
-        code,
-        said.to_string(),
-        None,
-        None,
-    );
-    f.emit(tz)
-}
-
-/// 一次性查询失败的那一行（无码的旧形）。
-fn query_failed(e: &str) -> i32 {
-    eprintln!("cc-monitor-backend query error: {e}");
-    2
-}
-
-/// `--list-projects` 的本体，出口是参数：CLI 写 stdout，资产目录（`asset_catalog`）写内存。
+/// 项目清单的本体，出口是参数（资产目录 `asset_catalog` 写内存）。
 ///
 /// 回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
-/// 怎么说由调用方定：资产目录当零个项目 · CLI 照旧出声（带码）。
+/// 怎么说由调用方定：资产目录当零个项目。
 pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
     let Some(root) = records_root(agent_home) else {
         return Ok(false);
@@ -237,12 +115,12 @@ fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
     }
 }
 
-/// 一个项目目录 → `--list-projects` 的那几行（按会话的真实目录分组，一组一行，[`group_by_cwd`]）；
+/// 一个项目目录 → 项目清单的那几行（按会话的真实目录分组，一组一行，[`group_by_cwd`]）；
 /// 目录下没有会话记录 ⇒ 一行都没有（不展示）。
 ///
 /// # 为什么它是**一个函数**而不是 `list_projects` 里的一段
 ///
-/// `list_projects` 的出口是 `stdout`，红线内测不了；判据要判的是**这一行带了什么**。
+/// 判据要判的是**这一行带了什么**。
 /// 同样的分法在本文件里已有先例：`analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
 fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
     project_rows_hiding(dir, dir_name, &hidden_cwd)
@@ -271,7 +149,7 @@ fn project_rows_hiding(
     dir_name: &str,
     hide: &dyn Fn(&str) -> bool,
 ) -> Vec<serde_json::Value> {
-    // 目录与修改时刻与 `--list-sessions` 那条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
+    // 目录与修改时刻与会话清单那条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
     let mut sessions: Vec<(Option<String>, i64)> = Vec::new();
     if let Ok(files) = std::fs::read_dir(dir) {
         for f in files.flatten() {
@@ -301,24 +179,7 @@ fn project_rows_hiding(
         .collect()
 }
 
-/// `--list-sessions <project_dir>`：该项目每个 jsonl 一行 JSON：
-/// `{"sessionId","jsonlPath","startedAtMs","updatedAtMs","messageCountApprox",
-///   "firstUserExcerpt","aiTitle","cwd"}`
-/// 元数据在远端 CPU 上扫整个文件提取（对齐本地 analyze 口径的精简版）。
-fn list_sessions(agent_home: &Path, project_dir: &str) -> Result<(), String> {
-    list_sessions_into(agent_home, project_dir, &mut std::io::stdout().lock())
-}
-
-/// `--list-sessions` 的本体，出口是参数（CLI 与平铺清单 [`sessions_by_dir`] 同一个函数）。
-pub(crate) fn list_sessions_into(
-    agent_home: &Path,
-    project_dir: &str,
-    out: &mut dyn Write,
-) -> Result<(), String> {
-    list_sessions_for(agent_home, project_dir, None, out)
-}
-
-/// [`list_sessions_into`] 的本体。`only` ＝ 只要这一个会话的整行（按 sid 问清单那一条）：别的会话只出分组要的那几格
+/// 一个项目目录的会话清单（每份会话一行）。`only` ＝ 只要这一个会话的整行（按 sid 问清单那一条）：别的会话只出分组要的那几格
 /// （sid · 读出的目录 · 修改时刻 —— 都不用扫整份），整行只扫叫这个名字的那一份。
 fn list_sessions_for(
     agent_home: &Path,
@@ -356,7 +217,7 @@ fn list_sessions_for(
 }
 
 /// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ `(目录名, 那一目录的会话行 | 读不了的那一句)`。
-/// 会话行同 `--list-sessions`（同一个 [`list_sessions_into`]），`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
+/// 会话行同 [`list_sessions_for`]，`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
 /// 与项目清单同一个分组（记录目录名会撞，按真实目录分）；归到藏起来的那个目录（[`hidden_cwd`]）的不出。
 /// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects_into`]）。
 pub(crate) fn sessions_by_dir(
@@ -714,173 +575,6 @@ fn validate_session_path_among(
     Ok(target)
 }
 
-/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
-/// 透传原字节：这是冻结给第二个前端的那一面（`IPC-PROTOCOL.md` §7），按原样留着。要**成品**（逐行解析好的记录）走
-/// `history-read`（后端自己的 `agents/claudecode/parse.rs::parse_line`；monitor 侧早已没有自己的解析）。
-fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
-    std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
-/// backend-02（Phase 1 offset 续拉）：`--read-session-from-offset <path> <offset>`——
-/// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = 手机端
-/// `tail -c +(offset+1)`**（`TailTransport.kt:33` + `SkeletonScan.windowContentCommand`）。
-/// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
-/// 截断/重写（远端 size < offset）**不在此判**——同手机端由客户端另经 size 查检测后
-/// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
-/// 透传原字节，理由同 `read_session`（冻结的那一面；成品走 `history-read`）。
-///
-/// `--until <end>`（[`FromOffsetOpts`]）把透传收成半开区间 `[offset, end)`。
-fn read_session_from_offset(
-    agent_home: &Path,
-    jsonl_path: &str,
-    offset: u64,
-    until: Option<u64>,
-) -> Result<(), String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
-    stream_from_offset(&mut f, offset, until, &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
-/// 生产 seek+copy 内核（`read_session_from_offset` 与单测共用）——seek 到字节 `offset`（0-based）
-/// 透传 [offset, EOF] = `tail -c +(offset+1)`；offset > 文件长 → seek 过 EOF、copy 空（不 panic）。
-/// **审计 quality/correctness**：抽出泛型 `W` 让单测直接对 `Vec<u8>` 驱动**发货的 seek 路径本身**、
-/// 断言真实续拉字节，闭「只测 `slice_from_offset` 助手、生产 seek 路径无字节断言」的 dup-drift。
-///
-/// `until = Some(end)`：只透传 `[offset, end)`（`end ≤ offset` ⇒ 空）。骨架按需物化
-/// 「这一段正文」走它 —— 两端都取自索引里的行边界，所以切出来的恰好是整行。
-/// ⚠ **它不替调用方对齐行边界**：传一个行中间的数，切出来的就是半行（与 `offset` 同一口径）。
-fn stream_from_offset<W: std::io::Write>(
-    f: &mut std::fs::File,
-    offset: u64,
-    until: Option<u64>,
-    out: &mut W,
-) -> std::io::Result<u64> {
-    use std::io::{Read, Seek};
-    f.seek(std::io::SeekFrom::Start(offset))?;
-    match until {
-        None => std::io::copy(f, out),
-        Some(end) => std::io::copy(&mut f.take(end.saturating_sub(offset)), out),
-    }
-}
-
-/// `--read-session-from-offset` 的选项：`--until <end>`（右端收口）。位置不限（写在位置参数前后都认）。
-/// 未知的 `--选项` 与多余的位置参数都**报错**（不静默忽略：静默忽略会让调用方拿到一份形状不对的输出还以为成功）。
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct FromOffsetOpts {
-    pub(crate) until: Option<u64>,
-}
-
-pub(crate) fn parse_from_offset_args(
-    rest: &[String],
-) -> Result<(FromOffsetOpts, Vec<&String>), String> {
-    let mut opts = FromOffsetOpts::default();
-    let mut pos: Vec<&String> = Vec::new();
-    let mut it = rest.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--until" => {
-                let v = it
-                    .next()
-                    .ok_or("--until requires <end> (byte offset)")?
-                    .parse::<u64>()
-                    .map_err(|_| "--until <end>: end must be a number")?;
-                opts.until = Some(v);
-            }
-            other if other.starts_with("--") => {
-                return Err(format!(
-                    "--read-session-from-offset: unknown option {other}"
-                ))
-            }
-            _ => pos.push(a),
-        }
-    }
-    if pos.len() > 2 {
-        return Err(format!(
-            "--read-session-from-offset takes <jsonl_path> <offset>, got {} positional arguments",
-            pos.len()
-        ));
-    }
-    Ok((opts, pos))
-}
-
-/// `--list-user-inputs [--from <offset>] <jsonl_path>` 的 argv：一个位置参数 ＋ 一个可选的 `--from`。
-///
-/// 选项在位置参数前后都认；客户端写在前面（与骨架索引那一形同一条纪律；monitor 不再经 argv 发它，
-/// 界面经帧命令 `history-user-inputs` 问）。未知的 `--选项`、多余的位置参数都**报错**，
-/// 不静默忽略 —— 静默忽略会让调用方拿到一份形状不对的输出还以为成功了。
-pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), String> {
-    let mut from: u64 = 0;
-    let mut pos: Vec<&String> = Vec::new();
-    let mut it = rest.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--from" => {
-                from = it
-                    .next()
-                    .ok_or("--from requires <offset> (byte offset)")?
-                    .parse::<u64>()
-                    .map_err(|_| "--from <offset>: offset must be a number")?;
-            }
-            other if other.starts_with("--") => {
-                return Err(format!("--list-user-inputs: unknown option {other}"))
-            }
-            _ => pos.push(a),
-        }
-    }
-    match pos.as_slice() {
-        [p] => Ok((from, *p)),
-        _ => Err(format!(
-            "--list-user-inputs takes exactly one <jsonl_path>, got {} positional arguments",
-            pos.len()
-        )),
-    }
-}
-
-/// `--list-user-inputs`：从字节 `from` 起（冷启动 0 / 增量传上次的 `end`）出「你说过的话」清单。
-/// 形状与口径见 [`crate::observe::user_inputs`] 的头注。
-///
-/// `from` 超过文件长度 ⇒ **报错**（文件被截断或重写过 —— 调用方手上的 `end` 已经不指向这份文件），
-/// 不回一份空清单假装「没有新的」。路径守卫与 `--read-session` 同一套。
-fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<(), String> {
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
-    list_user_inputs_into(agent_home, jsonl_path, from, &mut out)?;
-    out.flush().map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
-/// `--list-user-inputs` 的本体，出口是参数 ——帧面那条（`history-user-inputs`）
-/// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答（同 `list_projects_into`）。
-pub(crate) fn list_user_inputs_into(
-    agent_home: &Path,
-    jsonl_path: &str,
-    from: u64,
-    mut out: &mut dyn Write,
-) -> Result<(), String> {
-    // 从头要 ⇒ 共用扫描图那一份（回退掉的那几句已经不在里面，与帧面同一份）。
-    if from == 0 {
-        let map = cold_scan(agent_home, jsonl_path)?;
-        return crate::observe::user_inputs::write_rows(&map.inputs, map.end, &mut out)
-            .map_err(|e| format!("stream failed: {e}"));
-    }
-    crate::observe::user_inputs::write_user_inputs(
-        open_user_inputs_at(agent_home, jsonl_path, from)?,
-        from,
-        &mut out,
-    )
-    .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
 /// 冷开那几问共用的扫描图（过读会话那同一道围栏；没变就是留着的那张，见 [`super::record_scan`]）。
 pub(crate) fn cold_scan(
     agent_home: &Path,
@@ -901,7 +595,7 @@ pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<
     tail_plan(agent_home, jsonl_path, n).map(|(plan, _)| plan)
 }
 
-/// 大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）—— CLI 臂与帧面臂共用。
+/// 大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）。
 pub(crate) fn open_user_inputs_at(
     agent_home: &Path,
     jsonl_path: &str,
@@ -913,7 +607,7 @@ pub(crate) fn open_user_inputs_at(
     let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
     if from > len {
         return Err(format!(
-            "--from {from} is past EOF ({len} bytes): file was truncated or rewritten"
+            "`from` {from} is past EOF ({len} bytes): file was truncated or rewritten"
         ));
     }
     f.seek(SeekFrom::Start(from))
@@ -974,104 +668,6 @@ pub(crate) fn open_facts_at(
     Ok(std::io::BufReader::new(f))
 }
 
-/// `--find-in-session` 的 argv。
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct FindArgs<'a> {
-    pub(crate) path: &'a String,
-    pub(crate) query: &'a String,
-    pub(crate) include_tools: bool,
-    pub(crate) limit: usize,
-}
-
-/// `--find-in-session [--include-tools] [--limit <n>] --query <q> <jsonl_path>`。
-///
-/// 🔴 **查询串是 `--query` 的值，不是位置参数**：用户要找的就可能是 `--force` 这种以 `--` 起头的词，
-/// 作为位置参数它会被当成一个写错的选项。选项的值原样取下一个 token，不看它长什么样。
-/// 选项在位置参数前后都认；客户端写在前面（monitor 不再经 argv 发它，界面经帧命令 `history-find` 问）。
-/// 未知的 `--选项`、缺 `--query`、位置参数不是恰好一个 ⇒ **报错**（不静默忽略 —— `--search` 那种
-/// 「未知选项容错忽略」正是本命令不做成它的一个选项的理由之一，见 `IPC-PROTOCOL.md §10.5`）。
-/// `--limit` 超出封顶按封顶算（`FIND_MAX_LIMIT`）；0 ⇒ 只数不列。
-pub(crate) fn parse_find_args(rest: &[String]) -> Result<FindArgs<'_>, String> {
-    use crate::observe::search_query::{FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
-    let mut query: Option<&String> = None;
-    let mut include_tools = false;
-    let mut limit = FIND_DEFAULT_LIMIT;
-    let mut pos: Vec<&String> = Vec::new();
-    let mut it = rest.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--query" => query = Some(it.next().ok_or("--query requires <text>")?),
-            "--include-tools" => include_tools = true,
-            "--limit" => {
-                limit = it
-                    .next()
-                    .ok_or("--limit requires <n>")?
-                    .parse::<usize>()
-                    .map_err(|_| "--limit <n>: n must be a number")?
-                    .min(FIND_MAX_LIMIT);
-            }
-            other if other.starts_with("--") => {
-                return Err(format!("--find-in-session: unknown option {other}"))
-            }
-            _ => pos.push(a),
-        }
-    }
-    let query = query.ok_or("--find-in-session requires --query <text>")?;
-    match pos.as_slice() {
-        [p] => Ok(FindArgs {
-            path: p,
-            query,
-            include_tools,
-            limit,
-        }),
-        _ => Err(format!(
-            "--find-in-session takes exactly one <jsonl_path>, got {} positional arguments",
-            pos.len()
-        )),
-    }
-}
-
-/// `--find-in-session`：在**一份**会话里找（路径守卫与 `--read-session` 同一套）。形状见
-/// [`crate::observe::search_query::write_session_find`] 的头注。
-fn find_in_session(agent_home: &Path, a: &FindArgs<'_>, tz: &crate::Tz) -> Result<(), String> {
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
-    find_in_session_into(
-        agent_home,
-        a.path,
-        a.query,
-        a.include_tools,
-        a.limit,
-        tz,
-        &mut out,
-    )?;
-    out.flush().map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
-/// 会话内查找的本体，出口是参数 ——帧面那条（`history-find`）与 CLI 这条
-/// （`--find-in-session`）**跑的是同一个函数**（同 `list_projects_into`）。
-pub(crate) fn find_in_session_into(
-    agent_home: &Path,
-    jsonl_path: &str,
-    query: &str,
-    include_tools: bool,
-    limit: usize,
-    tz: &crate::Tz,
-    mut out: &mut dyn Write,
-) -> Result<(), String> {
-    crate::observe::search_query::write_session_find(
-        open_session_at(agent_home, jsonl_path, 0)?,
-        query,
-        include_tools,
-        limit,
-        tz,
-        &mut out,
-    )
-    .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
 /// 过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
 pub(crate) fn session_path_at(
     agent_home: &Path,
@@ -1080,7 +676,7 @@ pub(crate) fn session_path_at(
     validate_session_path(agent_home, jsonl_path)
 }
 
-/// 过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找的 CLI 臂和帧面臂共用这一处
+/// 过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找共用这一处
 /// （帧面那一臂出成品，不经 `out`，见 `read_face.rs`）。
 pub(crate) fn open_session_at(
     agent_home: &Path,
@@ -1184,7 +780,7 @@ pub(crate) struct IndexRow {
     pub(crate) fd: u32,
     /// 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。
     ///
-    /// 判定只住 [`crate::observe::user_inputs::user_input_of`]（与 `--list-user-inputs` **同一个函数**），
+    /// 判定只住 [`crate::observe::user_inputs::user_input_of`]（与大纲清单 **同一个函数**），
     /// 摘要同 `excerpt`、uuid 就是本行的 `u`。有了它，首屏的「索引」与「大纲清单」合成一趟读：
     /// 前端见到索引里**有** `x` ⇒ 对面是会出它的后端、每一条用户输入都带着 ⇒ 不再单独要清单；
     /// 一个 `x` 都没有 ⇒ 分不清「老后端」还是「真的零条」⇒ 照旧要一份（形状登记 `IPC-PROTOCOL.md §10.3`）。
@@ -1293,54 +889,9 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
-/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍手机端 `tail -c +(offset+1)`；生产走
-/// `stream_from_offset` 的 `File::seek`、不调本函数，故 `#[cfg(test)]` 不进生产二进制）。
-/// = `bytes[min(offset,len)..]`——offset ≤ len 时取 [offset, EOF]；offset > len
-/// （截断）时取空（与 `File::seek` 过 EOF 后读空一致，不 panic）。
-#[cfg(test)]
-fn slice_from_offset(bytes: &[u8], offset: u64) -> &[u8] {
-    let o = (offset as usize).min(bytes.len());
-    &bytes[o..]
-}
-
-/// Batch9-F30：`--read-session-tail <path> <N>`——尾部优先输出：
-/// 首行 meta `{"kind":"snapshot_meta","total":T,"tail_from":F}`（T/F 均按
-/// **可计行**口径：完整（`\n` 收尾）且非 BOM/全空白——与 watcher/monitor 的
-/// 行号空间一字一致），随后原样输出可计行 [F,T)（最新 N 行）、再输出 [0,F)。
-/// monitor 据 meta 编 seq：前 T-F 行 = F+i，其余 = i。空文件 → 仅 meta。
-fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<(), String> {
-    use std::io::{Read, Seek, SeekFrom};
-    let (plan, mut f) = tail_plan(agent_home, jsonl_path, n)?;
-    let TailPlan {
-        total,
-        tail_from,
-        split_at,
-        end: complete_end,
-    } = plan;
-    let meta =
-        format!("{{\"kind\":\"snapshot_meta\",\"total\":{total},\"tail_from\":{tail_from}}}\n");
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
-    out.write_all(meta.as_bytes())
-        .map_err(|e| format!("stream failed: {e}"))?;
-    // 尾段 [split_at, complete_end)
-    f.seek(SeekFrom::Start(split_at))
-        .map_err(|e| format!("seek failed: {e}"))?;
-    std::io::copy(&mut (&mut f).take(complete_end - split_at), &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    // 头段 [0, split_at)
-    f.seek(SeekFrom::Start(0))
-        .map_err(|e| format!("seek failed: {e}"))?;
-    std::io::copy(&mut (&mut f).take(split_at), &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
-}
-
-/// `--read-session-tail` 那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
+/// 尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
 ///
-/// 抽出来是因为帧面那条（`history-tail`）只要**这张图**，
-/// 正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话，
-/// 而 CLI 这条仍然一口气印完。**两条路扫的是同一个函数**，行号口径因此只有一份。
+/// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
@@ -1361,7 +912,7 @@ pub(crate) fn tail_plan(
 ) -> Result<(TailPlan, std::fs::File), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
-    // （旧 --read-session 是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
+    // （更早的整份透传是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
     // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。
     let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let mut reader = std::io::BufReader::new(f);
@@ -1425,8 +976,7 @@ pub(crate) fn tail_plan_of<R: std::io::BufRead>(
 /// - 这一页之后区间里还有字节 ⇒ 切在**最后一个 `\n` 之后**，不把半行交出去；
 /// - 一页里一个 `\n` 都没有（单行比 `page` 还长）⇒ 往后续读到那一行的 `\n`，
 ///   但**不超过 `line_cap`** —— 超了回 `oversized_line`（不许截半行冒充整行）；
-/// - 区间到头（`until` 或读时的文件长度）⇒ 余下的全给，含 torn 残尾（与 `--read-session`
-///   的 `io::copy` 同口径：残尾怎么处置由调用方定）。
+/// - 区间到头（`until` 或读时的文件长度）⇒ 余下的全给，含 torn 残尾（残尾怎么处置由调用方定）。
 ///
 /// 错误是 `(code, message)`：`refused`（围栏拒）· `failed`（读失败）· `oversized_line`
 /// （不叫 `line_too_long`：那是入方向信封的**协议级** code，命令级不许撞名）。
@@ -1811,7 +1361,7 @@ pub(super) fn created_ms_or_mtime(p: &Path) -> i64 {
 ///
 fn analyze_session(p: &Path) -> serde_json::Value {
     // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**（[`ListingEntry::scan`] 逐行读）。原来是 `read_to_string(p)` 整读：
-    // `--list-sessions` 对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
+    // 会话清单对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
     // 一次列表就是把 2.4 GB 读进内存再逐行解析。扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
     let mtime = std::fs::metadata(p).and_then(|m| m.modified()).ok();
     ListingEntry::scan(p, mtime).row

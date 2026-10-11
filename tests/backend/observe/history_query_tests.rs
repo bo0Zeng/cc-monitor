@@ -75,82 +75,24 @@ fn analyze_session_detects_bg_kind() {
 #[test]
 fn list_sessions_rejects_path_traversal() {
     let tmp = std::env::temp_dir();
-    assert!(list_sessions(&tmp, "../escape").is_err());
-    assert!(list_sessions(&tmp, "a/b").is_err());
-    assert!(list_sessions(&tmp, r"a\b").is_err());
+    assert!(list_sessions_for(&tmp, "../escape", None, &mut Vec::new()).is_err());
+    assert!(list_sessions_for(&tmp, "a/b", None, &mut Vec::new()).is_err());
+    assert!(list_sessions_for(&tmp, r"a\b", None, &mut Vec::new()).is_err());
 }
 
 #[test]
-fn read_session_rejects_outside_projects() {
+fn session_paths_outside_projects_are_refused() {
     let tmp = std::env::temp_dir().join(format!("ccm-hq-ro-{}", std::process::id()));
     let dir = fixture_project(&tmp, "proj-b");
     write_jsonl(&dir, "ok.jsonl", &[r#"{"type":"user"}"#]);
     // projects 外的真实文件 → 拒绝
     let outside = tmp.join("secret.jsonl");
     std::fs::write(&outside, "nope").unwrap();
-    assert!(read_session(&tmp, &outside.to_string_lossy()).is_err());
+    assert!(validate_session_path(&tmp, &outside.to_string_lossy()).is_err());
     // 非 jsonl → 拒绝
     let txt = dir.join("note.txt");
     std::fs::write(&txt, "x").unwrap();
-    assert!(read_session(&tmp, &txt.to_string_lossy()).is_err());
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-/// backend-02：offset 续拉的字节语义**逐字节对拍** watcher 发出的 `byte_offset`
-/// 与手机端 `tail -c +(offset+1)`。用与 `byte_offset_matches_mobile_lineframer` 同一
-/// 语料 `"你\r\nx\n"`（LineFramer offset=[5,7]）：从续点 N 起 = `bytes[N..]`。
-#[test]
-fn slice_from_offset_matches_lineframer_resume() {
-    // 你=3B + \r\n=2 → line1 endOffset 5；x=1 + \n=1 → line2 endOffset 7；共 7B。
-    let data = "你\r\nx\n".as_bytes();
-    assert_eq!(data.len(), 7);
-    // 从 0 续 = 整个文件（首次全量）。
-    assert_eq!(slice_from_offset(data, 0), data);
-    // 从 line1 的 byte_offset=5 续 = 只剩 line2 "x\n"（不重发 line1，不跳字节）。
-    assert_eq!(slice_from_offset(data, 5), b"x\n");
-    // 从 line2 的 byte_offset=7 续 = EOF、空（无新行）。
-    assert_eq!(slice_from_offset(data, 7), b"");
-    // offset > len（远端截断/重写）→ 空、不 panic（客户端另经 size 查 reset）。
-    assert_eq!(slice_from_offset(data, 100), b"");
-    // 中途续点（非行边界，理论上不该发生，但语义须良定义）：透传该字节起余部。
-    assert_eq!(slice_from_offset(data, 4), b"\nx\n");
-}
-
-/// backend-02：offset 续拉沿用 `read_session` 的路径守卫（projects 外 / 非 jsonl 拒）。
-#[test]
-fn read_session_from_offset_path_guard() {
-    let tmp = std::env::temp_dir().join(format!("ccm-hq-off-{}", std::process::id()));
-    let dir = fixture_project(&tmp, "proj-off");
-    write_jsonl(&dir, "ok.jsonl", &[r#"{"type":"user"}"#]);
-    let outside = tmp.join("secret.jsonl");
-    std::fs::write(&outside, "nope").unwrap();
-    // projects 外 → 拒（守卫先于 seek）。
-    assert!(read_session_from_offset(&tmp, &outside.to_string_lossy(), 0, None).is_err());
-    // 合法 jsonl + offset 超长 → seek 过 EOF 读空、Ok（不 panic、不报错）。
-    let ok = dir.join("ok.jsonl");
-    assert!(read_session_from_offset(&tmp, &ok.to_string_lossy(), 9999, None).is_ok());
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-/// 审计 quality/correctness-重要：**发货的 seek 路径本身**（`stream_from_offset`）的续拉字节
-/// 直接断言（此前只测 `slice_from_offset` 助手 + path_guard 的 Ok/Err，生产 seek 输出无字节测
-/// → dup-drift 风险）。用 byte_offset golden 同语料 `"你\r\nx\n"`，逐 offset 对拍 `slice_from_offset`
-/// （= `tail -c +(offset+1)`），证生产 `File::seek`+`copy` 与助手语义**逐字节一致**。
-#[test]
-fn stream_from_offset_production_path_byte_parity() {
-    let tmp = std::env::temp_dir().join(format!("ccm-hq-sfo-{}", std::process::id()));
-    std::fs::create_dir_all(&tmp).unwrap();
-    let data = "你\r\nx\n".as_bytes(); // 7B；byte_offset golden 语料
-    let p = tmp.join("s.jsonl");
-    std::fs::write(&p, data).unwrap();
-    for off in [0u64, 4, 5, 7, 100] {
-        let mut f = std::fs::File::open(&p).unwrap();
-        let mut got = Vec::new();
-        let n = stream_from_offset(&mut f, off, None, &mut got).expect("stream ok");
-        // 对拍纯助手（= 生产 seek 应吐的字节）：逐字节一致 + copy 返回字节数吻合。
-        assert_eq!(got, slice_from_offset(data, off), "off={off} 字节不符");
-        assert_eq!(n as usize, got.len(), "off={off} copy 计数不符");
-    }
+    assert!(validate_session_path(&tmp, &txt.to_string_lossy()).is_err());
     std::fs::remove_dir_all(&tmp).ok();
 }
 
@@ -168,7 +110,7 @@ fn list_sessions_rejects_symlink_escape() {
     // projects/sneaky -> ../outside（名字合法、无分隔符、无 ..，旧 string 校验放行）
     symlink(&outside, projects.join("sneaky")).unwrap();
     // canonicalize 前缀校验解析 symlink 后落在 projects/ 外 → 拒绝
-    assert!(list_sessions(&tmp, "sneaky").is_err());
+    assert!(list_sessions_for(&tmp, "sneaky", None, &mut Vec::new()).is_err());
     std::fs::remove_dir_all(&tmp).ok();
 }
 
@@ -335,17 +277,8 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
     let mut out = Vec::new();
     assert_eq!(list_projects_into(&tmp, &mut out), Ok(false));
     assert!(out.is_empty(), "没有记录树却列出了东西");
-    // 平铺清单当零个项目（不失败）；CLI 照旧出声 rc=2（S6-Z3），话是人话。
+    // 平铺清单当零个项目（不失败）。
     assert_eq!(sessions_by_dir(&tmp), Ok(None));
-    assert_eq!(
-        run(&tmp, &["--list-projects".to_string()], &Default::default()),
-        2
-    );
-    // CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
-    assert_eq!(
-        list_projects_to(&tmp, &mut out).map_err(|(code, _)| code),
-        Err(Some(NO_RECORD_TREE))
-    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

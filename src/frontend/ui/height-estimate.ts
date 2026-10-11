@@ -355,7 +355,7 @@ export function applyIntrinsicSize(el: HTMLElement): void {
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * 后端骨架索引的一行（`--read-session-from-offset … --index`，形状住 `IPC-PROTOCOL.md §10.3`）。
+ * 后端骨架索引的一行（帧命令 `history-index`，形状住 `IPC-PROTOCOL.md §10.3`）。
  * 零值 / 假值不上线 ⇒ 这里全是可选。
  */
 export interface SkeletonFacts {

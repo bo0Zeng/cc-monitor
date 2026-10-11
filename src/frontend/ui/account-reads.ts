@@ -182,7 +182,7 @@ const optBool = (v: unknown): v is boolean | undefined => v === undefined || typ
 const optBoolOrNull = (v: unknown): v is boolean | null | undefined => v === null || optBool(v);
 
 /**
- * `accounts-sessions`（= `--session-accounts`）的逐行 ⇒ [`SessionAccount`]。**坏行跳过**（`console.warn`），不毁整次。
+ * `accounts-sessions` 的逐行 ⇒ [`SessionAccount`]。**坏行跳过**（`console.warn`），不毁整次。
  *
  * 口径逐格照它上一个住址（Rust `accounts.rs::SessionAccount` 的 serde：`camelCase`、`pid` 必有、
  * 其余可缺；`bare` / `alive` 缺 ⇒ `false`）：
