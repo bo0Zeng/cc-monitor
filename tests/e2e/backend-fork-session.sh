@@ -10,6 +10,9 @@
 # 红线：**不碰真 ~/.claude** —— 全程用 `CLAUDE_CONFIG_DIR` 指向临时目录
 #（backend 的 `resolve_claude_dir` 优先读它，没有 `--claude-dir` 这种参数）；不改后端行为（只跑它）。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
+# 分叉之后起要的三格事实里有「哪个终端挂着它」⇒ 后端会问 tmux：装私有 socket 的 shim，不碰缺省 server（`C7i`）。
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eFork
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,7 +27,7 @@ export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 export HOME="$WORK/home"
 mkdir -p "$HOME"
-cleanup() { rm -rf "$WORK"; }
+cleanup() { rm -rf "$WORK"; tmux_shim_cleanup; }
 trap cleanup EXIT
 
 echo "== 构建 backend =="
