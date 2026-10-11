@@ -278,23 +278,6 @@ fn code_is_highlighted_line_by_line_and_unknown_kinds_stay_plain() {
     assert_eq!(code_lang("/a/blob.weird"), None);
 }
 
-/// 图片：窗口自己解码；过大的先缩到最长边上限；不是图就是错（原话），不猜。
-#[test]
-fn images_decode_and_big_ones_are_scaled_down() {
-    let png = |w: u32, h: u32| {
-        let mut buf = std::io::Cursor::new(Vec::new());
-        image::RgbaImage::from_pixel(w, h, image::Rgba([10, 20, 30, 255]))
-            .write_to(&mut buf, image::ImageFormat::Png)
-            .unwrap();
-        buf.into_inner()
-    };
-    let small = decode_image(&png(3, 2)).unwrap();
-    assert_eq!(small.size, [3, 2]);
-    let big = decode_image(&png(IMAGE_MAX_SIDE * 2, 10)).unwrap();
-    assert_eq!(big.size[0], IMAGE_MAX_SIDE as usize);
-    assert!(decode_image(b"not an image").is_err());
-}
-
 fn paint_narrow(ctx: &egui::Context, p: &Preview) -> Vec<(String, egui::Rect)> {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(

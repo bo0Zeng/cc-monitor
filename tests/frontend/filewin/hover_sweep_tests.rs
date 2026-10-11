@@ -396,6 +396,67 @@ async fn sweeping_over_search_results_never_flips_a_frame() {
     no_flips(flips);
 }
 
+/// ★ 查看页摆着一张图（同目录还有一张 ⇒ 右边那颗「下一张」圆钮悬停才露）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sweeping_over_the_picture_page_never_flips_a_frame() {
+    let base = std::env::temp_dir().join(format!("ccm-filewin-sweep-view-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let png = |w: u32, h: u32| {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(w, h, image::Rgba([200, 90, 60, 255]))
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
+        buf.into_inner()
+    };
+    std::fs::write(base.join("a.png"), png(1600, 1000)).unwrap();
+    std::fs::write(base.join("b.png"), png(40, 30)).unwrap();
+    let be = FakeBackend::new(
+        &["files-ls", "files-read-chunk", "files-stat"],
+        Declared::default(),
+    );
+    let wired = wire_up("sweep-view", be).await;
+    let d = base.to_string_lossy().to_string();
+    let mut w = window_on(&wired, &d);
+    w.reload();
+    for _ in 0..600 {
+        if !w.listing.is_loading() && !w.listing.rows.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let i = w
+        .listing
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .position(|r| r.name == "a.png")
+        .expect("量具：列表里没有 a.png");
+    assert!(w.begin_view(i), "量具：查看页没开");
+    let mut ws = Workspace::new(w);
+    let mut s = Sweep::new();
+    let ready = |ws: &Workspace| {
+        ws.pane_on(ws.focus()).viewing().is_some_and(|v| {
+            matches!(
+                ws.pictures.look(&v.key(), None),
+                Some(crate::picture::Look::Ready(_))
+            )
+        })
+    };
+    for _ in 0..600 {
+        s.frame(&mut ws, Vec::new());
+        if ready(&ws) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(ready(&ws), "量具：查看页没等到图");
+    let flips = s.run("查看页", &mut ws);
+    let _ = std::fs::remove_dir_all(base);
+    no_flips(flips);
+}
+
 /// 真窗口台架（不是判据）：开一扇真文件窗口（生产那个 `Workspace` 当 eframe 的 App，开窗参数同 `shell::run`），
 /// 帧日志写到 `CCM_FILEWIN_FRAME_LOG`，跑 `CCM_FILEWIN_RIG_SECS` 秒自己关。场景走 `CCM_FILEWIN_RIG_SCENE`
 /// （tabs · split · preview · menu）。后端是合成后端（目录是这一格自己铺的占位），不连任何机器。

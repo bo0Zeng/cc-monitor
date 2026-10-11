@@ -109,6 +109,8 @@ pub struct Workspace {
     pub progress: super::progress::Progress,
     /// 那台此刻连没连着（每个标签页拿同一份）。
     pub link: super::chrome::LinkState,
+    /// 解好的图（每个标签页 · 预览 · 「看一眼」拿同一份，[`super::picture`]）。
+    pub pictures: super::picture::Pictures,
     /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
     link_ups: u64,
     /// 关窗那一问摆着（稿 17）。
@@ -291,6 +293,7 @@ impl Workspace {
         first.in_workspace = true;
         let progress = first.progress.clone();
         let link = first.link.clone();
+        let pictures = first.pictures.clone();
         let mut w = Self {
             sides: vec![Side {
                 tabs: vec![Tab { id: 0, pane: first }],
@@ -316,6 +319,7 @@ impl Workspace {
             title: None,
             progress,
             link,
+            pictures,
             link_ups: 0,
             closing_ask: false,
             close_after_save: false,
@@ -469,6 +473,7 @@ impl Workspace {
         p.font = like.font.clone();
         p.progress = like.progress.clone();
         p.link = like.link.clone();
+        p.pictures = like.pictures.clone();
         p.in_workspace = true;
         p.reload();
         p
@@ -496,6 +501,7 @@ impl Workspace {
         }
         pane.progress = self.progress.clone();
         pane.link = self.link.clone();
+        pane.pictures = self.pictures.clone();
         pane.in_workspace = true;
         let id = self.mint_id();
         let s = &mut self.sides[side];
@@ -514,6 +520,7 @@ impl Workspace {
         }
         pane.progress = self.progress.clone();
         pane.link = self.link.clone();
+        pane.pictures = self.pictures.clone();
         pane.in_workspace = true;
         let id = self.mint_id();
         self.sides.push(Side {
@@ -559,6 +566,10 @@ impl Workspace {
                 self.sides[side].tabs[i].pane.close_edit();
                 return false;
             }
+            return self.drop_tab(side, i);
+        }
+        // 查看页：没有要存的 ⇒ 直接关（它起的下载挂在「进度」上照跑）。
+        if self.sides[side].tabs[i].pane.view_tab {
             return self.drop_tab(side, i);
         }
         if let Some(why) = self.sides[side].tabs[i].pane.busy_reason() {
@@ -609,12 +620,29 @@ impl Workspace {
                         }
                     }
                 }
+                if let Some(v) = self.sides[k].tabs[i].pane.want_view.take() {
+                    let open = self.sides[k].tabs.iter().position(|t| {
+                        t.pane.view_tab && t.pane.viewing().map(|w| w.path()) == Some(v.path())
+                    });
+                    match open {
+                        Some(at) => {
+                            self.select_tab(k, at);
+                        }
+                        None => {
+                            let mut p = Self::spawn_editor(&self.sides[k].tabs[i].pane);
+                            p.edit_tab = false;
+                            p.view_tab = true;
+                            p.viewing = Some(v);
+                            self.add_tab(k, p);
+                        }
+                    }
+                }
                 if let Some(dir) = self.sides[k].tabs[i].pane.want_dir.take() {
                     let reveal = self.sides[k].tabs[i].pane.want_reveal.take();
                     let there = self.sides[k]
                         .tabs
                         .iter()
-                        .position(|t| !t.pane.edit_tab && t.pane.cwd == dir);
+                        .position(|t| !t.pane.edit_tab && !t.pane.view_tab && t.pane.cwd == dir);
                     let at = match there {
                         Some(at) => {
                             self.select_tab(k, at);
@@ -658,6 +686,7 @@ impl Workspace {
         p.font = like.font.clone();
         p.progress = like.progress.clone();
         p.link = like.link.clone();
+        p.pictures = like.pictures.clone();
         p.in_workspace = true;
         p.edit_tab = true;
         p
@@ -827,6 +856,9 @@ impl Workspace {
     pub fn tab_title(pane: &FileWindow) -> String {
         if pane.edit_tab {
             return pane.edit_name();
+        }
+        if let Some(v) = pane.viewing() {
+            return v.name().to_string();
         }
         let tail = super::source::remote_basename(&pane.cwd);
         let tail = if tail.is_empty() { "/" } else { tail };
@@ -1162,6 +1194,7 @@ impl Workspace {
             let f = self.focus;
             let action = match a {
                 super::preview::PreviewAct::Edit => Some(super::select::Action::Edit),
+                super::preview::PreviewAct::View => Some(super::select::Action::View),
                 super::preview::PreviewAct::Download => Some(super::select::Action::Download),
                 super::preview::PreviewAct::OpenInPlan => None,
             };
@@ -1257,6 +1290,21 @@ impl Workspace {
             self.toasts.items.iter().map(|t| t.tag).collect();
         self.undo_for.retain(|k, _| live.contains(k));
         self.close_ask_ui(&ctx);
+        self.keep_pictures();
+    }
+
+    /// 解好的图只留此刻还摆着的那几张（预览 · 「看一眼」· 每个查看页）：别的扔掉、显存跟着放。
+    pub fn keep_pictures(&self) {
+        let mut keep: std::collections::HashSet<super::picture::PicKey> = self
+            .sides
+            .iter()
+            .flat_map(|s| s.tabs.iter())
+            .filter_map(|t| t.pane.picture_key())
+            .collect();
+        for p in self.preview.iter().chain(self.peek.iter()) {
+            keep.extend(p.picture_keys());
+        }
+        self.pictures.keep_only(&keep);
     }
 
     /// 「看一眼」浮层（稿 24）：窗口正中一块（浮层底、圆角、最宽 720 · 最高 560，不超过窗口减 48），里面是焦点那一栏光标那一项的预览；
@@ -1308,6 +1356,10 @@ impl Workspace {
                 super::preview::PreviewAct::Edit => {
                     self.pane_on_mut(f)
                         .perform(super::select::Action::Edit, Some(ctx.clone()));
+                }
+                super::preview::PreviewAct::View => {
+                    self.pane_on_mut(f)
+                        .perform(super::select::Action::View, Some(ctx.clone()));
                 }
                 super::preview::PreviewAct::Download => {
                     self.pane_on_mut(f)
@@ -1439,6 +1491,7 @@ impl Workspace {
                     let busy = if t.pane.editing().is_some_and(|e| e.dirty()) {
                         Some(p.text2)
                     } else if !t.pane.edit_tab
+                        && !t.pane.view_tab
                         && (t.pane.has_running_jobs() || t.pane.busy_reason().is_some())
                     {
                         Some(p.success)
@@ -1447,6 +1500,8 @@ impl Workspace {
                     };
                     let icon = if t.pane.edit_tab {
                         egui_phosphor::regular::PENCIL_SIMPLE
+                    } else if t.pane.view_tab {
+                        egui_phosphor::regular::IMAGE
                     } else if t.pane.listing.is_loading() {
                         egui_phosphor::regular::CIRCLE_NOTCH
                     } else {

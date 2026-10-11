@@ -916,6 +916,7 @@ async fn screenshot_for_the_shots_tool() {
         "files-home",
         "files-rename",
         "files-mkdir",
+        "files-read-chunk",
     ];
     offered.extend_from_slice(crate::find::COMMANDS);
     // 「n 个目录无权限［查看］」那一张：后端报 3 个、交 2 个名单。
@@ -958,6 +959,8 @@ async fn screenshot_for_the_shots_tool() {
     let target = match scene.as_str() {
         "empty" => vdir.join("empty-dir").to_string_lossy().to_string(),
         "missing" => vdir.join("gone").to_string_lossy().to_string(),
+        // 查看页那两张（稿 ⑬）：docs 里有两张真解得开的图。
+        "view" | "view-menu" => vdir.join("docs").to_string_lossy().to_string(),
         _ => d.clone(),
     };
     // 窗口开在 d 上：先走开一步再回来，列表才真去问一趟（导航到当前目录是空操作）。
@@ -1279,6 +1282,27 @@ async fn screenshot_for_the_shots_tool() {
         ]});
         *w.listing.plan.lock().unwrap() = crate::plan::from_reply(&reply);
     }
+    if scene == "view" || scene == "view-menu" {
+        let i = row_of(&w, "architecture.png");
+        w.apply_intent(
+            crate::select::Intent::Edge {
+                end: false,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+        for _ in 0..i {
+            w.apply_intent(
+                crate::select::Intent::Step {
+                    by: 1,
+                    extend: false,
+                },
+                0.0,
+                None,
+            );
+        }
+    }
     if scene == "plan-menu" {
         let i = row_of(&w, "main.rs");
         w.tally.menu_clicked = Some(i);
@@ -1291,7 +1315,7 @@ async fn screenshot_for_the_shots_tool() {
         .unwrap_or(1280.0);
     let scene_name = scene.clone();
     let theme = crate::theme::testing::default_theme();
-    let preview = scene == "main" || scene.starts_with("plan");
+    let preview = scene == "main" || scene.starts_with("plan") || scene == "view-menu";
     let split = scene == "split";
     let h = std::thread::spawn(move || {
         struct Shot {
@@ -1385,6 +1409,23 @@ async fn screenshot_for_the_shots_tool() {
                             });
                         }
                     });
+                }
+                if self.n == 3 && self.scene == "view" {
+                    self.ws
+                        .pane_on_mut(0)
+                        .perform(crate::select::Action::View, Some(ui.ctx().clone()));
+                }
+                if self.n == 25 && self.scene == "view-menu" {
+                    let pane = self.ws.pane_on_mut(0);
+                    let i = pane
+                        .listing
+                        .rows
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .position(|r| r.name == "architecture.png");
+                    pane.tally.menu_clicked = i;
+                    pane.apply_menu_click(egui::pos2(380.0, 230.0));
                 }
                 if self.n == 8 && self.scene == "narrow-drawer" {
                     self.ws.drawer_open = true;
