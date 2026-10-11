@@ -635,7 +635,16 @@ mod tests {
             .unwrap()
             .success());
         let mut seen = (0, 0);
-        for id in ["p9c-x", "p10a-next", "p123z-a-b", "p9za-x", "pa-x", "p9-x", "p9A-x", "p9a-"] {
+        for id in [
+            "p9c-x",
+            "p10a-next",
+            "p123z-a-b",
+            "p9za-x",
+            "pa-x",
+            "p9-x",
+            "p9A-x",
+            "p9a-",
+        ] {
             let out = Command::new("bash")
                 .arg(&script)
                 .arg(id)
@@ -648,12 +657,17 @@ mod tests {
             let refused = said.contains("的形状");
             let reads = deploy_contract::build_order(id).is_some();
             assert_eq!(
-                !refused, reads,
+                !refused,
+                reads,
                 "{id}：序键{}，脚本却{}：{said}",
                 if reads { "解得出" } else { "解不出" },
                 if refused { "拒了" } else { "放过了" }
             );
-            if reads { seen.0 += 1 } else { seen.1 += 1 }
+            if reads {
+                seen.0 += 1
+            } else {
+                seen.1 += 1
+            }
         }
         let _ = std::fs::remove_dir_all(&d);
         assert!(seen.0 >= 3 && seen.1 >= 4, "两边的例子都要有：{seen:?}");
