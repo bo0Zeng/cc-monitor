@@ -225,3 +225,36 @@ fn the_launch_words_are_settings_with_one_exec_form_hook_that_names_command() {
     assert_eq!(h["timeout"], HOOK_TIMEOUT_SECS);
     assert!(s.get("permissions").is_none() && s.get("disableAllHooks").is_none());
 }
+
+/// ★ **跨语言金样**：几种请求读成的成品（`needs.ask`）== `tests/__fixtures__/needs-ask.golden.json`；
+/// 界面那一侧（`tests/frontend/ui/session-reads.vitest.ts`「答题口的成品」）解同一份 —— 两端对同一形，异源。
+/// 四种：批准一步（带两条以后不再问）· 子 agent 的批准（多一项改到终端里答）· 批计划 · 回答两道题（单选带说明 · 多选）。
+#[test]
+fn the_products_match_the_cross_language_golden() {
+    let mut sub = bash_req();
+    sub["agent_id"] = json!("a1");
+    sub["agent_type"] = json!("general-purpose");
+    let plan = json!({
+        "session_id": "s-3",
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "ExitPlanMode",
+        "tool_input": {"plan": "1. a\n2. b\n"}
+    });
+    let product = |id: &str, v: &Value| {
+        serde_json::to_value(crate::agents::asks::product_of(id, &read(v).unwrap(), 1_000)).unwrap()
+    };
+    let got = json!({
+        "approve": product("ask-1", &bash_req()),
+        "subAgent": product("ask-2", &sub),
+        "plan": product("ask-3", &plan),
+        "question": product("ask-4", &auq_req()),
+    });
+    let want: Value = serde_json::from_str(include_str!("../../../__fixtures__/needs-ask.golden.json"))
+        .expect("金样不是合法 JSON");
+    assert_eq!(
+        got,
+        want,
+        "成品与跨语言金样不一致。现打：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
+    );
+}

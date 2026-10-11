@@ -315,6 +315,33 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(decodeFacts({ ...good, retries: [{ id: "r", outcome: "interrupted" }] }).retries).toEqual([{ id: "r", outcome: "interrupted" }]);
   });
 
+  it("★★ 答题口的成品（needs.ask）：后端真出的四种（跨语言金样 needs-ask.golden.json）逐字段读成类型；形状不对 ⇒ 抛", () => {
+    const asks = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/needs-ask.golden.json"), "utf8")) as Record<string, Record<string, unknown>>;
+    const good = golden["history-facts"] as Record<string, unknown>;
+    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", sinceMs: 42, text: "t", head: "h", headCode: null, tone: "need", rank: 1, waitedMs: 1, waitedText: "1s", manualText: null };
+    const read = (ask: unknown) => decodeFacts({ ...good, needs: { ...needs, ask } }).needs!.ask;
+    expect(Object.keys(asks).sort()).toEqual(["approve", "plan", "question", "subAgent"]);
+    for (const [name, a] of Object.entries(asks)) expect(read(a), name).toEqual(a);
+    expect(read(asks.subAgent)?.run).toEqual({ id: "a1", kind: "general-purpose" });
+    expect(read(asks.question)?.questions[0].options[0].detail).toBe("warm");
+    expect(read(null), "没有挂着的").toBeNull();
+    const a = asks.approve;
+    const ch = (a.choices as Record<string, unknown>[])[0];
+    const q = asks.question;
+    const qq = (q.questions as Record<string, unknown>[])[0];
+    for (const [why, bad] of [
+      ["多一格", { ...a, extra: 1 }],
+      ["缺 detail", { ...a, detail: undefined }],
+      ["种类只认三种", { ...a, kind: "network" }],
+      ["选项缺附话那一格", { ...a, choices: [{ ...ch, note: undefined }] }],
+      ["附话只认三档", { ...a, choices: [{ ...ch, note: "maybe" }] }],
+      ["run 缺 id", { ...a, run: { kind: "x" } }],
+      ["题目 multi 只收布尔", { ...q, questions: [{ ...qq, multi: "yes" }] }],
+      ["题目选项多一格", { ...q, questions: [{ ...qq, options: [{ id: "o", text: "t", detail: null, x: 1 }] }] }],
+      ["不是对象", "ask-1"],
+    ] as [string, unknown][]) expect(() => read(bad), why).toThrow(ReplyUnreadable);
+  });
+
   it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {
     const product = decodeFacts(golden["history-facts"]);
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));

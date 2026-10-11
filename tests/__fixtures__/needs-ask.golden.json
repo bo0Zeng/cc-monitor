@@ -1,0 +1,206 @@
+{
+  "approve": {
+    "choices": [
+      {
+        "id": "allow",
+        "note": "none",
+        "text": "允许",
+        "tone": "plain"
+      },
+      {
+        "id": "always-0",
+        "note": "none",
+        "text": "允许，且允许访问 /w（本次会话）",
+        "tone": "plain"
+      },
+      {
+        "id": "always-1",
+        "note": "none",
+        "text": "允许，且自动接受编辑（本次会话）",
+        "tone": "plain"
+      },
+      {
+        "id": "deny",
+        "note": "none",
+        "text": "拒绝",
+        "tone": "warn"
+      },
+      {
+        "id": "deny-note",
+        "note": "required",
+        "text": "拒绝并说明",
+        "tone": "warn"
+      },
+      {
+        "id": "deny-stop",
+        "note": "none",
+        "text": "拒绝并停下",
+        "tone": "warn"
+      }
+    ],
+    "detail": "touch a.txt\necho ok",
+    "id": "ask-1",
+    "kind": "approve",
+    "questions": [],
+    "run": null,
+    "sinceMs": 1000,
+    "tool": "Bash",
+    "what": "touch a.txt"
+  },
+  "plan": {
+    "choices": [
+      {
+        "id": "plan-auto",
+        "note": "none",
+        "text": "自动模式",
+        "tone": "plain"
+      },
+      {
+        "id": "plan-edits",
+        "note": "none",
+        "text": "自动接受编辑",
+        "tone": "plain"
+      },
+      {
+        "id": "plan-manual",
+        "note": "none",
+        "text": "逐个确认",
+        "tone": "plain"
+      },
+      {
+        "id": "plan-keep",
+        "note": "optional",
+        "text": "继续规划",
+        "tone": "warn"
+      }
+    ],
+    "detail": "1. a\n2. b\n",
+    "id": "ask-3",
+    "kind": "plan",
+    "questions": [],
+    "run": null,
+    "sinceMs": 1000,
+    "tool": "ExitPlanMode",
+    "what": null
+  },
+  "question": {
+    "choices": [
+      {
+        "id": "answer",
+        "note": "none",
+        "text": "提交答案",
+        "tone": "plain"
+      },
+      {
+        "id": "dismiss",
+        "note": "none",
+        "text": "不回答",
+        "tone": "warn"
+      }
+    ],
+    "detail": "Which color?\nWhich fruits?",
+    "id": "ask-4",
+    "kind": "answer",
+    "questions": [
+      {
+        "header": "Color",
+        "id": "q0",
+        "multi": false,
+        "options": [
+          {
+            "detail": "warm",
+            "id": "q0o0",
+            "text": "Red"
+          },
+          {
+            "detail": null,
+            "id": "q0o1",
+            "text": "Blue"
+          }
+        ],
+        "other": true,
+        "text": "Which color?"
+      },
+      {
+        "header": "Fruit",
+        "id": "q1",
+        "multi": true,
+        "options": [
+          {
+            "detail": null,
+            "id": "q1o0",
+            "text": "Apple"
+          },
+          {
+            "detail": null,
+            "id": "q1o1",
+            "text": "Pear"
+          }
+        ],
+        "other": true,
+        "text": "Which fruits?"
+      }
+    ],
+    "run": null,
+    "sinceMs": 1000,
+    "tool": "AskUserQuestion",
+    "what": "Which color?"
+  },
+  "subAgent": {
+    "choices": [
+      {
+        "id": "allow",
+        "note": "none",
+        "text": "允许",
+        "tone": "plain"
+      },
+      {
+        "id": "always-0",
+        "note": "none",
+        "text": "允许，且允许访问 /w（本次会话）",
+        "tone": "plain"
+      },
+      {
+        "id": "always-1",
+        "note": "none",
+        "text": "允许，且自动接受编辑（本次会话）",
+        "tone": "plain"
+      },
+      {
+        "id": "deny",
+        "note": "none",
+        "text": "拒绝",
+        "tone": "warn"
+      },
+      {
+        "id": "deny-note",
+        "note": "required",
+        "text": "拒绝并说明",
+        "tone": "warn"
+      },
+      {
+        "id": "deny-stop",
+        "note": "none",
+        "text": "拒绝并停下",
+        "tone": "warn"
+      },
+      {
+        "id": "release",
+        "note": "none",
+        "text": "改到终端里答",
+        "tone": "plain"
+      }
+    ],
+    "detail": "touch a.txt\necho ok",
+    "id": "ask-2",
+    "kind": "approve",
+    "questions": [],
+    "run": {
+      "id": "a1",
+      "kind": "general-purpose"
+    },
+    "sinceMs": 1000,
+    "tool": "Bash",
+    "what": "touch a.txt"
+  }
+}

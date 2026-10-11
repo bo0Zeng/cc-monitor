@@ -17883,6 +17883,84 @@
       "zh": "每道题都要答",
       "args": []
     },
+    "askBlock.head.since": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已等 {waited}",
+      "args": ["waited"]
+    },
+    "askBlock.head.questions": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{head} · {n} 题",
+      "args": ["head", "n"]
+    },
+    "askBlock.tag.run": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "子 agent · {kind}",
+      "args": ["kind"]
+    },
+    "askBlock.tag.runBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "子 agent",
+      "args": []
+    },
+    "askBlock.choice.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "{label}…",
+      "args": ["label"]
+    },
+    "askBlock.choice.sending": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "正在交出",
+      "args": []
+    },
+    "askBlock.fail.noReason": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未答出 · 原因不明",
+      "args": []
+    },
+    "askBlock.note.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "取消",
+      "args": []
+    },
+    "askBlock.question.multi": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{header} · 多选",
+      "args": ["header"]
+    },
+    "askBlock.question.multiBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "多选",
+      "args": []
+    },
+    "askBlock.question.needAll": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "每道题都答了才可交",
+      "args": []
+    },
+    "askBlock.question.other": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "其他…",
+      "args": []
+    },
+    "askBlock.manual.terminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看终端",
+      "args": []
+    },
     "beSession.needs.approve": {
       "kind": "body",
       "role": "片段",
