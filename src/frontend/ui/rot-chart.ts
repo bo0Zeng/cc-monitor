@@ -343,7 +343,7 @@ export function combinedChart(spec: ChartSpec): Chart {
     box.appendChild(add);
   }
   root.append(box, legend());
-  // 排好版之后量一次：段里放不下「余 N」⇒ 挪到段的右端外面（不截字）。
+  // 调度：一次性 —— 排好版之后量一次：段里放不下「余 N」⇒ 挪到段的右端外面（不截字）
   requestAnimationFrame(() => placeLabels(root));
   return { root, rowEls };
 }
