@@ -15309,7 +15309,7 @@
     "beCcm.execDirect.scriptRefused": {
       "kind": "error",
       "role": "命令行",
-      "zh": "执行策略不让起 · {file} 是 PowerShell 脚本，这台 PowerShell 的执行策略是 {policy}，不运行本地脚本",
+      "zh": "执行策略不让起 · {file} · 执行策略 {policy} 不运行本地脚本",
       "args": ["file", "policy"]
     },
     "bePlan.build.inTmuxNoName": {
