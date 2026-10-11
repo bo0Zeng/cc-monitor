@@ -350,9 +350,10 @@
     white-space: nowrap;
   }
 
+  /* 视窗外的重置那一句：行右上角（底下那一排让给视窗里的 ↻ 刻度）。 */
   .rcFar {
     position: absolute;
-    top: 25px;
+    top: 0;
     right: 2px;
     padding: 0 2px;
     color: var(--text-2);
