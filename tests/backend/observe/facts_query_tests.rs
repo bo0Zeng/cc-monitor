@@ -1504,3 +1504,17 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         (NeedsKind::Approve, n.text.clone())
     );
 }
+
+/// ★ 钉条第一行状态格打头（同「等批准 · Bash」）：每一种的 `head` 都以它短的那一格（`needs_words`）起头 ——
+/// 计划写「等批准 · 计划」，不写「计划 · 等批准」。
+#[test]
+fn every_needs_head_starts_with_its_status_cell() {
+    for kind in NEEDS_BY_DANGER {
+        let head = needs_head(kind, Some("Bash")).0;
+        let word = needs_words(kind).0;
+        assert!(
+            head.starts_with(&word),
+            "{kind:?}：钉条第一行「{head}」没有以状态格「{word}」打头"
+        );
+    }
+}

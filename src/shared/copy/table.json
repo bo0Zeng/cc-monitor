@@ -25029,7 +25029,7 @@
     "needs.bar.plan": {
       "kind": "body",
       "role": "片段",
-      "zh": "计划 · 等批准",
+      "zh": "等批准 · 计划",
       "args": []
     },
     "needs.bar.network": {

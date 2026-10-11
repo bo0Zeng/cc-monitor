@@ -505,7 +505,7 @@ pub(crate) struct Needs {
     pub(crate) since_ms: Option<u64>,
     /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
     pub(crate) text: Words,
-    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 计划 · 等批准 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
     pub(crate) head: Words,
     /// 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
     pub(crate) head_code: Option<String>,
