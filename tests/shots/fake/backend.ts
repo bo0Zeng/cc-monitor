@@ -39,6 +39,7 @@ export const REAL_OPS = new Set([
   "history-search-merge",
   "history-find",
   "history-last-accounts",
+  "exit-policy-read",
 ]);
 
 /**
@@ -89,7 +90,14 @@ export class FakeBackend {
   private readonly ready: Promise<void>;
   private readonly key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-  constructor(readonly world: World) {
+  /**
+   * `mainWindow`：这一页是不是主窗口。主窗口等那台的会话流报完清单再演「收场」（开页时那几个还活着，看得见它们变成已结束）；
+   * 别的页（独立窗口 · 设置）不订那一条，开页就让那几个收场 —— 不然它们在那几页里一直活着（已结束的画成「在跑」、规则页把它算进在用的会话）。
+   */
+  constructor(
+    readonly world: World,
+    opts: { mainWindow: boolean } = { mainWindow: true },
+  ) {
     for (const op of REAL_OPS) {
       if (op in world.ops) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
@@ -112,6 +120,12 @@ export class FakeBackend {
       };
       await new Promise<void>((resolve) => (es.onopen = () => resolve()));
     });
+    if (!opts.mainWindow) {
+      for (const origin of new Set(world.sessions.map((x) => x.origin))) {
+        this.listedOrigins.add(origin);
+        this.pending.push(this.tell("end", { origin }));
+      }
+    }
   }
 
   /** 交给壳 `chan_call` 那一跳：成 ⇒ 原样字节；不成 ⇒ 壳交给页的那一形（`{err, body, detail}`，原样抛）。 */

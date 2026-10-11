@@ -24,7 +24,7 @@ function exitedErrorWorld(): World {
   c.user("训练脚本加断点续训。");
   c.say("我先看一下现在的训练循环。");
   c.apiError(529, "API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
-  s.convo = c;
+  s.convo = c.endAt(Date.now() - 60_000);
   return w;
 }
 

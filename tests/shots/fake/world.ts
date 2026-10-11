@@ -96,9 +96,9 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     null,
     { child: childA2(c) },
   );
-  c.from({ kind: "agentMessage", from: "a7f3", name: "补重试的单元测试", handback: true, body: "测试已写好：`tests/test_inventory_client.py`，成功、重试后成功、重试耗尽三个用例全部通过。" });
+  c.from({ kind: "agentMessage", from: "a1", name: "补重试的单元测试", handback: true, body: "测试已写好：`tests/test_inventory_client.py`，成功、重试后成功、重试耗尽三个用例全部通过。" });
   // 同一个子运行的收场通知（以交回为准：会话事实 handedBack 说它交回了 ⇒ 消息流里不画这一条）。
-  c.from({ kind: "taskNotification", taskId: "a7f3", status: "completed", summary: "补重试的单元测试" });
+  c.from({ kind: "taskNotification", taskId: "a1", status: "completed", summary: "补重试的单元测试" });
   c.from({ kind: "taskNotification", taskId: "b1", status: "completed", summary: "lint" });
   c.from({ kind: "taskNotification", taskId: "b2", status: "failed", summary: "类型检查" });
   c.tool("Bash", { command: "pytest -q tests/test_inventory_client.py", description: "跑测试" }, "...\n3 passed in 0.41s");
@@ -135,6 +135,8 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     88_000,
     "end_turn",
   );
+  // 照固定起点排出来的；整段挪到一分半前收尾（这个会话此刻还在跑；历史页按最近排它在最上，几个场景点第一行就是它）。
+  c.endAt(Date.now() - 90_000);
   return { convo: c, agentTool, agentTool2 };
 }
 
@@ -162,7 +164,7 @@ export function smallConvo(sid: string, cwd: string, title: string, ask: string,
   c.title(title);
   c.user(ask);
   c.say(answer, tokens);
-  return c;
+  return c.endAt(Date.now() - 3 * 60_000);
 }
 
 /** 在等你批准的那一个：说完一句、跑一条要批准的 Bash（还没有结果）。 */
@@ -170,14 +172,16 @@ function waitingConvo(sid: string): Convo {
   const c = smallConvo(sid, "/home/user/work/web-console", "表格分页改成虚拟滚动", "表格超过一万行就卡，改成虚拟滚动。", "改成按可见区渲染了，一万行首屏从 1.8 秒降到 90 毫秒。");
   c.user("顺手把构建产物清一下重打个包。");
   c.tool("Bash", { command: "rm -rf build/ && npm run build", description: "清掉重打包" }, null);
-  return c;
+  // 要批准的那一步落在它开始等的那一刻（pidfile 说等了 2 分钟）。
+  return c.endAt(Date.now() - 120_000);
 }
 
 /** 在等你回答的那一个（gpu-01 上）：提问工具还没有结果。 */
 export function answerConvo(sid: string, cwd: string): Convo {
   const c = smallConvo(sid, cwd, "排序模型蒸馏", "蒸馏用哪个老师模型？", "我先看一下现有的检查点。");
   c.tool("AskUserQuestion", { questions: [{ question: "老师模型用 v7 还是 v8？", options: [{ label: "v7" }, { label: "v8" }] }] }, null);
-  return c;
+  // 提问落在它开始等的那一刻（用它的场景说等了 5 分钟）。
+  return c.endAt(Date.now() - 300_000);
 }
 
 export function defaultWorld(): World {
@@ -219,9 +223,12 @@ const PIDFILE_STATUS = { working: "busy", needs_you: "waiting", idle: "idle", ba
 
 /** 一个会话的替身怎么配（`real/pool.mjs`）：活着的写 pidfile；已结束的开页之后收场；可重连的只留挂着标签的那个 tmux 窗格。 */
 export function liveOf(s: SessionSpec): LiveSession {
+  // 进程起在它记录的第一条之前（pidfile 的 `startedAt`）：缺省是开页那一刻，记录里更早起的后台命令就被后端当成上一个进程留下的、不算。
+  const first = s.convo?.firstAt;
   return {
     sid: s.sid,
     cwd: s.cwd,
+    ...(first !== undefined ? { startedAt: first - 5_000 } : {}),
     kind: s.background ? "bg" : "interactive",
     ...(s.name ? { name: s.name } : {}),
     ...(s.outsideTmux ? { tmux: false as const } : {}),

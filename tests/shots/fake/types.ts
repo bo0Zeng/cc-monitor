@@ -18,8 +18,6 @@ export interface TaskSpec {
 export interface SessionSpec {
   sid: string;
   origin: string;
-  /** 哪一家（会话事实的 `agent`）；缺 ⇒ claude。 */
-  agent?: string;
   cwd: string;
   /** 会话名（pidfile 的 `name`）。 */
   name: string | null;
