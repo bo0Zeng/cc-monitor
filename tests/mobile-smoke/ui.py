@@ -25,8 +25,12 @@ def find(want, nth=0):
     hit = hit or [n for n in ns if want in label(n)]
     return hit[nth] if len(hit) > nth else None
 
+def bounds(n):
+    return tuple(map(int, re.findall(r"\d+", n.get("bounds"))))
+
+
 def center(n):
-    x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+    x1, y1, x2, y2 = bounds(n)
     return (x1 + x2) // 2, (y1 + y2) // 2
 
 def main():
@@ -62,4 +66,5 @@ def main():
         except ImportError:
             pass
 
-main()
+if __name__ == "__main__":
+    main()

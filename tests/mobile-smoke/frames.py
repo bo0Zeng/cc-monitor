@@ -37,7 +37,7 @@ if cmd == "watch":
     import select
     while time.time() < end:
         if select.select([p.stdout], [], [], 0.5)[0]:
-            print(f"{time.time() - t0:6.2f} {json.dumps(read(), ensure_ascii=False)[:300]}", flush=True)
+            print(f"{time.time() - t0:6.2f} {json.dumps(read(), ensure_ascii=False)}", flush=True)
     p.terminate()
     sys.exit(0)
 p.stdin.write(json.dumps({"id": "smoke-1", "cmd": cmd, "args": args, "within_ms": within}) + "\n")
