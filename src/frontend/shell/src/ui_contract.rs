@@ -4,10 +4,6 @@
 //! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
 //! 前端 `events.ts` 的 TS 接口须与此保持一致。
 //!
-//! **会话内容不再是 Tauri 事件**：原来的 `jsonl-line` / `jsonl-batch` 两个事件
-//! （与载荷 `JsonlBatchPayload`〔散文墓碑〕）退役，会话内容改走通道的 `subscribe`
-//! （`chan/webview.rs` · `event_replay·rs` 头注「订阅」）；流里每一格的体是 [`SessionStreamFrame`]。
-//!
 //! 改任何事件名 / payload 字段都要同步前端订阅与类型；删事件名前 grep 确认无 emit/listen。
 
 use serde::Serialize;
@@ -423,9 +419,6 @@ pub struct FrontendReadyPayload {
     #[serde(rename = "prioritySid")]
     pub priority_sid: Option<String>,
 }
-
-// `list_active_sessions` 的返回项 `ActiveSessionPayload`〔散文墓碑〕删了：本机骨架从会话流里的 `live` 成品来
-//   （F5 就绪点按成品缓存重放），那条命令随之退役。
 
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
 /// （从 `Option<String>` 改成 `String`：五个发射点全在 `stream_source/`、全都带着那台的 label，

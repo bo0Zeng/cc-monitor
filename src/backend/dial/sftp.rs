@@ -534,8 +534,7 @@ pub(crate) async fn fenced_remote(
 /// ⚠ 〔2026-09-20 现打订正，随函数搬来〕「即便只设 permissions、`size=None` 也会截断」那句括号是推断、今天复现不出来
 /// （真 `OpenSSH_10.2p1` 上 permissions-only 的 SETSTAT 前后都是 16 字节）；最可能当年那个属性块真的带了 size。
 /// 🔴 **但这条禁令不放宽**：事故是真的、只量了一个服务端版本、部署路上多一次 setstat 收益为零风险是变砖。
-/// ⚠ 与改权限命令的关系：那条命令（今天是后端 `files-chmod`）**要**改权限，是它的本职；它当年靠「属性块逐字节不带 size」
-/// 那条判据挡住这一形（`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕，随那条老命令一起删了）。
+/// ⚠ 与改权限命令的关系：那条命令（后端 `files-chmod`）**要**改权限，是它的本职，不归这条禁令管。
 pub(crate) async fn put_atomic(
     s: &Session,
     path: &str,
@@ -546,8 +545,6 @@ pub(crate) async fn put_atomic(
     // 〔临时件名唯一〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
     //   同时往同一个落点放字节时，谁也不删谁的那一份（从前是固定的 `<rel>.tmp` / `<rel>.bak` ＋「先删残留」—— 那一删删的可能是
     //   别人正在写的那一份，审计 E3 子形 2）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
-    //   〔墓碑 —— 「先删残留」那一步没了：固定名时它清上一趟崩掉留下的那一份；唯一名之后崩掉的那一趟留下的临时件
-    //    没人认领（`put_atomic` 失败那几支会删自己的；进程被杀那一形留在 `~/.cc-monitor/bin/` 里，如实登记）。〕
     let tmp = format!("{rel}.{}.tmp", trip_tag());
     // 失败那几支删**自己这一趟**的临时件；连接已经断了（`sender dropped`）⇒ 删不掉：说一句，
     //   留下的那一份由下次连上的部署计划认领（`control/deploy_plan.rs::stale_leftovers`）。

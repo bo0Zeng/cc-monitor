@@ -7,12 +7,6 @@
 //! 这里把它们**原样转给本机常驻后端**（`transfer-upload` / `-download` / `-start` / `-stop`，后端 `control/transfer.rs`），
 //! 再把后端推上来的 `transfer` 帧（经本机那条流的吸收点，[`deliver`]）翻成窗口认的那几格（[`Snap`]）。
 //!
-//! 〔墓碑 —— 这份文件从前是**传输台本体**：per-origin 的 SFTP 连接池（`OriginPool` · 一池通道 `ChannelSet` ·
-//!  通道闸 `SESSION_CHANNEL_CAP = 6`〔散文墓碑〕）· 上传只写暂存区（`upload_to_staging`〔散文墓碑〕）· 下载落本机
-//!  （`download_inner`〔散文墓碑〕）· 断点续传的尾块对拍 · 票表。SR1b 把它们**整段搬进了本机常驻后端**
-//!  （SFTP 客户端 `dial/sftp.rs`、传输本体与票表 `control/transfer.rs`；预算改成按连接记，`dial/pool.rs::Budget`）。
-//!  文件名留着是为了不让十几处散文一起改名 —— 名字说的是「池」，今天池在后端。〕
-//!
 //! # 🔴 没有退路（`D11`）
 //!
 //! 本机后端那条流不在 ⇒ 报「本机后端不在」；它不认 `transfer-*` ⇒ 报「太旧」。**不进程内开 SFTP**（`inproc_dial.rs` 那条路

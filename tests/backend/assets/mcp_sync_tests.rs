@@ -237,13 +237,12 @@ fn the_live_facts_really_look_at_this_machine() {
     let bin = d.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::write(bin.join("hastool"), "").unwrap();
-    // Windows 上文件名大小写不敏感；这里在 Linux 上跑，按 `PATHEXT` 的原样大小写建。
-    std::fs::write(bin.join("wintool.CMD"), "").unwrap();
+    std::fs::write(bin.join("wintool.cmd"), "").unwrap();
     let here = d.join("here.txt");
     std::fs::write(&here, "").unwrap();
     let live = Live {
         path_var: Some(std::env::join_paths([&bin]).unwrap()),
-        pathext: None,
+        windows: false,
     };
     assert_eq!(live.path(&here.display().to_string()), There::Present);
     assert_eq!(
@@ -258,25 +257,30 @@ fn the_live_facts_really_look_at_this_machine() {
     };
     assert_eq!(live.path(foreign), There::Foreign);
     assert_eq!(live.command("hastool"), Some(true));
-    assert_eq!(
-        live.command("wintool"),
-        Some(false),
-        "没有 PATHEXT 就只找原名"
-    );
+    assert_eq!(live.command("wintool"), Some(false), "unix 只找原名");
     let win = Live {
         path_var: live.path_var.clone(),
-        pathext: Some(".EXE;.CMD".into()),
+        windows: true,
     };
-    assert_eq!(win.command("wintool"), Some(true), "PATHEXT 补 .CMD 找得到");
+    assert_eq!(
+        win.command("wintool"),
+        Some(true),
+        "Windows 上 .cmd 那一形找得到"
+    );
+    assert_eq!(
+        win.command("hastool"),
+        Some(false),
+        "Windows 上不带后缀的那份不算"
+    );
     assert_eq!(win.command("absent-tool"), Some(false));
     let no_path = Live {
         path_var: None,
-        pathext: None,
+        windows: false,
     };
     assert_eq!(no_path.command("hastool"), None);
     let empty_path = Live {
         path_var: Some(OsString::new()),
-        pathext: None,
+        windows: false,
     };
     assert_eq!(
         empty_path.command("hastool"),

@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.identity
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.ui.copy.copyText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow

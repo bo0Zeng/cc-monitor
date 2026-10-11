@@ -40,9 +40,6 @@ fn analyze_extracts_excerpt_title_cwd_count() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-// `truncate_is_char_safe` 随被测的 `truncate_chars`〔散文墓碑〕一起退役：摘录改用 `search_rules::truncate_excerpt`，
-//   「不劈码点」由口径那一家自己的判据守（`tests/backend/observe/search_rules_tests.rs`）；本文件下面 C4d 那一节钉摘录的整形。
-
 /// Batch11-F32：sessionKind:"bg" 探测 → isBg。
 #[test]
 fn analyze_session_detects_bg_kind() {
@@ -100,7 +97,7 @@ fn read_session_rejects_outside_projects() {
 }
 
 /// backend-02：offset 续拉的字节语义**逐字节对拍** watcher 发出的 `byte_offset`
-/// 与 aterm `tail -c +(offset+1)`。用与 `byte_offset_matches_aterm_lineframer` 同一
+/// 与手机端 `tail -c +(offset+1)`。用与 `byte_offset_matches_mobile_lineframer` 同一
 /// 语料 `"你\r\nx\n"`（LineFramer offset=[5,7]）：从续点 N 起 = `bytes[N..]`。
 #[test]
 fn slice_from_offset_matches_lineframer_resume() {

@@ -173,7 +173,7 @@ def all_copy_refs(census) -> Counter:
         lang = "rs" if rel.endswith(".rs") else "ts"
         m = census.masked_source(path, lang)
         if lang == "rs":
-            m = census.strip_cfg_test(m)
+            m = census.drop_cfg_test_items(m)
         n.update(r.group(1) for r in census.COPY_REF.finditer(m))
     return n
 
@@ -211,7 +211,7 @@ def doubt_band(census, src_root: Path | None = None):
             lang = "rs" if rel.endswith(".rs") else "ts"
             m = census.masked_source(p, lang)
             if lang == "rs":
-                m = census.strip_cfg_test(m)
+                m = census.drop_cfg_test_items(m)
             # 行首偏移表
             starts = [0]
             for i, ch in enumerate(m):

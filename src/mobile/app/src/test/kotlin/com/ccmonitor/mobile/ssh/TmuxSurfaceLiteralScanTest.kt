@@ -181,10 +181,6 @@ class TmuxSurfaceLiteralScanTest {
 
         // ---- 用户内容（不是协议面，逐条写着这是谁的字）----
         private const val SEEDER = "app/src/main/kotlin/com/ccmonitor/mobile/dev/DevSeeder.kt"
-        private const val BUILTIN_LABELS = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/ButtonBuiltins.kt"
-        private const val SESSION_SCREEN = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionScreen.kt"
-        private const val TMUX_DIALOG = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TmuxManager.kt"
-        private const val SEED_BUTTONS = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/DefaultButtons.kt"
 
         /**
          * 定值钉：八个锚点在生产代码字符串字面量里的 file → 次数。
@@ -193,14 +189,10 @@ class TmuxSurfaceLiteralScanTest {
          * |---|---|---|
          * | `TmuxCommands.kt` | 2/0/0/0/0 | 网关本身：只剩 `new-session -A`（有则接无则建）与 `new-session -d`（后台建） |
          * | `DevSeeder.kt` | 1 | 种子按钮的默认命令 `CustomButton("btn-tmux", null, "tmux", "tmux new -A -s main")`：用户进按钮编辑就能改掉，是用户的字 |
-         * | `ButtonBuiltins.kt` | 1 | 内建动作的显示名 `"tmux_sessions" to "tmux 会话"` |
-         * | `SessionScreen.kt` | 2 | Toast「无 tmux 会话可抓屏」+ 命令面板项「tmux 会话管理」 |
-         * | `TmuxManager.kt` | 2 | 弹窗标题「tmux 会话」+ 空态「无 tmux 会话。下方新建一个。」 |
-         * | `DefaultButtons.kt` | 1 | 种子按钮的显示名 `SeedButton("ak-tb-tmux", "tmux 会话", …)` |
          *
          * 四个子命令锚点在生产代码里一次都没有（送字 · 抓屏 · 探前台 · 结束都是那台核心的命令）：
-         * 用户内容那几处全是 `tmux` + 空格 + 中文，一个 tmux 子命令都不带，
-         * 唯一的例外是 `DevSeeder` 那条种子命令（`new -A`，不在这四个锚点里）。
+         * 唯一的用户内容是 `DevSeeder` 那条种子命令（`new -A`，不在这几个锚点里）。
+         * 按钮显示名 · 弹窗标题 · 面板项里的「tmux 会话」收进了文案表（`src/shared/copy/table.json`），不再是源码字面量。
          */
         private val PINNED_FRAGMENT_COUNTS =
             linkedMapOf(
@@ -208,10 +200,6 @@ class TmuxSurfaceLiteralScanTest {
                     mapOf(
                         SEEDER to 1,
                         GATEWAY to 2,
-                        BUILTIN_LABELS to 1,
-                        SESSION_SCREEN to 2,
-                        TMUX_DIALOG to 2,
-                        SEED_BUTTONS to 1,
                     ),
                 SEND_KEYS to emptyMap(),
                 CAPTURE_PANE to emptyMap(),

@@ -129,8 +129,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                        "把我们那个 bin 目录放上**用户级** PATH，让三种终端都敲得到 `ccm`；"
                        "POSIX 那一侧的同一件事是写进 rc 的那个围栏块")),
     ("ccm.status", (B1, "R64+K26+K-R111",
-                    "查装态。`K-R111` 已判 `cc_integration_status` 归属重判、该挪进安装面")),
-    # 🔴 〔步 8 改名 2026-09-19〕这张归档表的四个能力 id 跟着账本改了：
+                    "查装态（`K-R111`：该挪进安装面）")),
+    # 🔴 这张归档表的四个能力 id 跟着账本改了：
     #   `daemon.deploy` · `app.daemon-policy` · `daemon.lifecycle` · `daemon.status`
     #   → `backend.*`。判据自己红的时候说「**别改表去凑**」，核法照它给的两条：
     #   ① 新名在盘上吗 —— `tests/frontend/shell/parity_ledger_tests.rs` 里四个 `backend.*` 都在 ✅
@@ -140,11 +140,6 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # `acct-iso.deploy` 摘了：字节随后端二进制走，界面经通道问那台 `acct-iso-install`，不再是 Tauri 命令（R75「account 进后端」兑现）。
     # `acct-iso.check` 摘了：装没装那一问界面直问那台后端 `acct-iso-status`，不再是 Tauri 命令。
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
-    # `alias.account-commands` → `alias.manage`：那条能力 id 随
-    #   `write_account_aliases` 退役（别名只有一类、两跳 ＋ 读回口）。本条红的时候
-    #   逐字写着「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
-    #   归处不变（②）：第①跳 `aliases_render` 就是「生成那段让用户自己填」；第②跳写的是 monitor
-    #   自己那份别名文件 ＋ 用户**自己选**的 rc 里一行 source，与从前那条同性质。
     # `alias.manage` · `alias.block-install` / `-remove` / `-preview` 四项摘了：别名规则 · 方言 · 围栏
     #   进了那台后端（帧命令 `aliases-*`），界面经通道直问，不再是 Tauri 命令（同 `skill.inbox` 那一次）。
     # `acct-iso.shellinit` 摘了：rc 片段那一问界面直问那台后端（围栏在那边校验），不再是 Tauri 命令。
@@ -160,12 +155,6 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # ─────────────────────────── 非装面 ───────────────────────────
     # 下面每一条都是「它不是装 / 卸 / 查装态的动作」。理由一律给**它到底在干什么**，
     # 不写「与安装无关」这种同义反复。
-    # 〔墓碑〕`accounts.last-used` · `history.list-projects` · `history.list-sessions` · `history.metadata` 四条随历史跨机 join
-    #   与注解读写搬进本机常驻后端（前端 `chan.call(<local>, …)`）⇒ 已不在 `LEDGER` 里，按 `usage.*` 同一个理由摘掉。
-    # 〔墓碑〕`accounts.list` · `accounts.trust` · `app.backend-policy` 三条随对应 Tauri 命令改走通道
-    #   （前端 `chan.call` 直接问后端 `accounts-list` / `accounts-trust` / `exit-policy-read|set`）⇒ 已不在 `LEDGER` 里，按 `usage.*` 同一个理由摘掉。
-    # 〔墓碑〕`accounts.session-accounts` 随「某会话属哪个账号」远端 · 本机两条 Tauri 命令退役
-    #   （前端经通道直接说 `accounts-sessions`）⇒ 已不在 `LEDGER` 里，按上面 `usage.*` 那条同一个理由摘掉。
     ("app.auto-launch", (NA, "—", "app 自己的开机自启开关")),
     ("app.config", (NA, "—", "app 自己的配置读写")),
     ("app.data-paths", (NA, "—", "报 app 自己的数据目录")),
@@ -174,84 +163,37 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.self", (NA, "—", "窗口动作")),
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
-    # 〔墓碑〕`audit.config-surface` 随它唯一那条命令（`config_surface_report`）进后端（`footprint-report`，界面经通道直问）而退役；
-    #   剩 monitor 自己那台那几行的事实，能力 id 换成下面那一条（理由同上面几条墓碑）。
     ("audit.monitor-own", (NA, "—", "足迹里 monitor 自己那台那几行的**事实**（只 stat，报告安装面，不改它）")),
     # `assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
-    # 〔墓碑〕`audit.drift-ledger` 随 monitor 自己那本漂移账（`drift_ledger` · Tauri 命令 `drift_ledger_report`）删了而退役（w8/proj10 删 hello.capabilities）；
-    #   能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
-    # 〔墓碑〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
-    #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
-    # 〔墓碑〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
-    # 〔墓碑〕`relay.launch-endpoint` 随它唯一那条命令（读全量注入开关）退役：中转地址与开关都由起 agent 那台的 `ccm`
-    #   在最终 exec 那一处自己定 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑。
     ("comm.face-a.call", (NA, "—",
                           "通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
                           "装什么、查什么装态都不是它的事")),
     ("comm.face-a.subscribe", (NA, "—",
                                "通信层面 A 在 Tauri IPC 那一跳的订阅（`chan_subscribe` / `chan_want` / `chan_stop`）—— 只搬不透明的流格，"
                                "装什么、查什么装态都不是它的事")),
-    # 〔墓碑〕`history.branch` · `history.delete` 随分叉 / 删会话改由界面经通道直说那台后端（`session-fork` · `files-delete-session`）退役；
-    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，理由同上面几条墓碑。
-    # 〔墓碑〕`history.read-session` 随会话正文三条（整份读 · 按偏移 · 按行号）改走通道（那台后端出记录行，
-    #   前端 `chan.call` 直接问 `history-page` / `history-lines`）⇒ 能力不再有 Tauri 命令，归档这一行摘了。
-    # 〔墓碑〕`hooks.diagnose` 随钩子诊断本机远端合成帧命令 `hooks-diag`（界面经通道直问那台后端）退役：
-    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
-    # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
-    # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
-    # 〔墓碑 C4e〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
-    # （`src/frontend/ui/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
-    # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # `mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
-    # 〔墓碑〕`panorama.code-graph` 随代码全景整条摘掉而退役：能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
-    # 〔墓碑〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
-    #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
-    # 〔墓碑〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
-    # 〔墓碑〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
-    #   （`src/frontend/ui/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
-    # 〔墓碑〕`search.history` · `search.index` 随本机搜索改走 `<local>` 的 `history-search`（monitor 内存索引、三条搜索命令与「重新索引」按钮删）退役；理由同上面几条墓碑。
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
-    # 〔墓碑〕`session.activity` · `session.list-active` 随会话起停 / 状态并进会话流（`subscribe(origin, "session-lines")` 的成品格）退役：
-    #   `list_session_activity` / `list_active_sessions` 删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。
-    # 〔墓碑〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
-    # 〔墓碑〕`ssh.host-config` 随它最后一条命令（公钥推送）进了本机后端（`pubkey-push`，界面经通道问）而退役：
-    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
-    # 〔墓碑〕`subagent.load` 随 `load_subagent` 改走通道（前端 `chan.call` 直接问后端 `history-subagent`）⇒ 归档这一行摘了。
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     # 开窗（`open_terminal_window`）：ssh 外壳进了本机后端（`terminal-ssh`），monitor 只剩开窗这一下。
     ("terminal.window", (NA, "—", "开一个终端窗口跑交来的成品（接令牌握手前奏）—— 是**跑**它，不往用户环境里落任何东西")),
-    # 〔墓碑〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
-    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。连带 §S6 连锁里点它的那两处改成「这条能力回来才要求」（见那一段）。
-    # 〔墓碑 2026-09-18〕`usage.aggregate` / `usage.per-account` 两条能力随用量 ②③ 两轴
-    # 整轴退役⇒ 它们已不在 `LEDGER` 里。本表是**归档表**，留一个指向不存在
-    # 的 id 会让 `R3b`（「表在腐烂」）恒红 ⇒ 整条摘掉，理由留在这里。
-    # ⚠ 摘掉的合法理由只有这一个：**那两条能力真的不在了**，不是「这条判据太吵」。
+    # 本表是**归档表**：能力退役 ⇒ 那一条整条摘掉 —— 留一个指向不在 `LEDGER` 里的 id 会让 `R3b`（「表在腐烂」）恒红。
+    # ⚠ 摘掉的合法理由只有这一个：**那条能力真的不在了**，不是「这条判据太吵」。
 ])
 
 # 同一个能力 id 里读写两性质时，按命令名覆盖。**key 必须在 `LEDGER` 里**（R3 的第三向）。
-CMD_OVERRIDE = {
-    # `list_skills` / `read_skill_file` 两条摘了（随 `skill.inbox` 进后端）。
-}
+CMD_OVERRIDE = {}
 
 # 写盘落点（`write_site_registry::WRITE_SITES`）里**带 tool id 的那几行** ＋ `§0b` 另外点名的
 # `build.rs::embed_daemons`（它的 tool id 是 `None`，见 §S5 那段读数）。
 # key = "文件::函数"。两向对拍：人群从 `WRITE_SITES` 现打，这张表少一行 / 多一行都红。
 SITE_ARCHIVE = {
-    # 〔墓碑〕`local_backend.rs::install_local_ccm_entry` 走了：本机 `ccm` 就是后端本身（「不要第二份拷贝」），
-    #   放它的是 `extract_embedded_to`（`WRITE_SITES` 里 tool id 是 `None`：monitor 自己目录里的部署物）⇒ 不在「带 id」人群里。
     "build.rs::embed_daemons": (
         B1, "K33", "把内嵌后端复制进 `OUT_DIR` —— 装后端那条链的构建期一环"),
-    # 〔墓碑〕`fenced_block.rs::put_atomic` · `profile_installer.rs::atomic_write_string` /
-    #   `atomic_replace_path` · `cc_bus_deploy.rs::deploy_into` · `mcp.rs::write_json_atomic` 五行走了：
-    #   只有后端的文件管理部分写用户文件，本机也算 ⇒ 别名块 / $PROFILE / 那一行 source · cc-bus skill 部署 ·
-    #   项目 .mcp.json 的落盘全改成经那台机器的后端（`files-put` / `files-peek`，monitor 只剩 `user_files.rs` 一个开口、
-    #   它自己一个 `fs::` 写都没有）⇒ 这五处在 monitor 侧 `WRITE_SITES` 里已不存在。归处（② / ③）不变，
-    #   只是真落点换到了后端写面（`control/files_write.rs`），不在本表人群里。
 }
 
 # `§0b` 里点名、而 `WRITE_SITES` 的 tool id 是 `None` 的那几行 —— 单列，别混进「带 id」那个数。
@@ -281,43 +223,35 @@ SITE_TOOLID_NONE_BUT_ARCHIVED = ("build.rs::embed_daemons",)
 #
 # ⚠ **刻意没有拿「今天住哪」去盘这张表**，理由写出来别当省略：`§3-3` 的「写区（后端）」
 #   那一列写的是**搬过去之后**的落点，不是今天的住址 —— S4 那一行现打就对不上
-#   （它写 `account_aliases.rs` · `profile_installer.rs`，而那两条命令今天住
-#   `acct_iso_deploy.rs:126` 与 `lib.rs:1772`）。拿住址当判据会把「计划」读成「现状」。
+#   （它写的是 `account_aliases.rs` · `profile_installer.rs`）。拿住址当判据会把「计划」读成「现状」。
 #
 # 🔴 **这张表是本块唯一的字面量名单**，它不是「人群」的第二住址：人群现打从 `LEDGER`
 #    ＋ `CAP_ARCHIVE` 派生（就是 `§S5` 那 22 条），这张表只回答「那一条归五件里的哪一件」。
 #    两边任何一侧漂了，`R8a`/`R8b` 当场红。
 SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S1", ("①-远端半", (
-        # 🔴 〔步 8 改名 2026-09-19〕`*_remote_daemon → *_remote_backend`。
+        # 🔴 `*_remote_daemon → *_remote_backend`。
         # ⚠ 本条红的时候逐字写着「**别改表去凑**：要么是切件方案指了一条盘上不存在的命令，
         #   要么是有人改了命令名」。**核过了，是后者**：
         #   `sftp.rs:743/796` 两个新名在盘上、`ipc/commands.ts:739/959` 两侧都跟上了。
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
-        # `install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改名成
-        #   `…_remote_alias_block`（「ccm 助手」这个词删掉）。
-        # 那两条**不存在了**（并进 `aliases_block_install` / `_remove`，带 `origin`）：
-        #   `R8a` 红时核过，是「命令没了」那一种（同 S5 步 12·C 收尾那一形），人群跟着现实走、摘两行。
         "uninstall_remote_backend",
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。远端半那两条并进了 `aliases_block_*`（带 origin），今天剩 2 条")),
     ("S2", ("①-本机半", (
         # 别名块那三条并进 `aliases_*` 同一族命令面，
         # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
-        #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+        #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种，改表是跟上真相。
         # `aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
-        # `cc_integration_install` / `_preview` / `_scan_path` / `_status` / `_uninstall` 五条退役：
-        #   装 / 卸 / 预览接给上面三条；状态与扫一份并进 `aliases_read`（它归 S4，能力 `alias.manage`）。
         "ccm_user_path_add",
         "ccm_user_path_remove",
         "ccm_user_path_status",
         "local_ccm_entry_status",
-        # `probe_ccm_cli` 退役：远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），
-        #   本机那一格仍是 `local_ccm_entry_status`。本条红时逐字「别改表去凑」—— 核过了，是命令真删了，改表是跟上真相。
+        # 远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`）；本机那一格是 `local_ccm_entry_status`。
     ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
-       "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条（从前是一条 `write_account_aliases`），那几条归 S4。"
+       "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条，那几条归 S4。"
        "🔴 那三条 `ccm_user_path_*`（用户级 PATH 那一格：现在状态 / 加 / 撤）"
        "是本轮新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
        "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
@@ -328,18 +262,10 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "`ccm_user_path_*`** —— 属切件方案的改动，已在里点名请 PM 追认")),
     ("S3", ("①-account 半", (
         # `acct_iso_status` 摘了（装没装那一问进了后端出成品、界面直问）。
-        # `deploy_remote_acct_iso` 摘了（字节随后端二进制走，界面经通道问 `acct-iso-install`）⇒ 本组今天零条。
-        # `acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
-        # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
-        # 接上界面了：调用点在 `src/frontend/ui/settings/accounts-section.ts`（本机空态问装没装），
-        # 那一份本来就在 `FRONTEND_PIN['S3']` 里 ⇒ 名单按实数现打**不变**（1 → 1，没有换份）。
-        # 它与远端那条今天是同一条 `acct_iso_status`（上面那行）。
-    ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
-       "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
-       "那「1 条欠口」今天盘上还不存在 ⇒ 不进闭集")),
+        # 本组今天零条：账号库那几问进了那台后端（界面经通道问 `acct-iso-install` / `acct-iso-status`）。
+    ), "§3-3 第三行：账号库那一件，收「2 条 ＋ 1 条欠口」；"
+       "那几问今天都进了那台后端（界面经通道直问）⇒ 本组零条")),
     ("S4", ("②生成 rc 片段", (
-        # `write_account_aliases` 退役、拆成两跳 ＋ 读回口。
-        # 本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（本路），改表是跟上真相。
         # `aliases_install` / `_read` / `_render` 三条摘了（别名进了那台后端，`aliases-*`）⇒ 本组今天零条。
         # `acct_iso_shellinit` 摘了（rc 片段那一问进了后端出成品、界面直问）。
         # `acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
@@ -348,7 +274,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 「生成 rc 片段」），那一份本来就在 `FRONTEND_PIN['S4']` 里 ⇒ 名单按实数现打**不变**（2 → 2）。
         # 它与远端那条今天是同一条 `acct_iso_shellinit`（上面那行）。
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
-       "（`§S5` 归处栏）；那条 `write_account_aliases` 拆成三条、加了本机那条 shellinit 之后是 5 条。"
+       "（`§S5` 归处栏）；后来别名拆成三条、加了本机那条 shellinit 之后是 5 条。"
        "写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),
     ("S5", ("③装 MCP/skill", (
         # 🔴 **7 条 → 5 条**：`write_remote_mcp_server` 与
@@ -363,12 +289,11 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   一个字节没动 —— 它照样在两个方向上有牙（表指了盘上没有的命令 ⇒ 红；
         #   盘上多一条谁都没认领的命令 ⇒ 红）。动的只是这张**人的判断表**里的成员，
         #   因为它描述的那个现实变了。
-        # `cc_bus_install_state` / `deploy_local_cc_bus` 摘了：装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）；
-        #   留下装前那道本机 `ccm` 预检（归 `cc-bus.deploy`，调用点仍在 `cc-bus-section.ts`）。
+        # 装 · 三态 · 记账在本机后端（`cc-bus-install` / `-state`）；这里只有装前那道本机 `ccm` 预检
+        #   （归 `cc-bus.deploy`，调用点在 `cc-bus-section.ts`）。
         "cc_bus_ccm_precheck",
         # MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
-        # `write_skill_file` 摘了：收件箱那一面进了那台后端。
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
        "③ 这一处**现打是 5 条命令**（`§3-3` 写下时是 7 条，"
        "那两条远端双份今天已合进本机同名那两条）；"
@@ -401,7 +326,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/frontend/ui/settings/machine-aliases.ts",),
-            "**2 → 1**：`src/ccm-probe.ts` 随 `probe_ccm_cli` 删了（远端探测住进那台后端）。"
+            "**2 → 1**：`src/ccm-probe.ts` 删了（远端探测住进那台后端）。"
             "**3 → 2**：`src/frontend/ui/settings/cc_integration.ts` 并进了 "
             "`src/frontend/ui/settings/machine-aliases.ts`（界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
             "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
@@ -412,9 +337,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S2 收完本机半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/frontend/ui/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
-            "`cc_integration_status`，不是调用点（见 `§S5d` 第二档）")),
+            "终端集成那几条，不是调用点（见 `§S5d` 第二档）")),
     ("S3", ((),
-            "**1 → 0**：`src/frontend/ui/settings/accounts-section.ts` 那一处（`deploy_remote_acct_iso`）改经通道问那台后端 `acct-iso-install`，"
+            "**1 → 0**：`src/frontend/ui/settings/accounts-section.ts` 那一处（一键部署账号库）改经通道问那台后端 `acct-iso-install`，"
             "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
             "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
@@ -485,13 +410,13 @@ FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
         "R63裁定三+K33",
         "它今天**已经是**这一处：模块头注逐字记着 Phase D UX 审计把「诊断」与「别名生成器」"
         "两半合并到同一处的理由（分居两处会让用户看到诊断却无路可循）；`paste-block.ts` 那个"
-        "共用待贴组件的规范宿主也是它。⇒ `remote_acct_iso_shellinit` 那块待贴片段"
+        "共用待贴组件的规范宿主也是它。⇒ 账号库 shellinit 那块待贴片段"
         "（今天住 `accounts-section.ts`）搬进来，② 就只剩一处。")),
     ("src/frontend/ui/settings/mcp-section.ts", (
         "③一处「安装 MCP / skill 等」",
         "R63裁定三+K34",
-        "R63 逐字「安装mcp功能\\skill等等」。`cc-bus` 的装口（`deploy_local_cc_bus` / "
-        "`cc_bus_install_state`）今天寄在**驾驶舱**里，而驾驶舱 `S6` 已搬出设置、成了顶层"
+        "R63 逐字「安装mcp功能\\skill等等」。`cc-bus` 的装口"
+        "今天寄在**驾驶舱**里，而驾驶舱 `S6` 已搬出设置、成了顶层"
         "运营视图 ⇒ 「装它」与「用它」今天挤在同一处。收工形状是**装的进这一处、用的留在"
         "各自的运营视图**。")),
 ])
@@ -507,9 +432,9 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "（部署是产品的一部分，由客户端做）直接冲突。")),
     ("S2", (("src/frontend/ui/settings/machine-card.ts",),
             "「终端集成」那一块（`cc_integration_*`）与本机 ccm 入口查询并进组件栏的"
-            "**本机页那一份**。`src/ccm-probe.ts` 删了（它原是非入口，见 `FRONTEND_NON_ENTRY` 那条墓碑）。"
+            "**本机页那一份**。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
-            "`cc_integration_install` 归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
+            "那条装命令归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
             "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
     ("S3", (("src/frontend/ui/settings/machine-card.ts",),
             "**没达标，前端这一半要做**：把「一键部署 cc-acct-iso」从「账号」栏的空态里"
@@ -517,7 +442,7 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "而今天它正是一个按实现分出来的独立装口。`R75`〔用@09-14「account 进后端」〕"
             "已把它归 ①。账号栏留一句指路（**不带命令调用** ⇒ 不算落点）。")),
     ("S4", (("src/frontend/ui/settings/machine-aliases.ts",),
-            "`remote_acct_iso_shellinit` 那块待贴片段从 `accounts-section.ts` 搬到 ② 那一处，"
+            "账号库 shellinit 那块待贴片段从 `accounts-section.ts` 搬到 ② 那一处，"
             "与 `aliases_*` 同处（② 那一处今天是机器页的「别名」）。")),
     ("S5", (("src/frontend/ui/settings/mcp-section.ts", "src/frontend/ui/views/inbox-view.ts"),
             "`cc-bus` 的两条装口从驾驶舱搬进 ③；`src/frontend/ui/views/inbox-view.ts` 留着，"
@@ -529,18 +454,16 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
 # 🔴 每一条的理由都要**自己站得住**（不是「不这么划 3 就闭合不了」）——
 #    `KR131D1` 逐字警告过「别为了让 3 闭合去硬凑分组」。
 FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
-    # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
-    #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
     ("src/frontend/ui/backend-deploy.ts",
      "远端后端装 / 卸的共用模块：机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］（就地部署，不开设置窗）都调它。"
      "它没有界面，用户去的地方是那两处 ⇒ 不是「用户要去装东西的那一处」；全前端调这两条命令只这一份（`R9` 钉 S1 的落点就是它）。"),
     ("src/frontend/ui/views/inbox-view.ts",
-     "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
+     "它是收件箱**编辑 overlay** 的保存按钮，调那条 skill 文件写命令。而它"
      "**装不了 skill**：`skill_host::resolve_editable` 第一刀就是 "
      "`requested.canonicalize()`，报错逐字「解析路径失败（**文件必须已存在**）」⇒ 它只能"
      "改一份**已经装好的** skill 的白名单内文件。"
      "🔴 **这说明归档表那一格的依据现打是假的** —— `CAP_ARCHIVE['skill.inbox']` 逐字写着"
-     "「写侧（`write_skill_file`）是往用户项目里装东西」。**`K-R131` 不改它**"
+     "「写侧是往用户项目里装东西」。**`K-R131` 不改它**"
      "（`K-R117` 已签收，`[J5]` 不许事后改），把这条退回 PM：订正之后 `skill.inbox` 写侧"
      "落「非装面」⇒ 人群 22→21、`S5` 收 6 条、本表这一行可以撤，全盘目标不变。"),
 ])
@@ -938,9 +861,9 @@ def frontend_landing(texts, cmds, wrapper: str):
 def wrapper_entries(text: str, cmds):
     """包装层两侧：TS 键（`  <名>: (`）与线上串（`invoke…("<名>"`）各命中几次。
 
-    形状取自本仓今天 `src/frontend/ui/ipc/commands.ts` 的固定写法，逐字两例：
-      `  probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),`
-      `  write_skill_file: (args: {…}) =>` ＋ 下一行 `    invoke<void>("write_skill_file", args),`
+    形状取自本仓 `src/frontend/ui/ipc/commands.ts` 的固定写法，两种：
+      `  <名>: (args: {…}) => invoke<T>("<名>", args),`
+      `  <名>: (args: {…}) =>` ＋ 下一行 `    invoke<T>("<名>", args),`
     ⇒ 键与串**允许不在同一行**，两侧分别数。
     ⚠ 形状一变（改写成 class 方法 / 改用别的桥）会让 22 条齐刷刷判不到 ⇒
       由 `WRAPPER_KEY_FLOOR` 那条反向自检先 CRASH，不许印 22 条红。
@@ -1517,17 +1440,6 @@ def main() -> int:
          re.search(r"const EXPECTED_LOCAL_OR_BOTH: usize = (\d+);", led_src)),
         ("ORIGIN_TAKING_BOTH", re.search(r"const ORIGIN_TAKING_BOTH", led_src)),
     ]
-    # 〔列 tmux 会话进后端〕`tmux.manage` 那条能力整个出了 `LEDGER`（Tauri 命令删了）⇒ 点它的两处（那条不对称散文 ·
-    #   钉那句散文的判据）随之删了。**不是放宽**：这条能力哪天回到 `LEDGER`，这两处照旧必须同在 —— 下面按现打的能力集合现判。
-    if "tmux.manage" in {c for _, c, _ in ledger}:
-        chain += [
-            ("tmux.manage 那条 ASYMMETRY_REASONS",
-             re.search(r'\("tmux\.manage", Asym::', led_src)),
-            ("the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
-             re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_backend_primitive", led_src)),
-        ]
-    else:
-        print("    · `tmux.manage` 不在 `LEDGER` 里（MIG-1 起列 tmux 会话走通道）⇒ 点它的那两处不再要求")
     for name, m in chain:
         if m is None:
             red("R7b", f"连锁那一处找不到了：{name}")

@@ -1,11 +1,6 @@
 //! 连 → 校验 host key → 鉴权。**本 crate 里唯一与远端跑 SSH 传输层握手的地方**
 //! （`tests/backend/dial_tests.rs::the_dial_only_happens_under_dial_home` 钉着「只在 `dial/`」）。
 //!
-//! 搬自界面侧 `stream_source` 的 `connect_session` / `race_connect` / `connect_via_jump`〔散文墓碑〕 /
-//! `authenticate_via_agent`〔散文墓碑〕 与 `ClientHandler` —— 那几样在界面侧**删掉了**，这里是它们唯一的家。
-//! 与原来相比只有两处不同，都写在 `mod.rs` 头注「边界」一节：竞速同时起拨（不错开）；
-//! ssh-agent 两个平台都有（界面侧原来只有 Windows）。
-//!
 //! TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
 //! （`platform::tcp_rtt`），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
 
@@ -26,7 +21,7 @@ use crate::common::said::Said;
 /// **不靠 inactivity 拆链**：russh 的 inactivity 计时在无 keepalive 时会拆掉一条健康的空闲连接
 /// （空闲一小时的会话很常见）。死链由 keepalive 超时 ＋ EOF 检出。
 ///
-/// 为什么是 10 秒（net4，从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
+/// 为什么是 10 秒（从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
 /// 要等它被判死才失败、才换到新连接上 —— 30 秒 × 3 时是 120 秒，界面 45 秒的握手期限先到。
 /// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
 const KEEPALIVE: Duration = Duration::from_millis(10_000);

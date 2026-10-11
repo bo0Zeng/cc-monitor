@@ -155,7 +155,7 @@ describe("CP2a · 术语对照表", () => {
     expect(ccm?.tier).toBe("限用");
     expect(inPlace?.tier).toBe("限用");
     expect(ccm?.context && inPlace?.context).toBeTruthy();
-    // 〔用户 09-24「继续叫卸载ccm」（）〕那条 ask 结案了，不许再挂着。
+    // 〔「继续叫卸载ccm」〕那条 ask 结案了，不许再挂着。
     expect(ccm?.ask, "ccm 条的 ask 已结案，删掉").toBeUndefined();
   });
 

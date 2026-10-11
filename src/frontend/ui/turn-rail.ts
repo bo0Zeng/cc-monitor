@@ -6,7 +6,7 @@
  * 轮的数据与过程行、大纲同一份（`turn-fold.ts` 手上的 `history-turns` 成品），本模块只排版；跳经宿主（与查找 / 大纲同一个住址）。
  * 列宽 ≤ 900px 不出（CSS 容器查询，`.stream` 是尺寸容器）。不排定时器：宿主转来 scroll。
  */
-import type { TurnSummary } from "./session-reads";
+import type { TurnRow } from "./generated/TurnRow";
 import { copyText } from "./copy-table";
 import { delegateTooltip } from "./kit/tooltip";
 
@@ -18,7 +18,7 @@ export const RAIL_MIN_COLUMN = 900;
 const TIP_WIDTH = 300;
 
 export interface RailHost {
-  turns(): readonly TurnSummary[];
+  turns(): readonly TurnRow[];
   /** 这个会话此刻在等你（「需手动」）。 */
   waiting(): boolean;
   /** 跳到那一轮开头（没加载的由宿主取到再跳）。 */
@@ -45,7 +45,7 @@ export class TurnRail {
   /** 这一帧已经排过量刻度了（滚动一帧来好几个 `scroll`，合成一次）。 */
   private scheduled = false;
   /** 「uuid → 第几轮」：轮那一份换了（`turns()` 换了一个数组）才重建。 */
-  private indexOf: { turns: readonly TurnSummary[]; map: Map<string, number> } | null = null;
+  private indexOf: { turns: readonly TurnRow[]; map: Map<string, number> } | null = null;
 
   constructor(
     private readonly scroller: HTMLElement,

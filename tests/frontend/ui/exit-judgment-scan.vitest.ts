@@ -10,7 +10,7 @@
  * 3. 名单自身：每格 `n > 0`、`why` 非空、`kind` 在闭集里、没有重复格；`roots` 里每个目录都扫到了文件（反空真）。
  * 4. 阳性 / 阴性对照：每条规则对自己的样例各恰好命中一次 / 零次（探测器坏了 ⇒ 先红）。
  *
- * 手机端（`src/mobile`）10-10 并进来（mob4）：`roots` 加了它（`kt`，规则见 `KT_RULES`），红出来的三格照实登进 `entries`，
+ * 手机端（`src/mobile`）并进来之后：`roots` 加了它（`kt`，规则见 `KT_RULES`），红出来的三格照实登进 `entries`，
  * `ceiling` 与 [`CEILING_AT_MOST`] 从 267 同改到 276 —— 那一拍是唯一一次「加」，之后同样只许删。
  *
  * 买不到：指纹只认登记过的写法（换个写法重写一遍看不见）；命中的也不全是违例（界面自己的骨架词表会撞 `caseWord`），
@@ -27,7 +27,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 import { KT_RULES, RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
 
 /** 上一批收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。 */
-const CEILING_AT_MOST = 251;
+const CEILING_AT_MOST = 248;
 
 type Lang = "ts" | "rs" | "kt";
 

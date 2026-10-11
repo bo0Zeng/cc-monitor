@@ -209,7 +209,7 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   kind: "list" | "harmless" | "defect?";
   why: string;
 }[] = [
-  // ── src/frontend/ui/styles.css：本路判过的 7 条 ──
+  // ── src/frontend/ui/styles.css：判过的 7 条 ──
   {
     file: "src/frontend/ui/styles.css",
     later: ".viewer-branch-btn:focus-visible",

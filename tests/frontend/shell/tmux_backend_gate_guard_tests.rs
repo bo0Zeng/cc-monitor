@@ -14,13 +14,6 @@ const BACKEND_GATE_MARKERS: &[&str] = &["gate_rules::gate2", "wrong_owner"];
 /// **F04a 起：必须存在**（此前是「一个都不该有」）。
 const BACKEND_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 
-// 这里原来还有两张表：`GUARDED_COMMANDS`（要看住的两个命令：`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）
-//   与 `BACKEND_CHANNEL_MARKERS`（它们走后端的标志 `backend_route::Routed`）。两条命令迁到界面之后，被看住的不再是
-//   「monitor 里那两个函数体」，而是「monitor 里有没有这两件事的路」＋「界面经谁说」—— 见文末两条。
-
-// `MONITOR_TMUX`〔散文墓碑〕（`include_str!` monitor 的 `tmux.rs`）删：那份文件随 monitor 侧的 Gate 残留删了，
-//   下面那条改量整棵 monitor 生产段（`monitor_production_corpus`）。
-
 fn backend_control_dir() -> PathBuf {
     // 住址唯一源：`crate::guard_support`。原来这里自己爬一级（`src/frontend/shell` 的上级只到
     // `<repo>/src`）⇒ 扫到 0 个 `.rs`，而本模块下面三条会**零命中地绿**。
@@ -242,11 +235,6 @@ fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
 
 // 〔`K-R72` 09-12 留档〕上一版判准的另一半住在这里 —— **刻意只留话，不留代码**。
 //
-// 原来那半逐字是：「直接含 `build_guarded_tmux_cmd` 的函数算走 Gate；调用了这样一个
-// 函数的也算」（求闭包，因为 `kill_remote_tmux` → `build_kill_session_cmd` → Gate  〔散文墓碑〕
-// 中间隔了一层；第一版没求闭包，那两处当场误红）。那段派生逻辑今天**没有被测对象**。
-// 留一段跑不到的代码在这儿，就是本件 `KR72D1` 逐字禁止的那件事的测试侧变体：
-// **盘上留着一条走不到的路。**⇒ 删干净，理由写在这里。
 
 /// ★ 抽取器自检 B：backend `control/` 的**递归**扫描面没缩水。
 ///
@@ -390,18 +378,6 @@ fn the_backend_now_has_gate3() {
     );
 }
 
-// 这里原来住着四条：「`kill` 必须走后端通道」（`kill_now_routes_through_the_backend`〔散文墓碑〕）·
-//   「过门被拒绝绝不回落」（`a_gate_rejection_is_never_laundered_into_the_ssh_fallback`〔散文墓碑〕）·
-//   「`send-keys` 也必须走后端通道」（`send_keys_now_routes_through_the_backend`〔散文墓碑〕）·「两条命令走同一个分流器」
-//   （`both_commands_branch_on_the_same_three_way_verdict`〔散文墓碑〕），外加抽取器自检 A。它们钉的都是 monitor 里
-//   `kill_remote_tmux` / `tmux_send_keys` 那两个函数体（主路走后端 · 回潮闸 · 三态不许压成两态 · `enter` 真传过去）。
-//   两条命令整条迁到界面（`src/frontend/ui/tmux-control.ts`）之后，那两个函数体不在了，每一格的去处：
-//   · 主路走后端 ＋ 回潮闸 ⇒ 下面第一条：monitor 生产段里**一处**杀会话的 shell 串都没有（界面那一侧结构上没有 SSH）；
-//   · 界面只经一处说这几条 ⇒ 下面第二条；
-//   · 三态不许压成两态（「门拒绝」与「通道不在」两句话不同）⇒ `tests/frontend/ui/tmux-control.vitest.ts`（身份门那一句 ≠ 通道不在那一句）；
-//   · `enter` 那一格随裸键 mode `send-keys-raw` 删了（之后无调用者；送键只剩 `send-into`）。
-//   后端那两道门（身份 · 窗口）还在路上 —— 上面两条反向锚点不动，界面从此**只**靠它们。
-
 /// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
 fn monitor_production_corpus() -> (usize, String) {
     let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
@@ -498,11 +474,6 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
         "`src/frontend/ui/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
 }
-
-// ════════════════════════════════════════════════════════════════════════
-// 从 `tests/frontend/shell/tmux_tests.rs`〔散文墓碑〕挪来的三条：那份测试的挂载点 `tmux.rs`
-// 随 monitor 侧的 Gate 残留删了；三条守的都是「monitor 里没有某一种 tmux 的路」，人群从一份文件扩到整棵 monitor 生产段。
-// ════════════════════════════════════════════════════════════════════════
 
 /// ★★**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
 ///

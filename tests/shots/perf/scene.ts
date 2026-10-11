@@ -17,7 +17,7 @@ export const PERF_SCENES: Scene[] = [
     page: "index",
     dir: "性能",
     title: "一条十几万行的会话 · 主窗口",
-    desc: "最长那条十一万多行（用户 10-10 报卡渲染的那种规模），其余同 perf-main；页内动作同 perf-main",
+    desc: "最长那条十一万多行（真报过卡渲染的那种规模），其余同 perf-main；页内动作同 perf-main",
     width: 1280,
     height: 800,
     world: perfHugeWorld,

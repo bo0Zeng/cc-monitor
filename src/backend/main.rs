@@ -172,7 +172,7 @@ async fn main() {
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
             // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
             // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
-            // 它的信封与仓外 aterm 冻结在 2026-07-18，走原路一个字节都不动
+            // 它的信封与手机端冻结在 2026-07-18，走原路一个字节都不动
             // （两条路的输出实为同一个 `CommandPlan`，但冻结的契约不拿「实际上一样」去赌）。
             // ⚠ **必须写成单行臂**：`argv_table_guard::every_dispatch_arm_actually_calls_an_implementation`
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
@@ -307,14 +307,14 @@ async fn main() {
 }
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
-/// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
+/// 两份 hello 会各自漂，而这一帧是手机端按精确字节在读的东西。
 fn build_hello(agent_home: &std::path::Path) -> Frame {
     Frame::Hello {
         v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         // ⚠ **左边的字段名与右边的变量名刻意不一致**，这不是笔误：
-        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、仓外 aterm 在读），
+        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、手机端在读），
         // 登记在 `agent_boundary_guard::FROZEN_COMPAT`，带解锁条件，**不许改名**；
         // 右边 `agent_home` 是**仓内的参数名**，`S4b` 已把它从 `claude_dir` 改过来
         //（通用层不该在标识符里叫得出某个 agent 的名字 —— `D3` 的同一条道理往仓内推）。
@@ -326,8 +326,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `agents::visible_homes()` 今天就能答出这台机器看得见哪些 agent
         //（判准：home 目录存在；理由与被排除的另两条候选写在那个函数的头注里）。
         // 换过去只要改这一行 —— `S5` 的口径是 **能填不真填**：
-        //   填 = 一次**跨仓契约变更**（仓外 aterm 的 hello fixture 按精确字节对），
-        //   而本机没有 aterm 仓、验不了它的运行时（前提 `P3`）
+        //   填 = 一次**与手机端的契约变更**（它的 hello fixture 按精确字节对），
+        //   而手机端那一侧的运行时这里验不了（前提 `P3`）
         //   ⇒ 把"何时真填"留成一次**纯发布决策**，而不是顺手改过去。
         // 真填那天要同轮做的三件事：① 换这一行；② 更新
         //   `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；
@@ -798,11 +798,11 @@ async fn serve_listening(
                     tracing::info!("一条流结束 ⇒ 还连着 {left} 条");
                     continue;
                 }
-                // 〔条 66〕**最后一个客户走了 ⇒ 现读这台机器的值，照它办。**
+                // **最后一个客户走了 ⇒ 现读这台机器的值，照它办。**
                 //   不是「起我的那个 monitor 退了」—— 谁起的它不重要，重要的是此刻还有没有人连着。
                 //   ⚠ 这里**现读**（`exit_policy::last_client_left` 每次真去读盘）：用户可能刚在
                 //   **另一台** monitor 上改过它，不需要任何推送 / 同步协议。
-                //   ⚠ `§3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**本路没做**：那是一个会自己醒来的构件，
+                //   ⚠ `§3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**没做**：那是一个会自己醒来的构件，
                 //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，待定。
                 if control::exit_policy::last_client_left() {
                     // 不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
@@ -964,9 +964,6 @@ fn resolve_agent_home() -> PathBuf {
 fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
     agents::home_at(config_dir, from_env)
 }
-
-// 🪦这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
-//   平台 cfg 只许住那一层，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
 
 #[cfg(test)]
 #[path = "../../tests/backend/main_claim_tests.rs"]

@@ -58,6 +58,7 @@ tasks.named<Test>("test") {
 }
 
 dependencies {
+    implementation(project(":core-copy")) // 上屏句子从文案表取（取文口住 core-copy）
     // 用 api：RemoteExecutor 出现在公开构造参数里（OneShot），消费方的 compile classpath 上要见到它。
     api(project(":core-remote"))
     implementation(libs.moshi)

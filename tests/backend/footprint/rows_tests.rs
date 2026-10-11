@@ -1240,7 +1240,7 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         EnvTier::ALL.len()
     );
 
-    // ③ 欠装口那一档：用户 09-29「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
+    // ③ 欠装口那一档：「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
     //   不再留「应随 cc-monitor 一起安装，暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
     //   仍**不许**说成「不由 cc-monitor 提供」（`KR65D2`：不会被读成「不该我们装」）。
     //   闭集里今天没有这一档的成员 ⇒ 造一项喂同一个出行函数（`unmanaged_row`），判它的措辞。
@@ -1693,7 +1693,7 @@ fn the_session_shell_finds_each_windows_install_form() {
     }
 }
 
-/// 缺陷（10-10，fix2 的尾巴）：足迹里按 `PATH` 找的那一族（git · bash · tmux …）在 Windows 上只认不带后缀的名字
+/// 缺陷：足迹里按 `PATH` 找的那一族（git · bash · tmux …）在 Windows 上只认不带后缀的名字
 /// ⇒ Git for Windows 的 `git.exe` / `bash.exe`、MSYS2 的 `tmux.exe` 装着也报缺。今天它们与 agent 命令行问同一个找法
 /// （`platform::shell::find_session_command`，只是 `PATH` 用后端进程自己那一份）。每样按 Windows 的装法各一格（夹具造的）。
 #[test]

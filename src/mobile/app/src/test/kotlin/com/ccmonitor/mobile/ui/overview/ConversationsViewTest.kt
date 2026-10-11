@@ -8,7 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.ui.copy.DurationFormat
+import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.link.Problem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

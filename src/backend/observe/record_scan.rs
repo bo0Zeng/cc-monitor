@@ -157,6 +157,7 @@ impl ScanMap {
                         .iter()
                         .map(|f| {
                             120 + f.after.len()
+                                + f.until.as_ref().map_or(0, String::len)
                                 + f.span.text.len()
                                 + f.parts.iter().map(|p| 24 + p.text.len()).sum::<usize>()
                         })

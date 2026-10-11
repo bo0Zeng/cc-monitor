@@ -169,10 +169,10 @@ fn the_two_strip_clean_notes_stay_one_sentence() {
     //    下面那条 `count() == 1` 当场变成恒假 —— 而它正是防空真的那一条。
     let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");
     let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
-    // 🔴 〔搬树 2026-09-18〕monitor 那一份住址跟着共用段搬了：
+    // 🔴 monitor 那一份住址跟着共用段搬了：
     //    那一段是一条判据的头注，剖分把它从 `src/frontend/shell/src/structural_scan.rs`
     //    带去了 `tests/frontend/shell/structural_scan_tests.rs`。**那段话一个字没改。**
-    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕**后端那一份住址也跟着共用段搬了。**
+    // 🔴 **后端那一份住址也跟着共用段搬了。**
     //    那一段同样是一条判据的头注，剖分把它从 `src/backend/guard_support.rs`
     //    带去了 `tests/backend/guard_support_tests.rs`（也就是**本文件**）。
     //    **那段话一个字没改**；两个住址今天都在 `tests/` 下，这正是 `§4.1` 说的
@@ -197,7 +197,7 @@ fn the_two_strip_clean_notes_stay_one_sentence() {
         let i = src.find(beg.as_str()).unwrap() + beg.len();
         let j = src.find(end.as_str()).unwrap();
         assert!(i < j, "{rel} 里共用段的两个标记次序反了");
-        // 🔴 〔搬树 2026-09-18〕**比之前先把每行的行首空白削掉。**
+        // 🔴 **比之前先把每行的行首空白削掉。**
         //
         // 剖分把 monitor 那一份从 `mod tests {}` 里搬了出来 ⇒ 它整段**左移了一级**，
         // 而后端那一份仍在模块内、缩进 4。两份逐字节比当场不等，而**那句话

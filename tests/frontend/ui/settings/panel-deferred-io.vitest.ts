@@ -126,7 +126,6 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * 登记表 ②：点进「应用」才该出现的那几发。
  *
  * 就是点名的那三块（日志 2 · 数据位置 1）。
- * 从前这里还有两条（`local_ccm_entry_status` ＋ 一次 `write_account_aliases`〔散文墓碑〕
  * 的 `dryRun` 预览）—— 那是「按账号生成命令」那一块的；它搬去了机器页「本机 → 工具 → 别名」，
  * 而且在那里**连「本机页可见」都不够**：它是个 `<details>`，第一次展开才发 I/O
  * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。

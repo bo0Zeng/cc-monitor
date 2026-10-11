@@ -57,7 +57,7 @@ impl Gate2 {
 ///
 /// # 两种形状都要认，**一个都不许删**
 ///
-/// - 新形 `<X>-cc`（撞名时 `<X>-cc-2`）是 S4b-3b（用户 2026-07-31）定的；
+/// - 新形 `<X>-cc`（撞名时 `<X>-cc-2`）是 S4b-3b 定的；
 /// - 老形 `cc-<sid8>` 必须一并保留：F02 之前的老 `cc-*` 会话**没有 `@ccm_sid`**，
 ///   只靠这条前缀判据仍必须可 kill/send-keys。删了就是把用户**正在跑的**会话
 ///   变成 issue #76 那种「失管会话」。
@@ -127,8 +127,6 @@ pub(crate) fn gate_client(declared: &str, requester: Option<&str>) -> ClientVerd
         ClientVerdict::NotYours
     }
 }
-
-// `needs_remote_sid`〔散文墓碑〕删：它是给「两侧同一个取反」立的名字，monitor 那一侧没了之后零调用方。
 
 /// Gate 2 union：名字命中 **或** 远端 `@ccm_sid` 已设。
 ///

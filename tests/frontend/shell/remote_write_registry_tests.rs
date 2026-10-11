@@ -40,18 +40,7 @@ const LANDINGS: &[&str] = &[];
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面第一条红。
 #[allow(clippy::type_complexity)]
-const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
-    // 🔴 **表空了：monitor 进程一个 SFTP 会话都不拿**（用户「SFTP 进本机常驻后端」）。
-    //   从前这里五行都在 `sftp.rs`：原子上传的核心 · 逐级建目录 · 卸载后端 · 入口那两个 `fenced_block::Store` 原语
-    //   （`upload_atomic`〔散文墓碑〕· `SftpFile`〔散文墓碑〕那一对）。执行那一半整段进了本机后端 `dial/sftp.rs`
-    //   （写只许 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`，每处先过 `fenced_remote`，由后端
-    //   `readonly_guard::remote_write_layer` 钉）；monitor 这一侧只剩判定，经 `dial_host::RemoteFs` 一问一答。
-    //   ⇒ 本表的人群根（`capability_holders`）今天是**空集**，由 `the_remote_write_capability_is_still_confined_to_three_files`
-    //   钉成零命中（带正控）。更早那几段的来历（F10 / F11 / F89a 经远端后端 · 传输台进后端）见 git 历史。
-    // 更早摘掉的几行各留一块：F11 那条远端直删 `remove_remote_file`〔散文墓碑〕（RW1 改经远端后端删）·
-    //   入口助手自己逐级建目录的 `install_remote_ccm_helper`〔散文墓碑〕（AL1 收进 `fenced_block::apply`）·
-    //   传输台那两处 `upload_to_staging`〔散文墓碑〕· `download_inner`〔散文墓碑〕（SR1b 进本机后端 `control/transfer.rs`）。
-];
+const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[];
 
 /// 从三个「持有 SFTP 会话」的文件里抠出 `(文件, 函数)` —— 函数体内调了写原语。
 fn write_sites() -> Vec<(String, String)> {
@@ -67,13 +56,6 @@ fn write_sites() -> Vec<(String, String)> {
             let t = line.trim_start();
             // `fn 名(` 起一个新作用域。闭包不算（闭包里的写归外层函数）。
             //
-            // ⚠ **不许用前缀白名单**〔本条首跑就红在这里〕：第一版列了
-            // `["pub async fn ", "pub fn ", "async fn ", "fn "]`，**漏掉 `pub(crate) async fn`** ——
-            // 于是 `sftp.rs` 里那个逐级建目录的助手（正是这个可见性；它随执行那一半搬去了本机后端）没起新作用域，
-            // 它那处 `create_dir` 被记到**上一个函数** `read_profile_text`〔散文墓碑〕头上，
-            // 而那个函数一个写原语都没有。诊断当场点名了 `read_profile_text`〔散文墓碑〕（那个函数后来也删了）。
-            // ⇒ 改成**按结构判**：在 `fn ` 之前的东西必须全是可见性/修饰符 token。
-            // 这样 `pub(in crate::x) const unsafe fn` 之类的写法也认得。
             if let Some((head, rest)) = t.split_once("fn ") {
                 let modifiers_only = head.split_whitespace().all(|w| {
                     w == "pub"
@@ -108,9 +90,8 @@ fn write_sites() -> Vec<(String, String)> {
 ///
 /// ★★〔G 审计逮到的〕**第一版按「源码里出现 SFTP 会话类型名」判，恒绿。**
 ///
-/// 漏掉的是 `acct_iso_deploy.rs`：它 `let conn = connect_sftp(&cfg).await?;`
-/// `let sftp = &conn.sftp;` 然后往**用户给的 `dest_dir`** 写文件
-/// （`#[tauri::command] deploy_remote_acct_iso`）——**类型靠推断，那个名字一次都没写出来**。
+/// 漏掉的是部署账号库那一份：它 `let conn = connect_sftp(&cfg).await?;`
+/// `let sftp = &conn.sftp;` 然后往**用户给的 `dest_dir`** 写文件 ——**类型靠推断，那个名字一次都没写出来**。
 ///
 /// ⇒ 又一次「按拼法取样」，而本条的 doc 注释里逐字写着
 /// 「**凡「本条是某一族唯一的哨兵」的判据，人群必须按事实取样，因为它没有第二道网**」。
@@ -289,23 +270,11 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
         .unwrap_or(lines.len())
 }
 
-// 〔用户〕这里原来是「正题三」两条：用户选路径的远端写必须过 Claude 数据防误伤围栏
-//   （写死的写入口人群，函数体里必须有那道拒绝）· 两个路径参数的写入口两个参数各自过一次（死值验 `M7` 逼出来的那条）。
-//   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 那道拒绝（`claude_data_fence` 里的拒绝那一半）连同它最后一个调用方〔散文墓碑〕
-//   （`sftp_pool::transfer_call` 开下载单那一判）删了；两条的人群在那之前已经是「一条」与「零条」，今天都是零 ⇒ 靶子不在，一起退役。
-//   ⚠ 退役的是**围栏的存在性**这一维；池子里再长出命令（写或读）仍由下面那条两分判据与 `sftp_family_registry_tests` 逼它归档。
-
 /// ★ 正题四：**接线层** —— 对外 IPC 入口必须真的转发到一个已登记的原语点。
 ///
 /// # 为什么单列
 ///
-/// 当初点名的十个名字里有五个是**IPC 包装**
-/// （`sftp_write_text` / `sftp_upload` / `deploy_remote_backend` /
-/// `write_remote_mcp_server` / `delete_remote_history_session`）——〔散文墓碑〕
-/// 它们自己**不调写原语**，所以按能力边界派生的人群里**一个都没有**。
-///
 /// ⚠ 上面那句话是 audit-0805 当时的**现打**，留着不改；
-/// 但今天它里面的 `write_remote_mcp_server` 与 `delete_remote_history_session`〔散文墓碑〕
 /// **已经不是 IPC 命令**了（`origin` 归一把它们并进了本机同族那条）。
 /// 它们仍留在下面那张路由表里，而且**必须留** —— 本表这一条判的是
 /// 「**按得到的那一层 ↔ 真正写盘的那一层**」这条边，而合并之后那条边是
@@ -322,7 +291,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     let root = repo_root();
     // `(入口所在文件, 入口名, 它该转发到的已登记写点)`
     const ROUTES: &[(&str, &str, &str)] = &[
-        // **空了**：`deploy_remote_backend → upload_atomic` · `deploy_remote_acct_iso → ensure_dir_all`
+        // **空了**：`deploy_remote_backend → upload_atomic` 与部署账号库那一条
         //   两条边的后半跳（monitor 里的 SFTP 写点）整段进了本机后端；按钮今天经 `dial_host::RemoteFs` 交给后端执行，
         //   「按钮 ↔ 真实写点」那条边跨进了后端那棵树（它的写点由后端 `readonly_guard::remote_write_layer` 钉）。
         // 更早走掉的几条（F89a · F11 · F10 经远端后端写）见 git 历史。
@@ -375,7 +344,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
 /// 上面四条判据的覆盖面就跟着变，而**没有任何东西会提醒**。
 ///
 /// ⚠⚠ **第一版按「源码里出现会话类型名」判，恒绿，被 G 审计逮到**
-/// （`acct_iso_deploy.rs` 靠类型推断，那个名字一次都没写出来，
+/// （部署账号库那一份靠类型推断，那个名字一次都没写出来，
 /// 而它往用户给的 `dest_dir` 写 8 个文件 + 2 个目录）。
 /// 而本条的注释当时就逐字写着「凡『唯一的哨兵』的判据人群必须按事实取样」——
 /// **写下那句话的判据自己犯了那句话说的错**，本区第三次。
@@ -478,12 +447,6 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     //   `sftp_rename` / `sftp_chmod` / `sftp_write_text`（改走后端写面那五条）。留下的 10 行里 9 行是
     //   窗口进程那一侧**还不是通道**的欠账（跨机传输 §8.4 未拍 · 后端缺 `files-copy` · 本地预判围栏），
     //   逐条住 `tests/frontend/shell/filewin/boundary_tests.rs::WINDOW_SIDE`；`sftp_realpath` 那一行已搬去后端 `files-home`（见 `MOVED_TO_BACKEND`）。
-    // 走掉三行〔已删：`sftp_download` · `TRANSFER_LANE_CAP` · `sftp_cancel_transfer`〔散文墓碑〕〕：
-    //   上传 / 下载经通道开单、订阅进度，复制那一腿的取消随复制走后端一起删了。
-    //   ⇒ 窗口接的池子**命令**从此是 0；剩下这一行是那道围栏判定的旧住址（一条函数，不是命令）。
-    // 剩下那一行（围栏判定的旧住址 `sftp_pool::` 那一份转出）也走了：窗口改指围栏本家
-    //   `claude_data_fence`，池子里那行转出一起删了 ⇒ **窗口那棵树碰池子的地方从此是零**。〔散文墓碑〕
-    //   表留着、今天是空的：窗口哪天又回头用池子，它得来这里登记（下面那条相等当场红）。
     const SITES: &[(&str, &str, &str)] = &[];
     /// 「它是什么」那一栏的**封闭集合**。多出第四种就得回来论证。
     /// 原来还有「类型」一档（唯一一条是复制那一趟的裁决类型），
@@ -665,11 +628,7 @@ fn pool_refs_in(prod: &str) -> Vec<String> {
 ///
 /// ⇒ 本表把那个洞封上：命令的全集由 [`pool_commands`] 从文件里现打，
 /// 而全集必须**恰好**分成「已登记的写」与「已登记的读」两堆，一条都不许落在外面。
-const NON_WRITING_COMMANDS: &[(&str, &str, &str)] = &[
-    // 这一堆五行全走了〔已删：`sftp_realpath` · `sftp_list_dir` · `sftp_stat` ·
-    //   `sftp_read_text_for_edit` · `sftp_cancel_transfer`〔散文墓碑〕〕（读侧今天是后端 `files-*`；取消是停订）。
-    //   表留着、今天是空的：它是「默认拒绝」的另一半 —— 池子里哪天再长出一条读命令，它得来这里写清理由。
-];
+const NON_WRITING_COMMANDS: &[(&str, &str, &str)] = &[];
 
 /// 🔴 **池子里每一条命令，要么是已登记的写、要么是已登记的读 —— 相等断言，两向。**
 ///
@@ -792,7 +751,7 @@ enum RemoteLands {
     /// 今天零成员（暂存区的写搬进了本机后端）；留着这一档是闭集的形状，不是豁免。
     #[allow(dead_code)]
     OwnStaging,
-    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在这里收)`。
     /// 今天零成员（唯一那一格下载落地被 SR1b 收了）；形态留着，下一格要落时有地方落。
     #[allow(dead_code)]
     Pending(&'static str),

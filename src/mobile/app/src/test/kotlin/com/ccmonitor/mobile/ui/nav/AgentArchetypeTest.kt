@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.nav
 
 import com.ccmonitor.mobile.core.claude.model.AgentKind
+import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -140,7 +141,8 @@ class AgentArchetypeTest {
      */
     private fun textArgLiterals(text: String): Pair<Int, List<String>> {
         val got = KotlinSourceScanner.literalsInCallsTo(text, TEXT_CALLEE)
-        return got.callSites to got.literals.map { it.body }
+        // 界面上的字收进了文案表：字面量是表里的键（`Text(copyText("键"))`）⇒ 换成那句 zh 再比。
+        return got.callSites to got.literals.map { CopyTableForTests.shown(it.body) }
     }
 
     private fun appMainSources(): List<File> {
@@ -168,18 +170,9 @@ class AgentArchetypeTest {
             mapOf(
                 // 服务器编辑页那个目录框的标签，已按 kind 分档（`if (isCodex) … else …`）。
                 "HostScreens.kt" to listOf("Claude 账号目录", "Codex 配置目录（可选）"),
-                // 第一条是应用级的话（账号目录），说的是「远端那个 Claude」
-                // 而不是「这台服务器叫什么」，与 agentKind 无关。
-                // 第二条是扫描器的产物、不是上屏的字：那句话上屏时是
-                // 「留空 = 内置默认 /home/…/.claude」，一个产品名都没有，
-                // 「Claude」来自 `${...}` 里那个标识符 `ClaudePaths`。
-                // 扫描器不解析模板，`${}` 那一段原样留在字面里（见 [KotlinSourceScanner] 头注那一格），
-                // 所以这一条是假阳，钉在这里只为让那条判据是等号；扫描器学会跳过 `${}` 里的代码之后可删。
-                "SettingsScreen.kt" to
-                    listOf(
-                        "应用级默认 Claude 配置目录",
-                        "留空 = 内置默认 \${ClaudePaths.DEFAULT_CLAUDE_DIR}",
-                    ),
+                // 应用级的话（账号目录），说的是「远端那个 Claude」而不是「这台服务器叫什么」，与 agentKind 无关。
+                // （从前还钉着一条扫描器的假阳「留空 = 内置默认 ${'$'}{ClaudePaths…}」：那句进了文案表，占位符是 {dir}，假阳没了。）
+                "SettingsScreen.kt" to listOf("应用级默认 Claude 配置目录"),
             )
     }
 }

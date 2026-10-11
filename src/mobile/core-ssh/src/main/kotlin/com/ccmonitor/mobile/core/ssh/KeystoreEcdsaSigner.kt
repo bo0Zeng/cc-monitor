@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.hierynomus.sshj.key.KeyAlgorithms
 import net.schmizz.sshj.common.Factory
 import net.schmizz.sshj.common.KeyType
@@ -27,10 +28,10 @@ class KeystoreEcdsaSigner(
     override fun getType(): KeyType = KeyType.ECDSA256
 
     override fun getPublic(): PublicKey =
-        keystore.getCertificate(alias)?.publicKey ?: error("AndroidKeyStore 无 alias 证书: $alias")
+        keystore.getCertificate(alias)?.publicKey ?: error(copyText("mobSsh.keystore.noCert", "alias" to alias))
 
     override fun getPrivate(): PrivateKey =
-        (keystore.getKey(alias, null) as? PrivateKey) ?: error("AndroidKeyStore 无 alias 私钥: $alias")
+        (keystore.getKey(alias, null) as? PrivateKey) ?: error(copyText("mobSsh.keystore.noKey", "alias" to alias))
 }
 
 /**

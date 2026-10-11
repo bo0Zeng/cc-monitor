@@ -36,11 +36,6 @@ fn listing_a_local_dir_yields_dirs_first_then_case_insensitive_name() {
 
 /// 🔴 上面头注那个「两份实现」的缝 —— 这条把**两条路的真实输出**对拍成相等。
 ///
-/// 远端那一侧的序**曾经**由池子里那个私有排序函数产生（`sort_entries`〔散文墓碑〕已随列目录命令删了，
-/// 这条对拍今天钉的是「生产契约的定义」与 [`sort_rows`] 相等）；
-/// 这里够不着它，但够得着**它排过的结果**在类型上等价的那个形状 ——
-/// 于是拿同一组合成名字，一边喂 [`sort_rows`]，一边按生产契约的定义重算，
-/// 断言**两个序列逐项相等**。任何一侧改了排序规则，这条当场红。
 #[test]
 fn the_two_orderings_agree_on_a_synthetic_set() {
     let names = [
@@ -182,11 +177,6 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
 /// 🔴 它**不许**借 `std::path` —— 在 Windows 上 `Path` 把 `\` 也当分隔符，
 /// 于是远端一个名字里含反斜杠的目录会被切成两级（而 SFTP 的路径分隔符只有 `/`）。
 ///
-/// ⚠〔2026-09-23 本机侧退役〕本条原名是
-/// 〔散文墓碑〕`walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side`，
-/// 尾巴上那半判的是**本机**那一支（用 `Path` 造期望值、到顶回原值）。
-/// `parent_dir` 今天只吃一条字符串、只有一个算法 ⇒ 那半判的东西不在了。
-/// **反斜杠那一条一个字没动** —— 它才是这条判据承重的那一格。
 #[test]
 fn walking_up_uses_slashes_only_and_never_the_platform_separator() {
     // 相等断言，逐个：
@@ -289,18 +279,11 @@ fn an_absolute_answer_becomes_the_start_directory() {
 
 /// 末尾那个 `/` 剥掉 —— **一个规范形**，而它**不是**承重的。
 ///
-/// # 🔴〔散文墓碑 2026-09-21〕我第一版给的理由是**假的**
+/// # ⚠ 它不是「否则『上一级』会卡住」
 ///
-/// 我原先在这儿写着（逐字）：「`parent_dir` 靠「回来的和给出去的相等」判「已经在顶上了」，
-/// 而 `/srv/` 与 `/srv` 在那个算法里是两个不同的输入 ⇒ 起点带尾斜杠时，
-/// 「上一级」那颗按钮第一下会原地不动（看起来像卡住了）」。
-///
-/// **那是错的。** `parent_dir` 的远端那一支**第一句**就是 `cwd.trim_end_matches('/')`
-/// ⇒ `/srv/data/` 与 `/srv/data` 都回 `/srv`，那颗按钮从来没有过这个毛病。
-///
-/// ⚠ 逮到它的是本条自己那半**阴性对照**（我顺手写的「不剥的话那一下真的不动」）——
-/// 它红了，红的是**我的前提**，不是生产代码。⇒ **阴性对照也在守判据自己说的话。**
-/// 墓碑不删：下一个人会想把这条判据「加强」成那个假理由。
+/// `parent_dir` 的远端那一支**第一句**就是 `cwd.trim_end_matches('/')`
+/// ⇒ `/srv/data/` 与 `/srv/data` 都回 `/srv`，「上一级」那颗按钮不会因为尾斜杠原地不动。
+/// 别把这条判据「加强」成那个理由：下面那半把它钉成了读数。
 ///
 /// ⇒ 那这一步还剥不剥？**剥** —— 但买到的只有「路径在窗口里只有一种写法」
 /// （工具栏那行 `{label} : {cwd}` 与 `navigate_to` 的相等判定看同一个串），
@@ -322,7 +305,7 @@ fn a_trailing_slash_is_normalised_away_into_one_canonical_form() {
         parent_dir("/srv/data/"),
         parent_dir("/srv/data"),
         "`parent_dir` 不再自己吃尾斜杠了 —— 那么 `start_dir_from_home` 里剥那一步\
-         就从「规范形」升级成「承重」，回头把上面那段墓碑重写"
+         就从「规范形」升级成「承重」，回头把上面那段头注重写"
     );
 }
 

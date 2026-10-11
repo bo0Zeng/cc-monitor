@@ -43,7 +43,7 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 
 对发版流程的影响，三条：
 
-1. **先推 `main` 等它绿，再推 tag**——main 只收 CI 绿过的提交：合并树先推候选分支 `next`（`ci.yml` 在它上面跑与 main 同一套 job，不打标签、不发版），全绿了才把 main 快进过去。这道门接受这个 commit 上任意一条绿的 CI run，main 那次与 tag 那次跑的是同一棵树、同一份 `ci.yml`；main 已经绿了，它立刻放行。
+1. **先推 `main` 等它绿，再推 tag**——main 只收 CI 绿过的提交：先推候选分支 `next`（`ci.yml` 在它上面跑与 main 同一套 job，不打标签、不发版），全绿了才把 main 快进过去。这道门接受这个 commit 上任意一条绿的 CI run，main 那次与 tag 那次跑的是同一棵树、同一份 `ci.yml`；main 已经绿了，它立刻放行。
 2. **CI 红 ⇒ 发不出去，这是设计意图，不是故障。** 修 CI，然后在 GitHub 的 Release run 页面只重跑 `ci-gate` 这一个 job（Re-run failed jobs），不必重打 tag。
 3. **超时也拦**：查不到 CI run 等 10 分钟、CI 还在跑等 45 分钟，到点判红。
 
@@ -66,7 +66,18 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 | `cc-monitor-backend-x86_64` | build-linux | `SHA256SUMS-linux.txt` | 远端后端，musl 静态（x86_64） |
 | `cc-monitor-backend-aarch64` | build-linux | `SHA256SUMS-linux.txt` | 远端后端，musl 静态（aarch64） |
 | `SHA256SUMS-linux.txt` | build-linux | — | Linux 那四样的校验和 |
+| `cc-monitor-X.Y.Z.apk` | build-mobile | `SHA256SUMS-mobile.txt` | 手机端安装包（Android，正式签名；versionName 与桌面同一个版本号） |
+| `SHA256SUMS-mobile.txt` | build-mobile | — | 手机端那一样的校验和 |
 <!-- 发版资产登记：止 -->
+
+### 2.3 手机端（Android）签名包
+
+`release.yml` 的 `build-mobile` 打正式签名的 APK（`./gradlew :app:assembleRelease --no-daemon`），改名成 `cc-monitor-X.Y.Z.apk` 挂到同一个 Release，排在 `build-windows` 之后（Release 由它建，版本号与 tag 一致那道检查由它守）。
+
+- **版本号**：手机的 `versionName` 就是 `package.json` 的 `version`，`versionCode` = 主 × 1_000_000 ＋ 次 × 1_000 ＋ 修订（次、修订各在 0..999），都由 `src/mobile/app/build.gradle.kts` 构建时现读，bump 桌面版本号时手机这份跟着变，不用另改。发版那一趟对着真 APK 再核一次 versionName。
+- **签名材料只从 GitHub secrets 来**，四个：`ANDROID_KEYSTORE_B64`（keystore 的 base64）· `ANDROID_KEYSTORE_PASSWORD` · `ANDROID_KEY_ALIAS` · `ANDROID_KEY_PASSWORD`。job 把它们还原成 runner 临时目录里的 keystore 与 keystore.properties（不落工作树、不进日志），打包一结束就删。`ci.yml` 的 mobile 格只打未签名包，不碰这几个 secrets。门禁 `release-gate` ⑱ 逐条核。
+- keystore 与 `keystore.properties` 不进仓（仓根与 `src/mobile/` 的 `.gitignore` 都挡着）；本机签名时把 `keystore.properties` 放在 `src/mobile/`，或用 `-Pccm.keystoreProperties=<路径>` 指到别处。
+- 那一步会印出 APK 签名证书的指纹（`apksigner verify --print-certs`）：换了钥匙，装着旧版的手机就升级不上，要先卸载。
 
 远端后端的身份在字节自己里（`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或跑 `./cc-monitor-backend --ccm-probe` 读 `build=` 那一行。
 

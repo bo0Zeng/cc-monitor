@@ -23,7 +23,7 @@ class RemoteCommandsTest {
         assertTrue(cmd.contains("grep -qxF 'ssh-ed25519 AAAAKEY comment'")) // 整行精确匹配去重
         assertTrue(cmd.contains(">> ~/.ssh/authorized_keys")) // 追加
         assertTrue(cmd.contains("mkdir -p ~/.ssh")) // 首次建目录 + chmod
-        assertTrue(cmd.contains("ATERM_ADDED") && cmd.contains("ATERM_ALREADY")) // 反馈标记
+        assertTrue(cmd.contains("CCM_KEY_ADDED") && cmd.contains("CCM_KEY_ALREADY")) // 反馈标记
         assertTrue("写入应用 printf 而非 echo", cmd.contains("printf '%s\\n' 'ssh-ed25519 AAAAKEY comment'"))
     }
 

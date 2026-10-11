@@ -18,23 +18,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.Problem
-import com.ccmonitor.mobile.ui.copyPlainText
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** 屏上几处的测试标签。 */
 object OverviewTags {
@@ -141,15 +138,11 @@ private fun ProblemBar(
     p: Problem,
     onRetry: () -> Unit,
 ) {
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(OverviewTags.PROBLEM)) {
         Text(p.text, color = MaterialTheme.colorScheme.error)
         Row {
             TextButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
-            if (p.detail.isNotBlank()) {
-                TextButton(onClick = { scope.launch { clipboard.copyPlainText(p.text + "\n" + p.detail) } }) { Text(copyText("detail.act.copy")) }
-            }
+            CopyDetailButton(p.text, p.detail)
         }
     }
 }

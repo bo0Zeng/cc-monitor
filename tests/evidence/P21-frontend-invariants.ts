@@ -8,10 +8,10 @@
  *
  * | 量具 | 服务哪条 | 取什么 |
  * |---|---|---|
- * | [`alertCallSites`] | 条 12（alert 不算错误反馈） | 生产 TS 里 `alert(` 的调用处 |
- * | [`fixedPortals`] | 条 13（portal 必须真挂 body） | CSS 里声明 `position: fixed` 的类 × 它的建元素/挂载处 |
- * | [`storageKeys`] | 条 14（key 必须前缀 `cc-monitor.`） | 生产 TS 里喂给存储访问器的 key 字面量 |
- * | [`cssDecl`] | 条 21.2（`.stream` 不许 `overflow-anchor: none`） | 某选择器声明了哪些属性 |
+ * | [`alertCallSites`] | §12（alert 不算错误反馈） | 生产 TS 里 `alert(` 的调用处 |
+ * | [`fixedPortals`] | §13（portal 必须真挂 body） | CSS 里声明 `position: fixed` 的类 × 它的建元素/挂载处 |
+ * | [`storageKeys`] | §14（key 必须前缀 `cc-monitor.`） | 生产 TS 里喂给存储访问器的 key 字面量 |
+ * | [`cssDecl`] | §21.2（`.stream` 不许 `overflow-anchor: none`） | 某选择器声明了哪些属性 |
  *
  * # 🔴 三条刻意的取舍（都由调用侧的**等号/零命中**断言兜底，不是无声假设）
  *
@@ -58,14 +58,14 @@ function sitesOf(code: string, file: string, re: RegExp): Site[] {
   return out;
 }
 
-// ────────────────────────────── 条 12 ──────────────────────────────
+// ────────────────────────────── §12 ──────────────────────────────
 
 /**
  * `alert(` 的调用处（整词；认 `window.alert(`，不认 `xx.alert(` / `showAlert(`）。
  *
- * ⚠ 射程**只有 `alert`** —— 条 12 的标题逐字就是「前端 alert 不算错误反馈」。
+ * ⚠ 射程**只有 `alert`** —— §12 的标题逐字就是「前端 alert 不算错误反馈」。
  * `confirm` / `prompt` 今天生产里有 25 处，它们问的是「要不要干这件事」而不是
- * 「出错了」⇒ **不在条 12 的射程里**，别顺手一起禁掉（那会把一条真断言变成误红源）。
+ * 「出错了」⇒ **不在 §12 的射程里**，别顺手一起禁掉（那会把一条真断言变成误红源）。
  */
 export const ALERT_CALL = /(?<![\w.$])(?:window\s*\.\s*)?alert\s*\(/;
 
@@ -138,7 +138,7 @@ export function cssDecl(selector: string, prop: string, css = styleSheet()): str
 }
 
 /**
- * 会给后代 `position: fixed` **改包含块**的属性（CSS spec；条 13 的「为什么」逐字点了前四个）。
+ * 会给后代 `position: fixed` **改包含块**的属性（CSS spec；§13 的「为什么」逐字点了前四个）。
  *
  * `contain` / `content-visibility` 是同一族的第二批（layout containment 同样生成包含块）——
  * 本仓 `.stream-content > *` 就带 `content-visibility: auto`。
@@ -159,7 +159,7 @@ export function containingBlockProps(selector: string, css = styleSheet()): stri
 }
 
 
-// ────────────────────────────── 条 13 ──────────────────────────────
+// ────────────────────────────── §13 ──────────────────────────────
 
 /**
  * 一个 `position: fixed` 的浮层，以及它在 TS 侧的**建元素文件**。
@@ -172,7 +172,7 @@ export function containingBlockProps(selector: string, css = styleSheet()): stri
  * （真菜单 ＋ `"tab-context-menu tab-context-submenu"` 那个刻意挂在 `wrap` 里的二级飞出）。
  *
  * ⇒ 单元取「文件」：**建这个 fixed 类的那份文件里必须出现 `document.body.<挂载动词>(`**。
- * 这是条 13 的**必要条件**（一个从不碰 `document.body` 的模块不可能把浮层挂到 body 上），
+ * 这是 §13 的**必要条件**（一个从不碰 `document.body` 的模块不可能把浮层挂到 body 上），
  * 而它对上面那两族形状都判得对。不满足的那几个 == 登记表，且登记的宿主要**机检理由**。
  */
 export interface FixedPortal {
@@ -193,7 +193,7 @@ const BODY_MOUNT = new RegExp(`document\\s*\\.\\s*body\\s*\\.\\s*(?:${MOUNT_VERB
  * CSS 里所有声明 `position: fixed` 的选择器**末段**（`.cls` / `#id`，去重排序）。
  *
  * 取末段而不是整条：`body.settings-window-mode .settings-panel` 与 `.settings-panel`
- * 讲的是同一个元素，条 13 管的是**那个元素挂在哪**。
+ * 讲的是同一个元素，§13 管的是**那个元素挂在哪**。
  */
 export function fixedSelectors(css = styleSheet()): string[] {
   const out = new Set<string>();
@@ -232,7 +232,7 @@ export function fixedPortals(sources = productionCode(), css = styleSheet()): Fi
   });
 }
 
-// ────────────────────────────── 条 14 ──────────────────────────────
+// ────────────────────────────── §14 ──────────────────────────────
 
 /** 一个解出了静态前缀的存储 key。 */
 export interface StorageKey {
@@ -353,7 +353,7 @@ export function opaqueKeySites(sources = productionCode()): OpaqueKeySite[] {
   return out;
 }
 
-// ────────────────────────────── 条 22（TS 那半）──────────────────────────────
+// ────────────────────────────── §22（TS 那半）──────────────────────────────
 
 /**
  * 切出一个**顶层**函数的函数体（含签名行）。
@@ -371,12 +371,12 @@ export function topLevelFnBody(code: string, name: string): string | null {
   return end ? rest.slice(0, end.index + 2) : null;
 }
 
-/** `src/frontend/ui/main.ts` 剥注释后的代码（条 22 那几项的住址都在这一份里）。 */
+/** `src/frontend/ui/main.ts` 剥注释后的代码（§22 那几项的住址都在这一份里）。 */
 export function mainCode(sources = productionCode()): string {
   return sources.find((s) => s.file === "src/frontend/ui/main.ts")?.code ?? "";
 }
 
-// ────────────────────────── 条 21.2（JS 侧临时关闭的还原纪律）──────────────────────────
+// ────────────────────────── §21.2（JS 侧临时关闭的还原纪律）──────────────────────────
 
 /** 一处 `overflow-anchor` 的临时关闭 / 还原。 */
 export interface AnchorToggle {
@@ -390,7 +390,7 @@ export interface AnchorToggle {
 }
 
 /**
- * 条 21.2 的唯一豁免类（补批期在**同一同步任务内**临时 `overflow-anchor: none`）
+ * §21.2 的唯一豁免类（补批期在**同一同步任务内**临时 `overflow-anchor: none`）
  * 今天在哪、还原得对不对。
  *
  * 「在 `finally` 里」的判法：从还原处往前回看 600 字符，必须出现 `} finally {` 或 `finally {`，

@@ -8,9 +8,7 @@
 //!
 //! # 为什么要有它
 //!
-//! `§10` 此前**一条判据都没有**。本机起会话那两条同步命令
-//! （`resume_history_session` · `new_local_session`〔散文墓碑〕，已搬进本机后端 `launch-local`）的链路里加了一次 `block_on` 等本机后端
-//! （最长 10 s）—— 设计写着、没人量，于是它合进了主线。
+//! 设计写着、没人量的话会漏：同步命令链路里加一次 `block_on` 等本机后端（最长 10 s），照样能合进主线。
 //!
 //! # 它量什么（判据住 `tests/frontend/shell/sync_command_registry_tests.rs`，头注写全）
 //!

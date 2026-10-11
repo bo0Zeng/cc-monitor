@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import org.koin.compose.koinInject
@@ -65,10 +66,10 @@ fun SessionTabsSheet(
         }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-            Text("会话 tab (${sessions.size})", style = MaterialTheme.typography.titleMedium)
+            Text(copyText("mobTabs.sheet.title", "n" to sessions.size), style = MaterialTheme.typography.titleMedium)
             if (sessions.isEmpty()) {
                 Text(
-                    "没有打开的 tab",
+                    copyText("mobTabs.sheet.empty"),
                     style = monoSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),
@@ -90,8 +91,8 @@ fun SessionTabsSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onNewTerminalTab) { Text("＋ 终端 tab") }
-                TextButton(onClick = onNewSftpTab) { Text("＋ 文件 tab") }
+                TextButton(onClick = onNewTerminalTab) { Text("＋ " + copyText("mobTabs.sheet.newTerminal")) }
+                TextButton(onClick = onNewSftpTab) { Text("＋ " + copyText("mobTabs.sheet.newFiles")) }
             }
         }
     }

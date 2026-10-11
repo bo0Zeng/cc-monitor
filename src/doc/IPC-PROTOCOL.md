@@ -233,7 +233,7 @@
 - 出清单的那几条（骨架索引 · 你说过的话 · 会话内查找）是**三段**：首行头（认得出对面会出这份东西）· 每条一行 · 尾行带 `count` 与续点。**没有尾行 ⇒ 输出被截断**，调用方不许当全量。
   选项写在位置参数**前面**：老后端不认新选项时会快速失败（stdout 0 字节、退出 2），而不是把整份会话透传回来；客户端认「首行不是那个头」⇒ 诚实降级。
 - 路径参数过同一套路径围栏（只许落在那台的会话记录树里）。
-- **`--resolve`**（`ResumeSpec` → stdout `CommandPlan`）与仓外 aterm 的契约冻结，字节以金样为准。入参与上面同一套口：stdin（可带 `--stdin-line`）或 `--args-b64`，同一套上限。
+- **`--resolve`**（`ResumeSpec` → stdout `CommandPlan`）与手机端的契约冻结，字节以金样为准。入参与上面同一套口：stdin（可带 `--stdin-line`）或 `--args-b64`，同一套上限。
   错误码全集：`bad_request` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`（流上的 `resolve` 也回这几个）·
   `stdin_read_failed` · `args_too_large` · `no_input` · `bad_args`（只在一次性这条）。它的三个出参可信度不同：`command`（候选启动器 ＋ `--resume <sid>`）可当事实用；
   `sessionName` 纯从 sid 派生、没查过 tmux；`capabilities` 是典型档、不是这台此刻的探测结果 —— 要判某个 tmux 会话在不在，问 `terminals-list`。

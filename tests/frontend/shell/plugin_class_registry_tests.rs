@@ -160,10 +160,6 @@ fn backend_command_names() -> Vec<String> {
     out
 }
 
-/// 🔴 **这里原来有三个从那份已删的 bash `ccm` 里抠的取法**
-/// （`ccm_agent_arms` 〔散文墓碑〕 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values` 〔散文墓碑〕）。
-/// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
-/// `src/backend/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
 ///
 /// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与后端之间造一条
 /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。
@@ -383,7 +379,7 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
 
     // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。
     let boundary = guard_core::strip_comment_lines(&must_read(
-        // 〔搬树 2026-09-17〕纯测试文件搬去 `tests/backend/`。
+        // 纯测试文件搬去 `tests/backend/`。
         "tests/backend/cc_bus_boundary_guard.rs",
     ));
     let needles = segment_after(&boundary, "let needles = [", "];");
@@ -518,7 +514,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
 fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() {
     // ① 本模块自己整体在 `#[cfg(test)]` 内 ⇒ 生产段**只剩那三行桩**。
     //
-    // 🔴 〔步 7c 剖分 2026-09-19〕**原来断的是「生产段为空」，今天为空是不可能的。**
+    // 🔴 **原来断的是「生产段为空」，今天为空是不可能的。**
     //
     // 剖分之后 `src/` 那份文件里按必须留下三行：
     //     #[cfg(test)]

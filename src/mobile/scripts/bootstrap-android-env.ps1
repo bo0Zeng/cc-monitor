@@ -56,7 +56,7 @@ if (Test-Path (Join-Path $Jdk 'bin\java.exe')) {
   Write-Host "[skip] JDK 已存在: $Jdk"
 } else {
   Write-Host "[1/3] 装 JDK 21 -> $Jdk"
-  Get-AndFlatten -Url $JdkUrl -Dest $Jdk -TmpName 'aterm-jdk21'
+  Get-AndFlatten -Url $JdkUrl -Dest $Jdk -TmpName 'ccm-jdk21'
 }
 
 # --- 2) cmdline-tools ---
@@ -65,7 +65,7 @@ if (Test-Path (Join-Path $Clt 'bin\sdkmanager.bat')) {
   Write-Host "[skip] cmdline-tools 已存在: $Clt"
 } else {
   Write-Host "[2/3] 装 cmdline-tools -> $Clt"
-  Get-AndFlatten -Url $CmdlineToolsUrl -Dest $Clt -TmpName 'aterm-cmdtools'
+  Get-AndFlatten -Url $CmdlineToolsUrl -Dest $Clt -TmpName 'ccm-cmdtools'
 }
 
 # --- 3) SDK 包(用隔离 JDK 跑 sdkmanager)---

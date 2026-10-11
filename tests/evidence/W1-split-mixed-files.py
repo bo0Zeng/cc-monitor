@@ -35,8 +35,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 def _lex(src: str, start: int, stop_at_depth0_close: bool, in_lit_lines=None, line_base: int = 0):
     """从 src[start] 开始走词法。
 
-    跳过注释与各种字面量 —— 这一条就是 §6.1 点名的那个坑（`strip_cfg_test`
-    的括号配平不识别字符串里的大括号，已知造成过 4 次事故）。
+    跳过注释与各种字面量 —— 这一条就是 §6.1 点名的那个坑（剥测试段的
+    便宜近似拿括号配平，不识别字符串里的大括号，已知造成过 4 次事故）。
 
     stop_at_depth0_close=True  ⇒ src[start] 必须是 '{'，返回配对 '}' 的下标（找不到返回 -1）。
     in_lit_lines is not None   ⇒ 顺带把「行首落在字符串/字符字面量内部」的行号记进去。
@@ -403,7 +403,7 @@ def selfcheck(files):
     （目标名要用目录名，见 `dest_for`）、`include_str!` 更密。**变异 4 是其中最要紧的一条**：
     原来的三种全部只动 `moved[0]`，一个「只对账第一块」的 bug 会安静地绿。
 
-    🔴 **反空真：真被验到的样本数为 0 ⇒ 硬错。**〔步 7c 现打撞上〕
+    🔴 **反空真：真被验到的样本数为 0 ⇒ 硬错。**
     原来的默认样本是步 7b 已经剖完的那 5 份文件 —— 它们今天已经没有内联块了，
     于是六种变异一个都没跑，而末行照样打印「0 个没能让对账变红」。
     那正是 `§5.2` 说的「扫空集 ⇒ 恒绿」，且它**看起来和真绿一模一样**。

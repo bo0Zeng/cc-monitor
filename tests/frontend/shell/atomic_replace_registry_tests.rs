@@ -120,7 +120,7 @@ const SCANNED: &[(&str, &str)] = &[
     ("rename", ".rename("),
 ];
 
-// 🔴 〔步 7c 剖分 2026-09-19〕**原来这里有一条 `const SELF` 自摘，已按判据自己给的出路删掉。**
+// 🔴 **原来这里有一条 `const SELF` 自摘，已按判据自己给的出路删掉。**
 //
 // 它排掉的是 `tests/frontend/shell/atomic_replace_registry.rs`，理由是那份文件的
 // **示例字面量**（`MoveFileExW(` / `ReplaceFileW(`）会被下面的扫描当成真调用点。

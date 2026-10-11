@@ -23,7 +23,7 @@
 //!
 //! 🚫 **买不到**：本机是 Linux，这份文件在门禁上只买到 `winchk-backend` 的「编得过」；
 //! 「真 Windows 上关掉终端窗口 ⇒ claude 被强杀 ⇒ 这条线程醒 ⇒ 会话归档」**一格都没有读数**
-//! （本路不碰 Win11 虚拟机，未拍）。与 `linux.rs` 的逐形对拍住
+//! （没在真 Windows 上跑过）。与 `linux.rs` 的逐形对拍住
 //! `tests/backend/platform/pidwatch_windows_shape_tests.rs`（把源码当数据读）。
 
 #![cfg(windows)]

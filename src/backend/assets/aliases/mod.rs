@@ -10,13 +10,7 @@
 //! 〔用 2026-09-17〕逐字：「**不要有 account alias 这种东西。alias 应该独立吗？应该就是 ccm
 //! 参数附加器。即生成别名，都是调用 ccm，ccm 本身就可以指定账号。**」
 //!
-//! # 来历（`K-R49`）
-//!
-//! 本模块起于 09-10 那一句（大意）「**添加账号后要添加对应命令（每个号一条 `<号>cc`）……还得手动去改**」：
-//! 那时它按**账号表**整份重写一份文件，TS 侧的 `buildAliasLine`〔散文墓碑〕拼行、这里只管落盘
-//! ＋ 一道「形状围栏」挡注入。两处都翻了：清单归**用户**（不再是账号表的投影），
-//! shell 文本由**本模块**渲染（前端递的是结构，不是代码 —— 审计 S-1 那条
-//! 「后端拥有那段文本」终于对别名也成立了），那道形状围栏随之退役。
+//! 别名清单归**用户**（不是账号表的投影）；shell 文本由**本模块**渲染（前端递的是结构，不是代码）。
 //!
 //! # 🔴 落点：**我们自己那份文件**，不是用户的 `~/.bashrc`（这一条没变）
 //!
@@ -76,9 +70,6 @@ pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     word: crate::control::ccm::SUBCOMMAND_WORD,
     end: flag::END,
 };
-
-// 墓碑：这里从前有一对**写进用户 rc / `$PROFILE`** 的围栏常量（`# === cc-monitor aliases BEGIN v1 ===` 那一对），
-//   包着 [`install_in`] 代装的那一行 source。那一步退役，这对围栏随之删 —— 盘上已有的那一块不读不删。
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
@@ -145,7 +136,7 @@ pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
 // **别名只有一类 —— 名字 ＋ 一组 ccm 参数**
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 用户 2026-09-17 逐字：「不要有 account alias 这种东西……就是 ccm 参数附加器」。
+// 「不要有 account alias 这种东西……就是 ccm 参数附加器」。
 // 账号（`--account`）只是参数里的一个维度。清单由**用户**拥有，不跟着账号表自动增删。
 //
 // 命令面是两跳：
@@ -295,7 +286,7 @@ pub(crate) struct Caps {
 
 impl Caps {
     /// 一种 shell 的目标机器上有什么。今天只有一个事实：**PowerShell 目标 ⇔ Windows ⇔ 没有 tmux**
-    /// （后端 `lib.rs::TARGET_GAPS` 里 `ccm-launcher` × Windows 那几行，用户 2026-09-21「windows 用 windows
+    /// （后端 `lib.rs::TARGET_GAPS` 里 `ccm-launcher` × Windows 那几行，「windows 用 windows
     /// 自己的后台服务，后面再做」）。POSIX 目标按「有」算：没装 tmux 的 Linux 由 ccm 在运行时报 `no_tmux`（今天就是这样）。
     pub fn of(shell: Shell) -> Caps {
         Caps {

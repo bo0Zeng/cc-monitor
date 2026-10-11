@@ -143,7 +143,6 @@ describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () 
 
 describe("S1：整表覆盖那条路必须**不可达**", () => {
   it("〔FIX2 续 · ㊶〕整段写 `remote` 的补丁在 remote-config.ts 里零处（增删改全按键认元素）", () => {
-    // 从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写），后来只出一条 `set ["remote"]` 补丁。 〔散文墓碑〕
     const whole = /setAt\(\s*\[\s*"remote"\s*\]\s*,|patchConfigFrom\(/;
     expect(whole.test('setAt(["remote"], {})'), "正控：认得出整段写那一形").toBe(true);
     expect(whole.test('setAt(["remote", "enabled"], true)'), "反控：写 enabled 那一格不是整段").toBe(false);

@@ -27,7 +27,7 @@ import java.io.File
  * |---|---|
  * | 网关新增一支函数 | 红（②那条集合不等） |
  * | 某支函数失去全部生产调用方 | 红（①那条文件集不等，且要求非空） |
- * | 有人在网关外重新手抄一份哨兵字面（如 `"__aterm_kill_ok__"`） | 红（③那条文件集不等） |
+ * | 有人在网关外重新手抄一份哨兵字面（如 `"__ccm_kill_ok__"`） | 红（③那条文件集不等） |
  * | 调用方存在但走的是死分支 | 抓不到：源码扫描只答「有没有引用」 |
  * | 反射 / 别名 / 通过局部 `val f = TmuxCommands::tmuxKillCommand` 转一手 | 抓不到（防手滑不防拼接） |
  * | 消费方成员导入（`import ….TmuxCommands.tmuxKillCommand`）后裸调 | 仍算命中：import 那一行里就有 `TmuxCommands.<名>`。①问的是「这个文件有没有经网关」，不是「每个调用点都写全限定名」 |
@@ -99,7 +99,7 @@ class TmuxGatewayCallSiteTest {
     /**
      * 剥注释、留字面量，走全仓唯一一份词法扫描器 [KotlinSourceScanner.codeOnlyKeepingLiterals]。
      *
-     * 必须留字面：③ 那条反面断言扫的是哨兵字面（引号开头的 `ATERM_SENT` 之类），用的是
+     * 必须留字面：③ 那条反面断言扫的是哨兵字面（引号开头的 `CCM_PANE_NOCHILD` 之类），用的是
      * `assertEquals(emptySet, leaked)`，换成「删字面」那支就是恒绿（①② 扫 `TmuxCommands.<名>` 则两支都认得出）。
      * 它看不见什么写在 [KotlinSourceScanner] 的头注里。
      */

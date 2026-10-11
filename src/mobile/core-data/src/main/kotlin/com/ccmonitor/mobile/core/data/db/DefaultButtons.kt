@@ -3,6 +3,7 @@
 package com.ccmonitor.mobile.core.data.db
 
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.ccmonitor.mobile.core.copy.copyText
 
 /*
  * 默认按键种子：功能键、vim 键、顶部工具条内建都是可编辑的 custom_buttons 行。
@@ -29,8 +30,8 @@ internal val DEFAULT_SEED_BUTTONS: List<SeedButton> =
         // main 组：顶部工具条内建（builtin 类型；tmux 会话在渲染侧按 supportsTmux 门控）。
         // 放在列表最前，sortOrder 最低，`▤ tab`/`命令` 在按钮条最左。
         SeedButton("ak-tb-tabs", "▤ tab", "builtin", "show_tabs", ButtonGroups.MAIN),
-        SeedButton("ak-tb-cmd", "命令", "builtin", "command_palette", ButtonGroups.MAIN),
-        SeedButton("ak-tb-tmux", "tmux 会话", "builtin", "tmux_sessions", ButtonGroups.MAIN),
+        SeedButton("ak-tb-cmd", copyText("mobDefaultButtons.label.command"), "builtin", "command_palette", ButtonGroups.MAIN),
+        SeedButton("ak-tb-tmux", copyText("mobDefaultButtons.label.tmux"), "builtin", "tmux_sessions", ButtonGroups.MAIN),
         // fn 组（近键盘默认排）：`⇌` 切到 alt 组；`Ctrl` 粘性（builtin）；Tab/Esc/方向键 escape；粘贴。
         // `⇌` 是 switch 类型，command=目标组，fn→alt→vim→fn 循环。
         SeedButton("ak-fn-switch", "⇌", "switch", ButtonGroups.ALT, ButtonGroups.FN),
@@ -41,7 +42,7 @@ internal val DEFAULT_SEED_BUTTONS: List<SeedButton> =
         SeedButton("ak-fn-down", "↓", "escape", "\\e[B", ButtonGroups.FN),
         SeedButton("ak-fn-left", "←", "escape", "\\e[D", ButtonGroups.FN),
         SeedButton("ak-fn-right", "→", "escape", "\\e[C", ButtonGroups.FN),
-        SeedButton("ak-fn-paste", "粘贴", "builtin", "paste", ButtonGroups.FN),
+        SeedButton("ak-fn-paste", copyText("mobDefaultButtons.label.paste"), "builtin", "paste", ButtonGroups.FN),
         // alt 组（第二排）：`⇌` 切到 vim 组；`Alt` 粘性；Ctrl+End/Home/End/PgUp/PgDn/Esc escape（xterm 序列）。
         SeedButton("ak-alt-switch", "⇌", "switch", ButtonGroups.VIM, ButtonGroups.ALT),
         SeedButton("ak-alt-alt", "Alt", "builtin", "toggle_alt", ButtonGroups.ALT),

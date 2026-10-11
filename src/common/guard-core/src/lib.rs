@@ -833,7 +833,7 @@ pub fn test_attr_chunks(src: &str) -> Vec<String> {
 ///
 /// 目录 / 文件读不了、有文件或有块走了兜底、或扫到的文件数 `< min_files`
 /// / 块数 `< min_blocks` 时 panic（守卫语义，只在测试里调）。
-/// # 🔴 `roots` 是**一串**树，不是一棵〔搬树 2026-09-18 ·  纪律 3〕
+/// # 🔴 `roots` 是**一串**树，不是一棵
 ///
 /// 仓库重组之后，「一个半边的源码」**不再是一棵树**：生产段住 `src/<半边>`、
 /// 测试段住 `tests/<半边>`。而本条量的两个单位里，**块那一个单位整个住在测试段**
@@ -1266,7 +1266,7 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
             // 那不是「剥法坏了」。U8a-2a 实测：两侧各有一个文件因此假红
             //（`guard-core/src/lib.rs` 自己 + monitor
             //  `ccm_cli_contract_tests.rs::cc_spawn_resolves_a_real_ccm_file_not_a_directory`）。
-            // 🔴 〔步 7c 剖分 2026-09-19〕**这个地址从行号改成了符号。**
+            // 🔴 **这个地址从行号改成了符号。**
             // 原来写的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分之后只剩 40 行 ⇒ 行号越界，
             // `structural_scan::line_number_addresses_stay_in_range_and_never_grow` 当场红，
             // 而它的诊断逐字写着「改法只有一条：**点符号**，别换一个今天对的行号 ——
@@ -1333,7 +1333,7 @@ fn path_suffix_matches(hay: &str, needle: &str) -> bool {
 /// 它钉的是 **guard-core 自己这棵树**上自摘不命中；它**钉不住**上面第三行。
 ///
 /// ⇒ **别拿它当「摘掉我自己」的办法**：写新判据要摘掉自己就走
-/// [`scan_tree_excluding`] 的明写名单（条 73 · 纪律 2、4），
+/// [`scan_tree_excluding`] 的明写名单，
 /// 那条路**摘不到就 panic**，而这条路摘不到时**一个字都不说**。
 ///
 /// # 它本来防的是本 crate 头注那一族的**兄弟病**
@@ -1772,7 +1772,7 @@ fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, S
 
 /// 遍历源码树，**按一张明写的名单摘除**，并且**摘不到就当场红**。
 ///
-/// # 🔴 它是条 73 那条新纪律的落点
+/// # 🔴 它是「明写名单、不靠自摘」那条纪律的落点
 ///
 /// 纪律逐字：**「摘掉我自己」不许靠 `file!()`** —— 在本仓那条路**不生效**。
 ///
@@ -2435,6 +2435,11 @@ mod build_features;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/no_outside_refs_tests.rs"]
 mod no_outside_refs;
+
+/// 删掉的名字不许回来：禁名表里的名字在仓里别处零命中。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/retired_names_tests.rs"]
+mod retired_names;
 
 /// 仓里不留私人标识的形状（家目录名 · 私网地址 · 记忆链接 · 邮箱）：只认形状，不点名。
 #[cfg(test)]

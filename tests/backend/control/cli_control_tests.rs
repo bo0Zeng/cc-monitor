@@ -338,7 +338,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     ///
     /// 只读查询面今天只有 `accounts-sessions` 在表里（无入参、有输出字段 `lines`；账号库目录跟着家走）。
     ///
-    /// 〔条 66〕`exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
+    /// `exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
     /// 它是「那台机器上的值是什么」那一问，挂住等 EOF 就是把一句问话变成一次卡死。
     /// 同族 `exit-policy-set` 要输入（`killOnExit`），不在表里。
     /// `accounts-list` **出了这张表**：它从此收一格 `agent`（这次起会话的是哪一家，

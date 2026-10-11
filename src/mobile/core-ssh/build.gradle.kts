@@ -28,6 +28,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core-copy")) // 上屏句子从文案表取（取文口住 core-copy）
     implementation(project(":core-data"))
     // 用 api：RemoteCommandChannel 出现在公开 API（`SshConnectionManager.commandChannel()` 的返回类型）里，
     // 依赖 :core-ssh 的模块不另外声明 :core-remote 也要编得过。

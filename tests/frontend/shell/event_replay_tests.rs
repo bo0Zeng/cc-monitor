@@ -21,8 +21,6 @@ fn idx_of(p: &JsonlLinePayload) -> usize {
     last.trim_end_matches(".jsonl").parse().unwrap()
 }
 
-// `buffered_local_session_ids` / `buffered_remote_sessions`〔散文墓碑〕那两条随函数删了（F5 对账改在各条订阅自己的重放里）。
-
 // === Batch5-F19：build_priority_chunks ===
 
 #[test]
@@ -368,12 +366,11 @@ fn the_two_tier_registration_leaves_no_trace_in_production() {
     );
     assert!(
         two_tier_hits(&guard_core::production_code(&format!(
-            "// 那条（`{}`〔散文{}〕）退役了\n",
-            two_tier_needles()[1],
-            "墓碑"
+            "// 那条（`{}`）退役了\n",
+            two_tier_needles()[1]
         )))
         .is_empty(),
-        "注释里的墓碑被当成了生产代码 —— 剥生产段没在跑"
+        "注释里提到的名字被当成了生产代码 —— 剥生产段没在跑"
     );
     let root = crate::guard_support::repo_root();
     let generated = root.join("src").join("generated"); // ts-rs 生成物不是手写的生产代码

@@ -1,5 +1,7 @@
 //! 守的要求（用户原话）：「产物（cc-monitor 仓）不能引用任何仓外的东西；产物文档只描述现状，不能引用任何开发文档。」
 //!
+//! 网眼包括仓外的开发记录目录、工作树目录与草稿目录；家目录绝对路径归 `private_shape_guard`（只许中性名字）。
+//!
 //! 人群：`git ls-files` 的全部文本文件。跳过两类：含 NUL 的二进制（与 git 判二进制同一口径）；
 //! 锁文件（`Cargo.lock` · `package-lock.json`：工具写的依赖清单，里面没有人写的文字）。
 //! 判定：逐行过检测网，命中集 == ∅。点名仓里一份 `.md` 的（`INVARIANTS §48.1` · `IPC-PROTOCOL §10`）是仓内引用，放过。
@@ -16,7 +18,11 @@
 //! 什么时候改成拦：产品代码（`src/`）与 `src/doc` 里这三形清到零的那个提交里，把三眼并进 `net()`，
 //! 本条改成命中集 == ∅（测试与 `tests/evidence/` 同拍清，或那时按目录分两步收）。
 //!
-//! 买不到：换了说法、不落在网眼上的指路（施工路代号不在网眼上；编号网只认几种常见写法）。
+//! 第五张网（施工过程的叫法）：派活的那一方 · 施工分支与合并分支的代号 · 带日期的「用户 MM-DD」· 「合并」那棵树 ·
+//! 「施工」那一路 · 「这一路的」写区 · 施工那一路的自称（「本」＋「路」）· 带日期 / 步骤的施工标签（搬树 · 步 N · 波 N · 条 N 那几种六角括号标签）· 不带括号的施工条目编号（「条」＋数字，量词那几形不算）。同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时怎么做的），测试声明行不扫；
+//! 命中集 == ∅，点名哪个文件哪一行。仓的读者不知道这些名字指什么：留下道理本身，叫法删掉。
+//!
+//! 买不到：换了说法、不落在网眼上的指路（代号网只认登记过的前缀；编号网只认几种常见写法）。
 
 use regex::Regex;
 use std::collections::BTreeSet;
@@ -26,7 +32,7 @@ use std::path::{Path, PathBuf};
 const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
 
 /// 仓根（本 crate 住 `src/common/guard-core`）。
-fn repo() -> PathBuf {
+pub(super) fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
         .canonicalize()
@@ -42,6 +48,8 @@ fn net() -> Regex {
         ("调", "研/"),
         ("第四", "波记录"),
         ("_施", "工/"),
+        ("_scr", "atch/"),
+        ("(^|[^0-9A-Za-z_-])cc-", "wt([^0-9A-Za-z_-]|$)"),
         ("真相", "源"),
         ("设计", "篇"),
         ("路线", "图"),
@@ -63,6 +71,45 @@ fn process_net() -> Regex {
     Regex::new(&format!("第[一二三四五六七八九十]{}|4d-{}", "波", "lanes"))
         .expect("施工说法网拼不成正则")
 }
+
+/// 第五张网：施工过程的叫法。每个网眼拆两段、运行期拼 ⇒ 本文件里没有一处完整的网眼。
+/// 「主会话」本身是产品词（Claude Code 的主会话 vs 子 agent），只抓它后面跟着日期或「定 / 审 / 拍 / 说 / 认」的那几形。
+/// 代号前后不许紧挨字母、数字、`_`、`-`（`net2_…` 这类测试函数名 · `gate2` 这类代码名不算）。
+fn process_names_net() -> Regex {
+    let lanes = [
+        "mg", "proj", "core", "clock", "shotreal", "mob", "net", "fix", "guards", "slim",
+        "patches", "mainwin", "filewin", "settings", "auditfix", "docsync", "cxrelay", "rotrules",
+        "pbui",
+    ]
+    .join("|");
+    let bare = ["token", "fix|cx", "rec|cx", "stream|wt", "fix|wt", "sw"].concat();
+    let eyes = [
+        format!(
+            "主会{}",
+            r"话 ?(?:[0-9]{1,2}-[0-9]{2}|定|审|拍|说|认|打版本)"
+        ),
+        format!("用{}", r"户 ?(?:20[0-9]{2}-)?[01][0-9]-[0-3][0-9]"),
+        format!("合并{}", "树"),
+        format!("施工{}", "路"),
+        format!("这一路的{}", "写区"),
+        format!("本{}", "路(?:$|[^径由线])"),
+        format!("〔(?:搬{}|步 ?[0-9]|波 ?[0-9]|条 ?[0-9])", "树"),
+        // 裸的「条 N」：施工条目的编号。前面紧挨数量词（一条 · 每条 · 那条 · 第 3 条 · 进度条 · 影响条）或空格的是量词，不算。
+        format!(
+            "(?:^|[^{q} ]|(?:^|[^{q}]) )条{}",
+            r" ?[0-9]",
+            q = "0-9一二三四五六七八九十两百千几每这那哪本首末单某逐此该同另多各全余度第响"
+        ),
+        format!(
+            r"(?:^|[^A-Za-z0-9_./-])(?:(?:{lanes})[0-9]+[a-z]?|{bare}|w{}/[a-z0-9]+)(?:$|[^A-Za-z0-9_-])",
+            "8"
+        ),
+    ];
+    Regex::new(&eyes.join("|")).expect("施工叫法网拼不成正则")
+}
+
+/// 第五张网不扫的文件：版本记录照实写当时怎么做的。
+const PROCESS_NAMES_EXEMPT: &[&str] = &["CHANGELOG.md"];
 
 /// 第三张网的三形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
 fn unblocked_eyes() -> [(&'static str, Regex); 3] {
@@ -141,7 +188,7 @@ fn first_outside_pointer(
 }
 
 /// 人群：`(仓根相对路径, 正文)`。跟踪着的符号链接按 git 存的那样取链接目标的文字。
-fn tracked_texts(root: &Path) -> Vec<(String, String)> {
+pub(super) fn tracked_texts(root: &Path) -> Vec<(String, String)> {
     let out = std::process::Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(root)
@@ -248,6 +295,10 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         format!("/* 会话头（主窗口稿 {}5.13）：40 高 */", "§"), // 7 ✔ 设计稿的节号
         format!("// 按钮上的字就是结果（额度稿{}5.2）", "§"), // 8 ✔ 稿与 § 之间不空格
         "// 存成草稿再发".to_string(),             // 9 ✘ 不带 §
+        format!("# 跑 `bash ~/cc-{}/_scr{}/heavy.sh`", "wt", "atch"), // 10 ✔ 仓外的工作树与草稿目录
+        format!("/// 见 `../cc-{}`", "wt"),        // 11 ✔ 仓外的工作树目录
+        "fn an_untracked_scratch_file_never_enters() {}".to_string(), // 12 ✘ 标识符里的 scratch
+        "// 包名 `acc-wtf`".to_string(),           // 13 ✘ 粘在别的词里
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -257,8 +308,8 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         .collect();
     assert_eq!(
         got,
-        BTreeSet::from([1, 4, 5, 7, 8]),
-        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8；该放过 2、3、6、9）—— 网坏了，全仓那条零命中不作数"
+        BTreeSet::from([1, 4, 5, 7, 8, 10, 11]),
+        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8、10、11；该放过 2、3、6、9、12、13）—— 网坏了，全仓那条零命中不作数"
     );
 }
 
@@ -311,6 +362,82 @@ fn the_process_net_catches_wave_names_and_spares_test_declarations() {
         got,
         BTreeSet::from([1, 2, 5]),
         "施工说法网在合成夹具上抓到的行 ≠ 标定（该抓 1、2、5；该放过 3、4）—— 网坏了，全仓那条零命中不作数"
+    );
+}
+
+#[test]
+fn no_tracked_text_uses_the_build_process_names() {
+    let texts = tracked_texts(&repo());
+    assert!(
+        texts.len() > 500,
+        "人群只有 {} 份 —— `git ls-files` 口径坏了，零命中不作数",
+        texts.len()
+    );
+    let (net, decl) = (process_names_net(), test_declaration());
+    let mut hits = Vec::new();
+    for (rel, text) in &texts {
+        if PROCESS_NAMES_EXEMPT.contains(&rel.as_str()) {
+            continue;
+        }
+        for (i, line) in text.lines().enumerate() {
+            if decl.is_match(line) {
+                continue;
+            }
+            if let Some(m) = net.find(line) {
+                hits.push(format!("{rel}:{}: {}", i + 1, snippet(line, m.start())));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "仓里有 {} 行写着施工过程的叫法（派活的一方 · 分支代号 · 带日期的用户裁定 · 合并那棵树 · 施工那一路）：\
+         读者不知道这些名字指什么 —— 叫法删掉，留下道理本身。前 50 处：\n{}",
+        hits.len(),
+        hits.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// 合成夹具：施工叫法必须抓到，产品里的「主会话」· 代码名 · 测试函数名必须放过（行号集相等）。
+#[test]
+fn the_process_names_net_catches_build_names_and_spares_product_words() {
+    let net = process_names_net();
+    let lines = [
+        format!("// 稿里没画（主会{} 10-06 定）", "话"), // 1 ✔
+        format!("/// 起因（mg{} CI 现红）", "41"),       // 2 ✔
+        format!("// 要求：用{} 10-09 定「带上 status」", "户"), // 3 ✔
+        format!("// 用{} 2026-09-17「要引入一层文案表」", "户"), // 4 ✔
+        format!("# 合并{}推上去 CI 才红", "树"),         // 5 ✔
+        format!("/// 删了而退役（w{}/proj10 删 hello）", "8"), // 6 ✔
+        format!("// 〔m{}37 合并 token{} 10-09〕", "g", "fix"), // 7 ✔
+        "// 主会话派的 ⇒ 主窗口；子 agent 派的 ⇒ 其窗口".to_string(), // 8 ✘ 产品词
+        "fn net2_uncancellable_is_additive_and_last() {".to_string(), // 9 ✘ 测试函数名
+        "pub(crate) fn gate2(name: &str) -> Gate2 {".to_string(), // 10 ✘ 代码名
+        "// 上传那一路与复制这一路问的是同一件事".to_string(), // 11 ✘ 不是施工那一路
+        "// 用户原话：「本地要和远端一样」".to_string(), // 12 ✘ 不带日期
+        format!("// 不在这一路的写{}", "区"),            // 13 ✔
+        format!("// ⚠ 逼出 `BUILD_ID` bump，本{}不 bump。", "路"), // 14 ✔
+        "// 本路径不存在 ⇒ 报错；本路由表只读".to_string(), // 15 ✘ 本路径 · 本路由
+        format!("// 🔴 〔搬{} 2026-09-18 · 纪律 3〕两棵树一起喂", "树"), // 16 ✔
+        format!("// 〔步{} 7c 剖分 2026-09-19〕散文随测试段搬家", ""), // 17 ✔
+        format!("//! # 🔴〔波{} 5 ㈡〕本模块搬到了第三层", ""), // 18 ✔
+        format!("// 〔条{} 66〕「退出行为」那个值的两条命令", ""), // 19 ✔
+        "// 〔已知〕· 第 3 步 · 条目 66 · 〔步进〕".to_string(), // 20 ✘ 不带数字 / 不是那几形
+        format!("//! # 判准（条{} 33）", ""),            // 21 ✔
+        format!("/// ★★★ **条{} 49 的正主**：同一个账号挂两家", ""), // 22 ✔
+        format!("// ⚠ 条{} 80 把那条迁移裁掉了", ""),    // 23 ✔
+        "// 一条 8 秒「撤销」· 进度条 240 · 第 3 条 · 那条影响条 5 秒后撤".to_string(), // 24 ✘ 量词
+        "/// 喂了 2 条 1xx，够不到上限".to_string(),     // 25 ✘ 量词
+    ];
+    let got: BTreeSet<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| net.is_match(l))
+        .map(|(i, _)| i + 1)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 13, 14, 16, 17, 18, 19, 21, 22, 23]),
+        "施工叫法网在合成夹具上抓到的行 ≠ 标定（该抓 1–7、13、14、16–19、21–23；该放过 8–12、15、20、24、25）—— 网坏了，全仓那条零命中不作数"
     );
 }
 

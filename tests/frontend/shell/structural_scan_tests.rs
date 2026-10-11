@@ -22,7 +22,7 @@ use super::*;
 /// 若又遇到一个 `#[test]`，就是这个形态。
 #[test]
 fn no_two_test_attributes_land_on_the_same_function() {
-    // 🔴 〔步 7c 剖分 2026-09-19〕**这一格同时踩了 `§6.2` 的 A 类与 B 类，两条一起修。**
+    // 🔴 **这一格同时踩了 `§6.2` 的 A 类与 B 类，两条一起修。**
     //
     // · **B 类**：语料根原来只有 `<bridge>/src` 一棵。`#[test]` 剖分之后整批住进
     //   `<repo>/tests/` ⇒ 那一棵树里 `#[test]` 归零，自检逐字报「扫到 0 个 —— 扫描面坏了」。
@@ -132,7 +132,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
             }
             let mut k = i;
             let mut has_attr = false;
-            // ⚠ 两根前缀针**运行期拼**〔步 7c 现打逼出来的〕：
+            // ⚠ 两根前缀针**运行期拼**：
             //   `needle_anchor_registry` 的 `.starts_with(` 是**0 上限**的递减棘轮，
             //   而它认的是「语料变量上的裸字面量匹配」。步 7c 往本文件新加了两处
             //   从磁盘语料派生的 `let`（`p9_tree_shape` / `fn_bodies` 里的 `lines`），
@@ -241,9 +241,7 @@ fn every_monitor_file_strips_clean() {
 /// `readonly_guard::g6_dependency_signoff::…::the_clean_verdict_is_re_measured_on_the_tree_every_run`
 /// 按**原文行**重扫那几棵仓内 crate，不走 `production_code`）。
 /// 〔09-12 现打：先写在 `guard-core` 里，门禁 `backend` 那格当场 `685 passed; 1 failed`，
-///  逐字点名 `guard-core（../src/common/guard-core）src/lib.rs:2219: \`fs::create_dir\``〔行号墓碑〕
-///  —— 那个行号是**当时那一趟**的读数，那段代码已经搬走 ⇒ 它必然腐；留着是为了说清
-///  「那把尺子按原文行数、连测试夹具都算」，不是给人拿去定位。
+///  逐字点名 `guard-core` 里那一处 `fs::create_dir` —— 那把尺子按原文行数、连测试夹具都算。
 ///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着后端本体两层判据。〕
 ///
 /// **死值验**：把 `guard_core::assert_tree_strips_clean` 里的 `strip_prefix(root)`
@@ -300,7 +298,7 @@ fn detour_top_level(line: &str) -> bool {
 /// 空行与整行注释跳过（属性与它修饰的 item 之间夹一行 `//` 是合法 Rust，
 /// 跳过它是**只严不松**）；遇到缩进行就停 —— 那说明这个属性挂在别人的块里。
 ///
-/// 🔴 〔搬树 2026-09-18 ·  纪律 3〕**同一个 item 上的其它属性也要跳过**。
+/// 🔴 **同一个 item 上的其它属性也要跳过**。
 /// 剖分之后生产段里那 111 处测试模块声明长这样：
 ///
 /// ```ignore
@@ -553,7 +551,7 @@ fn the_detour_ratchet_reaches_both_trees() {
     // 〔2026-09-18 下调 80 → 65〕不是分母缩水：搬树把 **19 份纯测试文件**从
     // 后端树移到了 `<repo>/tests/backend/`。当时现打 `src/backend/**.rs` = 72
     // （`tests/backend` 另有 19）⇒ 72 + 19 = 91，与 09-12 的 88 同量级。
-    // 🔴 〔条 67 · 2026-09-18 再下调 65 → 58〕**这一次是真的少了文件，不是分母缩水**：
+    // 🔴 地板 65 → 58：**这一次是真的少了文件，不是分母缩水**：
     // 用户逐字「**不在现在设计里的全部删掉**」⇒ `sidecars/` 整棵四份 `.rs`（2 008 行）
     // ＋ `platform/landing.rs`（唯一消费者没了）一起删 ⇒ 72 − 5 = **64**。
     // 留 6 份余量（与上一版 65 vs 72 的 margin 同量级）。
@@ -576,7 +574,7 @@ fn the_detour_ratchet_reaches_both_trees() {
     let names: std::collections::BTreeSet<String> =
         corpus.iter().map(|(p, _)| detour_addr(p)).collect();
     for want in [
-        // 〔搬树 2026-09-17〕它是纯测试文件，搬到了 `tests/backend/`。
+        // 它是纯测试文件，搬到了 `tests/backend/`。
         "tests/backend/readonly_guard.rs",
         "src/frontend/shell/src/stream_source/mod.rs",
         "src/frontend/shell/src/local_backend_host.rs",
@@ -824,7 +822,7 @@ fn every_comment_stripping_transformer_is_registered() {
 
     let root = crate::guard_support::repo_root();
     let mut found: Vec<String> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**补上 `"tests"` 这一棵。**
+    // 🔴 **补上 `"tests"` 这一棵。**
     //
     // 本条头注逐字写着「私有剥法一律住在测试模块里」—— 而测试模块剖分之后整个住进了
     // `<repo>/tests/`。上一版那三棵根**一份都够不着它们** ⇒ 四份剥法
@@ -938,13 +936,13 @@ fn every_comment_stripping_transformer_is_registered() {
 fn comment_stripping_has_exactly_one_shared_implementation() {
     const REGISTERED: &[(&str, &str)] = &[
         (
-            // 〔步 7c 剖分 2026-09-19 · C 类〕住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
+            // 住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
             "e2e_gate_registry_tests.rs",
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
         ),
     ];
 
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两棵树：生产段 ＋ monitor 的测试段。**
+    // 🔴 **两棵树：生产段 ＋ monitor 的测试段。**
     //
     // 同上一条的理由：本条头注逐字「私有剥法一律住在测试模块里」，而测试模块搬去了
     // `<repo>/tests/frontend/shell/`。只扫 `src/frontend/shell/src` 的话连**已登记的那一份**都扫不到 ——
@@ -1284,8 +1282,7 @@ fn the_shell_metachar_blacklist_has_exactly_one_home() {
 /// 这是本工作区反复吃亏的地方（人群取宽 ⇒ 逼人往豁免表里塞条目 ⇒ 判据变废纸）。
 #[test]
 fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 3、4〕
-    //    **人群补上两棵测试树。**
+    // 🔴 **人群补上两棵测试树。**
     //
     // 本条认的是「比源码位置的**判据**」，而判据整批住进了 `tests/`。
     // 只给两棵生产树时识别数从 6 掉到 **0**，自检逐字报「识别口径坏了，本条会零命中地绿」
@@ -1311,8 +1308,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
 
     let mut population = 0usize;
     let mut bad: Vec<String> = Vec::new();
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  第二条元教训〕
-    //    **切函数体的锚点原来是 `"\n    fn "` —— 针里嵌着 4 个空格，而缩进是位置。**
+    // 🔴 **切函数体的锚点原来是 `"\n    fn "` —— 针里嵌着 4 个空格，而缩进是位置。**
     //
     // 那 4 个空格当年是**判别式**：它同时表示「这是个函数」与「它住在 `mod tests {}` 里」。
     // 剖分之后判据整批退了一层缩进、落在列 0 ⇒ 那根针只认得**嵌套的辅助函数**，
@@ -1459,7 +1455,7 @@ fn addr_repo_root() -> std::path::PathBuf {
 fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
     let root = addr_repo_root();
     let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+    // 🔴 19 份纯测试文件从后端树搬到了
     // `<repo>/tests/backend/` ⇒ 原来那三棵树**一份也够不着它们**，
     // 而下面那些「符号地址 / 行号地址 / 死名」判据的人群就少了那一块 ——
     // **少扫不会红，只会零命中地绿**。
@@ -1575,13 +1571,6 @@ fn every_symbol_address_in_the_sources_still_resolves() {
             "**示例占位符**：讲「地址长什么样」时写的假地址，本就不指向真符号",
         ),
         ("foo", "**示例占位符**：同上，讲口径时举的例子"),
-        (
-            "discover_profiles",
-            "**历史句**：`tool_registry.rs` 里 `posix-rc-aliases` 那块墓碑**逐字引用**当年那一行 \
-                 `why:`（「原文逐字：…」），那一行点的就是 `profile_installer.rs` 里这个函数。它今天删了 —— \
-                 `$PROFILE` 在哪只剩 `shell_dialect.rs` 一处答。\
-                 改写那段引文等于篡改原文（同上面 `resolve_claude_dir` 那条）。",
-        ),
     ];
 
     let corpus = addr_corpus();
@@ -1692,9 +1681,8 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("atomic_replace_registry.rs", "fenced_block.rs", 5),
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("launch_tests.rs", "launch.rs", 122),
-        // 🔴 〔步 7c 剖分 2026-09-19〕**这一行删了 —— 那处行号地址改成了符号地址。**
+        // 🔴 **这一行删了 —— 那处行号地址改成了符号地址。**
         // 原来是 `guard-core/src/lib.rs` 里那句「两侧各有一个文件因此假红」的注，
         // 点的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分后只剩 40 行 ⇒ 越界，
         // 已按本条的第 ① 条出路改成
@@ -1704,20 +1692,15 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("lib.rs", "main.rs", 26),
         ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
         // `lib.rs → sftp.rs 的第 141 行` 摘了：creds-core 那句改成了点符号（原子上传搬去后端 `put_atomic`）。
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_tests.rs", "structural_scan.rs", 425),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host.rs", "launch.rs", 196),
         ("local_backend_host_tests.rs", "launch.rs", 196),
         ("local_backend_host.rs", "launch.rs", 198),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "local_backend.rs", 336),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "structural_scan.rs", 425),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "structural_scan.rs", 508),
         // `("panorama.rs", "engine.rs", 42)` 这一行删了：引用方那份文件随 monitor 的内嵌引擎一起删了。
-        // 🔴 〔搬树 2026-09-18〕**这一行删掉了**：`config_surface.rs` 的测试段搬走之后
+        // 🔴 **这一行删掉了**：`config_surface.rs` 的测试段搬走之后
         //    那份文件只剩 853 行，1062 行**越界**了（本条第 ① 格当场逮住）。
         //    按本条头注唯一那条改法**改成了符号地址**
         //    （`rows_tests.rs::either_host_keeps_the_glob_count`，
@@ -1812,8 +1795,7 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
              ⇒ 三条出路，按优先级：\n\
              ① **点符号**（`文件·rs::函数名` / 常量名 / 类型名）—— 它的真伪由\
              `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\n\
-             ② 那一处是**故意留着的历史反例**（订正段 / 墓碑）⇒ 在同一行加 \
-             `LINE_ADDRESS_TOMBSTONE` 那个标记；\n\
+             ② 那一处说的是历史 ⇒ 删掉，或改成说现状；\n\
              ③ 确实只能用行号 ⇒ 加进本条的存量登记表，**并在提交信息里写清为什么点不了符号**。\n\
              ⚠ **不许**为了让本条变绿就把它删掉了事：删掉的是线索，不是病。",
         newly.join("\n")
@@ -1853,13 +1835,6 @@ fn the_address_extractors_really_see_each_shape() {
             (1, "table.rs".to_string(), 18),
         ],
         "行号地址抽取器认错了：{got:?}"
-    );
-
-    // ② 形 B：带墓碑标记的那一行整行不进人群。
-    let t = format!("这里先前点着 relay/server.rs{colon}97，今天不对了 {LINE_ADDRESS_TOMBSTONE}");
-    assert!(
-        line_addresses(&t).is_empty(),
-        "带 {LINE_ADDRESS_TOMBSTONE} 的行不该进人群 —— 否则判据会去红「记录了这个病的那段话」本身"
     );
 
     // ③ 符号地址：认得出；`::` 后面是数字的**不是**符号地址，两个人群不许互相污染。
@@ -1969,7 +1944,7 @@ fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
 /// 代价如实写明：**本文件自己的散文没人看** —— 那是 `ratchet_guard.rs` 头注那条纪律
 /// 「判据不许与被扫文本同住一个文件」的另一面。**射程外，不假装覆盖了。**
 ///
-/// # 🔴 〔搬树 2026-09-18 ·  条 73〕这一刀**从 `file!()` 换成明写的排除**
+/// # 🔴 这一刀**从 `file!()` 换成明写的排除**
 ///
 /// 上一版靠 `scan_tree!` 的自摘落这一刀。剖分之后本文件由 `#[path]` 引进来，
 /// `file!()` 给的是 `src/../../../tests/bridge/structural_scan_tests.rs` ——
@@ -1983,7 +1958,7 @@ fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
 fn dead_name_corpus() -> Vec<(String, String)> {
     let root = addr_repo_root();
     let mut out: Vec<(String, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18〕**两棵根，互不包含。** 上一版列了五个根，其中
+    // 🔴 **两棵根，互不包含。** 上一版列了五个根，其中
     // `"src/frontend/shell/src"` · `"src/common"` · `"src/doc"` 在搬树之后**全都是
     // `"src"` 的子目录** ⇒ 那些文件被**数两遍**，于是「盘上 N 处」全部翻倍，
     // 而登记表写的是搬家前的真数 ⇒ 一片假红（本轮实发：`local_is_posix` 1→2 之类）。
@@ -2001,29 +1976,29 @@ fn dead_name_corpus() -> Vec<(String, String)> {
         // 收 `"tests"` 一并把前端测试与 `tests/e2e/` 都拿回来。
         "tests",
     ] {
-        // 🔴 **排掉的是谁、为什么**（条 73 要的那一句）：
+        // 🔴 **排掉的是谁、为什么**（「明写名单、不靠自摘」那条纪律要的那一句）：
         //    排掉 `tests/frontend/shell/structural_scan_tests.rs` —— **本文件**。
         //    理由见上面头注：它那张 `INVENTORY` 把每个死名都写成了字符串字面量，
         //    收进来就等于宣布「这些名字都还活着」，人群当场塌成空集。
         //    ⚠ 只对 `"tests"` 那一棵给名单：本文件不在 `"src"` 下面，而
         //    `scan_tree_excluding` **摘不到就红** —— 给错根会当场说话，不会安静地空转。
-        //    同一条理由排掉冻结点快照 `tests/__fixtures__/tombstone-freeze.tsv`：它逐行写着那些死名。
+        //    同一条理由排掉禁名表 `tests/__fixtures__/retired-names.tsv`：它逐行写着那些死名。
         let excluded: &[&str] = match sub {
             "tests" => &[
                 "tests/frontend/shell/structural_scan_tests.rs",
-                "tests/__fixtures__/tombstone-freeze.tsv",
+                "tests/__fixtures__/retired-names.tsv",
             ],
             _ => &[],
         };
         for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], excluded) {
             let rel = dead_name_rel(&root, &p);
-            // 🔴 〔搬树 2026-09-18〕**`evidence/` 必须排掉** —— 本函数头注逐字写着
+            // 🔴 **`evidence/` 必须排掉** —— 本函数头注逐字写着
             // 它「刻意不收」，理由是「那是量具与记录，散文里逐字写着一堆死名；
             // 收进来 = 代码侧被本族自己的记录喂饱，旗舰活体当场从人群里消失」。
             // 那句话当时靠的是**位置**（`evidence/` 不在当年那几个根下）。
             // 搬树把它变成 `tests/evidence/` ⇒ 跟着 `"tests"` **自己回来了**，
             // 而那条设计意图一个字都没改。⇒ 把"靠位置"换成**一条明写的排除**。
-            // 🔴 〔搬树 2026-09-18〕两条按位置生效的射程边界，都被搬树悄悄取消了：
+            // 🔴 两条按位置生效的射程边界，都被搬树悄悄取消了：
             //
             // ① `evidence/` —— 本函数头注逐字写着它「刻意不收」：那是量具与记录，
             //    散文里逐字写着一堆死名；收进来 = **代码侧被本族自己的记录喂饱**，
@@ -2052,10 +2027,10 @@ fn dead_name_corpus() -> Vec<(String, String)> {
     let br = root.join("src/frontend/shell/build.rs");
     let br_src = std::fs::read_to_string(&br).expect("读不到 src/frontend/shell/build.rs");
     out.push((dead_name_rel(&root, &br), br_src));
-    // 🔴 〔搬树 2026-09-18〕**本文件的「声明」那一半要补回来，「登记表」与「散文」那两半不补。**
+    // 🔴 **本文件的「声明」那一半要补回来，「登记表」与「散文」那两半不补。**
     //
     // 上面那一刀摘的是**整份文件**，而它其实只该摘掉两样东西：
-    // ① `INVENTORY` / `TOMBSTONED` 里那些**死名字符串字面量**（不摘 ⇒ 人群塌成空集）；
+    // ① `INVENTORY` 里那些**死名字符串字面量**（不摘 ⇒ 人群塌成空集）；
     // ② 本文件自己的散文（头注逐字写着「射程外，不假装覆盖了」）。
     //
     // 剖分之前这两样与本文件那几十条 `fn` 声明**同住 `structural_scan.rs`**，
@@ -2254,33 +2229,24 @@ fn dead_name_split(path: &str, text: &str) -> Vec<(usize, String, String)> {
         .collect()
 }
 
-/// 全语料现打：`(路径, 名字)` → `(未声明处数, 带墓碑处数)`，只留**代码侧零出现**的。
+/// 全语料现打：`(路径, 名字)` → 散文里的处数，只留**代码侧零出现**的。
 fn dead_names_on_disk(
     corpus: &[(String, String)],
     min_us: usize,
-) -> (
-    usize,
-    std::collections::BTreeMap<(String, String), (usize, usize)>,
-) {
+) -> (usize, std::collections::BTreeMap<(String, String), usize>) {
     let mut in_code: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut in_prose: std::collections::BTreeMap<(String, String), (usize, usize)> =
+    let mut in_prose: std::collections::BTreeMap<(String, String), usize> =
         std::collections::BTreeMap::new();
     for (path, text) in corpus {
         for (_, code, cmt) in dead_name_split(path, text) {
             for w in dead_name_idents(&code, min_us) {
                 in_code.insert(w.to_string());
             }
-            let tomb = cmt.contains(PROSE_NAME_TOMBSTONE);
             for span in backtick_spans(&cmt) {
                 if let Some(name) = bare_symbol_in_span(span, min_us) {
-                    let e = in_prose
+                    *in_prose
                         .entry((path.clone(), name.to_string()))
-                        .or_insert((0, 0));
-                    if tomb {
-                        e.1 += 1;
-                    } else {
-                        e.0 += 1;
-                    }
+                        .or_insert(0) += 1;
                 }
             }
         }
@@ -2290,64 +2256,6 @@ fn dead_names_on_disk(
         .filter(|((_, n), _)| !in_code.contains(n))
         .collect();
     (in_code.len(), dead)
-}
-
-/// 墓碑冻结：删了或改了名的符号，把提到它的那句话改成现状，不挂墓碑、不登记（`src/doc/CONTRIBUTING.md` §3.4）。
-/// 冻结点那两张表的快照住 `tests/__fixtures__/tombstone-freeze.tsv`：此刻两张表的每一格都必须在快照里、
-/// 处数不超过那时（逐格 ⊆）。不手抄行数与处数 —— 删墓碑的那一路不用回来改任何东西，几路同时删也不撞。
-/// 买不到：快照里有、后来删掉的一格，又被原样挂回来。
-const TOMBSTONE_FREEZE: &str = include_str!("../../__fixtures__/tombstone-freeze.tsv");
-
-/// 一张墓碑表此刻的每一格（键 → 处数）都必须住在冻结点那份快照里、处数不超过那时。
-fn assert_tombstone_table_frozen(
-    table: &str,
-    now: &[(String, usize)],
-    frozen: &std::collections::BTreeMap<String, usize>,
-) {
-    assert!(
-        !frozen.is_empty(),
-        "冻结点快照里 `{table}` 一格都没解析出来 —— 解析坏了，本条在空转"
-    );
-    let grown: Vec<String> = now
-        .iter()
-        .filter(|(k, n)| frozen.get(k).is_none_or(|f| n > f))
-        .map(|(k, n)| {
-            format!(
-                "  {k}  此刻 {n} 处，冻结点 {}",
-                frozen.get(k).map_or("没有这一格".into(), |f| f.to_string())
-            )
-        })
-        .collect();
-    assert!(
-        grown.is_empty(),
-        "`{table}` 比冻结点多出了墓碑：\n{}\n\
-         墓碑不许再挂：删了或改了名的符号，把提到它的那句话改成现状（说今天是什么、在哪儿），\
-         不挂标记、不登记（`src/doc/CONTRIBUTING.md` §3.4）。",
-        grown.join("\n")
-    );
-}
-
-/// 冻结点快照里 `table` 那张表：`键 → 处数`（`TOMBSTONED` 的键是「路径 · 名字」，`REGISTERED` 的是路径）。
-fn frozen_table(table: &str) -> std::collections::BTreeMap<String, usize> {
-    TOMBSTONE_FREEZE
-        .lines()
-        .filter(|row| !row.starts_with('#') && !row.trim().is_empty())
-        .filter_map(|row| {
-            let cols: Vec<&str> = row.split('\t').collect();
-            assert_eq!(cols.len(), 4, "冻结点快照有一行不是四列：{row:?}");
-            (cols[0] == table).then(|| {
-                let key = if cols[2].is_empty() {
-                    cols[1].to_string()
-                } else {
-                    format!("{} · {}", cols[1], cols[2])
-                };
-                let n: usize = cols[3]
-                    .parse()
-                    .unwrap_or_else(|_| panic!("冻结点快照的处数不是数：{row:?}"));
-                (key, n)
-            })
-        })
-        .collect()
 }
 
 /// ★★ **散文里点名的名字，要么在代码里，要么由写的人声明成历史。**
@@ -2382,14 +2290,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// **判不了真伪**的名字。想少一行的唯一办法是**把那句话改对**。
     ///
     /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
-    /// ⚠ **不许**靠贴墓碑把存量抹平 —— 墓碑只给「本轮真的改过的那几处订正段」。
     const INVENTORY: &[(&str, &str, usize)] = &[
-        // 🔴 〔条 80 「不要管旧配置」2026-09-19〕**这两行是新登记的，原因是一条判据退役。**
+        // 🔴 **这两行是新登记的，原因是一条判据退役。**
         //    `daemonless_stream_loop` 这个符号 `K-R59`（09-11）就从代码里删掉了，
         //    它此后一直被一处**字符串字面量**当成「还活着」——
         //    `doc_claim_registry_daemon_wording_registry.rs` 拿它当「非裸词」自检夹具。
-        //    条 80 把那个夹具换掉之后，它才第一次被本条看见。
-        //    ⇒ 散文里这几处（README 1 · 本表下一行 1；流来源那份的两处随拆目录删了）全是**病史与墓碑**，该留；
+        //    那个夹具换掉之后，它才第一次被本条看见。
+        //    ⇒ 散文里这几处（README 1 · 本表下一行 1；流来源那份的两处随拆目录删了）全是**病史**，该留；
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         // 登记表里几段改数史 / 已结账的核实表删了 —— 那些字符串一直替下面这几处散文遮着「还活着」。
@@ -2416,25 +2323,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_probe_sees_allocations_made_by_the_reader_task",
             1,
         ),
-        (
-            "src/backend/stream/inbound/mod.rs",
-            "handlers_never_run_on_the_reader_task",
-            1,
-        ),
-        // 〔入方向拆目录 10-03〕手抄的命令名单删了：它头注里那一处与测试段那条镜子判据头注里那一处随之没了，3 → 1。
-        (
-            "src/backend/stream/inbound/mod.rs",
-            "hello_commands_match_the_dispatch_table",
-            1,
-        ),
-        (
-            "src/backend/stream/inbound/mod.rs",
-            "hello_is_flushed_before_the_inbound_reader_starts",
-            1,
-        ),
         ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
         ("src/comms/outward/http1.rs", "handle_alloc_error", 1),
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
         (
             "tests/comms/outward/http1_tests.rs",
             "head_cap_is_enforced",
@@ -2445,7 +2335,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/comms/outward/server.rs", "handle_alloc_error", 1),
         // `tests/comms/outward/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
         (
-            // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
             "tests/comms/outward/upstream_tests.rs",
             "tls_client_config_builds_and_carries_roots",
             1,
@@ -2453,20 +2342,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `payload.rs` 点 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect` 那一行摘了：
         //   那段散文随路由构造口（与它的跨半边样例）一起走了 —— 路由语法进了共享 crate `relay-route-core`。
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/byte_cap_registry_tests.rs",
             "handle_alloc_error",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/byte_cap_registry_tests.rs",
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
         // `ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
         (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/rows_tests.rs",
             "locality_is_derivable_from_destination_today",
             1,
@@ -2487,13 +2373,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
-            "tests/frontend/shell/local_backend_host_tests.rs",
-            "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
-            1,
-        ),
-        (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/backend/agents/claudecode/parse_tests.rs", // 随记录解析搬进后端
             "unknown_type_falls_through_to_unknown_variant",
             1,
@@ -2504,44 +2383,33 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
         //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/polling_registry_tests.rs",
             "the_per_second_identity_poller_spawns_nothing_per_tick",
             1,
         ),
-        // -1：`profile_installer.rs` 里点这个名字的那段话随
-        //    `find_block_range` 一起走了（拼接收成 `fenced_block::splice_in/out` 一份）。
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/rust_timer_registry_tests.rs",
             "the_one_real_ticker",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
             "ci_live_lines",
             1,
         ),
         (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/stream_source/write_half_guard.rs",
             "copy_bidirectional_with_sizes",
             1,
         ),
-        // `stream_source/emits_parity.rs` 点 `hello_commands_match_the_dispatch_table` 那一行摘了：那份判据随跨语言金样删了。
         // 存量四行摘了：点它们的那几段散文（`stream_source/` 的 tmux 原文账 / 宣告账头注 · `tmux.rs` 的 `list_local_tmux` 头注）
         //   随 monitor 那几本账一起删 / 改写（`list_local_tmux` 改问本机后端），`ssh_source_f032_idle_tests.rs` 那一处随文件删。
-        // `tmux_backend_gate_guard_tests.rs` 里 `both_backend_commands_use_this_one_router` 那一行（存量）摘了：
-        //   点它的那段头注随「两条命令走同一个分流器」那条判据一起退役（原处换成一块墓碑，那一行登记在 `TOMBSTONED`）。
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/registry_tests.rs",
             "inbox_id_from_filename",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/registry_tests.rs",
             "locality_is_derivable_from_destination_today",
             1,
@@ -2553,7 +2421,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_gaps_are_named_not_forgotten",
             1,
         ),
-        // 〔条 66〕原来这里还有一行 `tests/frontend/ui/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
+        // 原来这里还有一行 `tests/frontend/ui/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
         //   （1 处）—— 那条推送随值搬家退役，点名它的那段散文与那条判据一起删了 ⇒ 本行摘掉（存量 −1）。
         (
             "tests/frontend/ui/settings/backend-section.vitest.ts",
@@ -2562,7 +2430,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // `src/frontend/ui/tab-session-actions.ts` 那一行（1 处）摘了：那条 tab 栏本机 resume 连同点这个死名的订正注释
         //   收进了 `src/frontend/ui/local-resume.ts`（本机 resume 编排只剩一份），订正注释没跟着搬（它订正的那句话已经不在了）⇒ 存量 −1。
-        // 🔴 〔搬树 2026-09-18 新增四条〕**不是新长出来的债，是语料面变大了**：
+        // 🔴 **不是新长出来的债，是语料面变大了**：
         // 这份 README 原住 `src-tauri/README.md`，而本族的语料根里没有 `src-tauri`
         // ⇒ 它**按构造在射程外**。改名成 `src/frontend/shell/README.md` 之后落进了 `"src"`
         // 那一棵，于是它散文里点名的死名第一次被看见。
@@ -2571,8 +2439,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `classify_capture_output` 那一行（README 两处）摘掉：README 里抓屏那两处改写成「迁到界面」，旧名不再点。
         // 同一份 README 那一行（`stream_source/` 的旧功能表）里的跳板函数名：界面侧最后一份
         //   （`inproc_dial.rs` 里 SFTP 用的那一个）随界面进程零 SSH 整份删了，后端那份改了名 ⇒ 真死名，如实记账；
-        //   那一行同时点着上面四个死名，不给整行贴墓碑（贴了会把它们一起改记成「墓碑」，账就错了）。
-        // 🔴 〔搬树 2026-09-18〕**这里删掉了 6 行**，逐条点名：
+        // 🔴 **这里删掉了 6 行**，逐条点名：
         //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
         //   `accounts_query.rs`/`local_backend_host.rs`     `every_comment_stripping_transformer_is_registered`
         //   `tests/backend/readonly_guard.rs`         `the_cfg_test_reexport_detour_stays_extinct`
@@ -2585,1495 +2452,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //   本文件自己的散文仍然不收）⇒ 这六行是**被修掉的缺陷**，不是被放过的欠账。
     ];
 
-    /// **墓碑登记**：`(仓根相对路径, 名字, 带 [`PROSE_NAME_TOMBSTONE`] 的处数)`。
-    ///
-    /// 🔴 **冻结**：只许减，不许加行、加数（逐格不超过冻结点快照 `tests/__fixtures__/tombstone-freeze.tsv`）。
-    /// 盘上与表逐格相等照旧：登记了盘上没有 ⇒ 红。
-    ///
-    /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
-    /// 那正是 `K-R19` 实测到「订正落盘之后尺子读数一动没动」的原因。
-    /// 🔴 〔步 7c 剖分 2026-09-19〕**12 行换了住址，处数一格没变。**
-    /// 那些墓碑散文随各自判据的测试段搬进了 `tests/frontend/shell/`，逐份点名（`src/frontend/shell/src/X.rs` →）：
-    /// `capability_registry` · `ccm_cli_contract` · `doc_claim_registry` ·
-    /// `parity_ledger`（3 个名字 · 8 处）· `plugin_class_registry`（2 个名字）·
-    /// `polling_registry` · `shared_crate_registry` · `tmux_backend_gate_guard` ·
-    /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
-    /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
-    const TOMBSTONED: &[(&str, &str, usize)] = &[
-        // cc-bus 装 / 三态那两条旧 Tauri 命令：代码里最后一处（驾驶舱判据里的替身）随驾驶舱装口删了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
-        (
-            "src/frontend/shell/src/cc_bus_deploy.rs",
-            "deploy_local_cc_bus",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/cc_bus_deploy.rs",
-            "cc_bus_install_state",
-            1,
-        ),
-        (
-            "tests/frontend/shell/frame_query_tests.rs",
-            "deploy_local_cc_bus",
-            1,
-        ),
-        (
-            "tests/frontend/shell/frame_query_tests.rs",
-            "cc_bus_install_state",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "deploy_local_cc_bus",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "cc_bus_install_state",
-            1,
-        ),
-        // 代码全景整条摘掉：`BUILD_ID` 谱系里那一代的 op 名（它住的小程序整棵删了）。
-        ("src/backend/lib.rs", "refresh_doc_links", 1),
-        // gate-core 收成后端模块：零调用方的取反名删了 · monitor 转调壳那条判据翻面，原处各一块。
-        ("src/backend/control/gate_rules.rs", "needs_remote_sid", 1),
-        (
-            "tests/frontend/shell/gate_singleton_guard_tests.rs",
-            "the_monitor_wrapper_really_delegates",
-            1,
-        ),
-        // 「在此打开终端」那一串（`cd <目录> && exec $SHELL -l`）随「窗口只交意图」从文件窗口搬进本机后端 `dial/terminal.rs::command_for_cwd`。
-        ("src/backend/dial/terminal.rs", "build_open_terminal_cmd", 1),
-        (
-            "src/frontend/filewin/src/shell.rs",
-            "build_open_terminal_cmd",
-            1,
-        ),
-        (
-            "src/frontend/filewin/src/shell.rs",
-            "build_open_terminal_cmd_at",
-            2,
-        ),
-        ("src/frontend/filewin/src/shell.rs", "cd_then_shell", 1),
-        (
-            "src/frontend/shell/src/launch.rs",
-            "build_remote_ssh_ps_command",
-            1,
-        ),
-        ("tests/frontend/shell/launch_tests.rs", "build_jump_arg", 1),
-        (
-            "tests/frontend/shell/launch_tests.rs",
-            "build_remote_ssh_ps_command",
-            1,
-        ),
-        // monitor 自己那台的探针（`with_monitor_probe`）随足迹判定进后端删了；两处散文点旧名。
-        ("src/backend/footprint/rows.rs", "with_monitor_probe", 1),
-        ("src/backend/footprint/rows.rs", "config_surface_report", 1),
-        (
-            "tests/frontend/shell/command_home_registry_tests.rs",
-            "config_surface_report",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "config_surface_report",
-            2,
-        ),
-        (
-            "tests/frontend/shell/local_read_surface_registry_tests.rs",
-            "with_monitor_probe",
-            1,
-        ),
-        // monitor 的会话 / tmux 账本（`session_map` · `session_facts` · `tmux_reconcile` · `stream_source` 里那几本账 ·
-        //   本机收割 · monitor 侧观测分类）整体搬进后端会话账本；原处留块墓碑点旧名，讲来历的散文就地挂标记。
-        (
-            "src/backend/observe/tmux_observe.rs", // 住址随 A 块从 watcher.rs 搬来
-            "observation_tokens_double_write_point_stays_in_sync",
-            1,
-        ),
-        (
-            "src/backend/stream/wire.rs",
-            "removal_cause_wire_literal_stays_in_sync",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "forget_tmux_raw",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "local_idle_retirements",
-            2,
-        ),
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "local_reaper_state",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "local_tmux_closed",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "record_tmux_raw",
-            1,
-        ),
-        // `tmux.rs` 里 `tmux_raw_for` 那一行摘了：点它的那段文档随本机列会话那条命令（`list_local_tmux`）整条删了。
-        ("src/frontend/shell/src/bind.rs", "is_process_alive", 1),
-        ("src/frontend/shell/src/lib.rs", "load_with_changes", 1),
-        // `LifetimeGuard` 的 Drop 连同那句「形状照 …」随平台原语搬进 `platform/spawn.rs`。
-        (
-            "src/frontend/shell/src/platform/spawn.rs",
-            "is_process_alive",
-            1,
-        ),
-        (
-            "tests/frontend/shell/inbound_client_tests.rs",
-            "removal_cause_wire_literal_stays_in_sync",
-            1,
-        ),
-        (
-            "tests/frontend/shell/rust_timer_registry_tests.rs",
-            "is_process_alive",
-            1,
-        ),
-        // `~/.ssh/config` 导入那三条命令搬进后端；两段现打读数的散文点旧名。
-        (
-            "tests/frontend/shell/parity_ledger.rs",
-            "resolve_ssh_host",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/spawn_managed.rs",
-            "resolve_ssh_host",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "the_alias_capabilities_speak_through_one_command_family",
-            1,
-        ),
-        ("src/backend/platform/shell/dialect.rs", "look_on_path", 1), // 方言随住址搬进 `platform/shell/`
-        (
-            "src/backend/agents/claudecode/paths.rs",
-            "claude_data_fence",
-            1,
-        ),
-        (
-            "tests/frontend/shell/write_site_registry_tests.rs",
-            "write_skill_file",
-            1,
-        ),
-        // monitor 的 `claude_data_fence` 与收件箱三条随那一面进后端删了：点它们的账目句挂墓碑。
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "claude_data_fence",
-            2,
-        ),
-        // 收件箱三条 Tauri 命令随那一面进后端删了：点它们的账目句挂墓碑。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "read_skill_file",
-            2,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "write_skill_file",
-            2,
-        ),
-        // `agent_dispatch_registry_tests.rs` · `adapter.rs` 那三行（`has_record_ext` · `session_id_from_path`）摘了：两份文件随 monitor 那份适配表删了。
-        (
-            "src/frontend/shell/src/lib.rs",
-            "agent_dispatch_registry",
-            1,
-        ), // 那份判据模块随 monitor 适配表退役，`mod` 那一行换成一块
-        ("src/frontend/shell/src/lib.rs", "agent_profile_parity", 1), // 跨轨对拍锚点随 monitor 适配表退役（它最后一处活提名在金样头注里，头注随之改成今天的住址）
-        // 远端 `ccm` 探针那几行摘了：主线里 `probe_ccm_cli` 这个名字还活在一份测试替身的字符串里
-        //   （`remote-launch-run.vitest.ts`），不算死名 ⇒ 挂在它上面的墓碑不进本表。
-        // 删会话 · 分叉 · 钩子诊断三件转交退役（界面经通道直说那台后端）：散文里点那几个旧名讲来历的，逐处挂墓碑。
-        (
-            "src/backend/agents/claudecode/branch.rs", // 住址随 branch-core 收进后端适配层
-            "create_branch_session",
-            1,
-        ),
-        // ARCHITECTURE 那两行（`create_branch_session` 2 · `create_remote_branch_session` 1）摘了：零侵入那一段按 4.0.0 重写，只讲今天的写口；
-        //   那块墓碑本身（`validate_branch_source`）照留，只是同一行不再捎带这两个旧名。
-        (
-            "tests/frontend/shell/frame_query_tests.rs",
-            "remote_branch_tests",
-            1,
-        ),
-        (
-            "tests/comms/inward/origin_tests.rs",
-            "create_remote_branch_session",
-            1,
-        ),
-        (
-            "tests/comms/inward/origin_tests.rs",
-            "delete_remote_history_session",
-            1,
-        ),
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "delete_remote_history_session",
-            2,
-        ),
-        (
-            "tests/frontend/shell/write_site_registry_tests.rs",
-            "this_module_never_writes",
-            2,
-        ),
-        // skill 装 / 卸三条 Tauri 命令随 D 组进后端删了：点它们的账目句挂墓碑。
-        (
-            "tests/frontend/shell/frame_query_tests.rs",
-            "skill_uninstall_apply",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "skill_install_preview",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "skill_uninstall_apply",
-            1,
-        ),
-        // U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
-        // 读一整份会话本机远端合成一条（后来整份读这件事随查看器改成骨架 ＋ 按视口取没了），远端那一支的函数删了；
-        //   点它旧名讲来历的散文逐处挂墓碑。
-        // monitor `search.rs` 删了 ⇒ 它体里还提着的旧名 `search_remote_all` 全仓只剩散文（remote_history.rs 那块 C4a 墓碑）。
-        // 只为本机读盘服务的适配器门面删了；按本机根前缀判种类的那一个只剩散文（换成按文件名形态判）。
-        // `adapter.rs` 的 `kind_of_path` 那一行摘了：那份文件删了。
-        (
-            "tests/comms/inward/origin_tests.rs",
-            "stream_read_remote_session",
-            1,
-        ),
-        // 写 key 改走通道 `apikey-key-set`：monitor 那一半（Tauri 命令 ＋ `apikey_remote` 写臂）与钉它们的判据退役。
-        // `apikey_remote.rs` 与它的 `_tests.rs` 整删（发送口零调用方）⇒ 住在那两份里的墓碑（本表与 `REGISTERED` 共 16 行）随文件退役：
-        //   被守的整轴没了；点那些旧名的别处散文（`creds_store*` · `frame_query_tests`）照留、照登记。
-        ("src/frontend/shell/src/creds_store.rs", "write_key_on", 2),
-        (
-            "tests/frontend/shell/creds_store_tests.rs",
-            "a_config_dir_that_names_no_account_is_refused_instead_of_falling_back",
-            1,
-        ),
-        (
-            "tests/frontend/shell/creds_store_tests.rs",
-            "the_plaintext_argument_is_only_ever_handed_one_hop_further",
-            1,
-        ),
-        (
-            "tests/frontend/shell/creds_store_tests.rs",
-            "write_key_on",
-            2,
-        ),
-        // cc-bus 驾驶舱写面五条迁到界面（`src/frontend/ui/cc-bus-control.ts`）：monitor 那一份解释（发送端 · 说法 · 形状校验）
-        //   与钉它们的判据退役，原处与点它们的散文挂墓碑；后端那一节头注点的 monitor 组合（`broadcast_via_backend`）同拍死了。
-        ("src/backend/control/cc_bus.rs", "broadcast_via_backend", 1),
-        // 杀会话 · 送键 · 就地 resume 三条迁到界面：退役的函数 / 判据名在原处与点它们的散文里挂墓碑。
-        // `cc_bus.rs` · `killed_from_reply` 那一行摘了：点它的那句在收掉那条 Tauri 命令的体里，命令整条迁到界面（整轴退役）。
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard.rs",
-            "kill_now_routes_through_the_backend",
-            2,
-        ),
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard.rs",
-            "send_keys_now_routes_through_the_backend",
-            2,
-        ),
-        (
-            "tests/frontend/shell/backend_kill_tests.rs",
-            "the_refusal_wording_matches_the_sibling_command",
-            1,
-        ),
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-            "a_gate_rejection_is_never_laundered_into_the_ssh_fallback",
-            1,
-        ),
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-            "both_commands_branch_on_the_same_three_way_verdict",
-            1,
-        ),
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-            "kill_now_routes_through_the_backend",
-            1,
-        ),
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-            "send_keys_now_routes_through_the_backend",
-            1,
-        ),
-        // 抓屏整条迁到界面：monitor 那一份说法（五档人话）与 `KR112D2` 的两刀机检 ＋ 五档那条随之退役，原处挂墓碑。
-        //   抓屏的参数构造器随之删了，它的跨轨对拍一起退役（`command_args.rs` 整份随后续的送键 / 就地 resume 删掉，
-        //   那一行墓碑跟着文件走了）。
-        // 本机四个一次性 exec 改走 `<local>` 长连接：一次性查询的宿主三格（`local_backend_one_shot_query`）·
-        //   本机「老后端」的 stderr 认法（`local_failure_kind`）· 分叉 exec 那一趟的结果解释（`interpret_fork_exec`）随路删；
-        //   讲来历的散文逐字点旧名。
-        (
-            "src/backend/control/fork_write.rs",
-            "interpret_fork_exec",
-            1,
-        ),
-        // `history.rs` · `remote_branch.rs` 那两行摘了：前者那段点它的来历随删会话 / 分叉转交一起删了，后者整份删了。
-        (
-            "tests/frontend/shell/cross_half_edge_registry.rs",
-            "local_failure_kind",
-            1,
-        ),
-        // 同拍摘三行：`remote_branch.rs` 的 `write_branch_file` / `is_old_backend_hello` 与 `subagent.rs` 的 `run_list_query`
-        //   —— 那两份头注整段按今天的形状重写（分叉 / 子 agent 都只剩帧命令一条路），讲旧 exec 路的那几句连同旧名一起没了；
-        //   来历今天由新头注里的 `local_query` / `interpret_fork_exec` 两块墓碑接着讲。
-        (
-            "src/frontend/shell/src/spawn_managed.rs",
-            "local_backend_one_shot_query",
-            1,
-        ),
-        (
-            "tests/frontend/shell/spawn_managed_exit_sites.rs",
-            "local_backend_one_shot_query",
-            1,
-        ),
-        // 代装 rc 那一行 source 的那一跳退役（接上别名文件的那一行只住别名块里）；
-        //   两处散文逐字点它讲来历（「配对之后怎么拼」写过三份那一段 · 写规则只有一个住址那条的死值验说明）。
-        (
-            "src/backend/assets/aliases/fence.rs",
-            "ensure_rc_source_line",
-            1,
-        ),
-        (
-            "tests/backend/assets/aliases/fence_tests.rs",
-            "ensure_rc_source_line",
-            1,
-        ),
-        // 重放缓冲分档取消，读数里「只留尾巴的会话数」那个字段改名 `sessions`；新字段的文档点旧名讲来历。
-        (
-            "src/frontend/shell/src/event_replay.rs",
-            "tail_only_sessions",
-            1,
-        ),
-        //   头注「容量」那一段讲分档的来历，点原来那个登记方法名。
-        (
-            "src/frontend/shell/src/event_replay.rs",
-            "keep_tail_only",
-            1,
-        ),
-        // F5 那份重放换成就绪点（`ready_point`）：头注表里 ＋ 新函数的文档里点旧名讲来历。
-        (
-            "src/frontend/shell/src/event_replay.rs",
-            "replay_and_mark_ready",
-            2,
-        ),
-        // F5 对账要按机器分已结束 / 说不清 ⇒ 远端 sid 清单连同 origin 一起交、改名；新函数文档点旧名讲来历。
-        // 那一行退役：`buffered_*` 整族随 F5 对账并进会话簿（`lifecycle_replay`）删掉，讲来历的那段文档一起走。
-        // 本机凭据文件的写者换成本机常驻后端：monitor 那侧写口（`write_key_at` · `check_base_url`）与
-        //   「本机那一臂不发帧」那条判据退役；讲来历的散文与搬去后端的三条判据的出处各挂一块。
-        ("src/frontend/shell/src/creds_store.rs", "check_base_url", 1),
-        // 上游选择那半从 monitor 搬走（读侧 · 人群 · 中转在不在），点旧名的散文挂墓碑。
-        (
-            "src/backend/accounts/upstream_select/file_face.rs",
-            "apikey_rows_at",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_backend_host.rs",
-            "relay_listening_at",
-            1,
-        ),
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            "apikey_rows_at",
-            1,
-        ),
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            "what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for",
-            1,
-        ),
-        (
-            "tests/frontend/shell/creds_store_tests.rs",
-            "what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for",
-            1,
-        ),
-        (
-            "tests/frontend/shell/local_backend_host_tests.rs",
-            "relay_running_really_asks_the_loopback_port",
-            1,
-        ),
-        ("src/frontend/shell/src/creds_store.rs", "write_key_at", 1),
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            "write_key_at",
-            1,
-        ),
-        ("tests/backend/relay/server_tests.rs", "write_key_at", 1),
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            "a_program_write_keeps_everything_the_human_put_there",
-            1,
-        ),
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            "a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style",
-            1,
-        ),
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            "the_write_side_no_longer_targets_the_legacy_top_level_slot",
-            1,
-        ),
-        // 🔴 monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，散文里的旧名挂墓碑。
-        //   代码全景整条摘掉：挂墓碑的那几份文件大多随之删了，只剩增量账里那一行。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "panorama_diagram_kinds",
-            1,
-        ),
-        // `parse_remote_hosts` 旧单对象那一支删了，守它的测试随之删；
-        //    接替它的判据头注逐字说那条旧测试守的是什么 ⇒ 第②条出路。
-        (
-            "tests/frontend/shell/lib_remote_config_tests.rs",
-            "legacy_single_object_one_host",
-            2, // +1：JA1 点址那一行（当时待定，后来挂了墓碑）
-        ),
-        // 插件只读列表整块删了：点 monitor 那条旧命令名的散文在账本里留一块墓碑（`list_plugin_marketplaces`）。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "list_plugin_marketplaces",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/lib.rs",
-            "list_plugin_marketplaces",
-            1,
-        ),
-        // 🔴 `accounts.ts` 那个 `"__local__"` 合进 `LOCAL_ORIGIN`，
-        //    钉「两者刻意不同」的那条判据随之改成钉合了之后的形状；TS 那一节点它旧名讲来历 ⇒ 第②条出路。
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "the_two_same_named_local_origin_constants_stay_deliberately_different",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend_policy_tests.rs",
-            "the_two_same_named_local_origin_constants_stay_deliberately_different",
-            1,
-        ),
-        // 界面进程零 SSH：`inproc_dial.rs`（SFTP 那一份拨号）整份删了 ⇒ 从界面侧搬去后端的
-        //   几个旧函数名（跳板 · agent 鉴权）全仓只剩散文；`sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随事做完退役。
-        ("src/backend/dial/connect.rs", "connect_via_jump", 1),
-        ("src/backend/dial/connect.rs", "authenticate_via_agent", 1),
-        (
-            "src/backend/platform/ssh_agent.rs",
-            "authenticate_via_agent",
-            1,
-        ),
-        // `backend/control/mod.rs` · `sftp_move_ledger` 那一行摘了：那份文件随 `backend` 目录删了。
-        ("src/frontend/shell/src/lib.rs", "sftp_move_ledger", 1),
-        (
-            "tests/backend/footprint/registry_tests.rs",
-            "sftp_move_ledger",
-            1,
-        ),
-        // 「russh 只住 SFTP 还要它的地方」那条判据改名成零命中（`russh_is_named_nowhere_in_the_monitor_crate`）。
-        // 读回比对的判定改成吃后端交回的事实（`verify_readback`），creds-core 那段历史引用旧名留墓碑。
-        (
-            "src/common/creds-core/src/lib.rs",
-            "verify_uploaded_bytes",
-            1,
-        ),
-        // 「SFTP 进本机常驻后端，只写暂存区」之后，后端**有**远端写了（只在 `dial/sftp.rs`、
-        //   只许两处）⇒ 「今天一处远端写都没有」那条判据换成两条相等（`remote_write_layer`），旧名留墓碑说它为什么不在了。
-        (
-            "tests/backend/readonly_guard.rs",
-            "the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty",
-            1,
-        ),
-        // 🔴 中转并进本机常驻后端，monitor 另起中转那一族删了；
-        //    中转名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
-        (
-            "tests/naming/account-vs-relay-naming.vitest.ts",
-            "start_local_relay",
-            1,
-        ),
-        // `--dial` 那条分派臂删了，守它「接得到」的判据随入口换成链路四条而改名。
-        (
-            "tests/backend/main_argv_table_guard.rs",
-            "the_dial_arm_is_actually_wired_into_the_dispatch",
-            1,
-        ),
-        // 🔴 远端全文搜索的合并搬去了前端（`views/history-search.ts::mergeSearchResults`），
-        //    Rust 那一份删了；后端那句病史（「收口前它逐字 `truncated: local.truncated`」）说的正是它为什么被改 ⇒ 第②条出路。
-        (
-            "src/backend/observe/search_query.rs",
-            "merge_search_results",
-            1,
-        ),
-        // 🔴 存盘装不进一行的改走暂存区分块之后，「打开即只读」一档与它那两句话一起删了；
-        //    `fonts.rs` 的探针来路里逐字记着那两句当初带进来的九个字 ⇒ 第②条出路：贴墓碑 ＋ 记账。
-        ("src/frontend/filewin/src/fonts.rs", "too_big_to_save", 1),
-        ("src/frontend/filewin/src/fonts.rs", "read_only_notice", 1),
-        // 🔴 拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
-        //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
-        //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
-        // 🔴 快照改走长连接（`history-tail` 给那张图）之后，
-        //    解析 `--read-session-tail` 首行 meta 的那个函数与它的两条判据一起删了；
-        //    留下的那一句说的正是「它为什么不在了」⇒ 第②条出路：贴墓碑 ＋ 记账。
-        // 🔴 〔归属 2026-09-19〕**三处，同一件事**：`inbound_client.rs` 真的挪进
-        //    `backend/control/` 了 ⇒ 那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`）
-        //    与它的僵尸检查（`the_extra_backend_files_are_not_ghosts`）**一起删掉**——
-        //    那是那张表自己那条判据逐字给的指示（「表空了 …… 连这条一起删」）。
-        //    留下的散文说的正是「它们为什么不在了」，走第②条出路：贴墓碑 ＋ 记账。
-        //    ⚠ 只登记这一条：`EXTRA_BACKEND_FILES` 是**全大写**，不合本族的死名形状
-        //    （`is_dead_name_shape` 只认全小写 snake_case）⇒ 它不进这张表，
-        //    那两处改成不带 `文件.rs::` 前缀的写法，避开另一条「符号地址还解析得了吗」。
-        // `backend_tests.rs` · `the_extra_backend_files_are_not_ghosts` 那一行摘了：那份判据文件改名重写（`backend_client_guard_tests.rs`），旧墓碑段没跟着搬。
-        // 🔴 `entry_tests` 那条判据**改了措辞**（不是删了）：
-        //    旧名断的是「空路径 ⇒ 报错里含『路径是空的』」——**那钉的是机制不是性质**。
-        //    第七刀把空路径的意思改成「开在远端 home」（去问 `sftp_realpath` 那个唯一权威，
-        //    不在入口里猜），于是它改名成 `..._asks_the_remote_for_home_and_opens_nothing_when_it_cannot`，
-        //    断的换成更强的一件。**旧名逐字留着**是为了说清「那条理由被满足了，不是被推翻了」
-        //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        // 上面那条（`an_empty_path_is_refused…` 的旧名）连同改名后的判据一起退役：开窗前那两问进了窗口进程，
-        //   两条行为判据搬去 `proc_tests`；原处留一块墓碑点两个旧名。`entry.rs` 那三个 monitor 侧函数同理。
-        (
-            "tests/frontend/shell/filewin/entry_tests.rs",
-            "an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot",
-            1,
-        ),
-        (
-            "tests/frontend/shell/filewin/entry_tests.rs",
-            "a_directory_we_cannot_list_is_an_error_not_a_blank_window",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/filewin/entry.rs",
-            "list_first_screen",
-            2,
-        ),
-        // cc-acct-iso 部署命令退役：它独用的受管路径谓词与守它的两条判据删了，点旧名的散文挂墓碑。
-        (
-            "src/frontend/shell/src/sftp.rs",
-            "is_safe_remote_managed_path",
-            1,
-        ),
-        // 那个模块名（`acct_iso_deploy`）从前还在别处当活名字出现；账号库收进后端之后它在全仓只剩墓碑，点它的散文逐处登记。
-        ("src/frontend/shell/src/lib.rs", "acct_iso_deploy", 1),
-        ("src/frontend/shell/src/sftp.rs", "acct_iso_deploy", 3),
-        ("tests/frontend/shell/sftp_tests.rs", "acct_iso_deploy", 1),
-        // `deploy_remote_acct_iso` 那条 Tauri 命令（与守它的判据文件 `acct_iso_deploy_tests`）删了：点旧名的散文挂墓碑。
-        // `("src/frontend/ui/accounts.ts", "deploy_remote_acct_iso", 1)` 摘了：空态那句「只能在终端里做」的理由整条退役（新建由后端执行），墓碑随被守的那句一起走。
-        (
-            "tests/frontend/shell/frame_query_tests.rs",
-            "acct_iso_deploy_tests",
-            1,
-        ),
-        (
-            "tests/frontend/shell/command_home_registry_tests.rs",
-            "deploy_remote_acct_iso",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "deploy_remote_acct_iso",
-            3,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "deploy_remote_acct_iso",
-            2,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "deploy_decision_truth_table",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "safe_managed_path_requires_a_marker",
-            1,
-        ),
-        // 🔴〔本机侧退役 2026-09-23〕要求「本地不需要文件管理器」，这与
-        //    `INVARIANTS §40 追加` 的「天然不对称白名单」第一条逐字一致
-        //    ⇒ 文件管理器的本机侧整条删了。下面**三条判据随它一起走**，
-        //    墓碑正文（存在过什么 · 谁裁的 · 白名单原文 · 买不到什么）住
-        //    `src/frontend/filewin/src/source.rs` 的头注。
-        //    ⚠ 点名的理由是「让随它们走掉的**检出力**有一份可读的账」——
-        //      这三条各钉一件不重复的事（阴性对照 · 同真同假 · 整条执行链）。
-        //      同轮还删了六条，那六条**刻意没点名**（名字里逐字带着 `the_local_side_…`，
-        //      点出来只是把同一句话说六遍）⇒ 它们不在这张表里，如实登记这个口径。
-        (
-            "src/frontend/filewin/src/source.rs",
-            "a_window_that_started_local_has_nowhere_to_go_back_to",
-            1,
-        ),
-        (
-            "src/frontend/filewin/src/source.rs",
-            "the_button_shows_up_exactly_when_the_jump_would_work",
-            1,
-        ),
-        (
-            "src/frontend/filewin/src/source.rs",
-            "a_real_click_on_the_go_back_button_walks_the_whole_chain",
-            1,
-        ),
-        // 🔴 同一轮：`parent_dir` 从「吃 `&Source`、两侧两个算法」收成「吃一条字符串」
-        //    ⇒ 那条判据的名字里「本机那一支」那半不成立了，改了名。旧名逐字留着。
-        (
-            "tests/frontend/filewin/source_tests.rs",
-            "walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side",
-            1,
-        ),
-        // 🔴 下面这几行全是同一件事的账：`shared/ccm` 那个 bash
-        //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
-        //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
-        //    ⇒ 按第②条出路走：加 `PROSE_NAME_TOMBSTONE` 标记 ＋ 在这里记一笔账。
-        // 🔴 `list_history_projects` 改问本机后端要 `--list-projects`
-        //    ⇒ 项目级那一段（`analyze_project_dir`）连同它唯一的调用点一起删了。
-        // 那一行（`history.rs` · `analyze_project_dir` · 1）摘了：挂那块墓碑的是 `list_history_projects` 的头注，
-        //   而那条命令本身随历史清单整轴搬进本机常驻后端删了 —— 被守的那件事（「本机不自己遍历记录树」）整轴退役，不是删线索。
-        // 🔴 `tier` 从手填改成派生之后，那条断言「手写那一半的档
-        //    不许是 `AppInstalls`」在算术上不可能再红 ⇒ 删掉判据、留下墓碑说清
-        //    「它守的那件事没丢，只是那个能填错的格子没有了」。
-        (
-            "tests/backend/footprint/registry_environment_tests.rs",
-            "a_hand_written_entry_is_never_app_installs",
-            1,
-        ),
-        (
-            "tests/frontend/shell/plugin_class_registry_tests.rs",
-            "ccm_agent_arms",
-            1,
-        ),
-        (
-            "tests/frontend/shell/plugin_class_registry_tests.rs",
-            "ccm_probe_values",
-            1,
-        ),
-        (
-            "tests/frontend/shell/polling_registry_tests.rs",
-            "ccm_fails_loudly_when_no_backend_can_be_found",
-            1,
-        ),
-        // 🔴 那一拍：「备份 → 写 → 回读 → 回滚」收成
-        //    `fenced_block::apply` 一份，拼接收成 `fenced_block::splice_in/out` 一份 ⇒
-        //    本机那份配对 helper 与远端那份回滚措辞 helper 连同它的判据一起走了。
-        //    散文留着说「它们为什么不在了」（措辞的新住址 `fenced_block::undo_note`）。
-        //    ⚠ `sftp.rs` 那块墓碑点的 `rollback_note` 不进本表：死名普查不把它算作死名
-        //    （它是 `…_matches_what_actually_happened` 的前缀），标记只记在 `REGISTERED` 里。
-        ("src/backend/assets/aliases/fence.rs", "find_block_range", 1),
-        // Windows 上「替换保住 explicit ACE」那条判据随写搬到后端
-        //   （`files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`），monitor 那边留墓碑、后端那边说来历。
-        (
-            "tests/backend/assets/aliases/block_tests.rs",
-            "install_preserves_explicit_acl_entries",
-            1,
-        ),
-        // 本机用户文件的原子写原语随「用户文件改经后端写」删了（`$PROFILE` / `.mcp.json`）。
-        // 本机分叉那份实现交给后端之后删掉的两个函数名。
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "read_jsonl_values",
-            1,
-        ),
-        // 远端删会话那道结构守卫（F11 改经远端后端删，`files-delete-session` 只收 sid）。
-        (
-            "src/backend/agents/claudecode/paths.rs",
-            "is_safe_remote_jsonl",
-            1,
-        ),
-        // 后端那份会话形状判定不再是写侧围栏，改名成它真在答的那一问（`is_session_record_*`）；
-        //   新名字的文档点两个旧名讲来历（同一行、同一块墓碑）。
-        (
-            "src/backend/agents/claudecode/paths.rs",
-            "is_protected_session_file",
-            1,
-        ),
-        (
-            "src/backend/agents/claudecode/paths.rs",
-            "is_protected_session_path",
-            1,
-        ),
-        ("src/frontend/shell/src/sftp.rs", "is_safe_remote_jsonl", 1),
-        (
-            "src/backend/assets/aliases/block.rs",
-            "atomic_write_string",
-            2,
-        ),
-        (
-            "tests/frontend/shell/write_site_registry_tests.rs",
-            "atomic_write_string",
-            1,
-        ),
-        (
-            "tests/backend/control/files_write_tests.rs",
-            "install_preserves_explicit_acl_entries",
-            1,
-        ),
-        // `write_account_aliases`（`lines` ＋ `dryRun`）退役，拆成两跳 ＋ 读回口。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "write_account_aliases",
-            3,
-        ),
-        (
-            "tests/backend/assets/aliases/aliases_tests.rs",
-            "validate_alias_line",
-            1,
-        ),
-        (
-            "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
-            "write_account_aliases",
-            1,
-        ),
-        // 「终端集成」那五条命令并进 `aliases_*` 同一族命令面；
-        //   `$PROFILE` 第二份认法 ＋ 它的遗留扫描随「候选只有一份来历」删了（`§2.3`）。散文留着说它们去了哪。
-        (
-            "src/backend/assets/aliases/block.rs",
-            "legacy_profile_paths",
-            1,
-        ),
-        (
-            "src/backend/assets/aliases/block.rs",
-            "scan_legacy_profiles",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "cc_integration_preview",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "cc_integration_status",
-            1,
-        ),
-        (
-            "tests/backend/assets/aliases/block_tests.rs",
-            "cc_integration_install",
-            1,
-        ),
-        (
-            "tests/backend/assets/aliases/block_tests.rs",
-            "cc_integration_scan_path",
-            1,
-        ),
-        (
-            "tests/backend/assets/aliases/block_tests.rs",
-            "cc_integration_uninstall",
-            1,
-        ),
-        // 远端「装/卸 ccm 助手」两条命令改名成 `install_remote_alias_block` /
-        //    `uninstall_remote_alias_block`（推入口那一半并进 `deploy_remote_backend`）。
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "install_remote_ccm_helper",
-            1,
-        ),
-        // 别名块两条命令连同头注从 `sftp.rs` 搬进 `profile_installer.rs`：
-        //    头注里那两块墓碑（`install_remote_ccm_helper` · `uninstall_remote_ccm_helper` 各一）跟着搬 ⇒
-        //    `profile_installer.rs` 的 `install_…` 1 → 2、`uninstall_…` 0 → 1；`sftp.rs` 的 `install_…` 2 → 1、`uninstall_…` 1 → 0（行删）。
-        // 远端装 / 卸那两条命令删了，头注里那两块墓碑随之走：`install_…` 2 → 1、`uninstall_…` 1 → 0（行删）。
-        (
-            "src/frontend/shell/src/sftp.rs",
-            "install_remote_ccm_helper",
-            1,
-        ),
-        // 〔删 `fenced_block::apply` 那一族〕远端 profile 读取器（`interpret_profile_read` · `read_profile_text`）
-        //    随 `RemoteFile` 落点删了（只剩远端 `ccm` 入口一个用户，那一处改走 `upload_verified`）；记事与判据墓碑里点着它们。
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "read_profile_text",
-            2,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "interpret_profile_read",
-            1,
-        ),
-        ("tests/frontend/shell/sftp_tests.rs", "read_profile_text", 1),
-        // local_backend_tests.rs 那一行（`remote_shim_carries_the_entry_name_for_the_container_path`）出列：
-        //    它挂在 MC1 那条 shim 判据的头注里，远端 shim 本身删了（落点就是后端字节），那条判据连同头注整轴退役。
-        // `verified_write.rs` 那一行（`install_remote_ccm_helper` ×2）随整份模块删了（整轴退役）。
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "install_remote_ccm_helper",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "rollback_note_matches_what_actually_happened",
-            1,
-        ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/frontend/shell/sftp_tests.rs",
-            "ccm_cli_strength_is_at_or_above_baseline",
-            1,
-        ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/frontend/shell/sftp_tests.rs",
-            "pin_t_def",
-            1,
-        ),
-        // 🔴 又一形同族的账：那个「见证型布尔」`id_from_manifest`
-        //    与守着它的判据一起删了 —— 它见证的是**一份旁挂清单在不在**，而清单是
-        //    `release.yml` 从源码常量抠出来写的标签（三个载体恒等 ⇒ 零证据，
-        //    `K-R68` · `DECISIONS.md#R26` 裁定零）。守的动作对、守的东西错。
-        //    接替它的是 `the_embedded_identity_comes_from_the_bytes_not_from_a_label`
-        //    ＋ 部署路上无条件跑的 `bytes_carry_build_stamp`。
-        //    散文里那一句留着才说得清「为什么换掉它，而不是把它写得更严」。
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/frontend/shell/sftp_tests.rs",
-            "the_identity_witness_is_derived_from_the_manifest_not_written_by_hand",
-            1,
-        ),
-        // 🔴 同一形，另一件事的账：`daemonless` 那一档整格删了
-        //    （定框 `K35`：「不要有 daemonless。没有没有后端的情况。」），
-        //    而 08-14 立的那条前提触发器 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`
-        //    **是设计好要在这一天主动红的** ⇒ 散文里那几处点名它的句子留着才说得清
-        //    「它红过、红完之后换了谁」。按第②条出路：贴墓碑 ＋ 在这里记一笔账。
-        // `launch_wire_f07_main_path_tests.rs` 里点
-        //   `the_daemonless_remote_still_needs_the_ts_fallback_renderer` 的两处墓碑删了：它们住在
-        //   「那份换人手续」与「U8c-3 前提触发器」两段头注里，那两条判据随 TS 兜底一族整条退役（被守的事整轴没了）。
-        // 🔴 **这一行删了 —— 盘上那句墓碑随被墓碑的那件事一起走了。**
-        //
-        // 它盖的是 `plan.rs::Container::avoid_collision` 的头注里那句
-        //「旧 `shared/ccm::avoid_name_collision`（`K-R48` 已删）那句
-        //  `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思」——
-        // 用来说明「`--print` 不查实时状态」这条行为是从哪继承来的。
-        // 用户 09-12 `R52` 裁定二之后**那条行为本身没了**（退让搬进 `plan::build`、
-        // 问同一张会话快照，`--print` 与真跑吐同一个名字）⇒ 连带那个字段与那句头注
-        // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
-        // 别让表替真判据挡枪」。
-        // 同上：点 `ccm_reaches_the_backend_through_one_shot_subcommands` 的那处墓碑住在
-        //   U8c-3 前提触发器的头注里，那条判据改写成只管 `create-or-attach` 两棵树之后，那段头注整段删了。
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "resolve_from_backend",
-            1,
-        ),
-        ("src/frontend/shell/src/ccm_cli_contract.rs", "pin_t_def", 1),
-        (
-            "src/frontend/shell/src/ccm_cli_contract.rs",
-            "scan_t_targets",
-            1,
-        ),
-        (
-            "tests/frontend/shell/ccm_cli_contract_tests.rs",
-            "the_avoidance_lives_in_ccm_now",
-            1,
-        ),
-        (
-            "src/backend/stream/wire.rs",
-            "hello_bytes_for_claude_are_frozen",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/lib.rs",
-            "the_ui_never_derives_the_account_id_itself",
-            1,
-        ),
-        // 🔴 下面这一批是同一件事的账：**送键与杀会话那两条桌面侧
-        //    SSH 回落删净了**（`K-R54` 逐处裁定表第 1 · 2 · 5 处），随之走掉的三个
-        //    生产符号（`build_kill_session_cmd` / `build_send_keys_remote_cmd` /
-        //    `gate_guard_expr`）与两条判据在散文里被逐字点着 —— 而那些句子说的正是
-        //    **「这个东西为什么不在了 / 它守的性质今天住哪」**，删掉的是线索不是病。
-        //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        (
-            "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-            "build_kill_session_cmd",
-            1,
-        ),
-        // 🔴 两条**新墓碑**：编排搬上后端帧面之后，两句订正段各逐字
-        //    引用了一个已经不在的名字来说明「它为什么不在了」——
-        //    `doc_claim_registry.rs` 那条判据改了名（旧名说的是「四个都还在」，
-        //    而今天四个里退役了一个）· `src/account-usage.ts` 那句讲的是
-        //    「两条路此前靠同一个命令构造器同源，今天连命令串都不存在了」。
-        //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        // `src/account-usage.ts` 整份删除（用量 ③ 轴退役）⇒ 这一行随它出表。
-        // 🔴 `src/frontend/shell/src/account_usage.rs` 那两行墓碑账**删了** ——
-        //    不是撕墓碑，是**被墓碑的那段散文随整条编排一起走了**：那份文件里
-        //    「用量探针的 shell 串」整段不存在了（编排搬上后端帧面），
-        //    连带它头注里点 `build_kill_session_cmd` 与
-        //    `emit_guarded_commands_for_e2e` 的那两句一起没了。
-        //    ⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
-        //    别让表替真判据挡枪」（同 `K-R96` 那次的处置）。
-        // `K-R56`（09-11）买的那条判据：它守的性质（**探不到就不动手**）没消失，
-        // 换住址钉在今天唯一那处实现上（`control/gate_tests.rs::both_gates_always_probe_before_they_act`），
-        // 而那一段散文必须逐字点出它的旧名字才说得清「接的是谁」。
-        (
-            // 〔步 7c 后端剖分 2026-09-19 · C 类〕那段墓碑散文随测试段搬家，处数一格没变。
-            "tests/backend/control/gate_tests.rs",
-            "the_ssh_fallback_always_probes_before_it_acts",
-            1,
-        ),
-        // 同一刀带走的 e2e 夹具产出者，与它那套跑不起来的真机验收脚本。
-        // 两条 `the_refusal_wording_matches_the_ssh_path` 改名成
-        // `…_matches_the_sibling_command`（对照面从「那条 SSH 回落」换成兄弟命令）。
-        // `the_refusal_wording_matches_the_ssh_path` 那两行（`backend_kill_tests.rs` · `backend_send_keys_tests.rs`）摘了：
-        //   前者点它的那段头注随「拒绝文案同形」那条判据退役（原处换成只点后继名的墓碑），后者整份随送键发送端删掉。
-        // 🔴 同一件事的四笔账：**读 subagent 那条路上「找」也交给后端了**
-        //    （候选枚举 / 首行时间戳 / 读 jsonl 三样本机不再自己做，改走后端既有的
-        //    `--list-subagents` ＋ `--read-session`）。随之走掉三个生产符号
-        //    （`derive_subagent_dir` / `list_meta_matches` / `load_subagent_remote`）
-        //    与一条判据（`the_remote_path_actually_asks_the_backend` —— 它只钉远端那半，
-        //    两条路收成一条之后由 `both_paths_ask_the_backend_and_reuse_the_existing_subcommands`
-        //    接住、钉的是两条）。散文里那几句说的正是**「它们为什么不在了」**
-        //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        // `tests/frontend/shell/subagent_tests.rs` 那一行摘了：那份文件随子 agent 那条命令退役删了（挑的判据搬去后端 `history_query_f07_tests.rs`）。
-        // 🔴 同一形，第三件：**「按 sid 找那份会话文件」收成一份之后，
-        //    monitor 侧那个收路径的源守卫 `validate_branch_source` 整个不在了**
-        //    （入参从路径收成 sid，找那一步走 `branch_core::find_session_file`，两侧同一份）。
-        //    这两句散文说的正是**「那道门原先长什么样、为什么今天不需要它了」** ——
-        //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        // ARCHITECTURE 那张「monitor 侧四层落地」进度表退役：那四格的落地探针与反向自检删了，原处留墓碑。
-        (
-            "tests/frontend/shell/doc_claim_registry_tests.rs",
-            "a_capability_line_has_landed",
-            1,
-        ),
-        (
-            "tests/frontend/shell/doc_claim_registry_tests.rs",
-            "layer_has_landed_at",
-            1,
-        ),
-        (
-            "tests/frontend/shell/doc_claim_registry_tests.rs",
-            "the_capability_line_landing_probe_actually_bites",
-            1,
-        ),
-        // 🔴 同一形，第四件：**cc-bus 三条与抓屏改走后端原语之后，
-        //    它们各自那个 shell 命令构造器整块删了**（`build_broadcast_cmd` /
-        //    `build_kill_cmd` / `build_capture_pane_cmd`；`build_online_cmd` 不在这里 ——
-        //    它在 `write_site_registry.rs` 的一段**字符串字面量**里还有代码侧出现）。
-        //    散文里点名它们的那几句说的正是**「它们为什么不在了」**
-        //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        // 🔴 〔删用量 09-18〕同一形，第五件：**用量 ②③ 两轴整轴退役。**
-        //    下面这几处散文全是**订正段** —— 它们逐字引用被删掉的命令名/函数名/判据名，
-        //    为的是说清「那一格的数为什么从 X 变成 Y」「那条判据为什么不在了」。
-        //    删掉这些句子＝删掉这一刀的账，而这一刀正是点名要记账的那一刀。
-        //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里逐条记账。
-        (
-            "tests/frontend/shell/capability_registry_tests.rs",
-            "emit_usage_probe_frames_for_e2e",
-            1,
-        ),
-        // `inbound_client_tests.rs` 里 `the_two_tmux_primitive_arg_builders_…` 那一行摘掉：那条判据（它的后继）
-        //   随抓屏的参数构造器一起退役，原处换成一块只点后继名的墓碑（`command_args` 那一行登记着）。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "account_usage_local",
-            3,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "aggregate_usage_all",
-            1,
-        ),
-        (
-            "tests/backend/no_timer_guard.rs",
-            "the_oneshot_watchdog_script_carries_no_loop",
-            1,
-        ),
-        // `cc_bus_tests.rs` · `build_broadcast_cmd` 那一行摘了：点它的那句在广播那条退役判据里，
-        //   广播整条迁走（组合进后端 `bus-broadcast`、说法进界面），monitor 里写面整轴退役。
-        // `cc_bus.rs` · `build_kill_cmd` 那一行摘了：monitor 那份 `cc_bus.rs` 整份收成两句共用说法，点它的墓碑段随之删了。
-        // 驾驶舱 shell 读退役：两份登记表里点那条本机读的散文、以及原靠 monitor 那份墓碑兜着的旧构造器名，就地挂墓碑。
-        // `list_remote_mcp_project_dirs`（原是 `list_mcp_project_dirs` 的远端分支，本机远端同一条 `mcp-read` 之后删了）：点它的散文就地挂墓碑。 // 2 → 1：IPC 清单里 MCP 那一段整段删了（命令进了那台后端）
-        // `mcp.rs` 删了之后，模块表里 sftp.rs 那一行留着的两处旧守卫名 ＋ 一处落点函数名成了死名（那几句本来就带墓碑）。
-        // `src/frontend/shell/src/mcp.rs` 那一行随文件删了（MCP 读写进了那台后端）。
-        // `src/frontend/ui/ipc/commands.ts` 那一行摘了：点它的那段注释随 `list_mcp_project_dirs` 包装层一起删了。
-        (
-            "tests/comms/inward/origin_tests.rs",
-            "list_remote_mcp_project_dirs",
-            1,
-        ),
-        // 列 tmux 改问后端：守那条跨 SSH 串的判据退役，原处挂墓碑。
-        ("src/backend/footprint/registry.rs", "build_online_cmd", 1),
-        (
-            "tests/frontend/shell/spawn_managed_exit_sites.rs",
-            "local_shell_read",
-            1,
-        ),
-        (
-            "tests/frontend/shell/write_site_registry_spawn_sites.rs",
-            "local_shell_read",
-            1,
-        ),
-        // `cc_bus_tests.rs` · `build_kill_cmd` 那一行摘了：理由同上一行（点它的那句在收掉那条退役判据里）。
-        //    同一件事的另一半：那条串的**出口判定**（两个哨兵 `NO_TMUX` / `NO_PANE`）
-        //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
-        //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。
-        // 🔴 `spawn_managed` 那个唯一出口把仓里三份**各自长着的**
-        //    正确做法收编了，其中两份连符号一起没了：`local_backend_host::hide_console_window`
-        //    （止血，它自己的头注就写着「A3 落地时它会被换成注入参数」）
-        //    与 `cc_bus` 的 `reap_whole_tree_on_drop` / `KillTreeGuard`。
-        //    ⇒ 两处散文逐字引用旧名字，说的正是「这三样不是新发明的」——
-        //    删掉就删掉了「同一形状出现三次」这条线索，而那是立项理由本身。
-        //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记账。
-        (
-            "src/frontend/shell/src/local_backend_host.rs",
-            "hide_console_window",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/spawn_managed.rs",
-            "hide_console_window",
-            1,
-        ),
-        // 🔴 `strip_cfg_test` 那两份就地复制的剥法退役了 ——
-        //    收进早就存在的唯一住址 `guard_core::production_source`。
-        //    那段散文逐字引用旧名字，说的正是「它为什么不在了、以及**退役的理由不是
-        //    『它变成恒等函数了』**」—— 那条预言今天还不成立，读数在那儿。
-        //    删掉这两句＝删掉这一刀的账 ⇒ 按第②条出路：贴墓碑 ＋ 在这里记一笔。
-        // 🔴 〔步 7c 剖分 2026-09-19〕**这一条是真新增的死名，不是搬住址。**
-        //
-        // `the_caller_never_gets_its_own_source_back` 是本轮**退役**的那条判据
-        //（它的前提「判据与被测代码同住一份文件」剖分后恒假）。
-        // 接它岗的是 `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split`。
-        // 那段解释里**逐字引用了旧名字**（不引就说不清换掉的是谁、为什么），
-        // ⇒ 按本条第②条出路：同一行贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        (
-            "tests/common/guard-core/lib_tests.rs",
-            "the_caller_never_gets_its_own_source_back",
-            1,
-        ),
-        ("tests/backend/readonly_guard.rs", "strip_cfg_test", 2),
-        // Windows 预检从「说没做」换成真探测（`K-R69` 的
-        //   `probe_binary_uncached`）⇒ 旧测试整条改写，头注逐字引旧名说明它为什么不在了。
-        (
-            "tests/frontend/shell/cc_bus_deploy_tests.rs",
-            "windows_says_the_precheck_did_not_happen_instead_of_staying_silent",
-            1,
-        ),
-        // 派生改走后端原语 `bus-spawn`：SSH 那条命令构造器删了（`fn_body` 头注两处
-        //   逐字引它说明抽取器当年栽在哪），「spawn 仍拒」那条判据改名（头注引旧名说明为什么改）。
-        // `cc_bus_tests.rs` · `letting_kill_broadcast_and_online_through_did_not_let_spawn_through` 那一行摘了：
-        //   点它的那句在 `K-R112` 那条「写面只经后端原语」的退役判据里，monitor 里写面整轴退役。
-        // 池子那十二条 Tauri 命令 ＋ 挂在它们名下的函数 / 判据删了；
-        //   留下的散文说的正是「它们为什么不在了」⇒ 第②条出路：贴墓碑 ＋ 记账。
-        (
-            "src/frontend/filewin/src/editor.rs",
-            "sftp_read_text_for_edit",
-            2,
-        ),
-        (
-            "src/frontend/filewin/src/lib.rs", // 原壳里 `filewin/mod.rs`（窗口独立成包，躯体随之）
-            "sftp_cancel_transfer",
-            1,
-        ),
-        (
-            "src/frontend/filewin/src/lib.rs",
-            "sftp_read_text_for_edit",
-            1,
-        ),
-        (
-            "src/frontend/filewin/src/transfer.rs",
-            "sftp_cancel_transfer",
-            1,
-        ),
-        (
-            "src/frontend/filewin/src/writeops.rs",
-            "sftp_read_text_for_edit",
-            1,
-        ),
-        // 有损目录里上传 / 搜索 / 开终端改成按字节做 ⇒ 那道出声拒的闸没了调用方、删了，原处一块墓碑。
-        (
-            "src/frontend/filewin/src/shell.rs",
-            "refused_in_lossy_cwd",
-            1,
-        ),
-        // 住址 `src/frontend/shell/src/sftp.rs` → `src/backend/dial/sftp.rs`：那段原子上传的来历随函数搬进了本机后端。
-        (
-            "src/backend/dial/sftp.rs",
-            "the_chmod_attrs_never_put_a_size_on_the_wire",
-            1,
-        ),
-        // `sftp_pool.rs` 那一处（句柄有损判定的头注里点着从前那个判文件名的函数）随它所在的
-        //   零流量复制一段整块删了 ⇒ 这一行走了（被守的那件事整段退役，不是墓碑被人擦掉）。
-        (
-            "tests/frontend/shell/filewin/boundary_tests.rs",
-            "sftp_cancel_transfer",
-            1, // 2 → 1：传输那一类的旧说明（带这块墓碑）随类别清零整行摘了
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "sftp_cancel_transfer",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "sftp_read_text_for_edit",
-            1,
-        ),
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "sftp_cancel_transfer",
-            2,
-        ),
-        (
-            "tests/frontend/shell/remote_write_registry_tests.rs",
-            "sftp_read_text_for_edit",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_family_registry_tests.rs",
-            "sftp_cancel_transfer",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_family_registry_tests.rs",
-            "sftp_read_text_for_edit",
-            1,
-        ),
-        // `tests/frontend/shell/sftp_pool_tests.rs` 那五块墓碑（`decode_editable_guards` 等五个旧判据名）
-        //   随那份判据整份重写摘了：它守的**整根轴**（池子本体的 SFTP 判据）搬进了本机后端，
-        //   新文件判的是中继，没有一句还在说那几个旧判据 ⇒ 真该没有，不是删线索。
-        // 🔴 账号清单（远端 / 本机）与信任预检三条 Tauri 命令改走通道、后端出成品：monitor 那一份行解析 ·
-        //    本机并表 · 本机信任预检三件函数随之删了；留下的散文逐字点旧名讲来历 ⇒ 第②条出路（逐处一块）。
-        ("src/backend/faces/read_face.rs", "with_apikey_table", 1),
-        ("src/frontend/shell/src/frame_query.rs", "run_list_query", 1), // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("src/backend/footprint/registry.rs", "run_list_query", 1), // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        (
-            "tests/frontend/shell/frame_query_tests.rs",
-            "run_list_query",
-            1,
-        ), // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        (
-            "tests/frontend/shell/exec_site_registry_tests.rs",
-            "run_list_query",
-            1,
-        ), // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        (
-            "tests/backend/observe/accounts_query_tests.rs",
-            "list_from_dir",
-            1,
-        ), // 本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
-        (
-            "tests/backend/observe/history_query_tests.rs",
-            "truncate_is_char_safe",
-            1,
-        ), // 摘录截断改用 search-core，旧判据名挂墓碑
-        (
-            "src/backend/agents/codex/history.rs",
-            "codex_first_user_excerpt",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "src/frontend/shell/src/history.rs",
-            "codex_first_user_excerpt",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "src/frontend/shell/src/history.rs",
-            "codex_projects_from",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "src/frontend/shell/src/history.rs",
-            "codex_session_entry",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "src/frontend/shell/src/history.rs",
-            "enumerate_codex_sessions",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        ("src/frontend/shell/src/history.rs", "local_projects_via", 1), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/backend/history/history_annotations_tests.rs",
-            "c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "codex_projects_group_by_cwd",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "history_project_camel_case_contract",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "last_account_serde_and_patch_semantics",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "the_local_project_list_is_whatever_the_backend_said",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "the_three_counts_can_say_i_do_not_know",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "truncate_chars_unicode",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑 // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
-        (
-            "tests/comms/inward/origin_tests.rs",
-            "stream_remote_history_sessions",
-            1,
-        ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
-        // acct-iso 本机 / 远端两对 Tauri 命令合成带 origin 的两条，点四个旧名的散文挂墓碑。
-        // `backend/mod.rs` · `check_local_acct_iso` 那一行摘了：那份文件随 `backend` 目录删了。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "check_local_acct_iso",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "check_remote_acct_iso",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "local_acct_iso_shellinit",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "remote_acct_iso_shellinit",
-            1,
-        ),
-        (
-            "tests/frontend/ui/ipc/commands.vitest.ts",
-            "remote_acct_iso_shellinit",
-            1,
-        ),
-        // `backendPath` 那一格删了（落点固定）⇒ 它的放行判定、卸载守卫、远端三行入口与守它们的几条判据一起走；点旧名的散文挂墓碑。
-        // `acct_iso_deploy.rs` 那一块随整份文件删了（字节随后端二进制走）。
-        (
-            "src/backend/footprint/registry.rs",
-            "is_safe_remote_backend_path",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "is_safe_remote_backend_path",
-            1,
-        ),
-        (
-            "tests/frontend/shell/local_backend_tests.rs",
-            "remote_shim_sets_no_environment_of_its_own",
-            1,
-        ),
-        (
-            "tests/frontend/shell/lib_invariant_population_tests.rs",
-            "every_read_of_the_backend_path_field_is_registered",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "both_remote_path_sinks_still_ask_their_fence",
-            1,
-        ),
-        (
-            "tests/frontend/shell/sftp_tests.rs",
-            "the_remote_ccm_entry_is_an_entry_not_an_implementation",
-            1,
-        ),
-        // 本机单文件：逐字节副本与带 build_id 的释放名退役。
-        (
-            "src/frontend/shell/src/local_backend.rs",
-            "local_extract_name",
-            1,
-        ),
-        (
-            "tests/frontend/shell/local_backend_tests.rs",
-            "the_local_ccm_entry_is_a_copy_of_the_backend_itself",
-            1,
-        ),
-        (
-            "tests/frontend/shell/local_backend_tests.rs",
-            "the_resolution_path_really_puts_the_local_ccm_entry_down",
-            1,
-        ),
-        // 分流收成 `route`：抢词表的判据退役。
-        (
-            "tests/backend/control/ccm_tests.rs",
-            "under_the_name_ccm_only_backend_first_words_reach_the_backend",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/ui_contract.rs",
-            "list_active_sessions",
-            1,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "src/frontend/shell/src/event_replay.rs",
-            "buffered_local_session_ids",
-            1,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "src/frontend/shell/src/event_replay.rs",
-            "buffered_remote_sessions",
-            1,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "tests/frontend/shell/event_replay_tests.rs",
-            "buffered_local_session_ids",
-            1,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "tests/frontend/shell/event_replay_tests.rs",
-            "buffered_remote_sessions",
-            1,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "list_active_sessions",
-            2,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "list_session_activity",
-            2,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "tests/frontend/ui/tabs.vitest.ts",
-            "list_active_sessions",
-            2,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "src/frontend/shell/src/ccm_probe.rs",
-            "build_local_posix_command",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "tests/frontend/shell/local_backend_host_tests.rs",
-            "the_launch_side_really_asks_the_backend_and_uses_its_answer",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "tests/frontend/shell/local_backend_host_tests.rs",
-            "the_production_relay_facts_are_those_take_points",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "the_two_launch_rows_no_longer_carry_the_two_falsified_clauses",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "tests/frontend/shell/utils_tests.rs",
-            "local_launch_choice",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "tests/frontend/shell/local_read_surface_registry_tests.rs",
-            "tmux_raw_registry",
-            1,
-        ), // tmux 快照帧删后这本旧账名只剩订正段
-        ("src/backend/common/tmux_utf8.rs", "parse_tmux_ls", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "src/backend/observe/tmux_observe.rs",
-            "tmux_tab_underflow",
-            1,
-        ), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "tests/frontend/shell/cross_half_edge_registry.rs",
-            "backend_watcher_src",
-            1,
-        ), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "tests/frontend/shell/inbound_client_tests.rs",
-            "capture_pane_args",
-            1,
-        ), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
-            2,
-        ), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "tests/backend/dial_probe_tests.rs",
-            "the_control_probe_writes_nothing_to_an_old_backend",
-            1,
-        ), // 测试连接搬进本机后端，旧名挂墓碑
-        (
-            "src/backend/agents/codex/parse.rs",
-            "codex_sid_from_rollout",
-            1,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        // `adapter.rs` 的 `codex_sid_from_rollout` · `kind_of_record_name` 两行摘了：那份文件删了。
-        (
-            "src/frontend/shell/src/frame_query.rs",
-            "parse_session_lines",
-            1,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        (
-            "tests/backend/observe/record_page_tests.rs",
-            "parse_for_kind_dispatches_claude_and_codex",
-            1,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        (
-            "tests/frontend/shell/history_tests.rs",
-            "require_cfg_by_label",
-            1,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        // 起会话只交一行 `ccm …`：载荷那一层（外层渲染 · 配置目录判定 · PowerShell 中转前缀）、读全量注入开关那条 Tauri 命令删了，
-        //   远端 `ccm` 探针那个旧命令名最后一处活提名（执行器套件的替身串）随套件重写没了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
-        ("src/frontend/shell/src/ccm_probe.rs", "probe_ccm_cli", 1),
-        (
-            "src/frontend/shell/src/lib.rs",
-            "relay_all_sessions_switch",
-            1,
-        ),
-        ("tests/frontend/shell/parity_ledger.rs", "probe_ccm_cli", 1),
-        (
-            "tests/frontend/shell/exec_site_registry_tests.rs",
-            "probe_ccm_cli",
-            2,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "probe_ccm_cli",
-            4,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "relay_all_sessions_switch",
-            3,
-        ),
-        (
-            "tests/frontend/shell/utils_tests.rs",
-            "relay_env_prefix_ps",
-            1,
-        ),
-    ];
-
-    assert_tombstone_table_frozen(
-        "TOMBSTONED",
-        &TOMBSTONED
-            .iter()
-            .map(|(p, n, c)| (format!("{p} · {n}"), *c))
-            .collect::<Vec<_>>(),
-        &frozen_table("TOMBSTONED"),
-    );
-
     let corpus = dead_name_corpus();
     let (code_names, disk) = dead_names_on_disk(&corpus, DEAD_NAME_MIN_UNDERSCORES);
 
@@ -4082,16 +2460,15 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         code_names >= 2500,
         "代码侧只抽到 {code_names} 个 snake_case 名字 —— 剥法或遍历坏了（09-03 现打 3011）"
     );
-    let hits: usize = disk.values().map(|(u, t)| u + t).sum();
+    let hits: usize = disk.values().sum();
     // ★ 抽取器自检 2：注释侧塌了 ⇒ 本条零命中地绿（`ScanReport::require` 那条纪律）。
     assert!(
-        hits >= 60,
-        "只抽到 {hits} 处「只活在散文里的名字」—— 抽取器坏了（09-03 现打 84 处 / 58 个名字）"
+        hits >= 20,
+        "只抽到 {hits} 处「只活在散文里的名字」—— 抽取器坏了（现打 27 处）"
     );
 
     let mut newly: Vec<String> = Vec::new();
-    let mut tombs: Vec<String> = Vec::new();
-    for ((path, name), (undeclared, tombstoned)) in &disk {
+    for ((path, name), undeclared) in &disk {
         let want = INVENTORY
             .iter()
             .find(|(p, n, _)| p == path && n == name)
@@ -4100,16 +2477,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         if *undeclared != want {
             newly.push(format!(
                 "  {path}  `{name}`  盘上 {undeclared} 处，登记表写 {want} 处"
-            ));
-        }
-        let want_t = TOMBSTONED
-            .iter()
-            .find(|(p, n, _)| p == path && n == name)
-            .map(|(_, _, c)| *c)
-            .unwrap_or(0);
-        if *tombstoned != want_t {
-            tombs.push(format!(
-                "  {path}  `{name}`  盘上 {tombstoned} 处带墓碑，登记表写 {want_t} 处"
             ));
         }
     }
@@ -4123,31 +2490,21 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
              ⇒ 两条出路：\n\
              ① **把话改成现状** —— 点今天真的那个符号（`文件·rs::函数名`），\
              它的真伪由 `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\
-             那句话若只是在说「这个东西不在了」，删掉它就是改成现状。不挂墓碑、不登记（墓碑表已冻结）；\n\
+             那句话若只是在说「这个东西不在了」，删掉它就是改成现状；\n\
              ② 那个名字是**仓外**的（std / 第三方 / 内核 / 另一个仓）⇒ 加进 `INVENTORY`，\
              并在提交信息里写清它住在哪儿。",
         newly.join("\n")
     );
-    assert!(
-        tombs.is_empty(),
-        "墓碑登记对不上盘面：\n{}\n\n\
-             ⇒ 盘上多了 ⇒ 墓碑不许再挂：把那句话改成现状、去掉标记；\
-             盘上少了（有人把那句话改成了现状）⇒ 把表里那一格减掉，冻结数同拍往下改。",
-        tombs.join("\n")
-    );
-
-    // ★ 两张表的保鲜自检：登记的那一处盘上已经没有了 ⇒ 删掉它，别让表替真判据挡枪。
+    // ★ 登记表的保鲜自检：登记的那一处盘上已经没有了 ⇒ 删掉它，别让表替真判据挡枪。
     let gone: Vec<String> = INVENTORY
         .iter()
-        .map(|(p, n, _)| ("存量", *p, *n))
-        .chain(TOMBSTONED.iter().map(|(p, n, _)| ("墓碑", *p, *n)))
-        .filter(|(_, p, n)| !disk.contains_key(&(p.to_string(), n.to_string())))
-        .map(|(k, p, n)| format!("  [{k}] {p}  `{n}`"))
+        .filter(|(p, n, _)| !disk.contains_key(&(p.to_string(), n.to_string())))
+        .map(|(p, n, _)| format!("  {p}  `{n}`"))
         .collect();
     assert!(
         gone.is_empty(),
         "这几条登记盘上已经没有了 —— **把它们从表里删掉**\
-             （多半是有人把那句话改对了，那是好事；墓碑表那几行删了，冻结数同拍往下改）：\n{}",
+             （多半是有人把那句话改对了，那是好事）：\n{}",
         gone.join("\n")
     );
 }
@@ -4223,7 +2580,7 @@ fn the_dead_name_scanner_really_sees_each_shape() {
     let (_, dead) = dead_names_on_disk(&[("a.rs".to_string(), prose.clone())], min);
     assert_eq!(
         dead.get(&("a.rs".to_string(), n.clone())),
-        Some(&(1, 0)),
+        Some(&1),
         "散文里点名、代码里零出现 —— 这一处没进人群，闸就是死的：{dead:?}"
     );
     let with_code = format!("{prose}fn {n}() {{}}\n");
@@ -4233,638 +2590,13 @@ fn the_dead_name_scanner_really_sees_each_shape() {
         "代码里有这个名字了，它还留在人群里 ⇒ 本条会去红一堆活着的符号：{dead:?}"
     );
 
-    // ⑦ 🔴 **墓碑真的被读了**（`KR20D1` 的死值验就切这一格）：
-    //    同一行加上标记 ⇒ 那一处记进「已声明」那一格，而不是「未声明」。
-    let tombed = format!(
-        "/// 原先写的是 {tick}{n}{tick}{mark}，已删。\npub fn f() {{}}\n",
-        mark = PROSE_NAME_TOMBSTONE
-    );
-    let (_, dead) = dead_names_on_disk(&[("a.rs".to_string(), tombed)], min);
-    assert_eq!(
-        dead.get(&("a.rs".to_string(), n.clone())),
-        Some(&(0, 1)),
-        "带墓碑的那一处没被记进「已声明」—— 标记根本没被读，那它就是个装饰：{dead:?}"
-    );
-
-    // ⑧ `.md` 整份算散文；其余扩展名整份算代码（`.json` 里的名字是**定义**，不是提法）。
+    // ⑦ `.md` 整份算散文；其余扩展名整份算代码（`.json` 里的名字是**定义**，不是提法）。
     let md_text = format!("见 {tick}{n}{tick}\n");
     let md_rows = dead_name_split("a.md", &md_text);
     assert!(md_rows[0].1.is_empty() && md_rows[0].2.contains(n.as_str()));
     let json_text = format!("{{\"k\": \"{n}\"}}\n");
     let json_rows = dead_name_split("a.json", &json_text);
     assert!(json_rows[0].2.is_empty() && json_rows[0].1.contains(n.as_str()));
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// `P14`：**[`PROSE_NAME_TOMBSTONE`] 这个标记本身有没有账**（`α3` 刀 C 那个没红的读数）
-// ══════════════════════════════════════════════════════════════════════
-
-/// 本条的语料面：**两棵互不包含的根**（`src` ＋ `tests`），`(仓根相对路径, 原文)`。
-///
-/// # 🔴 为什么**刻意不与** [`dead_name_corpus`] 共用
-///
-/// 那一份为了让**死名**人群成立，按构造做了四件事：摘掉 `tests/evidence/`、
-/// 摘掉 vendored 代码、摘掉判词自己那一份、再把 `src/frontend/shell/build.rs` 显式收第二遍。
-/// 本条数的是**标记的处数** —— 上面每一条摘除都会让某几处标记**掉出人群**，
-/// 而「掉出人群」在本条正是要逮的那件事（掉出去 ⇒ 删掉它不红 ⇒ 静默可删）。
-/// ⇒ 这里**一处都不摘，也不重复收任何文件**：人群就是文件系统全集。
-///
-/// ⚠ **它按构造看不见的那一格，如实写明**：[`guard_core::scan_tree_excluding`]
-/// 收的是**文本**语料，非 UTF-8 的字节流它跳过（那个原语的头注逐字写着理由）。
-/// 一处标记按定义是 UTF-8 文本，所以这一刀在本条上零损失 —— 但别把它读成
-/// 「本函数看得见这两棵树下的每一个文件」。
-fn tombstone_mark_corpus() -> Vec<(String, String)> {
-    let root = addr_repo_root();
-    let mut out: Vec<(String, String)> = Vec::new();
-    for sub in ["src", "tests"] {
-        for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], &[]) {
-            out.push((dead_name_rel(&root, &p), src));
-        }
-    }
-    out
-}
-
-/// ★★ **每一处 [`PROSE_NAME_TOMBSTONE`] 标记都有账；想挂却挂歪了的也有账。**
-///
-/// 头注（买到什么 · 买不到什么 · 为什么人群必须是全集 · 为什么 `P14` 的第一个出口
-/// 做不得）住生产侧模块那三个抽取器上（[`prose_tombstone_core`] ·
-/// [`prose_tombstone_marks`] · [`prose_tombstone_near_misses`]），
-/// 以及 [`PROSE_NAME_TOMBSTONE`] 头注那段订正。**这里不抄第二份。**
-#[test]
-fn every_prose_tombstone_mark_is_registered() {
-    /// **标记普查**：`(仓根相对路径, 标记处数)`。人群 = 文件系统全集，**逐格相等**。
-    ///
-    /// ⚠ **表名叫 `REGISTERED` 不是随手起的。** `scanning_guard_registry` 那条纪律逐字：
-    /// 「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的
-    /// 名字之一」—— 起了别的名字，`every_registry_guard_keeps_its_reverse_half`
-    /// **看不见本条**，而「它看过了、过了」与「它压根没去看」在输出上一模一样。
-    ///
-    /// 🔴 **冻结**：只许减，不许加行、加数（逐格不超过冻结点快照 `tests/__fixtures__/tombstone-freeze.tsv`）。
-    /// 一句挂着墓碑的话改成了现状、标记去掉了 ⇒ 这里减掉那一格，别的数不用动。
-    const REGISTERED: &[(&str, usize)] = &[
-        // 新行三条：gate-core 收成后端模块 `control/gate_rules.rs`（零调用方的 `needs_remote_sid` 原处一块）·
-        //   后端 `exact_target` 的头注点 monitor 那份旧壳 · monitor 那条转调判据翻成「monitor 一道门都没有」。
-        ("src/backend/control/gate_rules.rs", 1),
-        ("src/backend/control/launch.rs", 1),
-        ("tests/frontend/shell/gate_singleton_guard_tests.rs", 1),
-        // 新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
-        ("src/frontend/shell/src/remote_resident.rs", 1),
-        // 新行四条：界面按工具名 / 命令名判的四个谓词删了（卡型随记录成品、tmux 那一格随 `tmux-list` 带来），原处各一块。
-        // `src/frontend/ui/cards/interactive.ts` 那一行摘了：点旧谓词名的那句删了（卡型随记录成品带来，头注已说）。
-        // `src/frontend/ui/cards/subagent.ts` 那一行摘了：那张卡整份重写成按运行读的通用卡，点旧判定名（按工具名认 agent 工具）的散文随之没了。
-        // `src/frontend/ui/tmux-sessions.ts` 那一行摘了：那份改名 `sessions-where.ts`，点旧过滤名的散文随之没了。
-        // 全景「那台要哪一格」那两块墓碑（`byte_table.rs` · `deploy_plan.rs` 各一）随那一问整个删了（代码全景整条摘掉）。
-        ("tests/frontend/shell/rust_timer_registry_tests.rs", 1), // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
-        ("src/frontend/shell/src/bind.rs", 1), // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
-        ("src/backend/observe/tmux_observe.rs", 2), // 3 → 2：格式串那句头注改成现状（窗格级 sid · 会话句柄），点 `parse_tmux_ls` 的那一处去掉了 // 住址随 A 块从 watcher.rs 搬来（三处标记全在 A 块里） // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 3 // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
-        // config.json 写口从整份（`save_config` / `saveConfig`）换成按键补丁、`remote-config.ts` 那个整表写函数
-        //   换成只出补丁的 `remoteEdit`：讲来历的散文逐处一块（配置写口的头注 · 诊断写口 · 远端保存那段 · 各判据头注），
-        //   以及 KS7 那一格为什么改盯 `patch_config`。
-        ("src/frontend/shell/src/logging.rs", 1),
-        ("tests/frontend/ui/config-lost-update.vitest.ts", 1),
-        ("tests/frontend/ui/remote-config.vitest.ts", 1),
-        ("tests/frontend/ui/settings/remote-section.vitest.ts", 1),
-        // 重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
-        //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
-        ("src/frontend/shell/src/event_replay.rs", 7), // 6 → 7：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // +1：远端 sid 清单改名（连同 origin 一起交）那一块 +1：头注点名退役的裸事件常量那一块
-        // 本机凭据文件的写者换成本机常驻后端：monitor 那侧写口 · `platform::fs::make_private` ·
-        //   「本机那一臂不发帧」判据退役，讲来历的散文逐处一块；搬去后端的三条判据的出处各一块。
-        ("src/frontend/shell/src/config.rs", 1), // 2 → 1：`atomic_replace` 头注里那一处随函数进了 `platform/fs.rs` //+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
-        ("src/frontend/shell/src/creds_store.rs", 5), // 6 → 5：读侧掩码退役那一块随 `apikey-read` 删了 // +2：两处「GP1 那一版经 `write_key_on`」
-        ("src/frontend/shell/src/platform/fs.rs", 2), // 1 → 2：`atomic_replace` 从 `config.rs` 搬来，头注那一处随之
-        ("src/frontend/shell/src/platform/spawn.rs", 1), // 随 `spawn_managed.rs` 的平台原语搬来的那一块
-        ("src/frontend/shell/src/platform/terminal.rs", 1), // 5 → 1：POSIX 那一半重写（挑终端），旧头注连同四处墓碑删了 // 6 → 5：点「中转取点只经接缝」那条旧判据的那块改写成说今天的去向（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）） // 0 → 6：开窗的平台臂从 `launch.rs` 搬来，头注里的六处随之
-        (
-            "tests/backend/accounts/upstream_select/file_face_tests.rs",
-            6,
-        ),
-        ("tests/backend/relay/server_tests.rs", 1), // 2 → 1：点载荷那一侧旧判据名的那块随中转地址改由 `ccm` 定走了 // 1 → 2
-        ("tests/frontend/shell/creds_store_tests.rs", 10), // 11 → 10：读侧搬后端那一块随 `apikey-read` 删了 // 2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
-        // `jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
-        //   状态消费者矩阵那一行一块。
-        ("src/frontend/shell/src/ui_contract.rs", 2), // 1 → 2：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
-        // `parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
-        ("tests/frontend/shell/lib_remote_config_tests.rs", 2), // +1：JA1 点址那一行
-        // `inproc_dial.rs` 整份删了（界面进程零 SSH）⇒ 从界面侧搬来的旧函数名全仓只剩散文：
-        ("src/backend/dial/connect.rs", 2), // 头注「搬自」那一句里跳板 · agent 鉴权两个旧名
-        ("src/backend/platform/ssh_agent.rs", 1), // 头注「搬自」那一句里 agent 鉴权旧名
-        ("tests/frontend/shell/local_origin_registry_tests.rs", 0),
-        // `sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随那 14 处全搬完退役：点它名字的两处旁注各一块。
-        // `backend/control/mod.rs` 那一行摘了：随 `backend` 目录删了。
-        ("tests/backend/footprint/registry_tests.rs", 2), // 1 → 2：两个现算口从生产段搬来、旧住址那一句
-        // 后端那份 SFTP：原子上传的来历随函数从 monitor 搬来（改权限那条旧判据名一块）。
-        ("src/backend/dial/sftp.rs", 1),
-        // creds-core 头注里「远端那一侧」那段：原子上传与读回比对的住址搬了，两处旧名挂墓碑。
-        ("src/common/creds-core/src/lib.rs", 2),
-        // 中转并进本机常驻后端，monitor 另起中转那一族删了；中转名字表那一行注释挂一块。
-        ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
-        // 「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
-        ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
-        // 本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
-        //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
-        // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        (
-            "tests/frontend/shell/local_read_surface_registry_tests.rs",
-            5,
-        ),
-        // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
-        //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
-        //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
-        //   而本文件按构造被摘出了死名语料）· `byte_cap_registry_tests` ·
-        //   `tests/evidence/` 两份量具脚本（针，不是墓碑）。合 15 处。
-        // 🔴 〔波 1 合并时补〕`P19` 那一拍删 `TARGET_GAPS` 的 `agent` 豁免时留了墓碑
-        //   正文、也写了那四个字，**却没把标记挂上** ⇒ 本条当场红在「挂歪了」那一格。
-        //   那是这条判据落地后第一次真逮到东西，而逮到的是**同一波另一路**的产出。
-        ("src/backend/lib.rs", 2), // 1 → 2：`BUILD_ID` 谱系里全景那一代的 op 名挂墓碑（小程序整棵删了）
-        // 规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
-        // 1 → 4：本机原语 `LocalFile` 与它的同步门面 `apply_local` 随「用户文件改经后端写」
-        //   整块走了，头注一处 ＋ 原住址一块墓碑（两个名字）= +3。
-        ("src/backend/assets/aliases/fence.rs", 7), // 〔删 `fenced_block::apply` 那一族〕5 → 7：序列墓碑一行两块（`apply` · `Store` · `Applied` · `undo_note` 四处）进、`LocalFile` · `apply_local` 那一行出 // 4 → 5：「拼接写过三份」那一段点代装 rc 那一跳（已退役）的旧名
-        // F11 改经远端后端删：远端那一支的头注一块（住址并进 C4a 那一行，两边各 +1）。
-        // 本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
-        // `remote_branch.rs` 那一行随文件删了（分叉的 monitor 这一侧整份退役，界面经通道直说那台后端）。
-        // 远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
-        ("src/backend/agents/claudecode/paths.rs", 4), // +2：桥那一份逐字副本删了，讲它的两句挂墓碑 // // +1：会话形状判定改名（`is_session_record_*`），旧名挂一块
-        ("tests/frontend/shell/history_tests.rs", 10), // 9 → 10 // +1：configDir 判据头注原先「照抄 TS 侧」那句 // +2：本机分叉那几组判据换掉时留的块 ·本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
-        // 项目 `.mcp.json` 的本机写原语删了（改经后端写）。
-        // `src/frontend/shell/src/mcp.rs` 那一行随文件删了（MCP 读写进了那台后端）。
-        // 写点表摘掉那三行时留的一块。
-        ("tests/frontend/shell/write_site_registry_tests.rs", 7),
-        // 「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`
-        //   （住址并进 FW5 那一行，两边各 +1）。
-        // Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
-        ("tests/backend/control/files_write_tests.rs", 2), // +1：两份围栏逐字相等那一条退役 //
-        ("tests/backend/assets/aliases/block_tests.rs", 5), // 6 → 5：rc 裸行指名那一族删了，判据头注那句墓碑随之走 // 〔删 `fenced_block::apply` 那一族〕+1：一口判据头注点 `fenced_block::apply` // 1 → 5（`ProfileKind::Custom` · 「终端集成」三条命令名两行 · `scan_legacy_profiles`，逐处挂墓碑）
-        // `inproc_dial.rs` 那一行摘了：**那份文件整份删了**（SFTP 进本机常驻后端，界面进程零 SSH），
-        //   它那块墓碑（端口转发用的 russh 句柄别名）随被守的那件事整轴退役。
-        // `--dial` 删了那一拍：守它的判据改名留的墓碑 · C2 那份读数脚本头上
-        //   那句「界面侧判据随之改名」（它点名的判据 SR1a 改了名，脚本本身只对 C2 那一版有效）。
-        ("tests/backend/main_argv_table_guard.rs", 1),
-        // +3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
-        ("src/frontend/shell/src/sftp.rs", 11), // 8 → 11：标记读写 · 比标记 · 受管路径谓词三处随 cc-acct-iso 部署命令删了，各留一块 // // 7 → 8：`ccm` 入口那一段（`put_ccm_entry` · `CCM_CLI_REMOTE_PATH`）删了，原地一块（两个名同一块只算一处） // 〔删 `fenced_block::apply` 那一族〕8 → 7：`rollback_note` · `SftpFile` 两块随读取器 / 落点原语删了，`put_ccm_entry` 头注进一块 `fenced_block::apply` // 10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
-        ("src/backend/assets/aliases/block.rs", 7), // 10 → 7：rc 裸行指名那一族（`LegacyRcKind` · 提示那段话）删了，模块头表与扫描头注三句墓碑随之走 // 11 → 10：PowerShell 别名块不再带 `function cc`（`cc` 进了清单），讲它怎么生成、`cct` 为什么不生成的那段散文整段退役，`AccountAliasReport` 那一句随之走 // 13 → 11：远端装 / 卸别名块两条命令删了，头注两块墓碑随之走 // 11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // +1：`AccountAliasReport` 那一句 · +3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
-        // 〔删 `fenced_block::apply` 那一族〕`src/frontend/shell/src/verified_write.rs`（3）与 `tests/frontend/shell/verified_write_tests.rs`（1）两行摘掉：整份模块零调用方删了（整轴退役），
-        //   它的墓碑说的那几件（`install_remote_ccm_helper` 两块 · `verify_and_rollback`）另有住址记着。
-        // +2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
-        ("tests/frontend/shell/remote_write_registry_tests.rs", 14),
-        // `CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
-        ("tests/frontend/shell/local_backend_tests.rs", 3), // 2 → 3：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 1 → 2：两条副本判据删了，原地一块 //,
-        // 别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
-        // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
-        // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
-        // 2 → 1、`shell_dialect.rs` 0 → 1：`ccmInvocation` 那一句随 POSIX 读回（`parse_line`）搬进方言模块，墓碑跟着搬，总数不变。
-        ("src/backend/assets/aliases/mod.rs", 1), // +1：`ccmInvocation` 那一句（搬走了，剩 `buildAliasLine` 那一块）
-        ("src/backend/platform/shell/dialect.rs", 2), // 住址 `assets/aliases/` → `platform/shell/`，块数不变 // 搬进后端 +1：`look_on_path` 那一格随规则住进那台后端退役 //
-        ("tests/backend/assets/aliases/aliases_tests.rs", 1),
-        ("tests/frontend/ui/settings/panel-deferred-io.vitest.ts", 1),
-        ("src/backend/stream/wire.rs", 2), // 1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
-        // +2：`install_remote_ccm_helper` 改名那两行。
-        // 6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
-        //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
-        ("src/frontend/shell/src/cc_bus.rs", 1), // 19 → 1：驾驶舱读面迁走、整份收成两句共用说法，旧墓碑段随之删，新头注一处 // 11 → 19：−1 点杀会话发送端那条理由的一处随收掉命令删了；＋9 写面五条迁到界面，原处两块墓碑 ＋ 更早几块墓碑里「换了住址」指向的住址也走了、逐行补标 // +1：点 monitor 杀会话发送端那条读 `killed` 的理由，发送端迁到界面
-        // +1：`install_remote_ccm_helper` 改名。
-        ("src/frontend/shell/src/local_backend.rs", 12), // 主线 5 ＋ MIG-1 本路增量 ⇒ 12（盘上现打） // 3 → 5：逐字节副本 `install_local_ccm_entry` 与带 id 的释放名 `local_extract_name` 删了，点旧名处各一块 //, // 2 → 3：`ccm_entry_shim` 删了，原地留一块
-        // `launch_render/payload.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
-        ("src/frontend/shell/src/cc_bus_deploy.rs", 2), // +1：装与三态那两条 Tauri 命令进后端，头注留墓碑 //
-        ("src/frontend/shell/src/ccm_cli_contract.rs", 1),
-        // 🔴〔本机侧退役 2026-09-23〕文件管理器「本机」那一侧整条退役，
-        //   `source.rs` 的头注上留了一块墓碑：**4 处标记**（一处是墓碑正文那一句，
-        //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
-        //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
-        ("src/frontend/filewin/src/source.rs", 5), // 4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("src/frontend/filewin/src/fonts.rs", 2), // 0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
-        ("src/frontend/shell/src/history.rs", 6), // 7 → 6：读一整份会话那条 Tauri 命令不再点名（整份读随查看器改成骨架 ＋ 按视口取没了）
-        ("src/frontend/shell/src/launch.rs", 2), // 8 → 2：六处随开窗的平台臂进了 `platform/terminal.rs` //7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 1 → 7
-        ("src/frontend/shell/src/lib.rs", 33), // 35 → 33：读状态 · 表里有没有行那两块墓碑随 `apikey-read` / `apikey-routing` 删了 // 36 → 35：`push_public_key` 注册旁那块删了 // 37 → 36：全景问 · 写 · 撤那一跳的墓碑随代码全景整条摘掉删了 // 35 → 37：`mod agent_dispatch_registry;` 那一行换成一块墓碑 ＋ 跨轨对拍锚点 `agent_profile_parity` 那一句挂一块 // 31 → 35 // 30 → 31：足迹三个 mod 删了那一块 // 29 → 30：`mod panorama_call;` 换成一块墓碑 // +2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // +1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 16 → 17
-        ("src/frontend/shell/src/local_backend_host.rs", 3), // 〔🔴-3〕+1：中转「在不在」那一行原先点着已删的回环探针，改成今天由后端答、旧名留一块 // +1：`relay_running` 一族退役那一块 // +1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）// −1：宿主不再铸钥匙，`fresh_token` 连同那一块删了
-        // monitor 自己那份本机判活整份删了（本机活会话表改由本机后端的帧喂），头注点旧实现的几个名字各挂一块。
-        // `src/frontend/shell/src/session_map.rs` 那一行摘了：那份文件整删（会话账本搬进后端）。
-        // 只为本机读盘服务的适配器门面零调用方、删了：原处一块 ＋ 两处点旧名的散文 ＋ 判据头注一块。
-        // `src/frontend/shell/src/adapter.rs` 那一行摘了：monitor 那份适配表整删（起会话事实只住后端适配层）。
-        ("src/backend/agents/claudecode/resume.rs", 1), // 新贴：头注点 monitor 那份适配器的旧住址
-        // `tests/frontend/shell/adapter_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/frontend/shell/local_origin_registry.rs", 4),
-        ("src/frontend/shell/src/spawn_managed.rs", 5), // 6 → 5：`LifetimeGuard` 的 Drop 那一块随平台原语搬进 `platform/spawn.rs`（那边 +1） // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // +2：一次性本机查询那一格删了，点旧名的散文挂墓碑
-        ("src/frontend/shell/src/structural_scan.rs", 1),
-        // +3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
-        //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
-        // +1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
-        ("tests/backend/control/gate_tests.rs", 1),
-        ("tests/backend/no_timer_guard.rs", 1),
-        // 2 → 3：远端写那一层「今天一处远端写都没有」那条判据改写成
-        //   「只住一份文件、只许两处」，旧名留一块墓碑（`TOMBSTONED` 同拍登记）。
-        ("tests/backend/readonly_guard.rs", 3),
-        ("tests/frontend/shell/backend_kill_tests.rs", 2), // 3 → 2：`@ccm_sid` 那份旧白名单的墓碑住在载荷那条建会话路径的理由里，那一条随载荷那一层删了 // +1：`@ccm_sid` 原先那份白名单 // +1：头注点删掉的发送端 ＋ 拒绝文案那条退役的墓碑（原那一块换成它）
-        // `tests/frontend/shell/backend_send_keys_tests.rs` 那一行删了：整份随送键发送端迁到界面删掉（它钉的 mode 名 / 拒绝文案搬到界面与跨语言金样）。
-        ("tests/frontend/shell/cc_bus_deploy_tests.rs", 1),
-        // 2 → 7：`fn_body` 头注两处点那个删了的构造器 · 写面判据头注两处点那句删了的拒绝 ·
-        //   改名那条判据头注里一处旧名。
-        ("tests/frontend/shell/cc_bus_tests.rs", 1), // 22 → 1：读面判据随 shell 读退役，只剩头注一处 // 7 → 22：写面五条迁到界面，钉它们的 18 条判据退役（两块整段墓碑逐行标）＋ 更早几块墓碑里指向它们的住址逐行补标
-        ("tests/frontend/shell/inbound_client_tests.rs", 5), // 4 → 5：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // +3：`launch_args` 两条对拍退役 ＋ e2e 那条改指金样，原处与点旧名的散文各一块
-        // `launch_wire_f07_main_path_tests.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
-        // `backend_tests.rs` 那一行摘了：改名重写成 `backend_client_guard_tests.rs`（下一行）。
-        ("tests/frontend/shell/backend_client_guard_tests.rs", 3), // 新行：头注里三块（旧文件名 · 旧登记表 · 旧层判据文件）
-        ("tests/frontend/shell/byte_cap_registry_tests.rs", 5), // 6 → 5：查看器整份读那一道上限那一行出列（随 `whole` 删了）
-        // `hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
-        ("src/backend/footprint/rows.rs", 2), // 3 → 2：成品那一格改名 `agent_home` 之后旧名彻底死了，点它的那句改成现状。1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
-        // `tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行随整份判据文件删了（它守的围栏与部署命令一起退役）。
-        ("tests/frontend/shell/capability_registry_tests.rs", 1),
-        ("tests/frontend/shell/ccm_cli_contract_tests.rs", 1),
-        // 🔴 〔波 1/2 合并时补〕`P16㈢` 那一拍把「十一条全绿而归属待裁」那张表退役了，
-        //   并在原位留了一块墓碑（三句齐：为什么有 · 谁裁的 · 所以它走了）。
-        //   ⚠ 那块墓碑**刻意没点任何死符号的名字** ⇒ 它不需要 `TOMBSTONED` 加行，
-        //   只需要本表这一行 —— 两张表守的是两件事，别混。
-        // 🔴 〔波 4 合并时补〕`filewin/editor.rs` 那一段记的是**一个被现打证伪的旧读数**
-        //   （「26 万字节排一帧 16.3 ms」是 debug 档 ＋ 全新 Context 的第一帧；release 是 2.5 ms）。
-        //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
-        ("src/frontend/filewin/src/editor.rs", 3), // 1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("tests/frontend/shell/comm_boundary_registry_tests.rs", 1), // 3 → 1：登记表头注那个公开名字与「全绿待裁」那块墓碑随成员改由 crate 定义删了
-        ("tests/common/guard-core/lib_tests.rs", 1),
-        ("tests/frontend/shell/doc_claim_registry_tests.rs", 1), // 3 → 1：状态列 / 常量值 / 环境变量副本那几族判据删了，挂在它们上面的两处跟着走 // +1：U8c-2b-0 量法原先读的 `stream_source` 转调壳删了，点旧名的散文挂墓碑 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("tests/frontend/shell/filewin/entry_tests.rs", 2), // 〔09-28 裁 3〕1 → 2：旧名那一块随两条判据退役，新贴两块点它们
-        ("tests/backend/assets/aliases/fence_tests.rs", 3), // 〔删 `fenced_block::apply` 那一族〕+2：序列那五条判据的墓碑（`apply` 两处） // 新：写规则那条的死值验说明点代装 rc 那一跳（已退役）的旧名
-        // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
-        //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
-        ("tests/frontend/filewin/source_tests.rs", 2), // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        // +5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
-        //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("src/frontend/shell/src/asset_sync.rs", 2), // +2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
-        ("tests/frontend/shell/asset_sync_tests.rs", 1), // +1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
-        ("tests/frontend/shell/parity_ledger_tests.rs", 59), // 60 → 59：读那两条退役那一句改写
-        ("tests/frontend/shell/plugin_class_registry_tests.rs", 2), // 3 → 2：`code-picture` 那一格整行删了，挂着的旧测试名墓碑随之没了 // 2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
-        ("tests/frontend/shell/polling_registry_tests.rs", 1),
-        // +1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
-        ("tests/frontend/shell/sftp_tests.rs", 16), // 14 → 16：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 12 → 14：比标记真值表 · 受管路径谓词两条判据随函数删了 // // 10 → 12：点两条删掉的判据（围栏 · 远端入口） // 〔删 `fenced_block::apply` 那一族〕5 → 8：读取器四条判据的墓碑（四块）＋ 回报换型那一句（一块）进；随判据删掉的两块出 // +1：`SftpFile` 改名 `RemoteFile`
-        // `shared_crate_registry_tests.rs` 那一行摘了：唯一那块墓碑住在 e2e 静态断言条数棘轮里，
-        //   棘轮整张删了（e2e 断言几条只住在套件自己的输出里，门禁不钉数）。
-        ("tests/frontend/shell/structural_scan_tests.rs", 1),
-        // `tests/frontend/shell/subagent_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/frontend/shell/tmux_backend_gate_guard_tests.rs", 8), // 6 → 8：`MONITOR_TMUX` 随 `tmux.rs` 删了 ＋ 从 `tmux_tests.rs` 挪来三条那一段的来历
-        // +3：看住的两个命令与四条判据随命令迁到界面翻面，原处与两张表各一块
-        ("tests/backend/footprint/registry_environment_tests.rs", 1),
-        ("tests/frontend/ui/ipc/commands.vitest.ts", 2), // 10 → 2：命令条数的三个手抄常量删了（改判两向集合相等），挂在它们增减账注释里的八块墓碑随之没了 // 11 → 10：origin 人群那一行合并时收成了只记这一拍的增量，旧的长注释（带墓碑那几处）随之没了 // +2：计数行里点收件箱两条旧名的那两行挂墓碑 // // +1：头注计数那段点的远端 shellinit 旧名 // +2：K-R49 增量账里 `write_account_aliases` 那两行 // +1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
-        // `"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
-        ("tests/frontend/shell/backend_policy_tests.rs", 2), // +1：「空 origin 必须拒」那条随命令退役，原处一块
-        // 会话读面三条 Tauri 命令（骨架索引 · 大纲清单 · 会话内查找）退役、改走通道：
-        //   点它们旧名的来历段各挂一块（包装层两段 · 新住址头注 · 骨架模块头注 · 判据替身头注）。
-        // `src/frontend/shell/src/session_skeleton.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("src/frontend/shell/src/snapshot_resume.rs", 1),
-        // 插件只读列表那两份（界面 ＋ 它的判据）整块删了，墓碑随被守的东西整轴退役 ⇒ 两行出表。
-        ("tests/test-support/chan-fake.ts", 8), // 7 → 8 // 列 tmux 会话改走通道，旧命令名挂墓碑 6 → 7 // +1：起会话渲染那一节点六条旧命令名 // +1：cc-bus 驾驶舱那一节点五条旧命令名 // +1：tmux 控制类那一节点四条旧命令名 // +1：账号那两问的翻译节点名三条旧命令名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
-        // SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
-        ("src/frontend/filewin/src/lib.rs", 3), // 住址：原壳里 `filewin/mod.rs` //2 → 3：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑
-        ("src/frontend/filewin/src/transfer.rs", 4),
-        ("src/frontend/filewin/src/writeops.rs", 1),
-        // 0 → 1：`refused_in_lossy_cwd` 删了（有损目录里三件改按字节做），原处墓碑。
-        // 1 → 5：「在此打开终端」那一串的三个函数随「窗口只交意图」搬进本机后端，原处一块 ＋ 两处旧名旁注。
-        ("src/frontend/filewin/src/shell.rs", 5),
-        // 0 → 2：书签文件名 ＋ 数据目录下全路径那两个随「全路径由开窗入口算好」挪到 monitor 那一侧，原处墓碑。
-        ("src/frontend/filewin/src/bookmarks.rs", 2),
-        // `sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
-        ("tests/frontend/shell/filewin/boundary_tests.rs", 2), // 2 → 4：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 4 → 2：挂着墓碑的两行边（传输那一类的旧说明 · 本机动作的旧说明）随类别清零整行摘了
-        ("tests/frontend/filewin/transfer_tests.rs", 1),
-        ("tests/frontend/shell/sftp_family_registry_tests.rs", 2),
-        // `sftp_move_ledger_tests.rs` 1 → 0（行删）：那块墓碑住乙「死连接重建」那一行里，乙整份过界、那一行摘了。
-        // 5 → 0（行删）：同上 `TOMBSTONED` 那段（整份重写，守的轴搬进了本机后端）。
-        // `sftp_pool.rs` 0 → 3：模块头注那段墓碑（通道闸 · 暂存区上传 · 本机落地三样搬走了）。
-        ("src/frontend/shell/src/sftp_pool.rs", 3),
-        // 两处墓碑标记：写面相对段「只收 UTF-8」那句（围栏改按 `Path` 判之后作废）·
-        //   选中那张表里「批量改权限没做」那一格（做了）。+1：`hollow_read` 那一道从 monitor 搬来。
-        ("src/backend/control/files_write.rs", 2),
-        // `main.rs` 里等停机信号的函数下沉 `platform/signal.rs::shutdown_listener`，原处留一块。
-        ("src/backend/main.rs", 1),
-        ("src/frontend/filewin/src/select.rs", 1),
-        // 快捷键预留位 `app.search-history` 删了：判据里点它旧名的那一处挂墓碑。
-        ("tests/frontend/ui/keybindings/actions.vitest.ts", 1),
-        // 账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
-        //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。
-        ("src/backend/faces/read_face.rs", 1), // 2 → 1：「整份读进查看器」那一道上限随 `whole` 删了，点 monitor 旧名的那句一起走 // 1 → 2
-        // `tests/frontend/shell/accounts_tests.rs` 那一行去掉：整份随 `accounts.rs` 删了（守的那条 serde 名对拍随 Rust 枚举一起退役，字面量今天由后端金样 ＋ TS 解码器钉）。
-        // 记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
-        ("src/frontend/shell/src/frame_query.rs", 6), // 7 → 6：点全景旧发送点那一句随代码全景整条摘掉删了 // 3 → 7 // 2 → 3：点 `panorama_call.rs` 旧住址那一句 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("tests/frontend/shell/frame_query_tests.rs", 14), // 15 → 14：`apikey-read` 那一行的墓碑随命令删了 // 16 → 15：历史浏览器读整份那一句改成现状（查看器改成骨架 ＋ 按视口取） // 19 → 16：界面不再问的那几行（`ssh-config-aliases` / `-resolve` · `footprint-report` · `apikey-read` · `launch` · `files-ls`）删了，挂着的墓碑随之没了 // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
-        // 「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
-        ("src/frontend/shell/src/backend_policy.rs", 2),
-        // 改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
-        //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的「上游选择」改名那张表按这块标记放行这两行）。
-        // +1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
-        ("src/backend/accounts/upstream_select/mod.rs", 3), // 4 → 3：点载荷那一层旧决策表住址的那块随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了
-        ("src/comms/outward/lib.rs", 1),
-        // `src/frontend/shell/src/subagent.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("src/backend/footprint/registry.rs", 9), // 账号库收进后端：10 → 9（那段更正里点旧工具探测函数的墓碑随那段改写走了）// 11 → 10：Claude 布局那一半搬进适配层，带走一块（`IndirectWrite` 那条 `~/.cc-bus/` note） // 10 → 11：头注点当年那条部署命令 // // 6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // +1：远端 acct-iso 探测旧名 // +1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // +2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("tests/frontend/shell/exec_site_registry_tests.rs", 4),
-        // `tests/frontend/shell/remote_history_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/backend/observe/accounts_query_tests.rs", 1), // 本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
-        ("src/backend/agents/codex/history.rs", 2), // 历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
-        ("src/backend/observe/history_query.rs", 2), // 3 → 2：按描述 ＋ 时间戳挑子 agent 那一段（点 monitor 旧挑法的墓碑在它头注里）随按运行读删了 // 2 → 3 // 历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
-        ("tests/backend/observe/history_query_tests.rs", 1), // 历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
-        ("tests/backend/history/history_annotations_tests.rs", 1), // 历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
-        // 抓屏（`capture-pane`）改由界面经通道直接问：monitor 的 Tauri 命令、发送端、参数构造器与它们的判据删了，
-        //   原处与点它们旧名的散文各一块。
-        // `src/frontend/shell/src/command_args.rs` 那一行删了：整份随它最后两个调用方（送键 · 就地 resume 的发送端）删掉。
-        ("src/frontend/shell/src/ccm_probe.rs", 3), // 1 → 4
-        // cc-bus 驾驶舱写面五条改由界面经通道直接说：新家的头注点 monitor 那五条旧命令名。
-        // `backend/mod.rs` 那一行摘了：随 `backend` 目录删了。
-        ("tests/frontend/shell/backend_route_senders_tests.rs", 5), // 9 → 8：全景发送端那一行的墓碑随代码全景整条摘掉删了 // 8 → 9：足迹发送端那一行删了、留墓碑 // 7 → 8：全景发送端那一行删了、留墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // +1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // +1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // +1：SENDERS 头三行（三个发送端）摘掉的那一块
-        // `launch-cli-wire.ts` · `remote-launch-run.ts` 两行摘了：两份重写成只问那一行 `ccm …`，讲旧 TS 判定来历的墓碑随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了。
-        ("tests/frontend/shell/tmux_backend_gate_guard.rs", 3),
-        // 广播收进后端：后端那一节头注点 monitor 里那份组合（`broadcast_via_backend`，同批随后删掉）。
-        ("src/backend/control/cc_bus.rs", 2), // +1：`bus-state` 头注点的 monitor 驾驶舱读名册命令删了
-        // `send-into-backend.vitest.ts` 那一行摘了：那份随就地 resume 的前端编排一起删了（起在 tmux 里与批量收成一条、在那台后端做）。
-        ("tests/frontend/ui/remote-launch-run.vitest.ts", 1), // 就地 resume 那组删了，点它的那一块
-        ("tests/frontend/ui/tabs-split-graph.vitest.ts", 1), // tabs.ts 那几个 tmux 过滤的 re-export 删了
-        ("tests/frontend/ui/tabs.vitest.ts", 3), // 4 → 3：恢复 ▸ 那一组判据重写，F74 那一块墓碑随之没了 // 3 → 4：tmux↔sid 前端过滤那几组 · F74 tmux 叶子三条删了各一块（＋2），点 `fetchTmuxFresh` 那一组随取数点删了（−1）// 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
-        // `tests/frontend/shell/history_title_coverage.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/comms/inward/origin_tests.rs", 9), // 7 → 9 // 主线 5 ＋ MIG-3b +2（远端分叉 · 远端删会话两个分支函数删了）// +2：远端 MCP 写 / 删两个分支函数随 `mcp.rs` 删了 // // +1：远端项目目录那个分支删了 // +1：远端读会话函数（本机远端合成一条） // 历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
-        // 上游选择那半（决策表 · 人群 · 路由语法 · 本机读侧）从 monitor 搬走：点旧名的散文挂墓碑。
-        //   既有行里跟着变的：upstream/mod.rs 2→4 · apikey_remote.rs 2→3 · payload.rs 1→4 · history.rs 14→17 · lib.rs 9→10 ·
-        //   local_backend_host.rs 1→2 · file_face_tests.rs 4→6 · apikey_remote_tests.rs 1→2 · creds_store_tests.rs 1→2 ·
-        //   history_tests.rs 11→12 · parity_ledger_tests.rs 23→24 · creds_store.rs 3→4（各多一处新墓碑）。
-        //   ⚠ 两处旧墓碑随它们所在的整段一起走了（被守的那件事整轴退役）：lib.rs 里 `apikey_routing_for` 头注那一处（点当年的账号结构）·
-        //   creds_store_tests.rs 里读侧三态那条判据头注那一处（点当年 monitor 的写口）—— 两处的净数已算在上面。
-        ("src/backend/accounts/upstream_select/file_face.rs", 1), // 2 → 1：`read_at` 头注那一块随 `apikey-read` 删了 // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
-        ("src/frontend/shell/Cargo.toml", 1), // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
-        ("tests/backend/relay/member_tests.rs", 1), // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
-        // `launch_render/payload_tests.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
-        ("tests/frontend/shell/local_backend_host_tests.rs", 8), // 主线 3 ＋ MIG-1 本路增量 ⇒ 8（盘上现打） // 新贴：上游选择那半从 monitor 搬走时留下的墓碑 // 1 → 3
-        // 本机四个一次性 exec 改走 `<local>` 长连接（`local_query` 一族删、monitor 侧 `observe/` 删）·
-        //   `tasks-list` 出成品（`get_session_tasks` / `parse_task_lines` 删）· acct-iso argv 形退役 · 分叉 exec 那条路删：
-        //   原处与讲来历的散文各挂一块。
-        ("src/backend/observe/tasks_query.rs", 1),
-        ("src/backend/control/fork_write.rs", 1),
-        ("tests/frontend/shell/cross_half_edge_registry.rs", 2), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 2
-        // `doc_claim_registry.rs` 那一行（1）摘了：那块墓碑住在「monitor 侧 observe 落地」那一格的普查行里，
-        //   那一格随 ARCHITECTURE 那张进度表整轴退役（被守的那件事不在了）。退役本身的墓碑挂在 `doc_claim_registry_tests.rs` 原处（那一份计数不变：摘一块、挂一块）。
-        // `tasks.rs` 那一行随文件删了（本机任务 notify 整轴进后端，那几块墓碑守的来历一起走了）。
-        // `backend_layering.rs` 那一行摘了：monitor 侧的层判据随 `backend` 目录删了。
-        ("tests/frontend/shell/spawn_managed_exit_sites.rs", 3), // +1：本机 cc-bus 读那一处出表
-        ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 2),
-        // `accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
-        //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
-        ("tests/frontend/ui/account-availability-guard.vitest.ts", 1),
-        // 同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
-        //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
-        // `launch-dimensions.ts` · `launch-dimensions.test.ts` · `launch-payload-golden.ts` 三行随文件删了；
-        //   `remote-launch.test.ts` 那一行摘了：套件重写，旧 TS 判定的墓碑随之走了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
-        // sid 那一族（J5）：TS `isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删了、wire 多报一格 `resumeSid`。
-        // `wire.rs` · `launch-requests.ts` 两行摘了：两份重写成只渲 / 只构造那一行 `ccm …` 的请求；`launch-requests.vitest.ts` 随文件删了。
-        // `local-resume.ts` 那一行摘了：头注随判号下沉重写成现状。
-        (
-            "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
-            1,
-        ),
-        // 模型名那一格（J17）：设置里写入点那一句原先调 TS `isValidModelName`。
-        // `backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
-        // `acct_iso_deploy.rs` 那一行随整份文件删了（字节随后端二进制走）。
-        ("tests/frontend/shell/command_home_registry_tests.rs", 5), // 3 → 5：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 2 → 3 // 1 → 2：足迹那一行已迁 // 新贴：待迁那一行删了，原处一块
-        ("src/frontend/shell/src/filewin/entry.rs", 2), // 〔09-28 裁 3〕新贴：开窗前那两问进窗口进程，monitor 侧三个函数退役
-        ("tests/frontend/shell/quote_singleton_guard.rs", 3), // 2 → 3：病史里 `stream_source` 那层转调壳随零生产调用删了，挂墓碑 // 1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
-        // 新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，
-        //   新家头注点来历一块 · monitor 那侧判据原处各挂一块（六条搬走的期望 · 那个转发别名）。
-        ("src/backend/dial/terminal.rs", 1), // 2 → 1：头注改写成按方言渲，点旧名那一处删了 // 1 → 2：「在此打开终端」那一串的拼法从文件窗口搬来，点旧名一块
-        ("tests/frontend/ui/views/history-search.vitest.ts", 1), // 合并那三条搬进后端，原处一块
-        ("tests/frontend/shell/launch_tests.rs", 2),
-        ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
-        ("tests/frontend/shell/lib_invariant_population_tests.rs", 1),
-        ("src/backend/control/ccm/plan.rs", 1), // `self_argv` 的入口②那一形删了，原地一块
-        ("tests/e2e/backend-cc-bus.sh", 1),     // [17] 前的入口②说明删了，原地一块
-        ("tests/e2e/backend-gate2-acceptance.sh", 1), // `meta_dollar` 那条登记豁免换成版本门，原地一块
-        ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
-        // 人读表解析器删了，一处点它旧名的散文挂墓碑。
-        ("tests/backend/plugin_walk_fixture.rs", 1),
-        ("tests/frontend/shell/event_replay_tests.rs", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
-        // `history.rs` 的 `up_to_message_id` · `read_jsonl_values` · `write_branch_file` 三行摘了：点它们的那段（分叉转交的来历）随命令删了。
-        ("tests/frontend/shell/parity_ledger.rs", 1), // 新贴：点远端 `ccm` 探针旧命令名
-        // `tests/frontend/shell/agent_dispatch_registry_tests.rs` 那一行摘了：那份判据随 monitor 适配表退役、文件删了。
-        ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
-        // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
-        // `upstream_select/endpoint.rs` 那一行摘了：头注重写成「中转地址只在 `ccm` 最终 exec 那一处定」，点旧命令名的那块随之走了。
-        // `observe/accounts_query.rs` 那一行摘了：身份 token 双写点那段头注改写成今天的两侧（写侧是 `ccm`），点旧判据名的那块随之走了。
-        ("tests/frontend/shell/sync_command_registry.rs", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        // `tests/frontend/shell/support/scripted_backend.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/frontend/shell/sync_command_registry_tests.rs", 3), // +1：`apikey_remote`整删，点它的那一处挂墓碑 // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        ("tests/frontend/shell/utils_tests.rs", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        ("src/backend/common/tmux_utf8.rs", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        // `tmux-cache-single-writer.vitest.ts` 那一行摘了：tmux 名单短缓存与它的取数点随「在哪个 tmux 会话里」问那台后端删了。
-        ("tests/backend/dial_probe_tests.rs", 1), // 测试连接搬进本机后端，旧名挂墓碑
-        // 基数 → 增量 +1 行：`apikey_remote`整删，「形状照它」那句挂墓碑。
-        // `src/frontend/shell/src/footprint_remote.rs` 那一行随文件删了（足迹两趟问法进了后端 face）。
-        ("src/backend/agents/claudecode/footprint.rs", 1), // 新行：cc-bus 那一条随 Claude 布局那一半搬来，带着它那块（`~/.cc-bus/` note 点写面旧命令名）
-        ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
-        ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
-        // `src/frontend/shell/src/dial_host.rs` 那一行摘了：`stream` 用法的开链路口又回来了（远端常驻后端的小中继走它），墓碑那句改成现状。
-        ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        // `src/frontend/ui/record-reads.ts` 那一行摘了：头注里点旧命令名的那一句改成说它做什么（按目录读子 agent 那一条整轴退役），不再提那个名字。
-        // `tests/backend/agents/claudecode/parse_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        (
-            "tests/backend/agents/claudecode/schema_title_coverage.rs",
-            1,
-        ), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("tests/backend/observe/record_page_tests.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-    ];
-
-    /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
-    ///
-    /// 口径与人群见 [`prose_tombstone_near_misses`] 头注。今天 5 行，两类：
-    ///
-    /// · ㈠ **真的挂歪了（三处，全是往定界符里塞了一个日期）** ——
-    ///   `plan.rs` 那一处连定界符都没写；另两处（`remote_write_registry_tests` ·
-    ///   `filewin/source_tests`）写成了「定界符里带日期」形 ⇒ 完整标记比不上
-    ///   ⇒ 它们的记账**整个落空**，而贴的人以为贴上了。
-    ///   🔴 **本拍刻意不改它们**：那三份文件都在本拍写区之外，而「哪儿红就往哪儿改」
-    ///   与本仓「存量走棘轮、新写的一律红」那条纪律相反。⇒ 登记，让**新增**的红。
-    /// · ㈡ **在谈机制本身（两处，合法）** —— 一份死值验记录的叙述，
-    ///   与当时门禁 shellcheck 那一格「立项理由已不成立、原话照留」的头注（那段后来随那一格改写删了）。
-    const SITES: &[(&str, usize)] = &[
-        ("src/backend/control/ccm/plan.rs", 1),
-        ("tests/frontend/filewin/source_tests.rs", 1),
-        // `remote_write_registry_tests.rs` 那一行走了：它挂在 `NON_WRITING_COMMANDS` 里
-        //   「`sftp_download` 从这张表搬走了」那段 09-21 的订正上，而那张表的全部五行连同它说的那条命令
-        //   整轴删了（池子收到只剩 `sftp_copy`）⇒ 被守的那件事不在了，按第②条出路减掉。
-        // `tests/scripts/gate.sh` 那一行走了：「立项理由已不成立」那段的标记去掉日期后成了标准形（上表 2 → 3）。
-    ];
-
-    assert_tombstone_table_frozen(
-        "REGISTERED",
-        &REGISTERED
-            .iter()
-            .map(|(p, n)| (p.to_string(), *n))
-            .collect::<Vec<_>>(),
-        &frozen_table("REGISTERED"),
-    );
-
-    // ★ 抽取器自检 0：内芯真的是从标记**拆**出来的。
-    //   拆成空串 ⇒ 「挂歪」人群命中每一行；拆成整串 ⇒ 那个人群恒空。
-    //   两个方向都会让下面第 ③ 条在一个假人群上成立，所以这一格放在最前面。
-    let core = prose_tombstone_core();
-    assert!(
-        !core.is_empty()
-            && core.len() < PROSE_NAME_TOMBSTONE.len()
-            && PROSE_NAME_TOMBSTONE.contains(core),
-        "内芯拆坏了（实得 {core:?}）—— 空串会命中每一行，等于整串会让「挂歪」人群恒空"
-    );
-
-    let corpus = tombstone_mark_corpus();
-    // ★ 抽取器自检 1：语料面塌了 ⇒ 下面三条相等会在「两边都空」上成立。
-    assert!(
-        corpus.len() >= 1300,
-        "标记普查只收到 {} 份文本文件 —— 语料面坏了（2026-09-22 现打 1413 份：`src` ＋ `tests` 两棵根）",
-        corpus.len()
-    );
-
-    let mut marks: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    let mut near: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for (rel, src) in &corpus {
-        let n = prose_tombstone_marks(src);
-        if n > 0 {
-            marks.insert(rel.clone(), n);
-        }
-        let nm = prose_tombstone_near_misses(src).len();
-        if nm > 0 {
-            near.insert(rel.clone(), nm);
-        }
-    }
-    let total: usize = marks.values().sum();
-    // ★ 抽取器自检 2：命中面塌了 ⇒ 第 ① 条会在空集上相等。
-    assert!(
-        total >= 80,
-        "全树只抽到 {total} 处标记 —— 抽取器坏了（2026-09-22 现打 93 处 / 48 份）"
-    );
-
-    let want: std::collections::BTreeMap<String, usize> = REGISTERED
-        .iter()
-        .map(|(p, n)| ((*p).to_string(), *n))
-        .collect();
-    assert_eq!(
-        want.len(),
-        REGISTERED.len(),
-        "`REGISTERED` 里有重复路径 —— 后一行会静默吃掉前一行"
-    );
-
-    // ① **逐格相等**，两个方向一起报：多一处 / 少一处 / 多一份 / 少一份都红。
-    //   🔴 地板在这里是**瞎的**：标记被删掉是「变少」方向，而那正是 `α3` 刀 C。
-    let keys: std::collections::BTreeSet<&String> = marks.keys().chain(want.keys()).collect();
-    let drift: Vec<String> = keys
-        .into_iter()
-        .filter_map(|k| {
-            let d = marks.get(k).copied().unwrap_or(0);
-            let w = want.get(k).copied().unwrap_or(0);
-            (d != w).then(|| format!("  {k}  盘上 {d} 处，登记表写 {w} 处"))
-        })
-        .collect();
-    assert!(
-        drift.is_empty(),
-        "标记普查对不上盘面：\n{}\n\n\
-         ⇒ 三种情形：\n\
-         ① **新贴了一处标记** ⇒ 不许：墓碑表已冻结。把那句话改成现状（说今天是什么、在哪儿），去掉标记；\n\
-         ② **那一处不在了**（那句话改成了现状）⇒ 好事：这一行减掉，冻结数同拍往下改；\n\
-         ③ **那份文件改名/搬家了** ⇒ 改这一行的住址。\n\
-         ⚠ 本条与 `TOMBSTONED` **单位不同、不可互相替代**：那张表数的是\
-         「落在死名人群上的标记」，本条数的是「标记」。两个数对不上是常态，不是缺陷。",
-        drift.join("\n")
-    );
-
-    // ② 第二把尺：**总数**。上面那一比万一在键的归一上错位（`\\` vs `/`、
-    //   前缀没剥干净），两边会**同时**失真而逐格比照样空；总数不吃那种错位。
-    assert_eq!(
-        total,
-        want.values().sum::<usize>(),
-        "标记总处数与登记表的和对不上 —— 逐格那一比此刻不可信（多半是键归一错位）"
-    );
-
-    // ③ **挂歪了**那一格，同样逐格相等（人群见 `SITES` 头注）。
-    let want_near: std::collections::BTreeMap<String, usize> =
-        SITES.iter().map(|(p, n)| ((*p).to_string(), *n)).collect();
-    let near_keys: std::collections::BTreeSet<&String> =
-        near.keys().chain(want_near.keys()).collect();
-    let near_drift: Vec<String> = near_keys
-        .into_iter()
-        .filter_map(|k| {
-            let d = near.get(k).copied().unwrap_or(0);
-            let w = want_near.get(k).copied().unwrap_or(0);
-            (d != w).then(|| format!("  {k}  盘上 {d} 行，登记表写 {w} 行"))
-        })
-        .collect();
-    assert!(
-        near_drift.is_empty(),
-        "「提了这件事却没把标记挂上」那一格对不上盘面：\n{}\n\n\
-         ⇒ 先分清是哪一类（口径在 `prose_tombstone_near_misses` 头注里）：\n\
-         ㈠ **想挂标记却挂歪了**（定界符里塞了日期 / 只写了内芯）⇒ 墓碑不许再挂：\
-         把那句话改成现状。\n\
-         ㈡ **在谈这件机制本身**（量具里的针 / 记录里的叙述）⇒ 在 `SITES` 里记一行，\
-         并写清它属哪一类。\n\
-         ⚠ ㈡ 那一类**不许**靠删掉那句话变绿。",
-        near_drift.join("\n")
-    );
-}
-
-/// 上面那条判据的**活体夹具** —— 它在真树上今天是绿的（三格逐格对上），
-/// 而「今天该对上」那种格是**空真**：抽取器死了照样对得上。
-/// ⇒ 这里造合成文本，把三个抽取器逐格切开验，**正反各喂一遍**。
-///
-/// 文本一律**现拼**（标记从 [`PROSE_NAME_TOMBSTONE`] 取、内芯从
-/// [`prose_tombstone_core`] 取），一个字面量都不写 —— 否则本文件自己
-/// 就会进真树上那两个人群，而那正是本模块从头到尾在治的那件事。
-#[test]
-fn the_tombstone_mark_scanner_really_sees_each_shape() {
-    let mark = PROSE_NAME_TOMBSTONE;
-    let core = prose_tombstone_core();
-
-    // ① 处数口径是「处」不是「行」：一行挂两处就算两处。
-    let two = format!("/// 旧名{mark} 与 旧名{mark}\n");
-    assert_eq!(prose_tombstone_marks(&two), 2, "一行两处标记被数成了一处");
-    assert_eq!(prose_tombstone_marks("/// 什么都没挂\n"), 0);
-
-    // ② 挂对了的那一行**不许**进「挂歪」人群（否则本族会永远红，
-    //    而一条永远红的闸第一天就会被调松 —— 那是本族最坏的结局）。
-    assert_eq!(
-        prose_tombstone_near_misses(&two),
-        Vec::<usize>::new(),
-        "挂对了的行进了「挂歪」人群 ⇒ 本条会在合法文本上误红"
-    );
-
-    // ③ 🔴 **挂歪了的那两形真的被看见。**
-    //
-    //    形甲「定界符里多塞了一个日期」—— 这就是现打逮到的那三处里两处的形状：
-    //    完整标记比不上 ⇒ 那一处的记账整个落空，而贴的人以为贴上了。
-    //    定界符**运行期从标记切**（切最后一个字符），不写第二份字面量。
-    let close_len = mark.chars().last().map_or(0, |c| c.len_utf8());
-    let (mark_head, mark_tail) = mark.split_at(mark.len() - close_len);
-    let dated = format!("/// 行一\n/// {mark_head} 2026-09-21{mark_tail} 旧名已删\n");
-    assert!(
-        !dated.contains(mark),
-        "抽取器的前提塌了：往定界符里塞了东西之后它竟然还包含完整标记 —— 那一形不存在"
-    );
-    assert_eq!(
-        prose_tombstone_near_misses(&dated),
-        vec![2],
-        "「定界符里带日期」这一形没被看见 ⇒ 现打那两处挂歪的就永远没人管"
-    );
-
-    //    形乙「只写了内芯、定界符都没写」—— 现打那三处里的第三处。
-    let bare = format!("/// 行一\n/// {core} 留在这里\n");
-    assert_eq!(
-        prose_tombstone_near_misses(&bare),
-        vec![2],
-        "「只写了内芯」这一形没被看见"
-    );
-
-    // ④ 同一行**既有完整标记又有裸内芯**时，本条**偏向不红** ——
-    //    口径如实写明：判定是「这一行有没有完整标记」，不是「有几处裸内芯」。
-    let mixed = format!("/// {core} 讲机制，又挂了 {mark}\n");
-    assert_eq!(
-        prose_tombstone_near_misses(&mixed),
-        Vec::<usize>::new(),
-        "混合行的口径变了 —— 本条明写偏向不红，改口径要连头注一起改"
-    );
-
-    // ⑤ 内芯必须是标记的**真子串**（拆法坏了，上面四格全部失真）。
-    assert!(
-        mark.contains(core) && core.len() < mark.len() && !core.is_empty(),
-        "内芯拆坏了：mark={mark:?} core={core:?}"
-    );
 }
 
 // ── 前提闸 ────────────────────────────────────────────────────
@@ -4955,8 +2687,7 @@ const P9_SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
 ///
 /// # 它接的是谁的岗
 ///
-/// 原来这里住的是 `the_premise_that_p9_waits_on_is_still_false_and_says_so`〔散文墓碑〕。
-/// 那一条断言「两棵生产树的测试代码**不全为 0**」，并在断言文案里写明：
+/// 原来这里那一条判据断言「两棵生产树的测试代码**不全为 0**」，并在断言文案里写明：
 /// 掉到 0 那天它红，而红的意思是「那棵树剖分做完了 ⇒ `P9` 剩下两件对它成立了」。
 ///
 /// 步 7c 把剖分做完了（`src/frontend/shell` 45 份 / 59 块 · `src/backend` 49 份 / 57 块），
@@ -5052,7 +2783,7 @@ fn the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself() {
     // 而它的直接后果就是「判据住 `tests/`、语料住 `src/`」这个前提失效。
     // ⚠ 本条自己就是这 21 份之一（它的语料根含两棵生产树，但 ③ 这一格扫的是 `tests/`）——
     //   如实记，不把自己摘出去：摘出去这个数就说不出「自指还在不在」了。
-    // 🔴 **针一律运行期拼，一个都不许写成整串字面量。**〔步 7c 死值验当场逼出来的〕
+    // 🔴 **针一律运行期拼，一个都不许写成整串字面量。**
     //
     // 现打过：第一版把这五根针写成字面量 ⇒ 本文件（住 `tests/`，在③这一格的语料里）
     // **永远命中自己**，于是 `self_corpus_files` 恒非空、下面那条断言**恒不可能响**。

@@ -8,7 +8,8 @@ import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import java.util.UUID
@@ -30,11 +31,15 @@ class TerminalOps(
         list().mapCatching { rows -> TerminalsList.handleOf(rows, name) ?: throw Problem(copyText("sessionHead.attach.none", "machine" to machine())) }
 
     /** 结束 [name]，回屏上那一句（成败不同；被拒 ⇒ 那台写好的那一句原样）。 */
-    suspend fun kill(name: String): String =
+    suspend fun kill(name: String): Notice =
         ask(Kill.COMMAND, Kill.args(name), Kill::of)
             .fold(
-                onSuccess = { killed -> if (killed) "已结束「$name」" else copyText("tmuxControl.kill.notConfirmed", "machine" to machine(), "target" to name) },
-                onFailure = { it.message.orEmpty() },
+                onSuccess = { killed ->
+                    Notice(
+                        if (killed) copyText("mobTmux.kill.done", "name" to name) else copyText("tmuxControl.kill.notConfirmed", "machine" to machine(), "target" to name),
+                    )
+                },
+                onFailure = { Notice(it.message.orEmpty()) },
             )
 
     /** 在名叫 [name] 的会话里后台起 Claude（不进入）。失败 ⇒ 那一句。 */

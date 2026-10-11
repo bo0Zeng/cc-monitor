@@ -3158,6 +3158,19 @@
       "zh": "打开窗口",
       "args": []
     },
+    "hostIdentity.changed.body": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-monitor 记下的主机指纹与当前主机不符",
+      "args": [],
+      "limited": ["SSH 主机指纹"]
+    },
+    "hostIdentity.trust.consequence": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "改记当前指纹 · 主机若被冒充，之后的输入都会发给它",
+      "args": []
+    },
     "speaker.interrupt.line": {
       "kind": "body",
       "role": "说明",
@@ -19419,7 +19432,7 @@
       "zh": "装到 {n} 台",
       "args": ["n"],
       "waive": {
-        "C-W11": "按钮照稿 32/33 写「装到 N 台」，要能当一句话读（主会话 10-07 定）"
+        "C-W11": "按钮照稿 32/33 写「装到 N 台」，要能当一句话读"
       }
     },
     "extPage.install.noneChecked": {
@@ -30522,6 +30535,2037 @@
       "role": "原因格",
       "zh": "删除会话 {id} 失败 · 目标无效",
       "args": ["id"]
+    },
+    "mobChat.history.loading": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "正在载入更早的对话…",
+      "args": []
+    },
+    "mobChat.history.oldest": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已是最早",
+      "args": []
+    },
+    "mobChat.input.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "说点什么…",
+      "args": []
+    },
+    "mobChat.input.stop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "停止",
+      "args": []
+    },
+    "mobChat.input.send": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "发送",
+      "args": []
+    },
+    "mobReading.bash.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "bash 输出",
+      "args": []
+    },
+    "mobReading.bash.collapse": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "收起",
+      "args": []
+    },
+    "mobReading.bash.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开 {n} 行",
+      "args": ["n"]
+    },
+    "mobReading.compact.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "上下文摘要",
+      "args": []
+    },
+    "mobReading.compact.size": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "· {n} 字",
+      "args": ["n"]
+    },
+    "mobReading.code.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制代码",
+      "args": []
+    },
+    "mobReading.code.copyN": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制代码 ({n})",
+      "args": ["n"],
+      "waive": {
+        "C-W15": "按钮上带代码块计数，计数由代码给；不带计数的那条（复制代码）不超"
+      }
+    },
+    "mobReading.tool.truncated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "… 输出已截断",
+      "args": []
+    },
+    "mobReading.tool.running": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "运行中…",
+      "args": []
+    },
+    "mobReading.diff.truncated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "… 更多行已省略",
+      "args": []
+    },
+    "mobHostLink.host.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到主机",
+      "args": []
+    },
+    "mobDrawer.item.newChat": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新对话",
+      "args": []
+    },
+    "mobDrawer.item.chats": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "对话",
+      "args": []
+    },
+    "mobDrawer.item.files": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "文件",
+      "args": []
+    },
+    "mobDrawer.item.terminal": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "终端",
+      "args": []
+    },
+    "mobDrawer.recent.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "最近",
+      "args": []
+    },
+    "mobDrawer.server.bare": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "服务器",
+      "args": []
+    },
+    "mobDrawer.server.named": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "服务器 · {name}",
+      "args": ["name"]
+    },
+    "mobDrawer.settings.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "设置",
+      "args": []
+    },
+    "mobDrawer.open.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "打开抽屉",
+      "args": []
+    },
+    "mobNav.newSession.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "新建会话 · 选择主机",
+      "args": []
+    },
+    "mobKeepAlive.notify.body": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "活动 SSH 连接 ×{n}",
+      "args": ["n"],
+      "limited": ["SSH", "连接"]
+    },
+    "mobKeepAlive.channel.keepAlive": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "SSH 连接保活",
+      "args": [],
+      "limited": ["SSH", "连接"]
+    },
+    "mobKeepAlive.channel.done": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "Claude 任务完成",
+      "args": []
+    },
+    "mobSettings.entry.buttons": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全局自定义按钮",
+      "args": []
+    },
+    "mobSettings.entry.hosts": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "服务器与身份",
+      "args": []
+    },
+    "mobSettings.section.terminal": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "终端",
+      "args": []
+    },
+    "mobSettings.claudeDir.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "应用级默认 Claude 配置目录",
+      "args": []
+    },
+    "mobSettings.claudeDir.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "默认用哪个号",
+      "args": []
+    },
+    "mobSettings.claudeDir.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "留空 = 内置默认 {dir}",
+      "args": ["dir"]
+    },
+    "mobSettings.claudeDir.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "未单独指定账号的服务器都用此号\n改完后从下一段新对话起生效",
+      "args": []
+    },
+    "mobSettings.claudeDir.saved": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已保存",
+      "args": []
+    },
+    "mobSettings.claudeDir.save": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "保存",
+      "args": []
+    },
+    "mobKit.act.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "← 返回",
+      "args": []
+    },
+    "mobSsh.conn.unavailable": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "SSH 连接不可用 · 未建立或连接已断开",
+      "args": [],
+      "limited": ["SSH", "连接"]
+    },
+    "mobSsh.conn.closedNew": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "连接已关闭 · 看门狗超时或连接已断开",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.keystore.noCert": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "AndroidKeyStore 无该别名的证书 {alias}",
+      "args": ["alias"]
+    },
+    "mobSsh.keystore.noKey": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "AndroidKeyStore 无该别名的私钥 {alias}",
+      "args": ["alias"]
+    },
+    "mobSsh.race.allFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "所有地址连接失败",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.tofuFirst": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "首次连接，记下该主机密钥",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.tofuTrusted": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "主机密钥已信任",
+      "args": []
+    },
+    "mobSsh.log.established": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{target} 连接已建立",
+      "args": ["target"],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.viaJump": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "经跳板 {jump} 打开到 {target} 的隧道 …",
+      "args": ["jump", "target"]
+    },
+    "mobSsh.log.connecting": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "连接 {target} …",
+      "args": ["target"],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.keyMismatch": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "主机密钥不匹配（疑 MITM / 服务器重装）",
+      "args": []
+    },
+    "mobSsh.log.connectFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "连接失败",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.negotiated": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "协议协商与密钥交换完成",
+      "args": []
+    },
+    "mobSsh.log.authPassword": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "密码认证中 …",
+      "args": []
+    },
+    "mobSsh.log.authKey": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "公钥认证中 …",
+      "args": []
+    },
+    "mobSsh.log.authKeystore": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "硬件密钥认证中（TEE 签名）…",
+      "args": []
+    },
+    "mobSsh.log.authFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认证失败",
+      "args": []
+    },
+    "mobSsh.shell.openTimeout": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "打开终端超时（{dur}），连接已断开\n重试即可",
+      "args": ["dur"],
+      "limited": ["连接"]
+    },
+    "mobSsh.read.truncated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "…（已截断，共 {n} 字节）",
+      "args": ["n"]
+    },
+    "mobSsh.exec.timeout": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "命令执行超时（{dur}），已中止",
+      "args": ["dur"]
+    },
+    "mobSsh.log.waitOther": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "另一连接尝试进行中，等待其完成 …",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.reusedConcurrent": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "复用已有连接（并发连接已就绪）",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.probeExisting": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "检测到已有连接，校验可用性 …",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.existingDead": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "既有连接已失效，重新建立 …",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.reused": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "复用已有连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.log.replaced": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "既有连接没有回话，已换上新连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSsh.handshake.timeout": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "连接超时 · {dur} 内未连上",
+      "args": ["dur"],
+      "limited": ["连接"]
+    },
+    "mobSsh.hostKey.changed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "主机密钥已变更（{target}，{keyType}）\n疑中间人攻击或服务器重装 · 已拒绝连接",
+      "args": ["target", "keyType"],
+      "limited": ["连接"]
+    },
+    "mobDefaultButtons.label.command": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "命令",
+      "args": []
+    },
+    "mobDefaultButtons.label.tmux": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "tmux 会话",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobDefaultButtons.label.paste": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "粘贴",
+      "args": []
+    },
+    "mobPalette.search.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "搜索命令",
+      "args": []
+    },
+    "mobPalette.search.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无匹配命令",
+      "args": []
+    },
+    "mobButtons.delete.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "删除按钮",
+      "args": []
+    },
+    "mobButtons.delete.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除「{label}」",
+      "args": ["label"]
+    },
+    "mobButtons.delete.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobTabs.overview.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话 ({n})",
+      "args": ["n"]
+    },
+    "mobTabs.overview.closeAll": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭全部",
+      "args": []
+    },
+    "mobTabs.overview.new": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "+ 新会话",
+      "args": []
+    },
+    "mobTabs.overview.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无打开的会话\n点「+ 新会话」选主机连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobTabs.row.sftp": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "SFTP 文件",
+      "args": []
+    },
+    "mobTabs.row.close": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "× 关闭",
+      "args": []
+    },
+    "mobTabs.sheet.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话 tab ({n})",
+      "args": ["n"]
+    },
+    "mobTabs.sheet.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "没有打开的 tab",
+      "args": []
+    },
+    "mobTabs.sheet.newTerminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "终端 tab",
+      "args": []
+    },
+    "mobTabs.sheet.newFiles": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "文件 tab",
+      "args": []
+    },
+    "mobSession.host.missing": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未找到主机 {id}",
+      "args": ["id"]
+    },
+    "mobSession.identity.none": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "该主机未关联身份\n先在身份管理创建或导入身份",
+      "args": []
+    },
+    "mobIdentity.done.hardware": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已生成硬件密钥",
+      "args": []
+    },
+    "mobIdentity.done.ed25519": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已生成 Ed25519 密钥",
+      "args": []
+    },
+    "mobIdentity.done.imported": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已导入私钥",
+      "args": []
+    },
+    "mobSession.connect.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "连接失败",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSession.connect.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重连",
+      "args": []
+    },
+    "mobSession.identity.pickTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "连接身份",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSession.identity.pickHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "该主机未绑定身份，选一个用于连接（会记住，下次点即连）：",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobHostKey.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "服务器身份已变更",
+      "args": []
+    },
+    "mobHostKey.page.cases": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "· 刚重装过系统、重建过该机器：属正常\n· 都没有：别继续 · 可能有人在冒充它",
+      "args": []
+    },
+    "mobHostKey.page.fingerprints": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "以前记得的：{old}\n此次收到的：{new}",
+      "args": ["old", "new"]
+    },
+    "mobHostKey.page.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "（算不出）",
+      "args": [],
+      "waive": {
+        "C-L4": "指纹算不出时的占位，括号把它和真指纹分开"
+      }
+    },
+    "mobHostKey.page.confirm": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "我确认是我自己改的",
+      "args": [],
+      "waive": {
+        "C-W15": "安全确认按钮：字面要说清确认的是什么，短了就成了闭眼点通过"
+      }
+    },
+    "mobHostKey.trust.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "信任新身份",
+      "args": []
+    },
+    "mobHostKey.trust.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "信任并重连",
+      "args": []
+    },
+    "mobSession.connect.progress": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "连接中…",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobSession.bar.reconnecting": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "重连中…",
+      "args": []
+    },
+    "mobSession.bar.dropped": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "连接已断开",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "mobTerm.model.sent": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已发送 /model {model}",
+      "args": ["model"]
+    },
+    "mobTerm.model.sendFailed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "发送失败",
+      "args": []
+    },
+    "mobTerm.capture.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "抓屏失败",
+      "args": []
+    },
+    "mobTerm.capture.noTmux": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "无 tmux 会话可抓屏",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobTerm.capture.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制 {n} 字符",
+      "args": ["n"]
+    },
+    "mobKeyPush.result.added": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已推送公钥到本机 authorized_keys",
+      "args": []
+    },
+    "mobKeyPush.result.already": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "公钥已在 authorized_keys（未重复添加）",
+      "args": []
+    },
+    "mobKeyPush.result.unsure": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "推送未确认 · 远端 ~/.ssh/authorized_keys 需手动核对",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "mobKeyPush.result.noPublic": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "该身份无公钥，无法推送\n旧的导入身份可重新导入以派生公钥",
+      "args": []
+    },
+    "mobKeyPush.result.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "推送失败",
+      "args": []
+    },
+    "mobKeyPush.dialog.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "推送公钥到本机",
+      "args": []
+    },
+    "mobKeyPush.dialog.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无身份 · 先在身份管理创建或导入",
+      "args": []
+    },
+    "mobKeyPush.dialog.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "选一个身份，把它的公钥加到本机 ~/.ssh/authorized_keys（幂等，已存在不重复）：",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "mobKit.act.close": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭",
+      "args": []
+    },
+    "mobCapture.dialog.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "当前屏幕",
+      "args": []
+    },
+    "mobCapture.dialog.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "(空)",
+      "args": [],
+      "waive": {
+        "C-L4": "抓到的屏是空的时的占位，括号把它和真内容分开"
+      }
+    },
+    "mobCapture.dialog.copy": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "复制",
+      "args": []
+    },
+    "mobPalette.group.model": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "模型",
+      "args": []
+    },
+    "mobPalette.group.capture": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "抓屏",
+      "args": []
+    },
+    "mobPalette.item.capture": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "抓当前屏幕",
+      "args": []
+    },
+    "mobPalette.group.custom": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "自定义",
+      "args": []
+    },
+    "mobPalette.group.tmux": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话",
+      "args": []
+    },
+    "mobPalette.item.tmux": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "tmux 会话管理",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobPalette.group.key": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "公钥",
+      "args": []
+    },
+    "mobPalette.item.key": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "推送公钥到本机 authorized_keys",
+      "args": []
+    },
+    "mobBuiltin.action.tabs": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "标签面板",
+      "args": []
+    },
+    "mobBuiltin.action.palette": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "命令面板",
+      "args": []
+    },
+    "mobBuiltin.action.tmux": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "tmux 会话",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobBuiltin.action.paste": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "粘贴",
+      "args": []
+    },
+    "mobBuiltin.action.capture": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "抓屏",
+      "args": []
+    },
+    "mobBuiltin.action.pushKey": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "推送公钥",
+      "args": []
+    },
+    "mobBuiltin.action.keyboard": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "软键盘",
+      "args": []
+    },
+    "mobBuiltin.action.ctrl": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Ctrl 粘性",
+      "args": []
+    },
+    "mobBuiltin.action.alt": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Alt 粘性",
+      "args": []
+    },
+    "mobButtonGroup.name.main": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "按钮栏",
+      "args": []
+    },
+    "mobButtonGroup.name.fn": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "功能键",
+      "args": []
+    },
+    "mobButtonGroup.name.alt": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "第二排",
+      "args": []
+    },
+    "mobButtonGroup.name.vim": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "vim 键",
+      "args": []
+    },
+    "mobButtonEdit.longPress.none": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "无",
+      "args": []
+    },
+    "mobButtonEdit.longPress.repeat": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "连发",
+      "args": []
+    },
+    "mobButtonEdit.longPress.discrete": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "单发",
+      "args": []
+    },
+    "mobButtonEdit.purpose.text": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "输入文字",
+      "args": []
+    },
+    "mobButtonEdit.purpose.textHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "打一段字并回车执行（如 ls -la）",
+      "args": []
+    },
+    "mobButtonEdit.purpose.key": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "按一个键",
+      "args": []
+    },
+    "mobButtonEdit.purpose.keyHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "方向键 / Esc / Tab / 翻页 / Ctrl+C 等 · 从预设里选",
+      "args": [],
+      "waive": {
+        "C-W12": "说的是发给远端终端的组合键（按钮的载荷），不是 app 自己的快捷键"
+      }
+    },
+    "mobButtonEdit.purpose.action": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "App 动作",
+      "args": []
+    },
+    "mobButtonEdit.purpose.actionHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "粘贴 / 切模型 / 抓屏 / 标签面板 等内建功能",
+      "args": []
+    },
+    "mobButtonEdit.purpose.switch": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "切到按钮组",
+      "args": []
+    },
+    "mobButtonEdit.purpose.switchHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "点击换一排按钮（键排切到另一组）",
+      "args": []
+    },
+    "mobButtonEdit.dialog.newTitle": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新建按钮",
+      "args": []
+    },
+    "mobButtonEdit.dialog.editTitle": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "编辑按钮",
+      "args": []
+    },
+    "mobButtonEdit.dialog.add": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "添加",
+      "args": []
+    },
+    "mobButtonEdit.dialog.save": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "保存",
+      "args": []
+    },
+    "mobButtonEdit.field.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "按钮上显示的字",
+      "args": []
+    },
+    "mobButtonEdit.field.command": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "命令 · 自动加回车执行",
+      "args": []
+    },
+    "mobButtonEdit.scope.global": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "全局",
+      "args": []
+    },
+    "mobButtonEdit.scope.host": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "本机",
+      "args": []
+    },
+    "mobButtonEdit.longPress.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "长按",
+      "args": []
+    },
+    "mobButtonEdit.longPress.payload": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "长按载荷 · 如 \\e\\e = 两下 Esc",
+      "args": [],
+      "waive": {
+        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见"
+      }
+    },
+    "mobButtonEdit.longPress.threshold": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "触发阈值 ms",
+      "args": []
+    },
+    "mobButtonEdit.longPress.interval": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "连发间隔 ms",
+      "args": []
+    },
+    "mobButtonEdit.key.pick": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "按键 {key}",
+      "args": ["key"]
+    },
+    "mobButtonEdit.key.custom": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "自定义",
+      "args": []
+    },
+    "mobButtonEdit.key.customField": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "自定义转义序列 · 如 \\e[1;5D",
+      "args": [],
+      "waive": {
+        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见"
+      }
+    },
+    "mobButtonEdit.switch.target": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "目标组 · 点此 ⇄ 切到该组 · 可输新组名自建",
+      "args": [],
+      "waive": {
+        "C-W15": "输入框标签同时说明可输新组名自建：这一格既能选又能新建，不说就没人知道"
+      }
+    },
+    "mobButtonEdit.payload.keycode": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "基准键 · c 即 Ctrl+C · Tab/Enter/Esc/Space",
+      "args": [],
+      "waive": {
+        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见",
+        "C-W12": "说的是发给远端终端的组合键（按钮的载荷），不是 app 自己的快捷键"
+      }
+    },
+    "mobButtonEdit.payload.escape": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "转义序列 · \\e[A、\\x1b、\\t",
+      "args": [],
+      "waive": {
+        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见"
+      }
+    },
+    "mobButtonEdit.payload.command": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "命令 · 回车自动追加",
+      "args": []
+    },
+    "mobButtonEdit.preview.bytes": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "将发送字节 {bytes}",
+      "args": ["bytes"]
+    },
+    "mobButtonEdit.preview.builtin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "内建动作 {action}",
+      "args": ["action"]
+    },
+    "mobButtonEdit.preview.keycode": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "将发送按键码（基准键 + 修饰）",
+      "args": []
+    },
+    "mobButtonEdit.preview.switch": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "切换到组 {group}",
+      "args": ["group"]
+    },
+    "mobButtonEdit.preview.command": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "将发送 {command}",
+      "args": ["command"]
+    },
+    "mobButtonEdit.builtin.pick": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "内建动作 {action}",
+      "args": ["action"],
+      "waive": {
+        "C-W15": "下拉按钮上显示当前选中的那个动作名"
+      }
+    },
+    "mobTmux.dialog.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "tmux 会话",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobTmux.dialog.refresh": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "刷新",
+      "args": []
+    },
+    "mobTmux.kill.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已终止「{name}」",
+      "args": ["name"]
+    },
+    "mobTmux.kill.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "结束「{name}」",
+      "args": ["name"]
+    },
+    "mobTmux.kill.bodyCmd": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "里面正在跑的东西会被中断，当前是：{command}\n不能撤销",
+      "args": ["command"]
+    },
+    "mobTmux.kill.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "里面正在跑的东西会被中断\n不能撤销",
+      "args": []
+    },
+    "mobTmux.kill.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "结束",
+      "args": []
+    },
+    "mobTmux.list.loading": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "加载中…",
+      "args": []
+    },
+    "mobTmux.list.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无 tmux 会话 · 下方新建一个",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobTmux.row.running": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · 运行: {command}",
+      "args": ["command"]
+    },
+    "mobTmux.row.attached": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · 已附着",
+      "args": []
+    },
+    "mobTmux.row.attach": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "附着",
+      "args": []
+    },
+    "mobTmux.row.kill": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "杀",
+      "args": []
+    },
+    "mobTmux.new.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "新会话名",
+      "args": []
+    },
+    "mobTmux.new.detached": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建",
+      "args": []
+    },
+    "mobTmux.new.detachedCc": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "后台 cc",
+      "args": []
+    },
+    "mobTmux.new.attach": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建并附着",
+      "args": []
+    },
+    "mobButtonSettings.groups.titleGlobal": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "自定义按钮组",
+      "args": []
+    },
+    "mobButtonSettings.groups.titleHost": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "本机按钮组",
+      "args": []
+    },
+    "mobButtonSettings.groups.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "点进某组看/改它的按钮；键排上的 ⇄ 按钮在组间切换",
+      "args": []
+    },
+    "mobButtonSettings.groups.new": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建组",
+      "args": []
+    },
+    "mobButtonSettings.restore.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已补回缺失的默认按键",
+      "args": []
+    },
+    "mobButtonSettings.restore.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复默认按键",
+      "args": []
+    },
+    "mobButtonSettings.group.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "← 组列表",
+      "args": []
+    },
+    "mobButtonSettings.group.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "本组无按钮 · 点下方「新建按钮」",
+      "args": []
+    },
+    "mobButtonSettings.group.newButton": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建按钮",
+      "args": []
+    },
+    "mobButtonSettings.row.summary": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "按钮 ×{n} · {where}",
+      "args": ["n", "where"]
+    },
+    "mobButtonSettings.row.deleteGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删组",
+      "args": []
+    },
+    "mobButtonSettings.newGroup.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新建按钮组",
+      "args": []
+    },
+    "mobButtonSettings.newGroup.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "组名 · 如 常用 / git",
+      "args": [],
+      "limited": ["git"]
+    },
+    "mobButtonSettings.newGroup.create": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "创建",
+      "args": []
+    },
+    "mobButtonSettings.row.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑",
+      "args": []
+    },
+    "mobButtonSettings.row.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删",
+      "args": []
+    },
+    "mobButtonSettings.groupDelete.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "删除「{group}」",
+      "args": ["group"]
+    },
+    "mobButtonSettings.groupDelete.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "该组的按钮 ×{n} 会被删除\n自建组撤销窗口一过就找不回来\n内建组能用「恢复默认按键」补回，自建组不能",
+      "args": ["n"]
+    },
+    "mobButtonSettings.groupDelete.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除「{group}」的按钮 ×{n}",
+      "args": ["group", "n"]
+    },
+    "mobButtonSettings.where.main": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "工具条（终端顶部动作条）",
+      "args": []
+    },
+    "mobButtonSettings.where.keys": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "键盘上方键排（⇄ 可切到此组）",
+      "args": []
+    },
+    "mobIdentity.op.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "操作失败",
+      "args": []
+    },
+    "mobIdentity.list.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无钥匙 · 点 + 新配一把，或把别处已有的搬进来",
+      "args": []
+    },
+    "mobIdentity.new.hardwareTitle": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新配一把 · 装进手机保险箱",
+      "args": []
+    },
+    "mobIdentity.new.softwareTitle": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新配一把软件钥匙 · 能导出备份",
+      "args": []
+    },
+    "mobIdentity.delete.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "删除身份",
+      "args": []
+    },
+    "mobIdentity.delete.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobIdentity.row.copyKey": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制公钥",
+      "args": []
+    },
+    "mobIdentity.row.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除",
+      "args": []
+    },
+    "mobIdentity.delete.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除身份「{label}」后，引用它的主机将无法连接\n此操作不可撤销",
+      "args": ["label"],
+      "limited": ["连接"]
+    },
+    "mobIdentity.delete.bodyKeystore": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除身份「{label}」后，引用它的主机将无法连接\n硬件密钥（Android Keystore/TEE）的私钥将被不可恢复地销毁\n此操作不可撤销",
+      "args": ["label"],
+      "limited": ["连接"]
+    },
+    "mobIdentity.new.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "名称",
+      "args": []
+    },
+    "mobIdentity.new.create": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "生成",
+      "args": []
+    },
+    "mobIdentity.add.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "添一把钥匙",
+      "args": []
+    },
+    "mobIdentity.add.hardware": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "装进手机保险箱的新钥匙 · 更安全",
+      "args": []
+    },
+    "mobIdentity.add.software": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新配一把软件的 · 能导出备份",
+      "args": []
+    },
+    "mobIdentity.add.import": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "把别处已有的一把搬进来",
+      "args": []
+    },
+    "mobIdentity.import.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "把别处的一把钥匙搬进来",
+      "args": []
+    },
+    "mobIdentity.import.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "给它起个名字",
+      "args": []
+    },
+    "mobIdentity.import.pem": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "粘贴那段私钥",
+      "args": []
+    },
+    "mobIdentity.import.noPassphrase": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "带口令保护的私钥不支持 · 先在原机器上去掉口令",
+      "args": []
+    },
+    "mobIdentity.import.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "搬进来",
+      "args": []
+    },
+    "mobIdentity.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "钥匙",
+      "args": []
+    },
+    "mobHosts.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "服务器",
+      "args": []
+    },
+    "mobHosts.list.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无主机 · 点 + 添加",
+      "args": []
+    },
+    "mobHosts.list.ungrouped": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未分组",
+      "args": []
+    },
+    "mobHosts.newSession.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "点选一台主机，强制新建独立会话 tab\n不复用已打开的会话；按返回键取消",
+      "args": []
+    },
+    "mobHosts.import.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "导入",
+      "args": []
+    },
+    "mobHosts.import.added": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "加进来服务器 ×{n}",
+      "args": ["n"]
+    },
+    "mobHosts.import.none": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "这段字里没认出任何一台服务器",
+      "args": []
+    },
+    "mobHosts.import.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "从别处搬一批服务器过来",
+      "args": []
+    },
+    "mobHosts.import.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "把另一台电脑上的服务器清单整段贴进来\n一次能加好几台；贴进来之后按名字对上已存过的钥匙",
+      "args": []
+    },
+    "mobHosts.import.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "导入",
+      "args": []
+    },
+    "mobHosts.list.sessions": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "会话",
+      "args": []
+    },
+    "mobHosts.delete.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除主机「{label}」\n此操作不可撤销 · 只删本地主机配置，不影响远端数据",
+      "args": ["label"]
+    },
+    "mobHosts.delete.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "删除主机",
+      "args": []
+    },
+    "mobHosts.delete.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobHosts.row.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑",
+      "args": []
+    },
+    "mobHosts.row.files": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "文件",
+      "args": []
+    },
+    "mobHostEdit.load.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "主机不存在或已被删除",
+      "args": []
+    },
+    "mobHostEdit.load.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "返回",
+      "args": []
+    },
+    "mobHostEdit.page.newTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "新建主机",
+      "args": []
+    },
+    "mobHostEdit.page.editTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "编辑主机",
+      "args": []
+    },
+    "mobHostEdit.field.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "名称",
+      "args": []
+    },
+    "mobHostEdit.field.host": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "主机 / IP · 主地址",
+      "args": []
+    },
+    "mobHostEdit.field.port": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "端口",
+      "args": []
+    },
+    "mobHostEdit.field.user": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "用户名",
+      "args": []
+    },
+    "mobHostEdit.field.extra": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "额外地址 · 每行一个",
+      "args": []
+    },
+    "mobHostEdit.field.extraPreview": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "将并发连接的地址 ×{n}：{addresses}",
+      "args": ["n", "addresses"],
+      "limited": ["连接"]
+    },
+    "mobHostEdit.field.workDir": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "默认工作目录（可选）",
+      "args": []
+    },
+    "mobHostEdit.field.group": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "分组（可选）",
+      "args": []
+    },
+    "mobHostEdit.agent.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "Agent 种类",
+      "args": []
+    },
+    "mobHostEdit.dir.codex": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "Codex 配置目录（可选）",
+      "args": []
+    },
+    "mobHostEdit.dir.claude": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "Claude 账号目录",
+      "args": []
+    },
+    "mobHostEdit.dir.codexPlaceholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "默认 {path}",
+      "args": ["path"]
+    },
+    "mobHostEdit.dir.claudePlaceholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "/home/用户名/.claude",
+      "args": []
+    },
+    "mobHostEdit.switch.workspace": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "打开即进工作区",
+      "args": []
+    },
+    "mobHostEdit.switch.reconnect": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "断线自动重连",
+      "args": []
+    },
+    "mobHostEdit.os.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "远端系统",
+      "args": []
+    },
+    "mobHostEdit.os.windowsHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "Windows：走 PowerShell、跳过 tmux\ntmux/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）",
+      "args": [],
+      "limited": ["PowerShell", "tmux", "连接"]
+    },
+    "mobHostEdit.auth.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "认证方式",
+      "args": []
+    },
+    "mobHostEdit.auth.key": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "身份 · 密钥",
+      "args": []
+    },
+    "mobHostEdit.auth.password": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "密码",
+      "args": []
+    },
+    "mobHostEdit.auth.passwordHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "密码经设备 Keystore 加密后落库，不明文存储",
+      "args": []
+    },
+    "mobHostEdit.buttons.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "本机按钮",
+      "args": []
+    },
+    "mobHostEdit.page.save": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "保存",
+      "args": []
+    },
+    "mobHostEdit.jump.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "经跳板机 · ssh -J（可选）",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "mobHostEdit.jump.none": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "无 · 直连",
+      "args": []
+    },
+    "mobSftp.fab.upload": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "上传",
+      "args": []
+    },
+    "mobSftp.load.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "SFTP 错误",
+      "args": []
+    },
+    "mobSftp.edit.tooBig": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "文件过大或非文本，不可编辑",
+      "args": []
+    },
+    "mobSftp.upload.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "上传失败 · {name}",
+      "args": ["name"]
+    },
+    "mobSftp.bar.mkdir": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建目录",
+      "args": []
+    },
+    "mobSftp.bar.sortSize": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "排序 · 大小",
+      "args": []
+    },
+    "mobSftp.bar.sortName": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "排序 · 名称",
+      "args": []
+    },
+    "mobSftp.bar.terminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "终端",
+      "args": []
+    },
+    "mobSftp.bookmark.deleted": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除书签「{label}」",
+      "args": ["label"]
+    },
+    "mobSftp.rename.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "重命名",
+      "args": []
+    },
+    "mobSftp.rename.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "重命名",
+      "args": []
+    },
+    "mobSftp.mkdir.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "新建目录",
+      "args": []
+    },
+    "mobSftp.mkdir.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "创建",
+      "args": []
+    },
+    "mobSftp.delete.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobSftp.delete.dirBody": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除目录 “{name}”（仅限空目录）",
+      "args": ["name"]
+    },
+    "mobSftp.delete.fileBody": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除文件 “{name}”",
+      "args": ["name"]
+    },
+    "mobSftp.delete.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobSftp.preview.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "（空文件）",
+      "args": [],
+      "waive": {
+        "C-L4": "文件是空的时的占位，括号把它和真内容分开"
+      }
+    },
+    "mobSftp.edit.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "编辑 {name}",
+      "args": ["name"]
+    },
+    "mobSftp.edit.save": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "保存",
+      "args": []
+    },
+    "mobSftp.overwrite.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "覆盖远端文件",
+      "args": []
+    },
+    "mobSftp.overwrite.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "将以 UTF-8 覆写 “{name}”（{chars} 字符 / {bytes} 字节）\n此操作不可撤销",
+      "args": ["name", "chars", "bytes"]
+    },
+    "mobSftp.overwrite.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "确认覆盖",
+      "args": []
+    },
+    "mobSftp.overwrite.back": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "返回编辑",
+      "args": []
+    },
+    "mobSftp.menu.preview": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "预览",
+      "args": []
+    },
+    "mobSftp.menu.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑",
+      "args": []
+    },
+    "mobSftp.menu.download": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下载",
+      "args": []
+    },
+    "mobSftp.menu.rename": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重命名",
+      "args": []
+    },
+    "mobSftp.menu.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除",
+      "args": []
+    },
+    "mobSftp.mkdir.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "新建目录失败",
+      "args": []
+    },
+    "mobSftp.rename.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "重命名失败",
+      "args": []
+    },
+    "mobSftp.delete.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "删除失败 · {name}",
+      "args": ["name"]
+    },
+    "mobSftp.download.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已下载到 {path}",
+      "args": ["path"]
+    },
+    "mobSftp.download.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "下载失败",
+      "args": []
+    },
+    "mobSftp.upload.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已上传 {name}",
+      "args": ["name"]
+    },
+    "mobSftp.read.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "读取失败 · {path}",
+      "args": ["path"]
+    },
+    "mobSftp.save.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已保存",
+      "args": []
+    },
+    "mobSftp.save.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "保存失败",
+      "args": []
+    },
+    "mobConnect.jump.missing": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "跳板主机不存在（已被删除）\n已拒绝直连以防绕过跳板 · 该主机的跳板设置需手动修复",
+      "args": []
+    },
+    "mobConnect.jump.noAuth": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "跳板「{label}」未关联身份、也未设密码\n已拒绝直连以防绕过跳板 · 给跳板主机绑定身份或设置密码",
+      "args": ["label"]
+    },
+    "mobConnect.identity.missing": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "身份不存在 {id}",
+      "args": ["id"]
+    },
+    "mobConnect.identity.noKey": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "身份私钥为空",
+      "args": []
+    },
+    "mobConnect.host.noAuth": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "主机未关联身份，也未设密码认证",
+      "args": []
     }
   }
 }

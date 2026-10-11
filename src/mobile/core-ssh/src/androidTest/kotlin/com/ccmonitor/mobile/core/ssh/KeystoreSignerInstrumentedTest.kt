@@ -30,7 +30,7 @@ class KeystoreSignerInstrumentedTest {
 
     @Test
     fun keystoreSignerSignsValidEcdsaAndEncodesSsh() {
-        val alias = "aterm-f31-test-${System.nanoTime()}"
+        val alias = "ccm-f31-test-${System.nanoTime()}"
         try {
             SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = "f31-test")
             val signer = KeystoreEcdsaSigner(alias)
@@ -60,7 +60,7 @@ class KeystoreSignerInstrumentedTest {
 
     @Test
     fun signatureRejectsTamperedChallenge() {
-        val alias = "aterm-f31-neg-${System.nanoTime()}"
+        val alias = "ccm-f31-neg-${System.nanoTime()}"
         try {
             SshKeyGenerator.generateEcdsaP256InKeystore(alias)
             val signer = KeystoreEcdsaSigner(alias)

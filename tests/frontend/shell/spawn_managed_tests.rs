@@ -95,7 +95,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     /// **代价也写下来**：一个既造 `Command`、又在别处对别的类型调 `.output()` 的文件
     /// 会被误判 —— 那时该做的是把那一处改名/拆文件，不是把这两个词删掉。
     const VERBS_IF_BUILDS_A_COMMAND: &[&str] = &[".output()", ".status()"];
-    // 🔴 〔搬树 2026-09-18 ·  条 73〕**排掉的是谁、为什么 —— 明写。**
+    // 🔴 **排掉的是谁、为什么 —— 明写。**
     //
     // 排掉 `src/frontend/shell/src/spawn_managed.rs`：它**就是**那个唯一出口，
     // 那四个动词（`.spawn()` / `.creation_flags(` / `.process_group(` / `.kill_on_drop(`）

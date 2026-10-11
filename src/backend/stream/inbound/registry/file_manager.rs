@@ -49,7 +49,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //
     // ⚠ 两条的 `run` 与同族那四条逐字同形，理由同上一段（名字从 `r.cmd` 来 ⇒
     //   「登记的名字」与「真被调的能力」在类型上是同一个值）。
-    // ── 〔波 5 ㈠〕 **第 2 步**：把那份零消费者的写原语接上 ──
+    // ── 把那份零消费者的写原语接上 ──
     //
     // 🔴 **这一条是本族第一条会往盘上写的命令，而它不花用户那句「允许」**：
     //   `control/files_write.rs` 自 09-19 起就在 `readonly_guard` 的写白名单上，
@@ -87,7 +87,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
-    // ── 〔波 5 ㈡〕 **第 3 步**：改动既有数据的那五条 ──────────
+    // ── 改动既有数据的那五条 ──────────
     //
     // 🔴 **这五条才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
     //   处理器同住 `control/files_write.rs`（`readonly_guard` 第三层唯一登记的模块），
@@ -281,7 +281,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
-    // ──：上传的**提交** ──────────────────────
+    // ── 上传的**提交** ──────────────────────
     //
     // 🔴 SFTP 缩成只做传输之后，上传只写暂存区（`~/.cc-monitor/staging/<key>.part`）；
     //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
@@ -418,7 +418,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
-    // ──：窗口换走通道的那两问 ────────────────
+    // ── 窗口换走通道的那两问 ────────────────
     //
     // 🔴 **同一族（`files-read`）的第七、第八条，整族照旧纯读**：编辑器读一份文本 ·
     //   开窗前「那台机器的 home 在哪」。此前窗口为这两问各拨一条 SFTP（

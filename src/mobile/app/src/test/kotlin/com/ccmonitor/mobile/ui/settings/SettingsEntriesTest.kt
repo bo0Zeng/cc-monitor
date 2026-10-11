@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.settings
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.nav.Screen
 import org.junit.Assert.assertEquals
@@ -20,7 +21,7 @@ import java.io.File
  */
 class SettingsEntriesTest {
     /**
-     * 设置里「终端」一节只有两条：自定义按钮（全局）与服务器列表。
+     * 设置里「终端」一节只有两条：全局自定义按钮与服务器列表。
      * 「打开终端」在抽屉里；所有功能只有一处入口，设置里不许出现它。
      */
     @Test
@@ -32,7 +33,7 @@ class SettingsEntriesTest {
         val buttons = entries.singleOrNull { it.route == Screen.ButtonSettings.route }
         assertTrue("自定义按钮那个入口一条都不许丢：$entries", buttons != null)
         assertEquals("它在「终端」这一节", "终端", buttons!!.section)
-        assertEquals("文案逐字", "自定义按钮（全局）", buttons.title)
+        assertEquals("文案逐字", copyText("mobSettings.entry.buttons"), buttons.title)
 
         val hosts = entries.singleOrNull { it.route == Screen.Hosts.route }
         assertTrue("服务器列表那个入口也在终端节里：$entries", hosts != null && hosts.section == "终端")

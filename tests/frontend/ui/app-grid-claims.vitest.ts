@@ -54,11 +54,11 @@
  * - ⚠ 不管 `position: absolute` 的那几个画在哪：它们不是 grid item，不开隐式行，
  *   到此为止。
  *
- * # 🔴 它服务哪条业务要求：**`INVARIANTS.md` 条 22 第 4 项**〔`P21` 2026-09-22 现打补写〕
+ * # 🔴 它服务哪条业务要求：**`INVARIANTS.md` §22 第 4 项**〔`P21` 2026-09-22 现打补写〕
  *
  * 本文件原先只点得出（**两处都在仓外**），
- * 于是那趟普查把**条 22** 记成「全树零命中」，并由此推出
- * 「所以它没人守」。**那句推论不成立** —— 它守的正是条 22 第 4 项，逐字：
+ * 于是那趟普查把**§22** 记成「全树零命中」，并由此推出
+ * 「所以它没人守」。**那句推论不成立** —— 它守的正是 §22 第 4 项，逐字：
  *
  * > **精简模式 CSS 不能塌 grid 行**（viewer + settings 都适用，解法不同）：`display:none`
  * > 一个 grid **item**（如 viewer 的 `#tab-bar`）会把它从 grid 移除、剩余 item 前移落行
@@ -67,13 +67,13 @@
  * 下面 `模式 viewer` 那一组就是它 —— 而且形态比条文的字面写法**更强**：条文说「只定义
  * 对应行数」（要人回来数行），这里钉的是「隐式行数 == 0」（不用谁记得数）。
  *
- * ⚠ **`settings` 那一半在本文件里是 N/A，而那是设计使然、不是漏**：条 22 第 4 项
+ * ⚠ **`settings` 那一半在本文件里是 N/A，而那是设计使然、不是漏**：§22 第 4 项
  * 自己写着 settings「换了个更稳的解法」——`body.settings-window-mode` 直接 `display:none`
  * 隐藏 grid **容器** `#app` 整块（非其内 item，无前移塌缩），面板 `position:fixed` 脱流铺满。
  * 没有 item 前移 ⇒ 没有隐式行 ⇒ 本文件那三把尺子在那个模式下无对象。
  * ⇒ 下面 `BOTH` 刻意只有 `default` / `viewer` 两档。
  *
- * ⚠ **条 22 的另外五项不在这里**（开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 ·
+ * ⚠ **§22 的另外五项不在这里**（开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 ·
  * listen 先注册再 emit · `core:window:allow-close` 能力 · 独立窗自调 `dispatcher.start()`）。
  * 逐项今天谁在守，写在 `tests/frontend/ui/invariants-frontend-guard.vitest.ts` 抬头那张表里。
  */
@@ -660,7 +660,7 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
 
   for (const mode of BOTH) {
     describe(`模式 ${mode}`, () => {
-      // ★ `mode === "viewer"` 这一档 = `INVARIANTS.md` **条 22 第 4 项**（精简模式 CSS
+      // ★ `mode === "viewer"` 这一档 = `INVARIANTS.md` **§22 第 4 项**（精简模式 CSS
       //   不能塌 grid 行）今天唯一的机检住址。理由与射程见本文件抬头那一节。
       it("模板自洽：具名区域的行/列数 == 声明的轨道数（隐式行数因此被钉在 0；viewer 档 = 条 22 第 4 项）", () => {
         const tpl = templateOf(RULES_OF[mode], mode);

@@ -67,15 +67,6 @@
 //!
 //! ## 原先这里有个 `ProbeStatus`，本轮**删掉了**
 //!
-//! 它是 `{ installed: bool, version: String, capabilities: Vec<String> }`，
-//! 与既有的 `ccm_probe::CcmProbeResult` **同形**、零适配、零生产消费者，
-//! 而且 `version: String` 比对方的 `Option<String>` 还丢了「取不到」这一档。
-//! 我原先把它当作「机制留各家、结果统一」的落点——**发明第二个同形结构不是统一，
-//! 是重复**。按我自己这一轮的尺子（`build_online_cmd`〔散文墓碑〕零调用点被我判为**阻塞**、
-//! `WriteVerdict::is_ok` 只有测试在用就删掉），它该删。统一的结果类型**已经存在**，
-//! 就是 `CcmProbeResult`；T02 真要消费探测结果时直接用它（不够就给它加字段），
-//! 而不是在注册表里再造一个。
-//!
 //! ## 如实登记：本模块目前**零生产消费者**（T01 审计 I2）
 //!
 //! `TOOLS` 现在只有本文件的测试在读。同一轮我以「只有测试在用」为由删了
@@ -178,7 +169,7 @@ pub enum ToolDestination {
     /// `ccm` 的**远端那一份**（shim，`~/.local/bin/ccm`）就是一个只落在远端的载体，
     /// 它与本机那一份不再需要挤在同一个 `destination` 里 ——
     /// 「一个东西两个落点」这件事今天由**载体这一维**表达，不由一个双值变体表达。
-    /// ⇒ `BothHomeRelative` 那个变体同拍**删掉**（墓碑写在 [`Carrier`] 的头注里）。
+    /// ⇒ 没有双值变体（理由在 [`Carrier`] 的头注里）。
     ///
     /// ⚠ **退役条件仍然有效，只是今天不满足**：哪天连 `ccm` 远端那条也没了，
     /// 就连着它在 `config_surface::resolve_by_destination` 的那一臂一起删
@@ -192,14 +183,6 @@ pub enum ToolDestination {
     /// 项目目录内的文件（`<dir>/.mcp.json`）。
     ProjectRelative(&'static str),
     /// **路径由用户配置决定，不是常量。**
-    ///
-    /// T02 审计追问「注册表与真写入方零耦合」时查出来的（比审计报的更严重）：
-    /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-backend")`，
-    ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.backend_path`，
-    ///   每个远端各自配置（当年的逐次拨号那条路 `run_list_query`〔散文墓碑〕直接 `shell_quote(&cfg.backend_path)`，C4d 已删）。
-    /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
-    ///   而当年的 `deploy_remote_acct_iso(cfg, dest_dir)`〔散文墓碑〕是**远端**部署、
-    ///   落点还是**前端传进来的** `dest_dir`。
     ///
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
     /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
@@ -323,21 +306,12 @@ pub enum TouchEffect {
     GenerateOnly,
     /// **我们不直接写这个文件，但用户在 cc-monitor 里的动作会导致它被写。**
     ///
-    /// 这一档是 T02 审计的阻塞项逼出来的：`~/.cc-bus/` 原先声明成 [`Self::ReadOnly`]，
-    /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
-    /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
-    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`）〔散文墓碑〕
-    /// （今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
-    /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
-    /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
-    /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
-    /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
     IndirectWrite,
 }
 
 /// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。
 ///
-/// # 🔴 这一层为什么非有不可（用户 09-12 逐字逼出来的）
+/// # 🔴 这一层为什么非有不可
 ///
 /// 用户逐字：「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
 /// 也就是说：**远端那台机器上跑的那一份，是「那台机器的本地后端」**，
@@ -361,21 +335,10 @@ pub enum TouchEffect {
 ///
 /// # 它同时治掉 `ToolSource` 那一半（`R26` 裁定二：两者是同一个形状问题的两半）
 ///
-/// `ccm` 那一行的 `source` 先前**自己的注释逐字承认是假的**：远端那一份的来源是
-/// `local_backend::ccm_entry_shim`〔散文墓碑〕现造的 shim，而**本机那一份的来源是后端二进制
-/// 自己的改名副本**（`local_backend::install_local_ccm_entry`〔散文墓碑〕）——
-/// 一个 `source` 字段装不下两个来源，于是那条注释只能写「不为它再开一个变体，
-/// 在这里如实写清」。载体这一维立起来之后，两个来源各归各的载体，**注释里那句
-/// 「这一格是假的」不再需要**。
+/// # 一个工具几个落点 ⇒ 几个载体
 ///
-/// # 🪦 `ToolDestination::BothHomeRelative` 的墓碑（`K-R69` 09-12 上午 → `K-R81` 09-12 下午）
-///
-/// 那个变体是为「一个 `destination` 装不下两个落点」造的，逐字理由是
-/// 「`ccm` 立件时申报的是 `RemoteHomeRelative(…)`……一个 `destination`
-/// 就装不下两个事实了」。**本件把「装不下」这个前提本身拆掉了** ⇒ 它同拍删除：
-/// `ccm` 现在是两个载体，远端那个 `RemoteHomeRelative`、本机那个 `LocalHomeRelative`，
-/// 各自带各自的 touch。⚠ 这不是把 `K-R69` 退回去 —— 它买到的那件事
-/// （**闭集里本机侧真有一条 `ccm` 落点**）一个字节没动，钉它的判据也没动。
+/// 一个 `destination` 不必装下两个落点：`ccm` 是两个载体，远端那个 `RemoteHomeRelative`、
+/// 本机那个 `LocalHomeRelative`，各自带各自的 touch（**闭集里本机侧真有一条 `ccm` 落点**，有判据钉着）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Carrier {
     /// 这一份**是哪一份** —— 给人读的一句话，同一个工具的几个载体靠它区分。
@@ -464,15 +427,6 @@ pub const TOOLS: &[ToolSpec] = &[
         //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `backend_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
-        // 🔴 **上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
-        //    `K-R69` 当时逐字写的是：「本机那一半的来源不是这个 shim —— 是后端二进制自己的
-        //    改名副本（`local_backend::install_local_ccm_entry`〔散文墓碑〕）。`ToolSource` 一个字段
-        //    同样装不下两个来源……**不为它再开一个变体**，在这里如实写清」。
-        //    ⇒ 那句「在注释里如实写清」是**用散文顶替一个字段**。载体这一维立起来之后，
-        //    两个来源各归各的载体，注释不再承重（`R26` 裁定二：`ToolSource` 与
-        //    `destination` 是同一个形状问题的两半，本件同拍治）。
-        //    ⚠ 两条载体仍是**同一个东西**：`control::ccm::intercept` 认 `argv[0]` 的 basename，
-        //    两边都进那一处解析（`K33` 逐字「所有命令只许有一处」）。
         installable: true,
         uninstallable: true,
         carriers: &[
@@ -532,7 +486,7 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     // ═══ 🔴 **这一条改名了，而改名不是清洁工作** ═══
     //
-    // 用户 09-12 逐字：「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
+    // 「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
     // 这一条先前叫 `remote-daemon` / 「远端后端」，而它说的是**假的**：
     // 那一份不是「远端的后端」，是**那台机器的本地后端**（`K36` 逐字
     // 「两份后端应该要一样的」·`K33` 逐字「后端只有一个」）。
@@ -545,13 +499,6 @@ pub const TOOLS: &[ToolSpec] = &[
         id: "backend",
         display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
-        // 🔴 **这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
-        // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
-        // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
-        // （删后端二进制；落点是固定的 `~/.cc-monitor/bin/ccm`，`is_safe_remote_backend_path`〔散文墓碑〕那道守卫随之删了）。
-        // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
-        //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
-        //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
         uninstallable: true,
         // 🔴 **同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打。在本件之前闭集里只有中间那一条，
         // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
@@ -665,10 +612,6 @@ pub const TOOLS: &[ToolSpec] = &[
     },
 ];
 
-// `local_ccm_bin_dir_rel` / `remote_ccm_bin_dir_rel`〔散文墓碑〕（从本表现算 `ccm` 两个载体落点的目录）搬进了判据档：
-//   生产上要那个目录的只有 monitor 补 PATH 那一步，它今天取共享 crate 里后端的落点（`relay_route_core::BACKEND_LANDING_REL`，
-//   本机远端同一个）；本表申报的那两条与它相等由 `tests/backend/footprint/registry_tests.rs` 对拍。
-
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
 // ═══════════════════════════════════════════════════════════════════════════
@@ -770,17 +713,11 @@ impl Provisioning {
 /// **在代码里没有住址**，只能从「表里没有」倒推 —— 用缺席表达一个判断，
 /// 正是本工作区一整天在治的那族病。〕
 ///
-/// # 🔴 `AppAssumesPresent` 那一档**删了 —— 这是它的墓碑**
+/// # 没有「app 假设它在、既不装也不查」那一档
 ///
-/// 原文逐字：「**app 假设它在** —— 既不装也不查，用的时候直接假设它已经在。」
-/// 而 `config_surface::unmanaged_row` 把这句话实现成了「`state` 恒 `Undetermined`、
-/// `path_resolved` **故意不解析**（解析了就等于查了）」。
-///
-/// `K38` 把这一档判掉了：通用工具**不是**「我不看」，是「**你自己装，而我会看、缺了我要说**」
-/// ⇒ 原来住在那一档的 10 项一项不剩（9 项去 [`EnvTier::UserInstallsWePrompt`]、
-/// `cc-acct-iso-local` 去 [`EnvTier::AppShipsNoInstallerYet`]），
-/// 而 `every_tier_has_members_so_absence_never_encodes_a_judgement` 自己的报错逐字写着
-/// 「要么给它一个成员，**要么把这一档从 EnvTier 里删掉**」⇒ 删。
+/// 通用工具**不是**「我不看」，是「**你自己装，而我会看、缺了我要说**」（`K38`）⇒ 它们在
+/// [`EnvTier::UserInstallsWePrompt`]。每一档都要有成员（`every_tier_has_members_so_absence_never_encodes_a_judgement`）：
+/// 没有成员的档不留。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
@@ -895,10 +832,8 @@ pub struct UnmanagedEnv {
 /// **不许再造一套**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvProbe {
-    /// 后端进程 `PATH` 上的一个裸命令 —— 与 [`EnvProbe::InSessionShell`] 同一个找法（`platform::shell::find_session_command`），
-    /// 只是 `PATH` 用后端进程自己那一份。**不新写一个 `which`**：那一处已经把坑填了 ——
-    /// 切分走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号）· 取不到 `PATH` 就「判不了」（**不猜**）·
-    /// Windows 上按 `PATHEXT` 认 `git.exe` / `.cmd` …，不带后缀的不算。
+    /// 这个后端进程 `PATH` 上的一个裸命令 —— 走 `platform::shell::find_session_command`（按 `PATH` 找命令只住那一处：
+    /// 切分走 `std::env::split_paths`、Windows 的后缀次序、「取不到 `PATH` 就判不了（**不猜**）」都在那里）。
     OnPath,
     /// 起会话那个 shell 的 `PATH` 上的一个裸命令（agent 命令行：会话在用户登录 shell 里起，按那里的 `PATH` 找它）。
     /// 走 `platform::shell::find_session_command`（起新会话框「这台能起哪几家」、`ccm` 起它那一下也问它）：`PATH` 换成那一份，
@@ -997,33 +932,6 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
         site: "mcp_edit.rs::answer_put",
     },
-    // ═══ 🔴 **第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
-    //
-    // 🔴 **〔条 67〕`code-picture-sidecar` 这一项摘掉了。**
-    //
-    // 它申报的是「app 随产品分发的独立进程那一份代码全景」，身份来自
-    // `src/backend/sidecars/` 那一层的头注。用户逐字「**不在现在设计里的全部删掉**」
-    // ⇒ 那一层（2 008 行）整棵删了 ⇒ **这条申报变成了假话**，不是「暂时没接线」。
-    //
-    // ⚠ 留墓碑是因为它的来历本身是一条教训：`K38` 逐字只举了两样（`account` · `cc-bus`），
-    //   这一项是**用户当拍凭记忆点出来的**（「不是还有 code picture 吗」）——
-    //   「app 自带的是哪几样」这个人群此前真的没有住址。那个教训今天仍然成立。
-    // 🔴 **`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
-    //
-    // ⚠ 〔`K-R65` 09-11 补一句〕下面这段原文里那个档名**今天已经不存在了**（`K38` 删了
-    // 「app 假设它在」那一档，墓碑在 `EnvTier` 的头注上）。原文照留，别改成今天的写法 ——
-    // 这段墓碑记的就是「它当初住在哪一档」。
-    //
-    // 原文逐字：`tier: EnvTier::AppAssumesPresent` · `named: "~/.bashrc"` ·
-    // `why: "加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫 ——
-    //        profile_installer.rs::discover_profiles"`。
-    //
-    // 那句话今天是假的：`profile_installer::plan_install` 的 `PosixRc` 臂真装、
-    // `profile_installer::plan_uninstall` 真卸。
-    // ⇒ 它上面有了 `ToolSpec` ⇒ 档由 [`environment`] 读 `installable` 派生成
-    // [`EnvTier::AppInstalls`]，**不再手写**。留这段墓碑是因为「它曾经在第三档」
-    // 是这张表存在理由的最好例子：一个判断当初只能靠「进这张表」表达，
-    // 做完之后它自己会从这张表里消失。
 ];
 
 /// 闭集里一项的**来路**。两态，没有第三种 —— 一项要么有 [`ToolSpec`]，要么没有。

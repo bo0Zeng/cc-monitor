@@ -20,7 +20,7 @@
 //! # 中转与上游选择的分界就在这一层里的一句话上
 //!
 //! `handle` 里那一句 `relay.dest.resolve(r.mode, &r.key, …)` —— 递过去的是两个
-//! **不透明段**（条 48），拿回来的是一个 `Destination`，**照做，不做任何判断**。
+//! **不透明段**，拿回来的是一个 `Destination`，**照做，不做任何判断**。
 
 use super::door;
 use super::http1::{self, BodyView, RequestHead};
@@ -33,7 +33,7 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-// ⚠ 上游的环境旋钮与默认值**先搬去上游选择**（「常量跟着职责走」），**再被条 59 整删**成
+// ⚠ 上游的环境旋钮与默认值住上游选择（「常量跟着职责走」），是
 //   每 agent 一行的表（`agents::Adapter::upstream`，跟着适配层）。中转里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
@@ -98,11 +98,11 @@ const UPSTREAM_UNREACHABLE: &str = "502 Bad Gateway";
 /// 🔴 **中转自己的传输失败、卡在超时上**（连接超时 · 等响应超时）。
 const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 
-/// **`DOWNSTREAM_DEADLINE` 的那个值搬去 `listen.rs` 了** —— 墓碑。
+/// **下游期限的值住 `listen.rs`**，本层只装它。
 ///
 /// 把「**期限值**」也算进那句「凭据、配置、路由表、期限值
 /// 全部由后端**交给它**」⇒ 分工是「**值归后端 · 执行归通信层**」。
-/// 搬走的只有**值**：装它的那一手（[`apply_downstream_deadline`]）**还在这一层**，
+/// 不在本层的只有**值**：装它的那一手（[`apply_downstream_deadline`]）**还在这一层**，
 /// 只是改成收一个入参。⚠ 别把它读成「期限没人管了」—— 它换了个人交下来，
 /// 而「两个调用点必须用同一个数」这件事今天由 [`Relay`] 那一格字段保证。
 ///
@@ -675,7 +675,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //      **中转不做任何判断，照答案做**。
     //
     //  ⚠ 递过去的是 `r.key`（`RouteKey{seg1,seg2}`）—— 两个**不透明段**。
-    //    「谁是 agent、谁是账号」这两个词在本文件里一次都不出现（条 48）。
+    //    「谁是 agent、谁是账号」这两个词在本文件里一次都不出现。
     //
     //  ⚠⚠ `D2 阻-4`：**上游选择的读锁活到 `act` 返回为止，所以 `act` 里不许有 `pump`。**
     //    `std::sync::RwLock` 是写优先的：一个在等的写者（= 用户刚配完一把 key，
@@ -1126,12 +1126,12 @@ pub fn render_upstream_request(
     out.into_bytes()
 }
 
-/// **这里先前住着两样东西，两样都搬去上游选择了** —— 墓碑，别捡回来。
+/// **鉴权头的两样知识住上游选择，不在这一层**：
 ///
-/// | 搬走的 | 新家 | 为什么不能留在这一层 |
+/// | 是什么 | 住哪 | 为什么不能住这一层 |
 /// |---|---|---|
-/// | `const AUTH_HEADER_NAMES`（换头前先丢掉哪几个头） | `accounts::upstream_select::headers_to_clear()`，**由映射派生**，不再是手写名单 | 它与那个映射之间原本靠一条判据焊着，而映射按 `C2` 必须去上游选择 ⇒ 焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
-/// | `fn auth_header_of`（`AuthStyle` → `(头名, 前缀)`） | `accounts::upstream_select::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
+/// | 换头前先丢掉哪几个头 | `accounts::upstream_select::headers_to_clear()`，**由映射派生**，不是手写名单 | 映射按 `C2` 住上游选择；名单若住这一层，它与映射之间的焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
+/// | `AuthStyle` → `(头名, 前缀)` | `accounts::upstream_select::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
 ///
 /// ⚠ **不许在这一层重建任何一个。** 中转今天连「有哪几个鉴权头」都不知道 ——
 /// 那正是 `P16` 买到的东西：它拿到 `AuthSwap` 就照丢照写，没有第二处可以判错、

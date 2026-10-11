@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import org.koin.compose.koinInject
 
@@ -48,20 +49,20 @@ fun SessionsOverviewScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onBack) { Text("← 返回") }
-                Text("会话 (${sessions.size})", style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onBack) { Text(copyText("mobKit.act.back")) }
+                Text(copyText("mobTabs.overview.title", "n" to sessions.size), style = MaterialTheme.typography.titleLarge)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // 关闭全部：多 tab 保活时的显式收口，断开所有连接，停掉前台服务耗电。
                 if (sessions.isNotEmpty()) {
-                    TextButton(onClick = { sessions.forEach { tabManager.close(it.key) } }) { Text("关闭全部") }
+                    TextButton(onClick = { sessions.forEach { tabManager.close(it.key) } }) { Text(copyText("mobTabs.overview.closeAll")) }
                 }
-                TextButton(onClick = onNewSession) { Text("+ 新会话") }
+                TextButton(onClick = onNewSession) { Text(copyText("mobTabs.overview.new")) }
             }
         }
         if (sessions.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text("还没有打开的会话。点「+ 新会话」选主机连接。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(copyText("mobTabs.overview.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
@@ -81,14 +82,14 @@ fun SessionsOverviewScreen(
                             val tmuxName = term?.tmuxSession
                             val sub =
                                 when {
-                                    isSftp -> "SFTP 文件"
+                                    isSftp -> copyText("mobTabs.row.sftp")
                                     s.label != null -> s.label + (tmuxName?.let { " · tmux: $it" } ?: "")
                                     tmuxName != null -> "tmux: $tmuxName"
                                     else -> term?.cd
                                 }
                             sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
-                        TextButton(onClick = { tabManager.close(s.key) }) { Text("× 关闭") }
+                        TextButton(onClick = { tabManager.close(s.key) }) { Text(copyText("mobTabs.row.close")) }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }

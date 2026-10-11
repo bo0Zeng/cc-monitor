@@ -28,7 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.searchableText
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -135,11 +135,11 @@ private fun HistoryStatusBar(state: ChatUiState) {
             )
 
         state.loadingOlder ->
-            Text("正在载入更早的对话…", modifier = base.testTag(ChatTestTags.LOADING_OLDER))
+            Text(copyText("mobChat.history.loading"), modifier = base.testTag(ChatTestTags.LOADING_OLDER))
 
         // 只有读着一条会话才谈得上「到顶」；新建会话不出这一条。
         state.sid != null && !state.canLoadOlder && state.units.isNotEmpty() ->
-            Text("已是最早", modifier = base.testTag(ChatTestTags.NO_MORE_HISTORY))
+            Text(copyText("mobChat.history.oldest"), modifier = base.testTag(ChatTestTags.NO_MORE_HISTORY))
     }
 }
 
@@ -162,12 +162,12 @@ private fun ChatInputRow(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
-                placeholder = { Text("说点什么…") },
+                placeholder = { Text(copyText("mobChat.input.placeholder")) },
                 singleLine = false,
                 maxLines = INPUT_MAX_LINES,
             )
             if (running && draft.isBlank()) {
-                TextButton(onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text("停止") }
+                TextButton(onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text(copyText("mobChat.input.stop")) }
             } else {
                 TextButton(
                     onClick = {
@@ -177,7 +177,7 @@ private fun ChatInputRow(
                     enabled = draft.isNotBlank(),
                     modifier = Modifier.testTag(ChatTestTags.SEND),
                 ) {
-                    Text("发送")
+                    Text(copyText("mobChat.input.send"))
                 }
             }
         }

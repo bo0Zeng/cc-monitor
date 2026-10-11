@@ -8,7 +8,7 @@
 ///
 /// `stream/inbound/` 头注逐字写着「`writer_task`（**出方向帧的唯一出口**）」。
 /// 那句话撑着 NDJSON 在线上的完整性：两个写者并发写同一个 stdout，
-/// 帧就会**互相撕开**（半行 + 半行），而这条流**仓外 aterm 正在消费**（D6 契约冻结）。
+/// 帧就会**互相撕开**（半行 + 半行），而这条流**手机端正在消费**（D6 契约冻结）。
 ///
 /// ⇒ 而它只是散文。08-08 实测：在 `stream/inbound/` 加一个自己 `tokio::io::stdout()`
 /// 并 `write_all` 的函数，**backend 292 条判据一条不红**。
@@ -103,7 +103,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
             panic!(
                 "`{name}` 在流式路上写出方向帧，却不是登记的那两个写者之一。\n\
                      ⚠ 两个写者并发写同一个 stdout ⇒ 帧互相撕开（半行 + 半行），\n\
-                     而这条流**仓外 aterm 正在消费**（D6：暴露给第三方 = 契约冻结成本）。\n\
+                     而这条流**手机端正在消费**（D6：暴露给第三方 = 契约冻结成本）。\n\
                      真要发帧，走 `writer_task` 那个出口。"
             )
         });
@@ -1022,7 +1022,7 @@ fn hello_with(emits: Vec<String>) -> Frame {
     }
 }
 
-/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。aterm 门控读 emits 判「backend 发不发某帧」。
+/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。手机端门控读 emits 判「backend 发不发某帧」。
 #[test]
 fn hello_emits_serializes_when_present_and_omits_when_empty() {
     let line = to_line(&hello_with(vec![
@@ -1122,7 +1122,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
 /// 本条补的正是那半：**谁在调它、生产路径上有没有第二条绕过去的路**。
 ///
 /// 它会在 `S5`/DG1 接线那天**故意变红**，那是设计出来的：填 `homes` 是一次
-/// 跨仓契约变更（仓外 aterm 的 hello fixture 按精确字节对），
+/// 与手机端的契约变更（它的 hello fixture 按精确字节对），
 /// 必须有人当场重新裁一次，而不是顺手改过去。
 #[test]
 fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
@@ -1143,9 +1143,9 @@ fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
     assert_eq!(
         sites[0], "homes: Vec::new(),",
         "`main.rs` 开始往 `homes` 里填东西了 ⇒ hello 帧对 Claude 的线上字节**变了**。\n\
-             这不是 bug，是 `S5`/DG1 该做的事 —— 但它是一次**跨仓契约变更**：\n\
-             仓外 aterm 的 hello fixture 按精确字节对（契约冻结 2026-07-18）。\n\
-             正确动作：与 aterm 同轮改，并同轮更新\n\
+             这不是 bug，是 `S5`/DG1 该做的事 —— 但它是一次**与手机端的契约变更**：\n\
+             手机端的 hello fixture 按精确字节对（契约冻结 2026-07-18）。\n\
+             正确动作：与手机端同轮改，并同轮更新\n\
              `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串。"
     );
 }
@@ -1247,11 +1247,11 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
 }
 
-// ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（aterm 消费侧 fixture 交叉核点）───
+// ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（手机端消费侧 fixture 交叉核点）───
 
 /// **present 形**（多 agent 的后端）：新字段在线上、snake_case、值域正确。
 ///
-/// ⚠ **测试名刻意不改**：`src/doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
+/// ⚠ **测试名刻意不改**：`src/doc/IPC-PROTOCOL.md` 与**手机端** 都按这个名字
 /// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
 /// 它钉的东西没变（「present 形的精确字节」），变的只是承载 agent 维度的字段 ——
 /// `S4` 把 `codex_dir` + `kinds` 换成了通用的 `homes`（`D3`：agent 名只许在值里）。
@@ -1279,7 +1279,7 @@ fn dg3_codex_fields_serialize_when_present() {
         uncancellable: vec![],
     })
     .unwrap();
-    // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
+    // ★ 精确字节（手机端 fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
     //   表内每项按 `AgentHome` 声明序 `agent_kind` → `path`。
     assert_eq!(
         hello,
@@ -1323,8 +1323,8 @@ fn dg3_codex_fields_serialize_when_present() {
 }
 
 /// **absent 形**（Claude 会话 / 旧后端）：skip_if_none/empty → 字段**完全省略**，帧对 Claude
-/// **字节等价旧形**（向后兼容红线）。aterm 消费侧「省=null→缺省 claude/authoritative」据此对齐。
-/// ★ 精确字节串 = aterm fixture 交叉核的真值。
+/// **字节等价旧形**（向后兼容红线）。手机端消费侧「省=null→缺省 claude/authoritative」据此对齐。
+/// ★ 精确字节串 = 手机端 fixture 交叉核的真值。
 #[test]
 fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     let hello = to_line(&Frame::Hello {
@@ -1415,13 +1415,13 @@ fn hello_unavailable_is_additive_present_and_absent() {
     assert_eq!(
         absent,
         "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
-        "空表没被省略 ⇒ hello 的线上字节变了 ⇒ 仓外 aterm 那份按精确字节对的 fixture 当场对不上\n\
+        "空表没被省略 ⇒ hello 的线上字节变了 ⇒ 手机端那份按精确字节对的 fixture 当场对不上\n\
              （契约冻结 2026-07-18）。additive 的全部意义就在这一格。"
     );
 
     // ② present：字段落在 `commands` **之后**（serde 按声明序），
     //    表内每项按 `Unavailable` 的声明序 `command` → `code`。
-    //    ★ 这一串是**真填那天**给 aterm 的 fixture 真值（同 `dg3_…_serialize_when_present` 的地位）。
+    //    ★ 这一串是**真填那天**给手机端的 fixture 真值（同 `dg3_…_serialize_when_present` 的地位）。
     let present = to_line(&Frame::Hello {
         v: 1,
         build_id: "b".into(),

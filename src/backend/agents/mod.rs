@@ -44,8 +44,8 @@
 //!
 //! [`REGISTRY`] + [`visible_homes`] 让 backend **有能力**声明它看得见哪些 agent
 //! （`G1` 成功标准③）。⚠ **能力先建、生产路径今天不接** —— `main.rs` 仍硬写
-//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**跨仓契约变更**
-//! （仓外 aterm 的 hello fixture 按精确字节对），而本机没有 aterm 仓、验不了它的运行时
+//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**与手机端的契约变更**
+//! （手机端的 hello fixture 按精确字节对），而手机端那一侧的运行时这里验不了
 //! （前提 `P3`）。⇒ 把"何时真填"留成**一次纯发布决策**：改 `main.rs` 那一行，
 //! `wire::tests::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
 //! 当场变红，逼那一天的人重新裁一次。**那条判据是提醒，不是障碍，别删它。**
@@ -117,7 +117,7 @@ pub(crate) struct Adapter {
     pub(crate) history: Option<HistoryFace>,
     /// 这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（404 ＋ 原因头，FIX3 之前是 502），不回落。
     ///
-    /// 用户 2026-09-18 逐字「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
+    /// 「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
     /// （`accounts::upstream_select` 的每 agent 一行表），与「跟着适配层」不是同一格（自陈待对齐）。
     /// 今天上游选择**只从这里读**（`default_upstreams`）—— 加一家的默认上游，改的就是注册表里那一行。
     pub(crate) upstream: Option<DefaultUpstream>,

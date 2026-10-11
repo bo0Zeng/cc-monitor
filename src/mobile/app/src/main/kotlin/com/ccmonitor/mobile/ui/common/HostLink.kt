@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CancellationException
@@ -89,7 +90,7 @@ fun rememberHostLink(
         val epoch = connector.retain(hostId, holder)
         val host = runCatching { hosts.get(hostId) }.getOrNull()
         if (host == null) {
-            state.value = HostLink.Failed("找不到这台主机")
+            state.value = HostLink.Failed(copyText("mobHostLink.host.missing"))
             return@LaunchedEffect
         }
         state.value =

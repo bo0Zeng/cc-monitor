@@ -140,7 +140,6 @@ async fn a_hello_that_answers_ping_is_all_green() {
 
 #[tokio::test]
 async fn an_old_backend_without_commands_says_too_old() {
-    // 〔从 monitor `the_control_probe_writes_nothing_to_an_old_backend`〔散文墓碑〕 搬来〕旧后端（没声明命令）：一个字节都不发给它。
     let (tx, rx) = tokio::sync::oneshot::channel::<tokio::io::DuplexStream>();
     let (r, cells) = cells_of(&args(), |_req, up, mut down| async move {
         let _ = down

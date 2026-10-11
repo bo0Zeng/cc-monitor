@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.remote.ConnectionDeadException
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteDuplexChannel
@@ -18,7 +19,7 @@ fun SshConnectionManager.commandChannel(id: String): RemoteCommandChannel =
         if (conn != null && conn.isConnected) {
             conn.execStream(cmd)
         } else {
-            flow { throw ConnectionDeadException("SSH 连接不可用（尚未建立或已断开）") }
+            flow { throw ConnectionDeadException(copyText("mobSsh.conn.unavailable")) }
         }
     }
 
@@ -35,7 +36,7 @@ fun liveExecutor(conn: () -> SshTransport?): RemoteExecutor =
     RemoteExecutor { cmd -> alive(conn()).execCapture(cmd) }
 
 private fun alive(conn: SshTransport?): SshTransport =
-    conn?.takeIf { it.isConnected } ?: throw ConnectionDeadException("SSH 连接不可用（尚未建立或已断开）")
+    conn?.takeIf { it.isConnected } ?: throw ConnectionDeadException(copyText("mobSsh.conn.unavailable"))
 
 /**
  * [RemoteDuplexChannel] 的工厂（常驻流那条双向长 exec）。无活连接时抛 [ConnectionDeadException]，判据与上面两个同一个。

@@ -81,10 +81,9 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
 
 /// ★**逐次拨号那条路不存在了**（零命中 ＋ 正控）。
 ///
-/// 守的要求：「`run_list_query`〔散文墓碑〕（逐次拨号那条路，
-/// 今天零放行）删，同拍动 `subagent.rs` 的回落」。原先这里两条判据钉「那条路只放行登记表 ＋ 先问后拨」——
+/// 守的要求：「逐次拨号那条路删，同拍动 `subagent.rs` 的回落」。原先这里两条判据钉「那条路只放行登记表 ＋ 先问后拨」——
 /// 那张表 C4c 起是空的，路本身删了 ⇒ 改钉「它在 monitor 生产段里一个标识符都不剩」：
-/// 函数名 · 闸门名 · 放行表名，按**整词**、剥注释之后数（散文里的墓碑不算）。
+/// 函数名 · 闸门名 · 放行表名，按**整词**、剥注释之后数（注释不算）。
 /// 正控：同一识别器在同一份语料上认得出今天真在的出口 `run_routed`（识别器没瞎）。
 #[test]
 fn the_dial_per_query_path_is_gone() {
@@ -116,8 +115,6 @@ fn the_dial_per_query_path_is_gone() {
         "正控失败：识别器在同一份语料上认不出帧面出口 `read_page` —— 上面的零命中不可信"
     );
 }
-
-// argv 分流（`route_argv` / `ArgvRoute`〔散文墓碑〕）随它的调用方（子 agent · 按偏移取一段）一起删了，那条判据随之退役。
 
 // ════════════════════════════════════════════════════════════════════════════
 // 八条里哪几条已经**只走通道**（主界面经 `src/comms/inward/chan.ts`）
@@ -316,8 +313,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "forward-stop",
         "停一条转发：后端从账上摘掉 ⇒ 链路被收、本地口放掉（`dial/forwards.rs::stop_with`）",
     ),
-    // 起会话的计划与渲染：原 monitor Tauri 命令（`render_ccm_launch` · `render_launch_payload` ·
-    //   `relay_endpoint_for_launch` · `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕）。
     (
         "launch-render-cli",
         "起会话那一行 `ccm …`：后端出成品 `{cmd}`，渲不出来回码 `refused`（`control/launch_render/wire.rs`）；前端 `src/frontend/ui/launch-render.ts::renderCli`。\
@@ -512,7 +507,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // `creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (
         "apikey-key-set",
-        "给一个号配 key：monitor 那条命令（`write_apikey_credentials_key`〔散文墓碑〕）推账号 id、本机那一臂先问 `apikey-read` 核路径再转这一条 ——         推 id 搬进后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答，命令与写臂删了",
+        "给一个号配 key：推 id 住后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答",
     ),
     // skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
     // `C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏（今天走终端管理那一条）。
@@ -521,19 +516,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\
          `src/frontend/ui/terminal-reads.ts`（预览窗 `views/pane-preview.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
     ),
-    // `tmux.manage` 其余两格（杀会话 · 送键）＋ `launch.send-into`（就地 resume）：
-    //   三条 Tauri 命令（`kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕）同拍迁完 ——
-    //   `launch` 这条帧命令当年有两个 monitor 发送端（送键 · 就地 resume），只迁一个的话本表就得为过渡态开一格。
     (
         "kill",
         "后端应答就是成品 `{session, killed}`（身份门 ＋ 窗口门在后端先过、对句柄下手）；monitor 那条命令只在拒空目标、\
          转、核 `killed`、按三态说人话 —— 那一份解释搬到 `src/frontend/ui/tmux-control.ts::killSession`，命令与发送端\
          （`backend_kill.rs`）删了",
     ),
-    // `C4c.md §5.6` A 组 `cc-bus.cockpit`：五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` /
-    //   `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕）同拍迁完。广播那一条先在后端长出 `bus-broadcast`
-    //   （挑人 ＋ 逐个投递搬进后端），界面才只剩「说成人话」。解释的家：`src/frontend/ui/cc-bus-control.ts`（单一住址由
-    //   `cc_bus_tests.rs::the_front_end_speaks_the_bus_ops_only_through_one_module` 判）。
     (
         "bus-list",
         "查一个 agent 在不在线：后端应答就是成品（名单 ＋ 每人 `live`），monitor 那条命令只在转 ＋ 按 id 挑一个 ——\
@@ -580,13 +568,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：后端转调只读的 `cc-log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
          界面 `cc-bus-control.ts::decodeInbox` 按形状收",
     ),
-    // D 组 MCP：读写与推拉的计算、读、写都进了那台后端（`assets/mcp_edit.rs` · `assets/mcp_sync_flow.rs`），
-    //   monitor 那八条 Tauri 命令（`mcp.rs` · `mcp_sync.rs`〔散文墓碑〕）删了；界面经 `src/frontend/ui/mcp-reads.ts` / `src/frontend/ui/mcp-sync-reads.ts` 按形状收。
     // `mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
     //   界面只问本机那两条枢纽命令，枢纽向来源那台取、向被写那台写（内层三条只经枢纽）。
-    // cc-bus 装到本机：monitor 那两条 Tauri 命令（`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕）删了。
-    //   那两条帧命令界面也不再直问：cc-bus 是扩展页里的一行，装它走枢纽（`ext-hub-*`），枢纽交被写那台装（内层两条只经枢纽）。
-    // D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
     (
         "assets-sync",
         "界面直问本机常驻后端（远端那一页只报 `origin`，够到那台用握手时 `remote-reach` 登记的那一行）；成品 `{self, synced, reach}`，\
@@ -949,9 +932,6 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     assert_eq!(bad.len(), 1, "非字面量那一处没被认出来：{bad:?}");
 }
 
-// `history-record` 应答解释那条判据（`parse_record`〔散文墓碑〕）随发送端删了；同一条口径
-//   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/frontend/ui/session-reads.vitest.ts`）。
-
 // ═════════════════════════════════════════════════════════════════════════════
 // 本机查询接的是**正在跑的那份**常驻后端（WIN1 撤回的 F2 由本件接住）
 // ═════════════════════════════════════════════════════════════════════════════
@@ -960,8 +940,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // 「后端是给定的、不留退路」。RT1 F2 读数：旧那条 `run_query` 只认 exe 旁边那一份文件、
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
-// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /〔散文墓碑〕
-//    `acct_iso_deploy_tests`〔散文墓碑〕 的部署那一步：假后端那一侧真收到了帧命令）；
+// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
 // ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}
@@ -1131,9 +1110,6 @@ async fn next_request(
     }
 }
 
-// D2（分页读逐行那一件一个总期限）随被测的 `read_lines`〔散文墓碑〕删了：那一件（子 agent 读整段）进了后端；
-//   今天仍分页的那一件（旁路快照）由 D5b 钉「期限在翻页循环之外造」。
-
 /// D3 ★ **期限已经过了 ⇒ 一个字节都不发**（同 `src/comms/inward/chan.ts`「已经过了 ⇒ 一个字节都不发」）；
 /// 还没过 ⇒ 恰好发一行（正控：同一个对端、同一个读法认得出一行）。
 #[tokio::test]
@@ -1249,8 +1225,6 @@ fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
 /// 多一处 = 又长出一个发起点（进表、写这件事是什么、值给多少）；少一处 = 那件事不再有期限了（或者搬了家没改表）。
 const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     // `tasks.rs` 那一行摘了：monitor 那份任务 notify 删了，不再问 `tasks-list`。
-    // `subagent·rs` 的 `query` · `history·rs` 的整份读 · `session_skeleton·rs` 的 `read_session_lines` 三行摘了〔散文墓碑〕：
-    //   那三条命令退役（界面经通道直问那台后端，期限在界面那一手造）。
     (
         "stream_source/snapshot.rs",
         "fetch_snapshot",

@@ -1,9 +1,6 @@
-//! 历史会话的 monitor 这一侧：已经一件事都不做了（只剩判据）。
-//! 读一整份会话（那条 Tauri 命令与它的分页器 `SessionPager`〔散文墓碑〕）退役：
-//! 那台后端出记录行（`history-page`），界面经通道直问（`src/frontend/ui/record-reads.ts`）；那句「超过上限」随判定进了后端。
-//! 删一份会话与 **F62 从某轮建分支** 不在这里了：界面经通道直说那台机器的后端（`src/frontend/ui/session-writes.ts`）。
+//! 历史会话的 monitor 这一侧：一件事都不做（只剩判据）。
 //!
-//! ## 清单与注解不在这里了
+//! ## 清单与注解不在这里
 //!
 //! 项目 / 会话清单与注解（星标 / 重命名 / 隐藏 / 上次账号）搬进了**本机常驻后端**（后端 `history_list.rs` ·
 //! `history_annotations.rs`），界面经通道问（`src/frontend/ui/history-reads.ts`）。这里原先的「两级懒加载」
@@ -18,16 +15,6 @@
 
 // === 历史清单与注解搬进了本机常驻后端 ===
 //
-// 注解（`history-metadata.json`：星标 / 改名 / 隐藏 / 上次账号）的
-// **读写者**换成本机常驻后端（文件住家里，那台后端按家推），它经 `remote_ask` 问远端那台、
-// 并上注解、出成品；前端经 `chan.call`（`src/frontend/ui/history-reads.ts`）。这里原先那一族随之删了〔散文墓碑〕：
-// 两个线上形状（`HistoryProject` / `HistorySessionEntry`）· 注解三件（`HistoryMetadata` / `EntryMetadata` / `MetadataPatch`）·
-// 本机项目清单（`local_projects_via`〔散文墓碑〕· 判活绑定 `SessionMapLiveness`〔散文墓碑〕）·
-// Codex 合成（`enumerate_codex_sessions` / `codex_projects_from` / `codex_session_entry` / `codex_first_user_excerpt`〔散文墓碑〕）·
-// 展开一个项目（`analyze_jsonl`〔散文墓碑〕一族）· 改注解 / 上次账号表那两条命令。
-// 判定逐格搬进后端（`history_list.rs` · `history_annotations.rs` · `agents/codex/history.rs`），判据跟着搬；
-// 「迁移前后读出来的注解逐条相等」由结构占位夹具 `tests/__fixtures__/history-metadata.fixture.json` ＋ 旧读者产出的金样
-// `tests/__fixtures__/history-metadata.readout.golden.json` 钉着。
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/history_tests.rs"]

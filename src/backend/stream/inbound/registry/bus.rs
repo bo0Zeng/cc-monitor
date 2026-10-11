@@ -4,7 +4,7 @@ use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
-    //（用户 08-13 逐字：「细节先按原本的就行」「后面我可能要改ccbus」）。
+    //（「细节先按原本的就行」「后面我可能要改ccbus」）。
     // ⚠ 刻意**没有** `bus-recv`：`cc-recv` 会推进已读位置，backend 代读等于把消息从人那里
     //   偷走。「有没有新的」由 `bus-list` 的待读数回答（只读、不消费）。理由全文在 `control/cc_bus.rs`。
     CommandSpec {

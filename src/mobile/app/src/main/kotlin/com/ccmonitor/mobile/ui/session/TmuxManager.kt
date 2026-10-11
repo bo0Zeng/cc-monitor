@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -81,7 +82,7 @@ fun TmuxManagerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("tmux 会话") },
+        title = { Text(copyText("mobTmux.dialog.title")) },
         text = {
             TmuxManagerBody(
                 channel = channel,
@@ -100,8 +101,8 @@ fun TmuxManagerDialog(
                 scope = scope,
             )
         },
-        confirmButton = { TextButton(onClick = { refresh() }) { Text("刷新") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(onClick = { refresh() }) { Text(copyText("mobTmux.dialog.refresh")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 
     KillConfirmDialog(
@@ -178,16 +179,15 @@ private fun KillConfirmDialog(
     target ?: return
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("结束「${target.name}」？") },
+        title = { Text(copyText("mobTmux.kill.title", "name" to target.name)) },
         text = {
             Text(
-                "里面正在跑的东西会被中断，" +
-                    (target.title.takeIf { it.isNotBlank() }?.let { "当前是：$it。" } ?: "") +
-                    "这一步不能撤销。",
+                target.title.takeIf { it.isNotBlank() }?.let { copyText("mobTmux.kill.bodyCmd", "command" to it) }
+                    ?: copyText("mobTmux.kill.body"),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(target) }) { Text("结束") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { onConfirm(target) }) { Text(copyText("mobTmux.kill.ok")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -204,8 +204,8 @@ private fun TmuxSessionList(
 ) {
     val tokens = LocalAppTokens.current
     when {
-        loading -> Text("加载中…", color = tokens.textFaint)
-        sessions.isEmpty() -> Text("无 tmux 会话。下方新建一个。", color = tokens.textFaint)
+        loading -> Text(copyText("mobTmux.list.loading"), color = tokens.textFaint)
+        sessions.isEmpty() -> Text(copyText("mobTmux.list.empty"), color = tokens.textFaint)
         else ->
             sessions.forEach { s ->
                 TmuxSessionRow(
@@ -234,17 +234,17 @@ private fun TmuxSessionRow(
             // 显示那台写好的标题（免得盲杀正在干活的会话）、附着态。
             Text(
                 buildString {
-                    if (s.title.isNotBlank()) append("运行: ${s.title}")
-                    if (s.attached) append(if (isEmpty()) "已附着" else " · 已附着")
-                },
+                    if (s.title.isNotBlank()) append(copyText("mobTmux.row.running", "command" to s.title))
+                    if (s.attached) append(copyText("mobTmux.row.attached"))
+                }.removePrefix(" · "),
                 style = monoSmall,
                 color = tokens.textFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        TextButton(onClick = onAttach) { Text("附着") }
-        TextButton(onClick = onKill) { Text("杀", color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+        TextButton(onClick = onAttach) { Text(copyText("mobTmux.row.attach")) }
+        TextButton(onClick = onKill) { Text(copyText("mobTmux.row.kill"), color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
@@ -263,13 +263,13 @@ private fun TmuxNewSessionRow(
         OutlinedTextField(
             value = newName,
             onValueChange = onNameChange,
-            label = { Text("新会话名") },
+            label = { Text(copyText("mobTmux.new.name")) },
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
-        TextButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text("新建") }
+        TextButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
         // 后台起一个跑着 claude 的 detached 会话，不进入，之后可附着回来。
-        TextButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text("后台 cc") }
-        TextButton(enabled = newName.isNotBlank(), onClick = { onNewAttach(newName.trim()) }) { Text("新建并附着") }
+        TextButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
+        TextButton(enabled = newName.isNotBlank(), onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
     }
 }

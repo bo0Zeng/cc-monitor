@@ -104,16 +104,14 @@ const LOCAL_PROBE_TTL: std::time::Duration = std::time::Duration::from_secs(300)
 ///
 /// # 为什么本机这条是同步的，而远端那条是 async
 ///
-/// 调用方是原先是 `history.rs` 的本机拉起（`resume_history_session` / `new_local_session`〔散文墓碑〕
-/// 两个 `#[tauri::command]` 的同步调用链）。远端那条是 async 因为 ssh 本来就要 await；
-/// 本机没有那一跳，`bash -lic` 直接跑 —— 为了它把整条链改成 async 是纯粹的传染。
+/// 远端那条是 async 因为 ssh 本来就要 await；本机没有那一跳，`bash -lic` 直接跑 ——
+/// 为了它把调用链改成 async 是纯粹的传染。
 ///
 /// # 为什么必须真跑一次，而不是渲染完让 shell 自己探
 ///
-/// 旧路（`build_local_posix_command`）用的是 shell 里的 `if command -v cc; then …; else …; fi` 〔散文墓碑〕
-/// —— 那种探法只答得了「在不在」，答不了**能力集**。而渲染器要按 caps 决定
+/// shell 里的 `command -v` 只答得了「在不在」，答不了**能力集**。而渲染器要按 caps 决定
 /// 「这条修饰说不说得出来」（§35/§37）：把 caps 猜成「全都有」，遇到老 ccm 会渲染出一条
-/// 带未知 flag 的命令，而那时 `else` 分支**已经不在了**，没有回落可走 ⇒ 是个 fail-open。
+/// 带未知 flag 的命令，没有回落可走 ⇒ 是个 fail-open。
 ///
 /// # 未装不是错误
 ///
@@ -496,9 +494,6 @@ pub(crate) fn ask_place_verdict(
     ask_once(staged, "place-verdict", args, PLACE_ASK_TIMEOUT)
 }
 
-// 🪦这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
-//   `ccm …` 调用行的渲染进了那台后端，能力问它自己（`launch_render/wire.rs::render_ccm_launch`），这一跳删了。
-
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R69` / `KR69D2`：**装了之后，产品说得出「你 PATH 上那个是旧的」**
 // ═══════════════════════════════════════════════════════════════════════════
@@ -791,7 +786,7 @@ pub(crate) fn local_ccm_entry_now(fresh: Option<bool>) -> LocalCcmEntry {
         _ => parse_probe_output(""),
     };
     // ⚠ **`$HOME/…` 形态，不是绝对路径**：这个串会被别名生成器嵌进用户的 shell 命令里，
-    //   而用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）⇒ 写死绝对路径把自定义堵死，
+    //   而「这些命令都是可以自定义的」（`R19`）⇒ 写死绝对路径把自定义堵死，
     //   换台机器 / 换个用户也当场失效。
     let entry = installed.map(|_| {
         format!(

@@ -44,9 +44,9 @@ class KeystoreCryptoBox(
     }
 
     private companion object {
-        const val KEYSET_NAME = "aterm_key_keyset"
-        const val PREFERENCE_FILE = "aterm_key_keyset_prefs"
-        const val MASTER_KEY_URI = "android-keystore://aterm_key_master"
-        val ASSOCIATED_DATA = "aterm-private-key".toByteArray()
+        const val KEYSET_NAME = "ccm_key_keyset"
+        const val PREFERENCE_FILE = "ccm_key_keyset_prefs"
+        const val MASTER_KEY_URI = "android-keystore://ccm_key_master"
+        val ASSOCIATED_DATA = "ccm-private-key".toByteArray()
     }
 }

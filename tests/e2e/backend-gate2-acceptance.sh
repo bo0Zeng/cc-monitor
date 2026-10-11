@@ -68,8 +68,6 @@ pass=0; fail=0; skip=0; waived=0
 #   门禁不钉本套件的断言条数，只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`；兜底那一行 `*) echo "" ;;` 由
 #   `tests/backend/control/gate_tests.rs::an_unregistered_skip_still_fails_the_gate2_suite` 钉着（兜底一回非空串，未登记的 skip 就成了豁免）。
 #
-# 〔墓碑〕第二条登记 `meta_dollar`（`CI-J3` 09-09）〔散文墓碑〕：它是「环境相关」的豁免（只在 tmux ≤3.4 上成立），
-#   在更新的 tmux 上静悄悄用不到、PASS 数随机器变。换成下面的**版本门**（`min_tmux_for`）。
 waiver_reason() {
   case "$1" in
     meta_colon) echo "tmux 会把名字里的 ':' 换成 '_'（本机 3.6 实测 cc-a:b → cc-a_b）⇒ 这一轨造不出真会话；判定由 monitor/backend 两条纯函数轨覆盖（同一张 TSV）" ;;
@@ -327,10 +325,10 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
     else bad "$what：期望 $want 且会话未动，实得 $R（alive=$alive landed=$landed）"; fi
   fi
 }
-cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "atermpipe-a" mobile yes kill "" wrong_owner 1
-cl "别的前端的会话，自报 desktop ⇒ 送不进字" "atermpipe-b" mobile yes send desktop wrong_owner 2
-cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "atermpipe-c" mobile no send mobile OK 3
-cl "自己起的会话，自报对上 ⇒ 结束得了" "atermpipe-d" mobile no kill mobile OK 4
+cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "phonepipe-a" mobile yes kill "" wrong_owner 1
+cl "别的前端的会话，自报 desktop ⇒ 送不进字" "phonepipe-b" mobile yes send desktop wrong_owner 2
+cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "phonepipe-c" mobile no send mobile OK 3
+cl "自己起的会话，自报对上 ⇒ 结束得了" "phonepipe-d" mobile no kill mobile OK 4
 cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no kill mobile OK 5
 
 # ── 按 sid 结束（批量停）：一个 tmux 会话里几个 claude 窗格 ⇒ 只结束挂着那个 sid 的窗格，没有别的才结束整个会话 ──

@@ -805,12 +805,6 @@ gate_lane 壳Rust
 # 该跑到的包 = `src/frontend/shell` workspace 的成员（`cargo metadata` 现取），与输出里真跑到的两向相等。
 run_gate_sum cargo gate_shell_libs gate_cargo_test_nonet src/frontend/shell --workspace --lib
 
-# `src/frontend/shell/embedded-backends/` 铺没铺（gitignore 挡着，跟着铺走、不跟 git 走）决定 `build.rs` 置不置 `embedded_backends` cfg。
-# 挂这个 cfg 的是「本地后端真的能起来吗」那一族：`sftp::embedded_backend_binaries_present_and_valid` ·
-# `local_backend_host::the_local_backend_host_can_be_stopped_and_started_again` ·
-# `local_backend::the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（随 monitor 那本 tmux 原文账删了） ·
-# `local_backend::the_local_backend_host_really_registers_an_inbound_client`。
-# 没铺时上面那个合计少了这一族。这一行只自报、不判（铺与没铺本该是两个数），所以行首不是 `ok`。
 if [ -d src/frontend/shell/embedded-backends ]; then
   printf '  分母 %-14s %s\n' "cargo" "本树铺了 src/frontend/shell/embedded-backends/ ⇒ embedded_backends cfg 会置上，「本地后端真的能起来吗」那一族在跑"
 else
@@ -898,7 +892,7 @@ run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红�
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 # ── `shotsshell`：截图台架的无头壳（例子 `ccm-shots-shell`，只在台架特性下编）编不编得过 ──
 # 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；从前没有一格编它，壳里它调的签名一改（如 `call_via` 多一参），
-# 要到跑截图台架才发现（proj10 · mg42 都撞上过）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
+# 要到跑截图台架才发现（撞上过两回）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
 # 与 `cargo` · `appbuild` 同一个 target 目录，增量编一次。
 run_gate shotsshell '不是数出来的数：截图台架那个无头壳（例子 `ccm-shots-shell`）在 Linux 上 dev 档真编真链一趟，只有绿/红两态，与台架 `pool.mjs` 同一条编法。⚠ 只编不跑：台架里它跑得对不对由截图台架自己判' \
          bash -c 'cd src/frontend/shell && out=$(cargo build --features shots --example ccm-shots-shell 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "shotsshell: 1 passed"'
@@ -917,7 +911,7 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 #   真走一趟链接器（dev）。`[lib]` 只产 `rlib`；有人把 `cdylib` 加回来 ⇒ 红在 `export ordinal too large`。
 # 再编出 lib 的测试程序（`cargo test --lib --no-run`，只编不跑），用 `llvm-readobj --coff-resources` 读它的资源表：
 #   必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
-#   为什么：mg38 推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
+#   为什么：有一回推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
 #   `TaskDialogIndirect` 一族，而清单当时只进 `[[bin]]`。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来（`build.rs::manifest_for_every_artifact`）。
 # 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；链的是不带本机后端那一形：`native-backend/` 没铺，或铺着本机 linux 那份（清单写着别的 target ⇒ `build.rs` 这一趟当它不在，判据 `native_bytes_staged_for_another_target_are_left_out_not_fatal`）。
 # 判资源表的那段 python 读 `llvm-readobj` 的输出（stdin），$1 是给人看的名字；绿时印一行 `清单 ok`，红时说缺什么并退 1。
@@ -1278,7 +1272,7 @@ gate_lane 手机端
 # 工具链：外面给了 `JAVA_HOME` 与 `ANDROID_HOME` 就用（CI 的 setup-java / setup-android）；没给就 source
 #   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
 # 跑：ktlint · detekt（带类型解析）· Android Lint（`:app:lintDebug`，error 一条就红；warning 不拦）·
-#   各模块 JVM 单测（`:core-claude` · `:core-remote` 是纯 JVM 模块，要显式点）·
+#   各模块 JVM 单测（`:core-claude` · `:core-remote` · `:core-copy` 是纯 JVM 模块，要显式点）·
 #   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）。
 # 判：Gradle 退出码是 0 ＋ 这一趟 test-results 里的条数 > 0（先清掉旧的 test-results；build cache 命中时 Gradle 照样还原它）。
 # 不起模拟器：要设备的 androidTest 不在这里，入口是 `src/mobile/scripts/android-test.sh`。
@@ -1293,7 +1287,7 @@ gate_mobile() {
     fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :app:assembleRelease || exit $?
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease || exit $?
   ) || return $?
   n="$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
   printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · Android Lint · release 构建也都绿）\n' "${n:-0}"

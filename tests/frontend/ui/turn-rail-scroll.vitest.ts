@@ -8,10 +8,10 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { TurnRail } from "../../../src/frontend/ui/turn-rail";
-import type { TurnSummary } from "../../../src/frontend/ui/session-reads";
+import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
 
 const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top }) as DOMRect;
-const turnOf = (uuid: string): TurnSummary => ({ uuid, startText: "02:01", tools: 1, said: "", reply: "" }) as unknown as TurnSummary;
+const turnOf = (uuid: string): TurnRow => ({ uuid, startText: "02:01", tools: 1, said: "", reply: "" }) as unknown as TurnRow;
 const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
 
 /** n 轮，每轮开头一张卡、中间夹 `filler` 张别的卡；第 i 轮开头的上沿在 `i * 100 - offset`。 */

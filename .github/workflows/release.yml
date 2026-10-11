@@ -36,7 +36,7 @@ name: Release
 #   **不等于**本文件这一趟办完了 —— 形态不同（`build.rs` 自陈：static-pie / 未 strip / 不同 rustc），
 #   工具链版本也未必是下面钉的那两个。
 #
-# ⚠ **条 63 承诺哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
+# ⚠ **平台承诺面哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
 #   唯一住址：`tests/evidence/K-R124-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从
 #   `tests/evidence/K-G4-platform-ledger.py::PROMISED` 导进去的，全仓只有那一份）。
 #   本文件里每加/删/改名一个「编后端」的步骤，那份判据会**两向**红 —— 这是刻意的：
@@ -255,12 +255,7 @@ jobs:
       # 命名成 src/frontend/shell/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
       # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
-      # 〔墓碑，本步原话逐字：「Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把
-      #  BUILD_ID 优化成立即数、字节内搜不到明文——运行时启发式会误拒正品；清单从源码同一
-      #  提取点生成，与刚编出的字节天然同源）」。**最后半句正是病灶**：清单从**源码**抠，
-      #  所以三个载体的清单**恒等**，而恒等的东西一格证据都不提供（K-R68 · DECISIONS#R26 裁定零）。〕
-      # 今天后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP，
-      # 〔19b 订正：步 9 起它住 lib.rs，这段头注原写 main.rs —— 指向一份抠不出东西的住址〕），
+      # 今天后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP），
       # 连续、拆不成立即数 ⇒ 下游（src/frontend/shell/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
@@ -305,13 +300,6 @@ jobs:
       # 放进 build.rs 期望的位置；缺任一 arch 就 fail——绝不静默发出「自动部署被关」的安装包。
       #
       # 🔴 **K-R70（09-12）：校验从「比清单」换成「问字节」。**
-      # 〔墓碑，本步原话逐字：「v2.22.1 修复：**必须连 .build_id 清单一起拷**。此前只拷
-      #  二进制不拷清单 → build.rs 拿不到内嵌身份 → 运行时字节启发式又搜不到被优化的
-      #  BUILD_ID 明文 → 「身份未知跳过自动部署」→ v2.19-v2.22 全部 CI 安装包的远端流模式
-      #  静默降级（bg 会话不可见 + 全量推流拥塞）。清单内容再与源码 BUILD_ID 对拍」。
-      #  那次事故与那次修复都是真的；今天换掉的是**修法**：清单是从源码抠的**标签**，
-      #  它与刚编出来那份字节之间没有任何因果 —— 三个载体的清单永远一致，
-      #  而「永远一致」证不了任何事（K-R68 · DECISIONS#R26 裁定零）。〕
       # 今天问的是**这份字节自己**：backend 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
       # 逐字是 `<开>$src<关>`，界标的唯一住址在 `env.CCM_STAMP_MARKS_SRC`（契约 crate 的 STAMP_OPEN / STAMP_CLOSE），
       # `$src` 是 `env.CCM_BACKEND_IDENTITY_SRC` 那份源码的 BUILD_ID（这里从源码抠，不手抄）。
@@ -328,7 +316,7 @@ jobs:
             Copy-Item $f.FullName "src/frontend/shell/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
-          # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
+          # 🔴 从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
           # 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
           #    `tests/scripts/re-embed.sh` 的 IDENTITY_SRC 与本处是同一条住址，改一处就要改另一处；
           #    `tests/backend/build_id_guard.rs` 那条判据钉着它指得到真东西。
@@ -469,11 +457,6 @@ jobs:
       # ⇒ 下面那几条 `Test-Path` 就是把前一种也变成硬失败。
       #
       # 🔴 **K-R70（09-12）：`cc-monitor-native.build_id` 那一份不写了。**
-      # 〔墓碑：本步原来写三个文件，第三个是 `.build_id`，注释逐字「它的身份（决定落到
-      #  用户盘上叫什么名字）」。**它不是身份，是标签** —— 从源码常量抠出来的一行字，
-      #  与旁边那份字节之间没有因果（K-R68 · DECISIONS#R26 裁定零）。今天 `build.rs`
-      #  直接从字节里扫 `CC_MONITOR_BUILD_STAMP`，落点名字仍是 `cc-monitor-backend-<id>`，
-      #  只是那个 `<id>` 换成了**这份字节自己说的**。〕
       # ⚠ `.target` **留着**：它答的是「给哪个平台编的」，不是「你是谁」——
       #   那个事实今天确实只能靠旁边这一份（名字里没有 triple）。如实登记为同族剩余。
       #
@@ -525,7 +508,7 @@ jobs:
       - name: tauri build
         run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles nsis,msi
 
-      # ── 🔴〔2026-09-23 现打修〕**产物根不是 `src/frontend/shell/target/`，是 `.build/shell/`** ────
+      # ── 🔴 **产物根不是 `src/frontend/shell/target/`，是 `.build/shell/`** ────
       #
       # 仓根有一份**进 git 的** `.cargo/config.toml`（`[build] target-dir = ".build/shell"`；
       # 理由住它自己的头注：构建输出不许落在 `src/` 里，否则一族「走一遍源码树」的判据
@@ -534,14 +517,7 @@ jobs:
       # `target_directory = <仓根>/.build/shell`；`npx tauri bundle` 现打也落在那里
       # （`.build/shell/release/bundle/deb/cc-monitor_3.8.1_amd64.deb`）。
       #
-      # 〔墓碑，本步与下面上传那一步原来逐字写的是 `src/frontend/shell/target/release/…`。**那是
-      #  09-17 搬树（两个 cargo 工程搬进 `src/`、并加了上面那份配置）之后指空的路径**，
-      #  而最后一次发版是 v3.6.0（08-01）—— 在那之前 ⇒ **一次都没人踩到过**。
-      #  它坏得**完全静默**：三个 glob 全空 → 本步原来那个 `-ErrorAction SilentlyContinue`
-      #  吞掉「路径不存在」→ `SHA256SUMS.txt` 空着照发；下面 `action-gh-release` 的
-      #  `files:` 一条都不匹配，而 `fail_on_unmatched_files` 默认 `false` ⇒ 只打 warning
-      #  ⇒ **Release 建得出来，上面一个安装包都没有。**〕
-      # ⇒ 两件同拍改：① 路径改对；② 把「一条都没匹配」从静默变成硬失败（下面那个**恒等**）。
+      # ⇒ 下面的路径一律以 `.build/shell/` 为根；「一条都没匹配」是硬失败（下面那个**恒等**），不静默。
       # 🔴 判据那一侧同拍钉住：`tests/evidence/K-R124-ruler.py` 的 ⑮ 把本文件里每一处
       #   cargo 产物路径的**根**与那两份 `.cargo/config.toml` 声明的 `target-dir`
       #   做**两向集合相等** —— 再搬一次树、再改一次 `target-dir` 而这里不跟，当场红。
@@ -777,8 +753,8 @@ jobs:
           diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") \
             || { echo "::error::安装包的二进制清单与本包声明的对不上（上面 < 是声明了没装、> 是装了没登记）"; exit 1; }
 
-      # DN-8（aterm 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
-      # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（aterm 走自部署）
+      # DN-8（手机端 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
+      # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（手机端走自部署）
       # 拿不到，只能自己装 zig 交叉编译一遍。
       #
       # **挂在本 job 而不是 build-backends**：后者跑在 build-windows **之前**，在那里调
@@ -816,3 +792,123 @@ jobs:
             SHA256SUMS-linux.txt
             backend-artifacts/cc-monitor-backend-x86_64
             backend-artifacts/cc-monitor-backend-aarch64
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 手机端（`src/mobile`，Android）：**正式签名的 APK**，与桌面同一个版本号、挂同一个 Release。
+  #
+  # 1. `needs: [build-windows]` —— 理由与 `build-linux` 那两条同一条：Release 由 `build-windows` 建
+  #    （并排去抢会竞争同一个 release）；「四处版本号与 tag 一致」那道检查住在那里，本 job 继承它。
+  #    手机的 versionName 就是 `package.json` 的 version（`src/mobile/app/build.gradle.kts` 构建时现读），
+  #    下面核 APK 那一步再对着真字节核一次。
+  # 2. 签名材料**只从 GitHub secrets 来**（四个，名字登记在 `src/doc/RELEASING.md` §2.3）：
+  #    只在还原那一步的 `env:` 上出现，`run:` 里不直接展开；keystore 与 keystore.properties
+  #    只写在 `$RUNNER_TEMP`（不落工作树），打包那一步用 `-Pccm.keystoreProperties` 指过去；
+  #    打包一结束（成败都算）就删。碰签名变量的每一行都重定向进文件，不往日志写，不开 xtrace。
+  #    这几条由 `K-R124-ruler.py` ⑱ 逐条核。`ci.yml` 的 mobile 格照旧只打未签名包，一个 secret 都不碰。
+  # 3. 手机端不带后端字节：手机核远端的 `BUILD_ID`（`EmbeddedBuild.ID`，构建时从 `src/backend/lib.rs` 抄），
+  #    今天还没有给远端上传 / 装后端那条路 ⇒ 本 job 不编、不塞后端。
+  build-mobile:
+    name: Build Android app (signed APK)
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write   # 追加附件到已存在的 release
+    steps:
+      - uses: actions/checkout@v4
+
+      # 供应链：同 ci.yml 的 mobile 格。
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 只装 platform-tools（理由住 ci.yml 的 mobile 格）；平台与 build-tools 由 AGP 按需自己装。
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: src/mobile
+
+      # 没给 secrets（或解不出）就红：不拿未签名的包冒充正式包。
+      # Java properties 里 `\` 是转义符 ⇒ 写进去之前把它双写。
+      - name: Restore signing keystore (secrets → runner temp)
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ks="$RUNNER_TEMP/ccm-release.jks"
+          props="$RUNNER_TEMP/ccm-keystore.properties"
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$ks"
+          printf 'storeFile=%s\n' "$ks" > "$props"
+          printf 'storePassword=%s\n' "${ANDROID_KEYSTORE_PASSWORD//\\/\\\\}" >> "$props"
+          printf 'keyAlias=%s\n' "${ANDROID_KEY_ALIAS//\\/\\\\}" >> "$props"
+          printf 'keyPassword=%s\n' "${ANDROID_KEY_PASSWORD//\\/\\\\}" >> "$props"
+          [ -s "$ks" ] || { echo "::error::签名 keystore 是空的（secret ANDROID_KEYSTORE_B64 没给或解不出）—— 不打未签名的包冒充正式包"; exit 1; }
+          echo "keystore 已还原到 runner 临时目录（$(stat -c %s "$ks") 字节）"
+
+      - name: Build signed release APK
+        working-directory: src/mobile
+        run: ./gradlew --no-daemon --console=plain :app:assembleRelease -Pccm.keystoreProperties="$RUNNER_TEMP/ccm-keystore.properties"
+
+      # 构建完就删（成败都删）：runner 用完即弃，这一步是不把签名材料留到后面那几步的手边。
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ccm-release.jks" "$RUNNER_TEMP/ccm-keystore.properties"
+
+      # 对着真 APK 核两件事：① 签了名（`apksigner verify`，印出签名证书指纹 —— 公开信息，装机时 Android 比的就是它）；
+      # ② versionName == `package.json` 的 version（与桌面同一个版本号）。都对上才改名成发版资产。
+      # 产物只认已签名的那份 `app-release.apk`（没签名时 AGP 产的是 `app-release-unsigned.apk`）。
+      - name: Verify the APK (signature · version) and stage it
+        run: |
+          set -euo pipefail
+          ver=$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')
+          mapfile -t apks < <(find .build/mobile/app/outputs -name app-release.apk -type f)
+          [ "${#apks[@]}" -eq 1 ] || { echo "::error::已签名的 app-release.apk 不是恰好一份（现打 ${#apks[@]}：${apks[*]:-}）"; exit 1; }
+          apk="${apks[0]}"
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$bt/apksigner" verify --verbose --print-certs "$apk"
+          name=$("$bt/aapt2" dump badging "$apk" | sed -nE "s/^package: .* versionName='([^']*)'.*/\1/p")
+          code=$("$bt/aapt2" dump badging "$apk" | sed -nE "s/^package: .* versionCode='([^']*)'.*/\1/p")
+          echo "versionName=$name versionCode=$code（package.json=$ver）"
+          [ "$name" = "$ver" ] || { echo "::error::APK 的 versionName（$name）与 package.json 的 version（$ver）对不上"; exit 1; }
+          mkdir -p mobile-out
+          cp "$apk" "mobile-out/cc-monitor-$ver.apk"
+          ls -l mobile-out
+
+      - name: Compute SHA256 checksums (mobile)
+        run: |
+          set -euo pipefail
+          : > SHA256SUMS-mobile.txt
+          n=0
+          for f in mobile-out/cc-monitor-*.apk; do
+            [ -f "$f" ] || { echo "::error::产物不在盘上：$f"; exit 1; }
+            sha256sum "$f" | awk '{n = split($2, p, "/"); print $1 "  " p[n]}' >> SHA256SUMS-mobile.txt
+            n=$((n + 1))
+          done
+          [ "$n" -eq 1 ] || { echo "::error::产物份数对不上：要 1（APK），现打 $n"; exit 1; }
+          cat SHA256SUMS-mobile.txt
+
+      # 正文来源：与另两处同源同值（理由住 build-linux 那一步的头注）。
+      - name: Render the Release body (CHANGELOG section for this version)
+        if: env.PUBLISH == 'true'
+        run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
+
+      # 🔴 KR114D1：**本文件「往 GitHub Release 写」之三**，闸读 `env.PUBLISH`（住址在文件头）。
+      - name: Append Android app to the release
+        if: env.PUBLISH == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_BODY.md
+          files: |
+            mobile-out/cc-monitor-*.apk
+            SHA256SUMS-mobile.txt

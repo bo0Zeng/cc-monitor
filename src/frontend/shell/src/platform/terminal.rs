@@ -427,10 +427,6 @@ pub(crate) fn launch_local_posix_via(
 /// - 同一条腿上的 [`powershell_encoded_command`]（本文件末尾）是 `cfg(any(windows, test))`：
 ///   Linux 上 test 档真编译、单测在那儿跑 ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
-/// - 原 `history.rs` 的 `PRODUCTION_LAUNCH_SINK`〔散文墓碑〕（今天是 `launch.rs::open_local_terminal`） 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
-///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
-///   读数一致：**`1244 passed; 1 failed`**，红的是当时那条「中转取点只经接缝」的判据
-///   （随起会话只交一行 `ccm …` 一起删了：中转地址今天只在 `ccm` 里定）。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};

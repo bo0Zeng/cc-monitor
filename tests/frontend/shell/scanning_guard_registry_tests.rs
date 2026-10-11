@@ -139,7 +139,7 @@ fn repo_root() -> PathBuf {
 }
 
 /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
-/// 🔴 〔搬树 2026-09-18 ·  纪律 3〕**住 `tests/` 的文件整份就是测试段。**
+/// 🔴 **住 `tests/` 的文件整份就是测试段。**
 ///
 /// [`test_regions`] 与 `guard_core::test_source` 都靠 `#[cfg(test)]` 这个**标记**
 /// 切出测试段 —— 那个标记是「生产段与测试段同住一份文件」那个年代的产物。
@@ -232,7 +232,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // ★ 形状不是发明的：本模块 [`raw_walkers`] 从一开始就是这么写的（逐字同一份清单）。
     let mut scanned: Vec<(&str, usize)> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+    // 🔴 19 份纯测试文件从后端树搬到了
     // `<repo>/tests/backend/` ⇒ 原来那两棵树**一份也够不着它们**，
     // 而本模块治的正是「没红与没看在输出上一模一样」那个形状。
     for sub in ["src/frontend/shell/src", "src/backend", "tests"] {
@@ -331,7 +331,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 改一个名字 ⇒ 那一形当场退回「没被扫到」，而「没被扫到」与「过了」在上面那条
     // 断言上**输出完全相同**（都不红）。⇒ 拿真实住址把至少一形钉住，让它改名即红。
     const MUST_BE_RECOGNISED: &[(&str, &str)] = &[(
-        // 〔搬树 2026-09-18〕住址跟着判据搬：`K-R31` 那条判据
+        // 住址跟着判据搬：`K-R31` 那条判据
         // 与它那张 `FORMS` 一起从 `src/backend/control/local_backend.rs` 搬到了
         // `tests/frontend/shell/local_backend_tests.rs`（现打：全树 `const FORMS:`
         // 仍然**恰好一处**，就是它）。**表名与判据名一个字都没改。**
@@ -388,7 +388,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 而 0 条时下面那两条断言**恒真地绿** —— 与 `K-R33` 那一格同形：
     // 「没扫到你」与「判过你了」在输出上一模一样。⇒ 拿真实住址把**本件的题眼**钉住。
     const MUST_BE_JUDGED_PER_GUARD: &[(&str, &str)] = &[(
-        // 〔搬树 2026-09-18〕住址跟着判据搬（表名与判据名没改）。
+        // 住址跟着判据搬（表名与判据名没改）。
         "tests/frontend/shell/local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
         "`K-R36` 的题眼：它的表叫 `FORMS`、声明在它自己体内，\
              而同一份文件的测试段里另有几十处 `assert_eq!(` ——\
@@ -432,7 +432,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     /// ⇒ 这条元判据**判得到自己**（它俩都带 `assert_eq!(`，所以今天不缺反向那半）。
     /// 这张表自己那半腐烂仍然由紧跟着的那条**幽灵检查**接着。
     const REGISTERED: &[(&str, &str, &str)] = &[(
-        // 〔搬树 2026-09-18〕住址订正：那条判据住 `tests/frontend/shell/`，不在 `src/frontend/shell/src/`。
+        // 住址订正：那条判据住 `tests/frontend/shell/`，不在 `src/frontend/shell/src/`。
         "tests/frontend/shell/structural_scan_tests.rs::comment_stripping_has_exactly_one_shared_implementation",
         "它自带扫描面（`scan_tree!`）与登记表，但只断了「扫到的里有没有没登记的」这一向；\
              「登记了却已经不在」那一向没人接 —— 而那正是本条要治的族。\
@@ -614,7 +614,7 @@ fn the_per_guard_split_does_not_hand_every_guard_the_whole_file() {
 fn raw_walkers() -> Vec<String> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+    // 🔴 19 份纯测试文件从后端树搬到了
     // `<repo>/tests/backend/` ⇒ 原来那两棵树**一份也够不着它们**，
     // 而本模块治的正是「没红与没看在输出上一模一样」那个形状。
     for (sub, excluded) in [
@@ -622,8 +622,7 @@ fn raw_walkers() -> Vec<String> {
         ("src/backend", &[]),
         ("tests", &["shell/scanning_guard_registry_tests.rs"]),
     ] {
-        // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
-        //    **摘除从 `file!()` 改成明写名单，而且它现在是真承重的。**
+        // 🔴 **摘除从 `file!()` 改成明写名单，而且它现在是真承重的。**
         //
         // 上一版的注释说「摘除今天不是承重的，真正让本文件不被标记的是
         // `!regs.contains("scan_tree!")`」—— **那句话已经过期了**：F23 第二刀

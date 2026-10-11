@@ -1795,7 +1795,6 @@ fn both_readers_of_the_manifest_see_the_same_accounts() {
 // monitor 那份本机 manifest 参照实现删了 —— 挂在它身上的三个锚点改指这里（现存实现）
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
-// 要求：「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
 // （零生产调用方的本机参照实现）删，**挂着的判据锚点改指现存实现**」。下面三条的断言逐字搬自 monitor
 // `tests/frontend/shell/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
 
@@ -1979,7 +1978,7 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
 /// 夹具：本测试进程自己的 pid（活）· 一个超出 pid 上限的 pid（死）· 没有 `sessionId` 的（不算）· 文件名不是 pid 的（不看）。
 /// 这台活会话里说连不上的 MCP：每个名字取说它最晚的那一条（带那条会话的标题与原话）；死了的会话不算（那份原话已经过时），后台任务不算。
 /// 夹具：两个号的家各一个活会话（本测试进程的 pid）· 一个死会话（说得最晚，不许取）。
-/// 要求：用户 10-09 认的 MCP 状态稿：「连不上的原因取这台活会话里最近一条；会话都结束了就不画红标」。
+/// 要求：MCP 状态稿：「连不上的原因取这台活会话里最近一条；会话都结束了就不画红标」。
 #[cfg(unix)]
 #[test]
 fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {

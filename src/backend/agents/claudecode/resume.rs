@@ -8,14 +8,13 @@
 //! | resume 形 | `<base> --resume <sid>`（**flag**） | `<base> resume <sid>`（**子命令**） |
 //! | 会话名前缀 | `cc-` | `cx-` |
 //!
-//! golden-parity aterm。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
+//! golden-parity 手机端。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
 //! `CommandPlan` 骨架、错误出口全都共用，留在 `control/resolve_query.rs`。
 
 /// 无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "claude";
 
 /// 用户的 shell 集成 wrapper（含代理 / env）：探得到就先用它，探不到回退 [`DEFAULT_COMMAND`]。
-/// 从前与下面两格一起住 monitor `adapter/claude_code.rs`〔散文墓碑〕，与后端 `control/ccm/` 各一份、靠金样对着。
 pub(crate) const LAUNCHER_ALIAS: &str = "cc";
 
 /// resume 那个字面量：**flag 形**（`--` 开头）。[`resume_command`] 与画像表（`agents::LaunchFace`）同一份。

@@ -15,7 +15,7 @@
 : "${BUS:=${CC_BUS_HOME:-$HOME/.cc-bus}}"
 
 # ── 三个适配面(设计):本文件是**通用层**,不认识 tmux / flock ─────────────
-# 缝切在 shell 里、**不搬进后端**(条 55)。装不齐就地 return 13(fail-closed):
+# 缝切在 shell 里、**不搬进后端**。装不齐就地 return 13(fail-closed):
 # 少一个函数而继续跑,后果是投递路径上某一步静默变成 no-op —— 那正是本仓在治的病。
 # shellcheck source=cc-bus-adapt.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cc-bus-adapt.sh"

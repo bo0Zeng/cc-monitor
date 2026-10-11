@@ -81,7 +81,7 @@ const CENSUS: readonly string[] = [
   "claudeDir", // src/frontend/ui/paths.ts
   "keybindings", // src/frontend/ui/keybindings/store.ts
   "accounts", // src/frontend/ui/accounts.ts
-  // 〔条 66〕`backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
+  // `backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
   "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
   "tabCollections", // src/frontend/ui/tab-collections.ts
@@ -207,7 +207,7 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
 
   it("分母：登记了多少个主人", () => {
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
-    // 〔条 66〕10 → 9：`src/frontend/ui/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
+    // 10 → 9：`src/frontend/ui/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
     // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
     // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。

@@ -26,13 +26,6 @@
  *    `history.ts:489` `invoke(ipc, …)`。
  *    ⇒ 只做**单向**子集断言（TS 静态可见的 ⊆ Rust 集），不做反向。
  *    但**把这 7 个名字逐字钉死**（`DYNAMIC_ONLY`）：盲区本身不许静默变大。
- *
- * ## 一条容易误判的计数（Phase D 审计 J8 / 计划 §1）
- *
- * `#[tauri::command]` 属性全仓出现 **122** 次，唯一 fn 名 **121** 个（Z05 加了
- * `remote_acct_iso_shellinit`〔散文墓碑〕）——`bring_monitor_to_front`
- * 有 `#[cfg(windows)]` / `#[cfg(not(windows))]` 一对（`lib.rs:1376` 与 `lib.rs:1475`）。
- * 用 `Set` 去重是对的；拿 `grep -c` 复核的人会以为差了一个。
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -911,7 +904,6 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", { timeout:
 // `accounts.ts` 自己那个同名的 `"__local__"`（账号缓存键 ＋ 本机 `AccountsState.origin`）。它的来历：
 // 账号面本机 / 远端各走一条命令，本机那条的结果需要一个缓存键，而那时本机还没有具名的 origin。
 // （账号面本机与远端同一条路、一个 Origin 类型）之下它装的就是「哪台机器」本身 ⇒ 合。
-// 旧判据 `backend_policy_tests.rs::the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕
 // 钉的是「合并之前别顺手改」—— 合并就是它要等的那一次设计变更，它随之改成下面这两条的 Rust 那一侧。
 //
 // 判据（按 TS 语法树认**字符串字面量**，注释与模板里的字不算 —— 注释里讲历史是正当的）：

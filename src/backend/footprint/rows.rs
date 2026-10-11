@@ -254,10 +254,8 @@ fn resolve_by_destination(
             Vantage::Monitor => Ok(PathResolution::Remote(declared.to_string())),
             Vantage::Remote => resolve_local_home(declared, home, agent_home),
         },
-        // 🔴 `BothHomeRelative` 那一臂删了 —— 墓碑住 `tool_registry::Carrier`
-        //    的头注。一句话：那个变体是为「一个 `destination` 装不下两个落点」造的，
-        //    而载体这一维立起来之后那个前提没了（`ccm` 现在是两个载体，
-        //    远端那个 `RemoteHomeRelative`、本机那个 `LocalHomeRelative`，各带各的 touch）。
+        // 一个工具两个落点 ⇒ 两个载体（`ccm`：远端 `RemoteHomeRelative`、本机 `LocalHomeRelative`，各带各的 touch），
+        //    这里没有双值那一臂。理由住 `footprint::registry::Carrier` 的头注。
         ToolDestination::LocalHomeRelative(_) => resolve_local_home(declared, home, agent_home),
         // 「不是我们装的」**不等于「查不了」** —— 恰恰相反：
         // 这一档的全部意义就是「我们查得到它在不在，但装不了」。
@@ -717,9 +715,9 @@ fn observe_unmanaged(
     env: &SurfaceEnv,
 ) -> (Option<String>, SurfaceState) {
     match probe {
-        // `PATH` 上的裸命令：与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`：
-        //   `split_paths` 切分 · 取不到 `PATH` 就不猜 · Windows 上按 `PATHEXT` 认 `.exe` / `.cmd` …，原名不算 · 同名的目录不算）。
-        //   差的只是哪一份 `PATH`：agent 命令行看起会话那个 shell 的，别的看后端进程自己的。
+        // `PATH` 上的裸命令：与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`，
+        // Windows 上 `.exe` / `.cmd` / `.ps1` … 的规矩只住那里）；两族只差按哪一份 `PATH` 找。
+        // agent 命令行在起会话那个 shell 里敲 ⇒ 那个 shell 的 `PATH`；别的按这个后端进程的。
         EnvProbe::OnPath | EnvProbe::InSessionShell => {
             let (path, blind) = match probe {
                 EnvProbe::InSessionShell => (
@@ -917,9 +915,6 @@ pub struct ConfigSurfaceReport {
     pub home: String,
     // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上。
 }
-
-// Tauri 命令 `config_surface_report`〔散文墓碑〕与 monitor 自己那台的探针（`with_monitor_probe`〔散文墓碑〕）删了：
-//   成品由那台后端的 `footprint-report` 出（[`super::answer`]），monitor 那一族的事实由 monitor `footprint_client_facts` 答。
 
 #[cfg(test)]
 #[path = "../../../tests/backend/footprint/rows_tests.rs"]

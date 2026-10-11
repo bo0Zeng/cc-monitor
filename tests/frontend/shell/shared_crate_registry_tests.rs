@@ -513,8 +513,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 /// | `usage-probe-acceptance.sh` | **11 过 / 0 败** | 2 条（F08 段 + 命令串产出） |
 ///
 /// ⇒ **7 条里 7 条都跑过了**（`local_backend` 那 4 条此前一次都没跑过 ——
-/// 其中 `the_local_tmux_frames_really_land_in_the_ledger` **首跑就是红的**，
-/// 病根是「测试与后端不在同一台 tmux server」，已修，见 `P3 §0h-2`）。
+/// 其中一条**首跑就是红的**，病根是「测试与后端不在同一台 tmux server」，已修，见 `P3 §0h-2`）。
 ///
 /// ★ 「触发者登记在册」与「真的有人跑」是两件事 —— 本条只守前者，
 /// 后者靠人真跑。**别把这段读成「以后会自动跑」**：它们仍不在 CI 里（要真 tmux/真进程）。
@@ -631,7 +630,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     let repo = crate::guard_support::repo_root().to_path_buf();
     // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
     let mut ignored: Vec<(String, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**加上 `tests/frontend/shell` 这一棵。**
+    // 🔴 **加上 `tests/frontend/shell` 这一棵。**
     //    那 7 条 `#[ignore]` 全都是测试，剖分之后一条都不在 `src/frontend/shell/src` 里了
     //    ⇒ 老语料收到 0 条，下面那条「剥法坏了」的反空真按设计响了。
     let mut ignore_corpus = guard_core::scan_tree!(&repo.join("src/frontend/shell/src"), &["rs"]);
@@ -1454,9 +1453,9 @@ fn every_job_that_installs_apt_packages_restores_the_deb_cache_first() {
     );
 }
 
-/// **候选分支 `next`：推 main 之前 CI 先在它上面跑同一套，绿了 main 才快进过去**（用户 10-10 定）。
+/// **候选分支 `next`：推 main 之前 CI 先在它上面跑同一套，绿了 main 才快进过去**。
 ///
-/// 推送脚本（仓外）把合并树强推到 `origin/next`、等这一趟 CI 全绿才 `merge --ff-only` 并推 main；
+/// 推送脚本（仓外）把合并好的分支强推到 `origin/next`、等这一趟 CI 全绿才 `merge --ff-only` 并推 main；
 /// main 于是只收 CI 绿过的提交。这条钉住那条路在仓里的一半：
 /// ① `ci.yml` 的 push 触发同时认 `main` 与 `next`（少了 `next` ⇒ 推候选分支什么都不跑，脚本等到超时）；
 /// ② `ci.yml` 里没有一条按分支 / 事件分叉的条件（`if:` · `github.ref` · `github.event_name` …）——

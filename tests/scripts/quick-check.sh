@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 快检：交给门禁之前的那一圈，也是合并树上 gate-affected --trust-ci 的第一步。不拿门禁锁、不代替门禁。
+# 快检：交给门禁之前的那一圈，也是合并后 gate-affected --trust-ci 的第一步。不拿门禁锁、不代替门禁。
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh`
 #   跑：两棵 Rust 树的排版 · tsc · 后端那棵整套 `cargo test --lib` · 壳那棵 workspace 整套 `cargo test --workspace --lib`
 #       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）· 整套 vitest。
 #   不按名字挑判据（10-10 起）：从前只跑名字带 guard / registry / ledger … 的那些，漏了一百多份读金样 / 冻结表的判据，
-#     合并树推上去 CI 才红（mg37a · mg37）。现在两棵树与 vitest 都是整套。
+#     推上去 CI 才红。现在两棵树与 vitest 都是整套。
 #   旧用法里跟着的 cargo 过滤词照收、不再用（整套本来就全跑到）。
 #   「加了子命令要打版本号」那一条在各路树上必红（版本号合并时打：`tests/scripts/bump-build-id.sh`）⇒ 单列成「待打版本号」，不算红。
 # 环境：清掉会话继承来的 CCM_* / CLAUDE_* / ANTHROPIC_* / TMUX*；HOME 与 TMUX_TMPDIR 指到 `.build/` 下一次性沙箱目录（不碰真家目录与默认 tmux）。
@@ -82,7 +82,7 @@ mobile_step() {
   step mobile run env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
     out="$PWD/.build/mobile"; cd src/mobile || exit 1
     if [ -z "${JAVA_HOME:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
-      export ATERM_ANDROID_DEV="${ATERM_ANDROID_DEV:-$REAL_HOME/android-dev}"
+      export CCM_ANDROID_DEV="${CCM_ANDROID_DEV:-$REAL_HOME/android-dev}"
       . ./scripts/env.sh >/dev/null || { echo "mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了"; exit 1; }
     else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
     rm -rf "$out"/*/test-results
@@ -113,7 +113,7 @@ n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste 
 failed=$(printf '%s\n' "$out" | awk '/^failures:$/{f=1; next} f && /^    [A-Za-z0-9_:]+$/{print $1} /^test result:/{f=0}' | sort -u)
 if [ $rc -eq 0 ] && [ "${n:-0}" -gt 0 ]; then printf '  ok   %-16s %ss · %s 条\n' backend $((SECONDS-t0)) "$n"
 elif [ $rc -ne 0 ] && [ "$failed" = "build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump" ]; then
-  printf '  待   %-16s %ss · %s 条；子命令集变了，合并时主会话打版本号（不算红）\n' backend $((SECONDS-t0)) "${n:-?}"; notes+=("待打版本号")
+  printf '  待   %-16s %ss · %s 条；子命令集变了，合并时打版本号（不算红）\n' backend $((SECONDS-t0)) "${n:-?}"; notes+=("待打版本号")
 else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
   hit=$(printf '%s\n' "$out" | grep -E "FAILED|panicked|^error|error\[E" | head -25)
   printf '%s\n' "${hit:-$(printf '%s\n' "$out" | tail -5)}" | sed 's/^/       /'

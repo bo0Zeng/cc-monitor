@@ -76,7 +76,7 @@ fn freeing_brings_the_live_count_back_down() {
 /// 而调用点必然带括号。这是 F23/F24 两族的教训 —— 匹配单位要对得上事实。
 #[test]
 fn every_test_that_uses_this_probe_stays_single_threaded() {
-    // 🔴 〔步 7c 剖分 2026-09-19〕**人群必须含测试树。**
+    // 🔴 **人群必须含测试树。**
     //
     // 本条的人群按定义是**测试代码**（「每一个用这个量具的测试都得单线程」），
     // 而测试段这一轮整批搬进了 `<repo>/tests/backend/`：`reset_peak(` 的调用点今天

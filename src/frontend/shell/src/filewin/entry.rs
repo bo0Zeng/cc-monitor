@@ -13,12 +13,6 @@
 //! 列出来了才开窗，而且那一屏**直接交给窗口**（[`super::shell::open_detached_seeded`]）
 //! ⇒ 窗口一出来就是有内容的，也不会对同一个目录连打两次往返。
 //!
-//! 🔴**谁去列换了：从 monitor 换成窗口进程自己。** 上一版这里由 monitor 经宿主注入的句柄
-//! 问那台后端 `files-home` / `files-ls`（`host_ask` · `ask_home` · `list_first_screen`〔散文墓碑〕），列好的一屏放进种子 ——
-//! 那是 monitor 替窗口问后端（待迁那一行）。今天窗口进程拨回通道后自己问（`proc::first_screen`），
-//! 在 stdout 上说一行「列到 N 行」或「列不出来：原话」；本命令只起进程、等那一行（[`super::proc::open_in_new_process`]）。
-//! 「列不出来就不开窗、带原话」一个字没变，变的是它在哪个进程里成立。
-//!
 //! ⚠ **它买不到「窗口真的出现在屏幕上」**。那一格要一个图形会话，本机
 //! `XDG_SESSION_TYPE=tty`⇒ 本机永远量不到。
 //! 能确定地量到的是「那个窗口进程起来了、而且没有在开窗预算内就退」，
@@ -41,7 +35,7 @@
 //! 〔2026-09-23 本机侧退役〕这一节从前讲的是一处不对称：窗口的数据面两侧都通，
 //! 而这条命令只开远端那一侧，本机侧靠窗口自己工具栏上那颗按钮走到。
 //! **那处不对称不在了** —— 窗口的数据面今天只有远端一侧
-//! （那条白名单原文住 `super::source` 头注那块墓碑）。
+//! （那条白名单住 `super::source` 头注「只有远端一侧」那一节）。
 //!
 //! ⇒ `parity_ledger` 那一行照旧签 `Side::Remote`，而它**从「签实况」变成了「签全部」**：
 //! 本机那一侧没有另一条可达路径等着被记上来了。
@@ -325,9 +319,6 @@ fn unopened_said(u: Unopened) -> Said {
         }),
     }
 }
-
-// 〔09-28 裁 3〕`list_first_screen` · `ask_home` · `host_ask`〔散文墓碑〕与开窗前那两问的期限退役：
-//   monitor 这一侧不再替窗口问后端；那两问进了窗口进程（`proc::first_screen`，期限 `proc::FIRST_SCREEN_BUDGET`）。
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/filewin/entry_tests.rs"]

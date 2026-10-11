@@ -204,7 +204,7 @@ fn every_registered_command_declares_its_run_kind() {
         // `files-browse` 要把名单上那几个目录各 `read_dir` 一遍。
         // 放 `Run::Async` 就是拿 tokio worker 去跑一趟秒级遍历 —— 单核机上会把
         // 出方向 writer 与入方向 reader 所在的那条 runtime 一起占住。
-        // 〔波 5 ㈠ 09-23〕`files-create` 同为阻塞档，理由同形而且**更硬**：
+        // `files-create` 同为阻塞档，理由同形而且**更硬**：
         // 它真的开一个文件句柄并 `write_all` 一遍（`control/files_write.rs`），
         // 那是同步阻塞 I/O；而且它走的是围栏② 那条 `canonicalize`（一次真实的路径解析）。
         // 代价如实写：这一档开跑之后打不断 ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
@@ -279,7 +279,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-sessions"
                 | "machine-interrupts" // 读这台的活会话，与上一条同档
                 | "accounts-trust" // 信任预检：读 manifest ＋ `.claude.json`，同档
-                // 〔条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
+                // 「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
@@ -839,7 +839,7 @@ fn declaring_zero_fields_needs_a_reason() {
 #[test]
 fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     // ④ 那一步真调每一条读能力：`files-index-rebuild` 不给 `path` 就重走家目录、装上常驻那一份 ⇒ 拿那把唯一的锁
-    //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，mg41 CI 现红过）。
+    //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，CI 上并行跑时现红过）。
     let _lock = crate::files::index::tests::resident_lock();
     // ① 名字：能力名把 `.` 换成 `-` 就是线上名（反向那一半住 `files::answer_wire`）。
     let declared: std::collections::BTreeSet<String> = crate::files::capability_names()
@@ -860,7 +860,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
              而名字集合那一半照样绿。要么换能力名，要么把翻译改成一张显式的表。"
         );
     }
-    // 🔴 〔波 5 ㈠ 09-23〕`files-` 这个线上前缀底下**从此有两族**，而它们**互不相交**：
+    // 🔴 `files-` 这个线上前缀底下**从此有两族**，而它们**互不相交**：
     //   读那一族的住址是 `files::CAPABILITIES`（`src/backend/files/`，整族纯读），
     //   写那一面的住址是 `control::files_write::MANAGE_COMMANDS`（`control/`，会改变世界）。
     //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
