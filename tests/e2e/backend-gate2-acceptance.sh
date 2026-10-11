@@ -130,11 +130,17 @@ fresh_tmux() {
 }
 # 应答回来时，字要是打了就已经交给 tmux 了；再从同一个窗格的输入口打一个记号、等它显示出来 ⇒
 #   之前打进去的都已经显示过了（窗格的输入按先后显示）⇒ 这时看「有没有打进去」才算数，不靠多睡一会儿。
+# 窗格里的 shell 起好了（提示符画出来了）：之后打进去的字才按先后显示。shell 起步那一下会把还没读的输入冲掉、重画那一行 ——
+#   在那之前打进去的记号可能永远不显示（10-11 实测：一格等满了兜底的那个数）。
+ready() { local _r; for _r in "$@"; do wall_until '[ -n "$("$TMUX_BIN" capture-pane -p -t "$_r" 2>/dev/null | tr -d "[:space:]")" ]' || true; done; }
 SETTLE_N=0
 settle() {
   SETTLE_N=$((SETTLE_N+1)); local _t="$1" _m="CCMSETTLE$SETTLE_N"
   "$TMUX_BIN" send-keys -t "$_t" -l "$_m" >/dev/null 2>&1 || return 0   # 窗格没了（被杀的那一档）⇒ 没什么可等
-  wall_until '"$TMUX_BIN" capture-pane -p -t "$_t" 2>/dev/null | grep -qF -- "$_m"' || true
+  # `-J`：折行接回去再找（窄窗格里长行会折，记号被拆在两行上就找不到了）。
+  wall_until '"$TMUX_BIN" capture-pane -p -J -t "$_t" 2>/dev/null | grep -qF -- "$_m"' || true
+  # 把记号从输入行上清掉（C-u），不让它粘在后面打进来的字前面。
+  "$TMUX_BIN" send-keys -t "$_t" C-u >/dev/null 2>&1 || true
 }
 
 wait_for '"kind":"hello"' || { echo "10s 内没等到 hello"; tail -20 "$ERR"; exit 1; }
@@ -195,6 +201,7 @@ while IFS=$'\t' read -r id name sid expect; do
 实际会话：[$("$TMUX_BIN" ls -F '#{session_name}' 2>/dev/null | tr '\n' ' ')]"
     continue
   fi
+  ready "=$name:"
   case "$sid" in
     '<none>'|'<unset>') : ;;   # 两者在真机上都是「@ccm_sid 没设」
     *) "$TMUX_BIN" set-option -t "=$name:" @ccm_sid "$sid" >/dev/null 2>&1 || true ;;
@@ -248,6 +255,7 @@ else bad "目标不存在场景 5s 内无应答"; fi
 # 「通道 A 声明了意图」不等于「通道 B 确认了事实」，而破坏性动作只认事实。
 fresh_tmux
 "$TMUX_BIN" new-session -d -s expectonly
+ready '=expectonly:'
 "$TMUX_BIN" set-option -t '=expectonly:' @ccm_sid_expect deadbeef >/dev/null 2>&1 || true
 send '{"id":"e2e-gate2-exp","cmd":"launch","args":{"mode":"send-into","name":"expectonly","payload":"printf %s CCMGATE_EXPECT"}}'
 if wait_for '"id":"e2e-gate2-exp"'; then
@@ -314,6 +322,7 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
   local what="$1" name="$2" decl="$3" sid="$4" cmd="$5" who="$6" want="$7" rid="e2e-cl-$8"
   fresh_tmux
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null || { bad "$what：建不出会话"; return; }
+  ready "=$name:"
   "$TMUX_BIN" set-option -t "=$name:" @ccm_client "$decl" >/dev/null 2>&1
   [ "$sid" = yes ] && "$TMUX_BIN" set-option -t "=$name:" @ccm_sid abc123 >/dev/null 2>&1
   local extra=""; [ -n "$who" ] && extra=",\"client\":\"$who\""
@@ -399,6 +408,7 @@ ask() { # <请求 JSON> <id> ⇒ 应答
 fresh_tmux
 PE="$("$TMUX_BIN" new-session -d -s box2 -P -F '#{pane_id}')"
 PF="$("$TMUX_BIN" split-window -t '=box2:' -P -F '#{pane_id}')"
+ready "$PE" "$PF"
 "$TMUX_BIN" set-option -p -t "$PE" @ccm_sid "$SE" >/dev/null 2>&1
 "$TMUX_BIN" select-pane -t "$PF" >/dev/null 2>&1
 R="$(ask "{\"id\":\"e2e-sid-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"box2\",\"payload\":\"printf %s SIDMARK_E\",\"ccm_sid\":\"$SE\"}}" e2e-sid-1)"
