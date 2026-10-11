@@ -153,7 +153,7 @@ fn owner(p: &Path) -> Option<PathBuf> {
 /// 派出那一刻落盘的那一份：`<lane>.whence`（与子运行记录同目录），整份就是派出它的那次调用的 `call`。
 fn spawned(child: &Path) -> Option<ChildLink> {
     let lane = child.file_stem()?.to_str()?;
-    let call = std::fs::read_to_string(child.with_extension(WHENCE_EXT)).ok()?;
+    let call = crate::platform::fs::Ro::read_to_string(child.with_extension(WHENCE_EXT)).ok()?;
     let call = call.trim();
     (!call.is_empty()).then(|| ChildLink {
         tool: Some(call.to_string()),

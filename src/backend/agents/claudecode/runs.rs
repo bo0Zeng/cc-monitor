@@ -293,7 +293,7 @@ pub(crate) fn spawned(child: &Path) -> Option<super::super::ChildLink> {
     if !meta.exists() {
         return None;
     }
-    let v = match crate::common::fs::read_json_capped(&meta, META_MAX) {
+    let v = match crate::platform::fs::Ro::read_json_capped(&meta, META_MAX) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(
