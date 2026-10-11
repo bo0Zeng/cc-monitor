@@ -586,6 +586,14 @@ pub struct FileWindow {
     pub edit_tab: bool,
     /// 这个目录视图挂在窗口里（`Workspace` 置）：打开一份文本 ⇒ 交给窗口开一个编辑页，不在这一页里开。
     pub(super) in_workspace: bool,
+    /// 这个标签页是一张图的**查看页**（稿 ⑬：标签上图片图标 ＋ 文件名，正文是画面、不是列表）。逻辑住 [`super::imgview`]。
+    pub view_tab: bool,
+    /// 摆着的那一张（`None` ＝ 不是查看页）。**UI 线程自己的**。
+    pub(super) viewing: Option<super::imgview::Viewer>,
+    /// 要开的那一张（目录页交给窗口那一级：开一个查看页 / 切到正摆着它的那一页）。
+    pub(super) want_view: Option<super::imgview::Viewer>,
+    /// 这扇窗里所有解好的图（预览 · 「看一眼」· 查看页共用一份；`Workspace` 让每个标签拿同一份）。
+    pub pictures: super::picture::Pictures,
     /// 要开的那一份（目录页交给窗口那一级：开一个编辑页 / 切到已开着的那一页）。
     pub(super) want_edit: Option<EditWant>,
     /// 编辑页头上点了面包屑那一段 / 「在列表里显示」：窗口那一级开一个目录页到那里（或切到已在那里的那一页）。
@@ -797,6 +805,10 @@ impl FileWindow {
             hit_rows: (u64::MAX, u64::MAX, Arc::new(Vec::new())),
             edit_tab: false,
             in_workspace: false,
+            view_tab: false,
+            viewing: None,
+            want_view: None,
+            pictures: Default::default(),
             want_edit: None,
             want_dir: None,
             want_reveal: None,
@@ -1589,9 +1601,40 @@ impl FileWindow {
     ///
     /// 回值 = 真的换了目录。
     pub fn apply_click(&mut self) -> bool {
-        match self.tally.clicked {
-            Some(i) => self.activate(i),
+        let Some(i) = self.tally.clicked else {
+            return false;
+        };
+        let dir = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .map(Listed::opens_as_dir);
+        match dir {
+            Some(true) => self.activate(i),
+            // 文件：同回车（图片 ⇒ 查看页 · 其余 ⇒ 编辑页）；不换目录。
+            Some(false) => {
+                self.open_file(i, None);
+                false
+            }
             None => false,
+        }
+    }
+
+    /// 打开第 `i` 行那份文件（回车 · 双击）：窗口解得开的图 ⇒ 查看页；其余 ⇒ 编辑页（做不了的那一页上说为什么）。
+    pub fn open_file(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        let image = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .is_some_and(super::imgview::viewable);
+        if image {
+            self.begin_view(i)
+        } else {
+            self.begin_edit(i, ctx)
         }
     }
 
@@ -3262,8 +3305,13 @@ impl FileWindow {
 
     /// 头条左边：那台 › 面包屑（只留最后两级）› 文件名；点哪一段回到那一级（交回要去的目录）。
     fn edit_crumbs(&self, ui: &mut egui::Ui, f: &EditFacts) -> Option<String> {
+        self.path_crumbs(ui, &f.path)
+    }
+
+    /// 那台 › 面包屑（只留最后两级）› 文件名（编辑页 · 查看页的头条共用）；点哪一段交回要去的目录。
+    pub(super) fn path_crumbs(&self, ui: &mut egui::Ui, path: &str) -> Option<String> {
         let p = super::theme::palette(ui.ctx());
-        let (path, name) = (&f.path, &f.name);
+        let name = &super::source::remote_basename(path).to_string();
         let machine = self.source.label();
         let crumbs = super::source::breadcrumbs(&super::source::parent_dir(&path));
         let mut go = None;
@@ -4006,7 +4054,7 @@ impl FileWindow {
     /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
     /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
     fn modal_up(&self) -> bool {
-        self.asking_up() || self.editing.is_some() || self.edit_tab
+        self.asking_up() || self.editing.is_some() || self.edit_tab || self.showing_picture()
     }
 
     /// 编辑面以外的那几个框有没有一个摆着。
@@ -4178,7 +4226,7 @@ impl FileWindow {
         };
         match one {
             Some((_, true)) => self.perform(Action::Open, ctx),
-            Some((i, false)) => self.begin_edit(i, ctx),
+            Some((i, false)) => self.open_file(i, ctx),
             None => {
                 self.key_notice = Some(select::refusal(Action::Open, self.selection.len()));
                 false
@@ -4215,6 +4263,7 @@ impl FileWindow {
             (Action::Delete, _) => self.delete_picked(&idx, ctx),
             (Action::Open, [i]) => self.activate(*i),
             (Action::Edit, [i]) => self.begin_edit(*i, ctx),
+            (Action::View, [i]) => self.begin_view(*i),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
             // 一项或多项。
@@ -4469,6 +4518,12 @@ impl FileWindow {
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
         self.font_frame(ui);
         if self.edit_frame(ui) {
+            return;
+        }
+        if self.showing_picture() {
+            let ctx = ui.ctx().clone();
+            self.settle_pick_with(Some(ctx));
+            self.view_page(ui);
             return;
         }
         // 工具条（后退 · 前进 · 上一级 · 地址栏 · 搜索格）与命令栏不在这里画：
@@ -5161,7 +5216,7 @@ pub fn open_detached_seeded(
     reveal: Option<String>,
     // 书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
     bookmarks: Option<std::path::PathBuf>,
-    // 视图文件（记缩放；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放，只是不记）。
+    // 视图文件（记缩放与预览开关；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放、开预览，只是不记）。
     view: Option<std::path::PathBuf>,
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
@@ -5206,11 +5261,11 @@ pub fn open_detached_seeded(
                 // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
                 let mut ws = super::workspace::Workspace::new(w);
                 ws.theme = theme;
-                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）。
-                ws.zoom = super::workspace::Zoom::open(view);
+                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）· 预览开没开。
+                ws.restore_view(super::workspace::ViewMemo::open(view));
                 // 帧日志：设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 才开（收集「一闪一闪」的证据）。
                 ws.frame_log = super::frame_log::FrameLog::from_env();
-                cc.egui_ctx.set_zoom_factor(ws.zoom.factor());
+                cc.egui_ctx.set_zoom_factor(ws.memo.zoom());
                 Ok(Box::new(FitOnce {
                     inner: ws,
                     work: work_area,

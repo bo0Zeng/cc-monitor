@@ -208,3 +208,4 @@ src/backend/lib.rs:1741	与帧面 `plan-return` 那一行是同一条实现（CL
 src/backend/plan/needs.rs:22	看全局	保留	[不对外] pb dump 的阶段标（phases[].marks 里那个协议值，不是界面文案）：只拿来认顶块是不是走到交回的关口
 src/backend/plan/command.rs:24	写了 	保留	[不对外] pb view 成了时那一句的开头（协议值，不是界面文案）：只拿来拆出页面路径
 src/frontend/filewin/src/fonts.rs:390	—也切划因块声明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查 plan.rs 那几句新进的字）
+src/frontend/filewin/src/fonts.rs:393	像寸尺张素	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（图片查看页那几句新进的字）

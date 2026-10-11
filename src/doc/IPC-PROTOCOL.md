@@ -272,7 +272,8 @@
   `--ccm-console windows <进程号…>`，每个进程答一行 `<pid> shown 0x<窗口>` · `hidden` · `denied` · `none`），monitor 自己不挂别人的控制台。
   Windows Terminal 每个标签的伪控制台窗口的属主就是承载它的那个窗口；经典控制台就是控制台窗口自己。不要接入块、不要登记。
   Windows Terminal 的窗口里再切到那个标签页：小助手（`--ccm-console tab <进程号> 0x<窗口>`，答一行 `selected` · `single` · `miss <原因>`）
-  借它的控制台挂记号标题，UI Automation 找名字带记号的标签页选中，原标题写回。
+  借它的控制台挂记号标题，UI Automation 找名字带记号的标签页选中，原标题写回。小助手自己有 2 秒预算：到点（UI Automation 卡住）就先写回标题、
+  答 `miss no-uia`、退出；monitor 至多等它 3 秒，到点只是不再等、不掐它（掐断会把记号留在标题上）。
 - **Linux（X11）**：bash / zsh 接入块在本机桌面上开的 shell 里留 `ps-await/<PID>.tty`，monitor 往那个终端写改标题序列挂记号、按标题找窗口，
   写进 `ps-registry/`（标题出栈还原）。
 

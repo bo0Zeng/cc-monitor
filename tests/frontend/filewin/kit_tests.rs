@@ -123,3 +123,245 @@ fn hovering_the_close_spot_of_an_inactive_tab_does_not_flip_every_frame() {
         "指针在没选中那个标签页的 × 上，它的 × 应当画着（选中那个一直有一个）：{seen:?}"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// 悬停才露的控件只许走 `hover_reveal`（「鼠标一动就闪」那一类按写法根治）
+// ═══════════════════════════════════════════════════════════════════
+
+/// 登记控件 / 点击区的调用（在一段「悬停才走」的代码里出现任何一个 ⇒ 这段代码按悬停加控件）。
+const ADDS_A_CONTROL: [&str; 24] = [
+    ".interact(",
+    ".add(",
+    ".add_sized(",
+    ".add_enabled(",
+    ".put(",
+    "allocate_",
+    ".button(",
+    ".small_button(",
+    ".selectable_label(",
+    ".selectable_value(",
+    ".checkbox(",
+    ".radio(",
+    ".radio_value(",
+    ".toggle_value(",
+    ".link(",
+    ".hyperlink",
+    ".menu_button(",
+    ".text_edit_singleline(",
+    ".text_edit_multiline(",
+    ".label(",
+    "Area::new(",
+    "Button::new(",
+    "kit::",
+    "side_item(",
+];
+
+/// 悬停读数。
+const HOVER_READS: [&str; 2] = [".hovered()", ".contains_pointer()"];
+
+fn is_ident(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// `s[at..]` 起、配平的那一对括号（`open` / `close`）里的内容末尾（不含右括号）。配不上 ⇒ 到文末。
+fn balanced_end(s: &str, at: usize, open: char, close: char) -> usize {
+    let mut depth = 0i32;
+    for (k, c) in s[at..].char_indices() {
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            depth -= 1;
+            if depth == 0 {
+                return at + k;
+            }
+        }
+    }
+    s.len()
+}
+
+/// 一段生产代码里「按悬停加控件」的那几处（每处回那一段条件）。
+///
+/// 认四种形：`if <悬停> { 加控件 }`（连它的 `else` 那一支）· 先 `let x = <悬停>;` 再 `if x { … }` ·
+/// match 守卫 `… if <悬停> => 加控件` · `<悬停>.then(|| 加控件)`。条件里只要有悬停读数（或从它派生的变量）就算。
+fn adds_controls_by_hover(code: &str) -> Vec<String> {
+    let reads_hover = |t: &str, tainted: &[String]| {
+        HOVER_READS.iter().any(|h| t.contains(h))
+            || tainted.iter().any(|v| {
+                t.match_indices(v.as_str()).any(|(k, _)| {
+                    let before = t[..k].chars().next_back().is_none_or(|c| !is_ident(c));
+                    let after = t[k + v.len()..].chars().next().is_none_or(|c| !is_ident(c));
+                    before && after
+                })
+            })
+    };
+    let adds = |t: &str| ADDS_A_CONTROL.iter().any(|n| t.contains(n));
+    // 从悬停派生的变量：`let x = …hovered()…;`
+    let mut tainted: Vec<String> = Vec::new();
+    for (k, _) in code.match_indices("let ") {
+        let rest = &code[k + 4..];
+        let name: String = rest
+            .trim_start_matches("mut ")
+            .chars()
+            .take_while(|c| is_ident(*c))
+            .collect();
+        // 只认 `let 名字 = …;` 这一形（`if let Some(..)` 那种模式不算），式子到深度 0 的 `;`。
+        let after_name = rest.trim_start_matches("mut ")[name.len()..].trim_start();
+        if name.is_empty() || !after_name.starts_with('=') || after_name.starts_with("==") {
+            continue;
+        }
+        let mut d = 0i32;
+        let end = rest
+            .char_indices()
+            .find(|&(_, c)| {
+                match c {
+                    '(' | '[' | '{' => d += 1,
+                    ')' | ']' | '}' => d -= 1,
+                    _ => {}
+                }
+                d < 0 || (d == 0 && c == ';')
+            })
+            .map_or(rest.len(), |(e, _)| e);
+        if HOVER_READS.iter().any(|h| rest[..end].contains(h)) {
+            tainted.push(name);
+        }
+    }
+    let mut hits = Vec::new();
+    for (k, _) in code.match_indices("if ") {
+        if code[..k].chars().next_back().is_some_and(is_ident) {
+            continue;
+        }
+        // 条件到哪：先碰到深度 0 的 `{`（if）还是 `=>`（match 守卫）。
+        let start = k + 3;
+        let mut depth = 0i32;
+        let mut stop = None;
+        let bytes: Vec<(usize, char)> = code[start..].char_indices().collect();
+        for (j, &(off, c)) in bytes.iter().enumerate() {
+            match c {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                '{' if depth == 0 => {
+                    stop = Some((start + off, false));
+                    break;
+                }
+                '=' if depth == 0 && bytes.get(j + 1).is_some_and(|n| n.1 == '>') => {
+                    stop = Some((start + off, true));
+                    break;
+                }
+                ';' if depth == 0 => break,
+                _ => {}
+            }
+        }
+        let Some((at, guard)) = stop else { continue };
+        let cond = &code[start..at];
+        if !reads_hover(cond, &tainted) {
+            continue;
+        }
+        let body = if guard {
+            // 守卫那一支：`=>` 之后到深度 0 的 `,`（或一整块）。
+            let arm = &code[at + 2..];
+            let t = arm.trim_start();
+            if t.starts_with('{') {
+                let s = at + 2 + (arm.len() - t.len());
+                &code[s..balanced_end(code, s, '{', '}')]
+            } else {
+                let mut d = 0i32;
+                let end = arm
+                    .char_indices()
+                    .find(|&(_, c)| {
+                        match c {
+                            '(' | '[' | '{' => d += 1,
+                            ')' | ']' | '}' => d -= 1,
+                            _ => {}
+                        }
+                        d < 0 || (d == 0 && c == ',')
+                    })
+                    .map_or(arm.len(), |(e, _)| e);
+                &arm[..end]
+            }
+        } else {
+            let then_end = balanced_end(code, at, '{', '}');
+            // 连它的 `else { … }`（`else if` 是另一个 `if`，自己会被扫到）。
+            let after = code[then_end + 1..].trim_start();
+            if let Some(e) = after.strip_prefix("else") {
+                let e = e.trim_start();
+                if e.starts_with('{') {
+                    let s = code.len() - e.len();
+                    &code[at..balanced_end(code, s, '{', '}')]
+                } else {
+                    &code[at..then_end]
+                }
+            } else {
+                &code[at..then_end]
+            }
+        };
+        if adds(body) {
+            hits.push(cond.trim().to_string());
+        }
+    }
+    for h in HOVER_READS {
+        for (k, _) in code.match_indices(h) {
+            let rest = &code[k + h.len()..];
+            for t in [".then(", ".then_some("] {
+                if let Some(r) = rest.strip_prefix(t) {
+                    let s = code.len() - r.len() - 1;
+                    if adds(&code[s..balanced_end(code, s, '(', ')')]) {
+                        hits.push(format!("{h}{t}"));
+                    }
+                }
+            }
+        }
+    }
+    hits
+}
+
+/// 🔴 **悬停才露的控件只许走 [`hover_reveal`]**：整个包（生产段）里不许拿 `hovered()` / `contains_pointer()`（或从它们派生的变量）决定加不加控件、登不登记点击区。
+///
+/// 这是「鼠标一动就闪」那一类的写法闸：只在悬停时登记的控件一登记就盖住让它出来的那一颗，下一帧就不悬停了，每帧翻一次。
+/// 悬停只画东西（铺底色 · 换字色 · 画一颗图标）不算，那不登记点击区；`hover_reveal` 自己先登记、后看悬停，也不算。行为那一半由
+/// `workspace::hover_sweep_tests` 扫全窗钉着（指针停在哪都不翻帧）。
+#[test]
+fn only_hover_reveal_decides_by_hover_whether_a_control_is_added() {
+    // 量具自检：四种形各认得出、只画东西的认不出。
+    let planted = [
+        "if r.hovered() { let x = ui.interact(rect, id, sense); }",
+        "let hot = r.hovered() || r.contains_pointer(); if active || hot { ui.add(egui::Button::new(\"x\")); }",
+        "if on { ui.painter().rect_filled(rect, 0.0, c); } else if r.hovered() { ui.label(\"x\"); }",
+        "if !r.hovered() { paint(); } else { ui.button(\"x\"); }",
+        "match k { Some(_) if row.hovered() => { ui.small_button(\"x\"); } _ => {} }",
+        "r.contains_pointer().then(|| ui.interact(rect, id, sense));",
+    ];
+    for p in planted {
+        assert_eq!(adds_controls_by_hover(p).len(), 1, "量具没认出这一形：{p}");
+    }
+    let paint_only = [
+        "if resp.hovered() { ui.painter().rect_filled(rect, 4.0, p.hover); }",
+        "let hot = resp.hovered() || resp.dragged(); if hot { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal); }",
+        "egui::Stroke::new(1.0, if bg.hovered() { p.border } else { p.border_soft }); let b = ui.button(\"y\");",
+        "let r = ui.interact(rect, id, sense); if r.clicked() { go(); }",
+    ];
+    for p in paint_only {
+        assert_eq!(
+            adds_controls_by_hover(p),
+            Vec::<String>::new(),
+            "量具把只画东西的认成了加控件：{p}"
+        );
+    }
+
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+    let mut files = 0;
+    let mut hits = Vec::new();
+    for (p, src) in guard_core::scan_tree!(std::path::Path::new(dir), &["rs"]) {
+        files += 1;
+        let name = p.file_name().unwrap().to_string_lossy().to_string();
+        let code = guard_core::production_code(&src);
+        for h in adds_controls_by_hover(&code) {
+            hits.push(format!("{name}: if {h}"));
+        }
+    }
+    assert!(files > 30, "只扫到 {files} 份：路径不对");
+    assert_eq!(
+        hits,
+        Vec::<String>::new(),
+        "这几处拿悬停决定加不加控件（鼠标一动就会逐帧翻）：改用 kit::hover_reveal（点击区一直登记，悬停只决定画不画）"
+    );
+}

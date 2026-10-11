@@ -577,6 +577,12 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              谁什么时候跑：要文件窗口的底图、或动了文件窗口的样子要附截图时跑。",
         ),
         (
+            "real_window_rig_for_the_frame_log",
+            "不是判据，是真窗口台架：开一扇真文件窗口（生产那个 `Workspace`），帧日志写到 `CCM_FILEWIN_FRAME_LOG`、跑几秒自己关。\
+             要真桌面（Windows 虚拟机 / 真机，或私有 Xvfb），外面另起一个进程模拟鼠标乱动。谁什么时候跑：查「鼠标一动就闪」那一类、\
+             要在一台真 Windows 上录帧日志时，手动按全名拉起它（设好 `CCM_FILEWIN_RIG_SCENE` · `CCM_FILEWIN_RIG_SECS`）。",
+        ),
+        (
             "perf_rig_worker",
             "不是判据，是性能台架的一格：`tests/shots/perf/filewin-perf.sh <测试二进制>` 起私有 Xvfb、按全名拉起它，\
              印每一段（静着 · 悬停 · 滚轮 · 键盘 · 看一眼）的进程 CPU 与帧数。谁什么时候跑：动了文件窗口的重画 / 列表 / 预览、要附性能读数时跑。",
