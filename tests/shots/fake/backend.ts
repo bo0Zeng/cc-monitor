@@ -66,6 +66,8 @@ interface Sub {
 
 export class FakeBackend {
   readonly unhandled: string[] = [];
+  /** 每条帧命令问过几次（性能台架数取回的问数用；真后端答的那几条也算）。 */
+  readonly asked: Record<string, number> = {};
   private emit: Emit = () => undefined;
   private readonly subs = new Map<number, Sub>();
   /** 交给无头壳的那几条订阅：编号 → 哪台、哪一种。 */
@@ -198,6 +200,7 @@ export class FakeBackend {
   private chanCall(args: Record<string, unknown>): unknown {
     const origin = String(args.origin);
     const op = String(args.op);
+    this.asked[op] = (this.asked[op] ?? 0) + 1;
     const raw = args.payload as number[];
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。声明本身原样交给真后端，这里不读它。

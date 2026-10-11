@@ -2277,7 +2277,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
   const popButtons = (): string[] => [...(pop()?.querySelectorAll("button") ?? [])].map((b) => b.textContent ?? "").filter((t) => t !== "");
 
   it("★★ 两跳都是原样交：那台的 `terminals` ⇒ 本机后端，本机后端的 `chain` ⇒ 壳；分不清 ⇒ 浮层照实说拉不了、带候选个数（不切不闪），一次 tmux 都不问", async () => {
-    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", count: 2 }));
+    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", count: 2, why: "console-unreachable" }));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     await clickFront(tm, "r1");
@@ -2300,8 +2300,8 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(showActionFailureToast, "结局画在浮层上，不出 toast").not.toHaveBeenCalled();
     expect(pop()?.dataset.shade).toBe("amber");
     expect(popText()).toContain(copyText("front.title.unsure"));
-    expect(popText()).toContain(copyText("front.body.several", { program: "WindowsTerminal.exe", n: 2 }));
-    expect(popText()).toContain(copyText("front.hint.several"));
+    expect(popText()).toContain(copyText("front.body.severalConsole", { program: "WindowsTerminal.exe", n: 2 }));
+    expect(popText()).toContain(copyText("front.hint.severalConsole"));
     expect(pop()!.closest("[role=dialog]")?.getAttribute("aria-label")).toBe(copyText("front.pop.aria"));
     expect(popButtons(), "分不清：不给闪窗口那一颗").toEqual([]);
   });
@@ -2380,7 +2380,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     const local = (label: () => Promise<unknown>): void => {
       mockInvoke.mockImplementation((cmd: string, args: unknown) => {
         if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply({ terminals: LABELED }));
-        if (cmd === "bring_terminal_to_front") return Promise.resolve({ kind: "unbound" });
+        if (cmd === "bring_terminal_to_front") return Promise.resolve({ kind: "unbound", why: "unregistered" });
         if (cmd === "bring_remote_terminal_to_front") return label();
         return Promise.resolve([]);
       });
@@ -4265,8 +4265,9 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
   });
 
   it("门控：占位里的行收纳；岛（ensure 物化过的一段）里迟到的行就地建卡，不收纳", async () => {
+    // 按偏移取 60 那一问一直在路上（取回中的行不算还在占位里；取不到才放回占位）
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
-      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+      cmd === "read_session_range" ? new Promise(() => {}) : Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
     ) as never));
     const t = replay("gate", new Set([60, 150]));
     await settle();

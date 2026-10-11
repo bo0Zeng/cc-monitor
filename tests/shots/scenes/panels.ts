@@ -742,7 +742,7 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "gnome-terminal-server", count: 3 });
+    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "gnome-terminal-server", count: 3, why: "unregistered" });
   }), hostOs: "linux" },
   { ...frontScene("panel-front-wayland", "↗ · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
     await mainReady(ALL_TABS);
@@ -767,7 +767,7 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "unbound" });
+    w.commands.bring_terminal_to_front = () => ({ kind: "unbound", why: "unregistered" });
     // 按窗口标签那一问也落空：本机后端说这个会话没有终端显示着。
     w.ops["session-terminals"] = () => ({ terminals: [], why: "no-terminal" });
   }),

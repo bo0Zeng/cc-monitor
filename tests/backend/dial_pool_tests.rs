@@ -15,10 +15,12 @@
 //! 这里钉的是池自己的四件事：同身份复用 · 换身份另拨 · 最后一个用它的走了就收掉 · 关了的不复用。
 
 use super::*;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 struct Fake {
     closed: AtomicBool,
+    /// 最后一次收到对端字节的时刻（[`Conn::heard_at`]；0 = 还没收到过）。判据直接拨它。
+    heard: AtomicU64,
     budget: Budget,
     held: Mutex<Vec<Arc<Fake>>>,
     /// 停着的「空闲会话」：这里只要它攥着的那一格（与 `Linked::idle_sftp` 里的 `Parked` 同一种攥法）。
@@ -38,11 +40,15 @@ impl Conn for Fake {
     fn reclaim_idle(&self) -> bool {
         self.idle.lock().unwrap().take().is_some()
     }
+    fn heard_at(&self) -> u64 {
+        self.heard.load(Ordering::SeqCst)
+    }
 }
 
 fn fake() -> Fake {
     Fake {
         closed: AtomicBool::new(false),
+        heard: AtomicU64::new(0),
         budget: Budget::new(),
         held: Mutex::new(Vec::new()),
         idle: Mutex::new(None),
@@ -495,4 +501,74 @@ async fn an_interrupted_wait_on_a_connection_evicts_it_and_a_finished_one_does_n
     assert!(!Arc::ptr_eq(&a.conn, &c.conn));
     assert!(!a.conn.is_closed(), "摘掉 ≠ 关掉");
     assert_eq!(dials.load(Ordering::SeqCst), 2);
+}
+
+/// 一族三条成员（主连接 8 格占满 ⇒ 第二条；第二条也满 ⇒ 第三条），格全还回去、连接留着（回 `Arc`）。
+async fn family_of_three(pool: &Pool<Fake>, key: &str, dials: &AtomicUsize) -> Vec<Arc<Fake>> {
+    let mut held = Vec::new();
+    for _ in 0..2 * SESSION_CHANNEL_CAP + 1 {
+        held.push(place(pool, key, Lane::Query, dials).await);
+    }
+    assert_eq!(dials.load(Ordering::SeqCst), 3);
+    let mut conns: Vec<Arc<Fake>> = Vec::new();
+    for p in &held {
+        if !conns.iter().any(|c| Arc::ptr_eq(c, &p.conn)) {
+            conns.push(Arc::clone(&p.conn));
+        }
+    }
+    conns
+}
+
+/// ★ net3：一条成员被判成黑洞（等它回话那一段被丢了 / 判死了）⇒ 同族里**从开始等它那一刻起也没收到过字节**的成员一起摘掉
+/// （它们走的多半是同一条断掉的路：不摘的话，下一回放置落到它们上面、再干等一回界面的握手期限）；
+/// 那之后收到过字节的成员留着。两种判法（`dead` · 被丢）同一个结局。
+#[tokio::test]
+async fn a_member_judged_dead_takes_the_members_silent_since_with_it() {
+    for judged in ["dead", "dropped"] {
+        let pool: Pool<Fake> = Pool::new();
+        let dials = AtomicUsize::new(0);
+        let m = family_of_three(&pool, "k", &dials).await;
+        // m[0] 是被等的那条；m[1] 之前就没再收到过字节；m[2] 在等的那段里收到过（时刻在「现在」之后）。
+        m[0].heard.store(1, Ordering::SeqCst);
+        m[1].heard.store(1, Ordering::SeqCst);
+        m[2].heard.store(u64::MAX, Ordering::SeqCst);
+        let w = Watch::new(&pool, "k", &m[0]);
+        if judged == "dead" {
+            w.dead(DeadBy::Outrun);
+        } else {
+            drop(w);
+        }
+        let next = place(&pool, "k", Lane::Query, &dials).await;
+        assert!(
+            next.how == How::Reused && Arc::ptr_eq(&next.conn, &m[2]),
+            "{judged}：判死一条之后，下一回放置该落到那之后收到过字节的那条上（落到了 {:?}）",
+            next.how
+        );
+        drop(next);
+        // 那之后也没收到过字节的那条也摘了：把 m[2] 关掉，下一回只能新拨（不落回 m[1]）。
+        m[2].closed.store(true, Ordering::SeqCst);
+        let fresh = place(&pool, "k", Lane::Query, &dials).await;
+        assert_eq!(
+            fresh.how,
+            How::Fresh,
+            "{judged}：同族里一样没动静的那条没被一起摘掉"
+        );
+        assert!(!m[1].is_closed(), "摘掉 ≠ 关掉");
+        assert_eq!(dials.load(Ordering::SeqCst), 4);
+    }
+}
+
+/// ★ net3 的反向：等到了回话（`done`）⇒ 谁都不摘，哪怕别的成员很久没动静。
+#[tokio::test]
+async fn a_finished_wait_takes_nobody_out() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let m = family_of_three(&pool, "k", &dials).await;
+    for c in &m {
+        c.heard.store(1, Ordering::SeqCst);
+    }
+    Watch::new(&pool, "k", &m[1]).done();
+    let next = place(&pool, "k", Lane::Query, &dials).await;
+    assert!(next.how == How::Reused && Arc::ptr_eq(&next.conn, &m[0]));
+    assert_eq!(dials.load(Ordering::SeqCst), 3);
 }

@@ -42,6 +42,8 @@ pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux se
 pub mod dial; // K-P6b / C2 /：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力
+#[path = "../../tests/backend/flow_scripts_guard.rs"]
+mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
@@ -938,7 +940,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// 多 landed（落成了人话的排队插话，界面不再单独出）；核心 observe/turns.rs 一处划段。Codex 的 function_call 入参从 arguments 解成 tool_use.input（从前恒为 null）。
 /// Windows 上找 / 起 agent 命令收成 platform::shell::find_session_command（PATHEXT 次序，.cmd 经 cmd /c、.ps1 经 powershell -File）。
 /// 手机：终端屏阅读子页删、Codex 落聊天屏能送字、stream-watch 按行号接续、复用判活与新建同时起跑。
-pub const BUILD_ID: &str = "p10b-fold-segments-codex-record";
+///
+/// p10c-steady-cards-wt-tabs：线上帧与子命令集不变。主界面骨架取回中的行留着占位高度、正文落地同一个任务里换卡（界面侧）；
+/// 足迹里按 PATH 找的那一族（git · bash · tmux …）在 Windows 上也走 find_session_command，只有 .ps1 且执行策略不让跑脚本时照实拒起（ccm 直起同一句）；
+/// 桌面复用：TCP 层记最后收包时刻，久没收包时开通道与新建同时起跑，保活 10 秒、一轮没回话判死并摘同族。
+/// 壳：Windows「切到终端」照实说原因、核前台，隐藏子命令 --ccm-console 一次性小助手认窗口、经 UI Automation 切 Windows Terminal 标签页。
+pub const BUILD_ID: &str = "p10c-steady-cards-wt-tabs";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 

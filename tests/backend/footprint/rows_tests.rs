@@ -1692,3 +1692,67 @@ fn the_session_shell_finds_each_windows_install_form() {
         );
     }
 }
+
+/// 缺陷（10-10，fix2 的尾巴）：足迹里按 `PATH` 找的那一族（git · bash · tmux …）在 Windows 上只认不带后缀的名字
+/// ⇒ Git for Windows 的 `git.exe` / `bash.exe`、MSYS2 的 `tmux.exe` 装着也报缺。今天它们与 agent 命令行问同一个找法
+/// （`platform::shell::find_session_command`，只是 `PATH` 用后端进程自己那一份）。每样按 Windows 的装法各一格（夹具造的）。
+#[test]
+fn every_path_row_finds_each_windows_install_form() {
+    let h = home();
+    let dir = "/w/bin";
+    let cases: &[(&str, &str, bool, &[&str], &[&str], bool)] = &[
+        (
+            "Git for Windows 的 cmd\\git.exe",
+            "git",
+            true,
+            &["git.exe"],
+            &[],
+            true,
+        ),
+        (
+            "scoop / choco 的 shim（.exe）",
+            "git",
+            true,
+            &["git.exe", "git.ps1"],
+            &[],
+            true,
+        ),
+        ("包了一层 .cmd", "git", true, &["git.cmd"], &[], true),
+        ("只有不带后缀的 sh 壳", "git", true, &["git"], &[], false),
+        (
+            "Git for Windows 的 bin\\bash.exe",
+            "bash",
+            true,
+            &["bash.exe"],
+            &[],
+            true,
+        ),
+        ("MSYS2 的 tmux.exe", "tmux", true, &["tmux.exe"], &[], true),
+        ("同名的是目录", "tmux", true, &[], &["tmux.exe"], false),
+        ("unix：原名", "git", false, &["git"], &[], true),
+        ("unix：只有 .exe", "git", false, &["git.exe"], &[], false),
+        ("unix：同名的是目录", "git", false, &[], &["git"], false),
+    ];
+    for &(what, named, windows, files, dirs, found) in cases {
+        let meta = one_dir_with(dir, files, dirs);
+        let fs = FsProbe {
+            meta: &meta,
+            list: &|_| None,
+        };
+        let mut env = env_with(&h, &fs, Some(dir));
+        // 这一族看的是后端进程自己的 PATH，不是起会话那个 shell 的
+        env.session_path = None;
+        env.windows = windows;
+        let (_, state) = observe_unmanaged(named, EnvProbe::OnPath, &env);
+        let want = if found {
+            matches!(state, SurfaceState::Present { .. })
+        } else {
+            state == SurfaceState::Absent
+        };
+        assert!(
+            want,
+            "{what}（{named}）：该{}，实得 {state:?}",
+            if found { "认得" } else { "说缺" }
+        );
+    }
+}

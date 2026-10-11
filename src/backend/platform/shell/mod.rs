@@ -82,12 +82,13 @@ pub(crate) enum SessionCommand {
         file: std::path::PathBuf,
         program: std::ffi::OsString,
         lead: Vec<std::ffi::OsString>,
+        by: StartBy,
     },
 }
 
 /// 一种装法的壳怎么起。
-#[derive(Clone, Copy)]
-enum StartBy {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StartBy {
     /// 直接起那个文件。`.cmd` / `.bat` 也走这一形：起进程原语（std）认得这两种后缀、自己经 `cmd.exe /c` 起并按它的规矩转义参数。
     Itself,
     /// `powershell.exe -NoProfile -File <文件>`（执行策略照这台的，不绕过）。
@@ -150,11 +151,34 @@ pub(crate) fn find_session_command(
                     file,
                     program,
                     lead,
+                    by,
                 };
             }
         }
     }
     SessionCommand::Absent
+}
+
+/// 找到的是 PowerShell 脚本（`.ps1` 那一形）、这台 PowerShell 的执行策略不运行本地未签名脚本（`Restricted` · `AllSigned`）
+/// ⇒ `Some(那一档的原词)`：不起、照实说。**不加 `-ExecutionPolicy Bypass`**（那是替用户改这台的安全设置）。
+/// 判法只此一处（「跑不跑」那张词表是 [`powershell::policy_loads_local_script`]）。
+///
+/// `policy` 只在脚本那一形才问：问一趟要起一个 PowerShell，不便宜 ⇒ 足迹与起新会话框不问，真要起的那一刻（`ccm`）才问；
+/// 问不到 ⇒ `None`，照起（起不来时 PowerShell 自己报）。
+pub(crate) fn script_refused_by_policy(
+    found: &SessionCommand,
+    policy: &dyn Fn() -> Option<String>,
+) -> Option<String> {
+    let SessionCommand::Found {
+        by: StartBy::PowerShellFile,
+        ..
+    } = found
+    else {
+        return None;
+    };
+    let word = policy()?;
+    (powershell::policy_loads_local_script(word.trim()) == Some(false))
+        .then(|| word.trim().to_string())
 }
 
 /// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。

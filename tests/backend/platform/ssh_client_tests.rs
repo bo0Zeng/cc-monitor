@@ -179,7 +179,7 @@ fn ssh_client_guard_only_this_file_locates_ssh() {
         "OpenSSH\\ssh",
         "Command::new(\"where",
         "program_exists(\"ssh",
-        "resolves_on_path(\"ssh",
+        "find_session_command(\"ssh",
         "join(\"ssh\")",
         "join(\"ssh.exe\")",
     ];

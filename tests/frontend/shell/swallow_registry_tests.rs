@@ -176,6 +176,11 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     //   （返回 `String`、调用处 `push_str`，不再有吞）；载荷那一层后来整层删了。
     // 下面六行随 `bind.rs` 的 Win32 读法搬进 `platform/{pid,hwnd}.rs`（处数不变）。
     ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(handle);", Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(h);", Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(token);", Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/console.rs", "let _ = std::io::stdout().write_all(out.as_bytes());", Why::DeadLink, "借控制台的小助手往 monitor 给的管子答话：写不出去 = 起它的 monitor 已经不在了（或已等过期限掐断），没人收"),
+    ("src/frontend/shell/src/platform/console.rs", "let _ = out.write_all(format!(\"{}\\n\", tab_line(pick)).as_bytes());", Why::DeadLink, "同上（切标签页那一件的答话；标题此时已经写回）"),
+    ("src/frontend/shell/src/platform/console.rs", "let _ = out.flush();", Why::DeadLink, "同上"),
     ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(snap);", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),

@@ -897,11 +897,11 @@ export class TabStreamView {
         return;
       }
     }
-    const view = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
+    const view: SkeletonView = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
       materialize: (lo, hi) => {
         const taken = tab.window.takeRange(lo, hi);
         this.renderPayloadsBatch(tab, taken);
-        this.fetchMissingRows(tab, ledger, lo, hi, new Set(taken.map((p) => p.seq)));
+        return this.fetchMissingRows(tab, view, lo, hi, new Set(taken.map((p) => p.seq)));
       },
     });
     // 折叠先交给账本：占位插进去就是折后的高、补可见区不建折着的过程行（不先交 ⇒ 插完排版时再改高、再钉视口，这一帧多排两次版）
@@ -942,12 +942,13 @@ export class TabStreamView {
    */
   private fetchMissingRows(
     tab: Tab,
-    ledger: SkeletonLedger,
+    view: SkeletonView,
     lo: number,
     hi: number,
     taken: ReadonlySet<number>,
-  ): void {
-    if (!tab.parentPath) return;
+  ): Array<[number, number]> {
+    if (!tab.parentPath) return [];
+    const ledger = view.ledger;
     // 「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
     // 或见过、但骨架接上之后被丢出账本（`keepHighest`）。两种回来之后喂法不同，见下。
     // 不建卡的行在这里也算「有」（切段）：一段里只装要的行，回来的不必再筛（标题那几类不许从历史里喂进 `onLine`）。
@@ -968,11 +969,15 @@ export class TabStreamView {
           const again = payloads.filter(
             (p) => tab.seenSeqs.has(p.seq) && routeMeta(p, NOOP_META) === "content",
           );
-          this.feedHistoryRows(tab, fresh);
-          tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
-          if (again.length > 0) this.renderPayloadsBatch(tab, again);
+          // 取回中的那块占位与卡同一个任务里换（骨架那一侧钉视口）
+          view.landed(a, b, () => {
+            this.feedHistoryRows(tab, fresh);
+            tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
+            if (again.length > 0) this.renderPayloadsBatch(tab, again);
+          });
         })
         .catch((e: unknown) => {
+          if (this.store.tabs.get(tab.sessionId) === tab) view.failed(a, b);
           console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e);
           throw e instanceof Error ? e : new Error(String(e)); // 「跳」要说得出没取到的原因
         });
@@ -982,6 +987,7 @@ export class TabStreamView {
       fetched.catch(() => {});
       void fetched.finally(() => set.delete(fetched)).catch(() => {});
     }
+    return runs.map(({ a, b }) => [a, b]);
   }
 
   /**
