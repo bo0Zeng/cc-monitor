@@ -58,9 +58,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
     // `dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
-    //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。〔墓碑 —— 那一行的要点：
-    //   「界面拿一条 SSH 链路的唯一入口 … 起的是 `cc-monitor-backend` … argv 只有一个常量 flag，
-    //   主机名 / 用户名 / 私钥路径走环境变量」。〕
+    //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。
     // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
     //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
     //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。

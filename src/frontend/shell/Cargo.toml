@@ -88,9 +88,6 @@ path = "src/main.rs"
 #
 # ── 🔴〔2026-09-23 同日订正〕**「发版包里还没有它」那条报备是假的** ─────────────────
 #
-# 〔墓碑，原话逐字：「② **发版包里今天还没有它**：Tauri 的安装包只装主二进制与
-#  `externalBin` 那几个 sidecar ⇒ 装机那份上 `filewin::proc::resolve_window_bin` 会
-#  找不到它**并出声**（`D11`：不留退路）。补它要动 `tauri.sidecar.conf.json` 与发版流水线」。〕
 #
 # 现打两趟推翻（本仓这份 manifest ＋ `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，
 # `@tauri-apps/cli` 现锁 2.11.2，喂的是占位字节 —— 问的是**清单**）：

@@ -699,9 +699,6 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
 
 /// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增 · 换了机制〕。
 ///
-/// 〔墓碑 —— 原先内嵌的两份 musl Linux 由一个**只按 arch 分派、不看 OS** 的函数取，本条钉的是
-///  `start_local_backend` 在取它之前先问一道 `cfg!(target_os = "linux")`（补审阻塞 C1：少了这道门，
-///  Windows/macOS 上会释放一个 Linux ELF、UI 与日志报告「已起」，而进程从来没起来过）。〕
 ///
 /// 今天字节按 (OS, arch) 查表（`byte_table`，规矩 4）⇒ 「先问 OS」不再是一道闸，
 /// 是**键的一半**。本条钉：本机那条取用点的键是**这台机器自己**（`Key::this_machine()`）、取的是后端那一类，
@@ -3295,9 +3292,7 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
 ///
 /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ backend 侧 73 ＋ guard-core 自检 1 = **179 份**，
 /// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
-/// **确实被 `guard_core::production_code` 吃**〔墓碑 2026-09-18：原文点名 `usage.rs` 里那条
-/// 「口径只有一个家」的判据，而 `usage.rs` 已随用量 ②③ 两轴整轴退役⇒ 那条判据
-/// **今天不存在**，本句只剩「剥生产段这件事本身」这一半仍成立〕
+/// **确实被 `guard_core::production_code` 吃**
 /// ⇒ 它掉进兜底的话，三条判据一条都不会响。
 /// 〔那一拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
 ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定 —— 那一件是**只答不改**。〕

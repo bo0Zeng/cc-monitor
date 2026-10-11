@@ -1033,7 +1033,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
     // 广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
     //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
-    //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    //   （`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--bus-broadcast",
     // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump，本路不 bump。
     "--bus-inbox",
@@ -1060,7 +1060,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--pubkey-push",
     // 〔条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
-    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--exit-policy-read",
     "--quota-read",
     // 计划读面三条（`inbound::REGISTRY` 的 `plan-*`）自动派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1112,7 +1112,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
     // MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
-    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     // 帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--mcp-read",
     "--mcp-sync-plan",
@@ -1138,7 +1138,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--powershell-policy-set",
     // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
-    // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--assets-catalog",
     "--assets-catalog-merge",
     // `assets-sync` 是真异步命令 ⇒ 按派生规则上 CLI 面（`cli_control::cli_exposed`：非内建即上）。
@@ -1170,8 +1170,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--backend-probe",
     // `--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
-    // 〔墓碑 —— 那一行原来的理由要点：「**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
-    //  `CCM_DIAL_REQUEST`，argv 与 stdin 都不走」。〕⚠ 摘这一行会让 `build_id_guard` 红 —— 本路**不 bump**，合并那一拍统一做。
+    //  ⚠ 摘这一行会让 `build_id_guard` 红 —— 这里**不 bump**，打版本号时统一做。
     // 〔步 `24f` 第二刀 09-20〕`files-read` 这一族的 CLI 面。登记在这里的理由与上面
     // 那几条逐字相同 —— `is_query_mode` 那道**闸门**读的就是本表；不在表里 ⇒ 当未知 flag
     // ⇒ 打一行 warn 之后照常进流模式，调用方拿到的是一堆 jsonl 行而不是它要的应答。
@@ -1230,7 +1229,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--find-in-session",
     "--fork-session",
     // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对 aterm 冻结的
-    //   argv 形。⚠ 加这一行逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    //   argv 形。⚠ 加这一行逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--session-fork",
     // 同上一段：`history-*` 六条帧命令的 CLI 面。
     // +2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，

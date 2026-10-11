@@ -7,7 +7,6 @@ use crate::stream::inbound::LocalFiles;
 pub(super) const SPECS: &[CommandSpec] = &[
     // 「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
     //   本机那一栏 `client` 带 monitor 自己进程独有的几条事实（家目录 · agent 家 · PATH），`HostScope::Client` 那一族按它们解、这台 stat。只读，阻塞档。
-    //   〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor。〕
     CommandSpec {
         name: "footprint-report",
         summary: "「足迹」由这台后端出整份成品",

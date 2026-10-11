@@ -1,8 +1,6 @@
 //! SS-D：远端**自部署**的业务那一半（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）＋ 别名块的规划。
 //!
 //! 执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）。
-//! 〔墓碑 —— 从前这里逐字「复用 `stream_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
-//!  在一条已鉴权的 russh 连接上开 SFTP 子系统」—— 那条进程内拨号随 SR1b 删了。〕
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
@@ -121,12 +119,6 @@ pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
     /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
     ///
-    /// 〔墓碑 —— 本结构此前还有一格 `id_from_manifest: bool`，逐字注释是
-    ///  「build_id 是否来自 .build_id 清单（true=字节真实身份可信）」。那句话把**标签**
-    ///  说成了**真实身份**：清单是 `release.yml` 从源码常量抠出来写的，三个载体恒等
-    ///  ⇒ 一格证据都不提供（`K-R68` · `DECISIONS.md#R26` 裁定零）。
-    ///  今天身份**只有一条来路**（字节），于是那个见证布尔没有了对立面，删掉；
-    ///  它守的那件事换成了 [`bytes_carry_build_stamp`] 在部署路上**无条件**跑一遍。〕
     pub build_id: &'static str,
     pub bytes: &'static [u8],
     /// 那台机器是哪一格（说给人听：「Linux / x86_64」）。
@@ -282,8 +274,7 @@ fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
 }
 
 /// 自动部署没成的两种说法 —— **类型上与「部署成功」分得开**（
-/// 「返回类型上不许有『成功』这一支」）。〔墓碑 —— 从前是 `Result<Option<String>, String>`：`Ok(None)` 就是
-/// 「没部署也算成功」那一支，路径含 `~` / 问不出 arch / 没这格字节 / 字节问不出身份全落在它上面、只留一行 `debug!`。〕
+/// 「返回类型上不许有『成功』这一支」）。
 #[derive(Debug)]
 pub enum DeployError {
     /// 那台要不了这份 / 这一版没带 / 判不清它是谁 —— 那句话是本机常驻后端说的（`deploy-plan` 失败那一形），原样带回（带它的详情）。

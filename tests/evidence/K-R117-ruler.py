@@ -160,12 +160,6 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # ─────────────────────────── 非装面 ───────────────────────────
     # 下面每一条都是「它不是装 / 卸 / 查装态的动作」。理由一律给**它到底在干什么**，
     # 不写「与安装无关」这种同义反复。
-    # 〔墓碑〕`accounts.last-used` · `history.list-projects` · `history.list-sessions` · `history.metadata` 四条随历史跨机 join
-    #   与注解读写搬进本机常驻后端（前端 `chan.call(<local>, …)`）⇒ 已不在 `LEDGER` 里，按 `usage.*` 同一个理由摘掉。
-    # 〔墓碑〕`accounts.list` · `accounts.trust` · `app.backend-policy` 三条随对应 Tauri 命令改走通道
-    #   （前端 `chan.call` 直接问后端 `accounts-list` / `accounts-trust` / `exit-policy-read|set`）⇒ 已不在 `LEDGER` 里，按 `usage.*` 同一个理由摘掉。
-    # 〔墓碑〕`accounts.session-accounts` 随「某会话属哪个账号」远端 · 本机两条 Tauri 命令退役
-    #   （前端经通道直接说 `accounts-sessions`）⇒ 已不在 `LEDGER` 里，按上面 `usage.*` 那条同一个理由摘掉。
     ("app.auto-launch", (NA, "—", "app 自己的开机自启开关")),
     ("app.config", (NA, "—", "app 自己的配置读写")),
     ("app.data-paths", (NA, "—", "报 app 自己的数据目录")),
@@ -174,60 +168,27 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.self", (NA, "—", "窗口动作")),
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
-    # 〔墓碑〕`audit.config-surface` 随它唯一那条命令（`config_surface_report`）进后端（`footprint-report`，界面经通道直问）而退役；
-    #   剩 monitor 自己那台那几行的事实，能力 id 换成下面那一条（理由同上面几条墓碑）。
     ("audit.monitor-own", (NA, "—", "足迹里 monitor 自己那台那几行的**事实**（只 stat，报告安装面，不改它）")),
     # `assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
-    # 〔墓碑〕`audit.drift-ledger` 随 monitor 自己那本漂移账（`drift_ledger` · Tauri 命令 `drift_ledger_report`）删了而退役（`hello.capabilities` 跟着删了）；
-    #   能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
-    # 〔墓碑〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
-    #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
-    # 〔墓碑〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
-    # 〔墓碑〕`relay.launch-endpoint` 随它唯一那条命令（读全量注入开关）退役：中转地址与开关都由起 agent 那台的 `ccm`
-    #   在最终 exec 那一处自己定 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑。
     ("comm.face-a.call", (NA, "—",
                           "通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
                           "装什么、查什么装态都不是它的事")),
     ("comm.face-a.subscribe", (NA, "—",
                                "通信层面 A 在 Tauri IPC 那一跳的订阅（`chan_subscribe` / `chan_want` / `chan_stop`）—— 只搬不透明的流格，"
                                "装什么、查什么装态都不是它的事")),
-    # 〔墓碑〕`history.branch` · `history.delete` 随分叉 / 删会话改由界面经通道直说那台后端（`session-fork` · `files-delete-session`）退役；
-    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，理由同上面几条墓碑。
-    # 〔墓碑〕`history.read-session` 随会话正文三条（整份读 · 按偏移 · 按行号）改走通道（那台后端出记录行，
-    #   前端 `chan.call` 直接问 `history-page` / `history-lines`）⇒ 能力不再有 Tauri 命令，归档这一行摘了。
-    # 〔墓碑〕`hooks.diagnose` 随钩子诊断本机远端合成帧命令 `hooks-diag`（界面经通道直问那台后端）退役：
-    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
-    # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
     # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
-    # 〔墓碑 C4e〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
     # （`src/frontend/ui/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
     # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # `mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
-    # 〔墓碑〕`panorama.code-graph` 随代码全景整条摘掉而退役：能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
-    # 〔墓碑〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
-    #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
-    # 〔墓碑〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
-    # 〔墓碑〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
-    #   （`src/frontend/ui/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
-    # 〔墓碑〕`search.history` · `search.index` 随本机搜索改走 `<local>` 的 `history-search`（monitor 内存索引、三条搜索命令与「重新索引」按钮删）退役；理由同上面几条墓碑。
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
-    # 〔墓碑〕`session.activity` · `session.list-active` 随会话起停 / 状态并进会话流（`subscribe(origin, "session-lines")` 的成品格）退役：
-    #   `list_session_activity` / `list_active_sessions` 删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。
-    # 〔墓碑〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
-    # 〔墓碑〕`ssh.host-config` 随它最后一条命令（公钥推送）进了本机后端（`pubkey-push`，界面经通道问）而退役：
-    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
-    # 〔墓碑〕`subagent.load` 随 `load_subagent` 改走通道（前端 `chan.call` 直接问后端 `history-subagent`）⇒ 归档这一行摘了。
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     # 开窗（`open_terminal_window`）：ssh 外壳进了本机后端（`terminal-ssh`），monitor 只剩开窗这一下。
     ("terminal.window", (NA, "—", "开一个终端窗口跑交来的成品（接令牌握手前奏）—— 是**跑**它，不往用户环境里落任何东西")),
-    # 〔墓碑〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
-    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。连带 §S6 连锁里点它的那两处改成「这条能力回来才要求」（见那一段）。
-    # 〔墓碑 2026-09-18〕`usage.aggregate` / `usage.per-account` 两条能力随用量 ②③ 两轴
     # 整轴退役⇒ 它们已不在 `LEDGER` 里。本表是**归档表**，留一个指向不存在
     # 的 id 会让 `R3b`（「表在腐烂」）恒红 ⇒ 整条摘掉，理由留在这里。
     # ⚠ 摘掉的合法理由只有这一个：**那两条能力真的不在了**，不是「这条判据太吵」。
@@ -242,16 +203,8 @@ CMD_OVERRIDE = {
 # `build.rs::embed_daemons`（它的 tool id 是 `None`，见 §S5 那段读数）。
 # key = "文件::函数"。两向对拍：人群从 `WRITE_SITES` 现打，这张表少一行 / 多一行都红。
 SITE_ARCHIVE = {
-    # 〔墓碑〕`local_backend.rs::install_local_ccm_entry` 走了：本机 `ccm` 就是后端本身（「不要第二份拷贝」），
-    #   放它的是 `extract_embedded_to`（`WRITE_SITES` 里 tool id 是 `None`：monitor 自己目录里的部署物）⇒ 不在「带 id」人群里。
     "build.rs::embed_daemons": (
         B1, "K33", "把内嵌后端复制进 `OUT_DIR` —— 装后端那条链的构建期一环"),
-    # 〔墓碑〕`fenced_block.rs::put_atomic` · `profile_installer.rs::atomic_write_string` /
-    #   `atomic_replace_path` · `cc_bus_deploy.rs::deploy_into` · `mcp.rs::write_json_atomic` 五行走了：
-    #   只有后端的文件管理部分写用户文件，本机也算 ⇒ 别名块 / $PROFILE / 那一行 source · cc-bus skill 部署 ·
-    #   项目 .mcp.json 的落盘全改成经那台机器的后端（`files-put` / `files-peek`，monitor 只剩 `user_files.rs` 一个开口、
-    #   它自己一个 `fs::` 写都没有）⇒ 这五处在 monitor 侧 `WRITE_SITES` 里已不存在。归处（② / ③）不变，
-    #   只是真落点换到了后端写面（`control/files_write.rs`），不在本表人群里。
 }
 
 # `§0b` 里点名、而 `WRITE_SITES` 的 tool id 是 `None` 的那几行 —— 单列，别混进「带 id」那个数。
@@ -529,8 +482,6 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
 # 🔴 每一条的理由都要**自己站得住**（不是「不这么划 3 就闭合不了」）——
 #    `KR131D1` 逐字警告过「别为了让 3 闭合去硬凑分组」。
 FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
-    # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
-    #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
     ("src/frontend/ui/backend-deploy.ts",
      "远端后端装 / 卸的共用模块：机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］（就地部署，不开设置窗）都调它。"
      "它没有界面，用户去的地方是那两处 ⇒ 不是「用户要去装东西的那一处」；全前端调这两条命令只这一份（`R9` 钉 S1 的落点就是它）。"),

@@ -1505,7 +1505,6 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
     // 「问产物自己带没带」搬去了宿主（`byte_table::choose` 按这台机器的 (OS, arch) 查表，
     //   `byte_table_tests::the_old_byte_doors_and_the_linux_gate_are_gone` 钉着宿主真的问了）。
     //   本层只剩「用宿主交进来的那份」：取不到时那句拒绝的话要被接上，不许被丢掉。
-    //   〔墓碑 —— 本条原先在这里钉「问产物带没带」那一次调用恰好一处，那条第二取法随它一起搬走了。〕
     assert!(
         !body.contains(&format!("native_embedded_{}", "backend")),
         "那份共用的解析体又自己问起了「这份产物带没带」—— 那是第二个取字节口"

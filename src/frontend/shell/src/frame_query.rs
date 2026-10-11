@@ -24,8 +24,6 @@
 //! 本模块的每一个出口都收一个 [`Deadline`]，**只用、不造**：发起这件事的那一手（`tasks` · `subagent` · 快照 ·
 //! 历史浏览器读整份 · 按行号取一段）在事情开始时造一次（[`Deadline::within`]），之后这件事里的每一问、每一页
 //! 都拿**同一个**时刻去等（`InboundClient::call_until`）—— 越往后剩得越少，没有一页会重新拿一整份。
-//! 〔墓碑 —— DL1 之前每一问各自 `now + LINES_BUDGET / PAGE_BUDGET`：分页读（`read_lines` · 快照 · 读整份）每页重新计时、
-//!  没有总时限，病 2「每 59 s 吐一个字节的对端能拖到无限」。〕
 //! 期限的**值**暂住下面那几个常量：「期限的值归谁」待定，定了再搬。
 
 use crate::backend_route::{no_channel, route_call_error, Routed};

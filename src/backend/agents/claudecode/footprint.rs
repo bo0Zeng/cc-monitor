@@ -219,7 +219,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
     // 每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
     // `uninstallable: true`：只删装时写进去的文件 —— 装的时候那台后端记下写了哪几个
     //   （第二条 touch：那台后端自己的装记录），卸口 `skill_flow.rs::answer_uninstall` 只删记着的那几个（装完改过的先问）。
-    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",
         display_name: Text(|| copy_text("rsToolRegistry.tools.skillInstallName", &[])),

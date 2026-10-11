@@ -1685,7 +1685,6 @@ fn claims() -> Vec<Claim> {
         },
         // 资产目录里「装到这台」的 skill；卸只删装记录里那几个文件。
         // 装 / 卸口进了被写那台后端（`skill-install-apply` 的本体 · `ext-uninstall-apply` 调的那一份）。
-        //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
             home: Some(ImplHome {

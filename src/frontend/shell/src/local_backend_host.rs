@@ -1467,10 +1467,7 @@ pub fn start_local_backend() -> StartOutcome {
     }
     // **本机的字节也按 (OS, arch) 从那一张表里取**（规矩 4：本机只是「目标机器恰好是自己」）。
     //
-    // 〔墓碑 —— 这里原来是一道 `cfg!(target_os = "linux")` 的闸（D 阶段补审 08-11）：远端那两份 musl 只按 arch 取、不认 OS，
-    //  于是在 Windows 构建上会释放一个 Linux ELF、再报「已起」；那道闸挡住了它，代价是非 Linux 本机一份字节都拿不到，
-    //  由 `local_backend` 那一层再问一次「这份产物自己带没带」补上。：「这道闸要消失 —— 它是
-    //  『表没有 OS 轴』逼出来的补丁」。〕今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
+    //  今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
     let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(this_machine)
