@@ -849,7 +849,33 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     let Some((prog, rest)) = argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
-    exec_or_spawn(Child::new(prog).args(rest), &format!("'{prog}'"), account)
+    let path = std::env::var("PATH").ok();
+    let (program, lead) = final_program(prog, cfg!(windows), path.as_deref(), &|p| p.is_file());
+    exec_or_spawn(
+        Child::new(program).args(lead).args(rest),
+        &format!("'{prog}'"),
+        account,
+    )
+}
+
+/// 最后起 agent 那一下起的程序与前导参数。Windows 上裸名字照 `platform::shell::find_session_command` 换成找到的那个文件
+/// （`.cmd` / `.bat` / `.ps1` 也起得来 —— 与足迹「装没装」、起新会话框同一个找法，认得出就起得来）；
+/// unix（按名字 exec）· 带路径的（用户自己指的）· 找不到 / 判不了的 ⇒ 原样（起不来时那句报错说得出是哪个）。
+pub(crate) fn final_program(
+    prog: &str,
+    windows: bool,
+    path_env: Option<&str>,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> (std::ffi::OsString, Vec<std::ffi::OsString>) {
+    use crate::platform::shell::{find_session_command, SessionCommand};
+    if windows && !prog.contains(['/', '\\']) {
+        if let SessionCommand::Found { program, lead, .. } =
+            find_session_command(prog, path_env, windows, is_file)
+        {
+            return (program, lead);
+        }
+    }
+    (prog.into(), Vec::new())
 }
 
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。

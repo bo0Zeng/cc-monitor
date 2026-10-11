@@ -69,9 +69,33 @@ fn a_launcher_is_found_in_the_session_shell_path() {
     let joined = std::env::join_paths([&sys_bin, &user_bin]).unwrap();
     let login = joined.to_string_lossy().into_owned();
     let bare = sys_bin.display().to_string();
-    assert!(launcher_found_in("tool-x", Some(&login)));
-    assert!(!launcher_found_in("tool-x", Some(&bare)));
-    assert!(launcher_found_in("tool-x", None), "判不了被当成了没装");
+    let here = cfg!(windows);
+    assert!(launcher_found_in("tool-x", Some(&login), here));
+    assert!(!launcher_found_in("tool-x", Some(&bare), here));
+    assert!(
+        launcher_found_in("tool-x", None, here),
+        "判不了被当成了没装"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 缺陷（10-10）：起新会话框在 Windows 上只认 `.exe`（npm 全局的 `.cmd` / `.ps1` 认不出）。
+/// 它与足迹「装没装」问同一个函数（`platform::shell::find_session_command`）⇒ Windows 那一形下 `.ps1` 也算能起，unix 那一形不算。
+#[test]
+fn a_windows_launcher_counts_the_powershell_forms() {
+    let d = std::env::temp_dir().join(format!("ccm-launcher-win-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    std::fs::write(d.join("tool-z.ps1"), "x").unwrap();
+    let path = d.display().to_string();
+    assert!(
+        launcher_found_in("tool-z", Some(&path), true),
+        "Windows 那一形下 .ps1 没认出来"
+    );
+    assert!(
+        !launcher_found_in("tool-z", Some(&path), false),
+        "unix 那一形下认了带后缀的"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
