@@ -634,9 +634,18 @@ fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
     let mut offset = 0u64;
     for raw in sample.lines() {
         let v: Value = serde_json::from_str(raw).unwrap();
-        let want = record_of(&v, offset)
+        let rec = record_of(&v, offset);
+        let want = rec
+            .as_ref()
             .map(|r| r.body.class())
             .filter(|c| *c != RecordClass::Unread);
+        let has_blocks = rec.as_ref().is_some_and(|r| {
+            serde_json::to_value(&r.body).ok().and_then(|b| {
+                b.get("blocks")
+                    .and_then(Value::as_array)
+                    .map(|a| !a.is_empty())
+            }) == Some(true)
+        });
         assert_eq!(class(&v), want, "{raw}");
         let row = crate::observe::history_query::index_row_of(
             super::super::AGENT_KIND,
@@ -645,6 +654,10 @@ fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
             raw.len() as u64 + 1,
         );
         assert_eq!(row.t, want, "骨架那一行：{raw}");
+        // 进界面的那几行骨架上要有料（正文字数 / 折叠单元），不然骨架判它「画不出东西」、查看器照样一张卡都不建。
+        if want.is_some() && has_blocks {
+            assert!(row.ch > 0 || row.fd > 0, "骨架那一行没有料：{raw}");
+        }
         shown += usize::from(want.is_some());
         offset += raw.len() as u64 + 1;
     }

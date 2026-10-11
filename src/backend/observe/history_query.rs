@@ -1246,11 +1246,21 @@ pub(crate) fn index_row_of(
         row.x = Some(ui.excerpt);
         row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
     }
-    // 正文在哪：user/assistant 在 `message.content`（字符串或块数组）；system 在顶层 `content`。
-    let content = v
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .or_else(|| v.get("content"));
+    // 正文在哪：记录树那一家的原文就是通用块那一形 —— user/assistant 在 `message.content`（字符串或块数组）；system 在顶层 `content`。
+    // 不住记录树的那一家（原文是它自己的形状）⇒ 数它翻出来的那条通用记录的块（同一个数法，下面那一段）。
+    let translated = crate::agents::record_face(kind)
+        .filter(|f| f.tree.is_none())
+        .map(|f| translated_of(&f, v));
+    if let Some((_, Some(said_by))) = &translated {
+        row.sp = Some(*said_by).filter(|k| !matches!(*k, "human" | "toolResult"));
+    }
+    let content = match &translated {
+        Some((blocks, _)) => blocks.as_ref(),
+        None => v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .or_else(|| v.get("content")),
+    };
     match content {
         Some(serde_json::Value::String(s)) => count_prose(s, &mut row),
         Some(serde_json::Value::Array(blocks)) => {
@@ -1271,6 +1281,29 @@ pub(crate) fn index_row_of(
         _ => {}
     }
     row
+}
+
+/// 那一家把这一行翻成的通用记录：它的块（序列化成线上那一形 `[{type, text, …}]`）· 人那一侧是谁说的（`Speaker` 的 `kind`）。
+/// 不进界面 / 没有块 ⇒ 块缺。
+fn translated_of(
+    face: &crate::agents::RecordFace,
+    v: &serde_json::Value,
+) -> (Option<serde_json::Value>, Option<&'static str>) {
+    use crate::agents::record::Body;
+    let Some(rec) = (face.parse)(&v.to_string(), 0)
+        .ok()
+        .flatten()
+        .and_then(|t| t.record)
+    else {
+        return (None, None);
+    };
+    match &rec.body {
+        Body::Said { blocks, who, .. } => {
+            (serde_json::to_value(blocks).ok(), Some(who.speaker.kind()))
+        }
+        Body::Reply { blocks, .. } => (serde_json::to_value(blocks).ok(), None),
+        _ => (None, None),
+    }
 }
 
 /// 数一段 markdown 正文：围栏代码块内外分开数（代码走等宽行高、正文走折行估计，两者算法不同）。

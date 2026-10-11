@@ -1140,3 +1140,27 @@ fn the_cli_deadline_option_refuses_like_the_other_options_and_reads_like_the_fra
         assert!(!out.trim().is_empty(), "{v}");
     }
 }
+
+/// ★ 一次性调一条要入参的命令却什么都没给（例：`--history-page` 不带 stdin）：失败信封的那一句照旧是「请求格式不对」，
+/// 复制详情里说出缺的是什么（哪一格 · 什么形状）—— 从前只记一行日志，信封里只有时刻 · 机器 · 命令 · 码，看的人不知道缺了什么。
+#[test]
+fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
+    let (rc, _, err) = run_cli(&strs(&["--history-page"]), std::io::empty());
+    assert_eq!(rc, 2);
+    let v: serde_json::Value = serde_json::from_str(err.trim()).expect("stderr 一行 JSON");
+    assert_eq!(v["code"], "bad_args");
+    assert_eq!(
+        v["message"],
+        copy_core::copy_text("beContract.malformed.say", &[]),
+        "那一句不带英文诊断"
+    );
+    let detail = v["detail"].as_str().unwrap();
+    assert!(
+        detail.contains("missing `path`"),
+        "详情没说缺什么：{detail}"
+    );
+    assert!(
+        detail.contains("stdin") && detail.contains(crate::ARGS_B64_FLAG),
+        "详情没说入参从哪给：{detail}"
+    );
+}

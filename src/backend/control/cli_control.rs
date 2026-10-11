@@ -300,7 +300,19 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             0
         }
         // 失败那一份与帧面同一处出（「码 → 句」表 · 复制详情 · 按码定形的 `data`）。
-        Err(f) => emit_failed(err, &f.settle(spec.name, &cli_args), text, tz),
+        // 一个入参都没给就缺了格 ⇒ 原话里再说一句入参从哪给（一次性模式的入参只从这两处来）。
+        Err(f) => {
+            let f = if f.code == "bad_args" && trimmed.is_empty() && reads_stdin(spec) {
+                let hint = format!(
+                    "no args were given: pass a JSON object on stdin, or base64 of it after {}",
+                    crate::ARGS_B64_FLAG
+                );
+                f.with_raw(Some(&hint))
+            } else {
+                f
+            };
+            emit_failed(err, &f.settle(spec.name, &cli_args), text, tz)
+        }
     }
 }
 

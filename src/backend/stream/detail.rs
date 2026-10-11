@@ -47,9 +47,11 @@ impl Failed {
         raw: Option<&str>,
         data: Option<serde_json::Value>,
     ) -> Failed {
+        // 契约错的诊断跟在句子后面（`contract::malformed`）⇒ 拆开：句子留给人看，诊断进原话那一行。
+        let (message, raw) = crate::common::contract::parts(&message, raw);
         Failed {
             code: code.to_string(),
-            detail: of(cmd, code, raw),
+            detail: of(cmd, code, raw.as_deref()),
             message,
             data,
         }
