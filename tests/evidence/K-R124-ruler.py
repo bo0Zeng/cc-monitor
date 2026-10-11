@@ -290,7 +290,7 @@ LANDING_MARK = "# ⇐ 内嵌落点"
 #: ⑬e：这两个函数体里的**出路**必须点名 `REEMBED_CMD`，各至少两处（重编 ＋ 诚实关闭）。
 EXIT_PATH_FNS = ["embed_backends", "embed_native_backend", "embed_native_filewin"]
 #: ⑬e 禁词 —— 「手抄第二条产字节配方」回来的样子。**只在代码行上判，注释行剥掉**
-#: （墓碑逐字引着那段旧配方，那是账不是指令；剥法见 `rust_code_lines`）。
+#: （注释行里提到那段配方是说明，不是指令；剥法见 `rust_code_lines`）。
 BANNED_RECIPE = [
     ("--config 'target.", "把 `rust-lld` 那条本机专用配方抄回出路里 —— 它与发版那趟**不是同一条路**"),
     ("cargo build --release --target", "同上：第二条产字节配方 ＝ 第二个住址"),
@@ -464,8 +464,7 @@ def rust_code_lines(body):
 
     ⚠ 它**不是** Rust 词法器：行尾注释、`/* */`、字符串里的 `//` 一概不处理。
     够用的理由是窄的 —— ⑬e 的禁词只出现在两处：① 出路那几段**字符串字面量**里
-    （那正是要判的），② 逐字引着旧配方的**整行墓碑注释**里（那是账，不是指令，
-    本仓纪律要求留着）。剥掉整行注释刚好把这两者分开。
+    （那正是要判的），② 讲那段配方的**整行注释**里（那是说明，不是指令）。剥掉整行注释刚好把这两者分开。
     """
     return "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("//"))
 
@@ -1282,7 +1281,7 @@ def run_checks(emit):
         code = rust_code_lines(body)
         hit = [(w, why) for w, why in BANNED_RECIPE if w in code]
         check(not hit, "⑬e`%s` 没有第二条手抄的产字节配方" % fname,
-              "代码行里出现 %r —— %s。（整行 `//` 注释已剥掉：墓碑逐字引着那段旧配方是账，不是指令）"
+              "代码行里出现 %r —— %s。（整行 `//` 注释已剥掉：注释里讲那段配方是说明，不是指令）"
               % ([w for w, _ in hit], "；".join(why for _, why in hit) or "—"))
 
     # ── ⑬g 那条命令真跑得起来，而且**有数** ─────────────────────────────────────

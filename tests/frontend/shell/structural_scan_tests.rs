@@ -1573,13 +1573,6 @@ fn every_symbol_address_in_the_sources_still_resolves() {
             "**示例占位符**：讲「地址长什么样」时写的假地址，本就不指向真符号",
         ),
         ("foo", "**示例占位符**：同上，讲口径时举的例子"),
-        (
-            "discover_profiles",
-            "**历史句**：`tool_registry.rs` 里 `posix-rc-aliases` 那块墓碑**逐字引用**当年那一行 \
-                 `why:`（「原文逐字：…」），那一行点的就是 `profile_installer.rs` 里这个函数。它今天删了 —— \
-                 `$PROFILE` 在哪只剩 `shell_dialect.rs` 一处答。\
-                 改写那段引文等于篡改原文（同上面 `resolve_claude_dir` 那条）。",
-        ),
     ];
 
     let corpus = addr_corpus();
@@ -2311,7 +2304,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    它此后一直被一处**字符串字面量**当成「还活着」——
         //    `doc_claim_registry_daemon_wording_registry.rs` 拿它当「非裸词」自检夹具。
         //    条 80 把那个夹具换掉之后，它才第一次被本条看见。
-        //    ⇒ 散文里这几处（README 1 · 本表下一行 1；流来源那份的两处随拆目录删了）全是**病史与墓碑**，该留；
+        //    ⇒ 散文里这几处（README 1 · 本表下一行 1；流来源那份的两处随拆目录删了）全是**病史**，该留；
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         // 登记表里几段改数史 / 已结账的核实表删了 —— 那些字符串一直替下面这几处散文遮着「还活着」。
@@ -2485,7 +2478,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `classify_capture_output` 那一行（README 两处）摘掉：README 里抓屏那两处改写成「迁到界面」，旧名不再点。
         // 同一份 README 那一行（`stream_source/` 的旧功能表）里的跳板函数名：界面侧最后一份
         //   （`inproc_dial.rs` 里 SFTP 用的那一个）随界面进程零 SSH 整份删了，后端那份改了名 ⇒ 真死名，如实记账；
-        //   那一行同时点着上面四个死名，不给整行贴墓碑（贴了会把它们一起改记成「墓碑」，账就错了）。
         // 🔴 〔搬树 2026-09-18〕**这里删掉了 6 行**，逐条点名：
         //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
         //   `accounts_query.rs`/`local_backend_host.rs`     `every_comment_stripping_transformer_is_registered`
@@ -2511,7 +2503,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     // ★ 抽取器自检 2：注释侧塌了 ⇒ 本条零命中地绿（`ScanReport::require` 那条纪律）。
     assert!(
         hits >= 20,
-        "只抽到 {hits} 处「只活在散文里的名字」—— 抽取器坏了（墓碑散文删掉之后现打 27 处）"
+        "只抽到 {hits} 处「只活在散文里的名字」—— 抽取器坏了（现打 27 处）"
     );
 
     let mut newly: Vec<String> = Vec::new();

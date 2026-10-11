@@ -273,10 +273,8 @@ fn resolve_by_destination(
             Vantage::Monitor => Ok(PathResolution::Remote(declared.to_string())),
             Vantage::Remote => resolve_local_home(declared, home, agent_home),
         },
-        // 🔴 `BothHomeRelative` 那一臂删了 —— 墓碑住 `tool_registry::Carrier`
-        //    的头注。一句话：那个变体是为「一个 `destination` 装不下两个落点」造的，
-        //    而载体这一维立起来之后那个前提没了（`ccm` 现在是两个载体，
-        //    远端那个 `RemoteHomeRelative`、本机那个 `LocalHomeRelative`，各带各的 touch）。
+        // 一个工具两个落点 ⇒ 两个载体（`ccm`：远端 `RemoteHomeRelative`、本机 `LocalHomeRelative`，各带各的 touch），
+        //    这里没有双值那一臂。理由住 `footprint::registry::Carrier` 的头注。
         ToolDestination::LocalHomeRelative(_) => resolve_local_home(declared, home, agent_home),
         // 「不是我们装的」**不等于「查不了」** —— 恰恰相反：
         // 这一档的全部意义就是「我们查得到它在不在，但装不了」。

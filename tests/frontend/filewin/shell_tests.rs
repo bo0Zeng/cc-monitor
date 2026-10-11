@@ -58,7 +58,7 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
 /// `Source::label()` 是窗口标题的来源，别让它回空串。
 ///
 /// ⚠ 从前这条还判一格「本机那一格逐字是『本机』两个中文字」——
-/// 本机侧退役之后那一格不存在了（`source.rs` 头注那块墓碑）。
+/// 没有本机侧，那一格也就没有（`source.rs` 头注「只有远端一侧」那一节）。
 #[test]
 fn every_source_has_a_non_empty_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
@@ -720,8 +720,8 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
 ///
 /// # 为什么是三趟，而且是三个**进程**
 ///
-/// 上一版这里只跑一趟，另用「同一个进程里换一条线程再开一趟」去量第二趟
-/// （那一段的墓碑留在工作面里）。今天生产那条路是**一个窗口一个进程**
+/// 上一版这里只跑一趟，另用「同一个进程里换一条线程再开一趟」去量第二趟。
+/// 今天生产那条路是**一个窗口一个进程**
 /// ⇒ 「第二趟开窗」这件事在实景里的量法只能是**再起一个进程**。
 /// 而这台架本来就是这么起进程的（`run_scenario` 每趟一个新进程）
 /// ⇒ 把同一个工作面在**同一台 Xvfb** 上跑三趟，就是那道题的读数。
@@ -1610,7 +1610,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // 这里原来有 3 条判据，钉的是「点一下『本机』还回得来」那条往返
 // （以及它当初修掉的那扇单向门）。整个本机侧删了
 // ⇒ 3 条随功能一起走了。存在过什么 · 那条白名单原文，
-// **完整记述只有一份**，住 `src/frontend/filewin/src/source.rs` 的头注（那块墓碑）。
+// **完整记述只有一份**，住 `src/frontend/filewin/src/source.rs` 的头注（「只有远端一侧」那一节）。
 //
 // ⚠ **随它们一起走掉的检出力，如实点名**（三条各自独占的那一刀）：
 // ⑤「没有来处也报回去成功了」· ③「按钮恒画 ⇒ 画了点了没反应」·

@@ -456,7 +456,7 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "（部署是产品的一部分，由客户端做）直接冲突。")),
     ("S2", (("src/frontend/ui/settings/machine-card.ts",),
             "「终端集成」那一块（`cc_integration_*`）与本机 ccm 入口查询并进组件栏的"
-            "**本机页那一份**。`src/ccm-probe.ts` 删了（它原是非入口，见 `FRONTEND_NON_ENTRY` 那条墓碑）。"
+            "**本机页那一份**。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
             "`cc_integration_install` 归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
             "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),

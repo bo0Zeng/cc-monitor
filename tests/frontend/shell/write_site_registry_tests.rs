@@ -519,7 +519,7 @@ const MOVED_OUT: &[&str] = &[
 ///   `Door::rename` 这种经后端的调用撞名。
 fn moved_out_needles() -> Vec<String> {
     let mut v: Vec<String> = WRITE_CALLS.iter().map(|s| s.to_string()).collect();
-    // ⚠ 名字也**运行时拼**：其中两个是已删的旧名（挂着墓碑），写成字面量会让死名普查把它们当成活名。
+    // ⚠ 名字也**运行时拼**：其中两个是已删的旧名，写成字面量会让死名普查把它们当成活名。
     for (a, b) in [
         ("atomic_write_", "json"),
         ("atomic_write_", "string"),

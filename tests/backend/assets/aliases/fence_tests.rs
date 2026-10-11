@@ -64,9 +64,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
                      而且它要保住 CRLF（fence.rs::detect_eol，`Layout::PowerShell` 那一臂）",
     },
-    // 墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
-    //   唯一**没有卸口**的一套）。那一步退役了（「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
-    //   选了 rc 只查不装）⇒ 这一套不再存在，账降一行；「装得进去卸不掉」那一格随之清零。盘上已有的那一块不读不删。
+    // 「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，选了 rc 只查不装 ⇒ 没有「装得进去卸不掉」的那一套。
     // ★★ **本件新加的那条路，就是这一行。**
     FenceShape {
         id: "local-posix-block",

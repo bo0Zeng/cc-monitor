@@ -1272,9 +1272,8 @@ fn the_listen_env_names_are_the_same_string_on_both_sides() {
 ///
 /// # 🔴 `K-R43` 换了机制，**名字刻意没改**（引它的地方不用跟着动）
 ///
-/// 墓碑，原文逐字：「常驻这条路不要监护那半，所以它没法直接用 `start_or_extract`
-/// （那一份把「找」与「监护」焊在一起）⇒ 今天是**两份实现**。两份就会漂 …… ⇒ 逐字对拍**顺序**
-/// 这一件事：两边都必须先 `resolve_beside_this_exe`、再释放内嵌那份。」
+/// 从前常驻那条路不要监护那半、用不了 `start_or_extract`（那一份把「找」与「监护」焊在一起）⇒ **两份实现**，
+/// 只对拍**顺序**（两边都必须先 `resolve_beside_this_exe`、再释放内嵌那份）。
 ///
 /// ⚠ **它守的那件事一个字没变** —— 仍是「同一台机上两条路不许找到不同的二进制」
 /// （那正是「每台机 N 个后端」的另一个入口）。变的是**拿什么去守**，而换机制的理由是
@@ -2294,10 +2293,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //   `#[ignore]` 与 `CCM_E2E_BACKEND`，第一版把自己算进了人群）。
     //
     // ⚠⚠ **剥注释这一步 09-01（`C` 第七拍）收口成共享原语**。
-    //   这里原来是一份**私有副本**（墓碑，原文逐字）：
-    //   `let code_only = |c: &str| -> String { c.lines()`
-    //   `    .filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n") };`
-    //   ⇒ 它只剥「`//` 打头的整行」。现在两处调用点直接调
+    //   这里原来是一份私有副本，只剥「`//` 打头的整行」。现在两处调用点直接调
     //   `guard_core::strip_comment_lines`（`guard-core/src/lib.rs::strip_comment_lines`）。
     //
     //   **为什么换**（两条，各自独立成立）：
@@ -2999,8 +2995,7 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     // ① 分母：失败的构造点今天恰好 6 处。
     //
     // 〔订正 2026-09-10（v3.7.0）—— 动的是**失败文案**，不是判据。
-    //  墓碑，原文逐字：「诚实降级（**还没有本机后端那种**）⇒ 仍走日志」。
-    //  括号里那句今天不成立：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
+    //  文案里举的「还没有本机后端」那个例子今天不成立：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
     //  各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
     //  **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 发版包里本机后端就在 exe 旁边。
     //

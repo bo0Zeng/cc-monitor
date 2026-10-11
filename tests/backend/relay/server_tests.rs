@@ -2350,8 +2350,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
     }
 }
 
-/// **`every_header_this_relay_may_write_is_in_the_set_it_clears_first`
-/// 搬去 `creds_guard` 了** —— 墓碑，别在这里重建一份。
+/// **「中转可能写出的头名都在它先丢掉的那份名单里」那条住 `creds_guard`**，别在这里重建一份。
 ///
 /// 它焊的两端（「我可能写出来的头名」＝ `auth_header_of` · 「先丢掉哪几个」＝那份名单）
 /// 本来都住中转。`P16` 把映射按 `C2` 搬去上游选择、名单改成由映射**派生**之后，

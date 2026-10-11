@@ -71,9 +71,6 @@ pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     end: flag::END,
 };
 
-// 墓碑：这里从前有一对**写进用户 rc / `$PROFILE`** 的围栏常量（`# === cc-monitor aliases BEGIN v1 ===` 那一对），
-//   包着 [`install_in`] 代装的那一行 source。那一步退役，这对围栏随之删 —— 盘上已有的那一块不读不删。
-
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
 /// 读回（[`read_in`]）不认这两行（注释行一律跳过），所以盘上那份 v1 照样读得回来。
