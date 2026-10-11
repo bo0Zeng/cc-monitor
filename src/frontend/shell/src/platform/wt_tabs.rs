@@ -5,6 +5,7 @@
 //! 窗口是不是 Windows Terminal 按窗口类名认（[`is_terminal_window`]）；别的终端程序不试。
 
 /// Windows Terminal 顶层窗口的类名。
+#[cfg(windows)]
 pub const WT_WINDOW_CLASS: &str = "CASCADIA_HOSTING_WINDOW_CLASS";
 
 /// 这个窗口是不是 Windows Terminal 的（按类名；读不到 ⇒ 不是）。

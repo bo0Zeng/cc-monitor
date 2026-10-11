@@ -20,12 +20,15 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsoleLook {
     /// 显示在这个可见窗口里。
+    #[cfg_attr(not(windows), allow(dead_code))] // 只有 Windows 上的小助手答得出它
     Shown(isize),
     /// 借到了，那个控制台不显示在任何可见窗口里（隐藏的控制台 · 不把伪控制台挂到自己窗口下的终端程序）。
+    #[cfg_attr(not(windows), allow(dead_code))]
     Hidden,
     /// 系统不给借（提权的进程 · 本进程自己挂着控制台）。
     Denied,
     /// 它没有控制台 / 进程没了。
+    #[cfg_attr(not(windows), allow(dead_code))]
     None,
 }
 
@@ -63,9 +66,11 @@ pub fn window_of_console(
 }
 
 /// 小助手的命令行开头（本二进制的隐藏子命令）。
+#[cfg(any(windows, test))]
 pub const HELPER_FLAG: &str = "--ccm-console";
 
 /// 起小助手要它做的事。
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HelperRequest {
     /// 逐个借这几个进程的控制台，各印一行显示在哪个窗口（[`look_line`]）。
@@ -75,6 +80,7 @@ pub enum HelperRequest {
 }
 
 /// 起小助手的那一串参数（不含程序名）。
+#[cfg(any(windows, test))]
 pub fn helper_argv(req: &HelperRequest) -> Vec<String> {
     let mut v = vec![HELPER_FLAG.to_string()];
     match req {
@@ -93,6 +99,7 @@ pub fn helper_argv(req: &HelperRequest) -> Vec<String> {
 
 /// 本进程的命令行（含程序名）是不是小助手那一形：紧跟程序名的就是 [`HELPER_FLAG`]、子命令认得、参数都是数。
 /// 不是 ⇒ `None`（照常起 monitor）。
+#[cfg(any(windows, test))]
 pub fn helper_request(args: &[String]) -> Option<HelperRequest> {
     let (flag, rest) = args.get(1..)?.split_first()?;
     if flag != HELPER_FLAG {
@@ -117,6 +124,7 @@ pub fn helper_request(args: &[String]) -> Option<HelperRequest> {
 }
 
 /// 小助手切标签页那一件印的一行：`selected` · `single` · `miss <原因>`（原因同界面那一族的写法）。
+#[cfg(any(windows, test))]
 pub fn tab_line(pick: crate::bind::TabPick) -> String {
     use crate::bind::{TabMiss, TabPick};
     let why = |m: TabMiss| match m {
@@ -133,6 +141,7 @@ pub fn tab_line(pick: crate::bind::TabPick) -> String {
 }
 
 /// 小助手的答话 ⇒ 切标签页的结局；读不出（没起来 · 超时 · 形状不认）⇒ 当读不到标签页。
+#[cfg(any(windows, test))]
 pub fn parse_tab(out: &str) -> crate::bind::TabPick {
     use crate::bind::{TabMiss, TabPick};
     match out.trim().split_whitespace().collect::<Vec<_>>().as_slice() {
@@ -146,6 +155,7 @@ pub fn parse_tab(out: &str) -> crate::bind::TabPick {
 }
 
 /// 小助手为一个进程印的那一行：`<pid> shown 0x<窗口>` · `<pid> hidden` · `<pid> denied` · `<pid> none`。
+#[cfg(any(windows, test))]
 pub fn look_line(pid: u32, look: ConsoleLook) -> String {
     match look {
         ConsoleLook::Shown(w) => format!("{pid} shown {w:#x}"),
@@ -156,6 +166,7 @@ pub fn look_line(pid: u32, look: ConsoleLook) -> String {
 }
 
 /// 小助手的输出 ⇒ 每个进程读到的样子（认不出的行不算；小助手没答的进程不在表里）。
+#[cfg(any(windows, test))]
 pub fn parse_looks(out: &str) -> HashMap<u32, ConsoleLook> {
     out.lines()
         .filter_map(|l| {
@@ -373,10 +384,32 @@ pub fn pick_tab(pid: u32, hwnd: isize) -> crate::bind::TabPick {
     parse_tab(&run_helper(&HelperRequest::Tab { pid, hwnd }).unwrap_or_default())
 }
 
-/// 别处没有 Windows Terminal 的标签页（调用方只在它的窗口上问）。
+/// 别处没有 Windows Terminal 的标签页（调用方只在它的窗口上问）：同一条规则（`bind.rs::pick_tab`）配一个什么都读不到的读法 ⇒ 读不到标签页。
 #[cfg(not(windows))]
 pub fn pick_tab(_pid: u32, _hwnd: isize) -> crate::bind::TabPick {
-    crate::bind::TabPick::Miss(crate::bind::TabMiss::NoUia)
+    crate::bind::pick_tab(&mut NoTabs, &crate::bind::front_marker(), 1)
+}
+
+/// 没有标签页可读的读法（非 Windows）。
+#[cfg(not(windows))]
+struct NoTabs;
+
+#[cfg(not(windows))]
+impl crate::bind::TabReader for NoTabs {
+    fn names(&mut self) -> Option<Vec<String>> {
+        None
+    }
+    fn mark(&mut self, _title: &str) -> Option<String> {
+        None
+    }
+    fn restore(&mut self, _old: &str) {}
+    fn select(&mut self, _i: usize) -> bool {
+        false
+    }
+    fn wait(&mut self) {}
+    fn time_left(&self) -> bool {
+        false
+    }
 }
 
 /// 起一趟小助手（本二进制，带 [`helper_argv`]），等它答完（[`ask_helper`]：至多 [`HELPER_TIMEOUT`]，到点不掐），
