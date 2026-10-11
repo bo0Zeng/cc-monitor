@@ -108,8 +108,6 @@ export function machineOps(): Record<string, OpHandler> {
       liveStreams: origin === "devbox" ? 2 : 0,
       forwards: origin === "<local>" && req.machine === "devbox" ? 1 : 0,
     }),
-    "apikey-read": () => ({ configured: true, masked: "sk-ant-…a1b2", notice: null, path: `${HOME}/.cc-monitor/apikey-credentials.json`, problem: null }),
-    "apikey-routing": () => ({ routed: [`${HOME}/.cc-monitor/accounts/api`], running: true }),
     // 共用 MCP：两条共用；issue-tracker 在 personal 号里也改了一版（两边都改，等人选）。
     "accounts-mcp-read": () => ({
       enabled: true,
@@ -400,7 +398,6 @@ export function machineCommands(): Record<string, CommandHandler> {
     }),
     cc_get_auto_launch: () => ({ auto_launch_enabled: false, monitor_exe_path: "/opt/cc-monitor/cc-monitor" }),
     ccm_user_path_status: () => ({ supported: false, dir: null, onUserPath: false, addCommand: null, removeCommand: null, error: null }),
-    drift_ledger_report: (a) => ({ origin: String(a.origin ?? "<local>"), faces: [] }),
     diagnostics_report: (a) => {
       const keys = (a.configUnknown as string[] | undefined) ?? [];
       return {

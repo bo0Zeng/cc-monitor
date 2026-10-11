@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.bridge.UplinkSink
 import com.ccmonitor.mobile.ui.common.chatHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -75,8 +74,7 @@ class ChatController(
      * 此刻有没有对话还在生成；前台保活服务据此决定存活。
      *
      * 惰性连接下没有活动会话是常态，所以不能按会话数判。
-     * 判据用 [ChatUiState.streaming] 而非 [ChatUiState.turn]：后者是协议事实，没收到 `res` 就一直停在 `Streaming`，
-     * 下行断了也不翻，拿它判存活会永远不放手。
+     * 判据是 [ChatUiState.running]（会话帧的语气，那台判的）。
      */
     val hasInFlightTurn: StateFlow<Boolean> = _hasInFlightTurn.asStateFlow()
 
@@ -91,17 +89,17 @@ class ChatController(
      * 而那条管道还在远端跑着。
      *
      * @param key 对话标识，不同屏幕、不同 VM 实例之间必须一致。
-     * @param uplink 上行出口，只在首次创建时生效。
      * @param hostId 这条对话跑在哪台主机上；给了就 `retain`。
+     * @param create 头一次取这个 key 时怎么造（给它这条对话的作用域）。
      */
     fun sessionFor(
         key: String,
-        uplink: UplinkSink? = null,
         hostId: String? = null,
+        create: (CoroutineScope) -> ChatSession,
     ): ChatSession {
         sessions[key]?.let { return it }
         evictIfNeeded()
-        val created = ChatSession(uplink, scopeFactory())
+        val created = create(scopeFactory())
         // 对话建起来就持有那条连接，直到 [release] 才放手。
         hostId?.let {
             connections?.retain(it, chatHolder(key))
@@ -143,7 +141,7 @@ class ChatController(
      * 每个 session 的 state 一变就由 [watchers] 调到这里，否则标志会过期。
      */
     private fun refreshInFlight() {
-        _hasInFlightTurn.value = sessions.values.any { it.state.value.streaming }
+        _hasInFlightTurn.value = sessions.values.any { it.state.value.running }
     }
 
     /**
@@ -153,7 +151,7 @@ class ChatController(
      */
     private fun evictIfNeeded() {
         if (sessions.size < MAX_SESSIONS) return
-        val victim = sessions.entries.firstOrNull { !it.value.state.value.streaming } ?: return
+        val victim = sessions.entries.firstOrNull { !it.value.state.value.running } ?: return
         watchers.remove(victim.key)?.cancel()
         heldHosts.remove(victim.key)?.let { connections?.release(it, chatHolder(victim.key)) }
         sessions.remove(victim.key)?.close()

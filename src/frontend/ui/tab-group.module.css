@@ -65,18 +65,12 @@
 
   /* 落下那几行：底色 18% accent，600ms 淡出（只过渡底色）。 */
   .landed {
-    animation: landed 600ms ease-out;
+    animation: landed var(--dur-landed) ease-out;
   }
 
   @keyframes landed {
     from {
       background: color-mix(in srgb, var(--accent) 18%, transparent);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .landed {
-      animation: none;
     }
   }
 }

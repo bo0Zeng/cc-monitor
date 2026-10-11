@@ -1,21 +1,18 @@
 package com.ccmonitor.mobile.ui.settings
 
 import android.widget.Toast
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,9 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.transport.ClaudePaths
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -86,7 +81,6 @@ fun SettingsScreen(
                 vm.save(text)
                 Toast.makeText(context, "已保存", Toast.LENGTH_SHORT).show()
             }) { Text("保存") }
-            PermissionModeSection(vm, tokens.textFaint)
             // 终端那一节：每一行都从 [settingsEntries] 来，本文件不写死任何一条。
             EntrySections(onNavigate)
         }
@@ -107,61 +101,3 @@ private fun EntrySections(onNavigate: (String) -> Unit) {
         }
     }
 }
-
-/**
- * 新对话的权限模式。
- *
- * 权限判定全在 Claude 那边，aterm 只把选择传下去，所以文案不声称一个守不住的边界，不能让人以为这是沙箱。
- * 哪三档、各自怎么说、现在落在哪一档，全部在 [PERMISSION_MODE_OPTIONS] 那份数据里。选中用真的单选件。
- */
-@Composable
-private fun PermissionModeSection(
-    vm: SettingsViewModel,
-    faint: Color,
-) {
-    val current by vm.permissionMode.collectAsState()
-    val selected = selectedPermissionModeValue(current)
-
-    Text(PERMISSION_MODE_SECTION_TITLE, style = MaterialTheme.typography.titleMedium)
-    Column(Modifier.fillMaxWidth().testTag(TAG_PERMISSION_MODE)) {
-        PERMISSION_MODE_OPTIONS.forEach { option ->
-            PermissionModeRow(option, option.value == selected) { vm.setPermissionMode(option.value) }
-        }
-    }
-    Text(
-        "权限判定由远端那个 Claude 自己做，aterm 只是把这里的选择传过去 —— 它不是沙箱，也不声称是。" +
-            "「完全跳过确认」这一档刻意不提供（官方手机端也不给）。",
-        style = MaterialTheme.typography.bodySmall,
-        color = faint,
-    )
-    // 这一屏只管起对话那一刻带的参数，另一半明说出来（见那个常量的头注）。
-    Text(PERMISSION_MODE_ELSEWHERE_NOTE, style = MaterialTheme.typography.bodySmall, color = faint)
-}
-
-/**
- * 一档，整行可点（与 `HostScreens` 里挑钥匙那一排同一写法）。
- *
- * 行高下界显式写成 [PERMISSION_MODE_ROW_MIN_HEIGHT]：`padding` 撑不出下界，字号一小行就矮。
- */
-@Composable
-private fun PermissionModeRow(
-    option: PermissionModeOption,
-    selected: Boolean,
-    onSelect: () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = PERMISSION_MODE_ROW_MIN_HEIGHT)
-            .clickable(onClick = onSelect),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onSelect)
-        Column(Modifier.padding(vertical = 4.dp)) {
-            Text(option.title, style = MaterialTheme.typography.bodyLarge)
-            Text(option.subtitle, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint)
-        }
-    }
-}
-
-const val TAG_PERMISSION_MODE = "settings-permission-mode"

@@ -55,3 +55,35 @@ async fn snapshot_queue_close_wakes_waiting_pop() {
             .is_none()
     );
 }
+
+/// 只拉在看的会话：那台报过名单 ⇒ 名单外的不拉；没报过（全看）⇒ 都拉。
+#[test]
+fn only_watched_sessions_get_a_snapshot() {
+    let w: std::collections::BTreeSet<String> = ["a".to_string()].into();
+    assert!(super::wants_snapshot(Some(&w), "a"));
+    assert!(!super::wants_snapshot(Some(&w), "b"), "名单外的也拉了");
+    assert!(
+        !super::wants_snapshot(Some(&Default::default()), "a"),
+        "空名单 ＝ 一个都不看"
+    );
+    assert!(super::wants_snapshot(None, "b"), "没报过名单 ＝ 全看");
+}
+
+/// 两处接线：分发器出队后过 [`super::wants_snapshot`] 这道门（名单从 `EventReplay::watched` 来，与 `stream_watch` 报给那台的同一份）；
+/// 总循环拿到那台的名单就作废名单外的续点（`snapshot_resume::keep_only`）。哪一句被删，上面两条纯函数判据照绿，这一条红。
+#[test]
+fn the_dispatcher_and_the_watch_loop_use_the_watched_list() {
+    let snapshot = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/stream_source/snapshot.rs"
+    ));
+    guard_core::find_pinned(
+        &snapshot,
+        "if !wants_snapshot(replay.watched(&origin).as_ref(), &item.sid) {",
+    )
+    .unwrap_or_else(|e| panic!("分发器没按名单拉：{e}"));
+    let watch = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/stream_watch.rs"
+    ));
+    guard_core::find_pinned(&watch, "crate::snapshot_resume::keep_only(&origin, &want);")
+        .unwrap_or_else(|e| panic!("名单外的续点没作废：{e}"));
+}

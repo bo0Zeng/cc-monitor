@@ -58,7 +58,6 @@ import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { MachineFault } from "../generated/MachineFault";
-import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
@@ -211,11 +210,6 @@ export const commands = {
   footprint_client_facts: () =>
     invoke<Record<string, unknown>>("footprint_client_facts"),
 
-  // 数据面漂移记账（只读、按需一次，不轮询）。
-  // 按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
-  // 只答 monitor 天生观测的两面；记录那两面问那台后端（`record-reads.ts::readRecordDrift`）。
-  drift_ledger_report: (args: { origin: Origin }) =>
-    invoke<DriftLedgerReport>("drift_ledger_report", args),
   /** 装出来的 `cc-spawn` 在本机跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。扩展页把 cc-bus 装到本机之后问一次。 */
   cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */

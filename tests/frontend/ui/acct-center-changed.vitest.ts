@@ -27,7 +27,7 @@ vi.mock("../../../src/frontend/ui/quota-reads", async (importOriginal) => {
 import { onQuotaChanged } from "../../../src/frontend/ui/acct-center";
 import { appStore } from "../../../src/frontend/ui/app-store";
 
-const rules = { state: "present", defaultRule: "r1", rules: [] };
+const rules = { state: "present", defaultRule: "r1", followText: "f", rules: [] };
 const rotation = { now: 7, sessions: { s1: { state: "absent", inPlace: "follow" } } };
 
 describe("acct-center 收推送里的成品", () => {
