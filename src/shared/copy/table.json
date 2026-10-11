@@ -4644,28 +4644,97 @@
       "zh": "切换失败 · 内容无法解析",
       "args": []
     },
-    "front.body.several": {
+    "front.title.tabMissed": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "已切到窗口 · 标签页未切换",
+      "args": []
+    },
+    "front.body.tabTitleIgnored": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "标签名不随程序标题变化",
+      "args": []
+    },
+    "front.hint.tabTitleIgnored": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "Windows Terminal 设置里关闭「禁止更改标题」 · 改过名的选项卡清空名字",
+      "args": [],
+      "waive": {
+        "C-W13": "引号里是 Windows Terminal 中文界面上的设置原名（它的设置页 Profile_SuppressApplicationTitle 那一条），不是本产品界面上的字"
+      }
+    },
+    "front.body.tabNoUia": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "读不到终端的标签页",
+      "args": []
+    },
+    "front.body.tabElevated": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "管理员终端 · cc-monitor 无权切换标签页",
+      "args": []
+    },
+    "front.body.tabNoConsole": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "读不到本会话的控制台",
+      "args": []
+    },
+    "front.body.severalUnregistered": {
       "kind": "body",
       "role": "说明",
       "zh": "{program} 窗口 ×{n} · 本会话终端未登记",
       "args": ["program", "n"]
     },
-    "front.hint.several": {
+    "front.body.severalConsole": {
       "kind": "body",
       "role": "说明",
-      "zh": "接上终端后新开的终端标签页可识别",
+      "zh": "{program} 窗口 ×{n} · 读不到本会话的控制台",
+      "args": ["program", "n"]
+    },
+    "front.hint.severalConsole": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动切到本会话所在的窗口",
       "args": []
     },
-    "front.body.unbound": {
+    "front.body.severalElevated": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{program}（管理员）窗口 ×{n} · cc-monitor 无权读取",
+      "args": ["program", "n"]
+    },
+    "front.hint.severalElevated": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "以普通权限开终端，或以管理员身份运行 cc-monitor",
+      "args": []
+    },
+    "front.body.severalForeign": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{program} 窗口 ×{n} · 此程序不提供控制台",
+      "args": ["program", "n"]
+    },
+    "front.body.unregistered": {
       "kind": "body",
       "role": "说明",
       "zh": "本会话所在终端未登记",
       "args": []
     },
-    "front.hint.unbound": {
+    "front.hint.unregistered": {
       "kind": "body",
       "role": "说明",
       "zh": "接上终端后新开的终端标签页可识别",
+      "args": []
+    },
+    "front.body.notLive": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话已不在运行",
       "args": []
     },
     "front.body.detached": {

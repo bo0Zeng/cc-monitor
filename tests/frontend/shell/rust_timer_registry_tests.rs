@@ -47,6 +47,20 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              对上就停。**有上限**、只在点 ↗ 那一下跑，不是节拍器。（换成订根窗口的属性变更事件要一个带期限的事件等待，x11rb 不带，今天不做。）",
     ),
     (
+        "src/platform/console.rs",
+        "wait",
+        "wait-for-condition",
+        "↗ 切标签页：借控制台的小助手挂上记号标题之后等它传到标签名上，50ms 一步、至多读 6 次、整趟 ≤2s（`TAB_BUDGET`）；\
+             对上就停。**有上限**，只在点 ↗ 那一下、只在那个一次性小助手进程里跑，不是节拍器。（WT 的标签名变更没有给外部订的事件，UI Automation 的属性变更事件要另起消息循环，今天不做。）",
+    ),
+    (
+        "src/platform/hwnd.rs",
+        "foreground_settled",
+        "wait-for-condition",
+        "↗ 拉前之后核前台：`SetForegroundWindow` 答应了，读回前台是不是它，20ms 一步、≤100ms；对上就停。**有上限**、只在点 ↗ 那一下跑。\
+             （换前台没有给别的进程订的事件；`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` 要消息循环，为一百毫秒不值。）",
+    ),
+    (
         "src/bind.rs",
         "probe_tty_title",
         "wait-for-condition",
