@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.searchableText
+import com.ccmonitor.mobile.core.ui.copy.copyText
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -119,6 +120,9 @@ fun ChatTranscript(
     }
 }
 
+/** 往上翻没读成：核心写好的那一句原样一行，「再上滑一次可重试」另起一行。 */
+internal fun historyErrorLines(why: String): List<String> = listOf(why, copyText("mobChat.history.retry"))
+
 /** 顶部状态条：正在载 / 已到最早 / 失败，三态互斥。到顶必须说出来，否则用户会以为卡了。 */
 @Composable
 private fun HistoryStatusBar(state: ChatUiState) {
@@ -126,7 +130,7 @@ private fun HistoryStatusBar(state: ChatUiState) {
     when {
         state.historyError != null ->
             Text(
-                "载入更早的对话失败：${state.historyError}（再上滑一次可重试）",
+                historyErrorLines(state.historyError).joinToString("\n"),
                 modifier = base.testTag(ChatTestTags.HISTORY_ERROR),
             )
 

@@ -25472,6 +25472,12 @@
       "zh": "发送中",
       "args": []
     },
+    "mobChat.history.retry": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "再上滑一次可重试",
+      "args": []
+    },
     "mobChat.record.missing": {
       "kind": "error",
       "role": "报错",
