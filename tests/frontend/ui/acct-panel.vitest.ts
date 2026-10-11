@@ -133,7 +133,7 @@ describe("账号面板 · 头 · 配置", () => {
   });
 
   it("改过 ⇒ 已改 ＋ 保存 · 另存为… · 还原；保存带打开时的版本；还原丢掉副本", async () => {
-    seed({ config: { id: "c2", name: "C-two", rev: 3 as unknown as bigint, dirty: true } });
+    seed({ config: { id: "c2", name: "C-two", rev: 3, dirty: true } });
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[data-rot-dirty]")?.textContent).toBe(copyText("rot.doc.dirty"));
     panel().querySelector<HTMLButtonElement>("[data-rot-save]")!.click();
@@ -145,7 +145,7 @@ describe("账号面板 · 头 · 配置", () => {
   });
 
   it("保存撞上别处存的新版 ⇒ 问：两边各改了哪几格 · 覆盖 ⇒ 带 force 再存", async () => {
-    seed({ config: { id: "c2", name: "C-two", rev: 3 as unknown as bigint, dirty: true } });
+    seed({ config: { id: "c2", name: "C-two", rev: 3, dirty: true } });
     saveSession.mockResolvedValueOnce({ state: "conflict", rev: 4, theirs: [{ k: "grab_left", from: 30, to: 45, text: "T-theirs" }], mine: [{ acct: "lab", k: "line", from: 99, to: 95, text: "T-mine" }] });
     openAccountPanel("s1", "<local>", host);
     panel().querySelector<HTMLButtonElement>("[data-rot-save]")!.click();
@@ -176,15 +176,17 @@ describe("账号面板 · 头 · 配置", () => {
     ]);
   });
 
-  it("信息条：卡住 · 策略出错（带复制详情）· 有新版本（载入新版本先问，再丢掉副本跟上）", async () => {
+  it("信息条：读不懂 · 策略出错（需手动 ＋ 后端那一句 ＋ 复制详情）· 卡住 · 有新版本（载入新版本先问，再丢掉副本跟上）", async () => {
     seed({
+      needs: { kind: "unreadable", reason: "R-unreadable", detail: "D" },
       blocked: { text: "B-blocked" },
       strategyError: { text: "E-text", kind: "failed", line: 12, msg: "msg" },
-      config: { id: "c2", name: "C-two", rev: 3 as unknown as bigint, dirty: true, newer: { rev: 4 as unknown as bigint, at: NOW, by: "settings", text: "N-newer" } },
+      config: { id: "c2", name: "C-two", rev: 3, dirty: true, newer: { rev: 4, at: NOW, by: "settings", text: "N-newer" } },
     });
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[data-rot-blocked]")?.textContent).toContain("B-blocked");
-    expect(panel().querySelector("[data-rot-strategy-error]")?.textContent).toContain("E-text");
+    expect(panel().querySelector("[data-rot-strategy-error]")?.textContent).toContain(copyText("rot.bar.needs", { said: "E-text" }));
+    expect(panel().querySelector('[data-rot-needs="unreadable"]')?.textContent).toContain(copyText("rot.bar.needs", { said: "R-unreadable" }));
     expect(panel().querySelector("[data-rot-newer]")?.textContent).toContain("N-newer");
     panel().querySelector<HTMLButtonElement>("[data-rot-load-newer]")!.click();
     await flush();
@@ -301,7 +303,7 @@ describe("账号面板 · 号详情 · 参数…", () => {
   });
 
   it("号详情：起会话的号写 @start；其余的订阅号底下的号写它自己、头下一句说明；按量号 line · slots 两格不出；改过的格一道琥珀线", async () => {
-    seed({ config: { id: "c2", name: "C-two", rev: 3 as unknown as bigint, dirty: true, diff: [{ acct: "@start", k: "line", from: 90, to: 85, text: "T" }] } });
+    seed({ config: { id: "c2", name: "C-two", rev: 3, dirty: true, diff: [{ acct: "@start", k: "line", from: 90, to: 85, text: "T" }] } });
     openAccountPanel("s1", "<local>", host);
     rowEl("work").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     expect(panel().querySelector<HTMLElement>('[data-rot-field="line"]')?.dataset.changed).toBe("true");

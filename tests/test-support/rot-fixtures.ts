@@ -37,8 +37,7 @@ export function present(p: Partial<SessionRotation> = {}): Present {
     since: 1_791_189_000,
     history: [],
     inPlace: "ok",
-    // 线上的 `rev` 是数（生成的类型此刻写成 bigint，等后端那一格配上 `ts(type = "number")`）。
-    config: { id: "c2", name: "C-two", rev: 3 as unknown as bigint, dirty: false },
+    config: { id: "c2", name: "C-two", rev: 3, dirty: false },
     text: "D-desc",
     strategy: { id: "2", name: "S-two", ordered: false },
     values: {

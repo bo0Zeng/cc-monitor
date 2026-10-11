@@ -82,11 +82,6 @@ export function decodeConfigsRead(v: unknown): ConfigsShown {
   };
 }
 
-/** 本机默认那份（表里总有它；对不上 ⇒ `null`）。 */
-export function defaultConfigOf(r: ConfigsShown | null | undefined): ConfigItem | null {
-  return r?.configs.find((x) => x.id === r.defaultConfig) ?? null;
-}
-
 /** `rotation-session-read`：每个 sid 一份。 */
 export interface SessionRotationRead {
   now: number;

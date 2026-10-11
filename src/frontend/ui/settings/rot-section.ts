@@ -198,6 +198,7 @@ export class RotationSection {
       this.origin = origin;
       this.ed = null;
       this.strat = null;
+      this.library = [];
       void this.reload();
     });
   }
@@ -249,16 +250,18 @@ export class RotationSection {
     let cs: ConfigsShown | null = null;
     let st: StrategiesRead | null = null;
     let failed: unknown = null;
+    // 配置表 · 策略表 · 这台的号（额度账里那几个：`＋ 加号…` 的候选、哪个是按量号）三问一起发。
+    const lib = this.library.length > 0 ? Promise.resolve(this.library) : readQuota(origin).then(
+      (q) => [...q.accounts, ...q.unseen].filter((x) => x.account !== "_").map((x) => ({ account: x.account, api: x.kind === "api" })),
+      () => [],
+    );
     try {
       [cs, st] = await Promise.all([readConfigs(origin), readStrategies(origin)]);
     } catch (e) {
       failed = e;
     }
-    if (this.library.length === 0)
-      this.library = await readQuota(origin).then(
-        (q) => [...q.accounts, ...q.unseen].filter((x) => x.account !== "_").map((x) => ({ account: x.account, api: x.kind === "api" })),
-        () => [],
-      );
+    const library = await lib;
+    if (origin === this.origin) this.library = library;
     if (my !== this.seq) return;
     this.body.removeAttribute("aria-busy");
     this.configs = cs;
@@ -999,7 +1002,7 @@ export class RotationSection {
       box.appendChild(row);
     });
     const ops = Number(t.ops);
-    const max = Number(t.maxOps);
+    const max = t.maxOps;
     box.appendChild(el("div", (e) => (e.className = s.rotNote), t.pick ? copyText("rot.st.tryPick", { acct: accountLabel(t.pick), ops, max }) : copyText("rot.st.tryHeld", { ops, max })));
     return box;
   }

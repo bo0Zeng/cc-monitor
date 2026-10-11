@@ -231,7 +231,7 @@ function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun
         const o = got[t.sessionId];
         if (failed !== null || !o) return { sid: t.sessionId, outcome: "failed", why: failed ?? copyText("acct.reason.unknown") };
         if (o.state === "done") return { sid: t.sessionId, outcome: "done", why: "" };
-        return { sid: t.sessionId, outcome: o.state, why: o.code === "dirty" ? copyText("rot.batch.dirty") : reasonLabel(o.code, { agent: "", target: "" }) };
+        return { sid: t.sessionId, outcome: o.state, why: reasonLabel(o.code, { agent: "", target: "" }) };
       });
       sayBatch(copyText("tabBatch.action.rot", { src }), tabs, outcomes);
       done();

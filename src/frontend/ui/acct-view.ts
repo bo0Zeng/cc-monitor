@@ -153,6 +153,8 @@ export function reasonLabel(code: string, ctx: { agent: string; target: string }
       return copyText("acct.reason.notArrived");
     case "shutting_down":
       return copyText("acct.reason.shuttingDown");
+    case "dirty":
+      return copyText("rot.batch.dirty");
     default:
       return copyText("acct.reason.unknown");
   }

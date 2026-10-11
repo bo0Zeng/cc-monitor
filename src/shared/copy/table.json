@@ -31332,14 +31332,14 @@
       "args": ["n"]
     },
     "rot.form.slotFrom": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "时段起",
       "args": []
     },
     "rot.form.slotTo": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "时段止",
       "args": []
     },
@@ -31422,8 +31422,8 @@
       "args": ["at"]
     },
     "rot.chart.view": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "合图视窗",
       "args": []
     },
@@ -31536,8 +31536,8 @@
       "args": []
     },
     "rot.cfg.label": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "打开的配置",
       "args": []
     },
@@ -31686,8 +31686,8 @@
       "args": []
     },
     "rot.doc.saveAsName": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "名字（可选）",
       "args": []
     },
@@ -31803,14 +31803,14 @@
       "args": []
     },
     "rot.det.prev": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "上一个号",
       "args": []
     },
     "rot.det.next": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "下一个号",
       "args": []
     },
@@ -31899,8 +31899,8 @@
       "args": []
     },
     "rot.set.tabs": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "轮换的配置与策略",
       "args": []
     },
@@ -32223,9 +32223,9 @@
       "args": []
     },
     "rot.st.tryCfg": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "试跑用哪份配置",
+      "kind": "control",
+      "role": "标签",
+      "zh": "试跑的配置",
       "args": []
     },
     "rot.st.tryPick": {
@@ -32263,6 +32263,12 @@
       "role": "片段",
       "zh": "–",
       "args": []
+    },
+    "rot.bar.needs": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动 · {said}",
+      "args": ["said"]
     }
   }
 }

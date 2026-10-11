@@ -158,6 +158,8 @@ const ASK_CALLERS = [
   "src/frontend/ui/acct-panel.ts", // 账号面板的重启切换：「会打断什么」那一问
   "src/frontend/ui/backend-deploy.ts", // 换上这一版之前「会打断什么」那一问（机器卡与 ↗ 浮层共用）
   "src/frontend/ui/keybindings/editor.ts",
+  "src/frontend/ui/rot-session.ts", // 会话面板的轮换：换配置前有没存的改动 · 保存撞上新版 · 另存为起名 · 载入新版本
+  "src/frontend/ui/settings/rot-section.ts", // 设置「轮换」：新建 / 改名 / 删配置 · 草稿换开别的一份 · 保存撞版本 · 删策略
   "src/frontend/ui/settings/cc-bus-section.ts",
   "src/frontend/ui/settings/config-page.ts",
   "src/frontend/ui/settings/machine-card.ts",

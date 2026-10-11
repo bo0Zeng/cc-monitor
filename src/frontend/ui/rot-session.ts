@@ -152,7 +152,7 @@ function cfgName(c: RotCtx): string {
 /** `保存`：写回打开的那一份（带打开时的版本）；撞上别处存的新版 ⇒ 问 覆盖 · 另存为… · 取消。 */
 export async function saveCopy(c: RotCtx, force = false): Promise<boolean> {
   try {
-    const got = await saveSession(c.origin, c.sid, { ifRev: Number(c.read.config.rev), ...(force ? { force: true } : {}) });
+    const got = await saveSession(c.origin, c.sid, { ifRev: c.read.config.rev, ...(force ? { force: true } : {}) });
     if (got.state === "saved") {
       toast(copyText("rot.doc.saved", { cfg: cfgName(c) }), "", { level: "success" });
       await c.reload();
@@ -188,7 +188,7 @@ export async function saveCopyAs(c: RotCtx): Promise<boolean> {
   if (name === null) return false;
   try {
     const t = name.trim();
-    const got = await saveSession(c.origin, c.sid, { ifRev: Number(c.read.config.rev), as: t === "" ? {} : { name: t } });
+    const got = await saveSession(c.origin, c.sid, { ifRev: c.read.config.rev, as: t === "" ? {} : { name: t } });
     if (got.state === "saved") {
       await c.reload();
       return true;
@@ -324,14 +324,19 @@ function cfgLine(c: RotCtx, withPicker: boolean): HTMLElement {
 function bars(c: RotCtx): HTMLElement[] {
   const r = c.read;
   const out: HTMLElement[] = [];
-  if (r.needs) out.push(banner("warn", r.needs.reason, [], r.needs.detail));
+  // 轮换文件读不懂 · 策略出错：需手动 ＋ 后端写好的那一句（＋ 复制详情）。
+  if (r.needs) {
+    const b = banner("warn", copyText("rot.bar.needs", { said: r.needs.reason }), [], r.needs.detail);
+    b.dataset.rotNeeds = r.needs.kind;
+    out.push(b);
+  }
   if (r.blocked) {
     const b = banner("warn", r.blocked.text);
     b.dataset.rotBlocked = "true";
     out.push(b);
   }
   if (r.strategyError) {
-    const b = banner("error", r.strategyError.text, [], r.strategyError.msg);
+    const b = banner("error", copyText("rot.bar.needs", { said: r.strategyError.text }), [], r.strategyError.msg);
     b.dataset.rotStrategyError = "true";
     out.push(b);
   }
