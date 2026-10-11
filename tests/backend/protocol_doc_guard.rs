@@ -114,7 +114,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 /// `dispatch_registry_is_complete` 的判法是「生产段里出现 `"--` 字面量的文件集
 /// == [`DISPATCH_FILES`]」，而 [`DISPATCH_FILES`] 里的每个 token 都得落进
 /// `src/doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔backend 的冻结线上契约**，
-/// 读者在仓外（aterm），改一个字就是改协议。
+/// 读者是手机端，改一个字就是改协议。
 ///
 /// `ccm` 那套旗标（`--tmux` / `--account` / `--cwd` …）**不属于那份契约**：
 /// 它们是**用户在终端里敲的东西**，消费者是人与 `src/shared/ccm-aliases.sh` 里那三个别名，
@@ -589,7 +589,7 @@ mod tests {
     /// `resolve_query.rs`」。**实测那个前提是错的** —— 今天有 **3 个文件、6 个类型**，
     /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
     ///
-    /// - `resolve_query.rs` 的 4 个：与仓外 aterm **冻结在 2026-07-18** 的一次性契约；
+    /// - `resolve_query.rs` 的 4 个：与手机端 **冻结在 2026-07-18** 的一次性契约；
     /// - `fork_write.rs::ForkResult`：**一次性子命令 `--fork-session` 的出参**，不是流协议；
     /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析账号库的清单
     ///   **文件**（文件 schema）。
@@ -606,7 +606,7 @@ mod tests {
             (
                 "control/resolve_query.rs",
                 "ResumeSpec",
-                "一次性 `--resolve` 的入参。契约与仓外 aterm 冻结在 2026-07-18，逐字不动",
+                "一次性 `--resolve` 的入参。契约与手机端冻结在 2026-07-18，逐字不动",
             ),
             (
                 "control/resolve_query.rs",
@@ -802,7 +802,7 @@ mod tests {
     /// 命令级的形状错误叫 `bad_args`（全部命令一个码）；本条把这条分层**钉住**。
     ///
     /// ⚠ **`resolve` 是登记在案的例外**：它的命令级 parse 错误仍叫 `bad_request`，
-    /// 因为一次性 `--resolve` 与仓外 aterm 的契约冻结在 2026-07-18，两条路复用同一个纯函数。
+    /// 因为一次性 `--resolve` 与手机端的契约冻结在 2026-07-18，两条路复用同一个纯函数。
     /// 改它会破坏那份契约 ⇒ 如实登记，不顺手改。
     #[test]
     fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
@@ -992,7 +992,7 @@ mod tests {
             assert!(
                 variants.contains(e),
                 "`EMITS` 里的 `{e}` 不是任何一个 `Frame` 变体的 kind。\n\
-                 消费侧（aterm）拿它**门控消费** —— 声明一个不存在的帧种，\n\
+                 消费侧（手机端）拿它**门控消费** —— 声明一个不存在的帧种，\n\
                  对面会去等一个永远不来的东西。今天的变体：{variants:?}"
             );
         }

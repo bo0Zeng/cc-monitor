@@ -36,7 +36,7 @@ Handshake sent once when a client connects。
 | `seq` | number | 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset` |
 | `record` | Record? | 这一行的通用记录；缺 ＝ 不进界面、照占号 |
 | `cwd` | string? | 这条记录自己的工作目录 |
-| `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
+| `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义**逐字节对齐手机端 `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
 | `rid` | string? | 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值） |
 
 ### `session_added`
@@ -4001,20 +4001,20 @@ cc-bus 钩子诊断。
 
 #### `ResumeSpec`
 
-stdin 入参（camelCase 对齐 aterm `ResumeSpec`）。
+stdin 入参（camelCase 对齐手机端 `ResumeSpec`）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sessionId` | string |  |
 | `launchCandidates` | [string]? |  |
-| `claudeDir` | string? | 冻结兼容字段，不许改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），与仓外 aterm 冻结对齐 |
+| `claudeDir` | string? | 冻结兼容字段，不许改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），与手机端冻结对齐 |
 | `fallbackCwd` | string? |  |
 | `alreadyInTmux` | bool? |  |
 | `agentKind` | string? | 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`） |
 
 #### `Capabilities`
 
-stdout 出参 caps（4 名**逐字复用 aterm `SessionCapabilities`**，camelCase 免映射）。
+stdout 出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，camelCase 免映射）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -4025,7 +4025,7 @@ stdout 出参 caps（4 名**逐字复用 aterm `SessionCapabilities`**，camelCa
 
 #### `CommandPlan`
 
-stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities）。
+stdout 出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilities）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|

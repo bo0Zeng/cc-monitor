@@ -753,8 +753,8 @@ jobs:
           diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") \
             || { echo "::error::安装包的二进制清单与本包声明的对不上（上面 < 是声明了没装、> 是装了没登记）"; exit 1; }
 
-      # DN-8（aterm 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
-      # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（aterm 走自部署）
+      # DN-8（手机端 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
+      # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（手机端走自部署）
       # 拿不到，只能自己装 zig 交叉编译一遍。
       #
       # **挂在本 job 而不是 build-backends**：后者跑在 build-windows **之前**，在那里调

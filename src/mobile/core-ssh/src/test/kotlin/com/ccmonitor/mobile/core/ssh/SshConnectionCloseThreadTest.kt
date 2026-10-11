@@ -110,7 +110,7 @@ class SshConnectionCloseThreadTest {
 }
 
 /** 自造主线程的名字，只用于可读输出；断言比对象身份。 */
-private const val MAIN_THREAD_NAME = "aterm-fake-main"
+private const val MAIN_THREAD_NAME = "ccm-fake-main"
 
 /** 等后台把 close 做掉的上限。真 IO dispatcher 是毫秒级派发，这个值只是防挂死。 */
 private const val AWAIT_CLOSE_MS = 5_000L

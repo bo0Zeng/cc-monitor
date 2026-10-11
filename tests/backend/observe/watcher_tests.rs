@@ -653,11 +653,11 @@ fn appending_lines_advances_offset_and_seq_monotonically() {
 }
 
 #[test]
-fn byte_offset_matches_aterm_lineframer() {
-    // backend-01（gap#2）：Line.byte_offset **逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、
-    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自 aterm LineFramerTest 的关键语料。
+fn byte_offset_matches_mobile_lineframer() {
+    // backend-01（gap#2）：Line.byte_offset **逐字节对齐手机端 `LineFramer.endOffset`**——计 CRLF 的 `\r`、
+    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自手机端 LineFramerTest 的关键语料。
     let mut seqs = SeqCounter::new();
-    // aterm feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
+    // 手机端 feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
     // 你=3B + \r + \n = 5；x + \n = 2 → 累计 7。raw 剥 \r/\n。
     let (out, cur) = read_new_lines(
         "你\r\nx\n".as_bytes(),

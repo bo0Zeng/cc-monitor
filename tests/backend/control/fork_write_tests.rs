@@ -218,7 +218,7 @@ fn the_frame_face_and_the_cli_face_are_one_fork() {
         k.sort();
         k
     };
-    // 帧面只比 CLI 那一行（对 aterm 冻结的 `--fork-session`）多 `launch` 一格。
+    // 帧面只比 CLI 那一行（对手机端冻结的 `--fork-session`）多 `launch` 一格。
     let mut cli_keys = keys(&cli_v);
     cli_keys.push("launch".into());
     cli_keys.sort();

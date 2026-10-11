@@ -1,13 +1,13 @@
 //! resolve RPC：一次性 exec `--resolve`，读 ResumeSpec JSON，出 stdout 的 CommandPlan JSON
-//! （camelCase，字段名与仓外 aterm 严格一致）。
+//! （camelCase，字段名与手机端严格一致）。
 //!
-//! 契约（与 aterm 冻结对齐）：
+//! 契约（与手机端冻结对齐）：
 //! - 入：`ResumeSpec{sessionId, launchCandidates:[String?], claudeDir, fallbackCwd, alreadyInTmux, agentKind?}`，
 //!   stdin（可带 `--stdin-line`）或 argv `--args-b64 <base64 的 JSON>`，二选一 —— 与别的 CLI 子命令同一处读（`cli_args::read_args`），
 //!   同一套上限与码（`args_too_large` · `no_input` · `bad_args`）。
 //! - 出：stdout `CommandPlan{command, mode:"PtyInject"|"ExecOnce",
 //!   capabilities{supportsSendKeys,supportsCapture,supportsMultiClient,supportsMultiWindow},
-//!   sessionName?, launchLabel?, substitutedFrom?}`，exit 0。caps 四个名字复用 aterm 的 `SessionCapabilities`，两端免映射。
+//!   sessionName?, launchLabel?, substitutedFrom?}`，exit 0。caps 四个名字复用手机端的 `SessionCapabilities`，两端免映射。
 //! - 错误：exit 2 + stderr 一行 `{code, message}` JSON。
 //! - exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id；超时 = 客户端杀 exec。
 //!
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::Path;
 
-/// stdin 入参（camelCase 对齐 aterm `ResumeSpec`）。
+/// stdin 入参（camelCase 对齐手机端 `ResumeSpec`）。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ResumeSpec {
@@ -27,7 +27,7 @@ struct ResumeSpec {
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
     /// 冻结兼容字段，不许改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），
-    /// 与仓外 aterm 冻结对齐。Rust 侧改名 = 线上字段名改名，所以通用层去 agent 名时绕开它，
+    /// 与手机端冻结对齐。Rust 侧改名 = 线上字段名改名，所以通用层去 agent 名时绕开它，
     /// 登记在 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
     #[allow(dead_code)] // MVP 未用（backend 用自身 agent_home 做 pidfile 查，留字段兼容）
     #[serde(default)]
@@ -44,7 +44,7 @@ struct ResumeSpec {
     agent_kind: String,
 }
 
-/// stdout 出参 caps（4 名**逐字复用 aterm `SessionCapabilities`**，camelCase 免映射）。
+/// stdout 出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，camelCase 免映射）。
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct Capabilities {
@@ -54,7 +54,7 @@ struct Capabilities {
     supports_multi_window: bool,
 }
 
-/// stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities）。
+/// stdout 出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilities）。
 ///
 /// 三个字段的可信度不一样，而字段名读起来一模一样（跨项目的说明正本在 `src/doc/IPC-PROTOCOL.md` §8「`--resolve`」那一条）：
 ///
@@ -108,7 +108,7 @@ pub fn run(_agent_home: &Path, args: &[String]) -> i32 {
 ///
 /// 入参交给 CLI 面读入参的那一处读（`cli_args::read_args`）：与别的子命令同一套口 —— stdin（可带 `--stdin-line`）
 /// 或 argv `--args-b64 <base64 的 JSON>`（第二个前端写不了 stdin）· 同一个上限（超了 `args_too_large`，不截断）·
-/// stdin 开着不写 ⇒ `no_input` · 用法错 ⇒ `bad_args`。这几个码都算进与 aterm 的冻结码全集（金样 `oneshot_only_codes`）。
+/// stdin 开着不写 ⇒ `no_input` · 用法错 ⇒ `bad_args`。这几个码都算进与手机端的冻结码全集（金样 `oneshot_only_codes`）。
 pub(crate) fn run_io<R: Read + Send + 'static>(
     opts: &[String],
     stdin: R,
@@ -129,7 +129,7 @@ pub(crate) fn run_io<R: Read + Send + 'static>(
 }
 
 /// 给流通道上的 `resolve` 命令用的入口；与一次性 `--resolve` 复用同一个 [`resolve_from_json`]。
-/// 一次性那条路留着：它与仓外 aterm 的契约冻结着、随时可能开始被消费。两条路只差信封 ——
+/// 一次性那条路留着：它与手机端的契约冻结着、随时可能开始被消费。两条路只差信封 ——
 /// 流通道那条有 `id`、可取消、不用为一次极小的 RPC 单开一整条 SSH exec。
 pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'static str, String)> {
     resolve_json_among(crate::agents::REGISTRY, input)
@@ -213,7 +213,7 @@ fn resolve(
     let command = (face.resume_command)(&base, &spec.session_id);
     Ok(CommandPlan {
         command,
-        mode: "PtyInject".to_string(), // MVP 恒 PtyInject（aterm 今隐含亦此）
+        mode: "PtyInject".to_string(), // MVP 恒 PtyInject（手机端今隐含亦此）
         capabilities: Capabilities {
             // MVP tmux/pty 典型档（PtyInject 注入 tmux 会话）；待 backend 探测细化。
             supports_send_keys: true,
@@ -222,8 +222,8 @@ fn resolve(
             supports_multi_window: true,
         },
         session_name: Some(session_name_for(&spec.session_id, face.session_name_prefix)),
-        launch_label: None, // MVP 不产 label（aterm 侧自算）
-        // substitutedFrom（aterm 语义）=「被替换掉的原命令」：仅当解析出的 launch ≠ 用户原意首候选时非空。
+        launch_label: None, // MVP 不产 label（手机端那一侧自算）
+        // substitutedFrom（手机端语义）=「被替换掉的原命令」：仅当解析出的 launch ≠ 用户原意首候选时非空。
         // 这里不做候选消解（直接用首候选 / 默认，launch == intended）⇒ 恒为 None（省略）。
         substituted_from: None,
     })
@@ -275,7 +275,7 @@ fn session_name_for(sid: &str, prefix: &str) -> String {
 }
 
 /// 错误信封：`{code, message}` 一行紧凑 JSON。**纯**，抽出来是为了判得到
-/// —— 它是给 aterm 的跨仓承诺的一部分（`IPC-PROTOCOL §8`「`--resolve`」那一条），
+/// —— 它是给手机端的承诺的一部分（`IPC-PROTOCOL §8`「`--resolve`」那一条），
 /// 由 `resolve_query_tests.rs` 里带 `` 的那一族钉着。序列化失败兜底纯文本（同形）。
 fn error_envelope(code: &str, message: String) -> String {
     let err = ResolveError { code, message };
@@ -285,7 +285,7 @@ fn error_envelope(code: &str, message: String) -> String {
     }
 }
 
-/// 一次性那条的错误退出码。跨仓承诺的一格（aterm `runCatching` 按它认结构化失败）。
+/// 一次性那条的错误退出码。对手机端的承诺的一格（手机端 `runCatching` 按它认结构化失败）。
 const ERROR_EXIT: i32 = 2;
 
 /// 错误统一出口：stderr 写 `{code,message}` JSON（不污染 stdout wire）、返 [`ERROR_EXIT`]。

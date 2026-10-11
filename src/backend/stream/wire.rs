@@ -269,10 +269,10 @@ pub enum Frame {
         /// 这台机器的架构（`x86_64` / `aarch64` …）。
         host_arch: String,
         /// ⚠ **冻结兼容字段，不是欠账**。字段名里带 agent 名，违反 `D3` ——
-        /// 但它是 hello 帧里**今天真的在线上、且有仓外消费方**（aterm，契约冻结 2026-07-18）
+        /// 但它是 hello 帧里**今天真的在线上、且有手机端这个消费方**（契约冻结 2026-07-18）
         /// 的那一个。改名 = 破坏性变更，而 `D3` 自己给的出路是「bump 或走 additive 迁移」。
         /// ⇒ 走 additive：新消费方读 `homes`，这个字段保持不动。
-        /// 解锁条件登记在 `agent_boundary_guard::FROZEN_COMPAT`（monitor 与 aterm **都**改读
+        /// 解锁条件登记在 `agent_boundary_guard::FROZEN_COMPAT`（monitor 与手机端 **都**改读
         /// `homes` 之后才能删）。**别把它挪回 `KNOWN_DEBT`** —— 那张表要清零，这条清不掉。
         claude_dir: String,
         /// `S4`（`D3`）：本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`）。
@@ -294,7 +294,7 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,
         /// phase②（backend-08，additive）：本 backend **会发射的帧 kind 集**
-        /// （snake_case，如 "session_status"/"turn_end"）。aterm 据此**门控消费**（emits 含该 kind →
+        /// （snake_case，如 "session_status"/"turn_end"）。手机端据此**门控消费**（emits 含该 kind →
         /// 期待/依赖该帧；不含 → 不依赖、回退 β/watchdog）。纯发射声明、无对应旗标。空/缺 → 省略。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         emits: Vec<String>,
@@ -342,7 +342,7 @@ pub enum Frame {
         ///
         /// # 已真填
         ///
-        /// `main.rs::build_hello` 填 `unavailable_here()`（tmux · unix 权限位两维）。仓外 aterm 不读这个字段
+        /// `main.rs::build_hello` 填 `unavailable_here()`（tmux · unix 权限位两维）。手机端不读这个字段
         /// （只读核过它的 `parseHello`：通用 map、未知字段忽略）；有 tmux 的 unix 机器上表为空 ⇒ 字节不变，
         /// 没 tmux / Windows 上字节变了 ⇒ 要 bump `BUILD_ID`。
         /// 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` ·
@@ -355,7 +355,7 @@ pub enum Frame {
         /// 但撞口的仍可能是另一个家的后端 ⇒ monitor 读完 hello 拿这一格与自己要交的那份比，
         /// 对不上就拒、出声（`local_backend_host.rs::hello_verdict`）—— 不接一个会把写落进别的家的后端。
         ///
-        /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
+        /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · 手机端连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
         /// （`wire_tests.rs::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
         /// 🔴 **名单只有两格**、常驻开关不在名单里（`wire_tests.rs::hx2_the_echo_list_is_exactly_the_two_handed_names` 钉）——
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
@@ -388,7 +388,7 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
         /// backend-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
-        /// 语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
+        /// 语义**逐字节对齐手机端 `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
         /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
         /// 注：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**。
         ///
@@ -490,7 +490,7 @@ pub enum Frame {
     ///
     /// 由 `observe::session_ledger` 在它看着发出去的 `session_removed` / `tmux_sessions` 之后补发（同一个 sink、同一条线程，
     /// 紧跟在引起它的那一帧之后）；新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的也各发一帧可重连
-    /// （在 `sessions_replayed` 之前）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// （在 `sessions_replayed` 之前）。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     SessionState {
         /// 会话 id。
         sid: String,
@@ -622,14 +622,14 @@ pub enum Frame {
     /// 于是固定复活的 tab 一律被说成已结束（末条）。
     ///
     /// 无载荷：清单本身就是它前面那些 `session_added`（同一条有序的流），别让同一份数据有两个出口。
-    /// 之后的增减照旧走 `session_added` / `session_removed`。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// 之后的增减照旧走 `session_added` / `session_removed`。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     SessionsReplayed,
 
     /// **活会话的记录文件不见了**（被删 / 被改名走了）。
     ///
     /// 文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、不误判结束（判活不看 jsonl），
     /// 出声一次 —— 每次「在 → 不在」只发一帧；同名文件再出现（agent 按路径追加重建）从 0 读，当改写办：先发 [`Frame::SessionFileReread`]、行号从 0 重数；之后再不见才再发。
-    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// 旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     SessionFileGone {
         /// 会话 id。
         session_id: String,
@@ -663,7 +663,7 @@ pub enum Frame {
     ///
     /// 🔴 **不丢**：本帧走**应答那条独立通道**（阻塞 `send().await`），不走出方向那条会丢帧的大通道 ——
     /// 丢一块下行字节就是这条链路上的数据坏了，别处没有第二份。流控是逐链路的信用（`link-credit`），
-    /// 由 `dial/link.rs` 的下行泵执行。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// 由 `dial/link.rs` 的下行泵执行。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     LinkData {
         /// 链路 id（`link-open` 时客户端给的）。
         link: String,
@@ -689,7 +689,7 @@ pub enum Frame {
     /// 每一帧都是一整份快照（`got` / `total`），不是增量 ⇒ 转发任务按 `watch` 合并掉中间几格不丢信息；
     /// 带 `end` 的那一帧是这一趟的最后一帧（`done{bytes}` · `failed{why}` · `cancelled`）。
     /// 🔴 **不丢**：走应答那条独立通道（终局丢了，客户端那一侧的看的人就永远等下去）。
-    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// 旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     Transfer {
         /// 传输单 id。
         id: String,
@@ -707,7 +707,7 @@ pub enum Frame {
     /// `ticket` = 界面发起时交来的票（进度流 `probe-progress/<ticket>` 的名字，本后端只当不透明的串回填）；`cell` 恰好一个键：
     /// `stage`（握手那几行，与界面 `ConnectStage` 同形）· `reached`（`ssh` / `hello` / `control` 走完了那一段）· `end`（结局，最后一格）。
     /// 🔴 **不丢**：走应答那条独立通道（`end` 丢了，界面就说不出结局；中间格丢了，就说不清停在哪一段）。
-    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// 旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     Probe {
         /// 测试连接那一趟的票（`remote-probe` 交来的）。
         ticket: String,
@@ -727,7 +727,7 @@ pub enum Frame {
     /// - `end`：这个响应不会再有事件了（`done` 上游说完 · `broken` 转发以错误收尾）；这一帧的 `n` = 一共占了几个号。
     ///
     /// 🔴 **可丢**：走后端自己那条有界 tap 通道（`tap::TAP_CAPACITY`），满了就丢，不回推中转、不挤出方向的内容帧。
-    /// SSE 只保快，jsonl 保对。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    /// SSE 只保快，jsonl 保对。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
     Tap {
         /// 请求自带的会话标识头的值。
         stream: String,

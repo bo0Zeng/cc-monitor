@@ -3158,6 +3158,19 @@
       "zh": "打开窗口",
       "args": []
     },
+    "hostIdentity.changed.body": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-monitor 记下的主机指纹与当前主机不符",
+      "args": [],
+      "limited": ["SSH 主机指纹"]
+    },
+    "hostIdentity.trust.consequence": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "改记当前指纹 · 主机若被冒充，之后的输入都会发给它",
+      "args": []
+    },
     "speaker.interrupt.line": {
       "kind": "body",
       "role": "说明",

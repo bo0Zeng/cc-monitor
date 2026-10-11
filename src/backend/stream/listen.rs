@@ -145,7 +145,7 @@ pub enum Verdict {
 
 /// 判一行 attach 请求。**纯函数**。形状：`{"attach":true}`（可带 `tz` · `view`，见 [`attach_flags`]）。
 ///
-/// 刻意**不复用 `wire::Frame`** —— 那是冻结兼容面（仓外 aterm 在读），往它加变体是一次跨仓契约变更；
+/// 刻意**不复用 `wire::Frame`** —— 那是冻结兼容面（手机端在读），往它加变体是一次与手机端的契约变更；
 /// 而握手这件事只发生在 hello 之后、流之前，它不该出现在任何一条被消费的帧流里。
 pub fn attach_verdict(line: &str) -> Verdict {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {

@@ -472,7 +472,7 @@ pub struct ApiMessage {
     #[serde(default)]
     pub usage: Option<Usage>,
     /// Batch14-F42：一轮结束判定（assistant 终结记录带 `end_turn`；
-    /// aterm/HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
+    /// 手机端 HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
 }

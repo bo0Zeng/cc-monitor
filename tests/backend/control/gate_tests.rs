@@ -663,21 +663,21 @@ fn the_identity_door_reads_which_client_started_the_session() {
         client: client.into(),
     };
     for (name, probed, requester, want) in [
-        ("atermpipe-x", p("", ""), None, Who::NotOurs),
-        ("atermpipe-x", p("", ""), Some("mobile"), Who::NotOurs),
+        ("phonepipe-x", p("", ""), None, Who::NotOurs),
+        ("phonepipe-x", p("", ""), Some("mobile"), Who::NotOurs),
         ("proj-cc", p("", ""), None, Who::Pass),
-        ("atermpipe-x", p("s1", ""), None, Who::Pass),
+        ("phonepipe-x", p("s1", ""), None, Who::Pass),
         ("proj-cc", p("s1", "ccm"), None, Who::Pass),
         ("proj-cc", p("s1", "ccm"), Some("mobile"), Who::Pass),
-        ("atermpipe-x", p("", "ccm"), Some("mobile"), Who::NotOurs),
-        ("atermpipe-x", p("s1", "mobile"), None, Who::OtherClient),
+        ("phonepipe-x", p("", "ccm"), Some("mobile"), Who::NotOurs),
+        ("phonepipe-x", p("s1", "mobile"), None, Who::OtherClient),
         (
             "proj-cc",
             p("s1", "mobile"),
             Some("desktop"),
             Who::OtherClient,
         ),
-        ("atermpipe-x", p("", "mobile"), Some("mobile"), Who::Pass),
+        ("phonepipe-x", p("", "mobile"), Some("mobile"), Who::Pass),
     ] {
         assert_eq!(
             identity(name, &probed, requester),

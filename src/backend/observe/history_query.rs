@@ -6,7 +6,7 @@
 //! - `--list-sessions <project_dir>`  → 列举某项目目录下的历史会话（带元数据）
 //! - `--read-session <jsonl_path>`    → 原样透传该 jsonl 文件内容（monitor 侧解析）
 //! - `--read-session-from-offset <jsonl_path> <offset>` → 从字节 `offset`（0-based）透传
-//!   [offset, EOF]，= aterm `tail -c +(offset+1)`（offset 续拉/重连恢复）
+//!   [offset, EOF]，= 手机端 `tail -c +(offset+1)`（offset 续拉/重连恢复）
 //!
 //! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
 //! 协议互不混用，旧后端不认参数会照常进流模式发 hello，monitor 以"首行是
@@ -707,10 +707,10 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
 }
 
 /// backend-02（Phase 1 offset 续拉）：`--read-session-from-offset <path> <offset>`——
-/// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = aterm
+/// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = 手机端
 /// `tail -c +(offset+1)`**（`TailTransport.kt:33` + `SkeletonScan.windowContentCommand`）。
 /// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
-/// 截断/重写（远端 size < offset）**不在此判**——同 aterm 由客户端另经 size 查检测后
+/// 截断/重写（远端 size < offset）**不在此判**——同手机端由客户端另经 size 查检测后
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
 /// 透传原字节，理由同 `read_session`（冻结的那一面；成品走 `history-read`）。
 ///
@@ -1267,7 +1267,7 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
-/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍 aterm `tail -c +(offset+1)`；生产走
+/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍手机端 `tail -c +(offset+1)`；生产走
 /// `stream_from_offset` 的 `File::seek`、不调本函数，故 `#[cfg(test)]` 不进生产二进制）。
 /// = `bytes[min(offset,len)..]`——offset ≤ len 时取 [offset, EOF]；offset > len
 /// （截断）时取空（与 `File::seek` 过 EOF 后读空一致，不 panic）。

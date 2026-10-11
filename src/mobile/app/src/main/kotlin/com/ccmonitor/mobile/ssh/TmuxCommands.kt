@@ -110,16 +110,16 @@ object TmuxCommands {
     // pane 子进程探测的四态输出，见 [tmuxPaneChildProbeCommand]。
 
     /** pgrep 明确无子进程 → 可以 kill（agent 真没起）。 */
-    const val PANE_PROBE_NO_CHILD = "ATERM_PANE_NOCHILD"
+    const val PANE_PROBE_NO_CHILD = "CCM_PANE_NOCHILD"
 
     /** 有子进程 → 可能是包装脚本下的 agent 在跑，不 kill。 */
-    const val PANE_PROBE_HAS_CHILD = "ATERM_PANE_HASCHILD"
+    const val PANE_PROBE_HAS_CHILD = "CCM_PANE_HASCHILD"
 
     /** 没有 pgrep → 判不了，不 kill。 */
-    const val PANE_PROBE_NO_PGREP = "ATERM_PANE_NOPGREP"
+    const val PANE_PROBE_NO_PGREP = "CCM_PANE_NOPGREP"
 
     /** pane 不存在（没有 pane_pid）→ 没东西可杀。 */
-    const val PANE_PROBE_ABSENT = "ATERM_PANE_ABSENT"
+    const val PANE_PROBE_ABSENT = "CCM_PANE_ABSENT"
 
     /**
      * kill 之前的防误杀探测。用户的 `cc` 若是不 exec 的包装脚本，`pane_current_command` 可能一直停在 shell 名，
@@ -192,7 +192,7 @@ object TmuxCommands {
         val createAndSend =
             "if tmux new-session -d -s $q -c \"\$cwd\" 2>/dev/null; then $tagThenSend; " +
                 "else case \"\$(${tmuxForegroundProbeCommand(name)})\" in ($RESUME_FOREGROUND_SHELLS) $send;; esac; fi"
-        val fail = "echo 'aterm: resume 失败——无法确定工作目录（会话 ${sessionId.take(8)}）'"
+        val fail = "echo 'ccm: resume 失败——无法确定工作目录（会话 ${sessionId.take(8)}）'"
         return "$locate; $extract; $fallback; " +
             "if [ -n \"\$cwd\" ] && [ -d \"\$cwd\" ]; then $createAndSend; ${tmuxAttachCommand(name, alreadyInTmux)}; " +
             "else $fail; fi"
@@ -220,7 +220,7 @@ object TmuxCommands {
     fun tmuxKillCommand(name: String): String = "tmux kill-session -t ${shQuote(name)} 2>&1 && echo $TMUX_KILL_OK_MARKER"
 
     /** [tmuxKillCommand] 的成功标记 —— 选一个不可能出现在 tmux 输出里的串。 */
-    const val TMUX_KILL_OK_MARKER = "__aterm_kill_ok__"
+    const val TMUX_KILL_OK_MARKER = "__ccm_kill_ok__"
 
     /**
      * [tmuxKillCommand] 真成功了吗：输出里有标记才算。

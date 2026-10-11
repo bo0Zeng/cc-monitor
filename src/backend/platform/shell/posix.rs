@@ -50,7 +50,7 @@ pub(crate) fn if_command(name: &str, then: &str, otherwise: &str) -> String {
 
 /// 把**一行**（已成词）并进家目录底下 `dir/file`：目录 `700`、文件 `600`；已有整行相等的一行 ⇒ 打 `already`、不写
 /// （`grep -qxF`）；否则文件非空且末字节不是换行先补一个、再追加 ⇒ 打 `added`（两个记号已成词）。整串是**一次** exec
-/// （aterm 契约：`printf '%s\n'` 不用 echo · `--` 纵深防御 · 只收单行由调用方先判）。
+/// （手机端契约：`printf '%s\n'` 不用 echo · `--` 纵深防御 · 只收单行由调用方先判）。
 pub(crate) fn add_line_once(
     dir: &str,
     file: &str,

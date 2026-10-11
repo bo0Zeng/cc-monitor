@@ -97,11 +97,11 @@ class KotlinSourceScannerTest {
      */
     @Test
     fun twoSlashesInsideAStringAreNotALineComment() {
-        val sample = "val u = \"android-keystore://aterm_key_master\"\nval v = 1\n"
+        val sample = "val u = \"android-keystore://ccm_key_master\"\nval v = 1\n"
         val kept = codeOnlyKeepingLiterals(sample)
-        assertTrue("串被行注释规则砍掉了：\n$kept", kept.contains("android-keystore://aterm_key_master"))
+        assertTrue("串被行注释规则砍掉了：\n$kept", kept.contains("android-keystore://ccm_key_master"))
         assertTrue("后一行该留着：\n$kept", kept.contains("val v = 1"))
-        assertTrue("坏正则在这份样本上确实会砍断它，对照有效", !brokenRegexStripper(sample).contains("aterm_key_master"))
+        assertTrue("坏正则在这份样本上确实会砍断它，对照有效", !brokenRegexStripper(sample).contains("ccm_key_master"))
     }
 
     /** 字符字面里的引号不许把后面的引号配对带歪（`val c = '"'` 是合法 Kotlin）。 */

@@ -1,4 +1,4 @@
-//! CLI 面**读入参的唯一一处**：派生子命令（`cli_control`）与 `--resolve`（`resolve_query`，与仓外 aterm 冻结的那一条）都经 [`read_args`] 读。
+//! CLI 面**读入参的唯一一处**：派生子命令（`cli_control`）与 `--resolve`（`resolve_query`，与手机端冻结的那一条）都经 [`read_args`] 读。
 //!
 //! 两个口**二选一**，修饰词都认任意位置：
 //! - stdin：默认读到 EOF；带 [`STDIN_LINE_FLAG`] ⇒ 只读一行（给 stdin 关不掉的调用方）。开着却 [`STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`。

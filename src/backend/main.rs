@@ -172,7 +172,7 @@ async fn main() {
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
             // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
             // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
-            // 它的信封与仓外 aterm 冻结在 2026-07-18，走原路一个字节都不动
+            // 它的信封与手机端冻结在 2026-07-18，走原路一个字节都不动
             // （两条路的输出实为同一个 `CommandPlan`，但冻结的契约不拿「实际上一样」去赌）。
             // ⚠ **必须写成单行臂**：`argv_table_guard::every_dispatch_arm_actually_calls_an_implementation`
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
@@ -307,14 +307,14 @@ async fn main() {
 }
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
-/// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
+/// 两份 hello 会各自漂，而这一帧是手机端按精确字节在读的东西。
 fn build_hello(agent_home: &std::path::Path) -> Frame {
     Frame::Hello {
         v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         // ⚠ **左边的字段名与右边的变量名刻意不一致**，这不是笔误：
-        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、仓外 aterm 在读），
+        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、手机端在读），
         // 登记在 `agent_boundary_guard::FROZEN_COMPAT`，带解锁条件，**不许改名**；
         // 右边 `agent_home` 是**仓内的参数名**，`S4b` 已把它从 `claude_dir` 改过来
         //（通用层不该在标识符里叫得出某个 agent 的名字 —— `D3` 的同一条道理往仓内推）。
@@ -326,8 +326,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `agents::visible_homes()` 今天就能答出这台机器看得见哪些 agent
         //（判准：home 目录存在；理由与被排除的另两条候选写在那个函数的头注里）。
         // 换过去只要改这一行 —— `S5` 的口径是 **能填不真填**：
-        //   填 = 一次**跨仓契约变更**（仓外 aterm 的 hello fixture 按精确字节对），
-        //   而本机没有 aterm 仓、验不了它的运行时（前提 `P3`）
+        //   填 = 一次**与手机端的契约变更**（它的 hello fixture 按精确字节对），
+        //   而手机端那一侧的运行时这里验不了（前提 `P3`）
         //   ⇒ 把"何时真填"留成一次**纯发布决策**，而不是顺手改过去。
         // 真填那天要同轮做的三件事：① 换这一行；② 更新
         //   `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；

@@ -11,7 +11,7 @@
 
 设当前 shell 的 `JAVA_HOME` / `ANDROID_HOME` / `ANDROID_SDK_ROOT` / `PATH`，并把 `ANDROID_USER_HOME` 指进工具链目录（不写 `~/.android`）。`env.sh` 还把 `GRADLE_USER_HOME` 指进工具链目录。退出 shell 一切复原，全局 `JAVA_HOME` 不动。
 
-工具链根目录：设了 `ATERM_ANDROID_DEV` 就只认它；没设时 `env.sh` 按序探测 `$HOME/android-dev`、`/e/android-dev`（Git Bash 下的 `E:\`），取第一个 `jdk` 与 `sdk` 都在的；`env.ps1` 默认 `E:\android-dev`。找不到可用的根就报错返回非零，一个变量都不改。
+工具链根目录：设了 `CCM_ANDROID_DEV` 就只认它；没设时 `env.sh` 按序探测 `$HOME/android-dev`、`/e/android-dev`（Git Bash 下的 `E:\`），取第一个 `jdk` 与 `sdk` 都在的；`env.ps1` 默认 `E:\android-dev`。找不到可用的根就报错返回非零，一个变量都不改。
 
 `env.sh` 必须 `source`；直接 `bash scripts/env.sh` 会提示用法并退出。
 

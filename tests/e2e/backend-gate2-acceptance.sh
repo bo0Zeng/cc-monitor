@@ -325,10 +325,10 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
     else bad "$what：期望 $want 且会话未动，实得 $R（alive=$alive landed=$landed）"; fi
   fi
 }
-cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "atermpipe-a" mobile yes kill "" wrong_owner 1
-cl "别的前端的会话，自报 desktop ⇒ 送不进字" "atermpipe-b" mobile yes send desktop wrong_owner 2
-cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "atermpipe-c" mobile no send mobile OK 3
-cl "自己起的会话，自报对上 ⇒ 结束得了" "atermpipe-d" mobile no kill mobile OK 4
+cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "phonepipe-a" mobile yes kill "" wrong_owner 1
+cl "别的前端的会话，自报 desktop ⇒ 送不进字" "phonepipe-b" mobile yes send desktop wrong_owner 2
+cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "phonepipe-c" mobile no send mobile OK 3
+cl "自己起的会话，自报对上 ⇒ 结束得了" "phonepipe-d" mobile no kill mobile OK 4
 cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no kill mobile OK 5
 
 # ── 按 sid 结束（批量停）：一个 tmux 会话里几个 claude 窗格 ⇒ 只结束挂着那个 sid 的窗格，没有别的才结束整个会话 ──

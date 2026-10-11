@@ -165,14 +165,14 @@ mod tests {
     const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[(
         "stream/wire.rs",
         "claude_dir",
-        "hello 帧里**今天真的在线上**的那个目录字段，而且**有仓外消费方**：aterm 的契约 \
+        "hello 帧里**今天真的在线上**的那个目录字段，而且**有手机端这个消费方**：手机端的契约 \
          2026-07-18 冻结，我们改不动它。⇒ 改名是破坏性变更，不是本区能单方面做的事。 \
          `D3` 自己已经给了出路，逐字：「改协议要 bump `PROTO_VERSION` **或走 additive \
          迁移**」——`S4` 走 additive：新字段 `homes`（`[{agent_kind, path}]`）承载 agent \
          维度、agent 名只出现在**值**里，`claude_dir` 原地不动 ⇒ 线上字节零变化。",
-        "monitor 与 aterm **都**改读 `homes` 之后。monitor 那半 `S4` 已经做完 \
+        "monitor 与手机端 **都**改读 `homes` 之后。monitor 那半 `S4` 已经做完 \
          （`stream_source/` 的 hello 解析已是「优先 `homes`、回退 `claude_dir`」）⇒ \
-         **只剩仓外 aterm 这一个卡点**，我们这边不欠。那天把这个字段从 `wire.rs` 删掉，\
+         **只剩手机端这一个卡点**，我们这边不欠。那天把这个字段从 `wire.rs` 删掉，\
          本条同轮摘登记（下面的幽灵检查会逼着摘）。",
     )];
 

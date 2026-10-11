@@ -44,8 +44,8 @@
 //!
 //! [`REGISTRY`] + [`visible_homes`] 让 backend **有能力**声明它看得见哪些 agent
 //! （`G1` 成功标准③）。⚠ **能力先建、生产路径今天不接** —— `main.rs` 仍硬写
-//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**跨仓契约变更**
-//! （仓外 aterm 的 hello fixture 按精确字节对），而本机没有 aterm 仓、验不了它的运行时
+//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**与手机端的契约变更**
+//! （手机端的 hello fixture 按精确字节对），而手机端那一侧的运行时这里验不了
 //! （前提 `P3`）。⇒ 把"何时真填"留成**一次纯发布决策**：改 `main.rs` 那一行，
 //! `wire::tests::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
 //! 当场变红，逼那一天的人重新裁一次。**那条判据是提醒，不是障碍，别删它。**

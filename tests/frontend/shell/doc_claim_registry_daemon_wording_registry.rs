@@ -129,7 +129,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   ⇒ 这一次换成**本仓明写保护、不会再改的那一档**：
         //   `backendPath` —— **用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，
         //   改它要配一次迁移，见）；
-        //   `DaemonTransport` —— **仓外 aterm 自己的类型名**（冻结在 2026-07-18 那份契约里）。
+        //   `DaemonTransport` —— **手机端自己的类型名**（冻结在 2026-07-18 那份契约里）。
         //   两个都不是我们的名字，两个都不会再动。
         //   ⚠ 教训与同一条：**机械替换会砸坏刻意构造的夹具**；
         //   而夹具指着**活体**时每一轮改名都会再砸一次 ⇒ 指向「不许改的那一档」才是稳的。
@@ -150,7 +150,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   ⚠ 它**不需要**指向真东西：`hits()` 只在 probe 串**自身**里找（见它的实现），
         //     这一格买的是「`daemon` 嵌在更长 token 里时不算裸词」，与盘上有没有这个名字无关。
         (concat!("daemon", "Suffix"), false),
-        // 仓外 aterm 自己的类型名，冻结在 2026-07-18 那份契约里 —— 不是我们的名字，我们改不动。
+        // 手机端自己的类型名，冻结在 2026-07-18 那份契约里 —— 不是我们的名字，我们改不动。
         ("DaemonTransport", false),
     ] {
         let h = hits(probe);

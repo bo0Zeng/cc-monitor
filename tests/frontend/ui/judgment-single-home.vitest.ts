@@ -195,7 +195,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "session id 形状",
     // 唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
     //   `branch_core::is_plain_sid` 成它的再导出（那个再导出随 branch-core 收进后端删了，调用方直呼这一条）；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
-    //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给仓外 aterm。
+    //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给手机端。
     //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
     homes: ["shell-quote-core::session_id_ok", "src/backend/control/resolve_query.rs::is_valid_session_id"],
     status: "zero",

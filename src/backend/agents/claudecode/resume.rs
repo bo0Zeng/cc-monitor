@@ -8,7 +8,7 @@
 //! | resume 形 | `<base> --resume <sid>`（**flag**） | `<base> resume <sid>`（**子命令**） |
 //! | 会话名前缀 | `cc-` | `cx-` |
 //!
-//! golden-parity aterm。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
+//! golden-parity 手机端。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
 //! `CommandPlan` 骨架、错误出口全都共用，留在 `control/resolve_query.rs`。
 
 /// 无 `launchCandidate` 时的默认命令基底。

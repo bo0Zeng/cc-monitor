@@ -1,7 +1,7 @@
 use super::*;
 
 /// ★ [`READ_ARGS_CODES`] 就是读入参那一处真会回的码（两向）：本文件（`control/cli_args.rs`）生产源码里交给错误出口的蛇形字面量。
-/// `--resolve` 与仓外 aterm 的冻结契约经这张表把这些码算进它的码全集 —— 这里多回一个码不登记，那边的金样就说了假话。
+/// `--resolve` 与手机端的冻结契约经这张表把这些码算进它的码全集 —— 这里多回一个码不登记，那边的金样就说了假话。
 #[test]
 fn the_read_args_codes_are_the_ones_that_section_returns() {
     let src = guard_core::strip_comment_lines(&crate::guard_support::production_code(

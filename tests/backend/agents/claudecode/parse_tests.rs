@@ -151,7 +151,7 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
 }
 
 /// 已知 `type` 但字段解析失败（serde 返回 Err）且原文仍是合法 JSON → 照样抢救。
-/// 实测本机 157,385 行里此路径仅 1 条（截断的 assistant），但 aterm 侧
+/// 实测本机 157,385 行里此路径仅 1 条（截断的 assistant），但手机端那一侧
 /// (`JsonlParser.kt:21`) 正是栽在这——任何一条解析失败就孤儿化其后整段。
 #[test]
 fn known_type_parse_failure_is_salvaged_with_identity() {

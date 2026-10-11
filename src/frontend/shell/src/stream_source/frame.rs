@@ -43,7 +43,7 @@ pub struct AgentHome {
 
 /// 从 hello 帧里解析出「Claude 的 home 目录」—— 优先 `homes`、回退 `claude_dir`。
 /// `homes`（通用）：`[{agent_kind, path}]`；`claude_dir`（冻结兼容，字段名里带 agent 名，后端登记在 `agent_boundary_guard::FROZEN_COMPAT`，
-/// 解锁条件是 monitor 与 aterm 都改读 `homes`）。monitor 不再依赖 `claude_dir` 的存在语义，它只是回退路径。后端的 `homes` 现在恒空 ⇒ 实际走回退分支。
+/// 解锁条件是 monitor 与手机端都改读 `homes`）。monitor 不再依赖 `claude_dir` 的存在语义，它只是回退路径。后端的 `homes` 现在恒空 ⇒ 实际走回退分支。
 pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a str) -> &'a str {
     homes
         .iter()
@@ -67,7 +67,7 @@ pub enum InboundFrame {
         host_arch: String,
         /// ⚠ **原样的线上值**，不做回退解析 —— 要「Claude 的 home」请走
         /// [`claude_home_from_hello`]（优先 `homes`）。两者分开是刻意的：
-        /// 这个字段是**冻结兼容面**（仓外 aterm 还在读它），
+        /// 这个字段是**冻结兼容面**（手机端还在读它），
         /// 把回退结果写回这里会让"backend 到底发了什么"变得不可观测。
         claude_dir: String,
         /// 远端各 agent 的 home 目录表（additive）。旧后端无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。非数组 / 元素缺字段一律滤掉，绝不 panic。

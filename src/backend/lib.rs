@@ -121,24 +121,24 @@ pub const PROTO_VERSION: u32 = 1;
 ///   --read-session-tail 尾部优先查询（Batch9-F30）
 /// - p1h-bg-badge = --list-sessions 输出附 isBg（记录级 sessionKind:"bg" 探测，
 ///   Batch11-F32 历史 ⚙ 徽标；additive，查询字段无版本门控问题）
-/// - p1i-line-offset = Line 帧附 `byte_offset`（backend-01/gap#2，累计原始字节、逐字节对齐 aterm
+/// - p1i-line-offset = Line 帧附 `byte_offset`（backend-01/gap#2，累计原始字节、逐字节对齐手机端
 ///   `LineFramer`：计 CRLF `\r`、含 `\n`、残行不计；给 offset 续拉/截断检测。additive、不 bump
 ///   PROTO_VERSION——旧 client 忽略、旧后端缺字段 client 得 0）
 /// - p1j-offset-resume = + `--read-session-from-offset <path> <offset>` 一次性查询（backend-02/
-///   Phase 1）：从字节 offset 透传 [offset,EOF] = aterm `tail -c +(offset+1)`；配 p1i 的
+///   Phase 1）：从字节 offset 透传 [offset,EOF] = 手机端 `tail -c +(offset+1)`；配 p1i 的
 ///   `byte_offset` 做重连/断线 offset 续拉。additive 子命令（旧后端报 unknown arg、client 降级）
 /// - p1k-resolve-rpc = + `--resolve` advisor RPC（backend-04/Phase 1）：读 stdin ResumeSpec JSON →
-///   出 stdout CommandPlan JSON（camelCase，caps 复用 aterm `SessionCapabilities` 4 名），错误
-///   exit2+stderr `{code,message}`。契约与 aterm cc-bus 对齐定死。additive 子命令、advisory 零 handle
+///   出 stdout CommandPlan JSON（camelCase，caps 复用手机端 `SessionCapabilities` 4 名），错误
+///   exit2+stderr `{code,message}`。契约与手机端 cc-bus 对齐定死。additive 子命令、advisory 零 handle
 /// - p1l-audit-fixes = backend Phase 1 三视角代码审查修复（backend-05）：一次性查询模式不再向 stderr
 ///   打 info（`--resolve` 错误信封 stderr 纯 `{code,message}`）；resolve base(launchCandidate) 补
 ///   shell-safe 校验（B2 对称化，新错误码 `unsafe_launch_candidate`）；stdin `.take(1MiB)` 兜 DoS。
 ///   纯查询/流协议 wire 不变——非破坏、无 PROTO_VERSION bump。
 /// - p1m-hello-emits = phase② 联调（backend-08）：Hello 加 `emits:[帧 kind]`（additive，与 capabilities
-///   正交、不受 §26）——aterm 门控消费。现声明 line/session_added/session_status/session_removed/
+///   正交、不受 §26）——手机端门控消费。现声明 line/session_added/session_status/session_removed/
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
 /// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
-///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍 aterm TurnDetector）；
+///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍手机端 TurnDetector）；
 ///   `turn_end` 加进 EMITS。dedup 视界在手机端（`TurnEndDebouncer.kt` 的 debounce ＋ `SshKeepAliveService.kt` 的 `baselineByPath`）。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
@@ -542,7 +542,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4b-single-home-judgments**（2026-09-26）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
 /// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与 cc-acct-iso 同）；配置目录走 `acct-core` 全表
-/// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 冻结给仓外 aterm、没收。子命令没变，照 p1v 先例不加历史行。
+/// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 冻结给手机端、没收。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4c-history-facts**（2026-09-26）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
 /// 后端出会话事实成品 `{end, forkedFrom, touchedFiles, agents, usage}`，续传令牌 = 上一份成品原样交回、后端零状态；分叉判定抽成 `history_query::fork_origin`
@@ -640,7 +640,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 任务推送走 `changed/tasks` 流（`changed {tasks, key: sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
 ///
 /// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
-/// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（aterm 不读）。
+/// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（手机端不读）。
 ///
 /// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
 /// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
@@ -1228,7 +1228,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // BUILD_ID 打版本号时统一 bump。
     "--find-in-session",
     "--fork-session",
-    // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对 aterm 冻结的
+    // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对手机端冻结的
     //   argv 形。⚠ 加这一行逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--session-fork",
     // 同上一段：`history-*` 六条帧命令的 CLI 面。
@@ -2106,7 +2106,7 @@ pub fn capabilities_on(t: Target) -> Vec<(&'static str, &'static str)> {
 mod capability_ledger_guard;
 
 /// phase②（backend-08）：本 backend **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
-/// aterm 门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
+/// 手机端门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
 /// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。`turn_end` 待其帧
 /// 发射接线（backend-08+）后加入——**在此登记 = 承诺后端真发该帧**，勿提前声明未接线的帧。
 pub const EMITS: &[&str] = &[
@@ -2115,7 +2115,7 @@ pub const EMITS: &[&str] = &[
     "session_status",
     "session_removed",
     // 会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
-    // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_state",
     "overflow",
     "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
@@ -2126,11 +2126,11 @@ pub const EMITS: &[&str] = &[
     // 固定复活的 tab 靠它分「说不清」与「已结束」。
     "sessions_replayed",
     // 活会话的记录文件不见了 / 被改过已从头重读（`process_jsonl` 真发，登记 = 承诺真发，已接线）。
-    // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。
+    // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。
     "session_file_gone",
     "session_file_reread",
     // 链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
-    // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
+    // 只在 monitor 开了链路之后才出现；旧 monitor / 手机端不认这两个 kind ⇒ 忽略（additive）。
     "link_data",
     "link_end",
     // 一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。

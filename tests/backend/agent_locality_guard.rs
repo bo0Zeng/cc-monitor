@@ -224,7 +224,7 @@ mod tests {
     ///
     /// 这三处都是**同一个 wire 字段名在 Rust 侧的落点**：两处声明 + 一处构造。
     /// serde 直接拿 Rust 标识符当线上字段名（`rename_all` 只改大小写风格），
-    /// ⇒ 在这里改名 = **改线上契约**，而两条契约都有仓外消费方（aterm）。
+    /// ⇒ 在这里改名 = **改线上契约**，而两条契约都有手机端这个消费方。
     ///
     /// ⚠ 与 `agent_boundary_guard::FROZEN_COMPAT` **不是一张表，别合并**：
     /// 那张的作用域是「已宣称通用的文件（`CORE_FILES`）里的 agent **字面量**」，
@@ -241,17 +241,17 @@ mod tests {
             "claude_dir",
             "`Hello` 帧里今天**真在线上**的目录字段。`S4` 走 additive 迁移（新字段 `homes` \
              承载 agent 维度），这个字段原地冻结 ⇒ 线上字节零变化。",
-            "monitor 与 aterm **都**改读 `homes` 之后删掉它。monitor 那半 `S4` 已做完，\
-             只剩仓外 aterm。删的那天本条同轮摘登记（下面的幽灵检查会逼着摘）。",
+            "monitor 与手机端 **都**改读 `homes` 之后删掉它。monitor 那半 `S4` 已做完，\
+             只剩手机端。删的那天本条同轮摘登记（下面的幽灵检查会逼着摘）。",
         ),
         (
             "control/resolve_query.rs",
             "claude_dir",
             "`--resolve` 的 **stdin 入参** `ResumeSpec.claudeDir`（`rename_all=camelCase`）。\
-             契约与仓外 aterm 冻结在 2026-07-18，改 Rust 标识符 = 改线上字段名。\
+             契约与手机端冻结在 2026-07-18，改 Rust 标识符 = 改线上字段名。\
              ⚠ 它今天是 `#[allow(dead_code)]`（MVP 不做 pidfile 消解），**但「没用到」不等于\
              「可以改名」** —— 别人在往里发。",
-            "aterm 那侧 `ResumeSpec` 不再发 `claudeDir` 之后（或整个 `--resolve` 契约重谈）。\
+            "手机端那侧 `ResumeSpec` 不再发 `claudeDir` 之后（或整个 `--resolve` 契约重谈）。\
              与上一条同源：都卡在同一个仓外消费方身上。",
         ),
         (
