@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""条 68·A1：**对外文案全集普查** —— 把「连有哪些文案都列不出来」变成「列得出来」。
+"""A1：**对外文案全集普查** —— 把「连有哪些文案都列不出来」变成「列得出来」。
 
 住址：`<仓根>/tests/evidence/K-T68-A1-outward-copy-census.py`
 要求：对外文案的全集对账（「比例没量过」的那笔债）。
@@ -1308,7 +1308,7 @@ def main_report(args) -> int:
 
     P = print
     P("═" * 78)
-    P("条 68·A1  对外文案全集普查   仓根：" + str(REPO))
+    P("A1  对外文案全集普查   仓根：" + str(REPO))
     P("═" * 78)
 
     # ── 面0：语料与定义自检 ─────────────────────────────────────────────
@@ -1641,7 +1641,7 @@ def selftest() -> int:
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="条 68·A1 对外文案全集普查")
+    ap = argparse.ArgumentParser(description="A1 对外文案全集普查")
     ap.add_argument("--addresses", action="store_true", help="打印逐处住址")
     ap.add_argument("--json", action="store_true", help="末尾追加机读摘要")
     ap.add_argument("--selftest", action="store_true", help="反空真死值验")

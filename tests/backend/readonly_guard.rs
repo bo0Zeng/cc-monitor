@@ -846,7 +846,7 @@ mod tests {
     pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
         (
         "control/exit_policy.rs",
-        "「退出行为」那个值（条 66）：后端**自己的**状态文件 \
+        "「退出行为」那个值：后端**自己的**状态文件 \
          `~/.cc-monitor/backend.json`，一格布尔。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；\
          目录不在就建那一层（父目录是家目录）；失败删掉自己的临时文件。\
          线上入口只有命令表机器那一族的 `exit-policy-set`（＋ 派生的 CLI 面）",

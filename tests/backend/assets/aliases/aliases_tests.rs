@@ -457,7 +457,7 @@ fn every_alias_flag_is_a_real_ccm_flag() {
 
 const PS: Shell = Shell::PowerShell;
 
-/// 「shell 语法记号」—— 通用层的生产代码里一个都不许有（条 33：通用层持有结构，不持有任何一种 shell 的文本）。
+/// 「shell 语法记号」—— 通用层的生产代码里一个都不许有（通用层持有结构，不持有任何一种 shell 的文本）。
 /// 两种方言各取几样最有辨识度的：POSIX 的函数声明 / `"$@"` / `if [` / 引号器，PowerShell 的 `function ` / 余参 / `Test-Path`。
 const SHELL_SYNTAX: &[&str] = &[
     "$@",

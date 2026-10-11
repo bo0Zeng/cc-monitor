@@ -20,7 +20,7 @@
 //! # 中转与上游选择的分界就在这一层里的一句话上
 //!
 //! `handle` 里那一句 `relay.dest.resolve(r.mode, &r.key, …)` —— 递过去的是两个
-//! **不透明段**（条 48），拿回来的是一个 `Destination`，**照做，不做任何判断**。
+//! **不透明段**，拿回来的是一个 `Destination`，**照做，不做任何判断**。
 
 use super::door;
 use super::http1::{self, BodyView, RequestHead};
@@ -33,7 +33,7 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-// ⚠ 上游的环境旋钮与默认值**先搬去上游选择**（「常量跟着职责走」），**再被条 59 整删**成
+// ⚠ 上游的环境旋钮与默认值住上游选择（「常量跟着职责走」），是
 //   每 agent 一行的表（`agents::Adapter::upstream`，跟着适配层）。中转里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
@@ -675,7 +675,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //      **中转不做任何判断，照答案做**。
     //
     //  ⚠ 递过去的是 `r.key`（`RouteKey{seg1,seg2}`）—— 两个**不透明段**。
-    //    「谁是 agent、谁是账号」这两个词在本文件里一次都不出现（条 48）。
+    //    「谁是 agent、谁是账号」这两个词在本文件里一次都不出现。
     //
     //  ⚠⚠ `D2 阻-4`：**上游选择的读锁活到 `act` 返回为止，所以 `act` 里不许有 `pump`。**
     //    `std::sync::RwLock` 是写优先的：一个在等的写者（= 用户刚配完一把 key，

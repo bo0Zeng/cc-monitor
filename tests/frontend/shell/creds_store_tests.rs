@@ -168,7 +168,7 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
         // 再手工 `push` 一份补回来。剖分之后自摘那一刀落空，`creds_store.rs` 走普通
         // 遍历**本来就进人群** ⇒ 手工补回那份成了**第二份**，同一段生产代码被数两遍。
         // 今天两个出口的调用点都不在它里面，所以这一格**没有变红** ——
-        // 也就是说它是安静地错着的那一半（条 73 那条纪律正是为这一半立的）。
+        // 也就是说它是安静地错着的那一半（「明写名单、不靠自摘」那条纪律正是为这一半立的）。
         for (path, raw) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
             files.push((
                 path.display().to_string().replace('\\', "/"),

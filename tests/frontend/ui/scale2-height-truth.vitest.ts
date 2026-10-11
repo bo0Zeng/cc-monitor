@@ -99,7 +99,7 @@ const CSS_FALLBACK_PX = 120;
  * 🔴 这里原先是 `Math.max(APPLIED_FLOOR, Math.round(raw))`，而那个 `APPLIED_FLOOR = 24`
  * 是 `applyIntrinsicSize` 里那个 `Math.max(24, …)` 的**手抄副本**（探针里还有第三份）。
  * 一个数三个住址 ⇒ 改源码那份，这杆秤不会跟着变，会**安静地在量一个不再出货的配置**。
- * 2026-09-18（`99 条 75`）地板去掉时一并收成一个住址：本文件从此**调**它，不**抄**它。
+ * 地板去掉时一并收成一个住址：本文件从此**调**它，不**抄**它。
  */
 function appliedEstimate(el: HTMLElement): number {
   const raw = estimateStreamNodeHeight(el);
@@ -152,7 +152,7 @@ const P90_CEILING: Record<string, number> = {
   //   走到今天这一步的三次修，逐条：
   //   ① `extractProseText` 把「markdown 产物里的排版换行」归一成空格（正文卡 ~2× 虚高的根）；
   //   ② 三条细条常数从 border-box 手算值改成 content-box 实测值（24/32/34 → 17/19/19）；
-  //   ③ 🔴 `applyIntrinsicSize` 的 `Math.max(24, …)` 地板**整个去掉**（`99 条 75` /）
+  //   ③ 🔴 `applyIntrinsicSize` 的 `Math.max(24, …)` 地板**整个去掉**
   //      —— ② 改的那三条常数此前被地板顶回 24，**一个字都没出货**；③ 才让它们真的落地。
   //   ②后 → ③后（Chromium p90 / WebKitGTK p90）：
   //      api-retry  40.8% / 41.2%  →  **0.3% / 0.0%**
@@ -193,7 +193,7 @@ const P90_CEILING: Record<string, number> = {
  *     把排版换行当硬断行）、`card-bash-input`、`card-slash` 三条随 `extractProseText`
  *     与三条 content-box 常数一起修掉；
  *   · 🔴 下半场 **2 条 → 1 条**：`applyIntrinsicSize` 的 `Math.max(24, …)` 地板去掉之后，
- *     `card-api-retry` 的 p90 从 40.8% 掉到 **0.3%**（`99 条 75` /）。
+ *     `card-api-retry` 的 p90 从 40.8% 掉到 **0.3%**。
  *     它此前之所以在名单上，**不是常数算错**，是常数 17 被地板顶回 24 —— 那一格是**地板的账**。
  *
  * 原来剩的那一条（`card-api-error`：常数 40 假设单行、长报错虚低）随主窗口第 2 批修了：报错原文收进「原文」折叠，
@@ -202,7 +202,7 @@ const P90_CEILING: Record<string, number> = {
 const EXCEEDS_DESIGN_GATE: string[] = [];
 
 /**
- * ★ **F1 · 每个 class 的估值最小值 ≥ 该 class 登记的常数**（`99 条 75` /）。
+ * ★ **F1 · 每个 class 的估值最小值 ≥ 该 class 登记的常数**。
  *
  * # 它是来顶班的
  *
@@ -596,7 +596,7 @@ describe("秤 2 · 读数（不做判据，只产表）", () => {
       "★ `applyIntrinsicSize` 又开始夹取估值了。\n" +
         "  2026-09-18 之前这里有个 `Math.max(24, …)` 地板，它把 **13/83 张卡**顶高，\n" +
         "  其中三条细条常数（17/19/19）**整个没出货** —— 改了常数、p90 一个点不动，\n" +
-        "  人却以为修好了。地板已按 `99 条 75` / 去掉，理由：\n" +
+        "  人却以为修好了。地板已去掉，理由：\n" +
         "  全局地板构造上不可能对、分档等于把常数抄\n" +
         "  第二遍、而「估值荒谬地小」**该出声不该静默夹取**（那一格现在归 F1）。\n" +
         "  要再加夹取，先去推翻那份读数。",
@@ -673,7 +673,7 @@ describe("秤 2 · 悬案③：一屏门控的三段边界，换上实测值之�
    * |---|---|
    * | R 路手算 | 24px（估值本身） |
    * | 秤 2 的 B 段（2026-09-18 上半场） | **30px** —— 差一份 padding（CIS 是 content-box） |
-   * | 🔴 地板去掉之后（`99 条 75`，本轮） | **23px** ＝ 常数 17 ＋ padding 6 |
+   * | 🔴 地板去掉之后 | **23px** ＝ 常数 17 ＋ padding 6 |
    *
    * ⚠ **第二次订正这一段不会自己红**，而它确实没红 —— 本轮实测过：
    * `src/frontend/ui/height-estimate.ts` 的地板已经去掉、金标准已经重打，这一整段**照样全绿**，

@@ -14,7 +14,7 @@
 //! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是中转（`server.rs` / `listen.rs` / `http1.rs`） |
 //!
 //! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 中转手里只有
-//! `RouteKey{ seg1, seg2 }` 两个不透明段（条 48）——
+//! `RouteKey{ seg1, seg2 }` 两个不透明段——
 //! 把它们读成 agent 与账号是**本模块**的事，就在下面 [`Accounts::resolve`] 里。
 //!
 //! # 🔴 表的键是 agent ＋ 账号，默认上游每 agent 一行，未登记直接拒
@@ -76,7 +76,7 @@ use table::{RoutingTable, Row};
 
 /// 凭据文件（`apikey-credentials.json`）里那些行**挂在哪个 agent 名下**。
 ///
-/// # 为什么要有这个值（条 49 拆键之后必然冒出来的一格）
+/// # 为什么要有这个值（表的键是 `(agent, 账号)` 之后必然冒出来的一格）
 ///
 /// 表的键改成 `(agent, 账号)` 之后，装表那一步得知道每一行属于谁 ——
 /// 而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）。
@@ -286,7 +286,7 @@ pub(crate) struct Accounts {
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
     table: std::sync::RwLock<RoutingTable>,
-    /// 每 agent 一行的默认上游（条 59）。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
+    /// 每 agent 一行的默认上游。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
     upstreams: Upstreams,
     /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
     reload: Option<Reload>,
@@ -453,8 +453,8 @@ impl Destinations for Accounts {
     ///
     /// # 这里把两个不透明段读成业务名 —— 就这一处
     ///
-    /// `seg1` = agent · `seg2` = 账号 ⇒ **两段一起**是表的索引键（条 49）；
-    /// `seg1` 另外还是「每 agent 一行的默认上游」那张表的键（条 59）。
+    /// `seg1` = agent · `seg2` = 账号 ⇒ **两段一起**是表的索引键；
+    /// `seg1` 另外还是「每 agent 一行的默认上游」那张表的键。
     ///
     /// # 表里有那一行时答什么
     ///

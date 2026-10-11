@@ -341,7 +341,7 @@ function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
-  // 按窗口定向投递只剩会话流的交格，由 `src/comms/inward/chan.ts` 那一处按窗口作用域听（条 22.2）。
+  // 按窗口定向投递只剩会话流的交格，由 `src/comms/inward/chan.ts` 那一处按窗口作用域听（§22.2）。
   /**
    * 要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
    * 会话内容只从这里来。在其余监听都注册完之后订，

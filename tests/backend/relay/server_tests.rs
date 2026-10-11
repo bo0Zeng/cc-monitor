@@ -31,7 +31,7 @@ fn upstreams_without_env() -> accounts::Upstreams {
     accounts::Upstreams::from_env(&|_| None).expect("内置默认必须解析得了")
 }
 
-/// 判据里那些行挂在谁名下（条 49：表的键是 agent ＋ 账号）。
+/// 判据里那些行挂在谁名下（表的键是 agent ＋ 账号）。
 ///
 /// ⚠ **它与 `send_request` 里那些 URL 的首段逐字对应**，名字刻意不是任何一家登记过的 agent ——
 /// 这些判据量的是「表里有行」那几格，与哪家登没登记无关。
@@ -54,7 +54,7 @@ fn render_via_upstream_selection(
     body_len: usize,
 ) -> String {
     let key = RouteKey {
-        // 条 49：`seg1` 今天是键的一半 ⇒ 必须是这张表里那些行挂的那一家。
+        // 表的键是 agent ＋ 账号：`seg1` 是键的一半 ⇒ 必须是这张表里那些行挂的那一家。
         seg1: TEST_AGENT.to_string(),
         seg2: account.to_string(),
     };
@@ -118,7 +118,7 @@ fn table_of_styled(
     )
 }
 
-/// 最底下那一版：每一行**自己说**挂在哪一家名下（条 49）。走的仍是生产段那条真实的 `RoutingTable::build`。
+/// 最底下那一版：每一行**自己说**挂在哪一家名下。走的仍是生产段那条真实的 `RoutingTable::build`。
 fn table_under(
     rows: &[(
         &str,
@@ -142,7 +142,7 @@ fn table_under(
 /// 判据里最常用的那张表：两个账号段，都指向同一个假上游，都不配 key
 /// （⇒ 走「原样转发」那一支，与 `K-H1` 甲半的既有判据逐字同形）。
 fn two_accounts_no_key(base: &Base) -> RoutingTable {
-    // ⚠ 条 49 之后「两个键」是两对 `(agent, 账号)`：`routes_two_keys…` 打的是
+    // ⚠ 「两个键」是两对 `(agent, 账号)`：`routes_two_keys…` 打的是
     //   `/s/agentA/acctA` 与 `/s/agentB/acctB`，所以两行各挂一家。
     let d = creds_core::store::AuthStyle::DEFAULT;
     table_under(&[
@@ -1177,7 +1177,7 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
 
 /// ★ `INTERIM_RESPONSES_ALLOWED` 那一格〔铁律 15 自查补的：**我自己写的那条上限先前零判据**〕。
 ///
-/// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
+/// 上一条判据只喂到 **2** 个 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
 /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502** ＋ 原因头 `upstream-only-interim`
 /// （中转自己的传输失败；不是超时 ⇒ 502，先前 504）。

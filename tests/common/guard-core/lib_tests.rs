@@ -79,7 +79,7 @@ fn without_the_exclusion_the_caller_would_be_included() {
     );
 }
 
-/// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 条 73 的成因钉。
+/// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 「明写名单、不靠自摘」那条纪律的成因钉。
 ///
 /// 仓库重组之后，测试模块长这样：
 /// `#[cfg(test)] #[path = "../../../../src/bridge/tests/bridge/X_tests.rs"] mod tests;`
@@ -87,7 +87,7 @@ fn without_the_exclusion_the_caller_would_be_included() {
 /// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比**恒不命中**。
 ///
 /// ⚠ 这一条**不是**在要求把它修好（修好之后它仍然只是「看起来像在工作」）；
-/// 它是把那个失效**钉成一条读得出来的事实**，好让条 73 那条纪律有据可依：
+/// 它是把那个失效**钉成一条读得出来的事实**，好让那条纪律有据可依：
 /// 靠 `file!()` 自摘的判据，一搬树就安静地把自己收进了自己的语料。
 #[test]
 fn a_path_attribute_caller_file_silently_fails_to_exclude() {
@@ -97,7 +97,7 @@ fn a_path_attribute_caller_file_silently_fails_to_exclude() {
     assert!(
         files.iter().any(|(p, _)| p.ends_with("lib.rs")),
         "折返形的 `caller_file` 居然摘掉了调用者 —— 那说明后缀比的口径变了，\
-             条 73 那条纪律的成因描述要跟着重写"
+             「明写名单、不靠自摘」那条纪律的成因描述要跟着重写"
     );
 }
 

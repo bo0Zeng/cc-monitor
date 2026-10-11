@@ -635,7 +635,7 @@
      （之前写死 780，列被窗口压窄时估高就用了一个错的宽度）。
      ⚠ 容器会顺带给本元素上**布局包含**（layout containment）：它成为 fixed / absolute 后代的包含块、
      成为层叠上下文。`.stream` 本就是 `position: absolute`（absolute 后代的包含块早就是它），
-     而 fixed 浮层按 `INVARIANTS` 条 13 一律挂 `document.body`（`invariants-frontend-guard` ② 机检），
+     而 fixed 浮层按 `INVARIANTS` §13 一律挂 `document.body`（`invariants-frontend-guard` ② 机检），
      流里没有 fixed 后代 ⇒ 前者不改变任何一格；后者把流里的 z-index 关在流里 —— 正是
 「流里的浮层关在流里」要的方向，但**视觉上没有目视过**。
      行内尺寸包含不改变它的宽：它是 `inset: 0` 的绝对定位，宽本来就由包含块给，不由内容撑。 */
