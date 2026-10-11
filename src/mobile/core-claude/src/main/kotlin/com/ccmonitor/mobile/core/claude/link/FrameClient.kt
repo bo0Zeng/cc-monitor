@@ -112,6 +112,8 @@ class FrameClient private constructor(
         scope.launch {
             try {
                 for (raw in lines) dispatch(raw)
+            } catch (_: IOException) {
+                // 读那一头抛错（断网 · 连接被掐）收到这里：同流断了，下面落成断开、未答的一律 LinkDown；不往外抛（外层没人接，会把整个 App 带崩）。
             } finally {
                 goDown()
             }

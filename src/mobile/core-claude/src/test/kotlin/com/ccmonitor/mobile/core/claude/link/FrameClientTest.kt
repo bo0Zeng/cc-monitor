@@ -1,8 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.remote.RemoteDuplex
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -12,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.coroutines.ContinuationInterceptor
 
 /** 按台本走的双向 exec：[push] 一行进 stdout，[written] 收客户端写进 stdin 的每一行。 */
 internal class FakeDuplex : RemoteDuplex {
@@ -25,6 +29,11 @@ internal class FakeDuplex : RemoteDuplex {
 
     fun end() {
         out.close()
+    }
+
+    /** 读那一头抛错（断网：sshj 的 `SSHException: Software caused connection abort`，它是 IOException）。 */
+    fun fail(e: java.io.IOException) {
+        out.close(e)
     }
 
     override val stdout: Flow<ByteArray> = out.receiveAsFlow()
@@ -136,6 +145,23 @@ class FrameClientTest {
             withTimeout(1_000) { while (c.isUp) kotlinx.coroutines.yield() }
             assertEquals(Reply.LinkDown, c.call("ping", null, 1_000))
             assertFalse(c.isUp)
+        }
+
+    @Test
+    fun `断网（读那一头抛 IO 错）：同流断了一样 LinkDown，那个错不漏出协程把整个 App 带崩`() =
+        runTest {
+            val uncaught = mutableListOf<Throwable>()
+            val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, t -> uncaught += t } + coroutineContext[ContinuationInterceptor]!!)
+            val d = FakeDuplex()
+            val c = attached(d, scope)
+            d.written.receive()
+            val r = async { c.call("history-list", null, 60_000) }
+            d.written.receive()
+            d.fail(java.io.IOException("Software caused connection abort"))
+            assertEquals(Reply.LinkDown, r.await())
+            withTimeout(1_000) { while (c.isUp) kotlinx.coroutines.yield() }
+            assertEquals("没接住的错：$uncaught", emptyList<Throwable>(), uncaught)
+            scope.cancel()
         }
 
     @Test
