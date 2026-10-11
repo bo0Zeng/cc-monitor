@@ -3,7 +3,7 @@
  */
 import type { Scene } from "../scenes/index";
 import { sleep, waitCount, waitFor } from "../scenes/helpers";
-import { PERF_TURNS, perfMainWorld, perfWorld } from "./world";
+import { HUGE_TURNS, PERF_TURNS, perfHugeWorld, perfMainWorld, perfWorld } from "./world";
 import "./actions";
 import { sidOf } from "../fake/world";
 import { SETTINGS_SCALE, settingsPerfWorld } from "./settings-world";
@@ -12,6 +12,21 @@ import { SETTINGS_SCALE, settingsPerfWorld } from "./settings-world";
 export const LONGEST_SID = sidOf(0x100);
 
 export const PERF_SCENES: Scene[] = [
+  {
+    id: "perf-huge",
+    page: "index",
+    dir: "性能",
+    title: "一条十几万行的会话 · 主窗口",
+    desc: "最长那条十一万多行（用户 10-10 报卡渲染的那种规模），其余同 perf-main；页内动作同 perf-main",
+    width: 1280,
+    height: 800,
+    world: perfHugeWorld,
+    act: async (ctx) => {
+      window.__perfBackend = ctx.backend;
+      await waitCount("#tab-bar .tab", HUGE_TURNS.length, 600_000);
+      await sleep(900);
+    },
+  },
   {
     id: "perf-main",
     page: "index",

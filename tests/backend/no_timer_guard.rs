@@ -749,7 +749,15 @@ mod tests {
         "std::time::Instant::now()",
         "起子进程原语的总期限（`Budget`）：一条阻塞档命令里连发几发时，各发共用剩下的时间 —— \
          装总期限时读一次、每发起之前读一次，只用来把那一次有界等待截短，不驱动任何循环、不产生节拍。",
-    )];
+    ),
+    (
+        "dial/pool.rs",
+        "tokio::time::Instant::now()",
+        "SSH 连接「最后一次收到对端字节」的时刻（`pool::mono_ms` / `pool::Heard`）：TCP 那一层读到字节时记一笔，\
+         复用一条连接开通道之前比一次「多久没收包了」—— 久了就与新建一条同时起跑（`uses::race`，谁先站住用谁，两边都是事件）。\
+         只拿来比，不等、不睡、不驱动任何循环、不让谁醒来。",
+    ),
+];
 
     /// 按 [`REGISTERED_DEADLINE_WAKES`] 与 [`REGISTERED_CLOCK_READS`] 剥掉这份文件登记的片段（各恰好一处；文件对不上就原样返回）。
     pub(super) fn without_registered_wakes(name: &str, code: &str) -> String {

@@ -103,10 +103,10 @@ function convo(n: number, cwd: string, turns: number, heavy: boolean): Convo {
 /** 轮数表：四条长会话（几千条记录）＋ 二十条中短会话。 */
 export const PERF_TURNS: number[] = [420, 30, 12, 260, 8, 45, 18, 300, 6, 22, 60, 10, 380, 15, 9, 35, 14, 28, 7, 50, 11, 20, 16, 40];
 
-export function perfWorld(): World {
+export function perfWorld(table: readonly number[] = PERF_TURNS): World {
   const w = defaultWorld();
   const origins = [LOCAL, ...REMOTES];
-  w.sessions = PERF_TURNS.map((turns, k): SessionSpec => {
+  w.sessions = table.map((turns, k): SessionSpec => {
     const n = 0x100 + k;
     const origin = origins[k % origins.length];
     const cwd = `/home/user/work/w${k}t${turns}-perf`;
@@ -153,8 +153,8 @@ export function perfWorld(): World {
  * 主窗口其余那几项（perfA：滚动 · 实时来消息 · 查找 · 大纲 · 「需手动」· 面板 · 抽屉）的世界：同一屋子 tab，
  * 另加几条在等你的（「需手动」清单有东西）、最长那条带一串子 agent 与任务（agent / 任务抽屉有东西）。
  */
-export function perfMainWorld(): World {
-  const w = perfWorld();
+export function perfMainWorld(table: readonly number[] = PERF_TURNS): World {
+  const w = perfWorld(table);
   const now = Date.now();
   [2, 5, 9, 14, 19].forEach((k, j) => {
     const s = w.sessions[k];
@@ -176,4 +176,14 @@ export function perfMainWorld(): World {
   longest.runRecords = Object.fromEntries(longest.runs.map((r, k) => [r.run, convo(0x100, longest.cwd, k === 0 ? 300 : 20, false).records]));
   longest.tasks = Array.from({ length: 30 }, (_, k) => ({ id: String(k + 1), subject: `改 packages/mod-${k} 的分页`, status: k < 20 ? "completed" : k < 22 ? "in_progress" : "pending", blocks: [], blockedBy: [] }));
   return w;
+}
+
+/**
+ * 用户报「主窗口卡渲染」的那一种规模（10-10）：一条会话 11.5 万行上下（真会话那份记录文件 349 MB），其余同性能世界那一屋子。
+ * 内容照性能世界的那几种行（人话 · 思考 · 工具 · 子 agent · 带表格与代码块的结论），只取规模。
+ */
+export const HUGE_TURNS: number[] = [Number(new URLSearchParams(location.search).get("turns") ?? 9600), ...PERF_TURNS.slice(1)];
+
+export function perfHugeWorld(): World {
+  return perfMainWorld(HUGE_TURNS);
 }

@@ -322,12 +322,18 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 ### 按控制台认窗口（Windows）
 
-点 ↗ 时沿进程链每一级借它的控制台问一句：`AttachConsole` → `GetConsoleWindow` → 那个窗口的属主（`platform/console.rs::console_window`，壳里借控制台只此一处）。
+点 ↗ 时沿进程链每一级借它的控制台问一句：`AttachConsole` → `GetConsoleWindow` → 那个窗口的属主。借控制台交给本二进制的一次性小助手（隐藏子命令 `--ccm-console`，
+`platform/console.rs::helper_main`）：挂控制台是整个进程的状态，monitor 自己挂着控制台时恒被拒（开发构建是控制台程序），小助手先摘掉自己的再借；monitor 一次 ↗ 起它一趟问整条链（`console_looks`）。
 Windows Terminal 里每个标签的伪控制台窗口的属主就是承载它的那个终端窗口（拖到别的窗口时由 Windows Terminal 改挂）；经典控制台就是控制台窗口自己；看不见的不算。
 
 **为什么不按进程找窗口**：Windows Terminal 一个进程开几个窗口，按进程只分得出「这个程序有两个窗口」。**为什么不靠接入块登记**：登记要用户装 PowerShell 接入块、
 还要那个标签当时在前台、标题没被别人改，cc-monitor 自己从标签栏起的会话（命令里 ssh 用全路径，不带窗口标签）一样落空。控制台的属主由 Windows Terminal 自己维护，
-谁起的、装没装接入块都一样认得准。只认到窗口：Windows Terminal 没有从外部选中别人标签的接口。
+谁起的、装没装接入块都一样认得准。
+
+**切到那个标签页**：Windows Terminal 没有从外部选中别人标签的接口。小助手借那个会话的控制台挂一个记号标题（`ccm-front-` ＋ 8 位），
+UI Automation 在那个窗口的标签页里找名字带记号的那个、选中，原标题写回（`bind.rs::pick_tab`，Win11 虚拟机上整趟 100–400 ms）。
+标签名不随程序标题变化（手动改过名 · 设置了「禁止更改标题」）、读不到标签页、终端提权时只切窗口，照实说为什么。
+「切过去了」要核过前台：系统答应了、前台也确实是它才算（真机见过答应了前台却没换）。
 
 ### 日志：tracing 在 Builder 之前初始化
 

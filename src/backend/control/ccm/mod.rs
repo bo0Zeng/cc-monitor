@@ -858,7 +858,22 @@ fn exec_direct(d: &plan::Direct) -> i32 {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
     let path = std::env::var("PATH").ok();
-    let (program, lead) = final_program(prog, cfg!(windows), path.as_deref(), &|p| p.is_file());
+    let policy = || {
+        crate::platform::shell::powershell::execution_policy(
+            crate::platform::shell::PsHost::Desktop,
+        )
+        .effective
+    };
+    let (program, lead) = match final_program(
+        prog,
+        cfg!(windows),
+        path.as_deref(),
+        &|p| p.is_file(),
+        &policy,
+    ) {
+        Ok(v) => v,
+        Err(why) => return die(&why),
+    };
     exec_or_spawn(
         Child::new(program).args(lead).args(rest),
         &format!("'{prog}'"),
@@ -869,21 +884,32 @@ fn exec_direct(d: &plan::Direct) -> i32 {
 /// 最后起 agent 那一下起的程序与前导参数。Windows 上裸名字照 `platform::shell::find_session_command` 换成找到的那个文件
 /// （`.cmd` / `.bat` / `.ps1` 也起得来 —— 与足迹「装没装」、起新会话框同一个找法，认得出就起得来）；
 /// unix（按名字 exec）· 带路径的（用户自己指的）· 找不到 / 判不了的 ⇒ 原样（起不来时那句报错说得出是哪个）。
+/// 只有 `.ps1`、执行策略不运行本地脚本（`platform::shell::script_refused_by_policy`，`policy` 只在那一形才问）⇒ `Err(那句话)`，不起。
 pub(crate) fn final_program(
     prog: &str,
     windows: bool,
     path_env: Option<&str>,
     is_file: &dyn Fn(&std::path::Path) -> bool,
-) -> (std::ffi::OsString, Vec<std::ffi::OsString>) {
-    use crate::platform::shell::{find_session_command, SessionCommand};
+    policy: &dyn Fn() -> Option<String>,
+) -> Result<(std::ffi::OsString, Vec<std::ffi::OsString>), String> {
+    use crate::platform::shell::{find_session_command, script_refused_by_policy, SessionCommand};
     if windows && !prog.contains(['/', '\\']) {
-        if let SessionCommand::Found { program, lead, .. } =
-            find_session_command(prog, path_env, windows, is_file)
-        {
-            return (program, lead);
+        let found = find_session_command(prog, path_env, windows, is_file);
+        if let Some(word) = script_refused_by_policy(&found, policy) {
+            let file = match &found {
+                SessionCommand::Found { file, .. } => file.display().to_string(),
+                _ => prog.to_string(),
+            };
+            return Err(copy_text(
+                "beCcm.execDirect.scriptRefused",
+                &[("file", &file), ("policy", &word)],
+            ));
+        }
+        if let SessionCommand::Found { program, lead, .. } = found {
+            return Ok((program, lead));
         }
     }
-    (prog.into(), Vec::new())
+    Ok((prog.into(), Vec::new()))
 }
 
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。
