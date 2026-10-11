@@ -191,7 +191,6 @@ class SshConnection(
         emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.established", "target" to "${config.username}@${config.host}:${config.port}"))
     }
 
-
     /** 有 store 时装 TOFU 校验器并返回它（供判定 outcome）；没有 store 时装 PromiscuousVerifier、返回 null。 */
     private suspend fun installTofuVerifier(
         client: SSHClient,
@@ -589,11 +588,6 @@ class SshConnection(
 }
 
 /**
- * 竞速决出赢家后复查是否已被关闭。已关闭时赢家的 socket 可能是 close 之后才开的：
- * 关掉赢家（[closeWinner]）并抛 [CancellationException]，上层按取消处置，不返回幻影成功、不泄漏已认证连接。
- * [closed] 为 false 时原样放行。
- */
-/**
  * 造一个还没连的 client。KeystoreSigner 连接用替换了 ecdsa KeyAlgorithm 的 Config（签名走 AndroidKeyStore），其余用默认。
  *
  * 保活间隔在这里、`connect` 之前装好（Config 已装 KEEP_ALIVE provider）：sshj 0.39 只在 `onConnect` 那一刻、
@@ -607,6 +601,11 @@ internal fun newSshClient(config: ConnectionConfig): SSHClient =
         connection.keepAlive.keepAliveInterval = config.keepAliveIntervalSec
     }
 
+/**
+ * 竞速决出赢家后复查是否已被关闭。已关闭时赢家的 socket 可能是 close 之后才开的：
+ * 关掉赢家（[closeWinner]）并抛 [CancellationException]，上层按取消处置，不返回幻影成功、不泄漏已认证连接。
+ * [closed] 为 false 时原样放行。
+ */
 internal fun <C> closeWinnerIfClosedDuringRace(
     winner: C,
     closed: Boolean,
