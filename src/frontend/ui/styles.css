@@ -1619,12 +1619,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-.proc-hidden {
+/* 折着的过程卡 · 落成了人话的排队插话：挂在流的直接子元素上（turn-fold.ts）。带上 `.stream-content >` 压过卡自己的 display
+   （如 `.card-steps { display: flex }` 写在后面、同一权重时会把单类的 none 盖掉 ⇒ 过程行折着、底下的卡照样露着）。 */
+.stream-content > .proc-hidden {
   display: none;
 }
 
 /* 排队插话已经落成了人话（后端 `history-turns` 的 landed）：同一句不上屏两次。 */
-.queued-landed {
+.stream-content > .queued-landed {
   display: none;
 }
 
