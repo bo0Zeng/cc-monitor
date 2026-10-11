@@ -170,7 +170,7 @@ export interface SessionFacts {
   bgTasks: BgTask[];
   /** 后台任务运行中那一句（后端 `facts_query::background_of` 写；界面照抄、时长那一截按会走的那一句走字）。不是这一态 ⇒ `null`。 */
   background: BackgroundWork | null;
-  /** 这个会话里那一家说有毛病的 MCP 服务器（按名字排；没列的不等于连上了）。`detail` 是连不上时的原话（复制详情用）。 */
+  /** 这个会话里那一家说有毛病的 MCP 服务器（按名字排；没列的不等于连上了）。`detail` 是断开时的原话（复制详情用）。 */
   mcp: McpTrouble[];
 }
 

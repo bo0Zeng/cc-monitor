@@ -203,7 +203,7 @@ fn no_server_is_tightened_only_when_the_pid_is_really_still_alive() {
     assert_eq!(
         classify_with_server_state(TmuxObservation::NoServer, ServerState::Alive(me)),
         TmuxObservation::Unobservable,
-        "server 明明活着而 tmux ls 连不上 = 真异常，不该当成零会话"
+        "server 明明活着而 tmux ls 断开 = 真异常，不该当成零会话"
     );
 
     // ② 记着的 server 已死 + rc=1 ⇒ 原样通过（真的没 server）
@@ -335,7 +335,7 @@ fn tmux_probe_classifies_four_states() {
 /// `DIRTY` 是 09-04 在**零挂载容器**里对真 tmux 3.4 私有 socket 打出来的字节
 /// （`od -c` 逐字节复核）：POSIX 客户端下
 /// 六个真 TAB 全变 `_`，连 `文档`（3 字节/字）都按**显示宽度**变成了 `____`。
-/// `CLEAN` 是同一台 server、同一条命令、只加了本拍那条口径之后的输出（同文件 ②/S5）。
+/// `CLEAN` 是同一台 server、同一条命令、只加了那条口径之后的输出（同文件 ②/S5）。
 ///
 /// # 正对照不能省 —— 两个方向都要钉
 ///
@@ -385,7 +385,7 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
     let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), dirty_two));
     assert!(
         closed.is_empty(),
-        "🔴 通道一脏就把**全部活会话**报成消失 —— 这才是本件真正的伤害。实得：{closed:?}"
+        "🔴 通道一脏就把**全部活会话**报成消失 —— 这才是真正的伤害。实得：{closed:?}"
     );
     assert_eq!(
         prev.as_ref().map(|s| s.len()),
@@ -655,7 +655,7 @@ fn tmux_socket_dir_follows_tmux_tmpdir() {
 
 /// ★★ **超时必须落成「观测无效」，绝不能落成「零会话」**。
 ///
-/// 这是本件最要命的一格：`ServerEmpty`（rc=0 且 stdout 空）会让上层认为
+/// 这是最要命的一格：`ServerEmpty`（rc=0 且 stdout 空）会让上层认为
 /// **那台机器上一个会话都没有** ⇒ 活着的会话被 retire。
 /// 而超时是「**我没看清**」，不是「**我看清了，是空的**」。
 ///

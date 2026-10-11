@@ -484,6 +484,8 @@ pub enum Action {
     Open,
     /// 编辑这份文本。
     Edit,
+    /// 开一个查看页看这张图（窗口自己解得开的那几种，[`super::imgview::viewable`]）。
+    View,
     /// 零流量复制（「复制为」那个框）。
     Copy,
     /// 往外拖（「存到哪儿」那一问）。
@@ -517,6 +519,7 @@ impl Action {
         match self {
             Action::Open => OPEN_LABEL.to_string(),
             Action::Edit => super::editor::EDIT_LABEL.to_string(),
+            Action::View => super::imgview::VIEW_LABEL.to_string(),
             Action::Copy => super::copy::COPY_LABEL.to_string(),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Size => super::size::SIZE_LABEL.to_string(),
@@ -542,7 +545,7 @@ impl Action {
 /// `is_downloadable` / `is_writable`）—— 行上那几颗按钮画不画问的正是同几个函数
 /// ⇒ 「行上有那颗按钮」与「菜单上有那一项」对单选**逐项同源**。
 ///
-/// 回值按固定顺序（打开/编辑 · 复制 · 下载 · 算大小 · 改名 · 权限 · 删除）。空 ⇒ 什么都做不了。
+/// 回值按固定顺序（打开/查看/编辑 · 复制 · 下载 · 算大小 · 改名 · 权限 · 删除）。空 ⇒ 什么都做不了。
 pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
     let mut out = Vec::new();
     match picked {
@@ -550,6 +553,9 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
         [r] => {
             if r.opens_as_dir() {
                 out.push(Action::Open);
+            } else if super::imgview::viewable(r) {
+                // 图片：「查看」顶替「编辑」那一格（稿 ⑬：图片不给「编辑」）。
+                out.push(Action::View);
             } else if editable(r) {
                 out.push(Action::Edit);
             }
@@ -603,7 +609,7 @@ pub fn refusal(action: Action, n: usize) -> String {
         (_, 0) => copy_text("rsFilewinSelect.refusal.none", &[]),
         (Action::Delete, _) => copy_text("rsFilewinSelect.refusal.deleteBadNames", &[]),
         (Action::Chmod, _) if n > 1 => copy_text("rsFilewinSelect.refusal.chmodBadNames", &[]),
-        (Action::Open | Action::Edit, _) => {
+        (Action::Open | Action::Edit | Action::View, _) => {
             copy_text("rsFilewinSelect.refusal.openOne", &[("n", &n.to_string())])
         }
         (Action::Rename, _) if n > 1 => copy_text(

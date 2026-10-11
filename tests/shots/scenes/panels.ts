@@ -133,7 +133,7 @@ async function startNewSession(place: "tmux" | "window" = "tmux"): Promise<void>
   await click(await byText('[role="dialog"] button', "新建"));
 }
 
-/** gpu-01 连不上，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
+/** gpu-01 断开，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
 function unseenPinnedWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
@@ -148,7 +148,11 @@ function unseenPinnedWorld(): World {
 /** 「表格分页」那个会话有一个子 agent、没有任务。 */
 function agentsOnlyWorld(): World {
   const w = defaultWorld();
-  w.sessions[1].runs = [{ run: "agent-b1", label: "量一下现在的渲染耗时", kind: "general-purpose", state: "running", last: { t: "tool", name: "Bash" } }];
+  const c = w.sessions[1].convo!;
+  const b1 = c.child("b1");
+  b1.user("量一下现在的渲染耗时。");
+  b1.tool("Bash", { command: "npm run bench -- table" }, null);
+  c.tool("Task", { description: "量一下现在的渲染耗时", prompt: "量一下现在的渲染耗时。", subagent_type: "general-purpose" }, null, { child: b1 });
   return w;
 }
 
@@ -323,7 +327,7 @@ export const PANEL_SCENES: Scene[] = [
     await key("w");
     await sleep(600);
   }),
-  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 连不上、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
+  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 断开、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
     await mainReady(ALL_TABS);
     const t = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].find((x) => (x.textContent ?? "").includes("排序模型"));
     await rightClick(t ?? "#tab-bar .tab");
@@ -518,7 +522,7 @@ export const PANEL_SCENES: Scene[] = [
   }, remoteEndedWorld),
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
-    await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
+    await rightClick(await byText("#tab-bar .tab", "账单导出改成流式"));
     await click(await byText("[role^=menuitem]", copyText("tabMenu.item.resume")));
     await click(await byText("[role^=menuitem]", copyText("resumeMenu.run.direct")));
     await waitFor("#kit-toast-stack > [data-level=error]");
@@ -777,7 +781,7 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.ops["session-terminals"] = () => ({ terminals: [], why: "detached" });
   }),
-  frontScene("panel-front-remote-offline", "↗ · 连不上那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
+  frontScene("panel-front-remote-offline", "↗ · 断开那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
     await mainReady(ALL_TABS);
     await openTab(3);
     await sleep(400);

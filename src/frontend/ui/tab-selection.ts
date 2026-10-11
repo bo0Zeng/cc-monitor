@@ -5,7 +5,7 @@
  * - Ctrl 单击：把它加进 / 移出多选，不切 tab；多选还是空的时候，当前 tab 也算在里面。
  * - Shift 单击：从锚点到它，按条上看得到的顺序连选（顺序由调用方给）。
  * - Esc：清掉多选 —— 有选中时在快捷键表的 overlay 栈上压一层，清空时弹掉（菜单 / 对话框在它上面就先关它们）。
- * - tab 没了就从多选里掉出去（`retain`，整刷那一拍调）。
+ * - tab 没了就从多选里掉出去（`retain`，整刷时调）。
  */
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import { menuOpen } from "./kit/menu";
@@ -78,7 +78,7 @@ export class TabSelection {
     this.sync();
   }
 
-  /** 整刷那一拍：不在了的 tab 掉出去（锚点同理）。不回调 `changed`（调用方正在画）。 */
+  /** 整刷时：不在了的 tab 掉出去（锚点同理）。不回调 `changed`（调用方正在画）。 */
   retain(alive: (sid: string) => boolean): void {
     for (const sid of Array.from(this.picked)) if (!alive(sid)) this.picked.delete(sid);
     if (this.anchor !== null && !alive(this.anchor)) this.anchor = null;

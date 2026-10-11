@@ -11,52 +11,59 @@ import { mainReady, scrollStream, sleep, waitFor } from "./helpers";
 const SID = sidOf(1);
 const CWD = "/home/user/work/sample";
 
-function foldConvo(): { c: Convo; t1: string; t2: string } {
+function foldConvo(): Convo {
   const c = new Convo(SID, CWD, "2026-10-01T09:00:00Z");
   c.title("示例项目：配置读取整理");
   // 第一轮：思考 · 连续工具 · 中间的话 · 一次失败 · 结论
   c.user("把配置读取整理一下，统一从一个地方读。");
   c.think("先找出所有读配置的地方。", "我先找一下现在读配置的地方。");
   c.tool("Grep", { pattern: "load_config", path: "src" }, "src/a.py:3\nsrc/b.py:9\nsrc/c.py:12");
-  c.tool("Read", { file_path: `${CWD}/src/a.py` }, "def load_config():\n    return {}\n", { card: "md" });
-  c.tool("Read", { file_path: `${CWD}/src/b.py` }, "def load_config():\n    return {}\n", { card: "md" });
+  c.tool("Read", { file_path: `${CWD}/src/a.py` }, "def load_config():\n    return {}\n");
+  c.tool("Read", { file_path: `${CWD}/src/b.py` }, "def load_config():\n    return {}\n");
   c.say("三处各写了一份，内容一样。我把它们并到 `src/config.py`。");
-  c.tool("Write", { file_path: `${CWD}/src/config.py`, content: "def load_config():\n    return {}\n" }, "File created successfully.", { card: "diff" });
-  c.tool("Edit", { file_path: `${CWD}/src/a.py`, old_string: "def load_config():\n    return {}\n", new_string: "from .config import load_config\n" }, "The file has been updated.", { card: "diff" });
-  c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "FAILED tests/test_b.py::test_x - ImportError\n1 failed, 40 passed", { error: true, card: "command" });
+  c.tool("Write", { file_path: `${CWD}/src/config.py`, content: "def load_config():\n    return {}\n" }, "File created successfully.");
+  c.tool("Edit", { file_path: `${CWD}/src/a.py`, old_string: "def load_config():\n    return {}\n", new_string: "from .config import load_config\n" }, "The file has been updated.");
+  c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "FAILED tests/test_b.py::test_x - ImportError\n1 failed, 40 passed", { error: true });
   c.say("有一处导入路径没改到，补上。");
-  c.tool("Edit", { file_path: `${CWD}/src/b.py`, old_string: "def load_config():\n    return {}\n", new_string: "from .config import load_config\n" }, "The file has been updated.", { card: "diff" });
-  c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "41 passed in 1.20s", { card: "command" });
+  c.tool("Edit", { file_path: `${CWD}/src/b.py`, old_string: "def load_config():\n    return {}\n", new_string: "from .config import load_config\n" }, "The file has been updated.");
+  c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "41 passed in 1.20s");
   c.say("整理好了：三处读配置并到 `src/config.py`，测试 41 个全过。", 40_000, "end_turn");
 
   // 第二轮：派两个 agent · 交回 · 后台任务通知 · 系统注入 · 结论
   c.user("再让两个 agent 分别查一下文档和示例里有没有旧写法。");
   c.say("好，分两路查。");
-  const t1 = c.tool("Task", { description: "查文档里的旧写法", prompt: "在 docs/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "docs/ 里有 2 处旧用法：docs/a.md:10、docs/b.md:4。", { card: "agent", child: { label: "查文档里的旧写法", kind: "Explore" } });
-  const t2 = c.tool("Task", { description: "查示例里的旧写法", prompt: "在 examples/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "examples/ 里没有旧用法。", { card: "agent", child: { label: "查示例里的旧写法", kind: "Explore" } });
+  const r1 = c.child("r1");
+  r1.user("在 docs/ 里找 load_config 的旧用法。");
+  r1.tool("Grep", { pattern: "load_config", path: "docs" }, "docs/a.md:10\ndocs/b.md:4");
+  r1.say("docs/ 里有 2 处旧用法：docs/a.md:10、docs/b.md:4。", 20_000, "end_turn");
+  const r2 = c.child("r2");
+  r2.user("在 examples/ 里找 load_config 的旧用法。");
+  r2.tool("Grep", { pattern: "load_config", path: "examples" }, "");
+  r2.say("examples/ 里没有旧用法。", 20_000, "end_turn");
+  c.tool("Task", { description: "查文档里的旧写法", prompt: "在 docs/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "docs/ 里有 2 处旧用法：docs/a.md:10、docs/b.md:4。", { child: r1 });
+  c.tool("Task", { description: "查示例里的旧写法", prompt: "在 examples/ 里找 load_config 的旧用法。", subagent_type: "Explore" }, "examples/ 里没有旧用法。", { child: r2 });
   c.from({ kind: "agentMessage", from: "r1", name: "查文档里的旧写法", handback: true, body: "docs/ 里有 2 处旧用法：`docs/a.md:10`、`docs/b.md:4`。" });
   c.from({ kind: "agentMessage", from: "r2", name: "查示例里的旧写法", handback: true, body: "examples/ 里没有旧用法。" });
   c.from({ kind: "taskNotification", taskId: "bg1", status: "completed", summary: "lint" });
   c.from({ kind: "taskNotification", taskId: "bg2", status: "failed", summary: "类型检查" });
   c.user("<system-reminder>\nPlaceholder reminder text.\n</system-reminder>", { meta: true });
-  c.tool("Edit", { file_path: `${CWD}/docs/a.md`, old_string: "old", new_string: "new" }, "The file has been updated.", { card: "diff" });
+  c.tool("Edit", { file_path: `${CWD}/docs/a.md`, old_string: "old", new_string: "new" }, "The file has been updated.");
   c.say("文档里两处旧写法改掉了，示例里没有。类型检查那个后台任务失败了，是早就有的问题，与这次无关。", 52_000, "end_turn");
 
   // 压缩
   c.from({ kind: "slashCommand", name: "/compact", args: "" });
-  c.from({ kind: "compactSummary", charsText: "26" });
-  (c.records[c.records.length - 1] as { who: { text: string } }).who.text = "## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改";
+  c.from({ kind: "compactSummary", body: "This session is being continued from a previous conversation that ran out of context. The conversation is summarized below:\n## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改" });
 
   // 第三轮：重试 · 中途你按了 Esc 并插话 · 再做 · 结论
   c.user("给 load_config 加缓存。");
   c.retry(1, 10);
   c.retry(2, 10);
-  c.tool("Read", { file_path: `${CWD}/src/config.py` }, "def load_config():\n    return {}\n", { card: "md" });
+  c.tool("Read", { file_path: `${CWD}/src/config.py` }, "def load_config():\n    return {}\n");
   c.user("[Request interrupted by user]", { interrupt: true });
   c.queued("缓存用 functools 就行，别自己写。");
   c.user("缓存用 functools 就行，别自己写。");
-  c.tool("Edit", { file_path: `${CWD}/src/config.py`, old_string: "def load_config():", new_string: "@functools.cache\ndef load_config():" }, "The file has been updated.", { card: "diff" });
-  c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "41 passed in 1.10s", { card: "command" });
+  c.tool("Edit", { file_path: `${CWD}/src/config.py`, old_string: "def load_config():", new_string: "@functools.cache\ndef load_config():" }, "The file has been updated.");
+  c.tool("Bash", { command: "pytest -q", description: "跑测试" }, "41 passed in 1.10s");
   c.say("加了 `functools.cache`，测试全过。", 30_000, "end_turn");
 
   // 第四轮（正在跑）：思考 · 几步 · 中间的话 · 一步在等批准
@@ -64,20 +71,16 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
   c.think("先确认没有别处再引用它们。", "先确认一下没人再用它们。");
   c.tool("Grep", { pattern: "from .a import|from .b import", path: "src" }, "");
   c.say("没有引用了，删掉。");
-  c.tool("Bash", { command: "git rm src/c.py", description: "删旧文件" }, null, { card: "command" });
-  return { c, t1, t2 };
+  c.tool("Bash", { command: "git rm src/c.py", description: "删旧文件" }, null);
+  return c;
 }
 
 function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
   const w = defaultWorld();
-  const { c, t1, t2 } = foldConvo();
+  const c = foldConvo();
   w.sessions[0] = session(1, LOCAL, CWD, c, {
     activity,
     ...(activity === "needs_you" ? { waitingFor: "permission prompt", waitingSinceMs: Date.now() - 60_000 } : {}),
-    runs: [
-      { run: "agent-r1", label: "查文档里的旧写法", kind: "Explore", tool: t1, state: "done", last: { t: "say" } },
-      { run: "agent-r2", label: "查示例里的旧写法", kind: "Explore", tool: t2, state: "done", last: { t: "say" } },
-    ],
   });
   return w;
 }
@@ -91,9 +94,9 @@ function longWorld(n = 90): World {
     c.user(`第 ${i} 轮：把模块 ${i} 的读取整理一下。`);
     c.think("先找读取的地方。", `先看模块 ${i}。`);
     c.tool("Grep", { pattern: `mod${i}`, path: "src" }, `src/m${i}.py:3`);
-    c.tool("Read", { file_path: `${CWD}/src/m${i}.py` }, "def load():\n    return {}\n", { card: "md" });
+    c.tool("Read", { file_path: `${CWD}/src/m${i}.py` }, "def load():\n    return {}\n");
     c.say(`模块 ${i} 只有一处，改掉。`);
-    c.tool("Edit", { file_path: `${CWD}/src/m${i}.py`, old_string: "a", new_string: "b" }, "The file has been updated.", { card: "diff" });
+    c.tool("Edit", { file_path: `${CWD}/src/m${i}.py`, old_string: "a", new_string: "b" }, "The file has been updated.");
     c.say(`模块 ${i} 改好了。`, 20_000, "end_turn");
   }
   w.sessions[0] = session(1, LOCAL, CWD, c, { activity: "idle" });

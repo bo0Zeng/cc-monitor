@@ -177,6 +177,27 @@ val MIGRATION_13_14 =
         }
     }
 
+// hosts 去掉 claudeDir（每主机 agent 配置目录）：找会话 · 读记录都归那台核心，手机不再拼远端路径，这一格没人读了。
+// SQLite 老版本没有 DROP COLUMN ⇒ 建新表、拷数据、换名（同 7→8）。旧值直接丢掉，不留兼容。
+val MIGRATION_14_15 =
+    object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                    "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `extraAddresses` TEXT, " +
+                    "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
+                    "`sessionManager` TEXT, `autoReconnect` INTEGER NOT NULL, `reconnectOnNetworkChange` INTEGER NOT NULL, " +
+                    "`maxReconnectAttempts` INTEGER NOT NULL, `proxyJumpHostId` TEXT, `passwordEnc` TEXT, `os` TEXT, " +
+                    "`agentKind` TEXT, PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "INSERT INTO `hosts_new` (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager,autoReconnect,reconnectOnNetworkChange,maxReconnectAttempts,proxyJumpHostId,passwordEnc,os,agentKind) SELECT id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager,autoReconnect,reconnectOnNetworkChange,maxReconnectAttempts,proxyJumpHostId,passwordEnc,os,agentKind FROM `hosts`",
+            )
+            db.execSQL("DROP TABLE `hosts`")
+            db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
+        }
+    }
+
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
@@ -192,4 +213,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
+        MIGRATION_14_15,
     )

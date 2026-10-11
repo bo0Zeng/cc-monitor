@@ -1550,7 +1550,7 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
     assert_eq!(added.len(), 1, "一条宣告");
     let (sid, path) = &added[0];
     assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
-    assert_eq!(lines, 4);
+    assert_eq!(lines, 6);
     let ended: Vec<&str> = ends.iter().map(|t| t.session_id.as_str()).collect();
     assert_eq!(
         ended,

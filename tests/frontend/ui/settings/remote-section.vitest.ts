@@ -311,7 +311,7 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
 //    ② 「保存一次就把盘上那个旧键写没（迁移本体）」—— 它那条
 //       `expect(Object.keys(written)).not.toContain("daemonless")` 是**负向断言**：
 //       那个词从全仓消失之后它**永远满足** ⇒ 留着就是一条恒绿的。
-//    ⚠ 用例数 −2，逐条点名在本轮报告里。
+//    ⚠ 用例数 −2。
 
 describe("F83 sftpEligibleHosts", () => {
   const mk = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
@@ -638,7 +638,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   // 🔴 **`KR59D3` 的产品面那条也退役了。**
   //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
-  //    而那条告知这一拍整块删了 ⇒ 没有被测对象。⚠ 用例数 −1，逐条点名在本轮报告里。
+  //    而那条告知整块删了 ⇒ 没有被测对象。⚠ 用例数 −1。
 
   it("★ 渲染机器列表不按台数发后端请求", async () => {
     // §1-2：状态灯绝不引入轮询。这块是「新用户第一眼看到的东西」，
@@ -888,14 +888,14 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       fingerprint: null,
       endpoint: null,
       backendHello: null,
-      message: "连不上-甲",
+      message: "断开-甲",
       detail: "命令：dial\n原话：夹具原话-乙",
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
     const box = sec.element.querySelector<HTMLElement>(".remote-test-result")!;
-    expect(box.textContent).toContain("连不上-甲");
+    expect(box.textContent).toContain("断开-甲");
     expect(box.textContent).not.toContain("夹具原话-乙");
     expect([...box.querySelectorAll("button")].map((b) => b.textContent)).toContain(copyText("detail.act.copy"));
     ipcReplies.clear();

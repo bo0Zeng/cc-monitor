@@ -12,10 +12,10 @@ class SessionTabsSheetTest {
         label: String? = null,
     ) = OpenSession(key = "sess-0", hostId = "h1", target = target, label = label)
 
-    // 兜底链第 1 级：label（resume 会话可读标题）优先——即便 tmuxSession/resumeSessionId 同时在场。
+    // 兜底链第 1 级：label 优先——即便 tmuxSession 同时在场。
     @Test
     fun labelWinsOverTmuxAndSid() {
-        val s = sess(TabTarget.Terminal(tmuxSession = "work", resumeSessionId = "deadbeef-1234"), label = "修复登录 bug")
+        val s = sess(TabTarget.Terminal(tmuxSession = "work"), label = "修复登录 bug")
         assertEquals("devbox · 修复登录 bug", tabBaseLabel(s, "devbox"))
     }
 
@@ -26,14 +26,7 @@ class SessionTabsSheetTest {
         assertEquals("devbox · work", tabBaseLabel(s, "devbox"))
     }
 
-    // 兜底链第 3 级：无 label/tmux 名 → 以 resumeSessionId 推导实际 tmux 名 cc-<sid8>。
-    @Test
-    fun resumeSidDerivesCcNameWhenNoLabelNorTmux() {
-        val s = sess(TabTarget.Terminal(cd = "/p", resumeSessionId = "deadbeef-1234-5678"))
-        assertEquals("devbox · cc-deadbeef", tabBaseLabel(s, "devbox"))
-    }
-
-    // 兜底链第 4 级：全无 → 纯主机名（默认终端 tab）。
+    // 兜底链第 3 级：全无 → 纯主机名（默认终端 tab）。
     @Test
     fun plainTerminalShowsHostLabelOnly() {
         assertEquals("devbox", tabBaseLabel(sess(TabTarget.Terminal()), "devbox"))

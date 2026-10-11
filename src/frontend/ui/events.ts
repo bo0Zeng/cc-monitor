@@ -88,7 +88,7 @@ export interface EventHandlers {
   /**
    * 某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过。
-   * `all` = 壳说这一刻机器表里每一台都报完了（「各台都报完」那一拍，壳那一侧 `session_book` 按机器表算）。
+   * `all` = 壳说这一刻机器表里每一台都报完了（「各台都报完」那一刻，壳那一侧 `session_book` 按机器表算）。
    */
   onOriginSessionsListed?: (origin: string, all: boolean) => void;
   /**

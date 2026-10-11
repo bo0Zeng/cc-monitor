@@ -11,6 +11,8 @@
 //!      `prompt` · user 记录的字符串正文；只读 `<task-id>`（＝ agentId）与 `<status>`（completed · failed · killed / stopped）两格，不读正文。
 //!   ③ 子记录自己那一轮以 `end_turn` 收尾；API 报错的那条（`isApiErrorMessage`，`stop_reason` 不定）本身就是失败收场；
 //!      最后一条是打断标记 ⇒ 被叫停。
+//! - 派出那一刻：子记录旁边落一份 `agent-<agentId>.meta.json`，`toolUseId` 是父侧那次 Agent 调用的 id（前台派出的在结果回来之前
+//!   只能凭它把卡和运行对上，[`spawned`]）。
 //! - 请求：子 agent 发的每条请求带 `x-claude-code-agent-id`（值 ＝ 它的 `agentId`）；主运行的请求不带。
 //! - 时刻：每条记录的 `timestamp`（ISO 8601）。在等工具：子记录里带 `tool_result` 的 user 记录交回了之前那次调用的结果。
 //!   报错原话：前台那次调用 `is_error` 的结果正文 · API 报错那条 assistant 记录的正文。
@@ -275,6 +277,39 @@ pub(crate) fn links_in_content(content: &Value) -> Vec<super::super::ChildLink> 
             })
         })
         .collect()
+}
+
+/// 派出那一刻落盘的那一份（与子记录同目录、同名换后缀）：`toolUseId` ＝ 父侧那次 Agent 调用的 id。
+const META_SUFFIX: &str = ".meta.json";
+/// 那一份至多读多少字节（它只有几格）；超了 ⇒ 不认它、说一声（卡等父侧结果回来再对上）。
+const META_MAX: u64 = 64 * 1024;
+
+/// 一份子 agent 记录 ⇒ 派出它的那次 Agent 调用（读旁边那份 `agent-<agentId>.meta.json` 的 `toolUseId`；子 agent 是哪个取文件名）。
+/// 前台派出的要跑完父侧才回带 `agentId` 的结果，在那之前卡和运行只能凭它对上。还没落盘 ⇒ `None`（不说）；读不出 ⇒ `None` 并记一笔。
+pub(crate) fn spawned(child: &Path) -> Option<super::super::ChildLink> {
+    let name = child.file_stem()?.to_str()?;
+    let run = name.strip_prefix(CHILD_PREFIX).filter(|r| !r.is_empty())?;
+    let meta = child.with_file_name(format!("{name}{META_SUFFIX}"));
+    if !meta.exists() {
+        return None;
+    }
+    let v = match crate::platform::fs::Ro::read_json_capped(&meta, META_MAX) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                "[runs] {} 读不出来，派出卡等父侧结果再对上：{}",
+                meta.display(),
+                e.said
+            );
+            return None;
+        }
+    };
+    let tool = s(&v, "toolUseId").filter(|t| !t.is_empty())?;
+    Some(super::super::ChildLink {
+        tool: Some(tool.to_string()),
+        run: Some(run.to_string()),
+        ..super::super::ChildLink::default()
+    })
 }
 
 /// 父记录 ⇒ 此刻在盘上的子 agent 记录（按路径排好序）。

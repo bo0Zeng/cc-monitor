@@ -225,7 +225,7 @@ impl Compress {
     }
 
     /// CZ2 PATCH（cc-monitor 2026-09-29）：这一包压完了没有（`true` ⇒ 收工；`false` ⇒ 缓冲撑满了，扩了再压）。
-    /// `before` = 本轮调用之前的进度；`room` = 这一包可用的输出缓冲长。还有空位、输入没吃光、这一轮又一字未动 ⇒ 报错（不交半包）。
+    /// `before` = 这一次调用之前的进度；`room` = 这一包可用的输出缓冲长。还有空位、输入没吃光、这一轮又一字未动 ⇒ 报错（不交半包）。
     fn zlib_packet_done(
         c: flate2::Status,
         before: (usize, usize),
@@ -346,7 +346,7 @@ impl Decompress {
                     match d? {
                         flate2::Status::Ok | flate2::Status::BufError => {
                             // CZ1 PATCH（cc-monitor 2026-09-25，Apache-2.0 §4(b)：本文件被改过；原样见 VENDOR.md）
-                            // 收尾判断改用**本轮调用之后**的进度。上游 0.61.1 用的是调用之前取的 `n_in_` / `n_out_`
+                            // 收尾判断改用**这一次调用之后**的进度。上游 0.61.1 用的是调用之前取的 `n_in_` / `n_out_`
                             // ⇒ 输出缓冲扩过一次之后，第二次撑满那一刻就收工：一包最多交出 ≈ 2 × 包长，
                             // 余下的留在解压器里、拼进下一包（包流错位）。
                             let (before_in, before_out) = (n_in_, n_out_);

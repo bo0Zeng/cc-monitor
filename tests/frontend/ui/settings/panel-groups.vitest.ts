@@ -200,7 +200,7 @@ describe("S2 设置面板分页结构", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
   it("★ 逐页完整清单 —— 16 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）；扩展页 −3 ＋1（机器页里 MCP · 资产目录 · 插件三块搬走，顶层「扩展」一块）；轮换规则 +1（机器页「轮换」栏）
-    // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
+    // 这是最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
     document.body.replaceChildren();
@@ -369,7 +369,7 @@ describe("S2 设置面板分页结构", () => {
     // 它与 `panel-machine-page-visibility.vitest.ts` 那条断的是**同一个比特的两个相反符号**：
     // `appliesTo: "remote"` 时本条绿、那条红；改成 `"both"` 时反过来。
     // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
-    // ⇒ 同一件事实写在两处，本件改了那件事实 ⇒ 两处一起改，不是二选一。
+    // ⇒ 同一件事实写在两处，改了那件事实 ⇒ 两处一起改，不是二选一。
     expect(visibleTitles).toContain(copyText("machinePage.tab.accounts"));
     expect(visibleTitles).not.toContain(copyText("rsConfigSurface.scope.userNote"));
   });

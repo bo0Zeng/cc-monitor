@@ -58,7 +58,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
             })
         })
         .collect();
-    // ⚠ 缺省那一档 —— 它就是本刀之前那个写死的函数（逐字节相同那一条住下面）。
+    // ⚠ 缺省那一档 —— 它就是从前那个写死的函数（逐字节相同那一条住下面）。
     sort_rows(&mut mine, SortBy::default());
 
     // 生产契约逐字（原住池子那个私有排序函数，已删）：目录在前，再名称小写升序。
@@ -368,7 +368,7 @@ fn a_backend_entry_becomes_a_row() {
 
 /// `kind` 是**四值**，而窗口今天只认 `dir` 一档。
 ///
-/// ⚠ 后端分得出符号链接而窗口分不出 —— 那一格**本刀没接**，这里把它钉成读数：
+/// ⚠ 后端分得出符号链接而窗口分不出 —— 那一格**没接**，这里把它钉成读数：
 /// 哪天窗口要在行上画链接标记，改的是这一条。
 #[test]
 fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
@@ -629,7 +629,7 @@ fn order_fingerprint(v: &[Listed]) -> u64 {
     h
 }
 
-/// 🔴 **缺省那一档（名称）与本刀之前那个写死的 `sort_rows` 逐字节同序。**
+/// 🔴 **缺省那一档（名称）与从前那个写死的 `sort_rows` 逐字节同序。**
 ///
 /// # 两侧不同源 —— 那个数是在**基线提交上真跑出来的**
 ///
@@ -858,7 +858,7 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
     const CAP_LINE: &str = "name: \"files.ls\",";
     const FIELDS_HEAD: &str = "fields: &[";
     // ⚠ **运行期读**，不是 `include_str!`：后者是一条 monitor → backend 的**编译期**边，
-    //   要进 `cross_half_edge_registry` 那张表（写区外）；这一条只要今天那份声明的文本。
+    //   要进 `cross_half_edge_registry` 那张表（不在这里）；这一条只要今天那份声明的文本。
     let raw =
         std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/files/mod.rs"))
             .expect("读不到后端那份 `files/mod.rs`");

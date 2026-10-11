@@ -16,7 +16,7 @@ pub struct DriftIn {
     pub report: Option<serde_json::Value>,
 }
 
-/// 一台的未识别数据：`records` ＝ 那台记录账里认不出的条数；`None` ＝ 读不到（连不上 / 那台答不了）。
+/// 一台的未识别数据：`records` ＝ 那台记录账里认不出的条数；`None` ＝ 读不到（断开 / 那台答不了）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]

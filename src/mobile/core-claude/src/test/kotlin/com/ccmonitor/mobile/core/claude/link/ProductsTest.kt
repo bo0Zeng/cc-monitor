@@ -42,6 +42,20 @@ class ProductsTest {
     }
 
     @Test
+    fun `会话表：状态帧带着记录路径（宣告以后记录才出现 · 换了一份）⇒ 那一条的路径换成它；不带就不动`() {
+        val breaks = mutableListOf<String>()
+        val bare = golden("session_added")[0] - "path"
+        var t = SessionTable().step(bare, breaks::add)
+        assertNull("宣告时记录还没有", t.sessions.getValue("s1").path)
+        val withPath = golden("session_status").first { it.containsKey("path") }
+        t = t.step(withPath, breaks::add)
+        assertEquals(withPath.str("path"), t.sessions.getValue("s1").path)
+        t = t.step(golden("session_status").first { !it.containsKey("path") }, breaks::add)
+        assertEquals("不带路径的状态帧不抹掉已有的", withPath.str("path"), t.sessions.getValue("s1").path)
+        assertTrue(breaks.toString(), breaks.isEmpty())
+    }
+
+    @Test
     fun `会话表：缺必填格报出来、表不动`() {
         val breaks = mutableListOf<String>()
         val t = SessionTable().step(mapOf("kind" to "session_added", "sid" to "s"), breaks::add)
@@ -67,19 +81,20 @@ class ProductsTest {
     }
 
     @Test
-    fun `sessions-needs：照核心的先后，不另排；字与已等照抄`() {
+    fun `sessions-needs：照核心的先后，不另排；字照抄，已等读毫秒`() {
         val data =
             mapOf(
                 "waiting" to
                     listOf(
-                        mapOf("sid" to "b", "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedText" to "3m")),
-                        mapOf("sid" to "a", "needs" to mapOf("kind" to "answer", "text" to "等回答", "tone" to "need", "rank" to 1.0, "waitedText" to null)),
+                        mapOf("sid" to "b", "needs" to mapOf("kind" to "approve", "text" to "等批准 · Bash", "tone" to "need", "rank" to 0.0, "waitedMs" to 180000.0, "waitedText" to "3m")),
+                        mapOf("sid" to "a", "needs" to mapOf("kind" to "answer", "text" to "等回答", "tone" to "need", "rank" to 1.0, "waitedMs" to null, "waitedText" to null)),
                     ),
             )
         val rows = SessionsNeeds.of(data)!!
         assertEquals(listOf("b", "a"), rows.map { it.sid })
         assertEquals("等批准 · Bash", rows[0].needs.text)
-        assertEquals(null, rows[1].needs.waitedText)
+        assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
+        assertEquals(null, rows[1].needs.waitedMs)
         assertEquals(emptyList<SessionsNeeds.Row>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>())))
         assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "needs" to mapOf("kind" to "x", "rank" to 0.0))))))
     }

@@ -145,7 +145,7 @@ fn host_header_omits_the_default_port_only() {
     assert_eq!(p.host_header(), "api.example.com");
 }
 
-/// TLS 那条路本轮**没有任何行为验证**（不许打真 API，本机也没有 HTTPS 夹具）。
+/// TLS 那条路**没有任何行为验证**（不许打真 API，本机也没有 HTTPS 夹具）。
 ///
 /// # 名字只承诺它证得了的那一半（回修轮 08-25 改名，D1 `重要-2`）
 ///
@@ -157,7 +157,7 @@ fn host_header_omits_the_default_port_only() {
 /// 而 `tls_config()` 里那一份就是它返回的那一份（唯一调用点，就在上面几行）。
 ///
 /// **它仍然不证明**：握手成功 · 证书校验真的按这套根做 · 逐块透传在 TLS 上成立。
-/// 那三样要真 TLS 行为验，本轮禁打真 API ⇒ 登记为 `判不了`，别再让名字替它们背书。
+/// 那三样要真 TLS 行为验，这里禁打真 API ⇒ 登记为 `判不了`，别再让名字替它们背书。
 #[test]
 fn tls_client_config_builds_from_a_non_empty_root_store() {
     // ★ 真查数量（>0），而且查的是**装进去的那一份**，不是 crate 常量。

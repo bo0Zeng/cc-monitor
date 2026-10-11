@@ -714,7 +714,7 @@ run_gate copy2 '`evidence/*.py` 里 `shutil` 保元数据复制族（copy2 · co
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
 # 反空真：展开出的份数 > 0 且本文件在里面；某组 glob 一个都不匹配由 `shell_lint_registry` 接住。本地与 CI 的二进制版本可能不同。
-GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
 gate_shellcheck() {
   local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
@@ -906,13 +906,15 @@ run_gate shotsshell '不是数出来的数：截图台架那个无头壳（例�
 run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与文件窗口包 `-p cc-monitor-filewin` 两个包的生产段 ＋ test 档（与 `winchk-backend` 同一个面）；`src/backend` 与 `creds-core` 的 `--features harden` 本行盖不到' \
          bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
-# ── `winlink`：monitor 在 Windows 上链不链得起来，lib 的测试程序带不带进程清单 ──
+# ── `winlink`：monitor 在 Windows 上链不链得起来，两个前端包的 lib 测试程序带不带进程清单 ──
 # `winchk` 只 check 不链接。这里 `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 `x86_64-pc-windows-gnu` 上
 #   真走一趟链接器（dev）。`[lib]` 只产 `rlib`；有人把 `cdylib` 加回来 ⇒ 红在 `export ordinal too large`。
-# 再编出 lib 的测试程序（`cargo test --lib --no-run`，只编不跑），用 `llvm-readobj --coff-resources` 读它的资源表：
-#   必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
-#   为什么：有一回推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
-#   `TaskDialogIndirect` 一族，而清单当时只进 `[[bin]]`。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来（`build.rs::manifest_for_every_artifact`）。
+# 再编出两份 lib 测试程序（`-p monitor` 的 `monitor_lib` · `-p cc-monitor-filewin` 的 `cc_monitor_filewin`；`cargo test --lib --no-run`，只编不跑），
+#   用 `llvm-readobj --coff-resources` 逐份读资源表：必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
+#   为什么：两份都按名字引入 comctl32 里只有 v6 才导出的 `TaskDialogIndirect`（monitor 经 Tauri 的对话框，文件窗口经 rfd 的 `common-controls-v6`），
+#   系统目录那份 comctl32 是 v5 ⇒ 没清单的那份在 Windows 上第一行代码之前就死（`0xc0000139`）。先死过的是 monitor 的，后来文件窗口的那份照样（真机复现过）。
+#   清单只有一份、编法只有一处：`src/common/win-manifest`（两个包的 `build.rs` 都调它）。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来；
+#   起得来之后跑不跑得完由 CI 的 Windows job 真跑（两份测试程序里各有一条读回自己清单的判据）。
 # 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；链的是不带本机后端那一形：`native-backend/` 没铺，或铺着本机 linux 那份（清单写着别的 target ⇒ `build.rs` 这一趟当它不在，判据 `native_bytes_staged_for_another_target_are_left_out_not_fatal`）。
 # 判资源表的那段 python 读 `llvm-readobj` 的输出（stdin），$1 是给人看的名字；绿时印一行 `清单 ok`，红时说缺什么并退 1。
 GATE_PE_MANIFEST_PY='
@@ -931,25 +933,33 @@ if b"Microsoft.Windows.Common-Controls" not in raw:
 print("%s：清单 ok（MANIFEST %d 字节，含 Common-Controls）" % (label, len(raw)))
 '
 gate_pe_manifest_judge() { python3 -c "$GATE_PE_MANIFEST_PY" "$1"; }
+# 要查的 lib 测试程序：「包名 lib 目标名 给人看的名字」，一行一份。
+GATE_WINLINK_TEST_BINS='monitor monitor_lib monitor
+cc-monitor-filewin cc_monitor_filewin 文件窗口'
 gate_winlink() {
-  local t=x86_64-pc-windows-gnu js exe
+  local t=x86_64-pc-windows-gnu js exe pkg lib label bad=0 n=0
   ( cd src/frontend/shell && cargo build --locked -p monitor --bins --target "$t" 2>&1 ) || return $?
-  js="$(cd src/frontend/shell && cargo test --locked -p monitor --lib --no-run --target "$t" --message-format=json 2>/dev/null)" || {
-    ( cd src/frontend/shell && cargo test --locked -p monitor --lib --no-run --target "$t" 2>&1 | tail -40 )
-    echo "winlink: monitor 的 lib 测试程序编不出来（$t）"; return 1; }
-  exe="$(printf '%s\n' "$js" | python3 -c '
+  command -v llvm-readobj >/dev/null 2>&1 || { echo "winlink: 这台机器上没有 llvm-readobj（装 llvm）—— 判不了测试程序的清单，按红记"; return 1; }
+  while read -r pkg lib label; do
+    js="$(cd src/frontend/shell && cargo test --locked -p "$pkg" --lib --no-run --target "$t" --message-format=json 2>/dev/null)" || {
+      ( cd src/frontend/shell && cargo test --locked -p "$pkg" --lib --no-run --target "$t" 2>&1 | tail -40 )
+      echo "winlink: $label 的 lib 测试程序编不出来（$t）"; return 1; }
+    exe="$(printf '%s\n' "$js" | python3 -c '
 import json, sys
+lib = sys.argv[1]
 for l in sys.stdin:
     try: m = json.loads(l)
     except ValueError: continue
-    if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == "monitor_lib" and m["profile"]["test"]:
-        print(m["executable"])')"
-  [ -n "$exe" ] && [ -f "$exe" ] || { echo "winlink: cargo 的输出里没有 monitor_lib 的测试程序 —— 判不了清单，按红记"; return 1; }
-  command -v llvm-readobj >/dev/null 2>&1 || { echo "winlink: 这台机器上没有 llvm-readobj（装 llvm）—— 判不了测试程序的清单，按红记"; return 1; }
-  llvm-readobj --coff-resources "$exe" | gate_pe_manifest_judge "monitor lib 测试程序" || return 1
-  echo "winlink: 1 passed"
+    if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == lib and m["profile"]["test"]:
+        print(m["executable"])' "$lib")"
+    [ -n "$exe" ] && [ -f "$exe" ] || { echo "winlink: cargo 的输出里没有 $lib 的测试程序 —— 判不了清单，按红记"; return 1; }
+    n=$((n + 1))
+    llvm-readobj --coff-resources "$exe" | gate_pe_manifest_judge "$label lib 测试程序" || bad=1
+  done <<< "$GATE_WINLINK_TEST_BINS"
+  [ "$bad" -eq 0 ] || return 1
+  echo "winlink: $n passed"
 }
-run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ lib 测试程序的资源表，只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟 ＋ `-p monitor` 的 lib 测试程序编出来（`--no-run`）、资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · 文件窗口包的测试程序不查（它不链 Tauri）' \
+run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ 两份 lib 测试程序的资源表，只有绿/红两态（几份 passed 是查了几份测试程序）。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟 ＋ monitor 与文件窗口包两份 lib 测试程序编出来（`--no-run`）、各自资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（跑不跑得完要真机，CI 的 Windows job 真跑）· `-gnu` 不是 `-msvc` · release 那一档不链' \
          gate_winlink
 # 探针⑪ · 清单那条还在判：喂两份合成的 `llvm-readobj` 输出 —— 一份没有 ID 24、一份有 ID 24 却不含 Common-Controls；
 #   其余（链接、编出测试程序）对探针不存在，判的就是资源表那一步。

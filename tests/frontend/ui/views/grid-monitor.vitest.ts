@@ -477,7 +477,7 @@ describe("F91 GridMonitorView interval 生命周期", () => {
   });
 });
 
-// ═══ 机器总览按行更新：1Hz 那一拍只写真变了的格子 ═══════════════════
+// ═══ 机器总览按行更新：1Hz 那一下只写真变了的格子 ═══════════════════
 // 量具：`MutationObserver`（subtree ＋ attributes ＋ childList ＋ characterData）收到的记录条数，
 // `takeRecords()` 同步取。判据全是相等（设计与读数住）。
 describe("UP1 机器总览按行更新", () => {

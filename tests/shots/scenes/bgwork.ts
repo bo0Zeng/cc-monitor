@@ -15,23 +15,23 @@ interface Row {
   cwd: string;
   title: string;
   over?: Partial<SessionSpec>;
+  /** 后台起着、还没收场的命令（起的那一刻）。 */
+  bg?: { cmd: string; sinceMs: number }[];
 }
 
 const ROWS: Row[] = [
   { origin: LOCAL, cwd: "/home/user/work/orders", title: "订单服务加重试", over: { activity: "working" } },
   { origin: LOCAL, cwd: "/home/user/work/orders", title: "订单接口补测试", over: { activity: "needs_you", waitingFor: "permission prompt", waitingSinceMs: Date.now() - 90_000 } },
-  { origin: LOCAL, cwd: "/home/user/work/orders", title: "全量回归", over: { activity: "background_work", bgCommands: [{ cmd: "make test-all", sinceMs: Date.now() - 12 * MIN - 20_000 }] } },
+  { origin: LOCAL, cwd: "/home/user/work/orders", title: "全量回归", over: { activity: "background_work" }, bg: [{ cmd: "make test-all", sinceMs: Date.now() - 12 * MIN - 20_000 }] },
   {
     origin: "gpu-01",
     cwd: "/data/train/ranker",
     title: "排序模型训练",
-    over: {
-      activity: "background_work",
-      bgCommands: [
-        { cmd: "python train.py --epochs 40", sinceMs: Date.now() - 64 * MIN - 10_000 },
-        { cmd: "tensorboard --logdir runs", sinceMs: Date.now() - 60 * MIN },
-      ],
-    },
+    over: { activity: "background_work" },
+    bg: [
+      { cmd: "python train.py --epochs 40", sinceMs: Date.now() - 64 * MIN - 10_000 },
+      { cmd: "tensorboard --logdir runs", sinceMs: Date.now() - 60 * MIN },
+    ],
   },
   { origin: "gpu-01", cwd: "/data/train/ranker", title: "评测脚本", over: { activity: "idle" } },
   { origin: "devbox", cwd: "/srv/app/gateway", title: "网关限流", over: { activity: "idle" } },
@@ -46,7 +46,9 @@ function bgWorld(folded: readonly string[] = []): World {
     const c = new Convo(sid, r.cwd, "2026-10-08T09:00:00Z");
     c.title(r.title);
     c.user(`${r.title}：开始。`);
-    c.say(r.over?.activity === "background_work" ? "已在后台起了命令，跑完再看结果。" : "好的，先看一下现状。", 20_000);
+    // 后台命令：那一刻起的（调用记录的时刻就是它起的时刻；结果旁边说任务号），一直没收场。
+    (r.bg ?? []).forEach((b, k) => c.clock(b.sinceMs - 20_000).tool("Bash", { command: b.cmd, description: "后台跑" }, `Command running in background with ID: bg${i}${k}`, { bg: `bg${i}${k}` }));
+    c.say(r.bg ? "已在后台起了命令，跑完再看结果。" : "好的，先看一下现状。", 20_000);
     return session(200 + i, r.origin, r.cwd, c, { sid, ...r.over });
   });
   const sid = (i: number): string => w.sessions[i].sid;

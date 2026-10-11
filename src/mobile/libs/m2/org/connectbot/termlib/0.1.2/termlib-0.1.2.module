@@ -1,0 +1,171 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.connectbot",
+    "module": "termlib",
+    "version": "0.1.2",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.5.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.3.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "termlib-0.1.2.aar",
+          "url": "termlib-0.1.2.aar",
+          "size": 1784374,
+          "sha512": "e7d48abd437002b5fc9f33e5c579b4cb0596374f29faf16eeadf9a18d4a351a40758ac2c878ab1c7c18e34abcd3e52b5d881eb6f9ba46d70da196b5cb5c1c85b",
+          "sha256": "227a2ab0a4753b16f19ae9bf3cb949db450f99bd720e18a7534db4154130cabe",
+          "sha1": "986eebc28c7444b7eab1ec17108d95749b2cb819",
+          "md5": "a2cb3cf62770a999b9e1fd9a7bade350"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-parcelize-runtime",
+          "version": {
+            "requires": "2.3.21"
+          }
+        },
+        {
+          "group": "androidx.core",
+          "module": "core-ktx",
+          "version": {
+            "requires": "1.18.0"
+          }
+        },
+        {
+          "group": "androidx.appcompat",
+          "module": "appcompat",
+          "version": {
+            "requires": "1.7.1"
+          }
+        },
+        {
+          "group": "com.google.android.material",
+          "module": "material",
+          "version": {
+            "requires": "1.14.0"
+          }
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui",
+          "version": {
+            "requires": "1.11.2"
+          }
+        },
+        {
+          "group": "androidx.compose",
+          "module": "compose-bom",
+          "version": {
+            "requires": "2026.05.01"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          }
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui"
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui-graphics"
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui-tooling-preview"
+        },
+        {
+          "group": "androidx.compose.material3",
+          "module": "material3"
+        },
+        {
+          "group": "androidx.compose.runtime",
+          "module": "runtime",
+          "version": {
+            "requires": "1.11.2"
+          }
+        },
+        {
+          "group": "androidx.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.11.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.3.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "termlib-0.1.2.aar",
+          "url": "termlib-0.1.2.aar",
+          "size": 1784374,
+          "sha512": "e7d48abd437002b5fc9f33e5c579b4cb0596374f29faf16eeadf9a18d4a351a40758ac2c878ab1c7c18e34abcd3e52b5d881eb6f9ba46d70da196b5cb5c1c85b",
+          "sha256": "227a2ab0a4753b16f19ae9bf3cb949db450f99bd720e18a7534db4154130cabe",
+          "sha1": "986eebc28c7444b7eab1ec17108d95749b2cb819",
+          "md5": "a2cb3cf62770a999b9e1fd9a7bade350"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "termlib-0.1.2-sources.jar",
+          "url": "termlib-0.1.2-sources.jar",
+          "size": 89885,
+          "sha512": "e2c3c0eca66846567670dcd26bb89106b44b688b2cf5741fcbac78e255a849f4b526640b3bb73d8e31a4801c9535671b85c3b80167e7c765338b1d1390f93335",
+          "sha256": "434c9dcc6b62b894cde55334c456c4895e8adcafbe057285a2fdd910d5003396",
+          "sha1": "2ad700ad87b165b93a64aab3b0d6b37eaecf6a4b",
+          "md5": "42c6c1da693bf28faa365917dcf4b820"
+        }
+      ]
+    }
+  ]
+}

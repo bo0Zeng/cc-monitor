@@ -34,7 +34,7 @@ fn repo_root() -> PathBuf {
 ///   [`needle_is_a_file_extension`] 已登记的那条豁免那一形，不是本区治的「needle 被撑大」。
 /// · `include_str!` —— 它**是**真磁盘语料（编译期读文件），本区漏了它是**第三个洞**，
 ///   而它的人群比上面那一个大一个量级（现打：`tests/frontend/shell` 362 处 · `tests/backend` 158 处）。
-///   🔴 **本拍刻意不补**：补它要连着逐处处置，那是另一件；读数与处置建议
+///   🔴 **刻意不补**：补它要连着逐处处置，那是另一件；读数与处置建议
 ///   写在 `P28` 的交付报告里，**别把这一行读成「那条路安全」**。
 const CORPUS_SEEDS: &[&str] = &[
     "read_to_string(",
@@ -227,7 +227,7 @@ fn receiver_before(hay: &str, dot_at: usize) -> String {
 /// `matches` / `find` / `starts_with` / `ends_with` / `split` / `strip_prefix` 拿字符串字面量
 /// 去够语料时，**风险一模一样**（needle 被撑大 ⇒ 照样绿）。
 ///
-/// 实测这不是理论风险：**本轮在 `polling_registry` 逮到的那个洞用的正是 `matches`**
+/// 实测这不是理论风险：**在 `polling_registry` 逮到的那个洞用的正是 `matches`**
 /// （`src.matches("{api}(")`，一个空格就出圈），而本模块**从头到尾看不见它** ——
 /// 治这一族的判据，自己的人群只取了族里的一种形态。
 ///

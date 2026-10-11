@@ -298,12 +298,12 @@ export class GridMonitorView {
       : null;
     if (this.selectedId && !selected) this.selectedId = null;
 
-    // 焦点在某一格上时，本拍之后要让它还在同一会话那一格上：被 `insertBefore` 挪了位置的那一格会丢焦点（浏览器的 focus fixup），丢了就按 sid 找回来。
+    // 焦点在某一格上时，这一次重排之后要让它还在同一会话那一格上：被 `insertBefore` 挪了位置的那一格会丢焦点（浏览器的 focus fixup），丢了就按 sid 找回来。
     const active = document.activeElement;
     const focusedSid =
       active instanceof HTMLElement && this.bodyEl.contains(active) ? active.dataset.sid : undefined;
 
-    // 先摘：本拍快照里没有了的格子、没有了的机器分组。
+    // 先摘：这一次快照里没有了的格子、没有了的机器分组。
     const alive = new Set(sessions.map((s) => s.sessionId));
     for (const [sid, refs] of this.cells) {
       if (!alive.has(sid)) {
@@ -353,7 +353,7 @@ export class GridMonitorView {
       }
     }
 
-    // 恢复键盘焦点到本拍之前那一格（还在、且真丢了时）。preventScroll：维护性重聚焦不把格子滚回视口（否则滚动浏览时每秒被弹回）。
+    // 恢复键盘焦点到这一次重排之前那一格（还在、且真丢了时）。preventScroll：维护性重聚焦不把格子滚回视口（否则滚动浏览时每秒被弹回）。
     if (focusedSid) {
       const refs = this.cells.get(focusedSid);
       if (refs && document.activeElement !== refs.cell) refs.cell.focus({ preventScroll: true });

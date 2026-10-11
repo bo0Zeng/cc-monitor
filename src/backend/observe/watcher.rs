@@ -274,7 +274,7 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
 ///
 /// **删 ticker 时差点顺手删掉的东西**：它除了打节拍，还承担「**首轮立即发一拍**」——
 /// monitor 一连上就该拿到 tmux 状态。全删的话，backend 要等到第一个 hook 触发才会探，
-/// 空闲机器上可能是**永远**。所以节拍没了，但这一拍要留下。
+/// 空闲机器上可能是**永远**。所以节拍没了，但这一下要留下。
 ///
 /// 之后的每一拍都由事件驱动：tmux hook → `--tmux-notify` → SIGUSR1 → `WatchEvent::Poke`
 /// （P4），server 生死由 pidfd / socket inotify 管（P3）。**零定时器。**
@@ -2283,6 +2283,10 @@ fn send_line(
         .and_then(|f| f.turn_end)
         .and_then(|t| t(&line.raw))
         .filter(|_| !rec.in_run);
+    let activity = face
+        .and_then(|f| f.activity)
+        .and_then(|f| f(&line.raw))
+        .filter(|_| !rec.in_run);
     if let Some(body) = translated
         .as_ref()
         .and_then(|t| t.record.as_ref())
@@ -2321,7 +2325,37 @@ fn send_line(
             &state.name_face(session_id),
         ));
     }
+    // 这一行说此刻进到哪一态（没有进程状态文件的那一家，适配层照记录事件翻）⇒ 变了才发一帧 `session_status`。
+    if let Some(a) = activity {
+        note_activity(session_id, a, state, sink);
+    }
     (rec.changed, branch_changed)
+}
+
+/// 记录说这条会话此刻进到 `a` 这一态 ⇒ 记账；真变了 ⇒ 一帧 `session_status`（带全，与进程状态文件那一路同一形）。
+fn note_activity(
+    sid: &str,
+    a: crate::agents::SessionActivity,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    let mut changed = None;
+    for e in state.sessions.values_mut().filter(|e| e.sid == sid) {
+        if e.activity != Some(a) {
+            e.activity = Some(a);
+            changed = Some((e.waiting_for.clone(), e.path.clone()));
+        }
+    }
+    let Some((waiting_for, path)) = changed else {
+        return;
+    };
+    sink.send(Frame::SessionStatus {
+        sid: sid.to_string(),
+        face: crate::stream::wire::ActivityFace::of(Some(a)),
+        name_face: state.name_face(sid),
+        waiting_for,
+        path,
+    });
 }
 
 /// 读到的一条记录若改了叫这条会话什么（标题记录 · 还没有第一句时人说的第一句）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
@@ -2701,10 +2735,18 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     // 历史不重放：先 prime（推进 cursor/seq 到当前完整行数 L，零行帧）—— 帧带 first 文件的 L 供客户端核快照拉全了没有，
     // 之后的新行 seq 从 L 起；`[0, L)` 由客户端经骨架 / 尾段补。
     let mut first_lines: Option<u64> = None;
+    // 那一家没有进程状态文件说此刻在干什么 ⇒ 当前那份记录里最后一件说了的事（适配层 `RecordFace.activity` 翻）。
+    let mut activity = a.activity;
     for (i, p) in jsonls.iter().enumerate() {
-        let n = prime_file_cursor(p, state);
+        let (n, said) = prime_file_cursor(p, state);
         if i == 0 {
             first_lines = Some(n);
+            activity = activity.or(said);
+        }
+    }
+    if activity != a.activity {
+        if let Some(e) = state.sessions.get_mut(&key_for_watch) {
+            e.activity = activity;
         }
     }
     sink.send(Frame::SessionAdded {
@@ -2717,7 +2759,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
-        face: crate::stream::wire::ActivityFace::of(a.activity),
+        face: crate::stream::wire::ActivityFace::of(activity),
         name_face,
         waiting_for: a.waiting_for,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
@@ -3150,14 +3192,18 @@ fn note_jsonl(state: &mut ReaderState, p: &Path) {
 /// 不发任何行帧。之后 notify 到来的新行 seq == 此刻完整行数 L（行号语义），
 /// 与 monitor 快照侧的 0..L'-1 编号同处一个行号空间，重叠区被 (sid,seq)
 /// 去重精确吸收（-batch8 §2）。
-fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
+fn prime_file_cursor(
+    path: &Path,
+    state: &mut ReaderState,
+) -> (u64, Option<crate::agents::SessionActivity>) {
     let Some(session_id) = state.sid_of(path) else {
-        return 0;
+        return (0, None);
     };
     let root = state.root_of(path);
     let chain = root.and_then(|i| state.roots[i].face.chain);
+    let said_activity = root.and_then(|i| state.roots[i].face.activity);
     if !state.active_sids.contains(&session_id) {
-        return 0;
+        return (0, None);
     }
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
@@ -3168,9 +3214,9 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
         Ok(r) => r,
         Err(Look::Gone) => {
             forget_cursor(state, &key);
-            return 0;
+            return (0, None);
         }
-        Err(_) => return 0,
+        Err(_) => return (0, None),
     };
     if reader.from == 0 && (prev.consumed > 0 || prev.seen_len > 0) {
         state.seqs.restart(&key_str);
@@ -3185,10 +3231,12 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     };
     let mut tail = std::mem::take(&mut reader.probe);
     let mut n_lines = 0;
+    // 这一趟读到的最后一件说了「此刻在干什么」的事（这一家的记录说这件事才问）。
+    let mut activity = None;
     while let Some(block) = reader.next_block() {
         let Ok(block) = block else {
             // 读到一半出错：游标不动（至少一次语义，下一趟再来）。
-            return state.seqs.peek(&key_str);
+            return (state.seqs.peek(&key_str), activity);
         };
         // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行 · 推 seq），不会有残行。
         let (n, next) = count_new_lines_at(
@@ -3214,6 +3262,26 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
                 }
             }
         }
+        if let Some(said) = said_activity {
+            // 子运行的记录不说主运行此刻在干什么（与续读那一路同一条：`send_line`）。
+            let run_of = root.and_then(|i| state.roots[i].face.run_of);
+            let main = |line: &str| {
+                run_of.is_none_or(|f| {
+                    serde_json::from_str::<serde_json::Value>(line)
+                        .ok()
+                        .and_then(|v| f(&v))
+                        .is_none()
+                })
+            };
+            for line in block
+                .split(|&b| b == b'\n')
+                .filter_map(|l| std::str::from_utf8(l).ok())
+            {
+                if let Some(a) = said(line).filter(|_| main(line)) {
+                    activity = Some(a);
+                }
+            }
+        }
         tail.extend_from_slice(&block);
         let drop = tail.len().saturating_sub(TAIL_PROBE as usize);
         tail.drain(..drop);
@@ -3227,8 +3295,8 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     );
     // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
     // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照
-    // 中途断/backend 报错——exit status 拿不到，行数校验更强）。
-    state.seqs.peek(&key_str)
+    // 中途断/backend 报错——exit status 拿不到，行数校验更强）。另回这一趟读到的最后一件「此刻在干什么」。
+    (state.seqs.peek(&key_str), activity)
 }
 
 /// 冷接宣告那一趟每次至多读多少字节（一行比它长就接着读，直到那一行读完）。

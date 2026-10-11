@@ -161,7 +161,7 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
                 assert_eq!(
                     ev.get("reconnect").is_some(),
                     then == Then::Down,
-                    "连不上才给［重新连接］：{ev}"
+                    "断开才给［重新连接］：{ev}"
                 );
             }
             pushed.push((format!("{d:?}/{then:?}"), got.len()));

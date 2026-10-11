@@ -69,7 +69,7 @@ export class AccountChip {
   private chipModel: ChipModel | null = null;
   /** chip 绑的那台机器（`refresh` 之前没意义 —— 那时 `state` 也是 `null`）。 */
   private origin: Origin = LOCAL_ORIGIN;
-  /** 这一拍渲染的是本机账号吗（没有远端时回落）。 */
+  /** 这一次渲染的是本机账号吗（没有远端时回落）。 */
   private local = false;
   /** `refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
   private bound = false;

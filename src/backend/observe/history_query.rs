@@ -600,7 +600,8 @@ const NO_TREE: &str = "no agent here keeps a record tree";
 /// 一个子运行的记录住哪：父记录 ＋（子运行是哪个 ‖ 派出它的那次工具调用）⇒（那份记录, 子运行）。只问适配层给的那几格：
 /// 子运行的记录在哪几份（`ChildFace::sources`）· 一条记录属于哪个子运行（`run_of`）· 派出链接（`child_link`）。
 ///
-/// 给的是工具调用 id ⇒ 在父记录里找那次调用的派出链接（只解析含这个 id 的行）；还没对上（前台子运行跑完才回结果）⇒ `not_found`。
+/// 给的是工具调用 id ⇒ 先问子运行记录那一侧派出那一刻落盘的对上（`ChildFace::spawned`，前台派出的在跑时只有它），
+/// 再在父记录里找那次调用的派出链接（只解析含这个 id 的行）；都对不上 ⇒ `not_found`。
 pub(crate) fn run_source(
     agent_home: &Path,
     parent: &str,
@@ -630,9 +631,18 @@ pub(crate) fn run_source(
     Err(("not_found", copy_text("rsRun.load.notFound", &[])))
 }
 
-/// 父记录里「这次工具调用派出的是哪个子运行」（派出链接里带了子运行的那一条）。
+/// 「这次工具调用派出的是哪个子运行」：子运行记录那一侧落了盘的对上 ‖ 父记录里带了子运行的那一条派出链接。
 fn run_of_tool(parent: &Path, faces: &crate::agents::RunFaces, tool: &str) -> Option<String> {
     use std::io::BufRead;
+    if let Some(r) = faces
+        .sources(parent)
+        .iter()
+        .filter_map(|c| faces.spawned(c))
+        .find(|l| l.tool.as_deref() == Some(tool))
+        .and_then(|l| l.run)
+    {
+        return Some(r);
+    }
     let f = Ro::open(parent).ok()?;
     for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
         if !line.contains(tool) {

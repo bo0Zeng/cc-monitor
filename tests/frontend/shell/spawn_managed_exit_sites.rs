@@ -178,7 +178,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
         "run_user_path_powershell",
         "spawn_managed_cmd",
         "argv 的四段是**承重的**：`-NoProfile`（这一跳的行为不许被用户 profile 左右，\
-         而本件刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
+         而这里刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
          · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
     ),
     // 别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
@@ -223,7 +223,7 @@ fn needle() -> String {
 /// 那一个只回**名字**（它只需要名字），而本条要的是**那一段文本** ——
 /// 第三列那个入口名要在里面找。回名字的那一版把 `fn` 那一行的下标丢掉了，
 /// 而丢掉的正是本条要的东西。⇒ 两者不是同一形状，不是「抄了第二份」。
-/// ⚠ 真要收成一处得改另一条判据自己那份文件，那不在本轮的写区 —— **如实记**。
+/// ⚠ 真要收成一处得改另一条判据自己那份文件，那不在这里改 —— **如实记**。
 fn enclosing_fn_item(lines: &[&str], at: usize) -> Option<(String, String)> {
     let start = (0..=at).rev().find(|i| fn_name_on(lines[*i]).is_some())?;
     let name = fn_name_on(lines[start])?;

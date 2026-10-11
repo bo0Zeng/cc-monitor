@@ -52,7 +52,7 @@ function unit(u: number, n: string): string {
  *
  * 空白的口径与 `String.prototype.trim` 相同（JS 的 `\s` 就是 WhiteSpace ∪ LineTerminator）。
  * 调用方：`cards/index.ts::firstLinePreview`；点名的第三处（agent 标签取首行）住
- * `tab-session-facts.ts` 的旁路记账员（STC 写区），那一处没有改过来。
+ * `tab-session-facts.ts` 的旁路记账员，那一处没有改过来。
  */
 export function firstLineOf(text: string, max: number): { line: string; more: boolean } {
   const ws = /\s/;

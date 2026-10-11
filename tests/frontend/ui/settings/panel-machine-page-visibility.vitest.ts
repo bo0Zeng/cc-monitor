@@ -212,7 +212,7 @@ describe("N-F1b NF1bD5：账号那一节在本机页上真的显示出来（穿�
     captured.pages!.navigateToMachinePage(REMOTE_PAGE);
     const block = blockOf(".accounts-section-stub");
     expect(document.body.contains(block)).toBe(true);
-    expect(block.hidden, "远端页上账号那一节不见了 —— 本件把远端那一侧弄坏了").toBe(false);
+    expect(block.hidden, "远端页上账号那一节不见了 —— 把远端那一侧弄坏了").toBe(false);
   });
 
   it("★ 尺子的非空对照：同一把尺子在远端页上读一块 `appliesTo: \"local\"` 的分节，读出 hidden === true", async () => {

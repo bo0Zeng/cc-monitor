@@ -153,7 +153,7 @@ fn the_create_only_fields_have_their_own_shapes() {
 /// （`inbound::structure_guards::launch_fields_match_its_parser_and_output`），
 /// 而那面镜子**只看解析器与输出构造器** —— 一个字段完全可以「解析出来、存进结构体、
 /// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、backend 照收、`@ccm_agent` 与尺寸静默消失**，
-/// 而两侧任何一条现有判据都不会红。**那正是本命令这一拍要防的那件事。**
+/// 而两侧任何一条现有判据都不会红。**那正是本命令要防的那件事。**
 ///
 /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
 #[test]
@@ -211,7 +211,7 @@ fn a_double_quote_in_the_payload_is_perfectly_fine_here() {
 ///
 /// ⚠ `readonly_guard::no_test_code_leaks_into_any_production_section` 的剥法是**数括号**：
 /// 字符串字面量里一个孤立的大括号会让 `mod tests` 那一层被提前配平收尾，
-/// 于是测试属性「泄漏」进生产段。它本轮当场逮到我（`[("launch.rs", 2)]`），
+/// 于是测试属性「泄漏」进生产段。它当场逮到过一次（`[("launch.rs", 2)]`），
 /// 而它的报错文案逐字预言了这个形状。**别去改剥法，改措辞。**
 fn tail_brace() -> String {
     // 码点 7d 就是右大括号。**用码点写、不写字面大括号** —— `\u{..}` 自带一对，
@@ -451,7 +451,7 @@ fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
     ));
     // ⚠ F04c 改用 `arm_of`：原来是 `&src[at..]`（一直切到文件末尾）——
     // 那不是「这个分支」，是「这个分支之后的全部生产代码」。
-    // 本轮新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
+    // 新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
     // 但只要有人在它后面再加一个 mode，断言面就会静默串到别人身上）。
     let arm = arm_of(&src, "Mode::CreateOrAttach =>");
     let early = arm
@@ -520,7 +520,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
     );
 }
 
-/// ★★ **覆盖地板（本件补的通用防线）：每个 `Mode` 变体都必须有分支、有解析、被判据扫过。**
+/// ★★ **覆盖地板（通用防线）：每个 `Mode` 变体都必须有分支、有解析、被判据扫过。**
 ///
 /// F04c 实测：新增一个变体时，既有那几条「扫某个分支源码」的判据**一条都不会红** ——
 /// 它们只认自己写死的那个分支名。⇒ 加一条**枚举驱动**的判据：变体表变了就红，
@@ -710,7 +710,7 @@ fn no_doc_claims_the_payload_really_landed() {
 /// 两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
 /// 守的要求：「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 从这一拍起由界面经通道直接说
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 由界面经通道直接说
 /// （`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
 ///
 /// 四格各自异源：`send-into` 的请求样例过**生产**解析器 [`parse_request`]、

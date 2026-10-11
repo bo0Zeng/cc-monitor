@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.nav
 
-import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
 import org.junit.Assert.assertEquals
@@ -57,44 +56,6 @@ class NavRoutesTest {
                 .replace("{${Screen.Chat.ARG_NEW}}", "false"),
             Screen.Chat.of("h1", "s1"),
         )
-    }
-
-    /** 开关关着（含从没设过）时，点主机去终端那条路。 */
-    @Test
-    fun withTheFlagOffConnectingOpensTheTerminal() {
-        val off =
-            onConnectDestination(
-                hostId = "h1",
-                newUi = false,
-                newConversationId = { "s-new" },
-            ) { "session/tab-$it" }
-        assertTrue("关着时必须还是终端那条路：$off", off.startsWith("session/"))
-        assertFalse("关着时不许出现对话总览", off.startsWith("conversations"))
-    }
-
-    /** 开关打开 ⇒ 这台上空的新建会话（不回上次那条）。 */
-    @Test
-    fun withTheFlagOnTheDestinationIsAFreshChat() {
-        val on =
-            onConnectDestination(
-                hostId = "h1",
-                newUi = true,
-                newConversationId = { "s-new" },
-            ) { "session/tab-$it" }
-        assertEquals(Screen.Chat.of("h1", "s-new", isNew = true), on)
-    }
-
-    /**
-     * 开关的判据是 `== "1"`，不是「有没有值」。
-     *
-     * 写成「有值即开」的话，显式关掉（存 `"0"`）会被读成开：
-     * 关不掉这个开关，而且从代码上看不出来哪里错了。
-     */
-    @Test
-    fun anExplicitlyDisabledFlagCountsAsOff() {
-        assertEquals("开关的开值", "1", SettingsRepository.FLAG_ON)
-        assertNotEquals("关值必须与开值不同，且都不是空串", SettingsRepository.FLAG_ON, SettingsRepository.FLAG_OFF)
-        assertTrue("关值不能是空串（空串会与「没设过」混同）", SettingsRepository.FLAG_OFF.isNotEmpty())
     }
 
     /**

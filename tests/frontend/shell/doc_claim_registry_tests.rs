@@ -837,7 +837,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
 ///
 /// # 它从哪来 —— 收窗口现打逮到的漏，而漏在**人群**上，不在实现上
 ///
-/// 本件按 `KR120D1` 把「七处」一次改齐到 `3.8.0` 之后，收窗口现打逮到
+/// 按 `KR120D1` 把「七处」一次改齐到 `3.8.0` 之后，收窗口现打逮到
 /// `README.md` 与 `README.en.md` 的发布沿革段抬头仍写着 `当前发布 **v3.7.0**` /
 /// `current release **v3.7.0**` —— **这棵树会带着「当前发布 v3.7.0」把 3.8.0 发出去。**
 ///
@@ -883,7 +883,7 @@ fn the_docs_self_reported_release_is_the_version_we_ship() {
     // ⚠ 刻意写成函数体里的 `let`，不是模块级 `const …: &[…]` ——
     //   后者要起 `scanning_guard_registry::TABLE_DECLS` 里**已有的**名字（那条元判据
     //   按名字认表），而往那张闭集里加一个新名字必须同拍改 `MUST_BE_RECOGNISED`，
-    //   两处都不在本件写区。同形先例就在上面那条「六处一致」里（它的 `others` 也是
+    //   两处这里都不改。同形先例就在上面那条「六处一致」里（它的 `others` 也是
     //   函数体里的 `let`）。
     let places: [(&str, &str, &str); 2] = [
         ("README.md 发布沿革段抬头", "README.md", "当前发布 **v"),
@@ -922,7 +922,7 @@ fn the_docs_self_reported_release_is_the_version_we_ship() {
     assert!(
         off.is_empty(),
         "这棵树要发的是 `{shipping}`，而这几处文档**自称**的是别的号：\n{}\n\n\
-             ★ 本条是 `K-R120` 收窗口现打逮到的那个漏的处置：那一拍七处都已经是新号，\n\
+             ★ 本条是 `K-R120` 收窗口现打逮到的那个漏的处置：那时七处都已经是新号，\n\
              而这两处**不在任何判据的人群里** ⇒ 这棵树会带着「当前发布 <旧号>」把新版发出去。\n\
              「判据在、而它的人群不含这一处」与「判据在、执行面没有」是同一族，\n\
              两边的默认结局都是**静默的绿**。\n\n\
@@ -1019,7 +1019,7 @@ fn the_npm_lockfile_claims_the_version_we_ship() {
     assert!(
         off.is_empty(),
         "这棵树要发的是 `{shipping}`，而 `package-lock.json` **自称**的是别的号：\n{}\n\n\
-             ★ 本条是 `K-R119` 推 tag 之前现打逮到的那个漏的处置：那一拍七处版本号 ＋ 两处 README\n\
+             ★ 本条是 `K-R119` 推 tag 之前现打逮到的那个漏的处置：那时七处版本号 ＋ 两处 README\n\
              自称都已经是新号，而这两处**不在任何判据的人群里** ⇒ 这棵树会带着一个旧号的 lockfile 发版。\n\
              ⚠ 它**不会**让 `npm ci` 红（`K-R119` 演练实测两步都 success）—— 所以没有第二个机制\n\
              会替它出声，只有本条。\n\n\

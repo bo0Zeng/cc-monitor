@@ -106,9 +106,9 @@ where
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
 /// 常驻后端自己只发这一个：attach 行形状不对。
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
-/// 小中继（`--resident-attach`）连不上：没人在听（刚起的还没绑上 / 起来就退了）。monitor 隔一会儿再接。
+/// 小中继（`--resident-attach`）断开：没人在听（刚起的还没绑上 / 起来就退了）。monitor 隔一会儿再接。
 pub const REFUSE_ABSENT: &str = "absent";
-/// 小中继连不上：别的原因（不归本人 · 路径坏了）。再接也一样。
+/// 小中继断开：别的原因（不归本人 · 路径坏了）。再接也一样。
 pub const REFUSE_UNREACHABLE: &str = "unreachable";
 
 /// backend 这次跑成什么形态。由环境决定，不由 argv 决定：换的是同一个流模式的载体，不是新增一条子命令。

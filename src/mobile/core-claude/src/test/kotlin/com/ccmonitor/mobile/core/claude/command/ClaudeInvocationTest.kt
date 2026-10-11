@@ -1,25 +1,10 @@
 package com.ccmonitor.mobile.core.claude.command
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** [ClaudeInvocation]：Claude 命令载荷。 */
 class ClaudeInvocationTest {
-    @Test
-    fun sessionIdValidation() {
-        assertTrue(ClaudeInvocation.isValidSessionId("f2a5c9d0-1b2c-4d5e-8f90-a1b2c3d4e5f6"))
-        assertTrue(ClaudeInvocation.isValidSessionId("abc_123-XYZ"))
-        assertFalse(ClaudeInvocation.isValidSessionId(""))
-        assertFalse(ClaudeInvocation.isValidSessionId("a b"))
-        assertFalse(ClaudeInvocation.isValidSessionId("x;rm"))
-        assertFalse(ClaudeInvocation.isValidSessionId("a'b"))
-        assertFalse("封长 128", ClaudeInvocation.isValidSessionId("a".repeat(129)))
-    }
-
-    // denylist 放行合法带参形态（引号/括号/星号），只挡真注入元字符。
     @Test
     fun sanitizeLaunchCommandAllowsArgsBlocksInjection() {
         assertEquals("cc", ClaudeInvocation.sanitizeLaunchCommand("cc"))
@@ -48,28 +33,6 @@ class ClaudeInvocationTest {
         assertEquals("前两候选非法 → 下探到 cct", "cct", ClaudeInvocation.resolveLaunchCommand(listOf("a|b", "c;d", "cct")))
         assertEquals("全部非法 → claude", "claude", ClaudeInvocation.resolveLaunchCommand(listOf("a;b", "c|d")))
         assertEquals("四级链：选定 > 发起 tab launcher > 主机 launchers > claude", "cc", ClaudeInvocation.resolveLaunchCommand(listOf(null, null, "cc")))
-    }
-
-    @Test
-    fun resumeInvocationScrubsNestedEnvKeepsConfigDir() {
-        val inv = ClaudeInvocation.resumeInvocation("cct", "sid1")
-        assertEquals(
-            "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cct --resume sid1",
-            inv,
-        )
-        assertFalse("清洗不得殃及 CLAUDE_CONFIG_DIR（定位数据目录，必须保留）", inv.contains("CLAUDE_CONFIG_DIR"))
-    }
-
-    @Test
-    fun resumeInvocationRejectsIllegalSessionId() {
-        assertThrows(IllegalArgumentException::class.java) { ClaudeInvocation.resumeInvocation("cc", "sid; rm -rf /") }
-        assertThrows(IllegalArgumentException::class.java) { ClaudeInvocation.resumeInvocation("cc", "") }
-    }
-
-    @Test
-    fun resumeSessionNameStablePerSession() {
-        assertEquals("cc-abcd1234", ClaudeInvocation.resumeSessionName("abcd1234-5678-uuid"))
-        assertEquals("同 sid 恒同名（重 resume 命中已存在会话）", ClaudeInvocation.resumeSessionName("abcd1234-x"), ClaudeInvocation.resumeSessionName("abcd1234-y"))
     }
 
     @Test

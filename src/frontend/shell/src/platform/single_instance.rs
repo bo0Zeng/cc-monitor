@@ -69,7 +69,7 @@ pub(crate) mod linux {
     }
 
     /// 占名字：占到了 ⇒ 挂上接收那一头（`deliver` 收后来者交来的）；已被占 ⇒ 把 `args` 与 `token` 交给占着的那个。
-    /// `open` 给一条到会话总线的连接构造器（判据给私有总线）。连不上总线 ⇒ `Err(原话)`（调用方当没有单实例照常起）。
+    /// `open` 给一条到会话总线的连接构造器（判据给私有总线）。总线断开 ⇒ `Err(原话)`（调用方当没有单实例照常起）。
     pub(crate) fn claim(
         open: &dyn Fn() -> zbus::Result<zbus::blocking::connection::Builder<'static>>,
         deliver: Box<dyn Fn(Second) + Send + Sync>,
@@ -138,7 +138,7 @@ pub(crate) mod linux {
                         app.cleanup_before_exit();
                         std::process::exit(0);
                     }
-                    Err(e) => tracing::warn!("单实例：会话总线连不上，照常起：{e}"),
+                    Err(e) => tracing::warn!("单实例：会话总线断开，照常起：{e}"),
                 }
                 Ok(())
             })

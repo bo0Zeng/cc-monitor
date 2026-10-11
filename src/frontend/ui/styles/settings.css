@@ -1684,7 +1684,7 @@ body.settings-window-mode .settings-panel {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* 连不上的那台：列头照常，整列半透明。 */
+  /* 断开的那台：列头照常，整列半透明。 */
   .ext-col.is-offline,
   .ext-dot.is-offline {
     opacity: 0.45;
@@ -1724,7 +1724,7 @@ body.settings-window-mode .settings-panel {
     font-size: var(--font-size-mono);
     color: var(--text-2);
   }
-  /* MCP 那一格右上角的小标：黄 = 需登录 · 红 = 连不上（哪一种由那台后端定）。 */
+  /* MCP 那一格右上角的小标：黄 = 需登录 · 红 = 断开（哪一种由那台后端定）。 */
   .ext-dot-glyph {
     position: relative;
     display: inline-flex;
@@ -1841,7 +1841,7 @@ body.settings-window-mode .settings-panel {
     align-items: center;
     flex-wrap: wrap;
   }
-  /* 连不上的那台：整行半透明（同表上离线那一列），勾选框不可用。 */
+  /* 断开的那台：整行半透明（同表上离线那一列），勾选框不可用。 */
   .ext-machine.is-offline {
     opacity: 0.45;
   }

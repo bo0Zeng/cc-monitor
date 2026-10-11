@@ -38,6 +38,9 @@ class BackendFeedTest {
         val outcomes = ArrayDeque<LinkOutcome>()
         var opens = 0
 
+        /** 此刻接着的那一条。 */
+        var live: FakeDuplex? = null
+
         fun next(): FakeDuplex = FakeDuplex().also { duplexes += it }
     }
 
@@ -49,7 +52,7 @@ class BackendFeedTest {
         val open: suspend (CoroutineScope) -> LinkOutcome = { s ->
             remote.opens++
             remote.outcomes.removeFirstOrNull() ?: run {
-                val d = remote.duplexes.removeFirst()
+                val d = remote.duplexes.removeFirst().also { remote.live = it }
                 d.push(hello)
                 d.push("""{"attach":"ok"}""")
                 when (val a = FrameClient.attach(d, s, HANDSHAKE_MS, "n${remote.opens}", "UTC") {}) {
@@ -58,7 +61,7 @@ class BackendFeedTest {
                 }
             }
         }
-        return BackendFeed(backgroundScope, ssh, open, onLost = { lost += Unit })
+        return BackendFeed(backgroundScope, ssh, open, onLost = { lost += Unit }, now = { testScheduler.currentTime })
     }
 
     @Test
@@ -263,6 +266,54 @@ class BackendFeedTest {
             advanceTimeBy(BackendFeed.Backoff().delayMs(0) + 1)
             runCurrent()
             assertEquals(3L, f.epoch.value)
+        }
+
+    /**
+     * 自激循环（桌面 F05 / I-1 修过的那个）：对端发完 hello 就死，每一轮都「连上过」。
+     * 见 hello 就清零的话退避永远是一秒；要活过 30 秒才清零，退避才会照常往上长。
+     */
+    @Test
+    fun `发完 hello 就断、一再如此：退避照常翻倍，不因见过 hello 清零`() =
+        runTest {
+            val remote = Remote()
+            repeat(4) { remote.next() }
+            val f = feed(remote, MutableStateFlow(TOKEN_1))
+            val b = BackendFeed.Backoff()
+            f.ensure()
+            runCurrent()
+            assertEquals(1, remote.opens)
+            for (round in 0..2) {
+                remote.live!!.end() // 刚握完手就断
+                runCurrent()
+                advanceTimeBy(b.delayMs(round) - 1)
+                runCurrent()
+                assertEquals("第 ${round + 1} 次断：退避 ${b.delayMs(round)} ms 没到就不许再接", round + 1, remote.opens)
+                advanceTimeBy(2)
+                runCurrent()
+                assertEquals("第 ${round + 1} 次断：退避到点再接", round + 2, remote.opens)
+            }
+        }
+
+    @Test
+    fun `活过半分钟再断：退避回到一秒`() =
+        runTest {
+            val remote = Remote()
+            repeat(4) { remote.next() }
+            val f = feed(remote, MutableStateFlow(TOKEN_1))
+            val b = BackendFeed.Backoff()
+            f.ensure()
+            runCurrent()
+            remote.live!!.end() // 立刻断：下一次等 1 s
+            runCurrent()
+            advanceTimeBy(b.delayMs(0) + 1)
+            runCurrent()
+            assertEquals(2, remote.opens)
+            advanceTimeBy(BackendFeed.Backoff.HEALTHY_MS) // 这一条站住了
+            remote.live!!.end()
+            runCurrent()
+            advanceTimeBy(b.delayMs(0) + 1)
+            runCurrent()
+            assertEquals("站住过的那一条断了 ⇒ 退避从头来，一秒就再接", 3, remote.opens)
         }
 
     @Test

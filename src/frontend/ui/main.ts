@@ -852,7 +852,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
       if (!all) return;
-      // 各台都报完了（壳那一拍）⇒ 没回来的组员收掉、空组头不留；记住的那一格还没出现 ⇒ 明说。
+      // 各台都报完了（壳说的那一刻）⇒ 没回来的组员收掉、空组头不留；记住的那一格还没出现 ⇒ 明说。
       tabs.markAllListed();
       startup?.onAllListed();
     },
@@ -990,7 +990,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         level: "info",
       }),
   });
-  // 那一拍要是在它之前就到了（就绪点之前的重放）⇒ 当场补上。
+  // 那一刻要是在它之前就到了（就绪点之前的重放）⇒ 当场补上。
   if (tabs.everAllListed) startup.onAllListed();
 
   // 通知后端可以发了 —— 缓冲的行会被 flush 过来。payload 带上次所在 tab：后端重放按会话分组、那个 tab 的先发。

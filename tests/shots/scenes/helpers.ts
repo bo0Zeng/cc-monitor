@@ -19,7 +19,7 @@ export async function waitFor<T extends Element = HTMLElement>(sel: string, ms =
 export async function waitCount(sel: string, n: number, ms = 8000): Promise<void> {
   const until = performance.now() + ms;
   while (document.querySelectorAll(sel).length < n) {
-    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}）`);
+    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}：${[...document.querySelectorAll(sel)].map((e) => (e.textContent ?? "").slice(0, 30)).join(" | ")}）`);
     await sleep(50);
   }
 }
@@ -115,6 +115,8 @@ export async function type(sel: string, text: string): Promise<void> {
 /** 主窗口画好了：tab 都在、批模式出来了（批末 300ms 宽限之后才切实时）。 */
 export async function mainReady(tabs: number): Promise<void> {
   await waitCount("#tab-bar .tab", tabs, 15_000);
+  // 已结束 / 可重连那几个是收到清单之后才收场的：等它们落定，不然截到的是收场之前那一刻。
+  await (window as { __shotsSettled?: () => Promise<void> }).__shotsSettled?.();
   await sleep(900);
 }
 

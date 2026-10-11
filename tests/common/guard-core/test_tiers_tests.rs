@@ -175,7 +175,7 @@ const MANUAL_RIGS: &[(&str, &str)] = &[(
      真机测试资源未拍 ⇒ 留作手动工具，跑法在 `tests/e2e/README.md`「全链套件怎么跑」",
 )];
 
-/// 集成层自检现打逮到的「缺环境就 `return`」，**报备、不处置**（改测试体不在本件写区）：
+/// 集成层自检现打逮到的「缺环境就 `return`」，**报备、不处置**（这里不改测试体）：
 /// `(文件, 测试函数, 现状)`。每一行必须真的仍是那一形（修好了 ⇒ 死行 ⇒ 红）。
 // 〔TQ1 合并时修〕落地时报备的两条（`accounts_query_tests.rs` 里 `CLAUDE_CONFIG_DIR` 有值就 `return` 的那两条）
 //   已改成另起一个清掉该变量的子进程当「裸起会话」，不再读宿主环境 ⇒ 表清空。再长出这一形 ⇒ 集成层自检照红。
@@ -317,6 +317,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/filewin/workspace_tests.rs",
         "perf_rig_worker",
         Trigger::Filter { by: "tests/shots/perf/filewin-perf.sh", needle: "workspace::tests::perf_rig_worker" },
+    ),
+    (
+        "tests/frontend/filewin/hover_sweep_tests.rs",
+        "real_window_rig_for_the_frame_log",
+        Trigger::Manual("台架不是判据：在一台真桌面（Windows 真机 / 虚拟机，或私有 Xvfb）上开真文件窗口录帧日志，外面另起进程模拟鼠标乱动；跑法住它自己的头注"),
     ),
     (
         "tests/backend/relay/server_tests.rs",

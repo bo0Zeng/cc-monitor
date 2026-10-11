@@ -9,7 +9,7 @@ const replies = new Map<string, unknown>();
 let refusal: { op: string; code: string; message: string; data: unknown; detail?: string } | null = null;
 /** 接下来几次 `session-new` 没等到回话（期限到）。 */
 let hang = 0;
-/** 期限到之后那一次再核：`true` ⇒ 一直不回（停在「正在核实」那一拍）。 */
+/** 期限到之后那一次再核：`true` ⇒ 一直不回（停在「正在核实」那一刻）。 */
 let stall = false;
 let boom: Error | null = null;
 
@@ -377,7 +377,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     await flush();
     expect(top()).toContain(copyText("newSession.machine.offline", { machine: "devbox" }));
     expect(createBtn().title).toBe(copyText("newSession.machine.offline", { machine: "devbox" }));
-    expect(sent.filter((x) => x.op.startsWith("session-new")), "连不上还去问那台").toEqual([]);
+    expect(sent.filter((x) => x.op.startsWith("session-new")), "断开还去问那台").toEqual([]);
     [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
     expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });
   });

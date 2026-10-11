@@ -82,9 +82,9 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   ["test:format", "tests/frontend/ui/format.test.ts"],
   // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
   // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
-  // ⚠ **`package.json` 那一半不在本轮写区里**：`test:usage-pivot` 与 `test:usage-probe`
+  // ⚠ **`package.json` 那一半这里不改**：`test:usage-pivot` 与 `test:usage-probe`
   //    两条 script、以及 `test` 那条 `&&` 链里的 `npm run test:usage-pivot`，要由
-  //    改 `package.json` 的那一路同拍摘掉 —— 在那之前本文件的 b/c 两条会红，已随本件上报。
+  //    改 `package.json` 的那一路同拍摘掉 —— 在那之前本文件的 b/c 两条会红，已上报。
   // §5 步 12：`views/pricing.ts` → `views/context-limit.ts`（只剩 context 上限那半，
   // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
   // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。

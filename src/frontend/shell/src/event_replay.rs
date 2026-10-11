@@ -1332,7 +1332,7 @@ fn drop_tail(inner: &mut Inner, key: &TailKey) -> usize {
     t.lines.len()
 }
 
-/// 「从 `seq` 起上流」那一拍修留存（[`EventReplay::on_watch_from`] ①）：`seq` 之下那段与 `seq` 之间有缺口 ⇒ 整段丢、底线抬到 `seq`。
+/// 「从 `seq` 起上流」那一刻修留存（[`EventReplay::on_watch_from`] ①）：`seq` 之下那段与 `seq` 之间有缺口 ⇒ 整段丢、底线抬到 `seq`。
 /// 连着的（最高那条就是 `seq − 1`）不动。没留存的也立底线（之后到的更低的行与 `seq` 之间照样可能隔着没上流的那段）。
 fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
     let t = inner.tails.entry(key.clone()).or_default();
@@ -1429,7 +1429,7 @@ fn trim_to_tail(inner: &mut Inner, key: &TailKey) -> usize {
 }
 
 /// 总留存超了上限 ⇒ 整条丢，直到回到上限之内：先丢成品缓存里已经不活的会话，再丢活的；同一档里先丢最久没进过行的。
-/// 刚进过行的那几条（这一拍的）留到最后，只剩它们时停（一拍之内最多越过上限这一批的量）。
+/// 刚进过行的那几条（这一批的）留到最后，只剩它们时停（一拍之内最多越过上限这一批的量）。
 fn evict_over_cap(inner: &mut Inner, book: &parking_lot::RwLock<crate::session_book::Book>) {
     if inner.held_bytes <= inner.held_cap {
         return;
