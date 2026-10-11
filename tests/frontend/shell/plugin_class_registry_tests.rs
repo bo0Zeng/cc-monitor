@@ -379,7 +379,7 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
 
     // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。
     let boundary = guard_core::strip_comment_lines(&must_read(
-        // 〔搬树 2026-09-17〕纯测试文件搬去 `tests/backend/`。
+        // 纯测试文件搬去 `tests/backend/`。
         "tests/backend/cc_bus_boundary_guard.rs",
     ));
     let needles = segment_after(&boundary, "let needles = [", "];");
@@ -514,7 +514,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
 fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() {
     // ① 本模块自己整体在 `#[cfg(test)]` 内 ⇒ 生产段**只剩那三行桩**。
     //
-    // 🔴 〔步 7c 剖分 2026-09-19〕**原来断的是「生产段为空」，今天为空是不可能的。**
+    // 🔴 **原来断的是「生产段为空」，今天为空是不可能的。**
     //
     // 剖分之后 `src/` 那份文件里按必须留下三行：
     //     #[cfg(test)]

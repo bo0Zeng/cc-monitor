@@ -10,7 +10,7 @@
 //! ③ 次序相同：开 → 复核 → 起线程；④ 不判死的那几条臂里一次 `on_dead()` 都没有；
 //! ⑤ 等待不带超时（零定时器：那个等待只等内核那一个事件）。
 //!
-//! 🚫 买不到：Win32 调用在真 Windows 上的语义。那要真机（本路不碰 Win11 虚拟机）。
+//! 🚫 买不到：Win32 调用在真 Windows 上的语义。那要真机。
 
 const LINUX: &str = include_str!("../../../src/backend/platform/pidwatch/linux.rs");
 const WIN32: &str = include_str!("../../../src/backend/platform/pidwatch/win32.rs");

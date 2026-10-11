@@ -30,8 +30,7 @@ const FILES_IN_THIS_LAYER: &[&str] = &["discover.rs", "invoke.rs", "mod.rs", "pr
 /// ⚠ 走共享原语而不是自己 `read_dir`：`scanning_guard_registry` 逐字要求如此
 /// （治「判据在自己的语料里找到自己 ⇒ 恒绿」那一族，实测五次）。
 ///
-/// 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
-/// **从 `scan_tree!` 换成 `scan_tree_excluding(.., &[])`，而且那个射程缺口补上了。**
+/// 🔴 **从 `scan_tree!` 换成 `scan_tree_excluding(.., &[])`，而且那个射程缺口补上了。**
 ///
 /// 上一版的头注逐字写着：`scan_tree!` 按构造摘掉调用者自己那份，「所以下面扫到的集合里
 /// **没有 `mod.rs`**」，并把它记成「真实的射程缺口」。那句话成立的前提是

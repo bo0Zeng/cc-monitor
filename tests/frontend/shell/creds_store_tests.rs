@@ -162,7 +162,7 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
 
     let mut files: Vec<(String, String)> = Vec::new();
     for sub in PLAINTEXT_SCAN_TREES {
-        // 🔴 〔搬树 2026-09-18 ·  条 73〕**明写「一份都不排除」，不靠 `file!()`。**
+        // 🔴 **明写「一份都不排除」，不靠 `file!()`。**
         //
         // 上一版靠 `scan_tree!` 的自摘摘掉调用者（当年 = `creds_store.rs` 自己），
         // 再手工 `push` 一份补回来。剖分之后自摘那一刀落空，`creds_store.rs` 走普通
@@ -245,7 +245,7 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
 /// ⚠ 它**不判**分类对不对（那要判语义）—— 它判的是**两张表有没有说同一件事**。
 #[test]
 fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
-    // 🔴 〔搬树 2026-09-18〕**住址改对：那张表搬家了。**
+    // 🔴 **住址改对：那张表搬家了。**
     //
     // `INNER_FIELD_USERS` 是 `creds-core` 的**判据用表**（住在它的 `#[cfg(test)]` 段里），
     // 剖分把它从 `crates/creds-core/src/lib.rs` 搬到了
@@ -263,7 +263,7 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     // ⚠ 切法**不是** `brace_block` —— 这张表是 `&[ … ]`，它的第一个 `{` 可能落在很远的地方
     //   （实测第一版就是这么切歪的，被下面那条反空真自检当场逮住：「一条 HandsOut 都没抽到」）。
     //   按它自己的收尾 `];` 切才是这张表的边界。
-    // 🔴 〔搬树 2026-09-18〕收尾针从 `"\n    ];"` 改成 `"\n];"`：搬出 `mod tests {}` 之后
+    // 🔴 收尾针从 `"\n    ];"` 改成 `"\n];"`：搬出 `mod tests {}` 之后
     //   这张表是**文件顶层的** item，缩进整整少了一级。缩进是位置，而按位置认边界的针
     //   会随搬树静默失配—— 下面那条 `table.len() > 200` 是它的反空真。
     let table = core[at..]

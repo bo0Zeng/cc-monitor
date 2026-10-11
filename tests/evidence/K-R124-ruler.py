@@ -132,7 +132,7 @@ CANON_ENV = "${{ github.event_name == 'push' || inputs.publish == true }}"
 CANON_IF = "env.PUBLISH == 'true'"
 
 #: 正文生成器的住址（相对仓根）。`release.yml` 两处发布步骤的 `body_path` 都由它产出。
-# 〔搬树 2026-09-18〕`scripts/` 并进了 `tests/scripts/`。`release.yml` 已经改对，
+# `scripts/` 并进了 `tests/scripts/`。`release.yml` 已经改对，
 # 是本守卫这个常量没跟 —— 而它红的那条诊断（「生成器不在盘上」）指的方向是对的。
 RENDERER = "tests/scripts/release-notes.mjs"
 

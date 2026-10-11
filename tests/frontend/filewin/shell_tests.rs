@@ -1056,7 +1056,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 ///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
 ///
 /// ⚠ **诚实边界**：Windows 分支在本机被 `cfg` 掉，`cargo test` 执行不到它 ⇒ ① 只能读源码；
-/// 「那一句在真 Windows 上真的把进程设成 V2」要真机（本路不碰 Win11 虚拟机，买不到）。
+/// 「那一句在真 Windows 上真的把进程设成 V2」要真机（买不到）。
 #[test]
 fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     // `any_thread_hook` 住窗口包的平台层 `platform.rs`（平台 cfg 只许住那里）。

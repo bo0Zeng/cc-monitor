@@ -89,7 +89,7 @@
 //! - ✅~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
 //! 进有损名目录 · 复制 / 编辑 / 算大小有损名也做了（窗口发路径改走 `source::RemotePath`，
 //!   写面的根在有损目录里发字节 —— [`apply_remote_in`]）；**下载有损名**仍然做不到（SFTP 库按 UTF-8 有损解码文件名）。
-//! - 🔴〔波 5〕**新建空文件：后端那一半有了，窗口这一半刻意没接。**
+//! - 🔴**新建空文件：后端那一半有了，窗口这一半刻意没接。**
 //!   后端文件管理写面今天有 `files-create`（`O_EXCL` 新建，不给 `content` 就是空文件，
 //!   过路径解析；`src/doc/IPC-PROTOCOL.md` §10 那一节），另有
 //!   `files-mkdir` / `-rename` / `-delete` / `-chmod` / `-write-text` 五条。
@@ -98,7 +98,7 @@
 //!   ② 若在这里用 `sftp_write_text` 兜一个「新建」，那是往**与目标相反**的方向走
 //!   （SFTP 要缩成只做传输），而且会动
 //!   `remote_write_registry_tests` 那条「窗口用了池子哪几条命令」的相等断言。
-//!   ⇒ 窗口上那颗按钮（住 `rows.rs` / `shell.rs`，不在本路写区）等 F2 接后端时一起落。
+//!   ⇒ 窗口上那颗按钮（住 `rows.rs` / `shell.rs`）等 F2 接后端时一起落。
 
 use copy_core::copy_text;
 use std::future::Future;

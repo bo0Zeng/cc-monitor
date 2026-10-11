@@ -177,7 +177,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 
     // ── 收全仓声明：符号名 → 它出现在哪些文件名里
     let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**第四棵：`tests`。**
+    // 🔴 **第四棵：`tests`。**
     //    `doc/` 点名的符号里有一整批是**判据名**（`INVARIANTS.md` 那几行逐字
     //    「由某某 `every_…` 那条判据钉着」，写成住址形），
     //    而判据剖分之后整个住进了 `<repo>/tests/`。

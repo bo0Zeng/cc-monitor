@@ -130,7 +130,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                        "POSIX 那一侧的同一件事是写进 rc 的那个围栏块")),
     ("ccm.status", (B1, "R64+K26+K-R111",
                     "查装态（`K-R111`：该挪进安装面）")),
-    # 🔴 〔步 8 改名 2026-09-19〕这张归档表的四个能力 id 跟着账本改了：
+    # 🔴 这张归档表的四个能力 id 跟着账本改了：
     #   `daemon.deploy` · `app.daemon-policy` · `daemon.lifecycle` · `daemon.status`
     #   → `backend.*`。判据自己红的时候说「**别改表去凑**」，核法照它给的两条：
     #   ① 新名在盘上吗 —— `tests/frontend/shell/parity_ledger_tests.rs` 里四个 `backend.*` 都在 ✅
@@ -230,7 +230,7 @@ SITE_TOOLID_NONE_BUT_ARCHIVED = ("build.rs::embed_daemons",)
 #    两边任何一侧漂了，`R8a`/`R8b` 当场红。
 SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S1", ("①-远端半", (
-        # 🔴 〔步 8 改名 2026-09-19〕`*_remote_daemon → *_remote_backend`。
+        # 🔴 `*_remote_daemon → *_remote_backend`。
         # ⚠ 本条红的时候逐字写着「**别改表去凑**：要么是切件方案指了一条盘上不存在的命令，
         #   要么是有人改了命令名」。**核过了，是后者**：
         #   `sftp.rs:743/796` 两个新名在盘上、`ipc/commands.ts:739/959` 两侧都跟上了。
@@ -242,7 +242,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S2", ("①-本机半", (
         # 别名块那三条并进 `aliases_*` 同一族命令面，
         # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
-        #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+        #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种，改表是跟上真相。
         # `aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
         "ccm_user_path_add",
         "ccm_user_path_remove",

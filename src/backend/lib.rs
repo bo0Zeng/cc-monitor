@@ -996,7 +996,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-add",
     "--accounts-init",
     "--accounts-login-cmd",
-    // 各号共用的用户级 MCP 那四条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` / `sync` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 各号共用的用户级 MCP 那四条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` / `sync` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--accounts-mcp-pick",
     "--accounts-mcp-read",
     "--accounts-mcp-remove",
@@ -1014,13 +1014,13 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
     "--accounts-sessions",
     "--machine-interrupts",
-    // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
+    // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--sessions-needs",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
-    //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
+    //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--accounts-trust",
     // 帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
-    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--backend-log",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
     // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
@@ -1035,7 +1035,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
     //   （`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--bus-broadcast",
-    // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--bus-inbox",
     "--bus-kill",
     "--bus-list",
@@ -1047,37 +1047,37 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--bus-state",
     // 部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
-    // 远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--resident-verdict",
-    // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
-    // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--drift-report",
-    // 格目录（帧面 `cells-catalog` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 格目录（帧面 `cells-catalog` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--cells-catalog",
     // 公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",
-    // 〔条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
+    // 「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--exit-policy-read",
     "--quota-read",
-    // 计划读面三条（`inbound::REGISTRY` 的 `plan-*`）自动派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 计划读面三条（`inbound::REGISTRY` 的 `plan-*`）自动派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-list",
     "--plan-read",
     "--plan-cell-view",
-    // 计划审面三条（`plan-ack` · `plan-unack` · `plan-return`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 计划审面三条（`plan-ack` · `plan-unack` · `plan-return`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-ack",
     "--plan-unack",
     "--plan-return",
-    // 代敲 pb 的用户命令（`plan-command`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 代敲 pb 的用户命令（`plan-command`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-command",
-    // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-files",
-    // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
-    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // `--rotation-read` / `--rotation-set` 随规则表删了（默认轮换 ＝ 默认规则，经 `--rotation-rules-read` · `--rotation-rule-save` · `--rotation-default-set`）。
     "--rotation-rules-read",
     "--rotation-rule-save",
@@ -1092,31 +1092,31 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。
     // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。
     "--apikey-key-set",
-    // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 起会话那一行 `ccm …` 的渲染（`inbound::REGISTRY` 的 `launch-render-cli`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
-    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`）。`--launch-render-payload` 随载荷那条删了 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--launch-render-cli",
     // 「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
     "--footprint-report",
-    // 「文件与数据」那一份成品（`data-report`，同一份足迹重排）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 「文件与数据」那一份成品（`data-report`，同一份足迹重排）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--data-report",
-    // 换 agent 家目录存之前那一问（`agent-home-check`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 换 agent 家目录存之前那一问（`agent-home-check`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--agent-home-check",
-    // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--chores-mark",
-    // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--last-seen-read",
     "--last-seen-write",
-    // 首次运行「开始用」那份数（`first-run`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 首次运行「开始用」那份数（`first-run`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--first-run",
     // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时
-    //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
+    //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump（打版本号时统一做）。
     // MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
-    // 帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--mcp-read",
     "--mcp-sync-plan",
-    // MCP 写两条 ＋ 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // MCP 写两条 ＋ 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--mcp-server-put",
     "--mcp-server-remove",
     "--mcp-sync-source",
@@ -1135,7 +1135,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--profiles-impact",
     "--profiles-bases",
     "--profiles-write",
-    // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--powershell-policy-set",
     // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
@@ -1149,21 +1149,21 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--skill-install-plan",
     // 装记录那一条（`skill-install-record`）派生的 CLI 面。
     "--skill-install-record",
-    // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
     // 扩展页那张表的本机那一半（`ext-list-here`）派生的 CLI 面：只有这台一列，一格都不问可达表
     //   （跨机那一整张仍只在帧面的 `ext-list`）。登记理由同上面那几族 —— `is_query_mode` 那道闸门读本表。
-    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--ext-list-here",
     // 扩展页写备注那一条（`ext-note-set`）派生的 CLI 面。
     "--ext-note-set",
     // 可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
-    // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--remote-reach",
     // 测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
     // 历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
-    // 文件住家里，一次性进程与常驻那一个按家推出同一份。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    // 文件住家里，一次性进程与常驻那一个按家推出同一份。加这三行会逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--history-annotate",
     "--history-forget",
     "--history-last-accounts",
@@ -1179,7 +1179,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 取词器**静默丢弃**，那等于把这四条从三条判据底下同时抽走而三条都照常报绿。
     // 〔步 `24f` 第三刀 09-21〕同族的第五、第六条。登记在这里的理由
     // 与上面那四条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
-    // 🔴 〔波 5 ㈠〕**本族第一条会往盘上写的命令。**
+    // 🔴 **本族第一条会往盘上写的命令。**
     //
     // 它落在这张表里**不是选择，是派生的必然**：`cli_control::cli_exposed` 逐字是
     // `!matches!(spec.run, Run::Builtin)` —— 只要一条命令进了 `inbound::REGISTRY`
@@ -1190,7 +1190,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   写面的「窄」因此**不靠命令面**，而靠 `readonly_guard` 第三层那条
     //   「只从声明过的那一面来」—— 它判的是**谁引用得到那个模块**，不是谁发得出命令。
     "--files-create",
-    // 〔波 5 ㈡ 09-23〕同一面的另外五条。登记理由与上一行逐字相同。
+    // 同一面的另外五条。登记理由与上一行逐字相同。
     "--files-chmod",
     "--files-delete",
     "--files-mkdir",
@@ -1225,7 +1225,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 读族第十一条（按内容搜）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "--files-grep",
     // 会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
-    // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // BUILD_ID 打版本号时统一 bump。
     "--find-in-session",
     "--fork-session",
     // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对 aterm 冻结的
@@ -1233,42 +1233,42 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-fork",
     // 同上一段：`history-*` 六条帧命令的 CLI 面。
     // +2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
-    //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // `history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
-    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     // 主线外清单的冷读（手机端不发帧命令，从 CLI 面问）。⚠ 新子命令 ⇒ BUILD_ID 由合并那一拍统一 bump。
     "--history-branch",
     "--history-facts",
     "--history-find",
     "--history-index",
     // `history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
-    //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    //   BUILD_ID 打版本号时统一 bump。
     "--history-lines",
-    // `history-list`（历史页的平铺清单）的 CLI 面：远端那一支问的就是它（`raw`）。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // `history-list`（历史页的平铺清单）的 CLI 面：远端那一支问的就是它（`raw`）。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-list",
-    // `history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // `history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-page",
     "--history-read",
     // `history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
-    // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--history-record",
-    // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-run",
     "--history-search",
     // 各台搜索结果合成一份（`history-search-merge`，纯计算）派生的 CLI 面：原先「只有界面逐台问完才有得合」，第二个前端同样逐台问 ⇒ 放出。
-    // ⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    // ⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--history-search-merge",
     "--history-tail",
-    // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-turns",
     "--history-user-inputs",
-    // 帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--hooks-diag",
     "--kill",
     "--launch",
     "--list-accounts",
     // 大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
-    // `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--list-user-inputs",
     "--list-projects",
     "--list-sessions",
@@ -1276,15 +1276,15 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
-    // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
-    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
-    // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--resident-attach",
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
-    // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--search",
     "--session-accounts",
     "--session-interrupts",
@@ -1293,25 +1293,25 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），
     //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `cli_control::STREAM_ONLY`，照派生规则上 CLI 面。
     //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。
-    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--session-new",
     "--session-new-dir",
     "--session-new-facts",
     "--sessions-start",
     "--sessions-stop",
     "--sessions-where",
-    // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ssh-config-aliases",
     "--ssh-config-import",
     "--ssh-config-resolve",
     // `tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
-    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 合并那一拍统一 bump。
     "--terminal-input",
     // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `cli_control` 那张「只有界面用得着」的表里，
-    //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--terminal-name-mint",
     "--terminal-preview",
     "--terminal-ssh",
@@ -2230,7 +2230,7 @@ pub fn cli_flag(name: &str) -> String {
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--after-ms",
-    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     ARGS_B64_FLAG,
     // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
@@ -2248,12 +2248,12 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     STDIN_LINE_FLAG,
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
     TEXT_FLAG,
-    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 [`split_stream_flags`]）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 [`split_stream_flags`]）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     TZ_FLAG,
     "--until",
-    // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     VIEW_FLAG,
-    // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     WITHIN_MS_FLAG,
 ];
 

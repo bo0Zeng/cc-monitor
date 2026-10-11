@@ -1,6 +1,6 @@
 use super::*;
 
-/// 〔条 66〕那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
+/// 那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
 /// （`ledger()`），原来那张「推进来的生效值表」连同推它的命令一起没了。
 ///
 /// ⚠ 这是 `E2` 的 monitor 那一半：退出臂那一问（`kill_on_exit_now` → `exit_policy_call`）的路径上
@@ -893,7 +893,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
     );
     let mut scanned = 0usize;
     let mut hits: Vec<(String, usize)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  条 73〕**只数调用点，不数定义。**
+    // 🔴 **只数调用点，不数定义。**
     //
     // 上一版靠 `scan_tree!` 的 `file!()` 自摘把 `backend_policy.rs` 摘出人群 ——
     // 当年本条就住在它的 `#[cfg(test)]` 段里，而那份文件恰好是 `record_death` 的**定义家**。

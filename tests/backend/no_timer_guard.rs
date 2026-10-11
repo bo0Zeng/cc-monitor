@@ -855,7 +855,7 @@ mod tests {
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                // 🔴 〔步 7c 剖分 2026-09-19〕`production_code` → `production_side_of`：
+                // 🔴 `production_code` → `production_side_of`：
                 // 住 `tests/backend` 的文件整份是测试段、外面没有 `#[cfg(test)]` 包着
                 // ⇒ 直接剥会把测试代码当成生产代码（理由与现打读数在
                 // `guard_support::production_side_of` 的头注里）。

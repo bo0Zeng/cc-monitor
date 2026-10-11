@@ -221,7 +221,7 @@ fn local_and_remote_are_exactly_complementary() {
 //   （现打那一行逐字「裸字符串 origin 参数现打 85 处，上限 0」）。
 //   86 − 1 = 85 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
 //
-// 🔴 **〔条 66〕85 → 83，降的 2 处记在这里**：「退出行为」那个值搬到后端那台机器上，
+// 🔴 **85 → 83，降的 2 处记在这里**：「退出行为」那个值搬到后端那台机器上，
 //    monitor 侧那两处裸字符串 origin 随原来那条推送链一起没了 ——
 //      · 推生效值的那条 tauri 命令（`origin: String`）退役；
 //      · 读进程内那张表的 `kill_on_exit(origin: &str)` 退役。
@@ -229,8 +229,8 @@ fn local_and_remote_are_exactly_complementary() {
 //    不进本条人群。⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 83 处，上限 0」。
 //
 // 🔴 **83 → 81**：
-//    · 基线 `1f7a8bf7` 上现打就是 **82**（上限 83 那一格富余不是本路造成的，本路起步时就在；来历没追）；
-//    · 本路降 1 处：`lib·rs::batch_to_payloads`（`origin: Option<String>`，`None` = 本机）→ `origin: &Origin` ——
+//    · 基线 `1f7a8bf7` 上现打就是 **82**（上限 83 那一格富余早就在；来历没追）；
+//    · 降 1 处：`lib·rs::batch_to_payloads`（`origin: Option<String>`，`None` = 本机）→ `origin: &Origin`
 //      它同时是漂移记账的那台，缺省当本机正是「没说被悄悄当成本机」那一形。
 // ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
 // 🔴 **81 → 83 → 81（上限没动）**：主线外清单那一拍（`session_book` 的 `In::Branch` / `Out::Branch`）新写了两处 `origin: String`，

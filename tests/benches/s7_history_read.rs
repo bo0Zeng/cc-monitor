@@ -57,7 +57,7 @@ use std::process::{Command, Stdio};
 use std::time::Instant;
 
 /// 被测的真二进制。cargo 构建 bench target 时注入，与本次 profile 同一份。
-// 🔴 〔步 8 改名 2026-09-19〕bin 名 `cc-monitor-remote → cc-monitor-backend`。
+// 🔴 bin 名 `cc-monitor-remote → cc-monitor-backend`。
 // ⚠ **这一处是改名那一刀的射程漏洞的活样本**：那一路把整个 `tests/evidence/` 排掉了
 //   （理由是「改读数等于把历史改成假话」—— 对读数成立），
 //   **但本文件是 `[[bench]]`，它真的在编译** ⇒ 排除规则「按目录」太粗。

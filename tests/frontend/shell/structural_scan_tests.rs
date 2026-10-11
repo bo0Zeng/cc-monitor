@@ -22,7 +22,7 @@ use super::*;
 /// 若又遇到一个 `#[test]`，就是这个形态。
 #[test]
 fn no_two_test_attributes_land_on_the_same_function() {
-    // 🔴 〔步 7c 剖分 2026-09-19〕**这一格同时踩了 `§6.2` 的 A 类与 B 类，两条一起修。**
+    // 🔴 **这一格同时踩了 `§6.2` 的 A 类与 B 类，两条一起修。**
     //
     // · **B 类**：语料根原来只有 `<bridge>/src` 一棵。`#[test]` 剖分之后整批住进
     //   `<repo>/tests/` ⇒ 那一棵树里 `#[test]` 归零，自检逐字报「扫到 0 个 —— 扫描面坏了」。
@@ -132,7 +132,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
             }
             let mut k = i;
             let mut has_attr = false;
-            // ⚠ 两根前缀针**运行期拼**〔步 7c 现打逼出来的〕：
+            // ⚠ 两根前缀针**运行期拼**：
             //   `needle_anchor_registry` 的 `.starts_with(` 是**0 上限**的递减棘轮，
             //   而它认的是「语料变量上的裸字面量匹配」。步 7c 往本文件新加了两处
             //   从磁盘语料派生的 `let`（`p9_tree_shape` / `fn_bodies` 里的 `lines`），
@@ -298,7 +298,7 @@ fn detour_top_level(line: &str) -> bool {
 /// 空行与整行注释跳过（属性与它修饰的 item 之间夹一行 `//` 是合法 Rust，
 /// 跳过它是**只严不松**）；遇到缩进行就停 —— 那说明这个属性挂在别人的块里。
 ///
-/// 🔴 〔搬树 2026-09-18 ·  纪律 3〕**同一个 item 上的其它属性也要跳过**。
+/// 🔴 **同一个 item 上的其它属性也要跳过**。
 /// 剖分之后生产段里那 111 处测试模块声明长这样：
 ///
 /// ```ignore
@@ -551,7 +551,7 @@ fn the_detour_ratchet_reaches_both_trees() {
     // 〔2026-09-18 下调 80 → 65〕不是分母缩水：搬树把 **19 份纯测试文件**从
     // 后端树移到了 `<repo>/tests/backend/`。当时现打 `src/backend/**.rs` = 72
     // （`tests/backend` 另有 19）⇒ 72 + 19 = 91，与 09-12 的 88 同量级。
-    // 🔴 〔条 67 · 2026-09-18 再下调 65 → 58〕**这一次是真的少了文件，不是分母缩水**：
+    // 🔴 地板 65 → 58：**这一次是真的少了文件，不是分母缩水**：
     // 用户逐字「**不在现在设计里的全部删掉**」⇒ `sidecars/` 整棵四份 `.rs`（2 008 行）
     // ＋ `platform/landing.rs`（唯一消费者没了）一起删 ⇒ 72 − 5 = **64**。
     // 留 6 份余量（与上一版 65 vs 72 的 margin 同量级）。
@@ -574,7 +574,7 @@ fn the_detour_ratchet_reaches_both_trees() {
     let names: std::collections::BTreeSet<String> =
         corpus.iter().map(|(p, _)| detour_addr(p)).collect();
     for want in [
-        // 〔搬树 2026-09-17〕它是纯测试文件，搬到了 `tests/backend/`。
+        // 它是纯测试文件，搬到了 `tests/backend/`。
         "tests/backend/readonly_guard.rs",
         "src/frontend/shell/src/stream_source/mod.rs",
         "src/frontend/shell/src/local_backend_host.rs",
@@ -822,7 +822,7 @@ fn every_comment_stripping_transformer_is_registered() {
 
     let root = crate::guard_support::repo_root();
     let mut found: Vec<String> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**补上 `"tests"` 这一棵。**
+    // 🔴 **补上 `"tests"` 这一棵。**
     //
     // 本条头注逐字写着「私有剥法一律住在测试模块里」—— 而测试模块剖分之后整个住进了
     // `<repo>/tests/`。上一版那三棵根**一份都够不着它们** ⇒ 四份剥法
@@ -936,13 +936,13 @@ fn every_comment_stripping_transformer_is_registered() {
 fn comment_stripping_has_exactly_one_shared_implementation() {
     const REGISTERED: &[(&str, &str)] = &[
         (
-            // 〔步 7c 剖分 2026-09-19 · C 类〕住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
+            // 住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
             "e2e_gate_registry_tests.rs",
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
         ),
     ];
 
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两棵树：生产段 ＋ monitor 的测试段。**
+    // 🔴 **两棵树：生产段 ＋ monitor 的测试段。**
     //
     // 同上一条的理由：本条头注逐字「私有剥法一律住在测试模块里」，而测试模块搬去了
     // `<repo>/tests/frontend/shell/`。只扫 `src/frontend/shell/src` 的话连**已登记的那一份**都扫不到 ——
@@ -1282,8 +1282,7 @@ fn the_shell_metachar_blacklist_has_exactly_one_home() {
 /// 这是本工作区反复吃亏的地方（人群取宽 ⇒ 逼人往豁免表里塞条目 ⇒ 判据变废纸）。
 #[test]
 fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 3、4〕
-    //    **人群补上两棵测试树。**
+    // 🔴 **人群补上两棵测试树。**
     //
     // 本条认的是「比源码位置的**判据**」，而判据整批住进了 `tests/`。
     // 只给两棵生产树时识别数从 6 掉到 **0**，自检逐字报「识别口径坏了，本条会零命中地绿」
@@ -1309,8 +1308,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
 
     let mut population = 0usize;
     let mut bad: Vec<String> = Vec::new();
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  第二条元教训〕
-    //    **切函数体的锚点原来是 `"\n    fn "` —— 针里嵌着 4 个空格，而缩进是位置。**
+    // 🔴 **切函数体的锚点原来是 `"\n    fn "` —— 针里嵌着 4 个空格，而缩进是位置。**
     //
     // 那 4 个空格当年是**判别式**：它同时表示「这是个函数」与「它住在 `mod tests {}` 里」。
     // 剖分之后判据整批退了一层缩进、落在列 0 ⇒ 那根针只认得**嵌套的辅助函数**，
@@ -1457,7 +1455,7 @@ fn addr_repo_root() -> std::path::PathBuf {
 fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
     let root = addr_repo_root();
     let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+    // 🔴 19 份纯测试文件从后端树搬到了
     // `<repo>/tests/backend/` ⇒ 原来那三棵树**一份也够不着它们**，
     // 而下面那些「符号地址 / 行号地址 / 死名」判据的人群就少了那一块 ——
     // **少扫不会红，只会零命中地绿**。
@@ -1683,9 +1681,8 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("atomic_replace_registry.rs", "fenced_block.rs", 5),
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("launch_tests.rs", "launch.rs", 122),
-        // 🔴 〔步 7c 剖分 2026-09-19〕**这一行删了 —— 那处行号地址改成了符号地址。**
+        // 🔴 **这一行删了 —— 那处行号地址改成了符号地址。**
         // 原来是 `guard-core/src/lib.rs` 里那句「两侧各有一个文件因此假红」的注，
         // 点的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分后只剩 40 行 ⇒ 越界，
         // 已按本条的第 ① 条出路改成
@@ -1695,20 +1692,15 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("lib.rs", "main.rs", 26),
         ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
         // `lib.rs → sftp.rs 的第 141 行` 摘了：creds-core 那句改成了点符号（原子上传搬去后端 `put_atomic`）。
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_tests.rs", "structural_scan.rs", 425),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host.rs", "launch.rs", 196),
         ("local_backend_host_tests.rs", "launch.rs", 196),
         ("local_backend_host.rs", "launch.rs", 198),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "local_backend.rs", 336),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "structural_scan.rs", 425),
-        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "structural_scan.rs", 508),
         // `("panorama.rs", "engine.rs", 42)` 这一行删了：引用方那份文件随 monitor 的内嵌引擎一起删了。
-        // 🔴 〔搬树 2026-09-18〕**这一行删掉了**：`config_surface.rs` 的测试段搬走之后
+        // 🔴 **这一行删掉了**：`config_surface.rs` 的测试段搬走之后
         //    那份文件只剩 853 行，1062 行**越界**了（本条第 ① 格当场逮住）。
         //    按本条头注唯一那条改法**改成了符号地址**
         //    （`rows_tests.rs::either_host_keeps_the_glob_count`，
@@ -1952,7 +1944,7 @@ fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
 /// 代价如实写明：**本文件自己的散文没人看** —— 那是 `ratchet_guard.rs` 头注那条纪律
 /// 「判据不许与被扫文本同住一个文件」的另一面。**射程外，不假装覆盖了。**
 ///
-/// # 🔴 〔搬树 2026-09-18 ·  条 73〕这一刀**从 `file!()` 换成明写的排除**
+/// # 🔴 这一刀**从 `file!()` 换成明写的排除**
 ///
 /// 上一版靠 `scan_tree!` 的自摘落这一刀。剖分之后本文件由 `#[path]` 引进来，
 /// `file!()` 给的是 `src/../../../tests/bridge/structural_scan_tests.rs` ——
@@ -1966,7 +1958,7 @@ fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
 fn dead_name_corpus() -> Vec<(String, String)> {
     let root = addr_repo_root();
     let mut out: Vec<(String, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18〕**两棵根，互不包含。** 上一版列了五个根，其中
+    // 🔴 **两棵根，互不包含。** 上一版列了五个根，其中
     // `"src/frontend/shell/src"` · `"src/common"` · `"src/doc"` 在搬树之后**全都是
     // `"src"` 的子目录** ⇒ 那些文件被**数两遍**，于是「盘上 N 处」全部翻倍，
     // 而登记表写的是搬家前的真数 ⇒ 一片假红（本轮实发：`local_is_posix` 1→2 之类）。
@@ -2000,13 +1992,13 @@ fn dead_name_corpus() -> Vec<(String, String)> {
         };
         for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], excluded) {
             let rel = dead_name_rel(&root, &p);
-            // 🔴 〔搬树 2026-09-18〕**`evidence/` 必须排掉** —— 本函数头注逐字写着
+            // 🔴 **`evidence/` 必须排掉** —— 本函数头注逐字写着
             // 它「刻意不收」，理由是「那是量具与记录，散文里逐字写着一堆死名；
             // 收进来 = 代码侧被本族自己的记录喂饱，旗舰活体当场从人群里消失」。
             // 那句话当时靠的是**位置**（`evidence/` 不在当年那几个根下）。
             // 搬树把它变成 `tests/evidence/` ⇒ 跟着 `"tests"` **自己回来了**，
             // 而那条设计意图一个字都没改。⇒ 把"靠位置"换成**一条明写的排除**。
-            // 🔴 〔搬树 2026-09-18〕两条按位置生效的射程边界，都被搬树悄悄取消了：
+            // 🔴 两条按位置生效的射程边界，都被搬树悄悄取消了：
             //
             // ① `evidence/` —— 本函数头注逐字写着它「刻意不收」：那是量具与记录，
             //    散文里逐字写着一堆死名；收进来 = **代码侧被本族自己的记录喂饱**，
@@ -2035,7 +2027,7 @@ fn dead_name_corpus() -> Vec<(String, String)> {
     let br = root.join("src/frontend/shell/build.rs");
     let br_src = std::fs::read_to_string(&br).expect("读不到 src/frontend/shell/build.rs");
     out.push((dead_name_rel(&root, &br), br_src));
-    // 🔴 〔搬树 2026-09-18〕**本文件的「声明」那一半要补回来，「登记表」与「散文」那两半不补。**
+    // 🔴 **本文件的「声明」那一半要补回来，「登记表」与「散文」那两半不补。**
     //
     // 上面那一刀摘的是**整份文件**，而它其实只该摘掉两样东西：
     // ① `INVENTORY` 里那些**死名字符串字面量**（不摘 ⇒ 人群塌成空集）；
@@ -2299,7 +2291,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     ///
     /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
     const INVENTORY: &[(&str, &str, usize)] = &[
-        // 🔴 〔条 80 「不要管旧配置」2026-09-19〕**这两行是新登记的，原因是一条判据退役。**
+        // 🔴 **这两行是新登记的，原因是一条判据退役。**
         //    `daemonless_stream_loop` 这个符号 `K-R59`（09-11）就从代码里删掉了，
         //    它此后一直被一处**字符串字面量**当成「还活着」——
         //    `doc_claim_registry_daemon_wording_registry.rs` 拿它当「非裸词」自检夹具。
@@ -2333,7 +2325,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
         ("src/comms/outward/http1.rs", "handle_alloc_error", 1),
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
         (
             "tests/comms/outward/http1_tests.rs",
             "head_cap_is_enforced",
@@ -2344,7 +2335,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/comms/outward/server.rs", "handle_alloc_error", 1),
         // `tests/comms/outward/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
         (
-            // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
             "tests/comms/outward/upstream_tests.rs",
             "tls_client_config_builds_and_carries_roots",
             1,
@@ -2352,20 +2342,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `payload.rs` 点 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect` 那一行摘了：
         //   那段散文随路由构造口（与它的跨半边样例）一起走了 —— 路由语法进了共享 crate `relay-route-core`。
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/byte_cap_registry_tests.rs",
             "handle_alloc_error",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/byte_cap_registry_tests.rs",
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
         // `ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
         (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/rows_tests.rs",
             "locality_is_derivable_from_destination_today",
             1,
@@ -2386,7 +2373,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/backend/agents/claudecode/parse_tests.rs", // 随记录解析搬进后端
             "unknown_type_falls_through_to_unknown_variant",
             1,
@@ -2397,25 +2383,21 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
         //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/polling_registry_tests.rs",
             "the_per_second_identity_poller_spawns_nothing_per_tick",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/rust_timer_registry_tests.rs",
             "the_one_real_ticker",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
             "ci_live_lines",
             1,
         ),
         (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/frontend/shell/stream_source/write_half_guard.rs",
             "copy_bidirectional_with_sizes",
             1,
@@ -2423,13 +2405,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 存量四行摘了：点它们的那几段散文（`stream_source/` 的 tmux 原文账 / 宣告账头注 · `tmux.rs` 的 `list_local_tmux` 头注）
         //   随 monitor 那几本账一起删 / 改写（`list_local_tmux` 改问本机后端），`ssh_source_f032_idle_tests.rs` 那一处随文件删。
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/registry_tests.rs",
             "inbox_id_from_filename",
             1,
         ),
         (
-            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/registry_tests.rs",
             "locality_is_derivable_from_destination_today",
             1,
@@ -2441,7 +2421,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_gaps_are_named_not_forgotten",
             1,
         ),
-        // 〔条 66〕原来这里还有一行 `tests/frontend/ui/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
+        // 原来这里还有一行 `tests/frontend/ui/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
         //   （1 处）—— 那条推送随值搬家退役，点名它的那段散文与那条判据一起删了 ⇒ 本行摘掉（存量 −1）。
         (
             "tests/frontend/ui/settings/backend-section.vitest.ts",
@@ -2450,7 +2430,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // `src/frontend/ui/tab-session-actions.ts` 那一行（1 处）摘了：那条 tab 栏本机 resume 连同点这个死名的订正注释
         //   收进了 `src/frontend/ui/local-resume.ts`（本机 resume 编排只剩一份），订正注释没跟着搬（它订正的那句话已经不在了）⇒ 存量 −1。
-        // 🔴 〔搬树 2026-09-18 新增四条〕**不是新长出来的债，是语料面变大了**：
+        // 🔴 **不是新长出来的债，是语料面变大了**：
         // 这份 README 原住 `src-tauri/README.md`，而本族的语料根里没有 `src-tauri`
         // ⇒ 它**按构造在射程外**。改名成 `src/frontend/shell/README.md` 之后落进了 `"src"`
         // 那一棵，于是它散文里点名的死名第一次被看见。
@@ -2459,7 +2439,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `classify_capture_output` 那一行（README 两处）摘掉：README 里抓屏那两处改写成「迁到界面」，旧名不再点。
         // 同一份 README 那一行（`stream_source/` 的旧功能表）里的跳板函数名：界面侧最后一份
         //   （`inproc_dial.rs` 里 SFTP 用的那一个）随界面进程零 SSH 整份删了，后端那份改了名 ⇒ 真死名，如实记账；
-        // 🔴 〔搬树 2026-09-18〕**这里删掉了 6 行**，逐条点名：
+        // 🔴 **这里删掉了 6 行**，逐条点名：
         //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
         //   `accounts_query.rs`/`local_backend_host.rs`     `every_comment_stripping_transformer_is_registered`
         //   `tests/backend/readonly_guard.rs`         `the_cfg_test_reexport_detour_stays_extinct`
@@ -2803,7 +2783,7 @@ fn the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself() {
     // 而它的直接后果就是「判据住 `tests/`、语料住 `src/`」这个前提失效。
     // ⚠ 本条自己就是这 21 份之一（它的语料根含两棵生产树，但 ③ 这一格扫的是 `tests/`）——
     //   如实记，不把自己摘出去：摘出去这个数就说不出「自指还在不在」了。
-    // 🔴 **针一律运行期拼，一个都不许写成整串字面量。**〔步 7c 死值验当场逼出来的〕
+    // 🔴 **针一律运行期拼，一个都不许写成整串字面量。**
     //
     // 现打过：第一版把这五根针写成字面量 ⇒ 本文件（住 `tests/`，在③这一格的语料里）
     // **永远命中自己**，于是 `self_corpus_files` 恒非空、下面那条断言**恒不可能响**。

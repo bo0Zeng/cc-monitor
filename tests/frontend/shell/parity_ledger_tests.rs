@@ -64,7 +64,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_log_dir", "app.logs", Side::Both),
     // P2s（C8）：backend 策略是 **per-host** 的（入参带 origin，本机 = `<local>`）⇒ `Both`。
     // 一个命令服务两侧，正是 C1「本地要和远端一样」在命令面上的样子。
-    // 〔条 66〕那个值搬到后端所在那台机器上：原来那条「推生效值」的命令退役，换成问 / 交写两条，
+    // 那个值搬到后端所在那台机器上：原来那条「推生效值」的命令退役，换成问 / 交写两条，
     // 仍是 per-host、入参带 origin ⇒ 仍是 `Both`，仍归 `app.backend-policy`（能力数不动）。
     // 能力 `app.backend-policy` 那两行（问 / 交写「退出行为」，都 `Both`）退役：设置页经通道直接说
     //   后端 `exit-policy-read` / `exit-policy-set`。那是这项能力的全部命令 ⇒ 账本上这条能力没有 Tauri 命令了（它原本对称）。

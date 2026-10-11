@@ -10,7 +10,7 @@ fn repo_root() -> PathBuf {
 fn both_halves() -> Vec<String> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**每半边各两棵树。**
+    // 🔴 **每半边各两棵树。**
     //
     // 跨半边的编译期边**无一例外都长在判据里**（本模块头注逐字），而判据剖分之后
     // 整个住进了 `tests/`。只扫 `src/` 那两棵的话，16 条边里有 12 条整批掉出扫描面
@@ -58,7 +58,7 @@ fn both_halves() -> Vec<String> {
 /// ⚠ 这条口径是**量出来的**：全仓 123 处 `include_*!`，跨侧 24 处，
 /// 其中 monitor↔backend 恰好 **8 + 2**。别把 24 当成这件的数。
 fn half_of(rel: &str) -> &'static str {
-    // 🔴 〔搬树 2026-09-18〕每一半各有**两个**住址前缀：生产段与测试段。
+    // 🔴 每一半各有**两个**住址前缀：生产段与测试段。
     // ⚠ `tests/e2e/` 与前端 `tests/*.ts` **仍然是「外部」** —— 本模块头注逐字：
     //   「读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边另有 13 处，
     //   它们不是这件的标的」。所以这里按 `tests/frontend/shell/` · `tests/backend/`
@@ -310,8 +310,7 @@ fn every_non_literal_include_is_registered_with_a_reason() {
              〔从前这两处住 `sftp.rs`，全仓唯一的取字节口立起来之后收进这一份。〕",
     )];
     let mut found: Vec<String> = Vec::new();
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
-    //    **排除的住址跟着本文件搬，而且加上「摘不到就红」那一格。**
+    // 🔴 **排除的住址跟着本文件搬，而且加上「摘不到就红」那一格。**
     //
     // 原来写的是 `cross_half_edge_registry.rs`（本条剖分前住的那份）。
     // 剖分之后本条住 `..._tests.rs`，而 `ends_with` 对它不命中 ⇒ **排除空转** ⇒
@@ -414,7 +413,7 @@ fn no_cross_half_edge_lives_in_production_code() {
     for (dir, reader, target, _) in CROSS_EDGES {
         let raw = std::fs::read_to_string(root.join(reader))
             .unwrap_or_else(|e| panic!("读不到 {reader}：{e} —— 登记表与现实漂了"));
-        // 🔴 〔搬树 2026-09-18〕**住 `tests/` 的读者按构造不是生产段。**
+        // 🔴 **住 `tests/` 的读者按构造不是生产段。**
         //
         // 剖分之前这些判据住在生产文件的 `#[cfg(test)]` 段里，所以「这条边在不在生产段」
         // 要靠 `production_code` 剥一遍才答得出来。今天它们整份住 `tests/` ——

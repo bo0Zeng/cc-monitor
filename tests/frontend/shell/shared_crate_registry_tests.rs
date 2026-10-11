@@ -630,7 +630,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     let repo = crate::guard_support::repo_root().to_path_buf();
     // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
     let mut ignored: Vec<(String, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**加上 `tests/frontend/shell` 这一棵。**
+    // 🔴 **加上 `tests/frontend/shell` 这一棵。**
     //    那 7 条 `#[ignore]` 全都是测试，剖分之后一条都不在 `src/frontend/shell/src` 里了
     //    ⇒ 老语料收到 0 条，下面那条「剥法坏了」的反空真按设计响了。
     let mut ignore_corpus = guard_core::scan_tree!(&repo.join("src/frontend/shell/src"), &["rs"]);

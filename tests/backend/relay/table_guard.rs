@@ -428,7 +428,7 @@ mod tests {
                 "那条 URL 字面量只出现在适配层 claude-code 那一格（`agents/claudecode` 的 `UPSTREAM`）",
             ),
         ];
-        // 〔条 59〕先前那个**进程级**常量（`DEFAULT_UPSTREAM`）整删了 —— 它对每一个 `seg1`
+        // 先前那个**进程级**常量（`DEFAULT_UPSTREAM`）整删了 —— 它对每一个 `seg1`
         // 都成立，于是「codex 的请求发给 Anthropic」在上游选择里也写得出来。
         // 上游选择自己那张每 agent 一行的表（`AGENT_UPSTREAMS`）也整删了（搬回适配层）——
         // 两个名字在**整个 crate** 的代码里零处（注释不算：剥掉注释再数）。

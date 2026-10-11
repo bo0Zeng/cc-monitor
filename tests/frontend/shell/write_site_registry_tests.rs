@@ -377,7 +377,7 @@ enum Lands {
     BuildOutput,
     /// 不是盘上的文件：终端设备（`/dev/pts/*`），写的是改标题的控制序列。
     TerminalDevice,
-    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在这里收)`。
     /// 今天**零成员**（唯一那一格 —— 下载落到用户选的本机路径 —— 被 SR1b 收了，落地搬进后端 `control/transfer.rs`）；
     /// 这一档留着：它是「一时搬不走、指名谁来收」这个形态本身，下一格要落时有地方落（同 `backend_route` 那条
     /// 「别因暂时没人用删判据形态」）。
@@ -483,7 +483,7 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
         if let Lands::Pending(owner) = c {
             assert!(
                 owner.chars().count() >= 10,
-                "`{f}::{n}` 记成待收，却没写清谁来收、为什么不在本路"
+                "`{f}::{n}` 记成待收，却没写清谁来收、为什么不在这里收"
             );
         }
     }

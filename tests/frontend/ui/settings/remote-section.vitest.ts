@@ -305,7 +305,7 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
   });
 });
 
-// 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 那一组两条整组退役了。**
+// 🔴 **`KR59D3` 那一组两条整组退役了。**
 //    ① 「旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器」——
 //       `legacyNoBackend` 这个字段删了，断言没有对象；
 //    ② 「保存一次就把盘上那个旧键写没（迁移本体）」—— 它那条
@@ -627,7 +627,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
   //   那个入参随 Windows 豁免一起删了（`readiness.ts::notApplicable` 头注第 3 条），没有被测对象。
 
-  // 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 的产品面那条也退役了。**
+  // 🔴 **`KR59D3` 的产品面那条也退役了。**
   //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
   //    而那条告知这一拍整块删了 ⇒ 没有被测对象。⚠ 用例数 −1，逐条点名在本轮报告里。
 

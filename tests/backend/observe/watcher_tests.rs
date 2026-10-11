@@ -380,8 +380,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     // 「把 Poke 拆成独立臂」**没有变红**：断言那串字面量就在本测试自己的源码里，
     // `contains` 恒真 ⇒ 这条守卫是**安慰剂**。是变异（而不是审读）把它揪出来的。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -418,8 +417,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
 #[test]
 fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -503,8 +501,7 @@ fn still_exactly_one_event_channel() {
     // 现在锚 `\n#[cfg(test)]\nmod tests`：源码里这串是**转义写法**（反斜杠 + n 两个字符），
     // 与真正的换行不相等 ⇒ 不会匹配到本行自己。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。

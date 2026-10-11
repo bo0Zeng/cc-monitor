@@ -520,7 +520,7 @@ fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() 
 /// 同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`。
 ///
 /// ⚠ **本条买不到的那一维**：它判的是「这一趟要不要请 shell 进来」这个**判定**，
-/// **不是**「在真 Windows 上真的起来了」。后者要那台 Win11 虚拟机，本路没去动它。
+/// **不是**「在真 Windows 上真的起来了」。后者要真 Windows。
 #[test]
 fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
     // ── 🔴 P19 买的就是这一格：codex + 不在 tmux（Windows 上 `$TMUX` 恒空）────

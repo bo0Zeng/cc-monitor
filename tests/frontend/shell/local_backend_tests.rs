@@ -2200,7 +2200,7 @@ fn the_exit_path_really_stops_the_local_backend() {
         )
     });
     // ── P2s 翻面新增的两条 ──────────────────────────────────────────
-    // 〔条 66〕读策略那一处从「读一张推进来的表」换成「现问本机后端」（`kill_on_exit_now(`）。
+    // 读策略那一处从「读一张推进来的表」换成「现问本机后端」（`kill_on_exit_now(`）。
     //   形状不变：仍是 `let <名> = …(` 一行，下面那几条位置 / 绑定名判据一格没动。
     let policy_at = guard_core::find_pinned(body, "kill_on_exit_now(").unwrap_or_else(|e| {
         panic!(
@@ -2290,7 +2290,7 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
     // 取 shim 的**唯一入口**：住 `local_backend_host::tests::demand_tmux_shim`。
     const GATE: &str = "demand_tmux_shim(";
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**语料跟着测试搬。**
+    // 🔴 **语料跟着测试搬。**
     //
     // 本条数的是「**本文件里**带 `#[ignore]` 的真 backend e2e」。剖分把本模块的测试段
     // 整个搬来了 `tests/frontend/shell/local_backend_tests.rs`（就是本文件），

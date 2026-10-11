@@ -555,7 +555,7 @@ fn a_broken_model_strips_nothing_and_says_so() {
 /// ⚠ 09-04（`K-R25`）起两个单位一起量：整份文件 ＋ 按 `#[test]` 切出的每一块。
 #[test]
 fn this_crate_never_falls_back_to_not_stripping() {
-    // 🔴 〔步 7c 剖分 2026-09-19〕**语料根要跨两棵树。**
+    // 🔴 **语料根要跨两棵树。**
     //
     // 本条的块那一半数的是「按 `#[test]` 切出来的块」，而本 crate 的测试模块
     // 剖分之后整个住进了 `<repo>/tests/common/guard-core/`。

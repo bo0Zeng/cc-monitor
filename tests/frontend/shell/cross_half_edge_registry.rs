@@ -152,7 +152,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
     (
         "monitor→backend",
-        // 〔步 7c 剖分 2026-09-19〕住址跟着判据搬：
+        // 住址跟着判据搬：
         // 那条 `include_str!` 一直长在 `polling_registry` 的**测试段**里，
         // 而测试段这一轮搬进了 `tests/frontend/shell/polling_registry_tests.rs`。
         // **边的条数一格没变**（16 → 16），只是左端的住址换了。
@@ -161,7 +161,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "前端那几条「今天不能退役」的轮询理由建立在「后端只装那三条会话 hook」之上 —— \
          hook 覆盖面一变就要回来重新裁定",
     ),
-    // 🔴 **〔条 67〕`tool_registry.rs → sidecars/codepicture/acquire.rs`
+    // 🔴 **`tool_registry.rs → sidecars/codepicture/acquire.rs`
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。

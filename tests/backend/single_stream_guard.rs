@@ -293,7 +293,7 @@ mod tests {
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                // 🔴 〔步 7c 剖分 2026-09-19〕同 `no_timer_guard`：按住哪棵树分流，
+                // 🔴 同 `no_timer_guard`：按住哪棵树分流，
                 // 理由在 `guard_support::production_side_of` 的头注里。
                 (rel, crate::guard_support::production_side_of(&path, &src))
             })
@@ -384,7 +384,7 @@ mod tests {
     ///
     /// 现打（09-04，本工作树，**未铺** `src/frontend/shell/embedded-backends/`）：backend `src/` 下
     /// **73 份 `.rs`，走兜底 0 份**。地板是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
-    /// 🔴 〔条 67〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
+    /// 🔴 地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
     /// ⇒ 删了 `sidecars/` 整棵树四份 `.rs`（2 008 行）＋ `platform/landing.rs`（它的唯一消费者没了）。
     /// 人群**真的**小了 5，不是遍历坏了。
     /// 〔上一次： 09-18 地板 70 → 67（现打 69）：那一刀删了本 crate 三份 `.rs`
@@ -410,7 +410,7 @@ mod tests {
     /// 当时逐条手核）—— 不是「所有写法」的全称。
     #[test]
     fn no_backend_file_falls_back_to_leaving_block_comments_in() {
-        // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两棵树一起喂，地板一格不动。**
+        // 🔴 **两棵树一起喂，地板一格不动。**
         //
         // backend 这半边今天也住两处：生产段 `src/backend`、测试段 `<repo>/tests/backend`。
         // 本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话，
@@ -680,7 +680,7 @@ mod tests {
     /// （两份实现迟早分叉 —— 本仓最贵的那一族）。
     #[test]
     fn the_hello_witness_pin_still_lives_where_this_module_says_it_does() {
-        // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕指的是**判据住的那份文件**。
+        // 🔴 指的是**判据住的那份文件**。
         // `fn the_hello_witness_has_exactly_one_way_to_exist` 这一轮从
         // `src/backend/stream/wire.rs` 的测试段搬进了 `tests/backend/stream/wire_tests.rs`。
         let wire = include_str!("stream/wire_tests.rs");

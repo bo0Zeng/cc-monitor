@@ -121,7 +121,7 @@ function starsInTree(file: string, sf: ts.SourceFile): string[] {
 }
 
 /**
- * 今天还在、而**不在本路写区**的那几处（逐条写清归谁）。
+ * 今天还在、而**不在这一处收**的那几处（逐条写清归谁）。
  * 两向相等：谁改掉了它，这里就得删一行；谁新加一处，这里就红。
  */
 const REGISTERED: Readonly<Record<string, string>> = {

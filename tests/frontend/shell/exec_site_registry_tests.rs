@@ -297,7 +297,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
 //
 // 类别：`Bootstrap` —— 这一跳发生在那台的后端**还不存在 / 正在被装**的时候，问不了它；
 //       `Deploy` —— 装的是后端之外的工具（「部署 …… 不迁」）；
-//       `Pending(归谁)` —— **能换**，本路没换，写清卡在哪、归谁。
+//       `Pending(归谁)` —— **能换**，还没换，写清卡在哪、归谁。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StillShell {

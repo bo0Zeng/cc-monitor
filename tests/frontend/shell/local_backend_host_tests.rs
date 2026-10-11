@@ -442,7 +442,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
 
     // ★★ **fail closed，而且排在一切之前**：拿不到 shim 就当场炸，绝不降级裸跑。
     //    降级裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 / 08-27 / 08-29 各一次）。
-    // 🔴 〔搬树 2026-09-18〕**理由串提成一个局部常量，好让那一行回到「一行到底」。**
+    // 🔴 **理由串提成一个局部常量，好让那一行回到「一行到底」。**
     //
     // 剖分把本条从 `local_backend_host.rs` 的测试模块里搬了出来 ⇒ 缩进少一级，于是同拍那次
     // `cargo fmt` 把原来的「`let shim = demand_tmux_shim(` ＋ 下一行放理由串」压成了
@@ -947,8 +947,7 @@ fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a st
 #[test]
 fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ── ① `backend/` 那半 ──────────────────────────────────────────
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    // 那条平台无关判据（`the_backend_half_stays_platform_agnostic`）这一轮跟着
+    // 🔴 那条平台无关判据（`the_backend_half_stays_platform_agnostic`）这一轮跟着
     // `backend/mod.rs` 的测试段搬进了 `tests/frontend/shell/backend_tests.rs`，
     // 生产段那份里一个字都不剩 ⇒ 旧的两段（先剥生产段、剥不到再读整份）**两段都落空**。
     // ⇒ 语料直接点它今天真住的那份文件。
@@ -1185,7 +1184,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
     // 写死成 1 会让本条以「多了一处」的形式假红，而假红的判据最后会被人删掉。
     let pins: &[(&str, &str, usize, &str)] = &[
         (
-            // 〔步 7c 剖分 2026-09-19 · C 类〕那条棘轮跟着测试段搬进了 `backend_tests.rs`。
+            // 那条棘轮跟着测试段搬进了 `backend_tests.rs`。
             "backend_client_guard_tests.rs",
             // 〔合 P4b〕棘轮降到 0：那一行今天是 `is_empty()`（只收紧，不放宽）。
             "PLATFORM_EXCEPTIONS.is_empty(),",
@@ -1193,8 +1192,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
             "递减棘轮：平台例外只许少不许多。**本件正是被它堵着**才把脱离放进宿主层的 —— \
                  松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",
         ),
-        // 🔴 〔步 7c 剖分 2026-09-19〕
-        //    **`write_site_registry.rs` 剖成了三份，下面按新住址逐条重排。**
+        // 🔴 **`write_site_registry.rs` 剖成了三份，下面按新住址逐条重排。**
         //
         // 原来这里是三行、盯同一份文件（`missing.is_empty(),` 写 2 次、两条地板各 1 次）。
         // 剖分之后那两张表各自成了一份文件：
@@ -1375,7 +1373,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 本条只管其中的 **2** 处。
 #[test]
 fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
-    // 🔴 〔步 8 改名一刀 2026-09-19〕**两个变量刻意不同名**：`local_daemon.rs` 改名成
+    // 🔴 **两个变量刻意不同名**：`local_daemon.rs` 改名成
     //    `local_backend_host.rs` 之后，机械替换把这里原来的 `daemon_side` 也改成了
     //    `backend_side` ⇒ **与下面那个同名、被它遮掉**，`spawn_detached` 于是去
     //    `local_backend.rs` 里找，当场「一处都找不到」。
@@ -1541,7 +1539,7 @@ fn a_half_written_owner_record_is_refused_rather_than_guessed() {
 #[test]
 fn every_ignored_test_here_that_spawns_a_real_backend_demands_private_tmux() {
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**语料跟着测试搬。**
+    // 🔴 **语料跟着测试搬。**
     //
     // 本条数的是「**本模块里**带 `#[ignore]` 的真进程判据」。剖分把本模块的测试段
     // 整个搬到了 `tests/frontend/shell/local_backend_host_tests.rs`（就是本文件），
@@ -2223,7 +2221,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
              （**第三道锁 ③ · ㈢ 处数**）—— 起进程那一跳后写的赢，\
              排在 `sb.envs()` 之后的那条会把 shim 整个盖掉。委托方本体里这个形状应当**0 处**。\n      \
              ⚠ 判的是形状不是语义（同上：`\"PATH\"` 后面紧跟方法调用；纯读不算）";
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两个语料都跟着测试搬。**
+    // 🔴 **两个语料都跟着测试搬。**
     //
     // 本条的人群是「**起真后端的测试**」，而测试段剖分之后整个住进了 `tests/`：
     // `local_backend_host.rs` → `tests/frontend/shell/local_backend_host_tests.rs`（本文件）
@@ -2609,7 +2607,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //    ⚠ 这是**地板不是等号**：新写一条起真后端的测试会自动进人群、自动被要求合规。
     //      地板只挡「已知的那几条**静默掉出人群**」（改名 / 换来历 / 被删）。
     let names: Vec<&str> = population.iter().map(|(n, _, _, _)| n.as_str()).collect();
-    // 🔴 〔搬树 2026-09-18〕住址跟着符号搬：这六条测试今天
+    // 🔴 住址跟着符号搬：这六条测试今天
     //    逐条住在 `_tests.rs` 里（符号一个都没少、也没改名，只是换了文件）。
     for must in [
         "local_backend_host_tests.rs::the_local_backend_host_can_be_stopped_and_started_again",
@@ -3125,7 +3123,7 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
     // 登记表那一行必须点到每一个。
     // 按**行**切那一条登记（不按字节偏移切 —— 中文在这份文件里到处都是，
     // 按字节切会切在字符中间，那是 CRASH 不是读数）。
-    // 〔步 7c 剖分 2026-09-19 · C 类〕那张登记表跟着测试段搬进了 `rust_timer_registry_tests.rs`。
+    // 那张登记表跟着测试段搬进了 `rust_timer_registry_tests.rs`。
     let reg_lines: Vec<&str> = include_str!("rust_timer_registry_tests.rs")
         .lines()
         .collect();
@@ -3309,7 +3307,7 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
 /// `min_blocks` 挡「切法坏了」。棘轮纪律：只许升不许降。
 #[test]
 fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**两棵树一起喂，地板一格不动。**
+    // 🔴 **两棵树一起喂，地板一格不动。**
     //
     // monitor 这半边今天住两处：生产段 `src/frontend/shell/src`、测试段 `<repo>/tests/frontend/shell`。
     // 而本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话
@@ -4328,8 +4326,8 @@ fn with_copy(code: impl AsRef<str>) -> String {
 
 // ═══ 常驻后端身份带数据目录 ═══════════════════════════════════════════════
 //
-// 要求：「常驻后端身份带数据目录（接错了拒并出声）」；「要么注解那几条命令也先核路径
-// （照本路 §3），要么常驻后端的身份带上数据目录」；审计 `E-compat.md` §E10（「隔离数据目录的 monitor 写穿到真 profile」）。
+// 要求：「常驻后端身份带数据目录（接错了拒并出声）」；「要么注解那几条命令也先核路径，
+// 要么常驻后端的身份带上数据目录」；审计 `E-compat.md` §E10（「隔离数据目录的 monitor 写穿到真 profile」）。
 
 /// 🔴 I2：hello 的 `host_env` 与这一趟要交的那几格两向比（期望手写）：等 ⇒ 我们的；值不等 · 它多一格 · 它少一格 ⇒ 拒，
 /// 那句话点名那一格、两边各是什么；名不在名单里的（`PATH` 之类）不参与比。

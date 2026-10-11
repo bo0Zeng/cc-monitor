@@ -96,8 +96,7 @@ fn second_homes(files: &[(String, String)], decl: &str) -> Vec<String> {
 
 /// 本 crate 生产段语料（**摘除那个「家」所在的文件** —— 不摘它就会把家本身算成「第二个家」）。
 ///
-/// 🔴 〔步 7c 剖分 2026-09-19 ·  纪律 4〕
-/// 原来走 `scan_tree!`：家与判据当年**同住** `src/backend/common/tmux_utf8.rs`，
+/// 🔴 原来走 `scan_tree!`：家与判据当年**同住** `src/backend/common/tmux_utf8.rs`，
 /// 于是 `file!()` 自摘恰好摘掉了家那一份。剖分之后判据住
 /// `tests/backend/common/tmux_utf8_tests.rs` ⇒ `file!()` 是折返路径 ⇒ 自摘空转 ⇒
 /// **家自己进了人群**，现打红成「口径『UTF-8 客户端旗（argv 形）』在本 crate 里有

@@ -598,7 +598,6 @@ fn owned_file_implies_installable() {
 /// 这是「禁词守卫」的反面：**必需词**守卫。删掉那段话的人会被拦一次。
 #[test]
 fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  那条预言**这一格兑现了**〕
     //
     // 原来这里是 `me.matches(must).count() >= 2`，理由写在原注里：
     //「本判据自己的数组里就写着这两句 ⇒ `contains` 恒真」——
@@ -999,7 +998,7 @@ enum Why {
 /// ⚠ **这张表不是愿望清单，是读数**：每一行都由下面那条判据在**真树**上对拍，
 /// 多一处红、少一处也红（少 ⇒ 那一行该删了，账不许挂着空号）。
 const SITES: &[(&str, Why, usize)] = &[
-    // 🔴 〔步 8 改名一刀 2026-09-19〕**这张账从 43 行塌到 12 行。**
+    // 🔴 **这张账从 43 行塌到 12 行。**
     //
     // 塌下去的那 31 行**不是被删掉了，是债真的还了**：`Why::SymbolName` 与 `Why::Wording`
     // 两档当年各自写着「解锁条件：另立一件『符号改名』／『文案面，两侧同拍』」——
@@ -1221,7 +1220,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     let crates_root = crate::guard_support::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕monitor 这半边今天**第三棵树**：
+    // 🔴 monitor 这半边今天**第三棵树**：
     //    测试段整个住 `<repo>/tests/frontend/shell`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
@@ -1264,7 +1263,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
 
     let mut got: BTreeMap<(String, Why), usize> = BTreeMap::new();
     for (p, text) in &files {
-        // 🔴 〔搬树 2026-09-18〕住址两种前缀：本 crate 里的按 `manifest` 相对
+        // 🔴 住址两种前缀：本 crate 里的按 `manifest` 相对
         //    （`src/…`，与表里既有的几十行同形），第三棵树 `tests/frontend/shell` 与共享 crate 的家 `src/common`
         //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/frontend/shell/…` · `src/common/…`）。
         //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
@@ -1911,7 +1910,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
 fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
     const NAME: &str =
         "every_tool_declares_install_and_uninstall_as_the_implementations_really_are";
-    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕嵌的是**本文件** —— 被反向自检点名的那条
+    // 🔴 嵌的是**本文件** —— 被反向自检点名的那条
     // `fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
     // 这一轮跟着测试段搬进了本文件。
     let me = include_str!("registry_tests.rs");
