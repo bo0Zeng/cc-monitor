@@ -1,5 +1,8 @@
 use super::*;
-use crate::platform::console::{refused_by, window_of_console, ConsoleLook};
+use crate::platform::console::{
+    helper_argv, helper_request, look_line, parse_looks, refused_by, window_of_console,
+    ConsoleLook, HelperRequest,
+};
 
 #[test]
 fn hwnd_entry_roundtrip() {
@@ -582,11 +585,68 @@ fn a_shell_terminal_record_is_claimed_kept_or_dropped() {
     );
 }
 
-/// ★ 壳里借别的进程的控制台只此一处：生产段里 `AttachConsole(` 的调用只在 `platform/console.rs::console_window`（恰一处，外加
-/// 它那一行声明）；本机会话与远端链上的 ↗ 都经它（`bind.rs::shell_window`），别处不许自己去挂控制台（挂控制台是整个进程的状态，
-/// 两处各挂各的就没有那把锁了）。
+/// ★ 借控制台交给本二进制的一次性小助手（隐藏子命令）：起它的那一行与它认的那一行两向相等；不是小助手那一形（照常起 monitor
+/// · 子命令不认 · 进程号不是数）⇒ 不认，照常起。
 #[test]
-fn borrowing_another_process_console_lives_in_one_place() {
+fn the_console_helper_command_line_round_trips() {
+    let argv = |v: Vec<String>| {
+        std::iter::once("cc-monitor.exe".to_string())
+            .chain(v)
+            .collect::<Vec<_>>()
+    };
+    for req in [HelperRequest::Windows(vec![700, 600, 500])] {
+        assert_eq!(
+            helper_request(&argv(helper_argv(&req))),
+            Some(req.clone()),
+            "{req:?}"
+        );
+    }
+    let raw = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for bad in [
+        raw(&["cc-monitor.exe"]),
+        raw(&["cc-monitor.exe", "--background"]),
+        raw(&["cc-monitor.exe", "--ccm-console"]),
+        raw(&["cc-monitor.exe", "--ccm-console", "list", "1"]),
+        raw(&["cc-monitor.exe", "--ccm-console", "windows", "x"]),
+        raw(&["cc-monitor.exe", "--ccm-console", "windows"]),
+        raw(&[
+            "cc-monitor.exe",
+            "--background",
+            "--ccm-console",
+            "windows",
+            "1",
+        ]),
+    ] {
+        assert_eq!(helper_request(&bad), None, "{bad:?}");
+    }
+}
+
+/// ★ 小助手每借一个进程印一行，monitor 按行读回（两向相等）；认不出的行不算，小助手没答的进程号不在表里
+/// （调用方当「没借成」：`look_of` 读成被拒）。
+#[test]
+fn the_console_helper_answers_one_line_per_process() {
+    let looks = [
+        (700, ConsoleLook::Shown(0x2a0b4)),
+        (600, ConsoleLook::Hidden),
+        (500, ConsoleLook::Denied),
+        (400, ConsoleLook::None),
+    ];
+    let out: String = looks
+        .iter()
+        .map(|(p, l)| look_line(*p, *l) + "\n")
+        .collect();
+    let got = parse_looks(&format!("{out}垃圾一行\n700x shown 0x1\n800 shown zz\n\n"));
+    for (p, l) in looks {
+        assert_eq!(got.get(&p), Some(&l), "{p}");
+    }
+    assert_eq!(got.len(), 4, "认不出的行不算：{got:?}");
+}
+
+/// ★ 借别的进程的控制台只在小助手里：生产段里 `AttachConsole(` 只在 `platform/console.rs`（一次调用 ＋ 一行声明），那一次调用住
+/// `borrow`，而 `borrow` 只被小助手那几个函数（`helper_` 开头）调；monitor 这边（`bind.rs`）一次 ↗ 只起一趟小助手问整条链
+/// （`console_looks`），自己不借（挂控制台是整个进程的状态：monitor 自己挂着控制台时恒失败，开发构建就是这一形）。
+#[test]
+fn borrowing_another_process_console_lives_in_the_helper() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut hits: Vec<(String, usize)> = Vec::new();
     for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
@@ -607,10 +667,42 @@ fn borrowing_another_process_console_lives_in_one_place() {
         vec![("platform/console.rs".to_string(), 2)],
         "借控制台的调用点（每份文件里 `AttachConsole(` 几处；console.rs 那两处 = 一次调用 ＋ 一行声明）"
     );
+    let console = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/platform/console.rs"
+    ));
+    let lines: Vec<&str> = console.lines().collect();
+    let mut callers: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for l in &lines {
+        let t = l.trim_start();
+        if let Some(rest) = t
+            .strip_prefix("pub fn ")
+            .or_else(|| t.strip_prefix("fn "))
+            .or_else(|| t.strip_prefix("pub(crate) fn "))
+        {
+            current = rest.split(['(', '<']).next().unwrap_or("").to_string();
+        }
+        if l.contains("borrow(") && !t.starts_with("fn borrow") {
+            callers.push(current.clone());
+        }
+    }
+    assert!(!callers.is_empty(), "量具自检：应当找到借控制台的调用");
+    assert!(
+        callers.iter().all(|c| c.starts_with("helper_")),
+        "借控制台只许在小助手里：{callers:?}"
+    );
+    assert!(
+        console.contains("fn borrow<") && console.matches("AttachConsole(pid)").count() == 1,
+        "那一次调用住 `borrow`"
+    );
     let bind = guard_core::production_code(include_str!("../../../src/frontend/shell/src/bind.rs"));
     assert_eq!(
-        bind.matches("platform::console::console_window(").count(),
+        bind.matches("platform::console::console_looks(").count(),
         1,
-        "「这一级显示在哪个窗口」只在 `shell_window` 里问一次控制台"
+        "一次 ↗ 只起一趟小助手问整条链"
+    );
+    assert!(
+        !bind.contains("console_window("),
+        "monitor 这边不自己借控制台"
     );
 }

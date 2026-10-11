@@ -8,7 +8,7 @@
 //! 找到的窗口交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。不缓存：每次点击现读。
 //!
 //! 「它显示在哪个窗口」两种读法，哪台有哪种：
-//! - **Windows**：问那个进程的控制台（`platform::console::console_window`）—— Windows Terminal 里每个标签的伪控制台窗口的属主就是
+//! - **Windows**：问那个进程的控制台（本二进制的一次性小助手借着问，`platform::console::console_looks`）—— Windows Terminal 里每个标签的伪控制台窗口的属主就是
 //!   承载它的那个终端窗口，经典控制台就是控制台窗口自己。不要接入块、不要登记、不看是谁起的它（cc-monitor 从标签栏起的、
 //!   用户自己开的一样认得准）。只认到窗口，认不到窗口里的哪个标签（Windows Terminal 没有从外部选中别人标签的接口）。
 //! - **Linux（X11）**：bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在本机桌面上开的 shell 里留一份 `ps-await/<进程号>.tty`
@@ -715,8 +715,8 @@ fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
 }
 
 /// 生产那一份「这一级显示在哪个窗口」：握手表里作数的登记 ⇒ 那个窗口；这台有登记这一套（Linux）却没有 ⇒ 没登记；
-/// 否则 ⇒ 它的控制台显示在哪个窗口（Windows）。属主与它的起始时刻现读。
-fn look_of(bind: &BindRegistry, pid: u32) -> Look {
+/// 否则 ⇒ 小助手借它的控制台读到的样子（`consoles`，Windows；整条链一趟问完）。属主与它的起始时刻现读。
+fn look_of(bind: &BindRegistry, consoles: &ConsoleLooks, pid: u32) -> Look {
     use crate::platform::console::ConsoleLook;
     if let Some(e) = holding_registration(bind, pid) {
         return Look::Window(FoundWindow::of(&e));
@@ -724,7 +724,7 @@ fn look_of(bind: &BindRegistry, pid: u32) -> Look {
     if crate::platform::console::TTY_RECORDS {
         return Look::Unregistered;
     }
-    match crate::platform::console::console_window(pid) {
+    match consoles.of(pid) {
         ConsoleLook::Shown(hwnd) => {
             let owner_pid = crate::platform::hwnd::owner_pid(hwnd);
             Look::Window(FoundWindow {
@@ -739,9 +739,18 @@ fn look_of(bind: &BindRegistry, pid: u32) -> Look {
     }
 }
 
-/// 本机后端回的那串进程按本机现读 ⇒ 窗口（认得出 ⇒ 那个；否则属主那一级的窗口）。
+use crate::platform::console::ConsoleLooks;
+
+/// 本机后端回的那串进程按本机现读 ⇒ 窗口（认得出 ⇒ 那个；否则属主那一级的窗口）。整条链的控制台起一趟小助手问完
+/// （有登记这一套的那台不问：它不靠控制台）。
 fn pick_live(chain: &[ChainLink], bind: &BindRegistry, local: bool) -> Result<Pick, FrontOutcome> {
-    let look = |pid| look_of(bind, pid);
+    let pids: Vec<u32> = if crate::platform::console::TTY_RECORDS {
+        Vec::new()
+    } else {
+        chain.iter().map(|l| l.pid).collect()
+    };
+    let consoles = crate::platform::console::console_looks(&pids);
+    let look = |pid| look_of(bind, &consoles, pid);
     let windows_of = crate::platform::hwnd::visible_top_windows_of;
     let start_of = |pid| crate::platform::pid::start_stamp(pid).unwrap_or(0);
     let elevated_of = crate::platform::pid::above_us;

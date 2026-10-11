@@ -491,6 +491,10 @@ pub(crate) fn center_window_in_work_area(w: &tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 被当成借控制台的一次性小助手起的那一趟（本二进制的隐藏子命令，`platform::console::helper_main`）：做完就退，不起 monitor。
+    if let Some(code) = platform::console::helper_main() {
+        std::process::exit(code);
+    }
     // 启动 perf 测量起点
     let t0 = std::time::Instant::now();
 
