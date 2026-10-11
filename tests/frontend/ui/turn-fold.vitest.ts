@@ -54,6 +54,7 @@ function seg(after: string, over: Partial<FoldSegment> = {}): FoldSegment {
     ],
     span: { text: "02:01–02:04 · {dur}", from: 0, to: 182_000 },
     phase: "idle",
+    until: null,
     ...over,
   };
 }
@@ -259,8 +260,8 @@ describe("按段折叠", () => {
     content.append(card("card-user", "u1"), gapIn, after, card("card-assistant", "e1"), gapCross, tail);
     document.body.replaceChildren(content);
     const fill = vi.fn(() => 0);
-    const seqs = new Map([["u1", 1], ["u2", 20]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)] }));
+    const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 20]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5)] }));
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
     await fold.refresh();
     expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
@@ -273,7 +274,7 @@ describe("按段折叠", () => {
     expect(fill).toHaveBeenCalled();
   });
 
-  it("折着的段把它那几行（after 之后到下一个边界 / 账本尾）告诉骨架：按 0 高、不物化；每段的 after 多一条行高；结尾之后没有段 ⇒ 不折；展开 ⇒ 撤掉", async () => {
+  it("折着的段把它那几行（后端给的 after 之后到 until 之前 / until 是 null ⇒ 到账本尾）告诉骨架：按 0 高、不物化；每段的 after 多一条行高；结尾之后没有段 ⇒ 不折；展开 ⇒ 撤掉", async () => {
     const content = document.createElement("div");
     content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"), card("card-user", "u3"));
     document.body.replaceChildren(content);
@@ -283,7 +284,7 @@ describe("按段折叠", () => {
       available: true,
       from: 0,
       end: 10,
-      turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5), turn("u3", 9, { folds: [] })],
+      turns: [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5, { folds: [seg("u2", { until: "u3" })] }), turn("u3", 9, { folds: [] })],
     }));
     const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);

@@ -79,7 +79,7 @@ const turn = (k: number): TurnRow => ({
   reply: "",
   done: true,
   phase: "idle",
-  folds: [{ after: `u${k * PER_TURN}`, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle" }],
+  folds: [{ after: `u${k * PER_TURN}`, until: `u${k * PER_TURN + ENDING_AT}`, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle" }],
 });
 
 async function rig() {
@@ -258,5 +258,37 @@ describe("冷切停住那一帧：骨架后到", () => {
     fold.apply();
     const after = [...content.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)].map((l) => l.firstChild);
     expect(after.every((n, i) => n === before[i]), "字一个没变也整行拆了重建 ⇒ 每趟排版都作废这几行的样式与排版").toBe(true);
+  });
+});
+
+describe("大折叠 × 骨架：每段管哪几行照后端的 `after` · `until` 取", () => {
+  /** 三轮各 10 行：第 0 轮 · 被回退掉的一轮（主线外，`history-turns` 不出它）· 第 2 轮。每轮只有一段、跟在开头后面、管到下一轮开头为止。 */
+  async function rewoundRig(until0: string | null, second = true) {
+    const scrollEl = document.createElement("div");
+    document.body.replaceChildren(scrollEl);
+    const stream = new MessageStream(scrollEl);
+    const timeline = new RecordTimeline(stream);
+    installLayout(scrollEl, stream.contentElement);
+    const ledger = new SkeletonLedger(0, Array.from({ length: 30 }, (_, i) => facts(i)));
+    const view = new SkeletonView(ledger, scrollEl, timeline, { materialize(): void {} });
+    view.attach(30);
+    const one = (k: number, until: string | null): TurnRow => ({ ...turn(k), shown: [], folds: [{ ...turn(k).folds[0], until }] });
+    const read = async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 3000, turns: second ? [one(0, until0), one(2, null)] : [one(0, until0)] });
+    const fold = new TurnFold(stream.contentElement, scrollEl, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => view);
+    await fold.refresh();
+    return view;
+  }
+
+  it("★ 回退掉的那一轮不被上一轮的段吞掉：上一轮那一段停在被回退那一句之前（`until`），它露着", async () => {
+    const view = await rewoundRig("u10");
+    expect(view.ledger.foldedRanges).toEqual([
+      [1, 10],
+      [21, 30],
+    ]);
+  });
+
+  it("`until` 是 null ⇒ 取到账本尾；`until` 账本里找不到 ⇒ 那一段不折（宁可不折，不折错）", async () => {
+    expect((await rewoundRig(null, false)).ledger.foldedRanges, "还开着的最后一轮：到账本尾").toEqual([[1, 30]]);
+    expect((await rewoundRig("nowhere")).ledger.foldedRanges).toEqual([[21, 30]]);
   });
 });

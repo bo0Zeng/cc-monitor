@@ -355,8 +355,9 @@ const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
 function isFold(f: unknown): boolean {
   return (
     isObj(f) &&
-    exactKeys(f, ["after", "parts", "phase", "span"]) &&
+    exactKeys(f, ["after", "parts", "phase", "span", "until"]) &&
     isStr(f.after) &&
+    (f.until === null || isStr(f.until)) &&
     isStr(f.phase) &&
     PHASES.includes(f.phase) &&
     Array.isArray(f.parts) &&
@@ -415,6 +416,7 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       phase: t.phase as TurnPhase,
       folds: (t.folds as FoldSegment[]).map((f) => ({
         after: f.after,
+        until: f.until,
         parts: f.parts.map((p) => ({ text: p.text, tone: p.tone })),
         span: { text: f.span.text, from: f.span.from, to: f.span.to },
         phase: f.phase,

@@ -85,6 +85,10 @@ pub(crate) struct Fold {
     pub(crate) parts: Vec<Part>,
     /// 那一行右端那一截。
     pub(crate) span: Span,
+    /// 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 本轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
+    /// 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
+    /// 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
+    pub(crate) until: Option<String>,
     /// 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
     pub(crate) phase: Phase,
     /// 这一段第一条 / 最后一条记录的时刻（右端那一截按它写，不出帧）。
@@ -278,8 +282,8 @@ impl TurnRow {
 }
 
 impl Open {
-    /// 收这一轮：合计 · 露着的 · 划段（每段的字与右端那一截）· 回复头。
-    fn close(mut self) -> TurnRow {
+    /// 收这一轮：合计 · 露着的 · 划段（每段的字 · 右端那一截 · 管到哪一条）· 回复头。`next` ＝ 下一轮你那句（还没有 ⇒ `None`）。
+    fn close(mut self, next: Option<&str>) -> TurnRow {
         if let Some(i) = self.stop.take() {
             self.items[i].shown = true;
         }
@@ -310,25 +314,28 @@ impl Open {
         let mut after = r.uuid.clone();
         let mut seg: Option<(Tally, String, String)> = None;
         let mut folds = Vec::new();
-        let flush =
-            |seg: &mut Option<(Tally, String, String)>, after: &str, folds: &mut Vec<Fold>| {
-                if let Some((tally, start, end)) = seg.take() {
-                    if let Some(parts) = tally.parts() {
-                        folds.push(Fold {
-                            after: after.to_string(),
-                            parts,
-                            span: Span::default(),
-                            phase: Phase::Idle,
-                            start,
-                            end,
-                            start_text: String::new(),
-                        });
-                    }
+        let flush = |seg: &mut Option<(Tally, String, String)>,
+                     after: &str,
+                     until: Option<&str>,
+                     folds: &mut Vec<Fold>| {
+            if let Some((tally, start, end)) = seg.take() {
+                if let Some(parts) = tally.parts() {
+                    folds.push(Fold {
+                        after: after.to_string(),
+                        parts,
+                        span: Span::default(),
+                        until: until.map(str::to_string),
+                        phase: Phase::Idle,
+                        start,
+                        end,
+                        start_text: String::new(),
+                    });
                 }
-            };
+            }
+        };
         for it in &self.items {
             if let (true, Some(u)) = (it.shown, it.uuid.as_ref()) {
-                flush(&mut seg, &after, &mut folds);
+                flush(&mut seg, &after, Some(u), &mut folds);
                 r.shown.push(u.clone());
                 after = u.clone();
                 continue;
@@ -344,7 +351,7 @@ impl Open {
         }
         let open_tail = seg.is_some();
         let before = folds.len();
-        flush(&mut seg, &after, &mut folds);
+        flush(&mut seg, &after, next, &mut folds);
         r.tail_fold = open_tail && folds.len() > before;
         r.folds = folds;
         // 右端那一截带钟面 ⇒ 答的那一下随钟面一起写（[`TurnRow::stamp`]）。
@@ -708,14 +715,14 @@ impl TurnScan {
                 .unwrap_or("");
             let closed = self.open.take().map(|mut t| {
                 t.row.done = true;
-                let said = speech.trim();
+                let text = speech.trim();
                 t.row.landed = t
                     .queued
                     .iter()
-                    .filter(|(_, q)| q == said)
+                    .filter(|(_, q)| q == text)
                     .map(|(id, _)| id.clone())
                     .collect();
-                t.close()
+                t.close(Some(&said.uuid))
             });
             self.open = Some(Open {
                 row: TurnRow {
@@ -746,7 +753,7 @@ impl TurnScan {
     }
 
     pub(crate) fn finish(self) -> Option<TurnRow> {
-        self.open.map(Open::close)
+        self.open.map(|t| t.close(None))
     }
 }
 

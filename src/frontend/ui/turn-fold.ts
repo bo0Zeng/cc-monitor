@@ -7,9 +7,9 @@
  *
  * # 排版的口径（界面不判谁是过程、不自己划段）
  *
- * - 顺着流的顶层子节点走：一张卡的 `data-id` 是某一轮开头 / 露着的某一条 ⇒ 它是边界，露着；某一段的 `after` 是它 ⇒ 那一段的行插在它后面、
+ * - 顺着流的顶层子节点走：一张卡的 `data-id` 是某一轮开头 / 露着的某一条 / 某一段的 `until` ⇒ 它是边界，露着；某一段的 `after` 是它 ⇒ 那一段的行插在它后面、
  *   之后的卡归这一段，直到下一个边界。不是哪一段的 `after` ⇒ 之后的卡不归段（露着）。
- * - 遇到骨架占位：归哪一段、藏不藏不顺着 DOM 猜，按账本认（`foldSpans`：一段 ＝ `after` 之后到下一个边界之前的那几行）——
+ * - 遇到骨架占位：归哪一段、藏不藏不顺着 DOM 猜，按账本认（`foldSpans`：一段 ＝ 后端给的 `after` 之后到 `until` 之前的那几行）——
  *   整块落在某一段里 ⇒ 折着就藏（高 0、骨架也不物化它，同一个口径交给骨架）；里面夹着边界 ⇒ 露着；之后的卡归占位末尾所在的那一段
  *   （那一段的 `after` 还没建 ⇒ 行等它建出来再画）；骨架没接上 ⇒ 之后不再归段，直到认出下一个边界。
  * - ESC 回退的折叠段之后不再归段（宁可不折，不折错）。
@@ -71,7 +71,7 @@ export type TurnsSkeleton = () => {
   fillVisible(): number;
   setFolds(f: TurnFolds): void;
 } | null;
-/** 骨架账本里本模块要的那几样：uuid→seq（认边界）、账本尾（最后一轮到哪）。 */
+/** 骨架账本里本模块要的那几样：uuid→seq（认边界）、账本尾（`until` 是 `null` 的那一段到哪）。 */
 type TurnsLedger = { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
@@ -113,7 +113,7 @@ interface FoldRef {
 
 export class TurnFold {
   private turns: TurnRow[] = [];
-  /** 边界：每一轮的开头 ＋ 露着的那几条（uuid）。 */
+  /** 边界：每一轮的开头 ＋ 露着的那几条 ＋ 每一段的 `until`（uuid，都是后端给的）。 */
   private bounds = new Set<string>();
   /** 落成了人话的排队插话（排队卡的记录 id，后端 `landed`）。 */
   private landed = new Set<string>();
@@ -199,7 +199,7 @@ export class TurnFold {
       }
       this.failures = 0;
       this.turns = [...this.turns.filter((t) => t.at < res.from), ...res.turns];
-      this.bounds = new Set(this.turns.flatMap((t) => [t.uuid, ...t.shown]));
+      this.bounds = new Set(this.turns.flatMap((t) => [t.uuid, ...t.shown, ...t.folds.flatMap((f) => (f.until === null ? [] : [f.until]))]));
       this.landed = new Set(this.turns.flatMap((t) => t.landed));
       this.byAfter = new Map(this.turns.flatMap((turn) => turn.folds.map((fold): [string, FoldRef] => [fold.after, { key: fold.after, turn, fold }])));
       this.apply();
@@ -305,19 +305,19 @@ export class TurnFold {
   }
 
   /**
-   * **每一段在账本里占哪几行**（骨架没接上 ⇒ `null`，按起点升序）：`after` 那一行之后、到下一个边界（这一轮露着的下一条 /
-   * 下一轮开头 / 账本尾）之前。账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）都从它推出来 ⇒ 两边说法不会分家。
+   * **每一段在账本里占哪几行**（骨架没接上 ⇒ `null`，按起点升序）：照后端那一段的 `after` 与 `until` 取 ——
+   * `after` 那一行之后、到 `until` 那一行之前（`until` 是 `null` ⇒ 到账本尾）；两头有一头账本里找不到 ⇒ 那一段不折。
+   * 账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）都从它来 ⇒ 两边说法不会分家。
    */
   private foldSpans(ledger: TurnsLedger | null = this.skeleton()?.ledger ?? null): FoldSpanRow[] | null {
     if (!ledger) return null;
     const seq = ledger.uuidToSeq;
-    const bounds = [...this.bounds].map((u) => seq.get(u)).filter((s): s is number => s !== undefined).sort((a, b) => a - b);
     const rows: FoldSpanRow[] = [];
     for (const ref of this.byAfter.values()) {
       const at = seq.get(ref.key);
-      if (at === undefined) continue;
-      const next = bounds.find((b) => b > at) ?? ledger.endSeq;
-      rows.push({ ref, line: at, start: at + 1, end: next });
+      const end = ref.fold.until === null ? ledger.endSeq : seq.get(ref.fold.until);
+      if (at === undefined || end === undefined || end <= at) continue;
+      rows.push({ ref, line: at, start: at + 1, end });
     }
     return rows.sort((a, b) => a.start - b.start);
   }
