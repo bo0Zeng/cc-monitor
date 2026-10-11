@@ -10,7 +10,8 @@
 //! 「它显示在哪个窗口」两种读法，哪台有哪种：
 //! - **Windows**：问那个进程的控制台（本二进制的一次性小助手借着问，`platform::console::console_looks`）—— Windows Terminal 里每个标签的伪控制台窗口的属主就是
 //!   承载它的那个终端窗口，经典控制台就是控制台窗口自己。不要接入块、不要登记、不看是谁起的它（cc-monitor 从标签栏起的、
-//!   用户自己开的一样认得准）。只认到窗口，认不到窗口里的哪个标签（Windows Terminal 没有从外部选中别人标签的接口）。
+//!   用户自己开的一样认得准）。Windows Terminal 的窗口里再切到那个标签页（[`pick_tab`]）：借那个会话的控制台挂一个记号标题，
+//!   UI Automation 在那个窗口的标签页里找名字带记号的、选中，原标题写回；认不出 ⇒ 只切窗口、照实说为什么。
 //! - **Linux（X11）**：bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在本机桌面上开的 shell 里留一份 `ps-await/<进程号>.tty`
 //!   （进程号 · 起始时刻 · 终端设备），不起后台、不等。认窗口归这里：monitor 起来那一刻扫一遍、之后每落一份就认一份
 //!   （[`process_tty_file`]）—— 往那个终端写改标题的控制序列挂记号、按标题找窗口（EWMH）、写进握手表（`ps-registry/`），标题出栈还原。
@@ -337,6 +338,8 @@ pub enum FrontOutcome {
         count: usize,
         why: SeveralWhy,
     },
+    /// 窗口到前面了，标签页没切成（原因见 `why`）：前面显示的可能是同一窗口里别的标签。
+    SwitchedWindow { why: TabMiss },
     /// 本机会话：认不出它显示在哪个窗口、链上也没有窗口（原因见 `why`）。
     Unbound { why: UnboundWhy },
     /// 认得的那个窗口已经不在了。
@@ -367,6 +370,22 @@ pub enum SeveralWhy {
     Elevated,
     /// Windows：终端程序不提供控制台（不把伪控制台挂到自己窗口下，如 VS Code 的终端）。
     Foreign,
+}
+
+/// 窗口切过去了、标签页没切成的原因（[`pick_tab`] · [`tab_step`] 判）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "kebab-case")]
+pub enum TabMiss {
+    /// 记号一直没出现在标签名上：标签名被固定（手动改过名）· 终端设置不显示程序标题（`suppressApplicationTitle`）。
+    TitleIgnored,
+    /// 读不到 / 点不了那个窗口的标签页（UI Automation 不给）。
+    NoUia,
+    /// 终端是以管理员身份运行的：cc-monitor 无权读它的标签页。
+    Elevated,
+    /// 读不到本会话的控制台（挂不上记号）。
+    NoConsole,
 }
 
 /// 本机会话认不出窗口的原因。
@@ -470,6 +489,104 @@ pub fn activate(hwnd: isize) -> FrontOutcome {
     )
 }
 
+/// 切标签页那一步的结局。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabPick {
+    /// 选中了带记号的那个标签页。
+    Selected,
+    /// 窗口里只有一个标签（或没有标签栏）：不用切。
+    Single,
+    Miss(TabMiss),
+}
+
+/// 切标签页的读法（生产那一份住 `platform/console.rs` 的小助手里：UI Automation 读标签页 ＋ 借着那个会话的控制台改标题）。
+pub(crate) trait TabReader {
+    /// 此刻那个窗口里各标签页的名字（从左到右）；读不到 ⇒ `None`。
+    fn names(&mut self) -> Option<Vec<String>>;
+    /// 把那个会话的控制台标题换成 `title`，回原来的；换不了 ⇒ `None`。
+    fn mark(&mut self, title: &str) -> Option<String>;
+    /// 写回原标题。
+    fn restore(&mut self, old: &str);
+    /// 选中上一次 [`Self::names`] 读到的第 `i` 个；选不了 ⇒ `false`。
+    fn select(&mut self, i: usize) -> bool;
+    /// 两次读之间等一步（生产 50 ms）。
+    fn wait(&mut self);
+}
+
+/// 现铸一个记号标题（`ccm-front-` ＋ 8 位）。
+pub fn front_marker() -> String {
+    format!(
+        "ccm-front-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    )
+}
+
+/// 名字带记号的那个标签页是第几个（第一个带的；空记号不认）。
+pub(crate) fn marked_tab(names: &[String], marker: &str) -> Option<usize> {
+    names.iter().position(|n| title_carries_marker(n, marker))
+}
+
+/// 切到挂着记号的那个标签页：标签页读不到 ⇒ 读不到标签页；至多一个 ⇒ 不用切（不挂记号）；挂上记号（挂不上 ⇒ 读不到控制台），
+/// 再读至多 `tries` 次（标签名跟上控制台标题要几十到两百多毫秒），带记号的那个 ⇒ 选中（选不了 ⇒ 读不到标签页）；
+/// 一直没有 ⇒ 标签名不随程序标题变化。挂上了就一定写回原标题（不论找没找到）。
+pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> TabPick {
+    match r.names() {
+        None => return TabPick::Miss(TabMiss::NoUia),
+        Some(n) if n.len() <= 1 => return TabPick::Single,
+        Some(_) => {}
+    }
+    let Some(old) = r.mark(marker) else {
+        return TabPick::Miss(TabMiss::NoConsole);
+    };
+    let mut hit = None;
+    for i in 0..tries {
+        if i > 0 {
+            r.wait();
+        }
+        if let Some(at) = r.names().and_then(|n| marked_tab(&n, marker)) {
+            hit = Some(at);
+            break;
+        }
+    }
+    let picked = match hit {
+        Some(at) if r.select(at) => TabPick::Selected,
+        Some(_) => TabPick::Miss(TabMiss::NoUia),
+        None => TabPick::Miss(TabMiss::TitleIgnored),
+    };
+    r.restore(&old);
+    picked
+}
+
+/// 拉前之前那一步：要不要试切标签页。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TabStep {
+    /// 不试（不是 Windows Terminal：经典控制台没有标签，别的终端程序不试）。
+    Skip,
+    /// 借这个进程的控制台挂记号试。
+    Try(u32),
+    /// 试不了，原因在此。
+    Miss(TabMiss),
+}
+
+/// 只在 Windows Terminal 的窗口（`is_wt`）、而且窗口是借某一级的控制台认出来的才试（记号挂在那个控制台上）；
+/// 终端那一级认出的窗口 ⇒ 试不了：提权 ⇒ 无权；否则 ⇒ 读不到控制台。
+pub(crate) fn tab_step(via: Via, is_wt: bool) -> TabStep {
+    match (is_wt, via) {
+        (false, _) => TabStep::Skip,
+        (true, Via::Shown(pid)) => TabStep::Try(pid),
+        (true, Via::Owner { elevated: true }) => TabStep::Miss(TabMiss::Elevated),
+        (true, Via::Owner { elevated: false }) => TabStep::Miss(TabMiss::NoConsole),
+    }
+}
+
+/// 窗口那一次的结局 ＋ 标签页没切成的原因 ⇒ 最后那一句：窗口切过去了、标签页没切成 ⇒ 已切到窗口 · 标签页未切换；别的照窗口那一句。
+pub(crate) fn with_tab(front: FrontOutcome, tab: Option<TabMiss>) -> FrontOutcome {
+    match (front, tab) {
+        (FrontOutcome::Switched, Some(why)) => FrontOutcome::SwitchedWindow { why },
+        (o, _) => o,
+    }
+}
+
 /// 沿进程链找到的那个窗口（属主与它的起始时刻由本进程现读）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FoundWindow {
@@ -485,6 +602,23 @@ pub fn bring_found_window(w: &FoundWindow) -> FrontOutcome {
         Ok(()) => activate(w.hwnd),
         Err(m) => m.outcome(),
     }
+}
+
+/// 沿进程链认出的窗口 ⇒ 校验 ⇒ 切标签页（[`tab_step`]：Windows Terminal 里借那一级的控制台挂记号，小助手现做）⇒ 拉前 ⇒ 最后那一句（[`with_tab`]）。
+fn bring_pick(p: &Pick) -> FrontOutcome {
+    let w = &p.window;
+    if let Err(m) = verify_window(w.hwnd, w.owner_pid, w.owner_proc_start) {
+        return m.outcome();
+    }
+    let tab = match tab_step(p.via, crate::platform::wt_tabs::is_terminal_window(w.hwnd)) {
+        TabStep::Skip => None,
+        TabStep::Miss(why) => Some(why),
+        TabStep::Try(pid) => match crate::platform::console::pick_tab(pid, w.hwnd) {
+            TabPick::Miss(why) => Some(why),
+            TabPick::Selected | TabPick::Single => None,
+        },
+    };
+    with_tab(activate(w.hwnd), tab)
 }
 
 /// 本机后端回的进程链的一级（开着那条连接的进程在前）。`start` 那一格本进程不用（属主起始时刻自己现读）。
@@ -767,7 +901,7 @@ pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutc
         return o;
     }
     match pick_live(chain, bind, false) {
-        Ok(p) => bring_found_window(&p.window),
+        Ok(p) => bring_pick(&p),
         Err(o) => o,
     }
 }
@@ -785,7 +919,7 @@ pub fn bring_local_window(claude_pid: u32, bind: &BindRegistry) -> FrontOutcome 
         .map(|(pid, name)| ChainLink { pid, name })
         .collect();
     match pick_live(&chain, bind, true) {
-        Ok(p) => bring_found_window(&p.window),
+        Ok(p) => bring_pick(&p),
         Err(o) => o,
     }
 }

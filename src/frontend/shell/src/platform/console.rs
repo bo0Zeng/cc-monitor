@@ -70,6 +70,8 @@ pub const HELPER_FLAG: &str = "--ccm-console";
 pub enum HelperRequest {
     /// 逐个借这几个进程的控制台，各印一行显示在哪个窗口（[`look_line`]）。
     Windows(Vec<u32>),
+    /// 借 `pid` 的控制台挂记号标题，在窗口 `hwnd` 里切到带记号的那个标签页，原标题写回；印一行结局（[`tab_line`]）。
+    Tab { pid: u32, hwnd: isize },
 }
 
 /// 起小助手的那一串参数（不含程序名）。
@@ -79,6 +81,11 @@ pub fn helper_argv(req: &HelperRequest) -> Vec<String> {
         HelperRequest::Windows(pids) => {
             v.push("windows".into());
             v.extend(pids.iter().map(u32::to_string));
+        }
+        HelperRequest::Tab { pid, hwnd } => {
+            v.push("tab".into());
+            v.push(pid.to_string());
+            v.push(format!("{hwnd:#x}"));
         }
     }
     v
@@ -98,7 +105,43 @@ pub fn helper_request(args: &[String]) -> Option<HelperRequest> {
             .map(|p| p.parse::<u32>().ok())
             .collect::<Option<Vec<_>>>()
             .map(HelperRequest::Windows),
+        "tab" => match rest {
+            [pid, hwnd] => Some(HelperRequest::Tab {
+                pid: pid.parse().ok()?,
+                hwnd: isize::from_str_radix(hwnd.strip_prefix("0x")?, 16).ok()?,
+            }),
+            _ => None,
+        },
         _ => None,
+    }
+}
+
+/// 小助手切标签页那一件印的一行：`selected` · `single` · `miss <原因>`（原因同界面那一族的写法）。
+pub fn tab_line(pick: crate::bind::TabPick) -> String {
+    use crate::bind::{TabMiss, TabPick};
+    let why = |m: TabMiss| match m {
+        TabMiss::TitleIgnored => "title-ignored",
+        TabMiss::NoUia => "no-uia",
+        TabMiss::Elevated => "elevated",
+        TabMiss::NoConsole => "no-console",
+    };
+    match pick {
+        TabPick::Selected => "selected".into(),
+        TabPick::Single => "single".into(),
+        TabPick::Miss(m) => format!("miss {}", why(m)),
+    }
+}
+
+/// 小助手的答话 ⇒ 切标签页的结局；读不出（没起来 · 超时 · 形状不认）⇒ 当读不到标签页。
+pub fn parse_tab(out: &str) -> crate::bind::TabPick {
+    use crate::bind::{TabMiss, TabPick};
+    match out.trim().split_whitespace().collect::<Vec<_>>().as_slice() {
+        ["selected"] => TabPick::Selected,
+        ["single"] => TabPick::Single,
+        ["miss", "title-ignored"] => TabPick::Miss(TabMiss::TitleIgnored),
+        ["miss", "elevated"] => TabPick::Miss(TabMiss::Elevated),
+        ["miss", "no-console"] => TabPick::Miss(TabMiss::NoConsole),
+        _ => TabPick::Miss(TabMiss::NoUia),
     }
 }
 
@@ -145,6 +188,7 @@ pub fn helper_main() -> Option<i32> {
     }
     match req {
         HelperRequest::Windows(pids) => helper_windows(&pids),
+        HelperRequest::Tab { pid, hwnd } => helper_tab(pid, hwnd),
     }
     Some(0)
 }
@@ -177,6 +221,61 @@ fn helper_windows(pids: &[u32]) {
         out.push('\n');
     }
     let _ = std::io::stdout().write_all(out.as_bytes());
+}
+
+/// 小助手的 tab 那一件：打开窗口的标签页，借 `pid` 的控制台挂记号、切过去、写回（规则在 `bind.rs::pick_tab`），印一行。
+#[cfg(windows)]
+fn helper_tab(pid: u32, hwnd: isize) {
+    use crate::bind::{TabMiss, TabPick};
+    use std::io::Write;
+    let marker = crate::bind::front_marker();
+    let pick = match super::wt_tabs::WtTabs::open(hwnd) {
+        None => TabPick::Miss(TabMiss::NoUia),
+        Some(mut tabs) => borrow(pid, || {
+            crate::bind::pick_tab(&mut LentTitle { tabs: &mut tabs }, &marker, 12)
+        })
+        .unwrap_or(TabPick::Miss(TabMiss::NoConsole)),
+    };
+    let _ = std::io::stdout().write_all(format!("{}\n", tab_line(pick)).as_bytes());
+}
+
+/// 切标签页那一份读法：标签页走 UI Automation，标题走此刻借着的那个控制台（只在 `borrow` 里用）。
+#[cfg(windows)]
+struct LentTitle<'a> {
+    tabs: &'a mut super::wt_tabs::WtTabs,
+}
+
+#[cfg(windows)]
+impl crate::bind::TabReader for LentTitle<'_> {
+    fn names(&mut self) -> Option<Vec<String>> {
+        self.tabs.names()
+    }
+    fn mark(&mut self, title: &str) -> Option<String> {
+        let mut b = [0u16; 1024];
+        // SAFETY：读写的是此刻借着的那个控制台的标题；缓冲在本地。
+        unsafe {
+            let n = GetConsoleTitleW(b.as_mut_ptr(), b.len() as u32) as usize;
+            let old = String::from_utf16_lossy(&b[..n.min(b.len())]);
+            set_title(title).then_some(old)
+        }
+    }
+    fn restore(&mut self, old: &str) {
+        set_title(old);
+    }
+    fn select(&mut self, i: usize) -> bool {
+        self.tabs.select(i)
+    }
+    fn wait(&mut self) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// 改此刻借着的那个控制台的标题。
+#[cfg(windows)]
+fn set_title(t: &str) -> bool {
+    let w: Vec<u16> = t.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY：以 0 结尾的宽字符串。
+    unsafe { SetConsoleTitleW(w.as_ptr()) != 0 }
 }
 
 /// 借 `pid` 的控制台做 `f`，做完摘下；借不到 ⇒ `AttachConsole` 的错误码。挂着期间不响应 Ctrl+C（那个控制台里有人按
@@ -231,6 +330,18 @@ pub fn console_looks(pids: &[u32]) -> ConsoleLooks {
 #[cfg(not(windows))]
 pub fn console_looks(_pids: &[u32]) -> ConsoleLooks {
     ConsoleLooks(HashMap::new())
+}
+
+/// 起一趟小助手（本二进制 `--ccm-console tab <pid> <窗口>`）切到窗口里那个会话的标签页。
+#[cfg(windows)]
+pub fn pick_tab(pid: u32, hwnd: isize) -> crate::bind::TabPick {
+    parse_tab(&run_helper(&HelperRequest::Tab { pid, hwnd }).unwrap_or_default())
+}
+
+/// 别处没有 Windows Terminal 的标签页（调用方只在它的窗口上问）。
+#[cfg(not(windows))]
+pub fn pick_tab(_pid: u32, _hwnd: isize) -> crate::bind::TabPick {
+    crate::bind::TabPick::Miss(crate::bind::TabMiss::NoUia)
 }
 
 /// 起一趟小助手（本二进制，带 [`helper_argv`]），等它答完，回它的标准输出；起不来 / 超时 ⇒ `None`。
@@ -322,4 +433,6 @@ extern "system" {
     fn GetStdHandle(which: u32) -> isize;
     fn SetStdHandle(which: u32, handle: isize) -> i32;
     fn GetLastError() -> u32;
+    fn GetConsoleTitleW(buf: *mut u16, size: u32) -> u32;
+    fn SetConsoleTitleW(title: *const u16) -> i32;
 }

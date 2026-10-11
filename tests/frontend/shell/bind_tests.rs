@@ -1,7 +1,7 @@
 use super::*;
 use crate::platform::console::{
-    helper_argv, helper_request, look_line, parse_looks, refused_by, window_of_console,
-    ConsoleLook, HelperRequest,
+    helper_argv, helper_request, look_line, parse_looks, parse_tab, refused_by, tab_line,
+    window_of_console, ConsoleLook, HelperRequest,
 };
 
 #[test]
@@ -594,7 +594,13 @@ fn the_console_helper_command_line_round_trips() {
             .chain(v)
             .collect::<Vec<_>>()
     };
-    for req in [HelperRequest::Windows(vec![700, 600, 500])] {
+    for req in [
+        HelperRequest::Windows(vec![700, 600, 500]),
+        HelperRequest::Tab {
+            pid: 700,
+            hwnd: 0x2a0b4,
+        },
+    ] {
         assert_eq!(
             helper_request(&argv(helper_argv(&req))),
             Some(req.clone()),
@@ -609,6 +615,16 @@ fn the_console_helper_command_line_round_trips() {
         raw(&["cc-monitor.exe", "--ccm-console", "list", "1"]),
         raw(&["cc-monitor.exe", "--ccm-console", "windows", "x"]),
         raw(&["cc-monitor.exe", "--ccm-console", "windows"]),
+        raw(&["cc-monitor.exe", "--ccm-console", "tab", "700"]),
+        raw(&["cc-monitor.exe", "--ccm-console", "tab", "700", "2a0b4"]),
+        raw(&[
+            "cc-monitor.exe",
+            "--ccm-console",
+            "tab",
+            "700",
+            "0x2a0b4",
+            "1",
+        ]),
         raw(&[
             "cc-monitor.exe",
             "--background",
@@ -640,6 +656,198 @@ fn the_console_helper_answers_one_line_per_process() {
         assert_eq!(got.get(&p), Some(&l), "{p}");
     }
     assert_eq!(got.len(), 4, "认不出的行不算：{got:?}");
+}
+
+/// 切标签页那一步读法的替身：记下每一次改标题、每一次选中；`names` 依次答出（答完了就一直答最后那一份）。
+struct FakeTabs {
+    answers: Vec<Option<Vec<String>>>,
+    asked: usize,
+    title: String,
+    titles_set: Vec<String>,
+    selected: Vec<usize>,
+    can_mark: bool,
+    can_select: bool,
+}
+
+impl FakeTabs {
+    fn new(answers: Vec<Option<Vec<&str>>>) -> Self {
+        FakeTabs {
+            answers: answers
+                .into_iter()
+                .map(|a| a.map(|v| v.into_iter().map(String::from).collect()))
+                .collect(),
+            asked: 0,
+            title: "✳ claude".into(),
+            titles_set: Vec::new(),
+            selected: Vec::new(),
+            can_mark: true,
+            can_select: true,
+        }
+    }
+}
+
+impl TabReader for FakeTabs {
+    fn names(&mut self) -> Option<Vec<String>> {
+        let i = self.asked.min(self.answers.len() - 1);
+        self.asked += 1;
+        self.answers[i].clone()
+    }
+    fn mark(&mut self, title: &str) -> Option<String> {
+        if !self.can_mark {
+            return None;
+        }
+        self.titles_set.push(title.to_string());
+        Some(std::mem::replace(&mut self.title, title.to_string()))
+    }
+    fn restore(&mut self, old: &str) {
+        self.titles_set.push(old.to_string());
+        self.title = old.to_string();
+    }
+    fn select(&mut self, i: usize) -> bool {
+        self.selected.push(i);
+        self.can_select
+    }
+    fn wait(&mut self) {}
+}
+
+/// ★ 切到对的标签页：借那个会话的控制台挂一个记号标题，在那个窗口的标签页里找名字带记号的那一个、选中，标题一定写回。
+/// 三个标签、记号出现在第 2 个 ⇒ 选第 2 个；标签名一时还没跟上 ⇒ 再读，直到跟上。
+#[test]
+fn the_tab_carrying_the_marker_is_selected_and_the_title_put_back() {
+    let m = "ccm-front-1a2b3c4d";
+    let mut t = FakeTabs::new(vec![
+        Some(vec!["pwsh", "✳ claude", "cmd"]),
+        Some(vec!["pwsh", "✳ claude", "cmd"]),
+        Some(vec!["pwsh", m, "cmd"]),
+    ]);
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Selected);
+    assert_eq!(t.selected, vec![1]);
+    assert_eq!(
+        t.titles_set,
+        vec![m.to_string(), "✳ claude".to_string()],
+        "挂一次、写回一次"
+    );
+    assert_eq!(t.title, "✳ claude");
+    // 记号可以只是标签名的一部分（终端往名字里加了别的）。
+    let mut t = FakeTabs::new(vec![
+        Some(vec!["a", "b", "c"]),
+        Some(vec!["a", "b", &format!("管理员: {m}")]),
+    ]);
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Selected);
+    assert_eq!(t.selected, vec![2]);
+}
+
+/// ★ 认不出时照实说、标题照样写回：记号一直没出现在任何标签名上（标签名被固定 · 终端设置不显示程序标题）⇒ 标签名不随程序标题变化；
+/// 选不了 ⇒ 读不到终端的标签页；标签页读不到 ⇒ 同上、不去碰标题；控制台挂不上记号 ⇒ 读不到控制台；
+/// 窗口里只有一个标签（或没有标签栏）⇒ 不挂记号、算切过去了。
+#[test]
+fn a_tab_that_cannot_be_found_says_why_and_the_title_is_still_put_back() {
+    let m = "ccm-front-1a2b3c4d";
+    let mut t = FakeTabs::new(vec![Some(vec!["a", "b"])]);
+    assert_eq!(
+        pick_tab(&mut t, m, 12),
+        TabPick::Miss(TabMiss::TitleIgnored)
+    );
+    assert_eq!(t.asked, 13, "先读一次，挂上记号后最多再读 12 次");
+    assert_eq!(
+        t.titles_set.last().map(String::as_str),
+        Some("✳ claude"),
+        "写回"
+    );
+    assert!(t.selected.is_empty());
+
+    let mut t = FakeTabs::new(vec![Some(vec!["a", "b"]), Some(vec!["a", m])]);
+    t.can_select = false;
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Miss(TabMiss::NoUia));
+    assert_eq!(t.title, "✳ claude", "选不了也写回");
+
+    let mut t = FakeTabs::new(vec![None]);
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Miss(TabMiss::NoUia));
+    assert!(t.titles_set.is_empty(), "读不到标签页就不碰标题");
+
+    let mut t = FakeTabs::new(vec![Some(vec!["a", "b"])]);
+    t.can_mark = false;
+    assert_eq!(pick_tab(&mut t, m, 12), TabPick::Miss(TabMiss::NoConsole));
+
+    for one in [vec!["✳ claude"], vec![]] {
+        let mut t = FakeTabs::new(vec![Some(one.clone())]);
+        assert_eq!(pick_tab(&mut t, m, 12), TabPick::Single, "{one:?}");
+        assert!(t.titles_set.is_empty(), "只有一个标签：不挂记号");
+    }
+}
+
+/// ★ 记号每次现铸（`ccm-front-` ＋ 8 位），两次不同；空记号不认任何标签名。
+#[test]
+fn front_markers_are_fresh_and_an_empty_marker_names_no_tab() {
+    let (a, b) = (front_marker(), front_marker());
+    assert!(
+        a.starts_with("ccm-front-") && a.len() == "ccm-front-".len() + 8,
+        "{a}"
+    );
+    assert_ne!(a, b);
+    let names: Vec<String> = vec!["x".into(), "y".into()];
+    assert_eq!(marked_tab(&names, ""), None);
+    assert_eq!(marked_tab(&names, "y"), Some(1));
+}
+
+/// ★ 什么时候试切标签页：只在 Windows Terminal 的窗口、而且窗口是借某一级的控制台认出来的（记号要挂在那个控制台上）；
+/// 不是 Windows Terminal（经典控制台没有标签、别的终端程序不试）⇒ 不试；终端那一级认出的窗口 ⇒ 不试、说为什么
+/// （提权 ⇒ 无权切；否则 ⇒ 读不到控制台）。窗口切过去了、标签页没切成 ⇒ 已切到窗口 · 标签页未切换；窗口没切过去 ⇒ 照窗口那一句说。
+#[test]
+fn tabs_are_tried_only_in_windows_terminal_through_the_console_that_named_the_window() {
+    assert_eq!(tab_step(Via::Shown(700), true), TabStep::Try(700));
+    assert_eq!(tab_step(Via::Shown(700), false), TabStep::Skip);
+    assert_eq!(
+        tab_step(Via::Owner { elevated: true }, false),
+        TabStep::Skip
+    );
+    assert_eq!(
+        tab_step(Via::Owner { elevated: true }, true),
+        TabStep::Miss(TabMiss::Elevated)
+    );
+    assert_eq!(
+        tab_step(Via::Owner { elevated: false }, true),
+        TabStep::Miss(TabMiss::NoConsole)
+    );
+    assert_eq!(
+        with_tab(FrontOutcome::Switched, Some(TabMiss::TitleIgnored)),
+        FrontOutcome::SwitchedWindow {
+            why: TabMiss::TitleIgnored
+        }
+    );
+    assert_eq!(
+        with_tab(FrontOutcome::Switched, None),
+        FrontOutcome::Switched
+    );
+    assert_eq!(
+        with_tab(FrontOutcome::Refused, Some(TabMiss::NoUia)),
+        FrontOutcome::Refused
+    );
+    assert_eq!(
+        serde_json::to_value(FrontOutcome::SwitchedWindow {
+            why: TabMiss::TitleIgnored
+        })
+        .unwrap(),
+        serde_json::json!({ "kind": "switched-window", "why": "title-ignored" })
+    );
+}
+
+/// ★ 小助手切标签页那一件的答话一行，monitor 读回（两向相等）；读不出 ⇒ 当读不到终端的标签页。
+#[test]
+fn the_tab_answer_round_trips() {
+    for p in [
+        TabPick::Selected,
+        TabPick::Single,
+        TabPick::Miss(TabMiss::TitleIgnored),
+        TabPick::Miss(TabMiss::NoUia),
+        TabPick::Miss(TabMiss::Elevated),
+        TabPick::Miss(TabMiss::NoConsole),
+    ] {
+        assert_eq!(parse_tab(&format!("{}\n", tab_line(p))), p, "{p:?}");
+    }
+    for bad in ["", "垃圾", "miss", "miss what"] {
+        assert_eq!(parse_tab(bad), TabPick::Miss(TabMiss::NoUia), "{bad:?}");
+    }
 }
 
 /// ★ 借别的进程的控制台只在小助手里：生产段里 `AttachConsole(` 只在 `platform/console.rs`（一次调用 ＋ 一行声明），那一次调用住

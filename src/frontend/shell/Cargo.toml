@@ -281,6 +281,10 @@ windows = { version = "0.56", features = [
     # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
     # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
     "Win32_UI_Input_KeyboardAndMouse",
+    # ↗ 切到 Windows Terminal 里的那个标签页（`platform/wt_tabs.rs`）：UI Automation 读标签页名字、选中一个。
+    #   不新增 crate，只开这个已在依赖里的 crate 的两个模块。
+    "Win32_UI_Accessibility",
+    "Win32_System_Com",
 ] }
 # K-H2a `KS5`：`Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `crates/creds-core`
 # （「一个安全性质只许有一个实现」）。monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是

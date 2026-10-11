@@ -56,6 +56,20 @@ describe("↗ 结局族", () => {
     });
     expect(shape({ kind: "unbound", why: "not-live" }), "会话已不在运行：不指登记").toEqual({ title: copyText("front.title.unbound"), body: copyText("front.body.notLive"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "unbound", why: "no-console" }), "Windows：链上没有控制台也没有窗口 ⇒ 后台").toEqual({ title: copyText("front.title.noTerminal"), body: copyText("front.body.background"), hint: null, tone: "grey", acts: [] });
+    expect(shape({ kind: "switched-window", why: "title-ignored" }), "窗口切过去了、标签页没切成：照实说、给怎么办").toEqual({
+      title: copyText("front.title.tabMissed"),
+      body: copyText("front.body.tabTitleIgnored"),
+      hint: copyText("front.hint.tabTitleIgnored"),
+      tone: "grey",
+      acts: [],
+    });
+    for (const [why, body] of [
+      ["no-uia", "front.body.tabNoUia"],
+      ["elevated", "front.body.tabElevated"],
+      ["no-console", "front.body.tabNoConsole"],
+    ] as const) {
+      expect(shape({ kind: "switched-window", why }), why).toEqual({ title: copyText("front.title.tabMissed"), body: copyText(body), hint: null, tone: "grey", acts: [] });
+    }
     expect(shape({ kind: "refused" })).toEqual({ title: copyText("front.title.flashing"), body: copyText("front.body.refused"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "window-gone" })?.acts, "不在 tmux 里：没有可接回的").toEqual([]);
     expect(shape({ kind: "window-gone" }, true)).toEqual({ title: copyText("front.title.gone"), body: "", hint: null, tone: "grey", acts: [copyText("front.act.openInTerminal")] });
