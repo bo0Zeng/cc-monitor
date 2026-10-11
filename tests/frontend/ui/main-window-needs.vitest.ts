@@ -89,7 +89,7 @@ describe("状态的字照抄核心写好的（G2：界面不按码取字）", ()
 
 describe("一个会话读成什么（session-face）", () => {
   it("★ 需手动：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需手动」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
-    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), head: copyText("beSession.needs.unknown"), headCode: null, tone: "need", rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 });
+    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), head: copyText("beSession.needs.unknown"), headCode: null, tone: "need", rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, ask: null, manualText: null, receivedAt: 0 });
     expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
     expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 }, needs: approve() })), "已经答完：不留一条需手动").toBeNull();
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
@@ -221,6 +221,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
+    answerAt: vi.fn(),
     pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),
@@ -249,7 +250,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const b = r.view.tabButtons.get("b")!;
     expect([b.needs.textContent, b.badge.textContent]).toEqual([copyText("beSession.needs.approve"), ""]);
     strip.click();
-    expect(r.host.switchTo).toHaveBeenCalledWith("b");
+    expect(r.host.answerAt, "需手动的入口 ⇒ 跳过去、焦点进答题块").toHaveBeenCalledWith("b");
+    expect(r.host.switchTo).not.toHaveBeenCalled();
     // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
     (r.store.tabs.get("b") as Tab).activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
     r.view.refresh();
@@ -273,11 +275,20 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
       expect(rows.map((b) => b.querySelector('[data-part="label"]')?.textContent)).toEqual(["b", "a"]);
       expect(rows[0].querySelector('[data-part="body"]')?.textContent).toBe("rm -rf build/");
       rows[1].click();
-      expect(r.host.switchTo).toHaveBeenCalledWith("a");
+      expect(r.host.answerAt).toHaveBeenCalledWith("a");
       expect(document.querySelector('[role="menu"]'), "选了一项就关").toBeNull();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("★ 点标签上那颗「需手动」的点 ⇒ 跳过去、焦点进答题块；点标签别处 / 不在等的点 ⇒ 照常切", () => {
+    const r = bar([tab("a"), tab("b", { activity: waiting, needs: approve(NOW - 10_000) })]);
+    r.view.tabButtons.get("b")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
+    expect(r.host.answerAt).toHaveBeenCalledWith("b");
+    r.view.tabButtons.get("a")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
+    expect(r.host.switchTo).toHaveBeenCalledWith("a");
+    expect(r.host.answerAt).toHaveBeenCalledTimes(1);
   });
 
   it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", () => {

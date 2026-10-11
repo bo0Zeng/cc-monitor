@@ -100,7 +100,9 @@ import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
 import { SessionHead, terminalActsOf } from "./session-head";
-import { NeedsBar, NeedsWatch } from "./needs-bar";
+import { NeedsWatch } from "./needs-bar";
+import { AnswerBlock } from "./answer-block";
+import { answerNeeds } from "./answer-reads";
 import { notifySend } from "./turn-notify";
 
 // === 启动 perf 测量 ===
@@ -264,12 +266,27 @@ window.addEventListener("DOMContentLoaded", async () => {
       },
   });
   document.getElementById("session-head")?.replaceWith(sessionHead.el);
-  const needsBar = new NeedsBar({
+  // 答题块（消息流底部、贴着聊天线末尾）：当前会话在等你时就地答；字与选项全照核心那一份 `needs.ask`（`answer-block.ts`）。
+  const answerBlock = new AnswerBlock({
     active: () => tabs.activeTab(),
+    answer: (tab, req) => answerNeeds(tab.origin, tab.sessionId, req),
+    reread: (sid) => tabs.rereadFacts(sid),
+    viewTerminal: () => mainDrawer.dock.show("terminal"),
     front: (sid) => tabs.frontFor(sid),
     attach: (sid) => tabs.attachInTerminal(sid),
+    toast: (title, detail) => void (detail ? toast(title, "", { detail }) : toast(title, "", { level: "info" })),
+    room: (px) => {
+      // 消息流底部给块让出它那么高；原来贴着底 ⇒ 让完还贴着底（最后那一行不被块盖住）。
+      const was = streamRoot.style.getPropertyValue("--answer-room");
+      const next = `${px}px`;
+      if (was === next) return;
+      const sc = streamRoot.querySelector<HTMLElement>(".stream.active");
+      const atBottom = sc !== null && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 8;
+      streamRoot.style.setProperty("--answer-room", next);
+      if (sc && atBottom) sc.scrollTop = sc.scrollHeight;
+    },
   });
-  streamRoot.appendChild(needsBar.el);
+  streamRoot.appendChild(answerBlock.el);
   const needsWatch = new NeedsWatch({
     setTitle: (title) => {
       document.title = title;
@@ -293,13 +310,15 @@ window.addEventListener("DOMContentLoaded", async () => {
         sessionHead.render();
         terminalPage.sessionChanged();
         paintTerminalActs();
-        needsBar.render();
+        answerBlock.render();
         needsWatch.observe(tabs.tabsInOrder());
       });
     },
     tasksPanel,
     agentsPanel,
   );
+  // 「需手动」的入口跳过来 ⇒ 焦点进答题块（块自己出现时不抢焦点）。
+  tabs.onAnswerJump = (sid) => answerBlock.focusFor(sid);
   usageHud.host = { openSettings: () => void openSettingsWindow(undefined, dest.CONTEXT_LIMITS), retry: () => tabs.retryActiveFacts() };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
@@ -462,7 +481,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     sessionHead.render();
     terminalPage.sessionChanged();
     paintTerminalActs();
-    needsBar.render();
+    answerBlock.render();
     usageHud.setActive(a.usage);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
@@ -919,6 +938,12 @@ window.addEventListener("DOMContentLoaded", async () => {
           planNeeds.onChanged(origin, plan);
           break;
         }
+        case "needs": {
+          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
+          if (change.all) tabs.rereadFactsOn(origin);
+          for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
+          break;
+        }
         case "profiles":
           break;
       }
@@ -955,9 +980,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
     taps: machines,
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
-    //   额度 · 会话轮换 · 规则表 · 计划。配置文件那一种只设置窗订。
+    //   额度 · 会话轮换 · 规则表 · 计划 · 待答请求。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_rules", "plan"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_rules", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。

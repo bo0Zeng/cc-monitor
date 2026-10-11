@@ -20,6 +20,10 @@
     transition: opacity var(--dur-expand);
   }
 
+  .abBlock[hidden] {
+    display: none;
+  }
+
   /* 别处先答了：淡出、等重读把它收掉。 */
   .abBlock[data-gone="true"] {
     opacity: 0.45;
@@ -81,21 +85,18 @@
     gap: var(--space-3);
   }
 
-  /* 数字键：标在允许那一行的字后面（键在块里才生效）。 */
-  .abRow > [data-key]::after {
-    content: attr(data-key);
-    margin-left: var(--space-2);
-    opacity: 0.6;
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
-  }
-
   .abManual {
     display: flex;
     gap: var(--space-5);
     align-items: center;
     justify-content: space-between;
     color: var(--text-2);
+  }
+
+  .abActs {
+    display: flex;
+    flex: none;
+    gap: var(--space-3);
   }
 
   .abNote {

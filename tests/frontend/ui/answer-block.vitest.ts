@@ -10,12 +10,15 @@
  * 夹具只造结构；字一律取自金样或文案表。
  */
 import { readFileSync } from "node:fs";
+vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailable: vi.fn(() => false) }));
+import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 import { resolve } from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AnswerBlock, type AnswerHost, type AnswerOutcome } from "../../../src/frontend/ui/answer-block";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Ask, Needs } from "../../../src/frontend/ui/session-reads";
-import { LIVE } from "../../../src/frontend/ui/tab-session-state";
+import { LIVE, LIVE_ATTACHABLE } from "../../../src/frontend/ui/tab-session-state";
+import { NEEDS_KIND } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { waitedNow } from "../../../src/frontend/ui/duration-format";
@@ -44,6 +47,8 @@ function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
     reread: vi.fn<(sid: string) => void>(),
     viewTerminal: vi.fn<(sid: string) => void>(),
     toast: vi.fn<(title: string, detail?: string) => void>(),
+    front: vi.fn<(sid: string) => void>(),
+    attach: vi.fn<(sid: string) => void>(),
   } satisfies AnswerHost;
   const b = new AnswerBlock(host);
   document.body.append(b.el);
@@ -51,8 +56,10 @@ function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
   return { b, host, answers, set: (x: Tab | null) => (cur = x) };
 }
 
-const rows = (b: AnswerBlock) => [...b.el.querySelectorAll<HTMLElement>("[data-row]")].map((r) => [r.dataset.row, [...r.querySelectorAll("button")].map((x) => x.textContent)]);
-const btn = (b: AnswerBlock, text: string) => [...b.el.querySelectorAll("button")].find((x) => x.textContent === text)!;
+/** 按钮上的字（数字键那一枚键帽不算）。 */
+const label = (x: Element) => [...x.childNodes].filter((n) => n.nodeName !== "KBD").map((n) => n.textContent).join("");
+const rows = (b: AnswerBlock) => [...b.el.querySelectorAll<HTMLElement>("[data-row]")].map((r) => [r.dataset.row, [...r.querySelectorAll("button")].map(label)]);
+const btn = (b: AnswerBlock, text: string) => [...b.el.querySelectorAll("button")].find((x) => label(x) === text)!;
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
@@ -75,14 +82,14 @@ describe("甲1 批准一步", () => {
 
   it("★ 一色一义：主选项只第一颗、红字只「拒绝并停下」那一颗；数字键标在允许那一行", () => {
     const { b } = rig(tab(needs(ASKS.approve)));
-    const kinds = [...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].map((x) => [x.dataset.choice, x.dataset.kind, x.dataset.key ?? ""]);
+    const kinds = [...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].map((x) => [x.dataset.choice, x.dataset.kind, x.dataset.key ?? "", x.querySelector("kbd")?.textContent ?? ""]);
     expect(kinds).toEqual([
-      ["allow", "primary", "1"],
-      ["always-0", "secondary", "2"],
-      ["always-1", "secondary", "3"],
-      ["deny", "secondary", ""],
-      ["deny-note", "secondary", ""],
-      ["deny-stop", "danger-text", ""],
+      ["allow", "primary", "1", "1"],
+      ["always-0", "secondary", "2", "2"],
+      ["always-1", "secondary", "3", "3"],
+      ["deny", "secondary", "", ""],
+      ["deny-note", "secondary", "", ""],
+      ["deny-stop", "danger-text", "", ""],
     ]);
   });
 
@@ -130,7 +137,7 @@ describe("甲2 拒绝并说明（note: required）", () => {
     expect(input).not.toBeNull();
     expect(document.activeElement).toBe(input);
     expect(b.el.querySelector("[data-row=main]"), "选项那两行收起").toBeNull();
-    expect([...b.el.querySelectorAll("button")].map((x) => x.textContent)).toEqual([ASKS.approve.choices[4].text, copyText("askBlock.note.cancel")]);
+    expect([...b.el.querySelectorAll("button")].map(label)).toEqual([ASKS.approve.choices[4].text, copyText("askBlock.note.cancel")]);
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(answers, "必附话的空着不交").toEqual([]);
@@ -208,15 +215,15 @@ describe("甲4 批计划 · 甲5 子 agent", () => {
     expect(answers).toEqual([{ ask: ASKS.plan.id, choice: "plan-keep" }]);
   });
 
-  it("★ 子 agent：头上标是哪一种子 agent；「改到终端里答」排末尾、幽灵样式", () => {
+  it("★ 子 agent：头上标是哪一种 agent；「改到终端里答」排末尾、幽灵样式", () => {
     const { b } = rig(tab(needs(ASKS.subAgent)));
     expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe(copyText("askBlock.tag.run", { kind: "general-purpose" }));
     const last = [...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].at(-1)!;
-    expect([last.dataset.choice, last.dataset.kind, last.textContent]).toEqual(["release", "ghost", ASKS.subAgent.choices.at(-1)!.text]);
+    expect([last.dataset.choice, last.dataset.kind, label(last)]).toEqual(["release", "ghost", ASKS.subAgent.choices.at(-1)!.text]);
     expect(b.el.querySelector("[data-row=release]")).not.toBeNull();
   });
 
-  it("子 agent 没说种类 ⇒ 只标子 agent", () => {
+  it("子 agent 没说种类 ⇒ 只标 agent", () => {
     const { b } = rig(tab(needs({ ...ASKS.subAgent, run: { id: "a1", kind: null } })));
     expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe(copyText("askBlock.tag.runBare"));
   });
@@ -268,5 +275,46 @@ describe("入口：跳到等批准的会话 ⇒ 焦点进块", () => {
     r.set(tab(needs(ASKS.plan, { kind: "plan" })));
     r.b.render(NOW);
     expect(document.activeElement).toBe(outside);
+  });
+});
+
+describe("每一种需手动都有地方出（钉条删了以后）", () => {
+  it("★ 核心能出的每一种 needs.kind（读 Rust 那份枚举，两向相等）在桌面都画成块：头一行 ＋ 那一句 ＋［看终端］", () => {
+    const src = readFileSync(resolve(__dirname, "../../../src/backend/observe/facts_query.rs"), "utf8");
+    const body = src.slice(src.indexOf("pub(crate) enum NeedsKind {"));
+    const variants = [...body.slice(0, body.indexOf("}")).matchAll(/^\s*([A-Z][A-Za-z]*),/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
+    expect(variants.length).toBeGreaterThanOrEqual(8);
+    expect([...NEEDS_KIND].sort()).toEqual([...variants].sort());
+    for (const kind of variants) {
+      document.body.innerHTML = "";
+      const { b } = rig(tab(needs(null, { kind: kind as Needs["kind"], head: `核心·${kind}`, manualText: `核心·${kind}·那一句` })));
+      expect(b.el.hidden, kind).toBe(false);
+      expect(b.el.querySelector("[data-part=head]")!.textContent, kind).toContain(`核心·${kind}`);
+      expect(b.el.querySelector("[data-part=manual]")!.textContent, kind).toBe(`核心·${kind}·那一句`);
+      expect(btn(b, copyText("askBlock.manual.terminal")), kind).toBeDefined();
+    }
+  });
+
+  it("★ 会话事实还没到（只有活动信号说在等）⇒ 也出：头一行是活动信号那一句", () => {
+    const t = { sessionId: "s1", origin: LOCAL_ORIGIN, state: LIVE, activity: waiting, needs: null } as unknown as Tab;
+    const { b } = rig(t);
+    expect(b.el.hidden).toBe(false);
+    expect(b.el.querySelector("[data-part=head]")!.textContent).toContain(waiting.text);
+  });
+
+  it("★ 去终端答：远端在 tmux 里 ⇒ 多一颗［在终端里打开］；Windows 有 ↗ ⇒［切到终端］；都不行 ⇒ 只［看终端］", () => {
+    const remote = { ...tab(needs(null)), origin: "devbox", state: LIVE_ATTACHABLE } as unknown as Tab;
+    const r1 = rig(remote);
+    btn(r1.b, copyText("needs.bar.openTerm")).click();
+    expect(r1.host.attach).toHaveBeenCalledWith("s1");
+    document.body.innerHTML = "";
+    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
+    const r2 = rig(tab(needs(null)));
+    btn(r2.b, copyText("needs.bar.front")).click();
+    expect(r2.host.front).toHaveBeenCalledWith("s1");
+    vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+    document.body.innerHTML = "";
+    const r3 = rig(tab(needs(null)));
+    expect([...r3.b.el.querySelectorAll("button")].map(label)).toEqual([copyText("askBlock.manual.terminal")]);
   });
 });

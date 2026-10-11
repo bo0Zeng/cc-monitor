@@ -259,6 +259,8 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
  * 为什么要登记而不是跳过：跳过 ＝「扫不到就绿」。多出一个推不出的元素要有人看见 —— 多出来的多半是词法器又错位了。
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
+  "src/frontend/ui/answer-block.ts::this.el":
+    "答题块本体 `this.el`（`s.abBlock`）—— 它写了 display:flex，CSS 里另有 `.abBlock[hidden]` 收住",
   "src/frontend/ui/find-strip.ts::row.state":
     "命中行下那一句 `row.state`（`s.fsState`）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
   "src/frontend/ui/find-strip.ts::state":

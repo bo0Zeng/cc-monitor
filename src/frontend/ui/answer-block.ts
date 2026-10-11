@@ -8,7 +8,8 @@
  *   改到终端里答（幽灵、排末尾）。哪一项进哪一行按选项 id（协议里的闭集，`control::asks::verdict_of`），不按字；
  * - 要附话的（`note` 不是 none）点了原地换一行输入框：Enter 交、Esc 回；必附的空着不交；
  * - 提问：每题照原样排（单选圆点 · 多选方块 · 末尾一格自由文本），每题都答了「提交答案」才可点，按题 id 交 picks；
- * - 没挂上请求（`ask: null`）⇒ 核心写好的那一句（只能在终端里答 / 答题口没接上）＋［看终端］。
+ * - 没挂上请求（`ask: null`：信任框 · 别处起的会话 · 放行联网 … 每一种 needs.kind 都走这一支）⇒ 核心写好的那一句（只能在终端里答 / 答题口没接上）＋
+ *   ［看终端］，能去它的终端时再多一颗（Windows ↗［切到终端］· 远端 tmux［在终端里打开］）。
  *
  * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）；别处先答了（already_answered · closed_elsewhere）⇒
  * 块淡出、按钮不可点、toast 照核心那一句、随即重读。
@@ -17,9 +18,20 @@ import type { Tab } from "./tab-model";
 import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
 import { copyText } from "./copy-table";
 import { button, setBusy, setDisabled } from "./kit/button";
+import { kbd } from "./kit/badge";
 import { needsOf } from "./session-face";
 import { waitedNow } from "./duration-format";
+import { isRemoteOrigin } from "./ipc/origin";
+import { hasTerminal } from "./tab-session-state";
+import { terminalFrontAvailable } from "./terminal-front";
 import s from "./answer-block.module.css";
+
+/** 去哪个终端答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里 ⇒ 在终端里打开；都不行 ⇒ 只给看终端（抽屉里那一页）。 */
+function terminalWhere(tab: Tab): "front" | "attach" | null {
+  if (terminalFrontAvailable() && hasTerminal(tab.state)) return "front";
+  if (isRemoteOrigin(tab.origin) && tab.state.liveness === "live" && tab.state.recoverability === "attachable") return "attach";
+  return null;
+}
 
 /** 交给 `needs-answer` 的那一份（`sid` 由宿主按 tab 补上）。 */
 export interface AnswerRequest {
@@ -39,6 +51,10 @@ export interface AnswerHost {
   reread(sid: string): void;
   /** 抽屉的终端页换到这个会话。 */
   viewTerminal(sid: string): void;
+  /** Windows：切到它的终端窗口（↗）。 */
+  front(sid: string): void;
+  /** 远端 tmux：在本机终端里打开它。 */
+  attach(sid: string): void;
   toast(title: string, detail?: string): void;
   /** 块高了 / 收了：消息流底部给它让出多高（像素；收起 ⇒ 0）。 */
   room?(px: number): void;
@@ -165,7 +181,13 @@ export class AnswerBlock {
     said.dataset.part = "manual";
     said.textContent = n.manualText ?? "";
     const sid = tab.sessionId;
-    row.append(said, button({ label: copyText("askBlock.manual.terminal"), onClick: () => this.host.viewTerminal(sid) }));
+    const acts = document.createElement("span");
+    acts.className = s.abActs;
+    acts.append(button({ label: copyText("askBlock.manual.terminal"), onClick: () => this.host.viewTerminal(sid) }));
+    const where = terminalWhere(tab);
+    if (where === "front") acts.append(button({ label: copyText("needs.bar.front"), icon: "front", onClick: () => this.host.front(sid) }));
+    else if (where === "attach") acts.append(button({ label: copyText("needs.bar.openTerm"), onClick: () => this.host.attach(sid) }));
+    row.append(said, acts);
     this.body!.replaceChildren(row);
   }
 
@@ -188,7 +210,10 @@ export class AnswerBlock {
       first = false;
       const b = button({ label: c.note === "none" ? c.text : copyText("askBlock.choice.more", { label: c.text }), kind, onClick: () => this.pick(tab, ask, c, b) });
       b.dataset.choice = c.id;
-      if (ask.kind === "approve" && where === "main" && key < 9) b.dataset.key = String(++key);
+      if (ask.kind === "approve" && where === "main" && key < 9) {
+        b.dataset.key = String(++key);
+        b.append(kbd(b.dataset.key));
+      }
       row.append(b);
     }
     this.body!.replaceChildren(...parts, ...rows.values());

@@ -290,7 +290,7 @@ export interface Needs {
   receivedAt: number;
 }
 
-const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
+export const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
 
 /** 一条挂着的待答请求（后端 `agents/asks.rs::Ask`，会话 `needs.ask`）：答的时候 `id` 与选项的 `id` 原样交回 `needs-answer`。 */
 export interface Ask {

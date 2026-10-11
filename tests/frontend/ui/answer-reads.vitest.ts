@@ -25,7 +25,7 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import { answerNeeds } from "../../../src/frontend/ui/answer-reads";
 
 const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
-const refused = (code: string, message: string) => new ChanError({ layer: "peer", why: "refused", body: enc({ code, message }) }, "详情");
+const refused = (code: string, message: string) => new ChanError({ layer: "peer", why: "refused", body: enc({ code, message }) }, "d1");
 
 beforeEach(() => {
   calls.length = 0;
@@ -55,7 +55,7 @@ describe("needs-answer", () => {
     reply = async () => {
       throw refused("bad_choice", "核心·该项不可选");
     };
-    expect(await answerNeeds("devbox", "s1", { ask: "a", choice: "x" })).toEqual({ kind: "failed", said: "核心·该项不可选", detail: "详情" });
+    expect(await answerNeeds("devbox", "s1", { ask: "a", choice: "x" })).toEqual({ kind: "failed", said: "核心·该项不可选", detail: "d1" });
     reply = async () => {
       throw new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }, "d2");
     };

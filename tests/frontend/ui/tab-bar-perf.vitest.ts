@@ -96,6 +96,7 @@ function rig(n: number, grouped = 0): Rig {
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
+    answerAt: vi.fn(),
     pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),

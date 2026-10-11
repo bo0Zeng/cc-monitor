@@ -17898,13 +17898,13 @@
     "askBlock.tag.run": {
       "kind": "body",
       "role": "片段",
-      "zh": "子 agent · {kind}",
+      "zh": "agent · {kind}",
       "args": ["kind"]
     },
     "askBlock.tag.runBare": {
       "kind": "body",
       "role": "片段",
-      "zh": "子 agent",
+      "zh": "agent",
       "args": []
     },
     "askBlock.choice.more": {
@@ -17946,7 +17946,7 @@
     "askBlock.question.needAll": {
       "kind": "body",
       "role": "悬停",
-      "zh": "每道题都答了才可交",
+      "zh": "每道题答完才可提交",
       "args": []
     },
     "askBlock.question.other": {
