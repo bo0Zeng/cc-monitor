@@ -733,7 +733,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
     std::fs::create_dir_all(&dir).unwrap();
     let there = dir.join("history-metadata.json");
     crate::history::history_annotations::answer_annotate_at(
-        &there,
+        &crate::platform::fs::Own::issue_data_at(&dir),
         &json!({"sid": S1, "patch": {"starred": true}}),
         5,
     )

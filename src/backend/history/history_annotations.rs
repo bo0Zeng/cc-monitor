@@ -17,8 +17,9 @@
 //!   （它身上的蛇形别名摘掉 —— 不摘的话两个名字同时在，下一次严格读就读不懂了）。
 //! - 第四层写法：`O_EXCL` 建临时文件 → 写满 → `sync` → 原子挪过去；目录不在只建那一层；失败删自己的临时文件。读—改—写在那个目录的跨进程锁里。
 //!
-//! 买不到：Windows 上「原子挪过去」是 `std::fs::rename`（覆盖既有文件），没在真 Windows 上跑过。
+//! 买不到：Windows 上「原子挪过去」是覆盖既有文件的那一下改名（`Own::write`），没在真 Windows 上跑过。
 
+use crate::platform::fs::{Own, OwnLock, OwnPath};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -126,28 +127,17 @@ pub fn load() -> Loaded {
     }
 }
 
-/// 读—改—写的锁：先建那一层目录，再拿它的跨进程锁（`platform/lock.rs`）。
-fn lock_for_write(
-    path: &Path,
-) -> Result<crate::platform::lock::DirLock, crate::stream::inbound::spec::Fail> {
-    let dir = path.parent().ok_or_else(|| {
-        (
-            "io_failed",
-            copy_text(
-                "beHistoryAnnotations.writeAt.noParent",
-                &[("path", &(path.display()).to_string())],
-            ),
-        )
-    })?;
-    // 这一层是数据目录，默认就是 `~/.cc-monitor`（后端的家）⇒ 建的那一下只给本人。
-    if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
+/// 读—改—写的锁：先建那一层目录（数据目录，默认就是 `~/.cc-monitor`，建的那一下只给本人），再拿它的跨进程锁。
+fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::stream::inbound::spec::Fail> {
+    let d = dir.as_path();
+    if let Err(e) = own.ensure_dir(dir) {
         return Err(crate::stream::inbound::spec::Fail::from((
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
                     "beHistoryAnnotations.writeAt.mkdirFailed",
                     &[
-                        ("dir", &(dir.display()).to_string()),
+                        ("dir", &(d.display()).to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),
@@ -155,7 +145,7 @@ fn lock_for_write(
             ),
         )));
     }
-    crate::platform::lock::hold(dir).map_err(|e| {
+    own.lock(dir).map_err(|e| {
         crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })
 }
@@ -256,18 +246,24 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
     }
 }
 
-/// 唯一的写者（经 `own_state` 原子写；目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
-fn write_at(path: &Path, raw: &Value) -> Result<(), crate::common::said::Said> {
+/// 唯一的写者（经 `Own` 原子写；目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
+fn write_at(
+    own: &Own,
+    path: &OwnPath,
+    held: &OwnLock,
+    raw: &Value,
+) -> Result<(), crate::common::said::Said> {
     let body = serde_json::to_string_pretty(raw).map_err(|e| {
         crate::common::said::Said::from(crate::common::contract::malformed(&format!(
             "serializing the annotations failed: {e}"
         )))
     })?;
-    crate::common::own_state::write(path, body.as_bytes())
+    own.write(path, held, body.as_bytes())
 }
 
-fn need_path() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
-    path().ok_or_else(|| {
+/// 那份文件所在的目录（数据目录）与它本身。推不出家 ⇒ `no_annotations`。
+fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::spec::Fail> {
+    let dir = own.root().ok_or_else(|| {
         crate::stream::inbound::spec::Fail::from((
             "no_annotations",
             copy_text(
@@ -275,17 +271,24 @@ fn need_path() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
                 &[("env", creds_core::store::DATA_DIR_ENV)],
             ),
         ))
-    })
+    })?;
+    let file = dir
+        .join(creds_core::store::HISTORY_METADATA_FILE)
+        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+    Ok((dir, file))
 }
 
 /// `history-annotate {sid, patch}`：改一条，回改完的那一条（`{entry}`）。
-pub fn answer_annotate(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    answer_annotate_at(&need_path()?, args, now_ms())
+pub fn answer_annotate(
+    args: &Value,
+    own: &Own,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    answer_annotate_at(own, args, now_ms())
 }
 
-/// [`answer_annotate`] 的本体：路径与「现在」由调用方给（判据喂临时目录与固定时刻）。
-pub fn answer_annotate_at(
-    path: &Path,
+/// [`answer_annotate`] 的本体：「现在」由调用方给（判据喂临时目录的写句柄与固定时刻）。
+pub(crate) fn answer_annotate_at(
+    own: &Own,
     args: &Value,
     now: i64,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
@@ -304,8 +307,9 @@ pub fn answer_annotate_at(
             )))
         }
     };
-    let _g = lock_for_write(path)?;
-    let (doc, mut raw) = read_for_write(path)?;
+    let (dir, file) = need_path(own)?;
+    let held = lock_for_write(own, &dir)?;
+    let (doc, mut raw) = read_for_write(file.as_path())?;
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     if let Some(s) = patch.starred {
         entry.starred = s;
@@ -318,7 +322,8 @@ pub fn answer_annotate_at(
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(path, &raw).map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+    write_at(own, &file, &held, &raw)
+        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     crate::stream::inbound::spec::wire(&Annotated { entry })
 }
 
@@ -335,23 +340,25 @@ pub(crate) struct Forgotten {
 }
 
 /// `history-forget {sid}`：删那一条（删会话时连带）。不在 ⇒ 不写。回 `{removed}`。
-pub fn answer_forget(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    answer_forget_at(&need_path()?, args)
+pub fn answer_forget(args: &Value, own: &Own) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    answer_forget_at(own, args)
 }
 
 /// [`answer_forget`] 的本体。
-pub fn answer_forget_at(
-    path: &Path,
+pub(crate) fn answer_forget_at(
+    own: &Own,
     args: &Value,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let sid = sid_arg(args)?;
-    let _g = lock_for_write(path)?;
-    let (doc, mut raw) = read_for_write(path)?;
+    let (dir, file) = need_path(own)?;
+    let held = lock_for_write(own, &dir)?;
+    let (doc, mut raw) = read_for_write(file.as_path())?;
     if !doc.entries.contains_key(sid) {
         return crate::stream::inbound::spec::wire(&Forgotten { removed: false });
     }
     put_entry(&mut raw, sid, None);
-    write_at(path, &raw).map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+    write_at(own, &file, &held, &raw)
+        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     crate::stream::inbound::spec::wire(&Forgotten { removed: true })
 }
 

@@ -865,14 +865,6 @@ mod tests {
              `assets-catalog` / `assets-catalog-merge`（＋ 派生的 CLI 面）",
         ),
         (
-            "history/history_annotations.rs",
-            "**历史注解**那一份文件（星标 / 改名 / 隐藏 / 上次账号；就是 monitor 从前读写的 \
-             `<家>/history-metadata.json`，那台后端按家推）。\
-             「读写者换成本机常驻后端、文件留在原处」：它是界面的注解、只有我们读写 ⇒ 后端**自己的**状态，不是用户数据\
-             （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
-             失败删自己的临时文件。线上入口只有命令表历史那一族的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
-        ),
-        (
             "relay/key.rs",
             "〔`INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
              都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
@@ -1046,10 +1038,6 @@ mod tests {
             "命令注册里资产那一族 —— 资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；skill 装记录那一条（`skill-install-record`）",
         ),
         (
-            "stream/inbound/registry/history.rs",
-            "命令注册里历史那一族 —— 历史注解那两条（`history-annotate` / `history-forget`）",
-        ),
-        (
             "accounts/oauth/mod.rs",
             "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
         ),
@@ -1125,12 +1113,6 @@ mod tests {
             "assets/asset_catalog.rs",
             "asset_catalog::answer_",
             "stream/inbound/registry/assets.rs",
-        ),
-        // 两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
-        (
-            "history/history_annotations.rs",
-            "history_annotations::answer_",
-            "stream/inbound/registry/history.rs",
         ),
         // 订阅号凭据：写回（`write_tokens`）与续期锁（`with_refresh_lock`）都只从续期那一处（`oauth/mod.rs`）进。
         (

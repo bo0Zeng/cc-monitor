@@ -163,7 +163,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
 }
 
 /// 搬上 `Own` 的那几份（第二刀逐份搬，搬一份挪一行）。
-const MOVED_TO_OWN: &[&str] = &["control/exit_policy.rs"];
+const MOVED_TO_OWN: &[&str] = &["history/history_annotations.rs", "control/exit_policy.rs"];
 
 #[test]
 fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
@@ -179,7 +179,6 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
         "control/files_commit.rs",
         // +2：凭据文件与历史注解那一层都是数据目录（默认 `~/.cc-monitor`）。
         "accounts/upstream_select/file_face.rs",
-        "history/history_annotations.rs",
     ] {
         assert_eq!(
             src(f)
