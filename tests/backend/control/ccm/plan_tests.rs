@@ -2484,3 +2484,40 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+/// 答题 hook 只挂在 ccm 起的这一个会话上：知道入口 ⇒ 启动器后面垫那一家的 `--settings <只含那一个 hook 的 JSON>`，
+/// 透传在后（用户自己的 `--` 之后的词照旧落在它后面）；用户自己给了同一个旗标 ⇒ 不垫；不知道入口（预览 / 判据）⇒ 不垫。
+#[test]
+fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
+    let mut e = env();
+    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    let Plan::Direct(d) = plan_of(&["--model", "opus"], &e, &AccountTable::default()) else {
+        panic!("该是 Direct")
+    };
+    let mut want = vec!["claude".to_string()];
+    want.extend(crate::agents::claudecode::asks::launch_args(
+        "/home/pi/.cc-monitor/bin/ccm",
+    ));
+    want.extend(["--model".to_string(), "opus".to_string()]);
+    assert_eq!(d.argv, want);
+
+    for own in [&["--settings", "/u.json"][..], &["--settings=/u.json"][..]] {
+        let Plan::Direct(d) = plan_of(own, &e, &AccountTable::default()) else {
+            panic!("该是 Direct")
+        };
+        assert_eq!(
+            d.argv[1..],
+            own.iter().map(|s| s.to_string()).collect::<Vec<_>>()[..],
+            "用户自己给了 ⇒ 不垫"
+        );
+    }
+
+    let Plan::Direct(d) = plan_of(&["--model", "opus"], &env(), &AccountTable::default()) else {
+        panic!("该是 Direct")
+    };
+    assert_eq!(
+        d.argv,
+        vec!["claude", "--model", "opus"],
+        "不知道入口 ⇒ 不垫"
+    );
+}

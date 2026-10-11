@@ -102,6 +102,9 @@ pub(crate) struct Env {
     /// 这台盘上根钥匙派生出来的只许直通那一把（地址只能拼进参数的那一家要它）：非得经 shell 那一趟照字面写进那个词
     /// （它本来就进 argv）。读不到 ⇒ `None`（那个词写成不带钥匙的地址）。预览那一份不读（界面上不出现钥匙）。
     pub(crate) relay_pass_key: Option<String>,
+    /// 答题 hook 叫的那个 `ccm`（这台的入口 `<家>/.cc-monitor/bin/ccm`，绝对路径；后端升级换真身也不变）。
+    /// `None` ＝ 不挂（预览 / 判据 / 家目录说不出）：这一发起的会话里的框只能在终端里答。
+    pub(crate) answer_hook_entry: Option<String>,
 }
 
 /// 环境里认出调用方那个会话（[`Env::inherited_parent`]）：各家登记的变量按注册序，头一个有值、值过段闸的。
@@ -170,6 +173,7 @@ impl Env {
             relay_pass_key: crate::accounts::upstream_select::endpoint::pass_key_for_shell(
                 std::path::Path::new(&home),
             ),
+            answer_hook_entry: crate::platform::paths::installed_ccm_entry(),
             home,
         }
     }
@@ -212,6 +216,8 @@ impl Env {
             origin_token: None,
             // 预览不读钥匙：界面上不出现任何一把（参数里那个词写成不带钥匙的地址）。
             relay_pass_key: None,
+            // 预览不挂答题 hook：那一串设置是起会话那一下的事，别名本身不带它（真跑那一份照常挂）。
+            answer_hook_entry: None,
             home,
         }
     }
@@ -1269,6 +1275,20 @@ pub(crate) fn build_among(
     for a in face.map_or(&[][..], |f| f.launch_args) {
         if !o.passthru.iter().any(|p| p == a) {
             argv.push((*a).to_string());
+        }
+    }
+    // 答题 hook（会话级，只挂在这一个会话上，不碰用户自己的设置）：这一家有答题口、这一发知道 ccm 入口 ⇒ 垫在透传之前；
+    //   透传里用户自己给了同一个旗标 ⇒ 不垫（给两次谁赢说不准），这条会话的框只能在终端里答。
+    if let (Some(entry), Some(f)) = (
+        env.answer_hook_entry.as_deref(),
+        crate::agents::ask_face_among(registry, &o.agent),
+    ) {
+        if !o
+            .passthru
+            .iter()
+            .any(|p| p == f.launch_flag || p.starts_with(&format!("{}=", f.launch_flag)))
+        {
+            argv.extend((f.launch_args)(entry));
         }
     }
     // 地址只能拼进参数的那一家：不带钥匙的地址垫在透传之前（钥匙走环境，见 [`RelayVia::Args`]）。

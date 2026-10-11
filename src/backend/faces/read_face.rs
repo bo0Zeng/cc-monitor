@@ -377,9 +377,12 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                let needs = crate::observe::facts_query::needs_of(
-                    &last.pending,
-                    accounts_query::session_wait(home, sid).as_ref(),
+                let needs = crate::observe::asks::dress(
+                    crate::observe::facts_query::needs_of(
+                        &last.pending,
+                        accounts_query::session_wait(home, sid).as_ref(),
+                    ),
+                    sid,
                 );
                 let live = history_query::facts_holders(home, path).is_some_and(|h| !h.is_empty());
                 crate::observe::turns::dress_live(last, needs.as_ref(), live);
@@ -469,9 +472,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             let holders = history_query::facts_holders(home, path);
             facts.writers = holders.clone().unwrap_or_default();
             // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
-            facts.needs = facts_query::needs_of(
-                &facts.pending,
-                accounts_query::session_wait(home, sid).as_ref(),
+            // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
+            facts.needs = crate::observe::asks::dress(
+                facts_query::needs_of(
+                    &facts.pending,
+                    accounts_query::session_wait(home, sid).as_ref(),
+                ),
+                sid,
             );
             // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
             facts.background = accounts_query::session_background(home, sid).map(|born| {

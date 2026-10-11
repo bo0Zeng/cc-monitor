@@ -526,6 +526,8 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
         rank: 1,
         waited_ms: Some(1),
         waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
+        ask: None,
+        manual_text: None,
     };
     dress_live(&mut awaiting, Some(&needs), true);
     assert_eq!(awaiting.phase, Phase::Awaiting);

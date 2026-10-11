@@ -515,6 +515,10 @@ pub(crate) struct Needs {
     pub(crate) waited_ms: Option<u64>,
     /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
     pub(crate) waited_text: Option<Words>,
+    /// 这一条可以怎么答（挂着的待答请求，`observe::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+    pub(crate) ask: Option<crate::observe::asks::Ask>,
+    /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+    pub(crate) manual_text: Option<Words>,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -577,6 +581,9 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         rank,
         waited_ms,
         waited_text: waited_ms.map(|ms| Words(copy_core::short_duration(ms))),
+        // 配不配挂着的请求在调用处（`observe::asks::dress`，读常驻进程那一份登记表）。
+        ask: None,
+        manual_text: None,
     })
 }
 
@@ -870,10 +877,12 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         exact_keys(
             &v["needs"],
             &[
+                "ask",
                 "call",
                 "head",
                 "headCode",
                 "kind",
+                "manualText",
                 "rank",
                 "sinceMs",
                 "text",

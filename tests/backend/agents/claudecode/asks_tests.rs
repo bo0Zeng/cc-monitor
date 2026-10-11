@@ -85,7 +85,10 @@ fn allow_with_a_rule_hands_back_that_suggestion_verbatim() {
         },
     )
     .unwrap();
-    assert_eq!(plain["hookSpecificOutput"]["decision"], json!({"behavior": "allow"}));
+    assert_eq!(
+        plain["hookSpecificOutput"]["decision"],
+        json!({"behavior": "allow"})
+    );
 }
 
 #[test]
@@ -111,7 +114,10 @@ fn deny_carries_the_note_and_stop() {
         },
     )
     .unwrap();
-    assert_eq!(bare["hookSpecificOutput"]["decision"], json!({"behavior": "deny"}));
+    assert_eq!(
+        bare["hookSpecificOutput"]["decision"],
+        json!({"behavior": "deny"})
+    );
 }
 
 fn auq_req() -> Value {
@@ -135,7 +141,10 @@ fn a_question_reads_its_questions_and_answers_go_into_updated_input() {
     assert_eq!(a.questions.len(), 2);
     assert!(a.questions[1].multi);
     assert_eq!(a.questions[0].options[0].label, "Red");
-    assert_eq!(a.questions[0].options[0].description.as_deref(), Some("warm"));
+    assert_eq!(
+        a.questions[0].options[0].description.as_deref(),
+        Some("warm")
+    );
     let out = decide(
         &a,
         &Verdict::Allow {
@@ -150,7 +159,11 @@ fn a_question_reads_its_questions_and_answers_go_into_updated_input() {
     .unwrap();
     let d = &out["hookSpecificOutput"]["decision"];
     assert_eq!(d["behavior"], "allow");
-    assert_eq!(d["updatedInput"]["questions"], auq_req()["tool_input"]["questions"], "题目原样");
+    assert_eq!(
+        d["updatedInput"]["questions"],
+        auq_req()["tool_input"]["questions"],
+        "题目原样"
+    );
     assert_eq!(
         d["updatedInput"]["answers"],
         json!({"Which color?": "PURPLE", "Which fruits?": "Apple, Pear"})
@@ -199,7 +212,11 @@ fn the_launch_words_are_settings_with_one_exec_form_hook_that_names_command() {
     assert_eq!(w[0], "--settings");
     let s: Value = serde_json::from_str(&w[1]).unwrap();
     let hooks = &s["hooks"];
-    assert_eq!(hooks.as_object().unwrap().len(), 1, "只挂 PermissionRequest");
+    assert_eq!(
+        hooks.as_object().unwrap().len(),
+        1,
+        "只挂 PermissionRequest"
+    );
     let h = &hooks["PermissionRequest"][0]["hooks"][0];
     assert_eq!(h["type"], "command");
     // 实测：exec 形只写 args 不写 command ⇒ 整份设置被跳过、开局还弹框。

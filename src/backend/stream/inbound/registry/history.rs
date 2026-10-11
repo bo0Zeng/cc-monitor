@@ -215,6 +215,25 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 答批准 / 提问 / 批计划（`observe/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
+    //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `cli_control::STREAM_ONLY`）。
+    CommandSpec {
+        name: "needs-ask",
+        summary: "答题 hook 挂一条待答请求、等人答（hook 客户端 `--answer-hook` 用；本连接断了 ⇒ 撤）",
+        codes: &["bad_args"],
+        fields: &[arg("agent", "哪一家（线上的 kind）"), arg("hook", "那一家的 hook 交来的那一份原样"), out("decision", "人的答案写成那一家要的那一整份，hook 原样打到 stdout；`null` ＝ 不给决定（不是要人答的那一种 · 改到终端里答 · 别处关了），hook 空手退")],
+        takes_input: true,
+        // 本体 `observe::asks::ask`（`dispatch` 的硬臂带着本连接的号调它）。
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "needs-answer",
+        summary: "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
+        codes: &["bad_args", "not_found", "already_answered", "closed_elsewhere", "bad_choice", "note_required"],
+        fields: &[arg("ask", "`needs.ask.id`"), arg("choice", "`needs.ask.choices[].id`"), arg("note", "可缺：附的那句话（选项 `note` 是 required 时必给）"), arg("picks", "提问那一种选 `answer` 时必给：`{<题 id>: {options: [<选项 id>…], text: <自由文本>}}`，每题都要答、单选至多一项"), out("result", "恒 `answered`（交到了 hook 那一头；终端那边若同时答了，以先到的为准，晚到的那一家自己丢掉、不会落到别的框上）"), arg("sid", "会话 id")],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::observe::asks::answer(&r.args).map(Some).map_err(|(c, m)| (c.to_string(), m))),
+    },
     CommandSpec {
         name: "history-facts",
         summary: "会话事实",

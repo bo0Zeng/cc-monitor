@@ -866,12 +866,27 @@ pub(crate) struct NeedsRow {
 /// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
 /// 先答的在前（[`super::facts_query::needs_first`]）。
 pub(crate) fn live_needs(agent_home: &Path) -> Vec<NeedsRow> {
-    let mut rows = live_activity(agent_home)
+    let live = live_activity(agent_home);
+    // 那台说在等的 ∪ 有请求挂着的（挡着终端的那种 pidfile 不说在等，照样是要人答的）；后者只收此刻活着的会话。
+    let mut sids: Vec<String> = live
+        .iter()
+        .filter(|(_, a)| **a == Some(crate::agents::SessionActivity::NeedsYou))
+        .map(|(sid, _)| sid.clone())
+        .collect();
+    for sid in super::asks::sids() {
+        if live.contains_key(&sid) && !sids.contains(&sid) {
+            sids.push(sid);
+        }
+    }
+    let mut rows = sids
         .into_iter()
-        .filter(|(_, a)| *a == Some(crate::agents::SessionActivity::NeedsYou))
-        .filter_map(|(sid, _)| {
+        .filter_map(|sid| {
+            let waiting = live.get(&sid) == Some(&Some(crate::agents::SessionActivity::NeedsYou));
             Some(NeedsRow {
-                needs: waiting_needs(agent_home, &sid)?,
+                needs: super::asks::dress(
+                    waiting.then(|| waiting_needs(agent_home, &sid)).flatten(),
+                    &sid,
+                )?,
                 sid,
             })
         })

@@ -435,6 +435,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
             &crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
             }),
+            0,
         )
     };
 
@@ -966,7 +967,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1), 0),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -983,7 +984,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1), 0),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -1014,7 +1015,8 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<
                         Vec<crate::stream::wire::WatchFrom>,
                     >()
-                    .1)
+                    .1),
+                    0,
                 ),
                 Disposition::SpawnBlocking(..)
             )
@@ -1071,6 +1073,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &crate::stream::inbound::WatchDesk::new(|_| {
             tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
         }),
+        0,
     )
     .await;
 

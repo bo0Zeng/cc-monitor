@@ -110,11 +110,18 @@ fn what_of(tool: &str, input: &Value, questions: &[AskQuestion]) -> Option<Strin
     match tool {
         ASK_TOOL => questions.first().map(|q| q.question.clone()),
         PLAN_TOOL => None,
-        _ => ["command", "file_path", "notebook_path", "url", "pattern", "path"]
-            .iter()
-            .find_map(|k| str_of(input, k))
-            .and_then(first_line)
-            .filter(|s| !s.is_empty()),
+        _ => [
+            "command",
+            "file_path",
+            "notebook_path",
+            "url",
+            "pattern",
+            "path",
+        ]
+        .iter()
+        .find_map(|k| str_of(input, k))
+        .and_then(first_line)
+        .filter(|s| !s.is_empty()),
     }
 }
 
@@ -175,7 +182,9 @@ fn suggestion_of(s: &Value) -> Option<AskSuggestion> {
             "acceptEdits" => copy_text("beAsk.rule.acceptEdits", &[("scope", &scope)]),
             m => copy_text("beAsk.rule.mode", &[("mode", m), ("scope", &scope)]),
         },
-        "addRules" | "replaceRules" if s.get("behavior").and_then(Value::as_str) == Some("allow") => {
+        "addRules" | "replaceRules"
+            if s.get("behavior").and_then(Value::as_str) == Some("allow") =>
+        {
             let rules: Vec<String> = s
                 .get("rules")
                 .and_then(Value::as_array)?
@@ -218,10 +227,8 @@ pub(crate) fn decide(ask: &AskIn, verdict: &Verdict) -> Option<Value> {
                 // 提问：原样题目 ＋ 每题的答案（多选已由通用层用「, 」连好）；不带 `updatedInput` 那一家当没答。
                 AskKind::Question => {
                     let mut input = ask.input.as_object().cloned().unwrap_or_default();
-                    let a: Map<String, Value> = answers
-                        .iter()
-                        .map(|(q, v)| (q.clone(), json!(v)))
-                        .collect();
+                    let a: Map<String, Value> =
+                        answers.iter().map(|(q, v)| (q.clone(), json!(v))).collect();
                     input.insert("answers".into(), Value::Object(a));
                     d.insert("updatedInput".into(), Value::Object(input));
                 }

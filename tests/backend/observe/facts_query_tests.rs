@@ -540,6 +540,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             rank: 1,
             waited_ms: Some(1),
             waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
+            ask: None,
+            manual_text: None,
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
@@ -691,6 +693,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             rank: 1,
             waited_ms: Some(1),
             waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
+            ask: None,
+            manual_text: None,
         }),
         ..SessionFacts::default()
     };
@@ -1425,6 +1429,8 @@ fn needs_first_agrees_with_the_shared_order_golden() {
                         rank: u8::try_from(n["rank"].as_u64().unwrap()).unwrap(),
                         waited_ms: n["waitedMs"].as_u64(),
                         waited_text: None,
+                        ask: None,
+                        manual_text: None,
                     },
                 )
             })

@@ -1109,6 +1109,8 @@ mod specimens {
                         waited_text: Some(crate::common::cells::Words(copy_core::short_duration(
                             1,
                         ))),
+                        ask: Some(crate::observe::asks::specimen()),
+                        manual_text: Some(Words(s("m"))),
                     }),
                     handed_back: vec![s("a")],
                     retries: vec![RetryRun {
@@ -1208,6 +1210,8 @@ mod specimens {
                 rank: 1,
                 waited_ms: Some(1),
                 waited_text: Some(Words(s("1"))),
+                ask: Some(crate::observe::asks::specimen()),
+                manual_text: Some(Words(s("m"))),
             },
         })]
     }
