@@ -261,9 +261,14 @@ def main():
             raise Step.Fail("历史清单没出新会话")
         if not wait(t("needs.bar.unknown"), 20):
             raise Step.Fail("需手动没出来")
-        first = next((n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")), "")
+        # 台架跨趟留着旧会话（上一趟中途停下的那条也还在等），它们按分钟走、几秒里不变：
+        # 看的是「有没有一行在走表」，这一趟刚起的那条按秒走，一定在里面。
+        def waits():
+            return [n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")]
+
+        first = waits()
         time.sleep(4)
-        later = next((n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")), "")
+        later = waits()
         if not first or first == later:
             raise Step.Fail(f"已等没走表（{first!r} → {later!r}）")
         rig("tmux", "send-keys", "-t", f"needs{T}", "y", "Enter")
