@@ -5,4 +5,4 @@ import type { TryRow } from "./TryRow";
 /**
  * `rotation-strategy-try` 的应答：排出的先后 · 会挑谁（停发 ⇒ 缺）· 备忘 · 用了几次操作（上限）· 出错的话为什么。
  */
-export type TryReply = { rows: Array<TryRow>, pick?: string, memo?: unknown, ops: bigint, maxOps: number, strategyError?: StrategyError, };
+export type TryReply = { rows: Array<TryRow>, pick?: string, memo?: unknown, ops: number, maxOps: number, strategyError?: StrategyError, };
