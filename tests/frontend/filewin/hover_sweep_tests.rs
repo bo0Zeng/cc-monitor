@@ -286,7 +286,7 @@ fn sweeping_two_sides_never_flips_a_frame() {
     assert!(ws.add_tab(0, pane("/srv/a2")));
     assert!(ws.add_side(pane("/srv/b")));
     assert!(ws.add_tab(1, pane("/srv/b2")));
-    no_flips(Sweep::new().run("双栏", &mut ws));
+    no_flips(Sweep::new().run("双栏各两个标签", &mut ws));
 }
 
 /// ★ 右键菜单开着（照真的点一下右键）；扫完菜单还开着。
@@ -374,7 +374,7 @@ async fn sweeping_with_the_preview_open_never_flips_a_frame() {
         "量具：预览没等到正文 {:?}",
         ws.preview.as_ref().map(|p| p.view())
     );
-    let flips = s.run("预览", &mut ws);
+    let flips = s.run("预览开着", &mut ws);
     let _ = std::fs::remove_dir_all(base);
     no_flips(flips);
 }
