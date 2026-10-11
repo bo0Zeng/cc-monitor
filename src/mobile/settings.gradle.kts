@@ -32,7 +32,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "android-terminal"
+rootProject.name = "cc-monitor-mobile"
 include(":app")
 include(":core-ui")
 include(":core-data")
