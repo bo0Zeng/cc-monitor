@@ -18260,6 +18260,12 @@
       "zh": "未改动 · {path} 不在 ~/{a} · ~/{b}",
       "args": ["a", "b", "path"]
     },
+    "beSftp.fence.readOnly": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未改动 · 此处不许改远端文件 · {path}",
+      "args": ["path"]
+    },
     "beSftp.fence.rootUnresolved": {
       "kind": "error",
       "role": "报错",
@@ -18383,6 +18389,18 @@
       "zh": "密钥被拒 · 用户 {user}",
       "args": ["user"]
     },
+    "beConnect.auth.passwordFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "密码登录失败",
+      "args": []
+    },
+    "beConnect.auth.passwordRejected": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "密码被拒 · 用户 {user}",
+      "args": ["user"]
+    },
     "beConnect.agent.unreachable": {
       "kind": "error",
       "role": "报错",
@@ -18495,6 +18513,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "远端命令启动失败",
+      "args": []
+    },
+    "beUses.shell.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "开终端失败",
       "args": []
     },
     "beUses.exec.stdinLost": {

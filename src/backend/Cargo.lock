@@ -251,6 +251,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shell-quote-core",
+ "ssh-dial",
  "tar",
  "tokio",
  "toml_edit",
@@ -2182,6 +2183,25 @@ dependencies = [
  "poly1305",
  "ssh-encoding",
  "zeroize",
+]
+
+[[package]]
+name = "ssh-dial"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "flate2",
+ "guard-core",
+ "libc",
+ "ring",
+ "russh",
+ "russh-sftp",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "upstream-url-core",
 ]
 
 [[package]]

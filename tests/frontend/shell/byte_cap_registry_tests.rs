@@ -149,7 +149,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "SIO_TCP_INFO",
-        "Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`platform/tcp_rtt.rs`）。",
+        "Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`ssh-dial/tcp_rtt.rs`）。",
     ),
     (
         "PROCESS_TERMINATE",
@@ -722,13 +722,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "REQUEST_LINE_CAP",
         "files 链路上一行请求（短 JSON；`put` 的字节不走行）",
         "拒收+回错",
     ),
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "MAX_PUT_BYTES",
         "一次 `put` 收进内存的字节（后端二进制今天 MB 级）。超了 ⇒ 那几个字节照收照丢（别让下一行请求读到半截二进制）、回 `too_big`",
         "拒收+回错",
@@ -1729,7 +1729,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     // files 链路的 `put`：`size` 是请求里**声明**的字节数（monitor 给），不是上限；
     //   上限是具名常量 `MAX_PUT_BYTES`（已在 `CAPS` 里），`size > MAX_PUT_BYTES` 的判断在 `take(size)` **之前**。
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "size",
         "`put` 的 `size` 是请求里声明的长度（对端给的），**不是上限**；上限是具名常量 `MAX_PUT_BYTES`\
              （已在 `CAPS` 里，超限「拒收+回错」）。`size > MAX_PUT_BYTES` 那一支在 `take(size)` **之前**：\

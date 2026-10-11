@@ -5,7 +5,7 @@
 //! 这里绑上、**不听**：拨它内核当场回拒绝，口一直占着，别人绑不上。占到进程结束。
 
 /// 一个此刻起拨它必被拒的本机口。
-pub(crate) fn refusing_port() -> u16 {
+pub fn refusing_port() -> u16 {
     let sock = tokio::net::TcpSocket::new_v4().expect("开 socket");
     sock.bind(std::net::SocketAddr::from(([127, 0, 0, 1], 0)))
         .expect("绑口");

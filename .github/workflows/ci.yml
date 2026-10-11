@@ -333,7 +333,7 @@ jobs:
           CC_x86_64_pc_windows_msvc: zig cc
           CFLAGS_x86_64_pc_windows_msvc: --target=x86_64-windows-gnu
           AR_x86_64_pc_windows_msvc: zig lib
-        run: cargo check --all-targets --target x86_64-pc-windows-msvc
+        run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
 
       - name: 门禁 · 后端 fmt / clippy / test
         env:

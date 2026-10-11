@@ -3529,7 +3529,7 @@ cc-bus 钩子诊断。
 | `id` | ← | 这条转发的号（`fwd-<n>`，本进程内单调） |
 | `jump` | → | 跳板那一台的配置（可缺） |
 | `localPort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `machine` | → | 那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`dial/machine.rs`，同 `remote-probe`），不拒 |
+| `machine` | → | 那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`ssh-dial/machine.rs`，同 `remote-probe`），不拒 |
 | `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求） |
 | `remoteHost` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
 | `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |

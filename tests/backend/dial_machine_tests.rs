@@ -1,5 +1,5 @@
 //! 「测试连接：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求」·
-//! 「端口转发：流没起的远端不许拒，本机后端按配置自己拨」—— `dial/machine.rs` 的规则判据（从 monitor `dial_host::request` /
+//! 「端口转发：流没起的远端不许拒，本机后端按配置自己拨」—— `ssh-dial/machine.rs` 的规则判据（从 monitor `dial_host::request` /
 //! `stream_source::parse_address_line` 搬来：地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）。
 use super::*;
 
@@ -67,7 +67,7 @@ fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
         Value::Null,
         "换了 host 不许继承旧指纹"
     );
-    serde_json::from_value::<crate::dial::DialRequest>(r).expect("组出来的请求后端自己读得动");
+    serde_json::from_value::<crate::DialRequest>(r).expect("组出来的请求后端自己读得动");
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         ],
         "上次赢的那条排首，其余保序"
     );
-    assert_eq!(r.use_, crate::dial::Use::Capture);
+    assert_eq!(r.use_, crate::Use::Capture);
     assert_eq!(
         (r.command.as_str(), r.agent_sock.as_deref()),
         ("x", Some("/run/agent"))
@@ -154,7 +154,7 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
 #[test]
 fn the_ack_says_how_strict_the_composed_request_was() {
     // 界面判「要不要自动固化」看 ack 的 `strict` / `jump_strict`，不再自己重推指纹继承（规则只在本文件）。
-    let strict_of = |wire: Value| crate::dial::uses::strictness(&resolve(&wire).unwrap());
+    let strict_of = |wire: Value| crate::uses::strictness(&resolve(&wire).unwrap());
     let form = json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"});
     let bastion = |fp: &str| json!({"host": "b.lan", "label": "bastion", "user": "u", "hostKeyFingerprint": fp});
     assert_eq!(

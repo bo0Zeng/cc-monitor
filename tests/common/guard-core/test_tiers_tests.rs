@@ -66,6 +66,10 @@ const SUPPORT: &[&str] = &[
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
     "tests/backend/sftp_rig.rs",
+    "tests/backend/dial_sftp_rig_host.rs", // 后端测试档的 SFTP 台架：先装本后端那一套再起会话
+    "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
+    "tests/backend/dial_sftp_rig_host.rs", // 后端测试档的 SFTP 台架：先装本后端那一套再起会话
+    "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
     "tests/backend/accounts/upstream_select/upstreams_testing.rs", // 把一家的默认上游换成假上游
     "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/filewin/copy_testing.rs",

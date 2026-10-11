@@ -7,6 +7,8 @@
 
 use std::path::PathBuf;
 
+pub(crate) use ssh_dial::known_hosts::{host_pattern, merged};
+
 /// 这份文件在哪（家目录说不出 ⇒ `None`）。
 pub(crate) fn path() -> Option<PathBuf> {
     let mut p = crate::platform::paths::home_dir()?;
@@ -16,39 +18,8 @@ pub(crate) fn path() -> Option<PathBuf> {
     Some(p)
 }
 
-/// OpenSSH 认的主机名写法：口 22 只写主机，别的口写 `[主机]:口`（IPv6 字面量的方括号先剥掉）。
-pub(crate) fn host_pattern(host: &str, port: u16) -> String {
-    let bare = host.trim_start_matches('[').trim_end_matches(']');
-    if port == 22 {
-        bare.to_string()
-    } else {
-        format!("[{bare}]:{port}")
-    }
-}
-
-/// 现有内容 ＋ 这台的一行（`<主机名> <算法> <base64>`）⇒ 新内容；同一台已是这一把 ⇒ `None`（不写）。
-/// 同一主机名的旧行（别的钥匙）去掉；别的行原样留着。
-pub(crate) fn merged(existing: &str, pattern: &str, key: &str) -> Option<String> {
-    let line = format!("{pattern} {key}");
-    let mut placed = false;
-    let mut lines: Vec<&str> = Vec::new();
-    for l in existing.lines().filter(|l| !l.trim().is_empty()) {
-        if l.split_whitespace().next() != Some(pattern) {
-            lines.push(l);
-        } else if !placed {
-            lines.push(&line);
-            placed = true;
-        }
-    }
-    if !placed {
-        lines.push(&line);
-    }
-    let body = lines.join("\n") + "\n";
-    (body != existing).then_some(body)
-}
-
 /// 记下这台的钥匙（`key` = OpenSSH 公钥那一行的前两段：算法 ＋ base64）。**本模块唯一的写口**（`readonly_guard` 第四层登记；
-/// 门是 `dial/connect.rs` 的钥匙核对）。写不了只记日志：开终端照样开，只是 ssh 会再问一遍。
+/// 门是拨号核心 `connect.rs` 的钥匙核对，经 [`KnownHostsFile`] 进来）。写不了只记日志：开终端照样开，只是 ssh 会再问一遍。
 pub(crate) fn remember(file: &std::path::Path, host: &str, port: u16, key: &str) {
     if let Err(e) = remember_locked(file, host, port, key) {
         tracing::warn!(
@@ -81,6 +52,17 @@ fn remember_locked(
         return Ok(());
     };
     crate::common::own_state::write(file, body.as_bytes())
+}
+
+/// 拨号核心认下一把 host key 时交到这里（[`ssh_dial::env::HostKeys`]）：记进 [`path`] 那一份。家目录说不出 ⇒ 不记。
+pub(crate) struct KnownHostsFile;
+
+impl ssh_dial::env::HostKeys for KnownHostsFile {
+    fn remember(&self, host: &str, port: u16, key: &str) {
+        if let Some(file) = path() {
+            remember(&file, host, port, key);
+        }
+    }
 }
 
 /// 读盘的上限（一台一行，远到不了）。

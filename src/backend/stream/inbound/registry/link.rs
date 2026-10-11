@@ -21,7 +21,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Builtin,
     },
     // **链路四条** —— 本机只常驻一个后端，
-    // 到各远端的 SSH 连接由它持有、按拨号身份复用（`dial/pool.rs`）；monitor 经这条流开「链路」，
+    // 到各远端的 SSH 连接由它持有、按拨号身份复用（`ssh-dial/pool.rs`）；monitor 经这条流开「链路」，
     // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
     // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。
     CommandSpec {

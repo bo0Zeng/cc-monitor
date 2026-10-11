@@ -182,7 +182,7 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
 #[test]
 fn the_cross_target_check_still_runs_under_the_backend_lock() {
     use crate::shared_crate_registry::ci_yaml;
-    const CHECK: &str = "cargo check --all-targets --target x86_64-pc-windows-msvc";
+    const CHECK: &str = "cargo check --workspace --all-targets --target x86_64-pc-windows-msvc";
     // ⚠ **行锚定**，不能用 `contains` 裸匹配：`src/backend` 是
     // `src/backend-X` 的**前缀** —— 变异实测过，裸 `contains` 照样绿。
     const WD: &str = "working-directory: src/backend";

@@ -75,8 +75,7 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 #[cfg(test)]
-#[path = "../../tests/backend/refusing_port.rs"]
-pub(crate) mod refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用）
+pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`）
 pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
 #[cfg(test)]
 #[path = "../../tests/backend/runs_guard.rs"]
@@ -644,7 +643,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
 /// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（手机端不读）。
 ///
-/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
+/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `ssh-dial/machine.rs::resolve` 组（monitor 只交原样配置）·
 /// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
 ///
 /// ★★★ **p5g-acct-iso-in-backend**（2026-09-28，MIG-3a 续合并那一拍）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·

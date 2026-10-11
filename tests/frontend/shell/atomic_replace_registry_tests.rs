@@ -77,7 +77,7 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
     ),
     // `logging.rs [rename]` 同上一起摘。
     // `sftp.rs [rename] 2`（远端上传落地的两步：旧的改名 `.bak` · 临时件上位）摘了 ——
-    //   那段原子上传随 SFTP 搬进本机常驻后端（`src/backend/dial/sftp.rs::put_atomic`，写只许两处）；本表只管 monitor。
+    //   那段原子上传随 SFTP 搬进本机常驻后端（`src/backend/ssh-dial/sftp.rs::put_atomic`，写只许两处）；本表只管 monitor。
     // `sftp_pool.rs [rename]`（`download_inner`：下载先写 `<local>.part` 再 rename 落地）这一行摘了 ——
     //   下载的本机落点随传输台搬进了本机常驻后端（`control/transfer.rs`，第三层文件管理写面），monitor 这一侧零 rename。
 ];

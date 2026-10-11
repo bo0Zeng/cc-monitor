@@ -1,4 +1,4 @@
-//! `dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
+//! `ssh-dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
 //!
 //! 台架是 `sftp_rig`（合成 SFTP 服务端，逐条记改动路径）。**判据看服务端的改动表，不信被测侧的自述。**
 
@@ -99,11 +99,7 @@ fn the_declared_write_roots_are_exactly_staging_and_bin() {
         .collect();
     let got: std::collections::BTreeSet<&str> = REMOTE_WRITE_ROOTS.into_iter().collect();
     assert_eq!(got, want);
-    // 暂存区那一根与提交那一侧（`files_commit`）是同一个串 —— 同一个 crate，直接比。
-    assert_eq!(
-        super::STAGING_ROOT,
-        crate::control::files_commit::STAGING_DIR
-    );
+    // 暂存区那一根与提交那一侧（后端 `files_commit`）是同一个串：那一条住后端（`dial_tests`），这里够不到后端。
 }
 
 // ═══ 解链接那一道 ══════════════════════════════════════════════════════════════════════
@@ -265,7 +261,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
         None,
     )
     .await;
-    assert_eq!(v["data"], crate::stream::wire::b64_encode(b"new"));
+    assert_eq!(v["data"], crate::b64::b64_encode(b"new"));
     // `stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
     let v = ask(
         &mut w,
@@ -682,7 +678,7 @@ async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_l
     let g = fs.lock().unwrap();
     assert_eq!(
         g.dir_modes.get(".cc-monitor/bin").copied(),
-        Some(crate::common::own_dir::PRIVATE_DIR_MODE),
+        Some(crate::guard_support::TEST_DIR_MODE),
         "新建的 bin 没收成只给本人：{:?}",
         g.mutated
     );

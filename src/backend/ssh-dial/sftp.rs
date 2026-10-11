@@ -10,7 +10,7 @@
 //!
 //! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6`）
 //!
-//! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{dial/sftp.rs}`；
+//! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{ssh-dial/sftp.rs}`；
 //! ② 本文件声明的写根（[`REMOTE_WRITE_ROOTS`]）== `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`；
 //! ③ 本文件里每个含远端改动动词的函数，第一个改动之前先有一次 [`fenced_remote`] 调用。
 //! ⇒ **写原语只许住这里、只许从这里的函数进**；别的文件（`control/transfer.rs`、`uses.rs`）只调它们。
@@ -30,7 +30,7 @@
 //! - **`ChrootDirectory` / `internal-sftp -d`**：起始目录不是 `$HOME` 的机器上，这里的「home」是 SFTP 的起始目录，
 //!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files_commit` 头注那一格照旧）。
 
-use crate::common::said::Said;
+use crate::Said;
 use copy_core::copy_text;
 use std::sync::Arc;
 
@@ -40,30 +40,41 @@ use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
 };
 
-use super::connect::Linked;
-use super::uses::{Lane, Lease};
-use super::{pool, write_line, DialRequest, StageSink};
+use crate::connect::Linked;
+use crate::uses::{Lane, Lease};
+use crate::{pool, write_line, DialRequest, StageSink};
 
 /// 🔴 **远端写根：恰好这两处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
 /// - `staging`：上传只写暂存区，落进用户目录由远端后端 `files-commit-upload` 做；
 /// - `bin`：自部署（F08 后端二进制 ＋ `.build_id` · `ccm` 入口），后端还不在时只能靠它放上去。
-pub(crate) const REMOTE_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
+pub const REMOTE_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
 
 /// 暂存区那一根（与 `control/files_commit.rs::STAGING_DIR` 相等 —— 同一个 crate，判据直接比）。
-pub(crate) const STAGING_ROOT: &str = REMOTE_WRITE_ROOTS[0];
+pub const STAGING_ROOT: &str = REMOTE_WRITE_ROOTS[0];
 
 /// 两个根唯一的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
 const ROOTS_HOME: &str = ".cc-monitor";
+
+/// **远端写的规矩**（宿主装进 [`crate::env::Env::files`]，一个进程一种；线上交来的请求改不动它）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteRules {
+    /// 一个字节都不许写（没装宿主那一套时的缺省：宁可写不成，不许写错地方）。
+    ReadOnly,
+    /// 部署：只许 [`REMOTE_WRITE_ROOTS`] 那两处（后端）；建出来的目录当场收成 `dir_mode`（后端交它自家目录那一个权限位）。
+    Deploy { dir_mode: u32 },
+    /// 用户自己管文件（手机的文件屏）：任意路径，权限按服务端默认。
+    Anywhere,
+}
 
 /// files 链路上一行请求的上限（请求都是短 JSON；`put` 的字节不走行）。
 const REQUEST_LINE_CAP: u64 = 64 * 1024;
 
 /// `put` 一次最多收多少字节（后端二进制今天 MB 级；上限给宽，但不许无界进内存）。
-pub(crate) const MAX_PUT_BYTES: u64 = 64 << 20;
+pub const MAX_PUT_BYTES: u64 = 64 << 20;
 
 /// 一条开在池里那条连接上的 SFTP 会话（占这条连接的一格通道，传输另占一格车道）。
-pub(crate) struct Session {
+pub struct Session {
     /// 只在 `Drop` 那一刻被取走（停进空位）—— 之后没有人还拿得到 `&self`。
     sftp: Option<SftpSession>,
     /// SFTP 起始目录的真路径（`realpath(".")`）—— 围栏把绝对路径归一成相对它。
@@ -87,7 +98,7 @@ enum Keep {
 /// - **它不托连接**：空位住在 `Linked` 里、不持 `Arc<Linked>` ⇒ 连接照旧随最后一个用户 / 托它的主连接一起走，空位随之没了。
 /// - **它连同那一格传输许可一起停**（车道 ＋ 通道）：远端 `MaxSessions` 数的正是这条还开着的通道，账要对得上。
 /// - **挤掉**：别的放置借不到格时，池先把空位里的关掉、还出那一格（`pool::Conn::reclaim_idle`）—— 事件驱动的回收，不是定时器。
-pub(crate) struct Parked {
+pub struct Parked {
     sftp: SftpSession,
     home: String,
     permit: pool::Permit,
@@ -126,7 +137,7 @@ fn subsystem(
 /// 开一条 SFTP 会话：过这条连接的预算（`lane`）→ 开 session channel → 请求 sftp 子系统 → `SSH_FXP_INIT` →
 /// 问一次起始目录的真路径。**三到四个往返**。传输那一形用完停进这条连接的空位（[`Parked`]），
 /// 下一趟传输先取它（[`open_for_transfer`]，1 个往返验活）—— 旧 monitor 池的空闲栈随它一起删了，今天回来的是「每条连接一个空位」。
-pub(crate) async fn open(
+pub async fn open(
     lease: &mut Lease,
     req: &DialRequest,
     stages: &StageSink,
@@ -191,17 +202,17 @@ async fn take_parked(req: &DialRequest) -> Option<Session> {
 /// 一份拨号请求（传输台开单时读进来、起跑时拿它开会话）。包一层是为了让传输台**只经本文件**够到拨号：
 /// 它手里不必有 `DialRequest` 这个类型（文件管理那一面的外向边钉在 `module_boundary_guard::OUTWARD`）。
 #[derive(Clone)]
-pub(crate) struct Dial(DialRequest);
+pub struct Dial(DialRequest);
 
 impl Dial {
-    pub(crate) fn parse(v: &serde_json::Value) -> Result<Dial, String> {
-        super::parse_request_value(v).map(Dial).map_err(|(_, m)| m)
+    pub fn parse(v: &serde_json::Value) -> Result<Dial, String> {
+        crate::machine::resolve(v).map(Dial).map_err(|(_, m)| m)
     }
 }
 
 /// 传输那一趟的会话：先找一条停着的空闲会话（1 个往返）；没有 ⇒ 在池里放置（同身份复用 / 分道到批量连接）
 /// → 过**传输车道**开一条 sftp 通道（4 个往返）。
-pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, Said> {
+pub async fn open_for_transfer(d: &Dial) -> Result<Session, Said> {
     let req = &d.0;
     if let Some(s) = take_parked(req).await {
         return Ok(s);
@@ -233,7 +244,7 @@ where
 impl Session {
     /// 在一条**已经是 sftp 子系统**的字节流上起会话：`SSH_FXP_INIT` ＋ 问一次起始目录的真路径。
     /// `keep` 是要与会话同生死的东西（预算那一格 ＋ 底层连接）。
-    pub(crate) async fn over<S>(
+    pub async fn over<S>(
         stream: S,
         keep: Box<dyn std::any::Any + Send + Sync>,
     ) -> Result<Session, Said>
@@ -256,7 +267,7 @@ impl Session {
     }
 
     /// SFTP 起始目录的真路径。
-    pub(crate) fn home(&self) -> &str {
+    pub fn home(&self) -> &str {
         &self.home
     }
 }
@@ -265,7 +276,7 @@ impl Session {
 
 /// 这一次改动是什么形。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Intent {
+pub enum Intent {
     /// 建 / 写 / 删 / 改名一份文件：必须**在某个根底下**（不是根自己）。
     File,
     /// 建一个目录：根底下、根自己、或两个根唯一的祖先 `.cc-monitor`。
@@ -274,7 +285,7 @@ pub(crate) enum Intent {
 
 /// 一次改动被拒的两档：围栏拦的（换条路径才有意义）· 盘上没成（重试才有意义）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Refusal {
+pub enum Refusal {
     /// `raw`：解链接那一问的下层原话（只有解不开那两形带）。
     Fenced { said: String, raw: Option<String> },
     /// `raw`：下层原话（进复制详情，不上句子；没有 ⇒ `None`）。
@@ -282,19 +293,19 @@ pub(crate) enum Refusal {
 }
 
 impl Refusal {
-    pub(crate) fn code(&self) -> &'static str {
+    pub fn code(&self) -> &'static str {
         match self {
             Refusal::Fenced { .. } => "fenced",
             Refusal::Io { .. } => "io",
         }
     }
-    pub(crate) fn message(&self) -> &str {
+    pub fn message(&self) -> &str {
         match self {
             Refusal::Fenced { said: m, .. } | Refusal::Io { said: m, .. } => m,
         }
     }
     /// 下层原话（盘上没成 · 围栏解链接解不开那几形带）。
-    pub(crate) fn raw(&self) -> Option<&str> {
+    pub fn raw(&self) -> Option<&str> {
         match self {
             Refusal::Io { raw, .. } | Refusal::Fenced { raw, .. } => raw.as_deref(),
         }
@@ -356,7 +367,7 @@ fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
 /// SFTP 文件句柄读写那一形的原因词。`russh_sftp` 把失败包进 `io::Error` 有两种包法，种类多是 Other：
 /// ① 整个 SFTP 错包在里面（取出来按 [`why_of_sftp`]）；② 只剩服务端那句话（状态码丢了 —— 认 SFTP v3 标准码的那几句标准话）。
 /// 都不是 ⇒ 按 IO 种类（`copy_core::io_reason`）。传输台写 / 读 / 挪远端那份时经这里。
-pub(crate) fn why_of_io(e: &std::io::Error) -> String {
+pub fn why_of_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind as K;
     match e.kind() {
         K::TimedOut => return copy_text("reason.sftp.noAnswer", &[]),
@@ -405,7 +416,7 @@ fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
 /// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在两个根里。
 ///
 /// 回 `(home 相对路径, 它在哪个根底下)`；第二项 `None` = 它是 `.cc-monitor` 本身（只有建目录那一形放行）。
-pub(crate) fn fence_lexical(
+pub fn fence_lexical(
     home: &str,
     path: &str,
     intent: Intent,
@@ -471,11 +482,17 @@ fn parent_of(rel: &str) -> &str {
 }
 
 /// **围栏**：词法那一道 ＋ 父目录解链接之后仍在那个根之下。回 home 相对路径（SFTP 起始目录就是 home）。
-pub(crate) async fn fenced_remote(
-    s: &Session,
-    path: &str,
-    intent: Intent,
-) -> Result<String, Refusal> {
+pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<String, Refusal> {
+    match crate::env::get().files {
+        WriteRules::ReadOnly => {
+            return Err(fenced(copy_text(
+                "beSftp.fence.readOnly",
+                &[("path", path.trim())],
+            )))
+        }
+        WriteRules::Anywhere => return Ok(path.trim().to_string()),
+        WriteRules::Deploy { .. } => {}
+    }
     let (rel, root) = fence_lexical(&s.home, path, intent).map_err(fenced)?;
     let Some(root) = root else {
         return Ok(rel);
@@ -535,12 +552,7 @@ pub(crate) async fn fenced_remote(
 /// （真 `OpenSSH_10.2p1` 上 permissions-only 的 SETSTAT 前后都是 16 字节）；最可能当年那个属性块真的带了 size。
 /// 🔴 **但这条禁令不放宽**：事故是真的、只量了一个服务端版本、部署路上多一次 setstat 收益为零风险是变砖。
 /// ⚠ 与改权限命令的关系：那条命令（后端 `files-chmod`）**要**改权限，是它的本职，不归这条禁令管。
-pub(crate) async fn put_atomic(
-    s: &Session,
-    path: &str,
-    bytes: &[u8],
-    mode: u32,
-) -> Result<(), Refusal> {
+pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
     // 〔临时件名唯一〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
     //   同时往同一个落点放字节时，谁也不删谁的那一份（从前是固定的 `<rel>.tmp` / `<rel>.bak` ＋「先删残留」—— 那一删删的可能是
@@ -657,7 +669,9 @@ pub(crate) async fn put_atomic(
 fn trip_tag() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
-    let nanos = crate::common::time::now()
+    let nanos = crate::env::get()
+        .facts
+        .now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
@@ -671,7 +685,7 @@ fn trip_tag() -> String {
 
 /// 这个名字是不是 [`put_atomic`] 留下的临时件 / 备份件：`<名>.<trip_tag>.tmp` 或 `.bak`
 /// （`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这一种 —— 别的名字不是我们放的，一个不碰。
-pub(crate) fn is_trip_leftover(name: &str) -> bool {
+pub fn is_trip_leftover(name: &str) -> bool {
     let Some(stem) = name
         .strip_suffix(".tmp")
         .or_else(|| name.strip_suffix(".bak"))
@@ -687,7 +701,7 @@ pub(crate) fn is_trip_leftover(name: &str) -> bool {
 }
 
 /// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。只读，不过围栏。
-pub(crate) async fn list_dir(s: &Session, path: &str) -> Option<Vec<(String, Option<u64>)>> {
+pub async fn list_dir(s: &Session, path: &str) -> Option<Vec<(String, Option<u64>)>> {
     let rd = s.sftp().read_dir(path.to_string()).await.ok()?;
     Some(
         rd.map(|e| (e.file_name(), e.metadata().mtime.map(u64::from)))
@@ -696,7 +710,7 @@ pub(crate) async fn list_dir(s: &Session, path: &str) -> Option<Vec<(String, Opt
 }
 
 /// 删一份文件。回「真删了」（不在 ⇒ `false`，不算错）。
-pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
+pub async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
     if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(false);
@@ -715,13 +729,13 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
 
 /// 建**一层**目录（已在 ⇒ 什么都不做）。
 ///
-/// **这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
+/// 部署那一种规矩下，**这一趟建出来的**那一层当场收成只给本人（宿主交的 `dir_mode`；后端交 `own_dir::PRIVATE_DIR_MODE`，0700）——
 /// 远端第一个建 `~/.cc-monitor`（以及 `bin` / `staging`）的就是这里（部署），此前按服务端 umask 建（常见 0755）。
 /// 本机那一份是 `own_dir::ensure_private_dir`（它在本机文件系统上、这里调不到它）；两边共用同一个权限位常量。
 /// ⚠ 用 `set_metadata`（SETSTAT）只对**目录**、只带 `permissions` 一格 —— `put_atomic` 头注那条「改名之后绝不 setstat」
 /// 管的是刚上位的**文件**（那一次事故把后端截成 0 字节），目录没有长度，不在那条事故的射程里。
 /// 收不窄（服务端不认 SETSTAT）⇒ 说一句、不挡部署：目录已经建出来了，权限宽一点不是「建不成」。
-pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
+pub async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::Dir).await?;
     if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(());
@@ -739,8 +753,11 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
         }
         return Ok(());
     }
+    let WriteRules::Deploy { dir_mode } = crate::env::get().files else {
+        return Ok(());
+    };
     let private = FileAttributes {
-        permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE),
+        permissions: Some(dir_mode),
         ..Default::default()
     };
     if let Err(e) = s.sftp().set_metadata(rel.clone(), private).await {
@@ -750,11 +767,19 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
 }
 
 /// `mkdir -p`（只在围栏里）：先对**整条**路径过一次词法，再逐级 [`make_dir`]（每一级各自再过一次围栏）。
-pub(crate) async fn make_dirs(s: &Session, path: &str) -> Result<(), Refusal> {
-    let (rel, _) = fence_lexical(&s.home, path, Intent::Dir).map_err(fenced)?;
-    let mut cur = String::new();
-    for comp in rel.split('/') {
-        if !cur.is_empty() {
+pub async fn make_dirs(s: &Session, path: &str) -> Result<(), Refusal> {
+    let rel = match crate::env::get().files {
+        WriteRules::Deploy { .. } => fence_lexical(&s.home, path, Intent::Dir).map_err(fenced)?.0,
+        _ => fenced_remote(s, path, Intent::Dir).await?,
+    };
+    // 绝对路径（只有任意路径那一种规矩会交来）从 `/` 起逐级建。
+    let mut cur = if rel.starts_with('/') {
+        "/".to_string()
+    } else {
+        String::new()
+    };
+    for comp in rel.split('/').filter(|c| !c.is_empty()) {
+        if !cur.is_empty() && !cur.ends_with('/') {
             cur.push('/');
         }
         cur.push_str(comp);
@@ -764,10 +789,10 @@ pub(crate) async fn make_dirs(s: &Session, path: &str) -> Result<(), Refusal> {
 }
 
 /// 远端文件句柄（读写都是它；类型名只在本文件点一次）。
-pub(crate) type RemoteFile = russh_sftp::client::fs::File;
+pub type RemoteFile = russh_sftp::client::fs::File;
 
 /// 打开一份暂存件准备写（`truncate` ⇒ 从 0 写；否则接着写）。**最后一段是链接 ⇒ 拒**（开写会跟过去）。
-pub(crate) async fn open_for_write(
+pub async fn open_for_write(
     s: &Session,
     path: &str,
     truncate: bool,
@@ -799,7 +824,7 @@ pub(crate) async fn open_for_write(
 // ═══ 读（不改任何东西；不过围栏）══════════════════════════════════════════════════════
 
 /// 打开一份远端文件只读。
-pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, Said> {
+pub async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, Said> {
     s.sftp()
         .open_with_flags(path.to_string(), OpenFlags::READ)
         .await
@@ -815,7 +840,7 @@ pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile,
 }
 
 /// `metadata` 的大小：`None` = 那次调用失败；`Some(None)` = 服务器没给 size（**不是 0 字节**）。
-pub(crate) async fn metadata_size(s: &Session, path: &str) -> Option<Option<u64>> {
+pub async fn metadata_size(s: &Session, path: &str) -> Option<Option<u64>> {
     s.sftp()
         .metadata(path.to_string())
         .await
@@ -824,12 +849,12 @@ pub(crate) async fn metadata_size(s: &Session, path: &str) -> Option<Option<u64>
 }
 
 /// 在不在：`None` = 问不出来。
-pub(crate) async fn exists(s: &Session, path: &str) -> Option<bool> {
+pub async fn exists(s: &Session, path: &str) -> Option<bool> {
     s.sftp().try_exists(path.to_string()).await.ok()
 }
 
 /// 整份读回来；读不出 ⇒ `None`。
-pub(crate) async fn read_all(s: &Session, path: &str) -> Option<Vec<u8>> {
+pub async fn read_all(s: &Session, path: &str) -> Option<Vec<u8>> {
     s.sftp().read(path.to_string()).await.ok()
 }
 
@@ -858,10 +883,7 @@ async fn read_line_capped<R: AsyncBufRead + Unpin>(
         return Ok(None);
     }
     if n as u64 > cap && !line.ends_with('\n') {
-        return Err(crate::common::contract::malformed(&format!(
-            "request line longer than {cap} bytes"
-        ))
-        .into());
+        return Err(crate::malformed(&format!("request line longer than {cap} bytes")).into());
     }
     Ok(Some(line.trim_end_matches(['\n', '\r']).to_string()))
 }
@@ -869,19 +891,21 @@ async fn read_line_capped<R: AsyncBufRead + Unpin>(
 fn arg_str<'a>(v: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
     v.get(k)
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| crate::common::contract::malformed(&format!("missing `{k}` (string)")))
+        .ok_or_else(|| crate::malformed(&format!("missing `{k}` (string)")))
 }
 
 fn arg_u64(v: &serde_json::Value, k: &str) -> Result<u64, String> {
-    v.get(k).and_then(serde_json::Value::as_u64).ok_or_else(|| {
-        crate::common::contract::malformed(&format!("missing `{k}` (non-negative integer)"))
-    })
+    v.get(k)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| crate::malformed(&format!("missing `{k}` (non-negative integer)")))
 }
 
 /// 失败那一形：与后端 CLI 错误信封同一对键（`code` ＋ `message`，`readonly_guard::error_envelope_registry` 签字），
 /// 多一格 `detail`（复制详情：时刻 · 机器 · 命令 `files <op>` · 码 · 下层原话；排法同失败应答那一格）。
 fn refused(op: &str, code: &str, message: &str, raw: Option<&str>) -> serde_json::Value {
-    let detail = crate::stream::detail::of(Some(&format!("files {op}")), code, raw);
+    let detail = crate::env::get()
+        .facts
+        .detail(&format!("files {op}"), Some(code), raw);
     serde_json::json!({ "code": code, "message": message, "detail": detail })
 }
 
@@ -954,7 +978,7 @@ async fn answer<R: AsyncRead + Unpin>(
                     Some(_) => (None, None),
                 };
                 Ok(serde_json::json!({
-                    "data": data.as_deref().map(crate::stream::wire::b64_encode),
+                    "data": data.as_deref().map(crate::b64::b64_encode),
                     "exists": exists,
                     "size": size,
                 }))
@@ -974,9 +998,7 @@ async fn answer<R: AsyncRead + Unpin>(
                     return Err(refused(
                         op,
                         "too_big",
-                        &crate::common::contract::malformed(&format!(
-                            "put of {size} bytes exceeds {MAX_PUT_BYTES}"
-                        )),
+                        &crate::malformed(&format!("put of {size} bytes exceeds {MAX_PUT_BYTES}")),
                         None,
                     ));
                 }
@@ -1031,7 +1053,7 @@ async fn answer<R: AsyncRead + Unpin>(
             other => Err(refused(
                 op,
                 "unknown_op",
-                &crate::common::contract::malformed(&format!(
+                &crate::malformed(&format!(
                     "unknown op `{other}` (known: home / read / put / remove / mkdirs)"
                 )),
                 None,
@@ -1043,7 +1065,7 @@ async fn answer<R: AsyncRead + Unpin>(
 }
 
 /// files 链路的服务循环：读一行请求、回一行应答，直到 monitor 那头关了（上行 EOF）。
-pub(crate) async fn serve_files<R, W>(s: &Session, input: R, out: &mut W)
+pub async fn serve_files<R, W>(s: &Session, input: R, out: &mut W)
 where
     R: AsyncRead + Unpin + Send,
     W: AsyncWrite + Unpin + Send,
@@ -1064,7 +1086,7 @@ where
             Err(e) => refused(
                 "-",
                 "bad_request",
-                &crate::common::contract::malformed("request line is not JSON"),
+                &crate::malformed("request line is not JSON"),
                 Some(&e.to_string()),
             ),
         };
@@ -1074,10 +1096,10 @@ where
     }
 }
 
-/// 台架：合成 SFTP 服务端（逐条记改动路径）。本文件的判据与 `control/transfer.rs` 的判据共用。
-#[cfg(test)]
+/// 台架：合成 SFTP 服务端（逐条记改动路径）。本文件的判据与后端 `control/transfer.rs` 的判据（经 `test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/sftp_rig.rs"]
-pub(crate) mod rig;
+pub mod rig;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_sftp_tests.rs"]

@@ -22,7 +22,7 @@
 //!
 //! ## ⚠ 远端那一侧：**不许从 SFTP 的 mode 参数拿机密性**〔实@08-27〕
 //!
-//! 远端原子上传收一个 mode 参数（住 `src/backend/dial/sftp.rs::put_atomic`），
+//! 远端原子上传收一个 mode 参数（住 `src/backend/ssh-dial/sftp.rs::put_atomic`），
 //! 看起来像是「推上去就是 0600」。
 //! 对面是 Windows 时**那不是「不生效」，是「静默地不生效」**，三条读数（分母都在，量于 08-27）：
 //! 1. 那个 mode 只以 SFTP v3 的 `SSH_FILEXFER_ATTR_PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上

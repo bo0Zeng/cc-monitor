@@ -225,19 +225,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/shell/dial_host_tests.rs",
-        "src/backend/dial/mod.rs",
+        "src/backend/ssh-dial/lib.rs",
         "★〔C2 · 09-24 新增 · 改判〕**本侧写的可选格后端真读** —— \
          `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request` \
-         （这台原样的配置 ＋ `command` / `agent_sock` 等可选格），可选格的读侧是后端 `dial::DialRequest` 的字段。\
+         （这台原样的配置 ＋ `command` / `agent_sock` 等可选格），可选格的读侧是后端拨号核心 `ssh_dial::DialRequest` 的字段。\
          失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，后端照样读得动、那一项悄悄变成缺省，两侧各自的判据全绿。",
     ),
     (
         "monitor→backend",
         "tests/frontend/shell/dial_host_tests.rs",
-        "src/backend/dial/machine.rs",
+        "src/backend/ssh-dial/machine.rs",
         "★〔「一个判定一个家」〕**这台原样的配置交过去的那几格两侧同形** —— \
          `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request`（`machine` · `saved` · \
-         `jump` · `prefer` · `use`），读侧是后端 `dial/machine.rs::resolve`（组拨号请求只在那里）。失效方向同上一行：写错一格名， \
+         `jump` · `prefer` · `use`），读侧是后端 `ssh-dial/machine.rs::resolve`（组拨号请求只在那里）。失效方向同上一行：写错一格名， \
          后端读成缺席（`saved` 缺 ⇒ 固化之后的重连照旧 TOFU · `prefer` 缺 ⇒ 上次赢的那条不排首），两侧各自的判据全绿。",
     ),
     (
@@ -252,7 +252,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/filewin/transfer_tests.rs",
-        "src/backend/dial/pool.rs",
+        "src/backend/ssh-dial/pool.rs",
         "★〔SR1b 09-24 新增〕**窗口一趟拖入起几件，与本机后端那条连接的传输车道 / 通道闸对得上** —— \
          窗口传输那份判据里的 `one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`。\
          两个数住两棵依赖树（窗口的 `WINDOW_TRANSFER_LANES` · 后端的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；\

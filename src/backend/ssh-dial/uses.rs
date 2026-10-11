@@ -1,20 +1,20 @@
-//! 开出 channel 之后的几种用法（[`super::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），再干自己那件事。
+//! 开出 channel 之后的几种用法（[`crate::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），再干自己那件事。
 //! I/O 是调用方给的一对 `AsyncRead` / `AsyncWrite`（常驻后端里是那条链路的两根内存管子，`link.rs`）；连接是池里拿的（[`Lease`]，同身份复用）。
 
-use crate::common::said::Said;
+use crate::Said;
 use copy_core::copy_text;
 use std::sync::Arc;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use super::connect::{self, Linked};
-use super::{
+use crate::connect::{self, Linked};
+use crate::{
     pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialRequest,
     StageSink, Use, ACK_V, USES,
 };
 
 /// 这一趟目标那台 / 跳板那台是不是严格校验指纹（请求里带了非空的期望指纹）—— ack 的 `strict` / `jump_strict`。
-pub(crate) fn strictness(req: &DialRequest) -> (bool, bool) {
+pub fn strictness(req: &DialRequest) -> (bool, bool) {
     let set = |f: &Option<String>| f.as_deref().is_some_and(|s| !s.trim().is_empty());
     (
         set(&req.host_key_fingerprint),
@@ -61,7 +61,7 @@ fn exec_half(
 }
 
 /// 能被「关掉」的那一半（生产 = russh 的 `ChannelWriteHalf`；判据用记账替身）。
-pub(crate) trait Closable: Send + 'static {
+pub trait Closable: Send + 'static {
     fn close_it(self) -> impl std::future::Future<Output = ()> + Send;
 }
 
@@ -78,14 +78,14 @@ impl Closable for russh::ChannelWriteHalf<russh::client::Msg> {
 /// russh 0.61 的裸 `Channel` 被丢不发 `CHANNEL_CLOSE`。capture 那一臂拿的是裸通道 ⇒ 链路被关或 `abort_marker` 提前收工时，
 /// 本地那一格已经还回预算，远端那条 session 通道与它上面的进程却还开着 ⇒ 下一次开通道被远端回拒、这条连接的上限被学小。
 /// 关通道是尽力的：发出去了，对面怎么收场是它的事。
-pub(crate) struct CloseOnDrop<W: Closable>(Option<W>);
+pub struct CloseOnDrop<W: Closable>(Option<W>);
 
 impl<W: Closable> CloseOnDrop<W> {
-    pub(crate) fn new(w: W) -> Self {
+    pub fn new(w: W) -> Self {
         CloseOnDrop(Some(w))
     }
 
-    pub(crate) fn get(&self) -> &W {
+    pub fn get(&self) -> &W {
         self.0.as_ref().expect("CloseOnDrop 只在 Drop 里取走")
     }
 }
@@ -103,19 +103,20 @@ impl<W: Closable> Drop for CloseOnDrop<W> {
 }
 
 /// 一条 session 通道（或一条隧道）走哪一道 —— 住 `pool.rs`（放置要按它判），这里转一手。
-pub(crate) use super::pool::Lane;
+pub use crate::pool::Lane;
 
 /// 一份拨号请求的用法 ⇒ 它在池里走哪一道。
-pub(crate) fn lane_of(u: Use) -> Lane {
+pub fn lane_of(u: Use) -> Lane {
     match u {
         Use::Stream => Lane::Stream,
         Use::Capture | Use::Files => Lane::Query,
+        Use::Shell => Lane::Stream,
         Use::Forward => Lane::Tunnel,
     }
 }
 
 /// 这一趟手里的那条 SSH 连接：池里放置来的（复用 / 新拨 / 多开），或者这一趟就地拨的（测试连接）。
-pub(crate) struct Lease {
+pub struct Lease {
     /// 池里的身份；`None` = 不进池（测试连接那一形：它要看的就是一次真拨号的阶段）。
     key: Option<String>,
     linked: Arc<Linked>,
@@ -145,22 +146,22 @@ fn refused_by_remote(e: &russh::Error) -> bool {
 /// 0 到「10 秒 ＋ 一个往返」之间（用户的远端往返 12–577 ms）。门槛再留 2 秒：保活发出去 2 秒还没回话，才当它可能是黑洞。
 /// 门槛（12 秒）在判死（保活 `KEEPALIVE_MAX + 1` 轮，20 秒）之前：这一段里开通道，赛跑接住；判死之后开通道的那一下当场失败、换新连接。
 /// 判错的代价不对称：健康的被判成久 ⇒ 多起一条 TCP（旧的先回话，新的当场丢掉）；黑洞没判出来 ⇒ 干等到保活判死（保活 `KEEPALIVE_MAX + 1` 轮，最后收包之后 20 秒）。
-pub(crate) const STALE_AFTER_MS: u64 = connect::KEEPALIVE_MS + 2_000;
+pub const STALE_AFTER_MS: u64 = connect::KEEPALIVE_MS + 2_000;
 
 /// 这条连接（`silent_ms` 毫秒没收到对端字节）开通道之前要不要和新建赛跑。
-pub(crate) fn stale(silent_ms: u64) -> bool {
+pub fn stale(silent_ms: u64) -> bool {
     silent_ms >= STALE_AFTER_MS
 }
 
 /// 等回话那一段，旧连接回的是「开不成」、而连接也已经断开 ⇒ **它死了**（保活连着没回话被 russh 判死 —— 挂在它上面的开通道
 /// 随之失败；或对端断了）。这一形照「判死」记：族里那之后也没动静的成员一起摘（`pool::Watch::dead`），重开落到新连接上。
 /// 远端说满了（连接还活着）· 开成了 ⇒ 不算。
-pub(crate) fn died_waiting<T>(r: &Result<T, russh::Error>, closed: bool) -> bool {
+pub fn died_waiting<T>(r: &Result<T, russh::Error>, closed: bool) -> bool {
     r.is_err() && closed
 }
 
 /// [`race`] 的结局。
-pub(crate) enum Raced<O, N> {
+pub enum Raced<O, N> {
     /// 旧连接先回话（成或不成，都是它的回话）。
     Old(O),
     /// 新的一条先站住。
@@ -169,7 +170,7 @@ pub(crate) enum Raced<O, N> {
 
 /// **赛跑**：旧连接上等回话（`old`）与新建一条（`fresh`）同时起跑，谁先站住用谁。同时好了 ⇒ 旧的（不白换）；
 /// 新建失败不算数 ⇒ 接着等旧的。另一边随返回被丢掉（新建到一半的那条当场关掉）。不靠钟：两边都是事件。
-pub(crate) async fn race<O, N, E: std::fmt::Debug>(
+pub async fn race<O, N, E: std::fmt::Debug>(
     old: impl std::future::Future<Output = O>,
     fresh: impl std::future::Future<Output = Result<N, E>>,
 ) -> Raced<O, N> {
@@ -198,7 +199,7 @@ enum Answered {
 
 impl Lease {
     /// 拿一条连接。`probe` / `stages` ⇒ 不进池、就地拨；其余按身份在池里放置（`pool::Pool::place`：复用 / 按需多开）。
-    pub(crate) async fn take(
+    pub async fn take(
         req: &DialRequest,
         stages: &StageSink,
         lane: Lane,
@@ -259,12 +260,12 @@ impl Lease {
     }
 
     /// 这一趟手里那条连接（调用方要把它攥到通道用完为止 —— 句柄一 drop 整条连接就断）。
-    pub(crate) fn linked(&self) -> &Arc<Linked> {
+    pub fn linked(&self) -> &Arc<Linked> {
         &self.linked
     }
 
     /// 这一趟走哪一道（`sftp.rs` 据它判「用完停不停进空位」：只有传输停）。
-    pub(crate) fn lane(&self) -> Lane {
+    pub fn lane(&self) -> Lane {
         self.lane
     }
 
@@ -279,7 +280,7 @@ impl Lease {
     /// 复用来的连接**久没收到对端字节**（[`stale`]）⇒ 开通道与新建一条同时起跑（[`race`]）：旧的先回话照常用；
     /// 新的先站住 ⇒ 旧的判死（连同族里那之后也没动静的成员一起摘，`pool::Watch::dead`），这一趟改放到新的那条上。
     /// 路断成黑洞时，不用再干等界面的握手期限。
-    pub(crate) async fn session_channel(
+    pub async fn session_channel(
         &mut self,
         req: &DialRequest,
         stages: &StageSink,
@@ -387,13 +388,40 @@ impl Lease {
     }
 }
 
+/// 链路字节之外的那几样（今天只有改 PTY 窗口大小：`(列, 行)`）。没有 ⇒ [`Control::none`]。
+#[derive(Default)]
+pub struct Control {
+    pub resize: Option<tokio::sync::mpsc::UnboundedReceiver<(u32, u32)>>,
+}
+
+impl Control {
+    pub fn none() -> Self {
+        Control::default()
+    }
+}
+
 /// 一份拨号请求的完整一趟：拿连接（池里复用或新拨）→ 按用法服务 → 结束（调用方手里那根下行管子读到 EOF）。
 /// 返回类型显式写出 `+ Send`：理由同 [`exec`]（russh 借 `&self` 的 `async fn` 在高阶生命周期上推不出 Send）。
-pub(crate) fn run<'a, R, W>(
+pub fn run<'a, R, W>(
     req: &'a DialRequest,
     stages: &'a StageSink,
     input: R,
     out: &'a mut W,
+) -> impl std::future::Future<Output = ()> + Send + 'a
+where
+    R: AsyncRead + Unpin + Send + 'a,
+    W: AsyncWrite + Unpin + Send,
+{
+    run_with(req, stages, input, out, Control::none())
+}
+
+/// 同 [`run`]，另带链路字节之外的那几样（[`Control`]：PTY 改窗口）。
+pub fn run_with<'a, R, W>(
+    req: &'a DialRequest,
+    stages: &'a StageSink,
+    input: R,
+    out: &'a mut W,
+    control: Control,
 ) -> impl std::future::Future<Output = ()> + Send + 'a
 where
     R: AsyncRead + Unpin + Send + 'a,
@@ -413,7 +441,7 @@ where
                 return;
             }
         };
-        serve(req, &mut lease, stages, input, out).await;
+        serve(req, &mut lease, stages, input, out, control).await;
     }
 }
 
@@ -424,6 +452,7 @@ async fn serve<R, W>(
     stages: &StageSink,
     mut input: R,
     out: &mut W,
+    control: Control,
 ) where
     R: AsyncRead + Unpin + Send,
     W: AsyncWrite + Unpin + Send,
@@ -473,10 +502,7 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed(
-                        crate::common::contract::malformed("use=capture without `capture`").into(),
-                        fp,
-                    ),
+                    &DialAck::failed(crate::malformed("use=capture without `capture`").into(), fp),
                 )
                 .await;
                 return;
@@ -530,10 +556,7 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed(
-                        crate::common::contract::malformed("use=forward without `forward`").into(),
-                        fp,
-                    ),
+                    &DialAck::failed(crate::malformed("use=forward without `forward`").into(), fp),
                 )
                 .await;
                 return;
@@ -575,7 +598,7 @@ async fn serve<R, W>(
         Use::Files => {
             // sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
             let fp = lease.linked.fingerprint.clone();
-            let session = match super::sftp::open(lease, req, stages).await {
+            let session = match crate::sftp::open(lease, req, stages).await {
                 Ok(s) => s,
                 Err(e) => {
                     // 拨号应答那一行：那一句进 `error`，SFTP 那一下的原话进 `detail`。
@@ -589,9 +612,100 @@ async fn serve<R, W>(
             {
                 return;
             }
-            super::sftp::serve_files(&session, &mut input, out).await;
+            crate::sftp::serve_files(&session, &mut input, out).await;
+        }
+        Use::Shell => {
+            let fp = lease.linked.fingerprint.clone();
+            let pty = req.pty.clone().unwrap_or_default();
+            let (channel, _permit) = match lease.session_channel(req, stages).await {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    return;
+                }
+            };
+            // 读写两半分开：写半边被守着（无论怎么收场远端那条通道都被关），改窗口也走它。
+            let (mut rd, wr) = channel.split();
+            let wr = CloseOnDrop::new(wr);
+            let opened = async {
+                pty_half(wr.get(), &pty).await?;
+                shell_half(wr.get()).await
+            }
+            .await
+            .map_err(|e| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e));
+            if let Err(e) = opened {
+                let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                return;
+            }
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            let mut up = wr.get().make_writer();
+            let mut down = rd.make_reader();
+            let up_done = tokio::io::copy(&mut input, &mut up);
+            let down_done = tokio::io::copy(&mut down, out);
+            tokio::pin!(up_done, down_done);
+            let mut resize = control.resize;
+            loop {
+                tokio::select! {
+                    r = &mut up_done => {
+                        tracing::info!("dial: shell 上行结束（对面断了）：{r:?}");
+                        break;
+                    }
+                    r = &mut down_done => {
+                        tracing::info!("dial: shell 下行结束（远端那头断了）：{r:?}");
+                        break;
+                    }
+                    size = recv_resize(&mut resize) => match size {
+                        Some((cols, rows)) => {
+                            if let Err(e) = window_half(wr.get(), cols, rows).await {
+                                tracing::info!("dial: 改窗口没成：{e}");
+                            }
+                        }
+                        // 改窗口那根管子没人了：之后只对拷字节。
+                        None => resize = None,
+                    },
+                }
+            }
         }
     }
+}
+
+/// 改窗口那根管子的下一条；没有管子 ⇒ 永远不到（`select!` 那一臂就此不动）。
+async fn recv_resize(
+    rx: &mut Option<tokio::sync::mpsc::UnboundedReceiver<(u32, u32)>>,
+) -> Option<(u32, u32)> {
+    match rx {
+        Some(rx) => rx.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// 要 PTY（显式 `Send` 的盒子，理由同 [`exec`]）。
+fn pty_half<'a>(
+    w: &'a russh::ChannelWriteHalf<russh::client::Msg>,
+    pty: &'a crate::PtyOpts,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh::Error>> + Send + 'a>> {
+    Box::pin(w.request_pty(true, &pty.term, pty.cols, pty.rows, 0, 0, &[]))
+}
+
+/// 开 shell（同上）。
+fn shell_half(
+    w: &russh::ChannelWriteHalf<russh::client::Msg>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh::Error>> + Send + '_>> {
+    Box::pin(w.request_shell(true))
+}
+
+/// 改窗口（同上）。
+fn window_half(
+    w: &russh::ChannelWriteHalf<russh::client::Msg>,
+    cols: u32,
+    rows: u32,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh::Error>> + Send + '_>> {
+    Box::pin(w.window_change(cols, rows, 0, 0))
 }
 
 /// 收全 stdout / stderr / 退出码。EOF 之后服务端才送 exit-status ⇒ **不能见 Eof 就收**，
@@ -637,7 +751,7 @@ async fn collect(channel: &mut russh::ChannelReadHalf, opts: &CaptureOpts) -> Ca
 async fn forward<R, W>(
     linked: Arc<Linked>,
     listener: tokio::net::TcpListener,
-    spec: super::ForwardSpec,
+    spec: crate::ForwardSpec,
     input: &mut R,
     out: &mut W,
 ) where

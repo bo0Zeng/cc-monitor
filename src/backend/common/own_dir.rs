@@ -1,6 +1,6 @@
 //! 后端建自家目录的那一个函数（`~/.cc-monitor` 与它底下后端自己的几层）：0700、已存在不动 —— 按 umask 建会是 0775。
 //! 第四层各模块（`exit_policy` · `asset_catalog` · `relay/door` · `skill_ledger`）与第三层的暂存区（`files_commit`）都调 [`ensure_private_dir`]；
-//! 远端那一份（SFTP 部署建目录）不在这台机器的文件系统上，用同一个 [`PRIVATE_DIR_MODE`]（`dial/sftp.rs::make_dir`）。
+//! 远端那一份（SFTP 部署建目录）不在这台机器的文件系统上，用同一个 [`PRIVATE_DIR_MODE`]（`ssh-dial/sftp.rs::make_dir`）。
 //!
 //! # 它在 `readonly_guard` 第四层上（后端自己的状态，不是用户数据）
 //!

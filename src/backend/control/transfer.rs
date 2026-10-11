@@ -16,7 +16,7 @@
 //! 下载要写本机用户选的落点（`.part` ＋ 改名上位）⇒ 按 `INVARIANTS §41.6` 只许住文件管理那一面：
 //! 本模块登记在 `readonly_guard::MUTATING_FACE_MODULES`，改动动词只用闭集里的（`O_EXCL` 新建 · 接着写 · 改名 · 删文件），
 //! 每一处改动之前先过 `files_write::resolve_in_root`；门只有 `stream/inbound/`。
-//! 远端那一半（暂存区的写）全经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
+//! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩
 //!

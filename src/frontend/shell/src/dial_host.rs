@@ -112,7 +112,7 @@ fn agent_sock() -> Option<String> {
 }
 
 /// 〔「一个判定一个家」〕把一台远端**原样的配置**交给本机常驻后端，拨号请求由它组
-/// （`src/backend/dial/machine.rs::resolve`：地址解析 · 指纹继承 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
+/// （`src/backend/ssh-dial/machine.rs::resolve`：地址解析 · 指纹继承 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
 ///
 /// 这里只交宿主手里的几样事实（`C4`：读配置是宿主的事）：
 /// - `machine`：这一台（`RemoteConfig` 的 camelCase 形状，与界面那一格同形）；
@@ -139,7 +139,7 @@ pub(crate) fn request(
 /// 一台远端**原样的配置**那几格：`{machine, saved, jump, prefer}`（[`request`] 头注逐格）。
 ///
 /// 拆出来是给「开终端」那一问（本机后端帧命令 `terminal-ssh`）：它要同一份机器事实，但不开链路 ⇒ 不要 `use` / `agent_sock`。
-/// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿；组请求与渲染都在本机后端（`dial/machine.rs::resolve`）。
+/// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿；组请求与渲染都在本机后端（`ssh-dial/machine.rs::resolve`）。
 pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
     let origin = cfg.origin_label();
     let jump = cfg
@@ -386,7 +386,7 @@ async fn open(
                     ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
                     (
                         "addr",
-                        // 原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
+                        // 原样列出配置里那几行（地址不在这里解析，组法在后端 `ssh-dial/machine.rs`）。
                         &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
                             .chain(
                                 cfg.addresses
@@ -522,7 +522,7 @@ pub(crate) fn pin_host_key_at(
     }
 }
 
-// 「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `dial/machine.rs::request`
+// 「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `ssh-dial/machine.rs::request`
 //   （宿主把盘上那一份当 `saved` 交过去）；这一趟是不是严格校验，由后端在 ack 里说（`strict` / `jump_strict`）。
 
 /// 告知界面的那一件（经 `lib.rs` 装的出口发 `remote-health`，kind 见下面两个常量）。
@@ -693,7 +693,7 @@ pub(crate) async fn capture(
 //
 // 用户「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
 // `ccm` 入口）的**业务判定**留在 monitor（`sftp.rs`，一个判定函数都没动），
-// 执行交给本机常驻后端那一份 SFTP（`src/backend/dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
+// 执行交给本机常驻后端那一份 SFTP（`src/backend/ssh-dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
 // `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
 
 /// 一行应答的字节上限（`read` 的数据 base64 进这一行；部署读的都是小文件：标记 · 入口 · 脚本）。

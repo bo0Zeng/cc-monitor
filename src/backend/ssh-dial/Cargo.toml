@@ -1,0 +1,38 @@
+[package]
+name = "ssh-dial"
+version = "0.1.0"
+edition = "2021"
+workspace = ".."
+description = "拨号核心：竞速 · 跳板（多跳）· host key 判定 · 鉴权（钥匙 · agent · 外部签名器 · 密码）· 保活 · 按身份复用 · 开 channel 之后的几种用法（含 PTY）· SFTP 客户端。后端与手机同一份。"
+
+# 住后端那棵 workspace（`../Cargo.toml` 的 `[workspace] members`）：同一份 lock、同一个打补丁版 russh（那边的 `[patch.crates-io]`）。
+# 也在后端的源码人群里（那边 `[package.metadata.guard] population`）⇒ 只读 · 零定时器 · 日志白名单这几族扫描型判据照旧管到这里。
+# 平台的事从三个口进（`env.rs`：钥匙从哪来 · 认下的 host key 记到哪 · ssh-agent）；本 crate 不碰家目录、不读环境变量。
+[lib]
+path = "lib.rs"
+
+[dependencies]
+copy-core = { path = "../../common/copy-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros", "io-util", "net", "sync", "time"] }
+tracing = "0.1"
+libc = "0.2"
+# 版本与 feature 集同后端那一行（两边握出来的必须是同一套算法集）；签字与来历在 `../Cargo.toml` 那一段。
+russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "3"
+# 后端的测试档经 dev 依赖打开 `test-support`（resolver 2 ⇒ dev 依赖的 feature 不并进发布构建）：
+# 测试档不许出网（`connect.rs::tcp_hop` 那一句断言）· 拨了必被拒的本机口 · 合成 SFTP 服务端（`sftp::rig`）。
+upstream-url-core = { path = "../../common/upstream-url-core", optional = true }
+
+[features]
+test-support = ["dep:upstream-url-core"]
+
+[dev-dependencies]
+guard-core = { path = "../../common/guard-core" }
+upstream-url-core = { path = "../../common/upstream-url-core" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync", "time", "fs"] }
+sha2 = "0.11"
+# 判据里的外部签名器（Keystore 那一形）现生成一把 P-256、回 DER；版本同后端 lock 里那一棵（0.17.14），不新增包。
+ring = "0.17"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

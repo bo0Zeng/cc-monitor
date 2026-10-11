@@ -237,7 +237,7 @@ pub const UNAME_CMD: &str = "uname -s -m";
 /// 退出码非 0 / 空 ⇒ 问不出 OS（Windows 默认 shell 没有 `uname` 就是这一形）；只答一段 ⇒ 问不出 arch；
 /// 多于两段 ⇒ 问不出 OS（认不出哪段是什么）。句子只说原因词（无应答 · 应答报错 · 应答无法解析）；
 /// 那台答的原话（stderr 或答的那几段）进 [`Refusal::raw`]、由出错那一端写进复制详情 —— 不照抄进句子：
-/// 真 Win11 上 PowerShell 按控制台代码页（GBK）报错，后端那一跳按 UTF-8 有损解（`dial/uses.rs`），照抄就是一串乱码。
+/// 真 Win11 上 PowerShell 按控制台代码页（GBK）报错，后端那一跳按 UTF-8 有损解（`ssh-dial/uses.rs`），照抄就是一串乱码。
 pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<Key, Refusal> {
     if exit != Some(0) {
         let said = stderr.trim();

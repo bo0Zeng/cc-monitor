@@ -145,7 +145,7 @@ mod stream_source;
 mod stream_watch;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 // `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
-//   SFTP 进了本机常驻后端（`src/backend/dial/sftp.rs`），**界面进程零 SSH**（用户）。
+//   SFTP 进了本机常驻后端（`src/backend/ssh-dial/sftp.rs`），**界面进程零 SSH**（用户）。
 // 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
 mod dial_host;
 // 链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。

@@ -1,7 +1,7 @@
 //! **一条已连上的 TCP 此刻的往返时间 —— 问内核，不自己掐表。**
 //!
 //! 用户要求：「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分.
-//! 智能多开链接\压缩等等」。压缩「开不开」的判准（`dial/connect.rs::compression_for`）要知道这一跳**真的远不远**：
+//! 智能多开链接\压缩等等」。压缩「开不开」的判准（`connect.rs::compression_for`）要知道这一跳**真的远不远**：
 //! 按地址段判是错的（用户的远端大半走 EasyTier 覆盖网，地址全在 RFC 1918 私网段、RTT 12–577 ms）。
 //!
 //! 为什么问内核：TCP 三次握手那一来一回，内核已经量过了（Linux `TCP_INFO.tcpi_rtt`，单位微秒）；
@@ -12,12 +12,13 @@
 //! - Linux：`getsockopt(IPPROTO_TCP, TCP_INFO)`，读 `tcpi_rtt`（平滑 RTT，握手之后就有第一份样本）。
 //! - Windows：`WSAIoctl(SIO_TCP_INFO)`（Windows 10 1703 起），读 `TCP_INFO_v0.RttUs`；
 //!   更老的系统那一问失败 ⇒ `None`。照 `win_proc.rs` 先例手写 `extern "system"`，不为一个函数加 `windows-sys`。
+//! - Android（手机，不算 linux）：明写 `None`（零读数，不猜）。
 //! - 其余（macOS）：**答不上来就说不知道**（`None`）—— 判准那一侧对「不知道」有明文处置（按「远」压）。
 //!
 //! 两臂同一条：内核回 0 = 还没有样本，那是「不知道」，不是「0 微秒」。
 
 /// 这条 TCP 此刻的平滑往返时间（微秒）。读不到 / 平台答不上来 ⇒ `None`。
-pub(crate) fn rtt_us(stream: &tokio::net::TcpStream) -> Option<u32> {
+pub fn rtt_us(stream: &tokio::net::TcpStream) -> Option<u32> {
     #[cfg(target_os = "linux")]
     {
         linux_rtt_us(stream)
@@ -26,7 +27,14 @@ pub(crate) fn rtt_us(stream: &tokio::net::TcpStream) -> Option<u32> {
     {
         windows_rtt_us(stream)
     }
-    #[cfg(not(any(target_os = "linux", windows)))]
+    // 手机（android 不算 linux）：**明写说不知道**。内核那一问在 android 上也有，但手机这一侧零读数、没量过
+    // （厂商内核 · SELinux 策略都可能挡），不猜 ⇒ 判准按「不知道」处置（按远，压）。哪天量过再接 linux 那一臂。
+    #[cfg(target_os = "android")]
+    {
+        let _ = stream;
+        None
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
     {
         let _ = stream;
         None

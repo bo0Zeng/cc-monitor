@@ -33,12 +33,12 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 
-use super::connect::Linked;
-use super::DialRequest;
+use crate::connect::Linked;
+use crate::DialRequest;
 
 /// 池里的一条连接要回答的几问。**抽成 trait 是为了判据**：池的记账（复用 / 串行 / 多开 / 收掉）
 /// 不需要真 SSH 就验得动（`dial_pool_tests` 拿一个假连接 ＋ 真 [`Budget`] 喂它）。
-pub(crate) trait Conn: Send + Sync + 'static {
+pub trait Conn: Send + Sync + 'static {
     fn is_closed(&self) -> bool;
     /// 这条连接的通道预算。
     fn budget(&self) -> &Budget;
@@ -80,7 +80,7 @@ impl Conn for Linked {
 
 /// 本进程单调钟的毫秒数（从第一次读起算，至少是 1 —— 0 留给「还没收到过」）。
 /// 只用来比「这条连接多久没收到对端字节了」，不驱动任何等待、不让谁醒来。
-pub(crate) fn mono_ms() -> u64 {
+pub fn mono_ms() -> u64 {
     static ORIGIN: OnceLock<tokio::time::Instant> = OnceLock::new();
     let now = tokio::time::Instant::now();
     let origin = *ORIGIN.get_or_init(|| now);
@@ -91,25 +91,25 @@ pub(crate) fn mono_ms() -> u64 {
 /// （`connect::Hearing`）。健康的空闲连接也会每 10 秒收到一次保活回话（`connect::KEEPALIVE`）⇒
 /// 「很久没收到」说明对端没在回话：路断成黑洞时 TCP 看着还活着，只有这一格看得出来。
 #[derive(Default)]
-pub(crate) struct Heard(AtomicU64);
+pub struct Heard(AtomicU64);
 
 impl Heard {
     /// 一条刚握完手的连接：此刻算收到过。
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Heard(AtomicU64::new(mono_ms()))
     }
 
     /// 收到了对端的字节。
-    pub(crate) fn touch(&self) {
+    pub fn touch(&self) {
         self.0.fetch_max(mono_ms(), Ordering::Relaxed);
     }
 
-    pub(crate) fn at(&self) -> u64 {
+    pub fn at(&self) -> u64 {
         self.0.load(Ordering::Relaxed)
     }
 
     /// 多久没收到对端字节了（毫秒）。
-    pub(crate) fn silent_for(&self) -> u64 {
+    pub fn silent_for(&self) -> u64 {
         mono_ms().saturating_sub(self.at())
     }
 }
@@ -130,11 +130,11 @@ impl Heard {
 /// 一个身份最多几条连接：主连接 · 一条批量 · 一条溢出。批量至多一条（传输车道每条连接 4 格，多一条只是多抢瓶颈带宽）；
 /// 溢出那一条只在主连接的 8 格真满了、或远端 `MaxSessions` 被调低时才出现，随最后一条查询收掉。
 /// 每多一条 = 远端多一个 `sshd-session` 进程 ＋ 一次握手鉴权（≈ 5 个往返）。
-pub(crate) const MAX_CONNECTIONS_PER_HOST: usize = 3;
+pub const MAX_CONNECTIONS_PER_HOST: usize = 3;
 
 /// 一条 session 通道（或一条隧道）走哪一道。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Lane {
+pub enum Lane {
     /// 长流（交互，活得长）：借一格通道，并记在这条连接的「长流数」上。
     Stream,
     /// capture · files 链路（交互，短命）：借一格通道。
@@ -147,7 +147,7 @@ pub(crate) enum Lane {
 
 /// 这一次为什么多开了一条。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Why {
+pub enum Why {
     /// 交互在所有成员上都借不到格（闸满 / 远端回拒之后学到的上限满）。
     Full,
     /// 传输要一条没有长流的连接，而族里还没有。
@@ -156,7 +156,7 @@ pub(crate) enum Why {
 
 /// 这一次放到了哪。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum How {
+pub enum How {
     /// 放在族里已有的一条上。
     Reused,
     /// 族里一条都没有，拨了第一条。
@@ -166,10 +166,10 @@ pub(crate) enum How {
 }
 
 /// 放置的结果：哪条连接 · 借到的格（隧道没有）· 怎么来的。
-pub(crate) struct Placed<C> {
-    pub(crate) conn: Arc<C>,
-    pub(crate) permit: Option<Permit>,
-    pub(crate) how: How,
+pub struct Placed<C> {
+    pub conn: Arc<C>,
+    pub permit: Option<Permit>,
+    pub how: How,
 }
 
 /// 一个身份的一族连接。
@@ -256,12 +256,18 @@ impl<C: Conn> Family<C> {
 }
 
 /// 连接池。键 = [`identity`]。
-pub(crate) struct Pool<C> {
+pub struct Pool<C> {
     families: Mutex<HashMap<String, Arc<Family<C>>>>,
 }
 
+impl<C: Conn> Default for Pool<C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<C: Conn> Pool<C> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Pool {
             families: Mutex::new(HashMap::new()),
         }
@@ -286,12 +292,7 @@ impl<C: Conn> Pool<C> {
 
     /// **放置**：在这个身份的一族里给 `lane` 找一格。已有成员借得到 ⇒ 复用；借不到而该多开（[`Family::dial_reason`]）⇒
     /// 拨一条新的（同一族同一时刻只拨一条：并发来的第二个等第一个拨完、再看一遍）；到顶了 ⇒ 等一格还回来。
-    pub(crate) async fn place<F, Fut, E>(
-        &self,
-        key: &str,
-        lane: Lane,
-        mut dial: F,
-    ) -> Result<Placed<C>, E>
+    pub async fn place<F, Fut, E>(&self, key: &str, lane: Lane, mut dial: F) -> Result<Placed<C>, E>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<C, E>>,
@@ -344,7 +345,7 @@ impl<C: Conn> Pool<C> {
 
     /// 这个身份此刻能放传输的成员（与放置同一条分道规矩：主连接上有长流 ⇒ 只有没长流的非主成员）。
     /// `sftp.rs` 在这些成员上找停着的空闲会话。
-    pub(crate) fn transfer_candidates(&self, key: &str) -> Vec<Arc<C>> {
+    pub fn transfer_candidates(&self, key: &str) -> Vec<Arc<C>> {
         let fam = {
             let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
             g.get(key).cloned()
@@ -355,7 +356,7 @@ impl<C: Conn> Pool<C> {
 
     /// 这一条不能用了（死了）⇒ 从族里摘掉（**摘掉 ≠ 关掉**：手里还拿着它的用户照用到走；只是新的放置不再落到它上面）。
     /// 只摘指名的那一条。
-    pub(crate) fn evict(&self, key: &str, c: &Arc<C>) {
+    pub fn evict(&self, key: &str, c: &Arc<C>) {
         let fam = {
             let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
             g.get(key).cloned()
@@ -372,7 +373,7 @@ impl<C: Conn> Pool<C> {
     /// 这一条被判成黑洞（从 `since` 起等它回话、没等到）⇒ 摘掉它，连同族里**从 `since` 起也没收到过字节**的成员：
     /// 它们多半走的是同一条断掉的路（换网 / NAT 表过期），留着的话下一回放置落到它们上面、再干等一回。
     /// 那之后收到过字节的成员留着。摘掉 ≠ 关掉（同 [`Pool::evict`]）。
-    pub(crate) fn evict_silent(&self, key: &str, dead: &Arc<C>, since: u64) {
+    pub fn evict_silent(&self, key: &str, dead: &Arc<C>, since: u64) {
         let fam = {
             let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
             g.get(key).cloned()
@@ -390,7 +391,7 @@ impl<C: Conn> Pool<C> {
     }
 
     /// 此刻还活着（有人在用 / 被托着）的连接数（全部身份）。生产日志读它。
-    pub(crate) fn live(&self) -> usize {
+    pub fn live(&self) -> usize {
         let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
         g.values()
             .map(|f| {
@@ -415,14 +416,14 @@ impl<C: Conn> Pool<C> {
 /// 事件驱动，零定时器。代价：用户点取消关掉链路也会摘一次 —— 多一次握手，不坏事。
 /// 怎么判出死的（[`Watch::dead`]）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DeadBy {
+pub enum DeadBy {
     /// 赛跑里新起的一条比它先站住。
     Outrun,
     /// 等回话时它断了（保活连着没回话，russh 断开；或对端断了）。
     Broke,
 }
 
-pub(crate) struct Watch<'a, C: Conn> {
+pub struct Watch<'a, C: Conn> {
     pool: &'a Pool<C>,
     key: &'a str,
     conn: &'a Arc<C>,
@@ -432,7 +433,7 @@ pub(crate) struct Watch<'a, C: Conn> {
 }
 
 impl<'a, C: Conn> Watch<'a, C> {
-    pub(crate) fn new(pool: &'a Pool<C>, key: &'a str, conn: &'a Arc<C>) -> Self {
+    pub fn new(pool: &'a Pool<C>, key: &'a str, conn: &'a Arc<C>) -> Self {
         Watch {
             pool,
             key,
@@ -443,12 +444,12 @@ impl<'a, C: Conn> Watch<'a, C> {
     }
 
     /// 等到了回话：解除。
-    pub(crate) fn done(mut self) {
+    pub fn done(mut self) {
         self.armed = false;
     }
 
     /// 判死了（[`DeadBy`]）：当场摘。
-    pub(crate) fn dead(mut self, by: DeadBy) {
+    pub fn dead(mut self, by: DeadBy) {
         self.armed = false;
         match by {
             DeadBy::Outrun => tracing::warn!(
@@ -484,14 +485,14 @@ impl<C: Conn> Drop for Watch<'_, C> {
 /// 8 = 默认 `MaxSessions` 10 留 2 格：① `sshd` 回收旧通道与新通道短暂重叠；② 被调低到 8 的机器仍不撞墙。
 /// 端口转发的 direct-tcpip 通道不计（`MaxSessions` 不数它）。远端真正的 `MaxSessions` 量不到（协议里没有这个数）⇒
 /// 这是本地自律，不是协商结果；被远端回拒过的连接，上限改成被拒那一刻的在用格数（[`Budget::refused`]）。
-pub(crate) const SESSION_CHANNEL_CAP: usize = 8;
+pub const SESSION_CHANNEL_CAP: usize = 8;
 
 /// 其中传输（sftp 上传 / 下载）最多占几格。4 ⇒ 满载传输时会话长流 ＋ 一次性查询仍有 ≥ 4 格（大上传不许把「列会话」饿死）。
 /// 主连接上有长流时传输另开一条批量连接（`Why::Bulk`）⇒ 这 4 格多半落在批量连接上。
-pub(crate) const TRANSFER_LANE_CAP: usize = 4;
+pub const TRANSFER_LANE_CAP: usize = 4;
 
 /// 一条连接的两道闸 ＋ 两个计数。**借不到不等**（[`Budget::try_take`]）—— 等由族那一层做（`Notify`，零定时器）。
-pub(crate) struct Budget {
+pub struct Budget {
     sessions: Arc<Semaphore>,
     transfers: Arc<Semaphore>,
     /// 此刻借着 [`Lane::Stream`] 那一格的数（长流数）。
@@ -503,7 +504,7 @@ pub(crate) struct Budget {
 }
 
 /// 借到的一格（或两格）。drop 即归还，并摇一下族的铃。
-pub(crate) struct Permit {
+pub struct Permit {
     session: Option<OwnedSemaphorePermit>,
     lane: Option<OwnedSemaphorePermit>,
     stream: Option<Arc<AtomicUsize>>,
@@ -523,8 +524,14 @@ impl Drop for Permit {
     }
 }
 
+impl Default for Budget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Budget {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Budget {
             sessions: Arc::new(Semaphore::new(SESSION_CHANNEL_CAP)),
             transfers: Arc::new(Semaphore::new(TRANSFER_LANE_CAP)),
@@ -535,12 +542,12 @@ impl Budget {
     }
 
     /// 挂上族的铃（只挂一次）。
-    pub(crate) fn attach(&self, freed: Arc<Notify>) {
+    pub fn attach(&self, freed: Arc<Notify>) {
         let _ = self.freed.set(freed);
     }
 
     /// 借一格，**不等**：借不到 ⇒ `None`。传输先过车道、再过通道闸（通道闸借不到就把车道那一格还掉 —— 排队等车道的不占通道格）。
-    pub(crate) fn try_take(&self, lane: Lane) -> Option<Permit> {
+    pub fn try_take(&self, lane: Lane) -> Option<Permit> {
         let lane_permit = match lane {
             Lane::Tunnel => return None,
             Lane::Transfer => Some(Arc::clone(&self.transfers).try_acquire_owned().ok()?),
@@ -562,19 +569,19 @@ impl Budget {
     /// **远端回拒了一条 session 通道**（`MaxSessions` 那一形）⇒ 这条连接的上限 = 此刻在用的格数：
     /// 闸里空着的格当场作废（`forget_permits`）。调用方先把被拒那一格还掉再调（它不算在用）。回学到的上限。
     /// 在用的格以后还回来照常可借 —— 上限就是「被拒那一刻远端肯给的数」。
-    pub(crate) fn refused(&self) -> usize {
+    pub fn refused(&self) -> usize {
         let spare = self.sessions.available_permits();
         let gone = self.sessions.forget_permits(spare);
         self.cap.fetch_sub(gone, Ordering::SeqCst) - gone
     }
 
     /// 此刻借着长流那一格的数。
-    pub(crate) fn streams(&self) -> usize {
+    pub fn streams(&self) -> usize {
         self.streams.load(Ordering::SeqCst)
     }
 
     /// 此刻 `(还剩几格通道, 还剩几格车道, 通道总格数)`。生产日志读它（不是只给判据看的仪表）。
-    pub(crate) fn free(&self) -> (usize, usize, usize) {
+    pub fn free(&self) -> (usize, usize, usize) {
         (
             self.sessions.available_permits(),
             self.transfers.available_permits(),
@@ -593,22 +600,19 @@ impl Drop for Budget {
 }
 
 /// 本进程那一个 SSH 连接池。
-pub(crate) fn ssh() -> &'static Pool<Linked> {
+pub fn ssh() -> &'static Pool<Linked> {
     static P: OnceLock<Pool<Linked>> = OnceLock::new();
     P.get_or_init(Pool::new)
 }
 
 /// 一份拨号请求的**连接身份**（规范化 JSON 串，键序固定）。
-pub(crate) fn identity(req: &DialRequest) -> String {
+pub fn identity(req: &DialRequest) -> String {
     let endpoints: Vec<serde_json::Value> = req
         .race_order()
         .iter()
         .map(|e| serde_json::json!([e.host, e.port]))
         .collect();
-    let jump = req
-        .jump
-        .as_ref()
-        .map(|j| serde_json::json!([j.host, j.port, j.user, j.key_path, j.host_key_fingerprint]));
+    let jump = req.jump.as_ref().map(hop_identity);
     serde_json::json!([
         req.host,
         req.port,
@@ -619,6 +623,15 @@ pub(crate) fn identity(req: &DialRequest) -> String {
         jump
     ])
     .to_string()
+}
+
+/// 一台跳板的身份：`[主机, 口, 用户, 钥匙, 指纹]`，再外一台在 ⇒ 它的身份接在第六格（多跳）。
+fn hop_identity(j: &crate::JumpHop) -> serde_json::Value {
+    let mut v = serde_json::json!([j.host, j.port, j.user, j.key_path, j.host_key_fingerprint]);
+    if let (Some(outer), Some(a)) = (j.jump.as_deref(), v.as_array_mut()) {
+        a.push(hop_identity(outer));
+    }
+    v
 }
 
 #[cfg(test)]

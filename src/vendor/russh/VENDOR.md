@@ -66,7 +66,7 @@ loop {
 - 后端 `src/backend/Cargo.toml`：依赖那一行不动（`russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }`），
   末尾 `[patch.crates-io] russh = { path = "../vendor/russh" }`。lock 的差只有 russh 那一块丢了 `source` / `checksum`（= path 来源），
   其余包一个版本都没动（`crypto-bigint 0.7.3` 那一形照旧：别让 cargo 重解析，见后端 `Cargo.toml` 头注）。
-- 闸 `src/backend/dial/connect.rs::RUSSH_ZLIB_SOUND` 开（`true`）：判准（`compression_for`）的答案落到连接上。
+- 闸 `src/backend/ssh-dial/connect.rs::RUSSH_ZLIB_SOUND` 开（`true`）：判准（`compression_for`）的答案落到连接上。
 - **不进任何 workspace**：monitor 的 `[workspace]` 不列它、也没有成员依赖它；它只作为后端（独立 crate）的 path 依赖被编。
   它自带的 `tests/` `examples/` `benches/` 原样留着、**不在任何门里跑**（跑它们要 dev 依赖，断网解析不动）。
 - ⚠ path 依赖**不压 lint**（registry 来的依赖 cargo 会 `--cap-lints`，path 的不会）⇒ 编后端时会多看见一条上游自带的警告

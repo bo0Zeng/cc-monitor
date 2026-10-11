@@ -42,7 +42,7 @@ use copy_core::{copy_text, io_reason};
 use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。值只住契约 crate（`relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
-/// 往里写的一侧（`dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）同在本 crate，由
+/// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）同在本 crate，由
 /// `dial_sftp_tests::the_declared_write_roots_are_exactly_staging_and_bin` 直接比。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 

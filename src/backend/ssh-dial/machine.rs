@@ -19,15 +19,15 @@ use serde_json::{json, Value};
 
 /// 一台机器的配置（界面那一格）里本模块读的几样。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Machine {
-    pub(crate) host: String,
-    pub(crate) label: String,
-    pub(crate) port: u16,
-    pub(crate) user: String,
-    pub(crate) key_path: Option<String>,
-    pub(crate) fingerprint: Option<String>,
-    pub(crate) addresses: Vec<String>,
-    pub(crate) jump: Option<String>,
+pub struct Machine {
+    pub host: String,
+    pub label: String,
+    pub port: u16,
+    pub user: String,
+    pub key_path: Option<String>,
+    pub fingerprint: Option<String>,
+    pub addresses: Vec<String>,
+    pub jump: Option<String>,
 }
 
 fn nonempty(v: Option<&Value>) -> Option<String> {
@@ -39,8 +39,8 @@ fn nonempty(v: Option<&Value>) -> Option<String> {
 
 impl Machine {
     /// 读界面那一格。缺 `host` / `user` ⇒ `bad_args`（调用方是我们自己的界面：契约错）。
-    pub(crate) fn parse(v: &Value) -> Result<Machine, (&'static str, String)> {
-        let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
+    pub fn parse(v: &Value) -> Result<Machine, (&'static str, String)> {
+        let bad = |d: &str| ("bad_args", crate::malformed(d));
         let host = nonempty(v.get("host")).ok_or_else(|| bad("machine without `host`"))?;
         let user = nonempty(v.get("user")).ok_or_else(|| bad("machine without `user`"))?;
         let port = match v.get("port") {
@@ -73,7 +73,7 @@ impl Machine {
     }
 
     /// 这台机器的名字（`label`，空 ⇒ `host`）—— 与 monitor 的 origin 同一个串。
-    pub(crate) fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         if self.label.is_empty() {
             &self.host
         } else {
@@ -82,7 +82,7 @@ impl Machine {
     }
 
     /// 全部拨号地址：`host` 排首、`addresses` 追加，去重保序；解析不了的那一行丢掉（配置笔误不静默成默认端口）。
-    pub(crate) fn endpoints(&self) -> Vec<(String, u16)> {
+    pub fn endpoints(&self) -> Vec<(String, u16)> {
         let mut out: Vec<(String, u16)> = vec![(self.host.clone(), self.port)];
         for line in &self.addresses {
             if let Some(ep) = parse_address_line(line, self.port) {
@@ -97,7 +97,7 @@ impl Machine {
 
 /// 一行地址 → `(host, port)`。四形态：`host` · `host:port` · `[v6]:port` · `[v6]` / 裸 v6（「>1 个冒号」判裸 v6）。
 /// 空白 ⇒ `None`；端口非法 ⇒ `None`（拒绝而非静默默认）。
-pub(crate) fn parse_address_line(line: &str, default_port: u16) -> Option<(String, u16)> {
+pub fn parse_address_line(line: &str, default_port: u16) -> Option<(String, u16)> {
     let s = line.trim();
     if s.is_empty() {
         return None;
@@ -136,7 +136,7 @@ fn hop(m: &Machine) -> Value {
 
 /// 界面交来的那几样（`machine` 必有；`saved` = 已保存的那一份；`jump` = 跳板那一台）→ 拨号请求（蛇形键，`dial::DialRequest` 的形状）。
 /// `use_` 与 `extra` 由调用方补（`forward` 的规格 · 探针的命令与阶段行）。
-pub(crate) fn request(
+pub fn request(
     machine: &Machine,
     saved: Option<&Machine>,
     jump: Option<&Machine>,
@@ -190,8 +190,8 @@ pub(crate) fn request(
 
 /// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, saved?, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
 /// `forward` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
-pub(crate) fn resolve(v: &Value) -> Result<crate::dial::DialRequest, (&'static str, String)> {
-    let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
+pub fn resolve(v: &Value) -> Result<crate::DialRequest, (&'static str, String)> {
+    let bad = |d: &str| ("bad_args", crate::malformed(d));
     let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
     let (machine, saved, jump) = from_args(v)?;
     let prefer = match obj.get("prefer") {
@@ -220,20 +220,17 @@ pub(crate) fn resolve(v: &Value) -> Result<crate::dial::DialRequest, (&'static s
         use_,
         Value::Object(extra),
     )?;
-    <crate::dial::DialRequest as serde::Deserialize>::deserialize(&req)
+    <crate::DialRequest as serde::Deserialize>::deserialize(&req)
         .map_err(|e| bad(&format!("dial request unreadable: {e}")))
 }
 
 /// 帧命令入参里那三格（`machine` · `saved?` · `jump?`）一次读齐。
-pub(crate) fn from_args(
+pub fn from_args(
     args: &Value,
 ) -> Result<(Machine, Option<Machine>, Option<Machine>), (&'static str, String)> {
-    let m = args.get("machine").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `machine`"),
-        )
-    })?;
+    let m = args
+        .get("machine")
+        .ok_or_else(|| ("bad_args", crate::malformed("missing `machine`")))?;
     let opt = |k: &str| -> Result<Option<Machine>, (&'static str, String)> {
         match args.get(k) {
             None | Some(Value::Null) => Ok(None),

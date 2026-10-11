@@ -56,15 +56,10 @@ fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
     // (指纹, dial/ 里应当命中的那几份 —— 正控)
     let prints: &[(&str, &[&str])] = &[
         ("uses::run(", &["dial/link.rs", "dial/remote_ask.rs"]),
-        ("abort_marker", &["dial/uses.rs", "dial/remote_ask.rs"]),
+        ("abort_marker", &["ssh-dial/uses.rs", "dial/remote_ask.rs"]),
         (
             "parse_request_value(",
-            &[
-                "dial/link.rs",
-                "dial/mod.rs",
-                "dial/sftp.rs",
-                "dial/remote_ask.rs",
-            ],
+            &["dial/link.rs", "dial/mod.rs", "dial/remote_ask.rs"],
         ),
     ];
     for (needle, inside_dial) in prints {
@@ -72,7 +67,8 @@ fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
         assert!(scanned > 100, "只扫到 {scanned} 份后端源码 —— 遍历坏了");
         let outside: std::collections::BTreeSet<String> = homes
             .iter()
-            .filter(|p| !p.starts_with("dial/"))
+            // 拨号核心那个包（`ssh-dial/`，后端与手机同一份）也是拨号层的家。
+            .filter(|p| !(p.starts_with("dial/") || p.starts_with("ssh-dial/")))
             .cloned()
             .collect();
         // 本模块住进了 `dial/`（审计二 B2e）⇒ `dial/` 之外一处都不许有；本模块还经这一跳由下面的正控钉着（它在登记的那几份里）。

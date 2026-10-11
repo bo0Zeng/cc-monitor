@@ -43,7 +43,7 @@ pub struct RemoteConfig {
 /// 单个连接目标：后端 ack 里结构化的胜者（`winner`），形状住通信层（`ssh_link`）。
 pub use comms_inward::ssh_link::Endpoint;
 
-// 〔「一个判定一个家」〕地址解析与组拨号请求只在本机常驻后端 `src/backend/dial/machine.rs`（起流时把这台原样的配置交过去）。
+// 〔「一个判定一个家」〕地址解析与组拨号请求只在本机常驻后端 `src/backend/ssh-dial/machine.rs`（起流时把这台原样的配置交过去）。
 
 impl RemoteConfig {
     /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
@@ -57,7 +57,7 @@ impl RemoteConfig {
         }
     }
 
-    // 「所有连接目标」（`host` 排首 · `addresses` 追加 · 去重保序）那一格搬进后端 `dial/machine.rs::Machine::endpoints`。
+    // 「所有连接目标」（`host` 排首 · `addresses` 追加 · 去重保序）那一格搬进后端 `ssh-dial/machine.rs::Machine::endpoints`。
 }
 
 fn default_ssh_port() -> u16 {
@@ -104,6 +104,6 @@ pub(crate) fn record_last_good(cfg: &RemoteConfig, ep: &Endpoint) {
     }
 }
 
-// 开终端那一行在本机后端（`terminal-ssh`），地址由 `dial/machine.rs::resolve` 按交过去的 `prefer`（[`last_good_for`]）排首。
+// 开终端那一行在本机后端（`terminal-ssh`），地址由 `ssh-dial/machine.rs::resolve` 按交过去的 `prefer`（[`last_good_for`]）排首。
 
-// 竞发拨号顺序（last-good 排首、其余保序）那个纯函数 `winner_order` 搬进后端 `dial/machine.rs::request`（`prefer`）。
+// 竞发拨号顺序（last-good 排首、其余保序）那个纯函数 `winner_order` 搬进后端 `ssh-dial/machine.rs::request`（`prefer`）。
