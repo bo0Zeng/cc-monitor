@@ -30,6 +30,8 @@ members = [
     "../../common/host-core",
     # 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份。
     "../../common/win-path-core",
+    # Windows 进程清单（两个前端包每一个链接产物都带、只一份）：清单 · 构建脚本里的编法 · 测试程序读回。
+    "../../common/win-manifest",
     # monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
     "../../common/filewin-contract",
     # 文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
@@ -60,6 +62,7 @@ population = [
     "../../comms/inward",
     "../../common/host-core",
     "../../common/filewin-contract",
+    "../../common/win-manifest",
     "../filewin",
 ]
 
@@ -126,9 +129,8 @@ required-features = ["shots"]
 tauri-build = { version = "2", features = [] }
 # 内嵌字节自报的身份：界标与扫法用契约 crate 那一份（后端拼戳 · 运行期扫字节同一份）。
 deploy-contract = { path = "../../common/deploy-contract" }
-# Windows 进程清单编成资源、交给本包**每一个**链接产物（测试程序也要：`build.rs::manifest_for_every_artifact`）。
-# 不新增依赖树条目：`tauri-build` 经 `tauri-winres` 早就带着同一个版本。
-embed-resource = "3"
+# Windows 进程清单编成资源、交给本包**每一个**链接产物（测试程序也要）：清单与编法只住这一处，文件窗口包同一份。
+win-manifest = { path = "../../common/win-manifest" }
 
 [dependencies]
 # tray-icon feature 实际没用（前端不调系统托盘 API），移除以减小依赖体积。
@@ -214,6 +216,8 @@ tracing-appender = "0.2"
 cc-monitor-filewin = { path = "../filewin" }
 
 [dev-dependencies]
+# 测试程序在 Windows 上读回自己的进程清单（`tests/frontend/shell/lib_app_manifest_tests.rs`）。
+win-manifest = { path = "../../common/win-manifest" }
 # C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
 # 导出本来就走 `cargo test`（`#[ts(export)]` 生成的是一个测试），
 # 所以它没有理由进发布二进制。派生用 `#[cfg_attr(test, ...)]` 挂在 test cfg 上。
