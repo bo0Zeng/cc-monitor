@@ -38,7 +38,7 @@ export function settingsPerfWorld(): World {
     const cwd = `/home/user/work/p${k}`;
     return session(n, origin, cwd, smallConvo(n, cwd), { activity: k % 4 === 0 ? "working" : "idle" });
   });
-  w.disk = defaultDisk(w.machines, w.sessions);
+  w.disk = defaultDisk(w.machines);
 
   // ── 账号 · 额度 · 轮换规则：落成本机家目录里的原始文件，真后端读 ──
   const d = w.disk[LOCAL];

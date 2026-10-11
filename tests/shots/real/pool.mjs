@@ -6,11 +6,15 @@
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
  *   POST /__ccm/call   {key, origin, op, args, view?}         ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
- *   POST /__ccm/write  {key, origin, rel, text}             ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录）
+ *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
+ *   POST /__ccm/write  {key, origin, rel, text, append?}    ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录；`append` ⇒ 接在末尾写）
+ *   POST /__ccm/end    {key, origin}                         ⇒ 那台已结束 / 可重连的那几个这时收场（页里收到那台的清单之后发），见到裁出来的那一格才答
+ *   POST /__ccm/kill   {key, origin}                         ⇒ 那台后端当场杀掉（演「断了」）
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
  *
  *   世界里的 `warm`（quota-warm 在跑）：同样配一个替身进程，写 `.cc-monitor/quota-warm.json` 带它的 pid。
- *   世界里的 `live`（活会话）：每个配一个 `sleep` 进程当 claude 的替身，写 `.claude/sessions/<pid>.json`（带 `procStart`，判活照真的那一套）。
+ *   世界里的 `live`（活会话）：每个配一个 `sleep` 进程当 claude 的替身（缺省住在那台私有 tmux 的一个窗格里），写 `.claude/sessions/<pid>.json`
+ *   （带 `procStart`，判活照真的那一套）；替身 · tmux · 后端同在一个沙箱里（见 `start`）。
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
@@ -18,7 +22,7 @@
  * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -78,6 +82,15 @@ export function buildBins({ repo, env }) {
   return null;
 }
 
+/**
+ * 沙箱外够那一台私有 tmux 的手（server 起在那台后端的沙箱里，见 `start`）：socket 在 `<dir>/tmux/tmux-<uid>/default`
+ * （沙箱里挂成 `$TMUX_TMPDIR`，后端照常 `tmux` 就连到它，碰不到用户的 tmux）。每条命令显式 `-S` ＋ 摘掉 `TMUX` / `TMUX_PANE`、不读配置文件。
+ */
+function tmuxOf(dir) {
+  const sock = path.join(dir, "tmux", `tmux-${process.getuid()}`, "default");
+  return (args) => spawnSync("env", ["-u", "TMUX", "-u", "TMUX_PANE", "tmux", "-S", sock, "-f", "/dev/null", ...args], { stdio: "ignore", env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } }).status === 0;
+}
+
 export function backendPool({ repo, sandbox }) {
   const bin = process.env.CCM_SHOTS_BACKEND ?? path.join(BACKEND_TARGET(repo), "debug/cc-monitor-backend");
   const shellBin = path.join(repo, ".build/shell/debug/examples", SHELL_EXAMPLE);
@@ -87,7 +100,7 @@ export function backendPool({ repo, sandbox }) {
     const w = worlds.get(key);
     if (!w) return;
     worlds.delete(key);
-    for (const pid of [-w.shell.pid, ...w.sleepers.map((c) => c.pid)]) {
+    for (const pid of [-w.shell.pid]) {
       try {
         process.kill(pid, "SIGKILL");
       } catch {
@@ -106,35 +119,55 @@ export function backendPool({ repo, sandbox }) {
       const p = path.join(home, rel);
       mkdirSync(path.dirname(p), { recursive: true });
       writeFileSync(p, text);
-      utimesSync(p, now / 1000, now / 1000);
+      const at = m.mtimes?.[rel] ?? now;
+      utimesSync(p, at / 1000, at / 1000);
     }
-    // 活会话的替身进程：判活看 pid 在不在 ＋ 进程起始时刻对不对得上（`procStart`，/proc/<pid>/stat 第 22 格）。
-    const sleepers = [];
-    for (const l of m.live ?? []) {
-      const s = spawn("sleep", ["3600"], { stdio: "ignore", env: { PATH: "/usr/bin:/bin" } });
-      sleepers.push(s);
-      const st = readFileSync(`/proc/${s.pid}/stat`, "utf8");
-      const procStart = st.slice(st.lastIndexOf(")") + 2).split(" ")[19];
-      const p = path.join(home, ".claude", "sessions", `${s.pid}.json`);
-      mkdirSync(path.dirname(p), { recursive: true });
-      writeFileSync(p, JSON.stringify({ pid: s.pid, sessionId: l.sid, cwd: l.cwd, startedAt: l.startedAt ?? now, kind: l.kind ?? "interactive", procStart, ...(l.status ? { status: l.status } : {}), ...(l.waitingFor ? { waitingFor: l.waitingFor } : {}), ...(l.statusUpdatedAt ? { statusUpdatedAt: l.statusUpdatedAt } : {}) }));
-    }
-    if (m.warm) {
-      const s = spawn("sleep", ["3600"], { stdio: "ignore", env: { PATH: "/usr/bin:/bin" } });
-      sleepers.push(s);
-      mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
-      writeFileSync(path.join(home, ".cc-monitor", "quota-warm.json"), JSON.stringify({ pid: s.pid, next: m.warm }));
-    }
-    mkdirSync(path.join(dir, "tmux"), { recursive: true, mode: 0o700 });
-    mkdirSync(path.join(dir, "run"), { recursive: true, mode: 0o700 });
+    // 替身进程（活会话的 claude · quota-warm）与这台的私有 tmux 都起在后端那一个沙箱里（同一个用户 / 进程命名空间）：
+    // 后端要读替身的 `/proc/<pid>/environ` 取 `TMUX_PANE`（打标 `@ccm_sid`、报容器），沙箱外的进程它读不到；pid 也只在这一个命名空间里算数。
+    // 沙箱里先跑一段起替身、写 pidfile 的开场（`.shots-setup/run.sh`），再 exec 后端。判活照真的那一套：pid 在不在 ＋ 进程起始时刻（`procStart`，/proc/<pid>/stat 第 22 格）。
     const H = "/home/user";
+    const setup = path.join(home, ".shots-setup");
+    mkdirSync(setup, { recursive: true });
+    mkdirSync(path.join(home, ".claude", "sessions"), { recursive: true });
+    mkdirSync(path.join(dir, "tmux", `tmux-${process.getuid()}`), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(dir, "run"), { recursive: true, mode: 0o700 });
+    const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE tmux -S ${H}/.shots-tmux/tmux-${process.getuid()}/default -f /dev/null "$@"; }`];
+    /**
+     * 开页之后才收场的那几个（台架见到那台的清单之后收）：已结束 ⇒ 关掉它那个 tmux 会话（替身跟着没了）；
+     * 可重连 ⇒ 只杀替身（claude 退了），窗格接着跑一个 shell、后端打过的标签还挂着。
+     */
+    const doomed = [];
+    (m.live ?? []).forEach((l, k) => {
+      const pane = `T new-session -d -s s${k} -x 120 -y 32 -P -F`;
+      if (l.tmux === false && l.fate) throw new Error(`${origin} 上 ${l.sid}：不住 tmux 的替身演不了收场（台架从沙箱外够不着它）`);
+      if (l.tmux === false) sh.push("sleep 3600 & pid=$!");
+      else if (l.fate === "reconnectable") {
+        // 替身是窗格里那个 shell 的子进程：它被杀之后窗格还在（shell 接着睡）。
+        const pf = `${H}/.shots-setup/${k}.pid`;
+        sh.push(`${pane} '#{pane_id}' ${q(`sleep 3600 & echo $! > ${pf}; wait; exec sleep 3600`)} >/dev/null`, `while [ ! -s ${pf} ]; do sleep 0.02; done`, `pid=$(cat ${pf})`);
+        doomed.push({ sid: l.sid, fate: "reconnectable", act: ["run-shell", `kill $(cat ${pf})`] });
+      } else sh.push(`pid=$(${pane} '#{pane_pid}' 'exec sleep 3600')`);
+      if (l.fate === "ended") doomed.push({ sid: l.sid, fate: "ended", act: ["kill-session", "-t", `s${k}`] });
+      const body = { pid: "__PID__", sessionId: l.sid, cwd: l.cwd, startedAt: l.startedAt ?? now, kind: l.kind ?? "interactive", procStart: "__PS__", ...(l.name ? { name: l.name } : {}), ...(l.status ? { status: l.status } : {}), ...(l.waitingFor ? { waitingFor: l.waitingFor } : {}), ...(l.statusUpdatedAt ? { statusUpdatedAt: l.statusUpdatedAt } : {}) };
+      writeFileSync(path.join(setup, `${k}.json`), JSON.stringify(body).replace('"__PID__"', "__PID__"));
+      sh.push(`ps=$(awk '{print $22}' /proc/$pid/stat)`, `sed "s/__PID__/$pid/; s/__PS__/$ps/" ${H}/.shots-setup/${k}.json > ${H}/.claude/sessions/$pid.json`);
+    });
+    if (m.warm) {
+      mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
+      writeFileSync(path.join(setup, "warm.json"), JSON.stringify({ pid: "__PID__", next: m.warm }).replace('"__PID__"', "__PID__"));
+      sh.push("sleep 3600 & pid=$!", `sed "s/__PID__/$pid/" ${H}/.shots-setup/warm.json > ${H}/.cc-monitor/quota-warm.json`);
+    }
+    // 看的那一台的时区（同壳 attach 行带的 `tz`）：推来的钟面（记录的时刻字 · 子运行的起始字）按它写。
+    sh.push(`exec /tmp/ccm-shots/cc-monitor-backend -- --stream --tz ${SHOTS_TZ}`);
+    writeFileSync(path.join(setup, "run.sh"), sh.join("\n") + "\n");
     const env = {
       PATH: "/usr/bin:/bin",
       HOME: H,
       LANG: "C.UTF-8",
       TMUX_TMPDIR: `${H}/.shots-tmux`,
       XDG_RUNTIME_DIR: `${H}/.shots-run`,
-      CCM_BACKEND_STDERR_LOG: "/tmp/stderr.log",
+      CCM_BACKEND_STDERR_LOG: process.env.CCM_SHOTS_DEBUG ? `${H}/.shots-stderr.log` : "/tmp/stderr.log",
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
     };
@@ -147,14 +180,16 @@ export function backendPool({ repo, sandbox }) {
       "--tmpfs", "/tmp",
       "--ro-bind", bin, "/tmp/ccm-shots/cc-monitor-backend",
       "--dev", "/dev",
+      // 自成一个进程命名空间：沙箱的头一个进程一退（壳杀那一台 · 台架收场），替身与 tmux 跟着全没。
+      "--unshare-pid", "--proc", "/proc",
       "--unshare-net", "--unshare-uts", "--hostname", "shots", "--die-with-parent",
       "--chdir", H,
       "--clearenv",
       ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
-      "/tmp/ccm-shots/cc-monitor-backend", "--", "--stream",
+      "/bin/sh", `${H}/.shots-setup/run.sh`,
     ];
     // 每台一条整命令（沙箱 ＋ 后端），交给无头壳去起（它拿着各台的标准输入输出，就像壳拿着本机后端那一条）。
-    return { argv: ["bwrap", ...box], sleepers };
+    return { argv: ["bwrap", ...box], doomed, tmux: tmuxOf(dir) };
   }
 
   /** 无头壳：一行一个 JSON 进出（`shots_shell.rs` 头注）。 */
@@ -187,6 +222,8 @@ export function backendPool({ repo, sandbox }) {
           const r = replies.get(f.n);
           replies.delete(f.n);
           r(f);
+        } else if (f.t === "items" && w.inner.has(f.sub)) {
+          w.inner.get(f.sub)(f.items);
         } else if (f.t === "items") {
           const msg = `data: ${JSON.stringify({ sub: f.sub, items: f.items })}\n\n`;
           if (w.listeners.length === 0) w.backlog.push(msg);
@@ -217,6 +254,47 @@ export function backendPool({ repo, sandbox }) {
     return { child, up, send, call };
   }
 
+  /** 台架自己订的那几条（编号从这里往上，页里的订阅编号小得多）。 */
+  let innerId = 1 << 30;
+
+  /**
+   * 收场的那几个（`/__ccm/end {origin}`：页里收到那台的清单之后发）：开页时它们还活着，这时才收场 ⇒ 后端照真的那一套裁「已结束」/「可重连」
+   * （会话账本：摘除 ＋ 之后那一份 tmux 观测里挂不挂它），页上那张卡照真的那样变。台架自己订一条只看它的会话流（`session-lines/<sid>`，订上当场重放）：
+   * 见到宣告才收场（关它那个 tmux 会话 / 只杀替身），见到裁出来的那一格才答。
+   */
+  async function endAll(body) {
+    const w = worlds.get(body.key);
+    if (!w) return;
+    const mine = w.doomed.filter((d) => d.origin === body.origin);
+    w.doomed = w.doomed.filter((d) => d.origin !== body.origin);
+    await Promise.all(mine.map((d) => endOne(w, d)));
+  }
+
+  /** 一个收场的会话：等它的宣告 ⇒ 收场 ⇒ 等裁出来的那一格（10 秒上限）。 */
+  function endOne(w, d) {
+    const id = innerId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${d.origin} 上 ${d.sid} 10 秒没收场`)), 10_000);
+      let killed = false;
+      w.inner.set(id, (items) => {
+        for (const it of items) {
+          if (it.t !== "frame") continue;
+          const f = JSON.parse(it.body);
+          if (!killed && f.live?.session_id === d.sid) {
+            killed = true;
+            if (!d.act()) reject(new Error(`${d.origin} 上 ${d.sid} 的替身关不掉`));
+          } else if (killed && (d.fate === "ended" ? f.ended : f.idle)?.session_id === d.sid) {
+            clearTimeout(timer);
+            w.inner.delete(id);
+            w.sh.send({ t: "stop", id });
+            resolve();
+          }
+        }
+      });
+      w.sh.send({ t: "sub", id, origin: d.origin, kind: `session-lines/${d.sid}`, want: 1 << 20 });
+    });
+  }
+
   async function makeWorld(body) {
     if (!existsSync(bin)) throw new Error(`真后端二进制不在：${bin}（先 cd src/backend && cargo build）`);
     if (!existsSync(shellBin)) throw new Error(`无头壳不在：${shellBin}（先 cd src/frontend/shell && cargo build --features shots --example ${SHELL_EXAMPLE}）`);
@@ -228,12 +306,12 @@ export function backendPool({ repo, sandbox }) {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(path.join(dir, "shell-home"), { recursive: true });
     // 这屋子的钟比台架这一侧快多少（开页之后改的文件，修改时刻照这屋子的钟落）。
-    const w = { dir, homes: new Map(), sleepers: [], listeners: [], backlog: [], shell: null, shift: now - Date.now() };
+    const w = { dir, homes: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now() };
     worlds.set(key, w);
     const list = Object.entries(machines).map(([origin, m], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
-      const { argv, sleepers } = start(path.join(dir, `m${i}`), origin, m, now);
-      w.sleepers.push(...sleepers);
+      const { argv, doomed, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
+      w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       return { origin, argv };
     });
     const sh = startShell(dir, w);
@@ -259,12 +337,15 @@ export function backendPool({ repo, sandbox }) {
     else if (url === "/__ccm/stop") w.sh.send({ t: "stop", id: body.id });
     else if (url === "/__ccm/ready") w.sh.send({ t: "ready", priority_sid: body.priority_sid ?? null });
     else if (url === "/__ccm/kill") w.sh.send({ t: "kill", origin: body.origin });
+    else if (url === "/__ccm/watch") w.sh.send({ t: "watch", sessions: body.sessions });
     else if (url === "/__ccm/write") {
       const home = w.homes.get(body.origin);
       const rel = String(body.rel);
       if (!home || rel.startsWith("/") || rel.split("/").includes("..")) throw new Error(`改不了：${body.origin} · ${rel}`);
       mkdirSync(path.dirname(path.join(home, rel)), { recursive: true });
-      writeFileSync(path.join(home, rel), String(body.text));
+      // 记录文件往后长（会话又写了几行）⇒ 接在末尾写，不截断重写（watcher 读到的是一份变短又变长的文件，会从头再读）。
+      if (body.append) appendFileSync(path.join(home, rel), String(body.text));
+      else writeFileSync(path.join(home, rel), String(body.text));
       const at = (Date.now() + w.shift) / 1000;
       utimesSync(path.join(home, rel), at, at);
     }
@@ -279,7 +360,7 @@ export function backendPool({ repo, sandbox }) {
       req.on("error", reject);
     });
 
-  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/write"]);
+  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/write"]);
 
   async function serve(req, res, next) {
     if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {
@@ -295,12 +376,13 @@ export function backendPool({ repo, sandbox }) {
       req.on("close", () => (w.listeners = w.listeners.filter((x) => x !== res)));
       return;
     }
-    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || TELL.has(req.url))) return next();
+    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || TELL.has(req.url))) return next();
     try {
       const body = JSON.parse(await readBody(req));
       let out = { ok: true };
       if (req.url === "/__ccm/world") await makeWorld(body);
       else if (req.url === "/__ccm/call") out = await call(body);
+      else if (req.url === "/__ccm/end") await endAll(body);
       else tell(req.url, body);
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify(out));

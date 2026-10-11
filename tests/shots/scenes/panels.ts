@@ -148,7 +148,11 @@ function unseenPinnedWorld(): World {
 /** 「表格分页」那个会话有一个子 agent、没有任务。 */
 function agentsOnlyWorld(): World {
   const w = defaultWorld();
-  w.sessions[1].runs = [{ run: "agent-b1", label: "量一下现在的渲染耗时", kind: "general-purpose", state: "running", last: { t: "tool", name: "Bash" } }];
+  const c = w.sessions[1].convo!;
+  const b1 = c.child("b1");
+  b1.user("量一下现在的渲染耗时。");
+  b1.tool("Bash", { command: "npm run bench -- table" }, null);
+  c.tool("Task", { description: "量一下现在的渲染耗时", prompt: "量一下现在的渲染耗时。", subagent_type: "general-purpose" }, null, { child: b1 });
   return w;
 }
 
@@ -518,7 +522,7 @@ export const PANEL_SCENES: Scene[] = [
   }, remoteEndedWorld),
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
-    await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
+    await rightClick(await byText("#tab-bar .tab", "账单导出改成流式"));
     await click(await byText("[role^=menuitem]", copyText("tabMenu.item.resume")));
     await click(await byText("[role^=menuitem]", copyText("resumeMenu.run.direct")));
     await waitFor("#kit-toast-stack > [data-level=error]");

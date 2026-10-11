@@ -9,8 +9,6 @@
  * 长任务（只有 Chromium 有）· 新建节点 · 结束时 DOM 节点数。只给台架用；不进产品构建。
  */
 import type { FakeBackend } from "../fake/backend";
-import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
-import { Convo } from "../fake/records";
 import { turn } from "./world";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -274,7 +272,7 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
   const s = scroller();
   s.scrollTop = s.scrollHeight;
   await sleep(300);
-  const active = be.world.sessions.reduce((a, b) => (b.records.length > a.records.length ? b : a));
+  const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
   const target = where === "active" ? active : be.world.sessions[1];
   let n = 0;
   const ev = (e: unknown): unknown => ({ origin: target.origin, stream: target.sid, resp: 1, n: n++, ev: e });
@@ -288,13 +286,11 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
       }
       await step(steps, "tool", () => be.pushTap(target.origin, [ev({ t: "block", i: 1, kind: "tool", tool: "Bash" })]));
       await sleep(200);
-      // 这一轮落成记录（真后端：记录文件写了 ⇒ 一批 line 格）
-      const c = new Convo(target.sid, target.cwd, "2026-10-02T08:00:00Z");
+      // 这一轮落成记录：记录文件接着写了几行 ⇒ 真后端的 watcher 读到、交一批 line 格
+      const c = target.convo!;
+      const from = c.lines.length;
       turn(c, target.cwd, 1000 + round, false);
-      const from = target.records.length;
-      target.records.push(...c.records);
-      const frames: SessionStreamFrame[] = c.records.map((record, i) => ({ line: { session_id: target.sid, cwd: target.cwd, path: `${target.cwd}/${target.sid}.jsonl`, seq: from + i, origin: target.origin, record } }) as SessionStreamFrame);
-      await step(steps, "lines", () => be.pushFrames(target.origin, frames));
+      await step(steps, "lines", () => be.appendLines(target.origin, c, from));
       await sleep(500);
     }
   });
@@ -475,7 +471,7 @@ async function drawer(): Promise<Record<string, unknown>> {
   await toLongest();
   const be = window.__perfBackend;
   if (!be) throw new Error("没有假后端句柄");
-  const active = be.world.sessions.reduce((a, b) => (b.records.length > a.records.length ? b : a));
+  const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
   return measure("drawer", async (steps) => {
     const btn = await waitSel("#session-head button[aria-label='看它的终端']");
     await step(steps, "open", () => clickEl(btn));
@@ -689,12 +685,8 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
     await toLongest();
     const be = window.__perfBackend!;
     const s = scroller();
-    const inner = be.world.ops["history-page"];
-    let pages = 0;
-    be.world.ops["history-page"] = (o, req, w) => {
-      pages++;
-      return inner(o, req, w);
-    };
+    const pagesAsked = (): number => be.asked["history-page"] ?? 0;
+    const pages0 = pagesAsked();
     const realInView = (): number => {
       const v = s.getBoundingClientRect();
       return [...s.querySelectorAll<HTMLElement>(":scope > .stream-content > .card")].filter((el) => {
@@ -708,15 +700,14 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
     // 按帧等：视口里出了真卡、而且取回停了（连着 60 帧没有新的一问）；最多 1200 帧
     let firstCardAt: number | null = null;
     let quiet = 0;
-    let last = pages;
+    let last = pagesAsked();
     for (let f = 0; f < 1200 && quiet < 60; f++) {
       await new Promise((r) => requestAnimationFrame(r));
       if (firstCardAt === null && realInView() > 0) firstCardAt = performance.now() - t0;
-      quiet = pages === last ? quiet + 1 : 0;
-      last = pages;
+      quiet = pagesAsked() === last ? quiet + 1 : 0;
+      last = pagesAsked();
     }
-    be.world.ops["history-page"] = inner;
-    return { name: "stuck-jump", pages, firstCardAt, cardsInView: realInView(), drift: Math.round(s.scrollTop - top0), settledMs: Math.round(performance.now() - t0) };
+    return { name: "stuck-jump", pages: pagesAsked() - pages0, firstCardAt, cardsInView: realInView(), drift: Math.round(s.scrollTop - top0), settledMs: Math.round(performance.now() - t0) };
   },
   "slow-dom": slowDom,
   idle: () => idle(),
