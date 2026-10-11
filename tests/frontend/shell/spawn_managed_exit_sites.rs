@@ -184,7 +184,6 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     // 别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
     // 拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
     // `ssh -G` 那一行出表（解析 ssh config 搬进后端）。
-    // monitor 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕出表：驾驶舱读面改走后端，monitor 不再起 `bash`。
     (
         "local_backend.rs",
         "supervise_with_stdio",
@@ -195,8 +194,6 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          那两根管子（stdout 的 EOF 是「进程死了」这个事件的唯一来源）——\
          那两根**不是**三条策略里的任何一条。",
     ),
-    // 一次性本机查询那一处（`local_query` 模块的 `run_query`〔散文墓碑〕）那一行删了（注入形第二处）：
-    //   本机那几问改走 `<local>` 长连接，宿主那侧的一次性查询三格（`local_backend_one_shot_query`〔散文墓碑〕）随之删。
 ];
 
 /// 本 crate 的源码根 —— 住址唯一源。

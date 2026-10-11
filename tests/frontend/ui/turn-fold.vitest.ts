@@ -10,7 +10,9 @@ import { placeFloat } from "../../../src/frontend/ui/kit/place";
 
 /** 轮次刻度的悬停卡：左侧、竖直居中、间距 6（`tooltip.ts` 的 PLACEMENT 表）。 */
 const placeCardLeft = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "left", align: "center", gap: 6 }, tip, view);
-import type { TurnFoldRow, TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
+import type { TurnsResult } from "../../../src/frontend/ui/session-reads";
+import type { FoldSegment } from "../../../src/frontend/ui/generated/FoldSegment";
+import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
 import { markCardId, renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
@@ -18,7 +20,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSummary => ({
+const turn = (uuid: string, at: number, over: Partial<TurnRow> = {}): TurnRow => ({
   at,
   uuid,
   start: "2026-10-06T02:01:00Z",
@@ -43,7 +45,7 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
 });
 
 /** 一段过程（缺省：跟在 `after` 后面、工具 ×2、收尾了）。 */
-function seg(after: string, over: Partial<TurnFoldRow> = {}): TurnFoldRow {
+function seg(after: string, over: Partial<FoldSegment> = {}): FoldSegment {
   return {
     after,
     parts: [
@@ -52,6 +54,7 @@ function seg(after: string, over: Partial<TurnFoldRow> = {}): TurnFoldRow {
     ],
     span: { text: "02:01–02:04 · {dur}", from: 0, to: 182_000 },
     phase: "idle",
+    until: null,
     ...over,
   };
 }
@@ -257,8 +260,8 @@ describe("按段折叠", () => {
     content.append(card("card-user", "u1"), gapIn, after, card("card-assistant", "e1"), gapCross, tail);
     document.body.replaceChildren(content);
     const fill = vi.fn(() => 0);
-    const seqs = new Map([["u1", 1], ["u2", 20]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)] }));
+    const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 20]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5)] }));
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
     await fold.refresh();
     expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
@@ -271,7 +274,7 @@ describe("按段折叠", () => {
     expect(fill).toHaveBeenCalled();
   });
 
-  it("折着的段把它那几行（after 之后到下一个边界 / 账本尾）告诉骨架：按 0 高、不物化；每段的 after 多一条行高；结尾之后没有段 ⇒ 不折；展开 ⇒ 撤掉", async () => {
+  it("折着的段把它那几行（后端给的 after 之后到 until 之前 / until 是 null ⇒ 到账本尾）告诉骨架：按 0 高、不物化；每段的 after 多一条行高；结尾之后没有段 ⇒ 不折；展开 ⇒ 撤掉", async () => {
     const content = document.createElement("div");
     content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"), card("card-user", "u3"));
     document.body.replaceChildren(content);
@@ -281,7 +284,7 @@ describe("按段折叠", () => {
       available: true,
       from: 0,
       end: 10,
-      turns: [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5), turn("u3", 9, { folds: [] })],
+      turns: [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5, { folds: [seg("u2", { until: "u3" })] }), turn("u3", 9, { folds: [] })],
     }));
     const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
@@ -344,7 +347,7 @@ describe("按段折叠", () => {
   it("展开的那几段量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
     setProcessExpandedDefault(true);
     const cards: HTMLElement[] = [];
-    const turns: TurnSummary[] = [];
+    const turns: TurnRow[] = [];
     for (let k = 0; k < 4; k++) {
       cards.push(card("card-user", `u${k}`), card("card-assistant", `a${k}`), card("card-assistant", `b${k}`));
       turns.push(turn(`u${k}`, k));

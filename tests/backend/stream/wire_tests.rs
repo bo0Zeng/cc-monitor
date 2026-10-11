@@ -8,7 +8,7 @@
 ///
 /// `stream/inbound/` 头注逐字写着「`writer_task`（**出方向帧的唯一出口**）」。
 /// 那句话撑着 NDJSON 在线上的完整性：两个写者并发写同一个 stdout，
-/// 帧就会**互相撕开**（半行 + 半行），而这条流**仓外 aterm 正在消费**（D6 契约冻结）。
+/// 帧就会**互相撕开**（半行 + 半行），而这条流**手机端正在消费**（D6 契约冻结）。
 ///
 /// ⇒ 而它只是散文。08-08 实测：在 `stream/inbound/` 加一个自己 `tokio::io::stdout()`
 /// 并 `write_all` 的函数，**backend 292 条判据一条不红**。
@@ -103,7 +103,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
             panic!(
                 "`{name}` 在流式路上写出方向帧，却不是登记的那两个写者之一。\n\
                      ⚠ 两个写者并发写同一个 stdout ⇒ 帧互相撕开（半行 + 半行），\n\
-                     而这条流**仓外 aterm 正在消费**（D6：暴露给第三方 = 契约冻结成本）。\n\
+                     而这条流**手机端正在消费**（D6：暴露给第三方 = 契约冻结成本）。\n\
                      真要发帧，走 `writer_task` 那个出口。"
             )
         });
@@ -313,7 +313,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionAdded {
                 sid: s("s1"),
                 agent_kind: s("claude"),
-                liveness_confidence: Some(s("pidfile")),
                 background: true,
                 attachable: Some(true),
                 cwd: Some(s("/w")),
@@ -324,6 +323,13 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 face: crate::stream::wire::ActivityFace::of(Some(
                     crate::agents::SessionActivity::NeedsYou,
                 )),
+                name_face: crate::stream::wire::NameFace::of(
+                    &crate::observe::search_rules::LabelFacts {
+                        title: Some(s("t")),
+                        project_dir: Some(s("/w")),
+                        ..Default::default()
+                    },
+                ),
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
                     host: TerminalHost::Tmux,
@@ -334,7 +340,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionAdded {
                 sid: s("s1"),
                 agent_kind: "claude".to_string(),
-                liveness_confidence: None,
                 background: false,
                 attachable: None,
                 cwd: None,
@@ -343,6 +348,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
                 lines: None,
                 face: crate::stream::wire::ActivityFace::of(None),
+                name_face: crate::stream::wire::NameFace::of(&Default::default()),
                 waiting_for: None,
                 container: None,
                 pid: 0,
@@ -354,14 +360,22 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 face: crate::stream::wire::ActivityFace::of(Some(
                     crate::agents::SessionActivity::NeedsYou,
                 )),
+                name_face: crate::stream::wire::NameFace::of(
+                    &crate::observe::search_rules::LabelFacts {
+                        title: Some(s("t")),
+                        project_dir: Some(s("/w")),
+                        ..Default::default()
+                    },
+                ),
                 waiting_for: Some(s("permission prompt")),
-                liveness_confidence: Some(s("pidfile")),
+                path: Some(s("/r/s1.jsonl")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
                 face: crate::stream::wire::ActivityFace::of(None),
+                name_face: crate::stream::wire::NameFace::of(&Default::default()),
                 waiting_for: None,
-                liveness_confidence: None,
+                path: None,
             },
         ],
         both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
@@ -375,10 +389,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 cause: RemovalCause::Gone,
             },
         ],
-        both(Frame::TurnEnd {
-            session_id: s("s1"),
-            uuid: s("u1"),
-        }),
+        both(Frame::turn_end(
+            s("s1"),
+            s("u1"),
+            &crate::stream::wire::NameFace::of(&Default::default()),
+        )),
         [
             Frame::Overflow {
                 dropped: 7,
@@ -919,20 +934,61 @@ fn b64_matches_the_rfc_4648_test_vectors() {
     }
 }
 
-/// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**
-/// （只 Line 带）。uuid = 客户端 dedup 键。
+/// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid","title","body"}`，**无 byte_offset**
+/// （只 Line 带）。uuid = 客户端 dedup 键；title · body 是通知那两行（核心写好，桌面与手机照抄）。
 #[test]
-fn turn_end_frame_serializes_with_session_and_uuid_only() {
-    let line = to_line(&Frame::TurnEnd {
-        session_id: "sid-9".into(),
-        uuid: "u-abc".into(),
-    })
+fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
+    let named = crate::observe::search_rules::LabelFacts {
+        title: Some("notes".into()),
+        ..Default::default()
+    };
+    let line = to_line(&Frame::turn_end(
+        "sid-9".into(),
+        "u-abc".into(),
+        &crate::stream::wire::NameFace::of(&named),
+    ))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
     assert_eq!(v["kind"], "turn_end");
     assert_eq!(v["session_id"], "sid-9");
     assert_eq!(v["uuid"], "u-abc");
+    assert_eq!(
+        v["title"],
+        copy_core::copy_text("turnNotify.finish.title", &[("tab", "notes")])
+    );
+    assert_eq!(
+        v["body"],
+        copy_core::copy_text("turnNotify.finish.body", &[])
+    );
     assert!(v.get("byte_offset").is_none(), "TurnEnd 不带 byte_offset");
+}
+
+/// 叫这条会话什么那两格：名字（`session_label`）＋ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
+#[test]
+fn the_name_face_carries_the_name_and_the_project() {
+    use crate::observe::search_rules::LabelFacts;
+    let face = |f: LabelFacts| serde_json::to_value(crate::stream::wire::NameFace::of(&f)).unwrap();
+    let proj = || Some("/w/proj/".to_string());
+    let untitled = copy_core::copy_text("history.row.untitled", &[]);
+    assert_eq!(
+        face(LabelFacts {
+            first: "修一下".into(),
+            project_dir: proj(),
+            ..Default::default()
+        }),
+        serde_json::json!({"label": "修一下", "label_project": "proj"})
+    );
+    assert_eq!(
+        face(LabelFacts {
+            project_dir: Some("C:\\w\\q".into()),
+            ..Default::default()
+        }),
+        serde_json::json!({"label": untitled, "label_project": "q"})
+    );
+    assert_eq!(
+        face(LabelFacts::default()),
+        serde_json::json!({ "label": untitled })
+    );
 }
 
 #[test]
@@ -966,7 +1022,7 @@ fn hello_with(emits: Vec<String>) -> Frame {
     }
 }
 
-/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。aterm 门控读 emits 判「backend 发不发某帧」。
+/// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。手机端门控读 emits 判「backend 发不发某帧」。
 #[test]
 fn hello_emits_serializes_when_present_and_omits_when_empty() {
     let line = to_line(&hello_with(vec![
@@ -1066,7 +1122,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
 /// 本条补的正是那半：**谁在调它、生产路径上有没有第二条绕过去的路**。
 ///
 /// 它会在 `S5`/DG1 接线那天**故意变红**，那是设计出来的：填 `homes` 是一次
-/// 跨仓契约变更（仓外 aterm 的 hello fixture 按精确字节对），
+/// 与手机端的契约变更（它的 hello fixture 按精确字节对），
 /// 必须有人当场重新裁一次，而不是顺手改过去。
 #[test]
 fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
@@ -1087,9 +1143,9 @@ fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
     assert_eq!(
         sites[0], "homes: Vec::new(),",
         "`main.rs` 开始往 `homes` 里填东西了 ⇒ hello 帧对 Claude 的线上字节**变了**。\n\
-             这不是 bug，是 `S5`/DG1 该做的事 —— 但它是一次**跨仓契约变更**：\n\
-             仓外 aterm 的 hello fixture 按精确字节对（契约冻结 2026-07-18）。\n\
-             正确动作：与 aterm 同轮改，并同轮更新\n\
+             这不是 bug，是 `S5`/DG1 该做的事 —— 但它是一次**与手机端的契约变更**：\n\
+             手机端的 hello fixture 按精确字节对（契约冻结 2026-07-18）。\n\
+             正确动作：与手机端同轮改，并同轮更新\n\
              `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串。"
     );
 }
@@ -1138,8 +1194,8 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
     #[rustfmt::skip]
     let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None },
+        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
+        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
     ];
     let discovered = crate::agents::visible_among(synth);
     assert_eq!(
@@ -1191,11 +1247,11 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
 }
 
-// ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（aterm 消费侧 fixture 交叉核点）───
+// ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（手机端消费侧 fixture 交叉核点）───
 
 /// **present 形**（多 agent 的后端）：新字段在线上、snake_case、值域正确。
 ///
-/// ⚠ **测试名刻意不改**：`src/doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
+/// ⚠ **测试名刻意不改**：`src/doc/IPC-PROTOCOL.md` 与**手机端** 都按这个名字
 /// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
 /// 它钉的东西没变（「present 形的精确字节」），变的只是承载 agent 维度的字段 ——
 /// `S4` 把 `codex_dir` + `kinds` 换成了通用的 `homes`（`D3`：agent 名只许在值里）。
@@ -1223,7 +1279,7 @@ fn dg3_codex_fields_serialize_when_present() {
         uncancellable: vec![],
     })
     .unwrap();
-    // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
+    // ★ 精确字节（手机端 fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
     //   表内每项按 `AgentHome` 声明序 `agent_kind` → `path`。
     assert_eq!(
         hello,
@@ -1233,7 +1289,6 @@ fn dg3_codex_fields_serialize_when_present() {
     let sa = to_line(&Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "codex".to_string(),
-        liveness_confidence: Some("heuristic".into()),
         background: false,
         attachable: None,
         cwd: None,
@@ -1242,6 +1297,7 @@ fn dg3_codex_fields_serialize_when_present() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -1249,25 +1305,26 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
-        liveness_confidence: Some("heuristic".into()),
+        path: None,
     })
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n"
     );
 }
 
 /// **absent 形**（Claude 会话 / 旧后端）：skip_if_none/empty → 字段**完全省略**，帧对 Claude
-/// **字节等价旧形**（向后兼容红线）。aterm 消费侧「省=null→缺省 claude/authoritative」据此对齐。
-/// ★ 精确字节串 = aterm fixture 交叉核的真值。
+/// **字节等价旧形**（向后兼容红线）。手机端消费侧「省=null→缺省 claude/authoritative」据此对齐。
+/// ★ 精确字节串 = 手机端 fixture 交叉核的真值。
 #[test]
 fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     let hello = to_line(&Frame::Hello {
@@ -1294,7 +1351,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     let sa = to_line(&Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1303,26 +1359,28 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":0}\n",
-        "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
+        "agent_kind 每条都带"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
-        liveness_confidence: None,
+        path: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4}\n",
-        "liveness_confidence 省略，字节等价旧形"
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n",
+        "缺的格不上线"
     );
 }
 
@@ -1357,13 +1415,13 @@ fn hello_unavailable_is_additive_present_and_absent() {
     assert_eq!(
         absent,
         "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
-        "空表没被省略 ⇒ hello 的线上字节变了 ⇒ 仓外 aterm 那份按精确字节对的 fixture 当场对不上\n\
+        "空表没被省略 ⇒ hello 的线上字节变了 ⇒ 手机端那份按精确字节对的 fixture 当场对不上\n\
              （契约冻结 2026-07-18）。additive 的全部意义就在这一格。"
     );
 
     // ② present：字段落在 `commands` **之后**（serde 按声明序），
     //    表内每项按 `Unavailable` 的声明序 `command` → `code`。
-    //    ★ 这一串是**真填那天**给 aterm 的 fixture 真值（同 `dg3_…_serialize_when_present` 的地位）。
+    //    ★ 这一串是**真填那天**给手机端的 fixture 真值（同 `dg3_…_serialize_when_present` 的地位）。
     let present = to_line(&Frame::Hello {
         v: 1,
         build_id: "b".into(),
@@ -1435,7 +1493,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         to_line(&Frame::SessionAdded {
             sid: "s".into(),
             agent_kind: "claude".to_string(),
-            liveness_confidence: None,
             background: false,
             attachable: None,
             cwd: None,
@@ -1444,6 +1501,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             path: None,
             lines: None,
             face: crate::stream::wire::ActivityFace::of(None),
+            name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
             container: c,
             pid: 0,
@@ -1454,18 +1512,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":0}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"container\":{\"host\":\"none\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1515,7 +1573,6 @@ fn loc1b_session_added_carries_the_pid() {
     let line = to_line(&Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1524,6 +1581,7 @@ fn loc1b_session_added_carries_the_pid() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 4242,
@@ -1531,7 +1589,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1671,6 +1729,8 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("overflow", "lost_truncated", "bool"),
     ("turn_end", "session_id", "string"),
     ("turn_end", "uuid", "string"),
+    ("turn_end", "title", "string"),
+    ("turn_end", "body", "string"),
     // 〔第二个前端 2026-10-08〕**逐字流**（聊天屏的打字机）。`tap_frames_have_exactly_these_bytes` 钉的是字节，
     // 本表钉的是**有人在读它** —— 少了这几行，整条 `tap` 被清理掉时没有任何判据说得出「有个前端靠它」。
     // ⚠ `ev` 与 `end` 恰有一个 ⇒ 一份样本只带得动 `ev`（打字机读的那一支）；`end` 两个取值的字节由那条逐字节判据钉。
@@ -1716,10 +1776,11 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             }],
             lost_truncated: true,
         },
-        Frame::TurnEnd {
-            session_id: "s".into(),
-            uuid: "u".into(),
-        },
+        Frame::turn_end(
+            "s".into(),
+            "u".into(),
+            &crate::stream::wire::NameFace::of(&Default::default()),
+        ),
         Frame::Tap {
             stream: "s".into(),
             run: s.clone(),
@@ -1871,8 +1932,9 @@ fn session_frames_carry_the_state_written_and_toned() {
         serde_json::to_value(Frame::SessionStatus {
             sid: "s".into(),
             face: ActivityFace::of(a),
+            name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
-            liveness_confidence: None,
+            path: None,
         })
         .unwrap()
     };

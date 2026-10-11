@@ -44,8 +44,8 @@
 //!
 //! [`REGISTRY`] + [`visible_homes`] 让 backend **有能力**声明它看得见哪些 agent
 //! （`G1` 成功标准③）。⚠ **能力先建、生产路径今天不接** —— `main.rs` 仍硬写
-//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**跨仓契约变更**
-//! （仓外 aterm 的 hello fixture 按精确字节对），而本机没有 aterm 仓、验不了它的运行时
+//! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**与手机端的契约变更**
+//! （手机端的 hello fixture 按精确字节对），而手机端那一侧的运行时这里验不了
 //! （前提 `P3`）。⇒ 把"何时真填"留成**一次纯发布决策**：改 `main.rs` 那一行，
 //! `wire::tests::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
 //! 当场变红，逼那一天的人重新裁一次。**那条判据是提醒，不是障碍，别删它。**
@@ -117,7 +117,7 @@ pub(crate) struct Adapter {
     pub(crate) history: Option<HistoryFace>,
     /// 这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（404 ＋ 原因头，FIX3 之前是 502），不回落。
     ///
-    /// 用户 2026-09-18 逐字「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
+    /// 「**写死, 跟着适配层**」：先前这一格住上游选择自己那张表
     /// （`accounts::upstream_select` 的每 agent 一行表），与「跟着适配层」不是同一格（自陈待对齐）。
     /// 今天上游选择**只从这里读**（`default_upstreams`）—— 加一家的默认上游，改的就是注册表里那一行。
     pub(crate) upstream: Option<DefaultUpstream>,
@@ -142,6 +142,8 @@ pub(crate) struct Adapter {
     pub(crate) compact_request: Option<&'static str>,
     /// 这一家在本机的布局（家目录解析 · pidfile · 进程认法）；`None` ＝ 这一家今天不由后端盯着判活。
     pub(crate) local: Option<LocalFace>,
+    /// 这一家的会话**怎么判活**（全仓只此一处声明）：流式 watcher 挑哪一路跟、冷读问「此刻谁持着它」、resume 前问「是不是已在别处跑着」都读它。
+    pub(crate) live: LiveBy,
 }
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
@@ -168,6 +170,11 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
+    /// 起会话带第一句时，能不能把它作为启动参数交过去（交给那一家的那一半末尾、`--` 之后的位置参数：那一家自己排着，启动画面 · 信任框过了才交进会话）。
+    /// 不能 ⇒ 带第一句的起会话回 `bad_args`。
+    pub(crate) first_prompt_arg: bool,
+    /// 起会话时选权限档那个旗标与可选的档（起会话框 · 手机起会话带它；不给 `bypassPermissions` 那种越过批准的档）。这一家没有 ⇒ `None`。
+    pub(crate) permission: Option<PermissionFace>,
     /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
     /// 这一家不导 ⇒ `None`。
     pub(crate) self_sid_env: Option<&'static str>,
@@ -189,12 +196,19 @@ pub(crate) struct LaunchFace {
     pub(crate) needs_bus_id: bool,
     /// 这一家的会话有身份面（`@ccm_sid` 回填）。
     pub(crate) has_identity: bool,
-    /// 这一家的会话留 pidfile、入口注入的那份「此刻在跑」扫描认得出来 ⇒ resume 之前先问它是不是已经在别处跑着。
-    pub(crate) has_pidfiles: bool,
     /// 这一家认得的模型名（账号页「默认模型」下拉的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
     // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) models: Option<&'static [&'static str]>,
+}
+
+/// 一家起会话时选权限档的说法（[`LaunchFace::permission`]）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PermissionFace {
+    /// 交给那一家的旗标（`claude --permission-mode <档>`）。
+    pub(crate) flag: &'static str,
+    /// 可选的档（原值，交给那一家的就是它）。
+    pub(crate) modes: &'static [&'static str],
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。
@@ -425,9 +439,6 @@ pub(crate) struct RecordFace {
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
     /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
     pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
-    /// 这一家的会话在世期间，写记录的那个进程一直开着那份记录（不留 pidfile 的那一家判活就认它：有进程开着它写 ⇒ 活，
-    /// 那个进程退了或把它关了 ⇒ 走了；`platform::writers`）。`false` ＝ 这一家不这样判活（有 pidfile，或说不清）。
-    pub(crate) held_open: bool,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -891,8 +902,13 @@ pub enum Speaker {
         #[cfg_attr(test, ts(optional))]
         body: Option<String>,
     },
-    /// 上下文压缩后续接用的摘要。
-    CompactSummary,
+    /// 上下文压缩后续接用的摘要（只经 [`Speaker::compact`] 来）。
+    #[serde(rename_all = "camelCase")]
+    CompactSummary {
+        /// 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+        #[cfg_attr(test, ts(as = "String"))]
+        chars_text: crate::common::cells::Words,
+    },
     /// 中断标记（人按了 Esc）。
     Interrupt,
     /// 工具结果回灌。
@@ -914,7 +930,7 @@ impl Speaker {
             Self::Coordinator { .. } => "coordinator",
             Self::AgentTask => "agentTask",
             Self::System { .. } => "system",
-            Self::CompactSummary => "compactSummary",
+            Self::CompactSummary { .. } => "compactSummary",
             Self::Interrupt => "interrupt",
             Self::ToolResult => "toolResult",
         }
@@ -956,6 +972,17 @@ pub struct Pasted {
 impl Default for UserText {
     fn default() -> Self {
         Self::of(Speaker::System { body: None })
+    }
+}
+
+impl Speaker {
+    /// 压缩摘要那一种：数好正文多少字（按字，不按 UTF-16）。
+    pub(crate) fn compact(text: &str) -> Self {
+        Self::CompactSummary {
+            chars_text: crate::common::cells::Words(copy_core::count_text(
+                text.chars().count() as u64
+            )),
+        }
     }
 }
 
@@ -1425,13 +1452,29 @@ pub(crate) struct Followed {
     pub(crate) live: LiveBy,
 }
 
-/// 一家的会话靠什么判活（流式 watcher 按它挑发现与摘除的那一路）。
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// 一家的会话怎么判活（[`Adapter::live`]）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LiveBy {
-    /// 每个活会话的进程在这个目录里留一份进程状态文件（pidfile）。
-    Pidfiles(PathBuf),
-    /// 没有 pidfile：有进程开着那份记录写 ⇒ 活（[`RecordFace::held_open`]）。
-    Writer,
+    /// 每个活会话的进程在 pidfile 目录（[`LocalFace::pidfile_dir`]）里留一份进程状态文件：pidfile 在、进程在 ⇒ 活。
+    Pidfiles,
+    /// 没有 pidfile：会话在世期间写记录的那个进程一直开着那份记录 ⇒ 有进程开着它写就是活，
+    /// 那个进程退了或把它关了就是走了（`platform::writers`）。
+    HeldOpen,
+    /// 判不了（这一家既不留 pidfile、也不一直开着记录写，或没人考据过）。
+    Unknown,
+}
+
+/// 某一家（wire 上的 kind）在给定注册表里怎么判活；认不出 ⇒ [`LiveBy::Unknown`]。
+pub(crate) fn live_by_among(registry: &[Adapter], kind: &str) -> LiveBy {
+    registry
+        .iter()
+        .find(|a| a.kind == kind)
+        .map_or(LiveBy::Unknown, |a| a.live)
+}
+
+/// 生产注册表里那一家怎么判活（[`live_by_among`]）。
+pub(crate) fn live_by(kind: &str) -> LiveBy {
+    live_by_among(REGISTRY, kind)
 }
 
 /// 流式 watcher 跟的那几家（注册序）：家目录记录树那一家（[`record_tree_kind`]，`tree_home` 是它的家目录，判活认 pidfile）·
@@ -1447,23 +1490,16 @@ pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Foll
         .iter()
         .filter_map(|a| {
             let face = a.records?;
-            if Some(a.kind) == tree_kind {
-                let local = a.local?;
-                return Some(Followed {
-                    kind: a.kind,
-                    root: (face.tree?.root)(tree_home),
-                    face,
-                    live: LiveBy::Pidfiles((local.pidfile_dir)(tree_home)),
-                });
-            }
-            if !face.held_open {
-                return None;
-            }
+            let root = match a.live {
+                LiveBy::Pidfiles if Some(a.kind) == tree_kind => (face.tree?.root)(tree_home),
+                LiveBy::HeldOpen => (a.history?.root)()?,
+                _ => return None,
+            };
             Some(Followed {
                 kind: a.kind,
-                root: (a.history?.root)()?,
+                root,
                 face,
-                live: LiveBy::Writer,
+                live: a.live,
             })
         })
         .collect()
@@ -2303,9 +2339,9 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
@@ -2338,7 +2374,7 @@ pub(crate) fn compact_request_of(kind: &str) -> Option<&'static str> {
 
 /// `kind` 那一家的这条记录是不是压缩之后续接用的摘要（同渲染模型里 `compactSummary` 那一种来源）。
 pub(crate) fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
-    user_text_of(kind, v).is_some_and(|t| t.speaker == Speaker::CompactSummary)
+    user_text_of(kind, v).is_some_and(|t| matches!(t.speaker, Speaker::CompactSummary { .. }))
 }
 
 /// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。

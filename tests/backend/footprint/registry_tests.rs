@@ -598,7 +598,6 @@ fn owned_file_implies_installable() {
 /// 这是「禁词守卫」的反面：**必需词**守卫。删掉那段话的人会被拦一次。
 #[test]
 fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  那条预言**这一格兑现了**〕
     //
     // 原来这里是 `me.matches(must).count() >= 2`，理由写在原注里：
     //「本判据自己的数组里就写着这两句 ⇒ `contains` 恒真」——
@@ -698,7 +697,7 @@ fn installable_tools_declare_where_they_land() {
 // ═══════════════════════════════════════════════════════════════════════
 // 🔴 `K-R81` / `KR81D1` ＋ `KR81D3`：**一个后端，几处使用**
 //
-// 用户 09-12 逐字：「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」。
+// 「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」。
 // 下面四条判的是**这句话在闭集里说得出来**，不是「表好看一点」。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -740,7 +739,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
     assert!(
         sites.len() > 1,
         "`{BACKEND_ID}` 只说得出 {} 个落点（实得 {sites:?}）——\n\
-             用户 09-12 逐字「一个后端要两处使用」，而闭集里它还是一处。\n\
+             「一个后端要两处使用」，而闭集里它还是一处。\n\
              ⚠ 往 `ToolDestination` 里加枚举值买不到这一格：这个数数的是**载体**。",
         sites.len()
     );
@@ -964,8 +963,7 @@ fn every_carrier_says_which_one_it_is() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Why {
     /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
-    /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`〔散文墓碑〕（已退役）、
-    /// `parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
+    /// 改它要与 `structural_scan` 的逐字签名钉、`parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
     /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
     /// ✅ **那一件做了**（全仓冻结窗口）——
@@ -980,7 +978,7 @@ enum Why {
     /// ✅ **那一件做了，这一档清零** —— Rust 报文、TS 界面串与散文
     /// 一趟同拍改成「远端后端」。**这一档今天在 [`SITES`] 里一行都没有。**
     Wording,
-    /// **逐字引用旧的闭集 id** —— 全部是订正段 / 墓碑 / 病史
+    /// **逐字引用旧的闭集 id** —— 全部是订正段 / 病史
     /// （「本条落地当场逮到 `<旧 id>`」这一族）。
     /// 🔴 **刻意保留，不改**：一句话写下时真、后来被别的裁定推翻，
     /// **那是历史，不是错误**（同对 `C18` 三处的处置）。
@@ -1000,7 +998,7 @@ enum Why {
 /// ⚠ **这张表不是愿望清单，是读数**：每一行都由下面那条判据在**真树**上对拍，
 /// 多一处红、少一处也红（少 ⇒ 那一行该删了，账不许挂着空号）。
 const SITES: &[(&str, Why, usize)] = &[
-    // 🔴 〔步 8 改名一刀 2026-09-19〕**这张账从 43 行塌到 12 行。**
+    // 🔴 **这张账从 43 行塌到 12 行。**
     //
     // 塌下去的那 31 行**不是被删掉了，是债真的还了**：`Why::SymbolName` 与 `Why::Wording`
     // 两档当年各自写着「解锁条件：另立一件『符号改名』／『文案面，两侧同拍』」——
@@ -1010,14 +1008,14 @@ const SITES: &[(&str, Why, usize)] = &[
     //
     // **今天还剩的 8 行，逐档说清为什么还在**：
     //   · `Why::OldId`（9 行）—— **本来就不该改**（那一档头注逐字「没有解锁条件」）：
-    //     订正段 / 墓碑 / 病史里对旧闭集 id 的逐字引用。步 8 的机械替换把这个拼写
+    //     订正段 / 病史里对旧闭集 id 的逐字引用。步 8 的机械替换把这个拼写
     //     **明写进了保护名单**。
     //   · `Why::SymbolName`（**0 行 · 这一档 2026-09-19 清零**）—— 上一版是 3 行共 12 处，
     //     全部是「远端那份后端的路径」那一族符号。它们跟着**用户盘上 `config.json` 里那个键**走
     //     （`RemoteConfig` 带 `#[serde(rename_all = "camelCase")]` ⇒ Rust 字段名就是线上键名），
     //     而那一版写的解锁条件逐字是：「`backendPath` **那条迁移**落地的同一拍」。
-    //     🔴 **它不是被迁移清掉的，是被一条裁决清掉的** —— 条 80（用户 2026-09-19 逐字
-    //     「新版本要完全抛弃旧的」）把「为盘上已有状态写回落」这件事整个撤了 ⇒
+    //     🔴 **它不是被迁移清掉的，是被一条裁决清掉的** ——
+    //     「新版本要完全抛弃旧的」把「为盘上已有状态写回落」这件事整个撤了 ⇒
     //     `A1` 那一刀直接改名、**没有写迁移**，代价（已配好的远端主机路径丢一次）由用户承担。
     //     ⚠ **这条账的写法值得记**：解锁条件写的是「做完某件事」，而真实的出口是
     //     「那件事被裁定不必做」。⇒ 解锁条件最好写成**可观测的状态**（「盘上不再有这个拼写」），
@@ -1028,7 +1026,7 @@ const SITES: &[(&str, Why, usize)] = &[
     // `src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
     ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
     // 下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
-    ("src/backend/footprint/registry.rs", Why::OldId, 2),
+    ("src/backend/footprint/registry.rs", Why::OldId, 1),
     ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
     // `tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
@@ -1073,7 +1071,7 @@ fn count_of(text: &str, w: Why) -> usize {
 
 /// `pub const TOOLS` 那个常量的**体**（配对方括号之间那一段），注释已剥掉。
 ///
-/// ⚠ 剥注释是**有意的**：闭集的**数据**不许再叫旧名字，而注释里的墓碑与病史
+/// ⚠ 剥注释是**有意的**：闭集的**数据**不许再叫旧名字，而注释里的病史
 /// （`Why::OldId` 那一档）**刻意保留**。两件事分开判。
 ///
 /// 🔴 剥法**借共享原语** [`guard_core::strip_comment_lines`]，不自己写第二份 ——
@@ -1137,7 +1135,7 @@ fn tools_literal_data() -> String {
 ///
 /// # 它守什么、**不守什么**
 ///
-/// 守的是**闭集的数据**。注释里的墓碑、别处 `.rs` 里的存量，本条一概不管 ——
+/// 守的是**闭集的数据**。注释、别处 `.rs` 里的存量，本条一概不管 ——
 /// 那一半归下面那条登记 ＋ 棘轮。**两条合起来才是那一格，单独任何一条都不够。**
 #[test]
 fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
@@ -1170,7 +1168,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
         old_name_counts(&data),
         [0, 0, 0],
         "\n闭集那张表的**数据**里还留着旧名字（[符号名, 旧 id, 措辞]）。\n\
-             用户 09-12 逐字：「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」——\n\
+             「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」——\n\
              远端那台上跑的那一份是**那台机器的本地后端**，不是「远端的后端」。\n\
              ⚠ 这一格已经花过一次真钱（Linux 裸 exe 装出来没有本机后端）。"
     );
@@ -1222,7 +1220,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     let crates_root = crate::guard_support::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕monitor 这半边今天**第三棵树**：
+    // 🔴 monitor 这半边今天**第三棵树**：
     //    测试段整个住 `<repo>/tests/frontend/shell`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
@@ -1265,7 +1263,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
 
     let mut got: BTreeMap<(String, Why), usize> = BTreeMap::new();
     for (p, text) in &files {
-        // 🔴 〔搬树 2026-09-18〕住址两种前缀：本 crate 里的按 `manifest` 相对
+        // 🔴 住址两种前缀：本 crate 里的按 `manifest` 相对
         //    （`src/…`，与表里既有的几十行同形），第三棵树 `tests/frontend/shell` 与共享 crate 的家 `src/common`
         //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/frontend/shell/…` · `src/common/…`）。
         //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
@@ -1686,7 +1684,6 @@ fn claims() -> Vec<Claim> {
         },
         // 资产目录里「装到这台」的 skill；卸只删装记录里那几个文件。
         // 装 / 卸口进了被写那台后端（`skill-install-apply` 的本体 · `ext-uninstall-apply` 调的那一份）。
-        //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
             home: Some(ImplHome {
@@ -1913,7 +1910,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
 fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
     const NAME: &str =
         "every_tool_declares_install_and_uninstall_as_the_implementations_really_are";
-    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕嵌的是**本文件** —— 被反向自检点名的那条
+    // 🔴 嵌的是**本文件** —— 被反向自检点名的那条
     // `fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
     // 这一轮跟着测试段搬进了本文件。
     let me = include_str!("registry_tests.rs");
@@ -1961,10 +1958,6 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
 /// 会原样往上传 `None`（**一条命令都不吐**），界面那一格显示「拿不到落点」
 /// 而不是一个编出来的目录 —— **指错目录与根本没补，在用户终端上是同一个结果**。
 ///
-/// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
-/// 不是「盘上那份**真的**在哪」。两者对不对得上由
-/// `profile_installer` 那条跨文件判据钉住（它去读真正调
-/// `extract_embedded_to` 的那一行源码；从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
 fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS.iter() {

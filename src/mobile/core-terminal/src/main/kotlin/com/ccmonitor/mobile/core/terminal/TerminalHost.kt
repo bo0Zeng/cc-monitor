@@ -55,7 +55,7 @@ fun rememberTerminalEmulator(
  * pinch 结束会把缩放折算进真实字号并经 [onFontSizeChanged] 上报，:app 持久化后回喂 [initialFontSize]。
  */
 @Composable
-fun AtermTerminal(
+fun CcMonitorTerminal(
     emulator: TerminalEmulator,
     modifier: Modifier = Modifier,
     palette: TerminalPalette = OneHalfDarkPalette,

@@ -504,9 +504,8 @@ fn dispatch(
         }
         // U8a-2d：其余命令**一律查注册表**，不再是一串手写臂。
         //
-        // 这一步换掉的是 `hello_commands_match_the_dispatch_table` —— 那条机检扫的是
-        // 分派臂的**文本**（按 8 空格缩进切），既对 rustfmt 脆，又只能事后比对。
-        // 现在名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
+        // 不扫分派臂的**文本**（按缩进切，既对 rustfmt 脆，又只能事后比对）：
+        // 名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
         // 在注册表这一侧不可表示；`hello.commands` 也从注册表派生（[`command_names`]），没有第二份名单。
         other => match lookup(other) {
             Some(spec) => match spec.run {
@@ -764,18 +763,14 @@ mod drain_tests;
 
 /// 结构性机检：不测行为，测「代码的形状不许变回去」。
 ///
-/// # U6b-3 删掉了这里原有的两条
+/// # 两条约束是**编译期不可表示**的，不靠扫文本
 ///
-/// `hello_is_flushed_before_the_inbound_reader_starts`（比较 `main.rs` 里两个字符串的字节位置）
-/// 与 `handlers_never_run_on_the_reader_task`（扫 `dispatch` 的分派臂文本）
-/// **都被 D 审计用普通重构击穿**：前者被一次函数抽取绕过，后者被尾随注释 / 同臂混用 / 或模式绕过。
-///
-/// 两条约束现在是**编译期不可表示**的：
+/// 扫文本的机检（比较 `main.rs` 里两个字符串的字节位置 · 扫 `dispatch` 的分派臂文本）
+/// 会被普通重构击穿（一次函数抽取 · 尾随注释 / 同臂混用 / 或模式）：
 /// - Hello 顺序 ⇒ [`crate::stream::wire::HelloFlushed`] 见证（拿不到就调不了 `spawn`）；
 /// - 处理器不许跑在读循环上 ⇒ `dispatch` **非 async**，分派臂里没有 `.await` 可写。
 ///
-/// 不可表示之后那两条机检是死重量，删掉。**这是审计给的方向**：
-/// 别再往判据上加正则，让违规不可表示。
+/// **别往判据上加正则，让违规不可表示。**
 #[cfg(test)]
 #[path = "../../../../tests/backend/stream/inbound_structure_guards.rs"]
 mod structure_guards;

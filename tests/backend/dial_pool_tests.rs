@@ -519,7 +519,7 @@ async fn family_of_three(pool: &Pool<Fake>, key: &str, dials: &AtomicUsize) -> V
     conns
 }
 
-/// ★ net3：一条成员被判成黑洞（等它回话那一段被丢了 / 判死了）⇒ 同族里**从开始等它那一刻起也没收到过字节**的成员一起摘掉
+/// ★ 一条成员被判成黑洞（等它回话那一段被丢了 / 判死了）⇒ 同族里**从开始等它那一刻起也没收到过字节**的成员一起摘掉
 /// （它们走的多半是同一条断掉的路：不摘的话，下一回放置落到它们上面、再干等一回界面的握手期限）；
 /// 那之后收到过字节的成员留着。两种判法（`dead` · 被丢）同一个结局。
 #[tokio::test]
@@ -558,7 +558,7 @@ async fn a_member_judged_dead_takes_the_members_silent_since_with_it() {
     }
 }
 
-/// ★ net3 的反向：等到了回话（`done`）⇒ 谁都不摘，哪怕别的成员很久没动静。
+/// ★ 上一条的反向：等到了回话（`done`）⇒ 谁都不摘，哪怕别的成员很久没动静。
 #[tokio::test]
 async fn a_finished_wait_takes_nobody_out() {
     let pool: Pool<Fake> = Pool::new();

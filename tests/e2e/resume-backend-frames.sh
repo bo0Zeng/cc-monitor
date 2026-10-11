@@ -50,7 +50,7 @@ WORK="$(mktemp -d /tmp/e2e-resume-frames.XXXXXX)"
 # 后端盯的账号目录默认落本趟私有的 $WORK 下（原先是固定的 /tmp/e2e-resume-frames：两趟同时跑时后起的那一趟开头
 #   `rm -rf` 会把先起那一趟的夹具整个删掉）。假 claude 只许写 /tmp 下 ⇒ $WORK 本来就在。
 CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-$WORK/claude}"
-# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 同 `restart-suite.sh`，
+# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 的目录里⇒ 同 `restart-suite.sh`，
 #   把 fake-claude 拷进 ASCII 的 $WORK 再当启动器（主树路径下跑，就地 resume 那一步原先 DRIVER_THROW REFUSE）。
 cp "$FAKE" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 FRAMES="$WORK/frames.jsonl"

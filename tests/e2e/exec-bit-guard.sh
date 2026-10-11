@@ -69,7 +69,7 @@ check_one() {
 
 # 用 -z：`git ls-files` 默认 `core.quotePath=true`，**非 ASCII 文件名会被输出成 C 转义**
 # （如 "shared/probe/\350\204\232..."），于是 `head -c 2 "$f"` 找不到文件而被静默跳过。
-# 本仓工作目录本身就叫「文档/」、文档全中文——这不是理论风险（审计 I2 实测复现）。
+# 仓可能住在非 ASCII 的目录里、文档全中文——这不是理论风险（实测复现过）。
 # 同时把 git 的退出码落地：早期版本用进程替换 `< <(git ls-files …)`，git 失败也拿不到 rc。
 list="$(mktemp)" || exit 1
 trap 'rm -f "$list"' EXIT

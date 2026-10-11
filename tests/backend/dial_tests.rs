@@ -758,9 +758,9 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     assert!(v.get("detail").is_none(), "成功的 ack 多出了 detail：{v}");
 }
 
-// ═══ net3：复用不慢于新建（久没收包的连接上开通道 ⇒ 与新建同时起跑）═══════════════════
+// ═══ 复用不慢于新建（久没收包的连接上开通道 ⇒ 与新建同时起跑）═══════════════════
 
-/// ★ net3：收包时刻记在 TCP 那一层 —— 从对端**读到字节**才记，往外写不记（自己往外写说明不了对端还在）。
+/// ★ 收包时刻记在 TCP 那一层 —— 从对端**读到字节**才记，往外写不记（自己往外写说明不了对端还在）。
 #[tokio::test]
 async fn the_heard_clock_moves_on_bytes_from_the_peer_only() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -776,7 +776,7 @@ async fn the_heard_clock_moves_on_bytes_from_the_peer_only() {
     assert!(heard.at() > 0, "读到了对端的字节，收包时刻却没动");
 }
 
-/// ★ net3：多久没收包算「久」。健康的空闲连接每 10 秒（`KEEPALIVE`）发一次保活、一个往返后收到回话 ⇒
+/// ★ 多久没收包算「久」。健康的空闲连接每 10 秒（`KEEPALIVE`）发一次保活、一个往返后收到回话 ⇒
 /// 它最后收包的年龄落在 0 到 10 秒加一个往返之间，这一段里不赛跑；过了门槛（保活发出去之后还等了一阵没回）才赛跑。
 #[test]
 fn a_connection_is_stale_only_past_one_unanswered_keepalive() {
@@ -797,7 +797,7 @@ fn a_connection_is_stale_only_past_one_unanswered_keepalive() {
     );
 }
 
-/// ★ net3：赛跑 —— 旧连接上开通道与新建一条同时起跑，**谁先站住用谁**。
+/// ★ 赛跑 —— 旧连接上开通道与新建一条同时起跑，**谁先站住用谁**。
 /// 旧的先回话 ⇒ 用旧的（新起的那条随之丢掉）；新的先站住 ⇒ 用新的；两边同时好了 ⇒ 用旧的（不白换）；
 /// 新建失败 ⇒ 不算数，接着等旧的回话。
 #[tokio::test]
@@ -825,7 +825,7 @@ async fn the_open_on_an_old_connection_races_a_fresh_dial() {
     assert!(matches!(raced.await.unwrap(), uses::Raced::Old(Ok(7))));
 }
 
-// ═══ net4：刚断就开 —— 保活更快判死，挂在死连接上的开通道当场失败 ═══════════════════
+// ═══ 刚断就开 —— 保活更快判死，挂在死连接上的开通道当场失败 ═══════════════════
 
 /// 一对管子中间的「路」：通着就原样转手；`freeze` 之后变黑洞（两向都收下、丢掉，不断、不报错 —— 换网 / NAT 表过期那一形）。
 fn freezable_road() -> (
@@ -920,7 +920,7 @@ async fn linked_over_road(
     (h, frozen)
 }
 
-/// ★ net4：路断成黑洞之后开通道 —— 保活连着没回话就判死，挂在上面还在等的开通道**当场失败**（不等界面的 45 秒期限）。
+/// ★ 路断成黑洞之后开通道 —— 保活连着没回话就判死，挂在上面还在等的开通道**当场失败**（不等界面的 45 秒期限）。
 /// 判死的时刻 = 最后收包之后 `KEEPALIVE_MAX + 1` 轮保活（发出去的那一个又等了一整轮没回）。
 /// 时间按比例缩小：保活间隔换成 200 ms，判死门槛（连着几次没回话）照生产。量的是「第几轮判死」：
 /// 要在下一轮到点之前（留一整轮给机器忙时的调度抖动）；门槛若回到 3 ⇒ 第 4 轮才死，红。
@@ -948,7 +948,7 @@ async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
     );
 }
 
-/// ★ net4：健康的空闲连接不许被判死 —— 空闲十几轮保活之后照样开得出通道（每轮保活都有回话）。
+/// ★ 健康的空闲连接不许被判死 —— 空闲十几轮保活之后照样开得出通道（每轮保活都有回话）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
     let every = std::time::Duration::from_millis(200);
@@ -963,7 +963,7 @@ async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
     );
 }
 
-/// ★ net4：生产的几个数之间的关系。
+/// ★ 生产的几个数之间的关系。
 /// - 判死：最后收包之后 ≤ 20 秒（「刚断过马上开」最坏也在这之内换到新连接上）；
 /// - 赛跑门槛在判死之前（不然门槛白设）、在一轮保活 ＋ 一个往返之后（健康的空闲连接不赛跑）。
 #[test]
@@ -978,7 +978,7 @@ fn keepalive_judges_a_dead_road_within_twenty_seconds_and_spares_a_live_one() {
     assert!(uses::STALE_AFTER_MS >= connect::KEEPALIVE_MS + 1_000);
 }
 
-/// ★ net4：等回话那一段的结局怎么记 —— 开通道失败、而连接也已断开（保活判死 / 对端断了）⇒ 当它死了
+/// ★ 等回话那一段的结局怎么记 —— 开通道失败、而连接也已断开（保活判死 / 对端断了）⇒ 当它死了
 /// （族里那之后也没动静的一起摘，重开落到新连接上）；远端说满了（连接还活着）⇒ 不算死；成了 ⇒ 不算死。
 #[test]
 fn a_failed_open_on_a_closed_connection_counts_as_dead() {

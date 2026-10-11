@@ -17,20 +17,15 @@
 //! 长连接不在时这里**明说**「没有控制通道」，不悄悄再拨一次 SSH。
 //! 代价如实写：历史浏览从此依赖那台的流连接活着（此前它是独立拨号，流断了也能翻历史）。
 //!
-//! # 逐次拨号那条路没有了
+//! # 没有逐次拨号
 //!
-//! 不在帧面上的一次性查询从前落到 `remote_history.rs` 的逐次拨号那条路（`run_list_query`〔散文墓碑〕），
-//! 而那条路只放行一张「仍拨号」的表 —— C4c 起那张表就是空的（最后两条随账号域上了帧面）。
-//! 那条路、那张表与那道闸门一起删了。认不出帧命令的查询**当场说**（`subagent·rs::Backend::query`），
-//! 不拨号、不回落；「新长一条逐次拨号的查询」从此在代码里无处可落（判据在 `frame_query_tests.rs`）。
+//! 认不出帧命令的查询**当场说**，不拨号、不回落；「新长一条逐次拨号的查询」在代码里无处可落（判据在 `frame_query_tests.rs`）。
 //!
 //! # 期限：一件事一个绝对时刻
 //!
 //! 本模块的每一个出口都收一个 [`Deadline`]，**只用、不造**：发起这件事的那一手（`tasks` · `subagent` · 快照 ·
 //! 历史浏览器读整份 · 按行号取一段）在事情开始时造一次（[`Deadline::within`]），之后这件事里的每一问、每一页
 //! 都拿**同一个**时刻去等（`InboundClient::call_until`）—— 越往后剩得越少，没有一页会重新拿一整份。
-//! 〔墓碑 —— DL1 之前每一问各自 `now + LINES_BUDGET / PAGE_BUDGET`：分页读（`read_lines` · 快照 · 读整份）每页重新计时、
-//!  没有总时限，病 2「每 59 s 吐一个字节的对端能拖到无限」。〕
 //! 期限的**值**暂住下面那几个常量：「期限的值归谁」待定，定了再搬。
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
@@ -93,7 +88,6 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "sessions-needs",
 ];
 
-// 按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。
 /// 一问一页的期限（一次 `history-tail` · 一段 `history-lines`）：与旧逐行读的单次超时同值（60s）。
 pub(crate) const PAGE_BUDGET: Duration = Duration::from_secs(60);
 /// 分页读一大份时假定的**最低**速率（字节 / 秒）：「最大那一份在不低于它时读得完」。
@@ -216,8 +210,6 @@ pub(crate) fn who(origin: &Origin) -> String {
     }
 }
 
-// 按行那几条的出口 `lines`〔散文墓碑〕删：最后的调用方（子 agent 列候选 · 按 argv 分流）随命令退役。
-
 /// `history-tail` 那张图（字段同后端 `history_query::TailPlan`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TailPlan {
@@ -262,10 +254,6 @@ pub(crate) async fn tail(
     }
     Ok(plan)
 }
-
-// `history-record` 那一问的发送端（`record` / `parse_record` / `RecordProbe`〔散文墓碑〕）删了：
-//   唯一调用方（Tauri 命令 `probe_session_record`）退役，界面经通道直接问后端（`src/frontend/ui/session-reads.ts::probeSessionRecord`，
-//   「缺一格不许读成『不在』」那条口径随之搬到 TS 的 `decodeRecord`）。
 
 /// `history-read` 那一页里的一个可计行（后端出的成品：monitor 不解析记录，只搬）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -357,10 +345,6 @@ pub(crate) async fn read_page(
     }
     Ok(Page { rows, next, eof })
 }
-
-// 按行号取一段（`session_lines` / `parse_session_lines`）· 读整段逐行（`read_lines`）·〔散文墓碑〕
-//   一次性查询按 argv 分流（`ArgvRoute` / `route_argv` / `refuses` / `run_routed`）〔散文墓碑〕删了：它们的调用方
-//   （按行号取回 · 子 agent · 按偏移取一段三条 Tauri 命令）退役，界面经通道直问那台后端的成品（`src/frontend/ui/record-reads.ts`）。
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/frame_query_tests.rs"]

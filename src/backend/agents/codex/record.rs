@@ -36,7 +36,7 @@ pub enum CodexRecordKind {
     TurnStarted,
     /// event_msg task_complete/turn_complete —— **turn-end 边沿**（F3；uuid=turn_id）。
     TurnComplete,
-    /// event_msg turn_aborted —— 中止轮（aterm 决策：静默不发 TurnEnd）。
+    /// event_msg turn_aborted —— 中止轮（手机端决策：静默不发 TurnEnd）。
     TurnAborted,
     /// event_msg user_message。
     UserMessage,
@@ -85,7 +85,7 @@ pub fn classify(v: &Value) -> CodexRecordKind {
 
 /// **一轮的结束**（注册表 `RecordFace.turn_end`，帧 `turn_end` 的判法；这一家只这一处）：`event_msg` 的 `task_complete`
 /// （旧名 `turn_complete`，[`classify`] 归一）⇒ 那一轮的 `turn_id`（帧里的 `uuid`，客户端按它去重）。
-/// 中止轮（`turn_aborted`）不算（静默，与 aterm 同一个决定）；没带 `turn_id` ⇒ 不报（没有去重键）。
+/// 中止轮（`turn_aborted`）不算（静默，与手机端同一个决定）；没带 `turn_id` ⇒ 不报（没有去重键）。
 /// 先过子串闸：原文里连 `_complete` 都没有的行（绝大多数）零解析直接回。
 pub(crate) fn turn_end_id(raw: &str) -> Option<String> {
     if !raw.contains("_complete") {
@@ -99,10 +99,10 @@ pub(crate) fn turn_end_id(raw: &str) -> Option<String> {
     payload.get("turn_id")?.as_str().map(str::to_string)
 }
 
-// ─── 文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
+// ─── 文本抽取助手（trap-critical，口径对齐手机端 CodexRecordParser.kt c03e46f）───
 
 /// **数组文本拍平**——Codex 的 `message.content` 与 `custom_tool_call_output.output` **真机恒数组**
-/// `[{type:input_text|output_text, text}]`（aterm Phase D 审计 9/9 坐实）。当 String 处理会静默丢**全部**
+/// `[{type:input_text|output_text, text}]`（手机端 Phase D 审计 9/9 坐实）。当 String 处理会静默丢**全部**
 /// 文本（且 String fixture 绿着骗过）。数组→拼各项 `text`（`input_image` 等无 text 项自然跳过）；
 /// 防御：裸 String→原样；其它→""。**fixture 必用真机数组 shape。**
 pub fn flatten_text(v: &Value) -> String {
@@ -376,7 +376,7 @@ fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
         KindSays::SubagentNotice => UserText::of(subagent_notice(text)),
         KindSays::AgentMail => mail_said(text, None, None),
         KindSays::Compact => UserText {
-            speaker: Speaker::CompactSummary,
+            speaker: Speaker::compact(text.trim()),
             text: text.trim().to_string(),
             pasted: Vec::new(),
         },

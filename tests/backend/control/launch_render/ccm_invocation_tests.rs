@@ -300,7 +300,8 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
         ),
         (
             CliSpec {
-                args: &["a\nb"],
+                // 交给 agent 的参数可以跨行（多行的第一句）；CR 键进终端就是回车键，照拒。
+                args: &["a\rb"],
                 ..base_spec()
             },
             "FreeTextRefused { slot: AgentArg",

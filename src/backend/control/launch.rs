@@ -29,7 +29,7 @@
 //!
 //! 本模块的形状错误刻意叫 **`bad_args` 而不是 `bad_request`** —— 后者是协议级那一层的，
 //! 一词两义会让客户端分不出「我发的 JSON 坏了」与「我发的参数不合适」。
-//! （`resolve` 那条今天仍回命令级 `bad_request`：它与仓外 aterm 的一次性契约冻结在
+//! （`resolve` 那条今天仍回命令级 `bad_request`：它与手机端的一次性契约冻结在
 //! 2026-07-18，两条路复用同一个纯函数，改它会破坏那份契约。**如实登记，不顺手改。**）
 //!
 //! 所以这里只回答一个问题：**这组参数能不能构成一次有意义的 tmux 调用**。
@@ -138,8 +138,7 @@ pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
 /// 而 `=` 前缀只在 target-**session** 解析路径上被识别；`send-keys` 收的是 target-**pane**，
 /// `=name` 会直接 `can't find pane`。尾冒号把串强制成 `session:` 形态，`=` 才落对位置。
 ///
-/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。monitor 侧那一份（`tmux::exact_target`〔散文墓碑〕，
-/// 只剩跨轨对拍锚点在用）删了 ⇒ 精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
+/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
 pub(crate) fn exact_target(name: &str) -> String {
     format!("={name}:")
 }

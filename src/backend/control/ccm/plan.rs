@@ -86,10 +86,6 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：`[argv0]`（分流不看 argv0，
-    /// 入口② `[argv0, "ccm"]`〔散文墓碑〕）。取法住 [`super::self_invocation`]。
-    /// 从前还有一档「设了 `CCM_SELF` 就用那个值」—— 那个环境变量删了
-    /// （它只为远端 shim 存在）。
     pub(crate) self_argv: Vec<String>,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
     pub(crate) bus_scripts: Option<String>,
@@ -325,13 +321,19 @@ pub(crate) fn discover_bus_scripts() -> Option<String> {
             return Some(sibling.to_string_lossy().to_string());
         }
     }
-    // `PATH` 上的 `cc-register`（旧实现逐字：`command -v cc-register` 再取 `dirname`）。
-    for dir in std::env::split_paths(&std::env::var_os("PATH")?) {
-        if is_exec(&dir.join("cc-register")) {
-            return Some(dir.to_string_lossy().to_string());
+    // `PATH` 上的 `cc-register`（`command -v cc-register` 再取 `dirname`；找法只住 `platform::shell::find_session_command`）。
+    let path = std::env::var("PATH").ok();
+    match crate::platform::shell::find_session_command(
+        "cc-register",
+        path.as_deref(),
+        cfg!(windows),
+        &is_exec,
+    ) {
+        crate::platform::shell::SessionCommand::Found { file, .. } => {
+            file.parent().map(|d| d.to_string_lossy().to_string())
         }
+        _ => None,
     }
-    None
 }
 
 /// 一个账号。manifest 里 `configDir` **键缺席** = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。
@@ -484,15 +486,11 @@ pub(crate) struct Container {
     /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
-    /// 送进容器那条内层命令的词（不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，载荷由同一串渲出。
-    pub(crate) inner: Vec<String>,
-    // ★★ **`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
-    //
-    // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
-    // ——**只在真跑那条路上**，`--ccm-print` 吐的是没退让过的名字。
-    //
-    // 用户 09-12 逐字（`R52` 裁定二）：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」。
-    // ⇒ 退让搬进 [`build`]：它拿一份 [`TakenNames`]（那张 hash 表，来源只有会话快照一处），
+    /// 送进容器那条内层命令到 `--` 之前的词（入口 ＋ 交给 agent 的那几个；不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，
+    /// 载荷由同一串接上 `--` 与 ccm 自己的参数渲出。
+    pub(crate) inner_head: Vec<String>,
+    // ★★ **撞名退让在 [`build`] 里做**（`R52` 裁定二：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」）：
+    //   它拿一份 [`TakenNames`]（那张 hash 表，来源只有会话快照一处），
     //   **算完就把最终名钉进 `Container::name`**。于是：
     //   ① 「产名」与「避让」不再是两个人干的两件事（前端 `mintTmuxName` 那条纪律的对侧）；
     //   ② `--ccm-print` 与真跑吐的是**同一个名字** —— 平价预言机从此在名字这一维上也是平的；
@@ -685,11 +683,8 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
 
 /// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。
 ///
-/// 🔴 **`K-R58` / `KR58D3`（`K37` 第三条）：这里原来有两档「替用户挑一个目录」，删了。**
-///
-/// 删掉的逐字是这两档（留在这里当墓碑，别再长回来）：
-/// - `pwd == $HOME` ⇒ 跳 `$CCM_WORKSPACE`（默认 `$HOME/projects/notes`）；
-/// - 往上找得到 `.git` ⇒ 跳**那个仓的父目录**（你在仓里敲，会话起在仓外）。
+/// 🔴 **`K-R58` / `KR58D3`（`K37` 第三条）：不替用户挑目录** —— 新会话起在调用者的 `cwd`：
+/// 不跳某个「工作区」目录，也不跳所在仓的父目录。
 ///
 /// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
 /// `K37` 的判据：**把这个行为去掉，用户还做不做得到同一件事**？——写 `--cwd <目录>` 照样
@@ -708,7 +703,7 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
 /// `GIT_WORK_TREE` / `GIT_CEILING_DIRECTORIES` 上的那一格不等价 —— 那整条路没了，
 /// 那格不等价也跟着没了。〕
 ///
-/// 〔用户 09-26〕相对的 `--cwd`（`.` / `../x`）按调用方当前目录补成绝对、按字面折掉 `.` / `..`，之后再过 §47 形式判定；
+/// 相对的 `--cwd`（`.` / `../x`）按调用方当前目录补成绝对、按字面折掉 `.` / `..`，之后再过 §47 形式判定；
 /// 已是绝对的原样交给判定（带 `..` 照旧拒）。
 ///
 /// `--cwd` 与 `--cwd-if` 两边同一种写法：打头的 `~` 先换成家目录（[`expand_home`]），相对的再按当前目录补成绝对。
@@ -802,7 +797,7 @@ fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
 /// - 显式 `--base` ⇒ 不注入（issue #75 逃生口）。
 /// - 都不传 ⇒ **只在调用方没有已选定账号时**才落 manifest 的 `isDefault`。
 ///
-/// ✅ **最后那一条已经裁了**（用户 09-12，住址 `DECISIONS.md#R28`）——
+/// ✅ **最后那一条已经裁了**（住址 `DECISIONS.md#R28`）——
 /// 逐字：「把调用方选中的号静默换掉 / **不要这么做** / 不是有选默认账号吗? **就用那个**」。
 /// ⇒ 拆成本函数的两支，**两支都是裁定的一部分，缺一条这一裁就没落地**：
 ///   · **继承那一支**（`CLAUDE_CONFIG_DIR` 非空 ⇒ 保留，不覆盖）= 「不要静默换掉」。
@@ -990,10 +985,13 @@ pub(crate) fn build_among(
         return Err(refuse(&env.account_env, &config_dir));
     }
     // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
-    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问；
-    //    `None` = 问不了（预览 / 不留 pidfile 的那一家）。
+    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对声明认 pidfile 的那几家问（`Adapter::live`）；
+    //    `None` = 问不了（预览 / 不认 pidfile 的那一家）。
     let alive = match (o.resumes.as_deref(), env.running_sessions) {
-        (Some(sid), Some(scan)) if face.is_some_and(|f| f.has_pidfiles) => {
+        (Some(sid), Some(scan))
+            if crate::agents::live_by_among(registry, &o.agent)
+                == crate::agents::LiveBy::Pidfiles =>
+        {
             let dir = if !config_dir.is_empty() {
                 Some(config_dir.as_str())
             } else if o.use_base {
@@ -1107,6 +1105,7 @@ pub(crate) fn build_among(
         }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
+        let inner_head = inner.clone();
         inner.push(flag::END.into());
         inner.extend(opts);
         // 🔴 **自检那一趟与 pane 里那一趟是同一串 argv**，只在 ccm 那一半末尾多一个 `--ccm-print`。
@@ -1206,7 +1205,7 @@ pub(crate) fn build_among(
             detach: o.detach,
             payload,
             self_check,
-            inner,
+            inner_head,
             bus,
         }));
     }
@@ -1316,7 +1315,7 @@ pub(crate) fn render_for(plan: &Plan, shell: crate::platform::shell::dialect::Sh
 }
 
 /// **「等于」那一行的短形（唯一一处）**：设置页「敲 xx 等于」那一格照抄，整条脚本另在［复制］里（[`render_for`]）。
-/// tmux 那一形只写建哪个会话 ＋ 里面跑的那条命令（`tmux new-session -d -s 名 … 内层命令`）；直路只写进哪个目录、用哪份账号目录、跑什么
+/// tmux 那一形只写建哪个会话 ＋ 里面跑的是 ccm（`tmux new-session -d -s 名 … ccm [交给 agent 的] -- …`：ccm 自己的参数照稿省成 `…`）；直路只写进哪个目录、用哪份账号目录、跑什么
 /// （环境的清与设、中转、cc-bus 身份那几段不写）；接回 ⇒ 接哪个会话。家目录写成 `~`；只给人看，词不加引号（带空白的才加）。
 pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
     let word = |w: &str| -> String {
@@ -1338,9 +1337,10 @@ pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
             format!("tmux -u attach -t {}", word(name))
         }
         Plan::Container(c) => format!(
-            "tmux -u new-session -d -s {} \u{2026} {}",
+            "tmux -u new-session -d -s {} \u{2026} {} {} \u{2026}",
             word(&c.name),
-            words(&c.inner)
+            words(&c.inner_head),
+            flag::END
         ),
         Plan::Direct(d) => {
             let mut line = String::new();

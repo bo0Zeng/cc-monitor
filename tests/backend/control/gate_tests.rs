@@ -375,12 +375,6 @@ fn the_probe_format_asks_for_both_fields() {
 ///
 /// # 它从哪来 —— 这是一条**搬家**，不是一条新判据
 ///
-/// `K-R56` 在 monitor 侧立了 `tmux.rs` 里那条
-/// `tests::the_ssh_fallback_always_probes_before_it_acts`〔散文墓碑〕，
-/// 守的是「那条一次性 SSH 回落上，四种守护形态一个不漏地**先探会话、探不到就不动手**」。
-/// 立它的理由逐字是：backend 的 [`admit`] **恒先 `probe`**，而 monitor 那条退化分支
-/// （`cc-*` 名的 send-keys）**一次探测都没有** ⇒ 两条路的门不等价（`K-R54` 表第 1 处）。
-///
 /// 🔴 `K-R72` 把 monitor 那条路整个删了 ⇒ **那条判据的被测对象没有了，而它守的性质还在**
 /// —— 只是今天只剩这一处实现。按 `KR72D2` 的三类去向，它是 ①「性质还成立 ⇒ 在新住址
 /// 上重新钉住」。**这里就是那个新住址。**
@@ -669,21 +663,21 @@ fn the_identity_door_reads_which_client_started_the_session() {
         client: client.into(),
     };
     for (name, probed, requester, want) in [
-        ("atermpipe-x", p("", ""), None, Who::NotOurs),
-        ("atermpipe-x", p("", ""), Some("mobile"), Who::NotOurs),
+        ("phonepipe-x", p("", ""), None, Who::NotOurs),
+        ("phonepipe-x", p("", ""), Some("mobile"), Who::NotOurs),
         ("proj-cc", p("", ""), None, Who::Pass),
-        ("atermpipe-x", p("s1", ""), None, Who::Pass),
+        ("phonepipe-x", p("s1", ""), None, Who::Pass),
         ("proj-cc", p("s1", "ccm"), None, Who::Pass),
         ("proj-cc", p("s1", "ccm"), Some("mobile"), Who::Pass),
-        ("atermpipe-x", p("", "ccm"), Some("mobile"), Who::NotOurs),
-        ("atermpipe-x", p("s1", "mobile"), None, Who::OtherClient),
+        ("phonepipe-x", p("", "ccm"), Some("mobile"), Who::NotOurs),
+        ("phonepipe-x", p("s1", "mobile"), None, Who::OtherClient),
         (
             "proj-cc",
             p("s1", "mobile"),
             Some("desktop"),
             Who::OtherClient,
         ),
-        ("atermpipe-x", p("", "mobile"), Some("mobile"), Who::Pass),
+        ("phonepipe-x", p("", "mobile"), Some("mobile"), Who::Pass),
     ] {
         assert_eq!(
             identity(name, &probed, requester),

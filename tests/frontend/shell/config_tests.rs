@@ -424,7 +424,10 @@ fn set_in_changes_one_field_of_exactly_one_element_and_nothing_else() {
     assert_eq!(patch_config_at(&file, &[a]).unwrap(), vec![Applied::Done]);
     let mut want = start.clone();
     want["remote"]["hosts"][0]["hostKeyFingerprint"] = fp();
-    assert_eq!(read(&file), want, "只该改 a.lan 那一格");
+    // 写进了指纹 ⇒ 同一台的「记于哪一天」跟着盖上（`stamp_pinned_day`），别的不动。
+    want["remote"]["hosts"][0]["hostKeyPinnedAt"] =
+        json!(crate::config::pinned_day(std::time::SystemTime::now()));
+    assert_eq!(read(&file), want, "只该改 a.lan 那一格（连同它记于哪一天）");
 
     let before = std::fs::read(&file).unwrap();
     for (edit, outcome) in [
@@ -694,4 +697,103 @@ fn a_machine_fault_carries_its_written_sentence() {
         let v = serde_json::to_value(&f).unwrap();
         assert_eq!(v["said"], json!(copy_text(key, &args)), "{key}");
     }
+}
+
+/// 指纹记于哪一天由壳写配置时盖上（界面不自己取今天）：设了 / 换了指纹 ⇒ 那一台 `hostKeyPinnedAt` 写成写的那一天；清空指纹 ⇒ 日子一起清；
+/// 新增一台带着指纹 ⇒ 同样盖上（不带指纹的新增不添这一格）。别的格动了不碰日子；界面交来的日子不认（盖掉）。
+#[test]
+fn the_pinned_day_is_stamped_when_the_fingerprint_is_written() {
+    let dir = tmpdir("pinned-day");
+    let file = dir.join("config.json");
+    let host = |fp: &str, day: &str| json!({"label": "box", "host": "h", "user": "u", "hostKeyFingerprint": fp, "hostKeyPinnedAt": day});
+    std::fs::write(
+        &file,
+        json!({"remote": {"hosts": [host("", "")]}}).to_string(),
+    )
+    .unwrap();
+    let cell = |field: &str, v: Value| ConfigEdit::SetIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: "box".into(),
+        }],
+        field: field.into(),
+        value: v,
+        if_empty: false,
+    };
+    let day = || read(&file)["remote"]["hosts"][0]["hostKeyPinnedAt"].clone();
+    let today = crate::config::pinned_day(std::time::SystemTime::now());
+    patch_config_at(&file, &[cell("hostKeyFingerprint", json!("SHA256:aa"))]).unwrap();
+    assert_eq!(day(), json!(today), "设了指纹 ⇒ 盖上写的那一天");
+    std::fs::write(
+        &file,
+        json!({"remote": {"hosts": [host("SHA256:aa", "2000-01-01")]}}).to_string(),
+    )
+    .unwrap();
+    patch_config_at(&file, &[cell("jump", json!("j"))]).unwrap();
+    assert_eq!(day(), json!("2000-01-01"), "别的格动了不碰日子");
+    patch_config_at(&file, &[cell("hostKeyFingerprint", json!("SHA256:bb"))]).unwrap();
+    assert_eq!(day(), json!(today), "换了指纹 ⇒ 换成写的那一天");
+    patch_config_at(&file, &[cell("hostKeyFingerprint", json!(""))]).unwrap();
+    assert_eq!(day(), json!(""), "清空指纹 ⇒ 日子一起清");
+    let add = ConfigEdit::InsertIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: "two".into(),
+        }],
+        value: json!({"label": "two", "host": "h2", "user": "u", "hostKeyFingerprint": "SHA256:cc", "hostKeyPinnedAt": "1999-09-09"}),
+    };
+    patch_config_at(&file, &[add]).unwrap();
+    assert_eq!(
+        read(&file)["remote"]["hosts"][1]["hostKeyPinnedAt"],
+        json!(today),
+        "新增一台带指纹 ⇒ 盖上（界面交来的不认）"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 补丁口的回话带上这一趟盖好的「记于哪一天」（按那台的 origin）：设置页刚点完「记录」，卡上当场照它显示，不另去读盘、不自己取今天。
+#[test]
+fn the_patch_reply_carries_the_days_it_stamped() {
+    let dir = tmpdir("pinned-reply");
+    let file = dir.join("config.json");
+    std::fs::write(
+        &file,
+        json!({"remote": {"hosts": [{"label": "box", "host": "h", "user": "u"}]}}).to_string(),
+    )
+    .unwrap();
+    let cell = |field: &str, v: Value| ConfigEdit::SetIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: "box".into(),
+        }],
+        field: field.into(),
+        value: v,
+        if_empty: false,
+    };
+    let today = crate::config::pinned_day(std::time::SystemTime::now());
+    let (_, pinned) =
+        patch_config_stamping(&file, &[cell("hostKeyFingerprint", json!("SHA256:aa"))]).unwrap();
+    assert_eq!(
+        pinned,
+        vec![PinnedDay {
+            origin: crate::origin::Origin("box".into()),
+            day: today
+        }]
+    );
+    let (_, pinned) = patch_config_stamping(&file, &[cell("jump", json!("j"))]).unwrap();
+    assert!(pinned.is_empty(), "没动指纹 ⇒ 回话里没有");
+    let (_, pinned) =
+        patch_config_stamping(&file, &[cell("hostKeyFingerprint", json!(""))]).unwrap();
+    assert_eq!(
+        pinned,
+        vec![PinnedDay {
+            origin: crate::origin::Origin("box".into()),
+            day: String::new()
+        }],
+        "清空 ⇒ 日子清空也说"
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

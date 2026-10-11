@@ -25,11 +25,6 @@ export interface StreamSink {
   /** 按 seq 排序插入用 */
   timeline: RecordTimeline;
   /**
-   * 收到标题记录（`t: "title"`）时调（TabManager 用）。
-   * SessionViewer / Subagent 不实现 = 标题不更新。
-   */
-  onTitleUpdate?: (title: string) => void;
-  /**
    * payload 是真用户输入（人说的 said / queued + 渲染成 card）时调，传入 sessionId。
    * 仅 TabManager 用（触发自动切 Tab 到对应 session）。
    */
@@ -53,21 +48,13 @@ export interface StreamSink {
  * - renderStreamRecord：两段串起来。
  */
 
-/** meta 路由要的最小 sink 面：查看器的收集段没有 timeline 也能用（StreamSink 结构兼容）。 */
-export type MetaSink = Pick<StreamSink, "onTitleUpdate">;
-
 /**
  * 元数据路由。返回：
- * - "consumed"：标题记录 —— 无卡可渲，到此为止；
+ * - "consumed"：标题记录 —— 无卡可渲，到此为止（叫会话什么是核心记的账，经会话流的名字那一格来，界面不读标题记录）；
  * - "content"：其余记录（含 render 后会 skip 的那几种）。
  */
-export function routeMeta(payload: JsonlLinePayload, sink: MetaSink): "consumed" | "content" {
-  const record = payload.record;
-  if (record.t === "title") {
-    sink.onTitleUpdate?.(record.text);
-    return "consumed";
-  }
-  return "content";
+export function routeMeta(payload: JsonlLinePayload): "consumed" | "content" {
+  return payload.record.t === "title" ? "consumed" : "content";
 }
 
 /**
@@ -78,7 +65,7 @@ export function renderStreamRecord(
   ctx: RenderContext,
   sink: StreamSink,
 ): void {
-  if (routeMeta(payload, sink) === "consumed") return;
+  if (routeMeta(payload) === "consumed") return;
   renderContentRecord(payload, ctx, sink);
 }
 

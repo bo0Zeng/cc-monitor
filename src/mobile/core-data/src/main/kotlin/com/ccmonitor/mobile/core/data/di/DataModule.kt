@@ -24,7 +24,7 @@ val dataModule =
         // 迁移链（升级不丢数据），见 ALL_MIGRATIONS。
         single {
             Room
-                .databaseBuilder(androidContext(), AppDatabase::class.java, "aterm.db")
+                .databaseBuilder(androidContext(), AppDatabase::class.java, "ccm.db")
                 .addMigrations(*ALL_MIGRATIONS)
                 // 新装也要种默认按键：迁移只在升级时跑。
                 .addCallback(

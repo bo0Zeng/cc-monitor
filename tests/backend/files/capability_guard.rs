@@ -63,7 +63,7 @@ const REGISTERED: &[&str] = &[
     "files.index.rebuild",
     "files.index.status",
     "files.ls",
-    // 出处用户 09-27「经那台后端链路按字节寻址分块读回」。
+    // 出处「经那台后端链路按字节寻址分块读回」。
     "files.read.chunk",
     "files.read.text",
     // 要求：「算目录大小」；那张表同样还没跟上。
@@ -1987,7 +1987,7 @@ fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
 }
 
 /// `files.read.chunk`：非 UTF-8 名按字节寻址、逐块读回拼起来 == 盘上那份；越过末尾 ⇒ 空块 `eof`；`len` 越界 ⇒ `bad_args`；目录 ⇒ `not_text`。
-/// 要求住址：用户 09-27「经那台后端链路按字节寻址（b16 路径）分块读回」· 下载对远端只读（这一条纯读）。
+/// 要求住址：「经那台后端链路按字节寻址（b16 路径）分块读回」· 下载对远端只读（这一条纯读）。
 #[test]
 #[cfg(unix)]
 fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {

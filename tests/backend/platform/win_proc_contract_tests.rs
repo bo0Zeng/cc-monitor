@@ -11,7 +11,7 @@
 //!    == {`platform/win_proc.rs`}（两向相等）。
 //!
 //! 🚫 买不到：Win32 调用在真 Windows 上的行为（错误码、句柄语义、`WaitForSingleObject` 何时醒）。
-//! 那要真机；本路不碰 Win11 虚拟机（未拍）。编得过由门禁 `winchk-backend` 那一格买。
+//! 那要真机（没跑过）。编得过由门禁 `winchk-backend` 那一格买。
 
 use super::proc::{
     unix_secs_from_filetime, FILETIME_TICKS_BEFORE_UNIX_EPOCH, FILETIME_TICKS_PER_SEC,

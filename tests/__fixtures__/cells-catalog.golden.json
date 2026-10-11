@@ -527,6 +527,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.speaker{kind=compactSummary}.charsText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=coordinator}.body",
           "type": "string"
@@ -1343,16 +1349,22 @@
           "type": "string"
         },
         {
-          "frozen": true,
-          "kind": "value",
-          "path": "lines",
-          "type": "number"
+          "frozen": false,
+          "kind": "text",
+          "path": "label",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "label_project",
+          "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "liveness_confidence",
-          "type": "string"
+          "path": "lines",
+          "type": "number"
         },
         {
           "frozen": true,
@@ -1426,9 +1438,21 @@
           "type": "string"
         },
         {
-          "frozen": true,
+          "frozen": false,
+          "kind": "text",
+          "path": "label",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "label_project",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
-          "path": "liveness_confidence",
+          "path": "path",
           "type": "string"
         },
         {

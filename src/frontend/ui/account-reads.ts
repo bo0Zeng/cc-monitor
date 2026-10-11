@@ -37,7 +37,7 @@ const lastGood = new Map<string, { meta: NonNullable<AccountsState["meta"]>; acc
  * monitor 在两条路上各把行解析一遍、本机那条另并一次 apikey 表 —— 那一份解释与并表整个挪进了后端
  * （`observe/accounts_query.rs::list_product`，规则住 `acct-core`），远端从此也并上**它自己**那份表。
  *
- * `agent`：这次起会话的是哪一家（适配器 id）。并表只认那一家的行（条 49），后端不猜 ⇒ 由这里带过去。
+ * `agent`：这次起会话的是哪一家（适配器 id）。并表只认那一家的行，后端不猜 ⇒ 由这里带过去。
  * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到 / 形状对不上）⇒ `available:false` ＋ 一句人话（通道那一层的说法
  * 住 `ipc/chan-caller.ts::saidFrom`，不在账号面再写一份）；「不可用」不是错误（前端据此降级，不弹错）。
  */

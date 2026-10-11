@@ -2,7 +2,7 @@ use super::*;
 
 /// 夹具根：按 pid + tag 隔开。
 ///
-/// ⚠ 建在临时目录里：用户 08-14 明令**不要动生产** ——
+/// ⚠ 建在临时目录里：**不要动生产** ——
 /// 这份夹具与 `~/.cc-monitor/`、`~/.claude/` 一个字节都不相干。
 fn fixture_root(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!("ccm-s6-{tag}-{}", std::process::id()))
@@ -216,6 +216,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         launch: None,
         compact_request: None,
         local: None,
+        live: crate::agents::LiveBy::Unknown,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
     assert_eq!(
@@ -388,7 +389,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 
     // ③ 账号：**静默**（零行）。
     // ⚠ 直接喂夹具里一个不存在的账号库目录：走 CLI 那一臂的话账号库跟着这个进程的家走，
-    //   会去读**用户真实的**账号库（用户 08-14 明令不碰生产）。
+    //   会去读**用户真实的**账号库（不碰生产）。
     let no_accts = root.join("no-such-accts");
     assert_eq!(
         crate::observe::accounts_query::session_accounts(&root, &no_accts),
@@ -430,6 +431,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
         launch,
         compact_request: None,
         local: None,
+        live: crate::agents::LiveBy::Unknown,
     };
     let mut reg: Vec<crate::agents::Adapter> = crate::agents::REGISTRY
         .iter()
@@ -532,7 +534,12 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         e.running_sessions = Some(scan);
         let refused =
             plan::build_among(&reg, &opts(a.kind, &["--resume", "sid-1"]), &e, &t, None).is_err();
-        assert_eq!(refused, face.has_pidfiles, "{} 的 pidfile 那一格", a.kind);
+        assert_eq!(
+            refused,
+            a.live == crate::agents::LiveBy::Pidfiles,
+            "{} 的判活那一格",
+            a.kind
+        );
         // resume 规格：命令形与会话名前缀是这一家的。
         let spec = format!(
             "{{\"agentKind\":\"{}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}",
@@ -566,17 +573,14 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
     );
     // 组合与两家都不同（不是第三个 claude / codex）。
     let differs = |k: &str| {
-        let f = reg
+        let a = reg.iter().find(|a| a.kind == k).expect("在注册表里");
+        let f = a.launch.expect("由我们起");
+        let fake = reg
             .iter()
-            .find(|a| a.kind == k)
-            .and_then(|a| a.launch)
+            .find(|a| a.kind == AGENT_KIND)
             .expect("在注册表里");
-        (f.needs_bus_id, f.has_identity, f.has_pidfiles)
-            != (
-                LAUNCH.needs_bus_id,
-                LAUNCH.has_identity,
-                LAUNCH.has_pidfiles,
-            )
+        (f.needs_bus_id, f.has_identity, a.live)
+            != (LAUNCH.needs_bus_id, LAUNCH.has_identity, fake.live)
     };
     assert!(
         differs("claude") && differs("codex"),
@@ -652,6 +656,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         launch: None,
         compact_request: None,
         local: None,
+        live: crate::agents::LiveBy::Unknown,
     };
     let got = crate::agents::mcp_read_among(
         std::slice::from_ref(&adapter),

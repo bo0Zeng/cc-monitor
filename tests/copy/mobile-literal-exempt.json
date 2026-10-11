@@ -1,0 +1,160 @@
+{
+  "说明": [
+    "手机生产 Kotlin 里含汉字、却不该进文案表的字面量（判据：tests/copy/mobile-literals.vitest.ts）。日志 · testTag · require / check 按位置放过，不用登记。",
+    "按 文件 · 那句（模板那一截记 {…}）· 用途 · 去向 认；用途取自判据里的闭集（词表 · 命令 · 内部）。那份文件里已没有这句 ⇒ 死豁免红，删掉这条。",
+    "res/values/strings.xml 不归这张表：app_name 由清单 android:label 引用，系统要求住在资源里，照留。"
+  ],
+  "files": {
+    "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt": [
+      {
+        "text": "echo 'ccm: resume 失败——无法确定工作目录（会话 {…}）'",
+        "use": "命令",
+        "why": "resume 守卫在远端 shell 里 echo 的一句，显示在远端终端里，不经手机界面"
+      }
+    ],
+    "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatMenu.kt": [
+      {
+        "text": "管道",
+        "use": "词表",
+        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
+      },
+      {
+        "text": "路由",
+        "use": "词表",
+        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
+      },
+      {
+        "text": "实例",
+        "use": "词表",
+        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
+      },
+      {
+        "text": "进程",
+        "use": "词表",
+        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
+      }
+    ],
+    "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/ButtonEditDialog.kt": [
+      {
+        "text": "命令",
+        "use": "内部",
+        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
+      },
+      {
+        "text": "按键码",
+        "use": "内部",
+        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
+      },
+      {
+        "text": "转义",
+        "use": "内部",
+        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
+      },
+      {
+        "text": "内建",
+        "use": "内部",
+        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
+      },
+      {
+        "text": "切换",
+        "use": "内部",
+        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
+      }
+    ],
+    "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/FrameClient.kt": [
+      {
+        "text": "不是 JSON 对象的一行：{…}",
+        "use": "内部",
+        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
+      },
+      {
+        "text": "帧没有 kind：{…}",
+        "use": "内部",
+        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
+      },
+      {
+        "text": "应答对不上请求：{…}",
+        "use": "内部",
+        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
+      }
+    ],
+    "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Products.kt": [
+      {
+        "text": "session_added 缺 sid / activity_text",
+        "use": "内部",
+        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
+      },
+      {
+        "text": "session_status 缺 sid / activity_text",
+        "use": "内部",
+        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
+      },
+      {
+        "text": "session_removed 缺 sid",
+        "use": "内部",
+        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
+      }
+    ],
+    "src/mobile/core-copy/src/main/kotlin/com/ccmonitor/mobile/core/copy/CopyText.kt": [
+      {
+        "text": "copyText: 表里没有 {…}",
+        "use": "内部",
+        "why": "取文口的程序员错（引了表里没有的键），构建时已拦住，只进异常栈"
+      }
+    ],
+    "src/mobile/core-remote/src/main/kotlin/com/ccmonitor/mobile/core/remote/RemoteExecutor.kt": [
+      {
+        "text": "{…} 失败（退出码 {…}）：{…}",
+        "use": "内部",
+        "why": "ExecResult.orThrow 的异常说明：生产代码里没有调用方，只在异常栈；接上屏的调用方时改成表里一句 ＋ 原话"
+      }
+    ],
+    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreEcdsaSigner.kt": [
+      {
+        "text": "initSign 未调用",
+        "use": "内部",
+        "why": "sshj 调用顺序错的程序员错，只进异常栈"
+      }
+    ],
+    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnection.kt": [
+      {
+        "text": "连接在竞速期间已被关闭（看门狗超时或断开）—弃用赢家，防幻影胜出泄漏",
+        "use": "内部",
+        "why": "CancellationException 的说明：取消照常上抛、不当失败显示，只在异常栈里"
+      }
+    ],
+    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt": [
+      {
+        "text": "会话在连接期间已被断开",
+        "use": "内部",
+        "why": "CancellationException 的说明：取消照常上抛、不当失败显示，只在异常栈里"
+      },
+      {
+        "text": "重连纪元过期：会话已被断开",
+        "use": "内部",
+        "why": "CancellationException 的说明：取消照常上抛、不当失败显示，只在异常栈里"
+      }
+    ],
+    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshDuplex.kt": [
+      {
+        "text": "双向 exec 已关",
+        "use": "内部",
+        "why": "常驻流断开时的原话：只进 LinkState.Down 的 transport，上屏时是复制详情那一栏（句子是 front.body.offline）"
+      }
+    ],
+    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/TofuHostKeyVerifier.kt": [
+      {
+        "text": "(该主机已有其它类型密钥，无 {…} 记录)",
+        "use": "内部",
+        "why": "Mismatch 的 expectedB64 占位：只拿去算指纹，算不出 ⇒ 恢复页显示表里的「（算不出）」，这串本身不上屏"
+      }
+    ],
+    "src/mobile/core-ui/src/main/kotlin/com/ccmonitor/mobile/core/ui/feedback/AppSnackbarController.kt": [
+      {
+        "text": "AppSnackbarHostScaffold 未安装 —— 操作反馈与撤销会静默丢失",
+        "use": "内部",
+        "why": "CompositionLocal 没装时的程序员错，只进异常栈"
+      }
+    ]
+  }
+}

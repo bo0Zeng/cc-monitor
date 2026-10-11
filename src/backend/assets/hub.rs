@@ -44,6 +44,8 @@ type Answer = Result<Value, (String, String)>;
 /// 这台自己的那几条内层命令（生产 = `stream/inbound/doors.rs::LocalFrames`：本进程 `REGISTRY` 的 `run`，限那几条）。
 pub(crate) trait Here: Send + Sync {
     fn ask(&self, cmd: &str, args: Value) -> Answer;
+    /// 看的人那一台的时区（引起这一趟的那条请求的信封 `tz`）：问别台时原样转过去，那台回的「几点」照它写。
+    fn viewer_tz(&self) -> crate::Tz;
 }
 
 /// 枢纽要问的一台：`None` = 这台自己。
@@ -94,7 +96,7 @@ async fn ask_one(
                 ));
             }
             // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
-            crate::dial::remote_ask::ask_json(m, cmd, &args, table, remote)
+            crate::dial::remote_ask::ask_json(m, cmd, &args, &here.viewer_tz(), table, remote)
                 .await
                 .map_err(|s| {
                     (

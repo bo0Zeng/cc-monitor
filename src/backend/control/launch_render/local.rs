@@ -35,6 +35,9 @@ pub(crate) struct LocalLaunchRequest {
     /// 不上线（后端自己起会话时填）：垫在交给那一家的那一串里的参数（起新会话先定 sid：`--session-id <uuid>`）。
     #[serde(skip)]
     pub(crate) preset_args: Vec<String>,
+    /// 不上线（后端自己起会话时填）：这一趟用的模型（交给那一家的 `--model`）；`None` ＝ 跟随。
+    #[serde(skip)]
+    pub(crate) model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -194,7 +197,7 @@ fn with_spec<T>(
         account,
         // 身份标记打在建出来的 tmux 会话上（resume 才说得出 sid）。
         ccm_sid: sid.filter(|_| tmux.is_some()),
-        model: None,
+        model: req.model.as_deref(),
         launcher: launcher.as_deref().unwrap_or(&req.default_launcher),
         default_launcher: &req.default_launcher,
         args: &args,

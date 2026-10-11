@@ -22,6 +22,15 @@ export function sizeText(n: number): string {
   return unit(u, `${Math.floor(t / 10)}.${t % 10}`);
 }
 
+/**
+ * **计数的那一个读口**（几个字 · 几条 ⇒ 给人看的一格）：整数，从个位起每三位一个英文逗号，不带单位。与核心 `copy_core::count_text` 对同一份金样
+ * `tests/__fixtures__/count-text.golden.json`。只给界面里现数现写的那几处（如终端页输入框）；成品里的计数核心写好。
+ */
+export function countText(n: number): string {
+  const digits = String(Math.max(0, Math.floor(n)));
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 /** 第 `u` 档单位（B · KB · MB · GB · TB）写上数（文案键逐档字面量）。 */
 function unit(u: number, n: string): string {
   if (u === 0) return copyText("sizeFormat.unit.b", { n });

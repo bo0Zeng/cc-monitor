@@ -6,7 +6,7 @@
  * 这一步必须是人做的。`print-parity:` 那 4 条是 `tests/e2e/ccm-print-parity.sh` 喂给真 `ccm --ccm-print` 的四行（按名取）。
  * ok 与 refusal 两类都要覆盖：只比 ok 的话，「该拒却渲染出来了」抓不到。
  *
- * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux -u send-keys`），而 `src/` 生产段零 shell 串（条 1）。
+ * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux -u send-keys`），而 `src/` 生产段零 shell 串。
  */
 import { DEFAULT_AGENT, defaultLauncherOf } from "../../src/frontend/ui/agent-profile.ts";
 import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";

@@ -24,7 +24,7 @@
         ⚠ 老的 `cc-bus-lib.sh` 里还剩 5 处直接 `flock`(限流/去重/敲门三族),**恒等**钉住:
         它们保的是别的不变式,本轮不动;多一处就红。
   · `S5` **渲染对拍**:`cc-peek` 与 `cc-recv` 里的 `jq -Rr` 程序**逐字节相等**(两份都取全集)。
-  · `S6` `cc-recv` **一字未改**:sha256 == 登记值(条 55「不降薄壳」的机检)。
+  · `S6` `cc-recv` **一字未改**:sha256 == 登记值(「不降薄壳」的机检)。
   · `S7` **手册页写了那句**:`SKILL.md` 里 rc 0/2/11/12/13 五个码 ＋「照常处理你手上那段」
         那条处置 ＋ at-least-once 那句语义。⚠ `§3ter.3` 逐字要求"这一格必须写进手册页"。
   · `B1`–`B14` **真跑**:在一次性 `CC_BUS_HOME` 里把两阶段口、Stop 钩子、Windows 那一侧
@@ -103,7 +103,7 @@ EXPECTED_TAGS = [
 ]
 
 # ── 登记:静态面的那些数 ─────────────────────────────────────────────────────
-# `cc-recv` 的 sha256(2026-09-19 现打)。条 55 逐字「`cc-recv` 不降薄壳」——
+# `cc-recv` 的 sha256(2026-09-19 现打)。要求逐字「`cc-recv` 不降薄壳」——
 # 本轮一个字节都不许动它,而「没动」这件事只有恒等才钉得住。
 CC_RECV_SHA256 = "277fc2fc87291a5ab1992c2d008a7bed50f33b78231d8f10e9f5a2d29caddec8"
 
@@ -237,7 +237,7 @@ def check_s2():
                   f"      ⚠ `cc-bus-stop-hook` 那条无锁的事后退回已经整条删掉(两阶段之后无可退)")
         return
     ok("S2", f"`.pos` 写点全仓 {sum(got.values())} 处,逐处登记:cc-commit(CAS 推进)· "
-             f"cc-recv(老口,条 55 不降薄壳);cc-bus-stop-hook 0 处(事后退回已消失)")
+             f"cc-recv(老口,不降薄壳);cc-bus-stop-hook 0 处(事后退回已消失)")
 
 
 def check_s3():
@@ -307,7 +307,7 @@ def check_s5():
 
 def check_s6():
     h = hashlib.sha256((SCRIPTS / "cc-recv").read_bytes()).hexdigest()
-    eq("S6", h, CC_RECV_SHA256, "cc-recv 一字未改(条 55「不降薄壳」的机检)")
+    eq("S6", h, CC_RECV_SHA256, "cc-recv 一字未改(「不降薄壳」的机检)")
 
 
 def check_s7():

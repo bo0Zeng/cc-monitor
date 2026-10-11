@@ -37,11 +37,6 @@ fn cc_spawn_creates_it_never_reuses_a_live_session() {
             "`cc-spawn` 里又出现了 {gone:?} —— 默认复用回潮了。\n                 `C14`〔用 08-12〕逐字：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。"
         );
     }
-    // ② 命名避让必须还在（不复用 ≠ 不避让）—— 但 `C15`〔用@08-13〕之后它**搬进 ccm 了**。
-    //    ⚠ 这条判据 08-12 原本钉 `cc-spawn` 里那句 `while tmux has-session`。
-    //    搬家之后**不能只是删掉它**：那样「避让还在不在」就没人钉了。改钉两件 ——
-    //    （a）cc-spawn 把基名交出去；（b）避让在 ccm 那边（旧判据 `the_avoidance_lives_in_ccm_now` 〔散文墓碑〕，
-    //    `K-R48` 第二拍随 `shared/ccm` 删；今天由 `control::ccm::plan::tests::only_two_of_the_three_naming_paths_step_aside_on_a_collision` 钉）。
     // ⚠ 下面两条都判**剥掉 `#` 注释之后**的正文。首版没剥，当场被自己写的那句
     //   「原来这里是 `while tmux has-session …`」（记录搬走了什么的**诚实注释**）判红。
     //   ★ 这是本拍第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，
@@ -98,12 +93,11 @@ fn the_cc_bus_skill_no_longer_teaches_session_reuse() {
 /// 它防的不是笔误，是**下一个人把这些判据读成「机器上就是这样」**。
 #[test]
 fn the_cc_spawn_judges_say_out_loud_they_pin_the_repo_copy_not_the_running_one() {
-    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕嵌的是**本文件**，不是那份生产文件。
+    // 🔴 嵌的是**本文件**，不是那份生产文件。
     // 下面那两句「必需词」要求 `≥ 2 次`：一次是本条自己数组里的字面量，
     // 另一次必须在 `cc_spawn_path` 的头注里 —— 而 `cc_spawn_path` 与它的头注
     // 这一轮跟着测试段搬进了本文件，生产段那份里两句都不剩。
     // ⚠ 剖分器把这条相对路径按原语义重定向过（仍指那份生产文件）：路径对、**对象错**。
-    // 🔴 〔步 7c 剖分 2026-09-19 ·  那条预言**这一格兑现了**〕
     //
     // 原来这里是 `me.matches(must).count() >= 2`，理由写在原注里：
     //「本判据自己的数组里就写着这两句 ⇒ `contains` 恒真」——
@@ -179,7 +173,7 @@ fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
     // 🔴 反向：那条**已经不存在的**旧路径不许再出现（留着它 = 又去找一个不存在的脚本，
     //    而失败是静默的：`[ -f ]` 不成立就默默往下一档走）。
     // ⚠ 只看**生产段**：脚本头注里那句「原来这里找的是 `$SELFDIR/../../ccm`」是**来历**，
-    //    不是代码。不剥注释的话这一条会把自己的墓碑读成复发（本仓最高频那类假红）。
+    //    不是代码。不剥注释的话这一条会把来历那句读成复发（本仓最高频那类假红）。
     assert!(
         !shell_production(&src).contains("$SELFDIR/../../ccm"),
         "`cc-spawn` 的生产段又去找 `$SELFDIR/../../ccm` 了 —— 那个 bash 脚本 `K-R48` 已经删了，\n\

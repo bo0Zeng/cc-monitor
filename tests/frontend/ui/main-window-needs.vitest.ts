@@ -39,7 +39,8 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     title: sid,
     background: false,
     bgName: null,
-    aiTitle: null,
+    label: null,
+    labelProject: null,
     projectDir: `/w/${sid}`,
     state: LIVE,
     pinned: false,
@@ -192,10 +193,11 @@ describe("一个会话读成什么（session-face）", () => {
     }
   });
 
-  it("窄窗两个字母取项目目录名里的字母；标题拆成项目名 ＋ 标题（没有 ai 标题 ⇒ 项目名当标题）", () => {
+  it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {
     expect([abbrOf(tab("x", { projectDir: "/w/orders" })), abbrOf(tab("x", { projectDir: "/w/web-console" })), abbrOf(tab("x", { projectDir: "/w/数据集" }))]).toEqual(["or", "we", "数据"]);
-    expect(titleParts(tab("x", { projectDir: "/w/orders", aiTitle: "加重试" }))).toEqual({ proj: "orders", title: "加重试", bg: false, forked: false });
-    expect(titleParts(tab("x", { projectDir: "/w/orders" })).title).toBe("orders");
+    expect(titleParts(tab("x", { projectDir: "/w/orders", label: "加重试", labelProject: "orders" }))).toEqual({ proj: "orders", title: "加重试", bg: false, forked: false });
+    expect(titleParts(tab("x", { projectDir: "/w/orders", label: "orders" }))).toEqual({ proj: null, title: "orders", bg: false, forked: false });
+    expect(titleParts(tab("0123456789", { projectDir: "/w/orders" })).title).toBe("01234567");
   });
 
   it("时长一种写法：45s · 6m · 1h50m · 2h · 3d", () => {
@@ -412,7 +414,7 @@ describe("会话头", () => {
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
   it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 查找 · 更多", () => {
-    const { h, host } = head(tab("a", { aiTitle: "加重试", projectDir: "/w/orders", activity: waiting, needs: approve() }));
+    const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", activity: waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(copyText("sessionFace.machine.local"));
     expect(h.el.textContent).toContain("/w/orders");

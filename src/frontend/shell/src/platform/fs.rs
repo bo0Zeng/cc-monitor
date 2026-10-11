@@ -24,7 +24,6 @@ use std::path::Path;
 ///
 /// 这是 `local_backend.rs::extract_embedded_to` 的注入参数：
 /// backend 那边只知道「写完要让它可执行」，不知道**这个平台上那句话怎么落**。
-// 这里原来有 `make_private`〔散文墓碑〕（转发 `creds_core::perm::make_private`，把凭据文件收成只给本人）。
 // 唯一的调用方是 monitor 那侧的凭据写口，那个写口随「本机那一份也交本机常驻后端写」删了 ⇒ 它零调用、删掉。
 // 收窄那条原语照旧只住 `creds_core::perm`，今天只有后端账号域那一份写口在用。
 
@@ -220,12 +219,8 @@ impl Drop for DirLock {
 // 原住 `config.rs`（逐字）：monitor 自己的文件（config.json）的原子替换，两个平台臂。
 /// 把 src 原子替换到 dst。
 ///
-/// ⚠ **从私有改成 `pub(crate)`，理由不是「顺手」**：
-/// 那个调用方（`creds_store::write_key`〔散文墓碑〕）随本机凭据文件的写者换成本机常驻后端一起删了；
-/// 下面是它当年的理由，留作来历：它要一次原子替换，而它**不许自己写一个 `fs::rename`** ——
-/// `atomic_replace_registry` 按「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记，
-/// 那张表不在 `K-H2a` 的写区。复用这一份 ⇒ 新文件里那两个字面量出现 **0** 次，
-/// 既不动那张表，也不给它挖洞。
+/// ⚠ 要原子替换的调用方复用这一份，**不许自己写一个 `fs::rename`**：`atomic_replace_registry` 按
+/// 「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记。
 /// 选它（`MoveFileExW` 那套语义）而不是 `ReplaceFileW` 是**有理由的**：
 /// `INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件，而凭据文件与 `config.json` 同类
 /// ——**都是 monitor 自己的文件**（登记表里那两行逐字这么写的；住址今天是 `platform/fs.rs`）。

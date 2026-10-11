@@ -1,4 +1,4 @@
-package com.ccmonitor.mobile.core.ui.copy
+package com.ccmonitor.mobile.core.copy
 
 import com.squareup.moshi.Moshi
 import org.junit.Assert.assertEquals

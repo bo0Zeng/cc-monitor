@@ -6,9 +6,6 @@
 //! 本机只常驻一个后端，**所有 SSH 连接由它持有、按拨号身份复用**。
 //! 这里拿一条到远端的字节流 = 在 monitor 与本机后端之间**那条已有的流**上开一条链路
 //! （[`crate::link_mux`]，后端那一半在 `src/backend/dial/link.rs`）。
-//! 〔墓碑 —— C2 那一版的原话要点：「定位本机后端二进制 · 起 `<本机后端> --dial` 子进程 ·
-//!  把它的两根管子交给 `ssh_link`」「一条链路一个代理子进程」。那一套（二进制解析 · 两个环境变量 ·
-//!  起进程）在 SR1a 整段删了。〕
 //!
 //! # 它为什么不是通信层成员
 //!
@@ -480,16 +477,6 @@ pub(crate) fn pin_verdict(
     }
 }
 
-/// 那一刻的 UTC 日期 `YYYY-MM-DD`（公历，按天数换算，不引日期库）。
-pub(crate) fn utc_day(t: std::time::SystemTime) -> String {
-    let days = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() / 86_400)
-        .unwrap_or(0) as i64;
-    let (y, m, d) = copy_core::civil_from_days(days);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
 /// 固化那一次写的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PinWrite {
@@ -524,20 +511,8 @@ pub(crate) fn pin_host_key_at(
     };
     match crate::config::patch_config_at(path, &[edit]) {
         Ok(applied) => Ok(match applied.first() {
-            Some(Applied::Done) => {
-                // 记下是哪一天记的（只给人看：设置页「主机指纹 · 记于 …」）。写不上不影响已经写下的指纹。
-                let day = ConfigEdit::SetIn {
-                    path: vec!["remote".into(), "hosts".into()],
-                    r#where: vec![key(&["label", "host"], origin), key(&["host"], host)],
-                    field: "hostKeyPinnedAt".into(),
-                    value: serde_json::Value::String(utc_day(std::time::SystemTime::now())),
-                    if_empty: false,
-                };
-                if let Err(e) = crate::config::patch_config_at(path, &[day]) {
-                    tracing::warn!("[{origin}] 指纹记下的日子没写上：{e}");
-                }
-                PinWrite::Written
-            }
+            // 记下是哪一天记的由补丁口一并盖上（`config::stamp_pinned_day`）。
+            Some(Applied::Done) => PinWrite::Written,
             Some(Applied::Kept) => PinWrite::AlreadySet,
             _ => PinWrite::NotFound,
         }),

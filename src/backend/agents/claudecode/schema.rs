@@ -472,7 +472,7 @@ pub struct ApiMessage {
     #[serde(default)]
     pub usage: Option<Usage>,
     /// Batch14-F42：一轮结束判定（assistant 终结记录带 `end_turn`；
-    /// aterm/HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
+    /// 手机端 HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
 }
@@ -490,7 +490,6 @@ pub struct Usage {
 }
 
 impl JsonlRecord {
-    /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（原 monitor `lib·rs` 那个 `extract_cwd`〔散文墓碑〕）。
     pub fn cwd(&self) -> Option<&str> {
         match self {
             Self::User { cwd, .. } => cwd.as_deref(),

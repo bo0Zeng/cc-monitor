@@ -21,8 +21,6 @@ fn idx_of(p: &JsonlLinePayload) -> usize {
     last.trim_end_matches(".jsonl").parse().unwrap()
 }
 
-// `buffered_local_session_ids` / `buffered_remote_sessions`〔散文墓碑〕那两条随函数删了（F5 对账改在各条订阅自己的重放里）。
-
 // === Batch5-F19：build_priority_chunks ===
 
 #[test]
@@ -368,12 +366,11 @@ fn the_two_tier_registration_leaves_no_trace_in_production() {
     );
     assert!(
         two_tier_hits(&guard_core::production_code(&format!(
-            "// 那条（`{}`〔散文{}〕）退役了\n",
-            two_tier_needles()[1],
-            "墓碑"
+            "// 那条（`{}`）退役了\n",
+            two_tier_needles()[1]
         )))
         .is_empty(),
-        "注释里的墓碑被当成了生产代码 —— 剥生产段没在跑"
+        "注释里提到的名字被当成了生产代码 —— 剥生产段没在跑"
     );
     let root = crate::guard_support::repo_root();
     let generated = root.join("src").join("generated"); // ts-rs 生成物不是手写的生产代码
@@ -1130,6 +1127,10 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
                 activity_tone: "now".into(),
                 activity_order: 1,
             },
+            naming: crate::session_book::NameCells {
+                label: "L".into(),
+                label_project: None,
+            },
             waiting_for: None,
         }),
         F::Container(b::SessionContainerPayload {
@@ -1172,6 +1173,8 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::TurnEnd(b::SessionTurnEndPayload {
             session_id: "s".into(),
+            title: "t".into(),
+            body: "b".into(),
         }),
     ];
     let key = |f: &F| -> String {
@@ -1493,8 +1496,15 @@ async fn a_turn_end_reaches_that_machines_subscribers_of_that_session_without_cr
     );
     r.ready_point(None).await;
     rec.clear();
-    r.on_turn_end(&local(), "a".to_string());
-    let got: Vec<(String, String)> = rec
+    r.on_turn_end(
+        &local(),
+        crate::ui_contract::SessionTurnEndPayload {
+            session_id: "a".into(),
+            title: "T".into(),
+            body: "B".into(),
+        },
+    );
+    let got: Vec<(String, String, String, String)> = rec
         .0
         .lock()
         .unwrap()
@@ -1503,16 +1513,20 @@ async fn a_turn_end_reaches_that_machines_subscribers_of_that_session_without_cr
             items.iter().filter_map(move |i| match i {
                 WItem::Frame { body, .. } => {
                     let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                    Some((
-                        label.clone(),
-                        v.get("turn_end")?["session_id"].as_str()?.to_string(),
-                    ))
+                    let t = v.get("turn_end")?;
+                    let s = |k: &str| t[k].as_str().map(str::to_string);
+                    Some((label.clone(), s("session_id")?, s("title")?, s("body")?))
                 }
                 _ => None,
             })
         })
         .collect();
-    assert_eq!(got, vec![("w".to_string(), "a".to_string())]);
+    let want = |s: &str| s.to_string();
+    assert_eq!(
+        got,
+        vec![(want("w"), want("a"), want("T"), want("B"))],
+        "标题与正文原样带进界面"
+    );
 }
 
 /// 造好的 Codex 样本真走过后端 watcher 的那几帧（`tests/__fixtures__/codex-session-stream.golden.jsonl`，后端
@@ -1529,7 +1543,7 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
         match parse_frame(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}")) {
             InboundFrame::SessionAdded { sid, path, .. } => added.push((sid, path)),
             InboundFrame::Line { .. } => lines += 1,
-            InboundFrame::TurnEnd { sid } => ends.push(sid),
+            InboundFrame::TurnEnd(turn) => ends.push(turn),
             _ => {}
         }
     }
@@ -1537,14 +1551,24 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
     let (sid, path) = &added[0];
     assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
     assert_eq!(lines, 4);
-    assert_eq!(ends, vec![sid.clone(), sid.clone()], "两轮各一次一轮结束");
+    let ended: Vec<&str> = ends.iter().map(|t| t.session_id.as_str()).collect();
+    assert_eq!(
+        ended,
+        vec![sid.as_str(), sid.as_str()],
+        "两轮各一次一轮结束"
+    );
+    assert!(
+        ends.iter()
+            .all(|t| !t.title.is_empty() && !t.body.is_empty()),
+        "通知那两行后端写好"
+    );
     let (r, rec) = hub();
     r.origin_seen(&local(), true);
     r.subscribe("w", 1, &local(), "session-lines", None, 0);
     r.ready_point(None).await;
     rec.clear();
-    for s in ends {
-        r.on_turn_end(&local(), s);
+    for t in ends {
+        r.on_turn_end(&local(), t);
     }
     let got: Vec<String> = rec
         .0

@@ -95,7 +95,7 @@ const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLBut
 const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-new").map((s) => s.body);
 
 const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2 }, { cwd: "/home/u/srv/billing", lastMs: 1 }], tmux: true, agents: ["claude"], fork: null };
-const OK = { outcome: "started", session: "orders-cc", sid: null, cmd: null, account: { name: "work", configDir: "/h/.cc/work", model: null }, agent: "claude", cwd: "/home/u/srv/orders" };
+const OK = { outcome: "started", session: "orders-cc", sid: null, cmd: null, account: { name: "work", configDir: "/h/.cc/work", model: null }, agent: "claude", cwd: "/home/u/srv/orders", prompt: null };
 
 beforeEach(() => {
   document.body.replaceChildren();

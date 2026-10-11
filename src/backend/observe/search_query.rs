@@ -929,11 +929,13 @@ fn session_row(
     } else {
         &entry.done.excerpt
     };
-    let title = search_rules::session_title(
-        ai_title.map(String::as_str),
-        first_user_excerpt,
-        &session_id,
-    );
+    // 全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
+    let (title, _) = search_rules::session_label(&search_rules::LabelFacts {
+        custom: None,
+        title: ai_title.cloned(),
+        first: first_user_excerpt.clone(),
+        project_dir: None,
+    });
     serde_json::json!({
         // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
         "agent": crate::agents::record_tree_kind().unwrap_or_default(),
@@ -945,9 +947,6 @@ fn session_row(
         "updatedAt": updated_at,
         "hitCount": hit_count,
         "hits": hits,
-        // 🔴 `K-R100`：**远端截断从此说得出话。** 收口前这一行不存在 ⇒ 一份
-        // `hitCount: 12, hits: []` 与「这个会话没什么可看的」在 monitor 与前端眼里同形，
-        // 而 `merge_search_results`〔散文墓碑〕逐字 `truncated: local.truncated` 把远端那一半整个丢掉。
         "hitsTruncated": session_starved,
     })
 }

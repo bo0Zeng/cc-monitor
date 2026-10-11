@@ -10,7 +10,7 @@ import androidx.compose.ui.platform.Clipboard
 
 /** 复制纯文本到系统剪贴板。 */
 suspend fun Clipboard.copyPlainText(text: String) {
-    setClipEntry(ClipEntry(ClipData.newPlainText("aterm", text)))
+    setClipEntry(ClipEntry(ClipData.newPlainText("cc-monitor", text)))
 }
 
 /** 读系统剪贴板首条纯文本（无则 null）。 */

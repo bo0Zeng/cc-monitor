@@ -24,8 +24,11 @@ pub(crate) const REPLY_LINES: usize = 3;
 
 /// 一轮。键名全称。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TurnRow {
     /// 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at: u64,
     /// 你那句的 uuid（跳过去用）。
     pub(crate) uuid: String,
@@ -72,6 +75,9 @@ pub(crate) struct TurnRow {
 
 /// 一段过程（一行）。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "FoldSegment"))]
 pub(crate) struct Fold {
     /// 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
     pub(crate) after: String,
@@ -79,6 +85,10 @@ pub(crate) struct Fold {
     pub(crate) parts: Vec<Part>,
     /// 那一行右端那一截。
     pub(crate) span: Span,
+    /// 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 本轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
+    /// 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
+    /// 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
+    pub(crate) until: Option<String>,
     /// 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
     pub(crate) phase: Phase,
     /// 这一段第一条 / 最后一条记录的时刻（右端那一截按它写，不出帧）。
@@ -93,6 +103,9 @@ pub(crate) struct Fold {
 
 /// 一轮 / 一段此刻的样子。
 #[derive(Debug, Default, Clone, Copy, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "TurnPhase"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Phase {
     #[default]
@@ -103,6 +116,9 @@ pub(crate) enum Phase {
 
 /// 过程行的一段字。
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "TurnPart"))]
 pub(crate) struct Part {
     pub(crate) text: String,
     pub(crate) tone: Tone,
@@ -113,9 +129,14 @@ pub(crate) use crate::common::cells::Tone;
 
 /// 右端那一截：字里若有 `{dur}`，界面填 `to − from`（`to` 缺 ⇒ 现在 − `from`，毫秒）的用时；别的照抄。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "TurnSpan"))]
 pub(crate) struct Span {
     pub(crate) text: String,
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) from: Option<i64>,
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) to: Option<i64>,
 }
 
@@ -261,8 +282,8 @@ impl TurnRow {
 }
 
 impl Open {
-    /// 收这一轮：合计 · 露着的 · 划段（每段的字与右端那一截）· 回复头。
-    fn close(mut self) -> TurnRow {
+    /// 收这一轮：合计 · 露着的 · 划段（每段的字 · 右端那一截 · 管到哪一条）· 回复头。`next` ＝ 下一轮你那句（还没有 ⇒ `None`）。
+    fn close(mut self, next: Option<&str>) -> TurnRow {
         if let Some(i) = self.stop.take() {
             self.items[i].shown = true;
         }
@@ -293,25 +314,28 @@ impl Open {
         let mut after = r.uuid.clone();
         let mut seg: Option<(Tally, String, String)> = None;
         let mut folds = Vec::new();
-        let flush =
-            |seg: &mut Option<(Tally, String, String)>, after: &str, folds: &mut Vec<Fold>| {
-                if let Some((tally, start, end)) = seg.take() {
-                    if let Some(parts) = tally.parts() {
-                        folds.push(Fold {
-                            after: after.to_string(),
-                            parts,
-                            span: Span::default(),
-                            phase: Phase::Idle,
-                            start,
-                            end,
-                            start_text: String::new(),
-                        });
-                    }
+        let flush = |seg: &mut Option<(Tally, String, String)>,
+                     after: &str,
+                     until: Option<&str>,
+                     folds: &mut Vec<Fold>| {
+            if let Some((tally, start, end)) = seg.take() {
+                if let Some(parts) = tally.parts() {
+                    folds.push(Fold {
+                        after: after.to_string(),
+                        parts,
+                        span: Span::default(),
+                        until: until.map(str::to_string),
+                        phase: Phase::Idle,
+                        start,
+                        end,
+                        start_text: String::new(),
+                    });
                 }
-            };
+            }
+        };
         for it in &self.items {
             if let (true, Some(u)) = (it.shown, it.uuid.as_ref()) {
-                flush(&mut seg, &after, &mut folds);
+                flush(&mut seg, &after, Some(u), &mut folds);
                 r.shown.push(u.clone());
                 after = u.clone();
                 continue;
@@ -327,7 +351,7 @@ impl Open {
         }
         let open_tail = seg.is_some();
         let before = folds.len();
-        flush(&mut seg, &after, &mut folds);
+        flush(&mut seg, &after, next, &mut folds);
         r.tail_fold = open_tail && folds.len() > before;
         r.folds = folds;
         // 右端那一截带钟面 ⇒ 答的那一下随钟面一起写（[`TurnRow::stamp`]）。
@@ -612,7 +636,7 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                         ..
                     } => t.agent_runs.extend(from),
                     Speaker::AgentMessage { .. } | Speaker::PeerSession { .. } => it.peers += 1,
-                    Speaker::CompactSummary => it.compacts += 1,
+                    Speaker::CompactSummary { .. } => it.compacts += 1,
                     Speaker::Interrupt => {
                         t.stop = uuid.map(|_| here);
                         t.row.done = true;
@@ -691,14 +715,14 @@ impl TurnScan {
                 .unwrap_or("");
             let closed = self.open.take().map(|mut t| {
                 t.row.done = true;
-                let said = speech.trim();
+                let text = speech.trim();
                 t.row.landed = t
                     .queued
                     .iter()
-                    .filter(|(_, q)| q == said)
+                    .filter(|(_, q)| q == text)
                     .map(|(id, _)| id.clone())
                     .collect();
-                t.close()
+                t.close(Some(&said.uuid))
             });
             self.open = Some(Open {
                 row: TurnRow {
@@ -729,7 +753,7 @@ impl TurnScan {
     }
 
     pub(crate) fn finish(self) -> Option<TurnRow> {
-        self.open.map(Open::close)
+        self.open.map(|t| t.close(None))
     }
 }
 

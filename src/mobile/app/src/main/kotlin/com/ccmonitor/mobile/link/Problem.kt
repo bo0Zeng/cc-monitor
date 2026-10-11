@@ -7,7 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.LinkOutcome
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.OneShotOutcome
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 
 /**
  * 屏上那一句 ＋ 复制详情。核心写好的失败（[CoreFailure]）原样：`message` 上屏、`detail` 进详情；

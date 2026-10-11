@@ -527,7 +527,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
 /// 逼人回来给新变体配判据。（同族：`tmux_backend_gate_guard` 的硬编码文件表。）
 #[test]
 fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
-    // 🔴 〔步 7c 剖分 2026-09-19〕**两个语料分开了。**
+    // 🔴 **两个语料分开了。**
     //
     // 原来只有一份 `raw`（那份生产文件的**全文**，含 `#[cfg(test)]` 段），
     // 生产面与判据面都从它取 —— 那成立的前提是**判据与生产代码同住一份文件**。

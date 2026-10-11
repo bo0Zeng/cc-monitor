@@ -506,6 +506,7 @@ fn local_req(it: &Item, b: &Batch, tmux: Option<String>) -> local::LocalLaunchRe
         tmux_name: tmux,
         default_launcher: b.default_launcher.clone(),
         preset_args: Vec::new(),
+        model: None,
     }
 }
 

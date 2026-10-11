@@ -14,6 +14,10 @@ data class TurnEnd(
     val sid: String,
     /** 这一轮最后那条记录的 uuid。 */
     val uuid: String,
+    /** 通知的标题（后端写好的字，照抄；叫这条会话什么由后端定）。 */
+    val title: String,
+    /** 通知的正文（后端写好的字，照抄）。 */
+    val body: String,
 ) {
     companion object {
         const val KIND: String = "turn_end"
@@ -21,9 +25,8 @@ data class TurnEnd(
         /** 不是 `turn_end` 或缺格 ⇒ `null`。 */
         fun of(frame: Map<String, Any?>): TurnEnd? {
             if (frame.str("kind") != KIND) return null
-            val sid = frame.str("session_id") ?: return null
-            val uuid = frame.str("uuid") ?: return null
-            return TurnEnd(sid, uuid)
+            val f = listOf("session_id", "uuid", "title", "body").map { frame.str(it) ?: return null }
+            return TurnEnd(sid = f[0], uuid = f[1], title = f[2], body = f[3])
         }
     }
 }
@@ -38,7 +41,7 @@ object TurnEnds {
 
     /**
      * 按会话各折各的（一条流管所有会话，整条流套 `debounce` 会让一条压掉另一条）：
-     * 静默满 [settleMs] 报最后那个 uuid；和这条会话上次报过的 uuid 一样 ⇒ 不再报。
+     * 静默满 [settleMs] 报最后那一帧；它的 uuid 和这条会话上次报过的一样 ⇒ 不再报。
      */
     fun rounds(
         frames: Flow<TurnEnd>,
@@ -47,11 +50,11 @@ object TurnEnds {
         channelFlow {
             val lock = Mutex()
             val timers = HashMap<String, Job>()
-            val latest = HashMap<String, String>()
+            val latest = HashMap<String, TurnEnd>()
             val reported = HashMap<String, String>()
             frames.collect { te ->
                 lock.withLock {
-                    latest[te.sid] = te.uuid
+                    latest[te.sid] = te
                     timers.remove(te.sid)?.cancel()
                     timers[te.sid] = launch { settle(te.sid, settleMs, lock, timers, latest, reported) }
                 }
@@ -63,17 +66,17 @@ object TurnEnds {
         settleMs: Long,
         lock: Mutex,
         timers: MutableMap<String, Job>,
-        latest: MutableMap<String, String>,
+        latest: MutableMap<String, TurnEnd>,
         reported: MutableMap<String, String>,
     ) {
         delay(settleMs)
         val round =
             lock.withLock {
                 timers.remove(sid)
-                val uuid = latest.remove(sid) ?: return
-                if (reported[sid] == uuid) return
-                reported[sid] = uuid
-                TurnEnd(sid, uuid)
+                val last = latest.remove(sid) ?: return
+                if (reported[sid] == last.uuid) return
+                reported[sid] = last.uuid
+                last
             }
         send(round)
     }

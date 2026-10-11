@@ -65,7 +65,7 @@ declare global {
  * 🔴 这里原先还有一份硬写的 `const APPLIED_FLOOR = 24`（`applyIntrinsicSize` 里那个
  * `Math.max(24, …)` 的**第二份副本**）。2026-09-18 地板去掉之后，"真正写进 style 的数"
  * 收成了一个住址：`appliedIntrinsicPx`（`src/frontend/ui/height-estimate.ts`），本文件**调它**而不再抄它
- * —— 抄的那份改源码不会跟着变，探针会安静地在量一个不再出货的配置（`99 条 75` 第 3 处）。
+ * —— 抄的那份改源码不会跟着变，探针会安静地在量一个不再出货的配置。
  */
 const CSS_FALLBACK_PX = 120;
 
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
   // `card-api-retry` 的 style 里写的那个数（走 `appliedIntrinsicPx`，与生产同一条路）。
   // 为什么要这样：悬案③ 那一段要的是「视口外每张 retry 实际占多少」，而它此前是去 B 段
   // 找 `declared === 24` 那一格读的 ⇒ 常数/地板一改，那一格还在，只是**不再是出货的配置**，
-  // 于是整段安静地绿着量一个不存在的世界（`99 条 75` 落地清单第 5 处点名的就是这一形）。
+  // 于是整段安静地绿着量一个不存在的世界。
   // 现在这一格跟着源码走，改了估高它自己就跟着动。
   const shippedRetryPx = rows.find((r) => r.cls === "card-api-retry")?.estApplied ?? null;
   const cases: [string, string, number | null][] = [

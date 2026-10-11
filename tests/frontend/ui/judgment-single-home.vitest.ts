@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -195,7 +195,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "session id 形状",
     // 唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
     //   `branch_core::is_plain_sid` 成它的再导出（那个再导出随 branch-core 收进后端删了，调用方直呼这一条）；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
-    //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给仓外 aterm。
+    //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给手机端。
     //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
     homes: ["shell-quote-core::session_id_ok", "src/backend/control/resolve_query.rs::is_valid_session_id"],
     status: "zero",
@@ -588,6 +588,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "「实现只一处」：同一种值只许一种样子",
   },
+  J32: {
+    what: "计数（几个字 · 几条 ⇒ 给人看的一格：每三位一个逗号）",
+    homes: ["copy-core::count_text"],
+    // 认可的双读口（同 J31）：成品里的计数核心写好（压缩摘要的字数）；界面那一个读口 `format.ts::countText` 只给现数现写的那几处
+    //   （终端页输入框的字数），同一份金样。从前两处各用 `toLocaleString`（一处不指定语言、一处 en-US）。
+    status: "mirror",
+    defs: ["countText"],
+    gone: [],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/count-text.golden.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/count-text.vitest.ts"],
+    },
+    why: "「实现只一处」：同一种值只许一种样子",
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -652,6 +667,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     short_duration: "J28",
     rel_duration: "J28",
     size_text: "J31",
+    count_text: "J32",
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
@@ -1266,6 +1282,6 @@ describe("DUP1 判定只有一个家", () => {
     // `mirror` 的要求形状：认得出两种、认不出空话。
     expect(DESIGN_ADDRESS.test("「失败要显式、归因要准确」")).toBe(true);
     expect(DESIGN_ADDRESS.test("INVARIANTS §47")).toBe(true);
-    expect(DESIGN_ADDRESS.test("主会话拍")).toBe(false);
+    expect(DESIGN_ADDRESS.test("当时拍板")).toBe(false);
   });
 });

@@ -434,7 +434,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "落点常量后只跟本侧旗标（`--<帧命令>` · `--stdin-line` · 资产目录两旗）",
     ),
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
     // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
     // 就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）· 键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
     (
@@ -592,6 +591,3 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         "这些文件有外部值只靠 quote、没过放行判定：{open:?}"
     );
 }
-
-// `every_read_of_the_backend_path_field_is_registered`〔散文墓碑〕 与它的登记表删了：`RemoteConfig` 没有 `backend_path` 这一格了
-//   （落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`），「裸读那个字段」这一形编译期就不存在。

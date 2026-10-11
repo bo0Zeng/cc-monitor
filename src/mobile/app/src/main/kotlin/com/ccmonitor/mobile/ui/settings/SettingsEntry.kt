@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.settings
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.nav.Screen
 
 /**
@@ -25,10 +26,10 @@ data class SettingsEntry(
  */
 fun settingsEntries(): List<SettingsEntry> =
     listOf(
-        SettingsEntry(SECTION_TERMINAL, "自定义按钮（全局）", Screen.ButtonSettings.route),
+        SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.buttons"), Screen.ButtonSettings.route),
         // 身份从服务器列表里进；这里给的是到服务器列表那一跳。
-        SettingsEntry(SECTION_TERMINAL, "服务器与身份", Screen.Hosts.route),
+        SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.hosts"), Screen.Hosts.route),
     )
 
 /** 节标题就叫「终端」，不叫「高级」「更多」：找终端的人应该直接看见这两个字。 */
-const val SECTION_TERMINAL = "终端"
+val SECTION_TERMINAL: String get() = copyText("mobSettings.section.terminal")

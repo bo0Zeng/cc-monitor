@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.link
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

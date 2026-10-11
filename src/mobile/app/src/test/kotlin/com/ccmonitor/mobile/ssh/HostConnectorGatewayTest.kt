@@ -328,7 +328,7 @@ class HostConnectorGatewayTest {
          * | `core-ssh/…/di/SshModule.kt` | 它的 Koin 定义处（`single { SshConnectionManager(get()) }`） |
          * | `core-ssh/…/CommandChannel.kt` | `commandChannel` / `commandExecutor` 两支扩展函数（接收者隐式，按 `manager.` 扫看不见它） |
          * | `app/…/ssh/HostConnector.kt` | 网关 |
-         * | `app/…/AtermApp.kt` | `probeAndReconnectStale` 接线（前台跟踪 ⇒ 后台重连，不是建/断） |
+         * | `app/…/CcMonitorApp.kt` | `probeAndReconnectStale` 接线（前台跟踪 ⇒ 后台重连，不是建/断） |
          * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 / `probeAndReconnectStale` |
          * | `app/…/ui/session/SessionViewModel.kt` | 通道工厂 + `sessions` |
          * | `app/…/ui/sftp/SftpScreen.kt` | 只有一行 import，供 KDoc 链接用；代码里不碰 |
@@ -337,7 +337,7 @@ class HostConnectorGatewayTest {
          */
         private val MANAGER_REACHABLE =
             setOf(
-                "app/src/main/kotlin/com/ccmonitor/mobile/AtermApp.kt",
+                "app/src/main/kotlin/com/ccmonitor/mobile/CcMonitorApp.kt",
                 KEEP_ALIVE,
                 GATEWAY,
                 SESSION_VM,

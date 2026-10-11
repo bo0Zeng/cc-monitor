@@ -24,10 +24,12 @@ use std::sync::OnceLock;
 pub const TABLE_JSON: &str = include_str!("../../../shared/copy/table.json");
 
 mod civil;
+mod count;
 mod duration;
 mod peer;
 mod size;
 pub use civil::civil_from_days;
+pub use count::count_text;
 pub use duration::{format_duration, format_elapsed, rel_duration, short_duration};
 pub use peer::{backend_old, local_machine, peer_machine, reply_unreadable};
 pub use reason::{io_reason, sftp_status_reason, spawn_reason};

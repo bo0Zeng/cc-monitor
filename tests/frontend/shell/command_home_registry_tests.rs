@@ -44,10 +44,6 @@ impl Own {
     }
 }
 
-// 「哪一路负责迁走它」那个闭集（`Lane`）收了：「待迁」最后一行 `launch_remote_terminal`〔散文墓碑〕随 ssh 外壳
-//   进本机后端（帧命令 `terminal-ssh`）清掉，再没有没迁完的行 ⇒ 变体一个不剩、枚举本身删掉。「待迁」表留着（今天为空，
-//   判据 1 仍两向：新长一条碰后端的 Tauri 命令 ⇒ 要么进「monitor 自己的事」写理由、要么进「待迁」写卡在哪）。
-
 /// 「monitor 自己的事」：命令 · 哪一类 · 理由。
 const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
@@ -229,23 +225,13 @@ const PENDING: &[(&str, &str)] = &[
     // 列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · 远端 `ccm` 探针。
-    // `launch_remote_terminal`〔散文墓碑〕迁走了：远端那一行（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端
-    //   `terminal-ssh` 渲（组请求走 `dial/machine.rs::resolve`），monitor 剩开窗 `open_terminal_window` 与交机器事实 `terminal_dial`
-    //   两条，进「monitor 自己的事」。「待迁」从此为空。
     // MIG-3a：资产与 D 组。
     // 别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
-    // `deploy_remote_acct_iso`〔散文墓碑〕 已迁：字节随后端二进制走（部署载荷只一种走法），装 · 链接 · 配置 · 记账
-    //   全在那台后端（`acct-iso-install`），界面只问它一次 ⇒ 从本表删（命令本身也删了）。
     // cc-bus 装 · 三态那两条 Tauri 命令已迁：进了那台后端（`cc-bus-install` / `-state`，今天只经扩展页的枢纽问）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
     //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
-    // `config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
-    //   monitor 只答它自己那台那几行的事实（`footprint_client_facts`，进「monitor 自己的事」）。
     // 漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
     //   monitor 自己那本（hello 里不认识的能力 token）随 hello 的 `capabilities` 一起删了。
-    // 会话正文四条（查看器整份读那一条 · `load_subagent` · `read_session_range` ·
-    //   `read_session_lines`〔散文墓碑〕）迁了：记录解释进了后端，界面经通道直问那台后端（`history-page` · `history-subagent` ·
-    //   `history-lines`，`src/frontend/ui/record-reads.ts`）。
     // 原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     // 公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。

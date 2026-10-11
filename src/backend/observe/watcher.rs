@@ -415,6 +415,14 @@ fn rewatch_agent_home(
     false
 }
 
+/// 这台的会话注解表（读不了 · 推不出家 ⇒ 空表：当没有改过名；历史清单那一路照旧说为什么）。
+fn annotations_table() -> crate::history::history_annotations::Table {
+    match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    }
+}
+
 /// 配置文件（`~/.cc-monitor/profiles.toml`）那道耳朵：盯它所在的目录（不递归；写它是「写旁名再换名上位」，盯文件本身换名之后就聋了）。
 /// 目录起步不在 ⇒ 先挂上一层，出现时重挂（与 `agent_home` 同一个函数）。
 pub(crate) struct ProfilesEar {
@@ -964,6 +972,9 @@ fn watch_loop(
         .map(|r| r.root.clone())
         .collect();
     state.launch_home = crate::platform::paths::data_home();
+    // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
+    let notes_path = crate::history::history_annotations::path();
+    state.annotations = annotations_table();
     // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
     state.set_book(book);
     // All frames go out through a FrameSink: a bounded-channel sender that counts
@@ -1020,6 +1031,11 @@ fn watch_loop(
         if let Some(ear) = profiles_ear.as_mut() {
             ear.arm(&mut debouncer);
         }
+        // 会话注解那份文件（改过的名）：与配置文件同一种耳朵（盯它所在的目录）。
+        let mut notes_ear = notes_path.clone().and_then(ProfilesEar::new);
+        if let Some(ear) = notes_ear.as_mut() {
+            ear.arm(&mut debouncer);
+        }
         // 「开着即活」那几家：记录根挂上 debouncer（读行；根还不在 ⇒ 等写者那道耳朵报它出现时再挂）＋ 写者那道耳朵。
         let mut writer_watch: Vec<(PathBuf, bool)> =
             writer_roots.iter().map(|r| (r.clone(), false)).collect();
@@ -1047,7 +1063,7 @@ fn watch_loop(
             ears,
             sock_dir_watched,
             accounts_ear,
-            profiles_ear,
+            (profiles_ear, notes_ear),
             (writer_watch, writer_ears),
         ))
     });
@@ -1057,7 +1073,7 @@ fn watch_loop(
         mut ears,
         mut sock_dir_watched,
         mut accounts_ear,
-        mut profiles_ear,
+        (mut profiles_ear, mut notes_ear),
         (mut writer_watch, _writer_ears),
     )) = armed
     else {
@@ -1120,6 +1136,12 @@ fn watch_loop(
                 if let Some(ear) = profiles_ear.as_mut() {
                     if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
                         sink.send(Frame::changed(Topic::Profiles, None, None, None));
+                    }
+                }
+                // 注解动了 ⇒ 重读，改了名的活会话各一帧 `session_status`。
+                if let Some(ear) = notes_ear.as_mut() {
+                    if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
+                        state.reload_annotations(annotations_table(), &mut sink);
                     }
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
@@ -1350,6 +1372,10 @@ fn watch_loop(
                     if let Some(ear) = profiles_ear.as_mut() {
                         ear.arm(&mut debouncer);
                     }
+                    if let Some(ear) = notes_ear.as_mut() {
+                        ear.arm(&mut debouncer);
+                    }
+                    state.reload_annotations(annotations_table(), &mut sink);
                     sink.send(Frame::changed(Topic::Accounts, None, None, None));
                 }
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
@@ -1427,9 +1453,81 @@ struct ReaderState {
     typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
     /// 起会话便条与账号记录住的那个家（`None` ⇒ 不认便条）。默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入。
     launch_home: Option<PathBuf>,
+    /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
+    annotations: crate::history::history_annotations::Table,
 }
 
 impl ReaderState {
+    /// 这台注解里给这条会话改的名。
+    fn custom_title(&self, sid: &str) -> Option<String> {
+        self.annotations
+            .get(sid)
+            .and_then(|e| e.custom_title.clone())
+    }
+
+    /// 此刻叫这条会话什么（[`crate::stream::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid。
+    fn name_face(&self, sid: &str) -> crate::stream::wire::NameFace {
+        let facts = self
+            .sessions
+            .values()
+            .find(|e| e.sid == sid)
+            .map(|e| e.facts.clone())
+            .unwrap_or_default();
+        crate::stream::wire::NameFace::of(&facts)
+    }
+
+    /// 改这条会话叫什么的那几样（`change` 回真 = 改了）；名字真变了 ⇒ 一帧 `session_status`（活动那几格照记着的带全）。
+    fn renamed(
+        &mut self,
+        sid: &str,
+        mut change: impl FnMut(&mut super::search_rules::LabelFacts) -> bool,
+        sink: &mut FrameSink,
+    ) {
+        let before = self.name_face(sid);
+        let mut status = None;
+        for e in self.sessions.values_mut().filter(|e| e.sid == sid) {
+            if change(&mut e.facts) {
+                status = Some((e.activity, e.waiting_for.clone()));
+            }
+        }
+        let Some((activity, waiting_for)) = status else {
+            return;
+        };
+        let name_face = self.name_face(sid);
+        if name_face != before {
+            sink.send(Frame::SessionStatus {
+                sid: sid.to_string(),
+                face: crate::stream::wire::ActivityFace::of(activity),
+                name_face,
+                waiting_for,
+                path: None,
+            });
+        }
+    }
+
+    /// 注解那份文件动了 ⇒ 换上新读的那张表，改了名的活会话各发一帧 `session_status`。
+    fn reload_annotations(
+        &mut self,
+        table: crate::history::history_annotations::Table,
+        sink: &mut FrameSink,
+    ) {
+        self.annotations = table;
+        let sids: std::collections::BTreeSet<String> =
+            self.sessions.values().map(|e| e.sid.clone()).collect();
+        for sid in sids {
+            let custom = self.custom_title(&sid);
+            self.renamed(
+                &sid,
+                |f| {
+                    let changed = f.custom != custom;
+                    f.custom = custom.clone();
+                    changed
+                },
+                sink,
+            );
+        }
+    }
+
     fn new(projects: PathBuf) -> Self {
         let mut st = Self::bare();
         // 家目录记录树那一家（判活认 pidfile）：根就是 `projects`。
@@ -1447,7 +1545,7 @@ impl ReaderState {
         if self.roots.iter().any(|r| r.kind == f.kind) {
             return;
         }
-        let by_writer = f.live == crate::agents::LiveBy::Writer;
+        let by_writer = f.live == crate::agents::LiveBy::HeldOpen;
         // 写者那一路认的路径是进程表里读出来的（规范化过）：根也照同一个规范化（`platform::writers::absolute`）。
         let root = crate::platform::writers::absolute(&f.root);
         self.add_root(f.kind, root, f.face, by_writer);
@@ -1530,6 +1628,7 @@ impl ReaderState {
             launch_home: None,
             branches: HashMap::new(),
             typed: HashMap::new(),
+            annotations: Default::default(),
         }
     }
 }
@@ -1539,7 +1638,7 @@ struct Root {
     kind: &'static str,
     root: PathBuf,
     face: crate::agents::RecordFace,
-    /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::Writer`]）。
+    /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::HeldOpen`]）。
     by_writer: bool,
     runs: crate::observe::runs::RunTrack,
 }
@@ -1572,6 +1671,13 @@ struct SessionEntry {
     /// ——modify 事件 diff，变了发 session_status 帧（远端红绿灯）。
     status: Option<String>,
     waiting_for: Option<String>,
+    /// 此刻在干什么（名字变了要再发 `session_status`，那一帧带全）。
+    activity: Option<crate::agents::SessionActivity>,
+    /// 叫这条会话什么的那几样（[`crate::stream::wire::NameFace`]）：宣告时从清单缓存与注解取，之后跟着读到的标题记录 · 第一句 · 注解改。
+    /// 不在看的会话行照读（只是不上流），这几样照记。
+    facts: super::search_rules::LabelFacts,
+    /// 客户端手里这条会话的记录路径（宣告时那一份；之后记录出现 · 换了一份就跟上，并发一帧 `session_status` 带它）。
+    path: Option<String>,
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -1579,7 +1685,7 @@ struct SessionEntry {
 pub struct ReadLine {
     pub seq: u64,
     pub raw: String,
-    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐 aterm `LineFramer`
+    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐手机端 `LineFramer`
     /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
     pub byte_offset: u64,
     /// 本行第一个字节在文件里的偏移（没有自己身份的记录拿它合成 id，`agents::line_id`）。
@@ -1746,7 +1852,7 @@ fn scan_new_lines(
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         consumed = complete_end as u64;
         // backend-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
-        // 累计原始字节（对齐 aterm `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
+        // 累计原始字节（对齐手机端 `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
         // 3 字节换 1 字节）会漂。每行的原始内容单独 lossy 解码（残行已在 tail 外，故整行 multibyte 完整、安全）。
         let mut pos = 0usize; // 相对 slice 的原始字节游标
         while pos < complete_end {
@@ -1757,7 +1863,7 @@ fn scan_new_lines(
                 .expect("complete region ends at a '\\n'");
             let content = &slice[pos..pos + nl]; // 行内容原始字节（不含 '\n'，可能尾随 '\r'）
             let line_end = pos + nl + 1; // 本行末尾（含 '\n'）在 slice 内的原始字节位
-                                         // raw = 内容解码 + 剥尾随 '\r'（对齐 aterm：raw 无 CRLF/无尾 \n；但 offset **计** `\r`）。
+                                         // raw = 内容解码 + 剥尾随 '\r'（对齐手机端：raw 无 CRLF/无尾 \n；但 offset **计** `\r`）。
             let text = String::from_utf8_lossy(content);
             let raw = text.strip_suffix('\r').unwrap_or(&text);
             let is_blank = raw.trim_start_matches('\u{feff}').trim().is_empty();
@@ -2131,6 +2237,27 @@ fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) -> bool {
     state.branches.entry(path_key(path)).or_default().push(fact)
 }
 
+/// 这条会话的记录路径定下来了 / 换了一份（读到的这一行不在客户端手里那份上）⇒ 记下，发一帧 `session_status` 带上它（活动那几格照记着的带全）。
+fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+    let mut status = None;
+    for e in state.sessions.values_mut().filter(|e| e.sid == session_id) {
+        if e.path.as_deref() != Some(path_str) {
+            e.path = Some(path_str.to_string());
+            status = Some((e.activity, e.waiting_for.clone()));
+        }
+    }
+    let Some((activity, waiting_for)) = status else {
+        return;
+    };
+    sink.send(Frame::SessionStatus {
+        sid: session_id.to_string(),
+        face: crate::stream::wire::ActivityFace::of(activity),
+        name_face: state.name_face(session_id),
+        waiting_for,
+        path: Some(path_str.to_string()),
+    });
+}
+
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
 /// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
@@ -2155,6 +2282,14 @@ fn send_line(
         .and_then(|f| f.turn_end)
         .and_then(|t| t(&line.raw))
         .filter(|_| !rec.in_run);
+    if let Some(body) = translated
+        .as_ref()
+        .and_then(|t| t.record.as_ref())
+        .map(|r| &r.body)
+    {
+        note_name(session_id, body, state, sink);
+    }
+    note_path(session_id, path_str, state, sink);
     let (record, cwd) = match translated {
         Some(mut t) => {
             state
@@ -2173,18 +2308,45 @@ fn send_line(
         seq: line.seq,
         record,
         cwd,
-        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐手机端 LineFramer）
         rid: rec.rid,
     });
-    // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
+    // **先 Line 后 TurnEnd**：对齐手机端 β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
     if let Some(uuid) = turn_uuid {
-        sink.send(Frame::TurnEnd {
-            session_id: session_id.to_string(),
+        sink.send(Frame::turn_end(
+            session_id.to_string(),
             uuid,
-        });
+            &state.name_face(session_id),
+        ));
     }
     (rec.changed, branch_changed)
+}
+
+/// 读到的一条记录若改了叫这条会话什么（标题记录 · 还没有第一句时人说的第一句）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
+/// 子运行的记录也经这里：子运行里的人话不是这条会话的第一句 —— 它们的记录在子运行自己的文件里、sid 认不到这条会话的账上。
+fn note_name(
+    sid: &str,
+    body: &crate::agents::record::Body,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    use crate::agents::record::Body;
+    let change = |f: &mut super::search_rules::LabelFacts| match body {
+        Body::Title { text, .. } if f.title.as_deref() != Some(text) => {
+            f.title = Some(text.clone());
+            true
+        }
+        Body::Said { who, .. } if f.first.is_empty() => match who.speech() {
+            Some(s) => {
+                f.first = super::search_rules::truncate_excerpt(&s, 120);
+                true
+            }
+            None => false,
+        },
+        _ => false,
+    };
+    state.renamed(sid, change, sink);
 }
 
 /// **从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
@@ -2380,13 +2542,14 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             entry.status = new_status.clone();
             entry.waiting_for = new_waiting.clone();
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
+            entry.activity = activity;
+            let name_face = crate::stream::wire::NameFace::of(&entry.facts);
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
                 face: crate::stream::wire::ActivityFace::of(activity),
+                name_face,
                 waiting_for: new_waiting,
-                // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
-                // Codex 会话时才发 heuristic。
-                liveness_confidence: None,
+                path: None,
             });
         }
         // pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
@@ -2452,8 +2615,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             status: meta_str("status"),
             waiting_for: meta_str("waitingFor"),
             activity,
-            // pidfile 是判活的权威 ⇒ 不标。
-            liveness_confidence: None,
         },
         state,
         sink,
@@ -2475,7 +2636,6 @@ struct Announce {
     status: Option<String>,
     waiting_for: Option<String>,
     activity: Option<crate::agents::SessionActivity>,
-    liveness_confidence: Option<String>,
 }
 
 /// 记一条活会话 ＋ 宣告它（判活那一路已经认定它活着）：记账 · 打标 · 挂 pidfd 看守 · 找它的记录 · `session_added` · 已有的行 / 运行表 / 主线外清单。
@@ -2486,6 +2646,29 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     } = a;
     // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
     let key_for_watch = key.clone();
+    // 先定位该 sid 的记录（Batch8-F25：帧要带 path 供 monitor 旁路快照；mtime 降序，first=当前活跃文件。
+    // 会话刚起还没写首行时为空 → path=None，此时无历史可拉，后续行天然从 tail 全量到达）。项目目录也从它来，没有记录 ⇒ cwd。
+    let jsonls = sid_jsonls(state, &sid);
+    let project_dir = jsonls
+        .first()
+        .and_then(|p| crate::agents::project_dir_of(p))
+        .or_else(|| a.cwd.clone());
+    // 叫它什么：同一个 sid 已经记着 ⇒ 接着用那一份（第二份 pidfile 不重扫）；否则记录里的标题 · 第一句走清单缓存（与历史清单同一份扫描），注解并上。
+    let facts = state
+        .sessions
+        .values()
+        .find(|e| e.sid == sid)
+        .map(|e| e.facts.clone())
+        .unwrap_or_else(|| {
+            let mut f = jsonls
+                .first()
+                .map(|p| super::history_query::label_facts_of(p))
+                .unwrap_or_default();
+            f.project_dir = f.project_dir.or_else(|| project_dir.clone());
+            f.custom = state.custom_title(&sid);
+            f
+        });
+    let name_face = crate::stream::wire::NameFace::of(&facts);
     state.sessions.insert(
         key,
         SessionEntry {
@@ -2493,6 +2676,9 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
             sid: sid.clone(),
             status: a.status,
             waiting_for: a.waiting_for.clone(),
+            activity: a.activity,
+            facts,
+            path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         },
     );
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
@@ -2511,10 +2697,6 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if announced {
         return wrote;
     }
-    // Batch8-F25：先定位该 sid 的记录（帧要带 path 供 monitor 旁路快照；
-    // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
-    // 此时无历史可拉，后续行天然从 tail 全量到达）。
-    let jsonls = sid_jsonls(state, &sid);
     // 历史不重放：先 prime（推进 cursor/seq 到当前完整行数 L，零行帧）—— 帧带 first 文件的 L 供客户端核快照拉全了没有，
     // 之后的新行 seq 从 L 起；`[0, L)` 由客户端经骨架 / 尾段补。
     let mut first_lines: Option<u64> = None;
@@ -2527,18 +2709,15 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     sink.send(Frame::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
-        liveness_confidence: a.liveness_confidence,
         background: a.background,
         attachable: a.attachable,
         cwd: a.cwd.clone(),
-        project_dir: jsonls
-            .first()
-            .and_then(|p| crate::agents::project_dir_of(p))
-            .or(a.cwd),
+        project_dir,
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
         face: crate::stream::wire::ActivityFace::of(a.activity),
+        name_face,
         waiting_for: a.waiting_for,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
@@ -2568,7 +2747,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
 
 // ============ 「开着即活」那一路：没有 pidfile 的那几家 ============
 //
-// 有进程开着一份会话记录写 ⇒ 这条会话活着（适配层 `RecordFace::held_open` 声明这一家是这样）。认写者看打开方式（`platform::writers`），
+// 有进程开着一份会话记录写 ⇒ 这条会话活着（适配层 `Adapter::live` ＝ `LiveBy::HeldOpen` 声明这一家是这样）。认写者看打开方式（`platform::writers`），
 // 不看进程名。扫进程表只在三种时候：记录根下新建 / 打开了一份还没认的记录（耳朵交的一批，一批一趟）· 起步与对齐（整树一趟）·
 // 内核事件队列溢出过（整树一趟）。摘除：写的那个进程退了（pidfd，与 pidfile 那一路同一个 `PidDied`）· 那份记录被写完关闭、
 // 复核已没人开着写。本平台认不出写者（`writers_of` 答 `None`）⇒ 什么都不宣告、什么都不摘（判不了，不冒充判过）。
@@ -2704,9 +2883,6 @@ fn announce_writer(
             status: None,
             waiting_for: None,
             activity: None,
-            // 「这个进程开着这份记录写」是系统给的事实，再挂上 pidfd 看守 ⇒ 与 pidfile 那一路同一档（不标）。
-            // 不确定的那一头是漏认（这一家要是中途关了记录，我们会当它走了），不是把死的认成活的。
-            liveness_confidence: None,
         },
         state,
         sink,

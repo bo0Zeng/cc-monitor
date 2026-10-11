@@ -122,6 +122,11 @@ function strOrNull(v: unknown, what: string): string | null {
   return str(v, what);
 }
 
+function numOrNull(v: unknown, what: string): number | null {
+  if (v === null || v === undefined) return null;
+  return num(v, what);
+}
+
 function bool(v: unknown, what: string): boolean {
   return typeof v === "boolean" ? v : bad(`${what} is not a boolean`);
 }
@@ -264,6 +269,7 @@ function cellOf(v: unknown, what: string): PlanCell {
       return {
         at: strOrNull(x.at, `${what}.signs[${i}].at`),
         atText: strOpt(x.atText, `${what}.signs[${i}].atText`),
+        atMs: numOrNull(x.atMs, `${what}.signs[${i}].atMs`),
         by: decodeWho(x.by, `${what}.signs[${i}].by`),
         reason: strOrNull(x.reason, `${what}.signs[${i}].reason`),
         refs: refsOf(x.refs, `${what}.signs[${i}].refs`),

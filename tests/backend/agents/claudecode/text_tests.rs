@@ -147,7 +147,7 @@ fn record_fields_decide_first() {
             json!({"isCompactSummary": true, "isVisibleInTranscriptOnly": true})
         )),
         UserText {
-            speaker: Speaker::CompactSummary,
+            speaker: Speaker::compact("甲乙摘要"),
             text: "甲乙摘要".into(),
             pasted: vec![]
         }
@@ -518,7 +518,7 @@ fn speech_is_what_the_human_said() {
         Some("!ls")
     );
     for s in [
-        Speaker::CompactSummary,
+        Speaker::compact("x"),
         Speaker::AgentTask,
         Speaker::System { body: None },
         Speaker::Coordinator { body: None },
@@ -646,7 +646,7 @@ fn the_index_kind_is_the_wire_kind() {
         Speaker::Coordinator { body: None },
         Speaker::AgentTask,
         Speaker::System { body: None },
-        Speaker::CompactSummary,
+        Speaker::compact("x"),
         Speaker::Interrupt,
         Speaker::ToolResult,
     ];
@@ -672,4 +672,12 @@ fn system_injections_carry_their_text() {
         body(&rec("<system-reminder>注入乙</system-reminder>", json!({}))).as_deref(),
         Some("<system-reminder>注入乙</system-reminder>")
     );
+}
+
+/// 压缩摘要那一种带写好的字数（按字数，每三位一个逗号：`copy_core::count_text`）。
+#[test]
+fn a_compact_summary_carries_its_written_char_count() {
+    let body = "字".repeat(1234);
+    let got = serde_json::to_value(Speaker::compact(&body)).unwrap();
+    assert_eq!(got, json!({"kind": "compactSummary", "charsText": "1,234"}));
 }

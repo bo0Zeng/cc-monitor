@@ -1,4 +1,5 @@
 // 远端配置数据层（纯数据，无 DOM）：config.json `remote` 段的类型 ＋ 读写 ＋ 反查 / 筛选纯函数。
+import type { ConfigPatched } from "./generated/ConfigPatched";
 import { loadConfig, patchConfig, type ConfigEdit } from "./config";
 import { commands } from "./ipc/commands";
 import type { MachineFault } from "./generated/MachineFault";
@@ -177,17 +178,18 @@ const REMOTE_HOST_FIELDS = [
   "user",
   "keyPath",
   "hostKeyFingerprint",
-  "hostKeyPinnedAt",
   "addresses",
   "jump",
   "resumeCommand",
   "connect",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
-/** 上面清单**漏掉**的字段（应为 `never`）。 */
+/**
+ * 上面清单**漏掉**的字段（应为 `never`）。`hostKeyPinnedAt` 不由界面写：壳写配置时跟着指纹盖上（`config.rs::stamp_pinned_day`），界面只读。
+ */
 type MissingField = Exclude<
   keyof RemoteHostConfig,
-  (typeof REMOTE_HOST_FIELDS)[number]
+  (typeof REMOTE_HOST_FIELDS)[number] | "hostKeyPinnedAt"
 >;
 // 漏了字段这一行就红，且 TS 的错误信息会把缺的字段名打出来。
 const _noMissingField: MissingField extends never ? true : MissingField = true;
@@ -240,9 +242,9 @@ export interface RemoteHostsPatch {
  */
 export async function patchRemoteConfig(
   patch: RemoteHostsPatch,
-): Promise<void> {
+): Promise<ConfigPatched> {
   const edits = remoteHostsEdits(patch);
-  if (edits.length > 0) await patchConfig(edits);
+  return edits.length > 0 ? await patchConfig(edits) : { pinned: [] };
 }
 
 /**

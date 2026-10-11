@@ -30,6 +30,8 @@ impl From<String> for Words {
 /// 后台有事在跑（不要人、也不是这会儿在干的那一步）。
 /// 出口按它选颜色，不按业务码自己判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub enum Tone {
     Plain,

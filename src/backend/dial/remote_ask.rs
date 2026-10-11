@@ -182,10 +182,12 @@ pub(crate) fn unreachable_message(machine: &str) -> String {
 /// 问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
 /// 参数（JSON 对象）一行写进它的 stdin，交回它 stdout 那一行 JSON（成品本身）。两台之间那几件的枢纽（`assets/hub.rs`）用它；
 /// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
+/// `tz` ＝ 看的人那一台的时区（引起这一趟的请求信封里那一格）：经 [`crate::TZ_FLAG`] 转给那台，它回的「几点」照它写。
 pub async fn ask_json(
     machine: &str,
     cmd: &str,
     args: &Value,
+    tz: &crate::Tz,
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<Value, Said> {
@@ -194,7 +196,12 @@ pub async fn ask_json(
         message: unreachable_message(machine),
     })?;
     let flag = crate::cli_flag(cmd);
-    let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
+    let zone = tz.iana_name();
+    let mut argv = vec![flag.as_str(), crate::STDIN_LINE_FLAG];
+    if let Some(z) = zone.as_deref() {
+        argv.extend([crate::TZ_FLAG, z]);
+    }
+    let line = command_line(&argv);
     let out = remote
         .run_coded(&r.dial, line, Some(format!("{args}\n")))
         .await

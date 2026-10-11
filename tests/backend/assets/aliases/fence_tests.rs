@@ -64,9 +64,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
                      而且它要保住 CRLF（fence.rs::detect_eol，`Layout::PowerShell` 那一臂）",
     },
-    // 墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
-    //   唯一**没有卸口**的一套）。那一步退役了（「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
-    //   选了 rc 只查不装）⇒ 这一套不再存在，账降一行；「装得进去卸不掉」那一格随之清零。盘上已有的那一块不读不删。
+    // 「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，选了 rc 只查不装 ⇒ 没有「装得进去卸不掉」的那一套。
     // ★★ **本件新加的那条路，就是这一行。**
     FenceShape {
         id: "local-posix-block",
@@ -441,10 +439,6 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
 // **规则只有一份** —— 拼接与落盘序列的判据
 // ═══════════════════════════════════════════════════════════════════════
 
-// 这里原来是落盘序列 `apply`〔散文墓碑〕的五条判据（相同不写 · 备份只给非空用户文件 ·
-//   读回不对就撤 · 撤的措辞只说真发生的事 · 读不出就不写）与它的内存落点。那一个序列删了（零调用方：用户文件经后端
-//   `files-put` 写，序列与这几条性质住后端 `control/files_write.rs::put_text` 与它的判据；远端 `ccm` 入口改走 `sftp::upload_verified`）。
-
 /// 两种排版都幂等；POSIX 块外一个字节都不动，PowerShell 保住 CRLF。
 #[test]
 fn splicing_is_idempotent_and_keeps_every_user_line() {
@@ -476,14 +470,12 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 
 /// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，远端 rc 那一份
 /// 也搬进了后者）的生产段里，「配对 ＋ 读回比对」的原语**零命中**。
-/// 正控换了：从前是本模块 `apply`〔散文墓碑〕里恰好一处 `verify_readback(`；那个序列删了
-/// （零调用方），「备份 · 原子替换 · 回读 · 回滚」今天只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
+/// 正控：「备份 · 原子替换 · 回读 · 回滚」只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
 /// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
 /// `block_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///
 /// 死值验：往 `account_aliases.rs` 的写别名文件那一跳里放回一行
 /// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
-/// 原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
     let root = crate::guard_support::repo_root().join("src/backend/assets/aliases");

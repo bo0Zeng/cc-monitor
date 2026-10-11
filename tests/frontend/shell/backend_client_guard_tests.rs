@@ -1,17 +1,12 @@
 //! 要求：「monitor 侧的 `backend/` 目录有一道宿主无关判据（禁 `AppHandle`/`State<`/`.emit(`）与一道平台无关判据」·
 //! 「壳里 `src/frontend/shell/src/backend/` 九份逐份回真住址、`backend` 目录名从壳里消失」。
 //!
-//! 从前本文件住 `backend/mod.rs` 的测试段（`backend_tests.rs`〔散文墓碑〕），人群是「`backend/` 目录下的全部 `.rs`」，
-//! 外加两条按目录认的登记（目录 == `BACKEND_FILES`〔散文墓碑〕两向 · 每份都住在 `control/` / `observe/` 能力线上）与一份层间方向判据
-//! （`backend_layering.rs`〔散文墓碑〕：`observe/` 早删了，只剩一条线）。目录没了 ⇒ 按目录认的三条随之退役；
-//! 宿主无关 · 平台无关两条**人群一个不少**：改成逐个点名的那一组（[`GUARDED`]），两向钉住「点名的都在」。
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 从前 `backend/` 目录那一组（今天都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
 /// 删了的两份（`tmux.rs` · `gate2_parity.rs`，子步 1）不在。**加一份调后端的客户端 / 宿主进来就在这里加一行。**
 const GUARDED: &[&str] = &[
-    // `agent_profile_parity.rs` 出列：monitor 那份适配表删了，对拍随家进了后端 `agents_tests.rs`。
     "src/frontend/shell/src/backend_control.rs",
     "src/frontend/shell/src/cc_bus.rs",
     "src/frontend/shell/src/frame_query.rs",

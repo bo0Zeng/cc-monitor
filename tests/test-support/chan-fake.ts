@@ -51,8 +51,7 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 // 会话读面三条（骨架索引 · 大纲清单 · 会话内查找）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 这三条从前是三条 Tauri 命令（`read_session_index` / `list_user_inputs` / `find_in_session`〔散文墓碑〕），
-// 判据按命令名答话、按旧形参断言。今天它们是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
+// 这三问从前是三条 Tauri 命令，判据按命令名答话、按旧形参断言。今天它们是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 那一问的参数」，把判据手里那份回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体的键名是 `src/frontend/ui/session-reads.ts` 发的那几个，成品的键名是后端 `read_face.rs` 出的那几个
 //   （跨语言金样 `tests/__fixtures__/session-reads.golden.json` 钉着两侧）。
@@ -236,8 +235,7 @@ export function withSessionReads(
 // 会话正文那四问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 从前是四条 Tauri 命令（查看器整份读那一条 · `read_session_range` · `read_session_lines` · `load_subagent`〔散文墓碑〕），
-// 判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
+// 这四问从前是四条 Tauri 命令，判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
 // `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/frontend/ui/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
 
@@ -321,8 +319,7 @@ export async function recordReadReply(
 // 账号那两问（清单 · 信任预检）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它们从前是三条 Tauri 命令（`list_remote_accounts` / `list_local_accounts` / `check_account_trust`〔散文墓碑〕），
-// 判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
+// 它们从前是三条 Tauri 命令，判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
 // 今天它们是一发 `chan_call`（op = `accounts-list` / `accounts-trust`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
@@ -430,7 +427,6 @@ export function withAccountReads(
 // 历史清单与注解改走通道（问本机常驻后端）之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 注解那几问从前是 Tauri 命令（`update_history_metadata` / `list_last_accounts`〔散文墓碑〕），判据按命令名答话、回旧回包的形状。
 // 今天：改注解 / 上次账号表 / 删会话连带删注解 = `history-annotate` / `history-last-accounts` / `history-forget`。
 // ⇒ 本节把这几发译回「哪一问 ＋ 旧形参」，把判据手里那份旧回包译成**本机后端的成品字节**（或通道的失败）。
 // ⚠ 请求体键名是 `src/frontend/ui/history-reads.ts` 发的那几个；旧回包里缺的格按旧消费侧的读法补齐（缺 ⇒ `null` / 缺省）。
@@ -556,8 +552,7 @@ export function withHistoryReads(
 // tmux 控制类（杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它们从前是三条 Tauri 命令（`kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕），
-// 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `kill` / `launch`）⇒ 本节把一发 `chan_call`
+// 它们从前是三条 Tauri 命令，判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `kill` / `launch`）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/tmux-control.ts` 发的那几个，成品键名是后端那三个构造器出的那几个
 //   （跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着两侧）。
@@ -624,14 +619,6 @@ export function killCallsOf(calls: ReadonlyArray<readonly unknown[]>): [string, 
     });
 }
 
-// ─── cc-bus 驾驶舱写面那几发（`src/frontend/ui/cc-bus-control.ts`）───
-// 它们从前是五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` / `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕），
-// 驾驶舱的 DOM 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `bus-list` / `bus-send` / `bus-kill` / `bus-spawn` /
-// `bus-broadcast`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**。
-// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/cc-bus-control.ts` 发的那几个，成品键名是后端那几个构造器出的那几个
-//   （跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 钉着两侧）。
-// ⚠ 查在线是**唯一译不回旧形参的一格**：`bus-list` 的请求体里没有 id（问的是整份名单，挑人在界面）⇒ 旧形参只剩 `{origin}`，
-//   替身回 `{<id>: true | false | null}`（每人一格 `live`），本节把它铺成名单。
 
 /**
  * 一个「按旧命令名答话」的 `invoke` 替身 ⇒ 生产 `invoke` 该有的样子：cc-bus 那几发 `chan_call` 译过去再译回来，其余一切原样交给它。
@@ -714,7 +701,6 @@ export function ccBusControlShim(
 // 起会话那两问（那一行 `ccm …`）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 判据按旧命令名答话（`render_ccm_launch` · `resume_history_session` / `new_local_session` / `render_local_attach`〔散文墓碑〕）。
 // 今天是一发 `chan_call`（op = `launch-render-cli` · `launch-local`）⇒ 本节把那一发译回旧名字交给判据手里的 `invoke` 替身：
 // - 那一行：替身回串 ⇒ `{cmd}`；没答 ⇒ 一个认得出的中性替身 `ccm <rendered:请求>`；抛 ⇒ 对端拒（码 `refused`，原话）。
 // - 本机起会话：按 `action.kind` 译回三条旧命令之一（旧形参），回 `{cmd, account}`；
@@ -793,7 +779,6 @@ export function launchRenderShim(
 // 「这几个会话各在哪个 tmux 会话里」改问那台后端之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 判据手里的替身仍按旧名字（本机 `list_local_tmux` · 远端 `list_remote_tmux`〔散文墓碑〕）答一份 tmux 名单（`{name, command?, agent?, sid?}[] | null`）；
 // 替身扮那台后端，从那份名单现算 `sessions-where` 的成品。
 /**
  * `sessions-where`（这几个会话各在哪个 tmux 会话里）：替身扮那台后端答 —— 从判据手里那份 tmux 名单（同上一节的旧名字）现算，

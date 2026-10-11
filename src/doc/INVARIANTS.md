@@ -356,7 +356,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 界面那份 IR 与两个渲染器都已删，理由是起会话只剩一处。今天：monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定，外层容器只包这一行。**表达不了就放弃**照旧：渲不出 ⇒ 回码 `refused` 带那一句，调用方不回落、不拼第二条。
 
-**谁在守**：`launch_cli_parity_tests.rs::every_monitor_launch_path_hands_over_one_ccm_line` · `local_tests.rs::every_local_launch_shape_is_one_ccm_line` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给仓外 aterm 冻结的 `resolve_query.rs`）。
+**谁在守**：`launch_cli_parity_tests.rs::every_monitor_launch_path_hands_over_one_ccm_line` · `local_tests.rs::every_local_launch_shape_is_one_ccm_line` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给手机端冻结的 `resolve_query.rs`）。
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
@@ -414,7 +414,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 用户原话：「我的目的就是把本地当成不走 ssh 的远端。后面都要这么搞。」凡新增「起会话 / 看会话 / 管配置」的能力，先问它能不能只是远端那条路少一跳 ssh；能，就不许另起一套。本机与远端是同一个后端二进制、同一套帧命令，差别只在载体（本机：本人套接字 / 管道；远端：SSH 上的链路）。
 
-**功能面也要一致**（用户 2026-07-29：「本地的功能要和远程功能一致」）：新能力必须同时落在本机与远端，或者显式登记为天然不对称并写理由。既有缺口逐条登记、按节奏还。天然不对称的：端口转发（本地没有「转发到自己」）· 多地址故障切换（本地没有地址）· 本机那份后端由宿主启动时自己释放、不经部署命令。Windows 本机是唯一的平台例外（没有 tmux；起会话走直路，§36）。
+**功能面也要一致**（「本地的功能要和远程功能一致」）：新能力必须同时落在本机与远端，或者显式登记为天然不对称并写理由。既有缺口逐条登记、按节奏还。天然不对称的：端口转发（本地没有「转发到自己」）· 多地址故障切换（本地没有地址）· 本机那份后端由宿主启动时自己释放、不经部署命令。Windows 本机是唯一的平台例外（没有 tmux；起会话走直路，§36）。
 
 **谁在守**：`parity_ledger`（Tauri 命令逐条：两侧都有，或在白名单里带理由；新增不登记就红）。
 

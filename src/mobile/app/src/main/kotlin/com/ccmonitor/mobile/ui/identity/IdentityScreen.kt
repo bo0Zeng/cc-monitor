@@ -33,8 +33,11 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
+import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -52,6 +55,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val tokens = LocalAppTokens.current
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
 
     // 身份生成/导入反馈：成功/失败弹提示，Working 时盖 loading。
     val op by vm.op.collectAsState()
@@ -62,7 +66,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
                 vm.ackOp()
             }
             is IdentityOp.Failed -> {
-                Toast.makeText(context, "失败: ${o.message}", Toast.LENGTH_LONG).show()
+                snackbar.show(Notice(copyText("mobIdentity.op.failed"), o.message))
                 vm.ackOp()
             }
             else -> {}
@@ -74,7 +78,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
         Column(Modifier.fillMaxSize()) {
             // 返回键与 `ButtonSettingsScreen` 同一写法。
             TextButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp, top = 8.dp)) {
-                Text("← 返回")
+                Text(copyText("mobKit.act.back"))
             }
             Text(
                 text = IDENTITY_SCREEN_TITLE,
@@ -84,7 +88,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
             if (identities.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     // 文案说差别、不说算法名（下面的选择框同理）。
-                    Text("还没有钥匙。点 + 新配一把，或者把别处已有的搬进来。", color = tokens.textFaint)
+                    Text(copyText("mobIdentity.list.empty"), color = tokens.textFaint)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -138,7 +142,7 @@ private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
     if (showGenerate) {
         NewIdentityDialog(
             // 说差别不说算法名：硬件那一档的差别是私钥出不了这台手机。
-            title = "新配一把，装在这台手机的保险箱里",
+            title = copyText("mobIdentity.new.hardwareTitle"),
             onDismiss = { showGenerate = false },
             onCreate = { label ->
                 vm.generateEcdsa(label)
@@ -149,7 +153,7 @@ private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
     if (showGenerateEd25519) {
         NewIdentityDialog(
             // 软件那一档的差别是能导出来备份。
-            title = "新配一把软件的钥匙（能导出来备份）",
+            title = copyText("mobIdentity.new.softwareTitle"),
             onDismiss = { showGenerateEd25519 = false },
             onCreate = { label ->
                 vm.generateEd25519(label)
@@ -179,15 +183,15 @@ private fun IdentityRow(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除身份") },
+            title = { Text(copyText("mobIdentity.delete.title")) },
             text = { Text(identityDeleteWarning(identity.label, identity.isKeystoreBacked())) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(copyText("mobIdentity.delete.ok"), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
     Column(
@@ -211,8 +215,8 @@ private fun IdentityRow(
             overflow = TextOverflow.Ellipsis,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onCopy) { Text("复制公钥") }
-            TextButton(onClick = { showDeleteConfirm = true }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            TextButton(onClick = onCopy) { Text(copyText("mobIdentity.row.copyKey")) }
+            TextButton(onClick = { showDeleteConfirm = true }) { Text(copyText("mobIdentity.row.delete"), color = MaterialTheme.colorScheme.error) }
         }
     }
 }
@@ -225,10 +229,10 @@ internal fun identityDeleteWarning(
     label: String,
     keystoreBacked: Boolean,
 ): String =
-    buildString {
-        append("删除身份「$label」？引用它的主机将无法连接。")
-        if (keystoreBacked) append("这是硬件密钥（Android Keystore/TEE），私钥将被不可恢复地销毁。")
-        append("此操作不可撤销。")
+    if (keystoreBacked) {
+        copyText("mobIdentity.delete.bodyKeystore", "label" to label)
+    } else {
+        copyText("mobIdentity.delete.body", "label" to label)
     }
 
 @Composable
@@ -245,12 +249,12 @@ private fun NewIdentityDialog(
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
-                label = { Text("名称") },
+                label = { Text(copyText("mobIdentity.new.name")) },
                 singleLine = true,
             )
         },
-        confirmButton = { TextButton(onClick = { onCreate(label) }) { Text("生成") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { onCreate(label) }) { Text(copyText("mobIdentity.new.create")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -264,18 +268,18 @@ private fun IdentityChooserDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         // 上屏叫「钥匙」不叫「身份」：「身份」会与账号身份撞（同 `IDENTITY_SCREEN_TITLE`）。
-        title = { Text("添一把钥匙") },
+        title = { Text(copyText("mobIdentity.add.title")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 // 说差别不说算法名：硬件那一档私钥出不了这台手机，软件那一档能导出来备份。
-                TextButton(onClick = onGenerate) { Text("新配一把，装在这台手机的保险箱里（更安全）") }
-                TextButton(onClick = onGenerateEd25519) { Text("新配一把软件的（能导出来备份）") }
+                TextButton(onClick = onGenerate) { Text(copyText("mobIdentity.add.hardware")) }
+                TextButton(onClick = onGenerateEd25519) { Text(copyText("mobIdentity.add.software")) }
                 // 格式判别交给解析，不让用户判。
-                TextButton(onClick = onImport) { Text("把别处已有的一把搬进来") }
+                TextButton(onClick = onImport) { Text(copyText("mobIdentity.add.import")) }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -289,32 +293,32 @@ private fun ImportPrivateKeyDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         // 格式判别交给解析，不让用户判 PEM / OpenSSH。
-        title = { Text("把别处的一把钥匙搬进来") },
+        title = { Text(copyText("mobIdentity.import.title")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
-                    label = { Text("给它起个名字") },
+                    label = { Text(copyText("mobIdentity.import.name")) },
                     singleLine = true,
                 )
                 OutlinedTextField(
                     value = pem,
                     onValueChange = { pem = it },
-                    label = { Text("粘贴那段私钥") },
+                    label = { Text(copyText("mobIdentity.import.pem")) },
                     minLines = 4,
                     maxLines = 8,
                 )
                 // 注意：带口令的私钥解不开。不说的话失败会表现成「贴进去了但进不去那台机器」。
                 Text(
-                    "带口令保护的那种今天还认不了 —— 先在原来那台机器上把口令去掉。",
+                    copyText("mobIdentity.import.noPassphrase"),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onImport(label, pem) }, enabled = pem.isNotBlank()) { Text("搬进来") }
+            TextButton(onClick = { onImport(label, pem) }, enabled = pem.isNotBlank()) { Text(copyText("mobIdentity.import.ok")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }

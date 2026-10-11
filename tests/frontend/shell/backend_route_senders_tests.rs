@@ -6,12 +6,6 @@
 ///
 /// # ⚠ 为什么这里是登记表而不是一句「都必须用分流器」
 ///
-/// 第一版是**手写的两条清单**（`backend_kill.rs` / `backend_send_keys.rs`）——
-/// Phase G 的 `/full-audit` 当场指出：同一个目录里**第三个**走后端的发送端
-/// `backend_launch.rs` 里的 `backend_send_into`〔散文墓碑〕（U8a-2c-1，早于本工作区；随就地 resume 迁到界面删了）**不在清单里**，
-/// 于是它自己 match 一整套 `CallError`、把**每一档**都折成「诚实降级」，
-/// 而调用方拿到降级就**回落到 TS 渲染的整串**（那条串没有 §34 的 Gate 2）。
-///
 /// ⇒ **一次 `wrong_owner`（门说「这不是本工具的会话」）会被回落成一条无门的 shell 路。**
 /// 那正是本模块开头声称要挡的「把被门拒绝洗成另一条路的成功」，
 /// **而它就发生在守卫脚下** —— 因为守卫的发现机制是手写清单。
@@ -29,8 +23,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
     //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
-    // `stream_source/` 那一行（08-08 扩面逮出的第四个发送端：`probe_backend`〔散文墓碑〕 里那条 `ping`，只渲染诊断串、不做回落决策）
-    //   摘了：测试连接搬进本机后端（`dial/probe.rs`），monitor 这一侧不再发那一问。
 
     // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
     //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
@@ -93,16 +85,12 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   经本机常驻后端那条流开到各远端的字节流）。它**没有第二条路可回落**（`D11`：不起代理进程、
     //   不进程内拨），失败只渲染成一句话；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
     ("link_mux.rs", Verdict::UsesRouter),
-    // ★ 〔条 66〕**第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
+    // ★ **第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
     //   monitor 问它 / 交它写 / 退出臂现问它，都经 `backend_policy.rs::exit_policy_call` 这一口。
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
-    // `apikey_remote.rs`〔散文墓碑〕那一行摘了：那一口（上游选择的帧面发送口）最后只剩起会话问 `launch-endpoint` 一个调用方，
-    //   起会话搬进后端之后零调用方、整个模块删了（界面经通道直问）。
     // `remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
-    // 「足迹」那一行（`footprint_remote.rs`〔散文墓碑〕）摘了：成品由那台后端出，界面经通道直问 `footprint-report`。
-    // `mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
     // ★ 资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),

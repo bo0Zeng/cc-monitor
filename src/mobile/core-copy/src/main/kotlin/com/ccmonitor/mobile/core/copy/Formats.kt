@@ -1,4 +1,4 @@
-package com.ccmonitor.mobile.core.ui.copy
+package com.ccmonitor.mobile.core.copy
 
 /**
  * 大小（字节 ⇒ 给人看的一格）：与核心 `copy_core::size_text` · 桌面 `format.ts::sizeText` 同一个写法，

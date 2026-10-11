@@ -141,11 +141,6 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
     );
 }
 
-// 这里原住着那四格「monitor 侧四层落地」的落地探针与它的反向自检：
-//   `a_capability_line_has_landed` · `layer_has_landed_at` · `the_capability_line_landing_probe_actually_bites`〔散文墓碑〕。
-//   它们只服务 ARCHITECTURE 那张进度表；那张表退役（架构文档不放进度，进度住），四格人群为空，
-//   探针连同自检一起删 —— 留着就是一条没人喂的恒真判据。量法与普查行同拍删（`STATUS_CELLS` / `MEASURE_CENSUS`）。
-
 /// **`doc/` 里点名的代码符号必须解析得到，且住在文档说的那个文件里。**
 ///
 /// **为什么建它**：08-06 把本会话逮到的每一处文档/计划腐坏按机制归了族，主力是
@@ -182,7 +177,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 
     // ── 收全仓声明：符号名 → 它出现在哪些文件名里
     let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-    // 🔴 〔搬树 2026-09-18 ·  纪律 3〕**第四棵：`tests`。**
+    // 🔴 **第四棵：`tests`。**
     //    `doc/` 点名的符号里有一整批是**判据名**（`INVARIANTS.md` 那几行逐字
     //    「由某某 `every_…` 那条判据钉着」，写成住址形），
     //    而判据剖分之后整个住进了 `<repo>/tests/`。

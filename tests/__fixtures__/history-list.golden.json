@@ -162,7 +162,7 @@
       "hidden": false,
       "isBg": false,
       "jsonlPath": "/h/.claude/projects/-w/0000aaaa-0000-4000-8000-000000000003.jsonl",
-      "label": "0000aaaa",
+      "label": "没有说过话的会话",
       "lastAccount": "home",
       "messageCountApprox": 3,
       "origin": "dev",
@@ -175,7 +175,7 @@
       "starred": false,
       "startedAt": 300,
       "status": "ended",
-      "title": "0000aaaa",
+      "title": "没有说过话的会话",
       "untitled": true,
       "updatedAt": 700
     },

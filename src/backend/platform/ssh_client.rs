@@ -50,18 +50,6 @@ pub(crate) fn locate_with(
             None => trouble = Some("SystemRoot not set".into()),
         }
     }
-    let name = if windows { "ssh.exe" } else { "ssh" };
-    let dirs: Vec<PathBuf> = path
-        .map(|p| {
-            std::env::split_paths(p)
-                .filter(|d| !d.as_os_str().is_empty())
-                .collect()
-        })
-        .unwrap_or_default();
-    if dirs.is_empty() {
-        trouble.get_or_insert_with(|| "PATH not set or empty".into());
-    }
-    places.extend(dirs.into_iter().map(|d| d.join(name)));
     for p in places {
         match probe(&p) {
             Ok(true) => match p.to_str() {
@@ -74,6 +62,38 @@ pub(crate) fn locate_with(
             Err(e) => {
                 trouble.get_or_insert_with(|| format!("{}: {e}", p.display()));
             }
+        }
+    }
+    // PATH 那一档：找法只住 `platform::shell::find_session_command`（Windows 上 `runnable` 只认 `.exe` ⇒ 找到的就是 `ssh.exe`）。
+    let failed = std::cell::RefCell::new(None::<String>);
+    let is_file = |p: &Path| match probe(p) {
+        Ok(ok) => ok,
+        Err(e) => {
+            failed
+                .borrow_mut()
+                .get_or_insert_with(|| format!("{}: {e}", p.display()));
+            false
+        }
+    };
+    let found = crate::platform::shell::find_session_command(
+        "ssh",
+        path.and_then(OsStr::to_str),
+        windows,
+        &is_file,
+    );
+    if let Some(e) = failed.into_inner() {
+        trouble.get_or_insert(e);
+    }
+    match found {
+        crate::platform::shell::SessionCommand::Found { file, .. } => match file.to_str() {
+            Some(s) => return SshClient::At(s.to_string()),
+            None => {
+                trouble.get_or_insert_with(|| format!("{}: path is not UTF-8", file.display()));
+            }
+        },
+        crate::platform::shell::SessionCommand::Absent => {}
+        crate::platform::shell::SessionCommand::Unknown => {
+            trouble.get_or_insert_with(|| "PATH not set or empty".into());
         }
     }
     trouble.map_or(SshClient::Missing, SshClient::Unknown)

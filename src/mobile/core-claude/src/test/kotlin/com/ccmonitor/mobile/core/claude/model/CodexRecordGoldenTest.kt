@@ -93,7 +93,7 @@ class CodexRecordGoldenTest {
 
     @Test
     fun `流上那一路：Codex 会话的 line 帧带的记录解成同一种渲染单元`() {
-        // 金样 `codex-session-stream.golden.jsonl`：后端 watcher 跟一份造的 Codex rollout 发出来的帧（cxstream 那路钉着）；
+        // 金样 `codex-session-stream.golden.jsonl`：后端 watcher 跟一份造的 Codex rollout 发出来的帧（后端那一侧有判据钉着）；
         // 宣告只带行数、不重放，带记录的 line 帧是宣告之后追加的那两句人话。
         val frames =
             File(repoRoot(), "tests/__fixtures__/codex-session-stream.golden.jsonl")

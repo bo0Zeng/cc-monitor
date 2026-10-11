@@ -380,8 +380,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     // 「把 Poke 拆成独立臂」**没有变红**：断言那串字面量就在本测试自己的源码里，
     // `contains` 恒真 ⇒ 这条守卫是**安慰剂**。是变异（而不是审读）把它揪出来的。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -418,8 +417,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
 #[test]
 fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -503,8 +501,7 @@ fn still_exactly_one_event_channel() {
     // 现在锚 `\n#[cfg(test)]\nmod tests`：源码里这串是**转义写法**（反斜杠 + n 两个字符），
     // 与真正的换行不相等 ⇒ 不会匹配到本行自己。
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 🔴 〔步 7c 剖分 2026-09-19〕
-    //    **手写的那条切法删了，改走唯一住址 `production_code`。**
+    // 🔴 **手写的那条切法删了，改走唯一住址 `production_code`。**
     //    原来是 `me.find("\n#[cfg(test)]\nmod tests")` 手工截断 —— 那是剥法的**第二份**，
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
@@ -656,11 +653,11 @@ fn appending_lines_advances_offset_and_seq_monotonically() {
 }
 
 #[test]
-fn byte_offset_matches_aterm_lineframer() {
-    // backend-01（gap#2）：Line.byte_offset **逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、
-    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自 aterm LineFramerTest 的关键语料。
+fn byte_offset_matches_mobile_lineframer() {
+    // backend-01（gap#2）：Line.byte_offset **逐字节对齐手机端 `LineFramer.endOffset`**——计 CRLF 的 `\r`、
+    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自手机端 LineFramerTest 的关键语料。
     let mut seqs = SeqCounter::new();
-    // aterm feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
+    // 手机端 feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
     // 你=3B + \r + \n = 5；x + \n = 2 → 累计 7。raw 剥 \r/\n。
     let (out, cur) = read_new_lines(
         "你\r\nx\n".as_bytes(),
@@ -1347,7 +1344,7 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
         "end_turn 行 Line **先**发"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid }) if session_id == "sess-1" && uuid == "u-2"),
+        matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid, .. }) if session_id == "sess-1" && uuid == "u-2"),
         "Line 后紧跟 TurnEnd(u-2)"
     );
     assert!(
@@ -1357,6 +1354,73 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
     assert!(
         rx.try_recv().is_err(),
         "无多余帧（畸形行不产 TurnEnd、user 行不产 TurnEnd）"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 叫这条会话什么跟着读到的记录走（没在看的会话行不上流，照读、照记）：人说的第一句 ⇒ 名字变成它（一帧 `session_status`）；
+/// 来了标题记录 ⇒ 换成标题；一轮结束的通知标题用同一个名字。项目那一格一直带着。
+#[test]
+fn the_session_name_follows_the_records_even_when_nobody_watches() {
+    let dir = std::env::temp_dir().join(format!("ccm-turnend-title-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.clone());
+    let path = dir.join("sess-1.jsonl");
+    state.active_sids.insert("sess-1".to_string());
+    state.sessions.insert(
+        dir.join("1.json"),
+        SessionEntry {
+            pid: 1,
+            sid: "sess-1".into(),
+            status: None,
+            waiting_for: None,
+            activity: None,
+            facts: crate::observe::search_rules::LabelFacts {
+                project_dir: Some("/w/proj".into()),
+                ..Default::default()
+            },
+            path: Some(path.to_string_lossy().into_owned()),
+        },
+    );
+    watch_sessions(vec!["other".into()], &mut state, &mut sink);
+    let names = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
+        let mut got = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            match f {
+                Frame::SessionStatus { name_face, .. } => {
+                    got.push(serde_json::to_value(&name_face).unwrap())
+                }
+                Frame::TurnEnd { title, .. } => got.push(serde_json::json!(title.0)),
+                Frame::Line { .. } => panic!("没在看的会话行上了流"),
+                _ => {}
+            }
+        }
+        got
+    };
+    names(&mut rx);
+    assert_eq!(
+        state.name_face("sess-1").label(),
+        copy_core::copy_text("history.row.untitled", &[]),
+        "没起名、没说过话 ⇒ 文案表那一句"
+    );
+    let lines = [
+        r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-09T01:30:01.000Z","message":{"role":"user","content":"修一下登录"}}"#,
+        r#"{"type":"user","uuid":"u-2","timestamp":"2026-10-09T01:30:02.000Z","message":{"role":"user","content":"第二句不算"}}"#,
+        r#"{"type":"custom-title","customTitle":"登录修复","sessionId":"sess-1"}"#,
+        r#"{"type":"assistant","uuid":"a-3","message":{"stop_reason":"end_turn"}}"#,
+    ];
+    std::fs::write(&path, lines.map(|l| format!("{l}\n")).concat()).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
+    assert_eq!(
+        names(&mut rx),
+        vec![
+            serde_json::json!({"label": "修一下登录", "label_project": "proj"}),
+            serde_json::json!({"label": "登录修复", "label_project": "proj"}),
+            serde_json::json!(finish("登录修复")),
+        ]
     );
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1526,6 +1590,71 @@ fn status_diff_emits_session_status_frame() {
             ..
         }) if face == crate::stream::wire::ActivityFace::of(Some(SessionActivity::Idle))
     ));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 在 monitor 里改的名（这台的注解）是第一档：注解那份文件动了重读 ⇒ 改了名的活会话一帧 `session_status`；没变的不发。
+/// 宣告时也并上注解（记录里的标题 · 第一句走清单缓存，与历史清单同一份扫描）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_custom_title_in_the_annotations_renames_a_live_session() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-rename-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("projects")).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let note = |t: Option<&str>| {
+        let mut table = crate::history::history_annotations::Table::new();
+        table.insert(
+            "rn-sid".into(),
+            crate::history::history_annotations::Entry {
+                custom_title: t.map(str::to_string),
+                ..Default::default()
+            },
+        );
+        table
+    };
+    state.annotations = note(Some("甲"));
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"rn-sid","cwd":"/w/proj","procStart":"{ticks}","status":"busy"}}"#),
+    )
+    .unwrap();
+    process_session_added(&pidfile, &mut state, &mut sink);
+    match rx.try_recv() {
+        Ok(Frame::SessionAdded { name_face, .. }) => assert_eq!(
+            serde_json::to_value(&name_face).unwrap(),
+            serde_json::json!({"label": "甲", "label_project": "proj"})
+        ),
+        other => panic!("expected SessionAdded, got {other:?}"),
+    }
+    state.reload_annotations(note(Some("甲")), &mut sink);
+    assert!(rx.try_recv().is_err(), "名字没变不发帧");
+    state.reload_annotations(note(Some("乙")), &mut sink);
+    match rx.try_recv() {
+        Ok(Frame::SessionStatus {
+            name_face, face, ..
+        }) => {
+            assert_eq!(name_face.label(), "乙");
+            assert_eq!(
+                face,
+                crate::stream::wire::ActivityFace::of(Some(
+                    crate::agents::SessionActivity::Working
+                )),
+                "活动那几格照记着的带全"
+            );
+        }
+        other => panic!("expected SessionStatus, got {other:?}"),
+    }
+    state.reload_annotations(note(None), &mut sink);
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionStatus { name_face, .. }) if name_face.label() == copy_core::copy_text("history.row.untitled", &[])),
+        "改的名删了 ⇒ 落回下一档（记录里什么都没有 ⇒ 文案表那一句）"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -1713,6 +1842,65 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
         Some("/launched/here"),
         "还没有记录 ⇒ pidfile 记的起会话目录"
     );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 先宣告、后建记录：宣告时还没有记录（`path` 缺），记录一出现核心就推一帧 `session_status` 带上这条会话的记录路径 ——
+/// 客户端不读 `line` 帧也拿得到（`line` 帧只发给在看的；`session_status` 人人都收）。路径没变就不再带。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announcement() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-path-later-{}", std::process::id()));
+    let proj = dir.join("projects").join("-a-proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"late-sid","cwd":"/a/proj","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let mut announced_path = Some(String::from("?"));
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded { path, .. } = f {
+            announced_path = path;
+        }
+    }
+    assert_eq!(announced_path, None, "宣告时还没有记录");
+    let rec = proj.join("late-sid.jsonl");
+    std::fs::write(&rec, "{\"type\":\"user\",\"cwd\":\"/a/proj\"}\n").unwrap();
+    process_jsonl(&rec, &mut state, &mut sink);
+    let want = rec.to_string_lossy().into_owned();
+    let mut paths = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionStatus { sid, path, .. } = f {
+            assert_eq!(sid, "late-sid");
+            paths.push(path);
+        }
+    }
+    assert_eq!(
+        paths,
+        vec![Some(want.clone())],
+        "记录出现 ⇒ 一帧 session_status 带路径"
+    );
+    std::fs::write(
+        &rec,
+        "{\"type\":\"user\",\"cwd\":\"/a/proj\"}\n{\"type\":\"user\",\"cwd\":\"/a/proj\"}\n",
+    )
+    .unwrap();
+    process_jsonl(&rec, &mut state, &mut sink);
+    while let Ok(f) = rx.try_recv() {
+        assert!(
+            !matches!(f, Frame::SessionStatus { path: Some(_), .. }),
+            "路径没变就不再带：{f:?}"
+        );
+    }
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -1954,7 +2142,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1963,6 +2150,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -1970,7 +2158,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1979,6 +2166,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -1992,7 +2180,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "c".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2001,6 +2188,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2008,7 +2196,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2017,6 +2204,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2024,7 +2212,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2033,6 +2220,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2063,7 +2251,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "g".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2072,6 +2259,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2354,10 +2542,11 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
 
     // 排空后下一次 send 会先补 Overflow。
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::TurnEnd {
-        session_id: "x".into(),
-        uuid: "u".into(),
-    });
+    sink.send(Frame::turn_end(
+        "x".into(),
+        "u".into(),
+        &crate::stream::wire::NameFace::of(&Default::default()),
+    ));
     match rx.try_recv() {
         Ok(Frame::Overflow {
             dropped,
@@ -2407,10 +2596,11 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     assert!(sink.lost_truncated, "截断了就要说出来，不许静默");
 
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::TurnEnd {
-        session_id: "x".into(),
-        uuid: "u".into(),
-    });
+    sink.send(Frame::turn_end(
+        "x".into(),
+        "u".into(),
+        &crate::stream::wire::NameFace::of(&Default::default()),
+    ));
     match rx.try_recv() {
         Ok(Frame::Overflow {
             lost,
@@ -3589,7 +3779,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
 }
 
 /// `ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
-/// add-time 冒名判定）。家目录放在非 ASCII 路径下（纪律 25：主树住 `~/文档/…`）。
+/// add-time 冒名判定）。家目录放在非 ASCII 路径下（仓可能住在非 ASCII 的目录里）。
 #[cfg(target_os = "linux")]
 #[test]
 fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {

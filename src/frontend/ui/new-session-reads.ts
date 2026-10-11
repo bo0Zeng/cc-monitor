@@ -67,7 +67,7 @@ export function decodeDir(v: unknown): DirFacts {
 const OUTCOMES = ["started", "open"];
 
 export function decodeNew(v: unknown): SessionNew {
-  const keys = ["outcome", "session", "sid", "cmd", "account", "agent", "cwd"];
+  const keys = ["outcome", "session", "sid", "cmd", "account", "agent", "cwd", "prompt"];
   if (!isObj(v) || !exactKeys(v, keys)) bad("session-new");
   const o = v as Record<string, unknown>;
   if (
@@ -77,7 +77,8 @@ export function decodeNew(v: unknown): SessionNew {
     !strOrNull(o.cmd) ||
     typeof o.agent !== "string" ||
     typeof o.cwd !== "string" ||
-    !(o.account === null || (isObj(o.account) && typeof o.account.name === "string" && typeof o.account.configDir === "string"))
+    !(o.account === null || (isObj(o.account) && typeof o.account.name === "string" && typeof o.account.configDir === "string")) ||
+    !(o.prompt === null || (isObj(o.prompt) && exactKeys(o.prompt, ["result", "why", "said"]) && typeof o.prompt.result === "string" && strOrNull(o.prompt.why) && strOrNull(o.prompt.said)))
   ) {
     bad("session-new");
   }

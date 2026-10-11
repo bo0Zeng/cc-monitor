@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.identity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
@@ -65,9 +66,9 @@ class IdentityViewModel(
 
     /** 生成 ECDSA-P256 Keystore 不可导出密钥并存为身份（私钥留 Keystore，不落库）。 */
     fun generateEcdsa(label: String) =
-        runOp("已生成硬件密钥") {
-            val alias = "aterm-key-" + UUID.randomUUID()
-            val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = label.ifBlank { "aterm" })
+        runOp(copyText("mobIdentity.done.hardware")) {
+            val alias = "ccm-key-" + UUID.randomUUID()
+            val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = label.ifBlank { "cc-monitor" })
             repo.saveKeystoreBacked(
                 Identity(
                     id = alias,
@@ -84,8 +85,8 @@ class IdentityViewModel(
 
     /** 软件生成 Ed25519 身份（私钥 OpenSSH PEM 经 CryptoBox 加密落库，走 imported/PrivateKey 路径）。 */
     fun generateEd25519(label: String) =
-        runOp("已生成 Ed25519 密钥") {
-            val key = SshKeyGenerator.generateEd25519(comment = label.ifBlank { "aterm" })
+        runOp(copyText("mobIdentity.done.ed25519")) {
+            val key = SshKeyGenerator.generateEd25519(comment = label.ifBlank { "cc-monitor" })
             repo.save(
                 Identity(
                     id = "ed25519-" + UUID.randomUUID(),
@@ -104,7 +105,7 @@ class IdentityViewModel(
     fun importPrivateKey(
         label: String,
         pem: ByteArray,
-    ) = runOp("已导入私钥") {
+    ) = runOp(copyText("mobIdentity.done.imported")) {
         // 从 PEM 派生公钥与指纹。派生失败（带 passphrase/格式不识别）回退空串，身份照样导入：
         // 私钥仍可用于连接，只是「复制公钥」为空。keyType 保持 "imported"。
         val derived = PublicKeyDeriver.fromPrivatePem(pem, comment = label.ifBlank { "imported" })

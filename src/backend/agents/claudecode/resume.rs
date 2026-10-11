@@ -8,20 +8,22 @@
 //! | resume 形 | `<base> --resume <sid>`（**flag**） | `<base> resume <sid>`（**子命令**） |
 //! | 会话名前缀 | `cc-` | `cx-` |
 //!
-//! golden-parity aterm。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
+//! golden-parity 手机端。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
 //! `CommandPlan` 骨架、错误出口全都共用，留在 `control/resolve_query.rs`。
 
 /// 无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "claude";
 
 /// 用户的 shell 集成 wrapper（含代理 / env）：探得到就先用它，探不到回退 [`DEFAULT_COMMAND`]。
-/// 从前与下面两格一起住 monitor `adapter/claude_code.rs`〔散文墓碑〕，与后端 `control/ccm/` 各一份、靠金样对着。
 pub(crate) const LAUNCHER_ALIAS: &str = "cc";
 
 /// resume 那个字面量：**flag 形**（`--` 开头）。[`resume_command`] 与画像表（`agents::LaunchFace`）同一份。
 pub(crate) const RESUME_TOKEN: &str = "--resume";
 /// 起新会话时先定好 sid 的旗标（`claude --session-id <uuid>`；起会话框带规则时后端按它先写好来源）。
 pub(crate) const SESSION_ID_FLAG: &str = "--session-id";
+
+/// 起会话时选权限档的旗标（`claude --permission-mode <档>`）。
+pub(crate) const PERMISSION_MODE_FLAG: &str = "--permission-mode";
 
 /// claude 导给它起的每个子进程的「我是哪个会话」（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。也是嵌套标记之一。
 pub(crate) const SELF_SID_ENV: &str = "CLAUDE_CODE_SESSION_ID";

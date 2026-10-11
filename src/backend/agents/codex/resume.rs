@@ -1,7 +1,7 @@
 //! Codex 的 resume 调用形状。`resolve_query` 留着两个 agent 一样的那部分（sid 校验 · base 的 shell-safe 校验 · `CommandPlan` 骨架 · 错误出口）；
 //! 这里只有三件 Codex 独有的事实：默认命令叫什么、resume 怎么写、会话名什么前缀。
 //!
-//! 与 aterm `CodexInvocation` 对拍：`resumeInvocation` = `<base> resume <sid>`（子命令、无 `--resume` flag、无 unset）；`resumeSessionName` = `cx-<sid8>`。
+//! 与手机端 `CodexInvocation` 对拍：`resumeInvocation` = `<base> resume <sid>`（子命令、无 `--resume` flag、无 unset）；`resumeSessionName` = `cx-<sid8>`。
 //!
 //! 钉住它的是：resume 规格只按注册表里那一家的起会话事实（`agents::LaunchFace`）拼，而通用层里一个 agent 名字面量都不许有
 //! （`agent_locality_guard` 判据②）—— 谁想在别处再开一个 Codex 分支，得先写出 `"codex"`，当场红。

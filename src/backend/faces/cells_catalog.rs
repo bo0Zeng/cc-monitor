@@ -704,7 +704,6 @@ pub(crate) const PRODUCTS: &[Product] = &[
             "lines",
             "waiting_for",
             "agent_kind",
-            "liveness_confidence",
             "attachable",
             "activity",
             "activity_text",
@@ -719,7 +718,6 @@ pub(crate) const PRODUCTS: &[Product] = &[
         frozen: Frozen::Cells(&[
             "sid",
             "waiting_for",
-            "liveness_confidence",
             "activity",
             "activity_text",
             "activity_tone",
@@ -873,7 +871,7 @@ mod specimens {
             Speaker::Coordinator { body: some("b") },
             Speaker::AgentTask,
             Speaker::System { body: some("b") },
-            Speaker::CompactSummary,
+            Speaker::compact("ab"),
             Speaker::Interrupt,
             Speaker::ToolResult,
         ]
@@ -1234,11 +1232,19 @@ mod specimens {
         vec![node_of(&row)]
     }
 
+    /// 名字是起出来的那一形（`label_project` 也带）。
+    fn named() -> crate::stream::wire::NameFace {
+        crate::stream::wire::NameFace::of(&crate::observe::search_rules::LabelFacts {
+            title: some("t"),
+            project_dir: some("/w"),
+            ..Default::default()
+        })
+    }
+
     fn added(activity: SessionActivity) -> Frame {
         Frame::SessionAdded {
             sid: s("s"),
             agent_kind: "agent".to_string(),
-            liveness_confidence: some("heuristic"),
             background: true,
             attachable: Some(true),
             cwd: some("/w"),
@@ -1247,6 +1253,7 @@ mod specimens {
             path: some("/p"),
             lines: Some(1),
             face: ActivityFace::of(Some(activity)),
+            name_face: named(),
             waiting_for: some("w"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
@@ -1274,8 +1281,9 @@ mod specimens {
                 node_of(&Frame::SessionStatus {
                     sid: s("s"),
                     face: ActivityFace::of(Some(a)),
+                    name_face: named(),
                     waiting_for: some("w"),
-                    liveness_confidence: some("heuristic"),
+                    path: some("p"),
                 })
             })
             .collect()

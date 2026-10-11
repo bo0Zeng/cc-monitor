@@ -1,5 +1,4 @@
 //! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**。
-//! 原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
 //!
 //! 从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
 //! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
@@ -15,10 +14,10 @@
 //! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是中转（`server.rs` / `listen.rs` / `http1.rs`） |
 //!
 //! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 中转手里只有
-//! `RouteKey{ seg1, seg2 }` 两个不透明段（条 48）——
+//! `RouteKey{ seg1, seg2 }` 两个不透明段——
 //! 把它们读成 agent 与账号是**本模块**的事，就在下面 [`Accounts::resolve`] 里。
 //!
-//! # 🔴 表的键是 agent ＋ 账号，默认上游每 agent 一行，未登记直接拒〔条 49 / 条 59 / 条 60〕
+//! # 🔴 表的键是 agent ＋ 账号，默认上游每 agent 一行，未登记直接拒
 //!
 //! 先前这里逐字自陈两笔欠账：「`seg1`（agent）今天还不承重：查表仍然只按 `seg2`」·
 //! 「`DEFAULT_UPSTREAM` 还是一个进程级的默认」。后果是具体的：**claude 的 3 号账号与
@@ -77,20 +76,18 @@ use table::{RoutingTable, Row};
 
 /// 凭据文件（`apikey-credentials.json`）里那些行**挂在哪个 agent 名下**。
 ///
-/// # 为什么要有这个值（条 49 拆键之后必然冒出来的一格）
+/// # 为什么要有这个值（表的键是 `(agent, 账号)` 之后必然冒出来的一格）
 ///
 /// 表的键改成 `(agent, 账号)` 之后，装表那一步得知道每一行属于谁 ——
 /// 而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）。
 /// 那份文件的行挂在哪一家名下由适配层那一格声明（`agents::DefaultUpstream::owns_credentials_file`），
 /// 这里只取它的路由名；本层不认识任何一家的名字。
 ///
-/// 它**只有这一份**：先前 monitor 那一侧决定「这次拉起要不要注入」时另写一份（`payload::APIKEY_TABLE_AGENT`〔散文墓碑〕），
-/// 由一条跨半边判据现抠字面量对拍；那张决策表搬进本层（[`endpoint`]）之后，读它的只剩本层自己。
+/// 读它的只有本层自己（那张决策表住本层，[`endpoint`]）。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
 pub(crate) const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();
 
-// 这里原先是 `AgentUpstream` 与每 agent 一行的默认上游表 `AGENT_UPSTREAMS`〔散文墓碑〕。
 // 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
 // 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 
@@ -195,7 +192,7 @@ impl Upstreams {
 /// # 它为什么住上游选择（而不是中转）
 ///
 /// 装配要同时叫得出两层的名字。依赖方向只许上游选择 → 中转（上游选择本来就用中转的契约类型），
-/// 反过来就是「中转层里有账号」—— 那正是用户 2026-09-24 那句话要拆掉的。
+/// 反过来就是「中转层里有账号」—— 那正是「中转层里不要有账号」要拆掉的。
 /// ⇒ 中转的 `host` 收一个 `&dyn Startup`，本函数把 [`Rotating`] 递进去；中转的生产段里
 ///   **一个上游选择的名字都没有**（`relay::upstream_selection_guard` ㈢ 零命中）。
 ///
@@ -289,7 +286,7 @@ pub(crate) struct Accounts {
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
     table: std::sync::RwLock<RoutingTable>,
-    /// 每 agent 一行的默认上游（条 59）。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
+    /// 每 agent 一行的默认上游。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
     upstreams: Upstreams,
     /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
     reload: Option<Reload>,
@@ -456,8 +453,8 @@ impl Destinations for Accounts {
     ///
     /// # 这里把两个不透明段读成业务名 —— 就这一处
     ///
-    /// `seg1` = agent · `seg2` = 账号 ⇒ **两段一起**是表的索引键（条 49）；
-    /// `seg1` 另外还是「每 agent 一行的默认上游」那张表的键（条 59）。
+    /// `seg1` = agent · `seg2` = 账号 ⇒ **两段一起**是表的索引键；
+    /// `seg1` 另外还是「每 agent 一行的默认上游」那张表的键。
     ///
     /// # 表里有那一行时答什么
     ///

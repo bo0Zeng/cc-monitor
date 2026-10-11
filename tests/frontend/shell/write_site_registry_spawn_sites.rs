@@ -63,12 +63,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
           ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
-    // 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕那一行出表了（`K-R112` 写下的出表条件兑现）：
-    //   驾驶舱读名册 / 读收件箱都改走后端（`bus-state` / `bus-inbox`，转调 cc-bus 的机器可读读命令），monitor 本机不再起 `bash`。
     // `dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
-    //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。〔墓碑 —— 那一行的要点：
-    //   「界面拿一条 SSH 链路的唯一入口 … 起的是 `cc-monitor-backend` … argv 只有一个常量 flag，
-    //   主机名 / 用户名 / 私钥路径走环境变量」。〕
+    //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。
     // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
     //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
     //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
@@ -126,8 +122,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           （`local_stdio_consumer`）。先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
           ★ 三条策略为什么是这三格：🔴 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    // `local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
-    //   monitor 不再起一次性本机后端。
     // `ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
     // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
     ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
@@ -162,7 +156,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     // 🔴 **文件管理窗口的独立进程。** 这一行是新的**一整面**，
     //    不是搬家：此前那个窗口跑在 monitor 自己的进程里（次线程 ＋ `run_native`）。
     ("proc.rs", "spawn_window", "`cc-monitor-filewin`（本包的第二个 `[[bin]]`，一个窗口一个）",
-     "用户 2026-09-22 逐字裁「**窗口生命周期就是销毁**」，而 winit **一个进程只许一个事件循环** \
+     "「**窗口生命周期就是销毁**」，而 winit **一个进程只许一个事件循环** \
           ⇒ 「关掉就销毁」与「关掉之后还能再打开」在同进程形态下**不可同时成立** \
           ⇒ 只剩「一个窗口一个进程」这条路。必须起进程的理由就是这一条，**它不是为了隔离**。\
           顺带解掉的两条（第二趟开窗必然失败 · 那 165 MiB 关掉就真还给系统）逐条住 `filewin/proc.rs` 头注 §二。\

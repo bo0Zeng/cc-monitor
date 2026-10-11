@@ -153,8 +153,8 @@ pub(crate) struct SessionFacts {
     pub(crate) project_dir: Option<String>,
     /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
     pub(crate) agent: Option<String>,
-    /// 此刻持着这条会话的活进程 pid（这台的 pidfile，判活同会话宣告那一路），升序；不累加，每次现查（`prior` 里那一份不用）。
-    /// 不止一个 ⇒ 同一条会话有几个进程在同时写。不留 pidfile 的那一家恒空。
+    /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+    /// 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
     pub(crate) writers: Vec<u32>,
     /// 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
     pub(crate) pending: Vec<PendingCall>,
@@ -410,7 +410,7 @@ pub(crate) struct PendingCall {
     pub(crate) why_text: Option<Words>,
 }
 
-/// 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile（判不了活）。
+/// 一步状态不明的原因：没有活进程持着这条会话 · 判不了活（这一家没声明怎么判，或这台认不出写者）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum UnclearWhy {
@@ -419,7 +419,7 @@ pub(crate) enum UnclearWhy {
 }
 
 /// 一步还没有结果时的样子：在跑（有活进程持着这条会话）· 在等你（那台说在等的正是这一步）· 说不清（没有活进程持着它，
-/// 或这一家不留 pidfile、判不了活）。有了结果之后是完成 / 失败（那条结果的成品 `toolResults` 说），不在这里。
+/// 或判不了活）。有了结果之后是完成 / 失败（那条结果的成品 `toolResults` 说），不在这里。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum StepWait {
@@ -430,7 +430,7 @@ pub(crate) enum StepWait {
 }
 
 /// **一步还没结果时的样子的唯一判定**：那台说在等的正是它 ⇒ 在等你；否则有活进程持着这条会话 ⇒ 在跑；否则状态不明
-/// （`tracked` ＝ 这一家留 pidfile、判得了活；不留 ⇒ 原因 `untracked`，留 ⇒ `noWriter`）。要在 `writers` 与 `needs` 现查之后调。
+/// （`tracked` ＝ 判得了活（`session_holders` 回了 `Some`）；判不了 ⇒ 原因 `untracked`，判得了 ⇒ `noWriter`）。要在 `writers` 与 `needs` 现查之后调。
 pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
     let waiting_on = f.needs.as_ref().and_then(|n| n.call.clone());
     let live = !f.writers.is_empty();

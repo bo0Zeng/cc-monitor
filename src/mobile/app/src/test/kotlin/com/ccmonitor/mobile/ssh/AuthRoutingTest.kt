@@ -47,7 +47,7 @@ class AuthRoutingTest {
         )
 
     // === 身份类型判定（keystore 身份不许裸解密：它的私钥字节是空的）===
-    @Test fun keystoreIdentityIsKeystoreBacked() = assertTrue(identity(keystoreAlias = "aterm-key-1").isKeystoreBacked())
+    @Test fun keystoreIdentityIsKeystoreBacked() = assertTrue(identity(keystoreAlias = "ccm-key-1").isKeystoreBacked())
 
     @Test fun importedIdentityNotKeystoreBacked() = assertFalse(identity(keystoreAlias = null).isKeystoreBacked())
 
@@ -62,7 +62,7 @@ class AuthRoutingTest {
     }
 
     @Test fun keystoreSignerAuthAppliedToEndpoint() {
-        val auth = AuthMethod.KeystoreSigner("aterm-key-1")
+        val auth = AuthMethod.KeystoreSigner("ccm-key-1")
         val configs = host().toConnectionConfigs(auth)
         assertEquals(1, configs.size)
         assertSame(auth, configs[0].auth)
@@ -78,10 +78,10 @@ class AuthRoutingTest {
     // === resolveAuthMethod：路由单一来源——keystore→KeystoreSigner（不解密）/ 否则→PrivateKey（解密）===
     @Test fun resolveAuthMethodRoutesKeystoreIdentityToSigner() {
         runBlocking {
-            val repo = IdentityRepository(FakeIdentityDao(identity(keystoreAlias = "aterm-key-1")), NoopCryptoBox())
+            val repo = IdentityRepository(FakeIdentityDao(identity(keystoreAlias = "ccm-key-1")), NoopCryptoBox())
             val auth = resolveAuthMethod("i", repo)
             assertTrue(auth is AuthMethod.KeystoreSigner)
-            assertEquals("aterm-key-1", (auth as AuthMethod.KeystoreSigner).alias)
+            assertEquals("ccm-key-1", (auth as AuthMethod.KeystoreSigner).alias)
         }
     }
 

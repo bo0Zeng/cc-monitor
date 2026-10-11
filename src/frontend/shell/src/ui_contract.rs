@@ -4,10 +4,6 @@
 //! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
 //! 前端 `events.ts` 的 TS 接口须与此保持一致。
 //!
-//! **会话内容不再是 Tauri 事件**：原来的 `jsonl-line` / `jsonl-batch` 两个事件
-//! （与载荷 `JsonlBatchPayload`〔散文墓碑〕）退役，会话内容改走通道的 `subscribe`
-//! （`chan/webview.rs` · `event_replay·rs` 头注「订阅」）；流里每一格的体是 [`SessionStreamFrame`]。
-//!
 //! 改任何事件名 / payload 字段都要同步前端订阅与类型；删事件名前 grep 确认无 emit/listen。
 
 use serde::Serialize;
@@ -270,6 +266,10 @@ pub struct WatchedSession {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionTurnEndPayload {
     pub session_id: String,
+    /// 通知的标题（后端写好的字，照抄）。
+    pub title: String,
+    /// 通知的正文（后端写好的字，照抄）。
+    pub body: String,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。
@@ -420,9 +420,6 @@ pub struct FrontendReadyPayload {
     pub priority_sid: Option<String>,
 }
 
-// `list_active_sessions` 的返回项 `ActiveSessionPayload`〔散文墓碑〕删了：本机骨架从会话流里的 `live` 成品来
-//   （F5 就绪点按成品缓存重放），那条命令随之退役。
-
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
 /// （从 `Option<String>` 改成 `String`：五个发射点全在 `stream_source/`、全都带着那台的 label，
 /// 「没有 origin」从来不是一个会发生的值 —— 类型里就不给它留格子，TS 那侧随之不再装得下 `null`）；
@@ -450,5 +447,8 @@ pub struct SessionActivityPayload {
     /// 那一态 · 写好的字与语气 · 监控板组内的序（那台核心写的，平铺在载荷上）。
     #[serde(flatten)]
     pub activity: crate::session_book::ActivityCells,
+    /// 叫这条会话什么（那台核心写的，平铺在载荷上；标签页照抄）。
+    #[serde(flatten)]
+    pub naming: crate::session_book::NameCells,
     pub waiting_for: Option<String>,
 }

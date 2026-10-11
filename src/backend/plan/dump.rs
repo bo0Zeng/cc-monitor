@@ -16,9 +16,9 @@ pub(crate) const DEADLINE_SECS: u64 = 20;
 const RC_UNREADABLE: i32 = 3;
 const RC_USAGE: i32 = 4;
 
-/// 起 pb 用的解释器（pb 自己的钩子也这样起它）。
+/// 起 pb 用的解释器（裸名：在 `PATH` 上按这台的规矩找，Windows 上找到的是 `python3.exe`）。
 pub(crate) fn interpreter() -> String {
-    format!("python3{}", std::env::consts::EXE_SUFFIX)
+    "python3".to_string()
 }
 
 /// 跑一次的结局。

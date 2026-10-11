@@ -346,6 +346,7 @@ async fn stream_loop(
                 path,
                 lines,
                 activity,
+                naming,
                 waiting_for,
                 container,
                 // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这条流的声明去掉了它（`remote_resident::remote_stream_view`）。
@@ -361,6 +362,7 @@ async fn stream_loop(
                     project_dir,
                     name,
                     activity,
+                    naming,
                     waiting_for,
                     container,
                     pid: None,
@@ -371,6 +373,7 @@ async fn stream_loop(
             Some(InboundFrame::SessionStatus {
                 sid,
                 activity,
+                naming,
                 waiting_for,
             }) => {
                 // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
@@ -382,6 +385,7 @@ async fn stream_loop(
                     origin: host_label.clone(),
                     sid,
                     activity,
+                    naming,
                     waiting_for,
                 });
             }
@@ -475,8 +479,8 @@ async fn stream_loop(
                 cell,
             ),
             // 一轮结束：在不在看都来 ⇒ 交这台的会话流一格（系统通知认它）。
-            Some(InboundFrame::TurnEnd { sid }) => {
-                replay.on_turn_end(&crate::origin::Origin(host_label.clone()), sid)
+            Some(InboundFrame::TurnEnd(turn)) => {
+                replay.on_turn_end(&crate::origin::Origin(host_label.clone()), turn)
             }
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
             None => {}

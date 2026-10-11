@@ -207,7 +207,7 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await waitFor('.history-view [data-role="said"]'));
     await sleep(400);
   }),
-  hist("history-17-find", "历史 · 会话内查找", "Ctrl+F 进查找框、回车：命中清单在工具行下就地展开（稿里没画，主会话 10-06 定）", async () => {
+  hist("history-17-find", "历史 · 会话内查找", "Ctrl+F 进查找框、回车：命中清单在工具行下就地展开（稿里没画）", async () => {
     await openHistory();
     await click(await row(0));
     await sleep(900);

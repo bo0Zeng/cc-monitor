@@ -18,10 +18,6 @@
  * 3. **它不判语义。** 一个文件即使不提 `loggedIn`，也可以自己写
  *    `a.mode === "isolated" && a.exists` 冒充可用性判据 —— 那一格今天不钉
  *    （针只有一根，多了会把大量正常代码判红）。
- * 4. **它不判 `authReady` / `selectable` 那一格算得对不对。** 阳性对照钉的是「`selectableAccounts` 的**函数体内**
- *    只读了 `a.selectable`」；规则本身住 `acct_core::auth_ready`（后端算好放进这一格），由 Rust 侧那三条
- *    （`acct-core` 的金样互钉 + 两条生产者对拍）守。TS 这边原来还有一个带「旧后端回落 loggedIn」的
- *    包装（`accounts.ts::authReady`〔散文墓碑〕）—— 那是规则订阅分支在 TS 里的第二份，删了。
  * 5. **它扫不到测试侧的第二份实现。** 扫描面（`productionTsFiles`）**按构造**排掉
  *    `.vitest.` / `.test.` —— 那一行正是「让判据读不到自己」的机制，代价是一份**手抄进
  *    测试文件里的** `isSelectable` 结构上看不见（K-A1 第四轮 `R4` 就是这一形：

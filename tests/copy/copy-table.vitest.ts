@@ -21,7 +21,6 @@
  *
  * - **Rust 读口已落地**（`src/frontend/shell/src/copy_table.rs::copy_text`，与 TS 读同一份 JSON）⇒
  *   `src/frontend/shell/src/**.rs` 的 `copy_text("…", &[("名", 值), …])` 调用点也收进「引用」一侧（[`rustRefsIn`]）。
- *   〔墓碑 —— 原话「Rust 一侧没有调用点，本文件也不扫 `.rs`；Rust 读口落地那一拍要把 `.rs` 的调用点加进『引用』那一侧」。〕
  *   ⚠ Rust 那一侧不是编译器解析：按调用形状读（剥掉 `//` 注释后找 `copy_text(`），key 必须是紧跟的字符串字面量、
  *   参数必须是 `&[…]` 数组字面量、每一项 `("名", …)` 的名是字符串字面量 —— 其余写法一律报「绕过」，不放过。
  * - **不判表里的文案写得好不好**：规矩住 `src/shared/copy/rules.json`，判据住 `copy-rules.vitest.ts`。

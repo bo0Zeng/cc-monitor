@@ -1,4 +1,4 @@
-package com.ccmonitor.mobile.core.ui.copy
+package com.ccmonitor.mobile.core.copy
 
 /** 文案表里的一条：模板与登记的插值点。 */
 internal data class CopyEntry(

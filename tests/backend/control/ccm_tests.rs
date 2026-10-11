@@ -49,8 +49,6 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     );
 }
 
-// `under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
-
 /// 〔「路由不看 argv0」〕要求：「没有 `--` ⇒ 整行原样交 claude」＋「route 里没有 base ≠ ccm 那一支」。
 /// 分流先看被叫成什么、再看参数：叫 `ccm` / 后端本名 ⇒ 零参数是「起一个 claude」，打头的 `--` 紧跟后端词才进后端；
 /// 被叫成别的名字（`~/.cc-monitor/bin/<名>` 那条链接）⇒ 等同 `ccm @<名> …`，参数一个都不进后端。
@@ -368,7 +366,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     );
     assert!(face("codex").needs_bus_id && !face("claude").needs_bus_id);
     assert!(face("claude").has_identity && !face("codex").has_identity);
-    assert!(face("claude").has_pidfiles && !face("codex").has_pidfiles);
 }
 
 /// 〔搬自 `ccm-cli` WIRE/launch「发对了①–⑤」「缺省尺寸①②」「控制字符①–④」那几族〕
@@ -387,7 +384,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
         self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
-        inner: vec!["/usr/local/bin/ccm".into(), "--cwd".into(), "/p".into()],
+        inner_head: vec!["/usr/local/bin/ccm".into()],
         bus: None,
     };
     let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");
@@ -522,7 +519,7 @@ fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() 
 /// 同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`。
 ///
 /// ⚠ **本条买不到的那一维**：它判的是「这一趟要不要请 shell 进来」这个**判定**，
-/// **不是**「在真 Windows 上真的起来了」。后者要那台 Win11 虚拟机，本路没去动它。
+/// **不是**「在真 Windows 上真的起来了」。后者要真 Windows。
 #[test]
 fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
     // ── 🔴 P19 买的就是这一格：codex + 不在 tmux（Windows 上 `$TMUX` 恒空）────

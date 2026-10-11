@@ -56,7 +56,7 @@ pub const SESSION_ID_MAX: usize = 64;
 /// 取的是今天各处规则的**交集**（原 `branch_core::is_plain_sid` 的字符集与上界 ＋ 原 TS `isValidSessionId` 的「不许 `-` 开头」）⇒
 /// 没有一处因此放宽；真实 sid 是 UUID（Claude / Codex 同形，36 位），全过。
 /// 它挡掉 `..` `/` `\` 与任何能拼出别处路径的字符（`INVARIANTS §41.6` 收窄第 3 条），也挡掉选项注入。
-/// ⚠ 后端 `resolve` 那条（`resolve_query.rs`）**刻意不接**：它的行为冻结给仓外 aterm（改一格 = 跨仓契约变更）。
+/// ⚠ 后端 `resolve` 那条（`resolve_query.rs`）**刻意不接**：它的行为冻结给手机端（改一格 = 与手机端的契约变更）。
 pub fn session_id_ok(s: &str) -> bool {
     let mut cs = s.chars();
     matches!(cs.next(), Some(c) if c.is_ascii_alphanumeric())

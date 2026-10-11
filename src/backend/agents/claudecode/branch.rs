@@ -33,7 +33,6 @@ pub(crate) fn build_branch_records(
     }
     // G0：**子 agent 记录不是可分叉的会话**。
     //
-    // `create_branch_session` 是 Tauri 命令，前端传什么 uuid 它就用什么；F77 只是在〔散文墓碑〕
     // 「子 agent 查看器」里不挂那个按钮，**后端从来没拦过**。真让一条 sidechain 记录
     // 进来，产出的是一段 subagent 转录冒充会话。
     //
@@ -125,7 +124,6 @@ pub(crate) const SESSION_LOOKUP_DEPTH: usize = 2;
 
 // sid 的合法形状：规则只有一份，住 `shell_quote_core::session_id_ok`（1..=64 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`）。
 //   它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符（`src/doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
-// 从前这里再导出成 `is_plain_sid`〔散文墓碑〕好让两侧调用方一个不动；收进后端之后调用方直呼那一条。
 use shell_quote_core::session_id_ok;
 
 /// **唯一的一份「找文件」**：在记录树 `records_root` 下按 sid 找那份 `<sid>.jsonl`。

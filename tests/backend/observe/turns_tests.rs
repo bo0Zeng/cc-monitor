@@ -215,7 +215,7 @@ fn calls(id: &str) -> serde_json::Value {
     serde_json::json!([call(id, "Read", serde_json::json!({}))])
 }
 
-/// ★ 用户 10-10：只有连续的工具 / agent 段才折，中间说的话露在外面。「工具 · 正文 · 工具 · 正文」⇒ 两段过程，
+/// ★ 只有连续的工具 / agent 段才折，中间说的话露在外面。「工具 · 正文 · 工具 · 正文」⇒ 两段过程，
 /// 第一段跟在你那句后面、第二段跟在那段正文后面；两段正文都露着（结尾那段照旧在外面）。
 #[test]
 fn prose_between_tools_stays_outside_and_splits_the_process() {
@@ -628,4 +628,61 @@ fn a_queued_line_that_lands_as_your_next_sentence_is_marked_landed() {
     // 下一句说的不是它：不记
     let other = format!("{body}{}\n", user("u2", t, "别的"));
     assert!(scan(&other, 0)[0].landed.is_empty());
+}
+
+fn untils(row: &TurnRow) -> Vec<Option<&str>> {
+    row.folds.iter().map(|f| f.until.as_deref()).collect()
+}
+
+/// ★ 每段管到哪一条为止由核心给（`until`：段后面紧跟的那一条）：本轮下一条露着的 · 下一轮你那句 · 还开着的最后一轮 ⇒ 没有。
+/// 界面只按 `after` 与 `until` 在账本里取那几行，不自己找「下一个边界」。从某一轮的 `at` 续取也一样。
+#[test]
+fn each_fold_says_which_record_ends_it() {
+    let t = "2026-10-07T08:00:00Z";
+    let lines = [
+        user("u1", t, "q"),
+        said("a1", t, calls("t1")),
+        result("r1", "t1", false),
+        said("a2", t, text("中间的话")),
+        said("a3", t, calls("t2")),
+        result("r2", "t2", false),
+        user("u2", t, "q2"),
+        said("a4", t, calls("t3")),
+        result("r3", "t3", false),
+    ];
+    let body = body_of(&lines);
+    let rows = scan(&body, 0);
+    assert_eq!(
+        untils(&rows[0]),
+        [Some("a2"), Some("u2")],
+        "隔开它的那条露着的 · 下一轮你那句"
+    );
+    assert_eq!(untils(&rows[1]), [None], "还开着的最后一轮：到账本尾");
+    let at = rows[1].at;
+    assert_eq!(untils(&scan(&body, at)[0]), [None], "续取同口径");
+    let at0 = rows[0].at;
+    assert_eq!(untils(&scan(&body, at0)[0]), [Some("a2"), Some("u2")]);
+}
+
+/// ★ 主管 10-10：回退掉的那一轮（主线外，`history-turns` 不出它）不被上一轮的最后一段吞掉：上一轮那一段停在被回退那一句之前。
+#[test]
+fn a_rewound_turn_is_not_swallowed_by_the_fold_before_it() {
+    let t = "2026-10-07T08:00:00Z";
+    let lines = [
+        user("u1", t, "q"),
+        said("a1", t, calls("t1")),
+        result("r1", "t1", false),
+        // 被回退掉的那一轮（之后的 u3 接回 u1 之前的那一处）：扫描那一层照常认它是一轮，冷扫按主线外清单把它删掉。
+        user("u2", t, "rewound"),
+        said("a2", t, calls("t2")),
+        result("r2", "t2", false),
+        user("u3", t, "again"),
+    ];
+    let rows = scan(&body_of(&lines), 0);
+    assert_eq!(rows[0].uuid, "u1");
+    assert_eq!(
+        untils(&rows[0]),
+        [Some("u2")],
+        "上一轮的那一段停在被回退那一句之前，不管它之后在不在主线上"
+    );
 }

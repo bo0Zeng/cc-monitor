@@ -21,7 +21,7 @@ import java.security.interfaces.ECPublicKey
 @RunWith(AndroidJUnit4::class)
 class KeystoreCryptoTest {
     private val ctx: Context = ApplicationProvider.getApplicationContext()
-    private val alias = "aterm_test_ecdsa"
+    private val alias = "ccm_test_ecdsa"
 
     @Before fun setup() = cleanAlias()
 
@@ -45,9 +45,9 @@ class KeystoreCryptoTest {
 
     @Test
     fun generatesValidEcdsaP256OpenSshKey() {
-        val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, "test@aterm")
+        val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, "test@cc-monitor")
         assertTrue(key.publicKeyOpenSsh.startsWith("ecdsa-sha2-nistp256 "))
-        assertTrue(key.publicKeyOpenSsh.endsWith(" test@aterm"))
+        assertTrue(key.publicKeyOpenSsh.endsWith(" test@cc-monitor"))
         assertTrue(key.fingerprintSha256.startsWith("SHA256:"))
         // emulator 无 StrongBox → 必回退软件
         assertFalse(key.strongBoxBacked)

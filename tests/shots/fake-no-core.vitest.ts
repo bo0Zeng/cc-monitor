@@ -2,7 +2,7 @@
  * 截图台架的假适配层（`tests/shots/fake/`）不写核心的成品：核心写的字（额度行 · 距今 · 需手动 · 状态字 …）与时刻字一律由真后端算，
  * 台架只造盘上原始格式的输入（`tests/shots/disk/`）交给真后端（`tests/shots/real/pool.mjs`）。
  *
- * 为什么有这一格：mg39 把额度行收进核心（`faces/quota_rows.rs`）的同一批，截图假后端又抄了一份行模型与距今（`quota-face.ts` ·
+ * 为什么有这一格：额度行收进核心（`faces/quota_rows.rs`）的同一批，截图假后端又抄了一份行模型与距今（`quota-face.ts` ·
  * `backend.ts::withTexts`）——核心每加一格，台架就得手补一次，补错了截图照样「长得像」，谁也看不出（架构复审四 R6 / R7）。
  *
  * 认什么（每一种都是「替核心写成品」的写法）：
@@ -68,13 +68,16 @@ function hitsIn(src: string, keys: Set<string>): Record<Form, number> {
 const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
   "backend.ts": {
     coreKey: [
-      5,
-      "会话流（`session-lines`）还是合成的：活动 · 已结束 · 可重连那几格的字（`wire::activity_cells` 的 beSession.* · sessionState.*）与合成拒答的复制详情（detail.*）要等会话流接真后端那一刀（会话记录落盘 ＋ 判活 ＋ 壳的会话账本）",
+      6,
+      "会话流（`session-lines`）还是合成的：活动 · 已结束 · 可重连那几格的字（`wire::activity_cells` 的 beSession.* · sessionState.*）· 叫会话什么那一格没说过话时的那一句（`session_label` 的 history.row.untitled）与合成拒答的复制详情（detail.*）要等会话流接真后端那一刀（会话记录落盘 ＋ 判活 ＋ 壳的会话账本）",
     ],
   },
   "clock.ts": {
     coreKey: [5, "历史清单 · 内容头 · 查找那几格的时刻字（`common::time::{row_time, section_text, span_text, hit_time}`）：history-* 那一族还是合成的，等会话记录落盘那一刀"],
     clock: [2, "同上：历史那几格的钟面（当天 HH:MM · 别的天 MM-DD …）"],
+  },
+  "history.ts": {
+    coreKey: [1, "历史清单还是合成的：没说过话的会话那一行的 `label`（`session_label` 写的 history.row.untitled）；等会话记录落盘那一刀"],
   },
   "machine.ts": {
     coreKey: [39, "机器页那一族帧命令（扩展 · MCP · 别名 · 足迹 · 数据报告 · 终端 · ssh 导入 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],

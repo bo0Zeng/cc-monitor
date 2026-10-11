@@ -39,7 +39,10 @@ impl crate::assets::door::Door for LocalFiles {
 
 /// 两台之间那几件的枢纽问**这台自己**的那一跳：本进程那几条内层命令本身（阻塞档，原样调它们的 `run`）。
 /// 限 [`HUB_INNER`] 那几条 —— 枢纽不是一扇通到任意命令的门。
-pub(crate) struct LocalFrames;
+pub(crate) struct LocalFrames {
+    /// 引起这一趟的请求信封里的时区（内层命令照它写「几点」，问别台时转过去）。
+    tz: crate::Tz,
+}
 
 /// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）。
 pub(crate) const HUB_INNER: &[&str] = &[
@@ -72,15 +75,20 @@ impl crate::assets::hub::Here for LocalFrames {
             args,
             within_ms: None,
             view: serde_json::Value::Null,
-            tz: Default::default(),
+            tz: self.tz.clone(),
             until: None,
         };
         run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
     }
+
+    fn viewer_tz(&self) -> crate::Tz {
+        self.tz.clone()
+    }
 }
 
-pub(super) fn hub_here() -> std::sync::Arc<dyn crate::assets::hub::Here> {
-    std::sync::Arc::new(LocalFrames)
+/// `tz` ＝ 引起这一趟的那条请求的信封 `tz`。
+pub(super) fn hub_here(tz: &crate::Tz) -> std::sync::Arc<dyn crate::assets::hub::Here> {
+    std::sync::Arc::new(LocalFrames { tz: tz.clone() })
 }
 
 /// 流那一路的后端里盯这台的 `rotation.json`（别的进程写了也推 `changed {rotation}`）。

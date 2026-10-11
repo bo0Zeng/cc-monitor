@@ -18,6 +18,7 @@ import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { decodeRunsPayload } from "./runs";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { SessionWatchPayload } from "./generated/SessionWatchPayload";
+import type { SessionTurnEndPayload } from "./generated/SessionTurnEndPayload";
 import type { SessionContainer } from "./generated/SessionContainer";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
@@ -143,7 +144,7 @@ export interface EventHandlers {
    */
   onSessionWatch?: (origin: Origin, p: SessionWatchPayload) => void;
   /** 那台一个会话一轮结束（`turn_end` 格；在不在看都来）：系统通知认它。当场派（不进 queue）。 */
-  onTurnEnd?: (origin: Origin, sessionId: string) => void;
+  onTurnEnd?: (origin: Origin, turn: SessionTurnEndPayload) => void;
 }
 
 /**
@@ -341,7 +342,7 @@ function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
-  // 按窗口定向投递只剩会话流的交格，由 `src/comms/inward/chan.ts` 那一处按窗口作用域听（条 22.2）。
+  // 按窗口定向投递只剩会话流的交格，由 `src/comms/inward/chan.ts` 那一处按窗口作用域听（§22.2）。
   /**
    * 要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
    * 会话内容只从这里来。在其余监听都注册完之后订，
@@ -665,8 +666,10 @@ export async function bindEvents(
           if (w) queue.push({ kind: "watch", origin, payload: w });
           else console.warn("[events] 上流点那一格形状不对，不收：", JSON.stringify(f.watch).slice(0, 200));
         } else if (f !== null && typeof f === "object" && "turn_end" in f) {
-          // 一轮结束 —— 通知只看它（不看行：没在看的会话行不上流），当场派。
-          handlers.onTurnEnd?.(origin, f.turn_end.session_id);
+          // 一轮结束 —— 通知只看它（不看行：没在看的会话行不上流），当场派。标题 · 正文是后端写好的。
+          const t = decodeTurnEndPayload(f.turn_end);
+          if (t) handlers.onTurnEnd?.(origin, t);
+          else console.warn("[events] 一轮结束那一格形状不对，不收：", JSON.stringify(f.turn_end).slice(0, 200));
         } else if (f !== null && typeof f === "object" && "idle" in f) {
           queue.push({ kind: "idle", sessionId: f.idle.session_id });
         } else if (f !== null && typeof f === "object" && "ended" in f) {
@@ -809,6 +812,14 @@ export function decodeWatchPayload(v: unknown): SessionWatchPayload | null {
   if (typeof o.session_id !== "string" || typeof o.path !== "string") return null;
   if (typeof o.seq !== "number" || !Number.isInteger(o.seq) || o.seq < 0) return null;
   return { session_id: o.session_id, path: o.path, seq: o.seq };
+}
+
+/** 会话流的 `turn_end` 格 ⇒ 成品；形状不对 ⇒ `null`（不收，也不在这里补一个标题）。 */
+export function decodeTurnEndPayload(v: unknown): SessionTurnEndPayload | null {
+  if (v === null || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.session_id !== "string" || typeof o.title !== "string" || typeof o.body !== "string") return null;
+  return { session_id: o.session_id, title: o.title, body: o.body };
 }
 
 /** 会话流的 `branch` 格 ⇒ 成品；形状不对 ⇒ `null`（不收，也不猜）。 */

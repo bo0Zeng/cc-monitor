@@ -23,8 +23,7 @@
 //! | 接上了骨架 | 骨架滚到那里时按**字节**取（`read_session_range`，边界取自索引） |
 //! | 没接骨架（后台 tab · 老后端 · seq 对不上的） | 往上翻过了账本最老那一条时按**行号**取（`read_session_lines`，后端 `history-lines`） |
 //!
-//! 原来这里是**两档**（只有前端调过 `keep_tail_only`〔散文墓碑〕的会话才修剪，其余「无处可回 ⇒ 不许丢」，
-//! 第二档不设上限 —— 级 3）。按行号取回之后「无处可回」不存在了，分档随之取消
+//! 修剪不分档：按行号取得回，「无处可回」不存在。
 //!
 //! ⚠ **仍然没有上界的那一维是会话数**（`CF2.md §2.2`）：单会话 ≤ `KEEP + SLACK` 条，缓冲里有几个会话
 //! 由「宣告过多少个 × 前端关没关（[`EventReplay::forget`]）× monitor 重启」决定。
@@ -35,17 +34,6 @@
 //! 会话内容到前端**不再是两个 Tauri 广播事件**（`jsonl-line` / `jsonl-batch`，已退役）：前端经通道说
 //! `chan.subscribe(origin, kind, from, want)`（`src/comms/inward/chan.ts` → `chan/webview.rs::chan_subscribe`），
 //! 本文件是那条流的**句柄**那一侧 —— 它认识会话，通道那两半不认识。
-//!
-//! | `kind` | 交什么 | 什么时候交留存（重放） |
-//! |---|---|---|
-//! | `session-lines` | `origin` 那台机器的全部会话 | **就绪点**（主界面的 `frontend-ready`）：宣告重发之后、对账之前 —— 顺序与原来 `replay_and_mark_ready`〔散文墓碑〕一致 |
-//! | `session-lines/<sid>` | 只那一个会话（独立窗口） | 订阅当场 |
-//! | `session-tap` | 那台机器上中转抄出来的 SSE 事件（见 [`SESSION_TAP_KIND`]） | 没有留存（不重放）；订阅当场就收实时的 |
-//! | `changed/<主题>` | 那台机器上「这一样东西变了」（主题表住后端 `stream/topic.rs`）：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说变了，格体 `{key?, rev?, body?}`）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
-//!
-//! 〔「前端只有两个动作」〕`changed/accounts` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
-//! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `ui_contract.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
-//! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `stream_source` 同样的几处再喂一遍。
 //!
 //! 一格 = 一行（[`crate::ui_contract::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
 //! `Item::Frame.seq` 是这条订阅里的**位置**（0, 1, 2 …，连续），不是行号。
@@ -257,7 +245,6 @@ pub const TRIM_SLACK: usize = REPLAY_TAIL_KEEP / 4;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayStats {
     pub history_len: usize,
-    /// 缓冲里有几个会话（原 `tail_only_sessions`〔散文墓碑〕：只数接了骨架的那些；分档取消之后数全部）。
     pub sessions: usize,
     pub trimmed_total: u64,
     /// 留存正文字节（上限 [`HELD_BYTES_CAP`]）。
@@ -702,7 +689,6 @@ impl EventReplay {
         }
     }
 
-    /// **就绪点**（主界面的 `frontend-ready` 那个任务里调，替掉原来的 `replay_and_mark_ready`〔散文墓碑〕）：
     /// 把登记了、还没过就绪点的订阅逐条按 credit 交它那台机器的留存，交完才返回。
     ///
     /// **顺序**（与原来同形）：调用方先重发宣告与容器（骨架 tab 先建）、再调本函数、再对账补发 `session-ended`
@@ -1257,12 +1243,14 @@ impl EventReplay {
     }
 
     /// 那台一个会话一轮结束（后端 `turn_end`，在不在看都来）：交那台的会话流一格（不吃 credit、不丢、不进留存）。
-    pub fn on_turn_end(&self, origin: &crate::origin::Origin, session_id: String) {
+    pub fn on_turn_end(
+        &self,
+        origin: &crate::origin::Origin,
+        turn: crate::ui_contract::SessionTurnEndPayload,
+    ) {
         self.on_lifecycle(
             origin.as_wire_str(),
-            vec![SessionStreamFrame::TurnEnd(
-                crate::ui_contract::SessionTurnEndPayload { session_id },
-            )],
+            vec![SessionStreamFrame::TurnEnd(turn)],
         );
     }
 
@@ -1296,9 +1284,6 @@ impl EventReplay {
     pub fn priority_sid(&self) -> Option<String> {
         self.inner.lock().priority_sid.clone()
     }
-
-    // `buffered_local_session_ids`〔散文墓碑〕· `buffered_remote_sessions`〔散文墓碑〕（F5 对账拿留存里的 sid）删了：
-    //   对账从成品缓存重算，就在各条订阅自己的重放里（[`lifecycle_replay`]）。
 }
 
 /// 一条订阅的重放：起停骨架（行前）· 留存行（按 credit）· 起停终局（行后）。

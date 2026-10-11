@@ -26,7 +26,6 @@ fn added(sid: &str) -> Ev {
     Frame::SessionAdded {
         sid: sid.into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -35,6 +34,7 @@ fn added(sid: &str) -> Ev {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -143,7 +143,6 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
     l.on_frame(&Frame::SessionAdded {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -152,6 +151,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,

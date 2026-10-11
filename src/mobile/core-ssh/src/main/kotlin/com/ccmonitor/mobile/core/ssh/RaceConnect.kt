@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.copy.withRaw
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -82,11 +84,11 @@ fun <T> aggregateRaceError(
     errors: List<Pair<T, Throwable>>,
     describe: (T) -> String,
 ): Throwable {
-    if (errors.isEmpty()) return IOException("所有地址连接失败")
+    if (errors.isEmpty()) return IOException(copyText("mobSsh.race.allFailed"))
     // host key 变更原样上抛、不包 IOException：它是唯一可恢复的连接失败（用户确认后可重连），
     // 调用方要靠 `catch (e: HostKeyChangedException)` 进恢复页；单地址直连也走竞速，同样适用。
     // 注意：只特判这一种。泛化成「单个错误原样上抛」会改变所有单地址失败的异常类型。
     errors.firstOrNull { it.second is HostKeyChangedException }?.let { return it.second }
     val summary = errors.joinToString("; ") { (item, e) -> "${describe(item)}=${e.message ?: e.javaClass.simpleName}" }
-    return IOException("所有地址连接失败: $summary").apply { errors.forEach { addSuppressed(it.second) } }
+    return IOException(withRaw(copyText("mobSsh.race.allFailed"), summary)).apply { errors.forEach { addSuppressed(it.second) } }
 }

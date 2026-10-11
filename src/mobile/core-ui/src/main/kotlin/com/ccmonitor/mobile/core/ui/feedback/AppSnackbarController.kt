@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ui.feedback
 
+import android.content.ClipData
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.SnackbarDuration
@@ -14,6 +15,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -34,10 +38,29 @@ import kotlinx.coroutines.launch
 class AppSnackbarController internal constructor(
     private val hostState: SnackbarHostState,
     private val scope: CoroutineScope,
+    private val copy: suspend (String) -> Unit,
 ) {
     /** 报一次结果（成功或失败）。失败必须走这里，不许静默。 */
     fun show(message: String) {
         scope.launch { hostState.showSnackbar(message, withDismissAction = true) }
+    }
+
+    /**
+     * 报一次结果，带复制详情（同桌面失败应答的「句子 · 复制详情」）：屏上只有 [Notice.text] 那一句；
+     * [Notice.detail]（下层的原话、远端的输出）不上屏，点「复制详情」才把「句子 ＋ 原话」放进剪贴板。没有详情 ⇒ 同 [show]。
+     */
+    fun show(notice: Notice) {
+        val detail = notice.detail?.takeIf { it.isNotBlank() } ?: return show(notice.text)
+        scope.launch {
+            val r =
+                hostState.showSnackbar(
+                    message = notice.text,
+                    actionLabel = copyText("detail.act.copy"),
+                    withDismissAction = true,
+                    duration = SnackbarDuration.Long,
+                )
+            if (r == SnackbarResult.ActionPerformed) copy(notice.text + "\n" + detail)
+        }
     }
 
     /**
@@ -50,7 +73,7 @@ class AppSnackbarController internal constructor(
     fun showUndoAfter(
         action: suspend () -> Unit,
         message: String,
-        undoLabel: String = "撤销",
+        undoLabel: String = copyText("kit.toast.undo"),
         onUndo: suspend () -> Unit,
     ) {
         scope.launch {
@@ -70,7 +93,7 @@ class AppSnackbarController internal constructor(
      */
     fun showUndo(
         message: String,
-        undoLabel: String = "撤销",
+        undoLabel: String = copyText("kit.toast.undo"),
         onUndo: suspend () -> Unit,
     ) {
         scope.launch {
@@ -84,6 +107,13 @@ class AppSnackbarController internal constructor(
         }
     }
 }
+
+/** 一条反馈：屏上那一句 ＋ 只进复制详情的原话（可空）。 */
+@Immutable
+data class Notice(
+    val text: String,
+    val detail: String? = null,
+)
 
 /**
  * 取当前的反馈控制器。没装宿主就抛，这是有意的。
@@ -112,7 +142,11 @@ fun AppSnackbarHostScaffold(
 ) {
     val hostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val controller = remember(hostState, scope) { AppSnackbarController(hostState, scope) }
+    val clipboard = LocalClipboard.current
+    val controller =
+        remember(hostState, scope, clipboard) {
+            AppSnackbarController(hostState, scope) { text -> clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("cc-monitor", text))) }
+        }
 
     CompositionLocalProvider(LocalAppSnackbar provides controller) {
         Box(modifier) {

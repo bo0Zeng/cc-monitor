@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * 条 1：**前端不许出现 shell 串拼接** —— 原文逐字：
+ * **前端不许出现 shell 串拼接** —— 原文逐字：
  *
  * > 1. 前端不许出现 shell 串拼接 —— `src/**\/*.ts` 里零 `tmux ` / `&&` 命令串字面量；
  *
@@ -185,7 +185,7 @@ describe(" 条 1：前端零 shell 串", () => {
     }
     expect(
       hits,
-      "前端拼了 shell 串 —— 条 1 逐字禁这件事（命令串只留 Rust 那两份）。\n" +
+      "前端拼了 shell 串 —— 这条要求逐字禁这件事（命令串只留 Rust 那两份）。\n" +
         "改成交结构化请求给后端渲染（`render_launch_payload` / `render_ccm_launch`）；\n" +
         "若它是规格 / 夹具（不是前端），它就不该住 `src/`。\n",
     ).toEqual([]);

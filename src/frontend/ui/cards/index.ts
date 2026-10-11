@@ -234,7 +234,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext): RenderResult
           if (!said.text) return { kind: "skip" };
           return {
             kind: "card",
-            element: buildCompactSummaryCard(said.text, time),
+            element: buildCompactSummaryCard(said.text, speaker.charsText, time),
           };
         case "toolResult":
           break;

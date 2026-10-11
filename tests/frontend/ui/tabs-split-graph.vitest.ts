@@ -397,7 +397,6 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         //   `tab-menu.ts` 改从新家拿 ⇒ 旧 import 面少这一个名字。
         "TabsSummary",
         // tab-drop.ts 那几个落点算术不再经这里转：分组重做换了整套落点，判据直接从 `tab-drop.ts` 取。
-        // sessions-where.ts 那几个过滤〔散文墓碑〕的 re-export 删了：「在哪个 tmux 会话里」问那台后端。
       ].sort(),
     );
   });

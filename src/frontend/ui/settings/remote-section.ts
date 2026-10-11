@@ -908,7 +908,7 @@ export class RemoteSection {
       const loadedCount = countBy(this.loadedKeys);
       const wasOf = (k: string | null): RemoteHostConfig | undefined =>
         k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
-      await patchRemoteConfig({
+      const patched = await patchRemoteConfig({
         upsert: saving.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
@@ -927,6 +927,8 @@ export class RemoteSection {
         c.renderStatusStrip();
       }
       this.loadedKeys = saving.map((c) => c.persistedKey!);
+      // 壳替那几台盖上的「指纹记于哪一天」照回话当场显示（不另读盘、不自己取今天）。
+      for (const p of patched.pinned) saving.find((c) => c.persistedKey === p.origin)?.pinnedOn(p.day);
 
       const changed = !sameRemote(next, this.original);
       // 续跑命令起会话时现读，改了不用重启；但要说一声存上了。

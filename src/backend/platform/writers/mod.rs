@@ -2,7 +2,7 @@
 //! 盯一棵目录树里文件的新建 · 打开 · 写完关闭这三种动静，攒一小批交一次（[`watch_opens`]）。
 //!
 //! 用它的：会话流的 watcher —— 有的 agent 不留 pidfile，它的会话在世期间写记录的那个进程一直开着那份记录
-//! （适配层声明，`agents::RecordFace::held_open`）⇒「有进程开着它写」就是这条会话活着的事实，那个进程退了（pidfd）
+//! （适配层声明，`agents::Adapter::live` ＝ `LiveBy::HeldOpen`）⇒「有进程开着它写」就是这条会话活着的事实，那个进程退了（pidfd）
 //! 或把它关了（写完关闭）就是它走了。
 //!
 //! 认「写」看的是打开方式（Linux：`/proc/<pid>/fdinfo/<fd>` 的 `flags` 里的读写位），不看进程名像不像谁。

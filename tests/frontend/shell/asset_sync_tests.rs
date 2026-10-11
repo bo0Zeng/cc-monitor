@@ -72,8 +72,6 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
     );
 }
 
-// 「应答缺格就报错不猜」那一条随 `parse_reply`〔散文墓碑〕挪到界面：`tests/assets-sync-reads.vitest.ts`（金样 ＋ 逐格坏样）。
-
 /// 跨半边：本侧发的命令名与字段 ⊆ 后端 `REGISTRY` 那一条声明的 `fields`，读的两格也在里面；远端要认的那条命令真在后端命令表里。
 /// 一条登记里 `fields: &[…]` 声明的字段名：每个 `arg(` / `out(` / `both(` 的第一个实参（第二个是说明）。
 fn declared_fields(block: &str) -> std::collections::BTreeSet<String> {

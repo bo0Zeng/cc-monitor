@@ -37,7 +37,7 @@ _gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 拷到 ASCII 的临时目录再当启动器。
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 的目录里⇒ 拷到 ASCII 的临时目录再当启动器。
 FAKE_DIR="$(mktemp -d /tmp/e2e-resume-fake.XXXXXX)"
 cp "$REPO/tests/e2e/fake-claude" "$FAKE_DIR/fake-claude" && chmod +x "$FAKE_DIR/fake-claude"
 FAKE="$FAKE_DIR/fake-claude"
@@ -210,7 +210,7 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 # ── B6b:tmux 已消失 → 回退新建(铸名口 base 空 → 复用 base 名新建)────────────────
 #
 # **E67③（2026-07-31）：这里是全套件唯一断言「生产侧 tmux 命名形状」的地方，也正是它把
-# CI 红了两个版本。** S4b-3b（用户 2026-07-31）把命名从 `cc-<X>` 反转成 `<X>-cc`，
+# CI 红了两个版本。** S4b-3b把命名从 `cc-<X>` 反转成 `<X>-cc`，
 # 前端（当年的铸名口；今天派生只在后端）与 Rust（`tmux::is_ccm_tmux_name`，
 # 新旧两种都认）都同步了，**只有这条 e2e 的期望值没跟上** ⇒ 断言恒假，
 # 而且连带下一条（拿老名字去 `session_exists`）也必然失败。
@@ -220,7 +220,7 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 # `is_ccm_tmux_name` 刻意保留老前缀正是为了它们，所以那份夹具是**有效覆盖**，别顺手改掉。
 echo "-- B6b tmux 已消失 → 回退新建 --"
 SID7="$(cat /proc/sys/kernel/random/uuid)"
-# 🔴 `K-R96`（用户 2026-09-12 `R55` 裁定一：「**要是可读的名字 / 不要id**」）：
+# 🔴 `K-R96`（`R55` 裁定一：「**要是可读的名字 / 不要id**」）：
 #    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
 #    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
 #    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。

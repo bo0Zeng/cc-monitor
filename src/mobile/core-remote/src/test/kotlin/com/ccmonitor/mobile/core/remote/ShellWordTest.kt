@@ -20,7 +20,7 @@ class ShellWordTest {
     val tmp = TemporaryFolder()
 
     /** 测试自己的受信表达式 —— 不借生产的 `CLAUDE_CONFIG_DIR`，免得误展开到真的配置目录。 */
-    private val trusted = "\${ATERM_T_DIR:-\$HOME/.t}"
+    private val trusted = "\${CCM_T_DIR:-\$HOME/.t}"
 
     /** 让真 `/bin/sh` 拆这个词，回 `[参数1][参数2]…`。cwd = 临时目录（命令若被注入执行，产物落在这里）。 */
     private fun shellSplits(

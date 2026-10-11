@@ -321,8 +321,6 @@ echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc
 #   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
 #   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份），它再起 PATH 上的
 #   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
-# 分流只看 argv、不看 argv[0] ⇒ 叫 `ccm` 还是叫 `cc-monitor-backend` 走同一条规则；
-#   从前的入口②（`cc-monitor-backend ccm …`）〔散文墓碑〕。两个名字同形由下面 [17] 真跑判。
 _SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
 mkdir -p "$_SB" "$_SH" "$_SW/proj"
 ln -sf "$D" "$_SB/ccm"
@@ -622,7 +620,7 @@ chk "★ argv 值超本后端的上限：args_too_large" "$(jq -r .code < "$SAND
 _t0=$(c2ms); d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null 2>&1; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
 chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
 
-# `--resolve`（与仓外 aterm 冻结的那一条）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input（码全集钉在金样里）。
+# `--resolve`（与手机端冻结的那一条）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input（码全集钉在金样里）。
 _rq='{"sessionId":"s1"}'
 printf '%s' "$_rq" | d --resolve >"$SANDBOX/c2-rs-in.txt"; _rc_in=$?
 d --resolve --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-rs-av.txt"; _rc_av=$?

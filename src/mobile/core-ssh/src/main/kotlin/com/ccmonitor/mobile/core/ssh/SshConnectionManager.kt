@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.copy.DurationFormat
+import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -98,13 +100,13 @@ class SshConnectionManager(
         // 已有活连接就复用：同主机多个 tab 共享一条连接，各自 openShell。快路径不进锁；复用前让对端答（与一条新连接同时起跑）。
         reusableOrReplaced(id, emit, onEvent)?.let { return it }
         // 另一个 connect 在飞时提示在等。isLocked 只是快照，只用来出提示，不参与决策。
-        if (connectLockFor(id).isLocked) emit(SshConnectEvent.Stage.TCP, "另一连接尝试进行中，等待其完成 …")
+        if (connectLockFor(id).isLocked) emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.waitOther"))
         // 同 id 并发首连单飞：先到者建连接，后到者进锁复查见活连接即复用，不会各建一条互相顶掉。
         return connectLockFor(id).withLock {
             // 锁内复查：先到者已建好就复用，也发合成事件。不再探测：刚建好的连接是新鲜的，锁内也不该做网络往返。
             states[id]?.connection?.let {
                 if (it.isConnected) {
-                    emit(SshConnectEvent.Stage.ESTABLISHED, "复用已有连接（并发连接已就绪）")
+                    emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.reusedConcurrent"))
                     return@withLock it
                 }
             }
@@ -123,11 +125,11 @@ class SshConnectionManager(
     ): SshTransport? {
         val existing = states[id]?.connection ?: return null
         if (!existing.isConnected) return null // 本地标志已死：走真 connect，finalizeConnected 会替换掉旧连接
-        emit(SshConnectEvent.Stage.TCP, "检测到已有连接，校验可用性 …")
-        val kept = keepOrReplace(id, existing, onEvent) { emit(SshConnectEvent.Stage.TCP, "既有连接已失效，重新建立 …") }
+        emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.probeExisting"))
+        val kept = keepOrReplace(id, existing, onEvent) { emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.existingDead")) }
         when {
-            kept === existing -> emit(SshConnectEvent.Stage.ESTABLISHED, "复用已有连接")
-            kept != null -> emit(SshConnectEvent.Stage.ESTABLISHED, "既有连接没有回话，已换上新连接")
+            kept === existing -> emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.reused"))
+            kept != null -> emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.replaced"))
         }
         return kept
     }
@@ -255,7 +257,7 @@ class SshConnectionManager(
                 if (stateFor(id).generation == myGen) {
                     val msg =
                         if (timedOut.get()) {
-                            "连接超时：握手未在 ${handshakeDeadlineMs(addressConfigs)}ms 内完成"
+                            copyText("mobSsh.handshake.timeout", "dur" to DurationFormat.short(handshakeDeadlineMs(addressConfigs)))
                         } else {
                             e.message ?: e.toString()
                         }

@@ -334,7 +334,7 @@ describe("TabManager 生命周期", () => {
 
   // 会话里 shell 进了子目录：之后的记录 cwd 都是子目录，而界面只读尾巴 ⇒ 流里「见过的最早那条」是近期的一条。
   // 标题只认后端宣告的项目目录；后端不给（老后端）⇒ 退到 sid，不从行里猜。
-  it("★ 项目目录只认宣告那一格：只读尾巴的流接上之后标题仍是项目名，不漂成子目录", () => {
+  it("★ 项目目录只认宣告那一格：只读尾巴的流接上之后仍是宣告的那一个，不漂成子目录（标题不读它：名字是核心给的）", () => {
     const tail = (sid: string, seq: number) =>
       tm.onLine({
         session_id: sid,
@@ -346,16 +346,12 @@ describe("TabManager 生命周期", () => {
     tm.createSkeletonTab("proj-sid", "/a/proj", LOCAL_ORIGIN);
     for (let seq = 40; seq < 45; seq++) tail("proj-sid", seq);
     const t = home(tm).store.tabs.get("proj-sid")!;
-    expect(t.title).toBe("proj");
     expect(t.projectDir).toBe("/a/proj");
-
-    tm.createSkeletonTab("0ldbacke-nd", null, LOCAL_ORIGIN);
-    for (let seq = 40; seq < 45; seq++) tail("0ldbacke-nd", seq);
-    expect(home(tm).store.tabs.get("0ldbacke-nd")!.title).toBe("0ldbacke");
+    expect(t.title, "核心还没报名字 ⇒ sid 前 8 位").toBe("proj-sid");
 
     // 后端重宣告给了不同的项目目录（固定 tab 存的那份旧了）⇒ 对齐它。
     tm.createSkeletonTab("proj-sid", "/b/other", LOCAL_ORIGIN);
-    expect(t.title).toBe("other");
+    expect(t.projectDir).toBe("/b/other");
   });
 
   it("远端骨架（无项目目录）标题用 sid 前缀，重复宣告幂等", () => {
@@ -699,14 +695,14 @@ describe("TabManager 生命周期", () => {
 
   // === Batch13-F40a：尾部优先门控 / 物化（D 审计 C-3 补测） ===
   //
-  // 🔴 **它服务哪条业务要求：`INVARIANTS.md` 条 21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
-  //    条 21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
+  // 🔴 **它服务哪条业务要求：`INVARIANTS.md` §21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
+  //    §21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
   //    —— `TabManager.onLine` 按 seq 门控，`seq < tab.window.floorSeq` 的旧记录只进
   //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化
   //    尾段 / `switchTo` 时同步物化」——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
-  // 把条 21 记成「全树零命中」并推出「所以它没人守」：读数对
+  // 把 §21 记成「全树零命中」并推出「所以它没人守」：读数对
   //    （没人在散文里点出条号），推论错（第 3 项这一组等值断言一直在守）。
-  //    ⚠ 条 21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
+  //    ⚠ §21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
   //    那是 `MessageStream` 的性质，本文件把它整个 mock 掉了（见文件抬头）。
   //    住址：`tests/frontend/ui/invariants-frontend-guard.vitest.ts` 的 ④⑤ 两格。
 
@@ -1981,8 +1977,6 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
 
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-// 〔散文墓碑〕tmux↔sid 那几个前端过滤（findClaudeTmux · findClaudeTmuxMatches · findIdleTmux · isCwdFallbackMatch）与 tmux 名单短缓存的判据删了：
-//   「这个 sid 由哪个 tmux 会话在跑」只在后端判（`control/session_batch.rs::standing`，判据住 `session_batch_tests.rs`），按目录猜那一支删了。
 
 describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions-stop，与批量同一条）", () => {
   let tm: TabManager;
@@ -2775,7 +2769,7 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
     // ⇒ 「已结束的 tab 留在主栏灰着」**成了正常行为本身**，这一条于是是它的正面断言。
     // ⚠ 孤儿 `barEl` 那个布景**刻意留着**：它仍是一个真的边界情形，而且这条断言
     //   在那个布景下也该成立 —— 顺手把两件事一起买了。
-    // ⚠ 「灰着但还在」这句话来自 `tabs.ts` 自己的旧头注，而用户 2026-09-19 逐字说了同一句。
+    // ⚠ 「灰着但还在」这句话来自 `tabs.ts` 自己的旧头注，也是要求原话。
     document.body.innerHTML = "";
     const orphanBar = document.createElement("div"); // 刻意不 append 到 body
     const streamRootEl = document.createElement("div");
@@ -2909,7 +2903,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   /**
-   * ★ 6d（条 54）：**拖到一半，tab 不许自己跳位置。**
+   * ★ 6d：**拖到一半，tab 不许自己跳位置。**
    *
    * 「拖拽进行中注入一次活动事件 ⇒ 松手之前 `#tab-bar` 子节点顺序一次都不变；
    * 松手后那一次重画必须补上（守卫是推迟不是丢弃）。住 `tests/frontend/ui/tabs.vitest.ts`「6d」。」
@@ -3042,23 +3036,6 @@ describe("P7a-3 集合分组渲染", () => {
     (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
   const setCols = (cols: { id: string; name: string; tabs?: string[] }[]): void => setGroups(tm, cols);
   const order = (): string[] => home(tm).store.orderedIds;
-
-  // ── 🔴 墓碑：五条测「归档抽屉」的判据整块删除 ──────
-  //
-  // 删的是：`P7a1-Y1`（归档 tab 离开主栏进抽屉）· `P7a1-Y2`（当前 tab 绝不进抽屉）
-  // · `P7a1-Y2b`（切走之后才落进抽屉）· `P7a1-Y3`（抽屉里的 tab 不挂 tear-off）
-  // · `P7a3-Y2b`（归档优先于集合：灰 tab 进抽屉不进组）。
-  //
-  // **它们没有失效，是被测的那个功能整个不存在了。** 用户 2026-09-19 逐字：
-  // 「没有归档这个东西，不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，
-  //   全部删掉。」而抬头本来就写着「**已定**：删归档抽屉 · 固定灰 tab」。
-  //
-  // ⚠ **`P7a3-Y2b` 那条的判词今天正好反过来**：它断言「灰 tab 进抽屉**不进组**」，
-  //   而 `§A.3` 逐字「**灰 tab 也能在组里**，更符合直觉」⇒ 留着它就是把设计判红。
-  //   下面 `P7a3` 那一族里已经有「按集合分组」的正向判据盖住新行为，不另立。
-  //
-  // ⚠ 留下这块墓碑而不是静悄悄删：那条 —— 一条判据消失时，
-  //   「它被删了」与「它从来没有过」在盘上长得一模一样。
 
   it("★ P7a3-Y2：成员进它的组，非成员照常直接挂主栏", () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
@@ -4724,10 +4701,8 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根（那台判�
   });
 });
 
-// **接线判据**：`main.ts` 起步那几行（`list_active_sessions`〔散文墓碑〕 之后标本机清单报完 ·
-// 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
+// **接线判据**：`main.ts` 起步那几行（标本机清单报完 · 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
-  // 本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
   it("★ 容器 · 清单报完（本机远端同一格）· 各台都报完那一拍各恰一处；本机不再另拉清单", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;
@@ -5248,17 +5223,16 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   });
 
   // 刚起的会话宣告时还没有记录（或老后端宣告不带）⇒ 后端读到记录开头之后经会话事实给项目目录，标题跟上；行里的 cwd 不读。
-  it("成品带项目目录 ⇒ tab 记下、标题跟上；没带（null）⇒ 不动 tab 上那一份", async () => {
+  it("成品带项目目录 ⇒ tab 记下；没带（null）⇒ 不动 tab 上那一份", async () => {
     answerFacts(() => facts({ projectDir: "/a/proj" }));
     tm.onLine({ ...(line("pd", 0) as object), cwd: "/a/proj/sub" } as never);
     await settle();
     const tab = home(tm).store.tabs.get("pd")!;
     expect(tab.projectDir).toBe("/a/proj");
-    expect(tab.title).toBe("proj");
     answerFacts(() => facts({ end: 200 }));
     tm.onLine({ ...(line("pd", 1) as object), cwd: "/a/proj/sub" } as never);
     await settle();
-    expect(tab.title).toBe("proj");
+    expect(tab.projectDir).toBe("/a/proj");
   });
 
   it("#63① 成品说不是分叉 ⇒ 不加徽标（区分性）", async () => {
@@ -5270,14 +5244,14 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(tab.title.startsWith("↳")).toBe(false);
   });
 
-  it("#63① 分叉 ＋ 后到的 aiTitle ⇒ 恰一个 ↳；远端分叉 ↳ 在 [origin] 之外", async () => {
+  it("#63① 分叉 ＋ 后到的名字 ⇒ 恰一个 ↳；远端分叉 ↳ 在 [origin] 之外", async () => {
     answerFacts(() => facts({ forkedFrom: "parent-x" }));
     tm.createSkeletonTab("f3", "/home/u/proj", LOCAL_ORIGIN); // 项目目录由会话宣告给
     tm.onLine(line("f3", 0));
     tm.onLine(line("fr", 0, "pi"));
     await settle();
     const tab = home(tm).store.tabs.get("f3")!;
-    (tm as unknown as { applyAiTitle(t: Tab, s: string): void }).applyAiTitle(tab, "我的功能");
+    tm.updateName("f3", "我的功能", "proj");
     expect(tab.title).toBe("↳ [proj] 我的功能");
     expect((tab.title.match(/↳/g) ?? []).length).toBe(1);
     expect(home(tm).store.tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
@@ -6366,14 +6340,20 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(lineReads()).toEqual([]);
   });
 
-  it("一轮结束（turn_end 格）⇒ 按那个 tab 的名字报通知；没有 tab / 别的机器上的同名会话不报", async () => {
+  it("一轮结束（turn_end 格）⇒ 照抄格上写好的标题 · 正文报通知（远端前面加机器名）；没有 tab / 别的机器上的同名会话不报", async () => {
     const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
     vi.mocked(turnEndNotifier.observe).mockClear();
-    const t = tm.ensureTab("wt", null, "/p/wt.jsonl", LOCAL_ORIGIN);
-    tm.onTurnEnd(LOCAL_ORIGIN, "wt");
-    tm.onTurnEnd("box", "wt");
-    tm.onTurnEnd(LOCAL_ORIGIN, "nobody");
-    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([["wt", t.title]]);
+    tm.ensureTab("wt", null, "/p/wt.jsonl", LOCAL_ORIGIN);
+    tm.ensureTab("far", null, "/p/far.jsonl", "box");
+    const turn = (session_id: string) => ({ session_id, title: `T-${session_id}`, body: "B" });
+    tm.onTurnEnd(LOCAL_ORIGIN, turn("wt"));
+    tm.onTurnEnd("box", turn("wt"));
+    tm.onTurnEnd(LOCAL_ORIGIN, turn("nobody"));
+    tm.onTurnEnd("box", turn("far"));
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls, "远端的照标签栏加 [那台]，本机不加").toEqual([
+      ["wt", "T-wt", "B"],
+      ["far", "[box] T-far", "B"],
+    ]);
   });
 
   it("Codex 样本（后端真走过 watcher 的那几帧，壳那一跳同一份金样）⇒ 它那个 tab 两轮各报一次通知", async () => {
@@ -6382,16 +6362,16 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
       .trim()
       .split("\n")
-      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string });
+      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string; title?: string; body?: string });
     const announced = frames.filter((f) => f.kind === "session_added");
     expect(announced).toHaveLength(1);
     const codexSid = announced[0].sid!;
-    const tab = tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
-    for (const f of frames.filter((f) => f.kind === "turn_end")) tm.onTurnEnd(LOCAL_ORIGIN, f.session_id!);
-    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([
-      [codexSid, tab.title],
-      [codexSid, tab.title],
-    ]);
+    tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
+    const ends = frames.filter((f) => f.kind === "turn_end");
+    for (const f of ends) tm.onTurnEnd(LOCAL_ORIGIN, { session_id: f.session_id!, title: f.title!, body: f.body! });
+    expect(ends.every((f) => typeof f.title === "string" && f.title !== "" && typeof f.body === "string")).toBe(true);
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual(ends.map((f) => [codexSid, f.title, f.body]));
+    expect(ends).toHaveLength(2);
   });
 });
 
@@ -6409,5 +6389,26 @@ describe("SeqSet.maxBelow：见过的、比 x 小的最大行号", () => {
     expect(set.maxBelow(55)).toBe(54);
     expect(set.maxBelow(100)).toBe(59);
     expect(set.maxBelow(0)).toBe(-1);
+  });
+});
+
+// 叫会话什么是核心的账（`session_label`）：标签页照抄会话流 `activity` 格上的 `label` · `label_project`，只排版（项目 · 机器 · ⚙ · ↳）。
+// 不在看的会话改了名，那一格照样来、标签页照样跟着变；标题记录不再喂标签页。
+describe("标签页的名字照抄核心那一格", () => {
+  it("名字先于 tab 到 ⇒ 建 tab 时用上；之后改名 ⇒ 跟着变；项目那一格只在核心给了时出；远端加机器名", async () => {
+    document.body.innerHTML = "";
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const tm = new TabManager(barEl, streamRootEl, () => {});
+    tm.updateName("n1", "修一下登录", "proj");
+    tm.ensureTab("n1", "/w/proj", "/p/n1.jsonl", LOCAL_ORIGIN);
+    const tab = home(tm).store.tabs.get("n1")!;
+    expect(tab.title).toBe("[proj] 修一下登录");
+    tm.updateName("n1", "proj", null);
+    expect(tab.title).toBe("proj");
+    tm.ensureTab("n2", "/w/q", "/p/n2.jsonl", "box");
+    tm.updateName("n2", "登录修复", "q");
+    expect(home(tm).store.tabs.get("n2")!.title).toBe("[box] [q] 登录修复");
   });
 });

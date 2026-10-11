@@ -57,7 +57,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend.rs", "drop_partial", None,
      "删 `extract_embedded_to` 这一趟刚写的 `~/.cc-monitor/bin/.<ccm 名>.<pid>.partial`（问手上那份字节放不放用的暂存件）：\
           放了（换名上位后它已不在）· 不放 · 它说「不」· 问不成，四种结局都走这里；清不掉出声，一天后由 `sweep_stale_partials` 收。"),
-    // ── 本机那条 `ccm` 入口（逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）删了：落点就是后端本身（`extract_embedded_to`）。
     ("local_backend.rs", "sweep_moved_aside", None,
      "删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
           只认自己那套命名，删不掉就下次再说。"),
@@ -90,26 +89,17 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("build.rs", "manifest_for_every_artifact", None,
      "往 `OUT_DIR` 写一行 `.rc`（指向 `windows/app.manifest`），编成 Windows 进程清单资源，\
           链进本包每一个产物（测试程序也要）。写的是 cargo 自己的构建目录，不碰用户环境"),
-    // ── 这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
-    //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。要求「远端（和本机，
-    //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
-    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。三道围栏也进了那台后端；收件箱编辑面整块删了，那三道随之没了。
     // ── 🔴 这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。只有后端的文件管理部分写文件，**本机也算** ⇒ 那几件改经本机后端
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
     //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
-    // ── 这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
-    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs`（整份删了）的
-    //    本机原子写（`project-mcp` 那条的真落点）。`$PROFILE` / rc / 项目 `.mcp.json` 全改经后端写
-    //    （`user_files` → `files-put`），三件零调用方、删了 ⇒ 三行随之走。那两个工具的装 / 卸动作今天在后端落盘，
-    //    本表（monitor 进程的写盘人群）里**不再有它们** —— 那正是用户那一裁要的形状。
     // ── 不是安装动作：写的是 monitor 自己的东西
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_tty_file", None, "monitor 自己的握手表（bash / zsh 那一份认上了写一条登记）· 删用完的那份等待记录"),
     ("console.rs", "tty_title", None, "不是盘上的文件：往本机 bash / zsh 接入块记下的那个终端设备写改标题的控制序列（终端程序据此改窗口标题）"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
-    ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
+    ("config.rs", "patch_config_stamping", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁）"),
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
@@ -138,20 +128,12 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend_host.rs", "spawn_detached", None,
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
-    // ── 这里原来有 `history.rs` 的 `delete_history_session` 一行（**删用户数据**：〔散文墓碑〕
-    //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。只有后端的文件管理部分写文件
-    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
-    // FN1 之后写面已无那道围栏），
-    //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
+    // 删历史会话是后端一条只收 sid 的命令（`files-delete-session`），本进程一个字节不删 ⇒ 不在本表。
 ];
 
 /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。
 ///
 /// # 为什么要有这道
-///
-/// 本模块的人群靠 **`fs::` 这个前缀**认写盘调用（`WRITE_CALLS` 每一条都带它），
-/// `hooks_diag::this_module_never_writes` 的白名单也是扫 `fs::`（那个模块进了后端，本条照旧守 `config_surface`）〔散文墓碑〕。
-/// 两条判据因此**共享同一个前提**：`std::fs` 只能以带前缀的形态出现。
 ///
 /// 08-07 实测这个前提没人守：往 `hooks_diag.rs` 里加
 /// `use std::fs as sysio;` + `sysio::write(p, s)`（一个名叫
@@ -186,7 +168,6 @@ fn fs_import_verdict(line: &str) -> Result<(), String> {
 
 /// ★★ **没有一种导入形态能让写盘调用丢掉 `fs::` 前缀**。
 ///
-/// 这是上面那条人群、以及只读模块白名单（当年是 `hooks_diag::this_module_never_writes`〔散文墓碑〕）的**共同前提**。
 /// 前提没人守的时候，两条判据会**同时**瞎掉且都保持绿色 —— 08-07 实测过（见
 /// [`fs_import_verdict`] 的头注）。
 #[test]
@@ -396,7 +377,7 @@ enum Lands {
     BuildOutput,
     /// 不是盘上的文件：终端设备（`/dev/pts/*`），写的是改标题的控制序列。
     TerminalDevice,
-    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在这里收)`。
     /// 今天**零成员**（唯一那一格 —— 下载落到用户选的本机路径 —— 被 SR1b 收了，落地搬进后端 `control/transfer.rs`）；
     /// 这一档留着：它是「一时搬不走、指名谁来收」这个形态本身，下一格要落时有地方落（同 `backend_route` 那条
     /// 「别因暂时没人用删判据形态」）。
@@ -443,7 +424,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "process_tty_file", Lands::OwnState),
     ("console.rs", "tty_title", Lands::TerminalDevice),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
-    ("config.rs", "patch_config_at", Lands::OwnState),
+    ("config.rs", "patch_config_stamping", Lands::OwnState),
     // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
     ("fs.rs", "atomic_replace", Lands::OwnState), // 原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),
@@ -502,7 +483,7 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
         if let Lands::Pending(owner) = c {
             assert!(
                 owner.chars().count() >= 10,
-                "`{f}::{n}` 记成待收，却没写清谁来收、为什么不在本路"
+                "`{f}::{n}` 记成待收，却没写清谁来收、为什么不在这里收"
             );
         }
     }
@@ -538,7 +519,7 @@ const MOVED_OUT: &[&str] = &[
 ///   `Door::rename` 这种经后端的调用撞名。
 fn moved_out_needles() -> Vec<String> {
     let mut v: Vec<String> = WRITE_CALLS.iter().map(|s| s.to_string()).collect();
-    // ⚠ 名字也**运行时拼**：其中两个是已删的旧名（挂着墓碑），写成字面量会让死名普查把它们当成活名。
+    // ⚠ 名字也**运行时拼**：其中两个是已删的旧名，写成字面量会让死名普查把它们当成活名。
     for (a, b) in [
         ("atomic_write_", "json"),
         ("atomic_write_", "string"),

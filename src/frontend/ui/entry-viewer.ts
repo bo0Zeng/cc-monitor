@@ -158,7 +158,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   paint();
   await viewer.load({
     jsonlPath: r.jsonlPath,
-    displayTitle: r.untitled ? copyText("history.row.untitled") : r.label,
+    displayTitle: r.label,
     origin,
     agent: r.agent,
     cwd: r.projectPath,
@@ -183,7 +183,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   const sep = icon("caretRight", "compact");
   const title = document.createElement("span");
   title.className = "viewer-topbar-label";
-  title.textContent = r.untitled ? copyText("history.row.untitled") : r.label;
+  title.textContent = r.label;
   title.title = title.textContent;
   const out: Node[] = [project, sep, title];
   if (live) {

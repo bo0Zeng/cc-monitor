@@ -3,7 +3,7 @@
 # 注意：两个 glob 相加（test*/ 与 test/）会把 test/ 数两次，所以这里用 find。
 #
 # 用法：先跑全量门禁，再跑这个（它只读 .build/mobile/ 里已有的 results，自己不跑测试）：
-#   . ./scripts/env.sh && ./gradlew ktlintCheck testDebugUnitTest :core-claude:test :core-remote:test
+#   . ./scripts/env.sh && ./gradlew ktlintCheck testDebugUnitTest :core-claude:test :core-remote:test :core-copy:test
 #   ./scripts/gate-count.sh
 #
 # 注意：test-results/ 反映的是最后一次跑了什么。用 --tests 过滤跑过之后，

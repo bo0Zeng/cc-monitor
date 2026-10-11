@@ -31,7 +31,7 @@ fn upstreams_without_env() -> accounts::Upstreams {
     accounts::Upstreams::from_env(&|_| None).expect("内置默认必须解析得了")
 }
 
-/// 判据里那些行挂在谁名下（条 49：表的键是 agent ＋ 账号）。
+/// 判据里那些行挂在谁名下（表的键是 agent ＋ 账号）。
 ///
 /// ⚠ **它与 `send_request` 里那些 URL 的首段逐字对应**，名字刻意不是任何一家登记过的 agent ——
 /// 这些判据量的是「表里有行」那几格，与哪家登没登记无关。
@@ -54,7 +54,7 @@ fn render_via_upstream_selection(
     body_len: usize,
 ) -> String {
     let key = RouteKey {
-        // 条 49：`seg1` 今天是键的一半 ⇒ 必须是这张表里那些行挂的那一家。
+        // 表的键是 agent ＋ 账号：`seg1` 是键的一半 ⇒ 必须是这张表里那些行挂的那一家。
         seg1: TEST_AGENT.to_string(),
         seg2: account.to_string(),
     };
@@ -118,7 +118,7 @@ fn table_of_styled(
     )
 }
 
-/// 最底下那一版：每一行**自己说**挂在哪一家名下（条 49）。走的仍是生产段那条真实的 `RoutingTable::build`。
+/// 最底下那一版：每一行**自己说**挂在哪一家名下。走的仍是生产段那条真实的 `RoutingTable::build`。
 fn table_under(
     rows: &[(
         &str,
@@ -142,7 +142,7 @@ fn table_under(
 /// 判据里最常用的那张表：两个账号段，都指向同一个假上游，都不配 key
 /// （⇒ 走「原样转发」那一支，与 `K-H1` 甲半的既有判据逐字同形）。
 fn two_accounts_no_key(base: &Base) -> RoutingTable {
-    // ⚠ 条 49 之后「两个键」是两对 `(agent, 账号)`：`routes_two_keys…` 打的是
+    // ⚠ 「两个键」是两对 `(agent, 账号)`：`routes_two_keys…` 打的是
     //   `/s/agentA/acctA` 与 `/s/agentB/acctB`，所以两行各挂一家。
     let d = creds_core::store::AuthStyle::DEFAULT;
     table_under(&[
@@ -1177,7 +1177,7 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
 
 /// ★ `INTERIM_RESPONSES_ALLOWED` 那一格〔铁律 15 自查补的：**我自己写的那条上限先前零判据**〕。
 ///
-/// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
+/// 上一条判据只喂到 **2** 个 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
 /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502** ＋ 原因头 `upstream-only-interim`
 /// （中转自己的传输失败；不是超时 ⇒ 502，先前 504）。
@@ -2350,8 +2350,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
     }
 }
 
-/// **`every_header_this_relay_may_write_is_in_the_set_it_clears_first`
-/// 搬去 `creds_guard` 了** —— 墓碑，别在这里重建一份。
+/// **「中转可能写出的头名都在它先丢掉的那份名单里」那条住 `creds_guard`**，别在这里重建一份。
 ///
 /// 它焊的两端（「我可能写出来的头名」＝ `auth_header_of` · 「先丢掉哪几个」＝那份名单）
 /// 本来都住中转。`P16` 把映射按 `C2` 搬去上游选择、名单改成由映射**派生**之后，
@@ -3166,11 +3165,6 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// `KH2C2` 要证的是「**写侧产出的那份文件**能让那个账号的会话走到中转」。
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
-///
-/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（写侧 ＝ 每台机器那台后端的 `accounts/upstream_select/file_face.rs`，
-/// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
-/// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
-/// 这个共同祖先上会合**：backend 单向依赖 `src/common/*`，够得着它们。
 ///
 /// # ⚠⚠ 它**买不到**什么 —— 逐字落在这里，别读宽〔PM `裁二`，09-02〕
 ///

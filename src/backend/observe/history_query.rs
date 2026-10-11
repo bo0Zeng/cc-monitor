@@ -6,7 +6,7 @@
 //! - `--list-sessions <project_dir>`  → 列举某项目目录下的历史会话（带元数据）
 //! - `--read-session <jsonl_path>`    → 原样透传该 jsonl 文件内容（monitor 侧解析）
 //! - `--read-session-from-offset <jsonl_path> <offset>` → 从字节 `offset`（0-based）透传
-//!   [offset, EOF]，= aterm `tail -c +(offset+1)`（offset 续拉/重连恢复）
+//!   [offset, EOF]，= 手机端 `tail -c +(offset+1)`（offset 续拉/重连恢复）
 //!
 //! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
 //! 协议互不混用，旧后端不认参数会照常进流模式发 hello，monitor 以"首行是
@@ -520,14 +520,24 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
     SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
 }
 
-/// 一份会话记录的标题（同历史清单那一格：起的名字 · 首条用户输入摘要 · sid 前 8 位三选一），走清单缓存（没变不重扫、变长只扫尾巴）。
-pub(crate) fn session_title_of(p: &Path) -> String {
+/// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
+pub(crate) fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
     let row = analyze_session_cached(p);
-    super::search_rules::session_title(
-        row["aiTitle"].as_str(),
-        row["firstUserExcerpt"].as_str().unwrap_or(""),
-        row["sessionId"].as_str().unwrap_or(""),
-    )
+    super::search_rules::LabelFacts {
+        custom: None,
+        title: row["aiTitle"].as_str().map(str::to_string),
+        first: row["firstUserExcerpt"].as_str().unwrap_or("").to_string(),
+        project_dir: row["cwd"].as_str().map(str::to_string),
+    }
+}
+
+/// 一份会话记录的标题（同历史清单那一格，[`super::search_rules::session_label`]，不并注解）。
+pub(crate) fn session_title_of(p: &Path) -> String {
+    let sid = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    super::search_rules::session_label(&label_facts_of(p)).0
 }
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
@@ -707,10 +717,10 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
 }
 
 /// backend-02（Phase 1 offset 续拉）：`--read-session-from-offset <path> <offset>`——
-/// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = aterm
+/// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = 手机端
 /// `tail -c +(offset+1)`**（`TailTransport.kt:33` + `SkeletonScan.windowContentCommand`）。
 /// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
-/// 截断/重写（远端 size < offset）**不在此判**——同 aterm 由客户端另经 size 查检测后
+/// 截断/重写（远端 size < offset）**不在此判**——同手机端由客户端另经 size 查检测后
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
 /// 透传原字节，理由同 `read_session`（冻结的那一面；成品走 `history-read`）。
 ///
@@ -911,6 +921,12 @@ pub(crate) fn facts_project_dir(agent_home: &Path, jsonl_path: &str) -> Option<S
 pub(crate) fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String> {
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     crate::agents::record_kind_of(&target).map(str::to_string)
+}
+
+/// 这条会话此刻谁持着它（[`super::accounts_query::session_holders`]，先过同一道围栏）；过不了围栏 / 判不了 ⇒ `None`。
+pub(crate) fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
+    let target = validate_session_path(agent_home, jsonl_path).ok()?;
+    super::accounts_query::session_holders(agent_home, &target)
 }
 
 /// `history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
@@ -1267,7 +1283,7 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
-/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍 aterm `tail -c +(offset+1)`；生产走
+/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍手机端 `tail -c +(offset+1)`；生产走
 /// `stream_from_offset` 的 `File::seek`、不调本函数，故 `#[cfg(test)]` 不进生产二进制）。
 /// = `bytes[min(offset,len)..]`——offset ≤ len 时取 [offset, EOF]；offset > len
 /// （截断）时取空（与 `File::seek` 过 EOF 后读空一致，不 panic）。
@@ -1783,10 +1799,6 @@ pub(super) fn created_ms_or_mtime(p: &Path) -> i64 {
 /// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
 /// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）
 ///
-/// **这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
-/// （`history·rs::analyze_jsonl`〔散文墓碑〕，经记录解析器），与这里的「精简版」各算各的 —— 开始时刻 / 摘录 / 标题 / fork 关系
-/// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
-/// `custom-title` · 首条时间戳）补进来，摘录取人说的话（经注册表 `agents::human_speech`，与全文搜索同一个家）、截断用 `observe/search_rules.rs`。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
     // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**（[`ListingEntry::scan`] 逐行读）。原来是 `read_to_string(p)` 整读：
     // `--list-sessions` 对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
@@ -1820,9 +1832,6 @@ pub(super) fn forked_pair(f: &serde_json::Value) -> Option<(String, String)> {
         f.get("messageUuid")?.as_str()?.to_string(),
     ))
 }
-
-// 按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_rules::truncate_excerpt`（同样不劈码点，
-//   另把换行折成空格、超了加 `…` —— 与本机那条路从前的口径、与全文搜索的标题摘录同一个家）。
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/history_query_tests.rs"]

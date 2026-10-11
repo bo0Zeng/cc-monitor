@@ -172,7 +172,7 @@ class TmuxSessionNameSourceTest {
      *
      * 只有一条：
      * - `RemoteCommands.appendAuthorizedKeyCommand`：落 `~/.ssh/`，第三个名字空间，
-     *   既不是我们的 `.aterm` 也不是后端的 `.cc-monitor`，而是 OpenSSH 的标准位。多一格红。
+     *   既不是手机端从前那层目录，也不是后端的 `.cc-monitor`，而是 OpenSSH 的标准位。多一格红。
      *
      * 抠取器 [writeTargets] 与 `core-claude` 那份是两份拷贝（跨模块共享测试夹具没配），
      * 两份都各自带扫描器自检；改一份记得核另一份。

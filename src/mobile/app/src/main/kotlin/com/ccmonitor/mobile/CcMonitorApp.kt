@@ -19,13 +19,13 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 
-class AtermApp : Application() {
+class CcMonitorApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val koin =
             startKoin {
                 androidLogger()
-                androidContext(this@AtermApp)
+                androidContext(this@CcMonitorApp)
                 modules(dataModule, sshModule, appModule)
             }.koin
         // 维护前台标志，并在回到前台时探活重连僵死会话。

@@ -323,7 +323,7 @@ pub fn xdotool_on(display: &str, args: &[&str]) -> Result<String, String> {
 // 那条路在真桌面上走的是另一种几何 ⇒ 真桌面上关窗干不干净，仍然判不了。
 //
 // ⚠ 为什么手写 X11 协议而不是再加一件工具／一个依赖：xdotool 这一版**发不了**
-// 这条消息（它没有 `windowquit`），而加 crate 要动 `Cargo.toml`（不在这一路的写区）。
+// 这条消息（它没有 `windowquit`），而为一台测试台架给 `Cargo.toml` 加 crate 不值。
 // 要发的只有三条请求（两次 `InternAtom` ＋ 一次 `SendEvent`）＋ 一次往返确认，
 // 全是定长小包 ⇒ 字节布局住下面两个**纯函数**，由 `x11_wire_tests` 逐字节判。
 

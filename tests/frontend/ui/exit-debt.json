@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 255,
+  "ceiling": 248,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -69,13 +69,6 @@
       "n": 5,
       "kind": "第 1 批",
       "why": "上游失败原因码（ApiReason）⇒ 原因词：记录的 retry · error 带写好的原因字"
-    },
-    {
-      "file": "src/frontend/ui/cards/compact.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
     },
     {
       "file": "src/frontend/ui/cc-bus-hooks-reads.ts",
@@ -323,13 +316,6 @@
       "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
     },
     {
-      "file": "src/frontend/ui/settings/machine-card.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
       "file": "src/frontend/ui/settings/machine-state.ts",
       "rule": "caseWord",
       "n": 14,
@@ -386,13 +372,6 @@
       "why": "壳开终端窗口自己的失败（setMissing），宿主本职"
     },
     {
-      "file": "src/frontend/ui/terminal-page.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
       "file": "src/frontend/ui/turn-rail.ts",
       "rule": "pct",
       "n": 1,
@@ -428,13 +407,6 @@
       "why": "快捷键总览的作用域（any · idle · main …，界面自己的键位表），骨架词"
     },
     {
-      "file": "src/frontend/ui/views/plan-model.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
       "file": "src/frontend/ui/views/plan-review.ts",
       "rule": "codeWord",
       "n": 1,
@@ -461,20 +433,6 @@
       "n": 6,
       "kind": "留",
       "why": "自定义按钮编辑框按按钮类型（text · escape · keycode · builtin · switch）出说明与预览：类型是手机自己存的按钮配置，不是后端码，后端不认这几样"
-    },
-    {
-      "file": "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnection.kt",
-      "rule": "durUnit",
-      "n": 2,
-      "kind": "手机",
-      "why": "SSH 那层自己的超时句（开终端通道 · 一次命令）硬写了秒 / ms：手机自己的操作、核心看不见，但字要进文案表、时长走 DurationFormat（同核心金样）"
-    },
-    {
-      "file": "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",
-      "rule": "durUnit",
-      "n": 1,
-      "kind": "手机",
-      "why": "同上：握手超时那一句硬写 ms"
     }
   ]
 }
