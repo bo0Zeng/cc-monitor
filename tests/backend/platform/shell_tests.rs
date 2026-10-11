@@ -184,12 +184,15 @@ fn the_session_shell_path_comes_from_a_login_shell() {
 #[test]
 #[cfg(unix)]
 fn a_stuck_login_shell_is_unknown_not_hung() {
-    let home = login_box("stuck", "sleep 30\n");
+    let home = login_box(
+        "stuck",
+        &format!("sleep {}\n", 2 * guard_core::wall::CEILING_SECS),
+    );
     let t0 = std::time::Instant::now();
     let got = super::ask_session_path(sandboxed(&home), crate::platform::child::Deadline::secs(1));
     assert_eq!(got, None, "卡住的登录 shell 竟然答出了 PATH");
     assert!(
-        t0.elapsed() < std::time::Duration::from_secs(10),
+        t0.elapsed() < guard_core::wall::CEILING,
         "到期限没收手：等了 {:?}",
         t0.elapsed()
     );

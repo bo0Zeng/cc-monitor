@@ -5,7 +5,7 @@
  * `aria-modal` · 自己建 toast 栈 · 自己在 `document` / `window` 上挂 `pointerdown` 去关一个浮层（「点外面关」那一套只许菜单里有）。
  */
 import { describe, it, expect } from "vitest";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
+import { productionTsFiles } from "../../../test-support/production-sources.ts";
 import { stripCodeComments } from "../../../evidence/S25-class-ledger.ts";
 
 const NEEDLES: { what: string; re: RegExp }[] = [
@@ -32,7 +32,6 @@ describe("一个组件一个家（对话框 · 菜单 · 悬停提示 · toast�
       expect(FILES.length).toBeGreaterThan(100);
       expect(FILES.filter((f) => !inKit(f.file)).flatMap((f) => hitsOf(f.file, f.text))).toEqual([]);
     },
-    SCAN_TIMEOUT_MS,
   );
 
   it("🔴 正控：同一把尺子在 kit 里认得出每一样（不然上面是空转），注释里写的不算", () => {

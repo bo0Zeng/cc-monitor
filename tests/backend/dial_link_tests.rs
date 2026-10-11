@@ -279,7 +279,7 @@ async fn close_aborts_the_link_and_is_idempotent() {
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     assert_eq!(table.len(), 0);
     settle().await;
-    let gone = tokio::time::timeout(std::time::Duration::from_secs(5), drop_rx.recv()).await;
+    let gone = tokio::time::timeout(guard_core::wall::CEILING, drop_rx.recv()).await;
     assert!(
         matches!(gone, Ok(None)),
         "关了链路 5 秒，serve 手里的东西还没被丢"
@@ -314,7 +314,7 @@ async fn dropping_the_table_aborts_every_link() {
     settle().await;
     drop(table);
     settle().await;
-    let gone = tokio::time::timeout(std::time::Duration::from_secs(5), drop_rx.recv()).await;
+    let gone = tokio::time::timeout(guard_core::wall::CEILING, drop_rx.recv()).await;
     assert!(
         matches!(gone, Ok(None)),
         "表丢了 5 秒，还有链路的 serve 活着"

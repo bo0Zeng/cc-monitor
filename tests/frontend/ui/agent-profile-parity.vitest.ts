@@ -87,7 +87,7 @@ import {
   type AgentProfileRow,
 } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { stripComments } from "../../test-support/strip-comments";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
+import { productionTsFiles } from "../../test-support/production-sources";
 import { copyPattern } from "../../test-support/copy-pattern";
 
 const REPO = resolve(__dirname, "../../..");
@@ -417,7 +417,6 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
         expect(names.some((n) => quoted(n).test(code)), `${f} 已经不写名字了，摘掉它`).toBe(true);
       }
     },
-    SCAN_TIMEOUT_MS,
   );
 });
 
@@ -447,6 +446,5 @@ describe("起会话按会话的那一家取画像", () => {
         "src/frontend/ui/launch-types.ts",
       ]);
     },
-    SCAN_TIMEOUT_MS,
   );
 });

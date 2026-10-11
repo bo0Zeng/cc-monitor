@@ -43,6 +43,7 @@ import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire"
 import { configuredLauncherFor } from "../../../src/frontend/ui/launch-requests";
 import { ControlError } from "../../../src/frontend/ui/control-said";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
 const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
@@ -126,7 +127,7 @@ describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选
     expect(title).toBe(copyText("accountPick.refused.title"));
     expect(body).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
     opts.onClick!();
-    await vi.waitFor(() => expect(term.openTerminal).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(term.openTerminal).toHaveBeenCalledTimes(1), UNTIL_CEILING);
     expect(requests().map((r) => r.account)).toEqual([
       { kind: "follow" },
       { kind: "named", name: "b" },

@@ -32,7 +32,6 @@ import {
 } from "../../test-support/chan-fake";
 import {
   productionTsFiles,
-  SCAN_TIMEOUT_MS,
 } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { copyPattern } from "../../test-support/copy-pattern";
@@ -156,6 +155,5 @@ describe("一个家", () => {
         "有别处自己开终端了 —— 开终端只经 `src/frontend/ui/terminal-open.ts::openTerminal`",
       ).toEqual(["src/frontend/ui/terminal-open.ts"]);
     },
-    SCAN_TIMEOUT_MS,
   );
 });

@@ -32,7 +32,7 @@
  */
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
-import { productionCssFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionCssFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 
 /** `(文件, 所在声明)` —— 今天 tab 代码里按 bg 分叉 / 搬运 bg 字段的全部住处，逐条写理由。 */
 const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [
@@ -138,7 +138,7 @@ describe("tab 代码里按 bg 分叉只住登记的那几处", () => {
     const want = new Set(REGISTERED.map(([f, o]) => `${f} :: ${o}`));
     expect(want.size, "登记表里有重复行").toBe(REGISTERED.length);
     expect([...got].sort()).toEqual([...want].sort());
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("★ B2：`src/**` 的 CSS 里 `.tab-bg` 零处（正控 `.drop-onto` 在）", () => {
     const files = productionCssFiles("src").map((s) => [s.file, s.text] as const);
@@ -154,5 +154,5 @@ describe("tab 代码里按 bg 分叉只住登记的那几处", () => {
       "src/frontend/ui/styles.css",
     ]);
     expect(cssFilesWithClass(files, "tab-bg")).toEqual([]);
-  }, SCAN_TIMEOUT_MS);
+  });
 });

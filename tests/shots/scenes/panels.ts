@@ -283,12 +283,12 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-new-slot-missed", "起新会话 · 20s 未报到", "那台起好了、20 秒没看到会话报到：占位标签页变红点「未报到」，那一页是报错卡 —— tmux 会话在不在 ＋ 画面末几行 ＋［终端画面］［在终端里打开］（远端才有）［结束 tmux 会话］·［关闭标签页］；之后报到了照样换成真的", async () => {
     await startNewSession();
-    await waitFor("#tab-bar [data-slot][data-state=missed]", 30_000);
+    await waitFor("#tab-bar [data-slot][data-state=missed]");
     await sleep(600);
   }, unarrivedWorld),
   panel("panel-new-slot-window", "起新会话 · 开窗起的未报到", "运行于「新的终端窗口」、20 秒没报到：只有「已发启动命令 · 20s 未报到」＋［关闭标签页］（原话在那个窗口里，这边读不到）", async () => {
     await startNewSession("window");
-    await waitFor("#tab-bar [data-slot][data-state=missed]", 30_000);
+    await waitFor("#tab-bar [data-slot][data-state=missed]");
     await sleep(600);
   }),
   panel("panel-fork-new", "从这一轮分叉", "已结束的会话里，用户那句话上的分叉按钮：开起新会话框的分叉那一形 —— 顶上说分叉自哪一轮；源会话的号说不出 ⇒ 账号那一格是「跟随原会话上次的号」；不给终端名那一格", async () => {

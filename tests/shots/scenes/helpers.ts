@@ -1,11 +1,16 @@
 /**
  * 场景动作的小工具：等元素、点、按键、右键。全在页里跑（产品代码看到的是真 DOM 事件）。
+ *
+ * 等的上限一律是兜底的那一个数（`tests/test-support/wall-ceiling.ts`）：等的是条件，到了就走；
+ * 从前 8 秒 / 15 秒，合并那一拍负载 40–50 时随机漏图（tab 少一个、或一个都没来）。
+ * 「可能有、没有就跳过」的那几处探一下的窗口由调用处自己给（它们不是等，是看一眼）。
  */
+import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** 等一个选择器出现（可见与否不论）；到时限 ⇒ 抛（这一张算没截成）。 */
-export async function waitFor<T extends Element = HTMLElement>(sel: string, ms = 8000): Promise<T> {
+export async function waitFor<T extends Element = HTMLElement>(sel: string, ms = WALL_CEILING_MS): Promise<T> {
   const until = performance.now() + ms;
   for (;;) {
     const el = document.querySelector<T>(sel);
@@ -16,7 +21,7 @@ export async function waitFor<T extends Element = HTMLElement>(sel: string, ms =
 }
 
 /** 等到「有 n 个」。 */
-export async function waitCount(sel: string, n: number, ms = 8000): Promise<void> {
+export async function waitCount(sel: string, n: number, ms = WALL_CEILING_MS): Promise<void> {
   const until = performance.now() + ms;
   while (document.querySelectorAll(sel).length < n) {
     if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}：${[...document.querySelectorAll(sel)].map((e) => (e.textContent ?? "").slice(0, 30)).join(" | ")}）`);
@@ -37,7 +42,7 @@ export async function click(sel: string | Element): Promise<void> {
 }
 
 /** 按文字找一个可点的元素（按钮、菜单项）。 */
-export async function byText(sel: string, text: string | RegExp, ms = 8000): Promise<HTMLElement> {
+export async function byText(sel: string, text: string | RegExp, ms = WALL_CEILING_MS): Promise<HTMLElement> {
   const until = performance.now() + ms;
   for (;;) {
     for (const el of document.querySelectorAll<HTMLElement>(sel)) {
@@ -112,9 +117,19 @@ export async function type(sel: string, text: string): Promise<void> {
   await sleep(200);
 }
 
-/** 主窗口画好了：tab 都在、批模式出来了（批末 300ms 宽限之后才切实时）。 */
+/**
+ * 主窗口画好了：场景世界宣告的会话都到了、tab 都在、批模式出来了（批末 300ms 宽限之后才切实时）。
+ * 等的是「栏里有 `tabs` 个 tab」这个条件，不是几秒；到兜底上限还不齐 ⇒ 抛，并说清是哪一头没到：
+ * 假后端交出的会话不够（后端那一侧没交）还是交够了、栏里没长出来（界面那一侧没收）。
+ */
 export async function mainReady(tabs: number): Promise<void> {
-  await waitCount("#tab-bar .tab", tabs, 15_000);
+  try {
+    await waitCount("#tab-bar .tab", tabs);
+  } catch (e) {
+    const s = window.__shots?.sessions?.();
+    const said = s ? `；世界宣告 ${s.declared} 个会话，无头壳交出 ${s.sent} 个` : "";
+    throw new Error(`${(e as Error).message}${said}`);
+  }
   // 已结束 / 可重连那几个是收到清单之后才收场的：等它们落定，不然截到的是收场之前那一刻。
   await (window as { __shotsSettled?: () => Promise<void> }).__shotsSettled?.();
   await sleep(900);
@@ -124,7 +139,7 @@ export async function mainReady(tabs: number): Promise<void> {
  * 等一个滚动容器的内容落定：连续 20 帧 `scrollHeight` 与 `scrollTop` 都没动（懒建卡 · 骨架换实高 · 按尾部贴底都做完了）。
  * 用它代替「睡一个固定的时长再截」：后端应答早晚几十毫秒，睡固定时长截到的是排版进行到哪一步（长会话那几张差一屏滚动就是这么来的）。
  */
-export async function settled(el: HTMLElement, ms = 10_000): Promise<void> {
+export async function settled(el: HTMLElement, ms = WALL_CEILING_MS): Promise<void> {
   const t0 = performance.now();
   let last = "";
   let still = 0;
@@ -138,7 +153,7 @@ export async function settled(el: HTMLElement, ms = 10_000): Promise<void> {
 }
 
 /** 等 `get()` 给出东西（每帧问一次）。 */
-export async function until<T>(get: () => T | null | undefined, ms = 10_000): Promise<T> {
+export async function until<T>(get: () => T | null | undefined, ms = WALL_CEILING_MS): Promise<T> {
   const t0 = performance.now();
   for (;;) {
     const v = get();

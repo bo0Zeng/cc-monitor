@@ -90,14 +90,10 @@ BACKEND_PID=$!
 # 后面每一条命令都发不进去（进程还活着，但再也不理你）。
 exec 3>"$IN"
 
-# 等某个 grep 模式出现在 stdout 里（最多 ~10s）。返回 0 = 出现了。
+# 等某个 grep 模式出现在 stdout 里（上限是兜底的那一个数）。返回 0 = 出现了。
 wait_for() {
-  local pattern="$1" i
-  for i in $(seq 1 200); do
-    grep -qF -- "$pattern" "$OUT" && return 0
-    sleep 0.05
-  done
-  return 1
+  _wf_pat="$1"
+  wall_until 'grep -qF -- "$_wf_pat" "$OUT"'
 }
 send() { printf '%s\n' "$1" >&3; }
 
@@ -251,9 +247,9 @@ else
     bad "**建会话就写了事实键 @ccm_sid=$GOT_SID** —— 绕过 identity_tag 那道确认，正是 F04 修掉的 R10"
   fi
   got_marker=0
-  for _ in $(seq 1 60); do [ -f "$MARK" ] && { got_marker=1; break; }; sleep 0.05; done
+  wall_until '[ -f "$MARK" ]' && got_marker=1
   if [ "$got_marker" = 1 ]; then ok "载荷真的在会话里执行了（marker 落盘）"; else
-    bad "3s 内 marker 没出现 —— send-keys 没真落进交互 shell"
+    bad "上限内 marker 没出现 —— send-keys 没真落进交互 shell"
   fi
 
   # 幂等：同名再来一次 ⇒ created=false typed=false（**不重复 resume**）
@@ -287,7 +283,7 @@ else
     bad "send-into 没有应答"
   fi
   got_marker=0
-  for _ in $(seq 1 60); do [ -f "$MARK" ] && { got_marker=1; break; }; sleep 0.05; done
+  wall_until '[ -f "$MARK" ]' && got_marker=1
   if [ "$got_marker" = 1 ]; then ok "send-into 的载荷真的执行了"; else bad "send-into 没真敲进去"; fi
 
   # ★ #76 防线（形态迁移后）：send-into 一个**不存在**的会话 ⇒ 报错，**绝不新建**
@@ -366,16 +362,14 @@ IN2="$WORK/in2.fifo"; mkfifo "$IN2"
 CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --stream <"$IN2" >"$WORK/out2.jsonl" 2>/dev/null &
 P2=$!
 exec 4>"$IN2"   # 持有写端 ⇒ backend 的 stdin 一直开着、且没有数据
-for _ in $(seq 1 100); do grep -q '"kind":"hello"' "$WORK/out2.jsonl" 2>/dev/null && break; sleep 0.05; done
+wall_until "grep -q '\"kind\":\"hello\"' \"\$WORK/out2.jsonl\" 2>/dev/null" || true
 kill -TERM "$P2" 2>/dev/null
 gone=0
-for _ in $(seq 1 40); do   # 2s 预算（回归时是 >5s 仍不退）
-  kill -0 "$P2" 2>/dev/null || { gone=1; break; }
-  sleep 0.05
-done
+# 回归时是 stdin 不关就一直不退 ⇒ 等满兜底上限还在就是红；不按墙钟数几秒。
+wall_until '! kill -0 "$P2" 2>/dev/null' && gone=1
 exec 4>&-
 if [ "$gone" = 1 ]; then ok "stdin 开着时 SIGTERM 仍能立刻收掉 backend"; else
-  bad "SIGTERM 回归复现：stdin 开着时 2s 内没退出"
+  bad "SIGTERM 回归复现：stdin 开着时到兜底上限还没退出"
   kill -9 "$P2" 2>/dev/null || true
 fi
 

@@ -95,7 +95,7 @@ impl TapPort for Mute {
 /// 发一整发，读回整段回包。
 pub(super) fn shoot(addr: SocketAddr, target: &str, headers: &str, body: &str) -> String {
     let mut c = TcpStream::connect(addr).expect("connect relay");
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline");
     let req = format!(
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",

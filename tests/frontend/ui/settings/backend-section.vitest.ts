@@ -127,6 +127,7 @@ import COPY_TABLE from "../../../../src/shared/copy/table.json";
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { copyPattern } from "../../../test-support/copy-pattern";
+import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 // 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
@@ -311,7 +312,7 @@ describe("P2s backend 开关区", () => {
           s.element.querySelector(".backend-row-state")?.textContent,
           "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
         ).toContain(copyText("backend.status.connected")),
-      { timeout: 10_000, interval: 20 },
+      UNTIL_CEILING,
     );
   });
 
@@ -580,10 +581,10 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
     s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!.click();
     // 等起完那一趟画完（两次 channel:false 都读过）再数；按条件等，上限只防挂死。
-    await vi.waitFor(() => expect(statusQueue.length).toBe(0), { timeout: 10_000, interval: 20 });
+    await vi.waitFor(() => expect(statusQueue.length).toBe(0), UNTIL_CEILING);
     await vi.waitFor(
       () => expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1),
-      { timeout: 10_000, interval: 20 },
+      UNTIL_CEILING,
     );
   });
 
@@ -646,10 +647,9 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     return b.find((x) => x.textContent === zh("backend.buildCells.stop"));
   };
   // 等条件成立；等不到就**红**（原先等满一百轮就默默往下走：按钮还禁用着就点下一下，那一下什么都没发生，
-  // 后面「没问」那条空着绿 —— 而且每次都白等一秒多，负载高时整格撞 5 s 默认期限）。
+  // 后面「没问」那条空着绿 —— 而且每次都白等一秒多，负载高时整格撞 5 s 默认期限）。上限是兜底的那一个数。
   const until = async (ok: () => boolean, what: string) => {
-    for (let i = 0; i < 200 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
-    expect(ok(), `等不到：${what}`).toBe(true);
+    await vi.waitFor(() => expect(ok(), `等不到：${what}`).toBe(true), UNTIL_CEILING);
   };
   const stops = () => calls.filter((c) => c.name === "backend_stop").length;
 
@@ -752,9 +752,8 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     ]) {
       stopAnswer = a;
       stop!.click();
-      for (let i = 0; i < 100 && said() !== stopSaid(a); i++) await new Promise((x) => setTimeout(x, 10));
-      expect(said()).toBe(stopSaid(a));
-      for (let i = 0; i < 100 && stop!.disabled; i++) await new Promise((x) => setTimeout(x, 10));
+      await vi.waitFor(() => expect(said()).toBe(stopSaid(a)), UNTIL_CEILING);
+      await vi.waitFor(() => expect(stop!.disabled, "停完按钮没放开").toBe(false), UNTIL_CEILING);
     }
   });
 });

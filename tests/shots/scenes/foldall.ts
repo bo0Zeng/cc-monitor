@@ -109,7 +109,7 @@ function longWorld(n = 90): World {
  * 对一下；折着的过程不物化，剩下几块 0 高的占位。
  */
 async function measure(): Promise<void> {
-  await waitFor(".session-viewer [data-id]", 15_000);
+  await waitFor(".session-viewer [data-id]");
   await sleep(1500);
   const scroller = document.querySelector<HTMLElement>(".session-viewer-stream")!;
   const est = scroller.scrollHeight;
@@ -211,7 +211,7 @@ export const FOLDALL_SCENES: Scene[] = [
     height: 3600,
     world: foldWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1500);
       const s = document.querySelector<HTMLElement>(".session-viewer .stream, .session-viewer [class*='stream']");
       s?.scrollTo(0, 0);

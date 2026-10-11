@@ -45,6 +45,7 @@ const handle: ShotsHandle = {
   error: null,
   unhandled: backend.unhandled,
   layout: [],
+  sessions: () => ({ declared: backend.world.sessions.length, sent: backend.liveSent.size }),
 };
 window.__shots = handle;
 

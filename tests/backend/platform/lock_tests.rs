@@ -59,11 +59,11 @@ fn hx2_a_held_dir_lock_keeps_the_next_holder_waiting_until_it_is_dropped() {
         let _g = hold(&other).expect("另一个目录拿不到");
         tx2.send(()).unwrap();
     });
-    rx2.recv_timeout(Duration::from_secs(5))
+    rx2.recv_timeout(guard_core::wall::CEILING)
         .expect("另一个目录被连坐了");
 
     drop(held);
-    rx.recv_timeout(Duration::from_secs(5))
+    rx.recv_timeout(guard_core::wall::CEILING)
         .expect("放了锁，第二个线程还是没拿到");
     waiter.join().unwrap();
 }

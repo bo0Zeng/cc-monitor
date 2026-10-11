@@ -55,7 +55,7 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     assert_eq!(at.len(), 1, "命令栏上「上传」不是恰好一颗：{at:?}");
     // ② 点它 ⇒ 系统选文件框（注入的）答那一份 ⇒ 下一帧接上、走拖入那一条。
     let _ = painted(&mut w, crate::rows::testing::click_at(at[0].center()));
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(guard_core::wall::CEILING, async {
         while !w.board.is_asking() {
             let _ = painted(&mut w, Vec::new());
             tokio::task::yield_now().await;
@@ -64,7 +64,7 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     .await
     .expect("同名那一问没摆出来 —— 没走拖入那一条");
     assert!(w.board.settle(true));
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(guard_core::wall::CEILING, async {
         while !steps(&log).iter().any(|s| s == "files-commit-upload") {
             tokio::task::yield_now().await;
         }

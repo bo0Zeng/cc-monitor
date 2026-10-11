@@ -228,7 +228,7 @@ fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
     // 等这几台的流各断一次（收到它们的那几声）；别的台报来的也记下 —— 「不该断的断了」由调用处判。
     let mut heard: Vec<String> = Vec::new();
     let mut await_drops = |which: &[&str]| {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
         while !which.iter().all(|w| heard.iter().any(|h| h == w)) {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
             match drop_rx.recv_timeout(left) {

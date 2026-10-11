@@ -58,6 +58,7 @@ import { streamFake } from "../../test-support/chan-stream-fake.ts";
 const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
 
 import { srcDirOf } from "../../test-support/repo-root";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessionIdle", () => {
   beforeEach(() => {
     subs.clear();
@@ -71,7 +72,7 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
     // 抽取器自检：**没订到就零命中地绿** —— 本仓一路在治的那种空真。
     expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
     streamFake.lifecycle([{ idle: { session_id: "sid-gray" } }]);
-    await vi.waitFor(() => expect(onSessionIdle).toHaveBeenCalledWith("sid-gray"));
+    await vi.waitFor(() => expect(onSessionIdle).toHaveBeenCalledWith("sid-gray"), UNTIL_CEILING);
     // 反向：它不该顺手把 ended 也叫了（灰灯 ≠ 归档，两条路在后端就分开了）。
     expect(onSessionEnded).not.toHaveBeenCalled();
   });
@@ -110,7 +111,7 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
       onSessionEnded: (s: string) => order.push(`ended:${s}`),
     } as never, STREAMS);
     streamFake.lifecycle([{ ended: { session_id: "a" } }, { idle: { session_id: "b" } }]);
-    await vi.waitFor(() => expect(order.length).toBe(2));
+    await vi.waitFor(() => expect(order.length).toBe(2), UNTIL_CEILING);
     expect(order).toEqual(["ended:a", "idle:b"]);
   });
 });

@@ -598,7 +598,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     assert_eq!(code.as_deref(), Some("already_started"));
     let mut frames = Vec::new();
     loop {
-        let f = tokio::time::timeout(std::time::Duration::from_secs(20), rx.recv())
+        let f = tokio::time::timeout(guard_core::wall::CEILING, rx.recv())
             .await
             .expect("终局帧 20 s 没来")
             .expect("通道关了");
@@ -633,7 +633,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
 async fn cancel_wakes_a_waiter_whichever_side_comes_first() {
     let c = Arc::new(Cancel::default());
     c.fire();
-    tokio::time::timeout(std::time::Duration::from_secs(5), c.wait())
+    tokio::time::timeout(guard_core::wall::CEILING, c.wait())
         .await
         .expect("旗先落、后等 —— 等的人没醒");
     let c2 = Arc::new(Cancel::default());
@@ -643,7 +643,7 @@ async fn cancel_wakes_a_waiter_whichever_side_comes_first() {
     };
     tokio::task::yield_now().await;
     c2.fire();
-    tokio::time::timeout(std::time::Duration::from_secs(5), w)
+    tokio::time::timeout(guard_core::wall::CEILING, w)
         .await
         .expect("先等、后落 —— 等的人没醒")
         .unwrap();

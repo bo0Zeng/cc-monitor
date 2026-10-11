@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { askWithin, confirmInterrupts, familyLine, INTERRUPTS_WITHIN_MS } from "../../../../src/frontend/ui/kit/interrupts";
 import { decodeInterrupts } from "../../../../src/frontend/ui/interrupt-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -33,7 +34,7 @@ describe("会打断什么", () => {
     const a = confirmInterrupts({ title: "退出 cc-monitor", action: "仍然退出", ask, confirm });
     const b = confirmInterrupts({ title: "退出 cc-monitor", action: "仍然退出", ask, confirm });
     expect(a).toBe(b);
-    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1), UNTIL_CEILING);
     answer(true);
     await expect(b).resolves.toBe(true);
   });

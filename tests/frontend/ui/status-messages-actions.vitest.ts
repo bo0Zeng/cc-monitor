@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast } from "../../../src/frontend/ui/kit/toast";
 import { StatusMessages } from "../../../src/frontend/ui/status-messages";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const noop = (): void => {};
 
@@ -13,7 +14,7 @@ async function open(): Promise<void> {
   const m = new StatusMessages();
   document.body.replaceChildren(m.el);
   m.el.querySelector<HTMLElement>('[data-role="status-messages"]')!.click();
-  await vi.waitFor(() => expect(document.querySelector('[data-role="messages-list"]')).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector('[data-role="messages-list"]')).not.toBeNull(), UNTIL_CEILING);
 }
 
 function rowOf(title: string): HTMLElement {

@@ -231,7 +231,7 @@ fn c4_default_build_reads_the_system_clock() {
         .as_millis() as i64;
     let ours = crate::common::time::now_ms();
     assert!(
-        (ours - sys).abs() < 5_000,
+        (ours - sys).abs() < guard_core::wall::CEILING.as_millis() as i64,
         "默认构建里 `now_ms()` 就是系统钟：{ours} vs {sys}"
     );
 }

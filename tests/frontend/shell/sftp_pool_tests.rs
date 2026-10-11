@@ -99,7 +99,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
 impl Rig {
     pub(crate) async fn next(&mut self, cmd: &str) -> Value {
         loop {
-            let v = tokio::time::timeout(Duration::from_secs(5), self.seen.recv())
+            let v = tokio::time::timeout(guard_core::wall::CEILING, self.seen.recv())
                 .await
                 .unwrap_or_else(|_| panic!("5s 没等到 `{cmd}`"))
                 .expect("假后端的请求口关了");
@@ -136,7 +136,7 @@ pub(crate) fn cfg(label: &str) -> RemoteConfig {
 /// 收一条快照流直到收场（或 10 s）。
 async fn drain(mut s: futures::stream::BoxStream<'static, Snap>) -> Vec<Snap> {
     let mut out = Vec::new();
-    let r = tokio::time::timeout(Duration::from_secs(10), async {
+    let r = tokio::time::timeout(guard_core::wall::CEILING, async {
         while let Some(x) = s.next().await {
             let over = x.end.is_some();
             out.push(x);

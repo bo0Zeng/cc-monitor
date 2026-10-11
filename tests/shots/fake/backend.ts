@@ -82,6 +82,8 @@ export class FakeBackend {
   /** 收到过清单的那几台（每台只演一次）。 */
   private readonly listedOrigins = new Set<string>();
   private screenSeq = 0;
+  /** 无头壳已经交出 `live` 那一格的会话（按 sid 去重）：等 tab 等不到时的读数（`window.__shots.sessions`）。 */
+  readonly liveSent = new Set<string>();
 
   /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
   private readonly ready: Promise<void>;
@@ -101,6 +103,11 @@ export class FakeBackend {
       es.onmessage = (m) => {
         const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
         this.watch(d.sub, d.items);
+        for (const it of d.items) {
+          if (it.t !== "frame" || !it.body?.startsWith('{"live"')) continue;
+          const sid = (JSON.parse(it.body) as { live?: { session_id?: string } }).live?.session_id;
+          if (sid) this.liveSent.add(sid);
+        }
         void this.emit("chan-items", d);
       };
       await new Promise<void>((resolve) => (es.onopen = () => resolve()));
