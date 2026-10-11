@@ -21255,12 +21255,6 @@
       "zh": "~/.claude",
       "args": []
     },
-    "acct.zero.name": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "账号 0",
-      "args": []
-    },
     "acct.tag.login": {
       "kind": "body",
       "role": "片段",

@@ -233,6 +233,9 @@ function acctRow(spec: ChartSpec, r: ChartRow): HTMLElement {
         const t = el("span", (e) => (e.className = s.rcBarText), pr.leftText);
         t.dataset.rcLeft = "true";
         e.appendChild(t);
+        // 段上悬停 / 读屏也写这一句（段太窄时字挪到段外，见 `placeLabels`）。
+        e.setAttribute("aria-label", pr.leftText);
+        attachTooltip(e, pr.leftText);
       }
       track.appendChild(e);
     }
@@ -305,6 +308,16 @@ function legend(): HTMLElement {
   return lg;
 }
 
+/** 段里那一句（余 N）放不下 ⇒ 整句挪到段的右端外面；放得下 ⇒ 留在段里。只认量出来的宽，不按字数猜。 */
+function placeLabels(root: HTMLElement): void {
+  for (const t of root.querySelectorAll<HTMLElement>("[data-rc-left]")) {
+    if (t.scrollWidth <= t.clientWidth) continue;
+    t.dataset.place = "after";
+    const bar = t.closest<HTMLElement>("[data-rc-bar]");
+    if (bar) bar.dataset.labelOut = "true";
+  }
+}
+
 /** ★ 合图。 */
 export function combinedChart(spec: ChartSpec): Chart {
   const root = el("div", (e) => (e.className = s.rcWrap));
@@ -330,5 +343,7 @@ export function combinedChart(spec: ChartSpec): Chart {
     box.appendChild(add);
   }
   root.append(box, legend());
+  // 排好版之后量一次：段里放不下「余 N」⇒ 挪到段的右端外面（不截字）。
+  requestAnimationFrame(() => placeLabels(root));
   return { root, rowEls };
 }

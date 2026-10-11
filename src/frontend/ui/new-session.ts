@@ -30,7 +30,7 @@ import type { Account } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
-import { fiveHourCell } from "./acct-words";
+import { fiveHourCell, accountLabel } from "./acct-words";
 import { machineModels } from "./account-prefs";
 import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";
@@ -133,7 +133,7 @@ function accountOption(a: AccountOpt): SelectOption {
   if (a.isDefault) note.push(copyText("newSession.account.default"));
   if (a.quota) note.push(a.quota);
   if (!a.ready) note.push(copyText("newSession.account.needLogin"));
-  return { value: a.name, label: a.name, note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16 }) };
+  return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16 }) };
 }
 
 /** 机器那一项：远端带机器标记；连不上的灰着、说「离线」（正选着的那台照样列出、可选）。 */
@@ -141,7 +141,7 @@ function machineOption(m: MachineOpt, chosen: Origin): SelectOption {
   const name = machineName(m.origin);
   return {
     value: m.origin,
-    label: name,
+    label: accountLabel(name),
     lead: isLocalOrigin(m.origin) ? undefined : () => tag(name),
     note: m.up ? undefined : copyText("newSession.machine.down"),
     enabled: m.up || m.origin === chosen,

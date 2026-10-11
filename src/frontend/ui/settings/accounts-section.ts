@@ -19,7 +19,7 @@ import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAge
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
-import { slotLabel, slotText, type QuotaRead } from "../acct-words";
+import { slotLabel, slotText, type QuotaRead, accountLabel } from "../acct-words";
 import type { QuotaShow } from "../generated/QuotaShow";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
@@ -449,7 +449,7 @@ export class AccountsSection {
     const line1 = document.createElement("div");
     line1.className = "acct-row-name";
     const nm = document.createElement("span");
-    nm.textContent = a.name;
+    nm.textContent = accountLabel(a.name);
     line1.appendChild(nm);
     const isDef = a.name === f.state.meta?.effectiveDefault;
     if (isDef) line1.appendChild(tag(copyText("acctPage.row.default")));

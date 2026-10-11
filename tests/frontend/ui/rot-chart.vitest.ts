@@ -120,6 +120,30 @@ describe("rot-chart · 合图", () => {
     expect(team.querySelector("[data-rc-far]")).toBeNull();
   });
 
+  it("★ 余 N 要么整句看得见、要么挪到段的右端外面（不被段截掉）；段上悬停也写这一句", async () => {
+    const p = plan({ rows: [{ account: "team", bars: [{ from: T, to: T + 3 * M, k: "use" }], resets: [], left: 41, leftText: "L-41" }] });
+    const fits = (sw: number, cw: number) => {
+      Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => sw });
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => cw });
+    };
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+    try {
+      fits(80, 20);
+      let label = draw(p).root.querySelector<HTMLElement>("[data-rc-left]")!;
+      await frame();
+      expect(label.dataset.place, "段太窄 ⇒ 挪到右端外面").toBe("after");
+      expect(label.closest<HTMLElement>("[data-rc-bar]")?.dataset.labelOut).toBe("true");
+      expect(label.closest<HTMLElement>("[data-rc-bar]")?.getAttribute("aria-label")).toBe("L-41");
+      fits(20, 80);
+      label = draw(p).root.querySelector<HTMLElement>("[data-rc-left]")!;
+      await frame();
+      expect(label.dataset.place, "放得下 ⇒ 留在段里").toBeUndefined();
+    } finally {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollWidth;
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+    }
+  });
+
   it("行下一句：策略给的为什么；此刻不挑 ⇒ 跳过 · 为什么、整行淡；别的会话也钉着 ⇒ 琥珀一句；在用那行带标记", () => {
     const { root } = draw();
     const [team, work] = [...root.querySelectorAll<HTMLElement>("[data-rc-row]")];

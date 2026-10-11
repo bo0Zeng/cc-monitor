@@ -332,6 +332,21 @@
     white-space: nowrap;
   }
 
+  .rcBar[data-label-out="true"] {
+    overflow: visible;
+  }
+
+  .rcBarText[data-place="after"] {
+    position: absolute;
+    left: 100%;
+    margin-left: 3px;
+    padding: 0 2px;
+    overflow: visible;
+    border-radius: var(--radius-s);
+    color: var(--text);
+    background: var(--bg-2);
+  }
+
   .rcEst {
     position: absolute;
     top: 12px;

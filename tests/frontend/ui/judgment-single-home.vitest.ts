@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -603,6 +603,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "「实现只一处」：同一种值只许一种样子",
   },
+  J33: {
+    what: "这台本来那一份登录（不设配置目录）的号名 / 路由段是哪个",
+    // 账号库清单里写它的名字、上游选择在 `/t/` 路由里写它的账号段、号名的字认它 —— 从前三处各写一个 `"0"`
+    //   （`accounts/manage/model.rs` · `upstream_select/endpoint.rs` · `quota/name_words.rs`）。账号域的两半互不引用，
+    //   所以住共享 crate：三处都引它。
+    homes: ["acct-core::BARE_ACCOUNT"],
+    status: "zero",
+    defs: [],
+    needles: [],
+    rustNeedles: [
+      { file: "src/backend/accounts/manage/model.rs", text: 'ACCOUNT_ZERO: &str = "0"', count: 0 },
+      { file: "src/backend/accounts/upstream_select/endpoint.rs", text: 'BASE_ACCOUNT_SEGMENT: &str = "0"', count: 0 },
+      { file: "src/backend/accounts/quota/name_words.rs", text: '&str = "0"', count: 0 },
+    ],
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -638,6 +653,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     apikey_account_id_of_dir: NONE,
     apikey_routed_subset: NONE,
     AUTH_KINDS: "J16",
+    BARE_ACCOUNT: "J33",
     AUTH_KIND_API_KEY: NONE,
     auth_kind_from_manifest: "J1",
     AUTH_KIND_PARITY_CASES: NONE,
