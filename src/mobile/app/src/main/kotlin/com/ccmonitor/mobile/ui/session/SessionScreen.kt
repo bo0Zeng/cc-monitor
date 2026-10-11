@@ -46,7 +46,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
@@ -57,11 +56,14 @@ import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
+import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ssh.SessionBackend
 import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
@@ -164,8 +166,8 @@ private fun ErrorContent(
     ) {
         SessionStateTabButton(onShowTabs)
         Text(copyText("mobSession.connect.failed"), color = MaterialTheme.colorScheme.error)
-        // 下层给的原话（或这一侧判出的原因）放在句子下面，小字，同连接日志一栏。
-        Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 下层给的原话（或这一侧判出的原因）不上屏，进复制详情；连接日志照旧给原文。
+        CopyDetailButton(copyText("mobSession.connect.failed"), message)
         if (log.isNotEmpty()) ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
         TextButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
     }
@@ -436,6 +438,7 @@ private fun rememberModelSwitchAction(
     currentTmux: () -> String?,
 ): (String) -> Unit {
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return { model ->
         val ts = currentTmux()
@@ -444,7 +447,7 @@ private fun rememberModelSwitchAction(
             scope.launch {
                 runCatching { runOnce(vm.channel, backend.sendModelCommand(ts, model)) }
                     .onSuccess { Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show() }
-                    .onFailure { Toast.makeText(context, withRaw(copyText("mobTerm.model.sendFailed"), it.message), Toast.LENGTH_SHORT).show() }
+                    .onFailure { snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), it.message)) }
             }
         } else {
             session.send("/model $model\n".toByteArray()) // 没有 tmux：直接发给终端前台
@@ -462,6 +465,7 @@ private fun rememberCaptureAction(
     onCaptured: (String) -> Unit,
 ): () -> Unit {
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return {
         val ts = currentTmux()
@@ -469,7 +473,7 @@ private fun rememberCaptureAction(
             scope.launch {
                 runCatching { runOnce(vm.channel, backend.captureCommand(ts)) }
                     .onSuccess { onCaptured(it) }
-                    .onFailure { Toast.makeText(context, withRaw(copyText("mobTerm.capture.failed"), it.message), Toast.LENGTH_SHORT).show() }
+                    .onFailure { snackbar.show(Notice(copyText("mobTerm.capture.failed"), it.message)) }
             }
         } else {
             Toast.makeText(context, copyText("mobTerm.capture.noTmux"), Toast.LENGTH_SHORT).show()
@@ -552,6 +556,7 @@ private fun PushKeyControl(
 ) {
     if (!show) return
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     PushKeyDialog(
         identities = identities,
@@ -565,7 +570,7 @@ private fun PushKeyControl(
                 scope.launch {
                     runCatching { runOnce(channel, appendAuthorizedKeyCommand(id.publicKeyOpenSsh)) }
                         .onSuccess { Toast.makeText(context, pushKeyResultMessage(it), Toast.LENGTH_SHORT).show() }
-                        .onFailure { Toast.makeText(context, withRaw(copyText("mobKeyPush.result.failed"), it.message), Toast.LENGTH_SHORT).show() }
+                        .onFailure { snackbar.show(Notice(copyText("mobKeyPush.result.failed"), it.message)) }
                 }
             }
         },

@@ -34,9 +34,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
+import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -54,6 +55,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val tokens = LocalAppTokens.current
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
 
     // 身份生成/导入反馈：成功/失败弹提示，Working 时盖 loading。
     val op by vm.op.collectAsState()
@@ -64,7 +66,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
                 vm.ackOp()
             }
             is IdentityOp.Failed -> {
-                Toast.makeText(context, withRaw(copyText("mobIdentity.op.failed"), o.message), Toast.LENGTH_LONG).show()
+                snackbar.show(Notice(copyText("mobIdentity.op.failed"), o.message))
                 vm.ackOp()
             }
             else -> {}

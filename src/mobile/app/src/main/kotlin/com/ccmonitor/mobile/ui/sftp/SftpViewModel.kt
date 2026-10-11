@@ -3,10 +3,10 @@ package com.ccmonitor.mobile.ui.sftp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshTransport
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -70,8 +70,8 @@ class SftpViewModel(
     val hostOs: StateFlow<String?> = _hostOs.asStateFlow()
 
     // 一次性提示（Toast）：上传/下载/读写成功或失败。
-    private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val events: SharedFlow<String> = _events.asSharedFlow()
+    private val _events = MutableSharedFlow<Notice>(extraBufferCapacity = 8)
+    val events: SharedFlow<Notice> = _events.asSharedFlow()
 
     // 串行化按需连接：并发 op 同时 ensureConn 时，首个连成后其余复用。连接管理器另有 single-flight 兜底，
     // 这把锁保证本 VM 内的 op 不各自触发 connect。
@@ -161,7 +161,7 @@ class SftpViewModel(
             }.onSuccess { refresh() } // refresh 重置 busy
                 .onFailure {
                     if (it is CancellationException) throw it // 取消须传播，不折成失败事件
-                    _events.tryEmit(withRaw(failText, it.message))
+                    _events.tryEmit(Notice(failText, it.message))
                     _busy.value = false
                 }
         }
@@ -187,10 +187,10 @@ class SftpViewModel(
                 val local = File(destDir, entry.name)
                 withContext(io) { ensureConn().sftpDownload(entry.path, local) }
                 local.absolutePath
-            }.onSuccess { _events.tryEmit(copyText("mobSftp.download.done", "path" to it)) }
+            }.onSuccess { _events.tryEmit(Notice(copyText("mobSftp.download.done", "path" to it))) }
                 .onFailure {
                     if (it is CancellationException) throw it // 取消须传播
-                    _events.tryEmit(withRaw(copyText("mobSftp.download.failed"), it.message))
+                    _events.tryEmit(Notice(copyText("mobSftp.download.failed"), it.message))
                 }
             _busy.value = false
         }
@@ -209,11 +209,11 @@ class SftpViewModel(
                     localTmp.delete()
                 }
             }.onSuccess {
-                _events.tryEmit(copyText("mobSftp.upload.done", "name" to remoteName))
+                _events.tryEmit(Notice(copyText("mobSftp.upload.done", "name" to remoteName)))
                 refresh()
             }.onFailure {
                 if (it is CancellationException) throw it // 取消须传播
-                _events.tryEmit(withRaw(copyText("mobSftp.upload.failed", "name" to remoteName), it.message))
+                _events.tryEmit(Notice(copyText("mobSftp.upload.failed", "name" to remoteName), it.message))
                 _busy.value = false
             }
         }
@@ -234,7 +234,7 @@ class SftpViewModel(
             .also { _busy.value = false }
             .onFailure {
                 if (it is CancellationException) throw it // 取消须传播（不折成读取失败事件 + 不返回 failure Result）
-                _events.tryEmit(withRaw(failText, it.message))
+                _events.tryEmit(Notice(failText, it.message))
             }
     }
 
@@ -250,11 +250,11 @@ class SftpViewModel(
         val r = runCatching { withContext(io) { ensureConn().sftpWriteText(path, text) } }
         r
             .onSuccess {
-                _events.tryEmit(copyText("mobSftp.save.done"))
+                _events.tryEmit(Notice(copyText("mobSftp.save.done")))
                 refresh() // refresh 复位 busy
             }.onFailure {
                 if (it is CancellationException) throw it // 取消须传播
-                _events.tryEmit(withRaw(copyText("mobSftp.save.failed"), it.message))
+                _events.tryEmit(Notice(copyText("mobSftp.save.failed"), it.message))
                 _busy.value = false
             }
         return r

@@ -24,9 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.SessionBackend
@@ -178,20 +178,24 @@ private suspend fun killSessionReportingResult(
     channel: RemoteCommandChannel,
     backend: SessionBackend,
     target: TmuxSession,
-): String =
+): Notice =
     runCatching { runOnce(channel, backend.killCommand(target.name)) }
         .fold(
             onSuccess = { out ->
                 // 传输层没抛不等于命令成功：要看到成功标记才算，命令没跑起来时 stdout 同样是空的。
                 // 标记与判定都在 `TmuxCommands`，与命令同处一地。
                 if (TmuxCommands.tmuxKillSucceeded(out)) {
-                    copyText("mobTmux.kill.done", "name" to target.name)
+                    Notice(copyText("mobTmux.kill.done", "name" to target.name))
                 } else {
-                    val detail = out.replace(TmuxCommands.TMUX_KILL_OK_MARKER, "").trim().ifBlank { copyText("mobTmux.kill.noReply") }
-                    withRaw(copyText("mobTmux.kill.failed", "name" to target.name), detail)
+                    val detail = out.replace(TmuxCommands.TMUX_KILL_OK_MARKER, "").trim()
+                    if (detail.isEmpty()) {
+                        Notice(copyText("mobTmux.kill.noReply", "name" to target.name))
+                    } else {
+                        Notice(copyText("mobTmux.kill.failed", "name" to target.name), detail)
+                    }
                 }
             },
-            onFailure = { withRaw(copyText("mobTmux.kill.failed", "name" to target.name), it.message) },
+            onFailure = { Notice(copyText("mobTmux.kill.failed", "name" to target.name), it.message) },
         )
 
 /** 结束会话不可逆，里面可能正跑着活，所以二次确认；文案写清后果（会中断什么、不能撤销），而不是问「确定吗」。 */

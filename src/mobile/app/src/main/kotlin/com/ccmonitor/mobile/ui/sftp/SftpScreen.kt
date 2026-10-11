@@ -48,15 +48,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.SizeFormat
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.copy.withRaw
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,7 +123,7 @@ private fun SftpContent(
 ) {
     // 连接编排与浏览状态在 [SftpViewModel]；这里只渲染并处理 Android 侧（URI/文件/Toast/瞬态对话框）。
     val vm = koinViewModel<SftpViewModel> { parametersOf(hostId) }
-    val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
 
     val ui by vm.ui.collectAsState()
     val path by vm.path.collectAsState()
@@ -133,8 +134,8 @@ private fun SftpContent(
 
     var dialog by remember { mutableStateOf<SftpDialog?>(null) } // 对话框是瞬态 UI，留在 Composable
 
-    // VM 的一次性提示 → Toast。
-    LaunchedEffect(vm) { vm.events.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() } }
+    // VM 的一次性提示 → 底部提示条（失败的带复制详情：原话不上屏）。
+    LaunchedEffect(vm) { vm.events.collect { snackbar.show(it) } }
 
     val actions = sftpEntryActions(vm) { dialog = it }
     val uploadLauncher = rememberSftpUploadLauncher(vm)
@@ -153,8 +154,9 @@ private fun SftpContent(
                 is SftpUi.Error ->
                     Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(withRaw(copyText("mobSftp.load.failed"), s.message), color = MaterialTheme.colorScheme.error)
+                            Text(copyText("mobSftp.load.failed"), color = MaterialTheme.colorScheme.error)
                             TextButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
+                            CopyDetailButton(copyText("mobSftp.load.failed"), s.message)
                         }
                     }
                 is SftpUi.Ready ->
@@ -221,6 +223,7 @@ private fun sftpEntryActions(
 @Composable
 private fun rememberSftpUploadLauncher(vm: SftpViewModel): ManagedActivityResultLauncher<String, Uri?> {
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -235,7 +238,7 @@ private fun rememberSftpUploadLauncher(vm: SftpViewModel): ManagedActivityResult
             }.onSuccess { vm.upload(tmp, name) }
                 .onFailure {
                     tmp.delete()
-                    Toast.makeText(context, withRaw(copyText("mobSftp.upload.failed", "name" to name), it.message), Toast.LENGTH_LONG).show()
+                    snackbar.show(Notice(copyText("mobSftp.upload.failed", "name" to name), it.message))
                 }
         }
     }

@@ -31617,9 +31617,9 @@
     },
     "mobTmux.kill.noReply": {
       "kind": "body",
-      "role": "片段",
-      "zh": "无应答",
-      "args": []
+      "role": "toast",
+      "zh": "结束「{name}」失败 · 无应答",
+      "args": ["name"]
     },
     "mobTmux.kill.title": {
       "kind": "title",
