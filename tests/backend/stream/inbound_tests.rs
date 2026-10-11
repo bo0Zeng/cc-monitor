@@ -1446,3 +1446,86 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
         vec![vec!["a".to_string(), "b".to_string()]]
     );
 }
+
+/// 答题 hook 经流挂一条、阻塞等：出口答了 ⇒ hook 那条连接收到决定；hook 那一头走了（连接写半边关掉）⇒ 挂着的那条撤掉。
+#[tokio::test]
+async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_leaves() {
+    use tokio::io::AsyncWriteExt;
+    let watch = || {
+        crate::stream::inbound::WatchDesk::new(|_| {
+            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+        })
+    };
+    let hook = |sid: &str| {
+        serde_json::json!({"id": "h", "cmd": "needs-ask", "args": {"agent": "claude", "hook": {
+            "session_id": sid, "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash", "tool_input": {"command": "true"}
+        }}})
+        .to_string()
+            + "\n"
+    };
+    let until_pending = |sid: &'static str| async move {
+        for _ in 0..10_000 {
+            if let Some(a) = crate::observe::asks::pending(sid).pop() {
+                return a;
+            }
+            tokio::task::yield_now().await;
+        }
+        panic!("没挂上");
+    };
+
+    // 答了 ⇒ 决定回到 hook 那条连接。
+    let (mut client, server) = tokio::io::duplex(1 << 16);
+    let (tx, mut rx) = chan();
+    let h = spawn(
+        server,
+        tx,
+        watch(),
+        crate::stream::wire::HelloFlushed::for_tests(),
+    );
+    client
+        .write_all(hook("t-inbound-1").as_bytes())
+        .await
+        .unwrap();
+    let a = until_pending("t-inbound-1").await;
+    crate::observe::asks::answer(
+        &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
+    )
+    .unwrap();
+    let f = rx.recv().await.expect("应答");
+    let line: serde_json::Value =
+        serde_json::from_str(&crate::stream::wire::to_line(&f).unwrap()).unwrap();
+    assert_eq!(line["id"], "h");
+    assert_eq!(
+        line["data"]["decision"]["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+    drop(client);
+    h.await.unwrap();
+
+    // hook 那一头走了 ⇒ 撤掉，之后再答回 closed_elsewhere。
+    let (mut client, server) = tokio::io::duplex(1 << 16);
+    let (tx, _rx) = chan();
+    let h = spawn(
+        server,
+        tx,
+        watch(),
+        crate::stream::wire::HelloFlushed::for_tests(),
+    );
+    client
+        .write_all(hook("t-inbound-2").as_bytes())
+        .await
+        .unwrap();
+    let a = until_pending("t-inbound-2").await;
+    drop(client);
+    h.await.unwrap();
+    assert!(crate::observe::asks::pending("t-inbound-2").is_empty());
+    assert_eq!(
+        crate::observe::asks::answer(
+            &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
+        )
+        .unwrap_err()
+        .0,
+        "closed_elsewhere"
+    );
+}

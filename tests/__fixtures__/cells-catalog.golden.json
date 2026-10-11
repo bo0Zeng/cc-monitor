@@ -797,6 +797,126 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "needs.ask.agentId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.agentType",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].note",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.ask.choices[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "needs.ask.choices[].tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.detail",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.kind",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].header",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].multi",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].options[].detail",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].options[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].options[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].other",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.sinceMs",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.tool",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.what",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "needs.call",
           "type": "string"
         },
@@ -817,6 +937,12 @@
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.manualText",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -1084,6 +1210,126 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "needs.ask.agentId",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.agentType",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].note",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.ask.choices[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "needs.ask.choices[].tone",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.detail",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.kind",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].header",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].multi",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].options[].detail",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].options[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].options[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].other",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.questions[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.sinceMs",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.tool",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.what",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "needs.call",
           "type": "string"
         },
@@ -1104,6 +1350,12 @@
           "kind": "value",
           "path": "needs.kind",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.manualText",
+          "type": "string"
         },
         {
           "frozen": false,

@@ -340,6 +340,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `rotation_rules` —— 这台的轮换规则表或默认指向
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
+- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
 
 #### `Unavailable`
 
@@ -1845,9 +1846,40 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `head` 钉条第一行、`headCode` 它等宽那一段 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框 |
+| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `head` 钉条第一行、`headCode` 它等宽那一段 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框；`ask` 这一条可以怎么答 `{id, kind, tool, agentId, agentType, what, detail, sinceMs, choices[] {id, text, tone, note}, questions[] {id, text, header, multi, other, options[] {id, text, detail}}}`（挂着的待答请求：`id` 答的时候交回 `needs-answer`；`agentId` · `agentType` 子 agent 发的才有；`choices` 选项写好字与语气、`note` 要不要附话 none · optional · required；`questions` 提问那一种的题，`other` 恒真 ＝ 许写自由文本）；没有挂着的 ⇒ `null`，`manualText` 写好「只能在终端里答」那一句（有 `ask` ⇒ `null`）；挡着终端的子 agent 请求 pidfile 不说在等，照它补出一份 |
 | `sid` | ← | 会话 id |
 | `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
+
+#### `needs-ask`
+
+答题 hook 挂一条待答请求、等人答（hook 客户端 `--answer-hook` 用；本连接断了 ⇒ 撤）。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `agent` | → | 哪一家（线上的 kind） |
+| `hook` | → | 那一家的 hook 交来的那一份原样 |
+| `decision` | ← | 人的答案写成那一家要的那一整份，hook 原样打到 stdout；`null` ＝ 不给决定（不是要人答的那一种 · 改到终端里答 · 别处关了），hook 空手退 |
+
+码：`bad_args`
+
+#### `needs-answer`
+
+答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `ask` | → | `needs.ask.id` |
+| `choice` | → | `needs.ask.choices[].id` |
+| `note` | → | 可缺：附的那句话（选项 `note` 是 required 时必给） |
+| `picks` | → | 提问那一种选 `answer` 时必给：`{<题 id>: {options: [<选项 id>…], text: <自由文本>}}`，每题都要答、单选至多一项 |
+| `result` | ← | 恒 `answered`（交到了 hook 那一头；终端那边若同时答了，以先到的为准，晚到的那一家自己丢掉、不会落到别的框上） |
+| `sid` | → | 会话 id |
+
+码：`bad_args` · `not_found` · `already_answered` · `closed_elsewhere` · `bad_choice` · `note_required`
 
 #### `history-facts`
 
@@ -1867,7 +1899,7 @@ sid → 上次用哪个号起。
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
 | `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
-| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
+| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null`；`ask` 这一条可以怎么答 `{id, kind, tool, agentId, agentType, what, detail, sinceMs, choices[] {id, text, tone, note}, questions[] {id, text, header, multi, other, options[] {id, text, detail}}}`（挂着的待答请求：`id` 答的时候交回 `needs-answer`；`agentId` · `agentType` 子 agent 发的才有；`choices` 选项写好字与语气、`note` 要不要附话 none · optional · required；`questions` 提问那一种的题，`other` 恒真 ＝ 许写自由文本）；没有挂着的 ⇒ `null`，`manualText` 写好「只能在终端里答」那一句（有 `ask` ⇒ `null`）；挡着终端的子 agent 请求 pidfile 不说在等，照它补出一份 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（判不了活：这一家没声明怎么判，或这台认不出写者） |
 | `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
@@ -3854,6 +3886,7 @@ cc-bus 钩子诊断。
 | `--aliases-block-remove` | ＝ 帧命令 `aliases-block-remove`：别名块卸掉 |
 | `--aliases-block-render` | ＝ 帧命令 `aliases-block-render`：别名块预览 |
 | `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
+| `--answer-hook` `<agent>` | 会话级答题 hook 的客户端（那一家的 hook 设置里叫它，exec 形）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 连不上 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0 |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
 | `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
 | `--assets-catalog-merge` | ＝ 帧命令 `assets-catalog-merge`：把另一台后端的整份目录并进来 |

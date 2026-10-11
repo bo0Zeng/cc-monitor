@@ -111,6 +111,26 @@ fn golden(file: &str) -> String {
 }
 
 /// 各件成品的真样子：跨语言金样里由真代码写出来的那几份（＋ 金样里恰好缺的那一格，用真代码现造）。
+/// 挂着的待答请求那一格用真路子现造：Claude 适配层读一份提问的 hook 输入（子 agent 发的、带说明的选项）⇒ 通用层写成品、配进 needs；
+/// 另配一份没有挂着请求的（`manualText` 那一格）。
+fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value> {
+    let hook = serde_json::json!({
+        "session_id": "s", "hook_event_name": "PermissionRequest", "agent_id": "a", "agent_type": "t",
+        "tool_name": "AskUserQuestion",
+        "tool_input": {"questions": [{"question": "q", "header": "h", "multiSelect": false,
+            "options": [{"label": "l", "description": "d"}]}]}
+    });
+    let asked = crate::agents::claudecode::asks::read(&hook).unwrap();
+    let ask = crate::observe::asks::product_of("ask-1", &asked, 1);
+    [
+        crate::observe::asks::dress_with(base.clone(), Some(ask), 2),
+        crate::observe::asks::dress_with(base, None, 2),
+    ]
+    .into_iter()
+    .map(|n| serde_json::to_value(n).unwrap())
+    .collect()
+}
+
 fn corpus(name: &str) -> Vec<Value> {
     match name {
         // 一格错：真走逐格校验（封顶时段重叠 · 越界），每一形都带写好的那一句。
@@ -158,7 +178,15 @@ fn corpus(name: &str) -> Vec<Value> {
                 u64::MAX / 2,
             ))
             .unwrap();
-            vec![f]
+            let base: Option<crate::observe::facts_query::Needs> =
+                serde_json::from_value(f["needs"].clone()).unwrap();
+            let mut out = vec![f.clone()];
+            for n in dressed_needs(base) {
+                let mut g = f.clone();
+                g["needs"] = n;
+                out.push(g);
+            }
+            out
         }
         // 清单那一行用真判定现造（金样生成那一处不起进程，答不出非空的清单）。
         "needs_row" => {
@@ -179,13 +207,17 @@ fn corpus(name: &str) -> Vec<Value> {
                 read_at_ms: 2,
             };
             let needs = crate::observe::facts_query::needs_of(&pending, Some(&wait)).unwrap();
-            vec![
+            let mut rows = vec![
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
-                    needs,
+                    needs: needs.clone(),
                 })
                 .unwrap(),
-            ]
+            ];
+            for n in dressed_needs(Some(needs)) {
+                rows.push(serde_json::json!({"sid": "s", "needs": n}));
+            }
+            rows
         }
         "index_row" => {
             // 逐行那一形只在 CLI 那一臂（帧面按列排，`read_face.rs::pack_index`）⇒ 用真函数逐行现算：
@@ -512,9 +544,14 @@ fn every_needs_out_field_names_each_needs_cell() {
                 .step_by(2)
                 .flat_map(|span| span.split(|ch: char| !ch.is_ascii_alphanumeric()))
                 .collect();
+            // 嵌套的格（`ask.choices[].id`）：路径上每一段都点到了才算（`ask {choices[] {id, …}}` 那种一口气列的也算）。
             let missing: Vec<&String> = cells
                 .iter()
-                .filter(|c| !named.contains(c.as_str()))
+                .filter(|c| {
+                    !c.split(|ch: char| !ch.is_ascii_alphanumeric())
+                        .filter(|w| !w.is_empty())
+                        .all(|w| named.contains(w))
+                })
                 .collect();
             assert!(
                 missing.is_empty(),
