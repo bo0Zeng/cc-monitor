@@ -757,3 +757,246 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     let v: serde_json::Value = serde_json::from_str(String::from_utf8(ok).unwrap().trim()).unwrap();
     assert!(v.get("detail").is_none(), "成功的 ack 多出了 detail：{v}");
 }
+
+// ═══ net3：复用不慢于新建（久没收包的连接上开通道 ⇒ 与新建同时起跑）═══════════════════
+
+/// ★ net3：收包时刻记在 TCP 那一层 —— 从对端**读到字节**才记，往外写不记（自己往外写说明不了对端还在）。
+#[tokio::test]
+async fn the_heard_clock_moves_on_bytes_from_the_peer_only() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (ours, mut theirs) = tokio::io::duplex(64);
+    let heard = Arc::new(pool::Heard::default());
+    let mut s = connect::Hearing::new(ours, Arc::clone(&heard));
+    s.write_all(b"ping").await.unwrap();
+    let mut got = [0u8; 4];
+    theirs.read_exact(&mut got).await.unwrap();
+    assert_eq!(heard.at(), 0, "往外写也被记成了收到对端字节");
+    theirs.write_all(b"pong").await.unwrap();
+    s.read_exact(&mut got).await.unwrap();
+    assert!(heard.at() > 0, "读到了对端的字节，收包时刻却没动");
+}
+
+/// ★ net3：多久没收包算「久」。健康的空闲连接每 10 秒（`KEEPALIVE`）发一次保活、一个往返后收到回话 ⇒
+/// 它最后收包的年龄落在 0 到 10 秒加一个往返之间，这一段里不赛跑；过了门槛（保活发出去之后还等了一阵没回）才赛跑。
+#[test]
+fn a_connection_is_stale_only_past_one_unanswered_keepalive() {
+    let keepalive = connect::KEEPALIVE_MS;
+    assert!(!uses::stale(0));
+    assert!(
+        !uses::stale(keepalive),
+        "刚到保活点的健康空闲连接被判成了久没动静"
+    );
+    assert!(
+        !uses::stale(keepalive + 1_000),
+        "保活刚发出去、回话还在路上（往返 ≤ 1 秒）就被判成了久没动静"
+    );
+    assert!(uses::stale(uses::STALE_AFTER_MS));
+    assert!(
+        uses::stale(keepalive * 2),
+        "错过一整轮保活还没被判成久没动静"
+    );
+}
+
+/// ★ net3：赛跑 —— 旧连接上开通道与新建一条同时起跑，**谁先站住用谁**。
+/// 旧的先回话 ⇒ 用旧的（新起的那条随之丢掉）；新的先站住 ⇒ 用新的；两边同时好了 ⇒ 用旧的（不白换）；
+/// 新建失败 ⇒ 不算数，接着等旧的回话。
+#[tokio::test]
+async fn the_open_on_an_old_connection_races_a_fresh_dial() {
+    use std::future::{pending, ready};
+    let old_first = uses::race(ready(Ok::<u8, ()>(1)), pending::<Result<u8, String>>()).await;
+    assert!(
+        matches!(old_first, uses::Raced::Old(Ok(1))),
+        "旧的先回话却没用旧的"
+    );
+    let new_first = uses::race(pending::<Result<u8, ()>>(), ready(Ok::<u8, String>(2))).await;
+    assert!(matches!(new_first, uses::Raced::New(2)), "新的先站住却没换");
+    let both = uses::race(ready(Ok::<u8, ()>(1)), ready(Ok::<u8, String>(2))).await;
+    assert!(
+        matches!(both, uses::Raced::Old(Ok(1))),
+        "两边同时好了却换了一条"
+    );
+    let (tx, rx) = tokio::sync::oneshot::channel::<u8>();
+    let raced = tokio::spawn(uses::race(rx, ready(Err::<u8, String>("拨不通".into()))));
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!raced.is_finished(), "新建失败之后没接着等旧的回话");
+    tx.send(7).unwrap();
+    assert!(matches!(raced.await.unwrap(), uses::Raced::Old(Ok(7))));
+}
+
+// ═══ net4：刚断就开 —— 保活更快判死，挂在死连接上的开通道当场失败 ═══════════════════
+
+/// 一对管子中间的「路」：通着就原样转手；`freeze` 之后变黑洞（两向都收下、丢掉，不断、不报错 —— 换网 / NAT 表过期那一形）。
+fn freezable_road() -> (
+    tokio::io::DuplexStream,
+    tokio::io::DuplexStream,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let frozen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (client, near) = tokio::io::duplex(1 << 16);
+    let (far, server) = tokio::io::duplex(1 << 16);
+    let pump = |mut from: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+                mut to: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+                frozen: Arc<std::sync::atomic::AtomicBool>| async move {
+        let mut buf = vec![0u8; 1 << 14];
+        loop {
+            let n = match from.read(&mut buf).await {
+                Ok(0) | Err(_) => return,
+                Ok(n) => n,
+            };
+            if frozen.load(std::sync::atomic::Ordering::SeqCst) {
+                continue;
+            }
+            if to.write_all(&buf[..n]).await.is_err() {
+                return;
+            }
+        }
+    };
+    let (nr, nw) = tokio::io::split(near);
+    let (fr, fw) = tokio::io::split(far);
+    tokio::spawn(pump(nr, fw, Arc::clone(&frozen)));
+    tokio::spawn(pump(fr, nw, Arc::clone(&frozen)));
+    (client, server, frozen)
+}
+
+/// 进程内的一台 SSH 服务端：谁来都放行（none 鉴权）、开 session 通道都答应；自己不发保活、不按空闲拆链。
+#[derive(Clone)]
+struct OpenDoor;
+
+impl russh::server::Handler for OpenDoor {
+    type Error = russh::Error;
+    async fn auth_none(&mut self, _user: &str) -> Result<russh::server::Auth, Self::Error> {
+        Ok(russh::server::Auth::Accept)
+    }
+    async fn channel_open_session(
+        &mut self,
+        _channel: russh::Channel<russh::server::Msg>,
+        _session: &mut russh::server::Session,
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+}
+
+struct AnyKey;
+
+impl russh::client::Handler for AnyKey {
+    type Error = russh::Error;
+    async fn check_server_key(&mut self, _: &russh::keys::PublicKey) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+}
+
+/// 经一条可冻住的路，用生产的长连接配置（保活间隔换成 `every`，判死门槛照生产）连上那台进程内服务端、过鉴权。
+async fn linked_over_road(
+    every: std::time::Duration,
+) -> (
+    russh::client::Handle<AnyKey>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    let (client, server, frozen) = freezable_road();
+    let key = russh::keys::PrivateKey::from(
+        russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7u8; 32]),
+    );
+    let server_cfg = Arc::new(russh::server::Config {
+        keys: vec![key],
+        inactivity_timeout: None,
+        keepalive_interval: None,
+        auth_rejection_time: std::time::Duration::ZERO,
+        ..Default::default()
+    });
+    tokio::spawn(async move {
+        if let Ok(running) = russh::server::run_stream(server_cfg, server, OpenDoor).await {
+            let _ = running.await;
+        }
+    });
+    let mut h =
+        russh::client::connect_stream(connect::config_with(false, false, every), client, AnyKey)
+            .await
+            .expect("进程内服务端握手没过");
+    let ok = h.authenticate_none("u").await.expect("none 鉴权没回话");
+    assert!(ok.success(), "进程内服务端没放行");
+    (h, frozen)
+}
+
+/// ★ net4：路断成黑洞之后开通道 —— 保活连着没回话就判死，挂在上面还在等的开通道**当场失败**（不等界面的 45 秒期限）。
+/// 判死的时刻 = 最后收包之后 `KEEPALIVE_MAX + 1` 轮保活（发出去的那一个又等了一整轮没回）。
+/// 时间按比例缩小：保活间隔换成 200 ms，判死门槛（连着几次没回话）照生产。量的是「第几轮判死」：
+/// 要在下一轮到点之前（留一整轮给机器忙时的调度抖动）；门槛若回到 3 ⇒ 第 4 轮才死，红。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
+    let every = std::time::Duration::from_millis(200);
+    let (h, frozen) = linked_over_road(every).await;
+    frozen.store(true, std::sync::atomic::Ordering::SeqCst);
+    let t0 = std::time::Instant::now();
+    let got = tokio::time::timeout(every * 30, h.channel_open_session()).await;
+    let took = t0.elapsed();
+    let rounds = connect::KEEPALIVE_MAX as u32 + 1;
+    assert!(
+        matches!(got, Ok(Err(_))),
+        "黑洞上的开通道过了 30 轮保活还挂着（或成了）—— 保活没判死这条连接"
+    );
+    assert!(
+        took < every * (rounds + 1),
+        "黑洞上的开通道 {took:?} 才失败，判死门槛应是 {rounds} 轮保活（{:?}）",
+        every * rounds
+    );
+    assert!(
+        h.is_closed(),
+        "开通道失败了，连接却没被判死（池会接着往它上面放）"
+    );
+}
+
+/// ★ net4：健康的空闲连接不许被判死 —— 空闲十几轮保活之后照样开得出通道（每轮保活都有回话）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
+    let every = std::time::Duration::from_millis(200);
+    let (h, _frozen) = linked_over_road(every).await;
+    tokio::time::sleep(every * 15).await;
+    assert!(!h.is_closed(), "空闲 15 轮保活之后，健康的连接被判死了");
+    let ch = tokio::time::timeout(every * 30, h.channel_open_session()).await;
+    assert!(
+        matches!(ch, Ok(Ok(_))),
+        "空闲之后开不出通道：{:?}",
+        ch.map(|r| r.map(|_| ()))
+    );
+}
+
+/// ★ net4：生产的几个数之间的关系。
+/// - 判死：最后收包之后 ≤ 20 秒（「刚断过马上开」最坏也在这之内换到新连接上）；
+/// - 赛跑门槛在判死之前（不然门槛白设）、在一轮保活 ＋ 一个往返之后（健康的空闲连接不赛跑）。
+#[test]
+fn keepalive_judges_a_dead_road_within_twenty_seconds_and_spares_a_live_one() {
+    assert!(
+        connect::DEAD_AFTER_MS <= 20_000,
+        "最后收包之后 {} ms 才判死 —— 刚断过马上开要干等这么久",
+        connect::DEAD_AFTER_MS
+    );
+    assert_eq!(
+        connect::DEAD_AFTER_MS,
+        connect::KEEPALIVE_MS * (connect::KEEPALIVE_MAX as u64 + 1)
+    );
+    assert!(uses::STALE_AFTER_MS < connect::DEAD_AFTER_MS);
+    assert!(uses::STALE_AFTER_MS >= connect::KEEPALIVE_MS + 1_000);
+}
+
+/// ★ net4：等回话那一段的结局怎么记 —— 开通道失败、而连接也已断开（保活判死 / 对端断了）⇒ 当它死了
+/// （族里那之后也没动静的一起摘，重开落到新连接上）；远端说满了（连接还活着）⇒ 不算死；成了 ⇒ 不算死。
+#[test]
+fn a_failed_open_on_a_closed_connection_counts_as_dead() {
+    let disc: Result<(), russh::Error> = Err(russh::Error::Disconnect);
+    assert!(
+        uses::died_waiting(&disc, true),
+        "保活判死后开通道失败，没被当成死了"
+    );
+    assert!(!uses::died_waiting(&disc, false));
+    let full: Result<(), russh::Error> = Err(russh::Error::ChannelOpenFailure(
+        russh::ChannelOpenFailure::AdministrativelyProhibited,
+    ));
+    assert!(
+        !uses::died_waiting(&full, false),
+        "远端说满了被当成了死连接"
+    );
+    assert!(!uses::died_waiting(&Ok(()), true));
+}
