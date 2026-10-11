@@ -341,7 +341,7 @@ class MigrationTest {
         helper.createDatabase(dbName, 14).apply {
             execSQL(
                 "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect,reconnectOnNetworkChange," +
-                    "maxReconnectAttempts,claudeDir,agentKind,os) VALUES ('h14','pi','10.0.0.2',22,'pi',0,1,1,0,'/x','Codex','posix')",
+                    "maxReconnectAttempts,claudeDir,agentKind,os) VALUES ('h14','pi','example.com',22,'pi',0,1,1,0,'/x','Codex','posix')",
             )
             close()
         }
