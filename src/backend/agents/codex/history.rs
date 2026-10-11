@@ -14,6 +14,7 @@
 //!
 //! Codex 没有 pidfile ⇒ 判活答不了（「不知道」，不是「没活」）；Codex 的会话目录里也没有项目概念（按 cwd 分组是通用层的事）。
 
+use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::io::BufRead;
 use std::path::Path;
@@ -76,7 +77,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
 
 /// 一份 Codex 会话的首条真用户话（列表摘要）。前 200 行里找；找不到 ⇒ 空串。
 pub(crate) fn first_user_excerpt(path: &Path) -> String {
-    let Ok(f) = std::fs::File::open(path) else {
+    let Ok(f) = Ro::open(path) else {
         return String::new();
     };
     for line in std::io::BufReader::new(f)

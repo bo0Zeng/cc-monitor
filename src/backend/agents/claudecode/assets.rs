@@ -8,10 +8,9 @@
 //! 读法宽容：缺 / 坏的那一份不让整次扫描失败，但**说出来**（[`Sightings::problems`]）—— 「这台没有」与
 //! 「这台那份读不出来」不许合成一句。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
-
-use crate::platform::fs::Ro;
 
 use super::accounts::{config_path_in, MAX_CONFIG_BYTES};
 use super::paths::{resolve_home, CONFIG_DIR_ENV};
@@ -44,7 +43,7 @@ const PLUGIN_MANIFEST_MAX_BYTES: u64 = 64 * 1024;
 /// · 插件缓存里每个版本一个。没有清单 / 读不懂 / 没名字的目录不算插件；读不了的那一层当没有。
 pub(crate) fn plugins(config_root: &Path) -> Vec<(PathBuf, String)> {
     fn subdirs(d: &Path) -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = std::fs::read_dir(d)
+        let mut v: Vec<PathBuf> = Ro::read_dir(d)
             .map(|rd| {
                 rd.flatten()
                     .map(|e| e.path())
@@ -138,7 +137,7 @@ pub(crate) fn scan_at(
 
 /// skill：`<root>/<名>/` 每个目录一条（顶层链接跟到底；名字不是 UTF-8 的跳过并说出来）。`project` 原样记进每一条。
 pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sightings) {
-    let rd = match std::fs::read_dir(root) {
+    let rd = match Ro::read_dir(root) {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
@@ -162,10 +161,7 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
     for ent in rd.flatten() {
         let path = ent.path();
         // `metadata` 跟链接：`skills/foo -> ~/repo/foo` 是常见装法。
-        if !std::fs::metadata(&path)
-            .map(|m| m.is_dir())
-            .unwrap_or(false)
-        {
+        if !Ro::metadata(&path).map(|m| m.is_dir()).unwrap_or(false) {
             continue;
         }
         let Some(name) = ent.file_name().to_str().map(str::to_string) else {
@@ -254,7 +250,7 @@ pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
 /// 项目级 MCP：`<dir>/.mcp.json` 的 `mcpServers`。没有这份 ⇒ 跳过（绝大多数项目都没有）；有但坏了 ⇒ 说出来，**不当成空表**。
 pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
     let file = dir.join(PROJECT_MCP_FILE);
-    match std::fs::metadata(&file) {
+    match Ro::metadata(&file) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
             out.problems.push(

@@ -109,7 +109,7 @@ pub(crate) fn trust_dir_key(cwd: &str) -> String {
     if cfg!(windows) {
         return cwd.replace('\\', "/");
     }
-    std::fs::canonicalize(cwd)
+    Ro::canonicalize(cwd)
         .ok()
         .and_then(|p| p.to_str().map(str::to_string))
         .unwrap_or_else(|| cwd.to_string())
