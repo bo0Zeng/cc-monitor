@@ -895,6 +895,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一次改动结果里逐段 diff 的行正文总字数",
         "截断+说清",
     ),
+    // 前台派出、还在跑的子 agent：读子记录旁边派出那一刻落盘的 `agent-<id>.meta.json` 多大；超了不认它、记一笔（卡等父侧结果再对上）。
+    (
+        "src/backend/agents/claudecode/runs.rs",
+        "META_MAX",
+        "运行簿 / 按工具调用读子运行时读一份子 agent 的 `agent-<id>.meta.json`（只为取 `toolUseId`）",
+        "跳过+说清",
+    ),
     // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
     (
         "src/backend/agents/codex/relay.rs",

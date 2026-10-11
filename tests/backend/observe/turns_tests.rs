@@ -686,3 +686,63 @@ fn a_rewound_turn_is_not_swallowed_by_the_fold_before_it() {
         "上一轮的那一段停在被回退那一句之前，不管它之后在不在主线上"
     );
 }
+
+/// ★ 会话的 pidfile 说「在等批准」（那一步还没结果）时，后来续写进记录的那一轮回复照样露着，不收进过程。
+/// 划段只看记录（[`Open::close`]）；「在等」只经 [`dress_live`] 改此刻那一格与尾巴那一段上的字，不动露着的是哪几条。
+/// 三种续写：只续一段正文（没收尾）· 结果回来再说结论（`end_turn`）· 又说了一句、新的一轮回了话。
+#[test]
+fn a_reply_written_after_the_pidfile_says_waiting_stays_outside() {
+    use crate::observe::facts_query::{Needs, NeedsKind};
+    let t = "2026-10-07T08:16:00Z";
+    let needs = Needs {
+        kind: NeedsKind::Approve,
+        tool: Some("Bash".into()),
+        call: Some("b1".into()),
+        what: Some("make".into()),
+        since_ms: Some(1234),
+        text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+        head: crate::common::cells::Words(String::new()),
+        head_code: None,
+        tone: crate::common::cells::Tone::Need,
+        rank: 1,
+        waited_ms: Some(1),
+        waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
+    };
+    let head = vec![
+        user("u1", t, "q1"),
+        said("a1", t, text("第一轮的结论")),
+        user("u2", t, "q2"),
+        said("a2", t, text("先说一句")),
+        said(
+            "a3",
+            t,
+            serde_json::json!([call("b1", "Bash", serde_json::json!({"command":"make"}))]),
+        ),
+    ];
+    let end = |uuid: &str, s: &str| serde_json::json!({"type":"assistant","uuid":uuid,"timestamp":t,"message":{"content":text(s),"stop_reason":"end_turn"}});
+    let cases: Vec<(&str, Vec<serde_json::Value>)> = vec![
+        ("只续一段正文", vec![said("a4", t, text("续写的回复"))]),
+        (
+            "结果回来再说结论",
+            vec![result("r1", "b1", false), end("a4", "续写的回复")],
+        ),
+        (
+            "新的一轮回了话",
+            vec![user("u3", t, "q3"), end("a4", "续写的回复")],
+        ),
+    ];
+    for (name, more) in cases {
+        let mut lines = head.clone();
+        lines.extend(more);
+        let mut rows = scan(&body_of(&lines), 0);
+        let last = rows.last_mut().unwrap();
+        dress_live(last, Some(&needs), true);
+        let row = rows.iter().find(|r| r.shown.iter().any(|u| u == "a4"));
+        assert!(row.is_some(), "[{name}] 续写的回复要露着：{rows:?}");
+        let row = row.unwrap();
+        assert!(
+            row.folds.iter().all(|f| f.after != "a4"),
+            "[{name}] 回复后面没有别的了，不该再起一段"
+        );
+    }
+}

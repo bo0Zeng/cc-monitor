@@ -8,6 +8,7 @@
 //! | 派出 | `{"kind":"spawn","call":…,"title":…,"role":…}` 给标签；`{"kind":"spawned","call":…,"lane":…}` 说是哪个（带 `fin: "ok"/"bad"` ＝ 前台跑完） |
 //! | 收场 | `{"kind":"settled","lane":…,"how":"ok"/"bad"/"halted"}`（派出那一方说的）；子运行自己 `over: "cut"` ＝ 被叫停 |
 //! | 子运行记录住址 | `<父记录去后缀>.lanes/<lane>.ndjson` |
+//! | 派出那一刻落盘的对上 | `<父记录去后缀>.lanes/<lane>.whence`，整份是派出它的 `call` |
 //! | 时刻 | `clock`（自 1970 起的秒） |
 //! | 后台派出 | `spawned` 不带 `fin` |
 //! | 交回工具结果 · 报错原话 | 子运行 `back: true` · `why`（子运行 `over: "bad"` 或派出那一方 `fin: "bad"` 时） |
@@ -21,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 const LANES_SUFFIX: &str = "lanes";
 const LANE_EXT: &str = "ndjson";
+const WHENCE_EXT: &str = "whence";
 
 fn s<'a>(v: &'a Value, k: &str) -> Option<&'a str> {
     v.get(k).and_then(Value::as_str)
@@ -147,6 +149,18 @@ fn owner(p: &Path) -> Option<PathBuf> {
     Some(lanes.with_file_name(format!("{stem}.{LANE_EXT}")))
 }
 
+/// 派出那一刻落盘的那一份：`<lane>.whence`（与子运行记录同目录），整份就是派出它的那次调用的 `call`。
+fn spawned(child: &Path) -> Option<ChildLink> {
+    let lane = child.file_stem()?.to_str()?;
+    let call = std::fs::read_to_string(child.with_extension(WHENCE_EXT)).ok()?;
+    let call = call.trim();
+    (!call.is_empty()).then(|| ChildLink {
+        tool: Some(call.to_string()),
+        run: Some(lane.to_string()),
+        ..ChildLink::default()
+    })
+}
+
 /// 本假适配层的运行面。
 pub(crate) const FACES: RunFaces = RunFaces {
     response_id: Some(response_id),
@@ -158,6 +172,7 @@ pub(crate) const FACES: RunFaces = RunFaces {
         find,
         hint,
         written,
+        spawned,
     }),
 };
 
