@@ -15,7 +15,7 @@ fn reading_a_run_refuses_parents_outside_projects() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// ★ core12：按工具调用 id 读一个前台派出、还在跑的子运行（父侧还没有带运行号的结果）：子运行记录旁边派出那一刻落了盘的
+/// ★ 按工具调用 id 读一个前台派出、还在跑的子运行（父侧还没有带运行号的结果）：子运行记录旁边派出那一刻落了盘的
 /// 那一份对上它；那一份不在 ⇒ 照旧「还对不上」。夹具只造结构。
 #[test]
 fn reading_a_run_by_its_call_finds_a_foreground_run_still_running() {

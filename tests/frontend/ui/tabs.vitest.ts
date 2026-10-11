@@ -6418,16 +6418,16 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
       .split("\n")
       .map((l) => JSON.parse(l) as F);
     const announced = frames.find((f) => f.kind === "session_added")!;
-    const sid = announced.sid!;
-    tm.ensureTab(sid, null, announced.path!, LOCAL_ORIGIN);
+    const codexSid = announced.sid!;
+    tm.ensureTab(codexSid, null, announced.path!, LOCAL_ORIGIN);
     const seen: (string | null)[] = [];
     for (const f of frames.filter((x) => x.kind === "session_added" || x.kind === "session_status")) {
-      tm.updateActivity(sid, (f.activity ?? null) as never, f.waiting_for ?? null, f.activity_text!, f.activity_tone!, f.activity_order!);
-      const a = home(tm).store.tabs.get(sid)!.activity;
+      tm.updateActivity(codexSid, (f.activity ?? null) as never, f.waiting_for ?? null, f.activity_text!, f.activity_tone!, f.activity_order!);
+      const a = home(tm).store.tabs.get(codexSid)!.activity;
       if (seen[seen.length - 1] !== (a?.doing ?? null)) seen.push(a?.doing ?? null);
     }
     expect(seen).toEqual(["idle", "working", "idle", "working", "idle"]);
-    const last = home(tm).store.tabs.get(sid)!.activity!;
+    const last = home(tm).store.tabs.get(codexSid)!.activity!;
     expect([last.text, last.tone]).toEqual([copyText("beSession.activity.idle"), "plain"]);
   });
 });
