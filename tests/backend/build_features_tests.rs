@@ -57,12 +57,28 @@ fn the_backend_release_profile_is_built_for_size_and_keeps_unwinding() {
     let release = doc
         .get("profile")
         .and_then(|p| p.get("release"))
-        .unwrap_or_else(|| panic!("后端 Cargo.toml 没有 `[profile.release]` —— 发布档会走 cargo 默认（不按体积编）"));
+        .unwrap_or_else(|| {
+            panic!(
+                "后端 Cargo.toml 没有 `[profile.release]` —— 发布档会走 cargo 默认（不按体积编）"
+            )
+        });
     let field = |k: &str| release.get(k).map(|v| v.to_string().trim().to_string());
-    assert_eq!(field("opt-level").as_deref(), Some("\"s\""), "opt-level 要 \"s\"（\"z\" 冷扫慢，3 不按体积）");
+    assert_eq!(
+        field("opt-level").as_deref(),
+        Some("\"s\""),
+        "opt-level 要 \"s\"（\"z\" 冷扫慢，3 不按体积）"
+    );
     assert_eq!(field("lto").as_deref(), Some("true"), "lto 要开");
-    assert_eq!(field("codegen-units").as_deref(), Some("1"), "codegen-units 要 1");
-    assert_eq!(field("strip").as_deref(), Some("true"), "strip 要开（deb 那份本机后端曾带着 6.6 MB 符号）");
+    assert_eq!(
+        field("codegen-units").as_deref(),
+        Some("1"),
+        "codegen-units 要 1"
+    );
+    assert_eq!(
+        field("strip").as_deref(),
+        Some("true"),
+        "strip 要开（deb 那份本机后端曾带着 6.6 MB 符号）"
+    );
     assert!(
         matches!(field("panic").as_deref(), None | Some("\"unwind\"")),
         "panic 实得 {:?}：后端发布档不许 abort —— 一个任务 panic 会带走整个常驻后端",

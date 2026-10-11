@@ -382,7 +382,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
-    // 窗口那份二进制的文件名后缀（`window_bin_in`）：平台原语住壳的平台层。
+    // 窗口那份二进制的文件名后缀（`window_bin_name`）：平台原语住壳的平台层。
     ("platform::proc::EXE_SUFFIX", Kind::Spawn),
     // 自带的那份窗口程序：字节 · 放下来 · 放到哪 · 放的时候那两样平台知识（`proc::resolve_window_bin`）。
     ("byte_table::native_filewin", Kind::Carried),

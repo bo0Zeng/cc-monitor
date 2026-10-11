@@ -745,8 +745,12 @@ fn the_backend_is_one_thing_landing_in_several_places() {
         .flat_map(|x| x.carriers.iter())
         .filter(|c| matches!(c.source, ToolSource::EmbeddedBinary { .. }))
         .filter_map(|c| {
-            landing_path_of(&c.destination)
-                .map(|p| format!("{p}@{:?}", c.touches.iter().find(|f| f.path == p).map(|f| f.host)))
+            landing_path_of(&c.destination).map(|p| {
+                format!(
+                    "{p}@{:?}",
+                    c.touches.iter().find(|f| f.path == p).map(|f| f.host)
+                )
+            })
         })
         .collect();
     sites.sort();

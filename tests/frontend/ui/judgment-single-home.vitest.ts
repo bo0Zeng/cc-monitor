@@ -822,6 +822,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 两个前端包的 Windows 进程清单：构建脚本里编成资源 · 测试程序读回；TS 侧没有孪生（界面不碰进程清单）。
   "win-manifest": {
     embed_for_every_artifact: NONE,
+    embed_icon_for_bins: NONE,
     assert_own_process_carries_it: NONE,
   },
   // 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份；TS 侧不碰 Win32。

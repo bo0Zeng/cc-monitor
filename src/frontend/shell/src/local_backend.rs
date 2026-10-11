@@ -56,7 +56,7 @@
 //! 放到 `~/.cc-monitor/bin/ccm` 再起；这一份没带时是 [`Resolved::Missing`] 的**诚实降级**
 //! （定框 §5：tagged + `reason`，不是 `Err`），零副作用。
 //!
-//! 来历（读数住 `DECISIONS` 与 `调研/报告/安装包体积-10-11.md`）：v3.7.0 起安装包经 Tauri `externalBin` 在 exe 旁边另放一份（F05b），
+//! 来历：v3.7.0 起安装包经 Tauri `externalBin` 在 exe 旁边另放一份（F05b），
 //! 裸 exe 那时 0 个本机后端进程；`K-R42` 起 exe 自己内嵌一份、旁边没有就释放这一份；
 //! size2（10-11）撤掉了旁边那份 —— 它与内嵌那份逐字节相同、只是字节来源，而旧安装包留下的那一份可能是旧版本。
 //! ⚠ 两句话别混：① 这份产物带没带（宿主交进来的 `embedded`）· ② 放不放得下来（[`extraction_failure_reason`]）。
@@ -1800,13 +1800,7 @@ pub fn start_or_extract(
     // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
 ) -> (Resolved, Option<SuperviseHandle>) {
-    let resolved = resolve_or_extract(
-        extract_dir,
-        embedded,
-        make_executable,
-        ensure_dir,
-        ask,
-    );
+    let resolved = resolve_or_extract(extract_dir, embedded, make_executable, ensure_dir, ask);
     let Resolved::Found(bin) = resolved else {
         // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。
         return (resolved, None);

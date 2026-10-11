@@ -1245,7 +1245,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         os: "Windows".into(),
         arch: "x86_64".into(),
     }
-    .say("本机");
+    .say(&copy_text("rsLocalBackendHost.local.machine", &[]));
     let absent = crate::detail::Said::from(absent);
     assert!(
         refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
@@ -1672,7 +1672,10 @@ fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
         .lines()
         .filter(|l| l.contains(&verb) && l.trim_start().starts_with("run:"))
         .count();
-    assert!(calls >= 2, "release.yml 里只找到 {calls} 处 `{verb}` —— 抽取器坏了或流水线变形了，本条此刻无效");
+    assert!(
+        calls >= 2,
+        "release.yml 里只找到 {calls} 处 `{verb}` —— 抽取器坏了或流水线变形了，本条此刻无效"
+    );
     let landing = format!("src/frontend/shell/{}/", "binaries");
     let live: Vec<&str> = src
         .lines()
@@ -1700,7 +1703,11 @@ fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend.rs"
     ));
-    for gone in ["fn resolve_beside_this_exe", "fn local_backend_candidates", "current_exe("] {
+    for gone in [
+        "fn resolve_beside_this_exe",
+        "fn local_backend_candidates",
+        "current_exe(",
+    ] {
         assert!(
             !prod.contains(gone),
             "`local_backend.rs` 的生产段里还有 `{gone}` —— 本机后端的字节只该来自这一份产物内嵌的那份"

@@ -358,4 +358,3 @@ fn every_reader_names_its_retirement_owner() {
         "又登记了 `reader`（monitor 自己读 claude 目录的内容）—— 读面归后端，先问能不能改问后端"
     );
 }
-

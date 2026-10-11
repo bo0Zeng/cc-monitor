@@ -179,14 +179,8 @@ fn the_window_binary_is_never_guessed() {
     );
     // ② 环境变量指着一个**不存在**的路径、这一份没带 ⇒ 出声，而且**把看过的都说出来**。
     let missing = dir.join("根本没有这个文件");
-    let e = resolve_window_bin_in(
-        Some(missing.clone()),
-        None,
-        Some(&landing),
-        &mk,
-        &ensure,
-    )
-    .expect_err("指着一个不存在的文件居然解出来了");
+    let e = resolve_window_bin_in(Some(missing.clone()), None, Some(&landing), &mk, &ensure)
+        .expect_err("指着一个不存在的文件居然解出来了");
     // 句子只说原因词「未装」＋ 出路；看过的那几条路径进复制详情（原话）。
     assert_eq!(
         e.said,
@@ -244,9 +238,8 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     };
     let ensure = crate::platform::fs::ensure_private_dir;
     let want = landing.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX));
-    let resolve = |carried: &[u8]| {
-        resolve_window_bin_in(None, Some(carried), Some(&landing), &mk, &ensure)
-    };
+    let resolve =
+        |carried: &[u8]| resolve_window_bin_in(None, Some(carried), Some(&landing), &mk, &ensure);
     // ① 第一次：放下来、置可执行位、回落点那一份。
     assert_eq!(resolve(b"carried-v1").expect("自带着却没放下来"), want);
     assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v1");
@@ -276,7 +269,10 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     // ⑤ exe 旁边摆着一份（旧安装包留下的）⇒ 不认它：照旧回落点、换成自带那份 —— 开窗只认这一版 monitor 带的字节。
     let beside = exe_dir.join(window_bin_name());
     std::fs::write(&beside, b"beside").expect("写不出旁边那份");
-    assert_eq!(resolve(b"carried-v3").expect("旁边有一份就解不出来了"), want);
+    assert_eq!(
+        resolve(b"carried-v3").expect("旁边有一份就解不出来了"),
+        want
+    );
     assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v3");
     std::fs::remove_file(&beside).expect("删不掉旁边那份");
     // ⑥ 家目录问不到 ⇒ 「不知道放哪」那一句；放不下来 ⇒ 带着原话的那一句 —— 都不是「没带」。
@@ -702,11 +698,17 @@ fn the_window_binary_target_really_hosts_the_body() {
     // 那个 bin 住文件窗口包自己名下（不再是 monitor 包的第二个 `[[bin]]`：打包器会把 monitor 包的每个 bin 都装进安装包，
     //   而开窗只用 monitor 内嵌的那份 ⇒ 安装包里那份是纯重复）。
     let pkg = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../filewin");
-    let toml = std::fs::read_to_string(pkg.join("Cargo.toml")).expect("读不到文件窗口包的 Cargo.toml");
+    let toml =
+        std::fs::read_to_string(pkg.join("Cargo.toml")).expect("读不到文件窗口包的 Cargo.toml");
     // ① 那个 bin 的名字与本模块持有的主干**是同一个串**（抄第二份必漂）。
-    let exact = |want: &str| toml.lines().filter(|l| l.trim() == want).count();
+    // `[[bin]]` 恰好一处，紧跟着的那一行就是它的名字（包名也叫这个，所以不能只数名字那一行）。
+    let lines: Vec<&str> = toml.lines().map(str::trim).collect();
+    let bins: Vec<usize> = (0..lines.len())
+        .filter(|i| lines[*i] == "[[bin]]")
+        .collect();
     assert!(
-        exact("[[bin]]") == 1 && exact(&format!("name = \"{BIN_STEM}\"")) == 1,
+        bins.len() == 1
+            && lines.get(bins[0] + 1) == Some(&format!("name = \"{BIN_STEM}\"").as_str()),
         "文件窗口包的 `Cargo.toml` 里没有恰好一个叫 `{BIN_STEM}` 的 `[[bin]]` —— \
          monitor 内嵌的、放到 `~/.cc-monitor/bin/` 的正是这个名字"
     );

@@ -129,8 +129,6 @@ fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] 
 # Windows 进程清单编成资源、交给本包每一个链接产物（程序 · lib 的测试程序）：与 monitor 同一份清单、同一处编法。
 #   rfd 的 `common-controls-v6` 按名字引入 comctl32 的 `TaskDialogIndirect`，没清单的程序在 Windows 上 0xc0000139 起不来。
 win-manifest = { path = "../../common/win-manifest" }
-# 程序的图标（任务栏 · Alt-Tab）编成资源（`build.rs`）；与 win-manifest 同一个版本（锁里已有）。
-embed-resource = "3"
 
 [dev-dependencies]
 guard-core = { path = "../../common/guard-core" }

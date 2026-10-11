@@ -37,6 +37,29 @@ pub fn embed_for_every_artifact() {
     }
 }
 
+/// 在构建脚本里调：把程序图标编成资源、交给**调用方那个包的程序**（`[[bin]]`；测试程序不要）。
+///
+/// 给自己不经 `tauri-build` 的那个前端程序用（文件窗口：egui 窗口没设图标时，Windows 的任务栏与 Alt-Tab 取可执行文件的第一个图标资源）。
+/// 与清单那份 `.rc` 分开编：清单要进每一个链接产物，图标只进程序。不是 Windows target 就只登记 `rerun-if-changed`。
+pub fn embed_icon_for_bins(icon: &Path) {
+    println!("cargo:rerun-if-changed={}", icon.display());
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
+    let rc = out.join("app-icon.rc");
+    std::fs::write(&rc, icon_rc_line(&icon.display().to_string())).expect("写不出图标的 .rc");
+    if let Err(e) = embed_resource::compile(&rc, embed_resource::NONE).manifest_optional() {
+        println!("cargo:warning=图标没编成资源：{e}");
+        std::process::exit(1);
+    }
+}
+
+/// 图标那一行：`1 ICON` ＝ 第一个图标组。反斜杠成对，同 [`rc_line`]。
+fn icon_rc_line(icon: &str) -> String {
+    format!("1 ICON \"{}\"\n", icon.replace('\\', "\\\\"))
+}
+
 /// `.rc` 里那一行：`1` ＝ CREATEPROCESS_MANIFEST_RESOURCE_ID，`24` ＝ RT_MANIFEST。rc 的字符串里反斜杠要成对。
 fn rc_line(manifest: &str) -> String {
     format!("1 24 \"{}\"\n", manifest.replace('\\', "\\\\"))
