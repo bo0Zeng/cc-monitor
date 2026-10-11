@@ -11,6 +11,15 @@
 
 use super::*;
 
+/// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-skill-ledger-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -36,10 +45,10 @@ fn read_ok(path: &Path) -> Ledger {
 #[test]
 fn add_merges_new_paths_updates_digests_and_keeps_the_first_created() {
     let d = temp_dir("add");
-    let file = d.join("state/skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     let first = record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "files": {"SKILL.md": rec(D1, true), "run.sh": rec(D2, false)}}),
     )
@@ -51,7 +60,7 @@ fn add_merges_new_paths_updates_digests_and_keeps_the_first_created() {
     );
     // 再装一次：SKILL.md 换了摘要、这一回说是「盖掉」的 —— `created` 仍取第一次的；多了一个新文件。
     record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "files": {"SKILL.md": rec(D3, false), "new.md": rec(D1, true)}}),
     )
@@ -82,10 +91,10 @@ fn add_merges_new_paths_updates_digests_and_keeps_the_first_created() {
 #[test]
 fn the_directory_is_computed_here_and_never_taken_from_the_caller() {
     let d = temp_dir("dir");
-    let file = d.join("skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     let v = record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "dir": "/etc", "files": {"a.md": rec(D1, true)}}),
     )
@@ -102,17 +111,17 @@ fn the_directory_is_computed_here_and_never_taken_from_the_caller() {
 #[test]
 fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
     let d = temp_dir("drop");
-    let file = d.join("skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true), "b": rec(D2, true), "c": rec(D3, false)}}),
     )
     .unwrap();
     let dir = root.join("demo").display().to_string();
     let v = record_at(
-        &file,
+        &own_at(&file),
         None,
         &json!({"op": "drop", "dir": dir, "paths": ["a", "c"]}),
     )
@@ -132,7 +141,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
     // 不在记录里的路径 ⇒ 拒，一个字节不动
     let before = std::fs::read(&file).unwrap();
     let e = record_at(
-        &file,
+        &own_at(&file),
         None,
         &json!({"op": "drop", "dir": dir, "paths": ["b", "zzz"]}),
     )
@@ -140,7 +149,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
     assert_eq!(e.code, "bad_args");
     assert_eq!(std::fs::read(&file).unwrap(), before, "拒了还动了文件");
     let e = record_at(
-        &file,
+        &own_at(&file),
         None,
         &json!({"op": "drop", "dir": "/nowhere", "paths": ["b"]}),
     )
@@ -148,7 +157,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
     assert_eq!(e.code, "not_found");
     // 摘到零 ⇒ 整条走
     let v = record_at(
-        &file,
+        &own_at(&file),
         None,
         &json!({"op": "drop", "dir": dir, "paths": ["b"]}),
     )
@@ -161,10 +170,10 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
 #[test]
 fn bad_input_is_refused_and_the_file_is_untouched() {
     let d = temp_dir("bad");
-    let file = d.join("skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true)}}),
     )
@@ -183,7 +192,7 @@ fn bad_input_is_refused_and_the_file_is_untouched() {
         json!({"op": "drop", "paths": ["a"]}),
         json!({"op": "drop", "dir": "x", "paths": "a"}),
     ] {
-        let e = record_at(&file, Some(&root), &bad).expect_err("坏入参被收下");
+        let e = record_at(&own_at(&file), Some(&root), &bad).expect_err("坏入参被收下");
         assert_eq!(e.code, "bad_args", "{bad}");
         assert_eq!(
             std::fs::read(&file).unwrap(),
@@ -197,7 +206,8 @@ fn bad_input_is_refused_and_the_file_is_untouched() {
 #[test]
 fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
     let d = temp_dir("unreadable");
-    let file = d.join("skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     let root = d.join("skills");
     for body in [
         b"{not json".to_vec(),
@@ -207,7 +217,7 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
     ] {
         std::fs::write(&file, &body).unwrap();
         let e = record_at(
-            &file,
+            &own_at(&file),
             Some(&root),
             &json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true)}}),
         )
@@ -224,17 +234,17 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
 #[test]
 fn nothing_changed_nothing_written() {
     let d = temp_dir("same");
-    let file = d.join("skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     let args = json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true)}});
-    record_at(&file, Some(&root), &args).unwrap();
+    record_at(&own_at(&file), Some(&root), &args).unwrap();
     let before = std::fs::read(&file).unwrap();
     #[cfg(unix)]
     let ino = {
         use std::os::unix::fs::MetadataExt as _;
         std::fs::metadata(&file).unwrap().ino()
     };
-    let v = record_at(&file, Some(&root), &args).unwrap();
+    let v = record_at(&own_at(&file), Some(&root), &args).unwrap();
     assert_eq!(v["changed"], json!(false));
     assert_eq!(std::fs::read(&file).unwrap(), before);
     #[cfg(unix)]
@@ -336,7 +346,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
 #[test]
 fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     let d = temp_dir("hx2-race");
-    let state = d.join("state");
+    let state = d.join(".cc-monitor");
     std::fs::create_dir_all(&state).unwrap();
     let file = state.join("skill-installs.json");
     let root = d.join("skills");
@@ -345,7 +355,7 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     let (f2, r2) = (file.clone(), root.clone());
     let racer = std::thread::spawn(move || {
         let v = record_at(
-            &f2,
+            &own_at(&f2),
             Some(&r2),
             &json!({"op": "add", "name": "beta", "files": {"SKILL.md": rec(D2, true)}}),
         );
@@ -392,7 +402,7 @@ fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
     let h = temp_dir("at-home");
     let path = h.join(".cc-monitor").join(FILE_NAME);
     let v = record_at(
-        &path,
+        &own_at(&path),
         None,
         &json!({ "op": "add", "name": "home-tool", "at": "home", "files": { ".local/bin/home-tool": rec(D1, true) } }),
     )
@@ -403,7 +413,7 @@ fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
         .contains_key(&h.display().to_string()));
     let before = std::fs::read(&path).unwrap();
     let crate::stream::inbound::spec::Fail { code, .. } = record_at(
-        &path,
+        &own_at(&path),
         None,
         &json!({ "op": "add", "name": "x", "at": "/etc", "files": {} }),
     )

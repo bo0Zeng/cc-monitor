@@ -380,7 +380,15 @@ impl M {
             .unwrap(),
             None => skills.clone(),
         };
-        let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+        let record = |a: &Value| {
+            super::super::skill_ledger::record_at(
+                &crate::platform::fs::Own::issue_at(
+                    ledger.parent().and_then(std::path::Path::parent).unwrap(),
+                ),
+                Some(&skills),
+                a,
+            )
+        };
         let r = match cmd {
             "skill-read" => super::super::skill_install::answer_read_at(Some(&root), args),
             "skill-install-plan" => {
@@ -612,7 +620,15 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("卸不掉");
     assert!(!dst.exists(), "装时建的目录没收掉");
 
@@ -689,7 +705,15 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("卸不掉");
     let list = t.list();
     assert_eq!(t.cell(&list, "m", 1).state, ExtState::Missing);
@@ -932,7 +956,15 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("从全局卸不掉");
     assert_eq!(
         shared_names(&t.b),
@@ -1244,7 +1276,15 @@ async fn the_wire_matches_the_cross_language_golden() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     let udone = answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).unwrap();
     let got = json!({
         "list": serde_json::to_value(&list).unwrap(),

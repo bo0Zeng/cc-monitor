@@ -926,14 +926,6 @@ mod tests {
              经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。入口只有中转那一路（上游选择对中转的那个口）—— 不是帧面命令",
         ),
         (
-            "assets/skill_ledger.rs",
-            "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
-             （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
-             只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（skill 目录里的文件本模块一个字节都不写不删）。`O_EXCL` 建临时文件 → \
-             写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有命令表资产那一族的 \
-             `skill-install-record`（＋ 派生的 CLI 面）",
-        ),
-        (
             "dial/known_hosts.rs",
             "**主机钥匙** `~/.cc-monitor/known_hosts`（OpenSSH 格式）：本后端握手认下的各台主机钥匙，开终端那一行交给 `ssh` 认它。\
              文件名 / 格式 / 落点都是本仓定的、只有终端那一跳的 `ssh` 读它 ⇒ 拨号侧**自己的**状态，不是用户数据（用户的 `~/.ssh` 一个字节不碰）。\
@@ -1139,12 +1131,6 @@ mod tests {
         ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
         ("stderr_log.rs", "stderr_log::stderr_writer", "main.rs"),
         ("stderr_log.rs", "stderr_log::oneshot_writer", "main.rs"),
-        // 一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
-        (
-            "assets/skill_ledger.rs",
-            "skill_ledger::answer_",
-            "stream/inbound/registry/assets.rs",
-        ),
         // 起会话用的号：留便条只从 ccm 最终那一跳进，认便条记账只从观测侧进。
         (
             "control/launch_account.rs",

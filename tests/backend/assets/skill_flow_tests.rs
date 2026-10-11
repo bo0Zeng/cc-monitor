@@ -3,6 +3,15 @@ use super::*;
 use crate::assets::mcp_sync::There;
 use crate::stream::inbound::LocalFiles;
 
+/// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
+
 struct NoFacts;
 impl Facts for NoFacts {
     fn path(&self, _p: &str) -> There {
@@ -34,10 +43,11 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     let g = golden();
     let base = fixture("golden");
     let root = base.join("skills");
-    let ledger = base.join("skill-installs.json");
+    let ledger = base.join(relay_route_core::SKILL_LEDGER_REL);
     std::fs::create_dir_all(root.join("demo/lib")).unwrap();
     std::fs::write(root.join("demo/lib/a.txt"), "old a\n").unwrap();
-    let record = |a: &Value| crate::assets::skill_ledger::record_at(&ledger, Some(&root), a);
+    let record =
+        |a: &Value| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
     let plan = crate::assets::skill_install::answer_plan_with(
         &NoFacts,
         Some(&root),
@@ -96,10 +106,11 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
     let g = golden();
     let base = fixture("stale");
     let root = base.join("skills");
-    let ledger = base.join("skill-installs.json");
+    let ledger = base.join(relay_route_core::SKILL_LEDGER_REL);
     std::fs::create_dir_all(root.join("demo/lib")).unwrap();
     std::fs::write(root.join("demo/lib/a.txt"), "changed since\n").unwrap();
-    let record = |a: &Value| crate::assets::skill_ledger::record_at(&ledger, Some(&root), a);
+    let record =
+        |a: &Value| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
     let crate::stream::inbound::spec::Fail { code, message: why, .. } = answer_install(
         &LocalFiles,
         &NoFacts,

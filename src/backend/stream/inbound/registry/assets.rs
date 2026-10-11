@@ -206,8 +206,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[arg("at", "`add` 可缺席：缺 ⇒ 目录按 skill 根算；`\"home\"` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）；其余值 ⇒ `bad_args`"), out("changed", "记录变没变（没变不写）"), arg("digest", "装进去的那一条的摘要（`mcp-add`；卸时对得上就不用问）"), both("dir", "`drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录"), arg("file", "`mcp-add` / `mcp-drop`：配置文件的绝对路径（键）"), arg("files", "`add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个"), arg("name", "`add`：skill 的目录名"), arg("op", "`add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉）；MCP 那一条：`mcp-add` · `mcp-drop`"), arg("paths", "`drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉"), arg("project", "`add` 可缺席：给了 ⇒ 目录按那个项目里的 skill 根算"), out("remaining", "这一条还剩几个文件（MCP：那份配置里还记着几条）")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::skill_ledger::answer_record(&r.args)
+        run: Run::BlockingOwn(|r, own| {
+            crate::assets::skill_ledger::answer_record(&r.args, own)
                 .map(Some)
         }),
     },
@@ -267,10 +267,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_file", "refused"],
         fields: &[out("backup", "覆盖前整个目录改名成的那一份（`cc-bus.bak-<秒>`，`null` = 之前没装过）"), out("dest", "落点（`<skills 根>/cc-bus`，过独立 realpath 围栏）"), out("recordFailed", "装好了但没记进 skill 装记录时那一句（这一趟装的卸不掉）；装卸账复用 `skill-install-record` 那一份"), out("written", "写了的那几个相对路径（全一致 ⇒ 空：一个字节不写、不备份、不记）")],
         takes_input: false,
-        run: Run::BlockingData(|_r| {
+        run: Run::BlockingOwn(|_r, own| {
             crate::assets::cc_bus_install::answer_install(
                 &LocalFiles,
-                &crate::assets::skill_ledger::answer_record,
+                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
             )
             .map(Some)
         }),
@@ -420,11 +420,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[arg("at", "同 `ext-uninstall-preview`"), out("changed", "删了的那几个"), arg("kind", "同 `ext-uninstall-preview`"), arg("name", "同 `ext-uninstall-preview`"), out("note", "要知道的一件（挪 / 抄到了哪 · 没从装记录里摘掉 · 空目录没收掉）"), out("path", "卸的是哪"), arg("token", "卡上那一份：现在对不上 ⇒ `stale`、一个字节不动")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
+        run: Run::BlockingOwn(|r, own| {
             crate::assets::ext::answer_uninstall_apply(
                 &LocalFiles,
                 &crate::assets::ext::Env::here(),
-                &crate::assets::skill_ledger::answer_record,
+                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
                 &r.args,
             )
             .map(Some)
@@ -481,10 +481,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[arg("at", "同 `mcp-sync-preview`"), arg("def", "同 `mcp-sync-preview`"), arg("fill", "用户在确认卡上填的值 `{env: {键: 值}, headers: {…}}`；没填的键沿用这台原有的值，两样都没有 ⇒ `needs_input`、一个字节不写"), arg("name", "同 `mcp-sync-preview`"), out("path", "写到了哪"), out("recordFailed", "装记录没记下来时那一句（`null` = 记下了）"), arg("target", "看卡时这台那份的记号：这台在那之后变了 ⇒ `stale`，**一个字节不写、不重读重算**"), out("written", "真写了吗（与原有那一条逐字相同 ⇒ `false`）")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
+        run: Run::BlockingOwn(|r, own| {
             crate::assets::mcp_sync_flow::answer_apply(
                 &LocalFiles,
-                &crate::assets::skill_ledger::answer_record,
+                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
                 &r.args,
             )
             .map(Some)
@@ -504,12 +504,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("chmodFailed", "写成了但执行位没置上的那几个"), out("dir", "装到了哪"), arg("name", "同 `skill-read`"), arg("overwrite", "同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`）"), arg("project", "同 `skill-read`"), out("recordFailed", "装记录没记下来时那一句（`null` = 记下了）—— 记不下来 ⇒ 这一趟装的卸不掉"), arg("source", "来源那台 `skill-read` 的 `files`，原样（`path` · `text` · `exec`；`text` 为 `null` 的装不过去）"), arg("take", "同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`）"), arg("target", "看差异时这台 `skill-install-plan` 回的 `target`（这台那几份原文），原样 —— 写时的 CAS 期望"), out("written", "真写成了的那几个（按写的顺序）")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
+        run: Run::BlockingOwn(|r, own| {
             crate::assets::skill_flow::answer_install(
                 &LocalFiles,
                 &crate::assets::mcp_sync::Live::from_env(),
                 None,
-                &crate::assets::skill_ledger::answer_record,
+                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
                 &r.args,
             )
             .map(Some)
