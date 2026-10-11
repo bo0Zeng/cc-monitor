@@ -779,7 +779,7 @@ fn the_patch_reply_carries_the_days_it_stamped() {
     assert_eq!(
         pinned,
         vec![PinnedDay {
-            origin: "box".into(),
+            origin: crate::origin::Origin("box".into()),
             day: today
         }]
     );
@@ -790,7 +790,7 @@ fn the_patch_reply_carries_the_days_it_stamped() {
     assert_eq!(
         pinned,
         vec![PinnedDay {
-            origin: "box".into(),
+            origin: crate::origin::Origin("box".into()),
             day: String::new()
         }],
         "清空 ⇒ 日子清空也说"

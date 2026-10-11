@@ -252,7 +252,7 @@ pub struct ConfigPatched {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct PinnedDay {
-    pub origin: String,
+    pub origin: crate::origin::Origin,
     pub day: String,
 }
 
@@ -488,10 +488,12 @@ fn stamp_pinned_day(root: &mut Map<String, Value>, e: &ConfigEdit, day: &str) ->
         },
     );
     (done == Applied::Done).then(|| PinnedDay {
-        origin: r#where
-            .first()
-            .map(|k| k.equals.clone())
-            .unwrap_or_default(),
+        origin: crate::origin::Origin(
+            r#where
+                .first()
+                .map(|k| k.equals.clone())
+                .unwrap_or_default(),
+        ),
         day,
     })
 }
