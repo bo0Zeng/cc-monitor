@@ -7,7 +7,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import type { FakeBackend } from "../fake/backend";
 import { Convo } from "../fake/records";
-import { defaultDisk, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
+import { defaultDisk, defaultWorld, LOCAL, rawJsonlPathOf, session, sidOf } from "../fake/world";
 import { click, mainReady, sleep, until } from "./helpers";
 
 const N = 31;
@@ -35,6 +35,7 @@ function world(tool: string, input: Record<string, unknown>, waitingFor: string)
     ];
     w.sessions = [session(N, LOCAL, CWD, c, { activity: "needs_you", waitingFor, waitingSinceMs: Date.now() - 12_000, idle: false, rawJsonl: raw.map((r) => JSON.stringify(r) + "\n").join("") })];
     w.disk = defaultDisk(w.machines, w.sessions);
+    w.realStream = true;
     return w;
   };
 }
@@ -102,10 +103,15 @@ export const ANSWER_SCENES: Scene[] = [
   shot("answer-manual", "答批准 · 只能在终端里答（甲6）", "没挂上请求（这条会话不是经答题口起的）：核心写好的那一句 ＋［看终端］", async ({ backend }) => {
     await asked(backend, null, "[data-part=manual]");
   }),
-  shot("answer-elsewhere", "答批准 · 别处先答了（甲7）", "终端那边先答了（经真后端答掉那一条）：真后端推 changed {needs}、重读里没了那条请求 ⇒ 块收起，留一行「已在终端答过或已关闭」（稳定态，下一条请求来了 / 切走才没）", async ({ backend }) => {
+  shot("answer-elsewhere", "答批准 · 别处先答了（甲7）", "终端那边先答了：经真后端答掉那一条，记录里落下那一步的结果、pidfile 改回在跑（照真终端答了之后的样子）⇒ 真后端推 changed {needs}、重读里没了那条请求 ⇒ 块收起，留一行「已在终端答过或已关闭」（稳定态，下一条请求来了 / 切走才没）；头上与过程行照真后端此刻说的", async ({ backend }) => {
     await asked(backend, hook("Bash", { command: PROBE, description: "建探针文件" }, { permission_suggestions: SUGGEST }), "button[data-choice=allow]");
     await backend.answerElsewhere(LOCAL, SID, "allow");
+    const s = backend.world.sessions[0];
+    const call = (JSON.parse(s.rawJsonl!.trim().split("\n").at(-1)!) as { message: { content: { type: string; id?: string }[] } }).message.content.find((b) => b.type === "tool_use")!.id!;
+    const result = { type: "user", uuid: "u-2", parentUuid: "a-1", timestamp: "2026-10-08T06:21:20.000Z", cwd: CWD, sessionId: SID, toolUseResult: { stdout: "", stderr: "" }, message: { role: "user", content: [{ type: "tool_result", tool_use_id: call, content: "" }] } };
+    await backend.writeFile(LOCAL, rawJsonlPathOf(s), s.rawJsonl + JSON.stringify(result) + "\n");
+    await backend.setStatus(LOCAL, SID, "busy");
     await until(() => document.querySelector("[role=group] [data-part=gone]"), 15_000);
-    await sleep(400);
+    await sleep(1500);
   }),
 ];

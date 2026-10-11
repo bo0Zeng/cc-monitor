@@ -5,7 +5,7 @@
  * 只由截图工具的 vite 插件插进页面（`tests/shots/serve.mjs`）；产品构建里没有它。
  */
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { FakeBackend } from "./backend";
 import { DEFAULT_STORAGE, sceneById } from "../scenes";
 import { layoutProblems } from "../scenes/layout-check";
@@ -26,6 +26,8 @@ const backend = new FakeBackend(scene.world());
 mockWindows(label);
 mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
 backend.attachEmitter((event, payload) => emit(event, payload));
+// 主界面订好各台的会话流后发 `frontend-ready`（壳在那一刻过就绪点）：会话流交真后端的世界照样告诉无头壳。
+void listen<{ prioritySid?: string | null } | null>("frontend-ready", (e) => backend.frontendReady(e.payload?.prioritySid ?? null));
 
 // 产品代码会把「上次停在哪个 tab」之类的记忆写进 localStorage；每张图从同一个起点开始。
 try {

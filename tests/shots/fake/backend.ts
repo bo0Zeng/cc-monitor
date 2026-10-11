@@ -142,6 +142,13 @@ export class FakeBackend {
     await this.real(origin, "needs-answer", { sid, ask, choice }, null);
   }
 
+  /** 场景演那一家改了自己 pidfile 里的状态（原词：busy · waiting · idle · shell）。 */
+  async setStatus(origin: string, sid: string, status: string, waitingFor: string | null = null): Promise<void> {
+    await this.ready;
+    const r = await fetch("/__ccm/status", { method: "POST", body: JSON.stringify({ key: this.key, origin, sid, status, waitingFor }) });
+    if (!r.ok) throw new Error(`改不了 ${origin} 上 ${sid} 的状态：${await r.text()}`);
+  }
+
   /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */
   async writeFile(origin: string, rel: string, text: string): Promise<void> {
     await this.ready;
@@ -150,8 +157,15 @@ export class FakeBackend {
   }
 
   /** 订阅那几样交给无头壳。 */
-  private tell(what: "sub" | "want" | "stop", body: Record<string, unknown>): void {
-    void this.ready.then(() => fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) }));
+  /** 交给无头壳的那几样排成一队（订阅先到、就绪点后到 —— 与产品发的顺序一致，几个 fetch 各跑各的就不保序）。 */
+  private told: Promise<unknown> = Promise.resolve();
+  private tell(what: "sub" | "want" | "stop" | "ready", body: Record<string, unknown>): void {
+    this.told = this.told.then(() => this.ready).then(() => fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) }));
+  }
+
+  /** 会话流交真后端的世界（`World.realStream`）：主界面发 `frontend-ready` ⇒ 无头壳过就绪点（交留存、之后实时）。 */
+  frontendReady(prioritySid: string | null): void {
+    if (this.world.realStream) this.tell("ready", { priority_sid: prioritySid });
   }
 
   attachEmitter(emit: Emit): void {
@@ -197,6 +211,8 @@ export class FakeBackend {
       const delay = this.world.opDelayMs?.[op] ?? 0;
       return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
     }
+    // 会话流交真后端的世界：界面拿到的记录路径就是那台盘上的真路径 ⇒ 按路径问的那几条（history-*）整条交真后端。
+    if (this.world.realStream && typeof req.path === "string" && req.path.startsWith(`${HOME}/.claude/`)) return this.real(origin, op, req, args.view);
     if (op === "history-facts") {
       const s = this.world.sessions.find((x) => typeof req.path === "string" && req.path.endsWith(`${x.sid}.jsonl`));
       // 造了原始 jsonl 的会话：整份交真后端（读那台盘上那一份）；别的照旧合成，只有答题口那几格取真后端的。
@@ -226,7 +242,8 @@ export class FakeBackend {
 
   private subscribe(args: Record<string, unknown>): void {
     const sub: Sub = { id: Number(args.id), origin: String(args.origin), kind: String(args.kind) };
-    if (SHELL_KINDS.has(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
+    const lines = sub.kind === "session-lines" || sub.kind.startsWith("session-lines/");
+    if ((SHELL_KINDS.has(sub.kind) || (lines && this.world.realStream)) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
       this.shellSubs.add(sub.id);
       this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
       return;

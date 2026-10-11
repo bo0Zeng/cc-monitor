@@ -71,6 +71,11 @@ export interface World {
   disk: Record<string, import("../disk").MachineDisk>;
   /** 第一台是本机（`<local>`）。 */
   machines: string[];
+  /**
+   * 会话流（`session-lines`）与按记录路径问的那几条（`history-*`）交真后端：读各会话的 `rawJsonl`（盘上原样）。
+   * 只给全部会话都造了原始 jsonl 的世界用（`records` 合成的那一份不再上屏）。缺 ⇒ 会话流照旧合成。
+   */
+  realStream?: boolean;
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
   /** 历史清单问不到的那几台（那台常驻那一跳 `history-list {raw}` 连不上）。 */
