@@ -472,6 +472,22 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             let holders = history_query::facts_holders(home, path);
             facts.writers = holders.clone().unwrap_or_default();
             // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+            // 答题口没接上（ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量）：每次按持着它的进程现查。
+            facts.answer_off = facts
+                .writers
+                .iter()
+                .any(|pid| {
+                    matches!(
+                        crate::platform::proc::proc_env_var(
+                            *pid,
+                            crate::agents::asks::ANSWER_HOOK_OFF_ENV
+                        ),
+                        crate::platform::proc::EnvRead::Value(_)
+                    )
+                })
+                .then(|| {
+                    crate::common::cells::Words(copy_core::copy_text("beAsk.manual.noHook", &[]))
+                });
             // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
             facts.needs = dress_ask(
                 facts_query::needs_of(
@@ -480,6 +496,12 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                 ),
                 sid,
             );
+            // 没接上的那条会话：「只能在终端里答」那一句换成它为什么（同 `answerOff`）。
+            if let (Some(n), Some(off)) = (facts.needs.as_mut(), facts.answer_off.as_ref()) {
+                if n.ask.is_none() {
+                    n.manual_text = Some(off.clone());
+                }
+            }
             // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
             facts.background = accounts_query::session_background(home, sid).map(|born| {
                 let now = crate::common::time::now()

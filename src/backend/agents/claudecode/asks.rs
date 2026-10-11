@@ -15,6 +15,7 @@ use serde_json::{json, Map, Value};
 pub(crate) const FACE: AskFace = AskFace {
     launch_args,
     launch_flag: SETTINGS_FLAG,
+    merge,
     read,
     decide,
 };
@@ -31,16 +32,36 @@ pub(crate) fn hook_words() -> [&'static str; 3] {
     [end, flag, super::AGENT_KIND]
 }
 
-/// 起会话时垫的那两个词：`--settings` ＋ 只含这一个 hook 的 JSON 串（exec 形，不经 shell；`entry` ＝ ccm 绝对路径）。
-pub(crate) fn launch_args(entry: &str) -> Vec<String> {
-    let hook = json!({
+/// 答题 hook 那一组（exec 形，不经 shell；`entry` ＝ ccm 绝对路径）。
+fn hook_group(entry: &str) -> Value {
+    json!({ "hooks": [{
         "type": "command",
         "command": entry,
         "args": hook_words(),
         "timeout": HOOK_TIMEOUT_SECS,
-    });
-    let settings = json!({ "hooks": { EVENT: [ { "hooks": [hook] } ] } });
+    }] })
+}
+
+/// 起会话时垫的那两个词：`--settings` ＋ 只含这一个 hook 的 JSON 串。
+pub(crate) fn launch_args(entry: &str) -> Vec<String> {
+    let settings = json!({ "hooks": { EVENT: [hook_group(entry)] } });
     vec![SETTINGS_FLAG.to_string(), settings.to_string()]
+}
+
+/// 用户自己的会话级设置并进答题 hook：别的一切原样，只往 `hooks.PermissionRequest` 末尾加我们那一组（hooks 本来就是各层合并、不替换）。
+/// 不是对象 · `hooks` 不是对象 · 那一种不是数组 ⇒ `None`（不挂）。
+pub(crate) fn merge(user: &Value, entry: &str) -> Option<Value> {
+    let mut v = user.as_object()?.clone();
+    let hooks = v
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()?;
+    hooks
+        .entry(EVENT)
+        .or_insert_with(|| json!([]))
+        .as_array_mut()?
+        .push(hook_group(entry));
+    Some(Value::Object(v))
 }
 
 const ASK_TOOL: &str = "AskUserQuestion";

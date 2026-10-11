@@ -822,6 +822,9 @@ fn exec_direct(d: &plan::Direct) -> i32 {
         std::env::set_var(cfg_env, &d.config_dir);
     }
     // 没有账号载体的那一家：`--base` 什么都不做。
+    if d.answer_hook_off {
+        std::env::set_var(crate::agents::asks::ANSWER_HOOK_OFF_ENV, "1");
+    }
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }

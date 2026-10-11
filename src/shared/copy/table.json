@@ -17835,6 +17835,12 @@
       "zh": "继续规划，先不要动手",
       "args": []
     },
+    "beAsk.manual.noHook": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "该会话只能在终端里答批准 · 会话级设置读不出，答题口未接上",
+      "args": []
+    },
     "beAsk.manual.terminal": {
       "kind": "body",
       "role": "说明",

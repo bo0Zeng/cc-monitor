@@ -1,6 +1,7 @@
 {
   "history-facts": {
     "agent": "claude",
+    "answerOff": null,
     "background": null,
     "bgTasks": [
       {

@@ -3,6 +3,10 @@
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};
+
+/// ccm 起会话时**挂不上**答题 hook（用户自己给的会话级设置读不出 / 不是那一家认的形）⇒ 起的那个进程环境里带这个变量；
+/// 会话事实读那个进程的环境认出「这条会话只能在终端里答批准」（`answerOff`）。
+pub(crate) const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
 use crate::common::cells::{Tone, Words};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};

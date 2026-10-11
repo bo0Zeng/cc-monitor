@@ -176,6 +176,9 @@ pub(crate) struct SessionFacts {
     pub(crate) bg_tasks: Vec<BgTask>,
     /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
     pub(crate) background: Option<Background>,
+    /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）⇒ 写好的那一句
+    /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
+    pub(crate) answer_off: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 连不上 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,
 }
@@ -866,6 +869,7 @@ pub(crate) fn context_limit(
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
         "agent",
+        "answerOff",
         "background",
         "bgTasks",
         "cost",

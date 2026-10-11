@@ -157,8 +157,11 @@ pub(crate) struct Adapter {
 pub(crate) struct AskFace {
     /// 起会话时垫在启动器后面的那几个词（只给这一个会话挂上答题 hook，不碰用户自己的设置）；入参 ＝ 这台 `ccm` 的绝对路径。
     pub(crate) launch_args: fn(&str) -> Vec<String>,
-    /// 透传里已经有这个词 ⇒ 不垫（用户自己给了同一个旗标，给两次谁赢说不准；这条会话的框就只能在终端里答）。
+    /// 会话级设置那个旗标（透传里已经有它 ⇒ 不另垫，经 [`AskFace::merge`] 并进用户那一份）。
     pub(crate) launch_flag: &'static str,
+    /// 用户自己给了那个旗标 ⇒ 把答题 hook 并进他那一份（原样留着他别的一切，只往那一种 hook 的列表末尾加一项）；
+    /// 入参 ＝ 他那一份解析出来的值 · ccm 入口。形状不是那一家认的 ⇒ `None`（不挂，这条会话只能在终端里答批准）。
+    pub(crate) merge: fn(&serde_json::Value, &str) -> Option<serde_json::Value>,
     /// hook 交来的那一份 ⇒ 通用的待答请求；不是要人答的那一种（别的事件 · 形状认不出）⇒ `None`（hook 空手退）。
     pub(crate) read: fn(&serde_json::Value) -> Option<AskIn>,
     /// 人的答案 ⇒ hook 要打到 stdout 的那一整份；`None` ＝ 不给决定（框照常在终端里问）。

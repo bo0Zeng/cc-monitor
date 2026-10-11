@@ -1152,6 +1152,7 @@ mod specimens {
                         count: 1,
                         tone: crate::common::cells::Tone::Busy,
                     }),
+                    answer_off: Some(Words(s("o"))),
                     mcp: [McpStatus::NeedsLogin, McpStatus::Failed, McpStatus::Pending]
                         .into_iter()
                         .map(|status| McpTrouble {

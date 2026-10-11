@@ -181,6 +181,10 @@ fn corpus(name: &str) -> Vec<Value> {
             let base: Option<crate::observe::facts_query::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
+            // 答题口没接上那一格：真跑要一个带那个变量的活进程，这里照它写好的那一句配一份。
+            let mut off = f.clone();
+            off["answerOff"] = serde_json::json!(copy_core::copy_text("beAsk.manual.noHook", &[]));
+            out.push(off);
             for n in dressed_needs(base) {
                 let mut g = f.clone();
                 g["needs"] = n;
