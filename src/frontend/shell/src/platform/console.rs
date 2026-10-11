@@ -375,10 +375,32 @@ pub fn pick_tab(pid: u32, hwnd: isize) -> crate::bind::TabPick {
     parse_tab(&run_helper(&HelperRequest::Tab { pid, hwnd }).unwrap_or_default())
 }
 
-/// 别处没有 Windows Terminal 的标签页（调用方只在它的窗口上问）。
+/// 别处没有 Windows Terminal 的标签页（调用方只在它的窗口上问）：同一条规则（`bind.rs::pick_tab`）配一个什么都读不到的读法 ⇒ 读不到标签页。
 #[cfg(not(windows))]
 pub fn pick_tab(_pid: u32, _hwnd: isize) -> crate::bind::TabPick {
-    crate::bind::TabPick::Miss(crate::bind::TabMiss::NoUia)
+    crate::bind::pick_tab(&mut NoTabs, &crate::bind::front_marker(), 1)
+}
+
+/// 没有标签页可读的读法（非 Windows）。
+#[cfg(not(windows))]
+struct NoTabs;
+
+#[cfg(not(windows))]
+impl crate::bind::TabReader for NoTabs {
+    fn names(&mut self) -> Option<Vec<String>> {
+        None
+    }
+    fn mark(&mut self, _title: &str) -> Option<String> {
+        None
+    }
+    fn restore(&mut self, _old: &str) {}
+    fn select(&mut self, _i: usize) -> bool {
+        false
+    }
+    fn wait(&mut self) {}
+    fn time_left(&self) -> bool {
+        false
+    }
 }
 
 /// 起一趟小助手（本二进制，带 [`helper_argv`]），等它答完，回它的标准输出；起不来 / 超时 ⇒ `None`。

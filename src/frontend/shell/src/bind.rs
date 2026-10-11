@@ -379,7 +379,6 @@ pub enum SeveralWhy {
 #[serde(rename_all = "kebab-case")]
 pub enum TabMiss {
     /// 记号一直没出现在标签名上：标签名被固定（手动改过名）· 终端设置不显示程序标题（`suppressApplicationTitle`）。
-    #[cfg_attr(not(windows), allow(dead_code))] // 只有 Windows 上的小助手答得出它
     TitleIgnored,
     /// 读不到 / 点不了那个窗口的标签页（UI Automation 不给）。
     NoUia,
@@ -494,16 +493,13 @@ pub fn activate(hwnd: isize) -> FrontOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabPick {
     /// 选中了带记号的那个标签页。
-    #[cfg_attr(not(windows), allow(dead_code))] // 只有 Windows 上的小助手答得出它
     Selected,
     /// 窗口里只有一个标签（或没有标签栏）：不用切。
-    #[cfg_attr(not(windows), allow(dead_code))]
     Single,
     Miss(TabMiss),
 }
 
 /// 切标签页的读法（生产那一份住 `platform/console.rs` 的小助手里：UI Automation 读标签页 ＋ 借着那个会话的控制台改标题）。
-#[cfg(any(windows, test))]
 pub(crate) trait TabReader {
     /// 此刻那个窗口里各标签页的名字（从左到右）；读不到 ⇒ `None`。
     fn names(&mut self) -> Option<Vec<String>>;
@@ -520,7 +516,6 @@ pub(crate) trait TabReader {
 }
 
 /// 现铸一个记号标题（`ccm-front-` ＋ 8 位）。
-#[cfg(any(windows, test))]
 pub fn front_marker() -> String {
     format!(
         "ccm-front-{}",
@@ -529,7 +524,6 @@ pub fn front_marker() -> String {
 }
 
 /// 名字带记号的那个标签页是第几个（第一个带的；空记号不认）。
-#[cfg(any(windows, test))]
 pub(crate) fn marked_tab(names: &[String], marker: &str) -> Option<usize> {
     names.iter().position(|n| title_carries_marker(n, marker))
 }
@@ -538,7 +532,6 @@ pub(crate) fn marked_tab(names: &[String], marker: &str) -> Option<usize> {
 /// 再读至多 `tries` 次（标签名跟上控制台标题要几十到两百多毫秒），带记号的那个 ⇒ 选中（选不了 ⇒ 读不到标签页）；
 /// 读满了也没有 ⇒ 标签名不随程序标题变化；时候到了（读得太慢：真机上刚开的窗口头几次读要几秒）⇒ 读不到标签页，
 /// 挂记号之前时候就到了 ⇒ 不挂。挂上了就一定写回原标题（不论找没找到）。
-#[cfg(any(windows, test))]
 pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> TabPick {
     match r.names() {
         None => return TabPick::Miss(TabMiss::NoUia),
