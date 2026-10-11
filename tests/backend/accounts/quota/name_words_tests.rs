@@ -5,9 +5,12 @@ use super::*;
 fn the_names_cell_writes_home_and_both_slots() {
     let n = names_cell();
     assert_eq!(n["accounts"]["_"], copy_text("acct.home.name", &[]));
+    // 账号 0（这台本来那一份登录，路由第 2 段 `0`）也是一个号：列表 · 合图 · 记录里写它的名字，不写一个光秃秃的数。
+    assert_eq!(n["accounts"]["0"], copy_text("acct.zero.name", &[]));
+    assert_eq!(account_text("0"), copy_text("acct.zero.name", &[]));
     assert_eq!(
         n["accounts"].as_object().unwrap().len(),
-        1,
+        2,
         "只列与原名不同的号"
     );
     assert_eq!(n["slots"]["5h"], copy_text("acct.slot.fiveHour", &[]));
@@ -29,6 +32,7 @@ fn no_other_backend_module_maps_slots_or_home_to_words() {
             "copy_text(\"acct.slot.fiveHour\"",
             "copy_text(\"acct.slot.sevenDay\"",
             "copy_text(\"acct.home.name\"",
+            "copy_text(\"acct.zero.name\"",
         ] {
             if prod.contains(needle) {
                 bad.push(format!(

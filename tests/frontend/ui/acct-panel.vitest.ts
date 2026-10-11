@@ -45,6 +45,9 @@ import type { SessionRotation } from "../../../src/frontend/ui/generated/Session
 import type { StrategiesRead } from "../../../src/frontend/ui/generated/StrategiesRead";
 import type { DeclShown } from "../../../src/frontend/ui/generated/DeclShown";
 import { present, row } from "../../test-support/rot-fixtures";
+import { takeNames } from "../../../src/frontend/ui/acct-words";
+// 号名照核心写好的那张表（后端 `accounts/quota/name_words.rs` 真写的金样）。
+import NAMES from "../../__fixtures__/names.golden.json";
 
 const NOW = 1_791_189_600;
 const host: AcctPanelHost = {
@@ -212,6 +215,16 @@ describe("账号面板 · 列表", () => {
     expect(rows[3].querySelector("[data-rc-why]")?.textContent).toBe(copyText("rot.row.skip", { why: "W-line" }));
     expect(rowEl("api").querySelector("[data-mode]")?.textContent).toBe("O-standby");
     expect(rowEl("lab").querySelector("[data-mode]")).toBeNull();
+  });
+
+  it("★ 每一行的号名都是名字：账号 0（这台本来那一份登录）照核心那张表写，不画成一个空串或光秃秃的数", () => {
+    takeNames(NAMES);
+    seed({ rows: [row("team"), row("0", { fromRest: true }), row("_"), row("work")] });
+    openAccountPanel("s1", "<local>", host);
+    const names = [...panel().querySelectorAll<HTMLElement>("[data-rc-row]")].map((r) => r.querySelector<HTMLElement>("[data-rot-name]")?.textContent ?? "");
+    expect(names.length).toBe(4);
+    for (const n of names) expect(n.trim() === "" || /^\d+$/.test(n.trim()), `号名画成了「${n}」`).toBe(false);
+    expect(names[1]).toBe(NAMES.accounts["0" as keyof typeof NAMES.accounts]);
   });
 
   it("刷新策略 ⇒ 清掉手动调整（不出提示）；Alt+↓ 把一行往下挪一位", async () => {

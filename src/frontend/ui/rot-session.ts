@@ -361,6 +361,13 @@ function bars(c: RotCtx): HTMLElement[] {
 
 // ─────────────────────────────── 列表 ＋ 合图
 
+/** 号名那一格（读屏 · 判据认它：`data-rot-name`）。 */
+function nameEl(account: string): HTMLElement {
+  const n = el("span", (e) => (e.className = s.rsName), accountLabel(account));
+  n.dataset.rotName = account;
+  return n;
+}
+
 /** 行头：把手 · 头像 · 号名 · 用法标（不是缺省的才标）；下一行 在用 · 用量。 */
 function rowHead(c: RotCtx, row: RotationRow, i: number, modeDecl: DeclShown | null): HTMLElement {
   const box = el("div", (e) => (e.className = s.rsHead));
@@ -369,7 +376,7 @@ function rowHead(c: RotCtx, row: RotationRow, i: number, modeDecl: DeclShown | n
   handle.dataset.rotHandle = row.account;
   handle.setAttribute("aria-label", copyText("rot.row.dragAria", { name: accountLabel(row.account) }));
   handle.appendChild(icon("drag", "compact"));
-  l1.append(handle, acctAvatar(row.account, 16), el("span", (e) => (e.className = s.rsName), accountLabel(row.account)));
+  l1.append(handle, acctAvatar(row.account, 16), nameEl(row.account));
   const mode = modeDecl ? whoOf(c.read, row.account).params[modeDecl.k] : undefined;
   if (modeDecl && mode !== undefined && mode !== modeDecl.init) {
     const opt = modeDecl.options?.find((o) => o.v === mode);
