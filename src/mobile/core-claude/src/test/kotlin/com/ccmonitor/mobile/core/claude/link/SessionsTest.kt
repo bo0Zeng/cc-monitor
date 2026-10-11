@@ -12,15 +12,27 @@ class SessionsTest {
     private val frames = Fixtures.text("session-stream.golden.jsonl").lines().mapNotNull(Json::obj)
 
     @Test
-    fun `session-new：在那台 tmux 里起那一家，带票；不带模型 · 权限 · 账号（跟随默认）`() {
-        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "codex")
-        assertEquals(mapOf("agent" to "codex", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1"), args)
+    fun `session-new：在那台 tmux 里起那一家，带票、第一句随起交；不带模型 · 权限 · 账号（跟随默认）`() {
+        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "codex", prompt = "你好")
+        assertEquals(mapOf("agent" to "codex", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1", "prompt" to "你好"), args)
+    }
+
+    @Test
+    fun `session-new：第一句的结局照 terminal-input 那一形解；没交 ⇒ null，形不对 ⇒ 整份解不出`() {
+        val base = mapOf("outcome" to "started", "session" to "proj-cc", "sid" to "s1", "agent" to "claude", "cwd" to "/h/proj")
+        assertEquals(TerminalInput.Result.Delivered, SessionNew.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null)))?.prompt)
+        assertEquals(
+            TerminalInput.Result.Refused("会话还没就绪", "not_ready"),
+            SessionNew.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_ready", "said" to "会话还没就绪")))?.prompt,
+        )
+        assertNull(SessionNew.of(base + ("prompt" to null))?.prompt)
+        assertNull("prompt 那一格认不出 ⇒ 解不出", SessionNew.of(base + ("prompt" to mapOf("result" to "maybe"))))
     }
 
     @Test
     fun `session-new：应答解出结局 · tmux 名 · 展开后的目录；新起的 sid 为空`() {
         val a = SessionNew.of(mapOf("outcome" to "started", "session" to "proj-cc", "sid" to null, "cmd" to null, "account" to null, "agent" to "claude", "cwd" to "/h/proj"))
-        assertEquals(SessionNew.Answer(outcome = "started", session = "proj-cc", sid = null, cwd = "/h/proj"), a)
+        assertEquals(SessionNew.Answer(outcome = "started", session = "proj-cc", sid = null, cwd = "/h/proj", prompt = null), a)
         assertNull("缺 cwd ⇒ 认不出报到的会话 ⇒ 解不出", SessionNew.of(mapOf("outcome" to "started", "agent" to "claude")))
     }
 

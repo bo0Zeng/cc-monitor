@@ -70,7 +70,9 @@ sealed interface ChatTarget {
 
 /**
  * 一条会话的聊天状态。起会话、送字、正文都走那台的核心（[CoreLink]）：
- * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上）⇒ 等它报到（会话表里那个目录新出现的一条）⇒ 再送那句。
+ * - 新建会话：第一条按 ➤ ⇒ `session-new`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台等会话就绪再送，
+ *   送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
+ *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等会话表给出它的记录路径。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
  * - 正文：`history-tail` ＋ `history-read` 读最后一屏，之后跟流上这条会话的 `line` 帧；往上翻再读上一段。记录 ⇒ 渲染单元见 [RecordUnits]。
  * - 在屏上（[visible]）才进这台的 `stream-watch` 名单；进名单 · 断线重接之后，`[已有, seq)` 那一段按行号用 `history-lines` 补上
@@ -118,7 +120,10 @@ class ChatSession(
         val text: String,
         var delivery: DeliveryState?,
         var deliveryText: String?,
-    )
+    ) {
+        /** 这一句已随 `session-new` 交出去了（结局已标上）。 */
+        var handed = false
+    }
 
     /** 开屏：已有的那条读最后一屏、跟上；新建会话什么都不问。 */
     fun open() {
@@ -197,31 +202,35 @@ class ChatSession(
     }
 
     private suspend fun deliver(o: Outgoing) {
-        val s = sid ?: started() ?: return fail(o, permanent = false, text = null)
+        val s = sid ?: started(o)?.also { if (o.handed) return } ?: return fail(o, permanent = false, text = null)
         val (delivery, text) = outcomeOf(link.call(TerminalInput.COMMAND, TerminalInput.text(s, o.text), INPUT_MS))
         mark(o, delivery, text)
     }
 
     /** `terminal-input` 的回话 ⇒ 气泡下的标与那一句（送到了 ⇒ 没有标）。 */
-    private fun outcomeOf(r: Reply): Pair<DeliveryState?, String?> {
-        val unsure = DeliveryState.UNSURE to copyText("terminal.input.unsure", "machine" to machine)
-
-        fun failed(why: String?) = DeliveryState.FAILED to copyText("terminal.input.failed", "why" to why.orEmpty())
-        return when (r) {
+    private fun outcomeOf(r: Reply): Pair<DeliveryState?, String?> =
+        when (r) {
             is Reply.Ok ->
-                when (val res = TerminalInput.of(r.data)) {
-                    TerminalInput.Result.Delivered -> null to null
-                    TerminalInput.Result.Unsure -> unsure
-                    is TerminalInput.Result.Refused ->
-                        (if (res.why in RETRYABLE) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
-                            copyText("terminal.input.failed", "why" to res.said)
-                    null -> failed(unreadableReply(machine, TerminalInput.COMMAND, r.data.toString()).text)
-                }
+                TerminalInput.of(r.data)?.let(::outcomeOf)
+                    ?: failed(unreadableReply(machine, TerminalInput.COMMAND, r.data.toString()).text)
             // 期限到了：发出去了、不知道送没送到 ⇒ 不重发。
-            Reply.TimedOut -> unsure
+            Reply.TimedOut -> unsure()
             else -> failed(r.problem(machine, TerminalInput.COMMAND)?.text)
         }
-    }
+
+    /** 那台判的送没送到（`terminal-input` 的回话 · `session-new` 回包里第一句的结局）⇒ 标与那一句。 */
+    private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> =
+        when (res) {
+            TerminalInput.Result.Delivered -> null to null
+            TerminalInput.Result.Unsure -> unsure()
+            is TerminalInput.Result.Refused ->
+                (if (res.why in RETRYABLE) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
+                    copyText("terminal.input.failed", "why" to res.said)
+        }
+
+    private fun unsure() = DeliveryState.UNSURE to copyText("terminal.input.unsure", "machine" to machine)
+
+    private fun failed(why: String?) = DeliveryState.FAILED to copyText("terminal.input.failed", "why" to why.orEmpty())
 
     private fun mark(
         o: Outgoing,
@@ -239,19 +248,22 @@ class ChatSession(
         text: String?,
     ) = mark(o, if (permanent) DeliveryState.FAILED_PERMANENT else DeliveryState.FAILED, text ?: copyText("newSession.start.failed"))
 
-    /** 新建会话起好、认出来了 ⇒ 它的 sid；起不来 ⇒ `null`（那一句已在 [ChatUiState.failedWhy]）。几句同时等同一次起。 */
-    private suspend fun started(): String? {
+    /** 新建会话起好、认出来了 ⇒ 它的 sid；起不来 ⇒ `null`（那一句已在 [ChatUiState.failedWhy]）。几句同时等同一次起，头一句（[o]）随起交。 */
+    private suspend fun started(o: Outgoing): String? {
         val d = draft ?: return null
-        val job = lock.withLock { starting?.takeIf { it.isActive } ?: scope.launch { start(d) }.also { starting = it } }
+        val job = lock.withLock { starting?.takeIf { it.isActive } ?: scope.launch { start(d, o) }.also { starting = it } }
         job.join()
         return sid
     }
 
-    private suspend fun start(d: ChatTarget.Draft) {
+    private suspend fun start(
+        d: ChatTarget.Draft,
+        first: Outgoing,
+    ) {
         _state.value = _state.value.copy(failedWhy = null)
         val before = link.table.value.sessions.keys
         val answer =
-            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, d.agent), NEW_MS)) {
+            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, d.agent, first.text), NEW_MS)) {
                 is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
             }
@@ -259,10 +271,15 @@ class ChatSession(
             answer.sid ?: withTimeoutOrNull(arrivalMs) {
                 link.table.mapNotNull { SessionNew.arrived(it, answer.cwd, before)?.sid }.first()
             } ?: return failSession(copyText("launchArrival.missed.title"))
+        answer.prompt?.let { said ->
+            first.handed = true
+            val (delivery, text) = outcomeOf(said)
+            mark(first, delivery, text)
+        }
         sid = arrived
         _state.value = _state.value.copy(sid = arrived)
         syncHold()
-        follow = scope.launch { attach(arrived) }
+        follow = scope.launch { attach(arrived, fresh = true) }
     }
 
     private fun failSession(text: String?) {
@@ -283,8 +300,11 @@ class ChatSession(
         data object Reconnected : Event
     }
 
-    /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。 */
-    private suspend fun attach(s: String) {
+    /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [pathOf]）。 */
+    private suspend fun attach(
+        s: String,
+        fresh: Boolean = false,
+    ) {
         val events = Channel<Event>(Channel.UNLIMITED)
         val subscribed = CompletableDeferred<Unit>()
         val fromSubscribed = CompletableDeferred<Unit>()
@@ -300,7 +320,7 @@ class ChatSession(
         attached = true
         syncHold()
         watchRunning(s)
-        val p = pathOf(s) ?: return
+        val p = pathOf(s, fresh) ?: return
         path = p
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { reloadLocked(p) }
@@ -392,10 +412,17 @@ class ChatSession(
     }
 
     /** 那条会话的记录文件：会话表里有就用它，没有（不在跑了）问 `history-list`。 */
-    private suspend fun pathOf(s: String): String? {
+    /** 这条会话的记录在哪：会话表里有就用；刚起的（[fresh]）记录要等第一句进去才落盘 ⇒ 先等会话表给出路径；再问清单。 */
+    private suspend fun pathOf(
+        s: String,
+        fresh: Boolean,
+    ): String? {
         link.table.value.sessions[s]
             ?.path
             ?.let { return it }
+        if (fresh) {
+            withTimeoutOrNull(arrivalMs) { link.table.mapNotNull { it.sessions[s]?.path }.first() }?.let { return it }
+        }
         return when (val r = link.call(HistoryList.COMMAND, null, READ_MS)) {
             is Reply.Ok -> {
                 val list = HistoryList.of(r.data) ?: return null.also { failSession(unreadableReply(machine, HistoryList.COMMAND, r.data.toString()).text) }
@@ -456,11 +483,12 @@ class ChatSession(
 
         /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
         const val ARRIVAL_MS = 45_000L
-        private const val NEW_MS = 25_000L
+        /** 起会话的期限（随请求交给那台当 `within_ms`，到点这里撤单）：那台起好之后还要等会话就绪才交第一句，协议建议不短于 40 秒。 */
+        private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L
         private const val READ_MS = 15_000L
 
-        /** 改得了的拒因（画面变了 · 一时认不出）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */
-        private val RETRYABLE = setOf("screen_changed", "ambiguous", "not_known")
+        /** 改得了的拒因（画面变了 · 一时认不出 · 起好的会话还没就绪）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */
+        private val RETRYABLE = setOf("screen_changed", "ambiguous", "not_known", "not_ready")
     }
 }
