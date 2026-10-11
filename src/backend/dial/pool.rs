@@ -88,7 +88,7 @@ pub(crate) fn mono_ms() -> u64 {
 }
 
 /// 一条连接**最后一次收到对端字节**的时刻（[`mono_ms`]；0 = 还没收到过）。TCP 那一层每读到字节记一笔
-/// （`connect::Hearing`）。健康的空闲连接也会每 30 秒收到一次保活回话（`connect::KEEPALIVE`）⇒
+/// （`connect::Hearing`）。健康的空闲连接也会每 10 秒收到一次保活回话（`connect::KEEPALIVE`）⇒
 /// 「很久没收到」说明对端没在回话：路断成黑洞时 TCP 看着还活着，只有这一格看得出来。
 #[derive(Default)]
 pub(crate) struct Heard(AtomicU64);
@@ -408,8 +408,8 @@ impl<C: Conn> Pool<C> {
 /// 在一条池里的连接上等远端回话（开通道 / 验活），被打断（或判死，[`Watch::dead`]）就摘掉它，
 /// 连同族里从开始等那一刻起也没收到过字节的成员（[`Pool::evict_silent`]）。
 ///
-/// 路径断成黑洞（换网 / NAT 表过期 —— 没有 RST，TCP 看着还活着）之后，这条连接要等 keepalive 连错三次（30 s × 3）才判死；
-/// 在那之前每一条新链路都会放到它上面、在开通道那一步干等，直到界面的握手期限（45 s）把链路关掉。
+/// 路径断成黑洞（换网 / NAT 表过期 —— 没有 RST，TCP 看着还活着）之后，这条连接要等保活连着没回话（`connect::DEAD_AFTER_MS`，最后收包之后 20 秒）才判死；
+/// 在那之前每一条新链路都会放到它上面、在开通道那一步干等（判死那一刻 russh 断开连接，开通道随之失败、换到新连接上）。
 /// ⇒ 等回话那一段挂一个 [`Watch`]：没等到就被丢了（链路被关 ⇒ 任务被 abort ⇒ `Drop` 跑）⇒ 从族里摘掉这条连接
 /// （摘掉 ≠ 关掉：还攥着它的用户照用到走；新的放置不再落到它上面）。等到了 ⇒ [`Watch::done`] 解除。
 /// 事件驱动，零定时器。代价：用户点取消关掉链路也会摘一次 —— 多一次握手，不坏事。
@@ -438,11 +438,11 @@ impl<'a, C: Conn> Watch<'a, C> {
         self.armed = false;
     }
 
-    /// 判死了（新起的一条比它先站住）：当场摘。
-    pub(crate) fn dead(mut self) {
+    /// 判死了（`why`：新起的一条比它先站住 · 等回话时它断了）：当场摘。
+    pub(crate) fn dead(mut self, why: &str) {
         self.armed = false;
         tracing::warn!(
-            "dial: 新起的一条比这条先站住 —— 判它是黑洞，从族里摘掉（连同那之后也没动静的成员）"
+            "dial: {why} —— 判它是黑洞，从族里摘掉（连同那之后也没动静的成员）"
         );
         self.pool.evict_silent(self.key, self.conn, self.since);
     }

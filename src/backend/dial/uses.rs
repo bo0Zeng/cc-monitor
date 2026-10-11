@@ -141,14 +141,22 @@ fn refused_by_remote(e: &russh::Error) -> bool {
 
 /// 多久没收到对端字节（毫秒）算「久」：过了它，复用这条连接开通道时**与新建一条同时起跑**（[`race`]）。
 ///
-/// 值照保活定：健康的空闲连接每 `KEEPALIVE`（30 秒）没收包就发一次保活、一个往返后收到回话 ⇒ 它最后收包的年龄落在
-/// 0 到「30 秒 ＋ 一个往返」之间（用户的远端往返 12–577 ms）。门槛再留 2 秒：保活发出去 2 秒还没回话，才当它可能是黑洞。
+/// 值照保活定：健康的空闲连接每 `KEEPALIVE`（10 秒）没收包就发一次保活、一个往返后收到回话 ⇒ 它最后收包的年龄落在
+/// 0 到「10 秒 ＋ 一个往返」之间（用户的远端往返 12–577 ms）。门槛再留 2 秒：保活发出去 2 秒还没回话，才当它可能是黑洞。
+/// 门槛（12 秒）在判死（`connect::DEAD_AFTER_MS`，20 秒）之前：这一段里开通道，赛跑接住；判死之后开通道的那一下当场失败、换新连接。
 /// 判错的代价不对称：健康的被判成久 ⇒ 多起一条 TCP（旧的先回话，新的当场丢掉）；黑洞没判出来 ⇒ 干等界面的握手期限（45 秒）。
 pub(crate) const STALE_AFTER_MS: u64 = connect::KEEPALIVE_MS + 2_000;
 
 /// 这条连接（`silent_ms` 毫秒没收到对端字节）开通道之前要不要和新建赛跑。
 pub(crate) fn stale(silent_ms: u64) -> bool {
     silent_ms >= STALE_AFTER_MS
+}
+
+/// 等回话那一段，旧连接回的是「开不成」、而连接也已经断开 ⇒ **它死了**（保活连着没回话被 russh 判死 —— 挂在它上面的开通道
+/// 随之失败；或对端断了）。这一形照「判死」记：族里那之后也没动静的成员一起摘（`pool::Watch::dead`），重开落到新连接上。
+/// 远端说满了（连接还活着）· 开成了 ⇒ 不算。
+pub(crate) fn died_waiting<T>(r: &Result<T, russh::Error>, closed: bool) -> bool {
+    r.is_err() && closed
 }
 
 /// [`race`] 的结局。
@@ -309,8 +317,13 @@ impl Lease {
                     None => Answered::Old(open.await),
                 };
                 match (&answered, watch) {
+                    (Answered::Old(r), Some(w))
+                        if died_waiting(r, self.linked.session.is_closed()) =>
+                    {
+                        w.dead("等回话时这条连接断了（保活连着没回话）");
+                    }
                     (Answered::Old(_), Some(w)) => w.done(),
-                    (Answered::Replaced(..), Some(w)) => w.dead(),
+                    (Answered::Replaced(..), Some(w)) => w.dead("新起的一条比这条先站住"),
                     (_, None) => {}
                 }
                 answered

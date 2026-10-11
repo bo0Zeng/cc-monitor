@@ -21,14 +21,26 @@ use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use super::{DialRequest, Endpoint, Stage, StageSink};
 use crate::common::said::Said;
 
-/// 长连接的 SSH 层 keepalive：每 30 秒无收包发一个，连发三个无回应才判死（≈90 s 探活）。
+/// 长连接的 SSH 层保活：**10 秒没收到对端字节就发一个**（russh 的 `keepalive_interval`：收到任何字节都重新计时）。
+/// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（[`DEAD_AFTER_MS`]）。
 /// **不靠 inactivity 拆链**：russh 的 inactivity 计时在无 keepalive 时会拆掉一条健康的空闲连接
 /// （空闲一小时的会话很常见）。死链由 keepalive 超时 ＋ EOF 检出。
-const KEEPALIVE: Duration = Duration::from_millis(30_000);
+///
+/// 为什么是 10 秒（net4，从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
+/// 要等它被判死才失败、才换到新连接上 —— 30 秒 × 3 时是 120 秒，界面 45 秒的握手期限先到。
+/// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
+const KEEPALIVE: Duration = Duration::from_millis(10_000);
 
 /// 同一个间隔，毫秒（「多久没收包算久」照它定：`uses::STALE_AFTER_MS`）。
 #[allow(clippy::cast_possible_truncation)]
 pub(crate) const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
+
+/// 保活发出去之后，再过几轮还没有任何回话就判死（russh 的 `keepalive_max`：计时到点时「已发未回」的个数超过它 ⇒ 断开）。
+/// 1 ⇒ 最后收包之后第 1 轮发一个保活、第 2 轮到点时它还没回话 ⇒ 判死。一次保活要整整一轮（10 秒）没回话，健康的路上不会有。
+pub(crate) const KEEPALIVE_MAX: usize = 1;
+
+/// 最后一次收到对端字节之后多久判死（毫秒）：`KEEPALIVE_MAX + 1` 轮保活。
+pub(crate) const DEAD_AFTER_MS: u64 = KEEPALIVE_MS * (KEEPALIVE_MAX as u64 + 1);
 
 /// 短命探活（`probe`）的 inactivity 上限 —— 测试连接那条不需要保活。
 const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
@@ -275,9 +287,15 @@ pub(crate) fn compression_for(peer: IpAddr, rtt_us: Option<u32>) -> bool {
 }
 
 fn config(probe: bool, compress: bool) -> Arc<client::Config> {
+    config_with(probe, compress, KEEPALIVE)
+}
+
+/// 同 [`config`]，保活间隔由调用方给（生产只走 [`config`]；判据把间隔按比例缩小，判死门槛 [`KEEPALIVE_MAX`] 照生产）。
+pub(crate) fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<client::Config> {
     Arc::new(client::Config {
         inactivity_timeout: probe.then_some(PROBE_INACTIVITY),
-        keepalive_interval: (!probe).then_some(KEEPALIVE),
+        keepalive_interval: (!probe).then_some(keepalive),
+        keepalive_max: KEEPALIVE_MAX,
         preferred: russh::Preferred {
             compression: std::borrow::Cow::Borrowed(if compress {
                 COMPRESS_ON
