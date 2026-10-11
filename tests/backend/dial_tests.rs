@@ -968,16 +968,13 @@ async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
 /// - 赛跑门槛在判死之前（不然门槛白设）、在一轮保活 ＋ 一个往返之后（健康的空闲连接不赛跑）。
 #[test]
 fn keepalive_judges_a_dead_road_within_twenty_seconds_and_spares_a_live_one() {
+    // 最后收包之后多久判死：russh 到点时「已发未回」超过 `KEEPALIVE_MAX` 个才断 ⇒ `KEEPALIVE_MAX + 1` 轮保活。
+    let dead_after_ms = connect::KEEPALIVE_MS * (connect::KEEPALIVE_MAX as u64 + 1);
     assert!(
-        connect::DEAD_AFTER_MS <= 20_000,
-        "最后收包之后 {} ms 才判死 —— 刚断过马上开要干等这么久",
-        connect::DEAD_AFTER_MS
+        dead_after_ms <= 20_000,
+        "最后收包之后 {dead_after_ms} ms 才判死 —— 刚断过马上开要干等这么久"
     );
-    assert_eq!(
-        connect::DEAD_AFTER_MS,
-        connect::KEEPALIVE_MS * (connect::KEEPALIVE_MAX as u64 + 1)
-    );
-    assert!(uses::STALE_AFTER_MS < connect::DEAD_AFTER_MS);
+    assert!(uses::STALE_AFTER_MS < dead_after_ms);
     assert!(uses::STALE_AFTER_MS >= connect::KEEPALIVE_MS + 1_000);
 }
 

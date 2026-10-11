@@ -139,10 +139,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**时间**不是体量：SSH 层保活间隔的毫秒数（`backend/dial/connect.rs`，与 `KEEPALIVE` 同一个值）；「多久没收包算久」照它定。",
     ),
     (
-        "DEAD_AFTER_MS",
-        "**时间**不是体量：SSH 连接最后一次收到对端字节之后多久被保活判死（毫秒，`backend/dial/connect.rs`，= 保活间隔 ×（`KEEPALIVE_MAX` ＋ 1））。",
-    ),
-    (
         "STALE_AFTER_MS",
         "**时间**不是体量：复用一条 SSH 连接时，多久没收到对端字节就与新建一条同时起跑（毫秒，`backend/dial/uses.rs`）。",
     ),

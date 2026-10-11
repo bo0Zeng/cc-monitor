@@ -22,7 +22,7 @@ use super::{DialRequest, Endpoint, Stage, StageSink};
 use crate::common::said::Said;
 
 /// 长连接的 SSH 层保活：**10 秒没收到对端字节就发一个**（russh 的 `keepalive_interval`：收到任何字节都重新计时）。
-/// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（[`DEAD_AFTER_MS`]）。
+/// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（最后收包之后 `KEEPALIVE_MAX + 1` 轮，20 秒）。
 /// **不靠 inactivity 拆链**：russh 的 inactivity 计时在无 keepalive 时会拆掉一条健康的空闲连接
 /// （空闲一小时的会话很常见）。死链由 keepalive 超时 ＋ EOF 检出。
 ///
@@ -38,9 +38,6 @@ pub(crate) const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
 /// 保活发出去之后，再过几轮还没有任何回话就判死（russh 的 `keepalive_max`：计时到点时「已发未回」的个数超过它 ⇒ 断开）。
 /// 1 ⇒ 最后收包之后第 1 轮发一个保活、第 2 轮到点时它还没回话 ⇒ 判死。一次保活要整整一轮（10 秒）没回话，健康的路上不会有。
 pub(crate) const KEEPALIVE_MAX: usize = 1;
-
-/// 最后一次收到对端字节之后多久判死（毫秒）：`KEEPALIVE_MAX + 1` 轮保活。
-pub(crate) const DEAD_AFTER_MS: u64 = KEEPALIVE_MS * (KEEPALIVE_MAX as u64 + 1);
 
 /// 短命探活（`probe`）的 inactivity 上限 —— 测试连接那条不需要保活。
 const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
