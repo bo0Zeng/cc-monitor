@@ -5,22 +5,33 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** keepOrReplace 那场赛跑的两位选手。 */
+private const val PROBE = "probe"
+private const val FRESH = "fresh"
+
 /** 指数退避 `baseDelay shl n` 的 n 上限，防 Long 溢出（2^20×base 早已超过 maxDelay）。 */
 private const val MAX_BACKOFF_SHIFT = 20
 
-/** 复用已有连接前活性探测的超时：健康连接一次 session 开关是亚秒级。 */
-private const val FASTPATH_PROBE_TIMEOUT_MS = 5_000L
+/**
+ * 探活的兜底期限：只在「新起的那条也站不住」（网整个不通）时才走到它；平时谁先站住由对端回话定（[SshConnectionManager] 的 keepOrReplace）。
+ */
+private const val PROBE_TIMEOUT_MS = 5_000L
 
 /**
  * 多 SSH 会话管理。按 id 持有 [SshConnection]，对外暴露 [sessions]；负责注册、状态、连断与重连。
@@ -84,8 +95,8 @@ class SshConnectionManager(
         val emit: (SshConnectEvent.Stage, String) -> Unit = { stage, msg ->
             onEvent?.invoke(SshConnectEvent(first.host, first.port, stage, msg))
         }
-        // 已有活连接就复用：同主机多个 tab 共享一条连接，各自 openShell。快路径不进锁；复用前先探测。
-        reusableAfterProbe(id, emit)?.let { return it }
+        // 已有活连接就复用：同主机多个 tab 共享一条连接，各自 openShell。快路径不进锁；复用前让对端答（与一条新连接同时起跑）。
+        reusableOrReplaced(id, emit, onEvent)?.let { return it }
         // 另一个 connect 在飞时提示在等。isLocked 只是快照，只用来出提示，不参与决策。
         if (connectLockFor(id).isLocked) emit(SshConnectEvent.Stage.TCP, "另一连接尝试进行中，等待其完成 …")
         // 同 id 并发首连单飞：先到者建连接，后到者进锁复查见活连接即复用，不会各建一条互相顶掉。
@@ -102,29 +113,102 @@ class SshConnectionManager(
     }
 
     /**
-     * 复用已有连接前的活性探测。`isConnected` 只读 sshj 本地标志，死 TCP 好一阵仍是 true，直接复用会卡死在 openShell。
-     * - 探测通过：发合成 ESTABLISHED 后复用，连接日志不会空。
-     * - 探测失败：按值比较摘除死连接、后台关，返回 null 走真连接。
-     *
-     * 摘除是替换，不是断开，所以不自增代号：自增会误弃带旧 expectedGen 的后台重连和在飞的 doConnect。
-     * 探测在锁外；物理关闭走 [closeInBackground]。
+     * 复用已有连接之前先问它还活不活。`isConnected` 只读 sshj 本地标志，死 TCP 好一阵仍是 true，直接复用会卡死在 openShell。
+     * 问法见 [keepOrReplace]：旧的先回话 ⇒ 复用；新的先站住 ⇒ 已换上，回新的；两边都不成 ⇒ null，走锁里的真连接。
      */
-    private suspend fun reusableAfterProbe(
+    private suspend fun reusableOrReplaced(
         id: String,
         emit: (SshConnectEvent.Stage, String) -> Unit,
+        onEvent: ((SshConnectEvent) -> Unit)?,
     ): SshTransport? {
         val existing = states[id]?.connection ?: return null
         if (!existing.isConnected) return null // 本地标志已死：走真 connect，finalizeConnected 会替换掉旧连接
         emit(SshConnectEvent.Stage.TCP, "检测到已有连接，校验可用性 …")
-        if (existing.probeAlive(FASTPATH_PROBE_TIMEOUT_MS)) {
-            // 探测期间可能被并发 disconnect 或替换：仍是它且仍连着才复用，否则走锁路。
-            val stillReusable = states[id]?.connection === existing && existing.isConnected
-            if (stillReusable) emit(SshConnectEvent.Stage.ESTABLISHED, "复用已有连接")
-            return existing.takeIf { stillReusable }
+        val kept = keepOrReplace(id, existing, onEvent) { emit(SshConnectEvent.Stage.TCP, "既有连接已失效，重新建立 …") }
+        when {
+            kept === existing -> emit(SshConnectEvent.Stage.ESTABLISHED, "复用已有连接")
+            kept != null -> emit(SshConnectEvent.Stage.ESTABLISHED, "既有连接没有回话，已换上新连接")
         }
-        emit(SshConnectEvent.Stage.TCP, "既有连接已失效，重新建立 …")
-        evictDead(id, existing) // 按值比较摘除、后台关，不自增代号
-        return null
+        return kept
+    }
+
+    /**
+     * 旧连接还能不能用，让对端答，不靠等期限：探活（对端回 CHANNEL_OPEN 的确认）与一条新连接同时起跑，谁先站住用谁。
+     * - 旧的先回话 ⇒ 留旧的，新起的那条当场关（多半还在 TCP / banner 那一步）。
+     * - 新的先认证完 ⇒ 旧的比新建一条还慢，留着也没用：装上新的（[linkOf] 换一条），旧的后台关。这样复用永远不慢于新建。
+     * - 旧的答「死」（对端回了 RST 一类）⇒ 等新的那条。
+     * - 两边都不成 ⇒ 摘掉旧的（替换，不自增代号），回 null，调用方照原来的路重连。
+     *
+     * 同一台同时只跑一场：回前台的探活与终端 tab 的复用撞上 ⇒ 后来的等同一场（[HostConnectionState.verifying]）。
+     * [onEvent] 只给开这一场的那位（新连接的逐阶段日志）；[onDead] 在判出旧的已死时调一次。
+     */
+    private suspend fun keepOrReplace(
+        id: String,
+        existing: SshTransport,
+        onEvent: ((SshConnectEvent) -> Unit)? = null,
+        onDead: () -> Unit = {},
+    ): SshTransport? {
+        val race =
+            synchronized(lockFor(id)) {
+                val st = stateFor(id)
+                st.verifying?.takeIf { it.isActive } ?: run {
+                    val cfgs = st.configs ?: return null
+                    val entry = _sessions.value[id] ?: return null
+                    val gen = st.generation
+                    reconnectScope
+                        .async { race(id, entry, existing, cfgs, gen, onEvent, onDead) }
+                        .also { st.verifying = it }
+                }
+            }
+        return race.await()
+    }
+
+    @Suppress("LongParameterList")
+    private suspend fun race(
+        id: String,
+        entry: SessionState,
+        existing: SshTransport,
+        cfgs: List<ConnectionConfig>,
+        gen: Int,
+        onEvent: ((SshConnectEvent) -> Unit)?,
+        onDead: () -> Unit,
+    ): SshTransport? {
+        val fresh = transportFactory(knownHostStore)
+        synchronized(lockFor(id)) {
+            val st = stateFor(id)
+            if (st.generation != gen) return null // 期间被断开
+            st.racing = fresh
+        }
+        try {
+            val probe = reconnectScope.async { runCatching { existing.probeAlive(PROBE_TIMEOUT_MS) }.getOrDefault(false) }
+            val made = reconnectScope.async { runCatching { handshake(fresh, cfgs, onEvent, AtomicBoolean()) }.isSuccess }
+            val first = select { probe.onAwait { PROBE to it }; made.onAwait { FRESH to it } }
+            val keepOld: Boolean? =
+                when (first) {
+                    PROBE to true -> true
+                    FRESH to true -> false
+                    PROBE to false -> false.takeIf { made.await() }
+                    else -> true.takeIf { probe.await() }
+                }
+            if (keepOld != true) onDead()
+            return when (keepOld) {
+                true -> {
+                    closeInBackground(listOf(fresh))
+                    existing.takeIf { states[id]?.connection === it && it.isConnected }
+                }
+                false -> {
+                    probe.cancel()
+                    runCatching { finalizeConnected(id, entry.hostId, entry.label, fresh, gen) }.getOrNull()
+                }
+                null -> {
+                    closeInBackground(listOf(fresh))
+                    evictDead(id, existing)
+                    null
+                }
+            }
+        } finally {
+            synchronized(lockFor(id)) { stateFor(id).let { if (it.racing === fresh) it.racing = null } }
+        }
     }
 
     /**
@@ -151,37 +235,12 @@ class SshConnectionManager(
             st.configs = addressConfigs
             st.connecting = conn // disconnect 与看门狗靠它关掉阻塞中的握手
         }
-        // 握手看门狗：黑洞对端连上 TCP 后 banner/KEX 读会无限阻塞（sshj 没有这一级超时），到点强关 transport 解阻塞。
-        // 进度判据是任一目标地址认证成功（ESTABLISHED），不是 isConnected：isConnected 要等所有输家清理完才为真，
-        // 期间赢家早已认证。只认目标地址，跳板的 ESTABLISHED 不算。
-        val handshakeDone = AtomicBoolean(false)
-        val targetHostPorts = addressConfigs.mapTo(HashSet()) { it.host to it.port }
-        val onEventGuarded: (SshConnectEvent) -> Unit = { ev ->
-            if (ev.stage == SshConnectEvent.Stage.ESTABLISHED && (ev.host to ev.port) in targetHostPorts) handshakeDone.set(true)
-            onEvent?.invoke(ev)
-        }
-        // 下限 connectTimeoutMs + 15s，防 connectTimeoutMs 调得比 handshakeTimeoutMs 还大时看门狗先于合法握手触发。
-        // 跳板 + 多地址是串行的，按地址数扩额；每次尝试的上界取 max(connectTimeoutMs, 30s)，
-        // 因为经隧道的尝试不走 socket.connect，上界是 sshj 内部 channel-open 的 30s 等待。
-        val first0 = addressConfigs.first()
-        val isSerialJump = first0.jumpVia != null && addressConfigs.size > 1
-        val perAttemptMs = if (isSerialJump) maxOf(first0.connectTimeoutMs.toLong(), 30_000L) else first0.connectTimeoutMs.toLong()
-        val serialFactor = if (isSerialJump) addressConfigs.size else 1
-        val deadlineMs = maxOf(first0.handshakeTimeoutMs, perAttemptMs * serialFactor + 15_000)
         val timedOut = AtomicBoolean(false)
-        val watchdog =
-            reconnectScope.launch {
-                delay(deadlineMs)
-                if (!handshakeDone.get()) {
-                    timedOut.set(true)
-                    runCatching { conn.close() }
-                }
-            }
         // 注意：close() 是网络写（SSH_MSG_DISCONNECT），在主线程调会抛 NetworkOnMainThreadException，
         // sshj 只 catch IOException，socket、读线程和远端会话随之泄漏，外层 runCatching 又会把异常吞掉。
         // connect 可能从主线程调进来，所以失败路径一律走 [closeInBackground]。
         try {
-            conn.connect(addressConfigs, onEventGuarded)
+            handshake(conn, addressConfigs, onEvent, timedOut)
         } catch (ce: CancellationException) {
             closeInBackground(listOf(conn))
             throw ce // 协程被取消：不标 ERROR，交给结构化取消
@@ -192,7 +251,7 @@ class SshConnectionManager(
                 if (stateFor(id).generation == myGen) {
                     val msg =
                         if (timedOut.get()) {
-                            "连接超时：握手未在 ${deadlineMs}ms 内完成"
+                            "连接超时：握手未在 ${handshakeDeadlineMs(addressConfigs)}ms 内完成"
                         } else {
                             e.message ?: e.toString()
                         }
@@ -201,11 +260,53 @@ class SshConnectionManager(
             }
             throw e
         } finally {
-            watchdog.cancel()
             // 按值比较清在飞登记，不误清更新一次 connect 的登记。
             synchronized(lockFor(id)) { stateFor(id).let { if (it.connecting === conn) it.connecting = null } }
         }
         return finalizeConnected(id, hostId, label, conn, myGen)
+    }
+
+    /** 握手（TCP · banner/KEX · 认证），带看门狗；失败抛。看门狗到点 ⇒ [timedOut] 置位、强关 [conn]。 */
+    private suspend fun handshake(
+        conn: SshTransport,
+        addressConfigs: List<ConnectionConfig>,
+        onEvent: ((SshConnectEvent) -> Unit)?,
+        timedOut: AtomicBoolean,
+    ) {
+        // 握手看门狗：黑洞对端连上 TCP 后 banner/KEX 读会无限阻塞（sshj 没有这一级超时），到点强关 transport 解阻塞。
+        // 进度判据是任一目标地址认证成功（ESTABLISHED），不是 isConnected：isConnected 要等所有输家清理完才为真，
+        // 期间赢家早已认证。只认目标地址，跳板的 ESTABLISHED 不算。
+        val handshakeDone = AtomicBoolean(false)
+        val targetHostPorts = addressConfigs.mapTo(HashSet()) { it.host to it.port }
+        val onEventGuarded: (SshConnectEvent) -> Unit = { ev ->
+            if (ev.stage == SshConnectEvent.Stage.ESTABLISHED && (ev.host to ev.port) in targetHostPorts) handshakeDone.set(true)
+            onEvent?.invoke(ev)
+        }
+        val deadlineMs = handshakeDeadlineMs(addressConfigs)
+        val watchdog =
+            reconnectScope.launch {
+                delay(deadlineMs)
+                if (!handshakeDone.get()) {
+                    timedOut.set(true)
+                    runCatching { conn.close() }
+                }
+            }
+        try {
+            conn.connect(addressConfigs, onEventGuarded)
+        } finally {
+            watchdog.cancel()
+        }
+    }
+
+    // 下限 connectTimeoutMs + 15s，防 connectTimeoutMs 调得比 handshakeTimeoutMs 还大时看门狗先于合法握手触发。
+    // 跳板 + 多地址是串行的，按地址数扩额；每次尝试的上界取 max(connectTimeoutMs, 30s)，
+    // 因为经隧道的尝试不走 socket.connect，上界是 sshj 内部 channel-open 的 30s 等待。
+    private fun handshakeDeadlineMs(addressConfigs: List<ConnectionConfig>): Long {
+        val first0 = addressConfigs.first()
+        val isSerialJump = first0.jumpVia != null && addressConfigs.size > 1
+        val perAttemptMs = if (isSerialJump) maxOf(first0.connectTimeoutMs.toLong(), 30_000L) else first0.connectTimeoutMs.toLong()
+        val serialFactor = if (isSerialJump) addressConfigs.size else 1
+        return maxOf(first0.handshakeTimeoutMs, perAttemptMs * serialFactor + 15_000)
     }
 
     /**
@@ -228,6 +329,7 @@ class SshConnectionManager(
             } else {
                 supersededOld = st.connection // 重连路径：旧连接锁外后台关
                 st.connection = conn
+                publishLink(id, conn)
                 put(SessionState(id, hostId, label, SessionStatus.CONNECTED))
             }
         }
@@ -240,6 +342,20 @@ class SshConnectionManager(
     }
 
     fun connection(id: String): SshTransport? = states[id]?.connection // 只读，不创建条目
+
+    /** 每台此刻装着的那条连接（与 [HostConnectionState.connection] 同步改，只在 [lockFor] 内写）。 */
+    private val links = MutableStateFlow<Map<String, SshTransport>>(emptyMap())
+
+    private fun publishLink(
+        id: String,
+        conn: SshTransport?,
+    ) = links.update { if (conn == null) it - id else it + (id to conn) }
+
+    /**
+     * 这台此刻的活连接，可观测（同 [connection]）。值换了（按身份）＝ 换了一条：重连 · 探活判死后换上新的，
+     * 名义状态一直是「连着」也照样换（常驻流跟着它重接）。
+     */
+    fun linkOf(id: String): Flow<SshTransport?> = links.map { it[id] }.distinctUntilChanged { a, b -> a === b }
 
     // 持有者集在 [HostConnectionState.holders]：多 tab 共享同一 id 的连接，只在 lockFor 内访问。
     // 用集合而不是计数：强制断开清集后，存活的 VM 重新 retain 即可恢复持有。
@@ -299,9 +415,12 @@ class SshConnectionManager(
         // 在飞连接也摘下来关：阻塞的 sshj 握手不响应取消，关 socket 是唯一的解法，单飞锁随之释放。
         val prevConnecting = st.connecting
         val prevConnection = st.connection
+        val prevRacing = st.racing
         st.connecting = null
         st.connection = null
-        val doomed = listOfNotNull(prevConnecting, prevConnection)
+        st.racing = null
+        publishLink(id, null)
+        val doomed = listOfNotNull(prevConnecting, prevConnection, prevRacing)
         st.configs = null // 防重连复活手动断开的会话
         _sessions.update { it - id } // 不再是重连候选
         return doomed
@@ -324,7 +443,14 @@ class SshConnectionManager(
         id: String,
         dead: SshTransport,
     ) {
-        synchronized(lockFor(id)) { stateFor(id).let { if (it.connection === dead) it.connection = null } }
+        synchronized(lockFor(id)) {
+            stateFor(id).let {
+                if (it.connection === dead) {
+                    it.connection = null
+                    publishLink(id, null)
+                }
+            }
+        }
         closeInBackground(listOf(dead))
     }
 
@@ -334,7 +460,7 @@ class SshConnectionManager(
 
     // 保活与重连
     private val reconnectScope = CoroutineScope(SupervisorJob() + reconnectDispatcher)
-    // 重连与探测的去重标在 [HostConnectionState.reconnecting] / [HostConnectionState.probing]。
+    // 重连的去重标在 [HostConnectionState.reconnecting]；探活那一场的单飞在 [HostConnectionState.verifying]。
 
     /**
      * 用存好的配置重连单个会话（尽力而为，按 id 去重防风暴）。
@@ -427,8 +553,8 @@ class SshConnectionManager(
 
     /**
      * 前台或网络恢复时，重连底层已死但状态仍是 CONNECTED 的会话。
-     * 本地 `isConnected` 对黑洞断网（无 FIN）好一阵仍是 true，所以本地标志还活着的会话走主动 [SshTransport.probeAlive]，
-     * 探测失败才重连；本地标志已死的直接重连。探测按 id 去重，防网络抖动反复探。
+     * 本地 `isConnected` 对黑洞断网（无 FIN）好一阵仍是 true，所以本地标志还活着的会话让对端答（keepOrReplace：
+     * 探活与一条新连接同时起跑，谁先站住用谁），两边都不成才走退避重连；本地标志已死的直接重连。同一台同时只跑一场。
      */
     fun probeAndReconnectStale() {
         _sessions.value.values
@@ -451,18 +577,9 @@ class SshConnectionManager(
                 when {
                     // 本地标志已死：直接重连。
                     st.isStaleReconnectCandidate(existing?.isConnected == true) -> reconnect(st)
-                    // 本地标志仍活：主动探测，失败先摘除死连接（reconnectStillActive 才会放行）再重连。
-                    existing != null && st.countsAsActive() && stateFor(st.id).probing.compareAndSet(false, true) ->
-                        reconnectScope.launch {
-                            try {
-                                if (!existing.probeAlive(FASTPATH_PROBE_TIMEOUT_MS)) {
-                                    evictDead(st.id, existing)
-                                    reconnect(st)
-                                }
-                            } finally {
-                                stateFor(st.id).probing.set(false)
-                            }
-                        }
+                    // 本地标志仍活：让对端答（与一条新连接同时起跑，见 keepOrReplace）；两边都不成才走退避重连。
+                    existing != null && st.countsAsActive() ->
+                        reconnectScope.launch { if (keepOrReplace(st.id, existing) == null) reconnect(st) }
                 }
             }
     }
